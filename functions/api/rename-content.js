@@ -16,6 +16,8 @@
  */
 import { EXTRACTORS, generateSha } from './_collections.js';
 import { logAudit, getEntityName } from './_audit.js';
+import { moveVersions } from './_content-history.js';
+import { moveRequests } from './_profile-requests.js';
 
 const RENAMABLE = { team: { dir: 'src/content/team/', imagePrefix: 'team/' } };
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -104,8 +106,10 @@ export async function rename(env, { collection, from, to } = {}, userEmail = 'un
     if (photoMoved) try { await fetchImpl(`${API(env)}/${imageIdOf(data.photo)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` } }); } catch {}
     throw e;
   }
-  // Their private reveal email follows them (the table exists once invites are set up)
+  // Their private reveal email, saved versions and profile requests follow them
   try { await DB.prepare('UPDATE reveal_board_emails SET slug = ? WHERE slug = ?').bind(to, from).run(); } catch {}
+  try { await moveVersions(DB, 'team', from, to); } catch {}
+  try { await moveRequests(DB, from, to); } catch {}
   if (oldImageId) {
     try { await fetchImpl(`${API(env)}/${oldImageId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` } }); } catch {}
   }

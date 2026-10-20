@@ -25,6 +25,7 @@ export async function onRequestGet(context) {
     const user = url.searchParams.get('user');
     const action = url.searchParams.get('action');
     const type = url.searchParams.get('type');
+    const slug = url.searchParams.get('slug');
     const search = url.searchParams.get('search');
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to');
@@ -43,6 +44,11 @@ export async function onRequestGet(context) {
     if (type) {
       conditions.push('entity_type = ?');
       params.push(type);
+    }
+    // One item's history (the People editor's "Last saved by")
+    if (slug) {
+      conditions.push('entity_slug = ?');
+      params.push(slug);
     }
     if (search) {
       conditions.push('entity_name LIKE ?');

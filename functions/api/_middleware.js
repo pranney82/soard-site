@@ -87,8 +87,13 @@ const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos', '/api/broa
 // Resets when the Workers isolate recycles — good enough for spam prevention.
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
+// A board or team member sending their own bio (/profile-update/): keyed by an
+// unguessable link token checked inside the handler, rate limited below, and
+// nothing goes live until someone in the admin uses it
+PUBLIC_ROUTES.push('/api/profile-request');
+
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
-const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event']);
+const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request']);
 // Public GET routes that fan out to paid upstreams / build large responses.
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
 const _rateLimitMap = new Map(); // ip → { count, resetAt }

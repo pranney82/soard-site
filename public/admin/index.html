@@ -3247,6 +3247,181 @@
     .ppl-crop__buttons { align-items: center; margin-top: 1.25rem; }
     .ppl-spacer { flex: 1; }
 
+    /* List header actions, and the Email and Export menus */
+    .ppl-head__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; }
+    .ppl-head-menu { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .ppl-head-menu svg { width: 15px; height: 15px; }
+    .ppl-head-menu svg:last-child { width: 14px; height: 14px; margin-right: -0.15rem; color: var(--color-text-muted); transition: transform 0.15s var(--ease-out); }
+    .ppl-head-menu[aria-expanded="true"] svg:last-child { transform: rotate(180deg); }
+    .ppl-done-note { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; font-weight: 600; color: var(--color-text-secondary); }
+    .ppl-done-note svg { color: var(--color-success); }
+
+    /* Readiness: one tile per thing the page needs, each a filter */
+    .ppl-ready { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; margin-bottom: 1.1rem; }
+    .ppl-ready__tile {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; min-width: 0; padding: 0.85rem 1rem 0.8rem;
+      border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-bg-card); box-shadow: var(--shadow-xs);
+      text-align: left; color: var(--color-text); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    }
+    .ppl-ready__tile:hover:not(:disabled) { border-color: var(--color-border-strong); box-shadow: var(--shadow-sm); }
+    .ppl-ready__tile:disabled { cursor: default; }
+    .ppl-ready__tile[aria-pressed="true"] { border-color: var(--color-text); box-shadow: 0 0 0 1px var(--color-text), var(--shadow-sm); }
+    .ppl-ready__label { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-text-secondary); }
+    .ppl-ready__value { display: flex; align-items: baseline; min-height: 2rem; font-size: 1.6rem; font-weight: 750; line-height: 1.2; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+    .ppl-ready__value small { margin-left: 0.3rem; font-size: 0.85rem; font-weight: 600; letter-spacing: 0; color: var(--color-text-muted); }
+    .ppl-ready__value .spinner { align-self: center; }
+    .ppl-ready__meter { display: block; width: 100%; height: 5px; margin: 0.15rem 0 0.25rem; border-radius: 99px; background: #EFEEEA; overflow: hidden; }
+    .ppl-ready__meter span { display: block; height: 100%; border-radius: inherit; background: var(--color-primary); transition: width 0.3s var(--ease-out); }
+    .ppl-ready__tile.is-done .ppl-ready__meter span { background: #9CC9A0; }
+    .ppl-ready__sub { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; color: var(--color-text-secondary); }
+    .ppl-ready__tile:not(.is-done):not(.ppl-ready__tile--review) .ppl-ready__sub { color: #6E5200; font-weight: 600; }
+    .ppl-ready__sub svg { color: var(--color-success); }
+    .ppl-ready__tile--review .ppl-ready__value { margin-bottom: 0.65rem; }
+    .ppl-ready__tile--review.is-waiting { border-color: #EBCB4D; background: #FFFBEA; }
+    .ppl-ready__tile--review.is-waiting .ppl-ready__sub { color: #5C4500; font-weight: 600; }
+    .ppl-filter--clear svg { margin-left: -0.1rem; }
+    .ppl-tag--review { background: var(--color-primary); color: #2D2E33; cursor: pointer; }
+    .ppl-tag--review:hover { background: #F2C900; }
+
+    /* Editor: who saved last, History */
+    .ppl-ed-title { min-width: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+    .ppl-ed-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.6rem; min-height: 1.5rem; margin: 0; font-size: 0.82rem; color: var(--color-text-muted); }
+    .ppl-link { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0; border: none; background: none; font-size: inherit; font-weight: 600; color: var(--color-text-secondary); text-decoration: underline; text-decoration-color: rgba(45,46,51,0.25); text-underline-offset: 3px; cursor: pointer; }
+    .ppl-link:hover { color: var(--color-text); text-decoration-color: currentColor; }
+
+    /* Ask for their bio */
+    .ppl-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin: 0 0 1.1rem; padding: 0.8rem 0.9rem; border: 1px dashed var(--color-border-strong); border-radius: 12px; }
+    .ppl-ask__text { flex: 1 1 280px; margin: 0; font-size: 0.86rem; line-height: 1.5; color: var(--color-text-secondary); }
+    .ppl-ask__text strong { color: var(--color-text); }
+    .ppl-ask .btn { display: inline-flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+    .ppl-ask.is-link { border-style: solid; border-color: #EBCB4D; background: #FFFBEA; }
+    .ppl-ask.is-pending { border-style: solid; border-color: #EBCB4D; background: #FFFBEA; }
+    .ppl-ask__link { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; flex-basis: 100%; }
+    .ppl-ask__link .form-input { flex: 1 1 260px; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; background: #fff; }
+
+    /* Bio tools and the tidy suggestion */
+    .ppl-bio-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 0.75rem; margin-top: 0.35rem; }
+    .ppl-bio-tools .ppl-count-hint { margin: 0; text-align: left; }
+    .ppl-tidy-btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .ppl-tidy { margin-top: 0.75rem; padding: 0.9rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-secondary); }
+    .ppl-tidy__cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+    .ppl-tidy__col { padding: 0.75rem 0.85rem; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); }
+    .ppl-tidy__col.is-new { border-color: #EBCB4D; box-shadow: 0 0 0 1px rgba(235,203,77,0.35); }
+    .ppl-tidy__col h4 { display: flex; justify-content: space-between; gap: 0.5rem; margin: 0 0 0.4rem; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-text-secondary); }
+    .ppl-tidy__col h4 span { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--color-text-muted); }
+    .ppl-tidy__col p { margin: 0; font-size: 0.88rem; line-height: 1.6; white-space: pre-wrap; color: var(--color-text); }
+    .ppl-tidy del { color: var(--color-text-muted); text-decoration-color: rgba(45,46,51,0.45); }
+    .ppl-tidy ins { text-decoration: none; background: #FFF3BF; box-shadow: 0 0 0 1px #FFF3BF; border-radius: 3px; }
+    .ppl-tidy .form-hint { margin: 0.6rem 0 0; }
+    .ppl-tidy__btns { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.6rem; }
+    .ppl-tidy__btns .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+    /* What they sent back */
+    .card.ppl-sg { border-color: #EBCB4D; background: #FFFDF3; box-shadow: 0 0 0 1px rgba(235,203,77,0.25), var(--shadow-sm); scroll-margin-top: 90px; }
+    .card.ppl-sg:focus { outline: none; }
+    .card.ppl-sg:focus-visible { box-shadow: var(--focus-ring-strong); }
+    .ppl-sg__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; margin-bottom: 0.35rem; }
+    .ppl-sg__head h3 { margin: 0; font-size: 1.02rem; }
+    .ppl-sg__when { font-size: 0.8rem; color: var(--color-text-muted); }
+    .ppl-sg__lead { margin: 0 0 0.85rem; font-size: 0.86rem; color: var(--color-text-secondary); }
+    .ppl-sg__row { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 0.75rem; align-items: start; padding: 0.75rem 0; border-top: 1px solid rgba(235,203,77,0.45); }
+    .ppl-sg__label { padding-top: 0.15rem; font-size: 0.86rem; font-weight: 650; }
+    .ppl-sg__cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+    .ppl-sg__col { min-width: 0; padding: 0.55rem 0.7rem; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); font-size: 0.86rem; line-height: 1.5; overflow-wrap: anywhere; }
+    .ppl-sg__col.is-sent { border-color: #EBCB4D; }
+    .ppl-sg__row.is-used .ppl-sg__col:not(.is-sent) { opacity: 0.6; }
+    .ppl-sg__tag, .ppl-hist__tag { display: block; margin-bottom: 0.2rem; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-text-muted); }
+    .ppl-sg__act { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; min-width: 84px; }
+    .ppl-sg__done { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; font-weight: 650; color: var(--color-success); white-space: nowrap; }
+    .ppl-sg__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding-top: 0.8rem; border-top: 1px solid rgba(235,203,77,0.45); }
+    .ppl-sg__note { margin: 0; font-size: 0.82rem; font-weight: 600; color: #5C4500; }
+    .ppl-sg__confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; font-size: 0.85rem; font-weight: 600; }
+    .ppl-none { font-style: italic; color: var(--color-text-muted); }
+    .ppl-val-text { white-space: pre-wrap; }
+    .ppl-val-photo { display: block; width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #F5F4F0; box-shadow: inset 0 0 0 1px rgba(26,27,31,0.06); }
+
+    /* History */
+    .modal.ppl-hist { max-width: 640px; max-height: calc(100dvh - 3rem); overflow-y: auto; }
+    .modal .ppl-hist__lead { margin-bottom: 1rem; }
+    .ppl-hist__list { list-style: none; margin: 0 0 0.5rem; padding: 0; border: 1px solid var(--color-border); border-radius: 12px; }
+    .ppl-hist__item { border-bottom: 1px solid var(--color-border); }
+    .ppl-hist__item:last-child { border-bottom: none; }
+    .ppl-hist__row { display: flex; align-items: center; gap: 0.75rem; width: 100%; min-height: 52px; padding: 0.6rem 0.8rem; border: none; background: none; text-align: left; color: var(--color-text); cursor: pointer; }
+    .ppl-hist__row:hover { background: var(--color-bg-hover); }
+    .ppl-hist__row > svg { flex-shrink: 0; color: var(--color-text-muted); transition: transform 0.15s var(--ease-out); }
+    .ppl-hist__row[aria-expanded="true"] > svg { transform: rotate(180deg); }
+    .ppl-hist__dot { flex-shrink: 0; width: 9px; height: 9px; border-radius: 50%; background: #D5D4CE; }
+    .ppl-hist__item:first-child .ppl-hist__dot { background: var(--color-primary); box-shadow: 0 0 0 3px rgba(255,213,0,0.25); }
+    .ppl-hist__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+    .ppl-hist__main strong { font-size: 0.9rem; }
+    .ppl-hist__main small { font-size: 0.8rem; color: var(--color-text-muted); }
+    .ppl-hist__detail { padding: 0.2rem 0.9rem 0.9rem 2.1rem; }
+    .ppl-hist__diff { display: flex; flex-direction: column; gap: 0.6rem; margin: 0 0 0.75rem; }
+    .ppl-hist__diff > div { display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr); gap: 0.6rem; align-items: start; }
+    .ppl-hist__diff dt { padding-top: 0.15rem; font-size: 0.84rem; font-weight: 650; }
+    .ppl-hist__diff dd { min-width: 0; margin: 0; padding: 0.5rem 0.65rem; border: 1px solid var(--color-border); border-radius: 10px; font-size: 0.84rem; line-height: 1.5; overflow-wrap: anywhere; }
+    .ppl-hist__diff dd .ppl-val-text { display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
+    .ppl-hist__restore { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+    /* Merge */
+    .modal.ppl-merge { max-width: 620px; max-height: calc(100dvh - 3rem); overflow-y: auto; }
+    .modal .ppl-merge__lead { margin-bottom: 1rem; }
+    .ppl-merge__field { margin: 0 0 0.9rem; padding: 0; border: none; }
+    .ppl-merge__field legend { margin-bottom: 0.4rem; padding: 0; font-size: 0.86rem; font-weight: 700; }
+    .ppl-merge__opt { display: grid; grid-template-columns: auto 72px minmax(0, 1fr); gap: 0.6rem; align-items: start; margin-bottom: 0.4rem; padding: 0.6rem 0.75rem; border: 1px solid var(--color-border); border-radius: 10px; font-size: 0.86rem; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+    .ppl-merge__opt.is-on { border-color: var(--color-text); background: var(--color-bg-secondary); }
+    .ppl-merge__opt input { margin-top: 0.2rem; accent-color: var(--color-text); }
+    .ppl-merge__who { font-weight: 650; }
+    .ppl-merge__val { min-width: 0; line-height: 1.5; overflow-wrap: anywhere; }
+    .ppl-merge__val .ppl-val-text { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+
+    /* Photos: everyone at once */
+    .ppl-photo-filters { margin-bottom: 1rem; }
+    .card.ppl-photos { padding: 0; overflow: visible; }
+    .ppl-pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 1px; list-style: none; margin: 0; padding: 0; border-radius: 0 0 var(--radius-md) var(--radius-md); overflow: hidden; }
+    /* The lines between cards are their outlines in the gaps, so a short last row leaves no gray block */
+    .ppl-pcard { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.45rem; padding: 1.1rem 0.85rem 0.95rem; background: var(--color-bg-card); box-shadow: 0 0 0 1px var(--color-border); text-align: center; transition: opacity 0.2s; }
+    .ppl-pcard.is-dim { opacity: 0.45; }
+    .ppl-pcard.is-skipped .ppl-pcard__compare figure:last-child { opacity: 0.4; }
+    .ppl-pcard.is-busy { opacity: 0.6; pointer-events: none; }
+    .ppl-pcard__solo { padding: 0.15rem 0 0.2rem; }
+    .ppl-pcard__circle { position: relative; display: block; width: 128px; height: 128px; border-radius: 50%; overflow: hidden; background: #F5F4F0; box-shadow: 0 6px 18px rgba(0,0,0,0.07), inset 0 0 0 1px rgba(26,27,31,0.05); }
+    .ppl-pcard__circle img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .ppl-pcard__circle.is-memorial img { filter: grayscale(1); }
+    .ppl-pcard__ini { display: grid; place-items: center; width: 100%; height: 100%; border: 2px dashed var(--color-border-strong); border-radius: 50%; font-size: 1.4rem; font-weight: 700; color: var(--color-text-muted); }
+    .ppl-pcard__busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(245,244,240,0.7); }
+    .ppl-pcard__compare { display: flex; align-items: center; gap: 0.35rem; }
+    .ppl-pcard__compare figure { margin: 0; }
+    .ppl-pcard__compare .ppl-pcard__circle { width: 84px; height: 84px; }
+    .ppl-pcard__compare figcaption { margin-top: 0.3rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+    .ppl-pcard__arrow { color: var(--color-text-muted); margin-bottom: 1.2rem; }
+    .ppl-pcard__text { display: flex; flex-direction: column; align-items: center; min-width: 0; max-width: 100%; }
+    .ppl-pcard__name { max-width: 100%; padding: 0; border: none; background: none; font-size: 0.92rem; font-weight: 650; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .ppl-pcard__name:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .ppl-pcard__text small { max-width: 100%; font-size: 0.78rem; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ppl-pq { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.55rem; border-radius: 99px; font-size: max(11px, 0.74rem); font-weight: 600; white-space: nowrap; }
+    .ppl-pq.is-warn { background: #FFF3BF; color: #6E5200; box-shadow: inset 0 0 0 1px rgba(110,82,0,0.14); }
+    .ppl-pq.is-quiet, .ppl-pq.is-wait { background: #F3F2EE; color: #64656B; }
+    .ppl-pq.is-good { background: #EAF5EC; color: #2C6B37; }
+    .ppl-pcard__actions { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; margin-top: 0.15rem; }
+    .ppl-pcard__actions .ppl-switch { margin: 0; font-size: 0.84rem; }
+    .ppl-pcard__actions .btn, .ppl-pcard > .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .ppl-pcard__pick { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 36px; font-size: 0.84rem; font-weight: 600; cursor: pointer; }
+    .ppl-pcard__pick input { width: 18px; height: 18px; accent-color: var(--color-text); }
+    .ppl-review-bar {
+      position: sticky; top: 0.5rem; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem;
+      margin-bottom: 1rem; padding: 0.8rem 0.9rem 0.8rem 1.1rem; border: 1px solid #EBCB4D; border-radius: 14px; background: #FFFBEA; box-shadow: var(--shadow-md);
+    }
+    .ppl-review-bar p { flex: 1 1 320px; margin: 0; font-size: 0.88rem; }
+    .ppl-review-bar p span { display: block; font-size: 0.82rem; color: var(--color-text-secondary); }
+    .ppl-review-bar__btns { display: flex; gap: 0.5rem; }
+    .ppl-review-bar__btns .btn { display: inline-flex; align-items: center; gap: 0.4rem; }
+    /* Tablets and phones: the admin's top bar is fixed, so stick below it */
+    @media (max-width: 1024px) {
+      .ppl-review-bar { top: calc(56px + env(safe-area-inset-top, 0px) + 0.5rem); }
+      .card.ppl-sg { scroll-margin-top: calc(56px + env(safe-area-inset-top, 0px) + 1rem); }
+    }
+
     /* Tablets: what's missing goes under the name, so titles and companies aren't cut off */
     @media (max-width: 1180px) {
       .ppl-row { grid-template-columns: 36px 44px minmax(0, 1fr) 40px; grid-template-areas: 'handle avatar main menu' 'handle avatar issues menu'; row-gap: 0.35rem; }
@@ -3293,10 +3468,41 @@
       .ppl-cmte-new .form-input { flex-basis: 100%; max-width: none; }
       .ppl-cmte, .ppl-cmte-new .btn, .ppl-cmte-row .btn, .ppl-cmte-add .btn { min-height: 44px; }
       .ppl-cmte-modal__foot .ppl-spacer, .ppl-cmte-modal__foot .ppl-saving:empty { display: none; }
+      .ppl-head__actions { justify-content: flex-start; }
+      .ppl-filters.ppl-photo-filters { flex-wrap: wrap; overflow: visible; }
+      .ppl-ready { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+      .ppl-ready__tile { padding: 0.7rem 0.8rem; }
+      .ppl-ready__value { font-size: 1.35rem; min-height: 1.75rem; }
+      .ppl-ready__sub { font-size: 0.76rem; }
+      .ppl-ed-meta .ppl-link { min-height: 44px; }
+      .ppl-ask__link .form-input { flex-basis: 100%; font-size: 16px; }
+      .ppl-ask .btn, .ppl-tidy__btns .btn, .ppl-sg .btn, .ppl-bio-tools .btn, .ppl-hist__restore, .ppl-head-menu, .ppl-review-bar .btn, .ppl-pcard .btn { min-height: 44px; }
+      .ppl-tidy__cols { grid-template-columns: 1fr; }
+      .ppl-sg__row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label act' 'cols cols'; gap: 0.5rem; }
+      .ppl-sg__label { grid-area: label; align-self: center; }
+      .ppl-sg__act { grid-area: act; flex-direction: row; align-items: center; min-width: 0; }
+      .ppl-sg__cols { grid-area: cols; grid-template-columns: 1fr; }
+      .ppl-hist__detail { padding: 0.2rem 0.75rem 0.85rem; }
+      .ppl-hist__diff > div { grid-template-columns: 1fr; gap: 0.35rem; }
+      .ppl-merge__opt { grid-template-columns: auto minmax(0, 1fr); }
+      .ppl-merge__val { grid-column: 2; }
+      .ppl-pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .ppl-pcard { padding: 0.95rem 0.5rem 0.85rem; }
+      .ppl-pcard__circle { width: 104px; height: 104px; }
+      .ppl-pcard__compare .ppl-pcard__circle { width: 62px; height: 62px; }
+      .ppl-pcard__compare { gap: 0.15rem; }
+      .ppl-pcard__arrow svg { width: 13px; height: 13px; }
+      .ppl-pq { white-space: normal; text-align: center; }
+      .ppl-pcard__actions .ppl-switch { font-size: 0.8rem; }
+      .ppl-pcard__pick { min-height: 44px; font-size: 0.8rem; text-align: left; }
+      .ppl-review-bar { top: calc(56px + env(safe-area-inset-top, 0px) + 0.25rem); padding: 0.75rem; }
+      .ppl-review-bar__btns { width: 100%; }
+      .ppl-review-bar__btns .btn { flex: 1; justify-content: center; }
     }
     /* Touch screens of any width (iPads get the desktop layout): 44px targets */
     @media (pointer: coarse) {
       .ppl-filter, .ppl-collapse, .ppl-seg [role="radio"], .ppl-photo__actions .btn, .ppl-partner .btn, .ppl-inline .btn, .ppl-admin__row .btn { min-height: 44px; }
+      .ppl-ask .btn, .ppl-tidy__btns .btn, .ppl-sg .btn, .ppl-bio-tools .btn, .ppl-hist__restore, .ppl-head-menu, .ppl-review-bar .btn, .ppl-pcard .btn, .ppl-ed-meta .ppl-link, .ppl-pcard__pick { min-height: 44px; }
       .ppl-menu__btn { width: 44px; height: 44px; }
       .ppl-handle { width: 40px; height: 44px; }
       .ppl-menu__pop [role="menuitem"] { min-height: 44px; }
@@ -8093,7 +8299,7 @@
     // Shared state + logic for all CRUD editors.
     //   Slug-based:  useEditor({ slug, type: 'kids', nameField: 'name', defaults: {...}, addToast, onBack })
     //   Site-config: useEditor({ path: 'src/content/site/media.json', label: 'Media Kit', addToast })
-    function useEditor({ slug, type, path: fixedPath, nameField = 'name', slugField = 'name', defaults = {}, addToast, onBack, label, commitPrefix, onLoad, existingSlugs = [] }) {
+    function useEditor({ slug, type, path: fixedPath, nameField = 'name', slugField = 'name', defaults = {}, addToast, onBack, label, commitPrefix, onLoad, onConflict, existingSlugs = [] }) {
       const isSlugBased = !fixedPath;
       const [data, setData] = useState({ ...defaults });
       const [sha, setSha] = useState(null);
@@ -8226,6 +8432,11 @@
             logActivity(slug ? 'updated' : 'created', prefix, displayName());
             setSaving(false);
             return true;
+          } else if (onConflict && /^Conflict:/.test(res.error || '')) {
+            // Someone else saved since this loaded: the editor can merge instead of failing
+            setSaving(false);
+            onConflict(saveData);
+            return false;
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
           }
@@ -8262,7 +8473,7 @@
       };
 
       return {
-        data, setData, sha, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
+        data, setData, sha, setSha, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
         showDeleteModal, setShowDeleteModal, slugExists, queueImageDelete,
         updateField, updateNestedField, handleSave, handleDelete, safeBack,
       };
@@ -9063,6 +9274,7 @@
       const { live, reveals, jtJobs, lastDeploy } = useDashLive();
       // Board members' private reveal emails (a light D1 read), for the invite reminder below
       const [boardEmails] = useBoardEmails(true);
+      const { requests: profileRequests } = useProfileRequests();
       const [showAllNeeds, setShowAllNeeds] = useState(false);
       const [impactOpen, setImpactOpen] = useState(false);
       const thisYear = new Date().getFullYear();
@@ -9176,6 +9388,17 @@
         title: noInvite.length === 1 ? `${noInvite[0].name} won’t get reveal invites` : `${dashCount(noInvite.length, 'board member')} won’t get reveal invites`,
         detail: `${noInvite.length === 1 ? 'No' : `${dashNames(noInvite.map((p) => p.name), 3)} have no`} invite email on file. Add one on their People page and every reveal’s calendar invite includes them.`,
         action: { label: noInvite.length === 1 ? 'Add the email' : 'Show them', go: () => (noInvite.length === 1 ? onNavigate('people-hub', noInvite[0].slug, 'board') : onNavigate('people-hub', null, 'board', 'no-invite-email')) },
+      });
+      // Bios people sent back from their private link, waiting for someone to use them
+      const waitingBios = (profileRequests || []).filter((r) => r.status === 'pending')
+        .map((r) => ({ r, p: (team || []).find((t) => t.slug === r.slug) })).filter((x) => x.p).map((x) => ({ ...x, p: normalizePerson(x.p) }));
+      if (waitingBios.length) needs.push({
+        key: 'profile-review', tone: 'action', icon: DI.list,
+        title: waitingBios.length === 1 ? `${waitingBios[0].p.name} sent their profile` : `${waitingBios.length} profiles are waiting for review`,
+        detail: `${waitingBios.length === 1 ? 'Their bio and details are' : `${dashNames(waitingBios.map((x) => x.p.name), 3)} sent theirs. They’re`} waiting in People. Nothing changes on the site until you use them and publish.`,
+        action: waitingBios.length === 1
+          ? { label: 'Review', go: () => onNavigate('people-hub', waitingBios[0].p.slug, waitingBios[0].p.group === 'board' ? 'board' : 'team') }
+          : { label: 'Review them', go: () => onNavigate('people-hub', null, waitingBios.some((x) => x.p.group === 'team') ? 'team' : 'board', 'profiles-waiting') },
       });
       if (staleEvents.length && !hasNextEvent) needs.push({
         key: 'events', tone: 'fix', icon: DI.calendar,
@@ -13385,6 +13608,10 @@
       link: _s(html`<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>`, 14),
       chevron: _s(html`<path d="m6 9 6 6 6-6"/>`, 16),
       plus: _s(html`<path d="M12 5v14"/><path d="M5 12h14"/>`, 13),
+      close: _s(html`<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`, 13),
+      history: _s(html`<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>`, 14),
+      arrow: _s(html`<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>`, 16),
+      pen: _s(html`<path d="M12 20h9"/><path d="M16.38 3.62a1 1 0 0 1 3 3L7.37 18.64a2 2 0 0 1-.86.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.86z"/>`, 14),
     };
 
     const PEOPLE_SECTIONS = {
@@ -13519,6 +13746,255 @@
       for (const u of [...widths.map((w) => tsPhotoUrl(rec, w)), tsPhotoLqip(rec)]) { const i = new Image(); i.src = u; }
     }
 
+    // ─── Who and when, for "Last saved by", History and bio requests ───
+    /** "jennifer.crosby@…" → "Jennifer" */
+    const pplWho = (email) => {
+      if (!email || email === 'unknown') return 'Someone';
+      const first = String(email).split('@')[0].split(/[._+-]/)[0];
+      return first ? first[0].toUpperCase() + first.slice(1) : String(email);
+    };
+    /** "Oct 12", or "Oct 12, 2025" in another year */
+    const pplDay = (iso) => {
+      const d = new Date(iso);
+      if (Number.isNaN(+d)) return '';
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+    };
+    /** "today at 3:14 PM", "yesterday at 9:02 AM", "Oct 12 at 3:14 PM" */
+    const pplWhen = (iso) => {
+      const d = new Date(iso);
+      if (Number.isNaN(+d)) return '';
+      const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+      const ago = Math.round((day(new Date()) - day(d)) / 86400000);
+      return `${ago === 0 ? 'today' : ago === 1 ? 'yesterday' : pplDay(iso)} at ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    };
+    const pplPlural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+    async function pplCopy(text) {
+      try { await navigator.clipboard.writeText(text); return true; } catch {}
+      const t = Object.assign(document.createElement('textarea'), { value: text });
+      t.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+      document.body.append(t);
+      t.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch {}
+      t.remove();
+      return ok;
+    }
+    const pplAddr = (e) => String(e || '').trim().replace(/[^A-Za-z0-9.@_+-]/g, encodeURIComponent);
+    const pplMailto = ({ to = '', bcc = [], subject = '', body = '' }) => {
+      const q = [bcc.length && `bcc=${bcc.map(pplAddr).join(',')}`, subject && `subject=${encodeURIComponent(subject)}`, body && `body=${encodeURIComponent(body)}`].filter(Boolean).join('&');
+      return `mailto:${pplAddr(to)}${q ? `?${q}` : ''}`;
+    };
+    /** Open the mail app without leaving the admin */
+    const pplOpenMail = (href) => { const a = Object.assign(document.createElement('a'), { href }); document.body.append(a); a.click(); a.remove(); };
+
+    // ─── Bio requests: private links sent by hand, and what comes back ───
+    /** { requests: the latest open or waiting request per person (null while loading), bySlug, reload } */
+    function useProfileRequests(enabled = true) {
+      const [list, setList] = useState(null);
+      const load = useCallback(() => {
+        if (!enabled) return;
+        fetch('/api/profile-requests-admin', { cache: 'no-store' })
+          .then((r) => apiJson(r, '/api/profile-requests-admin'))
+          .then((d) => setList(d.success ? d.requests || [] : []))
+          .catch(() => setList([]));
+      }, [enabled]);
+      useEffect(() => { load(); }, [load]);
+      const bySlug = useMemo(() => Object.fromEntries((list || []).map((r) => [r.slug, r])), [list]);
+      return { requests: list, bySlug, reload: load };
+    }
+    const pplLinkOpen = (req) => req?.status === 'open' && Date.parse(req.expiresAt) > Date.now();
+    async function pplResolveRequest(req, status) {
+      const r = await fetch('/api/profile-requests-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'resolve', id: req.id, status }) });
+      const d = await apiJson(r, '/api/profile-requests-admin');
+      if (!d.success) throw new Error(d.error || 'Couldn’t update it');
+    }
+
+    /** One change across many people (the Photos review): only photo fields, one request */
+    async function pplBatch(updates) {
+      const r = await fetch('/api/people-batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ updates }) });
+      const d = await apiJson(r, '/api/people-batch');
+      if (!d.success) throw new Error(d.error || 'Couldn’t save');
+      window.dispatchEvent(new CustomEvent('soard-content-changed'));
+      return d;
+    }
+
+    // ─── Field names, and merging two saves of one person ───
+    const PPL_FIELDS = {
+      name: 'Name', title: 'Title', organization: 'Company', group: 'Section', seat: 'Seat', role: 'Role', status: 'Status',
+      publishStatus: 'Shown on the page', since: 'Since', until: 'Until', committees: 'Committees', partner: 'Partner link',
+      photo: 'Photo', photoCrop: 'Photo framing', photoSize: 'Photo', photoCutout: 'Background removal',
+      bio: 'Bio', quote: 'Why I serve', linkedin: 'LinkedIn',
+    };
+    const PPL_PHOTO_KEYS = ['photo', 'photoCrop', 'photoSize', 'photoCutout'];
+    /** Field names as people say them, each once ("Photo" covers its size) */
+    const pplFieldNames = (keys) => [...new Set((keys || []).filter((k) => k !== 'order' && k !== 'slug').map((k) => PPL_FIELDS[k] || k))];
+    const pplList = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+    // Empty, missing and off all mean "not set"
+    const pplNorm = (v) => (v == null || v === '' || v === false || (Array.isArray(v) && !v.length) ? null : v);
+    const pplSame = (a, b) => JSON.stringify(pplNorm(a)) === JSON.stringify(pplNorm(b));
+    /**
+     * Two saves of one person. base: the record this editor loaded; theirs: the
+     * one saved meanwhile; mine: what this editor would save (all as records,
+     * shaped the same way). A field only one side changed takes that side; a
+     * field both changed differently is a conflict to ask about. The photo
+     * moves with its framing, size and cutout. The list position is theirs.
+     */
+    function pplMerge(base, theirs, mine) {
+      const keys = new Set([...Object.keys(base || {}), ...Object.keys(theirs || {}), ...Object.keys(mine || {})]);
+      for (const k of ['order', 'slug', ...PPL_PHOTO_KEYS]) keys.delete(k);
+      const units = [{ id: 'photo', keys: PPL_PHOTO_KEYS }, ...[...keys].map((k) => ({ id: k, keys: [k] }))];
+      const same = (a, b, ks) => ks.every((k) => pplSame(a?.[k], b?.[k]));
+      const merged = { ...mine, order: theirs?.order ?? mine.order };
+      const theirsTook = [];
+      const conflicts = [];
+      for (const u of units) {
+        if (same(base, theirs, u.keys)) continue;
+        if (same(base, mine, u.keys)) {
+          for (const k of u.keys) { if (theirs[k] === undefined) delete merged[k]; else merged[k] = theirs[k]; }
+          theirsTook.push(u.id);
+        } else if (!same(mine, theirs, u.keys)) conflicts.push(u.id);
+      }
+      return { merged, theirsTook, conflicts };
+    }
+
+    /** Word by word, what changed between two texts: { a: [{ t, op: '=' | '-' }], b: [{ t, op: '=' | '+' }] } */
+    function pplWordDiff(a, b) {
+      const x = String(a || '').match(/\S+\s*/g) || [];
+      const y = String(b || '').match(/\S+\s*/g) || [];
+      if (x.length * y.length > 250000) return { a: [{ t: String(a || ''), op: '=' }], b: [{ t: String(b || ''), op: '=' }] };
+      const key = (s) => s.trim();
+      const L = Array.from({ length: x.length + 1 }, () => new Uint16Array(y.length + 1));
+      for (let i = x.length - 1; i >= 0; i--) for (let j = y.length - 1; j >= 0; j--) L[i][j] = key(x[i]) === key(y[j]) ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+      const A = [];
+      const B = [];
+      const push = (arr, t, op) => { const last = arr[arr.length - 1]; if (last?.op === op) last.t += t; else arr.push({ t, op }); };
+      let i = 0;
+      let j = 0;
+      while (i < x.length && j < y.length) {
+        if (key(x[i]) === key(y[j])) { push(A, x[i++], '='); push(B, y[j++], '='); }
+        else if (L[i + 1][j] >= L[i][j + 1]) push(A, x[i++], '-');
+        else push(B, y[j++], '+');
+      }
+      while (i < x.length) push(A, x[i++], '-');
+      while (j < y.length) push(B, y[j++], '+');
+      return { a: A, b: B };
+    }
+
+    // ─── Roster: a spreadsheet, and a page to print or save as a PDF ───
+    const PPL_SITE = 'https://sunshineonaranneyday.com';
+    const pplSeatLabel = (p) => TS_SEATS.find((s) => s.id === p.seat)?.label || 'Member';
+    const pplRoleLabel = (p) => TS_TEAM_ROLES.find((r) => r.id === p.role)?.label || 'Staff';
+    const pplStatusLabel = (p) => TS_STATUSES.find((s) => s.id === p.status)?.label || 'Active';
+    const pplToday = () => new Date().toLocaleDateString('en-CA');
+    /** One group in the site's order (its sections), then alumni */
+    function pplRoster(team, group) {
+      const people = team.filter((t) => t.group === group).map((t) => normalizePerson(t));
+      const out = [];
+      for (const s of PEOPLE_SECTIONS[group]) out.push(...people.filter((p) => p.status !== 'alumni' && s.match(p)).sort(comparePeople).map((p) => ({ ...p, section: s.title })));
+      out.push(...people.filter((p) => p.status === 'alumni').sort((a, b) => (Number(b.until) || 0) - (Number(a.until) || 0) || a.name.localeCompare(b.name)).map((p) => ({ ...p, section: 'Alumni' })));
+      return out;
+    }
+    function pplRosterCsv(team, group, emails) {
+      const board = group === 'board';
+      const head = board
+        ? ['Name', 'Seat', 'Title', 'Company', 'On the board since', 'Until', 'Committees', 'Status', 'On the website', 'Invite email', 'Profile page', 'LinkedIn']
+        : ['Name', 'Role', 'Title', 'With SOARD since', 'Until', 'Status', 'On the website', 'Profile page', 'LinkedIn'];
+      const rows = pplRoster(team, group).map((p) => {
+        const profile = tsHasProfile(p) ? `${PPL_SITE}${tsProfilePath(p.slug)}` : '';
+        const shown = tsIsListed(p) ? 'Yes' : 'No';
+        return board
+          ? [p.name, p.status === 'active' ? pplSeatLabel(p) : '', p.title, p.organization, p.since, p.until, (p.committees || []).join(', '), pplStatusLabel(p), shown, emails?.[p.slug] || '', profile, p.linkedin]
+          : [p.name, pplRoleLabel(p), p.title, p.since, p.until, pplStatusLabel(p), shown, profile, p.linkedin];
+      });
+      // Every cell quoted; one starting = + - @ can't run as a spreadsheet formula
+      const cell = (v) => { let s = v == null ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
+      return `\uFEFF${[head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n')}\r\n`;
+    }
+    function pplDownload(name, text, type) {
+      const url = URL.createObjectURL(new Blob([text], { type }));
+      const a = Object.assign(document.createElement('a'), { href: url, download: name });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+    /**
+     * The current roster in a new window, laid out for paper. Nothing runs in
+     * that window: this page wires its Print button and email switch.
+     */
+    function pplPrintRoster(team, group, emails) {
+      const board = group === 'board';
+      const people = pplRoster(team, group).filter((p) => p.status === 'active');
+      const w = window.open('', '_blank');
+      if (!w) return false;
+      const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const month = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      const title = board ? 'Board of Directors' : 'Our Team';
+      const withEmail = board && people.some((p) => emails?.[p.slug]);
+      const head = `<tr><th class="ph"><span class="sr">Photo</span></th><th>Name</th>${board ? '<th>Company</th>' : ''}<th class="num">Since</th>${board ? '<th>Committees</th>' : ''}${withEmail ? '<th class="email">Email</th>' : ''}</tr>`;
+      const row = (p) => `<tr>
+        <td class="ph">${p.photo ? `<img src="${esc(tsPhotoUrl(p, 96))}" alt="" width="40" height="40">` : `<span class="ini">${esc(pplInitials(p.name))}</span>`}</td>
+        <td><div class="name">${esc(p.name)}${p.draft ? ' <span class="tag">Not on the website yet</span>' : ''}</div><div class="sub">${esc(p.title)}</div></td>
+        ${board ? `<td>${esc(p.organization)}</td>` : ''}
+        <td class="num">${esc(p.since || '')}</td>
+        ${board ? `<td>${esc((p.committees || []).join(', '))}</td>` : ''}
+        ${withEmail ? `<td class="email">${esc(emails?.[p.slug] || '')}</td>` : ''}
+      </tr>`;
+      const sections = [...new Set(people.map((p) => p.section))].map((s) => {
+        const list = people.filter((p) => p.section === s);
+        return `<section><h2>${esc(s)} <span>${list.length}</span></h2><table><thead>${head}</thead><tbody>${list.map(row).join('')}</tbody></table></section>`;
+      }).join('');
+      w.document.open();
+      w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOARD ${esc(title)}, ${esc(month)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: letter; margin: 0.55in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 32px 40px; background: #fff; color: #2D2E33; font: 13px/1.45 Inter, system-ui, -apple-system, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; max-width: 900px; margin: 0 auto 26px; padding: 12px 14px; border-radius: 12px; background: #F5F4F0; font-size: 14px; }
+  .bar button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 9px; background: #2D2E33; color: #fff; font: 600 14px Inter, system-ui, sans-serif; cursor: pointer; }
+  .bar label { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; }
+  .bar input { width: 18px; height: 18px; accent-color: #2D2E33; }
+  .bar span { margin-left: auto; color: #6B6C72; }
+  main { max-width: 900px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 12px; margin-bottom: 8px; border-bottom: 3px solid #FFD500; }
+  .org { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #6B6C72; }
+  h1 { margin: 2px 0 0; font-size: 26px; line-height: 1.15; }
+  .date { font-size: 12px; color: #6B6C72; white-space: nowrap; }
+  h2 { margin: 22px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #6B6C72; }
+  h2 span { margin-left: 4px; font-weight: 600; color: #9A9BA0; }
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 6px 8px; border-bottom: 1px solid #DAD9D3; text-align: left; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8A8B90; }
+  td { padding: 8px; border-bottom: 1px solid #ECEBE6; vertical-align: middle; }
+  tr { break-inside: avoid; }
+  .ph { width: 52px; padding-left: 0; }
+  img, .ini { display: block; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #F5F4F0; }
+  .ini { display: grid; place-items: center; background: #FFF3BF; color: #6E5200; font-size: 12px; font-weight: 700; }
+  .name { font-weight: 650; }
+  .sub { color: #6B6C72; font-size: 12px; }
+  .tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #EEEDE8; font-size: 10px; font-weight: 600; color: #55565C; vertical-align: 1px; }
+  .num { width: 64px; font-variant-numeric: tabular-nums; }
+  .email { display: none; }
+  body.with-email .email { display: table-cell; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  footer { margin-top: 20px; font-size: 10.5px; color: #9A9BA0; }
+  @media (max-width: 640px) { body { padding: 16px; } .bar span { margin-left: 0; } th:nth-child(3), td:nth-child(3) { display: none; } }
+  @media print { body { padding: 0; } .bar { display: none; } }
+</style></head><body>
+<div class="bar"><button type="button" id="pr-print">Print or save as PDF</button>${withEmail ? '<label><input type="checkbox" id="pr-email"> Include emails</label>' : ''}<span>${people.length} ${people.length === 1 ? 'person' : 'people'}</span></div>
+<main><header><div><div class="org">Sunshine on a Ranney Day</div><h1>${esc(title)}</h1></div><div class="date">${esc(month)}</div></header>
+${sections || '<p>No one yet.</p>'}
+<footer>From the SOARD admin, ${esc(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}.</footer></main>
+</body></html>`);
+      w.document.close();
+      w.document.getElementById('pr-print')?.addEventListener('click', () => w.print());
+      w.document.getElementById('pr-email')?.addEventListener('change', (e) => w.document.body.classList.toggle('with-email', e.target.checked));
+      w.focus();
+      return true;
+    }
+
     // ─── Segmented control (a radio group: arrow keys move the choice) ───
     function PplSegmented({ label, value, options, onChange, disabled, id }) {
       const refs = useRef([]);
@@ -13539,7 +14015,7 @@
     }
 
     // ─── Row menu: a popover pinned to its button (cards clip overflow) ───
-    function PplMenu({ label, items }) {
+    function PplMenu({ label, items, button, btnClass = 'ppl-menu__btn', width = 220, disabled }) {
       const [open, setOpen] = useState(false);
       const [pos, setPos] = useState(null);
       const btn = useRef(null);
@@ -13547,8 +14023,9 @@
       const place = () => {
         const r = btn.current?.getBoundingClientRect();
         if (!r) return;
-        const w = 220;
-        setPos({ top: Math.min(r.bottom + 4, innerHeight - 12 - items.length * 44), left: Math.max(8, Math.min(r.right - w, innerWidth - w - 8)), width: w });
+        const w = Math.min(width, innerWidth - 16);
+        const tall = items.filter(Boolean).reduce((h, it) => h + (it.divider ? 9 : it.hint ? 58 : 44), 12);
+        setPos({ top: Math.max(8, Math.min(r.bottom + 4, innerHeight - 12 - tall)), left: Math.max(8, Math.min(r.right - w, innerWidth - w - 8)), width: w });
       };
       useEffect(() => {
         if (!open) return;
@@ -13577,8 +14054,8 @@
       // Focus the first item once the popover is on screen
       useEffect(() => { if (open && pos) pop.current?.querySelector('[role="menuitem"]:not([disabled])')?.focus(); }, [open, !!pos]);
       return html`<span class="ppl-menu">
-        <button type="button" class="ppl-menu__btn" ref=${btn} aria-label=${label} aria-haspopup="menu" aria-expanded=${open}
-          onClick=${(e) => { e.stopPropagation(); setOpen((v) => !v); }}>${pplIcon.more}</button>
+        <button type="button" class=${btnClass} ref=${btn} aria-label=${button ? undefined : label} aria-haspopup="menu" aria-expanded=${open} disabled=${disabled}
+          onClick=${(e) => { e.stopPropagation(); setOpen((v) => !v); }}>${button || pplIcon.more}</button>
         ${open && pos ? html`<div class="ppl-menu__pop" role="menu" ref=${pop} aria-label=${label}
             style=${`top:${pos.top}px;left:${pos.left}px;width:${pos.width}px`} onClick=${(e) => e.stopPropagation()}>
           ${items.filter(Boolean).map((it) => it.divider
@@ -13617,6 +14094,7 @@
       const people = useMemo(() => team.filter((t) => t.group === group).map((t) => ({ ...normalizePerson(t), raw: t })), [team, group]);
       const sizes = usePhotoSizes(people);
       const [emails, reloadEmails] = useBoardEmails(group === 'board');
+      const { requests, bySlug: reqs } = useProfileRequests();
       useEffect(() => { setOrder({}); }, [team]);
 
       const sections = PEOPLE_SECTIONS[group];
@@ -13634,9 +14112,32 @@
       const issuesOf = (p) => pplIssues(p, { size: sizes[p.slug], emails });
       const warnCount = active.filter((p) => issuesOf(p).some((i) => i.tone === 'warn')).length;
       const draftCount = people.filter((p) => p.draft && p.status !== 'alumni').length;
+
+      // ── Readiness: how much of the Leadership page is done, each count a filter ──
+      const current = active.filter((p) => p.status === 'active');
+      const READY = {
+        'no-profile': { label: 'No bio yet', test: (p) => p.status === 'active' && tsIsListed(p) && !tsHasProfile(p) },
+        'no-email': { label: 'No invite email', test: (p) => group === 'board' && p.status === 'active' && !!emails && !emails[p.slug] },
+        'no-linkedin': { label: 'No LinkedIn', test: (p) => p.status === 'active' && p.role !== 'honorary' && !p.linkedin },
+        photo: { label: 'Photos to fix', test: (p) => issuesOf(p).some((i) => i.id === 'photo' && i.tone === 'warn') },
+        pending: { label: 'Bios to review', test: (p) => reqs[p.slug]?.status === 'pending' },
+      };
+      const missingOf = (id, list) => list.filter(READY[id].test).length;
+      const listedNow = current.filter(tsIsListed);
+      const inviteList = group === 'board' && emails ? current.map((p) => emails[p.slug]).filter(Boolean) : [];
+      const tiles = [
+        { id: 'no-profile', label: 'Profiles live', total: listedNow.length, missing: missingOf('no-profile', listedNow), sub: (n) => `${n} without a bio`, done: 'Everyone has one' },
+        group === 'board'
+          ? { id: 'no-email', label: 'Invite emails', total: current.length, missing: emails ? missingOf('no-email', current) : null, sub: (n) => `${n} missing`, done: 'Everyone gets invites' }
+          : { id: 'no-linkedin', label: 'LinkedIn', total: current.filter((p) => p.role !== 'honorary').length, missing: missingOf('no-linkedin', current), sub: (n) => `${n} missing`, done: 'Everyone has one' },
+        { id: 'photo', label: 'Photos ready', total: active.length, missing: missingOf('photo', active), sub: (n) => `${n} ${n === 1 ? 'needs' : 'need'} work`, done: 'All sharp' },
+      ];
+      const pendingCount = requests ? people.filter(READY.pending.test).length : null;
+      const linksOut = people.filter((p) => pplLinkOpen(reqs[p.slug])).length;
+
       const q = search.trim().toLowerCase();
       const shown = (p) => (!q || [p.name, p.title, p.organization, ...(p.committees || [])].some((v) => String(v || '').toLowerCase().includes(q)))
-        && (filter === 'all' || (filter === 'attention' && issuesOf(p).some((i) => i.tone === 'warn')) || (filter === 'drafts' && p.draft));
+        && (filter === 'all' || (filter === 'attention' && issuesOf(p).some((i) => i.tone === 'warn')) || (filter === 'drafts' && p.draft) || !!READY[filter]?.test(p));
       const narrowed = !!q || filter !== 'all';
 
       // ── Saving an order: every person in this group gets their place on the page ──
@@ -13844,6 +14345,7 @@
         const sortable = s?.sortable && !narrowed && bySection[s.id].length > 1;
         const isLifted = lifted?.slug === p.slug;
         const change = changeOf(p.slug);
+        const req = reqs[p.slug];
         return html`<li key=${p.slug} class=${`ppl-row${isLifted ? ' is-lifted' : ''}${busy === p.slug ? ' is-busy' : ''}`} ref=${(el) => { rowsRef.current[p.slug] = el; }}
           onClick=${(e) => { if (!e.target.closest('button, a')) onEdit(p.slug); }}>
           ${sortable ? html`<button type="button" class="ppl-handle" aria-label=${`Reorder ${p.name}`} aria-describedby="ppl-reorder-help" aria-pressed=${isLifted}
@@ -13859,6 +14361,8 @@
             ${p.draft ? html`<span class="ppl-tag">Draft</span>` : null}
             ${change === 'waiting' ? html`<button type="button" class="ppl-tag ppl-tag--waiting" onClick=${openPublish} title="Saved; the site shows it after you publish">Waiting to publish</button>`
               : change === 'publishing' ? html`<span class="ppl-tag ppl-tag--publishing">Publishing</span>` : null}
+            ${req?.status === 'pending' ? html`<button type="button" class="ppl-tag ppl-tag--review" onClick=${() => onEdit(p.slug)} title=${`Sent ${pplWhen(req.submittedAt)}: open to review`}>Bio to review</button>`
+              : pplLinkOpen(req) ? html`<span class="ppl-tag" title=${`Link made ${pplDay(req.createdAt)}, works until ${pplDay(req.expiresAt)}`}>Bio asked</span>` : null}
             <div class="ppl-row__sub">${[p.title, p.organization].filter(Boolean).join(' · ') || html`<span class="text-muted">No title yet</span>`}</div>
           </div>
           <ul class="ppl-row__issues" aria-label="Missing">
@@ -13885,9 +14389,21 @@
               ? 'Everyone on the Board of Directors section of the Leadership page, in the order shown there.'
               : 'Everyone in the Our Team section of the Leadership page, in the order shown there.'} Changes go live when you publish.</p>
           </div>
-          <div class="flex gap-1 items-center">
+          <div class="ppl-head__actions">
             <a class="btn btn-ghost btn-sm" href="/about/leadership/" target="_blank" rel="noopener">Leadership page ${pplIcon.external}</a>
             ${group === 'board' ? html`<button type="button" class="btn btn-ghost btn-sm ppl-cmtes-btn" onClick=${() => setShowCmtes(true)}>Committees</button>` : null}
+            ${group === 'board' && !empty ? html`<${PplMenu} label="Email the board" btnClass="btn btn-ghost btn-sm ppl-head-menu" width=${270} disabled=${!inviteList.length}
+              button=${html`${icons.mail} Email ${pplIcon.chevron}`} items=${[
+                { label: 'Write to the whole board', hint: `Opens your email app, ${pplPlural(inviteList.length, 'address', 'addresses')} in Bcc`, onSelect: () => pplOpenMail(pplMailto({ bcc: inviteList })) },
+                { label: 'Copy the addresses', hint: 'To paste into any email', onSelect: async () => { const done = await pplCopy(inviteList.join(', ')); addToast(done ? `${pplPlural(inviteList.length, 'address', 'addresses')} copied` : 'Couldn’t copy them', done ? 'info' : 'error'); } },
+                tiles[1].missing ? { divider: true } : null,
+                tiles[1].missing ? { label: `${tiles[1].missing} without an invite email`, hint: 'Show who', onSelect: () => setFilter('no-email') } : null,
+              ]} />` : null}
+            ${!empty ? html`<${PplMenu} label=${`Export the ${label.toLowerCase()}`} btnClass="btn btn-ghost btn-sm ppl-head-menu" width=${270}
+              button=${html`Export ${pplIcon.chevron}`} items=${[
+                { label: 'Download a spreadsheet', hint: `Everyone, alumni too${group === 'board' ? ', with invite emails' : ''}`, onSelect: () => { pplDownload(`soard-${group}-${pplToday()}.csv`, pplRosterCsv(team, group, emails), 'text/csv;charset=utf-8'); addToast('Spreadsheet downloaded', 'info'); } },
+                { label: 'Print the roster', hint: 'Current members, or save it as a PDF', onSelect: () => { if (!pplPrintRoster(team, group, emails)) addToast('Your browser blocked the new window. Allow pop-ups for the admin and try again.', 'error'); } },
+              ]} />` : null}
             <button class="btn btn-primary" onClick=${onAdd}>+ Add ${group === 'board' ? 'board member' : 'team member'}</button>
           </div>
         </div>
@@ -13897,6 +14413,27 @@
             <p class="text-muted">Add the first one and they’ll appear on the Leadership page after you publish.</p>
             <button class="btn btn-primary" onClick=${onAdd}>+ Add ${group === 'board' ? 'board member' : 'team member'}</button>
           </div>` : html`
+        <div class="ppl-ready" role="group" aria-label="How ready the Leadership page is">
+          ${tiles.map((t) => {
+            const on = filter === t.id;
+            const known = t.missing != null;
+            const doneN = known ? t.total - t.missing : 0;
+            const complete = known && !t.missing;
+            return html`<button type="button" key=${t.id} class=${`ppl-ready__tile${complete ? ' is-done' : ''}`} aria-pressed=${on}
+              disabled=${!on && (complete || !known)} onClick=${() => setFilter(on ? 'all' : t.id)}>
+              <span class="ppl-ready__label">${t.label}</span>
+              <span class="ppl-ready__value">${known ? html`${doneN}<small> of ${t.total}</small>` : html`<span class="spinner spinner-14" />`}</span>
+              <span class="ppl-ready__meter" aria-hidden="true"><span style=${`width:${known && t.total ? Math.round((doneN / t.total) * 100) : known ? 100 : 0}%`}></span></span>
+              <span class="ppl-ready__sub">${complete ? html`${pplIcon.check} ${t.done}` : known ? t.sub(t.missing) : 'Loading'}</span>
+            </button>`;
+          })}
+          <button type="button" class=${`ppl-ready__tile ppl-ready__tile--review${pendingCount ? ' is-waiting' : ''}`} aria-pressed=${filter === 'pending'}
+            disabled=${!pendingCount && filter !== 'pending'} onClick=${() => setFilter(filter === 'pending' ? 'all' : 'pending')}>
+            <span class="ppl-ready__label">Bios to review</span>
+            <span class="ppl-ready__value">${pendingCount == null ? html`<span class="spinner spinner-14" />` : pendingCount}</span>
+            <span class="ppl-ready__sub">${pendingCount ? 'Sent back, waiting for you' : linksOut ? `${pplPlural(linksOut, 'link')} out, not back yet` : 'Ask from anyone’s Profile section'}</span>
+          </button>
+        </div>
         <div class="ppl-toolbar">
           <div class="search-bar ppl-search">
             <span class="search-icon">${icons.search}</span>
@@ -13908,6 +14445,8 @@
             <button type="button" class="ppl-filter" aria-pressed=${filter === 'attention'} onClick=${() => setFilter(filter === 'attention' ? 'all' : 'attention')} disabled=${!warnCount && filter !== 'attention'}>
               Needs attention <span class=${warnCount ? 'is-warn' : ''}>${warnCount}</span></button>
             ${draftCount ? html`<button type="button" class="ppl-filter" aria-pressed=${filter === 'drafts'} onClick=${() => setFilter(filter === 'drafts' ? 'all' : 'drafts')}>Drafts <span>${draftCount}</span></button>` : null}
+            ${READY[filter] ? html`<button type="button" class="ppl-filter ppl-filter--clear" aria-pressed="true" onClick=${() => setFilter('all')} aria-label=${`${READY[filter].label}: show everyone`}>
+              ${READY[filter].label} <span>${people.filter(READY[filter].test).length}</span> ${pplIcon.close}</button>` : null}
           </div>
         </div>
         <p class="sr-only" id="ppl-reorder-help">Press Space to pick up, the arrow keys to move, Space again to drop, or Escape to cancel.</p>
@@ -13939,6 +14478,178 @@
           ${showAlumni || narrowed ? html`<ul class="ppl-rows">${alumni.filter(shown).map((p) => row(p, null))}</ul>` : null}
         </section>` : null}
         `}
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // PEOPLE PHOTOS: everyone at once, the way the site shows them
+    // ═══════════════════════════════════════════
+    /** The same verdicts as the list's chips: warn means it shows badly on the site now */
+    function pplPhotoVerdict(p, size) {
+      if (!p.photo) return { tone: 'warn', label: 'No photo' };
+      const px = tsPhotoPixels(p, Array.isArray(p.photoSize) ? p.photoSize : size);
+      const q = tsPhotoQuality(px);
+      if (!q) return { tone: 'wait', label: 'Checking the size' };
+      if (q === 'blurry') return { tone: 'warn', label: `Blurry · ${px}px` };
+      if (tsHasProfile(p) && q !== 'good') return { tone: 'warn', label: `Soft on their profile · ${px}px` };
+      if (q === 'ok') return { tone: 'quiet', label: `Fine · ${px}px` };
+      return { tone: 'good', label: `Sharp · ${px}px` };
+    }
+
+    function PeoplePhotos({ team, onEdit, addToast, onReload }) {
+      const people = useMemo(() => team.map((t) => normalizePerson(t)).filter((p) => p.status !== 'alumni' && (p.group === 'board' || p.group === 'team')), [team]);
+      const sizes = usePhotoSizes(people);
+      const [filter, setFilter] = useState('all');
+      const [over, setOver] = useState({});          // slug → photo fields saved here, until the list reloads
+      const [busy, setBusy] = useState(null);        // a slug, or 'all'
+      const [review, setReview] = useState(null);    // slugs to cut out, while "everyone" is previewed
+      const [framing, setFraming] = useState(null);  // { p, size }
+      const [loaded, setLoaded] = useState({});      // image src → loaded
+      useEffect(() => { setOver({}); }, [team]);
+      const view = (p) => ({ ...p, ...(over[p.slug] || {}) });
+      const groups = ['team', 'board'].map((g) => ({
+        g, title: g === 'board' ? 'Board of Directors' : 'Our Team',
+        list: PEOPLE_SECTIONS[g].flatMap((s) => people.filter((p) => p.group === g && s.match(p)).sort(comparePeople)).map(view),
+      }));
+      const all = groups.flatMap((x) => x.list);
+      const verdict = (p) => pplPhotoVerdict(p, sizes[p.slug]);
+      const needWork = all.filter((p) => verdict(p).tone === 'warn').length;
+      const candidates = all.filter((p) => p.photo && !p.photoCutout);
+      const shown = (p) => filter === 'all' || (filter === 'work' && verdict(p).tone === 'warn') || (filter === 'backdrop' && p.photo && !p.photoCutout);
+      const seen = (src) => setLoaded((m) => (m[src] ? m : { ...m, [src]: true }));
+
+      const save = async (updates, message, undo) => {
+        await pplBatch(updates);
+        addToast(message, 'success', undo ? {
+          label: 'Undo',
+          fn: async () => {
+            try { await pplBatch(undo); addToast('Put back', 'success'); onReload?.(); } catch (e) { addToast(`Couldn’t undo: ${e.message}`, 'error'); }
+          },
+        } : null);
+        onReload?.();
+      };
+      const patch = (slug, fields) => setOver((o) => ({ ...o, [slug]: { ...o[slug], ...fields } }));
+      const toggleCutout = async (p, on) => {
+        setBusy(p.slug);
+        patch(p.slug, { photoCutout: on });
+        try {
+          await save([{ slug: p.slug, set: { photoCutout: on } }],
+            on ? `Background removed for ${p.name}. The site updates when you publish.` : `${p.name}’s own background is back`,
+            [{ slug: p.slug, set: { photoCutout: !on } }]);
+          if (on) pplWarmPhoto({ ...p, photoCutout: true });
+        } catch (e) { patch(p.slug, { photoCutout: !on }); addToast(`Couldn’t save ${p.name}: ${e.message}`, 'error'); }
+        setBusy(null);
+      };
+      const applyFrame = async (p, size, crop) => {
+        setFraming(null);
+        setBusy(p.slug);
+        patch(p.slug, { photoCrop: crop, photoSize: size });
+        try {
+          await save([{ slug: p.slug, set: { photoCrop: crop, photoSize: size } }],
+            crop ? `${p.name}’s photo framed. The site updates when you publish.` : `${p.name}’s photo centers on the face again`,
+            [{ slug: p.slug, set: { photoCrop: p.photoCrop || null } }]);
+          pplWarmPhoto({ ...p, photoCrop: crop, photoSize: size });
+        } catch (e) { patch(p.slug, { photoCrop: p.photoCrop || null }); addToast(`Couldn’t save ${p.name}: ${e.message}`, 'error'); }
+        setBusy(null);
+      };
+      const startReview = () => { setFilter('all'); setReview(new Set(candidates.map((p) => p.slug))); };
+      const pick = (slug, on) => setReview((r) => { const n = new Set(r); if (on) n.add(slug); else n.delete(slug); return n; });
+      const saveReview = async () => {
+        const slugs = [...review];
+        if (!slugs.length) { setReview(null); return; }
+        setBusy('all');
+        try {
+          await save(slugs.map((slug) => ({ slug, set: { photoCutout: true } })),
+            `Background removed for ${pplPlural(slugs.length, 'person', 'people')}. The site updates when you publish.`,
+            slugs.map((slug) => ({ slug, set: { photoCutout: false } })));
+          setOver((o) => { const n = { ...o }; for (const s of slugs) n[s] = { ...n[s], photoCutout: true }; return n; });
+          for (const p of all) if (review.has(p.slug)) pplWarmPhoto({ ...p, photoCutout: true });
+          setReview(null);
+        } catch (e) { addToast(`Couldn’t save: ${e.message}`, 'error'); }
+        setBusy(null);
+      };
+
+      const circle = (src, p, label) => html`<span class=${`ppl-pcard__circle${p.status === 'memorial' ? ' is-memorial' : ''}`}>
+        ${src ? html`<img src=${src} alt=${label || ''} width="128" height="128" decoding="async" draggable=${false} onLoad=${() => seen(src)} onError=${() => seen(src)} />`
+          : html`<span class="ppl-pcard__ini" aria-hidden="true">${pplInitials(p.name)}</span>`}
+        ${src && !loaded[src] ? html`<span class="ppl-pcard__busy"><span class="spinner spinner-14" /></span>` : null}
+      </span>`;
+      const card = (p) => {
+        const v = verdict(p);
+        const inReview = !!review && !!p.photo && !p.photoCutout;
+        const src = p.photo ? pplPhoto(p, 256) : null;
+        const size = Array.isArray(p.photoSize) ? p.photoSize : sizes[p.slug];
+        return html`<li key=${p.slug} class=${`ppl-pcard${review && !inReview ? ' is-dim' : ''}${inReview && !review.has(p.slug) ? ' is-skipped' : ''}${busy === p.slug ? ' is-busy' : ''}`}>
+          ${inReview ? html`<div class="ppl-pcard__compare">
+              <figure>${circle(src, p, `${p.name} now`)}<figcaption>Now</figcaption></figure>
+              <span class="ppl-pcard__arrow" aria-hidden="true">${pplIcon.arrow}</span>
+              <figure>${circle(tsPhotoUrl({ ...p, photoCutout: true }, 256), p, `${p.name} with the background removed`)}<figcaption>After</figcaption></figure>
+            </div>`
+            : html`<div class="ppl-pcard__solo">${circle(src, p)}</div>`}
+          <div class="ppl-pcard__text">
+            <button type="button" class="ppl-pcard__name" onClick=${() => onEdit(p)}>${p.name}</button>
+            <small>${p.title || (p.group === 'board' ? 'Board' : 'Team')}${p.draft ? ' · hidden' : ''}</small>
+          </div>
+          <span class=${`ppl-pq is-${v.tone}`}>${v.tone === 'warn' ? pplIcon.alert : v.tone === 'good' ? pplIcon.check : null}${v.label}</span>
+          ${inReview ? html`<label class="ppl-pcard__pick">
+              <input type="checkbox" checked=${review.has(p.slug)} onChange=${(e) => pick(p.slug, e.target.checked)} disabled=${busy === 'all'}
+                aria-label=${`Remove ${p.name}’s background`} />
+              <span aria-hidden="true">Remove background</span>
+            </label>`
+            : p.photo ? html`<div class="ppl-pcard__actions">
+                <label class="bc-switch ppl-switch">
+                  <input type="checkbox" role="switch" checked=${!!p.photoCutout} aria-checked=${!!p.photoCutout} aria-label=${`Remove ${p.name}’s background`}
+                    disabled=${!!busy || !!review} onChange=${(e) => toggleCutout(p, e.target.checked)} />
+                  <span class="bc-switch-track" aria-hidden="true"></span>
+                  <span aria-hidden="true">Remove background</span>
+                </label>
+                <button type="button" class="btn btn-ghost btn-sm" aria-label=${`Frame ${p.name}’s photo`} disabled=${!size || !!busy || !!review}
+                  title=${size ? '' : 'Reading the photo’s size…'} onClick=${() => setFraming({ p, size })}>${pplIcon.crop} Frame</button>
+              </div>`
+            : html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onEdit(p)} disabled=${!!review}>${pplIcon.upload} Add a photo</button>`}
+        </li>`;
+      };
+
+      const reviewCount = review ? review.size : 0;
+      return html`
+        ${framing ? html`<${PplPhotoCropper} photo=${framing.p.photo} size=${framing.size} crop=${framing.p.photoCrop} cutout=${!!framing.p.photoCutout}
+          onClose=${() => setFraming(null)} onApply=${(c) => applyFrame(framing.p, framing.size, c)} />` : null}
+        <div class="page-header ppl-head">
+          <div>
+            <h2>Photos</h2>
+            <p class="page-sub">Everyone on the Leadership page, the way the site shows them. Replace blurry photos, frame faces, and put everyone on the same warm gray. Changes go live when you publish.</p>
+          </div>
+          <div class="ppl-head__actions">
+            ${candidates.length ? html`<button type="button" class="btn btn-primary" onClick=${startReview} disabled=${!!review || !!busy}>Remove backgrounds for everyone</button>`
+              : all.some((p) => p.photo) ? html`<span class="ppl-done-note">${pplIcon.check} Every photo has the warm gray backdrop</span>` : null}
+          </div>
+        </div>
+        ${review ? html`<div class="ppl-review-bar" role="region" aria-label="Background removal preview">
+            <p><strong>Preview: ${reviewCount} of ${candidates.length} ${candidates.length === 1 ? 'photo' : 'photos'} with the background removed.</strong>
+              <span>Untick anyone who looks better as they are. The first previews take a few seconds.</span></p>
+            <div class="ppl-review-bar__btns">
+              <button type="button" class="btn btn-ghost" onClick=${() => setReview(null)} disabled=${busy === 'all'}>Cancel</button>
+              <button type="button" class="btn btn-primary" onClick=${saveReview} disabled=${busy === 'all' || !reviewCount}>
+                ${busy === 'all' ? html`<span class="spinner" /> Saving…` : `Save for ${pplPlural(reviewCount, 'person', 'people')}`}</button>
+            </div>
+          </div>`
+          : html`<div class="ppl-filters ppl-photo-filters" role="group" aria-label="Show">
+            <button type="button" class="ppl-filter" aria-pressed=${filter === 'all'} onClick=${() => setFilter('all')}>Everyone <span>${all.length}</span></button>
+            <button type="button" class="ppl-filter" aria-pressed=${filter === 'work'} disabled=${!needWork && filter !== 'work'} onClick=${() => setFilter(filter === 'work' ? 'all' : 'work')}>
+              Need work <span class=${needWork ? 'is-warn' : ''}>${needWork}</span></button>
+            <button type="button" class="ppl-filter" aria-pressed=${filter === 'backdrop'} disabled=${!candidates.length && filter !== 'backdrop'} onClick=${() => setFilter(filter === 'backdrop' ? 'all' : 'backdrop')}>
+              Own background <span>${candidates.length}</span></button>
+          </div>`}
+        ${groups.map(({ g, title, list }) => {
+          const vis = list.filter(shown);
+          if (!vis.length) return null;
+          return html`<section class="card ppl-photos" key=${g} aria-labelledby=${`ppl-ph-${g}`}>
+            <header class="ppl-section__head"><h3 id=${`ppl-ph-${g}`}>${title} <span class="ppl-count">${vis.length}</span></h3></header>
+            <ul class="ppl-pgrid">${vis.map(card)}</ul>
+          </section>`;
+        })}
+        ${!all.some(shown) ? html`<div class="card ppl-empty-all"><p class="text-muted">${filter === 'work' ? 'Every photo looks right.' : 'No one here.'}</p>
+          <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setFilter('all')}>Show everyone</button></div>` : null}
       `;
     }
 
@@ -14424,24 +15135,294 @@
       </div>`;
     }
 
+    // ─── A field's value, the way the editor shows it (History, merge, bio review) ───
+    function PplValPhoto({ rec, src }) {
+      const [gone, setGone] = useState(false);
+      if (!rec?.photo && !src) return html`<span class="ppl-none">No photo</span>`;
+      if (gone) return html`<span class="ppl-none">Photo since deleted</span>`;
+      return html`<img class="ppl-val-photo" src=${src || pplPhoto(rec, 112)} alt="" width="56" height="56" onError=${() => setGone(true)} />`;
+    }
+    function pplValue(id, rec) {
+      const v = rec?.[id];
+      const none = html`<span class="ppl-none">Empty</span>`;
+      switch (id) {
+        case 'photo': return html`<${PplValPhoto} rec=${rec} />`;
+        case 'publishStatus': return v === 'draft' ? 'Hidden' : 'Shown';
+        case 'status': return TS_STATUSES.find((s) => s.id === (v || 'active'))?.label;
+        case 'seat': return rec?.group === 'board' ? pplSeatLabel(rec) : none;
+        case 'role': return TS_TEAM_ROLES.find((r) => r.id === v)?.label || none;
+        case 'group': return v === 'board' ? 'Board of Directors' : 'Our Team';
+        case 'committees': return Array.isArray(v) && v.length ? v.join(', ') : none;
+        default: return pplNorm(v) == null ? none : html`<span class="ppl-val-text">${String(v)}</span>`;
+      }
+    }
+    /** The fields (the photo as one) that differ between two records, in editor order */
+    function pplDiffUnits(a, b) {
+      const at = (k) => { const i = Object.keys(PPL_FIELDS).indexOf(k); return i < 0 ? 99 : i; };
+      const keys = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
+      for (const k of ['order', 'slug', ...PPL_PHOTO_KEYS]) keys.delete(k);
+      const out = [...keys].filter((k) => !pplSame(a?.[k], b?.[k]));
+      if (PPL_PHOTO_KEYS.some((k) => !pplSame(a?.[k], b?.[k]))) out.push('photo');
+      return out.sort((x, y) => at(x) - at(y));
+    }
+
+    // ─── History: every save, compare with the editor, restore one ───
+    function PplHistoryModal({ slug, name, current, normalize, onRestore, onClose }) {
+      const [versions, setVersions] = useState(null);
+      const [error, setError] = useState(null);
+      const [open, setOpen] = useState(null);
+      const [loaded, setLoaded] = useState({});      // version id → { raw, rec } or { error }
+      const [restoring, setRestoring] = useState(null);
+      const dialogRef = useRef(null);
+      usePplDialog(dialogRef, onClose, !!restoring);
+      const base = `/api/content-history?collection=team&slug=${encodeURIComponent(slug)}`;
+      useEffect(() => {
+        fetch(base, { cache: 'no-store' }).then((r) => apiJson(r, '/api/content-history'))
+          .then((d) => (d.success ? setVersions(d.versions || []) : setError(d.error || 'Couldn’t load the history')))
+          .catch((e) => setError(e.message));
+      }, [slug]);
+      const expand = (id) => {
+        setOpen((o) => (o === id ? null : id));
+        if (loaded[id]) return;
+        fetch(`${base}&id=${id}`, { cache: 'no-store' }).then((r) => apiJson(r, '/api/content-history'))
+          .then((d) => setLoaded((m) => ({ ...m, [id]: d.success ? { raw: d.data, rec: normalize(d.data) } : { error: d.error || 'Couldn’t load it' } })))
+          .catch((e) => setLoaded((m) => ({ ...m, [id]: { error: e.message } })));
+      };
+      const first = String(name || '').split(' ')[0] || 'this person';
+      const describe = (v) => {
+        if (v.action === 'delete') return 'Deleted';
+        if (v.changed === null) return v.by ? 'Added' : 'As it was before history began';
+        const names = pplFieldNames(v.changed);
+        return names.length ? `Changed ${pplList(names)}` : 'Moved in the list';
+      };
+      const restore = async (v, raw) => {
+        setRestoring(v.id);
+        try { await onRestore(raw, v); } finally { setRestoring(null); }
+      };
+      return html`<div class="modal-overlay" onClick=${() => !restoring && onClose()}>
+        <div class="modal ppl-hist" role="dialog" aria-modal="true" aria-labelledby="ppl-hist-title" ref=${dialogRef} onClick=${(e) => e.stopPropagation()}>
+          <h3 id="ppl-hist-title">${name ? `${name}’s history` : 'History'}</h3>
+          <p class="ppl-hist__lead">Every save is kept, the newest 50. Open one to compare it with what’s in the editor now, and restore it if you need to. Restoring fills the editor; nothing changes until you save.</p>
+          ${error ? html`<p class="ppl-bad">${error}</p>`
+            : versions === null ? html`<p class="ppl-cmte-modal__loading"><span class="spinner spinner-14" /> Loading the history</p>`
+            : !versions.length ? html`<p class="ppl-empty">No saved versions yet. From the next save on, every version of ${first}’s record is kept here.</p>`
+            : html`<ol class="ppl-hist__list">${versions.map((v, i) => {
+                const d = loaded[v.id];
+                const diffs = d?.rec ? pplDiffUnits(d.rec, current) : null;
+                const isOpen = open === v.id;
+                return html`<li key=${v.id} class=${`ppl-hist__item${isOpen ? ' is-open' : ''}`}>
+                  <button type="button" class="ppl-hist__row" aria-expanded=${isOpen} onClick=${() => expand(v.id)}>
+                    <span class="ppl-hist__dot" aria-hidden="true"></span>
+                    <span class="ppl-hist__main">
+                      <strong>${i === 0 ? 'Latest save' : pplWhen(v.at).replace(/^./, (c) => c.toUpperCase())}</strong>
+                      <small>${[i === 0 ? pplWhen(v.at).replace(/^./, (c) => c.toUpperCase()) : null, v.by ? pplWho(v.by) : null, describe(v)].filter(Boolean).join(' · ')}</small>
+                    </span>
+                    ${pplIcon.chevron}
+                  </button>
+                  ${isOpen ? html`<div class="ppl-hist__detail">
+                    ${!d ? html`<p class="ppl-cmte-modal__loading"><span class="spinner spinner-14" /> Loading this version</p>`
+                      : d.error ? html`<p class="ppl-bad">${d.error}</p>`
+                      : !diffs.length ? html`<p class="form-hint u-m-0">Same as what’s in the editor now.</p>`
+                      : html`<dl class="ppl-hist__diff">${diffs.map((k) => html`<div key=${k}>
+                            <dt>${PPL_FIELDS[k] || k}</dt>
+                            <dd><span class="ppl-hist__tag">This version</span>${pplValue(k, d.rec)}</dd>
+                            <dd><span class="ppl-hist__tag">Now</span>${pplValue(k, current)}</dd>
+                          </div>`)}</dl>
+                        <button type="button" class="btn btn-ghost btn-sm ppl-hist__restore" disabled=${!!restoring} onClick=${() => restore(v, d.raw)}>
+                          ${restoring === v.id ? html`<span class="spinner spinner-14" />` : pplIcon.history} Restore this version</button>`}
+                  </div>` : null}
+                </li>`;
+              })}</ol>`}
+          <div class="modal-buttons"><button type="button" class="btn btn-primary" onClick=${onClose} disabled=${!!restoring}>Done</button></div>
+        </div>
+      </div>`;
+    }
+
+    // ─── Two people saved the same person: keep both where they can, ask where they clash ───
+    function PplMergeModal({ conflict, mine, name, onSave, onCancel }) {
+      const { who, when, plan, theirs } = conflict;
+      const [choice, setChoice] = useState(() => Object.fromEntries(plan.conflicts.map((id) => [id, 'mine'])));
+      const dialogRef = useRef(null);
+      usePplDialog(dialogRef, onCancel);
+      useEffect(() => { dialogRef.current?.querySelector('input')?.focus(); }, []);
+      const took = pplFieldNames(plan.theirsTook);
+      const at = when ? pplWhen(when) : '';
+      return html`<div class="modal-overlay" onClick=${onCancel}>
+        <div class="modal ppl-merge" role="dialog" aria-modal="true" aria-labelledby="ppl-merge-title" aria-describedby="ppl-merge-lead" ref=${dialogRef} onClick=${(e) => e.stopPropagation()}>
+          <h3 id="ppl-merge-title">${who} saved ${name || 'this person'} while you were editing</h3>
+          <p class="ppl-merge__lead" id="ppl-merge-lead">${at ? `They saved ${at}. ` : ''}${took.length ? `Their change to ${pplList(took)} is kept along with yours. ` : ''}You both changed ${plan.conflicts.length === 1 ? 'one thing' : `${plan.conflicts.length} things`}, so pick which to keep. Nothing is lost until you save.</p>
+          ${plan.conflicts.map((id) => html`<fieldset class="ppl-merge__field" key=${id}>
+            <legend>${PPL_FIELDS[id] || id}</legend>
+            ${['mine', 'theirs'].map((side) => html`<label key=${side} class=${`ppl-merge__opt${choice[id] === side ? ' is-on' : ''}`}>
+              <input type="radio" name=${`ppl-merge-${id}`} checked=${choice[id] === side} onChange=${() => setChoice((c) => ({ ...c, [id]: side }))} />
+              <span class="ppl-merge__who">${side === 'mine' ? 'Yours' : `${who}’s`}</span>
+              <span class="ppl-merge__val">${pplValue(id, side === 'mine' ? mine : theirs)}</span>
+            </label>`)}
+          </fieldset>`)}
+          <div class="modal-buttons">
+            <button type="button" class="btn btn-ghost" onClick=${onCancel}>Keep editing</button>
+            <button type="button" class="btn btn-primary" onClick=${() => onSave(choice)}>Save</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ─── Ask someone for their bio: a private link to send by hand ───
+    function PplAskPanel({ slug, name, email, req, onChanged, onReview, addToast }) {
+      const first = String(name || '').trim().split(/\s+/)[0] || 'them';
+      const [link, setLink] = useState(null);   // { url, expiresAt }: shown once, right after it's made
+      const [busy, setBusy] = useState(false);
+      const [copied, setCopied] = useState(false);
+      const make = async () => {
+        setBusy(true);
+        try {
+          const r = await fetch('/api/profile-requests-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', slug }) });
+          const d = await apiJson(r, '/api/profile-requests-admin');
+          if (!d.success) throw new Error(d.error);
+          setLink({ url: d.url, expiresAt: d.expiresAt });
+          setCopied(false);
+          onChanged?.();
+        } catch (e) { addToast(`Couldn’t make the link: ${e.message}`, 'error'); }
+        setBusy(false);
+      };
+      const copy = async () => {
+        if (await pplCopy(link.url)) { setCopied(true); addToast('Link copied', 'info'); }
+        else addToast('Couldn’t copy it. Select the link and copy it.', 'error');
+      };
+      const mail = () => pplMailto({
+        to: email || '',
+        subject: 'Your bio for the Sunshine on a Ranney Day website',
+        body: `Hi ${first},\n\nWe’d love to introduce you properly on the Leadership page of the Sunshine on a Ranney Day website. This private link lets you write your bio, add a line about why you serve, and send a photo if you like:\n\n${link.url}\n\nIt takes about five minutes and works on a phone. The link is just for you and works until ${new Date(link.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.\n\nThank you!`,
+      });
+      if (!slug) return null;
+      if (link) {
+        return html`<div class="ppl-ask is-link" role="status">
+          <p class="ppl-ask__text"><strong>${first}’s private link is ready.</strong> It’s shown only now, so copy it or email it. It works until ${pplDay(link.expiresAt)}, and what ${first} sends waits here for you.</p>
+          <div class="ppl-ask__link">
+            <input class="form-input" readonly value=${link.url} aria-label=${`${first}’s private link`} onFocus=${(e) => e.target.select()} />
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${copy}>${copied ? html`${pplIcon.check} Copied` : 'Copy'}</button>
+            <button type="button" class="btn btn-primary btn-sm" onClick=${() => pplOpenMail(mail())}>${icons.mail} Email ${first}</button>
+          </div>
+          ${!email ? html`<p class="form-hint u-m-0">The email opens without an address: add ${first}’s.</p>` : null}
+        </div>`;
+      }
+      if (req?.status === 'pending') {
+        return html`<div class="ppl-ask is-pending">
+          <p class="ppl-ask__text"><strong>${first} sent their details ${pplWhen(req.submittedAt)}.</strong> Check them and use what you like.</p>
+          <button type="button" class="btn btn-primary btn-sm" onClick=${onReview}>Review</button>
+        </div>`;
+      }
+      if (req?.status === 'open') {
+        const live = pplLinkOpen(req);
+        return html`<div class="ppl-ask">
+          <p class="ppl-ask__text">${live
+            ? html`<strong>Asked ${pplDay(req.createdAt)}${req.createdBy ? ` by ${pplWho(req.createdBy)}` : ''}.</strong> Nothing back yet. The link works until ${pplDay(req.expiresAt)}. Lost it? A new one replaces it.`
+            : html`<strong>The link from ${pplDay(req.createdAt)} expired</strong> without a reply. Make a new one to ask again.`}</p>
+          <button type="button" class="btn btn-ghost btn-sm" onClick=${make} disabled=${busy}>${busy ? html`<span class="spinner spinner-14" /> ` : null}New link</button>
+        </div>`;
+      }
+      return html`<div class="ppl-ask">
+        <p class="ppl-ask__text"><strong>Let ${first} write it.</strong> Get a private link to email ${first}: they can send a bio, why they serve, LinkedIn and a photo. It all waits here for you to check, and nothing changes on the site until you use it and save.</p>
+        <button type="button" class="btn btn-ghost btn-sm" onClick=${make} disabled=${busy}>${busy ? html`<span class="spinner spinner-14" /> ` : pplIcon.link} Get a link</button>
+      </div>`;
+    }
+
+    // ─── What they sent back, beside what's there now ───
+    function PplSuggestion({ req, data, first, applied, onUse, onUndo, onDismiss, onDone, busy }) {
+      const s = req.submission || {};
+      const [confirming, setConfirming] = useState(false);
+      const sentPhoto = s.photo ? pplPhoto({ photo: s.photo }, 112) : '';
+      const rows = [
+        { id: 'bio', label: 'Bio', sent: s.bio },
+        { id: 'quote', label: 'Why I serve', sent: s.quote },
+        { id: 'linkedin', label: 'LinkedIn', sent: s.linkedin },
+        { id: 'photo', label: 'Photo', sent: s.photo },
+      ].filter((r) => r.sent && (applied[r.id] || !pplSame(data[r.id], r.sent)));
+      const nowOf = (id) => (applied[id] ? applied[id] : data);
+      const left = rows.filter((r) => !applied[r.id]);
+      const used = rows.length - left.length;
+      const show = (id, rec, sent) => {
+        if (id === 'photo') return sent ? html`<${PplValPhoto} src=${sentPhoto} />` : html`<${PplValPhoto} rec=${rec} />`;
+        const v = sent ? s[id] : rec?.[id];
+        return pplNorm(v) == null ? html`<span class="ppl-none">Empty</span>` : html`<span class="ppl-val-text">${v}</span>`;
+      };
+      return html`<section class="card ppl-sg" id="ppl-suggest" aria-labelledby="ppl-sg-h" tabindex="-1">
+        <header class="ppl-sg__head">
+          <h3 id="ppl-sg-h">${first} sent their profile</h3>
+          <span class="ppl-sg__when">${pplWhen(req.submittedAt).replace(/^./, (c) => c.toUpperCase())}</span>
+        </header>
+        ${!rows.length ? html`<p class="ppl-sg__lead">Everything ${first} sent matches what’s here already.</p>
+            <div class="ppl-sg__foot"><span class="ppl-spacer"></span><button type="button" class="btn btn-primary btn-sm" onClick=${onDone} disabled=${busy}>Mark as done</button></div>`
+          : html`<p class="ppl-sg__lead">Use what you like: it fills the fields below, and nothing changes on the site until you save and publish.</p>
+          ${rows.map((r) => html`<div class=${`ppl-sg__row${applied[r.id] ? ' is-used' : ''}`} key=${r.id}>
+            <div class="ppl-sg__label">${r.label}</div>
+            <div class="ppl-sg__cols">
+              <div class="ppl-sg__col"><span class="ppl-sg__tag">${applied[r.id] ? 'Before' : 'Now'}</span>${show(r.id, nowOf(r.id), false)}</div>
+              <div class="ppl-sg__col is-sent"><span class="ppl-sg__tag">Sent</span>${show(r.id, null, true)}</div>
+            </div>
+            <div class="ppl-sg__act">${applied[r.id]
+              ? html`<span class="ppl-sg__done">${pplIcon.check} Using it</span><button type="button" class="btn btn-ghost btn-sm" onClick=${() => onUndo(r.id)}>Undo</button>`
+              : html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onUse([r.id])} aria-label=${`Use the ${r.label.toLowerCase()} ${first} sent`}>Use</button>`}</div>
+          </div>`)}
+          <div class="ppl-sg__foot">
+            ${left.length > 1 ? html`<button type="button" class="btn btn-primary btn-sm" onClick=${() => onUse(left.map((r) => r.id))}>Use all</button>` : null}
+            ${used ? html`<p class="ppl-sg__note">Save to keep ${used === rows.length ? 'it' : 'what you used'}. ${first}’s message is then marked as used.</p>` : null}
+            <span class="ppl-spacer"></span>
+            ${confirming
+              ? html`<span class="ppl-sg__confirm" role="alert">Dismiss without using any of it?
+                  <button type="button" class="btn btn-danger btn-sm" onClick=${onDismiss} disabled=${busy}>Dismiss</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setConfirming(false)}>Keep it</button></span>`
+              : !used ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setConfirming(true)}>Dismiss</button>` : null}
+          </div>`}
+      </section>`;
+    }
+
+    // ─── "Tidy to house style": a suggestion beside the original, word changes marked ───
+    function PplTidy({ from, current, suggestion, words, busy, onUse, onAgain, onClose }) {
+      const diff = useMemo(() => pplWordDiff(from, suggestion), [from, suggestion]);
+      return html`<div class="ppl-tidy" role="region" aria-label="Suggested bio">
+        <div class="ppl-tidy__cols">
+          <div class="ppl-tidy__col">
+            <h4>Yours</h4>
+            <p>${diff.a.map((t, i) => (t.op === '-' ? html`<del key=${i}>${t.t}</del>` : t.t))}</p>
+          </div>
+          <div class="ppl-tidy__col is-new">
+            <h4>Suggested <span>${pplPlural(words, 'word')}</span></h4>
+            <p>${diff.b.map((t, i) => (t.op === '+' ? html`<ins key=${i}>${t.t}</ins>` : t.t))}</p>
+          </div>
+        </div>
+        <p class="form-hint">${current !== from ? 'You’ve changed the bio since you asked: using this replaces those changes. ' : ''}Read it through first: check names, titles and facts.</p>
+        <div class="ppl-tidy__btns">
+          <button type="button" class="btn btn-primary btn-sm" onClick=${onUse} disabled=${busy}>Use this</button>
+          <button type="button" class="btn btn-ghost btn-sm" onClick=${onAgain} disabled=${busy}>${busy ? html`<span class="spinner spinner-14" /> Writing…` : 'Try again'}</button>
+          <button type="button" class="btn btn-ghost btn-sm" onClick=${onClose} disabled=${busy}>Keep mine</button>
+        </div>
+      </div>`;
+    }
+
     // ═══════════════════════════════════════════
     // PERSON EDITOR
     // ═══════════════════════════════════════════
-    function PersonEditor({ slug, group: startGroup, team = [], partners = [], onBack, onSaved, addToast }) {
+    function PersonEditor({ slug, group: startGroup, team = [], partners = [], backLabel, onBack, onSaved, addToast }) {
       const existingSlugs = team.map((t) => t.slug);
       const nextOrder = (g) => team.filter((t) => t.group === g).reduce((m, t) => Math.max(m, Number(t.order) || 0), -1) + 1;
       // Older records: the structured fields come from the name and title text, and save that way
-      const migrate = (d) => {
+      const shape = (d) => {
         const n = normalizePerson(d);
         return { ...d, name: n.name, status: n.status, publishStatus: d.publishStatus || 'published',
           ...(d.group === 'board' ? { seat: n.seat } : { role: n.role }) };
       };
+      // The record as last loaded or saved: what a save made meanwhile is merged against
+      const loadedRef = useRef(null);
+      const migrate = (d) => { loadedRef.current = d; return shape(d); };
+      const asRecord = (d) => toPersonRecord(shape(d || {}));
+      const conflictRef = useRef(null);
       const {
-        data, setData, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
+        data, setData, setSha, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
         showDeleteModal, setShowDeleteModal, slugExists, queueImageDelete, updateField, handleSave, handleDelete, safeBack,
       } = useEditor({
         slug, type: 'team', commitPrefix: startGroup === 'board' ? 'board member' : 'team member', addToast, onBack, existingSlugs,
-        onLoad: migrate,
+        onLoad: migrate, onConflict: (attempted) => conflictRef.current?.(attempted),
         defaults: {
           name: '', slug: '', title: startGroup === 'board' ? TS_MEMBER_TITLE : '', organization: '', photo: '', bio: '', quote: '',
           group: startGroup, order: nextOrder(startGroup), status: 'active', publishStatus: 'published',
@@ -14489,6 +15470,139 @@
       const [cmtes, reloadCmtes] = useBoardCommittees(board);
       const committeeOptions = useMemo(() => tsCommitteeList(cmtes.saved, team), [cmtes.saved, team]);
       const issues = pplIssues({ ...normalizePerson(previewRecord), slug }, { size: photoSize, emails: board ? { ...(emails || {}), [slug]: emailClean } : null });
+      const first = String(data.name || '').trim().split(/\s+/)[0] || 'They';
+
+      // ── Their bio request: the link sent to them, and what they sent back ──
+      const { bySlug: reqBy, reload: reloadReqs } = useProfileRequests(!!slug);
+      const req = slug ? reqBy[slug] : null;
+      const [sgApplied, setSgApplied] = useState({});   // field → the values using theirs replaced
+      const [sgBusy, setSgBusy] = useState(false);
+      const useSent = (ids) => {
+        const sent = req?.submission || {};
+        const prev = {};
+        const patch = {};
+        for (const id of ids) {
+          if (!sent[id] || sgApplied[id]) continue;
+          if (id === 'photo') {
+            prev.photo = { photo: data.photo || '', photoSize: data.photoSize ?? null, photoCrop: data.photoCrop ?? null };
+            Object.assign(patch, { photo: sent.photo, photoSize: null, photoCrop: null });
+            setImgReady(false);
+          } else { prev[id] = { [id]: data[id] ?? '' }; patch[id] = sent[id]; }
+        }
+        setSgApplied((a) => ({ ...prev, ...a }));
+        set(patch);
+      };
+      const undoSent = (id) => {
+        const back = sgApplied[id];
+        if (!back) return;
+        if (id === 'photo') setImgReady(false);
+        set(back);
+        setSgApplied((a) => { const n = { ...a }; delete n[id]; return n; });
+      };
+      /** Close their request (used or dismissed); a photo they sent that isn't used is deleted */
+      const closeRequest = async (status, keepPhoto = data.photo) => {
+        if (!req) return;
+        setSgBusy(true);
+        try {
+          await pplResolveRequest(req, status);
+          const sentPhoto = req.submission?.photo;
+          if (sentPhoto && sentPhoto !== keepPhoto) api.deleteImage(extractCfImageId(sentPhoto)).catch(() => {});
+          setSgApplied({});
+          reloadReqs();
+          if (status === 'dismissed') addToast(`Dismissed. ${first}’s link no longer works; make a new one to ask again.`, 'info');
+        } catch (e) { addToast(`Couldn’t update ${first}’s message: ${e.message}`, 'error'); }
+        setSgBusy(false);
+      };
+      const reviewSent = () => {
+        const el = document.getElementById('ppl-suggest');
+        el?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+        el?.focus({ preventScroll: true });
+      };
+
+      // ── "Tidy to house style" ──
+      const [tidy, setTidy] = useState(null);           // { busy, suggestion, words, from }
+      const bioWords = String(data.bio || '').trim().split(/\s+/).filter(Boolean).length;
+      const runTidy = async () => {
+        setTidy((t) => ({ ...(t || {}), busy: true }));
+        try {
+          const r = await fetch('/api/people-ai', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bio: data.bio, name: data.name, title: data.title, organization: data.organization, group: data.group, role: data.role }) });
+          const d = await apiJson(r, '/api/people-ai');
+          if (!d.success) throw new Error(d.error || 'No suggestion came back. Try again.');
+          setTidy({ busy: false, suggestion: d.suggestion, words: d.words, from: data.bio });
+        } catch (e) { setTidy((t) => (t?.suggestion ? { ...t, busy: false } : null)); addToast(e.message, 'error'); }
+      };
+      const useTidy = () => {
+        const before = data.bio;
+        updateField('bio', tidy.suggestion);
+        setTidy(null);
+        addToast('Bio replaced with the suggestion. Save to keep it.', 'success', { label: 'Undo', fn: () => updateField('bio', before) });
+      };
+
+      // ── Who saved last, and History ──
+      const [lastSaved, setLastSaved] = useState(null);  // audit entry; false when there's none
+      const loadLastSaved = useCallback(() => {
+        if (!slug) return;
+        fetch(`/api/audit-log?type=team&slug=${encodeURIComponent(slug)}&limit=1`, { cache: 'no-store' })
+          .then((r) => apiJson(r, '/api/audit-log'))
+          .then((d) => setLastSaved(d.success ? d.entries?.[0] || false : false))
+          .catch(() => setLastSaved(false));
+      }, [slug]);
+      useEffect(() => { loadLastSaved(); }, [loadLastSaved]);
+      const [historyOpen, setHistoryOpen] = useState(false);
+      const restoreVersion = async (raw, v) => {
+        let next = { ...shape(raw), slug: data.slug || slug, order: data.order };
+        let note = '';
+        // A photo replaced since was deleted from Cloudflare then: today's stays
+        if (next.photo && next.photo !== data.photo && !pplIsLocal(next.photo) && !(await pplFetchSize(next.photo))) {
+          next = { ...next, photo: data.photo, photoCrop: data.photoCrop, photoSize: data.photoSize, photoCutout: data.photoCutout };
+          note = ' Its photo was deleted when it was replaced, so the current photo stays.';
+        }
+        setImgReady(false);
+        setData(next);
+        setDirty(true);
+        setHistoryOpen(false);
+        addToast(`The version from ${pplWhen(v.at)} is in the editor.${note} Save to keep it.`, 'info');
+      };
+
+      // ── Someone saved this person meanwhile: merge, asking only where both changed one thing ──
+      const [conflict, setConflict] = useState(null);
+      const [resave, setResave] = useState(0);
+      const takeMerged = (merged, theirsRaw, sha, note) => {
+        loadedRef.current = theirsRaw;
+        if (merged.photo !== data.photo) setImgReady(false);
+        setData(shape(merged));
+        setSha(sha);
+        setDirty(true);
+        if (note) addToast(note, 'info');
+        setResave((n) => n + 1);
+      };
+      conflictRef.current = async (attempted) => {
+        try {
+          const r = await api.readContent(`src/content/team/${slug}.json`);
+          if (!r.success) throw new Error(r.error || 'not found');
+          const theirsRaw = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+          const plan = pplMerge(asRecord(loadedRef.current), asRecord(theirsRaw), attempted);
+          const log = await fetch(`/api/audit-log?type=team&slug=${encodeURIComponent(slug)}&limit=1`, { cache: 'no-store' })
+            .then((x) => apiJson(x, '/api/audit-log')).catch(() => null);
+          const entry = log?.entries?.[0];
+          const who = pplWho(entry?.user_email);
+          if (entry) setLastSaved(entry);
+          if (plan.conflicts.length) { setConflict({ who, when: entry?.created_at, plan, theirs: asRecord(theirsRaw), theirsRaw, sha: r.sha }); return; }
+          const took = pplFieldNames(plan.theirsTook);
+          takeMerged(plan.merged, theirsRaw, r.sha, took.length ? `${who} changed ${pplList(took)} while you were editing. Their change is kept with yours.` : null);
+        } catch (e) { addToast(`Someone saved ${data.name || 'this person'} while you were editing, and their version didn’t load (${e.message}). Copy your changes, then reload.`, 'error'); }
+      };
+      const resolveConflict = (choice) => {
+        const c = conflict;
+        const m = { ...c.plan.merged };
+        for (const id of c.plan.conflicts) {
+          if (choice[id] !== 'theirs') continue;
+          for (const k of id === 'photo' ? PPL_PHOTO_KEYS : [id]) { if (c.theirs[k] === undefined) delete m[k]; else m[k] = c.theirs[k]; }
+        }
+        setConflict(null);
+        takeMerged(m, c.theirsRaw, c.sha, null);
+      };
 
       const save = async () => {
         if (!String(data.title || '').trim()) { addToast(board ? 'Pick a seat or type a title' : 'Add a title, like Project Manager', 'error'); return; }
@@ -14498,7 +15612,15 @@
         const rec = toPersonRecord({ ...data, linkedin: linkedinNorm || '' });
         const ok = await handleSave(() => rec);
         if (!ok) return;
+        loadedRef.current = rec;
+        loadLastSaved();
         pplWarmPhoto(rec);
+        // Used what they sent: their request is done, and a photo it replaced goes
+        if (req && Object.keys(sgApplied).length) {
+          const old = sgApplied.photo?.photo;
+          if (old && old !== rec.photo && !pplIsLocal(old)) api.deleteImage(extractCfImageId(old)).catch(() => {});
+          closeRequest('used', rec.photo);
+        }
         // A committee added here joins the list, so it's a badge on everyone else too
         const listed = tsCommitteeList(cmtes.saved);
         const fresh = board ? (rec.committees || []).filter((c) => !listed.some((l) => tsSameCommittee(l, c))) : [];
@@ -14517,6 +15639,8 @@
         }
         if (wasNew) onSaved?.(rec.slug);
       };
+      // A merged save runs once the merged record and the new sha are in place
+      useEffect(() => { if (resave) save(); }, [resave]);
 
       const onFiles = async (files) => {
         const f = files?.[0];
@@ -14565,18 +15689,28 @@
           onApply=${(c) => { set({ photoCrop: c, photoSize }); setImgReady(false); setCropping(false); }} />` : null}
         ${renaming ? html`<${PplRenameModal} slug=${slug} name=${data.name} existing=${existingSlugs} addToast=${addToast}
           onClose=${() => setRenaming(false)} onDone=${(s) => { setRenaming(false); onSaved?.(s); }} />` : null}
+        ${historyOpen ? html`<${PplHistoryModal} slug=${slug} name=${data.name} current=${previewRecord} normalize=${asRecord}
+          onRestore=${restoreVersion} onClose=${() => setHistoryOpen(false)} />` : null}
+        ${conflict ? html`<${PplMergeModal} conflict=${conflict} mine=${conflict.plan.merged} name=${data.name}
+          onCancel=${() => setConflict(null)} onSave=${resolveConflict} />` : null}
         <nav class="breadcrumb" aria-label="Breadcrumb">
-          <button onClick=${safeBack}>${groupLabel}</button>
+          <button onClick=${safeBack}>${backLabel || groupLabel}</button>
           <span class="sep">›</span>
           <span class="current">${slug ? data.name || 'Edit' : board ? 'New board member' : 'New team member'}</span>
         </nav>
         <div class="page-header ppl-ed-head">
-          <h2 class="u-row-center">
-            ${slug ? data.name || 'Unnamed' : board ? 'Add a board member' : 'Add a team member'}
-            <${PublishBadge} type="team" slug=${slug} draft=${data.publishStatus === 'draft'} />
-            ${data.status === 'alumni' ? html`<span class="pub-badge is-draft" title="Off the site, kept here">Alumni</span>` : null}
-            ${data.status === 'memorial' ? html`<span class="pub-badge is-draft">In memoriam</span>` : null}
-          </h2>
+          <div class="ppl-ed-title">
+            <h2 class="u-row-center">
+              ${slug ? data.name || 'Unnamed' : board ? 'Add a board member' : 'Add a team member'}
+              <${PublishBadge} type="team" slug=${slug} draft=${data.publishStatus === 'draft'} />
+              ${data.status === 'alumni' ? html`<span class="pub-badge is-draft" title="Off the site, kept here">Alumni</span>` : null}
+              ${data.status === 'memorial' ? html`<span class="pub-badge is-draft">In memoriam</span>` : null}
+            </h2>
+            ${slug ? html`<p class="ppl-ed-meta">
+              <span>${lastSaved ? `Last saved by ${pplWho(lastSaved.user_email)} ${pplWhen(lastSaved.created_at)}` : lastSaved === false ? 'No saves on record yet' : '\u00a0'}</span>
+              <button type="button" class="ppl-link" onClick=${() => setHistoryOpen(true)}>${pplIcon.history} History</button>
+            </p>` : null}
+          </div>
           <div class="flex gap-1 items-center">
             ${dirty || emailDirty ? html`<span class="ppl-unsaved" role="status">Unsaved changes</span>` : null}
             <button class="btn btn-ghost btn-sm" aria-pressed=${showPreview === 'team'} onClick=${() => setShowPreview((v) => (v === 'team' ? false : 'team'))}>Preview</button>
@@ -14593,6 +15727,8 @@
         ${issues.length ? html`<ul class="ppl-checklist" aria-label="Missing from this record">
           ${issues.map((i) => html`<li key=${i.id} class=${`ppl-chip ppl-chip--${i.tone}`} title=${i.tip}>${i.tone === 'warn' ? pplIcon.alert : null}${i.label}</li>`)}
         </ul>` : null}
+        ${req?.status === 'pending' ? html`<${PplSuggestion} req=${req} data=${data} first=${first} applied=${sgApplied} busy=${sgBusy}
+          onUse=${useSent} onUndo=${undoSent} onDismiss=${() => closeRequest('dismissed')} onDone=${() => closeRequest('used')} />` : null}
 
         <section class="card ppl-ident" aria-label="Photo and name">
           <div class=${`ppl-photo${dragOver ? ' is-over' : ''}`}
@@ -14720,11 +15856,20 @@
             : listed
               ? html`Add a bio and ${data.name ? data.name.split(' ')[0] : 'they'} ${data.name ? 'gets' : 'get'} a profile page that their card on the Leadership page links to. “Why I serve” and LinkedIn show there too.`
               : 'Profile pages are for people shown on the Leadership page.'}</p>
+          ${slug && data.status === 'active' ? html`<${PplAskPanel} slug=${slug} name=${data.name} email=${board ? emailValue.trim() : ''} req=${req}
+            onChanged=${reloadReqs} onReview=${reviewSent} addToast=${addToast} />` : null}
           <div class="form-group">
             <label class="form-label" for="ppl-bio">Bio</label>
             <textarea id="ppl-bio" class="form-input" rows="5" value=${data.bio || ''} onInput=${(e) => updateField('bio', e.target.value)}
               placeholder=${`A few sentences about ${data.name ? data.name.split(' ')[0] : 'them'}: what they do, and what they bring to SOARD.`}></textarea>
-            <div class="form-hint ppl-count-hint">${String(data.bio || '').trim().split(/\s+/).filter(Boolean).length} words · 40 to 120 reads best</div>
+            <div class="ppl-bio-tools">
+              <span class="form-hint ppl-count-hint">${bioWords} words · 40 to 120 reads best</span>
+              <button type="button" class="btn btn-ghost btn-sm ppl-tidy-btn" onClick=${runTidy} disabled=${!!tidy?.busy || bioWords < 5}
+                title=${bioWords < 5 ? 'Write a few sentences first' : 'Suggests a rewrite in the house style. Nothing changes unless you use it.'}>
+                ${tidy?.busy && !tidy.suggestion ? html`<span class="spinner spinner-14" /> Writing…` : html`${pplIcon.pen} Tidy to house style`}</button>
+            </div>
+            ${tidy?.suggestion ? html`<${PplTidy} from=${tidy.from} current=${data.bio} suggestion=${tidy.suggestion} words=${tidy.words} busy=${!!tidy.busy}
+              onUse=${useTidy} onAgain=${runTidy} onClose=${() => setTidy(null)} />` : null}
           </div>
           <div class="form-group">
             <label class="form-label" for="ppl-quote">Why I serve <span class="form-optional">in their words</span></label>
@@ -14748,6 +15893,10 @@
           <div class="ppl-admin__row">
             <div><strong>Web address</strong><p class="form-hint u-m-0"><code>${slug}</code> · names their record and photo file, and their future profile page</p></div>
             <button type="button" class="btn btn-ghost btn-sm" onClick=${() => (dirty || emailDirty ? addToast('Save your changes first', 'info') : setRenaming(true))}>Change</button>
+          </div>
+          <div class="ppl-admin__row">
+            <div><strong>History</strong><p class="form-hint u-m-0">Every save is kept. Compare any version with this one, and put it back if you need to.</p></div>
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setHistoryOpen(true)}>Show history</button>
           </div>
           ${data.status === 'active' ? html`<div class="ppl-admin__row">
             <div><strong>Moved on?</strong><p class="form-hint u-m-0">Move them to alumni: off the site, kept here with their history.</p></div>
@@ -21974,23 +23123,31 @@
             `;
           }
 
-          // ─── People Hub (tabs: Team | Board) ───
+          // ─── People Hub (tabs: Team | Board | Photos) ───
           case 'people-hub': {
             const pTab = subTab || 'team';
             if (editSlug !== null) {
-              return html`<${PersonEditor} key=${editSlug || `new-${pTab}`} slug=${editSlug || undefined} group=${pTab} team=${team} partners=${partners}
+              // From Photos, the editor opens in the person's own group and comes back to Photos
+              const fromPhotos = pTab === 'photos';
+              const g = fromPhotos ? (team.find((t) => t.slug === editSlug)?.group === 'board' ? 'board' : 'team') : pTab;
+              return html`<${PersonEditor} key=${editSlug || `new-${g}`} slug=${editSlug || undefined} group=${g} team=${team} partners=${partners}
+                backLabel=${fromPhotos ? 'Photos' : null}
                 onBack=${() => { setEditSlug(null); loadData(); }} onSaved=${(s) => { setEditSlug(s); loadData(); }} addToast=${addToast} />`;
             }
             const onSite = (g) => team.filter((t) => t.group === g && normalizePerson(t).status !== 'alumni').length;
+            const arrive = dashboardFilter === 'no-invite-email' && pTab === 'board' ? 'no-email' : dashboardFilter === 'profiles-waiting' ? 'pending' : null;
             return html`
               <div class="hub-tabs">
                 <button class="hub-tab ${pTab === 'team' ? 'active' : ''}" onClick=${() => { setSubTab('team'); setEditSlug(null); }}>Team<span class="ppl-tab-count">${onSite('team')}</span></button>
                 <button class="hub-tab ${pTab === 'board' ? 'active' : ''}" onClick=${() => { setSubTab('board'); setEditSlug(null); }}>Board<span class="ppl-tab-count">${onSite('board')}</span></button>
+                <button class="hub-tab ${pTab === 'photos' ? 'active' : ''}" onClick=${() => { setSubTab('photos'); setEditSlug(null); }}>Photos</button>
               </div>
-              ${listOrError('team', pTab === 'board' ? 'board members' : 'team members', html`<${PeopleList} key=${pTab} team=${team} group=${pTab}
-                initialFilter=${dashboardFilter === 'no-invite-email' && pTab === 'board' ? 'attention' : null} onClearFilter=${() => setDashboardFilter(null)}
-                onEdit=${(s) => setEditSlug(s)} onAdd=${() => setEditSlug('')}
-                onDelete=${(t) => setDeleteModal({ type: pTab === 'board' ? 'board member' : 'team member', item: t })} addToast=${addToast} onReload=${loadData} />`)}
+              ${pTab === 'photos'
+                ? listOrError('team', 'photos', html`<${PeoplePhotos} team=${team} onEdit=${(p) => setEditSlug(p.slug)} addToast=${addToast} onReload=${loadData} />`)
+                : listOrError('team', pTab === 'board' ? 'board members' : 'team members', html`<${PeopleList} key=${pTab} team=${team} group=${pTab}
+                    initialFilter=${arrive} onClearFilter=${() => setDashboardFilter(null)}
+                    onEdit=${(s) => setEditSlug(s)} onAdd=${() => setEditSlug('')}
+                    onDelete=${(t) => setDeleteModal({ type: pTab === 'board' ? 'board member' : 'team member', item: t })} addToast=${addToast} onReload=${loadData} />`)}
             `;
           }
 

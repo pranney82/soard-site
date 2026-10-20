@@ -12,6 +12,11 @@
  *   - the editor: older records read as structured fields, seat → title, the
  *     invite email saved with Save, LinkedIn checks, framing a photo, background
  *     removal, Preview of the real page, adding someone, changing a web address
+ *   - readiness tiles as filters, Email the board, Export (spreadsheet and the
+ *     printable roster), the Photos review (one switch, "everyone" with a
+ *     before/after preview, framing), a bio request link, reviewing what
+ *     someone sent, Tidy to house style, History and restore, and merging a
+ *     save made meanwhile (quietly, or by asking where both changed a field)
  *   - phone layout: nothing past the content column, 44px targets, sheets fit
  * Screenshots land in test-results/people-admin/. Exits non-zero on any
  * failure or console error.
@@ -59,7 +64,32 @@ function makeApi() {
   const team = structuredClone(TEAM);
   for (const [slug, d] of Object.entries(team)) d.slug ||= slug;
   // site: src/content/site docs by key (board-committees starts unsaved: the starter list)
-  const st = { team, site: {}, emails: {}, calls: [], waiting: new Set() };
+  const st = { team, site: {}, emails: {}, calls: [], waiting: new Set(), shas: {}, n: 0, versions: {}, audit: [], requests: [], deletedImages: [] };
+  // Each person's sha changes with every write, like read-content's hash of the stored record
+  const shaOf = (slug) => st.shas[slug] || `sha-${slug}-${JSON.stringify(st.team[slug]).length}`;
+  const bump = (slug) => { st.shas[slug] = `sha-${slug}-v${++st.n}`; return st.shas[slug]; };
+  const changedKeys = (a, b) => [...new Set([...Object.keys(a || {}), ...Object.keys(b || {})])].filter((k) => k !== 'order' && JSON.stringify(a?.[k] ?? null) !== JSON.stringify(b?.[k] ?? null)).sort();
+  // Saved versions and the audit trail, as save-content and people-batch keep them
+  st.record = (slug, before, after, by = 'admin@example.com') => {
+    const list = (st.versions[slug] ||= []);
+    if (!list.length && before) list.push({ id: ++st.n, at: new Date(Date.now() - 60000).toISOString(), by: null, data: structuredClone(before) });
+    list.push({ id: ++st.n, at: new Date().toISOString(), by, data: structuredClone(after) });
+    st.audit.unshift({ id: ++st.n, user_email: by, action: 'updated', entity_type: 'team', entity_slug: slug, entity_name: after?.name, created_at: new Date().toISOString() });
+  };
+  // Someone else saving a person (another tab): the record, its sha, history and audit move on
+  st.external = (slug, patch, by = 'jen.smith@example.com') => {
+    const before = structuredClone(st.team[slug]);
+    st.team[slug] = { ...st.team[slug], ...patch };
+    st.record(slug, before, st.team[slug], by);
+    bump(slug);
+  };
+  const future = new Date(Date.now() + 20 * 86400000).toISOString();
+  // Jennifer sent her profile back; Lori was asked and hasn't answered
+  st.requests.push({ id: 900, slug: 'jennifer-crosby', status: 'pending', createdBy: 'admin@example.com', createdAt: new Date(Date.now() - 5 * 86400000).toISOString(), expiresAt: future,
+    submittedAt: new Date(Date.now() - 3600000).toISOString(),
+    submission: { bio: 'Jennifer Crosby runs a commercial interiors firm in Atlanta and has helped SOARD plan rooms since 2019.', quote: 'Every child deserves a room that feels like theirs.',
+      linkedin: 'https://www.linkedin.com/in/jennifer-crosby', photo: team['scott-wierson'].photo } });
+  st.requests.push({ id: 901, slug: 'lori-geary', status: 'open', createdBy: 'admin@example.com', createdAt: new Date(Date.now() - 2 * 86400000).toISOString(), expiresAt: future, submittedAt: null, submission: null });
   const respond = (req) => {
     const url = new URL(req.url());
     const json = (o, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(o) });
@@ -81,7 +111,7 @@ function makeApi() {
       }
       const m = url.searchParams.get('path').match(/^src\/content\/team\/(.+)\.json$/);
       const c = m && st.team[m[1]];
-      return c ? json({ success: true, content: c, sha: `sha-${m[1]}-${JSON.stringify(c).length}` }) : json({ success: false, error: 'Not found' }, 404);
+      return c ? json({ success: true, content: c, sha: shaOf(m[1]) }) : json({ success: false, error: 'Not found' }, 404);
     }
     if (p === '/api/save-content') {
       const b = body();
@@ -93,9 +123,12 @@ function makeApi() {
         return json({ success: true, sha: `sha-${site}-${Date.now()}` });
       }
       const slug = b.path.match(/team\/(.+)\.json$/)?.[1];
+      if (b.sha && st.team[slug] && b.sha !== shaOf(slug)) return json({ success: false, error: 'Conflict: this item was changed since you loaded it. Reload to get the latest version.' }, 409);
+      const before = st.team[slug] ? structuredClone(st.team[slug]) : null;
       st.team[slug] = JSON.parse(b.content);
+      st.record(slug, before, st.team[slug]);
       st.waiting.add(slug);
-      return json({ success: true, sha: `sha-${slug}-${Date.now()}` });
+      return json({ success: true, sha: bump(slug) });
     }
     if (p === '/api/delete-content') {
       const slug = body().path.match(/team\/(.+)\.json$/)?.[1];
@@ -105,7 +138,7 @@ function makeApi() {
     }
     if (p === '/api/reorder-content') {
       const changed = [];
-      for (const it of body().items) if (st.team[it.slug] && st.team[it.slug].order !== it.order) { st.team[it.slug] = { ...st.team[it.slug], order: it.order }; changed.push(it.slug); }
+      for (const it of body().items) if (st.team[it.slug] && st.team[it.slug].order !== it.order) { st.team[it.slug] = { ...st.team[it.slug], order: it.order }; bump(it.slug); changed.push(it.slug); }
       changed.forEach((s) => st.waiting.add(s));
       return json({ success: true, changed, shas: {} });
     }
@@ -129,7 +162,57 @@ function makeApi() {
     if (p.startsWith('/api/pending-changes')) {
       return json({ success: true, changes: [...st.waiting].map((slug) => ({ type: 'team', slug, name: st.team[slug]?.name, state: 'waiting', action: 'updated', at: new Date().toISOString() })), publish: { live: null, active: null, failed: null, typicalSeconds: 480 } });
     }
-    if (p.startsWith('/api/audit-log')) return json({ success: true, entries: [], total: 0 });
+    if (p.startsWith('/api/audit-log')) {
+      const slug = url.searchParams.get('slug');
+      const entries = slug ? st.audit.filter((e) => e.entity_slug === slug) : [];
+      return json({ success: true, entries: entries.slice(0, Number(url.searchParams.get('limit') || 50)), total: entries.length });
+    }
+    if (p === '/api/profile-requests-admin') {
+      if (req.method() === 'POST') {
+        const b = body();
+        if (b.action === 'create') {
+          if (!st.team[b.slug]) return json({ success: false, error: 'Save this person first' }, 404);
+          for (const r of st.requests) if (r.slug === b.slug && r.status === 'open') r.status = 'replaced';
+          const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+          st.requests.push({ id: ++st.n, slug: b.slug, status: 'open', createdBy: 'admin@example.com', createdAt: new Date().toISOString(), expiresAt, submittedAt: null, submission: null });
+          return json({ success: true, url: `https://sunshineonaranneyday.com/profile-update/#t=${`tok${st.n}`.padEnd(32, 'x')}`, expiresAt });
+        }
+        if (b.action === 'resolve') { const r = st.requests.find((x) => x.id === b.id); if (r) r.status = b.status; return json({ success: true }); }
+        return json({ success: false, error: 'Unknown action' }, 400);
+      }
+      const seen = new Set();
+      const requests = [...st.requests].reverse().filter((r) => ['open', 'pending'].includes(r.status) && !seen.has(r.slug) && seen.add(r.slug));
+      return json({ success: true, requests });
+    }
+    if (p === '/api/content-history') {
+      const list = st.versions[url.searchParams.get('slug')] || [];
+      const id = url.searchParams.get('id');
+      if (id) { const v = list.find((x) => x.id === Number(id)); return v ? json({ success: true, data: v.data }) : json({ success: false, error: 'That version is gone' }, 404); }
+      return json({ success: true, versions: list.map((v, i) => ({ id: v.id, at: v.at, by: v.by, action: 'save', changed: i ? changedKeys(list[i - 1].data, v.data) : null })).reverse() });
+    }
+    if (p === '/api/people-batch') {
+      const changed = [];
+      const shas = {};
+      for (const u of body().updates || []) {
+        if (!st.team[u.slug]) return json({ success: false, error: `Not found: ${u.slug}` }, 409);
+        const before = structuredClone(st.team[u.slug]);
+        const after = { ...before };
+        for (const [k, v] of Object.entries(u.set)) { if (v === false || v === null) delete after[k]; else after[k] = v; }
+        if (JSON.stringify(before) === JSON.stringify(after)) continue;
+        st.team[u.slug] = after;
+        st.record(u.slug, before, after);
+        st.waiting.add(u.slug);
+        shas[u.slug] = bump(u.slug);
+        changed.push(u.slug);
+      }
+      return json({ success: true, changed, shas });
+    }
+    if (p === '/api/people-ai') {
+      const first = String(body().name || '').split(' ')[0] || 'They';
+      const suggestion = `${first} plans rooms around what each child needs, and has helped SOARD design them since 2019.`;
+      return json({ success: true, suggestion, words: suggestion.split(/\s+/).length });
+    }
+    if (p === '/api/delete-image') { st.deletedImages.push(body().imageId); return json({ success: true }); }
     if (p.startsWith('/api/deployments')) return json({ success: true, deploys: [], source: 'cloudflare' });
     if (p.startsWith('/api/live-ws')) { req.abort(); return true; }
     return json({ success: true, ok: true });
@@ -209,8 +292,9 @@ try {
     await page.evaluate(() => [...document.querySelectorAll('.dneed')].find((li) => /reveal invites/.test(li.textContent))?.querySelector('.dneed-act')?.click());
     await page.waitForSelector('.ppl-row', { timeout: 10000 });
     await sleep(500);
-    ok(await page.evaluate(() => document.querySelector('.hub-tab.active')?.textContent.startsWith('Board') && document.querySelector('.ppl-filter[aria-pressed="true"]')?.textContent.startsWith('Needs attention')),
-      'Show them opens People → Board filtered to Needs attention');
+    ok(await page.evaluate(() => document.querySelector('.hub-tab.active')?.textContent.startsWith('Board') && document.querySelector('.ppl-filter[aria-pressed="true"]')?.textContent.trim().startsWith('No invite email 12')
+      && document.querySelector('.ppl-ready__tile[aria-pressed="true"]')?.textContent.includes('Invite emails')),
+      'Show them opens People → Board showing just the 12 without an invite email');
     await clickText(page, '.hub-tab', 'Team');
     await page.waitForSelector('.ppl-row');
     await clickText(page, '.hub-tab', 'Board');
@@ -276,6 +360,8 @@ try {
     ok(callsTo(api, '/api/reorder-content') === before && (await rowNames(page, 'Members')).indexOf('Travis Couick') === 2, 'Escape puts it back without saving');
 
     // Pointer drag: Alex Paulson up two rows
+    await page.evaluate(() => [...document.querySelectorAll('.ppl-row')].find((r) => r.textContent.includes('Alex Paulson')).scrollIntoView({ block: 'center' }));
+    await sleep(200);
     const handle = await page.evaluateHandle(() => [...document.querySelectorAll('.ppl-row')].find((r) => r.textContent.includes('Alex Paulson')).querySelector('.ppl-handle'));
     const hb = await handle.boundingBox();
     const rowH = await page.evaluate(() => document.querySelector('.ppl-row').getBoundingClientRect().height);
@@ -575,10 +661,11 @@ try {
     await page.evaluate(() => [...document.querySelectorAll('.ppl-admin .btn')].find((b) => b.textContent.trim() === 'Change').focus());
     await page.keyboard.press('Enter');
     await page.waitForSelector('#ppl-rename');
-    ok(await page.evaluate(() => document.activeElement?.id === 'ppl-rename'), 'the rename dialog opens with its field focused');
+    // The admin-wide a11y pass can focus the field a moment before the dialog wires up Escape (modal-open marks that)
+    ok(await page.waitForFunction(() => document.activeElement?.id === 'ppl-rename' && document.body.classList.contains('modal-open'), { timeout: 3000 }).then(() => true, () => false), 'the rename dialog opens with its field focused');
     await page.keyboard.press('Escape');
-    await sleep(200);
-    ok(!(await page.$('#ppl-rename')) && await page.evaluate(() => document.activeElement?.textContent.trim() === 'Change'), 'Escape closes it and focus goes back to Change');
+    ok(await page.waitForFunction(() => !document.querySelector('#ppl-rename') && document.activeElement?.textContent.trim() === 'Change', { timeout: 3000 }).then(() => true, () => false),
+      `Escape closes it and focus goes back to Change (${await page.evaluate(() => `${!!document.querySelector('#ppl-rename')} ${document.activeElement?.tagName} ${document.activeElement?.textContent.trim().slice(0, 20)}`)})`);
     await clickText(page, '.ppl-admin .btn', 'Change');
     await page.waitForSelector('#ppl-rename');
     ok(await page.$eval('#ppl-rename', (i) => i.value) === 'linzi-lawsky', 'suggests an address from the current name');
@@ -625,6 +712,288 @@ try {
     await shot(page, 'desk-team-after');
     ok(await page.evaluate(() => document.querySelectorAll('.ppl-tag--waiting').length > 0), 'saved rows show Waiting to publish');
 
+    ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+
+  // ════════ Desktop: content tools ════════
+  console.log('Desktop 1440: readiness, export, photos, bio requests, tidy, history, merging');
+  {
+    const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false });
+    // Mail links and downloads are caught here instead of leaving the page
+    await page.evaluate(() => {
+      window.__mail = [];
+      window.__blobs = [];
+      window.__copied = [];
+      document.addEventListener('click', (e) => { const a = e.target.closest?.('a[href^="mailto:"]'); if (a) { window.__mail.push(a.href); e.preventDefault(); } }, true);
+      const make = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (b) => { window.__blobs.push(b); return make(b); };
+      try { Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied.push(t); } }, configurable: true }); } catch {}
+    });
+    api.st.emails['scott-wierson'] = 'scott@example.com';
+    api.st.emails['mary-atchley'] = 'mary@example.com';
+
+    // The Dashboard says whose profile came back
+    await page.waitForFunction(() => /sent their profile/.test(document.body.textContent), { timeout: 15000 }).catch(() => {});
+    const bioNeed = await page.evaluate(() => [...document.querySelectorAll('.dneed-title')].find((e) => /sent their profile/.test(e.textContent))?.textContent.trim());
+    ok(bioNeed === 'Jennifer Crosby sent their profile', `the Dashboard says Jennifer's profile came back (${bioNeed})`);
+
+    // ── Readiness tiles on Board ──
+    await goPeople(page, 'board', false);
+    await page.waitForFunction(() => !document.querySelector('.ppl-ready .spinner'), { timeout: 15000 });
+    const tiles = await $text(page, '.ppl-ready__tile');
+    ok(tiles.length === 4 && tiles[0].startsWith('Profiles live0 of 12') && tiles[1].startsWith('Invite emails2 of 12') && tiles[2].startsWith('Photos ready') && tiles[3].startsWith('Bios to review1'),
+      `four tiles: profiles, invite emails, photos, bios to review (${tiles.join(' | ')})`);
+    ok(await page.evaluate(() => [...document.querySelectorAll('.ppl-row')].find((r) => r.textContent.includes('Jennifer Crosby'))?.querySelector('.ppl-tag--review')?.textContent === 'Bio to review'),
+      'Jennifer\'s row says Bio to review');
+    ok(await page.evaluate(() => [...document.querySelectorAll('.ppl-row')].find((r) => r.textContent.includes('Lori Geary'))?.textContent.includes('Bio asked')), 'Lori\'s row says Bio asked');
+    await clickText(page, '.ppl-ready__tile', 'Invite emails');
+    await sleep(200);
+    let names = await page.$$eval('.ppl-row__name', (n) => n.map((x) => x.textContent));
+    ok(names.length === 10 && !names.includes('Scott Wierson') && !names.includes('Brent Aronson'), `the Invite emails tile shows the 10 without one (${names.length})`);
+    ok((await page.$eval('.ppl-filter--clear', (b) => b.textContent.trim())).startsWith('No invite email 10'), 'a chip names the filter, to clear it');
+    await shot(page, 'desk-ready-filter');
+    await page.click('.ppl-filter--clear');
+    await sleep(200);
+    ok((await page.$$('.ppl-row__name')).length === 13, 'clearing it shows everyone');
+    await clickText(page, '.ppl-ready__tile', 'Bios to review');
+    await sleep(200);
+    names = await page.$$eval('.ppl-row__name', (n) => n.map((x) => x.textContent));
+    ok(JSON.stringify(names) === '["Jennifer Crosby"]', `Bios to review shows Jennifer (${names.join(', ')})`);
+    await page.click('.ppl-filter--clear');
+
+    // ── Email the board ──
+    await clickText(page, '.ppl-head-menu', 'Email');
+    await page.waitForSelector('.ppl-menu__pop');
+    await shot(page, 'desk-email-menu', { grow: false });
+    await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'Write to the whole board');
+    await sleep(200);
+    const mail = await page.evaluate(() => window.__mail.at(-1) || '');
+    ok(/^mailto:\?bcc=/.test(mail) && mail.includes('scott@example.com') && mail.includes('mary@example.com'), `Email the board opens a Bcc email to the invite addresses (${mail})`);
+    await clickText(page, '.ppl-head-menu', 'Email');
+    await page.waitForSelector('.ppl-menu__pop');
+    await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'Copy the addresses');
+    await sleep(200);
+    ok(await page.evaluate(() => window.__copied.at(-1)) === 'scott@example.com, mary@example.com' || await page.evaluate(() => window.__copied.at(-1)) === 'mary@example.com, scott@example.com', 'Copy the addresses copies both');
+
+    // ── Export ──
+    await clickText(page, '.ppl-head-menu', 'Export');
+    await page.waitForSelector('.ppl-menu__pop');
+    await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'Download a spreadsheet');
+    await sleep(200);
+    const { csv, bom } = await page.evaluate(async () => {
+      const b = window.__blobs.at(-1);
+      if (!b) return { csv: '', bom: false };
+      const head = new Uint8Array(await b.slice(0, 3).arrayBuffer());
+      return { csv: await b.text(), bom: head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF };
+    });
+    const lines = csv.replace(/^\uFEFF/, '').trim().split('\r\n');
+    ok(bom && lines[0].startsWith('"Name","Seat","Title","Company","On the board since"'), 'the spreadsheet starts with a UTF-8 mark (so Excel reads accents) and a header row');
+    ok(lines[1].startsWith('"Scott Wierson","Chair","Board Chair"') && lines[1].includes('"scott@example.com"'), `Scott first, with seat and invite email (${lines[1]})`);
+    ok(lines.length === 14 && lines.at(-1).startsWith('"Brent Aronson"'), `everyone on the board, the memorial last (${lines.length - 1} rows)`);
+    await clickText(page, '.ppl-head-menu', 'Export');
+    await page.waitForSelector('.ppl-menu__pop');
+    const popup = new Promise((resolve) => browser.once('targetcreated', (t) => resolve(t.page())));
+    await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'Print the roster');
+    const roster = await popup;
+    await roster.waitForSelector('#pr-print', { timeout: 10000 });
+    await roster.setViewport({ width: 1000, height: 1200 });
+    const rosterInfo = await roster.evaluate(() => ({ rows: document.querySelectorAll('tbody tr').length, h1: document.querySelector('h1')?.textContent, sections: [...document.querySelectorAll('h2')].map((h) => h.textContent), email: getComputedStyle(document.querySelector('td.email') || document.body).display }));
+    ok(rosterInfo.h1 === 'Board of Directors' && rosterInfo.rows === 12 && rosterInfo.sections.join('|') === 'Officers 1|Members 11', `the printable roster lists the current board by section (${JSON.stringify(rosterInfo)})`);
+    ok(rosterInfo.email === 'none', 'emails stay off the roster until asked for');
+    const imgs = await roster.waitForFunction(() => [...document.images].every((i) => i.complete), { timeout: 20000 }).then(() => roster.evaluate(() => [...document.images].filter((i) => i.naturalWidth > 0).length), () => -1);
+    ok(imgs === 12, `every photo loads in the roster window (${imgs} of 12)`);
+    await roster.click('#pr-email');
+    ok(await roster.evaluate(() => getComputedStyle(document.querySelector('td.email')).display === 'table-cell'), 'Include emails adds them');
+    await roster.screenshot({ path: join(OUT, 'desk-roster.png') }).catch(() => {});
+    await roster.close();
+
+    // ── What Jennifer sent ──
+    await clickText(page, '.ppl-row__name', 'Jennifer Crosby');
+    await page.waitForSelector('.ppl-sg');
+    await sleep(500);
+    const sgRows = await $text(page, '.ppl-sg__label');
+    ok(JSON.stringify(sgRows) === '["Bio","Why I serve","LinkedIn","Photo"]', `the review card lists what she sent (${sgRows.join(', ')})`);
+    ok(await page.evaluate(() => /Check them and use what you like/.test(document.querySelector('.ppl-ask')?.textContent || '')), 'the Profile section points to the review');
+    await shot(page, 'desk-review');
+    await page.evaluate(() => [...document.querySelectorAll('.ppl-sg__row')].find((r) => r.textContent.startsWith('Bio')).querySelector('.btn').click());
+    await sleep(150);
+    ok((await page.$eval('#ppl-bio', (t) => t.value)).startsWith('Jennifer Crosby runs'), 'Use puts her bio in the field');
+    await page.evaluate(() => [...document.querySelectorAll('.ppl-sg__row')].find((r) => r.textContent.startsWith('Bio')).querySelector('.btn').click());
+    await sleep(150);
+    ok((await page.$eval('#ppl-bio', (t) => t.value)) === '', 'Undo puts it back');
+    await clickText(page, '.ppl-sg .btn', 'Use all');
+    await sleep(300);
+    ok((await page.$eval('#ppl-quote', (t) => t.value)).startsWith('Every child') && (await page.$eval('#ppl-linkedin', (t) => t.value)).includes('jennifer-crosby'), 'Use all fills the quote and LinkedIn too');
+    ok((await page.$eval('.ppl-photo__circle img', (i) => i.src)).includes(api.st.team['scott-wierson'].photo.match(/imagedelivery\.net\/[^/]+\/(.+)\/public/)[1]), 'and her photo');
+    const oldPhoto = api.st.team['jennifer-crosby'].photo;
+    await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
+    await page.waitForFunction(() => !document.querySelector('.ppl-unsaved') && !document.querySelector('.ppl-sg'), { timeout: 8000 }).catch(() => {});
+    await sleep(400);
+    const jen = api.st.team['jennifer-crosby'];
+    ok(jen.bio.startsWith('Jennifer Crosby runs') && jen.quote.startsWith('Every child') && jen.photo === api.st.team['scott-wierson'].photo && !jen.photoCrop, 'Save keeps what she sent');
+    ok(api.st.requests.find((r) => r.id === 900).status === 'used' && !(await page.$('.ppl-sg')), 'her message is marked used and the card goes');
+    ok(api.st.deletedImages.some((id) => oldPhoto.includes(id)), 'the photo hers replaced is deleted');
+    ok(/^Last saved by Admin today at/.test(await page.$eval('.ppl-ed-meta span', (e) => e.textContent)), `the header says who saved last (${await page.$eval('.ppl-ed-meta span', (e) => e.textContent)})`);
+
+    // ── Ask Clareece, tidy her bio, history ──
+    await clickText(page, '.nav-item', 'People');
+    await clickText(page, '.hub-tab', 'Team');
+    await page.waitForSelector('.ppl-row');
+    await clickText(page, '.ppl-row__name', 'Clareece Cunningham');
+    await page.waitForSelector('.ppl-ask');
+    await clickText(page, '.ppl-ask .btn', 'Get a link');
+    await page.waitForSelector('.ppl-ask.is-link');
+    const link = await page.$eval('.ppl-ask__link input', (i) => i.value);
+    ok(/^https:\/\/sunshineonaranneyday\.com\/profile-update\/#t=/.test(link), `a private link is shown once (${link})`);
+    await clickText(page, '.ppl-ask .btn', 'Copy');
+    await sleep(150);
+    ok(await page.evaluate(() => window.__copied.at(-1)) === link, 'Copy copies it');
+    await clickText(page, '.ppl-ask .btn', 'Email Clareece');
+    await sleep(150);
+    const askMail = decodeURIComponent(await page.evaluate(() => window.__mail.at(-1) || ''));
+    ok(askMail.startsWith('mailto:?subject=Your bio for the Sunshine on a Ranney Day website') && askMail.includes(link) && askMail.includes('Hi Clareece,') && !/—/.test(askMail),
+      'Email Clareece drafts the ask with the link, no em dashes');
+    await shot(page, 'desk-ask-link');
+    // Tidy
+    await page.type('#ppl-bio', 'clareece is our designer she designs the rooms for the kids and does a great job');
+    await clickText(page, '.ppl-bio-tools .btn', 'Tidy to house style');
+    await page.waitForSelector('.ppl-tidy');
+    ok(await page.evaluate(() => document.querySelectorAll('.ppl-tidy ins').length > 0 && document.querySelectorAll('.ppl-tidy del').length > 0), 'the suggestion marks what changed, word by word');
+    ok(lastCall(api, '/api/people-ai')?.body.name === 'Clareece Cunningham' && lastCall(api, '/api/people-ai')?.body.bio.startsWith('clareece is'), 'the helper gets the bio and who it\'s about');
+    await shot(page, 'desk-tidy');
+    await clickText(page, '.ppl-tidy .btn', 'Use this');
+    await sleep(150);
+    ok((await page.$eval('#ppl-bio', (t) => t.value)).startsWith('Clareece plans rooms') && !(await page.$('.ppl-tidy')), 'Use this replaces the bio');
+    await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
+    await page.waitForFunction(() => !document.querySelector('.ppl-unsaved'), { timeout: 8000 });
+    // History: the version before, restored
+    await clickText(page, '.ppl-ed-meta .ppl-link', 'History');
+    await page.waitForSelector('.ppl-hist__item');
+    const hist = await $text(page, '.ppl-hist__row');
+    ok(hist.length === 2 && hist[0].startsWith('Latest save') && hist[0].includes('Changed Bio') && hist[1].includes('As it was before history began'), `History lists the save and the version before (${hist.join(' | ')})`);
+    await page.evaluate(() => document.querySelectorAll('.ppl-hist__row')[1].click());
+    await page.waitForSelector('.ppl-hist__diff');
+    ok((await page.$eval('.ppl-hist__diff dt', (e) => e.textContent)) === 'Bio', 'opening a version compares it with the editor');
+    await sleep(500); // the dialog fades in
+    await shot(page, 'desk-history', { grow: false });
+    await clickText(page, '.ppl-hist__restore', 'Restore this version');
+    await page.waitForFunction(() => !document.querySelector('.ppl-hist'), { timeout: 5000 });
+    ok((await page.$eval('#ppl-bio', (t) => t.value)) === '' && await page.evaluate(() => !!document.querySelector('.ppl-unsaved')), 'Restore fills the editor and waits for Save');
+    await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
+    await page.waitForFunction(() => !document.querySelector('.ppl-unsaved'), { timeout: 8000 });
+    ok(!api.st.team['clareece-cunningham'].bio, 'saved as it was');
+
+    // ── Someone saves Holly meanwhile ──
+    await clickText(page, '.breadcrumb button', 'Team');
+    await page.waitForSelector('.ppl-row');
+    await clickText(page, '.ppl-row__name', 'Holly Ranney');
+    await page.waitForSelector('#ppl-title');
+    await page.$eval('#ppl-title', (i) => { i.value = 'Co-Founder & President'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+    api.st.external('holly-ranney', { quote: 'From another tab' });
+    await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
+    await page.waitForFunction(() => !document.querySelector('.ppl-unsaved'), { timeout: 8000 }).catch(() => {});
+    await sleep(300);
+    let holly = api.st.team['holly-ranney'];
+    ok(holly.title === 'Co-Founder & President' && holly.quote === 'From another tab', `different fields merge quietly: her title and their quote (${holly.title} / ${holly.quote})`);
+    ok(await page.evaluate(() => /Jen changed Why I serve while you were editing/.test(document.body.textContent)), 'and a note says whose change was kept');
+    ok((await page.$eval('#ppl-quote', (t) => t.value)) === 'From another tab', 'the editor shows their change too');
+    await page.$eval('#ppl-bio', (t) => { t.value = 'Mine.'; t.dispatchEvent(new Event('input', { bubbles: true })); });
+    api.st.external('holly-ranney', { bio: 'Theirs.' });
+    await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
+    await page.waitForSelector('.ppl-merge');
+    ok((await page.$eval('#ppl-merge-title', (e) => e.textContent)) === 'Jen saved Holly Ranney while you were editing' && (await $text(page, '.ppl-merge__field legend')).join() === 'Bio',
+      'the same field changed on both sides is asked about');
+    await sleep(500);
+    await shot(page, 'desk-merge', { grow: false });
+    await page.evaluate(() => [...document.querySelectorAll('.ppl-merge__opt')].find((l) => l.textContent.includes('Jen’s')).querySelector('input').click());
+    await clickText(page, '.ppl-merge .btn-primary', 'Save');
+    await page.waitForFunction(() => !document.querySelector('.ppl-merge') && !document.querySelector('.ppl-unsaved'), { timeout: 8000 }).catch(() => {});
+    holly = api.st.team['holly-ranney'];
+    ok(holly.bio === 'Theirs.' && holly.title === 'Co-Founder & President', `picking theirs saves their bio, keeping the rest (${holly.bio})`);
+
+    // ── Photos ──
+    await clickText(page, '.breadcrumb button', 'Team');
+    await page.waitForSelector('.hub-tabs');
+    await clickText(page, '.hub-tab', 'Photos');
+    await page.waitForSelector('.ppl-pcard');
+    await sleep(800);
+    ok((await page.$$('.ppl-pcard')).length === 22, `everyone on the page has a card (${(await page.$$('.ppl-pcard')).length})`);
+    await page.waitForFunction(() => !document.querySelector('.ppl-pcard__busy'), { timeout: 30000 }).catch(() => {});
+    await shot(page, 'desk-photos');
+    let batches = callsTo(api, '/api/people-batch');
+    await page.click('[aria-label="Remove Scott Wierson’s background"]');
+    await page.waitForFunction((n) => true, {}, batches);
+    await sleep(500);
+    ok(callsTo(api, '/api/people-batch') === batches + 1 && api.st.team['scott-wierson'].photoCutout === true, 'one switch removes Scott\'s background');
+    await page.evaluate(() => [...document.querySelectorAll('.toast')].find((t) => /Background removed for Scott/.test(t.textContent))?.querySelector('.toast-undo')?.click());
+    await sleep(600);
+    ok(!api.st.team['scott-wierson'].photoCutout, 'Undo puts it back');
+    await clickText(page, '.ppl-head .btn-primary', 'Remove backgrounds for everyone');
+    await page.waitForSelector('.ppl-review-bar');
+    const cands = await page.$$eval('.ppl-pcard__pick input', (i) => i.length);
+    ok(cands > 10 && (await page.$$('.ppl-pcard__compare')).length === cands, `the preview shows before and after for everyone left (${cands})`);
+    await page.waitForFunction(() => !document.querySelector('.ppl-pcard__busy'), { timeout: 45000 }).catch(() => {});
+    await shot(page, 'desk-photos-review');
+    await page.evaluate(() => [...document.querySelectorAll('.ppl-pcard')].find((c) => c.textContent.includes('Greg Ranney')).querySelector('.ppl-pcard__pick input').click());
+    batches = callsTo(api, '/api/people-batch');
+    await clickText(page, '.ppl-review-bar .btn-primary', 'Save for');
+    await page.waitForFunction(() => !document.querySelector('.ppl-review-bar'), { timeout: 8000 });
+    const sent = lastCall(api, '/api/people-batch')?.body.updates || [];
+    ok(callsTo(api, '/api/people-batch') === batches + 1 && sent.length === cands - 1 && !sent.some((u) => u.slug === 'greg-ranney'), `one request for everyone ticked, Greg left as he is (${sent.length})`);
+    ok(!api.st.team['greg-ranney'].photoCutout && api.st.team['mary-atchley'].photoCutout === true, 'saved');
+    // Framing from a card
+    await page.waitForFunction(() => [...document.querySelectorAll('.ppl-pcard')].find((c) => c.textContent.includes('Mary Atchley'))?.querySelector('[aria-label^="Frame"]:not([disabled])'), { timeout: 15000 });
+    await page.evaluate(() => [...document.querySelectorAll('.ppl-pcard')].find((c) => c.textContent.includes('Mary Atchley')).querySelector('[aria-label^="Frame"]').click());
+    await page.waitForSelector('.ppl-crop__stage');
+    await page.focus('.ppl-crop__stage');
+    await page.keyboard.press('+');
+    await page.keyboard.press('+');
+    await clickText(page, '.ppl-crop .btn-primary', 'Use this framing');
+    await sleep(600);
+    const framed = lastCall(api, '/api/people-batch')?.body.updates?.[0];
+    ok(framed?.slug === 'mary-atchley' && framed.set.photoCrop?.size < 1 && framed.set.photoSize?.length === 2 && api.st.team['mary-atchley'].photoCrop, 'Frame on a card saves the crop with the photo\'s size');
+    // A card's name opens the editor, and comes back to Photos
+    await clickText(page, '.ppl-pcard__name', 'Tom Duncan');
+    await page.waitForSelector('#ppl-name');
+    ok((await $text(page, '.breadcrumb button'))[0] === 'Photos', 'the editor\'s breadcrumb leads back to Photos');
+    await clickText(page, '.breadcrumb button', 'Photos');
+    await page.waitForSelector('.ppl-pcard');
+    ok(await page.$eval('.hub-tab.active', (t) => t.textContent.startsWith('Photos')), 'and lands on Photos');
+
+    ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+
+  // ════════ iPad ════════
+  console.log('iPad 820 (touch)');
+  {
+    const { page, errors } = await open(browser, { width: 820, height: 1180, mobile: true });
+    const fits = () => page.evaluate(() => { const main = document.querySelector('.main').getBoundingClientRect(); return [...document.querySelectorAll('.main *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.right > main.right + 1; }).map((e) => e.className || e.tagName).slice(0, 5); });
+    const small = (sel) => page.$$eval(sel, (els) => els.filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 44).map((e) => e.textContent.trim().slice(0, 24)));
+    await goPeople(page, 'board', true);
+    await page.waitForFunction(() => !document.querySelector('.ppl-ready .spinner'), { timeout: 15000 });
+    await sleep(600);
+    const f1 = await fits();
+    const s1 = await small('.ppl-head .btn, .ppl-filter, .ppl-ready__tile');
+    ok(!f1.length && !s1.length, `Board on an iPad: header, tiles and filters fit, 44px targets (${f1.join(', ')}${s1.join(', ')})`);
+    await shot(page, 'ipad-board');
+    await clickText(page, '.ppl-row__name', 'Jennifer Crosby');
+    await page.waitForSelector('.ppl-sg');
+    await sleep(800);
+    const f2 = await fits();
+    const s2 = await small('.ppl-sg .btn, .ppl-ask .btn, .ppl-bio-tools .btn, .ppl-ed-meta .ppl-link, .ppl-admin__row .btn');
+    ok(!f2.length && !s2.length, `the editor with the review card fits an iPad, 44px targets (${f2.join(', ')}${s2.join(', ')})`);
+    await shot(page, 'ipad-review');
+    await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
+    await page.waitForSelector('.hub-tabs');
+    await clickText(page, '.hub-tab', 'Photos');
+    await page.waitForSelector('.ppl-pcard');
+    await sleep(1000);
+    const f3 = await fits();
+    const s3 = await small('.ppl-pcard .btn, .ppl-filter, .ppl-head .btn');
+    ok(!f3.length && !s3.length, `Photos fits an iPad, 44px targets (${f3.join(', ')}${s3.join(', ')})`);
+    await shot(page, 'ipad-photos');
     ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
   }
@@ -731,6 +1100,54 @@ try {
     const clipped = await page.evaluate(() => [...document.querySelectorAll('.ppl-seg [role="radio"]')].filter((b) => b.scrollWidth > b.clientWidth + 1).map((b) => b.textContent));
     ok(!clipped.length, `no choice label is cut off (${clipped.join(', ')})`);
     await shot(page, 'phone-editor-team');
+
+    // The new tools on a phone: readiness tiles, the review card, History, Photos
+    const fits = () => page.evaluate(() => { const main = document.querySelector('.main').getBoundingClientRect(); return [...document.querySelectorAll('.main *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.right > main.right + 1; }).map((e) => e.className || e.tagName).slice(0, 5); });
+    const smallTargets = (sel) => page.$$eval(sel, (els) => els.filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 44).map((e) => e.textContent.trim().slice(0, 30)));
+    await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
+    await page.waitForSelector('.hub-tabs');
+    await clickText(page, '.hub-tab', 'Board');
+    await page.waitForSelector('.ppl-ready__tile');
+    await sleep(600);
+    const cols = await page.$eval('.ppl-ready', (g) => getComputedStyle(g).gridTemplateColumns.split(' ').length);
+    ok(cols === 2 && !(await fits()).length, `the readiness tiles sit two by two and fit (${cols} columns)`);
+    await shot(page, 'phone-board-ready');
+    await clickText(page, '.ppl-row__name', 'Jennifer Crosby');
+    await page.waitForSelector('.ppl-sg');
+    await sleep(800);
+    const sgFit = await fits();
+    const sgSmall = await smallTargets('.ppl-sg .btn, .ppl-ask .btn, .ppl-bio-tools .btn, .ppl-ed-meta .ppl-link');
+    ok(!sgFit.length && !sgSmall.length, `the review card fits the phone, with 44px buttons (${sgFit.join(', ')}${sgSmall.join(', ')})`);
+    await shot(page, 'phone-review');
+    await clickText(page, '.ppl-ed-meta .ppl-link', 'History');
+    await page.waitForSelector('.ppl-hist');
+    await sleep(600);
+    const hSheet = await page.$eval('.modal.ppl-hist', (m) => { const r = m.getBoundingClientRect(); return { w: Math.round(r.width), bottom: Math.round(r.bottom) }; });
+    ok(hSheet.w <= 390 && hSheet.bottom <= 845, `History fits the phone (${JSON.stringify(hSheet)})`);
+    await shot(page, 'phone-history', { grow: false });
+    await page.keyboard.press('Escape');
+    await sleep(300);
+    await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
+    await page.waitForSelector('.hub-tabs');
+    await clickText(page, '.hub-tab', 'Photos');
+    await page.waitForSelector('.ppl-pcard');
+    await sleep(1000);
+    const pcols = await page.$eval('.ppl-pgrid', (g) => getComputedStyle(g).gridTemplateColumns.split(' ').length);
+    const pSmall = await smallTargets('.ppl-pcard .btn, .ppl-filter, .ppl-head .btn');
+    ok(pcols === 2 && !(await fits()).length && !pSmall.length, `Photos: two columns that fit, 44px buttons (${pcols}; ${pSmall.join(', ')})`);
+    await shot(page, 'phone-photos');
+    await clickText(page, '.ppl-head .btn-primary', 'Remove backgrounds for everyone');
+    await page.waitForSelector('.ppl-review-bar');
+    await sleep(800);
+    const rSmall = await smallTargets('.ppl-review-bar .btn, .ppl-pcard__pick');
+    ok(!(await fits()).length && !rSmall.length, `the background preview fits, with 44px controls (${rSmall.join(', ')})`);
+    await shot(page, 'phone-photos-review');
+    await page.evaluate(() => window.scrollBy(0, 1600));
+    await sleep(300);
+    const stick = await page.evaluate(() => ({ bar: Math.round(document.querySelector('.ppl-review-bar').getBoundingClientRect().top), top: Math.round(document.querySelector('.mobile-bar').getBoundingClientRect().bottom) }));
+    ok(stick.bar >= stick.top, `scrolled, the preview bar stays in view below the top bar (${JSON.stringify(stick)})`);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await clickText(page, '.ppl-review-bar .btn', 'Cancel');
     ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
   }

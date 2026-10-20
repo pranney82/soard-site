@@ -19,7 +19,9 @@ export default defineConfig({
         !page.includes('/branding') &&
         !page.includes('/slate/') &&
         !page.includes('/terms') &&
-        !page.includes('/privacy-policy'),
+        !page.includes('/privacy-policy') &&
+        // Private bio form reached only from a link SOARD sends (also noindex)
+        !page.includes('/profile-update'),
       // No lastmod: stamping every URL with the build time makes the field
       // meaningless and Google ignores (or distrusts) uniform values.
     }),

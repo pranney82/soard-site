@@ -1,0 +1,222 @@
+---
+/**
+ * /profile-update/#t=<token> — where someone on the Leadership page sends
+ * their own bio, "why I serve", LinkedIn and photo. The admin makes the link
+ * (People → a person → Profile → Ask for their bio) and sends it by hand.
+ * The token stays in the fragment so it never reaches a server log or a
+ * referrer. Everything sent waits in the admin as a suggestion until someone
+ * uses it. Not indexed. API: functions/api/profile-request.js.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { cfUrl } from '../utils/cf-image';
+---
+
+<BaseLayout title="Your SOARD profile" description="Send SOARD your bio for the Leadership page." noindex>
+  <section class="pu-hero">
+    <div class="pu-hero__inner">
+      <div class="pu-hero__text">
+        <p class="pu-eyebrow">Your SOARD profile</p>
+        <h1 id="pu-title">Help us <em>introduce you</em></h1>
+        <p class="pu-lead" id="pu-lead">This goes on your profile on the Leadership page of our website. We’ll look it over before it goes live.</p>
+      </div>
+      <div class="pu-frame" aria-hidden="true">
+        <div class="pu-accent"></div>
+        <div class="pu-photo">
+          <img id="pu-current" alt="" width="320" height="320" hidden />
+          <img class="pu-placeholder" id="pu-placeholder" src={cfUrl('brand-logo-circle-display', { w: 256 })} alt="" width="256" height="256" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pu-body">
+    <div class="pu-card">
+      <p class="pu-status" id="pu-status" role="status" aria-live="polite">Loading your details…</p>
+
+      <form id="pu-form" hidden novalidate>
+        <div class="pu-field">
+          <label for="pu-bio">Your bio</label>
+          <p class="pu-help" id="pu-bio-help">Three or four sentences, written in the third person: what you do, and what you bring to SOARD.</p>
+          <textarea id="pu-bio" name="bio" rows="7" maxlength="1500" aria-describedby="pu-bio-help pu-bio-count"></textarea>
+          <p class="pu-count" id="pu-bio-count">0 words · 40 to 120 reads best</p>
+        </div>
+
+        <div class="pu-field">
+          <label for="pu-quote">Why you serve <span class="pu-optional">in your own words</span></label>
+          <p class="pu-help" id="pu-quote-help">One or two sentences. This one can be in the first person.</p>
+          <textarea id="pu-quote" name="quote" rows="3" maxlength="240" aria-describedby="pu-quote-help pu-quote-count"></textarea>
+          <p class="pu-count" id="pu-quote-count">0/240</p>
+        </div>
+
+        <div class="pu-field">
+          <label for="pu-linkedin">LinkedIn <span class="pu-optional">optional</span></label>
+          <input id="pu-linkedin" name="linkedin" type="url" inputmode="url" autocomplete="url" placeholder="linkedin.com/in/your-name" />
+        </div>
+
+        <div class="pu-field">
+          <label for="pu-photo-input">A new photo <span class="pu-optional">optional</span></label>
+          <p class="pu-help" id="pu-photo-help">Head and shoulders, at least 800 pixels across. Skip this to keep the photo we have.</p>
+          <div class="pu-upload">
+            <img id="pu-photo-preview" alt="Your new photo" width="96" height="96" hidden />
+            <input id="pu-photo-input" name="photo" type="file" accept="image/*" aria-describedby="pu-photo-help" />
+          </div>
+          <p class="pu-help pu-warn" id="pu-photo-note" hidden></p>
+        </div>
+
+        <!-- Left empty by people; bots fill it in -->
+        <div class="pu-hp" aria-hidden="true">
+          <label for="pu-website">Website</label>
+          <input id="pu-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+        </div>
+
+        <p class="pu-error" id="pu-error" role="alert" hidden></p>
+        <button class="btn btn-primary btn-lg pu-submit" id="pu-submit" type="submit">Send to SOARD</button>
+      </form>
+
+      <div class="pu-done" id="pu-done" hidden tabindex="-1">
+        <h2>Thank you<span id="pu-done-name"></span>.</h2>
+        <p>We have it. We’ll look it over and add it to the Leadership page. If you think of a change, use the same link again within the month.</p>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  /* The site's editorial split, personal: their photo beside the greeting */
+  .pu-hero { background: var(--c-cream); padding: clamp(56px, 8vw, 110px) 0 clamp(40px, 6vw, 72px); overflow: hidden; }
+  .pu-hero__inner { max-width: 960px; margin: 0 auto; padding: 0 var(--space-xl); display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(32px, 5vw, 72px); align-items: center; }
+  .pu-eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); }
+  .pu-eyebrow::before { content: ''; width: 28px; height: 2px; background: currentColor; }
+  .pu-hero h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); line-height: 1.08; letter-spacing: -0.03em; margin-bottom: 18px; }
+  .pu-hero h1 em { font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%); padding: 0 0.05em; }
+  .pu-lead { font-size: clamp(16px, 1.6vw, 18px); line-height: 1.65; color: var(--c-text-muted); max-width: 460px; }
+  .pu-frame { position: relative; max-width: 300px; margin-left: auto; width: 100%; }
+  .pu-accent { position: absolute; right: -14px; bottom: -14px; width: 65%; height: 50%; background: var(--c-yellow); border-radius: 22px; opacity: 0.35; }
+  .pu-photo { position: relative; aspect-ratio: 1; border-radius: 50%; overflow: hidden; background: var(--c-warm-gray); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.1); display: grid; place-items: center; }
+  .pu-photo #pu-current { width: 100%; height: 100%; object-fit: cover; }
+  .pu-placeholder { width: 55%; height: auto; opacity: 0.5; }
+
+  .pu-body { padding: 0 var(--space-xl) clamp(56px, 8vw, 96px); background: var(--c-cream); }
+  .pu-card { max-width: 720px; margin: 0 auto; background: #fff; border: 1px solid var(--c-border); border-radius: 20px; padding: clamp(24px, 4vw, 40px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.05); }
+  .pu-status { color: var(--c-text-muted); }
+  .pu-status:empty { display: none; }
+  .pu-field { margin-bottom: 28px; }
+  .pu-field label { display: block; font-weight: 700; font-size: 1.02rem; margin-bottom: 4px; color: var(--c-text); }
+  .pu-optional { font-weight: 400; font-size: 0.86rem; color: var(--c-text-muted); margin-left: 6px; }
+  .pu-help { font-size: 0.92rem; color: var(--c-text-muted); margin-bottom: 10px; line-height: 1.5; }
+  .pu-warn { color: #8A5A00; }
+  .pu-field textarea, .pu-field input[type="url"] {
+    width: 100%; font: inherit; font-size: 16px; line-height: 1.6; color: var(--c-text);
+    padding: 12px 14px; border: 1px solid #D4D2CB; border-radius: 12px; background: #fff;
+  }
+  .pu-field textarea:focus, .pu-field input:focus { outline: none; border-color: var(--c-text); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
+  .pu-count { margin-top: 6px; font-size: 0.84rem; color: var(--c-text-muted); text-align: right; }
+  .pu-upload { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .pu-upload img { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1); }
+  .pu-upload input[type="file"] { font-size: 16px; max-width: 100%; }
+  .pu-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .pu-error { margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: #FFF3BF; color: #5C4500; font-weight: 600; }
+  .pu-submit { width: 100%; justify-content: center; min-height: 52px; }
+  .pu-done h2 { font-family: var(--font-display); font-size: clamp(1.6rem, 4vw, 2.2rem); margin-bottom: 12px; }
+  .pu-done p { color: var(--c-text-muted); line-height: 1.7; }
+  .pu-done:focus { outline: none; }
+
+  @media (max-width: 760px) {
+    .pu-hero__inner { grid-template-columns: 1fr; text-align: center; gap: 28px; }
+    .pu-eyebrow { justify-content: center; }
+    .pu-lead { margin-inline: auto; }
+    .pu-frame { order: -1; max-width: 180px; margin: 0 auto; }
+    .pu-body { padding-inline: 16px; }
+  }
+</style>
+
+<script>
+  const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+  const token = new URLSearchParams(location.hash.slice(1)).get('t') || '';
+  const status = $('pu-status');
+  const form = $<HTMLFormElement>('pu-form');
+  const bio = $<HTMLTextAreaElement>('pu-bio');
+  const quote = $<HTMLTextAreaElement>('pu-quote');
+  const linkedin = $<HTMLInputElement>('pu-linkedin');
+  const photoInput = $<HTMLInputElement>('pu-photo-input');
+  const preview = $<HTMLImageElement>('pu-photo-preview');
+  const photoNote = $('pu-photo-note');
+  const error = $('pu-error');
+  const submit = $<HTMLButtonElement>('pu-submit');
+  let first = '';
+
+  const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+  const countBio = () => { $('pu-bio-count').textContent = `${words(bio.value)} words · 40 to 120 reads best`; };
+  const countQuote = () => { $('pu-quote-count').textContent = `${quote.value.length}/240`; };
+  bio.addEventListener('input', countBio);
+  quote.addEventListener('input', countQuote);
+
+  photoInput.addEventListener('change', () => {
+    const f = photoInput.files?.[0];
+    photoNote.hidden = true;
+    if (!f) { preview.hidden = true; return; }
+    const url = URL.createObjectURL(f);
+    preview.onload = () => {
+      const px = Math.min(preview.naturalWidth, preview.naturalHeight);
+      if (px && px < 800) { photoNote.textContent = `This photo is ${px} pixels across, so it may look soft. A larger one is better if you have it.`; photoNote.hidden = false; }
+    };
+    preview.src = url;
+    preview.hidden = false;
+  });
+
+  async function load() {
+    if (!token) { status.textContent = 'This link is missing its code. Open it again from the email SOARD sent you.'; return; }
+    try {
+      const res = await fetch(`/api/profile-request?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) { status.textContent = d.error || 'This link didn’t work. Ask SOARD for a new one.'; return; }
+      const p = d.person;
+      first = p.first;
+      $('pu-title').innerHTML = `Hi <em></em>, help us introduce you`;
+      $('pu-title').querySelector('em')!.textContent = p.first;
+      document.title = `${p.name}: your SOARD profile`;
+      if (p.photo) { const img = $<HTMLImageElement>('pu-current'); img.src = p.photo; img.hidden = false; $('pu-placeholder').hidden = true; }
+      bio.value = p.bio || '';
+      quote.value = p.quote || '';
+      linkedin.value = p.linkedin || '';
+      countBio(); countQuote();
+      status.textContent = p.sent ? 'You’ve sent this before. Send it again with any changes.' : '';
+      if (p.sentPhoto) $('pu-photo-help').textContent = 'We have the photo you sent. Pick another only if you’d like to replace it.';
+      form.hidden = false;
+    } catch {
+      status.textContent = 'We couldn’t load your details. Check your connection and refresh the page.';
+    }
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    error.hidden = true;
+    if (!bio.value.trim() && !quote.value.trim() && !linkedin.value.trim() && !photoInput.files?.length) {
+      error.textContent = 'Add at least one thing to send.';
+      error.hidden = false;
+      return;
+    }
+    const body = new FormData(form);
+    body.set('token', token);
+    submit.disabled = true;
+    submit.textContent = 'Sending…';
+    try {
+      const res = await fetch('/api/profile-request', { method: 'POST', body });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) throw new Error(d.error || 'That didn’t send. Please try again.');
+      form.hidden = true;
+      status.textContent = '';
+      $('pu-done-name').textContent = first ? `, ${first}` : '';
+      const done = $('pu-done');
+      done.hidden = false;
+      done.focus();
+    } catch (err) {
+      error.textContent = (err as Error).message;
+      error.hidden = false;
+      submit.disabled = false;
+      submit.textContent = 'Send to SOARD';
+    }
+  });
+
+  load();
+</script>
