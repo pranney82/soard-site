@@ -28,7 +28,9 @@ const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_UR
 
 // Read at runtime from D1 by Functions, or not site content at all
 export const RUNTIME_TYPES = ['live-status', 'email-broadcast', 'newsletter', 'instagram-reel',
-  'live-input', 'live-message', 'stream-video', 'site-config'];
+  'live-input', 'live-message', 'stream-video', 'site-config',
+  // The admin's list of board committees to pick from (records carry the names)
+  'board-committees'];
 
 /** Normalize a timestamp to SQLite datetime format (YYYY-MM-DD HH:MM:SS) to compare with audit_log.created_at */
 export function toSqliteTimestamp(dateStr) {

@@ -112,6 +112,8 @@ const teamAll = [
   person('tpl-honorary', { name: 'Template Greeter', title: 'Chief Greeter', group: 'team', role: 'honorary', photo: 'team-template/honorary' }),
   person('tpl-draft', { name: 'Template Draft', title: 'Template Role', group: 'team', role: 'staff', publishStatus: 'draft' }),
   person('tpl-chair', { name: 'Template Chair', title: 'Board Chair', organization: 'Template Company, CEO', group: 'board', seat: 'chair', order: 4, photo: 'team-template/chair' }),
+  // order 0: the seat, not the order, puts the Past Chair after the Chair and ahead of the members
+  person('tpl-past-chair', { name: 'Template Past Chair', title: 'Past Board Chair', group: 'board', seat: 'past-chair', order: 0 }),
   person('tpl-member', { name: 'Template Member', title: 'Board Member', group: 'board', seat: '', order: 1 }),
   person('tpl-member-bio', { name: 'Template Profiled', title: 'Board Member', organization: 'Template Company', group: 'board', seat: '', order: 2, photo: 'team-template/profiled',
     bio: 'Template first paragraph.\n\nTemplate second paragraph.', quote: 'Template quote.', linkedin: 'https://www.linkedin.com/in/template', committees: ['Template Committee'], since: 2020 }),

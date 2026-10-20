@@ -8,10 +8,11 @@
  * A record keeps its original fields (name, title, organization, photo, bio,
  * quote, group, order) plus the structured ones added in Oct 2026:
  *   role         team only: 'founder' | 'staff' | 'honorary'
- *   seat         board only: 'chair' | 'vice-chair' | 'treasurer' | 'secretary' | '' (member)
+ *   seat         board only: 'chair' | 'vice-chair' | 'treasurer' | 'secretary' | 'past-chair' | '' (member)
  *   status       'active' | 'alumni' (off the site, kept here) | 'memorial'
  *   since/until  years served (numbers, optional)
- *   committees   board only: string[]
+ *   committees   board only: string[], names from the board's committee list
+ *                (src/content/site/board-committees.json), A to Z
  *   partner      board only: a partner's slug (their company on the partners page)
  *   linkedin     https URL
  *   publishStatus 'draft' hides the person from the site
@@ -34,6 +35,7 @@ export const SEATS = [
   { id: 'vice-chair', label: 'Vice Chair', title: 'Board Vice Chair' },
   { id: 'treasurer', label: 'Treasurer', title: 'Board Treasurer' },
   { id: 'secretary', label: 'Secretary', title: 'Board Secretary' },
+  { id: 'past-chair', label: 'Past Chair', title: 'Past Board Chair' },
 ];
 export const MEMBER_TITLE = 'Board Member';
 export const TEAM_ROLES = [
@@ -62,6 +64,7 @@ const STATUS_IDS = STATUSES.map((s) => s.id);
 /** The seat a free-text title names ("Board Chair" → chair), for older records */
 export function seatFromTitle(title) {
   const t = String(title || '');
+  if (/\bpast\b.*\b(chair|president)/i.test(t)) return 'past-chair';
   if (/vice[\s-]*chair/i.test(t)) return 'vice-chair';
   if (/\bchair/i.test(t)) return 'chair';
   if (/treasurer/i.test(t)) return 'treasurer';
@@ -99,7 +102,7 @@ export function normalizePerson(d) {
 export const isListed = (p) => !p.draft && p.status !== 'alumni';
 
 const ROLE_RANK = { founder: 0, staff: 1, honorary: 2 };
-const SEAT_RANK = { chair: 0, 'vice-chair': 1, treasurer: 2, secretary: 3, '': 4 };
+const SEAT_RANK = { chair: 0, 'vice-chair': 1, treasurer: 2, secretary: 3, 'past-chair': 4, '': 5 };
 const byOrder = (a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.name).localeCompare(String(b.name));
 
 /** The site's order: founders, staff, honorary crew; officers, members, then those in memory */
@@ -240,6 +243,41 @@ export function portraitSrcset(p, widths) {
   if (!id) return '';
   return widths.map((w) => `${CF_BASE}/${id}/${portraitTransform(p, w)} ${w}w`).join(', ');
 }
+
+// ── Committees ───────────────────────────────────────────────────────
+// The board's committees are one list, picked from in the editor and kept
+// in src/content/site/board-committees.json ({ committees: [...] }). Until
+// it's first saved, the list starts from DEFAULT_COMMITTEES. A name on
+// someone's record always counts, so nothing assigned can drop off the list.
+
+export const COMMITTEES_PATH = 'src/content/site/board-committees.json';
+export const DEFAULT_COMMITTEES = ['Finance', 'Gala', 'Golf Tournament', 'Governance'];
+
+const byName = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+export const sameCommittee = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+/** A typed name, tidied: single spaces, no stray punctuation at the ends */
+export const cleanCommittee = (s) => String(s || '').replace(/\s+/g, ' ').replace(/^[\s,;]+|[\s,;]+$/g, '');
+
+/** Names A to Z, each once (the first spelling wins) */
+export function sortCommittees(names) {
+  const out = [];
+  for (const n of names || []) {
+    const c = cleanCommittee(n);
+    if (c && !out.some((x) => sameCommittee(x, c))) out.push(c);
+  }
+  return out.sort(byName);
+}
+
+/** Every committee to pick from: the saved list (or the starter one) plus any on a board record */
+export function committeeList(saved, people = []) {
+  const base = Array.isArray(saved) ? saved : DEFAULT_COMMITTEES;
+  const used = people.filter((p) => p?.group === 'board' && Array.isArray(p.committees)).flatMap((p) => p.committees);
+  return sortCommittees([...base, ...used]);
+}
+
+/** Board members on a committee, by name */
+export const committeeMembers = (name, people = []) => people
+  .filter((p) => p?.group === 'board' && Array.isArray(p.committees) && p.committees.some((c) => sameCommittee(c, name)));
 
 // ── Profile fields ───────────────────────────────────────────────────
 

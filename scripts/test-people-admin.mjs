@@ -55,7 +55,8 @@ const PARTNERS = readDir('partners');
 function makeApi() {
   const team = readDir('team');
   for (const [slug, d] of Object.entries(team)) d.slug ||= slug;
-  const st = { team, emails: {}, calls: [], waiting: new Set() };
+  // site: src/content/site docs by key (board-committees starts unsaved: the starter list)
+  const st = { team, site: {}, emails: {}, calls: [], waiting: new Set() };
   const respond = (req) => {
     const url = new URL(req.url());
     const json = (o, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(o) });
@@ -70,12 +71,24 @@ function makeApi() {
       return json({ success: true, items, count: items.length, total: items.length, pages: 1 });
     }
     if (p === '/api/read-content') {
+      const site = url.searchParams.get('path').match(/^src\/content\/site\/(.+)\.json$/);
+      if (site) {
+        const c = st.site[site[1]];
+        return c ? json({ success: true, content: c, sha: `sha-${site[1]}-${JSON.stringify(c).length}` }) : json({ success: false, error: 'Not found' }, 404);
+      }
       const m = url.searchParams.get('path').match(/^src\/content\/team\/(.+)\.json$/);
       const c = m && st.team[m[1]];
       return c ? json({ success: true, content: c, sha: `sha-${m[1]}-${JSON.stringify(c).length}` }) : json({ success: false, error: 'Not found' }, 404);
     }
     if (p === '/api/save-content') {
       const b = body();
+      const site = b.path.match(/^src\/content\/site\/(.+)\.json$/)?.[1];
+      if (site) {
+        const cur = st.site[site];
+        if (cur && b.sha !== `sha-${site}-${JSON.stringify(cur).length}`) return json({ success: false, error: 'Conflict: this item was changed since you loaded it.' }, 409);
+        st.site[site] = JSON.parse(b.content);
+        return json({ success: true, sha: `sha-${site}-${Date.now()}` });
+      }
       const slug = b.path.match(/team\/(.+)\.json$/)?.[1];
       st.team[slug] = JSON.parse(b.content);
       st.waiting.add(slug);
@@ -410,6 +423,110 @@ try {
     await sleep(700);
     ok(api.st.team['brent-aronson'].name === 'Brent Aronson' && api.st.team['brent-aronson'].status === 'memorial', 'saved as name + status: memorial');
 
+    // ── Past Chair and committees: Casey ──
+    const seatLabels = () => page.evaluate(() => [...[...document.querySelectorAll('.ppl-role .ppl-seg')][1].querySelectorAll('[role="radio"]')].map((b) => b.textContent));
+    const badges = () => page.$$eval('#ppl-committees .ppl-cmte:not(.ppl-cmte--new)', (bs) => bs.map((b) => `${b.textContent.trim()}${b.getAttribute('aria-pressed') === 'true' ? '*' : ''}`));
+    const badge = (name) => page.evaluate((n) => [...document.querySelectorAll('#ppl-committees .ppl-cmte')].find((b) => b.textContent.trim() === n)?.click(), name);
+    await clickText(page, '.breadcrumb button', 'Board');
+    await page.waitForSelector('.ppl-row');
+    await clickText(page, '.ppl-row__name', 'Casey Bradley');
+    await page.waitForSelector('#ppl-committees');
+    ok(JSON.stringify(await seatLabels()) === JSON.stringify(['Member', 'Chair', 'Vice Chair', 'Treasurer', 'Secretary', 'Past Chair']), `six seat choices, Past Chair last (${(await seatLabels()).join(', ')})`);
+    await page.evaluate(() => [...[...document.querySelectorAll('.ppl-role .ppl-seg')][1].querySelectorAll('[role="radio"]')].find((b) => b.textContent === 'Past Chair').click());
+    ok(await page.$eval('#ppl-title', (i) => i.value) === 'Past Board Chair', 'picking Past Chair sets the title to Past Board Chair');
+    await page.waitForFunction(() => document.querySelectorAll('#ppl-committees .ppl-cmte').length > 1, { timeout: 5000 });
+    ok(JSON.stringify(await badges()) === JSON.stringify(['Finance', 'Gala', 'Golf Tournament', 'Governance']), `the starter committees are badges, none picked (${(await badges()).join(', ')})`);
+    await badge('Golf Tournament');
+    await badge('Finance');
+    ok(JSON.stringify(await badges()) === JSON.stringify(['Finance*', 'Gala', 'Golf Tournament*', 'Governance']), `a tap picks a committee (${(await badges()).join(', ')})`);
+    await badge('New committee');
+    await page.waitForSelector('.ppl-cmte-new input');
+    ok(await page.evaluate(() => document.activeElement === document.querySelector('.ppl-cmte-new input')), 'New committee opens a focused field');
+    await page.type('.ppl-cmte-new input', ' finance ');
+    ok(await page.evaluate(() => /Finance is already picked/.test(document.querySelector('.ppl-cmte-new')?.textContent || '') && document.querySelector('.ppl-cmte-new .btn-primary').disabled),
+      'typing a picked committee says so, and Add waits');
+    await page.keyboard.press('Escape');
+    await sleep(150);
+    ok(!(await page.$('.ppl-cmte-new')) && await page.evaluate(() => document.activeElement?.textContent.trim() === 'New committee'), 'Escape closes the field and focus goes back to New committee');
+    await badge('New committee');
+    await page.waitForSelector('.ppl-cmte-new input');
+    await page.type('.ppl-cmte-new input', '  Marketing ');
+    await page.keyboard.press('Enter');
+    await sleep(150);
+    ok(JSON.stringify(await badges()) === JSON.stringify(['Finance*', 'Gala', 'Golf Tournament*', 'Governance', 'Marketing*']), `a new committee joins the badges, picked (${(await badges()).join(', ')})`);
+    await shot(page, 'desk-editor-committees');
+    await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
+    await page.waitForFunction(() => !document.querySelector('.ppl-unsaved'), { timeout: 8000 });
+    await sleep(500);
+    const casey = api.st.team['casey-bradley'];
+    ok(casey.seat === 'past-chair' && casey.title === 'Past Board Chair', `Casey saved as Past Chair (${casey.seat}, ${casey.title})`);
+    ok(JSON.stringify(casey.committees) === JSON.stringify(['Finance', 'Golf Tournament', 'Marketing']), `committees saved A to Z, tidied (${JSON.stringify(casey.committees)})`);
+    ok(JSON.stringify(api.st.site['board-committees']?.committees) === JSON.stringify(['Finance', 'Gala', 'Golf Tournament', 'Governance', 'Marketing']),
+      `Marketing joined the saved list (${JSON.stringify(api.st.site['board-committees'])})`);
+    await clickText(page, '.breadcrumb button', 'Board');
+    await page.waitForSelector('.ppl-row');
+    await sleep(300);
+    ok(JSON.stringify(await rowNames(page, 'Officers')) === JSON.stringify(['Scott Wierson', 'Casey Bradley']), `officers: the Chair, then the Past Chair (${(await rowNames(page, 'Officers'))?.join(', ')})`);
+    ok(await page.evaluate(() => /Secretary, Past Chair\./.test([...document.querySelectorAll('.ppl-section')].find((s) => /Officers/.test(s.textContent))?.querySelector('.ppl-hint')?.textContent || '')), 'the Officers note lists Past Chair');
+
+    // The committee list: rename, a clash, remove, add
+    const cmteRows = () => page.$$eval('.ppl-cmte-row', (rs) => rs.map((r) => r.querySelector('strong')?.textContent || r.textContent.trim().slice(0, 30)));
+    const rowBtn = (name, label) => page.evaluate((n, l) => [...document.querySelectorAll('.ppl-cmte-row')].find((r) => r.querySelector('strong')?.textContent === n)
+      ?.querySelector(`[aria-label="${l} ${n}"]`)?.click(), name, label);
+    // From the keyboard, so focus has a button to come back to
+    await page.evaluate(() => [...document.querySelectorAll('.ppl-head .btn')].find((b) => b.textContent.trim() === 'Committees').focus());
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.ppl-cmte-list');
+    ok(JSON.stringify(await cmteRows()) === JSON.stringify(['Finance', 'Gala', 'Golf Tournament', 'Governance', 'Marketing']), `the dialog lists the committees (${(await cmteRows()).join(', ')})`);
+    ok(await page.evaluate(() => [...document.querySelectorAll('.ppl-cmte-row')].find((r) => r.textContent.includes('Finance'))?.textContent.includes('1 · Casey Bradley')), 'each committee says who is on it');
+    await sleep(600); // the dialog fades in
+    await shot(page, 'desk-committees', { grow: false });
+    await rowBtn('Marketing', 'Rename');
+    await page.waitForSelector('#ppl-cmte-rename');
+    ok(await page.evaluate(() => document.activeElement?.id === 'ppl-cmte-rename' && document.activeElement.selectionEnd - document.activeElement.selectionStart === 9), 'Rename selects the name to type over');
+    await page.type('#ppl-cmte-rename', 'Outreach');
+    let saves2 = callsTo(api, '/api/save-content');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !document.querySelector('#ppl-cmte-rename') && !document.querySelector('.ppl-cmte-modal .spinner'), { timeout: 8000 });
+    await sleep(300);
+    ok(JSON.stringify(api.st.team['casey-bradley'].committees) === JSON.stringify(['Finance', 'Golf Tournament', 'Outreach']), `renaming updates Casey's record (${JSON.stringify(api.st.team['casey-bradley'].committees)})`);
+    ok(callsTo(api, '/api/save-content') === saves2 + 2, 'one save for Casey, one for the list');
+    ok(JSON.stringify(await cmteRows()) === JSON.stringify(['Finance', 'Gala', 'Golf Tournament', 'Governance', 'Outreach']), `the list shows Outreach (${(await cmteRows()).join(', ')})`);
+    await rowBtn('Gala', 'Rename');
+    await page.waitForSelector('#ppl-cmte-rename');
+    await page.type('#ppl-cmte-rename', 'FINANCE');
+    ok(await page.evaluate(() => /already a Finance committee/.test(document.querySelector('.ppl-cmte-row.is-editing')?.textContent || '') && document.querySelector('.ppl-cmte-row.is-editing .btn-primary').disabled),
+      'renaming to a name already on the list is stopped');
+    await page.keyboard.press('Escape');
+    await sleep(150);
+    ok(!(await page.$('#ppl-cmte-rename')) && !!(await page.$('.ppl-cmte-modal')), 'Escape leaves the rename, not the dialog');
+    saves2 = callsTo(api, '/api/save-content');
+    await rowBtn('Gala', 'Remove');
+    await page.waitForFunction(() => ![...document.querySelectorAll('.ppl-cmte-row strong')].some((s) => s.textContent === 'Gala'), { timeout: 8000 });
+    ok(callsTo(api, '/api/save-content') === saves2 + 1, 'removing a committee no one is on saves only the list');
+    await rowBtn('Finance', 'Remove');
+    await page.waitForSelector('.ppl-cmte-row.is-confirm');
+    ok((await page.$eval('.ppl-cmte-row.is-confirm', (e) => e.textContent)).includes('Take Finance off Casey Bradley too?'), 'removing a committee with members asks first, by name');
+    await shot(page, 'desk-committees-confirm', { grow: false });
+    await clickText(page, '.ppl-cmte-row.is-confirm .btn', 'Remove');
+    await page.waitForFunction(() => !document.querySelector('.ppl-cmte-row.is-confirm') && !document.querySelector('.ppl-cmte-modal .spinner'), { timeout: 8000 });
+    await sleep(300);
+    ok(JSON.stringify(api.st.team['casey-bradley'].committees) === JSON.stringify(['Golf Tournament', 'Outreach']), `Finance comes off Casey (${JSON.stringify(api.st.team['casey-bradley'].committees)})`);
+    await page.type('#ppl-cmte-add', 'Audit');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => [...document.querySelectorAll('.ppl-cmte-row strong')].some((s) => s.textContent === 'Audit'), { timeout: 8000 });
+    ok(JSON.stringify(api.st.site['board-committees'].committees) === JSON.stringify(['Audit', 'Golf Tournament', 'Governance', 'Outreach']), `the saved list after all that (${JSON.stringify(api.st.site['board-committees'].committees)})`);
+    await page.focus('#ppl-cmte-add');
+    for (let i = 0; i < 14; i++) await page.keyboard.press('Tab');
+    ok(await page.evaluate(() => document.querySelector('.ppl-cmte-modal').contains(document.activeElement)), 'Tab stays inside the committees dialog');
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    ok(!(await page.$('.ppl-cmte-modal')) && await page.evaluate(() => document.activeElement?.textContent.trim() === 'Committees'), 'Escape closes it and focus goes back to Committees');
+    await clickText(page, '.ppl-row__name', 'Casey Bradley');
+    await page.waitForSelector('#ppl-committees');
+    await page.waitForFunction(() => [...document.querySelectorAll('#ppl-committees .ppl-cmte')].some((b) => b.textContent.trim() === 'Audit'), { timeout: 5000 });
+    ok(JSON.stringify(await badges()) === JSON.stringify(['Audit', 'Golf Tournament*', 'Governance', 'Outreach*']), `Casey's badges follow the list (${(await badges()).join(', ')})`);
+
     // A new board member, from the Board tab
     await clickText(page, '.breadcrumb button', 'Board');
     await page.waitForSelector('.ppl-head .btn-primary');
@@ -549,6 +666,13 @@ try {
     ok(!ed.past.length, `editor fits the phone (${ed.past.join(', ')})`);
     ok(ed.smallFields === 0, 'every field is 16px, so iOS never zooms');
     ok(ed.segs === 0, 'segmented choices are 44px tall');
+    const cmteSmall = await page.$$eval('#ppl-committees .ppl-cmte', (bs) => bs.filter((b) => b.getBoundingClientRect().height < 44).length);
+    ok(cmteSmall === 0 && (await page.$$('#ppl-committees .ppl-cmte')).length === 5, `committee badges are 44px tall (${cmteSmall} smaller)`);
+    await page.evaluate(() => [...document.querySelectorAll('#ppl-committees .ppl-cmte')].find((b) => b.textContent.trim() === 'New committee').click());
+    await page.waitForSelector('.ppl-cmte-new input');
+    const newFit = await page.evaluate(() => { const main = document.querySelector('.main').getBoundingClientRect(); const i = document.querySelector('.ppl-cmte-new input'); const r = i.getBoundingClientRect(); return { fits: r.right <= main.right + 1, font: parseFloat(getComputedStyle(i).fontSize) }; });
+    ok(newFit.fits && newFit.font >= 16, `the new committee field fits and won't zoom (${JSON.stringify(newFit)})`);
+    await page.evaluate(() => [...document.querySelectorAll('.ppl-cmte-new .btn')].find((b) => b.textContent === 'Cancel').click());
     await shot(page, 'phone-editor');
     await page.waitForFunction(() => [...document.querySelectorAll('.ppl-photo__actions .btn')].some((b) => b.textContent.includes('Frame') && !b.disabled), { timeout: 15000 });
     await clickText(page, '.ppl-photo__actions .btn', 'Frame');
@@ -559,8 +683,23 @@ try {
     await shot(page, 'phone-crop');
     await clickText(page, '.ppl-crop .btn', 'Cancel');
     await sleep(300);
-    // The Team tab and a team member's editor on a phone
+    // The committees sheet on a phone
     await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
+    await page.waitForSelector('.ppl-head');
+    await clickText(page, '.ppl-head .btn', 'Committees');
+    await page.waitForSelector('.ppl-cmte-list');
+    await sleep(500);
+    const cSheet = await page.evaluate(() => {
+      const m = document.querySelector('.ppl-cmte-modal').getBoundingClientRect();
+      const small = [...document.querySelectorAll('.ppl-cmte-modal .btn')].filter((b) => b.getBoundingClientRect().height < 44).length;
+      const smallFields = [...document.querySelectorAll('.ppl-cmte-modal input')].filter((i) => parseFloat(getComputedStyle(i).fontSize) < 16).length;
+      return { w: Math.round(m.width), bottom: Math.round(m.bottom), small, smallFields };
+    });
+    ok(cSheet.w <= 390 && cSheet.bottom <= 845 && cSheet.small === 0 && cSheet.smallFields === 0, `the committees sheet fits, with 44px buttons and 16px fields (${JSON.stringify(cSheet)})`);
+    await shot(page, 'phone-committees', { grow: false });
+    await clickText(page, '.ppl-cmte-modal .btn', 'Done');
+    await sleep(300);
+    // The Team tab and a team member's editor on a phone
     await page.waitForSelector('.hub-tabs');
     await clickText(page, '.hub-tab', 'Team');
     await page.waitForSelector('.ppl-row');

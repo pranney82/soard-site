@@ -18,7 +18,7 @@ export interface PersonData {
   bio?: string;
   quote?: string;
   role?: 'founder' | 'staff' | 'honorary';
-  seat?: '' | 'chair' | 'vice-chair' | 'treasurer' | 'secretary';
+  seat?: '' | 'chair' | 'vice-chair' | 'treasurer' | 'secretary' | 'past-chair';
   status?: 'active' | 'alumni' | 'memorial';
   since?: number | null;
   until?: number | null;
@@ -34,7 +34,7 @@ export interface PersonData {
 export interface Person extends PersonData {
   status: 'active' | 'alumni' | 'memorial';
   role: 'founder' | 'staff' | 'honorary' | null;
-  seat: '' | 'chair' | 'vice-chair' | 'treasurer' | 'secretary';
+  seat: '' | 'chair' | 'vice-chair' | 'treasurer' | 'secretary' | 'past-chair';
   draft: boolean;
 }
 
@@ -42,12 +42,13 @@ export interface Person extends PersonData {
 export const CUTOUT_BACKDROP = 'F5F4F0';
 
 const MEMORIAL_PREFIX = /^\s*in memoriam\s*[,:]?\s*/i;
-const SEAT_IDS = ['chair', 'vice-chair', 'treasurer', 'secretary'];
+const SEAT_IDS = ['chair', 'vice-chair', 'treasurer', 'secretary', 'past-chair'];
 const ROLE_IDS = ['founder', 'staff', 'honorary'];
 const STATUS_IDS = ['active', 'alumni', 'memorial'];
 
 export function seatFromTitle(title: string | undefined): Person['seat'] {
   const t = String(title || '');
+  if (/\bpast\b.*\b(chair|president)/i.test(t)) return 'past-chair';
   if (/vice[\s-]*chair/i.test(t)) return 'vice-chair';
   if (/\bchair/i.test(t)) return 'chair';
   if (/treasurer/i.test(t)) return 'treasurer';
@@ -75,7 +76,7 @@ export function normalizePerson(d: PersonData): Person {
 export const isListed = (p: Person) => !p.draft && p.status !== 'alumni';
 
 const ROLE_RANK: Record<string, number> = { founder: 0, staff: 1, honorary: 2 };
-const SEAT_RANK: Record<string, number> = { chair: 0, 'vice-chair': 1, treasurer: 2, secretary: 3, '': 4 };
+const SEAT_RANK: Record<string, number> = { chair: 0, 'vice-chair': 1, treasurer: 2, secretary: 3, 'past-chair': 4, '': 5 };
 const byOrder = (a: Person, b: Person) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.name).localeCompare(String(b.name));
 
 export function comparePeople(a: Person, b: Person): number {

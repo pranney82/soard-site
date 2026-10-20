@@ -106,7 +106,7 @@ const team = defineCollection({
     // Structured fields (Oct 2026). Older records carry these in their name
     // and title text; src/utils/team.ts reads both.
     role: z.enum(['founder', 'staff', 'honorary']).optional(),
-    seat: z.enum(['', 'chair', 'vice-chair', 'treasurer', 'secretary']).optional(),
+    seat: z.enum(['', 'chair', 'vice-chair', 'treasurer', 'secretary', 'past-chair']).optional(),
     status: z.enum(['active', 'alumni', 'memorial']).optional(),
     since: z.number().nullable().optional(),
     until: z.number().nullable().optional(),

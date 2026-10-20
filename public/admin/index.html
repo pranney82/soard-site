@@ -3018,12 +3018,47 @@
     .ppl-inline .form-input { flex: 1; min-width: 0; }
     .ppl-inline .btn { display: inline-flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
     .ppl-bad { color: #A32B2B !important; }
-    .ppl-chips-input {
-      display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; min-height: 42px; padding: 0.35rem 0.5rem;
-      border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-bg-card); cursor: text;
+    /* Committees: badges to tap on a board member, and the list's dialog */
+    .ppl-cmtes { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
+    .ppl-cmte {
+      display: inline-flex; align-items: center; gap: 0.45rem; min-height: 36px; padding: 0.3rem 0.85rem 0.3rem 0.4rem;
+      border: 1px solid var(--color-border-strong); border-radius: 999px; background: var(--color-bg-card);
+      font-size: 0.86rem; font-weight: 600; color: var(--color-text-secondary); transition: background 0.15s, color 0.15s, border-color 0.15s;
     }
-    .ppl-chips-input:focus-within { border-color: var(--color-text); box-shadow: var(--focus-ring); }
-    .ppl-chips-input input { flex: 1 1 140px; min-width: 120px; min-height: 0; padding: 0.25rem !important; border: none !important; border-radius: 0; outline: none; box-shadow: none !important; background: transparent !important; font-size: 0.92rem; }
+    .ppl-cmte:hover { color: var(--color-text); border-color: var(--color-text); }
+    .ppl-cmte__mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #EFEEEA; color: var(--color-text-muted); transition: background 0.15s, color 0.15s; }
+    .ppl-cmte__mark svg { width: 13px; height: 13px; }
+    .ppl-cmte[aria-pressed="true"] { background: var(--color-text); border-color: var(--color-text); color: #fff; }
+    .ppl-cmte[aria-pressed="true"] .ppl-cmte__mark { background: var(--color-primary); color: var(--color-text); }
+    .ppl-cmte--new { border-style: dashed; background: transparent; color: var(--color-text-muted); }
+    .ppl-cmte--new .ppl-cmte__mark { background: transparent; }
+    .ppl-cmte-new { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; flex: 1 1 320px; }
+    .ppl-cmte-new .form-input { flex: 1 1 180px; min-width: 0; max-width: 280px; }
+    .ppl-cmte-new__hint { flex-basis: 100%; margin: 0; }
+    .modal.ppl-cmte-modal { max-width: 560px; max-height: calc(100dvh - 3rem); overflow-y: auto; }
+    .modal .ppl-cmte-modal__lead { margin-bottom: 1rem; }
+    .ppl-cmte-modal__loading { display: flex; align-items: center; gap: 0.5rem; }
+    .ppl-cmte-list { list-style: none; margin: 0 0 0.9rem; border: 1px solid var(--color-border); border-radius: 12px; }
+    .ppl-cmte-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.65rem 0.6rem 0.65rem 0.9rem; border-bottom: 1px solid var(--color-border); }
+    .ppl-cmte-row:last-child { border-bottom: none; border-radius: 0 0 12px 12px; }
+    .ppl-cmte-row:first-child { border-radius: 12px 12px 0 0; }
+    .ppl-cmte-row:only-child { border-radius: 12px; }
+    .ppl-cmte-row__main { flex: 1 1 130px; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+    .ppl-cmte-row__main strong { font-size: 0.94rem; color: var(--color-text); }
+    .ppl-cmte-row__main small { font-size: 0.8rem; color: var(--color-text-muted); }
+    .ppl-cmte-row__actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
+    .ppl-cmte-row.is-editing .form-input { flex: 1 1 200px; min-width: 0; }
+    .ppl-cmte-row .form-hint { flex-basis: 100%; margin: 0; }
+    .ppl-cmte-row.is-confirm { background: #FFFBEA; }
+    .modal .ppl-cmte-row.is-confirm p { flex: 1 1 220px; margin: 0; color: var(--color-text); font-size: 0.88rem; }
+    .ppl-cmte-row.is-confirm small { color: var(--color-text-muted); }
+    .ppl-cmte-add { display: flex; align-items: center; gap: 0.5rem; }
+    .ppl-cmte-add .form-input { flex: 1; min-width: 0; }
+    .ppl-cmte-add .btn { display: inline-flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+    .ppl-cmte-modal__foot { align-items: center; margin-top: 1.25rem; }
+    @media (pointer: coarse) {
+      .ppl-cmte, .ppl-cmte-new .btn, .ppl-cmte-row .btn, .ppl-cmte-add .btn { min-height: 44px; }
+    }
     .ppl-partner.is-set { display: flex; align-items: center; gap: 0.75rem; padding: 0.55rem 0.7rem; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-secondary); }
     .ppl-partner__logo { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; padding: 3px; border: 1px solid var(--color-border); border-radius: 8px; background: #fff; font-size: 0.78rem; font-weight: 700; color: var(--color-text-secondary); }
     .ppl-partner__logo img { width: 100%; height: 100%; object-fit: contain; }
@@ -3094,7 +3129,10 @@
       .ppl-crop__previews { justify-content: center; }
       .ppl-crop__buttons .ppl-spacer { display: none; }
       .ppl-inline { flex-wrap: wrap; }
-      .ppl-chips-input input { font-size: 16px; }
+      .ppl-cmte-new input, .ppl-cmte-add input, .ppl-cmte-row input { font-size: 16px; }
+      .ppl-cmte-new .form-input { flex-basis: 100%; max-width: none; }
+      .ppl-cmte, .ppl-cmte-new .btn, .ppl-cmte-row .btn, .ppl-cmte-add .btn { min-height: 44px; }
+      .ppl-cmte-modal__foot .ppl-spacer, .ppl-cmte-modal__foot .ppl-saving:empty { display: none; }
     }
 
     /* ─── Reduced Motion ──────────────── */
@@ -3134,6 +3172,8 @@
       normalizeLinkedIn as tsNormalizeLinkedIn, seatTitle as tsSeatTitle, CF_ORIGIN as TS_CF_ORIGIN,
       SEATS as TS_SEATS, TEAM_ROLES as TS_TEAM_ROLES, STATUSES as TS_STATUSES, MEMBER_TITLE as TS_MEMBER_TITLE,
       PHOTO_MIN as TS_PHOTO_MIN, PHOTO_GOOD as TS_PHOTO_GOOD, hasProfile as tsHasProfile, profilePath as tsProfilePath,
+      COMMITTEES_PATH as TS_COMMITTEES_PATH, DEFAULT_COMMITTEES as TS_DEFAULT_COMMITTEES, committeeList as tsCommitteeList,
+      committeeMembers as tsCommitteeMembers, sortCommittees as tsSortCommittees, sameCommittee as tsSameCommittee, cleanCommittee as tsCleanCommittee,
     } from './team-shared.js';
     // Kid profile rules (gallery split, hero intro, plan crop, what's missing), shared with the kid page Preview
     import * as KS from './kids-shared.js';
@@ -12634,6 +12674,7 @@
       check: _s(html`<path d="M20 6 9 17l-5-5"/>`, 13),
       link: _s(html`<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>`, 14),
       chevron: _s(html`<path d="m6 9 6 6 6-6"/>`, 16),
+      plus: _s(html`<path d="M12 5v14"/><path d="M5 12h14"/>`, 13),
     };
 
     const PEOPLE_SECTIONS = {
@@ -12645,7 +12686,7 @@
       ],
       board: [
         { id: 'officers', title: 'Officers', match: (p) => p.status !== 'memorial' && !!p.seat, sortable: false,
-          note: 'Officers are listed by seat: Chair, Vice Chair, Treasurer, Secretary.', empty: 'No officers yet. Give someone a seat in their Role section.' },
+          note: `Officers are listed by seat: ${TS_SEATS.map((s) => s.label).join(', ')}.`, empty: 'No officers yet. Give someone a seat in their Role section.' },
         { id: 'members', title: 'Members', match: (p) => p.status !== 'memorial' && !p.seat, sortable: true },
         { id: 'memorial', title: 'In memory', match: (p) => p.status === 'memorial', sortable: true, hideEmpty: true },
       ],
@@ -12750,7 +12791,7 @@
         if (r[k] === '' || r[k] == null || !Number.isInteger(n) || n < 1900 || n > 2200) delete r[k]; else r[k] = n;
       }
       if (r.status === 'active') delete r.until;
-      if (Array.isArray(r.committees)) { r.committees = [...new Set(r.committees.map((c) => String(c).trim()).filter(Boolean))]; if (!r.committees.length) delete r.committees; }
+      if (Array.isArray(r.committees)) { r.committees = tsSortCommittees(r.committees); if (!r.committees.length) delete r.committees; }
       for (const k of ['partner', 'linkedin']) if (!r[k]) delete r[k];
       if (!r.photo) { delete r.photoCrop; delete r.photoSize; delete r.photoCutout; }
       if (!r.photoCrop) delete r.photoCrop;
@@ -12850,6 +12891,7 @@
       const [filter, setFilter] = useState(initialFilter || 'all');
       useEffect(() => { if (initialFilter) onClearFilter?.(); }, []);
       const [showAlumni, setShowAlumni] = useState(false);
+      const [showCmtes, setShowCmtes] = useState(false);
       const [order, setOrder] = useState({});         // section id → slugs, while dragging or saving
       const [lifted, setLifted] = useState(null);     // { section, slug, keyboard, start }
       const [savingOrder, setSavingOrder] = useState(false);
@@ -13133,9 +13175,11 @@
           </div>
           <div class="flex gap-1 items-center">
             <a class="btn btn-ghost btn-sm" href="/about/leadership/" target="_blank" rel="noopener">Leadership page ${pplIcon.external}</a>
+            ${group === 'board' ? html`<button type="button" class="btn btn-ghost btn-sm ppl-cmtes-btn" onClick=${() => setShowCmtes(true)}>Committees</button>` : null}
             <button class="btn btn-primary" onClick=${onAdd}>+ Add ${group === 'board' ? 'board member' : 'team member'}</button>
           </div>
         </div>
+        ${showCmtes ? html`<${PplCommitteesModal} team=${team} addToast=${addToast} onChanged=${onReload} onClose=${() => setShowCmtes(false)} />` : null}
         ${empty ? html`<div class="card ppl-empty-all">
             <p><strong>No ${label.toLowerCase()} members yet.</strong></p>
             <p class="text-muted">Add the first one and they’ll appear on the Leadership page after you publish.</p>
@@ -13202,6 +13246,8 @@
         const focusables = () => [...(ref.current?.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') || [])]
           .filter((el) => el.getClientRects().length);
         const onKey = (e) => {
+          // A field marked data-escape="local" uses Escape itself (cancelling an inline edit)
+          if (e.key === 'Escape' && e.target?.closest?.('[data-escape="local"]')) return;
           if (e.key === 'Escape') { if (!busyRef.current) { e.preventDefault(); e.stopPropagation(); closeRef.current(); } return; }
           if (e.key !== 'Tab') return;
           const f = focusables();
@@ -13358,26 +13404,228 @@
       </div>`;
     }
 
-    // ─── Committees: type and press Enter (or comma) ───
-    function PplChips({ id, value = [], suggestions = [], onChange, placeholder }) {
+    // ─── Board committees: one list (team-shared.js), picked from on each member ───
+    /** The saved list: { saved: names, or null before its first save; sha } */
+    async function pplReadCommittees() {
+      const r = await api.readContent(TS_COMMITTEES_PATH);
+      if (r.success) {
+        const c = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+        return { saved: Array.isArray(c?.committees) ? c.committees : [], sha: r.sha };
+      }
+      if (r.error === 'Not found') return { saved: null, sha: null };
+      throw new Error(r.error || 'Couldn’t load the committees');
+    }
+    /** Change the list from its latest copy, so a change made meanwhile in another tab survives */
+    async function pplWriteCommittees(change, message) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const cur = await pplReadCommittees();
+        const next = tsSortCommittees(change(cur.saved ?? TS_DEFAULT_COMMITTEES));
+        // Not through api.saveContent: the list isn't site content, so its save
+        // mustn't read as a change waiting to publish
+        const r = await fetch('/api/save-content', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: TS_COMMITTEES_PATH, content: JSON.stringify({ committees: next }, null, 2), message, sha: cur.sha || undefined }) });
+        const res = await apiJson(r, '/api/save-content');
+        if (res.success) return next;
+        if (!/conflict/i.test(res.error || '')) throw new Error(res.error);
+      }
+      throw new Error('The list changed at the same moment. Try again.');
+    }
+    /** [{ saved: names | null (starter list) | undefined (loading) }, reload, setSaved] */
+    function useBoardCommittees(enabled = true) {
+      const [state, setState] = useState({ saved: undefined });
+      const load = useCallback(() => {
+        if (!enabled) return;
+        pplReadCommittees().then((c) => setState({ saved: c.saved })).catch(() => setState({ saved: null }));
+      }, [enabled]);
+      useEffect(() => { load(); }, [load]);
+      return [state, load, (saved) => setState({ saved })];
+    }
+
+    // ─── Committees on a board member: tap a badge to add or remove it ───
+    function PplCommitteePicker({ id, labelledBy, value = [], options = [], onChange }) {
+      const [adding, setAdding] = useState(false);
       const [text, setText] = useState('');
-      const add = (t) => {
-        const v = String(t || '').trim().replace(/,$/, '');
-        if (!v || value.some((x) => x.toLowerCase() === v.toLowerCase())) { setText(''); return; }
-        onChange([...value, v]);
-        setText('');
+      // Focus moves as each control is drawn, so no keystroke lands in between
+      const focusOnce = useRef(null);
+      const grab = (key) => (el) => { if (el && focusOnce.current === key) { focusOnce.current = null; el.focus(); } };
+      const has = (c) => value.some((v) => tsSameCommittee(v, c));
+      const toggle = (c) => onChange(has(c) ? value.filter((v) => !tsSameCommittee(v, c)) : tsSortCommittees([...value, c]));
+      const all = tsSortCommittees([...options, ...value]);
+      const clean = tsCleanCommittee(text);
+      const match = clean ? all.find((c) => tsSameCommittee(c, clean)) : null;
+      const open = () => { focusOnce.current = 'field'; setAdding(true); };
+      const close = () => { focusOnce.current = 'button'; setText(''); setAdding(false); };
+      const add = () => {
+        if (!clean) return;
+        if (!has(match || clean)) onChange(tsSortCommittees([...value, match || clean]));
+        close();
       };
-      const left = suggestions.filter((s) => !value.some((v) => v.toLowerCase() === s.toLowerCase()));
-      return html`<div class="ppl-chips-input" onClick=${(e) => e.currentTarget.querySelector('input')?.focus()}>
-        ${value.map((c) => html`<span class="chip" key=${c}>${c}<button type="button" class="chip-remove" aria-label=${`Remove ${c}`} onClick=${() => onChange(value.filter((x) => x !== c))}>×</button></span>`)}
-        <input id=${id} value=${text} list=${`${id}-list`} placeholder=${value.length ? '' : placeholder}
-          onInput=${(e) => { const v = e.target.value; if (v.endsWith(',')) add(v); else setText(v); }}
-          onKeyDown=${(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); add(text); }
-            else if (e.key === 'Backspace' && !text && value.length) onChange(value.slice(0, -1));
-          }}
-          onBlur=${() => add(text)} />
-        <datalist id=${`${id}-list`}>${left.map((s) => html`<option value=${s} />`)}</datalist>
+      return html`<div class="ppl-cmtes" role="group" aria-labelledby=${labelledBy} id=${id}>
+        ${all.map((c) => {
+          const on = has(c);
+          return html`<button type="button" key=${c} class="ppl-cmte" aria-pressed=${on} onClick=${() => toggle(c)}>
+            <span class="ppl-cmte__mark" aria-hidden="true">${on ? pplIcon.check : pplIcon.plus}</span>${c}</button>`;
+        })}
+        ${adding ? html`<div class="ppl-cmte-new">
+            <input ref=${grab('field')} class="form-input" aria-label="New committee name" placeholder="Committee name" maxlength="60" value=${text}
+              onInput=${(e) => setText(e.target.value)}
+              onKeyDown=${(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); add(); }
+                else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+              }} />
+            <button type="button" class="btn btn-primary btn-sm" onClick=${add} disabled=${!clean || (match && has(match))}>Add</button>
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${close}>Cancel</button>
+            ${match ? html`<p class="form-hint ppl-cmte-new__hint" role="status">${has(match) ? `${match} is already picked.` : `${match} is on the list: Add picks it.`}</p>` : null}
+          </div>`
+          : html`<button type="button" class="ppl-cmte ppl-cmte--new" ref=${grab('button')} onClick=${open}>
+              <span class="ppl-cmte__mark" aria-hidden="true">${pplIcon.plus}</span>New committee</button>`}
+      </div>`;
+    }
+
+    // ─── The committee list: add one, or rename or remove one for everyone ───
+    function PplCommitteesModal({ team, onClose, onChanged, addToast }) {
+      const [cmtes, , setSaved] = useBoardCommittees(true);
+      const [busy, setBusy] = useState(null);         // what's being saved, said in the footer
+      const [editing, setEditing] = useState(null);   // { from, to }
+      const [removing, setRemoving] = useState(null); // a name, while its members are asked about
+      const [text, setText] = useState('');
+      const dialogRef = useRef(null);
+      usePplDialog(dialogRef, onClose, !!busy);
+      const board = team.filter((t) => t.group === 'board');
+      const list = cmtes.saved === undefined ? null : tsCommitteeList(cmtes.saved, board);
+      const membersOf = (name) => tsCommitteeMembers(name, board).map((p) => normalizePerson(p).name).sort((a, b) => a.localeCompare(b));
+      // The rename field takes focus, its name selected, the moment it's drawn
+      const selectedFor = useRef(null);
+      const grabRename = (el) => {
+        if (el && editing && selectedFor.current !== editing.from) { selectedFor.current = editing.from; el.focus(); el.select(); }
+        if (!editing) selectedFor.current = null;
+      };
+      useEffect(() => { if (!editing) selectedFor.current = null; }, [editing]);
+
+      // Each member's record, read fresh and saved with only its committees changed
+      const rewrite = async (name, change, message) => {
+        let done = 0;
+        const failed = [];
+        for (const p of tsCommitteeMembers(name, board)) {
+          const path = `src/content/team/${p.slug}.json`;
+          try {
+            const r = await api.readContent(path);
+            if (!r.success) throw new Error(r.error);
+            const saved = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+            const next = { ...saved, committees: tsSortCommittees(change(Array.isArray(saved.committees) ? saved.committees : [])) };
+            if (!next.committees.length) delete next.committees;
+            const res = await api.saveContent(path, JSON.stringify(next, null, 2), `${message}: ${normalizePerson(saved).name}`, r.sha);
+            if (!res.success) throw new Error(res.error);
+            done++;
+          } catch { failed.push(normalizePerson(p).name); }
+        }
+        return { done, failed };
+      };
+      const people = (n) => `${n} ${n === 1 ? 'person' : 'people'}`;
+      const run = async (label, work) => {
+        setBusy(label);
+        try { await work(); } catch (e) { addToast(`Couldn’t save: ${e.message}`, 'error'); }
+        setBusy(null);
+      };
+
+      const add = () => {
+        const name = tsCleanCommittee(text);
+        if (!name) return;
+        const clash = list.find((c) => tsSameCommittee(c, name));
+        if (clash) { addToast(`${clash} is already on the list`, 'info'); return; }
+        run(`Adding ${name}`, async () => {
+          setSaved(await pplWriteCommittees((l) => [...l, name], `Board committees: add ${name}`));
+          setText('');
+          addToast(`${name} added. Pick it on a board member to put them on it.`, 'success');
+        });
+      };
+      const rename = () => {
+        const { from } = editing;
+        const to = tsCleanCommittee(editing.to);
+        if (!to || to === from) { setEditing(null); return; }
+        const clash = list.find((c) => tsSameCommittee(c, to) && !tsSameCommittee(c, from));
+        if (clash) { addToast(`There’s already a ${clash} committee`, 'error'); return; }
+        run(`Renaming ${from}`, async () => {
+          const { done, failed } = await rewrite(from, (cs) => cs.map((c) => (tsSameCommittee(c, from) ? to : c)), `Committee renamed to ${to}`);
+          setSaved(await pplWriteCommittees((l) => [...l.filter((c) => !tsSameCommittee(c, from)), to], `Board committees: rename ${from} to ${to}`));
+          setEditing(null);
+          if (done) onChanged?.();
+          if (failed.length) addToast(`Renamed, but ${failed.join(', ')} still ${failed.length === 1 ? 'has' : 'have'} “${from}”. Try again.`, 'error');
+          else addToast(done ? `Renamed to ${to} for ${people(done)}` : `Renamed to ${to}`, 'success');
+        });
+      };
+      const remove = (name) => run(`Removing ${name}`, async () => {
+        const { done, failed } = await rewrite(name, (cs) => cs.filter((c) => !tsSameCommittee(c, name)), `Committee removed: ${name}`);
+        setSaved(await pplWriteCommittees((l) => l.filter((c) => !tsSameCommittee(c, name)), `Board committees: remove ${name}`));
+        setRemoving(null);
+        if (done) onChanged?.();
+        if (failed.length) addToast(`${failed.join(', ')} couldn’t be taken off ${name}, so it stays on the list. Try again.`, 'error');
+        else addToast(done ? `${name} removed, and taken off ${people(done)}` : `${name} removed`, 'success');
+      });
+
+      const row = (name) => {
+        const members = membersOf(name);
+        if (editing?.from === name) {
+          const to = tsCleanCommittee(editing.to);
+          const clash = to && list.find((c) => tsSameCommittee(c, to) && !tsSameCommittee(c, name));
+          return html`<li key=${name} class="ppl-cmte-row is-editing">
+            <label class="sr-only" for="ppl-cmte-rename">New name for ${name}</label>
+            <input id="ppl-cmte-rename" ref=${grabRename} class="form-input" maxlength="60" value=${editing.to} disabled=${!!busy} data-escape="local"
+              onInput=${(e) => setEditing({ from: name, to: e.target.value })}
+              onKeyDown=${(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); if (!clash && to) rename(); }
+                else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setEditing(null); }
+              }} />
+            <div class="ppl-cmte-row__actions">
+              <button type="button" class="btn btn-primary btn-sm" onClick=${rename} disabled=${!!busy || !to || !!clash}>Save</button>
+              <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setEditing(null)} disabled=${!!busy}>Cancel</button>
+            </div>
+            <p class=${`form-hint${clash ? ' ppl-bad' : ''}`}>${clash ? `There’s already a ${clash} committee.` : members.length ? `Renames it for ${members.join(', ')}.` : 'No one is on it yet.'}</p>
+          </li>`;
+        }
+        if (removing === name) {
+          return html`<li key=${name} class="ppl-cmte-row is-confirm" role="alert">
+            <p><strong>Take ${name} off ${members.length === 1 ? members[0] : `${members.length} board members`} too?</strong>
+              ${members.length > 1 ? html`<br /><small>${members.join(', ')}</small>` : null}</p>
+            <div class="ppl-cmte-row__actions">
+              <button type="button" class="btn btn-danger btn-sm" onClick=${() => remove(name)} disabled=${!!busy}>Remove</button>
+              <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setRemoving(null)} disabled=${!!busy}>Keep it</button>
+            </div>
+          </li>`;
+        }
+        return html`<li key=${name} class="ppl-cmte-row">
+          <div class="ppl-cmte-row__main">
+            <strong>${name}</strong>
+            <small>${members.length ? `${members.length} · ${members.join(', ')}` : 'No one yet'}</small>
+          </div>
+          <div class="ppl-cmte-row__actions">
+            <button type="button" class="btn btn-ghost btn-sm" aria-label=${`Rename ${name}`} disabled=${!!busy}
+              onClick=${() => { setRemoving(null); setEditing({ from: name, to: name }); }}>Rename</button>
+            <button type="button" class="btn btn-ghost btn-sm ppl-quiet-danger" aria-label=${`Remove ${name}`} disabled=${!!busy}
+              onClick=${() => { setEditing(null); if (members.length) setRemoving(name); else remove(name); }}>Remove</button>
+          </div>
+        </li>`;
+      };
+
+      return html`<div class="modal-overlay" onClick=${() => !busy && onClose()}>
+        <div class="modal ppl-cmte-modal" role="dialog" aria-modal="true" aria-labelledby="ppl-cmtes-title" ref=${dialogRef} onClick=${(e) => e.stopPropagation()}>
+          <h3 id="ppl-cmtes-title">Board committees</h3>
+          <p class="ppl-cmte-modal__lead">The committees you pick from on each board member. A member’s committees show on their profile page.</p>
+          ${list === null ? html`<p class="ppl-cmte-modal__loading"><span class="spinner spinner-14" /> Loading the list</p>` : html`
+            ${list.length ? html`<ul class="ppl-cmte-list" aria-label="Committees">${list.map(row)}</ul>`
+              : html`<p class="ppl-empty">No committees yet. Add the first one below.</p>`}
+            <div class="ppl-cmte-add">
+              <label class="sr-only" for="ppl-cmte-add">New committee</label>
+              <input id="ppl-cmte-add" class="form-input" placeholder="New committee, e.g. Marketing" maxlength="60" value=${text} disabled=${!!busy}
+                onInput=${(e) => setText(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
+              <button type="button" class="btn btn-ghost btn-sm" onClick=${add} disabled=${!!busy || !tsCleanCommittee(text)}>${pplIcon.plus} Add</button>
+            </div>`}
+          <div class="modal-buttons ppl-cmte-modal__foot">
+            <span class="ppl-saving" role="status">${busy ? html`<span class="spinner spinner-14" /> ${busy}…` : ''}</span>
+            <span class="ppl-spacer"></span>
+            <button type="button" class="btn btn-primary" onClick=${onClose} disabled=${!!busy}>Done</button>
+          </div>
+        </div>
       </div>`;
     }
 
@@ -13526,7 +13774,8 @@
       // A bio (and a place on the Leadership page) gives them a profile page
       const profileReady = tsHasProfile(normalizePerson(previewRecord));
       const profileSlugs = useMemo(() => team.filter((t) => tsHasProfile(normalizePerson(t))).map((t) => t.slug), [team]);
-      const committeeSuggestions = useMemo(() => [...new Set(team.flatMap((t) => (t.group === 'board' && Array.isArray(t.committees) ? t.committees : [])))].sort(), [team]);
+      const [cmtes, reloadCmtes] = useBoardCommittees(board);
+      const committeeOptions = useMemo(() => tsCommitteeList(cmtes.saved, team), [cmtes.saved, team]);
       const issues = pplIssues({ ...normalizePerson(previewRecord), slug }, { size: photoSize, emails: board ? { ...(emails || {}), [slug]: emailClean } : null });
 
       const save = async () => {
@@ -13538,6 +13787,13 @@
         const ok = await handleSave(() => rec);
         if (!ok) return;
         pplWarmPhoto(rec);
+        // A committee added here joins the list, so it's a badge on everyone else too
+        const listed = tsCommitteeList(cmtes.saved);
+        const fresh = board ? (rec.committees || []).filter((c) => !listed.some((l) => tsSameCommittee(l, c))) : [];
+        if (fresh.length) {
+          pplWriteCommittees((l) => [...l, ...fresh], `Board committees: add ${fresh.join(', ')}`).then(reloadCmtes)
+            .catch((e) => addToast(`Saved. ${fresh.join(', ')} didn’t join the committee list (${e.message}), but stays on this person.`, 'info'));
+        }
         if (emailDirty) {
           try {
             const r = await fetch('/api/reveal-invites-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boardEmail: { slug: rec.slug, email: emailClean } }) });
@@ -13730,9 +13986,10 @@
         ${board ? html`<section class="card" aria-labelledby="ppl-board-h">
           <h3 id="ppl-board-h">Board details</h3>
           <div class="form-group">
-            <label class="form-label" for="ppl-committees">Committees <span class="form-optional">optional</span></label>
-            <${PplChips} id="ppl-committees" value=${data.committees || []} suggestions=${committeeSuggestions} placeholder="Type a committee and press Enter"
+            <span class="form-label" id="ppl-committees-l">Committees <span class="form-optional">optional</span></span>
+            <${PplCommitteePicker} id="ppl-committees" labelledBy="ppl-committees-l" value=${data.committees || []} options=${committeeOptions}
               onChange=${(committees) => set({ committees })} />
+            <div class="form-hint">Tap to add or take off. Shown on their profile page. Rename or remove a committee for everyone with Committees on the Board list.</div>
           </div>
           <div class="form-group u-m-0">
             <label class="form-label" for="ppl-email">Email for reveal invites</label>

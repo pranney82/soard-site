@@ -12,7 +12,8 @@ import { rename, imageIdOf } from '../functions/api/rename-content.js';
 import { personStatus, onActiveBoard, personName } from '../functions/api/_team.js';
 import {
   normalizePerson, comparePeople, isListed, photoTransform, photoLqip, photoPixels, photoQuality,
-  normalizeLinkedIn, seatTitle, validCrop,
+  normalizeLinkedIn, seatTitle, validCrop, SEATS,
+  DEFAULT_COMMITTEES, committeeList, committeeMembers, sortCommittees, cleanCommittee, sameCommittee,
 } from '../public/admin/team-shared.js';
 
 const HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
@@ -78,6 +79,41 @@ test('order: founders, staff, honorary crew; officers, members, then memorials',
   assert.deepEqual(board, ['Scott', 'Tess', 'Mary', 'Brent']);
   assert.equal(seatTitle('vice-chair'), 'Board Vice Chair');
   assert.equal(seatTitle(''), 'Board Member');
+});
+
+test('Past Chair: a seat after the other officers, ahead of the members', () => {
+  assert.deepEqual(SEATS.map((s) => s.id), ['chair', 'vice-chair', 'treasurer', 'secretary', 'past-chair']);
+  assert.equal(seatTitle('past-chair'), 'Past Board Chair');
+  for (const title of ['Past Board Chair', 'Immediate Past Chair', 'Past President', 'Past Chair 2019-2024']) {
+    assert.equal(normalizePerson({ name: 'P', title, group: 'board' }).seat, 'past-chair', title);
+  }
+  assert.equal(normalizePerson({ name: 'S', title: 'Board Chair', group: 'board' }).seat, 'chair', 'the chair is still the chair');
+  assert.equal(normalizePerson({ name: 'P', title: 'Past Board Chair', group: 'board', seat: '' }).seat, '', 'an explicit member seat wins');
+  const board = [
+    { name: 'Mary', title: 'Board Member', group: 'board', order: 0 },
+    { name: 'Pat', title: 'Past Board Chair', group: 'board', seat: 'past-chair', order: 1 },
+    { name: 'Traci', title: 'Board Secretary', group: 'board', seat: 'secretary', order: 2 },
+    { name: 'In memoriam, Brent', title: 'Past Board Chair', group: 'board', order: 3 },
+    { name: 'Scott', title: 'Board Chair', group: 'board', seat: 'chair', order: 4 },
+  ].map(normalizePerson).sort(comparePeople).map((p) => p.name);
+  assert.deepEqual(board, ['Scott', 'Traci', 'Pat', 'Mary', 'Brent'], 'memorials stay last, whatever their seat');
+});
+
+test('committees: one list, A to Z, each name once; assigned names never drop off', () => {
+  assert.deepEqual(committeeList(undefined), DEFAULT_COMMITTEES, 'the starter list before the first save');
+  assert.deepEqual(committeeList(null), ['Finance', 'Gala', 'Golf Tournament', 'Governance']);
+  assert.deepEqual(committeeList([]), [], 'a saved empty list stays empty');
+  const people = [
+    { name: 'A', group: 'board', committees: ['Marketing', 'finance'] },
+    { name: 'B', group: 'board', committees: ['Gala'] },
+    { name: 'C', group: 'team', committees: ['Ignored'] },
+  ];
+  assert.deepEqual(committeeList(['Finance', 'Gala'], people), ['Finance', 'Gala', 'Marketing'],
+    'board records add their names; the saved spelling wins; team records are ignored');
+  assert.deepEqual(sortCommittees(['  golf  tournament ', 'Audit', 'audit', '', ' , ']), ['Audit', 'golf tournament']);
+  assert.equal(cleanCommittee(' Events,  & Outreach ;'), 'Events, & Outreach');
+  assert.ok(sameCommittee('Finance', ' finance '));
+  assert.deepEqual(committeeMembers('FINANCE', people).map((p) => p.name), ['A']);
 });
 
 test('photo URLs: face-centered by default, an exact crop when set, cutouts on the circle color', () => {
