@@ -3747,6 +3747,10 @@
     .pt-same > span:first-of-type { flex: 1 1 320px; }
     .pt-same__acts { display: flex; flex-wrap: wrap; gap: 0.4rem; }
     .pt-merge-into { display: grid; gap: 0.5rem; margin: 0 0 0 1.1rem; font-size: 0.9rem; line-height: 1.5; color: var(--color-text); }
+    .pt-merge-into__swap { display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 1rem; padding: 0.75rem 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 0.9rem; line-height: 1.45; cursor: pointer; }
+    .pt-merge-into__swap input { margin-top: 0.2rem; flex-shrink: 0; }
+    .pt-merge-into__swap > span { display: block; min-width: 0; }
+    .pt-merge-into__logos { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; color: var(--color-text-muted); }
 
     /* Category toggles */
     .pt-cats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45rem; margin-bottom: 0.4rem; }
@@ -14389,15 +14393,26 @@
       </div></div>`;
     }
 
+    // “Means & Carney Interiors’ logo”, “Pella’s logo”
+    const ptPoss = (name) => (/s$/i.test(String(name || '').trim()) ? `${String(name).trim()}’` : `${String(name || '').trim()}’s`);
     /**
      * Two listings that are one partner: keep `into` and fold `from` into it.
      * `into` keeps its name, logo and level, fills what it lacks from `from`
      * (website, tagline, categories), and links `from`'s logo folders so the
-     * kid pages that show `from`'s logo count for it. Leadership cards linked
-     * to `from` link to `into`. Then `from` is deleted (Recently deleted keeps it).
+     * kid pages that show `from`'s logo count for it; ticked, those pages show
+     * `into`'s logo instead (before `from` goes, so a failure leaves it there).
+     * Leadership cards linked to `from` link to `into`. Then `from` is deleted
+     * (Recently deleted keeps it).
      */
-    function PtMergeIntoDialog({ from, into, kidsOn = 0, team = [], addToast, onClose, onMerged }) {
+    function PtMergeIntoDialog({ from, into, kids = [], team = [], addToast, onClose, onMerged }) {
       const [busy, setBusy] = useState(false);
+      const [switchLogos, setSwitchLogos] = useState(false);
+      const kidsOn = kids.length;
+      // The logos those kid pages show that aren't already `into`'s
+      const oldLogos = into.logo ? [...new Set(kids.map((k) => k.url))].filter((u) => u && PS.cfId(u) !== PS.cfId(into.logo)) : [];
+      const switchable = kids.filter((k) => oldLogos.includes(k.url)).length;
+      const switching = switchLogos && switchable > 0;
+      const kidNames = kids.length > 4 ? `${kids.slice(0, 3).map((k) => k.name).join(', ')} and ${kids.length - 3} more` : kids.map((k) => k.name).join(', ').replace(/, ([^,]*)$/, ' and $1');
       const folders = [...new Set([PS.logoFolder(from.logo), from.slug, ...(Array.isArray(from.logoFolders) ? from.logoFolders : [])])]
         .filter((f) => f && PS.LOGO_FOLDER_RE.test(f));
       const people = team.filter((t) => t.partner === from.slug);
@@ -14425,11 +14440,20 @@
             const cur = typeof tr.content === 'string' ? JSON.parse(tr.content) : tr.content;
             if (cur.partner === from.slug) await api.saveContent(path, JSON.stringify({ ...cur, partner: into.slug }, null, 2), `Partner merged: ${cur.name}`, tr.sha);
           }
+          let switched = 0;
+          const to = fresh.logo || into.logo;
+          if (switching && to) {
+            for (const old of oldLogos.filter((u) => PS.cfId(u) !== PS.cfId(to))) {
+              const sw = await ptPost('/api/partners-batch', { swapLogo: { from: old, to, name: into.name } });
+              if (!sw.success) throw new Error(`the kid pages kept ${ptPoss(from.name)} logo (${sw.error})`);
+              switched += sw.changed?.length || 0;
+            }
+          }
           const fr = await api.readContent(PT_PATH(from.slug));
           if (!fr.success) throw new Error(fr.error);
           const del = await api.deleteContent(PT_PATH(from.slug), fr.sha, `Merged into ${into.name}: ${from.name}`);
           if (!del.success) throw new Error(del.error);
-          addToast(`${from.name} merged into ${into.name}`, 'success');
+          addToast(`${from.name} merged into ${into.name}${switched ? `. ${kdPlural(switched, 'kid page')} now show${switched === 1 ? 's' : ''} its logo.` : ''}`, 'success');
           onMerged(into.slug);
         } catch (e) { addToast(`Couldn’t merge them: ${e.message}`, 'error'); setBusy(false); }
       };
@@ -14439,11 +14463,22 @@
       return html`<${KdDialog} title=${`Merge ${from.name} into ${into.name}?`} size="sm" onClose=${onClose} busy=${busy} footer=${footer}>
         <ul class="pt-merge-into">
           <li>${into.name} keeps its name, logo and level (${PS.levelOf(PS.withDefaults(into).level).label}).</li>
-          ${fills.length ? html`<li>It gets ${from.name}’s ${fills.join(' and ')}, which it doesn’t have yet.</li>` : null}
-          ${kidsOn ? html`<li>The ${kdPlural(kidsOn, 'kid page')} with ${from.name}’s logo count for ${into.name}. Their logos stay as they are; ${into.name}’s editor can switch them to its logo.</li>` : null}
+          ${fills.length ? html`<li>It gets ${ptPoss(from.name)} ${fills.join(' and ')}, which it doesn’t have yet.</li>` : null}
+          ${kidsOn ? html`<li>${kidsOn === 1 ? `${ptPoss(kids[0].name)} page shows ${ptPoss(from.name)} logo. It counts for ${into.name} now, and ${switching ? `shows ${ptPoss(into.name)} logo instead` : 'keeps that logo'}.`
+            : `${kidsOn} kid pages show ${ptPoss(from.name)} logo (${kidNames}). They count for ${into.name} now, and ${switching
+              ? (switchable === kidsOn ? `show ${ptPoss(into.name)} logo instead` : `${switchable} of them show ${ptPoss(into.name)} logo instead`) : 'keep their logos'}.`}</li>` : null}
           ${people.length ? html`<li>${people.map((t) => t.name).join(', ')}’s Leadership ${people.length === 1 ? 'card links' : 'cards link'} to ${into.name} instead.</li>` : null}
           <li>${from.name} leaves the Partners page when you publish. It stays in Recently deleted if you need it back.</li>
         </ul>
+        ${switchable ? html`<label class="checkbox-label pt-merge-into__swap">
+          <input type="checkbox" checked=${switchLogos} disabled=${busy} onChange=${(e) => setSwitchLogos(e.target.checked)} />
+          <span>Show ${ptPoss(into.name)} logo on ${switchable === 1 ? 'that kid page' : `those ${switchable} kid pages`}
+            <span class="pt-merge-into__logos">
+              <${PtLogo} name=${from.name} logo=${oldLogos[0]} w=${120} h=${48} />
+              <span aria-hidden="true">→</span>
+              <${PtLogo} name=${into.name} logo=${into.logo} w=${120} h=${48} />
+            </span></span>
+        </label>` : null}
       <//>`;
     }
 
@@ -14686,7 +14721,7 @@
           }} />` : null}
         ${confirmDelete ? html`<${PtDeleteDialog} list=${[{ slug, name, logo: data.logo, kids: kidsOn.length, level: d.level }]} noun="partner" path=${PT_PATH} addToast=${addToast}
           onClose=${() => setConfirmDelete(false)} onDeleted=${(gone) => { setConfirmDelete(false); if (gone.length) { setDirty(false); onBack(); } }} />` : null}
-        ${mergeInto ? html`<${PtMergeIntoDialog} from=${base || data} into=${mergeInto} kidsOn=${kidsOn.length} team=${team} addToast=${addToast}
+        ${mergeInto ? html`<${PtMergeIntoDialog} from=${base || data} into=${mergeInto} kids=${kidsOn} team=${team} addToast=${addToast}
           onClose=${() => setMergeInto(null)} onMerged=${(to) => { setMergeInto(null); setDirty(false); onReload?.(); onOpenPartner ? onOpenPartner(to) : onBack(); }} />` : null}
         ${showPreview ? html`<${PagePreview} kind="partner" item=${record} slug=${slug} dirty=${dirty}
           buildOpts=${{ collection: partners }} onClose=${() => setShowPreview(false)} />` : null}

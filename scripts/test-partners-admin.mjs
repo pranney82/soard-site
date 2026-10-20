@@ -634,11 +634,48 @@ try {
     await page.waitForSelector('.pt-merge-into');
     await shot(page, 'desk-merge-into', { grow: false });
     await axeCheck(page, 'merge dialog');
+    const akLogo = FX.partners['atlanta-kitchen'].logo;
+    ok(await page.$eval('.pt-merge-into__swap input', (i) => !i.checked).catch(() => false)
+      && /Show Construction Resources’ logo on that kid page/.test(await page.$eval('.pt-merge-into__swap', (e) => e.textContent).catch(() => '')),
+    'the kid page with the old logo can switch to the one kept, not ticked to start (and “Resources’”, not “Resources’s”)');
+    ok(/Kyle’s page shows Atlanta Kitchen’s logo\. It counts for Construction Resources now, and keeps that logo\./.test(await page.$eval('.pt-merge-into', (e) => e.textContent)), 'unticked, the dialog names the kid page and says it keeps its logo');
+    const swapsBefore = api.st.calls.filter((c) => c.path === '/api/partners-batch' && c.body?.swapLogo).length;
     await clickText(page, '.kd-dialog__foot .btn', 'Merge into Construction Resources');
     await page.waitForFunction(() => /Construction Resources/.test(document.querySelector('.pt-ed-head h2')?.textContent || ''), { timeout: 8000 }).catch(() => {});
     const crAfter = api.st.partners['construction-resources'];
     ok(!api.st.partners['atlanta-kitchen'] && crAfter.logoFolders?.includes('atlanta-kitchen') && crAfter.level === 'signature', 'merged: Atlanta Kitchen is gone, its logo folder now counts for Construction Resources, which keeps its level');
+    ok(api.st.calls.filter((c) => c.path === '/api/partners-batch' && c.body?.swapLogo).length === swapsBefore
+      && api.st.kids.kyle.partnerLogos.some((l) => l.url === akLogo), 'left unticked, Kyle’s page keeps the Atlanta Kitchen logo');
     ok(/Construction Resources/.test(await page.$eval('.pt-ed-head h2', (e) => e.textContent).catch(() => '')), 'and the editor opens Construction Resources');
+    await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
+    await page.waitForSelector('.pt-row');
+
+    // Angela Means Design into Means & Carney Interiors, ticked: Kyle’s page shows the Means & Carney logo
+    const amLogo = FX.partners['angela-means-design'].logo;
+    const mcLogo = FX.partners['means-and-carney-interiors'].logo;
+    await page.evaluate((n) => [...document.querySelectorAll('.ppl-row__name')].find((e) => e.textContent.trim() === n)?.click(), 'Angela Means Design');
+    await page.waitForSelector('.pt-same__acts .btn', { timeout: 8000 }).catch(() => {});
+    await clickText(page, '.pt-same__acts .btn', 'Merge into Means & Carney Interiors');
+    await page.waitForSelector('.pt-merge-into__swap input', { timeout: 5000 }).catch(() => {});
+    await page.click('.pt-merge-into__swap input').catch(() => {});
+    await sleep(150);
+    ok(/It counts for Means & Carney Interiors now, and shows Means & Carney Interiors’ logo instead\./.test(await page.$eval('.pt-merge-into', (e) => e.textContent).catch(() => '')), 'ticked, the dialog says the kid page shows the kept logo');
+    await page.waitForFunction(() => { const i = [...document.querySelectorAll('.pt-merge-into__logos img')]; return i.length === 2 && i.every((x) => x.complete && x.naturalWidth); }, { timeout: 8000 }).catch(() => {});
+    ok(await page.$$eval('.pt-merge-into__logos img', (i) => i.length === 2 && i.every((x) => x.naturalWidth > 0)), 'the old and the kept logo both show, side by side');
+    await shot(page, 'desk-merge-into-swap', { grow: false });
+    await axeCheck(page, 'merge dialog, switching logos');
+    await clickText(page, '.kd-dialog__foot .btn', 'Merge into Means & Carney Interiors');
+    await page.waitForFunction(() => /Means & Carney/.test(document.querySelector('.pt-ed-head h2')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+    const mcSwap = lastCall(api, '/api/partners-batch')?.body.swapLogo;
+    ok(mcSwap?.from === amLogo && mcSwap.to === mcLogo && mcSwap.name === 'Means & Carney Interiors', 'one request switches the old logo to the kept one');
+    const kyleLogos = api.st.kids.kyle.partnerLogos;
+    ok(kyleLogos.some((l) => l.url === mcLogo && l.name === 'Means & Carney Interiors') && !kyleLogos.some((l) => l.url === amLogo) && kyleLogos.some((l) => l.url === akLogo),
+      'Kyle’s page shows Means & Carney now, named, and still the Atlanta Kitchen logo');
+    const swapAt = api.st.calls.findIndex((c) => c.path === '/api/partners-batch' && c.body?.swapLogo?.from === amLogo);
+    const delAt = api.st.calls.findIndex((c, i) => i > swapAt && c.path === '/api/delete-content' && /angela-means-design/.test(JSON.stringify(c.body || c.query || '')));
+    ok(!api.st.partners['angela-means-design'] && swapAt >= 0 && delAt > swapAt && api.st.partners['means-and-carney-interiors'].logoFolders?.includes('angela-means-design'),
+      'the kid pages switch before Angela Means Design is deleted; its folder counts for Means & Carney');
+    ok(/1 kid page now shows its logo/.test(await page.$$eval('.toast', (t) => t.map((x) => x.textContent).join(' | ')).catch(() => '')), 'the toast says how many kid pages switched');
     await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
     await page.waitForSelector('.pt-row');
 

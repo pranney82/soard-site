@@ -1200,6 +1200,28 @@
      "alt": ""
     }
    ]
+  },
+  "kyle": {
+   "name": "Kyle",
+   "slug": "kyle",
+   "year": 2017,
+   "status": "completed",
+   "age": 11,
+   "diagnosis": "Duschenne Muscular Dystropy",
+   "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kyle/hero/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/atlanta-kitchen/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/angela-means-design/public"
+    }
+   ]
   }
  },
  "communityPartners": {
