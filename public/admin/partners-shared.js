@@ -538,15 +538,44 @@ export const COMMUNITY_CATEGORIES = [
   { id: 'faith', label: 'Faith-based' },
   { id: 'government', label: 'Government' },
 ];
-/** The Community page lists only nonprofit partners with a logo */
-export const communityListed = (p) => !!p?.logo;
+// The Nonprofit Partners cards, as src/pages/community/index.astro draws them (8f,
+// Oct 2026): every partner shows, the logo optional (a lettered tile without one);
+// a card links to the partner's project page when one matches, else their website.
+const cpPlain = (s) => String(s || '').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, ' ').replace(/^the /, '').trim();
+const cpInitials = (s) => cpPlain(s).split(' ').map((w) => w[0]).join('');
+/** The partner's community project page: same address, same name, or a short name that spells its initials ("CDA") */
+export function communityProjectFor(p, projects) {
+  const name = String(p?.name || '').trim();
+  const sorted = [...(projects || [])].sort(compareSite);
+  return sorted.find((x) => x.story && (x.slug === p.slug || cpPlain(x.name) === cpPlain(name)
+    || (/^[A-Z]{2,6}$/.test(name) && cpInitials(x.name) === name.toLowerCase()))) || null;
+}
+/** No logo: a lettered tile ("FODAC" as it is; "Make a Wish Georgia" → "MW": small words don't count) */
+const CP_SMALL = new Set(['a', 'an', 'and', 'at', 'for', 'in', 'of', 'on', 'the', 'to']);
+export const communityMonogram = (name) => (/^[A-Z]{2,5}$/.test(String(name || '').trim()) ? String(name).trim()
+  : cpPlain(name).split(' ').filter((w) => w && !CP_SMALL.has(w)).map((w) => w[0]).join('').slice(0, 2).toUpperCase());
+/** The description the card shows: not one that only repeats the name */
+export function communityDescription(p) {
+  const desc = String(p?.description || '').trim();
+  const name = String(p?.name || '');
+  const same = !desc || cpPlain(name).includes(cpPlain(desc)) || (cpPlain(desc).includes(cpPlain(name)) && desc.length < name.length + 15);
+  return same ? '' : desc;
+}
+/** Where the card links: { href, kind: 'project' | 'website' | null, project } */
+export function communityLink(p, projects) {
+  const project = communityProjectFor(p, projects);
+  if (project) return { href: `/community/${project.slug}/`, kind: 'project', project };
+  return /^https?:\/\//.test(p?.website || '') ? { href: p.website, kind: 'website', project: null } : { href: null, kind: null, project: null };
+}
+/** Every community partner is on the Community page */
+export const communityListed = () => true;
 export function communityIssues(p, ctx = {}) {
   const out = [];
-  if (!p.logo) out.push({ id: 'logo', tone: 'warn', label: 'Not on the site', tip: 'The Community page shows nonprofit partners with a logo only.' });
-  else if (ctx.blank) out.push({ id: 'logo-blank', tone: 'warn', label: 'Blank logo', tip: 'The file draws nothing, so the Community page shows an empty box.' });
+  if (!p.logo) out.push({ id: 'logo', tone: 'info', label: 'No logo', tip: `Their card shows a lettered tile (${communityMonogram(p.name)}) until there’s a logo.` });
+  else if (ctx.blank) out.push({ id: 'logo-blank', tone: 'warn', label: 'Blank logo', tip: 'The file draws nothing, so their card shows an empty white tile.' });
   const web = normalizeWebsite(p.website);
   if (!web.ok) out.push({ id: 'website', tone: 'warn', label: 'Website isn’t a link', tip: `“${p.website}” isn’t a web address.` });
-  else if (!web.url) out.push({ id: 'website', tone: 'info', label: 'No website', tip: 'Their logo isn’t a link.' });
+  else if (!web.url && !communityProjectFor(p, ctx.projects)) out.push({ id: 'website', tone: 'info', label: 'Not a link', tip: 'No project page or website, so their card doesn’t link anywhere.' });
   return out;
 }
 export function communityRecord(d) {

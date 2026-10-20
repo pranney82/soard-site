@@ -14919,14 +14919,13 @@
     const CP_PATH = (slug) => `src/content/communityPartners/${slug}.json`;
     const CP_MERGE_KEYS = ['name', 'website', 'logo', 'category', 'location', 'description', 'impact', 'impactLabel'];
     const CP_FIELD_NAMES = { name: 'Name', website: 'Website', logo: 'Logo', category: 'Category', location: 'Location', description: 'About', impact: 'Impact number', impactLabel: 'Impact label' };
-    function CommunityPartnersList({ items, onEdit, onAdd, addToast, onReload }) {
+    function CommunityPartnersList({ items, projects = [], onEdit, onAdd, addToast, onReload }) {
       const [busy, setBusy] = useState(null);
       const [del, setDel] = useState(null);
       const [deleted, setDeleted] = useState(false);
       const publish = usePublishData();
       const sorted = useMemo(() => [...items].sort(PS.compareSite), [items]);
       const cpContents = usePtContents(sorted.map((x) => x.logo).filter(Boolean));
-      const listed = sorted.filter(PS.communityListed);
       const nameOf = (slug) => items.find((x) => x.slug === slug)?.name || slug;
       const drag = useKdReorder({
         keys: sorted.map((x) => x.slug), nameOf, disabled: !!busy,
@@ -14946,7 +14945,7 @@
         <div class="page-header ppl-head pt-head">
           <div>
             <h2>Community partners</h2>
-            <p class="page-sub">The nonprofits we serve, in the Nonprofit Partners section of the Community page, in this order. Only those with a logo appear there. Changes go live when you publish.</p>
+            <p class="page-sub">The nonprofits we serve, as cards in the Nonprofit Partners section of the Community page, in this order. Every partner appears there; the logo is optional. Changes go live when you publish.</p>
           </div>
           <div class="ppl-head__actions">
             <a class="btn btn-ghost btn-sm" href="/community/#nonprofit-partners" target="_blank" rel="noopener">Community page ${pplIcon.external}</a>
@@ -14954,21 +14953,15 @@
             <button class="btn btn-primary" onClick=${onAdd}>+ Add community partner</button>
           </div>
         </div>
-        ${sorted.length && listed.length < sorted.length ? html`<div class="kd-note pt-cp-note" role="status">
-          <span>${pplIcon.alert}</span>
-          <p>${listed.length
-            ? html`<strong>${kdPlural(sorted.length - listed.length, 'partner')} ${sorted.length - listed.length === 1 ? 'isn’t' : 'aren’t'} on the Community page.</strong> The page shows community partners with a logo; add one to list them.`
-            : html`<strong>The Nonprofit Partners section is hidden.</strong> The Community page shows community partners with a logo, and none of these ${sorted.length} has one yet. Add a logo and the section appears after you publish.`}</p>
-        </div>` : null}
         ${!sorted.length ? html`<div class="card ppl-empty-all">
             <p><strong>No community partners yet.</strong></p>
-            <p class="text-muted">Nonprofits SOARD serves. With a logo, they appear on the Community page.</p>
+            <p class="text-muted">Nonprofits SOARD serves. Each one gets a card on the Community page.</p>
             <button class="btn btn-primary" onClick=${onAdd}>+ Add community partner</button>
           </div>` : html`<section class="card ppl-section pt-section" aria-labelledby="cp-sec">
           <header class="ppl-section__head pt-section__head">
             <div class="pt-section__title">
               <h3 id="cp-sec">In page order <span class="ppl-count">${sorted.length}</span></h3>
-              <p class="pt-section__where">${listed.length ? `${kdPlural(listed.length, 'logo')} in the Nonprofit Partners section.` : 'None on the page yet: each needs a logo.'}</p>
+              <p class="pt-section__where">${kdPlural(sorted.length, 'card')} in the Nonprofit Partners section${sorted.some((x) => !x.logo) ? `; ${sorted.filter((x) => !x.logo).length} without a logo show their initials` : ''}.</p>
             </div>
             ${busy === 'order' ? html`<span class="ppl-saving"><span class="spinner spinner-14" /> Saving order</span>` : sorted.length > 1 ? html`<span class="ppl-hint">Drag ${pplIcon.grip} to reorder</span>` : null}
           </header>
@@ -14976,13 +14969,15 @@
             ${drag.order.map((slug) => {
               const c = bySlug.get(slug);
               if (!c) return null;
-              const issues = PS.communityIssues(c, { blank: !!cpContents[c.logo]?.blank });
+              const issues = PS.communityIssues(c, { blank: !!cpContents[c.logo]?.blank, projects });
+              const link = PS.communityLink(c, projects);
               const change = changeOf(slug);
               const web = PS.normalizeWebsite(c.website);
-              const sub = [PS.COMMUNITY_CATEGORIES.find((x) => x.id === c.category)?.label, c.location, c.impact ? `${c.impact} ${c.impactLabel || ''}`.trim() : null].filter(Boolean);
+              const sub = [c.location, c.impact ? `${c.impact} ${c.impactLabel || ''}`.trim() : null,
+                link.kind === 'project' ? `Links to ${link.project.name}` : link.kind === 'website' ? `Links to ${PS.domainOf(link.href)}` : null].filter(Boolean);
               return html`<li key=${slug} ref=${drag.itemRef(slug)} class=${`pt-row pt-row--cp${drag.lifted?.key === slug ? ' is-lifted' : ''}`}>
                 ${sorted.length > 1 ? html`<button type="button" class="ppl-handle" ...${drag.handleProps(slug, `Move ${c.name}`)} aria-describedby="pt-reorder-help-cp">${pplIcon.grip}</button>` : html`<span class="ppl-handle-gap" aria-hidden="true"></span>`}
-                <${PtLogo} name=${c.name} logo=${c.logo} />
+                <${PtLogo} name=${c.logo ? c.name : PS.communityMonogram(c.name)} logo=${c.logo} />
                 <div class="ppl-row__main">
                   <button type="button" class="ppl-row__name" onClick=${() => onEdit(slug)}>${c.name}</button>
                   ${change === 'waiting' ? html`<button type="button" class="ppl-tag ppl-tag--waiting" onClick=${openPublish}>Waiting to publish</button>` : change === 'publishing' ? html`<span class="ppl-tag ppl-tag--publishing">Publishing</span>` : null}
@@ -15008,7 +15003,7 @@
       `;
     }
 
-    function CommunityPartnerEditor({ slug, items = [], onBack, onSaved, addToast }) {
+    function CommunityPartnerEditor({ slug, items = [], projects = [], onBack, onSaved, addToast }) {
       const others = useMemo(() => items.filter((x) => x.slug !== slug), [items, slug]);
       const isNew = !slug;
       const [conflict, setConflict] = useState(null);
@@ -15037,7 +15032,8 @@
       const quality = PS.logoQuality(ptContentSize(content, size), 'champion');
       const margins = ptMarginOf(content, 'champion');
       const blank = !!content?.blank;
-      const listed = PS.communityListed(data) && !broken?.has(data.logo);
+      const link = PS.communityLink(data, projects);
+      const shownDesc = PS.communityDescription(data);
       const save = async (over) => {
         const x = over || data;
         if (!String(x.name || '').trim()) { setTouched(true); addToast('Add their name before saving', 'error'); return; }
@@ -15110,14 +15106,14 @@
             <div class="kd-ed-id__text">
               <h2>${name} <${PublishBadge} type="community_partners" slug=${slug} /></h2>
               <p class="kd-ed-id__sub">
-                <span class=${`pt-level-tag ${listed ? 'pt-level-tag--listed' : 'pt-level-tag--off'}`}>${listed ? 'On the Community page' : 'Not on the page: needs a logo'}</span>
+                <span class="pt-level-tag pt-level-tag--listed">On the Community page</span>
                 ${web.ok && web.url ? html`<a href=${web.url} target="_blank" rel="noopener">${PS.domainOf(web.url)} ${kdIcon.external}</a>` : null}
               </p>
             </div>
           </div>
           <div class="kd-ed-actions">
             ${slug ? html`<${PplMenu} label="More actions" items=${[
-              listed ? { label: 'See the Community page', onSelect: () => window.open('/community/#nonprofit-partners', '_blank', 'noopener') } : null,
+              { label: 'See the Community page', onSelect: () => window.open('/community/#nonprofit-partners', '_blank', 'noopener') },
               { label: 'History', onSelect: () => setHistoryOpen(true) },
               { divider: true },
               { label: 'Delete…', danger: true, onSelect: () => setConfirmDelete(true) },
@@ -15138,8 +15134,9 @@
           <aside class="kd-rail" aria-label="At a glance">
             <section class="kd-card kd-card--status" aria-labelledby="cp-site-h">
               <h3 id="cp-site-h">On the site</h3>
-              <p class=${`pt-onpage${listed ? ' is-on' : ''}`}>${listed ? pplIcon.check : pplIcon.alert} ${listed ? 'In the Nonprofit Partners section of the Community page.' : 'Not on the Community page until they have a logo.'}</p>
-              <p class="kd-card__note">Their logo ${web.ok && web.url ? `links to ${PS.domainOf(web.url)}` : 'isn’t a link (no website)'}. Drag them into place on the list.</p>
+              <p class="pt-onpage is-on">${pplIcon.check} A card in the Nonprofit Partners section of the Community page${data.logo ? '' : `, with their initials (${PS.communityMonogram(data.name)}) until there’s a logo`}.</p>
+              <p class="kd-card__note">${link.kind === 'project' ? html`Their card links to their project page, <a href=${link.href} target="_blank" rel="noopener">${link.project.name} ${kdIcon.external}</a>.`
+                : link.kind === 'website' ? `Their card links to ${PS.domainOf(link.href)}, in a new tab.` : 'Their card isn’t a link: no project page matches them, and there’s no website.'} Drag them into place on the list.</p>
             </section>
             ${slug ? html`<section class="kd-card kd-card--history" aria-labelledby="cp-history-h">
               <h3 id="cp-history-h">History ${history.versions?.length ? html`<span class="kd-card__count">${kdPlural(history.versions.length, 'version')}</span>` : null}</h3>
@@ -15155,13 +15152,13 @@
                   <label class="form-label" for="cp-name">Name</label>
                   <input id="cp-name" class=${`form-input${touched && !data.name.trim() ? ' is-invalid' : ''}`} value=${data.name} autocomplete="off" data-autofocus=${isNew ? '' : null}
                     onInput=${(e) => set({ name: e.target.value })} onBlur=${() => setTouched(true)} />
-                  ${touched && !data.name.trim() ? html`<div class="form-hint kd-bad">Add their name</div>` : html`<div class="form-hint">The logo’s alt text on the Community page.</div>`}
+                  ${touched && !data.name.trim() ? html`<div class="form-hint kd-bad">Add their name</div>` : html`<div class="form-hint">On their card. A project page with the same name (or initials, like CDA) becomes its link.</div>`}
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="cp-web">Website</label>
                   <input id="cp-web" class=${`form-input${!web.ok ? ' is-invalid' : ''}`} value=${data.website || ''} inputmode="url" placeholder="example.org" autocomplete="off"
                     onInput=${(e) => set({ website: e.target.value })} onBlur=${() => { if (web.ok && web.url && web.url !== data.website) set({ website: web.url }); }} />
-                  <div class=${`form-hint${!web.ok ? ' kd-bad' : ''}`}>${!web.ok ? 'That isn’t a web address.' : 'Their logo links here.'}</div>
+                  <div class=${`form-hint${!web.ok ? ' kd-bad' : ''}`}>${!web.ok ? 'That isn’t a web address.' : link.kind === 'project' ? 'Their card links to their project page instead.' : 'Their card links here.'}</div>
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="cp-cat">Category</label>
@@ -15176,7 +15173,7 @@
               </div>
             </section>
             <section class="card kd-sec pt-sec" aria-labelledby="cp-logo-h">
-              <header class="kd-sec__head"><div><h3 id="cp-logo-h">Logo</h3><p class="kd-sec__sub">Required to appear on the Community page, where it sits on a white card like the Partners page’s Champions.</p></div></header>
+              <header class="kd-sec__head"><div><h3 id="cp-logo-h">Logo</h3><p class="kd-sec__sub">Optional: on a white tile on their card. Without one, the card shows their initials (${PS.communityMonogram(data.name || '')}).</p></div></header>
               <${PtLogoStage} name=${name} logo=${data.logo} local=${local} uploading=${uploading} broken=${!!broken?.has(data.logo)} blank=${blank} size=${size} quality=${quality}
                 where="Community page card" onFile=${uploadLogo} onRemove=${() => set({ logo: '' })}>
                 <${PtCropNote} note=${cropNote} busy=${uploading} onOriginal=${() => uploadLogo(cropNote.original, { asIs: true })} />
@@ -15184,10 +15181,11 @@
               <//>
             </section>
             <section class="card kd-sec pt-sec" aria-labelledby="cp-about-h">
-              <header class="kd-sec__head"><div><h3 id="cp-about-h">About</h3><p class="kd-sec__sub">Kept with their record for the team. The Community page doesn’t show these yet.</p></div></header>
+              <header class="kd-sec__head"><div><h3 id="cp-about-h">About</h3><p class="kd-sec__sub">Shown on their card when filled in: the location above their name, the impact number highlighted, then the description.</p></div></header>
               <div class="form-group">
                 <label class="form-label" for="cp-desc">What they do, and how SOARD helped</label>
                 <textarea id="cp-desc" class="form-textarea" rows="4" value=${data.description || ''} onInput=${(e) => set({ description: e.target.value })}></textarea>
+                ${String(data.description || '').trim() && !shownDesc ? html`<div class="form-hint kd-warn-text">This only repeats their name, so the card leaves it off.</div>` : null}
               </div>
               <div class="kd-grid kd-grid--2 pt-grid">
                 <div class="form-group">
@@ -26099,7 +26097,7 @@ ${sections || '<p>No one yet.</p>'}
             // Adding a partner and editing a media logo happen in dialogs over their lists
             if (editSlug !== null && !(pTab === 'partners' && editSlug === '') && pTab !== 'medialogos') {
               if (pTab === 'community-partners') {
-                return html`<${CommunityPartnerEditor} key=${editSlug || 'new-cp'} slug=${editSlug || undefined} items=${communityPartners} addToast=${addToast}
+                return html`<${CommunityPartnerEditor} key=${editSlug || 'new-cp'} slug=${editSlug || undefined} items=${communityPartners} projects=${communityProjects} addToast=${addToast}
                   onBack=${() => { setEditSlug(null); loadData(); }} onSaved=${(s) => { setEditSlug(s); loadData(); }} />`;
               }
               return html`<${PartnerEditor} key=${editSlug} slug=${editSlug} partners=${partners} kids=${kids} team=${team} addToast=${addToast} onOpenPartner=${(s) => { setEditSlug(s); loadData(); }}
@@ -26114,7 +26112,7 @@ ${sections || '<p>No one yet.</p>'}
                 ${tab('medialogos', 'Media logos', mediaLogos.length)}
               </div>
               ${pTab === 'community-partners'
-                ? listOrError('communityPartners', 'community partners', html`<${CommunityPartnersList} items=${communityPartners} addToast=${addToast} onReload=${loadData}
+                ? listOrError('communityPartners', 'community partners', html`<${CommunityPartnersList} items=${communityPartners} projects=${communityProjects} addToast=${addToast} onReload=${loadData}
                     onEdit=${(s) => setEditSlug(s)} onAdd=${() => setEditSlug('')} />`)
                 : pTab === 'medialogos'
                 ? listOrError('medialogos', 'media logos', html`<${MediaLogosList} logos=${mediaLogos} press=${press} editing=${editSlug} onEditingDone=${() => setEditSlug(null)}

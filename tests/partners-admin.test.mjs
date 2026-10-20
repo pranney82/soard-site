@@ -14,7 +14,7 @@ import { reorder } from '../functions/api/reorder-content.js';
 import {
   categoriesOf, categoryUnset, normalizeWebsite, domainOf, partnerRecord, sections, nextOrder, logoQuality, issuesOf,
   kidUsage, duplicatesOf, describeChanges, changedLabels, partnersCsv, placesOf, matches, logoSrc, cfId,
-  communityRecord, communityIssues, communityListed, describeCommunityChanges, pressUsing,
+  communityRecord, communityIssues, communityListed, describeCommunityChanges, pressUsing, communityLink, communityMonogram, communityDescription,
   applyPartnerChange, homeStrip, contentBox, cropBox, marginFactor, svgCropViewBox, similarPartners, LEVELS, CATEGORIES,
   describeMediaChanges, MARGIN_WARN,
 } from '../public/admin/partners-shared.js';
@@ -270,9 +270,23 @@ test('where a partner shows, search, and image sizes', () => {
   assert.equal(logoSrc('blob:x', 1, 1), 'blob:x');
 });
 
-test('community partners: the page lists those with a logo; Save tidies the record', () => {
-  assert.equal(communityListed({ name: 'A' }), false);
-  assert.deepEqual(communityIssues({ name: 'A' }).map((i) => i.id), ['logo', 'website']);
+test('community partners: every one gets a card, linked to their project page or website; Save tidies the record', () => {
+  assert.equal(communityListed({ name: 'A' }), true, 'the logo is optional');
+  assert.deepEqual(communityIssues({ name: 'A' }).map((i) => `${i.id}:${i.tone}`), ['logo:info', 'website:info']);
+  const projects = [{ slug: 'childrens-development-academy', name: 'Children’s Development Academy', story: 'x' }, { slug: 'the-drake-house', name: 'The Drake House', story: 'x', order: 2 }, { slug: 'no-page', name: 'No Page', order: 1 }];
+  assert.equal(communityLink({ slug: 'cda', name: 'CDA' }, projects).href, '/community/childrens-development-academy/', 'initials spell the project');
+  assert.equal(communityLink({ slug: 'drake', name: 'Drake House' }, projects).kind, 'project', '“The” aside, the same name');
+  assert.equal(communityLink({ slug: 'no-page', name: 'No Page', website: 'https://np.org' }, projects).href, 'https://np.org', 'a project without a page doesn’t count');
+  assert.equal(communityLink({ slug: 'x', name: 'X', website: 'np.org' }, projects).kind, null, 'only http(s) websites link');
+  assert.deepEqual(communityIssues({ name: 'CDA' }, { projects }).map((i) => i.id), ['logo'], 'linked to their project page: not “Not a link”');
+  assert.equal(communityMonogram('FODAC'), 'FODAC');
+  assert.equal(communityMonogram('The Drake House'), 'DH');
+  assert.equal(communityMonogram('Make a Wish Georgia'), 'MW', 'small words don’t count');
+  assert.equal(communityMonogram('Ainsley’s Angels of North Georgia'), 'AA');
+  assert.equal(communityMonogram('Spirit of Life Walk-a-Thon Tommy Meo Jr.'), 'SL');
+  assert.equal(communityMonogram('The Kyle Pease Foundation'), 'KP');
+  assert.equal(communityDescription({ name: 'CDA', description: 'CDA' }), '', 'a description that repeats the name is left off');
+  assert.equal(communityDescription({ name: 'CDA', description: 'Early learning for kids of all abilities' }), 'Early learning for kids of all abilities');
   const r = communityRecord({ name: ' A ', description: ' x ', category: 'bogus', website: 'a.org', impact: '', location: ' Roswell ' });
   assert.deepEqual(r, { name: 'A', description: 'x', category: 'community', website: 'https://a.org', location: 'Roswell', order: 0, featured: false });
   assert.deepEqual(describeCommunityChanges({ name: 'A', description: 'x' }, { name: 'A', description: 'y', logo: img('l') }).map((c) => c.label), ['Logo', 'About']);

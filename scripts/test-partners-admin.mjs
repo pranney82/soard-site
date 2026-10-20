@@ -796,7 +796,8 @@ try {
     // ── Community partners ──
     await goPartners(page, 'Community partners');
     await page.waitForSelector('.pt-row--cp');
-    ok(/Nonprofit Partners section is hidden/.test(await page.$eval('.pt-cp-note', (e) => e.textContent).catch(() => '')), 'Community: says the section is hidden while no one has a logo');
+    ok(/Every partner appears there; the logo is optional/.test(await page.$eval('.page-sub', (e) => e.textContent).catch(() => '')) && !(await page.$('.pt-cp-note')), 'Community: every partner is on the page, the logo optional');
+    ok(/No logo/.test(await page.$eval('.pt-row--cp .ppl-row__issues', (e) => e.textContent).catch(() => '')), 'a partner without a logo gets a quiet “No logo”, not a warning');
     const cp0 = await $text(page, '.pt-row--cp .ppl-row__name');
     await page.focus('.pt-row--cp .ppl-handle');
     await page.keyboard.press('Space');
@@ -812,8 +813,8 @@ try {
     await page.waitForSelector('#cp-name');
     const cpInput = await page.$('.pt-logo-stage input[type="file"]');
     await cpInput.uploadFile(UPLOAD);
-    await page.waitForFunction(() => /On the Community page/.test(document.querySelector('.pt-ed-head')?.textContent || ''), { timeout: 6000 }).catch(() => {});
-    ok(/On the Community page/.test(await page.$eval('.pt-ed-head', (e) => e.textContent)), 'with a logo, the header says they’re on the Community page');
+    await page.waitForFunction(() => document.querySelector('.pt-logo-stage img')?.src.includes('/partners/uploaded/'), { timeout: 6000 }).catch(() => {});
+    ok(/On the Community page/.test(await page.$eval('.pt-ed-head', (e) => e.textContent)) && /Shown on their card when filled in/.test(await page.$eval('#cp-about-h', (e) => e.parentElement.textContent)), 'the editor says what their card shows, logo or not');
     await typeInto(page, '#cp-web', 'example.org');
     await page.$eval('#cp-web', (i) => i.blur());
     const cpSlug0 = Object.keys(api.st.communityPartners).find((sl) => api.st.communityPartners[sl].name === cp0[0]);
