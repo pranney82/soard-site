@@ -24,12 +24,6 @@ const MUTED = rgb(0x5a / 255, 0x5b / 255, 0x61 / 255);
 const YELLOW = rgb(1, 0xda / 255, 0x24 / 255);
 const RULE = rgb(0xe5 / 255, 0xe4 / 255, 0xe0 / 255);
 
-const PHOTO_LABELS = {
-  photoChild: 'The child',
-  photoFamily: 'The child with their family',
-  photoSpace1: 'The space',
-  photoSpace2: 'The space (second picture)',
-};
 
 /** Drop characters a standard font can't encode (keeps tabs as spaces) */
 function sanitizer(font) {
@@ -108,7 +102,14 @@ export async function buildApplicationPdf({ form, answers, files = {}, submitted
   page.drawText(clean(`${childName}  ·  Submitted ${submitted}`), { x: MARGIN, y: PAGE_H - 110, size: 10.5, font: regular, color: DARK });
   y = PAGE_H - 132 - 32;
 
+  // In the family's language; for a Spanish application each question also
+  // carries its English wording, and each choice its English answer, for staff
   const sections = answerSections(form, answers, files);
+  const english = new Map();
+  if (form.lang && form.lang !== 'en') {
+    for (const s of answerSections(form, answers, files, { en: true })) for (const i of s.items) if (!i.upload) english.set(i.id, i.text);
+  }
+  const labelOf = (item) => [item.label, item.labelEn && item.labelEn !== item.label ? item.labelEn : null];
   for (const s of sections) {
     const items = s.items.filter(i => !i.upload);
     if (!items.length) continue;
@@ -118,10 +119,15 @@ export async function buildApplicationPdf({ form, answers, files = {}, submitted
     page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 1, color: RULE });
     y -= 14;
     for (const item of items) {
-      const labelLines = wrap(clean(item.label), bold, 9, CONTENT_W);
-      const textLines = wrap(clean(item.text), regular, 10.5, CONTENT_W);
-      ensure(labelLines.length * 12 + Math.min(textLines.length, 4) * 14 + 10);
+      const [label, labelEn] = labelOf(item);
+      const en = english.get(item.id);
+      const text = en && en !== item.text ? `${item.text} (${en})` : item.text;
+      const labelLines = wrap(clean(label), bold, 9, CONTENT_W);
+      const enLines = labelEn ? wrap(clean(labelEn), regular, 8.5, CONTENT_W) : [];
+      const textLines = wrap(clean(text), regular, 10.5, CONTENT_W);
+      ensure(labelLines.length * 12 + enLines.length * 11 + Math.min(textLines.length, 4) * 14 + 10);
       for (const l of labelLines) { page.drawText(l, { x: MARGIN, y: y - 9, size: 9, font: bold, color: MUTED }); y -= 12; }
+      for (const l of enLines) { page.drawText(l, { x: MARGIN, y: y - 8.5, size: 8.5, font: regular, color: MUTED }); y -= 11; }
       y -= 3;
       for (const l of textLines) {
         ensure(14);
@@ -133,9 +139,11 @@ export async function buildApplicationPdf({ form, answers, files = {}, submitted
     y -= 8;
   }
 
-  // ── Photos and video ──
-  const photoIds = Object.keys(PHOTO_LABELS).filter(id => files[id]);
-  if (photoIds.length || files.video) {
+  // ── Photos and video: every photo question the family answered ──
+  const uploads = sections.flatMap(s => s.items).filter(i => i.upload);
+  const photoItems = uploads.filter(i => i.type === 'photo');
+  const video = uploads.find(i => i.type === 'video') || (files.video ? { label: 'Video' } : null);
+  if (photoItems.length || video) {
     ensure(60);
     page.drawText('Photos and Video', { x: MARGIN, y: y - 14, size: 13.5, font: bold, color: DARK });
     y -= 22;
@@ -143,12 +151,24 @@ export async function buildApplicationPdf({ form, answers, files = {}, submitted
     y -= 16;
     const cellW = (CONTENT_W - 18) / 2;
     const cellH = 200;
-    for (let i = 0; i < photoIds.length; i += 2) {
-      ensure(cellH + 30);
-      for (let c = 0; c < 2 && i + c < photoIds.length; c++) {
-        const id = photoIds[i + c];
+    for (let i = 0; i < photoItems.length; i += 2) {
+      ensure(cellH + 44);
+      let labelH = 0;
+      for (let c = 0; c < 2 && i + c < photoItems.length; c++) {
+        const item = photoItems[i + c];
         const x = MARGIN + c * (cellW + 18);
-        page.drawText(PHOTO_LABELS[id], { x, y: y - 9, size: 9, font: bold, color: MUTED });
+        const [label, labelEn] = labelOf(item);
+        const rows = [
+          ...wrap(clean(label), bold, 9, cellW).slice(0, 2).map(t => ({ t, font: bold, size: 9 })),
+          ...(labelEn ? wrap(clean(labelEn), regular, 8.5, cellW).slice(0, 2).map(t => ({ t, font: regular, size: 8.5 })) : []),
+        ];
+        rows.forEach((r, k) => page.drawText(r.t, { x, y: y - 9 - k * 11, size: r.size, font: r.font, color: MUTED }));
+        labelH = Math.max(labelH, (rows.length - 1) * 11);
+      }
+      y -= labelH;
+      for (let c = 0; c < 2 && i + c < photoItems.length; c++) {
+        const id = photoItems[i + c].id;
+        const x = MARGIN + c * (cellW + 18);
         const bytes = photos[id];
         let drawn = false;
         if (bytes) {
@@ -165,9 +185,9 @@ export async function buildApplicationPdf({ form, answers, files = {}, submitted
       }
       y -= cellH + 30;
     }
-    if (files.video) {
+    if (video) {
       ensure(30);
-      page.drawText('Video', { x: MARGIN, y: y - 9, size: 9, font: bold, color: MUTED });
+      page.drawText(clean(video.labelEn || video.label || 'Video'), { x: MARGIN, y: y - 9, size: 9, font: bold, color: MUTED });
       y -= 15;
       page.drawText('Video received (sent to SOARD with this application).', { x: MARGIN, y: y - 10.5, size: 10.5, font: regular, color: DARK });
       y -= 20;

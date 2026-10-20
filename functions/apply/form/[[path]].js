@@ -10,8 +10,9 @@
  */
 
 import { applicationSettings, cleanYear } from '../../api/_applications.js';
-import { formFor } from '../../api/_application-forms.js';
-import { publicForm } from '../../api/apply.js';
+import { getLiveForm } from '../../api/_application-forms.js';
+import { resolveForm } from '../../api/_application-form.js';
+import { publicForm, publicDefinition } from '../../api/apply.js';
 
 export async function onRequest(context) {
   const { request, env, next } = context;
@@ -21,8 +22,13 @@ export async function onRequest(context) {
     if (!env.DB) return next();
     const settings = await applicationSettings(env.DB);
     const year = cleanYear(settings.year);
-    const form = await formFor(env.DB, { year });
-    const config = { open: settings.open === true, year, form: publicForm(form), turnstileSiteKey: env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY ? env.TURNSTILE_SITE_KEY : null };
+    const live = await getLiveForm(env.DB);
+    const form = resolveForm(live.definition, { year, version: live.version });
+    const config = {
+      open: settings.open === true, year, version: live.version,
+      definition: publicDefinition(live.definition), form: publicForm(form),
+      turnstileSiteKey: env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY ? env.TURNSTILE_SITE_KEY : null,
+    };
     // Always the full page (never a 304): a cached copy would skip the embed
     const fresh = new Request(request);
     fresh.headers.delete('If-None-Match');

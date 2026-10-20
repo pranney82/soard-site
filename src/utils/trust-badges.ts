@@ -4,7 +4,8 @@
  *
  * Admin-managed: Site Settings → Trust Badges writes `trustBadges` into
  * settings.json (D1). Until that key exists, DEFAULT_TRUST_BADGES applies.
- * Keep it in sync with DEFAULT_TRUST_BADGES in public/admin/index.html.
+ * Keep it in sync with DEFAULT_TRUST_BADGES in public/admin/site-config-shared.js
+ * (tests/site-config.test.mjs checks they match).
  *
  * `image` is a Cloudflare Images id (or pasted imagedelivery URL) uploaded
  * from the admin, or a site path for the seals that ship in public/. A badge with no

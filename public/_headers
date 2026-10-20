@@ -14,8 +14,11 @@
 ## the family's video goes straight to Cloudflare Stream over tus
 ## (upload.videodelivery.net / upload.cloudflarestream.com), and Turnstile
 ## (challenges.cloudflare.com) once its keys are set. `!` detaches the /* CSP
-## so this one replaces it rather than intersecting with it.
+## so this one replaces it rather than intersecting with it. The camera and
+## microphone are allowed here only, for "Record with my camera" on computers.
 /apply/form/*
+  ! Permissions-Policy
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(), payment=(self "https://www.zeffy.com")
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net https://i.ytimg.com https://cdn.charitynavigator.org https://www.charitynavigator.org https://widgets.guidestar.org https://videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com data: blob:; font-src 'self' https://fonts.gstatic.com; frame-src 'self' https://www.youtube-nocookie.com https://iframe.videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://www.zeffy.com https://challenges.cloudflare.com; connect-src 'self' wss://sunshineonaranneyday.com https://imagedelivery.net https://cloudflareinsights.com https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://upload.videodelivery.net https://upload.cloudflarestream.com https://*.cloudflarestream.com; media-src 'self' blob: https://videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://files.sunshineonaranneyday.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; worker-src 'self'; manifest-src 'self'
 
@@ -27,7 +30,7 @@
 ## frame-src 'self' lets Preview frame the site's own pages.
 /admin/*
   ! Content-Security-Policy
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net https://videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://i.ytimg.com data: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss://sunshineonaranneyday.com https://imagedelivery.net https://api.github.com https://api.cloudflare.com https://api.anthropic.com https://cloudflareinsights.com https://upload.videodelivery.net https://upload.cloudflarestream.com https://customer-cuav5h47lgfe96ql.cloudflarestream.com; frame-src 'self' https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://iframe.videodelivery.net https://www.youtube-nocookie.com https://www.facebook.com; media-src 'self' blob: https://customer-cuav5h47lgfe96ql.cloudflarestream.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; manifest-src 'self'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net https://videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://i.ytimg.com https://*.basemaps.cartocdn.com https://cdn.jobtread.com data: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss://sunshineonaranneyday.com https://imagedelivery.net https://api.github.com https://api.cloudflare.com https://api.anthropic.com https://cloudflareinsights.com https://upload.videodelivery.net https://upload.cloudflarestream.com https://customer-cuav5h47lgfe96ql.cloudflarestream.com; frame-src 'self' https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://iframe.videodelivery.net https://www.youtube-nocookie.com https://www.facebook.com; media-src 'self' blob: https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://cdn.jobtread.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; manifest-src 'self'
 
 ## Cache financial PDFs (rarely change, large files)
 /financials/*

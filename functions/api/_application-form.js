@@ -14,7 +14,7 @@
  *
  * Stored definition: { schema, title, pages: [{ id, title, fields }], stops,
  * messages, staffEmails }. Any text may say {year}; resolveForm() fills in the
- * season from Admin → Site Config → Makeover Application.
+ * season from Admin → Applications → Settings.
  *
  * Field types:
  *   text, textarea, email, phone, date, select, radio, checkbox (max = most
@@ -36,6 +36,8 @@
  * and moved, never deleted or changed into something JobTread can't read.
  */
 
+import { DEFAULT_ES } from './_application-form-es.js';
+
 export const SERVICE_MAP_IMAGE = 'd993cd7c-7863-4a1b-ea5e-50602623cb00';
 
 export const TEXT_MAX = 300;
@@ -54,6 +56,7 @@ export const FIELD_TYPES = {
   textarea: 'Long answer',
   email: 'Email',
   phone: 'Phone',
+  number: 'Number',
   date: 'Date',
   select: 'Dropdown',
   radio: 'One choice',
@@ -134,11 +137,59 @@ After careful consideration of the application for *{child}* we are unable to mo
 This decision was made following a comprehensive evaluation process, taking into account factors such as the feasibility of the project, alignment with our current resources, and the specific needs of your space.
 
 While we understand this may not be the decision you were hoping for, we wish your family the best and thank you for sharing your story with us.`,
+  // Sent by staff (never automatically) when a family was emailed a status by
+  // mistake. {status} becomes a line about where the application really stands.
+  correction: `{parent}
+
+Please disregard our last message about the application for *{child}*. It was sent by mistake, and we're sorry for the confusion.
+
+{status}
+
+If you have any questions, just reply to this message.`,
 };
-export const MESSAGE_KEYS = ['welcome', 'copyNote', 'inReview', 'approved', 'denied'];
+export const MESSAGE_KEYS = ['welcome', 'copyNote', 'inReview', 'approved', 'denied', 'correction'];
+
+/**
+ * When status emails go out (./_applicant-notify.js). A family is emailed
+ * the status they should know once it has stayed put for `waits` minutes
+ * (welcome = a hand-made JobTread account reaching Applied; decision =
+ * Approved or Denied), never between quiet.start and quiet.end Eastern
+ * (24-hour clock; equal = no quiet hours). `summary`: the person who made
+ * changes in JobTread gets one email listing them, with undo links.
+ */
+export const DEFAULT_NOTIFY = {
+  waits: { welcome: 10, inReview: 10, decision: 30 },
+  quiet: { start: 20, end: 8 },
+  summary: true,
+};
 export const MESSAGE_MAX = 3600; // JobTread comments hold 4096; room for names and the copy line
 
 export const DEFAULT_STAFF_EMAILS = ['selection@soardcharity.com'];
+
+/**
+ * Reminder emails to families who started and stopped. days = days of quiet
+ * before each one (counted from their last change). Placeholders: {parent}
+ * (first name), {child} (first name), {percent} (how far along), {year}.
+ */
+export const DEFAULT_REMINDERS = {
+  enabled: true,
+  days: [2, 7, 21],
+  subject: 'Your SOARD application is waiting for you',
+  body: `Hi {parent},
+
+You started a {year} makeover application for {child} with Sunshine on a Ranney Day, and your answers are saved. You're about {percent}% done. Whenever you're ready, you can pick up right where you left off.
+
+If you have questions or need help with any part of it, just reply to this email.`,
+};
+
+/**
+ * The red boundary on the service-area map, as [lat, lng] corners (traced
+ * from the map: north of Canton, east of Cumming, Suwanee, Norcross, I-285,
+ * west of Kennesaw). Used to check each home address; staff can adjust it.
+ */
+export const DEFAULT_SERVICE_AREA = {
+  polygon: [[34.330, -84.480], [34.222, -84.072], [33.969, -84.082], [33.893, -84.263], [33.884, -84.460], [34.005, -84.703]],
+};
 
 /** Version 0: the Jotform form as it stood for the 2027 season */
 export const DEFAULT_DEFINITION = {
@@ -354,10 +405,74 @@ export const DEFAULT_DEFINITION = {
   },
   messages: DEFAULT_MESSAGES,
   staffEmails: DEFAULT_STAFF_EMAILS,
+  reminders: DEFAULT_REMINDERS,
+  notify: DEFAULT_NOTIFY,
+  serviceArea: DEFAULT_SERVICE_AREA,
+  i18n: { es: { strings: DEFAULT_ES, sources: {} } },
 };
 
 /** The stop screens of the built-in form (kept for callers that predate versions) */
 export const STOPS = DEFAULT_DEFINITION.stops;
+
+// ─── Translations ──────────────────────────────────────────────────
+
+/** Languages the application can be shown in (English is always there) */
+export const LANGS = { en: 'English', es: 'Español' };
+
+/**
+ * Every piece of family-facing English in a definition, by a stable path:
+ * title, page:<id>, field:<id>:label|help|html|alt|title|doTitle|dontTitle,
+ * field:<id>:doItems:<n>:title|text, field:<id>:dontItems:<n>,
+ * field:<id>:option:<value>, field:<id>:desc:<value>, stop:<key>:title|body,
+ * message:<key>, reminder:subject|body. Translations are keyed the same way.
+ */
+export function englishStrings(def) {
+  const out = {};
+  const put = (path, v) => { if (typeof v === 'string' && v.trim()) out[path] = v; };
+  put('title', def.title);
+  for (const p of def.pages || []) {
+    put(`page:${p.id}`, p.title);
+    for (const f of p.fields || []) {
+      for (const k of ['label', 'help', 'html', 'alt', 'title', 'doTitle', 'dontTitle']) put(`field:${f.id}:${k}`, f[k]);
+      (f.doItems || []).forEach((it, i) => { put(`field:${f.id}:doItems:${i}:title`, it.title); put(`field:${f.id}:doItems:${i}:text`, it.text); });
+      (f.dontItems || []).forEach((it, i) => put(`field:${f.id}:dontItems:${i}`, it));
+      for (const o of f.options || []) {
+        const c = choice(o);
+        put(`field:${f.id}:option:${c.value}`, c.label);
+        put(`field:${f.id}:desc:${c.value}`, c.description);
+      }
+    }
+  }
+  for (const [k, s] of Object.entries(def.stops || {})) { put(`stop:${k}:title`, s.title); put(`stop:${k}:body`, s.body); }
+  const msgs = { ...DEFAULT_MESSAGES, ...(def.messages || {}) };
+  for (const k of MESSAGE_KEYS) put(`message:${k}`, msgs[k]);
+  const rem = { ...DEFAULT_REMINDERS, ...(def.reminders || {}) };
+  put('reminder:subject', rem.subject);
+  put('reminder:body', rem.body);
+  return out;
+}
+
+/**
+ * Where each translation stands against the current English:
+ * { path: 'done' | 'missing' | 'stale' } (stale = the English changed after
+ * it was translated). Only paths with English are listed.
+ */
+export function translationStatus(def, lang = 'es') {
+  const en = englishStrings(def);
+  const tr = def.i18n?.[lang] || {};
+  const strings = tr.strings || {};
+  const sources = tr.sources || {};
+  const out = {};
+  for (const [path, text] of Object.entries(en)) {
+    if (!strings[path]) out[path] = 'missing';
+    else if (sources[path] != null && sources[path] !== text) out[path] = 'stale';
+    else out[path] = 'done';
+  }
+  return out;
+}
+
+// The built-in Spanish was written from the built-in English
+DEFAULT_DEFINITION.i18n.es.sources = Object.fromEntries(Object.entries(englishStrings(DEFAULT_DEFINITION)).filter(([p]) => DEFAULT_ES[p]));
 
 // ─── Resolving a stored definition for one season ──────────────────
 
@@ -374,54 +489,122 @@ export function choice(o) {
 }
 
 /**
- * The form families see for `year`: {year} filled in, each field's options as
+ * The form families see for `year` in `lang`: {year} filled in, translations
+ * laid over the English (missing ones stay English), each field's options as
  * a list of values plus optionLabels / descriptions maps.
- * Returns { title, year, version, pages, stops, messages, staffEmails }.
+ * Returns { title, year, version, lang, languages, pages, stops, messages,
+ * reminders, staffEmails, serviceArea }.
  */
-export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', version = 0 } = {}) {
+export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', version = 0, lang = 'en' } = {}) {
   const def = clone(definition || DEFAULT_DEFINITION);
   const y = String(year);
+  const languages = ['en', ...Object.keys(def.i18n || {}).filter(l => LANGS[l] && Object.keys(def.i18n[l]?.strings || {}).length)];
+  const useLang = languages.includes(lang) ? lang : 'en';
+  const tr = useLang === 'en' ? {} : (def.i18n?.[useLang]?.strings || {});
+  const t = (path, en) => fillYear(tr[path] || en, y);
   const pages = (def.pages || []).map(p => ({
     id: p.id,
-    title: fillYear(p.title, y),
+    title: t(`page:${p.id}`, p.title),
+    ...(p.showIf ? { showIf: p.showIf } : {}),
     fields: (p.fields || []).map((f) => {
       const out = { ...f };
-      for (const k of ['label', 'help', 'html', 'alt', 'title', 'doTitle', 'dontTitle']) if (out[k] != null) out[k] = fillYear(out[k], y);
-      if (Array.isArray(out.doItems)) out.doItems = out.doItems.map(i => ({ title: fillYear(i.title, y), text: fillYear(i.text, y) }));
-      if (Array.isArray(out.dontItems)) out.dontItems = out.dontItems.map(i => fillYear(i, y));
+      for (const k of ['label', 'help', 'html', 'alt', 'title', 'doTitle', 'dontTitle']) if (out[k] != null) out[k] = t(`field:${f.id}:${k}`, out[k]);
+      if (Array.isArray(out.doItems)) out.doItems = out.doItems.map((i, n) => ({ title: t(`field:${f.id}:doItems:${n}:title`, i.title), text: t(`field:${f.id}:doItems:${n}:text`, i.text) }));
+      if (Array.isArray(out.dontItems)) out.dontItems = out.dontItems.map((i, n) => t(`field:${f.id}:dontItems:${n}`, i));
       if (Array.isArray(f.options)) {
         const choices = f.options.map(choice);
         out.options = choices.map(c => c.value);
-        out.optionLabels = Object.fromEntries(choices.map(c => [c.value, fillYear(c.label, y)]));
-        out.descriptions = Object.fromEntries(choices.filter(c => c.description).map(c => [c.value, fillYear(c.description, y)]));
+        out.optionLabels = Object.fromEntries(choices.map(c => [c.value, t(`field:${f.id}:option:${c.value}`, c.label)]));
+        out.descriptions = Object.fromEntries(choices.filter(c => c.description).map(c => [c.value, t(`field:${f.id}:desc:${c.value}`, c.description)]));
+        // Staff read applications in English: keep the English wording alongside
+        if (useLang !== 'en') out.optionLabelsEn = Object.fromEntries(choices.map(c => [c.value, fillYear(c.label, y)]));
       }
+      if (useLang !== 'en' && f.label) out.labelEn = fillYear(f.label, y);
       return out;
     }),
   }));
-  const stops = Object.fromEntries(Object.entries(def.stops || {}).map(([k, s]) => [k, { ...s, title: fillYear(s.title, y), body: fillYear(s.body, y) }]));
+  const stops = Object.fromEntries(Object.entries(def.stops || {}).map(([k, s]) => [k, { ...s, title: t(`stop:${k}:title`, s.title), body: t(`stop:${k}:body`, s.body) }]));
+  const baseMessages = { ...DEFAULT_MESSAGES, ...(def.messages || {}) };
+  const messages = Object.fromEntries(MESSAGE_KEYS.map(k => [k, tr[`message:${k}`] || baseMessages[k]]));
+  const rem = { ...DEFAULT_REMINDERS, ...(def.reminders || {}) };
   return {
-    title: fillYear(def.title || DEFAULT_DEFINITION.title, y),
+    title: t('title', def.title || DEFAULT_DEFINITION.title),
     year: y,
     version,
+    lang: useLang,
+    languages,
     pages,
     stops,
-    messages: { ...DEFAULT_MESSAGES, ...(def.messages || {}) },
+    messages,
+    reminders: { ...rem, subject: fillYear(tr['reminder:subject'] || rem.subject, y), body: fillYear(tr['reminder:body'] || rem.body, y) },
     staffEmails: Array.isArray(def.staffEmails) && def.staffEmails.length ? def.staffEmails : DEFAULT_STAFF_EMAILS,
+    serviceArea: def.serviceArea?.polygon?.length >= 3 ? def.serviceArea : DEFAULT_SERVICE_AREA,
+    notify: notifySettings(def.notify),
+  };
+}
+
+/** Wait times, quiet hours and the summary switch, with the built-in values filled in */
+export function notifySettings(n) {
+  const o = n && typeof n === 'object' ? n : {};
+  const mins = (v, d) => (Number.isFinite(Number(v)) ? Math.max(0, Math.min(1440, Math.round(Number(v)))) : d);
+  const hour = (v, d) => (Number.isFinite(Number(v)) ? Math.max(0, Math.min(23, Math.floor(Number(v)))) : d);
+  const w = o.waits || {};
+  return {
+    waits: { welcome: mins(w.welcome, DEFAULT_NOTIFY.waits.welcome), inReview: mins(w.inReview, DEFAULT_NOTIFY.waits.inReview), decision: mins(w.decision, DEFAULT_NOTIFY.waits.decision) },
+    quiet: { start: hour(o.quiet?.start, DEFAULT_NOTIFY.quiet.start), end: hour(o.quiet?.end, DEFAULT_NOTIFY.quiet.end) },
+    summary: o.summary !== false,
   };
 }
 
 /** The built-in form for a season (version 0); pass `definition` for an edited one */
-export function applicationForm({ year = '2027', definition = null, version = 0 } = {}) {
-  return resolveForm(definition || DEFAULT_DEFINITION, { year, version });
+export function applicationForm({ year = '2027', definition = null, version = 0, lang = 'en' } = {}) {
+  return resolveForm(definition || DEFAULT_DEFINITION, { year, version, lang });
 }
 
 /** A family message with its blanks filled */
-export function renderMessage(template, { parent = 'Hello', child = '', copyNote = '' } = {}) {
+export function renderMessage(template, { parent = 'Hello', child = '', copyNote = '', percent = '', year = '', status = '' } = {}) {
   return String(template || '')
+    .replace(/\{status\}/g, status)
     .replace(/\{parent\}/g, parent)
     .replace(/\{child\}/g, child)
+    .replace(/\{percent\}/g, percent)
+    .replace(/\{year\}/g, year)
     .replace(/\{copyNote\}/g, copyNote ? `\n\n${copyNote}` : '')
     .slice(0, 4096);
+}
+
+// ─── Rules: "show only when" for questions and pages ───────────────
+
+/**
+ * A rule is { field, in: [values] } (that question's answer is one of these),
+ * or { all: [rules] } / { any: [rules] }. A question on a hidden page, or
+ * behind a hidden question, counts as unanswered.
+ */
+export function ruleFields(rule) {
+  if (!rule) return [];
+  if (Array.isArray(rule.all)) return rule.all.flatMap(ruleFields);
+  if (Array.isArray(rule.any)) return rule.any.flatMap(ruleFields);
+  return rule.field ? [rule.field] : [];
+}
+
+export function ruleMatches(rule, answers, byId, seen = new Set()) {
+  if (!rule) return true;
+  if (Array.isArray(rule.all)) return rule.all.every(r => ruleMatches(r, answers, byId, seen));
+  if (Array.isArray(rule.any)) return rule.any.some(r => ruleMatches(r, answers, byId, seen));
+  if (!rule.field) return true;
+  const parent = byId?.[rule.field];
+  if (parent && !isVisible(parent, answers, byId, seen)) return false;
+  const v = answers?.[rule.field];
+  const vals = Array.isArray(v) ? v : [v];
+  return vals.some(x => (rule.in || []).includes(x));
+}
+
+/** In plain words, for the editor: 'Gender is Female, and County is Cobb or Fulton' */
+export function ruleText(rule, labelOf = (id) => id, valueOf = (id, v) => v) {
+  if (!rule) return '';
+  if (Array.isArray(rule.all)) return rule.all.map(r => ruleText(r, labelOf, valueOf)).join(', and ');
+  if (Array.isArray(rule.any)) return rule.any.map(r => ruleText(r, labelOf, valueOf)).join(', or ');
+  return `${labelOf(rule.field)} is ${(rule.in || []).map(v => valueOf(rule.field, v)).join(' or ')}`;
 }
 
 // ─── Cleaning and checking an edited definition ────────────────────
@@ -453,15 +636,29 @@ export function sanitizeHtml(html) {
 }
 
 const str = (v, n) => String(v ?? '').replace(/\u0000/g, '').trim().slice(0, n);
+const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
+
+function normalizeRule(r, depth = 0) {
+  if (!r || typeof r !== 'object' || depth > 2) return null;
+  for (const k of ['all', 'any']) {
+    if (Array.isArray(r[k])) {
+      const list = r[k].slice(0, 12).map(x => normalizeRule(x, depth + 1)).filter(Boolean);
+      return list.length ? { [k]: list } : null;
+    }
+  }
+  if (!r.field) return null;
+  return { field: str(r.field, 48), in: (Array.isArray(r.in) ? r.in : []).map(v => str(v, TEXT_MAX)).filter(Boolean) };
+}
 
 /** A definition reduced to known keys, trimmed, HTML cleaned (doesn't judge it; see validateDefinition) */
 export function normalizeDefinition(input) {
   const d = input && typeof input === 'object' ? input : {};
-  const pages = (Array.isArray(d.pages) ? d.pages : []).slice(0, 40).map(p => ({
-    id: str(p?.id, 40),
-    title: str(p?.title, 160),
-    fields: (Array.isArray(p?.fields) ? p.fields : []).slice(0, 80).map(normalizeField),
-  }));
+  const pages = (Array.isArray(d.pages) ? d.pages : []).slice(0, 40).map(p => {
+    const page = { id: str(p?.id, 40), title: str(p?.title, 160), fields: (Array.isArray(p?.fields) ? p.fields : []).slice(0, 80).map(normalizeField) };
+    const rule = normalizeRule(p?.showIf);
+    if (rule) page.showIf = rule;
+    return page;
+  });
   const stops = {};
   for (const [k, s] of Object.entries(d.stops && typeof d.stops === 'object' ? d.stops : {}).slice(0, 12)) {
     stops[str(k, 30)] = { title: str(s?.title, 240), body: sanitizeHtml(s?.body), ...(s?.image ? { image: str(s.image, 200) } : {}) };
@@ -469,8 +666,40 @@ export function normalizeDefinition(input) {
   const messages = {};
   for (const k of MESSAGE_KEYS) messages[k] = str(d.messages?.[k] ?? DEFAULT_MESSAGES[k], k === 'copyNote' ? 400 : MESSAGE_MAX);
   const staffEmails = (Array.isArray(d.staffEmails) ? d.staffEmails : []).map(e => str(e, 160)).filter(Boolean).slice(0, 10);
-  return { schema: 2, title: str(d.title || DEFAULT_DEFINITION.title, 200), pages, stops, messages, staffEmails };
+  const r = { ...DEFAULT_REMINDERS, ...(d.reminders && typeof d.reminders === 'object' ? d.reminders : {}) };
+  const reminders = {
+    enabled: r.enabled !== false,
+    days: (Array.isArray(r.days) ? r.days : []).map(n => Math.floor(Number(n))).filter(n => n >= 1 && n <= 60).slice(0, 6),
+    subject: str(r.subject, 200),
+    body: str(r.body, 3000),
+  };
+  const poly = Array.isArray(d.serviceArea?.polygon) ? d.serviceArea.polygon : DEFAULT_SERVICE_AREA.polygon;
+  const serviceArea = { polygon: poly.slice(0, 200).map(pt => [Number(pt?.[0]), Number(pt?.[1])]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180) };
+  const i18n = {};
+  for (const [lang, tr] of Object.entries(d.i18n && typeof d.i18n === 'object' ? d.i18n : {})) {
+    if (!LANGS[lang] || lang === 'en') continue;
+    const strings = {};
+    const sources = {};
+    for (const [path, text] of Object.entries(tr?.strings || {}).slice(0, 2000)) {
+      const v = /:html$|^stop:.*:body$/.test(path) ? sanitizeHtml(text) : str(text, /^message:|^reminder:body/.test(path) ? MESSAGE_MAX : 6000);
+      if (v) strings[str(path, 400)] = v;
+    }
+    for (const [path, text] of Object.entries(tr?.sources || {}).slice(0, 2000)) if (strings[path]) sources[str(path, 400)] = String(text ?? '').slice(0, HTML_MAX);
+    i18n[lang] = { strings, sources };
+  }
+  return { schema: 2, title: str(d.title || DEFAULT_DEFINITION.title, 200), pages, stops, messages, staffEmails, reminders, notify: notifySettings(d.notify), serviceArea, i18n };
 }
+
+const JT_TYPES_FOR = {
+  text: ['text', 'textarea', 'select', 'radio', 'email', 'phone', 'number', 'date'],
+  option: ['select', 'radio', 'checkbox'],
+  date: ['date'],
+  number: ['number'],
+  url: ['text'],
+  emailAddress: ['email'],
+  phoneNumber: ['phone'],
+  boolean: ['ack'],
+};
 
 function normalizeField(f) {
   const o = f && typeof f === 'object' ? f : {};
@@ -497,17 +726,35 @@ function normalizeField(f) {
   }
   if (o.max) out.max = Math.max(1, Math.min(40, Math.floor(Number(o.max)) || 1));
   if (o.rows) out.rows = Math.max(1, Math.min(20, Math.floor(Number(o.rows)) || 5));
-  if (o.showIf?.field) out.showIf = { field: str(o.showIf.field, 48), in: (Array.isArray(o.showIf.in) ? o.showIf.in : []).map(v => str(v, TEXT_MAX)).filter(Boolean) };
+  const rule = normalizeRule(o.showIf);
+  if (rule) out.showIf = rule;
   if (o.stops && typeof o.stops === 'object') {
     const stops = Object.fromEntries(Object.entries(o.stops).map(([v, k]) => [str(v, TEXT_MAX), str(k, 30)]).filter(([v, k]) => v && k));
     if (Object.keys(stops).length) out.stops = stops;
+  }
+  if (o.rules && typeof o.rules === 'object') {
+    const rules = {};
+    for (const k of ['minLength', 'maxLength', 'min', 'max', 'minAge', 'maxAge']) { const n = num(o.rules[k]); if (n != null) rules[k] = n; }
+    if (o.rules.integer) rules.integer = true;
+    if (Object.keys(rules).length) out.rules = rules;
+  }
+  if (o.jobtread && typeof o.jobtread === 'object' && o.jobtread.fieldId) {
+    out.jobtread = {
+      fieldId: str(o.jobtread.fieldId, 40),
+      target: o.jobtread.target === 'location' ? 'location' : 'account',
+      name: str(o.jobtread.name, 120),
+      type: str(o.jobtread.type, 30),
+      ...(Array.isArray(o.jobtread.options) ? { options: o.jobtread.options.slice(0, 100).map(x => str(x, TEXT_MAX)) } : {}),
+      ...(o.jobtread.multiple ? { multiple: true } : {}),
+    };
   }
   return out;
 }
 
 /**
  * Problems that would stop a definition going live: [{ where, message }].
- * `where` is a page id, "pageId/fieldId", "stops/<key>" or "messages/<key>".
+ * `where` is a page id, "pageId/fieldId", "stops/<key>", "messages/<key>",
+ * "reminders", "serviceArea" or "staffEmails".
  */
 export function validateDefinition(def) {
   const errors = [];
@@ -515,12 +762,34 @@ export function validateDefinition(def) {
   if (!def || !Array.isArray(def.pages) || !def.pages.length) { err('', 'The form needs at least one page.'); return errors; }
   const pageIds = new Set();
   const seen = new Map(); // field id → field (in order)
+  const pageOf = new Map();
+  const jtUsed = new Map();
+  const checkRule = (rule, where, earlierOnly) => {
+    for (const fid of ruleFields(rule)) {
+      const parent = seen.get(fid);
+      if (!parent || (earlierOnly && !earlierOnly(fid))) { err(where, '"Show only when" must point to a question earlier in the form.'); continue; }
+      if (!CHOICE_TYPES.includes(parent.type)) { err(where, '"Show only when" must point to a question with choices.'); continue; }
+    }
+    const walk = (r) => {
+      if (!r) return;
+      if (r.all || r.any) { (r.all || r.any).forEach(walk); return; }
+      const parent = seen.get(r.field);
+      if (!parent || !CHOICE_TYPES.includes(parent.type)) return;
+      const pv = parent.options.map(o => choice(o).value);
+      if (!r.in.length) err(where, '"Show only when" needs at least one answer picked.');
+      if (r.in.some(v => !pv.includes(v))) err(where, '"Show only when" picks an answer that no longer exists.');
+    };
+    walk(rule);
+  };
   for (const p of def.pages) {
     if (!/^[a-z0-9-]{1,40}$/.test(p.id || '')) err(p.id || '?', 'Each page needs an id of lowercase letters, numbers and dashes.');
     else if (pageIds.has(p.id)) err(p.id, 'Two pages have the same id.');
     pageIds.add(p.id);
     if (!p.title) err(p.id, 'This page needs a title.');
     if (!p.fields.length) err(p.id, 'This page has no questions or text.');
+    // A page's rule can only look at questions on earlier pages
+    if (p.showIf) checkRule(p.showIf, p.id, (fid) => pageOf.get(fid) !== p.id);
+    if (p.showIf && p.fields.some(f => LOCKED_FIELDS[f.id]?.required)) err(p.id, 'This page has questions JobTread needs, so it must always show.');
     for (const f of p.fields) {
       const where = `${p.id}/${f.id}`;
       if (!/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(f.id || '')) { err(where, 'A question has an invalid id.'); continue; }
@@ -542,28 +811,39 @@ export function validateDefinition(def) {
           if (!def.stops?.[key]) err(where, `The stop screen "${key}" doesn't exist.`);
         }
       } else if (f.stops) err(where, 'Only questions with choices can end the application.');
-      if (f.showIf) {
-        const parent = seen.get(f.showIf.field);
-        if (!parent) err(where, '"Show only when" must point to a question earlier in the form.');
-        else if (!CHOICE_TYPES.includes(parent.type)) err(where, '"Show only when" must point to a question with choices.');
-        else {
-          const pv = parent.options.map(o => choice(o).value);
-          if (!f.showIf.in.length) err(where, '"Show only when" needs at least one answer picked.');
-          if (f.showIf.in.some(v => !pv.includes(v))) err(where, '"Show only when" picks an answer that no longer exists.');
-        }
-      }
+      if (f.showIf) checkRule(f.showIf, where, null);
+      const r = f.rules || {};
+      if (r.minLength != null && r.maxLength != null && r.minLength > r.maxLength) err(where, 'The shortest answer allowed is longer than the longest.');
+      if (r.min != null && r.max != null && r.min > r.max) err(where, 'The smallest number allowed is bigger than the largest.');
+      if (r.minAge != null && r.maxAge != null && r.minAge > r.maxAge) err(where, 'The youngest age allowed is older than the oldest.');
+      if (r.maxLength != null && r.maxLength < 1) err(where, 'The longest answer allowed must be at least 1 character.');
       const lock = LOCKED_FIELDS[f.id];
       if (lock) {
         if (!lock.types.includes(f.type)) err(where, `This question feeds ${lock.role.replace(/^JobTread: /, 'JobTread ')} and must stay a ${lock.types.map(t => FIELD_TYPES[t]).join(' or ')} question.`);
         if (lock.required && !f.required) err(where, 'This question must stay required.');
+        if (lock.required && f.showIf) err(where, 'This question must always show (JobTread needs it), so it can’t have "Show only when".');
         if (lock.values && CHOICE_TYPES.includes(f.type)) {
           const values = (f.options || []).map(o => choice(o).value);
           if (values.some(v => !lock.values.includes(v))) err(where, `JobTread only knows these choices: ${lock.values.join(', ')}. You can reword them, not add new ones.`);
           if (lock.allValues && lock.values.some(v => !values.includes(v))) err(where, `Keep all of these choices: ${lock.values.join(', ')}.`);
           if (!values.length) err(where, 'Keep at least one choice.');
         }
+        if (f.jobtread) err(where, 'This question already feeds JobTread; it can’t be sent to a second field.');
+      }
+      if (f.jobtread) {
+        const jt = f.jobtread;
+        if (!(JT_TYPES_FOR[jt.type] || []).includes(f.type)) err(where, `A ${FIELD_TYPES[f.type]} question can't fill the JobTread field "${jt.name}" (${jt.type}).`);
+        if (jtUsed.has(jt.fieldId)) err(where, `Another question already fills the JobTread field "${jt.name}".`);
+        jtUsed.set(jt.fieldId, f.id);
+        if (jt.type === 'option' && Array.isArray(jt.options) && CHOICE_TYPES.includes(f.type)) {
+          const values = (f.options || []).map(o => choice(o).value);
+          const unknown = values.filter(v => !jt.options.includes(v));
+          if (unknown.length) err(where, `JobTread's "${jt.name}" doesn't have ${unknown.map(v => `"${v}"`).join(', ')}. Its choices are: ${jt.options.join(', ')}.`);
+          if (f.type === 'checkbox' && !jt.multiple) err(where, `JobTread's "${jt.name}" holds one choice; use One choice or Dropdown.`);
+        }
       }
       seen.set(f.id, f);
+      pageOf.set(f.id, p.id);
     }
   }
   for (const id of Object.keys(LOCKED_FIELDS)) if (!seen.has(id)) err(id, `The question "${id}" feeds ${LOCKED_FIELDS[id].role.replace(/^JobTread: /, 'JobTread ')}; it can be reworded or moved, not removed.`);
@@ -571,12 +851,21 @@ export function validateDefinition(def) {
     if (!/^[a-z0-9-]{1,30}$/.test(k)) err(`stops/${k}`, 'A stop screen has an invalid id.');
     if (!s.title) err(`stops/${k}`, 'This stop screen needs a title.');
   }
-  for (const k of ['welcome', 'inReview', 'approved', 'denied']) {
+  for (const k of ['welcome', 'inReview', 'approved', 'denied', 'correction']) {
     const m = def.messages?.[k];
     if (!m) err(`messages/${k}`, 'This message is empty.');
     else if (!m.includes('{child}')) err(`messages/${k}`, 'This message should name the child with {child}.');
   }
+  if (def.messages?.correction && !def.messages.correction.includes('{status}')) err('messages/correction', 'The correction should say where the application stands with {status}.');
   for (const e of def.staffEmails || []) if (!isEmailAddress(e)) err('staffEmails', `"${e}" isn't an email address.`);
+  const rem = def.reminders;
+  if (rem?.enabled) {
+    if (!rem.days?.length) err('reminders', 'Reminders are on but no days are set.');
+    if (!rem.subject) err('reminders', 'The reminder email needs a subject.');
+    if (!rem.body) err('reminders', 'The reminder email needs a message.');
+    if ((rem.days || []).some((d, i, a) => i && d <= a[i - 1])) err('reminders', 'Reminder days must go up (for example 2, 7, 21).');
+  }
+  if (def.serviceArea && (def.serviceArea.polygon || []).length < 3) err('serviceArea', 'The service area needs at least three corners.');
   return errors;
 }
 
@@ -587,27 +876,131 @@ export function newFieldId(existing = new Set()) {
   return id;
 }
 
-// ─── Using a resolved form ─────────────────────────────────────────
+// ─── What changed between two versions ─────────────────────────────
 
-/** Every field, in form order, with its page id */
-export function allFields(form) {
-  return form.pages.flatMap(p => p.fields.map(f => ({ ...f, page: p.id })));
+const short = (s, n = 80) => { const t = String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+
+/**
+ * A plain-language list of changes from `before` to `after`:
+ * [{ kind: 'added'|'removed'|'changed'|'moved', area, text }].
+ */
+export function diffDefinitions(before, after) {
+  const out = [];
+  const add = (kind, area, text) => out.push({ kind, area, text });
+  const a = before || { pages: [] };
+  const b = after || { pages: [] };
+  const fieldsOf = (d) => new Map(d.pages.flatMap((p, pi) => p.fields.map((f, fi) => [f.id, { f, page: p.id, pageTitle: p.title, pi, fi }])));
+  const fa = fieldsOf(a);
+  const fb = fieldsOf(b);
+  const pa = new Map(a.pages.map((p, i) => [p.id, { p, i }]));
+  const pb = new Map(b.pages.map((p, i) => [p.id, { p, i }]));
+  const name = (f) => short(f.label || f.title || f.alt || f.html || FIELD_TYPES[f.type] || f.id, 70);
+
+  for (const [id, { p }] of pb) if (!pa.has(id)) add('added', 'Pages', `New page "${short(p.title)}"`);
+  for (const [id, { p }] of pa) if (!pb.has(id)) add('removed', 'Pages', `Removed page "${short(p.title)}"`);
+  for (const [id, { p, i }] of pb) {
+    const old = pa.get(id);
+    if (!old) continue;
+    if (old.p.title !== p.title) add('changed', 'Pages', `Page renamed "${short(old.p.title)}" → "${short(p.title)}"`);
+    if (JSON.stringify(old.p.showIf || null) !== JSON.stringify(p.showIf || null)) add('changed', 'Pages', `"${short(p.title)}": ${p.showIf ? 'now shows only for some answers' : 'now always shows'}`);
+  }
+  const order = (d) => d.pages.map(p => p.id).filter(id => pa.has(id) && pb.has(id)).join(',');
+  if (order(a) !== order(b)) add('moved', 'Pages', 'Pages were reordered');
+
+  for (const [id, { f, pageTitle }] of fb) if (!fa.has(id)) add('added', 'Questions', `New ${FIELD_TYPES[f.type]?.toLowerCase() || 'item'} on "${short(pageTitle, 40)}": "${name(f)}"`);
+  for (const [id, { f }] of fa) if (!fb.has(id)) add('removed', 'Questions', `Removed "${name(f)}"`);
+  for (const [id, now] of fb) {
+    const was = fa.get(id);
+    if (!was) continue;
+    const f0 = was.f;
+    const f1 = now.f;
+    const nm = name(f1);
+    if (was.page !== now.page) add('moved', 'Questions', `"${nm}" moved to "${short(now.pageTitle, 40)}"`);
+    if ((f0.label || '') !== (f1.label || '')) add('changed', 'Questions', `Reworded: "${short(f0.label)}" → "${short(f1.label)}"`);
+    if ((f0.help || '') !== (f1.help || '')) add('changed', 'Questions', `"${nm}": help text ${f1.help ? 'changed' : 'removed'}`);
+    if ((f0.html || '') !== (f1.html || '')) add('changed', 'Questions', `Text block changed: "${short(f1.html, 60)}"`);
+    if (f0.type !== f1.type) add('changed', 'Questions', `"${nm}" is now ${FIELD_TYPES[f1.type]}`);
+    if (!!f0.required !== !!f1.required) add('changed', 'Questions', `"${nm}" is now ${f1.required ? 'required' : 'optional'}`);
+    if (JSON.stringify(f0.showIf || null) !== JSON.stringify(f1.showIf || null)) add('changed', 'Rules', `"${nm}": ${f1.showIf ? '"show only when" changed' : 'now always shows'}`);
+    if (JSON.stringify(f0.stops || null) !== JSON.stringify(f1.stops || null)) add('changed', 'Rules', `"${nm}": which answers end the application changed`);
+    if (JSON.stringify(f0.rules || null) !== JSON.stringify(f1.rules || null)) add('changed', 'Rules', `"${nm}": answer rules changed`);
+    if (JSON.stringify(f0.jobtread || null) !== JSON.stringify(f1.jobtread || null)) add('changed', 'JobTread', f1.jobtread ? `"${nm}" now fills JobTread's "${f1.jobtread.name}"` : `"${nm}" no longer fills a JobTread field`);
+    if ((f0.max || 0) !== (f1.max || 0)) add('changed', 'Questions', `"${nm}": choose up to ${f1.max || 'any number'}`);
+    const c0 = (f0.options || []).map(choice);
+    const c1 = (f1.options || []).map(choice);
+    const v0 = new Map(c0.map(c => [c.value, c]));
+    const v1 = new Map(c1.map(c => [c.value, c]));
+    for (const c of c1) if (!v0.has(c.value)) add('added', 'Choices', `"${nm}": new choice "${short(c.label, 50)}"`);
+    for (const c of c0) if (!v1.has(c.value)) add('removed', 'Choices', `"${nm}": removed choice "${short(c.label, 50)}"`);
+    for (const c of c1) {
+      const o = v0.get(c.value);
+      if (o && o.label !== c.label) add('changed', 'Choices', `"${nm}": "${short(o.label, 40)}" → "${short(c.label, 40)}"`);
+      if (o && o.description !== c.description) add('changed', 'Choices', `"${nm}": description of "${short(c.label, 40)}" changed`);
+    }
+    if (c0.length && c1.length && c0.map(c => c.value).filter(v => v1.has(v)).join('|') !== c1.map(c => c.value).filter(v => v0.has(v)).join('|')) add('moved', 'Choices', `"${nm}": choices reordered`);
+    if (JSON.stringify([f0.title, f0.doTitle, f0.doItems, f0.dontTitle, f0.dontItems]) !== JSON.stringify([f1.title, f1.doTitle, f1.doItems, f1.dontTitle, f1.dontItems]) && f1.type === 'guidelines') add('changed', 'Questions', 'The guidelines lists changed');
+    if ((f0.image || '') !== (f1.image || '') || (f0.alt || '') !== (f1.alt || '')) if (f1.type === 'image') add('changed', 'Questions', 'An image changed');
+  }
+  const moved = [...fb.keys()].filter(id => fa.has(id) && fa.get(id).page === fb.get(id).page);
+  const seq = (m) => moved.slice().sort((x, y) => (m.get(x).pi - m.get(y).pi) || (m.get(x).fi - m.get(y).fi)).join(',');
+  if (seq(fa) !== seq(fb)) add('moved', 'Questions', 'Questions were reordered');
+
+  const sa = a.stops || {};
+  const sb = b.stops || {};
+  for (const k of Object.keys(sb)) if (!sa[k]) add('added', 'Stop screens', `New stop screen "${short(sb[k].title)}"`);
+  for (const k of Object.keys(sa)) if (!sb[k]) add('removed', 'Stop screens', `Removed stop screen "${short(sa[k].title)}"`);
+  for (const k of Object.keys(sb)) if (sa[k] && JSON.stringify(sa[k]) !== JSON.stringify(sb[k])) add('changed', 'Stop screens', `Stop screen "${short(sb[k].title)}" changed`);
+
+  const ma = { ...DEFAULT_MESSAGES, ...(a.messages || {}) };
+  const mb = { ...DEFAULT_MESSAGES, ...(b.messages || {}) };
+  const MSG_NAMES = { welcome: 'Application Status', copyNote: 'the "copy attached" line', inReview: 'Application In Review', approved: 'Application Decision: approved', denied: 'Application Decision: denied', correction: 'Correction' };
+  for (const k of MESSAGE_KEYS) if (ma[k] !== mb[k]) add('changed', 'Messages', `${MSG_NAMES[k]} message reworded`);
+  const ra = { ...DEFAULT_REMINDERS, ...(a.reminders || {}) };
+  const rb = { ...DEFAULT_REMINDERS, ...(b.reminders || {}) };
+  if (ra.enabled !== rb.enabled) add('changed', 'Reminders', `Reminder emails turned ${rb.enabled ? 'on' : 'off'}`);
+  if (JSON.stringify(ra.days) !== JSON.stringify(rb.days)) add('changed', 'Reminders', `Reminders now go ${(rb.days || []).join(', ')} days after a family stops`);
+  if (ra.subject !== rb.subject || ra.body !== rb.body) add('changed', 'Reminders', 'Reminder email reworded');
+  const na = notifySettings(a.notify);
+  const nb = notifySettings(b.notify);
+  for (const [k, name] of [['inReview', 'In Review'], ['decision', 'Approved and Denied'], ['welcome', 'Welcome']]) {
+    if (na.waits[k] !== nb.waits[k]) add('changed', 'Email timing', `${name} emails now wait ${nb.waits[k]} minutes`);
+  }
+  if (na.quiet.start !== nb.quiet.start || na.quiet.end !== nb.quiet.end) add('changed', 'Email timing', nb.quiet.start === nb.quiet.end ? 'Quiet hours turned off' : `Quiet hours now ${nb.quiet.start}:00 to ${nb.quiet.end}:00 Eastern`);
+  if (na.summary !== nb.summary) add('changed', 'Email timing', `Change summaries for staff turned ${nb.summary ? 'on' : 'off'}`);
+  if (JSON.stringify(a.staffEmails || DEFAULT_STAFF_EMAILS) !== JSON.stringify(b.staffEmails || DEFAULT_STAFF_EMAILS)) add('changed', 'Settings', `New-application email goes to ${(b.staffEmails || []).join(', ') || 'nobody'}`);
+  if (JSON.stringify(a.serviceArea?.polygon || DEFAULT_SERVICE_AREA.polygon) !== JSON.stringify(b.serviceArea?.polygon || DEFAULT_SERVICE_AREA.polygon)) add('changed', 'Settings', 'The service area boundary changed');
+  const ta = a.i18n?.es?.strings || {};
+  const tb = b.i18n?.es?.strings || {};
+  const tChanged = [...new Set([...Object.keys(ta), ...Object.keys(tb)])].filter(p => ta[p] !== tb[p]).length;
+  if (tChanged) add('changed', 'Spanish', `${tChanged} Spanish ${tChanged === 1 ? 'translation' : 'translations'} changed`);
+  return out;
 }
 
-const INPUT_TYPES = new Set(['text', 'textarea', 'email', 'phone', 'date', 'select', 'radio', 'checkbox', 'name', 'address', 'ack', 'signature']);
+// ─── Using a resolved form ─────────────────────────────────────────
+
+/** Every field, in form order, with its page id (and the page's own rule) */
+export function allFields(form) {
+  return form.pages.flatMap(p => p.fields.map(f => ({ ...f, page: p.id, ...(p.showIf ? { pageShowIf: p.showIf } : {}) })));
+}
+
+const INPUT_TYPES = new Set(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'radio', 'checkbox', 'name', 'address', 'ack', 'signature']);
 const UPLOAD_TYPES = new Set(['photo', 'video']);
 
 export function isInput(field) { return INPUT_TYPES.has(field.type); }
 export function isUpload(field) { return UPLOAD_TYPES.has(field.type); }
 
-/** Shown for these answers? Fields hidden behind a hidden field are hidden too. */
-export function isVisible(field, answers, byId) {
-  if (!field.showIf) return true;
-  const parent = byId?.[field.showIf.field];
-  if (parent && !isVisible(parent, answers, byId)) return false;
-  const v = answers?.[field.showIf.field];
-  const vals = Array.isArray(v) ? v : [v];
-  return vals.some(x => field.showIf.in.includes(x));
+/** Shown for these answers? Not when its page is skipped, or a question it depends on is hidden. */
+export function isVisible(field, answers, byId, seen = new Set()) {
+  if (seen.has(field.id)) return false; // a loop in the rules: treat as hidden
+  if (!field.showIf && !field.pageShowIf) return true;
+  const next = new Set(seen).add(field.id);
+  if (field.pageShowIf && !ruleMatches(field.pageShowIf, answers, byId, next)) return false;
+  return ruleMatches(field.showIf, answers, byId, next);
+}
+
+/** Is this page shown for these answers? */
+export function pageVisible(page, answers, byId) {
+  return !page.showIf || ruleMatches(page.showIf, answers, byId);
 }
 
 export function indexById(form) {
@@ -642,50 +1035,105 @@ export function toE164(s) {
   return null;
 }
 
+/** Whole years between a YYYY-MM-DD birthday and now */
+export function ageOn(birthdate, now = Date.now()) {
+  const m = String(birthdate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(now);
+  let age = d.getUTCFullYear() - Number(m[1]);
+  if (d.getUTCMonth() + 1 < Number(m[2]) || (d.getUTCMonth() + 1 === Number(m[2]) && d.getUTCDate() < Number(m[3]))) age--;
+  return age;
+}
+
+/** What families read when an answer needs attention, in English and Spanish */
+export const ERROR_TEXT = {
+  en: {
+    video: 'Please upload your video.', videoBusy: 'Your video is still uploading. Please wait for it to finish.', photo: 'Please add a photo.',
+    ack: 'Please check the box to continue.', choose: 'Please choose an answer.', signature: 'Please type your full name.', answer: 'Please answer this question.',
+    email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.',
+    date: 'Please enter a valid date.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
+    address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.',
+    oneOf: 'Please choose one of the answers.', listed: 'Please choose from the answers listed.', upTo: (n) => `Please choose up to ${n}.`,
+    number: 'Please enter a number.', whole: 'Please enter a whole number.', min: (n) => `Please enter ${n} or more.`, max: (n) => `Please enter ${n} or less.`,
+    minLength: (n) => `Please write at least ${n} characters.`, maxLength: (n) => `Please keep this to ${n} characters or fewer.`,
+    minAge: (n) => `The child must be at least ${n} years old.`, maxAge: (n) => `The child must be ${n} years old or younger.`,
+  },
+  es: {
+    video: 'Suba su video.', videoBusy: 'Su video todavía se está subiendo. Espere a que termine.', photo: 'Agregue una foto.',
+    ack: 'Marque la casilla para continuar.', choose: 'Elija una respuesta.', signature: 'Escriba su nombre completo.', answer: 'Responda esta pregunta.',
+    email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.',
+    date: 'Escriba una fecha válida.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
+    address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.',
+    oneOf: 'Elija una de las respuestas.', listed: 'Elija entre las respuestas de la lista.', upTo: (n) => `Elija hasta ${n}.`,
+    number: 'Escriba un número.', whole: 'Escriba un número entero.', min: (n) => `Escriba ${n} o más.`, max: (n) => `Escriba ${n} o menos.`,
+    minLength: (n) => `Escriba al menos ${n} caracteres.`, maxLength: (n) => `Use ${n} caracteres o menos.`,
+    minAge: (n) => `El niño o la niña debe tener al menos ${n} años.`, maxAge: (n) => `El niño o la niña debe tener ${n} años o menos.`,
+  },
+};
+
 /**
  * The problem with one answer, or null. `value` for uploads is the draft's
  * file record ({ key } for photos, { uid, uploaded } for the video).
  */
-export function fieldError(field, value) {
+export function fieldError(field, value, lang = 'en') {
+  const E = ERROR_TEXT[lang] || ERROR_TEXT.en;
   const blank = isBlank(value);
   if (field.type === 'video') {
-    if (field.required && !value?.uid) return 'Please upload your video.';
-    if (value?.uid && !value.uploaded) return 'Your video is still uploading. Please wait for it to finish.';
+    if (field.required && !value?.uid) return E.video;
+    if (value?.uid && !value.uploaded) return E.videoBusy;
     return null;
   }
-  if (field.type === 'photo') return field.required && !value?.key ? 'Please add a photo.' : null;
+  if (field.type === 'photo') return field.required && !value?.key ? E.photo : null;
   if (blank) {
     if (!field.required) return null;
-    if (field.type === 'ack') return 'Please check the box to continue.';
-    if (['radio', 'select', 'checkbox'].includes(field.type)) return 'Please choose an answer.';
-    if (field.type === 'signature') return 'Please type your full name.';
-    return 'Please answer this question.';
+    if (field.type === 'ack') return E.ack;
+    if (['radio', 'select', 'checkbox'].includes(field.type)) return E.choose;
+    if (field.type === 'signature') return E.signature;
+    return E.answer;
   }
+  const r = field.rules || {};
   switch (field.type) {
-    case 'email': return isEmailAddress(value) ? null : 'Please enter a valid email address, like name@example.com.';
-    case 'phone': return toE164(value) ? null : 'Please enter a 10-digit phone number.';
+    case 'email': return isEmailAddress(value) ? null : E.email;
+    case 'phone': return toE164(value) ? null : E.phone;
+    case 'number': {
+      const n = Number(String(value).replace(/,/g, '').trim());
+      if (!Number.isFinite(n)) return E.number;
+      if (r.integer && !Number.isInteger(n)) return E.whole;
+      if (r.min != null && n < r.min) return E.min(r.min);
+      if (r.max != null && n > r.max) return E.max(r.max);
+      return null;
+    }
     case 'date': {
       const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
       const d = m ? new Date(`${value}T12:00:00Z`) : null;
-      if (!d || Number.isNaN(d.getTime()) || d.getUTCDate() !== Number(m[3])) return 'Please enter a valid date.';
-      if (d.getTime() > Date.now()) return 'Please enter a date in the past.';
+      if (!d || Number.isNaN(d.getTime()) || d.getUTCDate() !== Number(m[3])) return E.date;
+      if (d.getTime() > Date.now()) return E.future;
+      const age = ageOn(value);
+      if (r.minAge != null && age < r.minAge) return E.minAge(r.minAge);
+      if (r.maxAge != null && age > r.maxAge) return E.maxAge(r.maxAge);
       return null;
     }
     case 'name': {
-      if (field.required && (!String(value.first || '').trim() || !String(value.last || '').trim())) return 'Please enter a first and last name.';
+      if (field.required && (!String(value.first || '').trim() || !String(value.last || '').trim())) return E.name;
       return null;
     }
     case 'address': {
       const missing = ['line1', 'city', 'state', 'zip'].filter(k => !String(value[k] || '').trim());
-      if (missing.length && (field.required || missing.length < 4)) return 'Please enter the street address, city, state and ZIP code.';
-      if (value.zip && !/^\d{5}(-\d{4})?$/.test(String(value.zip).trim())) return 'Please enter a 5-digit ZIP code.';
+      if (missing.length && (field.required || missing.length < 4)) return E.address;
+      if (value.zip && !/^\d{5}(-\d{4})?$/.test(String(value.zip).trim())) return E.zip;
       return null;
     }
     case 'radio': case 'select': case 'ack':
-      return field.options.includes(value) ? null : 'Please choose one of the answers.';
+      return field.options.includes(value) ? null : E.oneOf;
     case 'checkbox': {
-      if (!Array.isArray(value) || value.some(v => !field.options.includes(v))) return 'Please choose from the answers listed.';
-      if (field.max && value.length > field.max) return `Please choose up to ${field.max}.`;
+      if (!Array.isArray(value) || value.some(v => !field.options.includes(v))) return E.listed;
+      if (field.max && value.length > field.max) return E.upTo(field.max);
+      return null;
+    }
+    case 'text': case 'textarea': case 'signature': {
+      const len = String(value).trim().length;
+      if (r.minLength != null && len < r.minLength) return E.minLength(r.minLength);
+      if (r.maxLength != null && len > r.maxLength) return E.maxLength(r.maxLength);
       return null;
     }
     default: return null;
@@ -724,16 +1172,31 @@ export function cleanAnswers(form, answers) {
  * Problems on the given pages ({ fieldId: message }), counting only fields
  * these answers show. `pages` defaults to the whole form.
  */
-export function formErrors(form, answers, files = {}, pages = null) {
+export function formErrors(form, answers, files = {}, pages = null, lang = 'en') {
   const byId = indexById(form);
   const errors = {};
   for (const f of allFields(form)) {
     if (pages && !pages.includes(f.page)) continue;
     if (!(isInput(f) || isUpload(f)) || !isVisible(f, answers, byId)) continue;
-    const err = fieldError(f, isUpload(f) ? files?.[f.id] : answers?.[f.id]);
+    const err = fieldError(f, isUpload(f) ? files?.[f.id] : answers?.[f.id], lang);
     if (err) errors[f.id] = err;
   }
   return errors;
+}
+
+/** The pages these answers show, in order */
+export function visiblePages(form, answers) {
+  const byId = indexById(form);
+  return form.pages.filter(p => pageVisible(p, answers, byId));
+}
+
+/** How far along these answers are, 0 to 100 (required questions shown and answered) */
+export function progressPercent(form, answers, files = {}) {
+  const byId = indexById(form);
+  const req = allFields(form).filter(f => f.required && (isInput(f) || isUpload(f)) && isVisible(f, answers, byId));
+  if (!req.length) return 0;
+  const done = req.filter(f => !fieldError(f, isUpload(f) ? files?.[f.id] : answers?.[f.id])).length;
+  return Math.round((done / req.length) * 100);
 }
 
 export function nameText(v) {
@@ -748,27 +1211,27 @@ export function addressText(v) {
 }
 
 /** "2019-03-08" → "March 8, 2019" */
-export function dateText(v) {
+export function dateText(v, lang = 'en') {
   const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return String(v || '');
-  return new Date(`${v}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  return new Date(`${v}T12:00:00Z`).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
-/** A choice's wording (an answer is stored as the choice's value) */
-export function optionLabel(field, value) {
-  return field?.optionLabels?.[value] || String(value ?? '');
+/** A choice's wording (an answer is stored as the choice's value). `en` = staff wording */
+export function optionLabel(field, value, en = false) {
+  return (en ? field?.optionLabelsEn?.[value] : null) || field?.optionLabels?.[value] || String(value ?? '');
 }
 
-/** One answer as plain text, for the PDF, emails and JobTread */
-export function answerText(field, value) {
+/** One answer as plain text, for the PDF, emails and JobTread. `en` reads choices in English for staff */
+export function answerText(field, value, en = false) {
   if (value == null) return '';
   switch (field.type) {
     case 'name': return nameText(value);
     case 'signature': return String(value);
     case 'address': return addressText(value);
     case 'date': return dateText(value);
-    case 'checkbox': return (value || []).map(v => optionLabel(field, v)).join(', ');
-    case 'radio': case 'select': case 'ack': return optionLabel(field, value);
+    case 'checkbox': return (value || []).map(v => optionLabel(field, v, en)).join(', ');
+    case 'radio': case 'select': case 'ack': return optionLabel(field, value, en);
     case 'phone': {
       const e = toE164(value);
       const m = e && e.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
@@ -780,23 +1243,25 @@ export function answerText(field, value) {
 
 /**
  * The answered questions, page by page, for the PDF and the review screen:
- * [{ title, items: [{ id, type, label, text }] }]. Uploads appear with
- * `upload: true` and the file record.
+ * [{ title, items: [{ id, type, label, labelEn?, text }] }]. Uploads appear
+ * with `upload: true` and the file record. Skipped pages are left out.
  */
-export function answerSections(form, answers, files = {}) {
+export function answerSections(form, answers, files = {}, { en = false } = {}) {
   const byId = indexById(form);
   const sections = [];
   for (const p of form.pages) {
+    if (!pageVisible(p, answers, byId)) continue;
     const items = [];
     for (const f of p.fields) {
-      if (!isVisible(f, answers, byId)) continue;
+      if (!isVisible({ ...f, ...(p.showIf ? { pageShowIf: p.showIf } : {}) }, answers, byId)) continue;
+      const labels = { label: f.label, ...(f.labelEn ? { labelEn: f.labelEn } : {}) };
       if (isUpload(f)) {
-        if (files?.[f.id]) items.push({ id: f.id, type: f.type, label: f.label, upload: true, file: files[f.id] });
+        if (files?.[f.id]) items.push({ id: f.id, type: f.type, ...labels, upload: true, file: files[f.id] });
         continue;
       }
       if (!isInput(f)) continue;
-      const text = answerText(f, answers?.[f.id]);
-      if (text) items.push({ id: f.id, type: f.type, label: f.label, text });
+      const text = answerText(f, answers?.[f.id], en);
+      if (text) items.push({ id: f.id, type: f.type, ...labels, text });
     }
     if (items.length) sections.push({ id: p.id, title: p.title, items });
   }

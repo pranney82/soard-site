@@ -18,6 +18,7 @@ import {
   testAnswers, createTestApplication, listApplications, applicationUrl, DRAFT_TTL_DAYS,
 } from '../functions/api/_applications.js';
 import { handleApplicantEvent, QC_USER_ID } from '../functions/api/_applicant-comms.js';
+import { handleWorkflowCall, runNotifications } from '../functions/api/_applicant-notify.js';
 import { DEFAULT_MESSAGES, renderMessage } from '../functions/api/_application-form.js';
 import { buildApplicationPdf } from '../functions/api/_application-pdf.js';
 import * as applyApi from '../functions/api/apply.js';
@@ -442,38 +443,85 @@ function seedAccount({ status = 'Applied', diagnosis = 'Autism', comments = [], 
   };
   return w.world.accounts[id];
 }
-const hook = (payload) => handleApplicantEvent(env, { accountId: 'acctZAP00001', ...payload }, { fetchImpl: w.fetchImpl });
+// Status emails wait for the status to settle (./_applicant-notify.js), so these
+// run on a fixed clock: 11 AM Eastern, well clear of quiet hours
+const T0 = Date.parse('2026-10-21T15:00:00Z');
+const MIN = 60 * 1000;
+const hook = (payload, now = T0) => handleWorkflowCall(env, { accountId: 'acctZAP00001', ...payload }, { fetchImpl: w.fetchImpl, now });
+/** The sweep at a few points in time (the summary goes ~4 min in, emails after the wait) */
+const tick = async (...times) => { for (const t of times) await runNotifications(env, { fetchImpl: w.fetchImpl, now: t }); };
 
-test('a hand-made Applied account gets the welcome and medical note once, from Qualification Committee', async () => {
+test('a hand-made Applied account: the medical note now, the welcome once the status settles', async () => {
   env.JOBTREAD_QC_GRANT_KEY = 'qc-grant';
   const acct = seedAccount();
   const r = await hook({ previousStatus: 'null', status: 'Applied' });
-  assert.deepEqual(r.actions, { welcome: 'sent', medical: 'sent' });
-  assert.deepEqual(acct.comments.map(c => c.grantKey), ['qc-grant', 'qc-grant']);
-  assert.equal(acct.comments[0].message, renderMessage(DEFAULT_MESSAGES.welcome, { parent: 'Morgan Park', child: 'Riley Park' }));
-  await hook({ previousStatus: 'Applied', status: 'Applied' });
+  assert.equal(r.actions.medical, 'sent');
+  assert.match(r.actions.welcome, /^scheduled/);
+  assert.deepEqual(acct.comments.map(c => c.name), ["Child's Medical Condition"], 'no welcome yet');
+  await tick(T0 + 4 * MIN, T0 + 10 * MIN);
+  const welcome = acct.comments.find(c => c.name === 'Application Status');
+  assert.equal(welcome.grantKey, 'qc-grant');
+  assert.equal(welcome.message, renderMessage(DEFAULT_MESSAGES.welcome, { parent: 'Morgan Park', child: 'Riley Park' }));
+  await hook({ previousStatus: 'Applied', status: 'Applied' }, T0 + 11 * MIN);
+  await tick(T0 + 60 * MIN);
   assert.equal(acct.comments.length, 2, 'never twice');
 });
 
-test('status moves send the right family message once; backward moves leave an internal note', async () => {
+test('status emails go once the status settles; a flip-flop sends one email or none', async () => {
   const acct = seedAccount({ status: 'In Review', comments: [{ name: 'Application Status', message: 'old' }, { name: "Child's Medical Condition", message: 'old' }] });
-  assert.deepEqual((await hook({ previousStatus: 'Applied', status: 'In Review' })).actions, { medical: 'already', inReview: 'sent' });
-  const review = acct.comments.at(-1);
-  assert.equal(review.name, 'Application In Review');
-  assert.equal(review.assignees[0].emailAddress, 'morgan@example.com');
-  assert.match(review.message, /^Morgan Park\n\nCongratulations, the application for \*Riley Park\* has moved to the next stage/);
-  await hook({ previousStatus: 'Applied', status: 'In Review' }); // JobTread retried the webhook
+  const set = (s) => { acct.fields[JT_FIELDS.status] = s; };
+  const reviews = () => acct.comments.filter(c => c.name === 'Application In Review');
+  const decisions = () => acct.comments.filter(c => c.name === 'Application Decision');
+  const r = await hook({ previousStatus: 'Applied', status: 'In Review' });
+  assert.deepEqual(Object.keys(r.actions).sort(), ['inReview', 'medical']);
+  assert.equal(reviews().length, 0, 'nothing goes straight away');
+  await tick(T0 + 4 * MIN, T0 + 9 * MIN);
+  assert.equal(reviews().length, 0, 'still inside the 10 minutes');
+  await tick(T0 + 10 * MIN);
+  assert.equal(reviews().length, 1);
+  assert.equal(reviews()[0].assignees[0].emailAddress, 'morgan@example.com');
+  assert.match(reviews()[0].message, /^Morgan Park\n\nCongratulations, the application for \*Riley Park\* has moved to the next stage/);
+  await hook({ previousStatus: 'Applied', status: 'In Review' }, T0 + 11 * MIN); // JobTread retried the webhook
+  await tick(T0 + 30 * MIN);
+  assert.equal(reviews().length, 1);
+
+  // An accident: Denied, then straight back to In Review. Nothing is sent.
+  set('Denied');
+  assert.match((await hook({ previousStatus: 'In Review', status: 'Denied' }, T0 + 40 * MIN)).actions.denied, /^scheduled/);
+  set('In Review');
+  assert.equal((await hook({ previousStatus: 'Denied', status: 'In Review' }, T0 + 41 * MIN)).actions.cancelled, 'denied');
+  await tick(T0 + 45 * MIN, T0 + 80 * MIN, T0 + 200 * MIN);
+  assert.equal(decisions().length, 0);
+  assert.equal(reviews().length, 1, 'and In Review is not sent again');
+
+  // Back below what the family was told: one staff note once it settles
+  set('Applied');
+  await hook({ previousStatus: 'In Review', status: 'Applied' }, T0 + 210 * MIN);
+  await tick(T0 + 215 * MIN);
+  assert.ok(!acct.comments.some(c => /^Moved back/.test(c.message)), 'not before it settles');
+  await tick(T0 + 221 * MIN);
+  const note = acct.comments.at(-1);
+  assert.match(note.message, /^Moved back to Applied\. The family was emailed the In Review message on/);
+  assert.equal(note.internal, true);
+
+  // A decision waits 30 minutes
+  set('Approved');
+  await hook({ previousStatus: 'Applied', status: 'Approved' }, T0 + 230 * MIN);
+  await tick(T0 + 234 * MIN, T0 + 250 * MIN);
+  assert.equal(decisions().length, 0);
+  await tick(T0 + 261 * MIN);
+  assert.equal(decisions().length, 1);
+  assert.match(decisions()[0].message, /has been approved!\n\nYour child's makeover is now on our official makeover waitlist/);
+});
+
+test('family emails never go out overnight: a change at 11 PM goes at 8 AM Eastern', async () => {
+  const acct = seedAccount({ status: 'In Review', comments: [{ name: 'Application Status', message: 'old' }] });
+  const night = Date.parse('2026-10-21T03:00:00Z'); // 11 PM EDT on Oct 20
+  await hook({ previousStatus: 'Applied', status: 'In Review' }, night);
+  await tick(night + 5 * MIN, night + 30 * MIN, Date.parse('2026-10-21T11:59:00Z'));
+  assert.equal(acct.comments.filter(c => c.name === 'Application In Review').length, 0);
+  await tick(Date.parse('2026-10-21T12:01:00Z')); // 8:01 AM EDT
   assert.equal(acct.comments.filter(c => c.name === 'Application In Review').length, 1);
-
-  acct.fields[JT_FIELDS.status] = 'Applied';
-  await hook({ previousStatus: 'In Review', status: 'Applied' });
-  assert.equal(acct.comments.at(-1).message, 'Moved back to Applied');
-  assert.equal(acct.comments.at(-1).internal, true);
-
-  acct.fields[JT_FIELDS.status] = 'Approved';
-  await hook({ previousStatus: 'Applied', status: 'Approved' });
-  assert.match(acct.comments.at(-1).message, /has been approved!\n\nYour child's makeover is now on our official makeover waitlist/);
-  assert.equal(acct.comments.at(-1).name, 'Application Decision');
 });
 
 test('a Diagnosis edit never sends a status message', async () => {
@@ -487,11 +535,14 @@ test('a Diagnosis edit never sends a status message', async () => {
 test('a decision already sent in the Zap era is not sent again', async () => {
   const acct = seedAccount({ status: 'Denied', createdAt: '2026-01-10T12:00:00Z', comments: [{ name: 'Application Decision', message: 'Pat\n\nAfter careful consideration of the application for *Riley* we are unable to move forward with your family’s request.' }] });
   const before = acct.comments.length;
-  assert.equal((await hook({ previousStatus: 'In Review', status: 'Denied' })).actions.denied, 'already');
+  const r = await hook({ previousStatus: 'In Review', status: 'Denied' });
+  assert.equal(r.actions.denied, undefined, 'the family already knows');
+  await tick(T0 + 5 * MIN, T0 + 60 * MIN);
   assert.equal(acct.comments.length, before, 'and no after-the-fact medical note on a Zap-era account');
   acct.fields[JT_FIELDS.status] = 'Applied';
-  await hook({ previousStatus: 'Denied', status: 'Applied' });
-  assert.deepEqual(acct.comments.slice(before).map(c => c.message), ['Moved back to Applied'], 'no welcome for an old account moved back');
+  await hook({ previousStatus: 'Denied', status: 'Applied' }, T0 + 70 * MIN);
+  await tick(T0 + 81 * MIN);
+  assert.deepEqual(acct.comments.slice(before).map(c => c.message), ['Moved back to Applied.'], 'no welcome for an old account moved back, just the staff note');
 });
 
 test("accounts the form made are left to the form's own intake", async () => {
@@ -499,8 +550,9 @@ test("accounts the form made are left to the form's own intake", async () => {
   await run(sub.id);
   const [acct] = Object.values(w.world.accounts);
   const before = acct.comments.length;
-  const r = await handleApplicantEvent(env, { accountId: acct.id, previousStatus: 'null', status: 'Applied' }, { fetchImpl: w.fetchImpl });
+  const r = await handleWorkflowCall(env, { accountId: acct.id, previousStatus: 'null', status: 'Applied' }, { fetchImpl: w.fetchImpl, now: T0 });
   assert.deepEqual(r.actions, {});
+  await tick(T0 + 5 * MIN, T0 + 60 * MIN);
   assert.equal(acct.comments.length, before);
 });
 
@@ -517,10 +569,10 @@ test('the medical note waits for the model; the welcome does not', async () => {
   env.AI.available = false;
   const acct = seedAccount();
   const r = await hook({ previousStatus: 'null', status: 'Applied' });
-  assert.equal(r.actions.welcome, 'sent');
+  assert.match(r.actions.welcome, /^scheduled/);
   assert.equal(r.actions.medical, 'skipped: nothing to say');
   env.AI.available = true;
   acct.fields[JT_FIELDS.diagnosis] = 'Autism, epilepsy';
-  assert.equal((await hook({ previousStatus: 'Applied', status: 'Applied' })).actions.medical, 'sent');
+  assert.equal((await hook({ previousStatus: 'Applied', status: 'Applied' }, T0 + MIN)).actions.medical, 'sent');
   assert.equal(QC_USER_ID, '22P5r2x8FPiK');
 });

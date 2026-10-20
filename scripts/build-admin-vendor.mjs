@@ -107,3 +107,28 @@ const hls = await esbuild.build({
 });
 const hlsOut = hls.metafile.outputs['public/admin/vendor-hls.js'];
 console.log(`vendor-hls.js written: ${(hlsOut.bytes / 1024).toFixed(1)} KB (minified, pre-gzip)`);
+
+// Leaflet gets its own lazy file too: only the Applicants map
+// (public/admin/applicants.js) needs it. Its stylesheet comes along as text
+// so the admin can inject it next to the map (no CDN in the admin CSP).
+const map = await esbuild.build({
+  stdin: {
+    contents: `export { default as L } from 'leaflet';\nexport { default as leafletCss } from 'leaflet/dist/leaflet.css';`,
+    resolveDir: rootDir,
+    sourcefile: 'admin-vendor-map-entry.js',
+    loader: 'js',
+  },
+  bundle: true,
+  minify: true,
+  format: 'esm',
+  target: 'es2020',
+  platform: 'browser',
+  loader: { '.css': 'text', '.png': 'empty' },
+  outfile: join(rootDir, 'public/admin/vendor-map.js'),
+  banner: { js: `/*! SOARD admin vendor bundle (lazy) — built by scripts/build-admin-vendor.mjs\n * leaflet@${pkgVersion('leaflet')} (BSD-2-Clause). Do not edit by hand.\n */` },
+  legalComments: 'none',
+  metafile: true,
+  logLevel: 'info',
+});
+const mapOut = map.metafile.outputs['public/admin/vendor-map.js'];
+console.log(`vendor-map.js written: ${(mapOut.bytes / 1024).toFixed(1)} KB (minified, pre-gzip)`);

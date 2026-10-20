@@ -26,10 +26,11 @@ import { isAuthenticated } from './_middleware.js';
 import {
   ensureSchema, getDraft, createDraft, saveDraft, setDraftFile, draftsToday, hashIp, cleanYear,
   applicationSettings, publicFiles, photoKey, createVideoUpload, getVideo, deleteVideo, videoUploaded,
-  submitDraft, processApplication, DRAFT_TTL_DAYS, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, MAX_VIDEO_BYTES,
+  submitDraft, processApplication, stopReminders, DRAFT_TTL_DAYS, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, MAX_VIDEO_BYTES,
 } from './_applications.js';
 import { allFields, resolveForm } from './_application-form.js';
-import { formFor, getDraftForm } from './_application-forms.js';
+import { formFor, getDraftForm, getLiveForm } from './_application-forms.js';
+import { suggestAddresses } from './_address.js';
 import { sendEmails, escapeHtml, isEmail } from './_broadcast-notify.js';
 
 const MAX_DRAFTS_PER_IP_DAY = 20;
@@ -61,27 +62,58 @@ async function verifyTurnstile(env, token, ip) {
 
 /** What the page needs to draw the form: no messages or staff addresses */
 export function publicForm(form) {
-  return { title: form.title, year: form.year, version: form.version, pages: form.pages, stops: form.stops };
+  return { title: form.title, year: form.year, version: form.version, lang: form.lang, languages: form.languages, pages: form.pages, stops: form.stops };
+}
+
+/**
+ * The stored definition, trimmed to what families see: the page resolves it
+ * itself so switching English / Español is instant. No messages, reminder
+ * wording, staff emails or service-area corners.
+ */
+export function publicDefinition(def) {
+  const i18n = {};
+  for (const [lang, tr] of Object.entries(def?.i18n || {})) {
+    const strings = Object.fromEntries(Object.entries(tr?.strings || {}).filter(([p]) => !/^(message|reminder):/.test(p)));
+    if (Object.keys(strings).length) i18n[lang] = { strings };
+  }
+  return { schema: def?.schema || 2, title: def?.title, pages: def?.pages || [], stops: def?.stops || {}, i18n };
+}
+
+// Address suggestions: a small per-connection allowance (the form asks as people type)
+const _addrHits = new Map();
+function addressAllowed(ip, now = Date.now()) {
+  const e = _addrHits.get(ip);
+  if (!e || now > e.reset) { _addrHits.set(ip, { n: 1, reset: now + 60000 }); if (_addrHits.size > 5000) _addrHits.clear(); return true; }
+  e.n++;
+  return e.n <= 40;
 }
 
 export async function onRequestGet(context) {
   const { env, request } = context;
   if (!env.DB) return fail('Not configured', 503);
   const url = new URL(request.url);
+  if (url.searchParams.has('address')) {
+    if (!addressAllowed(request.headers.get('CF-Connecting-IP') || 'x')) return json({ ok: true, results: [] });
+    const results = await suggestAddresses(url.searchParams.get('address')).catch(() => []);
+    return json({ ok: true, results });
+  }
   const settings = await applicationSettings(env.DB);
   const year = cleanYear(settings.year);
-  let form = await formFor(env.DB, { year });
+  let live = await getLiveForm(env.DB);
   let preview = false;
   if (url.searchParams.get('preview') === 'draft' && await isAuthenticated(request, env)) {
     const draft = await getDraftForm(env.DB);
-    if (draft) { form = resolveForm(draft.definition, { year, version: draft.version }); preview = true; }
+    if (draft) { live = { version: draft.version, definition: draft.definition }; preview = true; }
   }
+  const form = resolveForm(live.definition, { year, version: live.version });
   return json({
     ok: true,
     open: settings.open === true,
     year,
     preview,
     turnstileSiteKey: turnstileOn(env) ? env.TURNSTILE_SITE_KEY : null,
+    version: live.version,
+    definition: publicDefinition(live.definition),
     form: publicForm(form),
   });
 }
@@ -108,14 +140,19 @@ export async function onRequestPost(context) {
   if (!draft) return fail('This application link has expired or is not valid. Please start a new application.', 404, { code: 'no-draft' });
 
   if (action === 'resume') {
-    return json({ ok: true, year: draft.year, answers: draft.answers, files: publicFiles(draft.files), page: draft.page || null, submitted: !!draft.submitted_id });
+    if (body.reminders === 'off') await stopReminders(env.DB, draft.id);
+    return json({ ok: true, year: draft.year, lang: draft.lang || 'en', answers: draft.answers, files: publicFiles(draft.files), page: draft.page || null, maxPage: draft.max_page_id || null, submitted: !!draft.submitted_id, remindersOff: body.reminders === 'off' || !!draft.reminders_off });
+  }
+  if (action === 'reminders-off') {
+    await stopReminders(env.DB, draft.id);
+    return json({ ok: true });
   }
   if (draft.submitted_id) return action === 'submit' ? json({ ok: true, id: draft.submitted_id, duplicate: true }) : fail('This application has already been submitted.', 409, { code: 'submitted' });
 
   switch (action) {
     case 'save': {
       if (!body.answers || typeof body.answers !== 'object') return fail('answers required');
-      const out = await saveDraft(env.DB, draft, { answers: body.answers, page: body.page });
+      const out = await saveDraft(env.DB, draft, { answers: body.answers, page: body.page, lang: body.lang });
       return json({ ok: true, page: out.page });
     }
     case 'email-link': return handleEmailLink(context, draft, body);
@@ -138,41 +175,56 @@ async function handleStart(context, body) {
   if (String(body.website || '').trim()) return json({ ok: true, token: '0'.repeat(32) });
   const admin = await isAuthenticated(request, env);
   const settings = await applicationSettings(env.DB);
-  if (settings.open !== true && !admin) return fail('Applications are closed right now.', 403, { code: 'closed' });
+  const es = body.lang === 'es';
+  if (settings.open !== true && !admin) return fail(es ? 'Las solicitudes están cerradas en este momento.' : 'Applications are closed right now.', 403, { code: 'closed' });
   const ip = request.headers.get('CF-Connecting-IP') || '';
   const ipHash = await hashIp(ip);
-  if (!admin && await draftsToday(env.DB, ipHash) >= MAX_DRAFTS_PER_IP_DAY) return fail('Too many new applications from this connection today. Please try again tomorrow.', 429);
+  if (!admin && await draftsToday(env.DB, ipHash) >= MAX_DRAFTS_PER_IP_DAY) return fail(es ? 'Hoy se comenzaron demasiadas solicitudes desde esta conexión. Intente de nuevo mañana.' : 'Too many new applications from this connection today. Please try again tomorrow.', 429, { code: 'limit' });
   let verified = !turnstileOn(env);
   if (!verified) {
     verified = admin || await verifyTurnstile(env, body.turnstileToken, ip);
-    if (!verified) return fail('Please complete the quick check below the Start button.', 403, { code: 'turnstile' });
+    if (!verified) return fail(es ? 'Complete la verificación rápida arriba del botón Siguiente.' : 'Please complete the quick check above the Next button.', 403, { code: 'turnstile' });
   }
-  const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), ipHash, verified });
+  const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), ipHash, verified, lang: body.lang === 'es' ? 'es' : 'en' });
   return json({ ok: true, token, ttlDays: DRAFT_TTL_DAYS });
 }
 
 async function handleEmailLink(context, draft, body) {
   const { env, request } = context;
+  const es = (body.lang || draft.lang) === 'es';
   const to = String(body.email || draft.answers?.parentEmail || draft.email || '').trim();
-  if (!isEmail(to)) return fail('Please enter a valid email address.');
-  if ((draft.link_sends || 0) >= MAX_LINK_SENDS) return fail('We have already emailed this link several times. Please check your inbox and spam folder.', 429);
+  if (!isEmail(to)) return fail(es ? 'Escriba un correo electrónico válido.' : 'Please enter a valid email address.');
+  if ((draft.link_sends || 0) >= MAX_LINK_SENDS) return fail(es ? 'Ya le enviamos este enlace varias veces. Revise su bandeja de entrada y la carpeta de correo no deseado.' : 'We have already emailed this link several times. Please check your inbox and spam folder.', 429);
   const origin = new URL(request.url).origin;
   const link = `${origin}/apply/form/?resume=${draft.id}`;
   const first = String(draft.answers?.parentName?.first || '').trim();
+  const t = es ? {
+    subject: 'Su solicitud de SOARD: continúe donde se quedó',
+    hi: first ? `Hola, ${escapeHtml(first)}:` : 'Hola:',
+    saved: `Su solicitud de Sunshine on a Ranney Day ${escapeHtml(draft.year)} está guardada. Use este enlace para continuar donde se quedó, en este dispositivo o en cualquier otro:`,
+    button: 'Terminar mi solicitud',
+    note: `El enlace funciona durante ${DRAFT_TTL_DAYS} días después de su último cambio. Manténgalo privado, ya que cualquier persona que lo tenga puede ver sus respuestas.`,
+  } : {
+    subject: 'Your SOARD application: pick up where you left off',
+    hi: first ? `Hi ${escapeHtml(first)},` : 'Hi,',
+    saved: `Your Sunshine on a Ranney Day ${escapeHtml(draft.year)} application is saved. Use this link to pick up where you left off, on this device or any other:`,
+    button: 'Finish my application',
+    note: `The link works for ${DRAFT_TTL_DAYS} days after your last change. Please keep it private, since anyone with it can see your answers.`,
+  };
   const r = await sendEmails(env, {
     to: [to],
-    subject: 'Your SOARD application: pick up where you left off',
+    subject: t.subject,
     html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6;color:#373A36;max-width:520px">
-<p>${first ? `Hi ${escapeHtml(first)},` : 'Hi,'}</p>
-<p>Your Sunshine on a Ranney Day ${escapeHtml(draft.year)} application is saved. Use this link to pick up where you left off, on this device or any other:</p>
-<p><a href="${escapeHtml(link)}" style="display:inline-block;background:#FFDA24;color:#373A36;padding:12px 26px;border-radius:999px;text-decoration:none;font-weight:bold">Finish my application</a></p>
-<p style="font-size:14px;color:#5A5B61">The link works for ${DRAFT_TTL_DAYS} days after your last change. Please keep it private, since anyone with it can see your answers.</p>
+<p>${t.hi}</p>
+<p>${t.saved}</p>
+<p><a href="${escapeHtml(link)}" style="display:inline-block;background:#FFDA24;color:#373A36;padding:12px 26px;border-radius:999px;text-decoration:none;font-weight:bold">${t.button}</a></p>
+<p style="font-size:14px;color:#5A5B61">${t.note}</p>
 <p>Sunshine on a Ranney Day</p>
 </div>`,
-    text: `Your Sunshine on a Ranney Day ${draft.year} application is saved. Pick up where you left off: ${link}\n\nThe link works for ${DRAFT_TTL_DAYS} days after your last change. Please keep it private, since anyone with it can see your answers.`,
+    text: `${t.saved.replace(/<[^>]+>/g, '')} ${link}\n\n${t.note}`,
     tags: [{ name: 'type', value: 'application-resume' }],
   });
-  if (!r.sent) return fail('We could not send the email just now. Please try again in a minute.', 500);
+  if (!r.sent) return fail(es ? 'No pudimos enviar el correo en este momento. Intente de nuevo en un minuto.' : 'We could not send the email just now. Please try again in a minute.', 500);
   await env.DB.prepare('UPDATE application_drafts SET link_sends = COALESCE(link_sends, 0) + 1, email = COALESCE(email, ?) WHERE id = ?').bind(to, draft.id).run();
   return json({ ok: true });
 }

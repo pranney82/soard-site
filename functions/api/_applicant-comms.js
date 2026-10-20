@@ -32,7 +32,7 @@
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
-import { DEFAULT_MESSAGES, renderMessage } from './_application-form.js';
+import { DEFAULT_MESSAGES, renderMessage, resolveForm } from './_application-form.js';
 import { getLiveForm } from './_application-forms.js';
 
 export const FIELD_STATUS = '22P46wDp3NLd';      // customer: Applied / In Review / Approved / Denied
@@ -57,28 +57,37 @@ export const COMMENT_NAMES = {
   approved: 'Application Decision',
   denied: 'Application Decision',
 };
+/** The family-facing titles in Spanish (JobTread uses a comment's title as the email subject) */
+export const COMMENT_NAMES_ES = {
+  welcome: 'Estado de la solicitud',
+  inReview: 'Solicitud en revisión',
+  approved: 'Decisión sobre la solicitud',
+  denied: 'Decisión sobre la solicitud',
+};
+export const FIELD_LANGUAGE = '22P46u8a49hk'; // customer: Primary Language
 
 /**
  * The family messages' wording lives with the form (Admin → Applications →
  * Messages); the built-in wording is the Zaps' (stray typos fixed). This
  * renders one for an account.
  */
-export async function familyMessage(env, kind, { parent, child, withCopy = false } = {}) {
+export async function familyMessage(env, kind, { parent, child, withCopy = false, lang = 'en' } = {}) {
   const live = await getLiveForm(env.DB);
-  const messages = { ...DEFAULT_MESSAGES, ...(live.definition?.messages || {}) };
+  const messages = resolveForm(live.definition, { lang }).messages || DEFAULT_MESSAGES;
   return renderMessage(messages[kind], { parent, child, copyNote: withCopy ? messages.copyNote : '' });
 }
 
 /** Which already-posted comment counts as this kind having been sent */
+const named = (kind, c) => c.name === COMMENT_NAMES[kind] || (COMMENT_NAMES_ES[kind] && c.name === COMMENT_NAMES_ES[kind]);
 const ALREADY_SENT = {
-  welcome: (c) => c.name === COMMENT_NAMES.welcome,
-  medical: (c) => c.name === COMMENT_NAMES.medical,
-  inReview: (c) => c.name === COMMENT_NAMES.inReview,
-  approved: (c) => c.name === COMMENT_NAMES.approved && /has been approved/i.test(c.message || ''),
-  denied: (c) => c.name === COMMENT_NAMES.denied && /unable to move forward/i.test(c.message || ''),
+  welcome: (c) => named('welcome', c),
+  medical: (c) => named('medical', c),
+  inReview: (c) => named('inReview', c),
+  approved: (c) => named('approved', c) && /has been approved|fue aprobada/i.test(c.message || ''),
+  denied: (c) => named('denied', c) && /unable to move forward|no podemos seguir adelante/i.test(c.message || ''),
 };
 
-const KIND_FOR_STATUS = { 'In Review': 'inReview', Approved: 'approved', Denied: 'denied' };
+export const KIND_FOR_STATUS = { 'In Review': 'inReview', Approved: 'approved', Denied: 'denied' };
 
 // ─── D1 ─────────────────────────────────────────────────────────────
 
@@ -147,11 +156,11 @@ export async function readApplicant(env, accountId, fetchImpl = fetch) {
       $: { id: accountId },
       id: {}, name: {}, type: {}, createdAt: {},
       organization: { id: {} },
-      customFieldValues: { $: { where: [['customField', 'id'], 'in', [FIELD_STATUS, FIELD_DIAGNOSIS]] }, nodes: { value: {}, customField: { id: {} } } },
+      customFieldValues: { $: { where: [['customField', 'id'], 'in', [FIELD_STATUS, FIELD_DIAGNOSIS, FIELD_LANGUAGE]] }, nodes: { value: {}, customField: { id: {} } } },
       primaryContact: contactQuery,
       contacts: { $: { size: 10 }, nodes: contactQuery },
       comments: {
-        $: { size: 50, where: ['name', 'in', [...new Set(Object.values(COMMENT_NAMES))]] },
+        $: { size: 50, where: ['name', 'in', [...new Set([...Object.values(COMMENT_NAMES), ...Object.values(COMMENT_NAMES_ES)])]] },
         nodes: { id: {}, name: {}, message: {} },
       },
     },
@@ -167,6 +176,8 @@ export async function readApplicant(env, accountId, fetchImpl = fetch) {
     createdAt: a.createdAt,
     status: fieldValue(a, FIELD_STATUS) || '',
     diagnosis: fieldValue(a, FIELD_DIAGNOSIS) || '',
+    // Families whose main language is Spanish get their messages in Spanish
+    lang: fieldValue(a, FIELD_LANGUAGE) === 'Spanish' ? 'es' : 'en',
     primary,
     contacts,
     comments: a.comments?.nodes || [],
@@ -234,7 +245,7 @@ export async function medicalNote(env, diagnosis) {
  * Send one kind of message to an account once. Returns
  * 'sent' | 'already' | 'busy' | 'skipped: <why>' | 'failed: <why>'.
  */
-async function sendOnce(env, applicant, kind, build, { assign = false, uploadRequestIds = [], fetchImpl = fetch, now = Date.now() } = {}) {
+async function sendOnce(env, applicant, kind, build, { assign = false, uploadRequestIds = [], fetchImpl = fetch, now = Date.now(), lang = 'en' } = {}) {
   const { DB } = env;
   if (applicant.comments.some(ALREADY_SENT[kind] || (() => false))) {
     await claim(DB, applicant.id, kind, now).then(won => won && settle(DB, applicant.id, kind, 'already', { detail: 'posted before (Zap era or by hand)' }, now));
@@ -250,7 +261,7 @@ async function sendOnce(env, applicant, kind, build, { assign = false, uploadReq
   try {
     const commentId = await postAccountComment(env, {
       accountId: applicant.id,
-      name: COMMENT_NAMES[kind],
+      name: (lang === 'es' && COMMENT_NAMES_ES[kind]) || COMMENT_NAMES[kind],
       message,
       assignTo: assign ? { name: applicant.primary.name, email: applicant.primary.email } : null,
       uploadRequestIds,
@@ -264,19 +275,30 @@ async function sendOnce(env, applicant, kind, build, { assign = false, uploadReq
 }
 
 /** The first-contact pair: the welcome to the family and the medical note for staff */
-export async function sendIntake(env, applicant, { uploadRequestIds = [], fetchImpl = fetch, now = Date.now() } = {}) {
+export async function sendIntake(env, applicant, { uploadRequestIds = [], fetchImpl = fetch, now = Date.now(), lang = null } = {}) {
   const parent = applicant.primary?.name || 'Hello';
+  const language = lang || applicant.lang || 'en';
   const welcome = await sendOnce(env, applicant, 'welcome',
-    () => familyMessage(env, 'welcome', { parent, child: applicant.name, withCopy: uploadRequestIds.length > 0 }),
-    { assign: true, uploadRequestIds, fetchImpl, now });
+    () => familyMessage(env, 'welcome', { parent, child: applicant.name, withCopy: uploadRequestIds.length > 0, lang: language }),
+    { assign: true, uploadRequestIds, fetchImpl, now, lang: language });
   const medical = applicant.diagnosis
     ? await sendOnce(env, applicant, 'medical', () => medicalNote(env, applicant.diagnosis), { fetchImpl, now })
     : 'skipped: no diagnosis';
   return { welcome, medical };
 }
 
+/** The language a family applied in on the site, if this account came from the form */
+export async function applicationLang(DB, accountId) {
+  try {
+    const row = await DB.prepare('SELECT lang FROM applications WHERE jt_account_id = ?').bind(accountId).first();
+    return row?.lang || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Is this account one the site's application form made? (that path posts its own intake) */
-async function madeByForm(DB, accountId) {
+export async function madeByForm(DB, accountId) {
   try {
     const row = await DB.prepare('SELECT id FROM applications WHERE jt_account_id = ?').bind(accountId).first();
     return !!row;
@@ -284,6 +306,44 @@ async function madeByForm(DB, accountId) {
     return false; // no applications table yet
   }
 }
+
+/**
+ * Send one family message (the welcome, or a status's message) now, once.
+ * When it goes is ./_applicant-notify.js's call: it waits for the status to
+ * settle, keeps quiet hours, and lets staff undo first.
+ */
+export async function sendStatusMessage(env, applicant, kind, { fetchImpl = fetch, now = Date.now() } = {}) {
+  await ensureCommsSchema(env.DB);
+  const lang = (await applicationLang(env.DB, applicant.id)) || applicant.lang || 'en';
+  const parent = applicant.primary?.name || 'Hello';
+  return sendOnce(env, applicant, kind, () => familyMessage(env, kind, { parent, child: applicant.name, lang }), { assign: true, fetchImpl, now, lang });
+}
+
+/** Which family messages this account has had (its comments, and the run-once record) */
+export async function sentKinds(DB, applicant) {
+  const rows = await commsFor(DB, applicant.id);
+  const out = new Set();
+  for (const kind of ['welcome', 'inReview', 'approved', 'denied']) {
+    if (applicant.comments.some(ALREADY_SENT[kind]) || ['sent', 'already', 'skipped'].includes(rows[kind]?.state)) out.add(kind);
+  }
+  return out;
+}
+
+/** The message a status would send this family (for the admin's preview), or null */
+export async function statusMessagePreview(env, applicant, status) {
+  const kind = KIND_FOR_STATUS[status];
+  if (!kind) return null;
+  const lang = (await applicationLang(env.DB, applicant.id)) || applicant.lang || 'en';
+  const already = applicant.comments.some(ALREADY_SENT[kind] || (() => false)) || ['sent', 'already', 'skipped'].includes((await commsFor(env.DB, applicant.id))[kind]?.state);
+  return {
+    kind, lang, already,
+    title: (lang === 'es' && COMMENT_NAMES_ES[kind]) || COMMENT_NAMES[kind],
+    to: applicant.primary?.email ? { name: applicant.primary.name, email: applicant.primary.email } : null,
+    message: await familyMessage(env, kind, { parent: applicant.primary?.name || 'Hello', child: applicant.name, lang }),
+  };
+}
+
+export const STATUS_RANK = RANK;
 
 const cleanStatus = (s) => {
   const v = String(s ?? '').trim();
@@ -294,7 +354,7 @@ const cleanStatus = (s) => {
  * One wake-up from the JobTread workflow. Never trusts the body beyond the
  * account id and the previous status (which only decides forward vs back).
  */
-export async function handleApplicantEvent(env, payload, { fetchImpl = fetch, now = Date.now() } = {}) {
+export async function handleApplicantEvent(env, payload, { fetchImpl = fetch, now = Date.now(), onStatus = null } = {}) {
   const { DB } = env;
   if (!DB || !env.JOBTREAD_GRANT_KEY) return { ok: false, error: 'not configured' };
   const accountId = String(payload?.accountId || '');
@@ -311,29 +371,17 @@ export async function handleApplicantEvent(env, payload, { fetchImpl = fetch, no
     } else {
       const fromForm = await madeByForm(DB, accountId);
       const newAccount = String(applicant.createdAt || '') >= INTAKE_SINCE;
-      // Intake: the welcome once the account is Applied, the medical note once there's a diagnosis
-      if (!fromForm && newAccount) {
-        if (applicant.status === 'Applied') {
-          Object.assign(actions, await sendIntake(env, applicant, { fetchImpl, now }));
-        } else if (applicant.diagnosis) {
-          actions.medical = await sendOnce(env, applicant, 'medical', () => medicalNote(env, applicant.diagnosis), { fetchImpl, now });
-        }
+      // The medical note is for staff: it goes as soon as there's a diagnosis
+      if (!fromForm && newAccount && applicant.diagnosis) {
+        actions.medical = await sendOnce(env, applicant, 'medical', () => medicalNote(env, applicant.diagnosis), { fetchImpl, now });
       }
-      // Status moves. JobTread sends nextStatus only when Status itself changed
-      // (a Diagnosis edit arrives with both as "null"); without the field, compare.
+      // Status moves (and the welcome for a hand-made account) wait until the
+      // status settles: `onStatus` is ./_applicant-notify.js. JobTread sends
+      // nextStatus only when Status itself changed (a Diagnosis edit arrives
+      // with both as "null"); without the field, assume it did.
       const previous = cleanStatus(payload?.previousStatus);
-      const status = applicant.status;
       const statusChanged = payload?.nextStatus === undefined || cleanStatus(payload.nextStatus) !== '';
-      if (statusChanged && status !== previous && status in RANK && previous in RANK) {
-        const kind = KIND_FOR_STATUS[status];
-        if (RANK[status] >= RANK[previous] && kind) {
-          const parent = applicant.primary?.name || 'Hello';
-          actions[kind] = await sendOnce(env, applicant, kind, () => familyMessage(env, kind, { parent, child: applicant.name }), { assign: true, fetchImpl, now });
-        } else if (RANK[status] < RANK[previous] && status) {
-          await postAccountComment(env, { accountId, message: `Moved back to ${status}` }, fetchImpl);
-          actions.movedBack = status;
-        }
-      }
+      if (statusChanged && onStatus) Object.assign(actions, await onStatus(applicant, { previous }));
     }
   } catch (e) {
     error = e.message;

@@ -97,6 +97,11 @@ const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos', '/api/broa
 // nothing goes live until someone in the admin uses it
 PUBLIC_ROUTES.push('/api/profile-request');
 
+// The buttons in a family-status summary email (Move back / Don't email /
+// Send now): each carries a one-time 128-bit token for one status change,
+// checked inside the handler; GET only shows a confirmation page
+PUBLIC_ROUTES.push('/api/applicant-email-action');
+
 // ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
 // Limits POST /api/newsletter to 5 requests per IP per 60 seconds.
 // Resets when the Workers isolate recycles — good enough for spam prevention.

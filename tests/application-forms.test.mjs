@@ -18,7 +18,7 @@ import {
 import {
   createDraft, getDraft, saveDraft, setDraftFile, submitDraft, processApplication, getApplication, photoKey, TEST_JPEG, testAnswers, accountFields, JT_FIELDS,
 } from '../functions/api/_applications.js';
-import { handleApplicantEvent } from '../functions/api/_applicant-comms.js';
+import { handleWorkflowCall, runNotifications } from '../functions/api/_applicant-notify.js';
 import * as applyApi from '../functions/api/apply.js';
 import * as adminApi from '../functions/api/applications-admin.js';
 
@@ -216,7 +216,9 @@ test('family messages follow the live form', async () => {
     fields: { [JT_FIELDS.status]: 'In Review' }, contacts: [{ id: 'c1', name: 'Morgan Park', fields: { '22NJw43QvHeJ': 'morgan@example.com' } }],
     primaryContactId: 'c1', locations: [], files: [], comments: [],
   };
-  await handleApplicantEvent(env, { accountId: id, previousStatus: 'Applied', nextStatus: 'In Review' }, { fetchImpl: w.fetchImpl });
+  const T0 = Date.parse('2026-10-21T15:00:00Z');
+  await handleWorkflowCall(env, { accountId: id, previousStatus: 'Applied', nextStatus: 'In Review' }, { fetchImpl: w.fetchImpl, now: T0 });
+  for (const t of [T0 + 4 * 60000, T0 + 11 * 60000]) await runNotifications(env, { fetchImpl: w.fetchImpl, now: t });
   assert.equal(w.world.accounts[id].comments.at(-1).message, 'Hi Morgan Park! Good news for *Riley Park*: next is the home visit.');
   assert.equal(renderMessage('{parent} {child}{copyNote}', { parent: 'A', child: 'B', copyNote: 'Copy.' }), 'A B\n\nCopy.');
 });

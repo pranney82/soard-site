@@ -14,7 +14,7 @@
  *   | 'old' (was live)
  */
 
-import { DEFAULT_DEFINITION, normalizeDefinition, validateDefinition, resolveForm } from './_application-form.js';
+import { DEFAULT_DEFINITION, normalizeDefinition, validateDefinition, resolveForm, diffDefinitions } from './_application-form.js';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS application_form_versions (
@@ -79,10 +79,10 @@ export async function getFormVersion(DB, version) {
   }
 }
 
-/** The resolved form (year filled in) for a version, or the live one */
-export async function formFor(DB, { year, version = null } = {}) {
+/** The resolved form (year filled in, in `lang`) for a version, or the live one */
+export async function formFor(DB, { year, version = null, lang = 'en' } = {}) {
   const v = version == null ? await getLiveForm(DB) : await getFormVersion(DB, version);
-  return resolveForm(v.definition, { year, version: v.version });
+  return resolveForm(v.definition, { year, version: v.version, lang });
 }
 
 export async function getDraftForm(DB) {
@@ -94,21 +94,29 @@ export async function getDraftForm(DB) {
  * Save the draft (creating it on first edit). Saves whatever it's given after
  * cleaning, problems and all, so nothing typed is lost; `errors` says what
  * must be fixed before it can go live.
+ *
+ * Two people editing at once: pass `base` (the updatedAt this editor last
+ * saw). If someone else saved since, nothing is written and `conflict` comes
+ * back with their draft, unless `force` (they chose to keep their own).
  */
-export async function saveDraftForm(DB, definition, { user = 'admin', note = null, now = Date.now() } = {}) {
+export async function saveDraftForm(DB, definition, { user = 'admin', note = null, now = Date.now(), base = null, force = false } = {}) {
   await ensureFormSchema(DB);
   const clean = normalizeDefinition(definition);
   const errors = validateDefinition(clean);
   const draft = await getDraftForm(DB);
+  if (draft && base !== null && !force && draft.updatedAt !== base && draft.updatedBy && draft.updatedBy !== user) {
+    return { conflict: { updatedAt: draft.updatedAt, updatedBy: draft.updatedBy, definition: draft.definition, version: draft.version }, errors: [] };
+  }
+  const at = iso(now);
   if (draft) {
     await DB.prepare('UPDATE application_form_versions SET definition = ?, note = COALESCE(?, note), updated_at = ?, updated_by = ? WHERE version = ?')
-      .bind(JSON.stringify(clean), note, iso(now), user, draft.version).run();
-    return { version: draft.version, definition: clean, errors };
+      .bind(JSON.stringify(clean), note, at, user, draft.version).run();
+    return { version: draft.version, definition: clean, errors, updatedAt: at };
   }
   const ins = await DB.prepare("INSERT INTO application_form_versions (state, definition, note, created_at, created_by, updated_at, updated_by) VALUES ('draft', ?, ?, ?, ?, ?, ?)")
-    .bind(JSON.stringify(clean), note, iso(now), user, iso(now), user).run();
+    .bind(JSON.stringify(clean), note, at, user, at, user).run();
   const version = ins?.meta?.last_row_id ?? (await getDraftForm(DB))?.version;
-  return { version, definition: clean, errors };
+  return { version, definition: clean, errors, updatedAt: at };
 }
 
 /** Make the draft the live form. Refuses while it has problems. */
@@ -149,3 +157,22 @@ export async function listFormVersions(DB, { limit = 30 } = {}) {
     updatedAt: r.updated_at, updatedBy: r.updated_by, liveAt: r.live_at, liveBy: r.live_by,
   }));
 }
+
+/**
+ * What changed: the draft against the live form (version = 'draft'), or a
+ * version against the one live before it. [{ kind, area, text }]
+ */
+export async function diffForm(DB, version) {
+  await ensureFormSchema(DB);
+  if (version === 'draft') {
+    const [live, draft] = await Promise.all([getLiveForm(DB, { fresh: true }), getDraftForm(DB)]);
+    return draft ? diffDefinitions(normalizeDefinition(live.definition), normalizeDefinition(draft.definition)) : [];
+  }
+  const v = Number(version) || 0;
+  if (!v) return [];
+  const cur = await getFormVersion(DB, v);
+  const prev = await DB.prepare("SELECT version FROM application_form_versions WHERE version < ? AND state IN ('live', 'old') ORDER BY version DESC LIMIT 1").bind(v).first();
+  const before = prev ? await getFormVersion(DB, prev.version) : BUILT_IN;
+  return diffDefinitions(normalizeDefinition(before.definition), normalizeDefinition(cur.definition));
+}
+

@@ -1,9 +1,10 @@
 /**
  * Draws the makeover application's pages from a resolved form definition
- * (functions/api/_application-form.js), as HTML. Used by the page at
- * /apply/form/ and by the admin's form preview, so both show exactly what
- * families see. The browser script (application-form.client.js) reads and
- * writes answers through the data-field / data-type / data-part attributes.
+ * (functions/api/_application-form.js), as HTML, and holds the page's own
+ * words (buttons, notices, the hero) in English and Spanish. Used by the page
+ * at /apply/form/ and the admin's live preview, so both show what families see.
+ * The browser script (application-form.client.js) reads and writes answers
+ * through data-field / data-type / data-part.
  *
  * Text is escaped here; text blocks and stop screens are HTML that the
  * server cleaned when they were saved (sanitizeHtml).
@@ -16,14 +17,149 @@ const US_STATES = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', '
 export const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 export const imageUrl = (id, transforms) => `${CF_BASE}/${String(id).split('/').map(encodeURIComponent).join('/')}/${transforms}`;
 
+/**
+ * The page's own words. {n} {total} {email} {pct} {name} {county} {time}
+ * {year} {msg} are filled in by t(). Keys ending in Html hold a little markup.
+ */
+export const UI = {
+  en: {
+    step: 'Step {n} of {total}', next: 'Next', back: 'Back', reviewBtn: 'Review my answers', toReview: 'Back to review',
+    submit: 'Submit application', submitting: 'Submitting…',
+    saveLater: 'Save and finish later', saving: 'Saving…', saved: 'All changes saved', unsaved: 'Unsaved changes', paused: 'Saving paused for a moment',
+    notSaved: 'Not saved yet. We will try again.', offline: 'Offline. Your answers will save when you reconnect.',
+    reviewTitle: 'Review and submit', reviewIntro: 'Please look over your answers. Use Edit to change anything, then submit.',
+    reviewMissing: '{n} required answers still need you', reviewMissingOne: '1 required answer still needs you', reviewReady: 'Everything is here. You can submit.',
+    submitNeeds: 'Submit opens once every required answer is in.',
+    edit: 'Edit', editSection: 'Edit {name}', fix: 'Answer it', photoAdded: 'Photo added', videoUploaded: 'Video uploaded', notAnswered: 'Not answered yet',
+    attentionOne: '1 answer on this page needs attention.', attentionMany: '{n} answers on this page need attention.',
+    doneTitle: 'Thank you. Your application is in!', doneEmail: 'We just sent a message to {email} from our Qualification Committee with a copy of your application.',
+    doneBody: 'Every application is read by a real person on our team. Families who move forward are invited to a short Zoom interview, and then a home visit where we see the space together. This can take some time, and we will reach out either way.',
+    doneAgain: 'This application has already been submitted. Thank you!', doneLink: "Meet some of the kids we've served",
+    stopBack: 'I need to change my answer', stopApply: 'Back to the Apply page',
+    laterTitle: 'Save and finish later', laterIntro: "Your answers are already saved. We'll email you a link to pick up where you left off, on this device or any other.",
+    email: 'Email address', laterSend: 'Email me the link', sending: 'Sending…', sentTitle: 'Check your email', sendFail: 'We could not send the email. Please try again.',
+    sentBodyHtml: 'We sent a link to <strong data-later-email></strong>. It works for 60 days after your last change. Please keep it private, since anyone with it can see your answers.',
+    keepGoing: 'Keep going now', close: 'Close',
+    welcomeBack: 'Welcome back! Your answers are saved, so you can pick up right where you left off.',
+    remindersOff: "You won't get any more reminder emails. Your answers are still saved here.",
+    expired: 'This saved application has expired. Please start a new one; we are sorry for the trouble.',
+    linkExpired: 'That link has expired or is not valid. Please start a new application.',
+    startFail: 'We could not start your application. Please try again.', turnstile: 'Please complete the quick check above the Next button.',
+    waitUploads: 'Please wait for your uploads to finish, then submit.', attention: 'A few answers need attention before you submit.',
+    offlineSubmit: 'You seem to be offline. Your answers are saved; please try again when you are connected.',
+    submitFail: 'We could not submit just now. Please try again in a minute.',
+    preview: 'Preview of your unpublished form changes. Nothing you enter here is saved or sent.', previewSent: 'This is a preview, so nothing was sent.', previewNoSave: 'Saving is off in a preview.',
+    previewLive: 'Live preview. Changes in the form editor show here as you make them. Nothing entered here is saved or sent.',
+    previewFile: 'Preview: {name} (not uploaded)',
+    noPhoto: 'No photo yet', choosePhoto: 'Choose a photo', replacePhoto: 'Replace photo', remove: 'Remove', gettingReady: 'Getting your photo ready…',
+    uploading: 'Uploading… {pct}%', added: 'Added: {name}', tryAgain: '{msg}. Please try again.', uploadFailed: 'Upload failed', notImage: "That file isn't a photo we can use. Please choose a JPEG, PNG or HEIC photo.",
+    dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here',
+    noVideo: 'No video yet', chooseVideo: 'Choose or record a video', chooseVideoDesk: 'Choose a video file', chooseOther: 'Choose a different video', starting: 'Starting upload…',
+    uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.',
+    notVideo: "That file isn't a video. Please choose a video file.", uploadStartFail: 'We could not start the upload',
+    empty: 'That file is empty. If it is in iCloud or Google Drive, download it to your device first.', videoHint: 'Up to 10 minutes. Please keep this page open while it uploads.',
+    record: 'Record with my camera', recordStart: 'Start recording', recordStop: 'Stop and use this video', recordCancel: 'Cancel', recording: 'Recording {time}',
+    camStarting: 'Starting your camera…', camReady: 'Your camera is ready. Recordings stop on their own at 10 minutes.',
+    camBlocked: "We couldn't use your camera. Please allow camera access, or choose a video file instead.",
+    yourPhoto: 'your photo', yourVideo: 'your video',
+    leaveUpload: 'Your upload is still in progress. Leave this page and stop it?',
+    suggestions: 'Suggested addresses', countyFilled: 'We filled in {county} County from your address.',
+    steps: 'All steps', stepDone: 'Done', stepNow: 'You are here', stepLocked: 'Not reached yet',
+    language: 'Language', loading: 'Loading the application…', optional: '(optional)', chooseOne: 'Choose one', choose: 'Choose', upTo: 'Choose up to {n}.',
+    first: 'First name', last: 'Last name', street: 'Street address', apt: 'Apartment, suite, etc.', city: 'City', state: 'State', zip: 'ZIP code', signature: 'Type your full name',
+    // The hero above the form
+    heroEyebrow: 'For Families · {year} Application', heroTitleHtml: 'Tell us about your <em>child</em>.',
+    heroLeadHtml: "This is where your family's story starts. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.",
+    heroStart: 'Start the application ↓', heroNotify: 'Get notified when we open', heroFaq: 'Questions? Read the FAQ',
+    heroStatHtml: 'children served<br/>since 2012', heroPhotoAlt: 'A child enjoying their new room',
+    // While closed: "tell me when applications open"
+    closedTitle: 'The {year} application period is currently closed.',
+    closedLead: "Leave your email and we'll write the moment applications open. One email, nothing else.",
+    notifyLabel: 'Your email address', notifyPlaceholder: 'Your email address', notifyButton: 'Notify me', notifySending: 'Sending…', notifyDone: 'Done',
+    notifyNote: "We'll email you in the language you're reading now.",
+    notifyAdded: "You're on the list. We'll email you the moment applications open, and we just sent you a confirmation.",
+    notifyAddedQuiet: "You're on the list. We'll email you the moment applications open.",
+    notifyAlready: "You're already on the list. We'll email you the moment applications open.",
+    notifyOpen: 'Good news: applications are open right now. You can start below.',
+    notifyFail: 'Something went wrong. Please try again.', notifyBusy: 'Too many tries. Please wait a minute and try again.', notifyBad: 'Please enter a valid email address.',
+  },
+  es: {
+    step: 'Paso {n} de {total}', next: 'Siguiente', back: 'Atrás', reviewBtn: 'Revisar mis respuestas', toReview: 'Volver a la revisión',
+    submit: 'Enviar solicitud', submitting: 'Enviando…',
+    saveLater: 'Guardar y terminar después', saving: 'Guardando…', saved: 'Todos los cambios están guardados', unsaved: 'Cambios sin guardar', paused: 'El guardado está en pausa por un momento',
+    notSaved: 'Todavía no se guardó. Lo intentaremos de nuevo.', offline: 'Sin conexión. Sus respuestas se guardarán cuando se vuelva a conectar.',
+    reviewTitle: 'Revisar y enviar', reviewIntro: 'Revise sus respuestas. Use Editar para cambiar algo y después envíe la solicitud.',
+    reviewMissing: 'Faltan {n} respuestas obligatorias', reviewMissingOne: 'Falta 1 respuesta obligatoria', reviewReady: 'Todo está completo. Ya puede enviarla.',
+    submitNeeds: 'Podrá enviar la solicitud cuando estén todas las respuestas obligatorias.',
+    edit: 'Editar', editSection: 'Editar {name}', fix: 'Responder', photoAdded: 'Foto agregada', videoUploaded: 'Video subido', notAnswered: 'Sin responder todavía',
+    attentionOne: '1 respuesta en esta página necesita atención.', attentionMany: '{n} respuestas en esta página necesitan atención.',
+    doneTitle: '¡Gracias! Recibimos su solicitud.', doneEmail: 'Le acabamos de enviar un mensaje a {email} de nuestro Comité de Calificación con una copia de su solicitud.',
+    doneBody: 'Una persona de nuestro equipo lee cada solicitud. Las familias que avanzan reciben una invitación a una entrevista corta por Zoom y luego a una visita a su casa para ver el espacio juntos. Esto puede tomar algo de tiempo, y nos comunicaremos con usted en cualquier caso.',
+    doneAgain: 'Esta solicitud ya fue enviada. ¡Gracias!', doneLink: 'Conozca a algunos de los niños que hemos ayudado',
+    stopBack: 'Necesito cambiar mi respuesta', stopApply: 'Volver a la página de solicitud',
+    laterTitle: 'Guardar y terminar después', laterIntro: 'Sus respuestas ya están guardadas. Le enviaremos un enlace por correo para continuar donde se quedó, en este dispositivo o en cualquier otro.',
+    email: 'Correo electrónico', laterSend: 'Enviarme el enlace', sending: 'Enviando…', sentTitle: 'Revise su correo', sendFail: 'No pudimos enviar el correo. Intente de nuevo.',
+    sentBodyHtml: 'Enviamos un enlace a <strong data-later-email></strong>. Funciona durante 60 días después de su último cambio. Manténgalo privado, ya que cualquier persona que lo tenga puede ver sus respuestas.',
+    keepGoing: 'Seguir ahora', close: 'Cerrar',
+    welcomeBack: '¡Bienvenido de nuevo! Sus respuestas están guardadas, así que puede continuar justo donde se quedó.',
+    remindersOff: 'Ya no recibirá más correos de recordatorio. Sus respuestas siguen guardadas aquí.',
+    expired: 'Esta solicitud guardada venció. Comience una nueva; lamentamos la molestia.',
+    linkExpired: 'Ese enlace venció o no es válido. Comience una nueva solicitud.',
+    startFail: 'No pudimos comenzar su solicitud. Intente de nuevo.', turnstile: 'Complete la verificación rápida arriba del botón Siguiente.',
+    waitUploads: 'Espere a que terminen de subir sus archivos y después envíe la solicitud.', attention: 'Algunas respuestas necesitan atención antes de enviar.',
+    offlineSubmit: 'Parece que no tiene conexión. Sus respuestas están guardadas; intente de nuevo cuando tenga conexión.',
+    submitFail: 'No pudimos enviar la solicitud en este momento. Intente de nuevo en un minuto.',
+    preview: 'Vista previa de los cambios sin publicar. Nada de lo que escriba aquí se guarda ni se envía.', previewSent: 'Es una vista previa, así que no se envió nada.', previewNoSave: 'Guardar está desactivado en la vista previa.',
+    previewLive: 'Vista previa en vivo. Los cambios del editor aparecen aquí al instante. Nada de lo que escriba aquí se guarda ni se envía.',
+    previewFile: 'Vista previa: {name} (no se subió)',
+    noPhoto: 'Todavía no hay foto', choosePhoto: 'Elegir una foto', replacePhoto: 'Cambiar foto', remove: 'Quitar', gettingReady: 'Preparando su foto…',
+    uploading: 'Subiendo… {pct}%', added: 'Agregada: {name}', tryAgain: '{msg}. Intente de nuevo.', uploadFailed: 'No se pudo subir', notImage: 'Ese archivo no es una foto que podamos usar. Elija una foto JPEG, PNG o HEIC.',
+    dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí',
+    noVideo: 'Todavía no hay video', chooseVideo: 'Elegir o grabar un video', chooseVideoDesk: 'Elegir un archivo de video', chooseOther: 'Elegir otro video', starting: 'Comenzando a subir…',
+    uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.',
+    notVideo: 'Ese archivo no es un video. Elija un archivo de video.', uploadStartFail: 'No pudimos comenzar a subir el archivo',
+    empty: 'Ese archivo está vacío. Si está en iCloud o Google Drive, descárguelo primero a su dispositivo.', videoHint: 'Hasta 10 minutos. Mantenga esta página abierta mientras se sube.',
+    record: 'Grabar con mi cámara', recordStart: 'Comenzar a grabar', recordStop: 'Detener y usar este video', recordCancel: 'Cancelar', recording: 'Grabando {time}',
+    camStarting: 'Encendiendo su cámara…', camReady: 'Su cámara está lista. La grabación se detiene sola a los 10 minutos.',
+    camBlocked: 'No pudimos usar su cámara. Permita el acceso a la cámara o elija un archivo de video.',
+    yourPhoto: 'su foto', yourVideo: 'su video',
+    leaveUpload: 'Todavía se está subiendo un archivo. ¿Salir de esta página y detenerlo?',
+    suggestions: 'Direcciones sugeridas', countyFilled: 'Completamos el condado de {county} con su dirección.',
+    steps: 'Todos los pasos', stepDone: 'Listo', stepNow: 'Usted está aquí', stepLocked: 'Todavía no llega',
+    language: 'Idioma', loading: 'Cargando la solicitud…', optional: '(opcional)', chooseOne: 'Elija una opción', choose: 'Elegir', upTo: 'Elija hasta {n}.',
+    first: 'Nombre', last: 'Apellido', street: 'Dirección', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
+    heroEyebrow: 'Para familias · Solicitud {year}', heroTitleHtml: 'Cuéntenos sobre <em>su hijo o hija</em>.',
+    heroLeadHtml: 'Aquí comienza la historia de su familia. La solicitud toma unos 15 minutos y <strong>se guarda mientras avanza</strong>, así que puede detenerse y volver cuando quiera.',
+    heroStart: 'Comenzar la solicitud ↓', heroNotify: 'Avísenme cuando abran', heroFaq: '¿Preguntas? Lea las respuestas',
+    heroStatHtml: 'niños atendidos<br/>desde 2012', heroPhotoAlt: 'Un niño disfrutando de su nuevo cuarto',
+    closedTitle: 'El período de solicitudes de {year} está cerrado por ahora.',
+    closedLead: 'Déjenos su correo y le escribiremos en cuanto abran las solicitudes. Un solo correo, nada más.',
+    notifyLabel: 'Su correo electrónico', notifyPlaceholder: 'Su correo electrónico', notifyButton: 'Avísenme', notifySending: 'Enviando…', notifyDone: 'Listo',
+    notifyNote: 'Le escribiremos en el idioma en que está leyendo.',
+    notifyAdded: 'Ya está en la lista. Le escribiremos en cuanto abran las solicitudes, y acabamos de enviarle una confirmación.',
+    notifyAddedQuiet: 'Ya está en la lista. Le escribiremos en cuanto abran las solicitudes.',
+    notifyAlready: 'Ya estaba en la lista. Le escribiremos en cuanto abran las solicitudes.',
+    notifyOpen: 'Buenas noticias: las solicitudes ya están abiertas. Puede comenzar aquí abajo.',
+    notifyFail: 'Algo salió mal. Inténtelo de nuevo.', notifyBusy: 'Demasiados intentos. Espere un minuto e inténtelo de nuevo.', notifyBad: 'Escriba un correo electrónico válido.',
+  },
+};
+
+/** A page word in a language, with blanks filled */
+export function t(lang, key, vars = {}) {
+  const s = (UI[lang] || UI.en)[key] ?? UI.en[key] ?? key;
+  return String(s).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m));
+}
+
 function imageHtml(id, alt, width = 938, height = 768, cls = 'af-image') {
   const srcset = [500, 700, 938].map(w => `${imageUrl(id, `w=${w},q=85`)} ${w}w`).join(', ');
   return `<figure class="${cls}"><img src="${imageUrl(id, 'w=900,q=85')}" srcset="${srcset}" sizes="(max-width: 760px) 92vw, 680px" alt="${esc(alt)}" width="${Number(width) || 938}" height="${Number(height) || 768}" loading="lazy" decoding="async"></figure>`;
 }
 export { imageHtml };
 
-const optionalTag = (f) => (!f.required ? '<span class="af-optional"> (optional)</span>' : '');
-const help = (f) => (f.help ? `<p class="af-hint">${esc(f.help)}</p>` : '');
+// A check that draws itself in (pathLength 1: the page's styles run stroke-dashoffset 1 → 0)
+const CHECK = '<svg class="af-check-draw" viewBox="0 0 16 16" aria-hidden="true"><path pathLength="1" d="M3.2 8.6l3 3L12.8 5" /></svg>';
+// The ring around an upload while it goes up (circumference 2πr = 113.1 at r=18), on a small disc
+const RING = '<svg class="af-ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="af-ring-disc" cx="22" cy="22" r="22" /><circle class="af-ring-track" cx="22" cy="22" r="18" /><circle class="af-ring-fill" cx="22" cy="22" r="18" /></svg>';
 
 function choices(f, id) {
   const type = f.type === 'radio' ? 'radio' : 'checkbox';
@@ -31,26 +167,31 @@ function choices(f, id) {
     const label = f.optionLabels?.[v] ?? v;
     const desc = f.descriptions?.[v];
     const text = desc ? `<strong class="af-choice-title">${esc(label)}</strong><span class="af-choice-desc">${esc(desc)}</span>` : esc(label);
-    return `<label class="af-choice"><input type="${type}" name="${id}" value="${esc(v)}" id="${id}-${i}"><span class="af-choice-box" aria-hidden="true"></span><span class="af-choice-text">${text}</span></label>`;
+    return `<label class="af-choice"><input type="${type}" name="${id}" value="${esc(v)}" id="${id}-${i}"><span class="af-choice-box" aria-hidden="true">${CHECK}</span><span class="af-choice-text">${text}</span></label>`;
   }).join('')}</div>`;
 }
 
 function guidelines(f) {
-  const end = (t) => (/[.!?:]$/.test(t) ? t : `${t}.`);
+  const end = (s) => (/[.!?:]$/.test(s) ? s : `${s}.`);
   return `${f.title ? `<h3 class="af-scope-title">${esc(f.title)}</h3>` : ''}<div class="af-scope">
 <div class="af-scope-col"><h3>${esc(f.doTitle || 'What we do')}</h3><ul>${(f.doItems || []).map(i => `<li>${i.title ? `<strong>${esc(end(i.title))}</strong> ` : ''}${esc(i.text)}</li>`).join('')}</ul></div>
-<div class="af-scope-col"><h3>${esc(f.dontTitle || 'What we don’t do')}</h3><ul>${(f.dontItems || []).map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>
+<div class="af-scope-col"><h3>${esc(f.dontTitle || 'What we don’t do')}</h3><ul>${(f.dontItems || []).map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>
 </div>`;
 }
 
-/** One question (or text block) as HTML */
-export function renderField(f) {
+/** One question (or text block) as HTML, in `lang` for the page's own words */
+export function renderField(f, lang = 'en') {
+  const T = (k, v) => t(lang, k, v);
   const id = `af-${f.id}`;
   const errId = `${id}-error`;
-  const hidden = f.showIf ? ' hidden' : '';
-  if (f.type === 'content') return `<div class="af-content" data-field="${esc(f.id)}" data-type="content"${hidden}>${f.html || ''}</div>`;
-  if (f.type === 'guidelines') return `<div class="af-content af-content--scope" data-field="${esc(f.id)}" data-type="guidelines"${hidden}>${guidelines(f)}</div>`;
-  if (f.type === 'image') return imageHtml(f.image, f.alt, f.width, f.height).replace('<figure class="af-image">', `<figure class="af-image" data-field="${esc(f.id)}" data-type="image"${hidden}>`);
+  const hintId = `${id}-hint`;
+  const optional = !f.required ? `<span class="af-optional"> ${T('optional')}</span>` : '';
+  const hints = [f.help, f.type === 'checkbox' && f.max ? T('upTo', { n: f.max }) : ''].filter(Boolean);
+  const help = hints.length ? `<p class="af-hint" id="${hintId}">${hints.map(esc).join(' ')}</p>` : '';
+  const described = `aria-describedby="${hints.length ? `${hintId} ` : ''}${errId}"`;
+  if (f.type === 'content') return `<div class="af-content" data-field="${esc(f.id)}" data-type="content">${f.html || ''}</div>`;
+  if (f.type === 'guidelines') return `<div class="af-content af-content--scope" data-field="${esc(f.id)}" data-type="guidelines">${guidelines(f)}</div>`;
+  if (f.type === 'image') return imageHtml(f.image, f.alt, f.width, f.height).replace('<figure class="af-image">', `<figure class="af-image" data-field="${esc(f.id)}" data-type="image">`);
 
   const ownName = f.id === 'parentName';
   const homeAddress = f.id === 'address';
@@ -58,60 +199,71 @@ export function renderField(f) {
   let inner;
   if (isGroup) {
     let body = '';
-    if (f.type === 'checkbox' && f.max) body += `<p class="af-hint">Choose up to ${f.max}.</p>`;
     if (['radio', 'checkbox', 'ack'].includes(f.type)) body += choices(f, id);
     if (f.type === 'name') {
       body += `<div class="af-row af-row--2">
-<label class="af-sub"><span>First name</span><input type="text" id="${id}-first" data-part="first" maxlength="80" autocomplete="${ownName ? 'given-name' : 'off'}" autocapitalize="words"></label>
-<label class="af-sub"><span>Last name</span><input type="text" id="${id}-last" data-part="last" maxlength="80" autocomplete="${ownName ? 'family-name' : 'off'}" autocapitalize="words"></label>
+<label class="af-sub"><span>${T('first')}</span><input type="text" id="${id}-first" data-part="first" maxlength="80" autocomplete="${ownName ? 'given-name' : 'off'}" autocapitalize="words"></label>
+<label class="af-sub"><span>${T('last')}</span><input type="text" id="${id}-last" data-part="last" maxlength="80" autocomplete="${ownName ? 'family-name' : 'off'}" autocapitalize="words"></label>
 </div>`;
     }
     if (f.type === 'address') {
       const ac = (v) => (homeAddress ? v : 'off');
+      const list = `${id}-suggest`;
+      // The suggestion list sits beside the label, not in it: a click on a suggestion mustn't count as a click on the label
       body += `<div class="af-address">
-<label class="af-sub"><span>Street address</span><input type="text" id="${id}-line1" data-part="line1" maxlength="160" autocomplete="${ac('address-line1')}"></label>
-<label class="af-sub"><span>Apartment, suite, etc. <span class="af-optional">(optional)</span></span><input type="text" id="${id}-line2" data-part="line2" maxlength="80" autocomplete="${ac('address-line2')}"></label>
+<div class="af-suggest-wrap"><label class="af-sub"><span>${T('street')}</span><input type="text" id="${id}-line1" data-part="line1" maxlength="160" autocomplete="${ac('address-line1')}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${list}"></label>
+<ul class="af-suggest" id="${list}" role="listbox" aria-label="${esc(T('suggestions'))}" hidden></ul></div>
+<label class="af-sub"><span>${T('apt')} <span class="af-optional">${T('optional')}</span></span><input type="text" id="${id}-line2" data-part="line2" maxlength="80" autocomplete="${ac('address-line2')}"></label>
 <div class="af-row af-row--3">
-<label class="af-sub"><span>City</span><input type="text" id="${id}-city" data-part="city" maxlength="80" autocomplete="${ac('address-level2')}"></label>
-<label class="af-sub"><span>State</span><select id="${id}-state" data-part="state" autocomplete="${ac('address-level1')}"><option value="">Choose</option>${US_STATES.map(s => `<option value="${s}"${homeAddress && s === 'GA' ? ' selected' : ''}>${s}</option>`).join('')}</select></label>
-<label class="af-sub"><span>ZIP code</span><input type="text" id="${id}-zip" data-part="zip" inputmode="numeric" maxlength="10" autocomplete="${ac('postal-code')}"></label>
-</div></div>`;
+<label class="af-sub"><span>${T('city')}</span><input type="text" id="${id}-city" data-part="city" maxlength="80" autocomplete="${ac('address-level2')}"></label>
+<label class="af-sub"><span>${T('state')}</span><select id="${id}-state" data-part="state" autocomplete="${ac('address-level1')}"><option value="">${T('choose')}</option>${US_STATES.map(s => `<option value="${s}"${homeAddress && s === 'GA' ? ' selected' : ''}>${s}</option>`).join('')}</select></label>
+<label class="af-sub"><span>${T('zip')}</span><input type="text" id="${id}-zip" data-part="zip" inputmode="numeric" maxlength="10" autocomplete="${ac('postal-code')}"></label>
+</div>
+<p class="af-county-note" aria-live="polite" hidden></p></div>`;
     }
-    inner = `<fieldset aria-describedby="${errId}"><legend class="af-label">${esc(f.label)}${optionalTag(f)}</legend>${help(f)}${body}</fieldset>`;
+    inner = `<fieldset ${described}><legend class="af-label">${esc(f.label)}${optional}</legend>${help}${body}</fieldset>`;
   } else {
-    const desc = `aria-describedby="${errId}"`;
+    const desc = described;
     let control = '';
     switch (f.type) {
-      case 'text': control = `<input type="text" id="${id}" maxlength="${TEXT_MAX}" ${desc}>`; break;
-      case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' ? 'email' : 'off'}" inputmode="email" ${desc}>`; break;
+      case 'text': control = `<input type="text" id="${id}" maxlength="${f.rules?.maxLength || TEXT_MAX}" ${desc}>`; break;
+      case 'number': control = `<input type="text" inputmode="decimal" id="${id}" maxlength="20" ${desc}>`; break;
+      case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" ${desc}>`; break;
       case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" ${desc}>`; break;
       case 'date': control = `<input type="date" id="${id}" max="${new Date().toISOString().slice(0, 10)}" min="1990-01-01" ${desc}>`; break;
-      case 'textarea': control = `<textarea id="${id}" rows="${Number(f.rows) || 5}" maxlength="${TEXTAREA_MAX}" ${desc}></textarea>`; break;
-      case 'signature': control = `<input type="text" id="${id}" class="af-signature" maxlength="120" autocomplete="name" placeholder="Type your full name" ${desc}>`; break;
-      case 'select': control = `<select id="${id}" ${desc}><option value="">Choose one</option>${f.options.map(v => `<option value="${esc(v)}">${esc(f.optionLabels?.[v] ?? v)}</option>`).join('')}</select>`; break;
+      case 'textarea': control = `<textarea id="${id}" rows="${Number(f.rows) || 5}" maxlength="${f.rules?.maxLength || TEXTAREA_MAX}" ${desc}></textarea>`; break;
+      case 'signature': control = `<input type="text" id="${id}" class="af-signature" maxlength="120" autocomplete="name" placeholder="${esc(T('signature'))}" ${desc}>`; break;
+      case 'select': control = `<select id="${id}" ${desc}><option value="">${T('chooseOne')}</option>${f.options.map(v => `<option value="${esc(v)}">${esc(f.optionLabels?.[v] ?? v)}</option>`).join('')}</select>`; break;
       case 'photo':
-        control = `<div class="af-upload af-upload--photo" data-state="empty">
+        control = `<div class="af-upload af-upload--photo" data-state="empty" data-drop>
 <input type="file" id="${id}" accept="image/*" class="af-file" ${desc}>
-<div class="af-upload-preview" aria-hidden="true"></div>
-<div class="af-upload-body"><p class="af-upload-status" aria-live="polite">No photo yet</p>
-<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload" data-act="choose">Choose a photo</button><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>Remove</button></div></div></div>`;
+<div class="af-upload-preview" aria-hidden="true">${RING}</div>
+<div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noPhoto')}</p>
+<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('choosePhoto')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div></div>
+<div class="af-drop-veil" aria-hidden="true"><span>${T('dropPhoto')}</span></div></div>`;
         break;
       case 'video':
-        control = `<div class="af-upload af-upload--video" data-state="empty">
+        control = `<div class="af-upload af-upload--video" data-state="empty" data-drop>
 <input type="file" id="${id}" accept="video/*" class="af-file" ${desc}>
-<div class="af-upload-body"><p class="af-upload-status" aria-live="polite">No video yet</p>
-<div class="af-progress" hidden><div class="af-progress-bar"></div></div>
-<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload" data-act="choose">Choose or record a video</button><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>Remove</button></div>
-<p class="af-hint">Up to 10 minutes. Please keep this page open while it uploads.</p></div></div>`;
+<div class="af-upload-preview af-upload-preview--video" aria-hidden="true">${RING}<span class="af-pct"></span></div>
+<div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noVideo')}</p>
+<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div>
+<p class="af-hint">${T('videoHint')}</p></div>
+<div class="af-drop-veil" aria-hidden="true"><span>${T('dropVideo')}</span></div></div>
+<div class="af-recorder" hidden>
+<video class="af-recorder-view" muted playsinline aria-hidden="true"></video>
+<div class="af-recorder-bar"><p class="af-recorder-time" aria-live="polite"></p>
+<div class="af-recorder-actions"><button type="button" class="af-btn af-btn--link af-btn--on-dark" data-act="rec-cancel">${T('recordCancel')}</button>
+<button type="button" class="af-btn af-btn--primary af-btn--sm" data-act="rec-toggle" disabled>${T('recordStart')}</button></div></div></div>`;
         break;
       default: control = '';
     }
-    inner = `<label class="af-label" for="${id}">${esc(f.label)}${optionalTag(f)}</label>${help(f)}${control}`;
+    inner = `<label class="af-label" for="${id}">${esc(f.label)}${optional}</label>${help}${control}`;
   }
-  return `<div class="af-field af-field--${f.type}" data-field="${esc(f.id)}" data-type="${f.type}"${f.required ? ' data-required="1"' : ''}${hidden}>${inner}<p class="af-error" id="${errId}" role="alert"></p></div>`;
+  return `<div class="af-field af-field--${f.type}" data-field="${esc(f.id)}" data-type="${f.type}"${f.required ? ' data-required="1"' : ''}${f.showIf ? ' hidden' : ''}>${inner}<p class="af-error" id="${errId}"></p></div>`;
 }
 
-/** Every page, the first one showing */
-export function renderPages(form) {
-  return form.pages.map((p, i) => `<div class="af-page" data-page="${esc(p.id)}"${i > 0 ? ' hidden' : ''}>${p.fields.map(renderField).join('')}</div>`).join('');
+/** Every page (hidden until the script shows the current one) */
+export function renderPages(form, lang = 'en') {
+  return form.pages.map(p => `<div class="af-page" data-page="${esc(p.id)}" hidden>${p.fields.map(f => renderField(f, lang)).join('')}</div>`).join('');
 }

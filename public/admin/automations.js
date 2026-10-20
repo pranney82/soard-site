@@ -262,11 +262,16 @@ const MAP = { t: 'SOARD', children: [
     children: [
       { t: 'The form', children: [
         { t: 'Makeover application', s: 'live', k: 'visitor',
-          when: 'A family fills in /apply/form/ (open or closed per Site Config → Settings → Makeover Application; a saved application can always be finished).',
+          when: 'A family fills in /apply/form/ (open or closed per Applications → Settings; a saved application can always be finished).',
           does: 'Walks them through the questions page by page, saves as they go, resizes and stores photos, uploads the video straight to Cloudflare Stream, shows a review page, then submits.',
           touches: ['D1', 'R2', 'Cloudflare Stream'], where: 'src/pages/apply/form.astro · functions/api/apply.js · _application-form.js',
           info: 'The form is data, edited in Admin → Applications → Form; each application keeps the version it was answered on. The page gets the live version embedded by functions/apply/form/[[path]].js.',
           live: (f) => (!env(f) ? null : !f.env.stream ? ATTN('Video uploads need CF_ACCOUNT_ID and CF_STREAM_TOKEN in Cloudflare.') : ON()) },
+        { t: 'Open and close on schedule', s: 'live', k: 'schedule',
+          when: 'Every minute, when an open or close time is set in Applications → Settings.',
+          does: 'Opens or closes applications at that time, logs it in Recent changes as done by the schedule, and posts a note in Slack.',
+          touches: ['D1', 'Slack'], where: 'functions/api/_applications.js (runApplicationSchedule, on the heartbeat sweep)',
+          info: 'Opening or closing by hand clears the time it replaces. The form and the Apply page follow at once.' },
         { t: 'Save and finish later', s: 'live', k: 'visitor',
           when: 'A family taps Save and finish later.',
           does: 'Emails them a private link back to their saved answers (good for 60 days after their last change).',
@@ -326,13 +331,24 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Admin → Applications', s: 'live', k: 'admin',
           does: 'Each application’s checklist (account, contacts, home, PDF, photos, video, messages) with Retry and a test application; the form editor (questions, choices, show-when rules, stop screens), the family messages, and version history. Put live takes effect right away, no Publish.',
           touches: ['D1'], where: 'public/admin/applications.js · functions/api/applications-admin.js · _application-forms.js' },
+        { t: 'Admin → Applicants', s: 'live', k: 'admin',
+          does: 'Every applicant family in JobTread as a board (drag to change status), list, map against the red service-area boundary, and activity feed. A family’s page shows the whole conversation (emails, replies, texts, calls, notes) and edits the JobTread details in place. Status changes, emails, texts (a /text reply on the Comms Thread), notes and archiving are written to JobTread first; a status change shows the family’s email before it goes and sends the same message a change in JobTread would, once.',
+          touches: ['JobTread', 'D1'], where: 'public/admin/applicants.js · functions/api/applicants-admin.js · _applicants.js' },
+        { t: 'Status change summary', s: 'live', k: 'schedule',
+          when: 'A few minutes after someone stops changing statuses in JobTread.',
+          does: 'Emails that person one summary of the families they moved and when each family will be emailed, with Move back, Don’t email and Send now for each (one-time links; a confirmation page, so mail scanners can’t trigger them). Changes by an integration go to the staff list. Families’ emails wait 5 minutes after the summary. Admin → Applicants also has “Pause family emails” for cleanup.',
+          touches: ['Resend', 'JobTread', 'D1'], where: 'functions/api/_applicant-notify.js · applicant-email-action.js' },
+        { t: 'JobTread → Applicants sync', s: 'live', k: 'schedule',
+          when: 'With the application sweep (every 2 minutes), right after the status workflow’s call, and whenever a family is opened.',
+          does: 'Reads JobTread’s event log forward from where it left off and keeps the Applicants mirror and history current with work done in JobTread (status, details, comments, texts, files, contacts, the home and its map point). Re-reads every applicant account every 30 minutes; the history was backfilled once to January 2025.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_applicants.js · _applications.js maybeSweepApplications' },
       ]},
       { t: 'Status messages', children: [
-        { t: 'Status → family message', s: 'off', k: 'event',
-          when: 'Someone changes an applicant’s Status (or Diagnosis) in JobTread.',
-          does: 'Sends the family the matching message once: In Review (next step is the on-site visit), Approved (on the waitlist) or Denied, worded in Admin → Applications → Messages. Moving back a step leaves a staff-only note instead. Replaces the Zapier Zaps.',
+        { t: 'Status → family message', s: 'live', k: 'event',
+          when: 'Someone changes an applicant’s Status (or Diagnosis) in JobTread, or on the site.',
+          does: 'Emails the family the status they should know once it has stayed put: In Review after 10 minutes, Approved or Denied after 30, never 8 PM to 8 AM Eastern (all set in Admin → Applications → Messages). A status flipped back and forth sends one email for where it lands, or none; cleared or unknown statuses never email. Moving below what the family was told leaves a staff note and offers a correction. Replaces the Zapier Zaps.',
           touches: ['JobTread'], where: 'JobTread workflow “Applicant Status/Diagnosis → Site applicant messages” → functions/api/applicant-sync.js',
-          info: 'Switched on Oct 20, 2026 when the Zapier Zaps went off. If a Zap comes back on, families get each message twice.',
+          info: 'Switched on Oct 20, 2026; the Zapier Zaps were turned off the same day. If a Zap comes back on, families could get a message twice.',
           live: wf('22PgaEgWTBRH') },
       ]},
     ]},
@@ -692,27 +708,21 @@ const MAP = { t: 'SOARD', children: [
           when: 'A new location is added.',
           does: 'Looks up the property on Zillow.',
           touches: ['JobTread', 'Zillow', 'winyourdata.com'], where: 'JobTread webhook → winyourdata.com/api/zillow', live: hook('22PJxV5yimrd') },
-        { t: 'Zapier: new account', s: 'live', k: 'event',
+        { t: 'Zapier: new account', s: 'off', k: 'event',
           when: 'A new account is created.',
-          does: 'Posts the “Application Status” and “Child’s Medical Condition” comments as the Qualification Committee and keeps a Zapier Table row per account.',
+          does: 'Posted the “Application Status” and “Child’s Medical Condition” comments as the Qualification Committee and kept a Zapier Table row per account. The Applications branch does this now.',
           touches: ['JobTread', 'Zapier'], where: 'JobTread webhook → hooks.zapier.com',
-          info: 'Being replaced by the Applications branch. Turn it off in Zapier when the site’s status workflow is switched on.', live: (f) => {
+          info: 'Turned off in Zapier on Oct 20, 2026, and its JobTread webhook is gone. If it ever shows as registered again, a Zap was turned back on: families could get messages twice.', live: (f) => {
             const h = hook('22P5rFX2hhQW')(f);
-            const w = wf('22PgaEgWTBRH')(f);
-            if (h?.s === 'off') return h;
-            if (h && w?.s === 'live') return ATTN('The site now sends these messages too; turn this Zap off in Zapier so families don’t get them twice.');
-            return h;
+            return h && h.s !== 'off' ? ATTN('This Zap’s webhook is back in JobTread: a Zap was turned on again, so families could get messages twice. Turn it off in Zapier.') : h;
           } },
-        { t: 'Zapier: account updated', s: 'live', k: 'event',
+        { t: 'Zapier: account updated', s: 'off', k: 'event',
           when: 'An account changes.',
-          does: 'Posts “Application In Review”, “Application Decision” and “Moved back to …” comments as the Qualification Committee when Status changes.',
+          does: 'Posted “Application In Review”, “Application Decision” and “Moved back to …” comments as the Qualification Committee when Status changed. The Applications branch does this now, after the status settles.',
           touches: ['JobTread', 'Zapier'], where: 'JobTread webhook → hooks.zapier.com',
-          info: 'Being replaced by the Applications branch. Turn it off in Zapier when the site’s status workflow is switched on.', live: (f) => {
+          info: 'Turned off in Zapier on Oct 20, 2026, and its JobTread webhook is gone. If it ever shows as registered again, a Zap was turned back on: families could get messages twice.', live: (f) => {
             const h = hook('22PRvE87suYz')(f);
-            const w = wf('22PgaEgWTBRH')(f);
-            if (h?.s === 'off') return h;
-            if (h && w?.s === 'live') return ATTN('The site now sends these messages too; turn this Zap off in Zapier so families don’t get them twice.');
-            return h;
+            return h && h.s !== 'off' ? ATTN('This Zap’s webhook is back in JobTread: a Zap was turned on again, so families could get messages twice. Turn it off in Zapier.') : h;
           } },
         { t: 'DataX: new job', s: 'live', k: 'event',
           when: 'A new job is created.',

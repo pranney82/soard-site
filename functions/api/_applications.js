@@ -40,6 +40,11 @@ import { buildApplicationPdf } from './_application-pdf.js';
 import { sendEmails, escapeHtml, SITE_ORIGIN, slackAlert, slackEscape } from './_broadcast-notify.js';
 import { readApplicant, sendIntake, ensureCommsSchema } from './_applicant-comms.js';
 import { formFor, ensureFormSchema } from './_application-forms.js';
+import { isUpload, isInput, answerText, progressPercent, renderMessage, choice } from './_application-form.js';
+import { checkServiceArea, areaText } from './_geo.js';
+import { maybeSyncApplicants } from './_applicants.js';
+import { runNotifications } from './_applicant-notify.js';
+import { logAudit } from './_audit.js';
 
 // ─── JobTread fields (SOARD org) ────────────────────────────────────
 export const JT_FIELDS = {
@@ -70,6 +75,8 @@ export const MAKEOVER_TYPE_MAP = {
 export const STAFF_EMAILS = DEFAULT_STAFF_EMAILS; // the live form's settings can change who gets them
 export const ALERT_EMAILS = ['peter@soardcharity.com'];
 
+// The four built-in photo questions keep the file names staff know; any photo
+// question added in the editor is named after its wording
 const PHOTO_FIELDS = ['photoChild', 'photoFamily', 'photoSpace1', 'photoSpace2'];
 const PHOTO_FILE_NAMES = {
   photoChild: (c) => `${c}.jpg`,
@@ -77,6 +84,16 @@ const PHOTO_FILE_NAMES = {
   photoSpace1: (c) => `${c} Space 1.jpg`,
   photoSpace2: (c) => `${c} Space 2.jpg`,
 };
+const photoFileName = (fieldId, child, label) => (PHOTO_FILE_NAMES[fieldId]
+  ? PHOTO_FILE_NAMES[fieldId](child)
+  : `${child} ${String(label || fieldId).replace(/^please upload (a |an )?(picture|photo) of (the )?/i, '').replace(/[^\w\s-]/g, '').trim().slice(0, 60) || fieldId}.jpg`);
+/** Every photo the family uploaded, in form order (built-in ones first if the form doesn't list them) */
+export function photoFieldsOf(app, form) {
+  const inForm = form ? allFields(form).filter(f => f.type === 'photo').map(f => ({ id: f.id, label: f.labelEn || f.label })) : [];
+  const known = new Set(inForm.map(f => f.id));
+  const extra = Object.keys(app.files || {}).filter(k => k !== 'video' && app.files[k]?.key && !known.has(k)).map(id => ({ id, label: id }));
+  return [...inForm, ...extra].filter(f => app.files?.[f.id]?.key);
+}
 
 export const DRAFT_TTL_DAYS = 60;
 const LOCK_MS = 2 * 60 * 1000;
@@ -114,8 +131,28 @@ const _schemaReady = new WeakSet();
 export async function ensureSchema(DB) {
   if (_schemaReady.has(DB)) return;
   await DB.batch(SCHEMA.map(sql => DB.prepare(sql)));
-  // Added after launch: the form version each application was answered on (0 = built in)
-  try { await DB.prepare('ALTER TABLE applications ADD COLUMN form_version INTEGER DEFAULT 0').run(); } catch { /* already there */ }
+  // Added after launch (each is a no-op once there):
+  //   applications.form_version  the form version it was answered on (0 = built in)
+  //   applications.lang          the language it was answered in
+  //   applications.deleted_*     staff deleted the family's data (the row stays as a record)
+  //   application_drafts.*       language, furthest page, stop screen hit, reminder emails,
+  //                              and cleared_at (expired: personal data gone, kept for the funnel)
+  for (const sql of [
+    'ALTER TABLE applications ADD COLUMN form_version INTEGER DEFAULT 0',
+    "ALTER TABLE applications ADD COLUMN lang TEXT DEFAULT 'en'",
+    'ALTER TABLE applications ADD COLUMN deleted_at TEXT',
+    'ALTER TABLE applications ADD COLUMN deleted_by TEXT',
+    "ALTER TABLE application_drafts ADD COLUMN lang TEXT DEFAULT 'en'",
+    'ALTER TABLE application_drafts ADD COLUMN max_page INTEGER DEFAULT 0',
+    'ALTER TABLE application_drafts ADD COLUMN max_page_id TEXT',
+    'ALTER TABLE application_drafts ADD COLUMN stop_key TEXT',
+    'ALTER TABLE application_drafts ADD COLUMN reminders_sent INTEGER DEFAULT 0',
+    'ALTER TABLE application_drafts ADD COLUMN last_reminder_at TEXT',
+    'ALTER TABLE application_drafts ADD COLUMN reminders_off INTEGER DEFAULT 0',
+    'ALTER TABLE application_drafts ADD COLUMN cleared_at TEXT',
+  ]) {
+    try { await DB.prepare(sql).run(); } catch { /* already there */ }
+  }
   _schemaReady.add(DB);
   await ensureCommsSchema(DB);
   await ensureFormSchema(DB);
@@ -154,6 +191,129 @@ export async function applicationSettings(DB) {
   }
 }
 
+// ─── Open, closed, season (Admin → Applications → Settings) ────────
+// `application` in the site settings row. The form and the Apply page read it
+// on every visit (functions/apply/), so a change shows without a Publish.
+
+export const APPLICATION_FIELDS = ['open', 'year', 'closedMessage', 'formUrl', 'opensAt', 'closesAt'];
+const HTTPS_LINK = /^https:\/\/[^\s/]+\.[^\s]+$/i;
+
+/** The stored block, every field present and normalized */
+export function pickApplication(a = {}, now = Date.now()) {
+  return {
+    open: a?.open === true,
+    year: cleanYear(a?.year, now),
+    closedMessage: String(a?.closedMessage || '').trim(),
+    formUrl: String(a?.formUrl || '').trim(),
+    opensAt: a?.opensAt ? String(a.opensAt) : '',
+    closesAt: a?.closesAt ? String(a.closesAt) : '',
+  };
+}
+const sameApplication = (a, b) => APPLICATION_FIELDS.every(k => pickApplication(a)[k] === pickApplication(b)[k]);
+
+/**
+ * What the editor sent, cleaned, and what's wrong with it. Times only have to
+ * be in the future when they changed (a stored one may have just passed).
+ */
+export function cleanApplicationSettings(input = {}, { now = Date.now(), previous = {} } = {}) {
+  const errors = [];
+  const out = pickApplication(input, now);
+  out.closedMessage = out.closedMessage.replace(/\s+/g, ' ').slice(0, 200);
+  if (out.formUrl && !HTTPS_LINK.test(out.formUrl)) errors.push({ field: 'formUrl', error: 'Use a full link that starts with https://' });
+  for (const k of ['opensAt', 'closesAt']) {
+    if (!out[k]) continue;
+    const t = Date.parse(out[k]);
+    if (!Number.isFinite(t)) { errors.push({ field: k, error: 'That is not a date and time' }); out[k] = ''; continue; }
+    out[k] = new Date(t).toISOString();
+    if (t <= now && out[k] !== pickApplication(previous)[k]) errors.push({ field: k, error: 'Pick a time that hasn’t passed' });
+  }
+  if (out.open) out.opensAt = '';
+  if (!out.open && out.closesAt && !out.opensAt) out.closesAt = '';
+  if (out.opensAt && out.closesAt && Date.parse(out.closesAt) <= Date.parse(out.opensAt)) errors.push({ field: 'closesAt', error: 'Close after it opens' });
+  return { settings: out, errors };
+}
+
+/**
+ * Write `application` and leave every other site setting as stored. `base` is
+ * what the editor loaded: when these fields changed since, nothing is written
+ * and { conflict } comes back. The row is swapped only if nobody wrote it in
+ * between (other Site Config saves land on the same row).
+ */
+export async function saveApplicationSettings(env, input, { user = 'admin', base = null, now = Date.now() } = {}) {
+  const { DB } = env;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const row = await DB.prepare("SELECT data FROM site_config WHERE key = 'settings'").first();
+    const all = parse(row?.data, {}) || {};
+    const current = pickApplication(all.application, now);
+    if (base && !sameApplication(base, current)) return { conflict: current };
+    const { settings, errors } = cleanApplicationSettings({ ...current, ...input }, { now, previous: current });
+    if (errors.length) return { errors };
+    const changes = APPLICATION_FIELDS.filter(k => current[k] !== settings[k]).map(k => ({ field: `application.${k}`, from: current[k], to: settings[k] }));
+    if (!changes.length) return { settings, changes };
+    // Who opened or closed it, and when: the "since" line in the admin, and how the
+    // waitlist tells a scheduled open (user "schedule") from a manual one
+    const stamp = current.open !== settings.open ? { openChangedAt: iso(now), openChangedBy: user } : {};
+    const next = JSON.stringify({ ...all, application: { ...(all.application || {}), ...settings, ...stamp } });
+    const res = row
+      ? await DB.prepare("UPDATE site_config SET data = ?, updated_at = ? WHERE key = 'settings' AND data = ?").bind(next, iso(now), row.data).run()
+      : await DB.prepare("INSERT OR IGNORE INTO site_config (key, data, updated_at) VALUES ('settings', ?, ?)").bind(next, iso(now)).run();
+    if (!(res?.meta?.changes > 0)) continue;
+    const verb = changes.some(c => c.field === 'application.open') ? (settings.open ? 'Applications opened' : 'Applications closed') : 'Applications settings';
+    // Its own type: the form and the Apply page read these at request time, so nothing waits for Publish
+    await logAudit(DB, { userEmail: user, action: 'updated', entityType: 'application-settings', entitySlug: 'application', entityName: verb, changes, path: 'src/content/site/settings.json' });
+    return { settings, changes };
+  }
+  return { busy: true };
+}
+
+/** Recent changes to these fields, newest first, from the audit log */
+export async function applicationSettingsHistory(DB, limit = 12) {
+  try {
+    const { results } = await DB.prepare(`SELECT user_email, changes, created_at FROM audit_log
+      WHERE entity_type IN ('application-settings', 'settings') AND changes LIKE '%"application.%' ORDER BY id DESC LIMIT ?`).bind(limit).all();
+    return (results || []).map(r => ({
+      by: r.user_email,
+      at: /Z$|[+-]\d\d:?\d\d$/.test(r.created_at) ? r.created_at : `${String(r.created_at).replace(' ', 'T')}Z`,
+      changes: (parse(r.changes, []) || []).filter(c => String(c.field).startsWith('application.')),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Open or close at the times set in Settings. Runs on every heartbeat sweep;
+ * the change is logged as made by "schedule" and staff hear about it in Slack.
+ */
+export async function runApplicationSchedule(env, { now = Date.now() } = {}) {
+  if (!env.DB) return null;
+  const s = pickApplication(await applicationSettings(env.DB), now);
+  const due = !s.open && s.opensAt && Date.parse(s.opensAt) <= now ? { open: true, opensAt: '' }
+    : s.open && s.closesAt && Date.parse(s.closesAt) <= now ? { open: false, closesAt: '' } : null;
+  if (!due) return null;
+  const out = await saveApplicationSettings(env, due, { user: 'schedule', base: s, now });
+  if (!out.changes?.length) return null;
+  const done = due.open ? 'opened' : 'closed';
+  await slackAlert(env, due.open
+    ? `Makeover applications opened on schedule for the ${s.year} season. Families can apply at ${SITE_ORIGIN}/apply/form/`
+    : `Makeover applications closed on schedule. Families who already started can still finish.`).catch(() => null);
+  return done;
+}
+
+/**
+ * The same, for callers that want flags and never an exception (the waitlist
+ * runner calls it before its own check). Whoever runs it first in a minute
+ * flips it; the stored application.openChangedBy is "schedule" either way.
+ */
+export async function applyApplicationSchedule(env, { now = Date.now() } = {}) {
+  try {
+    const done = await runApplicationSchedule(env, { now });
+    return { opened: done === 'opened', closed: done === 'closed' };
+  } catch {
+    return { opened: false, closed: false };
+  }
+}
+
 // ─── Drafts ─────────────────────────────────────────────────────────
 
 function draftRow(r) {
@@ -164,14 +324,15 @@ function draftRow(r) {
 export async function getDraft(DB, id) {
   if (!isDraftId(id)) return null;
   await ensureSchema(DB);
-  return draftRow(await DB.prepare('SELECT * FROM application_drafts WHERE id = ?').bind(id).first());
+  // An expired draft keeps a row for the funnel, but it can't be resumed
+  return draftRow(await DB.prepare('SELECT * FROM application_drafts WHERE id = ? AND cleared_at IS NULL').bind(id).first());
 }
 
-export async function createDraft(DB, { year, ipHash, verified = false, now = Date.now() }) {
+export async function createDraft(DB, { year, ipHash, verified = false, lang = 'en', now = Date.now() }) {
   await ensureSchema(DB);
   const id = newDraftId();
-  await DB.prepare(`INSERT INTO application_drafts (id, year, answers, files, ip_hash, verified, created_at, updated_at) VALUES (?, ?, '{}', '{}', ?, ?, ?, ?)`)
-    .bind(id, year, ipHash || null, verified ? 1 : 0, iso(now), iso(now)).run();
+  await DB.prepare(`INSERT INTO application_drafts (id, year, answers, files, ip_hash, verified, lang, created_at, updated_at) VALUES (?, ?, '{}', '{}', ?, ?, ?, ?, ?)`)
+    .bind(id, year, ipHash || null, verified ? 1 : 0, lang === 'es' ? 'es' : 'en', iso(now), iso(now)).run();
   return id;
 }
 
@@ -182,13 +343,19 @@ export async function draftsToday(DB, ipHash, now = Date.now()) {
   return Number(row?.n || 0);
 }
 
-export async function saveDraft(DB, draft, { answers, page }, now = Date.now()) {
+export async function saveDraft(DB, draft, { answers, page, lang }, now = Date.now()) {
   const form = await formFor(DB, { year: draft.year });
   const clean = cleanAnswers(form, answers || {});
   const email = clean.parentEmail || draft.email || null;
   const pageId = form.pages.some(p => p.id === page) ? page : draft.page;
-  await DB.prepare('UPDATE application_drafts SET answers = ?, page = ?, email = ?, updated_at = ? WHERE id = ?')
-    .bind(JSON.stringify(clean), pageId || null, email, iso(now), draft.id).run();
+  // For the funnel: the furthest page reached, and a stop screen if one was hit
+  const at = form.pages.findIndex(p => p.id === pageId);
+  const maxPage = Math.max(Number(draft.max_page) || 0, at);
+  const maxPageId = at >= (Number(draft.max_page) || 0) ? pageId : (draft.max_page_id || pageId);
+  const stop = stopFor(form, clean);
+  const language = lang === 'es' || lang === 'en' ? lang : (draft.lang || 'en');
+  await DB.prepare('UPDATE application_drafts SET answers = ?, page = ?, email = ?, lang = ?, max_page = ?, max_page_id = ?, stop_key = ?, updated_at = ? WHERE id = ?')
+    .bind(JSON.stringify(clean), pageId || null, email, language, maxPage, maxPageId || null, stop?.key || null, iso(now), draft.id).run();
   return { answers: clean, page: pageId };
 }
 
@@ -313,11 +480,12 @@ export function isTestAnswers(answers) {
 export async function submitDraft(env, draft, { now = Date.now(), forceTest = false } = {}) {
   const { DB } = env;
   if (draft.submitted_id) return { ok: true, id: draft.submitted_id, duplicate: true };
+  const lang = draft.lang === 'es' ? 'es' : 'en';
   const form = await formFor(DB, { year: draft.year });
   const answers = cleanAnswers(form, draft.answers);
   const stop = stopFor(form, answers);
   if (stop) return { ok: false, error: 'stopped', stop: stop.key };
-  const errors = formErrors(form, answers, draft.files);
+  const errors = formErrors(form, answers, draft.files, null, lang);
   if (Object.keys(errors).length) return { ok: false, errors };
 
   const id = newApplicationId();
@@ -331,9 +499,9 @@ export async function submitDraft(env, draft, { now = Date.now(), forceTest = fa
     return { ok: true, id: again?.submitted_id, duplicate: true };
   }
   await DB.prepare(`INSERT INTO applications (id, draft_id, year, child_name, parent_name, parent_email, makeover_types, answers, files, is_test,
-      jt_state, status, attempts, next_try_at, submitted_at, updated_at, form_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', 'processing', 0, ?, ?, ?, ?)`)
+      jt_state, status, attempts, next_try_at, submitted_at, updated_at, form_version, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', 'processing', 0, ?, ?, ?, ?, ?)`)
     .bind(id, draft.id, draft.year, childName, nameText(answers.parentName), answers.parentEmail || null,
-      JSON.stringify(answers.makeoverTypes || []), JSON.stringify(answers), JSON.stringify(draft.files || {}), isTest ? 1 : 0, now, at, at, form.version || 0).run();
+      JSON.stringify(answers.makeoverTypes || []), JSON.stringify(answers), JSON.stringify(draft.files || {}), isTest ? 1 : 0, now, at, at, form.version || 0, lang).run();
   return { ok: true, id };
 }
 
@@ -361,8 +529,41 @@ export function accountName(app) {
 
 const yesNo = (s) => (String(s || '').startsWith('Yes') ? 'Yes' : String(s || '').startsWith('No') ? 'No' : null);
 
-/** Custom field values for createAccount */
-export function accountFields(app) {
+/** A question's answer as a JobTread custom field value (null when it doesn't fit) */
+export function jobtreadValue(field, value) {
+  const jt = field.jobtread;
+  if (!jt || value == null || value === '' || (Array.isArray(value) && !value.length)) return null;
+  switch (jt.type) {
+    case 'option': {
+      const vals = (Array.isArray(value) ? value : [value]).filter(v => !jt.options || jt.options.includes(v));
+      if (!vals.length) return null;
+      return jt.multiple ? vals : vals[0];
+    }
+    case 'date': return /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? String(value) : null;
+    case 'number': { const n = Number(String(value).replace(/,/g, '')); return Number.isFinite(n) ? n : null; }
+    case 'boolean': return !!value;
+    case 'phoneNumber': return toE164(value);
+    default: {
+      const text = Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? (nameText(value) || addressText(value)) : String(value);
+      return text.slice(0, 4000) || null;
+    }
+  }
+}
+
+/** Questions the editor sent to a JobTread field, by target ('account' | 'location') */
+export function mappedFields(form, answers, target) {
+  const out = {};
+  if (!form) return out;
+  for (const f of allFields(form)) {
+    if (f.jobtread?.target !== target) continue;
+    const v = jobtreadValue(f, answers?.[f.id]);
+    if (v != null) out[f.jobtread.fieldId] = v;
+  }
+  return out;
+}
+
+/** Custom field values for createAccount (the built-in mapping, then any question the editor sent to JobTread) */
+export function accountFields(app, form = null) {
   const a = app.answers;
   const types = [...new Set((a.makeoverTypes || []).map(t => MAKEOVER_TYPE_MAP[t]).filter(Boolean))];
   const f = {
@@ -378,7 +579,7 @@ export function accountFields(app) {
     [JT_FIELDS.makeoverType]: types.length ? types : null,
     [JT_FIELDS.applicationUrl]: applicationUrl(app.id),
   };
-  return Object.fromEntries(Object.entries(f).filter(([, v]) => v != null));
+  return { ...mappedFields(form, a, 'account'), ...Object.fromEntries(Object.entries(f).filter(([, v]) => v != null)) };
 }
 
 /** The parents/guardians as JobTread contacts, main contact first */
@@ -465,11 +666,11 @@ const pdfName = (app) => `${accountName(app)}_Application.pdf`;
 async function ensurePdf(env, app) {
   const existing = app.jt_state.pdf?.key ? await r2Bytes(env, app.jt_state.pdf.key) : null;
   if (existing) return existing;
-  const form = await formFor(env.DB, { year: app.year, version: app.form_version || 0 });
+  // The family's language, with the English beside it for staff when that's Spanish
+  const form = await formFor(env.DB, { year: app.year, version: app.form_version || 0, lang: app.lang || 'en' });
   const photos = {};
-  for (const id of PHOTO_FIELDS) {
-    const f = app.files[id];
-    const bytes = await r2Bytes(env, f?.thumbKey);
+  for (const { id } of photoFieldsOf(app, form)) {
+    const bytes = await r2Bytes(env, app.files[id]?.thumbKey);
     if (bytes) photos[id] = bytes;
   }
   const bytes = await buildApplicationPdf({ form, answers: app.answers, files: app.files, submittedAt: app.submitted_at, photos });
@@ -488,6 +689,9 @@ function staffEmail(app, accountId) {
     ['Diagnosis', a.diagnosis],
     ['County', a.county],
     ['Inside the service area', a.boundary],
+    ['Address check', app.jt_state?.area ? areaText(app.jt_state.area) : null],
+    ['Possible repeat', app.jt_state?.repeat?.matches?.length ? app.jt_state.repeat.matches.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}${m.status ? `, ${m.status}` : ''}`).join('; ') : null],
+    ['Language', app.lang === 'es' ? 'Spanish (applied in Spanish)' : null],
     ['Main contact', [nameText(a.parentName), a.parentEmail].filter(Boolean).join(', ')],
   ].filter(([, v]) => v);
   const rows = lines.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#5A5B61;vertical-align:top">${escapeHtml(k)}</td><td style="padding:4px 0;color:#373A36">${escapeHtml(v)}</td></tr>`).join('');
@@ -524,6 +728,63 @@ function staffSlack(app, accountId) {
   };
 }
 
+/** A staff-only comment on the account (not emailed to anyone) */
+async function postInternal(env, accountId, name, message, fetchImpl) {
+  if (!accountId) return;
+  await pave(env.JOBTREAD_GRANT_KEY, {
+    createComment: { $: { targetType: 'account', targetId: accountId, name, message: String(message).slice(0, 4096), isVisibleToInternalRoles: true, isVisibleToCustomerRoles: false, isVisibleToVendorRoles: false } },
+  }, fetchImpl);
+}
+
+const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * Has this family applied before? Earlier applications on the site (same
+ * child's name, or same birthday and last name, or the same parent email or
+ * phone) and JobTread customer accounts with the child's name.
+ * { matches: [{ where, id, name, year?, status?, why, url }] }
+ */
+export async function findRepeats(env, app, accountId, fetchImpl) {
+  const a = app.answers;
+  const child = norm(nameText(a.childName));
+  const last = norm(a.childName?.last);
+  const email = String(a.parentEmail || '').trim().toLowerCase();
+  const phone = toE164(a.parentPhone);
+  const matches = [];
+  try {
+    const { results } = await env.DB.prepare('SELECT id, year, child_name, answers, jt_account_id, submitted_at FROM applications WHERE id != ? AND is_test = 0 AND deleted_at IS NULL ORDER BY submitted_at DESC LIMIT 400').bind(app.id).all();
+    for (const r of results || []) {
+      const ra = parse(r.answers, {});
+      const why = [];
+      if (child && norm(r.child_name) === child) why.push('same child\u2019s name');
+      else if (last && ra.birthdate && ra.birthdate === a.birthdate && norm(ra.childName?.last) === last) why.push('same birthday and last name');
+      if (email && String(ra.parentEmail || '').trim().toLowerCase() === email) why.push('same parent email');
+      if (phone && toE164(ra.parentPhone) === phone) why.push('same parent phone');
+      if (why.length) matches.push({ where: 'site', id: r.id, name: r.child_name, year: r.year, why: why.join(', '), url: r.jt_account_id ? jobtreadAccountUrl(r.jt_account_id) : applicationUrl(r.id), accountId: r.jt_account_id || null });
+    }
+  } catch { /* no earlier applications to compare */ }
+  try {
+    const name = nameText(a.childName);
+    if (name && env.JOBTREAD_GRANT_KEY) {
+      const data = await pave(env.JOBTREAD_GRANT_KEY, {
+        organization: {
+          $: { id: SOARD_ORG_ID },
+          accounts: {
+            $: { size: 10, where: { and: [['type', '=', 'customer'], ['name', '=', name]] } },
+            nodes: { id: {}, name: {}, createdAt: {}, customFieldValues: { $: { where: [['customField', 'id'], 'in', [JT_FIELDS.status, JT_FIELDS.makeoverYear]] }, nodes: { value: {}, customField: { id: {} } } } },
+          },
+        },
+      }, fetchImpl);
+      for (const n of data?.organization?.accounts?.nodes || []) {
+        if (n.id === accountId || matches.some(m => m.accountId === n.id)) continue;
+        const val = (id) => n.customFieldValues?.nodes?.find(v => v.customField?.id === id)?.value || null;
+        matches.push({ where: 'jobtread', id: n.id, name: n.name, year: val(JT_FIELDS.makeoverYear), status: val(JT_FIELDS.status), why: 'same name in JobTread', url: jobtreadAccountUrl(n.id) });
+      }
+    }
+  } catch { /* JobTread unavailable: the site matches still count */ }
+  return { matches, said: a.previouslyApplied === 'Yes' };
+}
+
 async function saveState(DB, app, fields = {}, now = Date.now()) {
   const sets = ['jt_state = ?', 'updated_at = ?'];
   const binds = [JSON.stringify(app.jt_state), iso(now)];
@@ -535,8 +796,9 @@ async function saveState(DB, app, fields = {}, now = Date.now()) {
 export function checklist(app) {
   const s = app.jt_state || {};
   const contactsWanted = contactInputs(app).length;
-  const photosWanted = PHOTO_FIELDS.filter(id => app.files?.[id]).length;
-  const photosDone = PHOTO_FIELDS.filter(id => s.files?.[id]?.id).length;
+  const photoIds = Object.keys(app.files || {}).filter(k => k !== 'video' && app.files[k]?.key);
+  const photosWanted = photoIds.length;
+  const photosDone = photoIds.filter(id => s.files?.[id]?.id).length;
   return {
     account: !!s.account?.id,
     contacts: (s.contacts || []).filter(c => c?.id).length >= contactsWanted,
@@ -548,6 +810,20 @@ export function checklist(app) {
     medicalNote: s.intake?.medical === 'sent' || s.intake?.medical === 'already' ? true : s.intake?.medical || false,
     staffEmail: !!s.staffEmail,
     staffSlack: s.staffSlack === 'off' ? 'none' : !!s.staffSlack,
+  };
+}
+
+/** The checks staff see beside each application */
+export function flags(app) {
+  const s = app.jt_state || {};
+  return {
+    area: s.area ? { status: s.area.status, miles: s.area.miles ?? null, text: areaText(s.area), county: s.area.county || null } : null,
+    repeat: s.repeat?.matches?.length ? s.repeat.matches.map(m => ({ name: m.name, year: m.year || null, status: m.status || null, why: m.why, url: m.url })) : [],
+    saidApplied: app.answers?.previouslyApplied === 'Yes',
+    lang: app.lang || 'en',
+    // The county the family chose, beside the one the address check found
+    county: app.answers?.county || null,
+    countyMismatch: !!(s.area?.county && app.answers?.county && String(s.area.county).toLowerCase() !== String(app.answers.county).toLowerCase()),
   };
 }
 
@@ -581,6 +857,8 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
   s.files ||= {};
   let error = null;
   let waiting = false;
+  // The questions this family answered (the version live when they submitted)
+  const form = await formFor(DB, { year: app.year, version: app.form_version || 0 });
 
   const step = async (name, fn) => {
     if (error) return;
@@ -604,7 +882,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     await saveState(DB, app, {}, now);
     const out = await pave(env.JOBTREAD_GRANT_KEY, {
       createAccount: {
-        $: { organizationId: SOARD_ORG_ID, type: 'customer', name: accountName(app), suffixIfNecessary: true, customFieldValues: accountFields(app) },
+        $: { organizationId: SOARD_ORG_ID, type: 'customer', name: accountName(app), suffixIfNecessary: true, customFieldValues: accountFields(app, form) },
         createdAccount: { id: {} },
       },
     }, jt);
@@ -638,13 +916,35 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
         $: {
           accountId, address: addressText(a.address), name: a.address?.line1 || null, parseAddress: true,
           ...(s.contacts?.[0]?.id ? { contactId: s.contacts[0].id } : {}),
-          ...(a.county ? { customFieldValues: { [JT_FIELDS.county]: a.county } } : {}),
+          customFieldValues: { ...mappedFields(form, a, 'location'), ...(a.county ? { [JT_FIELDS.county]: a.county } : {}) },
         },
         createdLocation: { id: {} },
       },
     }, jt);
     s.location = { id: out?.createLocation?.createdLocation?.id || null };
     if (!s.location.id) throw new Error('JobTread did not return the new location');
+  });
+
+  // Checks for staff. Neither ever holds the application up: a failure is noted and left
+  await step('service area', async () => {
+    if (s.area) return;
+    const polygon = form.serviceArea?.polygon;
+    s.area = await checkServiceArea(addressText(app.answers.address), polygon, fetchImpl);
+    if (s.area.status !== 'inside' || (s.area.county && app.answers.county && s.area.county !== app.answers.county)) {
+      const lines = [areaText(s.area)];
+      if (s.area.matched) lines.push(`The Census matched it to: ${s.area.matched}`);
+      if (s.area.county && app.answers.county && s.area.county !== app.answers.county) lines.push(`The family picked ${app.answers.county} County; the Census says ${s.area.county} County.`);
+      lines.push(`The family's answer: ${app.answers.boundary || 'not given'}`);
+      await postInternal(env, accountId, 'Service area check (automatic)', lines.join('\n\n'), jt).catch(() => {});
+    }
+  });
+  await step('repeat check', async () => {
+    if (s.repeat) return;
+    s.repeat = await findRepeats(env, app, accountId, jt);
+    if (s.repeat.matches.length) {
+      const lines = s.repeat.matches.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}${m.status ? `, ${m.status}` : ''}${m.why ? `: ${m.why}` : ''}${m.url ? `\n${m.url}` : ''}`);
+      await postInternal(env, accountId, 'Possible repeat applicant (automatic)', `${lines.join('\n\n')}${app.answers.previouslyApplied === 'Yes' ? '\n\nThe family said they applied before.' : ''}`, jt).catch(() => {});
+    }
   });
 
   await step('pdf file', async () => {
@@ -654,13 +954,13 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
   });
 
   await step('photos', async () => {
-    for (const fieldId of PHOTO_FIELDS) {
+    for (const { id: fieldId, label } of photoFieldsOf(app, form)) {
       const f = app.files[fieldId];
       if (!f?.key || s.files[fieldId]?.id) continue;
       const bytes = await r2Bytes(env, f.key);
       if (!bytes) throw new Error(`${fieldId} is missing from storage`);
       const uploadRequestId = await uploadBytes(env, { bytes, type: f.type || 'image/jpeg' }, jt);
-      s.files[fieldId] = { id: await attachFile(env, { accountId, name: PHOTO_FILE_NAMES[fieldId](accountName(app)), uploadRequestId }, jt) };
+      s.files[fieldId] = { id: await attachFile(env, { accountId, name: photoFileName(fieldId, accountName(app), label), uploadRequestId }, jt) };
       await saveState(DB, app, {}, now);
     }
   });
@@ -674,7 +974,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     if (!applicant) throw new Error('could not read the account back');
     // Fresh upload request each try: JobTread consumes one per attachment
     const attach = done(s.intake?.welcome) ? [] : [{ id: await uploadBytes(env, { bytes: pdf, type: 'application/pdf' }, jt), name: pdfName(app) }];
-    s.intake = await sendIntake(env, applicant, { uploadRequestIds: attach, fetchImpl: jt, now });
+    s.intake = await sendIntake(env, applicant, { uploadRequestIds: attach, fetchImpl: jt, now, lang: app.lang || 'en' });
     if (!done(s.intake.welcome)) throw new Error(`welcome ${s.intake.welcome}`);
     if (!medicalSettled(s.intake.medical)) {
       s.medicalTries = (s.medicalTries || 0) + 1;
@@ -750,6 +1050,8 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
     const { DB } = env;
     if (!DB) return null;
     await ensureSchema(DB);
+    // Scheduled open/close is due to the minute, so it runs before the sweep's throttle
+    await runApplicationSchedule(env, { now }).catch(() => null);
     if (!force) {
       const next = String(now + SWEEP_EVERY_MS);
       const ins = await DB.prepare("INSERT OR IGNORE INTO application_runtime (key, value, updated_at) VALUES ('sweep', ?, ?)").bind(next, iso(now)).run();
@@ -761,44 +1063,279 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
     const { results } = await DB.prepare("SELECT id FROM applications WHERE status != 'done' AND (next_try_at IS NULL OR next_try_at <= ?) ORDER BY next_try_at LIMIT 3").bind(now).all();
     const processed = [];
     for (const r of results || []) processed.push({ id: r.id, ...(await processApplication(env, r.id, { fetchImpl, now })) });
+    const reminded = await sendReminders(env, { now });
     const expired = await expireDrafts(env, { now, fetchImpl });
-    return { processed, expired };
+    // Family status emails whose wait is over, and staff summaries (./_applicant-notify.js)
+    const notified = await runNotifications(env, { fetchImpl, now });
+    // Every applicant in JobTread, for Admin → Applications → Applicants
+    const applicants = await maybeSyncApplicants(env, { fetchImpl, now });
+    return { processed, reminded, expired, notified, applicants };
   } catch {
     return null;
   }
 }
 
-/** Drop unsubmitted drafts older than DRAFT_TTL_DAYS, with their files */
+/**
+ * Clear unsubmitted drafts older than DRAFT_TTL_DAYS: their answers, email,
+ * photos and video go; a bare row stays (dates, furthest page, language,
+ * stop screen) so the funnel still counts them. The link stops working.
+ */
 export async function expireDrafts(env, { now = Date.now(), fetchImpl = fetch, limit = 10 } = {}) {
   const { DB } = env;
   const cutoff = iso(now - DRAFT_TTL_DAYS * 24 * 3600 * 1000);
-  const { results } = await DB.prepare('SELECT id, files FROM application_drafts WHERE submitted_id IS NULL AND updated_at < ? LIMIT ?').bind(cutoff, limit).all();
+  const { results } = await DB.prepare('SELECT id, files FROM application_drafts WHERE submitted_id IS NULL AND cleared_at IS NULL AND updated_at < ? LIMIT ?').bind(cutoff, limit).all();
   for (const r of results || []) {
     const files = parse(r.files, {});
     for (const [k, f] of Object.entries(files)) {
       if (k === 'video') { if (f?.uid) await deleteVideo(env, f.uid, fetchImpl); continue; }
       if (env.FILES) for (const key of [f?.key, f?.thumbKey].filter(Boolean)) await env.FILES.delete(key).catch(() => {});
     }
-    await DB.prepare('DELETE FROM application_drafts WHERE id = ? AND submitted_id IS NULL').bind(r.id).run();
+    await DB.prepare("UPDATE application_drafts SET answers = '{}', files = '{}', email = NULL, ip_hash = NULL, cleared_at = ? WHERE id = ? AND submitted_id IS NULL").bind(iso(now), r.id).run();
   }
   return (results || []).length;
 }
 
+// ─── Reminder emails ────────────────────────────────────────────────
+
+const DAY_MS = 24 * 3600 * 1000;
+
+/** The email that nudges a family to finish (subject, html, text) */
+export function reminderEmail({ form, draft, link, stopLink, percent }) {
+  const a = draft.answers || {};
+  const es = draft.lang === 'es';
+  const vars = {
+    parent: String(a.parentName?.first || '').trim() || (es ? 'hola' : 'there'),
+    child: String(a.childName?.first || '').trim() || (es ? 'su hijo o hija' : 'your child'),
+    percent: String(percent),
+    year: form.year,
+  };
+  const subject = renderMessage(form.reminders.subject, vars);
+  const body = renderMessage(form.reminders.body, vars);
+  const paras = body.split(/\n{2,}/).map(p => `<p style="margin:0 0 14px">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
+  const button = es ? 'Terminar mi solicitud' : 'Finish my application';
+  const stop = es ? 'No quiero más recordatorios' : 'Stop these reminders';
+  const bar = `<div style="background:#F5F4F0;border-radius:99px;height:10px;margin:6px 0 18px;overflow:hidden"><div style="background:#FFDA24;height:10px;width:${Math.max(4, Math.min(100, percent))}%"></div></div>`;
+  return {
+    subject,
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6;color:#373A36;max-width:520px">
+${paras}
+<p style="margin:0;font-size:13px;color:#5A5B61">${es ? `Avance: ${percent}%` : `${percent}% done`}</p>
+${bar}
+<p style="margin:0 0 22px"><a href="${escapeHtml(link)}" style="display:inline-block;background:#FFDA24;color:#373A36;padding:12px 26px;border-radius:999px;text-decoration:none;font-weight:bold">${button}</a></p>
+<p style="margin:0;font-size:13px;color:#5A5B61">Sunshine on a Ranney Day · <a href="${escapeHtml(stopLink)}" style="color:#5A5B61">${stop}</a></p>
+</div>`,
+    text: `${body}\n\n${button}: ${link}\n\n${stop}: ${stopLink}`,
+  };
+}
+
+/**
+ * Nudge families who started and went quiet: the Nth reminder goes once their
+ * last change is form.reminders.days[N] days old. Never after they submit,
+ * hit a stop screen, ask to stop, or the draft expires; at most one a day.
+ */
+export async function sendReminders(env, { now = Date.now(), limit = 20 } = {}) {
+  const { DB } = env;
+  if (!env.RESEND_API_KEY) return 0;
+  const live = await formFor(DB, { year: String(new Date(now).getUTCFullYear() + 1) });
+  if (!live.reminders?.enabled || !live.reminders.days?.length) return 0;
+  const days = live.reminders.days;
+  const { results } = await DB.prepare(`SELECT * FROM application_drafts
+    WHERE submitted_id IS NULL AND cleared_at IS NULL AND email IS NOT NULL AND verified = 1
+      AND COALESCE(reminders_off, 0) = 0 AND stop_key IS NULL AND COALESCE(reminders_sent, 0) < ?
+      AND updated_at < ? AND (last_reminder_at IS NULL OR last_reminder_at < ?)
+    ORDER BY updated_at LIMIT ?`).bind(days.length, iso(now - days[0] * DAY_MS), iso(now - DAY_MS), limit).all();
+  let sent = 0;
+  for (const r of results || []) {
+    const draft = draftRow(r);
+    const n = Number(draft.reminders_sent) || 0;
+    if (now - Date.parse(draft.updated_at) < days[n] * DAY_MS) continue;
+    const form = await formFor(DB, { year: draft.year, lang: draft.lang || 'en' });
+    const link = `${SITE_ORIGIN}/apply/form/?resume=${draft.id}`;
+    const stopLink = `${link}&reminders=off`;
+    const msg = reminderEmail({ form, draft, link, stopLink, percent: progressPercent(form, draft.answers, draft.files) });
+    const out = await sendEmails(env, { to: [draft.email], ...msg, tags: [{ name: 'type', value: 'application-reminder' }] });
+    if (out.sent) {
+      await DB.prepare('UPDATE application_drafts SET reminders_sent = ?, last_reminder_at = ? WHERE id = ?').bind(n + 1, iso(now), draft.id).run();
+      sent++;
+    }
+  }
+  return sent;
+}
+
+export async function stopReminders(DB, draftId) {
+  await DB.prepare('UPDATE application_drafts SET reminders_off = 1 WHERE id = ?').bind(draftId).run();
+}
+
 // ─── Admin ──────────────────────────────────────────────────────────
 
-export async function listApplications(DB, { limit = 50 } = {}) {
+/**
+ * Applications for the admin list. q searches the child, parent and email;
+ * show: 'all' | 'attention' (not finished) | 'outside' | 'repeat' | 'test' |
+ * 'deleted'; year: a season or '' for all.
+ */
+export async function listApplications(DB, { limit = 50, offset = 0, q = '', show = 'all', year = '' } = {}) {
   await ensureSchema(DB);
-  const { results } = await DB.prepare('SELECT * FROM applications ORDER BY submitted_at DESC LIMIT ?').bind(limit).all();
-  const drafts = await DB.prepare('SELECT COUNT(*) AS n FROM application_drafts WHERE submitted_id IS NULL').first();
+  const where = [];
+  const binds = [];
+  if (show === 'deleted') where.push('deleted_at IS NOT NULL'); else where.push('deleted_at IS NULL');
+  if (show === 'test') where.push('is_test = 1');
+  else if (show !== 'deleted' && show !== 'all') where.push('is_test = 0');
+  if (show === 'attention') where.push("status != 'done'");
+  if (year) { where.push('year = ?'); binds.push(String(year)); }
+  if (q) {
+    const like = `%${String(q).trim().toLowerCase().replace(/[%_]/g, '')}%`;
+    where.push('(LOWER(child_name) LIKE ? OR LOWER(parent_name) LIKE ? OR LOWER(parent_email) LIKE ?)');
+    binds.push(like, like, like);
+  }
+  const sql = `FROM applications WHERE ${where.join(' AND ')}`;
+  // The area and repeat filters read the checks stored in jt_state
+  const all = (await DB.prepare(`SELECT * ${sql} ORDER BY submitted_at DESC LIMIT 2000`).bind(...binds).all()).results || [];
+  let rows = all.map(applicationRow);
+  if (show === 'outside') rows = rows.filter(a => a.jt_state?.area?.status === 'outside');
+  if (show === 'repeat') rows = rows.filter(a => a.jt_state?.repeat?.matches?.length);
+  const total = rows.length;
+  const page = rows.slice(offset, offset + limit);
+  const drafts = await DB.prepare('SELECT COUNT(*) AS n FROM application_drafts WHERE submitted_id IS NULL AND cleared_at IS NULL').first();
+  const years = (await DB.prepare('SELECT DISTINCT year FROM applications ORDER BY year DESC').all()).results?.map(r => r.year).filter(Boolean) || [];
   return {
-    applications: (results || []).map(applicationRow).map(a => ({
+    applications: page.map(a => ({
       id: a.id, year: a.year, child: a.child_name, parent: a.parent_name, email: a.parent_email,
       makeoverTypes: a.makeover_types, isTest: !!a.is_test, status: a.status, attempts: a.attempts,
       lastError: a.last_error, submittedAt: a.submitted_at, accountId: a.jt_account_id,
       jobtreadUrl: a.jt_account_id ? jobtreadAccountUrl(a.jt_account_id) : null,
-      checklist: checklist(a),
+      deletedAt: a.deleted_at || null, deletedBy: a.deleted_by || null,
+      checklist: checklist(a), flags: flags(a),
     })),
+    total,
+    years,
     draftsInProgress: Number(drafts?.n || 0),
+  };
+}
+
+const csvCell = (v) => {
+  const t = String(v ?? '');
+  return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+
+/**
+ * Every application (not deleted, not tests unless asked) as CSV: the basics,
+ * the checks, then one column per question, by its wording in the newest form
+ * version that asked it.
+ */
+export async function exportCsv(DB, { year = '', includeTests = false } = {}) {
+  await ensureSchema(DB);
+  const where = ['deleted_at IS NULL'];
+  const binds = [];
+  if (!includeTests) where.push('is_test = 0');
+  if (year) { where.push('year = ?'); binds.push(String(year)); }
+  const rows = ((await DB.prepare(`SELECT * FROM applications WHERE ${where.join(' AND ')} ORDER BY submitted_at`).bind(...binds).all()).results || []).map(applicationRow);
+  const forms = new Map();
+  const columns = new Map(); // field id → label (newest wins)
+  for (const a of rows) {
+    const key = `${a.year}:${a.form_version || 0}`;
+    if (!forms.has(key)) forms.set(key, await formFor(DB, { year: a.year, version: a.form_version || 0 }));
+    for (const f of allFields(forms.get(key))) if (isInput(f)) columns.set(f.id, f.label);
+  }
+  const fieldOf = (a, id) => allFields(forms.get(`${a.year}:${a.form_version || 0}`)).find(f => f.id === id);
+  const head = ['Submitted', 'Season', 'Child', 'Main contact', 'Email', 'Status', 'JobTread account', 'Address check', 'Possible repeat', 'Language', ...columns.values()];
+  const lines = [head.map(csvCell).join(',')];
+  for (const a of rows) {
+    const fl = flags(a);
+    const base = [a.submitted_at, a.year, a.child_name, a.parent_name, a.parent_email, a.status, a.jt_account_id ? jobtreadAccountUrl(a.jt_account_id) : '',
+      fl.area?.text || '', fl.repeat.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}`).join('; '), a.lang === 'es' ? 'Spanish' : 'English'];
+    const answers = [...columns.keys()].map(id => { const f = fieldOf(a, id); return f ? answerText(f, a.answers?.[id], true) : ''; });
+    lines.push([...base, ...answers].map(csvCell).join(','));
+  }
+  return lines.join('\r\n');
+}
+
+/**
+ * Delete a family's data from the site: answers, photos, the PDF and the
+ * video. A row stays (dates, who deleted it) so the record shows it happened.
+ * JobTread is left alone (archive the account there).
+ */
+export async function deleteApplicationData(env, id, { user = 'admin', now = Date.now(), fetchImpl = fetch } = {}) {
+  const { DB } = env;
+  const app = await getApplication(DB, id);
+  if (!app) return { ok: false, error: 'Not found' };
+  if (app.deleted_at) return { ok: true, already: true };
+  const keys = [];
+  for (const [k, f] of Object.entries(app.files || {})) {
+    if (k === 'video') { if (f?.uid) await deleteVideo(env, f.uid, fetchImpl); continue; }
+    keys.push(f?.key, f?.thumbKey);
+  }
+  keys.push(app.jt_state?.pdf?.key);
+  if (env.FILES) for (const key of keys.filter(Boolean)) await env.FILES.delete(key).catch(() => {});
+  const first = String(app.answers?.childName?.first || '').trim();
+  await DB.batch([
+    DB.prepare("UPDATE applications SET answers = '{}', files = '{}', parent_name = NULL, parent_email = NULL, child_name = ?, deleted_at = ?, deleted_by = ?, status = 'done', next_try_at = NULL WHERE id = ?")
+      .bind(first ? `${first} (deleted)` : 'Deleted application', iso(now), user, id),
+    DB.prepare("UPDATE application_drafts SET answers = '{}', files = '{}', email = NULL, cleared_at = ? WHERE id = ?").bind(iso(now), app.draft_id),
+  ]);
+  return { ok: true, accountId: app.jt_account_id || null };
+}
+
+/**
+ * The funnel for a season: who started, how far they got, who finished, and
+ * what helped. Counts drafts (including expired ones, whose personal data is
+ * gone) and submitted applications; tests left out.
+ */
+export async function insights(DB, { year, now = Date.now() } = {}) {
+  await ensureSchema(DB);
+  const form = await formFor(DB, { year });
+  const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at FROM application_drafts WHERE year = ? AND COALESCE(ip_hash, '') != 'admin'").bind(String(year)).all()).results) || [];
+  const apps = ((await DB.prepare('SELECT id, draft_id, submitted_at, answers, lang, is_test, jt_state FROM applications WHERE year = ? AND deleted_at IS NULL').bind(String(year)).all()).results || []).map(applicationRow);
+  const tests = new Set(apps.filter(a => a.is_test).map(a => a.draft_id));
+  const real = drafts.filter(d => !tests.has(d.id));
+  const submitted = real.filter(d => d.submitted_id);
+  const stopped = real.filter(d => !d.submitted_id && d.stop_key);
+  const quietDays = (d) => (now - Date.parse(d.updated_at)) / DAY_MS;
+  const inProgress = real.filter(d => !d.submitted_id && !d.stop_key && !d.cleared_at && quietDays(d) < 14);
+  const gone = real.filter(d => !d.submitted_id && !d.stop_key && (d.cleared_at || quietDays(d) >= 14));
+  const pageIds = form.pages.map(p => p.id);
+  const reachedIndex = (d) => (d.submitted_id ? pageIds.length : Math.max(0, d.max_page_id ? pageIds.indexOf(d.max_page_id) : Number(d.max_page) || 0));
+  const byPage = form.pages.map((p, i) => ({
+    id: p.id, title: p.title,
+    reached: real.filter(d => reachedIndex(d) >= i).length,
+    leftHere: gone.filter(d => reachedIndex(d) === i).length,
+  }));
+  const minutes = submitted.map(d => {
+    const app = apps.find(a => a.draft_id === d.id);
+    return app ? (Date.parse(app.submitted_at) - Date.parse(d.created_at)) / 60000 : null;
+  }).filter(x => x != null && x >= 0).sort((x, y) => x - y);
+  const median = minutes.length ? Math.round(minutes[Math.floor(minutes.length / 2)]) : null;
+  const realApps = apps.filter(a => !a.is_test);
+  const referral = {};
+  for (const a of realApps) {
+    const k = String(a.answers?.referredBy || '').trim() || 'Not given';
+    referral[k] = (referral[k] || 0) + 1;
+  }
+  const weeks = {};
+  for (const a of realApps) {
+    const d = new Date(a.submitted_at);
+    const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7)));
+    const k = monday.toISOString().slice(0, 10);
+    weeks[k] = (weeks[k] || 0) + 1;
+  }
+  return {
+    year: String(year),
+    started: real.length,
+    submitted: submitted.length,
+    inProgress: inProgress.length,
+    leftUnfinished: gone.length,
+    stopped: { outside: stopped.filter(d => d.stop_key === 'outside').length, rental: stopped.filter(d => d.stop_key === 'rental').length, other: stopped.filter(d => !['outside', 'rental'].includes(d.stop_key)).length },
+    finishRate: real.length ? Math.round((submitted.length / real.length) * 100) : null,
+    medianMinutes: median,
+    byPage,
+    languages: { en: real.filter(d => (d.lang || 'en') === 'en').length, es: real.filter(d => d.lang === 'es').length },
+    reminders: { sent: real.reduce((n, d) => n + (Number(d.reminders_sent) || 0), 0), finishedAfter: submitted.filter(d => Number(d.reminders_sent) > 0).length },
+    referral: Object.entries(referral).map(([source, count]) => ({ source, count })).sort((x, y) => y.count - x.count),
+    perWeek: Object.entries(weeks).sort().map(([week, count]) => ({ week, count })),
+    checks: {
+      outside: realApps.filter(a => a.jt_state?.area?.status === 'outside').length,
+      unchecked: realApps.filter(a => a.jt_state?.area?.status === 'unknown').length,
+      repeat: realApps.filter(a => a.jt_state?.repeat?.matches?.length).length,
+    },
   };
 }
 

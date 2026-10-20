@@ -7,10 +7,11 @@
  * against and the JobTread load reads), rendered here one page at a time by
  * src/components/apply/application-form.client.js. Answers save to
  * /api/apply as the family goes; photos and the video upload in place; a
- * review page comes before Submit.
+ * review page comes before Submit. English or Spanish: the switch above the
+ * form redraws everything (the hero too) without losing an answer.
  *
- * Open/closed and the season year come from Admin → Site Config → Makeover
- * Application (siteSettings.application). While closed, the page says so and
+ * Open/closed and the season year come from Admin → Applications → Settings
+ * (siteSettings.application). While closed, the page says so and
  * points to the Apply page's "notify me" form.
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
@@ -18,6 +19,7 @@ import siteSettings from '../../content/site/settings.json';
 import { getSiteStats } from '../../utils/stats';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { applicationForm, SERVICE_MAP_IMAGE } from '../../../functions/api/_application-form.js';
+import { t } from '../../components/apply/application-render.js';
 // The questions are drawn in the browser from the live form (Admin → Applications → Form),
 // which functions/apply/form/[[path]].js embeds in this page; the built-in form only sizes the first paint.
 
@@ -28,6 +30,7 @@ const year = String(app.year || new Date().getFullYear() + 1);
 const closedMessage = app.closedMessage || `The ${year} application period is currently closed.`;
 const form = applicationForm({ year });
 const steps = form.pages.length + 1;
+const w = (key: string, vars = {}) => t('en', key, { year, ...vars });
 
 const ap = (siteSettings as any).applyPhotos || {};
 const heroPhotoId = ap.story || 'kids/eli/photo-01';
@@ -48,17 +51,18 @@ const breadcrumbs = [
   <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial Split ══════ -->
-  <section class="hero">
+  <section class="hero" data-af-lang-scope>
     <div class="hero-inner">
       <div class="hero-text">
-        <p class="hero-eyebrow">For Families · {year} Application</p>
-        <h1 class="hero-headline">Tell us about your <em>child</em>.</h1>
-        <p class="hero-lead">This is where your family's story starts. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.</p>
+        <p class="hero-eyebrow" data-af-t="heroEyebrow">{w('heroEyebrow')}</p>
+        <h1 class="hero-headline" data-af-t-html="heroTitleHtml" set:html={w('heroTitleHtml')} />
+        <p class="hero-lead" data-af-t-html="heroLeadHtml" set:html={w('heroLeadHtml')} />
         <div class="hero-ctas">
+          <!-- Built from the content settings; the script corrects it from the live open/closed switch -->
           {isOpen
-            ? <a href="#application" class="btn btn-primary btn-lg btn-glow">Start the application ↓</a>
-            : <a href="/apply/" class="btn btn-primary btn-lg">Get notified when we open</a>}
-          <a href="/apply/#faq" class="btn btn-outline-dark btn-lg">Questions? Read the FAQ</a>
+            ? <a href="#application" class="btn btn-primary btn-lg btn-glow" data-hero-cta data-af-t="heroStart">{w('heroStart')}</a>
+            : <a href="#application" class="btn btn-primary btn-lg" data-hero-cta data-af-t="heroNotify">{w('heroNotify')}</a>}
+          <a href="/apply/#faq" class="btn btn-outline-dark btn-lg" data-af-t="heroFaq">{w('heroFaq')}</a>
         </div>
       </div>
       <div class="hero-photo-wrap">
@@ -67,7 +71,8 @@ const breadcrumbs = [
             src={cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')}
             srcset={cfSrcset(heroPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
             sizes="(max-width:768px) 85vw, 420px"
-            alt="A child enjoying their new room"
+            alt={w('heroPhotoAlt')}
+            data-af-t-alt="heroPhotoAlt"
             width="800" height="1000"
             fetchpriority="high" loading="eager" decoding="async"
             class="hero-img lqip-img"
@@ -76,100 +81,154 @@ const breadcrumbs = [
         <div class="hero-accent" aria-hidden="true"></div>
         <div class="hero-stat">
           <span class="hero-stat-num">{stats.totalKids}+</span>
-          <span class="hero-stat-label">children served<br/>since 2012</span>
+          <span class="hero-stat-label" data-af-t-html="heroStatHtml" set:html={w('heroStatHtml')} />
         </div>
       </div>
     </div>
   </section>
 
   <!-- ══════ THE APPLICATION ══════ -->
-  <section class="af-section" id="application">
+  <section class="af-section" id="application" data-af-lang-scope>
     <div class="af-wrap">
       <!-- Open/closed is decided again in the browser from the live setting (a resume
            link always opens), so a family mid-application can finish after we close
            and an admin toggle takes effect without a Publish. -->
       <div class="af-card af-closed" data-closed hidden={isOpen}>
-        <h2>{closedMessage}</h2>
-        <p>Leave your email on the Apply page and we'll let you know the moment applications reopen.</p>
-        <a href="/apply/" class="btn btn-primary">Go to the Apply page</a>
+        <!-- A message staff wrote stays as written; the built-in one follows the language -->
+        <h2 data-af-t={app.closedMessage ? undefined : 'closedTitle'}>{closedMessage}</h2>
+        <p data-af-t="closedLead">{w('closedLead')}</p>
+        <!-- "Tell me when applications open": the same waitlist as the Apply page
+             (functions/api/_application-waitlist.js), in the language chosen here -->
+        <form class="af-notify" data-notify action="/api/newsletter" method="POST" novalidate>
+          <input type="hidden" name="source" value="application-waitlist" />
+          <input type="hidden" name="page" value="apply-form" />
+          <input type="hidden" name="lang" value="en" data-notify-lang />
+          <label class="af-sr" for="af-notify-email" data-af-t="notifyLabel">{w('notifyLabel')}</label>
+          <div class="af-notify-row af-field">
+            <input id="af-notify-email" type="email" name="email" autocomplete="email" inputmode="email" required placeholder={w('notifyPlaceholder')} data-af-t-placeholder="notifyPlaceholder" />
+            <button type="submit" class="btn btn-primary" data-notify-btn>{w('notifyButton')}</button>
+          </div>
+          <div class="af-sr" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
+          <p class="af-notify-note" data-notify-note role="status" aria-live="polite">{w('notifyNote')}</p>
+          <div class="af-lang af-notify-lang" data-closed-lang role="group" aria-label="Language" data-af-t-aria="language">
+            <svg class="af-lang-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            <button type="button" class="af-lang-btn" data-lang="en" lang="en" aria-pressed="true">English</button>
+            <button type="button" class="af-lang-btn" data-lang="es" lang="es" aria-pressed="false">Español</button>
+          </div>
+        </form>
       </div>
-        <div class="af-app" data-application data-year={year} data-open={isOpen ? '1' : undefined} hidden={!isOpen}>
-          <noscript><p class="af-card af-closed">This application needs JavaScript to upload your photos and video. Please turn it on, or email <a href={`mailto:${siteSettings.email}`}>{siteSettings.email}</a> and we'll help.</p></noscript>
+      <div class="af-app" data-application data-year={year} data-open={isOpen ? '1' : undefined} hidden={!isOpen}>
+        <noscript><p class="af-card af-closed">This application needs JavaScript to upload your photos and video. Please turn it on, or email <a href={`mailto:${siteSettings.email}`}>{siteSettings.email}</a> and we'll help.</p></noscript>
 
-          <p class="af-notice" data-notice role="status" hidden></p>
-
-          <form class="af-card" data-form novalidate>
-            <header class="af-head">
-              <p class="af-step-text" data-step-text>Step 1 of {steps}</p>
-              <h2 class="af-step-title" data-step-title tabindex="-1">{form.pages[0].title}</h2>
-              <div class="af-progress af-progress--steps" aria-hidden="true"><div class="af-progress-bar" data-progress-bar style={`width:${Math.round(100 / steps)}%`}></div></div>
-            </header>
-
-            <div class="af-pages" data-pages aria-busy="true">
-              <p class="af-loading">Loading the application…</p>
-            </div>
-
-            <div class="af-page" data-page="review" hidden>
-              <p class="af-review-intro">Please look over your answers. Tap <strong>Edit</strong> to change anything, then submit.</p>
-              <div class="af-review" data-review></div>
-            </div>
-
-            <!-- People never see this; bots fill it in -->
-            <div class="af-hp" aria-hidden="true">
-              <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off" data-honeypot /></label>
-            </div>
-
-            <div class="af-turnstile" data-turnstile hidden><div class="cf-turnstile"></div></div>
-
-            <footer class="af-nav">
-              <button type="button" class="af-btn af-btn--ghost" data-back hidden>← Back</button>
-              <button type="submit" class="af-btn af-btn--primary" data-next>Next</button>
-            </footer>
-            <div class="af-save-row">
-              <button type="button" class="af-btn af-btn--link" data-save-later>Save and finish later</button>
-              <span class="af-save-state" data-save-state aria-live="polite"></span>
-            </div>
-          </form>
-
-          <div class="af-card af-stop" data-stop hidden>
-            <h2 data-stop-title tabindex="-1"></h2>
-            <div data-stop-body></div>
-            <figure class="af-image" data-stop-map hidden style={`background-image:url('${cfLqip(SERVICE_MAP_IMAGE)}')`}>
-              <img src={cfRaw(SERVICE_MAP_IMAGE, 'w=900,q=85')} alt="Map of the SOARD makeover service area, outlined in red" width="938" height="768" loading="lazy" decoding="async" />
-            </figure>
-            <div class="af-stop-actions">
-              <button type="button" class="af-btn af-btn--ghost" data-stop-back>← I need to change my answer</button>
-              <a href="/apply/" class="af-btn af-btn--primary">Back to the Apply page</a>
-            </div>
+        <div class="af-toolbar">
+          <div class="af-lang" data-lang-switch role="group" aria-label="Language" data-af-t-aria="language" hidden>
+            <svg class="af-lang-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            <button type="button" class="af-lang-btn" data-lang="en" lang="en" aria-pressed="true">English</button>
+            <button type="button" class="af-lang-btn" data-lang="es" lang="es" aria-pressed="false">Español</button>
           </div>
-
-          <div class="af-card af-done" data-done hidden>
-            <div class="af-done-badge" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </div>
-            <h2 data-done-title tabindex="-1">Thank you. Your application is in!</h2>
-            <p data-done-email></p>
-            <p>Every application is read by a real person on our team. Families who move forward are invited to a short Zoom interview, and then a home visit where we see the space together. This can take some time, and we will reach out either way.</p>
-            <a href="/kids/" class="af-btn af-btn--primary">Meet some of the kids we've served</a>
-          </div>
-
-          <dialog class="af-dialog" data-later-dialog aria-labelledby="af-later-title">
-            <button type="button" class="af-dialog-close" data-later-close aria-label="Close">×</button>
-            <form data-later-form>
-              <h2 id="af-later-title">Save and finish later</h2>
-              <p>Your answers are already saved. We'll email you a link to pick up where you left off, on this device or any other.</p>
-              <label class="af-label" for="af-later-email">Email address</label>
-              <input type="email" id="af-later-email" required autocomplete="email" inputmode="email" />
-              <p class="af-dialog-status" data-later-status aria-live="polite"></p>
-              <button type="submit" class="af-btn af-btn--primary">Email me the link</button>
-            </form>
-            <div data-later-sent hidden>
-              <h2>Check your email</h2>
-              <p>We sent a link to <strong data-later-email></strong>. It works for 60 days after your last change. Please keep it private, since anyone with it can see your answers.</p>
-              <button type="button" class="af-btn af-btn--primary" data-later-done>Keep going now</button>
-            </div>
-          </dialog>
         </div>
+
+        <p class="af-notice" data-notice role="status" hidden></p>
+
+        <form class="af-card af-form" data-form novalidate>
+          <header class="af-head">
+            <p class="af-step-text" data-step-text>Step 1 of {steps}</p>
+            <h2 class="af-step-title" data-step-title tabindex="-1">{form.pages[0].title}</h2>
+            <div class="af-progress" aria-hidden="true"><div class="af-progress-bar" data-progress-bar style={`transform:translateX(${Math.round(100 / steps) - 100}%)`}></div></div>
+            <details class="af-steps" data-steps>
+              <summary class="af-steps-toggle">
+                <span data-af-t="steps">{w('steps')}</span>
+                <svg class="af-steps-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
+              </summary>
+              <ol class="af-steps-list" data-steps-list></ol>
+            </details>
+          </header>
+
+          <div class="af-pages" data-pages aria-busy="true">
+            <p class="af-loading" data-af-t="loading">{w('loading')}</p>
+          </div>
+
+          <div class="af-page af-page--review" data-page="review" hidden>
+            <p class="af-review-intro" data-af-t="reviewIntro">{w('reviewIntro')}</p>
+            <div class="af-review-summary" data-review-summary></div>
+            <div class="af-review" data-review></div>
+          </div>
+
+          <!-- People never see this; bots fill it in -->
+          <div class="af-hp" aria-hidden="true">
+            <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off" data-honeypot /></label>
+          </div>
+
+          <div class="af-turnstile" data-turnstile hidden><div class="cf-turnstile"></div></div>
+
+          <p class="af-nav-note" data-nav-note hidden></p>
+          <footer class="af-nav">
+            <button type="button" class="af-btn af-btn--ghost af-btn--back" data-back hidden>
+              <svg class="af-btn-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>
+              <span data-af-t="back">{w('back')}</span>
+            </button>
+            <button type="submit" class="af-btn af-btn--primary af-btn--next" data-next>
+              <span data-next-label>{w('next')}</span>
+              <svg class="af-btn-icon af-btn-icon--next" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>
+            </button>
+          </footer>
+          <div class="af-save-row">
+            <button type="button" class="af-btn af-btn--link" data-save-later data-af-t="saveLater">{w('saveLater')}</button>
+            <span class="af-save-state" data-save-state></span>
+          </div>
+          <p class="af-sr" data-live aria-live="polite"></p>
+        </form>
+
+        <div class="af-card af-stop" data-stop hidden>
+          <h2 data-stop-title tabindex="-1"></h2>
+          <div class="af-stop-body" data-stop-body></div>
+          <figure class="af-image" data-stop-map hidden style={`background-image:url('${cfLqip(SERVICE_MAP_IMAGE)}')`}>
+            <img data-stop-img src={cfRaw(SERVICE_MAP_IMAGE, 'w=900,q=85')} alt="" width="938" height="768" loading="lazy" decoding="async" />
+          </figure>
+          <div class="af-stop-actions">
+            <button type="button" class="af-btn af-btn--ghost af-btn--back" data-stop-back>
+              <svg class="af-btn-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>
+              <span data-af-t="stopBack">{w('stopBack')}</span>
+            </button>
+            <a href="/apply/" class="af-btn af-btn--primary" data-af-t="stopApply">{w('stopApply')}</a>
+          </div>
+        </div>
+
+        <div class="af-card af-done" data-done hidden>
+          <div class="af-sun" aria-hidden="true">
+            <svg viewBox="0 0 120 120">
+              <circle class="af-sun-halo" cx="60" cy="60" r="56" />
+              <g class="af-sun-rays">
+                <path d="M60 10v12M60 98v12M10 60h12M98 60h12M24.6 24.6l8.5 8.5M86.9 86.9l8.5 8.5M24.6 95.4l8.5-8.5M86.9 33.1l8.5-8.5" />
+              </g>
+              <circle class="af-sun-core" cx="60" cy="60" r="24" />
+            </svg>
+          </div>
+          <h2 data-done-title tabindex="-1" data-af-t="doneTitle">{w('doneTitle')}</h2>
+          <p class="af-done-email" data-done-email></p>
+          <p data-af-t="doneBody">{w('doneBody')}</p>
+          <a href="/kids/" class="af-btn af-btn--primary" data-af-t="doneLink">{w('doneLink')}</a>
+        </div>
+
+        <dialog class="af-dialog" data-later-dialog aria-labelledby="af-later-title">
+          <button type="button" class="af-dialog-close" data-later-close aria-label="Close" data-af-t-aria="close">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+          </button>
+          <form data-later-form>
+            <h2 id="af-later-title" data-af-t="laterTitle">{w('laterTitle')}</h2>
+            <p data-af-t="laterIntro">{w('laterIntro')}</p>
+            <label class="af-label" for="af-later-email" data-af-t="email">{w('email')}</label>
+            <input type="email" id="af-later-email" required autocomplete="email" inputmode="email" spellcheck="false" />
+            <p class="af-dialog-status" data-later-status aria-live="polite"></p>
+            <button type="submit" class="af-btn af-btn--primary" data-af-t="laterSend">{w('laterSend')}</button>
+          </form>
+          <div data-later-sent hidden>
+            <h2 data-af-t="sentTitle">{w('sentTitle')}</h2>
+            <p data-af-t-html="sentBodyHtml" set:html={w('sentBodyHtml')} />
+            <button type="button" class="af-btn af-btn--primary" data-later-done data-af-t="keepGoing">{w('keepGoing')}</button>
+          </div>
+        </dialog>
+      </div>
     </div>
   </section>
 </BaseLayout>
@@ -178,7 +237,7 @@ const breadcrumbs = [
 
 <style>
   /* ══════════ Buttons (hero) ══════════ */
-  :is(h1, h2, h3) em {
+  :is(h1, h2, h3) :global(em) {
     font-style: italic;
     background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
   }
@@ -210,7 +269,7 @@ const breadcrumbs = [
   }
   .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 24px; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.05s both; }
   .hero-headline { font-size: clamp(42px, 6.2vw, 84px); line-height: 1.04; letter-spacing: -0.035em; color: var(--c-dark); margin-bottom: 24px; animation: heroSlide 0.8s cubic-bezier(0.16,1,0.3,1) both; }
-  .hero-headline em { font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%); padding: 0 0.05em; }
+  .hero-headline :global(em) { font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%); padding: 0 0.05em; }
   .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 500px; margin-bottom: 32px; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.15s both; }
   .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.25s both; }
   .hero-photo-wrap { position: relative; max-width: 440px; justify-self: end; width: 100%; animation: heroPhotoIn 0.4s cubic-bezier(0.16,1,0.3,1) both; }
@@ -243,37 +302,105 @@ const breadcrumbs = [
 
 <style is:global>
   /* Everything below is prefixed af- and lives in a global block: the questions are
-     drawn in the browser (application-render.js), which a page-scoped style can't reach. */
+     drawn in the browser (application-render.js), which a page-scoped style can't reach.
+     The site has no dark theme, so the form stays light everywhere (color-scheme keeps
+     native date pickers and selects light too). Motion: one curve, transform + opacity. */
+  .af-section, .af-app {
+    --af-ease: cubic-bezier(.2, .8, .2, 1);
+    --af-line: #D6D4CC;
+    --af-line-strong: #A9A79F;
+    --af-gold: #8A7200;            /* darkened brand yellow: 4.5:1 on cream (see global.css) */
+    --af-attn-bg: #FFF6D6;         /* soft yellow: answers that need attention (never red) */
+    --af-attn-ink: #5C4A00;
+    --af-picked: #FFFBEA;
+    color-scheme: light;
+  }
   .af-app [hidden], .af-section [hidden] { display: none !important; }
+  .af-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
   /* ══════════ The application ══════════ */
-  .af-section { background: var(--c-warm-gray); padding: clamp(48px, 8vw, 96px) 0 clamp(64px, 10vw, 120px); scroll-margin-top: calc(var(--header-height, 84px) + 16px); }
+  .af-section { background: var(--c-warm-gray); padding: clamp(40px, 7vw, 88px) 0 clamp(64px, 10vw, 120px); }
   .af-wrap { max-width: 760px; margin: 0 auto; padding: 0 16px; }
-  .af-card { background: #fff; border-radius: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.05); padding: clamp(24px, 5vw, 48px); }
+  .af-card { background: #fff; border-radius: 28px; box-shadow: 0 1px 2px rgba(30,31,37,0.04), 0 18px 48px -12px rgba(30,31,37,0.10); padding: clamp(24px, 5.4vw, 56px); }
   .af-closed { text-align: center; }
   .af-closed h2 { font-size: clamp(22px, 3vw, 30px); margin-bottom: 12px; }
   .af-closed p { margin-bottom: 24px; color: var(--c-text); }
+  .af-notify { max-width: 520px; margin: 0 auto; }
+  .af-notify-row { display: flex; gap: 10px; align-items: stretch; }
+  .af-notify-row input { flex: 1; min-width: 0; }
+  .af-notify-row .btn { flex-shrink: 0; min-height: 54px; }
+  .af-closed .af-notify-note { margin: 12px 0 20px; font-size: 14.5px; color: var(--c-text-muted); }
+  .af-closed .af-notify-note[data-kind="done"] { color: var(--c-dark); font-weight: 600; }
+  .af-closed .af-notify-note[data-kind="error"] { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  @media (max-width: 560px) {
+    .af-notify-row { flex-direction: column; }
+  }
 
-  .af-notice { margin: 0 0 16px; padding: 14px 18px; border-radius: 14px; font-size: 15px; line-height: 1.5; background: #fff; border: 1px solid var(--c-border); }
-  .af-notice[data-kind="error"] { background: #FFF6D6; border-color: #E6C400; color: var(--c-dark); font-weight: 600; }
-  .af-notice[data-kind="success"] { background: #FFFBEA; border-color: var(--c-yellow); }
+  /* ── Language switch ── */
+  .af-toolbar { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+  .af-lang { display: inline-flex; align-items: center; gap: 2px; padding: 3px; background: #EAE8E1; border-radius: 999px; }
+  .af-lang-icon { width: 17px; height: 17px; margin: 0 4px 0 11px; color: var(--c-text-muted); flex-shrink: 0; }
+  .af-lang-btn { font: inherit; font-size: 15px; font-weight: 600; color: var(--c-text-muted); background: transparent; border: 0; border-radius: 999px; min-height: 44px; padding: 0 16px; cursor: pointer; transition: background-color .2s var(--af-ease), color .2s var(--af-ease), box-shadow .2s var(--af-ease); }
+  .af-lang-btn:hover { color: var(--c-dark); }
+  .af-lang-btn[aria-pressed="true"] { background: #fff; color: var(--c-dark); box-shadow: 0 1px 2px rgba(30,31,37,.08), 0 3px 10px -2px rgba(30,31,37,.10); }
+  .af-lang-btn:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
 
-  .af-head { margin-bottom: 28px; }
-  .af-step-text { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 8px; }
-  .af-step-title { font-size: clamp(24px, 3.4vw, 34px); line-height: 1.2; color: var(--c-dark); margin-bottom: 18px; outline: none; }
-  .af-progress { height: 8px; border-radius: 99px; background: var(--c-warm-gray); overflow: hidden; }
-  .af-progress-bar { height: 100%; width: 0; background: var(--c-yellow); border-radius: 99px; transition: width 0.4s cubic-bezier(0.16,1,0.3,1); }
+  /* ── Notices (above the card) and the note by the buttons ── */
+  .af-notice, .af-nav-note {
+    display: flex; gap: 12px; align-items: flex-start; margin: 0 0 16px; padding: 14px 18px; border-radius: 16px;
+    font-size: 15px; line-height: 1.55; color: var(--c-dark); background: #fff; border: 1px solid var(--c-border);
+    animation: afFadeIn .24s var(--af-ease) both;
+  }
+  .af-notice::before, .af-nav-note::before { content: ''; flex: 0 0 20px; height: 20px; margin-top: 1px; background: no-repeat center / contain; }
+  .af-notice[data-kind="info"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%235A5B61' stroke-width='1.7' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='8.2'/%3E%3Cpath d='M10 9v5M10 6.2v.1'/%3E%3C/svg%3E"); }
+  .af-notice[data-kind="success"] { background: var(--af-picked); border-color: var(--c-yellow); }
+  .af-notice[data-kind="success"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' fill='%23FFDA24'/%3E%3Cpath d='M6 10.4l2.6 2.6L14 7.6' fill='none' stroke='%23373A36' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  .af-notice[data-kind="error"], .af-nav-note { background: var(--af-attn-bg); border-color: #E6C400; color: var(--af-attn-ink); font-weight: 600; }
+  .af-notice[data-kind="error"]::before, .af-nav-note::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A7200' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='8.2'/%3E%3Cpath d='M10 5.8v5.2M10 14v.1'/%3E%3C/svg%3E"); }
+  .af-nav-note { margin: 28px 0 0; }
 
-  .af-page { display: grid; gap: 28px; }
+  /* ── Header: step, title, progress, all steps ── */
+  .af-head { margin-bottom: 36px; }
+  .af-step-text { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+  .af-step-title { font-size: clamp(26px, 3.6vw, 36px); line-height: 1.18; letter-spacing: -0.015em; color: var(--c-dark); outline: none; text-wrap: balance; }
+  .af-progress { height: 6px; border-radius: 99px; background: #EFEDE6; overflow: hidden; margin-top: 22px; }
+  .af-progress-bar { height: 100%; width: 100%; background: var(--c-yellow); border-radius: 99px; transform: translateX(-100%); transition: transform .55s var(--af-ease); will-change: transform; }
+
+  .af-steps { margin-top: 6px; }
+  .af-steps-toggle { list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 2px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--c-text-muted); border-radius: 8px; user-select: none; }
+  .af-steps-toggle::-webkit-details-marker { display: none; }
+  .af-steps-toggle:hover { color: var(--c-dark); }
+  .af-steps-toggle:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
+  .af-steps-chev { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .25s var(--af-ease); }
+  .af-steps[open] .af-steps-chev { transform: rotate(180deg); }
+  .af-steps-list { list-style: none; margin: 4px 0 0; padding: 8px; display: grid; gap: 2px; background: var(--c-cream); border: 1px solid var(--c-border); border-radius: 18px; }
+  .af-steps[open] .af-steps-list { animation: afDrop .22s var(--af-ease) both; }
+  .af-step { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 12px 6px 8px; border: 0; border-radius: 12px; background: none; font: inherit; font-size: 15px; line-height: 1.35; text-align: left; color: var(--c-dark); cursor: pointer; transition: background-color .18s var(--af-ease); }
+  .af-step:hover:not(:disabled) { background: #fff; }
+  .af-step:focus-visible { outline: 3px solid var(--c-dark); outline-offset: -1px; }
+  .af-step:disabled { cursor: default; color: #8C8D92; }
+  .af-step-mark { flex: 0 0 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; border: 1.5px solid var(--af-line); background: #fff; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+  .af-step-mark svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .af-step[data-state="done"] .af-step-mark { background: var(--c-dark); border-color: var(--c-dark); color: var(--c-yellow); }
+  .af-step[aria-current="step"] .af-step-mark { background: var(--c-yellow); border-color: var(--c-dark); color: var(--c-dark); }
+  .af-step[aria-current="step"] { font-weight: 600; }
+  .af-step-name { flex: 1; min-width: 0; }
+  .af-step-now { flex-shrink: 0; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 99px; background: var(--c-yellow-soft); color: var(--c-dark); white-space: nowrap; }
+
+  /* ── Pages ── */
+  .af-pages { position: relative; }
+  .af-page { display: grid; gap: 32px; }
   .af-loading { color: var(--c-text-muted); font-size: 16px; padding: 24px 0; }
   .af-page[hidden] { display: none; }
 
-  .af-content { font-size: 16px; line-height: 1.7; color: var(--c-text); }
+  .af-content { font-size: 16.5px; line-height: 1.72; color: var(--c-text); }
   .af-content p + p, .af-content p + ul, .af-content ul + p { margin-top: 12px; }
   .af-content ul { padding-left: 22px; list-style: disc; }
   .af-content li + li { margin-top: 6px; }
+  .af-content a { color: var(--c-dark); text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
   .af-content .af-scope-title { font-size: 19px; margin: 4px 0 12px; }
   .af-content .af-scope { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; }
-  .af-content .af-scope-col { background: var(--c-cream); border-radius: 16px; padding: 20px 22px; }
+  .af-content .af-scope-col { background: var(--c-cream); border-radius: 18px; padding: 22px 24px; }
   .af-content .af-scope-col h3 { font-size: 17px; margin-bottom: 10px; }
   .af-content .af-scope-col:first-child { box-shadow: inset 0 4px 0 var(--c-yellow); }
   .af-content .af-scope-col ul { font-size: 15px; padding-left: 0; list-style: none; }
@@ -282,134 +409,312 @@ const breadcrumbs = [
   .af-content .af-scope-col:first-child li::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23373A36' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.2 3L13 4.5'/%3E%3C/svg%3E"); }
   .af-content .af-scope-col:last-child li::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%235A5B61' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E"); }
 
-  .af-image { margin: 0; border-radius: 16px; overflow: hidden; background-size: cover; background-position: center; border: 1px solid var(--c-border); }
+  .af-image { margin: 0; border-radius: 18px; overflow: hidden; background-size: cover; background-position: center; border: 1px solid var(--c-border); }
   .af-image img { display: block; width: 100%; height: auto; }
 
-  .af-field { display: grid; gap: 10px; }
+  /* ── Questions ── */
+  /* The page's scroll-padding-top already clears the sticky header; scroll-margin adds to it, so keep it small */
+  .af-field { display: grid; gap: 10px; scroll-margin-top: 16px; scroll-margin-bottom: 24px; border-radius: 14px; }
   .af-field[hidden] { display: none; }
-  .af-field fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; min-width: 0; }
-  .af-label { font-size: 16px; font-weight: 600; line-height: 1.45; color: var(--c-dark); }
+  .af-field fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; min-width: 0; }
+  .af-label { font-size: 17px; font-weight: 600; line-height: 1.45; color: var(--c-dark); text-wrap: pretty; }
+  .af-field legend.af-label { padding: 0; margin-bottom: 12px; }
+  .af-field legend.af-label + .af-hint { margin-top: -6px; }
   .af-optional { font-weight: 400; color: var(--c-text-muted); }
-  .af-hint { font-size: 14px; color: var(--c-text-muted); margin: 0; }
+  .af-hint { font-size: 14.5px; line-height: 1.5; color: var(--c-text-muted); margin: -2px 0 0; }
 
   .af-field input:not([type=radio]):not([type=checkbox]):not([type=file]),
   .af-field textarea, .af-field select, .af-dialog input {
     width: 100%; font: inherit; font-size: 16px; color: var(--c-dark); background: #fff;
-    border: 1.5px solid #CFCDC6; border-radius: 12px; padding: 13px 14px; min-height: 50px;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    border: 1.5px solid var(--af-line); border-radius: 14px; padding: 13px 16px; min-height: 54px;
+    transition: border-color .2s var(--af-ease), box-shadow .2s var(--af-ease), background-color .2s var(--af-ease);
   }
-  .af-field textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+  .af-field select { appearance: none; padding-right: 44px; cursor: pointer; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23373A36' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 16px center / 16px; }
+  .af-field input::placeholder, .af-field textarea::placeholder { color: #9A9B9F; }
+  @media (hover: hover) {
+    .af-field input:not([type=radio]):not([type=checkbox]):not([type=file]):hover, .af-field textarea:hover, .af-field select:hover { border-color: var(--af-line-strong); }
+  }
+  .af-field textarea { resize: vertical; min-height: 140px; line-height: 1.6; }
+  .af-field input:focus, .af-field textarea:focus, .af-field select:focus, .af-dialog input:focus { outline: none; }
   .af-field input:focus-visible, .af-field textarea:focus-visible, .af-field select:focus-visible, .af-dialog input:focus-visible {
-    outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 4px var(--c-yellow-soft);
+    border-color: var(--c-dark); box-shadow: 0 0 0 4px var(--c-yellow-soft);
   }
-  .af-signature { font-family: var(--font-display); font-style: italic; font-size: 20px !important; }
+  .af-signature { font-family: var(--font-display); font-style: italic; font-size: 21px !important; }
   .af-sub { display: grid; gap: 6px; font-size: 14px; font-weight: 500; color: var(--c-text-muted); }
   .af-row { display: grid; gap: 12px; }
   .af-row--2 { grid-template-columns: 1fr 1fr; }
   .af-row--3 { grid-template-columns: 1.6fr 0.8fr 1fr; }
   .af-address { display: grid; gap: 12px; }
 
+  /* Address suggestions (a listbox under Street address; above the sticky header if they meet) */
+  .af-suggest-wrap { position: relative; }
+  .af-suggest {
+    position: absolute; z-index: 1200; top: calc(100% + 6px); left: 0; right: 0; margin: 0; padding: 6px; list-style: none;
+    background: #fff; border: 1px solid var(--c-border); border-radius: 16px; box-shadow: 0 18px 48px -8px rgba(30,31,37,0.22), 0 2px 6px rgba(30,31,37,0.06);
+    max-height: min(320px, 60vh); overflow: auto; animation: afDrop .18s var(--af-ease) both;
+  }
+  .af-suggest li { display: grid; gap: 1px; padding: 10px 12px; min-height: 48px; border-radius: 10px; cursor: pointer; font-size: 15px; line-height: 1.35; color: var(--c-dark); }
+  .af-suggest li[aria-selected="true"], .af-suggest li:hover { background: var(--af-picked); box-shadow: inset 0 0 0 1.5px var(--c-yellow); }
+  .af-suggest-main { font-weight: 600; }
+  .af-suggest-sub { font-size: 13.5px; color: var(--c-text-muted); }
+  .af-county-note { display: flex; gap: 8px; align-items: center; margin: 2px 0 0; font-size: 14px; font-weight: 500; color: var(--c-dark); animation: afFadeIn .3s var(--af-ease) both; }
+  .af-county-note::before { content: ''; flex: 0 0 18px; height: 18px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' fill='%23FFDA24'/%3E%3Cpath d='M6 10.4l2.6 2.6L14 7.6' fill='none' stroke='%23373A36' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain; }
+
+  /* ── Choices: a press, a picked state, a check that draws itself ── */
   .af-choices { display: grid; gap: 10px; }
   .af-choice {
-    position: relative; display: flex; align-items: flex-start; gap: 12px; cursor: pointer;
-    border: 1.5px solid #CFCDC6; border-radius: 14px; padding: 14px 16px; min-height: 52px;
-    font-size: 16px; line-height: 1.45; background: #fff; transition: border-color 0.2s ease, background 0.2s ease;
+    position: relative; display: flex; align-items: flex-start; gap: 14px; cursor: pointer;
+    border: 1.5px solid var(--af-line); border-radius: 16px; padding: 15px 18px; min-height: 56px;
+    font-size: 16px; line-height: 1.45; background: #fff; -webkit-tap-highlight-color: transparent;
+    transition: border-color .18s var(--af-ease), background-color .18s var(--af-ease), box-shadow .18s var(--af-ease), transform .14s var(--af-ease);
   }
-  .af-choice:hover { border-color: var(--c-dark); }
-  .af-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-  .af-choice-box { flex-shrink: 0; width: 22px; height: 22px; margin-top: 1px; border: 2px solid #A9A79F; border-radius: 6px; background: #fff; display: grid; place-items: center; transition: all 0.2s ease; }
+  @media (hover: hover) { .af-choice:hover { border-color: var(--af-line-strong); background: var(--c-cream); } }
+  .af-choice:active { transform: scale(.985); }
+  .af-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+  .af-choice-box {
+    flex-shrink: 0; width: 24px; height: 24px; margin-top: 0; border: 2px solid var(--af-line-strong); border-radius: 7px; background: #fff;
+    display: grid; place-items: center; transition: background-color .18s var(--af-ease), border-color .18s var(--af-ease), transform .2s var(--af-ease);
+  }
   .af-field--radio .af-choice-box { border-radius: 50%; }
-  .af-choice:has(input:checked) { border-color: var(--c-dark); background: #FFFBEA; }
-  .af-choice input:checked + .af-choice-box { border-color: var(--c-dark); background: var(--c-yellow); }
-  .af-choice input:checked + .af-choice-box::after { content: ''; width: 10px; height: 6px; border-left: 2.5px solid var(--c-dark); border-bottom: 2.5px solid var(--c-dark); transform: translateY(-1px) rotate(-45deg); }
-  .af-field--radio .af-choice input:checked + .af-choice-box::after { width: 8px; height: 8px; border: 0; border-radius: 50%; background: var(--c-dark); transform: none; }
-  .af-choice input:focus-visible + .af-choice-box { box-shadow: 0 0 0 4px var(--c-yellow-soft); }
-  .af-choice:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
-  .af-choice-text { display: grid; gap: 4px; }
+  .af-check-draw { width: 16px; height: 16px; fill: none; stroke: var(--c-dark); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+  .af-check-draw path { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset .3s var(--af-ease) .05s; }
+  .af-choice:has(input:checked) { border-color: var(--c-dark); background: var(--af-picked); box-shadow: inset 0 0 0 .5px var(--c-dark); }
+  .af-choice input:checked + .af-choice-box { border-color: var(--c-dark); background: var(--c-yellow); animation: afPick .28s var(--af-ease); }
+  .af-choice input:checked + .af-choice-box .af-check-draw path { stroke-dashoffset: 0; }
+  .af-choice:has(input:focus-visible) { outline: 3px solid var(--c-dark); outline-offset: 2px; }
+  .af-choice:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+  .af-choice:has(input:disabled):active { transform: none; }
+  .af-choice-text { display: grid; gap: 4px; padding-top: 1px; }
   .af-choice-title { font-weight: 700; }
   .af-choice-desc { font-size: 14px; line-height: 1.5; color: var(--c-text-muted); }
   .af-field--ack .af-choice { background: var(--c-cream); }
+  .af-field--ack .af-choice:has(input:checked) { background: var(--af-picked); }
 
-  .af-upload { display: flex; gap: 16px; align-items: center; border: 1.5px dashed #A9A79F; border-radius: 16px; padding: 16px; background: var(--c-cream); }
-  .af-upload[data-state="done"] { border-style: solid; border-color: var(--c-dark); background: #FFFBEA; }
+  /* ── Uploads ── */
+  .af-upload {
+    position: relative; display: flex; gap: 18px; align-items: center; border: 1.5px dashed var(--af-line-strong); border-radius: 20px; padding: 16px;
+    background: var(--c-cream); transition: border-color .2s var(--af-ease), background-color .2s var(--af-ease);
+  }
+  .af-upload[data-state="done"] { border-style: solid; border-color: var(--af-line); background: #fff; }
   .af-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-  .af-upload-preview { flex-shrink: 0; width: 84px; height: 84px; border-radius: 12px; background: #fff center / cover no-repeat; border: 1px solid var(--c-border); }
-  .af-upload-preview:not([style*="url"])::before { content: ''; display: block; width: 100%; height: 100%; background: no-repeat center / 32px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A9A79F' stroke-width='1.5'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Ccircle cx='9' cy='10' r='2'/%3E%3Cpath d='M21 16l-5-5-8 8'/%3E%3C/svg%3E"); }
+  .af-upload-preview {
+    position: relative; flex-shrink: 0; width: 96px; height: 96px; border-radius: 14px; overflow: hidden;
+    background: #fff center / cover no-repeat; border: 1px solid var(--c-border); display: grid; place-items: center;
+  }
+  .af-upload-preview::before { content: ''; width: 34px; height: 34px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A9A79F' stroke-width='1.5' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2.5'/%3E%3Ccircle cx='9' cy='10' r='1.8'/%3E%3Cpath d='M21 16l-5-5-8 8'/%3E%3C/svg%3E"); }
+  .af-upload-preview--video::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A9A79F' stroke-width='1.5' stroke-linejoin='round'%3E%3Crect x='2.5' y='6' width='13' height='12' rx='2.5'/%3E%3Cpath d='M15.5 10.5l6-3.5v10l-6-3.5z'/%3E%3C/svg%3E"); }
+  .af-upload-preview[data-thumb]::before, .af-upload[data-state="busy"] .af-upload-preview::before { display: none; }
+  .af-upload[data-state="busy"] .af-upload-preview[data-thumb] { filter: saturate(.7) brightness(1.04); }
+  .af-upload[data-state="done"] .af-upload-preview::after {
+    content: ''; position: absolute; right: 6px; bottom: 6px; width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 2px 6px rgba(30,31,37,.18);
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='10' fill='%23FFDA24'/%3E%3Cpath d='M6 10.4l2.6 2.6L14 7.6' fill='none' stroke='%23373A36' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain;
+    animation: afPick .32s var(--af-ease) both;
+  }
+  .af-upload[data-state="done"] .af-upload-preview:not([data-thumb])::before { opacity: .55; }
+  .af-ring { position: absolute; top: 50%; left: 50%; width: 52px; height: 52px; transform: translate(-50%, -50%) rotate(-90deg); opacity: 0; transition: opacity .2s var(--af-ease); }
+  .af-upload[data-state="busy"] .af-ring { opacity: 1; }
+  .af-ring circle { fill: none; stroke-width: 4; }
+  .af-ring .af-ring-disc { fill: rgba(30,31,37,.82); stroke: none; }
+  .af-ring-track { stroke: rgba(255,255,255,.18); }
+  .af-ring-fill { stroke: var(--c-yellow); stroke-linecap: round; stroke-dasharray: 113.1; stroke-dashoffset: 113.1; transition: stroke-dashoffset .3s linear; }
+  .af-pct { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; pointer-events: none; }
+  .af-pct:empty { display: none; }
   .af-upload-body { display: grid; gap: 10px; min-width: 0; flex: 1; }
   .af-upload-status { margin: 0; font-size: 15px; color: var(--c-text); overflow-wrap: anywhere; }
-  .af-upload-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .af-upload[data-state="busy"] .af-btn--upload { opacity: 0.6; pointer-events: none; }
+  .af-upload[data-state="done"] .af-upload-status { font-weight: 600; color: var(--c-dark); }
+  .af-upload-actions { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center; }
+  .af-upload[data-state="busy"] .af-btn--upload, .af-upload[data-state="busy"] [data-act="record"] { opacity: 0.5; pointer-events: none; }
+  .af-upload[data-state="done"] .af-btn--upload { background: transparent; color: var(--c-dark); box-shadow: inset 0 0 0 1.5px var(--af-line); }
+  .af-upload[data-state="done"] .af-btn--upload:hover { box-shadow: inset 0 0 0 1.5px var(--c-dark); }
+  .af-drag-hint { display: none; font-size: 14px; color: var(--c-text-muted); }
+  @media (pointer: fine) { .af-upload[data-state="empty"] .af-drag-hint { display: inline; } }
+  .af-drop-veil {
+    position: absolute; inset: -1.5px; border-radius: inherit; display: grid; place-items: center; pointer-events: none;
+    background: rgba(255,251,234,.96); border: 2px dashed var(--c-dark); font-size: 16px; font-weight: 700; color: var(--c-dark);
+    opacity: 0; transition: opacity .16s var(--af-ease);
+  }
+  .af-drop-veil span { transform: translateY(4px); transition: transform .2s var(--af-ease); }
+  .af-upload[data-drag] .af-drop-veil { opacity: 1; }
+  .af-upload[data-drag] .af-drop-veil span { transform: none; }
 
-  .af-error { margin: 0; font-size: 14px; font-weight: 600; color: #8A3B00; }
+  /* The camera recorder (desktop): the live picture on top, every control under it */
+  .af-recorder { margin-top: 12px; padding: 12px; border-radius: 20px; background: var(--c-dark-deep); display: grid; gap: 12px; animation: afFadeIn .24s var(--af-ease) both; }
+  .af-recorder-view { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; background: #000; object-fit: cover; transform: scaleX(-1); }
+  .af-recorder-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 0 4px 2px; }
+  .af-recorder-time { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 15px; color: rgba(255,255,255,.88); font-variant-numeric: tabular-nums; }
+  .af-recorder[data-rec="on"] .af-recorder-time::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--c-yellow); box-shadow: 0 0 0 0 rgba(255,218,36,.5); animation: afRecDot 1.6s ease-in-out infinite; }
+  .af-recorder-actions { display: flex; align-items: center; gap: 10px; }
+
+  /* ── Answers that need attention: soft yellow, deep gold ink, never red ── */
+  .af-error {
+    display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 10px 14px; border-radius: 12px;
+    background: var(--af-attn-bg); color: var(--af-attn-ink); font-size: 14.5px; font-weight: 600; line-height: 1.45;
+    animation: afFadeIn .2s var(--af-ease) both;
+  }
+  .af-error::before { content: ''; flex: 0 0 18px; height: 18px; margin-top: 1px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A7200' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='8.2'/%3E%3Cpath d='M10 5.8v5.2M10 14v.1'/%3E%3C/svg%3E"); }
   .af-error:empty { display: none; }
-  .af-field--error :is(input:not([type=radio]):not([type=checkbox]), textarea, select),
-  .af-field--error .af-choice, .af-field--error .af-upload { border-color: #B45309; }
+  .af-field.af-field--error :is(input:not([type=radio]):not([type=checkbox]):not([type=file]), textarea, select),
+  .af-field--error .af-choice, .af-field--error .af-upload { border-color: var(--af-gold); }
+  .af-field.af-field--error :is(input:not([type=radio]):not([type=checkbox]):not([type=file]), textarea, select):not(:focus-visible) { background-color: #FFFDF3; }
 
+  /* Staff live preview: the question being edited, outlined for a moment */
+  .af-flash { animation: afFlash 1.8s var(--af-ease) both; }
+
+  /* ── Buttons ── */
   .af-btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    font: inherit; font-weight: 600; font-size: 16px; min-height: 48px; padding: 12px 26px;
-    border-radius: 999px; border: 0; cursor: pointer; text-decoration: none; transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font: inherit; font-weight: 600; font-size: 16px; min-height: 52px; padding: 12px 26px;
+    border-radius: 999px; border: 0; cursor: pointer; text-decoration: none; -webkit-tap-highlight-color: transparent;
+    transition: background-color .2s var(--af-ease), box-shadow .2s var(--af-ease), transform .14s var(--af-ease), border-color .2s var(--af-ease), opacity .2s var(--af-ease);
+  }
+  .af-btn:active:not(:disabled) { transform: scale(.97); }
+  .af-btn-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; transition: transform .2s var(--af-ease); }
+  @media (hover: hover) {
+    .af-btn--next:hover .af-btn-icon--next { transform: translateX(2px); }
+    .af-btn--back:hover .af-btn-icon { transform: translateX(-2px); }
   }
   .af-btn--primary { background: var(--c-yellow); color: var(--c-dark); }
-  .af-btn--primary:hover { box-shadow: 0 8px 24px var(--c-yellow-glow); }
-  .af-btn--primary:disabled { opacity: 0.6; cursor: wait; }
+  .af-btn--primary:hover:not(:disabled) { box-shadow: 0 10px 26px -6px var(--c-yellow-glow), 0 0 0 1px rgba(55,58,54,.06); background: #FFD60A; }
+  .af-btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .af-btn--primary[aria-busy="true"] { cursor: progress; opacity: .75; }
   .af-btn--submit { background: var(--c-dark); color: #fff; }
-  .af-btn--submit:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.18); }
-  .af-btn--ghost { background: transparent; color: var(--c-dark); border: 1.5px solid #CFCDC6; }
+  .af-btn--submit:hover:not(:disabled) { background: #2C2F2B; box-shadow: 0 10px 26px -8px rgba(30,31,37,.35); }
+  .af-btn--submit .af-btn-icon--next { display: none; }
+  .af-btn--ghost { background: transparent; color: var(--c-dark); border: 1.5px solid var(--af-line); }
   .af-btn--ghost:hover { border-color: var(--c-dark); }
+  .af-btn--sm { min-height: 44px; padding: 10px 18px; font-size: 15px; }
   .af-btn--upload { background: var(--c-dark); color: #fff; min-height: 44px; padding: 10px 20px; font-size: 15px; }
-  .af-btn--link { background: none; padding: 6px 2px; min-height: 44px; color: var(--c-dark); text-decoration: underline; text-underline-offset: 3px; font-size: 15px; }
+  .af-btn--upload:hover { background: #2C2F2B; }
+  .af-btn--link { background: none; padding: 6px 4px; min-height: 44px; color: var(--c-dark); text-decoration: underline; text-decoration-color: rgba(55,58,54,.35); text-underline-offset: 4px; font-size: 15px; }
+  .af-btn--link:hover { text-decoration-color: var(--c-dark); }
+  .af-btn--on-dark { color: #fff; text-decoration-color: rgba(255,255,255,.45); }
+  .af-btn--on-dark:hover { text-decoration-color: #fff; }
   .af-btn:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 3px; }
+  .af-recorder .af-btn:focus-visible { outline-color: var(--c-yellow); }
 
-  .af-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--c-border); }
-  .af-nav [data-next] { margin-left: auto; min-width: 160px; }
-  .af-save-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
-  .af-save-state { font-size: 13px; color: var(--c-text-muted); }
+  .af-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--c-border); }
+  .af-nav-note + .af-nav { margin-top: 16px; }
+  .af-nav [data-next] { margin-left: auto; min-width: 176px; }
+  .af-save-row { display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; margin-top: 12px; flex-wrap: wrap; }
+  .af-save-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--c-text-muted); }
+  .af-save-state[data-kind="saved"]::before { content: ''; width: 14px; height: 14px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%235A5B61' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3L12.5 5'/%3E%3C/svg%3E"); }
 
   .af-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-  .af-turnstile { margin-top: 24px; }
+  .af-turnstile { margin-top: 28px; }
 
-  .af-review-intro { font-size: 16px; color: var(--c-text); }
-  .af-review { display: grid; gap: 16px; }
-  .af-review .af-review-section { border: 1px solid var(--c-border); border-radius: 16px; padding: 18px 20px; }
-  .af-review .af-review-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
-  .af-review h3 { font-size: 18px; }
-  .af-review dl { display: grid; gap: 4px; margin: 0; }
-  .af-review dt { font-size: 13px; font-weight: 600; color: var(--c-text-muted); margin-top: 10px; line-height: 1.4; }
-  .af-review dd { margin: 0; font-size: 15px; color: var(--c-dark); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .af-review .af-btn--link { min-height: 36px; }
+  /* ── Review ── */
+  .af-review-intro { font-size: 16.5px; line-height: 1.6; color: var(--c-text); }
+  .af-review-summary { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-radius: 16px; font-size: 16px; font-weight: 600; line-height: 1.4; }
+  .af-review-summary:empty { display: none; }
+  .af-review-summary::before { content: ''; flex: 0 0 26px; height: 26px; background: no-repeat center / contain; }
+  .af-review-summary[data-kind="ready"] { background: var(--af-picked); border: 1px solid var(--c-yellow); color: var(--c-dark); }
+  .af-review-summary[data-kind="ready"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='10' fill='%23FFDA24'/%3E%3Cpath d='M6 10.4l2.6 2.6L14 7.6' fill='none' stroke='%23373A36' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  .af-review-summary[data-kind="missing"] { background: var(--af-attn-bg); border: 1px solid #E6C400; color: var(--af-attn-ink); }
+  .af-review-summary[data-kind="missing"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A7200' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='8.2'/%3E%3Cpath d='M10 5.8v5.2M10 14v.1'/%3E%3C/svg%3E"); }
+  .af-review { display: grid; gap: 14px; }
+  .af-review-section { border: 1px solid var(--c-border); border-radius: 20px; padding: 6px 22px 10px; background: #fff; }
+  .af-review-section[data-missing] { border-color: #E6C400; }
+  .af-review-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0 6px; }
+  .af-review-head h3 { font-size: 18px; line-height: 1.3; }
+  .af-review-edit { display: inline-flex; align-items: center; gap: 6px; text-decoration: none !important; font-weight: 600; padding: 6px 10px; border-radius: 999px; }
+  .af-review-edit:hover { background: var(--c-warm-gray); }
+  .af-review-edit svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .af-review dl { margin: 0; }
+  .af-review-item { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid #F0EEE8; }
+  .af-review-item:first-child { border-top: 0; }
+  .af-review dt { font-size: 13.5px; font-weight: 600; color: var(--c-text-muted); line-height: 1.45; }
+  .af-review dd { margin: 0; font-size: 15.5px; line-height: 1.55; color: var(--c-dark); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .af-review-thumb { display: flex; align-items: center; gap: 12px; }
+  .af-review-thumb img { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; border: 1px solid var(--c-border); }
+  .af-review-missing dd { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; white-space: normal; color: var(--af-attn-ink); font-weight: 600; }
+  .af-review-missing dd .af-btn { min-height: 44px; padding: 8px 16px; font-size: 14.5px; }
 
-  .af-stop h2, .af-done h2 { font-size: clamp(22px, 3vw, 30px); line-height: 1.25; margin-bottom: 14px; outline: none; }
-  .af-stop p { font-size: 16px; line-height: 1.7; margin-bottom: 16px; }
-  .af-stop-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
-  .af-done { text-align: center; }
-  .af-done p { font-size: 16px; line-height: 1.7; color: var(--c-text); margin: 0 auto 16px; max-width: 560px; }
-  .af-done-badge { width: 64px; height: 64px; margin: 0 auto 20px; border-radius: 50%; background: var(--c-yellow); color: var(--c-dark); display: grid; place-items: center; }
-  .af-done-badge svg { width: 32px; height: 32px; }
+  /* ── Stop screens and the thank-you ── */
+  .af-stop, .af-done { animation: afRise .45s var(--af-ease) both; }
+  .af-stop h2, .af-done h2 { font-size: clamp(24px, 3.2vw, 32px); line-height: 1.22; letter-spacing: -0.01em; margin-bottom: 16px; outline: none; text-wrap: balance; }
+  .af-stop-body p { font-size: 16.5px; line-height: 1.7; margin-bottom: 16px; }
+  .af-stop .af-image { margin-top: 8px; }
+  .af-stop-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
 
-  /* margin: auto puts it back in the middle; the site's reset zeroes dialog margins */
-  .af-dialog { margin: auto; max-height: calc(100dvh - 32px); overflow: auto; border: 0; border-radius: 24px; padding: 32px; width: min(480px, calc(100vw - 32px)); box-shadow: 0 32px 80px rgba(0,0,0,0.25); color: var(--c-dark); }
+  .af-done { position: relative; overflow: hidden; text-align: center; padding-top: clamp(40px, 7vw, 72px); padding-bottom: clamp(40px, 7vw, 64px); }
+  .af-done::before { content: ''; position: absolute; inset: 0 0 auto; height: 280px; background: radial-gradient(60% 100% at 50% 0%, rgba(255,218,36,.22), rgba(255,218,36,0) 70%); pointer-events: none; }
+  .af-done > * { position: relative; }
+  .af-done p { font-size: 16.5px; line-height: 1.7; color: var(--c-text); margin: 0 auto 16px; max-width: 540px; }
+  .af-done .af-done-email { font-weight: 600; color: var(--c-dark); }
+  .af-done .af-done-email:empty { display: none; }
+  .af-done .af-btn { margin-top: 12px; }
+  .af-sun { width: 120px; height: 120px; margin: 0 auto 22px; }
+  .af-sun svg { width: 100%; height: 100%; overflow: visible; }
+  .af-sun-halo { fill: rgba(255,218,36,.28); transform-origin: 60px 60px; }
+  .af-sun-rays path { fill: none; stroke: #E6C400; stroke-width: 5; stroke-linecap: round; }
+  .af-sun-rays { transform-origin: 60px 60px; }
+  .af-sun-core { fill: var(--c-yellow); transform-origin: 60px 60px; }
+  .af-done.is-in .af-sun-core { animation: afSunRise 1s var(--af-ease) .05s both; }
+  .af-done.is-in .af-sun-rays { animation: afSunRays 1.2s var(--af-ease) .25s both; }
+  .af-done.is-in .af-sun-halo { animation: afSunGlow 2.2s ease-out .35s both; }
+
+  /* margin: auto puts it back in the middle; the site's reset zeroes dialog margins. A modal dialog sits in the top layer, over the header. */
+  .af-dialog { margin: auto; max-height: calc(100dvh - 32px); overflow: auto; border: 0; border-radius: 28px; padding: 36px 32px 32px; width: min(480px, calc(100vw - 32px)); box-shadow: 0 32px 80px rgba(0,0,0,0.25); color: var(--c-dark); z-index: 1200; }
+  .af-dialog[open] { animation: afRise .28s var(--af-ease) both; }
   .af-dialog::backdrop { background: rgba(30,31,37,0.55); }
-  .af-dialog h2 { font-size: 24px; margin-bottom: 10px; }
-  .af-dialog p { font-size: 15px; line-height: 1.6; margin-bottom: 16px; }
+  .af-dialog h2 { font-size: 24px; margin-bottom: 10px; padding-right: 32px; }
+  .af-dialog p { font-size: 15.5px; line-height: 1.6; margin-bottom: 16px; }
   .af-dialog form { display: grid; gap: 10px; }
-  .af-dialog-close { position: absolute; top: 12px; right: 12px; width: 44px; height: 44px; border: 0; background: none; font-size: 28px; line-height: 1; cursor: pointer; color: var(--c-text-muted); border-radius: 50%; }
-  .af-dialog-close:hover { background: var(--c-warm-gray); }
-  .af-dialog-status { min-height: 1.4em; font-size: 14px; margin: 0; color: #8A3B00; }
+  .af-dialog-close { position: absolute; top: 12px; right: 12px; width: 44px; height: 44px; border: 0; background: none; cursor: pointer; color: var(--c-text-muted); border-radius: 50%; display: grid; place-items: center; }
+  .af-dialog-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .af-dialog-close:hover { background: var(--c-warm-gray); color: var(--c-dark); }
+  .af-dialog-close:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
+  .af-dialog-status { min-height: 1.4em; font-size: 14px; margin: 0; color: var(--af-attn-ink); font-weight: 600; }
+  .af-dialog-status:empty { min-height: 0; }
+
+  @keyframes afFadeIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+  @keyframes afDrop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  @keyframes afRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes afPick { from { transform: scale(.82); } to { transform: scale(1); } }
+  @keyframes afRecDot { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,218,36,.55); } 50% { box-shadow: 0 0 0 6px rgba(255,218,36,0); } }
+  @keyframes afFlash {
+    0%, 35% { box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--c-yellow); }
+    100% { box-shadow: 0 0 0 4px rgba(255,255,255,0), 0 0 0 7px rgba(255,218,36,0); }
+  }
+  @keyframes afSunRise { from { opacity: 0; transform: translateY(22px) scale(.92); } to { opacity: 1; transform: none; } }
+  @keyframes afSunRays { from { opacity: 0; transform: scale(.72) rotate(-18deg); } to { opacity: 1; transform: none; } }
+  @keyframes afSunGlow { 0% { opacity: 0; transform: scale(.6); } 45% { opacity: 1; transform: scale(1.04); } 100% { opacity: .75; transform: scale(1); } }
 
   @media (max-width: 768px) {
-    .af-card { border-radius: 20px; padding: 24px 18px; }
+    .af-card { border-radius: 22px; padding: 26px 18px; }
+    .af-toolbar { margin-bottom: 12px; }
+    .af-head { margin-bottom: 28px; }
+    .af-page { gap: 28px; }
     .af-content .af-scope { grid-template-columns: 1fr; }
     .af-row--2, .af-row--3 { grid-template-columns: 1fr; }
-    .af-upload { flex-direction: column; align-items: stretch; text-align: left; }
-    .af-upload-preview { width: 100%; height: 160px; }
-    .af-upload--video .af-upload-body { width: 100%; }
-    .af-nav { position: sticky; bottom: 0; background: #fff; margin: 28px -18px -24px; padding: 14px 18px calc(14px + env(safe-area-inset-bottom)); border-radius: 0 0 20px 20px; box-shadow: 0 -8px 24px rgba(0,0,0,0.06); z-index: 5; }
+    /* Uploads: picture and status side by side, buttons on their own row */
+    .af-upload { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 14px; align-items: center; padding: 14px; }
+    .af-upload-preview { width: 72px; height: 72px; border-radius: 12px; }
+    .af-upload-preview::before { width: 28px; height: 28px; }
+    .af-upload-body { display: contents; }
+    .af-upload-actions, .af-upload .af-hint { grid-column: 1 / -1; }
+    .af-upload[data-state="empty"] .af-upload-actions .af-btn--upload { flex: 1 1 auto; }
+    .af-review-section { padding: 4px 16px 8px; }
+    .af-nav { position: sticky; bottom: 0; background: #fff; margin: 32px -18px -26px; padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); border-radius: 0 0 22px 22px; box-shadow: 0 -10px 24px -8px rgba(30,31,37,0.10); z-index: 5; }
+    .af-nav-note { margin-top: 24px; }
+    .af-nav-note + .af-nav { margin-top: 12px; }
     .af-nav [data-next] { flex: 1; min-width: 0; }
-    .af-save-row { margin-top: 36px; }
-    .af-dialog { padding: 28px 20px; }
+    .af-save-row { margin-top: 40px; }
+    .af-field { scroll-margin-bottom: 96px; }
+    .af-dialog { padding: 32px 20px 24px; }
+  }
+  @media (max-width: 380px) {
+    .af-lang-icon { display: none; }
+    .af-lang-btn { padding: 0 14px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .af-progress-bar { transition: none; }
+    .af-progress-bar, .af-choice, .af-btn, .af-check-draw path, .af-ring-fill { transition: none; }
+    .af-choice:active, .af-btn:active:not(:disabled) { transform: none; }
+    .af-notice, .af-nav-note, .af-error, .af-county-note, .af-suggest, .af-steps[open] .af-steps-list, .af-recorder, .af-stop, .af-done, .af-dialog[open],
+    .af-choice input:checked + .af-choice-box, .af-upload[data-state="done"] .af-upload-preview::after,
+    .af-done.is-in .af-sun-core, .af-done.is-in .af-sun-rays, .af-done.is-in .af-sun-halo, .af-recorder[data-rec="on"] .af-recorder-time::before { animation: none; }
+    .af-sun-halo { opacity: .75; }
+    /* The live preview's highlight holds still, then goes (the script removes it) */
+    .af-flash { animation: none; box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--c-yellow); }
   }
 </style>

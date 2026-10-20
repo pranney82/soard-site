@@ -9,6 +9,11 @@
  *   env = { ...w.env, DB }    // FILES, AI, keys
  *   processApplication(env, id, { fetchImpl: w.fetchImpl })
  *
+ * The admin's Applicants view (functions/api/_applicants.js) reads accounts
+ * with their contacts, home (latitude/longitude), jobs and files, writes with
+ * updateAccount, and reads JobTread's event log: world.events, newest last,
+ * which updateAccount and createComment append to like JobTread does.
+ *
  * Failure knobs: w.failNext.set('createContact', 1) fails the next call with
  * a 500; w.loseNext.add('createAccount') performs the create, then throws as
  * if the response never arrived. world.emailDown / world.slackDown make
@@ -25,6 +30,7 @@ export function fakeApplicantWorld() {
     emailDown: false, slackDown: false,
     videos: {}, downloads: {}, deletedVideos: [], streamMeta: {},
     turnstile: true,
+    events: [],
   };
   const failNext = new Map();
   const loseNext = new Set();
@@ -41,19 +47,68 @@ export function fakeApplicantWorld() {
     }
     return { nodes };
   };
-  const renderContact = (c, sel) => c && ({ id: c.id, name: c.name, customFieldValues: values(c.fields, sel?.customFieldValues?.$?.where) });
+  const renderContact = (c, sel) => c && ({ id: c.id, name: c.name, title: c.title || null, customFieldValues: values(c.fields, sel?.customFieldValues?.$?.where) });
+  const nameMatch = (w, name) => !w || (w[1] === 'in' ? w[2].includes(name) : name === w[2]);
+  // Only what the query selects, like JobTread (aliases via "_")
   const renderAccount = (a, sel) => {
     if (!a) return null;
-    const commentWhere = sel.comments?.$?.where;
-    const comments = a.comments.filter(c => !commentWhere || (commentWhere[1] === 'in' ? commentWhere[2].includes(c.name) : c.name === commentWhere[2]));
-    return {
-      id: a.id, name: a.name, type: a.type, createdAt: a.createdAt, organization: { id: a.org },
-      customFieldValues: values(a.fields, sel.customFieldValues?.$?.where),
-      primaryContact: renderContact(a.contacts.find(c => c.id === a.primaryContactId), sel.primaryContact),
-      contacts: { nodes: a.contacts.map(c => renderContact(c, sel.contacts?.nodes)) },
-      comments: { nodes: comments.map(c => ({ id: c.id, name: c.name, message: c.message })) },
-    };
+    const out = {};
+    for (const [key, sub] of Object.entries(sel || {})) {
+      if (key === '$') continue;
+      switch (sub?._ || key) {
+        case 'id': case 'name': case 'type': case 'createdAt': out[key] = a[sub?._ || key]; break;
+        case 'archivedAt': out[key] = a.archivedAt || null; break;
+        case 'organization': out[key] = { id: a.org }; break;
+        case 'customFieldValues': out[key] = values(a.fields, sub.$?.where); break;
+        case 'primaryContact': out[key] = renderContact(a.contacts.find(c => c.id === a.primaryContactId), sub); break;
+        case 'contacts': out[key] = { nodes: a.contacts.map(c => renderContact(c, sub.nodes)) }; break;
+        case 'primaryLocation': {
+          const l = a.locations[0];
+          out[key] = l ? { id: l.id, address: l.address || null, city: l.city || null, county: l.county || null, latitude: l.latitude ?? null, longitude: l.longitude ?? null, customFieldValues: values(l.customFieldValues || {}, sub.customFieldValues?.$?.where) } : null;
+          break;
+        }
+        case 'jobs': out[key] = { nodes: (a.jobs || []).map(j => ({ id: j.id, name: j.name })) }; break;
+        case 'comments': {
+          const list = a.comments.filter(c => nameMatch(sub.$?.where, c.name));
+          out[key] = { nodes: list.map(c => ({
+            id: c.id, name: c.name, message: c.message, createdAt: c.createdAt || null, isFromEmail: !!c.fromEmail, isPinned: !!c.pinned,
+            isVisibleToCustomerRoles: false, createdByUser: { id: 'u1', name: c.by || 'Qualification Committee' },
+            parentComment: c.parentCommentId ? { id: c.parentCommentId } : null, files: { nodes: [] },
+          })) };
+          break;
+        }
+        case 'files': out[key] = { nodes: a.files.map(f => ({ id: f.id, name: f.name, type: f.type, size: f.size, createdAt: f.createdAt || null, url: `https://cdn.fake/${f.id}`, thumb: null, job: null })) }; break;
+        default: break;
+      }
+    }
+    return out;
   };
+  // Pave "where": [field, op, value] or { and: [...] }
+  const FIELD_NAMES = { '22P46wDp3NLd': 'Status', '22P46st8HNPY': 'Diagnosis', '22P52xmCz3cx': '*Makeover Year', '22P5KVgrLeXK': '*Makeover Type', '22PJx2jt4Vma': 'Denial Reason', '22P4VnkCXPSY': 'Gender' };
+  const test = (row, w) => {
+    if (!w) return true;
+    if (w.and) return w.and.every(x => test(row, x));
+    const [f, op, val] = w;
+    const v = row[Array.isArray(f) ? f.join('.') : f];
+    if (op === '=') return v === val;
+    if (op === 'in') return val.includes(v);
+    if (op === '>') return v > val;
+    if (op === '>=') return v >= val;
+    if (op === '<') return v < val;
+    if (op === '<=') return v <= val;
+    return true;
+  };
+  const pageOf = (list, $) => {
+    const start = Number($?.page || 0);
+    const size = $?.size || 100;
+    const nodes = list.slice(start, start + size);
+    return { nodes, nextPage: start + size < list.length ? String(start + size) : null };
+  };
+  const logEvent = (type, a, data, by = 'Site') => world.events.push({
+    id: nextId('evt'), createdAt: new Date(Date.now() + world.events.length).toISOString(), type,
+    createdByGrantId: '22PgGhFHkmbz', createdByGrantName: 'soard-site-CF', createdByUser: { id: 'u1', name: by }, data,
+    account: { id: a.id, type: a.type },
+  });
 
   function pave(query) {
     const { $, ...rest } = query;
@@ -116,20 +171,59 @@ export function fakeApplicantWorld() {
             req.used = true;
           }
           const id = nextId('cmt');
-          a.comments.push({ id, name: input.name ?? null, message: input.message, assignees: input.assignees || [], files: input.files || [], grantKey: $?.grantKey, internal: !input.assignees?.length });
+          a.comments.push({ id, name: input.name ?? null, message: input.message, assignees: input.assignees || [], files: input.files || [], grantKey: $?.grantKey, internal: !input.assignees?.length, parentCommentId: input.parentCommentId || null, createdAt: new Date().toISOString() });
+          logEvent('commentCreated', a, { next: { id, name: input.name ?? null, message: input.message, targetType: 'account', jobId: null, parentCommentId: input.parentCommentId || null }, previous: null });
           out.createComment = { createdComment: { id } };
+          break;
+        }
+        case 'updateAccount': {
+          const a = world.accounts[input.id];
+          if (!a) throw Object.assign(new Error('no account'), { status: 400 });
+          if ('archive' in input) {
+            const was = a.archivedAt || null;
+            a.archivedAt = input.archive ? new Date().toISOString() : null;
+            logEvent('accountUpdated', a, { next: { archivedAt: a.archivedAt }, previous: { archivedAt: was } });
+          }
+          if (input.customFieldValues) {
+            const next = {};
+            const previous = {};
+            for (const [fid, val] of Object.entries(input.customFieldValues)) {
+              const name = FIELD_NAMES[fid] || fid;
+              previous[name] = a.fields[fid] ?? null;
+              next[name] = val;
+              if (val == null) delete a.fields[fid];
+              else a.fields[fid] = val;
+            }
+            logEvent('accountUpdated', a, { next: { custom: next }, previous: { custom: previous } });
+          }
+          out.updateAccount = { account: { id: a.id } };
           break;
         }
         case 'account':
           out.account = renderAccount(world.accounts[input.id], v);
           break;
+        case 'event': {
+          const e = world.events.find(x => x.id === input.id);
+          out.event = e ? { ...e, account: e.account ? { id: e.account.id, type: e.account.type } : null } : null;
+          break;
+        }
         case 'organization': {
-          const sel = v.accounts;
-          const since = sel?.$?.where?.and?.find(w => w[0] === 'createdAt')?.[2];
-          const nodes = Object.values(world.accounts)
-            .filter(a => a.type === 'customer' && (!since || a.createdAt >= since))
-            .map(a => ({ id: a.id, customFieldValues: values(a.fields, sel?.nodes?.customFieldValues?.$?.where) }));
-          out.organization = { accounts: { nodes } };
+          out.organization = {};
+          if (v.accounts) {
+            const sel = v.accounts;
+            const list = Object.values(world.accounts)
+              .filter(a => test({ id: a.id, type: a.type, name: a.name, createdAt: a.createdAt }, sel.$?.where))
+              .sort((x, y) => (y.createdAt > x.createdAt ? 1 : -1));
+            const { nodes, nextPage } = pageOf(list, sel.$);
+            out.organization.accounts = { nodes: nodes.map(a => renderAccount(a, sel.nodes)), nextPage };
+          }
+          if (v.events) {
+            const sel = v.events;
+            const order = sel.$?.sortBy?.[0]?.order === 'desc' ? -1 : 1;
+            const list = world.events.filter(e => test({ createdAt: e.createdAt, type: e.type }, sel.$?.where))
+              .sort((x, y) => (x.createdAt > y.createdAt ? order : -order));
+            out.organization.events = pageOf(list, sel.$);
+          }
           break;
         }
         default:

@@ -54,6 +54,7 @@
     "esbuild": "0.28.1",
     "hls.js": "1.7.3",
     "htm": "3.1.1",
+    "leaflet": "1.9.4",
     "preact": "10.25.4",
     "puppeteer": "^24.42.0",
     "qrcode-generator": "^1.5.2",
