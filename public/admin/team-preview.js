@@ -8,7 +8,7 @@
  * page and checks it against the real one.
  */
 import { checkBlobs, setLiveBlobs, loadTemplates, tools, guardFrame, cfUrl, isLocal } from './page-preview.js';
-import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip, hasProfile, profilePath } from './team-shared.js';
+import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip, hasProfile, profilePath, boardTitleLine } from './team-shared.js';
 
 export const pagePath = () => '/about/leadership/';
 export const listPage = true;
@@ -96,11 +96,11 @@ export function patchPage(doc, win, model) {
     card.setAttribute('class', ['board-card', p.status === 'memorial' && 'board-card--memorial', hasProfile(p) && 'has-profile'].filter(Boolean).join(' '));
     card.dataset.delay = String(Math.min(i, 4));
     const box = photoBox(boardPhoto, boardPlain, p, 200, [140, 200, 280, 400]);
-    if (p.photo) box.querySelector('img').setAttribute('alt', p.status === 'memorial' ? `In memory of ${p.name}, ${p.title}` : `${p.name}, ${p.title}`);
+    if (p.photo) box.querySelector('img').setAttribute('alt', p.status === 'memorial' ? `In memory of ${p.name}, ${boardTitleLine(p)}` : `${p.name}, ${p.title}`);
     card.querySelector('.board-photo').replaceWith(box);
     const name = card.querySelector('.board-name');
     if (p.status === 'memorial') name.before(memorialLabel.cloneNode(true));
-    card.querySelector('.board-title').textContent = p.title;
+    card.querySelector('.board-title').textContent = boardTitleLine(p);
     textOrDrop(card.querySelector('.board-org'), p.organization);
     nameAndLink(card, name, p);
     return card;

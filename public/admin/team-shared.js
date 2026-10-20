@@ -57,6 +57,8 @@ export const PHOTO_MIN = 440;
 export const PHOTO_GOOD = 800;
 
 const MEMORIAL_PREFIX = /^\s*in memoriam\s*[,:]?\s*/i;
+// Older records kept the years served in the title ("Board Member 2024-2025")
+const YEARS_IN_TITLE = /[\s,(]*\b((?:19|20)\d{2})\s*(?:[-–—]|to)\s*((?:19|20)\d{2}|present|now)\)?\s*$/i;
 const SEAT_IDS = SEATS.map((s) => s.id);
 const ROLE_IDS = TEAM_ROLES.map((r) => r.id);
 const STATUS_IDS = STATUSES.map((s) => s.id);
@@ -77,6 +79,16 @@ export function seatTitle(seat) {
   return SEATS.find((s) => s.id === seat)?.title || MEMBER_TITLE;
 }
 
+/** Years an older record kept in its title become since/until, and the title loses them */
+function legacyYears(d) {
+  if (d?.since != null || d?.until != null) return {};
+  const m = String(d?.title || '').match(YEARS_IN_TITLE);
+  if (!m) return {};
+  const title = String(d.title).slice(0, m.index).replace(/[\s,·-]+$/, '');
+  if (!title) return {};
+  return { title, since: Number(m[1]), ...(/^\d/.test(m[2]) ? { until: Number(m[2]) } : {}) };
+}
+
 /**
  * The record with every structured field filled in. Explicit fields win;
  * older records fall back to what their name and title say.
@@ -90,6 +102,7 @@ export function normalizePerson(d) {
   const seat = !board ? '' : (d && 'seat' in d && (d.seat === '' || SEAT_IDS.includes(d.seat))) ? d.seat : seatFromTitle(d?.title);
   return {
     ...d,
+    ...legacyYears(d),
     name: legacyMemorial ? rawName.replace(MEMORIAL_PREFIX, '').trim() : rawName,
     status,
     role,
@@ -97,6 +110,11 @@ export function normalizePerson(d) {
     draft: d?.publishStatus === 'draft',
   };
 }
+
+/** "2024–2025" for someone whose time has ended (in memory or alumni) with both years known */
+export const servedYears = (p) => (p?.status !== 'active' && typeof p?.since === 'number' && typeof p?.until === 'number' ? `${p.since}–${p.until}` : '');
+/** A board card's title line: a member in memory shows their years ("Board Member, 2024–2025") */
+export const boardTitleLine = (p) => { const y = p?.status === 'memorial' ? servedYears(p) : ''; return y ? `${p.title || ''}, ${y}` : p.title || ''; };
 
 /** On the Leadership page: not a draft, not alumni */
 export const isListed = (p) => !p.draft && p.status !== 'alumni';

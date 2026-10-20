@@ -15,7 +15,7 @@ import { createRequest, findRequest, liveRequests, resolveRequest, hashToken, no
 import * as publicApi from '../functions/api/profile-request.js';
 import * as adminApi from '../functions/api/profile-requests-admin.js';
 import { batch } from '../functions/api/people-batch.js';
-import { bioPrompt, tidyBio, STYLE_RULES, onRequestPost as aiPost } from '../functions/api/people-ai.js';
+import { bioPrompt, tidyBio, bioProblems, revisePrompt, STYLE_RULES, onRequestPost as aiPost } from '../functions/api/people-ai.js';
 import { onRequestPost as savePost } from '../functions/api/save-content.js';
 import { rename } from '../functions/api/rename-content.js';
 import { onRequestGet as auditGet } from '../functions/api/audit-log.js';
@@ -261,13 +261,49 @@ test('framing from the Photos review: a crop as fractions with the photo\'s size
 test('the bio prompt: house style, no invented facts, no guessed pronouns', () => {
   const p = bioPrompt({ bio: 'I run a flooring company.', name: 'Scott Wierson', title: 'Board Chair', organization: 'Real Floors', group: 'board' });
   assert.match(p, /third person/);
-  assert.match(p, /do not use he, she/);
+  assert.match(p, /never use he, she/);
+  assert.match(p, /first name at most twice/);
+  assert.match(p, /use none of its facts/);
   assert.match(p, /Never invent/);
   assert.match(p, /Board of Directors/);
   assert.match(p, /I run a flooring company\./);
   assert.ok(STYLE_RULES.some((r) => /em dashes/.test(r)));
   assert.equal(tidyBio('Rewritten bio: "Scott leads a team — and more."\n\n\nSecond  para.'), 'Scott leads a team, and more.\n\nSecond para.');
   assert.equal(tidyBio('She said "yes" twice.'), 'She said "yes" twice.', 'balanced quotes stay');
+});
+
+test('the style check: a first name repeated to dodge pronouns, guessed pronouns, stock phrases', () => {
+  const name = 'Scott Wierson';
+  const repetitive = 'Scott is the CEO of Real Floors Commercial. Scott has been on the board for a long time. Scott\'s company donates flooring.';
+  assert.match(bioProblems(repetitive, { name, original: 'scott runs real floors' })[0], /first name "Scott" 3 times/);
+  assert.deepEqual(bioProblems('Scott Wierson leads Real Floors Commercial, which donates flooring to SOARD builds.', { name, original: 'x' }), []);
+  assert.match(bioProblems('Scott leads the company. He chairs the board.', { name, original: 'i run a company' }).join(), /pronouns/);
+  assert.deepEqual(bioProblems('Scott leads the company. He chairs the board.', { name, original: 'he runs a company' }), [], 'pronouns the original uses are fine');
+  assert.match(bioProblems('Scott is truly passionate about kids!', { name, original: 'x' }).join(' '), /stock phrases: passionate about, truly.*exclamation/);
+  const r = revisePrompt({ bio: 'orig', name }, 'DRAFT TEXT', ['Fix A']);
+  assert.match(r, /DRAFT TEXT/);
+  assert.match(r, /- Fix A/);
+});
+
+test('a draft that breaks the style gets one corrected pass; the better of the two is kept', async () => {
+  const call = (replies) => {
+    const asked = [];
+    return { asked, run: () => aiPost({ env: { AI: { run: async (model, { messages }) => { asked.push(messages[0].content); return { response: replies[asked.length - 1] }; } } },
+      request: new Request('https://x', { method: 'POST', body: JSON.stringify({ name: 'Scott Wierson', bio: 'scott runs real floors commercial and has been on the board a long time. his company donates flooring' }) }) }) };
+  };
+  const repetitive = 'Scott is the CEO of Real Floors Commercial. Scott has served on the board for years. Scott donates flooring.';
+  const good = 'Scott Wierson leads Real Floors Commercial and has served on the board for years. The company donates flooring to SOARD builds.';
+  let c = call([repetitive, good]);
+  let d = await (await c.run()).json();
+  assert.equal(c.asked.length, 2, 'one corrected pass');
+  assert.match(c.asked[1], /first name "Scott" 3 times/, 'the second pass says what to fix');
+  assert.equal(d.suggestion, good);
+  c = call([repetitive, 'Scott! Scott! Scott! Scott is truly here.']);
+  d = await (await c.run()).json();
+  assert.equal(d.suggestion, repetitive, 'a worse second pass is dropped');
+  c = call([good]);
+  d = await (await c.run()).json();
+  assert.equal(c.asked.length, 1, 'a draft that passes goes straight back');
 });
 
 test('the tidy endpoint needs a few sentences and the AI binding; it returns a suggestion only', async () => {

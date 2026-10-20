@@ -511,6 +511,8 @@ try {
     await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
     await sleep(700);
     ok(api.st.team['brent-aronson'].name === 'Brent Aronson' && api.st.team['brent-aronson'].status === 'memorial', 'saved as name + status: memorial');
+    const br = api.st.team['brent-aronson'];
+    ok(br.title === 'Board Member' && br.since === 2024 && br.until === 2025, `the years in his old title save as since/until (${br.title}, ${br.since}–${br.until})`);
 
     // A bio raises the photo bar: Mary's 535px photo is too small for a profile portrait
     await clickText(page, '.breadcrumb button', 'Board');

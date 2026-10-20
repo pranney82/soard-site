@@ -3441,7 +3441,8 @@
       .ppl-section__head { padding: 0.85rem 1rem 0.7rem; }
       .ppl-row {
         grid-template-columns: 40px 44px minmax(0, 1fr) 44px;
-        grid-template-areas: 'handle avatar main menu' 'handle avatar issues menu';
+        /* What's missing runs under the menu too, so two chips share a line instead of one each */
+        grid-template-areas: 'handle avatar main menu' 'handle avatar issues issues';
         row-gap: 0.4rem; column-gap: 0.7rem; padding: 0.75rem 0.5rem 0.75rem 0.35rem;
       }
       .ppl-handle, .ppl-handle-gap { grid-area: handle; align-self: start; width: 40px; height: 44px; }
@@ -3544,7 +3545,7 @@
       photoPixels as tsPhotoPixels, photoQuality as tsPhotoQuality, validCrop as tsValidCrop, cfId as tsCfId,
       normalizeLinkedIn as tsNormalizeLinkedIn, seatTitle as tsSeatTitle, CF_ORIGIN as TS_CF_ORIGIN,
       SEATS as TS_SEATS, TEAM_ROLES as TS_TEAM_ROLES, STATUSES as TS_STATUSES, MEMBER_TITLE as TS_MEMBER_TITLE,
-      PHOTO_MIN as TS_PHOTO_MIN, PHOTO_GOOD as TS_PHOTO_GOOD, hasProfile as tsHasProfile, profilePath as tsProfilePath,
+      PHOTO_MIN as TS_PHOTO_MIN, PHOTO_GOOD as TS_PHOTO_GOOD, hasProfile as tsHasProfile, profilePath as tsProfilePath, boardTitleLine as tsBoardTitleLine,
       COMMITTEES_PATH as TS_COMMITTEES_PATH, DEFAULT_COMMITTEES as TS_DEFAULT_COMMITTEES, committeeList as tsCommitteeList,
       committeeMembers as tsCommitteeMembers, sortCommittees as tsSortCommittees, sameCommittee as tsSameCommittee, cleanCommittee as tsCleanCommittee,
     } from './team-shared.js';
@@ -14363,7 +14364,7 @@ ${sections || '<p>No one yet.</p>'}
               : change === 'publishing' ? html`<span class="ppl-tag ppl-tag--publishing">Publishing</span>` : null}
             ${req?.status === 'pending' ? html`<button type="button" class="ppl-tag ppl-tag--review" onClick=${() => onEdit(p.slug)} title=${`Sent ${pplWhen(req.submittedAt)}: open to review`}>Bio to review</button>`
               : pplLinkOpen(req) ? html`<span class="ppl-tag" title=${`Link made ${pplDay(req.createdAt)}, works until ${pplDay(req.expiresAt)}`}>Bio asked</span>` : null}
-            <div class="ppl-row__sub">${[p.title, p.organization].filter(Boolean).join(' · ') || html`<span class="text-muted">No title yet</span>`}</div>
+            <div class="ppl-row__sub">${[group === 'board' ? tsBoardTitleLine(p) : p.title, p.organization].filter(Boolean).join(' · ') || html`<span class="text-muted">No title yet</span>`}</div>
           </div>
           <ul class="ppl-row__issues" aria-label="Missing">
             ${issues.map((i) => html`<li key=${i.id} class=${`ppl-chip ppl-chip--${i.tone}`} title=${i.tip}>${i.tone === 'warn' ? pplIcon.alert : null}${i.label}</li>`)}
@@ -14588,7 +14589,7 @@ ${sections || '<p>No one yet.</p>'}
             : html`<div class="ppl-pcard__solo">${circle(src, p)}</div>`}
           <div class="ppl-pcard__text">
             <button type="button" class="ppl-pcard__name" onClick=${() => onEdit(p)}>${p.name}</button>
-            <small>${p.title || (p.group === 'board' ? 'Board' : 'Team')}${p.draft ? ' · hidden' : ''}</small>
+            <small>${(p.group === 'board' ? tsBoardTitleLine(p) : p.title) || (p.group === 'board' ? 'Board' : 'Team')}${p.draft ? ' · hidden' : ''}</small>
           </div>
           <span class=${`ppl-pq is-${v.tone}`}>${v.tone === 'warn' ? pplIcon.alert : v.tone === 'good' ? pplIcon.check : null}${v.label}</span>
           ${inReview ? html`<label class="ppl-pcard__pick">
@@ -15409,7 +15410,7 @@ ${sections || '<p>No one yet.</p>'}
       // Older records: the structured fields come from the name and title text, and save that way
       const shape = (d) => {
         const n = normalizePerson(d);
-        return { ...d, name: n.name, status: n.status, publishStatus: d.publishStatus || 'published',
+        return { ...d, name: n.name, title: n.title, since: n.since, until: n.until, status: n.status, publishStatus: d.publishStatus || 'published',
           ...(d.group === 'board' ? { seat: n.seat } : { role: n.role }) };
       };
       // The record as last loaded or saved: what a save made meanwhile is merged against

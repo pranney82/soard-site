@@ -7,7 +7,7 @@
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
 import { cfUrl } from '../../utils/cf-image';
-import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip, hasProfile, profilePath } from '../../utils/team';
+import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip, hasProfile, profilePath, boardTitleLine } from '../../utils/team';
 import type { PersonData } from '../../utils/team';
 import { getSiteStats } from '../../utils/stats';
 
@@ -179,7 +179,7 @@ const breadcrumbs = [
                   src={photoUrl(member.data, 200)}
                   srcset={photoSrcset(member.data, [140, 200, 280, 400])}
                   sizes="(max-width: 600px) 140px, 200px"
-                  alt={member.data.status === 'memorial' ? `In memory of ${member.data.name}, ${member.data.title}` : `${member.data.name}, ${member.data.title}`}
+                  alt={member.data.status === 'memorial' ? `In memory of ${member.data.name}, ${boardTitleLine(member.data)}` : `${member.data.name}, ${member.data.title}`}
                   width="200" height="200"
                   loading="lazy"
                   decoding="async"
@@ -192,7 +192,7 @@ const breadcrumbs = [
             </div>
             {member.data.status === 'memorial' && <p class="board-memorial">In memoriam</p>}
             <h3 class="board-name">{hasProfile(member.data) ? <a class="card-link" href={profilePath(member.id)}>{member.data.name}</a> : member.data.name}</h3>
-            <p class="board-title">{member.data.title}</p>
+            <p class="board-title">{boardTitleLine(member.data)}</p>
             {member.data.organization && (
               <p class="board-org">{member.data.organization}</p>
             )}

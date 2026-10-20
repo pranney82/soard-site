@@ -42,6 +42,8 @@ export interface Person extends PersonData {
 export const CUTOUT_BACKDROP = 'F5F4F0';
 
 const MEMORIAL_PREFIX = /^\s*in memoriam\s*[,:]?\s*/i;
+// Older records kept the years served in the title ("Board Member 2024-2025")
+const YEARS_IN_TITLE = /[\s,(]*\b((?:19|20)\d{2})\s*(?:[-–—]|to)\s*((?:19|20)\d{2}|present|now)\)?\s*$/i;
 const SEAT_IDS = ['chair', 'vice-chair', 'treasurer', 'secretary', 'past-chair'];
 const ROLE_IDS = ['founder', 'staff', 'honorary'];
 const STATUS_IDS = ['active', 'alumni', 'memorial'];
@@ -56,6 +58,16 @@ export function seatFromTitle(title: string | undefined): Person['seat'] {
   return '';
 }
 
+/** Years an older record kept in its title become since/until, and the title loses them */
+function legacyYears(d: PersonData): Partial<PersonData> {
+  if (d?.since != null || d?.until != null) return {};
+  const m = String(d?.title || '').match(YEARS_IN_TITLE);
+  if (!m || m.index === undefined) return {};
+  const title = String(d.title).slice(0, m.index).replace(/[\s,·-]+$/, '');
+  if (!title) return {};
+  return { title, since: Number(m[1]), ...(/^\d/.test(m[2]) ? { until: Number(m[2]) } : {}) };
+}
+
 export function normalizePerson(d: PersonData): Person {
   const rawName = String(d?.name || '');
   const legacyMemorial = MEMORIAL_PREFIX.test(rawName);
@@ -65,6 +77,7 @@ export function normalizePerson(d: PersonData): Person {
   const seat = (!board ? '' : (d && 'seat' in d && (d.seat === '' || SEAT_IDS.includes(d.seat as string))) ? d.seat : seatFromTitle(d?.title)) as Person['seat'];
   return {
     ...d,
+    ...legacyYears(d),
     name: legacyMemorial ? rawName.replace(MEMORIAL_PREFIX, '').trim() : rawName,
     status,
     role,
@@ -72,6 +85,11 @@ export function normalizePerson(d: PersonData): Person {
     draft: d?.publishStatus === 'draft',
   };
 }
+
+/** "2024–2025" for someone whose time has ended (in memory or alumni) with both years known */
+export const servedYears = (p: Person) => (p?.status !== 'active' && typeof p?.since === 'number' && typeof p?.until === 'number' ? `${p.since}–${p.until}` : '');
+/** A board card's title line: a member in memory shows their years ("Board Member, 2024–2025") */
+export const boardTitleLine = (p: Person) => { const y = p?.status === 'memorial' ? servedYears(p) : ''; return y ? `${p.title || ''}, ${y}` : p.title || ''; };
 
 export const isListed = (p: Person) => !p.draft && p.status !== 'alumni';
 

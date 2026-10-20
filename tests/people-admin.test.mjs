@@ -12,7 +12,7 @@ import { rename, imageIdOf } from '../functions/api/rename-content.js';
 import { personStatus, onActiveBoard, personName } from '../functions/api/_team.js';
 import {
   normalizePerson, comparePeople, isListed, photoTransform, photoLqip, photoPixels, photoQuality,
-  normalizeLinkedIn, seatTitle, validCrop, SEATS,
+  normalizeLinkedIn, seatTitle, validCrop, SEATS, servedYears, boardTitleLine,
   DEFAULT_COMMITTEES, committeeList, committeeMembers, sortCommittees, cleanCommittee, sameCommittee,
 } from '../public/admin/team-shared.js';
 
@@ -54,6 +54,22 @@ test('explicit fields win over the text, and a member seat stays a member', () =
   assert.equal(normalizePerson({ name: 'S', title: 'Board Chair', group: 'board', seat: '' }).seat, '');
   assert.equal(normalizePerson({ name: 'In memoriam, B', title: 'x', group: 'board', status: 'active' }).status, 'active');
   assert.equal(normalizePerson({ name: 'A', title: 'x', group: 'team', role: 'bogus' }).role, 'staff');
+});
+
+test('older records: years kept in the title become since/until, and the card shows them for a memorial', () => {
+  const brent = normalizePerson({ name: 'In memoriam, Brent Aronson', title: 'Board Member 2024-2025', group: 'board' });
+  assert.deepEqual([brent.name, brent.title, brent.since, brent.until, brent.status], ['Brent Aronson', 'Board Member', 2024, 2025, 'memorial']);
+  assert.equal(boardTitleLine(brent), 'Board Member, 2024–2025');
+  const a = normalizePerson({ name: 'A', title: 'Board Member (2019–2023)', group: 'board', status: 'alumni' });
+  assert.deepEqual([a.title, a.since, a.until, servedYears(a)], ['Board Member', 2019, 2023, '2019–2023']);
+  const b = normalizePerson({ name: 'B', title: 'Board Member 2018 to present', group: 'board' });
+  assert.deepEqual([b.title, b.since, b.until], ['Board Member', 2018, undefined]);
+  assert.equal(boardTitleLine(b), 'Board Member', 'an active member\'s card shows no years');
+  // Explicit years win, and a title that is only years, or has a lone year, stays as written
+  assert.equal(normalizePerson({ name: 'C', title: 'Board Member 2024-2025', group: 'board', since: 2020 }).title, 'Board Member 2024-2025');
+  assert.equal(normalizePerson({ name: 'D', title: 'Class of 2024', group: 'team' }).title, 'Class of 2024');
+  assert.equal(normalizePerson({ name: 'E', title: '2019-2020', group: 'board' }).title, '2019-2020');
+  assert.equal(boardTitleLine(normalizePerson({ name: 'F', title: 'Board Chair', group: 'board', status: 'memorial', since: 2010, until: 2020 })), 'Board Chair, 2010–2020');
 });
 
 test('drafts and alumni stay off the page; memorials stay on', () => {
@@ -173,7 +189,7 @@ test('reorder writes only the people who moved, in one request, and logs each', 
 
 test('reorder refuses bad input, unknown lists and people deleted meanwhile', async () => {
   const DB = await db([{ slug: 'a', name: 'A', group: 'team', order: 0, title: 'x' }]);
-  assert.equal((await reorder({ DB }, { collection: 'partners', items: [{ slug: 'a', order: 0 }] })).status, 403);
+  assert.equal((await reorder({ DB }, { collection: 'press', items: [{ slug: 'a', order: 0 }] })).status, 403);
   assert.equal((await reorder({ DB }, { collection: 'team', items: [] })).status, 400);
   assert.equal((await reorder({ DB }, { collection: 'team', items: [{ slug: 'a', order: 1.5 }] })).status, 400);
   assert.equal((await reorder({ DB }, { collection: 'team', items: [{ slug: 'a', order: 0 }, { slug: 'a', order: 1 }] })).status, 400);
