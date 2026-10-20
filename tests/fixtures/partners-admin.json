@@ -1,0 +1,1352 @@
+{
+ "_note": "Frozen Oct 19 2026 from src/content for scripts/test-partners-admin.mjs: three logos point at test-only files (gone, tiny, blank).",
+ "partners": {
+  "pella": {
+   "name": "Pella",
+   "slug": "pella",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pella/1774379889033/public",
+   "website": "https://www.pella.com/locations/ga/duluth/",
+   "tier": "construction",
+   "featured": true,
+   "category": [
+    "build",
+    "funding"
+   ],
+   "level": "signature"
+  },
+  "bell": {
+   "name": "Bell Cabinetry",
+   "slug": "bell",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bell/1774386082723/public",
+   "website": "https://www.bellcabinetry.com",
+   "tier": "construction",
+   "featured": true,
+   "level": "signature",
+   "category": [
+    "build"
+   ]
+  },
+  "msi": {
+   "name": "Msi",
+   "slug": "msi",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/msi/public",
+   "tier": "construction",
+   "featured": true,
+   "website": "https://www.msisurfaces.com",
+   "level": "signature"
+  },
+  "kids-r-kids": {
+   "name": "Kids R Kids Foundation",
+   "slug": "kids-r-kids",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
+   "tier": "community",
+   "featured": true,
+   "website": "https://kidsrkids.com",
+   "category": [
+    "funding"
+   ],
+   "level": "signature"
+  },
+  "mohawk": {
+   "name": "Mohawk",
+   "slug": "mohawk",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public",
+   "tier": "construction",
+   "featured": true,
+   "website": "https://www.mohawkflooring.com",
+   "category": [
+    "build",
+    "funding"
+   ],
+   "level": "signature"
+  },
+  "sunny-ranney": {
+   "name": "Sunny & Ranney",
+   "slug": "sunny-ranney",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sunny-and-ranney/public",
+   "tier": "construction",
+   "featured": false,
+   "category": [
+    "build"
+   ],
+   "website": "https://sunnyandranney.com",
+   "level": "signature"
+  },
+  "sherwin-williams-store": {
+   "name": "Sherwin Williams",
+   "slug": "sherwin-williams-store",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams-store/1774882699734/public",
+   "tier": "construction",
+   "featured": true,
+   "level": "signature",
+   "website": "https://www.sherwin-williams.com/store-locator/paint-store/roswell/ga/702804",
+   "category": [
+    "build"
+   ]
+  },
+  "randall-brothers": {
+   "name": "Randall Brothers",
+   "slug": "randall-brothers",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public",
+   "tier": "construction",
+   "featured": true,
+   "website": "https://www.randallbrothers.com/atlanta.html",
+   "level": "signature"
+  },
+  "crosby-design-group": {
+   "name": "Crosby Design Group",
+   "slug": "crosby-design-group",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crosby-design-group/1790020341076/public",
+   "tier": "design",
+   "featured": true,
+   "website": "https://crosbydesigngroup.com",
+   "category": [
+    "design"
+   ],
+   "level": "signature"
+  },
+  "wyp-logo": {
+   "name": "WYP Construction",
+   "slug": "wyp-logo",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp-logo/1774544592070/public",
+   "tier": "construction",
+   "featured": true,
+   "level": "signature",
+   "category": [
+    "build"
+   ]
+  },
+  "real-floors-commercial": {
+   "name": "Real Floors Commercial",
+   "slug": "real-floors-commercial",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
+   "tier": "construction",
+   "featured": true,
+   "website": "https://rfcommercial.com",
+   "category": [
+    "build",
+    "funding"
+   ],
+   "level": "signature"
+  },
+  "construction-resources": {
+   "name": "Construction Resources",
+   "slug": "construction-resources",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
+   "tier": "construction",
+   "featured": true,
+   "website": "https://www.constructionresourcesusa.com",
+   "level": "signature",
+   "category": [
+    "build"
+   ]
+  },
+  "cambria-black": {
+   "name": "Cambria",
+   "slug": "cambria-black",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
+   "tier": "construction",
+   "featured": true,
+   "level": "champion",
+   "website": "https://www.cambriausa.com",
+   "category": [
+    "build"
+   ]
+  },
+  "trident-construction-group": {
+   "name": "Trident Construction Group",
+   "slug": "trident-construction-group",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/trident-construction-group/1774980108326/public",
+   "website": "tridentconstructiongroup",
+   "level": "champion",
+   "category": [
+    "build",
+    "funding"
+   ],
+   "featured": false,
+   "order": 0,
+   "tagline": ""
+  },
+  "carlos-sandy-ramirez": {
+   "name": "Carlos & Sandy Ramirez",
+   "slug": "carlos-sandy-ramirez",
+   "logo": "",
+   "website": "",
+   "level": "champion",
+   "category": [
+    "funding"
+   ],
+   "featured": false,
+   "order": 0,
+   "tagline": ""
+  },
+  "jackson-healthcare": {
+   "name": "Jackson Healthcare",
+   "slug": "jackson-healthcare",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/gone/public",
+   "tier": "community",
+   "featured": true,
+   "category": "funding",
+   "level": "champion"
+  },
+  "gas-south": {
+   "name": "Gas South",
+   "slug": "gas-south",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/tiny/public",
+   "tier": "construction",
+   "featured": true,
+   "level": "champion",
+   "category": "funding",
+   "website": "https://www.gassouth.com/home"
+  },
+  "atlanta-foundation": {
+   "name": "Atlanta Foundation",
+   "slug": "atlanta-foundation",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/atlanta-foundation/1774980877472/public",
+   "website": "",
+   "level": "champion",
+   "category": [
+    "funding"
+   ],
+   "featured": false,
+   "order": 0,
+   "tagline": ""
+  },
+  "tko-plumbing-services": {
+   "name": "TKO Plumbing Services",
+   "slug": "tko-plumbing-services",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public",
+   "tier": "construction",
+   "featured": true,
+   "website": "https://www.tkoplumbingservices.com",
+   "category": [
+    "build"
+   ],
+   "level": "builder"
+  },
+  "nothing-bundt-cakes": {
+   "name": "Nothing Bundt Cakes",
+   "slug": "nothing-bundt-cakes",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public",
+   "tier": "community",
+   "featured": true,
+   "level": "builder",
+   "category": "community",
+   "website": "https://www.nothingbundtcakes.com/find-a-bakery/ga/kennesaw/bakery-195.html?srsltid=AfmBOoq5ur8ePmUxAEB55hdOsXgss2b2omK3CvMDBgVZqh3x-8BrTcRx"
+  },
+  "lee-hainer": {
+   "name": "Lee Hainer",
+   "slug": "lee-hainer",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lee-hainer/1774382155560/public",
+   "website": "",
+   "tier": "construction",
+   "featured": false,
+   "level": "builder"
+  },
+  "comfort-research": {
+   "name": "Comfort Research",
+   "slug": "comfort-research",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/comfort-research/public",
+   "tier": "construction",
+   "featured": false,
+   "website": "https://comfortresearch.com",
+   "level": "builder"
+  },
+  "101-mobility": {
+   "name": "101 Mobility",
+   "slug": "101-mobility",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/101-mobility/public",
+   "tier": "construction",
+   "featured": false,
+   "level": "friend",
+   "category": "community",
+   "website": "https://www.101mobility.com"
+  },
+  "211-waste": {
+   "name": "211 Waste",
+   "slug": "211-waste",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/211-waste/1774624701023/public",
+   "tier": "construction",
+   "featured": false,
+   "level": "friend",
+   "website": "https://211waste.com"
+  },
+  "33n": {
+   "name": "33N",
+   "slug": "33n",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/33n/1774382868685/public",
+   "website": "https://decksouth.com",
+   "tier": "construction",
+   "featured": false,
+   "level": "friend",
+   "category": "design"
+  },
+  "deck-south": {
+   "name": "Deck South",
+   "slug": "deck-south",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/deck-south/1774382841755/public",
+   "website": "https://decksouth.com",
+   "tier": "construction",
+   "featured": false,
+   "level": "friend"
+  },
+  "atlanta-kitchen": {
+   "name": "Atlanta Kitchen ",
+   "slug": "atlanta-kitchen",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/atlanta-kitchen/public",
+   "tier": "construction",
+   "featured": false,
+   "level": "friend",
+   "website": "https://www.constructionresourcesusa.com"
+  },
+  "angela-means-design": {
+   "name": "Angela Means Design",
+   "slug": "angela-means-design",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/angela-means-design/public",
+   "tier": "design",
+   "featured": false,
+   "level": "friend",
+   "category": "design",
+   "website": "https://meanscarney.com"
+  },
+  "means-and-carney-interiors": {
+   "name": "Means & Carney Interiors",
+   "slug": "means-and-carney-interiors",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/means-and-carney-interiors/public",
+   "tier": "design",
+   "featured": false,
+   "level": "friend",
+   "website": "https://meanscarney.com",
+   "category": [
+    "design"
+   ]
+  },
+  "reliable-heating-and-air": {
+   "name": "Reliable Heating & Air",
+   "slug": "reliable-heating-and-air",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public",
+   "tier": "construction",
+   "featured": false,
+   "level": "friend",
+   "category": "community",
+   "website": "https://reliableair.com"
+  },
+  "bin-there-dump-that-atlanta": {
+   "name": "Bin There Dump That Atlanta",
+   "slug": "bin-there-dump-that-atlanta",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that-atlanta/1790606387909/public",
+   "tier": "construction",
+   "featured": false,
+   "website": "https://www.bintheredumpthat.com/atlanta-dumpster-rentals/",
+   "level": "friend",
+   "category": [
+    "build"
+   ]
+  },
+  "3lp-engineering": {
+   "name": "3LP Engineering",
+   "slug": "3lp-engineering",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/3lp-engineering/public",
+   "tier": "construction",
+   "featured": false,
+   "level": "friend"
+  },
+  "a-color-affair": {
+   "name": "A Color Affair",
+   "slug": "a-color-affair",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/a-color-affair/blank/public",
+   "tier": "construction",
+   "featured": false,
+   "level": "friend"
+  },
+  "american-girl": {
+   "name": "American Girl",
+   "slug": "american-girl",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/american-girl/1774626181443/public",
+   "tier": "construction",
+   "featured": false,
+   "website": "https://www.americangirl.com",
+   "level": "friend",
+   "category": "build"
+  },
+  "beazer": {
+   "name": "Beazer Homes",
+   "slug": "beazer",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/beazer/public",
+   "tier": "construction",
+   "featured": true,
+   "website": "https://www.beazer.com",
+   "category": [
+    "funding",
+    "community"
+   ],
+   "level": "champion"
+  },
+  "laccurate-lock-hardware": {
+   "name": "Accurate Lock & Hardware",
+   "slug": "laccurate-lock-hardware",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/llogo-accurate-lock-hardware/public",
+   "tier": "construction",
+   "featured": false,
+   "level": "friend",
+   "website": "Accurate Lock & Hardware"
+  }
+ },
+ "kids": {
+  "cade": {
+   "name": "Cade",
+   "slug": "cade",
+   "year": 2023,
+   "status": "completed",
+   "age": 20,
+   "diagnosis": "Spinal Injury C4 Incomplete",
+   "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cade/photo-13/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cobb-emc-foundation/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/b-interiors/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/urostat-healthcare/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/birchfield-photography/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction-v2/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/traditions-in-tile/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/schluter-systems/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pls-carpentry/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/servicewise-electric/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cowan-supply/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing-2023/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/3lp-engineering/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cade/photo-13/public",
+     "alt": ""
+    }
+   ]
+  },
+  "dylan-2026": {
+   "name": "Dylan",
+   "slug": "dylan-2026",
+   "year": 2026,
+   "status": "in-progress",
+   "age": 16,
+   "diagnosis": "MECP2 Duplication Syndrome",
+   "roomTypes": [
+    "Therapy Room"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan-2026/1788202617604-dylanSOARD-23.jpeg/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the/1790691057925/public",
+     "name": "Jason T. Dickerson Family Foundation"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crosby-design-group/1790020341076/public",
+     "name": "Crosby Design Group"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public",
+     "name": "Mohawk"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan-2026/partner-1788202969760-JJP-Full-Logo-Black.png/public",
+     "name": "JJP Full Logo-Black"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bell/1774386082723/public",
+     "name": "Bell Cabinetry"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan-2026/1788202617604-dylanSOARD-23.jpeg/public",
+     "alt": "A young boy with short brown hair and glasses, wearing a white shirt, sitting in a wheelchair, looking to the right with a neutral expression."
+    }
+   ]
+  },
+  "georgia": {
+   "name": "Georgia",
+   "slug": "georgia",
+   "year": 2018,
+   "status": "completed",
+   "age": 15,
+   "diagnosis": "Cerebral Palsy, motor control issues",
+   "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/georgia/photo-50/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial-2/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tafollas/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-town-carpenter/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sawnee-electric-round-up/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/duett-design/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stag-partners/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/roll-off/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/abc-supply/public"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/georgia/photo-50/public",
+     "alt": "Georgia makeover photo"
+    }
+   ]
+  },
+  "harper-2025": {
+   "name": "Harper",
+   "slug": "harper-2025",
+   "year": 2025,
+   "status": "completed",
+   "age": 12,
+   "diagnosis": "Pitt Hopkins Syndrome",
+   "roomTypes": [
+    "Accessible Bathroom"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/harper-2025/photo-11/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/therapy-gyms/1774382179878/public",
+     "name": "Therapy Gyms"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/beazer/public",
+     "name": "Beazer Homes"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rexel-foundation/public",
+     "name": "Rexel Foundation"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
+     "name": "Construction Resources"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public",
+     "name": "Gas South"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
+     "name": "Kids R Kids Foundation"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public",
+     "name": "Randall Brothers"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
+     "name": "Real Floors Commercial"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bell/1774386082723/public",
+     "name": "Bell Cabinetry"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kohler/public",
+     "name": "Kohler"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cancos/public",
+     "name": "Cancos Tile"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams-store/1774882699734/public",
+     "name": "Sherwin Williams"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public",
+     "name": "TKO Plumbing Services"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
+     "name": "Cambria"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public",
+     "name": "Top Knobs"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that-atlanta/1774627292526/public",
+     "name": "Bin There Dump That Atlanta"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rosalind-williams-photography/public",
+     "name": "Rosalind Williams Photography"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public",
+     "name": "iFrame Media"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public",
+     "name": "Nothing Bundt Cakes"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/melania-cotton-candy-alpharetta/1774894613733/public",
+     "name": "Melania Cotton Candy Alpharetta"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/harper-2025/photo-11/public",
+     "alt": ""
+    }
+   ]
+  },
+  "isla": {
+   "name": "Isla",
+   "slug": "isla",
+   "year": 2026,
+   "status": "completed",
+   "age": 6,
+   "diagnosis": "Wilms Tumor ",
+   "roomTypes": [
+    "Therapy Room"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/isla/1787245529910-Isla-54.jpg/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/isla/partner-1788206611758-MAW-Georgia-CMYK-C-76633.png/public",
+     "name": "MAW_Georgia_CMYK C_76633"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bell/1774386082723/public",
+     "name": "Bell Cabinetry"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public",
+     "name": "Randall Brothers"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams-store/1774882699734/public",
+     "name": "Sherwin Williams"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/comfort-research/public",
+     "name": "Comfort Research"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/therapy-gyms/1774382179878/public",
+     "name": "Therapy Gyms"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/fun-function/1774631727936/public",
+     "name": "Fun & Function"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/asv-productions/public",
+     "name": "ASV Productions"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public",
+     "name": "Niki Murphy Photography"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that-atlanta/1774627292526/public",
+     "name": "Bin There Dump That Atlanta"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/isla/1787245529910-Isla-54.jpg/public",
+     "alt": "A young girl with long blonde hair and a pink shirt is climbing a pink and blue wall-mounted climbing structure."
+    }
+   ]
+  },
+  "kennedy": {
+   "name": "Kennedy",
+   "slug": "kennedy",
+   "year": 2021,
+   "status": "completed",
+   "age": 11,
+   "diagnosis": "Cerebal Palsy",
+   "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kennedy/photo-04/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/emser-tile/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/american-signature-furniture/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/devore-johnson/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/in-the-wood-logo/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pls-carpentry/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/vicki-alsup/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kennedy/photo-04/public",
+     "alt": ""
+    }
+   ]
+  },
+  "kessley": {
+   "name": "Kessley",
+   "slug": "kessley",
+   "year": 2018,
+   "status": "completed",
+   "age": 4,
+   "diagnosis": "Spastic Quadriplegia Cerebral Palsy with Dystonia, Hearing Loss, Epilepsy, Amblyopia and Global Developmental Delay",
+   "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kessley/photo-03/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/progressive-lighting/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/levino-jones/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/johnny-on-the-spot/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sawnee-electrical/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ivy-and-cruz/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dinah-sutton-photography/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction-v2/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/concept-flooring/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pickens-mill-high-school/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pride-of-pickens/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/princess-with-a-purpose/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/putnam-county-middle-school-band/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kessley/photo-03/public",
+     "alt": ""
+    }
+   ]
+  },
+  "leland": {
+   "name": "Leland",
+   "slug": "leland",
+   "year": 2026,
+   "status": "completed",
+   "age": 10,
+   "diagnosis": "Spina Bifida, Hydrocephalus, Neurogenic Bowel and Bladder, Chiari II",
+   "roomTypes": [
+    "Accessible Bathroom"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/leland/1778782009113-IMG-4822.JPG/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/myfifident/1774385338564/public",
+     "name": "Myfifident"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
+     "name": "Real Floors Commercial"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public",
+     "name": "Randall Brothers"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bell/1774386082723/public",
+     "name": "Bell"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
+     "name": "Construction Resources"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
+     "name": "Cambria"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/msi/public",
+     "name": "Msi"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams/public",
+     "name": "Sherwin-Williams"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public",
+     "name": "Pulley & Associates"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp/public",
+     "name": "WYP Construction"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/therapy-gyms/1774382179878/public",
+     "name": "Therapy Gyms"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public",
+     "name": "TKO Plumbing Services"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/brookfield/1774385359724/public",
+     "name": "Brookfield"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public",
+     "name": "Nicole W Photography"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that-atlanta/1774627292526/public",
+     "name": "Bin There Dump That Atlanta"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
+     "name": "Kids R Kids Foundation"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/leland/1778782009113-IMG-4822.JPG/public",
+     "alt": ""
+    }
+   ]
+  },
+  "marie-and-alondra": {
+   "name": "Marie & Alondra",
+   "slug": "marie-and-alondra",
+   "year": 2024,
+   "status": "completed",
+   "age": 17,
+   "diagnosis": "Diastrophic Dysplasia & Scoliosis",
+   "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marie-and-alondra/photo-01/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/beazer/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crossville-tile/public",
+     "name": "Crossville Tile"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/marcelino-aguilar-photography/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sunny-and-ranney/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction-v2/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial-2/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/msi/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/traditions-in-tile/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/schluter-systems/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/art-period/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pls-carpentry/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/champions-place/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marie-and-alondra/photo-01/public",
+     "alt": ""
+    }
+   ]
+  },
+  "noah-2023": {
+   "name": "Noah",
+   "slug": "noah-2023",
+   "year": 2023,
+   "status": "completed",
+   "age": 11,
+   "diagnosis": "Rasmussen Encephalitis",
+   "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+   ],
+   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/noah-2023/photo-25/public",
+   "publishStatus": "published",
+   "partnerLogos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cobb-emc-foundation/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/color-fresh-home-designs/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction-v2/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/servicewise-electric/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/builders-cabinet-company/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/traditions-in-tile/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/schluter-systems/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/comfort-research/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/asv-productions/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing-2023/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cowan-supply/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
+    },
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
+    }
+   ],
+   "photos": [
+    {
+     "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/noah-2023/photo-25/public",
+     "alt": ""
+    }
+   ]
+  }
+ },
+ "communityPartners": {
+  "camp-twin-lakes": {
+   "name": "Camp Twin Lakes",
+   "slug": "camp-twin-lakes",
+   "description": "Provides life-changing camp experiences for children with serious illnesses, disabilities, and other challenges across Georgia. SOARD renovated camp facilities, creating sensory-friendly spaces and accessible areas for thousands of children.",
+   "category": "community",
+   "impact": "10,000",
+   "impactLabel": "children impacted yearly",
+   "location": "Rutledge, GA",
+   "featured": true,
+   "order": 1
+  },
+  "childrens-development-academy": {
+   "name": "Children's Development Academy",
+   "slug": "childrens-development-academy",
+   "description": "Founded in 1967, the CDA gives young children the best chance to read on grade level by third grade and break the cycle of generational poverty. SOARD is creating a new toddler classroom and community room.",
+   "category": "education",
+   "impact": "100+",
+   "impactLabel": "children enrolled",
+   "location": "Roswell, GA",
+   "featured": false,
+   "order": 8
+  },
+  "childrens-healthcare-of-atlanta": {
+   "name": "Children's Healthcare of Atlanta",
+   "slug": "childrens-healthcare-of-atlanta",
+   "description": "SOARD renovated parent sleep rooms at Children's Healthcare of Atlanta, giving families a comfortable retreat during their child's hospital stay. This project was featured on NBC's Today Show.",
+   "category": "health",
+   "impact": "2,500",
+   "impactLabel": "children impacted yearly",
+   "location": "Atlanta, GA",
+   "featured": true,
+   "order": 3
+  }
+ },
+ "medialogos": {
+  "ajc": {
+   "name": "Atlanta Journal-Constitution",
+   "slug": "ajc",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/press-logo-ajc/public",
+   "order": 4
+  },
+  "atlanta-magazine": {
+   "name": "Atlanta Magazine",
+   "slug": "atlanta-magazine",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/press-logo-atlanta-magazine/public",
+   "order": 9
+  },
+  "wsb-tv": {
+   "name": "WSB-TV",
+   "slug": "wsb-tv",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/press-logo-wsb-tv/public",
+   "order": 3
+  },
+  "nightly-news": {
+   "name": "Nightly News",
+   "slug": "nightly-news",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/medialogos/nightly-news/1774979096724/public",
+   "order": 0
+  },
+  "telemundo-atlanta": {
+   "name": "Telemundo Atlanta",
+   "slug": "telemundo-atlanta",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/medialogos/telemundo-atlanta/1774985190808/public",
+   "order": 7
+  },
+  "iheart-media": {
+   "name": "iHeart Media",
+   "slug": "iheart-media",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/medialogos/iheart-media/1774985263029/public",
+   "order": 8
+  },
+  "fox5": {
+   "name": "Fox 5 Atlanta",
+   "slug": "fox5",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/medialogos/fox5/1774979375579/public",
+   "order": 3
+  },
+  "11alive": {
+   "name": "11Alive",
+   "slug": "11alive",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/medialogos/11alive/1774979280690/public",
+   "order": 2
+  },
+  "today-show": {
+   "name": "Today Show",
+   "slug": "today-show",
+   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/medialogos/today-show/1774979158945/public",
+   "order": 1
+  }
+ },
+ "press": {
+  "11alive-2025": {
+   "outlet": "11Alive (NBC Atlanta)",
+   "outletLogo": "11alive",
+   "category": "local-tv",
+   "title": "A Room Built with Dignity: How Sunshine on a Ranney Day Transforms Homes and Lives",
+   "date": "2025-03-01",
+   "featured": true,
+   "slug": "11alive-2025"
+  },
+  "11alive-coy-bowles": {
+   "outlet": "11Alive (NBC Atlanta)",
+   "outletLogo": "11alive",
+   "category": "local-tv",
+   "title": "Zac Brown Band's Coy Bowles Reads Children's Book Benefiting SOARD",
+   "date": "2016-04-25",
+   "featured": false,
+   "slug": "11alive-coy-bowles"
+  },
+  "11alive-devon-gales-2019a": {
+   "outlet": "11Alive (NBC Atlanta)",
+   "outletLogo": "11alive",
+   "category": "local-tv",
+   "title": "Former Football Player Paralyzed After Hit at UGA Game to See New Home Specially Built for His Family",
+   "date": "2019-07-18",
+   "featured": false,
+   "slug": "11alive-devon-gales-2019a"
+  },
+  "11alive-devon-gales-2019b": {
+   "outlet": "11Alive (NBC Atlanta)",
+   "outletLogo": "11alive",
+   "category": "local-tv",
+   "title": "'I'm Home.' Football Player Paralyzed During UGA Game Reacts to the House Built for His Family",
+   "date": "2019-07-25",
+   "featured": true,
+   "slug": "11alive-devon-gales-2019b"
+  },
+  "ajc-2020": {
+   "outlet": "Atlanta Journal-Constitution",
+   "outletLogo": "ajc",
+   "category": "print",
+   "title": "Sunshine on a Ranney Day Expands",
+   "date": "2020-12-19",
+   "featured": false,
+   "slug": "ajc-2020"
+  },
+  "ajc-2022": {
+   "outlet": "Atlanta Journal-Constitution",
+   "outletLogo": "ajc",
+   "category": "print",
+   "title": "Charity Brings Sunshine into Lives of Special-Needs Children",
+   "date": "2022-12-06",
+   "featured": false,
+   "slug": "ajc-2022"
+  }
+ }
+}

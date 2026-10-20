@@ -30,7 +30,9 @@ const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_UR
 export const RUNTIME_TYPES = ['live-status', 'email-broadcast', 'newsletter', 'instagram-reel',
   'live-input', 'live-message', 'stream-video', 'site-config',
   // The admin's list of board committees to pick from (records carry the names)
-  'board-committees'];
+  'board-committees',
+  // Admin → Partners: logos on kid pages marked as not a partner (the admin's own note)
+  'partner-logo-dismissed'];
 
 /** Normalize a timestamp to SQLite datetime format (YYYY-MM-DD HH:MM:SS) to compare with audit_log.created_at */
 export function toSqliteTimestamp(dateStr) {

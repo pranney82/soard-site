@@ -12,6 +12,9 @@ import { cfRaw, cfId, cfDensitySrcset, checkBlobs, setLiveBlobs, loadTemplates, 
 export const pagePath = () => '/partners/';
 export const listPage = true;
 
+// A card links only to an http(s) website (the page's linkable())
+const linkable = (url) => /^https?:\/\//i.test(url || '');
+
 // Schema defaults (src/content/config.ts) the build applies before rendering
 const withDefaults = (p) => ({
   level: 'friend', featured: false, order: 0, ...p,
@@ -74,8 +77,8 @@ export function patchPage(doc, win, model) {
     return box;
   };
   const shell = (linkedProto, plainProto, p, className) => {
-    const card = (p.website ? linkedProto : plainProto).cloneNode(true);
-    if (p.website) card.setAttribute('href', p.website);
+    const card = (linkable(p.website) ? linkedProto : plainProto).cloneNode(true);
+    if (linkable(p.website)) card.setAttribute('href', p.website);
     card.className = className;
     return card;
   };
@@ -85,7 +88,7 @@ export function patchPage(doc, win, model) {
   const sigPlain = take('full', 'div.sig-card');
   const sigTagline = sigLinked.querySelector('.sig-card__tagline').cloneNode(true);
   const sigCard = (p) => {
-    const card = shell(sigLinked, sigPlain, p, p.website ? 'sig-card sig-card--linked' : 'sig-card');
+    const card = shell(sigLinked, sigPlain, p, linkable(p.website) ? 'sig-card sig-card--linked' : 'sig-card');
     card.querySelector('.sig-card__logo').replaceWith(logoBox(sigLinked.querySelector('.sig-card__logo'), sigPlain.querySelector('.sig-card__logo'), p, 'w=400,h=120,fit=contain,q=85', 200, 60, 85));
     card.querySelector('.sig-card__name').textContent = p.name;
     const info = card.querySelector('.sig-card__info');
@@ -99,7 +102,7 @@ export function patchPage(doc, win, model) {
   const champLinked = take('full', '.champ-card.champ-card--linked');
   const champPlain = take('full', 'div.champ-card');
   const champCard = (p) => {
-    const card = shell(champLinked, champPlain, p, p.website ? 'champ-card champ-card--linked' : 'champ-card');
+    const card = shell(champLinked, champPlain, p, linkable(p.website) ? 'champ-card champ-card--linked' : 'champ-card');
     card.querySelector('.champ-card__logo').replaceWith(logoBox(champLinked.querySelector('.champ-card__logo'), champPlain.querySelector('.champ-card__logo'), p, 'w=280,h=80,fit=contain,q=80', 140, 40, 80));
     card.querySelector('.champ-card__name').textContent = p.name;
     return card;
@@ -125,7 +128,7 @@ export function patchPage(doc, win, model) {
   const badge = apLinked.querySelector('.ap-badge').cloneNode(true);
   const apTagline = apLinked.querySelector('.ap-card__tagline').cloneNode(true);
   const apCard = (p) => {
-    const cls = ['ap-card', `ap-card--${p.level}`, p.website && 'ap-card--linked', p.featured && 'ap-card--featured'].filter(Boolean).join(' ');
+    const cls = ['ap-card', `ap-card--${p.level}`, linkable(p.website) && 'ap-card--linked', p.featured && 'ap-card--featured'].filter(Boolean).join(' ');
     const card = shell(apLinked, apPlain, p, cls);
     card.dataset.category = p.category.join(',');
     card.dataset.name = p.name.toLowerCase();

@@ -49,6 +49,9 @@ const stats = await getSiteStats();
 // passes made-up partners; the real page always reads the collection.
 const allPartners = Astro.props.partners ?? await getCollection('partners');
 
+/* ── A card links to its partner's website only when it's a web address (http or https) ── */
+const linkable = (url?: string) => /^https?:\/\//i.test(url || '');
+
 /* ── Sort by order, then alphabetically ── */
 const sorted = [...allPartners].sort((a, b) =>
   (a.data.order || 0) - (b.data.order || 0) || a.data.name.localeCompare(b.data.name)
@@ -134,7 +137,7 @@ const breadcrumbs = [
         </div>
         <div class="sig-grid" data-reveal data-delay="1">
           {signature.map(p => {
-            const hasLink = !!p.data.website;
+            const hasLink = linkable(p.data.website);
             const hasLogo = !!p.data.logo;
             const Tag = hasLink ? 'a' : 'div';
             return (
@@ -212,7 +215,7 @@ const breadcrumbs = [
         </div>
         <div class="champ-grid" data-reveal data-delay="1">
           {champions.map(p => {
-            const hasLink = !!p.data.website;
+            const hasLink = linkable(p.data.website);
             const hasLogo = !!p.data.logo;
             const Tag = hasLink ? 'a' : 'div';
             return (
@@ -354,7 +357,7 @@ const breadcrumbs = [
 
       <div class="all-grid" role="tabpanel" aria-label="Filtered partners" data-reveal data-delay="2">
         {directory.map(p => {
-          const hasLink = !!p.data.website;
+          const hasLink = linkable(p.data.website);
           const Tag = hasLink ? 'a' : 'div';
           return (
             <Tag

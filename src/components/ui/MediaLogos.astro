@@ -18,7 +18,8 @@ const href = linked ? '/publicity/' : undefined;
 const allLogos = await getCollection('medialogos');
 const logos = allLogos
   .map(entry => entry.data)
-  .sort((a, b) => (a.order || 0) - (b.order || 0));
+  // Order, then name: the order Admin → Partners → Media logos shows
+  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
 ---
 
 {logos.length > 0 && (

@@ -86,8 +86,10 @@ const roomPhotos = {
 const partnerCollection = await getCollection('partners');
 const totalPartners = partnerCollection.length;
 
+// In the order set in Admin → Partners, like the Partners page (order, then name)
 const signaturePartners = partnerCollection
   .filter((p) => p.data.level === 'signature' && p.data.logo)
+  .sort((a, b) => (a.data.order || 0) - (b.data.order || 0) || a.data.name.localeCompare(b.data.name))
   .map((p) => ({ id: extractCfId(p.data.logo), name: p.data.name }));
 
 const partnerLogos = signaturePartners;

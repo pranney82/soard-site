@@ -2,6 +2,8 @@
  * GET /api/read-content?path=src/content/kids/amari.json
  * Reads content from D1.
  *
+ *   &optional=1 (site docs): a missing doc answers 200 { success: false, notFound: true }
+ *
  * GET /api/read-content?dir=src/content/kids
  * Lists files in a collection (returns names, paths, shas).
  *
@@ -29,6 +31,8 @@ export async function onRequestGet(context) {
         const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?')
           .bind(resolved.key).first();
         if (!row) {
+          // optional=1: a doc that may not exist yet (the admin's own runtime lists) is "none yet", not an error
+          if (url.searchParams.get('optional') === '1') return Response.json({ success: false, notFound: true, error: 'Not found' });
           return Response.json({ success: false, error: 'Not found' }, { status: 404 });
         }
         content = row.data;
