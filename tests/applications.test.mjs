@@ -565,14 +565,52 @@ test('no QC key yet: messages fall back to the site grant; a vendor account is i
   assert.equal((await handleApplicantEvent(env, { accountId: 'x' }, { fetchImpl: w.fetchImpl })).error, 'bad accountId');
 });
 
-test('the medical note waits for the model; the welcome does not', async () => {
+test("the model down: a hand-made applicant still gets a note in the family's own words", async () => {
   env.AI.available = false;
   const acct = seedAccount();
   const r = await hook({ previousStatus: 'null', status: 'Applied' });
   assert.match(r.actions.welcome, /^scheduled/);
-  assert.equal(r.actions.medical, 'skipped: nothing to say');
+  assert.equal(r.actions.medical, 'sent');
+  const note = acct.comments.find(c => c.name === "Child's Medical Condition");
+  assert.equal(note.internal, true);
+  assert.match(note.message, /^\*Diagnosis\*: Autism\n\n_No plain-language summary this time \(the model failed \(AI unavailable\)\)\. Please look the condition up before meeting the family\._$/);
   env.AI.available = true;
   acct.fields[JT_FIELDS.diagnosis] = 'Autism, epilepsy';
-  assert.equal((await hook({ previousStatus: 'Applied', status: 'Applied' }, T0 + MIN)).actions.medical, 'sent');
+  assert.equal((await hook({ previousStatus: 'Applied', status: 'Applied' }, T0 + MIN)).actions.medical, 'already', 'one note per family');
   assert.equal(QC_USER_ID, '22P5r2x8FPiK');
+});
+
+test('the model answers loosely (line breaks and quotes inside its JSON): the note is still read', async () => {
+  env.AI.run = async (model, input) => {
+    assert.deepEqual(input.response_format?.type, 'json_schema', 'JSON mode first');
+    return { response: 'Here you go:\n{"summary": "A condition of the brain.\nIt affects movement.", "description": "Children may need "extra" support."}' };
+  };
+  const acct = seedAccount();
+  assert.equal((await hook({ previousStatus: 'null', status: 'Applied' })).actions.medical, 'sent');
+  const note = acct.comments.find(c => c.name === "Child's Medical Condition");
+  assert.match(note.message, /^\*Diagnosis\*: Autism\n\n\*Summary:\* A condition of the brain\.\nIt affects movement\.\n\n\*Description:\* Children may need "extra" support\.$/);
+});
+
+test('JSON mode hands back an object: read as is', async () => {
+  env.AI.run = async () => ({ response: { summary: 'Plain words.', description: 'More words.' } });
+  const acct = seedAccount();
+  await hook({ previousStatus: 'null', status: 'Applied' });
+  assert.match(acct.comments.find(c => c.name === "Child's Medical Condition").message, /\*Summary:\* Plain words\.\n\n\*Description:\* More words\.$/);
+});
+
+test('a form application retries the medical note, then posts the diagnosis on the last try', async () => {
+  env.AI.available = false;
+  const sub = await submitDraft(env, await readyDraft(fullAnswers(), { video: 'ready' }));
+  const t = Date.parse('2026-10-21T15:00:00Z');
+  await run(sub.id, t);
+  const [acct] = Object.values(w.world.accounts);
+  const notes = () => acct.comments.filter(c => c.name === "Child's Medical Condition");
+  assert.equal(notes().length, 0, 'not on the first try');
+  assert.ok(acct.comments.some(c => c.name === 'Application Status'), 'the welcome does not wait for it');
+  assert.match((await getApplication(env.DB, sub.id)).jt_state.intake.medical, /^skipped: nothing to say \(the model failed \(AI unavailable\)\)$/, 'the admin sees why');
+  for (let i = 1; i <= 3; i++) await run(sub.id, t + i * 5 * 60 * 1000);
+  assert.equal(notes().length, 1, 'the last try posts the diagnosis');
+  assert.match(notes()[0].message, /^\*Diagnosis\*: Spina bifida\n\n_No plain-language summary this time/);
+  await run(sub.id, t + 30 * 60 * 1000);
+  assert.equal(notes().length, 1);
 });

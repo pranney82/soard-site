@@ -974,7 +974,9 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     if (!applicant) throw new Error('could not read the account back');
     // Fresh upload request each try: JobTread consumes one per attachment
     const attach = done(s.intake?.welcome) ? [] : [{ id: await uploadBytes(env, { bytes: pdf, type: 'application/pdf' }, jt), name: pdfName(app) }];
-    s.intake = await sendIntake(env, applicant, { uploadRequestIds: attach, fetchImpl: jt, now, lang: app.lang || 'en' });
+    // The last try posts the family's diagnosis even if the model can't summarize it
+    const lastTry = (s.medicalTries || 0) + 1 >= MEDICAL_TRIES;
+    s.intake = await sendIntake(env, applicant, { uploadRequestIds: attach, fetchImpl: jt, now, lang: app.lang || 'en', medicalFallback: lastTry });
     if (!done(s.intake.welcome)) throw new Error(`welcome ${s.intake.welcome}`);
     if (!medicalSettled(s.intake.medical)) {
       s.medicalTries = (s.medicalTries || 0) + 1;

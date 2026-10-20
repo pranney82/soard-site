@@ -210,33 +210,93 @@ Given the diagnosis exactly as a parent wrote it, reply with JSON only:
 
 If the parent listed several conditions, cover each one briefly in both fields. Do not guess about this particular child, give medical advice, or mention treatment costs. If the text is not a recognizable condition, say so plainly in the summary and leave the description empty.`;
 
-/** The "Child's Medical Condition" note, or null when the model is unavailable. Never throws. */
-export async function medicalNote(env, diagnosis) {
-  const dx = String(diagnosis || '').trim().slice(0, 1500);
-  if (!dx || !env.AI) return null;
-  let timer;
-  try {
-    const out = await Promise.race([
-      env.AI.run(AI_MODEL, {
-        messages: [{ role: 'system', content: MEDICAL_PROMPT }, { role: 'user', content: `Diagnosis: ${dx}` }],
-        max_tokens: 700,
-        temperature: 0.2,
-      }),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 20000); }),
-    ]);
-    const text = typeof out === 'string' ? out : (out?.response ?? JSON.stringify(out));
-    const m = String(text).match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    const j = JSON.parse(m[0]);
-    const summary = String(j.summary || '').trim();
-    if (!summary) return null;
-    const description = String(j.description || '').trim();
-    return `*Diagnosis*: ${dx}\n\n*Summary:* ${summary}${description ? `\n\n*Description:* ${description}` : ''}`;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
+const NOTE_SCHEMA = {
+  type: 'object',
+  properties: { summary: { type: 'string' }, description: { type: 'string' } },
+  required: ['summary'],
+};
+const AI_TIMEOUT_MS = 25000;
+
+/** { summary, description } from whatever the model sent back, or null */
+export function readNote(out) {
+  const r = out && typeof out === 'object' && 'response' in out ? out.response : out;
+  if (r && typeof r === 'object') return r.summary ? r : null; // JSON mode hands back an object
+  const text = String(r ?? '');
+  const m = text.match(/\{[\s\S]*\}/);
+  if (m) {
+    try { return JSON.parse(m[0]); } catch { /* the model's JSON is often loose: read it field by field */ }
   }
+  const field = (name) => {
+    const hit = text.match(new RegExp(`"?${name}"?\\s*:\\s*"([\\s\\S]*?)"\\s*(?:,\\s*"?\\w+"?\\s*:|\\}|$)`, 'i'));
+    return hit ? hit[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim() : '';
+  };
+  const summary = field('summary');
+  return summary ? { summary, description: field('description') } : null;
+}
+
+/**
+ * Write the "Child's Medical Condition" note with Workers AI: JSON mode
+ * first, then a plain request read loosely. { note } or { note: null, error }.
+ * Never throws.
+ */
+export async function writeMedicalNote(env, diagnosis) {
+  const dx = String(diagnosis || '').trim().slice(0, 1500);
+  if (!dx) return { note: null, error: 'no diagnosis' };
+  if (!env.AI) return { note: null, error: 'Workers AI isn’t connected to the site' };
+  let error = 'no answer from the model';
+  for (const json of [true, false]) {
+    let timer;
+    try {
+      const out = await Promise.race([
+        env.AI.run(AI_MODEL, {
+          messages: [{ role: 'system', content: MEDICAL_PROMPT }, { role: 'user', content: `Diagnosis: ${dx}` }],
+          max_tokens: 900,
+          temperature: 0.2,
+          ...(json ? { response_format: { type: 'json_schema', json_schema: NOTE_SCHEMA } } : {}),
+        }),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), AI_TIMEOUT_MS); }),
+      ]);
+      const j = readNote(out);
+      const summary = String(j?.summary || '').trim();
+      if (summary) {
+        const description = String(j.description || '').trim();
+        return { note: `*Diagnosis*: ${dx}\n\n*Summary:* ${summary}${description ? `\n\n*Description:* ${description}` : ''}` };
+      }
+      error = 'the model’s answer couldn’t be read';
+    } catch (e) {
+      error = e.message === 'timeout' ? 'the model took too long' : `the model failed (${String(e.message).slice(0, 160)})`;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return { note: null, error };
+}
+
+/** The note, or null when the model is unavailable. Never throws. */
+export async function medicalNote(env, diagnosis) {
+  return (await writeMedicalNote(env, diagnosis)).note;
+}
+
+/** When the model can't help: the family's own words, so staff still get the note */
+export function fallbackMedicalNote(diagnosis, why) {
+  const dx = String(diagnosis || '').trim().slice(0, 1500);
+  return `*Diagnosis*: ${dx}\n\n_No plain-language summary this time (${why}). Please look the condition up before meeting the family._`;
+}
+
+/**
+ * Post the medical note once. `fallback`: if the model can't write it, post
+ * the family's diagnosis with a short explanation instead of nothing. The
+ * result says why when it's skipped, for the admin's checklist.
+ */
+export async function sendMedical(env, applicant, { fetchImpl = fetch, now = Date.now(), fallback = false } = {}) {
+  let why = null;
+  const out = await sendOnce(env, applicant, 'medical', async () => {
+    const r = await writeMedicalNote(env, applicant.diagnosis);
+    if (r.note) return r.note;
+    why = r.error;
+    return fallback ? fallbackMedicalNote(applicant.diagnosis, r.error) : null;
+  }, { fetchImpl, now });
+  return why && String(out).startsWith('skipped') ? `${out} (${why})` : out;
 }
 
 // ─── Sending ────────────────────────────────────────────────────────
@@ -275,14 +335,14 @@ async function sendOnce(env, applicant, kind, build, { assign = false, uploadReq
 }
 
 /** The first-contact pair: the welcome to the family and the medical note for staff */
-export async function sendIntake(env, applicant, { uploadRequestIds = [], fetchImpl = fetch, now = Date.now(), lang = null } = {}) {
+export async function sendIntake(env, applicant, { uploadRequestIds = [], fetchImpl = fetch, now = Date.now(), lang = null, medicalFallback = false } = {}) {
   const parent = applicant.primary?.name || 'Hello';
   const language = lang || applicant.lang || 'en';
   const welcome = await sendOnce(env, applicant, 'welcome',
     () => familyMessage(env, 'welcome', { parent, child: applicant.name, withCopy: uploadRequestIds.length > 0, lang: language }),
     { assign: true, uploadRequestIds, fetchImpl, now, lang: language });
   const medical = applicant.diagnosis
-    ? await sendOnce(env, applicant, 'medical', () => medicalNote(env, applicant.diagnosis), { fetchImpl, now })
+    ? await sendMedical(env, applicant, { fetchImpl, now, fallback: medicalFallback })
     : 'skipped: no diagnosis';
   return { welcome, medical };
 }
@@ -373,7 +433,8 @@ export async function handleApplicantEvent(env, payload, { fetchImpl = fetch, no
       const newAccount = String(applicant.createdAt || '') >= INTAKE_SINCE;
       // The medical note is for staff: it goes as soon as there's a diagnosis
       if (!fromForm && newAccount && applicant.diagnosis) {
-        actions.medical = await sendOnce(env, applicant, 'medical', () => medicalNote(env, applicant.diagnosis), { fetchImpl, now });
+        // One call, two tries inside; if the model can't help, the diagnosis still goes up
+        actions.medical = await sendMedical(env, applicant, { fetchImpl, now, fallback: true });
       }
       // Status moves (and the welcome for a hand-made account) wait until the
       // status settles: `onStatus` is ./_applicant-notify.js. JobTread sends
