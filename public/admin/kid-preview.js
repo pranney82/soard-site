@@ -54,8 +54,8 @@ function checkStream(uid) {
   return streamChecks.get(uid);
 }
 
-/** The video the built page will play: { type, id, note } or null */
-async function resolveVideo(kid) {
+/** The video the built page will play: { type, id, note } or null (community-preview.js uses it too) */
+export async function resolveVideo(kid) {
   const streamId = kid.streamVideoId?.trim().toLowerCase() || null;
   const ytId = youTubeId(kid.videoUrl);
   if (streamId) {

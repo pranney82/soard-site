@@ -4,14 +4,14 @@
  * order is never half-saved, and one audit entry per item that moved (so
  * Publish lists exactly who moved).
  *
- * Body: { collection: "team" | "kids", items: [{ slug, order }] }
+ * Body: { collection: "team" | "kids" | "community" | "partners" | "community_partners" | "medialogos", items: [{ slug, order }] }
  * Returns: { success, changed: [slug], shas: { slug: sha } }
  *
  * Admin-only (the middleware requires Access for /api/* not in PUBLIC_ROUTES).
  * Only the order changes: each row is read fresh and written back with just its
  * order replaced, so an edit saved meanwhile elsewhere is never overwritten.
- * Team rows keep it in `order`; kids in `sortOrder` (their place among the
- * active kids at the top of Meet the Kids).
+ * Team rows and community projects keep it in `order`; kids in `sortOrder`
+ * (their place among the active kids at the top of Meet the Kids).
  */
 import { EXTRACTORS, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
@@ -21,6 +21,10 @@ import { logAudit, diffJson, getEntityName } from './_audit.js';
 const REORDERABLE = {
   team: { dir: 'src/content/team/', field: 'order' },
   kids: { dir: 'src/content/kids/', field: 'sortOrder' },
+  community: { dir: 'src/content/community/', field: 'order' },
+  partners: { dir: 'src/content/partners/', field: 'order' },
+  community_partners: { dir: 'src/content/communityPartners/', field: 'order' },
+  medialogos: { dir: 'src/content/medialogos/', field: 'order' },
 };
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
 const MAX_ITEMS = 500;

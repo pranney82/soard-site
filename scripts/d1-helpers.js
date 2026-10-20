@@ -143,23 +143,25 @@ export function writeCollection(dir, rows, { deleteRemoved = false } = {}) {
     const data = safeParse(row.data);
     writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
   }
-  if (dir === 'kids') writeFocusManifest(rows.map((r) => safeParse(r.data)));
+  if (FOCUS_DIRS.includes(dir)) writeFocusManifest();
 }
 
 // ── Photo focal points (src/data/focus-photos.json) ─────────────────
-// Image ID → "0.42x0.31" for every kid photo with a focal point set in the
-// admin. src/utils/cf-image.ts crops those photos around it instead of the
-// faces it finds. Written with every kids sync, so dev and builds agree.
+// Image ID → "0.42x0.31" for every kid and community project photo with a
+// focal point set in the admin. src/utils/cf-image.ts crops those photos
+// around it instead of the faces it finds. Written with every sync of either
+// collection, from both as they are on disk, so dev and builds agree.
 const CF_ID_RE = /^https?:\/\/(?:imagedelivery\.net|[^/]+\/cdn-cgi\/imagedelivery)\/[^/]+\/(.+?)(?:\/(?:public|[^/]*=[^/]*))?$/;
 export function imageIdOf(url) {
   const s = String(url || '');
   const m = s.match(CF_ID_RE);
   return m ? m[1] : (/^https?:/.test(s) ? '' : s);
 }
-export function photoFocusMap(kids) {
+const FOCUS_DIRS = ['kids', 'community'];
+export function photoFocusMap(records) {
   const out = {};
-  for (const kid of kids) {
-    for (const p of kid?.photos || []) {
+  for (const rec of records) {
+    for (const p of rec?.photos || []) {
       const f = p?.focus;
       const id = imageIdOf(p?.url);
       if (!id || !f || !Number.isFinite(f.x) || !Number.isFinite(f.y)) continue;
@@ -169,9 +171,16 @@ export function photoFocusMap(kids) {
   }
   return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
 }
-function writeFocusManifest(kids) {
+function readCollection(dir) {
+  const full = join(CONTENT, dir);
+  if (!existsSync(full)) return [];
+  return readdirSync(full).filter((f) => f.endsWith('.json')).map((f) => {
+    try { return JSON.parse(readFileSync(join(full, f), 'utf8')); } catch { return null; }
+  }).filter(Boolean);
+}
+function writeFocusManifest() {
   const file = join(CONTENT, '..', 'data', 'focus-photos.json');
-  const json = JSON.stringify(photoFocusMap(kids), null, 2) + '\n';
+  const json = JSON.stringify(photoFocusMap(FOCUS_DIRS.flatMap(readCollection)), null, 2) + '\n';
   // Unchanged: leave the file alone (no rebuild in dev, no churn in git)
   if (existsSync(file) && readFileSync(file, 'utf8') === json) return;
   ensureDir(join(CONTENT, '..', 'data'));

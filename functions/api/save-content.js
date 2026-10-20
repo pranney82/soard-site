@@ -22,7 +22,7 @@ import { commitFile } from './_github.js';
 import { logAudit, diffJson, getEntityName } from './_audit.js';
 import { refreshForBoardChange } from './_reveal-invites.js';
 import { onActiveBoard as onBoard } from './_team.js';
-import { recordVersion as recordContentVersion } from './_content-history.js';
+import { HISTORY_TABLES, recordVersion as recordContentVersion } from './_content-history.js';
 
 export async function onRequestPost(context) {
   try {
@@ -140,16 +140,10 @@ export async function onRequestPost(context) {
       gitStatus,
     });
 
-    // People keep every saved version, so the editor can show history and restore
-    if (parsed.table === 'team') {
-      try { await recordContentVersion(DB, { collection: 'team', slug: parsed.slug, data, previous: oldData, userEmail, now }); }
-      catch (e) { console.error('[save-content] history:', e.message); }
-    }
-
-    // Kids keep every saved version too (History and restore in the Kids editor)
-    if (parsed.table === 'kids') {
-      try { await recordContentVersion(DB, { collection: 'kids', slug: parsed.slug, data, previous: oldData, userEmail, now }); }
-      catch (e) { console.error('[save-content] kid history:', e.message); }
+    // Every saved version is kept, so the editors can show history and restore
+    if (HISTORY_TABLES[parsed.table]) {
+      try { await recordContentVersion(DB, { collection: parsed.table, slug: parsed.slug, data, previous: oldData, userEmail, now }); }
+      catch (e) { console.error(`[save-content] ${parsed.table} history:`, e.message); }
     }
 
     // Joining or leaving the board changes who confirmed reveal invites reach: follow it now

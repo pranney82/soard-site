@@ -67,7 +67,7 @@ test('the endpoint: versions, one version, deleted items, bad input', async () =
   assert.equal(list.cache, 'no-store');
   assert.deepEqual((await call(`collection=kids&slug=ava&id=${list.body.versions[0].id}`)).body.data, { name: 'Ava' });
   assert.deepEqual(await call('collection=kids&slug=ava&id=999').then((r) => [r.status, r.body.error]), [404, 'That version is gone']);
-  assert.equal((await call('collection=partners&slug=ava')).status, 400);
+  assert.equal((await call('collection=events&slug=ava')).status, 400);
   assert.equal((await call('collection=kids&slug=../x')).status, 400);
   assert.deepEqual((await call('collection=kids&deleted=1')).body, { success: true, deleted: [] });
 });

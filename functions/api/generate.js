@@ -64,7 +64,22 @@ export function captionVariant(rawUrl) {
   }
 }
 
+// Community projects: an organization's building, renovated by SOARD (kid.kind === 'community')
+function projectAltPrompt(p) {
+  return `Write alt text for a photo on the website of Sunshine on a Ranney Day, a nonprofit that renovates spaces for children with special needs. This photo is from its renovation project at ${p.name}${plainText(p.description) ? ` (${plainText(p.description).slice(0, 220)})` : ''}.
+
+Rules:
+- One sentence, under 125 characters.
+- Describe what is actually visible: the room or space, its features, colors and furniture, and any people and what they are doing.
+- Name the organization only if its name is visible in the photo.
+- Do not guess at who people are, emotions, or context beyond what the image shows.
+- Do not start with "Image of", "Photo of", or "A picture of".
+- No em dashes.
+- Return ONLY the alt text, nothing else.`;
+}
+
 function altPrompt(kid) {
+  if (kid.kind === 'community') return projectAltPrompt(kid);
   return `Write alt text for a photo on the website of Sunshine on a Ranney Day, a nonprofit that builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at no cost to families.
 
 The child in this photo is ${kid.name}${kid.diagnosis ? `, who has ${kid.diagnosis}` : ''}.
@@ -206,8 +221,57 @@ export async function onRequestPost(context) {
       }
     }
 
+    // ─── A community project's search description ───
+    if (type === 'seo' && kid.kind === 'community') {
+      const prompt = `You are writing the search description for one community project page on the website of Sunshine on a Ranney Day (SOARD), a nonprofit in Atlanta that renovates spaces for children with special needs: classrooms, therapy rooms, camps and nonprofit facilities.
+
+Organization: ${kid.name}
+Project year: ${kid.year || 'not given'}
+Status: ${kid.status === 'in-progress' ? 'SOARD is renovating it now' : 'SOARD completed it'}
+Impact: ${(kid.stats || []).map((x) => `${x.value} ${x.label}`).join('; ') || 'not given'}
+Summary: ${plainText(kid.description).slice(0, 800)}
+Story: ${plainText(kid.story).slice(0, 1800)}
+
+Write META_DESCRIPTION: 120 to 155 characters for Google's search results. Name the organization and "Sunshine on a Ranney Day", and say what was renovated and who it serves.
+
+${STYLE}
+
+Return in this exact format, nothing else:
+META_DESCRIPTION: [text]`;
+      const text = await runText(ai, prompt, 200);
+      const m = text.match(/META_DESCRIPTION:\s*(.+?)$/s);
+      results.metaDescription = m ? tidy(m[1]) : tidy(text);
+      if (!results.metaDescription) return Response.json({ success: false, error: 'The AI didn’t return usable text. Try again.' }, { status: 500 });
+    }
+
+    // ─── A community project's summary, from its story ───
+    if (type === 'project-summary') {
+      const story = plainText(kid.story);
+      if (!story) return Response.json({ success: false, error: 'Write the story first; the summary comes from it.' }, { status: 400 });
+      const prompt = `Write the summary of a community project for the website of Sunshine on a Ranney Day (SOARD), a nonprofit in Atlanta that renovates spaces for children with special needs. It is used when the project is shared or found in search.
+
+Organization: ${kid.name}
+Project year: ${kid.year || 'not given'}
+Status: ${kid.status === 'in-progress' ? 'SOARD is renovating it now' : 'SOARD completed it'}
+Story: ${story.slice(0, 2500)}
+
+Rules:
+- Two sentences, 300 characters or fewer in total.
+- First sentence: who the organization serves, in plain words.
+- Second sentence: what SOARD renovated for them, naming the main sponsor if the story names one.
+- ${STYLE}
+- Return only the two sentences.`;
+      let text = tidy(await runText(ai, prompt, 220));
+      if (text.length > 320) {
+        const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+        text = sentences.map((x) => x.trim()).reduce((acc, x) => ((acc + ' ' + x).trim().length <= 320 ? (acc + ' ' + x).trim() : acc), '') || sentences[0].trim();
+      }
+      if (!text) return Response.json({ success: false, error: 'The AI didn’t return a summary. Try again.' }, { status: 500 });
+      results.description = text;
+    }
+
     // ─── Generate SEO Fields with Text Model ───
-    if (type === 'seo' || type === 'all') {
+    if ((type === 'seo' && kid.kind !== 'community') || type === 'all') {
       const seoPrompt = `You are writing search and sharing text for one child's page on the website of Sunshine on a Ranney Day (SOARD), a nonprofit in Atlanta that builds dream bedrooms, accessible bathrooms and therapy rooms for children with special needs, at no cost to their families.
 
 Child: ${kid.name}

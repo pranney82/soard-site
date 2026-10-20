@@ -20,7 +20,7 @@ import { parsePath } from './_collections.js';
 import { deleteFile } from './_github.js';
 import { logAudit, getEntityName } from './_audit.js';
 import { setBoardEmail, refreshForBoardChange } from './_reveal-invites.js';
-import { recordDeletion } from './_content-history.js';
+import { HISTORY_TABLES, recordDeletion } from './_content-history.js';
 
 export async function onRequestPost(context) {
   try {
@@ -89,10 +89,10 @@ export async function onRequestPost(context) {
       gitStatus,
     });
 
-    // A deleted kid can come back: keep the record as it was (Kids → Recently deleted)
-    if (parsed.table === 'kids' && oldData) {
-      try { await recordDeletion(DB, { collection: 'kids', slug: parsed.slug, data: oldData, userEmail, now: new Date().toISOString() }); }
-      catch (e) { console.error('[delete-content] kid history:', e.message); }
+    // A deleted item can come back: keep the record as it was (Recently deleted)
+    if (HISTORY_TABLES[parsed.table] && oldData) {
+      try { await recordDeletion(DB, { collection: parsed.table, slug: parsed.slug, data: oldData, userEmail, now: new Date().toISOString() }); }
+      catch (e) { console.error(`[delete-content] ${parsed.table} history:`, e.message); }
     }
 
     // A board member removed from the website: forget their private reveal email and take

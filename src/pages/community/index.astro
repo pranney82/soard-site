@@ -19,12 +19,14 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import CFImage from '../../components/ui/CFImage.astro';
 import { getCollection } from 'astro:content';
-import { cfRaw, cfSrcset, cfLqip, cfId, cfDensitySrcset } from '../../utils/cf-image';
+import { cfRaw, cfSrcset, cfLqip, cfId, cfDensitySrcset, focusPosition } from '../../utils/cf-image';
+import { getPublishedCommunity } from '../../utils/collections';
+import { mainPhotoOf } from '../../utils/community';
 import { getSiteStats } from '../../utils/stats';
 import siteSettings from '../../content/site/settings.json';
 
 /* ── Community Projects from content collection ── */
-const allProjects = await getCollection('community');
+const allProjects = await getPublishedCommunity();
 const projects = allProjects
   .map(p => p.data)
   .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
@@ -119,13 +121,15 @@ const breadcrumbs = [
         {projects.map((project, i) => {
           const hasDetail = !!project.story;
           const detailHref = `/community/${project.slug}/`;
-          const hasPhoto = project.imageId || project.heroImage;
-          const photoId = project.imageId || project.heroImage || '';
+          // The page's main photo (the admin keeps imageId in step with it)
+          const photoId = mainPhotoOf(project);
+          const hasPhoto = !!photoId;
+          const focus = focusPosition(photoId);
           const Tag = hasDetail ? 'a' : 'div';
           const tagProps = hasDetail ? { href: detailHref } : {};
           return (
             <Tag {...tagProps} class={`project-card ${!hasDetail ? 'project-card--static' : ''}`} data-reveal data-delay={String(i % 3)}>
-              <div class="project-card__frame" style={hasPhoto && project.imageId ? `background-image:url(${cfLqip(project.imageId)})` : ''}>
+              <div class="project-card__frame" style={hasPhoto ? `background-image:url(${cfLqip(cfId(photoId))})` : ''}>
                 {hasPhoto ? (
                   <CFImage
                     src={photoId}
@@ -136,6 +140,7 @@ const breadcrumbs = [
                     loading={i < 3 ? 'eager' : 'lazy'}
                     fit="cover"
                     class="project-card__img lqip-img"
+                    style={focus ? `object-position: ${focus}` : ''}
                   />
                 ) : (
                   <div class="project-card__color" style={`background: ${project.color};`}>

@@ -1,7 +1,9 @@
 /**
- * Saved versions of content records (kids, team), so the editors can show who
- * changed what and put an earlier version back, and deleted kids can come
- * back. One table for every collection: content_versions.
+ * Saved versions of content records (kids, team, community projects), so the
+ * editors can show who changed what and put an earlier version back, and
+ * deleted items can come back. One table for every collection: content_versions.
+ * save-content and delete-content record every collection listed in
+ * HISTORY_TABLES, so adding one there is all a new editor needs.
  *
  *   - Every save records the version it wrote. The first save of an older
  *     record also records what was there before (no author, a second
@@ -13,7 +15,7 @@
 
 const KEEP = 50;
 // Collection → its D1 table (the same name today; listed so nothing else is queried)
-export const HISTORY_TABLES = { kids: 'kids', team: 'team' };
+export const HISTORY_TABLES = { kids: 'kids', team: 'team', community: 'community', partners: 'partners', community_partners: 'community_partners', medialogos: 'medialogos' };
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
 // Not edits: positions in a list, and counts derived from other fields
 const IGNORED = new Set(['order', 'sortOrder', 'photoCount']);
@@ -103,7 +105,7 @@ export async function listDeleted(DB, collection, limit = 50) {
     ORDER BY v.id DESC LIMIT ?`).bind(collection, limit).all()).results || [];
   return rows.map((r) => {
     const d = parse(r.data) || {};
-    return { id: r.id, slug: r.slug, name: d.name || r.slug, year: d.year ?? null, image: d.heroImage || d.photo || null, at: r.created_at, by: r.user_email || null };
+    return { id: r.id, slug: r.slug, name: d.name || d.title || r.slug, year: d.year ?? null, image: d.heroImage || d.photo || d.imageId || d.logo || null, at: r.created_at, by: r.user_email || null };
   });
 }
 

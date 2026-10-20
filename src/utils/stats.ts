@@ -2,8 +2,8 @@
  * Auto-computed site stats from content collections.
  * Every number derived from actual data — no manual overrides.
  */
-import { getCollection } from 'astro:content';
-import { getPublishedKids } from './collections';
+import { getPublishedKids, getPublishedCommunity } from './collections';
+import { reachedCount } from './community';
 
 export interface SiteStats {
   /** Total individual children served (accounts for sibling profiles via childCount) */
@@ -26,7 +26,7 @@ export async function getSiteStats(): Promise<SiteStats> {
   if (_cached) return _cached;
 
   const kids = await getPublishedKids();
-  const community = await getCollection('community');
+  const community = await getPublishedCommunity();
 
   const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
   const totalRooms = kids.reduce((sum, k) => sum + (k.data.roomCount || 1), 0);
@@ -36,10 +36,8 @@ export async function getSiteStats(): Promise<SiteStats> {
       roomsByType[rt] = (roomsByType[rt] || 0) + 1;
     }
   }
-  const livesImpacted = community.reduce((sum, c) => {
-    const num = parseInt(String(c.data.impact).replace(/[^0-9]/g, ''), 10);
-    return sum + (isNaN(num) ? 0 : num);
-  }, 0);
+  // Each project adds the stat marked in the admin as people reached (else its first)
+  const livesImpacted = community.reduce((sum, c) => sum + reachedCount(c.data), 0);
 
   _cached = {
     totalKids,

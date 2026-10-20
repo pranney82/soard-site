@@ -9,3 +9,9 @@ export async function getPublishedKids() {
   const all = await getCollection('kids');
   return all.filter(k => k.data.publishStatus !== 'draft');
 }
+
+/** Returns only published community projects (filters out drafts). */
+export async function getPublishedCommunity() {
+  const all = await getCollection('community');
+  return all.filter(c => c.data.publishStatus !== 'draft');
+}

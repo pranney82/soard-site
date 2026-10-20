@@ -529,7 +529,7 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('.kd-history__row').length >= 2, { timeout: 5000 }).catch(() => {});
     const hist = await page.$$eval('.kd-history__row', (r) => r.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
     ok(hist.length === 2 && /^Staff/.test(hist[0]) && /Story|Photos|What was built/.test(hist[0]) && /Before history/.test(hist[1]), `History lists the save, who made it and what changed (${hist[0]?.slice(0, 80)})`);
-    await page.click('.kd-history__all');
+    await page.evaluate(() => document.querySelector('.kd-history__all').click()); // (a toast can sit over the rail)
     await page.waitForSelector('.kd-hist__item');
     await page.evaluate(() => [...document.querySelectorAll('.kd-hist__item')].at(-1).click());
     await page.waitForFunction(() => /Restoring it changes/.test(document.querySelector('.kd-hist__detail')?.textContent || ''), { timeout: 5000 });

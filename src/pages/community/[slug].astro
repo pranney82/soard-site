@@ -21,13 +21,15 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import CFImage from '../../components/ui/CFImage.astro';
-import { getCollection } from 'astro:content';
 import { getVideoSchema } from '../../utils/schema';
-import { cfRaw, cfLqip, isCF } from '../../utils/cf-image';
+import { cfRaw, cfLqip, isCF, focusPosition } from '../../utils/cf-image';
+import { getPublishedCommunity } from '../../utils/collections';
+import { mainPhotoOf } from '../../utils/community';
+import { resolveKidVideo } from '../../utils/reveals';
 
 
 export async function getStaticPaths() {
-  const allProjects = await getCollection('community');
+  const allProjects = await getPublishedCommunity();
   const sorted = allProjects
     .map(p => p.data)
     .sort((a, b) => parseInt(a.year) - parseInt(b.year));
@@ -51,14 +53,16 @@ const hasPhotos = project.photos?.length > 1;
 const hasPartners = project.partnerLogos?.length > 0;
 
 // ── Video ──
-function getYouTubeId(url: string): string | null {
-  if (!url) return null;
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
-  return match ? match[1] : null;
-}
-const ytId = project.videoUrl ? getYouTubeId(project.videoUrl) : null;
-const streamId = project.streamVideoId || null;
+// A Stream upload plays only when the build saw it play (most old uploads were
+// purged); otherwise YouTube, otherwise no video section. The admin preview's
+// template pages pass forceVideo so they render a known player.
+const projectVideo = Astro.props.forceVideo !== undefined ? Astro.props.forceVideo : await resolveKidVideo(project);
+const ytId = projectVideo?.type === 'youtube' ? projectVideo.id : null;
+const streamId = projectVideo?.type === 'stream' ? projectVideo.id : null;
 const hasVideo = streamId || ytId;
+// The main photo (the card shows the same one), and where photos center when cropped
+const heroPhoto = mainPhotoOf(project);
+const focusStyle = (src: string) => { const f = focusPosition(src); return f ? `object-position: ${f}` : ''; };
 const otherProjects = allProjects.filter((p: any) => p.slug !== project.slug && p.story);
 
 /* ── Hero stats: prefer the stats array, fall back to the single impact pair ── */
@@ -102,10 +106,10 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
       </a>
 
       <div class="cp-detail-hero-split">
-        {project.heroImage ? (
+        {heroPhoto ? (
           <div class="cp-detail-hero-photo" transition:name="community-hero">
             <CFImage
-              src={project.heroImage}
+              src={heroPhoto}
               alt={project.imageAlt || `${project.name} project by SOARD`}
               width={700} height={500}
               sizes="(max-width:768px) 90vw, 55vw"
@@ -113,6 +117,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
               loading="eager"
               fit="cover"
               class="cp-detail-hero-img"
+              style={focusStyle(heroPhoto)}
             />
           </div>
         ) : (
@@ -166,6 +171,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
       <div class="cp-detail-quote-inner" data-reveal>
         <blockquote>
           <p>"{project.quote}"</p>
+          {project.quoteBy && <cite class="cp-detail-quote-by">{project.quoteBy}</cite>}
         </blockquote>
       </div>
     </section>
@@ -243,6 +249,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
                   loading="lazy"
                   fit="cover"
                   class="cp-detail-gallery-img"
+                  style={focusStyle(photo.url)}
                 />
               </div>
             ))}
@@ -286,9 +293,9 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
           {otherProjects.map((p: any) => (
             <a href={`/community/${p.slug}/`} class="cp-detail-more-card" data-reveal>
               <div class="cp-detail-more-img-wrap">
-                {p.heroImage ? (
+                {mainPhotoOf(p) ? (
                   <CFImage
-                    src={p.heroImage}
+                    src={mainPhotoOf(p)}
                     alt={p.name}
                     width={400} height={260}
                     sizes="(max-width:768px) 45vw, 280px"
@@ -296,6 +303,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
                     loading="lazy"
                     fit="cover"
                     class="cp-detail-more-img"
+                    style={focusStyle(mainPhotoOf(p))}
                   />
                 ) : (
                   <div class="cp-detail-more-color" style={`background: ${p.color};`}>
@@ -580,6 +588,16 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
     font-style: italic;
     letter-spacing: -0.01em;
     margin: 0;
+  }
+
+  .cp-detail-quote-by {
+    display: block;
+    margin-top: var(--space-md);
+    font-style: normal;
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--c-text-muted);
   }
 
   /* ══════════════════════════════════════════

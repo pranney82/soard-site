@@ -232,6 +232,8 @@ const community = defineCollection({
     stats: z.array(z.object({
       value: z.string(),
       label: z.string(),
+      /** Set in the admin: this stat's number is added to "children reached" (all false: none; unset everywhere: the first) */
+      reached: z.boolean().optional(),
     })).default([]),
     year: z.string(),
     description: z.string(),
@@ -240,11 +242,15 @@ const community = defineCollection({
     imageAlt: z.string().optional(),
     /* Set by the admin Status dropdown; 'in-progress' shows the In Progress badge */
     status: z.enum(['completed', 'in-progress']).default('completed'),
+    /* 'draft' keeps the project off the site (the admin's "Show on the Community page") */
+    publishStatus: z.enum(['draft', 'published']).default('published'),
     order: z.number().default(0),
     /* ── Detail page fields (optional — omit for summary-only entries) ── */
     founded: z.string().optional(),
     story: z.string().optional(),
     quote: z.string().nullable().optional(),
+    /** Who said the quote, shown under it */
+    quoteBy: z.string().nullable().optional(),
     heroImage: z.string().nullable().optional(),
     metaDescription: z.string().optional(),
     videoUrl: z.string().nullable().optional(),
@@ -252,6 +258,8 @@ const community = defineCollection({
     photos: z.array(z.object({
       url: z.string(),
       alt: z.string().default(''),
+      /** Focal point set in the admin, as fractions across and down: crops center on it */
+      focus: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).optional(),
     })).default([]),
     partnerLogos: z.array(z.object({
       url: z.string(),

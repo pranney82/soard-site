@@ -46,7 +46,7 @@ const communityFull = {
   name: 'Template Project', slug: 'community-template', impact: '100', impactLabel: 'Template impact',
   stats: [{ value: '100', label: 'Template impact' }, { value: '2', label: 'Template rooms' }, { value: '3', label: 'Template years' }],
   year: '2026', description: 'Template description.', color: '#373A36', status: 'in-progress', order: 0,
-  founded: '1999', story: '<p>Template story.</p>', quote: 'Template quote.', heroImage: 'community-template/hero',
+  founded: '1999', story: '<p>Template story.</p>', quote: 'Template quote.', quoteBy: 'Template Person', heroImage: 'community-template/hero',
   imageAlt: 'Template alt', metaDescription: '', videoUrl: null, streamVideoId: 'templatestream',
   photos: [{ url: 'community-template/photo-1', alt: 'Template photo' }, { url: 'community-template/photo-2', alt: '' }],
   partnerLogos: [{ url: 'community-template/partner-1', name: 'Template Partner' }, { url: 'community-template/partner-2', name: '' }],
@@ -54,7 +54,7 @@ const communityFull = {
 // alt: no photo (the color block), the impact fallback stat, plain-text story, YouTube
 const communityAlt = {
   ...communityFull, stats: [], status: 'completed', founded: undefined, story: 'First paragraph.\n\nSecond paragraph.',
-  quote: null, heroImage: null, streamVideoId: null, videoUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+  quote: null, quoteBy: null, heroImage: null, streamVideoId: null, videoUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
   photos: [{ url: 'community-template/photo-1', alt: '' }], partnerLogos: [],
 };
 
@@ -156,8 +156,8 @@ export const FIXTURES = {
     pending: { item: { ...eventPast, body: '', photos: [], videoUrl: null, image: null } },
   },
   community: {
-    full: { item: communityFull },
-    alt: { item: communityAlt },
+    full: { item: communityFull, video: { type: 'stream', id: 'templatestream' } },
+    alt: { item: communityAlt, video: { type: 'youtube', id: 'aaaaaaaaaaa' } },
   },
   article: {
     full: { item: articleFull },
