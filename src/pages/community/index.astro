@@ -31,13 +31,36 @@ const projects = allProjects
   .map(p => p.data)
   .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
 
-/* ── Community Partners (nonprofit orgs we serve) ── */
+/* ── Community Partners (nonprofit orgs we serve) ──
+   Every partner shows (Peter, Oct 2026): a name card when there's no logo yet.
+   A card links to the partner's project page when there is one, else to their
+   website. */
 const allCommunityPartners = await getCollection('community_partners');
+const plainName = (s: string) => String(s || '').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, ' ').replace(/^the /, '').trim();
+const initialsOf = (s: string) => plainName(s).split(' ').map(w => w[0]).join('');
+// The partner's project page: same address, same name ("The Summit Counseling Center"),
+// or a short name that spells the project's initials ("CDA", Children's Development Academy)
+const projectFor = (p: { slug: string; name: string }) => projects.find(x => x.story && (
+  x.slug === p.slug ||
+  plainName(x.name) === plainName(p.name) ||
+  (/^[A-Z]{2,6}$/.test(p.name.trim()) && initialsOf(x.name) === p.name.trim().toLowerCase())
+));
+// No logo: a lettered tile ("FODAC", "Make a Wish Georgia" → "MW"); small words don't get a letter
+const SMALL_WORDS = new Set(['a', 'an', 'and', 'at', 'for', 'in', 'of', 'on', 'the', 'to']);
+const monogramOf = (name: string) => /^[A-Z]{2,5}$/.test(name.trim())
+  ? name.trim()
+  : plainName(name).split(' ').filter(w => !SMALL_WORDS.has(w)).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 const communityPartners = allCommunityPartners
   .map(p => p.data)
-  .filter(p => !!p.logo)
-  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
-const featuredPartners = communityPartners.filter(p => p.featured);
+  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name))
+  .map(p => {
+    const project = projectFor(p);
+    const site = /^https?:\/\//.test(p.website || '') ? p.website : null;
+    // A description that only repeats the name ("CDA") isn't shown twice
+    const desc = String(p.description || '').trim();
+    const sameAsName = !desc || plainName(p.name).includes(plainName(desc)) || (plainName(desc).includes(plainName(p.name)) && desc.length < p.name.length + 15);
+    return { ...p, description: sameAsName ? '' : desc, monogram: monogramOf(p.name), href: project ? `/community/${project.slug}/` : site, external: !project && !!site };
+  });
 
 const { livesImpacted } = await getSiteStats();
 const totalImpact = livesImpacted.toLocaleString() + '+';
@@ -210,37 +233,50 @@ const breadcrumbs = [
           <h2 id="np-heading">The organizations we <em class="highlight">serve</em>.</h2>
           <p class="np-sub">These nonprofit organizations partner with us to help even more kids with special needs.</p>
         </div>
-        <div class="np-grid" data-reveal data-delay="1">
+        <ul class="np-grid" role="list" data-reveal data-delay="1">
           {communityPartners.map(p => {
-            const hasLogo = !!p.logo;
-            const hasLink = !!p.website;
-            const Tag = hasLink ? 'a' : 'div';
+            const Tag = p.href ? 'a' : 'div';
             return (
-              <Tag
-                class:list={['np-logo-card', { 'np-logo-card--linked': hasLink }]}
-                {...(hasLink ? { href: p.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
-              >
-                <div class="np-logo-card__logo">
-                  {hasLogo ? (
-                    <img
-                      src={cfRaw(p.logo, 'w=280,h=80,fit=contain,q=80')}
-                      srcset={cfDensitySrcset(cfId(p.logo), 140, 40, { quality: 80, fit: 'contain' })}
-                      alt={p.name}
-                      width="140" height="40"
-                      loading="lazy" decoding="async"
-                    />
-                  ) : (
-                    <span class="np-logo-card__placeholder">{p.name}</span>
-                  )}
-                </div>
-                <span class="np-logo-card__name">{p.name}</span>
-                {hasLink && (
-                  <svg class="np-logo-card__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
-                )}
-              </Tag>
+              <li class="np-item">
+                <Tag
+                  class:list={['np-card', { 'np-card--linked': !!p.href }]}
+                  {...(p.href ? { href: p.href, ...(p.external ? { target: '_blank', rel: 'noopener noreferrer' } : {}) } : {})}
+                >
+                  <div class="np-card__mark" aria-hidden="true">
+                    {p.logo ? (
+                      <img
+                        src={cfRaw(p.logo, 'w=192,h=104,fit=contain,q=85')}
+                        srcset={cfDensitySrcset(cfId(p.logo), 96, 52, { quality: 85, fit: 'contain' })}
+                        alt=""
+                        width="96" height="52"
+                        loading="lazy" decoding="async"
+                      />
+                    ) : (
+                      <span class:list={['np-card__mono', { 'np-card__mono--long': p.monogram.length > 3 }]}>{p.monogram}</span>
+                    )}
+                  </div>
+                  <div class="np-card__body">
+                    {p.location && <span class="np-card__place">{p.location}</span>}
+                    <h3 class="np-card__name">{p.name}</h3>
+                    {p.impact && (
+                      <p class="np-card__impact"><span class="np-card__num">{p.impact}</span> {p.impactLabel}</p>
+                    )}
+                    {p.description && <p class="np-card__desc">{p.description}</p>}
+                    {p.href && (
+                      <span class="np-card__go">
+                        {p.external ? 'Visit their website' : 'See the project'}
+                        {p.external && <span class="sr-only"> (opens in a new tab)</span>}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          {p.external ? <><path d="M7 17 17 7"/><path d="M7 7h10v10"/></> : <><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></>}
+                        </svg>
+                      </span>
+                    )}
+                  </div>
+                </Tag>
+              </li>
             );
           })}
-        </div>
+        </ul>
         <div class="np-cta" data-reveal>
           <p>Is your organization serving children with special needs?</p>
           <a href="mailto:info@soardcharity.com?subject=Community%20Partnership%20Inquiry" class="spotlight-link">
@@ -934,84 +970,141 @@ const breadcrumbs = [
 
   .np-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
 
-  .np-logo-card {
-    display: flex;
-    flex-direction: column;
+  .np-item { display: flex; min-width: 0; }
+
+  .np-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
     align-items: center;
-    justify-content: center;
-    text-align: center;
-    gap: 10px;
-    padding: 28px 20px 20px;
+    gap: 20px;
+    width: 100%;
+    padding: 18px 22px 18px 18px;
     background: var(--c-cream);
+    border: 1px solid var(--c-border);
     border-radius: var(--border-radius-lg);
+    color: var(--c-text);
     text-decoration: none;
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    position: relative;
-    min-height: 140px;
+                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.35s ease;
   }
 
-  .np-logo-card:hover {
+  .np-card--linked:hover {
     transform: translateY(-3px);
+    border-color: var(--c-yellow);
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06);
   }
 
-  .np-logo-card__logo {
+  .np-card--linked:focus-visible {
+    outline: 2px solid var(--c-dark);
+    outline-offset: 4px;
+  }
+
+  /* White tile: logos drawn on white sit cleanly on the cream card */
+  .np-card__mark {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 48px;
-    flex-shrink: 0;
+    align-self: stretch;
+    min-height: 76px;
+    padding: 12px 8px;
+    background: #fff;
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius);
   }
 
-  .np-logo-card__logo img {
-    max-width: 140px;
-    max-height: 48px;
+  .np-card__mark img {
+    display: block;
+    width: 100%;
+    max-width: 96px;
+    height: 52px;
     object-fit: contain;
-    opacity: 0.7;
-    transition: filter 0.35s ease, opacity 0.35s ease;
   }
 
-  @media (hover: hover) {
-    .np-logo-card__logo img { filter: grayscale(1); }
-    .np-logo-card:hover .np-logo-card__logo img { filter: grayscale(0); opacity: 1; }
-  }
-
-  .np-logo-card__placeholder {
+  .np-card__mono {
     font-family: var(--font-display);
-    font-size: 0.85rem;
+    font-size: 1.5rem;
     font-weight: 700;
-    color: var(--c-text-muted);
-    letter-spacing: -0.01em;
-    line-height: 1.25;
+    letter-spacing: 0.02em;
+    color: var(--c-dark);
+    background-image: linear-gradient(var(--c-yellow-mark), var(--c-yellow-mark));
+    background-size: 100% 40%;
+    background-position: 0 85%;
+    background-repeat: no-repeat;
   }
 
-  .np-logo-card__name {
-    font-size: 0.78rem;
+  .np-card__mono--long { font-size: 1.1rem; }
+
+  .np-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .np-card__place {
+    font-size: 0.72rem;
     font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     color: var(--c-text-muted);
-    line-height: 1.3;
-    transition: color 0.2s;
   }
 
-  .np-logo-card:hover .np-logo-card__name { color: var(--c-dark); }
-
-  .np-logo-card__ext {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 14px;
-    height: 14px;
-    color: var(--c-text-muted);
-    opacity: 0;
-    transition: opacity 0.25s ease;
+  .np-card__name {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--c-dark);
+    text-wrap: pretty;
   }
 
-  .np-logo-card:hover .np-logo-card__ext { opacity: 0.5; }
+  .np-card__impact {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    color: var(--c-text-muted);
+  }
+
+  .np-card__num {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    background-image: linear-gradient(var(--c-yellow-mark), var(--c-yellow-mark));
+    background-size: 100% 40%;
+    background-position: 0 85%;
+    background-repeat: no-repeat;
+  }
+
+  .np-card__desc {
+    margin: 0;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    color: var(--c-text);
+  }
+
+  .np-card__go {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-top: 2px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--c-dark);
+  }
+
+  .np-card--linked:hover .np-card__go svg { transform: translateX(3px); }
+  .np-card__go svg { transition: transform 0.25s ease; }
 
   .np-cta {
     text-align: center;
@@ -1027,11 +1120,12 @@ const breadcrumbs = [
   @media (max-width: 768px) {
     .np-section { padding: var(--space-2xl) 0; }
     .np-inner { padding-inline: var(--space-lg); }
-    .np-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-    .np-logo-card { padding: 20px 12px 16px; min-height: 110px; }
-    .np-logo-card__logo { height: 36px; }
-    .np-logo-card__logo img { max-width: 100px; max-height: 36px; }
-    .np-logo-card__name { font-size: 0.72rem; }
+    .np-grid { grid-template-columns: 1fr; gap: 12px; }
+    .np-card { grid-template-columns: 88px minmax(0, 1fr); gap: 16px; padding: 14px 16px 14px 14px; }
+    .np-card__mark { min-height: 64px; padding: 10px 6px; }
+    .np-card__mark img { height: 44px; }
+    .np-card__name { font-size: 1.05rem; }
+    .np-card__desc { font-size: 0.9rem; }
     .np-cta p { font-size: 0.92rem; }
   }
 
@@ -1141,6 +1235,9 @@ const breadcrumbs = [
     [data-reveal] { opacity: 1; transform: none; transition: none; }
     .spotlight-frame :global(img) { transition: none; }
     .spotlight-frame:hover :global(img) { transform: none; }
+    .np-card, .np-card__go svg { transition: none; }
+    .np-card--linked:hover { transform: none; }
+    .np-card--linked:hover .np-card__go svg { transform: none; }
   }
 
   /* ══════════════════════════════════════════
