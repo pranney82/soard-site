@@ -10,6 +10,8 @@
  *   CF_ACCESS_AUD          — the Application Audience (AUD) tag from the Access policy
  */
 
+import { crossSiteChange } from './_origin-guard.js';
+
 // Cache JWKS keys in module scope (persists across requests within same isolate)
 let _cachedKeys = null;
 let _cachedKeysExpiry = 0;
@@ -169,6 +171,16 @@ export async function onRequest(context) {
 
   const { CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD } = context.env;
   const cors = authedCors(context.request, context.env);
+
+  // A change to admin data must come from the admin itself, never from another
+  // website riding a signed-in admin's Access cookie (see _origin-guard.js)
+  const crossSite = crossSiteChange(context.request, [ALLOWED_ORIGIN, accessOrigin(context.env)].filter(Boolean));
+  if (crossSite) {
+    return Response.json(
+      { success: false, error: 'Refused: changes to the admin must come from the admin itself' },
+      { status: 403, headers: cors }
+    );
+  }
 
   // Fail closed: if Access env vars aren't configured, reject all authenticated requests.
   // This prevents accidental public exposure of admin APIs in production.

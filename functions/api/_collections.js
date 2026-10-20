@@ -76,13 +76,24 @@ export const EXTRACTORS = {
  * Parse a content path into { type, table, slug } or { type: 'site', key }.
  * Returns null if path is not a recognized content path.
  */
+/**
+ * A record's file name (a slug, or a site doc's key): letters, digits, - and _,
+ * with single dots between parts. No slashes and no "..", so a save or delete
+ * can never reach outside its collection (the build writes src/content/<dir>/<name>.json).
+ */
+export const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*$/;
+export const isSafeName = (name) => typeof name === 'string' && name.length <= 200 && SAFE_NAME.test(name);
+
 export function parsePath(path) {
+  if (typeof path !== 'string') return null;
   if (path.startsWith(SITE_PREFIX) && path.endsWith('.json')) {
-    return { type: 'site', key: path.slice(SITE_PREFIX.length, -5) };
+    const key = path.slice(SITE_PREFIX.length, -5);
+    return isSafeName(key) ? { type: 'site', key } : null;
   }
   for (const [prefix, table] of Object.entries(COLLECTION_MAP)) {
     if (path.startsWith(prefix) && path.endsWith('.json')) {
-      return { type: 'collection', table, slug: path.slice(prefix.length, -5), prefix };
+      const slug = path.slice(prefix.length, -5);
+      return isSafeName(slug) ? { type: 'collection', table, slug, prefix } : null;
     }
   }
   return null;

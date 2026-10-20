@@ -12,6 +12,8 @@ import { SETTINGS_DEFAULTS } from './settings-defaults.js';
 
 export const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(__dirname, '..');
+// Record file names: the same rule the admin API enforces (functions/api/_collections.js SAFE_NAME)
+const SAFE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*$/;
 export const CONTENT = join(ROOT, 'src', 'content');
 
 export const collections = Object.values(COLLECTION_MAP).map(table => ({ table, dir: table }));
@@ -139,6 +141,8 @@ export function writeCollection(dir, rows, { deleteRemoved = false } = {}) {
   }
 
   for (const row of rows) {
+    // A name with a slash or ".." would write outside the collection: never written
+    if (!SAFE_FILE_NAME.test(String(row.slug || ''))) { console.warn(`  ⚠ skipped ${dir} row with an unsafe name: ${JSON.stringify(row.slug)}`); continue; }
     const filePath = join(outDir, `${row.slug}.json`);
     const data = safeParse(row.data);
     writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
@@ -198,6 +202,7 @@ export function writeSiteConfig(siteRows) {
   const siteDir = join(CONTENT, 'site');
   ensureDir(siteDir);
   for (const row of siteRows) {
+    if (!SAFE_FILE_NAME.test(String(row.key || ''))) { console.warn(`  ⚠ skipped site config row with an unsafe key: ${JSON.stringify(row.key)}`); continue; }
     const filePath = join(siteDir, `${row.key}.json`);
     // A copy left from before the key was runtime-only would still break `astro dev`
     if (RUNTIME_ONLY_KEYS.has(row.key)) { if (existsSync(filePath)) unlinkSync(filePath); continue; }
