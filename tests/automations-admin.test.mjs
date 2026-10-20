@@ -185,3 +185,33 @@ test('kid status from JobTread reports its last sweep, last run and the profiles
   assert.ok(!JSON.stringify(f).includes('kendall'), 'who was alerted stays out');
   assert.ok(!JSON.stringify(f).includes('secret-ish'), 'and so does the error text');
 });
+
+test('gift alerts report keys present, times and failing posts, never a key, an amount or a name', async () => {
+  const DB = await makeDb();
+  // Before the first gift the zeffy_gifts table doesn't exist yet
+  let f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch() });
+  assert.deepEqual([f.env.zeffyWebhook, f.env.zeffyApi, f.env.slackBot], [false, false, false]);
+  assert.deepEqual(f.zeffy, {
+    since: null, lastWebhookAt: null, lastPostAt: null, lastSweepAt: null, sweepError: null,
+    missed: 0, missedAt: null, rejectedAt: null, failing: 0, failingWhy: null,
+  });
+
+  await DB.prepare("INSERT INTO site_config (key, data, updated_at) VALUES ('zeffy-alerts', ?, '')").bind(JSON.stringify({
+    since: '2026-10-20T14:00:00.000Z', lastWebhookAt: '2026-10-20T15:00:00.000Z', lastPostAt: '2026-10-20T15:00:01.000Z',
+    lastSweep: { at: '2026-10-20T15:15:00.000Z', checked: 3, missed: 0, error: null },
+    lastMissed: { at: '2026-10-19T10:00:00.000Z', count: 2 },
+    lastRejected: { at: '2026-10-18T10:00:00.000Z', why: 'signature does not match ZEFFY_WEBHOOK_SECRET' },
+    alerted: { missed: '2026-10-19T10:00:00.000Z' },
+  })).run();
+  await DB.prepare('CREATE TABLE zeffy_gifts (payment_id TEXT PRIMARY KEY, state TEXT NOT NULL, reason TEXT, pending TEXT)').run();
+  await DB.prepare("INSERT INTO zeffy_gifts VALUES ('p1', 'posted', NULL, NULL), ('p2', 'failed', 'no_service', '🎉 New donation - $77.00\nFrom: Zed Q')").run();
+  f = await gatherFacts(ENV(DB, { ZEFFY_WEBHOOK_SECRET: SECRETS[4], ZEFFY_API_KEY: 'zk-secret-1', SLACK_BOT_TOKEN: 'xoxb-secret-2' }), { fetchImpl: jtFetch() });
+  assert.deepEqual([f.env.zeffyWebhook, f.env.zeffyApi, f.env.slackBot], [true, true, true]);
+  assert.deepEqual(f.zeffy, {
+    since: '2026-10-20T14:00:00.000Z', lastWebhookAt: '2026-10-20T15:00:00.000Z', lastPostAt: '2026-10-20T15:00:01.000Z',
+    lastSweepAt: '2026-10-20T15:15:00.000Z', sweepError: null, missed: 2, missedAt: '2026-10-19T10:00:00.000Z',
+    rejectedAt: '2026-10-18T10:00:00.000Z', failing: 1, failingWhy: 'no_service',
+  });
+  const out = JSON.stringify(f);
+  for (const s of [SECRETS[4], 'xoxb-secret-2', 'zk-secret-1', 'Zed', '$77']) assert.ok(!out.includes(s), `${s} stays out`);
+});

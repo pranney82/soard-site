@@ -82,7 +82,10 @@ const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo'
   // checked inside the handler (rate limited below with its own, roomier limit)
   '/api/apply',
   // Applicant messages: a JobTread workflow wake-up ({ accountId }); re-reads JobTread
-  '/api/applicant-sync'];
+  '/api/applicant-sync',
+  // Zeffy's payment.completed webhook: its Zeffy-Signature is checked inside the
+  // handler against ZEFFY_WEBHOOK_SECRET before anything is posted
+  '/api/zeffy-webhook'];
 
 // Routes public for reads only — GET/HEAD skip auth, mutations still require Access.
 // fb-live-videos returns only the page's public video permalinks (never the token),

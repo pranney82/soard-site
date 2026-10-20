@@ -14,6 +14,7 @@
  *  - revealChecks: weekday reveal checks switch and last run; date sync's last activity
  *  - liveSchedule: the live countdown's last JobTread check (what it follows, what's waiting)
  *  - kidStatus: kid statuses following JobTread (last sweep, last run, profiles it hid)
+ *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
  *  - slack:     how alerts reach Slack (app or webhook), the channel's name, and Slack's own error if any
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
  *  - sends:     last reminder send per kind and channel (counts only)
@@ -54,6 +55,9 @@ export function envFacts(env) {
     constantContact: has(env.CC_CLIENT_ID) || has(env.CC_CLIENT_SECRET) || has(env.CC_REFRESH_TOKEN),
     turnstile: has(env.TURNSTILE_SECRET_KEY),
     turnstileSite: has(env.TURNSTILE_SITE_KEY),
+    zeffyWebhook: has(env.ZEFFY_WEBHOOK_SECRET),
+    zeffyApi: has(env.ZEFFY_API_KEY),
+    slackBot: has(env.SLACK_BOT_TOKEN),
   };
 }
 
@@ -152,6 +156,23 @@ export function kidStatusFacts(state, hidden = null) {
   };
 }
 
+/** Gift alerts in Slack (site_config "zeffy-alerts", _zeffy.js); failing: posts Slack hasn't taken yet. Times and counts only */
+export function zeffyFacts(cfg, failing = null) {
+  const d = cfg?.data || {};
+  return {
+    since: d.since || null,
+    lastWebhookAt: d.lastWebhookAt || null,
+    lastPostAt: d.lastPostAt || null,
+    lastSweepAt: d.lastSweep?.at || null,
+    sweepError: d.lastSweep?.error || null,
+    missed: d.lastMissed?.count ?? 0,
+    missedAt: d.lastMissed?.at || null,
+    rejectedAt: d.lastRejected?.at || null,
+    failing: failing?.n ?? 0,
+    failingWhy: failing?.n ? failing.why || null : null,
+  };
+}
+
 /** placed: Stream uids some kid page already uses (staff can attach a replay by hand in the kid editor) */
 export function archiveFacts(a, placed = new Set()) {
   if (!a) return null;
@@ -215,7 +236,7 @@ const settle = async (fn) => { try { return await fn(); } catch (e) { return { e
 
 export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const DB = env.DB;
-  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced, liveSchedule, guestCheck, kidState, kidsHidden, slackLink] = await Promise.all([
+  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced, liveSchedule, guestCheck, kidState, kidsHidden, zeffyCfg, zeffyFailing, slackLink] = await Promise.all([
     settle(() => siteConfig(DB, 'broadcast-config')),
     settle(() => siteConfig(DB, 'broadcast-health')),
     settle(() => siteConfig(DB, 'reveal-invites')),
@@ -234,6 +255,9 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     // The table appears with the first kid status sync; until then this settles to an error
     settle(async () => JSON.parse((await DB.prepare("SELECT value FROM kid_status_state WHERE key = 'state'").first('value')) || '{}')),
     settle(() => DB.prepare(`SELECT count(*) AS n FROM kids WHERE instr(data, '"hiddenBy":"jobtread"') > 0`).first('n')),
+    settle(() => siteConfig(DB, 'zeffy-alerts')),
+    // The table appears with the first gift; until then this settles to an error
+    settle(() => DB.prepare("SELECT count(*) AS n, max(reason) AS why FROM zeffy_gifts WHERE state = 'failed'").first()),
     // The Slack app's token and alerts channel, checked with Slack itself (no-op without a token)
     settle(() => slackStatus(env)),
   ]);
@@ -257,6 +281,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     revealChecks: revealCheckFacts(ok(checks), ok(synced)),
     liveSchedule: liveScheduleFacts(ok(liveSchedule)),
     kidStatus: kidStatusFacts(ok(kidState), typeof kidsHidden === 'number' ? kidsHidden : null),
+    zeffy: zeffyFacts(ok(zeffyCfg), ok(zeffyFailing)),
     slack: slackLink?.error && !slackLink.mode ? { mode: null, ok: false, error: slackLink.error }
       : { mode: slackLink?.mode || null, ok: !!slackLink?.ok, error: slackLink?.error || null, team: slackLink?.team || null, channel: slackLink?.channel?.name || null, bot: slackLink?.bot || null },
     fbArchive: archiveFacts(ok(archive), await settle(() => placedUids(DB, ok(archive))).then((p) => (p instanceof Set ? p : new Set()))),

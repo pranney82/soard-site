@@ -218,6 +218,7 @@ All endpoints run as Cloudflare Workers Functions under `/api/`. Admin endpoints
 | `/api/press-scan` | POST | Import press mentions |
 | `/api/download-logo` | POST | Download partner logos |
 | `/api/deployments` | POST | Trigger site rebuild |
+| `/api/zeffy-webhook` | POST | Public, signed by Zeffy: posts each completed gift to Slack #team-everyone |
 | `/api/newsletter` | POST | Newsletter signup (adds to Kit) |
 | `/api/kit-broadcast` | GET/POST | Kit draft broadcasts, history and the editor preview |
 | `/api/cc-oauth-start` | GET | Initiate admin OAuth flow |
@@ -249,6 +250,8 @@ The admin panel can also trigger deploys after content changes via the `/api/dep
 | `RESEND_API_KEY` | Yes | One-off emails only: application links and notices, reveal reminders, staff alerts, editor test sends |
 | `SLACK_BOT_TOKEN` | No | The site's Slack app (`xoxb-…`; scopes `chat:write`, `chat:write.public`, `channels:read`, `groups:read`). Staff alerts and new-application posts go to the channel picked in Reveals → Settings → Alerts |
 | `SLACK_WEBHOOK_URL` | No | Older incoming webhook, used only when the Slack app isn't set or can't post |
+| `ZEFFY_WEBHOOK_SECRET` | No | Zeffy's `whsec_…` signing secret for `/api/zeffy-webhook` (each gift is posted to #team-everyone by the Slack app, `SLACK_BOT_TOKEN`) |
+| `ZEFFY_API_KEY` | No | Zeffy API key: the 15-minute catch-up check for gifts the webhook missed |
 | `KIT_FORM_ID` | No | Also add new subscribers to this Kit form (opt-in rules/automations apply) |
 | `KIT_EMAIL_TEMPLATE_ID` | No | Kit template wrapping pushed broadcasts; account default if unset |
 

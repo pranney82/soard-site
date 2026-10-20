@@ -28,7 +28,7 @@ import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 19, 2026';
+const WRITTEN_ON = 'October 20, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -699,8 +699,32 @@ const MAP = { t: 'SOARD', children: [
       ]},
     ]},
 
-  { t: 'Giving & embeds', sub: 'Outside services shown on the site', color: 'give', side: 'l',
+  { t: 'Giving & embeds', sub: 'Gift alerts, and outside services shown on the site', color: 'give', side: 'l',
     children: [
+      { t: 'When a gift comes in', children: [
+        { t: 'Gift alerts in Slack', s: 'off', k: 'event',
+          when: 'Zeffy reports a completed payment (right away), and a catch-up check every 15 minutes on the live hub’s heartbeat that asks Zeffy for anything the webhook missed.',
+          does: 'Posts each gift in #team-everyone: “🎉 New donation - $50.00” with who gave, the campaign and the date. $1,000 and up starts with “🚨 MAJOR GIFT” instead. A missing detail leaves its line out. Never an email address or contact details, never totals. Each payment posts once, however often Zeffy sends it.',
+          touches: ['Zeffy', 'Slack', 'D1', 'Resend'], where: 'functions/api/_zeffy.js (zeffy-webhook.js, broadcast-hooks.js); posts as the site’s Slack app',
+          note: 'Not connected yet. Add ZEFFY_WEBHOOK_SECRET, ZEFFY_API_KEY and SLACK_BOT_TOKEN in Cloudflare, and point Zeffy’s webhook at https://sunshineonaranneyday.com/api/zeffy-webhook.',
+          info: 'Replaced the DataX donation alert agent (October 2026), which went quiet after September 9. Imported payments, $0 registrations and refunded payments aren’t posted. If Slack refuses a post, the site keeps trying for 3 days. Problems (Slack refusing, Zeffy’s key refused, the webhook missing a gift) email Peter once a day; the gift itself only ever goes to Slack.',
+          live: (f) => {
+            const z = f.zeffy;
+            if (!z || !env(f)) return null;
+            const e = f.env;
+            if (!e.zeffyWebhook && !e.zeffyApi) return ATTN('Not connected yet. Add ZEFFY_WEBHOOK_SECRET, ZEFFY_API_KEY and SLACK_BOT_TOKEN in Cloudflare, and point Zeffy’s webhook at https://sunshineonaranneyday.com/api/zeffy-webhook.');
+            if (!e.slackBot) return ATTN('SLACK_BOT_TOKEN (the site’s Slack app) is missing in Cloudflare, so gifts wait (up to 3 days) until it’s set.', z.lastPostAt);
+            if (z.failing) return ATTN(`${plural(z.failing, 'gift')} couldn’t be posted yet${z.failingWhy ? ` (Slack said “${z.failingWhy}”)` : ''}. It keeps trying for 3 days.`, z.lastPostAt);
+            if (z.rejectedAt && !stale(z.rejectedAt, 24 * HOUR) && !(ms(z.lastWebhookAt) > ms(z.rejectedAt))) return ATTN('Zeffy’s last delivery was turned away: its signature doesn’t match ZEFFY_WEBHOOK_SECRET. Copy the signing secret from Zeffy → Settings → Integrations again.', z.lastPostAt);
+            if (z.sweepError) return ATTN(`The catch-up check can’t read Zeffy: ${z.sweepError}.`, z.lastPostAt);
+            if (!e.zeffyWebhook) return ATTN('ZEFFY_WEBHOOK_SECRET is missing, so gifts only arrive through the 15-minute catch-up check.', z.lastPostAt);
+            if (!e.zeffyApi) return ON('Posting from Zeffy’s webhook. Add ZEFFY_API_KEY in Cloudflare so a gift the webhook misses is still caught.', z.lastPostAt);
+            if (!z.lastSweepAt) return ATTN('The catch-up check hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.', z.lastPostAt);
+            if (stale(z.lastSweepAt, HOUR)) return ATTN(`The catch-up check hasn’t run since ${stamp(z.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, z.lastPostAt);
+            if (z.missed && !stale(z.missedAt, 7 * 24 * HOUR)) return ATTN(`Zeffy’s webhook missed ${plural(z.missed, 'gift')} on ${stamp(z.missedAt)}, and the catch-up check posted ${z.missed === 1 ? 'it' : 'them'}. Check the webhook in Zeffy → Settings → Integrations.`, z.lastPostAt);
+            return ON(z.lastPostAt ? `Connected. Last gift posted ${stamp(z.lastPostAt)}.` : 'Connected. Waiting for the first gift.', z.lastPostAt);
+          } },
+      ]},
       { t: 'On the pages', children: [
         { t: 'Zeffy donations', s: 'live', k: 'link',
           does: 'Donation forms on the donate page, the live page and the golf page.',

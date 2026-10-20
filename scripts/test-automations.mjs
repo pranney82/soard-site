@@ -31,7 +31,7 @@ const iso = (msAgo) => new Date(Date.now() - msAgo).toISOString();
 const FACTS = {
   success: true,
   checkedAt: iso(0),
-  env: { slack: false, twilio: false, youtube: false, kit: true, resend: true, calendar: true, jobtread: true, facebook: true, stream: true, images: true, deployHook: true, github: true, access: true, constantContact: true, turnstile: true },
+  env: { slack: false, twilio: false, youtube: false, kit: true, resend: true, calendar: true, jobtread: true, facebook: true, stream: true, images: true, deployHook: true, github: true, access: true, constantContact: true, turnstile: true, zeffyWebhook: true, zeffyApi: true, slackBot: true },
   bindings: { db: true, files: true, ai: true, hub: true },
   broadcast: { inputEnabled: true, outputs: { facebook: true, youtube: null, instagram: null }, facebookMode: 'api', reels: false, reminders: { enabled: false, sms: false, push: false }, kitLive: true, messages: true, vapid: true, alertCount: 1, updatedAt: iso(2 * 86400e3) },
   health: { lastTickAt: iso(60e3), lastTickSource: 'hub:alarm', lastDailyAt: iso(86400e3), hubOk: true, streamOk: true, facebookOk: true, webhookAt: iso(2 * 86400e3), webhookEvent: 'live_input.disconnected', replayCheckAt: iso(2 * 86400e3), monitorAt: iso(2 * 86400e3) },
@@ -40,6 +40,7 @@ const FACTS = {
   revealChecks: { enabled: false, lastRunAt: null, checked: null, posted: null, repaired: null, errors: null, lastErrorAt: null, syncedAt: iso(10 * 60e3), syncedJobs: 1 },
   fbArchive: { checkedAt: iso(60 * 60e3), archived: 3, needsKid: 1, lastAutoDeployAt: iso(17 * 86400e3) },
   kidStatus: { lastSweepAt: iso(20 * 60e3), lastRunAt: iso(5 * 60e3), changed: 1, lastErrorAt: iso(60 * 60e3), deployPending: false, lastAutoDeployAt: iso(5 * 60e3), hidden: 1 },
+  zeffy: { since: iso(3 * 86400e3), lastWebhookAt: iso(2 * 3600e3), lastPostAt: iso(2 * 3600e3), lastSweepAt: iso(10 * 60e3), sweepError: null, missed: 0, missedAt: null, rejectedAt: null, failing: 0, failingWhy: null },
   reveals: { cachedAt: iso(5 * 60e3) },
   sends: { live: { kit: { last: iso(2 * 86400e3), sent: 1, failed: 0 } } },
   reminders: { subscribers: 4 },
@@ -126,7 +127,7 @@ try {
     ['Simulcast to Facebook', 'Live'], ['Simulcast to YouTube', 'Needs attention'], ['Live hub', 'Needs attention'],
     ['Slack posts', 'Off'], ['Facebook replay rescue', 'Needs attention'], ['Invite engine', 'Live'],
     ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],
-    ['Reveal checks for PMs', 'Off'], ['Kid status follows JobTread', 'Live'],
+    ['Reveal checks for PMs', 'Off'], ['Kid status follows JobTread', 'Live'], ['Gift alerts in Slack', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
 
   const attnItems = await page.$$eval('.am-panel .am-mini li', (l) => l.length);
@@ -157,8 +158,8 @@ try {
   await page.select('#am-svc', 'Resend');
   await pause(400);
   const resendCount = await page.$$eval('.am-panel .am-mini li', (l) => l.length);
-  // Resend only sends one-off mail now (the list is Kit's): links, notices, reminders, alerts, editor tests
-  ok(await panelTitle(page) === 'If Resend stops working' && resendCount === 10, `"Depends on" lists everything that uses Resend (${resendCount}, want 10)`);
+  // Resend only sends one-off mail now (the list is Kit's): links, notices, reminders, alerts, editor tests, gift alert problems
+  ok(await panelTitle(page) === 'If Resend stops working' && resendCount === 11, `"Depends on" lists everything that uses Resend (${resendCount}, want 11)`);
   await page.screenshot({ path: join(OUT, 'desktop-depends.png'), fullPage: false });
 
   await clickButton(page, '.am-tools', 'Open all');
@@ -233,8 +234,24 @@ try {
   const down = await open(browser, base, { width: 1440, height: 1000 }, { facts: null });
   ok((await down.page.$eval('.am-check', (e) => e.textContent)).includes('Couldn’t check live status (JobTread timed out)'), 'a failed live check says so');
   ok(await statusOf(down.page, 'Instagram Reel') === 'Live' && await statusOf(down.page, 'Live hub') === 'Needs attention', 'and the written statuses stand in');
+  ok(await statusOf(down.page, 'Gift alerts in Slack') === 'Off', 'gift alerts fall back to “not connected yet”');
   ok(down.errors.length === 0, `no console errors${down.errors.length ? ': ' + down.errors.slice(0, 3).join(' | ') : ''}`);
   await down.page.close();
+
+  console.log('Desktop, gift alerts');
+  const gifts = await open(browser, base, { width: 1440, height: 1000 });
+  await gifts.page.type('#am-search', 'gift alerts');
+  await pause(500);
+  await clickNode(gifts.page, 'Gift alerts in Slack');
+  await pause(300);
+  ok(await panelTitle(gifts.page) === 'Gift alerts in Slack', 'search finds the gift alerts entry');
+  const giftPanel = await gifts.page.$eval('.am-panel', (e) => e.textContent);
+  ok(giftPanel.includes('Connected. Last gift posted') && giftPanel.includes('🚨 MAJOR GIFT'), 'it says it’s connected and what a post looks like');
+  const extra = await gifts.page.$$eval('.am-panel button', (b) => b.map((x) => x.textContent.trim()).filter((t) => !['×', 'Zeffy', 'Slack', 'D1', 'Resend'].includes(t)));
+  ok(extra.length === 0, `status only: no buttons in its panel${extra.length ? ` (found ${extra.join(', ')})` : ''}`);
+  await gifts.page.screenshot({ path: join(OUT, 'desktop-gift-alerts.png'), fullPage: false });
+  ok(gifts.errors.length === 0, `no console errors${gifts.errors.length ? ': ' + gifts.errors.slice(0, 3).join(' | ') : ''}`);
+  await gifts.page.close();
 
   console.log('Phone');
   const phone = await open(browser, base, { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
