@@ -1,7 +1,8 @@
 /**
  * /api/apply — the public makeover application (page: /apply/form/)
  * ===========================================================================
- * GET  ?config                     → { open, year, turnstileSiteKey }
+ * GET  ?config                     → { open, year, turnstileSiteKey, form }
+ *      ?config&preview=draft        → the same with the unsaved draft form (signed-in staff only)
  * POST JSON { action, ... }:
  *   start      { year, turnstileToken?, website }   → { token }  new draft
  *   resume     { token }                            → the draft's answers, files, page
@@ -27,7 +28,8 @@ import {
   applicationSettings, publicFiles, photoKey, createVideoUpload, getVideo, deleteVideo, videoUploaded,
   submitDraft, processApplication, DRAFT_TTL_DAYS, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, MAX_VIDEO_BYTES,
 } from './_applications.js';
-import { applicationForm, allFields } from './_application-form.js';
+import { allFields, resolveForm } from './_application-form.js';
+import { formFor, getDraftForm } from './_application-forms.js';
 import { sendEmails, escapeHtml, isEmail } from './_broadcast-notify.js';
 
 const MAX_DRAFTS_PER_IP_DAY = 20;
@@ -57,15 +59,30 @@ async function verifyTurnstile(env, token, ip) {
   }
 }
 
+/** What the page needs to draw the form: no messages or staff addresses */
+export function publicForm(form) {
+  return { title: form.title, year: form.year, version: form.version, pages: form.pages, stops: form.stops };
+}
+
 export async function onRequestGet(context) {
-  const { env } = context;
+  const { env, request } = context;
   if (!env.DB) return fail('Not configured', 503);
+  const url = new URL(request.url);
   const settings = await applicationSettings(env.DB);
+  const year = cleanYear(settings.year);
+  let form = await formFor(env.DB, { year });
+  let preview = false;
+  if (url.searchParams.get('preview') === 'draft' && await isAuthenticated(request, env)) {
+    const draft = await getDraftForm(env.DB);
+    if (draft) { form = resolveForm(draft.definition, { year, version: draft.version }); preview = true; }
+  }
   return json({
     ok: true,
     open: settings.open === true,
-    year: cleanYear(settings.year),
+    year,
+    preview,
     turnstileSiteKey: turnstileOn(env) ? env.TURNSTILE_SITE_KEY : null,
+    form: publicForm(form),
   });
 }
 
@@ -170,7 +187,7 @@ async function handlePhoto(context) {
   if (draft.submitted_id) return fail('This application has already been submitted.', 409, { code: 'submitted' });
   if (!draft.verified) return fail('Please start the application again.', 403);
   const fieldId = String(form.get('field') || '');
-  const field = allFields(applicationForm({ year: draft.year })).find(f => f.id === fieldId && f.type === 'photo');
+  const field = allFields(await formFor(env.DB, { year: draft.year })).find(f => f.id === fieldId && f.type === 'photo');
   if (!field) return fail('Unknown photo');
   const file = form.get('file');
   if (!file || typeof file === 'string') return fail('No photo attached');

@@ -1,18 +1,23 @@
 /**
  * The makeover application in the browser (/apply/form/)
  * ===========================================================================
- * The page renders every question from functions/api/_application-form.js;
- * this script walks the family through it one page at a time with the same
- * definition: show/hide rules, checks, stop screens. It saves to /api/apply
+ * The form is data (functions/api/_application-form.js; staff edit it in
+ * Admin → Applications → Form). The page carries the live version, embedded
+ * by functions/apply/form/[[path]].js (or fetched from /api/apply?config);
+ * this script draws it (./application-render.js) and walks the family through
+ * it one page at a time with the same definition the server checks against:
+ * show/hide rules, checks, stop screens. It saves to /api/apply
  * as they go (a draft keyed by a token kept in localStorage and in the
  * emailed resume link), uploads photos (resized here to JPEG) and the video
  * (straight to Cloudflare Stream over tus, resumable), shows a review page,
- * and submits.
+ * and submits. ?preview=draft (staff, signed in) shows the unsaved draft of
+ * the form and saves nothing.
  */
 import * as tus from 'tus-js-client';
 import {
-  applicationForm, allFields, isVisible, stopFor, formErrors, answerSections, STOPS,
+  applicationForm, allFields, isVisible, stopFor, formErrors, answerSections,
 } from '../../../functions/api/_application-form.js';
+import { renderPages } from './application-render.js';
 
 const API = '/api/apply';
 const STORE_KEY = 'soard-application-draft';
@@ -36,16 +41,41 @@ async function api(body) {
 // The site uses Astro's ClientRouter: run on every visit to the page, not just the first load
 document.addEventListener('astro:page-load', () => {
   const root = document.querySelector('[data-application]');
-  if (root && !root.dataset.ready) init(root);
+  if (root && !root.dataset.ready) boot(root);
 });
 
-function init(root) {
+/** The page's config: embedded by the page's Function, else asked for */
+async function loadConfig() {
+  const preview = new URLSearchParams(location.search).get('preview') === 'draft';
+  const embedded = document.getElementById('af-config');
+  if (embedded && !preview) {
+    try { return JSON.parse(embedded.textContent); } catch { /* fall through to the API */ }
+  }
+  try {
+    const res = await fetch(`${API}?config${preview ? '&preview=draft' : ''}`, { cache: 'no-store' });
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function boot(root) {
+  root.dataset.ready = '1';
+  const cfg = await loadConfig();
+  const form = cfg?.form?.pages?.length ? cfg.form : applicationForm({ year: root.dataset.year });
+  const pagesEl = root.querySelector('[data-pages]');
+  pagesEl.innerHTML = renderPages(form);
+  pagesEl.removeAttribute('aria-busy');
+  init(root, form, cfg || {});
+}
+
+function init(root, form, cfg) {
   // Listeners on document/window end when the page is swapped out
   const life = new AbortController();
   const { signal } = life;
   document.addEventListener('astro:before-swap', () => life.abort(), { once: true });
-  const year = root.dataset.year;
-  const form = applicationForm({ year });
+  const year = form.year || root.dataset.year;
+  const previewing = !!cfg.preview;
   const fields = allFields(form);
   const byId = Object.fromEntries(fields.map(f => [f.id, f]));
   const pageIds = form.pages.map(p => p.id);
@@ -79,6 +109,7 @@ function init(root) {
   let dirtyTimer = null;
   let turnstileToken = null;
   let turnstileSiteKey = null;
+  const stops = form.stops || {};
   const uploads = new Set();
 
   // ── Reading and writing answers ──────────────────────────────────
@@ -175,6 +206,7 @@ function init(root) {
 
   // ── Server calls ─────────────────────────────────────────────────
   async function start() {
+    if (previewing) return true; // a preview walks the pages and saves nothing
     if (token) return true;
     if (turnstileSiteKey && !turnstileToken) {
       notice('Please complete the quick check above the Next button.', 'error');
@@ -272,7 +304,7 @@ function init(root) {
 
   // ── Stop screens ─────────────────────────────────────────────────
   function showStop(stop) {
-    const s = STOPS[stop.key];
+    const s = stops[stop.key] || { title: '', body: '' };
     ui.stop.querySelector('[data-stop-title]').textContent = s.title;
     ui.stop.querySelector('[data-stop-body]').innerHTML = s.body;
     ui.stop.querySelector('[data-stop-map]').hidden = !s.image;
@@ -319,6 +351,7 @@ function init(root) {
   }
 
   async function submit() {
+    if (previewing) { notice('This is a preview of your unpublished changes, so nothing was sent.', 'info'); return; }
     if (uploads.size) { notice('Please wait for your uploads to finish, then submit.', 'error'); return; }
     ui.next.disabled = true;
     ui.next.textContent = 'Submitting…';
@@ -393,6 +426,7 @@ function init(root) {
 
   async function uploadPhoto(f, file) {
     const el = fieldEl(f.id);
+    if (previewing) { files[f.id] = { key: true, name: file.name }; setUploadUi(el, { state: 'done', status: `Preview: ${file.name} (not uploaded)` }); return; }
     if (!(await start())) return;
     uploads.add(f.id);
     clearFieldError(el);
@@ -423,6 +457,7 @@ function init(root) {
   // ── Video ────────────────────────────────────────────────────────
   async function uploadVideo(f, file) {
     const el = fieldEl(f.id);
+    if (previewing) { files.video = { uid: true, uploaded: true, name: file.name }; setUploadUi(el, { state: 'done', status: `Preview: ${file.name} (not uploaded)` }); return; }
     if (!file.size) { setUploadUi(el, { status: 'That file is empty. If it is in iCloud or Google Drive, download it to your phone first.' }); return; }
     if (!(await start())) return;
     clearFieldError(el);
@@ -490,6 +525,7 @@ function init(root) {
   // ── Save and finish later ────────────────────────────────────────
   const dlg = ui.dialog;
   ui.saveLater.addEventListener('click', () => {
+    if (previewing) { notice('Saving is off in a preview.', 'info'); return; }
     const email = readAnswers().parentEmail;
     const input = dlg.querySelector('input[type=email]');
     if (email && !input.value) input.value = email;
@@ -530,13 +566,15 @@ function init(root) {
     turnstileToken = null;
     try { window.turnstile?.reset(ui.turnstile.querySelector('.cf-turnstile')); } catch { /* not loaded */ }
   }
-  async function loadConfig() {
-    let cfg = null;
-    try { cfg = await (await fetch(`${API}?config`)).json(); } catch { return; } // offline: keep what the page was built with
+  function applyConfig() {
     // ?preview=1 shows the form while closed; the server still only lets signed-in staff start one
     const preview = new URLSearchParams(location.search).has('preview');
-    if (!token) showApp(!!cfg.open || preview);
-    if (!cfg.turnstileSiteKey || token) return;
+    if (!token && cfg.open != null) showApp(!!cfg.open || preview || previewing);
+    if (previewing) {
+      notice('Preview of your unpublished form changes. Nothing you enter here is saved or sent.', 'info');
+      document.getElementById('application')?.scrollIntoView({ block: 'start' }); // straight to the form, past the hero
+    }
+    if (!cfg.turnstileSiteKey || token || previewing) return;
     turnstileSiteKey = cfg.turnstileSiteKey;
     window.onSoardTurnstile = () => {
       window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
@@ -609,8 +647,8 @@ function init(root) {
     else if (token) save();
   }, { signal });
 
-  root.dataset.ready = '1';
   refresh();
   render({ focus: false });
-  resume().finally(() => { if (!token) loadConfig(); });
+  if (previewing) applyConfig();
+  else resume().finally(() => { if (!token) applyConfig(); });
 }

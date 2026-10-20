@@ -10,6 +10,13 @@
  * POST { test: true }      → a TEST application addressed to the admin, loaded like a real one
  * POST { sweep: true }     → run the retry sweep now
  *
+ * The form (Admin → Applications → Form / Messages):
+ * GET ?form=1               → { live, draft, versions, problems, locked, types }
+ * GET ?form-version=<n>     → one version's definition
+ * POST { formSave: def }    → save the draft (always saves; returns problems)
+ * POST { formPutLive: true } → the draft becomes the form families see
+ * POST { formDiscard: true } / { formRestore: <n> }
+ *
  * Staff review applications in JobTread; this page is the health check for
  * the pipe from the form to JobTread.
  */
@@ -18,7 +25,11 @@ import {
   ensureSchema, listApplications, getApplication, processApplication, createTestApplication,
   maybeSweepApplications, checklist, jobtreadAccountUrl, isApplicationId, cleanYear, applicationSettings,
 } from './_applications.js';
-import { applicationForm, answerSections } from './_application-form.js';
+import { answerSections, LOCKED_FIELDS, FIELD_TYPES, DEFAULT_DEFINITION, validateDefinition, normalizeDefinition } from './_application-form.js';
+import {
+  formFor, getLiveForm, getDraftForm, getFormVersion, saveDraftForm, putDraftLive, discardDraftForm,
+  restoreFormVersion, listFormVersions,
+} from './_application-forms.js';
 import { recentEvents } from './_applicant-comms.js';
 import { logAudit } from './_audit.js';
 
@@ -45,17 +56,36 @@ export async function onRequestGet(context) {
     });
   }
 
+  if (url.searchParams.get('form')) {
+    const [live, draft, versions] = await Promise.all([getLiveForm(env.DB, { fresh: true }), getDraftForm(env.DB), listFormVersions(env.DB)]);
+    const settings = await applicationSettings(env.DB);
+    return Response.json({
+      success: true,
+      year: cleanYear(settings.year),
+      live: { version: live.version, definition: live.definition, liveAt: live.liveAt || null, liveBy: live.liveBy || null, builtIn: !!live.builtIn },
+      draft: draft ? { version: draft.version, definition: draft.definition, updatedAt: draft.updatedAt, updatedBy: draft.updatedBy, note: draft.note } : null,
+      problems: draft ? validateDefinition(normalizeDefinition(draft.definition)) : [],
+      versions,
+      locked: LOCKED_FIELDS,
+      types: FIELD_TYPES,
+    });
+  }
+  if (url.searchParams.has('form-version')) {
+    const v = await getFormVersion(env.DB, url.searchParams.get('form-version'));
+    return Response.json({ success: true, version: v.version, definition: v.definition || DEFAULT_DEFINITION });
+  }
+
   const id = url.searchParams.get('id');
   if (id) {
     const app = isApplicationId(id) ? await getApplication(env.DB, id) : null;
     if (!app) return Response.json({ success: false, error: 'Not found' }, { status: 404 });
-    const form = applicationForm({ year: app.year });
+    const form = await formFor(env.DB, { year: app.year, version: app.form_version || 0 });
     return Response.json({
       success: true,
       application: {
         id: app.id, year: app.year, child: app.child_name, parent: app.parent_name, email: app.parent_email,
         isTest: !!app.is_test, status: app.status, attempts: app.attempts, lastError: app.last_error,
-        submittedAt: app.submitted_at, accountId: app.jt_account_id,
+        submittedAt: app.submitted_at, accountId: app.jt_account_id, formVersion: app.form_version || 0,
         jobtreadUrl: app.jt_account_id ? jobtreadAccountUrl(app.jt_account_id) : null,
         checklist: checklist(app),
         sections: answerSections(form, app.answers, app.files).map(s => ({
@@ -67,9 +97,12 @@ export async function onRequestGet(context) {
   }
 
   const list = await listApplications(env.DB);
+  const settings = await applicationSettings(env.DB);
   return Response.json({
     success: true,
     ...list,
+    open: settings.open === true,
+    year: cleanYear(settings.year),
     events: await recentEvents(env.DB, 25),
     qcGrant: !!env.JOBTREAD_QC_GRANT_KEY,
     stream: !!(env.CF_ACCOUNT_ID && env.CF_STREAM_TOKEN),
@@ -100,6 +133,26 @@ export async function onRequestPost(context) {
     const result = await processApplication(env, made.id);
     await logAudit(env.DB, { userEmail: user, action: 'test', entityType: 'application', entitySlug: made.id, changes: { result: result.status } });
     return Response.json({ success: true, id: made.id, result });
+  }
+
+  if (body.formSave) {
+    const out = await saveDraftForm(env.DB, body.formSave, { user });
+    return Response.json({ success: true, version: out.version, problems: out.errors, definition: out.definition });
+  }
+  if (body.formPutLive) {
+    const out = await putDraftLive(env.DB, { user });
+    if (!out.ok) return Response.json({ success: false, error: out.error, problems: out.errors || [] }, { status: 422 });
+    await logAudit(env.DB, { userEmail: user, action: 'published', entityType: 'application-form', entitySlug: `version-${out.version}`, entityName: `Application form version ${out.version}` });
+    return Response.json({ success: true, version: out.version });
+  }
+  if (body.formDiscard) {
+    await discardDraftForm(env.DB);
+    return Response.json({ success: true });
+  }
+  if (body.formRestore != null) {
+    const out = await restoreFormVersion(env.DB, body.formRestore, { user });
+    if (!out.ok) return Response.json({ success: false, error: out.error }, { status: 404 });
+    return Response.json({ success: true, version: out.version, problems: out.errors });
   }
 
   if (body.sweep) {

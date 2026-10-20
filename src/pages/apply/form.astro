@@ -14,11 +14,12 @@
  * points to the Apply page's "notify me" form.
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import ApplicationField from '../../components/apply/ApplicationField.astro';
 import siteSettings from '../../content/site/settings.json';
 import { getSiteStats } from '../../utils/stats';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { applicationForm, SERVICE_MAP_IMAGE } from '../../../functions/api/_application-form.js';
+// The questions are drawn in the browser from the live form (Admin → Applications → Form),
+// which functions/apply/form/[[path]].js embeds in this page; the built-in form only sizes the first paint.
 
 const stats = await getSiteStats();
 const app = (siteSettings as any).application || {};
@@ -109,11 +110,9 @@ const breadcrumbs = [
               <div class="af-progress af-progress--steps" aria-hidden="true"><div class="af-progress-bar" data-progress-bar style={`width:${Math.round(100 / steps)}%`}></div></div>
             </header>
 
-            {form.pages.map((p, i) => (
-              <div class="af-page" data-page={p.id} hidden={i > 0}>
-                {p.fields.map((f: any) => <ApplicationField field={f} />)}
-              </div>
-            ))}
+            <div class="af-pages" data-pages aria-busy="true">
+              <p class="af-loading">Loading the application…</p>
+            </div>
 
             <div class="af-page" data-page="review" hidden>
               <p class="af-review-intro">Please look over your answers. Tap <strong>Edit</strong> to change anything, then submit.</p>
@@ -252,7 +251,7 @@ const breadcrumbs = [
 
 <style is:global>
   /* Everything below is prefixed af- and lives in a global block: the questions are
-     rendered by ApplicationField.astro, which a page-scoped style can't reach. */
+     drawn in the browser (application-render.js), which a page-scoped style can't reach. */
   .af-app [hidden], .af-section [hidden] { display: none !important; }
   /* ══════════ The application ══════════ */
   .af-section { background: var(--c-warm-gray); padding: clamp(48px, 8vw, 96px) 0 clamp(64px, 10vw, 120px); scroll-margin-top: calc(var(--header-height, 84px) + 16px); }
@@ -273,11 +272,12 @@ const breadcrumbs = [
   .af-progress-bar { height: 100%; width: 0; background: var(--c-yellow); border-radius: 99px; transition: width 0.4s cubic-bezier(0.16,1,0.3,1); }
 
   .af-page { display: grid; gap: 28px; }
+  .af-loading { color: var(--c-text-muted); font-size: 16px; padding: 24px 0; }
   .af-page[hidden] { display: none; }
 
   .af-content { font-size: 16px; line-height: 1.7; color: var(--c-text); }
   .af-content p + p, .af-content p + ul, .af-content ul + p { margin-top: 12px; }
-  .af-content ul { padding-left: 22px; }
+  .af-content ul { padding-left: 22px; list-style: disc; }
   .af-content li + li { margin-top: 6px; }
   .af-content .af-scope-title { font-size: 19px; margin: 4px 0 12px; }
   .af-content .af-scope { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; }

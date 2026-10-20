@@ -32,6 +32,8 @@
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
+import { DEFAULT_MESSAGES, renderMessage } from './_application-form.js';
+import { getLiveForm } from './_application-forms.js';
 
 export const FIELD_STATUS = '22P46wDp3NLd';      // customer: Applied / In Review / Approved / Denied
 export const FIELD_DIAGNOSIS = '22P46st8HNPY';   // customer: text
@@ -56,42 +58,16 @@ export const COMMENT_NAMES = {
   denied: 'Application Decision',
 };
 
-/** The family messages, word for word from the Zaps (stray typos fixed) */
-export const TEMPLATES = {
-  welcome: ({ parent, child, withCopy }) => `${parent}
-
-The application for *${child}* is under review.${withCopy ? '\n\nA copy of your application is attached to this message for your records.' : ''}
-
-Our team carefully evaluates each submission to determine how we can best serve the families who apply. If your application is selected to move forward, we will contact you to schedule an on-site visit as the next step to complete your application for review.
-
-If we are unable to proceed with a makeover at this time, we will also notify you of our decision.
-
-Please note that due to the high volume of applications we receive, this process may take some time. We appreciate your patience as we work through each application with the care and consideration it deserves.
-
-Thank you again for allowing us to be part of your story. We will keep you updated as your application progresses, but if you have any questions in the meantime, please don’t hesitate to reach out.`,
-
-  inReview: ({ parent, child }) => `${parent}
-
-Congratulations, the application for *${child}* has moved to the next stage which is the on-site visit. After completing the on-site visit, your application will be complete and ready for our team to review to be able to make a final decision.
-
-At the on-site visit, our team will get a chance to meet your child, better understand their needs, as well as review the space in person.
-
-After completing the on-site and an internal review, you will receive a final decision.`,
-
-  approved: ({ parent, child }) => `${parent}
-
-We are excited to tell you that the application for *${child}* has been approved!
-
-Your child's makeover is now on our official makeover waitlist. Our team will be in touch with next steps.`,
-
-  denied: ({ parent, child }) => `${parent}
-
-After careful consideration of the application for *${child}* we are unable to move forward with your family’s request.
-
-This decision was made following a comprehensive evaluation process, taking into account factors such as the feasibility of the project, alignment with our current resources, and the specific needs of your space.
-
-While we understand this may not be the decision you were hoping for, we wish your family the best and thank you for sharing your story with us.`,
-};
+/**
+ * The family messages' wording lives with the form (Admin → Applications →
+ * Messages); the built-in wording is the Zaps' (stray typos fixed). This
+ * renders one for an account.
+ */
+export async function familyMessage(env, kind, { parent, child, withCopy = false } = {}) {
+  const live = await getLiveForm(env.DB);
+  const messages = { ...DEFAULT_MESSAGES, ...(live.definition?.messages || {}) };
+  return renderMessage(messages[kind], { parent, child, copyNote: withCopy ? messages.copyNote : '' });
+}
 
 /** Which already-posted comment counts as this kind having been sent */
 const ALREADY_SENT = {
@@ -291,7 +267,7 @@ async function sendOnce(env, applicant, kind, build, { assign = false, uploadReq
 export async function sendIntake(env, applicant, { uploadRequestIds = [], fetchImpl = fetch, now = Date.now() } = {}) {
   const parent = applicant.primary?.name || 'Hello';
   const welcome = await sendOnce(env, applicant, 'welcome',
-    async () => TEMPLATES.welcome({ parent, child: applicant.name, withCopy: uploadRequestIds.length > 0 }),
+    () => familyMessage(env, 'welcome', { parent, child: applicant.name, withCopy: uploadRequestIds.length > 0 }),
     { assign: true, uploadRequestIds, fetchImpl, now });
   const medical = applicant.diagnosis
     ? await sendOnce(env, applicant, 'medical', () => medicalNote(env, applicant.diagnosis), { fetchImpl, now })
@@ -352,7 +328,7 @@ export async function handleApplicantEvent(env, payload, { fetchImpl = fetch, no
         const kind = KIND_FOR_STATUS[status];
         if (RANK[status] >= RANK[previous] && kind) {
           const parent = applicant.primary?.name || 'Hello';
-          actions[kind] = await sendOnce(env, applicant, kind, async () => TEMPLATES[kind]({ parent, child: applicant.name }), { assign: true, fetchImpl, now });
+          actions[kind] = await sendOnce(env, applicant, kind, () => familyMessage(env, kind, { parent, child: applicant.name }), { assign: true, fetchImpl, now });
         } else if (RANK[status] < RANK[previous] && status) {
           await postAccountComment(env, { accountId, message: `Moved back to ${status}` }, fetchImpl);
           actions.movedBack = status;

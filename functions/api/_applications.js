@@ -33,11 +33,12 @@
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import {
-  applicationForm, cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields,
+  cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, DEFAULT_STAFF_EMAILS,
 } from './_application-form.js';
 import { buildApplicationPdf } from './_application-pdf.js';
 import { sendEmails, escapeHtml, SITE_ORIGIN } from './_broadcast-notify.js';
 import { readApplicant, sendIntake, ensureCommsSchema } from './_applicant-comms.js';
+import { formFor, ensureFormSchema } from './_application-forms.js';
 
 // ─── JobTread fields (SOARD org) ────────────────────────────────────
 export const JT_FIELDS = {
@@ -65,7 +66,7 @@ export const MAKEOVER_TYPE_MAP = {
   Ramp: 'Ramp',
 };
 
-export const STAFF_EMAILS = ['selection@soardcharity.com'];
+export const STAFF_EMAILS = DEFAULT_STAFF_EMAILS; // the live form's settings can change who gets them
 export const ALERT_EMAILS = ['peter@soardcharity.com'];
 
 const PHOTO_FIELDS = ['photoChild', 'photoFamily', 'photoSpace1', 'photoSpace2'];
@@ -112,8 +113,11 @@ const _schemaReady = new WeakSet();
 export async function ensureSchema(DB) {
   if (_schemaReady.has(DB)) return;
   await DB.batch(SCHEMA.map(sql => DB.prepare(sql)));
+  // Added after launch: the form version each application was answered on (0 = built in)
+  try { await DB.prepare('ALTER TABLE applications ADD COLUMN form_version INTEGER DEFAULT 0').run(); } catch { /* already there */ }
   _schemaReady.add(DB);
   await ensureCommsSchema(DB);
+  await ensureFormSchema(DB);
 }
 
 const parse = (s, fallback) => { try { return s ? JSON.parse(s) : fallback; } catch { return fallback; } };
@@ -178,7 +182,7 @@ export async function draftsToday(DB, ipHash, now = Date.now()) {
 }
 
 export async function saveDraft(DB, draft, { answers, page }, now = Date.now()) {
-  const form = applicationForm({ year: draft.year });
+  const form = await formFor(DB, { year: draft.year });
   const clean = cleanAnswers(form, answers || {});
   const email = clean.parentEmail || draft.email || null;
   const pageId = form.pages.some(p => p.id === page) ? page : draft.page;
@@ -308,7 +312,7 @@ export function isTestAnswers(answers) {
 export async function submitDraft(env, draft, { now = Date.now(), forceTest = false } = {}) {
   const { DB } = env;
   if (draft.submitted_id) return { ok: true, id: draft.submitted_id, duplicate: true };
-  const form = applicationForm({ year: draft.year });
+  const form = await formFor(DB, { year: draft.year });
   const answers = cleanAnswers(form, draft.answers);
   const stop = stopFor(form, answers);
   if (stop) return { ok: false, error: 'stopped', stop: stop.key };
@@ -326,9 +330,9 @@ export async function submitDraft(env, draft, { now = Date.now(), forceTest = fa
     return { ok: true, id: again?.submitted_id, duplicate: true };
   }
   await DB.prepare(`INSERT INTO applications (id, draft_id, year, child_name, parent_name, parent_email, makeover_types, answers, files, is_test,
-      jt_state, status, attempts, next_try_at, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', 'processing', 0, ?, ?, ?)`)
+      jt_state, status, attempts, next_try_at, submitted_at, updated_at, form_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', 'processing', 0, ?, ?, ?, ?)`)
     .bind(id, draft.id, draft.year, childName, nameText(answers.parentName), answers.parentEmail || null,
-      JSON.stringify(answers.makeoverTypes || []), JSON.stringify(answers), JSON.stringify(draft.files || {}), isTest ? 1 : 0, now, at, at).run();
+      JSON.stringify(answers.makeoverTypes || []), JSON.stringify(answers), JSON.stringify(draft.files || {}), isTest ? 1 : 0, now, at, at, form.version || 0).run();
   return { ok: true, id };
 }
 
@@ -460,7 +464,7 @@ const pdfName = (app) => `${accountName(app)}_Application.pdf`;
 async function ensurePdf(env, app) {
   const existing = app.jt_state.pdf?.key ? await r2Bytes(env, app.jt_state.pdf.key) : null;
   if (existing) return existing;
-  const form = applicationForm({ year: app.year });
+  const form = await formFor(env.DB, { year: app.year, version: app.form_version || 0 });
   const photos = {};
   for (const id of PHOTO_FIELDS) {
     const f = app.files[id];
@@ -658,7 +662,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
 
   await step('staff email', async () => {
     if (s.staffEmail) return;
-    const to = app.is_test ? ALERT_EMAILS : STAFF_EMAILS;
+    const to = app.is_test ? ALERT_EMAILS : (await formFor(env.DB, { year: app.year })).staffEmails;
     const msg = staffEmail(app, accountId);
     const r = await sendEmails(env, { to, ...msg, tags: [{ name: 'type', value: 'application' }] });
     if (r.errors.length && !r.sent) throw new Error(r.errors[0]);
@@ -798,15 +802,16 @@ export async function createTestApplication(env, { email, year, now = Date.now()
   const answers = testAnswers(email, year);
   await DB.prepare('UPDATE application_drafts SET answers = ?, files = ?, email = ? WHERE id = ?').bind(JSON.stringify(answers), JSON.stringify(files), email, draftId).run();
   // The test has no video (the form requires one), so it's frozen here instead of through submitDraft
-  const errors = formErrors(applicationForm({ year }), answers, files);
+  const form = await formFor(DB, { year });
+  const errors = formErrors(form, answers, files);
   delete errors.video;
   if (Object.keys(errors).length) return { ok: false, errors };
   const id = newApplicationId();
   const at = iso(now);
   await DB.prepare('UPDATE application_drafts SET submitted_id = ? WHERE id = ?').bind(id, draftId).run();
   await DB.prepare(`INSERT INTO applications (id, draft_id, year, child_name, parent_name, parent_email, makeover_types, answers, files, is_test,
-      jt_state, status, attempts, next_try_at, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '{}', 'processing', 0, ?, ?, ?)`)
-    .bind(id, draftId, year, nameText(answers.childName), nameText(answers.parentName), email, JSON.stringify(answers.makeoverTypes), JSON.stringify(answers), JSON.stringify(files), now, at, at).run();
+      jt_state, status, attempts, next_try_at, submitted_at, updated_at, form_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '{}', 'processing', 0, ?, ?, ?, ?)`)
+    .bind(id, draftId, year, nameText(answers.childName), nameText(answers.parentName), email, JSON.stringify(answers.makeoverTypes), JSON.stringify(answers), JSON.stringify(files), now, at, at, form.version || 0).run();
   return { ok: true, id };
 }
 

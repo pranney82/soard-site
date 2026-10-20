@@ -17,7 +17,8 @@ import {
   maybeSweepApplications, expireDrafts, accountFields, contactInputs, JT_FIELDS, photoKey, TEST_JPEG,
   testAnswers, createTestApplication, listApplications, applicationUrl, DRAFT_TTL_DAYS,
 } from '../functions/api/_applications.js';
-import { handleApplicantEvent, TEMPLATES, QC_USER_ID } from '../functions/api/_applicant-comms.js';
+import { handleApplicantEvent, QC_USER_ID } from '../functions/api/_applicant-comms.js';
+import { DEFAULT_MESSAGES, renderMessage } from '../functions/api/_application-form.js';
 import { buildApplicationPdf } from '../functions/api/_application-pdf.js';
 import * as applyApi from '../functions/api/apply.js';
 
@@ -402,7 +403,7 @@ test('a hand-made Applied account gets the welcome and medical note once, from Q
   const r = await hook({ previousStatus: 'null', status: 'Applied' });
   assert.deepEqual(r.actions, { welcome: 'sent', medical: 'sent' });
   assert.deepEqual(acct.comments.map(c => c.grantKey), ['qc-grant', 'qc-grant']);
-  assert.equal(acct.comments[0].message, TEMPLATES.welcome({ parent: 'Morgan Park', child: 'Riley Park', withCopy: false }));
+  assert.equal(acct.comments[0].message, renderMessage(DEFAULT_MESSAGES.welcome, { parent: 'Morgan Park', child: 'Riley Park' }));
   await hook({ previousStatus: 'Applied', status: 'Applied' });
   assert.equal(acct.comments.length, 2, 'never twice');
 });
