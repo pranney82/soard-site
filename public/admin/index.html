@@ -6414,6 +6414,81 @@
         <div style="min-width:0"><div class="bc-check-label">${label}</div>${detail ? html`<div class="bc-check-detail">${detail}</div>` : null}${children}</div>
       </div>`;
     }
+    // Slack: the app's connection and the channel alerts go to (slackStatus in _broadcast-notify.js)
+    const SLACK_FIX = {
+      no_channel: 'Pick the channel for alerts below.',
+      not_in_channel: 'It is a private channel: type /invite @{bot} in it, then check again.',
+      channel_not_found: 'That channel is gone, or the app can’t see it. Pick another one.',
+      is_archived: 'That channel was archived. Pick another one.',
+      invalid_auth: 'Slack doesn’t accept SLACK_BOT_TOKEN. Copy the Bot User OAuth Token from the app’s OAuth & Permissions page into Cloudflare Pages again, then Publish.',
+      token_revoked: 'The token was revoked. Reinstall the app to the workspace, put the new token in Cloudflare Pages, then Publish.',
+      account_inactive: 'The app was removed from the workspace. Reinstall it, put the new token in Cloudflare Pages, then Publish.',
+      missing_scope: 'The app is missing a permission. Add chat:write, chat:write.public, channels:read and groups:read under OAuth & Permissions, reinstall, and update the token.',
+      ratelimited: 'Slack asked the site to slow down. Check again in a minute.',
+    };
+    function BcSlackSteps() {
+      return html`<ol class="text-sm" style="margin:.5rem 0 0;padding-left:1.25rem;line-height:1.6">
+        <li>At <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer">api.slack.com/apps</a>, choose Create New App → From scratch, name it “SOARD Website” and pick the SOARD workspace.</li>
+        <li>Under OAuth & Permissions → Bot Token Scopes, add <code>chat:write</code>, <code>chat:write.public</code>, <code>channels:read</code> and <code>groups:read</code>.</li>
+        <li>Choose Install to Workspace, then copy the Bot User OAuth Token (it starts with <code>xoxb-</code>).</li>
+        <li>In Cloudflare: Workers & Pages → soard-site → Settings → Variables and Secrets, add <code>SLACK_BOT_TOKEN</code> as a secret, then Publish so the site picks it up.</li>
+        <li>Come back here and pick the channel.</li>
+      </ol>`;
+    }
+    function BcSlack({ mode, addToast }) {
+      const [st, setSt] = useState(null); // slackStatus result; null while checking
+      const [channels, setChannels] = useState(null);
+      const [pick, setPick] = useState('');
+      const [working, setWorking] = useState('');
+      const post = async (action, body = {}) => apiJson(await fetch('/api/broadcast-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...body }) }), '/api/broadcast-admin');
+      const check = async () => {
+        setWorking('check');
+        try { const d = await post('slackStatus'); setSt(d.success ? d.slack : { ok: false, error: d.error }); } catch (e) { setSt({ ok: false, error: e.message }); }
+        setWorking('');
+      };
+      const loadChannels = async () => {
+        try { const d = await post('slackChannels'); if (d.success) setChannels(d.channels); else { setChannels([]); addToast(d.error, 'error'); } } catch (e) { setChannels([]); addToast(e.message, 'error'); }
+      };
+      useEffect(() => { if (mode === 'bot') { check(); loadChannels(); } }, [mode]);
+      const save = async () => {
+        setWorking('save');
+        try {
+          const d = await post('setSlackChannel', { id: pick });
+          if (!d.success) addToast(d.error, 'error');
+          else {
+            setSt(d.slack); setPick('');
+            addToast(d.posted ? `Alerts now go to #${d.channel.name}. Look for the hello there.` : `Saved #${d.channel.name}, but Slack said: ${d.postError}`, d.posted ? 'success' : 'error');
+          }
+        } catch (e) { addToast(e.message, 'error'); }
+        setWorking('');
+      };
+
+      if (mode !== 'bot') return html`<div class="bc-block">
+        <div class="bc-inline"><strong class="text-sm">Slack</strong>${mode === 'webhook' ? html`<span class="badge badge-yellow">Webhook only</span>` : html`<span class="badge badge-yellow">Not connected</span>`}</div>
+        <p class="text-sm text-muted" style="margin:.4rem 0 0">${mode === 'webhook'
+          ? 'Alerts post through SLACK_WEBHOOK_URL, and Slack never says which channel a webhook posts to. Connect the Slack app to choose the channel by name and have the site check it:'
+          : 'Alerts go by email only. Connect the Slack app so they also post in a channel you choose:'}</p>
+        <${BcSlackSteps} />
+      </div>`;
+
+      const current = st?.channel?.id || '';
+      const fix = st && !st.ok ? (SLACK_FIX[st.error] || `Slack said: ${st.error}`).replace('{bot}', st.bot || 'the app') : null;
+      return html`<div class="bc-block">
+        <div class="bc-inline"><strong class="text-sm">Slack</strong>${st === null ? html`<span class="text-sm text-muted">Checking Slack…</span>` : st.ok ? html`<span class="badge badge-green">Connected</span>` : html`<span class="badge badge-yellow">Needs a fix</span>`}</div>
+        ${st?.ok ? html`<p class="text-sm" style="margin:.4rem 0 0">Posting to <strong>#${st.channel.name}</strong>${st.team ? ` in ${st.team}` : ''}${st.bot ? ` as @${st.bot}` : ''}.</p>` : null}
+        ${fix ? html`<p class="text-sm" style="margin:.4rem 0 0">${fix}</p>` : null}
+        <div class="bc-inline" style="margin-top:.6rem;flex-wrap:wrap;gap:.5rem">
+          <select class="form-select" aria-label="Slack channel for alerts" style="max-width:320px" value=${pick || current} onChange=${(e) => setPick(e.target.value)} disabled=${channels === null}>
+            ${channels === null ? html`<option value="">Loading channels…</option>` : null}
+            ${channels && !current ? html`<option value="">Choose a channel…</option>` : null}
+            ${(channels || []).map((c) => html`<option value=${c.id}>${c.private ? '🔒 ' : '#'}${c.name}</option>`)}
+          </select>
+          <button class="btn btn-secondary btn-sm" type="button" disabled=${!pick || pick === current || !!working} onClick=${save}>${working === 'save' ? 'Saving…' : 'Post alerts here'}</button>
+          <button class="btn btn-ghost btn-sm" type="button" disabled=${!!working} onClick=${() => { check(); loadChannels(); }}>${working === 'check' ? 'Checking…' : 'Check again'}</button>
+        </div>
+        <div class="form-hint">Private channels show up once the app is invited (/invite @${st?.bot || 'the app'}). Every alert, application heads-up and reveal post goes to this channel.${st?.webhook ? ' SLACK_WEBHOOK_URL is a backup, used only if the app can’t post.' : ''}</div>
+      </div>`;
+    }
     function CopyBtn({ text, label = 'Copy' }) {
       const [done, setDone] = useState(false);
       return html`<button class="btn btn-ghost btn-sm" type="button" onClick=${async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500); } catch {} }}>${done ? 'Copied' : label}</button>`;
@@ -7224,7 +7299,7 @@
         { ok: s.emailConfigured, label: 'Email (Resend)', detail: s.emailConfigured ? 'Ready' : 'RESEND_API_KEY is missing' },
         { ok: s.smsConfigured ? true : null, label: 'Text messages (Twilio)', detail: s.smsConfigured ? 'Ready' : 'Optional' },
         { ok: s.pushReady ? true : null, label: 'Browser alerts', detail: s.pushReady ? 'Keys ready' : 'Optional: generate keys under Reminders' },
-        { ok: !!(s.slackConfigured || s.alertEmails?.length), label: 'Alerts reach someone', detail: [s.slackConfigured ? 'Slack' : null, s.alertEmails?.length ? `email: ${s.alertEmails.join(', ')}` : null].filter(Boolean).join(' · ') || 'Set SLACK_WEBHOOK_URL or add alert emails under Alerts' },
+        { ok: !!(s.slackConfigured || s.alertEmails?.length), label: 'Alerts reach someone', detail: [s.slackConfigured ? 'Slack' : null, s.alertEmails?.length ? `email: ${s.alertEmails.join(', ')}` : null].filter(Boolean).join(' · ') || 'Connect Slack or add alert emails under Alerts' },
         { ok: s.deployHook, label: 'Rebuild after the replay is attached', detail: s.deployHook ? 'Deploy hook set' : 'CF_PAGES_DEPLOY_HOOK is missing' },
         { ok: s.kitConfigured ? true : null, label: 'Kit emails', detail: s.kitConfigured ? 'Ready' : 'Optional' },
       ];
@@ -7374,9 +7449,7 @@
 
         ${section('alerts', 'Alerts', html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${async () => { const d = await setup('testAlert', {}, 'Test alert'); if (d.success) addToast('Test alert sent', 'success'); }}>Send test alert</button>`, html`
           <p class="bc-set-lede">Alerts go out when a scheduled reveal never streams, Stream reports an encoder error, or a daily check fails (and again on the morning of a reveal). While live, they also fire when the sound goes silent or disappears, the picture freezes, the signal gets weak, or Facebook or YouTube aren't live a couple of minutes in.</p>
-          <div class="bc-block">
-            <div class="bc-inline"><strong class="text-sm">Slack</strong>${s.slackConfigured ? html`<span class="badge badge-green">Connected</span>` : html`<span class="badge badge-yellow">Not set up</span><span class="text-sm text-muted">Set <code>SLACK_WEBHOOK_URL</code> in Cloudflare Pages.</span>`}</div>
-          </div>
+          <${BcSlack} mode=${s.slackMode || (s.slackConfigured ? 'webhook' : null)} addToast=${addToast} />
           <div class="bc-block">
             <label class="form-label" for="bc-alert-emails">Alert emails</label>
             <input class="form-input" id="bc-alert-emails" value=${f.alertEmails} placeholder="peter@…, ops@…" onInput=${set('alertEmails')} style="max-width:520px" />

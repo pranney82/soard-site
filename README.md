@@ -247,7 +247,8 @@ The admin panel can also trigger deploys after content changes via the `/api/dep
 | OAuth client ID/secret | Yes | Admin panel authentication |
 | `KIT_API_KEY` | Yes | Kit (ConvertKit) v4 key. Kit is the only list tool: newsletter signups and "Push to Kit" broadcast drafts |
 | `RESEND_API_KEY` | Yes | One-off emails only: application links and notices, reveal reminders, staff alerts, editor test sends |
-| `SLACK_WEBHOOK_URL` | No | Slack incoming webhook for staff alerts and new-application posts |
+| `SLACK_BOT_TOKEN` | No | The site's Slack app (`xoxb-…`; scopes `chat:write`, `chat:write.public`, `channels:read`, `groups:read`). Staff alerts and new-application posts go to the channel picked in Reveals → Settings → Alerts |
+| `SLACK_WEBHOOK_URL` | No | Older incoming webhook, used only when the Slack app isn't set or can't post |
 | `KIT_FORM_ID` | No | Also add new subscribers to this Kit form (opt-in rules/automations apply) |
 | `KIT_EMAIL_TEMPLATE_ID` | No | Kit template wrapping pushed broadcasts; account default if unset |
 

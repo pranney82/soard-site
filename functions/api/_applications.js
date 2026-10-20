@@ -28,8 +28,8 @@
  * Application URL before it's tried again.
  *
  * Env: JOBTREAD_GRANT_KEY, JOBTREAD_QC_GRANT_KEY (optional), CF_ACCOUNT_ID +
- * CF_STREAM_TOKEN (video), RESEND_API_KEY (emails), SLACK_WEBHOOK_URL (staff
- * Slack posts, optional), FILES (R2), DB, AI.
+ * CF_STREAM_TOKEN (video), RESEND_API_KEY (emails), SLACK_BOT_TOKEN or
+ * SLACK_WEBHOOK_URL (staff Slack posts, optional), FILES (R2), DB, AI.
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
@@ -37,7 +37,7 @@ import {
   cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, DEFAULT_STAFF_EMAILS,
 } from './_application-form.js';
 import { buildApplicationPdf } from './_application-pdf.js';
-import { sendEmails, escapeHtml, SITE_ORIGIN, slackAlert, slackConfigured, slackEscape } from './_broadcast-notify.js';
+import { sendEmails, escapeHtml, SITE_ORIGIN, slackAlert, slackEscape } from './_broadcast-notify.js';
 import { readApplicant, sendIntake, ensureCommsSchema } from './_applicant-comms.js';
 import { formFor, ensureFormSchema } from './_application-forms.js';
 
@@ -694,13 +694,11 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
       else s.staffEmail = iso(now);
     }
     if (!s.staffSlack) {
-      if (!slackConfigured(env)) s.staffSlack = 'off';
-      else {
-        const { text, blocks } = staffSlack(app, accountId);
-        const r = await slackAlert(env, text, blocks);
-        if (r.ok) s.staffSlack = iso(now);
-        else failed.push(`Slack: ${r.error || `HTTP ${r.status}`}`);
-      }
+      const { text, blocks } = staffSlack(app, accountId);
+      const r = await slackAlert(env, text, blocks);
+      if (r.ok) s.staffSlack = iso(now);
+      else if (r.skipped) s.staffSlack = 'off'; // Slack not connected, or no channel picked
+      else failed.push(`Slack: ${r.error || `HTTP ${r.status}`}`);
     }
     if (failed.length) throw new Error(failed.join('; '));
   });

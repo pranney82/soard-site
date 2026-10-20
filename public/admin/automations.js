@@ -57,6 +57,18 @@ const env = (f) => f.env || null;
 // A key in Cloudflare that this needs
 const needsKey = (flag, missing, status = ATTN, onWhy) => (f) => (!env(f) ? null : f.env[flag] ? ON(onWhy) : status(missing));
 const needsAi = (f) => (!f.bindings ? null : f.bindings.ai ? ON() : ATTN('Workers AI isn’t bound to the site.'));
+// Slack: the site's Slack app posts to a channel picked by name and checked with Slack; a bare webhook can't say where it posts
+const SLACK_OFF = `Not used yet: alerts go by email. Add the Slack app’s SLACK_BOT_TOKEN in Cloudflare, then pick the channel in ${SETTINGS} → Alerts.`;
+const slackLive = (f) => {
+  if (!env(f)) return null;
+  const sl = f.slack;
+  if (sl?.mode === 'bot') {
+    if (sl.ok) return ON(`Posting to #${sl.channel}${sl.team ? ` in ${sl.team}` : ''}.`);
+    return ATTN(sl.error === 'no_channel' ? `The Slack app is connected, but no channel is picked yet: ${SETTINGS} → Alerts.` : `Slack won’t take posts (${sl.error}). ${SETTINGS} → Alerts says how to fix it.`);
+  }
+  if (f.env.slack) return ON('Through the old incoming webhook, which can’t say which channel it posts to. Add the Slack app to name and check the channel.');
+  return OFF(SLACK_OFF);
+};
 // A JobTread workflow, by id
 const wf = (id) => (f) => {
   const jt = f.jobtread;
@@ -413,10 +425,11 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Slack posts', s: 'off', k: 'event',
           when: 'Going live, ending, a missed reveal, any feed issue, go/no-go, Reel results, invite problems.',
-          does: 'Posts each issue to Slack, reminds after 3 minutes, and posts again when resolved.',
-          touches: ['Slack'], where: 'functions/api/_broadcast-notify.js (slackAlert)',
-          note: 'Not used: alerts go by email. Adding SLACK_WEBHOOK_URL in Cloudflare would switch it on.',
-          live: needsKey('slack', 'Not used: alerts go by email. Adding SLACK_WEBHOOK_URL in Cloudflare would switch it on.', OFF) },
+          does: 'Posts each issue to Slack, reminds after 3 minutes, and posts again when resolved. New and stuck applications, kid status changes and invite problems post there too.',
+          touches: ['Slack'], where: 'functions/api/_broadcast-notify.js (slackAlert) · channel picked in Reveals → Settings → Alerts',
+          info: 'The site’s Slack app (SLACK_BOT_TOKEN) posts to a channel picked by name and checked with Slack. SLACK_WEBHOOK_URL is the older fallback.',
+          note: SLACK_OFF,
+          live: slackLive },
         { t: 'Alert emails', s: 'live', k: 'event',
           when: 'The same events as Slack.',
           does: 'Emails the alert list from Reveals settings, or the admin email list if that’s empty.',

@@ -13,6 +13,7 @@
  *   setConfig { ...partial }
  *   generateVapid { force? }
  *   testStream | testFacebook | testHub | testAlert | runTick | lifecycle
+ *   slackStatus | slackChannels | setSlackChannel { id }   the Slack app's connection and alerts channel
  *   monitor { feed: live|rehearsal }   Control room: picture, audio level, every destination's verdict, open issues
  *   preflight                          go/no-go checklist for the next reveal (also posted to Slack an hour before)
  *   sendTestReminder { kind, email }
@@ -145,6 +146,7 @@ export async function onRequestGet(context) {
         emailConfigured: notify.emailConfigured(env),
         smsConfigured: notify.smsConfigured(env),
         slackConfigured: notify.slackConfigured(env),
+        slackMode: env.SLACK_BOT_TOKEN ? 'bot' : env.SLACK_WEBHOOK_URL ? 'webhook' : null,
         kitConfigured: kitConfigured(env),
         youtubeConfigured: youtubeConfigured(env),
         hubBound: !!env.LIVE_HUB,
@@ -360,6 +362,26 @@ export async function onRequestPost(context) {
       case 'testHub': {
         const s = await b.hubStatus(env);
         return Response.json({ success: !!s.ok, hub: s });
+      }
+      case 'slackStatus':
+        return Response.json({ success: true, slack: await notify.slackStatus(env) });
+      case 'slackChannels': {
+        if (!env.SLACK_BOT_TOKEN) return fail('Add SLACK_BOT_TOKEN in Cloudflare Pages first');
+        const r = await notify.slackChannels(env);
+        return r.ok ? Response.json({ success: true, channels: r.channels }) : fail(`Slack said: ${r.error}`);
+      }
+      case 'setSlackChannel': {
+        if (!env.SLACK_BOT_TOKEN) return fail('Add SLACK_BOT_TOKEN in Cloudflare Pages first');
+        const id = String(body.id || '');
+        if (!/^[CG][A-Z0-9]{6,}$/.test(id)) return fail('Pick a channel');
+        const info = await notify.slackApi(env, 'conversations.info', { channel: id });
+        if (!info.ok) return fail(`Slack said: ${info.error}`);
+        const channel = { id, name: info.channel?.name || id, private: !!info.channel?.is_private };
+        await notify.writeSlackConfig(env.DB, { ...(await notify.readSlackConfig(env.DB, { fresh: true })), channel, updatedAt: new Date().toISOString(), updatedBy: userEmail });
+        await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'slack', entityName: `Slack alerts channel: #${channel.name}`, gitStatus: 'ok' });
+        // Say hello in the channel: proves the app can post there, right now
+        const hello = await notify.slackAlert(env, `🟢 The SOARD website will post its alerts here (picked by ${userEmail}).`, null, { channel: id });
+        return Response.json({ success: true, channel, posted: hello.ok, postError: hello.ok ? null : hello.error, slack: await notify.slackStatus(env) });
       }
       case 'testAlert': {
         const r = await notify.alertAdmins(env, config, { level: 'info', title: 'Test alert from the Broadcast control center', detail: `Sent by ${userEmail}. If you can read this, alerts work.`, url: `${b.SITE_ORIGIN}/admin/` });

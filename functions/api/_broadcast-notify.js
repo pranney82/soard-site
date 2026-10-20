@@ -10,7 +10,7 @@
  * Env vars (all optional except RESEND_API_KEY for email):
  *   RESEND_API_KEY
  *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM (E.164) or TWILIO_MESSAGING_SERVICE_SID
- *   SLACK_WEBHOOK_URL
+ *   SLACK_BOT_TOKEN (a Slack app; channel picked in the admin) or SLACK_WEBHOOK_URL
  *   ALERT_EMAILS  (comma-separated; falls back to the admin's audit email list)
  *
  * VAPID keys are generated once by the admin and stored in D1
@@ -438,41 +438,161 @@ export function reminderPush({ kind, kidName, scheduledAt, tz, liveUrl, replayUr
   return { ...m, icon: '/apple-touch-icon.png', image: image || undefined, tag: `reveal-${kind}` };
 }
 
-// ─── Admin alerts ───────────────────────────────────────────────────
+// ─── Admin alerts: Slack ────────────────────────────────────────────
+// Two ways in. Preferred: a Slack app's bot token (SLACK_BOT_TOKEN, scopes
+// chat:write, chat:write.public, channels:read, groups:read) posting with
+// chat.postMessage to the channel picked in Reveals → Settings → Alerts
+// (site_config "slack"), so the admin can name the channel and check it.
+// Fallback: an incoming webhook (SLACK_WEBHOOK_URL), fixed to whichever
+// channel it was made for and blind to which one that is.
+
+const SLACK_API = 'https://slack.com/api';
+export const SLACK_CONFIG_KEY = 'slack';
+let _slackCfg = { db: null, at: 0, value: {} }; // per isolate, so every alert isn't a D1 read
+
+/** { channel: { id, name, private }, updatedAt, updatedBy } — never the token */
+export async function readSlackConfig(DB, { fresh = false } = {}) {
+  if (!DB) return {};
+  if (!fresh && _slackCfg.db === DB && Date.now() - _slackCfg.at < 60e3) return _slackCfg.value;
+  let value = {};
+  try {
+    const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(SLACK_CONFIG_KEY).first();
+    value = row ? JSON.parse(row.data) || {} : {};
+  } catch { value = {}; }
+  _slackCfg = { db: DB, at: Date.now(), value };
+  return value;
+}
+
+export async function writeSlackConfig(DB, value) {
+  await DB.prepare('INSERT OR REPLACE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)')
+    .bind(SLACK_CONFIG_KEY, JSON.stringify(value), new Date().toISOString()).run();
+  _slackCfg = { db: DB, at: Date.now(), value };
+}
 
 export function slackConfigured(env) {
-  return !!env.SLACK_WEBHOOK_URL;
+  return !!(env.SLACK_BOT_TOKEN || env.SLACK_WEBHOOK_URL);
+}
+
+/**
+ * Call a Slack Web API method with the bot token → Slack's JSON, or
+ * { ok: false, error, status }. Messages go as JSON (blocks); Slack's read
+ * methods only take form fields, so everything else is form-encoded.
+ */
+export async function slackApi(env, method, params = {}) {
+  if (!env.SLACK_BOT_TOKEN) return { ok: false, error: 'not_connected', status: 0 };
+  const asJson = method === 'chat.postMessage';
+  try {
+    const res = await fetch(`${SLACK_API}/${method}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': asJson ? 'application/json; charset=utf-8' : 'application/x-www-form-urlencoded' },
+      body: asJson ? JSON.stringify(params) : new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString(),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false, error: res.status === 429 ? 'ratelimited' : `HTTP ${res.status}`, status: res.status };
+    const d = await res.json().catch(() => null);
+    if (!d) return { ok: false, error: 'bad_response', status: res.status };
+    return d.ok ? { ...d, status: 200 } : { ...d, status: 400 };
+  } catch (e) {
+    return { ok: false, error: e.message, status: 0 };
+  }
 }
 
 /**
  * Post to Slack. With `blocks` (Block Kit) the message is formatted and
  * `text` is the notification line. Live issues have to land, so: one retry
- * on a network error, 429 or 5xx, and if Slack rejects the blocks, the same
- * message again as plain text. → { ok, status, attempts, plain?, error? }
+ * on a network error, 429 or 5xx; if Slack rejects the blocks, the same
+ * message again as plain text; and if the bot can't post (token revoked,
+ * not in the channel), the webhook when there is one.
+ * `channel` (id or #name) sends to that channel instead of the alerts one;
+ * it needs the bot token and never falls back to the webhook.
+ * → { ok, status, attempts, via: 'bot'|'webhook', channel?, plain?, error?, botError?, skipped? }
  */
-export async function slackAlert(env, text, blocks = null) {
-  if (!slackConfigured(env)) return { ok: false, skipped: true };
-  const post = async (payload) => {
+export async function slackAlert(env, text, blocks = null, { channel = null } = {}) {
+  const picked = env.SLACK_BOT_TOKEN ? (channel || (await readSlackConfig(env.DB)).channel?.id || null) : null;
+  const webhook = !channel && env.SLACK_WEBHOOK_URL ? env.SLACK_WEBHOOK_URL : null;
+  if (!picked && !webhook) {
+    const error = channel ? 'Posting to a named channel needs SLACK_BOT_TOKEN'
+      : env.SLACK_BOT_TOKEN ? 'No Slack channel picked yet (Reveals → Settings → Alerts)' : 'Slack is not connected';
+    return { ok: false, skipped: true, error };
+  }
+  const viaBot = async (payload) => {
+    const d = await slackApi(env, 'chat.postMessage', { channel: picked, unfurl_links: false, unfurl_media: false, ...payload });
+    return { ok: d.ok, status: d.status, error: d.ok ? null : d.error };
+  };
+  const viaWebhook = async (payload) => {
     try {
-      const res = await fetch(env.SLACK_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) });
+      const res = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) });
       return { ok: res.ok, status: res.status, error: res.ok ? null : (await res.text().catch(() => '')).slice(0, 200) || `HTTP ${res.status}` };
     } catch (e) {
       return { ok: false, status: 0, error: e.message };
     }
   };
   let attempts = 0;
-  let r = { ok: false };
-  for (const payload of blocks ? [{ text, blocks }, { text }] : [{ text }]) {
-    for (let i = 0; i < 2; i++) {
-      attempts++;
-      r = await post(payload);
-      if (r.ok) return { ok: true, status: r.status, attempts, plain: !!blocks && !payload.blocks };
-      const transient = !r.status || r.status === 429 || r.status >= 500;
-      if (!transient) break;
-      if (i === 0) await new Promise((res) => setTimeout(res, 1200));
+  const send = async (post) => {
+    let r = { ok: false };
+    for (const payload of blocks ? [{ text, blocks }, { text }] : [{ text }]) {
+      for (let i = 0; i < 2; i++) {
+        attempts++;
+        r = await post(payload);
+        if (r.ok) return { ...r, plain: !!blocks && !payload.blocks };
+        const transient = !r.status || r.status === 429 || r.status >= 500;
+        if (!transient) break;
+        if (i === 0) await new Promise((res) => setTimeout(res, 1200));
+      }
     }
+    return r;
+  };
+  let botError = null;
+  if (picked) {
+    const r = await send(viaBot);
+    if (r.ok) return { ok: true, status: r.status, attempts, via: 'bot', channel: picked, plain: r.plain };
+    botError = r.error;
+    if (!webhook) return { ok: false, status: r.status, attempts, via: 'bot', channel: picked, error: r.error };
   }
-  return { ok: false, status: r.status, attempts, error: r.error };
+  const r = await send(viaWebhook);
+  if (r.ok) return { ok: true, status: r.status, attempts, via: 'webhook', plain: r.plain, ...(botError ? { botError } : {}) };
+  return { ok: false, status: r.status, attempts, via: 'webhook', error: botError ? `${botError}; webhook: ${r.error}` : r.error, ...(botError ? { botError } : {}) };
+}
+
+/**
+ * Is Slack really reachable? The bot token is checked (auth.test) and so is
+ * the picked channel (conversations.info). → { mode: 'bot'|'webhook'|null,
+ * ok, error?, team?, bot?, channel?, webhook } — the error is Slack's code
+ * (invalid_auth, not_in_channel, …) or no_channel.
+ */
+export async function slackStatus(env) {
+  const cfg = await readSlackConfig(env.DB, { fresh: true });
+  const out = { mode: env.SLACK_BOT_TOKEN ? 'bot' : env.SLACK_WEBHOOK_URL ? 'webhook' : null, webhook: !!env.SLACK_WEBHOOK_URL, ok: false, error: null, team: null, bot: null, channel: cfg.channel || null };
+  if (out.mode !== 'bot') { out.ok = out.mode === 'webhook'; return out; }
+  const auth = await slackApi(env, 'auth.test');
+  if (!auth.ok) { out.error = auth.error; return out; }
+  out.team = auth.team || null;
+  out.bot = auth.user || null;
+  if (!cfg.channel?.id) { out.error = 'no_channel'; return out; }
+  const info = await slackApi(env, 'conversations.info', { channel: cfg.channel.id });
+  if (!info.ok) { out.error = info.error; return out; }
+  const c = info.channel || {};
+  out.channel = { id: c.id, name: c.name, private: !!c.is_private, member: !!c.is_member };
+  if (c.is_archived) { out.error = 'is_archived'; return out; }
+  // chat:write.public lets the app post in any public channel; a private one needs an invite
+  if (c.is_private && !c.is_member) { out.error = 'not_in_channel'; return out; }
+  out.ok = true;
+  return out;
+}
+
+/** Channels the app can post in: every public one, and the private ones it was invited to. → { ok, channels: [{ id, name, private, member }] } */
+export async function slackChannels(env) {
+  const channels = [];
+  let cursor;
+  for (let page = 0; page < 10; page++) {
+    const d = await slackApi(env, 'conversations.list', { types: 'public_channel,private_channel', exclude_archived: true, limit: 200, ...(cursor ? { cursor } : {}) });
+    if (!d.ok) return { ok: false, error: d.error, channels };
+    for (const c of d.channels || []) channels.push({ id: c.id, name: c.name, private: !!c.is_private, member: !!c.is_member });
+    cursor = d.response_metadata?.next_cursor;
+    if (!cursor) break;
+  }
+  channels.sort((a, b) => a.name.localeCompare(b.name));
+  return { ok: true, channels };
 }
 
 /** Escape text for Slack mrkdwn. */

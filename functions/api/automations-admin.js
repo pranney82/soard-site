@@ -14,6 +14,7 @@
  *  - revealChecks: weekday reveal checks switch and last run; date sync's last activity
  *  - liveSchedule: the live countdown's last JobTread check (what it follows, what's waiting)
  *  - kidStatus: kid statuses following JobTread (last sweep, last run, profiles it hid)
+ *  - slack:     how alerts reach Slack (app or webhook), the channel's name, and Slack's own error if any
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
  *  - sends:     last reminder send per kind and channel (counts only)
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
@@ -23,6 +24,7 @@
  */
 
 import { hubStatus } from './_broadcast.js';
+import { slackStatus } from './_broadcast-notify.js';
 import { JT_URL, SOARD_ORG_ID } from './_reveals.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
@@ -35,7 +37,7 @@ async function siteConfig(DB, key) {
 
 export function envFacts(env) {
   return {
-    slack: has(env.SLACK_WEBHOOK_URL),
+    slack: has(env.SLACK_BOT_TOKEN) || has(env.SLACK_WEBHOOK_URL),
     twilio: has(env.TWILIO_ACCOUNT_SID) && has(env.TWILIO_AUTH_TOKEN) && (has(env.TWILIO_FROM) || has(env.TWILIO_MESSAGING_SERVICE_SID)),
     youtube: has(env.YOUTUBE_API_KEY),
     kit: has(env.KIT_API_KEY),
@@ -213,7 +215,7 @@ const settle = async (fn) => { try { return await fn(); } catch (e) { return { e
 
 export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const DB = env.DB;
-  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced, liveSchedule, guestCheck, kidState, kidsHidden] = await Promise.all([
+  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced, liveSchedule, guestCheck, kidState, kidsHidden, slackLink] = await Promise.all([
     settle(() => siteConfig(DB, 'broadcast-config')),
     settle(() => siteConfig(DB, 'broadcast-health')),
     settle(() => siteConfig(DB, 'reveal-invites')),
@@ -232,6 +234,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     // The table appears with the first kid status sync; until then this settles to an error
     settle(async () => JSON.parse((await DB.prepare("SELECT value FROM kid_status_state WHERE key = 'state'").first('value')) || '{}')),
     settle(() => DB.prepare(`SELECT count(*) AS n FROM kids WHERE instr(data, '"hiddenBy":"jobtread"') > 0`).first('n')),
+    // The Slack app's token and alerts channel, checked with Slack itself (no-op without a token)
+    settle(() => slackStatus(env)),
   ]);
   const ok = (v) => (v && !v.error ? v : null);
   const sendMap = {};
@@ -253,6 +257,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     revealChecks: revealCheckFacts(ok(checks), ok(synced)),
     liveSchedule: liveScheduleFacts(ok(liveSchedule)),
     kidStatus: kidStatusFacts(ok(kidState), typeof kidsHidden === 'number' ? kidsHidden : null),
+    slack: slackLink?.error && !slackLink.mode ? { mode: null, ok: false, error: slackLink.error }
+      : { mode: slackLink?.mode || null, ok: !!slackLink?.ok, error: slackLink?.error || null, team: slackLink?.team || null, channel: slackLink?.channel?.name || null, bot: slackLink?.bot || null },
     fbArchive: archiveFacts(ok(archive), await settle(() => placedUids(DB, ok(archive))).then((p) => (p instanceof Set ? p : new Set()))),
     reveals: { cachedAt: typeof reveals === 'string' ? reveals : null },
     sends: sendMap,
