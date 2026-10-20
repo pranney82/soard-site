@@ -1,6 +1,6 @@
 ---
 /**
- * Leadership — Team & Board of Directors
+ * Leadership — Team, Board of Directors & Advisory Board
  * Premium editorial layout with founders feature, scroll reveal,
  * B&W→color photo treatment, JSON-LD structured data, and breadcrumbs.
  */
@@ -22,6 +22,8 @@ const byRank = (a: { data: ReturnType<typeof normalizePerson> }, b: { data: Retu
 const founders = people.filter((t) => t.data.group === 'team' && t.data.role === 'founder').sort(byRank);
 const staff = people.filter((t) => t.data.group === 'team' && t.data.role !== 'founder').sort(byRank);
 const boardMembers = people.filter((t) => t.data.group === 'board').sort(byRank);
+// The Advisory Board's own page is /advisory-board/; here it closes the page, and only once someone is on it
+const advisors = people.filter((t) => t.data.group === 'advisory').sort(byRank);
 // Serving now (a memorial card stays on the page but isn't counted)
 const activeBoard = boardMembers.filter((t) => t.data.status === 'active').length;
 
@@ -203,6 +205,53 @@ const breadcrumbs = [
     </div>
   </section>
 
+  <!-- ══════ ADVISORY BOARD (same cards as the board) ══════ -->
+  {advisors.length > 0 && (
+    <section class="section section--cream" id="advisory-board" aria-labelledby="advisory-heading">
+      <div class="container">
+        <div class="section-intro" data-reveal>
+          <h2 class="section-label" id="advisory-heading">Advisory Board</h2>
+          <p class="section-tagline">Ambassadors who help us <span class="highlight">reach more families</span></p>
+          <p class="section-desc">
+            Leaders who champion SOARD in their companies and communities, open doors for us, and together fund one room makeover every year.
+          </p>
+          <a class="advisory-more" href="/advisory-board/">About the Advisory Board</a>
+        </div>
+
+        <div class="board-grid">
+          {advisors.map((member, i) => (
+            <div class={['board-card', member.data.status === 'memorial' && 'board-card--memorial', hasProfile(member.data) && 'has-profile'].filter(Boolean).join(' ')} data-reveal data-delay={String(Math.min(i, 4))}>
+              <div class="board-photo" style={member.data.photo ? `background-image:url(${photoLqip(member.data)});background-size:cover;background-position:center` : undefined}>
+                {member.data.photo ? (
+                  <img
+                    src={photoUrl(member.data, 200)}
+                    srcset={photoSrcset(member.data, [140, 200, 280, 400])}
+                    sizes="(max-width: 600px) 140px, 200px"
+                    alt={member.data.status === 'memorial' ? `In memory of ${member.data.name}, ${boardTitleLine(member.data)}` : `${member.data.name}, ${member.data.title}`}
+                    width="200" height="200"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <div class="photo-placeholder">
+                    <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
+                  </div>
+                )}
+              </div>
+              {member.data.status === 'memorial' && <p class="board-memorial">In memoriam</p>}
+              <h3 class="board-name">{hasProfile(member.data) ? <a class="card-link" href={profilePath(member.id)}>{member.data.name}</a> : member.data.name}</h3>
+              <p class="board-title">{boardTitleLine(member.data)}</p>
+              {member.data.organization && (
+                <p class="board-org">{member.data.organization}</p>
+              )}
+              {hasProfile(member.data) && <span class="card-more" aria-hidden="true">Read profile</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
   <!-- ══════ CTA ══════ -->
   <section class="section section--dark" slot="cta">
     <div class="container" style="text-align: center;">
@@ -276,6 +325,29 @@ const breadcrumbs = [
     line-height: 1;
   }
   .board-giving__text strong { color: var(--c-text); }
+
+  /* The Advisory Board's own page */
+  .advisory-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: var(--space-md);
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--c-text);
+    text-decoration: underline;
+    text-decoration-color: var(--c-yellow);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+  .advisory-more::after { content: '→'; text-decoration: none; display: inline-block; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  @media (hover: hover) {
+    .advisory-more:hover { text-decoration-color: var(--c-dark); }
+    .advisory-more:hover::after { transform: translateX(3px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .advisory-more::after { transition: none; }
+  }
   @media (max-width: 600px) {
     .board-giving { border-radius: 20px; align-items: flex-start; }
     .board-giving__stat { margin-top: 2px; }

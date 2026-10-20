@@ -16,7 +16,8 @@
  * GET ?checks=test            → run them on the office sandbox job only
  * GET ?checks-enable=1 | 0    → turn the weekday reveal checks on / off
  * GET ?board=1               → the website's board with each member's private reveal email
- * POST { boardEmail: { slug, email } } → set or clear one (empty email) and update open invites
+ * GET ?advisory=1            → the Advisory Board with each member's private reveal email
+ * POST { boardEmail: { slug, email } } → set or clear one (board or advisory) and update open invites
  * POST { enabled, organizer } → turn sending on/off, change the organizer
  *
  * Test links are GETs on purpose: open them in a browser signed in to Access.
@@ -159,14 +160,16 @@ export async function onRequestGet(context) {
     }
 
     if (q.get('board') === '1') return Response.json({ ok: true, board: await boardRoster(env.DB) });
+    if (q.get('advisory') === '1') return Response.json({ ok: true, advisory: await boardRoster(env.DB, 'advisory') });
 
     context.waitUntil(maybeSweep(env));
     context.waitUntil(maybeCheckGuests(env));
     context.waitUntil(maybeNudge(env));
-    const [config, checks, broadcast, schedule, board] = await Promise.all([
+    const [config, checks, broadcast, schedule, board, advisory] = await Promise.all([
       readConfig(env.DB), readNudgeConfig(env.DB),
       readState(env.DB).catch(() => null), readScheduleRecord(env.DB),
       boardRoster(env.DB).catch(() => []),
+      boardRoster(env.DB, 'advisory').catch(() => []),
     ]);
     let upcoming = [];
     let organizerName = null;
@@ -188,6 +191,7 @@ export async function onRequestGet(context) {
       ...(upcomingError ? { upcomingError } : {}),
       // Who confirmed invites add from the website's board, and who still needs an email
       board: board.filter((m) => m.active).map(({ slug, name, email }) => ({ slug, name, hasEmail: !!email })),
+      advisory: advisory.filter((m) => m.active).map(({ slug, name, email }) => ({ slug, name, hasEmail: !!email })),
       // The live countdown: which job it follows, and confirmed reveals it can't follow yet (and why)
       live: {
         phase: broadcast?.phase || 'idle',
@@ -220,11 +224,12 @@ export async function onRequestPost(context) {
   try {
     await ensureSchema(env.DB);
 
-    // A board member's private reveal email (People → Board): open invites follow right away
+    // A board member's or advisor's private reveal email (People → Board, Advisory): open invites follow right away
     if (body.boardEmail && typeof body.boardEmail === 'object') {
       const slug = String(body.boardEmail.slug || '').trim();
-      const member = (await boardRoster(env.DB)).find((m) => m.slug === slug);
-      if (!member) return fail('Not a board member on the website');
+      const onBoard = (await boardRoster(env.DB)).find((m) => m.slug === slug);
+      const member = onBoard || (await boardRoster(env.DB, 'advisory')).find((m) => m.slug === slug);
+      if (!member) return fail('Not on the board or the Advisory Board on the website');
       try { await setBoardEmail(env.DB, slug, body.boardEmail.email); } catch (e) { return fail(e.message); }
       await logAudit(env.DB, { userEmail: me, action: 'updated', entityType: 'team', entitySlug: slug, entityName: `Reveal invite email for ${member.name}`, gitStatus: 'ok' }).catch(() => {});
       context.waitUntil(refreshForBoardChange(env));

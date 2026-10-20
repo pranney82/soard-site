@@ -29,7 +29,7 @@ Rewrite: "Jane Doe owns a bakery in Decatur and has volunteered at SOARD builds 
 /** The prompt (exported so the tests can check what the model is asked) */
 export function bioPrompt({ bio, name, title, organization, group, role }) {
   const who = [name && `Name: ${name}`, title && `Role at SOARD: ${title}`, organization && `Organization: ${organization}`,
-    `Section: ${group === 'board' ? 'Board of Directors' : role === 'founder' ? 'Co-Founder' : 'Our Team'}`].filter(Boolean).join('\n');
+    `Section: ${group === 'board' ? 'Board of Directors' : group === 'advisory' ? 'Advisory Board' : role === 'founder' ? 'Co-Founder' : 'Our Team'}`].filter(Boolean).join('\n');
   return `You edit short bios for the Leadership page of Sunshine on a Ranney Day (SOARD), an Atlanta nonprofit that builds dream bedrooms, accessible bathrooms and therapy rooms for children with special needs, at no cost to families.
 
 Rewrite the bio below in the house style.

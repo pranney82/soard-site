@@ -1,19 +1,22 @@
 /**
- * team-shared.js — the rules for People (Team & Board) records, shared by the
- * admin (index.html), the Leadership page Preview (team-preview.js) and,
- * mirrored line for line, the site build (src/utils/team.ts).
+ * team-shared.js — the rules for People (Team, Board & Advisory Board) records,
+ * shared by the admin (index.html), the Leadership and Advisory Board page
+ * Previews (team-preview.js, advisory-preview.js) and, mirrored line for line,
+ * the site build (src/utils/team.ts).
  * scripts/test-page-preview.mjs rebuilds the Leadership page with these and
  * compares it with the real page, so the two copies can't drift unnoticed.
  *
  * A record keeps its original fields (name, title, organization, photo, bio,
  * quote, group, order) plus the structured ones added in Oct 2026:
+ *   group        'team' | 'board' | 'advisory' (the Advisory Board, Oct 2026:
+ *                ambassadors with no seats, committees or reveal invites)
  *   role         team only: 'founder' | 'staff' | 'honorary'
  *   seat         board only: 'chair' | 'vice-chair' | 'treasurer' | 'secretary' | 'past-chair' | '' (member)
  *   status       'active' | 'alumni' (off the site, kept here) | 'memorial'
  *   since/until  years served (numbers, optional)
  *   committees   board only: string[], names from the board's committee list
  *                (src/content/site/board-committees.json), A to Z
- *   partner      board only: a partner's slug (their company on the partners page)
+ *   partner      board and advisory: a partner's slug (their company on the partners page)
  *   linkedin     https URL
  *   publishStatus 'draft' hides the person from the site
  *   photoCrop    { x, y, size }: the square crop, as fractions of the
@@ -38,6 +41,14 @@ export const SEATS = [
   { id: 'past-chair', label: 'Past Chair', title: 'Past Board Chair' },
 ];
 export const MEMBER_TITLE = 'Board Member';
+export const ADVISORY_TITLE = 'Advisory Board Member';
+/** The three groups, in the order the admin's tabs and the Leadership page show them */
+export const GROUPS = [
+  { id: 'team', label: 'Our Team', tab: 'Team', noun: 'team member', anchor: 'our-team' },
+  { id: 'board', label: 'Board of Directors', tab: 'Board', noun: 'board member', anchor: 'board' },
+  { id: 'advisory', label: 'Advisory Board', tab: 'Advisory', noun: 'advisory board member', anchor: 'advisory-board' },
+];
+export const groupOf = (id) => GROUPS.find((g) => g.id === id) || GROUPS[0];
 export const TEAM_ROLES = [
   { id: 'founder', label: 'Founder' },
   { id: 'staff', label: 'Staff' },
@@ -97,8 +108,9 @@ export function normalizePerson(d) {
   const rawName = String(d?.name || '');
   const legacyMemorial = MEMORIAL_PREFIX.test(rawName);
   const board = d?.group === 'board';
+  const team = !board && d?.group !== 'advisory';
   const status = STATUS_IDS.includes(d?.status) ? d.status : legacyMemorial ? 'memorial' : 'active';
-  const role = board ? null : ROLE_IDS.includes(d?.role) ? d.role : /co-?founder/i.test(d?.title || '') ? 'founder' : 'staff';
+  const role = !team ? null : ROLE_IDS.includes(d?.role) ? d.role : /co-?founder/i.test(d?.title || '') ? 'founder' : 'staff';
   const seat = !board ? '' : (d && 'seat' in d && (d.seat === '' || SEAT_IDS.includes(d.seat))) ? d.seat : seatFromTitle(d?.title);
   return {
     ...d,
@@ -123,15 +135,24 @@ const ROLE_RANK = { founder: 0, staff: 1, honorary: 2 };
 const SEAT_RANK = { chair: 0, 'vice-chair': 1, treasurer: 2, secretary: 3, 'past-chair': 4, '': 5 };
 const byOrder = (a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.name).localeCompare(String(b.name));
 
-/** The site's order: founders, staff, honorary crew; officers, members, then those in memory */
+/** The site's order: founders, staff, honorary crew; officers, members, then those in memory; advisors as placed, those in memory last */
 export function comparePeople(a, b) {
   if (a.group === 'board') {
     return ((a.status === 'memorial') - (b.status === 'memorial'))
       || SEAT_RANK[a.seat || ''] - SEAT_RANK[b.seat || '']
       || byOrder(a, b);
   }
+  if (a.group === 'advisory') return ((a.status === 'memorial') - (b.status === 'memorial')) || byOrder(a, b);
   return ROLE_RANK[a.role] - ROLE_RANK[b.role] || byOrder(a, b);
 }
+
+/** "Jane Q. Smith" → "JS", for a card with no photo */
+export const initials = (name) => {
+  const w = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return ((w[0]?.[0] || '') + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase() || '?';
+};
+/** An advisor's title, when it says more than "Advisory Board Member" (the Advisory Board page leaves that one off) */
+export const advisoryTitle = (p) => { const t = String(p?.title || '').trim(); return t && t !== ADVISORY_TITLE ? t : ''; };
 
 // ── Photos (URLs mirror src/utils/cf-image.ts) ───────────────────────
 
@@ -222,6 +243,21 @@ export function photoQuality(px) {
 export const hasProfile = (p) => isListed(p) && !!String(p?.bio || '').trim();
 export const profilePath = (slug) => `/about/leadership/${slug}/`;
 
+/** The words a profile page uses for the person's group */
+export function profileWords(p) {
+  const memorial = p?.status === 'memorial';
+  if (p?.group === 'board') {
+    return { eyebrow: memorial ? 'In memoriam' : 'Board of Directors', meet: 'Meet the Board', group: 'board', back: '/about/leadership/#board',
+      company: 'Company', since: 'On the board', statSince: 'on the board<br/>since', statServed: 'served on<br/>the board' };
+  }
+  if (p?.group === 'advisory') {
+    return { eyebrow: memorial ? 'In memoriam' : 'Advisory Board', meet: 'Meet the Advisory Board', group: 'advisory board', back: '/advisory-board/#members',
+      company: 'Company', since: 'On the advisory board', statSince: 'on the advisory<br/>board since', statServed: 'served on the<br/>advisory board' };
+  }
+  return { eyebrow: memorial ? 'In memoriam' : p?.role === 'founder' ? 'Co-Founder' : 'Our Team', meet: 'Meet the Team', group: 'team', back: '/about/leadership/#our-team',
+    company: 'Organization', since: 'With SOARD', statSince: 'with SOARD<br/>since', statServed: 'with<br/>SOARD' };
+}
+
 /** Bio text as paragraphs: blank lines split them, single line breaks join */
 export function bioParagraphs(text) {
   return String(text || '').replace(/\r/g, '').split(/\n\s*\n/)
@@ -308,4 +344,58 @@ export function normalizeLinkedIn(raw) {
   if (!/(^|\.)linkedin\.com$/i.test(u.hostname)) return null;
   if (!/^\/(in|pub|company)\/[^/]+/i.test(u.pathname)) return null;
   return `https://www.linkedin.com${u.pathname.replace(/\/+$/, '')}`;
+}
+
+// ── Adding several people at once (People → Board or Advisory → Paste a list) ──
+
+/** A web address from a name: the admin's slugify */
+export const slugOf = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+const EMAIL_IN = /[^\s<>()[\],;:"“”]+@[^\s<>()[\],;:"“”]+\.[^\s<>()[\],;:"“”]+/;
+// Something with an @ that isn't a whole address ("jane@", "jane@example"): kept as the email, so the plan flags it
+const BROKEN_EMAIL_IN = /[^\s<>()[\],;:"“”]*@[^\s<>()[\],;:"“”]*/;
+const EDGE_SEPS = /^[\s:;,|–—-]+|[\s:;,|–—-]+$/g;
+const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * One person per line: a name and, if there is one, an email, in whatever
+ * shape an email or a spreadsheet gives them ("Jane Smith: jane@x.org",
+ * "Jane Smith <jane@x.org>", a tab between columns, a bullet in front).
+ * → [{ line, name, email }], a spreadsheet's header row left out
+ */
+export function parsePeopleList(text) {
+  const out = [];
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '').trim();
+    if (!line) continue;
+    const m = line.match(EMAIL_IN) || line.match(BROKEN_EMAIL_IN);
+    const email = m ? m[0].replace(/[.]+$/, '').toLowerCase() : '';
+    const name = (m ? line.replace(m[0], ' ') : line).replace(/mailto:/gi, ' ').replace(/[<>()[\]"“”]/g, ' ')
+      .replace(/\s+/g, ' ').replace(EDGE_SEPS, '').trim();
+    if (!email && /^name\b.*\bemail\b/i.test(name)) continue;
+    out.push({ line, name, email });
+  }
+  return out;
+}
+
+/**
+ * What Add does with each pasted person, given everyone saved (team) and the
+ * group's private emails (slug → email): act 'add' (a new record), 'email'
+ * (already in this group: save their email) or 'skip', with a note saying why.
+ */
+export function planPeopleList(rows, team, group, emails) {
+  const seen = new Set();
+  return rows.map((r) => {
+    const slug = slugOf(r.name);
+    const base = { ...r, slug };
+    if (!r.name || !slug) return { ...base, act: 'skip', note: r.email ? 'No name' : 'Not a name' };
+    if (r.email && !EMAIL_OK.test(r.email)) return { ...base, act: 'skip', note: 'The email doesn’t look right' };
+    if (seen.has(slug)) return { ...base, act: 'skip', note: 'Listed twice' };
+    seen.add(slug);
+    const there = (team || []).find((t) => t.slug === slug);
+    if (!there) return { ...base, act: 'add', note: r.email ? 'Adds them with their email' : 'Adds them, no email yet' };
+    if (there.group !== group) return { ...base, act: 'skip', note: `Already in ${groupOf(there.group).label}` };
+    const had = emails?.[slug] || '';
+    if (!r.email || had === r.email) return { ...base, act: 'skip', note: 'Already here' };
+    return { ...base, act: 'email', note: had ? `Already here: replaces ${had}` : 'Already here: adds their email' };
+  });
 }

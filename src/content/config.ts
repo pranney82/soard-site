@@ -103,7 +103,7 @@ const team = defineCollection({
     photo: z.string().optional(),
     bio: z.string().optional(),
     quote: z.string().optional(),
-    group: z.enum(['team', 'board']),
+    group: z.enum(['team', 'board', 'advisory']),
     order: z.number().default(0),
     // Structured fields (Oct 2026). Older records carry these in their name
     // and title text; src/utils/team.ts reads both.

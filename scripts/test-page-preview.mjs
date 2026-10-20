@@ -98,7 +98,13 @@ const TYPES = {
         '.founder-card:has(.founder-photo[style])', '.founder-card .founder-photo:not([style])',
         '.member-card:not(.has-profile):has(.member-org):has(.member-photo[style])', '.member-card .member-photo:not([style])',
         '.board-card:not(.board-card--memorial):not(.has-profile):has(.board-org)', '.founder-card:not(.has-profile):has(.founder-photo[style])',
-        '.has-profile .card-link', '.has-profile .card-more'],
+        '.has-profile .card-link', '.has-profile .card-more', '#advisory-board .board-grid'],
+    } },
+  // The Advisory Board page: its members section, from the advisors
+  advisory: { dir: 'team', list: true, path: () => '/advisory-board/', region: 'main', skip: [],
+    parts: {
+      full: ['#members .abm-grid', '.abm-card', '.abm-photo[style] img', '.abm-photo:not([style]) .abm-initials', '.abm-memorial',
+        '.abm-card:not(.has-profile) .abm-name', '.abm-link', '.abm-title', '.abm-org', '.abm-more'],
     } },
 };
 const only = process.env.TYPES ? process.env.TYPES.split(',') : Object.keys(TYPES);

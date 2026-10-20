@@ -12,7 +12,7 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
 import { cfUrl } from '../../../utils/cf-image';
 import {
-  normalizePerson, hasProfile, comparePeople, profilePath, bioParagraphs,
+  normalizePerson, hasProfile, comparePeople, profilePath, profileWords, bioParagraphs,
   portraitUrl, portraitSrcset, photoUrl, photoSrcset, photoLqip,
 } from '../../../utils/team';
 import type { PersonData } from '../../../utils/team';
@@ -31,26 +31,27 @@ const people = allTeam.map((t) => ({ id: t.id, data: normalizePerson(t.data) }))
 const me = people.find((t) => t.id === slug)!;
 const p = me.data;
 const board = p.group === 'board';
+const words = profileWords(p);
 const memorial = p.status === 'memorial';
 const first = p.name.split(/\s+/)[0];
 const nameParts = p.name.trim().split(/\s+/);
 const lastName = nameParts.length > 1 ? nameParts.pop() : '';
 const firstNames = nameParts.join(' ');
 const shownTitle = p.role === 'founder' ? p.title.replace(/Co-Founder\/?/i, '').trim() || p.title : p.title;
-const eyebrow = memorial ? 'In memoriam' : board ? 'Board of Directors' : p.role === 'founder' ? 'Co-Founder' : 'Our Team';
+const eyebrow = words.eyebrow;
 const paragraphs = bioParagraphs(p.bio);
 const partner = p.partner ? allPartners.find((x) => (x.data.slug || x.id) === p.partner) : null;
 const since = typeof p.since === 'number' ? p.since : null;
 const until = typeof p.until === 'number' ? p.until : null;
 const stat = since
-  ? { num: memorial && until ? `${since}–${until}` : String(since), label: memorial ? (board ? 'served on<br/>the board' : 'with<br/>SOARD') : board ? 'on the board<br/>since' : 'with SOARD<br/>since' }
+  ? { num: memorial && until ? `${since}–${until}` : String(since), label: memorial ? words.statServed : words.statSince }
   : null;
 const others = people
   .filter((t) => t.id !== slug && t.data.group === p.group && hasProfile(t.data))
   .sort((a, b) => comparePeople(a.data, b.data))
   .slice(0, 4);
-const groupLabel = board ? 'board' : 'team';
-const backHref = `/about/leadership/#${board ? 'board' : 'our-team'}`;
+const groupLabel = words.group;
+const backHref = words.back;
 
 const SITE = 'https://sunshineonaranneyday.com';
 const canonical = `${SITE}${profilePath(slug)}`;
@@ -94,7 +95,7 @@ const personLd = {
           {p.organization && <span class="hero-org">{p.organization}</span>}
         </p>
         <div class="hero-ctas">
-          <a href={backHref} class="btn btn-primary btn-lg">Meet the {board ? 'Board' : 'Team'}</a>
+          <a href={backHref} class="btn btn-primary btn-lg">{words.meet}</a>
           {p.linkedin && !memorial && (
             <a href={p.linkedin} class="btn btn-outline-dark" target="_blank" rel="noopener noreferrer">
               LinkedIn
@@ -144,7 +145,8 @@ const personLd = {
         <h2 class="section-label" id="bio-heading">About {first}</h2>
         {paragraphs.map((para) => <p>{para}</p>)}
       </div>
-      <aside class="facts" aria-label={`${p.name} at a glance`}>
+      <!-- A labelled group, not an <aside>: a complementary landmark can't sit inside <main> -->
+      <div class="facts" role="group" aria-label={`${p.name} at a glance`}>
         <dl>
           <div class="fact">
             <dt>Role</dt>
@@ -152,7 +154,7 @@ const personLd = {
           </div>
           {p.organization && (
             <div class="fact">
-              <dt>{board ? 'Company' : 'Organization'}</dt>
+              <dt>{words.company}</dt>
               <dd>
                 {p.organization}
                 {partner && <a class="fact-partner" href="/partners/">A SOARD partner</a>}
@@ -161,7 +163,7 @@ const personLd = {
           )}
           {since && (
             <div class="fact">
-              <dt>{board ? 'On the board' : 'With SOARD'}</dt>
+              <dt>{words.since}</dt>
               <dd>{memorial && until ? `${since} to ${until}` : `Since ${since}`}</dd>
             </div>
           )}
@@ -178,7 +180,7 @@ const personLd = {
             </div>
           )}
         </dl>
-      </aside>
+      </div>
     </div>
   </section>
 

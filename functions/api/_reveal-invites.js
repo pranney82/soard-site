@@ -289,8 +289,10 @@ const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');
  * The website's board (People → Board) with each member's private reveal email:
  * [{ slug, name, title, email, memorial, active }]. Only active members are
  * invited: alumni and memorial entries are listed but never invited.
+ * group 'advisory': the Advisory Board (People → Advisory), kept and invited
+ * the same way.
  */
-export async function boardRoster(DB) {
+export async function boardRoster(DB, group = 'board') {
   await ensureSchema(DB);
   let rows = [];
   try { rows = (await DB.prepare('SELECT slug, data FROM team').all()).results || []; } catch { return []; }
@@ -299,7 +301,7 @@ export async function boardRoster(DB) {
   for (const row of rows) {
     let d = {};
     try { d = JSON.parse(row.data || '{}'); } catch { continue; }
-    if (d.group !== 'board') continue;
+    if (d.group !== group) continue;
     const status = personStatus(d);
     out.push({ slug: row.slug, name: personName(d), title: d.title || '', order: Number(d.order) || 0, email: emails[row.slug] || null, memorial: status === 'memorial', active: status === 'active' });
   }
@@ -316,15 +318,19 @@ export async function setBoardEmail(DB, slug, email) {
 }
 
 /**
- * The board, for every invite: the website's active board members with a
- * private reveal email, plus anyone with the Board Member role in JobTread.
- * Alumni and memorial entries never. Never throws.
+ * The board, for every invite: the website's active board and Advisory Board
+ * members with a private reveal email, plus anyone with the Board Member role
+ * in JobTread. Alumni and memorial entries never. Never throws.
  */
 export async function fetchBoard(env, fetchImpl = fetch) {
   const out = [];
-  try {
-    for (const m of await boardRoster(env.DB)) if (m.active && isEmail(m.email)) out.push({ name: m.name, email: m.email, from: 'website' });
-  } catch { /* no website board */ }
+  for (const group of ['board', 'advisory']) {
+    try {
+      for (const m of await boardRoster(env.DB, group)) {
+        if (m.active && isEmail(m.email)) out.push({ name: m.name, email: m.email, from: 'website', ...(group === 'advisory' ? { advisory: true } : {}) });
+      }
+    } catch { /* no website board */ }
+  }
   if (env.JOBTREAD_GRANT_KEY) {
     try {
       const body = await pave(env.JOBTREAD_GRANT_KEY, {
@@ -355,7 +361,8 @@ export function guestGroups(job, staff = [], board = []) {
   return {
     family: [...contacts, ...familyUsers].filter((p) => isEmail(p.email) && !later.has(p.email)),
     staff: staff.map((p) => ({ ...p, kind: 'staff' })),
-    board: [...board, ...access.filter((m) => m.role?.name === BOARD_ROLE).map((m) => person(m, 'board'))].map((p) => ({ ...p, kind: 'board' })),
+    // Advisors ride with the board; their kind names them in the admin's preview
+    board: [...board, ...access.filter((m) => m.role?.name === BOARD_ROLE).map((m) => person(m, 'board'))].map(({ advisory, ...p }) => ({ ...p, kind: advisory ? 'advisory board' : 'board' })),
     confirmed: partners,
   };
 }

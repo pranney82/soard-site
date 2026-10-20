@@ -1,6 +1,6 @@
 /**
- * People (Team & Board) rules for the site build: who shows on the Leadership
- * page, in what order, and each photo's URL. Mirrors public/admin/team-shared.js
+ * People (Team, Board & Advisory Board) rules for the site build: who shows on
+ * the Leadership and Advisory Board pages, in what order, and each photo's URL. Mirrors public/admin/team-shared.js
  * (the admin and its Preview use that copy); scripts/test-page-preview.mjs
  * rebuilds the page with the admin's copy and compares it with this one's
  * output, so keep the two in step. Field reference: see team-shared.js.
@@ -11,7 +11,7 @@ export interface PhotoCrop { x: number; y: number; size: number }
 export interface PersonData {
   name: string;
   title: string;
-  group: 'team' | 'board';
+  group: 'team' | 'board' | 'advisory';
   order?: number;
   organization?: string;
   photo?: string;
@@ -40,6 +40,7 @@ export interface Person extends PersonData {
 
 // The circle behind every photo on the Leadership page (--c-warm-gray)
 export const CUTOUT_BACKDROP = 'F5F4F0';
+export const ADVISORY_TITLE = 'Advisory Board Member';
 
 const MEMORIAL_PREFIX = /^\s*in memoriam\s*[,:]?\s*/i;
 // Older records kept the years served in the title ("Board Member 2024-2025")
@@ -72,8 +73,9 @@ export function normalizePerson(d: PersonData): Person {
   const rawName = String(d?.name || '');
   const legacyMemorial = MEMORIAL_PREFIX.test(rawName);
   const board = d?.group === 'board';
+  const team = !board && d?.group !== 'advisory';
   const status = (STATUS_IDS.includes(d?.status as string) ? d.status : legacyMemorial ? 'memorial' : 'active') as Person['status'];
-  const role = (board ? null : ROLE_IDS.includes(d?.role as string) ? d.role : /co-?founder/i.test(d?.title || '') ? 'founder' : 'staff') as Person['role'];
+  const role = (!team ? null : ROLE_IDS.includes(d?.role as string) ? d.role : /co-?founder/i.test(d?.title || '') ? 'founder' : 'staff') as Person['role'];
   const seat = (!board ? '' : (d && 'seat' in d && (d.seat === '' || SEAT_IDS.includes(d.seat as string))) ? d.seat : seatFromTitle(d?.title)) as Person['seat'];
   return {
     ...d,
@@ -103,8 +105,17 @@ export function comparePeople(a: Person, b: Person): number {
       || SEAT_RANK[a.seat || ''] - SEAT_RANK[b.seat || '']
       || byOrder(a, b);
   }
+  if (a.group === 'advisory') return (Number(a.status === 'memorial') - Number(b.status === 'memorial')) || byOrder(a, b);
   return ROLE_RANK[a.role as string] - ROLE_RANK[b.role as string] || byOrder(a, b);
 }
+
+/** "Jane Q. Smith" → "JS", for a card with no photo */
+export const initials = (name: string | undefined) => {
+  const w = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return ((w[0]?.[0] || '') + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase() || '?';
+};
+/** An advisor's title, when it says more than "Advisory Board Member" (the Advisory Board page leaves that one off) */
+export const advisoryTitle = (p: PersonData) => { const t = String(p?.title || '').trim(); return t && t !== ADVISORY_TITLE ? t : ''; };
 
 // ── Photos ──
 
@@ -164,6 +175,21 @@ export function photoLqip(p: PersonData): string {
 
 export const hasProfile = (p: Person) => isListed(p) && !!String(p?.bio || '').trim();
 export const profilePath = (slug: string) => `/about/leadership/${slug}/`;
+
+/** The words a profile page uses for the person's group */
+export function profileWords(p: Person) {
+  const memorial = p?.status === 'memorial';
+  if (p?.group === 'board') {
+    return { eyebrow: memorial ? 'In memoriam' : 'Board of Directors', meet: 'Meet the Board', group: 'board', back: '/about/leadership/#board',
+      company: 'Company', since: 'On the board', statSince: 'on the board<br/>since', statServed: 'served on<br/>the board' };
+  }
+  if (p?.group === 'advisory') {
+    return { eyebrow: memorial ? 'In memoriam' : 'Advisory Board', meet: 'Meet the Advisory Board', group: 'advisory board', back: '/advisory-board/#members',
+      company: 'Company', since: 'On the advisory board', statSince: 'on the advisory<br/>board since', statServed: 'served on the<br/>advisory board' };
+  }
+  return { eyebrow: memorial ? 'In memoriam' : p?.role === 'founder' ? 'Co-Founder' : 'Our Team', meet: 'Meet the Team', group: 'team', back: '/about/leadership/#our-team',
+    company: 'Organization', since: 'With SOARD', statSince: 'with SOARD<br/>since', statServed: 'with<br/>SOARD' };
+}
 
 export function bioParagraphs(text: string | undefined): string[] {
   return String(text || '').replace(/\r/g, '').split(/\n\s*\n/)

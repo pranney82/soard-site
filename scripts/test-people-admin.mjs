@@ -1,5 +1,5 @@
 /**
- * test-people-admin.mjs — drive Admin → People (Team & Board) in a real browser
+ * test-people-admin.mjs — drive Admin → People (Team, Board & Advisory) in a real browser
  * ============================================================================
  * Loads the admin from an Astro dev server (so Preview can frame the real
  * Leadership page) with every /api/* call answered from an in-memory copy of
@@ -17,9 +17,15 @@
  *     before/after preview, framing), a bio request link, reviewing what
  *     someone sent, Tidy to house style, History and restore, and merging a
  *     save made meanwhile (quietly, or by asking where both changed a field)
+ *   - the Advisory tab: empty at first, Paste a list (what each line does, the
+ *     records and private reveal emails it saves), an advisor's editor (no
+ *     seat or role, the invite email, Preview of the real Advisory Board page),
+ *     the Email menu, the Dashboard and the same on an iPad and a phone
  *   - phone layout: nothing past the content column, 44px targets, sheets fit
  * Screenshots land in test-results/people-admin/. Exits non-zero on any
- * failure or console error.
+ * failure or console error. AXE=<path to axe.min.js> adds an accessibility
+ * pass (WCAG 2.1 AA and best practice) on the Advisory screens; axe-core
+ * isn't a dependency of the site.
  *
  *   SITE=http://localhost:4321 node scripts/test-people-admin.mjs
  * Without SITE it starts `astro dev` on a spare port and stops it after.
@@ -158,8 +164,9 @@ function makeApi() {
         st.emails[slug] = String(email || '').trim().toLowerCase();
         return json({ ok: true, board: [] });
       }
-      const board = Object.entries(st.team).filter(([, d]) => d.group === 'board').map(([slug, d]) => ({ slug, name: d.name, email: st.emails[slug] || null }));
-      return json({ ok: true, board });
+      const group = url.searchParams.get('advisory') === '1' ? 'advisory' : 'board';
+      const list = Object.entries(st.team).filter(([, d]) => d.group === group).map(([slug, d]) => ({ slug, name: d.name, email: st.emails[slug] || null }));
+      return json({ ok: true, [group]: list });
     }
     if (p.startsWith('/api/pending-changes')) {
       return json({ success: true, changes: [...st.waiting].map((slug) => ({ type: 'team', slug, name: st.team[slug]?.name, state: 'waiting', action: 'updated', at: new Date().toISOString() })), publish: { live: null, active: null, failed: null, typicalSeconds: 480 } });
@@ -288,6 +295,18 @@ const rowNames = (page, sectionTitle) => page.evaluate((t) => {
   const sec = [...document.querySelectorAll('.ppl-section')].find((s) => s.querySelector('h3')?.textContent.trim().startsWith(t));
   return sec ? [...sec.querySelectorAll('.ppl-row__name')].map((n) => n.textContent.trim()) : null;
 }, sectionTitle);
+// Accessibility (optional): axe-core on the open dialog, or the content column
+const axeRules = { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'] } };
+async function axeCheck(page, label) {
+  if (!process.env.AXE) return;
+  if (!(await page.evaluate(() => !!window.axe))) await page.addScriptTag({ path: process.env.AXE });
+  await sleep(350);
+  const v = await page.evaluate(async (opts) => {
+    const r = await window.axe.run(document.querySelector('.modal-overlay') || document.querySelector('.main'), opts);
+    return r.violations.map((x) => `${x.id} (${x.impact}): ${x.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ')}`);
+  }, axeRules);
+  ok(!v.length, `accessibility, ${label}${v.length ? `: ${v.join('; ')}` : ''}`);
+}
 const lastCall = (api, path) => [...api.st.calls].reverse().find((c) => c.path === path);
 const callsTo = (api, path) => api.st.calls.filter((c) => c.path === path).length;
 
@@ -1023,6 +1042,256 @@ try {
     const s3 = await small('.ppl-pcard .btn, .ppl-filter, .ppl-head .btn');
     ok(!f3.length && !s3.length, `Photos fits an iPad, 44px targets (${f3.join(', ')}${s3.join(', ')})`);
     await shot(page, 'ipad-photos');
+    ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+
+  // ════════ Advisory Board ════════
+  console.log('Advisory Board 1440');
+  {
+    const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false });
+    await goPeople(page, 'team', false);
+    let tabs = await $text(page, '.hub-tab');
+    ok(tabs.join('|') === 'Team9|Board13|Advisory0|Photos', `an Advisory tab sits after Board (${tabs.join(' | ')})`);
+    await clickText(page, '.hub-tab', 'Advisory');
+    await page.waitForSelector('.ppl-empty-all');
+    await sleep(600);
+    const empty = await page.$eval('.ppl-empty-all', (e) => e.textContent.replace(/\s+/g, ' ').trim());
+    ok(/No one on the Advisory Board yet/.test(empty) && /Paste a list/.test(empty) && /\+ Add advisor/.test(empty), `the empty tab offers Paste a list and Add advisor (${empty.slice(0, 90)})`);
+    ok(await page.$eval('.ppl-head a.btn', (a) => a.getAttribute('href') === '/advisory-board/' && a.textContent.includes('Advisory Board page')), 'the header links to the Advisory Board page');
+    await shot(page, 'adv-empty');
+    await axeCheck(page, 'the empty Advisory tab');
+
+    // Paste a list: each line says what Add will do
+    await clickText(page, '.ppl-head .btn', 'Paste a list');
+    await page.waitForSelector('#ppl-paste');
+    await sleep(300);
+    ok(await page.evaluate(() => document.activeElement?.id === 'ppl-paste'), 'the list box takes focus');
+    const LIST = ['Ada Lovelace: Ada@Example.com', 'Grace Hopper, grace@example.org', '• Alan Turing <alan@example.net>', 'Mary Jackson',
+      'Scott Wierson: scott@example.com', 'ada lovelace: again@example.com', 'Bad Email: nope@'].join('\n');
+    await page.$eval('#ppl-paste', (t, v) => { t.value = v; t.dispatchEvent(new Event('input', { bubbles: true })); }, LIST);
+    await sleep(300);
+    const plan = await page.$$eval('.ppl-paste__row', (rows) => rows.map((r) => [r.querySelector('strong').textContent, r.querySelector('small')?.textContent || '', r.querySelector('.ppl-paste__state').textContent.trim()]));
+    ok(JSON.stringify(plan.map((p) => p[2])) === JSON.stringify(['Adds them with their email', 'Adds them with their email', 'Adds them with their email', 'Adds them, no email yet',
+      'Already in Board of Directors', 'Listed twice', 'The email doesn’t look right']), `each pasted line says what happens (${plan.map((p) => `${p[0]}: ${p[2]}`).join('; ')})`);
+    ok(plan[0][1] === 'ada@example.com' && plan[2][0] === 'Alan Turing', 'names and emails come out clean (lowercase email, no bullet or brackets)');
+    const addBtn = await page.$eval('.ppl-paste .modal-buttons .btn-primary', (b) => b.textContent.trim());
+    ok(addBtn === 'Add 4 advisors', `the button counts who it adds (${addBtn})`);
+    await shot(page, 'adv-paste', { grow: false });
+    await axeCheck(page, 'Paste a list');
+    const saves = callsTo(api, '/api/save-content');
+    await clickText(page, '.ppl-paste .modal-buttons .btn-primary', 'Add 4');
+    await page.waitForFunction(() => !document.querySelector('.ppl-paste'), { timeout: 15000 });
+    await page.waitForSelector('.ppl-row', { timeout: 10000 });
+    await sleep(500);
+    ok(callsTo(api, '/api/save-content') - saves === 4, 'one save per new advisor');
+    const ada = api.st.team['ada-lovelace'];
+    ok(ada?.group === 'advisory' && ada.title === 'Advisory Board Member' && ada.status === 'active' && ada.publishStatus === 'published' && ada.since === new Date().getFullYear() && !('role' in ada) && !('seat' in ada),
+      `an added advisor is a full record (${JSON.stringify(ada)})`);
+    ok(!Object.keys(api.st.team).some((s) => s.startsWith('bad-email')), 'a line whose email is broken adds no one');
+    ok(api.st.emails['ada-lovelace'] === 'ada@example.com' && api.st.emails['grace-hopper'] === 'grace@example.org' && api.st.emails['alan-turing'] === 'alan@example.net' && !api.st.emails['mary-jackson'],
+      'their private emails are saved, nothing for someone without one');
+    ok(!api.st.emails['scott-wierson'] && api.st.team['scott-wierson'].group === 'board', 'someone on the board stays on the board');
+    ok(JSON.stringify(await rowNames(page, 'Members')) === JSON.stringify(['Ada Lovelace', 'Grace Hopper', 'Alan Turing', 'Mary Jackson']), 'the Members section lists them in the pasted order');
+    tabs = await $text(page, '.hub-tab');
+    ok(tabs[2] === 'Advisory4', `the tab counts them (${tabs[2]})`);
+    const tiles = await $text(page, '.ppl-ready__tile');
+    ok(tiles.some((t) => /^Invite emails3 of 4/.test(t)), `the Invite emails tile says who gets invites (${tiles.join(' | ')})`);
+    const chips = await page.evaluate(() => [...document.querySelectorAll('.ppl-row')].find((r) => r.textContent.includes('Mary Jackson'))?.querySelector('.ppl-row__issues')?.textContent || '');
+    ok(/No photo/.test(chips) && /No invite email/.test(chips), `a row says what's missing (${chips})`);
+    ok(await page.evaluate(() => [...document.querySelectorAll('.ppl-row__sub')].some((s) => s.textContent.trim() === 'Advisory Board Member')), 'rows show the title');
+    await shot(page, 'adv-list');
+    await axeCheck(page, 'the Advisory list');
+
+    // Email the advisory board: Bcc of the three addresses
+    await page.click('.ppl-head-menu');
+    await page.waitForSelector('.ppl-menu__pop');
+    const mail = await $text(page, '.ppl-menu__pop [role="menuitem"]');
+    ok(mail[0].startsWith('Write to the whole advisory board') && /3 addresses in Bcc/.test(mail[0]) && mail.some((m) => m.startsWith('1 without an invite email')), `the Email menu (${mail.join(' | ')})`);
+    await page.keyboard.press('Escape');
+    await sleep(200);
+
+    // The Dashboard counts an advisor with no invite email with the board, and Show them lands on the board first
+    await clickText(page, '.nav-item', 'Dashboard');
+    await page.waitForFunction(() => /won’t get reveal invites/.test(document.body.textContent), { timeout: 15000 }).catch(() => {});
+    const need = await page.evaluate(() => [...document.querySelectorAll('.dneed-title')].find((e) => /reveal invites/.test(e.textContent))?.textContent.trim());
+    ok(/^13 board and advisory board members won’t get reveal invites/.test(need || ''), `the Dashboard counts advisors without an invite email (${need})`);
+    await clickText(page, '.nav-item', 'People');
+    await page.waitForSelector('.hub-tabs');
+    await clickText(page, '.hub-tab', 'Advisory');
+    await page.waitForSelector('.ppl-row');
+    await sleep(400);
+
+    // An advisor's editor: no seat or role, a private email, the Advisory Board page in Preview
+    await clickText(page, '.ppl-row__name', 'Mary Jackson');
+    await page.waitForSelector('#ppl-title');
+    await sleep(600);
+    const ed = await page.evaluate(() => ({
+      group: document.querySelector('[aria-label="On the page under"] [aria-checked="true"]')?.textContent.trim(),
+      labels: [...document.querySelectorAll('.ppl-role .form-label')].map((l) => l.textContent.trim()),
+      contact: document.querySelector('#ppl-adv-h')?.textContent === 'Reveal invites' && document.querySelector('label[for="ppl-email"]')?.textContent.trim() === 'Email for reveal invites' && !document.querySelector('#ppl-board-h'),
+      org: document.querySelector('label[for="ppl-org"]')?.textContent.trim(),
+      partner: !!document.querySelector('label[for="ppl-partner"]'),
+      since: document.querySelector('label[for="ppl-since"]')?.textContent.trim(),
+      show: document.querySelector('.ppl-role .ppl-switch')?.textContent.trim(),
+    }));
+    ok(ed.group === 'Advisory Board' && !ed.labels.includes('Seat') && !ed.labels.includes('Role'), `an advisor has no seat or role (${ed.group}; ${ed.labels.join(', ')})`);
+    ok(ed.contact && ed.org?.startsWith('Company and role') && ed.partner && ed.since?.startsWith('On the advisory board since') && ed.show === 'Show on the site', `the editor speaks advisory (${JSON.stringify(ed)})`);
+    await page.type('#ppl-email', 'Mary@Example.com');
+    await page.type('#ppl-org', 'Langley Research, Engineer');
+    await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
+    await page.waitForFunction(() => !document.querySelector('.ppl-unsaved'), { timeout: 8000 });
+    ok(api.st.emails['mary-jackson'] === 'mary@example.com' && api.st.team['mary-jackson'].organization === 'Langley Research, Engineer', 'the email and company save with Save');
+    await shot(page, 'adv-editor');
+    await axeCheck(page, 'an advisor’s editor');
+    await clickText(page, '.ppl-ed-head .btn', 'Preview');
+    let previewOk = false;
+    for (let i = 0; i < 40 && !previewOk; i++) {
+      await sleep(500);
+      previewOk = await page.evaluate(() => [...document.querySelectorAll('iframe')].some((f) => {
+        try {
+          const d = f.contentDocument;
+          const names = [...d.querySelectorAll('#members .abm-name')].map((n) => n.textContent.trim());
+          return /\/advisory-board\//.test(f.contentWindow.location.pathname) && names.join('|') === 'Ada Lovelace|Grace Hopper|Alan Turing|Mary Jackson'
+            && [...d.querySelectorAll('.abm-org')].some((o) => o.textContent === 'Langley Research, Engineer');
+        } catch { return false; }
+      }));
+    }
+    ok(previewOk, 'Preview shows the real Advisory Board page with every advisor and the new company');
+    await shot(page, 'adv-preview');
+    await clickText(page, '.ppl-ed-head .btn', 'Preview');
+    // Moving them to the board gives them the board's title, and back
+    await page.evaluate(() => [...document.querySelectorAll('[aria-label="On the page under"] [role="radio"]')].find((b) => b.textContent.trim() === 'Board of Directors').click());
+    await sleep(200);
+    ok(await page.$eval('#ppl-title', (i) => i.value === 'Board Member') && !!(await page.$('#ppl-board-h')), 'moved to the board: Board Member, with the board details');
+    await page.evaluate(() => [...document.querySelectorAll('[aria-label="On the page under"] [role="radio"]')].find((b) => b.textContent.trim() === 'Advisory Board').click());
+    await sleep(200);
+    ok(await page.$eval('#ppl-title', (i) => i.value === 'Advisory Board Member'), 'and back: Advisory Board Member');
+    await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
+    await sleep(400);
+    await page.evaluate(() => [...document.querySelectorAll('.modal-buttons .btn')].find((b) => /Discard|Leave/.test(b.textContent))?.click());
+    await page.waitForSelector('.hub-tabs');
+
+    // A pasted line for someone already here saves their email only
+    await clickText(page, '.hub-tab', 'Advisory');
+    await page.waitForSelector('.ppl-row');
+    await clickText(page, '.ppl-head .btn', 'Paste a list');
+    await page.waitForSelector('#ppl-paste');
+    await page.$eval('#ppl-paste', (t) => { t.value = 'Ada Lovelace: ada@example.com\nMary Jackson: mary.j@example.com'; t.dispatchEvent(new Event('input', { bubbles: true })); });
+    await sleep(300);
+    const again = await $text(page, '.ppl-paste__state');
+    ok(again[0] === 'Already here' && /replaces mary@example\.com/.test(again[1]), `a second paste knows who's here (${again.join(' | ')})`);
+    const saves2 = callsTo(api, '/api/save-content');
+    await clickText(page, '.ppl-paste .modal-buttons .btn-primary', 'Save 1 email');
+    await page.waitForFunction(() => !document.querySelector('.ppl-paste'), { timeout: 10000 });
+    ok(callsTo(api, '/api/save-content') === saves2 && api.st.emails['mary-jackson'] === 'mary.j@example.com', 'it saves the new email and no record');
+
+    // Photos and the search box know the third group
+    await clickText(page, '.hub-tab', 'Photos');
+    await page.waitForSelector('.ppl-pcard');
+    ok((await $text(page, '.ppl-photos h3')).some((t) => t.startsWith('Advisory Board')), 'Photos has an Advisory Board section');
+    // With Mary's email in, the Dashboard is back to the board alone
+    await clickText(page, '.nav-item', 'Dashboard');
+    await page.waitForSelector('.dneed-title', { timeout: 15000 }).catch(() => {});
+    await sleep(800);
+    // The Dashboard shows its top few; the rest are behind Show more
+    await page.evaluate(() => { const more = document.querySelector('.dneeds-more'); if (more?.getAttribute('aria-expanded') === 'false') more.click(); });
+    await page.waitForFunction(() => /won’t get reveal invites/.test(document.body.textContent), { timeout: 15000 }).catch(() => {});
+    const need2 = await page.evaluate(() => [...document.querySelectorAll('.dneed-title')].find((e) => /reveal invites/.test(e.textContent))?.textContent.trim());
+    ok(/^12 board members won’t get reveal invites/.test(need2 || ''), `once every advisor has one, the Dashboard counts only the board (${need2})`);
+    ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+  console.log('Advisory Board 820 (iPad, touch)');
+  {
+    const { page, errors } = await open(browser, { width: 820, height: 1180, mobile: true });
+    const fits = () => page.evaluate(() => { const main = document.querySelector('.main').getBoundingClientRect(); return [...document.querySelectorAll('.main *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.right > main.right + 1; }).map((e) => e.className || e.tagName).slice(0, 5); });
+    const small = (sel) => page.$$eval(sel, (els) => els.filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 44).map((e) => e.textContent.trim().slice(0, 24)));
+    await page.evaluate(() => document.querySelector('.hamburger')?.click());
+    await sleep(350);
+    await clickText(page, '.nav-item', 'People');
+    await page.waitForSelector('.hub-tabs');
+    await clickText(page, '.hub-tab', 'Advisory');
+    await page.waitForSelector('.ppl-empty-all');
+    await sleep(500);
+    await clickText(page, '.ppl-head .btn', 'Paste a list');
+    await page.waitForSelector('#ppl-paste');
+    await page.$eval('#ppl-paste', (t) => { t.value = 'Katherine Johnson: katherine@example.com\nDorothy Vaughan, dorothy@example.com\nScott Wierson: scott@example.com'; t.dispatchEvent(new Event('input', { bubbles: true })); });
+    await sleep(400);
+    const sheet = await page.evaluate(() => {
+      const m = document.querySelector('.modal.ppl-paste').getBoundingClientRect();
+      const wide = [...document.querySelectorAll('.ppl-paste *')].filter((e) => e.getBoundingClientRect().right > m.right + 1).length;
+      const who = Math.round(Math.min(...[...document.querySelectorAll('.ppl-paste__who')].map((e) => e.getBoundingClientRect().width)));
+      const btns = [...document.querySelectorAll('.ppl-paste .btn')].filter((b) => b.getBoundingClientRect().height < 44).length;
+      return { w: Math.round(m.width), wide, who, btns };
+    });
+    ok(!sheet.wide && sheet.who >= 300 && !sheet.btns, `the paste dialog on an iPad: rows use the width, 44px buttons (${JSON.stringify(sheet)})`);
+    await shot(page, 'ipad-adv-paste', { grow: false });
+    await clickText(page, '.ppl-paste .modal-buttons .btn-primary', 'Add 2');
+    await page.waitForFunction(() => !document.querySelector('.ppl-paste'), { timeout: 15000 });
+    await page.waitForSelector('.ppl-row');
+    await sleep(600);
+    const f1 = await fits();
+    const s1 = await small('.ppl-head .btn, .ppl-filter, .ppl-ready__tile, .ppl-menu__btn');
+    ok(!f1.length && !s1.length, `the Advisory list fits an iPad, 44px targets (${f1.join(', ')}${s1.join(', ')})`);
+    await shot(page, 'ipad-adv-list');
+    await clickText(page, '.ppl-row__name', 'Katherine Johnson');
+    await page.waitForSelector('#ppl-email');
+    await sleep(700);
+    const f2 = await fits();
+    const clipped = await page.evaluate(() => [...document.querySelectorAll('.ppl-seg [role="radio"]')].filter((b) => b.scrollWidth > b.clientWidth + 1).map((b) => b.textContent));
+    ok(!f2.length && !clipped.length, `an advisor's editor fits an iPad, no choice cut off (${f2.join(', ')}${clipped.join(', ')})`);
+    await shot(page, 'ipad-adv-editor');
+    ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+  console.log('Advisory Board 390 (touch)');
+  {
+    const { page, errors } = await open(browser, { width: 390, height: 844, mobile: true });
+    const fits = () => page.evaluate(() => { const main = document.querySelector('.main').getBoundingClientRect(); return [...document.querySelectorAll('.main *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.right > main.right + 1; }).map((e) => e.className || e.tagName).slice(0, 5); });
+    const small = (sel) => page.$$eval(sel, (els) => els.filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 44).map((e) => e.textContent.trim().slice(0, 24)));
+    if (true) { await page.evaluate(() => document.querySelector('.hamburger')?.click()); await sleep(350); }
+    await clickText(page, '.nav-item', 'People');
+    await page.waitForSelector('.hub-tabs');
+    await clickText(page, '.hub-tab', 'Advisory');
+    await page.waitForSelector('.ppl-empty-all');
+    await sleep(500);
+    const f1 = await fits();
+    const s1 = await small('.ppl-head .btn, .ppl-empty-all .btn, .hub-tab');
+    ok(!f1.length && !s1.length, `the empty Advisory tab fits a phone, 44px targets (${f1.join(', ')}${s1.join(', ')})`);
+    await shot(page, 'phone-adv-empty');
+    await clickText(page, '.ppl-empty-all .btn', 'Paste a list');
+    await page.waitForSelector('#ppl-paste');
+    await page.$eval('#ppl-paste', (t) => { t.value = 'Katherine Johnson: katherine.johnson.long.address@example-university.edu\nDorothy Vaughan, dorothy@example.com\nScott Wierson'; t.dispatchEvent(new Event('input', { bubbles: true })); });
+    await sleep(400);
+    const sheet = await page.evaluate(() => {
+      const m = document.querySelector('.modal.ppl-paste').getBoundingClientRect();
+      const wide = [...document.querySelectorAll('.ppl-paste *')].filter((e) => e.getBoundingClientRect().right > m.right + 1).length;
+      const field = parseFloat(getComputedStyle(document.querySelector('#ppl-paste')).fontSize);
+      const btns = [...document.querySelectorAll('.ppl-paste .btn')].filter((b) => b.getBoundingClientRect().height < 44).length;
+      const who = Math.round(Math.min(...[...document.querySelectorAll('.ppl-paste__who')].map((e) => e.getBoundingClientRect().width)));
+      const nameLines = Math.round(document.querySelector('.ppl-paste__who strong').getBoundingClientRect().height / parseFloat(getComputedStyle(document.querySelector('.ppl-paste__who strong')).lineHeight || 20));
+      return { w: Math.round(m.width), bottom: Math.round(m.bottom), wide, field, btns, who, nameLines };
+    });
+    ok(sheet.w <= 390 && sheet.bottom <= 845 && !sheet.wide && sheet.field >= 16 && !sheet.btns, `the paste sheet fits the phone, 16px field, 44px buttons (${JSON.stringify(sheet)})`);
+    ok(sheet.who >= 220 && sheet.nameLines <= 1, `each pasted name gets the sheet's width, on one line (${sheet.who}px, ${sheet.nameLines} line)`);
+    await shot(page, 'phone-adv-paste', { grow: false });
+    await axeCheck(page, 'Paste a list on a phone');
+    await clickText(page, '.ppl-paste .modal-buttons .btn-primary', 'Add 2');
+    await page.waitForFunction(() => !document.querySelector('.ppl-paste'), { timeout: 15000 });
+    await page.waitForSelector('.ppl-row');
+    await sleep(600);
+    const f2 = await fits();
+    ok(!f2.length, `the Advisory list fits the phone (${f2.join(', ')})`);
+    await shot(page, 'phone-adv-list');
+    await clickText(page, '.ppl-row__name', 'Katherine Johnson');
+    await page.waitForSelector('#ppl-email');
+    await sleep(700);
+    const f3 = await fits();
+    const clipped = await page.evaluate(() => [...document.querySelectorAll('.ppl-seg [role="radio"]')].filter((b) => b.scrollWidth > b.clientWidth + 1).map((b) => b.textContent));
+    ok(!f3.length && !clipped.length, `an advisor's editor fits the phone, no choice cut off (${f3.join(', ')}${clipped.join(', ')})`);
+    ok(await page.$eval('#ppl-email', (i) => i.value === 'katherine.johnson.long.address@example-university.edu'), 'the editor shows the pasted email');
+    await shot(page, 'phone-adv-editor');
     ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
   }

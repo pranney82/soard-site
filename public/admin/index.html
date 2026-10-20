@@ -3294,6 +3294,34 @@
     .ppl-cmte-new .form-input { flex: 1 1 180px; min-width: 0; max-width: 280px; }
     .ppl-cmte-new__hint { flex-basis: 100%; margin: 0; }
     .modal.ppl-cmte-modal { max-width: 560px; max-height: calc(100dvh - 3rem); overflow-y: auto; }
+    .ppl-empty-all__btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; }
+    /* Paste a list: names and emails in, a row per person showing what Add will do */
+    .modal.ppl-paste { max-width: 640px; max-height: calc(100dvh - 3rem); overflow-y: auto; }
+    .ppl-paste__lead { margin-bottom: 0.9rem; }
+    .ppl-paste textarea { min-height: 9.5rem; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: max(16px, 0.85rem); line-height: 1.5; resize: vertical; }
+    .ppl-paste__sum { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; margin: 1rem 0 0.4rem; }
+    .ppl-paste__sum strong { font-size: 0.9rem; }
+    .ppl-paste__sum span { font-size: 0.8rem; color: var(--color-text-muted); }
+    .ppl-paste__rows { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; }
+    /* Named areas: the People list's tablet rules give every .ppl-avatar an area of its own */
+    .ppl-paste__row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; grid-template-areas: 'avatar who state'; align-items: center; gap: 0.75rem; padding: 0.6rem 0.8rem; }
+    .ppl-paste__row + .ppl-paste__row { border-top: 1px solid var(--color-border); }
+    .ppl-paste__row .ppl-avatar { grid-area: avatar; align-self: center; width: 34px; height: 34px; font-size: 0.72rem; }
+    .ppl-paste__who { grid-area: who; min-width: 0; }
+    .ppl-paste__who strong { display: block; font-size: 0.9rem; overflow-wrap: anywhere; }
+    .ppl-paste__who small { display: block; font-size: 0.78rem; color: var(--color-text-muted); overflow-wrap: anywhere; }
+    /* Skipped lines read quieter, still at 4.5:1 or more */
+    .ppl-paste__row.is-skip { background: #FAFAF8; }
+    .ppl-paste__row.is-skip .ppl-paste__who strong { font-weight: 500; color: var(--color-text-secondary); }
+    .ppl-paste__state { grid-area: state; justify-self: end; }
+    .ppl-paste__state.ppl-chip--add { background: #E8F5EC; color: #1E6B3A; }
+    .ppl-paste__state.ppl-chip--done { background: #E8F5EC; color: #1E6B3A; }
+    .ppl-paste__show { margin-top: 1rem; }
+    @media (max-width: 560px) {
+      .ppl-paste__row { grid-template-columns: 34px minmax(0, 1fr); grid-template-areas: 'avatar who' 'avatar state'; row-gap: 0.35rem; }
+      .ppl-paste__row .ppl-avatar { align-self: start; }
+      .ppl-paste__state { justify-self: start; white-space: normal; }
+    }
     .modal .ppl-cmte-modal__lead { margin-bottom: 1rem; }
     .ppl-cmte-modal__loading { display: flex; align-items: center; gap: 0.5rem; }
     .ppl-cmte-list { list-style: none; margin: 0 0 0.9rem; border: 1px solid var(--color-border); border-radius: 12px; }
@@ -4003,12 +4031,13 @@
       Editor, StarterKit, TiptapUnderline, TiptapLink, Placeholder, CharacterCount,
       qrcode,
     } from './vendor.js';
-    // People (Team & Board) rules, shared with the Leadership page Preview
+    // People (Team, Board & Advisory Board) rules, shared with the Leadership and Advisory Board page Previews
     import {
       normalizePerson, comparePeople, isListed as tsIsListed, photoUrl as tsPhotoUrl, photoLqip as tsPhotoLqip,
       photoPixels as tsPhotoPixels, photoQuality as tsPhotoQuality, validCrop as tsValidCrop, cfId as tsCfId,
       normalizeLinkedIn as tsNormalizeLinkedIn, seatTitle as tsSeatTitle, CF_ORIGIN as TS_CF_ORIGIN,
       SEATS as TS_SEATS, TEAM_ROLES as TS_TEAM_ROLES, STATUSES as TS_STATUSES, MEMBER_TITLE as TS_MEMBER_TITLE,
+      ADVISORY_TITLE as TS_ADVISORY_TITLE, groupOf as tsGroupOf, parsePeopleList as tsParsePeopleList, planPeopleList as tsPlanPeopleList,
       PHOTO_MIN as TS_PHOTO_MIN, PHOTO_GOOD as TS_PHOTO_GOOD, hasProfile as tsHasProfile, profilePath as tsProfilePath, boardTitleLine as tsBoardTitleLine,
       COMMITTEES_PATH as TS_COMMITTEES_PATH, DEFAULT_COMMITTEES as TS_DEFAULT_COMMITTEES, committeeList as tsCommitteeList,
       committeeMembers as tsCommitteeMembers, sortCommittees as tsSortCommittees, sameCommittee as tsSameCommittee, cleanCommittee as tsCleanCommittee,
@@ -7884,7 +7913,7 @@
 
           <div class="card">
             <h3>Who gets the invites</h3>
-            <p class="ri-meta"><strong>Tentative</strong>, once construction starts (Demo, or two tasks under Construction, done): staff, the family (the job's customer contacts, and anyone with the Makeover Family role who has access to the job) and the board.</p>
+            <p class="ri-meta"><strong>Tentative</strong>, once construction starts (Demo, or two tasks under Construction, done): staff, the family (the job's customer contacts, and anyone with the Makeover Family role who has access to the job), the board and the Advisory Board.</p>
             <p class="ri-meta"><strong>Confirmed</strong>, once Reveal Date Confirmed is Yes: the same invite becomes the real one and adds the vendors, sponsors, photographers and design partners who have access to that job in JobTread. Un-confirming takes them back off.</p>
             <p class="ri-meta">Both invites include the link to watch the reveal live.</p>
             <p class="ri-meta"><strong>Cancelling</strong> is done by hand: delete the event in the organizer's Google Calendar and let Google email the guests. The site never cancels an invite, and never sends one again once it's been deleted (Retry on the reveal sends it again). If a job is closed, denied or put on hold first, the invite stays and staff get one email.</p>
@@ -7893,6 +7922,12 @@
               const missing = board.filter((m) => !m.hasEmail);
               if (!board.length) return html`<p class="ri-meta">No board members on the website yet (People → Board).</p>`;
               return html`<p class="ri-meta">Board: <strong>${board.length - missing.length} of ${board.length}</strong> board members on the website have an email for reveal invites.${missing.length ? html` <span class="ri-warn">Missing: ${missing.map((m) => m.name).join(', ')}.</span> Add each one on their page in People → Board.` : ''}</p>`;
+            })()}
+            ${(() => {
+              const advisory = data.advisory || [];
+              const missing = advisory.filter((m) => !m.hasEmail);
+              if (!advisory.length) return null;
+              return html`<p class="ri-meta">Advisory Board: <strong>${advisory.length - missing.length} of ${advisory.length}</strong> advisors have an email for reveal invites.${missing.length ? html` <span class="ri-warn">Missing: ${missing.map((m) => m.name).join(', ')}.</span> Add each one on their page in People → Advisory.` : ''}</p>`;
             })()}
           </div>
 
@@ -9509,6 +9544,7 @@
         ['Press story', () => onNavigate('press-hub', '', 'press')],
         ['Resource article', () => onNavigate('articles', '')],
         ['Team member', () => onNavigate('people-hub', '', 'team')],
+        ['Advisory board member', () => onNavigate('people-hub', '', 'advisory')],
       ];
       useEffect(() => {
         if (!open) return undefined;
@@ -9723,6 +9759,7 @@
       const { live, reveals, jtJobs, lastDeploy } = useDashLive();
       // Board members' private reveal emails (a light D1 read), for the invite reminder below
       const [boardEmails] = useBoardEmails(true);
+      const [advisoryEmails] = useBoardEmails(true, 'advisory');
       const { requests: profileRequests } = useProfileRequests();
       const [showAllNeeds, setShowAllNeeds] = useState(false);
       const [impactOpen, setImpactOpen] = useState(false);
@@ -9829,14 +9866,19 @@
           ? { label: 'Open in JobTread', href: JT_JOB_URL(u.jobId) }
           : { label: 'Open profile', go: () => onNavigate('kids-hub', u.slug, 'kids') },
       }));
-      // Active board members (drafts too) with no reveal email miss every reveal invite
-      const noInvite = boardEmails ? (team || []).map(normalizePerson)
-        .filter((p) => p.group === 'board' && p.status === 'active' && !boardEmails[p.slug]).sort(comparePeople) : [];
+      // Active board and Advisory Board members (drafts too) with no reveal email miss every reveal invite
+      const inviteEmails = { board: boardEmails, advisory: advisoryEmails };
+      const noInvite = boardEmails && advisoryEmails ? (team || []).map(normalizePerson)
+        .filter((p) => inviteEmails[p.group] && p.status === 'active' && !inviteEmails[p.group][p.slug])
+        .sort((a, b) => (a.group === 'advisory') - (b.group === 'advisory') || comparePeople(a, b)) : [];
+      const noInviteGroups = [...new Set(noInvite.map((p) => p.group))];
+      const noInviteNoun = noInviteGroups.length > 1 ? 'board and advisory board member' : noInviteGroups[0] === 'advisory' ? 'advisor' : 'board member';
       if (noInvite.length) needs.push({
         key: 'board-invites', tone: 'fix', icon: DI.mail,
-        title: noInvite.length === 1 ? `${noInvite[0].name} won’t get reveal invites` : `${dashCount(noInvite.length, 'board member')} won’t get reveal invites`,
+        title: noInvite.length === 1 ? `${noInvite[0].name} won’t get reveal invites` : `${dashCount(noInvite.length, noInviteNoun)} won’t get reveal invites`,
         detail: `${noInvite.length === 1 ? 'No' : `${dashNames(noInvite.map((p) => p.name), 3)} have no`} invite email on file. Add one on their People page and every reveal’s calendar invite includes them.`,
-        action: { label: noInvite.length === 1 ? 'Add the email' : 'Show them', go: () => (noInvite.length === 1 ? onNavigate('people-hub', noInvite[0].slug, 'board') : onNavigate('people-hub', null, 'board', 'no-invite-email')) },
+        // Several: the tab of the first one missing (board first), filtered to who's missing an email
+        action: { label: noInvite.length === 1 ? 'Add the email' : 'Show them', go: () => (noInvite.length === 1 ? onNavigate('people-hub', noInvite[0].slug, noInvite[0].group) : onNavigate('people-hub', null, noInvite[0].group, 'no-invite-email')) },
       });
       // Bios people sent back from their private link, waiting for someone to use them
       const waitingBios = (profileRequests || []).filter((r) => r.status === 'pending')
@@ -9846,8 +9888,8 @@
         title: waitingBios.length === 1 ? `${waitingBios[0].p.name} sent their profile` : `${waitingBios.length} profiles are waiting for review`,
         detail: `${waitingBios.length === 1 ? 'Their bio and details are' : `${dashNames(waitingBios.map((x) => x.p.name), 3)} sent theirs. They’re`} waiting in People. Nothing changes on the site until you use them and publish.`,
         action: waitingBios.length === 1
-          ? { label: 'Review', go: () => onNavigate('people-hub', waitingBios[0].p.slug, waitingBios[0].p.group === 'board' ? 'board' : 'team') }
-          : { label: 'Review them', go: () => onNavigate('people-hub', null, waitingBios.some((x) => x.p.group === 'team') ? 'team' : 'board', 'profiles-waiting') },
+          ? { label: 'Review', go: () => onNavigate('people-hub', waitingBios[0].p.slug, tsGroupOf(waitingBios[0].p.group).id) }
+          : { label: 'Review them', go: () => onNavigate('people-hub', null, ['team', 'board', 'advisory'].find((g) => waitingBios.some((x) => x.p.group === g)) || 'team', 'profiles-waiting') },
       });
       if (staleEvents.length && !hasNextEvent) needs.push({
         key: 'events', tone: 'fix', icon: DI.calendar,
@@ -11251,6 +11293,7 @@
       partner: { module: './partner-preview.js', noun: 'partner', publishType: 'partners', more: null, list: 'the partners page', name: (x) => x.name || 'New partner' },
       press: { module: './press-preview.js', noun: 'story', publishType: 'press', more: null, list: 'the publicity page', name: (x) => x.title || 'New story' },
       team: { module: './team-preview.js', noun: 'person', publishType: 'team', more: null, list: 'the Leadership page', name: (x) => x.name || 'New person' },
+      advisory: { module: './advisory-preview.js', noun: 'person', publishType: 'team', more: null, list: 'the Advisory Board page', name: (x) => x.name || 'New advisor' },
       person: { module: './person-preview.js', noun: 'profile', publishType: 'team', more: '“More of our board”', name: (x) => x.name || 'New person' },
     };
     const previewModules = {};
@@ -16120,7 +16163,7 @@
     }
 
     // ═══════════════════════════════════════════
-    // PEOPLE (Team & Board): list, editor, photo tools
+    // PEOPLE (Team, Board & Advisory Board): list, editor, photo tools
     // The record rules (role, seat, status, order, photo URLs) live in
     // team-shared.js, which the Leadership page Preview also uses and the site
     // build mirrors (src/utils/team.ts).
@@ -16156,7 +16199,21 @@
         { id: 'members', title: 'Members', match: (p) => p.status !== 'memorial' && !p.seat, sortable: true },
         { id: 'memorial', title: 'In memory', match: (p) => p.status === 'memorial', sortable: true, hideEmpty: true },
       ],
+      advisory: [
+        { id: 'members', title: 'Members', match: (p) => p.status !== 'memorial', sortable: true,
+          empty: 'No one here yet. Add an advisor, or paste a list of names and emails.' },
+        { id: 'memorial', title: 'In memory', match: (p) => p.status === 'memorial', sortable: true, hideEmpty: true },
+      ],
     };
+    /** Each group in the admin: its tab, what to call one person, and where the site shows them */
+    const PPL_GROUPS = {
+      team: { heading: 'Team', add: 'team member', noun: 'team member', pageLabel: 'Leadership page', page: '/about/leadership/', anchor: '/about/leadership/#our-team', anchorHint: 'Our Team section' },
+      board: { heading: 'Board', add: 'board member', noun: 'board member', pageLabel: 'Leadership page', page: '/about/leadership/', anchor: '/about/leadership/#board', anchorHint: 'Board of Directors section' },
+      advisory: { heading: 'Advisory Board', add: 'advisor', noun: 'advisor', pageLabel: 'Advisory Board page', page: '/advisory-board/', anchor: '/advisory-board/#members', anchorHint: 'Advisory Board page' },
+    };
+    const pplGroup = (g) => PPL_GROUPS[g] || PPL_GROUPS.team;
+    /** Board and advisory records keep a private reveal invite email (also the Email menu's Bcc list) */
+    const pplHasEmail = (g) => g === 'board' || g === 'advisory';
 
     const pplInitials = (name) => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
     const pplIsLocal = (src) => /^(blob|data):/.test(src || '');
@@ -16201,16 +16258,17 @@
       });
     }
 
-    // Board members' private reveal emails (kept out of the public record)
-    function useBoardEmails(enabled) {
+    // Board members' private reveal emails, or the Advisory Board's private emails (kept out of the public record)
+    function useBoardEmails(enabled, group = 'board') {
       const [emails, setEmails] = useState(null);
+      const key = group === 'advisory' ? 'advisory' : 'board';
       const load = useCallback(() => {
         if (!enabled) return;
-        fetch('/api/reveal-invites-admin?board=1', { cache: 'no-store' })
+        fetch(`/api/reveal-invites-admin?${key}=1`, { cache: 'no-store' })
           .then((r) => r.json())
-          .then((d) => setEmails(Object.fromEntries((d.board || []).map((m) => [m.slug, m.email || '']))))
+          .then((d) => setEmails(Object.fromEntries((d[key] || []).map((m) => [m.slug, m.email || '']))))
           .catch(() => setEmails({}));
-      }, [enabled]);
+      }, [enabled, key]);
       useEffect(() => { load(); }, [load]);
       return [emails, load];
     }
@@ -16230,7 +16288,7 @@
       else if (profile && q && q !== 'good') out.push({ id: 'photo', tone: 'warn', label: 'Photo too small for their profile', tip: `${px}px: their profile page shows a large portrait, so it will look soft. Upload one at least ${TS_PHOTO_GOOD}px wide.` });
       else if (q === 'blurry') out.push({ id: 'photo', tone: 'warn', label: 'Blurry photo', tip: `${px}px: looks soft on sharp screens. Upload one at least ${TS_PHOTO_GOOD}px wide.` });
       else if (q === 'ok') out.push({ id: 'photo', tone: 'quiet', label: 'Small photo', tip: `${px}px: fine on today’s page, too small for anything larger. ${TS_PHOTO_GOOD}px or more is ideal.` });
-      if (p.group === 'board' && p.status === 'active' && emails && !emails[p.slug]) {
+      if (pplHasEmail(p.group) && p.status === 'active' && emails && !emails[p.slug]) {
         out.push({ id: 'email', tone: 'warn', label: 'No invite email', tip: 'They won’t get reveal invites until they have one' });
       }
       if (p.status === 'active') {
@@ -16253,7 +16311,9 @@
       r.order = Number(r.order) || 0;
       r.status = ['active', 'alumni', 'memorial'].includes(r.status) ? r.status : 'active';
       r.publishStatus = r.publishStatus === 'draft' ? 'draft' : 'published';
-      if (r.group === 'board') { delete r.role; r.seat = r.seat || ''; } else { delete r.seat; delete r.committees; delete r.partner; r.role = r.role || 'staff'; }
+      if (r.group === 'board') { delete r.role; r.seat = r.seat || ''; }
+      else if (r.group === 'advisory') { delete r.role; delete r.seat; delete r.committees; }
+      else { delete r.seat; delete r.committees; delete r.partner; r.role = r.role || 'staff'; }
       for (const k of ['since', 'until']) {
         const n = Number(r[k]);
         if (r[k] === '' || r[k] == null || !Number.isInteger(n) || n < 1900 || n > 2200) delete r[k]; else r[k] = n;
@@ -16271,7 +16331,8 @@
     /** Fetch the site's photo sizes once after a save, so the first visitor never waits on a cutout */
     function pplWarmPhoto(rec) {
       if (!rec.photo || pplIsLocal(rec.photo) || (!rec.photoCutout && !rec.photoCrop)) return;
-      const widths = rec.group === 'board' ? [140, 200, 280, 400] : [160, 220, 320, 440];
+      // The Leadership page's sizes, and the Advisory Board page's for an advisor
+      const widths = rec.group === 'board' ? [140, 200, 280, 400] : rec.group === 'advisory' ? [140, 200, 280, 400, 112, 168, 224, 336] : [160, 220, 320, 440];
       for (const u of [...widths.map((w) => tsPhotoUrl(rec, w)), tsPhotoLqip(rec)]) { const i = new Image(); i.src = u; }
     }
 
@@ -16426,15 +16487,20 @@
     }
     function pplRosterCsv(team, group, emails) {
       const board = group === 'board';
+      const advisory = group === 'advisory';
       const head = board
         ? ['Name', 'Seat', 'Title', 'Company', 'On the board since', 'Until', 'Committees', 'Status', 'On the website', 'Invite email', 'Profile page', 'LinkedIn']
-        : ['Name', 'Role', 'Title', 'With SOARD since', 'Until', 'Status', 'On the website', 'Profile page', 'LinkedIn'];
+        : advisory
+          ? ['Name', 'Title', 'Company', 'On the advisory board since', 'Until', 'Status', 'On the website', 'Invite email', 'Profile page', 'LinkedIn']
+          : ['Name', 'Role', 'Title', 'With SOARD since', 'Until', 'Status', 'On the website', 'Profile page', 'LinkedIn'];
       const rows = pplRoster(team, group).map((p) => {
         const profile = tsHasProfile(p) ? `${PPL_SITE}${tsProfilePath(p.slug)}` : '';
         const shown = tsIsListed(p) ? 'Yes' : 'No';
         return board
           ? [p.name, p.status === 'active' ? pplSeatLabel(p) : '', p.title, p.organization, p.since, p.until, (p.committees || []).join(', '), pplStatusLabel(p), shown, emails?.[p.slug] || '', profile, p.linkedin]
-          : [p.name, pplRoleLabel(p), p.title, p.since, p.until, pplStatusLabel(p), shown, profile, p.linkedin];
+          : advisory
+            ? [p.name, p.title, p.organization, p.since, p.until, pplStatusLabel(p), shown, emails?.[p.slug] || '', profile, p.linkedin]
+            : [p.name, pplRoleLabel(p), p.title, p.since, p.until, pplStatusLabel(p), shown, profile, p.linkedin];
       });
       // Every cell quoted; one starting = + - @ can't run as a spreadsheet formula
       const cell = (v) => { let s = v == null ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
@@ -16453,19 +16519,21 @@
      * that window: this page wires its Print button and email switch.
      */
     function pplPrintRoster(team, group, emails) {
+      // The Advisory Board prints like the board, without committees
       const board = group === 'board';
+      const withCompany = board || group === 'advisory';
       const people = pplRoster(team, group).filter((p) => p.status === 'active');
       const w = window.open('', '_blank');
       if (!w) return false;
       const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
       const month = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      const title = board ? 'Board of Directors' : 'Our Team';
-      const withEmail = board && people.some((p) => emails?.[p.slug]);
-      const head = `<tr><th class="ph"><span class="sr">Photo</span></th><th>Name</th>${board ? '<th>Company</th>' : ''}<th class="num">Since</th>${board ? '<th>Committees</th>' : ''}${withEmail ? '<th class="email">Email</th>' : ''}</tr>`;
+      const title = tsGroupOf(group).label;
+      const withEmail = withCompany && people.some((p) => emails?.[p.slug]);
+      const head = `<tr><th class="ph"><span class="sr">Photo</span></th><th>Name</th>${withCompany ? '<th>Company</th>' : ''}<th class="num">Since</th>${board ? '<th>Committees</th>' : ''}${withEmail ? '<th class="email">Email</th>' : ''}</tr>`;
       const row = (p) => `<tr>
         <td class="ph">${p.photo ? `<img src="${esc(tsPhotoUrl(p, 96))}" alt="" width="40" height="40">` : `<span class="ini">${esc(pplInitials(p.name))}</span>`}</td>
         <td><div class="name">${esc(p.name)}${p.draft ? ' <span class="tag">Not on the website yet</span>' : ''}</div><div class="sub">${esc(p.title)}</div></td>
-        ${board ? `<td>${esc(p.organization)}</td>` : ''}
+        ${withCompany ? `<td>${esc(p.organization)}</td>` : ''}
         <td class="num">${esc(p.since || '')}</td>
         ${board ? `<td>${esc((p.committees || []).join(', '))}</td>` : ''}
         ${withEmail ? `<td class="email">${esc(emails?.[p.slug] || '')}</td>` : ''}
@@ -16603,7 +16671,10 @@ ${sections || '<p>No one yet.</p>'}
     // PEOPLE LIST
     // ═══════════════════════════════════════════
     function PeopleList({ team, group, initialFilter, onClearFilter, onEdit, onAdd, onDelete, addToast, onReload }) {
-      const label = group === 'board' ? 'Board' : 'Team';
+      const G = pplGroup(group);
+      const label = G.heading;
+      const withEmail = pplHasEmail(group);
+      const [showPaste, setShowPaste] = useState(false);
       const [search, setSearch] = useState('');
       // A filter from the Dashboard applies on arrival only, not every later visit to this tab
       const [filter, setFilter] = useState(initialFilter || 'all');
@@ -16622,7 +16693,7 @@ ${sections || '<p>No one yet.</p>'}
 
       const people = useMemo(() => team.filter((t) => t.group === group).map((t) => ({ ...normalizePerson(t), raw: t })), [team, group]);
       const sizes = usePhotoSizes(people);
-      const [emails, reloadEmails] = useBoardEmails(group === 'board');
+      const [emails, reloadEmails] = useBoardEmails(withEmail, group);
       const { requests, bySlug: reqs } = useProfileRequests();
       useEffect(() => { setOrder({}); }, [team]);
 
@@ -16646,17 +16717,17 @@ ${sections || '<p>No one yet.</p>'}
       const current = active.filter((p) => p.status === 'active');
       const READY = {
         'no-profile': { label: 'No bio yet', test: (p) => p.status === 'active' && tsIsListed(p) && !tsHasProfile(p) },
-        'no-email': { label: 'No invite email', test: (p) => group === 'board' && p.status === 'active' && !!emails && !emails[p.slug] },
+        'no-email': { label: 'No invite email', test: (p) => withEmail && p.status === 'active' && !!emails && !emails[p.slug] },
         'no-linkedin': { label: 'No LinkedIn', test: (p) => p.status === 'active' && p.role !== 'honorary' && !p.linkedin },
         photo: { label: 'Photos to fix', test: (p) => issuesOf(p).some((i) => i.id === 'photo' && i.tone === 'warn') },
         pending: { label: 'Bios to review', test: (p) => reqs[p.slug]?.status === 'pending' },
       };
       const missingOf = (id, list) => list.filter(READY[id].test).length;
       const listedNow = current.filter(tsIsListed);
-      const inviteList = group === 'board' && emails ? current.map((p) => emails[p.slug]).filter(Boolean) : [];
+      const inviteList = withEmail && emails ? current.map((p) => emails[p.slug]).filter(Boolean) : [];
       const tiles = [
         { id: 'no-profile', label: 'Profiles live', total: listedNow.length, missing: missingOf('no-profile', listedNow), sub: (n) => `${n} without a bio`, done: 'Everyone has one' },
-        group === 'board'
+        withEmail
           ? { id: 'no-email', label: 'Invite emails', total: current.length, missing: emails ? missingOf('no-email', current) : null, sub: (n) => `${n} missing`, done: 'Everyone gets invites' }
           : { id: 'no-linkedin', label: 'LinkedIn', total: current.filter((p) => p.role !== 'honorary').length, missing: missingOf('no-linkedin', current), sub: (n) => `${n} missing`, done: 'Everyone has one' },
         { id: 'photo', label: 'Photos ready', total: active.length, missing: missingOf('photo', active), sub: (n) => `${n} ${n === 1 ? 'needs' : 'need'} work`, done: 'All sharp' },
@@ -16852,7 +16923,7 @@ ${sections || '<p>No one yet.</p>'}
           if (!r.success) throw new Error(r.error || 'not found');
           const saved = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
           const n = normalizePerson(saved);
-          const next = toPersonRecord({ ...saved, name: n.name, status, ...(group === 'board' ? { seat: n.seat } : { role: n.role }),
+          const next = toPersonRecord({ ...saved, name: n.name, status, ...(group === 'board' ? { seat: n.seat } : group === 'team' ? { role: n.role } : {}),
             until: status === 'alumni' ? (saved.until || pplYear()) : saved.until });
           const res = await api.saveContent(path, JSON.stringify(next, null, 2), `${status === 'alumni' ? 'Move to alumni' : 'Restore'}: ${n.name}`, r.sha);
           if (!res.success) throw new Error(res.error);
@@ -16892,14 +16963,14 @@ ${sections || '<p>No one yet.</p>'}
               : change === 'publishing' ? html`<span class="ppl-tag ppl-tag--publishing">Publishing</span>` : null}
             ${req?.status === 'pending' ? html`<button type="button" class="ppl-tag ppl-tag--review" onClick=${() => onEdit(p.slug)} title=${`Sent ${pplWhen(req.submittedAt)}: open to review`}>Bio to review</button>`
               : pplLinkOpen(req) ? html`<span class="ppl-tag" title=${`Link made ${pplDay(req.createdAt)}, works until ${pplDay(req.expiresAt)}`}>Bio asked</span>` : null}
-            <div class="ppl-row__sub">${[group === 'board' ? tsBoardTitleLine(p) : p.title, p.organization].filter(Boolean).join(' · ') || html`<span class="text-muted">No title yet</span>`}</div>
+            <div class="ppl-row__sub">${[group === 'team' ? p.title : tsBoardTitleLine(p), p.organization].filter(Boolean).join(' · ') || html`<span class="text-muted">No title yet</span>`}</div>
           </div>
           <ul class="ppl-row__issues" aria-label="Missing">
             ${issues.map((i) => html`<li key=${i.id} class=${`ppl-chip ppl-chip--${i.tone}`} title=${i.tip}>${i.tone === 'warn' ? pplIcon.alert : null}${i.label}</li>`)}
           </ul>
           <${PplMenu} label=${`Actions for ${p.name}`} items=${[
             { label: 'Edit', onSelect: () => onEdit(p.slug) },
-            tsIsListed(p) ? { label: 'View on the site', hint: group === 'board' ? 'Board of Directors section' : 'Our Team section', onSelect: () => window.open(`/about/leadership/#${group === 'board' ? 'board' : 'our-team'}`, '_blank', 'noopener') } : null,
+            tsIsListed(p) ? { label: 'View on the site', hint: G.anchorHint, onSelect: () => window.open(G.anchor, '_blank', 'noopener') } : null,
             { divider: true },
             p.status === 'alumni'
               ? { label: 'Restore to active', hint: 'Back on the site after the next publish', onSelect: () => setStatus(p, 'active') }
@@ -16916,31 +16987,41 @@ ${sections || '<p>No one yet.</p>'}
             <h2>${label}</h2>
             <p class="page-sub">${group === 'board'
               ? 'Everyone on the Board of Directors section of the Leadership page, in the order shown there.'
-              : 'Everyone in the Our Team section of the Leadership page, in the order shown there.'} Changes go live when you publish.</p>
+              : group === 'advisory'
+                ? 'Everyone on the Advisory Board page, in the order shown there. They’re on the Leadership page too, after the board.'
+                : 'Everyone in the Our Team section of the Leadership page, in the order shown there.'} Changes go live when you publish.</p>
           </div>
           <div class="ppl-head__actions">
-            <a class="btn btn-ghost btn-sm" href="/about/leadership/" target="_blank" rel="noopener">Leadership page ${pplIcon.external}</a>
+            <a class="btn btn-ghost btn-sm" href=${G.page} target="_blank" rel="noopener">${G.pageLabel} ${pplIcon.external}</a>
             ${group === 'board' ? html`<button type="button" class="btn btn-ghost btn-sm ppl-cmtes-btn" onClick=${() => setShowCmtes(true)}>Committees</button>` : null}
-            ${group === 'board' && !empty ? html`<${PplMenu} label="Email the board" btnClass="btn btn-ghost btn-sm ppl-head-menu" width=${270} disabled=${!inviteList.length}
+            ${withEmail && !empty ? html`<${PplMenu} label=${group === 'advisory' ? 'Email the advisory board' : 'Email the board'} btnClass="btn btn-ghost btn-sm ppl-head-menu" width=${270} disabled=${!inviteList.length}
               button=${html`${icons.mail} Email ${pplIcon.chevron}`} items=${[
-                { label: 'Write to the whole board', hint: `Opens your email app, ${pplPlural(inviteList.length, 'address', 'addresses')} in Bcc`, onSelect: () => pplOpenMail(pplMailto({ bcc: inviteList })) },
+                { label: group === 'advisory' ? 'Write to the whole advisory board' : 'Write to the whole board', hint: `Opens your email app, ${pplPlural(inviteList.length, 'address', 'addresses')} in Bcc`, onSelect: () => pplOpenMail(pplMailto({ bcc: inviteList })) },
                 { label: 'Copy the addresses', hint: 'To paste into any email', onSelect: async () => { const done = await pplCopy(inviteList.join(', ')); addToast(done ? `${pplPlural(inviteList.length, 'address', 'addresses')} copied` : 'Couldn’t copy them', done ? 'info' : 'error'); } },
                 tiles[1].missing ? { divider: true } : null,
                 tiles[1].missing ? { label: `${tiles[1].missing} without an invite email`, hint: 'Show who', onSelect: () => setFilter('no-email') } : null,
               ]} />` : null}
             ${!empty ? html`<${PplMenu} label=${`Export the ${label.toLowerCase()}`} btnClass="btn btn-ghost btn-sm ppl-head-menu" width=${270}
               button=${html`Export ${pplIcon.chevron}`} items=${[
-                { label: 'Download a spreadsheet', hint: `Everyone, alumni too${group === 'board' ? ', with invite emails' : ''}`, onSelect: () => { pplDownload(`soard-${group}-${pplToday()}.csv`, pplRosterCsv(team, group, emails), 'text/csv;charset=utf-8'); addToast('Spreadsheet downloaded', 'info'); } },
+                { label: 'Download a spreadsheet', hint: `Everyone, alumni too${withEmail ? ', with invite emails' : ''}`, onSelect: () => { pplDownload(`soard-${group}-${pplToday()}.csv`, pplRosterCsv(team, group, emails), 'text/csv;charset=utf-8'); addToast('Spreadsheet downloaded', 'info'); } },
                 { label: 'Print the roster', hint: 'Current members, or save it as a PDF', onSelect: () => { if (!pplPrintRoster(team, group, emails)) addToast('Your browser blocked the new window. Allow pop-ups for the admin and try again.', 'error'); } },
               ]} />` : null}
-            <button class="btn btn-primary" onClick=${onAdd}>+ Add ${group === 'board' ? 'board member' : 'team member'}</button>
+            ${withEmail ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setShowPaste(true)}>Paste a list</button>` : null}
+            <button class="btn btn-primary" onClick=${onAdd}>+ Add ${G.add}</button>
           </div>
         </div>
         ${showCmtes ? html`<${PplCommitteesModal} team=${team} addToast=${addToast} onChanged=${onReload} onClose=${() => setShowCmtes(false)} />` : null}
+        ${showPaste ? html`<${PplPasteModal} group=${group} team=${team} emails=${emails} addToast=${addToast}
+          onChanged=${() => { reloadEmails(); onReload?.(); }} onDone=${() => setShowPaste(false)} onClose=${() => setShowPaste(false)} />` : null}
         ${empty ? html`<div class="card ppl-empty-all">
-            <p><strong>No ${label.toLowerCase()} members yet.</strong></p>
-            <p class="text-muted">Add the first one and they’ll appear on the Leadership page after you publish.</p>
-            <button class="btn btn-primary" onClick=${onAdd}>+ Add ${group === 'board' ? 'board member' : 'team member'}</button>
+            <p><strong>${group === 'advisory' ? 'No one on the Advisory Board yet.' : `No ${label.toLowerCase()} members yet.`}</strong></p>
+            <p class="text-muted">${group === 'advisory'
+              ? 'Add the first advisor, or paste a list of names and emails to add everyone at once. They’ll appear on the Advisory Board page after you publish.'
+              : 'Add the first one and they’ll appear on the Leadership page after you publish.'}</p>
+            <div class="ppl-empty-all__btns">
+              ${withEmail ? html`<button type="button" class="btn btn-ghost" onClick=${() => setShowPaste(true)}>Paste a list</button>` : null}
+              <button class="btn btn-primary" onClick=${onAdd}>+ Add ${G.add}</button>
+            </div>
           </div>` : html`
         <div class="ppl-ready" role="group" aria-label="How ready the Leadership page is">
           ${tiles.map((t) => {
@@ -16966,7 +17047,7 @@ ${sections || '<p>No one yet.</p>'}
         <div class="ppl-toolbar">
           <div class="search-bar ppl-search">
             <span class="search-icon">${icons.search}</span>
-            <input type="search" placeholder=${group === 'board' ? 'Name, company or committee' : 'Name or role'} aria-label="Search people"
+            <input type="search" placeholder=${group === 'board' ? 'Name, company or committee' : group === 'advisory' ? 'Name or company' : 'Name or role'} aria-label="Search people"
               value=${search} onInput=${(e) => setSearch(e.target.value)} />
           </div>
           <div class="ppl-filters" role="group" aria-label="Show">
@@ -17026,7 +17107,7 @@ ${sections || '<p>No one yet.</p>'}
     }
 
     function PeoplePhotos({ team, onEdit, addToast, onReload }) {
-      const people = useMemo(() => team.map((t) => normalizePerson(t)).filter((p) => p.status !== 'alumni' && (p.group === 'board' || p.group === 'team')), [team]);
+      const people = useMemo(() => team.map((t) => normalizePerson(t)).filter((p) => p.status !== 'alumni' && !!PEOPLE_SECTIONS[p.group]), [team]);
       const sizes = usePhotoSizes(people);
       const [filter, setFilter] = useState('all');
       const [over, setOver] = useState({});          // slug → photo fields saved here, until the list reloads
@@ -17036,8 +17117,8 @@ ${sections || '<p>No one yet.</p>'}
       const [loaded, setLoaded] = useState({});      // image src → loaded
       useEffect(() => { setOver({}); }, [team]);
       const view = (p) => ({ ...p, ...(over[p.slug] || {}) });
-      const groups = ['team', 'board'].map((g) => ({
-        g, title: g === 'board' ? 'Board of Directors' : 'Our Team',
+      const groups = ['team', 'board', 'advisory'].map((g) => ({
+        g, title: tsGroupOf(g).label,
         list: PEOPLE_SECTIONS[g].flatMap((s) => people.filter((p) => p.group === g && s.match(p)).sort(comparePeople)).map(view),
       }));
       const all = groups.flatMap((x) => x.list);
@@ -17117,7 +17198,7 @@ ${sections || '<p>No one yet.</p>'}
             : html`<div class="ppl-pcard__solo">${circle(src, p)}</div>`}
           <div class="ppl-pcard__text">
             <button type="button" class="ppl-pcard__name" onClick=${() => onEdit(p)}>${p.name}</button>
-            <small>${(p.group === 'board' ? tsBoardTitleLine(p) : p.title) || (p.group === 'board' ? 'Board' : 'Team')}${p.draft ? ' · hidden' : ''}</small>
+            <small>${(p.group === 'team' ? p.title : tsBoardTitleLine(p)) || pplGroup(p.group).heading}${p.draft ? ' · hidden' : ''}</small>
           </div>
           <span class=${`ppl-pq is-${v.tone}`}>${v.tone === 'warn' ? pplIcon.alert : v.tone === 'good' ? pplIcon.check : null}${v.label}</span>
           ${inReview ? html`<label class="ppl-pcard__pick">
@@ -17146,7 +17227,7 @@ ${sections || '<p>No one yet.</p>'}
         <div class="page-header ppl-head">
           <div>
             <h2>Photos</h2>
-            <p class="page-sub">Everyone on the Leadership page, the way the site shows them. Replace blurry photos, frame faces, and put everyone on the same warm gray. Changes go live when you publish.</p>
+            <p class="page-sub">Everyone on the Leadership and Advisory Board pages, the way the site shows them. Replace blurry photos, frame faces, and put everyone on the same warm gray. Changes go live when you publish.</p>
           </div>
           <div class="ppl-head__actions">
             ${candidates.length ? html`<button type="button" class="btn btn-primary" onClick=${startReview} disabled=${!!review || !!busy}>Remove backgrounds for everyone</button>`
@@ -17581,6 +17662,109 @@ ${sections || '<p>No one yet.</p>'}
       </div>`;
     }
 
+    // ─── Paste a list: add several people (and their private emails) at once ───
+    // The reading and the plan live in team-shared.js (parsePeopleList, planPeopleList)
+    function PplPasteModal({ group, team, emails, addToast, onChanged, onDone, onClose }) {
+      const G = pplGroup(group);
+      const [text, setText] = useState('');
+      const [show, setShow] = useState(true);
+      const [busy, setBusy] = useState(null);       // { at, of }
+      const [done, setDone] = useState({});         // slug → 'ok' | error message
+      const dialogRef = useRef(null);
+      usePplDialog(dialogRef, onClose, !!busy);
+      useEffect(() => { dialogRef.current?.querySelector('#ppl-paste')?.focus(); }, []);
+      const plan = useMemo(() => tsPlanPeopleList(tsParsePeopleList(text), team, group, emails), [text, team, group, emails]);
+      const todo = plan.filter((p) => p.act !== 'skip' && done[p.slug] !== 'ok');
+      const adds = todo.filter((p) => p.act === 'add').length;
+      const fixes = todo.length - adds;
+      const nouns = (n) => pplPlural(n, G.add, `${G.add}s`);
+      const go = async () => {
+        let order = team.filter((t) => t.group === group).reduce((m, t) => Math.max(m, Number(t.order) || 0), -1) + 1;
+        const result = { ...done };
+        let added = 0;
+        let emailed = 0;
+        for (const [i, p] of todo.entries()) {
+          setBusy({ at: i + 1, of: todo.length });
+          try {
+            if (p.act === 'add') {
+              const rec = toPersonRecord({
+                name: p.name, slug: p.slug, title: group === 'board' ? TS_MEMBER_TITLE : group === 'advisory' ? TS_ADVISORY_TITLE : '',
+                group, order: order++, status: 'active', publishStatus: show ? 'published' : 'draft',
+                ...(group === 'board' ? { seat: '' } : {}), ...(group === 'advisory' ? { since: pplYear() } : {}),
+              });
+              const res = await api.saveContent(`src/content/team/${p.slug}.json`, JSON.stringify(rec, null, 2), `Add ${G.noun}: ${p.name}`);
+              if (!res.success) throw new Error(res.error || 'Couldn’t save');
+              added++;
+            }
+            if (p.email) {
+              const r = await fetch('/api/reveal-invites-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boardEmail: { slug: p.slug, email: p.email } }) });
+              const d = await r.json().catch(() => ({}));
+              if (!r.ok || !d.ok) throw new Error(p.act === 'add' ? `Added, but the email didn’t save (${d.error || `status ${r.status}`})` : d.error || `status ${r.status}`);
+              if (p.act === 'email') emailed++;
+            }
+            result[p.slug] = 'ok';
+          } catch (e) { result[p.slug] = e.message; }
+          setDone({ ...result });
+        }
+        setBusy(null);
+        // The list behind (and this plan) catch up with what was saved
+        if (Object.values(result).includes('ok')) onChanged?.();
+        const failed = todo.filter((p) => result[p.slug] !== 'ok');
+        const said = [added && `${nouns(added)} added`, emailed && `${pplPlural(emailed, 'email')} saved`].filter(Boolean).join(', ');
+        if (!failed.length) {
+          addToast(`${said || 'Done'}.${added && show ? ' They’re on the site after you publish.' : added ? ' They stay hidden until you turn on Show on the site.' : ''}`, 'success');
+          onDone();
+          return;
+        }
+        addToast(`${said ? `${said}. ` : ''}${pplPlural(failed.length, 'line')} didn’t go through. They’re marked in the list.`, 'error');
+      };
+      const stateOf = (p) => {
+        const d = done[p.slug];
+        if (p.act !== 'skip' && d === 'ok') return { tone: 'done', label: p.act === 'add' ? 'Added' : 'Email saved' };
+        if (p.act !== 'skip' && d) return { tone: 'warn', label: d };
+        return { tone: p.act === 'skip' ? 'quiet' : p.act === 'add' ? 'add' : 'quiet', label: p.note };
+      };
+      return html`<div class="modal-overlay" onClick=${() => !busy && onClose()}>
+        <div class="modal ppl-paste" role="dialog" aria-modal="true" aria-labelledby="ppl-paste-title" ref=${dialogRef} onClick=${(e) => e.stopPropagation()}>
+          <h3 id="ppl-paste-title">${group === 'advisory' ? 'Add advisors from a list' : 'Add board members from a list'}</h3>
+          <p class="ppl-paste__lead">One person per line: their name, then their email. Straight from an email or a spreadsheet is fine.
+            Emails stay private: they’re never shown on the site, and every reveal’s calendar invite goes to them.</p>
+          <div class="form-group u-m-0">
+            <label class="form-label" for="ppl-paste">Names and emails</label>
+            <textarea id="ppl-paste" class="form-input" rows="7" spellcheck=${false} value=${text} disabled=${!!busy}
+              placeholder=${'Jane Smith: jane@example.com\nSam Lee, sam@company.com'} onInput=${(e) => { setText(e.target.value); setDone({}); }}></textarea>
+          </div>
+          ${plan.length ? html`
+            <div class="ppl-paste__sum" aria-live="polite">
+              <strong>${pplPlural(plan.length, 'line')}</strong>
+              <span>${[adds && `${adds} to add`, fixes && `${pplPlural(fixes, 'email')} to save`, plan.length - todo.length && `${plan.length - todo.length} skipped or done`].filter(Boolean).join(' · ') || 'Nothing to add'}</span>
+            </div>
+            <ul class="ppl-paste__rows" aria-label="What Add will do">
+              ${plan.map((p, i) => {
+                const st = stateOf(p);
+                return html`<li key=${`${i}-${p.slug}`} class=${`ppl-paste__row${p.act === 'skip' ? ' is-skip' : ''}`}>
+                  <span class="ppl-avatar ppl-avatar--initials" aria-hidden="true">${pplInitials(p.name)}</span>
+                  <div class="ppl-paste__who"><strong>${p.name || p.line}</strong>${p.email ? html`<small>${p.email}</small>` : null}</div>
+                  <span class=${`ppl-chip ppl-paste__state ppl-chip--${st.tone}`}>${st.tone === 'warn' ? pplIcon.alert : st.tone === 'done' ? pplIcon.check : null}${st.label}</span>
+                </li>`;
+              })}
+            </ul>
+            ${adds ? html`<label class="bc-switch ppl-switch ppl-paste__show">
+              <input type="checkbox" role="switch" checked=${show} aria-checked=${show} disabled=${!!busy} onChange=${(e) => setShow(e.target.checked)} />
+              <span class="bc-switch-track" aria-hidden="true"></span>
+              Show them on the site
+            </label>
+            <p class="form-hint">${show ? `They go on the ${G.pageLabel} the next time you publish. Add photos and companies from each person’s page.` : 'They stay hidden until you turn this on in each person’s Role section.'}</p>` : null}
+          ` : null}
+          <div class="modal-buttons">
+            <button class="btn btn-ghost" onClick=${onClose} disabled=${!!busy}>${Object.values(done).includes('ok') ? 'Close' : 'Cancel'}</button>
+            <button class="btn btn-primary" onClick=${go} disabled=${!!busy || !todo.length}>
+              ${busy ? html`<span class="spinner" /> Adding ${busy.at} of ${busy.of}…` : adds ? `Add ${nouns(adds)}` : fixes ? `Save ${pplPlural(fixes, 'email')}` : 'Add'}</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
     // ─── Partner link: their company on the partners page ───
     function PplPartnerPicker({ value, partners, organization, onChange }) {
       const selected = partners.find((p) => p.slug === value) || null;
@@ -17680,7 +17864,7 @@ ${sections || '<p>No one yet.</p>'}
         case 'status': return TS_STATUSES.find((s) => s.id === (v || 'active'))?.label;
         case 'seat': return rec?.group === 'board' ? pplSeatLabel(rec) : none;
         case 'role': return TS_TEAM_ROLES.find((r) => r.id === v)?.label || none;
-        case 'group': return v === 'board' ? 'Board of Directors' : 'Our Team';
+        case 'group': return tsGroupOf(v).label;
         case 'committees': return Array.isArray(v) && v.length ? v.join(', ') : none;
         default: return pplNorm(v) == null ? none : html`<span class="ppl-val-text">${String(v)}</span>`;
       }
@@ -17939,7 +18123,7 @@ ${sections || '<p>No one yet.</p>'}
       const shape = (d) => {
         const n = normalizePerson(d);
         return { ...d, name: n.name, title: n.title, since: n.since, until: n.until, status: n.status, publishStatus: d.publishStatus || 'published',
-          ...(d.group === 'board' ? { seat: n.seat } : { role: n.role }) };
+          ...(d.group === 'board' ? { seat: n.seat } : d.group === 'advisory' ? {} : { role: n.role }) };
       };
       // The record as last loaded or saved: what a save made meanwhile is merged against
       const loadedRef = useRef(null);
@@ -17950,12 +18134,12 @@ ${sections || '<p>No one yet.</p>'}
         data, setData, setSha, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
         showDeleteModal, setShowDeleteModal, slugExists, queueImageDelete, updateField, handleSave, handleDelete, safeBack,
       } = useEditor({
-        slug, type: 'team', commitPrefix: startGroup === 'board' ? 'board member' : 'team member', addToast, onBack, existingSlugs,
+        slug, type: 'team', commitPrefix: pplGroup(startGroup).noun, addToast, onBack, existingSlugs,
         onLoad: migrate, onConflict: (attempted) => conflictRef.current?.(attempted),
         defaults: {
-          name: '', slug: '', title: startGroup === 'board' ? TS_MEMBER_TITLE : '', organization: '', photo: '', bio: '', quote: '',
+          name: '', slug: '', title: startGroup === 'board' ? TS_MEMBER_TITLE : startGroup === 'advisory' ? TS_ADVISORY_TITLE : '', organization: '', photo: '', bio: '', quote: '',
           group: startGroup, order: nextOrder(startGroup), status: 'active', publishStatus: 'published',
-          ...(startGroup === 'board' ? { seat: '' } : { role: 'staff' }),
+          ...(startGroup === 'board' ? { seat: '' } : startGroup === 'advisory' ? { since: pplYear() } : { role: 'staff' }),
         },
       });
       const { uploading, preview: uploadPreview, upload, clear: clearPhoto, syncPreview } = useSingleUpload({
@@ -17965,6 +18149,9 @@ ${sections || '<p>No one yet.</p>'}
       useEffect(() => { syncPreview(data.photo); }, [data.photo]);
       const set = (patch) => { setDirty(true); setData((d) => ({ ...d, ...patch })); };
       const board = data.group === 'board';
+      const advisory = data.group === 'advisory';
+      // Board members and advisors keep a private email for reveal invites
+      const withEmail = board || advisory;
 
       // Original photo size: from the record, or Cloudflare's metadata
       const [fetchedSize, setFetchedSize] = useState(null);
@@ -17976,14 +18163,14 @@ ${sections || '<p>No one yet.</p>'}
       const px = tsPhotoPixels(data, photoSize);
       const quality = tsPhotoQuality(px);
 
-      // Board member's private reveal email, saved with the rest
-      const [emails, reloadEmails] = useBoardEmails(board);
+      // Board member's or advisor's private reveal email, saved with the rest
+      const [emails, reloadEmails] = useBoardEmails(withEmail, data.group);
       const savedEmail = emails?.[slug] ?? '';
       const [email, setEmail] = useState(null);
       const emailValue = email ?? savedEmail;
       const emailClean = emailValue.trim().toLowerCase();
       const emailBad = emailClean && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailClean);
-      const emailDirty = board && data.status === 'active' && email !== null && emailClean !== (savedEmail || '');
+      const emailDirty = withEmail && data.status === 'active' && email !== null && emailClean !== (savedEmail || '');
 
       const [showPreview, setShowPreview] = useState(false);
       const [cropping, setCropping] = useState(false);
@@ -17998,7 +18185,7 @@ ${sections || '<p>No one yet.</p>'}
       const profileSlugs = useMemo(() => team.filter((t) => tsHasProfile(normalizePerson(t))).map((t) => t.slug), [team]);
       const [cmtes, reloadCmtes] = useBoardCommittees(board);
       const committeeOptions = useMemo(() => tsCommitteeList(cmtes.saved, team), [cmtes.saved, team]);
-      const issues = pplIssues({ ...normalizePerson(previewRecord), slug }, { size: photoSize, emails: board ? { ...(emails || {}), [slug]: emailClean } : null });
+      const issues = pplIssues({ ...normalizePerson(previewRecord), slug }, { size: photoSize, emails: withEmail ? { ...(emails || {}), [slug]: emailClean } : null });
       const first = String(data.name || '').trim().split(/\s+/)[0] || 'They';
 
       // ── Their bio request: the link sent to them, and what they sent back ──
@@ -18134,7 +18321,7 @@ ${sections || '<p>No one yet.</p>'}
       };
 
       const save = async () => {
-        if (!String(data.title || '').trim()) { addToast(board ? 'Pick a seat or type a title' : 'Add a title, like Project Manager', 'error'); return; }
+        if (!String(data.title || '').trim()) { addToast(board ? 'Pick a seat or type a title' : advisory ? `Add a title, like ${TS_ADVISORY_TITLE}` : 'Add a title, like Project Manager', 'error'); return; }
         if (linkedinBad) { setLinkedinTouched(true); addToast('The LinkedIn link should look like linkedin.com/in/name', 'error'); return; }
         if (emailDirty && emailBad) { addToast('That invite email doesn’t look right', 'error'); return; }
         const wasNew = !slug;
@@ -18189,9 +18376,14 @@ ${sections || '<p>No one yet.</p>'}
 
       const changeGroup = (g) => {
         if (g === data.group) return;
+        // A title the old group gave them follows the move; one typed by hand stays
+        const auto = !data.title || data.title === TS_MEMBER_TITLE || data.title === TS_ADVISORY_TITLE || TS_SEATS.some((s) => s.title === data.title);
+        const title = (t) => (auto ? t : data.title);
         set(g === 'board'
-          ? { group: 'board', seat: '', role: undefined, title: TS_MEMBER_TITLE, order: nextOrder('board') }
-          : { group: 'team', role: 'staff', seat: undefined, title: '', committees: undefined, partner: undefined, order: nextOrder('team') });
+          ? { group: 'board', seat: '', role: undefined, title: title(TS_MEMBER_TITLE), order: nextOrder('board') }
+          : g === 'advisory'
+            ? { group: 'advisory', seat: undefined, role: undefined, committees: undefined, title: title(TS_ADVISORY_TITLE), order: nextOrder('advisory') }
+            : { group: 'team', role: 'staff', seat: undefined, title: auto ? '' : data.title, committees: undefined, partner: undefined, order: nextOrder('team') });
       };
       const changeSeat = (seat) => {
         const auto = !data.title || data.title === TS_MEMBER_TITLE || TS_SEATS.some((s) => s.title === data.title) || data.title === tsSeatTitle(data.seat);
@@ -18204,7 +18396,8 @@ ${sections || '<p>No one yet.</p>'}
 
       const listed = data.publishStatus !== 'draft' && data.status !== 'alumni';
       const shownPhoto = uploading ? uploadPreview : data.photo ? pplPhoto(previewRecord, 320) : null;
-      const groupLabel = board ? 'Board' : 'Team';
+      const groupLabel = pplGroup(data.group).heading;
+      const previewKind = advisory ? 'advisory' : 'team';
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
           title=${`Delete ${data.name || 'this person'}?`}
@@ -18225,12 +18418,12 @@ ${sections || '<p>No one yet.</p>'}
         <nav class="breadcrumb" aria-label="Breadcrumb">
           <button onClick=${safeBack}>${backLabel || groupLabel}</button>
           <span class="sep">›</span>
-          <span class="current">${slug ? data.name || 'Edit' : board ? 'New board member' : 'New team member'}</span>
+          <span class="current">${slug ? data.name || 'Edit' : `New ${pplGroup(data.group).add}`}</span>
         </nav>
         <div class="page-header ppl-ed-head">
           <div class="ppl-ed-title">
             <h2 class="u-row-center">
-              ${slug ? data.name || 'Unnamed' : board ? 'Add a board member' : 'Add a team member'}
+              ${slug ? data.name || 'Unnamed' : `Add ${advisory ? 'an' : 'a'} ${pplGroup(data.group).add}`}
               <${PublishBadge} type="team" slug=${slug} draft=${data.publishStatus === 'draft'} />
               ${data.status === 'alumni' ? html`<span class="pub-badge is-draft" title="Off the site, kept here">Alumni</span>` : null}
               ${data.status === 'memorial' ? html`<span class="pub-badge is-draft">In memoriam</span>` : null}
@@ -18242,7 +18435,8 @@ ${sections || '<p>No one yet.</p>'}
           </div>
           <div class="flex gap-1 items-center">
             ${dirty || emailDirty ? html`<span class="ppl-unsaved" role="status">Unsaved changes</span>` : null}
-            <button class="btn btn-ghost btn-sm" aria-pressed=${showPreview === 'team'} onClick=${() => setShowPreview((v) => (v === 'team' ? false : 'team'))}>Preview</button>
+            <button class="btn btn-ghost btn-sm" aria-pressed=${showPreview === previewKind} title=${advisory ? 'The Advisory Board page' : 'The Leadership page'}
+              onClick=${() => setShowPreview((v) => (v === previewKind ? false : previewKind))}>Preview</button>
             ${profileReady || showPreview === 'person' ? html`<button class="btn btn-ghost btn-sm" aria-pressed=${showPreview === 'person'}
               onClick=${() => setShowPreview((v) => (v === 'person' ? false : 'person'))}>Preview profile</button>` : null}
             <button class="btn btn-primary" onClick=${save} disabled=${saving}>
@@ -18300,15 +18494,17 @@ ${sections || '<p>No one yet.</p>'}
             <div class="form-group">
               <label class="form-label" for="ppl-title">Title on the site</label>
               <input id="ppl-title" class="form-input" value=${data.title} onInput=${(e) => updateField('title', e.target.value)}
-                placeholder=${board ? 'Board Member' : 'e.g. Project Manager'} />
-              <div class="form-hint">${board ? 'Set by their seat below. Type over it for a custom title.' : data.role === 'founder' ? 'Shown under their name with the Co-Founder label, so “Co-Founder” here is left off.' : 'Shown under their name.'}</div>
+                placeholder=${board ? 'Board Member' : advisory ? TS_ADVISORY_TITLE : 'e.g. Project Manager'} />
+              <div class="form-hint">${board ? 'Set by their seat below. Type over it for a custom title.'
+                : advisory ? `Shown under their name on the Leadership page. The Advisory Board page shows it only when it says more than “${TS_ADVISORY_TITLE}”, like Advisory Board Chair.`
+                : data.role === 'founder' ? 'Shown under their name with the Co-Founder label, so “Co-Founder” here is left off.' : 'Shown under their name.'}</div>
             </div>
             <div class="form-group">
-              <label class="form-label" for="ppl-org">${board ? 'Company and role' : 'Organization'} <span class="form-optional">optional</span></label>
+              <label class="form-label" for="ppl-org">${board || advisory ? 'Company and role' : 'Organization'} <span class="form-optional">optional</span></label>
               <input id="ppl-org" class="form-input" value=${data.organization || ''} onInput=${(e) => updateField('organization', e.target.value)}
-                placeholder=${board ? 'e.g. Real Floors Commercial, CEO' : 'Usually left empty for staff'} />
+                placeholder=${board || advisory ? 'e.g. Real Floors Commercial, CEO' : 'Usually left empty for staff'} />
             </div>
-            ${board ? html`<div class="form-group u-m-0">
+            ${board || advisory ? html`<div class="form-group u-m-0">
               <label class="form-label" for="ppl-partner">Company on the partners page <span class="form-optional">optional</span></label>
               <${PplPartnerPicker} value=${data.partner || ''} partners=${partners} organization=${data.organization} onChange=${(v) => set({ partner: v })} />
               <div class="form-hint">Links their card to the company’s partner listing on the planned profile pages.</div>
@@ -18321,9 +18517,9 @@ ${sections || '<p>No one yet.</p>'}
           <div class="ppl-field">
             <span class="form-label" id="ppl-group-l">On the page under</span>
             <${PplSegmented} label="On the page under" value=${data.group} onChange=${changeGroup}
-              options=${[{ id: 'team', label: 'Our Team' }, { id: 'board', label: 'Board of Directors' }]} />
+              options=${[{ id: 'team', label: 'Our Team' }, { id: 'board', label: 'Board of Directors' }, { id: 'advisory', label: 'Advisory Board' }]} />
           </div>
-          ${board ? html`<div class="ppl-field">
+          ${advisory ? null : board ? html`<div class="ppl-field">
             <span class="form-label">Seat</span>
             <${PplSegmented} label="Seat" value=${data.seat || ''} onChange=${changeSeat}
               options=${[{ id: '', label: 'Member' }, ...TS_SEATS.map((s) => ({ id: s.id, label: s.label }))]} />
@@ -18336,12 +18532,14 @@ ${sections || '<p>No one yet.</p>'}
           <div class="ppl-field">
             <span class="form-label">Status</span>
             <${PplSegmented} label="Status" value=${data.status} onChange=${changeStatus}
-              options=${board || data.status === 'memorial' ? TS_STATUSES : TS_STATUSES.filter((s) => s.id !== 'memorial')} />
-            <div class="form-hint">${data.status === 'alumni' ? 'Off the site, but kept here. Restore them any time.' : data.status === 'memorial' ? 'Stays on the page, marked “In memoriam”, after the other board members.' : 'Shown on the Leadership page.'}</div>
+              options=${board || advisory || data.status === 'memorial' ? TS_STATUSES : TS_STATUSES.filter((s) => s.id !== 'memorial')} />
+            <div class="form-hint">${data.status === 'alumni' ? 'Off the site, but kept here. Restore them any time.'
+              : data.status === 'memorial' ? `Stays on the page, marked “In memoriam”, after the other ${advisory ? 'advisors' : 'board members'}.`
+              : advisory ? 'Shown on the Advisory Board page and the Leadership page.' : 'Shown on the Leadership page.'}</div>
           </div>
           <div class="form-row ppl-years">
             <div class="form-group">
-              <label class="form-label" for="ppl-since">${board ? 'On the board since' : 'With SOARD since'} <span class="form-optional">optional</span></label>
+              <label class="form-label" for="ppl-since">${board ? 'On the board since' : advisory ? 'On the advisory board since' : 'With SOARD since'} <span class="form-optional">optional</span></label>
               <input id="ppl-since" class="form-input" type="number" inputmode="numeric" min="1990" max=${pplYear() + 1} placeholder="Year"
                 value=${data.since ?? ''} onInput=${(e) => set({ since: e.target.value === '' ? '' : Number(e.target.value) })} />
             </div>
@@ -18355,10 +18553,22 @@ ${sections || '<p>No one yet.</p>'}
             <input type="checkbox" role="switch" checked=${data.publishStatus !== 'draft'} aria-checked=${data.publishStatus !== 'draft'} disabled=${data.status === 'alumni'}
               onChange=${(e) => set({ publishStatus: e.target.checked ? 'published' : 'draft' })} />
             <span class="bc-switch-track" aria-hidden="true"></span>
-            Show on the Leadership page
+            ${advisory ? 'Show on the site' : 'Show on the Leadership page'}
           </label>
-          <p class="form-hint">${data.status === 'alumni' ? 'Alumni are never shown.' : data.publishStatus === 'draft' ? `Hidden while you get them ready${board ? '. Reveal invites still reach them' : ''}.` : listed ? 'Turn off to keep them hidden while you get their details ready.' : ''}</p>
+          <p class="form-hint">${data.status === 'alumni' ? 'Alumni are never shown.' : data.publishStatus === 'draft' ? `Hidden while you get them ready${withEmail ? '. Reveal invites still reach them' : ''}.` : listed ? 'Turn off to keep them hidden while you get their details ready.' : ''}</p>
         </section>
+
+        ${advisory ? html`<section class="card" aria-labelledby="ppl-adv-h">
+          <h3 id="ppl-adv-h">Reveal invites</h3>
+          <div class="form-group u-m-0">
+            <label class="form-label" for="ppl-email">Email for reveal invites</label>
+            ${data.status !== 'active'
+              ? html`<p class="text-sm text-muted u-m-0">${data.status === 'memorial' ? 'Memorial entries are never invited.' : 'Alumni aren’t invited. Restore them to active to invite them again.'}</p>`
+              : html`<input id="ppl-email" class="form-input" type="email" autocomplete="off" placeholder="name@example.com" disabled=${emails === null}
+                  value=${emailValue} onInput=${(e) => setEmail(e.target.value)} />
+                <div class=${`form-hint${emailBad ? ' ppl-bad' : ''}`}>${emailBad ? 'That doesn’t look like an email address.' : 'Private: never shown on the site. Active advisors join every reveal’s calendar invite with the board, from the tentative date on. Saved with Save.'}</div>`}
+          </div>
+        </section>` : null}
 
         ${board ? html`<section class="card" aria-labelledby="ppl-board-h">
           <h3 id="ppl-board-h">Board details</h3>
@@ -18381,11 +18591,11 @@ ${sections || '<p>No one yet.</p>'}
         <section class="card" aria-labelledby="ppl-profile-h">
           <h3 id="ppl-profile-h">Profile</h3>
           <p class="ppl-note">${profileReady
-            ? html`Shown on ${(data.name || 'their').split(' ')[0]}’s profile page, <code>${tsProfilePath(previewRecord.slug || 'name')}</code>. Their card on the Leadership page links to it. Changes go live when you publish.`
+            ? html`Shown on ${(data.name || 'their').split(' ')[0]}’s profile page, <code>${tsProfilePath(previewRecord.slug || 'name')}</code>. ${advisory ? 'Their cards on the Advisory Board and Leadership pages link' : 'Their card on the Leadership page links'} to it. Changes go live when you publish.`
             : listed
-              ? html`Add a bio and ${data.name ? data.name.split(' ')[0] : 'they'} ${data.name ? 'gets' : 'get'} a profile page that their card on the Leadership page links to. “Why I serve” and LinkedIn show there too.`
-              : 'Profile pages are for people shown on the Leadership page.'}</p>
-          ${slug && data.status === 'active' ? html`<${PplAskPanel} slug=${slug} name=${data.name} email=${board ? emailValue.trim() : ''} req=${req}
+              ? html`Add a bio and ${data.name ? data.name.split(' ')[0] : 'they'} ${data.name ? 'gets' : 'get'} a profile page that ${advisory ? 'their cards on the Advisory Board and Leadership pages link' : 'their card on the Leadership page links'} to. “Why I serve” and LinkedIn show there too.`
+              : 'Profile pages are for people shown on the site.'}</p>
+          ${slug && data.status === 'active' ? html`<${PplAskPanel} slug=${slug} name=${data.name} email=${withEmail ? emailValue.trim() : ''} req=${req}
             onChanged=${reloadReqs} onReview=${reviewSent} addToast=${addToast} />` : null}
           <div class="form-group">
             <label class="form-label" for="ppl-bio">Bio</label>
@@ -25297,6 +25507,7 @@ ${sections || '<p>No one yet.</p>'}
           { type: 'page', label: 'Media Logos', id: 'partners-hub', subTab: 'medialogos', section: 'Pages' },
           { type: 'page', label: 'Board', id: 'people-hub', subTab: 'board', section: 'Pages' },
           { type: 'page', label: 'Team', id: 'people-hub', subTab: 'team', section: 'Pages' },
+          { type: 'page', label: 'Advisory Board', id: 'people-hub', subTab: 'advisory', section: 'Pages' },
           { type: 'page', label: 'Articles', id: 'articles', section: 'Pages' },
           { type: 'page', label: 'Events', id: 'events', section: 'Pages' },
           { type: 'page', label: 'Press & Media', id: 'press-hub', subTab: 'press', section: 'Pages' },
@@ -25318,6 +25529,7 @@ ${sections || '<p>No one yet.</p>'}
           { type: 'action', label: 'Add New Media Logo', id: 'partners-hub', subTab: 'medialogos', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Board Member', id: 'people-hub', subTab: 'board', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Team Member', id: 'people-hub', subTab: 'team', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Advisory Board Member', id: 'people-hub', subTab: 'advisory', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Article', id: 'articles', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Event', id: 'events', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Community Project', id: 'kids-hub', subTab: 'community', slug: '', section: 'Actions' },
@@ -25328,7 +25540,7 @@ ${sections || '<p>No one yet.</p>'}
           ...(partners || []).map(p => ({ type: 'content', label: p.name, meta: `Partner · ${p.level || ''}`, id: 'partners-hub', slug: p.slug, section: 'Content' })),
           ...(communityPartners || []).map(c => ({ type: 'content', label: c.name, meta: `Community Partner · ${c.category || ''}`, id: 'partners-hub', subTab: 'community-partners', slug: c.slug, section: 'Content' })),
           ...(mediaLogos || []).map(m => ({ type: 'content', label: m.name, meta: 'Media Logo', id: 'partners-hub', subTab: 'medialogos', slug: m.slug, section: 'Content' })),
-          ...(team || []).map(t => ({ type: 'content', label: t.name, meta: `${t.group === 'board' ? 'Board' : 'Team'} · ${t.title || ''}`, id: 'people-hub', subTab: t.group === 'board' ? 'board' : 'team', slug: t.slug, section: 'Content' })),
+          ...(team || []).map(t => ({ type: 'content', label: t.name, meta: `${pplGroup(t.group).heading} · ${t.title || ''}`, id: 'people-hub', subTab: tsGroupOf(t.group).id, slug: t.slug, section: 'Content' })),
           ...(articles || []).map(a => ({ type: 'content', label: a.title || a.name, meta: 'Article', id: 'articles', slug: a.slug, section: 'Content' })),
           ...(events || []).map(e => ({ type: 'content', label: e.title || e.name, meta: `Event · ${e.date || ''}`, id: 'events', slug: e.slug, section: 'Content' })),
           ...(communityProjects || []).map(c => ({ type: 'content', label: c.name, meta: `Community · ${c.year || ''}`, id: 'kids-hub', subTab: 'community', slug: c.slug, section: 'Content' })),
@@ -26056,25 +26268,26 @@ ${sections || '<p>No one yet.</p>'}
             if (editSlug !== null) {
               // From Photos, the editor opens in the person's own group and comes back to Photos
               const fromPhotos = pTab === 'photos';
-              const g = fromPhotos ? (team.find((t) => t.slug === editSlug)?.group === 'board' ? 'board' : 'team') : pTab;
+              const g = fromPhotos ? tsGroupOf(team.find((t) => t.slug === editSlug)?.group).id : pTab;
               return html`<${PersonEditor} key=${editSlug || `new-${g}`} slug=${editSlug || undefined} group=${g} team=${team} partners=${partners}
                 backLabel=${fromPhotos ? 'Photos' : null}
                 onBack=${() => { setEditSlug(null); loadData(); }} onSaved=${(s) => { setEditSlug(s); loadData(); }} addToast=${addToast} />`;
             }
             const onSite = (g) => team.filter((t) => t.group === g && normalizePerson(t).status !== 'alumni').length;
-            const arrive = dashboardFilter === 'no-invite-email' && pTab === 'board' ? 'no-email' : dashboardFilter === 'profiles-waiting' ? 'pending' : null;
+            const arrive = dashboardFilter === 'no-invite-email' && pplHasEmail(pTab) ? 'no-email' : dashboardFilter === 'profiles-waiting' ? 'pending' : null;
             return html`
               <div class="hub-tabs">
                 <button class="hub-tab ${pTab === 'team' ? 'active' : ''}" onClick=${() => { setSubTab('team'); setEditSlug(null); }}>Team<span class="ppl-tab-count">${onSite('team')}</span></button>
                 <button class="hub-tab ${pTab === 'board' ? 'active' : ''}" onClick=${() => { setSubTab('board'); setEditSlug(null); }}>Board<span class="ppl-tab-count">${onSite('board')}</span></button>
+                <button class="hub-tab ${pTab === 'advisory' ? 'active' : ''}" onClick=${() => { setSubTab('advisory'); setEditSlug(null); }}>Advisory<span class="ppl-tab-count">${onSite('advisory')}</span></button>
                 <button class="hub-tab ${pTab === 'photos' ? 'active' : ''}" onClick=${() => { setSubTab('photos'); setEditSlug(null); }}>Photos</button>
               </div>
               ${pTab === 'photos'
                 ? listOrError('team', 'photos', html`<${PeoplePhotos} team=${team} onEdit=${(p) => setEditSlug(p.slug)} addToast=${addToast} onReload=${loadData} />`)
-                : listOrError('team', pTab === 'board' ? 'board members' : 'team members', html`<${PeopleList} key=${pTab} team=${team} group=${pTab}
+                : listOrError('team', `${pplGroup(pTab).noun}s`, html`<${PeopleList} key=${pTab} team=${team} group=${pTab}
                     initialFilter=${arrive} onClearFilter=${() => setDashboardFilter(null)}
                     onEdit=${(s) => setEditSlug(s)} onAdd=${() => setEditSlug('')}
-                    onDelete=${(t) => setDeleteModal({ type: pTab === 'board' ? 'board member' : 'team member', item: t })} addToast=${addToast} onReload=${loadData} />`)}
+                    onDelete=${(t) => setDeleteModal({ type: pplGroup(pTab).noun, item: t })} addToast=${addToast} onReload=${loadData} />`)}
             `;
           }
 

@@ -15,5 +15,7 @@ export function personStatus(d) {
 /** The name without an older record's "In memoriam, " prefix */
 export const personName = (d) => String(d?.name || '').replace(MEMORIAL_PREFIX, '').trim();
 
-/** On the board today: reveal invites go to these members (a draft is still on the board) */
+/** On the board today (a draft is still on the board) */
 export const onActiveBoard = (d) => d?.group === 'board' && personStatus(d) === 'active';
+/** Reveal invites go to these: active members of the board and of the Advisory Board (drafts too) */
+export const getsRevealInvites = (d) => (d?.group === 'board' || d?.group === 'advisory') && personStatus(d) === 'active';

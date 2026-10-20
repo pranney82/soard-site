@@ -95,9 +95,9 @@ export async function onRequestPost(context) {
       catch (e) { console.error(`[delete-content] ${parsed.table} history:`, e.message); }
     }
 
-    // A board member removed from the website: forget their private reveal email and take
-    // them off open reveal invites now
-    if (parsed.table === 'team' && oldData?.group === 'board') {
+    // A board or Advisory Board member removed from the website: forget their private reveal
+    // email and take them off open reveal invites now
+    if (parsed.table === 'team' && (oldData?.group === 'board' || oldData?.group === 'advisory')) {
       await setBoardEmail(DB, parsed.slug, '').catch(() => {});
       context.waitUntil(refreshForBoardChange(context.env));
     }

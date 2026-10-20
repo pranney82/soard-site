@@ -45,7 +45,7 @@ export async function onRequestGet(context) {
   return Response.json({
     ok: true,
     person: {
-      first: name.split(/\s+/)[0], name, title: d.title || '', group: d.group === 'board' ? 'board' : 'team',
+      first: name.split(/\s+/)[0], name, title: d.title || '', group: d.group === 'board' || d.group === 'advisory' ? d.group : 'team',
       bio: sent?.bio || d.bio || '', quote: sent?.quote || d.quote || '', linkedin: sent?.linkedin || d.linkedin || '',
       photo: id ? `https://imagedelivery.net/${CF_HASH}/${id}/w=320,h=320,fit=cover,gravity=face` : '',
       sent: !!row.submitted_at, sentPhoto: !!sent?.photo,

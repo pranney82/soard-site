@@ -101,7 +101,9 @@ const pressLogos = [{ id: 'tpl-outlet', data: { name: 'Template Outlet', slug: '
 
 // People: every card on the Leadership page (with and without a photo or an
 // organization, a cropped cutout, a memorial), plus a draft and an alumna
-// that the page leaves out
+// that the page leaves out. The advisors also fill the Advisory Board page
+// (advisory-template): with a photo, a custom title and a profile, neither,
+// and in memory
 const person = (slug, data) => ({ id: slug, data: { slug, order: 0, ...data } });
 const teamAll = [
   person('tpl-founder-a', { name: 'Template Founder', title: 'Co-Founder/President', group: 'team', role: 'founder', photo: 'team-template/founder' }),
@@ -119,6 +121,13 @@ const teamAll = [
     bio: 'Template first paragraph.\n\nTemplate second paragraph.', quote: 'Template quote.', linkedin: 'https://www.linkedin.com/in/template', committees: ['Template Committee'], since: 2020 }),
   person('tpl-memorial', { name: 'Template Remembered', title: 'Board Member 2020-2024', organization: 'Template Company', group: 'board', status: 'memorial', photo: 'team-template/memorial', photoCutout: true }),
   person('tpl-alumna', { name: 'Template Alumna', title: 'Board Member', group: 'board', status: 'alumni', until: 2025 }),
+  person('tpl-advisor', { name: 'Template Advisor', title: 'Advisory Board Member', organization: 'Template Company, Partner', group: 'advisory', order: 0,
+    photo: 'team-template/advisor', photoSize: [1200, 1600], photoCrop: { x: 0.1, y: 0.2, size: 0.7 } }),
+  person('tpl-advisor-bio', { name: 'Template Advisor Profiled', title: 'Advisory Board Chair', organization: 'Template Company', group: 'advisory', order: 1,
+    bio: 'Template bio.', since: 2026 }),
+  person('tpl-advisor-plain', { name: 'Template Advisor Two', title: 'Advisory Board Member', group: 'advisory', order: 2 }),
+  person('tpl-advisor-draft', { name: 'Template Advisor Draft', title: 'Advisory Board Member', group: 'advisory', order: 3, publishStatus: 'draft' }),
+  person('tpl-advisor-memorial', { name: 'Template Advisor Remembered', title: 'Advisory Board Member', group: 'advisory', order: 4, status: 'memorial' }),
 ];
 
 // Profile pages (person-template): full has every part (photo with a cutout
@@ -137,6 +146,11 @@ const profileOthers = [
   { name: 'Template Hidden', slug: 'tpl-hidden', title: 'Board Member', group: 'board', order: 3, bio: 'Template bio.', publishStatus: 'draft' },
 ];
 const profilePlain = { name: 'Template', slug: 'tpl-plain', title: 'Template Role', group: 'team', role: 'staff', order: 0, bio: 'Only a paragraph.' };
+const profileAdvisory = {
+  name: 'Template Advisor', slug: 'tpl-advisor', title: 'Advisory Board Member', organization: 'Template Company, Partner', group: 'advisory', order: 0,
+  photo: 'team-template/advisor', bio: 'Template bio.', linkedin: 'https://www.linkedin.com/in/template', since: 2026,
+};
+const advisoryOther = { name: 'Template Advisor Two', slug: 'tpl-advisor-two', title: 'Advisory Board Member', group: 'advisory', order: 1, bio: 'Template bio.' };
 const profileMemorial = {
   name: 'Template Remembered', slug: 'tpl-remembered', title: 'Board Member 2015-2024', group: 'board', status: 'memorial', order: 4,
   photo: 'team-template/remembered', bio: 'Template bio.', quote: 'Template words.', linkedin: 'https://www.linkedin.com/in/template', since: 2015, until: 2024,
@@ -176,5 +190,10 @@ export const FIXTURES = {
     full: { item: profileFull, collection: asEntries([profileFull, ...profileOthers]), partners: profilePartners },
     plain: { item: profilePlain, collection: asEntries([profilePlain]), partners: profilePartners },
     memorial: { item: profileMemorial, collection: asEntries([profileFull, profileMemorial]), partners: profilePartners },
+    advisory: { item: profileAdvisory, collection: asEntries([profileAdvisory, advisoryOther, profileFull]), partners: profilePartners },
+  },
+  // The Advisory Board page lists the advisors
+  advisory: {
+    full: { collection: teamAll },
   },
 };

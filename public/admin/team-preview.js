@@ -3,7 +3,8 @@
  * it will be after the next publish, with this person's unsaved edits. See
  * page-preview.js for how the frame is patched. The page lists everyone, so
  * the whole collection (as saved, plus this draft) rebuilds the board grid,
- * the founders row and the team grid. Mirrors src/pages/about/leadership.astro
+ * the Advisory Board section (there only while someone's on it), the
+ * founders row and the team grid. Mirrors src/pages/about/leadership.astro
  * (with src/utils/team.ts); scripts/test-page-preview.mjs rebuilds the whole
  * page and checks it against the real one.
  */
@@ -53,6 +54,7 @@ export function patchPage(doc, win, model) {
   const founders = people.filter((p) => p.group === 'team' && p.role === 'founder').sort(comparePeople);
   const staff = people.filter((p) => p.group === 'team' && p.role !== 'founder').sort(comparePeople);
   const board = people.filter((p) => p.group === 'board').sort(comparePeople);
+  const advisory = people.filter((p) => p.group === 'advisory').sort(comparePeople);
 
   // ── Leadership at a glance: board members serving now (not a memorial card) ──
   const boardCount = main.querySelector('.impact-ribbon .ribbon-num');
@@ -105,7 +107,15 @@ export function patchPage(doc, win, model) {
     nameAndLink(card, name, p);
     return card;
   };
-  main.querySelector('.board-grid')?.replaceChildren(...board.map(boardCard));
+  main.querySelector('#board .board-grid')?.replaceChildren(...board.map(boardCard));
+
+  // ── Advisory Board: the board's cards, in a section of its own after it ──
+  let adv = main.querySelector('#advisory-board');
+  if (!advisory.length) adv?.remove();
+  else {
+    if (!adv) { adv = take('full', '#advisory-board'); main.querySelector('#board')?.after(adv); }
+    adv.querySelector('.board-grid')?.replaceChildren(...advisory.map(boardCard));
+  }
 
   // ── Founders ──
   const founderProto = take('full', '.founder-card:not(.has-profile):has(.founder-photo[style])');

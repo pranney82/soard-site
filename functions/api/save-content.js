@@ -21,7 +21,7 @@ import { EXTRACTORS, parsePath, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit, diffJson, getEntityName } from './_audit.js';
 import { refreshForBoardChange } from './_reveal-invites.js';
-import { onActiveBoard as onBoard } from './_team.js';
+import { getsRevealInvites } from './_team.js';
 import { HISTORY_TABLES, recordVersion as recordContentVersion } from './_content-history.js';
 
 export async function onRequestPost(context) {
@@ -147,7 +147,7 @@ export async function onRequestPost(context) {
     }
 
     // Joining or leaving the board changes who confirmed reveal invites reach: follow it now
-    if (parsed.table === 'team' && onBoard(oldData) !== onBoard(data)) context.waitUntil(refreshForBoardChange(context.env));
+    if (parsed.table === 'team' && getsRevealInvites(oldData) !== getsRevealInvites(data)) context.waitUntil(refreshForBoardChange(context.env));
 
     return Response.json({
       success: true,

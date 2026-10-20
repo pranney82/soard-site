@@ -7,7 +7,7 @@
  */
 import { checkBlobs, setLiveBlobs, loadTemplates, tools, guardFrame, cfUrl, isLocal } from './page-preview.js';
 import {
-  normalizePerson, hasProfile, comparePeople, profilePath, bioParagraphs,
+  normalizePerson, hasProfile, comparePeople, profilePath, profileWords, bioParagraphs,
   portraitUrl, portraitSrcset, photoUrl, photoSrcset, photoLqip,
 } from './team-shared.js';
 
@@ -42,18 +42,19 @@ export function patchPage(doc, win, model) {
   const p = normalizePerson(model.item);
   const slug = model.item.slug;
   const board = p.group === 'board';
+  const gw = profileWords(p);
   const memorial = p.status === 'memorial';
   const first = p.name.split(/\s+/)[0];
   const nameParts = p.name.trim().split(/\s+/);
   const lastName = nameParts.length > 1 ? nameParts.pop() : '';
   const firstNames = nameParts.join(' ');
   const shownTitle = p.role === 'founder' ? p.title.replace(/Co-Founder\/?/i, '').trim() || p.title : p.title;
-  const eyebrow = memorial ? 'In memoriam' : board ? 'Board of Directors' : p.role === 'founder' ? 'Co-Founder' : 'Our Team';
+  const eyebrow = gw.eyebrow;
   const partner = p.partner ? model.partners.find((x) => (x.slug || x.id) === p.partner) : null;
   const since = typeof p.since === 'number' ? p.since : null;
   const until = typeof p.until === 'number' ? p.until : null;
-  const groupLabel = board ? 'board' : 'team';
-  const backHref = `/about/leadership/#${board ? 'board' : 'our-team'}`;
+  const groupLabel = gw.group;
+  const backHref = gw.back;
   const local = isLocal(p.photo);
 
   // ── Hero ──
@@ -69,7 +70,7 @@ export function patchPage(doc, win, model) {
   if (p.organization) org.textContent = p.organization; else org.remove();
   const ctas = hero.querySelectorAll('.hero-ctas a');
   ctas[0].setAttribute('href', backHref);
-  ctas[0].textContent = `Meet the ${board ? 'Board' : 'Team'}`;
+  ctas[0].textContent = gw.meet;
   if (p.linkedin && !memorial) ctas[1].setAttribute('href', p.linkedin); else ctas[1].remove();
   const frame = hero.querySelector('.hero-frame');
   if (p.photo) {
@@ -92,7 +93,7 @@ export function patchPage(doc, win, model) {
   const stat = hero.querySelector('.hero-stat');
   if (since) {
     stat.querySelector('.hero-stat-num').textContent = memorial && until ? `${since}–${until}` : String(since);
-    stat.querySelector('.hero-stat-label').innerHTML = memorial ? (board ? 'served on<br/>the board' : 'with<br/>SOARD') : board ? 'on the board<br/>since' : 'with SOARD<br/>since';
+    stat.querySelector('.hero-stat-label').innerHTML = memorial ? gw.statServed : gw.statSince;
   } else stat.remove();
 
   // ── Bio + details ──
@@ -102,7 +103,7 @@ export function patchPage(doc, win, model) {
   const paraProto = text.querySelector('p');
   text.querySelectorAll('p').forEach((n) => n.remove());
   for (const para of bioParagraphs(p.bio)) { const n = paraProto.cloneNode(true); n.textContent = para; text.append(n); }
-  const aside = bio.querySelector('aside.facts');
+  const aside = bio.querySelector('.facts');
   aside.setAttribute('aria-label', `${p.name} at a glance`);
   const factBy = Object.fromEntries([...aside.querySelectorAll('.fact')].map((f) => [f.querySelector('dt').textContent.trim(), f]));
   const fact = (key, dt) => { const f = factBy[key].cloneNode(true); f.querySelector('dt').textContent = dt; return f; };
@@ -111,7 +112,7 @@ export function patchPage(doc, win, model) {
   role.querySelector('dd').textContent = `${shownTitle}${p.role === 'founder' ? ', Co-Founder' : ''}`;
   facts.push(role);
   if (p.organization) {
-    const f = fact('Company', board ? 'Company' : 'Organization');
+    const f = fact('Company', gw.company);
     const dd = f.querySelector('dd');
     const link = dd.querySelector('.fact-partner');
     dd.replaceChildren(doc.createTextNode(p.organization));
@@ -119,7 +120,7 @@ export function patchPage(doc, win, model) {
     facts.push(f);
   }
   if (since) {
-    const f = fact('On the board', board ? 'On the board' : 'With SOARD');
+    const f = fact('On the board', gw.since);
     f.querySelector('dd').textContent = memorial && until ? `${since} to ${until}` : `Since ${since}`;
     facts.push(f);
   }
