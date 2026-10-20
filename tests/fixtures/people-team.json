@@ -1,0 +1,201 @@
+{
+  "alex-paulson": {
+    "name": "Alex Paulson",
+    "slug": "alex-paulson",
+    "title": "Board Member",
+    "group": "board",
+    "order": 8,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/alex-paulson/public",
+    "organization": "Randall-Paulson Architects, President"
+  },
+  "brent-aronson": {
+    "name": "In memoriam, Brent Aronson",
+    "slug": "brent-aronson",
+    "title": "Board Member 2024-2025",
+    "group": "board",
+    "order": 12,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/brent-aronson/public",
+    "organization": "Real Floors Commercial, Director of Business Development"
+  },
+  "brian-robbins": {
+    "name": "Brian Robbins",
+    "slug": "brian-robbins",
+    "title": "Board Member",
+    "organization": "Pella, Partner / CEO",
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/brian-robbins/1777297495290/public",
+    "bio": "",
+    "quote": "",
+    "group": "board",
+    "order": 10
+  },
+  "carlos-ramirez": {
+    "name": "Carlos Ramirez",
+    "slug": "carlos-ramirez",
+    "title": "Board Member",
+    "group": "board",
+    "order": 9,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/carlos-ramirez/public",
+    "organization": "Baker Paint, President (Retired)"
+  },
+  "casey-bradley": {
+    "name": "Casey Bradley",
+    "slug": "casey-bradley",
+    "title": "Board Member",
+    "organization": "Founder Financial, Owner",
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/casey-bradley/1776873134746/public",
+    "bio": "",
+    "quote": "",
+    "group": "board",
+    "order": 2
+  },
+  "christian-nielsen": {
+    "name": "Christian Nielsen",
+    "slug": "christian-nielsen",
+    "title": "Project Manager",
+    "group": "team",
+    "order": 3,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/christian-nielsen/public"
+  },
+  "clareece-cunningham": {
+    "name": "Clareece Cunningham",
+    "slug": "clareece-cunningham",
+    "title": "Designer",
+    "group": "team",
+    "order": 4,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/clareece-cunningham/public"
+  },
+  "greg-ranney": {
+    "name": "Greg Ranney",
+    "slug": "greg-ranney",
+    "title": "Chief Greeter",
+    "group": "team",
+    "order": 8,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/greg-ranney/public"
+  },
+  "holly-ranney": {
+    "name": "Holly Ranney",
+    "slug": "holly-ranney",
+    "title": "Co-Founder/President",
+    "group": "team",
+    "order": 0,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/holly-ranney/public"
+  },
+  "jennifer-crosby": {
+    "name": "Jennifer Crosby",
+    "slug": "jennifer-crosby",
+    "title": "Board Member",
+    "group": "board",
+    "order": 4,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/jennifer-crosby/public",
+    "organization": "Crosby Design Group, President & CEO"
+  },
+  "linzi-berkowitz": {
+    "name": "Linzi Lawsky",
+    "slug": "linzi-berkowitz",
+    "title": "Director of Operations & Dev",
+    "group": "team",
+    "order": 2,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/linzi-berkowitz/1788203476659/public"
+  },
+  "lori-geary": {
+    "name": "Lori Geary",
+    "slug": "lori-geary",
+    "title": "Board Member",
+    "group": "board",
+    "order": 5,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/lori-geary/public",
+    "organization": "Lori Geary Media, President"
+  },
+  "mary-atchley": {
+    "name": "Mary Atchley",
+    "slug": "mary-atchley",
+    "title": "Board Member",
+    "organization": "Walk Your Plans Atlanta and Design & Build XR, Partner",
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/mary-atchley/1776872816425/public",
+    "bio": "",
+    "quote": "",
+    "group": "board",
+    "order": 1
+  },
+  "paul-nielsen": {
+    "name": "Paul Nielsen",
+    "slug": "paul-nielsen",
+    "title": "Board Member",
+    "group": "board",
+    "order": 7,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/paul-nielsen/public",
+    "organization": "Trident Construction Group, VP Operations"
+  },
+  "peter-ranney": {
+    "name": "Peter Ranney",
+    "slug": "peter-ranney",
+    "title": "Co-Founder/Vice President of Construction",
+    "group": "team",
+    "order": 1,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/peter-ranney/1774964664415/public"
+  },
+  "scott-wierson": {
+    "name": "Scott Wierson",
+    "slug": "scott-wierson",
+    "title": "Board Chair",
+    "group": "board",
+    "order": 0,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/scott-wierson/1783351049054/public",
+    "organization": "Real Floors Commercial, CEO"
+  },
+  "staci-kohler": {
+    "name": "Staci Kohler",
+    "slug": "staci-kohler",
+    "title": "Sunny & Ranney Store Manager",
+    "group": "team",
+    "order": 5,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/staci-kohler/1775668349955/public"
+  },
+  "thomas-wilson": {
+    "name": "Thomas Wilson",
+    "slug": "thomas-wilson",
+    "title": "Board Member",
+    "group": "board",
+    "order": 11,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/thomas-wilson/public",
+    "organization": "Brady Ware & Company, Manager & CPA"
+  },
+  "tom-duncan": {
+    "name": "Tom Duncan",
+    "slug": "tom-duncan",
+    "title": "Warehouse Manager",
+    "organization": "",
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/tom-duncan/1785945599365/public",
+    "bio": "",
+    "quote": "",
+    "group": "team",
+    "order": 6
+  },
+  "traci-messier": {
+    "name": "Traci Messier",
+    "slug": "traci-messier",
+    "title": "Board Member",
+    "group": "board",
+    "order": 6,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/traci-messier/public",
+    "organization": "Atlanta Dream, VP Communication & External Affairs"
+  },
+  "travis-couick": {
+    "name": "Travis Couick",
+    "slug": "travis-couick",
+    "title": "Board Member",
+    "group": "board",
+    "order": 3,
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/travis-couick/public",
+    "organization": "STAG Construction, Owner"
+  },
+  "tucker-ranney": {
+    "name": "Tucker Ranney",
+    "slug": "tucker-ranney",
+    "title": "Backup Cashier",
+    "organization": "",
+    "photo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/tucker-ranney/1774988141621/public",
+    "group": "team",
+    "order": 7
+  }
+}

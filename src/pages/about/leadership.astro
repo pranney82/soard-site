@@ -22,6 +22,8 @@ const byRank = (a: { data: ReturnType<typeof normalizePerson> }, b: { data: Retu
 const founders = people.filter((t) => t.data.group === 'team' && t.data.role === 'founder').sort(byRank);
 const staff = people.filter((t) => t.data.group === 'team' && t.data.role !== 'founder').sort(byRank);
 const boardMembers = people.filter((t) => t.data.group === 'board').sort(byRank);
+// Serving now (a memorial card stays on the page but isn't counted)
+const activeBoard = boardMembers.filter((t) => t.data.status === 'active').length;
 
 /* ── Stats ── */
 const computed = await getSiteStats();
@@ -44,89 +46,28 @@ const breadcrumbs = [
   heroSubtitle="The people behind the mission"
 >
 
-  <!-- ══════ IMPACT RIBBON ══════ -->
-  <section class="impact-ribbon" aria-label="Impact numbers">
+  <!-- ══════ LEADERSHIP AT A GLANCE ══════ -->
+  <section class="impact-ribbon" aria-label="Leadership at a glance">
     <div class="ribbon-inner">
       <div class="ribbon-stat" data-reveal>
-        <span class="ribbon-num">{computed.totalRooms}+</span>
-        <span class="ribbon-label">Rooms Completed</span>
+        <span class="ribbon-num">{activeBoard}</span>
+        <span class="ribbon-label">Board Members</span>
       </div>
       <div class="ribbon-divider" role="presentation"></div>
       <div class="ribbon-stat" data-reveal data-delay="1">
-        <span class="ribbon-num">{computed.totalKids}+</span>
-        <span class="ribbon-label">Children Served</span>
+        <span class="ribbon-num">100%</span>
+        <span class="ribbon-label">Give Every Year</span>
       </div>
       <div class="ribbon-divider" role="presentation"></div>
       <div class="ribbon-stat" data-reveal data-delay="2">
         <span class="ribbon-num">{computed.years}</span>
-        <span class="ribbon-label">Years of Impact</span>
+        <span class="ribbon-label">Years Serving Families</span>
       </div>
-    </div>
-  </section>
-
-  <!-- ══════ BOARD OF DIRECTORS ══════ -->
-  <section class="section section--cream" id="board" aria-labelledby="board-heading">
-    <div class="container">
-      <div class="section-intro" data-reveal>
-        <h2 class="section-label" id="board-heading">Board of Directors</h2>
-        <p class="section-tagline">Community leaders guiding our <span class="highlight">mission and growth</span></p>
-        <p class="section-desc">
-          Industry experts who volunteer their time and expertise to ensure we serve more families, more effectively.
-        </p>
-        <p class="board-giving">
-          <span class="board-giving__stat">100%</span>
-          <span class="board-giving__text"><strong>Board participation.</strong> Every member of our Board of Directors makes a personal financial gift to SOARD each year, in addition to the time and expertise they volunteer.</span>
-        </p>
-      </div>
-
-      <div class="board-grid">
-        {boardMembers.map((member, i) => (
-          <div class={['board-card', member.data.status === 'memorial' && 'board-card--memorial', hasProfile(member.data) && 'has-profile'].filter(Boolean).join(' ')} data-reveal data-delay={String(Math.min(i, 4))}>
-            <div class="board-photo" style={member.data.photo ? `background-image:url(${photoLqip(member.data)});background-size:cover;background-position:center` : undefined}>
-              {member.data.photo ? (
-                <img
-                  src={photoUrl(member.data, 200)}
-                  srcset={photoSrcset(member.data, [140, 200, 280, 400])}
-                  sizes="(max-width: 600px) 140px, 200px"
-                  alt={member.data.status === 'memorial' ? `In memory of ${member.data.name}, ${member.data.title}` : `${member.data.name}, ${member.data.title}`}
-                  width="200" height="200"
-                  loading="lazy"
-                  decoding="async"
-                />
-              ) : (
-                <div class="photo-placeholder">
-                  <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
-                </div>
-              )}
-            </div>
-            {member.data.status === 'memorial' && <p class="board-memorial">In memoriam</p>}
-            <h3 class="board-name">{hasProfile(member.data) ? <a class="card-link" href={profilePath(member.id)}>{member.data.name}</a> : member.data.name}</h3>
-            <p class="board-title">{member.data.title}</p>
-            {member.data.organization && (
-              <p class="board-org">{member.data.organization}</p>
-            )}
-            {hasProfile(member.data) && <span class="card-more" aria-hidden="true">Read profile</span>}
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ MISSION QUOTE ══════ -->
-  <section class="quote-break" aria-label="Mission quote">
-    <div class="container">
-      <blockquote class="mission-quote" data-reveal>
-        <svg class="mission-quote-mark" aria-hidden="true" width="48" height="36" viewBox="0 0 32 24" fill="none">
-          <path d="M0 24V14.4C0 10.4 0.8 7.2 2.4 4.8C4.1 2.4 6.9 0.5 10.8 0L12 3.6C9.7 4.3 8.1 5.4 7.1 6.9C6.1 8.4 5.6 10.1 5.6 12H12V24H0ZM20 24V14.4C20 10.4 20.8 7.2 22.4 4.8C24.1 2.4 26.9 0.5 30.8 0L32 3.6C29.7 4.3 28.1 5.4 27.1 6.9C26.1 8.4 25.6 10.1 25.6 12H32V24H20Z" fill="currentColor"/>
-        </svg>
-        <p>Every child deserves a space that feels like their own — a room that says <em>'you matter.'</em></p>
-        <cite>Holly & Peter Ranney, Co-Founders</cite>
-      </blockquote>
     </div>
   </section>
 
   <!-- ══════ OUR TEAM ══════ -->
-  <section class="section section--white" id="our-team" aria-labelledby="team-heading">
+  <section class="section section--cream" id="our-team" aria-labelledby="team-heading">
     <div class="container">
       <div class="section-intro" data-reveal>
         <h2 class="section-label" id="team-heading">Our Team</h2>
@@ -201,6 +142,67 @@ const breadcrumbs = [
     </div>
   </section>
 
+  <!-- ══════ MISSION QUOTE ══════ -->
+  <section class="quote-break" aria-label="Mission quote">
+    <div class="container">
+      <blockquote class="mission-quote" data-reveal>
+        <svg class="mission-quote-mark" aria-hidden="true" width="48" height="36" viewBox="0 0 32 24" fill="none">
+          <path d="M0 24V14.4C0 10.4 0.8 7.2 2.4 4.8C4.1 2.4 6.9 0.5 10.8 0L12 3.6C9.7 4.3 8.1 5.4 7.1 6.9C6.1 8.4 5.6 10.1 5.6 12H12V24H0ZM20 24V14.4C20 10.4 20.8 7.2 22.4 4.8C24.1 2.4 26.9 0.5 30.8 0L32 3.6C29.7 4.3 28.1 5.4 27.1 6.9C26.1 8.4 25.6 10.1 25.6 12H32V24H20Z" fill="currentColor"/>
+        </svg>
+        <p>Every child deserves a space that feels like their own — a room that says <em>'you matter.'</em></p>
+        <cite>Holly & Peter Ranney, Co-Founders</cite>
+      </blockquote>
+    </div>
+  </section>
+
+  <!-- ══════ BOARD OF DIRECTORS ══════ -->
+  <section class="section section--white" id="board" aria-labelledby="board-heading">
+    <div class="container">
+      <div class="section-intro" data-reveal>
+        <h2 class="section-label" id="board-heading">Board of Directors</h2>
+        <p class="section-tagline">Community leaders guiding our <span class="highlight">mission and growth</span></p>
+        <p class="section-desc">
+          Industry experts who volunteer their time and expertise to ensure we serve more families, more effectively.
+        </p>
+        <p class="board-giving">
+          <span class="board-giving__stat">100%</span>
+          <span class="board-giving__text"><strong>Board participation.</strong> Every member of our Board of Directors makes a personal financial gift to SOARD each year, in addition to the time and expertise they volunteer.</span>
+        </p>
+      </div>
+
+      <div class="board-grid">
+        {boardMembers.map((member, i) => (
+          <div class={['board-card', member.data.status === 'memorial' && 'board-card--memorial', hasProfile(member.data) && 'has-profile'].filter(Boolean).join(' ')} data-reveal data-delay={String(Math.min(i, 4))}>
+            <div class="board-photo" style={member.data.photo ? `background-image:url(${photoLqip(member.data)});background-size:cover;background-position:center` : undefined}>
+              {member.data.photo ? (
+                <img
+                  src={photoUrl(member.data, 200)}
+                  srcset={photoSrcset(member.data, [140, 200, 280, 400])}
+                  sizes="(max-width: 600px) 140px, 200px"
+                  alt={member.data.status === 'memorial' ? `In memory of ${member.data.name}, ${member.data.title}` : `${member.data.name}, ${member.data.title}`}
+                  width="200" height="200"
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <div class="photo-placeholder">
+                  <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
+                </div>
+              )}
+            </div>
+            {member.data.status === 'memorial' && <p class="board-memorial">In memoriam</p>}
+            <h3 class="board-name">{hasProfile(member.data) ? <a class="card-link" href={profilePath(member.id)}>{member.data.name}</a> : member.data.name}</h3>
+            <p class="board-title">{member.data.title}</p>
+            {member.data.organization && (
+              <p class="board-org">{member.data.organization}</p>
+            )}
+            {hasProfile(member.data) && <span class="card-more" aria-hidden="true">Read profile</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
   <!-- ══════ CTA ══════ -->
   <section class="section section--dark" slot="cta">
     <div class="container" style="text-align: center;">
@@ -209,12 +211,12 @@ const breadcrumbs = [
           Want to <span class="highlight">join the mission</span>?
         </h2>
         <p class="cta-text">
-          We're always looking for people who want to volunteer,
-          partner, or support our work in other ways.
+          Give, partner with us, or lend your expertise on our Advisory Board.
         </p>
         <div class="cta-buttons">
           <a href="/donate/" class="btn btn-primary btn-lg">Donate</a>
           <a href="/partners/" class="btn btn-ghost-light btn-lg">Become a Partner</a>
+          <a href="/advisory-board/" class="btn btn-ghost-light btn-lg">Join the Advisory Board</a>
         </div>
       </div>
     </div>
@@ -329,12 +331,27 @@ const breadcrumbs = [
   /* ═══════════════════════════════════════════
      BOARD OF DIRECTORS — Centered portrait cards
      ═══════════════════════════════════════════ */
-  .board-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-2xl) var(--space-xl);
-    max-width: 1000px;
+  /* Rows of --cols cards; a short last row sits centered instead of leaving a
+     lone card at the left. Cards may shrink below a photo's fixed width
+     (min-width: 0), so nothing runs off the page on an iPad in portrait. */
+  .board-grid,
+  .team-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--gap-y) var(--gap-x);
     margin-inline: auto;
+  }
+  .board-grid > *,
+  .team-grid > * {
+    flex: 0 0 calc((100% - (var(--cols) - 1) * var(--gap-x)) / var(--cols));
+    min-width: 0;
+  }
+  .board-grid {
+    --cols: 4;
+    --gap-x: var(--space-xl);
+    --gap-y: var(--space-2xl);
+    max-width: 1000px;
   }
 
   .board-card {
@@ -366,17 +383,8 @@ const breadcrumbs = [
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: filter 0.6s ease;
   }
 
-  @media (hover: hover) {
-    .board-photo img {
-      filter: grayscale(100%) contrast(1.05);
-    }
-    .board-card:hover .board-photo img {
-      filter: grayscale(0%) contrast(1);
-    }
-  }
 
   .board-name {
     font-family: var(--font-display);
@@ -501,17 +509,8 @@ const breadcrumbs = [
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: filter 0.6s ease;
   }
 
-  @media (hover: hover) {
-    .founder-photo img {
-      filter: grayscale(100%) contrast(1.05);
-    }
-    .founder-card:hover .founder-photo img {
-      filter: grayscale(0%) contrast(1);
-    }
-  }
 
   .founder-ring {
     position: absolute;
@@ -566,11 +565,10 @@ const breadcrumbs = [
      TEAM GRID — B&W→Color on hover
      ═══════════════════════════════════════════ */
   .team-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-3xl) var(--space-2xl);
+    --cols: 3;
+    --gap-x: var(--space-2xl);
+    --gap-y: var(--space-3xl);
     max-width: 940px;
-    margin-inline: auto;
   }
 
   .member-card {
@@ -602,17 +600,8 @@ const breadcrumbs = [
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: filter 0.6s ease;
   }
 
-  @media (hover: hover) {
-    .member-photo img {
-      filter: grayscale(100%) contrast(1.05);
-    }
-    .member-card:hover .member-photo img {
-      filter: grayscale(0%) contrast(1);
-    }
-  }
 
   .member-name {
     font-family: var(--font-display);
@@ -750,7 +739,6 @@ const breadcrumbs = [
     .founder-photo img,
     .member-photo img,
     .board-photo img {
-      filter: none !important;
       transition: none;
     }
   }
@@ -766,15 +754,17 @@ const breadcrumbs = [
     .founder-photo { width: 160px; }
 
     .team-grid {
-      grid-template-columns: repeat(3, 1fr);
-      gap: var(--space-xl);
+      --cols: 3;
+      --gap-x: var(--space-xl);
+      --gap-y: var(--space-xl);
     }
 
     .member-photo { width: 160px; }
 
     .board-grid {
-      grid-template-columns: repeat(3, 1fr);
-      gap: var(--space-xl);
+      --cols: 3;
+      --gap-x: var(--space-xl);
+      --gap-y: var(--space-xl);
     }
 
     .board-photo { width: 150px; }
@@ -790,16 +780,18 @@ const breadcrumbs = [
     .founder-badge { font-size: 0.6rem; }
 
     .team-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-xl) var(--space-lg);
+      --cols: 2;
+      --gap-x: var(--space-lg);
+      --gap-y: var(--space-xl);
     }
 
     .member-photo { width: 140px; }
     .member-name { font-size: 1.05rem; }
 
     .board-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-xl) var(--space-lg);
+      --cols: 2;
+      --gap-x: var(--space-lg);
+      --gap-y: var(--space-xl);
     }
 
     .board-photo { width: 130px; }
@@ -828,13 +820,15 @@ const breadcrumbs = [
     .founder-photo { width: 110px; }
 
     .team-grid {
-      gap: var(--space-lg) var(--space-md);
+      --gap-x: var(--space-md);
+      --gap-y: var(--space-lg);
     }
 
     .member-photo { width: 110px; }
 
     .board-grid {
-      gap: var(--space-lg) var(--space-md);
+      --gap-x: var(--space-md);
+      --gap-y: var(--space-lg);
     }
 
     .board-photo { width: 110px; }

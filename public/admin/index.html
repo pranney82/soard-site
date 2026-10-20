@@ -3098,6 +3098,17 @@
     .ppl-crop__buttons { align-items: center; margin-top: 1.25rem; }
     .ppl-spacer { flex: 1; }
 
+    /* Tablets: what's missing goes under the name, so titles and companies aren't cut off */
+    @media (max-width: 1180px) {
+      .ppl-row { grid-template-columns: 36px 44px minmax(0, 1fr) 40px; grid-template-areas: 'handle avatar main menu' 'handle avatar issues menu'; row-gap: 0.35rem; }
+      .ppl-handle, .ppl-handle-gap { grid-area: handle; align-self: start; }
+      .ppl-avatar { grid-area: avatar; align-self: start; }
+      .ppl-row__main { grid-area: main; }
+      .ppl-row__issues { grid-area: issues; justify-content: flex-start; max-width: none; }
+      .ppl-row__issues:empty { display: none; }
+      .ppl-menu { grid-area: menu; align-self: start; }
+      .ppl-row__sub { white-space: normal; }
+    }
     @media (max-width: 768px) {
       .ppl-toolbar { flex-direction: column; align-items: stretch; }
       .ppl-search { flex: none; max-width: none; }
@@ -3133,6 +3144,13 @@
       .ppl-cmte-new .form-input { flex-basis: 100%; max-width: none; }
       .ppl-cmte, .ppl-cmte-new .btn, .ppl-cmte-row .btn, .ppl-cmte-add .btn { min-height: 44px; }
       .ppl-cmte-modal__foot .ppl-spacer, .ppl-cmte-modal__foot .ppl-saving:empty { display: none; }
+    }
+    /* Touch screens of any width (iPads get the desktop layout): 44px targets */
+    @media (pointer: coarse) {
+      .ppl-filter, .ppl-collapse, .ppl-seg [role="radio"], .ppl-photo__actions .btn, .ppl-partner .btn, .ppl-inline .btn, .ppl-admin__row .btn { min-height: 44px; }
+      .ppl-menu__btn { width: 44px; height: 44px; }
+      .ppl-handle { width: 40px; height: 44px; }
+      .ppl-menu__pop [role="menuitem"] { min-height: 44px; }
     }
 
     /* ─── Reduced Motion ──────────────── */
@@ -12759,7 +12777,9 @@
       if (p.status === 'alumni') return out;
       const px = tsPhotoPixels(p, Array.isArray(p.photoSize) ? p.photoSize : size);
       const q = tsPhotoQuality(px);
+      const profile = tsHasProfile(p);
       if (!p.photo) out.push({ id: 'photo', tone: 'warn', label: 'No photo', tip: 'The page shows the logo placeholder' });
+      else if (profile && q && q !== 'good') out.push({ id: 'photo', tone: 'warn', label: 'Photo too small for their profile', tip: `${px}px: their profile page shows a large portrait, so it will look soft. Upload one at least ${TS_PHOTO_GOOD}px wide.` });
       else if (q === 'blurry') out.push({ id: 'photo', tone: 'warn', label: 'Blurry photo', tip: `${px}px: looks soft on sharp screens. Upload one at least ${TS_PHOTO_GOOD}px wide.` });
       else if (q === 'ok') out.push({ id: 'photo', tone: 'quiet', label: 'Small photo', tip: `${px}px: fine on today’s page, too small for anything larger. ${TS_PHOTO_GOOD}px or more is ideal.` });
       if (p.group === 'board' && p.status === 'active' && emails && !emails[p.slug]) {
@@ -13900,8 +13920,8 @@
             </div>
             ${data.photo ? html`
               <div class="ppl-quality-wrap">
-                <p class=${`ppl-quality is-${quality || 'unknown'}`}>
-                  ${quality ? html`${quality === 'blurry' ? pplIcon.alert : pplIcon.check} ${px}px across · ${quality === 'good' ? 'Sharp' : quality === 'ok' ? 'Fine on today’s page' : 'Will look blurry'}` : 'Reading the photo’s size…'}
+                <p class=${`ppl-quality is-${profileReady && quality === 'ok' ? 'blurry' : quality || 'unknown'}`}>
+                  ${quality ? html`${quality === 'blurry' || (profileReady && quality !== 'good') ? pplIcon.alert : pplIcon.check} ${px}px across · ${quality === 'good' ? 'Sharp' : profileReady ? 'Soft on their profile page' : quality === 'ok' ? 'Fine on the Leadership page' : 'Will look blurry'}` : 'Reading the photo’s size…'}
                 </p>
                 <p class="ppl-quality-sub">${data.photoCrop ? 'Framed by hand' : 'Centered on the face automatically'}</p>
               </div>

@@ -54,6 +54,10 @@ export function patchPage(doc, win, model) {
   const staff = people.filter((p) => p.group === 'team' && p.role !== 'founder').sort(comparePeople);
   const board = people.filter((p) => p.group === 'board').sort(comparePeople);
 
+  // ── Leadership at a glance: board members serving now (not a memorial card) ──
+  const boardCount = main.querySelector('.impact-ribbon .ribbon-num');
+  if (boardCount) boardCount.textContent = String(board.filter((p) => p.status === 'active').length);
+
   const placeholderSrc = cfUrl(PLACEHOLDER, { w: 256 });
   // The photo box: the photo with its blurred stand-in, or the logo placeholder
   const photoBox = (withPhoto, plain, p, px, widths) => {

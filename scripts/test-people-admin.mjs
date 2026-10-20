@@ -3,7 +3,7 @@
  * ============================================================================
  * Loads the admin from an Astro dev server (so Preview can frame the real
  * Leadership page) with every /api/* call answered from an in-memory copy of
- * src/content/team and src/content/partners. Checks, at 1440px and 390px:
+ * a frozen team (tests/fixtures/people-team.json) and src/content/partners. Checks, at 1440px and 390px:
  *   - sections (founders, staff, honorary crew; officers, members, in memory),
  *     tab counts, what each row is missing, search and the Needs attention filter
  *   - reordering by keyboard (Space, arrows, Space; Escape cancels) and by
@@ -52,8 +52,11 @@ const readDir = (d) => Object.fromEntries(readdirSync(join(ROOT, 'src/content', 
 const PARTNERS = readDir('partners');
 
 // ── The fake API ──
+// The team as it was when these checks were written (tests/fixtures/people-team.json),
+// so editing real people in the admin can't break them
+const TEAM = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/people-team.json'), 'utf8'));
 function makeApi() {
-  const team = readDir('team');
+  const team = structuredClone(TEAM);
   for (const [slug, d] of Object.entries(team)) d.slug ||= slug;
   // site: src/content/site docs by key (board-committees starts unsaved: the starter list)
   const st = { team, site: {}, emails: {}, calls: [], waiting: new Set() };
@@ -422,6 +425,19 @@ try {
     await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
     await sleep(700);
     ok(api.st.team['brent-aronson'].name === 'Brent Aronson' && api.st.team['brent-aronson'].status === 'memorial', 'saved as name + status: memorial');
+
+    // A bio raises the photo bar: Mary's 535px photo is too small for a profile portrait
+    await clickText(page, '.breadcrumb button', 'Board');
+    await page.waitForSelector('.ppl-row');
+    await clickText(page, '.ppl-row__name', 'Mary Atchley');
+    await page.waitForSelector('#ppl-bio');
+    await page.waitForFunction(() => /px across/.test(document.querySelector('.ppl-quality')?.textContent || ''), { timeout: 15000 });
+    ok(!(await page.$eval('.ppl-checklist', (e) => e.textContent)).includes('too small for their profile'), 'no profile warning without a bio');
+    await page.type('#ppl-bio', 'Mary designs.');
+    await sleep(200);
+    ok((await page.$eval('.ppl-checklist', (e) => e.textContent)).includes('Photo too small for their profile') && (await page.$eval('.ppl-quality', (e) => e.textContent)).includes('Soft on their profile page'),
+      'with a bio, a 535px photo is flagged as too small for the profile');
+    await page.$eval('#ppl-bio', (t) => { t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); });
 
     // ── Past Chair and committees: Casey ──
     const seatLabels = () => page.evaluate(() => [...[...document.querySelectorAll('.ppl-role .ppl-seg')][1].querySelectorAll('[role="radio"]')].map((b) => b.textContent));
