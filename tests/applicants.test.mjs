@@ -232,6 +232,9 @@ test('message, text and note go to JobTread the way staff would post them', asyn
   const msg = a.comments.find(c => c.name === 'Your home visit');
   assert.equal(msg.assignees[0].emailAddress, 'jordan@example.com');
   assert.equal(msg.grantKey, 'qc-grant');
+  await assert.rejects(() => textFamily(env, a.id, { message: 'See you Tuesday!', ...opts() }), /Texting isn’t set up yet/, 'off until the texting service is ready');
+  assert.ok(!a.comments.some(c => /^\/text /.test(c.message)), 'and nothing was posted');
+  env.APPLICANT_TEXTING = 'on';
   await textFamily(env, a.id, { message: 'See you Tuesday!', ...opts() });
   const text = a.comments.find(c => c.message === '/text See you Tuesday!');
   assert.equal(text.parentCommentId, `${a.id}-comms`);

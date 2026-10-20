@@ -534,6 +534,7 @@ export function ApplicantsArea({ addToast }) {
     ${openId && html`<${Drawer}
       id=${openId}
       fields=${data.fields}
+      texting=${!!data.texting}
       summary=${all.find(a => a.id === openId)}
       onClose=${() => open(null)}
       onPrev=${idx > 0 ? () => open(shown[idx - 1].id) : null}
@@ -875,7 +876,7 @@ function ActivityView({ onOpen }) {
 
 // ─── One family (drawer) ────────────────────────────────────────────
 
-function Drawer({ id, fields, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
+function Drawer({ id, fields, texting = false, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const panel = useRef(null);
@@ -937,7 +938,7 @@ function Drawer({ id, fields, summary, onClose, onPrev, onNext, onStatus, onChan
       ${err && html`<div class="apl-callout is-warn" style="margin:1rem">${err} <button class="apl-more" onClick=${load}>Try again</button></div>`}
       ${!d && !err && html`<div class="apl-skel">Reading ${summary?.name || 'this family'} from JobTread…</div>`}
       ${d && html`<div class="apl-dbody">
-        <${Conversation} d=${{ ...d, applicant: a }} onSent=${refresh} addToast=${addToast} />
+        <${Conversation} d=${{ ...d, applicant: a }} onSent=${refresh} addToast=${addToast} texting=${texting} />
         <${SidePanel} d=${{ ...d, applicant: a }} fields=${fields} onSaved=${refresh} onShowOnMap=${onShowOnMap} addToast=${addToast} />
       </div>`}
     </aside>
@@ -1021,7 +1022,7 @@ function EventLine({ r }) {
   </div>`;
 }
 
-function Conversation({ d, onSent, addToast }) {
+function Conversation({ d, onSent, addToast, texting = false }) {
   const a = d.applicant;
   const items = useMemo(() => timelineOf(d), [d]);
   const scroller = useRef(null);
@@ -1034,7 +1035,8 @@ function Conversation({ d, onSent, addToast }) {
   const [busy, setBusy] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const box = useRef(null);
-  const canText = !!a.commsThreadId && !!a.contact?.phone;
+  const canText = texting && !!a.commsThreadId && !!a.contact?.phone;
+  const textWhy = !texting ? "Texting isn't set up yet" : 'Needs a mobile number and a Comms Thread in JobTread';
   const send = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
@@ -1071,7 +1073,7 @@ function Conversation({ d, onSent, addToast }) {
     <div class="apl-composer">
       <div class="apl-modes" role="group" aria-label="Send as">
         <button aria-pressed=${mode === 'email'} onClick=${() => setMode('email')} disabled=${!emailable.length} title=${emailable.length ? '' : 'No email address in JobTread'}>Email family</button>
-        <button aria-pressed=${mode === 'text'} onClick=${() => setMode('text')} disabled=${!canText} title=${canText ? '' : 'Needs a mobile number and a Comms Thread in JobTread'}>Text</button>
+        <button aria-pressed=${mode === 'text'} onClick=${() => setMode('text')} disabled=${!canText} title=${canText ? '' : textWhy}>${texting ? 'Text' : 'Text (not set up yet)'}</button>
         <button aria-pressed=${mode === 'note'} onClick=${() => setMode('note')}>Internal note</button>
       </div>
       ${mode === 'email' && html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">

@@ -93,7 +93,7 @@ const DB = await createD1();
 await DB.exec(`CREATE TABLE IF NOT EXISTS site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)`);
 await DB.prepare("INSERT INTO site_config (key, data) VALUES ('settings', ?)").bind(JSON.stringify({ application: { open: true, year: '2027' } })).run();
 await DB.exec(`CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_email TEXT, action TEXT, entity_type TEXT, entity_slug TEXT, entity_name TEXT, changes TEXT, path TEXT, git_status TEXT, created_at TEXT)`);
-const env = { ...w.env, DB, JOBTREAD_QC_GRANT_KEY: 'qc-grant' };
+const env = { ...w.env, DB, JOBTREAD_QC_GRANT_KEY: 'qc-grant', APPLICANT_TEXTING: 'on' };
 
 // ── A static server for public/, plus the harness page ──
 const adminHtml = readFileSync(join(ROOT, 'public/admin/index.html'), 'utf8');

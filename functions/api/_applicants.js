@@ -732,11 +732,19 @@ export async function addNote(env, accountId, { message, user = 'admin', fetchIm
 }
 
 /**
+ * Texting from the site is off until the texting service behind JobTread's
+ * "/text" command is set up; then set APPLICANT_TEXTING = "on" in Cloudflare.
+ * Until then the button says so instead of posting a text that goes nowhere.
+ */
+export const textingOn = (env) => String(env.APPLICANT_TEXTING || '').toLowerCase() === 'on';
+
+/**
  * A text message to the family's phone. JobTread's "Comms Thread" on the
  * account turns a "/text …" reply into an SMS to the primary contact (DataX
  * sends it and logs the reply), so this posts exactly that reply.
  */
 export async function textFamily(env, accountId, { message, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
+  if (!textingOn(env)) throw new Error('Texting isn’t set up yet, so nothing was sent');
   const text = String(message || '').replace(/\s+/g, ' ').trim();
   if (!text) throw new Error('Write a text first');
   if (text.length > 1000) throw new Error('Texts are limited to 1,000 characters');

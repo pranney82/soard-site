@@ -29,7 +29,7 @@
 import {
   ensureApplicantSchema, listApplicants, applicantDetail, recentActivity, previewStatus, setApplicantStatus,
   updateApplicantFields, messageFamily, addNote, textFamily, archiveApplicant, maybeSyncApplicants, syncState,
-  isAccountId, STATUSES, FIELDS,
+  isAccountId, STATUSES, FIELDS, textingOn,
 } from './_applicants.js';
 import { applicationSettings, cleanYear } from './_applications.js';
 import { getLiveForm, getDraftForm, saveDraftForm, diffForm } from './_application-forms.js';
@@ -76,6 +76,7 @@ export async function onRequestGet(context) {
         draftUpdatedAt: draft?.updatedAt || null,
       },
       season: cleanYear(settings.year),
+      texting: textingOn(env),
       me: context.data?.userEmail || null,
     });
   }
