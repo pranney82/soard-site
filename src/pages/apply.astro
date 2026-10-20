@@ -32,7 +32,10 @@ const allKids = await getPublishedKids();
 const app = siteSettings.application;
 const isOpen = app.open === true;
 const appYear = app.year || '2026';
-const appFormUrl = app.formUrl || '';
+// The site's own form (/apply/form/) unless admin set an outside form URL as an override
+const appFormUrl = app.formUrl || '/apply/form/';
+const appFormExternal = !!app.formUrl;
+const appLinkAttrs = appFormExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {};
 const closedMessage = app.closedMessage || `The ${appYear} application period is currently closed.`;
 
 /* ── Photos (from admin, with fallbacks) ── */
@@ -109,8 +112,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         <h1>Your child deserves a room built just for <em>them</em>.</h1>
         <p class="hero-lead">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs. Designed around who they are, built by community, and <strong>always free</strong>.</p>
         <div class="hero-ctas">
-          {isOpen && appFormUrl ? (
-            <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg hero-glow">Apply Now &rarr;</a>
+          {isOpen ? (
+            <a href={appFormUrl} {...appLinkAttrs} class="btn btn-primary btn-lg hero-glow">Apply Now &rarr;</a>
           ) : (
             <a href="#how-it-works" class="btn btn-primary btn-lg hero-glow">See How It Works &rarr;</a>
           )}
@@ -159,8 +162,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         <p class="status-headline">{isOpen ? `The ${appYear} application is now open!` : closedMessage}</p>
         <p class="status-sub">{isOpen ? "We're accepting applications for room makeovers in the greater Atlanta area." : "Leave your email and we'll let you know the moment applications reopen."}</p>
       </div>
-      {isOpen && appFormUrl && (
-        <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary">Apply Now &rarr;</a>
+      {isOpen && (
+        <a href={appFormUrl} {...appLinkAttrs} class="btn btn-primary">Apply Now &rarr;</a>
       )}
     </div>
     {!isOpen && (

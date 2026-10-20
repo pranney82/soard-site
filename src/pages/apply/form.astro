@@ -1,0 +1,423 @@
+---
+/**
+ * The makeover application — /apply/form/
+ *
+ * Replaces the Jotform "SOARD Application". Every question comes from
+ * functions/api/_application-form.js (the same file the server validates
+ * against and the JobTread load reads), rendered here one page at a time by
+ * src/components/apply/application-form.client.js. Answers save to
+ * /api/apply as the family goes; photos and the video upload in place; a
+ * review page comes before Submit.
+ *
+ * Open/closed and the season year come from Admin → Site Config → Makeover
+ * Application (siteSettings.application). While closed, the page says so and
+ * points to the Apply page's "notify me" form.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ApplicationField from '../../components/apply/ApplicationField.astro';
+import siteSettings from '../../content/site/settings.json';
+import { getSiteStats } from '../../utils/stats';
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { applicationForm, SERVICE_MAP_IMAGE } from '../../../functions/api/_application-form.js';
+
+const stats = await getSiteStats();
+const app = (siteSettings as any).application || {};
+const isOpen = app.open === true;
+const year = String(app.year || new Date().getFullYear() + 1);
+const closedMessage = app.closedMessage || `The ${year} application period is currently closed.`;
+const form = applicationForm({ year });
+const steps = form.pages.length + 1;
+
+const ap = (siteSettings as any).applyPhotos || {};
+const heroPhotoId = ap.story || 'kids/eli/photo-01';
+
+const site = Astro.site?.origin || 'https://sunshineonaranneyday.com';
+const breadcrumbs = [
+  { name: 'Home', url: `${site}/` },
+  { name: 'Apply', url: `${site}/apply/` },
+  { name: 'Application', url: `${site}/apply/form/` },
+];
+---
+
+<BaseLayout
+  title={`${year} Makeover Application`}
+  description="Apply for a free dream bedroom, accessible bathroom, therapy room or ramp for a child with special needs in the greater Atlanta area. Saves as you go."
+  breadcrumbs={breadcrumbs}
+>
+  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+
+  <!-- ══════ HERO — Editorial Split ══════ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">For Families · {year} Application</p>
+        <h1 class="hero-headline">Tell us about your <em>child</em>.</h1>
+        <p class="hero-lead">This is where your family's story starts. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.</p>
+        <div class="hero-ctas">
+          {isOpen
+            ? <a href="#application" class="btn btn-primary btn-lg btn-glow">Start the application ↓</a>
+            : <a href="/apply/" class="btn btn-primary btn-lg">Get notified when we open</a>}
+          <a href="/apply/#faq" class="btn btn-outline-dark btn-lg">Questions? Read the FAQ</a>
+        </div>
+        <div class="hero-trust">
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>About 15 minutes</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M17 21v-8H7v8M7 3v5h8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Saves as you go</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Always free</span>
+        </div>
+      </div>
+      <div class="hero-photo-wrap">
+        <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
+          <img
+            src={cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')}
+            srcset={cfSrcset(heroPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
+            sizes="(max-width:768px) 85vw, 420px"
+            alt="A child enjoying their new room"
+            width="800" height="1000"
+            fetchpriority="high" loading="eager" decoding="async"
+            class="hero-img lqip-img"
+          />
+        </div>
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-stat">
+          <span class="hero-stat-num">{stats.totalKids}+</span>
+          <span class="hero-stat-label">children served<br/>since 2012</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ THE APPLICATION ══════ -->
+  <section class="af-section" id="application">
+    <div class="af-wrap">
+      <!-- Open/closed is decided again in the browser from the live setting (a resume
+           link always opens), so a family mid-application can finish after we close
+           and an admin toggle takes effect without a Publish. -->
+      <div class="af-card af-closed" data-closed hidden={isOpen}>
+        <h2>{closedMessage}</h2>
+        <p>Leave your email on the Apply page and we'll let you know the moment applications reopen.</p>
+        <a href="/apply/" class="btn btn-primary">Go to the Apply page</a>
+      </div>
+        <div class="af-app" data-application data-year={year} data-open={isOpen ? '1' : undefined} hidden={!isOpen}>
+          <noscript><p class="af-card af-closed">This application needs JavaScript to upload your photos and video. Please turn it on, or email <a href={`mailto:${siteSettings.email}`}>{siteSettings.email}</a> and we'll help.</p></noscript>
+
+          <p class="af-notice" data-notice role="status" hidden></p>
+
+          <form class="af-card" data-form novalidate>
+            <header class="af-head">
+              <p class="af-step-text" data-step-text>Step 1 of {steps}</p>
+              <h2 class="af-step-title" data-step-title tabindex="-1">{form.pages[0].title}</h2>
+              <div class="af-progress af-progress--steps" aria-hidden="true"><div class="af-progress-bar" data-progress-bar style={`width:${Math.round(100 / steps)}%`}></div></div>
+            </header>
+
+            {form.pages.map((p, i) => (
+              <div class="af-page" data-page={p.id} hidden={i > 0}>
+                {p.fields.map((f: any) => <ApplicationField field={f} />)}
+              </div>
+            ))}
+
+            <div class="af-page" data-page="review" hidden>
+              <p class="af-review-intro">Please look over your answers. Tap <strong>Edit</strong> to change anything, then submit.</p>
+              <div class="af-review" data-review></div>
+            </div>
+
+            <!-- People never see this; bots fill it in -->
+            <div class="af-hp" aria-hidden="true">
+              <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off" data-honeypot /></label>
+            </div>
+
+            <div class="af-turnstile" data-turnstile hidden><div class="cf-turnstile"></div></div>
+
+            <footer class="af-nav">
+              <button type="button" class="af-btn af-btn--ghost" data-back hidden>← Back</button>
+              <button type="submit" class="af-btn af-btn--primary" data-next>Next</button>
+            </footer>
+            <div class="af-save-row">
+              <button type="button" class="af-btn af-btn--link" data-save-later>Save and finish later</button>
+              <span class="af-save-state" data-save-state aria-live="polite"></span>
+            </div>
+          </form>
+
+          <div class="af-card af-stop" data-stop hidden>
+            <h2 data-stop-title tabindex="-1"></h2>
+            <div data-stop-body></div>
+            <figure class="af-image" data-stop-map hidden style={`background-image:url('${cfLqip(SERVICE_MAP_IMAGE)}')`}>
+              <img src={cfRaw(SERVICE_MAP_IMAGE, 'w=900,q=85')} alt="Map of the SOARD makeover service area, outlined in red" width="938" height="768" loading="lazy" decoding="async" />
+            </figure>
+            <div class="af-stop-actions">
+              <button type="button" class="af-btn af-btn--ghost" data-stop-back>← I need to change my answer</button>
+              <a href="/apply/" class="af-btn af-btn--primary">Back to the Apply page</a>
+            </div>
+          </div>
+
+          <div class="af-card af-done" data-done hidden>
+            <div class="af-done-badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h2 data-done-title tabindex="-1">Thank you. Your application is in!</h2>
+            <p data-done-email></p>
+            <p>Every application is read by a real person on our team. Families who move forward are invited to a short Zoom interview, and then a home visit where we see the space together. This can take some time, and we will reach out either way.</p>
+            <a href="/kids/" class="af-btn af-btn--primary">Meet some of the kids we've served</a>
+          </div>
+
+          <dialog class="af-dialog" data-later-dialog aria-labelledby="af-later-title">
+            <button type="button" class="af-dialog-close" data-later-close aria-label="Close">×</button>
+            <form data-later-form>
+              <h2 id="af-later-title">Save and finish later</h2>
+              <p>Your answers are already saved. We'll email you a link to pick up where you left off, on this device or any other.</p>
+              <label class="af-label" for="af-later-email">Email address</label>
+              <input type="email" id="af-later-email" required autocomplete="email" inputmode="email" />
+              <p class="af-dialog-status" data-later-status aria-live="polite"></p>
+              <button type="submit" class="af-btn af-btn--primary">Email me the link</button>
+            </form>
+            <div data-later-sent hidden>
+              <h2>Check your email</h2>
+              <p>We sent a link to <strong data-later-email></strong>. It works for 60 days after your last change. Please keep it private, since anyone with it can see your answers.</p>
+              <button type="button" class="af-btn af-btn--primary" data-later-done>Keep going now</button>
+            </div>
+          </dialog>
+        </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>import '../../components/apply/application-form.client.js';</script>
+
+<style>
+  /* ══════════ Buttons (hero) ══════════ */
+  :is(h1, h2, h3) em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+  }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: var(--font-body); font-weight: 600; font-size: 15px;
+    padding: 14px 32px; border: none; border-radius: 100px; cursor: pointer; text-decoration: none;
+    transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s cubic-bezier(0.16,1,0.3,1), background 0.25s ease, color 0.25s ease;
+    min-height: 48px;
+  }
+  .btn:hover { transform: translateY(-3px); }
+  .btn-lg { font-size: 17px; padding: 18px 40px; }
+  .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
+  .btn-primary:hover { box-shadow: 0 8px 24px var(--c-yellow-glow); }
+  .btn-outline-dark { background: transparent; color: var(--c-dark); border: 2px solid var(--c-dark); }
+  .btn-outline-dark:hover { background: var(--c-dark); color: var(--c-yellow); }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,218,36,0.3); }
+    50% { box-shadow: 0 0 0 10px rgba(255,218,36,0); }
+  }
+  .btn-glow { animation: pulseGlow 3s ease-in-out infinite; }
+
+  /* ══════════ HERO — Editorial Split (matches apply/donate/advisory-board) ══════════ */
+  .hero { position: relative; background: var(--c-cream); padding: clamp(40px, 7vh, 88px) 0 56px; overflow: hidden; }
+  .hero-inner {
+    max-width: var(--max-width-wide, 1400px); margin: 0 auto; padding: 0 var(--page-padding);
+    display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(32px, 5vw, 80px); align-items: center;
+    min-height: clamp(440px, 62vh, 640px);
+  }
+  .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 24px; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.05s both; }
+  .hero-headline { font-size: clamp(42px, 6.2vw, 84px); line-height: 1.04; letter-spacing: -0.035em; color: var(--c-dark); margin-bottom: 24px; animation: heroSlide 0.8s cubic-bezier(0.16,1,0.3,1) both; }
+  .hero-headline em { font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%); padding: 0 0.05em; }
+  .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 500px; margin-bottom: 32px; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.15s both; }
+  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.25s both; }
+  .hero-trust { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 24px; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.35s both; }
+  .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--c-text-muted); }
+  .hero-trust-icon { width: 16px; height: 16px; flex-shrink: 0; }
+  .hero-photo-wrap { position: relative; max-width: 440px; justify-self: end; width: 100%; animation: heroPhotoIn 0.4s cubic-bezier(0.16,1,0.3,1) both; }
+  .hero-frame { position: relative; border-radius: 24px; overflow: hidden; aspect-ratio: 4 / 5; box-shadow: 0 32px 80px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.06); background-size: cover; background-position: center; }
+  .hero-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-accent { position: absolute; z-index: -1; bottom: -16px; right: -16px; width: 55%; height: 55%; border-radius: 20px; background: var(--c-yellow); opacity: 0.35; }
+  .hero-stat { position: absolute; bottom: -24px; left: -24px; background: var(--c-dark); color: #fff; border-radius: 16px; padding: 20px 28px; text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,0.15); animation: heroUp 0.6s cubic-bezier(0.16,1,0.3,1) 0.4s both; }
+  .hero-stat-num { font-family: var(--font-display); font-size: 40px; font-weight: 700; color: var(--c-yellow); line-height: 1; display: block; }
+  .hero-stat-label { display: block; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.85); margin-top: 4px; line-height: 1.4; }
+  @keyframes heroUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes heroSlide { from { transform: translateY(20px); } to { transform: translateY(0); } }
+  @keyframes heroPhotoIn { from { opacity: 0; } to { opacity: 1; } }
+
+  @media (max-width: 768px) {
+    .hero { padding: clamp(32px, 6vh, 56px) 0 40px; }
+    .hero-inner { grid-template-columns: 1fr; gap: 40px; min-height: auto; }
+    .hero-headline { font-size: clamp(36px, 10vw, 52px); }
+    .hero-ctas { flex-direction: column; }
+    .hero-ctas .btn { width: 100%; }
+    .hero-photo-wrap { justify-self: center; max-width: 340px; }
+    .hero-stat { left: 12px; bottom: -16px; padding: 14px 20px; }
+    .hero-stat-num { font-size: 30px; }
+  }
+  @media (pointer: coarse) { .btn:hover { transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-eyebrow, .hero-headline, .hero-lead, .hero-ctas, .hero-trust, .hero-photo-wrap, .hero-stat { animation: none; opacity: 1; transform: none; }
+    .btn-glow { animation: none; }
+  }
+</style>
+
+<style is:global>
+  /* Everything below is prefixed af- and lives in a global block: the questions are
+     rendered by ApplicationField.astro, which a page-scoped style can't reach. */
+  .af-app [hidden], .af-section [hidden] { display: none !important; }
+  /* ══════════ The application ══════════ */
+  .af-section { background: var(--c-warm-gray); padding: clamp(48px, 8vw, 96px) 0 clamp(64px, 10vw, 120px); scroll-margin-top: calc(var(--header-height, 84px) + 16px); }
+  .af-wrap { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+  .af-card { background: #fff; border-radius: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.05); padding: clamp(24px, 5vw, 48px); }
+  .af-closed { text-align: center; }
+  .af-closed h2 { font-size: clamp(22px, 3vw, 30px); margin-bottom: 12px; }
+  .af-closed p { margin-bottom: 24px; color: var(--c-text); }
+
+  .af-notice { margin: 0 0 16px; padding: 14px 18px; border-radius: 14px; font-size: 15px; line-height: 1.5; background: #fff; border: 1px solid var(--c-border); }
+  .af-notice[data-kind="error"] { background: #FFF6D6; border-color: #E6C400; color: var(--c-dark); font-weight: 600; }
+  .af-notice[data-kind="success"] { background: #FFFBEA; border-color: var(--c-yellow); }
+
+  .af-head { margin-bottom: 28px; }
+  .af-step-text { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 8px; }
+  .af-step-title { font-size: clamp(24px, 3.4vw, 34px); line-height: 1.2; color: var(--c-dark); margin-bottom: 18px; outline: none; }
+  .af-progress { height: 8px; border-radius: 99px; background: var(--c-warm-gray); overflow: hidden; }
+  .af-progress-bar { height: 100%; width: 0; background: var(--c-yellow); border-radius: 99px; transition: width 0.4s cubic-bezier(0.16,1,0.3,1); }
+
+  .af-page { display: grid; gap: 28px; }
+  .af-page[hidden] { display: none; }
+
+  .af-content { font-size: 16px; line-height: 1.7; color: var(--c-text); }
+  .af-content p + p, .af-content p + ul, .af-content ul + p { margin-top: 12px; }
+  .af-content ul { padding-left: 22px; }
+  .af-content li + li { margin-top: 6px; }
+  .af-content .af-scope-title { font-size: 19px; margin: 4px 0 12px; }
+  .af-content .af-scope { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; }
+  .af-content .af-scope-col { background: var(--c-cream); border-radius: 16px; padding: 20px 22px; }
+  .af-content .af-scope-col h3 { font-size: 17px; margin-bottom: 10px; }
+  .af-content .af-scope-col:first-child { box-shadow: inset 0 4px 0 var(--c-yellow); }
+  .af-content .af-scope-col ul { font-size: 15px; padding-left: 0; list-style: none; }
+  .af-content .af-scope-col li { position: relative; padding-left: 26px; }
+  .af-content .af-scope-col li::before { content: ''; position: absolute; left: 2px; top: 0.45em; width: 14px; height: 14px; background: no-repeat center / contain; }
+  .af-content .af-scope-col:first-child li::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23373A36' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.2 3L13 4.5'/%3E%3C/svg%3E"); }
+  .af-content .af-scope-col:last-child li::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%235A5B61' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E"); }
+
+  .af-image { margin: 0; border-radius: 16px; overflow: hidden; background-size: cover; background-position: center; border: 1px solid var(--c-border); }
+  .af-image img { display: block; width: 100%; height: auto; }
+
+  .af-field { display: grid; gap: 10px; }
+  .af-field[hidden] { display: none; }
+  .af-field fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; min-width: 0; }
+  .af-label { font-size: 16px; font-weight: 600; line-height: 1.45; color: var(--c-dark); }
+  .af-optional { font-weight: 400; color: var(--c-text-muted); }
+  .af-hint { font-size: 14px; color: var(--c-text-muted); margin: 0; }
+
+  .af-field input:not([type=radio]):not([type=checkbox]):not([type=file]),
+  .af-field textarea, .af-field select, .af-dialog input {
+    width: 100%; font: inherit; font-size: 16px; color: var(--c-dark); background: #fff;
+    border: 1.5px solid #CFCDC6; border-radius: 12px; padding: 13px 14px; min-height: 50px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .af-field textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+  .af-field input:focus-visible, .af-field textarea:focus-visible, .af-field select:focus-visible, .af-dialog input:focus-visible {
+    outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 4px var(--c-yellow-soft);
+  }
+  .af-signature { font-family: var(--font-display); font-style: italic; font-size: 20px !important; }
+  .af-sub { display: grid; gap: 6px; font-size: 14px; font-weight: 500; color: var(--c-text-muted); }
+  .af-row { display: grid; gap: 12px; }
+  .af-row--2 { grid-template-columns: 1fr 1fr; }
+  .af-row--3 { grid-template-columns: 1.6fr 0.8fr 1fr; }
+  .af-address { display: grid; gap: 12px; }
+
+  .af-choices { display: grid; gap: 10px; }
+  .af-choice {
+    position: relative; display: flex; align-items: flex-start; gap: 12px; cursor: pointer;
+    border: 1.5px solid #CFCDC6; border-radius: 14px; padding: 14px 16px; min-height: 52px;
+    font-size: 16px; line-height: 1.45; background: #fff; transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .af-choice:hover { border-color: var(--c-dark); }
+  .af-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .af-choice-box { flex-shrink: 0; width: 22px; height: 22px; margin-top: 1px; border: 2px solid #A9A79F; border-radius: 6px; background: #fff; display: grid; place-items: center; transition: all 0.2s ease; }
+  .af-field--radio .af-choice-box { border-radius: 50%; }
+  .af-choice:has(input:checked) { border-color: var(--c-dark); background: #FFFBEA; }
+  .af-choice input:checked + .af-choice-box { border-color: var(--c-dark); background: var(--c-yellow); }
+  .af-choice input:checked + .af-choice-box::after { content: ''; width: 10px; height: 6px; border-left: 2.5px solid var(--c-dark); border-bottom: 2.5px solid var(--c-dark); transform: translateY(-1px) rotate(-45deg); }
+  .af-field--radio .af-choice input:checked + .af-choice-box::after { width: 8px; height: 8px; border: 0; border-radius: 50%; background: var(--c-dark); transform: none; }
+  .af-choice input:focus-visible + .af-choice-box { box-shadow: 0 0 0 4px var(--c-yellow-soft); }
+  .af-choice:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+  .af-choice-text { display: grid; gap: 4px; }
+  .af-choice-title { font-weight: 700; }
+  .af-choice-desc { font-size: 14px; line-height: 1.5; color: var(--c-text-muted); }
+  .af-field--ack .af-choice { background: var(--c-cream); }
+
+  .af-upload { display: flex; gap: 16px; align-items: center; border: 1.5px dashed #A9A79F; border-radius: 16px; padding: 16px; background: var(--c-cream); }
+  .af-upload[data-state="done"] { border-style: solid; border-color: var(--c-dark); background: #FFFBEA; }
+  .af-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .af-upload-preview { flex-shrink: 0; width: 84px; height: 84px; border-radius: 12px; background: #fff center / cover no-repeat; border: 1px solid var(--c-border); }
+  .af-upload-preview:not([style*="url"])::before { content: ''; display: block; width: 100%; height: 100%; background: no-repeat center / 32px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A9A79F' stroke-width='1.5'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Ccircle cx='9' cy='10' r='2'/%3E%3Cpath d='M21 16l-5-5-8 8'/%3E%3C/svg%3E"); }
+  .af-upload-body { display: grid; gap: 10px; min-width: 0; flex: 1; }
+  .af-upload-status { margin: 0; font-size: 15px; color: var(--c-text); overflow-wrap: anywhere; }
+  .af-upload-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .af-upload[data-state="busy"] .af-btn--upload { opacity: 0.6; pointer-events: none; }
+
+  .af-error { margin: 0; font-size: 14px; font-weight: 600; color: #8A3B00; }
+  .af-error:empty { display: none; }
+  .af-field--error :is(input:not([type=radio]):not([type=checkbox]), textarea, select),
+  .af-field--error .af-choice, .af-field--error .af-upload { border-color: #B45309; }
+
+  .af-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font: inherit; font-weight: 600; font-size: 16px; min-height: 48px; padding: 12px 26px;
+    border-radius: 999px; border: 0; cursor: pointer; text-decoration: none; transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .af-btn--primary { background: var(--c-yellow); color: var(--c-dark); }
+  .af-btn--primary:hover { box-shadow: 0 8px 24px var(--c-yellow-glow); }
+  .af-btn--primary:disabled { opacity: 0.6; cursor: wait; }
+  .af-btn--submit { background: var(--c-dark); color: #fff; }
+  .af-btn--submit:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.18); }
+  .af-btn--ghost { background: transparent; color: var(--c-dark); border: 1.5px solid #CFCDC6; }
+  .af-btn--ghost:hover { border-color: var(--c-dark); }
+  .af-btn--upload { background: var(--c-dark); color: #fff; min-height: 44px; padding: 10px 20px; font-size: 15px; }
+  .af-btn--link { background: none; padding: 6px 2px; min-height: 44px; color: var(--c-dark); text-decoration: underline; text-underline-offset: 3px; font-size: 15px; }
+  .af-btn:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 3px; }
+
+  .af-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--c-border); }
+  .af-nav [data-next] { margin-left: auto; min-width: 160px; }
+  .af-save-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .af-save-state { font-size: 13px; color: var(--c-text-muted); }
+
+  .af-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .af-turnstile { margin-top: 24px; }
+
+  .af-review-intro { font-size: 16px; color: var(--c-text); }
+  .af-review { display: grid; gap: 16px; }
+  .af-review .af-review-section { border: 1px solid var(--c-border); border-radius: 16px; padding: 18px 20px; }
+  .af-review .af-review-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .af-review h3 { font-size: 18px; }
+  .af-review dl { display: grid; gap: 4px; margin: 0; }
+  .af-review dt { font-size: 13px; font-weight: 600; color: var(--c-text-muted); margin-top: 10px; line-height: 1.4; }
+  .af-review dd { margin: 0; font-size: 15px; color: var(--c-dark); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .af-review .af-btn--link { min-height: 36px; }
+
+  .af-stop h2, .af-done h2 { font-size: clamp(22px, 3vw, 30px); line-height: 1.25; margin-bottom: 14px; outline: none; }
+  .af-stop p { font-size: 16px; line-height: 1.7; margin-bottom: 16px; }
+  .af-stop-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+  .af-done { text-align: center; }
+  .af-done p { font-size: 16px; line-height: 1.7; color: var(--c-text); margin: 0 auto 16px; max-width: 560px; }
+  .af-done-badge { width: 64px; height: 64px; margin: 0 auto 20px; border-radius: 50%; background: var(--c-yellow); color: var(--c-dark); display: grid; place-items: center; }
+  .af-done-badge svg { width: 32px; height: 32px; }
+
+  /* margin: auto puts it back in the middle; the site's reset zeroes dialog margins */
+  .af-dialog { margin: auto; max-height: calc(100dvh - 32px); overflow: auto; border: 0; border-radius: 24px; padding: 32px; width: min(480px, calc(100vw - 32px)); box-shadow: 0 32px 80px rgba(0,0,0,0.25); color: var(--c-dark); }
+  .af-dialog::backdrop { background: rgba(30,31,37,0.55); }
+  .af-dialog h2 { font-size: 24px; margin-bottom: 10px; }
+  .af-dialog p { font-size: 15px; line-height: 1.6; margin-bottom: 16px; }
+  .af-dialog form { display: grid; gap: 10px; }
+  .af-dialog-close { position: absolute; top: 12px; right: 12px; width: 44px; height: 44px; border: 0; background: none; font-size: 28px; line-height: 1; cursor: pointer; color: var(--c-text-muted); border-radius: 50%; }
+  .af-dialog-close:hover { background: var(--c-warm-gray); }
+  .af-dialog-status { min-height: 1.4em; font-size: 14px; margin: 0; color: #8A3B00; }
+
+  @media (max-width: 768px) {
+    .af-card { border-radius: 20px; padding: 24px 18px; }
+    .af-content .af-scope { grid-template-columns: 1fr; }
+    .af-row--2, .af-row--3 { grid-template-columns: 1fr; }
+    .af-upload { flex-direction: column; align-items: stretch; text-align: left; }
+    .af-upload-preview { width: 100%; height: 160px; }
+    .af-upload--video .af-upload-body { width: 100%; }
+    .af-nav { position: sticky; bottom: 0; background: #fff; margin: 28px -18px -24px; padding: 14px 18px calc(14px + env(safe-area-inset-bottom)); border-radius: 0 0 20px 20px; box-shadow: 0 -8px 24px rgba(0,0,0,0.06); z-index: 5; }
+    .af-nav [data-next] { flex: 1; min-width: 0; }
+    .af-save-row { margin-top: 36px; }
+    .af-dialog { padding: 28px 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .af-progress-bar { transition: none; }
+  }
+</style>

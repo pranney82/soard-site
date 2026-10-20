@@ -77,32 +77,41 @@ const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo'
   // re-reads everything from JobTread, so the body can't change what gets sent
   '/api/reveal-invites',
   // Reveal Date ↔ Reveal task sync: same wake-up pattern, re-reads JobTread
-  '/api/reveal-sync'];
+  '/api/reveal-sync',
+  // The makeover application form: drafts are keyed by an unguessable token
+  // checked inside the handler (rate limited below with its own, roomier limit)
+  '/api/apply',
+  // Applicant messages: a JobTread workflow wake-up ({ accountId }); re-reads JobTread
+  '/api/applicant-sync'];
 
 // Routes public for reads only — GET/HEAD skip auth, mutations still require Access.
 // fb-live-videos returns only the page's public video permalinks (never the token),
 // so it's safe to read anonymously; responses are cached in the function.
 const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos', '/api/broadcast', '/api/reveals'];
 
-// ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
-// Limits POST /api/newsletter to 5 requests per IP per 60 seconds.
-// Resets when the Workers isolate recycles — good enough for spam prevention.
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX = 5;
 // A board or team member sending their own bio (/profile-update/): keyed by an
 // unguessable link token checked inside the handler, rate limited below, and
 // nothing goes live until someone in the admin uses it
 PUBLIC_ROUTES.push('/api/profile-request');
 
+// ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
+// Limits POST /api/newsletter to 5 requests per IP per 60 seconds.
+// Resets when the Workers isolate recycles — good enough for spam prevention.
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
 const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request']);
 // Public GET routes that fan out to paid upstreams / build large responses.
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
-const _rateLimitMap = new Map(); // ip → { count, resetAt }
+// The application form autosaves every step and uploads photos one by one, so
+// a family filling it in makes far more than 5 calls a minute; it gets its own bucket.
+const APPLY_ROUTE = '/api/apply';
+const APPLY_RATE_LIMIT_MAX = 60;
+const _rateLimitMap = new Map(); // ip (or "apply:" + ip) → { count, resetAt }
 let _lastPrune = 0;
 const PRUNE_INTERVAL_MS = 5 * 60 * 1000; // prune stale entries every 5 min
 
-function isRateLimited(ip) {
+function isRateLimited(ip, max = RATE_LIMIT_MAX) {
   const now = Date.now();
 
   // Periodically prune expired entries so the Map doesn't grow unbounded
@@ -119,7 +128,7 @@ function isRateLimited(ip) {
     return false;
   }
   entry.count++;
-  return entry.count > RATE_LIMIT_MAX;
+  return entry.count > max;
 }
 
 export async function onRequest(context) {
@@ -159,6 +168,16 @@ export async function onRequest(context) {
       }
       return Response.json(
         { ok: false, error: 'Too many attempts — please wait a minute and try again.' },
+        { status: 429, headers: { ...publicCors, 'Retry-After': '60' } }
+      );
+    }
+  }
+
+  if (method === 'POST' && url.pathname === APPLY_ROUTE) {
+    const ip = context.request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (isRateLimited(`apply:${ip}`, APPLY_RATE_LIMIT_MAX)) {
+      return Response.json(
+        { ok: false, error: 'Lots of saves in a short time. Please wait a minute and try again; your answers are safe.' },
         { status: 429, headers: { ...publicCors, 'Retry-After': '60' } }
       );
     }

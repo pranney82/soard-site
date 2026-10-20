@@ -28,7 +28,7 @@ import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 17, 2026';
+const WRITTEN_ON = 'October 19, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -226,6 +226,63 @@ const MAP = { t: 'SOARD', children: [
           does: 'Shows tentative and confirmed dates. A tentative reveal inside 14 days becomes a “Needs you” item linking to the JobTread job.',
           touches: ['JobTread'], where: 'functions/api/reveals-admin.js',
           live: needsKey('jobtread', 'JOBTREAD_GRANT_KEY is missing, so the Dashboard can’t show reveal dates.') },
+      ]},
+    ]},
+
+  { t: 'Applications', sub: 'Families apply on the site → JobTread', color: 'apply', side: 'r',
+    about: 'The makeover application lives on the site (it replaced Jotform and the Zapier Zaps in October 2026). Each submission becomes a JobTread customer account with nothing done by hand; staff review in JobTread.',
+    children: [
+      { t: 'The form', children: [
+        { t: 'Makeover application', s: 'live', k: 'visitor',
+          when: 'A family fills in /apply/form/ (open or closed per Site Config → Settings → Makeover Application; a saved application can always be finished).',
+          does: 'Walks them through the questions page by page, saves as they go, resizes and stores photos, uploads the video straight to Cloudflare Stream, shows a review page, then submits.',
+          touches: ['D1', 'R2', 'Cloudflare Stream'], where: 'src/pages/apply/form.astro · functions/api/apply.js · _application-form.js',
+          info: 'One definition (functions/api/_application-form.js) drives the page, the server checks, the PDF and the JobTread fields.',
+          live: (f) => (!env(f) ? null : !f.env.stream ? ATTN('Video uploads need CF_ACCOUNT_ID and CF_STREAM_TOKEN in Cloudflare.') : ON()) },
+        { t: 'Save and finish later', s: 'live', k: 'visitor',
+          when: 'A family taps Save and finish later.',
+          does: 'Emails them a private link back to their saved answers (good for 60 days after their last change).',
+          touches: ['Resend'], where: 'functions/api/apply.js', live: needsKey('resend', 'RESEND_API_KEY is missing, so the link can’t be emailed.') },
+        { t: 'Bot check', s: 'off', k: 'visitor',
+          does: 'Turnstile on the first page once both keys are set. Until then a hidden honeypot field, per-connection limits and the required photos and video keep bots out.',
+          touches: ['Cloudflare Turnstile'], where: 'functions/api/apply.js',
+          live: (f) => (!env(f) ? null : f.env.turnstile && f.env.turnstileSite ? ON('Turnstile is checked on every new application.') : OFF('Needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY in Cloudflare; the honeypot and limits work without them.')) },
+      ]},
+      { t: 'Into JobTread', children: [
+        { t: 'Application → JobTread', s: 'live', k: 'event',
+          when: 'A family submits.',
+          does: 'Creates the customer account (Status Applied, Diagnosis, Birthday, Gender, Language, Referred By, Verbal, Mobile, Makeover Year and Type, Application URL), the parents as contacts and the home as a location, and attaches the application PDF and four photos. The video follows once Stream has processed it.',
+          touches: ['JobTread', 'R2', 'Cloudflare Stream'], where: 'functions/api/_applications.js',
+          info: 'Each step is done once and remembered, so a retry never makes a second account. DataX fills the Zillow data when the location appears.',
+          live: needsKey('jobtread', 'JOBTREAD_GRANT_KEY is missing.') },
+        { t: 'Family confirmation', s: 'live', k: 'event',
+          when: 'Right after the account is made.',
+          does: 'Posts the “Application Status” message from the Qualification Committee to the main parent with the PDF attached. JobTread emails it, and replies land on the account.',
+          touches: ['JobTread'], where: 'functions/api/_applicant-comms.js',
+          live: (f) => (!env(f) ? null : f.env.jobtreadQc ? ON('Posts as the Qualification Committee.') : { why: 'Posts from the site’s JobTread connection until JOBTREAD_QC_GRANT_KEY (a key made while logged in as the Qualification Committee) is added in Cloudflare.' }) },
+        { t: 'Medical condition note', s: 'live', k: 'event',
+          when: 'A new applicant’s Diagnosis is first filled in.',
+          does: 'Posts a staff-only “Child’s Medical Condition” summary written by Workers AI.',
+          touches: ['JobTread', 'Workers AI'], where: 'functions/api/_applicant-comms.js', live: needsAi },
+        { t: 'Staff heads-up', s: 'live', k: 'event',
+          when: 'A family submits.',
+          does: 'Emails selection@soardcharity.com with the child’s first name, makeover type and a link to the account.',
+          touches: ['Resend'], where: 'functions/api/_applications.js', live: needsKey('resend', 'RESEND_API_KEY is missing.') },
+        { t: 'Application sweep', s: 'live', k: 'schedule',
+          when: 'Every 2 minutes on the live hub’s heartbeat.',
+          does: 'Finishes anything unfinished (with growing waits), attaches videos once ready, and clears unsubmitted drafts after 60 days. Emails Peter once if an application is stuck.',
+          touches: ['JobTread', 'D1', 'Cloudflare Stream'], where: 'functions/api/_applications.js · broadcast-hooks.js' },
+        { t: 'Site Config → Applications', s: 'live', k: 'admin',
+          does: 'Shows each application’s checklist (account, contacts, home, PDF, photos, video, messages), Retry, a test application, and recent status messages.',
+          touches: ['D1'], where: 'public/admin/index.html (ApplicationsCard) · functions/api/applications-admin.js' },
+      ]},
+      { t: 'Status messages', children: [
+        { t: 'Status → family message', s: 'off', k: 'event',
+          when: 'Someone changes an applicant’s Status (or Diagnosis) in JobTread.',
+          does: 'Sends the family the matching message once: In Review (next step is the on-site visit), Approved (on the waitlist) or Denied. Moving back a step leaves a staff-only note instead. Replaces the Zapier Zaps.',
+          touches: ['JobTread'], where: 'JobTread workflow “Applicant Status/Diagnosis → Site applicant messages” → functions/api/applicant-sync.js',
+          info: 'Turn the two Zapier account Zaps off before switching this on, or families get each message twice.',
+          live: wf('22PgaEgWTBRH') },
       ]},
     ]},
 
@@ -590,14 +647,26 @@ const MAP = { t: 'SOARD', children: [
           touches: ['JobTread', 'Zillow', 'winyourdata.com'], where: 'JobTread webhook → winyourdata.com/api/zillow', live: hook('22PJxV5yimrd') },
         { t: 'Zapier: new account', s: 'live', k: 'event',
           when: 'A new account is created.',
-          does: 'Sends the account to a Zapier zap.',
+          does: 'Posts the “Application Status” and “Child’s Medical Condition” comments as the Qualification Committee and keeps a Zapier Table row per account.',
           touches: ['JobTread', 'Zapier'], where: 'JobTread webhook → hooks.zapier.com',
-          info: 'What the zap does isn’t visible from here; check in Zapier that it’s still wanted.', live: hook('22P5rFX2hhQW') },
+          info: 'Being replaced by the Applications branch. Turn it off in Zapier when the site’s status workflow is switched on.', live: (f) => {
+            const h = hook('22P5rFX2hhQW')(f);
+            const w = wf('22PgaEgWTBRH')(f);
+            if (h?.s === 'off') return h;
+            if (h && w?.s === 'live') return ATTN('The site now sends these messages too; turn this Zap off in Zapier so families don’t get them twice.');
+            return h;
+          } },
         { t: 'Zapier: account updated', s: 'live', k: 'event',
           when: 'An account changes.',
-          does: 'Sends the account to a Zapier zap.',
+          does: 'Posts “Application In Review”, “Application Decision” and “Moved back to …” comments as the Qualification Committee when Status changes.',
           touches: ['JobTread', 'Zapier'], where: 'JobTread webhook → hooks.zapier.com',
-          info: 'What the zap does isn’t visible from here; check in Zapier that it’s still wanted.', live: hook('22PRvE87suYz') },
+          info: 'Being replaced by the Applications branch. Turn it off in Zapier when the site’s status workflow is switched on.', live: (f) => {
+            const h = hook('22PRvE87suYz')(f);
+            const w = wf('22PgaEgWTBRH')(f);
+            if (h?.s === 'off') return h;
+            if (h && w?.s === 'live') return ATTN('The site now sends these messages too; turn this Zap off in Zapier so families don’t get them twice.');
+            return h;
+          } },
         { t: 'DataX: new job', s: 'live', k: 'event',
           when: 'A new job is created.',
           does: 'Tells DataX about the job.',
@@ -614,7 +683,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Qtego auction', s: 'live', k: 'link',
           does: 'The gala auction link.', touches: ['Qtego'], where: 'src/utils/auction.ts' },
         { t: 'Advisory board application', s: 'live', k: 'link',
-          does: 'The Jotform application on the advisory board page.', touches: ['Jotform'], where: 'src/pages/advisory-board.astro' },
+          does: 'The Jotform application on the advisory board page (the makeover application moved onto the site).', touches: ['Jotform'], where: 'src/pages/advisory-board.astro' },
         { t: 'Rating badges', s: 'live', k: 'link',
           does: 'Charity Navigator and Candid badges in the footer and on Financials, set in Site Config → Settings.',
           touches: ['Charity Navigator', 'Candid'], where: 'src/utils/trust-badges.ts' },
@@ -797,7 +866,7 @@ function bounds(list) {
 const CSS = `
 .am { --am-live: var(--color-success); --am-warn: #B7791F; --am-idle: #8C8D93;
   --am-b-reveals: #B08900; --am-b-live: #6352C9; --am-b-email: #2B6CB0; --am-b-site: #13807A;
-  --am-b-give: #A0571A; --am-b-jt: #4E7A2E; }
+  --am-b-give: #A0571A; --am-b-jt: #4E7A2E; --am-b-apply: #8C3D6B; }
 .am-lede { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin: 0.15rem 0 0.4rem; padding: 0; list-style: none; font-size: 0.88rem; color: var(--color-text-secondary); }
 .am-lede b { color: var(--color-text); font-variant-numeric: tabular-nums; font-weight: 700; }
 .am-lede button { all: unset; cursor: pointer; border-radius: 4px; }

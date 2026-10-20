@@ -41,6 +41,7 @@ export function envFacts(env) {
     resend: has(env.RESEND_API_KEY),
     calendar: has(env.GOOGLE_CALENDAR_KEY),
     jobtread: has(env.JOBTREAD_GRANT_KEY),
+    jobtreadQc: has(env.JOBTREAD_QC_GRANT_KEY),
     facebook: has(env.FB_PAGE_ID) && has(env.FB_PAGE_TOKEN),
     stream: has(env.CF_ACCOUNT_ID) && has(env.CF_STREAM_TOKEN),
     images: has(env.CF_ACCOUNT_ID) && has(env.CF_IMAGES_TOKEN),
@@ -49,6 +50,7 @@ export function envFacts(env) {
     access: has(env.CF_ACCESS_TEAM_DOMAIN) && has(env.CF_ACCESS_AUD),
     constantContact: has(env.CC_CLIENT_ID) || has(env.CC_CLIENT_SECRET) || has(env.CC_REFRESH_TOKEN),
     turnstile: has(env.TURNSTILE_SECRET_KEY),
+    turnstileSite: has(env.TURNSTILE_SITE_KEY),
   };
 }
 

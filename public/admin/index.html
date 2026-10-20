@@ -23314,6 +23314,153 @@ ${sections || '<p>No one yet.</p>'}
       return { stale: stale.length, aging: aging.length };
     }
 
+    // ─── Makeover applications (the site's own form at /apply/form/) ───
+    // Staff review applications in JobTread; this card is the health check for
+    // the pipe from the form to JobTread (functions/api/applications-admin.js).
+    // #applications/<id> (the Application URL on each JobTread account) opens one.
+    function ApplicationsCard({ addToast }) {
+      const [data, setData] = useState(null);
+      const [error, setError] = useState(null);
+      const [busy, setBusy] = useState('');
+      const [openId, setOpenId] = useState(() => (location.hash.match(/^#applications\/([\w-]+)/) || [])[1] || null);
+      const [detail, setDetail] = useState(null);
+      const cardRef = useRef(null);
+
+      const load = async () => {
+        try {
+          const r = await fetch('/api/applications-admin', { cache: 'no-store' });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || `HTTP ${r.status}`);
+          setData(j);
+          setError(null);
+        } catch (e) { setError(e.message); }
+      };
+      useEffect(() => { load(); }, []);
+      useEffect(() => {
+        if (!openId) { setDetail(null); return; }
+        let live = true;
+        fetch(`/api/applications-admin?id=${encodeURIComponent(openId)}`, { cache: 'no-store' }).then(r => r.json()).then(j => { if (live) setDetail(j.success ? j.application : { error: j.error }); });
+        return () => { live = false; };
+      }, [openId]);
+      useEffect(() => { if (openId && location.hash.startsWith('#applications')) cardRef.current?.scrollIntoView({ block: 'start' }); }, []);
+
+      const post = async (body, label) => {
+        setBusy(label);
+        try {
+          const r = await fetch('/api/applications-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || `HTTP ${r.status}`);
+          return j;
+        } catch (e) { addToast(e.message, 'error'); return null; }
+        finally { setBusy(''); await load(); }
+      };
+      const retry = async (id) => {
+        const j = await post({ retry: id }, id);
+        if (j) addToast(j.result?.status === 'done' ? 'Everything is in JobTread.' : j.result?.status === 'waiting' ? 'In JobTread; still waiting on the video.' : `Still not finished: ${j.result?.error || j.result?.status}`, j.result?.error ? 'error' : 'success');
+        if (openId === id) { setOpenId(null); setTimeout(() => setOpenId(id), 0); }
+      };
+      const sendTest = async () => {
+        const j = await post({ test: true }, 'test');
+        if (j) addToast(j.result?.status === 'error' ? `Test made but not finished: ${j.result.error}` : 'Test application sent to JobTread as "TEST Applicant". Archive that account when you are done.', j.result?.status === 'error' ? 'error' : 'success');
+      };
+
+      const CHECKS = [['account', 'Account'], ['contacts', 'Contacts'], ['home', 'Home'], ['pdf', 'PDF'], ['photos', 'Photos'], ['video', 'Video'], ['familyMessage', 'Family message'], ['medicalNote', 'Medical note'], ['staffEmail', 'Staff email']];
+      const chip = (label, v) => {
+        const cls = v === true ? 'badge-green' : v === 'none' ? 'badge-gray' : v === 'waiting' ? 'badge-yellow' : v === false ? 'badge-gray' : 'badge-red';
+        const mark = v === true ? '✓' : v === 'waiting' ? '…' : v === 'none' ? '–' : v === false ? '·' : '!';
+        return html`<span class="badge ${cls}" title=${typeof v === 'string' && v !== 'none' && v !== 'waiting' ? v : ''}>${mark} ${label}</span>`;
+      };
+      const when = (iso) => iso ? new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+      const apps = data?.applications || [];
+
+      return html`
+        <div class="card" ref=${cardRef} id="applications">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+            <div>
+              <h3 class="u-mb-1">Applications</h3>
+              <p class="text-sm text-muted mb-1">Families apply at <a href="/apply/form/" target="_blank" style="color: var(--color-primary); text-decoration: underline;">/apply/form/</a>. Each one goes straight into JobTread as a customer account with the PDF, photos and video, and the family gets the "Application Status" message from the Qualification Committee. Review them in JobTread; this list shows whether each one arrived.</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button class="btn btn-ghost" onClick=${load} disabled=${!!busy}>Refresh</button>
+              <button class="btn btn-ghost" onClick=${sendTest} disabled=${!!busy}>${busy === 'test' ? 'Sending…' : 'Send test application'}</button>
+            </div>
+          </div>
+          ${error && html`<p class="text-sm" style="color: #9B2C2C;">Couldn't load applications: ${error}</p>`}
+          ${data && html`
+            <p class="text-sm text-muted" style="margin: 0.25rem 0 0.75rem;">
+              ${data.draftsInProgress} in progress (not submitted yet)
+              · Messages post as ${data.qcGrant ? 'Qualification Committee' : html`<strong>the site's connection</strong> (add the Qualification Committee's JobTread key as JOBTREAD_QC_GRANT_KEY in Cloudflare to post as them)`}
+              ${!data.stream && html` · <strong>Video uploads are not set up</strong> (CF_STREAM_TOKEN)`}
+            </p>
+            ${apps.length === 0 ? html`<p class="text-sm text-muted">No applications yet.</p>` : html`
+              <div style="display: grid; gap: 0.6rem;">
+                ${apps.map(a => html`
+                  <div style="border: 1px solid var(--color-border); border-radius: 10px; padding: 0.75rem 0.9rem; ${openId === a.id ? 'box-shadow: 0 0 0 2px var(--color-primary);' : ''}">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                      <div style="min-width: 0;">
+                        <strong>${a.child || 'Applicant'}</strong>
+                        ${a.isTest && html` <span class="badge badge-blue">TEST</span>`}
+                        <span class="text-sm text-muted"> · ${(a.makeoverTypes || []).join(', ')} · ${when(a.submittedAt)}</span>
+                      </div>
+                      <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        ${a.jobtreadUrl && html`<a class="btn btn-ghost" href=${a.jobtreadUrl} target="_blank" rel="noopener">Open in JobTread</a>`}
+                        ${a.status !== 'done' && html`<button class="btn btn-ghost" onClick=${() => retry(a.id)} disabled=${!!busy}>${busy === a.id ? 'Retrying…' : 'Retry now'}</button>`}
+                        <button class="btn btn-ghost" aria-expanded=${openId === a.id} onClick=${() => { setOpenId(openId === a.id ? null : a.id); history.replaceState(null, '', openId === a.id ? location.pathname : `#applications/${a.id}`); }}>${openId === a.id ? 'Hide' : 'Details'}</button>
+                      </div>
+                    </div>
+                    <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                      ${CHECKS.map(([k, label]) => chip(label, a.checklist?.[k]))}
+                    </div>
+                    ${a.status === 'error' && html`<p class="text-sm" style="color: #9B2C2C; margin: 0.5rem 0 0;">Not finished after ${a.attempts} ${a.attempts === 1 ? 'try' : 'tries'}: ${a.lastError}. It retries on its own.</p>`}
+                    ${a.status === 'waiting' && html`<p class="text-sm text-muted" style="margin: 0.5rem 0 0;">Waiting on Cloudflare to finish processing the video; it's attached automatically.</p>`}
+                    ${openId === a.id && html`
+                      <div style="margin-top: 0.75rem; border-top: 1px solid var(--color-border); padding-top: 0.75rem;">
+                        ${!detail ? html`<p class="text-sm text-muted">Loading…</p>` : detail.error ? html`<p class="text-sm">${detail.error}</p>` : html`
+                          <p class="text-sm" style="margin: 0 0 0.5rem;">
+                            ${detail.parent} · <a href=${`mailto:${detail.email}`}>${detail.email}</a>
+                            ${detail.hasPdf && html` · <a href=${`/api/applications-admin?file=${detail.id}&field=pdf`} target="_blank">Application PDF</a>`}
+                          </p>
+                          ${detail.sections.map(s => html`
+                            <details style="margin: 0.35rem 0;">
+                              <summary style="cursor: pointer; font-weight: 600;">${s.title}</summary>
+                              <dl style="margin: 0.4rem 0 0.4rem 0.75rem;">
+                                ${s.items.map(i => html`
+                                  <dt class="text-sm text-muted" style="margin-top: 0.4rem;">${i.label}</dt>
+                                  <dd style="margin: 0; white-space: pre-wrap;">${i.upload
+                                    ? (i.type === 'photo' ? html`<a href=${`/api/applications-admin?file=${detail.id}&field=${i.id}`} target="_blank"><img src=${`/api/applications-admin?file=${detail.id}&field=${i.id}${i.hasThumb ? '&thumb=1' : ''}`} alt=${i.label} style="max-width: 160px; max-height: 120px; border-radius: 6px;" /></a>` : `Video ${i.video?.uploaded ? 'uploaded' : 'not finished'}${i.video?.duration ? ` (${Math.round(i.video.duration)} s)` : ''}`)
+                                    : i.text}</dd>
+                                `)}
+                              </dl>
+                            </details>
+                          `)}
+                        `}
+                      </div>
+                    `}
+                  </div>
+                `)}
+              </div>
+            `}
+            ${(data.events || []).length > 0 && html`
+              <details style="margin-top: 1rem;">
+                <summary class="text-sm" style="cursor: pointer; font-weight: 600;">Status messages from JobTread (last ${data.events.length})</summary>
+                <p class="text-sm text-muted" style="margin: 0.4rem 0;">When someone changes an applicant's Status in JobTread, the site posts the matching message (In Review, Approved, Denied) to the family once. This replaced the Zapier Zaps.</p>
+                <div style="display: grid; gap: 0.25rem;">
+                  ${data.events.map(e => html`
+                    <div class="text-sm" style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+                      <span class="text-muted">${when(e.created_at)}</span>
+                      <span>${e.previous_status || '—'} → ${e.status || '—'}</span>
+                      <span class="text-muted">${Object.entries(e.actions || {}).map(([k, v]) => `${k}: ${v}`).join(' · ') || 'nothing to send'}</span>
+                      ${e.error && html`<span style="color: #9B2C2C;">${e.error}</span>`}
+                    </div>
+                  `)}
+                </div>
+              </details>
+            `}
+          `}
+        </div>
+      `;
+    }
+
     function SiteSettings({ addToast, kids: allKids = [], partners: allPartners = [] }) {
       const [loading, setLoading] = useState(true);
       const [loadError, setLoadError] = useState(null);
@@ -23693,9 +23840,9 @@ ${sections || '<p>No one yet.</p>'}
                 onInput=${e => updateField('application.year', e.target.value)} />
             </div>
             <div class="form-group">
-              <label class="form-label">Application Form URL</label>
+              <label class="form-label">Outside form URL (optional)</label>
               <input class="form-input" value=${data.application?.formUrl || ''}
-                placeholder="https://forms.google.com/..."
+                placeholder="Leave blank to use the site's own form"
                 onInput=${e => updateField('application.formUrl', e.target.value)} />
             </div>
           </div>
@@ -23706,6 +23853,8 @@ ${sections || '<p>No one yet.</p>'}
               onInput=${e => updateField('application.closedMessage', e.target.value)} />
           </div>
         </div>
+
+        <${ApplicationsCard} addToast=${addToast} />
 
         <div class="card">
           <h3 class="u-mb-1">Apply Page — Family Testimonial</h3>
@@ -25632,7 +25781,7 @@ ${sections || '<p>No one yet.</p>'}
 
     function App() {
       useA11y();
-      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : 'dashboard'));
+      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#applications') ? 'site-hub' : 'dashboard'));
       const [editSlug, setEditSlug] = useState(null);
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);
@@ -25646,7 +25795,7 @@ ${sections || '<p>No one yet.</p>'}
       const [communityPartners, setCommunityPartners] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
-      const [subTab, setSubTab] = useState(null);
+      const [subTab, setSubTab] = useState(() => (location.hash.startsWith('#applications') ? 'settings' : null)); // #applications/<id>: Site Config → Settings
       const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
       const [shortcutsOpen, setShortcutsOpen] = useState(false);
       const [deploying, setDeploying] = useState(false);

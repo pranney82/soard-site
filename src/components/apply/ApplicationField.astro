@@ -1,0 +1,129 @@
+---
+/**
+ * One question of the makeover application, rendered from its definition in
+ * functions/api/_application-form.js. The browser script
+ * (application-form.client.js) reads and writes values through the
+ * data-field / data-type attributes, toggles showIf fields, and fills the
+ * error line under each question.
+ */
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { TEXT_MAX, TEXTAREA_MAX } from '../../../functions/api/_application-form.js';
+
+interface Props { field: any }
+const { field: f } = Astro.props;
+const id = `af-${f.id}`;
+const errId = `${id}-error`;
+const hidden = !!f.showIf;
+const isGroup = ['radio', 'checkbox', 'ack', 'name', 'address'].includes(f.type);
+const required = !!f.required;
+const optional = !required && !['content', 'image'].includes(f.type);
+// Only the main parent's own name and contact details autofill from the browser
+const ownName = f.id === 'parentName';
+const today = new Date().toISOString().slice(0, 10);
+const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+const homeAddress = f.id === 'address';
+---
+
+{f.type === 'content' && (
+  <div class:list={['af-content', f.variant && `af-content--${f.variant}`]} data-field={f.id} data-type="content" hidden={hidden} set:html={f.html} />
+)}
+
+{f.type === 'image' && (
+  <figure class="af-image" data-field={f.id} data-type="image" hidden={hidden} style={`background-image:url('${cfLqip(f.image)}')`}>
+    <img src={cfRaw(f.image, 'w=900,q=85')} srcset={cfSrcset(f.image, [500, 700, 938])} sizes="(max-width: 760px) 92vw, 680px"
+      alt={f.alt} width={f.width} height={f.height} loading="lazy" decoding="async" />
+  </figure>
+)}
+
+{!['content', 'image'].includes(f.type) && (
+  <div class:list={['af-field', `af-field--${f.type}`]} data-field={f.id} data-type={f.type} data-required={required ? '1' : undefined} hidden={hidden}>
+    {isGroup ? (
+      <fieldset aria-describedby={errId}>
+        <legend class="af-label">{f.label}{optional && <span class="af-optional"> (optional)</span>}</legend>
+        {f.type === 'checkbox' && f.max && <p class="af-hint">Choose up to {f.max}.</p>}
+
+        {(f.type === 'radio' || f.type === 'checkbox' || f.type === 'ack') && (
+          <div class="af-choices">
+            {f.options.map((opt: string, i: number) => (
+              <label class="af-choice">
+                <input type={f.type === 'radio' ? 'radio' : 'checkbox'} name={id} value={opt} id={`${id}-${i}`} />
+                <span class="af-choice-box" aria-hidden="true"></span>
+                <span class="af-choice-text">
+                  {f.descriptions?.[opt] ? <><strong class="af-choice-title">{opt}</strong><span class="af-choice-desc">{f.descriptions[opt]}</span></> : opt}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {f.type === 'name' && (
+          <div class="af-row af-row--2">
+            <label class="af-sub"><span>First name</span><input type="text" id={`${id}-first`} data-part="first" maxlength="80" autocomplete={ownName ? 'given-name' : 'off'} autocapitalize="words" /></label>
+            <label class="af-sub"><span>Last name</span><input type="text" id={`${id}-last`} data-part="last" maxlength="80" autocomplete={ownName ? 'family-name' : 'off'} autocapitalize="words" /></label>
+          </div>
+        )}
+
+        {f.type === 'address' && (
+          <div class="af-address">
+            <label class="af-sub"><span>Street address</span><input type="text" id={`${id}-line1`} data-part="line1" maxlength="160" autocomplete={homeAddress ? 'address-line1' : 'off'} /></label>
+            <label class="af-sub"><span>Apartment, suite, etc. <span class="af-optional">(optional)</span></span><input type="text" id={`${id}-line2`} data-part="line2" maxlength="80" autocomplete={homeAddress ? 'address-line2' : 'off'} /></label>
+            <div class="af-row af-row--3">
+              <label class="af-sub"><span>City</span><input type="text" id={`${id}-city`} data-part="city" maxlength="80" autocomplete={homeAddress ? 'address-level2' : 'off'} /></label>
+              <label class="af-sub"><span>State</span>
+                <select id={`${id}-state`} data-part="state" autocomplete={homeAddress ? 'address-level1' : 'off'}>
+                  <option value="">Choose</option>
+                  {US_STATES.map(s => <option value={s} selected={homeAddress && s === 'GA'}>{s}</option>)}
+                </select>
+              </label>
+              <label class="af-sub"><span>ZIP code</span><input type="text" id={`${id}-zip`} data-part="zip" inputmode="numeric" maxlength="10" autocomplete={homeAddress ? 'postal-code' : 'off'} /></label>
+            </div>
+          </div>
+        )}
+      </fieldset>
+    ) : (
+      <>
+        <label class="af-label" for={id}>{f.label}{optional && <span class="af-optional"> (optional)</span>}</label>
+        {f.type === 'text' && <input type="text" id={id} maxlength={TEXT_MAX} aria-describedby={errId} />}
+        {f.type === 'email' && <input type="email" id={id} maxlength="160" autocomplete={f.id === 'parentEmail' ? 'email' : 'off'} inputmode="email" aria-describedby={errId} />}
+        {f.type === 'phone' && <input type="tel" id={id} maxlength="24" autocomplete={f.id === 'parentPhone' ? 'tel' : 'off'} inputmode="tel" placeholder="(404) 555-0123" aria-describedby={errId} />}
+        {f.type === 'date' && <input type="date" id={id} max={today} min="1990-01-01" aria-describedby={errId} />}
+        {f.type === 'textarea' && <textarea id={id} rows={f.rows || 5} maxlength={TEXTAREA_MAX} aria-describedby={errId}></textarea>}
+        {f.type === 'signature' && <input type="text" id={id} class="af-signature" maxlength="120" autocomplete="name" placeholder="Type your full name" aria-describedby={errId} />}
+        {f.type === 'select' && (
+          <select id={id} aria-describedby={errId}>
+            <option value="">Choose one</option>
+            {f.options.map((opt: string) => <option value={opt}>{opt}</option>)}
+          </select>
+        )}
+        {f.type === 'photo' && (
+          <div class="af-upload af-upload--photo" data-state="empty">
+            <input type="file" id={id} accept="image/*" class="af-file" aria-describedby={errId} />
+            <div class="af-upload-preview" aria-hidden="true"></div>
+            <div class="af-upload-body">
+              <p class="af-upload-status" aria-live="polite">No photo yet</p>
+              <div class="af-upload-actions">
+                <button type="button" class="af-btn af-btn--upload" data-act="choose">Choose a photo</button>
+                <button type="button" class="af-btn af-btn--link" data-act="remove" hidden>Remove</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {f.type === 'video' && (
+          <div class="af-upload af-upload--video" data-state="empty">
+            <input type="file" id={id} accept="video/*" class="af-file" aria-describedby={errId} />
+            <div class="af-upload-body">
+              <p class="af-upload-status" aria-live="polite">No video yet</p>
+              <div class="af-progress" hidden><div class="af-progress-bar"></div></div>
+              <div class="af-upload-actions">
+                <button type="button" class="af-btn af-btn--upload" data-act="choose">Choose or record a video</button>
+                <button type="button" class="af-btn af-btn--link" data-act="remove" hidden>Remove</button>
+              </div>
+              <p class="af-hint">Up to 10 minutes. Please keep this page open while it uploads.</p>
+            </div>
+          </div>
+        )}
+      </>
+    )}
+    <p class="af-error" id={errId} role="alert"></p>
+  </div>
+)}
