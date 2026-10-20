@@ -39,6 +39,7 @@ const FACTS = {
   invites: { enabled: true, lastSweepAt: iso(30 * 60e3), lastGuestCheckAt: iso(2 * 60e3), checked: 20, changed: 0, errors: 0, rows: 3 },
   revealChecks: { enabled: false, lastRunAt: null, checked: null, posted: null, repaired: null, errors: null, lastErrorAt: null, syncedAt: iso(10 * 60e3), syncedJobs: 1 },
   fbArchive: { checkedAt: iso(60 * 60e3), archived: 3, needsKid: 1, lastAutoDeployAt: iso(17 * 86400e3) },
+  kidStatus: { lastSweepAt: iso(20 * 60e3), lastRunAt: iso(5 * 60e3), changed: 1, deployPending: false, lastAutoDeployAt: iso(5 * 60e3), hidden: 1 },
   reveals: { cachedAt: iso(5 * 60e3) },
   sends: { live: { kit: { last: iso(2 * 86400e3), sent: 1, failed: 0 } } },
   reminders: { subscribers: 4 },
@@ -125,7 +126,7 @@ try {
     ['Simulcast to Facebook', 'Live'], ['Simulcast to YouTube', 'Needs attention'], ['Live hub', 'Needs attention'],
     ['Slack posts', 'Off'], ['Facebook replay rescue', 'Needs attention'], ['Invite engine', 'Live'],
     ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],
-    ['Reveal checks for PMs', 'Off'],
+    ['Reveal checks for PMs', 'Off'], ['Kid status follows JobTread', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
 
   const attnItems = await page.$$eval('.am-panel .am-mini li', (l) => l.length);

@@ -8,7 +8,8 @@
  *     Needs attention filter (matches kids-shared.js), search, reveal dates
  *   - setting the order at the top of Meet the Kids by keyboard and by
  *     dragging: one /api/reorder-content request with every active kid, Undo
- *   - the row menu: Mark as completed (and Undo)
+ *   - the row menu: Mark as completed (and Undo); a kid with a JobTread job
+ *     takes its status from JobTread (no Mark as…, read-only in the editor)
  *   - the editor: rooms (counts → roomTypes/roomCount), unsaved state that
  *     clears when an edit is undone, the photo dialog (alt text, main photo),
  *     reordering photos by mouse and keyboard, removing the main photo (the
@@ -147,7 +148,7 @@ function makeApi() {
       return json({ success: false, error: 'type' }, 400);
     }
     if (p === '/api/stream-check') return json({ success: true, state: url.searchParams.get('uid')?.startsWith('6f3b') ? 'playable' : 'gone' });
-    if (p === '/api/reveals-admin') return json({ success: true, reveals: [{ slug: 'colin', name: 'Colin', date: '2026-10-25', confirmed: true }, { slug: 'axel', name: 'Axel', date: '2026-11-08', confirmed: false }], jobs: { amari: '22PAMARI', colin: '22PCOLIN' } });
+    if (p === '/api/reveals-admin') return json({ success: true, reveals: [{ slug: 'colin', name: 'Colin', date: '2026-10-25', confirmed: true }, { slug: 'axel', name: 'Axel', date: '2026-11-08', confirmed: false }], jobs: { amari: '22PAMARI', colin: '22PCOLIN' }, statuses: { amari: 'Closed Done', colin: 'Build' } });
     if (p.startsWith('/api/pending-changes')) {
       return json({ success: true, changes: [...st.waiting].map((slug) => ({ type: 'kids', slug, name: st.kids[slug]?.name, state: 'waiting', action: 'updated', at: new Date().toISOString() })), publish: { live: null, active: null, failed: null, typicalSeconds: 480 } });
     }
@@ -390,6 +391,18 @@ try {
     await clickToast(page, 'Undo');
     await sleep(700);
     ok(api.st.kids.max.status === 'in-progress', 'Undo puts the status back');
+
+    // Colin has a JobTread job: his status comes from there
+    ok(await page.evaluate(() => /JobTread: Build/.test([...document.querySelectorAll('.kd-row')].find((r) => r.dataset.slug === 'colin')?.textContent || '')), 'a kid with a JobTread job shows its JobTread status');
+    await page.evaluate(() => [...document.querySelectorAll('.kd-row')].find((r) => r.dataset.slug === 'colin').querySelector('.ppl-menu__btn').click());
+    await sleep(200);
+    const menu = await page.$$eval('.ppl-menu__pop [role="menuitem"]', (m) => m.map((x) => x.textContent.trim()));
+    ok(!menu.some((t) => /^Mark as/.test(t)) && menu.some((t) => /^Change status in JobTread/.test(t)), `and its menu sends status changes to JobTread (${menu.filter((t) => /status|Mark/.test(t)).join(', ')})`);
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    await openKid(page, 'Colin');
+    ok(!(await page.$('.kd-card--status .kd-status-pick')) && /Follows JobTread, where the job is at Build/.test(await page.$eval('.kd-card--status', (e) => e.textContent)), 'in the editor the status is read-only, from JobTread');
+    ok(await page.$eval('.kd-card--status a[href*="jobtread.com/jobs/22PCOLIN"]', (a) => !!a), 'with a link to change it in JobTread');
     ok(!errors.length, `no console errors (${errors.join(' | ').slice(0, 300)})`);
     await page.close();
   }

@@ -162,3 +162,24 @@ test('reveal checks and the date sync report their switch, last run and last act
   });
   assert.ok(!JSON.stringify(f).includes('secret-ish'));
 });
+
+test('kid status from JobTread reports its last sweep, last run and the profiles it hid', async () => {
+  const DB = await makeDb();
+  // Before the first sync the kid_status_state table doesn't exist yet
+  let f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch() });
+  assert.deepEqual(f.kidStatus, { lastSweepAt: null, lastRunAt: null, changed: null, deployPending: false, lastAutoDeployAt: null, hidden: 0 });
+
+  await DB.prepare('CREATE TABLE kid_status_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)').run();
+  await DB.prepare("INSERT INTO kid_status_state (key, value) VALUES ('state', ?)").bind(JSON.stringify({
+    lastSweepAt: '2026-10-20T15:00:00.000Z', lastRun: { at: '2026-10-20T15:05:00.000Z', scope: 'job', changed: 1 },
+    lastAutoDeployAt: '2026-10-20T15:00:01.000Z', deployPending: true, alerted: { kendall: '2026-10-20T15:00:00.000Z' },
+  })).run();
+  await DB.prepare('INSERT INTO kids (slug, data) VALUES (?, ?), (?, ?)')
+    .bind('kendall', JSON.stringify({ name: 'Kendall', publishStatus: 'draft', hiddenBy: 'jobtread' }), 'bo', JSON.stringify({ name: 'Bo', publishStatus: 'draft' })).run();
+  f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch() });
+  assert.deepEqual(f.kidStatus, {
+    lastSweepAt: '2026-10-20T15:00:00.000Z', lastRunAt: '2026-10-20T15:05:00.000Z', changed: 1,
+    deployPending: true, lastAutoDeployAt: '2026-10-20T15:00:01.000Z', hidden: 1,
+  });
+  assert.ok(!JSON.stringify(f).includes('kendall'), 'who was alerted stays out');
+});

@@ -13,6 +13,7 @@
  *  - invites:   reveal invite sending switch, the last safety sweep and guest check
  *  - revealChecks: weekday reveal checks switch and last run; date sync's last activity
  *  - liveSchedule: the live countdown's last JobTread check (what it follows, what's waiting)
+ *  - kidStatus: kid statuses following JobTread (last sweep, last run, profiles it hid)
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
  *  - sends:     last reminder send per kind and channel (counts only)
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
@@ -135,6 +136,19 @@ export function liveScheduleFacts(rec) {
   };
 }
 
+/** Kid status from JobTread (kid_status_state, _kid-status.js); hidden: profiles JobTread took off the site */
+export function kidStatusFacts(state, hidden = null) {
+  const d = state || {};
+  return {
+    lastSweepAt: d.lastSweepAt || null,
+    lastRunAt: d.lastRun?.at || null,
+    changed: d.lastRun?.changed ?? null,
+    deployPending: !!d.deployPending,
+    lastAutoDeployAt: d.lastAutoDeployAt || null,
+    hidden,
+  };
+}
+
 /** placed: Stream uids some kid page already uses (staff can attach a replay by hand in the kid editor) */
 export function archiveFacts(a, placed = new Set()) {
   if (!a) return null;
@@ -198,7 +212,7 @@ const settle = async (fn) => { try { return await fn(); } catch (e) { return { e
 
 export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const DB = env.DB;
-  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced, liveSchedule, guestCheck] = await Promise.all([
+  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced, liveSchedule, guestCheck, kidState, kidsHidden] = await Promise.all([
     settle(() => siteConfig(DB, 'broadcast-config')),
     settle(() => siteConfig(DB, 'broadcast-health')),
     settle(() => siteConfig(DB, 'reveal-invites')),
@@ -214,6 +228,9 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     settle(() => DB.prepare('SELECT count(*) AS n, max(updated_at) AS last FROM reveal_sync').first()),
     settle(() => siteConfig(DB, 'broadcast-schedule')),
     settle(() => siteConfig(DB, 'reveal-invites-guest-check')),
+    // The table appears with the first kid status sync; until then this settles to an error
+    settle(async () => JSON.parse((await DB.prepare("SELECT value FROM kid_status_state WHERE key = 'state'").first('value')) || '{}')),
+    settle(() => DB.prepare(`SELECT count(*) AS n FROM kids WHERE instr(data, '"hiddenBy":"jobtread"') > 0`).first('n')),
   ]);
   const ok = (v) => (v && !v.error ? v : null);
   const sendMap = {};
@@ -234,6 +251,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     invites: inviteFacts(ok(invites), typeof inviteRows === 'number' ? inviteRows : null, ok(guestCheck)),
     revealChecks: revealCheckFacts(ok(checks), ok(synced)),
     liveSchedule: liveScheduleFacts(ok(liveSchedule)),
+    kidStatus: kidStatusFacts(ok(kidState), typeof kidsHidden === 'number' ? kidsHidden : null),
     fbArchive: archiveFacts(ok(archive), await settle(() => placedUids(DB, ok(archive))).then((p) => (p instanceof Set ? p : new Set()))),
     reveals: { cachedAt: typeof reveals === 'string' ? reveals : null },
     sends: sendMap,

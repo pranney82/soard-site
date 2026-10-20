@@ -7,6 +7,7 @@
 
 import { reconcileJob } from './_reveal-invites.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
+import { syncKidStatuses } from './_kid-status.js';
 
 export async function onRequestPost(context) {
   let body = {};
@@ -14,6 +15,8 @@ export async function onRequestPost(context) {
   const jobId = String(body.jobId || '').trim();
   if (!/^[A-Za-z0-9]{6,32}$/.test(jobId)) return Response.json({ ok: false, error: 'jobId is required' }, { status: 400 });
   try {
+    // The kid's status on the site follows the job (a status change, the Reveal task done)
+    context.waitUntil(syncKidStatuses(context.env, { jobId }));
     const r = await reconcileJob(context.env, jobId);
     // Confirmed, status or the Reveal task changed: the live countdown follows right away.
     // A construction task finishing can't move the countdown, so it doesn't force a check.

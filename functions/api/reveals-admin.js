@@ -8,6 +8,7 @@
  *
  * → { success, reveals: [{ slug, name, startsAt, date, time, confirmed, jobId }],
  *     jobs: { [slug]: jobId },   every kid matched to a JobTread job, open or closed
+ *     statuses: { [slug]: status },  that job's JobTread Status (the site's kid status follows it, ./_kid-status.js)
  *     unmatched,                 upcoming reveal dates on jobs no kid page matches
  *     updatedAt }
  *
@@ -18,8 +19,9 @@
 
 import {
   JT_URL, SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED,
-  matchKid, easternParts, todayEastern, loadKids,
+  matchKid, easternParts, todayEastern,
 } from './_reveals.js';
+import { FIELD_STATUS, loadAllKids } from './_kid-status.js';
 
 const MAX_PAGES = 8;
 const MEMO_MS = 60 * 1000;
@@ -62,16 +64,17 @@ export async function fetchAllJobs(grantKey, fetchImpl = fetch) {
 export function buildAdminView(jobs, kids, now = Date.now()) {
   const today = todayEastern(now);
   const links = {};
+  const statuses = {};
   const reveals = [];
   let unmatched = 0;
   for (const job of jobs) {
     const kid = matchKid(job.name, kids);
     // A kid can only match a job from their own year; prefer the open one if there are two
-    if (kid && (!links[kid.slug] || !job.closedOn)) links[kid.slug] = job.id;
-    if (job.closedOn) continue;
-
     const values = {};
     for (const v of job.customFieldValues?.nodes || []) values[v.customField?.id] = v.value;
+    if (kid && (!links[kid.slug] || !job.closedOn)) { links[kid.slug] = job.id; statuses[kid.slug] = values[FIELD_STATUS] || null; }
+    if (job.closedOn) continue;
+
     const startsAt = values[FIELD_REVEAL_DATE];
     const parts = startsAt ? easternParts(startsAt) : null;
     if (!parts || parts.date < today) continue;
@@ -88,7 +91,7 @@ export function buildAdminView(jobs, kids, now = Date.now()) {
   }
   reveals.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const seen = new Set();
-  return { reveals: reveals.filter((r) => (seen.has(r.slug) ? false : seen.add(r.slug))), jobs: links, unmatched };
+  return { reveals: reveals.filter((r) => (seen.has(r.slug) ? false : seen.add(r.slug))), jobs: links, statuses, unmatched };
 }
 
 export async function onRequestGet(context) {
@@ -100,7 +103,8 @@ export async function onRequestGet(context) {
   try {
     const now = Date.now();
     if (!memo || now - memo.at > MEMO_MS) {
-      const [jobs, kids] = await Promise.all([fetchAllJobs(env.JOBTREAD_GRANT_KEY), loadKids(env.DB)]);
+      // Hidden profiles too: a kid JobTread keeps off the site still links to its job here
+      const [jobs, kids] = await Promise.all([fetchAllJobs(env.JOBTREAD_GRANT_KEY), loadAllKids(env.DB)]);
       memo = { at: now, value: { ...buildAdminView(jobs, kids, now), updatedAt: new Date(now).toISOString() } };
     }
     return Response.json({ success: true, ...memo.value }, { headers });

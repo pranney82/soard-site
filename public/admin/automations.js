@@ -211,6 +211,21 @@ const MAP = { t: 'SOARD', children: [
             if (c.waiting) return ATTN(`${plural(c.waiting, 'confirmed reveal')} can’t have a countdown yet (no time, or no published kid page). See Reveals → Now.`, c.checkedAt);
             return ON(c.next ? `Following ${c.next}.` : 'Nothing is confirmed with a time yet.', c.checkedAt);
           } },
+        { t: 'Kid status follows JobTread', s: 'live', k: 'event',
+          when: 'A JobTread workflow reports a job’s status, closed date or task change (right away), and an hourly sweep on the live hub’s heartbeat. Visits to the reveals feed are the backup.',
+          does: 'Sets each kid page’s status from its job: Awaiting Funding shows “Needs funding”, Design through Build shows “In progress”, and the Reveal task done, Closed Done or Warranty shows “Completed”. On Site and Denied take the profile off the site (Denied tells staff once by email and Slack), and it comes back by itself when the job moves on. Each change is saved like an admin save, with History, then the site publishes, at most every 10 minutes.',
+          touches: ['JobTread', 'D1', 'GitHub', 'Cloudflare Pages'], where: 'functions/api/_kid-status.js (from reveal-invites.js, broadcast-hooks.js, reveals.js)',
+          info: 'Staff can’t change a linked kid’s status in the admin: Kids shows the JobTread status with a link to the job. Kids with no job in JobTread (older years) stay under the admin’s control, a profile staff hid themselves stays hidden, and jobs named TEST are ignored.',
+          live: (f) => {
+            const k = f.kidStatus;
+            if (!k) return null;
+            if (env(f) && !f.env.jobtread) return ATTN('JOBTREAD_GRANT_KEY is missing, so kid statuses can’t follow JobTread.');
+            if (!k.lastSweepAt) return ATTN('It hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(k.lastSweepAt, 3 * HOUR)) return ATTN(`Hasn’t checked JobTread since ${stamp(k.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, k.lastRunAt);
+            if (env(f) && !f.env.deployHook) return ATTN('No deploy hook is set in Cloudflare, so changes are saved but wait for the next Publish.', k.lastRunAt);
+            const hidden = k.hidden ? ` ${plural(k.hidden, 'profile is', 'profiles are')} hidden because of JobTread.` : '';
+            return ON(`${k.changed ? `The last check changed ${plural(k.changed, 'kid')}.` : 'Every linked kid matches JobTread.'}${hidden}`, k.lastRunAt);
+          } },
         { t: 'Reveals → Now tracker', s: 'live', k: 'admin',
           when: 'Staff open Reveals → Now.',
           does: 'Lists every upcoming reveal from JobTread with what has gone out for it: the tentative and confirmed invites, the countdown, save-the-date, day-before and hour-before reminders, and the “we’re live” emails, each with when and how many. A failed invite can be retried there.',
