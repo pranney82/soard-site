@@ -112,7 +112,7 @@ try {
   ok(await page.$eval('.page-header h2', (e) => e.textContent) === 'Automations', 'the page opens from #automations');
   ok((await page.$eval('.am-check', (e) => e.textContent)).includes('Statuses checked live'), 'it says the statuses were checked live');
   const branches = await page.$$eval('.am-node.d1 text', (t) => t.map((x) => x.textContent));
-  ok(branches.length === 6, `${branches.length} branches drawn (${branches.join(', ')})`);
+  ok(branches.length === 7, `${branches.length} branches drawn (${branches.join(', ')})`);
   const canvasTop = await page.$eval('.am-canvas', (e) => e.getBoundingClientRect().top);
   ok(canvasTop < 360, `the map starts above the fold on a laptop (${Math.round(canvasTop)}px down)`);
   const inView = await page.evaluate(() => {
@@ -131,7 +131,8 @@ try {
 
   const attnItems = await page.$$eval('.am-panel .am-mini li', (l) => l.length);
   ok((await page.$eval('.am-panel', (e) => e.textContent)).includes('Needs attention') && attnItems >= 5, `the side panel lists what needs attention and what's parked (${attnItems} entries)`);
-  ok((await page.$eval('.am-lede .am-warnstat b', (e) => e.textContent)) === '3', 'the lede counts 3 needing attention');
+  const lede = await page.$eval('.am-lede .am-warnstat b', (e) => e.textContent);
+  ok(lede === '4', `the lede counts 4 needing attention (shows ${lede})`);
   await page.screenshot({ path: join(OUT, 'desktop.png'), fullPage: false });
 
   const before = await boxOf(page, 'Calendar invites');
@@ -156,7 +157,8 @@ try {
   await page.select('#am-svc', 'Resend');
   await pause(400);
   const resendCount = await page.$$eval('.am-panel .am-mini li', (l) => l.length);
-  ok(await panelTitle(page) === 'If Resend stops working' && resendCount >= 8, `"Depends on" lists everything that uses Resend (${resendCount})`);
+  // Resend only sends one-off mail now (the list is Kit's): links, notices, reminders, alerts, editor tests
+  ok(await panelTitle(page) === 'If Resend stops working' && resendCount === 10, `"Depends on" lists everything that uses Resend (${resendCount}, want 10)`);
   await page.screenshot({ path: join(OUT, 'desktop-depends.png'), fullPage: false });
 
   await clickButton(page, '.am-tools', 'Open all');

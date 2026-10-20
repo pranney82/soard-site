@@ -232,8 +232,8 @@ export async function kitListAudiences(env) {
   };
 }
 
-// Kit statuses → the vocabulary the admin history table already uses for
-// Resend, so one status→color map covers both providers.
+// Kit statuses → the short vocabulary the admin history table colors by
+// (sent / queued / cancelled / draft).
 const KIT_STATUS_MAP = {
   completed: 'sent',
   sending: 'queued',
@@ -243,8 +243,8 @@ const KIT_STATUS_MAP = {
 };
 
 /**
- * Recent Kit broadcasts, mapped to the same shape as the Resend history
- * endpoint: { id, name, status, createdAt, sentAt, subject }.
+ * Recent Kit broadcasts, in the shape the admin history table reads:
+ * { id, name, status, createdAt, sentAt, subject }.
  *
  * @returns {Promise<{ok: boolean, status?: number, broadcasts?: object[]}>}
  */

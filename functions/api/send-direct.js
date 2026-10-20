@@ -14,20 +14,20 @@
  *     opts: { subject, preheader, name, from? }
  *   }
  *
- * Authenticated endpoint (behind CF Access).
- *
- * Required env: RESEND_API_KEY
+ * Authenticated endpoint (behind CF Access). Sends through the site's
+ * one-off sender (_broadcast-notify.js), not Kit.
  */
 
-import { customTemplate } from './_email-templates.js';
+import { customTemplate, fillMergeTags } from './_email-templates.js';
+import { sendEmailItems, emailConfigured } from './_broadcast-notify.js';
 
 const MAX_RECIPIENTS = 100;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function onRequestPost(context) {
-  const { RESEND_API_KEY } = context.env;
-  if (!RESEND_API_KEY) {
-    return Response.json({ ok: false, error: 'RESEND_API_KEY is not configured.' }, { status: 503 });
+  const { env } = context;
+  if (!emailConfigured(env)) {
+    return Response.json({ ok: false, error: 'Email sending is not configured.' }, { status: 503 });
   }
 
   let body;
@@ -55,42 +55,27 @@ export async function onRequestPost(context) {
 
   const tpl = customTemplate(data, opts);
 
-  // No broadcast unsubscribe URL for direct sends — Resend only resolves it
-  // for /broadcasts. Strip the merge tag so the link doesn't render literally.
-  const html = tpl.html.replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, '#');
-
-  // Use Resend's batch endpoint — one HTTP call, up to 100 emails.
-  // Each entry is a separate email (own To:), not a single BCC blast.
-  const batch = cleaned.map(to => ({
-    from: tpl.from,
-    to: [to],
-    subject: tpl.subject,
-    html,
+  // Direct sends aren't list mail: merge tags get plain values (no
+  // unsubscribe link), and each copy carries its recipient's own address.
+  const items = cleaned.map(to => ({
+    to,
+    subject: fillMergeTags(tpl.subject, { email: to }),
+    html: fillMergeTags(tpl.html, { email: to }),
   }));
 
   try {
-    const res = await fetch('https://api.resend.com/emails/batch', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(batch),
-    });
+    const r = await sendEmailItems(env, items, { from: tpl.from });
 
-    const result = await res.json();
-
-    if (!res.ok) {
-      // Log the upstream detail server-side; return a generic message so raw
-      // Resend error bodies never reach the client.
-      console.error(`Resend batch send error ${res.status}:`, JSON.stringify(result));
+    if (r.failed) {
+      // Log the upstream detail server-side; keep the client message generic.
+      console.error('Direct send error:', r.errors.join('; '));
       return Response.json(
-        { ok: false, error: 'Failed to send. Please try again.' },
-        { status: res.status }
+        { ok: false, error: r.sent ? `Sent to ${r.sent} of ${cleaned.length}. The rest failed, please try them again.` : 'Failed to send. Please try again.' },
+        { status: 500 }
       );
     }
 
-    return Response.json({ ok: true, count: cleaned.length, ids: (result.data || []).map(r => r.id) });
+    return Response.json({ ok: true, count: r.sent });
   } catch (err) {
     console.error('Send direct error:', err);
     return Response.json({ ok: false, error: 'Something went wrong.' }, { status: 500 });

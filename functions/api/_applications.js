@@ -28,7 +28,8 @@
  * Application URL before it's tried again.
  *
  * Env: JOBTREAD_GRANT_KEY, JOBTREAD_QC_GRANT_KEY (optional), CF_ACCOUNT_ID +
- * CF_STREAM_TOKEN (video), RESEND_API_KEY (emails), FILES (R2), DB, AI.
+ * CF_STREAM_TOKEN (video), RESEND_API_KEY (emails), SLACK_WEBHOOK_URL (staff
+ * Slack posts, optional), FILES (R2), DB, AI.
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
@@ -36,7 +37,7 @@ import {
   cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, DEFAULT_STAFF_EMAILS,
 } from './_application-form.js';
 import { buildApplicationPdf } from './_application-pdf.js';
-import { sendEmails, escapeHtml, SITE_ORIGIN } from './_broadcast-notify.js';
+import { sendEmails, escapeHtml, SITE_ORIGIN, slackAlert, slackConfigured, slackEscape } from './_broadcast-notify.js';
 import { readApplicant, sendIntake, ensureCommsSchema } from './_applicant-comms.js';
 import { formFor, ensureFormSchema } from './_application-forms.js';
 
@@ -503,6 +504,26 @@ function staffEmail(app, accountId) {
   };
 }
 
+/** The same heads-up for Slack. Kept short: no diagnosis or contact details in the channel. */
+function staffSlack(app, accountId) {
+  const a = app.answers;
+  const first = String(a.childName?.first || 'A new applicant').trim();
+  const types = (a.makeoverTypes || []).join(' and ') || 'a makeover';
+  const title = `${app.is_test ? '[TEST] ' : ''}New makeover application: ${first}`;
+  const detail = [app.year, types, a.county].filter(Boolean).join(' · ');
+  const links = [
+    accountId ? { label: 'Open in JobTread', url: jobtreadAccountUrl(accountId) } : null,
+    { label: 'Open the application', url: applicationUrl(app.id) },
+  ].filter(Boolean);
+  return {
+    text: `🟢 ${title}: ${detail} ${links[0].url}`,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: `🟢 *${slackEscape(title)}*\n${slackEscape(detail)}` } },
+      { type: 'context', elements: [{ type: 'mrkdwn', text: links.map((l) => `<${l.url}|${slackEscape(l.label)}>`).join('  ·  ') }] },
+    ],
+  };
+}
+
 async function saveState(DB, app, fields = {}, now = Date.now()) {
   const sets = ['jt_state = ?', 'updated_at = ?'];
   const binds = [JSON.stringify(app.jt_state), iso(now)];
@@ -526,6 +547,7 @@ export function checklist(app) {
     familyMessage: s.intake?.welcome === 'sent' || s.intake?.welcome === 'already' ? true : s.intake?.welcome || false,
     medicalNote: s.intake?.medical === 'sent' || s.intake?.medical === 'already' ? true : s.intake?.medical || false,
     staffEmail: !!s.staffEmail,
+    staffSlack: s.staffSlack === 'off' ? 'none' : !!s.staffSlack,
   };
 }
 
@@ -660,13 +682,27 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     }
   });
 
-  await step('staff email', async () => {
-    if (s.staffEmail) return;
-    const to = app.is_test ? ALERT_EMAILS : (await formFor(env.DB, { year: app.year })).staffEmails;
-    const msg = staffEmail(app, accountId);
-    const r = await sendEmails(env, { to, ...msg, tags: [{ name: 'type', value: 'application' }] });
-    if (r.errors.length && !r.sent) throw new Error(r.errors[0]);
-    s.staffEmail = iso(now);
+  // Email and Slack are each done once and remembered, so a retry only
+  // repeats the one that failed and an outage in one never holds up the other
+  await step('staff heads-up', async () => {
+    const failed = [];
+    if (!s.staffEmail) {
+      const to = app.is_test ? ALERT_EMAILS : (await formFor(env.DB, { year: app.year })).staffEmails;
+      const msg = staffEmail(app, accountId);
+      const r = await sendEmails(env, { to, ...msg, tags: [{ name: 'type', value: 'application' }] });
+      if (r.errors.length && !r.sent) failed.push(`email: ${r.errors[0]}`);
+      else s.staffEmail = iso(now);
+    }
+    if (!s.staffSlack) {
+      if (!slackConfigured(env)) s.staffSlack = 'off';
+      else {
+        const { text, blocks } = staffSlack(app, accountId);
+        const r = await slackAlert(env, text, blocks);
+        if (r.ok) s.staffSlack = iso(now);
+        else failed.push(`Slack: ${r.error || `HTTP ${r.status}`}`);
+      }
+    }
+    if (failed.length) throw new Error(failed.join('; '));
   });
 
   await step('video', async () => {
@@ -689,12 +725,15 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
   }, now);
 
   if (error && attempts >= ALERT_AFTER_ATTEMPTS && app.alerted !== error) {
-    await sendEmails(env, {
-      to: ALERT_EMAILS,
-      subject: `Application for ${accountName(app)} is stuck`,
-      html: `<p>The website couldn't finish loading an application into JobTread after ${attempts} tries.</p><p><strong>${escapeHtml(error)}</strong></p><p>It keeps retrying on its own. <a href="${escapeHtml(applicationUrl(app.id))}">Open it in the admin</a> to retry now.</p>`,
-      text: `The website couldn't finish loading an application into JobTread after ${attempts} tries.\n\n${error}\n\nIt keeps retrying on its own. Admin: ${applicationUrl(app.id)}`,
-    }).catch(() => {});
+    await Promise.all([
+      sendEmails(env, {
+        to: ALERT_EMAILS,
+        subject: `Application for ${accountName(app)} is stuck`,
+        html: `<p>The website couldn't finish loading an application into JobTread after ${attempts} tries.</p><p><strong>${escapeHtml(error)}</strong></p><p>It keeps retrying on its own. <a href="${escapeHtml(applicationUrl(app.id))}">Open it in the admin</a> to retry now.</p>`,
+        text: `The website couldn't finish loading an application into JobTread after ${attempts} tries.\n\n${error}\n\nIt keeps retrying on its own. Admin: ${applicationUrl(app.id)}`,
+      }).catch(() => {}),
+      slackAlert(env, `🟡 Application for ${accountName(app)} is stuck: the website couldn't finish loading it into JobTread after ${attempts} tries. ${error}. It keeps retrying on its own; open it in the admin to retry now. ${applicationUrl(app.id)}`).catch(() => {}),
+    ]);
     await DB.prepare('UPDATE applications SET alerted = ? WHERE id = ?').bind(error, app.id).run();
   }
   return error ? { status, error } : { status };

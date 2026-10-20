@@ -86,11 +86,6 @@ export const SETTINGS_DEFAULTS = {
     selection: 'kids/georgia/photo-01',
   },
 
-  /* ── Newsletter ── */
-  newsletter: {
-    audienceId: '',
-  },
-
   /* ── Sunny & Ranney ── */
   sunnyAndRanneyRooms: [],
 

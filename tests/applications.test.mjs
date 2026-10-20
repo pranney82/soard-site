@@ -172,10 +172,15 @@ test('submit loads everything into JobTread; the video follows once Stream is do
   const medical = acct.comments.find(c => c.name === "Child's Medical Condition");
   assert.equal(medical.internal, true);
   assert.match(medical.message, /^\*Diagnosis\*: Spina bifida\n\n\*Summary:\* A plain summary\.\n\n\*Description:\* A longer description\.$/);
-  // Staff heads-up
+  // Staff heads-up, by email and in Slack (Slack never gets the diagnosis or contact details)
   assert.equal(w.world.emails.length, 1);
   assert.deepEqual(w.world.emails[0].to, ['selection@soardcharity.com']);
   assert.match(w.world.emails[0].subject, /New makeover application: Avery/);
+  assert.equal(w.world.slack.length, 1);
+  const post = JSON.stringify(w.world.slack[0]);
+  assert.match(w.world.slack[0].text, /^🟢 New makeover application: Avery/);
+  assert.ok(post.includes(`https://app.jobtread.com/customers/${acct.id}|Open in JobTread`));
+  assert.doesNotMatch(post, /Spina bifida|mom@example\.com/);
 
   // Not ready yet: nothing more happens
   const app = await getApplication(env.DB, sub.id);
@@ -192,6 +197,44 @@ test('submit loads everything into JobTread; the video follows once Stream is do
   assert.equal(Object.keys(w.world.accounts).length, 1);
   assert.equal(acct.comments.filter(c => c.name === 'Application Status').length, 1);
   assert.equal(w.world.emails.length, 1);
+  assert.equal(w.world.slack.length, 1);
+  const done = (await listApplications(env.DB)).applications[0].checklist;
+  assert.equal(done.staffEmail, true);
+  assert.equal(done.staffSlack, true);
+});
+
+test('a Slack or email outage holds up neither heads-up, and only the one that failed is retried', async () => {
+  const sub = await submitDraft(env, await readyDraft(fullAnswers(), { video: 'ready' }));
+  w.world.slackDown = true;
+  const first = await run(sub.id);
+  assert.equal(first.status, 'error');
+  assert.match(first.error, /^staff heads-up: Slack: invalid_token/);
+  assert.equal(w.world.emails.length, 1, 'the email still went');
+  assert.equal(w.world.slack.length, 0);
+
+  w.world.slackDown = false;
+  w.world.emailDown = true; // must not matter: the email is already done
+  assert.equal((await run(sub.id, Date.now() + 10 * 60 * 1000)).status, 'done');
+  assert.equal(w.world.emails.length, 1, 'no second email');
+  assert.equal(w.world.slack.length, 1);
+
+  const other = await submitDraft(env, await readyDraft(fullAnswers({ childName: { first: 'Blake', last: 'Stone' } }), { video: 'ready' }));
+  const failed = await run(other.id);
+  assert.match(failed.error, /^staff heads-up: email: Resend 500/);
+  assert.equal(w.world.slack.length, 2, 'Slack still posted');
+  w.world.emailDown = false;
+  assert.equal((await run(other.id, Date.now() + 10 * 60 * 1000)).status, 'done');
+  assert.equal(w.world.emails.filter(e => /Blake/.test(e.subject)).length, 1);
+  assert.equal(w.world.slack.length, 2, 'no second Slack post');
+});
+
+test('without a Slack webhook the heads-up is email only, and the checklist says so', async () => {
+  delete env.SLACK_WEBHOOK_URL;
+  const sub = await submitDraft(env, await readyDraft(fullAnswers(), { video: 'ready' }));
+  assert.equal((await run(sub.id)).status, 'done');
+  assert.equal(w.world.emails.length, 1);
+  assert.equal(w.world.slack.length, 0);
+  assert.equal((await listApplications(env.DB)).applications[0].checklist.staffSlack, 'none');
 });
 
 test('a failed step is retried without duplicating anything', async () => {
@@ -246,6 +289,7 @@ test('a TEST application is marked, named TEST, and only emails Peter', async ()
   const [acct] = Object.values(w.world.accounts);
   assert.equal(acct.name, 'TEST Applicant');
   assert.deepEqual(w.world.emails.map(e => e.to[0]), ['peter@soardcharity.com']);
+  assert.match(w.world.slack[0].text, /^🟢 \[TEST\] New makeover application/);
   const list = await listApplications(env.DB);
   assert.equal(list.applications[0].isTest, true);
   assert.equal(list.applications[0].checklist.familyMessage, true);
@@ -263,6 +307,9 @@ test('a stuck application alerts Peter once per new problem', async () => {
   const alerts = w.world.emails.filter(e => /is stuck/.test(e.subject));
   assert.equal(alerts.length, 1);
   assert.deepEqual(alerts[0].to, ['peter@soardcharity.com']);
+  const posts = w.world.slack.filter(p => /is stuck/.test(p.text));
+  assert.equal(posts.length, 1, 'and once in Slack');
+  assert.match(posts[0].text, /after 4 tries/);
 });
 
 test('the sweep runs at most every two minutes and clears old drafts with their files', async () => {

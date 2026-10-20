@@ -2,12 +2,12 @@
  * POST /api/kit-broadcast
  *
  * Renders a block-based email template and creates a DRAFT broadcast in
- * Kit (formerly ConvertKit). Same review-before-send flow as the Resend
- * push: the admin always reviews & sends from the Kit dashboard. Kit
- * drafts default to all active subscribers — narrow the audience in Kit
- * at send time, so there's no audience picker here.
+ * Kit (formerly ConvertKit). The admin always reviews & sends from the Kit
+ * dashboard. Kit drafts default to all active subscribers — narrow the
+ * audience in Kit at send time, so there's no audience picker here.
  *
- *   { data: { blocks }, opts }  →  creates draft in Kit
+ *   { preview: true, data: { blocks }, opts }  →  rendered HTML only, no Kit call
+ *   { data: { blocks }, opts }                 →  creates draft in Kit
  *
  * GET /api/kit-broadcast           → recent Kit broadcast history
  * GET /api/kit-broadcast?check=1   → { ok, configured } — no Kit API call
@@ -18,43 +18,47 @@
  * Optional: KIT_EMAIL_TEMPLATE_ID — see _kit.js
  */
 
-import { customTemplate } from './_email-templates.js';
+import { customTemplate, kitMergeTags, fillMergeTags } from './_email-templates.js';
 import { kitConfigured, kitCreateBroadcast, kitListBroadcasts } from './_kit.js';
 import { logAudit } from './_audit.js';
 
 export async function onRequestPost(context) {
   const { env } = context;
 
-  if (!kitConfigured(env)) {
-    return Response.json({ ok: false, error: 'KIT_API_KEY is not configured.' }, { status: 503 });
-  }
-
   const body = await context.request.json();
-  const { data, opts = {} } = body;
+  const { data, opts = {}, preview } = body;
 
   if (!data || !Array.isArray(data.blocks)) {
     return Response.json({ ok: false, error: 'Missing "data.blocks" — expected an array of block descriptors.' }, { status: 400 });
   }
 
   const tpl = customTemplate(data, opts);
-  const name = opts.name || tpl.subject || 'Custom Broadcast';
+  // The draft's name in Kit and the history list: staff-facing, so plain text
+  const name = fillMergeTags(opts.name || tpl.subject || 'Custom Broadcast');
 
-  // The template embeds Resend's unsubscribe merge tag; Kit uses Liquid.
-  const html = tpl.html.replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, '{{ unsubscribe_url }}');
+  // Preview mode: the editor's live preview, works with or without Kit
+  if (preview) {
+    return Response.json({ ok: true, name, subject: tpl.subject, previewHtml: tpl.html });
+  }
+
+  if (!kitConfigured(env)) {
+    return Response.json({ ok: false, error: 'KIT_API_KEY is not configured.' }, { status: 503 });
+  }
 
   try {
     const result = await kitCreateBroadcast(env, {
-      subject: tpl.subject,
-      previewText: opts.preheader || '',
+      subject: kitMergeTags(tpl.subject),
+      previewText: kitMergeTags(opts.preheader || ''),
       description: name,
-      html,
+      html: kitMergeTags(tpl.html),
     });
 
     if (!result.ok) {
       // Upstream detail is logged in _kit.js; keep the client message generic.
+      // 500, not 502: Cloudflare swaps 502 bodies for its own error page.
       return Response.json(
         { ok: false, error: 'Failed to create Kit broadcast. Please try again.' },
-        { status: result.status || 502 }
+        { status: result.status && result.status < 500 ? result.status : 500 }
       );
     }
 
@@ -105,7 +109,7 @@ export async function onRequestGet(context) {
   try {
     const result = await kitListBroadcasts(env);
     if (!result.ok) {
-      return Response.json({ ok: false, error: 'Failed to fetch Kit broadcasts.' }, { status: result.status || 502 });
+      return Response.json({ ok: false, error: 'Failed to fetch Kit broadcasts.' }, { status: result.status && result.status < 500 ? result.status : 500 });
     }
     return Response.json({ ok: true, broadcasts: result.broadcasts });
   } catch (err) {

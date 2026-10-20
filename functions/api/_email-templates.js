@@ -249,7 +249,7 @@ function emailFooter() {
         <a href="https://www.tiktok.com/@sunshineonaranneyday" target="_blank" style="color:rgba(255,255,255,0.45);text-decoration:underline;text-underline-offset:3px;">TikTok</a>
       </p>
       <p style="margin:0 0 8px;font-family:${SANS};font-size:11px;color:rgba(255,255,255,0.2);">You're receiving this because you're a valued partner or supporter of SOARD.</p>
-      <a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="font-family:${SANS};font-size:11px;color:rgba(255,255,255,0.3);text-decoration:underline;text-underline-offset:2px;">Unsubscribe</a>
+      <a href="{{{UNSUBSCRIBE_URL}}}" style="font-family:${SANS};font-size:11px;color:rgba(255,255,255,0.3);text-decoration:underline;text-underline-offset:2px;">Unsubscribe</a>
     </td>
   </tr>`;
 }
@@ -291,6 +291,35 @@ export function customTemplate(blockData, opts = {}) {
     subject,
     html: emailHead(subject) + emailWrap(preheader, body),
   };
+}
+
+// ─── Merge tags ────────────────────────────────────────────────────
+// The editor inserts {{{FIRST_NAME|there}}}, {{{EMAIL}}} and
+// {{{UNSUBSCRIBE_URL}}} (the footer carries the last one). Block text is
+// HTML-escaped, so Kit's Liquid (which needs quotes) can't be typed in
+// directly: Kit drafts translate here, one-off sends fill in plain values.
+// LAST_NAME is left over from older drafts; Kit has no last-name field.
+
+const MERGE_TAG = /\{\{\{(FIRST_NAME|LAST_NAME|EMAIL|UNSUBSCRIBE_URL)(?:\|([^}]*))?\}\}\}/g;
+
+/** Editor merge tags → Kit Liquid, for drafts pushed to Kit. */
+export function kitMergeTags(s) {
+  return String(s || '').replace(MERGE_TAG, (_, tag, fallback = '') => {
+    if (tag === 'FIRST_NAME') return `{{ subscriber.first_name | default: "${fallback.replace(/"/g, '')}" }}`;
+    if (tag === 'EMAIL') return '{{ subscriber.email_address }}';
+    if (tag === 'UNSUBSCRIBE_URL') return '{{ unsubscribe_url }}';
+    return '';
+  });
+}
+
+/** Editor merge tags → plain values, for one-off sends outside Kit (no list, so no unsubscribe link). */
+export function fillMergeTags(s, { email = '' } = {}) {
+  return String(s || '').replace(MERGE_TAG, (_, tag, fallback = '') => {
+    if (tag === 'FIRST_NAME') return fallback;
+    if (tag === 'EMAIL') return email;
+    if (tag === 'UNSUBSCRIBE_URL') return '#';
+    return '';
+  });
 }
 
 // ─── Markdown-lite parser ──────────────────────────────────────────

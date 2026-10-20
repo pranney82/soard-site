@@ -165,7 +165,7 @@ function AppsList({ addToast, openFirst }) {
     if (j) addToast(j.result?.status === 'error' ? `Test made but not finished: ${j.result.error}` : 'Test application sent to JobTread as "TEST Applicant". Archive that account when you are done.', j.result?.status === 'error' ? 'error' : 'success');
   };
 
-  const CHECKS = [['account', 'Account'], ['contacts', 'Contacts'], ['home', 'Home'], ['pdf', 'PDF'], ['photos', 'Photos'], ['video', 'Video'], ['familyMessage', 'Family message'], ['medicalNote', 'Medical note'], ['staffEmail', 'Staff email']];
+  const CHECKS = [['account', 'Account'], ['contacts', 'Contacts'], ['home', 'Home'], ['pdf', 'PDF'], ['photos', 'Photos'], ['video', 'Video'], ['familyMessage', 'Family message'], ['medicalNote', 'Medical note'], ['staffEmail', 'Staff email'], ['staffSlack', 'Staff Slack']];
   const chip = (label, v) => {
     const cls = v === true ? 'badge-green' : v === 'none' ? 'badge-gray' : v === 'waiting' ? 'badge-yellow' : v === false ? 'badge-gray' : 'badge-red';
     const mark = v === true ? '✓' : v === 'waiting' ? '…' : v === 'none' ? '–' : v === false ? '·' : '!';

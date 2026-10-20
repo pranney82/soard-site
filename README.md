@@ -155,7 +155,7 @@ soard-site-main/
 │       ├── generate.js         # AI: Claude-powered content generation
 │       ├── press-scan.js       # Import press mentions
 │       ├── cc-oauth-*.js       # Admin OAuth authentication
-│       ├── newsletter*.js      # Newsletter management
+│       ├── newsletter.js       # Newsletter signup (Kit)
 │       ├── deployments.js      # Trigger CF Pages rebuilds
 │       └── _middleware.js      # Auth middleware
 │
@@ -218,8 +218,8 @@ All endpoints run as Cloudflare Workers Functions under `/api/`. Admin endpoints
 | `/api/press-scan` | POST | Import press mentions |
 | `/api/download-logo` | POST | Download partner logos |
 | `/api/deployments` | POST | Trigger site rebuild |
-| `/api/newsletter` | POST | Newsletter management |
-| `/api/newsletter-lists` | GET | Newsletter list configuration |
+| `/api/newsletter` | POST | Newsletter signup (adds to Kit) |
+| `/api/kit-broadcast` | GET/POST | Kit draft broadcasts, history and the editor preview |
 | `/api/cc-oauth-start` | GET | Initiate admin OAuth flow |
 | `/api/cc-oauth-callback` | GET | Handle OAuth callback |
 
@@ -245,8 +245,9 @@ The admin panel can also trigger deploys after content changes via the `/api/dep
 | `CF_IMAGES_TOKEN` | Yes | Cloudflare Images API |
 | `CF_PAGES_DEPLOY_HOOK` | Yes | Trigger rebuilds after content saves |
 | OAuth client ID/secret | Yes | Admin panel authentication |
-| `RESEND_API_KEY` | Yes | Newsletter signups + broadcast drafts via Resend |
-| `KIT_API_KEY` | No | Kit (ConvertKit) v4 key — syncs signups to Kit and enables "Push to Kit" broadcast drafts |
+| `KIT_API_KEY` | Yes | Kit (ConvertKit) v4 key. Kit is the only list tool: newsletter signups and "Push to Kit" broadcast drafts |
+| `RESEND_API_KEY` | Yes | One-off emails only: application links and notices, reveal reminders, staff alerts, editor test sends |
+| `SLACK_WEBHOOK_URL` | No | Slack incoming webhook for staff alerts and new-application posts |
 | `KIT_FORM_ID` | No | Also add new subscribers to this Kit form (opt-in rules/automations apply) |
 | `KIT_EMAIL_TEMPLATE_ID` | No | Kit template wrapping pushed broadcasts; account default if unset |
 

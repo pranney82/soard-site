@@ -1,8 +1,9 @@
 /**
  * Everything the application pipeline talks to, faked in memory for tests:
  * JobTread (accounts, contacts, locations, upload requests, files, comments),
- * JobTread's upload URLs, Cloudflare Stream, Resend, Turnstile, R2 and
- * Workers AI. One `fetchImpl` routes by URL; `world` holds the state.
+ * JobTread's upload URLs, Cloudflare Stream, Resend (one-off email), the
+ * Slack webhook, Turnstile, R2 and Workers AI. One `fetchImpl` routes by
+ * URL; `world` holds the state.
  *
  *   const w = fakeApplicantWorld();
  *   env = { ...w.env, DB }    // FILES, AI, keys
@@ -10,7 +11,8 @@
  *
  * Failure knobs: w.failNext.set('createContact', 1) fails the next call with
  * a 500; w.loseNext.add('createAccount') performs the create, then throws as
- * if the response never arrived.
+ * if the response never arrived. world.emailDown / world.slackDown make
+ * every Resend / Slack call fail until set back to false.
  */
 
 export const ORG = '22NJw42j5GLg';
@@ -19,7 +21,8 @@ export function fakeApplicantWorld() {
   let seq = 0;
   const nextId = (p) => `${p}${String(++seq).padStart(8, '0')}`;
   const world = {
-    accounts: {}, uploadRequests: {}, puts: [], emails: [], calls: [],
+    accounts: {}, uploadRequests: {}, puts: [], emails: [], slack: [], calls: [],
+    emailDown: false, slackDown: false,
     videos: {}, downloads: {}, deletedVideos: [], streamMeta: {},
     turnstile: true,
   };
@@ -181,9 +184,15 @@ export function fakeApplicantWorld() {
     }
     if (url.host === 'api.cloudflare.com') return stream(url, init);
     if (url.host === 'api.resend.com') {
+      if (world.emailDown) return json({ message: 'down' }, 500);
       const batch = JSON.parse(init.body);
       world.emails.push(...batch);
       return json({ data: batch.map((_, i) => ({ id: `em${i}` })) });
+    }
+    if (url.host === 'hooks.slack.test') {
+      if (world.slackDown) return new Response('invalid_token', { status: 403 });
+      world.slack.push(JSON.parse(init.body));
+      return new Response('ok');
     }
     if (url.host === 'challenges.cloudflare.com') return json({ success: world.turnstile });
     throw new Error(`fake world has no route for ${url.href}`);
@@ -214,7 +223,7 @@ export function fakeApplicantWorld() {
   };
 
   const env = {
-    JOBTREAD_GRANT_KEY: 'site-grant', CF_ACCOUNT_ID: 'acct', CF_STREAM_TOKEN: 'stream-token', RESEND_API_KEY: 'resend', FILES, AI,
+    JOBTREAD_GRANT_KEY: 'site-grant', CF_ACCOUNT_ID: 'acct', CF_STREAM_TOKEN: 'stream-token', RESEND_API_KEY: 'resend', SLACK_WEBHOOK_URL: 'https://hooks.slack.test/T0/B0/x', FILES, AI,
   };
 
   /** Make a video look fully uploaded / processed / downloadable */

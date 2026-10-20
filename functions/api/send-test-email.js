@@ -2,23 +2,23 @@
  * POST /api/send-test-email
  *
  * Renders a block-based template and sends it as a one-off email to a single
- * address — for QA before pushing the broadcast to Resend.
+ * address — for QA before pushing the broadcast to Kit.
  *
  * Body:
  *   { testEmail: 'user@example.com', data: { blocks }, opts }
  *
- * Authenticated endpoint (behind CF Access).
- *
- * Required env vars: RESEND_API_KEY
+ * Authenticated endpoint (behind CF Access). Sends through the site's
+ * one-off sender (_broadcast-notify.js), not Kit.
  */
 
-import { customTemplate } from './_email-templates.js';
+import { customTemplate, fillMergeTags } from './_email-templates.js';
+import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 
 export async function onRequestPost(context) {
-  const { RESEND_API_KEY } = context.env;
+  const { env } = context;
 
-  if (!RESEND_API_KEY) {
-    return Response.json({ ok: false, error: 'RESEND_API_KEY is not configured.' }, { status: 503 });
+  if (!emailConfigured(env)) {
+    return Response.json({ ok: false, error: 'Email sending is not configured.' }, { status: 503 });
   }
 
   const body = await context.request.json();
@@ -34,38 +34,24 @@ export async function onRequestPost(context) {
 
   const tpl = customTemplate(data, opts);
 
-  // Strip the broadcast-only unsubscribe merge tag for test sends — Resend
-  // only resolves {{{RESEND_UNSUBSCRIBE_URL}}} for broadcasts, not /emails.
-  const html = tpl.html.replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, '#');
+  // A test copy isn't sent to the list, so merge tags get plain values
+  const fill = (s) => fillMergeTags(s, { email: testEmail });
 
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: tpl.from,
-        to: [testEmail],
-        subject: `[TEST] ${tpl.subject}`,
-        html,
-      }),
+    const r = await sendEmails(env, {
+      to: [testEmail],
+      from: tpl.from,
+      subject: `[TEST] ${fill(tpl.subject)}`,
+      html: fill(tpl.html),
     });
 
-    const result = await res.json();
-
-    if (!res.ok) {
-      // Log the upstream detail server-side; return a generic message so raw
-      // Resend error bodies never reach the client.
-      console.error(`Resend test send error ${res.status}:`, JSON.stringify(result));
-      return Response.json(
-        { ok: false, error: 'Failed to send test email. Please try again.' },
-        { status: res.status }
-      );
+    if (!r.sent) {
+      // Log the upstream detail server-side; keep the client message generic.
+      console.error('Test send error:', r.errors.join('; '));
+      return Response.json({ ok: false, error: 'Failed to send test email. Please try again.' }, { status: 500 });
     }
 
-    return Response.json({ ok: true, id: result.id, to: testEmail });
+    return Response.json({ ok: true, to: testEmail });
   } catch (err) {
     console.error('Send test email error:', err);
     return Response.json({ ok: false, error: 'Something went wrong.' }, { status: 500 });
