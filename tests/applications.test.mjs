@@ -296,13 +296,17 @@ test('submitting twice gives the same application; stops and gaps are refused', 
   assert.ok((await submitDraft(env, noVideo)).errors.video);
 });
 
-test('a TEST application is marked, named TEST, and only emails Peter', async () => {
-  const made = await createTestApplication(env, { email: 'peter@soardcharity.com', year: YEAR });
+test('a sample application goes only to whoever sent it, is marked TEST, and archives itself', async () => {
+  const made = await createTestApplication(env, { email: 'linzi@soardcharity.com', year: YEAR });
   assert.equal(made.ok, true);
   assert.equal((await run(made.id)).status, 'done');
   const [acct] = Object.values(w.world.accounts);
   assert.equal(acct.name, 'TEST Applicant');
-  assert.deepEqual(w.world.emails.map(e => e.to[0]), ['peter@soardcharity.com']);
+  // The sender gets what a family gets (the welcome, through JobTread) and what staff get (the heads-up)
+  assert.deepEqual(acct.comments.find(c => c.name === 'Application Status').assignees.map(a => a.emailAddress), ['linzi@soardcharity.com']);
+  assert.deepEqual(w.world.emails.map(e => e.to), [['linzi@soardcharity.com']]);
+  assert.match(w.world.emails[0].html, /Test application · not a real family/);
+  assert.ok(acct.archivedAt, 'no TEST account left on the board to clean up');
   assert.match(w.world.slack[0].text, /^🧪 Test · 📝 New application: TEST/);
   assert.match(renderSlack(w.world.slack[0]), /^📝 New application: TEST, age \d+\n🧪 \*Test application · not a real family\*\n/);
   const list = await listApplications(env.DB);

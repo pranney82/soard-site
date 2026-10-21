@@ -137,7 +137,7 @@ export function helloCard({ role, who, shared = false, adminUrl }) {
   return role === 'attention'
     ? slackCard({
       icon: '👋', title: 'Website alerts that need a hand will post here', ...common,
-      lead: `${who} picked this channel in the admin. Problems during a live reveal, stuck applications, reveal invites and countdowns show up here. Each problem is one thread, and its first post turns ✅ when it’s fixed. Something failing during a live reveal pings whoever is active here, so phones buzz.`,
+      lead: `${who} picked this channel in the admin. Problems during a live reveal, stuck applications, reveal invites and countdowns show up here. Updates on a problem reply under its first post and show in the channel too, and the first post turns ✅ when it’s fixed. Something failing during a live reveal pings whoever is active here, so phones buzz.`,
     })
     : slackCard({
       icon: '🎉', title: 'Good news from the website will post here', ...common,

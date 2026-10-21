@@ -280,4 +280,16 @@ test('the sweep keeps the mirror fresh and never throws', async () => {
   const broken = await maybeSyncApplicants(env, { ...opts(), now: Date.now() + 31 * 60 * 1000 });
   assert.match(broken.error, /JobTread returned 500/);
   assert.match((await syncState(env.DB)).lastError, /500/);
+  assert.match((await syncState(env.DB)).problem.reason, /^JobTread didn't answer: .*500/, 'the one time a person should act');
+  // JobTread answers again: the problem is over, and a catch-up only reads the changes
+  w.failNext.delete('organization');
+  const back = await maybeSyncApplicants(env, { ...opts(), now: Date.now() + 32 * 60 * 1000, catchUp: true });
+  assert.equal(back.full, undefined);
+  assert.ok(back.events);
+  const ok = await syncState(env.DB, Date.now() + 32 * 60 * 1000);
+  assert.equal(ok.lastError, null);
+  assert.equal(ok.problem, null);
+  assert.ok(Date.parse(ok.eventsCheckedAt) > Date.now() + 31 * 60 * 1000, 'a check with no new changes still counts as checked');
+  // The sweep stops reaching JobTread: that's a problem too
+  assert.match((await syncState(env.DB, Date.now() + 60 * 60 * 1000)).problem.reason, /stopped running/);
 });

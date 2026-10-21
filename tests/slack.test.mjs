@@ -537,7 +537,7 @@ test('the test run: an intro, every alert as its own post, problems that really 
   const cap = (p) => p.blocks?.[0]?.elements?.[0]?.text || '';
   const stuck = top.find((p) => /^🧪 \*Test \d+ of \d+\* · Applications · Stuck, then fixes itself · real ones post here$/.test(cap(p)));
   const stuckTs = `${posts.indexOf(stuck) + 1}.000100`;
-  assert.ok(edits.some((e) => e.ts === stuckTs && /✅ Unstuck/.test(renderSlack(e))), 'its first post edited into ✅');
+  assert.ok(edits.some((e) => e.ts === stuckTs && /✅ Resolved: Maya Lopez’s application was stuck/.test(renderSlack(e))), 'its first post edited into a short ✅');
   assert.ok(posts.some((p) => p.thread_ts === stuckTs && p.reply_broadcast === true), 'and said so in its thread, shown in the channel too');
   assert.ok(posts.filter((p) => p.thread_ts).length >= 4, 'reminders and resolutions reply in their own threads');
   // Where the real ones go

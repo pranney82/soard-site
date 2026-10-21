@@ -1050,7 +1050,8 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
   await step('staff heads-up', async () => {
     const failed = [];
     if (!s.staffEmail) {
-      const to = app.is_test ? ALERT_EMAILS : (await formFor(env.DB, { year: app.year })).staffEmails;
+      // A sample goes to whoever sent it, so they see exactly what staff get
+      const to = app.is_test ? [app.parent_email || ALERT_EMAILS[0]] : (await formFor(env.DB, { year: app.year })).staffEmails;
       const msg = staffEmail(app, accountId);
       const r = await sendEmails(env, { to, ...msg, tags: [{ name: 'type', value: 'application' }] });
       if (r.errors.length && !r.sent) failed.push(`email: ${r.errors[0]}`);
@@ -1076,6 +1077,15 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     // Name the video in the Stream dashboard (best effort)
     streamApi(env, `/${encodeURIComponent(v.uid)}`, { method: 'POST', body: JSON.stringify({ meta: { name: `${accountName(app)} application`, application: app.id } }) }, fetchImpl).catch(() => {});
   });
+
+  // A sample has done its job once the emails are out: it archives itself in JobTread
+  if (app.is_test && !waiting) {
+    await step('archive sample', async () => {
+      if (s.archived || !accountId) return;
+      await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: accountId, archive: true } } }, jt);
+      s.archived = iso(now);
+    });
+  }
 
   const attempts = error ? (app.attempts || 0) + 1 : 0;
   const status = error ? 'error' : waiting ? 'waiting' : 'done';

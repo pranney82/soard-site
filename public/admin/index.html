@@ -6460,7 +6460,7 @@
     // Two channels: good news everyone celebrates in, and alerts that need a hand
     const SLACK_ROLES = [
       { role: 'news', label: 'Good news', save: 'Post good news here', what: 'Gifts, new applications, a countdown going up, reveals going live, replays and Reels. The channel everyone celebrates in.' },
-      { role: 'attention', label: 'Needs attention', save: 'Post alerts here', what: 'Problems during a live reveal (with @here once alerts have a channel of their own, so phones buzz), the go/no-go checks, stuck applications, reveal invites and countdowns. Each problem is one thread, and its first post turns ✅ when it’s fixed.' },
+      { role: 'attention', label: 'Needs attention', save: 'Post alerts here', what: 'Problems during a live reveal (with @here once alerts have a channel of their own, so phones buzz), the go/no-go checks, stuck applications, reveal invites and countdowns. Updates on a problem reply under its first post and show in the channel too, and the first post turns ✅ when it’s fixed.' },
     ];
     function BcSlack({ mode, addToast }) {
       const [st, setSt] = useState(null); // slackStatus result; null while checking

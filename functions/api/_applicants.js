@@ -405,6 +405,8 @@ export async function syncEvents(env, { fetchImpl = fetch, now = Date.now(), max
   const ids = [...touched];
   if (ids.length) await refreshApplicants(env, ids, { fetchImpl, now });
   const missed = await catchStatusChanges(env, statusEvents, { fetchImpl, now });
+  // When JobTread was last read, changes or not (the cursor only moves when something happened)
+  await setSync(DB, 'events_checked', iso(now), now);
   return { stored, touched: ids.length, cursor: last, missed };
 }
 
@@ -466,16 +468,23 @@ export async function backfillActivity(env, { fetchImpl = fetch, now = Date.now(
  * backfill until it's done, and a full re-read every 30 minutes (and on the
  * very first run). Never throws.
  */
-export async function maybeSyncApplicants(env, { fetchImpl = fetch, now = Date.now(), force = false } = {}) {
+/**
+ * The sweep's turn at JobTread. force: now, whatever the turns say.
+ * catchUp: just the changes since the last look (the admin coming back to
+ * the tab), which takes a second or two.
+ */
+export async function maybeSyncApplicants(env, { fetchImpl = fetch, now = Date.now(), force = false, catchUp = false } = {}) {
   const { DB } = env;
   if (!DB || !env.JOBTREAD_GRANT_KEY) return null;
   const out = {};
   try {
     await ensureApplicantSchema(DB);
-    if (force || await takeTurn(DB, 'full_turn', 30 * 60 * 1000, now)) out.full = await syncAllApplicants(env, { fetchImpl, now });
-    if (force || await takeTurn(DB, 'events_turn', 50 * 1000, now)) {
+    if (!catchUp && (force || await takeTurn(DB, 'full_turn', 30 * 60 * 1000, now))) out.full = await syncAllApplicants(env, { fetchImpl, now });
+    if (force || catchUp || await takeTurn(DB, 'events_turn', 50 * 1000, now)) {
       out.events = await syncEvents(env, { fetchImpl, now });
-      out.backfill = await backfillActivity(env, { fetchImpl, now });
+      if (!catchUp) out.backfill = await backfillActivity(env, { fetchImpl, now });
+      // JobTread answered: an earlier failure is over
+      await DB.prepare("DELETE FROM applicant_sync WHERE key = 'last_error'").run();
     }
   } catch (e) {
     out.error = e.message;
@@ -484,19 +493,37 @@ export async function maybeSyncApplicants(env, { fetchImpl = fetch, now = Date.n
   return out;
 }
 
-/** How fresh the mirror is, for the admin */
-export async function syncState(DB) {
+/** Past this, the 2-minute sweep has stopped reaching JobTread */
+export const SYNC_STALE_MS = 10 * 60 * 1000;
+
+/**
+ * How fresh the mirror is, for the admin. problem is null while all is well,
+ * else { reason, since } in plain words, for the one time a person should act.
+ */
+export async function syncState(DB, now = Date.now()) {
   await ensureApplicantSchema(DB);
-  const { results } = await DB.prepare("SELECT key, value, updated_at FROM applicant_sync WHERE key IN ('full_at', 'events_cursor', 'backfill_before', 'backfill_oldest', 'last_error')").all();
+  const { results } = await DB.prepare("SELECT key, value, updated_at FROM applicant_sync WHERE key IN ('full_at', 'events_cursor', 'events_checked', 'backfill_before', 'backfill_oldest', 'last_error')").all();
   const m = Object.fromEntries((results || []).map(r => [r.key, r]));
   return {
     fullAt: m.full_at?.value || null,
     eventsThrough: m.events_cursor?.value || null,
-    eventsCheckedAt: m.events_cursor?.updated_at || null,
+    eventsCheckedAt: m.events_checked?.value || m.events_cursor?.updated_at || null,
     historyDone: m.backfill_before?.value === 'done',
     historyBackTo: m.backfill_before?.value === 'done' ? BACKFILL_FROM : (m.backfill_oldest?.value || null),
     lastError: m.last_error?.value || null,
+    problem: syncProblem(m, now),
   };
+}
+
+function syncProblem(m, now) {
+  const err = m.last_error?.value || '';
+  if (err) {
+    const [since, ...rest] = err.split(' ');
+    return { reason: `JobTread didn't answer: ${rest.join(' ') || 'unknown error'}`, since: Number.isFinite(Date.parse(since)) ? since : m.last_error.updated_at || null };
+  }
+  const checked = m.events_checked?.value || m.events_cursor?.updated_at;
+  if (checked && now - Date.parse(checked) > SYNC_STALE_MS) return { reason: 'The automatic check of JobTread has stopped running.', since: checked };
+  return null;
 }
 
 // ─── Reading the mirror ─────────────────────────────────────────────

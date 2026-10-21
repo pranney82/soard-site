@@ -675,10 +675,10 @@ export function slackPost(env, card, opts = {}) {
 
 // ─── Problems that clear ────────────────────────────────────────────
 // A problem's first post is remembered by a key the caller picks
-// ("invite:<jobId>", "live:<broadcastId>:noAudio"). While it's open, more
-// posts for that key go in its thread (shown in the channel too), so one
-// problem is one conversation. When it clears, the first post is edited into
-// a ✅ and the thread says so: scrolling the channel shows what's still open.
+// ("invite:<jobId>", "live:<broadcastId>:noAudio"). Every update replies in
+// its thread and shows in the channel too, so nobody misses it and one problem
+// is one conversation. When it clears, the reply says so and the first post is
+// edited into a short "✅ Resolved", so scrolling back shows what's still open.
 
 let _openReady = { db: null, p: null }; // the table is made once per isolate and database
 async function openPosts(DB) {
@@ -700,8 +700,8 @@ export async function slackOpenPost(env, key) {
 
 /**
  * Post a problem. The first time for `key` it's a new post, remembered; while
- * it's open, a reply in that post's thread. `title` is what the ✅ edit says
- * was resolved. Same result as slackAlert.
+ * it's open, a reply in that post's thread, shown in the channel too. `title`
+ * is what the ✅ edit says was resolved. Same result as slackAlert.
  */
 export async function slackIssue(env, key, card, { title = null, kind = 'attention' } = {}) {
   const open = await slackOpenPost(env, key);
@@ -717,21 +717,22 @@ export async function slackIssue(env, key, card, { title = null, kind = 'attenti
 }
 
 /**
- * The problem for `key` cleared: its first post becomes "✅ Resolved: <title>"
- * with `summary` under it, and `card` goes in the thread (shown in the
- * channel too). → slackAlert's result for the reply, or null when nothing
- * was open for the key (the caller decides whether to post anyway).
+ * The problem for `key` cleared: `card` replies in its thread (shown in the
+ * channel too), and the first post is edited into a short "✅ Resolved:
+ * <title>" with `summary` under it, so it never repeats the reply.
+ * → slackAlert's result for the reply, or null when nothing was open for the
+ * key (the caller decides whether to post anyway).
  */
 export async function slackResolved(env, key, card, { summary = null } = {}) {
   const open = await slackOpenPost(env, key);
   if (!open) return null;
   const ref = { channel: open.channel, ts: open.ts };
-  const [, reply] = await Promise.all([
+  const [, posted] = await Promise.all([
     slackPost(env, slackCard({ icon: '✅', title: `Resolved: ${open.title || 'this problem'}`, lead: summary }), { update: ref }),
     slackPost(env, card, { thread: { ...ref, broadcast: true } }),
   ]);
   await env.DB.prepare('DELETE FROM slack_open_posts WHERE key = ?').bind(key).run().catch(() => {});
-  return reply;
+  return posted;
 }
 
 /** The icon a problem or notice gets when the caller doesn't pick one */
