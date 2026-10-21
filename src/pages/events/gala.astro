@@ -1,22 +1,29 @@
 ---
 /**
  * Evening of Sunshine — Annual fundraising gala for Sunshine on a Ranney Day.
- * Theme rotates yearly (currently Havana Nights). Event details come from
- * the latest /content/events/{year}-evening-of-sunshine.json entry.
+ * Theme rotates yearly (the event's Theme field, Havana Nights in 2026).
+ * Event details come from the newest gala in the events collection.
+ *
+ * Once that gala is over this page is its recap (components/events/
+ * EventRecap.astro): the pro photos, then the sponsors, until next year's
+ * gala is added in the admin. Each year also keeps its own page,
+ * /events/gala/2026/. See public/admin/events-shared.js.
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FAQAccordion from '../../components/ui/FAQAccordion.astro';
 import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 import { getCollection, getEntry } from 'astro:content';
 import { BID_URL, auctionIsOpen, bidClosesLabel, AUCTION_ITEM_COUNT, AUCTION_CATEGORIES, AUCTION_HIGHLIGHTS } from '../../utils/auction';
+import EventRecap from '../../components/events/EventRecap.astro';
+import { recapMeta, galaThemeName } from '../../utils/event-recap';
+import { isOver, latestOf, seriesByKey } from '../../../public/admin/events-shared.js';
 
-/* ── Event content: the latest evening-of-sunshine entry, so this page
-   automatically follows next year's gala once it's added in the admin
-   (e.g. "2027-evening-of-sunshine") — no code change needed. ── */
-const eventEntry = (await getCollection('events'))
-  .filter(e => e.data.slug.includes('evening-of-sunshine'))
-  .sort((a, b) => b.data.date.localeCompare(a.data.date))[0];
-const ev = eventEntry?.data ?? {} as any;
+/* ── Event content: the newest gala, so this page automatically follows
+   next year's gala once it's added in the admin (e.g. "2027-evening-of-sunshine")
+   with no code change. ── */
+const allEvents = (await getCollection('events')).map(e => e.data);
+const ev: any = latestOf(seriesByKey('gala'), allEvents) ?? {};
+const themeName = galaThemeName(ev);
 
 /* ── Online bidding: while it's open, "Bid Now" outranks the ticket CTA
    everywhere on this page. Cutoff lives in utils/auction.ts. ── */
@@ -26,6 +33,10 @@ const bidClosesAt = bidClosesLabel();
 /* ── Gala-specific CMS data (admin-editable via gala.json) ── */
 const galaData = await getEntry('site', 'gala');
 const cms: any = galaData?.data ?? {};
+
+/* ── After the gala: the recap, until next year's gala is added ── */
+const over = !!ev.slug && isOver(ev);
+const recap = over ? recapMeta(ev, allEvents, cms, '/events/gala/') : null;
 
 interface Tier {
   name: string;
@@ -141,8 +152,8 @@ const ogImage = cfRaw(heroImageId, 'w=1200,h=630,fit=cover,gravity=auto,q=82');
 const eventJsonLd = {
   "@type": "Event",
   "@id": "https://sunshineonaranneyday.com/events/gala/#event",
-  "name": ev.title || "Evening of Sunshine — Havana Nights",
-  "description": "Annual fundraising gala benefiting children with special needs. Havana Nights theme: Latin music, dancing, and live auction.",
+  "name": ev.title || "Evening of Sunshine",
+  "description": `Annual fundraising gala benefiting children with special needs.${themeName ? ` ${themeName} theme: music, dancing, and live auction.` : ''}`,
   "startDate": `${dateISO}T18:00:00-04:00`,
   "endDate": `${dateISO}T23:00:00-04:00`,
   "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
@@ -172,16 +183,21 @@ const eventJsonLd = {
 ---
 
 <BaseLayout
-  title="Evening of Sunshine — Havana Nights Gala"
-  description="Join us for Havana Nights at the Evening of Sunshine Gala: Latin music, dancing, and a live auction benefiting children with special needs."
-  ogImage={ogImage}
-  jsonLd={eventJsonLd}
-  breadcrumbs={[
+  title={recap?.title ?? `Evening of Sunshine${themeName ? ` — ${themeName}` : ''} Gala`}
+  description={recap?.description ?? `Join us${themeName ? ` for ${themeName}` : ''} at the Evening of Sunshine Gala: music, dancing, and a live auction benefiting children with special needs.`}
+  ogImage={recap?.ogImage ?? ogImage}
+  jsonLd={recap?.jsonLd ?? eventJsonLd}
+  breadcrumbs={recap?.breadcrumbs ?? [
     { name: 'Events', url: '/events/' },
     { name: 'Evening of Sunshine Gala', url: '/events/gala/' },
   ]}
 >
-  <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
+  {!over && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />}
+
+  {over ? (
+    <EventRecap ev={ev} events={allEvents} pageDoc={cms} theme="gala" themeName={themeName} />
+  ) : (
+  <Fragment>
 
   <!-- ═══ HERO ═══ -->
   <section class="gv-hero">
@@ -216,10 +232,12 @@ const eventJsonLd = {
         <h1 class="gv-hero__title" data-reveal transition:name="event-title">
           Evening of <span class="gv-hero__title-accent">Sunshine</span>
         </h1>
-        <p class="gv-hero__theme-line" data-reveal>
-          <span class="gv-hero__theme-tag">This Year's Theme</span>
-          <em>Havana Nights</em>
-        </p>
+        {themeName && (
+          <p class="gv-hero__theme-line" data-reveal>
+            <span class="gv-hero__theme-tag">This Year's Theme</span>
+            <em>{themeName}</em>
+          </p>
+        )}
         <p class="gv-hero__subtitle" data-reveal>
           An evening of Latin music, festive cocktails, and dancing, all to fund life-changing home renovations for children with special needs.
         </p>
@@ -1027,6 +1045,8 @@ const eventJsonLd = {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
     </a>
   </div>
+  </Fragment>
+  )}
 </BaseLayout>
 
 <style>
@@ -3560,6 +3580,9 @@ const eventJsonLd = {
 
 <script>
   function initGala() {
+    // Only the gala before the event: the recap has its own scripts, and this
+    // listener stays registered on every page after a visit
+    if (!document.querySelector('.gv-hero')) return;
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     /* Smooth scroll for in-page anchors — measures live header height and

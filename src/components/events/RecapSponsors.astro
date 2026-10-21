@@ -1,0 +1,315 @@
+---
+/**
+ * RecapSponsors — the thank-you to an event's sponsors (EventRecap.astro).
+ *
+ * Levels (Diamond, Gold, Hole…) are a logo wall, largest first; the named
+ * pieces of the event (Signature Cocktail, Closest to the Pin…) read like a
+ * printed program. A sponsor links to its website when it has one, here or
+ * on its partner record (matched by logo, then by name).
+ */
+import { getCollection } from 'astro:content';
+import { cfRaw, cfId } from '../../utils/cf-image';
+import { splitSponsors, momentName, nameKey, sponsorCount } from '../../../public/admin/events-shared.js';
+
+interface Sponsor { name: string; logo?: string; website?: string; scale?: number }
+interface Tier { tier: string; size: string; names: Sponsor[] }
+interface Props {
+  tiers: Tier[];
+  when?: 'night' | 'day';
+  /** "gala", "golf tournament", "event": the sponsor invitation at the end */
+  kind?: string;
+  mailSubject?: string;
+  momentsLabel?: string;
+}
+
+const { tiers, when = 'day', kind = 'event', mailSubject = 'Event', momentsLabel } = Astro.props;
+const { levels, moments } = splitSponsors(tiers) as { levels: Tier[]; moments: Tier[] };
+const count = sponsorCount(tiers);
+
+const partners = (await getCollection('partners')).map((p) => p.data as { name: string; logo?: string; website?: string });
+const siteByLogo = new Map<string, string>();
+const siteByName = new Map<string, string>();
+for (const p of partners) {
+  if (!p.website) continue;
+  if (p.logo) siteByLogo.set(cfId(p.logo), p.website);
+  siteByName.set(nameKey(p.name), p.website);
+}
+const websiteOf = (s: Sponsor) => s.website || (s.logo && siteByLogo.get(cfId(s.logo))) || siteByName.get(nameKey(s.name)) || '';
+
+const LOGO = { xl: [600, 300], lg: [480, 240], md: [360, 180], sm: [280, 140] } as Record<string, [number, number]>;
+/* trim=border cuts the white space many logo files carry, so every logo fills its card */
+const logoAt = (logo: string, w: number, h: number, q = 88) => cfRaw(logo, `trim=border,w=${w},h=${h},fit=contain,q=${q}`);
+const logoSrc = (s: Sponsor, size: string) => { const [w, h] = LOGO[size] || LOGO.md; return logoAt(s.logo!, w, h); };
+const logoSet = (s: Sponsor, size: string) => { const [w, h] = LOGO[size] || LOGO.md; return `${logoAt(s.logo!, w, h)} 1x, ${logoAt(s.logo!, w * 2, h * 2, 82)} 2x`; };
+const mail = `mailto:info@soardcharity.com?subject=${encodeURIComponent(`${mailSubject} sponsorship`)}`;
+---
+
+<section class="rs" id="sponsors" aria-labelledby="rs-heading">
+  <div class="rs-wrap">
+    <header class="rs-head">
+      <p class="rs-eyebrow">With gratitude</p>
+      <h2 id="rs-heading" class="rs-title">Thank you to our <em>sponsors</em></h2>
+      <p class="rs-sub">
+        {count === 1 ? 'This sponsor' : `These ${count} businesses, families and friends`} made the {when} possible.
+      </p>
+    </header>
+
+    {levels.map((t) => (
+      <div class={`rs-tier rs-tier--${t.size}`}>
+        <h3 class="rs-tier__label"><span>{t.tier}</span></h3>
+        <ul class={`rs-grid rs-grid--${t.size}`} data-count={t.names.length} role="list">
+          {t.names.map((s) => {
+            const href = websiteOf(s);
+            const body = s.logo ? (
+              <img
+                class="rs-logo"
+                src={logoSrc(s, t.size)}
+                srcset={logoSet(s, t.size)}
+                alt={s.name}
+                width={(LOGO[t.size] || LOGO.md)[0]}
+                height={(LOGO[t.size] || LOGO.md)[1]}
+                loading="lazy"
+                decoding="async"
+                style={s.scale ? `--logo-scale:${s.scale}` : undefined}
+              />
+            ) : (
+              <span class="rs-name">{s.name}</span>
+            );
+            return (
+              <li>
+                {href ? (
+                  <a class="rs-card" href={href} target="_blank" rel="noopener" aria-label={`${s.name}, opens their website`}>{body}</a>
+                ) : (
+                  <div class="rs-card">{body}</div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    ))}
+
+    {moments.length > 0 && (
+      <div class="rs-moments">
+        <h3 class="rs-tier__label"><span>{momentsLabel || (when === 'night' ? 'Moments of the night' : 'Around the day')}</span></h3>
+        <ul class="rs-moments__list" role="list">
+          {moments.map((t) => (
+            <li class="rs-moment">
+              <span class="rs-moment__what">{momentName(t.tier)}</span>
+              <span class="rs-moment__who">
+                {t.names.map((s) => {
+                  const href = websiteOf(s);
+                  const inner = (
+                    <Fragment>
+                      {s.logo && <img src={logoAt(s.logo, 160, 80, 85)} srcset={`${logoAt(s.logo, 160, 80, 85)} 1x, ${logoAt(s.logo, 320, 160, 80)} 2x`} alt="" width="160" height="80" loading="lazy" decoding="async" />}
+                      <span>{s.name}</span>
+                    </Fragment>
+                  );
+                  return href
+                    ? <a class="rs-moment__sponsor" href={href} target="_blank" rel="noopener">{inner}</a>
+                    : <span class="rs-moment__sponsor">{inner}</span>;
+                })}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    <p class="rs-foot">
+      Want your name here next year? <a href={mail}>Ask about sponsoring the {kind}</a>
+    </p>
+  </div>
+</section>
+
+<style>
+  .rs {
+    background: var(--rc-paper-2, #fff);
+    padding: clamp(64px, 9vw, 120px) 0;
+  }
+  .rs-wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 clamp(16px, 4vw, 40px);
+  }
+  .rs-head {
+    text-align: center;
+    max-width: 640px;
+    margin: 0 auto clamp(40px, 6vw, 64px);
+    display: grid;
+    gap: 12px;
+    justify-items: center;
+  }
+  .rs-eyebrow {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--rc-eyebrow, var(--c-text-muted));
+  }
+  .rs-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4.4vw, 3.2rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    color: var(--rc-ink, var(--c-text));
+    text-wrap: balance;
+  }
+  .rs-title em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 56%, var(--rc-highlight, var(--c-yellow-soft)) 56%);
+    padding: 0 0.04em;
+  }
+  .rs-sub {
+    margin: 0;
+    font-size: clamp(15px, 1.4vw, 17px);
+    line-height: 1.65;
+    color: var(--rc-muted, var(--c-text-muted));
+  }
+
+  .rs-tier { margin-top: clamp(36px, 5vw, 56px); }
+  .rs-tier:first-of-type { margin-top: 0; }
+  .rs-tier__label {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin: 0 0 20px;
+    font-family: var(--font-body, inherit);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--rc-muted, var(--c-text-muted));
+  }
+  .rs-tier__label::before, .rs-tier__label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--rc-line, rgba(0, 0, 0, 0.1));
+  }
+
+  .rs-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: clamp(10px, 1.4vw, 16px);
+    justify-content: center;
+  }
+  .rs-grid--xl { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 460px)); }
+  .rs-grid--lg { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 340px)); }
+  .rs-grid--md { grid-template-columns: repeat(auto-fit, minmax(min(100%, 168px), 230px)); }
+  .rs-grid--sm { grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 180px)); }
+
+  .rs-card {
+    --pad: clamp(14px, 2vw, 24px);
+    position: relative;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    background: #fff;
+    border: 1px solid var(--rc-line, rgba(0, 0, 0, 0.08));
+    border-radius: 16px;
+    color: var(--rc-ink, var(--c-text));
+    text-decoration: none;
+    aspect-ratio: 2 / 1;
+    padding: var(--pad);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+  .rs-grid--xl .rs-card { --pad: clamp(20px, 3vw, 40px); border-radius: 22px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08); }
+  a.rs-card:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.1); border-color: transparent; }
+  a.rs-card:focus-visible { outline: 3px solid var(--rc-accent, var(--c-yellow)); outline-offset: 3px; }
+  /* The logo fills the card inside its padding, whatever its shape */
+  .rs-logo {
+    position: absolute;
+    top: var(--pad);
+    left: var(--pad);
+    width: calc(100% - 2 * var(--pad));
+    height: calc(100% - 2 * var(--pad));
+    object-fit: contain;
+    transform: scale(var(--logo-scale, 1));
+  }
+  .rs-name {
+    font-family: var(--font-display);
+    font-size: clamp(1.05rem, 1.6vw, 1.3rem);
+    line-height: 1.25;
+    text-align: center;
+    text-wrap: balance;
+  }
+  .rs-grid--xl .rs-name { font-size: clamp(1.4rem, 2.6vw, 2rem); }
+  .rs-grid--lg .rs-name { font-size: clamp(1.2rem, 2vw, 1.55rem); }
+
+  /* The top level sits on a dark band, like the program's cover page */
+  .rs-tier--xl {
+    background: var(--rc-band, var(--c-dark));
+    border-radius: clamp(20px, 3vw, 32px);
+    padding: clamp(28px, 5vw, 56px) clamp(16px, 4vw, 48px);
+  }
+  .rs-tier--xl .rs-tier__label { color: var(--rc-band-accent, var(--c-yellow)); }
+  .rs-tier--xl .rs-tier__label::before, .rs-tier--xl .rs-tier__label::after { background: rgba(255, 255, 255, 0.18); }
+  .rs-tier--xl .rs-card { border-color: transparent; }
+
+  .rs-moments { margin-top: clamp(40px, 6vw, 64px); }
+  .rs-moments__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+    column-gap: clamp(24px, 4vw, 56px);
+  }
+  .rs-moment {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 16px;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--rc-line, rgba(0, 0, 0, 0.08));
+  }
+  .rs-moment__what {
+    font-family: var(--font-display);
+    font-size: clamp(1.05rem, 1.5vw, 1.2rem);
+    font-style: italic;
+    color: var(--rc-ink, var(--c-text));
+  }
+  .rs-moment__who { display: grid; gap: 8px; justify-items: end; text-align: right; }
+  .rs-moment__sponsor {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--rc-ink, var(--c-text));
+    text-decoration: none;
+  }
+  a.rs-moment__sponsor:hover span { text-decoration: underline; text-decoration-color: var(--rc-accent, var(--c-yellow)); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  a.rs-moment__sponsor:focus-visible { outline: 3px solid var(--rc-accent, var(--c-yellow)); outline-offset: 3px; border-radius: 4px; }
+  .rs-moment__sponsor img { width: 64px; height: 32px; object-fit: contain; flex-shrink: 0; }
+
+  .rs-foot {
+    margin: clamp(40px, 6vw, 64px) 0 0;
+    text-align: center;
+    font-size: 15px;
+    color: var(--rc-muted, var(--c-text-muted));
+  }
+  .rs-foot a {
+    color: var(--rc-ink, var(--c-text));
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-color: var(--rc-accent, var(--c-yellow));
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+
+  @media (max-width: 560px) {
+    .rs-grid--md, .rs-grid--sm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rs-grid--lg { grid-template-columns: minmax(0, 1fr); }
+    .rs-moment { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .rs-moment__who { justify-items: start; text-align: left; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rs-card { transition: none; }
+  }
+</style>

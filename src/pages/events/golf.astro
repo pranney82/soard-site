@@ -1,16 +1,43 @@
 ---
 /**
- * Golf Tournament — Sunshine on a Ranney Fairway 2026
- * Ported from sunnyandranney.com/events/ and adapted for SOARD design system
+ * Golf Tournament — Sunshine on a Ranney Fairway
+ * Ported from sunnyandranney.com/events/ and adapted for SOARD design system.
+ * The date, place and registration link come from the newest golf event in
+ * the events collection, so next year's tournament needs no code change.
+ *
+ * Once that tournament is over this page is its recap (components/events/
+ * EventRecap.astro): the pro photos, then the sponsors, until next year's
+ * tournament is added in the admin. Each year also keeps its own page,
+ * /events/golf/2026/. See public/admin/events-shared.js.
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FAQAccordion from '../../components/ui/FAQAccordion.astro';
 import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
-import { getEntry } from 'astro:content';
+import { getCollection, getEntry } from 'astro:content';
+import EventRecap from '../../components/events/EventRecap.astro';
+import { recapMeta } from '../../utils/event-recap';
+import { isOver, latestOf, seriesByKey, fmtDay } from '../../../public/admin/events-shared.js';
 
 /* ── CMS data (admin-editable via golf.json) ── */
 const golfData = await getEntry('site', 'golf');
 const cms = golfData?.data ?? {};
+
+/* ── The newest tournament; after it, the recap until the next one is added ── */
+const allEvents = (await getCollection('events')).map(e => e.data);
+const ev: any = latestOf(seriesByKey('golf'), allEvents) ?? {};
+const over = !!ev.slug && isOver(ev);
+const recap = over ? recapMeta(ev, allEvents, cms, '/events/golf/') : null;
+const dateISO: string = ev.date || '2026-05-18';
+const year = dateISO.slice(0, 4);
+const dateLong = fmtDay(dateISO, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+const ZEFFY = ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/sunshine-on-a-ranney-fairway--2026';
+const venue: string = String(ev.location || 'Indian Hills Country Club').trim();
+const address: string = String(ev.address || '4001 Clubland Dr. Marietta, GA 30068').trim();
+/* "4001 Clubland Dr. Marietta, GA 30068" → street / city lines */
+const addressLines = (() => {
+  const m = address.match(/^(.*?\.)\s+([^,]+,\s*[A-Z]{2}.*)$/) || address.match(/^(.*?),\s*(.+,.+)$/);
+  return m ? [m[1].trim(), m[2].trim()] : [address];
+})();
 
 /* ── Sponsorship tiers (from CMS) ── */
 interface Tier {
@@ -40,23 +67,16 @@ const activityTiers = sponsorTiers.filter(t => t.size === 'sm');
 const eventJsonLd = {
   "@type": "Event",
   "@id": "https://sunshineonaranneyday.com/events/golf/#event",
-  "name": "Sunshine on a Ranney Fairway 2026",
+  "name": `Sunshine on a Ranney Fairway ${year}`,
   "description": "Charity golf tournament funding dream room makeovers for children with special needs.",
-  "startDate": "2026-05-18T07:00:00-04:00",
-  "endDate": "2026-05-18T18:00:00-04:00",
+  "startDate": `${dateISO}T07:00:00-04:00`,
+  "endDate": `${dateISO}T18:00:00-04:00`,
   "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
   "eventStatus": "https://schema.org/EventScheduled",
   "location": {
     "@type": "Place",
-    "name": "Indian Hills Country Club",
-    "address": {
-      "@type": "PostalAddress",
-      "streetAddress": "4001 Clubland Dr.",
-      "addressLocality": "Marietta",
-      "addressRegion": "GA",
-      "postalCode": "30068",
-      "addressCountry": "US",
-    },
+    "name": venue,
+    "address": { "@type": "PostalAddress", "streetAddress": address, "addressCountry": "US" },
   },
   "organizer": { "@id": "https://sunshineonaranneyday.com/#organization" },
   "image": cfAbsolute("golf-logo-dark"),
@@ -66,27 +86,27 @@ const eventJsonLd = {
       "name": "Foursome",
       "price": "1500",
       "priceCurrency": "USD",
-      "url": "https://www.zeffy.com/en-US/ticketing/sunshine-on-a-ranney-fairway--2026",
+      "url": ZEFFY,
       "availability": "https://schema.org/InStock",
-      "validFrom": "2026-01-01",
+      "validFrom": `${year}-01-01`,
     },
     {
       "@type": "Offer",
       "name": "Gold Sponsor",
       "price": "5000",
       "priceCurrency": "USD",
-      "url": "https://www.zeffy.com/en-US/ticketing/sunshine-on-a-ranney-fairway--2026",
+      "url": ZEFFY,
       "availability": "https://schema.org/InStock",
-      "validFrom": "2026-01-01",
+      "validFrom": `${year}-01-01`,
     },
     {
       "@type": "Offer",
       "name": "Presenting Sponsor",
       "price": "20000",
       "priceCurrency": "USD",
-      "url": "https://www.zeffy.com/en-US/ticketing/sunshine-on-a-ranney-fairway--2026",
+      "url": ZEFFY,
       "availability": "https://schema.org/InStock",
-      "validFrom": "2026-01-01",
+      "validFrom": `${year}-01-01`,
     },
   ],
 };
@@ -97,20 +117,24 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
 ---
 
 <BaseLayout
-  title="Sunshine on a Ranney Fairway 2026 — Charity Golf Tournament"
-  description="Join us for Sunshine on a Ranney Fairway 2026, a charity golf tournament where every swing supports life-changing room makeovers for children with special needs."
-  ogImage="/og/golf.png"
-  jsonLd={eventJsonLd}
-  breadcrumbs={[
+  title={recap?.title ?? `Sunshine on a Ranney Fairway ${year} — Charity Golf Tournament`}
+  description={recap?.description ?? `Join us for Sunshine on a Ranney Fairway ${year}, a charity golf tournament where every swing supports life-changing room makeovers for children with special needs.`}
+  ogImage={recap?.ogImage ?? '/og/golf.png'}
+  jsonLd={recap?.jsonLd ?? eventJsonLd}
+  breadcrumbs={recap?.breadcrumbs ?? [
     { name: 'Events', url: '/events/' },
     { name: 'Golf Tournament', url: '/events/golf/' },
   ]}
 >
-  <!-- Preload hero LCP image — imagesrcset/imagesizes must match the <img> -->
-  <link slot="head" rel="preload" as="image" imagesrcset={heroLogoSrcset} imagesizes={heroLogoSizes} fetchpriority="high" />
+  {/* Preload hero LCP image — imagesrcset/imagesizes must match the <img> */}
+  {!over && <link slot="head" rel="preload" as="image" imagesrcset={heroLogoSrcset} imagesizes={heroLogoSizes} fetchpriority="high" />}
 
+  {over ? (
+    <EventRecap ev={ev} events={allEvents} pageDoc={cms} theme="golf" />
+  ) : (
+  <Fragment>
   <!-- ═══ HERO ═══ -->
-  <section class="ev-hero">
+  <section class="ev-hero" data-golf-page>
     <div class="ev-hero__bg" aria-hidden="true">
       <div class="ev-hero__gradient"></div>
     </div>
@@ -131,7 +155,7 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
           </a>
         </div>
         <!-- Countdown -->
-        <div class="ev-countdown" data-reveal data-event-date="2026-05-18T07:00:00-04:00">
+        <div class="ev-countdown" data-reveal data-event-date={`${dateISO}T07:00:00-04:00`}>
           <div class="ev-countdown__unit">
             <span class="ev-countdown__num" data-days>--</span>
             <span class="ev-countdown__label">Days</span>
@@ -182,10 +206,10 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
           </div>
           <h2 class="ev-details__card-title">When</h2>
-          <p class="ev-details__card-date"><time datetime="2026-05-18">Monday, May 18th, 2026</time></p>
+          <p class="ev-details__card-date"><time datetime={dateISO}>{dateLong}</time></p>
           <p class="ev-details__card-text">
-            <strong><time datetime="2026-05-18T07:00:00-04:00">7:00 AM</time></strong> &mdash; Registration<br/>
-            <strong><time datetime="2026-05-18T10:00:00-04:00">10:00 AM</time></strong> &mdash; Tee Off<br/>
+            <strong><time datetime={`${dateISO}T07:00:00-04:00`}>7:00 AM</time></strong> &mdash; Registration<br/>
+            <strong><time datetime={`${dateISO}T10:00:00-04:00`}>10:00 AM</time></strong> &mdash; Tee Off<br/>
             <strong>TBA</strong> &mdash; Banquet
           </p>
         </div>
@@ -195,9 +219,9 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
           </div>
           <h2 class="ev-details__card-title">Where</h2>
           <p class="ev-details__card-text">
-            <strong>Indian Hills Country Club</strong><br/>
-            <a href="https://maps.google.com/?q=4001+Clubland+Dr+Marietta+GA+30068" target="_blank" rel="noopener" class="ev-details__map-link">
-              4001 Clubland Dr.<br/>Marietta, GA 30068
+            <strong>{venue}</strong><br/>
+            <a href={`https://maps.google.com/?q=${encodeURIComponent(address)}`} target="_blank" rel="noopener" class="ev-details__map-link">
+              {addressLines.map((l, i) => <Fragment>{i > 0 && <br/>}{l}</Fragment>)}
             </a>
           </p>
         </div>
@@ -457,7 +481,7 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
 
       <!-- CTA -->
       <div class="ev-tickets__cta" data-reveal>
-        <a href="https://www.zeffy.com/en-US/ticketing/sunshine-on-a-ranney-fairway--2026" target="_blank" rel="noopener" class="ev-btn ev-btn--gold ev-btn--hero">
+        <a href={ZEFFY} target="_blank" rel="noopener" class="ev-btn ev-btn--gold ev-btn--hero">
           Register &amp; Select Your Package
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
         </a>
@@ -473,7 +497,7 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
   {sponsorTiers.length > 0 && (
     <section class="ev-sponsors" id="sponsors">
       <div class="container ev-sponsors__inner">
-        <span class="ev-sponsors__label" data-reveal>2026 Sponsors</span>
+        <span class="ev-sponsors__label" data-reveal>{year} Sponsors</span>
         <h2 class="ev-sponsors__heading" data-reveal>Thank You to Our Sponsors</h2>
         <p class="ev-sponsors__sub" data-reveal>None of this is possible without the incredible generosity of our sponsors.</p>
 
@@ -609,11 +633,13 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
 
   <!-- ═══ STICKY MOBILE CTA ═══ -->
   <div class="ev-sticky-cta" aria-hidden="true">
-    <a href="https://www.zeffy.com/en-US/ticketing/sunshine-on-a-ranney-fairway--2026" target="_blank" rel="noopener" class="ev-sticky-cta__btn">
+    <a href={ZEFFY} target="_blank" rel="noopener" class="ev-sticky-cta__btn">
       Register Now
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
     </a>
   </div>
+  </Fragment>
+  )}
 
 </BaseLayout>
 
@@ -2621,6 +2647,9 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
   }
 
   document.addEventListener('astro:page-load', () => {
+    // Only the tournament page before the event: these listeners stay
+    // registered on every page after a visit, and the recap has its own
+    if (!document.querySelector('[data-golf-page]')) return;
     initGolfScroll();
     initCountdown();
     initStickyCta();

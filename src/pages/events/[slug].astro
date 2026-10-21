@@ -2,9 +2,11 @@
 /**
  * [slug].astro — Dynamic event detail page
  *
- * Generates static pages for events that have `body` content or photos.
- * Hand-crafted pages (golf.astro) take priority via Astro's routing —
- * this route only fires for slugs without a dedicated file.
+ * Upcoming: the event's own page (tickets, details, video, photos).
+ * Past: the recap (components/events/EventRecap.astro): the pro photos,
+ * then the sponsors. Gala and golf events forward to /events/gala/ or
+ * /events/golf/ (the newest) or their year page (/events/gala/2026/); the
+ * rules are in public/admin/events-shared.js.
  *
  * PERF: CF Images w/ srcset, LQIP blur-up, preload LCP, inline CSS
  * SEO:  Event schema, breadcrumbs, OG image
@@ -15,33 +17,36 @@
  * changing it, run: node scripts/test-page-preview.mjs
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import EventRecap from '../../components/events/EventRecap.astro';
 import { getCollection } from 'astro:content';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { recapMeta } from '../../utils/event-recap';
+import { eventPath, hasOwnPage, isOver, yearPath } from '../../../public/admin/events-shared.js';
 
 export async function getStaticPaths() {
-  const events = await getCollection('events');
-  const today = new Date().toISOString().split('T')[0];
-  // Generate pages for events with body content, photos, or a video — plus
-  // every past event, so each one keeps a permanent archive page visitors
-  // can revisit (photos added via admin show up here).
-  return events
-    .filter(e =>
-      e.data.body || e.data.photos.length > 0 || e.data.streamVideoId || e.data.videoUrl ||
-      (e.data.status !== 'cancelled' && (e.data.endDate || e.data.date) < today)
-    )
-    .map(e => ({
-      params: { slug: e.data.slug },
-      props: { event: e },
-    }));
+  const all = await getCollection('events');
+  const events = all.map((e) => e.data);
+  // Its own page: an event with a full description, photos or a video, and
+  // every past event (the recap). A gala or golf event forwards to its
+  // series page or year page, so old links keep working.
+  return all.flatMap((e) => {
+    const path = eventPath(e.data, events);
+    // A year's old address goes to that year's page for good, not to the series page that moves on
+    const forward = (isOver(e.data) && yearPath(e.data, events)) || path;
+    if (forward !== `/events/${e.data.slug}/`) return [{ params: { slug: e.data.slug }, props: { event: e, forward } }];
+    return hasOwnPage(e.data, events) ? [{ params: { slug: e.data.slug }, props: { event: e } }] : [];
+  });
 }
 
-const { event } = Astro.props;
+const { event, forward } = Astro.props as { event: { data: any }; forward?: string };
+if (forward) return Astro.redirect(forward, 301);
 const ev = event.data;
+const collection = (await getCollection('events')).map((e) => e.data);
+const events = collection.some((e) => e.slug === ev.slug) ? collection : [...collection, ev];
 
-/* Past events render as an archive: no ticket CTA, photos front and center,
-   and the tighter recap blurb instead of the full pre-event pitch */
-const isPast = (ev.endDate || ev.date) < new Date().toISOString().split('T')[0];
-const heroDesc = isPast ? (ev.shortDescription || ev.description) : ev.description;
+/* Once it's over the page is the recap: the photos, then the sponsors */
+const isPast = isOver(ev);
+const recap = isPast ? recapMeta(ev, events, null, `/events/${ev.slug}/`) : null;
 
 /* ── Video: Cloudflare Stream id or YouTube URL on the event entry ── */
 function getYouTubeId(url: string): string | null {
@@ -69,7 +74,7 @@ const heroSrcset = ev.image ? cfSrcset(ev.image, [600, 900, 1200], { fit: 'cover
 const heroSizes = '(max-width: 768px) 100vw, 560px';
 
 /* ── JSON-LD ── */
-const eventJsonLd = {
+const eventJsonLd = recap?.jsonLd ?? {
   "@type": "Event",
   "@id": `https://sunshineonaranneyday.com/events/${ev.slug}/#event`,
   "name": ev.title,
@@ -85,7 +90,7 @@ const eventJsonLd = {
   },
   "organizer": { "@id": "https://sunshineonaranneyday.com/#organization" },
   ...(ev.image && { "image": cfRaw(ev.image, 'w=1200,q=85') }),
-  ...(ev.ticketUrl && !isPast && {
+  ...(ev.ticketUrl && {
     "offers": {
       "@type": "Offer",
       "url": ev.ticketUrl,
@@ -96,24 +101,29 @@ const eventJsonLd = {
 ---
 
 <BaseLayout
-  title={`${ev.title} — Sunshine on a Ranney Day`}
-  description={ev.description}
+  title={recap?.title ?? `${ev.title} — Sunshine on a Ranney Day`}
+  description={recap?.description ?? ev.description}
+  ogImage={recap?.ogImage}
   jsonLd={eventJsonLd}
-  breadcrumbs={[
+  breadcrumbs={recap?.breadcrumbs ?? [
     { name: 'Events', url: '/events/' },
     { name: ev.title, url: `/events/${ev.slug}/` },
   ]}
 >
-  {ev.image && (
+  {!isPast && ev.image && (
     <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
   )}
 
+  {isPast ? (
+    <EventRecap ev={ev} events={events} />
+  ) : (
+  <Fragment>
   <!-- ═══ HERO ═══ -->
   <section class="ev-hero">
     <div class="ev-hero__bg" aria-hidden="true"></div>
     <div class="container ev-hero__inner">
       <div class="ev-hero__text">
-        <span class="ev-hero__eyebrow" data-reveal>{catLabel[ev.category] || 'Event'}{isPast && ` · ${ev.date.slice(0, 4)}`}</span>
+        <span class="ev-hero__eyebrow" data-reveal>{catLabel[ev.category] || 'Event'}</span>
         <h1 class="ev-hero__title" data-reveal transition:name="event-title">{ev.title}</h1>
         <div class="ev-hero__meta" data-reveal>
           <span class="ev-hero__meta-item">
@@ -131,29 +141,13 @@ const eventJsonLd = {
             {ev.location}
           </span>
         </div>
-        <p class="ev-hero__desc" data-reveal>{heroDesc}</p>
-        {!isPast && ev.ticketUrl && (
+        <p class="ev-hero__desc" data-reveal>{ev.description}</p>
+        {ev.ticketUrl && (
           <div class="ev-hero__actions" data-reveal>
             <a href={ev.ticketUrl} class="ev-btn ev-btn--gold" target="_blank" rel="noopener noreferrer">
               {ev.ticketPrice ? `Get Tickets — ${ev.ticketPrice}` : 'Get Tickets'}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
             </a>
-          </div>
-        )}
-        {isPast && (ev.photos.length > 0 || hasVideo) && (
-          <div class="ev-hero__actions" data-reveal>
-            {ev.photos.length > 0 && (
-              <a href="#photos" class="ev-btn ev-btn--gold">
-                See the Photos
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
-              </a>
-            )}
-            {hasVideo && (
-              <a href="#video" class={ev.photos.length > 0 ? 'ev-btn ev-btn--outline' : 'ev-btn ev-btn--gold'}>
-                Watch the Video
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m10 8 6 4-6 4z"/><circle cx="12" cy="12" r="10"/></svg>
-              </a>
-            )}
           </div>
         )}
       </div>
@@ -259,21 +253,6 @@ const eventJsonLd = {
     </section>
   )}
 
-  <!-- ═══ PHOTOS PENDING (past event, gallery not uploaded yet) ═══ -->
-  {isPast && ev.photos.length === 0 && !hasVideo && (
-    <section class="ev-pending">
-      <div class="container">
-        <div class="ev-pending__box" data-reveal>
-          <div class="ev-pending__icon" aria-hidden="true">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-          </div>
-          <h2>Photos on the Way</h2>
-          <p>We're gathering our favorite moments from this event. Check back soon to relive the day.</p>
-        </div>
-      </div>
-    </section>
-  )}
-
   <!-- ═══ CTA ═══ -->
   <section class="ev-cta">
     <div class="container">
@@ -287,6 +266,9 @@ const eventJsonLd = {
       </div>
     </div>
   </section>
+
+  </Fragment>
+  )}
 
 </BaseLayout>
 
@@ -583,40 +565,6 @@ const eventJsonLd = {
   }
   .ev-gallery__img.lqip-pending { opacity: 0; }
   .ev-gallery__img.loaded { opacity: 1; transition: opacity 0.4s ease; }
-
-  /* ═══ PHOTOS PENDING ═══ */
-  .ev-pending {
-    padding: var(--space-3xl) 0;
-    background: var(--c-cream);
-  }
-  .ev-pending__box {
-    text-align: center;
-    max-width: 440px;
-    margin: 0 auto;
-  }
-  .ev-pending__icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 68px;
-    height: 68px;
-    border-radius: 50%;
-    background: var(--c-warm-gray);
-    color: var(--c-text-muted);
-    margin-bottom: var(--space-md);
-  }
-  .ev-pending__box h2 {
-    font-family: var(--font-display);
-    font-size: 1.35rem;
-    color: var(--c-dark);
-    margin-bottom: var(--space-xs);
-  }
-  .ev-pending__box p {
-    font-size: 0.9rem;
-    color: var(--c-text-muted);
-    line-height: 1.7;
-    margin: 0;
-  }
 
   /* ═══ CTA ═══ */
   .ev-cta {

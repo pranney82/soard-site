@@ -587,6 +587,19 @@ const MAP = { t: 'SOARD', children: [
           does: 'Rebuilds the site so the video shows, at most once every 10 minutes.',
           touches: ['Cloudflare Pages'], where: 'functions/api/_broadcast.js · _fb-archive.js · fb-attach-video.js',
           live: needsKey('deployHook', 'The deploy hook isn’t set, so new videos wait for the next manual deploy.') },
+        { t: 'Event pages after the event', s: 'live', k: 'schedule',
+          when: 'Every 15 minutes on the live hub’s heartbeat. An event counts as over from midnight after its last day, Atlanta time.',
+          does: 'Rebuilds the site the morning after an event, so its page turns into the thank-you: the pro photos, then the sponsors, with no tickets or countdown. Tells Slack, and asks for the photos if there are none yet. When next year’s gala or golf tournament is added, saves this year’s photos and sponsors onto this year’s event, so /events/gala/2026/ keeps them for good.',
+          touches: ['D1', 'GitHub', 'Cloudflare Pages', 'Slack'], where: 'functions/api/_event-recap.js (from broadcast-hooks.js) · public/admin/events-shared.js',
+          info: '/events/gala/ and /events/golf/ always show the newest of their series; each year also keeps its own page (/events/gala/2026/). A gala’s or tournament’s photos are the ones added to its editor’s Gallery tab after its date; any other event shows its own Event Photos.',
+          live: (f) => {
+            const e = f.eventRecap;
+            if (!e) return null;
+            if (!e.lastRunAt) return ATTN('It hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(e.lastRunAt, HOUR)) return ATTN(`Hasn’t checked since ${stamp(e.lastRunAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, e.lastRunAt);
+            if (e.deployPending) return ATTN(env(f) && !f.env.deployHook ? 'No deploy hook is set in Cloudflare, so an event page waits for the next Publish to become its thank-you.' : 'A rebuild is waiting. It tries again within 10 minutes.', e.lastRunAt);
+            return ON(e.lastDeployAt ? `Last turned an event page into its thank-you ${ago(e.lastDeployAt)}.` : 'Watching for the next event to end.', e.lastRunAt);
+          } },
         { t: 'Code push builds', s: 'live', k: 'build',
           when: 'A push to main on GitHub.',
           does: 'Cloudflare Pages builds and publishes the site.',

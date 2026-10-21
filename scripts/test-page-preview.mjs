@@ -46,12 +46,20 @@ const TYPES = {
       alt: ['section.hero .hero__badge--funding', 'section.reveal #yt-facade source', 'section.page-cta'],
       nophoto: ['.hero__portrait--empty .hero__placeholder-text'],
     } },
-  event: { dir: 'events', path: (s) => `/events/${s}/`, region: 'main', skip: [],
+  // Past events are the recap (EventRecap.astro); gala and golf events forward to their series pages.
+  // Rebuilt inside each other's template pages: the real ones may all be series events.
+  event: { dir: 'events', path: (s) => `/events/${s}/`, region: 'main', skip: [], templateDonors: true,
+    opts: () => ({ measure: false, partners: itemsOf('partners').map((x) => ({ slug: x.id, ...x.data })) }),
     parts: {
       upcoming: ['.ev-hero__meta-item:nth-child(3)', '.ev-hero__actions a[target]', '.ev-hero__visual img', 'section.ev-body .ev-body__content',
         'section.ev-video [data-stream-id] img', 'section.ev-gallery .ev-gallery__item img', 'section.ev-cta'],
-      past: ['.ev-hero__actions a[href="#photos"]', '.ev-hero__actions a[href="#video"]', 'section.ev-video [data-yt-id] source'],
-      pending: ['section.ev-pending'],
+      youtube: ['section.ev-video [data-yt-id] source'],
+      past: ['div.rc', '.rh-photo[data-rp-jump="0"] img', '.rh-photo--small img', '.rh-highlights div', '.rh-ctas a[href="#sponsors"]', 'section.rp .rp-item',
+        'section.rp .rp-credit a', '[data-rv] .rv-credit', 'section.rs .rs-tier--md', 'section.rs a.rs-card .rs-logo', 'section.rs .rs-name',
+        'section.rs .rs-moment .rs-moment__sponsor > span', 'section.rc-video [data-yt-id]', 'section.rc-body', 'section.rc-close',
+        'script[src*="RecapPhotos"]', 'script[src*="EventRecap"]'],
+      pending: ['section.rc-pending', '.rh-photo--made'],
+      poster: ['div.rh-photo img', 'section.rc-video [data-stream-id]'],
     } },
   community: { dir: 'community', path: (s) => `/community/${s}/`, region: 'main', skip: ['section.cp-detail-more'],
     parts: {
@@ -200,7 +208,11 @@ try {
 
     // Donors: items whose page exists
     const exists = {};
-    for (const x of all) exists[x.slug] = (await fetch(`${SITE}${cfg.path(x.slug)}`, { method: 'HEAD' }).catch(() => null))?.ok || false;
+    for (const x of all) {
+      const res = await fetch(`${SITE}${cfg.path(x.slug)}`).catch(() => null);
+      // A forward (a redirect in dev, a meta refresh in a build) isn't a page of its own
+      exists[x.slug] = !!res?.ok && !res.redirected && !/http-equiv="refresh"/i.test(await res.text());
+    }
     const donors = all.filter((x) => exists[x.slug]);
     let passed = 0, compared = 0;
     for (const item of targets) {

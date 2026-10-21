@@ -190,6 +190,24 @@ const events = defineCollection({
       id: z.string(),
       alt: z.string().default(''),
     })).default([]),
+    // After the event (public/admin/events-shared.js): the photographer's
+    // credit, a thank-you note for the recap, and the sponsors it thanks
+    photographer: z.string().optional(),
+    photographerUrl: link().optional(),
+    recapNote: z.string().optional(),
+    // Numbers only staff know ("350" guests), at most four
+    highlights: z.array(z.object({ value: z.string().default(''), label: z.string().default('') })).optional(),
+    theme: z.string().optional(),
+    sponsors: z.array(z.object({
+      tier: z.string().default(''),
+      size: z.string().optional(),
+      names: z.array(z.object({
+        name: z.string().default(''),
+        logo: z.string().optional(),
+        website: link().optional(),
+        scale: z.number().optional(),
+      })).default([]),
+    })).optional(),
     ticketUrl: link().optional(),
     ticketPrice: z.string().optional(),
     category: z.enum(['fundraiser', 'volunteer', 'reveal', 'community', 'other']).default('other'),

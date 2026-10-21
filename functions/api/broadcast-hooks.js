@@ -24,6 +24,7 @@ import { maybeSweepZeffy } from './_zeffy.js';
 import { maybeRunWaitlist } from './_application-waitlist.js';
 import { maybeRunPress } from './_press.js';
 import { maybeSlackPreview } from './_slack-preview.js';
+import { maybeRunEventRecaps } from './_event-recap.js';
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
 const HUB_ANSWER_MS = 10 * 1000;
@@ -66,6 +67,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeSweepZeffy(env));
     context.waitUntil(maybeRunWaitlist(env));
     context.waitUntil(maybeRunPress(env));
+    // Event pages turn into their recap (photos, then sponsors) the morning after (see _event-recap.js)
+    context.waitUntil(maybeRunEventRecaps(env));
     // Once per alert redesign: the new Slack cards, posted in one thread (see _slack-preview.js)
     context.waitUntil(maybeSlackPreview(env));
     // The hub passes `reason` to every open page and keeps `work` in its status, so both go

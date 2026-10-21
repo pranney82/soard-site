@@ -40,7 +40,17 @@ const eventUpcoming = {
   photos: eventPhotos, ticketUrl: 'https://example.com/tickets', ticketPrice: '$100', category: 'fundraiser',
   featured: false, status: 'upcoming', order: 0,
 };
-const eventPast = { ...eventUpcoming, date: '2020-06-06', streamVideoId: null, videoUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', status: 'past' };
+// past: the recap (photos, then sponsors: a top level, a logo wall with a name-only sponsor, a named moment)
+const eventPast = {
+  ...eventUpcoming, date: '2020-06-06', streamVideoId: null, videoUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', status: 'past',
+  photographer: 'Template Photographer', photographerUrl: 'https://example.com/photos', recapNote: 'Template note.',
+  highlights: [{ value: '100', label: 'Template guests' }],
+  sponsors: [
+    { tier: 'Template Top', size: 'xl', names: [{ name: 'Template Top Co', logo: 'event-template/sponsor-1' }] },
+    { tier: 'Template Gold', size: 'md', names: [{ name: 'Template Gold Co', logo: 'event-template/sponsor-2', website: 'https://example.com/gold' }, { name: 'Template Family' }] },
+    { tier: 'Template Moment Sponsor', size: 'md', names: [{ name: 'Template Moment Co', logo: 'event-template/sponsor-3', website: 'https://example.com/moment' }, { name: 'Template Moment Family' }] },
+  ],
+};
 
 const communityFull = {
   name: 'Template Project', slug: 'community-template', impact: '100', impactLabel: 'Template impact',
@@ -172,8 +182,12 @@ export const FIXTURES = {
   },
   event: {
     upcoming: { item: eventUpcoming },
+    // before the event with a YouTube video instead of Stream
+    youtube: { item: { ...eventUpcoming, streamVideoId: null, videoUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa' } },
     past: { item: eventPast },
-    pending: { item: { ...eventPast, body: '', photos: [], videoUrl: null, image: null } },
+    pending: { item: { ...eventPast, body: '', photos: [], videoUrl: null, image: null, sponsors: [], highlights: [], recapNote: '' } },
+    // a past event with its poster and a Stream video, its photos not in yet
+    poster: { item: { ...eventPast, photos: [], body: '', videoUrl: null, streamVideoId: 'templatestream', photographer: '' } },
   },
   community: {
     full: { item: communityFull, video: { type: 'stream', id: 'templatestream' } },

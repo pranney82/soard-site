@@ -1,0 +1,34 @@
+---
+/**
+ * /events/gala/2026/, /events/golf/2026/ — one page per year of a series,
+ * made for every gala or golf tournament that's over, so each year keeps its
+ * photos and sponsors after /events/gala/ moves on to the next one. The year
+ * comes from the event's date, so no slug has to follow a pattern.
+ * See public/admin/events-shared.js.
+ */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import EventRecap from '../../../components/events/EventRecap.astro';
+import { getCollection, getEntry } from 'astro:content';
+import { recapMeta, galaThemeName } from '../../../utils/event-recap';
+import { yearPages, seriesOf } from '../../../../public/admin/events-shared.js';
+
+export async function getStaticPaths() {
+  const events = (await getCollection('events')).map((e) => e.data);
+  return yearPages(events).map((p: any) => ({
+    params: { series: p.series.key, year: p.year },
+    props: { slug: p.ev.slug },
+  }));
+}
+
+const { slug } = Astro.props;
+const events = (await getCollection('events')).map((e) => e.data);
+const ev: any = events.find((e) => e.slug === slug);
+const series = seriesOf(ev)!;
+const pageDoc = (await getEntry('site', series.doc as any))?.data ?? null;
+const path = `${series.path}${Astro.params.year}/`;
+const meta = recapMeta(ev, events, pageDoc, path);
+---
+
+<BaseLayout title={meta.title} description={meta.description} ogImage={meta.ogImage} jsonLd={meta.jsonLd} breadcrumbs={meta.breadcrumbs}>
+  <EventRecap ev={ev} events={events} pageDoc={pageDoc} theme={series.key as 'gala' | 'golf'} themeName={series.key === 'gala' ? galaThemeName(ev) : ''} />
+</BaseLayout>

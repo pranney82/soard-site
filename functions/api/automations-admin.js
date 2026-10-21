@@ -21,6 +21,7 @@
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
  *  - quo:       Quo texts and calls DataX logged with applicant families (last one, count in 30 days; never content)
  *  - waitlist:  families waiting for the applications-open email, signups not in Kit yet, the last opening
+ *  - eventRecap: event pages turning into their recap (last check, last rebuild, a rebuild still waiting)
  *
  * Not in _middleware's public list, so Access guards it. Never cached.
  * Each section fails on its own: one unreachable service never blanks the rest.
@@ -31,6 +32,7 @@ import { slackStatus } from './_broadcast-notify.js';
 import { JT_URL, SOARD_ORG_ID } from './_reveals.js';
 import { approvalsStatus } from './_applicant-approved.js';
 import { coverFacts } from './_job-covers.js';
+import { eventRecapState } from './_event-recap.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -300,6 +302,18 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     covers: await settle(() => coverFacts(DB)).then((c) => (c && !c.error ? c : null)),
     press: await settle(() => pressFacts(DB)),
     quo: await settle(() => quoFacts(DB, now)),
+    eventRecap: await settle(() => eventRecapFacts(DB)),
+  };
+}
+
+/** Event pages after the event (_event-recap.js): when it last checked and rebuilt, and pages still waiting. Times and counts only */
+export async function eventRecapFacts(DB) {
+  const s = await eventRecapState(DB);
+  return {
+    lastRunAt: s.lastRun?.at || null,
+    lastDeployAt: s.lastDeployAt || null,
+    deployPending: !!s.deployPending,
+    waiting: Array.isArray(s.unannounced) ? s.unannounced.length : 0,
   };
 }
 

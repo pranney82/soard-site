@@ -4052,6 +4052,9 @@
     import * as PS from './partners-shared.js';
     import * as PRS from './press-shared.js';
     import * as CS from './community-shared.js';
+    // Event pages before and after the event: series, recap photos and sponsors, year pages
+    import * as ES from './events-shared.js';
+    import { AfterEventPanel, SponsorsList, EventBasics } from './event-recap-admin.js';
     const html = htm.bind(h);
 
     // ─── Constants ────────────────────────────
@@ -18495,7 +18498,7 @@ ${sections || '<p>No one yet.</p>'}
                 <td class="text-sm td-hide-mobile">${e.date || '—'}</td>
                 <td class="text-sm td-hide-mobile">${(e.location || '—').slice(0, 30)}${(e.location || '').length > 30 ? '…' : ''}</td>
                 <td class="td-hide-mobile"><span class="badge badge-accent">${EVENT_CAT_LABELS[e.category] || e.category}</span></td>
-                <td><span class="badge ${e.status === 'upcoming' ? 'badge-green' : e.status === 'cancelled' ? 'badge-red' : 'badge-gray'}">${e.status}</span></td>
+                <td>${(() => { const st = e.status === 'cancelled' ? 'cancelled' : ES.isOver(e) ? 'past' : 'upcoming'; return html`<span class="badge ${st === 'upcoming' ? 'badge-green' : st === 'cancelled' ? 'badge-red' : 'badge-gray'}" title=${st === 'past' ? 'Over: its page shows the photos, then the sponsors' : ''}>${st}</span>`; })()}</td>
                 <td class="td-hide-mobile">
                   <button class="btn btn-ghost btn-sm" type="button"
                     title=${e.featured ? 'Click to unfeature' : 'Click to feature'}
@@ -18523,7 +18526,7 @@ ${sections || '<p>No one yet.</p>'}
     // ═══════════════════════════════════════════
     // EVENT EDITOR
     // ═══════════════════════════════════════════
-    function EventEditor({ slug, onBack, addToast, existingSlugs = [] }) {
+    function EventEditor({ slug, onBack, addToast, existingSlugs = [], events = [], partners = [] }) {
       const [streamPick, setStreamPick] = useState(false);
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
@@ -18543,6 +18546,8 @@ ${sections || '<p>No one yet.</p>'}
         category: 'other', featured: false, status: 'upcoming', order: 0,
       });
       const [showPreview, setShowPreview] = useState(false);
+      // A batch of the photographer's photos saves itself once it's in the editor
+      const [saveAfterUpload, setSaveAfterUpload] = useState(false);
       const previewEvent = useMemo(() => eventSaveData(data), [data]);
 
       useGlobalDirty(dirty, slug ? `event "${slug}"` : 'a new event');
@@ -18688,6 +18693,8 @@ ${sections || '<p>No one yet.</p>'}
         setSaving(false);
       };
 
+      useEffect(() => { if (saveAfterUpload && !saving) { setSaveAfterUpload(false); handleSave(); } }, [saveAfterUpload, data]);
+
       useEffect(() => {
         const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
         window.addEventListener('beforeunload', handler);
@@ -18733,7 +18740,7 @@ ${sections || '<p>No one yet.</p>'}
           </div>
         </div>
         ${showPreview ? html`<${PagePreview} kind="event" item=${previewEvent} slug=${slug} dirty=${dirty}
-          otherSlugs=${existingSlugs} onClose=${() => setShowPreview(false)} />` : null}
+          otherSlugs=${events.filter((e) => ES.hasOwnPage(e, events)).map((e) => e.slug)} buildOpts=${{ partners }} onClose=${() => setShowPreview(false)} />` : null}
 
         <div class="card u-mb-2">
           <h3 class="u-mb-2">Event Details</h3>
@@ -18900,6 +18907,7 @@ ${sections || '<p>No one yet.</p>'}
         <div class="card u-mb-2">
           <div class="section-head">
             <h3>Event Photos (${(data.photos || []).length})</h3>
+            <span class="text-sm text-muted">After the event they’re the photos on its page, first one on top. For a whole folder at once, use After the event below.</span>
           </div>
           <${DropZone} onFiles=${uploadEventPhotos} label="JPG, PNG, WebP — upload event photos" />
           <div style="margin-top: 0.5rem; text-align: center;">
@@ -18941,6 +18949,25 @@ ${sections || '<p>No one yet.</p>'}
             </div>
             <p class="text-sm text-muted mt-1">Drag photos to reorder.</p>
           ` : null}
+        </div>
+
+        <div class="card u-mb-2">
+          <h3 class="u-mb-1">After the event</h3>
+          <p class="text-sm text-muted u-mb-2">The morning after the event, its page becomes the thank-you: the photos, then the sponsors.</p>
+          <${AfterEventPanel} api=${api} event=${previewEvent} events=${events} addToast=${addToast}
+            onEvent=${update}
+            addPhotos=${(entries) => { setDirty(true); setData((d) => ({ ...d, photos: [...(d.photos || []).filter((p) => p.id), ...entries] })); }}
+            afterUpload=${() => setSaveAfterUpload(true)} />
+        </div>
+
+        <div class="card u-mb-2">
+          <div class="section-head">
+            <h3>Sponsors (${ES.sponsorCount(data.sponsors || [])})</h3>
+          </div>
+          <p class="text-sm text-muted u-mb-2">${ES.seriesOf(data)
+            ? 'The sponsors this year’s thank-you page shows. Kept from the Sponsors tab when next year’s was added.'
+            : 'Thanked on the event’s page after it, below the photos. Optional.'}</p>
+          <${SponsorsList} value=${data.sponsors || []} onChange=${(v) => update('sponsors', v)} />
         </div>
 
         <div class="card u-mb-2">
@@ -20597,7 +20624,7 @@ ${sections || '<p>No one yet.</p>'}
     // ═══════════════════════════════════════════
     // GOLF TOURNAMENT EDITOR
     // ═══════════════════════════════════════════
-    function GolfTournamentEditor({ addToast, onBack }) {
+    function GolfTournamentEditor({ slug, events = [], addToast, onBack }) {
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
@@ -20614,6 +20641,13 @@ ${sections || '<p>No one yet.</p>'}
       useGlobalDirty(dirty, 'the golf tournament editor');
       useSaveShortcut(() => { if (!saving && !loading) handleSave(); });
       const [activeTab, setActiveTab] = useState('tiers');
+      // The tournament's own event record: its date, place and link, and its thank-you page
+      const eventFile = slug ? `src/content/events/${slug}.json` : null;
+      const [eventData, _setEventData] = useState(null);
+      const [eventSha, setEventSha] = useState(null);
+      const [eventDirty, setEventDirty] = useState(false);
+      const updateEvent = (field, value) => { setDirty(true); setEventDirty(true); _setEventData((d) => ({ ...(d || {}), [field]: value })); };
+      const [saveAfterUpload, setSaveAfterUpload] = useState(false);
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null); // 'sponsor:tierIdx:nameIdx' or 'gallery:0'
       const [confirmTierDelete, setConfirmTierDelete] = useState(null); // sponsor-tier index
@@ -20623,10 +20657,20 @@ ${sections || '<p>No one yet.</p>'}
       useEffect(() => {
         (async () => {
           try {
-            const res = await api.readContent('src/content/site/golf.json');
+            const [res, evRes] = await Promise.all([
+              api.readContent('src/content/site/golf.json'),
+              eventFile ? api.readContent(eventFile) : Promise.resolve(null),
+            ]);
             if (res.success) {
               _setData(JSON.parse(res.content));
               setSha(res.sha);
+            }
+            if (evRes?.success) {
+              const ev0 = JSON.parse(evRes.content);
+              _setEventData(ev0);
+              setEventSha(evRes.sha);
+              // Once the tournament is over, the thank-you page is what's left to do
+              if (ES.isOver(ev0)) setActiveTab('after');
             }
           } catch {}
           setLoading(false);
@@ -20637,13 +20681,17 @@ ${sections || '<p>No one yet.</p>'}
         setSaving(true);
         try {
           const content = JSON.stringify(data, null, 2);
-          const res = await api.saveContent(
-            'src/content/site/golf.json', content,
-            'Update golf tournament settings', sha
-          );
+          const [res, evRes] = await Promise.all([
+            api.saveContent('src/content/site/golf.json', content, 'Update golf tournament settings', sha),
+            eventFile && eventData && eventDirty
+              ? api.saveContent(eventFile, JSON.stringify(eventData, null, 2), 'Update golf tournament details', eventSha)
+              : Promise.resolve({ success: true }),
+          ]);
+          if (evRes.success && evRes.sha) { setEventSha(evRes.sha); setEventDirty(false); }
+          if (res.success && !evRes.success) addToast('The tournament details didn’t save: ' + (evRes.error || 'Unknown error'), 'error');
           if (res.success) {
             setSha(res.sha);
-            setDirty(false);
+            setDirty(!evRes.success);
             addToast('Golf settings saved!', 'success');
             logActivity('updated', 'Golf Tournament Settings', '');
           } else {
@@ -20654,6 +20702,8 @@ ${sections || '<p>No one yet.</p>'}
         }
         setSaving(false);
       };
+
+      useEffect(() => { if (saveAfterUpload && !saving) { setSaveAfterUpload(false); handleSave(); } }, [saveAfterUpload, data]);
 
       const updateTier = (type, idx, field, value) => {
         setData(d => ({
@@ -20798,16 +20848,37 @@ ${sections || '<p>No one yet.</p>'}
           ` : null}
           <div class="editor-header">
             <h1 class="editor-title">Golf Tournament Settings</h1>
-            <p class="editor-subtitle">Manage sponsorship tiers, testimonials, FAQs, sponsors, and gallery photos for the golf tournament page.</p>
+            <p class="editor-subtitle">The tournament’s date and place, sponsorship tiers, testimonials, FAQs, sponsors, and gallery photos for the golf tournament page, and its thank-you page after the tournament.</p>
           </div>
 
           <div class="hub-tabs u-mb-3">
+            ${eventData ? html`<button class="hub-tab ${activeTab === 'event' ? 'active' : ''}" onClick=${() => setActiveTab('event')}>Event Details</button>
+            <button class="hub-tab ${activeTab === 'after' ? 'active' : ''}" onClick=${() => setActiveTab('after')}>After the tournament</button>` : null}
             <button class="hub-tab ${activeTab === 'tiers' ? 'active' : ''}" onClick=${() => setActiveTab('tiers')}>Tiers & Status</button>
             <button class="hub-tab ${activeTab === 'testimonial' ? 'active' : ''}" onClick=${() => setActiveTab('testimonial')}>Testimonial</button>
             <button class="hub-tab ${activeTab === 'faqs' ? 'active' : ''}" onClick=${() => setActiveTab('faqs')}>FAQs</button>
             <button class="hub-tab ${activeTab === 'sponsors' ? 'active' : ''}" onClick=${() => setActiveTab('sponsors')}>Sponsors</button>
             <button class="hub-tab ${activeTab === 'gallery' ? 'active' : ''}" onClick=${() => setActiveTab('gallery')}>Gallery</button>
           </div>
+
+          ${activeTab === 'event' && eventData && html`
+            <div class="card">
+              <h2 class="card-title">Event Details</h2>
+              <p class="card-subtitle u-mb-2">The golf page’s date, countdown, course, map link and Register buttons come from here.</p>
+              <${EventBasics} event=${eventData} onEvent=${updateEvent} />
+            </div>
+          `}
+
+          ${activeTab === 'after' && eventData && html`
+            <div class="card">
+              <h2 class="card-title">After the tournament</h2>
+              <p class="card-subtitle u-mb-2">The morning after the tournament, its page becomes the thank-you: the photographer’s photos, then the sponsors.</p>
+              <${AfterEventPanel} api=${api} event=${eventData} events=${events} pageDoc=${data} addToast=${addToast}
+                onEvent=${updateEvent}
+                addPhotos=${(entries) => setData((d) => ({ ...d, galleryPhotos: [...(d.galleryPhotos || []).filter((p) => p.id), ...entries] }))}
+                afterUpload=${() => setSaveAfterUpload(true)} />
+            </div>
+          `}
 
           ${activeTab === 'tiers' && html`
             <div class="card">
@@ -20941,6 +21012,11 @@ ${sections || '<p>No one yet.</p>'}
           `}
 
           ${activeTab === 'sponsors' && html`
+            ${eventData && ES.isOver(eventData) ? html`
+              <div class="card u-mb-2" style="border-left: 4px solid #2e7d32;">
+                <strong>The ${ES.yearOf(eventData)} tournament is over, so these are the sponsors its thank-you page shows.</strong>
+                <p class="card-subtitle" style="margin-top: 0.35rem;">Starting next year’s list? Add next year’s tournament in Events first. The ${ES.yearOf(eventData)} list then stays with the ${ES.yearOf(eventData)} tournament by itself.</p>
+              </div>` : null}
             <div class="card u-mb-2">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
@@ -21176,7 +21252,7 @@ ${sections || '<p>No one yet.</p>'}
     // Loads + saves both the event JSON (date/location/ticket URL/etc.)
     // and gala.json (tiers/testimonial/FAQs/auction items/evening/sponsors)
     // ═══════════════════════════════════════════
-    function GalaEditor({ slug, addToast, onBack }) {
+    function GalaEditor({ slug, events = [], addToast, onBack }) {
       const eventPath = 'src/content/events/' + slug + '.json';
       const galaPath = 'src/content/site/gala.json';
 
@@ -21196,6 +21272,8 @@ ${sections || '<p>No one yet.</p>'}
         tiers: { main: [], addons: [] },
       });
       const [activeTab, setActiveTab] = useState('event');
+      // A batch of photographer's photos saves itself once it's in the editor
+      const [saveAfterUpload, setSaveAfterUpload] = useState(false);
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null);
       const [confirmTierDelete, setConfirmTierDelete] = useState(null); // sponsor-tier index
@@ -21217,8 +21295,11 @@ ${sections || '<p>No one yet.</p>'}
               api.readContent(galaPath),
             ]);
             if (evRes.success) {
-              _setEventData(JSON.parse(evRes.content));
+              const ev0 = JSON.parse(evRes.content);
+              _setEventData(ev0);
               setEventSha(evRes.sha);
+              // Once the gala is over, the thank-you page is what's left to do
+              if (ES.isOver(ev0)) setActiveTab('after');
             }
             if (galaRes.success) {
               _setData(prev => ({ ...prev, ...JSON.parse(galaRes.content) }));
@@ -21258,6 +21339,7 @@ ${sections || '<p>No one yet.</p>'}
       };
 
       const updateEvent = (field, value) => setEventData(d => ({ ...(d || {}), [field]: value }));
+      useEffect(() => { if (saveAfterUpload && !saving) { setSaveAfterUpload(false); handleSave(); } }, [saveAfterUpload, data]);
 
       const updateTier = (type, idx, field, value) => {
         setData(d => ({
@@ -21457,6 +21539,7 @@ ${sections || '<p>No one yet.</p>'}
 
           <div class="hub-tabs u-mb-3">
             <button class="hub-tab ${activeTab === 'event' ? 'active' : ''}" onClick=${() => setActiveTab('event')}>Event Details</button>
+            <button class="hub-tab ${activeTab === 'after' ? 'active' : ''}" onClick=${() => setActiveTab('after')}>After the gala</button>
             <button class="hub-tab ${activeTab === 'tiers' ? 'active' : ''}" onClick=${() => setActiveTab('tiers')}>Tiers & Status</button>
             <button class="hub-tab ${activeTab === 'evening' ? 'active' : ''}" onClick=${() => setActiveTab('evening')}>Evening Schedule</button>
             <button class="hub-tab ${activeTab === 'auction' ? 'active' : ''}" onClick=${() => setActiveTab('auction')}>Auction Items</button>
@@ -21465,6 +21548,17 @@ ${sections || '<p>No one yet.</p>'}
             <button class="hub-tab ${activeTab === 'sponsors' ? 'active' : ''}" onClick=${() => setActiveTab('sponsors')}>Sponsors</button>
             <button class="hub-tab ${activeTab === 'gallery' ? 'active' : ''}" onClick=${() => setActiveTab('gallery')}>Gallery</button>
           </div>
+
+          ${activeTab === 'after' && eventData && html`
+            <div class="card">
+              <h2 class="card-title">After the gala</h2>
+              <p class="card-subtitle u-mb-2">The morning after the gala, its page becomes the thank-you: the photographer’s photos, then the sponsors.</p>
+              <${AfterEventPanel} api=${api} event=${eventData} events=${events} pageDoc=${data} addToast=${addToast}
+                onEvent=${updateEvent}
+                addPhotos=${(entries) => setData((d) => ({ ...d, galleryPhotos: [...(d.galleryPhotos || []).filter((p) => p.id), ...entries] }))}
+                afterUpload=${() => setSaveAfterUpload(true)} />
+            </div>
+          `}
 
           ${activeTab === 'event' && eventData && html`
             <div class="card">
@@ -21873,6 +21967,11 @@ ${sections || '<p>No one yet.</p>'}
           `}
 
           ${activeTab === 'sponsors' && html`
+            ${eventData && ES.isOver(eventData) ? html`
+              <div class="card u-mb-2" style="border-left: 4px solid #2e7d32;">
+                <strong>The ${ES.yearOf(eventData)} gala is over, so these are the sponsors its thank-you page shows.</strong>
+                <p class="card-subtitle" style="margin-top: 0.35rem;">Starting next year’s list? Add next year’s gala in Events first. The ${ES.yearOf(eventData)} list then stays with the ${ES.yearOf(eventData)} gala by itself.</p>
+              </div>` : null}
             <div class="card u-mb-2">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
@@ -22011,7 +22110,7 @@ ${sections || '<p>No one yet.</p>'}
               <div class="section-head">
                 <div>
                   <h2 class="card-title">Photo Gallery</h2>
-                  <p class="card-subtitle">Photos shown in the "Room Comes Alive" gallery section on the gala page.</p>
+                  <p class="card-subtitle">Before the gala, these show as “From past galas”. After it, the ones added since its date are its photos on the thank-you page. To add a whole folder at once, use After the gala.</p>
                 </div>
                 <button class="btn btn-primary btn-sm" onClick=${() => {
                   setData(d => ({ ...d, galleryPhotos: [...(d.galleryPhotos || []), { id: '', alt: '' }] }));
@@ -23444,14 +23543,18 @@ ${sections || '<p>No one yet.</p>'}
               : listOrError('articles', 'articles', html`<${ArticlesList} articles=${articles} onEdit=${s => navigate('articles', s)} onAdd=${() => navigate('articles', '')}
                   onDelete=${a => setDeleteModal({ type: 'article', item: a })} />`);
           case 'events': {
-            if (editSlug === 'sunshine-on-a-ranney-fairway') {
-              return html`<${GolfTournamentEditor} addToast=${addToast} onBack=${() => { navigate('events'); loadData(); }} />`;
+            // The newest gala or tournament opens its own editor (it lays out
+            // /events/gala/ or /events/golf/); older years are plain events
+            const evSeries = editSlug ? ES.seriesOf({ slug: editSlug }) : null;
+            const evNewest = evSeries && ES.isLatest({ slug: editSlug }, events);
+            if (evSeries?.key === 'golf' && evNewest) {
+              return html`<${GolfTournamentEditor} slug=${editSlug} events=${events} addToast=${addToast} onBack=${() => { navigate('events'); loadData(); }} />`;
             }
-            if (editSlug && /evening-of-sunshine/.test(editSlug)) {
-              return html`<${GalaEditor} slug=${editSlug} addToast=${addToast} onBack=${() => { navigate('events'); loadData(); }} />`;
+            if (evSeries?.key === 'gala' && evNewest) {
+              return html`<${GalaEditor} slug=${editSlug} events=${events} addToast=${addToast} onBack=${() => { navigate('events'); loadData(); }} />`;
             }
             if (editSlug !== null) {
-              return html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} existingSlugs=${events.map(e => e.slug)} />`;
+              return html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} existingSlugs=${events.map(e => e.slug)} events=${events} partners=${partners} />`;
             }
             return listOrError('events', 'events', html`
               <${EventsList} events=${events} onEdit=${s => navigate('events', s)} onAdd=${() => navigate('events', '')}
