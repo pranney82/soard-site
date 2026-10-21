@@ -1118,12 +1118,68 @@ export async function companycamFacts(env) {
  * and the test project archived. The result is in companycam_state
  * "self-test" and on Site → Automations. No button.
  */
-export const SELF_TEST = '2026-10-21c'; // c: a project of its own each run (a picture already in one is a duplicate, which sends no webhook and JobTread doesn't copy)
+export const SELF_TEST = '2026-10-21c'; // each run gets a project and a picture of its own (one already in a project is a duplicate: no webhook, and JobTread doesn't copy it)
 export const OFFICE_ACCOUNT = '22P3HT8y9dhc'; // "Sunshine Office", where the rehearsal jobs live
 const SELF_TEST_JOB = 'TEST CompanyCam check';
 const SELF_TEST_CAPTION = 'TEST: the website checking CompanyCam to JobTread. Safe to ignore.';
 const SELF_TEST_CAPTION_2 = 'TEST: a caption added later in CompanyCam';
 const todayEastern = (now) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(now));
+
+// ─── A picture no one has uploaded before ───────────────────────────
+// CompanyCam marks a picture already in the project as a duplicate, sends no
+// webhook for it, and JobTread's integration doesn't copy it. So each check
+// draws its own: brand yellow with a row of blocks whose colours come from
+// the moment it runs. A PNG made here, so no image file lives in the repo.
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function pngChunk(type, data) {
+  const out = new Uint8Array(12 + data.length);
+  const v = new DataView(out.buffer);
+  v.setUint32(0, data.length);
+  out.set(new TextEncoder().encode(type), 4);
+  out.set(data, 8);
+  v.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+  return out;
+}
+async function deflate(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+/** A 480×300 PNG: brand yellow, and 12 blocks coloured from `seed` */
+export async function testPicture(seed) {
+  const W = 480; const H = 300;
+  let x = (Number(seed) % 2147483647) || 1;
+  const rnd = () => (x = (x * 48271) % 2147483647) / 2147483647;
+  const blocks = Array.from({ length: 12 }, () => [Math.floor(rnd() * 256), Math.floor(rnd() * 256), Math.floor(rnd() * 256)]);
+  const raw = new Uint8Array(H * (1 + W * 3));
+  for (let y = 0; y < H; y++) {
+    const row = y * (1 + W * 3);
+    raw[row] = 0; // no filter
+    for (let i = 0; i < W; i++) {
+      const inBand = y >= 120 && y < 180 && i >= 24 && i < 456;
+      const [r, g, b] = inBand ? blocks[Math.floor((i - 24) / 36)] : [255, 214, 0];
+      raw.set([r, g, b], row + 1 + i * 3);
+    }
+  }
+  const ihdr = new Uint8Array(13);
+  const v = new DataView(ihdr.buffer);
+  v.setUint32(0, W); v.setUint32(4, H);
+  ihdr.set([8, 2, 0, 0, 0], 8); // 8-bit RGB
+  const parts = [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), pngChunk('IHDR', ihdr), pngChunk('IDAT', await deflate(raw)), pngChunk('IEND', new Uint8Array(0))];
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
 
 export async function maybeSelfTest(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const { DB } = env;
@@ -1158,10 +1214,8 @@ async function selfTestStart(env, st, { fetchImpl, now }) {
   await saveFamily(DB, { account_id: OFFICE_ACCOUNT, project_id: projectId, project_url: project.project_url || projectUrl(projectId), name: body.name, stage: 'selftest', how: 'made', checked_at: now }, now);
   const next = { ...st, step: 'photo', projectId, locationId: office.locationId };
   await putState(DB, 'self-test', next, now); // the project exists: cleaned up even if the photo fails
-  const img = await fetchImpl(`${SITE_ORIGIN}/og/home.png`, { signal: AbortSignal.timeout(20000) });
-  if (!img.ok) throw new Error(`The site’s share card returned ${img.status}`);
-  const bytes = new Uint8Array(await img.arrayBuffer());
-  const photo = await uploadPhoto(env, projectId, { bytes, filename: 'soard-website-check.png', contentType: (img.headers.get('content-type') || 'image/png').split(';')[0], description: SELF_TEST_CAPTION }, { fetchImpl });
+  const bytes = await testPicture(now);
+  const photo = await uploadPhoto(env, projectId, { bytes, filename: `soard-website-check-${now}.png`, contentType: 'image/png', description: SELF_TEST_CAPTION }, { fetchImpl });
   if (!photo?.id) throw new Error('CompanyCam didn’t take the test photo');
   const withPhoto = { ...next, photoId: String(photo.id), photoAt: iso(now) };
   await putState(DB, 'self-test', withPhoto, now);

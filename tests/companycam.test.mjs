@@ -15,7 +15,7 @@ import { ensureApplicantSchema } from '../functions/api/_applicants.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { webhookToken, signatureFor, CC_API } from '../functions/api/_companycam.js';
 import {
-  maybeRunCompanyCam, syncFamily, getFamilyRow, takeEvent, processFile, streetKey, copyOf, captionWords, tagIdsFor, companycamFacts, ensureCompanyCamSchema,
+  maybeRunCompanyCam, syncFamily, getFamilyRow, takeEvent, processFile, streetKey, copyOf, captionWords, tagIdsFor, companycamFacts, ensureCompanyCamSchema, testPicture,
   WEBHOOK_URL, WEBHOOK_SCOPES, FOLDER, VETTING_LABEL, SELF_TEST, OFFICE_ACCOUNT,
 } from '../functions/api/_companycam-sync.js';
 import { familyProjectId } from '../functions/api/_companycam-link.js';
@@ -830,4 +830,17 @@ test('a photo CompanyCam marks as a duplicate of one already in the project isnâ
   await run(12); // and the next run looks at it
   assert.equal(customerFiles(a).length, 0);
   assert.equal((await env.DB.prepare('SELECT state FROM companycam_files WHERE cc_id = ?').bind(`photo:${p.id}`).first('state')), 'skipped');
+});
+
+test('the checkâ€™s picture: a real PNG, and a new one every run (CompanyCam ignores one already in the project)', async () => {
+  const { inflateSync } = await import('node:zlib');
+  const a = await testPicture(T0);
+  const b = await testPicture(T0 + 60000);
+  assert.deepEqual([...a.slice(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const v = new DataView(a.buffer, a.byteOffset);
+  assert.deepEqual([v.getUint32(16), v.getUint32(20)], [480, 300]);
+  const idatLen = v.getUint32(33);
+  assert.equal(inflateSync(a.slice(41, 41 + idatLen)).length, 300 * (1 + 480 * 3), 'every row there');
+  assert.notDeepEqual(a, b);
+  assert.ok(a.length < 4000, 'small');
 });
