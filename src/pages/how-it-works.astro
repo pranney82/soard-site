@@ -6,16 +6,16 @@
  * four-step list, it follows ONE real project from application to reveal using
  * the artifacts that project already has on file: the designer's presentation
  * boards, the dimensioned floor plans, the site photos, the reveal video, and
- * the before/after pair. Sourcing is the one step shown as a mechanism (the
- * materials list), since partners change from room to room.
+ * the before/after pair. Mobilization is shown as the run sheet from the
+ * JobTread job template, since sponsors and partners change from room to room.
  *
  * Featured project: siteSettings.howItWorks.kidSlug (Admin → Kids on Site),
  * falling back to the most recent kid that has drawings and a video.
  *
  * MOTION: the chapter rail's line fills as you read and its bead rides the tip;
  *   chapter heads rise out of a mask; the active chapter's numeral lights up;
- *   photos settle in sequence; the materials list checks itself off line by
- *   line; the before/after handle sweeps once to
+ *   photos settle in sequence; the mobilization run sheet checks itself off
+ *   line by line; the before/after handle sweeps once to
  *   show it moves; the rooms-per-year columns grow from the baseline. All of it
  *   stops under prefers-reduced-motion. No number counters.
  * PERF: hero LCP preload, lazy media below the fold, click-to-load video.
@@ -126,15 +126,20 @@ const sparePhoto = sitePhotos.find(p => !shownStems.has(stem(p.url)));
 const filePhotoId = sparePhoto ? cfId(sparePhoto.url) : pair ? cfId(pair.before) : portraitId;
 const filePhotoIsBefore = !!(sparePhoto || pair);
 
-/* ── Sourcing: how every room's materials list gets filled ──
-   The partners change from room to room (sponsors take on a few rooms a year),
-   so this chapter shows the mechanism, not one project's logo wall. The
-   project's own partners are credited on its kid page; we link there. */
+/* ── Mobilization: what happens between the family's sign-off and demo day ──
+   Mirrors the "Designer Pre Con" group of the JobTread job template (General
+   B/B/T schedule): scope + budget + schedule, family signatures, orders,
+   permit, Schedule Trades / Set Start Date, deliveries before Demo. Sponsors
+   and partners change from room to room, so this is the run sheet, not one
+   project's logo wall; the project's partners are credited on its kid page. */
 const partnerCollection = await getCollection('partners');
-const sourceLines = [
-  { what: 'Flooring, tile, cabinets, fixtures, paint, and furniture', who: 'Manufacturers and suppliers', how: 'Donated', kind: 'gift' },
-  { what: 'Demolition, framing, plumbing, electrical, and finish work', who: 'Trade partners', how: 'Donated labor', kind: 'gift' },
-  { what: 'Specialty equipment and anything not donated', who: 'Donors and foundations, and on some rooms a sponsor', how: 'Funded by gifts', kind: 'funded' },
+const mobilization = [
+  { task: 'Find the sponsor', detail: 'We find a sponsor or foundation to help fund the room.' },
+  { task: 'Scope, budget, and schedule', detail: 'The project manager reviews the scope of work, the budget, and the build schedule, and the family signs off.' },
+  { task: 'Order the materials', detail: 'Every selection on the drawings gets ordered: tile, cabinets, vanities, paint, and the rest.' },
+  { task: 'Pull the permit', detail: 'Filed before work starts, so inspectors can sign off at each stage of the build.' },
+  { task: 'Line up the trades', detail: 'Plumbers, electricians, tile setters, and painters get scheduled, the project manager walks the site, and the start date is set.' },
+  { task: 'Deliveries', detail: 'Materials, a dumpster, and a portable toilet arrive in the days before demo.' },
 ];
 const projectPartners = (k.partnerLogos || []).length;
 
@@ -165,7 +170,7 @@ const featuredCol = yearCols.find(c => c.featured);
 const chapters = [
   { id: 'apply', num: '01', short: 'Apply', title: "It starts with a family's story.", who: ['The family', 'Selection committee'], schema: 'A family applies online, shares photos, and records a video walkthrough of the space. Applications are read by the selection committee, followed by an interview and a home visit.' },
   { id: 'design', num: '02', short: 'Design', title: 'Drawn three ways, then walked at full scale.', who: ['Design partners', 'The family', 'Walk Your Plans'], schema: 'Design partners measure the space and draw several layouts. Three go to the family, who walk them at full size at Walk Your Plans before choosing one. Only then are the theme, colors, and finishes chosen.' },
-  { id: 'source', num: '03', short: 'Source', title: 'Then the materials list gets filled.', who: ['Suppliers', 'Trades', 'Donors'], schema: 'The drawings become a materials list. Manufacturers and suppliers donate products, trade partners donate labor, and gifts from donors and foundations pay for the rest. Some rooms also have a sponsor.' },
+  { id: 'mobilize', num: '03', short: 'Mobilize', title: 'Then we mobilize.', who: ['Our team', 'Sponsors', 'Suppliers', 'Trades'], schema: 'Before construction starts, the team mobilizes: it finds a sponsor to help fund the room, reviews the scope, budget, and schedule and gets the family\'s sign-off, orders the materials, pulls the permit, schedules the trades, sets the start date, and has materials delivered before demo. Some materials come from product partners, and the rest are bought.' },
   { id: 'build', num: '04', short: 'Build', title: 'Walls come down.', who: ['Contractor', 'Trade partners'], schema: 'The contractor documents the existing space, then runs a full renovation: demolition, framing, plumbing, electrical, and finishes. Build time varies by project.' },
   { id: 'reveal', num: '05', short: 'Reveal', title: 'The child walks in.', who: ['The family', 'The whole crew', 'Livestream viewers'], schema: 'The finished room is revealed to the child and family, filmed, and often streamed live.' },
   { id: 'scale', num: '06', short: 'Scale', title: 'Every room since 2012 has followed these steps.', who: [] as string[], schema: 'The same six steps have produced hundreds of rooms across greater Atlanta since 2012.' },
@@ -394,29 +399,28 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
         )}
       </section>
 
-      <!-- 03 SOURCE -->
-      <section class="chapter" id="source" data-chapter="source" aria-labelledby="h-source">
+      <!-- 03 MOBILIZE -->
+      <section class="chapter" id="mobilize" data-chapter="mobilize" aria-labelledby="h-mobilize">
         <div class="chapter__head" data-reveal>
           <span class="chapter__num" aria-hidden="true">03</span>
           <div class="chapter__titles">
-            <h2 id="h-source">{ch.source.title}</h2>
-            <p class="chapter__who"><span class="chapter__who-k">Who</span>{ch.source.who.map(w => <span>{w}</span>)}</p>
+            <h2 id="h-mobilize">{ch.mobilize.title}</h2>
+            <p class="chapter__who"><span class="chapter__who-k">Who</span>{ch.mobilize.who.map(w => <span>{w}</span>)}</p>
           </div>
         </div>
         <div class="chapter__text chapter__text--wide" data-reveal>
-          <p>Once the family picks a layout, the drawings become a materials list: every product, every trade, and every piece of equipment the room needs. Partners donate what they make and the work they do, and gifts pay for the rest. The partners change from room to room, so every list is filled fresh.</p>
+          <p>Once the family has picked a layout and finishes, the work turns to getting the build ready. We find the sponsor, order every material on the drawings, pull the permit, and line up the trades, so that on demo day everything and everyone is in place. Some materials come from product partners, and the rest are bought. Sponsors and partners change from room to room, so every build is lined up fresh.</p>
         </div>
         <div class="mlist" data-reveal data-delay="1">
           <div class="mlist__head">
-            <h3 class="mlist__title">Materials list</h3>
-            <span class="mlist__note">How every room's list gets filled</span>
+            <h3 class="mlist__title">Mobilization</h3>
+            <span class="mlist__note">Before demo day</span>
           </div>
           <ol class="mlist__rows">
-            {sourceLines.map((l, i) => (
+            {mobilization.map((m, i) => (
               <li class="mlist__row" style={`--i:${i}`}>
                 <span class="mlist__check" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path class="mlist__tick" d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/></svg></span>
-                <span class="mlist__what"><strong>{l.what}</strong><span>{l.who}</span></span>
-                <span class={`mlist__how mlist__how--${l.kind}`}>{l.how}</span>
+                <span class="mlist__what"><strong>{m.task}</strong><span>{m.detail}</span></span>
               </li>
             ))}
           </ol>
@@ -569,7 +573,7 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
         <a href="/donate/" class="close__card" data-reveal data-delay="1">
           <span class="close__kicker">A gift</span>
           <span class="close__title">Fund a room</span>
-          <span class="close__text">Your donation covers what partners cannot donate: the fixtures, the specialty equipment, the gaps in the materials list.</span>
+          <span class="close__text">Your gift helps pay for the materials and the trades that turn a family's drawings into a finished room.</span>
           <span class="close__cta">Donate <Fragment set:html={arrow} /></span>
         </a>
         <a href="/partners/" class="close__card close__card--dark" data-reveal data-delay="2">
@@ -838,28 +842,25 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
   .boards__count { font-size: 13px; font-weight: 600; color: var(--c-text-muted); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: center; }
   .boards__count b { color: var(--c-dark); }
 
-  /* Source: the materials list, checked off line by line as it comes into view */
+  /* Mobilize: the run sheet, checked off line by line as it comes into view */
   .mlist { max-width: 860px; background: #fff; border: 1px solid var(--c-border); border-radius: 16px; overflow: hidden; box-shadow: 0 14px 40px rgba(0,0,0,0.07); }
   .mlist__head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; padding: 20px 26px 16px; border-bottom: 2px solid var(--c-dark); }
   .mlist__title { font-size: 20px; line-height: 1.2; letter-spacing: -0.01em; margin: 0; }
   .mlist__note { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-text-light); }
   .mlist__rows { list-style: none; margin: 0; padding: 0 26px; }
-  .mlist__row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--c-border); }
+  .mlist__row { display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: start; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--c-border); }
   .mlist__row:last-child { border-bottom: none; }
   .mlist__check {
     width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--c-border); color: var(--c-dark);
     display: inline-flex; align-items: center; justify-content: center;
-    transition: background-color 0.35s ease, border-color 0.35s ease; transition-delay: calc(0.35s + var(--i, 0) * 0.28s);
+    transition: background-color 0.35s ease, border-color 0.35s ease; transition-delay: calc(0.35s + var(--i, 0) * 0.2s);
   }
-  .mlist__tick { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 0.45s var(--ease-out); transition-delay: calc(0.45s + var(--i, 0) * 0.28s); }
+  .mlist__tick { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 0.45s var(--ease-out); transition-delay: calc(0.45s + var(--i, 0) * 0.2s); }
   .mlist.is-visible .mlist__check { background: var(--c-yellow); border-color: var(--c-yellow); }
   .mlist.is-visible .mlist__tick { stroke-dashoffset: 0; }
   .mlist__what { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .mlist__what strong { font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--c-dark); }
-  .mlist__what span { font-size: 14px; line-height: 1.45; color: var(--c-text-muted); }
-  .mlist__how { justify-self: end; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 11px; border-radius: 100px; }
-  .mlist__how--gift { background: var(--c-yellow-soft); border: 1px solid rgba(255,218,36,0.7); color: var(--c-dark); }
-  .mlist__how--funded { background: var(--c-dark); border: 1px solid var(--c-dark); color: var(--c-yellow); }
+  .mlist__what span { font-size: 14.5px; line-height: 1.55; color: var(--c-text-muted); max-width: 62ch; }
   .mlist__foot {
     display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px;
     padding: 16px 26px; background: var(--c-warm-gray); border-top: 1px solid var(--c-border);
@@ -1081,9 +1082,8 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
     .mlist { border-radius: 14px; }
     .mlist__head, .mlist__foot { padding-left: 18px; padding-right: 18px; }
     .mlist__rows { padding: 0 18px; }
-    .mlist__row { grid-template-columns: 24px minmax(0, 1fr); align-items: start; gap: 8px 14px; padding: 16px 0; }
-    .mlist__check { width: 24px; height: 24px; margin-top: 1px; }
-    .mlist__how { grid-column: 2; justify-self: start; }
+    .mlist__row { grid-template-columns: 24px minmax(0, 1fr); gap: 14px; padding: 15px 0; }
+    .mlist__check { width: 24px; height: 24px; }
     .lb__nav { top: auto; bottom: 18px; margin-top: 0; }
     .lb__stage { padding: 8px 12px 84px; }
     .lb__img { max-height: calc(100dvh - 220px); }

@@ -19,7 +19,7 @@ We are a nonprofit that partners with professional designers, contractors, and s
 - ${s.totalRooms}+ rooms completed (bedrooms, bathrooms, therapy rooms, wheelchair ramps and chair lifts)
 ${roomTypeLines.join('\n')}
 - ${s.livesImpacted.toLocaleString()}+ children impacted through community projects
-- Donated materials and labor from professional partners
+- Each room is funded by sponsors and donors and built with professional design, construction, and supplier partners
 
 ## Programs
 - Dream Bedrooms: Custom-designed bedrooms tailored to each child's interests, medical equipment needs, and sensory preferences
