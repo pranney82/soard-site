@@ -39,6 +39,7 @@ import {
 import { buildApplicationPdf } from './_application-pdf.js';
 import { sendEmails, escapeHtml, SITE_ORIGIN, slackPost } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
+import * as mail from './_email-shell.js';
 import { readApplicant, sendIntake, ensureCommsSchema } from './_applicant-comms.js';
 import { formFor, ensureFormSchema } from './_application-forms.js';
 import { isUpload, isInput, answerText, progressPercent, renderMessage, choice } from './_application-form.js';
@@ -688,32 +689,55 @@ async function ensurePdf(env, app) {
   return bytes;
 }
 
-function staffEmail(app, accountId) {
+export function staffEmail(app, accountId) {
   const a = app.answers;
-  const first = String(a.childName?.first || 'A new applicant').trim();
+  const s = app.jt_state || {};
+  const first = String(a.childName?.first || '').trim() || 'A new applicant';
+  const age = ageOn(a.birthdate, app.submitted_at);
   const types = (a.makeoverTypes || []).join(' and ') || 'a makeover';
-  const lines = [
-    ['Child', nameText(a.childName)],
-    ['Makeover', types],
-    ['Diagnosis', a.diagnosis],
-    ['County', a.county],
-    ['Inside the service area', a.boundary],
-    ['Address check', app.jt_state?.area ? areaText(app.jt_state.area) : null],
-    ['Possible repeat', app.jt_state?.repeat?.matches?.length ? app.jt_state.repeat.matches.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}${m.status ? `, ${m.status}` : ''}`).join('; ') : null],
+  const area = s.area;
+  const repeats = s.repeat?.matches || [];
+  const photos = Object.keys(app.files || {}).filter((k) => k !== 'video' && app.files[k]?.key).length;
+  const { pill, TONES, esc } = mail;
+  const areaHtml = !area ? null
+    : area.status === 'inside' ? `${pill(area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside', TONES.green)}`
+    : area.status === 'outside' ? `${pill(`About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside`, TONES.amber)}`
+    : `${pill('Couldn’t check the address', TONES.amber)}`;
+  const countyClash = area?.county && a.county && area.county !== a.county ? ` <span class="muted" style="color:${mail.MUTED};">The Census says ${esc(area.county)} County.</span>` : '';
+  const repeatHtml = repeats.length
+    ? `${pill('Possible repeat', TONES.amber)} ${esc(repeats.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}${m.status ? `, ${m.status}` : ''}`).join('; '))}`
+    : a.previouslyApplied === 'Yes' ? 'The family says yes; no match found' : 'No';
+  const contact = [nameText(a.parentName), a.parentEmail].filter(Boolean);
+  const rows = [
+    ['Makeover', esc(types)],
+    ['Child', esc([nameText(a.childName), age != null ? `age ${age}` : null].filter(Boolean).join(', '))],
+    ['Diagnosis', esc(a.diagnosis)],
+    ['County', esc(a.county) + countyClash],
+    ['Service area', areaHtml],
+    ['Applied before', repeatHtml],
+    ['Photos and video', esc([photos ? `${photos} ${photos === 1 ? 'photo' : 'photos'}` : 'No photos', app.files?.video ? 'video' : 'no video'].join(', '))],
     ['Language', app.lang === 'es' ? 'Spanish (applied in Spanish)' : null],
-    ['Main contact', [nameText(a.parentName), a.parentEmail].filter(Boolean).join(', ')],
-  ].filter(([, v]) => v);
-  const rows = lines.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#5A5B61;vertical-align:top">${escapeHtml(k)}</td><td style="padding:4px 0;color:#373A36">${escapeHtml(v)}</td></tr>`).join('');
-  const link = accountId ? jobtreadAccountUrl(accountId) : applicationUrl(app.id);
+    ['Main contact', contact.length ? esc(contact.join(', ')) : null],
+  ];
+  const applicants = accountId ? `${SITE_ORIGIN}/admin/#applications/applicants/${accountId}` : applicationUrl(app.id);
+  const jt = accountId ? jobtreadAccountUrl(accountId) : null;
+  const html = mail.emailShell({
+    preheader: `${types}${a.county ? `, ${a.county} County` : ''}. It’s in JobTread and the family has their copy.`,
+    eyebrow: app.is_test ? 'Test application · not a real family' : `New application · ${app.year} season`,
+    heading: `${first}’s family applied`,
+    intro: `It came in through the website and is in JobTread with the application PDF and photos attached${app.files?.video ? '; the video follows once it finishes processing' : ''}. The family has the “Application Status” email with a copy of their answers.`,
+    bodyHtml: mail.panel(mail.facts(rows))
+      + `<div style="margin-top:16px;">${mail.button('Open in Applicants', applicants, 'primary')}${jt ? mail.button('Open in JobTread', jt, 'outline') : ''}</div>`
+      + `<div style="font-family:${mail.SANS};font-size:13px;margin-top:2px;">${mail.link('The full application, photos and video', applicationUrl(app.id))}</div>`,
+    footerHtml: `This has the family’s diagnosis and contact details, so please keep it inside SOARD. It goes to the staff list in ${mail.link('Applications settings', `${SITE_ORIGIN}/admin/#applications/settings`)}.`,
+  });
   return {
     subject: `${app.is_test ? '[TEST] ' : ''}New makeover application: ${first}`,
-    html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#373A36;max-width:560px">
-<p>A ${escapeHtml(app.year)} application just came in through the website for <strong>${escapeHtml(first)}</strong> (${escapeHtml(types)}).</p>
-<table style="border-collapse:collapse;margin:12px 0">${rows}</table>
-<p>It's in JobTread with the application PDF and photos attached; the video follows once it finishes processing. The family has been sent the "Application Status" message.</p>
-<p><a href="${escapeHtml(link)}" style="display:inline-block;background:#FFDA24;color:#373A36;padding:10px 20px;border-radius:999px;text-decoration:none;font-weight:bold">Open in JobTread</a></p>
-</div>`,
-    text: `A ${app.year} application just came in for ${first} (${types}).\n\n${lines.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nOpen in JobTread: ${link}`,
+    html,
+    text: `${first}'s family applied (${app.year} season).\n\n${[
+      ['Makeover', types], ['Child', nameText(a.childName)], ['Diagnosis', a.diagnosis], ['County', a.county],
+      ['Service area', area ? areaText(area) : null], ['Main contact', contact.join(', ')],
+    ].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nOpen in Applicants: ${applicants}${jt ? `\nOpen in JobTread: ${jt}` : ''}`,
   };
 }
 
@@ -1188,21 +1212,21 @@ export function reminderEmail({ form, draft, link, stopLink, percent }) {
   };
   const subject = renderMessage(form.reminders.subject, vars);
   const body = renderMessage(form.reminders.body, vars);
-  const paras = body.split(/\n{2,}/).map(p => `<p style="margin:0 0 14px">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
-  const button = es ? 'Terminar mi solicitud' : 'Finish my application';
+  const cta = es ? 'Terminar mi solicitud' : 'Finish my application';
   const stop = es ? 'No quiero más recordatorios' : 'Stop these reminders';
-  const bar = `<div style="background:#F5F4F0;border-radius:99px;height:10px;margin:6px 0 18px;overflow:hidden"><div style="background:#FFDA24;height:10px;width:${Math.max(4, Math.min(100, percent))}%"></div></div>`;
-  return {
-    subject,
-    html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6;color:#373A36;max-width:520px">
-${paras}
-<p style="margin:0;font-size:13px;color:#5A5B61">${es ? `Avance: ${percent}%` : `${percent}% done`}</p>
-${bar}
-<p style="margin:0 0 22px"><a href="${escapeHtml(link)}" style="display:inline-block;background:#FFDA24;color:#373A36;padding:12px 26px;border-radius:999px;text-decoration:none;font-weight:bold">${button}</a></p>
-<p style="margin:0;font-size:13px;color:#5A5B61">Sunshine on a Ranney Day · <a href="${escapeHtml(stopLink)}" style="color:#5A5B61">${stop}</a></p>
-</div>`,
-    text: `${body}\n\n${button}: ${link}\n\n${stop}: ${stopLink}`,
-  };
+  const done = es ? `Avance: ${percent}%` : `${percent}% done`;
+  const html = mail.emailShell({
+    lang: es ? 'es' : 'en',
+    preheader: es ? `Sus respuestas están guardadas. Ya completó el ${percent}%.` : `Your answers are saved. You're ${percent}% done.`,
+    eyebrow: es ? `Solicitud de ${form.year}` : `${form.year} makeover application`,
+    heading: es ? 'Su solicitud está guardada' : 'Your application is saved',
+    bodyHtml: mail.paragraphs(body, `font-family:${mail.SANS};font-size:16px;line-height:1.6;`)
+      + `<div class="muted" style="margin:18px 0 8px;font-family:${mail.SANS};font-size:13px;font-weight:700;color:${mail.MUTED};">${mail.esc(done)}</div>`
+      + mail.progress(percent)
+      + `<div style="margin-top:22px;">${mail.button(cta, link, 'primary')}</div>`,
+    footerHtml: `${es ? 'Recibe este correo porque comenzó una solicitud con Sunshine on a Ranney Day.' : 'You’re getting this because you started an application with Sunshine on a Ranney Day.'} ${mail.link(stop, stopLink)}`,
+  });
+  return { subject, html, text: `${body}\n\n${cta}: ${link}\n\n${stop}: ${stopLink}` };
 }
 
 /**

@@ -38,11 +38,13 @@
 import { pave, SOARD_ORG_ID, easternParts, easternToUtcIso } from './_reveals.js';
 import {
   readApplicant, sendStatusMessage, sentKinds, madeByForm, postAccountComment, handleApplicantEvent, applicationLang,
+  familyMessage, COMMENT_NAMES, COMMENT_NAMES_ES,
   SITE_GRANT_ID, STATUS_RANK, INTAKE_SINCE, FIELD_STATUS,
 } from './_applicant-comms.js';
 import { getLiveForm } from './_application-forms.js';
 import { resolveForm, notifySettings, renderMessage, DEFAULT_MESSAGES } from './_application-form.js';
-import { sendEmails, escapeHtml, SITE_ORIGIN } from './_broadcast-notify.js';
+import { sendEmails, SITE_ORIGIN } from './_broadcast-notify.js';
+import { emailShell, panel, pill, button, link, esc, MUTED, SANS } from './_email-shell.js';
 
 const KIND = { Applied: 'welcome', 'In Review': 'inReview', Approved: 'approved', Denied: 'denied' };
 const STATUS_OF = Object.fromEntries(Object.entries(KIND).map(([s, k]) => [k, s]));
@@ -326,7 +328,7 @@ export async function runNotifications(env, { fetchImpl = fetch, now = Date.now(
   try {
     await ensureNotifySchema(DB);
     await endPauseIfDue(env, now);
-    out.summaries = await sendSummaries(env, { now });
+    out.summaries = await sendSummaries(env, { now, fetchImpl });
     for (const row of await dueRows(DB, now, limit)) out.sent.push({ id: row.account_id, kind: row.kind, result: await sendRow(env, row, { fetchImpl, now }) });
     out.notes = await postMoveBackNotes(env, { fetchImpl, now });
   } catch (e) {
@@ -357,8 +359,28 @@ async function postMoveBackNotes(env, { fetchImpl, now }) {
 const actionUrl = (tok, act) => `${SITE_ORIGIN}/api/applicant-email-action?t=${tok}&do=${act}`;
 const adminUrl = (id) => `${SITE_ORIGIN}/admin/#applications/applicants/${id}`;
 
+/**
+ * What a family would read, for the summary: { to, title, snippet }. The
+ * greeting line is dropped and *bold* markers too, so the preview reads as
+ * prose. Never throws (the summary still goes without it).
+ */
+async function familyPreview(env, row, fetchImpl) {
+  try {
+    const applicant = await readApplicant(env, row.account_id, fetchImpl);
+    if (!applicant) return null;
+    const lang = (await applicationLang(env.DB, row.account_id)) || applicant.lang || 'en';
+    const text = await familyMessage(env, row.kind, { parent: applicant.primary?.name || 'Hello', child: applicant.name, lang });
+    const body = String(text).split('\n').slice(1).join(' ').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+    const snippet = body.length > 190 ? `${body.slice(0, 190).replace(/\s+\S*$/, '')}…` : body;
+    const titles = lang === 'es' ? COMMENT_NAMES_ES : COMMENT_NAMES;
+    return { to: applicant.primary?.name || null, title: titles[row.kind] || COMMENT_NAMES[row.kind], snippet, lang };
+  } catch {
+    return null;
+  }
+}
+
 /** One email per person per working session, listing each family and what's about to go */
-async function sendSummaries(env, { now }) {
+async function sendSummaries(env, { now, fetchImpl = fetch }) {
   const { DB } = env;
   const { results } = await DB.prepare("SELECT * FROM applicant_notify WHERE kind IS NOT NULL AND hold IS NULL AND summary_at IS NULL AND via != 'website'").all();
   const groups = new Map();
@@ -375,7 +397,9 @@ async function sendSummaries(env, { now }) {
     if (key === 'staff') {
       try { to = resolveForm((await getLiveForm(DB)).definition).staffEmails; } catch { to = ['selection@soardcharity.com']; }
     }
-    const msg = summaryEmail(rows, { now, staff: key === 'staff' });
+    const previews = {};
+    for (const r of rows.slice(0, 30)) previews[r.account_id] = await familyPreview(env, r, fetchImpl);
+    const msg = summaryEmail(rows, { now, staff: key === 'staff', previews, quiet: (await settings(env)).quiet });
     const res = await sendEmails(env, { to, ...msg, tags: [{ name: 'type', value: 'applicant-status-summary' }] });
     // Even if the email failed, the families' emails must not wait forever
     for (const r of rows) await putRow(DB, { ...r, summary_at: now }, now);
@@ -384,34 +408,79 @@ async function sendSummaries(env, { now }) {
   return sent;
 }
 
-export function summaryEmail(rows, { now = Date.now(), staff = false } = {}) {
+/** "2:45 PM", with how long that is from now ("in 30 minutes", "tomorrow, after quiet hours") */
+function whenText(ts, now) {
+  const time = sendTimeText(ts, now);
+  const mins = Math.round((ts - now) / 60000);
+  const sameDay = easternParts(iso(ts))?.date === easternParts(iso(now))?.date;
+  if (!sameDay) return { time, rel: 'after quiet hours' };
+  if (mins <= 1) return { time, rel: 'in about a minute' };
+  return { time, rel: mins < 60 ? `in ${mins} minutes` : `in about ${Math.round(mins / 60)} ${Math.round(mins / 60) === 1 ? 'hour' : 'hours'}` };
+}
+
+/**
+ * The summary email (subject, html, text). rows: applicant_notify rows;
+ * previews: { accountId: familyPreview() }; staff: an integration made the
+ * change, so it goes to the staff list and says who.
+ */
+export function summaryEmail(rows, { now = Date.now(), staff = false, previews = {}, quiet = { start: 20, end: 8 } } = {}) {
   const sorted = [...rows].sort((a, b) => a.due_at - b.due_at);
   const first = sorted[0];
-  const who = staff ? (first.by_name ? `${first.by_name} (through an integration)` : 'An integration') : 'You';
-  const subject = rows.length === 1
-    ? `${first.name}: ${LABEL[first.kind]} email goes out at ${sendTimeText(first.due_at, now)}`
-    : `${who === 'You' ? 'You moved' : `${who} moved`} ${rows.length} families. Their emails go out from ${sendTimeText(first.due_at, now)}`;
-  const btn = (href, label, primary = false) => `<a href="${escapeHtml(href)}" style="display:inline-block;margin:4px 6px 0 0;padding:7px 14px;border-radius:999px;text-decoration:none;font-size:13px;font-weight:bold;${primary ? 'background:#FFDA24;color:#373A36' : 'background:#F1F0EC;color:#373A36'}">${escapeHtml(label)}</a>`;
-  const items = sorted.map(r => {
-    const back = known(r.previous) && r.previous ? btn(actionUrl(r.token, 'back'), `Move back to ${r.previous}`, true) : '';
-    return `<tr><td style="padding:12px 0;border-top:1px solid #E5E4E0">
-<div style="font-weight:bold;color:#373A36">${escapeHtml(r.name || 'A family')}</div>
-<div style="color:#5A5B61;font-size:14px">${r.previous ? `${escapeHtml(r.previous)} → ` : ''}${escapeHtml(r.status)} · the ${escapeHtml(LABEL[r.kind])} email goes out at ${escapeHtml(sendTimeText(r.due_at, now))}</div>
-<div>${back}${btn(actionUrl(r.token, 'skip'), "Don't email")}${btn(actionUrl(r.token, 'send'), 'Send now')}${btn(adminUrl(r.account_id), 'Open')}</div></td></tr>`;
+  const one = sorted.length === 1;
+  const firstWhen = whenText(first.due_at, now);
+  const added = (r) => !r.previous && r.kind === 'welcome';
+  const headline = one
+    ? (added(first) ? `${first.name} was added as an applicant` : `${first.name} moved to ${first.status}`)
+    : `${sorted.length} families moved`;
+  const subject = one
+    ? `${headline} · family email at ${firstWhen.time}`
+    : `${headline} · family emails from ${firstWhen.time}`;
+  const who = staff ? (first.by_name ? `${first.by_name}, through an integration,` : 'An integration') : 'You';
+  const intro = `${esc(who)} changed ${one ? 'this' : 'these'} in JobTread. Nothing to do if ${one ? 'it’s' : 'they’re'} right. If ${one ? 'it' : 'one'} was a mistake, tap <strong>Move back</strong> before the email goes and the family never hears about it.`;
+  const hour = (h) => `${h % 12 || 12}&nbsp;${h < 12 ? 'AM' : 'PM'}`;
+  const quietLine = quiet && quiet.start !== quiet.end ? `Families are never emailed between ${hour(quiet.start)} and ${hour(quiet.end)} Eastern, and a` : 'A';
+
+  const cards = sorted.map(r => {
+    const p = previews[r.account_id] || null;
+    const when = whenText(r.due_at, now);
+    const firstName = String(r.name || '').split(/\s+/)[0] || 'this family';
+    const change = r.previous && known(r.previous)
+      ? `${pill(r.previous)}<span class="muted" style="padding:0 6px;color:${MUTED};">&rarr;</span>${pill(r.status)}`
+      : pill(r.status);
+    const quote = p?.snippet
+      ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;margin:12px 0 4px;"><tr><td class="quote muted" style="padding:12px 14px;background:#F5F4F0;border-radius:8px;font-family:${SANS};font-size:13px;line-height:1.55;color:${MUTED};">`
+        + `<div class="ink" style="font-weight:700;color:#2D2E33;margin-bottom:3px;">${esc(p.title)}${p.lang === 'es' ? ' <span class="muted" style="font-weight:400;color:' + MUTED + ';">(in Spanish)</span>' : ''}</div>${esc(p.snippet)}</td></tr></table>`
+      : '';
+    const actions = [
+      r.previous && known(r.previous) && r.previous !== r.status ? button(`Move back to ${r.previous}`, actionUrl(r.token, 'back'), 'dark') : '',
+      button('Don’t email', actionUrl(r.token, 'skip'), 'outline'),
+      button('Send now', actionUrl(r.token, 'send'), 'outline'),
+    ].join('');
+    return panel(`${one ? '' : `<div class="ink" style="font-family:${SANS};font-size:17px;font-weight:700;line-height:1.3;color:#2D2E33;margin-bottom:9px;">${esc(r.name || 'A family')}</div>`}
+<div style="margin:0 0 10px;line-height:26px;">${change}</div>
+<div class="muted" style="font-family:${SANS};font-size:14px;line-height:1.5;color:${MUTED};">${esc(p?.to || 'The family')} is emailed at <strong class="ink" style="color:#2D2E33;">${esc(when.time)}</strong>, ${esc(when.rel)}.</div>
+${quote}
+<div style="margin-top:12px;">${actions}</div>
+<div style="font-family:${SANS};font-size:13px;margin-top:2px;">${link(`Open ${firstName} in the admin`, adminUrl(r.account_id))}</div>`);
   }).join('');
-  const intro = staff
-    ? `${escapeHtml(who)} changed ${rows.length === 1 ? 'a status' : `${rows.length} statuses`} in JobTread. Each family below will be emailed unless someone acts first.`
-    : `You changed ${rows.length === 1 ? 'a status' : `${rows.length} statuses`} in JobTread. Each family below will be emailed. If one was a mistake, move it back (or just change it back in JobTread) and nothing is sent.`;
-  return {
-    subject,
-    html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#373A36;max-width:600px">
-<p>${intro}</p>
-<table style="border-collapse:collapse;width:100%">${items}</table>
-<p style="color:#5A5B61;font-size:13px;margin-top:16px">Nothing to do if these are right. Family emails never go out between 8 PM and 8 AM Eastern.</p>
-</div>`,
-    text: `${staff ? `${who} changed statuses in JobTread.` : 'You changed statuses in JobTread.'} Each family below will be emailed unless you act first.\n\n${sorted.map(r => `${r.name}: ${r.previous ? `${r.previous} -> ` : ''}${r.status}, emailed at ${sendTimeText(r.due_at, now)}\n  Move back: ${actionUrl(r.token, 'back')}\n  Don't email: ${actionUrl(r.token, 'skip')}\n  Send now: ${actionUrl(r.token, 'send')}`).join('\n\n')}`,
-  };
+
+  const html = emailShell({
+    preheader: one
+      ? `${p0(previews, first)} is emailed at ${firstWhen.time}. Nothing to do if that’s right.`
+      : `${sorted.length} families are emailed from ${firstWhen.time}. Nothing to do if they’re right.`,
+    eyebrow: 'Applicants · Status emails',
+    heading: headline,
+    intro,
+    bodyHtml: cards,
+    footerHtml: `You’re getting this because ${staff ? 'statuses were changed in JobTread by an integration' : 'you changed statuses in JobTread'}. ${quietLine} status that’s changed back before its email goes sends nothing. ${link('Email timing', `${SITE_ORIGIN}/admin/#applications/settings`)}`,
+  });
+  const text = `${headline}\n\n${staff ? `${who} changed ${one ? 'this' : 'these'} in JobTread.` : `You changed ${one ? 'this' : 'these'} in JobTread.`} Nothing to do if ${one ? 'it is' : 'they are'} right.\n\n${sorted.map(r => {
+    const when = whenText(r.due_at, now);
+    return `${r.name}: ${r.previous ? `${r.previous} -> ` : ''}${r.status}. Emailed at ${when.time}, ${when.rel}.\n  Move back: ${actionUrl(r.token, 'back')}\n  Don't email: ${actionUrl(r.token, 'skip')}\n  Send now: ${actionUrl(r.token, 'send')}`;
+  }).join('\n\n')}`;
+  return { subject, html, text };
 }
+const p0 = (previews, row) => previews[row.account_id]?.to || 'The family';
 
 // ─── Staff actions (admin and the summary's links) ─────────────────
 
@@ -501,10 +570,19 @@ async function endPauseIfDue(env, now) {
   await setState(env.DB, 'pause', null, now);
   const { held } = await pauseState(env.DB, now);
   if (p.email && held.length) {
+    const n = held.length;
+    const rows = held.map(h => panel(`<div class="ink" style="font-family:${SANS};font-size:16px;font-weight:700;color:#2D2E33;">${esc(h.name || 'A family')}</div><div style="margin-top:8px;line-height:26px;">${pill(h.status)}</div>`)).join('');
     await sendEmails(env, {
       to: [p.email],
-      subject: `Family emails are back on. ${held.length} ${held.length === 1 ? 'email is' : 'emails are'} held from the pause`,
-      html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#373A36;max-width:560px"><p>The pause you started has ended. These families' status emails were held and won't go out unless someone sends them:</p><ul>${held.map(h => `<li>${escapeHtml(h.name || '')}: ${escapeHtml(h.status)}</li>`).join('')}</ul><p><a href="${SITE_ORIGIN}/admin/#applications/applicants" style="display:inline-block;background:#FFDA24;color:#373A36;padding:10px 20px;border-radius:999px;text-decoration:none;font-weight:bold">Decide in the admin</a></p></div>`,
+      subject: `Family emails are back on. ${n} ${n === 1 ? 'email is' : 'emails are'} held from the pause`,
+      html: emailShell({
+        preheader: `${n} status ${n === 1 ? 'email was' : 'emails were'} held while family emails were paused. They only go if someone sends them.`,
+        eyebrow: 'Applicants · Status emails',
+        heading: 'Family emails are back on',
+        intro: `The pause you started has ended. While it was on, these ${n === 1 ? 'status change was' : `${n} status changes were`} held, and ${n === 1 ? 'it won’t' : 'they won’t'} be emailed unless someone sends ${n === 1 ? 'it' : 'them'}.`,
+        bodyHtml: `${rows}<div style="margin-top:6px;">${button('Decide in the admin', `${SITE_ORIGIN}/admin/#applications/applicants`)}</div>`,
+        footerHtml: 'You’re getting this because you paused family emails from the admin.',
+      }),
       text: `The pause ended. Held: ${held.map(h => `${h.name} (${h.status})`).join(', ')}. Decide in the admin: ${SITE_ORIGIN}/admin/#applications/applicants`,
       tags: [{ name: 'type', value: 'applicant-status-pause' }],
     }).catch(() => {});

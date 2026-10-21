@@ -78,7 +78,7 @@ test('a screening session: one summary to the person, then each family once', as
   await tick(T0 + 5 * MIN);
   const [summary] = emailsTo('linzi@soardcharity.com');
   assert.ok(summary, 'one summary once she stops for 3 minutes');
-  assert.match(summary.subject, /^You moved 3 families/);
+  assert.match(summary.subject, /^3 families moved · family emails from /);
   for (const name of ['Avery Stone', 'Blake Ray', 'Casey Moore']) assert.match(summary.html, new RegExp(name));
   assert.match(summary.html, /Move back to Applied/);
   assert.equal((summary.html.match(/applicant-email-action\?t=[0-9a-f]{32}&amp;do=back/g) || []).length, 3);
@@ -236,7 +236,14 @@ test('a change the workflow never reported is still caught; a stalled sweep show
 
 test('the summary email reads well for one family', () => {
   const msg = summaryEmail([{ account_id: 'A1', name: 'Avery Stone', status: 'Denied', previous: 'In Review', kind: 'denied', due_at: T0 + 30 * MIN, token: 'a'.repeat(32), by_name: 'Linzi', via: 'jobtread', since: iso(T0) }], { now: T0 });
-  assert.match(msg.subject, /^Avery Stone: Denied email goes out at 11:30 AM$/);
-  assert.match(msg.html, /In Review → Denied/);
+  assert.match(msg.subject, /^Avery Stone moved to Denied · family email at 11:30\sAM$/);
+  assert.match(msg.html, />In Review<\/span>.*&rarr;.*>Denied<\/span>/s, 'the change, as status pills');
+  assert.match(msg.html, /is emailed at <strong[^>]*>11:30\sAM<\/strong>, in 30 minutes\./);
+  assert.match(msg.html, /Move back to In Review/);
+  assert.match(msg.html, /never emailed between 8&nbsp;PM and 8&nbsp;AM Eastern/);
+  assert.match(msg.text, /Avery Stone: In Review -> Denied\. Emailed at 11:30\sAM/);
+  // Quiet hours follow the settings
+  const late = summaryEmail([{ account_id: 'A1', name: 'Avery Stone', status: 'Denied', previous: 'In Review', kind: 'denied', due_at: T0 + 30 * MIN, token: 'a'.repeat(32) }], { now: T0, quiet: { start: 21, end: 7 } });
+  assert.match(late.html, /between 9&nbsp;PM and 7&nbsp;AM Eastern/);
   assert.ok(!/—/.test(msg.html + msg.text), 'no em dashes');
 });

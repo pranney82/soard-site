@@ -17,7 +17,7 @@ import {
 import {
   createDraft, getDraft, saveDraft, setDraftFile, submitDraft, processApplication, getApplication,
   maybeSweepApplications, expireDrafts, accountFields, contactInputs, JT_FIELDS, photoKey, TEST_JPEG,
-  testAnswers, createTestApplication, listApplications, applicationUrl, DRAFT_TTL_DAYS,
+  testAnswers, createTestApplication, listApplications, applicationUrl, DRAFT_TTL_DAYS, reminderEmail,
 } from '../functions/api/_applications.js';
 import { handleApplicantEvent, QC_USER_ID } from '../functions/api/_applicant-comms.js';
 import { handleWorkflowCall, runNotifications } from '../functions/api/_applicant-notify.js';
@@ -179,6 +179,9 @@ test('submit loads everything into JobTread; the video follows once Stream is do
   assert.equal(w.world.emails.length, 1);
   assert.deepEqual(w.world.emails[0].to, ['selection@soardcharity.com']);
   assert.match(w.world.emails[0].subject, /New makeover application: Avery/);
+  assert.match(w.world.emails[0].html, new RegExp(`href="https://sunshineonaranneyday\\.com/admin/#applications/applicants/${acct.id}"[^>]*>Open in Applicants<`));
+  assert.match(w.world.emails[0].html, new RegExp(`href="https://app\\.jobtread\\.com/customers/${acct.id}"[^>]*>Open in JobTread<`));
+  assert.match(w.world.emails[0].html, />Spina bifida</, 'staff email carries the diagnosis (Slack never does)');
   assert.equal(w.world.slack.length, 1);
   const post = JSON.stringify(w.world.slack[0]);
   assert.match(w.world.slack[0].text, /^📝 New application: Avery, age \d+\nAccessible Bathroom and Dream Bedroom · /, 'the phone notification: who and what, no link');
@@ -652,4 +655,24 @@ test('a form application retries the medical note, then posts the diagnosis on t
   assert.match(notes()[0].message, /^\*Diagnosis\*: Spina bifida\n\n_No plain-language summary this time/);
   await run(sub.id, t + 30 * 60 * 1000);
   assert.equal(notes().length, 1);
+});
+
+test('the reminder email: their words, progress, one button, a way to stop, in their language', () => {
+  const draft = { answers: { parentName: { first: 'Jordan' }, childName: { first: 'Avery' } }, lang: 'en' };
+  const en = reminderEmail({ form, draft, link: 'https://example.org/apply/form/?resume=abc', stopLink: 'https://example.org/stop', percent: 62 });
+  assert.match(en.html, /<html lang="en">/);
+  assert.match(en.html, /Hi Jordan,/);
+  assert.match(en.html, /application for Avery/);
+  assert.match(en.html, /62% done/);
+  assert.match(en.html, /width="62%"/, 'the progress bar');
+  assert.match(en.html, /href="https:\/\/example\.org\/apply\/form\/\?resume=abc"[^>]*>Finish my application</);
+  assert.match(en.html, /href="https:\/\/example\.org\/stop"[^>]*>Stop these reminders</);
+  assert.match(en.text, /Finish my application: https:\/\/example\.org\/apply\/form\/\?resume=abc/);
+  const esForm = { year: YEAR, reminders: { subject: 'Su solicitud de SOARD le está esperando', body: 'Hola, {parent}:\n\nYa completó aproximadamente el {percent}%.' } };
+  const es = reminderEmail({ form: esForm, draft: { ...draft, lang: 'es' }, link: 'https://example.org/r', stopLink: 'https://example.org/s', percent: 35 });
+  assert.match(es.html, /<html lang="es">/);
+  assert.match(es.html, />Terminar mi solicitud</);
+  assert.match(es.html, />No quiero más recordatorios</);
+  assert.match(es.html, /Su solicitud está guardada/);
+  assert.ok(!/—/.test(en.html + es.html), 'no em dashes');
 });
