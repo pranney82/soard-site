@@ -668,7 +668,11 @@ export async function tidyStep(env, state, { fetchImpl = fetch, gate = OPEN_GATE
     return { did: `merged ${group.join(', ')}` };
   }
   if (t.phase === 'stories') {
-    const row = await DB.prepare(`SELECT p.slug FROM press p LEFT JOIN press_links l ON l.slug = p.slug WHERE l.enriched_at IS NULL ORDER BY p.slug LIMIT 1`).first();
+    // Each story once (one partway through its steps carries on); then a story whose picture couldn't be saved gets one more try
+    const row = await DB.prepare(`SELECT p.slug FROM press p LEFT JOIN press_links l ON l.slug = p.slug
+      WHERE l.enriched_at IS NULL OR json_extract(l.data, '$.stage') IS NOT NULL
+        OR (json_extract(l.data, '$.imageError') IS NOT NULL AND COALESCE(json_extract(l.data, '$.pictureTries'), 1) < 2 AND json_extract(p.data, '$.image') IS NULL)
+      ORDER BY (l.enriched_at IS NOT NULL), p.slug LIMIT 1`).first();
     if (!row) { t.phase = 'done'; t.doneAt = iso(); t.version = TIDY_VERSION; return { did: 'tidy done', done: true }; }
     return storyStep(env, row.slug, { fetchImpl, tidy: t, gate });
   }
@@ -786,7 +790,7 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
           const a = await gate.use(async () => { const x = await saveImage(env, `https://web.archive.org/web/${String(s.date || '').slice(0, 4) || '2020'}im_/${page.image}`, `press/${slug}`, { fetchImpl }); return { ...x, limited: /\(429\)/.test(x.error || '') }; });
           if (a.imageId) { r = a; from = 'archive'; }
         }
-        if (r.imageId) take(r.imageId, from); else data.imageError = r.error || 'skipped';
+        if (r.imageId) { take(r.imageId, from); delete data.imageError; } else { data.imageError = r.error || 'skipped'; data.pictureTries = (data.pictureTries || 0) + 1; }
       }
     }
     // A featured card with no picture, video or logo would show the outlet's name in plain type:
@@ -843,7 +847,7 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   if (data.siteVideo) keep.siteVideo = data.siteVideo;
   if (data.imageSrc) keep.imageSrc = data.imageSrc;
   if (data.imageFrom && clean.image === data.image) keep.imageFrom = data.imageFrom;
-  if (data.imageError) keep.imageError = data.imageError;
+  if (data.imageError) { keep.imageError = data.imageError; keep.pictureTries = data.pictureTries || 1; }
   if (data.fromArchive) keep.fromArchive = true;
   await save({ enriched_at: iso(), url: clean.url || null, data: JSON.stringify(keep) });
   return { did: `${slug} saved${diff ? '' : ' (nothing to change)'}` };

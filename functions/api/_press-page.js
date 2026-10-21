@@ -10,6 +10,8 @@ import { UA } from './_press-sources.js';
 const MAX_HTML = 1_500_000;
 const MAX_TEXT = 8000;
 const MAX_IMAGE = 10 * 1024 * 1024;
+// What Cloudflare Images accepts (it says so when sent anything else, AVIF included)
+const CF_TYPES = /^image\/(jpeg|jpg|png|webp|gif|heic)$/;
 
 /** Only public web addresses: nothing on this machine or a private network */
 export function safeUrl(raw) {
@@ -168,11 +170,20 @@ export async function saveImage(env, imageUrl, id, { fetchImpl = fetch, referer 
   if (!u) return { error: 'Not a picture address' };
   if (genericImage(u.toString())) return { error: 'That’s the site’s logo, not a picture of the story' };
   try {
-    const res = await fetchImpl(u.toString(), { redirect: 'follow', headers: { 'User-Agent': UA, Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', ...(referer ? { Referer: referer } : {}) }, signal: AbortSignal.timeout(10000) });
+    // Only formats Cloudflare Images takes: asked for AVIF, image servers like
+    // AJC's and WSB-TV's send AVIF, which it turns away
+    const get = (accept) => fetchImpl(u.toString(), { redirect: 'follow', headers: { 'User-Agent': UA, Accept: accept, ...(referer ? { Referer: referer } : {}) }, signal: AbortSignal.timeout(10000) });
+    const typeOf = (r) => (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    let res = await get('image/webp,image/jpeg,image/png,image/gif;q=0.9,image/*;q=0.5');
     if (!res.ok) return { error: `The picture couldn’t be downloaded (${res.status})` };
-    const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (typeOf(res).startsWith('image/') && !CF_TYPES.test(typeOf(res)) && typeOf(res) !== 'image/svg+xml') {
+      res = await get('image/jpeg,image/png;q=0.9');
+      if (!res.ok) return { error: `The picture couldn’t be downloaded (${res.status})` };
+    }
+    const type = typeOf(res);
     if (type && !type.startsWith('image/')) return { error: `That isn’t a picture (${type})` };
     if (type === 'image/svg+xml') return { error: 'That’s a drawing (a logo), not a picture of the story' };
+    if (type && !CF_TYPES.test(type)) return { error: `Cloudflare Images can’t take ${type} pictures` };
     const bytes = await res.arrayBuffer();
     if (!bytes.byteLength) return { error: 'The picture was empty' };
     if (bytes.byteLength > MAX_IMAGE) return { error: 'The picture is over 10 MB' };

@@ -696,6 +696,46 @@ describe('press monitor: the second look (what production showed on Oct 21 2026)
     assert.match(log.label, /Merged TODAY\.com into Today Show/);
   });
 
+  test('an image server that offers AVIF is asked for a format Cloudflare Images takes (AJC’s, live on Oct 21)', async () => {
+    const { saveImage } = await import('../functions/api/_press-page.js');
+    const sent = [];
+    const arcFetch = async (url, init = {}) => {
+      if (/api\.cloudflare\.com/.test(url)) { const f = init.body.get('file'); sent.push(f.type); return Response.json(/avif/.test(f.type) ? { success: false, errors: [{ message: 'Uploaded image must have image/jpeg, image/png, image/webp, image/gif, image/heic or image/svg+xml content-type' }] } : { success: true, result: { id: 'press/ajc-2022' } }); }
+      // Arc XP's resizer: AVIF to anyone who lists it, else the first format asked for
+      const accept = init.headers?.Accept || '';
+      const type = /avif/.test(accept) ? 'image/avif' : /^image\/webp/.test(accept) ? 'image/webp' : 'image/jpeg';
+      return new Response(new Uint8Array(20000), { headers: { 'content-type': type } });
+    };
+    const r = await saveImage({ CF_ACCOUNT_ID: 'a', CF_IMAGES_TOKEN: 't' }, 'https://images.ajc.com/resizer/v2/AXOK.JPG?auth=1&width=1200', 'press/ajc-2022', { fetchImpl: arcFetch });
+    assert.equal(r.imageId, 'press/ajc-2022');
+    assert.deepEqual(sent, ['image/webp']);
+    // A server that only has AVIF: asked again for JPEG, and told plainly when it still can't
+    const avifOnly = async (url, init = {}) => (/api\.cloudflare\.com/.test(url) ? Response.json({ success: true, result: { id: 'x' } }) : new Response(new Uint8Array(20000), { headers: { 'content-type': 'image/avif' } }));
+    assert.match((await saveImage({ CF_ACCOUNT_ID: 'a', CF_IMAGES_TOKEN: 't' }, 'https://img.example.com/a.avif', 'press/x', { fetchImpl: avifOnly })).error, /can’t take image\/avif/);
+  });
+
+  test('a picture that couldn’t be saved gets one more try later in the round, then is left alone', async () => {
+    const img = 'https://img.example.com/monica-room';
+    const env = await newEnv({ press: [{ slug: 'wsb-tv-monica-2016', outlet: 'WSB-TV', outletLogo: 'wsb-tv', category: 'local-tv', title: '6-year-old girl paralyzed in crash gets special room makeover', date: '2016-06-01', url: 'https://www.wsbtv.com/news/monica', excerpt: 'A room for Monica.', image: null, featured: false, order: 0 }], medialogos: OUTLETS, kids: KIDS, partners: [] });
+    world.pages['https://www.wsbtv.com/news/monica'] = article({ title: 'Girl gets special room', site: 'WSB-TV', date: '2016-06-01', image: img, text: 'Sunshine on a Ranney Day built Monica a room.' });
+    world.pages[img] = 500;
+    const state = { tidy: { phase: 'stories', counts: {} } };
+    const until = async (cond) => { for (let i = 0; i < 20 && !(await cond()); i++) await E.tidyStep(env, state, { fetchImpl: fakeFetch }); };
+    await until(async () => !!(await env.DB.prepare("SELECT enriched_at FROM press_links WHERE slug = 'wsb-tv-monica-2016'").first())?.enriched_at);
+    assert.equal((await story(env.DB, 'wsb-tv-monica-2016')).image, null);
+    assert.notEqual(state.tidy.phase, 'done', 'not done: the failed picture is tried once more');
+    world.files[img] = true;
+    await until(async () => state.tidy.phase === 'done');
+    assert.equal((await story(env.DB, 'wsb-tv-monica-2016')).image, 'press/wsb-tv-monica-2016', 'the second try saves it');
+    // Failing twice: left alone
+    const env2 = await newEnv({ press: [{ slug: 'wsb-tv-monica-2016', outlet: 'WSB-TV', outletLogo: 'wsb-tv', category: 'local-tv', title: 'Girl gets special room', date: '2016-06-01', url: 'https://www.wsbtv.com/news/monica', excerpt: 'A room for Monica.', image: null, featured: false, order: 0 }], medialogos: OUTLETS, kids: KIDS, partners: [] });
+    delete world.files[img];
+    const s2 = { tidy: { phase: 'stories', counts: {} } };
+    for (let i = 0; i < 30 && s2.tidy.phase !== 'done'; i++) await E.tidyStep(env2, s2, { fetchImpl: fakeFetch });
+    assert.equal(s2.tidy.phase, 'done');
+    assert.equal(JSON.parse((await env2.DB.prepare("SELECT data FROM press_links WHERE slug = 'wsb-tv-monica-2016'").first()).data).pictureTries, 2);
+  });
+
   test('an outlet that won’t hand over its picture: the Archive’s copy of it', async () => {
     const img = 'https://www.klove.com/media/holly-ranney';
     const env = await newEnv({ press: [{ slug: 'klove-2024', outlet: 'K-LOVE', outletLogo: 'k-love', category: 'entertainment', title: 'Atlanta’s Holly Ranney: building custom bedrooms', date: '2024-07-18', url: 'https://www.klove.com/news/holly-ranney', excerpt: 'Holly Ranney on K-LOVE.', image: null, featured: true, order: 3 }], medialogos: OUTLETS, kids: KIDS, partners: [] });
