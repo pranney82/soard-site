@@ -17,6 +17,24 @@ async function get(fetchImpl, url, opts = {}) {
   const res = await fetchImpl(url, { redirect: 'follow', ...opts, headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', ...(opts.headers || {}) }, signal: AbortSignal.timeout(opts.timeout || TIMEOUT) });
   return res;
 }
+/**
+ * What an answer that wasn't a yes looked like (Google's 503s from the site's
+ * server, Oct 2026): status, where it ended up (Google's bot check lives at
+ * /sorry/), the headers that tell who answered, and the page's title and first
+ * words. Kept with the scan and the found article so Press shows the real reason.
+ */
+export async function responseDiag(res, step = '') {
+  let body = '';
+  try { body = (await res.text()).slice(0, 20000); } catch { /* no body */ }
+  const pick = ['content-type', 'server', 'location', 'retry-after', 'via', 'x-frame-options', 'cf-ray'];
+  return {
+    step, status: res.status, url: res.url || null, at: new Date().toISOString(),
+    headers: Object.fromEntries(pick.map((h) => [h, res.headers.get(h)]).filter(([, v]) => v)),
+    headerNames: [...res.headers.keys()].slice(0, 40),
+    title: plain(body.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0, 200) || null,
+    text: plain(body.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ')).slice(0, 600),
+  };
+}
 const isoDate = (s) => { const t = Date.parse(s || ''); return Number.isFinite(t) ? new Date(t).toISOString() : null; };
 /** "9mo ago", "8y ago", "3 weeks ago", "Streamed 2 years ago" → an approximate date (YouTube search gives no other) */
 export function relativeDate(text, now = Date.now()) {
@@ -45,7 +63,7 @@ const eachItem = (list, read) => list.map((x) => { try { return read(x); } catch
 export async function googleNews(query, { fetchImpl = fetch } = {}) {
   try {
     const res = await get(fetchImpl, `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`);
-    if (!res.ok) return { items: [], error: `Google News answered ${res.status}` };
+    if (!res.ok) return { items: [], error: `Google News answered ${res.status}`, diag: await responseDiag(res, 'search') };
     return { items: parseGoogleRss(await res.text(), query) };
   } catch (e) { return { items: [], error: `Google News: ${e.message}` }; }
 }
@@ -68,12 +86,12 @@ export function parseGoogleRss(xml, query = '') {
  * the way its page does: the article page carries a signature and time,
  * which its batchexecute endpoint trades for the address.
  */
-export async function decodeGoogleLink(link, { fetchImpl = fetch } = {}) {
+export async function decodeGoogleLink(link, { fetchImpl = fetch, onFail = null } = {}) {
   const id = String(link || '').match(/news\.google\.com\/(?:rss\/)?articles\/([^?#/]+)/)?.[1];
   if (!id) return null;
   try {
     const page = await get(fetchImpl, `https://news.google.com/rss/articles/${id}`);
-    if (!page.ok) return null;
+    if (!page.ok) { if (onFail) onFail(await responseDiag(page, 'article')); return null; }
     const html = await page.text();
     const sg = html.match(/data-n-a-sg="([^"]+)"/)?.[1];
     const ts = html.match(/data-n-a-ts="([^"]+)"/)?.[1];
@@ -83,7 +101,7 @@ export async function decodeGoogleLink(link, { fetchImpl = fetch } = {}) {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
       body: `f.req=${encodeURIComponent(JSON.stringify(req))}`,
     });
-    if (!res.ok) return null;
+    if (!res.ok) { if (onFail) onFail(await responseDiag(res, 'decode')); return null; }
     const text = await res.text();
     const chunk = text.split('\n\n')[1];
     const outer = JSON.parse(chunk);

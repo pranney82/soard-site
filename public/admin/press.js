@@ -1051,7 +1051,7 @@ function FoundView({ c, error }) {
       ${SOURCES.map((s) => { const x = st.scans?.[s.id]; return html`<div class="card pr-source" key=${s.id}>
         <p class="pr-source__name">${s.name}</p>
         <p class="pr-source__when">${x?.at ? `Checked ${ago(x.at)}` : 'Not checked yet'}</p>
-        <p class=${`pr-source__what${x?.error ? ' kd-bad' : ''}`}>${x?.error ? `Couldn’t reach it: ${x.error}` : x?.at ? `${plural(x.found || 0, 'result')}, ${x.added || 0} new` : `Checks ${s.every}`}</p>
+        <p class=${`pr-source__what${x?.error ? ' kd-bad' : ''}`}>${x?.error ? `Couldn’t reach it: ${x.error}${x.diag?.title ? ` (“${x.diag.title}”)` : ''}` : x?.at ? `${plural(x.found || 0, 'result')}, ${x.added || 0} new` : `Checks ${s.every}`}</p>
       </div>`; })}
       <div class="card pr-source">
         <p class="pr-source__name">Link check</p>

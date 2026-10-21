@@ -696,6 +696,38 @@ describe('press monitor: the second look (what production showed on Oct 21 2026)
     assert.match(log.label, /Merged TODAY\.com into Today Show/);
   });
 
+  test('when Google refuses, what it sent back is kept with the scan and the find (to see why the server gets 503s)', async () => {
+    const env = await newEnv({ press: [], medialogos: OUTLETS, kids: KIDS, partners: [] });
+    await quietState(env);
+    const sorry = '<html><head><title>Sorry...</title></head><body><div>Our systems have detected unusual traffic from your computer network.</div><script>x()</script></body></html>';
+    const refuse = async (input, init) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (/news\.google\.com/.test(url)) return withUrl(new Response(sorry, { status: 503, headers: { 'content-type': 'text/html; charset=UTF-8', server: 'HTTP server (unknown)', 'retry-after': '3600' } }), `https://www.google.com/sorry/index?continue=${encodeURIComponent(url)}`);
+      return fakeFetch(input, init);
+    };
+    const r = await E.scanPart(env, 'google', { fetchImpl: refuse, limit: 1 });
+    assert.equal(r.diag.status, 503);
+    assert.equal(r.diag.title, 'Sorry...');
+    assert.match(r.diag.text, /unusual traffic/);
+    assert.ok(!/x\(\)/.test(r.diag.text), 'scripts left out');
+    assert.match(r.diag.url, /google\.com\/sorry\//);
+    assert.equal(r.diag.headers['retry-after'], '3600');
+    // The beat keeps it on the scan
+    const s = await E.readState(env.DB);
+    s.scans.google = { at: new Date(NOW - 864e5).toISOString() };
+    await env.DB.prepare('INSERT OR REPLACE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(E.STATE_KEY, JSON.stringify(s), new Date(NOW).toISOString()).run();
+    for (let i = 0; i < 5; i++) await E.maybeRunPress(env, { now: NOW + i * 1000, fetchImpl: refuse, budgetMs: 60000, archiveGapMs: 0 });
+    const st = await E.readState(env.DB);
+    assert.match(st.scans.google.error, /503/);
+    assert.equal(st.scans.google.diag.title, 'Sorry...');
+    // And a find whose link Google won't open keeps its answer too
+    await env.DB.prepare(`INSERT INTO press_mentions (id, provider, query, link, title, source, state, stage, found_at) VALUES ('g:x', 'google', 'q', 'https://news.google.com/rss/articles/abc?oc=5', 'A new room for a girl in Roswell', 'Some Paper', 'new', 'resolve', ?)`).bind(new Date(NOW).toISOString()).run();
+    await E.stepMention(env, await env.DB.prepare("SELECT * FROM press_mentions WHERE id = 'g:x'").first(), { fetchImpl: refuse });
+    const d = JSON.parse((await env.DB.prepare("SELECT data FROM press_mentions WHERE id = 'g:x'").first()).data);
+    assert.equal(d.decodeDiag.step, 'article');
+    assert.equal(d.decodeDiag.status, 503);
+  });
+
   test('an image server that offers AVIF is asked for a format Cloudflare Images takes (AJC’s, live on Oct 21)', async () => {
     const { saveImage } = await import('../functions/api/_press-page.js');
     const sent = [];

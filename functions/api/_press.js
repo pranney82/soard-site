@@ -350,7 +350,7 @@ export async function scanPart(env, provider, { from = 0, limit = 2, now = Date.
     const r = await run();
     out.ran += 1;
     out.found += r.items.length;
-    if (r.error) { out.errors += 1; out.firstError ||= r.error; }
+    if (r.error) { out.errors += 1; out.firstError ||= r.error; out.diag ||= r.diag || null; }
     out.added += await insertMentions(env.DB, r.items, now);
   }
   return out;
@@ -411,17 +411,18 @@ export async function stepMention(env, m, { fetchImpl = fetch, ctx = null, force
     ctx = ctx || await context(DB);
     const onSite = storyFor(ctx, { url: m.url, title: m.title, source: m.source, sourceUrl: m.source_url });
     if (onSite && !force) { await setMention(DB, m.id, { state: 'duplicate', reason: 'Already on the publicity page', story: onSite.slug }); return { done: true }; }
-    let url = m.url || (m.provider === 'google' ? await decodeGoogleLink(m.link, { fetchImpl }) : m.link);
+    let decodeDiag = null;
+    let url = m.url || (m.provider === 'google' ? await decodeGoogleLink(m.link, { fetchImpl, onFail: (d) => { decodeDiag = d; } }) : m.link);
     // Google turns Cloudflare's servers away some hours: the headline, looked up on the outlet's own site
     if (!url && m.source_url) url = await findOnSite(m.source_url, m.title, { fetchImpl });
     if (!url) {
       const tries = (m.tries || 0) + 1;
       if (tries >= RESOLVE_WAITS.length + 1) {
-        await setMention(DB, m.id, { tries, state: 'failed', reason: 'Google wouldn’t give its link and the outlet’s site doesn’t list it' });
+        await setMention(DB, m.id, { tries, state: 'failed', reason: 'Google wouldn’t give its link and the outlet’s site doesn’t list it', ...(decodeDiag ? { data: JSON.stringify({ ...data, decodeDiag }) } : {}) });
         return { done: true };
       }
       // Tried again later (Google answers some hours and not others), over about a week
-      await setMention(DB, m.id, { tries, data: JSON.stringify({ ...data, retryAt: iso(Date.now() + RESOLVE_WAITS[tries - 1]) }) });
+      await setMention(DB, m.id, { tries, data: JSON.stringify({ ...data, retryAt: iso(Date.now() + RESOLVE_WAITS[tries - 1]), ...(decodeDiag ? { decodeDiag } : {}) }) });
       return { done: true, waiting: true };
     }
     const { retryAt: _r, ...rest } = data;
@@ -964,8 +965,10 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
         const r = await scanPart(env, p, { from: prev.cursor ?? 0, limit: 2, now, fetchImpl });
         for (const k of ['found', 'added', 'errors', 'ran']) acc[k] += r[k];
         acc.firstError ||= r.firstError;
+        acc.diag ||= r.diag || null;
         if (r.next >= r.total) {
-          state.scans[p] = { at: iso(now), found: acc.found, added: acc.added, error: acc.ran && acc.errors === acc.ran ? acc.firstError : null, partial: acc.errors && acc.errors < acc.ran ? acc.errors : 0 };
+          // What a refusal looked like is kept until a scan goes through
+          state.scans[p] = { at: iso(now), found: acc.found, added: acc.added, error: acc.ran && acc.errors === acc.ran ? acc.firstError : null, partial: acc.errors && acc.errors < acc.ran ? acc.errors : 0, ...(acc.diag ? { diag: acc.diag } : {}) };
           log.push(`scan ${p}: ${acc.found} found, ${acc.added} new`);
           const fixed = await fixGuessedDates(env);
           if (fixed) { state.deployPending = true; log.push(`${fixed} dates corrected`); }
