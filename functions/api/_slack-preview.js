@@ -25,6 +25,9 @@ import { slackText as goNoGo } from './_broadcast-preflight.js';
 
 export const SLACK_PREVIEW = '2026-10-21-cards'; // the second look: one line per fact
 export const SLACK_PREVIEW_KEY = 'slack-preview';
+// The good-news alerts again, as real posts in the good-news channel (Peter asked, Oct 20 2026)
+export const SLACK_PREVIEW_NEWS = '2026-10-21-good-news';
+export const SLACK_PREVIEW_NEWS_KEY = 'slack-preview-news';
 const PER_RUN = 5;
 const LEASE_MS = 90e3;
 const GAP_MS = 1100; // about one post a second, as Slack asks
@@ -117,57 +120,83 @@ export function previewClosing(count) {
 
 /** A sample with a small caption on top: a test, which one, and where the real ones post */
 function captioned({ group, label, step, kind, card }, n, total, where) {
-  const caption = `🧪 *Test ${n} of ${total}* · ${group} · ${label}${step ? ` · ${step}` : ''} · real ones post ${kind === 'news' ? `in ${where.news}` : 'here'}`;
+  const caption = `🧪 *Test ${n} of ${total}* · ${group} · ${label}${step ? ` · ${step}` : ''} · real ones post ${kind === where.posting ? 'here' : `in ${where[kind]}`}`;
   return { ...card, blocks: [{ type: 'context', elements: [{ type: 'mrkdwn', text: caption }] }, ...card.blocks] };
 }
 
-async function readState(DB) {
-  const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(SLACK_PREVIEW_KEY).first().catch(() => null);
+async function readState(DB, key) {
+  const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(key).first().catch(() => null);
   let state = null;
   try { state = row ? JSON.parse(row.data) : null; } catch { state = null; }
   return { raw: row?.data ?? null, state };
 }
 
 /** Replace the row only if it still holds `raw` (null: only if there is none). True when this caller won. */
-async function swap(DB, raw, next) {
+async function swap(DB, key, raw, next) {
   const at = new Date().toISOString();
   const r = raw == null
-    ? await DB.prepare('INSERT OR IGNORE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(SLACK_PREVIEW_KEY, JSON.stringify(next), at).run()
-    : await DB.prepare('UPDATE site_config SET data = ?, updated_at = ? WHERE key = ? AND data = ?').bind(JSON.stringify(next), at, SLACK_PREVIEW_KEY, raw).run();
+    ? await DB.prepare('INSERT OR IGNORE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(key, JSON.stringify(next), at).run()
+    : await DB.prepare('UPDATE site_config SET data = ?, updated_at = ? WHERE key = ? AND data = ?').bind(JSON.stringify(next), at, key, raw).run();
   return (r.meta?.changes || 0) === 1;
 }
 
 /**
- * One heartbeat's share of the preview. Never throws.
- * → null (nothing to do) or { posted, next, total, done, error? }
+ * The test runs. `attention`: every alert in the Needs attention channel, with
+ * an intro and a closing post (waits for that channel to have its own pick).
+ * `news`: the good-news alerts as real posts in the good-news channel, just
+ * the posts. Each runs once, five posts a minute.
  */
-export async function maybeSlackPreview(env, { now = Date.now(), gapMs = GAP_MS } = {}) {
+const RUNS = {
+  attention: {
+    id: SLACK_PREVIEW, key: SLACK_PREVIEW_KEY, framed: true, posting: 'attention',
+    channel: (cfg) => (cfg.attention?.id && cfg.attention.id !== cfg.channel?.id ? cfg.attention.id : null),
+    samples: () => previewSamples(),
+  },
+  news: {
+    id: SLACK_PREVIEW_NEWS, key: SLACK_PREVIEW_NEWS_KEY, framed: false, posting: 'news',
+    channel: (cfg) => cfg.channel?.id || null,
+    samples: () => previewSamples().filter((x) => x.kind === 'news' && x.act === 'post' && x.group !== 'Setup'),
+  },
+};
+
+/**
+ * One heartbeat's share of each test run (`runs` picks which). Never throws.
+ * Each result is null (nothing to do) or { posted, next, total, done, error? }.
+ * → { attention, news }, or just the one result when one run is asked for
+ */
+export async function maybeSlackPreview(env, { now = Date.now(), gapMs = GAP_MS, runs = ['attention', 'news'] } = {}) {
+  const out = {};
+  for (const name of runs) out[name] = await runPreview(env, RUNS[name], { now, gapMs });
+  return runs.length === 1 ? out[runs[0]] : out;
+}
+
+async function runPreview(env, run, { now, gapMs }) {
   try {
     if (!env.DB || !env.SLACK_BOT_TOKEN) return null;
     const cfg = await readSlackConfig(env.DB, { fresh: true });
-    const channel = cfg.attention?.id && cfg.attention.id !== cfg.channel?.id ? cfg.attention.id : null;
-    if (!channel) return null; // waits for a Needs attention channel of its own
-    const where = { news: `#${cfg.channel.name}`, attention: cfg.attention?.id ? `#${cfg.attention.name}` : 'the Needs attention channel' };
-    const { raw, state } = await readState(env.DB);
-    const mine = state?.id === SLACK_PREVIEW ? state : null;
+    const channel = run.channel(cfg);
+    if (!channel) return null;
+    const where = { news: `#${cfg.channel?.name}`, attention: cfg.attention?.id ? `#${cfg.attention.name}` : 'the Needs attention channel', posting: run.posting };
+    const { raw, state } = await readState(env.DB, run.key);
+    const mine = state?.id === run.id ? state : null;
     if (mine?.done) return null;
     if (mine?.leaseUntil && mine.leaseUntil > now) return null;
-    const leased = { ...(mine || { id: SLACK_PREVIEW, startedAt: new Date(now).toISOString(), next: 0, tries: 0 }), leaseUntil: now + LEASE_MS };
-    if (!(await swap(env.DB, raw, leased))) return null; // another heartbeat has it
+    const leased = { ...(mine || { id: run.id, startedAt: new Date(now).toISOString(), next: 0, tries: 0 }), leaseUntil: now + LEASE_MS };
+    if (!(await swap(env.DB, run.key, raw, leased))) return null; // another heartbeat has it
     let s = leased;
     const save = async (patch) => {
-      const { raw: cur } = await readState(env.DB);
+      const { raw: cur } = await readState(env.DB, run.key);
       s = { ...s, ...patch };
-      await swap(env.DB, cur, s);
+      await swap(env.DB, run.key, cur, s);
     };
 
-    const samples = previewSamples();
+    const samples = run.samples();
     const fail = async (error) => {
       const tries = (s.tries || 0) + 1;
       await save({ leaseUntil: 0, tries, error, ...(tries >= MAX_TRIES ? { done: true } : {}) });
       return { posted: 0, next: s.next, total: samples.length, done: tries >= MAX_TRIES, error };
     };
-    if (!s.intro) {
+    if (run.framed && !s.intro) {
       const r = await slackPost(env, previewIntro(samples.length), { channel });
       if (!r.ok || !r.ts) return fail(r.error || 'Slack did not take the post');
       // Kept right away: a crash below must never lead to a second intro
@@ -192,9 +221,11 @@ export async function maybeSlackPreview(env, { now = Date.now(), gapMs = GAP_MS 
       else r = await slackPost(env, card, { thread: { ...ref, broadcast: true } });
       if (!r.ok) { error = r.error || 'Slack did not take the post'; break; }
       const refs = item.act === 'post' && item.story && r.ts ? { ...(s.refs || {}), [item.story]: { channel: r.channel || channel, ts: r.ts } } : s.refs;
-      await save({ next: s.next + 1, refs, tries: 0 });
+      // Every post's ts is kept, so the run can be read back and checked
+      await save({ next: s.next + 1, refs, tries: 0, posts: [...(s.posts || []), r.ts || null] });
       posted++;
     }
+    if (!error && s.next >= samples.length && !s.closed && !run.framed) s = { ...s, closed: true };
     if (!error && s.next >= samples.length && !s.closed) {
       const r = await slackPost(env, previewClosing(samples.length), { channel });
       if (r.ok) s = { ...s, closed: true };

@@ -512,7 +512,7 @@ test('the health check checks both channels and says which one needs the fix', a
 const runPreview = async (preview, start = Date.now()) => {
   let r;
   let n = 0;
-  do { r = await preview.maybeSlackPreview(env, { now: start + (n++) * 60e3, gapMs: 0 }); } while (r && !r.done && n < 20);
+  do { r = await preview.maybeSlackPreview(env, { runs: ['attention'], now: start + (n++) * 60e3, gapMs: 0 }); } while (r && !r.done && n < 20);
   return r;
 };
 
@@ -520,7 +520,7 @@ test('the test run: an intro, every alert as its own post, problems that really 
   const preview = await import('../functions/api/_slack-preview.js');
   await pickBoth();
   const samples = preview.previewSamples();
-  const first = await preview.maybeSlackPreview(env, { now: Date.now(), gapMs: 0 });
+  const first = await preview.maybeSlackPreview(env, { runs: ['attention'], now: Date.now(), gapMs: 0 });
   assert.deepEqual({ posted: first.posted, next: first.next, done: first.done }, { posted: 5, next: 5, done: false }, 'five a minute');
   const r = await runPreview(preview, Date.now() + 60e3);
   assert.equal(r.done, true);
@@ -548,26 +548,58 @@ test('the test run: an intro, every alert as its own post, problems that really 
   assert.equal(calls.filter((c) => !c.url.startsWith('https://slack.com/')).length, 0, 'no email, nothing else');
   assert.doesNotMatch(JSON.stringify(all), /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, 'no email address anywhere in it');
   assert.equal((await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name = 'slack_open_posts'").first())?.n ? (await env.DB.prepare('SELECT count(*) AS n FROM slack_open_posts').first()).n : 0, 0, 'no open problems remembered');
-  assert.equal(await preview.maybeSlackPreview(env, { now: Date.now() + 60 * 60e3, gapMs: 0 }), null, 'and never again');
+  assert.equal(await preview.maybeSlackPreview(env, { runs: ['attention'], now: Date.now() + 60 * 60e3, gapMs: 0 }), null, 'and never again');
 });
 
 test('the test run waits for a Needs attention channel of its own, overlapping heartbeats post nothing twice, and a refusal is retried', async () => {
   const preview = await import('../functions/api/_slack-preview.js');
-  assert.equal(await preview.maybeSlackPreview(env, { gapMs: 0 }), null, 'no channel picked yet');
+  assert.equal(await preview.maybeSlackPreview(env, { runs: ['attention'], gapMs: 0 }), null, 'no channel picked yet');
   await pick();
-  assert.equal(await preview.maybeSlackPreview(env, { gapMs: 0 }), null, 'only the good-news channel: it waits');
+  assert.equal(await preview.maybeSlackPreview(env, { runs: ['attention'], gapMs: 0 }), null, 'only the good-news channel: it waits');
   assert.equal(posts().length, 0);
   await pickBoth();
   slack.postError = 'not_in_channel';
-  assert.equal((await preview.maybeSlackPreview(env, { gapMs: 0 })).error, 'not_in_channel');
+  assert.equal((await preview.maybeSlackPreview(env, { runs: ['attention'], gapMs: 0 })).error, 'not_in_channel');
   slack.postError = null;
   const t0 = Date.now() + 120e3;
-  assert.equal((await preview.maybeSlackPreview(env, { now: t0, gapMs: 0 })).posted, 5);
+  assert.equal((await preview.maybeSlackPreview(env, { runs: ['attention'], now: t0, gapMs: 0 })).posted, 5);
   // A heartbeat that overlaps the one posting does nothing
   const row = await env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(preview.SLACK_PREVIEW_KEY).first();
   const st = JSON.parse(row.data);
   await env.DB.prepare('UPDATE site_config SET data = ? WHERE key = ?').bind(JSON.stringify({ ...st, leaseUntil: t0 + 120e3 }), preview.SLACK_PREVIEW_KEY).run();
-  assert.equal(await preview.maybeSlackPreview(env, { now: t0 + 1000, gapMs: 0 }), null);
+  assert.equal(await preview.maybeSlackPreview(env, { runs: ['attention'], now: t0 + 1000, gapMs: 0 }), null);
   const intros = posts().filter((p) => p.body.blocks?.[0]?.text?.text === '🧪 Test run: every alert the website sends');
   assert.equal(intros.length, 2, 'one refused by Slack, then the one that landed: never two in the channel');
+});
+
+test('the good-news test run: just the good-news alerts, as real posts in the good-news channel, once', async () => {
+  const preview = await import('../functions/api/_slack-preview.js');
+  await pickBoth();
+  const want = preview.previewSamples().filter((x) => x.kind === 'news' && x.act === 'post' && x.group !== 'Setup');
+  assert.equal(want.length, 12);
+  let r;
+  let n = 0;
+  do { r = await preview.maybeSlackPreview(env, { runs: ['news'], now: Date.now() + (n++) * 60e3, gapMs: 0 }); } while (r && !r.done && n < 10);
+  assert.equal(r.done, true);
+  assert.equal(n, 3, 'five a minute');
+  const sent = posts().map((p) => p.body);
+  assert.equal(sent.length, 12, 'just the twelve: no intro, no closing');
+  assert.ok(sent.every((p) => p.channel === 'C0GENERAL' && !p.thread_ts), 'each its own post in the good-news channel');
+  assert.match(sent[0].blocks[0].elements[0].text, /^🧪 \*Test 1 of 12\* · Applications · New application · real ones post here$/);
+  assert.ok(sent.some((p) => /💛 \$50\.00 gift from Jane Doe/.test(renderSlack(p))));
+  assert.doesNotMatch(JSON.stringify(sent), /@here|@channel|<!here>|<!channel>|[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+  const row = JSON.parse((await env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(preview.SLACK_PREVIEW_NEWS_KEY).first()).data);
+  assert.equal(row.posts.length, 12, 'every post kept, so it can be read back');
+  assert.equal(await preview.maybeSlackPreview(env, { runs: ['news'], gapMs: 0 }), null, 'and never again');
+  // The full test run is its own, untouched
+  assert.equal((await env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(preview.SLACK_PREVIEW_KEY).first()), null);
+});
+
+test('both runs from one heartbeat: each to its own channel', async () => {
+  const preview = await import('../functions/api/_slack-preview.js');
+  await pickBoth();
+  const r = await preview.maybeSlackPreview(env, { gapMs: 0 });
+  assert.equal(r.attention.posted, 5);
+  assert.equal(r.news.posted, 5);
+  assert.deepEqual([...new Set(posts().map((p) => p.body.channel))].sort(), ['C0ALERTS1', 'C0GENERAL']);
 });
