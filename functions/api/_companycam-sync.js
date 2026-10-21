@@ -54,16 +54,16 @@
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
-import { FIELDS, jobtreadAccountUrl, jobtreadJobUrl } from './_applicants.js';
+import { FIELDS, jobtreadAccountUrl, jobtreadJobUrl, refreshApplicants } from './_applicants.js';
 import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from './_applicant-comms.js';
-import { jobNameFor, cleanYear, isTestFamily, existingJob } from './_applicant-approved.js';
+import { jobNameFor, cleanYear, isTestFamily, existingJob, approveFamily, ensureApprovalSchema } from './_applicant-approved.js';
 import { slackIssue, slackResolved, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import {
   companycamOn, CompanyCamError, getProject, searchProjects, createProject, archiveProject, unarchiveProject,
   setProjectDescription, addProjectLabels, removeProjectLabel, projectUrl, projectPhotos, projectDocuments,
   getPhoto, getDocument, photoImageUrl, markupText, uploadPhoto, listWebhooks, createWebhook, updateWebhook,
-  deleteWebhook, webhookToken, setPhotoDescription, addPhotoTags, listTags, webhookDeliveries,
+  deleteWebhook, webhookToken, setPhotoDescription, addPhotoTags, listTags, webhookDeliveries, projectLabels,
 } from './_companycam.js';
 
 const MIN = 60 * 1000;
@@ -473,6 +473,9 @@ const projectNameFor = (fam) => (fam.year ? jobNameFor(fam.name, fam.year) : Str
  */
 async function findOrMakeProject(env, fam, { fetchImpl, now }) {
   const taken = new Set(fam.jobs.map((j) => j.companycamId).filter(Boolean));
+  // Nor one another family's (two homes on one street line: a duplex, an apartment block)
+  const { results: others } = await env.DB.prepare('SELECT project_id FROM companycam_projects WHERE account_id != ? AND project_id IS NOT NULL').bind(fam.id).all();
+  for (const r of others || []) taken.add(String(r.project_id));
   const lastJobAt = Math.max(0, ...fam.jobs.map((j) => Date.parse(j.createdAt || '') || 0));
   const thisVisit = (p) => {
     const t = Date.parse(p?.created_at || '');
@@ -1064,6 +1067,8 @@ export async function maybeRunCompanyCam(env, { fetchImpl = fetch, now = Date.no
 
     // Once: the whole path on the real CompanyCam and JobTread, with test things only (below)
     if (Date.now() < deadline && (await getState(DB, 'webhook'))?.enabled) out.selfTest = (await maybeSelfTest(env, { fetchImpl, now }))?.step || null;
+    // Then once: two TEST families through the real stages (below)
+    if (Date.now() < deadline && (await getState(DB, 'self-test'))?.ok) out.rehearsal = (await maybeRehearsal(env, { fetchImpl, now }))?.step || null;
 
     await putState(DB, 'last-run', { at: iso(now), families: out.families.length, files: out.files.length, reconciled: out.reconciled, moved: out.moved }, now);
     return out;
@@ -1078,7 +1083,7 @@ export async function companycamFacts(env) {
   const { DB } = env;
   if (!companycamOn(env)) return { on: false };
   await ensureCompanyCamSchema(DB);
-  const [stages, files, last, failing, webhook, token, lastRun, waiting, seen, check] = await Promise.all([
+  const [stages, files, last, failing, webhook, token, lastRun, waiting, seen, check, rehearsal] = await Promise.all([
     DB.prepare('SELECT stage, count(*) AS n FROM companycam_projects GROUP BY stage').all(),
     DB.prepare("SELECT state, count(*) AS n FROM companycam_files WHERE origin = 'companycam' GROUP BY state").all(),
     DB.prepare('SELECT max(copied_at) AS at FROM companycam_files').first('at'),
@@ -1089,12 +1094,14 @@ export async function companycamFacts(env) {
     DB.prepare("SELECT count(*) AS n FROM companycam_projects WHERE stage = 'waiting'").first('n'),
     getState(DB, 'webhook-seen'),
     getState(DB, 'self-test'),
+    getState(DB, 'rehearsal'),
   ]);
   const by = (rows, k) => Object.fromEntries((rows?.results || []).map((r) => [r[k], r.n]));
   return {
     on: true, projects: by(stages, 'stage'), files: by(files, 'state'), lastCopied: last || null, failing: failing || 0, waiting: waiting || 0,
     webhook: webhook ? { enabled: webhook.enabled, checkedAt: webhook.checkedAt, turnedBackOn: webhook.turnedBackOn || 0, recentFailing: webhook.failing || 0 } : null,
     tokenBad: !!token?.bad, tokenError: token?.bad ? token.error : null, lastRun: lastRun?.at || null, lastWebhook: seen?.at || null,
+    rehearsal: rehearsal ? { step: rehearsal.step, ok: rehearsal.ok ?? null, at: rehearsal.at || null, error: rehearsal.error || null } : null,
     selfTest: check ? { step: check.step, ok: check.ok ?? null, at: check.at || check.startedAt || null, error: check.error || null, seconds: check.copied?.seconds ?? null, linkKept: check.job?.linkKept ?? null, imported: check.job?.imported ?? null } : null,
   };
 }
@@ -1322,5 +1329,193 @@ async function finishSelfTest(env, st, { fetchImpl, now }) {
   const done = { ...st, step: 'done', ok, at: iso(now) };
   await putState(DB, 'self-test', done, now).catch(() => null);
   console.log('[companycam] self-test', JSON.stringify({ ok, error: st.error || null, copied: st.copied || null, updated: st.updated || null, job: st.job || null, moved: st.moved || null }));
+  return done;
+}
+
+// ─── The rehearsal ──────────────────────────────────────────────────
+
+/**
+ * Once, after the self-test passes (again only when REHEARSAL changes): two
+ * TEST families at the office go through the real stages, with the
+ * heartbeat doing the work exactly as it does for a family, while this only
+ * makes the JobTread changes and checks what followed on the next ticks.
+ *   A "TEST CompanyCam Family": In Review → its project (label, line about
+ *     the makeover) → a home-visit photo reaches the customer → Denied
+ *     archives the project → In Review opens it again → a job made by hand
+ *     (JobTread starts an empty project of its own) is switched to the
+ *     home-visit project and the empty one archived → the photo moves to
+ *     the job.
+ *   B "TEST CompanyCam Approved": In Review → its own project (not A's, at
+ *     the same address) → Approved → the real approval code makes the job
+ *     with the project's id.
+ * Status changes go in with the site's own JobTread key, which JobTread's
+ * applicant-messages workflow skips, and the families have no email, so no
+ * family or staff message goes anywhere. Afterwards the jobs are closed, the
+ * projects archived and both TEST customers archived in JobTread. The result
+ * is in companycam_state "rehearsal". No button.
+ */
+export const REHEARSAL = '2026-10-21';
+const R_NAMES = { a: 'TEST CompanyCam Family', b: 'TEST CompanyCam Approved' };
+const R_CAPTION = 'TEST: a home visit photo for the rehearsal';
+const R_WAIT_MS = 20 * MIN;
+
+async function setStatus(env, accountId, status, fetchImpl) {
+  await jt(env, { updateAccount: { $: { id: accountId, notify: false, customFieldValues: { [FIELDS.status.id]: status } } } }, fetchImpl);
+  await refreshApplicants(env, [accountId], { fetchImpl });
+}
+
+async function makeTestFamily(env, name, address, fetchImpl) {
+  const made = await jt(env, { createAccount: { $: { organizationId: SOARD_ORG_ID, name, type: 'customer', notify: false, suffixIfNecessary: true, customFieldValues: { [FIELDS.status.id]: 'In Review', [FIELDS.year.id]: '2027', [FIELDS.types.id]: ['Bedroom'] } }, createdAccount: { id: {} } } }, fetchImpl);
+  const id = made?.createAccount?.createdAccount?.id;
+  if (!id) throw new Error(`JobTread didn’t make ${name}`);
+  const loc = await jt(env, { createLocation: { $: { accountId: id, address, name: 'Home' }, createdLocation: { id: {} } } }, fetchImpl);
+  const contact = await jt(env, { createContact: { $: { accountId: id, name: 'TEST Parent' }, createdContact: { id: {} } } }, fetchImpl);
+  const locationId = loc?.createLocation?.createdLocation?.id;
+  await jt(env, { updateAccount: { $: { id, notify: false, primaryLocationId: locationId, primaryContactId: contact?.createContact?.createdContact?.id || null } } }, fetchImpl);
+  return { id, locationId };
+}
+
+export async function maybeRehearsal(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  let st = await getState(DB, 'rehearsal');
+  if (st?.id === REHEARSAL && st.step === 'done') return null;
+  if (!st || st.id !== REHEARSAL) st = { id: REHEARSAL, step: 'start', startedAt: iso(now), checks: {} };
+  const save = async (next) => { await putState(DB, 'rehearsal', next, now); return next; };
+  const late = (since) => now - Date.parse(since) > R_WAIT_MS;
+  try {
+    if (st.step === 'start') {
+      const office = await readFamily(env, OFFICE_ACCOUNT, fetchImpl);
+      const h = office?.home;
+      if (!h?.street) throw new Error('The office account has no address in JobTread');
+      const address = `${h.street}, ${h.city}, ${h.state} ${h.postal}`;
+      const a = await makeTestFamily(env, R_NAMES.a, address, fetchImpl);
+      const next = await save({ ...st, step: 'projects', a, stepAt: iso(now) }); // made: cleaned up whatever happens next
+      const b = await makeTestFamily(env, R_NAMES.b, address, fetchImpl);
+      await refreshApplicants(env, [a.id, b.id], { fetchImpl });
+      return save({ ...next, b, stepAt: iso(now) });
+    }
+    const A = await getFamilyRow(DB, st.a.id);
+    const B = st.b ? await getFamilyRow(DB, st.b.id) : null;
+
+    if (st.step === 'projects') {
+      // The heartbeat makes both projects
+      if (!(A?.stage === 'customer' && B?.stage === 'customer')) {
+        if (late(st.stepAt)) return finishRehearsal(env, { ...st, error: `No project: A ${A?.stage || 'none'}${A?.problem ? ` (${A.problem}: ${A.detail})` : ''}, B ${B?.stage || 'none'}${B?.problem ? ` (${B.problem}: ${B.detail})` : ''}` }, { fetchImpl, now });
+        return st;
+      }
+      const pa = await getProject(env, A.project_id, { fetchImpl });
+      const la = await projectLabels(env, A.project_id, { fetchImpl }).catch(() => []);
+      st.checks.projects = {
+        separate: A.project_id !== B.project_id, how: [A.how, B.how],
+        label: la.some((l) => tagKey(l.display_value || l.value) === tagKey(VETTING_LABEL)),
+        description: String(pa?.description || '').startsWith('Bedroom makeover (2027)'),
+        name: pa?.name || null,
+      };
+      const photo = await uploadPhoto(env, A.project_id, { bytes: await testPicture(now), filename: `soard-rehearsal-${now}.png`, contentType: 'image/png', description: R_CAPTION }, { fetchImpl });
+      return save({ ...st, step: 'photo', photoId: String(photo.id), stepAt: iso(now) });
+    }
+
+    if (st.step === 'photo') {
+      const f = await DB.prepare('SELECT * FROM companycam_files WHERE cc_id = ?').bind(`photo:${st.photoId}`).first();
+      if (!(f?.state === 'copied' && f.jt_file_id)) {
+        if (late(st.stepAt)) return finishRehearsal(env, { ...st, error: `The home-visit photo never reached JobTread (${f?.state || 'no word from CompanyCam'})` }, { fetchImpl, now });
+        return st;
+      }
+      const file = await jtFile(env, f.jt_file_id, fetchImpl);
+      st.checks.photo = { onCustomer: !!file, folder: file?.folder === FOLDER, beforeTag: tagIdsOf(file).includes((await fileTags(env, fetchImpl, now)).get(tagKey(BEFORE_TAG))) };
+      await setStatus(env, st.a.id, 'Denied', fetchImpl);
+      return save({ ...st, step: 'denied', customerFileId: f.jt_file_id, stepAt: iso(now) });
+    }
+
+    if (st.step === 'denied') {
+      if (A?.stage !== 'closed') return late(st.stepAt) ? finishRehearsal(env, { ...st, error: `Denied didn’t close the project (${A?.stage})` }, { fetchImpl, now }) : st;
+      st.checks.denied = { archived: !!(await getProject(env, A.project_id, { fetchImpl }))?.archived };
+      await setStatus(env, st.a.id, 'In Review', fetchImpl);
+      return save({ ...st, step: 'reopened', stepAt: iso(now) });
+    }
+
+    if (st.step === 'reopened') {
+      if (A?.stage !== 'customer') return late(st.stepAt) ? finishRehearsal(env, { ...st, error: `Back in review didn’t open the project (${A?.stage})` }, { fetchImpl, now }) : st;
+      st.checks.reopened = { open: (await getProject(env, A.project_id, { fetchImpl }))?.archived === false, same: true };
+      // A: a job made by hand, as staff would (no project id: JobTread starts its own)
+      const ja = await jt(env, { createJob: { $: { locationId: st.a.locationId, name: `${R_NAMES.a} (2027)`.slice(0, 30) }, createdJob: { id: {} } } }, fetchImpl);
+      // B: approved, and the real approval code makes its job
+      await setStatus(env, st.b.id, 'Approved', fetchImpl);
+      await ensureApprovalSchema(DB);
+      // Claimed the way the approval sweep claims a settled approval, then the sweep's own step
+      await DB.prepare(`INSERT INTO applicant_approvals (account_id, name, approved_at, state, attempts, claimed_at, updated_at) VALUES (?, ?, ?, 'working', 0, ?, ?)
+        ON CONFLICT(account_id) DO UPDATE SET state = 'working', claimed_at = excluded.claimed_at, updated_at = excluded.updated_at`).bind(st.b.id, R_NAMES.b, iso(now), now, iso(now)).run();
+      const approval = await approveFamily(env, st.b.id, { fetchImpl, now });
+      await refreshApplicants(env, [st.a.id, st.b.id], { fetchImpl });
+      return save({ ...st, step: 'jobs', jobA: ja?.createJob?.createdJob?.id || null, approval: { jobId: approval?.job?.id || null, waiting: approval?.waiting || null, error: approval?.error || null }, stepAt: iso(now) });
+    }
+
+    if (st.step === 'jobs') {
+      if (now - Date.parse(st.stepAt) < 2 * MIN) return st; // JobTread starts its own project for A's job within seconds
+      await refreshApplicants(env, [st.a.id, st.b.id], { fetchImpl });
+      if (!(A?.stage === 'linked' && B?.stage === 'linked')) {
+        if (late(st.stepAt)) return finishRehearsal(env, { ...st, error: `The jobs weren’t linked: A ${A?.stage}, B ${B?.stage}` }, { fetchImpl, now });
+        return st;
+      }
+      const read = async (id) => (await jt(env, { job: { $: { id }, id: {}, companycamId: {}, files: { $: { size: 5, where: ['name', '=', `CompanyCam ${st.photoId}`] }, nodes: { id: {} } } } }, fetchImpl))?.job;
+      const ja = await read(A.job_id);
+      const jb = await read(B.job_id);
+      const theirs = A.other_project_id ? await getProject(env, A.other_project_id, { fetchImpl }).catch(() => null) : null;
+      const labelsA = await projectLabels(env, A.project_id, { fetchImpl }).catch(() => []);
+      st.checks.jobs = {
+        approvalLinked: String(jb?.companycamId || '') === B.project_id,
+        byHandRelinked: String(ja?.companycamId || '') === A.project_id,
+        theirsArchived: A.other_project_id ? !!theirs?.archived : null,
+        vettingLabelGone: !labelsA.some((l) => tagKey(l.display_value || l.value) === tagKey(VETTING_LABEL)),
+        importedAfterRelink: !!ja?.files?.nodes?.length,
+      };
+      // The move, as for a family once the job has had its turn (the site copies it itself if JobTread didn't)
+      await saveFamily(DB, { account_id: A.account_id, linked_at: iso(now - COPY_OURSELVES_AFTER_MS - MIN) }, now);
+      const moved = await moveToJob(env, await getFamilyRow(DB, A.account_id), { fetchImpl, now });
+      const ours = await jtFile(env, st.customerFileId, fetchImpl).catch(() => null);
+      st.checks.move = { ran: moved.length >= 1, by: st.checks.jobs.importedAfterRelink ? 'JobTread' : 'the site', customerCopyGone: !ours };
+      return finishRehearsal(env, st, { fetchImpl, now });
+    }
+    return null;
+  } catch (e) {
+    return finishRehearsal(env, { ...st, error: errText(e) }, { fetchImpl, now });
+  }
+}
+
+/** Tidy everything the rehearsal made and keep the result. Never throws. */
+async function finishRehearsal(env, st, { fetchImpl, now }) {
+  const { DB } = env;
+  const tidy = async (what, fn) => { try { await fn(); } catch (e) { console.warn('[companycam] rehearsal tidy', what, e.message); } };
+  const ids = [st.a?.id, st.b?.id].filter(Boolean);
+  const rows = [];
+  for (const id of ids) rows.push(await getFamilyRow(DB, id).catch(() => null));
+  // The rows first, so the heartbeat stops acting for these families
+  await tidy('rows', async () => {
+    for (const id of ids) {
+      await DB.prepare('DELETE FROM companycam_projects WHERE account_id = ?').bind(id).run();
+      await DB.prepare('DELETE FROM companycam_files WHERE account_id = ?').bind(id).run();
+    }
+  });
+  for (const r of rows.filter(Boolean)) {
+    if (r.job_id) await tidy('job', () => jt(env, { updateJob: { $: { id: r.job_id, closedOn: todayEastern(now) } } }, fetchImpl));
+    for (const p of new Set([r.project_id, r.other_project_id].filter(Boolean))) await tidy('project', () => archiveProject(env, p, { fetchImpl }));
+  }
+  if (st.jobA && !rows.some((r) => r?.job_id === st.jobA)) await tidy('job', () => jt(env, { updateJob: { $: { id: st.jobA, closedOn: todayEastern(now) } } }, fetchImpl));
+  // A test copy still on a TEST customer, then the customers themselves
+  for (const id of ids) {
+    await tidy('files', async () => {
+      const out = await jt(env, { account: { $: { id }, files: { $: { size: 50, where: ['folder', '=', FOLDER] }, nodes: { id: {}, description: {}, job: { id: {} } } } } }, fetchImpl);
+      for (const f of out?.account?.files?.nodes || []) if (!f.job && String(f.description || '').startsWith('TEST: ')) await deleteJtFile(env, f.id, fetchImpl);
+    });
+    await tidy('account', () => jt(env, { updateAccount: { $: { id, notify: false, archive: true } } }, fetchImpl));
+  }
+  await tidy('mirror', () => refreshApplicants(env, ids, { fetchImpl }));
+  const c = st.checks || {};
+  const ok = !st.error && !!c.projects?.separate && !!c.projects?.label && !!c.projects?.description && !!c.photo?.folder && !!c.photo?.beforeTag
+    && !!c.denied?.archived && !!c.reopened?.open && !!c.jobs?.approvalLinked && !!c.jobs?.byHandRelinked && c.jobs?.theirsArchived !== false
+    && !!c.jobs?.vettingLabelGone && !!c.move?.ran && !!c.move?.customerCopyGone;
+  const done = { ...st, step: 'done', ok, at: iso(now) };
+  await putState(DB, 'rehearsal', done, now).catch(() => null);
+  console.log('[companycam] rehearsal', JSON.stringify({ ok, error: st.error || null, checks: c }));
   return done;
 }

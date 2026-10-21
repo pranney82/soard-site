@@ -16,7 +16,7 @@ import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { webhookToken, signatureFor, CC_API } from '../functions/api/_companycam.js';
 import {
   maybeRunCompanyCam, syncFamily, getFamilyRow, takeEvent, processFile, streetKey, copyOf, captionWords, tagIdsFor, companycamFacts, ensureCompanyCamSchema, testPicture,
-  WEBHOOK_URL, WEBHOOK_SCOPES, FOLDER, VETTING_LABEL, SELF_TEST, OFFICE_ACCOUNT,
+  WEBHOOK_URL, WEBHOOK_SCOPES, FOLDER, VETTING_LABEL, SELF_TEST, OFFICE_ACCOUNT, REHEARSAL,
 } from '../functions/api/_companycam-sync.js';
 import { familyProjectId } from '../functions/api/_companycam-link.js';
 import { onRequestPost as webhookPost } from '../functions/api/companycam-webhook.js';
@@ -50,7 +50,11 @@ function accountNode(a) {
   return {
     id: a.id, name: a.name, type: 'customer', archivedAt: a.archivedAt || null, organization: { id: ORG },
     customFieldValues: { nodes: cfv },
-    primaryLocation: a.home ? { id: `loc-${a.id}`, street: a.home.street, city: a.home.city, state: a.home.state, postalCode: a.home.postal, country: 'US', latitude: 33.9, longitude: -84.4 } : { id: `loc-${a.id}`, street: '', city: '', state: '', postalCode: '', country: '' },
+    createdAt: new Date(T0 - 86400000).toISOString(),
+    primaryLocation: a.home ? { id: `loc-${a.id}`, street: a.home.street, city: a.home.city, state: a.home.state, postalCode: a.home.postal, country: 'US', latitude: 33.9, longitude: -84.4, address: `${a.home.street}, ${a.home.city}, ${a.home.state} ${a.home.postal}`, county: null, customFieldValues: { nodes: [] } } : { id: `loc-${a.id}`, street: '', city: '', state: '', postalCode: '', country: '' },
+    locations: { nodes: a.home ? [{ id: `loc-${a.id}` }] : [] },
+    contacts: { nodes: a.contact ? [{ id: `c-${a.id}`, name: a.contact.name, title: '', customFieldValues: { nodes: [] } }] : [] },
+    comms: { nodes: [] },
     primaryContact: a.contact ? { id: `c-${a.id}`, name: a.contact.name, customFieldValues: { nodes: [{ value: a.contact.email, customField: { id: F.email } }, { value: a.contact.phone, customField: { id: F.phone } }] } } : null,
     jobs: { nodes: [...w.jobs.values()].filter((j) => j.accountId === a.id).sort((x, y) => y.createdAt.localeCompare(x.createdAt)).map((j) => ({ id: j.id, name: j.name, closedOn: j.closedOn || null, createdAt: j.createdAt, companycamId: j.companycamId || null })) },
   };
@@ -74,7 +78,35 @@ function jobtread(body) {
       }
       return json({ account: a ? accountNode(a) : null });
     }
-    case 'organization': return json({ organization: { fileTags: { nodes: w.tags } } });
+    case 'organization': {
+      if (q.accounts) {
+        const ids = [].concat(q.accounts.$?.where?.[2] || []);
+        return json({ organization: { accounts: { nodes: ids.map((id) => w.accounts.get(id)).filter(Boolean).map(accountNode), nextPage: null } } });
+      }
+      return json({ organization: { fileTags: { nodes: w.tags } } });
+    }
+    case 'createAccount': {
+      const id = `acctR${w.accounts.size + 1}`;
+      const v = q.$.customFieldValues || {};
+      w.accounts.set(id, { id, name: q.$.name, status: v[F.status] || null, year: v[F.year] || null, types: v[F.types] || [], home: null, contact: null });
+      return json({ createAccount: { createdAccount: { id } } });
+    }
+    case 'createLocation': {
+      const a = w.accounts.get(q.$.accountId);
+      const [street, city, rest] = q.$.address.split(', ');
+      a.home = { street, city, state: rest.split(' ')[0], postal: rest.split(' ')[1] };
+      return json({ createLocation: { createdLocation: { id: `loc-${a.id}` } } });
+    }
+    case 'createContact': {
+      w.accounts.get(q.$.accountId).contact = { name: q.$.name, email: '', phone: '' };
+      return json({ createContact: { createdContact: { id: `c-${q.$.accountId}` } } });
+    }
+    case 'updateAccount': {
+      const a = w.accounts.get(q.$.id);
+      if (q.$.customFieldValues?.[F.status]) a.status = q.$.customFieldValues[F.status];
+      if (q.$.archive) a.archivedAt = new Date(w.now).toISOString();
+      return json({});
+    }
     case 'createUploadRequest': {
       if (q.$.url && w.fail.jtUrlFetch) return new Response('could not fetch the file', { status: 400 });
       const id = `up${++w.uploads}`;
@@ -114,8 +146,14 @@ function jobtread(body) {
     case 'createJob': {
       const id = `jobT${w.jobs.size + 1}`;
       const accountId = [...w.accounts.values()].find((a) => `loc-${a.id}` === q.$.locationId)?.id;
-      w.jobs.set(id, { id, accountId, name: q.$.name, companycamId: q.$.companycamId || null, createdAt: new Date(w.now).toISOString() });
-      return json({ createJob: { createdJob: { id } } });
+      let companycamId = q.$.companycamId || null;
+      if (!companycamId) {
+        // JobTread's own integration: a job made without a project gets an empty one of its own
+        companycamId = String(++w.cc.next);
+        w.cc.projects.set(companycamId, { id: companycamId, name: `Job ${companycamId}`, status: 'active', archived: false, address: { street_address_1: 'elsewhere' }, created_at: new Date(w.now).toISOString(), project_url: `https://app.companycam.com/projects/${companycamId}` });
+      }
+      w.jobs.set(id, { id, accountId, name: q.$.name, companycamId, createdAt: new Date(w.now).toISOString() });
+      return json({ createJob: { createdJob: { id, name: q.$.name } } });
     }
     default: throw new Error(`unexpected JobTread call: ${op}`);
   }
@@ -158,6 +196,7 @@ async function companycam(url, init) {
     return one(projectOut(p));
   }
   if ((m = path.match(/^\/projects\/(\d+)\/description$/))) { w.cc.projects.get(m[1]).description = body.description; return one(projectOut(w.cc.projects.get(m[1]))); }
+  if ((m = path.match(/^\/projects\/(\d+)\/labels$/)) && method === 'GET') return page(w.cc.labels.get(m[1]) || []);
   if ((m = path.match(/^\/projects\/(\d+)\/labels$/)) && method === 'POST') {
     const labels = body.project.labels.map((v) => ({ id: `label-${v}`, display_value: v, value: v.toLowerCase() }));
     w.cc.labels.set(m[1], [...(w.cc.labels.get(m[1]) || []), ...labels]);
@@ -843,4 +882,42 @@ test('the check’s picture: a real PNG, and a new one every run (CompanyCam ign
   assert.equal(inflateSync(a.slice(41, 41 + idatLen)).length, 300 * (1 + 480 * 3), 'every row there');
   assert.notDeepEqual(a, b);
   assert.ok(a.length < 4000, 'small');
+});
+
+test('the rehearsal: two TEST families through the real stages, by the heartbeat, then archived', async () => {
+  await env.DB.prepare("UPDATE companycam_state SET value = ? WHERE key = 'self-test'").bind(JSON.stringify({ id: SELF_TEST, step: 'done', ok: true })).run();
+  w.accounts.set(OFFICE_ACCOUNT, { id: OFFICE_ACCOUNT, name: 'Sunshine Office', home: { street: '1 Office Park', city: 'Sampleton', state: 'GA', postal: '30001' }, contact: null, types: [] });
+  const st = async () => JSON.parse(await env.DB.prepare("SELECT value FROM companycam_state WHERE key = 'rehearsal'").first('value'));
+  await run(0);
+  const a = [...w.accounts.values()].find((x) => x.name === 'TEST CompanyCam Family');
+  const b = [...w.accounts.values()].find((x) => x.name === 'TEST CompanyCam Approved');
+  assert.ok(a && b && a.status === 'In Review');
+  await run(1);
+  assert.equal((await st()).step, 'photo', 'both projects made by the heartbeat');
+  const pa = w.cc.projects.get((await getFamilyRow(env.DB, a.id)).project_id);
+  const pb = w.cc.projects.get((await getFamilyRow(env.DB, b.id)).project_id);
+  assert.notEqual(pa.id, pb.id, 'two families at one address never share a project');
+  const [photo] = [...w.cc.photos.values()].filter((x) => x.project_id === pa.id);
+  w.now = at(1.5);
+  await signed(photoCreated(photo));
+  await run(2);
+  assert.equal(a.status, 'Denied');
+  await run(3);
+  assert.equal(a.status, 'In Review', 'archived, then back in review');
+  await run(4);
+  assert.equal((await st()).step, 'jobs');
+  await run(5);
+  const jobA = [...w.jobs.values()].find((j) => j.accountId === a.id);
+  jobtreadImports(jobA.id); // JobTread copies the project's photos once the job uses it
+  await run(7);
+  const r = await st();
+  assert.equal(r.step, 'done');
+  assert.equal(r.ok, true, JSON.stringify(r.checks) + (r.error || ''));
+  assert.deepEqual(r.checks.jobs, { approvalLinked: true, byHandRelinked: true, theirsArchived: true, vettingLabelGone: true, importedAfterRelink: true });
+  assert.ok(a.archivedAt && b.archivedAt, 'both TEST customers archived');
+  assert.ok([...w.jobs.values()].filter((j) => j.accountId === a.id || j.accountId === b.id).every((j) => j.closedOn));
+  assert.equal(await getFamilyRow(env.DB, a.id), null);
+  assert.equal(pa.archived && pb.archived, true);
+  await run(10);
+  assert.equal([...w.accounts.values()].filter((x) => x.name.startsWith('TEST CompanyCam')).length, 2, 'once');
 });
