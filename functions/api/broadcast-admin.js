@@ -36,6 +36,7 @@ import * as monitor from './_broadcast-monitor.js';
 import * as preflight from './_broadcast-preflight.js';
 import { youtubeConfigured } from './_youtube.js';
 import { syncBroadcastSchedule, readScheduleRecord } from './_broadcast-schedule.js';
+import { emailShell, paragraphs, link as mailLink } from './_email-shell.js';
 
 const TARGETS = new Set(['facebook', 'youtube', 'instagram', 'custom']);
 
@@ -296,6 +297,7 @@ export async function onRequestPost(context) {
       }
       case 'setConfig': {
         const c = config;
+        const alertsBefore = new Set((c.alerts?.emails || []).map(e => String(e).toLowerCase()));
         const p = body.config || body;
         if (p.facebook) {
           if (p.facebook.mode && ['persistent', 'api'].includes(p.facebook.mode)) c.facebook.mode = p.facebook.mode;
@@ -326,7 +328,14 @@ export async function onRequestPost(context) {
         if (p.messages && typeof p.messages.enabled === 'boolean') c.messages = { ...(c.messages || {}), enabled: p.messages.enabled };
         await b.writeConfig(env.DB, c);
         await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'broadcast-config', entityName: 'Broadcast settings', gitStatus: 'ok' });
-        return Response.json({ success: true, config: redactConfig(c, false) });
+        // Someone new on the alert list hears so right away: proof alerts reach them, with no test button
+        const added = (c.alerts?.emails || []).filter(e => !alertsBefore.has(e));
+        let welcomed = [];
+        if (added.length && notify.emailConfigured(env)) {
+          const r = await notify.sendEmails(env, { to: added, ...alertHelloEmail(personName(userEmail)), tags: [{ name: 'type', value: 'alert-hello' }] }).catch(() => null);
+          if (r?.sent) welcomed = added;
+        }
+        return Response.json({ success: true, config: redactConfig(c, false), welcomed });
       }
       case 'messages': {
         return Response.json(await messages.adminList(env, typeof body.broadcastId === 'string' ? body.broadcastId.slice(0, 40) : null));
@@ -456,4 +465,21 @@ export async function onRequestPost(context) {
   } catch (err) {
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
+}
+
+/** The hello a new alert address gets (Reveals → Settings → Alerts) */
+export function alertHelloEmail(who) {
+  const settings = `${b.SITE_ORIGIN}/admin/#broadcast/settings`;
+  return {
+    subject: 'You’ll get live reveal alerts at this address',
+    html: emailShell({
+      preheader: `${who} added you. Alerts come only when something needs a hand.`,
+      eyebrow: 'Reveals · Alerts',
+      heading: 'You’ll get live reveal alerts here',
+      intro: `${who} added this address to the alert list for SOARD’s live room reveals. This email is the proof that alerts reach you.`,
+      bodyHtml: paragraphs('An alert comes only when something needs a hand: a scheduled reveal never starts streaming, Stream reports an encoder error, or a daily check fails (and again on the morning of a reveal). During a live reveal, alerts also come when the sound goes silent, the picture freezes, the signal gets weak, or Facebook or YouTube aren’t live a couple of minutes in.\n\nThere’s nothing to do now.'),
+      footerHtml: `To stop these, take this address off under ${mailLink('Reveals → Settings → Alerts', settings)}.`,
+    }),
+    text: `${who} added this address to the alert list for SOARD's live room reveals. This email is the proof that alerts reach you.\n\nAn alert comes only when something needs a hand. There's nothing to do now.\n\nTo stop these, take this address off under Reveals → Settings → Alerts: ${settings}`,
+  };
 }

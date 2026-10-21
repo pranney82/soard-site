@@ -155,6 +155,8 @@ async function mock(page, { phase, live, rehearsalLive = false }) {
     if (url.pathname.startsWith('/api/pending-changes')) return json({ success: true, changes: [], since: null });
     if (url.pathname.startsWith('/api/audit-log')) return json({ success: true, entries: [], total: 0 });
     if (url.pathname.startsWith('/api/deployments')) return json({ success: true, deploys: [], source: 'cloudflare' });
+    // The upcoming reveals tracker on Now (shaped like production: settings, no reveals coming up)
+    if (url.pathname === '/api/reveal-invites-admin' && req.method() === 'GET') return json({ ok: true, config: { enabled: true, organizer: 'ccunningham@soardcharity.com', lastSweep: null }, checks: { enabled: false }, organizerName: 'Clareece Cunningham', setup: { jobtread: true, google: true }, upcoming: [], board: [], advisory: [], live: { phase, checkedAt: new Date().toISOString(), reminders: { enabled: true, hoursBefore: [24, 1] }, kit: { configured: true, enabled: true, audience: 'All subscribers' } } });
     if (url.pathname.startsWith('/api/')) return json({ success: true, ok: true });
     if (url.hostname === 'static.cloudflareinsights.com') return req.abort();
     req.continue();

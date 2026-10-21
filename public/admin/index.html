@@ -6746,10 +6746,13 @@
         setLoading(false);
       }, [broadcastId]);
       useEffect(() => { load(); }, [load]);
+      // Messages keep coming before and after a reveal too: every 10 seconds while live, every minute
+      // otherwise, and right away when you come back to the tab
       useEffect(() => {
-        if (!auto) return;
-        const t = setInterval(() => { if (!document.hidden) load(); }, 10000);
-        return () => clearInterval(t);
+        const t = setInterval(() => { if (!document.hidden) load(); }, auto ? 10000 : 60000);
+        const onBack = () => { if (document.visibilityState === 'visible') load(); };
+        document.addEventListener('visibilitychange', onBack);
+        return () => { clearInterval(t); document.removeEventListener('visibilitychange', onBack); };
       }, [auto, load]);
       useEffect(() => { if (scrollOnOpen) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, []);
 
@@ -6800,7 +6803,7 @@
             ${sub && !onToggle ? html`<div class="text-sm text-muted" style="margin-top:2px">${sub}</div>` : null}
           </div>
           <div class="flex items-center gap-2 flex-wrap">
-            ${auto ? html`<span class="text-sm text-muted">Updates every 10 seconds</span>` : html`<button class="btn btn-ghost btn-sm" type="button" disabled=${loading} onClick=${load}>Refresh</button>`}
+            <span class="text-sm text-muted">${auto ? 'Updates every 10 seconds' : 'Updates every minute'}</span>
             <button class="btn btn-secondary btn-sm" type="button" disabled=${!shown.length} title="A clean, printable page of every shown message, to give the family" onClick=${() => bcOpenKeepsake({ kidName: name, title: d?.title || title, date, messages: shown })}>Keepsake</button>
             ${onClose ? html`<button class="btn btn-ghost btn-sm" type="button" onClick=${onClose}>Close</button>` : null}
           </div>
@@ -7561,13 +7564,13 @@
           ${s.kitConfigured ? html`<div class="bc-block"><h4>Kit</h4><p class="text-sm text-muted u-m-0">When a scheduled reveal goes live, "We're live" goes to ${kitAudience} by itself (each reveal can opt out when you schedule it). Scheduling also makes a "save the date" draft in Kit, and the replay makes a "watch the replay" draft. Review and send those from Kit.</p></div>` : null}
           ${data.reminders?.recent?.length ? html`<details class="bc-more"><summary>Recent signups (${data.reminders.recent.length})</summary><div class="bc-table" style="margin-top:.5rem"><table><thead><tr><th>When</th><th>Channel</th><th>Who</th><th>For</th><th>From</th></tr></thead><tbody>${data.reminders.recent.map((r) => html`<tr><td>${bcFmt(r.created_at)}</td><td>${r.channel}</td><td>${r.address}</td><td>${r.kid_slug || 'every reveal'}</td><td>${r.source || ''}</td></tr>`)}</tbody></table></div></details>` : null}`)}
 
-        ${section('alerts', 'Alerts', html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${async () => { const d = await setup('testAlert', {}, 'Test alert'); if (d.success) addToast('Test alert sent', 'success'); }}>Send test alert</button>`, html`
+        ${section('alerts', 'Alerts', null, html`
           <p class="bc-set-lede">Alerts go out when a scheduled reveal never streams, Stream reports an encoder error, or a daily check fails (and again on the morning of a reveal). While live, they also fire when the sound goes silent or disappears, the picture freezes, the signal gets weak, or Facebook or YouTube aren't live a couple of minutes in.</p>
           <${BcSlack} mode=${s.slackMode || (s.slackConfigured ? 'webhook' : null)} addToast=${addToast} />
           <div class="bc-block">
             <label class="form-label" for="bc-alert-emails">Alert emails</label>
             <input class="form-input" id="bc-alert-emails" value=${f.alertEmails} placeholder="peter@…, ops@…" onInput=${set('alertEmails')} style="max-width:520px" />
-            <div class="form-hint">Comma separated.</div>
+            <div class="form-hint">Comma separated. Anyone you add gets a short hello email when you save, so they know alerts reach them.</div>
           </div>`)}
 
         ${section('site', 'Site', null, html`
@@ -7662,7 +7665,7 @@
       const saveCfg = async () => {
         if (!dirty) return;
         const d = await setup('setConfig', { config: bcCfgTo(cfg) }, 'Save settings');
-        if (d.success) { addToast('Settings saved', 'success'); setCfg(null); await load(); }
+        if (d.success) { addToast(d.welcomed?.length ? `Settings saved. ${d.welcomed.join(', ')} got a hello email, so they know alerts reach them.` : 'Settings saved', 'success'); setCfg(null); await load(); }
       };
       useSaveShortcut(() => { if (dirty && !busy) saveCfg(); });
       const openSettings = (section) => { setTab('settings'); setJump(section); };
@@ -8279,7 +8282,9 @@
 
       const upcoming = data.upcoming || [];
       const live = data.live || {};
-      const organizer = data.organizerName ? `${data.organizerName} (${data.config.organizer})` : data.config.organizer;
+      // A partial answer (say, the invites settings missing) shows what it can rather than breaking the Now tab
+      const icfg = data.config || {};
+      const organizer = data.organizerName ? `${data.organizerName} (${icfg.organizer})` : icfg.organizer;
       const openId = open ?? upcoming[0]?.jobId ?? null;
       const ICON = { done: '✓', wait: '', warn: '!', error: '!', off: '–', info: 'i' };
 
@@ -8290,7 +8295,7 @@
         ${!upcoming.length && !data.upcomingError ? html`<p class="ri-meta">No upcoming reveals on open jobs yet. They appear here once a job has a Reveal task with a date.</p>` : html`
           <ul class="rt-list">
             ${upcoming.map((r) => {
-              const steps = rtSteps(r, upcoming, live, data.config);
+              const steps = rtSteps(r, upcoming, live, icfg);
               const counted = steps.filter((x) => x.state !== 'off' && x.state !== 'info');
               const done = counted.filter((x) => x.state === 'done').length;
               const problem = steps.find((x) => x.state === 'error') || steps.find((x) => x.state === 'warn');

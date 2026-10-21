@@ -137,6 +137,18 @@ test('a test copy goes to one address with merge tags filled in and no unsubscri
   assert.doesNotMatch(batch[0].html, /\{\{/);
 });
 
+test('"Send it to me": no address sends the test copy to the person signed in', async () => {
+  const me = { ...ctx('/api/send-test-email', { data: BLOCKS, opts: { subject: 'Hello' } }, RESEND), data: { userEmail: 'linzi@soardcharity.com' } };
+  assert.deepEqual(await (await sendTestPost(me)).json(), { ok: true, to: 'linzi@soardcharity.com' });
+  assert.deepEqual(calls.find(c => c.url === 'https://api.resend.com/emails/batch').body[0].to, ['linzi@soardcharity.com']);
+  // A typed address wins; a bad one is refused in plain words
+  const other = { ...ctx('/api/send-test-email', { testEmail: 'peter@example.com', data: BLOCKS }, RESEND), data: { userEmail: 'linzi@soardcharity.com' } };
+  assert.equal((await (await sendTestPost(other)).json()).to, 'peter@example.com');
+  const bad = await sendTestPost({ ...ctx('/api/send-test-email', { testEmail: 'nope', data: BLOCKS }, RESEND), data: { userEmail: 'linzi@soardcharity.com' } });
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).error, 'That isn’t an email address.');
+});
+
 test('send to specific people: one copy each, deduped, each with their own address', async () => {
   const res = await sendDirectPost(ctx('/api/send-direct', { recipients: ['A@x.com', 'b@x.com', 'a@x.com'], data: BLOCKS, opts: { subject: 'Invite' } }, RESEND));
   assert.deepEqual(await res.json(), { ok: true, count: 2 });

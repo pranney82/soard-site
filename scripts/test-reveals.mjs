@@ -266,7 +266,8 @@ try {
   ok((await text(set.page, '#bc-set-instagram')).includes('Linked Instagram: @soardcharity') && (await text(set.page, '#bc-set-instagram')).includes('Ready to post'), 'Instagram says it is linked');
   const fbText = await text(set.page, '#bc-set-facebook');
   ok(fbText.includes('Connected to "Sunshine on a Ranney Day"') && fbText.includes('Every permission automatic mode needs is granted') && !fbText.includes('App Review helper'), 'Facebook says it is connected, in one line');
-  ok(!(await set.page.evaluate(() => [...document.querySelectorAll('.bc-settings button')].some((b) => ['Test connection', 'Refresh', 'Run checks'].includes(b.textContent.trim())))), 'no Test connection, Refresh or Run checks buttons anywhere in Settings');
+  ok(!(await set.page.evaluate(() => [...document.querySelectorAll('.bc-settings button')].some((b) => ['Test connection', 'Refresh', 'Run checks', 'Send test alert'].includes(b.textContent.trim())))), 'no Test connection, Refresh, Run checks or Send test alert buttons anywhere in Settings');
+  ok((await text(set.page, '#bc-set-alerts')).includes('Anyone you add gets a short hello email when you save'), 'Alerts says a new address gets a hello instead');
   ok(set.errors.length === 0, `no console errors (${set.errors.join(' | ')})`);
   await set.page.close();
 
