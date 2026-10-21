@@ -948,7 +948,8 @@ try {
     ok(!(await page.$$eval('.apl-head-actions button', els => els.some(b => /Sync now/.test(b.textContent)))), 'and there’s no standing Sync now');
     await page.keyboard.press('Escape');
     await page.evaluate(() => { history.replaceState(null, '', '#applications/applicants/22PgaFvDKQ9L'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
-    await sleep(200);
+    await page.waitForSelector('.apl-drawer', { timeout: 4000 }).catch(() => {});
+    await sleep(150);
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => {});
     ok(!(await page.$('.apl-drawer')), 'Esc closes it');

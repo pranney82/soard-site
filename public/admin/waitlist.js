@@ -55,10 +55,15 @@ function ago(iso) {
   if (!iso) return 'never';
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
   if (s < 90) return 'just now';
-  if (s < 3600) return `${Math.round(s / 60)} minutes ago`;
-  if (s < 86400 * 1.5) return `${Math.round(s / 3600)} hours ago`;
-  return `${Math.round(s / 86400)} days ago`;
+  const n = (v, one) => `${v} ${one}${v === 1 ? '' : 's'} ago`;
+  if (s < 3600) return n(Math.round(s / 60), 'minute');
+  if (s < 86400 * 1.5) return n(Math.round(s / 3600), 'hour');
+  return n(Math.round(s / 86400), 'day');
 }
+// The heartbeat reads Kit's waitlist tag in every 6 hours while applications are closed (and
+// again at the moment they open): only a read this late means it has stopped
+const IMPORT_STALE_MS = 12 * 3600 * 1000;
+const importStale = (st) => !!st && !st.open && !!st.kit && (!st.lastImportAt || Date.now() - Date.parse(st.lastImportAt) > IMPORT_STALE_MS);
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 const CSS = `
@@ -169,6 +174,28 @@ export function WaitlistPanel({ addToast = () => {}, savedOpen = false }) {
     if (done) addToast(typeof done === 'function' ? done(j) : done, 'success');
     return j;
   };
+  // Back on the tab: show what's current. If Kit's tag hasn't been read in on schedule, catch up
+  // once, quietly; the "Read it in now" link only shows if that catch-up didn't work either.
+  const caughtUp = useRef(false);
+  useEffect(() => {
+    if (!importStale(st) || caughtUp.current || busy) return;
+    caughtUp.current = true;
+    call({ action: 'import' }).then((j) => {
+      if (!j.success) return;
+      if (j.added) addToast(`Read in ${families(j.added)} from Kit`, 'success');
+      load();
+    });
+  }, [st?.lastImportAt, st?.open, st?.kit]);
+  const seenAt = useRef(0);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - seenAt.current < 20000) return;
+      seenAt.current = Date.now();
+      load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   if (err && !st) {
     return html`<section class="card wl"><div class="wl-head"><div>
@@ -306,6 +333,10 @@ function Health({ st, busy, act }) {
   }
   if (!st.kit) notes.push(html`<div class="afe-note is-warn"><span><strong>Kit isn't connected,</strong> so the opening email can't go through Kit. Signups are still saved here, and if Kit is still missing two hours after applications open, the site emails each family itself.
     <details class="wl-fix"><summary>How to fix</summary>Add the Kit API key in Cloudflare (soard-site → Settings → Variables) as KIT_API_KEY.</details></span></div>`);
+  if (importStale(st)) {
+    notes.push(html`<div class="afe-note is-warn wl-import-late"><span style="flex: 1;"><strong>${st.lastImportAt ? `Kit's "Application Waitlist" tag was last read in ${ago(st.lastImportAt)}.` : `Kit's "Application Waitlist" tag hasn't been read in yet.`}</strong> It normally happens on its own every 6 hours, so anyone who signed up through Kit alone may be missing here.</span>
+      <button class="btn btn-ghost" style="min-height: 36px;" disabled=${!!busy} onClick=${() => act('import', {}, (j) => (j.added ? `Read in ${families(j.added)} from Kit` : 'Up to date with Kit'))}>${busy === 'import' ? 'Reading…' : 'Read it in now'}</button></div>`);
+  }
   if (!st.email) notes.push(html`<div class="afe-note is-warn"><span><strong>The site's email sender (Resend) isn't set up,</strong> so families don't get the "you're on the list" email, and there's no backup if Kit can't send.
     <details class="wl-fix"><summary>How to fix</summary>Add the Resend API key in Cloudflare (soard-site → Settings → Variables) as RESEND_API_KEY.</details></span></div>`);
   if (st.kitProblems > 0) {
@@ -466,7 +497,7 @@ function FamilyList({ st, act, busy }) {
       </div>
       ${shown.length > 500 && html`<p class="afe-hint" style="margin: .5rem 0 0;">Showing the first 500. Download the CSV for everyone.</p>`}`
     : html`<p class="afe-hint" style="margin: .25rem 0 0;">${rows.length ? 'Nobody matches.' : 'Nobody has signed up yet.'}</p>`}
-    <p class="afe-hint" style="margin: .75rem 0 0;">Last read in from Kit's "Application Waitlist" tag: ${ago(st.lastImportAt)}. <button class="afe-link" disabled=${!!busy} onClick=${() => act('import', {}, (j) => (j.added ? `Read in ${families(j.added)} from Kit` : 'Up to date with Kit'))}>Check Kit now</button></p>`;
+    ${!st.open && st.kit && !importStale(st) && html`<p class="afe-hint" style="margin: .75rem 0 0;">Kit's "Application Waitlist" tag is read in on its own every 6 hours, and again the moment applications open. Last: ${ago(st.lastImportAt)}.</p>`}`;
 }
 
 function History({ list }) {
