@@ -2,9 +2,9 @@
  * Broadcast notifications
  * =======================
  * Everything that leaves the site when a reveal is scheduled, goes live, or
- * has a replay: reminder emails (Resend), SMS (Twilio), browser push
- * (Web Push with VAPID, no library), calendar files, and admin alerts
- * (Slack webhook + email). Every sender is best-effort and never throws;
+ * has a replay: reminder emails (Resend), browser push (Web Push with VAPID,
+ * no library), calendar files, and admin alerts (Slack + email, and texts to
+ * the staff numbers through Twilio). The public is never texted. Every sender is best-effort and never throws;
  * callers get counts and error strings to record.
  *
  * Env vars (all optional except RESEND_API_KEY for email):
@@ -222,9 +222,9 @@ export function smsConfigured(env) {
   return !!(env.TWILIO_ACCOUNT_SID && twilioCredentials(env) && (env.TWILIO_FROM || env.TWILIO_MESSAGING_SERVICE_SID));
 }
 
-/** @returns {{sent:number, failed:number, errors:string[], optedOut:string[]}} */
+/** @returns {{sent:number, failed:number, errors:string[], optedOut:string[], delivered:string[]}} */
 export async function sendSms(env, { to, body }) {
-  const out = { sent: 0, failed: 0, errors: [], optedOut: [] };
+  const out = { sent: 0, failed: 0, errors: [], optedOut: [], delivered: [] };
   const list = (to || []).map(normalizePhone).filter(Boolean);
   if (!list.length) return out;
   if (!smsConfigured(env)) { out.failed = list.length; out.errors.push('Twilio not configured'); return out; }
@@ -240,9 +240,9 @@ export async function sendSms(env, { to, body }) {
       else form.set('From', env.TWILIO_FROM);
       try {
         const res = await fetch(url, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form, signal: AbortSignal.timeout(15000) });
-        if (res.ok) { out.sent++; continue; }
+        if (res.ok) { out.sent++; out.delivered.push(num); continue; }
         const err = await res.json().catch(() => ({}));
-        // 21610 = recipient replied STOP; drop them from the list
+        // 21610 = the number replied STOP, so Twilio refuses to text it
         if (err.code === 21610) out.optedOut.push(num);
         out.failed++;
         if (out.errors.length < 5) out.errors.push(`${num.slice(0, 5)}…: ${err.message || res.status}`);
@@ -474,21 +474,6 @@ export function reminderEmail({ kind, kidName, scheduledAt, liveUrl, replayUrl, 
   return { subject: t.subject, html, text };
 }
 
-export function reminderSms({ kind, kidName, scheduledAt, liveUrl, replayUrl, tz, first = false }) {
-  const who = kidName ? `${kidName}'s` : 'the next';
-  const when = formatWhen(scheduledAt, tz);
-  const map = {
-    scheduled: `Sunshine on a Ranney Day: ${who} room reveal streams live ${when}. Watch here: ${liveUrl}`,
-    moved: `Sunshine on a Ranney Day: new date! ${who} room reveal now streams live ${when}. ${liveUrl}`,
-    day: `Sunshine on a Ranney Day: ${isRevealToday(scheduledAt, tz) ? 'today' : 'tomorrow'} is reveal day! ${who} reveal goes live ${when}. ${liveUrl}`,
-    hour: `Sunshine on a Ranney Day: ${who} reveal goes live in about an hour. ${liveUrl}`,
-    live: `Sunshine on a Ranney Day: we're LIVE with ${who} reveal right now. Watch: ${liveUrl}`,
-    replay: `Sunshine on a Ranney Day: missed the reveal? Watch the replay: ${replayUrl || liveUrl}`,
-  };
-  const body = map[kind] || map.live;
-  return first ? `${body} Reply STOP to opt out.` : body;
-}
-
 export function reminderPush({ kind, kidName, scheduledAt, tz, liveUrl, replayUrl, image }) {
   const who = kidName ? `${kidName}'s` : 'the next';
   const today = isRevealToday(scheduledAt, tz);
@@ -524,13 +509,77 @@ export function confirmEmail({ confirmUrl, kidName }) {
   return { subject: t.subject, html, text };
 }
 
-/** The text with a sign-up code */
-export function smsCodeText(code) {
-  return `Sunshine on a Ranney Day: ${code} is your code for reveal reminder texts. It expires in 10 minutes. Didn't ask for it? Ignore this text.`;
+// ─── Staff alert texts ──────────────────────────────────────────────
+// The public is never texted. Texts go only to the staff numbers in
+// Reveals → Settings → Alerts, and only for the reveal alerts that ask for
+// one (alertAdmins' `text`): problems while live and when they clear, the
+// go / no-go check before a reveal, and "Live now".
+
+export const ALERT_TEXTS_KEY = 'alert-texts';
+
+/** The staff numbers on the alert list, as +1 numbers */
+export function alertPhones(config) {
+  return [...new Set((config?.alerts?.phones || []).map(normalizePhone).filter(Boolean))];
 }
 
-/** The first text after a number is confirmed: what they signed up for and how to stop */
-export const SMS_WELCOME = "Sunshine on a Ranney Day: you're signed up for reveal reminder texts. Up to 6 texts per reveal. Msg & data rates may apply. Reply HELP for help, STOP to opt out.";
+// Plain GSM characters keep a text at 160 characters a segment: one curly
+// quote or emoji would switch the whole text to 70
+const SMS_SWAPS = [[/[\u2018\u2019\u201A\u2032]/g, "'"], [/[\u201C\u201D\u201E\u2033]/g, '"'], [/[\u2013\u2014]/g, '-'], [/\u2026/g, '...'], [/[\u2022\u00B7]/g, '-'], [/\u2192/g, '->'], [/\u00A0/g, ' ']];
+export function smsSafe(s) {
+  let out = String(s ?? '');
+  for (const [re, to] of SMS_SWAPS) out = out.replace(re, to);
+  return out.replace(/[^\n\x20-\x7E]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').trim();
+}
+
+const TEXT_MAX = 306; // two segments
+
+/** A staff alert as a text: the headline, then the fix (or the first line of what happened), then the link */
+export function alertText({ title, detail, fix, url }) {
+  const head = `SOARD: ${smsSafe(title)}`;
+  const more = fix ? `Fix: ${smsSafe(fix)}` : smsSafe(String(detail || '').split('\n')[0]);
+  const link = url ? `\n${url}` : '';
+  const room = TEXT_MAX - head.length - link.length - 1;
+  const body = more && room > 24 ? `\n${more.length > room ? `${more.slice(0, room - 3).trimEnd()}...` : more}` : '';
+  return `${head}${body}${link}`;
+}
+
+/** The first text a new number on the alert list gets: proof texts reach it, and how to stop */
+export function alertHelloText({ by = null } = {}) {
+  return `SOARD: ${by ? `${smsSafe(by)} added you to` : "You're on"} the live reveal alert texts. You'll get a text when a reveal has a problem, when the go/no-go check runs before it, and when it goes live. Reply STOP to opt out, HELP for help.`;
+}
+
+export async function readAlertTexts(DB) {
+  try {
+    const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(ALERT_TEXTS_KEY).first();
+    return row?.data ? JSON.parse(row.data) : {};
+  } catch { return {}; }
+}
+
+/** What the last staff text did, and which numbers replied STOP (Twilio then refuses them) */
+export async function recordAlertTexts(DB, { title, result }) {
+  if (!DB || !result) return;
+  const rec = await readAlertTexts(DB);
+  const at = new Date().toISOString();
+  rec.last = { at, title: String(title || '').slice(0, 140), sent: result.sent || 0, failed: result.failed || 0, error: result.errors?.[0] || null };
+  rec.stopped = rec.stopped || {};
+  for (const n of result.optedOut || []) rec.stopped[n] = at;
+  for (const n of result.delivered || []) delete rec.stopped[n];
+  await DB.prepare(`INSERT INTO site_config (key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`)
+    .bind(ALERT_TEXTS_KEY, JSON.stringify(rec), at).run();
+}
+
+/** Text the staff list. Never throws. → sendSms's result, or null when there's nobody to text */
+export async function textStaff(env, config, { title, body }) {
+  const to = alertPhones(config);
+  if (!to.length || !smsConfigured(env)) return null;
+  try {
+    const result = await sendSms(env, { to, body });
+    await recordAlertTexts(env.DB, { title, result }).catch(() => {});
+    return result;
+  } catch (e) {
+    return { sent: 0, failed: to.length, errors: [e.message], optedOut: [] };
+  }
+}
 
 // ─── Admin alerts: Slack ────────────────────────────────────────────
 // Two ways in. Preferred: a Slack app's bot token (SLACK_BOT_TOKEN, scopes
@@ -857,8 +906,10 @@ export function adminCard({ level = 'warn', icon, title, detail, url, urlLabel, 
  * the first post into a ✅. `kind` is 'attention' (the default) or 'news'
  * (good news, for the channel everyone celebrates in). `urgent` adds @here,
  * but only in a Needs attention channel of its own, never the good-news one.
+ * `text` also texts the staff numbers (reveal-day alerts only): true builds
+ * the text from the alert, a string is the text itself.
  * A title starting "TEST · " is marked as a test. Never throws.
- * → { slack: slackAlert's result (with ts), email }
+ * → { slack: slackAlert's result (with ts), email, text }
  */
 /** The email side of a live alert (the same words go to Slack as a card) */
 export function alertEmail({ title, detail, fix, context, links = [] }) {
@@ -869,7 +920,7 @@ export function alertEmail({ title, detail, fix, context, links = [] }) {
   };
 }
 
-export async function alertAdmins(env, config, { level = 'warn', icon, title, detail, url, urlLabel, fix, context, facts = [], links = [], issue = null, resolves = null, kind = 'attention', urgent = false }) {
+export async function alertAdmins(env, config, { level = 'warn', icon, title, detail, url, urlLabel, fix, context, facts = [], links = [], issue = null, resolves = null, kind = 'attention', urgent = false, text = false }) {
   const headline = /^TEST · /.test(title || '') ? title.replace(/^TEST · /, '') : title;
   const allLinks = [...(url ? [{ label: urlLabel || urlLabelFor(url), url }] : []), ...links].filter((l) => l?.url);
   const cfg = urgent && kind === 'attention' && env.SLACK_BOT_TOKEN ? await readSlackConfig(env.DB) : null;
@@ -892,5 +943,7 @@ export async function alertAdmins(env, config, { level = 'warn', icon, title, de
       tags: [{ name: 'category', value: 'live-alert' }],
     });
   }
+  // Texts only for the reveal alerts that ask (see Staff alert texts above)
+  results.text = text ? await textStaff(env, config, { title, body: typeof text === 'string' ? text : alertText({ title, detail, fix, url: allLinks[0]?.url }) }) : null;
   return results;
 }

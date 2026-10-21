@@ -51,7 +51,6 @@ const confirmLink = (to) => {
   const m = [...emails].reverse().find(e => e.to[0] === to);
   return m && m.text.match(/https:\/\/sunshineonaranneyday\.com\/api\/reminders\?confirm=[\w-]+/)[0];
 };
-const codeFor = (to) => [...texts].reverse().find(t => t.to === to)?.body.match(/(\d{6}) is your code/)?.[1];
 
 before(async () => {
   DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
@@ -261,96 +260,33 @@ test('the honeypot looks like success and stores nothing', async () => {
   assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM broadcast_reminder_pending').first()).n, before);
 });
 
-// ─── Text: a code typed back ────────────────────────────────────────
+// ─── Texts: never the public ────────────────────────────────────────
 
-test('texts: international numbers are refused before anything is sent', async () => {
-  const n = texts.length;
-  for (const phone of ['+44 7700 900123', '+1 876 555 0123', '800-555-0123']) {
-    const res = await post({ channel: 'sms', phone });
-    assert.equal(res.status, 400, phone);
-  }
-  assert.equal(texts.length, n);
-});
-
-test('texts: a 6-digit code, five tries, then the number is on the list with a welcome text', async () => {
-  const phone = '(404) 555-0142';
-  const res = await post({ channel: 'sms', phone, kidSlug: 'remi' });
-  assert.deepEqual(await res.json(), { ok: true, channel: 'sms', pending: true, codeSent: true, expiresIn: 600 });
-  const code = codeFor('+14045550142');
-  assert.match(code, /^\d{6}$/);
-  assert.equal((await rows(`channel = 'sms'`)).length, 0, 'not on the list yet');
-  const p = await DB.prepare(`SELECT secret_hash FROM broadcast_reminder_pending WHERE channel = 'sms'`).first();
-  assert.ok(!p.secret_hash.includes(code), 'the code is stored hashed');
-
-  const wrong = code === '000000' ? '111111' : '000000';
-  const r1 = await post({ channel: 'sms', phone, code: wrong });
-  assert.equal(r1.status, 400);
-  assert.match((await r1.json()).error, /4 tries left/);
-  const ok = await post({ channel: 'sms', phone, code });
-  assert.deepEqual(await ok.json(), { ok: true, channel: 'sms', confirmed: true });
-  await flush();
-  const [row] = await rows(`channel = 'sms'`);
-  assert.equal(row.address, '+14045550142');
-  assert.equal(row.kid_slug, 'remi');
-  assert.match(texts.at(-1).body, /signed up for reveal reminder texts.*STOP to opt out/);
-  assert.equal((await post({ channel: 'sms', phone, code })).status, 410, 'a used code is gone');
-});
-
-test('texts: five wrong tries end a code; codes expire in 10 minutes', async () => {
-  const phone = '404-555-0177';
-  await post({ channel: 'sms', phone });
-  const code = codeFor('+14045550177');
-  const wrong = code === '000000' ? '111111' : '000000';
-  for (let i = 0; i < 4; i++) assert.equal((await post({ channel: 'sms', phone, code: wrong })).status, 400);
-  const last = await post({ channel: 'sms', phone, code: wrong });
-  assert.equal(last.status, 410);
-  assert.match((await last.json()).error, /last try/);
-  assert.equal((await post({ channel: 'sms', phone, code })).status, 410, 'even the right code is dead now');
-
-  await post({ channel: 'sms', phone });
-  const fresh = codeFor('+14045550177');
-  travel(10 * 60e3 + 1000);
-  assert.equal((await post({ channel: 'sms', phone, code: fresh })).status, 410);
-  assert.equal((await rows('address = ?', '+14045550177')).length, 0);
-});
-
-test('texts: three codes a day per number, five per caller, and a site-wide daily cap that tells staff once', async () => {
-  travel(24 * 3600e3 + 1000); // a new day for every limit
-  const phone = '404-555-0188';
-  for (let i = 0; i < 3; i++) assert.equal((await post({ channel: 'sms', phone })).status, 200);
-  assert.equal((await post({ channel: 'sms', phone })).status, 429);
-
-  const ip = '203.0.113.77';
-  for (let i = 0; i < 5; i++) assert.equal((await post({ channel: 'sms', phone: `404-555-02${10 + i}` }, { ip })).status, 200);
-  const sixth = await post({ channel: 'sms', phone: '404-555-0299' }, { ip });
-  assert.equal(sixth.status, 429);
-
-  const cap = endpoint.LIMITS.smsPerDay;
-  const used = (await DB.prepare(`SELECT count FROM rate_limits WHERE key LIKE 'reminders:sms-day:%' ORDER BY reset_at DESC LIMIT 1`).first()).count;
-  endpoint.LIMITS.smsPerDay = used + 1;
+test('the public can never sign up for texts, whatever the settings say', async () => {
+  const cfg = await b.readConfig(DB);
+  await b.writeConfig(DB, { ...cfg, reminders: { ...cfg.reminders, sms: true } });
   try {
-    assert.equal((await post({ channel: 'sms', phone: '404-555-0301' })).status, 200);
-    const sent = texts.length;
-    const paused = await post({ channel: 'sms', phone: '404-555-0302' });
-    assert.equal(paused.status, 503);
-    assert.equal((await paused.json()).code, 'sms-paused');
-    assert.equal((await post({ channel: 'sms', phone: '404-555-0303' })).status, 503);
+    const n = texts.length;
+    for (const body of [{ channel: 'sms', phone: '(404) 555-0142' }, { channel: 'sms', phone: '(404) 555-0142', code: '123456' }]) {
+      assert.equal((await post(body)).status, 400, JSON.stringify(body));
+    }
     await flush();
-    assert.equal(texts.length, sent, 'no codes past the cap');
-    const alerts = slackPosts.filter(p => /Text sign-ups paused/.test(JSON.stringify(p)));
-    assert.equal(alerts.length, 1, 'staff hear about it once');
+    assert.equal(texts.length, n, 'nothing texted');
+    assert.equal((await DB.prepare(`SELECT COUNT(*) AS n FROM broadcast_reminder_pending WHERE channel = 'sms'`).first()).n, 0);
   } finally {
-    endpoint.LIMITS.smsPerDay = cap;
+    await b.writeConfig(DB, cfg);
   }
 });
 
-test('texts: a number that replied STOP is told how to start again', async () => {
-  travel(24 * 3600e3 + 1000);
-  sim.twilioStop.add('+14045550444');
-  const res = await post({ channel: 'sms', phone: '404-555-0444' });
-  assert.equal(res.status, 409);
-  assert.match((await res.json()).error, /Text START to \(888\) 555-0100/);
-  assert.equal((await DB.prepare(`SELECT COUNT(*) AS n FROM broadcast_reminder_pending WHERE address = '+14045550444'`).first()).n, 0);
+test('reminders never text, even a phone row left in the table', async () => {
+  await DB.prepare(`INSERT INTO broadcast_reminders (id, channel, address, token, created_at, fails) VALUES ('old-sms', 'sms', '+14045550142', 'tok-sms', ?, 0)`).bind(new Date().toISOString()).run();
+  const cfg = await b.readConfig(DB);
+  const state = { ...(await b.readState(DB)), broadcastId: 'bc-no-texts', phase: 'scheduled', kidSlug: 'remi', kidName: 'Remi', scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString() };
+  const n = texts.length;
+  const summary = await b.sendReminders(env, { ...cfg, reminders: { ...cfg.reminders, enabled: true, sms: true, push: false } }, state, 'day', []);
+  assert.equal(texts.length, n, 'nothing texted');
+  assert.ok(!('sms' in summary), JSON.stringify(summary));
+  await DB.prepare(`DELETE FROM broadcast_reminders WHERE id = 'old-sms'`).run();
 });
 
 // ─── Push ───────────────────────────────────────────────────────────
@@ -380,7 +316,7 @@ test('reminder emails carry one-click List-Unsubscribe headers', async () => {
   const cfg = await b.readConfig(DB);
   const state = { ...(await b.readState(DB)), broadcastId: 'bc-headers', phase: 'scheduled', kidSlug: 'remi', kidName: 'Remi', scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString() };
   emails.length = 0;
-  await b.sendReminders(env, { ...cfg, reminders: { ...cfg.reminders, sms: false, push: false } }, state, 'day', []);
+  await b.sendReminders(env, { ...cfg, reminders: { ...cfg.reminders, push: false } }, state, 'day', []);
   const mail = emails.find(e => e.to[0] === 'one@example.com');
   const [row] = await rows('address = ?', 'one@example.com');
   const url = `${SITE}/api/reminders?unsubscribe=${encodeURIComponent(row.token)}`;
@@ -393,7 +329,7 @@ test('a long list goes out in batches across ticks, each person once, without ho
   const list = Array.from({ length: 330 }, (_, i) => `bulk${String(i).padStart(3, '0')}@example.com`);
   await confirmEmails(list);
   const cfg = await b.readConfig(DB);
-  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, sms: false, push: false } };
+  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
   const at = new Date(Date.now() + 20 * 3600e3).toISOString();
   await b.writeConfig(DB, config);
   await b.writeState(DB, { ...(await b.readState(DB)), broadcastId: 'bc-bulk', phase: 'scheduled', kidSlug: null, kidName: null, scheduledAt: at, test: false, source: null });
@@ -433,7 +369,7 @@ test('a long list goes out in batches across ticks, each person once, without ho
 
 test('a date moved in the middle of a send waits for its new window', async () => {
   const cfg = await b.readConfig(DB);
-  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, sms: false, push: false } };
+  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
   await b.writeState(DB, { ...(await b.readState(DB)), broadcastId: 'bc-midmove', phase: 'scheduled', kidSlug: null, scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString(), test: false });
   const state = await b.readState(DB);
   emails.length = 0;
@@ -450,7 +386,7 @@ test('a date moved in the middle of a send waits for its new window', async () =
 
 test('a batch left over once its news is old is dropped, not sent late', async () => {
   const cfg = await b.readConfig(DB);
-  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, sms: false, push: false } };
+  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
   const live = { ...(await b.readState(DB)), broadcastId: 'bc-old-news', phase: 'live', kidSlug: null };
   await b.sendReminders(env, config, live, 'live', [], { budgetMs: 0 });
   emails.length = 0;
@@ -462,7 +398,7 @@ test('a batch left over once its news is old is dropped, not sent late', async (
 
 test('a moved date sends the day-before reminder again', async () => {
   const cfg = await b.readConfig(DB);
-  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, sms: false, push: false } };
+  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
   const state = { ...(await b.readState(DB)), broadcastId: 'bc-moved', phase: 'scheduled', kidSlug: null };
   await b.sendReminders(env, config, state, 'day', []);
   const firstCount = (await DB.prepare(`SELECT sent FROM broadcast_sends WHERE broadcast_id = 'bc-moved' AND kind = 'day'`).first()).sent;
@@ -483,7 +419,7 @@ test('push sends skip and drop a stored endpoint that is not a push service', as
   globalThis.fetch = async (input, init) => { calls.push(typeof input === 'string' ? input : input.url); return inner(input, init); };
   try {
     const state = { ...(await b.readState(DB)), broadcastId: 'bc-push', phase: 'live', kidSlug: null };
-    await b.sendReminders(env, { ...cfg, reminders: { ...cfg.reminders, enabled: true, sms: false, push: true } }, state, 'live', []);
+    await b.sendReminders(env, { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: true } }, state, 'live', []);
   } finally {
     globalThis.fetch = inner;
   }

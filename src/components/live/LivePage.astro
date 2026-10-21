@@ -99,27 +99,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
           <div class="remind-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
           <p class="remind-note" role="status" aria-live="polite"></p>
         </form>
-        <!-- Two steps: the number, then the 6-digit code we text to it -->
-        <form class="remind-form" data-live="form-sms" data-step="phone" hidden novalidate>
-          <div class="remind-row remind-step--phone">
-            <label class="sr-only" for="remind-phone">Mobile number</label>
-            <input class="remind-input" id="remind-phone" type="tel" name="phone" placeholder="(404) 555-0123" autocomplete="tel" required />
-            <button class="btn btn-dark remind-btn" type="submit">
-              <span class="btn-text">Text me</span><span class="btn-done">We'll text you</span>
-            </button>
-          </div>
-          <div class="remind-row remind-step--code">
-            <label class="sr-only" for="remind-code">6-digit code from the text</label>
-            <input class="remind-input remind-code" id="remind-code" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" />
-            <button class="btn btn-dark remind-btn" type="submit">Confirm</button>
-          </div>
-          <p class="remind-again remind-step--code">
-            <button class="remind-link" type="button" data-sms="resend">Send a new code</button>
-            <button class="remind-link" type="button" data-sms="change">Use a different number</button>
-          </p>
-          <p class="remind-consent">By entering your number, you agree to receive reveal reminder texts from Sunshine on a Ranney Day. Up to 6 texts per reveal. Message and data rates may apply. Reply HELP for help or STOP to opt out. See our <a href="/terms/#text-messages">Terms</a> and <a href="/privacy-policy/#text-messages">Privacy Policy</a>.</p>
-          <p class="remind-note" role="status" aria-live="polite"></p>
-        </form>
         <!-- The quick check (Turnstile) runs in a small frame here, out of sight unless it needs a click -->
         <div class="remind-check" data-live="remind-check"></div>
         <div class="remind-extras">
@@ -284,17 +263,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .remind-note { font-size: 14px; color: var(--c-text-muted); min-height: 1.4em; margin: 8px 0 0; }
   .remind-note--error { color: var(--c-text); font-weight: 600; }
   /* The text form shows one step at a time */
-  .remind-form[data-step='phone'] .remind-step--code,
-  .remind-form[data-step='code'] .remind-step--phone { display: none; }
-  .remind-form[data-step='done'] .remind-step--code { display: none; }
-  .remind-code { letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
-  .remind-code::placeholder { letter-spacing: normal; }
-  .remind-again { display: flex; gap: 20px; flex-wrap: wrap; margin: 12px 0 0; }
   .remind-check { max-width: 400px; }
   .remind-check :global(iframe) { display: block; width: 100%; height: 0; border: 0; overflow: hidden; transition: height var(--transition-fast); }
   .remind-check.is-shown :global(iframe) { height: 72px; margin: 4px 0 12px; }
-  .remind-consent { font-size: 12px; color: var(--c-text-light); max-width: 520px; line-height: 1.5; margin: 10px 0 0; }
-  .remind-consent a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
   .remind-extras { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; }
   .remind-link {
     display: inline-flex; align-items: center; gap: 8px; background: none; border: none; padding: 0; font: inherit; font-size: 14px; font-weight: 600;
@@ -534,8 +505,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       if (!party) give?.close();
 
       // Reminder form availability
-      const smsForm = bq<HTMLFormElement>('form-sms');
-      if (smsForm) smsForm.hidden = !meta.reminders?.sms;
       const emailForm = bq<HTMLFormElement>('form-email');
       if (emailForm) emailForm.hidden = meta.reminders ? !meta.reminders.email : false;
       const pushBtn = bq<HTMLButtonElement>('push-btn');
@@ -559,7 +528,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
     // ── Reminder forms ──────────────────────────────────────────────
     // Nobody is on the list until the address proves it's theirs: email
-    // gets a link to confirm, a phone gets a 6-digit code to type back here.
+    // gets a link to confirm.
 
     // The quick check (Turnstile) while the server asks for one. The page's
     // CSP doesn't load Turnstile, so it runs in a frame /api/reminders serves
@@ -611,8 +580,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       checkFrame?.contentWindow?.postMessage({ type: 'soard-check-reset' }, location.origin);
       return token;
     }
-    for (const k of ['form-email', 'form-sms']) {
-      const f = bq<HTMLFormElement>(k);
+    {
+      const f = bq<HTMLFormElement>('form-email');
       f?.addEventListener('focusin', () => { void warmCheck(); }, { once: true });
       f?.addEventListener('pointerenter', () => { void warmCheck(); }, { once: true });
     }
@@ -667,61 +636,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       (form.querySelector('button[type="submit"]') as HTMLButtonElement).disabled = false;
       say(form, '');
     });
-
-    // Text reminders: the number, then the code we text to it
-    const smsForm = bq<HTMLFormElement>('form-sms');
-    if (smsForm) {
-      const phoneInput = smsForm.querySelector('input[name="phone"]') as HTMLInputElement;
-      const codeInput = smsForm.querySelector('input[name="code"]') as HTMLInputElement;
-      const buttons = () => smsForm.querySelectorAll<HTMLButtonElement>('button');
-      const busy = (on: boolean) => buttons().forEach((b) => { b.disabled = on; });
-      const step = (s: 'phone' | 'code' | 'done') => { smsForm.dataset.step = s; };
-      let number = '';
-      async function textCode() {
-        busy(true); say(smsForm!, 'Sending your code…');
-        const [ok, data, status] = await sendReminder(smsForm!, { channel: 'sms', phone: number });
-        busy(false);
-        if (!ok) { say(smsForm!, errorText(data, status), true); return false; }
-        step('code');
-        codeInput.value = '';
-        say(smsForm!, `We texted a 6-digit code to ${number}. Enter it here to finish.`);
-        codeInput.focus();
-        return true;
-      }
-      codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6); });
-      smsForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        if (smsForm.dataset.step === 'done') return;
-        if (smsForm.dataset.step !== 'code') {
-          number = phoneInput.value.trim();
-          if (number.replace(/\D/g, '').length < 10) { say(smsForm, 'Enter a valid mobile number.', true); return; }
-          await textCode();
-          return;
-        }
-        const code = codeInput.value.replace(/\D/g, '');
-        if (code.length !== 6) { say(smsForm, 'Enter the 6-digit code from the text.', true); codeInput.focus(); return; }
-        busy(true); say(smsForm, 'Checking…');
-        const [ok, data, status] = await sendReminder(smsForm, { channel: 'sms', phone: number, code }, { check: false });
-        busy(false);
-        if (ok) {
-          step('done');
-          smsForm.classList.add('is-done');
-          phoneInput.disabled = true;
-          buttons().forEach((b) => { b.disabled = true; });
-          say(smsForm, "You're all set. We'll text you before the reveal.");
-        } else {
-          say(smsForm, errorText(data, status), true);
-          codeInput.select();
-        }
-      });
-      smsForm.querySelector('[data-sms="resend"]')?.addEventListener('click', () => { void textCode(); });
-      smsForm.querySelector('[data-sms="change"]')?.addEventListener('click', () => {
-        step('phone');
-        say(smsForm, '');
-        phoneInput.focus();
-        phoneInput.select();
-      });
-    }
 
     // Browser push
     const pushBtn = bq<HTMLButtonElement>('push-btn');

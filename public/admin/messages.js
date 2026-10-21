@@ -71,21 +71,17 @@ const reminderLive = (kind) => (f) => {
   const r = f.reminders;
   if (!r || !f.env) return null;
   const subs = r.subscribers || {};
-  const people = (subs.email || 0) + (subs.sms || 0) + (subs.push || 0);
-  const signed = people ? ` ${plural(people, 'signup')} so far (${subs.email || 0} email, ${subs.sms || 0} text, ${subs.push || 0} browser).` : ' Nobody has signed up yet.';
+  const people = (subs.email || 0) + (subs.push || 0);
+  const signed = people ? ` ${plural(people, 'signup')} so far (${subs.email || 0} email, ${subs.push || 0} browser).` : ' Nobody has signed up yet.';
   if (!r.enabled) return OFF(REM_OFF);
   if (kind === 'day' && !r.dayBefore) return OFF(`“The day before” is unticked in ${REM_SETTINGS}.`);
   if (kind === 'hour' && !r.hourBefore) return OFF(`“One hour before” is unticked in ${REM_SETTINGS}.`);
   if (!f.env.resend) return ATTN(NO_RESEND);
   const s = r.sends?.[kind] || {};
-  const by = [['email', 'emails'], ['sms', 'texts'], ['push', 'browser alerts']].filter(([c]) => s[c]?.total).map(([c, n]) => `${s[c].total} ${n}`);
-  const channels = ['email', r.sms && f.env.twilio ? 'text' : null, r.push && r.vapid ? 'browser alert' : null].filter(Boolean);
-  return ON(`Goes by ${channels.join(', ').replace(/, ([^,]*)$/, ' and $1')}.${signed}${by.length ? ` Sent so far: ${by.join(', ')}.` : ''}`, latest(s.email?.last, s.sms?.last, s.push?.last));
+  const by = [['email', 'emails'], ['push', 'browser alerts']].filter(([c]) => s[c]?.total).map(([c, n]) => `${s[c].total} ${n}`);
+  const channels = ['email', r.push && r.vapid ? 'browser alert' : null].filter(Boolean);
+  return ON(`Goes by ${channels.join(' and ')}.${signed}${by.length ? ` Sent so far: ${by.join(', ')}.` : ''}`, latest(s.email?.last, s.push?.last));
 };
-const textsLive = first(
-  (f) => (!f.reminders ? null : !f.reminders.enabled ? OFF(REM_OFF) : !f.reminders.sms ? OFF(`Texts are switched off in ${REM_SETTINGS}.`) : null),
-  (f) => (!f.env ? null : f.env.twilio ? ON() : ATTN('Twilio isn’t set up in Cloudflare (TWILIO_ACCOUNT_SID, the API key and TWILIO_FROM), so text signups can’t get their code.')),
-);
 const inviteLive = (which) => first(needs('calendar', NO_CAL), (f) => {
   const v = f.invites;
   if (!v) return null;
@@ -238,7 +234,7 @@ const MAP = { t: 'Everything we send', children: [
     ]},
 
   { t: 'Reveal watchers', sub: 'People who asked for reminders on a reveal page', color: 'live', side: 'r',
-    about: 'Anyone can sign up on a reveal or kid page for reminders by email, text or browser alert. Newsletter subscribers hear about reveals through Kit instead.',
+    about: 'Anyone can sign up on a reveal or kid page for reminders by email or browser alert. The public is never texted. Newsletter subscribers hear about reveals through Kit instead.',
     children: [
       { t: 'Signing up', children: [
         { t: 'Confirm your reminders', s: 'live', k: 'email', by: 'visitor', preview: 'rem-confirm', change: CHANGE.revealSettings,
@@ -249,61 +245,49 @@ const MAP = { t: 'Everything we send', children: [
           touches: ['Resend', 'D1'], where: 'functions/api/reminders.js · _broadcast-notify.js (confirmEmail)',
           info: 'While reminders are switched off, reveal pages hide the sign-up box.',
           live: first((f) => (!f.reminders ? null : !f.reminders.enabled ? OFF(REM_OFF) : null), needs('resend', NO_RESEND), () => ON()) },
-        { t: 'Text code', s: 'live', k: 'text', by: 'visitor', preview: 'rem-code', change: CHANGE.revealSettings,
-          who: 'A phone number signed up on a reveal page.',
-          when: 'Right after they sign up for texts.',
-          does: 'A 6-digit code that proves the phone is theirs. It expires in 10 minutes.',
-          touches: ['Twilio', 'D1'], where: 'functions/api/reminders.js · _broadcast-notify.js (smsCodeText)',
-          live: textsLive },
-        { t: 'Text welcome', s: 'live', k: 'text', by: 'visitor', preview: 'rem-welcome', change: CHANGE.revealSettings,
-          who: 'A phone number that just confirmed its code.',
-          when: 'Right after the code is confirmed.',
-          does: 'Confirms the signup: up to 6 texts per reveal, rates may apply, reply HELP or STOP.',
-          touches: ['Twilio'], where: 'functions/api/reminders.js · _broadcast-notify.js (SMS_WELCOME)',
-          live: textsLive },
       ]},
       { t: 'Reminders', children: [
-        { t: 'Save the date', s: 'live', k: 'email', also: ['text', 'push'], by: 'auto', preview: 'rem-scheduled', change: CHANGE.revealSettings,
+        { t: 'Save the date', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-scheduled', change: CHANGE.revealSettings,
           who: 'Everyone signed up for reminders (for this kid, or for every reveal).',
           when: 'A reveal is scheduled (by hand, or by JobTread’s countdown) more than 26 hours ahead.',
           subject: 'Save the date: {kid}’s room reveal',
           does: 'The date and time, and that reminders come the day before and an hour before.',
-          touches: ['Resend', 'Twilio', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (sendReminders) · _broadcast-notify.js (reminderEmail, reminderSms, reminderPush)',
+          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (sendReminders) · _broadcast-notify.js (reminderEmail, reminderPush)',
           live: reminderLive('scheduled') },
-        { t: 'New date', s: 'live', k: 'email', also: ['text', 'push'], by: 'auto', preview: 'rem-moved', change: CHANGE.revealSettings,
+        { t: 'New date', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-moved', change: CHANGE.revealSettings,
           who: 'Everyone signed up for this reveal.',
           when: 'The reveal moves to another day, more than 26 hours out.',
           subject: 'New date: {kid}’s room reveal',
           does: 'The new date and time.',
-          touches: ['Resend', 'Twilio', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
+          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
           live: reminderLive('moved') },
-        { t: 'The day before', s: 'live', k: 'email', also: ['text', 'push'], by: 'auto', preview: 'rem-day', change: CHANGE.revealSettings,
+        { t: 'The day before', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-day', change: CHANGE.revealSettings,
           who: 'Everyone signed up for this reveal.',
           when: '24 hours before the reveal (the same day, when the countdown goes up that day).',
           subject: 'Tomorrow: {kid}’s room reveal, live',
           does: 'Tomorrow (or today) is reveal day, and when it goes live.',
-          touches: ['Resend', 'Twilio', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (dueReminderKinds)',
+          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (dueReminderKinds)',
           live: reminderLive('day') },
-        { t: 'One hour to go', s: 'live', k: 'email', also: ['text', 'push'], by: 'auto', preview: 'rem-hour', change: CHANGE.revealSettings,
+        { t: 'One hour to go', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-hour', change: CHANGE.revealSettings,
           who: 'Everyone signed up for this reveal.',
           when: 'An hour before the reveal.',
           subject: 'One hour to go: {kid}’s reveal',
           does: 'It goes live in about an hour, with the link to watch.',
-          touches: ['Resend', 'Twilio', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (dueReminderKinds)',
+          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (dueReminderKinds)',
           live: reminderLive('hour') },
-        { t: 'We’re live', s: 'live', k: 'email', also: ['text', 'push'], by: 'auto', preview: 'rem-live', change: CHANGE.revealSettings,
+        { t: 'We’re live', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-live', change: CHANGE.revealSettings,
           who: 'Everyone signed up for this reveal.',
           when: 'The stream goes live.',
           subject: 'We’re live: {kid}’s room reveal',
           does: 'It’s happening right now, with the link to watch.',
-          touches: ['Resend', 'Twilio', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
+          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
           live: reminderLive('live') },
-        { t: 'The replay is ready', s: 'live', k: 'email', also: ['text', 'push'], by: 'auto', preview: 'rem-replay', change: CHANGE.revealSettings,
+        { t: 'The replay is ready', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-replay', change: CHANGE.revealSettings,
           who: 'Everyone signed up for this reveal.',
           when: 'The replay is ready after the stream ends.',
           subject: 'Watch the replay: {kid}’s room reveal',
           does: 'A link to the replay for anyone who missed it.',
-          touches: ['Resend', 'Twilio', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
+          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
           live: reminderLive('replay') },
       ]},
       { t: 'To the newsletter list', children: [
@@ -373,16 +357,17 @@ const MAP = { t: 'Everything we send', children: [
           live: (f) => (!f.staff ? null : f.staff.stuck ? ATTN(`${plural(f.staff.stuck, 'application is', 'applications are')} stuck right now. Applications → Applicants shows which.`) : ON('Nothing is stuck.')) },
       ]},
       { t: 'Reveals', children: [
-        { t: 'Live reveal alerts', s: 'live', k: 'email', by: 'auto', preview: 'staff-live-alert', change: CHANGE.revealSettings,
-          who: 'The alert list in Reveals → Settings → Alerts.',
+        { t: 'Live reveal alerts', s: 'live', k: 'email', also: ['text'], by: 'auto', preview: 'staff-live-alert', change: CHANGE.revealSettings,
+          who: 'The alert list in Reveals → Settings → Alerts. Reveal-day alerts also text the staff numbers there.',
           when: 'A reveal never starts streaming, Stream reports an error, a check fails, or (while live) the sound drops, the picture freezes or Facebook isn’t live. Good news too: live now, ended.',
           subject: '[SOARD Live] {what happened}',
-          does: 'What happened, the fix, and a link. The same words post in Slack as a card.',
-          touches: ['Resend', 'Slack'], where: 'functions/api/_broadcast-notify.js (alertAdmins, alertEmail)',
+          does: 'What happened, the fix, and a link. The same words post in Slack as a card. Texts carry the headline, the fix and the link: a feed problem and when it clears, the go / no-go, “Live now” and “All green”.',
+          touches: ['Resend', 'Slack', 'Twilio'], where: 'functions/api/_broadcast-notify.js (alertAdmins, alertEmail, alertText)',
           live: first(needs('resend', NO_RESEND), (f) => {
             if (!f.reminders) return null;
             const n = (f.reminders.alertEmails || 0) + (f.env.alertEnv || 0);
-            return n ? ON(`Goes to ${plural(n, 'address', 'addresses')}, and Slack.`) : ATTN(`Nobody is on the alert list. Add an address in Reveals → Settings → Alerts.`);
+            const texts = f.env.twilio && f.reminders.alertPhones ? `, texts to ${plural(f.reminders.alertPhones, 'staff number')}` : '';
+            return n ? ON(`Goes to ${plural(n, 'address', 'addresses')}${texts}, and Slack.`) : ATTN(`Nobody is on the alert list. Add an address in Reveals → Settings → Alerts.`);
           }) },
         { t: 'Welcome to the alert list', s: 'live', k: 'email', by: 'staff', preview: 'staff-alert-hello', change: CHANGE.revealSettings,
           who: 'A new address on the alert list.',
@@ -391,6 +376,12 @@ const MAP = { t: 'Everything we send', children: [
           does: 'Proof that alerts reach them, and what an alert is about.',
           touches: ['Resend'], where: 'functions/api/broadcast-admin.js (alertHelloEmail)',
           live: needs('resend', NO_RESEND) },
+        { t: 'Welcome to alert texts', s: 'live', k: 'text', by: 'staff', preview: 'staff-alert-hello-text', change: CHANGE.revealSettings,
+          who: 'A new staff number on the alert list.',
+          when: 'Someone adds the number in Reveals → Settings → Alerts and saves.',
+          does: 'Proof that texts reach the phone, what they’re about, and that replying STOP ends them.',
+          touches: ['Twilio'], where: 'functions/api/broadcast-admin.js · _broadcast-notify.js (alertHelloText)',
+          live: (f) => (!f.env ? null : !f.env.twilio ? OFF('Off until the Twilio keys are in Cloudflare.') : !f.reminders?.alertPhones ? OFF('No staff numbers on the alert list yet.') : ON()) },
         { t: 'Invite problem', s: 'live', k: 'email', by: 'auto', preview: 'staff-invite-problem', change: CHANGE.invites,
           who: 'The invite alert list, the organizer, and Peter.',
           when: 'A reveal’s calendar invite can’t be updated.',
@@ -524,7 +515,7 @@ const FILTERS = [
 const filterMatch = (n, k) => (k.startsWith('s:') ? sendersOf(n).includes(k.slice(2)) : n.by === k);
 const shape = (n) => (n.k === 'invite' ? 'square' : 'circle');
 const PALETTE = { family: '#8C3D6B', reveals: '#B08900', live: '#6352C9', site: '#13807A', email: '#2B6CB0', board: '#A0571A' };
-const TEXT_FROM = 'SOARD’s toll-free number, through Twilio';
+const TEXT_FROM = 'SOARD’s alert number, through Twilio';
 const PUSH_FROM = 'sunshineonaranneyday.com, as a browser notification';
 const SEE = { email: 'See the email', jobtread: 'See the email', kit: 'See the email', invite: 'See the invite', text: 'See the text' };
 
@@ -579,7 +570,7 @@ const CSS = `
 .mm-invite-desc { white-space: pre-line; font-size: 0.9rem; line-height: 1.55; margin: 0; padding-top: 0.75rem; border-top: 1px solid #EEE; overflow-wrap: anywhere; }
 .mm-phone { max-width: 340px; margin: 0 auto; padding: 1rem 0.9rem 1.2rem; border-radius: 28px; background: #fff; border: 1px solid #E5E4E0; }
 .mm-phone-from { text-align: center; font-size: 0.74rem; color: #6B6C72; margin-bottom: 0.7rem; }
-.mm-bubble { max-width: 85%; padding: 0.55rem 0.8rem; border-radius: 18px 18px 18px 6px; background: #E9E9EB; color: #1C1C1E; font: 15px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; overflow-wrap: anywhere; }
+.mm-bubble { max-width: 85%; padding: 0.55rem 0.8rem; border-radius: 18px 18px 18px 6px; background: #E9E9EB; color: #1C1C1E; font: 15px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; overflow-wrap: anywhere; white-space: pre-line; }
 .mm-push { max-width: 380px; margin: 0 auto; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 0.15rem 0.7rem; padding: 0.8rem 0.9rem; border-radius: 16px; background: rgba(255,255,255,0.92); border: 1px solid #E5E4E0; box-shadow: 0 6px 24px rgba(0,0,0,0.08); color: #1C1C1E; font: 14px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
 .mm-push i { grid-row: span 2; width: 38px; height: 38px; border-radius: 9px; background: #FFDA24; }
 .mm-push b { font-weight: 650; }

@@ -2,16 +2,14 @@
  * /api/reminders — "remind me when the reveal goes live"
  * =======================================================
  * Nobody gets a reminder until the address proves it's theirs: an email
- * signup is held until the link we email is confirmed, a phone number until
- * the 6-digit code we text is typed back. People already on the list stay on
- * it. Signing up again never undoes an unsubscribe or changes which reveal an
+ * signup is held until the link we email is confirmed. People already on the
+ * list stay on it. Signing up again never undoes an unsubscribe or changes which reveal an
  * address hears about; only the confirmation does.
  *
  * POST (public; same-site pages only; Turnstile when it's on; D1 limits per
- * caller, per address, and for texts per day site-wide)
+ * caller and per address). The public is never texted: texts go only to staff
+ * (Reveals → Settings → Alerts), so there is no text channel here.
  *   { channel: 'email', email, kidSlug?, turnstileToken?, hp }  → { ok, channel, pending }  link emailed
- *   { channel: 'sms',   phone, kidSlug?, turnstileToken?, hp }  → { ok, channel, pending, codeSent }  code texted
- *   { channel: 'sms',   phone, code }                           → { ok, channel, confirmed }
  *   { channel: 'push',  subscription: PushSubscription JSON, kidSlug? } → { ok, channel }
  * POST ?confirm=<token>       confirm an email signup (the button on the confirm page)
  * POST ?unsubscribe=<token>   stop reminders (the button on the stop page, and mail
@@ -30,7 +28,7 @@
 import { ensureSchema, readConfig, readState, visibleState, liveUrlFor, recordEvent } from './_broadcast.js';
 import * as notify from './_broadcast-notify.js';
 import { crossSiteChange } from './_origin-guard.js';
-import { clientIp, turnstileOn, turnstileSiteKey, verifyTurnstile, safeEqual } from './_secure.js';
+import { clientIp, turnstileOn, turnstileSiteKey, verifyTurnstile } from './_secure.js';
 import { limit, limitAll, tooMany } from './_rate-limit.js';
 
 const SITE = notify.SITE_ORIGIN;
@@ -40,14 +38,9 @@ const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'se
 const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE, 'Content-Security-Policy': PAGE_CSP, 'Referrer-Policy': 'strict-origin', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff' };
 
 export const CONFIRM_TTL_MS = 3 * 24 * 3600e3;
-export const CODE_TTL_MS = 10 * 60e3;
-export const CODE_TRIES = 5;
 export const LIMITS = {
   ipPerHour: 10, ipPerDay: 30,  // sign-ups from one address (IPv6 counts per /64)
-  perTargetPerDay: 3,           // confirm emails or codes to one email or number
-  smsIpPerDay: 5,               // codes texted from one address
-  smsPerDay: 200,               // codes texted site-wide; past this, staff hear about it once
-  verifyIpPerHour: 30,          // code guesses from one address
+  perTargetPerDay: 3,           // confirm emails to one address
 };
 
 function page(title, body, { status = 200, button = null } = {}) {
@@ -63,19 +56,9 @@ function token(bytes = 18) {
   return notify.b64u.encode(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
-/** Six random digits, without the small bias a plain modulo would add */
-export function newCode() {
-  const buf = new Uint32Array(1);
-  for (;;) {
-    crypto.getRandomValues(buf);
-    if (buf[0] < 4294000000) return String(buf[0] % 1e6).padStart(6, '0');
-  }
-}
-
 // ─── Waiting sign-ups ───────────────────────────────────────────────
-// One row per emailed link or texted code, keyed by the SHA-256 of the
-// secret (the link's token, or "<row id>:<code>"), so a copy of the table
-// can't confirm anyone. A row becomes a real reminder only when confirmed.
+// One row per emailed link, keyed by the SHA-256 of the link's token, so a
+// copy of the table can't confirm anyone. A row becomes a real reminder only when confirmed.
 
 const PENDING_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS broadcast_reminder_pending (
@@ -267,17 +250,12 @@ export async function onRequestPost(context) {
     await ensurePendingSchema(env.DB);
     const config = await readConfig(env.DB);
     const ip = clientIp(request);
-    if (channel === 'sms' && body.code != null && body.code !== '') return await verifyCode(context, body, ip);
 
     let address, subscription = null;
     if (channel === 'email') {
       address = String(body.email || '').trim().toLowerCase();
       if (!notify.isEmail(address) || address.length > 254) return json({ ok: false, error: 'Enter a valid email address' }, 400);
       if (!notify.emailConfigured(env)) return json({ ok: false, error: 'Email reminders are not available right now' }, 503);
-    } else if (channel === 'sms') {
-      address = notify.normalizePhone(body.phone);
-      if (!address) return json({ ok: false, error: 'Enter a US or Canadian mobile number' }, 400);
-      if (!(config.reminders?.sms && notify.smsConfigured(env))) return json({ ok: false, error: 'Text reminders are not available right now' }, 503);
     } else if (channel === 'push') {
       let sub = body.subscription;
       if (typeof sub === 'string') { try { sub = JSON.parse(sub); } catch { sub = null; } }
@@ -307,15 +285,11 @@ export async function onRequestPost(context) {
     // Per address, hashed so the limits table never holds anyone's email or number
     const perTarget = await limit(env.DB, `reminders:to:${(await notify.sha256Hex(`${channel}:${address}`)).slice(0, 32)}`, LIMITS.perTargetPerDay, 86400);
     if (!perTarget.ok) {
-      return tooMany(perTarget.retryAfter, channel === 'sms'
-        ? 'We already texted this number a few codes today. Use the newest one, or try again tomorrow.'
-        : 'We already sent this address a few links today. Look for the newest one in your inbox or spam folder.');
+      return tooMany(perTarget.retryAfter, 'We already sent this address a few links today. Look for the newest one in your inbox or spam folder.');
     }
-    // Links and codes nobody used
+    // Links nobody used
     await env.DB.prepare('DELETE FROM broadcast_reminder_pending WHERE expires_at < ?').bind(nowIso()).run();
-    return channel === 'email'
-      ? await emailSignup(context, { address, kid, source })
-      : await sendCode(context, config, { address, kid, source, ip });
+    return await emailSignup(context, { address, kid, source });
   } catch (err) {
     return json({ ok: false, error: 'Something went wrong. Please try again.', detail: err.message }, 500);
   }
@@ -335,67 +309,6 @@ async function emailSignup(context, { address, kid, source }) {
     return json({ ok: false, error: "We couldn't send the email just now. Please try again in a minute." }, 500);
   }
   return json({ ok: true, channel: 'email', pending: true });
-}
-
-/** Text: a 6-digit code the visitor types back. The newest code for a number replaces older ones. */
-async function sendCode(context, config, { address, kid, source, ip }) {
-  const { env } = context;
-  const byIp = await limit(env.DB, `reminders:sms-ip:${ip}`, LIMITS.smsIpPerDay, 86400);
-  if (!byIp.ok) return tooMany(byIp.retryAfter, 'Too many text codes from here today. Please try again tomorrow, or use email.');
-  const site = await limit(env.DB, `reminders:sms-day:${nowIso().slice(0, 10)}`, LIMITS.smsPerDay, 86400);
-  if (!site.ok) {
-    // Exactly one request sees the count step past the cap, so staff hear about it once a day
-    if (site.count === LIMITS.smsPerDay + 1) {
-      later(context, notify.alertAdmins(env, config, {
-        level: 'warn', icon: '📵', title: 'Text sign-ups paused for today',
-        detail: `More than ${LIMITS.smsPerDay} sign-up codes went out by text today, far more than a normal day. New text sign-ups are paused until tomorrow so nobody can run up the Twilio bill. Email sign-ups and everyone already on the list are not affected.`,
-        fix: 'If a real crowd is signing up, nothing to do: it opens again tomorrow. If not, look in Twilio for texts to numbers nobody here recognizes.',
-        url: `${SITE}/admin/#broadcast`,
-      }));
-    }
-    return json({ ok: false, code: 'sms-paused', error: 'Text sign-ups are paused for today. Please use email, or try again tomorrow.' }, 503);
-  }
-  const id = crypto.randomUUID();
-  const code = newCode();
-  await env.DB.prepare(`DELETE FROM broadcast_reminder_pending WHERE channel = 'sms' AND address = ?`).bind(address).run();
-  await env.DB.prepare(`INSERT INTO broadcast_reminder_pending (id, channel, address, kid_slug, source, secret_hash, attempts, expires_at, created_at) VALUES (?, 'sms', ?, ?, ?, ?, 0, ?, ?)`)
-    .bind(id, address, kid?.slug || null, source, await notify.sha256Hex(`${id}:${code}`), new Date(Date.now() + CODE_TTL_MS).toISOString(), nowIso()).run();
-  const r = await notify.sendSms(env, { to: [address], body: notify.smsCodeText(code) });
-  if (!r.sent) {
-    await env.DB.prepare('DELETE FROM broadcast_reminder_pending WHERE id = ?').bind(id).run();
-    if (r.optedOut.length) {
-      return json({ ok: false, code: 'opted-out', error: `This number asked us to stop texting it. Text START to ${env.TWILIO_FROM ? notify.formatPhone(env.TWILIO_FROM) : 'our number'} first, then try again.` }, 409);
-    }
-    return json({ ok: false, error: "We couldn't send a text just now. Please try again in a minute." }, 500);
-  }
-  return json({ ok: true, channel: 'sms', pending: true, codeSent: true, expiresIn: CODE_TTL_MS / 1000 });
-}
-
-/** The code typed back. Five tries per code; each try is counted before it's checked. */
-async function verifyCode(context, body, ip) {
-  const { env } = context;
-  const address = notify.normalizePhone(body.phone);
-  const code = String(body.code ?? '').replace(/\D/g, '');
-  if (!address || code.length !== 6) return json({ ok: false, code: 'bad-code', error: 'Enter the 6-digit code from the text.' }, 400);
-  const byIp = await limit(env.DB, `reminders:verify-ip:${ip}`, LIMITS.verifyIpPerHour, 3600);
-  if (!byIp.ok) return tooMany(byIp.retryAfter, 'Too many tries. Please wait a little and try again.');
-
-  const row = await env.DB.prepare(`SELECT * FROM broadcast_reminder_pending WHERE channel = 'sms' AND address = ? ORDER BY created_at DESC LIMIT 1`).bind(address).first();
-  const gone = (error) => json({ ok: false, code: 'expired', error }, 410);
-  if (!row || row.expires_at <= nowIso()) return gone('That code expired. Tap "Send a new code" and we will text another.');
-  const counted = await env.DB.prepare('UPDATE broadcast_reminder_pending SET attempts = attempts + 1 WHERE id = ? AND attempts < ?').bind(row.id, CODE_TRIES).run();
-  const drop = () => env.DB.prepare('DELETE FROM broadcast_reminder_pending WHERE id = ?').bind(row.id).run();
-  if (!(counted?.meta?.changes > 0)) { await drop(); return gone('That code had too many tries. Tap "Send a new code" and we will text another.'); }
-  if (!safeEqual(await notify.sha256Hex(`${row.id}:${code}`), row.secret_hash)) {
-    const left = CODE_TRIES - (Number(row.attempts || 0) + 1);
-    if (left <= 0) { await drop(); return gone('That code is not right, and that was the last try. Tap "Send a new code" and we will text another.'); }
-    return json({ ok: false, code: 'wrong-code', error: `That code is not right. ${left} ${left === 1 ? 'try' : 'tries'} left.` }, 400);
-  }
-
-  await activate(env.DB, row);
-  later(context, notify.sendSms(env, { to: [address], body: notify.SMS_WELCOME }));
-  later(context, signedUp(env, 'sms', row));
-  return json({ ok: true, channel: 'sms', confirmed: true });
 }
 
 /**

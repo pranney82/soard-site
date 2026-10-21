@@ -80,7 +80,9 @@ test('switches, timestamps and JobTread state come through', async () => {
   assert.equal(f.checkedAt, '2026-10-17T02:00:00.000Z');
   assert.deepEqual(f.broadcast.outputs, { facebook: true, youtube: null, instagram: null });
   assert.equal(f.broadcast.reels, false);
-  assert.deepEqual(f.broadcast.reminders, { enabled: false, sms: false, push: false });
+  assert.deepEqual(f.broadcast.reminders, { enabled: false, push: false });
+  assert.equal(f.broadcast.alertPhones, 0);
+  assert.equal(f.broadcast.alertTexts, null);
   assert.equal(f.broadcast.kitLive, true);
   assert.equal(f.broadcast.vapid, true);
   assert.equal(f.health.lastTickAt, '2026-10-17T01:34:40.440Z');

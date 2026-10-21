@@ -96,7 +96,10 @@ test('every message on the map with a preview builds, in Spanish too where famil
   const tentative = await buildPreview(env, 'invite-tentative', { now: NOW });
   assert.deepEqual(tentative.invite.start, { date: '2026-10-28' }, 'the save-the-date is all day');
   const reminder = await buildPreview(env, 'rem-day', { now: NOW });
-  assert.ok(reminder.sms && reminder.push?.title, 'a reminder shows its text and browser alert too');
+  assert.ok(reminder.push?.title && !reminder.sms, 'a reminder shows its browser alert too, and never a text: the public is never texted');
+  const alert = await buildPreview(env, 'staff-live-alert', { now: NOW });
+  assert.match(alert.sms, /^SOARD: Scheduled reveal never went live\n/, 'the staff alert shows its text');
+  assert.match((await buildPreview(env, 'staff-alert-hello-text', { now: NOW })).sms, /Reply STOP to opt out/);
   assert.equal(await buildPreview(env, 'nope', { now: NOW }), null);
 });
 
@@ -138,7 +141,7 @@ test('the map’s live checks read the facts', async (t) => {
   applyFacts(f);
   assert.equal(by('Save the date').es, 'off', 'reminders switched off');
   assert.match(by('Save the date').probe.why, /switched off/);
-  assert.equal(by('Text code').es, 'off');
+  assert.equal(by('Welcome to alert texts').es, 'off', 'no Twilio, no texts');
   assert.equal(by('Application received').es, 'live');
   assert.match(by('Application received').probe.why, /1 in the last 30 days, 2 in all/);
   assert.match(by('Approved').probe.why, /1 email is waiting to go/);
@@ -179,7 +182,7 @@ test('Send it to me: only to the person signed in, marked [Preview]', async (t) 
   assert.match(sent[1][0].subject, /^\[Preview\] Ya está en la lista$/);
 
   assert.equal((await post({ send: 'app-approved' })).status, 400, 'JobTread sends the status emails; no copy from here');
-  assert.equal((await post({ send: 'rem-code' })).status, 400, 'texts aren’t sent as previews');
+  assert.equal((await post({ send: 'staff-alert-hello-text' })).status, 400, 'texts aren’t sent as previews');
   assert.equal((await post({ send: 'nope' })).status, 404);
   assert.equal((await post({ send: 'staff-new-app' }, {})).status, 403, 'nobody signed in, nothing sent');
   assert.equal((await post({ send: 'staff-new-app' }, undefined, ENV(DB, { RESEND_API_KEY: '' }))).status, 503);
@@ -214,7 +217,8 @@ test('every message says who sends it: Resend, JobTread, Kit, Google Calendar, T
   assert.deepEqual(by('Pick up where you left off'), ['resend']);
   assert.deepEqual(by('Applications are open'), ['kit', 'resend'], 'Kit, with Resend for families Kit can’t reach');
   assert.deepEqual(by('We’re live (Kit)'), ['kit']);
-  assert.deepEqual(by('Save the date'), ['resend', 'twilio', 'push']);
+  assert.deepEqual(by('Save the date'), ['resend', 'push'], 'the public is never texted');
+  assert.deepEqual(by('Live reveal alerts'), ['resend', 'twilio'], 'staff alerts also text the staff numbers');
   assert.deepEqual(by('Confirmed invite'), ['google']);
   assert.deepEqual(by('New application'), ['resend']);
   assert.deepEqual(by('Bio request'), ['you']);

@@ -31,7 +31,7 @@
  * hub's timer ticks, and admin commands. A manual "banner only" override
  * (source: 'manual') still exists for the day Stream itself is down.
  *
- * Side effects: reminder sends (email / SMS / push, idempotent per
+ * Side effects: reminder sends (email / push, idempotent per
  * broadcast+kind+channel), Facebook API-mode live posts, replay detection +
  * captions + kid-page attach + rebuild, Kit drafts + the automatic Kit
  * "we're live" send, Slack/email alerts, the live feed watch (silent or
@@ -165,7 +165,7 @@ export function defaultConfig() {
     instagram: { profileUrl: 'https://www.instagram.com/sunshineonaranneyday' },
     orientation: 'portrait',   // what the crew shoots; the site player matches (the team shoots vertical)
     reels: reels.defaultReelConfig(), // automatic Instagram Reel of every replay
-    reminders: { enabled: true, hoursBefore: [24, 1], sms: true, push: true },
+    reminders: { enabled: true, hoursBefore: [24, 1], push: true },
     replayHours: DEFAULT_REPLAY_HOURS,
     timezone: 'America/New_York',
     alerts: { emails: [] },
@@ -711,7 +711,7 @@ async function sendTestReminder(env, state, kind, work, summary) {
 // claimed in broadcast_reminder_deliveries before anything is sent (so two
 // ticks never send to the same person), and broadcast_reminder_runs remembers
 // which sends still have people waiting, so the next tick carries on.
-const REMINDER_BATCH = { email: 100, sms: 15, push: 50 };
+const REMINDER_BATCH = { email: 100, push: 50 };
 const REMINDER_TICK_BUDGET_MS = 3000;
 // When this isolate last sent batches for `${broadcastId}:${kind}`: a send started this tick
 // isn't carried on again in the same tick, so one tick spends at most one budget per kind
@@ -826,7 +826,7 @@ function unsubscribeUrl(token) {
  */
 export async function sendReminders(env, config, state, kind, work, { budgetMs = REMINDER_TICK_BUDGET_MS } = {}) {
   const { DB } = env;
-  const summary = { kind, email: null, sms: null, push: null };
+  const summary = { kind, email: null, push: null };
   if (!config.reminders?.enabled || !state.broadcastId) return summary;
   // A rehearsal follows the same switches as a real reveal, but only the test address hears it
   if (state.test) return sendTestReminder(env, state, kind, work, summary);
@@ -883,17 +883,6 @@ export async function sendReminders(env, config, state, kind, work, { budgetMs =
       });
       const res = await notify.sendEmailItems(env, items, { tags: [{ name: 'category', value: `reveal-${kind}` }] });
       return { sent: res.sent, failed: res.failed, error: res.errors.slice(0, 3).join('; ') || null };
-    }),
-    // SMS: a first text carries "Reply STOP to opt out"
-    channel('sms', !!(config.reminders?.sms && notify.smsConfigured(env)), async (rows, batch) => {
-      const firstTimers = rows.filter(r => !r.last_sent_at).map(r => r.address);
-      const others = rows.filter(r => r.last_sent_at).map(r => r.address);
-      let sent = 0, failed = 0; const errors = []; const optedOut = [];
-      if (firstTimers.length) { const r = await notify.sendSms(env, { to: firstTimers, body: notify.reminderSms({ ...common, first: true }) }); sent += r.sent; failed += r.failed; errors.push(...r.errors); optedOut.push(...r.optedOut); }
-      if (others.length) { const r = await notify.sendSms(env, { to: others, body: notify.reminderSms(common) }); sent += r.sent; failed += r.failed; errors.push(...r.errors); optedOut.push(...r.optedOut); }
-      await DB.prepare('UPDATE broadcast_reminders SET last_sent_at = ? WHERE id IN (SELECT reminder_id FROM broadcast_reminder_deliveries WHERE batch = ?)').bind(nowIso(), batch).run();
-      for (const num of optedOut) await DB.prepare(`UPDATE broadcast_reminders SET unsubscribed_at = ? WHERE channel = 'sms' AND address = ?`).bind(nowIso(), num).run();
-      return { sent, failed, error: errors.slice(0, 3).join('; ') || null };
     }),
     // Push: a dead subscription (404/410, or not a browser push service) is dropped
     channel('push', !!(config.reminders?.push && config.vapid?.privateJwk), async (rows) => {
@@ -1106,7 +1095,7 @@ async function kitAutoLive(env, config, state, work) {
     }
     if (!s.kidAlertAt) {
       s = { ...s, kidAlertAt: nowIso() };
-      if (await claimOnce(env.DB, s.broadcastId, 'kid-alert')) await notify.alertAdmins(env, config, { level: 'warn', title: 'Live now: which kid is this?', detail: 'The Kit "we\'re live" email is waiting for the kid. Nothing on Facebook named one yet. Pick the kid in Admin → Broadcast → Now and the email goes out right away, or put the kid\'s name in the first line of the Facebook post.', url: `${SITE_ORIGIN}/admin/` });
+      if (await claimOnce(env.DB, s.broadcastId, 'kid-alert')) await notify.alertAdmins(env, config, { level: 'warn', title: 'Live now: which kid is this?', detail: 'The Kit "we\'re live" email is waiting for the kid. Nothing on Facebook named one yet. Pick the kid in Admin → Broadcast → Now and the email goes out right away, or put the kid\'s name in the first line of the Facebook post.', url: `${SITE_ORIGIN}/admin/`, text: true });
     }
     return s;
   }
@@ -1257,12 +1246,12 @@ async function runHealth(env, config, state, health, work, { force = false } = {
   const key = problems.length ? problems.join(' | ') : '';
   const prev = health.flags?.problems || '';
   if (key && key !== prev) {
-    await notify.alertAdmins(env, config, { level: 'error', title: soon ? 'Reveal-day check found problems' : 'Live broadcast health check failed', detail: problems.map((p) => `• ${p}`).join('\n'), url: `${SITE_ORIGIN}/admin/`, issue: 'broadcast-health' });
+    await notify.alertAdmins(env, config, { level: 'error', title: soon ? 'Reveal-day check found problems' : 'Live broadcast health check failed', detail: problems.map((p) => `• ${p}`).join('\n'), url: `${SITE_ORIGIN}/admin/`, issue: 'broadcast-health', text: soon });
     work.push('alert:health');
   } else if (!key && prev) {
-    await notify.alertAdmins(env, config, { level: 'info', title: 'Live broadcast health recovered', detail: 'All checks pass again.', url: `${SITE_ORIGIN}/admin/`, resolves: 'broadcast-health' });
+    await notify.alertAdmins(env, config, { level: 'info', title: 'Live broadcast health recovered', detail: 'All checks pass again.', url: `${SITE_ORIGIN}/admin/`, resolves: 'broadcast-health', text: !!health.flags?.texted });
   }
-  health.flags = { ...(health.flags || {}), problems: key };
+  health.flags = { ...(health.flags || {}), problems: key, texted: !key ? false : key !== prev ? !!soon : !!health.flags?.texted };
 }
 
 // ─── Go-live and ended effects ──────────────────────────────────────
@@ -1293,6 +1282,8 @@ async function goLiveEffects(env, config, state, work, by) {
       detail: 'The site, Facebook and YouTube are all showing it.',
       facts: [['Started from', 'The phone']],
       url: liveUrlFor(state), links: [{ label: 'Open the control room', url: `${SITE_ORIGIN}/admin/#broadcast/control-room` }],
+      // The text promises only what's known this second; "All green" follows once the feed monitor has checked
+      text: notify.alertText({ title: `Live now: ${state.title || 'the reveal'}`, detail: 'The phone is streaming. An "All green" text follows once sound, picture, Facebook and YouTube check out.', url: liveUrlFor(state) }),
     });
     work.push('announced-live');
   }
@@ -1438,7 +1429,7 @@ async function tick(env, { source, force, by, keepLease = async () => true }) {
     await upsertBroadcastRow(DB, state);
     if (missed) {
       if (await claimOnce(DB, missed.broadcastId, 'missed')) {
-        await notify.alertAdmins(env, config, { level: 'warn', icon: '⏰', title: 'Scheduled reveal never went live', detail: `${missed.title || 'Reveal'} was scheduled for ${missed.scheduledAt} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/` });
+        await notify.alertAdmins(env, config, { level: 'warn', icon: '⏰', title: 'Scheduled reveal never went live', detail: `${missed.title || 'Reveal'} was scheduled for ${notify.formatWhen(missed.scheduledAt, config.timezone)} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/`, text: true });
         await recordEvent(DB, missed.broadcastId, 'missed');
       }
       await closeBroadcastRow(DB, missed, 'missed');
@@ -1728,7 +1719,6 @@ export async function publicPayload(env) {
     reminders: {
       enabled: !!config.reminders?.enabled,
       email: notify.emailConfigured(env),
-      sms: !!config.reminders?.sms && notify.smsConfigured(env),
       push: !!config.reminders?.push && !!config.vapid?.publicKey,
       pushKey: config.reminders?.push ? (config.vapid?.publicKey || null) : null,
     },

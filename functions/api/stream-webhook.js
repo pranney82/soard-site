@@ -129,6 +129,7 @@ export function errorAlert(which, errored) {
   return {
     level: 'error',
     urgent: which === 'live',
+    text: which === 'live',
     title: `Stream input error${which === 'live' ? '' : ' (rehearsal)'}: ${code || 'unknown'}`,
     detail: what,
     facts: [['Video codec', codec(raw.video_codec)], ['Audio codec', codec(raw.audio_codec)]],

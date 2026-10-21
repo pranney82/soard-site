@@ -128,7 +128,7 @@ try {
   ok(inView, 'the opening view fits the whole map in the canvas');
 
   for (const [title, want] of [
-    ['Instagram Reel', 'Off'], ['Reminder emails', 'Off'], ['Browser push reminders', 'Off'], ['Text reminders', 'Off'],
+    ['Instagram Reel', 'Off'], ['Reminder emails', 'Off'], ['Browser push reminders', 'Off'], ['Alert texts', 'Off'],
     ['Simulcast to Facebook', 'Live'], ['Simulcast to YouTube', 'Needs attention'], ['Live hub', 'Needs attention'],
     ['Slack posts', 'Off'], ['Facebook replay rescue', 'Needs attention'], ['Invite engine', 'Live'],
     ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],

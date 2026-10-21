@@ -167,12 +167,12 @@ async function reminderFacts(DB, now) {
   for (const r of s) subs[r.channel] = r.n || 0;
   return {
     enabled: !!c.reminders?.enabled,
-    sms: !!c.reminders?.sms,
     push: !!c.reminders?.push,
     dayBefore: hours.includes(24),
     hourBefore: hours.includes(1),
     kitLive: c.kitLive?.enabled !== false,
     alertEmails: Array.isArray(c.alerts?.emails) ? c.alerts.emails.length : 0,
+    alertPhones: Array.isArray(c.alerts?.phones) ? c.alerts.phones.length : 0,
     vapid: !!c.vapid?.publicKey,
     sends,
     subscribers: subs,
@@ -294,7 +294,7 @@ async function jobtreadPreview(env, kind, lang) {
 
 const liveAlertSample = (now) => ({
   title: 'Scheduled reveal never went live',
-  detail: `${SAMPLE.childFirst}'s room reveal was scheduled for ${new Date(sampleReveal(now).at).toISOString()} and no stream arrived. The countdown has been cleared.`,
+  detail: `${SAMPLE.childFirst}'s room reveal was scheduled for ${notify.formatWhen(new Date(sampleReveal(now).at).toISOString(), TZ)} and no stream arrived. The countdown has been cleared.`,
   links: [{ label: 'Open the admin', url: `${SITE_ORIGIN}/admin/` }],
 });
 
@@ -309,7 +309,6 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     const args = { kind, kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, replayUrl: live, unsubscribeUrl: '#', tz: TZ };
     return email(notify.reminderEmail(args), {
       to: 'Everyone who asked for reveal reminders on the website',
-      sms: notify.reminderSms({ ...args, first: kind === 'scheduled' }),
       push: notify.reminderPush(args),
     });
   }
@@ -346,10 +345,6 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return invitePreview(env, 'confirmed', now);
     case 'rem-confirm':
       return email(notify.confirmEmail({ confirmUrl: '#', kidName: SAMPLE.childFirst }), { to: 'A new address signed up on a reveal page' });
-    case 'rem-code':
-      return { channel: 'text', from: 'SOARD’s toll-free number, through Twilio', to: 'A phone number signed up on a reveal page', sms: notify.smsCodeText('482913'), send: null };
-    case 'rem-welcome':
-      return { channel: 'text', from: 'SOARD’s toll-free number, through Twilio', to: 'A phone number that just confirmed its code', sms: notify.SMS_WELCOME, send: null };
     case 'kit-live': {
       const m = notify.reminderEmail({ kind: 'live', kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, unsubscribeUrl: '#', tz: TZ, list: true });
       return { channel: 'kit', from: KIT_FROM, to: 'The whole newsletter list (not waitlist-only families)', subject: m.subject, html: m.html, text: m.text, send: 'email' };
@@ -381,8 +376,12 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
         detail: `14 families asked to hear when ${year} applications open (12 in English, 2 in Spanish). They get the email at ${at}. Turned it on by mistake? Turn applications off before then, or press "Don't send this time" in the admin, and nobody is emailed.`,
       }), { to: 'The staff list in Applications → Settings' });
     }
-    case 'staff-live-alert':
-      return email(notify.alertEmail(liveAlertSample(now)), { to: 'The alert list in Reveals → Settings → Alerts' });
+    case 'staff-live-alert': {
+      const a = liveAlertSample(now);
+      return email(notify.alertEmail(a), { to: 'The alert list in Reveals → Settings → Alerts', sms: notify.alertText({ ...a, url: a.links[0].url }) });
+    }
+    case 'staff-alert-hello-text':
+      return { channel: 'text', from: 'SOARD’s alert number, through Twilio', to: 'A new number on the alert list', sms: notify.alertHelloText({ by: me || 'Someone on the staff' }), send: null };
     case 'staff-alert-hello':
       return email(alertHelloEmail(me || 'Someone on the staff'), { to: 'A new address on the alert list' });
     case 'staff-invite-problem':

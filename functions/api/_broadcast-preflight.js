@@ -132,6 +132,15 @@ export function slackText(result, state, config) {
   return { level: result.counts.fail ? 'error' : open.length ? 'warn' : 'info', icon: result.counts.fail ? '🚨' : open.length ? '⚠️' : '🚦', title, detail: lines.join('\n') };
 }
 
+/** The go/no-go in one line, for the staff text: all green, or the names of what's open */
+export function textLine(result) {
+  const total = result.items.filter((i) => i.status !== 'off').length;
+  const fails = result.items.filter((i) => i.status === 'fail');
+  const notes = result.items.filter((i) => i.status === 'warn' || i.status === 'unknown');
+  if (!fails.length && !notes.length) return `All green: ${result.counts.ok} of ${total} checks pass.`;
+  return [fails.length ? `Fix: ${fails.map((i) => i.label).join('; ')}.` : null, notes.length ? `Notes: ${notes.map((i) => i.label).join('; ')}.` : null].filter(Boolean).join(' ');
+}
+
 /**
  * runTick: an hour before a scheduled reveal, run the go/no-go and post it.
  * Ten minutes before, post again if anything was still open. Once each per reveal.
@@ -150,7 +159,8 @@ export async function auto(env, config, state, health, work, { hubStatus } = {})
   }
   const result = await run(env, config, state, health, { hub: hubStatus ? await hubStatus(env).catch(() => null) : null });
   const post = slackText(result, state, config);
-  await notify.alertAdmins(env, config, { ...post, url: ADMIN_URL, context: stage === 't60' ? 'Automatic check an hour before' : 'Automatic check 10 minutes before', urgent: post.level === 'error' });
+  await notify.alertAdmins(env, config, { ...post, url: ADMIN_URL, context: stage === 't60' ? 'Automatic check an hour before' : 'Automatic check 10 minutes before', urgent: post.level === 'error',
+    text: notify.alertText({ title: post.title, detail: textLine(result), url: ADMIN_URL }) });
   p.last = result;
   p.posted[stage] = nowIso();
   health.preflight = p;

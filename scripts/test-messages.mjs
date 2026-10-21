@@ -152,19 +152,19 @@ try {
   const tags = await page.evaluate(() => [...document.querySelectorAll('.am-node.leaf')].map((g) => ({ name: g.querySelector(':scope > text').textContent, tags: [...g.querySelectorAll('.am-tag text')].map((t) => t.textContent) })));
   ok(tags.length > 30 && tags.every((t) => t.tags.length > 0), `every message on the map says who sends it (${tags.filter((t) => !t.tags.length).map((t) => t.name).join(', ') || 'all do'})`);
   const tagOf = (name) => tags.find((t) => t.name === name)?.tags.join(' + ');
-  for (const [name, want] of [['Approved', 'JobTread'], ['New application', 'Resend'], ['Applications are open', 'Kit + Resend'], ['Save the date', 'Resend + Twilio + Browser'], ['Save-the-date invite', 'Google Calendar'], ['Bio request', 'Your email']]) ok(tagOf(name) === want, `${name}: ${want} (shows ${tagOf(name)})`);
+  for (const [name, want] of [['Approved', 'JobTread'], ['New application', 'Resend'], ['Applications are open', 'Kit + Resend'], ['Save the date', 'Resend + Browser'], ['Live reveal alerts', 'Resend + Twilio'], ['Save-the-date invite', 'Google Calendar'], ['Bio request', 'Your email']]) ok(tagOf(name) === want, `${name}: ${want} (shows ${tagOf(name)})`);
   await clickButton(page, '.am-tools', 'Reset');
   await pause(300);
 
   for (const [title, want] of [
     ['Application received', 'Live'], ['Approved', 'Live'], ['Save-the-date invite', 'Live'], ['Save the date', 'Off'], ['We’re live', 'Off'],
-    ['Text code', 'Off'], ['We’re live (Kit)', 'Live'], ['New application', 'Live'], ['Invite problem', 'Live'], ['Bio request', 'Live'],
+    ['Welcome to alert texts', 'Off'], ['We’re live (Kit)', 'Live'], ['New application', 'Live'], ['Invite problem', 'Live'], ['Bio request', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
 
   const home = await page.$eval('.am-panel', (e) => e.innerText);
   ok(home.includes('Nothing needs attention'), 'nothing needs attention in these facts');
   const groups = await page.$$eval('.am-panel .am-mini-group', (g) => g.map((x) => x.querySelectorAll('.am-mini-names button').length));
-  ok(groups.length === 1 && groups[0] === 9, `the nine entries reminders switch off read as one line (${groups.join(', ')})`);
+  ok(groups.length === 1 && groups[0] === 7, `the seven entries reminders switch off read as one line (${groups.join(', ')})`);
   ok((home.match(/Reminders are switched off/g) || []).length === 1, 'the reason is written once');
   await page.screenshot({ path: join(OUT, 'desktop.png') });
 
@@ -214,14 +214,19 @@ try {
 
   await preview(page, 'Save the date');
   ok(!!(await page.$('.mm-frame')), 'a reminder opens on its email');
-  await clickButton(page, '.mm-sheet', 'Text');
-  await pause(200);
-  ok((await page.$eval('.mm-bubble', (e) => e.textContent)).includes('Reply STOP to opt out'), 'its text shows as a text');
-  ok((await page.$eval('.mm-env .mm-sender', (e) => e.textContent)) === 'Twilio' && (await page.$$eval('.mm-env dd', (d) => d[1].textContent)).includes('Twilio'), 'Sent by and From follow the version on screen');
-  ok(!(await page.$('.mm-foot .btn-primary')), 'a text can’t be sent as a preview');
+  ok(!(await page.evaluate(() => [...document.querySelectorAll('.mm-sheet button')].some((b) => b.textContent.trim() === 'Text'))), 'a reminder has no text: the public is never texted');
   await clickButton(page, '.mm-sheet', 'Browser alert');
   await pause(200);
   ok((await page.$eval('.mm-push b', (e) => e.textContent)) === 'Reveal scheduled', 'and its browser alert as an alert');
+  await closeSheet(page);
+
+  await preview(page, 'Live reveal alerts');
+  await clickButton(page, '.mm-sheet', 'Text');
+  await pause(200);
+  ok((await page.$eval('.mm-bubble', (e) => e.textContent)).startsWith('SOARD: Scheduled reveal never went live'), 'a staff alert shows its text');
+  ok((await page.$eval('.mm-env .mm-sender', (e) => e.textContent)) === 'Twilio' && (await page.$$eval('.mm-env dd', (d) => d[1].textContent)).includes('Twilio'), 'Sent by and From follow the version on screen');
+  ok(!(await page.$('.mm-foot .btn-primary')), 'a text can’t be sent as a preview');
+  await page.screenshot({ path: join(OUT, 'sheet-staff-text.png') });
   await closeSheet(page);
 
   await preview(page, 'Save-the-date invite');

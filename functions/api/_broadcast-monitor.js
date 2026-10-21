@@ -12,6 +12,8 @@
  *             alert emails), gets a reminder if it is still there after 3
  *             minutes and every 10 after that, and posts again when it clears.
  *             The Control room shows the same issues with their Slack status.
+ *             Once a reveal is confirmed healthy everywhere it posts "All
+ *             green" (Slack and the staff texts), once per reveal.
  *  finish()   when the reveal ends: closes open issues and writes a health
  *             report (sound, issues, when Facebook/YouTube went live, peak
  *             viewers, reconnects) to History and the "Ended" Slack post.
@@ -47,6 +49,7 @@ export const RULES = {
   disconnectedAfter: 10e3,
   fbGrace: 120e3,
   ytGrace: 150e3,
+  greenAfter: 60e3,       // live this long with nothing wrong before "All green"
   remindFirst: 3 * 60e3,
   remindEvery: 10 * 60e3,
 };
@@ -309,7 +312,7 @@ function makeCtx(env, config, state, m, work, record) {
       return;
     }
     // Something failing during the reveal itself buzzes whoever is watching the alerts channel
-    const r = await notify.alertAdmins(env, config, { level, title, detail, fix, url: ADMIN_URL, links, context, issue: issueKey(key), urgent: level === 'error' });
+    const r = await notify.alertAdmins(env, config, { level, title, detail, fix, url: ADMIN_URL, links, context, issue: issueKey(key), urgent: level === 'error', text: true });
     m.issues[key] = { key, level, title, detail, fix, since: m.pending[key], postedAt: at, slack: slackStatus(r.slack) };
     log({ key, kind: 'open', title, slack: m.issues[key].slack });
     await record(env.DB, state.broadcastId, 'issue', { key, level, title });
@@ -326,7 +329,7 @@ function makeCtx(env, config, state, m, work, record) {
     if (m.closed.length > 30) m.closed.shift();
     let slack = null;
     if (!quiet) {
-      const r = await notify.alertAdmins(env, config, { level: 'info', title: RESOLVED[key] || `Resolved: ${open.title}`, detail: `It lasted ${fmtDur(lasted)}.`, url: ADMIN_URL, context, resolves: issueKey(key) });
+      const r = await notify.alertAdmins(env, config, { level: 'info', title: RESOLVED[key] || `Resolved: ${open.title}`, detail: `It lasted ${fmtDur(lasted)}.`, url: ADMIN_URL, context, resolves: issueKey(key), text: true });
       slack = slackStatus(r.slack);
       work.push(`resolved:${key}`);
     }
@@ -334,7 +337,7 @@ function makeCtx(env, config, state, m, work, record) {
     await record(env.DB, state.broadcastId, 'issue_resolved', { key, seconds: Math.round(lasted / 1000) });
   };
 
-  return { now, at, liveForMs: now - liveFrom, raise, clear };
+  return { now, at, liveForMs: now - liveFrom, context, work, raise, clear };
 }
 
 /**
@@ -443,6 +446,33 @@ export async function watch(env, config, state, health, work, record = async () 
     if (v.status === 'warn') await c.raise(key, { level: 'warn', title: `${label} isn't showing the reveal (${v.title.toLowerCase()})`, detail: v.detail, fix: v.fix || null, links: v.action ? [v.action] : [] });
     else if (v.status === 'ok' || v.status === 'off') await c.clear(key, { quiet: v.status === 'off' });
   }
+
+  await allGreen(env, config, state, m, c, d);
+}
+
+/**
+ * "All green", once per reveal: a minute in, nothing wrong or about to be,
+ * sound and picture good, and every destination that's set up confirmed
+ * live (one that can't be checked from here is named as unconfirmed).
+ * A reveal that had a problem says it a minute after the last one cleared,
+ * so it confirms the reveal is steady rather than echoing the fix.
+ */
+async function allGreen(env, config, state, m, c, d) {
+  if (m.greenAt || c.liveForMs < RULES.greenAfter) return;
+  if (Object.keys(m.issues).length || Object.keys(m.pending).length) return;
+  const lastFix = m.closed[m.closed.length - 1]?.resolvedAt;
+  if (lastFix && c.now - Date.parse(lastFix) < RULES.greenAfter) return;
+  if (m.audio?.verdict !== 'ok' || m.signal?.status === 'weak' || d.site?.status !== 'ok') return;
+  const places = [['facebook', 'Facebook'], ['youtube', 'YouTube']].filter(([k]) => d[k]?.status !== 'off');
+  if (places.some(([k]) => !['ok', 'unknown'].includes(d[k]?.status))) return;
+  const name = (list) => list.join(', ').replace(/, ([^,]*)$/, ' and $1');
+  const live = ['the site', ...places.filter(([k]) => d[k].status === 'ok').map(([, l]) => l)];
+  const unsure = places.filter(([k]) => d[k].status === 'unknown').map(([, l]) => l);
+  const detail = `Sound and picture are good, and it's live on ${name(live)}.${unsure.length ? ` ${name(unsure)} can't be confirmed from here.` : ''}`;
+  m.greenAt = c.at;
+  const r = await notify.alertAdmins(env, config, { level: 'info', kind: 'news', icon: '🟢', title: `All green: ${state.title || 'the reveal'}`, detail, url: ADMIN_URL, context: c.context, text: true });
+  m.log.push({ at: c.at, kind: 'green', title: 'All green', slack: slackStatus(r.slack) });
+  c.work.push('all-green');
 }
 
 // ─── End of broadcast ───────────────────────────────────────────────

@@ -9,7 +9,7 @@ import { confirmedReveals, planBroadcast, syncBroadcastSchedule } from '../funct
 import { FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, easternToUtcIso, easternParts } from '../functions/api/_reveals.js';
 import * as b from '../functions/api/_broadcast.js';
 import { addTracking } from '../functions/api/reveal-invites-admin.js';
-import { reminderEmail, reminderSms, reminderPush, isRevealToday } from '../functions/api/_broadcast-notify.js';
+import { reminderEmail, reminderPush, isRevealToday } from '../functions/api/_broadcast-notify.js';
 import { renderSlack } from './lib/slack-render.mjs';
 
 const H = 3600e3, D = 24 * H;
@@ -338,7 +338,6 @@ test('a countdown that goes up on the day itself says today, not tomorrow', () =
   if (isRevealToday(later, tz)) {
     const common = { kind: 'day', kidName: 'Max', scheduledAt: later, tz, liveUrl: 'https://x/live/max/', unsubscribeUrl: 'u' };
     assert.match(reminderEmail(common).subject, /^Today: Max's room reveal/);
-    assert.match(reminderSms(common), /today is reveal day/);
     assert.equal(reminderPush(common).title, 'Today is reveal day');
   }
   assert.equal(isRevealToday(tomorrow, tz), false);

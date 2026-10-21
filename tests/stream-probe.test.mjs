@@ -151,6 +151,7 @@ test('parses a live media playlist (sequence, init map, date-times)', () => {
 
 const feeds = {};       // uid → { master, audioSeg, seq, viewers }
 const slack = [];       // payloads posted to the Slack webhook
+const sms = [];         // { to, body } texts sent through Twilio
 let slackStatus = 200;
 const graph = { live: false, scheduled: false };
 const realFetch = globalThis.fetch;
@@ -159,6 +160,7 @@ before(() => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } });
     if (url.hostname === 'hooks.slack.test') { slack.push(JSON.parse(init.body)); return new Response(slackStatus === 200 ? 'ok' : 'error', { status: slackStatus }); }
+    if (url.hostname === 'api.twilio.com') { sms.push({ to: init.body.get('To'), body: init.body.get('Body'), service: init.body.get('MessagingServiceSid') }); return json({ sid: 'SM1' }, 201); }
     if (url.hostname === 'graph.facebook.test' || url.hostname === 'graph.facebook.com') {
       if (url.pathname.endsWith('/videos')) return json({ data: graph.live ? [{ id: 'v1', live_status: 'LIVE', permalink_url: '/soard/videos/1/', title: 'Reveal' }] : graph.scheduled ? [{ id: 'v0', live_status: 'SCHEDULED_UNPUBLISHED', title: 'Sam\'s reveal' }] : [] });
       return json({ id: 'page', name: 'SOARD', link: 'https://facebook.com/soard' });
@@ -360,6 +362,69 @@ test('watch: silence opens an issue in Slack with the fix, reminds, then posts w
     assert.match(slack[2].text, /Reveal audio is back/);
     assert.equal(s.health.monitor.issues.silent, undefined);
     assert.equal(s.health.monitor.log.map((l) => l.kind).join(','), 'open,reminder,resolved');
+  } finally { s.restore(); }
+});
+
+// Staff texts: Twilio set up, two numbers on the alert list
+const staffTexts = (sc, phones = ['+14045550123', '+16785550199']) => {
+  Object.assign(sc.env, { TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_MESSAGING_SERVICE_SID: 'MG1' });
+  sc.config.alerts = { phones };
+  sms.length = 0;
+};
+const plainText = (body) => /^[\x20-\x7E\n]+$/.test(body) && body.length <= 306;
+
+test('watch: a problem texts the staff when it opens and when it clears, never the Slack reminders', async () => {
+  const s = scenario('w-text', { audioSeg: 'silence.m4s' });
+  staffTexts(s);
+  slack.length = 0;
+  try {
+    await s.step(1000); await s.step(15e3); await s.step(16e3);
+    assert.deepEqual(sms.map((x) => x.to), ['+14045550123', '+16785550199'], 'each number once');
+    assert.equal(sms[0].service, 'MG1', 'through the messaging service');
+    assert.match(sms[0].body, /^SOARD: Reveal audio is silent\nFix: Check the mic/);
+    assert.match(sms[0].body, /\nhttps:\/\/sunshineonaranneyday\.com\/admin\/#broadcast\/control-room$/);
+    for (let i = 0; i < 12; i++) await s.step(15e3);
+    assert.ok(slack.some((p) => /Still: Reveal audio is silent/.test(p.text)), 'Slack reminds');
+    assert.equal(sms.length, 2, 'the reminder is not texted');
+    s.feed.audioSeg = 'pink-32.m4s';
+    await s.step(15e3);
+    assert.equal(sms.length, 4);
+    assert.match(sms[2].body, /^SOARD: Reveal audio is back\nIt lasted \d+:\d\d\./);
+    assert.ok(sms.every((x) => plainText(x.body)), 'plain characters, two segments at most');
+  } finally { s.restore(); }
+});
+
+test('watch: "All green" once, a minute in, in Slack and by text', async () => {
+  const s = scenario('w-green');
+  staffTexts(s, ['+14045550123']);
+  slack.length = 0;
+  try {
+    await s.step(1000); await s.step(15e3); await s.step(15e3); await s.step(15e3);
+    assert.equal(slack.length, 0, 'not before a minute');
+    await s.step(15e3);
+    assert.equal(slack.length, 1);
+    assert.match(slack[0].text, /All green: Sam's room reveal/);
+    assert.deepEqual(sms.map((x) => x.body), ["SOARD: All green: Sam's room reveal\nSound and picture are good, and it's live on the site.\nhttps://sunshineonaranneyday.com/admin/#broadcast/control-room"]);
+    for (let i = 0; i < 8; i++) await s.step(15e3);
+    assert.equal(slack.length, 1, 'once per reveal');
+    assert.equal(sms.length, 1);
+  } finally { s.restore(); }
+});
+
+test('watch: no "All green" while sound is wrong; it comes a minute after the fix', async () => {
+  const s = scenario('w-green-late', { audioSeg: 'silence.m4s' });
+  staffTexts(s, ['+14045550123']);
+  slack.length = 0;
+  try {
+    for (let i = 0; i < 6; i++) await s.step(i ? 15e3 : 1000);
+    assert.ok(!slack.some((p) => /All green/.test(p.text)));
+    s.feed.audioSeg = 'pink-32.m4s';
+    await s.step(15e3);
+    assert.match(sms.at(-1).body, /^SOARD: Reveal audio is back/);
+    await s.step(15e3); await s.step(15e3);
+    assert.ok(!sms.some((x) => /All green/.test(x.body)), 'not straight after the fix');
+    await s.step(15e3); await s.step(15e3);
+    assert.match(sms.at(-1).body, /^SOARD: All green/);
   } finally { s.restore(); }
 });
 

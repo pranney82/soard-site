@@ -158,6 +158,8 @@ export async function onRequestGet(context) {
         pushReady: !!config.vapid?.publicKey,
         webhookUrl: `${b.SITE_ORIGIN}/api/stream-webhook`,
         alertEmails: notify.alertEmails(env, config),
+        alertPhones: notify.alertPhones(config),
+        alertTexts: await notify.readAlertTexts(env.DB),
       },
       health,
       schedule: schedule.record || null,
@@ -188,7 +190,6 @@ export async function onRequestGet(context) {
 function maskAddress(channel, address) {
   if (!address) return '';
   if (channel === 'email') { const [u, d] = address.split('@'); return `${u.slice(0, 2)}…@${d || ''}`; }
-  if (channel === 'sms') return `${address.slice(0, 5)}…${address.slice(-2)}`;
   try { return new URL(address).host; } catch { return 'push'; }
 }
 
@@ -298,6 +299,7 @@ export async function onRequestPost(context) {
       case 'setConfig': {
         const c = config;
         const alertsBefore = new Set((c.alerts?.emails || []).map(e => String(e).toLowerCase()));
+        const phonesBefore = new Set(notify.alertPhones(c));
         const p = body.config || body;
         if (p.facebook) {
           if (p.facebook.mode && ['persistent', 'api'].includes(p.facebook.mode)) c.facebook.mode = p.facebook.mode;
@@ -314,12 +316,18 @@ export async function onRequestPost(context) {
           if (p.reels.leadSeconds !== undefined) c.reels.leadSeconds = Math.min(600, Math.max(0, Math.round(Number(p.reels.leadSeconds) || 0)));
         }
         if (p.reminders) {
-          for (const k of ['enabled', 'sms', 'push']) if (typeof p.reminders[k] === 'boolean') c.reminders[k] = p.reminders[k];
+          for (const k of ['enabled', 'push']) if (typeof p.reminders[k] === 'boolean') c.reminders[k] = p.reminders[k];
+          delete c.reminders.sms; // the public is never texted
           if (Array.isArray(p.reminders.hoursBefore)) c.reminders.hoursBefore = p.reminders.hoursBefore.map(Number).filter(n => [24, 1].includes(n));
         }
         if (p.replayHours !== undefined) c.replayHours = Math.min(24 * 30, Math.max(1, Number(p.replayHours) || 72));
         if (typeof p.timezone === 'string' && p.timezone.length < 64) { try { new Intl.DateTimeFormat('en-US', { timeZone: p.timezone }); c.timezone = p.timezone; } catch { return fail('Unknown timezone'); } }
         if (p.alerts && Array.isArray(p.alerts.emails)) c.alerts.emails = p.alerts.emails.map(s => String(s).trim().toLowerCase()).filter(notify.isEmail).slice(0, 10);
+        if (p.alerts && Array.isArray(p.alerts.phones)) {
+          const bad = p.alerts.phones.map(String).filter((n) => n.trim() && !notify.normalizePhone(n));
+          if (bad.length) return fail(`${bad.join(', ')} ${bad.length === 1 ? "isn't a" : "aren't"} US or Canadian mobile number${bad.length === 1 ? '' : 's'}.`);
+          c.alerts.phones = [...new Set(p.alerts.phones.map(notify.normalizePhone).filter(Boolean))].slice(0, 10);
+        }
         if (p.defaults) {
           if (typeof p.defaults.title === 'string') c.defaults.title = p.defaults.title.trim().slice(0, 140) || c.defaults.title;
           if (typeof p.defaults.message === 'string') c.defaults.message = p.defaults.message.trim().slice(0, 200) || c.defaults.message;
@@ -335,7 +343,18 @@ export async function onRequestPost(context) {
           const r = await notify.sendEmails(env, { to: added, ...alertHelloEmail(personName(userEmail)), tags: [{ name: 'type', value: 'alert-hello' }] }).catch(() => null);
           if (r?.sent) welcomed = added;
         }
-        return Response.json({ success: true, config: redactConfig(c, false), welcomed });
+        // And a new number gets a hello text: proof texts reach it, and how to stop
+        const newPhones = notify.alertPhones(c).filter((n) => !phonesBefore.has(n));
+        let texted = null;
+        if (newPhones.length) {
+          if (!notify.smsConfigured(env)) texted = { sent: 0, failed: newPhones.length, error: 'Twilio isn’t connected, so no hello text went out.' };
+          else {
+            const r = await notify.sendSms(env, { to: newPhones, body: notify.alertHelloText({ by: personName(userEmail) }) });
+            await notify.recordAlertTexts(env.DB, { title: 'Hello text', result: r }).catch(() => {});
+            texted = { sent: r.sent, failed: r.failed, error: r.errors[0] || null };
+          }
+        }
+        return Response.json({ success: true, config: redactConfig(c, false), welcomed, texted });
       }
       case 'messages': {
         return Response.json(await messages.adminList(env, typeof body.broadcastId === 'string' ? body.broadcastId.slice(0, 40) : null));

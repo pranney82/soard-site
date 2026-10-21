@@ -75,7 +75,6 @@ const reminderBlock = (f, channel) => {
   const subs = f.reminders?.subscribers;
   const signed = typeof subs === 'number' ? ` ${plural(subs, 'person has', 'people have')} signed up for reminders.` : '';
   if (!b.reminders.enabled) return OFF(`Reminders are switched off in ${SETTINGS}, so nobody gets them.${signed}`);
-  if (channel === 'sms' && !b.reminders.sms) return OFF(`Texts are switched off in ${SETTINGS}.`);
   if (channel === 'push' && !b.reminders.push) return OFF(`Push is switched off in ${SETTINGS}.`);
   return null;
 };
@@ -521,6 +520,20 @@ const MAP = { t: 'SOARD', children: [
           does: 'Emails the alert list from Reveals settings, or the admin email list if that’s empty.',
           touches: ['Resend'], where: 'functions/api/_broadcast-notify.js (alertAdmins)',
           live: (f) => (!env(f) ? null : !f.env.resend ? ATTN('RESEND_API_KEY is missing, so alerts can’t be emailed.') : ON(f.broadcast?.alertCount ? `${plural(f.broadcast.alertCount, 'address', 'addresses')} on the alert list.` : 'Going to the admin email list.')) },
+        { t: 'Alert texts', s: 'off', k: 'event',
+          when: 'Reveal day only: a feed problem and when it clears, the go / no-go, “Live now”, “All green” once the feed checks out, a Stream input error, a missed reveal, and the reveal-day health check.',
+          does: 'Texts the staff numbers in Reveals → Settings → Alerts. Never anyone else: the public is not texted.',
+          touches: ['Twilio'], where: 'functions/api/_broadcast-notify.js (textStaff, alertText)',
+          note: 'Off until the Twilio keys are in Cloudflare and a staff number is on the list.',
+          live: (f) => {
+            if (!env(f)) return null;
+            const n = f.broadcast?.alertPhones || 0;
+            if (!f.env.twilio) return n ? ATTN(`${plural(n, 'number is', 'numbers are')} on the list, but the Twilio keys (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN or an API key, TWILIO_MESSAGING_SERVICE_SID) aren’t in Cloudflare.`) : OFF('Off until the Twilio keys are in Cloudflare and a staff number is on the list.');
+            if (!n) return OFF(`No staff numbers yet. Add them in ${SETTINGS} → Alerts.`);
+            const t = f.broadcast?.alertTexts;
+            if (t?.failed) return ATTN(`The last text didn’t reach ${plural(t.failed, 'number')}${t.error ? `: ${t.error}` : ''}.`, t.at);
+            return ON(`${plural(n, 'staff number')} on the list.`, t?.at || null);
+          } },
         { t: 'YouTube live check', s: 'off', k: 'event',
           when: 'Runs with the feed monitor and go/no-go.',
           does: 'Confirms the YouTube channel is actually live and counts viewers.',
@@ -549,18 +562,6 @@ const MAP = { t: 'SOARD', children: [
           does: 'Sends a browser notification to anyone who turned them on.',
           touches: ['Web Push'], where: 'functions/api/_broadcast-notify.js · public/sw.js',
           live: (f) => reminderBlock(f, 'push') || (!f.broadcast ? null : f.broadcast.vapid ? ON(null, lastSend(f, 'push')) : ATTN(`Push keys haven’t been generated. Generate them in ${SETTINGS}.`)) },
-        { t: 'Text reminders', s: 'off', k: 'schedule',
-          when: 'The same moments as reminder emails.',
-          does: 'Texts everyone who signed up by phone; handles STOP replies.',
-          touches: ['Twilio'], where: 'functions/api/_broadcast-notify.js',
-          note: 'Off until the Twilio keys are added in Cloudflare.',
-          live: (f) => {
-            const block = reminderBlock(f, 'sms');
-            if (!env(f)) return block;
-            const keys = 'the Twilio keys (TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWILIO_FROM) aren’t in Cloudflare';
-            if (block) return OFF(f.env.twilio ? block.why : `${block.why} Also, ${keys}.`);
-            return f.env.twilio ? ON(null, lastSend(f, 'sms')) : ATTN(`Texts are switched on, but ${keys}.`);
-          } },
       ]},
       { t: 'After the reveal', children: [
         { t: 'Replay goes up', s: 'live', k: 'event',

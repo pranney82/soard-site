@@ -71,8 +71,8 @@ export function envFacts(env) {
   };
 }
 
-/** The Broadcast settings, reduced to switches. Keys, stream URLs and secrets never leave. */
-export function broadcastFacts(cfg) {
+/** The Broadcast settings, reduced to switches. Keys, stream URLs, secrets and phone numbers never leave. */
+export function broadcastFacts(cfg, texts = null) {
   if (!cfg) return null;
   const c = cfg.data || {};
   const out = (name) => (c.outputs?.[name] ? !!c.outputs[name].enabled : null);
@@ -81,11 +81,13 @@ export function broadcastFacts(cfg) {
     outputs: { facebook: out('facebook'), youtube: out('youtube'), instagram: out('instagram') },
     facebookMode: c.facebook?.mode || null,
     reels: c.reels?.enabled !== false,
-    reminders: { enabled: !!c.reminders?.enabled, sms: !!c.reminders?.sms, push: !!c.reminders?.push },
+    reminders: { enabled: !!c.reminders?.enabled, push: !!c.reminders?.push },
     kitLive: c.kitLive?.enabled !== false,
     messages: c.messages?.enabled !== false,
     vapid: !!c.vapid?.publicKey,
     alertCount: Array.isArray(c.alerts?.emails) ? c.alerts.emails.length : 0,
+    alertPhones: Array.isArray(c.alerts?.phones) ? c.alerts.phones.length : 0,
+    alertTexts: texts?.last ? { at: texts.last.at, sent: texts.last.sent || 0, failed: texts.last.failed || 0, error: texts.last.error || null } : null,
     updatedAt: cfg.updatedAt,
   };
 }
@@ -272,6 +274,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     settle(() => slackStatus(env)),
   ]);
   const ok = (v) => (v && !v.error ? v : null);
+  // What the last staff alert text did (counts and Twilio's words only)
+  const alertTexts = await siteConfig(DB, 'alert-texts').catch(() => null);
   const sendMap = {};
   for (const r of ok(sends)?.results || []) {
     sendMap[r.kind] ||= {};
@@ -281,7 +285,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     checkedAt: new Date(now).toISOString(),
     env: envFacts(env),
     bindings: { db: !!env.DB, files: !!env.FILES, ai: !!env.AI, hub: !!env.LIVE_HUB },
-    broadcast: broadcastFacts(ok(cfg)),
+    broadcast: broadcastFacts(ok(cfg), alertTexts?.data),
     health: healthFacts(ok(health)),
     hub: hub?.error && !hub.bound
       ? { ok: false, error: hub.error }

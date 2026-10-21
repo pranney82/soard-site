@@ -6880,13 +6880,13 @@
       reelsLead: c.reels?.leadSeconds ?? 240,
       reelsFeed: c.reels?.shareToFeed !== false,
       remEnabled: c.reminders?.enabled !== false,
-      remSms: c.reminders?.sms !== false,
       remPush: c.reminders?.push !== false,
       rem24: (c.reminders?.hoursBefore || [24, 1]).includes(24),
       rem1: (c.reminders?.hoursBefore || [24, 1]).includes(1),
       replayHours: c.replayHours || 72,
       timezone: c.timezone || 'America/New_York',
       alertEmails: (c.alerts?.emails || []).join(', '),
+      alertPhones: (c.alerts?.phones || []).map(bcPhone).join(', '),
       defTitle: c.defaults?.title || '',
       defMessage: c.defaults?.message || '',
     });
@@ -6896,11 +6896,13 @@
       instagram: { profileUrl: f.instagramUrl },
       orientation: f.orientation,
       reels: { enabled: f.reelsEnabled, caption: f.reelsCaption, leadSeconds: Number(f.reelsLead), shareToFeed: f.reelsFeed },
-      reminders: { enabled: f.remEnabled, sms: f.remSms, push: f.remPush, hoursBefore: [f.rem24 ? 24 : null, f.rem1 ? 1 : null].filter(Boolean) },
+      reminders: { enabled: f.remEnabled, push: f.remPush, hoursBefore: [f.rem24 ? 24 : null, f.rem1 ? 1 : null].filter(Boolean) },
       replayHours: Number(f.replayHours), timezone: f.timezone,
-      alerts: { emails: f.alertEmails.split(',').map((x) => x.trim()).filter(Boolean) },
+      alerts: { emails: f.alertEmails.split(',').map((x) => x.trim()).filter(Boolean), phones: f.alertPhones.split(',').map((x) => x.trim()).filter(Boolean) },
       defaults: { title: f.defTitle, message: f.defMessage },
     });
+    // (404) 555-0123 for a stored +14045550123
+    const bcPhone = (n) => { const d = String(n || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(n || ''); };
     const bcSpin = html`<span class="spinner" style="width:14px;height:14px" />`;
     const bcSortKids = (kids) => [...kids].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
@@ -7555,7 +7557,7 @@
             <${BcOutput} target="instagram" withUrl title="Instagram Live stream" help=${html`Not needed for the Reel. Instagram has no permanent key and no API, so this is set up <strong>before each reveal</strong>: on a computer, instagram.com → Create → Live → copy the Stream URL and key and paste both here. Needs a professional account.`} o=${out('instagram')} ...${common} />
           </details>`)}
 
-        ${section('reminders', 'Reminders', html`<span class="text-sm text-muted"><strong>${data.reminders?.counts?.email || 0}</strong> email · <strong>${data.reminders?.counts?.sms || 0}</strong> text · <strong>${data.reminders?.counts?.push || 0}</strong> browser signups</span>`, html`
+        ${section('reminders', 'Reminders', html`<span class="text-sm text-muted"><strong>${data.reminders?.counts?.email || 0}</strong> email · <strong>${data.reminders?.counts?.push || 0}</strong> browser signups</span>`, html`
           <div class="bc-block">
             <label class="checkbox-label"><input type="checkbox" checked=${f.remEnabled} onChange=${set('remEnabled')} /> Send reminders</label>
             <div class="bc-indent">
@@ -7565,8 +7567,6 @@
             </div>
           </div>
           <div class="bc-block">
-            <label class="checkbox-label"><input type="checkbox" checked=${f.remSms} onChange=${set('remSms')} /> Offer text messages ${s.smsConfigured ? html`<span class="badge badge-green">Twilio connected</span>` : html`<span class="badge badge-gray">Twilio not set up</span>`}</label>
-            ${!s.smsConfigured ? html`<div class="form-hint" style="margin:0 0 1rem 1.75rem">Set <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_API_KEY_SID</code>, <code>TWILIO_API_KEY_SECRET</code> (a restricted key with only Messaging › Messages: Create) and <code>TWILIO_FROM</code> in Cloudflare Pages. US texting needs the toll-free number verified first; Twilio handles STOP replies.</div>` : null}
             <div class="bc-inline">
               <label class="checkbox-label u-m-0"><input type="checkbox" checked=${f.remPush} onChange=${set('remPush')} /> Offer browser alerts</label>
               ${s.pushReady ? html`<span class="badge badge-green">Keys ready</span>` : html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setup('generateVapid', {}, 'Push keys')}>Generate push keys</button>`}
@@ -7584,12 +7584,20 @@
           ${data.reminders?.recent?.length ? html`<details class="bc-more"><summary>Recent signups (${data.reminders.recent.length})</summary><div class="bc-table" style="margin-top:.5rem"><table><thead><tr><th>When</th><th>Channel</th><th>Who</th><th>For</th><th>From</th></tr></thead><tbody>${data.reminders.recent.map((r) => html`<tr><td>${bcFmt(r.created_at)}</td><td>${r.channel}</td><td>${r.address}</td><td>${r.kid_slug || 'every reveal'}</td><td>${r.source || ''}</td></tr>`)}</tbody></table></div></details>` : null}`)}
 
         ${section('alerts', 'Alerts', null, html`
-          <p class="bc-set-lede">Alerts go out when a scheduled reveal never streams, Stream reports an encoder error, or a daily check fails (and again on the morning of a reveal). While live, they also fire when the sound goes silent or disappears, the picture freezes, the signal gets weak, or Facebook or YouTube aren't live a couple of minutes in.</p>
+          <p class="bc-set-lede">Alerts go out when a scheduled reveal never streams, Stream reports an encoder error, or a daily check fails (and again on the morning of a reveal). While live, they also fire when the sound goes silent or disappears, the picture freezes, the signal gets weak, or Facebook or YouTube aren't live a couple of minutes in. A minute into a healthy reveal, "All green" goes out too.</p>
           <${BcSlack} mode=${s.slackMode || (s.slackConfigured ? 'webhook' : null)} addToast=${addToast} />
           <div class="bc-block">
             <label class="form-label" for="bc-alert-emails">Alert emails</label>
             <input class="form-input" id="bc-alert-emails" value=${f.alertEmails} placeholder="peter@…, ops@…" onInput=${set('alertEmails')} style="max-width:520px" />
             <div class="form-hint">Comma separated. Anyone you add gets a short hello email when you save, so they know alerts reach them.</div>
+          </div>
+          <div class="bc-block">
+            <div class="bc-inline"><label class="form-label u-m-0" for="bc-alert-phones">Alert texts</label>${s.smsConfigured ? html`<span class="badge badge-green">Twilio connected</span>` : html`<span class="badge badge-gray">Twilio not connected</span>`}</div>
+            <input class="form-input" id="bc-alert-phones" type="text" inputmode="tel" autocomplete="off" value=${f.alertPhones} placeholder="(404) 555-0123, (678) 555-0199" onInput=${set('alertPhones')} style="max-width:520px" />
+            <div class="form-hint">Staff mobile numbers, comma separated. They get a text when something goes wrong on reveal day and when it's fixed, the go / no-go check an hour before, "Live now", and "All green" once sound, picture, Facebook and YouTube check out. Anyone you add gets a hello text when you save. Only these numbers are ever texted; the public never is.</div>
+            ${!s.smsConfigured ? html`<div class="form-hint">Texts start once Twilio is connected in Cloudflare: <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> (or a restricted API key) and <code>TWILIO_MESSAGING_SERVICE_SID</code>.</div>` : null}
+            ${Object.keys(s.alertTexts?.stopped || {}).filter((n) => (s.alertPhones || []).includes(n)).map((n) => html`<div class="form-hint"><strong>${bcPhone(n)}</strong> replied STOP, so Twilio won't text it. Texting START to the alert number turns texts back on.</div>`)}
+            ${s.alertTexts?.last ? html`<div class="form-hint">Last text ${bcFmt(s.alertTexts.last.at)}: “${s.alertTexts.last.title}”, ${s.alertTexts.last.sent} sent${s.alertTexts.last.failed ? `, ${s.alertTexts.last.failed} failed${s.alertTexts.last.error ? ` (${s.alertTexts.last.error})` : ''}` : ''}.</div>` : null}
           </div>`)}
 
         ${section('site', 'Site', null, html`
@@ -7695,7 +7703,12 @@
       const saveCfg = async () => {
         if (!dirty) return;
         const d = await setup('setConfig', { config: bcCfgTo(cfg) }, 'Save settings');
-        if (d.success) { addToast(d.welcomed?.length ? `Settings saved. ${d.welcomed.join(', ')} got a hello email, so they know alerts reach them.` : 'Settings saved', 'success'); setCfg(null); await load(); }
+        if (d.success) {
+          const hello = [d.welcomed?.length ? `${d.welcomed.join(', ')} got a hello email` : null, d.texted?.sent ? `${d.texted.sent === 1 ? 'the new number' : `${d.texted.sent} new numbers`} got a hello text` : null].filter(Boolean);
+          addToast(hello.length ? `Settings saved. ${hello.join(', and ')}, so they know alerts reach them.` : 'Settings saved', 'success');
+          if (d.texted?.failed) addToast(`The hello text didn't go to ${d.texted.failed === 1 ? 'one number' : `${d.texted.failed} numbers`}: ${d.texted.error || 'Twilio refused it'}.`, 'error');
+          setCfg(null); await load();
+        }
       };
       useSaveShortcut(() => { if (dirty && !busy) saveCfg(); });
       const openSettings = (section) => { setTab('settings'); setJump(section); };

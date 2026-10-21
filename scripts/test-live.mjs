@@ -38,7 +38,7 @@ const STATES = {
   live: { ...base, phase: 'live', live: true, upcoming: false, replay: false, scheduledAt: inH(-1), liveAt: inH(-0.2), endedAt: null, replayUntil: null, url: `${BASE}/live/${kidSlug}/`, player: { kind: 'live', uid: 'in1', customerCode: CODE } },
   replay: { ...base, phase: 'replay', live: false, upcoming: false, replay: true, scheduledAt: inH(-3), liveAt: inH(-2), endedAt: inH(-1), replayUntil: inH(70), url: `${BASE}/live/${kidSlug}/`, player: { kind: 'replay', uid: 'vid1', customerCode: CODE } },
 };
-const reminders = { enabled: true, email: true, sms: true, push: true, pushKey: 'BPQ' + 'x'.repeat(84) };
+const reminders = { enabled: true, email: true, push: true, pushKey: 'BPQ' + 'x'.repeat(84) };
 
 // Kids the admin loads from list-content (they feed the Broadcast kid
 // selects): one real published kid and a draft copy, so the draft warning
@@ -70,15 +70,15 @@ const adminFixture = (state) => ({
   success: true,
   state: { reel: state.phase === 'replay' ? { stage: 'processing', sourceUid: 'vid1', duration: 1620, method: 'captions+ai', momentSeconds: 742, confidence: 0.9, start: 502, end: 1397, clipUid: 'clip1', error: null } : null, phase: state.phase, broadcastId: state.id, kidSlug: state.kidSlug, kidName: state.kidName, source: state.source, liveAt: state.liveAt, fb: { permalink: 'https://www.facebook.com/x/videos/1' }, clicks: 3 },
   public: state, legacy: { live: state.live },
-  config: { customerCode: CODE, liveInput: { uid: 'in1', created: inH(-100), enabled: true, srt: { url: 'srt://live.cloudflare.com:778', streamId: 'sid1…2345', passphrase: 'pass…word' }, rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'abcd…wxyz' } }, rehearsalInput: null, outputs: { facebook: { uid: 'o1', url: 'rtmps://live-api-s.facebook.com:443/rtmp/', keyMask: 'FB-1…9999', enabled: true, createdAt: inH(-50) } }, facebook: { mode: 'persistent', pageUrl: 'https://www.facebook.com/SunshineOnaRanneyDay' }, youtube: { channelUrl: '' }, reminders: { enabled: true, hoursBefore: [24, 1], sms: true, push: true }, replayHours: 72, timezone: 'America/New_York', alerts: { emails: ['ops@example.com'] }, defaults: { title: 'Live room reveal', message: 'We are live' }, vapid: { publicKey: 'BPQ', createdAt: inH(-10) }, messages: { enabled: true } },
+  config: { customerCode: CODE, liveInput: { uid: 'in1', created: inH(-100), enabled: true, srt: { url: 'srt://live.cloudflare.com:778', streamId: 'sid1…2345', passphrase: 'pass…word' }, rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'abcd…wxyz' } }, rehearsalInput: null, outputs: { facebook: { uid: 'o1', url: 'rtmps://live-api-s.facebook.com:443/rtmp/', keyMask: 'FB-1…9999', enabled: true, createdAt: inH(-50) } }, facebook: { mode: 'persistent', pageUrl: 'https://www.facebook.com/SunshineOnaRanneyDay' }, youtube: { channelUrl: '' }, reminders: { enabled: true, hoursBefore: [24, 1], push: true }, replayHours: 72, timezone: 'America/New_York', alerts: { emails: ['ops@example.com'], phones: ['+14045550123', '+16785550199'] }, defaults: { title: 'Live room reveal', message: 'We are live' }, vapid: { publicKey: 'BPQ', createdAt: inH(-10) }, messages: { enabled: true } },
   larix: { standard: 'larix://set/v1?conn[][name]=SOARD+Live&conn[][url]=srt%3A%2F%2Flive.cloudflare.com%3A778&conn[][srtstreamid]=sid&conn[][srtpass]=pw&enc[vid][res]=1920x1080', lowSignal: 'larix://set/v1?conn[][name]=Weak&conn[][url]=srt%3A%2F%2Flive.cloudflare.com%3A778&enc[vid][res]=1280x720', srtUrl: 'srt://live.cloudflare.com:778?streamid=sid&passphrase=pw', rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'key' } },
-  setup: { streamConfigured: true, fbConfigured: true, emailConfigured: true, smsConfigured: false, slackConfigured: false, kitConfigured: true, hubBound: true, deployHook: true, inputReady: true, pushReady: true, webhookUrl: 'https://sunshineonaranneyday.com/api/stream-webhook', alertEmails: ['ops@example.com'] },
+  setup: { streamConfigured: true, fbConfigured: true, emailConfigured: true, smsConfigured: true, slackConfigured: false, kitConfigured: true, hubBound: true, deployHook: true, inputReady: true, pushReady: true, webhookUrl: 'https://sunshineonaranneyday.com/api/stream-webhook', alertEmails: ['ops@example.com'], alertPhones: ['+14045550123', '+16785550199'], alertTexts: { last: { at: inH(-0.2), title: "All green: Sample Kid's room reveal", sent: 2, failed: 0, error: null }, stopped: { '+16785550199': inH(-30) } } },
   health: { lastDailyAt: inH(-2), stream: { ok: true, at: inH(-2) }, facebook: { ok: true, name: 'SOARD', at: inH(-2) }, hub: { ok: true, clients: 4, at: inH(-2) }, webhook: { lastReceivedAt: inH(-0.5), lastEvent: 'live_input.connected', count: 12 }, lifecycle: { at: inH(-0.01), live: state.live, videoUID: 'vid1' }, lastTick: { at: inH(-0.01), source: 'hub', work: [] } },
   hub: { ok: true, clients: 4, lastTick: { at: inH(-0.01) }, watchers: state.live ? 31 : 0, reactions: state.live ? { broadcastId: state.id, totals: { heart: 12, sun: 30, clap: 8, wow: 1 } } : null },
   live: { lifecycle: { isInput: true, live: state.live, videoUID: state.live ? 'vid1' : null }, rehearsal: null, viewers: state.live ? 27 : null },
   outputs: [{ target: 'facebook', uid: 'o1', url: 'rtmps://live-api-s.facebook.com:443/rtmp/', keyMask: 'FB-1…9999', enabled: true, exists: true }],
   recordings: [{ uid: 'vid1', name: 'Sample reveal', created: inH(-2), duration: 1800, state: 'ready', readyToStream: true, thumbnail: 'about:blank', watch: 'https://watch.cloudflarestream.com/vid1', isCurrentReplay: state.phase === 'replay', isLiveNow: false }],
-  reminders: { counts: { email: 42, sms: 7, push: 3 }, recent: [{ channel: 'email', address: 'fa…@example.com', kid_slug: kidSlug, created_at: inH(-1), source: 'live-kid' }] },
+  reminders: { counts: { email: 42, push: 3 }, recent: [{ channel: 'email', address: 'fa…@example.com', kid_slug: kidSlug, created_at: inH(-1), source: 'live-kid' }] },
   sends: state.phase === 'idle' ? [] : [{ kind: 'day', channel: 'email', recipients: 42, sent: 42, failed: 0, created_at: inH(-30) }],
   history: [{ id: 'live-0', kid_slug: kidSlug, kid_name: 'Sample Kid', title: 'Earlier reveal', scheduled_at: inH(-700), live_at: inH(-699), ended_at: inH(-698.5), phase: 'idle', replay_uid: 'vid0', fb_permalink: null, source: 'stream', data: {}, messageCount: 14, events: { view_live_page: 120, click_watch: 40, click_donate: 6, reminder_signup: 12 } }],
   fbRecent: null,
@@ -158,7 +158,7 @@ try {
     }
     if (name === 'replay') { ok((await page.$$('[data-s="player"] video')).length === 1, 'replay video mounted'); ok(await vis('[data-s="replaybar"]'), 'replay controls under the picture'); }
     if (name === 'idle') { ok((await page.$$('[data-s="player"] video, [data-s="player"] iframe')).length === 0, 'no player'); ok(!(await page.$eval('#live-hero', (el) => el.hasAttribute('data-party'))), 'plain hero'); }
-    ok(await vis('[data-live="form-sms"]'), 'SMS form offered');
+    ok((await page.$$('[data-live="form-sms"], input[type="tel"]')).length === 0, 'no text sign-up: the public is never texted');
     ok(await vis('[data-live="push-btn"]'), 'push button offered');
     ok(!(await page.$eval('#live-indicator', (el) => !el.hidden)), 'pill hidden on the live page');
     await page.screenshot({ path: `${OUT}live-${name}-desktop.png`, fullPage: true });
@@ -200,19 +200,26 @@ try {
   for (const [name, state] of [['live', STATES.live], ['scheduled', STATES.scheduled], ['idle', STATES.idle], ['replay', STATES.replay]]) {
     await mockApi(page, state);
     await page.setViewport({ width: 1360, height: 900 });
-    await page.goto(`${BASE}/admin/`, { waitUntil: 'networkidle0' });
-    const clicked = await page.evaluate(() => { const b = [...document.querySelectorAll('button.nav-item')].find((x) => x.textContent.trim().startsWith('Broadcast')); if (b) { b.click(); return true; } return false; });
-    ok(clicked, `nav has Broadcast (${name})`);
+    await page.goto(`${BASE}/admin/index.html`, { waitUntil: 'networkidle0' });
+    const clicked = await page.evaluate(() => { const b = [...document.querySelectorAll('button.nav-item')].find((x) => /^(Broadcast|Reveals)/.test(x.textContent.trim())); if (b) { b.click(); return true; } return false; });
+    ok(clicked, `nav has Reveals (${name})`);
     await page.waitForFunction(() => [...document.querySelectorAll('h2')].some((h) => h.textContent.trim() === 'Broadcast'), { timeout: 8000 }).catch(() => {});
     const tabs = await page.$$('.hub-tab');
-    ok(tabs.length === 3, `${tabs.length} tabs: Now, History, Settings (${name})`);
+    ok(tabs.length === 4, `${tabs.length} tabs: Now, Invites, History, Settings (${name})`);
     for (let i = 0; i < tabs.length; i++) {
       const label = await tabs[i].evaluate((b) => b.textContent.trim());
       await tabs[i].click();
       await new Promise((r) => setTimeout(r, 250));
       const cards = await page.$$eval('.card', (els) => els.length);
       ok(cards > 0, `tab ${label} renders ${cards} cards (${name})`);
-      if (label.startsWith('Settings')) ok((await page.$$('#bc-set-phones .bc-qr svg')).length >= 2, 'Larix QR codes render under Settings → Phones');
+      if (label.startsWith('Settings')) {
+        ok((await page.$$('#bc-set-phones .bc-qr svg')).length >= 2, 'Larix QR codes render under Settings → Phones');
+        ok(await page.$eval('#bc-alert-phones', (el) => el.value).catch(() => '') === '(404) 555-0123, (678) 555-0199', 'Alerts: staff numbers shown, formatted');
+        const alertsText = await page.$eval('#bc-set-alerts', (el) => el.innerText).catch(() => '');
+        ok(/Twilio connected/.test(alertsText) && /\(678\) 555-0199 replied STOP/.test(alertsText) && /Last text .*All green/.test(alertsText), 'Alerts: Twilio badge, a STOP, the last text');
+        ok(!/Offer text messages/.test(await page.evaluate(() => document.body.innerText)), 'no public text switch anywhere');
+        if (name === 'live') await (await page.$('#bc-set-alerts')).screenshot({ path: `${OUT}admin-alerts.png` });
+      }
       if (name === 'live') await page.screenshot({ path: `${OUT}admin-${label.toLowerCase().replace(/\W+/g, '')}.png`, fullPage: true });
     }
     await tabs[0].click(); await new Promise((r) => setTimeout(r, 250));
