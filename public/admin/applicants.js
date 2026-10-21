@@ -30,9 +30,9 @@
  * header says when JobTread was last checked; only when something is wrong
  * does it say what, with a "Check JobTread now" button.
  *
- * "Clean up statuses quietly" (the ⋯ menu) is for fixing a batch of statuses
- * in JobTread: family emails hold for up to 2 hours, and when the person says
- * they're done, they choose which held emails go, family by family.
+ * "Pause family emails" (the ⋯ menu) is for changing a lot of statuses at
+ * once: family emails hold for up to 2 hours, and when the person turns them
+ * back on, they choose which held emails still go, family by family.
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo, useCallback, Sortable } from './vendor.js';
@@ -522,7 +522,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
   const [focusPin, setFocusPin] = useState(null);
   const [editBoundary, setEditBoundary] = useState(!!route?.editBoundary);
   const [busy, setBusy] = useState('');
-  const [cleanup, setCleanup] = useState(false); // the "Clean up statuses quietly" sheet
+  const [cleanup, setCleanup] = useState(false); // the "Pause family emails" sheet
   const searchRef = useRef(null);
 
   const setView = (v) => {
@@ -649,9 +649,9 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     return true;
   };
   const startCleanup = async () => {
-    if (await post({ pause: { minutes: 120 } }, 'pause', 'Family emails are holding. Change what you need, then choose “I’m done cleaning up”.')) setCleanup(false);
+    if (await post({ pause: { minutes: 120 } }, 'pause', 'Family emails are paused. Change what you need, then choose “Turn family emails back on”.')) setCleanup(false);
   };
-  const doneCleanup = () => post({ resume: true }, 'resume', 'Done. Choose which held emails go.');
+  const doneCleanup = () => post({ resume: true }, 'resume', 'Family emails are back on. Choose which held emails still go.');
 
   if (err && !data) return html`<div class="apl-zero"><p><strong>Couldn't load applicants.</strong></p><p>${err}</p><button class="btn btn-ghost" onClick=${() => load()}>Try again</button></div>`;
   if (!data) return html`<div class="apl-skel"><span class="spinner" /> Loading applicants from JobTread…</div>`;
@@ -675,8 +675,8 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
   const emails = data.emails || {};
   const menu = [
     emails.active
-      ? { label: 'I’m done cleaning up', hint: `Family emails are holding until ${clock(emails.until)}. Next, you choose which held emails go.`, onSelect: doneCleanup }
-      : { label: 'Clean up statuses quietly', hint: 'Fixing a batch of statuses in JobTread? Family emails hold for up to 2 hours. When you’re done, you choose which held emails go.', onSelect: () => setCleanup(true) },
+      ? { label: 'Turn family emails back on', hint: `Paused until ${clock(emails.until)}. Next, you choose which held emails still go.`, onSelect: doneCleanup }
+      : { label: 'Pause family emails', hint: 'Changing a lot of statuses at once? Families aren’t emailed about each change. Afterward, you choose which emails still go.', onSelect: () => setCleanup(true) },
     ...(menuItems.length ? ['-', ...menuItems] : []),
   ];
 
@@ -782,7 +782,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
   </div>`;
 }
 
-/** Starting a quiet cleanup: what happens, in order, before anything holds */
+/** Pausing family emails: what happens, in order, before anything holds */
 function CleanupSheet({ busy, onClose, onStart }) {
   const go = useRef(null);
   useEffect(() => { go.current?.focus(); }, []);
@@ -794,16 +794,16 @@ function CleanupSheet({ busy, onClose, onStart }) {
   const until = clock(Date.now() + 120 * 60000);
   return html`<div class="apl-sheet-wrap" onClick=${e => { if (e.target === e.currentTarget) onClose(); }}>
     <div class="apl-sheet" role="dialog" aria-modal="true" aria-labelledby="apl-clean-title">
-      <h2 id="apl-clean-title">Clean up statuses quietly?</h2>
-      <p style="margin:0">For fixing a batch of statuses in JobTread without emailing families about each one.</p>
+      <h2 id="apl-clean-title">Pause family emails?</h2>
+      <p style="margin:0">Normally, every status change emails that family. Pause first when you’re changing a lot of statuses at once, like tidying up in JobTread.</p>
       <ol class="apl-steps-list">
-        <li>Change as many statuses as you need, in JobTread or here. Family emails hold instead of going out.</li>
-        <li>When you finish, choose <strong>I’m done cleaning up</strong> (or it ends by itself at ${until}).</li>
-        <li>Then you see each held email and choose which ones go.</li>
+        <li>Change as many statuses as you need, here or in JobTread. No family is emailed.</li>
+        <li>When you finish, choose <strong>Turn family emails back on</strong>. If you forget, they come back on by themselves at ${until}.</li>
+        <li>Then you see every email that was held and choose which ones still go. None go unless you choose.</li>
       </ol>
       <div class="apl-sheet-foot">
         <button class="btn btn-ghost" onClick=${onClose}>Cancel</button>
-        <button class="btn btn-primary" ref=${go} onClick=${onStart} disabled=${busy}>${busy ? 'Starting…' : 'Start cleaning up'}</button>
+        <button class="btn btn-primary" ref=${go} onClick=${onStart} disabled=${busy}>${busy ? 'Pausing…' : 'Pause family emails'}</button>
       </div>
     </div>
   </div>`;
@@ -871,7 +871,7 @@ function FiltersButton({ count, onClear, children }) {
   </div>`;
 }
 
-/** A cleanup in progress, the emails it held (chosen family by family), and a stalled sweep */
+/** Family emails paused, the emails held meanwhile (chosen family by family), and a stalled sweep */
 const HELD_LABEL = { welcome: 'Application received', inReview: 'In review', approved: 'Approved', denied: 'Denied' };
 function EmailBanner({ emails, busy, onPost, onDone, onOpen, addToast, onChanged }) {
   const [each, setEach] = useState('');
@@ -888,11 +888,11 @@ function EmailBanner({ emails, busy, onPost, onDone, onOpen, addToast, onChanged
   };
   return html`<div style="display:grid;gap:.5rem">
     ${emails.active
-      ? html`<div class="apl-banner is-info" role="status"><p><strong>Cleaning up statuses quietly.</strong> Family emails are holding until ${clock(emails.until)}${emails.by ? ` (started by ${String(emails.by).split('@')[0]})` : ''}${held.length ? `. ${plural(held.length, 'email is', 'emails are')} held so far` : ''}.</p>
-          <div class="apl-banner-actions"><button class="btn btn-primary btn-sm" onClick=${onDone} disabled=${!!busy}>${busy === 'resume' ? 'Finishing…' : 'I’m done cleaning up'}</button></div></div>`
+      ? html`<div class="apl-banner is-info" role="status"><p><strong>Family emails are paused</strong> until ${clock(emails.until)}${emails.by ? ` (paused by ${String(emails.by).split('@')[0]})` : ''}. Status changes won’t email families${held.length ? `; ${plural(held.length, 'email is', 'emails are')} held so far` : ''}.</p>
+          <div class="apl-banner-actions"><button class="btn btn-primary btn-sm" onClick=${onDone} disabled=${!!busy}>${busy === 'resume' ? 'Turning on…' : 'Turn family emails back on'}</button></div></div>`
       : null}
     ${!emails.active && held.length > 0 && html`<div class="apl-banner apl-held" role="region" aria-label="Held emails">
-      <p><strong>${plural(held.length, 'family email was', 'family emails were')} held while you cleaned up.</strong> Choose which go.</p>
+      <p><strong>${plural(held.length, 'family email was', 'family emails were')} held while emails were paused.</strong> Choose which still go. Nothing is sent unless you choose.</p>
       <ul class="apl-held-list">
         ${held.map(h => html`<li key=${h.account_id}>
           <button class="apl-more" onClick=${() => onOpen(h.account_id)}>${h.name}</button>
@@ -1451,7 +1451,7 @@ function NotifyBanner({ d, onChanged, onCorrection, addToast }) {
     const mins = minutesUntil(n.dueAt);
     return html`<div class=${`apl-banner apl-thread-banner ${held ? 'is-info' : ''}`} role="status">
       <p>${held
-        ? html`<strong>Email held.</strong> This changed during a quiet cleanup, so the ${n.label} email to ${parent} waits for someone to send it or not.`
+        ? html`<strong>Email held.</strong> This changed while family emails were paused, so the ${n.label} email to ${parent} waits until someone chooses whether it goes.`
         : html`<strong>The ${n.label} email to ${parent} goes out at ${clock(n.dueAt)}</strong>${mins > 0 ? ` (in ${plural(mins, 'minute')})` : ''}. If this status was a mistake, change it back and nothing is sent.`}</p>
       <div class="apl-banner-actions">
         ${n.previous && n.previous !== n.status && html`<button class="btn btn-ghost btn-sm" onClick=${() => act('back')} disabled=${!!busy}>${busy === 'back' ? 'Moving…' : `Move back to ${n.previous}`}</button>`}
@@ -1634,7 +1634,7 @@ function StatusSheet({ a, status, paused = false, onClose, onDone, addToast }) {
     const j = await call(API, { status: { id: a.id, status, notify: willEmail, emailNow: willEmail && emailNow, denialReason: status === 'Denied' ? reason : null } });
     setBusy(false);
     if (!j.success) { addToast(j.error || 'Not changed', 'error'); return; }
-    addToast(paused && willEmail ? `${a.name} is now ${status}. The email holds until you're done cleaning up.`
+    addToast(paused && willEmail ? `${a.name} is now ${status}. Family emails are paused, so the email is held.`
       : j.email === 'scheduled' ? `${a.name} is now ${status}. ${first || 'The family'} is emailed at ${clock(j.dueAt)}.`
         : j.email === 'sent' ? `${a.name} is now ${status}. The family was emailed.` : `${a.name} is now ${status}.`, 'success');
     onDone(j.applicant);
@@ -1656,7 +1656,7 @@ function StatusSheet({ a, status, paused = false, onClose, onDone, addToast }) {
           <div class="apl-preview-head"><span>From <b>Qualification Committee</b> through JobTread</span><span>Subject <b>${m.title}</b></span></div>
           <div class="apl-preview-body" dangerouslySetInnerHTML=${{ __html: richText(m.message) }}></div>
         </div>
-        ${notify && paused && html`<div class="apl-callout">You're cleaning up statuses quietly, so this email holds with the rest. You choose whether it goes when you're done.</div>`}
+        ${notify && paused && html`<div class="apl-callout">Family emails are paused, so this email is held with the rest. You choose whether it goes when you turn emails back on.</div>`}
         ${notify && !paused && p.sendAt && html`<div class="apl-card-sub">Goes out at <strong>${clock(p.sendAt)}</strong>, once the status has stayed put. Change it back before then and nothing is sent.</div>`}
         ${!notify && html`<div class="apl-callout">They won't get this message, now or if the status changes in JobTread later.</div>`}`}
       ${status === 'Denied' && html`<label style="display:grid;gap:.3rem;font-size:.88rem"><span><strong>Reason</strong> <span class="apl-card-sub" style="display:inline">(staff only, saved as Denial Reason)</span></span>

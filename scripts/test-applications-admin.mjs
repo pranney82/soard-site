@@ -944,7 +944,7 @@ try {
     await page.click('.apl-more-btn');
     await page.waitForSelector('.apl-menu', { timeout: 3000 }).catch(() => {});
     const menu = await text(page, '.apl-menu');
-    ok(/Clean up statuses quietly/.test(menu) && !/test application|sample/i.test(menu), 'the Applicants ⋯ menu holds the cleanup only (the sample moved to Form and Emails)');
+    ok(/Pause family emails/.test(menu) && !/test application|sample/i.test(menu), 'the Applicants ⋯ menu holds the cleanup only (the sample moved to Form and Emails)');
     ok(!(await page.$$eval('.apl-head-actions button', els => els.some(b => /Sync now/.test(b.textContent)))), 'and there’s no standing Sync now');
     await page.keyboard.press('Escape');
     await page.evaluate(() => { history.replaceState(null, '', '#applications/applicants/22PgaFvDKQ9L'); window.dispatchEvent(new HashChangeEvent('hashchange')); });

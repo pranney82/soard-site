@@ -20,8 +20,8 @@
  *     family, editing the boundary is used for everyone as soon as it's saved
  *   - Staying in step with JobTread: no standing Sync button; when JobTread
  *     fails, the header says so in amber with "Check JobTread now"
- *   - Clean up statuses quietly (⋯ menu → a sheet that explains it): a move
- *     made meanwhile is held, "I'm done cleaning up", then each held email
+ *   - Pause family emails (⋯ menu → a sheet that explains it): a move
+ *     made meanwhile is held, "Turn family emails back on", then each held email
  *     is sent or not, family by family
  *   - A family: the conversation (emails, logged texts, notes, events), sending
  *     an email and a note (no texting from the site), editing details in place, archive
@@ -383,36 +383,38 @@ ok(await clickText(page, '.apl-head-actions button', /Check JobTread now/), 'wit
 await page.waitForFunction(() => !/Check JobTread now/.test(document.querySelector('.apl-head-actions')?.innerText || ''), { timeout: 8000 }).catch(() => null);
 ok(/In sync with JobTread/.test(await text(page, '.apl-sync')), 'once JobTread answers, the problem clears');
 
-// Clean up statuses quietly: the sheet, a held move, then choosing family by family
+// Pause family emails: the sheet, a held move, then choosing family by family
 await page.click('.apl-views button:nth-child(1)');
 await page.waitForSelector('.apl-board');
 await page.click('.apl-more-btn');
 await page.waitForSelector('.apl-menu [role="menuitem"]');
 await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitem', { timeout: 2000 }).catch(() => null);
 ok(await page.evaluate(() => document.activeElement?.getAttribute('role') === 'menuitem'), 'the ⋯ menu puts the keyboard on its first item');
-ok(/Fixing a batch of statuses in JobTread\?/.test(await text(page, '.apl-menu')), 'the menu names the job: Clean up statuses quietly');
-await page.evaluate(() => [...document.querySelectorAll('.apl-menu [role="menuitem"]')].find(b => /Clean up statuses quietly/.test(b.textContent))?.click());
+ok(/Changing a lot of statuses at once\?/.test(await text(page, '.apl-menu')), 'the menu names the job: Pause family emails');
+await shot(page, 'desktop-more-menu');
+await page.evaluate(() => [...document.querySelectorAll('.apl-menu [role="menuitem"]')].find(b => /Pause family emails/.test(b.textContent))?.click());
 await page.waitForSelector('.apl-sheet', { timeout: 4000 });
-ok(/Clean up statuses quietly\?/.test(await text(page, '.apl-sheet')) && /choose which ones go/.test(await text(page, '.apl-sheet')), 'a sheet says what happens, in order (no browser prompt)');
+ok(/Pause family emails\?/.test(await text(page, '.apl-sheet')) && /choose which ones still go/.test(await text(page, '.apl-sheet')), 'a sheet says what happens, in order (no browser prompt)');
+await sleep(400); // let the sheet finish fading in
 await shot(page, 'desktop-cleanup-sheet');
-await clickText(page, '.apl-sheet button', /Start cleaning up/);
-await page.waitForFunction(() => /Cleaning up statuses quietly/.test(document.body.textContent), { timeout: 8000 }).catch(() => null);
-ok(/Family emails are holding until/.test(await text(page, '.apl-banner')), 'the banner says emails are holding, and until when');
+await clickText(page, '.apl-sheet button', /Pause family emails/);
+await page.waitForFunction(() => /Family emails are paused/.test(document.body.textContent), { timeout: 8000 }).catch(() => null);
+ok(/Family emails are paused until/.test(await text(page, '.apl-banner')), 'the banner says emails are paused, and until when');
 await page.click('.apl-card[data-id="acct00000004"]'); // Noah Pence, In Review
 await page.waitForSelector('.apl-status-select select');
 await page.select('.apl-status-select select', 'Approved');
 await page.waitForSelector('.apl-sheet .apl-preview-body', { timeout: 8000 }).catch(() => null);
-ok(/cleaning up statuses quietly/.test(await text(page, '.apl-sheet')) && !(await clickText(page, '.apl-sheet button', /email now/)), 'moving a family meanwhile says the email holds (no "email now")');
+ok(/Family emails are paused/.test(await text(page, '.apl-sheet')) && !(await clickText(page, '.apl-sheet button', /email now/)), 'moving a family meanwhile says the email holds (no "email now")');
 await clickText(page, '.apl-sheet-foot .btn-primary', /Move to Approved/);
 await page.waitForFunction(() => !document.querySelector('.apl-sheet'), { timeout: 8000 }).catch(() => null);
 ok(acct('Noah Pence').fields[F.status] === 'Approved' && !acct('Noah Pence').comments.some(c => c.name === 'Application Decision'), 'JobTread moved; the family isn’t emailed yet');
-ok(await page.evaluate(() => window.__toasts.some(t => /The email holds until you're done cleaning up/.test(t.msg)) && !window.__toasts.some(t => /Noah Pence is now Approved\. .* is emailed at/.test(t.msg))), 'and the toast says the email holds, not when it goes');
+ok(await page.evaluate(() => window.__toasts.some(t => /Family emails are paused, so the email is held/.test(t.msg)) && !window.__toasts.some(t => /Noah Pence is now Approved\. .* is emailed at/.test(t.msg))), 'and the toast says the email holds, not when it goes');
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => null);
 await page.waitForFunction(() => /1 email is held so far/.test(document.querySelector('.apl-banner')?.innerText || ''), { timeout: 8000 }).catch(() => null);
 ok(/1 email is held so far/.test(await text(page, '.apl-banner')), 'the banner counts what’s held');
 await shot(page, 'desktop-cleaning');
-await clickText(page, '.apl-banner button', /I’m done cleaning up/);
+await clickText(page, '.apl-banner button', /Turn family emails back on/);
 await page.waitForSelector('.apl-held-list li', { timeout: 8000 }).catch(() => null);
 ok(/Noah Pence/.test(await text(page, '.apl-held-list')) && /Approved email/.test(await text(page, '.apl-held-list')), 'done: each held email is listed, family by family');
 await shot(page, 'desktop-held');
