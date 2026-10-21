@@ -545,7 +545,7 @@ export function alertText({ title, detail, fix, url }) {
 
 /** The first text a new number on the alert list gets: proof texts reach it, and how to stop */
 export function alertHelloText({ by = null } = {}) {
-  return `SOARD: ${by ? `${smsSafe(by)} added you to` : "You're on"} the live reveal alert texts. You'll get a text when a reveal has a problem, when the go/no-go check runs before it, and when it goes live. Reply STOP to opt out, HELP for help.`;
+  return `SOARD: ${by ? `${smsSafe(by)} added you to` : "You're on"} the live reveal alert texts. You'll get a text when a reveal has a problem, when the go/no-go check runs before it, and when it goes live. Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.`;
 }
 
 export async function readAlertTexts(DB) {
