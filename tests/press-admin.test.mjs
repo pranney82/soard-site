@@ -91,10 +91,16 @@ describe('press-shared', () => {
     assert.equal(P.notPressReason('https://www.northsidechapel.com/obituary/caitlin-davis', 'Miss Caitlin Ann Davis'), 'An obituary');
     assert.equal(P.notPressReason('https://vnews.com/2018/07/11/virginia-bard-obituary-hanover-nh-18740797/', 'Virginia Carol Bard'), 'An obituary');
     assert.equal(P.notPressReason('https://www.ajc.com/x', 'Ten charities to know'), null);
-    const kids = [{ slug: 'georgia', name: 'Georgia', year: 2018 }, { slug: 'peter', name: 'Peter', year: 2019 }, { slug: 'devon', name: 'Devon', year: 2019 }];
+    const kids = [{ slug: 'georgia', name: 'Georgia', year: 2018, diagnosis: 'Cerebral Palsy' }, { slug: 'peter', name: 'Peter', year: 2019, diagnosis: 'Leigh’s Disease' }, { slug: 'devon', name: 'Devon', year: 2019 }];
     const c = P.kidCandidates('Devon Gales moves to Georgia. Peter Ranney said Devon is home in Georgia.', kids, 2019);
-    assert.deepEqual(c.filter((k) => k.ambiguous).map((k) => k.slug).sort(), ['georgia', 'peter']);
-    assert.ok(!c.find((k) => k.slug === 'devon').ambiguous);
+    assert.deepEqual(c.map((k) => k.slug), ['devon'], 'the state and the founder are not kids (live Oct 21: Workers AI said they were)');
+    const g = P.kidCandidates('Georgia, who has cerebral palsy, loves her new room. Georgia smiled.', kids, 2019);
+    assert.deepEqual(g.map((k) => [k.slug, k.ambiguous]), [['georgia', true]], 'with her diagnosis in the story, Georgia the kid');
+    assert.deepEqual(P.kidContext({ name: 'Grace', bio: 'Grace Cantrell loves art. The Cantrell family moved home.', diagnosis: 'Heart Failure-Restrictive Cardiomyopathy' }), ['Cantrell', 'Heart Failure-Restrictive Cardiomyopathy']);
+    // A name plainly meaning a child counts (Construction Resources, 2023: "Christian is a 16-year-old boy")
+    assert.ok(P.kidInContext({ name: 'Christian B', diagnosis: 'Lennox-Gastaut Syndrome' }, 'Christian is a 16-year-old boy, filled with smiles.'));
+    assert.ok(!P.kidInContext({ name: 'Georgia', diagnosis: 'Cerebral Palsy' }, 'Georgia Gives Day raised $75,000 across Georgia.'));
+    assert.ok(!P.kidInContext({ name: 'Peter', diagnosis: 'Leigh’s Disease' }, 'Peter has grown Ranney Blair. Peter Ranney talks AI.'), 'the founder, not the kid');
     const partners = [{ slug: 'at', name: 'A T' }, { slug: 'sr', name: 'Sunny & Ranney' }, { slug: 'rtg', name: 'Rooms To Go' }];
     assert.deepEqual(P.partnerCandidates('A T. Sunny & Ranney opened. Rooms To Go donated.', partners).map((p) => p.slug), ['rtg']);
   });
@@ -580,18 +586,17 @@ describe('press monitor: the tidy, on the real press list', { skip: !haveReal &&
     const orphans = await rows(env.DB, 'SELECT l.slug FROM press_links l LEFT JOIN press p ON p.slug = l.slug WHERE p.slug IS NULL');
     assert.equal(orphans.length, 0, 'no link records left behind for removed copies');
   });
-  test('pictures come from the article (or its archived copy); featured logo cards are only offered one', async () => {
+  test('every story ends up with a real picture: its own (or its archived copy’s), else a SOARD makeover; a featured card too', async () => {
     const stories = (await rows(env.DB, 'SELECT slug, data FROM press')).map((r) => ({ slug: r.slug, ...JSON.parse(r.data) }));
-    assert.ok(stories.filter((s) => s.image).length > 60, `${stories.filter((s) => s.image).length} with pictures`);
+    const bare = stories.filter((s) => !s.image && !s.videoId);
+    assert.equal(bare.length, 0, `with no picture: ${bare.map((s) => s.slug).join(', ')}`);
     const g = await story(env.DB, env.gone.slug);
     if (g) assert.ok(g.image, 'the gone story got its picture from the archive');
+    // A featured card with a logo shows a real picture now (Peter, Oct 21 2026)
     const logos = new Map((await rows(env.DB, 'SELECT slug, data FROM medialogos')).map((r) => [r.slug, JSON.parse(r.data)]));
     const before = new Map(REAL.press.map((s) => [s.slug, s]));
-    for (const s of stories.filter((x) => x.featured && x.url && before.get(x.slug) && !before.get(x.slug).image && logos.get(x.outletLogo)?.logo)) {
-      assert.ok(!s.image || before.get(s.slug).image, `${s.slug} keeps its logo card`);
-      const link = await env.DB.prepare('SELECT data FROM press_links WHERE slug = ?').bind(s.slug).first();
-      assert.ok(JSON.parse(link.data).suggestImage, `${s.slug} is offered the picture`);
-    }
+    const logoCards = stories.filter((x) => x.featured && before.get(x.slug) && !before.get(x.slug).image && !x.videoId && logos.get(x.outletLogo)?.logo);
+    for (const s of logoCards) assert.ok(s.image, `${s.slug} shows a picture, not just its outlet’s logo`);
   });
   test('kids and partners named in the article are linked', async () => {
     const stories = (await rows(env.DB, 'SELECT data FROM press')).map((r) => JSON.parse(r.data));
@@ -659,7 +664,9 @@ describe('press monitor: the second look (what production showed on Oct 21 2026)
     for (const slug of ['wsb-tv-monica-2016', 'wsb-tv-hudson-2016', 'wsb-tv-sims-2015']) await runStory(env, slug);
     assert.equal((await story(env.DB, 'wsb-tv-monica-2016')).image, 'press/wsb-tv-monica-2016', 'its own picture, saved');
     const pictured = [await story(env.DB, 'wsb-tv-hudson-2016'), await story(env.DB, 'wsb-tv-sims-2015')].filter((s) => s.image);
-    assert.equal(pictured.length, 1, 'the second story with the same picture gets none');
+    assert.equal(pictured.length, 2, 'both get a picture');
+    const own = pictured.filter((x) => /^press\//.test(x.image));
+    assert.equal(own.length, 1, 'only one gets the shared picture; the other a SOARD makeover room');
     const log = await rows(env.DB, "SELECT label FROM press_log WHERE slug = 'wsb-tv-monica-2016'");
     assert.match(log[0].label, /picture/);
   });
@@ -774,6 +781,68 @@ describe('press monitor: the second look (what production showed on Oct 21 2026)
     assert.equal(st.scans.google.refused.title, 'Sorry...');
   });
 
+  test('no picture of its own: the kid’s room, else the community project it names, else a room SOARD built that year', async () => {
+    const PROJECTS = [{ slug: 'childrens-healthcare-of-atlanta', name: 'Children’s Healthcare of Atlanta', heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/choa/hero/public', year: 2016 }];
+    const kidsY = [...KIDS, { slug: 'zoe-2021', name: 'Zoe', year: 2021, heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/zoe-2021/hero/public' }, { slug: 'max-2021', name: 'Max', year: 2021, heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/max-2021/hero/public' }];
+    const env = await newEnv({ press: [
+      { slug: 'kid-story', outlet: 'K-LOVE', outletLogo: 'k-love', category: 'print', title: 'Devon Gales moves home', date: '2019-07-11', url: 'https://www.klove.com/a', excerpt: 'Devon Gales moves in.', image: null, featured: false, order: 0, kids: ['devon'] },
+      { slug: 'choa-story', outlet: 'K-LOVE', outletLogo: 'k-love', category: 'print', title: 'Peace for parents at Children’s Healthcare of Atlanta', date: '2017-01-01', url: 'https://www.klove.com/b', excerpt: 'Parent sleep rooms.', image: null, featured: false, order: 0 },
+      { slug: 'women-2021', outlet: 'WSB-TV', outletLogo: 'wsb-tv', category: 'magazine', title: 'Women Making a Mark: Holly Ranney', date: '2021-05-28', url: 'https://www.klove.com/c', excerpt: 'Holly Ranney.', image: null, featured: true, order: 1 },
+    ], medialogos: OUTLETS, kids: kidsY, partners: [] });
+    for (const r of PROJECTS) { const [cols, vals] = EXTRACTORS.community(r); await env.DB.prepare(`INSERT INTO community ("slug", "data", "updated_at"${cols.map((c) => `, ${c}`).join('')}) VALUES (?, ?, ?${cols.map(() => ', ?').join('')})`).bind(r.slug, JSON.stringify(r), '2026-10-01', ...vals).run(); }
+    for (const u of ['https://www.klove.com/a', 'https://www.klove.com/b', 'https://www.klove.com/c']) world.pages[u] = 403;
+    for (const slug of ['kid-story', 'choa-story', 'women-2021']) await runStory(env, slug);
+    assert.equal((await story(env.DB, 'kid-story')).image, 'kids/devon/photo-38');
+    assert.equal((await story(env.DB, 'choa-story')).image, 'community/choa/hero');
+    const w = await story(env.DB, 'women-2021');
+    assert.match(w.image, /^kids\/(zoe|max)-2021\//, 'a 2021 room, on a featured card with a logo');
+    assert.equal(P.yearRoom({ slug: 'women-2021', date: '2021-05-28' }, kidsY).slug, P.yearRoom({ slug: 'women-2021', date: '2021-06-01' }, kidsY).slug, 'a story keeps its room');
+    assert.equal(P.yearRoom({ slug: 'x', date: '2030-01-01' }, kidsY).year, 2021, 'no makeover that year: the nearest year before');
+    const labels = (await rows(env.DB, "SELECT label FROM press_log WHERE kind = 'story'")).map((r) => r.label).join(' | ');
+    assert.match(labels, /Devon’s room as its picture/);
+    assert.match(labels, /Children’s Healthcare of Atlanta as its picture/);
+    assert.match(labels, /a 2021 makeover \((Zoe|Max)’s room\) as its picture/);
+    // A person’s own picture is never replaced; a stand-in room gives way to the article’s own
+    await env.DB.prepare("UPDATE press SET data = json_set(data, '$.image', 'press/chosen-by-staff') WHERE slug = 'kid-story'").run();
+    world.pages['https://www.klove.com/a'] = article({ title: 'Devon Gales moves home', site: 'K-LOVE', date: '2019-07-11', image: 'https://www.klove.com/devon.jpg', text: 'Sunshine on a Ranney Day and Devon Gales.' });
+    world.pages['https://www.klove.com/c'] = article({ title: 'Women Making a Mark: Holly Ranney', site: 'K-LOVE', date: '2021-05-28', image: 'https://www.klove.com/holly.jpg', text: 'Holly Ranney of Sunshine on a Ranney Day.' });
+    await env.DB.prepare("UPDATE press_links SET enriched_at = NULL WHERE slug IN ('kid-story', 'women-2021')").run();
+    for (const slug of ['kid-story', 'women-2021']) await runStory(env, slug);
+    assert.equal((await story(env.DB, 'kid-story')).image, 'press/chosen-by-staff', 'staff’s picture stays');
+    assert.equal((await story(env.DB, 'women-2021')).image, 'press/women-2021', 'the article’s own photo replaces the stand-in');
+  });
+
+  test('a kid named Peter or Georgia that the monitor linked from the founder’s or the state’s name is unlinked; a person’s link stays', async () => {
+    const kidsA = [...KIDS, { slug: 'peter', name: 'Peter', year: 2025, diagnosis: 'Leigh’s Disease', heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peter/hero/public' }, { slug: 'georgia', name: 'Georgia', year: 2020, diagnosis: 'Cerebral Palsy', heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/georgia/hero/public' }];
+    const env = await newEnv({ press: [
+      { slug: 'podcast-2025', outlet: 'Remodeler Success Podcast', category: 'entertainment', title: 'Authenticity, Growth, and AI in Remodeling with Peter Ranney', date: '2025-01-15', url: 'https://pod.example.com/peter', excerpt: 'Peter Ranney talks remodeling.', image: null, featured: false, order: 0, kids: ['peter'] },
+      { slug: 'braves-2020', outlet: 'Sports Philanthropy Network', category: 'print', title: 'Atlanta Braves Spotlight: SOARD Named as Grant Recipient', date: '2020-05-01', url: 'https://spn.example.com/braves', excerpt: 'The Braves Foundation gives across Georgia.', image: null, featured: false, order: 0, kids: ['georgia'] },
+      { slug: 'staff-2020', outlet: 'Sports Philanthropy Network', category: 'print', title: 'Grants across Georgia', date: '2020-06-01', url: 'https://spn.example.com/staff', excerpt: 'Grants in Georgia.', image: null, featured: false, order: 0, kids: ['georgia'] },
+    ], medialogos: OUTLETS, kids: kidsA, partners: [] });
+    // The monitor linked the first two (its log says so); staff linked the third by hand
+    for (const slug of ['podcast-2025', 'braves-2020']) {
+      const k = slug === 'podcast-2025' ? 'peter' : 'georgia';
+      await env.DB.prepare("INSERT INTO press_log (at, kind, slug, label, before, after) VALUES (?, 'story', ?, ?, ?, ?)").bind(new Date(NOW).toISOString(), slug, 'linked', JSON.stringify({ kids: null }), JSON.stringify({ kids: [k] })).run();
+    }
+    for (const u of ['https://pod.example.com/peter', 'https://spn.example.com/braves', 'https://spn.example.com/staff']) world.pages[u] = 403;
+    for (const slug of ['podcast-2025', 'braves-2020', 'staff-2020']) await runStory(env, slug);
+    assert.deepEqual((await story(env.DB, 'podcast-2025')).kids ?? [], [], 'not the kid named Peter');
+    assert.deepEqual((await story(env.DB, 'braves-2020')).kids ?? [], [], 'not the kid named Georgia');
+    assert.deepEqual((await story(env.DB, 'staff-2020')).kids, ['georgia'], 'a person’s link is theirs to change');
+    assert.doesNotMatch((await story(env.DB, 'podcast-2025')).image, /kids\/peter\//, 'and no picture of that kid’s room');
+    const log = (await rows(env.DB, "SELECT label FROM press_log WHERE slug = 'podcast-2025' AND label != 'linked'")).map((r) => r.label).join(' | ');
+    assert.match(log, /unlinked Peter \(the story means Peter Ranney, not the kid\)/);
+  });
+
+  test('a site that refuses the server its pictures hands them to a browser (Atlanta Magazine 403, Online Athens 402)', async () => {
+    const { saveImage } = await import('../functions/api/_press-page.js');
+    const refuse = async (url, init = {}) => (/api\.cloudflare\.com/.test(url) ? Response.json({ success: true, result: { id: init.body.get('id') } }) : new Response('Forbidden', { status: 403, headers: { 'content-type': 'text/html' } }));
+    const browser = async (url, opts) => (opts.binary ? { ok: true, status: 200, bytes: new Uint8Array(30000), type: 'image/webp', via: 'browser' } : { ok: false });
+    const r = await saveImage({ CF_ACCOUNT_ID: 'a', CF_IMAGES_TOKEN: 't' }, 'https://www.atlantamagazine.com/wp-content/uploads/sites/4/2021/10/Angel-scaled.jpg', 'press/atlanta-magazine-2021', { fetchImpl: refuse, browser, referer: 'https://www.atlantamagazine.com/' });
+    assert.equal(r.imageId, 'press/atlanta-magazine-2021');
+    assert.match((await saveImage({ CF_ACCOUNT_ID: 'a', CF_IMAGES_TOKEN: 't' }, 'https://www.atlantamagazine.com/x.jpg', 'press/x', { fetchImpl: refuse })).error, /403/, 'without a browser it says why');
+  });
+
   test('an image server that offers AVIF is asked for a format Cloudflare Images takes (AJC’s, live on Oct 21)', async () => {
     const { saveImage } = await import('../functions/api/_press-page.js');
     const sent = [];
@@ -800,11 +869,11 @@ describe('press monitor: the second look (what production showed on Oct 21 2026)
     const state = { tidy: { phase: 'stories', counts: {} } };
     const until = async (cond) => { for (let i = 0; i < 20 && !(await cond()); i++) await E.tidyStep(env, state, { fetchImpl: fakeFetch }); };
     await until(async () => !!(await env.DB.prepare("SELECT enriched_at FROM press_links WHERE slug = 'wsb-tv-monica-2016'").first())?.enriched_at);
-    assert.equal((await story(env.DB, 'wsb-tv-monica-2016')).image, null);
+    assert.match((await story(env.DB, 'wsb-tv-monica-2016')).image, /^kids\//, 'a SOARD makeover room meanwhile');
     assert.notEqual(state.tidy.phase, 'done', 'not done: the failed picture is tried once more');
     world.files[img] = true;
     await until(async () => state.tidy.phase === 'done');
-    assert.equal((await story(env.DB, 'wsb-tv-monica-2016')).image, 'press/wsb-tv-monica-2016', 'the second try saves it');
+    assert.equal((await story(env.DB, 'wsb-tv-monica-2016')).image, 'press/wsb-tv-monica-2016', 'the second try saves it, in place of the stand-in room');
     // Failing twice: left alone
     const env2 = await newEnv({ press: [{ slug: 'wsb-tv-monica-2016', outlet: 'WSB-TV', outletLogo: 'wsb-tv', category: 'local-tv', title: 'Girl gets special room', date: '2016-06-01', url: 'https://www.wsbtv.com/news/monica', excerpt: 'A room for Monica.', image: null, featured: false, order: 0 }], medialogos: OUTLETS, kids: KIDS, partners: [] });
     delete world.files[img];

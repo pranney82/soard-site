@@ -174,7 +174,7 @@ export const archiveRaw = (snapshot) => String(snapshot || '').replace(/\/web\/(
  * Save a story's picture to Cloudflare Images under `id` (a suffix is added
  * when the id is taken). Returns { imageId } or { error }.
  */
-export async function saveImage(env, imageUrl, id, { fetchImpl = fetch, referer = '' } = {}) {
+export async function saveImage(env, imageUrl, id, { fetchImpl = fetch, referer = '', browser = null } = {}) {
   if (!env.CF_ACCOUNT_ID || !env.CF_IMAGES_TOKEN) return { error: 'Cloudflare Images isn’t set up (CF_ACCOUNT_ID, CF_IMAGES_TOKEN)' };
   const u = safeUrl(imageUrl);
   if (!u) return { error: 'Not a picture address' };
@@ -185,16 +185,26 @@ export async function saveImage(env, imageUrl, id, { fetchImpl = fetch, referer 
     const get = (accept) => fetchImpl(u.toString(), { redirect: 'follow', headers: { 'User-Agent': UA, Accept: accept, ...(referer ? { Referer: referer } : {}) }, signal: AbortSignal.timeout(10000) });
     const typeOf = (r) => (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     let res = await get('image/webp,image/jpeg,image/png,image/gif;q=0.9,image/*;q=0.5');
-    if (!res.ok) return { error: `The picture couldn’t be downloaded (${res.status})` };
-    if (typeOf(res).startsWith('image/') && !CF_TYPES.test(typeOf(res)) && typeOf(res) !== 'image/svg+xml') {
-      res = await get('image/jpeg,image/png;q=0.9');
-      if (!res.ok) return { error: `The picture couldn’t be downloaded (${res.status})` };
+    let type = '';
+    let bytes = null;
+    if (!res.ok) {
+      // The site refuses the server its pictures (402, 403…): a browser is handed them
+      if (browser && [401, 402, 403, 429].includes(res.status)) {
+        const b = await browser(u.toString(), { binary: true, referer });
+        if (b.ok && b.bytes?.length) { bytes = b.bytes; type = b.type; }
+      }
+      if (!bytes) return { error: `The picture couldn’t be downloaded (${res.status})` };
+    } else {
+      if (typeOf(res).startsWith('image/') && !CF_TYPES.test(typeOf(res)) && typeOf(res) !== 'image/svg+xml') {
+        res = await get('image/jpeg,image/png;q=0.9');
+        if (!res.ok) return { error: `The picture couldn’t be downloaded (${res.status})` };
+      }
+      type = typeOf(res);
     }
-    const type = typeOf(res);
     if (type && !type.startsWith('image/')) return { error: `That isn’t a picture (${type})` };
     if (type === 'image/svg+xml') return { error: 'That’s a drawing (a logo), not a picture of the story' };
     if (type && !CF_TYPES.test(type)) return { error: `Cloudflare Images can’t take ${type} pictures` };
-    const bytes = await res.arrayBuffer();
+    bytes ||= await res.arrayBuffer();
     if (!bytes.byteLength) return { error: 'The picture was empty' };
     if (bytes.byteLength > MAX_IMAGE) return { error: 'The picture is over 10 MB' };
     if (bytes.byteLength < 6000) return { error: 'The picture is too small to use' };

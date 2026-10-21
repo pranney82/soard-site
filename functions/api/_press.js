@@ -57,7 +57,7 @@ const MAX_TRIES = 3;                   // a step cut short this often is skipped
 // A Google News find whose link can't be had yet is tried again after these waits, then given up
 const RESOLVE_WAITS = [H, 6 * H, 24 * H, 72 * H];
 const LOCK_MS = 45000;
-export const TIDY_VERSION = 2;
+export const TIDY_VERSION = 3;
 const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_URL'];
 const STYLE = 'Plain, warm and specific. The founder is always "Peter Ranney" or "Peter", never "Pete", even when the story says Pete. Facts from the text only; never invent names, dates or outcomes. No em dashes or en dashes (use commas or periods). No exclamation marks. Avoid stock phrases such as "journey", "testament", "heartwarming", "life-changing", "truly", "a space where".';
@@ -284,6 +284,30 @@ function corpus(title, description, text) {
   const d = P.plain(description);
   const repeats = d && text && P.plain(text).includes(d.slice(0, 40));
   return [P.plain(title), repeats ? '' : d, text || ''].filter(Boolean).join('\n');
+}
+/**
+ * Kids linked to a story that it isn't about: a makeover after the story (a date put right
+ * later shows it), and a kid named Peter, Georgia or Grace that the monitor linked with nothing
+ * else in the story to say it's them (no family name, no diagnosis), so the founder or the
+ * state. Only links the monitor made count as misread; a person's are left alone.
+ */
+async function wrongKids(DB, slug, s, data, kidBy) {
+  const late = (s.kids || []).filter((k) => P.kidAfterStory(s, kidBy.get(k)));
+  const page = data.page || {};
+  const words = corpus(P.storyTitle(s), [page.description, s.excerpt].filter(Boolean).join('\n'), page.text || '');
+  const byMonitor = await monitorKidLinks(DB, slug);
+  const misread = (s.kids || []).filter((k) => !late.includes(k) && byMonitor.has(k) && P.ambiguousKid(kidBy.get(k)) && !P.kidInContext(kidBy.get(k), words));
+  return { late, misread };
+}
+/** The kids the monitor itself linked to a story (filed with them, or added by a tidy), not undone */
+async function monitorKidLinks(DB, slug) {
+  const rows = (await DB.prepare("SELECT before, after FROM press_log WHERE slug = ? AND kind IN ('story', 'filed') AND undone_at IS NULL").bind(slug).all()).results || [];
+  const out = new Set();
+  for (const r of rows) {
+    const before = new Set(parse(r.before, {})?.kids || []);
+    for (const k of parse(r.after, {})?.kids || []) if (!before.has(k)) out.add(k);
+  }
+  return out;
 }
 /** Kids and partners for a story, from candidates (AI confirms; without AI only the unmistakable ones) */
 function pickPeople(cands, ai) {
@@ -595,7 +619,10 @@ const STORY_STAGES = ['decode', 'read', 'judge', 'picture', 'save'];
  */
 async function beginNextTidy(DB, state, now) {
   const prev = state.tidy || {};
-  await DB.prepare('UPDATE press_links SET enriched_at = NULL').run();
+  // Version 3 (a third look): every story read again with the browser (Google and some outlets
+  // refuse the server), each given a real makeover picture, and kids the monitor took a word or
+  // a founder for (Peter, Georgia) unlinked; failed pictures are tried afresh
+  await DB.prepare("UPDATE press_links SET enriched_at = NULL, data = json_remove(COALESCE(data, '{}'), '$.pictureTries', '$.imageError', '$.stage', '$.tries')").run();
   await DB.prepare("UPDATE press_mentions SET state = 'new', tries = 0, reason = NULL, updated_at = ? WHERE state = 'failed' AND stage = 'resolve'").bind(iso(now)).run();
   state.tidy = { phase: 'decode', startedAt: iso(now), counts: {}, round: (prev.round || 1) + 1, previous: { version: prev.version || 0, doneAt: prev.doneAt || null, counts: prev.counts || {} } };
 }
@@ -677,7 +704,8 @@ export async function tidyStep(env, state, { fetchImpl = fetch, gate = OPEN_GATE
     // Each story once (one partway through its steps carries on); then a story whose picture couldn't be saved gets one more try
     const row = await DB.prepare(`SELECT p.slug FROM press p LEFT JOIN press_links l ON l.slug = p.slug
       WHERE l.enriched_at IS NULL OR json_extract(l.data, '$.stage') IS NOT NULL
-        OR (json_extract(l.data, '$.imageError') IS NOT NULL AND COALESCE(json_extract(l.data, '$.pictureTries'), 1) < 2 AND json_extract(p.data, '$.image') IS NULL)
+        OR (json_extract(l.data, '$.imageError') IS NOT NULL AND COALESCE(json_extract(l.data, '$.pictureTries'), 1) < 2
+          AND (json_extract(p.data, '$.image') IS NULL OR json_extract(p.data, '$.image') = json_extract(l.data, '$.fallbackImage')))
       ORDER BY (l.enriched_at IS NOT NULL), p.slug LIMIT 1`).first();
     if (!row) { t.phase = 'done'; t.doneAt = iso(); t.version = TIDY_VERSION; return { did: 'tidy done', done: true }; }
     return storyStep(env, row.slug, { fetchImpl, tidy: t, gate });
@@ -780,17 +808,23 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   }
   if (stage === 'picture') {
     const page = data.page || {};
-    const hasLogo = !!(await loadOne(DB, 'medialogos', s.outletLogo || ''))?.data?.logo;
-    // A featured card that shows its outlet's logo keeps it: the picture is offered instead
-    const take = (id, from) => { if (s.featured && hasLogo) data.suggestImage = id; else { data.image = id; data.imageFrom = from; } };
-    if (!s.image && page.image && !P.genericImage(page.image)) {
+    // A real picture beats an outlet's logo, on a featured card too (Peter, Oct 21 2026: every
+    // story should show a kid's makeover or a real room)
+    const take = (id, from) => { data.image = id; data.imageFrom = from; if (/^(kid|community|year):/.test(from)) data.fallbackImage = id; else delete data.fallbackImage; };
+    // The story's picture can be set: it has none, or only a stand-in room the monitor chose
+    // (never one a person picked)
+    const open = !s.image || (!!data.fallbackImage && P.cfId(s.image) === data.fallbackImage);
+    if (s.image && open) data.replaces = s.image; else delete data.replaces;
+    // A picture offered before (a featured card once kept its logo) is used now
+    if (open && data.suggestImage) { take(data.suggestImage, 'article'); delete data.suggestImage; }
+    if (open && !data.image && page.image && !P.genericImage(page.image)) {
       // The same picture on two stories is the site's default share image, not this story's.
       // Matched exactly: D1 turns away a LIKE pattern over 50 bytes, and picture addresses are longer
       const twin = await DB.prepare("SELECT slug FROM press_links WHERE slug != ? AND json_extract(data, '$.imageSrc') = ?").bind(slug, page.image).first();
       if (twin) data.genericImage = true;
       else {
         data.imageSrc = page.image;
-        let r = await saveImage(env, page.image, `press/${slug}`, { fetchImpl, referer: url });
+        let r = await saveImage(env, page.image, `press/${slug}`, { fetchImpl, referer: url, browser: browserOf(env) });
         let from = data.fromArchive ? 'archive' : 'article';
         // The outlet won't hand the picture to Cloudflare (or it's gone): the Archive's copy of it
         if (!r.imageId && !/imagedelivery|web\.archive\.org/.test(page.image)) {
@@ -800,11 +834,22 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
         if (r.imageId) { take(r.imageId, from); delete data.imageError; } else { data.imageError = r.error || 'skipped'; data.pictureTries = (data.pictureTries || 0) + 1; }
       }
     }
-    // A featured card with no picture, video or logo would show the outlet's name in plain type:
-    // the room of the kid it's about instead
-    if (!s.image && !data.image && !data.suggestImage && s.featured && !s.videoId && !hasLogo) {
-      const kid = (s.kids || []).map((k) => loadOne(DB, 'kids', k));
-      for (const k of await Promise.all(kid)) { const id = P.kidPhoto(k?.data); if (id) { data.image = id; data.imageFrom = `kid:${k.slug}`; break; } }
+    // No picture of its own: a real SOARD makeover instead, the closest one to the story.
+    // The room of the kid it's about; else the community project it names; else a room
+    // SOARD built that year. A video story already shows its video
+    if (!s.image && !data.image && !s.videoId) {
+      const kids = (await loadAll(DB, 'kids')).map((k) => k.data);
+      const kidBy = new Map(kids.map((k) => [k.slug, k]));
+      const { late, misread } = await wrongKids(DB, slug, s, data, kidBy);
+      const about = [...new Set([...(s.kids || []).filter((k) => !late.includes(k) && !misread.includes(k)), ...(data.kids || [])])].map((k) => kidBy.get(k)).filter((k) => k && !P.kidAfterStory(s, k) && P.kidPhoto(k));
+      if (about.length) take(P.kidPhoto(about[0]), `kid:${about[0].slug}`);
+      if (!data.image) {
+        const projects = (await loadAll(DB, 'community')).map((c) => c.data);
+        const named = P.communityCandidates(corpus(P.storyTitle(s), [page.description, s.excerpt].filter(Boolean).join('\n'), page.text || ''), projects)[0];
+        if (named) take(P.communityPhoto(named), `community:${named.slug}`);
+      }
+      // (never a kid just found not to be in it)
+      if (!data.image) { const k = P.yearRoom({ ...s, slug }, kids.filter((x) => !misread.includes(x.slug) && !late.includes(x.slug))); if (k) take(P.kidPhoto(k), `year:${k.slug}`); }
     }
     data.stage = 'save';
     await save({ data: JSON.stringify(data) });
@@ -817,12 +862,13 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   if (outlet) { next.outletLogo = outlet.slug; next.outlet = outlet.name; }
   next.title = P.storyTitle({ ...s, outletAliases: outlet ? [outlet.name, ...(outlet.aliases || [])] : [] });
   if (data.url && P.googleLink(s.url)) next.url = data.url;
-  if (data.image && !s.image) next.image = data.image;
+  // A picture for a story that has none, or the story's own instead of a stand-in room
+  if (data.image && (!s.image || (data.replaces && s.image === data.replaces && data.image !== s.image))) next.image = data.image;
   if (data.summary && (!P.plain(s.excerpt) || P.junkSummary(s) || P.hasMarkup(s.excerpt))) next.excerpt = data.summary;
   else if (P.hasMarkup(s.excerpt)) next.excerpt = P.plain(s.excerpt);
   const kidBy = new Map((await loadAll(DB, 'kids')).map((k) => [k.slug, k.data]));
-  // A makeover after the story can't be what it's about (a date put right later shows it)
-  const after = (s.kids || []).filter((k) => P.kidAfterStory(s, kidBy.get(k)));
+  const { late: lateKids, misread } = await wrongKids(DB, slug, s, data, kidBy);
+  const after = [...lateKids, ...misread];
   const keptKids = (s.kids || []).filter((k) => !after.includes(k));
   if (after.length) next.kids = keptKids;
   if (!keptKids.length && data.kids?.length) next.kids = data.kids;
@@ -838,11 +884,18 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
     if ('url' in diff.after) { what.push('the outlet’s own link'); bump('googleLinksFixed'); }
     if ('image' in diff.after) {
       const from = String(data.imageFrom || '');
-      what.push(from.startsWith('kid:') ? `${kidName(from.slice(4))}’s room as its picture` : from === 'archive' ? 'picture (from the archived copy)' : 'picture');
+      const projectName = from.startsWith('community:') ? (P.plain((await loadOne(DB, 'community', from.slice(10)))?.data?.name) || from.slice(10)) : '';
+      what.push(from.startsWith('kid:') ? `${kidName(from.slice(4))}’s room as its picture`
+        : from.startsWith('community:') ? `${projectName} as its picture`
+        : from.startsWith('year:') ? `a ${kidBy.get(from.slice(5))?.year || ''} makeover (${kidName(from.slice(5))}’s room) as its picture`
+        : from === 'archive' ? 'picture (from the archived copy)' : 'picture');
       bump('pictures');
     }
     if ('excerpt' in diff.after) { what.push('summary'); bump('summaries'); }
-    if (after.length) { what.push(`unlinked ${after.map(kidName).join(', ')} (that makeover came after the story)`); bump('kidLinksRemoved', after.length); }
+    const late = lateKids;
+    if (late.length) what.push(`unlinked ${late.map(kidName).join(', ')} (that makeover came after the story)`);
+    if (misread.length) what.push(`unlinked ${misread.map(kidName).join(', ')} (the story means ${misread.map((k) => (/^peter$/i.test(P.plain(kidBy.get(k)?.name)) ? 'Peter Ranney' : `“${P.plain(kidBy.get(k)?.name)}” the word or place`)).join(', ')}, not the kid)`);
+    if (after.length) bump('kidLinksRemoved', after.length);
     const added = (clean.kids || []).filter((k) => !(s.kids || []).includes(k));
     if (added.length) { what.push(added.map(kidName).join(', ')); bump('kidLinks', added.length); }
     if ('partners' in diff.after) { what.push(`${clean.partners.length === 1 ? 'a partner' : `${clean.partners.length} partners`}`); bump('partnerLinks', clean.partners.length); }
@@ -850,10 +903,11 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   }
   const keep = {};
   if (data.suggestVideo) keep.suggestVideo = data.suggestVideo;
-  if (data.suggestImage) keep.suggestImage = data.suggestImage;
+  if (data.suggestImage && !clean.image) keep.suggestImage = data.suggestImage;
   if (data.siteVideo) keep.siteVideo = data.siteVideo;
   if (data.imageSrc) keep.imageSrc = data.imageSrc;
   if (data.imageFrom && clean.image === data.image) keep.imageFrom = data.imageFrom;
+  if (data.fallbackImage && P.cfId(clean.image) === data.fallbackImage) keep.fallbackImage = data.fallbackImage;
   if (data.imageError) { keep.imageError = data.imageError; keep.pictureTries = data.pictureTries || 1; }
   if (data.fromArchive) keep.fromArchive = true;
   await save({ enriched_at: iso(), url: clean.url || null, data: JSON.stringify(keep) });
@@ -1042,7 +1096,7 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
               c.partnerLinks ? `${c.partnerLinks} partner links` : null,
             ].filter(Boolean);
             await tell(env, {
-              icon: '🧹', title: state.tidy.round > 1 ? 'Press list: a second look' : 'Press list tidied',
+              icon: '🧹', title: state.tidy.round > 2 ? 'Press list: a real makeover picture for every story' : state.tidy.round > 1 ? 'Press list: a second look' : 'Press list tidied',
               lead: `${parts.length ? parts.map((x) => x[0].toUpperCase() + x.slice(1)).join('\n') : 'Nothing needed changing.'}\nEvery change is listed in Press, and each one can be undone.`,
               buttons: [{ label: 'See every change', url: adminLink('press/found') }],
             }, 'news');

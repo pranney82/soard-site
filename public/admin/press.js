@@ -259,6 +259,7 @@ function StatusPanel({ c, attention, onFilter }) {
   const tidying = !!st && (st.tidy?.version || 0) < st.tidyVersion;
   const checked = Object.values(c.links).filter((l) => l.enrichedAt).length;
   const second = tidying && (st.tidy?.round || 0) > 1;
+  const third = tidying && (st.tidy?.round || 0) > 2;
   const scans = Object.values(st?.scans || {}).map((x) => x?.at).filter(Boolean).sort();
   const last = scans[scans.length - 1];
   const needs = review + attention;
@@ -284,7 +285,8 @@ function StatusPanel({ c, attention, onFilter }) {
         <p class="pr-stat__label">Pictures</p>
         <p class="pr-stat__big">${pictured} <span class="pr-stat__of">of ${total}</span></p>
         <span class="pr-meter" aria-hidden="true"><span style=${`width:${total ? Math.round((pictured / total) * 100) : 0}%`}></span></span>
-        <p class="pr-stat__sub">${second && st.tidy?.phase === 'stories' ? `The monitor is looking at every story again for its picture and who it’s about: ${Math.min(checked, total)} of ${total} done.`
+        <p class="pr-stat__sub">${third ? 'The monitor is giving every story without one a real makeover picture: its own, the kid’s room, or a room SOARD built that year.'
+          : second && st.tidy?.phase === 'stories' ? `The monitor is looking at every story again for its picture and who it’s about: ${Math.min(checked, total)} of ${total} done.`
           : second ? 'The monitor is about to look at every story again for its picture and who it’s about.'
           : pictured < total ? 'Without one, the list shows the kid’s room or the outlet’s logo.' : 'Every story has one.'}</p>
       </button>
@@ -862,7 +864,7 @@ function PictureCard({ c, rec, outlet, link, set, setRec, pulling, onPull, onBro
     .map((k) => ({ kid: k, ids: [...new Set([k.heroImage, ...(k.photos || []).map((x) => x?.url)].map((x) => PS.cfId(x)).filter(Boolean))].slice(0, 4) }))
     .filter((x) => x.ids.length).slice(0, 2);
   const from = rec.image && link?.imageFrom && PS.cfId(rec.image) ? link.imageFrom : null;
-  const fromKid = from?.startsWith('kid:') ? c.kidBySlug.get(from.slice(4)) : null;
+  const fromKid = from?.startsWith('kid:') || from?.startsWith('year:') ? c.kidBySlug.get(from.slice(from.indexOf(':') + 1)) : null;
   return html`<section class="card pr-card">
     <h3>Picture and video</h3>
     <div class="pr-pic">
@@ -871,7 +873,10 @@ function PictureCard({ c, rec, outlet, link, set, setRec, pulling, onPull, onBro
         <p class="pr-pic__says">${rec.featured
           ? (shows === 'video' ? 'The featured card plays this video.' : shows === 'picture' ? 'The featured card shows this picture.' : shows === 'logo' ? `No picture: the featured card shows ${outlet.name}’s logo.` : 'No picture or logo: the featured card shows the outlet’s name in plain type.')
           : 'Featured cards show it. The archive list shows words only.'}</p>
-        ${from ? html`<p class="pr-pic__from">${fromKid ? `The monitor chose ${PS.plain(fromKid.name)}’s room: the story had no picture it could use.` : from === 'archive' ? 'Pulled by the monitor from the archived copy of the story.' : 'Pulled by the monitor from the story.'}</p>` : null}
+        ${from ? html`<p class="pr-pic__from">${from.startsWith('year:') && fromKid ? `The story names no kid and had no picture it could use, so the monitor chose a room SOARD built in ${fromKid.year}: ${PS.plain(fromKid.name)}’s.`
+          : fromKid ? `The monitor chose ${PS.plain(fromKid.name)}’s room: the story had no picture it could use.`
+          : from.startsWith('community:') ? 'The monitor chose a photo of the community project the story is about: it had no picture it could use.'
+          : from === 'archive' ? 'Pulled by the monitor from the archived copy of the story.' : 'Pulled by the monitor from the story.'}</p>` : null}
       </div>
       <div class="pr-pic__tools">
         <div class="pr-btns">
@@ -1062,8 +1067,9 @@ function FoundView({ c, error }) {
     </div>
 
     ${tidying || tidyBits.length ? html`<section class=${`card pr-tidy${tidying ? ' is-running' : ''}`}>
-      <h3>${second ? (tidying ? 'Taking a second look at every story' : 'Every story had a second look') : tidying ? 'Tidying the press list' : 'The press list was tidied'}${st.tidy?.doneAt ? html` <span class="pr-muted">${ago(st.tidy.doneAt)}</span>` : null}</h3>
-      <p>${second && tidying ? 'Once, by itself: each story’s page read again for its picture (or its archived copy’s), the kids and partners it names linked, a kid whose makeover came after the story taken off, and Google News finds that never got their link tried again. Each change is listed below and can be undone.'
+      <h3>${(st.tidy?.round || 0) > 2 ? (tidying ? 'Finding a real makeover picture for every story' : 'Every story has a real makeover picture') : second ? (tidying ? 'Taking a second look at every story' : 'Every story had a second look') : tidying ? 'Tidying the press list' : 'The press list was tidied'}${st.tidy?.doneAt ? html` <span class="pr-muted">${ago(st.tidy.doneAt)}</span>` : null}</h3>
+      <p>${(st.tidy?.round || 0) > 2 && tidying ? 'Once, by itself: each story without a picture or a kid read again (through a browser when the outlet refuses the server), then given the best real makeover picture: the article’s own, the room of the kid it’s about, the community project it names, or a room SOARD built that year. Each change is listed below and can be undone.'
+        : second && tidying ? 'Once, by itself: each story’s page read again for its picture (or its archived copy’s), the kids and partners it names linked, a kid whose makeover came after the story taken off, and Google News finds that never got their link tried again. Each change is listed below and can be undone.'
         : tidying ? 'Once, by itself: every story linked to its outlet, duplicates merged, Google News links swapped for the outlet’s own, pictures pulled from the stories, kids and partners linked. Each change is listed below and can be undone.' : 'Each change is listed below and can be undone.'}</p>
       ${tidyBits.length ? html`<p class="pr-tidy__bits">${tidyBits.join(' · ')}</p>` : null}
     </section>` : null}

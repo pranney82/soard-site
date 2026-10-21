@@ -405,6 +405,46 @@ export function kidNames(kid) {
 const AMBIGUOUS_NAMES = new Set(['georgia', 'atlanta', 'roswell', 'marietta', 'savannah', 'augusta', 'macon', 'athens', 'austin', 'dallas', 'paris', 'jordan', 'carolina', 'virginia', 'peter', 'holly', 'ranney', 'sunny', 'hope', 'grace', 'faith', 'joy', 'charity', 'christian', 'angel', 'summer', 'autumn', 'winter', 'may', 'june', 'april', 'chase', 'hunter', 'will', 'mark', 'bill', 'rose', 'ivy', 'lily', 'brooke', 'river', 'sky', 'star', 'king', 'prince', 'major', 'noble', 'royal', 'miles', 'grant', 'page']);
 export const ambiguousName = (n) => AMBIGUOUS_NAMES.has(String(n || '').toLowerCase().split(/\s+/)[0]);
 const wordRe = (w, flags = '') => new RegExp(`(^|[^\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}(?=$|[^\\p{L}\\p{N}])`, `u${flags}`);
+// Capitalized words after a kid's name in their story that aren't a family name
+const NOT_FAMILY = new Set('both some self wish make barbie hope love loves just also even still never always every many most more much only very well when where while with will would could should said says told this that their there they them these those what which whom whose your from into onto upon over under about after before again because being between during each here however other same such than then through until were was has had have his her hers its our ours mom mommy dad daddy family room rooms home house makeover project team sunshine ranney soard christmas easter thanksgiving january february march april june july august september october november december monday tuesday wednesday thursday friday saturday sunday'.split(' '));
+/**
+ * What tells a kid apart from the word their name also is: their family name
+ * (from their page: "Grace Cantrell", "the Bowman family") and their diagnosis
+ * ("Cerebral Palsy", "SMA").
+ */
+export function kidContext(kid) {
+  const bio = plain([kid?.bio, kid?.shortDescription, kid?.metaDescription].filter(Boolean).join(' \n '));
+  const out = new Set();
+  for (const f of kidNames(kid).filter((n) => !/\s/.test(n))) {
+    for (const m of bio.matchAll(new RegExp(`(?:^|[^\\p{L}])${f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:'s|’s)?\\s+([A-Z][a-z]{3,})\\b`, 'gu'))) if (!NOT_FAMILY.has(m[1].toLowerCase())) out.add(m[1]);
+  }
+  for (const m of bio.matchAll(/\bthe\s+([A-Z][a-z]{3,})\s+(?:family|home|house|household|boys|girls|kids|children)\b/g)) if (!NOT_FAMILY.has(m[1].toLowerCase())) out.add(m[1]);
+  for (const part of plain(kid?.diagnosis).split(/[,;/&]|\band\b/i)) {
+    const t = part.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+    if (t.length >= 5) out.add(t);
+    const acr = part.match(/\(([A-Z][A-Z0-9-]{1,7})\)/)?.[1];
+    if (acr) out.add(acr);
+  }
+  return [...out];
+}
+/**
+ * A kid whose name is also a word or a place, told apart in the text: by their
+ * family name or diagnosis, or by the name plainly meaning a child ("Christian
+ * is a 16-year-old", "Georgia’s new room", "Grace, 7,"). Not for a founder’s
+ * name in a story about the founders ("Peter has…" with Peter Ranney in it).
+ */
+export function kidInContext(kid, text) {
+  const body = String(text || '');
+  if (kidContext(kid).some((t) => wordRe(t, /^[A-Z0-9-]+$/.test(t) ? '' : 'i').test(body))) return true;
+  return kidNames(kid).some((n) => {
+    if (/^(peter|holly)$/i.test(n) && /\bRanney\b/.test(body)) return false;
+    const N = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^\\p{L}])${N}(?:(?:'s|’s)\\s+(?:new\\s+|dream\\s+|accessible\\s+)?(?:room|bedroom|bathroom|space|home|house|makeover|family|mom|mother|dad|father|parents|wheelchair|therapy)\\b|,?\\s+(?:is\\s+|was\\s+)?(?:a|an)\\s+\\d{1,2}[- ]year[- ]old|,\\s*\\d{1,2},|\\s+(?:was\\s+born|was\\s+diagnosed|has\\s+been\\s+diagnosed|uses\\s+a\\s+wheelchair|loves\\s+|smiles|giggles))`, 'u').test(body);
+  });
+}
+/** A kid whose every name is also a word, a place or a founder's name (Peter, Georgia, Grace, Angel) */
+export const ambiguousKid = (kid) => { const n = kidNames(kid); return n.length > 0 && n.every(ambiguousName); };
+
 /** A story can't be about a makeover that came after it (a year's slack for guessed dates) */
 export const kidAfterStory = (story, kid) => { const y = yearOf(story); const ky = Number(kid?.year) || null; return !!(y && ky && ky > y + 1); };
 /**
@@ -428,6 +468,9 @@ export function kidCandidates(text, kids, year, { title = '' } = {}) {
     if (!hits.length) continue;
     const count = hits.reduce((n, h) => n + (body.match(new RegExp(wordRe(h).source, 'gu')) || []).length, 0);
     const ambiguous = hits.every(ambiguousName);
+    // Peter, Georgia, Grace: only with their family name or diagnosis in the article too
+    // (Workers AI once took the founder for a kid named Peter, and the state for Georgia)
+    if (ambiguous && !kidInContext(k, body)) continue;
     const followUp = !!(year && ky && ky < year - 2);
     if (followUp && (ambiguous || !(hits.some((h) => wordRe(h).test(head)) || count >= 2))) continue;
     out.push({ slug: k.slug, name: k.name, year: ky, diagnosis: plain(k.diagnosis).slice(0, 80), matched: hits, count, ambiguous, ...(followUp ? { followUp: true } : {}) });
@@ -436,6 +479,33 @@ export function kidCandidates(text, kids, year, { title = '' } = {}) {
 }
 /** The photo a kid's page leads with (a Cloudflare Images id), for showing who a story is about */
 export const kidPhoto = (kid) => cfId(kid?.heroImage || kid?.photos?.find?.((p) => p?.url)?.url || '');
+/** A community project's photo (its finished room first) */
+export const communityPhoto = (c) => cfId(c?.heroImage || c?.afterPhotos?.find?.((p) => p?.url)?.url || c?.photos?.find?.((p) => p?.url)?.url || '');
+/** Community projects an article names in full ("Children's Healthcare of Atlanta") */
+export function communityCandidates(text, projects) {
+  const body = plain(text).replace(/[’‘]/g, "'");
+  return (projects || []).filter((c) => {
+    const name = plain(c?.name).replace(/[’‘]/g, "'");
+    return c?.slug && c.publishStatus !== 'draft' && name.length >= 6 && communityPhoto(c) && wordRe(name, 'i').test(body);
+  });
+}
+/**
+ * A room SOARD built the year of a story that names no kid (a profile, an
+ * award, the store): a makeover from that year, else the nearest year before
+ * it. Which one is fixed by the story's slug, so stories from one year show
+ * different rooms and a story keeps its room.
+ */
+export function yearRoom(story, kids) {
+  const y = yearOf(story);
+  const ok = (kids || []).filter((k) => k?.slug && k.publishStatus !== 'draft' && Number(k.year) && kidPhoto(k));
+  if (!ok.length) return null;
+  const years = [...new Set(ok.map((k) => Number(k.year)))].sort((a, b) => a - b);
+  const pick = y ? (years.includes(y) ? y : [...years].reverse().find((x) => x < y) ?? years[0]) : years[years.length - 1];
+  const list = ok.filter((k) => Number(k.year) === pick).sort((a, b) => a.slug.localeCompare(b.slug));
+  let h = 0;
+  for (const ch of String(story?.slug || story?.title || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return list[h % list.length];
+}
 // Partner names that are also everyday words or places
 const GENERIC = new Set(['home', 'homes', 'design', 'designs', 'atlanta', 'georgia', 'roswell', 'sunshine', 'hope', 'grace', 'faith', 'joy', 'love', 'build', 'builders', 'construction', 'paint', 'flooring', 'interiors', 'lighting', 'electric', 'plumbing', 'kitchen', 'bath', 'studio', 'group', 'the', 'and', 'friends', 'family', 'church', 'community', 'foundation']);
 /** Partners named in an article (their full name, as written); Workers AI confirms */

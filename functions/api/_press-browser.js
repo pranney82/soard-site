@@ -45,8 +45,10 @@ export const hasBrowser = (env) => !!env?.BROWSER;
  *             otherwise the bytes as sent (an RSS feed, not Chrome's XML viewer)
  *   leave:    (url) => true for where a redirect should end; the browser stops
  *             there and reports the address without loading that page
+ *   binary:   a picture: its bytes and type (sites that refuse the server a
+ *             picture, like Atlanta Magazine and Online Athens, hand it to a browser)
  */
-export async function browserGet(env, url, { launch = null, timeout = 15000, rendered = false, leave = null } = {}) {
+export async function browserGet(env, url, { launch = null, timeout = 15000, rendered = false, leave = null, binary = false, referer = '' } = {}) {
   if (!hasBrowser(env) && !launch) return { ok: false, error: 'No browser here (the BROWSER binding)' };
   let b = null;
   let page = null;
@@ -70,7 +72,7 @@ export async function browserGet(env, url, { launch = null, timeout = 15000, ren
     const started = Date.now();
     let res = null;
     let failed = null;
-    try { res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout }); } catch (e) { failed = e; }
+    try { res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout, ...(referer ? { referer } : {}) }); } catch (e) { failed = e; }
     if (leave) {
       // The page sends the browser on with its own script: wait for it
       while (!left && Date.now() - started < timeout) await new Promise((r) => setTimeout(r, 200));
@@ -79,6 +81,10 @@ export async function browserGet(env, url, { launch = null, timeout = 15000, ren
     }
     if (failed || !res) return { ok: false, status: 0, error: failed?.message || 'No answer', via: 'browser' };
     const status = res.status();
+    if (binary) {
+      const bytes = await res.buffer().catch(() => null);
+      return { ok: status >= 200 && status < 300 && !!bytes?.length, status, finalUrl: page.url(), bytes, type: (res.headers()['content-type'] || '').split(';')[0].trim().toLowerCase(), via: 'browser' };
+    }
     const body = rendered ? await page.content() : await res.text().catch(() => '');
     return { ok: status >= 200 && status < 300, status, finalUrl: page.url(), body, via: 'browser' };
   } catch (e) {
