@@ -60,8 +60,9 @@ async function run(width) {
   const page = await browser.newPage();
   await page.setViewport({ width, height: phone ? 844 : 900, deviceScaleFactor: 1, isMobile: phone, hasTouch: phone });
   const errors = [];
-  // A static server has no Pages Functions, so /api/* 404s there; that's the server, not the page
-  page.on('console', (m) => { if (m.type() === 'error' && !/\/api\//.test(`${m.location()?.url || ''} ${m.text()}`)) errors.push(m.text()); });
+  // A static server has no Pages Functions, so /api/* 404s there; that's the server, not the page.
+  // Cloudflare's bot check (footer signup) logs "%c%d … NaN" from its own frame on every page.
+  page.on('console', (m) => { if (m.type() === 'error' && !/\/api\/|challenges\.cloudflare\.com/.test(`${m.location()?.url || ''} ${m.text()}`)) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
   // Tour thumbnails are the only width-only, q=78 transforms on the page
   let tourOpened = false;
