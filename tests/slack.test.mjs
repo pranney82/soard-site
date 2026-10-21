@@ -432,61 +432,6 @@ test('with SLACK_SIGNING_SECRET set, only Slack-signed clicks are answered', asy
   assert.equal((await actions.onRequestPost({ env: signedEnv, request: click(blockActions, { 'X-Slack-Request-Timestamp': old, 'X-Slack-Signature': oldSig }) })).status, 401, 'a replayed click is refused');
 });
 
-// ─── The one-time preview in Slack ───────────────────────────────────
-
-test('the preview: one top post, every sample in its thread five a minute, once, and nobody emailed', async () => {
-  const preview = await import('../functions/api/_slack-preview.js');
-  await pick();
-  const total = preview.previewSamples().length;
-  assert.ok(total >= 25, 'every kind of message is in it');
-  const t0 = Date.now();
-  const first = await preview.maybeSlackPreview(env, { now: t0, gapMs: 0 });
-  assert.deepEqual({ posted: first.posted, next: first.next, done: first.done }, { posted: 5, next: 5, done: false });
-  const [top, ...replies] = posts().map((p) => p.body);
-  assert.equal(top.thread_ts, undefined);
-  assert.equal(renderSlack(top).split('\n')[0], '🧪 Preview: the new website alerts');
-  assert.equal(replies.length, 5);
-  for (const r of replies) {
-    assert.ok(r.thread_ts, 'samples go in the thread');
-    assert.equal(r.reply_broadcast, undefined, 'and never into the channel');
-  }
-  assert.match(replies[0].blocks[0].elements[0].text, new RegExp(`^\\*1 of ${total}\\* · Applications · New application · posts in #website-alerts$`));
-  assert.equal(replies[0].blocks[1].type, 'header');
-
-  // A heartbeat that overlaps the one posting does nothing
-  const row = await env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(preview.SLACK_PREVIEW_KEY).first();
-  const st = JSON.parse(row.data);
-  await env.DB.prepare('UPDATE site_config SET data = ? WHERE key = ?').bind(JSON.stringify({ ...st, leaseUntil: t0 + 60e3 }), preview.SLACK_PREVIEW_KEY).run();
-  assert.equal(await preview.maybeSlackPreview(env, { now: t0 + 1000, gapMs: 0 }), null);
-  await env.DB.prepare('UPDATE site_config SET data = ? WHERE key = ?').bind(JSON.stringify(st), preview.SLACK_PREVIEW_KEY).run();
-
-  let n = 0;
-  let r;
-  do { r = await preview.maybeSlackPreview(env, { now: t0 + (++n) * 60e3, gapMs: 0 }); } while (r && !r.done && n < 20);
-  assert.equal(r.done, true);
-  const all = posts().map((p) => p.body);
-  assert.equal(all.length, total + 1, 'the top post and each sample exactly once');
-  assert.ok(all.slice(1).every((p) => p.thread_ts === all.slice(1)[0].thread_ts), 'all under the one top post');
-  assert.equal(await preview.maybeSlackPreview(env, { now: t0 + 30 * 60e3, gapMs: 0 }), null, 'and never again');
-  assert.equal(calls.filter((c) => !c.url.startsWith('https://slack.com/')).length, 0, 'no email, nothing else');
-  assert.doesNotMatch(JSON.stringify(all), /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, 'no email address anywhere in it');
-});
-
-test('the preview waits for a channel, and a Slack refusal is retried on the next heartbeat without a second top post', async () => {
-  const preview = await import('../functions/api/_slack-preview.js');
-  assert.equal(await preview.maybeSlackPreview(env, { gapMs: 0 }), null, 'no channel picked yet: nothing, and nothing recorded');
-  await pick();
-  slack.postError = 'not_in_channel';
-  const failed = await preview.maybeSlackPreview(env, { gapMs: 0 });
-  assert.equal(failed.error, 'not_in_channel');
-  slack.postError = null;
-  const ok = await preview.maybeSlackPreview(env, { now: Date.now() + 120e3, gapMs: 0 });
-  assert.equal(ok.posted, 5);
-  assert.equal(posts().filter((p) => !p.body.thread_ts && p.body.blocks?.[0]?.text?.text === '🧪 Preview: the new website alerts').length, 2, 'one refused by Slack, then the one that landed: never two in the channel');
-  assert.equal(new Set(posts().filter((p) => p.body.thread_ts).map((p) => p.body.thread_ts)).size, 1);
-});
-
-
 // ─── Two channels: good news, and what needs a hand ──────────────────
 
 const pickBoth = () => notify.writeSlackConfig(env.DB, { channel: { id: 'C0GENERAL', name: 'general', private: false }, attention: { id: 'C0ALERTS1', name: 'website-alerts', private: false } });
@@ -534,7 +479,8 @@ test('the admin picks each channel, says hello in it, can put alerts back with t
   const hello = posts().at(-1).body;
   assert.equal(hello.channel, 'C0ALERTS1');
   assert.match(hello.text, /^👋 Website alerts that need a hand will post here\nPeter picked this channel/);
-  assert.match(renderSlack(hello), /Something failing during a live reveal says @here\./);
+  assert.match(renderSlack(hello), /Something failing during a live reveal pings whoever is active here, so phones buzz\./);
+  assert.doesNotMatch(JSON.stringify(hello), /@here|@channel|<!here>|<!channel>/, 'a hello never pings: Slack reads even the plain words as a mention');
 
   const t = await adminPost({ action: 'testAlert' });
   assert.equal(t.success, true);
@@ -561,16 +507,67 @@ test('the health check checks both channels and says which one needs the fix', a
   assert.equal((await notify.slackStatus(env)).ok, true);
 });
 
-test('the preview says where each sample posts, and its @here sample never pings anyone', async () => {
-  const preview = await import('../functions/api/_slack-preview.js');
-  await pickBoth();
+// ─── The one-time test run in Slack ──────────────────────────────────
+
+const runPreview = async (preview, start = Date.now()) => {
   let r;
   let n = 0;
-  do { r = await preview.maybeSlackPreview(env, { now: Date.now() + (n++) * 60e3, gapMs: 0 }); } while (r && !r.done && n < 20);
-  const replies = posts().map((p) => p.body).filter((b) => b.thread_ts);
-  const caption = (b) => b.blocks[0].elements[0].text;
-  assert.match(caption(replies.find((b) => / · Gift · /.test(caption(b)))), /posts in #general$/);
-  assert.match(caption(replies.find((b) => / · Kid profile hidden · /.test(caption(b)))), /posts in #website-alerts$/);
-  assert.doesNotMatch(JSON.stringify(posts().map((p) => p.body)), /<!here>|<!channel>/, 'nobody is pinged by the preview');
-  assert.ok(replies.some((b) => /@here/.test(JSON.stringify(b))), 'but the @here sample shows it');
+  do { r = await preview.maybeSlackPreview(env, { now: start + (n++) * 60e3, gapMs: 0 }); } while (r && !r.done && n < 20);
+  return r;
+};
+
+test('the test run: an intro, every alert as its own post, problems that really thread and turn ✅, a closing post, once', async () => {
+  const preview = await import('../functions/api/_slack-preview.js');
+  await pickBoth();
+  const samples = preview.previewSamples();
+  const first = await preview.maybeSlackPreview(env, { now: Date.now(), gapMs: 0 });
+  assert.deepEqual({ posted: first.posted, next: first.next, done: first.done }, { posted: 5, next: 5, done: false }, 'five a minute');
+  const r = await runPreview(preview, Date.now() + 60e3);
+  assert.equal(r.done, true);
+  const all = calls.filter((c) => /chat\.(postMessage|update)$/.test(c.url)).map((c) => ({ method: c.url.split('/').pop(), ...c.body }));
+  assert.ok(all.every((p) => p.channel === 'C0ALERTS1'), 'all in the Needs attention channel, never the one everyone talks in');
+  const posts = all.filter((p) => p.method === 'chat.postMessage');
+  const edits = all.filter((p) => p.method === 'chat.update');
+  assert.equal(renderSlack(posts[0]).split('\n')[0], '🧪 Test run: every alert the website sends');
+  assert.equal(renderSlack(posts.at(-1)).split('\n')[0], '✅ That’s the whole test run');
+  assert.equal(posts.length + edits.length, samples.length + 2, 'the intro, each sample once, the closing post');
+  const top = posts.filter((p) => !p.thread_ts);
+  assert.equal(top.length, samples.filter((x) => x.act === 'post').length + 2, 'every alert is its own post, like the real ones');
+  // The problems play out the way they really do
+  const cap = (p) => p.blocks?.[0]?.elements?.[0]?.text || '';
+  const stuck = top.find((p) => /^🧪 \*Test \d+ of \d+\* · Applications · Stuck, then fixes itself · real ones post here$/.test(cap(p)));
+  const stuckTs = `${posts.indexOf(stuck) + 1}.000100`;
+  assert.ok(edits.some((e) => e.ts === stuckTs && /✅ Unstuck/.test(renderSlack(e))), 'its first post edited into ✅');
+  assert.ok(posts.some((p) => p.thread_ts === stuckTs && p.reply_broadcast === true), 'and said so in its thread, shown in the channel too');
+  assert.ok(posts.filter((p) => p.thread_ts).length >= 4, 'reminders and resolutions reply in their own threads');
+  // Where the real ones go
+  assert.match(cap(top.find((p) => / · Gifts · Gift · /.test(cap(p)))), /real ones post in #general$/);
+  // Nobody is pinged, and nothing is emailed or remembered
+  assert.doesNotMatch(JSON.stringify(all), /@here|@channel|<!here>|<!channel>/, 'Slack reads even the plain words as a mention');
+  assert.ok(JSON.stringify(all).includes('＠here'), 'the ping sample still shows the mention');
+  assert.equal(calls.filter((c) => !c.url.startsWith('https://slack.com/')).length, 0, 'no email, nothing else');
+  assert.doesNotMatch(JSON.stringify(all), /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, 'no email address anywhere in it');
+  assert.equal((await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name = 'slack_open_posts'").first())?.n ? (await env.DB.prepare('SELECT count(*) AS n FROM slack_open_posts').first()).n : 0, 0, 'no open problems remembered');
+  assert.equal(await preview.maybeSlackPreview(env, { now: Date.now() + 60 * 60e3, gapMs: 0 }), null, 'and never again');
+});
+
+test('the test run waits for a Needs attention channel of its own, overlapping heartbeats post nothing twice, and a refusal is retried', async () => {
+  const preview = await import('../functions/api/_slack-preview.js');
+  assert.equal(await preview.maybeSlackPreview(env, { gapMs: 0 }), null, 'no channel picked yet');
+  await pick();
+  assert.equal(await preview.maybeSlackPreview(env, { gapMs: 0 }), null, 'only the good-news channel: it waits');
+  assert.equal(posts().length, 0);
+  await pickBoth();
+  slack.postError = 'not_in_channel';
+  assert.equal((await preview.maybeSlackPreview(env, { gapMs: 0 })).error, 'not_in_channel');
+  slack.postError = null;
+  const t0 = Date.now() + 120e3;
+  assert.equal((await preview.maybeSlackPreview(env, { now: t0, gapMs: 0 })).posted, 5);
+  // A heartbeat that overlaps the one posting does nothing
+  const row = await env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(preview.SLACK_PREVIEW_KEY).first();
+  const st = JSON.parse(row.data);
+  await env.DB.prepare('UPDATE site_config SET data = ? WHERE key = ?').bind(JSON.stringify({ ...st, leaseUntil: t0 + 120e3 }), preview.SLACK_PREVIEW_KEY).run();
+  assert.equal(await preview.maybeSlackPreview(env, { now: t0 + 1000, gapMs: 0 }), null);
+  const intros = posts().filter((p) => p.body.blocks?.[0]?.text?.text === '🧪 Test run: every alert the website sends');
+  assert.equal(intros.length, 2, 'one refused by Slack, then the one that landed: never two in the channel');
 });

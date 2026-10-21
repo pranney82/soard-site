@@ -767,8 +767,7 @@ export function staffSlack(app, accountId) {
       ['Applied before', repeats.length
         ? `⚠️ Possible repeat: ${repeats.slice(0, 2).map((m) => `${m.name}${m.year ? ` (${m.year})` : ''}`).join('; ')}${repeats.length > 2 ? ` and ${repeats.length - 2} more` : ''}`
         : a.previouslyApplied === 'Yes' ? 'The family says yes; no match found' : 'No'],
-      ['Video', app.files?.video ? 'Sent' : 'None'],
-      ['Photos', photos ? String(photos) : 'None'],
+      ['Sent', [app.files?.video ? 'a video' : null, photos ? `${photos} ${photos === 1 ? 'photo' : 'photos'}` : null].filter(Boolean).join(' and ') || 'No video or photos'],
       ['Language', app.lang === 'es' ? 'Spanish' : null],
       ['Heard about us', a.referredBy],
     ],

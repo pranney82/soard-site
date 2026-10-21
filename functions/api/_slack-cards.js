@@ -4,8 +4,8 @@
  *   📝 Headline                      header block: icon + a few words
  *   🧪 Test · nothing real happened   only for test data
  *   What happened, in a sentence.    the lead (several lines read as a list)
- *   Label        Label               facts: a two-column grid
- *   value        value
+ *   Label: value                     facts: one line each, so they read the
+ *   Label: value                     same in a wide channel, a thread or a phone
  *   What to do                       problems only
  *   [ Main action ]  [ Other ]       buttons; the first one is the main one
  *   Where it came from · when        footer: small grey line
@@ -20,7 +20,6 @@
 
 const MAX_HEADER = 150; // Slack's header limit
 const MAX_SECTION = 3000;
-const MAX_FIELD = 2000;
 const MAX_BUTTON = 75;
 
 /** Escape text for Slack mrkdwn (and the top-level text, which Slack parses too). */
@@ -83,7 +82,8 @@ export function slackCard({ icon = '', title, test, lead, facts = [], fix, butto
     .filter((f) => f && f.label && f.value != null && clean(f.value) !== '')
     .slice(0, 10);
   if (pairs.length) {
-    blocks.push({ type: 'section', fields: pairs.map((f) => ({ type: 'mrkdwn', text: cut(`*${esc(f.label)}*\n${esc(clean(f.value))}`, MAX_FIELD) })) });
+    // Not Slack's two-column fields: those stack label over value in a thread or on a phone
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: cut(pairs.map((f) => `*${esc(f.label)}:* ${esc(clean(f.value))}`).join('\n'), MAX_SECTION) } });
   }
 
   if (clean(fix)) blocks.push({ type: 'section', text: { type: 'mrkdwn', text: cut(`*What to do*\n${lines(fix).map(esc).join('\n')}`, MAX_SECTION) } });
@@ -137,7 +137,7 @@ export function helloCard({ role, who, shared = false, adminUrl }) {
   return role === 'attention'
     ? slackCard({
       icon: '👋', title: 'Website alerts that need a hand will post here', ...common,
-      lead: `${who} picked this channel in the admin. Problems during a live reveal, stuck applications, reveal invites and countdowns show up here. Each problem is one thread, and its first post turns ✅ when it’s fixed. Something failing during a live reveal says @here.`,
+      lead: `${who} picked this channel in the admin. Problems during a live reveal, stuck applications, reveal invites and countdowns show up here. Each problem is one thread, and its first post turns ✅ when it’s fixed. Something failing during a live reveal pings whoever is active here, so phones buzz.`,
     })
     : slackCard({
       icon: '🎉', title: 'Good news from the website will post here', ...common,

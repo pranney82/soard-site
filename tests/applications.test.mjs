@@ -186,7 +186,9 @@ test('submit loads everything into JobTread; the video follows once Stream is do
   const post = JSON.stringify(w.world.slack[0]);
   assert.match(w.world.slack[0].text, /^📝 New application: Avery, age \d+\nAccessible Bathroom and Dream Bedroom · /, 'the phone notification: who and what, no link');
   const card = renderSlack(w.world.slack[0]);
-  for (const fact of ['Applied before: No', 'Video: Sent', 'Diagnosis and contact details stay in the application.']) assert.ok(card.includes(fact), `${fact}\n${card}`);
+  for (const fact of ['Applied before: No', 'Sent: a video and ', 'Diagnosis and contact details stay in the application.']) assert.ok(card.includes(fact), `${fact}\n${card}`);
+  const facts = w.world.slack[0].blocks.find((b) => b.type === 'section' && /^\*Service area:\* /.test(b.text?.text || ''));
+  assert.ok(facts && !w.world.slack[0].blocks.some((b) => b.fields), 'one line per fact, never Slack’s two-column fields (they stack in a thread or on a phone)');
   assert.match(card, /\nService area: /);
   assert.deepEqual(slackButtons(w.world.slack[0]), [
     { label: 'Open the application', url: `https://sunshineonaranneyday.com/admin/#applications/${sub.id}` },

@@ -1,7 +1,7 @@
 /**
  * A Slack post as a person reads it, one line per part, for assertions:
- * header, context lines, section text, "Label: value" for each fact, and
- * "[Button]" for buttons. A post without blocks is its `text`.
+ * header, context lines, section text ("*Label:* value" facts read
+ * "Label: value"), and "[Button]" for buttons. A post without blocks is its `text`.
  */
 export function renderSlack(body) {
   if (!body?.blocks?.length) return body?.text ?? '';
@@ -10,7 +10,7 @@ export function renderSlack(body) {
     if (b.type === 'header') out.push(b.text.text);
     else if (b.type === 'context') out.push(b.elements.map((e) => e.text).join(' '));
     else if (b.type === 'section') {
-      if (b.text) out.push(b.text.text);
+      if (b.text) out.push(b.text.text.split('\n').map((l) => l.replace(/^\*([^*\n]+):\* /, '$1: ')).join('\n'));
       for (const f of b.fields || []) out.push(f.text.replace(/^\*(.+?)\*\n/, '$1: '));
     } else if (b.type === 'actions') out.push(b.elements.map((e) => `[${e.text.text}]`).join(' '));
   }

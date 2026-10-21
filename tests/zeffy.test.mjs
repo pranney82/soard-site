@@ -128,7 +128,7 @@ test('organizations, monthly gifts, other currencies, and Slack markup', () => {
   // The headline is plain text, which Slack never reads as a mention or link; everything else is escaped
   assert.equal(sneaky.blocks[0].text.type, 'plain_text');
   assert.match(sneaky.text, /from &lt;!channel&gt; A&amp;B/);
-  assert.match(JSON.stringify(sneaky.blocks[1]), /Campaign\*\\n&lt;https:\/\/evil\|click&gt;/);
+  assert.match(sneaky.blocks[1].text.text, /^\*Campaign:\* &lt;https:\/\/evil\|click&gt;$/m);
   assert.doesNotMatch(JSON.stringify(sneaky.blocks.slice(1)), /<!channel>|<https:\/\/evil/);
 });
 
