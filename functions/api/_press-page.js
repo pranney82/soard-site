@@ -172,6 +172,7 @@ export async function saveImage(env, imageUrl, id, { fetchImpl = fetch, referer 
     if (!res.ok) return { error: `The picture couldn’t be downloaded (${res.status})` };
     const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     if (type && !type.startsWith('image/')) return { error: `That isn’t a picture (${type})` };
+    if (type === 'image/svg+xml') return { error: 'That’s a drawing (a logo), not a picture of the story' };
     const bytes = await res.arrayBuffer();
     if (!bytes.byteLength) return { error: 'The picture was empty' };
     if (bytes.byteLength > MAX_IMAGE) return { error: 'The picture is over 10 MB' };

@@ -116,14 +116,27 @@ const Icon = ({ name, size = 16, label = null }) => html`<svg width=${size} heig
 
 // ─── Pictures ──────────────────────────────────────────────────────
 const cfImg = (src, t) => { const id = PS.cfId(src); return id ? `${CF}/${id}/${t}` : ''; };
-/** What the story's card would show: its picture, its video, its outlet's logo, or the outlet's name */
-function StoryThumb({ story, outlet, w = 112, h = 72, className = '' }) {
+/**
+ * What the story's card would show: its picture, its video, its outlet's logo,
+ * or the outlet's name. In the list (`kid`), a story with no picture of its own
+ * shows the room of the kid it's about instead of a logo.
+ */
+function StoryThumb({ story, outlet, w = 112, h = 72, className = '', kid = null }) {
   const [broken, setBroken] = useState(false);
   const yt = PS.youTubeId(story.videoId);
-  const src = !broken && story.image ? cfImg(story.image, `w=${w * 2},h=${h * 2},fit=cover,q=75`) : !broken && yt ? `https://i.ytimg.com/vi/${yt}/mqdefault.jpg` : null;
+  const kidId = kid ? PS.kidPhoto(kid) : '';
+  const src = !broken && story.image ? cfImg(story.image, `w=${w * 2},h=${h * 2},fit=cover,q=75`) : !broken && yt ? `https://i.ytimg.com/vi/${yt}/mqdefault.jpg` : !broken && kidId ? cfImg(kidId, `w=${w * 2},h=${h * 2},fit=cover,q=70`) : null;
   if (src) return html`<span class=${`pr-thumb ${className}`} style=${`--w:${w}px;--h:${h}px`}><img src=${src} alt="" loading="lazy" onError=${() => setBroken(true)} />${yt && !story.image ? html`<span class="pr-thumb__play"><${Icon} name="play" size=${12} /></span>` : null}</span>`;
   if (outlet?.logo) return html`<span class=${`pr-thumb pr-thumb--logo ${className}`} style=${`--w:${w}px;--h:${h}px`}><img src=${cfImg(outlet.logo, `w=${w * 2},h=${h * 2},fit=contain,q=80`)} alt="" loading="lazy" /></span>`;
   return html`<span class=${`pr-thumb pr-thumb--text ${className}`} style=${`--w:${w}px;--h:${h}px`} aria-hidden="true">${initials(outlet?.name || story.outlet)}</span>`;
+}
+/** A kid's face, from the photo their page leads with */
+function KidFace({ kid, size = 22 }) {
+  const [broken, setBroken] = useState(false);
+  const id = PS.kidPhoto(kid);
+  return id && !broken
+    ? html`<img class="pr-face" src=${cfImg(id, `w=${size * 2},h=${size * 2},fit=cover,gravity=face,q=70`)} alt="" width=${size} height=${size} loading="lazy" style=${`--s:${size}px`} onError=${() => setBroken(true)} />`
+    : html`<span class="pr-face pr-face--text" style=${`--s:${size}px`} aria-hidden="true">${initials(kid?.name)}</span>`;
 }
 function OutletMark({ outlet, size = 40 }) {
   return outlet?.logo
@@ -183,6 +196,8 @@ export function PressArea({ addToast = () => {}, setGlobalDirty = null, press = 
   };
 
   const outletBySlug = useMemo(() => new Map(outlets.map((o) => [o.slug, o])), [outlets]);
+  const kidBySlug = useMemo(() => new Map(kids.map((k) => [k.slug, k])), [kids]);
+  const partnerBySlug = useMemo(() => new Map(partners.map((p) => [p.slug, p])), [partners]);
   const links = ov?.links || {};
   const dupes = useMemo(() => {
     const m = new Map();
@@ -191,7 +206,7 @@ export function PressArea({ addToast = () => {}, setGlobalDirty = null, press = 
   }, [press]);
   const issuesOf = (s) => PS.storyIssues(s, { outletBySlug, link: links[s.slug] ? { status: links[s.slug].status, archive_url: links[s.slug].archiveUrl } : null, dupes: dupes.get(s.slug) || [] });
   const reviewCount = (ov?.mentions || []).filter((m) => m.state === 'review').length;
-  const ctx = { addToast, outlets, outletBySlug, press, kids, partners, links, ov, loadOv, onReload, issuesOf, go, kit, dupes, setGlobalDirty };
+  const ctx = { addToast, outlets, outletBySlug, kidBySlug, partnerBySlug, press, kids, partners, links, ov, loadOv, onReload, issuesOf, go, kit, dupes, setGlobalDirty };
 
   if (route.slug !== undefined && route.tab === 'stories' && route.slug !== '') {
     return html`<div class="pr-root"><${StoryEditor} key=${route.slug} slug=${route.slug} c=${ctx} onDirty=${(d) => { editorDirty.current = d; }} onBack=${() => go({ tab: 'stories' })} /></div>`;
@@ -220,27 +235,66 @@ const FILTERS = [
   { id: 'all', label: 'All' },
   { id: 'attention', label: 'Needs attention' },
   { id: 'featured', label: 'Featured' },
+  { id: 'kids', label: 'About a kid' },
+  { id: 'nopicture', label: 'No picture' },
   { id: 'monitor', label: 'Added by the monitor' },
   { id: 'drafts', label: 'Drafts' },
 ];
-function MonitorLine({ c }) {
+const kidsOf = (s, c) => (s.kids || []).map((k) => c.kidBySlug.get(k)).filter(Boolean);
+const hasPicture = (s) => !!(s.image || PS.youTubeId(s.videoId));
+
+/**
+ * Where things stand, in answer to "does anything need me?": what's waiting
+ * for a person, which stories are linked to kids (they show on the kid's
+ * page), how many have a picture, and what the monitor is doing.
+ */
+function StatusPanel({ c, attention, onFilter }) {
   const st = c.ov?.state;
-  if (!st) return null;
-  const tidying = (st.tidy?.version || 0) < st.tidyVersion;
+  const review = (c.ov?.mentions || []).filter((m) => m.state === 'review').length;
   const total = c.press.length;
+  const aboutKids = c.press.filter((s) => kidsOf(s, c).length);
+  const kidList = [...new Map(aboutKids.flatMap((s) => kidsOf(s, c)).map((k) => [k.slug, k])).values()];
+  const withPartners = c.press.filter((s) => (s.partners || []).length).length;
+  const pictured = c.press.filter(hasPicture).length;
+  const tidying = !!st && (st.tidy?.version || 0) < st.tidyVersion;
   const checked = Object.values(c.links).filter((l) => l.enrichedAt).length;
-  const scans = Object.values(st.scans || {}).map((x) => x?.at).filter(Boolean).sort();
+  const second = tidying && (st.tidy?.round || 0) > 1;
+  const scans = Object.values(st?.scans || {}).map((x) => x?.at).filter(Boolean).sort();
   const last = scans[scans.length - 1];
-  const review = (c.ov.mentions || []).filter((m) => m.state === 'review').length;
-  return html`<button type="button" class="pr-monitor" onClick=${() => c.go({ tab: 'found' })}>
-    <span class="pr-monitor__dot" aria-hidden="true"></span>
-    <span class="pr-monitor__text">
-      ${tidying ? html`<strong>Tidying the list.</strong> ${st.tidy?.phase === 'stories' ? `${Math.min(checked, total)} of ${total} stories checked: pictures, links, outlets, kids.` : st.tidy?.phase === 'duplicates' ? 'Merging duplicates.' : 'Linking every story to its outlet.'}`
-        : last ? html`The monitor last looked for new coverage ${ago(last)}.` : html`The monitor starts looking for coverage within the hour.`}
-      ${review ? html` <strong>${plural(review, 'article needs', 'articles need')} a look.</strong>` : null}
-    </span>
-    <span class="pr-monitor__go">See what it found</span>
-  </button>`;
+  const needs = review + attention;
+  const faces = kidList.slice(0, 9);
+  return html`<section class="card pr-status" aria-label="Where things stand">
+    <div class="pr-status__grid">
+      <div class=${`pr-stat${needs ? ' is-warn' : ' is-ok'}`}>
+        <p class="pr-stat__label">Needs you</p>
+        <p class="pr-stat__big">${needs ? html`<${Icon} name="warn" size=${18} /> ${plural(needs, 'thing')}` : html`<${Icon} name="check" size=${18} /> Nothing`}</p>
+        <p class="pr-stat__sub">${needs ? 'Everything else runs by itself.' : 'Nothing is waiting for a person. New coverage is found, checked and added by itself.'}</p>
+        ${needs ? html`<div class="pr-stat__acts">
+          ${review ? html`<button type="button" class="btn btn-primary btn-sm" onClick=${() => c.go({ tab: 'found' })}>${plural(review, 'found article')} to check</button>` : null}
+          ${attention ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onFilter('attention')}>${plural(attention, 'story', 'stories')} to fix</button>` : null}
+        </div>` : null}
+      </div>
+      <button type="button" class="pr-stat pr-stat--btn" onClick=${() => onFilter('kids')} aria-label=${`${aboutKids.length} stories are about ${kidList.length} kids. Show them`}>
+        <p class="pr-stat__label">About a kid</p>
+        <p class="pr-stat__big">${plural(aboutKids.length, 'story', 'stories')}</p>
+        ${faces.length ? html`<span class="pr-faces" aria-hidden="true">${faces.map((k) => html`<${KidFace} key=${k.slug} kid=${k} size=${28} />`)}${kidList.length > faces.length ? html`<span class="pr-face pr-face--more" style="--s:28px">+${kidList.length - faces.length}</span>` : null}</span>` : null}
+        <p class="pr-stat__sub">${plural(kidList.length, 'kid')}. Each story shows on that kid’s page${withPartners ? `; ${withPartners} also name a partner` : ''}.</p>
+      </button>
+      <button type="button" class="pr-stat pr-stat--btn" onClick=${() => onFilter('nopicture')} aria-label=${`${pictured} of ${total} stories have a picture. Show the ones without`}>
+        <p class="pr-stat__label">Pictures</p>
+        <p class="pr-stat__big">${pictured} <span class="pr-stat__of">of ${total}</span></p>
+        <span class="pr-meter" aria-hidden="true"><span style=${`width:${total ? Math.round((pictured / total) * 100) : 0}%`}></span></span>
+        <p class="pr-stat__sub">${second && st.tidy?.phase === 'stories' ? `The monitor is looking at every story again for its picture and who it’s about: ${Math.min(checked, total)} of ${total} done.`
+          : second ? 'The monitor is about to look at every story again for its picture and who it’s about.'
+          : pictured < total ? 'Without one, the list shows the kid’s room or the outlet’s logo.' : 'Every story has one.'}</p>
+      </button>
+    </div>
+    <button type="button" class="pr-status__foot" onClick=${() => c.go({ tab: 'found' })}>
+      <span class="pr-monitor__dot" aria-hidden="true"></span>
+      <span>${tidying && !second ? html`<strong>Tidying the list.</strong> ${st.tidy?.phase === 'stories' ? `${Math.min(checked, total)} of ${total} stories checked.` : ''}` : last ? `The monitor last looked for new coverage ${ago(last)}.` : 'The monitor starts looking for coverage within the hour.'}</span>
+      <span class="pr-monitor__go">See what it found</span>
+    </button>
+  </section>`;
 }
 
 function StoriesView({ c, onAdd }) {
@@ -258,17 +312,23 @@ function StoriesView({ c, onAdd }) {
     all: c.press.length,
     attention: withIssues.filter((x) => x.issues.some((i) => i.level === 'warn')).length,
     featured: c.press.filter((s) => s.featured).length,
+    kids: c.press.filter((s) => kidsOf(s, c).length).length,
+    nopicture: c.press.filter((s) => !hasPicture(s)).length,
     monitor: c.press.filter((s) => monitorSlugs.has(s.slug)).length,
     drafts: c.press.filter((s) => PS.isDraft(s)).length,
   };
+  const listRef = useRef(null);
+  const showFilter = (f) => { setQ(''); setFilter(f); requestAnimationFrame(() => listRef.current?.scrollIntoView?.({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' })); };
   const needle = q.trim().toLowerCase();
   const shown = withIssues.filter(({ s, issues }) => {
     if (filter === 'attention' && !issues.some((i) => i.level === 'warn')) return false;
     if (filter === 'featured' && !s.featured) return false;
+    if (filter === 'kids' && !kidsOf(s, c).length) return false;
+    if (filter === 'nopicture' && hasPicture(s)) return false;
     if (filter === 'monitor' && !monitorSlugs.has(s.slug)) return false;
     if (filter === 'drafts' && !PS.isDraft(s)) return false;
     if (!needle) return true;
-    return [s.title, PS.outletNameFor(s, c.outletBySlug), s.date, PS.CATEGORY_LABELS[s.category]].some((v) => String(v || '').toLowerCase().includes(needle));
+    return [s.title, PS.outletNameFor(s, c.outletBySlug), s.date, PS.CATEGORY_LABELS[s.category], ...kidsOf(s, c).map((k) => k.name), ...(s.partners || []).map((p) => c.partnerBySlug.get(p)?.name)].some((v) => String(v || '').toLowerCase().includes(needle));
   }).sort((a, b) => String(b.s.date).localeCompare(String(a.s.date)) || String(a.s.slug).localeCompare(String(b.s.slug)));
   const byYear = new Map();
   for (const x of shown) { const y = PS.yearOf(x.s) || 'No date'; if (!byYear.has(y)) byYear.set(y, []); byYear.get(y).push(x); }
@@ -284,14 +344,14 @@ function StoriesView({ c, onAdd }) {
         <button type="button" class="btn btn-primary" onClick=${onAdd}><${Icon} name="plus" /> Add a story</button>
       </div>
     </div>
-    <${MonitorLine} c=${c} />
+    <${StatusPanel} c=${c} attention=${counts.attention} onFilter=${showFilter} />
     ${!needle && filter === 'all' && featured.length ? html`<${FeaturedOrder} c=${c} featured=${featured} />` : null}
-    <section class="card pr-list" aria-labelledby="pr-all">
+    <section class="card pr-list" aria-labelledby="pr-all" ref=${listRef}>
       <header class="pr-list__head">
         <h3 id="pr-all">${filter === 'all' && !needle ? 'All stories' : 'Stories'} <span class="ppl-count">${shown.length}</span></h3>
         <div class="pr-search">
           <${Icon} name="search" />
-          <input ref=${searchRef} type="search" class="form-input" placeholder="Search headlines and outlets" aria-label="Search stories" aria-keyshortcuts="/" value=${q} onInput=${(e) => setQ(e.target.value)} />
+          <input ref=${searchRef} type="search" class="form-input" placeholder="Search headlines, outlets, kids" aria-label="Search stories" aria-keyshortcuts="/" value=${q} onInput=${(e) => setQ(e.target.value)} />
         </div>
       </header>
       <div class="pr-pills" role="group" aria-label="Show">
@@ -304,7 +364,7 @@ function StoriesView({ c, onAdd }) {
             ${list.map(({ s, issues }) => html`<${StoryRow} key=${s.slug} s=${s} issues=${issues} c=${c} monitor=${monitorSlugs.has(s.slug)} />`)}
           </ul>
         </div>`) : html`<div class="pr-empty">
-          <p><strong>${needle ? `No stories match “${q.trim()}”.` : filter === 'attention' ? 'Nothing needs attention.' : 'No stories here.'}</strong></p>
+          <p><strong>${needle ? `No stories match “${q.trim()}”.` : filter === 'attention' ? 'Nothing needs attention.' : filter === 'nopicture' ? 'Every story has a picture.' : 'No stories here.'}</strong></p>
           ${needle || filter !== 'all' ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { setQ(''); setFilter('all'); }}>Show every story</button>` : html`<button type="button" class="btn btn-primary" onClick=${onAdd}>Add a story</button>`}
         </div>`}
     </section>`;
@@ -314,18 +374,24 @@ function StoryRow({ s, issues, c, monitor }) {
   const outlet = c.outletBySlug.get(s.outletLogo);
   const warn = issues.filter((i) => i.level === 'warn');
   const info = issues.filter((i) => i.level !== 'warn');
-  const people = (s.kids || []).length + (s.partners || []).length;
+  const kids = kidsOf(s, c);
+  const partners = (s.partners || []).map((p) => c.partnerBySlug.get(p)).filter(Boolean);
+  const who = [kids.length ? `About ${kids.map((k) => PS.plain(k.name)).join(', ')}` : null, partners.length ? `with ${partners.map((p) => PS.plain(p.name)).join(', ')}` : null].filter(Boolean).join(' ');
   return html`<li class="pr-row">
-    <button type="button" class="pr-row__open" onClick=${() => c.go({ tab: 'stories', slug: s.slug })} aria-label=${`${s.title}. ${PS.outletNameFor(s, c.outletBySlug)}, ${longDate(s.date)}${warn.length ? `. Needs: ${warn.map((i) => i.label).join(', ')}` : ''}`}>
-      <${StoryThumb} story=${s} outlet=${outlet} />
+    <button type="button" class="pr-row__open" onClick=${() => c.go({ tab: 'stories', slug: s.slug })} aria-label=${`${s.title}. ${PS.outletNameFor(s, c.outletBySlug)}, ${longDate(s.date)}${who ? `. ${who}` : ''}${warn.length ? `. Needs: ${warn.map((i) => i.label).join(', ')}` : ''}`}>
+      <${StoryThumb} story=${s} outlet=${outlet} kid=${kids[0] || null} />
       <span class="pr-row__body">
         <span class="pr-row__title">${s.featured ? html`<span class="pr-star" title="Featured"><${Icon} name="star" size=${13} /></span>` : null}${s.title || 'Untitled'}</span>
         <span class="pr-row__meta">
           <span class="pr-row__outlet">${PS.outletNameFor(s, c.outletBySlug) || 'No outlet'}</span>
           <span>${longDate(s.date)}</span>
           <span>${PS.CATEGORY_LABELS[s.category] || ''}</span>
-          ${people ? html`<span>${[(s.kids || []).length ? plural(s.kids.length, 'kid') : null, (s.partners || []).length ? plural(s.partners.length, 'partner') : null].filter(Boolean).join(', ')}</span>` : null}
         </span>
+        ${kids.length || partners.length ? html`<span class="pr-row__who" aria-hidden="true">
+          ${kids.map((k) => html`<span class="pr-who pr-who--kid" key=${k.slug}><${KidFace} kid=${k} size=${20} />${PS.plain(k.name)}${k.year ? html`<small>${k.year}</small>` : null}</span>`)}
+          ${partners.slice(0, 3).map((p) => html`<span class="pr-who" key=${p.slug}>${PS.plain(p.name)}</span>`)}
+          ${partners.length > 3 ? html`<span class="pr-who pr-who--more">+${partners.length - 3} more</span>` : null}
+        </span>` : null}
         ${PS.isDraft(s) || monitor || warn.length || info.length ? html`<span class="pr-row__chips">
           ${PS.isDraft(s) ? html`<span class="pr-chip pr-chip--draft">Draft</span>` : null}
           ${monitor ? html`<span class="pr-chip pr-chip--auto">Added by the monitor</span>` : null}
@@ -751,7 +817,7 @@ function StoryEditor({ slug, c, onBack, onDirty }) {
           <section class="card pr-card">
             <h3>Who it’s about</h3>
             <p class="pr-sub">A story linked to a kid shows on that kid’s page under In the news.</p>
-            <${PeoplePicker} label="Kids" items=${c.kids.filter((k) => k.publishStatus !== 'draft')} value=${rec.kids || []} onChange=${(v) => set('kids', v)} sub=${(k) => [k.year, PS.plain(k.diagnosis).slice(0, 40)].filter(Boolean).join(' · ')} />
+            <${PeoplePicker} label="Kids" face=${true} items=${c.kids.filter((k) => k.publishStatus !== 'draft')} value=${rec.kids || []} onChange=${(v) => set('kids', v)} sub=${(k) => [k.year, PS.plain(k.diagnosis).slice(0, 40)].filter(Boolean).join(' · ')} />
             <${PeoplePicker} label="Partners" items=${c.partners} value=${rec.partners || []} onChange=${(v) => set('partners', v)} sub=${(p) => p.level ? p.level[0].toUpperCase() + p.level.slice(1) : ''} />
           </section>
           ${narrow ? html`<div class="pr-side pr-side--stacked">${side}</div>` : null}
@@ -791,6 +857,12 @@ function PictureCard({ c, rec, outlet, link, set, setRec, pulling, onPull, onBro
   const shows = yt ? 'video' : rec.image ? 'picture' : outlet?.logo ? 'logo' : 'name';
   const suggestImage = link?.suggestImage && link.suggestImage !== rec.image ? link.suggestImage : null;
   const suggestVideo = link?.suggestVideo && link.suggestVideo !== yt ? link.suggestVideo : null;
+  // The kids it's about: their pages' photos, one click away
+  const kidShots = (rec.kids || []).map((k) => c.kidBySlug.get(k)).filter(Boolean)
+    .map((k) => ({ kid: k, ids: [...new Set([k.heroImage, ...(k.photos || []).map((x) => x?.url)].map((x) => PS.cfId(x)).filter(Boolean))].slice(0, 4) }))
+    .filter((x) => x.ids.length).slice(0, 2);
+  const from = rec.image && link?.imageFrom && PS.cfId(rec.image) ? link.imageFrom : null;
+  const fromKid = from?.startsWith('kid:') ? c.kidBySlug.get(from.slice(4)) : null;
   return html`<section class="card pr-card">
     <h3>Picture and video</h3>
     <div class="pr-pic">
@@ -799,6 +871,7 @@ function PictureCard({ c, rec, outlet, link, set, setRec, pulling, onPull, onBro
         <p class="pr-pic__says">${rec.featured
           ? (shows === 'video' ? 'The featured card plays this video.' : shows === 'picture' ? 'The featured card shows this picture.' : shows === 'logo' ? `No picture: the featured card shows ${outlet.name}’s logo.` : 'No picture or logo: the featured card shows the outlet’s name in plain type.')
           : 'Featured cards show it. The archive list shows words only.'}</p>
+        ${from ? html`<p class="pr-pic__from">${fromKid ? `The monitor chose ${PS.plain(fromKid.name)}’s room: the story had no picture it could use.` : from === 'archive' ? 'Pulled by the monitor from the archived copy of the story.' : 'Pulled by the monitor from the story.'}</p>` : null}
       </div>
       <div class="pr-pic__tools">
         <div class="pr-btns">
@@ -806,6 +879,10 @@ function PictureCard({ c, rec, outlet, link, set, setRec, pulling, onPull, onBro
           <button type="button" class="btn btn-ghost btn-sm" onClick=${onPull} disabled=${pulling || !/^https?:\/\//.test(rec.url || '')}>${pulling ? html`<span class="spinner spinner-14" /> Pulling` : 'Pull from the story'}</button>
           ${rec.image ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { const prev = rec.image; set('image', null); c.addToast('Picture removed', 'info', { label: 'Undo', fn: () => set('image', prev) }); }}>Remove</button>` : null}
         </div>
+        ${kidShots.map(({ kid, ids }) => html`<div class="pr-kidpics" key=${kid.slug}>
+          <p class="pr-kidpics__label"><${KidFace} kid=${kid} size=${20} /> Photos from ${PS.plain(kid.name)}’s page</p>
+          <div class="pr-kidpics__row">${ids.map((id) => html`<button type="button" key=${id} class="pr-kidpic" aria-pressed=${PS.cfId(rec.image) === id} aria-label=${`Use this photo of ${PS.plain(kid.name)}’s room`} onClick=${() => set('image', id)}><img src=${cfImg(id, 'w=192,h=128,fit=cover,q=70')} alt="" loading="lazy" /></button>`)}</div>
+        </div>`)}
         ${suggestImage ? html`<div class="pr-suggest">
           <img src=${cfImg(suggestImage, 'w=160,h=100,fit=cover,q=70')} alt="" />
           <span>The story has a picture. The featured card shows ${outlet?.name || 'the outlet'}’s logo now.</span>
@@ -890,7 +967,7 @@ function OutletPicker({ c, value, name, url, invalid, onPick }) {
 }
 
 /** Kids or partners: chips, and a search to add more */
-function PeoplePicker({ label, items, value, onChange, sub = () => '' }) {
+function PeoplePicker({ label, items, value, onChange, sub = () => '', face = false }) {
   const id = useId('pr-pp');
   const [q, setQ] = useState('');
   const [hi, setHi] = useState(0);
@@ -900,7 +977,7 @@ function PeoplePicker({ label, items, value, onChange, sub = () => '' }) {
   const add = (x) => { if (!x) return; onChange([...value, x.slug]); setQ(''); setHi(0); };
   return html`<div class="pr-people">
     <label class="form-label" for=${id}>${label}</label>
-    ${value.length ? html`<ul class="pr-people__chips">${value.map((s) => html`<li key=${s} class="pr-people__chip"><span>${bySlug.get(s)?.name || s}${bySlug.get(s) ? null : html` <small>(not found)</small>`}</span>
+    ${value.length ? html`<ul class="pr-people__chips">${value.map((s) => html`<li key=${s} class=${`pr-people__chip${face && bySlug.get(s) ? ' pr-people__chip--face' : ''}`}>${face && bySlug.get(s) ? html`<${KidFace} kid=${bySlug.get(s)} size=${24} />` : null}<span>${bySlug.get(s)?.name || s}${bySlug.get(s) ? null : html` <small>(not found)</small>`}</span>
       <button type="button" class="pr-icon-btn" aria-label=${`Remove ${bySlug.get(s)?.name || s}`} onClick=${() => onChange(value.filter((x) => x !== s))}><${Icon} name="x" size=${14} /></button></li>`)}</ul>` : null}
     <div class="pr-people__add">
       <input id=${id} class="form-input" placeholder=${`Add ${label.toLowerCase()} by name`} value=${q} role="combobox" aria-expanded=${matches.length > 0} aria-controls=${`${id}-list`}
@@ -941,21 +1018,25 @@ function FoundView({ c, error }) {
     return j;
   };
   const review = ov.mentions.filter((m) => m.state === 'review');
+  const waiting = ov.mentions.filter((m) => m.state === 'new').length;
   const filed = ov.mentions.filter((m) => m.state === 'filed').slice(0, 12);
   const skipped = ov.mentions.filter((m) => ['dismissed', 'unrelated', 'duplicate', 'failed'].includes(m.state));
   const st = ov.state;
   const tidying = (st.tidy?.version || 0) < st.tidyVersion;
   const changes = ov.log;
   const counts = st.tidy?.counts || {};
+  const second = (st.tidy?.round || 0) > 1;
   const tidyBits = [
     counts.storiesLinked ? `${plural(counts.storiesLinked, 'story', 'stories')} linked to outlets` : null,
     counts.outletsCreated ? `${plural(counts.outletsCreated, 'outlet')} added` : null,
     counts.duplicatesRemoved ? `${plural(counts.duplicatesRemoved, 'duplicate')} merged` : null,
+    counts.outletsMerged ? `${plural(counts.outletsMerged, 'outlet')} folded into ${counts.outletsMerged === 1 ? 'its twin' : 'their twins'}` : null,
     counts.googleLinksFixed ? `${plural(counts.googleLinksFixed, 'Google News link')} replaced` : null,
     counts.titlesCleaned ? `${plural(counts.titlesCleaned, 'headline')} tidied` : null,
     counts.pictures ? `${plural(counts.pictures, 'picture')} added` : null,
     counts.summaries ? `${plural(counts.summaries, 'summary', 'summaries')} rewritten` : null,
     counts.kidLinks ? `${plural(counts.kidLinks, 'kid link')}` : null,
+    counts.kidLinksRemoved ? `${plural(counts.kidLinksRemoved, 'wrong kid link')} taken off` : null,
     counts.partnerLinks ? `${plural(counts.partnerLinks, 'partner link')}` : null,
   ].filter(Boolean);
   const storyOf = (slug) => c.press.find((s) => s.slug === slug);
@@ -980,8 +1061,9 @@ function FoundView({ c, error }) {
     </div>
 
     ${tidying || tidyBits.length ? html`<section class=${`card pr-tidy${tidying ? ' is-running' : ''}`}>
-      <h3>${tidying ? 'Tidying the press list' : 'The press list was tidied'}${st.tidy?.doneAt ? html` <span class="pr-muted">${ago(st.tidy.doneAt)}</span>` : null}</h3>
-      <p>${tidying ? 'Once, by itself: every story linked to its outlet, duplicates merged, Google News links swapped for the outlet’s own, pictures pulled from the stories, kids and partners linked. Each change is listed below and can be undone.' : 'Each change is listed below and can be undone.'}</p>
+      <h3>${second ? (tidying ? 'Taking a second look at every story' : 'Every story had a second look') : tidying ? 'Tidying the press list' : 'The press list was tidied'}${st.tidy?.doneAt ? html` <span class="pr-muted">${ago(st.tidy.doneAt)}</span>` : null}</h3>
+      <p>${second && tidying ? 'Once, by itself: each story’s page read again for its picture (or its archived copy’s), the kids and partners it names linked, a kid whose makeover came after the story taken off, and Google News finds that never got their link tried again. Each change is listed below and can be undone.'
+        : tidying ? 'Once, by itself: every story linked to its outlet, duplicates merged, Google News links swapped for the outlet’s own, pictures pulled from the stories, kids and partners linked. Each change is listed below and can be undone.' : 'Each change is listed below and can be undone.'}</p>
       ${tidyBits.length ? html`<p class="pr-tidy__bits">${tidyBits.join(' · ')}</p>` : null}
     </section>` : null}
 
@@ -990,7 +1072,7 @@ function FoundView({ c, error }) {
       ${review.length ? html`<ul class="pr-found">${review.map((m) => html`<${MentionRow} key=${m.id} m=${m} c=${c} busy=${busy}
         actions=${html`<button type="button" class="btn btn-primary btn-sm" disabled=${!!busy} onClick=${() => act('add', m.id, 'Added to the publicity page')}>${busy === `add:${m.id}` ? html`<span class="spinner spinner-14" /> Adding` : 'Add to the page'}</button>
           <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => act('skip', m.id, 'Skipped')}>Skip</button>`} />`)}</ul>`
-        : html`<p class="pr-empty pr-empty--inline">Nothing waiting. ${filed.length ? 'The monitor handled everything it found.' : ''}</p>`}
+        : html`<p class="pr-empty pr-empty--inline">Nothing waiting. ${waiting ? `${plural(waiting, 'more find is', 'more finds are')} still being checked by the monitor.` : filed.length ? 'The monitor handled everything it found.' : ''}</p>`}
     </section>
 
     ${filed.length ? html`<section class="card pr-list" aria-labelledby="pr-filed">
@@ -1028,7 +1110,7 @@ function MentionRow({ m, c, actions, quiet = false, story = null }) {
     <div class="pr-mention__body">
       <p class="pr-mention__meta">
         <span class="pr-mention__src">${m.source || host || 'Unknown'}</span>
-        ${m.published ? html`<span>${longDate(String(m.published).slice(0, 10))}</span>` : html`<span>Found ${ago(m.found_at)}</span>`}
+        ${story?.date || m.published ? html`<span>${longDate(String(story?.date || m.published).slice(0, 10))}</span>` : html`<span>Found ${ago(m.found_at)}</span>`}
         <span>${m.provider === 'youtube' ? 'YouTube' : m.provider === 'bing' ? 'Bing News' : 'Google News'}</span>
         ${quiet ? html`<span class="pr-chip">${STATE_WORDS[m.state] || m.state}</span>` : null}
       </p>
@@ -1261,17 +1343,47 @@ const CSS = `
 .pr-icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--color-text-secondary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
 .pr-icon-btn:hover:not(:disabled) { background: var(--color-bg-hover); color: var(--color-text); }
 .pr-icon-btn:disabled { opacity: 0.35; cursor: default; }
-.pr-icon-btn:focus-visible, .pr-row__open:focus-visible, .pr-feat__open:focus-visible, .pr-outlet:focus-visible, .pr-strip__logo:focus-visible, .pr-monitor:focus-visible, .pr-pill:focus-visible, .pr-seg__btn:focus-visible, .pr-disclose:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
+.pr-icon-btn:focus-visible, .pr-row__open:focus-visible, .pr-feat__open:focus-visible, .pr-outlet:focus-visible, .pr-strip__logo:focus-visible, .pr-pill:focus-visible, .pr-seg__btn:focus-visible, .pr-disclose:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
 .pr-flip svg { transform: scaleX(-1); }
 
-/* The monitor's one line */
-.pr-monitor { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin-bottom: var(--pr-gap); border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: var(--radius-md); text-align: left; cursor: pointer; color: var(--color-text); font: inherit; box-shadow: var(--shadow-xs); }
-.pr-monitor:hover { border-color: var(--color-border-strong); }
+/* The monitor's line (under Where things stand) */
 .pr-monitor__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 4px var(--color-primary-ring); flex: none; animation: pr-pulse 2.4s ease-in-out infinite; }
 @keyframes pr-pulse { 50% { box-shadow: 0 0 0 7px transparent; } }
-.pr-monitor__text { flex: 1; font-size: 13px; color: var(--color-text-secondary); }
-.pr-monitor__text strong { color: var(--color-text); }
 .pr-monitor__go { font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: underline; text-decoration-color: var(--color-primary); text-underline-offset: 3px; }
+
+/* Where things stand */
+.pr-status { margin-bottom: var(--pr-gap); padding: 0; overflow: hidden; }
+.pr-status__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pr-stat { display: grid; align-content: start; gap: 6px; padding: 16px 18px; min-width: 0; text-align: left; font: inherit; color: inherit; }
+.pr-stat + .pr-stat { border-left: 1px solid var(--color-border); }
+.pr-stat--btn { background: transparent; border: 0; border-radius: 0; cursor: pointer; }
+.pr-stat--btn:hover { background: var(--color-bg-hover); }
+.pr-stat--btn:focus-visible, .pr-status__foot:focus-visible { outline: none; box-shadow: inset var(--focus-ring-strong); }
+.pr-stat__label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+.pr-stat__big { display: flex; align-items: center; gap: 8px; font-size: 22px; font-weight: 700; line-height: 1.2; color: var(--color-text); }
+.pr-stat__of { font-size: 15px; font-weight: 600; color: var(--color-text-muted); }
+.pr-stat.is-ok .pr-stat__big svg { color: var(--color-success); }
+.pr-stat.is-warn .pr-stat__big svg { color: var(--color-warning); }
+.pr-stat__sub { font-size: 12.5px; line-height: 1.45; color: var(--color-text-secondary); }
+.pr-stat__acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.pr-faces { display: flex; align-items: center; padding-left: 6px; margin: 2px 0; }
+.pr-faces .pr-face { margin-left: -6px; box-shadow: 0 0 0 2px var(--color-bg-card); }
+.pr-stat--btn:hover .pr-faces .pr-face { box-shadow: 0 0 0 2px var(--color-bg-hover); }
+.pr-face { width: var(--s, 22px); height: var(--s, 22px); border-radius: 50%; object-fit: cover; flex: none; background: var(--color-bg-secondary); display: inline-block; }
+.pr-face--text, .pr-face--more { display: inline-flex; align-items: center; justify-content: center; font-size: calc(var(--s, 22px) * 0.38); font-weight: 700; color: var(--color-text-muted); }
+.pr-meter { display: block; height: 6px; border-radius: 3px; background: var(--color-bg-secondary); overflow: hidden; margin: 4px 0 2px; }
+.pr-meter span { display: block; height: 100%; border-radius: 3px; background: var(--color-primary); }
+.pr-status__foot { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 18px; border: 0; border-top: 1px solid var(--color-border); background: var(--color-bg-secondary); font: inherit; font-size: 13px; color: var(--color-text-secondary); text-align: left; cursor: pointer; }
+.pr-status__foot > span:nth-child(2) { flex: 1; }
+.pr-status__foot strong { color: var(--color-text); }
+.pr-status__foot:hover { color: var(--color-text); }
+
+/* Who a story is about */
+.pr-row__who { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 3px; }
+.pr-who { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 12px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: 12px; font-weight: 500; color: var(--color-text-secondary); max-width: 100%; }
+.pr-who--kid { padding-left: 2px; color: var(--color-text); }
+.pr-who small { font-size: 11px; color: var(--color-text-muted); }
+.pr-who--more { background: transparent; }
 
 /* Lists */
 .pr-list, .pr-feat, .pr-strip { margin-bottom: var(--pr-gap); }
@@ -1395,6 +1507,16 @@ const CSS = `
 .pr-pic__tools { display: grid; gap: 12px; }
 .pr-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .pr-btns .btn { display: inline-flex; gap: 6px; align-items: center; }
+.pr-pic__from { font-size: 12px; color: var(--color-text-muted); margin-top: 6px; }
+.pr-people__chip.pr-people__chip--face { padding-left: 4px; gap: 6px; }
+.pr-kidpics { display: grid; gap: 6px; }
+.pr-kidpics__label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); }
+.pr-kidpics__row { display: flex; flex-wrap: wrap; gap: 6px; }
+.pr-kidpic { width: 96px; height: 64px; padding: 0; border-radius: 6px; overflow: hidden; border: 2px solid transparent; background: var(--color-bg-secondary); cursor: pointer; flex: none; }
+.pr-kidpic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pr-kidpic:hover { border-color: var(--color-border-strong); }
+.pr-kidpic[aria-pressed="true"] { border-color: var(--color-primary); }
+.pr-kidpic:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
 .pr-suggest { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: var(--radius-sm); border: 1px dashed var(--color-border-strong); background: var(--color-bg-secondary); font-size: 12.5px; }
 .pr-suggest img { width: 80px; height: 50px; object-fit: cover; border-radius: 4px; flex: none; }
 .pr-suggest span { flex: 1; color: var(--color-text-secondary); }
@@ -1480,6 +1602,8 @@ const CSS = `
 
 /* Narrower screens */
 @media (max-width: 1100px) {
+  .pr-status__grid { grid-template-columns: minmax(0, 1fr); }
+  .pr-stat + .pr-stat { border-left: 0; border-top: 1px solid var(--color-border); }
   .pr-editor__grid { grid-template-columns: minmax(0, 1fr); }
   .pr-pic { grid-template-columns: minmax(0, 1fr); }
   .pr-pic__stage { max-width: 420px; }
@@ -1509,13 +1633,15 @@ const CSS = `
   .pr-sources { grid-template-columns: minmax(0, 1fr); }
   .pr-filled__card { flex-direction: column; }
   .pr-feat__open .pr-thumb { display: none; }
-  .pr-monitor { flex-wrap: wrap; }
+  .pr-status__foot { flex-wrap: wrap; }
+  .pr-status__foot .pr-monitor__go { flex-basis: 100%; padding-left: 22px; }
   .pr-strip__moves { opacity: 1; }
 }
 @media (pointer: coarse) {
   .pr-icon-btn { width: 44px; height: 44px; }
   .pr-pill, .pr-seg__btn { height: 44px; }
   .pr-people__chip { height: 44px; }
+  .pr-kidpic { width: 112px; height: 76px; }
   .pr-people__chip .pr-icon-btn { width: 44px; height: 44px; border-radius: 22px; }
   /* The whole row is the switch; the knob itself is a thumb's width too */
   .pr-switch { min-height: 48px; align-items: center; }

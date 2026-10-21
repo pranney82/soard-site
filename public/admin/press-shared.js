@@ -184,17 +184,31 @@ export const outletKeys = (o) => new Set([outletKey(o?.name), ...(o?.aliases || 
  * The outlet a story or a found article belongs to, by its website first,
  * then its name (or any other spelling the outlet has). Returns the record.
  */
+/** Sites that carry everyone's videos and shows: never one outlet's website */
+export const PLATFORMS = /(^|\.)(youtube\.com|vimeo\.com|soundcloud\.com|spotify\.com|podcasts\.apple\.com|tiktok\.com|anchor\.fm|buzzsprout\.com|libsyn\.com|podbean\.com)$/i;
 export function matchOutlet(outlets, { name = '', url = '', source = '' } = {}) {
   const list = outlets || [];
   const k = outletKey(cleanOutletName(name));
   const byName = k ? list.find((o) => outletKeys(o).has(k)) || null : null;
-  for (const h of [hostOf(url), hostOf(source)].filter((x) => x && !AGGREGATORS.test(x))) {
+  for (const h of [hostOf(url), hostOf(source)].filter((x) => x && !AGGREGATORS.test(x) && !PLATFORMS.test(x))) {
     const hits = list.filter((o) => (o.domains || []).some((d) => h === d || h.endsWith(`.${d}`)));
     // One website can carry several outlets (patch.com's town editions): the name decides
     if (hits.length === 1 && (!byName || byName === hits[0])) return hits[0];
     if (hits.length > 1) return (byName && hits.includes(byName) ? byName : null) || byName || hits[0];
   }
   return byName;
+}
+/**
+ * Two outlet records that are one outlet for sure: they share a news website
+ * and one's name begins the other's ("TODAY.com" and "Today Show" on today.com).
+ * Patch's town editions share patch.com but neither name begins the other.
+ */
+export function sameOutletRecords(a, b) {
+  const ka = outletKey(cleanOutletName(a?.name));
+  const kb = outletKey(cleanOutletName(b?.name));
+  if (!ka || !kb || Math.min(ka.length, kb.length) < 4 || !(ka.startsWith(kb) || kb.startsWith(ka))) return false;
+  const da = (a.domains || []).filter((d) => !AGGREGATORS.test(d) && !PLATFORMS.test(d));
+  return da.some((d) => (b.domains || []).includes(d));
 }
 /** A site's name without the slogan after it: "ABC News - Breaking News, Latest News and Videos" → "ABC News" */
 export function cleanOutletName(name) {
@@ -391,26 +405,37 @@ export function kidNames(kid) {
 const AMBIGUOUS_NAMES = new Set(['georgia', 'atlanta', 'roswell', 'marietta', 'savannah', 'augusta', 'macon', 'athens', 'austin', 'dallas', 'paris', 'jordan', 'carolina', 'virginia', 'peter', 'holly', 'ranney', 'sunny', 'hope', 'grace', 'faith', 'joy', 'charity', 'christian', 'angel', 'summer', 'autumn', 'winter', 'may', 'june', 'april', 'chase', 'hunter', 'will', 'mark', 'bill', 'rose', 'ivy', 'lily', 'brooke', 'river', 'sky', 'star', 'king', 'prince', 'major', 'noble', 'royal', 'miles', 'grant', 'page']);
 export const ambiguousName = (n) => AMBIGUOUS_NAMES.has(String(n || '').toLowerCase().split(/\s+/)[0]);
 const wordRe = (w, flags = '') => new RegExp(`(^|[^\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}(?=$|[^\\p{L}\\p{N}])`, `u${flags}`);
+/** A story can't be about a makeover that came after it (a year's slack for guessed dates) */
+export const kidAfterStory = (story, kid) => { const y = yearOf(story); const ky = Number(kid?.year) || null; return !!(y && ky && ky > y + 1); };
 /**
  * Kids an article might be about: one of their names in it (as a name, with
  * its capital), and their makeover within a couple of years of the story.
- * Workers AI confirms these before a story is linked.
+ * An older makeover counts as a follow-up ("Tripp Halstead, who inspired
+ * millions…", years later) only when the name is in the headline or comes up
+ * twice; follow-ups are linked only when Workers AI agrees. Never a makeover
+ * after the story. Workers AI confirms these before a story is linked.
  */
-export function kidCandidates(text, kids, year) {
+export function kidCandidates(text, kids, year, { title = '' } = {}) {
   const body = String(text || '');
   if (!body) return [];
+  const head = plain(title);
   const out = [];
   for (const k of kids || []) {
     if (!k?.slug || k.publishStatus === 'draft') continue;
     const ky = Number(k.year) || null;
-    if (year && ky && (ky < year - 2 || ky > year + 1)) continue;
+    if (year && ky && ky > year + 1) continue;
     const hits = kidNames(k).filter((n) => wordRe(n).test(body));
     if (!hits.length) continue;
     const count = hits.reduce((n, h) => n + (body.match(new RegExp(wordRe(h).source, 'gu')) || []).length, 0);
-    out.push({ slug: k.slug, name: k.name, year: ky, diagnosis: plain(k.diagnosis).slice(0, 80), matched: hits, count, ambiguous: hits.every(ambiguousName) });
+    const ambiguous = hits.every(ambiguousName);
+    const followUp = !!(year && ky && ky < year - 2);
+    if (followUp && (ambiguous || !(hits.some((h) => wordRe(h).test(head)) || count >= 2))) continue;
+    out.push({ slug: k.slug, name: k.name, year: ky, diagnosis: plain(k.diagnosis).slice(0, 80), matched: hits, count, ambiguous, ...(followUp ? { followUp: true } : {}) });
   }
   return out;
 }
+/** The photo a kid's page leads with (a Cloudflare Images id), for showing who a story is about */
+export const kidPhoto = (kid) => cfId(kid?.heroImage || kid?.photos?.find?.((p) => p?.url)?.url || '');
 // Partner names that are also everyday words or places
 const GENERIC = new Set(['home', 'homes', 'design', 'designs', 'atlanta', 'georgia', 'roswell', 'sunshine', 'hope', 'grace', 'faith', 'joy', 'love', 'build', 'builders', 'construction', 'paint', 'flooring', 'interiors', 'lighting', 'electric', 'plumbing', 'kitchen', 'bath', 'studio', 'group', 'the', 'and', 'friends', 'family', 'church', 'community', 'foundation']);
 /** Partners named in an article (their full name, as written); Workers AI confirms */
@@ -444,7 +469,7 @@ export function partnerCandidates(text, partners) {
 export function planOutletTidy(stories, outlets) {
   const bySlug = new Map((outlets || []).map((o) => [o.slug, o]));
   const taken = new Set((outlets || []).map((o) => o.slug));
-  const hosts = (list) => uniq(list.map((s) => hostOf(s.url))).filter((h) => h && !AGGREGATORS.test(h));
+  const hosts = (list) => uniq(list.map((s) => hostOf(s.url))).filter((h) => h && !AGGREGATORS.test(h) && !PLATFORMS.test(h));
   const spellings = (list) => uniq(list.map((s) => plain(s.outlet)));
   const groups = new Map(); // 'o:<slug>' (an outlet record) or 'n:<name key>' → stories
   const add = (k, s) => { if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); };
@@ -549,5 +574,14 @@ export function cfId(src) {
   return id;
 }
 export const cfSrc = (src, t) => { const id = cfId(src); return id ? `${CF_BASE}/${id}/${t}` : ''; };
-/** A preview image a site uses for every page (its logo or a placeholder), not this story's */
-export const genericImage = (url) => /(logo|placeholder|default[-_]?(image|og|share)?|fallback|blank|spacer|favicon|apple-touch|social[-_]?share[-_]?default)/i.test(String(url || ''));
+/**
+ * A preview image a site uses for every page (its logo or a placeholder), not
+ * this story's. Found in the Oct 2026 second look: an SVG is always a logo,
+ * BLOX newspapers keep site-wide promos under /custom/image/, and magazines
+ * name their default banner "…-Stock-3.png".
+ */
+export const genericImage = (url) => {
+  const u = String(url || '');
+  return /(logo|placeholder|default[-_]?(image|og|share)?|fallback|blank|spacer|favicon|apple-touch|social[-_]?share[-_]?default)/i.test(u)
+    || /\.svg(\?|#|$)/i.test(u) || /\/custom\/image\//i.test(u) || /(^|[/_-])stock([-_]?\d+)?\.(png|jpe?g|webp|gif)(\?|$)/i.test(u);
+};

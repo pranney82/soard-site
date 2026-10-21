@@ -128,13 +128,16 @@ describe('press-shared on the real press list', { skip: !haveReal && 'src/conten
     for (const s of REAL.press) assert.ok(known.has(after.get(s.slug)), `${s.slug} → ${after.get(s.slug)}`);
     const wsb = REAL.press.filter((s) => /^WSB-TV/.test(s.outlet)).map((s) => after.get(s.slug));
     assert.equal(new Set(wsb).size, 1, 'WSB-TV and WSB-TV (ABC Atlanta) are one outlet');
-    assert.ok(plan.update.find((o) => o.slug === 'today-show')?.domains?.includes('today.com'));
+    // The website comes from the plan, or (content synced after the first tidy) is already on the record
+    const todayShow = plan.update.find((o) => o.slug === 'today-show') || REAL.medialogos.find((o) => o.slug === 'today-show');
+    assert.ok(todayShow?.domains?.includes('today.com'));
     assert.ok(!plan.create.some((o) => /today/i.test(o.name) && P.outletKey(o.name) === 'todayshow'));
   });
   test('the duplicates are found, and the hand-entered copy is kept', (t) => {
     if (!REAL_DUPES.length) return t.skip('no duplicates in this copy of the content (they live in D1)');
     const groups = REAL_DUPES;
-    assert.ok(groups.length >= 6, `found ${groups.length}`);
+    // Before the first tidy (Oct 21 2026) there were 8 pairs; content synced after it has what's left
+    assert.ok(groups.length >= 1, `found ${groups.length}`);
     for (const g of groups) {
       const keep = P.pickKeeper(g.map((s) => REAL.press.find((x) => x.slug === s)));
       assert.ok(!P.googleLink(keep.url), `${keep.slug} keeps a real link`);
@@ -208,7 +211,7 @@ describe('sources and pages (real captures)', () => {
 // ── The engine, against a made-up world ──────────────────────────────
 let world;
 const freshWorld = () => ({
-  google: [], bing: [], youtube: {}, decode: {}, pages: {}, archive: {}, archivePages: {}, images: 0, deploys: 0, slack: [], saved: [], ai: null, calls: [],
+  google: [], bing: [], youtube: {}, decode: {}, pages: {}, archive: {}, archivePages: {}, files: {}, wp: {}, images: 0, deploys: 0, slack: [], saved: [], ai: null, calls: [],
 });
 const HOOK = 'https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/test';
 const SLACK = 'https://hooks.slack.com/services/test';
@@ -236,6 +239,8 @@ async function fakeFetch(input, init = {}) {
     const snap = world.archive[u.searchParams.get('url')];
     return Response.json({ archived_snapshots: snap ? { closest: { available: true, status: '200', url: snap } } : {} });
   }
+  if (world.files[url]) return new Response(new Uint8Array(20000), { headers: { 'content-type': 'image/jpeg' } });
+  if (u.pathname === '/wp-json/wp/v2/search') return world.wp[u.origin] ? Response.json(world.wp[u.origin]) : html('not here', 404);
   if (u.hostname === 'web.archive.org' && u.pathname.startsWith('/save/')) { world.saved.push(url.slice(url.indexOf('/save/') + 6)); return new Response('ok'); }
   if (u.hostname === 'web.archive.org') { const p = world.archivePages[url]; return p ? html(p) : html('', 404); }
   if (u.hostname === 'api.cloudflare.com' && u.pathname.endsWith('/images/v1')) { world.images++; return Response.json({ success: true, result: { id: init.body.get('id') || `img${world.images}` } }); }
@@ -616,6 +621,182 @@ describe('press monitor: the tidy, on the real press list', { skip: !haveReal &&
     const after = await story(env.DB, slug);
     assert.ok(!after.image || JSON.parse(e.before).image, 'the picture came off');
     if ('excerpt' in JSON.parse(e.after)) assert.equal(after.excerpt, 'Written by a person after the tidy.', 'the person’s summary stayed');
+  });
+});
+
+describe('press monitor: the second look (what production showed on Oct 21 2026)', () => {
+  beforeEach(() => { world = freshWorld(); aiCalls.length = 0; });
+  const KIDS = [
+    { slug: 'briana', name: 'Briana', year: 2013, heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/briana/photo-03/public' },
+    { slug: 'briana-2016', name: 'Briana', year: 2016 },
+    { slug: 'hudson', name: 'Hudson', year: 2016 },
+    { slug: 'hudson-2024', name: 'Hudson', year: 2024 },
+    { slug: 'tripp', name: 'Tripp', year: 2013, heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tripp/hero/public' },
+    { slug: 'devon', name: 'Devon', year: 2019, heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/devon/photo-38/public' },
+  ];
+  const OUTLETS = [{ slug: 'wsb-tv', name: 'WSB-TV', logo: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/press-logo-wsb-tv/public', domains: ['wsbtv.com'] }, { slug: 'k-love', name: 'K-LOVE', domains: ['klove.com'] }, { slug: 'fcnews', name: 'Floor Covering News', domains: ['fcnews.net'] }];
+  const LONG = 'https://www.wsbtv.com/resizer/v2/7SEOW3XJ6RDGVANVJ7FIMEDID4.png?auth=e7b79f0764c980e7eaacbf5994a86b49945713e6f4e57081e5f65b8a6ac036d6';
+  const runStory = async (env, slug) => { for (let i = 0; i < 8; i++) { const r = await E.storyStep(env, slug, { fetchImpl: fakeFetch }); if (/saved|gone|changed/.test(r.did || '')) return r; } return null; };
+
+  test('the D1 shim refuses a LIKE pattern over 50 bytes, as D1 does (the first tidy saved no pictures because of it)', async () => {
+    const DB = await createD1({});
+    await DB.exec('CREATE TABLE t (a TEXT)');
+    await DB.prepare('SELECT * FROM t WHERE a LIKE ?').bind(`%${'x'.repeat(48)}%`).all();
+    assert.throws(() => DB.prepare('SELECT * FROM t WHERE a LIKE ?').bind(`%"imageSrc":"${LONG}"%`), /LIKE or GLOB pattern too complex/);
+  });
+
+  test('a story gets its own picture from a long picture address; the same picture on another story is the site’s default', async () => {
+    const env = await newEnv({ press: [
+      { slug: 'wsb-tv-monica-2016', outlet: 'WSB-TV', outletLogo: 'wsb-tv', category: 'local-tv', title: '6-year-old girl paralyzed in crash gets special room makeover', date: '2016-06-01', url: 'https://www.wsbtv.com/news/monica', excerpt: 'A room for Monica.', image: null, featured: false, order: 0 },
+      { slug: 'wsb-tv-hudson-2016', outlet: 'WSB-TV', outletLogo: 'wsb-tv', category: 'local-tv', title: 'Group surprises local boy with in-home therapy room', date: '2016-01-01', url: 'https://www.wsbtv.com/news/hudson', excerpt: 'A therapy room for Hudson.', image: null, featured: false, order: 0 },
+      { slug: 'wsb-tv-sims-2015', outlet: 'WSB-TV', outletLogo: 'wsb-tv', category: 'local-tv', title: 'Family of children with special needs gets home makeover', date: '2015-01-01', url: 'https://www.wsbtv.com/news/sims', excerpt: 'The Sims family.', image: null, featured: false, order: 0 },
+    ], medialogos: OUTLETS, kids: KIDS, partners: [] });
+    world.files[LONG] = true;
+    world.files[`${LONG}&monica`] = true;
+    world.pages['https://www.wsbtv.com/news/monica'] = article({ title: '6-year-old girl paralyzed in crash gets special room makeover', site: 'WSB-TV', date: '2016-06-01', image: `${LONG}&monica`, text: 'Sunshine on a Ranney Day built Monica a room.' });
+    world.pages['https://www.wsbtv.com/news/hudson'] = article({ title: 'Group surprises local boy', site: 'WSB-TV', date: '2016-01-01', image: LONG, text: 'Sunshine on a Ranney Day built Hudson a therapy room.' });
+    world.pages['https://www.wsbtv.com/news/sims'] = article({ title: 'Family gets home makeover', site: 'WSB-TV', date: '2015-01-01', image: LONG, text: 'Sunshine on a Ranney Day helped the Sims family.' });
+    for (const slug of ['wsb-tv-monica-2016', 'wsb-tv-hudson-2016', 'wsb-tv-sims-2015']) await runStory(env, slug);
+    assert.equal((await story(env.DB, 'wsb-tv-monica-2016')).image, 'press/wsb-tv-monica-2016', 'its own picture, saved');
+    const pictured = [await story(env.DB, 'wsb-tv-hudson-2016'), await story(env.DB, 'wsb-tv-sims-2015')].filter((s) => s.image);
+    assert.equal(pictured.length, 1, 'the second story with the same picture gets none');
+    const log = await rows(env.DB, "SELECT label FROM press_log WHERE slug = 'wsb-tv-monica-2016'");
+    assert.match(log[0].label, /picture/);
+  });
+
+  test('a site’s logo or stock banner is never a story’s picture (real ones from the second look)', () => {
+    assert.ok(P.genericImage('https://bloximages.newyork1.vip.townnews.com/appenmedia.com/content/tncms/custom/image/bcda398e-bf87-11ee-9821-bb7b521269ea.jpg?resize=600%2C300'), 'a BLOX site-wide promo');
+    assert.ok(P.genericImage('https://sola-images.s3.us-west-2.amazonaws.com/wp-content/uploads/2025/02/04110459/KBDN-Stock-3.png'), 'a stock banner');
+    assert.ok(P.genericImage('https://octanecdn.com/reliableairnew/reliableairnew_362683266.svg'), 'an SVG');
+    assert.ok(!P.genericImage('https://www.fcnews.net/wp-content/uploads/2023/01/2022-SOARD-Braxton-Reveal-2496-scaled.jpg'));
+    assert.ok(!P.genericImage('https://patch.com/img/cdn/woodstock/stockbridge-family.jpg'), 'a place called Stock-something is fine');
+  });
+
+  test('YouTube is never an outlet’s website; TODAY.com and the Today Show are one outlet, two Patch towns are not', () => {
+    const plan = P.planOutletTidy([{ slug: 'v1', outlet: 'Jefferson Fire', outletLogo: 'jefferson-fire', url: 'https://www.youtube.com/watch?v=qo_E_ZCteWk' }], [{ slug: 'jefferson-fire', name: 'Jefferson Fire' }]);
+    assert.ok(!(plan.update.find((o) => o.slug === 'jefferson-fire')?.domains || []).includes('youtube.com'));
+    assert.equal(P.matchOutlet([{ slug: 'jefferson-fire', name: 'Jefferson Fire', domains: ['youtube.com'] }], { name: 'Somebody Else', url: 'https://www.youtube.com/watch?v=x' }), null, 'a YouTube link says nothing about the outlet');
+    assert.ok(P.sameOutletRecords({ name: 'TODAY.com', domains: ['today.com'] }, { name: 'Today Show', domains: ['today.com'] }));
+    assert.ok(!P.sameOutletRecords({ name: 'Roswell Patch', domains: ['patch.com'] }, { name: 'Atlanta Patch', domains: ['patch.com'] }));
+    assert.ok(!P.sameOutletRecords({ name: 'Patch', domains: ['patch.com'] }, { name: 'Roswell Patch', domains: ['patch.com'] }));
+    assert.ok(!P.sameOutletRecords({ name: 'TODAY.com', domains: [] }, { name: 'Today Show', domains: ['today.com'] }), 'a shared website is needed');
+  });
+
+  test('the tidy folds an outlet into its twin (keeping the one with the logo), and Undo can split them', async () => {
+    const env = await newEnv({ press: [
+      { slug: 'today-com-2017', outlet: 'TODAY.com', outletLogo: 'today-com', category: 'national-tv', title: 'Renovators share kindness', date: '2017-10-21', url: 'https://www.today.com/video/renovators', excerpt: 'Hospitals and homes.', image: null, featured: false, order: 0 },
+      { slug: 'today-show-2016', outlet: 'Today Show', outletLogo: 'today-show', category: 'national-tv', title: 'Hospital makeover provides oasis of calm', date: '2016-12-20', url: 'https://www.today.com/kindness/hospital', excerpt: 'Parent sleep rooms.', image: null, featured: true, order: 1 },
+    ], medialogos: [{ slug: 'today-com', name: 'TODAY.com', logo: '', strip: false }, { slug: 'today-show', name: 'Today Show', logo: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/medialogos/today-show/1/public', domains: ['today.com'] }], kids: KIDS, partners: [] });
+    const state = { tidy: { phase: 'outlets', counts: {} } };
+    for (let i = 0; i < 6 && state.tidy.phase === 'outlets'; i++) await E.tidyStep(env, state, { fetchImpl: fakeFetch });
+    assert.equal(state.tidy.counts.outletsMerged, 1);
+    assert.equal((await story(env.DB, 'today-com-2017')).outletLogo, 'today-show');
+    assert.equal(await env.DB.prepare("SELECT slug FROM medialogos WHERE slug = 'today-com'").first(), null);
+    const log = await env.DB.prepare("SELECT label FROM press_log WHERE kind = 'outlet-merge'").first();
+    assert.match(log.label, /Merged TODAY\.com into Today Show/);
+  });
+
+  test('an outlet that won’t hand over its picture: the Archive’s copy of it', async () => {
+    const img = 'https://www.klove.com/media/holly-ranney';
+    const env = await newEnv({ press: [{ slug: 'klove-2024', outlet: 'K-LOVE', outletLogo: 'k-love', category: 'entertainment', title: 'Atlanta’s Holly Ranney: building custom bedrooms', date: '2024-07-18', url: 'https://www.klove.com/news/holly-ranney', excerpt: 'Holly Ranney on K-LOVE.', image: null, featured: true, order: 3 }], medialogos: OUTLETS, kids: KIDS, partners: [] });
+    world.pages['https://www.klove.com/news/holly-ranney'] = article({ title: 'Atlanta’s Holly Ranney', site: 'K-LOVE', date: '2024-07-18', image: img, text: 'Sunshine on a Ranney Day founder Holly Ranney builds rooms.' });
+    world.pages[img] = 403;
+    world.files[`https://web.archive.org/web/2024im_/${img}`] = true;
+    await runStory(env, 'klove-2024');
+    assert.equal((await story(env.DB, 'klove-2024')).image, 'press/klove-2024');
+    const l = JSON.parse((await env.DB.prepare("SELECT data FROM press_links WHERE slug = 'klove-2024'").first()).data);
+    assert.equal(l.imageFrom, 'archive');
+  });
+
+  test('a featured card with no picture, video or logo shows the room of the kid it’s about', async () => {
+    const env = await newEnv({ press: [{ slug: 'ap-2019', outlet: 'K-LOVE', outletLogo: 'k-love', category: 'print', title: 'Devon Gales moves into his new home', date: '2019-07-11', url: 'https://www.klove.com/devon', excerpt: 'Devon Gales moves in.', image: null, featured: true, order: 1, kids: ['devon'] }], medialogos: OUTLETS, kids: KIDS, partners: [] });
+    world.pages['https://www.klove.com/devon'] = 403;
+    await runStory(env, 'ap-2019');
+    assert.equal((await story(env.DB, 'ap-2019')).image, 'kids/devon/photo-38');
+    const log = await rows(env.DB, "SELECT label FROM press_log WHERE slug = 'ap-2019'");
+    assert.match(log[0].label, /Devon’s room as its picture/);
+  });
+
+  test('a makeover after the story is unlinked, and the headline finds who it’s really about when the outlet won’t show the page', async () => {
+    const env = await newEnv({ press: [{ slug: 'holly-ranney-2026-10-21', outlet: 'Holly Ranney', category: 'print', title: 'Sunshine on a Ranney Day Makeover Reveal for Briana Hudson', date: '2014-10-21', url: 'https://www.youtube.com/watch?v=map-_Aka83o', excerpt: 'Sunshine on a Ranney Day creates home makeovers, including Briana Hudson.', image: null, featured: false, order: 0, videoId: 'map-_Aka83o', kids: ['hudson-2024'] }], medialogos: OUTLETS, kids: KIDS, partners: [] });
+    world.pages['https://www.youtube.com/watch?v=map-_Aka83o'] = 429;
+    await runStory(env, 'holly-ranney-2026-10-21');
+    assert.deepEqual((await story(env.DB, 'holly-ranney-2026-10-21')).kids, ['briana'], 'Briana (2013), not Hudson (2024) or Briana (2016)');
+    const log = await rows(env.DB, "SELECT label FROM press_log WHERE slug = 'holly-ranney-2026-10-21'");
+    assert.match(log[0].label, /unlinked Hudson \(that makeover came after the story\)/);
+    assert.ok(P.kidAfterStory({ date: '2014-10-21' }, { year: 2024 }));
+    assert.ok(!P.kidAfterStory({ date: '2014-10-21' }, { year: 2015 }), 'a year’s slack for a guessed date');
+  });
+
+  test('a follow-up years later links to the kid only with the name in the headline (or twice) and Workers AI agreeing', async () => {
+    const title = 'Tripp Halstead, who inspired millions with his recovery, dies at 7';
+    const c = P.kidCandidates(`${title}\nThe Winder boy was struck by a falling limb in 2012.`, KIDS, 2018, { title });
+    assert.deepEqual(c.map((k) => [k.slug, !!k.followUp]), [['tripp', true]]);
+    assert.deepEqual(P.kidCandidates('A story about Tripp, once.', KIDS, 2018, { title: 'Friends remember a Winder boy' }), [], 'named once, outside the headline: not a follow-up');
+    const env = await newEnv({ press: [{ slug: 'today-tripp-2018', outlet: 'TODAY', category: 'national-tv', title, date: '2018-03-17', url: 'https://www.today.com/tripp', excerpt: 'Tripp Halstead died.', image: null, featured: false, order: 0 }], medialogos: OUTLETS, kids: KIDS, partners: [] });
+    world.pages['https://www.today.com/tripp'] = 403;
+    await runStory(env, 'today-tripp-2018');
+    assert.deepEqual((await story(env.DB, 'today-tripp-2018')).kids, ['tripp'], 'with Workers AI agreeing');
+    const noAi = { ...(await newEnv({ press: [{ slug: 'today-tripp-2018', outlet: 'TODAY', category: 'national-tv', title, date: '2018-03-17', url: 'https://www.today.com/tripp', excerpt: 'Tripp Halstead died.', image: null, featured: false, order: 0 }], medialogos: OUTLETS, kids: KIDS, partners: [] })), AI: undefined };
+    await runStory(noAi, 'today-tripp-2018');
+    assert.equal((await story(noAi.DB, 'today-tripp-2018')).kids, undefined, 'never on the name alone');
+  });
+
+  test('a Google News link Google won’t open: settled without it, found on the outlet’s own site, or tried again later and then given up', async () => {
+    const env = await newEnv({ press: [{ slug: 'ajc-credit-union', outlet: 'The Atlanta Journal-Constitution', outletLogo: 'ajc', category: 'print', title: 'Sunshine on a Ranney Day receives $10,000 from credit union', date: '2023-06-09', url: 'https://www.ajc.com/x', excerpt: 'A grant.', image: null, featured: false, order: 0 }], medialogos: [...OUTLETS, { slug: 'ajc', name: 'The Atlanta Journal-Constitution', domains: ['ajc.com'] }], kids: KIDS, partners: [] });
+    await quietState(env);
+    const add = (id, title, source, sourceUrl) => env.DB.prepare(`INSERT INTO press_mentions (id, provider, query, link, title, source, source_url, published, state, stage, found_at) VALUES (?, 'google', 'q', ?, ?, ?, ?, '2026-09-23T00:00:00Z', 'new', 'resolve', ?)`)
+      .bind(id, `https://news.google.com/rss/articles/${id}?oc=5`, title, source, sourceUrl, new Date(NOW).toISOString()).run();
+    await add('g:obit', 'Peter Ranney Obituary (2026) - Leyden, MA - The Recorder', 'Legacy', 'https://www.legacy.com');
+    await add('g:dupe', 'Sunshine on a Ranney Day receives $10,000 from credit union', 'The Atlanta Journal-Constitution', 'https://www.ajc.com');
+    await add('g:wp', 'Mohawk helps renovate Children’s Development Academy', 'Floor Covering News', 'https://www.fcnews.net');
+    await add('g:lost', 'Police help surprise 9-year-old boy', 'FOX 5 Atlanta', 'https://www.fox5atlanta.com');
+    world.wp['https://www.fcnews.net'] = [{ id: 1, title: 'Mohawk helps renovate Children&#8217;s Development Academy', url: 'https://www.fcnews.net/2026/09/mohawk-helps-renovate-childrens-development-academy/' }];
+    world.pages['https://www.fcnews.net/2026/09/mohawk-helps-renovate-childrens-development-academy/'] = article({ title: 'Mohawk helps renovate Children’s Development Academy', site: 'Floor Covering News', date: '2026-09-23', text: 'Mohawk and Sunshine on a Ranney Day renovated the Children’s Development Academy. Sunshine on a Ranney Day builds rooms for kids.' });
+    await beats(env, { max: 40 });
+    const m = Object.fromEntries((await rows(env.DB, 'SELECT id, state, story, tries, data FROM press_mentions')).map((r) => [r.id, r]));
+    assert.equal(m['g:obit'].state, 'unrelated');
+    assert.equal(m['g:dupe'].state, 'duplicate');
+    assert.equal(m['g:dupe'].story, 'ajc-credit-union');
+    assert.equal(m['g:wp'].state, 'filed', 'found on the outlet’s own site, read and filed');
+    assert.equal((await story(env.DB, m['g:wp'].story)).url, 'https://www.fcnews.net/2026/09/mohawk-helps-renovate-childrens-development-academy/');
+    assert.equal(m['g:lost'].state, 'new', 'not given up on the first try');
+    assert.equal(m['g:lost'].tries, 1);
+    assert.ok(JSON.parse(m['g:lost'].data).retryAt, 'tried again in an hour');
+    // Waiting: the beat leaves it alone, then tries again once its time comes, four times over about four days
+    assert.equal(await E.maybeRunPress(env, { now: NOW + 10 * 60e3, budgetMs: 60000, archiveGapMs: 0 }), null, 'nothing due while it waits');
+    let t = NOW;
+    for (const wait of [1, 6, 24, 72]) { t += wait * 3600e3 + 60e3; await E.maybeRunPress(env, { now: t, budgetMs: 60000, archiveGapMs: 0 }); }
+    const lost = await env.DB.prepare("SELECT state, tries, reason FROM press_mentions WHERE id = 'g:lost'").first();
+    assert.equal(lost.state, 'failed');
+    assert.equal(lost.tries, 5);
+    assert.match(lost.reason, /Google wouldn’t give its link/);
+  });
+
+  test('after the first tidy, the second look starts by itself: every story again, stuck Google finds again, Slack told once', async () => {
+    const env = await newEnv({ press: [
+      { slug: 'wsb-tv-monica-2016', outlet: 'WSB-TV', outletLogo: 'wsb-tv', category: 'local-tv', title: '6-year-old girl paralyzed in crash gets special room makeover', date: '2016-06-01', url: 'https://www.wsbtv.com/news/monica', excerpt: 'A room for Monica.', image: null, featured: false, order: 0 },
+    ], medialogos: OUTLETS, kids: KIDS, partners: [] });
+    await quietState(env);
+    const s = await E.readState(env.DB);
+    s.tidy = { phase: 'done', version: 1, doneAt: new Date(NOW - 864e5).toISOString(), counts: { kidLinks: 55 } };
+    await env.DB.prepare('INSERT OR REPLACE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(E.STATE_KEY, JSON.stringify(s), new Date(NOW).toISOString()).run();
+    await env.DB.prepare("INSERT INTO press_links (slug, url, data, enriched_at) VALUES ('wsb-tv-monica-2016', 'https://www.wsbtv.com/news/monica', '{}', ?)").bind(new Date(NOW - 864e5).toISOString()).run();
+    await env.DB.prepare(`INSERT INTO press_mentions (id, provider, query, link, title, source, state, stage, reason, tries, found_at) VALUES ('g:stuck', 'google', 'q', 'https://news.google.com/rss/articles/stuck', 'Peter Ranney Obituary', 'Legacy', 'failed', 'resolve', 'Couldn’t find the outlet’s own address for it', 3, ?)`).bind(new Date(NOW).toISOString()).run();
+    world.files[LONG] = true;
+    world.pages['https://www.wsbtv.com/news/monica'] = article({ title: '6-year-old girl gets special room', site: 'WSB-TV', date: '2016-06-01', image: LONG, text: 'Sunshine on a Ranney Day built Monica a room.' });
+    await beats(env, { max: 60 });
+    const st = await E.readState(env.DB);
+    assert.equal(st.tidy.version, E.TIDY_VERSION);
+    assert.equal(st.tidy.round, 2);
+    assert.equal(st.tidy.previous.counts.kidLinks, 55, 'the first tidy’s results are kept');
+    assert.equal(st.tidy.counts.pictures, 1);
+    assert.equal((await story(env.DB, 'wsb-tv-monica-2016')).image, 'press/wsb-tv-monica-2016');
+    assert.equal((await env.DB.prepare("SELECT state FROM press_mentions WHERE id = 'g:stuck'").first()).state, 'unrelated', 'the stuck find was looked at again');
+    const told = world.slack.filter((b) => /a second look/.test(b));
+    assert.equal(told.length, 1);
+    await beats(env, { now: NOW + 864e5, max: 5 });
+    assert.equal(world.slack.filter((b) => /a second look/.test(b)).length, 1, 'once');
   });
 });
 

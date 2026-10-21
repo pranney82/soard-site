@@ -226,7 +226,21 @@ try {
     ok(await page.$$eval('.pr-root .hub-tab', (t) => t.map((x) => x.textContent).join('|')).then((s) => /Stories/.test(s) && /Found coverage/.test(s) && /Outlets/.test(s)), 'three tabs');
     const rows = await page.$$eval('.pr-row', (r) => r.length);
     ok(rows === PRESS.length, `every story listed (${rows} of ${PRESS.length})`);
-    ok(await page.$('.pr-monitor') !== null && /Tidying the list/.test(await text(page, '.pr-monitor')), 'the monitor line says the tidy is running');
+    ok(/Tidying the list/.test(await text(page, '.pr-status__foot')), 'the monitor line says the tidy is running');
+    // Where things stand: what needs a person, who the stories are about, pictures
+    const status = await text(page, '.pr-status');
+    ok(/Needs you/i.test(status) && /2 found articles to check/.test(status), `the panel says what needs a person (${status.split('\n').slice(0, 3).join(' / ')})`);
+    const aboutKids = PRESS.filter((x) => (x.kids || []).length).length;
+    ok(new RegExp(`${aboutKids} stories`).test(status) && await page.$$eval('.pr-status .pr-faces .pr-face', (f) => f.length) >= 5, `the panel shows the ${aboutKids} stories about kids, with their faces`);
+    ok(/Pictures/i.test(status) && new RegExp(`of ${PRESS.length}\\b`).test(status), 'the panel counts pictures');
+    ok(await page.$$eval('.pr-row .pr-who--kid', (k) => k.length) >= aboutKids, 'each story about a kid names the kid in its row');
+    const kidThumb = await page.evaluate(() => [...document.querySelectorAll('.pr-row')].some((r) => r.querySelector('.pr-who--kid') && /\/kids\//.test(r.querySelector('.pr-thumb img')?.src || '')));
+    ok(kidThumb, 'a story with no picture of its own shows the kid’s room');
+    await clickText(page, '.pr-status .pr-stat--btn', /About a kid/);
+    await sleep(300);
+    ok(await page.$$eval('.pr-row', (r) => r.length) === aboutKids && /About a kid/.test(await text(page, '.pr-pill[aria-pressed="true"]')), 'the panel opens the stories about kids');
+    await clickText(page, '.pr-pill', /^All/);
+    await sleep(200);
     await page.waitForFunction(() => [...document.querySelectorAll('.nav-item')].some((n) => /Press/.test(n.textContent) && n.querySelector('.nav-count')?.textContent === '2'), { timeout: 8000 }).catch(() => {});
     ok(await page.evaluate(() => [...document.querySelectorAll('.nav-item')].find((n) => /Press/.test(n.textContent))?.querySelector('.nav-count')?.textContent === '2'), 'the sidebar shows 2 found articles need a look');
     ok(await page.$$eval('.pr-feat__item', (r) => r.length) === PRESS.filter((s) => s.featured).length, 'featured stories in their own list');
@@ -275,6 +289,8 @@ try {
     await page.evaluate((s) => { location.hash = `#press/${s}`; }, slug);
     await page.waitForSelector('.pr-editor #pr-title', { timeout: 10000 });
     ok(/Mohawk/i.test(await page.$eval('#pr-title', (e) => e.value)), 'opens the story by its link');
+    const kidPics = await page.$$eval('.pr-kidpic', (b) => b.length);
+    ok(kidPics >= 1 && /Photos from .+’s page/.test(await text(page, '.pr-kidpics')), `photos from the kid’s page are offered (${kidPics})`);
     await page.click('#pr-title', { clickCount: 3 });
     await page.keyboard.type('Mohawk partners with Sunshine on a Ranney Day');
     ok(await waitText(page, '.pr-bar__state', /Unsaved/, 4000), 'shows unsaved changes');
@@ -320,7 +336,7 @@ try {
     await page.keyboard.down('Meta'); await page.keyboard.press('s'); await page.keyboard.up('Meta');
     await waitText(page, '.pr-bar__state', /^Saved$/);
     const saved = await storyIn(slug);
-    ok(saved.publishStatus === 'draft' && saved.outletLogo === 'brand-new-gazette' && saved.outlet === 'Brand New Gazette' && (saved.kids || []).length === 1, 'outlet, kid and draft saved together');
+    ok(saved.publishStatus === 'draft' && saved.outletLogo === 'brand-new-gazette' && saved.outlet === 'Brand New Gazette' && (saved.kids || []).includes('ally'), 'outlet, kid and draft saved together');
     await shot(page, 'desk-2-editor.png');
     await axeCheck(page, 'the editor');
     // Delete, then Undo
@@ -408,7 +424,7 @@ try {
     ok(/Roswell Patch/.test(await text(page, '.pr-pairs')), 'two records for one outlet are offered to merge');
     await shot(page, 'desk-5-outlets.png');
     await axeCheck(page, 'Outlets');
-    await clickText(page, '.pr-pair .btn-primary', /Merge into/);
+    await page.evaluate(() => [...document.querySelectorAll('.pr-pair')].find((p) => /Roswell Patch/.test(p.textContent))?.querySelector('.btn-primary')?.click());
     await sleep(1200);
     const left = await DB.prepare("SELECT slug FROM medialogos WHERE slug IN ('roswell-patch', 'patch-roswell')").all();
     ok(left.results.length === 1, 'merged into one');
@@ -486,7 +502,7 @@ try {
   });
 
   await section('Dark', async () => {
-    await page.evaluate(() => { history.replaceState(null, '', '#press'); window.dispatchEvent(new CustomEvent('soard-navigate', { detail: 'press-hub' })); });
+    await page.evaluate(() => { location.hash = '#press'; });
     await page.waitForSelector('.pr-rows', { timeout: 10000 });
     await setTheme(page, true);
     await sleep(500);

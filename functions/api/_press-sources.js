@@ -8,7 +8,7 @@
  * Nothing here throws: a reader that can't reach its source returns
  * { items: [], error }.
  */
-import { decodeEntities, plain, cleanTitle, urlKey, youTubeId, relevance, OWN_CHANNELS } from '../../public/admin/press-shared.js';
+import { decodeEntities, plain, cleanTitle, urlKey, youTubeId, relevance, OWN_CHANNELS, sameHeadline, hostOf } from '../../public/admin/press-shared.js';
 
 export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
 const TIMEOUT = 10000;
@@ -90,6 +90,36 @@ export async function decodeGoogleLink(link, { fetchImpl = fetch } = {}) {
     const url = JSON.parse(outer[0][2])[1];
     return /^https?:\/\//.test(url) && !/news\.google\.com/.test(url) ? url : null;
   } catch { return null; }
+}
+
+/**
+ * A headline looked up on the outlet's own website, for a Google News find
+ * whose link Google won't open for Cloudflare's servers (it answers 503 some
+ * hours). WordPress sites answer a search as JSON, newspapers on BLOX as RSS.
+ * The outlet's address for it, or null.
+ */
+export async function findOnSite(site, title, { fetchImpl = fetch } = {}) {
+  let origin;
+  try { origin = new URL(String(site || '')).origin; } catch { return null; }
+  if (!/^https?:/.test(origin) || !plain(title)) return null;
+  const q = encodeURIComponent(plain(title).slice(0, 120));
+  const same = (u, t) => { try { return hostOf(u) === hostOf(origin) && sameHeadline(decodeEntities(t), title) ? new URL(u).toString() : null; } catch { return null; } };
+  try {
+    const res = await get(fetchImpl, `${origin}/wp-json/wp/v2/search?per_page=10&search=${q}`, { headers: { Accept: 'application/json' } });
+    if (res.ok && /json/i.test(res.headers.get('content-type') || '')) {
+      const list = await res.json();
+      const hit = (Array.isArray(list) ? list : []).map((x) => same(x?.url, x?.title)).find(Boolean);
+      if (hit) return hit;
+    }
+  } catch { /* not WordPress */ }
+  try {
+    const res = await get(fetchImpl, `${origin}/search/?f=rss&t=article&l=10&q=${q}`, { headers: { Accept: 'application/rss+xml, application/xml;q=0.9' } });
+    if (res.ok) {
+      const hit = rssItems(await res.text()).map((b) => same(decodeEntities(tag(b, 'link')), tag(b, 'title'))).find(Boolean);
+      if (hit) return hit;
+    }
+  } catch { /* not BLOX */ }
+  return null;
 }
 
 // ── Bing News ────────────────────────────────────────────────────────

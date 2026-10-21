@@ -36,7 +36,7 @@ import { recordVersion, recordDeletion } from './_content-history.js';
 import { slackPost } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import * as P from '../../public/admin/press-shared.js';
-import { googleNews, decodeGoogleLink, bingNews, youTubeChannel, youTubeSearch, UA } from './_press-sources.js';
+import { googleNews, decodeGoogleLink, findOnSite, bingNews, youTubeChannel, youTubeSearch, UA } from './_press-sources.js';
 import { readPage, checkLink, archiveLookup, archiveSave, archiveRaw, saveImage, safeUrl } from './_press-page.js';
 
 export const PRESS_USER = 'Press monitor (automatic)';
@@ -53,8 +53,10 @@ const DEPLOY_COOLDOWN = 30 * 60e3;
 // copy) stays under ~25s with the timeouts in _press-page.js
 const STEP_WINDOW_MS = 6000;
 const MAX_TRIES = 3;                   // a step cut short this often is skipped
+// A Google News find whose link can't be had yet is tried again after these waits, then given up
+const RESOLVE_WAITS = [H, 6 * H, 24 * H, 72 * H];
 const LOCK_MS = 45000;
-export const TIDY_VERSION = 1;
+export const TIDY_VERSION = 2;
 const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_URL'];
 const STYLE = 'Plain, warm and specific. The founder is always "Peter Ranney" or "Peter", never "Pete", even when the story says Pete. Facts from the text only; never invent names, dates or outcomes. No em dashes or en dashes (use commas or periods). No exclamation marks. Avoid stock phrases such as "journey", "testament", "heartwarming", "life-changing", "truly", "a space where".';
@@ -119,10 +121,12 @@ export function archiveGate(state, gapMs = ARCHIVE_GAP_MS) {
     ready,
     async lookup(url, date, fetchImpl = fetch) { if (!ready()) return { skipped: true }; const r = await archiveLookup(url, date, { fetchImpl }); after(r); return r; },
     async save(url, fetchImpl = fetch) { if (!ready()) return { skipped: true }; const r = await archiveSave(url, { fetchImpl }); after(r); return r; },
+    /** Any other request to the Archive (a picture from its copy), under the same pause */
+    async use(fn) { if (!ready()) return { skipped: true }; const r = await fn(); after(r); return r; },
   };
 }
 // A person's own action (or a test) asks straight away
-const OPEN_GATE = { ready: () => true, lookup: (u, d, f = fetch) => archiveLookup(u, d, { fetchImpl: f }), save: (u, f = fetch) => archiveSave(u, { fetchImpl: f }) };
+const OPEN_GATE = { ready: () => true, lookup: (u, d, f = fetch) => archiveLookup(u, d, { fetchImpl: f }), save: (u, f = fetch) => archiveSave(u, { fetchImpl: f }), use: (fn) => fn() };
 
 // ── Records ──────────────────────────────────────────────────────────
 const DIRS = { press: 'src/content/press', medialogos: 'src/content/medialogos' };
@@ -281,7 +285,8 @@ function corpus(title, description, text) {
 /** Kids and partners for a story, from candidates (AI confirms; without AI only the unmistakable ones) */
 function pickPeople(cands, ai) {
   // A name that's also a place or a word ("Georgia", "Peter") counts only when Workers AI agrees and it comes up twice
-  const usable = cands.kids.filter((k) => !k.ambiguous || (ai && k.count >= 2));
+  // A follow-up years after the makeover counts only when Workers AI agrees too
+  const usable = cands.kids.filter((k) => (!k.ambiguous || (ai && k.count >= 2)) && (!k.followUp || ai));
   const kids = ai
     ? usable.filter((k) => ai.kids.includes(k.slug))
     : usable.filter((k) => !k.ambiguous && k.count >= 2 && cands.kids.filter((o) => o.matched.some((m) => k.matched.includes(m))).length === 1);
@@ -317,9 +322,13 @@ export async function fixGuessedDates(env) {
     const real = dateOnly(r.published);
     const filedDay = String(r.at || '').slice(0, 10);
     if (!rec || !real || rec.data.date !== filedDay || real === filedDay) continue;
-    const next = P.storyRecord({ ...rec.data, date: real });
+    // Kids were picked by the guessed date: one whose makeover came after the real date isn't who it's about
+    const kids = rec.data.kids?.length ? new Map((await loadAll(DB, 'kids')).map((k) => [k.slug, k.data])) : new Map();
+    const after = (rec.data.kids || []).filter((k) => P.kidAfterStory({ date: real }, kids.get(k)));
+    const next = P.storyRecord({ ...rec.data, date: real, ...(after.length ? { kids: rec.data.kids.filter((k) => !after.includes(k)) } : {}) });
     if (await writeRecord(env, 'press', r.story, rec.raw, next, { message: `Press monitor: ${rec.data.title} dated` })) {
-      await logChange(DB, { kind: 'story', slug: r.story, label: `${clip(rec.data.title, 70)}: date corrected`, before: { date: rec.data.date }, after: { date: real } });
+      const diff = fieldDiff(rec.data, next);
+      await logChange(DB, { kind: 'story', slug: r.story, label: `${clip(rec.data.title, 70)}: date corrected${after.length ? `, unlinked ${after.map((k) => P.plain(kids.get(k)?.name) || k).join(', ')} (that makeover came after it)` : ''}`, ...diff });
       fixed += 1;
     }
   }
@@ -358,9 +367,9 @@ async function context(DB) {
   return { stories, outlets, kids: kids.map((k) => k.data), partners: partners.map((p) => p.data) };
 }
 /** A story already on the site that's this article */
-function storyFor(ctx, { url, title, source }) {
+function storyFor(ctx, { url, title, source, sourceUrl = '' }) {
   const key = P.urlKey(url);
-  const outlet = P.matchOutlet(ctx.outlets.map((o) => o.data), { name: source, url });
+  const outlet = P.matchOutlet(ctx.outlets.map((o) => o.data), { name: source, url, source: sourceUrl || '' });
   const syndicated = P.AGGREGATORS.test(P.hostOf(url));
   return ctx.stories.find((s) => {
     const d = s.data;
@@ -370,6 +379,8 @@ function storyFor(ctx, { url, title, source }) {
     return syndicated || (outlet ? d.outletLogo === outlet.slug : P.outletKey(d.outlet) === P.outletKey(source));
   }) || null;
 }
+/** A found article that isn't waiting to be tried again later */
+const READY = "(json_extract(data, '$.retryAt') IS NULL OR json_extract(data, '$.retryAt') <= ?)";
 const setMention = (DB, id, fields) => {
   const keys = Object.keys(fields);
   return DB.prepare(`UPDATE press_mentions SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).bind(...keys.map((k) => fields[k]), iso(), id).run();
@@ -394,20 +405,34 @@ export async function stepMention(env, m, { fetchImpl = fetch, ctx = null, force
     await setMention(DB, m.id, { data: JSON.stringify(data) });
   }
   if (stage === 'resolve') {
-    const url = m.url || (m.provider === 'google' ? await decodeGoogleLink(m.link, { fetchImpl }) : m.link);
+    // Settled without its link: an obituary, or a story already on the page under that headline
+    const notPress = P.notPressReason(m.url || '', m.title);
+    if (notPress && !force) { await setMention(DB, m.id, { state: 'unrelated', reason: notPress }); return { done: true }; }
+    ctx = ctx || await context(DB);
+    const onSite = storyFor(ctx, { url: m.url, title: m.title, source: m.source, sourceUrl: m.source_url });
+    if (onSite && !force) { await setMention(DB, m.id, { state: 'duplicate', reason: 'Already on the publicity page', story: onSite.slug }); return { done: true }; }
+    let url = m.url || (m.provider === 'google' ? await decodeGoogleLink(m.link, { fetchImpl }) : m.link);
+    // Google turns Cloudflare's servers away some hours: the headline, looked up on the outlet's own site
+    if (!url && m.source_url) url = await findOnSite(m.source_url, m.title, { fetchImpl });
     if (!url) {
       const tries = (m.tries || 0) + 1;
-      await setMention(DB, m.id, tries >= 3 ? { tries, state: 'failed', reason: 'Couldn’t find the outlet’s own address for it' } : { tries });
-      return { done: tries >= 3 };
+      if (tries >= RESOLVE_WAITS.length + 1) {
+        await setMention(DB, m.id, { tries, state: 'failed', reason: 'Google wouldn’t give its link and the outlet’s site doesn’t list it' });
+        return { done: true };
+      }
+      // Tried again later (Google answers some hours and not others), over about a week
+      await setMention(DB, m.id, { tries, data: JSON.stringify({ ...data, retryAt: iso(Date.now() + RESOLVE_WAITS[tries - 1]) }) });
+      return { done: true, waiting: true };
     }
-    await setMention(DB, m.id, { url, key: P.urlKey(url), stage: 'match' });
+    const { retryAt: _r, ...rest } = data;
+    await setMention(DB, m.id, { url, key: P.urlKey(url), stage: 'match', data: JSON.stringify(rest) });
     return { next: 'match' };
   }
   ctx = ctx || await context(DB);
   if (stage === 'match') {
     const notPress = P.notPressReason(m.url, m.title);
     if (notPress && !force) { await setMention(DB, m.id, { state: 'unrelated', reason: notPress }); return { done: true }; }
-    const onSite = storyFor(ctx, { url: m.url, title: m.title, source: m.source });
+    const onSite = storyFor(ctx, { url: m.url, title: m.title, source: m.source, sourceUrl: m.source_url });
     if (onSite && !force) { await setMention(DB, m.id, { state: 'duplicate', reason: 'Already on the publicity page', story: onSite.slug }); return { done: true }; }
     const twin = await DB.prepare("SELECT id, state, story FROM press_mentions WHERE key = ? AND id != ? AND state != 'new' LIMIT 1").bind(P.urlKey(m.url), m.id).first();
     if (twin && !force) { await setMention(DB, m.id, { state: 'duplicate', reason: 'Found twice', story: twin.story || null }); return { done: true }; }
@@ -440,7 +465,7 @@ export async function stepMention(env, m, { fetchImpl = fetch, ctx = null, force
     // No date at all: never today's date (a story from years ago would top the page); a person decides
     const date = dateOnly(page.published) || dateOnly(m.published) || (force ? iso().slice(0, 10) : null);
     const year = Number((date || iso()).slice(0, 4));
-    const cands = { kids: P.kidCandidates(all, ctx.kids, year), partners: P.partnerCandidates(all, ctx.partners) };
+    const cands = { kids: P.kidCandidates(all, ctx.kids, year, { title }), partners: P.partnerCandidates(all, ctx.partners) };
     const ai = await judgeWithAi(env, { title, outlet: outletRec?.name || outletName, date, text, description: page.description || m.description, kids: cands.kids, partners: cands.partners });
     const people = pickPeople(cands, ai);
     const about = ai?.about || (rel.strong ? 'about' : rel.any ? 'mentions' : 'unrelated');
@@ -555,6 +580,19 @@ export async function summary(env) {
 
 // ── The tidy (once) ──────────────────────────────────────────────────
 const STORY_STAGES = ['decode', 'read', 'judge', 'picture', 'save'];
+/**
+ * A newer tidy after one finished (TIDY_VERSION went up): every story is
+ * read and looked at again, and Google News finds that never got their
+ * link are tried again. Version 2: the first tidy saved no pictures at all
+ * (D1 turned away its twin check, a LIKE over 50 bytes), judged no kids on
+ * outlets that block reading, and linked a kid by a guessed date.
+ */
+async function beginNextTidy(DB, state, now) {
+  const prev = state.tidy || {};
+  await DB.prepare('UPDATE press_links SET enriched_at = NULL').run();
+  await DB.prepare("UPDATE press_mentions SET state = 'new', tries = 0, reason = NULL, updated_at = ? WHERE state = 'failed' AND stage = 'resolve'").bind(iso(now)).run();
+  state.tidy = { phase: 'decode', startedAt: iso(now), counts: {}, round: (prev.round || 1) + 1, previous: { version: prev.version || 0, doneAt: prev.doneAt || null, counts: prev.counts || {} } };
+}
 /** Stories with their Google News links swapped for the outlet's own (found in the tidy's first phase) */
 async function withDecodedLinks(DB, stories) {
   const rows = (await DB.prepare("SELECT slug, data FROM press_links WHERE data LIKE '%\"url\":%'").all()).results || [];
@@ -604,6 +642,16 @@ export async function tidyStep(env, state, { fetchImpl = fetch, gate = OPEN_GATE
       }
     }
     if (work.length) return { did: `outlets ${work.length}` };
+    // Two records that are one outlet for sure: folded into the one with the logo (or more stories), with Undo
+    const list = (await loadAll(DB, 'medialogos')).map((o) => o.data);
+    let pair = null;
+    for (let i = 0; i < list.length && !pair; i++) for (let j = i + 1; j < list.length && !pair; j++) if (P.sameOutletRecords(list[i], list[j])) pair = [list[i], list[j]];
+    if (pair) {
+      const count = (o) => stories.filter((s) => s.data.outletLogo === o.slug).length;
+      const [keep, drop] = [...pair].sort((x, y) => (y.logo ? 1 : 0) - (x.logo ? 1 : 0) || count(y) - count(x));
+      const r = await mergeOutlets(env, drop.slug, keep.slug, PRESS_USER);
+      if (r.success) { bump('outletsMerged'); return { did: `merged outlet ${drop.slug} into ${keep.slug}` }; }
+    }
     t.phase = 'duplicates';
     return { did: 'outlets done' };
   }
@@ -682,25 +730,33 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   }
   if (stage === 'judge') {
     const page = data.page || {};
-    const needsPeople = !s.kids && !s.partners;
+    const kidRecs = (await loadAll(DB, 'kids')).map((k) => k.data);
+    const kidBy = new Map(kidRecs.map((k) => [k.slug, k]));
+    // Kids and partners are each filled when the story has none (a makeover after the story never counts)
+    const needsKids = !(s.kids || []).some((k) => !P.kidAfterStory(s, kidBy.get(k)));
+    const needsPartners = !(s.partners || []).length;
     const needsSummary = !P.plain(s.excerpt) || P.junkSummary(s) || P.hasMarkup(s.excerpt);
-    if (page.text && (needsPeople || needsSummary)) {
-      const [kids, partners] = await Promise.all([loadAll(DB, 'kids'), loadAll(DB, 'partners')]);
-      const all = corpus(P.storyTitle(s), page.description, page.text);
-      const cands = needsPeople ? { kids: P.kidCandidates(all, kids.map((k) => k.data), P.yearOf(s)), partners: P.partnerCandidates(all, partners.map((p) => p.data)) } : { kids: [], partners: [] };
-      const ai = (cands.kids.length || cands.partners.length || needsSummary)
-        ? await judgeWithAi(env, { title: P.storyTitle(s), outlet: s.outlet, date: s.date, text: page.text, description: page.description, kids: cands.kids, partners: cands.partners, wantSummary: needsSummary })
+    const title = P.storyTitle(s);
+    // An outlet that won't show the article: its headline and summary say who it's about
+    const all = page.text ? corpus(title, page.description, page.text) : corpus(title, [page.description, s.excerpt].filter(Boolean).join('\n'), '');
+    if (needsKids || needsPartners || (needsSummary && page.text)) {
+      const partners = needsPartners ? (await loadAll(DB, 'partners')).map((p) => p.data) : [];
+      const cands = { kids: needsKids ? P.kidCandidates(all, kidRecs, P.yearOf(s), { title }) : [], partners: needsPartners ? P.partnerCandidates(all, partners) : [] };
+      const wantSummary = needsSummary && !!page.text;
+      const ai = (cands.kids.length || cands.partners.length || wantSummary)
+        ? await judgeWithAi(env, { title, outlet: s.outlet, date: s.date, text: page.text || '', description: page.text ? page.description : [page.description, s.excerpt].filter(Boolean).join(' '), kids: cands.kids, partners: cands.partners, wantSummary })
         : null;
-      if (needsPeople) Object.assign(data, pickPeople(cands, ai));
-      if (needsSummary) data.summary = (ai?.summary && ai.about !== 'unrelated' ? ai.summary : '') || clip(P.plain(page.description), P.SUMMARY_MAX) || '';
-    } else if (needsSummary && !page.text) {
-      data.summary = clip(P.plain(page.description), P.SUMMARY_MAX) || '';
+      const people = pickPeople(cands, ai);
+      if (needsKids) data.kids = people.kids;
+      if (needsPartners) data.partners = people.partners;
+      if (wantSummary) data.summary = (ai?.summary && ai.about !== 'unrelated' ? ai.summary : '') || clip(P.plain(page.description), P.SUMMARY_MAX) || '';
     }
+    if (needsSummary && !page.text) data.summary = clip(P.plain(page.description), P.SUMMARY_MAX) || '';
     // A video in the article: suggested in the editor, never switched on by itself.
     // The same video on two stories is the site's own player, not this story's
     if (!s.videoId && page.videos?.length) {
       const v = page.videos[0];
-      const twin = await DB.prepare('SELECT slug, data FROM press_links WHERE slug != ? AND (data LIKE ? OR data LIKE ?)').bind(slug, `%"suggestVideo":"${v}"%`, `%"siteVideo":"${v}"%`).first();
+      const twin = await DB.prepare("SELECT slug, data FROM press_links WHERE slug != ? AND (json_extract(data, '$.suggestVideo') = ? OR json_extract(data, '$.siteVideo') = ?)").bind(slug, v, v).first();
       if (twin) {
         const td = parse(twin.data, {});
         if (td.suggestVideo === v) { delete td.suggestVideo; td.siteVideo = v; await DB.prepare('UPDATE press_links SET data = ? WHERE slug = ?').bind(JSON.stringify(td), twin.slug).run(); }
@@ -713,18 +769,31 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   }
   if (stage === 'picture') {
     const page = data.page || {};
-    if (!s.image && page.image) {
-      // The same picture on two stories is the site's default share image, not this story's
-      const twin = await DB.prepare('SELECT slug FROM press_links WHERE slug != ? AND data LIKE ?').bind(slug, `%"imageSrc":${JSON.stringify(page.image)}%`).first();
+    const hasLogo = !!(await loadOne(DB, 'medialogos', s.outletLogo || ''))?.data?.logo;
+    // A featured card that shows its outlet's logo keeps it: the picture is offered instead
+    const take = (id, from) => { if (s.featured && hasLogo) data.suggestImage = id; else { data.image = id; data.imageFrom = from; } };
+    if (!s.image && page.image && !P.genericImage(page.image)) {
+      // The same picture on two stories is the site's default share image, not this story's.
+      // Matched exactly: D1 turns away a LIKE pattern over 50 bytes, and picture addresses are longer
+      const twin = await DB.prepare("SELECT slug FROM press_links WHERE slug != ? AND json_extract(data, '$.imageSrc') = ?").bind(slug, page.image).first();
       if (twin) data.genericImage = true;
       else {
-        const outlets = await loadAll(DB, 'medialogos');
-        const hasLogo = !!outlets.find((o) => o.slug === s.outletLogo)?.data?.logo;
-        const r = await saveImage(env, page.image, `press/${slug}`, { fetchImpl, referer: url });
         data.imageSrc = page.image;
-        // A featured card that shows its outlet's logo keeps it: the picture is offered instead
-        if (r.imageId) { if (s.featured && hasLogo) data.suggestImage = r.imageId; else data.image = r.imageId; }
+        let r = await saveImage(env, page.image, `press/${slug}`, { fetchImpl, referer: url });
+        let from = data.fromArchive ? 'archive' : 'article';
+        // The outlet won't hand the picture to Cloudflare (or it's gone): the Archive's copy of it
+        if (!r.imageId && !/imagedelivery|web\.archive\.org/.test(page.image)) {
+          const a = await gate.use(async () => { const x = await saveImage(env, `https://web.archive.org/web/${String(s.date || '').slice(0, 4) || '2020'}im_/${page.image}`, `press/${slug}`, { fetchImpl }); return { ...x, limited: /\(429\)/.test(x.error || '') }; });
+          if (a.imageId) { r = a; from = 'archive'; }
+        }
+        if (r.imageId) take(r.imageId, from); else data.imageError = r.error || 'skipped';
       }
+    }
+    // A featured card with no picture, video or logo would show the outlet's name in plain type:
+    // the room of the kid it's about instead
+    if (!s.image && !data.image && !data.suggestImage && s.featured && !s.videoId && !hasLogo) {
+      const kid = (s.kids || []).map((k) => loadOne(DB, 'kids', k));
+      for (const k of await Promise.all(kid)) { const id = P.kidPhoto(k?.data); if (id) { data.image = id; data.imageFrom = `kid:${k.slug}`; break; } }
     }
     data.stage = 'save';
     await save({ data: JSON.stringify(data) });
@@ -740,21 +809,31 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   if (data.image && !s.image) next.image = data.image;
   if (data.summary && (!P.plain(s.excerpt) || P.junkSummary(s) || P.hasMarkup(s.excerpt))) next.excerpt = data.summary;
   else if (P.hasMarkup(s.excerpt)) next.excerpt = P.plain(s.excerpt);
-  if (!s.kids && !s.partners) {
-    if (data.kids?.length) next.kids = data.kids;
-    if (data.partners?.length) next.partners = data.partners;
-  }
+  const kidBy = new Map((await loadAll(DB, 'kids')).map((k) => [k.slug, k.data]));
+  // A makeover after the story can't be what it's about (a date put right later shows it)
+  const after = (s.kids || []).filter((k) => P.kidAfterStory(s, kidBy.get(k)));
+  const keptKids = (s.kids || []).filter((k) => !after.includes(k));
+  if (after.length) next.kids = keptKids;
+  if (!keptKids.length && data.kids?.length) next.kids = data.kids;
+  if (!(s.partners || []).length && data.partners?.length) next.partners = data.partners;
   const clean = P.storyRecord(next);
   const diff = fieldDiff(s, clean);
   if (diff) {
     if (!(await writeRecord(env, 'press', slug, rec.raw, clean, { message: `Press tidy: ${clean.title}` }))) return { did: `${slug} changed meanwhile` };
     const what = [];
+    const kidName = (k) => P.plain(kidBy.get(k)?.name) || k;
     if ('outletLogo' in diff.after || 'outlet' in diff.after) { what.push('outlet'); bump('storiesLinked'); }
     if ('title' in diff.after) { what.push('headline'); bump('titlesCleaned'); }
     if ('url' in diff.after) { what.push('the outlet’s own link'); bump('googleLinksFixed'); }
-    if ('image' in diff.after) { what.push('picture'); bump('pictures'); }
+    if ('image' in diff.after) {
+      const from = String(data.imageFrom || '');
+      what.push(from.startsWith('kid:') ? `${kidName(from.slice(4))}’s room as its picture` : from === 'archive' ? 'picture (from the archived copy)' : 'picture');
+      bump('pictures');
+    }
     if ('excerpt' in diff.after) { what.push('summary'); bump('summaries'); }
-    if ('kids' in diff.after) { what.push(`${clean.kids.length === 1 ? 'a kid' : `${clean.kids.length} kids`}`); bump('kidLinks', clean.kids.length); }
+    if (after.length) { what.push(`unlinked ${after.map(kidName).join(', ')} (that makeover came after the story)`); bump('kidLinksRemoved', after.length); }
+    const added = (clean.kids || []).filter((k) => !(s.kids || []).includes(k));
+    if (added.length) { what.push(added.map(kidName).join(', ')); bump('kidLinks', added.length); }
     if ('partners' in diff.after) { what.push(`${clean.partners.length === 1 ? 'a partner' : `${clean.partners.length} partners`}`); bump('partnerLinks', clean.partners.length); }
     await logChange(DB, { kind: 'story', slug, label: `${clip(clean.title, 70)}: ${what.join(', ')}`, ...diff });
   }
@@ -763,6 +842,8 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   if (data.suggestImage) keep.suggestImage = data.suggestImage;
   if (data.siteVideo) keep.siteVideo = data.siteVideo;
   if (data.imageSrc) keep.imageSrc = data.imageSrc;
+  if (data.imageFrom && clean.image === data.image) keep.imageFrom = data.imageFrom;
+  if (data.imageError) keep.imageError = data.imageError;
   if (data.fromArchive) keep.fromArchive = true;
   await save({ enriched_at: iso(), url: clean.url || null, data: JSON.stringify(keep) });
   return { did: `${slug} saved${diff ? '' : ' (nothing to change)'}` };
@@ -857,7 +938,7 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
     if (state.busyUntil && Date.parse(state.busyUntil) > now) return null;
     const started = Date.now();
     const log = [];
-    const pendingNew = await DB.prepare("SELECT COUNT(*) AS n FROM press_mentions WHERE state = 'new'").first('n');
+    const pendingNew = await DB.prepare(`SELECT COUNT(*) AS n FROM press_mentions WHERE state = 'new' AND ${READY}`).bind(iso(now)).first('n');
     const tidyDue = (state.tidy?.version || 0) < TIDY_VERSION;
     // A source that failed outright is tried again in half an hour, not the usual few hours
     const scanDue = Object.keys(SCAN_EVERY).filter((p) => now - Date.parse(state.scans?.[p]?.at || 0) >= (state.scans?.[p]?.error ? 30 * 60e3 : SCAN_EVERY[p]));
@@ -894,11 +975,11 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
       // 2. Found articles, a step at a time
       let ctx = null;
       while (more()) {
-        const m = await DB.prepare("SELECT * FROM press_mentions WHERE state = 'new' ORDER BY found_at ASC LIMIT 1").first();
+        const m = await DB.prepare(`SELECT * FROM press_mentions WHERE state = 'new' AND ${READY} ORDER BY found_at ASC LIMIT 1`).bind(iso(now)).first();
         if (!m) break;
-        ctx = m.stage === 'resolve' ? ctx : (ctx || await context(DB));
+        ctx = ctx || await context(DB);
         const r = await stepMention(env, m, { fetchImpl, ctx, gate });
-        log.push(`mention ${m.id}: ${r.next || (r.filed ? `filed ${r.filed}` : r.review ? 'review' : 'done')}`);
+        log.push(`mention ${m.id}: ${r.next || (r.filed ? `filed ${r.filed}` : r.review ? 'review' : r.waiting ? 'tried again later' : 'done')}`);
         if (r.filed) {
           state.deployPending = true;
           const st = r.story;
@@ -924,6 +1005,7 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
       }
       // 3. The tidy
       if (tidyDue) {
+        if (state.tidy?.phase === 'done') await beginNextTidy(DB, state, now);
         state.tidy ||= {};
         state.tidy.startedAt ||= iso(now);
         while (more()) {
@@ -935,15 +1017,17 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
             const parts = [
               c.outletsCreated || c.storiesLinked ? `${c.storiesLinked || 0} stories linked to ${(c.outletsCreated || 0) + (c.outletsUpdated || 0)} outlets` : null,
               c.duplicatesRemoved ? `${c.duplicatesRemoved} duplicates merged` : null,
+              c.outletsMerged ? `${c.outletsMerged} ${c.outletsMerged === 1 ? 'outlet' : 'outlets'} that were one outlet folded together` : null,
               c.googleLinksFixed ? `${c.googleLinksFixed} Google News links swapped for the outlet’s own` : null,
               c.titlesCleaned ? `${c.titlesCleaned} headlines tidied` : null,
               c.pictures ? `${c.pictures} pictures added` : null,
               c.summaries ? `${c.summaries} summaries rewritten` : null,
               c.kidLinks ? `${c.kidLinks} kid links` : null,
+              c.kidLinksRemoved ? `${c.kidLinksRemoved} wrong kid ${c.kidLinksRemoved === 1 ? 'link' : 'links'} taken off` : null,
               c.partnerLinks ? `${c.partnerLinks} partner links` : null,
             ].filter(Boolean);
             await tell(env, {
-              icon: '🧹', title: 'Press list tidied',
+              icon: '🧹', title: state.tidy.round > 1 ? 'Press list: a second look' : 'Press list tidied',
               lead: `${parts.length ? parts.map((x) => x[0].toUpperCase() + x.slice(1)).join('\n') : 'Nothing needed changing.'}\nEvery change is listed in Press, and each one can be undone.`,
               buttons: [{ label: 'See every change', url: adminLink('press/found') }],
             }, 'news');
@@ -1014,7 +1098,7 @@ export async function overview(env) {
       const d = parse(m.data, {});
       return { ...m, data: undefined, summary: d.judge?.summary || '', about: d.judge?.about || null, image: d.imageId || null, outletGuess: d.page?.siteName || null, read: d.read || null };
     }),
-    links: Object.fromEntries((links.results || []).map((l) => { const d = parse(l.data, {}); return [l.slug, { status: l.status, http: l.http, fails: l.fails, firstFailedAt: l.first_failed_at, checkedAt: l.checked_at, archiveUrl: l.archive_url, enrichedAt: l.enriched_at, suggestVideo: d.suggestVideo || null, suggestImage: d.suggestImage || null, fromArchive: !!d.fromArchive }]; })),
+    links: Object.fromEntries((links.results || []).map((l) => { const d = parse(l.data, {}); return [l.slug, { status: l.status, http: l.http, fails: l.fails, firstFailedAt: l.first_failed_at, checkedAt: l.checked_at, archiveUrl: l.archive_url, enrichedAt: l.enriched_at, suggestVideo: d.suggestVideo || null, suggestImage: d.suggestImage || null, fromArchive: !!d.fromArchive, imageFrom: d.imageFrom || null }]; })),
     log: (log.results || []).map((r) => ({ ...r, before: parse(r.before), after: parse(r.after), extra: parse(r.extra) })),
   };
 }
@@ -1035,7 +1119,7 @@ export async function fillFromUrl(env, rawUrl, { fetchImpl = fetch } = {}) {
   const title = P.cleanTitle(page.title || '', outlet?.name || siteName);
   const date = dateOnly(page.published);
   const all = corpus(title, page.description, page.text);
-  const cands = { kids: P.kidCandidates(all, ctx.kids, Number((date || iso()).slice(0, 4))), partners: P.partnerCandidates(all, ctx.partners) };
+  const cands = { kids: P.kidCandidates(all, ctx.kids, Number((date || iso()).slice(0, 4)), { title }), partners: P.partnerCandidates(all, ctx.partners) };
   const ai = (page.text || page.description) ? await judgeWithAi(env, { title, outlet: outlet?.name || siteName, date, text: page.text, description: page.description, kids: cands.kids, partners: cands.partners }) : null;
   const people = pickPeople(cands, ai);
   let imageId = null;
