@@ -15,27 +15,46 @@ import { escapeHtml, SITE_ORIGIN } from './_broadcast-notify.js';
 
 const ACTIONS = ['back', 'skip', 'send'];
 
+/** The same look as the emails these links come from (./_email-shell.js), with the site's own fonts */
 function page(title, body, { status = 200 } = {}) {
   return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
 <title>${escapeHtml(title)} · Sunshine on a Ranney Day</title>
+<link rel="preload" href="/fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
 <style>
-body{margin:0;background:#F5F4F0;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#373A36}
-main{max-width:460px;margin:12vh auto 0;padding:0 16px}
-.card{background:#fff;border:1px solid #E5E4E0;border-radius:16px;padding:28px 24px;box-shadow:0 6px 16px -4px rgba(26,27,31,.08)}
-.brand{font-size:13px;font-weight:700;letter-spacing:.02em;color:#7A5C00;margin:0 0 10px}
-h1{font-size:22px;line-height:1.25;margin:0 0 10px}
-p{margin:0 0 16px;color:#5A5B61}
-button,.btn{display:inline-block;font:inherit;font-weight:700;border:0;border-radius:999px;padding:12px 22px;cursor:pointer;text-decoration:none;min-height:44px}
-button{background:#FFDA24;color:#373A36}
-.btn{background:#F1F0EC;color:#373A36;margin-left:8px}
-button:focus-visible,.btn:focus-visible{outline:3px solid #373A36;outline-offset:2px}
-</style></head><body><main><div class="card"><p class="brand">Sunshine on a Ranney Day · Applications</p>${body}</div></main></body></html>`, {
+@font-face{font-family:Outfit;src:url(/fonts/outfit-latin-variable.woff2) format('woff2');font-weight:100 900;font-display:swap}
+@font-face{font-family:'Libre Baskerville';src:url(/fonts/libre-baskerville-latin-700-normal.woff2) format('woff2');font-weight:700;font-display:swap}
+:root{--page:#F5F4F0;--card:#FEFCF5;--ink:#2D2E33;--muted:#5A5B61;--gold:#8A7200;--line:#E5E4E0;--y:#FFDA24;--outline:#D4D2CB;--outline-bg:#fff}
+@media (prefers-color-scheme:dark){:root{--page:#141518;--card:#1F2024;--ink:#ECECEA;--muted:#ABACB2;--gold:#E6C744;--line:#3A3B41;--outline:#56575D;--outline-bg:#26272C}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--page);font:16px/1.55 Outfit,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:var(--ink);-webkit-text-size-adjust:100%}
+main{max-width:480px;margin:0 auto;padding:12vh 16px 40px}
+.card{background:var(--card);border-radius:16px;padding:30px 28px 28px;box-shadow:0 1px 2px rgba(26,27,31,.04),0 8px 24px -8px rgba(26,27,31,.1)}
+.eyebrow{display:flex;align-items:center;gap:10px;margin:0 0 14px;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+.eyebrow::before{content:'';width:28px;height:2px;background:var(--y);flex:none}
+h1{font-family:'Libre Baskerville',Georgia,serif;font-size:25px;line-height:1.3;font-weight:700;margin:0 0 10px;text-wrap:balance}
+p{margin:0 0 22px;color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0}
+button,.btn{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 22px;border-radius:999px;font:inherit;font-size:15px;font-weight:700;line-height:1;text-decoration:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button{background:var(--y);color:#2D2E33;border:1px solid var(--y)}
+button:hover{filter:brightness(.97)}
+button[disabled]{opacity:.7;cursor:progress}
+.btn{background:var(--outline-bg);color:var(--ink);border:1px solid var(--outline)}
+.btn:hover{border-color:var(--ink)}
+button:focus-visible,.btn:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.foot{margin:18px 4px 0;font-size:12px;color:var(--muted);text-align:center}
+@media (max-width:420px){main{padding-top:8vh}.card{padding:26px 20px 22px}h1{font-size:22px}.actions>*{flex:1 1 100%}}
+</style></head><body><main><div class="card"><p class="eyebrow">Applicants · Status emails</p>${body}</div><p class="foot">Sunshine on a Ranney Day</p></main>
+<script>document.querySelectorAll('form').forEach(f=>f.addEventListener('submit',()=>{const b=f.querySelector('button');if(b){b.disabled=true;b.textContent='Working…';}}));</script>
+</body></html>`, {
     status,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
   });
 }
 
-const adminLink = (id) => `<a class="btn" href="${SITE_ORIGIN}/admin/#applications/applicants/${encodeURIComponent(id || '')}">Open in the admin</a>`;
+const adminHref = (id) => `${SITE_ORIGIN}/admin/#applications/applicants/${encodeURIComponent(id || '')}`;
+const adminBtn = (id) => `<a class="btn" href="${adminHref(id)}">Open in the admin</a>`;
+const adminLink = (id) => `<div class="actions">${adminBtn(id)}</div>`;
 const gone = () => page('Already handled', '<h1>Already handled</h1><p>This change was already handled, or the status has changed again since. The admin shows where things stand.</p>' + adminLink(''), { status: 410 });
 
 export async function onRequestGet({ request, env }) {
@@ -54,7 +73,7 @@ export async function onRequestGet({ request, env }) {
     send: [`Send the ${label} email now?`, `${name}’s family gets it right away instead of waiting.`, 'Send now'],
   }[act];
   if (act === 'back' && !row.previous) return gone();
-  return page(copy[0], `<h1>${copy[0]}</h1><p>${copy[1]}</p><form method="post"><input type="hidden" name="t" value="${escapeHtml(tok)}"><input type="hidden" name="do" value="${act}"><button type="submit">${copy[2]}</button>${adminLink(row.account_id)}</form>`);
+  return page(copy[0], `<h1>${copy[0]}</h1><p>${copy[1]}</p><form method="post" class="actions"><input type="hidden" name="t" value="${escapeHtml(tok)}"><input type="hidden" name="do" value="${act}"><button type="submit">${copy[2]}</button>${adminBtn(row.account_id)}</form>`);
 }
 
 export async function onRequestPost({ request, env }) {
