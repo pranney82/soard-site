@@ -395,6 +395,8 @@ async function copyFile(env, f, { fetchImpl, now }) {
   if (!item || (item.status && item.status !== 'active')) return done({ state: restingState(f) });
   // One the site put there from the application, whose webhook beat the site's note of it
   if (f.kind === 'photo' && !f.jt_file_id && !f.job_file_id && plainCaption(item) === APP_CAPTION) return done({ state: 'skipped', origin: 'application' });
+  // The same picture already in the project: JobTread has it once already
+  if (f.kind === 'photo' && item.processing_status === 'duplicate' && !f.jt_file_id && !f.job_file_id) return done({ state: 'skipped', error: 'A duplicate of a photo already in the project' });
   if (f.kind === 'photo' && item.processing_status && !['processed', 'duplicate'].includes(item.processing_status)) {
     if (item.processing_status === 'processing_error') return done({ state: restingState(f), error: 'CompanyCam couldn’t process this photo' });
     return finishFile(DB, f, { state: 'pending', next_try_at: now + NOT_PROCESSED_RETRY_MS }, now).then(() => ({ ccId: f.cc_id, waiting: 'processing' }));
@@ -926,13 +928,19 @@ export async function takeEvent(env, ev, { now = Date.now(), fetchImpl = fetch }
   const kind = type.startsWith('photo.') ? 'photo' : type.startsWith('document.') ? 'document' : type.startsWith('project.') ? 'project' : null;
   if (!kind) return { ignored: 'event' };
   const item = payload[kind] && typeof payload[kind] === 'object' ? payload[kind] : payload;
-  const itemId = String(item?.id ?? '').trim();
-  if (!/^\d{1,20}$/.test(itemId)) return { ignored: 'no ids' };
-  let projectId = String(kind === 'project' ? itemId : item?.project_id ?? '').trim();
+  // A photo's caption or tag event carries the caption or tag; the photo is its photo_id
+  const itemId = String(item?.id ?? (kind === 'photo' ? findKey(payload, 'photo_id') : kind === 'document' ? findKey(payload, 'document_id') : '') ?? '').trim();
+  const nested = kind === 'photo' && !payload.photo ? findKey(payload, 'photo_id') : null;
+  const id = /^\d{1,20}$/.test(String(nested ?? '')) ? String(nested) : itemId;
+  if (!/^\d{1,20}$/.test(id)) {
+    await putState(DB, 'webhook-unread', { at: iso(now), type, keys: keysOf(payload) }, now).catch(() => null); // the shape, never the values
+    return { ignored: 'no ids' };
+  }
+  let projectId = String(kind === 'project' ? id : item?.project_id ?? findKey(payload, 'project_id') ?? '').trim();
   if (!/^\d{1,20}$/.test(projectId)) {
     // A body without its project: CompanyCam says where the photo or document is
     try {
-      const it = kind === 'photo' ? await getPhoto(env, itemId, { fetchImpl }) : kind === 'document' ? await getDocument(env, itemId, { fetchImpl }) : null;
+      const it = kind === 'photo' ? await getPhoto(env, id, { fetchImpl }) : kind === 'document' ? await getDocument(env, id, { fetchImpl }) : null;
       projectId = String(it?.project_id ?? '').trim();
     } catch { projectId = ''; }
     if (!/^\d{1,20}$/.test(projectId)) return { ignored: 'no ids' };
@@ -945,8 +953,19 @@ export async function takeEvent(env, ev, { now = Date.now(), fetchImpl = fetch }
     await DB.prepare('UPDATE companycam_projects SET checked_at = 0 WHERE account_id = ?').bind(fam.account_id).run(); // the next check looks again
     return { recheck: fam.account_id };
   }
-  return { ccId: await enqueueFile(DB, { kind, id: itemId, projectId, accountId: fam.account_id }, now) };
+  return { ccId: await enqueueFile(DB, { kind, id, projectId, accountId: fam.account_id }, now) };
 }
+
+/** The first value under `key` anywhere in a webhook body (a few levels deep) */
+function findKey(o, key, depth = 0) {
+  if (!o || typeof o !== 'object' || depth > 3) return null;
+  if (o[key] != null && typeof o[key] !== 'object') return o[key];
+  for (const v of Object.values(o)) { const f = findKey(v, key, depth + 1); if (f != null) return f; }
+  return null;
+}
+/** A body's shape for the record: its key names, two levels down, never a value */
+const keysOf = (o, depth = 0) => (!o || typeof o !== 'object' || depth > 1 ? null
+  : Object.fromEntries(Object.keys(o).slice(0, 30).map((k) => [k, typeof o[k] === 'object' && o[k] ? keysOf(o[k], depth + 1) : typeof o[k]])));
 
 // ─── Problems ───────────────────────────────────────────────────────
 
@@ -1099,7 +1118,7 @@ export async function companycamFacts(env) {
  * and the test project archived. The result is in companycam_state
  * "self-test" and on Site → Automations. No button.
  */
-export const SELF_TEST = '2026-10-21b';
+export const SELF_TEST = '2026-10-21c'; // c: a project of its own each run (a picture already in one is a duplicate, which sends no webhook and JobTread doesn't copy)
 export const OFFICE_ACCOUNT = '22P3HT8y9dhc'; // "Sunshine Office", where the rehearsal jobs live
 const SELF_TEST_JOB = 'TEST CompanyCam check';
 const SELF_TEST_CAPTION = 'TEST: the website checking CompanyCam to JobTread. Safe to ignore.';

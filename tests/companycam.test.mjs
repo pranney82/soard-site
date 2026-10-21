@@ -803,3 +803,31 @@ test('the one-time check keeps what CompanyCam sent it, for reading the result',
   assert.equal(st.step, 'done');
   assert.deepEqual(st.deliveries, [{ event: 'photo.created', id: '1', ok: true, status: 200, at: new Date(T0).toISOString() }]);
 });
+
+test('caption and tag events find their photo wherever the body puts it; an unreadable one leaves its shape', async () => {
+  const a = await family('acct20', 'Tate Lowe', 'In Review', { appPhotos: false });
+  await run(0);
+  const p = addPhoto(await familyProject(a), { caption: 'First' });
+  await signed(photoCreated(p));
+  const [copy] = customerFiles(a);
+  p.description = { plain_text_content: 'Second' };
+  p.updated_at = new Date(at(3)).toISOString();
+  w.now = at(3);
+  // The caption itself, with the photo as photo_id (and no project in sight)
+  await signed({ event_type: 'photo.description_updated', created_at: 1, payload: { description: { id: 'd77', photo_id: p.id, content: 'Second' } } });
+  assert.match(copy.description, /^Second\n/);
+  await signed({ event_type: 'photo.tag_added', payload: { tag: { id: 't1', display_value: 'Roof' } } });
+  const unread = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_state WHERE key = 'webhook-unread'").first('value'));
+  assert.deepEqual([unread.type, unread.keys], ['photo.tag_added', { tag: { id: 'string', display_value: 'string' } }], 'key names only, no values');
+});
+
+test('a photo CompanyCam marks as a duplicate of one already in the project isn’t copied twice', async () => {
+  const a = await family('acct21', 'Uma Reyes', 'In Review', { appPhotos: false });
+  await run(0);
+  const p = addPhoto(await familyProject(a), { caption: 'Again' });
+  p.processing_status = 'duplicate';
+  await run(11); // the 10-minute check finds it
+  await run(12); // and the next run looks at it
+  assert.equal(customerFiles(a).length, 0);
+  assert.equal((await env.DB.prepare('SELECT state FROM companycam_files WHERE cc_id = ?').bind(`photo:${p.id}`).first('state')), 'skipped');
+});
