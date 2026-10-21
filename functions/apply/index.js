@@ -6,11 +6,13 @@
  * message with the "tell me when applications open" form (data-when-closed).
  * This shows the one Admin → Applications → Settings says right now, with
  * the season year, the closed message and the form link from the same
- * settings, so switching applications on or off needs no Publish. If anything
- * here fails the page is served as built.
+ * settings, so switching applications on or off needs no Publish. Closed at
+ * the application limit, the headline is the full message instead. If
+ * anything here fails the page is served as built.
  */
 
 import { applicationSettings, cleanYear } from '../api/_applications.js';
+import { seasonFull, fullMessageOf } from '../api/_application-cap.js';
 
 export async function onRequest(context) {
   const { request, env, next } = context;
@@ -21,7 +23,10 @@ export async function onRequest(context) {
     const app = await applicationSettings(env.DB);
     const open = app.open === true;
     const year = cleanYear(app.year);
-    const closedMessage = String(app.closedMessage || '').trim() || `The ${year} application period is currently closed.`;
+    // Closed with the season at its limit, the headline says it's full (./_application-cap.js)
+    const closedMessage = await seasonFull(env.DB, app, year)
+      ? fullMessageOf({ ...app, year })
+      : String(app.closedMessage || '').trim() || `The ${year} application period is currently closed.`;
     const outside = /^https:\/\//.test(String(app.formUrl || '').trim()) ? String(app.formUrl).trim() : '';
     const formUrl = outside || '/apply/form/';
 

@@ -1233,6 +1233,122 @@ try {
     await shot(page, '32-settings-after.png', { maxH: 2600 });
   });
 
+  await section('Settings: the application limit', async () => {
+    // The 2027 fixtures: real applications in (one may have been deleted above), families still working on theirs
+    const n = (await DB.prepare("SELECT COUNT(*) AS n FROM applications WHERE year = '2027' AND is_test = 0 AND deleted_at IS NULL").first()).n;
+    const before = await storedSettings();
+    const app = async () => (await storedSettings()).application;
+    const card = () => text(page, '#afe-limit');
+    const status = () => text(page, '.afe-status');
+    const badge = () => text(page, '.afe-tabs [data-tab="settings"] .afe-tab-state');
+    const saveOff = () => page.evaluate(() => [...document.querySelectorAll('.afe-savebar button')].find(x => /^(Save|Saving…)$/.test(x.textContent))?.disabled ?? true);
+    const setVal = (sel, v) => page.$eval(sel, (el, val) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, val); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    const reloadTab = async () => {
+      await page.click('.afe-tabs [data-tab="insights"]');
+      await page.waitForSelector('.afe-tile', { timeout: 8000 });
+      await page.click('.afe-tabs [data-tab="settings"]');
+      await page.waitForSelector('#afe-limit', { timeout: 8000 });
+    };
+    const max = n + 5;
+    const warnAt = Math.floor(max * 0.8);
+    await writeSettings({ ...before, application: { ...before.application, open: true, year: '2027', maxApplications: max, warnAt: 0, fullMessage: '', opensAt: '', closesAt: '', openChangedAt: new Date(NOW - 5 * DAY).toISOString(), openChangedBy: PETER } });
+    await reloadTab();
+    await page.waitForFunction((m) => new RegExp(`of ${m} in for 2027`).test(document.querySelector('#afe-limit')?.innerText || ''), { timeout: 8000 }, max).catch(() => {});
+    ok(new RegExp(`${n}\\s*of ${max} in for 2027\\s*·\\s*5 left`).test(await card()), `the card counts the season (${(await card()).split('\n').slice(2, 5).join(' / ')})`);
+    ok(await page.$eval('#afe-limit .afe-cap-bar', (e) => e.classList.contains('is-near')), 'the bar is past the heads-up mark');
+    ok(new RegExp(`Team hears at ${warnAt}`).test(await card()) && /partway through/.test(await card()), 'it shows the heads-up mark and the families partway through');
+    ok(new RegExp(`${n} of ${max} in\\. Closes by itself at ${max}\\.`).test(await status()), `the status says where it stands (${(await status()).split('\n').find(l => /in\./.test(l))})`);
+    ok(await page.$eval('#afe-warn', (e) => e.placeholder) === String(warnAt), 'a blank heads-up shows its 80% point');
+    // axe (scripts/lib/axe.mjs), where this copy of the script has it
+    if (typeof axeScan === 'function') {
+      const axeCard = await axeScan(page, '#afe-limit');
+      ok(!axeCard.length, `axe: the limit card has no WCAG 2.1 AA problems${axeCard.length ? ` (${axeText(axeCard)})` : ''}`);
+    }
+    await shot(page, '34-settings-limit.png', { maxH: 2800 });
+
+    // Numbers that can't work are caught before saving
+    await setVal('#afe-warn', String(max + 3));
+    await sleep(120);
+    ok(new RegExp(`Pick a number under the limit of ${max}`).test(await card()), 'a heads-up past the limit is refused');
+    ok((await saveOff()) === true, 'and Save waits');
+    await setVal('#afe-warn', '');
+    await setVal('#afe-max', '2.5');
+    await sleep(120);
+    ok(/Use a whole number from 1 to 10,000/.test(await card()), 'so is a limit that isn’t a whole number');
+    // A limit at what's in: the card and the save bar both say saving closes applications
+    await setVal('#afe-max', String(n));
+    await sleep(150);
+    ok(new RegExp(`saving a limit of ${n} closes applications right away`).test(await card()), 'the card warns that saving closes applications');
+    ok(new RegExp(`Saving closes applications: ${n} are in and the new limit is ${n}`).test(await text(page, '.afe-savebar')), 'so does the save bar');
+    ok(/Unsaved changes to the application limit/.test(await text(page, '.afe-savebar')), 'which names what changed');
+    await clickText(page, '.afe-savebar button', /^Save$/);
+    await page.waitForFunction(() => /the season is full/.test(document.querySelector('.afe-status')?.innerText || ''), { timeout: 8000 }).catch(() => {});
+    let a = await app();
+    ok(a.open === false && a.maxApplications === n && a.openChangedBy === 'limit', `stored: closed by the limit (${JSON.stringify({ open: a.open, max: a.maxApplications, by: a.openChangedBy })})`);
+    ok(/Applications are closed: the season is full/.test(await status()) && /by the limit\./.test(await status()), 'the status says full, closed by the limit');
+    ok((await badge()) === 'Full', `the tab badge says Full (${await badge()})`);
+    ok(/Closed: the limit was reached/.test(await text(page, '.afe-log')) && new RegExp(`Limit set to ${n} applications`).test(await text(page, '.afe-log')), 'Recent changes has both');
+    ok(/We’ve received all the applications we can take for 2027/.test(await text(page, '.afe-fam')), 'the family preview starts on the full message');
+    ok(await page.$eval('.afe-fam [aria-pressed="true"]', (e) => e.textContent) === 'Full', 'with Full picked');
+    await shot(page, '35-settings-full.png', { maxH: 2800 });
+
+    // Opening a full season asks for a higher limit, right in the confirm step
+    ok(await clickText(page, '.afe-status button', /^Open applications…$/), 'Open applications…');
+    await page.waitForSelector('.afe-dialog #afe-raise', { timeout: 5000 });
+    ok(new RegExp(`The 2027 season is full: ${n} applications are in and the limit is ${n}`).test(await text(page, '.afe-dialog')), 'the dialog says why it can’t just open');
+    const raiseOff = () => page.evaluate(() => [...document.querySelectorAll('.afe-dialog-foot button')].find(b => /^Raise/.test(b.textContent))?.disabled);
+    ok((await raiseOff()) === true, 'Raise waits for a number');
+    await setVal('#afe-raise', String(n - 1));
+    await sleep(100);
+    ok(new RegExp(`Pick more than the ${n} already in`).test(await text(page, '.afe-dialog')) && (await raiseOff()) === true, 'a number under what’s in is refused');
+    const raised = n + 10;
+    const raisedWarn = Math.floor(raised * 0.8);
+    await setVal('#afe-raise', String(raised));
+    await sleep(100);
+    const hint = raisedWarn > n ? `The team hears at ${raisedWarn}, and it closes by itself again at ${raised}` : `The team hears how many are left right away, and it closes by itself again at ${raised}`;
+    ok((await text(page, '.afe-dialog')).includes(hint), `it says what the new limit means (${hint})`);
+    if (typeof axeScan === 'function') {
+      const axeDialog = await axeScan(page, '.afe-dialog');
+      ok(!axeDialog.length, `axe: the raise step has no WCAG 2.1 AA problems${axeDialog.length ? ` (${axeText(axeDialog)})` : ''}`);
+    }
+    await shot(page, '36-settings-raise.png', { maxH: 1400 });
+    ok(await clickText(page, '.afe-dialog-foot button', new RegExp(`^Raise to ${raised} and open$`)), `Raise to ${raised} and open`);
+    await page.waitForFunction(() => /Applications are open/.test(document.querySelector('.afe-status')?.innerText || ''), { timeout: 8000 }).catch(() => {});
+    a = await app();
+    ok(a.open === true && a.maxApplications === raised, `stored: open with the new limit (${JSON.stringify({ open: a.open, max: a.maxApplications })})`);
+    ok(new RegExp(`${n} of ${raised} in\\. Closes by itself at ${raised}\\.`).test(await status()), 'the status follows');
+    ok((await badge()) === 'Open', 'and the badge');
+
+    // Phone width: the card fits (only the width changes, so the page doesn't reload)
+    const vp = page.viewport();
+    await page.setViewport({ ...vp, width: 390, height: 844 });
+    await sleep(300);
+    await page.$eval('#afe-limit', (e) => e.scrollIntoView({ block: 'start' }));
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    ok(over <= 1, `phone: the limit card fits the screen (${over}px over)`);
+    await page.screenshot({ path: join(OUT, '37-phone-limit.png') });
+    await page.setViewport(vp);
+    await sleep(200);
+
+    // The message families read when it's full: typed, previewed, nothing saved until Save
+    await setVal('#afe-full', 'Thank you! Our 2027 list is full.');
+    await clickText(page, '.afe-fam button', /^Full$/);
+    await sleep(100);
+    ok(/Thank you! Our 2027 list is full\./.test(await text(page, '.afe-fam')), 'the preview shows the message as it’s typed');
+    await clickText(page, '.afe-savebar button', /^Discard$/);
+
+    // Taking the limit off hides what only a limit needs
+    await setVal('#afe-max', '');
+    await sleep(100);
+    ok(await page.$eval('#afe-warn', (e) => e.disabled) && !(await page.$('#afe-full')) && !(await page.$('.afe-fam button:nth-child(3)')), 'no limit: no heads-up, no full message, no Full preview');
+    await clickText(page, '.afe-savebar button', /^Discard$/);
+
+    // Back to how the sections before left it (settings, and scrolled to the top)
+    await writeSettings(before);
+    await reloadTab();
+    await page.evaluate(() => window.scrollTo(0, 0));
+  });
+
   await section('Dark (on the admin tokens)', async () => {
     await setTheme(page, true);
     await clickText(page, '.hub-tab', /^Form/);

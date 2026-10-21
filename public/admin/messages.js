@@ -348,6 +348,19 @@ const MAP = { t: 'Everything we send', children: [
           does: 'What’s happening with the applications-open email, and how to stop it in time.',
           touches: ['Resend', 'Slack'], where: 'functions/api/_application-waitlist.js (tellStaff)',
           live: needs('resend', NO_RESEND) },
+        { t: 'Application limit', s: 'live', k: 'email', by: 'auto', preview: 'staff-app-limit', change: CHANGE.appSettings,
+          who: 'The staff list in Applications → Settings.',
+          when: 'The season nears its limit (80% of it unless Settings says otherwise), then again when it fills and applications close by themselves. Only once a limit is set.',
+          subject: '{n} of {limit} applications are in for {year}',
+          does: 'How many are in and left, families partway through the form, the pace, and how to take more. When it fills: that applications closed by themselves and what new families now read.',
+          touches: ['Resend', 'Slack', 'D1'], where: 'functions/api/_application-cap.js (tellCap, capEmail)',
+          info: 'If a scheduled opening finds the season already full, the same email says it stayed closed, and the Slack post goes to Needs attention.',
+          live: first(needs('resend', NO_RESEND), (f) => {
+            const l = f.applicationLimit;
+            if (!l) return null;
+            if (!l.max) return OFF(`No limit is set for ${l.year}, so this never goes. Set one in Applications → Settings → Application limit.`);
+            return ON(l.full ? `The ${l.year} season is full (${l.received} of ${l.max}).` : `${l.received} of ${l.max} are in for ${l.year}; the heads-up goes at ${l.warnAt}.`, l.last?.at);
+          }) },
         { t: 'Application stuck', s: 'live', k: 'email', by: 'auto', preview: 'staff-stuck',
           who: 'Peter.',
           when: 'An application still can’t get into JobTread after 4 tries. The site keeps retrying.',

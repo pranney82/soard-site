@@ -19,7 +19,8 @@
  * fact fails on its own: one missing table never blanks the rest.
  */
 
-import { waitlistFacts } from './automations-admin.js';
+import { waitlistFacts, applicationLimitFacts } from './automations-admin.js';
+import { capEmail } from './_application-cap.js';
 import * as notify from './_broadcast-notify.js';
 import { COMMENT_NAMES, COMMENT_NAMES_ES, familyMessage } from './_applicant-comms.js';
 import { summaryEmail, pauseEndedEmail, pauseState, previewSnippet, WHERE_IT_STANDS } from './_applicant-notify.js';
@@ -211,8 +212,11 @@ export async function gatherFacts(env, { now = Date.now() } = {}) {
     return tally(r?.last, r?.n30, r?.total);
   });
   const p = ok(pause);
+  // The application limit: set or not, where the season stands, the last notice (counts only)
+  const applicationLimit = ok(await settle(() => applicationLimitFacts(DB, now)));
   return {
     checkedAt: new Date(now).toISOString(),
+    applicationLimit,
     env: {
       resend: has(env.RESEND_API_KEY),
       kit: has(env.KIT_API_KEY),
@@ -365,6 +369,14 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       const previews = { sample: { to: SAMPLE.parent, title: COMMENT_NAMES.approved, snippet: previewSnippet(message), lang: 'en' } };
       const form = ok(await settle(() => formFacts(env.DB)));
       return email(summaryEmail([row], { now, previews, quiet: form?.notify?.quiet }), { to: 'Whoever changed the status in JobTread' });
+    }
+    case 'staff-app-limit': {
+      const year = (await readAppSettings(env.DB, now)).year;
+      const f = { year, max: 120, warnAt: 96, received: 98, left: 22, filling: 14, perDay: 6, fillsInDays: 3.7, full: false, percent: 82 };
+      return email(capEmail('warn', f), {
+        to: 'The staff list in Applications → Settings',
+        note: 'This is the heads-up near the limit. When the season fills, the same email says applications closed by themselves and what new families now read. The same words post in Slack.',
+      });
     }
     case 'staff-pause-ended':
       return email(pauseEndedEmail([{ name: SAMPLE.child, status: 'Approved' }, { name: 'Riley Park', status: 'Denied' }]), { to: 'Whoever paused family emails' });

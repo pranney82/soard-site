@@ -26,6 +26,7 @@ import { maybeRunPress } from './_press.js';
 import { maybeSlackPreview } from './_slack-preview.js';
 import { maybeRunEventRecaps } from './_event-recap.js';
 import { maybeRunCompanyCam } from './_companycam-sync.js';
+import { maybeCapSelfTest } from './_application-cap.js';
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
 const HUB_ANSWER_MS = 10 * 1000;
@@ -74,6 +75,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunCompanyCam(env));
     // Once per alert redesign: the new Slack cards, posted in one thread (see _slack-preview.js)
     context.waitUntil(maybeSlackPreview(env));
+    // Once per CAP_SELF_TEST: the application limit's two notices for a sample season, marked as tests (see _application-cap.js)
+    context.waitUntil(maybeCapSelfTest(env));
     // The hub passes `reason` to every open page and keeps `work` in its status, so both go
     // as kinds only ('email', 'kid', 'auto-start'), never kid slugs or send counts
     if (!r) return Response.json({ ok: true, state: (await publicPayload(env)).state, reason: 'tick', work: [], changed: false, cached: false, busy: true });

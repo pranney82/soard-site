@@ -21,6 +21,7 @@
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
  *  - quo:       Quo texts and calls DataX logged with applicant families (last one, count in 30 days; never content)
  *  - waitlist:  families waiting for the applications-open email, signups not in Kit yet, the last opening
+ *  - applicationLimit: the season's limit, how many are in, the last heads-up or close (counts only)
  *  - eventRecap: event pages turning into their recap (last check, last rebuild, a rebuild still waiting)
  *
  * Not in _middleware's public list, so Access guards it. Never cached.
@@ -34,6 +35,8 @@ import { approvalsStatus } from './_applicant-approved.js';
 import { coverFacts } from './_job-covers.js';
 import { eventRecapState } from './_event-recap.js';
 import { companycamFacts } from './_companycam-sync.js';
+import { applicationSettings, pickApplication } from './_applications.js';
+import { capFacts, lastCapNotice } from './_application-cap.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -304,6 +307,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     reminders: { subscribers: typeof reminders === 'number' ? reminders : null },
     jobtread: jobtread || { error: 'JobTread check failed' },
     waitlist: await settle(() => waitlistFacts(DB)),
+    applicationLimit: await settle(() => applicationLimitFacts(DB, now)),
     approvals: approvalFacts(await settle(() => approvalsStatus(DB))),
     covers: await settle(() => coverFacts(DB)).then((c) => (c && !c.error ? c : null)),
     press: await settle(() => pressFacts(DB)),
@@ -360,6 +364,15 @@ export async function pressFacts(DB) {
     lastFiledAt: lastFiled || null,
     deployPending: !!state.deployPending,
   };
+}
+
+/** The application limit (_application-cap.js): the limit, where the season stands, the last notice. Counts and times only */
+export async function applicationLimitFacts(DB, now = Date.now()) {
+  const stored = await applicationSettings(DB);
+  const a = pickApplication(stored, now);
+  const f = await capFacts(DB, a, { now, openedAt: stored.openChangedAt });
+  const last = await lastCapNotice(DB);
+  return { open: a.open, year: f.year, max: f.max, warnAt: f.warnAt, received: f.received, full: f.full, last: last && last.year === f.year ? last : null };
 }
 
 /** The applications waitlist (_application-waitlist.js): counts and times only, never addresses */

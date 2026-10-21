@@ -276,6 +276,19 @@ const MAP = { t: 'SOARD', children: [
           does: 'Opens or closes applications at that time, logs it in Recent changes as done by the schedule, and posts a note in Slack.',
           touches: ['D1', 'Slack'], where: 'functions/api/_applications.js (runApplicationSchedule, on the heartbeat sweep)',
           info: 'Opening or closing by hand clears the time it replaces. The form and the Apply page follow at once.' },
+        { t: 'Application limit', s: 'live', k: 'event',
+          when: 'Every application that comes in (and the 2-minute sweep as a backup), once a limit is set in Applications → Settings → Application limit.',
+          does: 'Counts the season’s applications, leaving out tests and deleted ones. At the heads-up point (80% of the limit unless Settings says otherwise) the team hears once, in Slack and by email to the staff list: how many are in and left, families partway through the form, and the pace. At the limit it closes applications by itself, logs it as done by the limit and tells the team the same way; the Apply page and the form then say the season is full.',
+          touches: ['D1', 'Slack', 'Resend'], where: 'functions/api/_application-cap.js · _applications.js (enforceApplicationCap, after each submit in apply.js and on the sweep)',
+          info: 'Families who already started can still finish after it closes, so a season can end a little over. A full season can’t be opened, by hand or on a schedule, until the limit goes up or comes off; a scheduled opening that finds it full stays closed and posts in Needs attention.',
+          live: (f) => {
+            const l = f.applicationLimit;
+            if (!l || l.error) return null;
+            if (!l.max) return OFF(`No limit is set for ${l.year}, so applications stay open until someone closes them.`);
+            const last = l.last ? ({ warn: 'Last notice: the heads-up', full: 'Last notice: it filled and closed', blocked: 'Last notice: a scheduled opening was skipped' })[l.last.kind] : null;
+            const where = l.full ? `The ${l.year} season is full: ${l.received} of ${l.max} are in.` : `${l.received} of ${l.max} are in for ${l.year}; the team hears at ${l.warnAt}${l.open ? '' : ' (applications are closed now)'}.`;
+            return ON(last ? `${where} ${last}.` : where, l.last?.at);
+          } },
         { t: 'Save and finish later', s: 'live', k: 'visitor',
           when: 'A family taps Save and finish later.',
           does: 'Emails them a private link back to their saved answers (good for 60 days after their last change).',

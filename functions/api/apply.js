@@ -29,7 +29,7 @@ import { isAuthenticated } from './_middleware.js';
 import {
   ensureSchema, getDraft, createDraft, saveDraft, setDraftFile, draftsToday, hashIp, cleanYear,
   applicationSettings, publicFiles, photoKey, createVideoUpload, getVideo, deleteVideo, videoUploaded,
-  submitDraft, processApplication, stopReminders, DRAFT_TTL_DAYS, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, MAX_VIDEO_BYTES,
+  submitDraft, processApplication, enforceApplicationCap, stopReminders, DRAFT_TTL_DAYS, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, MAX_VIDEO_BYTES,
   areaCheck, placedArea, areaFieldOf, applicantFiles,
 } from './_applications.js';
 import { allFields, resolveForm, AREA_VALUES } from './_application-form.js';
@@ -206,7 +206,11 @@ export async function onRequestPost(context) {
     case 'submit': {
       const out = await submitDraft(env, draft);
       if (!out.ok) return fail(out.error === 'stopped' ? 'stopped' : 'Some answers need attention.', 422, out);
-      if (!out.duplicate) context.waitUntil(processApplication(env, out.id));
+      if (!out.duplicate) {
+        context.waitUntil(processApplication(env, out.id));
+        // The application limit: the team's heads-up near it, and closing at it (./_application-cap.js)
+        context.waitUntil(enforceApplicationCap(env));
+      }
       return json({ ok: true, id: out.id });
     }
     default: return fail('Unknown action');

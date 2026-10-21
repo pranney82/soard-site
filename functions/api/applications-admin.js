@@ -15,8 +15,11 @@
  * GET ?settings=1           → { settings, history, rules, area: { points, history } } (area: every
  *                             family's home on the Applicants map, for what a change would mean,
  *                             and the outlines the service area has had)
+ *                             and cap: where the season stands against its application limit
+ *                             (./_application-cap.js capFacts)
  * POST { settings, base }   → save them ({ conflict } 409 when someone changed them since
- *                             `base`; { errors } 422); open/close times run on the heartbeat
+ *                             `base`; { errors } 422); open/close times run on the heartbeat.
+ *                             A limit at or under what's in closes applications at once ({ capClosed })
  * The other settings there (who gets the new-application email, the service area, when
  * status emails go out) save at once, without the form's Put live (_application-forms.js):
  * POST { rules: { staffEmails?, serviceArea?, notify? }, base, force? } → { rules, history }
@@ -48,7 +51,9 @@ import {
   ensureSchema, listApplications, getApplication, processApplication, createTestApplication,
   maybeSweepApplications, checklist, flags, jobtreadAccountUrl, isApplicationId, cleanYear, applicationSettings,
   exportCsv, deleteApplicationData, insights, pickApplication, saveApplicationSettings, applicationSettingsHistory, applicantFiles,
+  enforceApplicationCap,
 } from './_applications.js';
+import { capFacts } from './_application-cap.js';
 import {
   answerSections, LOCKED_FIELDS, FIELD_TYPES, DEFAULT_DEFINITION, DEFAULT_SERVICE_AREA, validateDefinition, normalizeDefinition,
   translationStatus, englishStrings,
@@ -65,8 +70,11 @@ import { logAudit } from './_audit.js';
 import { replaceBoundary } from './_applicants.js';
 import { advanceOpening } from './_application-waitlist.js';
 
-/** When applications last opened or closed, and who did it ("schedule" for the timer) */
+/** When applications last opened or closed, and who did it ("schedule" for the timer, "limit" when it filled) */
 const sinceOf = (a) => (a?.openChangedAt ? { at: a.openChangedAt, by: a.openChangedBy || null } : null);
+
+/** Settings → Application limit: how many are in for the season, partway through, the pace (./_application-cap.js) */
+const capNow = (DB, stored) => capFacts(DB, pickApplication(stored), { openedAt: stored?.openChangedAt || null, board: true });
 
 /**
  * For Settings → Service area: every home on the Applicants map (no names, just
@@ -123,7 +131,7 @@ export async function onRequestGet(context) {
   }
   if (url.searchParams.get('settings')) {
     const [stored, history, rules, area] = await Promise.all([applicationSettings(env.DB), applicationSettingsHistory(env.DB), rulesNow(env.DB), areaContext(env.DB)]);
-    return Response.json({ success: true, settings: pickApplication(stored), since: sinceOf(stored), history, rules, area, now: new Date().toISOString() });
+    return Response.json({ success: true, settings: pickApplication(stored), since: sinceOf(stored), cap: await capNow(env.DB, stored), history, rules, area, now: new Date().toISOString() });
   }
   if (url.searchParams.get('insights')) {
     const settings = await applicationSettings(env.DB);
@@ -238,9 +246,16 @@ export async function onRequestPost(context) {
     if (out.conflict) return Response.json({ success: false, conflict: out.conflict, error: 'Someone changed these settings since you opened them.' }, { status: 409 });
     if (out.errors) return Response.json({ success: false, errors: out.errors, error: out.errors[0].error }, { status: 422 });
     if (out.busy) return Response.json({ success: false, error: 'The site settings were being saved at the same moment. Try again.' }, { status: 500 });
-    // Opening starts the waitlist email right away (it takes its own lock, never throws)
-    if (out.changes?.some(c => c.field === 'application.open')) context.waitUntil?.(advanceOpening(env, { force: true }).catch(() => {}));
-    return Response.json({ success: true, settings: out.settings, changes: out.changes, since: sinceOf(await applicationSettings(env.DB)), history: await applicationSettingsHistory(env.DB) });
+    // A limit at or under what's already in closes applications now, with the team's notice
+    // (and the heads-up, if this limit's is due)
+    const capped = await enforceApplicationCap(env);
+    // Opening (or closing) moves the waitlist email right away (it takes its own lock, never throws)
+    if (out.changes?.some(c => c.field === 'application.open') || capped?.closed) context.waitUntil?.(advanceOpening(env, { force: true }).catch(() => {}));
+    const stored = await applicationSettings(env.DB);
+    return Response.json({
+      success: true, settings: pickApplication(stored), changes: out.changes, capClosed: !!capped?.closed,
+      cap: await capNow(env.DB, stored), since: sinceOf(stored), history: await applicationSettingsHistory(env.DB),
+    });
   }
 
   if (body.rules) {

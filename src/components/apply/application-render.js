@@ -84,6 +84,8 @@ export const UI = {
     heroStatHtml: 'children served<br/>since 2012', heroPhotoAlt: 'A child enjoying their new room',
     // While closed: "tell me when applications open"
     closedTitle: 'The {year} application period is currently closed.',
+    // Closed at the application limit (the same words as defaultFullMessage in functions/api/_application-cap.js)
+    fullTitle: 'We’ve received all the applications we can take for {year}.',
     closedLead: "Leave your email and we'll write the moment applications open. One email, nothing else.",
     notifyLabel: 'Your email address', notifyPlaceholder: 'Your email address', notifyButton: 'Notify me', notifySending: 'Sending…', notifyDone: 'Done',
     notifyNote: "We'll email you in the language you're reading now.",
@@ -151,6 +153,7 @@ export const UI = {
     heroStart: 'Comenzar la solicitud ↓', heroNotify: 'Avísenme cuando abran', heroFaq: '¿Preguntas? Lea las respuestas',
     heroStatHtml: 'niños atendidos<br/>desde 2012', heroPhotoAlt: 'Un niño disfrutando de su nuevo cuarto',
     closedTitle: 'El período de solicitudes de {year} está cerrado por ahora.',
+    fullTitle: 'Ya recibimos todas las solicitudes que podemos aceptar para {year}.',
     closedLead: 'Déjenos su correo y le escribiremos en cuanto abran las solicitudes. Un solo correo, nada más.',
     notifyLabel: 'Su correo electrónico', notifyPlaceholder: 'Su correo electrónico', notifyButton: 'Avísenme', notifySending: 'Enviando…', notifyDone: 'Listo',
     notifyNote: 'Le escribiremos en el idioma en que está leyendo.',

@@ -50,6 +50,7 @@ import { maybeSyncApplicants } from './_applicants.js';
 import { runNotifications } from './_applicant-notify.js';
 import { runApprovals } from './_applicant-approved.js';
 import { logAudit } from './_audit.js';
+import { capOf, capFacts, countReceived, claimWarning, tellCap, fullMessageOf, wholeNumber, CAP_USER, MAX_LIMIT } from './_application-cap.js';
 
 // ─── JobTread fields (SOARD org) ────────────────────────────────────
 export const JT_FIELDS = {
@@ -216,11 +217,15 @@ export async function applicationSettings(DB) {
 // `application` in the site settings row. The form and the Apply page read it
 // on every visit (functions/apply/), so a change shows without a Publish.
 
-export const APPLICATION_FIELDS = ['open', 'year', 'closedMessage', 'formUrl', 'opensAt', 'closesAt'];
+// The last three are the application limit (./_application-cap.js): 0 means no limit, and
+// warnAt 0 means the built-in heads-up at 80% of it
+export const APPLICATION_FIELDS = ['open', 'year', 'closedMessage', 'formUrl', 'opensAt', 'closesAt', 'maxApplications', 'warnAt', 'fullMessage'];
 const HTTPS_LINK = /^https:\/\/[^\s/]+\.[^\s]+$/i;
 
 /** The stored block, every field present and normalized */
 export function pickApplication(a = {}, now = Date.now()) {
+  const maxApplications = wholeNumber(a?.maxApplications);
+  const warnAt = maxApplications ? wholeNumber(a?.warnAt) : 0;
   return {
     open: a?.open === true,
     year: cleanYear(a?.year, now),
@@ -228,6 +233,9 @@ export function pickApplication(a = {}, now = Date.now()) {
     formUrl: String(a?.formUrl || '').trim(),
     opensAt: a?.opensAt ? String(a.opensAt) : '',
     closesAt: a?.closesAt ? String(a.closesAt) : '',
+    maxApplications,
+    warnAt: warnAt && warnAt < maxApplications ? warnAt : 0,
+    fullMessage: String(a?.fullMessage || '').trim(),
   };
 }
 const sameApplication = (a, b) => APPLICATION_FIELDS.every(k => pickApplication(a)[k] === pickApplication(b)[k]);
@@ -240,7 +248,14 @@ export function cleanApplicationSettings(input = {}, { now = Date.now(), previou
   const errors = [];
   const out = pickApplication(input, now);
   out.closedMessage = out.closedMessage.replace(/\s+/g, ' ').slice(0, 200);
+  out.fullMessage = out.fullMessage.replace(/\s+/g, ' ').slice(0, 200);
   if (out.formUrl && !HTTPS_LINK.test(out.formUrl)) errors.push({ field: 'formUrl', error: 'Use a full link that starts with https://' });
+  // The limit: blank or 0 is no limit; anything else has to be a count the form can reach
+  const given = (k) => input?.[k] != null && String(input[k]).trim() !== '' && Number(String(input[k]).replace(/,/g, '')) !== 0;
+  if (given('maxApplications') && !out.maxApplications) errors.push({ field: 'maxApplications', error: `Use a whole number from 1 to ${MAX_LIMIT.toLocaleString('en-US')}` });
+  if (out.maxApplications && given('warnAt') && !out.warnAt) {
+    errors.push({ field: 'warnAt', error: wholeNumber(input.warnAt) ? `Pick a number under the limit of ${out.maxApplications.toLocaleString('en-US')}` : 'Use a whole number' });
+  }
   for (const k of ['opensAt', 'closesAt']) {
     if (!out[k]) continue;
     const t = Date.parse(out[k]);
@@ -269,6 +284,15 @@ export async function saveApplicationSettings(env, input, { user = 'admin', base
     if (base && !sameApplication(base, current)) return { conflict: current };
     const { settings, errors } = cleanApplicationSettings({ ...current, ...input }, { now, previous: current });
     if (errors.length) return { errors };
+    // Opening (now, or a new time to open) a season that's already at its limit: the limit goes up first
+    const cap = capOf(settings);
+    const opening = (settings.open && !current.open) || (!!settings.opensAt && settings.opensAt !== current.opensAt);
+    if (cap.max && opening) {
+      const received = await countReceived(DB, settings.year);
+      if (received >= cap.max) {
+        return { errors: [{ field: 'maxApplications', error: `${received.toLocaleString('en-US')} of ${cap.max.toLocaleString('en-US')} applications are already in for ${settings.year}. Raise the limit to open again.` }] };
+      }
+    }
     const changes = APPLICATION_FIELDS.filter(k => current[k] !== settings[k]).map(k => ({ field: `application.${k}`, from: current[k], to: settings[k] }));
     if (!changes.length) return { settings, changes };
     // Who opened or closed it, and when: the "since" line in the admin, and how the
@@ -312,6 +336,16 @@ export async function runApplicationSchedule(env, { now = Date.now() } = {}) {
   const due = !s.open && s.opensAt && Date.parse(s.opensAt) <= now ? { open: true, opensAt: '' }
     : s.open && s.closesAt && Date.parse(s.closesAt) <= now ? { open: false, closesAt: '' } : null;
   if (!due) return null;
+  // Time to open, but the season is already at its limit (families who started finished after it
+  // closed): it stays closed, the time comes off, and the team hears why
+  if (due.open && capOf(s).max) {
+    const f = await capFacts(env.DB, s, { now });
+    if (f.full) {
+      const skipped = await saveApplicationSettings(env, { opensAt: '' }, { user: 'schedule', base: s, now });
+      if (skipped.changes?.length) await tellCap(env, 'blocked', f, { opensAt: s.opensAt, at: now });
+      return null;
+    }
+  }
   const out = await saveApplicationSettings(env, due, { user: 'schedule', base: s, now });
   if (!out.changes?.length) return null;
   const done = due.open ? 'opened' : 'closed';
@@ -340,6 +374,36 @@ export async function applyApplicationSchedule(env, { now = Date.now() } = {}) {
     return { opened: done === 'opened', closed: done === 'closed' };
   } catch {
     return { opened: false, closed: false };
+  }
+}
+
+/**
+ * The application limit (./_application-cap.js), after every submit, on the
+ * sweep and after a settings save: one heads-up to the team at the warn
+ * point, and at the limit applications close by themselves (logged as made
+ * by "limit"; whoever's write lands first sends the notice). Never throws.
+ * → { warned: true } | { closed: true } | null
+ */
+export async function enforceApplicationCap(env, { now = Date.now() } = {}) {
+  try {
+    if (!env.DB) return null;
+    const stored = await applicationSettings(env.DB);
+    const s = pickApplication(stored, now);
+    if (!s.open || !s.maxApplications) return null;
+    const f = await capFacts(env.DB, s, { now, openedAt: stored.openChangedAt });
+    if (f.full) {
+      const out = await saveApplicationSettings(env, { open: false }, { user: CAP_USER, base: s, now });
+      if (!out.changes?.length) return null;
+      await tellCap(env, 'full', f, { at: now, message: fullMessageOf(s) });
+      return { closed: true };
+    }
+    if (f.received >= f.warnAt && await claimWarning(env.DB, f.year, f.warnAt, now)) {
+      await tellCap(env, 'warn', f, { at: now });
+      return { warned: true };
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -1253,6 +1317,8 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
         if (!(upd?.meta?.changes > 0)) return null;
       }
     }
+    // The application limit, should a submit's own check not have run (it rides waitUntil)
+    const capped = await enforceApplicationCap(env, { now });
     const { results } = await DB.prepare("SELECT id FROM applications WHERE status != 'done' AND (next_try_at IS NULL OR next_try_at <= ?) ORDER BY next_try_at LIMIT 3").bind(now).all();
     const processed = [];
     for (const r of results || []) processed.push({ id: r.id, ...(await processApplication(env, r.id, { fetchImpl, now })) });
@@ -1264,7 +1330,7 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
     const approved = await runApprovals(env, { fetchImpl, now });
     // Every applicant in JobTread, for Admin → Applications → Applicants
     const applicants = await maybeSyncApplicants(env, { fetchImpl, now });
-    return { processed, reminded, expired, notified, approved, applicants };
+    return { processed, reminded, expired, notified, approved, applicants, capped };
   } catch {
     return null;
   }

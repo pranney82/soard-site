@@ -13,6 +13,7 @@ import { applicationSettings, cleanYear } from '../../api/_applications.js';
 import { getLiveForm } from '../../api/_application-forms.js';
 import { resolveForm } from '../../api/_application-form.js';
 import { publicForm, publicDefinition } from '../../api/apply.js';
+import { seasonFull, defaultFullMessage } from '../../api/_application-cap.js';
 
 export async function onRequest(context) {
   const { request, env, next } = context;
@@ -24,8 +25,10 @@ export async function onRequest(context) {
     const year = cleanYear(settings.year);
     const live = await getLiveForm(env.DB);
     const form = resolveForm(live.definition, { year, version: live.version });
+    // Closed at the application limit, the closed card says the season is full (./_application-cap.js)
+    const full = await seasonFull(env.DB, settings, year);
     const config = {
-      open: settings.open === true, year, version: live.version,
+      open: settings.open === true, full, year, version: live.version,
       definition: publicDefinition(live.definition), form: publicForm(form),
       turnstileSiteKey: env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY ? env.TURNSTILE_SITE_KEY : null,
     };
@@ -50,6 +53,16 @@ export async function onRequest(context) {
         element(el) {
           if (config.open) el.setAttribute('hidden', '');
           else el.removeAttribute('hidden');
+        },
+      })
+      // Its headline, from the live settings: a message staff wrote stays as written, the
+      // built-in one (data-af-t) follows the family's language in the browser
+      .on('[data-closed] h2', {
+        element(el) {
+          const mine = String((full ? settings.fullMessage : settings.closedMessage) || '').trim();
+          if (mine) { el.removeAttribute('data-af-t'); el.setInnerContent(mine); return; }
+          el.setAttribute('data-af-t', full ? 'fullTitle' : 'closedTitle');
+          el.setInnerContent(full ? defaultFullMessage(year) : `The ${year} application period is currently closed.`);
         },
       })
       .transform(res);

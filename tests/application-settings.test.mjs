@@ -30,7 +30,7 @@ beforeEach(async () => {
 const stored = async () => JSON.parse((await DB.prepare("SELECT data FROM site_config WHERE key = 'settings'").first()).data);
 
 test('pickApplication fills every field and keeps the season in range', () => {
-  assert.deepEqual(pickApplication({ open: true, year: '2027' }, NOW), { open: true, year: '2027', closedMessage: '', formUrl: '', opensAt: '', closesAt: '' });
+  assert.deepEqual(pickApplication({ open: true, year: '2027' }, NOW), { open: true, year: '2027', closedMessage: '', formUrl: '', opensAt: '', closesAt: '', maxApplications: 0, warnAt: 0, fullMessage: '' });
   assert.equal(pickApplication({ year: '1999' }, NOW).year, '2027', 'out of range → next year');
   assert.equal(pickApplication({ open: 'true' }, NOW).open, false, 'only true opens');
 });
