@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createD1 } from './lib/d1-shim.mjs';
 import * as P from '../public/admin/press-shared.js';
-import { parseGoogleRss, parseBingRss, parseYouTubeFeed, parseYouTubeSearch, decodeGoogleLink } from '../functions/api/_press-sources.js';
+import { parseGoogleRss, parseBingRss, parseYouTubeFeed, parseYouTubeSearch, decodeGoogleLink, relativeDate } from '../functions/api/_press-sources.js';
 import { parsePage, checkLink } from '../functions/api/_press-page.js';
 import * as E from '../functions/api/_press.js';
 import { EXTRACTORS } from '../functions/api/_collections.js';
@@ -411,6 +411,68 @@ describe('press monitor: what a real run taught it', () => {
     const wrdw = stories.find((x) => x.videoId === 'NewStation1');
     assert.equal(wrdw?.outlet, 'WRDW News 12');
     assert.ok(!(await rows(env.DB, "SELECT slug FROM medialogos WHERE name = 'YouTube'")).length, 'no outlet called YouTube');
+  });
+  test('searches go one at a time, two per beat (a Worker run holds six connections, shared with the other jobs)', async () => {
+    const env = await newEnv({ press: [], medialogos: [], kids: [], partners: [] });
+    await quietState(env);
+    const s0 = await E.readState(env.DB);
+    s0.scans.google = {};
+    await env.DB.prepare('UPDATE site_config SET data = ? WHERE key = ?').bind(JSON.stringify(s0), E.STATE_KEY).run();
+    let inFlight = 0;
+    let most = 0;
+    let calls = 0;
+    const slow = async (u, o) => { calls++; inFlight++; most = Math.max(most, inFlight); await new Promise((r) => setTimeout(r, 5)); inFlight--; return fakeFetch(u, o); };
+    const r1 = await E.maybeRunPress(env, { now: NOW, budgetMs: 1, fetchImpl: slow });
+    assert.match(r1.join(' '), /scan google: 2 of 6 searches/);
+    assert.equal(calls, 2);
+    const mid = (await E.readState(env.DB)).scans.google;
+    assert.equal(mid.cursor, 2);
+    await E.maybeRunPress(env, { now: NOW + 60e3, budgetMs: 1, fetchImpl: slow });
+    const r3 = await E.maybeRunPress(env, { now: NOW + 120e3, budgetMs: 1, fetchImpl: slow });
+    assert.match(r3.join(' '), /scan google: \d+ found/);
+    const done = (await E.readState(env.DB)).scans.google;
+    assert.ok(done.at && done.cursor == null, JSON.stringify(done));
+    assert.equal(most, 1, 'never two at once');
+    // A source that failed outright is tried again in half an hour
+    const s1 = await E.readState(env.DB);
+    s1.scans.google = { at: new Date(NOW).toISOString(), found: 0, added: 0, error: 'Google News: timed out' };
+    s1.scans.bing = { at: new Date(NOW).toISOString() };
+    s1.scans.youtube = { at: new Date(NOW).toISOString() };
+    await env.DB.prepare('UPDATE site_config SET data = ? WHERE key = ?').bind(JSON.stringify(s1), E.STATE_KEY).run();
+    assert.equal(await E.maybeRunPress(env, { now: NOW + 10 * 60e3, budgetMs: 1, fetchImpl: slow }), null, 'not yet');
+    const again = await E.maybeRunPress(env, { now: NOW + 31 * 60e3, budgetMs: 1, fetchImpl: slow });
+    assert.match(again.join(' '), /scan google/);
+  });
+  test('YouTube search dates: "9mo ago", "8y ago", "3 weeks ago"', () => {
+    const now = Date.parse('2026-10-21T00:00:00Z');
+    assert.equal(relativeDate('9mo ago', now).slice(0, 7), '2026-01');
+    assert.equal(relativeDate('8y ago', now).slice(0, 4), '2018');
+    assert.equal(relativeDate('Streamed 3 weeks ago', now).slice(0, 10), '2026-09-30');
+    assert.equal(relativeDate('Premiered Oct 3', now), null);
+    assert.ok(parseYouTubeSearch(FIX('youtube-search.html'), 'q').every((v) => v.published), 'every search result gets a date');
+  });
+  test('a story with no date at all waits for a person, and a guessed date is put right when the real one turns up', async () => {
+    const env = await newEnv({ press: [], medialogos: [{ slug: 'wsb-tv', name: 'WSB-TV', logo: 'x', order: 0 }], kids: [], partners: [] });
+    await quietState(env);
+    const url = 'https://www.youtube.com/watch?v=NoDateVid01';
+    world.pages[url] = 403; // what YouTube says to Cloudflare's servers
+    await env.DB.prepare("INSERT INTO press_mentions (id, key, provider, url, link, title, source, video_id, query, state, stage, found_at) VALUES ('y:nd', ?, 'youtube', ?, ?, 'Sunshine on a Ranney Day brings teen’s dream space to life', 'WSB-TV', 'NoDateVid01', 'q', 'new', 'match', ?)").bind(P.urlKey(url), url, url, new Date(NOW).toISOString()).run();
+    await beats(env, { max: 6 });
+    const m = await env.DB.prepare("SELECT state, reason FROM press_mentions WHERE id = 'y:nd'").first();
+    assert.equal(m.state, 'review', 'not filed with today’s date');
+    assert.match(m.reason, /No date|wouldn’t show/);
+    assert.equal((await rows(env.DB, "SELECT slug FROM press WHERE data LIKE '%NoDateVid01%'")).length, 0);
+    // One filed before this rule, with the day it was found as its date
+    const filedDay = new Date(NOW).toISOString().slice(0, 10);
+    const st = { outlet: 'WSB-TV', outletLogo: 'wsb-tv', category: 'local-tv', title: 'A teen’s dream space', date: filedDay, url: 'https://www.youtube.com/watch?v=Guessed0001', excerpt: 'x', image: null, featured: false, order: 0, videoId: 'Guessed0001' };
+    await E.writeRecord(env, 'press', 'wsb-tv-guess', null, st);
+    await env.DB.prepare("INSERT INTO press_log (at, kind, slug, label) VALUES (?, 'filed', 'wsb-tv-guess', 'Added')").bind(new Date(NOW).toISOString()).run();
+    await env.DB.prepare("INSERT INTO press_mentions (id, key, provider, url, title, source, state, story, found_at) VALUES ('y:g', 'k', 'youtube', ?, 'A teen’s dream space', 'WSB-TV', 'filed', 'wsb-tv-guess', ?)").bind(st.url, new Date(NOW).toISOString()).run();
+    assert.equal(await E.fixGuessedDates(env), 0, 'nothing to go on yet');
+    await env.DB.prepare("UPDATE press_mentions SET published = '2025-12-15T00:00:00Z' WHERE id = 'y:g'").run();
+    assert.equal(await E.fixGuessedDates(env), 1);
+    assert.equal((await story(env.DB, 'wsb-tv-guess')).date, '2025-12-15');
+    assert.equal(await E.fixGuessedDates(env), 0, 'once');
   });
   test('the Internet Archive is asked one thing at a time, and left alone for an hour after a 429', async () => {
     const state = {};

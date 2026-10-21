@@ -11,13 +11,23 @@
 import { decodeEntities, plain, cleanTitle, urlKey, youTubeId, relevance, OWN_CHANNELS } from '../../public/admin/press-shared.js';
 
 export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
-const TIMEOUT = 9000;
+const TIMEOUT = 10000;
 
 async function get(fetchImpl, url, opts = {}) {
   const res = await fetchImpl(url, { redirect: 'follow', ...opts, headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', ...(opts.headers || {}) }, signal: AbortSignal.timeout(opts.timeout || TIMEOUT) });
   return res;
 }
 const isoDate = (s) => { const t = Date.parse(s || ''); return Number.isFinite(t) ? new Date(t).toISOString() : null; };
+/** "9mo ago", "8y ago", "3 weeks ago", "Streamed 2 years ago" → an approximate date (YouTube search gives no other) */
+export function relativeDate(text, now = Date.now()) {
+  const m = String(text || '').match(/(\d+)\s*(seconds?|secs?|s|minutes?|mins?|hours?|hrs?|h|days?|d|weeks?|wks?|w|months?|mo|years?|yrs?|y)\b\s*ago/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const u = m[2].toLowerCase();
+  const DAY = 864e5;
+  const ms = /^(mo|month)/.test(u) ? n * 30.44 * DAY : /^(y|yr|year)/.test(u) ? n * 365.25 * DAY : /^(w|wk|week)/.test(u) ? n * 7 * DAY : /^(d|day)/.test(u) ? n * DAY : /^(h|hr|hour)/.test(u) ? n * 36e5 : /^(m|min)/.test(u) ? n * 6e4 : n * 1e3;
+  return new Date(now - ms).toISOString();
+}
 
 // ── RSS ──────────────────────────────────────────────────────────────
 function tag(block, name) {
@@ -155,7 +165,7 @@ export function parseYouTubeSearch(html, query = '') {
       if (!OWN_CHANNELS.some((re) => re.test(channel)) && relevance({ title, description }).any) {
         out.push({
           provider: 'youtube', id: `y:${r.videoId}`, url: `https://www.youtube.com/watch?v=${r.videoId}`, link: `https://www.youtube.com/watch?v=${r.videoId}`,
-          title, source: channel, sourceUrl: '', published: null, publishedText: text(r.publishedTimeText), description: description.slice(0, 600), query, videoId: r.videoId,
+          title, source: channel, sourceUrl: '', published: relativeDate(text(r.publishedTimeText)), publishedText: text(r.publishedTimeText), description: description.slice(0, 600), query, videoId: r.videoId,
         });
       }
       return;

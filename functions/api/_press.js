@@ -262,19 +262,58 @@ async function insertMentions(DB, items, now) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?) ON CONFLICT(id) DO NOTHING`)
       .bind(it.id, key, it.provider, it.query || '', it.url || null, it.link || null, clip(it.title, 300), clip(it.source, 120), it.sourceUrl || null, it.published || null, clip(it.description, 600), it.videoId || null, it.url ? 'match' : 'resolve', iso(now), iso(now)).run();
     added += r?.meta?.changes ? 1 : 0;
+    // Found again with a date it didn't have before (fixGuessedDates uses it)
+    if (!r?.meta?.changes && it.published) await DB.prepare('UPDATE press_mentions SET published = ? WHERE id = ? AND published IS NULL').bind(it.published, it.id).run();
   }
   return added;
 }
-export async function scan(env, provider, { now = Date.now(), fetchImpl = fetch } = {}) {
+/**
+ * A story filed on the day it was found with no date of its own got that day
+ * as its date. When a later scan finds the real one, put it right.
+ */
+export async function fixGuessedDates(env) {
+  const { DB } = env;
+  const rows = (await DB.prepare(`SELECT m.story, m.published, l.at FROM press_mentions m JOIN press_log l ON l.slug = m.story AND l.kind = 'filed' AND l.undone_at IS NULL
+    WHERE m.state = 'filed' AND m.published IS NOT NULL`).all()).results || [];
+  let fixed = 0;
+  for (const r of rows) {
+    const rec = await loadOne(DB, 'press', r.story);
+    const real = dateOnly(r.published);
+    const filedDay = String(r.at || '').slice(0, 10);
+    if (!rec || !real || rec.data.date !== filedDay || real === filedDay) continue;
+    const next = P.storyRecord({ ...rec.data, date: real });
+    if (await writeRecord(env, 'press', r.story, rec.raw, next, { message: `Press monitor: ${rec.data.title} dated` })) {
+      await logChange(DB, { kind: 'story', slug: r.story, label: `${clip(rec.data.title, 70)}: date corrected`, before: { date: rec.data.date }, after: { date: real } });
+      fixed += 1;
+    }
+  }
+  return fixed;
+}
+/**
+ * Part of a scan: up to `limit` searches, one after another. A Worker run can
+ * hold only six connections at once and the heartbeat's other jobs share
+ * them, so firing every search together left them queued until they timed
+ * out. → { found, added, errors, ran, firstError, next, total }
+ */
+export async function scanPart(env, provider, { from = 0, limit = 2, now = Date.now(), fetchImpl = fetch } = {}) {
   const settings = await readSettings(env.DB);
   const runs = provider === 'youtube'
     ? [...settings.channels.map((c) => () => youTubeChannel(c, { fetchImpl })), () => youTubeSearch('"Sunshine on a Ranney Day"', { fetchImpl })]
     : settings.queries.map((q) => () => (provider === 'google' ? googleNews(q, { fetchImpl }) : bingNews(q, { fetchImpl })));
-  const results = await Promise.all(runs.map((f) => f()));
-  const items = results.flatMap((r) => r.items);
-  const errors = results.map((r) => r.error).filter(Boolean);
-  const added = await insertMentions(env.DB, items, now);
-  return { at: iso(now), found: items.length, added, error: errors.length === results.length && results.length ? errors[0] : null, partial: errors.length && errors.length < results.length ? errors.length : 0 };
+  const out = { found: 0, added: 0, errors: 0, ran: 0, firstError: null, next: Math.min(from + limit, runs.length), total: runs.length };
+  for (const run of runs.slice(from, from + limit)) {
+    const r = await run();
+    out.ran += 1;
+    out.found += r.items.length;
+    if (r.error) { out.errors += 1; out.firstError ||= r.error; }
+    out.added += await insertMentions(env.DB, r.items, now);
+  }
+  return out;
+}
+/** A whole scan at once (the tests and a person's own check) */
+export async function scan(env, provider, { now = Date.now(), fetchImpl = fetch } = {}) {
+  const r = await scanPart(env, provider, { from: 0, limit: 100, now, fetchImpl });
+  return { at: iso(now), found: r.found, added: r.added, error: r.ran && r.errors === r.ran ? r.firstError : null, partial: r.errors && r.errors < r.ran ? r.errors : 0 };
 }
 
 // ── Each found article, one step at a time ───────────────────────────
@@ -362,8 +401,9 @@ export async function stepMention(env, m, { fetchImpl = fetch, ctx = null, force
     const outlets = ctx.outlets.map((o) => o.data);
     const outletRec = P.matchOutlet(outlets, video ? { name: outletName } : { name: outletName, url: m.url, source: m.source_url })
       || (!video && m.source && m.source !== outletName ? P.matchOutlet(outlets, { name: m.source }) : null);
-    const date = dateOnly(page.published) || dateOnly(m.published) || iso().slice(0, 10);
-    const year = Number(date.slice(0, 4));
+    // No date at all: never today's date (a story from years ago would top the page); a person decides
+    const date = dateOnly(page.published) || dateOnly(m.published) || (force ? iso().slice(0, 10) : null);
+    const year = Number((date || iso()).slice(0, 4));
     const cands = { kids: P.kidCandidates(all, ctx.kids, year), partners: P.partnerCandidates(all, ctx.partners) };
     const ai = await judgeWithAi(env, { title, outlet: outletRec?.name || outletName, date, text, description: page.description || m.description, kids: cands.kids, partners: cands.partners });
     const people = pickPeople(cands, ai);
@@ -375,9 +415,9 @@ export async function stepMention(env, m, { fetchImpl = fetch, ctx = null, force
     // A station on the watch list is a news outlet even before it has a record
     const unknownVideo = video && !outletRec && !String(m.query || '').startsWith('channel:');
     let fields;
-    if (force || (about === 'about' && (rel.any || ai) && !syndicated && !unknownVideo)) fields = { stage: 'picture' };
+    if (force || (about === 'about' && (rel.any || ai) && !syndicated && !unknownVideo && date)) fields = { stage: 'picture' };
     else if (about === 'unrelated' && !rel.strong) fields = { state: 'unrelated', reason: ai ? 'Workers AI says it’s about someone else' : 'SOARD isn’t named in it' };
-    else fields = { state: 'review', reason: syndicated ? `A copy on ${m.source || P.hostOf(m.url)}: the original outlet’s own link is better` : unknownVideo ? `A video from ${m.source || 'a YouTube channel'}, not a news outlet` : data.read !== 'ok' ? 'The outlet wouldn’t show the article, so nobody could check it' : about === 'mentions' ? 'SOARD only comes up in passing' : 'Not clearly about SOARD' };
+    else fields = { state: 'review', reason: !date && about === 'about' ? 'No date on it: add it with its date' : syndicated ? `A copy on ${m.source || P.hostOf(m.url)}: the original outlet’s own link is better` : unknownVideo ? `A video from ${m.source || 'a YouTube channel'}, not a news outlet` : data.read !== 'ok' ? 'The outlet wouldn’t show the article, so nobody could check it' : about === 'mentions' ? 'SOARD only comes up in passing' : 'Not clearly about SOARD' };
     await setMention(DB, m.id, { ...fields, data: JSON.stringify(data) });
     return fields.state ? { done: true, review: fields.state === 'review' } : { next: 'picture' };
   }
@@ -777,7 +817,8 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
     const log = [];
     const pendingNew = await DB.prepare("SELECT COUNT(*) AS n FROM press_mentions WHERE state = 'new'").first('n');
     const tidyDue = (state.tidy?.version || 0) < TIDY_VERSION;
-    const scanDue = Object.keys(SCAN_EVERY).filter((p) => now - Date.parse(state.scans?.[p]?.at || 0) >= SCAN_EVERY[p]);
+    // A source that failed outright is tried again in half an hour, not the usual few hours
+    const scanDue = Object.keys(SCAN_EVERY).filter((p) => now - Date.parse(state.scans?.[p]?.at || 0) >= (state.scans?.[p]?.error ? 30 * 60e3 : SCAN_EVERY[p]));
     const sweepDue = !tidyDue && (state.sweep?.cursor != null || now - Date.parse(state.sweep?.doneAt || 0) >= SWEEP_EVERY);
     const deployDue = state.deployPending && now - Date.parse(state.lastDeployAt || 0) >= DEPLOY_COOLDOWN;
     const gate = archiveGate(state, archiveGapMs);
@@ -787,11 +828,25 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
     await writeState(DB, state);
     const more = () => Date.now() - started < budgetMs;
     try {
-      // 1. A scan whose time has come (one source per beat)
+      // 1. A scan whose time has come: one source, two searches per beat (it
+      // keeps its place, and the last finished scan stays on show meanwhile)
       if (scanDue.length) {
         const p = scanDue[0];
-        state.scans[p] = await scan(env, p, { now, fetchImpl });
-        log.push(`scan ${p}: ${state.scans[p].found} found, ${state.scans[p].added} new`);
+        const prev = state.scans[p] || {};
+        const acc = prev.cursor != null && prev.pending ? prev.pending : { found: 0, added: 0, errors: 0, ran: 0, firstError: null };
+        const r = await scanPart(env, p, { from: prev.cursor ?? 0, limit: 2, now, fetchImpl });
+        for (const k of ['found', 'added', 'errors', 'ran']) acc[k] += r[k];
+        acc.firstError ||= r.firstError;
+        if (r.next >= r.total) {
+          state.scans[p] = { at: iso(now), found: acc.found, added: acc.added, error: acc.ran && acc.errors === acc.ran ? acc.firstError : null, partial: acc.errors && acc.errors < acc.ran ? acc.errors : 0 };
+          log.push(`scan ${p}: ${acc.found} found, ${acc.added} new`);
+          const fixed = await fixGuessedDates(env);
+          if (fixed) { state.deployPending = true; log.push(`${fixed} dates corrected`); }
+        } else {
+          const { cursor: _c, pending: _p, ...last } = prev;
+          state.scans[p] = { ...last, cursor: r.next, pending: acc };
+          log.push(`scan ${p}: ${r.next} of ${r.total} searches`);
+        }
         await writeState(DB, state); // kept even if this beat is cut short
       }
       // 2. Found articles, a step at a time
