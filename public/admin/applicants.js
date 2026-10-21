@@ -12,11 +12,27 @@
  *    emailed before anything is sent.
  *  - List: sortable, searchable table.
  *  - Map: every home against the service-area boundary, pins colored by
- *    status. The boundary can be reshaped here (saved into the form draft).
+ *    status. The boundary can be reshaped here; it's a setting, so it's
+ *    used for everyone the moment it's saved.
  *  - Activity: what happened across every family, newest first.
+ *  - More views from ./applications.js (`extraViews`): Submissions, the
+ *    website form's intake log, sits beside these.
  *  - A family (drawer): the whole conversation (emails, replies, texts,
- *    calls, notes) with a composer to email the family or add a note; the JobTread
- *    details, editable in place; contacts, home, files.
+ *    calls, notes) with a composer to email the family or add a note; the
+ *    JobTread details, editable in place; contacts, home, the answers from
+ *    the website form, files. On a phone, Conversation and Details are tabs.
+ *
+ * One toolbar row: the views, then search, season and a Filters menu (the
+ * filters in use show as chips you can clear).
+ *
+ * Staying in step with JobTread needs nobody: changes arrive within seconds,
+ * and coming back to the tab catches up at once ({ sync: 'catchup' }). The
+ * header says when JobTread was last checked; only when something is wrong
+ * does it say what, with a "Check JobTread now" button.
+ *
+ * "Clean up statuses quietly" (the ⋯ menu) is for fixing a batch of statuses
+ * in JobTread: family emails hold for up to 2 hours, and when the person says
+ * they're done, they choose which held emails go, family by family.
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo, useCallback, Sortable } from './vendor.js';
@@ -87,43 +103,70 @@ const TYPE_ICON = { Bedroom: '🛏', Bathroom: '🛁', 'Therapy Room': '🧸', R
 
 // ─── Styles (prefixed apl-, injected once) ─────────────────────────
 const CSS = `
-.apl { --apl-gap: 1rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--apl-gap); min-width: 0; }
+.apl { --apl-gap: .9rem; --apl-warn-bg: #FFF6E0; --apl-warn-line: #F2D899; --apl-warn-ink: #6B4A00; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--apl-gap); min-width: 0; }
 .apl > * { min-width: 0; }
-.apl-top { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem .75rem; justify-content: space-between; }
-.apl-views { display: inline-flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
-.apl-views button { border: 0; background: none; font: inherit; font-size: .88rem; font-weight: 600; color: var(--color-text-secondary); padding: .42rem .85rem; border-radius: 8px; cursor: pointer; min-height: 36px; transition: background .15s, color .15s, box-shadow .15s; }
+.apl > .page-header { margin-bottom: 0; }
+.apl-head-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+
+/* One toolbar row: views on the left, search and filters on the right */
+.apl-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem .75rem; }
+.apl-views { display: inline-flex; flex: none; max-width: 100%; overflow-x: auto; scrollbar-width: none; padding: 3px; gap: 2px; border-radius: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
+.apl-views::-webkit-scrollbar { display: none; }
+.apl-views button { display: inline-flex; align-items: center; gap: .4rem; flex: none; border: 0; background: none; font: inherit; font-size: .88rem; font-weight: 600; color: var(--color-text-secondary); padding: .42rem .85rem; border-radius: 8px; cursor: pointer; min-height: 36px; transition: background .15s, color .15s, box-shadow .15s; white-space: nowrap; }
 .apl-views button:hover { color: var(--color-text); }
 .apl-views button[aria-pressed="true"] { background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-sm); }
-.apl-filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.apl-views button:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
+.apl-view-n { min-width: 1.25rem; padding: 0 .38rem; border-radius: 999px; background: var(--apl-warn-bg); border: 1px solid var(--apl-warn-line); color: var(--apl-warn-ink); font-size: .72rem; font-weight: 700; line-height: 1.15rem; text-align: center; font-variant-numeric: tabular-nums; }
+.apl-filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; justify-content: flex-end; flex: 1 1 26rem; min-width: 0; }
 .apl-filters .form-select, .apl-filters .form-input { width: auto; min-height: 38px; font-size: .88rem; }
 .apl-filters .form-select { max-width: 13rem; }
-.apl-filter-toggle { display: none; }
-@media (max-width: 640px) {
-  .apl-filter-toggle { display: inline-flex; }
-  .apl-filters .apl-more-filters { display: none; width: 100%; }
-  .apl-filters.is-open .apl-more-filters { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
-  .apl-filters .form-select { max-width: none; width: 100%; font-size: 16px; }
-}
-.apl-more-filters { display: contents; }
-.apl-search { position: relative; }
-.apl-search { flex: 1 1 240px; max-width: 340px; }
-.apl-filters .apl-search input { padding-left: 2rem; width: 100%; }
+.apl-search { position: relative; flex: 1 1 200px; max-width: 320px; }
+.apl-search input, .apl-filters .apl-search input { padding-left: 2rem; padding-right: 2rem; width: 100%; }
+.apl-search input::-webkit-search-cancel-button { cursor: pointer; }
 .apl-search svg { position: absolute; left: .65rem; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--color-text-muted); pointer-events: none; }
-.apl-search kbd { position: absolute; right: .5rem; top: 50%; transform: translateY(-50%); font: 600 .7rem/1 ui-monospace, monospace; color: var(--color-text-muted); border: 1px solid var(--color-border); border-radius: 4px; padding: 2px 5px; background: var(--color-bg-secondary); }
-.apl-sync { font-size: .8rem; color: var(--color-text-muted); display: inline-flex; gap: .4rem; align-items: center; }
-.apl-sync-short { display: none; }
-@media (max-width: 640px) { .apl-sync-short { display: inline; } }
+.apl-search kbd { position: absolute; right: .5rem; top: 50%; transform: translateY(-50%); font: 600 .7rem/1 ui-monospace, monospace; color: var(--color-text-muted); border: 1px solid var(--color-border); border-radius: 4px; padding: 2px 5px; background: var(--color-bg-secondary); pointer-events: none; }
+@media (pointer: coarse) { .apl-search kbd { display: none; } }
+.apl-fbtn { display: inline-flex; align-items: center; gap: .4rem; min-height: 38px; white-space: nowrap; }
+.apl-fbtn[aria-expanded="true"] { border-color: var(--color-text); }
+.apl-fbtn b { min-width: 1.2rem; padding: 0 .35rem; border-radius: 999px; background: var(--color-text); color: var(--color-bg-card); font-size: .7rem; line-height: 1.2rem; text-align: center; }
+.apl-active { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-top: -.3rem; }
+.apl-active button { display: inline-flex; align-items: center; gap: .3rem; min-height: 30px; padding: .15rem .45rem .15rem .65rem; border: 1px solid var(--color-border-strong); border-radius: 999px; background: var(--color-bg-card); color: var(--color-text); font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
+.apl-active button:hover { background: var(--color-bg-hover); }
+.apl-active button svg { width: 12px; height: 12px; color: var(--color-text-muted); }
+.apl-active .apl-clear { border-color: transparent; background: none; color: var(--color-text-secondary); text-decoration: underline; text-underline-offset: 2px; padding: .15rem .3rem; }
+
+/* Popovers: the Filters panel and the ⋯ menu */
+.apl-pop-wrap { position: relative; display: inline-flex; }
+.apl-popover { position: absolute; z-index: 80; top: calc(100% + 6px); right: 0; width: min(300px, calc(100vw - 2rem)); padding: .85rem; display: grid; gap: .7rem; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; box-shadow: var(--shadow-lg); animation: apl-pop .14s ease-out; }
+.apl-popover label { display: grid; gap: .3rem; font-size: .8rem; font-weight: 650; color: var(--color-text-secondary); }
+.apl-popover .form-select { width: 100%; max-width: none; }
+.apl-pop-season { display: none !important; }
+@media (max-width: 640px) { .apl-pop-season { display: grid !important; } }
+.apl-popover-foot { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding-top: .55rem; border-top: 1px solid var(--color-border); }
+.apl-menu { position: absolute; z-index: 80; top: calc(100% + 6px); right: 0; width: min(300px, calc(100vw - 2rem)); padding: .35rem; display: grid; gap: 2px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; box-shadow: var(--shadow-lg); animation: apl-pop .14s ease-out; }
+.apl-menu button { all: unset; box-sizing: border-box; display: grid; gap: .1rem; width: 100%; padding: .55rem .65rem; border-radius: 8px; cursor: pointer; font-size: .88rem; font-weight: 600; color: var(--color-text); }
+.apl-menu button small { font-size: .76rem; font-weight: 400; color: var(--color-text-muted); line-height: 1.4; }
+.apl-menu button:hover, .apl-menu button:focus-visible { background: var(--color-bg-hover); }
+.apl-menu button:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
+.apl-menu button[aria-disabled="true"] { opacity: .45; cursor: default; }
+.apl-menu hr { margin: .25rem .4rem; border: 0; border-top: 1px solid var(--color-border); }
+.apl-more-btn { min-width: 38px; min-height: 38px; padding: 0 .55rem; display: inline-grid; place-items: center; }
+.apl-more-btn svg { width: 18px; height: 18px; }
+
+.apl-sync { font-size: .8rem; color: var(--color-text-muted); display: inline-flex; gap: .45rem; align-items: center; }
 .apl-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
 .apl-dot.is-live { background: var(--color-success); box-shadow: 0 0 0 3px rgba(47,125,79,.15); }
 .apl-dot.is-stale { background: var(--color-warning); }
-.apl-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; }
-.apl-stat { border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: var(--radius-md); padding: .7rem .85rem; display: grid; gap: .15rem; text-align: left; font: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s; position: relative; overflow: hidden; }
-.apl-stat::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--c); }
-.apl-stat:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-sm); }
-.apl-stat[aria-pressed="true"] { border-color: var(--c); box-shadow: 0 0 0 1px var(--c) inset; }
-.apl-stat b { font-size: 1.35rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.apl-stat span { font-size: .8rem; color: var(--color-text-secondary); }
-@media (max-width: 720px) { .apl-summary { gap: .4rem; } .apl-stat { padding: .5rem .55rem; } .apl-stat b { font-size: 1.1rem; } .apl-stat span { font-size: .72rem; } }
+
+/* Status counts above the list and the map (they filter too) */
+.apl-strip { display: flex; flex-wrap: wrap; gap: .35rem; }
+.apl-strip button { display: inline-flex; align-items: center; gap: .45rem; min-height: 34px; padding: .2rem .75rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-card); color: var(--color-text-secondary); font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s; }
+.apl-strip button:hover { border-color: var(--color-border-strong); color: var(--color-text); }
+.apl-strip button b { color: var(--color-text); font-variant-numeric: tabular-nums; }
+.apl-strip button[aria-pressed="true"] { border-color: var(--c, var(--color-text)); background: color-mix(in srgb, var(--c, var(--color-text)) 9%, var(--color-bg-card)); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--c, var(--color-text)); }
+.apl-strip .apl-dot { background: var(--c); }
+.apl-strip button.is-all[aria-pressed="true"] { border-color: var(--color-text); background: var(--color-text); color: var(--color-bg-card); box-shadow: none; }
+.apl-strip button.is-all[aria-pressed="true"] b { color: inherit; }
 
 .apl-board { display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: .75rem; align-items: start; overflow-x: auto; padding-bottom: .5rem; scroll-snap-type: x proximity; }
 .apl-col { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); min-width: 0; display: flex; flex-direction: column; max-height: calc(100vh - 230px); scroll-snap-align: start; }
@@ -134,7 +177,8 @@ const CSS = `
 .apl-cards { display: grid; gap: .5rem; padding: .6rem; overflow-y: auto; min-height: 90px; align-content: start; flex: 1; }
 .apl-cards.is-target { background: var(--color-primary-bg); outline: 2px dashed var(--color-primary); outline-offset: -6px; border-radius: 10px; }
 .apl-empty-col { font-size: .8rem; color: var(--color-text-muted); text-align: center; padding: 1.2rem .5rem; border: 1px dashed var(--color-border-strong); border-radius: 10px; }
-@media (max-width: 1100px) { .apl-board { grid-template-columns: repeat(4, minmax(260px, 82vw)); } }
+@media (max-width: 960px) { .apl-board { grid-template-columns: repeat(4, minmax(260px, 82vw)); } }
+@media (min-width: 961px) and (max-width: 1100px) { .apl-board { grid-template-columns: repeat(4, minmax(215px, 1fr)); gap: .6rem; } }
 
 .apl-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 10px; padding: .65rem .7rem; display: grid; gap: .4rem; cursor: pointer; box-shadow: var(--shadow-xs); transition: box-shadow .15s, border-color .15s, transform .15s; text-align: left; font: inherit; color: inherit; width: 100%; }
 .apl-card:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-md); }
@@ -148,8 +192,8 @@ const CSS = `
 .apl-card-sub { font-size: .76rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .apl-tags { display: flex; flex-wrap: wrap; gap: .3rem; }
 .apl-tag { font-size: .72rem; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-secondary); white-space: nowrap; }
-.apl-tag.is-out { background: #FDECEA; border-color: #F5C2BD; color: #9B2C20; }
-.apl-tag.is-warn { background: #FFF6E0; border-color: #F2D899; color: #7A5300; }
+.apl-tag.is-out, .apl-tag.is-warn { background: var(--apl-warn-bg); border-color: var(--apl-warn-line); color: var(--apl-warn-ink); }
+.apl-tag.is-in { background: #EAF6EF; border-color: #BFE3CD; color: #1F5C39; }
 .apl-tag.is-es { background: #EAF2FB; border-color: #C5DAF1; color: #23578F; }
 .apl-tag.is-test { background: #F1F0FB; border-color: #D7D3F2; color: #4B3F9C; }
 .apl-card-foot { display: flex; justify-content: space-between; gap: .5rem; font-size: .74rem; color: var(--color-text-muted); }
@@ -157,14 +201,20 @@ const CSS = `
 .apl-stage.is-long { color: #8A5A00; font-weight: 600; }
 .apl-mail { font-size: .72rem; font-weight: 650; padding: 2px 7px; border-radius: 999px; background: #FFF6D6; border: 1px solid #F2D899; color: #6B4A00; white-space: nowrap; }
 .apl-mail.is-held { background: #EEF0F3; border-color: #D9DDE3; color: #4A4F57; }
-.apl-mail.is-fix { background: #FDECEA; border-color: #F5C2BD; color: #9B2C20; }
+.apl-mail.is-fix { background: #FFE6B8; border-color: #EBC16A; color: #5C3D00; }
 .apl-banner { display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; border-radius: var(--radius-md); padding: .7rem .9rem; border: 1px solid #F2D899; background: #FFFBEB; font-size: .88rem; }
 .apl-banner.is-info { border-color: var(--color-border); background: var(--color-bg-card); }
 .apl-banner.is-warn { border-color: #F5C2BD; background: #FFF5F4; }
 .apl-banner p { margin: 0; min-width: 0; flex: 1 1 280px; }
 .apl-banner .apl-banner-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
-.apl-thread-banner { position: sticky; top: 0; z-index: 2; margin: -1rem -1.1rem .25rem; padding: .7rem 1.1rem; border-radius: 0; border-left: 0; border-right: 0; border-top: 0; }
-@media (max-width: 860px) { .apl-thread-banner { position: static; } }
+.apl-held { display: grid; gap: .5rem; }
+.apl-held-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; border-top: 1px solid var(--apl-warn-line); }
+.apl-held-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .75rem; padding: .45rem 0; border-bottom: 1px solid var(--apl-warn-line); }
+.apl-held-list li .apl-banner-actions { margin-left: auto; }
+.apl-held-all { justify-content: flex-end; }
+.apl-steps-list { margin: 0; padding-left: 1.2rem; display: grid; gap: .45rem; font-size: .92rem; line-height: 1.5; }
+.apl-sync.is-problem { color: var(--apl-warn-ink); font-weight: 600; }
+.apl-thread-banner { position: sticky; top: -1rem; z-index: 2; margin: -1rem -1.1rem .25rem; padding: .7rem 1.1rem; border-radius: 0; border-left: 0; border-right: 0; border-top: 0; }
 
 .apl-table-wrap { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); overflow: auto; }
 .apl-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
@@ -236,14 +286,23 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 .apl-icon-btn:disabled { opacity: .4; cursor: default; }
 .apl-icon-btn:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
 .apl-status-select { position: relative; }
-.apl-status-select select { appearance: none; -webkit-appearance: none; background-image: none !important; padding: .45rem 2rem .45rem 1.7rem !important; width: auto !important; border-radius: 999px; font: inherit; font-weight: 650; font-size: .88rem; border: 1px solid color-mix(in srgb, var(--c) 35%, white); background: color-mix(in srgb, var(--c) 10%, white); color: color-mix(in srgb, var(--c) 80%, black); cursor: pointer; min-height: 38px; }
+.apl-status-select select, .apl-status-select select:not([multiple]):not([size]) { appearance: none; -webkit-appearance: none; background-image: none !important; padding: .45rem 2rem .45rem 1.7rem !important; width: auto !important; border-radius: 999px; font: inherit; font-weight: 650; font-size: .88rem; border: 1px solid color-mix(in srgb, var(--c) 35%, white); background: color-mix(in srgb, var(--c) 10%, white); color: color-mix(in srgb, var(--c) 80%, black); cursor: pointer; min-height: 38px; }
 .apl-status-select::before { content: ''; position: absolute; left: .7rem; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--c); pointer-events: none; }
 .apl-status-select::after { content: ''; position: absolute; right: .85rem; top: 50%; width: 6px; height: 6px; border-right: 1.75px solid color-mix(in srgb, var(--c) 80%, black); border-bottom: 1.75px solid color-mix(in srgb, var(--c) 80%, black); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
-.apl-dbody { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); }
-@media (max-width: 860px) { .apl-dbody { grid-template-columns: 1fr; overflow-y: auto; } }
+.apl-dbody { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); grid-template-rows: minmax(0, 1fr); }
 .apl-convo { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--color-border); }
-@media (max-width: 860px) { .apl-convo { border-right: 0; } .apl-thread { overflow: visible; flex: none; } }
-.apl-thread { flex: 1; overflow-y: auto; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .75rem; }
+.apl-thread { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .75rem; }
+/* Phones and portrait iPads: Conversation and Details are tabs, each the full height */
+.apl-dtabs { display: none; }
+@media (max-width: 860px) {
+  .apl-dtabs { display: flex; grid-column: 1 / -1; gap: 2px; padding: 3px; margin: .35rem 0 0; border-radius: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
+  .apl-dtabs button { flex: 1; min-height: 40px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: .9rem; font-weight: 650; color: var(--color-text-secondary); cursor: pointer; }
+  .apl-dtabs button[aria-selected="true"] { background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-sm); }
+  .apl-dhead { padding-bottom: .6rem; }
+  .apl-dbody { grid-template-columns: minmax(0, 1fr); }
+  .apl-dbody[data-pane="convo"] .apl-side, .apl-dbody[data-pane="details"] .apl-convo { display: none; }
+  .apl-convo { border-right: 0; }
+}
 .apl-day { align-self: center; font-size: .74rem; font-weight: 650; color: var(--color-text-muted); background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 999px; padding: 2px 10px; }
 .apl-msg { max-width: 88%; display: grid; gap: .3rem; }
 .apl-msg-meta { font-size: .74rem; color: var(--color-text-muted); display: flex; gap: .4rem; flex-wrap: wrap; align-items: baseline; }
@@ -268,12 +327,25 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 .apl-event { align-self: center; display: flex; gap: .45rem; align-items: center; font-size: .8rem; color: var(--color-text-secondary); max-width: 92%; text-align: center; flex-wrap: wrap; justify-content: center; }
 .apl-event b { color: var(--color-text); }
 .apl-event .apl-pill { font-size: .74rem; }
-.apl-composer { border-top: 1px solid var(--color-border); background: var(--color-bg-card); padding: .75rem 1rem .9rem; display: grid; gap: .55rem; }
+.apl-composer { border-top: 1px solid var(--color-border); background: var(--color-bg-card); padding: .75rem 1rem .9rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: .55rem; }
 .apl-modes { display: flex; gap: .3rem; flex-wrap: wrap; }
 .apl-modes button { border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 999px; padding: .32rem .8rem; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; color: var(--color-text-secondary); min-height: 34px; }
 .apl-modes button[aria-pressed="true"] { background: #1A1B1F; border-color: #1A1B1F; color: #fff; }
 .apl-composer textarea { min-height: 84px; resize: vertical; }
 .apl-composer-foot { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; font-size: .78rem; color: var(--color-text-muted); }
+.apl-composer-foot .btn { margin-left: auto; }
+@media (pointer: coarse) { .apl-kbd-hint { display: none; } }
+/* On a phone the To and Subject fold into one line until tapped */
+.apl-email-sum { display: none; }
+@media (max-width: 640px) {
+  .apl-composer:not(.is-head-open) .apl-email-row { display: none !important; }
+  .apl-email-sum { all: unset; box-sizing: border-box; display: flex; gap: .4rem; align-items: center; min-height: 40px; font-size: .84rem; color: var(--color-text-secondary); cursor: pointer; }
+  .apl-email-sum span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .apl-email-sum b { color: var(--color-text); font-weight: 650; }
+  .apl-email-sum em { margin-left: auto; font-style: normal; font-weight: 650; color: var(--color-info); }
+  .apl-composer { padding: .6rem .8rem calc(.7rem + env(safe-area-inset-bottom, 0px)); gap: .45rem; }
+  .apl-composer textarea { min-height: 64px; }
+}
 .apl-side { overflow-y: auto; padding: 1rem 1.1rem 2rem; display: grid; gap: 1rem; align-content: start; }
 .apl-panel { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: .85rem .95rem; display: grid; gap: .6rem; }
 .apl-panel h3 { margin: 0; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-secondary); display: flex; justify-content: space-between; align-items: center; }
@@ -288,6 +360,12 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 .apl-edit.is-saved { animation: apl-saved 1.2s ease-out; }
 @keyframes apl-saved { 0% { background: rgba(47,125,79,.16); } 100% { background: transparent; } }
 .apl-kv .form-input, .apl-kv .form-select, .apl-kv textarea { font-size: .88rem; padding: .35rem .5rem; width: 100%; }
+/* Every detail reads as plain text until you point at it, the same for choices and typed values */
+.apl-kv .form-select { min-height: 32px; margin-left: -.5rem; width: calc(100% + .5rem); border-color: transparent; background-color: transparent; box-shadow: none; }
+.apl-kv .form-select:hover:not(:focus) { border-color: var(--color-border); background-color: var(--color-bg-hover); }
+.apl-kv .form-select:focus { background-color: var(--color-bg-card); }
+@media (hover: hover) { .apl-kv select.form-select:not(:hover):not(:focus) { background-image: none !important; } }
+.apl-kv .form-select.is-unset { color: var(--color-text-muted); font-style: italic; }
 .apl-type-picks { display: flex; flex-wrap: wrap; gap: .3rem; }
 .apl-type-picks button { border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 999px; padding: .25rem .65rem; font: inherit; font-size: .8rem; cursor: pointer; min-height: 30px; }
 .apl-type-picks button[aria-pressed="true"] { background: var(--color-primary-bg); border-color: #E9C700; color: #5A4600; font-weight: 650; }
@@ -304,6 +382,14 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 .apl-doclist a { display: flex; gap: .5rem; align-items: center; font-size: .86rem; text-decoration: none; color: var(--color-text); padding: .35rem .45rem; border-radius: 6px; }
 .apl-doclist a:hover { background: var(--color-bg-hover); }
 .apl-doclist small { color: var(--color-text-muted); margin-left: auto; white-space: nowrap; }
+.apl-answers { display: grid; gap: .5rem; }
+.apl-answers a { color: var(--color-info); }
+.apl-answer-sec { border-top: 1px solid var(--color-border); padding-top: .4rem; }
+.apl-answer-sec summary { cursor: pointer; font-size: .86rem; font-weight: 650; min-height: 32px; display: flex; align-items: center; }
+.apl-answer-sec dl { margin: .2rem 0 .5rem; }
+.apl-answer-sec dt { font-size: .76rem; color: var(--color-text-muted); margin-top: .45rem; }
+.apl-answer-sec dd { margin: .1rem 0 0; font-size: .86rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.apl-answer-sec img { max-width: 140px; max-height: 110px; border-radius: 8px; border: 1px solid var(--color-border); }
 
 .apl-sheet-wrap { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 1rem; background: rgba(26,27,31,.42); animation: apl-fade .15s ease-out; }
 .apl-sheet { width: min(620px, 100%); max-height: calc(100vh - 2rem); overflow: auto; background: var(--color-bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 1.2rem 1.25rem; display: grid; gap: .9rem; animation: apl-pop .2s cubic-bezier(.2,.8,.2,1); }
@@ -321,11 +407,24 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 .apl-callout.is-warn { background: #FFF6E0; border-color: #F2D899; color: #6B4A00; }
 .apl-skel { color: var(--color-text-muted); font-size: .9rem; padding: 2rem; text-align: center; }
 .apl-zero { text-align: center; padding: 2.5rem 1rem; color: var(--color-text-secondary); border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-bg-card); }
+@media (max-width: 900px) {
+  .apl-filters { justify-content: flex-start; flex-basis: 100%; }
+  .apl-search { max-width: none; }
+}
+.apl-sync-short { display: none; }
 @media (max-width: 640px) {
-  .apl-search { flex: 1 1 0; max-width: none; }
-  .apl-search kbd, .apl-sync-long { display: none; }
+  .apl > .page-header { gap: .6rem; }
+  .apl-head-actions { width: 100%; }
+  .apl-head-actions .apl-sync { flex: 1; min-width: 0; }
+  .apl-sync-long { display: none; }
+  .apl-sync-short { display: inline; }
   .apl-sync .btn { white-space: nowrap; }
+  .apl-search { flex: 1 1 0; }
+  .apl-filters .apl-season { display: none; }
   .apl-email-row { grid-template-columns: 1fr !important; }
+  .apl-kv .form-select { min-height: 44px; }
+  .apl-strip button, .apl-active button { min-height: 40px; }
+  .apl-menu button { min-height: 44px; }
   .apl-dhead { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "avatar title nav" "actions actions actions"; }
   .apl-dhead { padding: .7rem .8rem; }
   .apl-thread, .apl-side { padding-left: .8rem; padding-right: .8rem; }
@@ -353,6 +452,9 @@ const Icon = {
   up: () => html`<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 10l4-4 4 4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   down: () => html`<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   ext: () => html`<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 3h4v4M13 3L7 9M12 10v3H3V4h3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  more: () => html`<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="12.5" cy="8" r="1.4"/></svg>`,
+  filter: () => html`<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2.5 4h11M4.5 8h7M6.5 12h3" stroke-linecap="round"/></svg>`,
+  x: () => html`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke-linecap="round"/></svg>`,
 };
 const FEED_ICON = { notify: '📨', status: '●', fields: '✎', comment: '💬', reply: '↩', textIn: '📱', textOut: '📱', call: '📞', sent: '✉', note: '📝', file: '📎', contact: '👤', home: '🏠', job: '🛠', created: '✨', archived: '🗄', unarchived: '🗄', renamed: '✎' };
 
@@ -366,7 +468,7 @@ function Flags({ a, compact = false }) {
   const out = [];
   if (a.area === 'outside') out.push(html`<span class="apl-tag is-out" title="Home is outside the service-area boundary">${a.areaMiles != null ? `${a.areaMiles} mi outside` : 'Outside area'}</span>`);
   if (a.repeat?.length) out.push(html`<span class="apl-tag is-warn" title=${`Possible repeat of ${a.repeat.join(', ')}`}>Possible repeat</span>`);
-  if (a.lang === 'es' || a.fields?.language === 'Spanish') out.push(html`<span class="apl-tag is-es">Español</span>`);
+  if (a.lang === 'es' || a.fields?.language === 'Spanish') out.push(html`<span class="apl-tag is-es" title="The family reads Spanish: their emails go in Spanish">Spanish</span>`);
   if (a.isTest || /^TEST\b/.test(a.name)) out.push(html`<span class="apl-tag is-test">Test</span>`);
   if (a.archivedAt) out.push(html`<span class="apl-tag">Archived</span>`);
   if (!compact) for (const t of a.types || []) out.push(html`<span class="apl-tag">${TYPE_ICON[t] ? `${TYPE_ICON[t]} ` : ''}${t}</span>`);
@@ -383,11 +485,25 @@ function lastLine(a) {
 
 // ─── The area ───────────────────────────────────────────────────────
 
-export function ApplicantsArea({ addToast }) {
+const BUILT_IN_VIEWS = [['board', 'Board'], ['list', 'List'], ['map', 'Map'], ['activity', 'Activity']];
+const AREA_LABEL = { inside: 'Inside the boundary', outside: 'Outside the boundary', unknown: 'No map point' };
+
+/**
+ * The Applicants tab. ./applications.js adds to it:
+ *  - extraViews: [{ key, label, count, render }] beside Board, List, Map, Activity
+ *  - notice: shown under the toolbar (for example, applications that didn't reach JobTread)
+ *  - menuItems: more entries for the ⋯ menu ({ label, hint, onSelect } or '-')
+ *  - route: { view, application, editBoundary, n } from the address bar; a new n applies it
+ */
+export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuItems = [], route = null }) {
   injectCss();
+  const viewKeys = [...BUILT_IN_VIEWS.map(v => v[0]), ...extraViews.map(v => v.key)];
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
-  const [view, setView] = useState(() => { try { return localStorage.getItem('apl-view') || 'board'; } catch { return 'board'; } });
+  const [view, setViewRaw] = useState(() => {
+    if (route?.view && viewKeys.includes(route.view)) return route.view;
+    try { const v = localStorage.getItem('apl-view'); return BUILT_IN_VIEWS.some(x => x[0] === v) ? v : 'board'; } catch { return 'board'; }
+  });
   const [q, setQ] = useState('');
   const [year, setYear] = useState(null);
   const [type, setType] = useState('');
@@ -398,8 +514,15 @@ export function ApplicantsArea({ addToast }) {
   const [sheet, setSheet] = useState(null);       // { a, status }
   const [syncing, setSyncing] = useState(false);
   const [focusPin, setFocusPin] = useState(null);
+  const [editBoundary, setEditBoundary] = useState(!!route?.editBoundary);
+  const [busy, setBusy] = useState('');
+  const [cleanup, setCleanup] = useState(false); // the "Clean up statuses quietly" sheet
   const searchRef = useRef(null);
 
+  const setView = (v) => {
+    setViewRaw(v);
+    if (!openId) history.replaceState(null, '', extraViews.some(x => x.key === v) ? `#applications/${v}` : '#applications/applicants');
+  };
   const load = useCallback(async (quiet = false) => {
     const j = await call(`${API}?list=1${archived ? '&archived=1' : ''}`);
     if (!j.success) { if (!quiet) setErr(j.error || 'Could not load applicants'); return; }
@@ -413,10 +536,23 @@ export function ApplicantsArea({ addToast }) {
     const t = setInterval(() => { if (document.visibilityState === 'visible') load(true); }, 60000);
     return () => clearInterval(t);
   }, [load]);
-  useEffect(() => { try { localStorage.setItem('apl-view', view); } catch { /* private mode */ } }, [view]);
+  // Back on the tab (say, after changing something in JobTread): catch up on JobTread's changes now
+  const caughtUp = useRef(0);
+  useEffect(() => {
+    const onVisible = async () => {
+      if (document.visibilityState !== 'visible' || Date.now() - caughtUp.current < 20000) return;
+      caughtUp.current = Date.now();
+      await call(API, { sync: 'catchup' });
+      load(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [load]);
+  // Remember the last board, list, map or activity view (a view from ./applications.js is opened on purpose each time)
+  useEffect(() => { if (BUILT_IN_VIEWS.some(v => v[0] === view)) { try { localStorage.setItem('apl-view', view); } catch { /* private mode */ } } }, [view]);
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') && !document.activeElement?.isContentEditable) {
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') && !document.activeElement?.isContentEditable && !document.querySelector('.apl-drawer, .apl-sheet-wrap, .modal-overlay')) {
         e.preventDefault();
         searchRef.current?.focus();
       }
@@ -426,8 +562,25 @@ export function ApplicantsArea({ addToast }) {
   }, []);
   const open = (id) => {
     setOpenId(id);
-    history.replaceState(null, '', id ? `#applications/applicants/${id}` : '#applications/applicants');
+    history.replaceState(null, '', id ? `#applications/applicants/${id}` : extraViews.some(x => x.key === view) ? `#applications/${view}` : '#applications/applicants');
   };
+
+  // A link from somewhere else: a view, the boundary editor, or one website application
+  // (which opens that family when they're in JobTread, else its row in Submissions)
+  useEffect(() => {
+    if (!route) return;
+    if (route.view && viewKeys.includes(route.view)) { setViewRaw(route.view); setOpenId(null); }
+    if (route.editBoundary) { setViewRaw('map'); setEditBoundary(true); setOpenId(null); }
+    if (route.account && /^[A-Za-z0-9]{6,32}$/.test(route.account)) setOpenId(route.account);
+  }, [route?.n]);
+  const placed = useRef(null);
+  useEffect(() => {
+    if (!route?.application || !data || placed.current === route.n) return;
+    placed.current = route.n;
+    const a = data.applicants.find(x => x.applicationId === route.application);
+    if (a) { setOpenId(a.id); history.replaceState(null, '', `#applications/applicants/${a.id}`); }
+    else if (viewKeys.includes('submissions')) setViewRaw('submissions');
+  }, [data, route?.n]);
 
   const all = data?.applicants || [];
   const years = useMemo(() => {
@@ -437,8 +590,6 @@ export function ApplicantsArea({ addToast }) {
   }, [all]);
   const counties = useMemo(() => [...new Set(all.map(a => a.county).filter(Boolean))].sort(), [all]);
   const [county, setCounty] = useState('');
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const activeFilters = [type, county, area, archived ? 'a' : ''].filter(Boolean).length + (year && data && year !== data.season ? 1 : 0);
   const shown = useMemo(() => {
     const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return all.filter(a => {
@@ -454,7 +605,17 @@ export function ApplicantsArea({ addToast }) {
       return true;
     });
   }, [all, q, year, type, county, area, statusFilter, view]);
-  const counts = useMemo(() => Object.fromEntries(STATUS_ORDER.map(s => [s, shown.filter(a => a.status === s).length])), [shown]);
+  // The status counts leave the status filter out, so every count stays visible while one is picked
+  const counts = useMemo(() => {
+    const m = Object.fromEntries(STATUS_ORDER.map(s => [s, 0]));
+    const words = q.trim().toLowerCase();
+    for (const a of all) {
+      if ((year && a.year !== year) || (type && !(a.types || []).includes(type)) || (county && a.county !== county) || (area && a.area !== area)) continue;
+      if (words && !words.split(/\s+/).every(w => [a.name, a.contact?.name, a.contact?.email, a.contact?.phone, a.address, a.city, a.county, a.fields?.diagnosis, a.fields?.referredBy].join(' ').toLowerCase().includes(w))) continue;
+      if (m[a.status] != null) m[a.status]++;
+    }
+    return m;
+  }, [all, q, year, type, county, area]);
 
   const askStatus = (a, status) => { if (a.status !== status) setSheet({ a, status }); };
   const afterChange = (applicant) => {
@@ -462,74 +623,139 @@ export function ApplicantsArea({ addToast }) {
     setData(d => d && { ...d, applicants: d.applicants.map(x => (x.id === applicant.id ? { ...x, ...applicant } : x)) });
     load(true);
   };
-  const syncNow = async () => {
+  // Only offered when the automatic check has a problem
+  const checkNow = async () => {
     setSyncing(true);
     const j = await call(API, { sync: true });
     setSyncing(false);
-    if (!j.success) { addToast(j.error || 'Sync failed', 'error'); return; }
-    addToast('Up to date with JobTread', 'success');
+    if (!j.success) { addToast(j.error || 'JobTread didn’t answer. Try again in a minute.', 'error'); load(true); return; }
+    addToast('JobTread answered. Everything here is up to date.', 'success');
     load(true);
   };
+  const post = async (body, key, done) => {
+    setBusy(key);
+    const j = await call(API, body);
+    setBusy('');
+    if (!j.success) { addToast(j.error || 'That didn’t work', 'error'); return false; }
+    if (done) addToast(done, 'info');
+    load(true);
+    return true;
+  };
+  const startCleanup = async () => {
+    if (await post({ pause: { minutes: 120 } }, 'pause', 'Family emails are holding. Change what you need, then choose “I’m done cleaning up”.')) setCleanup(false);
+  };
+  const doneCleanup = () => post({ resume: true }, 'resume', 'Done. Choose which held emails go.');
 
   if (err && !data) return html`<div class="apl-zero"><p><strong>Couldn't load applicants.</strong></p><p>${err}</p><button class="btn btn-ghost" onClick=${() => load()}>Try again</button></div>`;
   if (!data) return html`<div class="apl-skel"><span class="spinner" /> Loading applicants from JobTread…</div>`;
 
   const sync = data.sync || {};
-  const fresh = sync.eventsCheckedAt && Date.now() - Date.parse(sync.eventsCheckedAt) < 10 * 60 * 1000;
+  const problem = sync.problem || null;
   const idx = shown.findIndex(a => a.id === openId);
+  const extra = extraViews.find(v => v.key === view);
+  const season = data.season;
+  const offSeason = year !== season;
+  const active = [
+    offSeason && { key: 'year', text: year ? `${year} season` : 'All years', clear: () => setYear(season) },
+    type && { key: 'type', text: `${TYPE_ICON[type] ? `${TYPE_ICON[type]} ` : ''}${type}`, clear: () => setType('') },
+    county && { key: 'county', text: `${county} County`, clear: () => setCounty('') },
+    area && { key: 'area', text: AREA_LABEL[area], clear: () => setArea('') },
+    archived && { key: 'archived', text: 'Including archived', clear: () => setArchived(false) },
+  ].filter(Boolean);
+  const inPanel = [type, county, area, archived].filter(Boolean).length;
+  const clearAll = () => { setYear(season); setType(''); setCounty(''); setArea(''); setArchived(false); };
+  const emails = data.emails || {};
+  const menu = [
+    emails.active
+      ? { label: 'I’m done cleaning up', hint: `Family emails are holding until ${clock(emails.until)}. Next, you choose which held emails go.`, onSelect: doneCleanup }
+      : { label: 'Clean up statuses quietly', hint: 'Fixing a batch of statuses in JobTread? Family emails hold for up to 2 hours. When you’re done, you choose which held emails go.', onSelect: () => setCleanup(true) },
+    ...(menuItems.length ? ['-', ...menuItems] : []),
+  ];
 
   return html`<div class="apl">
-    <div class="apl-top">
+    <div class="page-header">
+      <div>
+        <h2>Applicants</h2>
+        <p class="page-sub">Every family who applied, read from JobTread. Moves, emails and edits here save straight to JobTread.</p>
+      </div>
+      <div class="apl-head-actions">
+        <span class=${`apl-sync ${problem ? 'is-problem' : ''}`} aria-live="polite" title=${sync.eventsCheckedAt ? `Last checked ${fullDate(sync.eventsCheckedAt)}` : ''}>
+          <span class=${`apl-dot ${problem ? 'is-stale' : 'is-live'}`}></span>
+          ${problem
+            ? html`<span>${problem.reason}${problem.since ? ` Since ${clock(problem.since)}.` : ''}</span>`
+            : sync.eventsCheckedAt
+              ? html`<span class="apl-sync-long">In sync with JobTread · checked ${ago(sync.eventsCheckedAt)}</span><span class="apl-sync-short">Synced ${ago(sync.eventsCheckedAt)}</span>`
+              : html`<span>Reading JobTread for the first time…</span>`}
+          ${!problem && !sync.historyDone && sync.historyBackTo ? html`<span class="apl-sync-long"> · loading history (back to ${new Date(sync.historyBackTo).toLocaleDateString([], { month: 'short', year: 'numeric' })})</span>` : null}
+        </span>
+        ${problem && html`<button class="btn btn-ghost btn-sm" onClick=${checkNow} disabled=${syncing}>${syncing ? 'Checking…' : 'Check JobTread now'}</button>`}
+        <${MoreMenu} items=${menu} busy=${!!busy} />
+      </div>
+    </div>
+
+    <div class="apl-toolbar">
       <div class="apl-views" role="group" aria-label="View">
-        ${[['board', 'Board'], ['list', 'List'], ['map', 'Map'], ['activity', 'Activity']].map(([k, label]) => html`
-          <button aria-pressed=${view === k} onClick=${() => setView(k)}>${label}</button>`)}
+        ${[...BUILT_IN_VIEWS, ...extraViews.map(v => [v.key, v.label, v.count])].map(([k, label, n]) => html`
+          <button aria-pressed=${view === k} data-view=${k} onClick=${() => setView(k)}>${label}${n > 0 && html`<span class="apl-view-n" title=${`${n} need${n === 1 ? 's' : ''} a look`}>${n}</span>`}</button>`)}
       </div>
-      <div class="apl-sync" aria-live="polite">
-        <span class=${`apl-dot ${fresh ? 'is-live' : 'is-stale'}`}></span>
-        ${fresh ? html`<span class="apl-sync-long">In sync with JobTread · checked ${ago(sync.eventsCheckedAt)}</span><span class="apl-sync-short">Synced ${ago(sync.eventsCheckedAt)}</span>` : sync.eventsCheckedAt ? `Last checked JobTread ${ago(sync.eventsCheckedAt)}` : 'Not synced yet'}
-        ${!sync.historyDone && sync.historyBackTo ? html` · loading history (back to ${new Date(sync.historyBackTo).toLocaleDateString([], { month: 'short', year: 'numeric' })})` : null}
-        <button class="btn btn-ghost btn-sm" onClick=${syncNow} disabled=${syncing}>${syncing ? 'Syncing…' : 'Sync now'}</button>
-      </div>
+      ${!extra && html`<div class="apl-filters">
+        <label class="apl-search">${Icon.search()}<input ref=${searchRef} class="form-input" type="search" placeholder="Search name, parent, address…" value=${q} onInput=${e => setQ(e.target.value)} aria-label="Search applicants" />${!q && html`<kbd>/</kbd>`}</label>
+        <select class="form-select apl-season" value=${year || ''} onChange=${e => setYear(e.target.value)} aria-label="Makeover year">
+          <option value="">All years (${all.length})</option>
+          ${years.map(([y, n]) => html`<option value=${y}>${y}${y === season ? ' season' : ''} (${n})</option>`)}
+        </select>
+        <${FiltersButton} count=${inPanel} onClear=${clearAll}>
+          <label class="apl-pop-season">Makeover year
+            <select class="form-select" value=${year || ''} onChange=${e => setYear(e.target.value)} aria-label="Makeover year (filters)">
+              <option value="">All years (${all.length})</option>
+              ${years.map(([y, n]) => html`<option value=${y}>${y}${y === season ? ' season' : ''} (${n})</option>`)}
+            </select>
+          </label>
+          <label>Makeover
+            <select class="form-select" value=${type} onChange=${e => setType(e.target.value)} aria-label="Makeover type">
+              <option value="">Any makeover</option>
+              ${(data.fields?.types?.options || []).map(t => html`<option value=${t}>${t}</option>`)}
+            </select>
+          </label>
+          <label>County
+            <select class="form-select" value=${county} onChange=${e => setCounty(e.target.value)} aria-label="County">
+              <option value="">Any county</option>
+              ${counties.map(c => html`<option value=${c}>${c}</option>`)}
+            </select>
+          </label>
+          <label>Service area
+            <select class="form-select" value=${area} onChange=${e => setArea(e.target.value)} aria-label="Service area">
+              <option value="">In or out of the area</option>
+              <option value="inside">Inside the boundary</option>
+              <option value="outside">Outside the boundary</option>
+              <option value="unknown">No map point</option>
+            </select>
+          </label>
+          <span class="apl-check" style="font-size:.86rem;font-weight:600;color:var(--color-text)"><input type="checkbox" id="apl-archived" checked=${archived} onChange=${e => setArchived(e.target.checked)} /><label for="apl-archived" style="all:unset;cursor:pointer">Include archived families</label></span>
+        <//>
+      </div>`}
     </div>
-    <div class=${`apl-filters ${filtersOpen ? 'is-open' : ''}`}>
-      <label class="apl-search">${Icon.search()}<input ref=${searchRef} class="form-input" type="search" placeholder="Search name, parent, address…" value=${q} onInput=${e => setQ(e.target.value)} aria-label="Search applicants" />${!q && html`<kbd>/</kbd>`}</label>
-      <button class="btn btn-ghost btn-sm apl-filter-toggle" aria-expanded=${filtersOpen} onClick=${() => setFiltersOpen(v => !v)}>Filters${activeFilters ? ` (${activeFilters})` : ''}</button>
-      <div class="apl-more-filters">
-        <select class="form-select" value=${year || ''} onChange=${e => setYear(e.target.value)} aria-label="Makeover year">
-        <option value="">All years (${all.length})</option>
-        ${years.map(([y, n]) => html`<option value=${y}>${y}${y === data.season ? ' season' : ''} (${n})</option>`)}
-      </select>
-      <select class="form-select" value=${type} onChange=${e => setType(e.target.value)} aria-label="Makeover type">
-        <option value="">Any makeover</option>
-        ${(data.fields?.types?.options || []).map(t => html`<option value=${t}>${t}</option>`)}
-      </select>
-      <select class="form-select" value=${county} onChange=${e => setCounty(e.target.value)} aria-label="County">
-        <option value="">Any county</option>
-        ${counties.map(c => html`<option value=${c}>${c}</option>`)}
-      </select>
-      <select class="form-select" value=${area} onChange=${e => setArea(e.target.value)} aria-label="Service area">
-        <option value="">In or out of area</option>
-        <option value="inside">Inside the boundary</option>
-        <option value="outside">Outside the boundary</option>
-        <option value="unknown">No map point</option>
-      </select>
-      <label class="apl-check" style="font-size:.84rem;align-items:center"><input type="checkbox" checked=${archived} onChange=${e => setArchived(e.target.checked)} /> Archived too</label>
-      </div>
-    </div>
+    ${!extra && active.length > 0 && html`<div class="apl-active" aria-label="Filters in use">
+      ${active.map(f => html`<button key=${f.key} onClick=${f.clear} aria-label=${`Remove filter: ${f.text}`}>${f.text}${Icon.x()}</button>`)}
+      ${active.length > 1 && html`<button class="apl-clear" onClick=${clearAll}>Clear all</button>`}
+    </div>`}
 
-    <${EmailBanner} emails=${data.emails} onChanged=${() => load(true)} addToast=${addToast} />
+    ${!extra && notice}
+    <${EmailBanner} emails=${emails} busy=${busy} onPost=${post} onDone=${doneCleanup} onOpen=${open} addToast=${addToast} onChanged=${() => load(true)} />
 
-    ${view !== 'board' && html`<div class="apl-summary">
+    ${(view === 'list' || view === 'map') && html`<div class="apl-strip" role="group" aria-label="Show status">
+      <button class="is-all" aria-pressed=${!statusFilter} onClick=${() => setStatusFilter('')}>All <b>${STATUS_ORDER.reduce((n, s) => n + counts[s], 0)}</b></button>
       ${STATUS_ORDER.map(s => html`
-        <button class="apl-stat" style=${`--c:${STATUS_COLOR[s]}`} aria-pressed=${statusFilter === s} onClick=${() => setStatusFilter(f => (f === s ? '' : s))} title=${STATUS_HINT[s]}>
-          <b>${counts[s]}</b><span>${s}</span>
+        <button style=${`--c:${STATUS_COLOR[s]}`} aria-pressed=${statusFilter === s} onClick=${() => setStatusFilter(f => (f === s ? '' : s))} title=${STATUS_HINT[s]}>
+          <span class="apl-dot"></span>${s} <b>${counts[s]}</b>
         </button>`)}
     </div>`}
 
     ${view === 'board' && html`<${Board} list=${shown} onOpen=${open} onMove=${askStatus} />`}
     ${view === 'list' && html`<${ListView} list=${shown} onOpen=${open} />`}
-    ${view === 'map' && html`<${MapView} list=${shown} boundary=${data.boundary} focus=${focusPin} onOpen=${open} addToast=${addToast} onSaved=${() => load(true)} />`}
+    ${view === 'map' && html`<${MapView} list=${shown} boundary=${data.boundary} focus=${focusPin} startEditing=${editBoundary} onEditDone=${() => setEditBoundary(false)} onOpen=${open} addToast=${addToast} onSaved=${() => load(true)} />`}
     ${view === 'activity' && html`<${ActivityView} onOpen=${open} />`}
+    ${extra && extra.render()}
 
     ${openId && html`<${Drawer}
       id=${openId}
@@ -542,39 +768,138 @@ export function ApplicantsArea({ addToast }) {
       onChanged=${afterChange}
       onShowOnMap=${(a) => { open(null); setFocusPin(a.id); setView('map'); }}
       addToast=${addToast} />`}
-    ${sheet && html`<${StatusSheet} a=${sheet.a} status=${sheet.status} onClose=${() => setSheet(null)} onDone=${(applicant) => { setSheet(null); afterChange(applicant); }} addToast=${addToast} />`}
+    ${sheet && html`<${StatusSheet} a=${sheet.a} status=${sheet.status} paused=${!!emails.active} onClose=${() => setSheet(null)} onDone=${(applicant) => { setSheet(null); afterChange(applicant); }} addToast=${addToast} />`}
+    ${cleanup && html`<${CleanupSheet} busy=${busy === 'pause'} onClose=${() => setCleanup(false)} onStart=${startCleanup} />`}
   </div>`;
 }
 
-/** Pause family emails (for data cleanup), what a pause held back, and a stalled sweep */
-function EmailBanner({ emails, onChanged, addToast }) {
-  const [busy, setBusy] = useState('');
+/** Starting a quiet cleanup: what happens, in order, before anything holds */
+function CleanupSheet({ busy, onClose, onStart }) {
+  const go = useRef(null);
+  useEffect(() => { go.current?.focus(); }, []);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  const until = clock(Date.now() + 120 * 60000);
+  return html`<div class="apl-sheet-wrap" onClick=${e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div class="apl-sheet" role="dialog" aria-modal="true" aria-labelledby="apl-clean-title">
+      <h2 id="apl-clean-title">Clean up statuses quietly?</h2>
+      <p style="margin:0">For fixing a batch of statuses in JobTread without emailing families about each one.</p>
+      <ol class="apl-steps-list">
+        <li>Change as many statuses as you need, in JobTread or here. Family emails hold instead of going out.</li>
+        <li>When you finish, choose <strong>I’m done cleaning up</strong> (or it ends by itself at ${until}).</li>
+        <li>Then you see each held email and choose which ones go.</li>
+      </ol>
+      <div class="apl-sheet-foot">
+        <button class="btn btn-ghost" onClick=${onClose}>Cancel</button>
+        <button class="btn btn-primary" ref=${go} onClick=${onStart} disabled=${busy}>${busy ? 'Starting…' : 'Start cleaning up'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** Open state for a popover that closes on Escape and on a click anywhere else */
+function usePopover() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+      ref.current?.querySelector('[aria-expanded]')?.focus();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); };
+  }, [open]);
+  return { open, setOpen, ref };
+}
+
+/** The ⋯ menu: occasional actions, each with a line saying what it does */
+function MoreMenu({ items, busy = false }) {
+  const pop = usePopover();
+  const list = useRef(null);
+  useEffect(() => { if (pop.open) requestAnimationFrame(() => list.current?.querySelector('button:not([aria-disabled="true"])')?.focus()); }, [pop.open]);
+  const onKey = (e) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Tab'].includes(e.key)) return;
+    if (e.key === 'Tab') { pop.setOpen(false); return; }
+    e.preventDefault();
+    const btns = [...list.current.querySelectorAll('button')];
+    const i = btns.indexOf(document.activeElement);
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? btns.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + btns.length) % btns.length;
+    btns[next]?.focus();
+  };
+  if (!items.length) return null;
+  return html`<div class="apl-pop-wrap" ref=${pop.ref}>
+    <button class="btn btn-ghost btn-sm apl-more-btn" aria-haspopup="menu" aria-expanded=${pop.open} aria-label="More actions" title="More actions" disabled=${busy} onClick=${() => pop.setOpen(o => !o)}>${Icon.more()}</button>
+    ${pop.open && html`<div class="apl-menu" role="menu" aria-label="More actions" ref=${list} onKeyDown=${onKey}>
+      ${items.map((it, i) => (it === '-' ? html`<hr key=${`sep${i}`} />` : html`
+        <button key=${it.label} role="menuitem" aria-disabled=${it.disabled ? 'true' : undefined} onClick=${() => { if (it.disabled) return; pop.setOpen(false); it.onSelect(); }}>
+          ${it.label}${it.hint && html`<small>${it.hint}</small>`}
+        </button>`))}
+    </div>`}
+  </div>`;
+}
+
+/** Filters: one button; the panel holds the less-used ones */
+function FiltersButton({ count, onClear, children }) {
+  const pop = usePopover();
+  return html`<div class="apl-pop-wrap" ref=${pop.ref}>
+    <button class="btn btn-ghost apl-fbtn" aria-haspopup="dialog" aria-expanded=${pop.open} onClick=${() => pop.setOpen(o => !o)}>${Icon.filter()} Filters${count ? html`<b aria-label=${`${count} in use`}>${count}</b>` : ''}</button>
+    ${pop.open && html`<div class="apl-popover" role="dialog" aria-label="Filters">
+      ${children}
+      <div class="apl-popover-foot">
+        <button class="btn btn-ghost btn-sm" onClick=${onClear} disabled=${!count}>Clear all</button>
+        <button class="btn btn-primary btn-sm" onClick=${() => pop.setOpen(false)}>Done</button>
+      </div>
+    </div>`}
+  </div>`;
+}
+
+/** A cleanup in progress, the emails it held (chosen family by family), and a stalled sweep */
+const HELD_LABEL = { welcome: 'Application received', inReview: 'In review', approved: 'Approved', denied: 'Denied' };
+function EmailBanner({ emails, busy, onPost, onDone, onOpen, addToast, onChanged }) {
+  const [each, setEach] = useState('');
   if (!emails) return null;
-  const post = async (body, key, done) => {
-    setBusy(key);
-    const j = await call(API, body);
-    setBusy('');
+  const held = emails.held || [];
+  if (!emails.active && !held.length && !(emails.overdue > 0)) return null;
+  const one = async (h, action) => {
+    setEach(h.account_id);
+    const j = await call(API, { notify: { id: h.account_id, action } });
+    setEach('');
     if (!j.success) { addToast(j.error || 'That didn’t work', 'error'); return; }
-    if (done) addToast(done, 'success');
+    addToast(action === 'send' ? `Emailed ${h.name}’s family` : `${h.name}’s family won’t get this one`, 'success');
     onChanged();
   };
-  const pause = () => {
-    if (!window.confirm('Pause family status emails for 2 hours?\n\nUse this while cleaning up statuses in JobTread. Nothing that changes during the pause is emailed unless someone chooses to send it afterwards.')) return;
-    post({ pause: { minutes: 120 } }, 'pause', 'Family emails paused for 2 hours');
-  };
-  const held = emails.held || [];
   return html`<div style="display:grid;gap:.5rem">
     ${emails.active
-      ? html`<div class="apl-banner is-info" role="status"><p><strong>Family emails are paused</strong> until ${clock(emails.until)}${emails.by ? ` (started by ${String(emails.by).split('@')[0]})` : ''}. Status changes now are held, not emailed.</p>
-          <div class="apl-banner-actions"><button class="btn btn-ghost btn-sm" onClick=${() => post({ resume: true }, 'resume', 'Family emails are back on')} disabled=${!!busy}>Resume now</button></div></div>`
+      ? html`<div class="apl-banner is-info" role="status"><p><strong>Cleaning up statuses quietly.</strong> Family emails are holding until ${clock(emails.until)}${emails.by ? ` (started by ${String(emails.by).split('@')[0]})` : ''}${held.length ? `. ${plural(held.length, 'email is', 'emails are')} held so far` : ''}.</p>
+          <div class="apl-banner-actions"><button class="btn btn-primary btn-sm" onClick=${onDone} disabled=${!!busy}>${busy === 'resume' ? 'Finishing…' : 'I’m done cleaning up'}</button></div></div>`
       : null}
-    ${held.length > 0 && html`<div class="apl-banner" role="status"><p><strong>${plural(held.length, 'family email was', 'family emails were')} held during a pause:</strong> ${held.slice(0, 6).map(h => `${h.name} (${h.status})`).join(', ')}${held.length > 6 ? '…' : ''}.</p>
-      <div class="apl-banner-actions">
-        <button class="btn btn-ghost btn-sm" onClick=${() => post({ held: 'skip' }, 'skip', 'Held emails dismissed')} disabled=${!!busy}>Don't send</button>
-        <button class="btn btn-primary btn-sm" onClick=${() => post({ held: 'send' }, 'send', 'Held emails sent')} disabled=${!!busy}>${busy === 'send' ? 'Sending…' : 'Send these'}</button>
-      </div></div>`}
+    ${!emails.active && held.length > 0 && html`<div class="apl-banner apl-held" role="region" aria-label="Held emails">
+      <p><strong>${plural(held.length, 'family email was', 'family emails were')} held while you cleaned up.</strong> Choose which go.</p>
+      <ul class="apl-held-list">
+        ${held.map(h => html`<li key=${h.account_id}>
+          <button class="apl-more" onClick=${() => onOpen(h.account_id)}>${h.name}</button>
+          <span class="apl-card-sub">${HELD_LABEL[h.kind] || h.kind} email · now ${h.status || 'no status'}</span>
+          <span class="apl-banner-actions">
+            <button class="btn btn-ghost btn-sm" onClick=${() => one(h, 'skip')} disabled=${!!each || !!busy}>Don't send</button>
+            <button class="btn btn-ghost btn-sm" onClick=${() => one(h, 'send')} disabled=${!!each || !!busy}>${each === h.account_id ? 'Sending…' : 'Send'}</button>
+          </span>
+        </li>`)}
+      </ul>
+      ${held.length > 1 && html`<div class="apl-banner-actions apl-held-all">
+        <button class="btn btn-ghost btn-sm" onClick=${() => onPost({ held: 'skip' }, 'skip', 'None of the held emails will go')} disabled=${!!busy || !!each}>Send none</button>
+        <button class="btn btn-primary btn-sm" onClick=${() => onPost({ held: 'send' }, 'send', 'All the held emails are going out')} disabled=${!!busy || !!each}>${busy === 'send' ? 'Sending…' : `Send all ${held.length}`}</button>
+      </div>`}
+    </div>`}
     ${emails.overdue > 0 && html`<div class="apl-banner is-warn" role="alert"><p><strong>${plural(emails.overdue, 'family email is', 'family emails are')} overdue.</strong> The background check that sends them may have stopped. Opening this page sends them now; if this keeps showing, tell Peter.</p></div>`}
-    ${!emails.active && html`<div style="display:flex;justify-content:flex-end"><button class="btn btn-ghost btn-sm" onClick=${pause} disabled=${!!busy} title="For cleaning up statuses in JobTread without emailing families">Pause family emails</button></div>`}
   </div>`;
 }
 
@@ -688,7 +1013,7 @@ function ListView({ list, onOpen }) {
       <td>${a.year || '—'}</td>
       <td>${(a.types || []).join(', ') || '—'}</td>
       <td>${a.county || '—'}</td>
-      <td>${a.area === 'outside' ? html`<span class="apl-tag is-out">${a.areaMiles} mi out</span>` : a.area === 'inside' ? 'Inside' : '—'}</td>
+      <td>${a.area === 'outside' ? html`<span class="apl-tag is-out">${a.areaMiles} mi outside</span>` : a.area === 'inside' ? 'Inside' : '—'}</td>
       <td>${daysSince(a.stageAt || a.createdAt, now) != null ? `${daysSince(a.stageAt || a.createdAt, now)}d` : '—'}</td>
       <td class="apl-card-sub" style="max-width:260px">${lastLine(a)}</td>
     </tr>`)}</tbody>
@@ -708,7 +1033,7 @@ function loadLeaflet() {
   return _leaflet;
 }
 
-function MapView({ list, boundary, focus, onOpen, addToast, onSaved }) {
+function MapView({ list, boundary, focus, startEditing = false, onEditDone, onOpen, addToast, onSaved }) {
   const box = useRef(null);
   const st = useRef({});
   const [L, setL] = useState(null);
@@ -716,10 +1041,13 @@ function MapView({ list, boundary, focus, onOpen, addToast, onSaved }) {
   const [hidden, setHidden] = useState(() => new Set());
   const [editing, setEditing] = useState(false);
   const [draftPoly, setDraftPoly] = useState(null);
-  const [saved, setSaved] = useState(null);   // { changes } after saving into the draft
   const [busy, setBusy] = useState(false);
   const openRef = useRef(onOpen);
   openRef.current = onOpen;
+  const startEdit = () => { setEditing(true); setDraftPoly(boundary?.live || []); };
+  const stopEdit = () => { setEditing(false); setDraftPoly(null); onEditDone?.(); };
+  // Arriving from Settings → Service area: straight into reshaping it
+  useEffect(() => { if (startEditing && !editing) startEdit(); }, [startEditing]);
 
   useEffect(() => { loadLeaflet().then(setL).catch(e => setErr(e.message)); }, []);
 
@@ -801,23 +1129,17 @@ function MapView({ list, boundary, focus, onOpen, addToast, onSaved }) {
   const noPoint = list.filter(a => a.lat == null).length;
   const outside = list.filter(a => a.area === 'outside').length;
 
+  // The boundary is a setting: saved, it's used for everyone at once (no form Put live)
   const save = async () => {
     setBusy(true);
     const j = await call(API, { boundary: draftPoly });
+    if (!j.success) { setBusy(false); addToast(j.error || 'Could not save the boundary', 'error'); return; }
+    await onSaved?.();
     setBusy(false);
-    if (!j.success) { addToast(j.error || 'Could not save the boundary', 'error'); return; }
-    setSaved({ changes: j.changes || [] });
     setEditing(false);
-  };
-  const putLive = async () => {
-    setBusy(true);
-    const j = await call('/api/applications-admin', { formPutLive: true });
-    setBusy(false);
-    if (!j.success) { addToast(j.error || 'Could not put the form live', 'error'); return; }
-    addToast('The new boundary is live. Everyone is re-checked against it.', 'success');
-    setSaved(null);
     setDraftPoly(null);
-    onSaved();
+    onEditDone?.();
+    addToast(j.changed ? 'The new boundary is in use. Every family was checked against it again.' : 'The boundary is the same as before.', 'info');
   };
 
   if (err) return html`<div class="apl-zero">The map couldn't load (${err}).</div>`;
@@ -831,18 +1153,12 @@ function MapView({ list, boundary, focus, onOpen, addToast, onSaved }) {
       ${noPoint > 0 && html`<div class="apl-card-sub" style="padding:.2rem .35rem 0">${plural(noPoint, 'family has', 'families have')} no home in JobTread yet</div>`}
     </div>
     <div class="apl-map-tools">
-      ${!editing && !saved && html`<button class="btn btn-ghost btn-sm" onClick=${() => { setEditing(true); setDraftPoly(boundary?.draft || boundary?.live || []); }}>Edit boundary</button>`}
-      ${boundary?.draft && !editing && !saved && JSON.stringify(boundary.draft) !== JSON.stringify(boundary.live) && html`<span class="apl-tag is-warn">The form draft has a different boundary</span>`}
+      ${!editing && html`<button class="btn btn-ghost btn-sm" onClick=${startEdit}>Edit boundary</button>`}
     </div>
     ${editing && html`<div class="apl-map-note" role="status">
-      Drag a corner to move it, drag a small dot to add one, double-click a corner to remove it.
-      <button class="btn btn-ghost btn-sm" onClick=${() => { setEditing(false); setDraftPoly(null); }}>Cancel</button>
-      <button class="btn btn-primary btn-sm" onClick=${save} disabled=${busy}>${busy ? 'Saving…' : 'Save to the form draft'}</button>
-    </div>`}
-    ${saved && html`<div class="apl-map-note" role="status">
-      Saved to the form draft${saved.changes.length > 1 ? `, along with ${plural(saved.changes.length - 1, 'other change')}` : ''}. It's used once the form goes live.
-      <button class="btn btn-ghost btn-sm" onClick=${() => { location.hash = '#applications/form'; }}>Review in Form</button>
-      <button class="btn btn-primary btn-sm" onClick=${putLive} disabled=${busy}>${busy ? 'Putting live…' : 'Put live now'}</button>
+      <span>Drag a corner to move it, drag a small dot to add one, double-click a corner to remove it. Saving uses it for every family right away.</span>
+      <button class="btn btn-ghost btn-sm" onClick=${stopEdit} disabled=${busy}>Cancel</button>
+      <button class="btn btn-primary btn-sm" onClick=${save} disabled=${busy}>${busy ? 'Saving…' : 'Save boundary'}</button>
     </div>`}
   </div>`;
 }
@@ -878,6 +1194,7 @@ function ActivityView({ onOpen }) {
 function Drawer({ id, fields, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
+  const [pane, setPane] = useState('convo'); // phones: which half shows
   const panel = useRef(null);
   const load = useCallback(async () => {
     const j = await call(`${API}?id=${encodeURIComponent(id)}`);
@@ -933,10 +1250,15 @@ function Drawer({ id, fields, summary, onClose, onPrev, onNext, onStatus, onChan
           <button class="apl-icon-btn" onClick=${onNext} disabled=${!onNext} aria-label="Next family (J)" title="Next (J)">${Icon.down()}</button>
           <button class="apl-icon-btn" onClick=${onClose} aria-label="Close (Esc)" title="Close (Esc)">${Icon.close()}</button>
         </div>
+        <div class="apl-dtabs" role="tablist" aria-label="Show">
+          <button role="tab" aria-selected=${pane === 'convo'} onClick=${() => setPane('convo')}>Conversation</button>
+          <button role="tab" aria-selected=${pane === 'details'} onClick=${() => setPane('details')}>Details</button>
+        </div>
       </header>`}
       ${err && html`<div class="apl-callout is-warn" style="margin:1rem">${err} <button class="apl-more" onClick=${load}>Try again</button></div>`}
       ${!d && !err && html`<div class="apl-skel">Reading ${summary?.name || 'this family'} from JobTread…</div>`}
-      ${d && html`<div class="apl-dbody">
+      ${d && !a && html`<div class="apl-skel">This family isn't in JobTread any more. <button class="apl-more" onClick=${onClose}>Close</button></div>`}
+      ${d && a && html`<div class="apl-dbody" data-pane=${pane}>
         <${Conversation} d=${{ ...d, applicant: a }} onSent=${refresh} addToast=${addToast} />
         <${SidePanel} d=${{ ...d, applicant: a }} fields=${fields} onSaved=${refresh} onShowOnMap=${onShowOnMap} addToast=${addToast} />
       </div>`}
@@ -948,13 +1270,13 @@ function Drawer({ id, fields, summary, onClose, onPrev, onNext, onStatus, onChan
 function timelineOf(d) {
   const siteBy = new Map();
   const fromLog = new Map();
-  for (const r of d.activity) {
+  for (const r of d.activity || []) {
     if (!r.data?.commentId) continue;
     if (r.source === 'website' && ['sent', 'note', 'textOut'].includes(r.kind)) siteBy.set(r.data.commentId, r);
     else fromLog.set(r.data.commentId, r);
   }
   const items = [];
-  for (const c of d.comments) {
+  for (const c of d.comments || []) {
     if (c.name === 'Comms Thread' && !c.parentId) continue; // the texting thread's starter
     const msg = c.message || '';
     const site = siteBy.get(c.id);
@@ -968,7 +1290,7 @@ function timelineOf(d) {
     else if (c.by === 'Qualification Committee' || /\(automatic\)$/.test(c.name || '') || /^Moved back to /.test(msg)) kind = 'internal';
     items.push({ type: 'msg', kind, at: c.at, c, site });
   }
-  for (const r of d.activity) {
+  for (const r of d.activity || []) {
     if (COMMENT_KINDS.has(r.kind)) continue;
     items.push({ type: 'event', kind: r.kind, at: r.at, r });
   }
@@ -1026,14 +1348,16 @@ function Conversation({ d, onSent, addToast }) {
   const items = useMemo(() => timelineOf(d), [d]);
   const scroller = useRef(null);
   useEffect(() => { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; }, [items.length, a.id]);
-  const emailable = a.contacts.filter(c => c.email);
+  const emailable = (a.contacts || []).filter(c => c.email);
   const [mode, setMode] = useState(emailable.length ? 'email' : 'note');
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [to, setTo] = useState(emailable.find(c => c.email === a.contact?.email)?.id || emailable[0]?.id || '');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [correcting, setCorrecting] = useState(false);
+  const [headOpen, setHeadOpen] = useState(false); // phones: To and Subject, folded until tapped
   const box = useRef(null);
+  const toContact = emailable.find(c => c.id === to) || emailable[0];
   const send = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
@@ -1050,6 +1374,7 @@ function Conversation({ d, onSent, addToast }) {
   const startCorrection = (draft) => {
     setMode('email');
     setCorrecting(true);
+    setHeadOpen(true);
     setSubject(draft.subject);
     setText(draft.message);
     setTimeout(() => box.current?.focus(), 0);
@@ -1066,11 +1391,12 @@ function Conversation({ d, onSent, addToast }) {
         return html`${sep}${it.type === 'msg' ? html`<${Message} it=${it} key=${it.c.id} />` : html`<${EventLine} r=${it.r} key=${it.r.id} />`}`;
       })}
     </div>
-    <div class="apl-composer">
+    <div class=${`apl-composer ${headOpen ? 'is-head-open' : ''}`}>
       <div class="apl-modes" role="group" aria-label="Send as">
         <button aria-pressed=${mode === 'email'} onClick=${() => setMode('email')} disabled=${!emailable.length} title=${emailable.length ? '' : 'No email address in JobTread'}>Email family</button>
         <button aria-pressed=${mode === 'note'} onClick=${() => setMode('note')}>Internal note</button>
       </div>
+      ${mode === 'email' && !headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label="Change who it goes to, or the subject"><span>To <b>${toContact?.name || toContact?.email || 'the family'}</b> · ${subject}</span><em>Edit</em></button>`}
       ${mode === 'email' && html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">
         <select class="form-select" value=${to} onChange=${e => setTo(e.target.value)} aria-label="To">${emailable.map(c => html`<option value=${c.id}>To ${c.name || c.email} (${c.email})</option>`)}</select>
         <input class="form-input" value=${subject} onInput=${e => setSubject(e.target.value)} maxlength="128" aria-label="Subject" />
@@ -1080,7 +1406,7 @@ function Conversation({ d, onSent, addToast }) {
         placeholder=${mode === 'email' ? 'Write to the family. JobTread emails it from the Qualification Committee, and their reply lands here.' : 'Only staff see notes. Saved on the account in JobTread.'}
         aria-label="Message" maxlength="4000"></textarea>
       <div class="apl-composer-foot">
-        <span>⌘/Ctrl + Enter to send</span>
+        <span class="apl-kbd-hint">⌘/Ctrl + Enter to send</span>
         <button class="btn btn-primary" onClick=${send} disabled=${busy || !text.trim()}>${busy ? 'Sending…' : correcting ? 'Send correction' : mode === 'email' ? 'Send email' : 'Add note'}</button>
       </div>
     </div>
@@ -1116,7 +1442,7 @@ function NotifyBanner({ d, onChanged, onCorrection, addToast }) {
     const mins = minutesUntil(n.dueAt);
     return html`<div class=${`apl-banner apl-thread-banner ${held ? 'is-info' : ''}`} role="status">
       <p>${held
-        ? html`<strong>Email held.</strong> Family emails were paused when this changed, so the ${n.label} email to ${parent} waits for someone to send it or not.`
+        ? html`<strong>Email held.</strong> This changed during a quiet cleanup, so the ${n.label} email to ${parent} waits for someone to send it or not.`
         : html`<strong>The ${n.label} email to ${parent} goes out at ${clock(n.dueAt)}</strong>${mins > 0 ? ` (in ${plural(mins, 'minute')})` : ''}. If this status was a mistake, change it back and nothing is sent.`}</p>
       <div class="apl-banner-actions">
         ${n.previous && n.previous !== n.status && html`<button class="btn btn-ghost btn-sm" onClick=${() => act('back')} disabled=${!!busy}>${busy === 'back' ? 'Moving…' : `Move back to ${n.previous}`}</button>`}
@@ -1157,7 +1483,7 @@ function FieldRow({ k, meta, value, onSave }) {
     return html`<div class=${`apl-type-picks ${state}`}>${meta.options.map(o => html`<button aria-pressed=${list.includes(o)} onClick=${() => commit(list.includes(o) ? list.filter(x => x !== o) : [...list, o])}>${TYPE_ICON[o] ? `${TYPE_ICON[o]} ` : ''}${o}</button>`)}</div>`;
   }
   if (meta.type === 'option') {
-    return html`<select class="form-select" value=${value ?? ''} onChange=${e => commit(e.target.value)} aria-label=${meta.label}>
+    return html`<select class=${`form-select ${value ? '' : 'is-unset'} ${state}`} value=${value ?? ''} onChange=${e => commit(e.target.value)} aria-label=${meta.label}>
       <option value="">Not set</option>
       ${meta.options.map(o => html`<option value=${o}>${o}</option>`)}
       ${value && !meta.options.includes(value) && html`<option value=${value}>${value}</option>`}
@@ -1192,8 +1518,9 @@ function SidePanel({ d, fields, onSaved, onShowOnMap, addToast }) {
     addToast(a.archivedAt ? 'Unarchived' : 'Archived in JobTread', 'success');
     onSaved(j.applicant);
   };
-  const photos = d.files.filter(f => /^image\//.test(f.type || ''));
-  const docs = d.files.filter(f => !/^image\//.test(f.type || ''));
+  const files = d.files || [];
+  const photos = files.filter(f => /^image\//.test(f.type || ''));
+  const docs = files.filter(f => !/^image\//.test(f.type || ''));
   const visible = SIDE_FIELDS.filter(k => fields[k] && (k !== 'denialReason' || a.status === 'Denied' || a.fields?.denialReason));
   return html`<section class="apl-side" aria-label="Details">
     <div class="apl-panel">
@@ -1203,7 +1530,7 @@ function SidePanel({ d, fields, onSaved, onShowOnMap, addToast }) {
 
     <div class="apl-panel">
       <h3>Family</h3>
-      ${a.contacts.length ? a.contacts.map(c => html`<div class="apl-contact">
+      ${a.contacts?.length ? a.contacts.map(c => html`<div class="apl-contact">
         <strong>${c.name}${c.title ? html` <span class="apl-card-sub" style="display:inline">· ${c.title}</span>` : ''}</strong>
         ${c.email && html`<a href=${`mailto:${c.email}`}>${c.email}</a>`}
         ${c.phone && html`<a href=${`tel:${c.phone}`}>${phoneText(c.phone)}</a>`}
@@ -1215,14 +1542,14 @@ function SidePanel({ d, fields, onSaved, onShowOnMap, addToast }) {
       ${a.address ? html`<div style="font-size:.9rem">${a.address}</div>` : html`<p class="apl-card-sub">No home address in JobTread.</p>`}
       <div class="apl-tags">
         ${a.county && html`<span class="apl-tag">${a.county} County</span>`}
-        ${a.area === 'inside' && html`<span class="apl-tag" style="background:#EAF6EF;border-color:#BFE3CD;color:#1F5C39">Inside the service area</span>`}
+        ${a.area === 'inside' && html`<span class="apl-tag is-in">Inside the service area</span>`}
         ${a.area === 'outside' && html`<span class="apl-tag is-out">${a.areaMiles} miles outside the service area</span>`}
       </div>
     </div>
 
     ${(photos.length > 0 || docs.length > 0 || a.applicationId || a.applicationUrl) && html`<div class="apl-panel">
       <h3>Application and files</h3>
-      ${a.applicationId ? html`<a class="btn btn-ghost btn-sm" style="justify-self:start" href=${`#applications/${a.applicationId}`}>View the answers from the website form</a>`
+      ${a.applicationId ? html`<${WebsiteAnswers} id=${a.applicationId} key=${a.applicationId} />`
         : a.applicationUrl && html`<a class="btn btn-ghost btn-sm" style="justify-self:start" href=${a.applicationUrl} target="_blank" rel="noopener">Open the original application ${Icon.ext()}</a>`}
       ${photos.length > 0 && html`<div class="apl-gallery">${photos.map(f => html`<a href=${f.url} target="_blank" rel="noopener" title=${f.name}><img src=${f.thumb || f.url} alt=${f.name} loading="lazy" /></a>`)}</div>`}
       ${docs.length > 0 && html`<div class="apl-doclist">${docs.map(f => html`<a href=${f.url} target="_blank" rel="noopener"><span aria-hidden="true">${/pdf/.test(f.type) ? '📄' : /video/.test(f.type) ? '🎬' : '📎'}</span>${f.name}<small>${f.size ? `${Math.max(1, Math.round(f.size / 1024 / (f.size > 1048576 ? 1024 : 1)))} ${f.size > 1048576 ? 'MB' : 'KB'}` : ''}</small></a>`)}</div>`}
@@ -1237,9 +1564,41 @@ function SidePanel({ d, fields, onSaved, onShowOnMap, addToast }) {
   </section>`;
 }
 
+/**
+ * The family's answers from the website form, folded until asked for. Applications →
+ * Submissions has the same with the intake checks; a problem there shows here too.
+ */
+function WebsiteAnswers({ id }) {
+  const [open, setOpen] = useState(false);
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    if (!open || d) return;
+    call(`/api/applications-admin?id=${encodeURIComponent(id)}`).then(j => { if (j.success) setD(j.application); else setErr(j.error || 'Couldn’t load the answers'); });
+  }, [open]);
+  const unfinished = d ? Object.values(d.checklist || {}).some(v => v !== true && v !== 'none') : false;
+  const file = (f, thumb = false) => `/api/applications-admin?file=${encodeURIComponent(id)}&field=${encodeURIComponent(f)}${thumb ? '&thumb=1' : ''}`;
+  return html`<div class="apl-answers">
+    <button class="btn btn-ghost btn-sm" style="justify-self:start" aria-expanded=${open} onClick=${() => setOpen(o => !o)}>${open ? 'Hide the answers' : 'Show the answers from the website form'}</button>
+    ${open && !d && !err && html`<div class="apl-card-sub">Loading the answers…</div>`}
+    ${err && html`<div class="apl-callout is-warn">${err}</div>`}
+    ${d && html`
+      ${unfinished && !d.deletedAt && html`<div class="apl-callout is-warn">This application hasn't fully reached JobTread yet. It retries on its own. <a href=${`#applications/submissions/${id}`}>See it in Submissions</a></div>`}
+      ${d.deletedAt
+        ? html`<p class="apl-card-sub">The family's answers and files were deleted from the site.</p>`
+        : (d.sections || []).map(sec => html`<details class="apl-answer-sec">
+            <summary>${sec.title}</summary>
+            <dl>${sec.items.map(i => html`<dt>${i.label}</dt><dd>${i.upload
+              ? (i.type === 'photo' ? html`<a href=${file(i.id)} target="_blank" rel="noopener"><img src=${file(i.id, i.hasThumb)} alt=${i.label} loading="lazy" /></a>` : `Video ${i.video?.uploaded ? 'uploaded' : 'not finished'}${i.video?.duration ? ` (${Math.round(i.video.duration)} s)` : ''}`)
+              : i.text}</dd>`)}</dl>
+          </details>`)}
+      <div class="apl-card-sub">${[d.lang === 'es' ? 'Answered in Spanish' : null, `form version ${d.formVersion || 'built in'}`].filter(Boolean).join(' · ')}${d.hasPdf ? html` · <a href=${file('pdf')} target="_blank" rel="noopener">PDF</a>` : ''} · <a href=${`#applications/submissions/${id}`}>Open in Submissions</a></div>`}
+  </div>`;
+}
+
 // ─── Status change sheet ────────────────────────────────────────────
 
-function StatusSheet({ a, status, onClose, onDone, addToast }) {
+function StatusSheet({ a, status, paused = false, onClose, onDone, addToast }) {
   const [p, setP] = useState(null);
   const [err, setErr] = useState(null);
   const [notify, setNotify] = useState(true);
@@ -1266,7 +1625,9 @@ function StatusSheet({ a, status, onClose, onDone, addToast }) {
     const j = await call(API, { status: { id: a.id, status, notify: willEmail, emailNow: willEmail && emailNow, denialReason: status === 'Denied' ? reason : null } });
     setBusy(false);
     if (!j.success) { addToast(j.error || 'Not changed', 'error'); return; }
-    addToast(j.email === 'scheduled' ? `${a.name} is now ${status}. ${first || 'The family'} is emailed at ${clock(j.dueAt)}.` : j.email === 'sent' ? `${a.name} is now ${status}. The family was emailed.` : `${a.name} is now ${status}.`, 'success');
+    addToast(paused && willEmail ? `${a.name} is now ${status}. The email holds until you're done cleaning up.`
+      : j.email === 'scheduled' ? `${a.name} is now ${status}. ${first || 'The family'} is emailed at ${clock(j.dueAt)}.`
+        : j.email === 'sent' ? `${a.name} is now ${status}. The family was emailed.` : `${a.name} is now ${status}.`, 'success');
     onDone(j.applicant);
   };
   return html`<div class="apl-sheet-wrap" onClick=${e => { if (e.target === e.currentTarget) onClose(); }}>
@@ -1286,14 +1647,15 @@ function StatusSheet({ a, status, onClose, onDone, addToast }) {
           <div class="apl-preview-head"><span>From <b>Qualification Committee</b> through JobTread</span><span>Subject <b>${m.title}</b></span></div>
           <div class="apl-preview-body" dangerouslySetInnerHTML=${{ __html: richText(m.message) }}></div>
         </div>
-        ${notify && p.sendAt && html`<div class="apl-card-sub">Goes out at <strong>${clock(p.sendAt)}</strong>, once the status has stayed put. Change it back before then and nothing is sent.</div>`}
+        ${notify && paused && html`<div class="apl-callout">You're cleaning up statuses quietly, so this email holds with the rest. You choose whether it goes when you're done.</div>`}
+        ${notify && !paused && p.sendAt && html`<div class="apl-card-sub">Goes out at <strong>${clock(p.sendAt)}</strong>, once the status has stayed put. Change it back before then and nothing is sent.</div>`}
         ${!notify && html`<div class="apl-callout">They won't get this message, now or if the status changes in JobTread later.</div>`}`}
       ${status === 'Denied' && html`<label style="display:grid;gap:.3rem;font-size:.88rem"><span><strong>Reason</strong> <span class="apl-card-sub" style="display:inline">(staff only, saved as Denial Reason)</span></span>
         <textarea class="form-input" rows="3" value=${reason} onInput=${e => setReason(e.target.value)} placeholder="For example: outside the service area"></textarea></label>`}
       <div class="apl-sheet-foot">
         <button class="btn btn-ghost" onClick=${onClose}>Cancel</button>
-        ${willEmail && html`<button class="btn btn-ghost" onClick=${() => go(true)} disabled=${busy}>Move and email now</button>`}
-        <button class="btn btn-primary" ref=${confirmRef} onClick=${() => go(false)} disabled=${busy || (!p && !err)}>${busy ? 'Moving…' : willEmail ? `Move, email at ${clock(p.sendAt)}` : `Move to ${status}`}</button>
+        ${willEmail && !paused && html`<button class="btn btn-ghost" onClick=${() => go(true)} disabled=${busy}>Move and email now</button>`}
+        <button class="btn btn-primary" ref=${confirmRef} onClick=${() => go(false)} disabled=${busy || (!p && !err)}>${busy ? 'Moving…' : willEmail && !paused ? `Move, email at ${clock(p.sendAt)}` : `Move to ${status}`}</button>
       </div>
     </div>
   </div>`;

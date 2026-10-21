@@ -82,6 +82,8 @@ const CSS = `
 .wl-stat b { display: block; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
 .wl-stat span { font-size: .78rem; color: var(--color-text-secondary); }
 .wl-health { display: grid; gap: .5rem; margin: 0 1.1rem 1rem; }
+.wl-fix { margin-top: .35rem; font-size: .82rem; color: var(--color-text-secondary); }
+.wl-fix summary { cursor: pointer; font-weight: 600; color: var(--color-text); }
 .wl-conn { margin: 0; line-height: 1.6; }
 .wl-sec { border-top: 1px solid var(--color-border); }
 .wl-sec > summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 48px; margin: 0; padding: .6rem 1.1rem; cursor: pointer; list-style: none; font-weight: 600; }
@@ -302,8 +304,10 @@ function Health({ st, busy, act }) {
       ? html`<p class="afe-hint wl-conn"><span class="wl-pill is-ok">Emails sending</span> Last "you're on the list" email went ${ago(rl.at)}.</p>`
       : html`<div class="afe-note is-warn"><span><strong>The last "you're on the list" email didn't send</strong> (${rl.error || 'unknown error'}, ${ago(rl.at)}).</span></div>`);
   }
-  if (!st.kit) notes.push(html`<div class="afe-note is-warn"><span><strong>Kit isn't connected,</strong> so the opening email can't go through Kit. Signups are still saved here, and if Kit is still missing two hours after applications open, the site emails each family itself. Add KIT_API_KEY in Cloudflare → soard-site → Settings → Variables to send through Kit.</span></div>`);
-  if (!st.email) notes.push(html`<div class="afe-note is-warn"><span><strong>The site's email sender (Resend) isn't set up,</strong> so families don't get the "you're on the list" email, and there's no backup if Kit can't send.</span></div>`);
+  if (!st.kit) notes.push(html`<div class="afe-note is-warn"><span><strong>Kit isn't connected,</strong> so the opening email can't go through Kit. Signups are still saved here, and if Kit is still missing two hours after applications open, the site emails each family itself.
+    <details class="wl-fix"><summary>How to fix</summary>Add the Kit API key in Cloudflare (soard-site → Settings → Variables) as KIT_API_KEY.</details></span></div>`);
+  if (!st.email) notes.push(html`<div class="afe-note is-warn"><span><strong>The site's email sender (Resend) isn't set up,</strong> so families don't get the "you're on the list" email, and there's no backup if Kit can't send.
+    <details class="wl-fix"><summary>How to fix</summary>Add the Resend API key in Cloudflare (soard-site → Settings → Variables) as RESEND_API_KEY.</details></span></div>`);
   if (st.kitProblems > 0) {
     notes.push(html`<div class="afe-note is-warn"><span style="flex: 1;">${families(st.kitProblems)} on the list aren't in Kit yet. They're saved here and the site keeps retrying; they get the opening email either way.</span>
       <button class="btn btn-ghost" style="min-height: 36px;" disabled=${!!busy} onClick=${() => act('retry-signups', {}, 'Retried')}>${busy === 'retry-signups' ? 'Retrying…' : 'Retry now'}</button></div>`);

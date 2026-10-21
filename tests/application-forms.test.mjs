@@ -14,6 +14,7 @@ import {
 } from '../functions/api/_application-form.js';
 import {
   getLiveForm, saveDraftForm, putDraftLive, discardDraftForm, restoreFormVersion, listFormVersions, formFor, clearFormCache, getDraftForm,
+  saveFormRules, getFormRules, diffForm,
 } from '../functions/api/_application-forms.js';
 import {
   createDraft, getDraft, saveDraft, setDraftFile, submitDraft, processApplication, getApplication, photoKey, TEST_JPEG, testAnswers, accountFields, JT_FIELDS,
@@ -21,6 +22,7 @@ import {
 import { handleWorkflowCall, runNotifications } from '../functions/api/_applicant-notify.js';
 import * as applyApi from '../functions/api/apply.js';
 import * as adminApi from '../functions/api/applications-admin.js';
+import * as applicantsApi from '../functions/api/applicants-admin.js';
 
 const YEAR = '2027';
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -282,4 +284,90 @@ test('the locked list matches what the site reads by id', () => {
   for (const id of ['childName', 'birthdate', 'gender', 'diagnosis', 'language', 'referredBy', 'verbal', 'ambulatory', 'makeoverTypes', 'parentName', 'parentEmail', 'parentPhone', 'parentRelation', 'address', 'county', 'video']) {
     assert.ok(LOCKED_FIELDS[id], `${id} is read by the site and must be locked`);
   }
+});
+
+// ─── Settings: they save at once, never through the form's Put live ───
+const SQUARE = [[34.4, -84.8], [34.4, -84.0], [33.6, -84.0], [33.6, -84.8]];
+
+test('settings apply at once to the live form, the draft and every version, and leave the wording alone', async () => {
+  // A draft with a reworded page is in progress, and an older version is live
+  const v1 = clone(DEFAULT_DEFINITION);
+  v1.pages[0].title = 'Version one';
+  await saveDraftForm(env.DB, v1, { user: 'linzi@soardcharity.com' });
+  const one = await putDraftLive(env.DB, { user: 'linzi@soardcharity.com' });
+  const wip = clone(v1);
+  wip.pages[0].title = 'Half-finished rewording';
+  await saveDraftForm(env.DB, wip, { user: 'linzi@soardcharity.com' });
+
+  const out = await saveFormRules(env.DB, { staffEmails: ['selection@soardcharity.com', 'jen@soardcharity.com'], serviceArea: { polygon: SQUARE } }, { user: 'peter@soardcharity.com' });
+  assert.equal(out.changes.length, 2);
+  const live = await getLiveForm(env.DB, { fresh: true });
+  assert.deepEqual(live.definition.staffEmails, ['selection@soardcharity.com', 'jen@soardcharity.com']);
+  assert.deepEqual(live.definition.serviceArea.polygon, SQUARE);
+  assert.equal(live.definition.pages[0].title, 'Version one', 'the half-finished draft did not go live with them');
+  assert.equal(live.version, one.version, 'no new version: settings are not form wording');
+  const draft = await getDraftForm(env.DB);
+  assert.equal(draft.definition.pages[0].title, 'Half-finished rewording');
+  assert.deepEqual(draft.definition.serviceArea.polygon, SQUARE, 'the draft shows the same settings');
+  assert.ok(!(await diffForm(env.DB, 'draft')).some(c => c.area === 'Settings'), 'and Put live has no settings to show');
+  // An application answered on any version is checked against today's boundary and emails today's list
+  const old = await formFor(env.DB, { year: YEAR, version: 0 });
+  assert.deepEqual(old.serviceArea.polygon, SQUARE);
+  assert.deepEqual(old.staffEmails, ['selection@soardcharity.com', 'jen@soardcharity.com']);
+  // Putting the draft live later doesn't bring the old settings back
+  await putDraftLive(env.DB, { user: 'linzi@soardcharity.com' });
+  const after = await getLiveForm(env.DB, { fresh: true });
+  assert.equal(after.definition.pages[0].title, 'Half-finished rewording');
+  assert.deepEqual(after.definition.serviceArea.polygon, SQUARE);
+});
+
+test('settings: bad addresses, an empty list and a two-corner boundary are refused; part of the timing keeps the rest', async () => {
+  assert.match((await saveFormRules(env.DB, { staffEmails: ['not an email'] })).errors[0].message, /isn't an email address/);
+  assert.match((await saveFormRules(env.DB, { staffEmails: [] })).errors[0].message, /at least one/);
+  assert.match((await saveFormRules(env.DB, { serviceArea: { polygon: [[34, -84], [33, -84]] } })).errors[0].message, /three corners/);
+  assert.equal(await getFormRules(env.DB), null, 'nothing was written');
+  const t = await saveFormRules(env.DB, { notify: { waits: { decision: 45 } } }, { user: 'peter@soardcharity.com' });
+  assert.deepEqual(t.rules.notify, { waits: { welcome: 10, inReview: 10, decision: 45 }, quiet: { start: 20, end: 8 }, summary: true });
+  assert.deepEqual(t.changes, [{ field: 'application.notify.waits.decision', from: 30, to: 45 }]);
+  const q = await saveFormRules(env.DB, { notify: { quiet: { start: 0, end: 0 } } }, { user: 'peter@soardcharity.com', base: t.updatedAt });
+  assert.equal(q.rules.notify.waits.decision, 45, 'the wait stays');
+  assert.deepEqual(q.changes, [{ field: 'application.notify.quiet', from: '8 PM to 8 AM', to: 'off' }]);
+  const same = await saveFormRules(env.DB, { notify: { quiet: { start: 0, end: 0 } } }, { user: 'peter@soardcharity.com', base: q.updatedAt });
+  assert.deepEqual(same.changes, [], 'saving what is already there changes nothing');
+});
+
+test('settings: two people at once get a conflict, unless they keep theirs', async () => {
+  const a = await saveFormRules(env.DB, { staffEmails: ['a@soardcharity.com'] }, { user: 'linzi@soardcharity.com' });
+  const stale = await saveFormRules(env.DB, { staffEmails: ['b@soardcharity.com'] }, { user: 'peter@soardcharity.com', base: '2026-01-01T00:00:00.000Z' });
+  assert.equal(stale.conflict.updatedBy, 'linzi@soardcharity.com');
+  assert.deepEqual(stale.conflict.rules.staffEmails, ['a@soardcharity.com']);
+  const mine = await saveFormRules(env.DB, { staffEmails: ['b@soardcharity.com'] }, { user: 'peter@soardcharity.com', base: '2026-01-01T00:00:00.000Z', force: true });
+  assert.deepEqual(mine.rules.staffEmails, ['b@soardcharity.com']);
+  const fresh = await saveFormRules(env.DB, { staffEmails: ['c@soardcharity.com'] }, { user: 'peter@soardcharity.com', base: a.updatedAt });
+  assert.deepEqual(fresh.rules.staffEmails, ['c@soardcharity.com'], 'their own earlier save is never a conflict');
+});
+
+test('settings endpoints: Settings reads them, saving logs Recent changes, the map boundary saves live', async () => {
+  const user = 'peter@soardcharity.com';
+  const post = async (api, body) => (await api.onRequestPost({ env, request: new Request('https://x/api', { method: 'POST', body: JSON.stringify(body) }), data: { userEmail: user }, waitUntil: () => {} })).json();
+  const get = async (q) => (await adminApi.onRequestGet({ env, request: new Request(`https://x/api/applications-admin?${q}`), data: {} })).json();
+  const first = await get('settings=1');
+  assert.deepEqual(first.rules.values.staffEmails, ['selection@soardcharity.com']);
+  assert.equal(first.rules.updatedAt, null);
+  const saved = await post(adminApi, { rules: { staffEmails: ['selection@soardcharity.com', 'jen@soardcharity.com'] }, base: null });
+  assert.equal(saved.success, true);
+  assert.deepEqual(saved.rules.values.staffEmails, ['selection@soardcharity.com', 'jen@soardcharity.com']);
+  assert.ok(saved.history.some(h => h.changes.some(c => c.field === 'application.staffEmails')), 'Recent changes lists it');
+  const bad = await post(adminApi, { rules: { staffEmails: ['nope'] }, base: saved.rules.updatedAt });
+  assert.equal(bad.success, false);
+  assert.match(bad.error, /isn't an email address/);
+  // The Applicants map: a new boundary is live straight away (no form draft)
+  const b = await post(applicantsApi, { boundary: SQUARE });
+  assert.equal(b.success, true, b.error);
+  assert.equal(b.changed, true);
+  assert.deepEqual((await getLiveForm(env.DB, { fresh: true })).definition.serviceArea.polygon, SQUARE);
+  assert.equal(await getDraftForm(env.DB), null, 'no draft was made');
+  const audit = await env.DB.prepare("SELECT entity_type FROM audit_log WHERE entity_slug = 'rules'").all();
+  assert.equal(audit.results.length, 2);
+  assert.ok(audit.results.every(r => r.entity_type === 'application-settings'), 'a runtime change: never waits for a Publish');
 });

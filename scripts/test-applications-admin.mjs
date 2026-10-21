@@ -10,7 +10,9 @@
  * uploads, and Workers AI (first missing, to check the error, then a fake).
  *
  * Covers, at 1440px and 390px, light and dark:
- *   - tabs and hash routes (#applications/<tab>, #applications/<app id>)
+ *   - five tabs by job (Applicants, Insights, Form, Emails, Settings) and hash
+ *     routes (#applications/<tab>, old links like messages/spanish/history,
+ *     #applications/<app id>)
  *   - Form: a locked JobTread question, Put live through "What's changing",
  *     undo/redo (keys and buttons, typing coalesced), move buttons, Alt+arrows
  *     and dragging, duplicate a question and a page, the rule builder making
@@ -19,18 +21,22 @@
  *     and its fallback
  *   - two editors: the conflict banner, "Keep mine" and "Load their version"
  *   - Spanish: counts, filters, editing, out of date, placeholders, AI fill
- *   - Messages and the reminder emails
- *   - History: compare with previous, restore
- *   - Submissions: search, filters, seasons, paging, badges, export link,
- *     deleting a family's data
+ *   - Emails: one at a time from the list, its timing, English and Spanish,
+ *     placeholders and the reminder emails, each beside how it reads
+ *   - Form → Versions: compare with previous, restore
+ *   - Applicants → Submissions: search, filters, seasons, paging, badges,
+ *     a single check per delivered application, export link, deleting a
+ *     family's data, the notice on the other views
  *   - Insights: tiles, funnel, where people stop, per week, links back
  *   - Applicants: ./applicants.js loads (or a friendly card)
  *   - Settings: open and close through the confirm step, the since line, the
  *     Apply page's publish state, season/closed message/outside form, open and
  *     close times (and the heartbeat opening it), the family preview, Recent
  *     changes; only `application` is written, a change saved elsewhere stops
- *     the save, ⌘S, the tab badge, links to and from Form → Settings, the
- *     unsaved-changes guard, and Site Config no longer carrying the cards
+ *     the save, ⌘S, the tab badge, one save bar for every card; the
+ *     new-application email, email timing and the service area save straight
+ *     to live (no Put live), a clash with another editor, Reshape on the map;
+ *     the unsaved-changes guard, and Site Config no longer carrying the cards
  *   - phone: nothing wider than the screen
  * Screenshots in test-results/applications-admin/. Exits non-zero on failure.
  *
@@ -41,7 +47,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createD1 } from '../tests/lib/d1-shim.mjs';
 import * as adminApi from '../functions/api/applications-admin.js';
-import { getDraftForm, getLiveForm, clearFormCache, saveDraftForm } from '../functions/api/_application-forms.js';
+import { getDraftForm, getLiveForm, clearFormCache, saveDraftForm, getFormRules, saveFormRules } from '../functions/api/_application-forms.js';
 import { resolveForm } from '../functions/api/_application-form.js';
 import { ensureSchema, runApplicationSchedule } from '../functions/api/_applications.js';
 import { publicForm } from '../functions/api/apply.js';
@@ -267,7 +273,11 @@ try {
   await section('Tabs and the form', async () => {
     await page.waitForSelector('.afe-bar', { timeout: 20000 });
     const tabs = await page.$$eval('.afe-tabs [role="tab"]', (els) => els.map(e => [...e.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim()));
-    ok(JSON.stringify(tabs) === JSON.stringify(['Applicants', 'Submissions', 'Insights', 'Form', 'Spanish', 'Messages', 'History', 'Settings']), `eight tabs in order (${tabs.join(', ')})`);
+    ok(JSON.stringify(tabs) === JSON.stringify(['Applicants', 'Insights', 'Form', 'Emails', 'Settings']), `five tabs, grouped by job (${tabs.join(', ')})`);
+    ok(await text(page, '.afe-head h2') === 'Form', 'each tab has the admin’s page header');
+    ok(!!(await page.$('.afe-head .afe-sample-btn')), 'the Form header has See what a family receives');
+    ok(JSON.stringify(await page.$$eval('.afe-subnav button', els => els.map(e => e.dataset.view))) === '["questions","spanish","versions"]', 'the Form has Questions, Spanish and Versions, at the start of its draft bar');
+    ok(!/Settings/.test(await text(page, '.afe-col')) || /are in Settings/.test(await text(page, '.afe-form-foot')), 'the form outline has no settings of its own; it points to Settings');
     await page.waitForSelector('.afe-tabs [data-tab="settings"] .afe-tab-state', { timeout: 8000 }).catch(() => {});
     ok(await text(page, '.afe-tabs [data-tab="settings"] .afe-tab-state') === 'Closed', 'the Settings tab says Closed from every tab');
     ok(/Families see the built-in form/.test(await text(page, '.afe-bar')), 'starts on the built-in form, nothing pending');
@@ -637,47 +647,86 @@ try {
     ok((await getDraftForm(DB)).updatedBy === PETER, 'saving goes on normally after');
   });
 
-  await section('Messages and reminder emails', async () => {
-    await clickText(page, '.hub-tab', /^Messages$/);
+  await section('Emails and reminder emails', async () => {
+    await clickText(page, '.hub-tab', /^Emails/);
+    await page.waitForSelector('.afe-email-rail', { timeout: 8000 });
+    ok(/#applications\/emails$/.test(await page.evaluate(() => location.hash)), 'the hash follows the tab');
+    // "See what a family receives" sits where its purpose is: after editing the emails (and the form)
+    ok(await clickText(page, '.afe-head .afe-sample-btn', /See what a family receives/), 'See what a family receives, in the Emails header');
+    await page.waitForSelector('.afe-dialog', { timeout: 4000 });
+    const sampleText = await text(page, '.afe-dialog');
+    ok(/with you as the parent/.test(sampleText) && /welcome email with the PDF/.test(sampleText) && /archives itself in JobTread/.test(sampleText), 'its dialog says exactly what happens');
+    ok(/changes that aren’t live yet won’t be in it/.test(sampleText), 'and warns when the draft has changes that aren’t live');
+    ok(!/Archive that account/.test(sampleText), 'nothing to clean up by hand');
+    await clickText(page, '.afe-dialog button', /^Cancel$/);
+    await sleep(150);
+    ok(!(await page.$('.afe-dialog')), 'Cancel closes it, nothing sent');
+    const rail = await page.$$eval('.afe-email-rail button b', els => els.map(e => e.textContent.replace('!', '').trim()));
+    ok(JSON.stringify(rail) === JSON.stringify(['Application received', 'In review', 'Approved', 'Denied', 'Correction', 'Reminders']), `every family email, in the order they get them (${rail.join(', ')})`);
+    await page.click('.afe-email-rail [data-email="approved"]');
     await page.waitForSelector('#afe-m-approved');
-    ok(/#applications\/messages$/.test(await page.evaluate(() => location.hash)), 'the hash follows the tab');
-    await typeInto(page, '#afe-m-approved', 'Great news, {parent}! We approved the application.');
+    ok(/Once Status has stayed Approved for 30 minutes, never between 8 PM and 8 AM Eastern/.test(await text(page, '.afe-email-top')), 'it says when it goes, from the settings');
+    ok(/Application Decision/.test(await text(page, '.afe-email-prev')), 'the preview has the subject JobTread uses');
+    await typeInto(page, '#afe-m-approved', 'Great news, {parent}! We *approved* the application.');
     await waitSaved(page);
-    ok(/should name the child/.test(await text(page, '.afe-problems')), 'a message without {child} is caught');
+    ok(/should name the child/.test(await text(page, '.afe-email-main .afe-problems')), 'a message without {child} is caught, right there');
+    ok(await page.$('.afe-email-rail [data-email="approved"] .afe-email-bad'), 'and marked in the list');
+    ok(/<strong>approved<\/strong>/.test(await page.$eval('.afe-email-prev .afe-email-body', e => e.innerHTML)) && /Great news, Jordan Stone!/.test(await text(page, '.afe-email-prev')), '*stars* read as bold and {parent} is filled in');
     await page.click('#afe-m-approved');
     await page.keyboard.press('End');
     await page.keyboard.type(' ');
-    await page.evaluate(() => [...document.querySelectorAll('.afe-msg .afe-chips button')].filter((b) => b.textContent === '{child}')[2]?.click());
+    await clickText(page, '.afe-email-ed .afe-chips button', /^\{child\}$/);
     await waitSaved(page);
     ok(!(await page.$('.afe-problems')), 'inserting {child} fixes it');
+    // Spanish, beside it
+    await clickText(page, '.afe-email-top .afe-seg button', /^Spanish/);
+    await page.waitForSelector('#afe-m-approved[lang="es"]');
+    ok(/The English changed after this was translated/.test(await text(page, '.afe-email-ed')), 'its Spanish shows as out of date, with the old English');
+    ok(/Decisión sobre la solicitud/.test(await text(page, '.afe-email-prev')), 'the Spanish preview has the Spanish subject');
+    await typeInto(page, '#afe-m-approved', '{parent}, la solicitud de *{child}* fue aprobada.');
+    await waitSaved(page);
+    const es = (await draftDef()).i18n.es;
+    ok(es.strings['message:approved'] === '{parent}, la solicitud de *{child}* fue aprobada.' && es.sources['message:approved'] === (await draftDef()).messages.approved, 'typing the Spanish saves it against the current English');
+    ok(/Jordan Stone, la solicitud de Avery Stone fue aprobada/.test(await text(page, '.afe-email-prev')), 'and the preview reads it');
+    await clickText(page, '.afe-email-top .afe-seg button', /^English$/);
     // Reminders
-    await page.click('#afe-reminders input[role="switch"]');
+    await page.click('.afe-email-rail [data-email="reminders"]');
+    await page.waitForSelector('input[aria-label="Send reminder emails"]');
+    await page.click('input[aria-label="Send reminder emails"]');
     await waitSaved(page);
     ok((await draftDef()).reminders.enabled === false, 'reminders off');
-    ok(/Reminders are off/.test(await text(page, '#afe-reminders')), 'and it says so');
-    await page.click('#afe-reminders input[role="switch"]');
-    await page.type('#afe-reminders input[aria-label="Add a reminder after this many days"]', '14');
+    ok(/Off: nobody gets these/.test(await text(page, '.afe-email-top')) && /Off/.test(await text(page, '.afe-email-rail [data-email="reminders"]')), 'and it says so');
+    await page.click('input[aria-label="Send reminder emails"]');
+    await page.type('input[aria-label="Add a reminder after this many days"]', '14');
     await page.keyboard.press('Enter');
     await waitSaved(page);
     ok(JSON.stringify((await draftDef()).reminders.days) === '[2,7,14,21]', 'a day is added in order');
-    await page.evaluate(() => document.querySelector('#afe-reminders button[aria-label="Remove 21 days"]').click());
+    await page.evaluate(() => document.querySelector('button[aria-label="Remove 21 days"]').click());
     await waitSaved(page);
     ok(JSON.stringify((await draftDef()).reminders.days) === '[2,7,14]', 'and one removed');
     await typeInto(page, '#afe-rem-subject', 'Still thinking about it, {parent}?');
     await page.click('#afe-rem-body');
     await page.$eval('#afe-rem-body', (el) => el.setSelectionRange(0, 0));
-    await clickText(page, '#afe-reminders .afe-chips button', /^\{percent\}$/);
+    await clickText(page, '.afe-email-ed .afe-chips button', /^\{percent\}$/);
     await waitSaved(page);
     const rem = (await draftDef()).reminders;
     ok(rem.enabled && rem.subject === 'Still thinking about it, {parent}?' && rem.body.startsWith('{percent}'), `subject and a placeholder chip (at the cursor) land in the draft (${JSON.stringify([rem.enabled, rem.subject, rem.body.slice(0, 20)])})`);
-    const sample = await text(page, '#afe-reminders .afe-email');
+    const sample = await text(page, '.afe-email-prev .afe-email');
     ok(/Still thinking about it, Jordan\?/.test(sample) && /^60/m.test(sample.split('\n').slice(2).join('\n')) && !/\{parent\}/.test(sample), 'the sample fills the placeholders');
-    await shot(page, '08-messages.png');
+    ok(/Families get the built-in emails|You have changes/.test(await text(page, '.afe-bar')), 'the draft bar speaks of emails here');
+    await shot(page, '08-emails.png');
+    // An old link to Messages lands here
+    await page.evaluate(() => { location.hash = '#applications/messages'; });
+    await sleep(300);
+    ok(await page.$eval('.afe-tabs .active', (e) => e.dataset.tab) === 'emails', '#applications/messages opens Emails');
   });
 
   await section('Spanish', async () => {
-    await clickText(page, '.hub-tab', /^Spanish/);
+    await clickText(page, '.hub-tab', /^Form/);
+    await page.waitForSelector('.afe-subnav');
+    await page.click('.afe-subnav [data-view="spanish"]');
     await page.waitForSelector('.afe-tr', { timeout: 8000 });
+    ok(/#applications\/form\/spanish$/.test(await page.evaluate(() => location.hash)), 'Form → Spanish has its own address');
     const n = async (k) => Number(await page.$eval(`.afe-chip[data-filter="${k}"] .afe-chip-n`, (e) => e.textContent.replace(/\D/g, '')).catch(() => -1));
     const [all, missing, stale, done] = [await n('all'), await n('missing'), await n('stale'), await n('done')];
     ok(all > 100 && missing > 0 && stale > 0 && all === missing + stale + done, `counts add up (${all} = ${missing} missing + ${stale} out of date + ${done} done)`);
@@ -736,13 +785,13 @@ try {
       ok(await count(page, '.afe-tr') >= 1, 'and they show');
     }
     delete env.AI;
-    ok(await page.evaluate(() => document.querySelector('.afe-tabs [data-tab="spanish"] .afe-tab-count')?.textContent || '0') !== String(all), 'the tab count follows');
+    ok(await page.evaluate(() => document.querySelector('.afe-subnav [data-view="spanish"] .afe-tab-count')?.textContent || '0') !== String(all), 'the count on Spanish follows');
     await page.click('.afe-chip[data-filter="all"]');
     await shot(page, '09-spanish.png', { maxH: 1800 });
   });
 
-  await section('History', async () => {
-    await clickText(page, '.hub-tab', /^History$/);
+  await section('Form → Versions', async () => {
+    await page.click('.afe-subnav [data-view="versions"]');
     await sleep(300);
     const hist = await text(page, '.card');
     ok(/Version \d+ Live/.test(hist.replace(/\s+/g, ' ')), 'versions listed with live');
@@ -761,7 +810,7 @@ try {
   });
 
   await section('Put the second round live', async () => {
-    await clickText(page, '.hub-tab', /^Form$/);
+    await page.click('.afe-subnav [data-view="questions"]');
     await page.waitForSelector('.afe-bar');
     await waitSaved(page);
     const problems = await text(page, '.afe-problems');
@@ -773,32 +822,46 @@ try {
     await clickText(page, '.afe-dialog .btn-primary', /^Put live$/);
     await page.waitForFunction(() => /Families see version 2|Families see version \d/.test(document.querySelector('.afe-bar')?.innerText || '') && !/aren't live/.test(document.querySelector('.afe-bar')?.innerText || ''), { timeout: 8000 }).catch(() => {});
     ok(!(await getDraftForm(DB)), 'the draft went live');
-    await clickText(page, '.hub-tab', /^History$/);
+    await page.evaluate(() => { location.hash = '#applications/history'; });
+    await page.waitForSelector('.afe-subnav [data-view="versions"][aria-pressed="true"]', { timeout: 5000 }).catch(() => {});
+    ok(!!(await page.$('.afe-subnav [data-view="versions"][aria-pressed="true"]')), 'an old History link opens Form → Versions');
     await sleep(300);
     ok(await clickText(page, '.afe-hist button', /Restore as draft/), 'restore an earlier version');
     await sleep(800);
     ok(!!(await getDraftForm(DB)), 'it becomes the draft');
   });
 
-  await section('Submissions', async () => {
-    await clickText(page, '.hub-tab', /^Submissions$/);
-    await page.waitForSelector('.afe-item', { timeout: 8000 });
+  await section('Applicants → Submissions', async () => {
+    await clickText(page, '.hub-tab', /^Applicants$/);
+    await page.waitForSelector('.apl-views', { timeout: 10000 });
+    await page.waitForSelector('.afe-intake', { timeout: 8000 }).catch(() => {});
+    ok(/1 website application hasn’t fully reached JobTread/.test(await text(page, '.afe-intake')) && /Mila Brooks/.test(await text(page, '.afe-intake')), 'the other views say an application hasn’t reached JobTread, by name');
+    ok(/1/.test(await text(page, '.apl-views [data-view="submissions"] .apl-view-n')), 'and the Submissions view carries the count');
+    await page.click('.apl-views [data-view="submissions"]');
+    await page.waitForSelector('.afe-sub', { timeout: 8000 });
+    ok(/#applications\/submissions$/.test(await page.evaluate(() => location.hash)), 'it has its own address');
+    ok(!(await page.$('.afe-intake')), 'the notice steps aside here (the Needs attention chip has it)');
     ok(/Showing 1–50 of 58/.test(await text(page, '.afe-pager')), `paged: ${(await text(page, '.afe-pager')).split('\n')[0]}`);
-    const avery = await page.evaluate(() => [...document.querySelectorAll('.afe-item')].find(x => /Avery Stone/.test(x.textContent))?.innerText || '');
-    ok(/Spanish/.test(avery) && /Outside area · 4 mi/.test(avery), 'Avery: Spanish, outside the area by 4 miles');
-    ok(/Possible repeat/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-item')].find(x => /Mila Brooks/.test(x.textContent))?.innerText || '')), 'Mila: possible repeat');
-    const names = async () => page.$$eval('.afe-item strong', (els) => els.map(e => e.textContent));
+    const avery = await page.evaluate(() => [...document.querySelectorAll('.afe-sub')].find(x => /Avery Stone/.test(x.textContent))?.innerText || '');
+    ok(/Spanish/.test(avery) && /4 mi outside/.test(avery), 'Avery: Spanish, 4 mi outside (the same words the board uses)');
+    ok(/Possible repeat/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-sub')].find(x => /Mila Brooks/.test(x.textContent))?.innerText || '')), 'Mila: possible repeat');
+    const done = await page.evaluate(() => [...document.querySelectorAll('.afe-sub')].filter(x => x.querySelector('.afe-delivered')).length);
+    const chips = await page.evaluate(() => [...document.querySelectorAll('.afe-sub')].filter(x => x.querySelector('.afe-delivered')).some(x => x.querySelectorAll('.afe-steps .badge').length));
+    ok(done >= 40 && !chips, `a delivered application is one check, not ten chips (${done} rows)`);
+    ok(/Home/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-sub')].find(x => /Mila Brooks/.test(x.textContent))?.querySelector('.afe-steps')?.innerText || '')), 'one that isn’t shows just the steps left');
+    ok(!/JOBTREAD_QC_GRANT_KEY|CF_STREAM_TOKEN/.test(await page.$eval('.afe-setup summary', e => e.innerText).catch(() => '')), 'setup gaps read in plain words (the variable names are under How to fix)');
+    const names = async () => page.$$eval('.afe-sub-name', (els) => els.map(e => e.textContent));
     await clickText(page, '.afe-chip', /^Outside area$/);
-    await page.waitForFunction(() => document.querySelectorAll('.afe-item').length === 1, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelectorAll('.afe-sub').length === 1, { timeout: 5000 }).catch(() => {});
     ok(JSON.stringify(await names()) === '["Avery Stone"]', 'Outside area: just Avery');
     await clickText(page, '.afe-chip', /^Possible repeat$/);
-    await page.waitForFunction(() => /Mila/.test(document.querySelector('.afe-item')?.textContent || '') && document.querySelectorAll('.afe-item').length === 1, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => /Mila/.test(document.querySelector('.afe-sub')?.textContent || '') && document.querySelectorAll('.afe-sub').length === 1, { timeout: 5000 }).catch(() => {});
     ok(JSON.stringify(await names()) === '["Mila Brooks"]', 'Possible repeat: just Mila');
-    await clickText(page, '.afe-chip', /^Needs attention$/);
-    await page.waitForFunction(() => document.querySelectorAll('.afe-item').length === 1, { timeout: 5000 }).catch(() => {});
-    ok(/Mila Brooks/.test(await text(page, '.afe-list')) && /Retry now/.test(await text(page, '.afe-list')), 'Needs attention: the one that failed, with Retry');
+    await clickText(page, '.afe-chip', /^Needs attention/);
+    await page.waitForFunction(() => document.querySelectorAll('.afe-sub').length === 1, { timeout: 5000 }).catch(() => {});
+    ok(/Mila Brooks/.test(await text(page, '.afe-sub-list')) && /Retry now/.test(await text(page, '.afe-sub-list')), 'Needs attention: the one that failed, with Retry');
     await clickText(page, '.afe-chip', /^Tests$/);
-    await page.waitForFunction(() => /TEST Applicant/.test(document.querySelector('.afe-item')?.textContent || ''), { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => /TEST Applicant/.test(document.querySelector('.afe-sub')?.textContent || ''), { timeout: 5000 }).catch(() => {});
     ok(JSON.stringify(await names()) === '["TEST Applicant"]', 'Tests: the test application');
     await clickText(page, '.afe-chip', /^All$/);
     await page.select('.afe-toolbar select[aria-label="Season"]', '2027');
@@ -815,14 +878,15 @@ try {
     await page.waitForFunction(() => /Showing 51–58 of 58/.test(document.querySelector('.afe-pager')?.innerText || ''), { timeout: 5000 }).catch(() => {});
     ok(/Showing 51–58 of 58/.test(await text(page, '.afe-pager')), 'Next page');
     await page.type('.afe-search input', 'avery');
-    await page.waitForFunction(() => document.querySelectorAll('.afe-item').length === 1, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelectorAll('.afe-sub').length === 1, { timeout: 5000 }).catch(() => {});
     ok(JSON.stringify(await names()) === '["Avery Stone"]' && /^1 application$/.test(await text(page, '.afe-pager')), 'search (debounced) goes back to the first page');
-    ok(await clickText(page, '.afe-item button', /^Details$/), 'open Avery');
+    ok(await clickText(page, '.afe-sub button', /^Details$/), 'open Avery');
     await page.waitForFunction(() => /Address check/.test(document.querySelector('.afe-detail')?.innerText || ''), { timeout: 5000 }).catch(() => {});
     const det = await text(page, '.afe-detail');
     ok(/About 4 miles outside the service area/.test(det) && /the family picked Cobb; the Census says Cherokee/.test(det), 'the address and county checks, in words');
-    ok(/County mismatch/.test(await text(page, '.afe-item.is-open .afe-item-who')), 'county mismatch badge');
-    ok(new RegExp(`#applications/${fixtures.avery}$`).test(await page.evaluate(() => location.hash)), 'the hash names the application');
+    ok(/Open in JobTread/.test(det) && await count(page, '.afe-detail .afe-checks .badge') === 10, 'the details have JobTread and every step');
+    ok(/County mismatch/.test(await text(page, '.afe-sub.is-open .afe-sub-who')), 'county mismatch badge');
+    ok(new RegExp(`#applications/submissions/${fixtures.avery}$`).test(await page.evaluate(() => location.hash)), 'the hash names the application');
     await shot(page, '11-submissions.png', { maxH: 1600 });
     ok(await clickText(page, '.afe-detail button', /Delete family's data/), "Delete family's data from the site");
     await page.waitForSelector('#afe-del-confirm');
@@ -838,12 +902,12 @@ try {
     ok(!!row.deleted_at && row.answers === '{}', 'deleted from the site (D1)');
     await page.$eval('.afe-search input', (el) => { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); });
     await clickText(page, '.afe-chip', /^Deleted$/);
-    await page.waitForFunction(() => /Avery \(deleted\)/.test(document.querySelector('.afe-list')?.innerText || ''), { timeout: 5000 }).catch(() => {});
-    ok(/Avery \(deleted\)/.test(await text(page, '.afe-list')) && /Deleted/.test(await text(page, '.afe-item .afe-item-who')), 'Deleted lists it');
-    // A link straight to one application
+    await page.waitForFunction(() => /Avery \(deleted\)/.test(document.querySelector('.afe-sub-list')?.innerText || ''), { timeout: 5000 }).catch(() => {});
+    ok(/Avery \(deleted\)/.test(await text(page, '.afe-sub-list')) && /Deleted/.test(await text(page, '.afe-sub .afe-sub-who')), 'Deleted lists it');
+    // A link straight to one application (JobTread's Application URL): no family matches here, so its row opens
     await page.evaluate((id) => { location.hash = `#applications/${id}`; }, fixtures.mila);
-    await page.waitForFunction(() => /Mila Brooks/.test(document.querySelector('.afe-item.is-open')?.innerText || '') && /Possible repeat:/.test(document.querySelector('.afe-detail')?.innerText || ''), { timeout: 8000 }).catch(() => {});
-    ok(/Mila Brooks/.test(await text(page, '.afe-item.is-open')), '#applications/<app id> opens that application');
+    await page.waitForFunction(() => /Mila Brooks/.test(document.querySelector('.afe-sub.is-open')?.innerText || '') && /Possible repeat:/.test(document.querySelector('.afe-detail')?.innerText || ''), { timeout: 8000 }).catch(() => {});
+    ok(/Mila Brooks/.test(await text(page, '.afe-sub.is-open')), '#applications/<app id> opens that application');
   });
 
   await section('Insights', async () => {
@@ -859,8 +923,9 @@ try {
     ok(/Children’s Healthcare of Atlanta/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent))?.innerText || '')), 'referral sources');
     await shot(page, '13-insights.png');
     ok(await clickText(page, '.afe-checklist button', /See them/), '"See them" on a check');
+    await page.waitForSelector('.afe-sub-list, .afe-subs .afe-empty', { timeout: 8000 }).catch(() => {});
     await page.waitForSelector('.afe-chip[aria-pressed="true"]', { timeout: 5000 });
-    ok(/Possible repeat|Outside area/.test(await text(page, '.afe-chip[aria-pressed="true"]')), 'opens Submissions with that filter');
+    ok(/Possible repeat|Outside area/.test(await text(page, '.afe-chip[aria-pressed="true"]')) && await page.$eval('.afe-tabs .active', (e) => e.dataset.tab) === 'applicants', 'opens Applicants → Submissions with that filter');
   });
 
   await section('Applicants', async () => {
@@ -868,16 +933,32 @@ try {
     await page.waitForFunction(() => { const p = document.querySelector('[role="tabpanel"]'); return p && !/Loading…/.test(p.innerText); }, { timeout: 10000 }).catch(() => {});
     const body = await text(page, '[role="tabpanel"]');
     ok(body.length > 0 && !/Loading…/.test(body), `the applicants view loads, or explains why not (${body.slice(0, 60).replace(/\s+/g, ' ')})`);
-    ok(/#applications\/applicants$/.test(await page.evaluate(() => location.hash)), 'its hash');
+    ok(/#applications\/applicants$/.test(await page.evaluate(() => location.hash)), 'its hash (it opens on the board, list, map or activity, not Submissions)');
     await page.evaluate(() => history.replaceState(null, '', '#applications/applicants/22PgaFvDKQ9L'));
     await page.evaluate(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
     await sleep(200);
     ok(await page.$eval('.afe-tabs .active', (e) => e.dataset.tab) === 'applicants', 'a family in the hash stays on Applicants');
+    ok(!!(await page.$('.apl-drawer')), 'and opens that family');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => {});
+    await page.click('.apl-more-btn');
+    await page.waitForSelector('.apl-menu', { timeout: 3000 }).catch(() => {});
+    const menu = await text(page, '.apl-menu');
+    ok(/Clean up statuses quietly/.test(menu) && !/test application|sample/i.test(menu), 'the Applicants ⋯ menu holds the cleanup only (the sample moved to Form and Emails)');
+    ok(!(await page.$$eval('.apl-head-actions button', els => els.some(b => /Sync now/.test(b.textContent)))), 'and there’s no standing Sync now');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { history.replaceState(null, '', '#applications/applicants/22PgaFvDKQ9L'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await sleep(200);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => {});
+    ok(!(await page.$('.apl-drawer')), 'Esc closes it');
   });
 
   await section('Settings: open or closed, season, schedule', async () => {
-    const saveOff = () => page.evaluate(() => [...document.querySelectorAll('.afe-settings-foot button')].find(b => /^(Save|Saving…)$/.test(b.textContent))?.disabled);
-    const settled = () => page.waitForFunction(() => /^Saved$/.test(document.querySelector('.afe-settings-foot .afe-hint')?.textContent || '') && !document.querySelector('.afe-settings-foot button[disabled]')?.textContent.includes('Saving'), { timeout: 8000 }).catch(() => {});
+    // One save bar for the whole tab: it shows while anything is unsaved
+    const saveOff = () => page.evaluate(() => { const b = [...document.querySelectorAll('.afe-savebar button')].find(x => /^(Save|Saving…)$/.test(x.textContent)); return b ? b.disabled : true; });
+    const settled = () => page.waitForFunction(() => !document.querySelector('.afe-savebar'), { timeout: 8000 }).catch(() => {});
+    const saveBtn = () => clickText(page, '.afe-savebar button', /^Save$/);
     const badge = () => text(page, '.afe-tabs [data-tab="settings"] .afe-tab-state');
     const status = () => text(page, '.afe-status');
     const local = (t) => { const d = new Date(t); const p2 = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`; };
@@ -944,12 +1025,12 @@ try {
     await typeInto(page, '#afe-formurl', 'example.com/form');
     ok(/starts with https/.test(await text(page, '.afe-settings')) && (await saveOff()) === true, 'a link without https:// blocks Save');
     await typeInto(page, '#afe-formurl', '');
-    ok((await saveOff()) === false && /Unsaved changes/.test(await text(page, '.afe-settings-foot')), 'unsaved, Save is on');
+    ok((await saveOff()) === false && /Unsaved changes to season and wording/.test(await text(page, '.afe-savebar')), 'unsaved, the save bar says what, and Save is on');
     await clickText(page, '.afe-fam .afe-seg button', /^Closed$/);
     ok(/Applications reopen in January\./.test(await text(page, '.afe-fam-banner')) && /with your unsaved changes/.test(await text(page, '.afe-fam')), 'the preview draws the unsaved closed message');
     await clickText(page, '.afe-fam .afe-seg button', /^Open$/);
     ok(/The 2028 application is now open!/.test(await text(page, '.afe-fam-banner')), 'and the open banner with the new season');
-    await clickText(page, '.afe-settings-foot button', /^Save$/);
+    await saveBtn();
     await settled();
     let st = await storedSettings();
     ok(st.application.year === '2028' && st.application.closedMessage === 'Applications reopen in January.' && st.application.open === true, `stored (${JSON.stringify(st.application)})`);
@@ -959,7 +1040,7 @@ try {
     // Close on a time
     const closeAt = Date.now() + 3 * 864e5;
     await setLocal('#afe-closesAt', local(closeAt));
-    await clickText(page, '.afe-settings-foot button', /^Save$/);
+    await saveBtn();
     await settled();
     st = await storedSettings();
     ok(st.application.closesAt && Math.abs(Date.parse(st.application.closesAt) - closeAt) < 60e3, 'a close time is stored');
@@ -994,13 +1075,13 @@ try {
     st = await storedSettings();
     await writeSettings({ ...st, application: { ...st.application, closedMessage: 'Changed in another tab.' } });
     await typeInto(page, '#afe-closed', 'Mine wins.');
-    await clickText(page, '.afe-settings-foot button', /^Save$/);
-    await page.waitForSelector('.afe-settings .afe-note.is-warn', { timeout: 5000 }).catch(() => {});
-    ok(/Someone changed these settings/.test(await text(page, '.afe-settings')), 'a change saved elsewhere stops the save and says so');
+    await saveBtn();
+    await page.waitForFunction(() => /changed these settings while you had them open/.test(document.querySelector('.afe-savebar')?.innerText || ''), { timeout: 5000 }).catch(() => {});
+    ok(/Someone changed these settings/.test(await text(page, '.afe-savebar')), 'a change saved elsewhere stops the save and says so');
     ok(await page.$eval('#afe-closed', (e) => e.value) === 'Mine wins.' && (await storedSettings()).application.closedMessage === 'Changed in another tab.', 'my edit is kept, theirs is not overwritten yet');
-    await clickText(page, '.afe-settings-foot button', /^Save$/);
+    await saveBtn();
     await settled();
-    ok((await storedSettings()).application.closedMessage === 'Mine wins.' && !(await page.$('.afe-settings .afe-note.is-warn')), 'a second Save uses mine');
+    ok((await storedSettings()).application.closedMessage === 'Mine wins.' && !(await page.$('.afe-savebar')), 'a second Save uses mine');
 
     // Another Site Config field saved meanwhile is kept (only `application` is written)
     st = await storedSettings();
@@ -1011,7 +1092,7 @@ try {
     await page.waitForFunction(() => /Applications are closed/.test(document.querySelector('.afe-status')?.innerText || ''), { timeout: 8000 }).catch(() => {});
     await page.select('#afe-season', '2027');
     await typeInto(page, '#afe-closed', '');
-    await clickText(page, '.afe-settings-foot button', /^Save$/);
+    await saveBtn();
     await settled();
     st = await storedSettings();
     ok(st.application.open === false && st.application.year === '2027' && st.application.closedMessage === '', `closed again for 2027 (${JSON.stringify(st.application)})`);
@@ -1019,42 +1100,80 @@ try {
     ok(await badge() === 'Closed', 'the tab says Closed again');
     await writeSettings({ ...st, social: settings.social });
 
-    await page.click('.afe-tabs [data-tab="submissions"]');
-    await page.waitForSelector('.afe-item', { timeout: 8000 });
-    ok(/Applications are closed for the 2027 season/.test(await text(page, '.afe-card-head')), 'Submissions reads the same switch');
-    ok(await clickText(page, '.afe-card-head a', /Change that in Settings/), 'and links to Settings');
+    await page.evaluate(() => { location.hash = '#applications/submissions'; });
+    await page.waitForSelector('.afe-sub', { timeout: 8000 });
+    ok(/Applications are closed for the 2027 season \(Settings\)\./.test((await text(page, '.afe-subs > .afe-lede')).replace(/\s+/g, ' ')), 'Submissions reads the same switch, words spaced right');
+    ok(await clickText(page, '.afe-subs > .afe-lede a', /^Settings$/), 'and links to Settings');
     await page.waitForSelector('.afe-status', { timeout: 5000 }).catch(() => {});
     ok(await page.$eval('.afe-tabs .active', (e) => e.dataset.tab) === 'settings', 'which opens Settings');
 
-    ok(await clickText(page, '.afe-settings .afe-link', /Form → Settings/), 'a link to Form → Settings');
-    await page.waitForSelector('#afe-staff', { timeout: 8000 }).catch(() => {});
-    ok(/Who gets the new-application email/.test(await text(page, '.afe-inspector')), 'opens the form with its Settings picked');
-    ok(await clickText(page, '.afe-inspector a', /^Settings$/), 'which links back');
-    await page.waitForSelector('.afe-status', { timeout: 5000 }).catch(() => {});
-    ok(await page.$eval('.afe-tabs .active', (e) => e.dataset.tab) === 'settings', 'to the Settings tab');
-    await shot(page, '32-settings-after.png', { maxH: 1600 });
+    // The form's settings live here and save at once, with no Put live
+    const rules = async () => (await getFormRules(DB))?.rules || null;
+    ok(/selection@soardcharity\.com/.test(await text(page, '.afe-chipfield')), 'who gets the new-application email, as chips');
+    await page.click('#afe-staff');
+    await page.keyboard.type('jen@soardcharity.com,');
+    await page.keyboard.type('not-an-email');
+    await page.keyboard.press('Enter');
+    ok(/"not-an-email" isn't an email address/.test(await text(page, 'section[aria-labelledby="afe-set-staff"]')) && (await saveOff()) === true && await count(page, '.afe-addr.is-bad') === 1, 'a bad address is marked and blocks Save');
+    await page.evaluate(() => [...document.querySelectorAll('.afe-addr button')].find(b => /not-an-email/.test(b.getAttribute('aria-label')))?.click());
+    ok(/Unsaved changes to the new-application email/.test(await text(page, '.afe-savebar')), 'the save bar names it');
+    await page.$eval('#afe-wait-inReview', (el) => { el.value = '15'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    ok(/the new-application email and email timing/.test(await text(page, '.afe-savebar')), 'and the timing too, in one bar');
+    await shot(page, '32-settings-rules-dirty.png', { maxH: 2400 });
+    await saveBtn();
+    await settled();
+    let rs = await rules();
+    ok(JSON.stringify(rs?.staffEmails) === '["selection@soardcharity.com","jen@soardcharity.com"]' && rs?.notify?.waits?.inReview === 15, `stored as settings (${JSON.stringify(rs?.staffEmails)}, ${rs?.notify?.waits?.inReview})`);
+    clearFormCache();
+    ok((await getLiveForm(DB, { fresh: true })).definition.notify.waits.inReview === 15, 'and in use at once, no Put live');
+    ok(!(await getDraftForm(DB)) || (await getDraftForm(DB)).definition.notify.waits.inReview === 15, 'a draft in progress shows the same');
+    ok(/New-application email goes to selection@soardcharity\.com, jen@soardcharity\.com/.test(await text(page, '.afe-log')) && /In Review emails wait 15 minutes/.test(await text(page, '.afe-log')), 'both in Recent changes');
+    // Jen changes them meanwhile: say so, keep mine, a second Save uses mine
+    await saveFormRules(DB, { notify: { summary: false } }, { user: JEN });
+    await page.$eval('#afe-wait-decision', (el) => { el.value = '45'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await saveBtn();
+    await page.waitForFunction(() => /Jen Alvarez changed these settings/.test(document.querySelector('.afe-savebar')?.innerText || ''), { timeout: 5000 }).catch(() => {});
+    ok(/Jen Alvarez changed these settings while you had them open/.test(await text(page, '.afe-savebar')), 'a clash with another editor names her');
+    ok(await page.$eval('input[aria-label="Summary email for staff"]', (e) => !e.checked), 'what I hadn’t touched now shows hers');
+    await saveBtn();
+    await settled();
+    rs = await rules();
+    ok(rs.notify.waits.decision === 45 && rs.notify.summary === false, 'a second Save uses mine and keeps hers');
+    // The service area: its outline, and Reshape on the map
+    ok(await count(page, '.afe-area-svg polygon') === 1 && /\d+ corners/.test(await text(page, '.afe-area-text')), 'the boundary’s outline and corners');
+    ok(await clickText(page, '.afe-area-text button', /Reshape it on the map/), 'Reshape it on the map');
+    await page.waitForSelector('.apl-map-note', { timeout: 10000 }).catch(() => {});
+    ok(await page.$eval('.afe-tabs .active', (e) => e.dataset.tab) === 'applicants' && !!(await page.$('.apl-map-note')), 'opens the Applicants map, already reshaping');
+    await page.click('.apl-map-note .btn-ghost'); // Cancel
+    await page.click('.afe-tabs [data-tab="settings"]');
+    await page.waitForSelector('.afe-status', { timeout: 5000 });
+    await shot(page, '32-settings-after.png', { maxH: 2600 });
   });
 
   await section('Dark (on the admin tokens)', async () => {
     await setTheme(page, true);
-    await clickText(page, '.hub-tab', /^Form$/);
+    await clickText(page, '.hub-tab', /^Form/);
     await page.waitForSelector('.afe-bar');
+    await page.click('.afe-subnav [data-view="questions"]');
+    await page.waitForSelector('.afe-row');
     await clickText(page, '.afe-row', /What kind of pets/);
     await sleep(300);
     await shot(page, '01-form-desktop-dark.png', { maxH: 1400 });
     await clickText(page, '.hub-tab', /^Insights$/);
     await page.waitForSelector('.afe-tile');
     await shot(page, '13-insights-dark.png');
-    await clickText(page, '.hub-tab', /^Spanish/);
+    await clickText(page, '.hub-tab', /^Form/);
+    await page.click('.afe-subnav [data-view="spanish"]');
     await page.waitForSelector('.afe-tr');
     await shot(page, '09-spanish-dark.png', { maxH: 1400 });
-    await clickText(page, '.hub-tab', /^Submissions$/);
-    await page.waitForSelector('.afe-item');
+    await page.evaluate(() => { location.hash = '#applications/submissions'; });
+    await page.waitForSelector('.afe-sub');
     await shot(page, '11-submissions-dark.png', { maxH: 1400 });
-    await clickText(page, '.hub-tab', /^Messages$/);
-    await page.waitForSelector('#afe-reminders');
-    await page.evaluate(() => document.querySelector('#afe-reminders').scrollIntoView());
-    await page.screenshot({ path: join(OUT, '08-messages-dark.png') });
+    await clickText(page, '.hub-tab', /^Emails/);
+    await page.waitForSelector('.afe-email-rail');
+    await page.click('.afe-email-rail [data-email="inReview"]');
+    await sleep(200);
+    await page.screenshot({ path: join(OUT, '08-emails-dark.png') });
     await page.click('.afe-tabs [data-tab="settings"]');
     await page.waitForSelector('.afe-status');
     await shot(page, '30-settings-dark.png', { maxH: 1600 });
@@ -1106,24 +1225,32 @@ try {
     await setTheme(p, true);
     await p.screenshot({ path: join(OUT, '21-phone-inspector-dark.png') });
     await setTheme(p, false);
-    for (const [tab, sel, name] of [['Submissions', '.afe-item', '22-phone-submissions.png'], ['Insights', '.afe-tile', '23-phone-insights.png'], ['Spanish', '.afe-tr', '24-phone-spanish.png'], ['Messages', '#afe-reminders', '25-phone-messages.png'], ['History', '.afe-hist', '26-phone-history.png'], ['Settings', '.afe-status', '28-phone-settings.png']]) {
-      await clickText(p, '.hub-tab', new RegExp(`^${tab}`));
+    for (const [tab, sel, name] of [['submissions', '.afe-sub', '22-phone-submissions.png'], ['insights', '.afe-tile', '23-phone-insights.png'], ['form/spanish', '.afe-tr', '24-phone-spanish.png'], ['emails', '.afe-email-rail', '25-phone-emails.png'], ['form/versions', '.afe-hist', '26-phone-versions.png'], ['settings', '.afe-status', '28-phone-settings.png']]) {
+      await p.evaluate((h) => { location.hash = `#applications/${h}`; }, tab);
       await p.waitForSelector(sel, { timeout: 8000 }).catch(() => {});
       await sleep(250);
       ok(await wide() <= 1, `${tab}: nothing wider than the screen (${await wide()}px over)`);
-      if (tab === 'Settings') {
+      if (tab === 'settings') {
         const seen = await p.$eval('.afe-tabs', (l) => { const lr = l.getBoundingClientRect(); const r = l.querySelector('[data-tab="settings"]').getBoundingClientRect(); return r.left >= lr.left - 1 && r.right <= lr.right + 1; });
         ok(seen, 'the tab row scrolls so Settings and its badge are in view');
       }
       await p.evaluate(() => window.scrollTo(0, 0));
       await p.screenshot({ path: join(OUT, name) });
     }
+    // Settings on a phone: the save bar stays in reach
+    await p.$eval('#afe-closed', (el) => { el.value = 'Back soon.'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await sleep(200);
+    const bar = await p.$eval('.afe-savebar', (e) => { const r = e.getBoundingClientRect(); return { bottom: Math.round(r.bottom), right: Math.round(r.right), save: e.querySelector('.btn-primary').getBoundingClientRect().height }; }).catch(() => null);
+    ok(bar && bar.bottom <= 844 && bar.right <= 391 && bar.save >= 40, `the save bar sits on the screen with a tappable Save (${JSON.stringify(bar)})`);
+    ok(!/⌘S/.test(await text(p, '.afe-savebar')), 'and leaves out the keyboard shortcut on a touch screen');
+    await p.screenshot({ path: join(OUT, '28b-phone-settings-savebar.png') });
+    await clickText(p, '.afe-savebar button', /^Discard$/);
     await setTheme(p, true);
     await clickText(p, '.hub-tab', /^Insights$/);
     await sleep(300);
     await p.screenshot({ path: join(OUT, '23-phone-insights-dark.png') });
     await setTheme(p, false);
-    await clickText(p, '.hub-tab', /^Form$/);
+    await clickText(p, '.hub-tab', /^Form/);
     await p.waitForSelector('.afe-bar');
     await waitSaved(p);
     if (await clickText(p, '.afe-bar button', /^Put live$/)) {

@@ -14,7 +14,8 @@
  * POST { message: { id, subject, message, contactId? } }  → JobTread emails the family
  * POST { note: { id, message } }                          → internal note
  * POST { archive: { id, archive } }
- * POST { sync: true }                                     → re-read everything now
+ * POST { sync: true }                                     → re-read everything now ("Check JobTread now")
+ * POST { sync: 'catchup' }                                → just the changes since the last look
  *
  * Family status emails (./_applicant-notify.js):
  * GET ?correction=<account>                               → a ready-to-edit correction
@@ -22,16 +23,17 @@
  * POST { pause: { minutes } } / { resume: true }          → pause family emails (cleanup)
  * POST { held: 'send' | 'skip' }                          → the emails held during a pause
  * POST { correction: { id, subject, message } }           → send it; the family now knows the current status
- * POST { boundary: [[lat, lng], …], base? }               → the service area, into the form draft
+ * POST { boundary: [[lat, lng], …], base? }               → the service area, live at once (a
+ *                                                           setting, like Applications → Settings)
  */
 
 import {
   ensureApplicantSchema, listApplicants, applicantDetail, recentActivity, previewStatus, setApplicantStatus,
   updateApplicantFields, messageFamily, addNote, archiveApplicant, maybeSyncApplicants, syncState,
-  isAccountId, STATUSES, FIELDS,
+  isAccountId, STATUSES, FIELDS, replaceBoundary,
 } from './_applicants.js';
 import { applicationSettings, cleanYear } from './_applications.js';
-import { getLiveForm, getDraftForm, saveDraftForm, diffForm } from './_application-forms.js';
+import { getLiveForm, getFormRules, saveFormRules } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA } from './_application-form.js';
 import { logAudit } from './_audit.js';
 import {
@@ -56,11 +58,11 @@ export async function onRequestGet(context) {
       await maybeSyncApplicants(env, { force: true });
       state = await syncState(env.DB);
     }
-    const [applicants, settings, live, draft] = await Promise.all([
+    const [applicants, settings, live, rules] = await Promise.all([
       listApplicants(env.DB, { archived: url.searchParams.get('archived') === '1' }),
       applicationSettings(env.DB),
       getLiveForm(env.DB),
-      getDraftForm(env.DB).catch(() => null),
+      getFormRules(env.DB).catch(() => null),
     ]);
     // The sweep sends due emails every 2 minutes; if it ever stalls, opening the admin does it
     const overdue = await overdueCount(env.DB);
@@ -71,8 +73,7 @@ export async function onRequestGet(context) {
       fields: Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, { label: f.label, type: f.type, options: f.options || null, long: !!f.long }])),
       boundary: {
         live: live.definition?.serviceArea?.polygon || DEFAULT_SERVICE_AREA.polygon,
-        draft: draft?.definition?.serviceArea?.polygon || null,
-        draftUpdatedAt: draft?.updatedAt || null,
+        updatedAt: rules?.updatedAt || null,
       },
       season: cleanYear(settings.year),
       me: context.data?.userEmail || null,
@@ -195,20 +196,22 @@ export async function onRequestPost(context) {
       return ok(out);
     }
     if (body.sync) {
-      const out = await maybeSyncApplicants(env, { force: true });
+      // 'catchup': just JobTread's changes since the last look (the admin coming back to the tab); true: everything
+      const out = await maybeSyncApplicants(env, body.sync === 'catchup' ? { catchUp: true } : { force: true });
       if (out?.error) return fail(out.error, 500);
       return ok({ result: out, sync: await syncState(env.DB) });
     }
     if (body.boundary) {
       const polygon = cleanPolygon(body.boundary);
       if (!polygon) return fail('The boundary needs at least 3 corners, as [latitude, longitude] pairs.');
-      const draft = await getDraftForm(env.DB);
-      const base = draft?.definition || (await getLiveForm(env.DB, { fresh: true })).definition;
-      const def = { ...base, serviceArea: { ...(base.serviceArea || {}), polygon } };
-      const out = await saveDraftForm(env.DB, def, { user, base: body.base ?? draft?.updatedAt ?? null, force: !!body.force });
-      if (out.conflict) return fail(`${out.conflict.updatedBy} changed the form draft at the same time.`, 409, { conflict: { updatedAt: out.conflict.updatedAt, updatedBy: out.conflict.updatedBy } });
-      await audit('boundary', 'service-area', { corners: polygon.length });
-      return ok({ updatedAt: out.updatedAt, problems: out.errors, changes: await diffForm(env.DB, 'draft') });
+      const out = await saveFormRules(env.DB, { serviceArea: { polygon } }, { user, base: body.base ?? null, force: !!body.force });
+      if (out.conflict) return fail(`${out.conflict.updatedBy} changed the settings at the same time.`, 409, { conflict: { updatedAt: out.conflict.updatedAt, updatedBy: out.conflict.updatedBy } });
+      if (out.errors) return fail(out.errors[0].message, 422);
+      if (out.changes.length) {
+        await logAudit(env.DB, { userEmail: user, action: 'updated', entityType: 'application-settings', entitySlug: 'rules', entityName: 'Applications settings', changes: out.changes });
+        await replaceBoundary(env.DB, out.rules.serviceArea.polygon).catch(() => 0);
+      }
+      return ok({ updatedAt: out.updatedAt, boundary: out.rules.serviceArea.polygon, changed: out.changes.length > 0 });
     }
   } catch (e) {
     return fail(e.message, e.status || 500);

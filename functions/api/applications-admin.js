@@ -7,13 +7,19 @@
  * GET ?id=<app>            → one application: answers (by section), files, JobTread state
  * GET ?file=<app>&field=<f> → a stored photo or the PDF (field=pdf), streamed from R2
  * POST { retry: <app> }    → run the JobTread load again now
- * POST { test: true }      → a TEST application addressed to the admin, loaded like a real one
+ * POST { test: true }      → a sample (TEST) application with the admin as the parent, through the
+ *                            real intake: they get the family's welcome and the staff heads-up
  * POST { sweep: true }     → run the retry sweep now
  *
  * Open, closed, season (Admin → Applications → Settings), `application` in the site settings:
- * GET ?settings=1           → { settings, history }
+ * GET ?settings=1           → { settings, history, rules }
  * POST { settings, base }   → save them ({ conflict } 409 when someone changed them since
  *                             `base`; { errors } 422); open/close times run on the heartbeat
+ * The other settings there (who gets the new-application email, the service area, when
+ * status emails go out) save at once, without the form's Put live (_application-forms.js):
+ * POST { rules: { staffEmails?, serviceArea?, notify? }, base, force? } → { rules, history }
+ *                             ({ conflict } 409, { errors } 422); a new boundary re-places
+ *                             every applicant on the map
  *
  * The list: GET ?q=&show=all|attention|outside|repeat|test|deleted&year=&offset=
  * GET ?export=csv&year=[&tests=1] → every application as CSV
@@ -47,7 +53,7 @@ import {
 } from './_application-form.js';
 import {
   formFor, getLiveForm, getDraftForm, getFormVersion, saveDraftForm, putDraftLive, discardDraftForm,
-  restoreFormVersion, listFormVersions, diffForm,
+  restoreFormVersion, listFormVersions, diffForm, getFormRules, saveFormRules, pickRules,
 } from './_application-forms.js';
 import { checkServiceArea, areaText } from './_geo.js';
 import { translateStrings } from './_translate.js';
@@ -59,6 +65,12 @@ import { advanceOpening } from './_application-waitlist.js';
 
 /** When applications last opened or closed, and who did it ("schedule" for the timer) */
 const sinceOf = (a) => (a?.openChangedAt ? { at: a.openChangedAt, by: a.openChangedBy || null } : null);
+
+/** The settings as the site uses them now, and who last saved them */
+async function rulesNow(DB) {
+  const [live, saved] = await Promise.all([formFor(DB, { year: '2027' }), getFormRules(DB).catch(() => null)]);
+  return { values: pickRules(live), updatedAt: saved?.updatedAt || null, updatedBy: saved?.updatedBy || null, defaults: { serviceArea: DEFAULT_SERVICE_AREA } };
+}
 
 export async function onRequestGet(context) {
   const { env, request } = context;
@@ -89,8 +101,8 @@ export async function onRequestGet(context) {
     return new Response(`\uFEFF${csv}`, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store' } });
   }
   if (url.searchParams.get('settings')) {
-    const [stored, history] = await Promise.all([applicationSettings(env.DB), applicationSettingsHistory(env.DB)]);
-    return Response.json({ success: true, settings: pickApplication(stored), since: sinceOf(stored), history, now: new Date().toISOString() });
+    const [stored, history, rules] = await Promise.all([applicationSettings(env.DB), applicationSettingsHistory(env.DB), rulesNow(env.DB)]);
+    return Response.json({ success: true, settings: pickApplication(stored), since: sinceOf(stored), history, rules, now: new Date().toISOString() });
   }
   if (url.searchParams.get('insights')) {
     const settings = await applicationSettings(env.DB);
@@ -197,7 +209,7 @@ export async function onRequestPost(context) {
     if (!made.ok) return Response.json({ success: false, error: 'Test answers did not validate', errors: made.errors }, { status: 500 });
     const result = await processApplication(env, made.id);
     await logAudit(env.DB, { userEmail: user, action: 'test', entityType: 'application', entitySlug: made.id, changes: { result: result.status } });
-    return Response.json({ success: true, id: made.id, result });
+    return Response.json({ success: true, id: made.id, email, result });
   }
 
   if (body.settings) {
@@ -208,6 +220,18 @@ export async function onRequestPost(context) {
     // Opening starts the waitlist email right away (it takes its own lock, never throws)
     if (out.changes?.some(c => c.field === 'application.open')) context.waitUntil?.(advanceOpening(env, { force: true }).catch(() => {}));
     return Response.json({ success: true, settings: out.settings, changes: out.changes, since: sinceOf(await applicationSettings(env.DB)), history: await applicationSettingsHistory(env.DB) });
+  }
+
+  if (body.rules) {
+    const out = await saveFormRules(env.DB, body.rules, { user, base: body.base ?? null, force: !!body.force });
+    if (out.conflict) return Response.json({ success: false, conflict: out.conflict, error: `${out.conflict.updatedBy} changed these settings while you had them open.` }, { status: 409 });
+    if (out.errors) return Response.json({ success: false, errors: out.errors, error: out.errors[0].message }, { status: 422 });
+    if (out.changes.length) {
+      await logAudit(env.DB, { userEmail: user, action: 'updated', entityType: 'application-settings', entitySlug: 'rules', entityName: 'Applications settings', changes: out.changes });
+      // A new boundary: every applicant on the map is placed against it again
+      if (out.changes.some(c => c.field === 'application.serviceArea')) await replaceBoundary(env.DB, out.rules.serviceArea.polygon).catch(() => 0);
+    }
+    return Response.json({ success: true, changes: out.changes, rules: await rulesNow(env.DB), history: await applicationSettingsHistory(env.DB) });
   }
 
   if (body.formSave) {

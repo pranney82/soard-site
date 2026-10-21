@@ -13,13 +13,22 @@
  *     column → the sheet previews the family's email → confirm → JobTread's
  *     Status changed and the QC message posted, once
  *   - the sheet's "don't email" choice, Denied with a reason
- *   - List: sorting, search with "/", year and area filters
+ *   - The header (title, sync, ⋯ menu) and one toolbar row: views, search,
+ *     season and a Filters panel whose filters show as chips you can clear
+ *   - List: sorting, search with "/", year and area filters, the status counts
  *   - Map: pins and the red boundary, legend toggles, "Show on map" from a
- *     family, editing the boundary saves into the form draft
+ *     family, editing the boundary is used for everyone as soon as it's saved
+ *   - Staying in step with JobTread: no standing Sync button; when JobTread
+ *     fails, the header says so in amber with "Check JobTread now"
+ *   - Clean up statuses quietly (⋯ menu → a sheet that explains it): a move
+ *     made meanwhile is held, "I'm done cleaning up", then each held email
+ *     is sent or not, family by family
  *   - A family: the conversation (emails, logged texts, notes, events), sending
  *     an email and a note (no texting from the site), editing details in place, archive
  *   - Activity: everything across families
- *   - phone: nothing wider than the screen; the drawer fills it
+ *   - phone: nothing wider than the screen; the drawer fills it, with
+ *     Conversation and Details as tabs and the composer pinned inside the screen
+ *   - iPad landscape (1024): all four board columns fit
  * Screenshots in test-results/applicants-admin/. Exits non-zero on failure.
  *
  *   node scripts/test-applicants-admin.mjs
@@ -33,7 +42,7 @@ import { fakeApplicantWorld, ORG } from '../tests/lib/fake-applicant-world.mjs';
 import * as api from '../functions/api/applicants-admin.js';
 import * as formsApi from '../functions/api/applications-admin.js';
 import { FIELDS } from '../functions/api/_applicants.js';
-import { clearFormCache, getDraftForm } from '../functions/api/_application-forms.js';
+import { clearFormCache, getDraftForm, getLiveForm } from '../functions/api/_application-forms.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/applicants-admin/');
@@ -162,6 +171,8 @@ async function open(width, height) {
 const shot = (page, name) => page.screenshot({ path: join(OUT, `${name}.png`) });
 const text = (page, sel) => page.$eval(sel, el => el.textContent.trim()).catch(() => '');
 const acct = (name) => Object.values(w.world.accounts).find(a => a.name === name);
+/** Click the first element matching sel whose text matches re; false when there's none */
+const clickText = (page, sel, re) => page.evaluate((s2, src) => { const el = [...document.querySelectorAll(s2)].find((x) => new RegExp(src).test(x.textContent)); if (el) { el.click(); return true; } return false; }, sel, re.source);
 
 console.log('Desktop 1440');
 const page = await open(1440, 1000);
@@ -173,7 +184,13 @@ const colCounts = await page.$$eval('.apl-col', els => els.map(e => [e.querySele
 ok(JSON.stringify(colCounts) === JSON.stringify([['Applied', '3'], ['In Review', '2'], ['Approved', '2'], ['Denied', '1']]), `2027 season counts per column ${JSON.stringify(colCounts)}`);
 ok(!(await page.$$eval('.apl-card-name', els => els.map(e => e.textContent))).includes('Sunshine Office'), 'accounts that aren’t applicants stay off the board');
 ok(await page.$$eval('.apl-tag.is-out', els => els.some(e => /mi outside/.test(e.textContent))), 'a home outside the boundary is flagged with miles');
-ok(await page.$$eval('.apl-tag.is-es', els => els.length >= 1), 'a Spanish-speaking family is tagged');
+ok(await page.$eval('.apl-tag.is-out', el => getComputedStyle(el).backgroundColor) === 'rgb(255, 246, 224)', 'and flagged in amber, like every other warning (red is for destructive buttons)');
+ok(await page.$$eval('.apl-tag.is-es', els => els.length >= 1 && els.every(e => e.textContent === 'Spanish')), 'a Spanish-speaking family is tagged "Spanish" (the same word Submissions uses)');
+ok(await text(page, '.apl > .page-header h2') === 'Applicants', 'the tab has the admin’s page header');
+const [vb, fbx] = await Promise.all([page.$eval('.apl-views', el => el.getBoundingClientRect().top), page.$eval('.apl-filters', el => el.getBoundingClientRect().top)]);
+ok(Math.abs(vb - fbx) < 6, 'views, search and filters share one toolbar row');
+ok(!(await page.$('button[title^="For cleaning up statuses"]')), 'the cleanup switch isn’t a button on its own row');
+ok(!(await page.$$eval('.apl-head-actions button', els => els.some(b => /Sync now|Check JobTread now/.test(b.textContent)))) && /In sync with JobTread · checked/.test(await text(page, '.apl-sync')), 'all well: no sync button, just when JobTread was last checked');
 ok(await page.$$eval('.apl-stage.is-long', els => els.length >= 1), 'families waiting long in a stage stand out');
 await shot(page, 'desktop-board');
 
@@ -287,12 +304,29 @@ await sleep(200);
 ok(await page.$$eval('.apl-table tbody tr', els => els.length) === 2, 'search finds families by city');
 await page.click('.apl-search input', { clickCount: 3 });
 await page.keyboard.press('Backspace');
-await page.select('select[aria-label="Makeover year"]', '');
-await page.select('select[aria-label="Service area"]', 'outside');
+await page.select('select.apl-season', '');
+ok(await page.$$eval('.apl-active button', els => els.some(e => /All years/.test(e.textContent))), 'a season other than this one shows as a chip');
+// The status counts filter the list
+await page.evaluate(() => [...document.querySelectorAll('.apl-strip button')].find(b => /In Review/.test(b.textContent))?.click());
+await sleep(150);
+ok(await page.$$eval('.apl-table tbody tr .apl-pill', els => els.length > 0 && els.every(e => e.textContent === 'In Review')), 'the In Review count shows just those families');
+await page.click('.apl-strip button.is-all');
+await sleep(150);
+// Filters panel: the area filter, then its chip clears it
+await page.click('.apl-fbtn');
+await page.waitForSelector('.apl-popover');
+await page.select('.apl-popover select[aria-label="Service area"]', 'outside');
 await sleep(200);
 const outside = await page.$$eval('.apl-table tbody tr strong', els => els.map(e => e.textContent));
 ok(outside.includes('Logan Logan') && outside.includes('Harper Lee'), `area filter lists homes outside the boundary (${outside.join(', ')})`);
-await page.select('select[aria-label="Service area"]', '');
+ok(/1/.test(await text(page, '.apl-fbtn b')), 'the Filters button counts the filters in use');
+await page.keyboard.press('Escape');
+await sleep(150);
+ok(!(await page.$('.apl-popover')), 'Esc closes the Filters panel');
+await shot(page, 'desktop-list-filtered');
+await page.evaluate(() => [...document.querySelectorAll('.apl-active button')].find(b => /Outside the boundary/.test(b.textContent))?.click());
+await sleep(200);
+ok(!(await page.$$eval('.apl-active button', els => els.some(e => /Outside the boundary/.test(e.textContent)))), 'a filter chip clears its filter');
 await shot(page, 'desktop-list');
 
 // Map
@@ -317,28 +351,67 @@ await page.mouse.move(hb.x + 60, hb.y + 40, { steps: 8 });
 await page.mouse.up();
 await sleep(300);
 await shot(page, 'desktop-map-edit');
-await page.click('.apl-map-note .btn-primary');
-await page.waitForFunction(() => /Saved to the form draft/.test(document.querySelector('.apl-map-note')?.textContent || ''), { timeout: 8000 }).catch(() => null);
-const draft = await getDraftForm(DB);
-ok(draft?.definition?.serviceArea?.polygon?.length >= 3, 'the new boundary is saved into the form draft');
-await page.click('.apl-map-note .btn-primary'); // Put live now
+ok(/right away/.test(await text(page, '.apl-map-note')), 'editing says the boundary is used for everyone once saved');
+const before = JSON.stringify((await getLiveForm(DB, { fresh: true })).definition.serviceArea.polygon);
+await page.click('.apl-map-note .btn-primary'); // Save boundary
 await page.waitForFunction(() => !document.querySelector('.apl-map-note'), { timeout: 8000 }).catch(() => null);
-ok(!(await getDraftForm(DB)), 'Put live now makes the boundary live');
+clearFormCache();
+const after = (await getLiveForm(DB, { fresh: true })).definition.serviceArea.polygon;
+ok(after?.length >= 3 && JSON.stringify(after) !== before, 'Save boundary puts the new boundary in use straight away');
+ok(!(await getDraftForm(DB)), 'with no form draft and no Put live');
+ok(await page.evaluate(() => window.__toasts.some(t => /new boundary is in use/.test(t.msg))), 'and says so');
 
 // Activity
 await page.click('.apl-views button:nth-child(4)');
 await page.waitForSelector('.apl-feed-row', { timeout: 8000 });
 ok(await page.$$eval('.apl-feed-row', els => els.length) >= 5, 'Activity lists what happened across families');
 await shot(page, 'desktop-activity');
-// Pause family emails (for cleanup), then resume
-page.once('dialog', d => d.accept());
-await page.click('button[title^="For cleaning up statuses"]');
-await page.waitForFunction(() => /Family emails are paused/.test(document.body.textContent), { timeout: 8000 }).catch(() => null);
-ok(/Family emails are paused/.test(await text(page, '.apl')), 'Pause family emails shows a banner with when it ends');
-await shot(page, 'desktop-paused');
-await page.click('.apl-banner .btn-ghost'); // Resume now
-await page.waitForFunction(() => !/Family emails are paused/.test(document.body.textContent), { timeout: 8000 }).catch(() => null);
-ok(!/Family emails are paused/.test(await text(page, '.apl')), 'Resume turns family emails back on');
+// JobTread trouble: coming back to the tab catches up; a failure shows, with one way to act
+w.failNext.set('organization', 1);
+await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+await page.waitForFunction(() => /Check JobTread now/.test(document.querySelector('.apl-head-actions')?.innerText || ''), { timeout: 8000 }).catch(() => null);
+ok(/JobTread didn't answer/.test(await text(page, '.apl-sync')) && !!(await page.$('.apl-sync .apl-dot.is-stale')), 'a failed check says so in the header, in amber');
+ok(await clickText(page, '.apl-head-actions button', /Check JobTread now/), 'with Check JobTread now');
+await page.waitForFunction(() => !/Check JobTread now/.test(document.querySelector('.apl-head-actions')?.innerText || ''), { timeout: 8000 }).catch(() => null);
+ok(/In sync with JobTread/.test(await text(page, '.apl-sync')), 'once JobTread answers, the problem clears');
+
+// Clean up statuses quietly: the sheet, a held move, then choosing family by family
+await page.click('.apl-views button:nth-child(1)');
+await page.waitForSelector('.apl-board');
+await page.click('.apl-more-btn');
+await page.waitForSelector('.apl-menu [role="menuitem"]');
+await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitem', { timeout: 2000 }).catch(() => null);
+ok(await page.evaluate(() => document.activeElement?.getAttribute('role') === 'menuitem'), 'the ⋯ menu puts the keyboard on its first item');
+ok(/Fixing a batch of statuses in JobTread\?/.test(await text(page, '.apl-menu')), 'the menu names the job: Clean up statuses quietly');
+await page.evaluate(() => [...document.querySelectorAll('.apl-menu [role="menuitem"]')].find(b => /Clean up statuses quietly/.test(b.textContent))?.click());
+await page.waitForSelector('.apl-sheet', { timeout: 4000 });
+ok(/Clean up statuses quietly\?/.test(await text(page, '.apl-sheet')) && /choose which ones go/.test(await text(page, '.apl-sheet')), 'a sheet says what happens, in order (no browser prompt)');
+await shot(page, 'desktop-cleanup-sheet');
+await clickText(page, '.apl-sheet button', /Start cleaning up/);
+await page.waitForFunction(() => /Cleaning up statuses quietly/.test(document.body.textContent), { timeout: 8000 }).catch(() => null);
+ok(/Family emails are holding until/.test(await text(page, '.apl-banner')), 'the banner says emails are holding, and until when');
+await page.click('.apl-card[data-id="acct00000004"]'); // Noah Pence, In Review
+await page.waitForSelector('.apl-status-select select');
+await page.select('.apl-status-select select', 'Approved');
+await page.waitForSelector('.apl-sheet .apl-preview-body', { timeout: 8000 }).catch(() => null);
+ok(/cleaning up statuses quietly/.test(await text(page, '.apl-sheet')) && !(await clickText(page, '.apl-sheet button', /email now/)), 'moving a family meanwhile says the email holds (no "email now")');
+await clickText(page, '.apl-sheet-foot .btn-primary', /Move to Approved/);
+await page.waitForFunction(() => !document.querySelector('.apl-sheet'), { timeout: 8000 }).catch(() => null);
+ok(acct('Noah Pence').fields[F.status] === 'Approved' && !acct('Noah Pence').comments.some(c => c.name === 'Application Decision'), 'JobTread moved; the family isn’t emailed yet');
+ok(await page.evaluate(() => window.__toasts.some(t => /The email holds until you're done cleaning up/.test(t.msg)) && !window.__toasts.some(t => /Noah Pence is now Approved\. .* is emailed at/.test(t.msg))), 'and the toast says the email holds, not when it goes');
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => null);
+await page.waitForFunction(() => /1 email is held so far/.test(document.querySelector('.apl-banner')?.innerText || ''), { timeout: 8000 }).catch(() => null);
+ok(/1 email is held so far/.test(await text(page, '.apl-banner')), 'the banner counts what’s held');
+await shot(page, 'desktop-cleaning');
+await clickText(page, '.apl-banner button', /I’m done cleaning up/);
+await page.waitForSelector('.apl-held-list li', { timeout: 8000 }).catch(() => null);
+ok(/Noah Pence/.test(await text(page, '.apl-held-list')) && /Approved email/.test(await text(page, '.apl-held-list')), 'done: each held email is listed, family by family');
+await shot(page, 'desktop-held');
+await clickText(page, '.apl-held-list li button', /^Send$/);
+await page.waitForFunction(() => !document.querySelector('.apl-held-list'), { timeout: 8000 }).catch(() => null);
+ok(acct('Noah Pence').comments.filter(c => c.name === 'Application Decision').length === 1, 'Send emails that family, once');
+ok(!(await page.$('.apl-banner')), 'and the banner goes');
 ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'desktop: nothing wider than the window');
 await page.close();
 
@@ -357,13 +430,39 @@ const dw = await phone.$eval('.apl-drawer', el => el.getBoundingClientRect().wid
 ok(Math.abs(dw - 390) < 2, 'phone: the family fills the screen');
 const small = await phone.evaluate(() => [...document.querySelectorAll('.apl-drawer button, .apl-drawer select, .apl-drawer a.btn')].filter(b => b.offsetParent && b.getBoundingClientRect().height < 32).map(b => `${b.className || b.tagName}:${b.textContent.trim().slice(0, 20)}:${Math.round(b.getBoundingClientRect().height)}`));
 ok(small.length === 0, `phone: controls are tappable${small.length ? ` (${small.slice(0, 4).join(', ')})` : ''}`);
+// Conversation and Details are tabs; the conversation gets the room and the composer stays on screen
+const pane = await phone.evaluate(() => {
+  const r = (s) => document.querySelector(s)?.getBoundingClientRect();
+  const comp = r('.apl-composer');
+  return { tabs: !!document.querySelector('.apl-dtabs')?.offsetParent, thread: r('.apl-thread')?.height || 0, compRight: comp?.right || 0, compBottom: comp?.bottom || 0, side: !!document.querySelector('.apl-side')?.offsetParent };
+});
+ok(pane.tabs && !pane.side, 'phone: the family opens on Conversation, with a Details tab');
+ok(pane.thread > 250, `phone: the conversation has room to read (${Math.round(pane.thread)}px)`);
+ok(pane.compRight <= 391 && pane.compBottom <= 845, 'phone: the composer fits on the screen');
+ok(!!(await phone.$('.apl-email-sum')) && !(await phone.$eval('.apl-email-row', el => !!el.offsetParent).catch(() => false)), 'phone: To and Subject fold into one line');
+await phone.click('.apl-email-sum');
+ok(await phone.$eval('.apl-email-row', el => !!el.offsetParent).catch(() => false), 'and open when tapped');
 await shot(phone, 'phone-family');
+await phone.click('.apl-dtabs button:nth-child(2)');
+await sleep(200);
+ok(await phone.evaluate(() => !!document.querySelector('.apl-side')?.offsetParent && !document.querySelector('.apl-convo')?.offsetParent), 'phone: Details shows the details instead');
+await shot(phone, 'phone-family-details');
 await phone.keyboard.press('Escape');
 await phone.click('.apl-views button:nth-child(3)');
 await phone.waitForSelector('.leaflet-container', { timeout: 15000 });
 await sleep(1200);
 await shot(phone, 'phone-map');
 await phone.close();
+
+console.log('iPad landscape 1024');
+const pad = await open(1024, 768);
+await pad.evaluate(() => localStorage.setItem('apl-view', 'board'));
+await pad.reload({ waitUntil: 'domcontentloaded' });
+await pad.waitForSelector('.apl-board');
+await sleep(300);
+ok(await pad.$eval('.apl-board', el => el.scrollWidth <= el.clientWidth + 1), 'iPad landscape: all four columns fit, nothing hides off the side');
+await shot(pad, 'ipad-board');
+await pad.close();
 
 ok(consoleErrors.length === 0, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 3).join(' | ')}` : ''}`);
 await browser.close();
