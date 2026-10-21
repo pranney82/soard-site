@@ -293,23 +293,24 @@ try {
   ok(ap.errors.length === 0, `no console errors${ap.errors.length ? ': ' + ap.errors.slice(0, 3).join(' | ') : ''}`);
   await ap.page.close();
 
-  console.log('Desktop, CompanyCam for families in review');
-  ok(await statusOf((await open(browser, base, { width: 1440, height: 1000 })).page, 'CompanyCam for families in review') === 'Off', 'off until the key is in Cloudflare');
-  const ccFacts = { ...FACTS, env: { ...FACTS.env, companycam: true }, companycam: { on: true, projects: { customer: 2, linked: 1 }, files: { copied: 9, moved: 14 }, lastCopied: iso(20 * 60e3), failing: 0, waiting: 0, webhook: { enabled: true, checkedAt: iso(10 * 60e3) }, tokenBad: false, tokenError: null, lastRun: iso(60e3), lastWebhook: iso(20 * 60e3), selfTest: { step: 'done', ok: true } } };
+  console.log('Desktop, CompanyCam');
+  ok(await statusOf((await open(browser, base, { width: 1440, height: 1000 })).page, 'CompanyCam for families in review') === 'Off', 'families in review: off unless switched on');
+  const audit = { at: iso(30 * 60e3), repair: true, jobs: 18, linked: 18, unlinked: [], missing: 0, doubleCopies: 0, byHand: 120, relinks: 13, copied: 40, removed: 3, split: [], problems: [] };
+  const ccFacts = { ...FACTS, env: { ...FACTS.env, companycam: true }, companycamJobs: { on: true, repair: true, audit, lastChecked: iso(5 * 60e3), jobs: 18 } };
   const cc = await open(browser, base, { width: 1440, height: 1000 }, { facts: ccFacts });
   await cc.page.type('#am-search', 'companycam');
   await pause(500);
-  await clickNode(cc.page, 'CompanyCam for families in review');
+  await clickNode(cc.page, 'CompanyCam photos on every job');
   await pause(300);
-  ok(await panelTitle(cc.page) === 'CompanyCam for families in review', 'search finds the CompanyCam entry');
+  ok(await panelTitle(cc.page) === 'CompanyCam photos on every job', 'search finds the job check');
   const ccPanel = await cc.page.$eval('.am-panel', (e) => e.textContent);
-  ok(ccPanel.includes('2 families in review with a project, 23 photos copied'), 'it says how many families and photos');
+  ok(ccPanel.includes('18 of 18 open jobs linked, every photo in JobTread'), 'it says how many jobs are linked');
   await cc.page.screenshot({ path: join(OUT, 'desktop-companycam.png'), fullPage: false });
   ok(cc.errors.length === 0, `no console errors${cc.errors.length ? ': ' + cc.errors.slice(0, 3).join(' | ') : ''}`);
   await cc.page.close();
-  const ccBad = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...ccFacts, companycam: { ...ccFacts.companycam, tokenBad: true, tokenError: 'CompanyCam returned 401: Missing or invalid access token' } } });
-  ok(await statusOf(ccBad.page, 'CompanyCam for families in review') === 'Needs attention', 'a key CompanyCam turns down needs attention');
-  await ccBad.page.close();
+  const looking = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...ccFacts, companycamJobs: { ...ccFacts.companycamJobs, repair: false, audit: { ...audit, repair: false, linked: 5, missing: 412 } } } });
+  ok(await statusOf(looking.page, 'CompanyCam photos on every job') === 'Needs attention', 'only looking: needs attention, with the numbers');
+  await looking.page.close();
 
   console.log('Phone');
   const phone = await open(browser, base, { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });

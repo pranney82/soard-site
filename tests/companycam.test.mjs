@@ -354,7 +354,7 @@ beforeEach(async () => {
   w = newWorld();
   env = {
     DB: await createD1({ schemaFiles: ['scripts/schema.sql'], schemaSql: ['CREATE TABLE IF NOT EXISTS applications (id TEXT PRIMARY KEY, jt_account_id TEXT, jt_state TEXT)'] }),
-    JOBTREAD_GRANT_KEY: 'site-grant', COMPANYCAM_TOKEN: 'cc-token',
+    JOBTREAD_GRANT_KEY: 'site-grant', COMPANYCAM_TOKEN: 'cc-token', COMPANYCAM_CUSTOMER_STAGE: 'on',
   };
   await ensureApplicantSchema(env.DB);
   // The one-time check has its own test (the last one); everywhere else it's done
@@ -975,4 +975,14 @@ test('the project carries the family’s full name, not the job’s 30-character
   const a = await family('acct26', 'Oakley Faye Xiu Ping Roberson', 'In Review', { appPhotos: false });
   await run(0);
   assert.equal(w.cc.projects.get((await getFamilyRow(env.DB, a.id)).project_id).name, 'Oakley Faye Xiu Ping Roberson (2027)');
+});
+
+test('off unless COMPANYCAM_CUSTOMER_STAGE is on: a family in review gets no project', async () => {
+  delete env.COMPANYCAM_CUSTOMER_STAGE;
+  const a = await family('acct27', 'Xan Ford', 'In Review', { appPhotos: false });
+  await run(0);
+  await run(3);
+  assert.equal(await getFamilyRow(env.DB, a.id), null);
+  assert.equal([...w.cc.projects.values()].length, 0);
+  assert.equal(w.cc.webhooks.size, 1, 'the webhook and the rest stay');
 });

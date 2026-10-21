@@ -26,6 +26,7 @@ import { maybeRunPress } from './_press.js';
 import { maybeSlackPreview } from './_slack-preview.js';
 import { maybeRunEventRecaps } from './_event-recap.js';
 import { maybeRunCompanyCam } from './_companycam-sync.js';
+import { maybeCheckJobs } from './_companycam-jobs.js';
 import { maybeCapSelfTest } from './_application-cap.js';
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
@@ -73,6 +74,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunEventRecaps(env));
     // CompanyCam for families in review: their project, home-visit photos to JobTread, the hand-over to the job (see _companycam-sync.js)
     context.waitUntil(maybeRunCompanyCam(env));
+    // Every open job's CompanyCam photos against JobTread's copies, about hourly (see _companycam-jobs.js)
+    context.waitUntil(maybeCheckJobs(env));
     // Once per alert redesign: the new Slack cards, posted in one thread (see _slack-preview.js)
     context.waitUntil(maybeSlackPreview(env));
     // Once per CAP_SELF_TEST: the application limit's two notices for a sample season, marked as tests (see _application-cap.js)

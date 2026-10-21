@@ -35,6 +35,7 @@ import { approvalsStatus } from './_applicant-approved.js';
 import { coverFacts } from './_job-covers.js';
 import { eventRecapState } from './_event-recap.js';
 import { companycamFacts } from './_companycam-sync.js';
+import { jobsFacts } from './_companycam-jobs.js';
 import { applicationSettings, pickApplication } from './_applications.js';
 import { capFacts, lastCapNotice } from './_application-cap.js';
 
@@ -71,6 +72,7 @@ export function envFacts(env) {
     zeffyApi: has(env.ZEFFY_API_KEY),
     slackBot: has(env.SLACK_BOT_TOKEN),
     companycam: has(env.COMPANYCAM_TOKEN),
+    companycamCustomerStage: String(env.COMPANYCAM_CUSTOMER_STAGE || '').trim().toLowerCase() === 'on',
   };
 }
 
@@ -315,6 +317,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     eventRecap: await settle(() => eventRecapFacts(DB)),
     // Counts, times and on/off only: no names, ids or photos
     companycam: await settle(() => companycamFacts(env)),
+    companycamJobs: await settle(() => jobsFacts(env)),
   };
 }
 

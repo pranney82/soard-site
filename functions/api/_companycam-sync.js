@@ -85,6 +85,14 @@ const APP_PHOTO_TRIES = 5;
 const ADOPT_WITHIN_MS = 180 * DAY;       // a project staff started for this home visit, not one from years ago
 const HAS_JOB_RECHECK_MS = DAY;
 
+/**
+ * Off since Oct 21 2026 (Peter: "i actually dont think we need this ... i move
+ * the onsite visit to the job anyway"): families in review get no project of
+ * their own unless COMPANYCAM_CUSTOMER_STAGE is "on" in Cloudflare. Everything else stays: the webhook, the API, the copies already
+ * made, and what ./_companycam-jobs.js uses to keep jobs' photos whole.
+ */
+export const customerStage = (env) => String(env?.COMPANYCAM_CUSTOMER_STAGE || '').trim().toLowerCase() === 'on';
+
 export const FOLDER = 'Home visit';
 export const BEFORE_TAG = '.BeforePics';
 export const VETTING_LABEL = 'Vetting';
@@ -237,7 +245,7 @@ export function tagIdsFor(kind, ccTags, tags) {
 }
 
 /** A JobTread upload request for a file at `url`: JobTread fetches it, or the site carries the bytes if it can't */
-async function uploadToJobTread(env, url, fetchImpl) {
+export async function uploadToJobTread(env, url, fetchImpl) {
   try {
     const up = await jt(env, { createUploadRequest: { $: { organizationId: SOARD_ORG_ID, url }, createdUploadRequest: { id: {} } } }, fetchImpl);
     const id = up?.createUploadRequest?.createdUploadRequest?.id;
@@ -771,7 +779,7 @@ export async function syncFamily(env, accountId, { fetchImpl = fetch, now = Date
     const row = await getFamilyRow(DB, accountId);
     const mirror = await mirrorOf(DB, accountId);
     const inReview = mirror && !mirror.archived_at && mirror.status === 'In Review';
-    if (!row || ['waiting', 'making', 'has-job'].includes(row.stage)) return inReview ? await startFamily(env, accountId, row, { fetchImpl, now }) : null;
+    if (!row || ['waiting', 'making', 'has-job'].includes(row.stage)) return inReview && customerStage(env) ? await startFamily(env, accountId, row, { fetchImpl, now }) : null;
     if (row.stage === 'closed') return inReview ? await reopenFamily(env, row, { fetchImpl, now }) : null;
     if (row.stage !== 'customer') return null;
     if (!mirror || mirror.archived_at) return await closeFamily(env, row, 'archived in JobTread', { fetchImpl, now });
@@ -786,7 +794,8 @@ export async function syncFamily(env, accountId, { fetchImpl = fetch, now = Date
 }
 
 /** Families with something to do: in review without a project, or a project whose family moved on */
-async function dueFamilies(DB, now, limit) {
+async function dueFamilies(DB, now, limit, on = true) {
+  if (!on) return [];
   try {
     const { results } = await DB.prepare(`
       SELECT a.account_id AS id FROM applicants a LEFT JOIN companycam_projects p ON p.account_id = a.account_id
@@ -1069,7 +1078,7 @@ export async function maybeRunCompanyCam(env, { fetchImpl = fetch, now = Date.no
       }
     }
 
-    for (const id of await dueFamilies(DB, now, PER_TICK.families)) {
+    for (const id of await dueFamilies(DB, now, PER_TICK.families, customerStage(env))) {
       if (Date.now() > deadline) break;
       const r = await syncFamily(env, id, { fetchImpl, now });
       if (r) out.families.push(r);

@@ -386,24 +386,31 @@ const MAP = { t: 'SOARD', children: [
             if (a.waiting.length) return ATTN(a.waiting.map((x) => `${x.name} ${WHY[x.problem] || 'is waiting'}.`).join(' '), a.lastRunAt);
             return ON(a.last ? `Last set up ${a.last.name} (${stamp(a.last.at)}).` : 'No family has been approved since it started.', a.lastRunAt);
           } },
-        { t: 'CompanyCam for families in review', s: 'live', k: 'event',
-          when: 'A family moves to In Review (the home visit). Each photo taken in their CompanyCam project arrives through CompanyCam’s webhook within seconds, and a check every 10 minutes catches any it missed. Rides the heartbeat, once a minute.',
-          does: 'Makes one CompanyCam project for the family at their home, named the way their job will be, with their contact, a “Vetting” label and their application photos of the space, or uses one staff already started at that address. Copies every home-visit photo and document to the family in JobTread (Files → Home visit, tagged .BeforePics and any matching tag), and captions, tags and markup added later follow. When their job is made it uses the same project, so JobTread’s own CompanyCam sync takes over and the home-visit photos move to the job. Denied archives the project, and back in review restores it.',
+        { t: 'CompanyCam for families in review', s: 'off', k: 'event',
+          when: 'Would run when a family moves to In Review (the home visit). Off since Oct 21, 2026: the home visit happens at the job, where JobTread’s own CompanyCam sync (and the check below) has it.',
+          does: 'Makes one CompanyCam project for the family at their home, with their contact, a “Vetting” label and their application photos of the space, copies every home-visit photo to the family in JobTread (Files → Home visit, .BeforePics), and links the job to that project when it’s made.',
           touches: ['CompanyCam', 'JobTread', 'D1', 'Slack'], where: 'functions/api/_companycam-sync.js (broadcast-hooks.js) · companycam-webhook.js · _companycam.js; the job’s link in _applicant-approved.js',
-          info: 'JobTread’s own CompanyCam integration starts at the job, so home-visit photos used to be uploaded to the customer by hand. Uses CompanyCam’s Public API v1 with COMPANYCAM_TOKEN, a Personal Access Token (Read & Write) made by a CompanyCam admin at app.companycam.com/access-keys. The site sets up and signs its own webhook. A job that already has a project with photos keeps it, and the home-visit photos are copied to it. Videos stay in CompanyCam. A family with no full home address, a photo that won’t copy for hours, or CompanyCam turning the key down is one Slack problem that turns ✅ when it clears.',
+          info: 'Built and proven end to end on Oct 21, 2026, then switched off by Peter. COMPANYCAM_CUSTOMER_STAGE set to on in Cloudflare turns it back on. Its webhook, the CompanyCam key and the copies already made stay; the check below uses them.',
+          live: (f) => (!env(f) ? null : f.env.companycamCustomerStage ? ON('On: families in review get a CompanyCam project.') : OFF('Off: the home visit happens at the job. COMPANYCAM_CUSTOMER_STAGE on in Cloudflare turns it back on.')) },
+        { t: 'CompanyCam photos on every job', s: 'live', k: 'schedule',
+          when: 'Every open job (not TEST), about once an hour, a couple a minute on the heartbeat.',
+          does: 'Checks each job is still linked to its CompanyCam project (its own earlier photos say which one) and that JobTread has a copy of every photo in it. A job whose link JobTread dropped is linked again, so JobTread brings in what it missed; a photo still missing an hour later is copied by the site under JobTread’s own name; a second copy of the same photo is removed (never one someone commented on). Slack hears what was fixed, and once about anything a person has to do: two projects to merge in CompanyCam, or a project another job holds.',
+          touches: ['CompanyCam', 'JobTread', 'D1', 'Slack'], where: 'functions/api/_companycam-jobs.js (broadcast-hooks.js) · _companycam.js',
+          info: 'By Oct 21, 2026 JobTread’s own integration had dropped the link on 13 of 18 open makeover jobs (several in the same minutes on May 19), so photos taken since never reached JobTread and staff uploaded phone photos by hand. CompanyCam’s API can’t move photos between projects, so merging is the one thing left to a person.',
           live: (f) => {
             if (!env(f)) return null;
-            if (!f.env.companycam) return OFF('Off until a CompanyCam Personal Access Token is saved in Cloudflare as COMPANYCAM_TOKEN.');
-            const c = f.companycam;
+            if (!f.env.companycam) return OFF('Off until COMPANYCAM_TOKEN is in Cloudflare.');
+            const c = f.companycamJobs;
             if (!c || c.error || !c.on) return null;
-            if (c.tokenBad) return ATTN(`CompanyCam turns the site’s key down (${c.tokenError}). Make a new Personal Access Token at app.companycam.com/access-keys and save it in Cloudflare as COMPANYCAM_TOKEN.`, c.lastRun);
-            if (!c.lastRun) return ATTN('It hasn’t run yet. It rides on the heartbeat, so check the Heartbeat entry.');
-            if (stale(c.lastRun, 15 * MIN)) return ATTN(`Hasn’t run since ${stamp(c.lastRun)}. It rides on the heartbeat, so check the Heartbeat entry.`, c.lastRun);
-            if (!c.webhook?.enabled) return ATTN('CompanyCam’s webhook isn’t on yet, so photos wait for the 10-minute check.', c.lastRun);
-            if (c.failing) return ATTN(`${plural(c.failing, 'photo')} won’t copy to JobTread yet. The site keeps trying.`, c.lastRun);
-            if (c.waiting) return ATTN(`${plural(c.waiting, 'family', 'families')} in review ${c.waiting === 1 ? 'has' : 'have'} no project yet, usually for a missing home address.`, c.lastRun);
-            const copied = (c.files?.copied || 0) + (c.files?.moved || 0);
-            return ON(`${plural(c.projects?.customer || 0, 'family', 'families')} in review with a project, ${plural(copied, 'photo')} copied${c.lastCopied ? `, the last ${stamp(c.lastCopied)}` : ''}.`, c.lastRun);
+            if (!c.lastChecked) return ATTN('It hasn’t run yet. It rides on the heartbeat, so check the Heartbeat entry.');
+            if (stale(c.lastChecked, 3 * HOUR)) return ATTN(`Hasn’t checked a job since ${stamp(c.lastChecked)}. It rides on the heartbeat.`, c.lastChecked);
+            const a = c.audit;
+            if (!a) return ON('Going through the open jobs for the first time.', c.lastChecked);
+            const unlinked = a.jobs - a.linked;
+            if (!c.repair) return ATTN(`Only looking so far: ${unlinked} of ${plural(a.jobs, 'open job')} unlinked, ${plural(a.missing, 'photo')} missing in JobTread.`, c.lastChecked);
+            const hands = a.split.length + a.problems.filter((p) => p.problem === 'project-held' || p.problem === 'link-refused').length;
+            if (hands) return ATTN(`${plural(hands, 'job needs', 'jobs need')} a person (see Slack). ${a.linked} of ${plural(a.jobs, 'open job')} linked.`, c.lastChecked);
+            return ON(`${a.linked} of ${plural(a.jobs, 'open job')} linked${a.missing ? `, ${plural(a.missing, 'photo')} still on the way` : ', every photo in JobTread'}.`, c.lastChecked);
           } },
       ]},
     ]},
