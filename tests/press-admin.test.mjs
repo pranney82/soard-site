@@ -188,6 +188,21 @@ describe('sources and pages (real captures)', () => {
     assert.equal((await checkLink('https://a.com/story/1', { fetchImpl: mk(200) })).status, 'ok');
     assert.equal((await checkLink('http://127.0.0.1/x', { fetchImpl: mk(200) })).status, 'gone', 'never a private address');
   });
+  test('link check: a broken server or another site’s home page is a failing link; bot walls stay unknown', async () => {
+    const mk = (status, url) => async () => withUrl(new Response('x', { status }), url || 'https://a.com/story/1');
+    // Hilton Head Monthly's story page answered 500 for weeks
+    assert.equal((await checkLink('https://a.com/story/1', { fetchImpl: mk(500) })).status, 'gone');
+    assert.equal((await checkLink('https://a.com/story/1', { fetchImpl: mk(522) })).status, 'gone');
+    assert.equal((await checkLink('https://a.com/story/1', { fetchImpl: mk(503) })).status, 'blocked', '503 is also a bot wall');
+    assert.equal((await checkLink('https://a.com/story/1', { fetchImpl: mk(429) })).status, 'blocked');
+    // mdjonline.com's Neighbor Newspapers stories now land on fultonneighbor.com's home page
+    const neighbor = await checkLink('https://www.mdjonline.com/neighbor_newspapers/north_fulton/story.html', { fetchImpl: mk(200, 'https://www.fultonneighbor.com/') });
+    assert.equal(neighbor.status, 'moved');
+    assert.equal(neighbor.finalUrl, 'https://www.fultonneighbor.com/');
+    // A story that moved to another site's story page still works
+    assert.equal((await checkLink('https://a.com/story/1', { fetchImpl: mk(200, 'https://b.com/news/story-1') })).status, 'ok');
+    assert.equal((await checkLink('https://a.com/', { fetchImpl: mk(200, 'https://b.com/') })).status, 'ok', 'a home page link stays a home page');
+  });
 });
 
 // ── The engine, against a made-up world ──────────────────────────────

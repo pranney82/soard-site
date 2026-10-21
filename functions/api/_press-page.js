@@ -4,7 +4,7 @@
  * the Internet Archive; and saving its picture to Cloudflare Images.
  * Nothing here throws.
  */
-import { decodeEntities, plain, youTubeId, hostOf, genericImage } from '../../public/admin/press-shared.js';
+import { decodeEntities, plain, youTubeId, genericImage } from '../../public/admin/press-shared.js';
 import { UA } from './_press-sources.js';
 
 const MAX_HTML = 1_500_000;
@@ -99,10 +99,15 @@ export async function readPage(url, { fetchImpl = fetch, timeout = 9000 } = {}) 
 }
 
 /**
- * Does a story's link still work? 'ok' | 'gone' (404/410, or the site
- * isn't there) | 'blocked' (the outlet refuses automated visits: unknown) |
- * 'moved' (sent to the outlet's home page: the story is gone).
+ * Does a story's link still work? 'ok' | 'gone' (404/410, the page's server
+ * broken, or the site isn't there) | 'blocked' (the outlet refuses automated
+ * visits: unknown) | 'moved' (sent to a home page, the outlet's or another
+ * site's: the story is gone). The weekly check acts only on a story that fails
+ * twice, days apart, so a site that's down for an afternoon is left alone.
  */
+// The page's own server is broken (Hilton Head Monthly answered 500 for weeks).
+// Not 503: that's also how bot walls and maintenance pages answer.
+const SERVER_BROKEN = new Set([500, 502, 504, 520, 521, 522, 523, 524, 530]);
 export async function checkLink(url, { fetchImpl = fetch } = {}) {
   const u = safeUrl(url);
   if (!u) return { status: 'gone', http: 0, why: 'Not a web address' };
@@ -110,10 +115,13 @@ export async function checkLink(url, { fetchImpl = fetch } = {}) {
     const res = await fetchImpl(u.toString(), { redirect: 'follow', headers: { 'User-Agent': UA, Accept: 'text/html,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(10000) });
     try { await res.body?.cancel?.(); } catch { /* nothing to read */ }
     if (res.status === 404 || res.status === 410) return { status: 'gone', http: res.status };
+    if (SERVER_BROKEN.has(res.status)) return { status: 'gone', http: res.status, why: `The outlet’s server answers ${res.status}` };
     if (!res.ok) return { status: 'blocked', http: res.status };
     let fin;
     try { fin = new URL(res.url || u.toString()); } catch { fin = u; }
-    if (u.pathname.length > 1 && (fin.pathname === '/' || fin.pathname === '') && hostOf(fin.toString()) === hostOf(u.toString())) return { status: 'moved', http: res.status, finalUrl: fin.toString() };
+    // A story that lands on a home page is gone, even another site's (old
+    // Neighbor Newspapers stories on mdjonline.com now go to fultonneighbor.com)
+    if (u.pathname.length > 1 && (fin.pathname === '/' || fin.pathname === '')) return { status: 'moved', http: res.status, finalUrl: fin.toString() };
     return { status: 'ok', http: res.status };
   } catch (e) {
     // A name that no longer resolves is gone; a slow or flaky site is unknown

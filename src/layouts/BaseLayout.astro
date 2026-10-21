@@ -254,6 +254,16 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <!-- JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas -->
   <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 
+  <!-- YouTube posters ask for the HD frame (maxresdefault). Older videos don't
+       have one: YouTube answers with a 120×90 gray placeholder, so swap in the
+       standard frame (hqdefault, which every video has). It's 4:3 with black
+       bars baked in, so it's shown 16:9 and cropped, which trims the bars.
+       Capturing listeners here catch every poster on the page, including ones
+       set later. -->
+  <script is:inline>
+    (function(){var re=/i\.ytimg\.com\/vi(_webp)?\/([^/]+)\/maxresdefault\.(jpg|webp)/;function f(e){var i=e.target,s=i&&i.tagName==='IMG'&&(i.currentSrc||i.src),m=s&&re.exec(s);if(!m||(e.type==='load'&&i.naturalWidth>120))return;var p=i.closest('picture');if(p)p.querySelectorAll('source').forEach(function(x){x.remove()});i.style.aspectRatio='16/9';i.style.objectFit='cover';i.src='https://i.ytimg.com/vi/'+m[2]+'/hqdefault.jpg'}document.addEventListener('load',f,true);document.addEventListener('error',f,true)})();
+  </script>
+
   <!-- Page-specific head content (preloads, etc.) -->
   <slot name="head" />
 </head>
