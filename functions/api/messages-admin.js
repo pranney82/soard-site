@@ -1,0 +1,451 @@
+/**
+ * /api/messages-admin (Cloudflare Access) — Site → Emails & invites
+ * ==========================================================================
+ * The admin's map of everything the site sends a person (public/admin/messages.js):
+ * emails (from the site through Resend, to the list through Kit, or posted on
+ * a family's JobTread account so JobTread emails it), reveal calendar invites,
+ * texts and browser alerts.
+ *
+ *  GET                        → live facts: what's switched on, what's waiting, and for each
+ *                               message when it last went and how many went in 30 days.
+ *                               Times and counts only, never an address or a family's name.
+ *  GET ?preview=<id>&lang=es  → that message as it goes out, filled in for a sample family
+ *                               (the Stones), built by the same function that sends it.
+ *  POST { send: <id>, lang }  → "Send it to me": the preview to the person signed in, with
+ *                               [Preview] in the subject. An invite goes as a separate TEST
+ *                               event on the office sandbox job, inviting only them.
+ *
+ * Not in _middleware's public list, so Access guards it. Never cached. Each
+ * fact fails on its own: one missing table never blanks the rest.
+ */
+
+import { waitlistFacts } from './automations-admin.js';
+import * as notify from './_broadcast-notify.js';
+import { COMMENT_NAMES, COMMENT_NAMES_ES, familyMessage } from './_applicant-comms.js';
+import { summaryEmail, pauseEndedEmail, pauseState, previewSnippet, WHERE_IT_STANDS } from './_applicant-notify.js';
+import { staffEmail, reminderEmail as applicationReminder, stuckEmail } from './_applications.js';
+import { getLiveForm, formFor } from './_application-forms.js';
+import { resolveForm, renderMessage, DEFAULT_MESSAGES } from './_application-form.js';
+import { openingEmail, confirmationEmail, previewOpening, staffNoticeEmail, readAppSettings } from './_application-waitlist.js';
+import { resumeLinkEmail } from './apply.js';
+import {
+  readConfig as readInviteConfig, planInvite, inviteAlert, sendTestInvite, fetchStaff,
+  SANDBOX_JOB_ID, REVEAL_TASK_TYPE, FIELD_MAKEOVER_TYPE,
+} from './_reveal-invites.js';
+import { SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED } from './_reveals.js';
+import { deniedAlert } from './_kid-status.js';
+import { zeffyAlertEmail } from './_zeffy.js';
+import { alertHelloEmail } from './broadcast-admin.js';
+
+const { SITE_ORIGIN, EMAIL_FROM } = notify;
+const DAY = 864e5;
+const TZ = 'America/New_York';
+const has = (v) => (typeof v === 'string' ? v.trim().length > 0 : !!v);
+const settle = async (fn) => { try { return await fn(); } catch (e) { return { error: e.message }; } };
+const ok = (v) => (v && !v.error ? v : null);
+const parse = (s, d = null) => { try { return s ? JSON.parse(s) : d; } catch { return d; } };
+
+// ─── The sample family every preview is filled in for ─────────────
+export const SAMPLE = { parent: 'Jordan Stone', parentFirst: 'Jordan', child: 'Avery Stone', childFirst: 'Avery', address: '123 Sample Lane, Roswell, GA 30075' };
+const KIT_FROM = 'Sunshine on a Ranney Day, through Kit (linzi@soardcharity.com)';
+const JT_FROM = 'The Qualification Committee, through JobTread';
+
+/** A date a week out (Eastern), and that day at 4 PM Eastern as an instant */
+export function sampleReveal(now = Date.now()) {
+  const date = new Date(now + 7 * DAY).toLocaleDateString('en-CA', { timeZone: TZ });
+  const at = ['20', '21'].map((h) => `${date}T${h}:00:00.000Z`)
+    .find((iso) => new Date(iso).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric' }) === '4 PM') || `${date}T20:00:00.000Z`;
+  return { date, at };
+}
+
+async function siteConfig(DB, key) {
+  const row = await DB.prepare('SELECT data, updated_at FROM site_config WHERE key = ?').bind(key).first();
+  return row ? { data: parse(row.data, {}) || {}, updatedAt: row.updated_at } : null;
+}
+
+// ─── Live facts ───────────────────────────────────────────────────
+
+/** { last, n30, total } from rows of { at, n } (n defaults to 1 per row) */
+// SQLite's datetime() stamps ("2026-09-21 15:30:02", the audit log's) are UTC; say so for browsers
+const isoOf = (t) => (typeof t === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(t) ? `${t.replace(' ', 'T')}Z` : t || null);
+const tally = (last, n30, total) => ({ last: isoOf(last), n30: Number(n30) || 0, total: Number(total) || 0 });
+
+async function familyFacts(DB, now) {
+  const since = new Date(now - 30 * DAY).toISOString();
+  const comms = {};
+  const rows = (await DB.prepare(`SELECT kind, max(updated_at) AS last, sum(CASE WHEN updated_at >= ? THEN 1 ELSE 0 END) AS n30, count(*) AS total
+    FROM applicant_comms WHERE state = 'sent' GROUP BY kind`).bind(since).all())?.results || [];
+  for (const r of rows) comms[r.kind] = tally(r.last, r.n30, r.total);
+  const activity = async (where, ...binds) => {
+    const r = await DB.prepare(`SELECT max(at) AS last, sum(CASE WHEN at >= ? THEN 1 ELSE 0 END) AS n30, count(*) AS total FROM applicant_activity WHERE ${where}`).bind(since, ...binds).first();
+    return tally(r?.last, r?.n30, r?.total);
+  };
+  // Waiting to go (the wait or quiet hours), by kind; held ones are the pause's
+  const waiting = {};
+  const due = (await DB.prepare(`SELECT kind, count(*) AS n, min(due_at) AS next, sum(CASE WHEN hold IS NOT NULL THEN 1 ELSE 0 END) AS held
+    FROM applicant_notify WHERE kind IS NOT NULL GROUP BY kind`).all().catch(() => null))?.results || [];
+  for (const r of due) waiting[r.kind] = { n: r.n || 0, next: r.next ? new Date(r.next).toISOString() : null, held: r.held || 0 };
+  const summaries = await DB.prepare(`SELECT max(summary_at) AS last, sum(CASE WHEN summary_at >= ? THEN 1 ELSE 0 END) AS n30, count(summary_at) AS total FROM applicant_notify`).bind(now - 30 * DAY).first().catch(() => null);
+  return {
+    comms,
+    correction: await activity("kind = 'notify' AND title = 'Correction sent to the family'").catch(() => null),
+    message: await activity("kind = 'sent'").catch(() => null),
+    waiting,
+    summaries: summaries ? tally(summaries.last ? new Date(summaries.last).toISOString() : null, summaries.n30, summaries.total) : null,
+  };
+}
+
+async function formFacts(DB) {
+  const live = await getLiveForm(DB);
+  const form = resolveForm(live.definition, {});
+  return {
+    reminders: { enabled: form.reminders?.enabled !== false, days: form.reminders?.days || [] },
+    notify: form.notify || null,
+    staffEmails: (form.staffEmails || []).length,
+  };
+}
+
+async function draftFacts(DB, now) {
+  const r = await DB.prepare(`SELECT sum(COALESCE(link_sends, 0)) AS links, sum(COALESCE(reminders_sent, 0)) AS reminders,
+      max(last_reminder_at) AS lastReminder, sum(CASE WHEN last_reminder_at >= ? THEN 1 ELSE 0 END) AS reminded30
+    FROM application_drafts`).bind(new Date(now - 30 * DAY).toISOString()).first();
+  return { links: Number(r?.links) || 0, reminders: tally(r?.lastReminder, r?.reminded30, r?.reminders) };
+}
+
+async function staffFacts(DB, now) {
+  const since = new Date(now - 30 * DAY).toISOString();
+  const app = await DB.prepare(`SELECT max(json_extract(jt_state, '$.staffEmail')) AS last,
+      sum(CASE WHEN json_extract(jt_state, '$.staffEmail') >= ? THEN 1 ELSE 0 END) AS n30,
+      count(json_extract(jt_state, '$.staffEmail')) AS total,
+      sum(CASE WHEN alerted IS NOT NULL AND status = 'error' THEN 1 ELSE 0 END) AS stuck
+    FROM applications WHERE COALESCE(is_test, 0) = 0`).bind(since).first().catch(() => null);
+  const kids = parse(await DB.prepare("SELECT value FROM kid_status_state WHERE key = 'state'").first('value').catch(() => null), {}) || {};
+  const hidden = Object.values(kids.alerted || {}).filter(Boolean).sort();
+  const zeffy = (await siteConfig(DB, 'zeffy-alerts').catch(() => null))?.data || {};
+  const gifts = Object.values(zeffy.alerted || {}).filter(Boolean).sort();
+  return {
+    newApplication: app ? tally(app.last, app.n30, app.total) : null,
+    stuck: app ? Number(app.stuck) || 0 : null,
+    kidHidden: tally(hidden[hidden.length - 1], hidden.filter((t) => t >= since).length, hidden.length),
+    giftProblems: tally(gifts[gifts.length - 1], gifts.filter((t) => t >= since).length, gifts.length),
+  };
+}
+
+async function inviteFacts(DB, now) {
+  const since = new Date(now - 30 * DAY).toISOString();
+  const cfg = await readInviteConfig(DB);
+  const out = (await DB.prepare("SELECT state, count(*) AS n, sum(CASE WHEN error IS NOT NULL AND error != '' THEN 1 ELSE 0 END) AS errors FROM reveal_invites GROUP BY state").all().catch(() => null))?.results || [];
+  const log = async (where) => {
+    const r = await DB.prepare(`SELECT max(created_at) AS last, sum(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS n30, count(*) AS total FROM reveal_invite_log WHERE ${where}`).bind(since).first();
+    return tally(r?.last, r?.n30, r?.total);
+  };
+  const board = await DB.prepare('SELECT count(*) AS n FROM reveal_board_emails').first('n').catch(() => null);
+  return {
+    enabled: !!cfg.enabled,
+    organizer: has(cfg.organizer),
+    alertEmails: (cfg.alertEmails || []).length,
+    out: Object.fromEntries(out.filter((r) => r.state).map((r) => [r.state, r.n || 0])),
+    problems: out.reduce((n, r) => n + (r.errors || 0), 0),
+    tentative: await log("action = 'created' AND state = 'tentative'").catch(() => null),
+    confirmed: await log("state = 'confirmed' AND action IN ('created', 'updated')").catch(() => null),
+    updated: await log("action = 'updated'").catch(() => null),
+    boardEmails: typeof board === 'number' ? board : null,
+  };
+}
+
+async function reminderFacts(DB, now) {
+  const since = new Date(now - 30 * DAY).toISOString();
+  const c = (await siteConfig(DB, 'broadcast-config'))?.data || {};
+  const hours = c.reminders?.hoursBefore || [24, 1];
+  const sends = {};
+  const rows = (await DB.prepare(`SELECT kind, channel, max(CASE WHEN sent > 0 THEN created_at END) AS last,
+      sum(CASE WHEN created_at >= ? THEN sent ELSE 0 END) AS n30, sum(sent) AS total, sum(failed) AS failed
+    FROM broadcast_sends GROUP BY kind, channel`).bind(since).all().catch(() => null))?.results || [];
+  for (const r of rows) (sends[r.kind] ||= {})[r.channel] = { ...tally(r.last, r.n30, r.total), failed: r.failed || 0 };
+  const subs = {};
+  const s = (await DB.prepare('SELECT channel, count(*) AS n FROM broadcast_reminders WHERE unsubscribed_at IS NULL GROUP BY channel').all().catch(() => null))?.results || [];
+  for (const r of s) subs[r.channel] = r.n || 0;
+  return {
+    enabled: !!c.reminders?.enabled,
+    sms: !!c.reminders?.sms,
+    push: !!c.reminders?.push,
+    dayBefore: hours.includes(24),
+    hourBefore: hours.includes(1),
+    kitLive: c.kitLive?.enabled !== false,
+    alertEmails: Array.isArray(c.alerts?.emails) ? c.alerts.emails.length : 0,
+    vapid: !!c.vapid?.publicKey,
+    sends,
+    subscribers: subs,
+  };
+}
+
+async function newsletterFacts(DB, now) {
+  const r = await DB.prepare(`SELECT max(created_at) AS last, sum(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS n30, count(*) AS total
+    FROM audit_log WHERE entity_type = 'email-broadcast'`).bind(new Date(now - 30 * DAY).toISOString()).first();
+  return { drafts: tally(r?.last, r?.n30, r?.total) };
+}
+
+async function bioFacts(DB) {
+  const r = await DB.prepare(`SELECT count(*) AS total, sum(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open,
+      sum(CASE WHEN submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS answered, max(created_at) AS last FROM profile_requests`).first();
+  return { total: r?.total || 0, open: r?.open || 0, answered: r?.answered || 0, last: r?.last || null };
+}
+
+export async function gatherFacts(env, { now = Date.now() } = {}) {
+  const DB = env.DB;
+  const [family, form, drafts, waitlist, invites, reminders, staff, newsletter, bios, pause] = await Promise.all([
+    settle(() => familyFacts(DB, now)),
+    settle(() => formFacts(DB)),
+    settle(() => draftFacts(DB, now)),
+    settle(() => waitlistFacts(DB)),
+    settle(() => inviteFacts(DB, now)),
+    settle(() => reminderFacts(DB, now)),
+    settle(() => staffFacts(DB, now)),
+    settle(() => newsletterFacts(DB, now)),
+    settle(() => bioFacts(DB)),
+    settle(() => pauseState(DB, now)),
+  ]);
+  const confirmations = await settle(async () => {
+    const r = await DB.prepare(`SELECT max(confirmed_at) AS last, sum(CASE WHEN confirmed_at >= ? THEN 1 ELSE 0 END) AS n30, count(confirmed_at) AS total FROM waitlist_signups`)
+      .bind(new Date(now - 30 * DAY).toISOString()).first();
+    return tally(r?.last, r?.n30, r?.total);
+  });
+  const p = ok(pause);
+  return {
+    checkedAt: new Date(now).toISOString(),
+    env: {
+      resend: has(env.RESEND_API_KEY),
+      kit: has(env.KIT_API_KEY),
+      calendar: has(env.GOOGLE_CALENDAR_KEY),
+      jobtread: has(env.JOBTREAD_QC_GRANT_KEY) || has(env.JOBTREAD_GRANT_KEY),
+      twilio: notify.smsConfigured(env),
+      slack: has(env.SLACK_BOT_TOKEN) || has(env.SLACK_WEBHOOK_URL),
+      alertEnv: String(env.ALERT_EMAILS || '').split(',').filter((s) => s.trim()).length,
+    },
+    family: ok(family),
+    form: ok(form),
+    drafts: ok(drafts),
+    waitlist: ok(waitlist) ? { ...waitlist, confirmations: ok(confirmations) } : null,
+    invites: ok(invites),
+    reminders: ok(reminders),
+    staff: ok(staff),
+    newsletter: ok(newsletter),
+    bios: ok(bios),
+    // Paused family emails: until when, and how many are held (never who)
+    pause: p ? { active: !!p.active, until: p.until ? new Date(p.until).toISOString() : null, by: p.by ? String(p.by).split('@')[0] : null, held: (p.held || []).length } : null,
+  };
+}
+
+// ─── Previews ─────────────────────────────────────────────────────
+// Each returns { channel, from, to, subject, html?, text?, invite?, sms?, push?, also?, note?, send }.
+// send: 'email' (Send it to me works), 'invite' (a TEST invite to you), or null.
+
+const STATUS_KINDS = { 'app-welcome': 'welcome', 'app-in-review': 'inReview', 'app-approved': 'approved', 'app-denied': 'denied' };
+const REMINDER_KINDS = { 'rem-scheduled': 'scheduled', 'rem-moved': 'moved', 'rem-day': 'day', 'rem-hour': 'hour', 'rem-live': 'live', 'rem-replay': 'replay' };
+const sampleApplicationUrl = `${SITE_ORIGIN}/apply/form/?resume=sample`;
+
+function sampleApplication(year, now) {
+  return {
+    id: 'app-sample-0000', year, lang: 'en', is_test: 0, submitted_at: new Date(now).toISOString(),
+    answers: {
+      childName: { first: SAMPLE.childFirst, last: 'Stone' }, parentName: { first: SAMPLE.parentFirst, last: 'Stone' }, parentEmail: 'jordan@example.com',
+      birthdate: `${Number(year) - 9}-04-12`, makeoverTypes: ['Bedroom'], diagnosis: 'Cerebral palsy', county: 'Fulton', previouslyApplied: 'No',
+    },
+    jt_state: { area: { status: 'inside', edgeMiles: 4 } },
+    files: { photo1: { key: 'sample' }, photo2: { key: 'sample' }, video: { key: 'sample' } },
+  };
+}
+
+async function invitePreview(env, stage, now) {
+  const cfg = await readInviteConfig(env.DB);
+  const { date } = sampleReveal(now);
+  const job = {
+    id: 'sample', name: `${SAMPLE.childFirst} Stone`, organization: { id: SOARD_ORG_ID },
+    tasks: { nodes: [{ id: 'task', taskType: { id: REVEAL_TASK_TYPE }, startDate: date, endDate: date, startTime: '16:00', endTime: '17:00', progress: 0 }] },
+    customFieldValues: { nodes: [{ customField: { id: FIELD_MAKEOVER_TYPE }, value: 'Bedroom' }, ...(stage === 'confirmed' ? [{ customField: { id: FIELD_REVEAL_CONFIRMED }, value: 'Yes' }] : [])] },
+    location: { address: SAMPLE.address },
+    demoDone: { count: 1 },
+  };
+  // The organizer's name, as real invites sign it ("Questions? Email Clareece at …")
+  const staff = env.JOBTREAD_GRANT_KEY ? await fetchStaff(env.JOBTREAD_GRANT_KEY).catch(() => []) : [];
+  const plan = planInvite(job, staff, { organizer: cfg.organizer, now, template: cfg.template });
+  if (plan.action !== 'upsert') throw new Error(`No sample invite: ${plan.reason}`);
+  const e = plan.event;
+  return {
+    channel: 'invite',
+    from: `${cfg.organizer}'s Google Calendar`,
+    to: stage === 'confirmed' ? 'The family, staff, the board and advisors, plus vendors, sponsors, photographers and design partners' : 'The family, staff, and the board and advisors',
+    subject: `Invitation: ${e.summary}`,
+    invite: { title: e.summary, status: e.status, start: e.start, end: e.end, location: e.location || null, description: e.description, organizer: cfg.organizer, busy: e.transparency !== 'transparent' },
+    send: 'invite',
+  };
+}
+
+async function jobtreadPreview(env, kind, lang) {
+  const message = await familyMessage(env, kind, { parent: SAMPLE.parent, child: SAMPLE.child, withCopy: kind === 'welcome', lang });
+  return {
+    channel: 'jobtread', from: JT_FROM, to: `${SAMPLE.parent}, the family's main contact`,
+    subject: (lang === 'es' && COMMENT_NAMES_ES[kind]) || COMMENT_NAMES[kind],
+    text: message,
+    note: kind === 'welcome' ? 'The family’s application PDF is attached. JobTread adds its own header and a reply button; replies land on the family’s page in Applicants.' : 'JobTread adds its own header and a reply button; replies land on the family’s page in Applicants.',
+    send: null,
+  };
+}
+
+const liveAlertSample = (now) => ({
+  title: 'Scheduled reveal never went live',
+  detail: `${SAMPLE.childFirst}'s room reveal was scheduled for ${new Date(sampleReveal(now).at).toISOString()} and no stream arrived. The countdown has been cleared.`,
+  links: [{ label: 'Open the admin', url: `${SITE_ORIGIN}/admin/` }],
+});
+
+export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.now() } = {}) {
+  lang = lang === 'es' ? 'es' : 'en';
+  const { at: scheduledAt } = sampleReveal(now);
+  const live = `${SITE_ORIGIN}/live/`;
+  const email = (m, extra = {}) => ({ channel: 'email', from: EMAIL_FROM, subject: m.subject, html: m.html, text: m.text, send: 'email', ...extra });
+  if (STATUS_KINDS[id]) return jobtreadPreview(env, STATUS_KINDS[id], lang);
+  if (REMINDER_KINDS[id]) {
+    const kind = REMINDER_KINDS[id];
+    const args = { kind, kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, replayUrl: live, unsubscribeUrl: '#', tz: TZ };
+    return email(notify.reminderEmail(args), {
+      to: 'Everyone who asked for reveal reminders on the website',
+      sms: notify.reminderSms({ ...args, first: kind === 'scheduled' }),
+      push: notify.reminderPush(args),
+    });
+  }
+  switch (id) {
+    case 'app-correction': {
+      const form = resolveForm((await getLiveForm(env.DB)).definition, { lang });
+      return {
+        channel: 'jobtread', from: JT_FROM, to: `${SAMPLE.parent}, the family's main contact`,
+        subject: lang === 'es' ? 'Una actualización sobre su solicitud' : 'An update on your application',
+        text: renderMessage(form.messages?.correction || DEFAULT_MESSAGES.correction, { parent: SAMPLE.parent, child: SAMPLE.child, status: WHERE_IT_STANDS[lang]['In Review'] }),
+        note: 'Staff can edit it on the family’s page before it goes. This sample is for a family whose application is really In Review.',
+        send: null,
+      };
+    }
+    case 'app-resume':
+      return email(resumeLinkEmail({ year: (await readAppSettings(env.DB, now)).year, first: SAMPLE.parentFirst, link: sampleApplicationUrl, lang }), { to: 'The family, at the address they type on the form' });
+    case 'app-reminder': {
+      const year = (await readAppSettings(env.DB, now)).year;
+      const form = await formFor(env.DB, { year, lang });
+      const draft = { lang, answers: { parentName: { first: SAMPLE.parentFirst }, childName: { first: SAMPLE.childFirst } } };
+      return email(applicationReminder({ form, draft, link: sampleApplicationUrl, stopLink: '#', percent: 60 }), { to: 'Families who started an application and stopped' });
+    }
+    case 'waitlist-confirm':
+      return email(confirmationEmail({ lang }), { to: 'A family who asks to hear when applications open' });
+    case 'waitlist-open': {
+      const m = await previewOpening(env, { lang, now });
+      return { channel: 'kit', from: KIT_FROM, to: 'Every family on the waitlist', subject: m.subject, html: m.html, send: 'email' };
+    }
+    case 'invite-tentative':
+    case 'board-invites':
+      return invitePreview(env, 'tentative', now);
+    case 'invite-confirmed':
+    case 'invite-update':
+      return invitePreview(env, 'confirmed', now);
+    case 'kit-live': {
+      const m = notify.reminderEmail({ kind: 'live', kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, unsubscribeUrl: '#', tz: TZ, list: true });
+      return { channel: 'kit', from: KIT_FROM, to: 'The whole newsletter list (not waitlist-only families)', subject: m.subject, html: m.html, text: m.text, send: 'email' };
+    }
+    case 'kit-drafts': {
+      const m = notify.reminderEmail({ kind: 'scheduled', kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, unsubscribeUrl: '#', tz: TZ, list: true });
+      return { channel: 'kit', from: KIT_FROM, to: 'Nobody until staff send it from Kit', subject: m.subject, html: m.html, text: m.text, note: 'This is the “Save the date” draft. “New date” and “Watch the replay” drafts follow the same design.', send: 'email' };
+    }
+    case 'staff-new-app': {
+      const year = (await readAppSettings(env.DB, now)).year;
+      return email(staffEmail(sampleApplication(year, now), 'sample'), { to: 'The staff list in Applications → Settings' });
+    }
+    case 'staff-stuck':
+      return email(stuckEmail(sampleApplication('2027', now), { attempts: 4, error: 'JobTread returned 503' }), { to: 'peter@soardcharity.com' });
+    case 'staff-summary': {
+      const row = { account_id: 'sample', name: SAMPLE.child, previous: 'In Review', status: 'Approved', due_at: now + 30 * 60e3, token: 'sample', kind: 'approved' };
+      const message = await familyMessage(env, 'approved', { parent: SAMPLE.parent, child: SAMPLE.child, lang: 'en' });
+      const previews = { sample: { to: SAMPLE.parent, title: COMMENT_NAMES.approved, snippet: previewSnippet(message), lang: 'en' } };
+      const form = ok(await settle(() => formFacts(env.DB)));
+      return email(summaryEmail([row], { now, previews, quiet: form?.notify?.quiet }), { to: 'Whoever changed the status in JobTread' });
+    }
+    case 'staff-pause-ended':
+      return email(pauseEndedEmail([{ name: SAMPLE.child, status: 'Approved' }, { name: 'Riley Park', status: 'Denied' }]), { to: 'Whoever paused family emails' });
+    case 'staff-waitlist': {
+      const at = new Date(now + 10 * 60e3).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+      const year = (await readAppSettings(env.DB, now)).year;
+      return email(staffNoticeEmail({
+        title: `Applications are open: the waitlist email goes out at ${at}`,
+        detail: `14 families asked to hear when ${year} applications open (12 in English, 2 in Spanish). They get the email at ${at}. Turned it on by mistake? Turn applications off before then, or press "Don't send this time" in the admin, and nobody is emailed.`,
+      }), { to: 'The staff list in Applications → Settings' });
+    }
+    case 'staff-live-alert':
+      return email(notify.alertEmail(liveAlertSample(now)), { to: 'The alert list in Reveals → Settings → Alerts' });
+    case 'staff-alert-hello':
+      return email(alertHelloEmail(me || 'Someone on the staff'), { to: 'A new address on the alert list' });
+    case 'staff-invite-problem':
+      return email(inviteAlert('problem', { jobId: 'sample', name: SAMPLE.childFirst, error: 'Google Calendar returned 503 (backend error)', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });
+    case 'staff-invite-held':
+      return email(inviteAlert('held', { jobId: 'sample', name: SAMPLE.childFirst, reason: 'status is Awaiting Funding', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });
+    case 'staff-kid-hidden':
+      return email(deniedAlert({ kid: { name: SAMPLE.childFirst }, jobId: 'sample' }), { to: 'peter@soardcharity.com' });
+    case 'staff-gift-problem':
+      return email(zeffyAlertEmail({
+        title: 'Gifts aren’t reaching Slack',
+        detail: 'Slack refused the post for a Zeffy gift: channel_not_found. The website keeps trying for 3 days.',
+        fix: 'Check the site’s Slack app: SLACK_BOT_TOKEN in Cloudflare is current, the app is still installed, and #team-everyone is a public channel (or the app is in it).',
+      }), { to: 'peter@soardcharity.com' });
+    default:
+      return null;
+  }
+}
+
+// ─── Handlers ─────────────────────────────────────────────────────
+
+const HEADERS = { 'Cache-Control': 'private, no-store' };
+// 500, not 502: Cloudflare replaces 502 bodies with its own error page
+const fail = (error, status = 400) => Response.json({ success: false, error }, { status, headers: HEADERS });
+
+export async function onRequestGet(context) {
+  const { env } = context;
+  const q = new URL(context.request.url).searchParams;
+  try {
+    if (q.has('preview')) {
+      const p = await buildPreview(env, q.get('preview'), { lang: q.get('lang'), me: context.data?.userEmail || '' });
+      if (!p) return fail('There’s no preview for that message', 404);
+      return Response.json({ success: true, id: q.get('preview'), ...p }, { headers: HEADERS });
+    }
+    return Response.json({ success: true, ...(await gatherFacts(env)) }, { headers: HEADERS });
+  } catch (err) {
+    return fail(err.message, 500);
+  }
+}
+
+export async function onRequestPost(context) {
+  const { env } = context;
+  const me = String(context.data?.userEmail || '').trim();
+  if (!notify.isEmail(me)) return fail('Could not tell who you are from Access', 403);
+  let body = {};
+  try { body = await context.request.json(); } catch { return fail('Send JSON'); }
+  const id = String(body.send || '');
+  try {
+    const p = await buildPreview(env, id, { lang: body.lang, me });
+    if (!p) return fail('There’s no preview for that message', 404);
+    if (p.send === 'invite') {
+      if (!env.GOOGLE_CALENDAR_KEY || !env.JOBTREAD_GRANT_KEY) return fail('Calendar invites aren’t set up (GOOGLE_CALENDAR_KEY and JOBTREAD_GRANT_KEY in Cloudflare)', 503);
+      const stage = id === 'invite-tentative' || id === 'board-invites' ? 'tentative' : 'confirmed';
+      const r = await sendTestInvite(env, SANDBOX_JOB_ID, me, { date: sampleReveal().date, time: '16:00', stage });
+      if (r.action === 'skip') return fail(`The test invite couldn’t be made: ${r.reason}`, 409);
+      return Response.json({ success: true, sentTo: me, kind: 'invite', stage }, { headers: HEADERS });
+    }
+    if (p.send !== 'email') return fail('This one can’t be sent as a preview', 400);
+    if (!notify.emailConfigured(env)) return fail('Email sending isn’t set up (RESEND_API_KEY in Cloudflare)', 503);
+    const r = await notify.sendEmails(env, {
+      to: [me],
+      subject: `[Preview] ${p.subject}`,
+      html: p.html,
+      text: p.text || undefined,
+      tags: [{ name: 'type', value: 'admin-preview' }],
+    });
+    if (!r.sent) return fail(`The email didn’t go: ${(r.errors || []).join('; ') || 'Resend refused it'}`, 500);
+    return Response.json({ success: true, sentTo: me, kind: 'email' }, { headers: HEADERS });
+  } catch (err) {
+    return fail(err.message, 500);
+  }
+}

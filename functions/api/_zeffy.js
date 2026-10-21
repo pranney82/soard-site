@@ -316,6 +316,15 @@ export async function listPayments(env, { from, to }, fetchImpl = fetch) {
   return out;
 }
 
+/** A gift-alert problem, as the email the people who look after this get */
+export function zeffyAlertEmail({ title, detail, fix }) {
+  return {
+    subject: `[SOARD] ${title}`,
+    html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Automations in the admin</a></p>`,
+    text: `${title}\n\n${detail}\n\nFix: ${fix}\n\n${ADMIN_URL}`,
+  };
+}
+
 /** Email the people who look after this, once a day per problem */
 async function alertOnce(env, cfg, key, { title, detail, fix }, now) {
   const last = Date.parse(cfg.alerted?.[key] || 0);
@@ -325,9 +334,7 @@ async function alertOnce(env, cfg, key, { title, detail, fix }, now) {
   if (!emailConfigured(env) || !to.length) return false;
   await sendEmails(env, {
     to,
-    subject: `[SOARD] ${title}`,
-    html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Automations in the admin</a></p>`,
-    text: `${title}\n\n${detail}\n\nFix: ${fix}\n\n${ADMIN_URL}`,
+    ...zeffyAlertEmail({ title, detail, fix }),
     tags: [{ name: 'category', value: 'zeffy-alerts' }],
   });
   return true;

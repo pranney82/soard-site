@@ -1100,12 +1100,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     // A new problem on an application already reported replies in that post's thread, and the channel
     const open = s.stuckSlack?.ts ? s.stuckSlack : null;
     const [, posted] = await Promise.all([
-      sendEmails(env, {
-        to: ALERT_EMAILS,
-        subject: `Application for ${accountName(app)} is stuck`,
-        html: `<p>The website couldn't finish loading an application into JobTread after ${attempts} tries.</p><p><strong>${escapeHtml(error)}</strong></p><p>It keeps retrying on its own. <a href="${escapeHtml(applicationUrl(app.id))}">Open it in the admin</a> to retry now.</p>`,
-        text: `The website couldn't finish loading an application into JobTread after ${attempts} tries.\n\n${error}\n\nIt keeps retrying on its own. Admin: ${applicationUrl(app.id)}`,
-      }).catch(() => {}),
+      sendEmails(env, { to: ALERT_EMAILS, ...stuckEmail(app, { attempts, error }) }).catch(() => {}),
       slackPost(env, stuckCard(app, { attempts, error, again: !!open }), open ? { thread: { ...open, broadcast: true } } : {}).catch(() => null),
     ]);
     if (!open && posted?.ok && posted.ts) {
@@ -1207,6 +1202,15 @@ export async function expireDrafts(env, { now = Date.now(), fetchImpl = fetch, l
     await DB.prepare("UPDATE application_drafts SET answers = '{}', files = '{}', email = NULL, ip_hash = NULL, cleared_at = ? WHERE id = ? AND submitted_id IS NULL").bind(iso(now), r.id).run();
   }
   return (results || []).length;
+}
+
+/** The email that says an application can't get into JobTread (after ALERT_AFTER_ATTEMPTS tries) */
+export function stuckEmail(app, { attempts, error }) {
+  return {
+    subject: `Application for ${accountName(app)} is stuck`,
+    html: `<p>The website couldn't finish loading an application into JobTread after ${attempts} tries.</p><p><strong>${escapeHtml(error)}</strong></p><p>It keeps retrying on its own. <a href="${escapeHtml(applicationUrl(app.id))}">Open it in the admin</a> to retry now.</p>`,
+    text: `The website couldn't finish loading an application into JobTread after ${attempts} tries.\n\n${error}\n\nIt keeps retrying on its own. Admin: ${applicationUrl(app.id)}`,
+  };
 }
 
 // ─── Reminder emails ────────────────────────────────────────────────

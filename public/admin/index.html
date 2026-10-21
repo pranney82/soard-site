@@ -6608,6 +6608,21 @@
       return mod ? html`<${mod.AutomationsMap} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
+    // Site → Emails & invites: every email, calendar invite and text the site
+    // sends, on the same map, kept in ./messages.js and loaded on first visit.
+    let messagesModule = null;
+    function MessagesLazy(props) {
+      const [mod, setMod] = useState(null);
+      const [err, setErr] = useState(null);
+      const load = () => {
+        messagesModule ||= import('./messages.js');
+        messagesModule.then((m) => setMod(m)).catch((e) => { messagesModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load the emails and invites map: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      return mod ? html`<${mod.MessagesMap} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
+    }
+
     // ─── Broadcast: family invite QR, viewer messages, keepsake ─────────
     // The family QR never changes: /live/ always opens the reveal that is
     // coming up, live, or on replay. ?src=qr lets the site count scans.
@@ -22608,6 +22623,8 @@ ${sections || '<p>No one yet.</p>'}
             .map(([k, label]) => ({ type: 'page', label, meta: 'Site Config', id: 'site-hub', subTab: k, section: 'Pages' })),
           { type: 'page', label: 'Publish history', id: 'deploys', section: 'Pages' },
           { type: 'page', label: 'Broadcast (live reveals)', id: 'broadcast', section: 'Pages' },
+          { type: 'page', label: 'Automations', id: 'automations', section: 'Pages' },
+          { type: 'page', label: 'Emails & invites (everything the site sends)', id: 'messages', section: 'Pages' },
         ];
         const actions = [
           { type: 'action', label: 'Add New Kid', id: 'kids-hub', slug: '', section: 'Actions' },
@@ -22939,7 +22956,7 @@ ${sections || '<p>No one yet.</p>'}
 
     function App() {
       useA11y();
-      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#applications') ? 'applications' : location.hash.startsWith('#site') ? 'site-hub' : location.hash.startsWith('#press') ? 'press-hub' : 'dashboard'));
+      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#messages') ? 'messages' : location.hash.startsWith('#applications') ? 'applications' : location.hash.startsWith('#site') ? 'site-hub' : location.hash.startsWith('#press') ? 'press-hub' : 'dashboard'));
       const [editSlug, setEditSlug] = useState(null);
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);
@@ -23295,6 +23312,7 @@ ${sections || '<p>No one yet.</p>'}
         { label: 'Site', items: [
           { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
           { id: 'automations', icon: icons.automations, label: 'Automations' },
+          { id: 'messages', icon: icons.mail, label: 'Emails & invites' },
           { id: 'audit-log', icon: icons.auditLog, label: 'Audit Log' },
         ]},
       ];
@@ -23469,6 +23487,9 @@ ${sections || '<p>No one yet.</p>'}
 
           case 'automations':
             return html`<${AutomationsLazy} />`;
+
+          case 'messages':
+            return html`<${MessagesLazy} addToast=${addToast} onNavigate=${navigate} />`;
 
           case 'applications':
             return html`<${ApplicationsLazy} addToast=${addToast} />`;

@@ -778,6 +778,15 @@ export function adminCard({ level = 'warn', icon, title, detail, url, urlLabel, 
  * A title starting "TEST · " is marked as a test. Never throws.
  * → { slack: slackAlert's result (with ts), email }
  */
+/** The email side of a live alert (the same words go to Slack as a card) */
+export function alertEmail({ title, detail, fix, context, links = [] }) {
+  return {
+    subject: `[SOARD Live] ${title}`,
+    html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail || '').replace(/\n/g, '<br>')}</p>${fix ? `<p><strong>Fix:</strong> ${escapeHtml(fix)}</p>` : ''}${context ? `<p style="color:#666">${escapeHtml(context)}</p>` : ''}${links.map((l) => `<p><a href="${escapeHtml(l.url)}">${escapeHtml(l.label)}</a></p>`).join('')}`,
+    text: `${title}\n\n${detail || ''}${fix ? `\nFix: ${fix}` : ''}${context ? `\n${context}` : ''}\n${links.map((l) => `${l.label}: ${l.url}`).join('\n')}`,
+  };
+}
+
 export async function alertAdmins(env, config, { level = 'warn', icon, title, detail, url, urlLabel, fix, context, facts = [], links = [], issue = null, resolves = null, kind = 'attention', urgent = false }) {
   const headline = /^TEST · /.test(title || '') ? title.replace(/^TEST · /, '') : title;
   const allLinks = [...(url ? [{ label: urlLabel || urlLabelFor(url), url }] : []), ...links].filter((l) => l?.url);
@@ -797,9 +806,7 @@ export async function alertAdmins(env, config, { level = 'warn', icon, title, de
   if (to.length && emailConfigured(env)) {
     results.email = await sendEmails(env, {
       to,
-      subject: `[SOARD Live] ${title}`,
-      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail || '').replace(/\n/g, '<br>')}</p>${fix ? `<p><strong>Fix:</strong> ${escapeHtml(fix)}</p>` : ''}${context ? `<p style="color:#666">${escapeHtml(context)}</p>` : ''}${allLinks.map((l) => `<p><a href="${escapeHtml(l.url)}">${escapeHtml(l.label)}</a></p>`).join('')}`,
-      text: `${title}\n\n${detail || ''}${fix ? `\nFix: ${fix}` : ''}${context ? `\n${context}` : ''}\n${allLinks.map((l) => `${l.label}: ${l.url}`).join('\n')}`,
+      ...alertEmail({ title, detail, fix, context, links: allLinks }),
       tags: [{ name: 'category', value: 'live-alert' }],
     });
   }

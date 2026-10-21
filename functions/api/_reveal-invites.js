@@ -558,13 +558,39 @@ const alertList = (env, config) => [...new Set([
   ...String(env.ALERT_EMAILS || '').split(',').map(s => s.trim()),
 ].filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '')))];
 
-async function alertProblem(env, config, { jobId, name, error, taskId }) {
-  const to = alertList(env, config);
+/**
+ * What staff are told about an invite: 'problem' (it couldn't be updated) or
+ * 'held' (JobTread says the reveal may be off). The words for Slack, and the email.
+ */
+export function inviteAlert(kind, { jobId, name, error, reason, taskId }) {
+  if (kind === 'held') {
+    const who = name ? `${name}'s` : 'A';
+    const title = `${who} reveal invite is still out`;
+    const detail = `JobTread says: ${reason}. The calendar invite hasn't been cancelled; the site never cancels one on its own.`;
+    const fix = 'If the reveal is off, delete the event in the organizer\'s Google Calendar and choose to email the guests. If the reveal is still on, there is nothing to do.';
+    return {
+      title, detail, fix,
+      subject: `[SOARD] ${title}`,
+      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p>${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals in the admin</a></p><p><a href="${scheduleUrl(jobId, taskId)}">Open the schedule in JobTread</a></p>`,
+      text: `${title}\n\n${detail}\n\n${fix}\n\nAdmin: ${ADMIN_URL}\nJobTread schedule: ${scheduleUrl(jobId, taskId)}`,
+    };
+  }
   const title = `Reveal invite problem${name ? `: ${name}` : ''}`;
   const detail = `The calendar invite for ${name || `job ${jobId}`} couldn't be updated. Google or JobTread said: ${error}`;
   const fix = /unauthorized_client|GOOGLE_CALENDAR_KEY|sign-in/i.test(error)
     ? 'The Google key or its domain-wide delegation needs attention (Cloudflare GOOGLE_CALENDAR_KEY, Workspace Admin → Domain-wide delegation).'
     : 'Open Reveals in the admin, open this reveal under Upcoming reveals and press Retry. If it keeps failing, check the job in JobTread.';
+  return {
+    title, detail, fix,
+    subject: `[SOARD] ${title}`,
+    html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals in the admin</a></p><p><a href="${scheduleUrl(jobId, taskId)}">Open the schedule in JobTread</a></p>`,
+    text: `${title}\n\n${detail}\n\nFix: ${fix}\n\nAdmin: ${ADMIN_URL}\nJobTread schedule: ${scheduleUrl(jobId, taskId)}`,
+  };
+}
+
+async function alertProblem(env, config, { jobId, name, error, taskId }) {
+  const to = alertList(env, config);
+  const { title, detail, fix, subject, html, text } = inviteAlert('problem', { jobId, name, error, taskId });
   await Promise.allSettled([
     // One thread per job: a new problem replies under the first, and a good sync turns it ✅
     slackIssue(env, `invite:${jobId}`, slackCard({
@@ -573,10 +599,7 @@ async function alertProblem(env, config, { jobId, name, error, taskId }) {
       footer: 'Reveal calendar invites',
     }), { title }),
     emailConfigured(env) && to.length ? sendEmails(env, {
-      to,
-      subject: `[SOARD] ${title}`,
-      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals in the admin</a></p><p><a href="${scheduleUrl(jobId, taskId)}">Open the schedule in JobTread</a></p>`,
-      text: `${title}\n\n${detail}\n\nFix: ${fix}\n\nAdmin: ${ADMIN_URL}\nJobTread schedule: ${scheduleUrl(jobId, taskId)}`,
+      to, subject, html, text,
       tags: [{ name: 'category', value: 'reveal-invite-alert' }],
     }) : null,
   ]);
@@ -589,10 +612,7 @@ async function alertProblem(env, config, { jobId, name, error, taskId }) {
  */
 async function alertHeld(env, config, { jobId, name, reason, taskId }) {
   const to = alertList(env, config);
-  const who = name ? `${name}'s` : 'A';
-  const title = `${who} reveal invite is still out`;
-  const detail = `JobTread says: ${reason}. The calendar invite hasn't been cancelled; the site never cancels one on its own.`;
-  const fix = 'If the reveal is off, delete the event in the organizer\'s Google Calendar and choose to email the guests. If the reveal is still on, there is nothing to do.';
+  const { title, detail, fix, subject, html, text } = inviteAlert('held', { jobId, name, reason, taskId });
   await Promise.allSettled([
     slackPost(env, slackCard({
       icon: '📅', title, lead: detail, fix,
@@ -600,10 +620,7 @@ async function alertHeld(env, config, { jobId, name, reason, taskId }) {
       footer: 'Reveal calendar invites',
     })),
     emailConfigured(env) && to.length ? sendEmails(env, {
-      to,
-      subject: `[SOARD] ${title}`,
-      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p>${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals in the admin</a></p><p><a href="${scheduleUrl(jobId, taskId)}">Open the schedule in JobTread</a></p>`,
-      text: `${title}\n\n${detail}\n\n${fix}\n\nAdmin: ${ADMIN_URL}\nJobTread schedule: ${scheduleUrl(jobId, taskId)}`,
+      to, subject, html, text,
       tags: [{ name: 'category', value: 'reveal-invite-alert' }],
     }) : null,
   ]);

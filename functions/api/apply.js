@@ -197,22 +197,34 @@ async function handleEmailLink(context, draft, body) {
   if ((draft.link_sends || 0) >= MAX_LINK_SENDS) return fail(es ? 'Ya le enviamos este enlace varias veces. Revise su bandeja de entrada y la carpeta de correo no deseado.' : 'We have already emailed this link several times. Please check your inbox and spam folder.', 429);
   const origin = new URL(request.url).origin;
   const link = `${origin}/apply/form/?resume=${draft.id}`;
-  const first = String(draft.answers?.parentName?.first || '').trim();
+  const r = await sendEmails(env, {
+    to: [to],
+    ...resumeLinkEmail({ year: draft.year, first: draft.answers?.parentName?.first, link, lang: es ? 'es' : 'en' }),
+    tags: [{ name: 'type', value: 'application-resume' }],
+  });
+  if (!r.sent) return fail(es ? 'No pudimos enviar el correo en este momento. Intente de nuevo en un minuto.' : 'We could not send the email just now. Please try again in a minute.', 500);
+  await env.DB.prepare('UPDATE application_drafts SET link_sends = COALESCE(link_sends, 0) + 1, email = COALESCE(email, ?) WHERE id = ?').bind(to, draft.id).run();
+  return json({ ok: true });
+}
+
+/** The "pick up where you left off" email a family asks for on the form */
+export function resumeLinkEmail({ year, first, link, lang = 'en' }) {
+  const es = lang === 'es';
+  first = String(first || '').trim();
   const t = es ? {
     subject: 'Su solicitud de SOARD: continúe donde se quedó',
     hi: first ? `Hola, ${escapeHtml(first)}:` : 'Hola:',
-    saved: `Su solicitud de Sunshine on a Ranney Day ${escapeHtml(draft.year)} está guardada. Use este enlace para continuar donde se quedó, en este dispositivo o en cualquier otro:`,
+    saved: `Su solicitud de Sunshine on a Ranney Day ${escapeHtml(year)} está guardada. Use este enlace para continuar donde se quedó, en este dispositivo o en cualquier otro:`,
     button: 'Terminar mi solicitud',
     note: `El enlace funciona durante ${DRAFT_TTL_DAYS} días después de su último cambio. Manténgalo privado, ya que cualquier persona que lo tenga puede ver sus respuestas.`,
   } : {
     subject: 'Your SOARD application: pick up where you left off',
     hi: first ? `Hi ${escapeHtml(first)},` : 'Hi,',
-    saved: `Your Sunshine on a Ranney Day ${escapeHtml(draft.year)} application is saved. Use this link to pick up where you left off, on this device or any other:`,
+    saved: `Your Sunshine on a Ranney Day ${escapeHtml(year)} application is saved. Use this link to pick up where you left off, on this device or any other:`,
     button: 'Finish my application',
     note: `The link works for ${DRAFT_TTL_DAYS} days after your last change. Please keep it private, since anyone with it can see your answers.`,
   };
-  const r = await sendEmails(env, {
-    to: [to],
+  return {
     subject: t.subject,
     html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6;color:#373A36;max-width:520px">
 <p>${t.hi}</p>
@@ -222,11 +234,7 @@ async function handleEmailLink(context, draft, body) {
 <p>Sunshine on a Ranney Day</p>
 </div>`,
     text: `${t.saved.replace(/<[^>]+>/g, '')} ${link}\n\n${t.note}`,
-    tags: [{ name: 'type', value: 'application-resume' }],
-  });
-  if (!r.sent) return fail(es ? 'No pudimos enviar el correo en este momento. Intente de nuevo en un minuto.' : 'We could not send the email just now. Please try again in a minute.', 500);
-  await env.DB.prepare('UPDATE application_drafts SET link_sends = COALESCE(link_sends, 0) + 1, email = COALESCE(email, ?) WHERE id = ?').bind(to, draft.id).run();
-  return json({ ok: true });
+  };
 }
 
 async function handlePhoto(context) {

@@ -183,23 +183,32 @@ function describe(before, after, facts) {
   return `${parts.join(', ')} (JobTread ${facts.revealDone && after.status === 'completed' ? 'Reveal task done' : `status ${facts.status}`})`;
 }
 
-/** A kid JobTread marks Denied is hidden; staff hear it once */
-async function alertDenied(env, { kid, jobId }) {
-  const to = [...new Set([...DEFAULT_ALERT_EMAILS, ...String(env.ALERT_EMAILS || '').split(',').map((s) => s.trim())].filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '')))];
+/** What staff are told when JobTread's Denied hides a kid: the words for Slack, and the email */
+export function deniedAlert({ kid, jobId }) {
   const title = `${kid.name}’s profile is hidden`;
   const detail = `JobTread marks ${kid.name}’s job Denied, so the site took their profile off Meet the Kids. Everything is kept in the admin.`;
   const fix = 'If that’s a mistake, change the job’s Status in JobTread and the profile comes back by itself.';
   const admin = `${SITE}/admin/#kids-hub`;
   const job = `https://app.jobtread.com/jobs/${jobId}`;
+  return {
+    title, detail, fix, admin, job,
+    subject: `[SOARD] ${title}`,
+    html: `<p><strong>${title}</strong></p><p>${detail}</p><p>${fix}</p><p><a href="${job}">Open the job in JobTread</a> · <a href="${admin}">Open Kids in the admin</a></p>`,
+    text: `${title}\n\n${detail}\n\n${fix}\n\nJobTread: ${job}\nAdmin: ${admin}`,
+  };
+}
+
+/** A kid JobTread marks Denied is hidden; staff hear it once */
+async function alertDenied(env, { kid, jobId }) {
+  const to = [...new Set([...DEFAULT_ALERT_EMAILS, ...String(env.ALERT_EMAILS || '').split(',').map((s) => s.trim())].filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '')))];
+  const { title, detail, fix, admin, job, subject, html, text } = deniedAlert({ kid, jobId });
   await Promise.allSettled([
     slackPost(env, slackCard({
       icon: '⚠️', title, lead: detail, fix,
       buttons: [{ label: 'Open the job in JobTread', url: job }, { label: 'Open Kids', url: admin }],
     })),
     emailConfigured(env) && to.length ? sendEmails(env, {
-      to, subject: `[SOARD] ${title}`,
-      html: `<p><strong>${title}</strong></p><p>${detail}</p><p>${fix}</p><p><a href="${job}">Open the job in JobTread</a> · <a href="${admin}">Open Kids in the admin</a></p>`,
-      text: `${title}\n\n${detail}\n\n${fix}\n\nJobTread: ${job}\nAdmin: ${admin}`,
+      to, subject, html, text,
       tags: [{ name: 'category', value: 'kid-status' }],
     }) : null,
   ]);

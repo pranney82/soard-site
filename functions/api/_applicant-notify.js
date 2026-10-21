@@ -359,6 +359,12 @@ async function postMoveBackNotes(env, { fetchImpl, now }) {
 const actionUrl = (tok, act) => `${SITE_ORIGIN}/api/applicant-email-action?t=${tok}&do=${act}`;
 const adminUrl = (id) => `${SITE_ORIGIN}/admin/#applications/applicants/${id}`;
 
+/** A family message as the summary quotes it: no greeting line, no *bold* markers, about 190 characters */
+export function previewSnippet(text) {
+  const body = String(text).split('\n').slice(1).join(' ').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+  return body.length > 190 ? `${body.slice(0, 190).replace(/\s+\S*$/, '')}…` : body;
+}
+
 /**
  * What a family would read, for the summary: { to, title, snippet }. The
  * greeting line is dropped and *bold* markers too, so the preview reads as
@@ -370,8 +376,7 @@ async function familyPreview(env, row, fetchImpl) {
     if (!applicant) return null;
     const lang = (await applicationLang(env.DB, row.account_id)) || applicant.lang || 'en';
     const text = await familyMessage(env, row.kind, { parent: applicant.primary?.name || 'Hello', child: applicant.name, lang });
-    const body = String(text).split('\n').slice(1).join(' ').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
-    const snippet = body.length > 190 ? `${body.slice(0, 190).replace(/\s+\S*$/, '')}…` : body;
+    const snippet = previewSnippet(text);
     const titles = lang === 'es' ? COMMENT_NAMES_ES : COMMENT_NAMES;
     return { to: applicant.primary?.name || null, title: titles[row.kind] || COMMENT_NAMES[row.kind], snippet, lang };
   } catch {
@@ -563,6 +568,24 @@ export async function resumeEmails(DB, { now = Date.now() } = {}) {
   return pauseState(DB, now);
 }
 
+/** The email to whoever paused family emails, when the pause runs out with status emails held */
+export function pauseEndedEmail(held) {
+  const n = held.length;
+  const rows = held.map(h => panel(`<div class="ink" style="font-family:${SANS};font-size:16px;font-weight:700;color:#2D2E33;">${esc(h.name || 'A family')}</div><div style="margin-top:8px;line-height:26px;">${pill(h.status)}</div>`)).join('');
+  return {
+    subject: `Family emails are back on. ${n} ${n === 1 ? 'email is' : 'emails are'} held from the pause`,
+    html: emailShell({
+      preheader: `${n} status ${n === 1 ? 'email was' : 'emails were'} held while family emails were paused. They only go if someone sends them.`,
+      eyebrow: 'Applicants · Status emails',
+      heading: 'Family emails are back on',
+      intro: `The pause you started has ended. While it was on, these ${n === 1 ? 'status change was' : `${n} status changes were`} held, and ${n === 1 ? 'it won’t' : 'they won’t'} be emailed unless someone sends ${n === 1 ? 'it' : 'them'}.`,
+      bodyHtml: `${rows}<div style="margin-top:6px;">${button('Decide in the admin', `${SITE_ORIGIN}/admin/#applications/applicants`)}</div>`,
+      footerHtml: 'You’re getting this because you paused family emails from the admin.',
+    }),
+    text: `The pause ended. Held: ${held.map(h => `${h.name} (${h.status})`).join(', ')}. Decide in the admin: ${SITE_ORIGIN}/admin/#applications/applicants`,
+  };
+}
+
 /** When a pause runs out: tell whoever started it what's being held */
 async function endPauseIfDue(env, now) {
   const p = await getState(env.DB, 'pause');
@@ -570,20 +593,9 @@ async function endPauseIfDue(env, now) {
   await setState(env.DB, 'pause', null, now);
   const { held } = await pauseState(env.DB, now);
   if (p.email && held.length) {
-    const n = held.length;
-    const rows = held.map(h => panel(`<div class="ink" style="font-family:${SANS};font-size:16px;font-weight:700;color:#2D2E33;">${esc(h.name || 'A family')}</div><div style="margin-top:8px;line-height:26px;">${pill(h.status)}</div>`)).join('');
     await sendEmails(env, {
       to: [p.email],
-      subject: `Family emails are back on. ${n} ${n === 1 ? 'email is' : 'emails are'} held from the pause`,
-      html: emailShell({
-        preheader: `${n} status ${n === 1 ? 'email was' : 'emails were'} held while family emails were paused. They only go if someone sends them.`,
-        eyebrow: 'Applicants · Status emails',
-        heading: 'Family emails are back on',
-        intro: `The pause you started has ended. While it was on, these ${n === 1 ? 'status change was' : `${n} status changes were`} held, and ${n === 1 ? 'it won’t' : 'they won’t'} be emailed unless someone sends ${n === 1 ? 'it' : 'them'}.`,
-        bodyHtml: `${rows}<div style="margin-top:6px;">${button('Decide in the admin', `${SITE_ORIGIN}/admin/#applications/applicants`)}</div>`,
-        footerHtml: 'You’re getting this because you paused family emails from the admin.',
-      }),
-      text: `The pause ended. Held: ${held.map(h => `${h.name} (${h.status})`).join(', ')}. Decide in the admin: ${SITE_ORIGIN}/admin/#applications/applicants`,
+      ...pauseEndedEmail(held),
       tags: [{ name: 'type', value: 'applicant-status-pause' }],
     }).catch(() => {});
   }
@@ -611,7 +623,7 @@ export async function resolveHeld(env, { send, user = null, fetchImpl = fetch, n
 
 // ─── Corrections ────────────────────────────────────────────────────
 
-const WHERE_IT_STANDS = {
+export const WHERE_IT_STANDS = {
   en: {
     '': 'We will be in touch soon with an update on your application.',
     Applied: 'Your application is still being reviewed, and we will be in touch.',

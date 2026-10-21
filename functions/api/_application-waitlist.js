@@ -363,13 +363,18 @@ async function staffList(env, year, { problem = false } = {}) {
  * waitlist button in both. `kind` 'news' is for the good news (the email is
  * going out, it went); everything else needs attention. Never throws.
  */
-export async function tellStaff(env, { year, level = 'info', title, detail, problem = false, links = [], kind = 'attention' }) {
-  const to = await staffList(env, year, { problem });
+export function staffNoticeEmail({ title, detail, links = [] }) {
   const more = links.map(l => `<a href="${escapeHtml(l.url)}" style="color:#373A36">${escapeHtml(l.label)}</a>`).join(' &nbsp;·&nbsp; ');
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#373A36;max-width:560px">
 <p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail || '').replace(/\n/g, '<br>')}</p>
 <p><a href="${ADMIN_URL}" style="display:inline-block;background:#FFDA24;color:#373A36;padding:10px 20px;border-radius:999px;text-decoration:none;font-weight:bold">Open the waitlist</a></p>${more ? `<p>${more}</p>` : ''}</div>`;
   const text = `${title}\n\n${detail || ''}\n\n${ADMIN_URL}${links.map(l => `\n${l.label}: ${l.url}`).join('')}`;
+  return { subject: title, html, text };
+}
+
+export async function tellStaff(env, { year, level = 'info', title, detail, problem = false, links = [], kind = 'attention' }) {
+  const to = await staffList(env, year, { problem });
+  const { html, text } = staffNoticeEmail({ title, detail, links });
   await Promise.all([
     to.length && emailConfigured(env)
       ? sendEmails(env, { to, subject: title, html, text, tags: [{ name: 'type', value: 'application-waitlist' }] }).catch(() => null)
