@@ -1,0 +1,522 @@
+---
+/**
+ * PhotoTour — every photo from the events on a page, full screen.
+ *
+ * A modal <dialog> (top layer, so it sits above the sticky header) with two
+ * views: a grid of every photo grouped by event, and a single-photo viewer
+ * with arrows, swipe, keyboard and a counter. Escape in the viewer goes back
+ * to the grid when the grid opened it; Escape in the grid closes the tour.
+ *
+ * Open it from anywhere on the page with a link or button carrying
+ *   data-photo-tour                 → the grid, from the top
+ *   data-photo-tour="<group key>"   → the grid, at that event
+ *   data-photo-tour="<group key>" data-photo-index="3"  → that photo
+ * A plain href="#photos-<group key>" keeps it working without JavaScript:
+ * the grid isn't there then, so links should point at a real section too.
+ *
+ * The grid keeps every photo's real shape (ratio from
+ * src/data/dimensions-events.json): rows of equal height, nothing cropped.
+ * Thumbnails load only once the tour opens (lazy images in a closed dialog
+ * never load); the big photo is sized to the screen and its neighbours are
+ * fetched ahead so the arrows feel instant.
+ */
+import { cfRaw, cfSrcset } from '../../utils/cf-image';
+
+export interface TourGroup {
+  /** Unique key, used by data-photo-tour="<key>" */
+  key: string;
+  title: string;
+  /** "Saturday, August 22, 2026 · You42 Studios" */
+  subtitle?: string;
+  /** ratio = width / height (4/3 when unknown) */
+  photos: Array<{ id: string; alt?: string; ratio?: number }>;
+}
+interface Props { groups: TourGroup[] }
+
+const { groups } = Astro.props;
+const shown = groups.filter((g) => g.photos.length > 0);
+const total = shown.reduce((n, g) => n + g.photos.length, 0);
+---
+
+{total > 0 && (
+  <dialog class="pt" aria-labelledby="pt-title" data-pt>
+    <div class="pt__bar">
+      <button type="button" class="pt__back" data-pt-back aria-label="All photos" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        <span class="pt__back-text" aria-hidden="true">All photos</span>
+      </button>
+      <p class="pt__title" id="pt-title" data-pt-title>Event photos</p>
+      <button type="button" class="pt__close" data-pt-close aria-label="Close photos" autofocus>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="pt__grid-view" data-pt-grid tabindex="-1">
+      {shown.length > 1 && (
+        <nav class="pt__jump" aria-label="Jump to an event">
+          {shown.map((g) => (
+            <button type="button" class="pt__chip" data-pt-jump={g.key}>{g.title} <span>{g.photos.length}</span></button>
+          ))}
+        </nav>
+      )}
+      {shown.map((g) => (
+        <section class="pt__group" data-pt-group={g.key} aria-labelledby={`pt-g-${g.key}`}>
+          <div class="pt__group-head">
+            <h2 id={`pt-g-${g.key}`}>{g.title}</h2>
+            {g.subtitle && <p>{g.subtitle}</p>}
+          </div>
+          <ul class="pt__grid" role="list">
+            {g.photos.map((p, i) => (
+              <li style={`--r:${Math.min(Math.max(p.ratio || 4 / 3, 0.5), 2.5)}`}>
+                <button
+                  type="button"
+                  class="pt__thumb"
+                  data-pt-photo={p.id}
+                  data-pt-alt={p.alt || ''}
+                  data-pt-index={i}
+                  aria-label={`${p.alt || 'Photo'}, ${i + 1} of ${g.photos.length}, ${g.title}`}
+                >
+                  <img
+                    src={cfRaw(p.id, 'w=480,q=78')}
+                    srcset={cfSrcset(p.id, [240, 360, 480, 720], { quality: 78 })}
+                    sizes={`${Math.round(300 * Math.min(Math.max(p.ratio || 4 / 3, 0.5), 2.5))}px`}
+                    alt=""
+                    width="480" height={Math.round(480 / (p.ratio || 4 / 3))}
+                    loading="lazy" decoding="async"
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+
+    <div class="pt__single" data-pt-single hidden>
+      <figure class="pt__figure">
+        <img class="pt__img" data-pt-img alt="" decoding="async" />
+        <figcaption class="pt__caption">
+          <span class="pt__count" data-pt-count aria-live="polite"></span>
+          <span data-pt-caption></span>
+        </figcaption>
+      </figure>
+      <button type="button" class="pt__arrow pt__arrow--prev" data-pt-prev aria-label="Previous photo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <button type="button" class="pt__arrow pt__arrow--next" data-pt-next aria-label="Next photo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+    </div>
+  </dialog>
+)}
+
+<script>
+  import { cfRaw, cfSrcset } from '../../utils/cf-image';
+
+  type Photo = { id: string; alt: string; group: string; title: string; index: number; size: number; thumb: HTMLButtonElement };
+
+  let dialog: HTMLDialogElement | null = null;
+  let photos: Photo[] = [];
+  let current = -1;
+  let fromGrid = false;
+
+  const $ = <T extends Element>(sel: string) => dialog?.querySelector<T>(sel) || null;
+
+  function collect() {
+    dialog = document.querySelector<HTMLDialogElement>('[data-pt]');
+    photos = [];
+    if (!dialog) return;
+    dialog.querySelectorAll<HTMLElement>('[data-pt-group]').forEach((sec) => {
+      const title = sec.querySelector('h2')?.textContent?.trim() || '';
+      const thumbs = [...sec.querySelectorAll<HTMLButtonElement>('[data-pt-photo]')];
+      thumbs.forEach((b, i) => photos.push({
+        id: b.dataset.ptPhoto || '', alt: b.dataset.ptAlt || '', group: sec.dataset.ptGroup || '',
+        title, index: i, size: thumbs.length, thumb: b,
+      }));
+    });
+  }
+
+  const big = (id: string) => ({
+    src: cfRaw(id, 'w=1600,fit=scale-down,q=85'),
+    srcset: cfSrcset(id, [800, 1200, 1600, 2400], { fit: 'scale-down', quality: 85 }),
+  });
+  function preload(i: number) {
+    const p = photos[(i + photos.length) % photos.length];
+    if (!p) return;
+    const img = new Image();
+    img.sizes = '100vw';
+    const b = big(p.id);
+    img.srcset = b.srcset;
+    img.src = b.src;
+  }
+
+  function lockScroll(on: boolean) {
+    document.documentElement.classList.toggle('pt-open', on);
+  }
+
+  function showGrid(groupKey?: string) {
+    if (!dialog) return;
+    current = -1;
+    $<HTMLElement>('[data-pt-single]')!.hidden = true;
+    $<HTMLElement>('[data-pt-grid]')!.hidden = false;
+    $<HTMLElement>('[data-pt-back]')!.hidden = true;
+    $<HTMLElement>('[data-pt-title]')!.textContent = `Event photos · ${photos.length}`;
+    const grid = $<HTMLElement>('[data-pt-grid]')!;
+    const target = groupKey ? $<HTMLElement>(`[data-pt-group="${CSS.escape(groupKey)}"]`) : null;
+    grid.scrollTop = target ? target.offsetTop - grid.offsetTop : 0;
+  }
+
+  function showPhoto(i: number) {
+    if (!dialog || !photos.length) return;
+    current = (i + photos.length) % photos.length;
+    const p = photos[current];
+    const img = $<HTMLImageElement>('[data-pt-img]')!;
+    const b = big(p.id);
+    img.removeAttribute('srcset');
+    img.classList.remove('is-loaded');
+    img.style.backgroundImage = `url("${cfRaw(p.id, 'w=40,q=30,blur=20')}")`;
+    img.onload = () => img.classList.add('is-loaded');
+    img.sizes = '100vw';
+    img.srcset = b.srcset;
+    img.src = b.src;
+    img.alt = p.alt || `${p.title}, photo ${p.index + 1}`;
+    $<HTMLElement>('[data-pt-count]')!.textContent = `${p.index + 1} / ${p.size}`;
+    $<HTMLElement>('[data-pt-caption]')!.textContent = p.alt ? `${p.title} · ${p.alt}` : p.title;
+    $<HTMLElement>('[data-pt-title]')!.textContent = p.title;
+    $<HTMLElement>('[data-pt-grid]')!.hidden = true;
+    $<HTMLElement>('[data-pt-single]')!.hidden = false;
+    $<HTMLElement>('[data-pt-back]')!.hidden = !fromGrid;
+    preload(current + 1);
+    preload(current - 1);
+  }
+
+  function open(groupKey?: string, index?: number) {
+    collect();
+    if (!dialog || !photos.length) return false;
+    if (!dialog.open) { dialog.showModal(); lockScroll(true); }
+    if (index != null && !Number.isNaN(index)) {
+      fromGrid = false;
+      const at = photos.findIndex((p) => p.group === groupKey && p.index === index);
+      showPhoto(at < 0 ? 0 : at);
+      $<HTMLElement>('[data-pt-next]')?.focus();
+    } else {
+      showGrid(groupKey);
+    }
+    return true;
+  }
+
+  function back() {
+    const thumb = photos[current]?.thumb;
+    showGrid();
+    // Land back on the photo that was open
+    if (thumb) { thumb.scrollIntoView({ block: 'center' }); thumb.focus(); }
+  }
+
+  // ── Openers anywhere on the page. One delegated listener survives page
+  // swaps; it listens in the capture phase so it runs before Astro's router,
+  // which leaves a click alone once it's been handled. A click with a key held
+  // (new tab, new window) still follows the link to the event's recap page.
+  document.addEventListener('click', (e) => {
+    const t = e.target as Element | null;
+    const opener = t?.closest<HTMLElement>('[data-photo-tour]');
+    if (opener && !opener.closest('[data-pt]')) {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const idx = opener.dataset.photoIndex;
+      if (open(opener.dataset.photoTour || undefined, idx != null ? Number(idx) : undefined)) e.preventDefault();
+      return;
+    }
+    if (!dialog || !t || !dialog.contains(t)) return;
+    const thumb = t.closest<HTMLButtonElement>('[data-pt-photo]');
+    if (thumb) {
+      fromGrid = true;
+      showPhoto(photos.findIndex((p) => p.thumb === thumb));
+      $<HTMLElement>('[data-pt-next]')?.focus();
+      return;
+    }
+    const jump = t.closest<HTMLElement>('[data-pt-jump]');
+    if (jump) { showGrid(jump.dataset.ptJump); return; }
+    if (t.closest('[data-pt-prev]')) { showPhoto(current - 1); return; }
+    if (t.closest('[data-pt-next]')) { showPhoto(current + 1); return; }
+    if (t.closest('[data-pt-back]')) { back(); return; }
+    if (t.closest('[data-pt-close]')) { dialog.close(); return; }
+  }, true);
+
+  document.addEventListener('keydown', (e) => {
+    if (!dialog?.open || current < 0) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); showPhoto(current + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); showPhoto(current - 1); }
+  });
+
+  function wire() {
+    collect();
+    if (!dialog) return;
+    // Escape in the viewer returns to the grid it came from
+    dialog.addEventListener('cancel', (e) => {
+      if (current >= 0 && fromGrid) { e.preventDefault(); back(); }
+    });
+    dialog.addEventListener('close', () => { lockScroll(false); current = -1; });
+    // A click on the dark backdrop around the photo closes, like everywhere else
+    const single = $<HTMLElement>('[data-pt-single]');
+    single?.addEventListener('click', (e) => { if (e.target === single) dialog?.close(); });
+    // Swipe between photos
+    let x0: number | null = null;
+    let y0 = 0;
+    single?.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse') { x0 = e.clientX; y0 = e.clientY; } });
+    single?.addEventListener('pointerup', (e) => {
+      if (x0 == null) return;
+      const dx = e.clientX - x0;
+      const dy = e.clientY - y0;
+      x0 = null;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) showPhoto(current + (dx < 0 ? 1 : -1));
+    });
+    single?.addEventListener('pointercancel', () => { x0 = null; });
+  }
+
+  document.addEventListener('astro:page-load', wire);
+  document.addEventListener('astro:before-swap', () => { if (dialog?.open) dialog.close(); lockScroll(false); });
+</script>
+
+<style>
+  :global(html.pt-open) { overflow: hidden; }
+
+  .pt {
+    --pt-bg: #0e0e10;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: var(--pt-bg);
+    color: #fff;
+    overflow: hidden;
+  }
+  .pt[open] { display: flex; flex-direction: column; }
+  .pt::backdrop { background: rgba(0, 0, 0, 0.85); }
+
+  /* ── Top bar ── */
+  .pt__bar {
+    flex: none;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    min-height: 60px;
+    padding: 8px max(12px, env(safe-area-inset-left)) 8px max(12px, env(safe-area-inset-right));
+    padding-top: max(8px, env(safe-area-inset-top));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .pt__title {
+    grid-column: 2;
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.86);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 52vw;
+  }
+  .pt__back, .pt__close {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 100px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+  .pt__back { grid-column: 1; justify-self: start; }
+  .pt__close { grid-column: 3; justify-self: end; justify-content: center; padding: 0; }
+  .pt__back:hover, .pt__close:hover { background: rgba(255, 255, 255, 0.16); }
+  .pt__back[hidden] { display: none; }
+  .pt__back { white-space: nowrap; }
+  @media (max-width: 600px) {
+    .pt__back { padding: 0; justify-content: center; }
+    .pt__back-text { display: none; }
+  }
+
+  .pt :focus-visible {
+    outline: 3px solid var(--c-yellow, #ffda24);
+    outline-offset: 2px;
+  }
+
+  /* ── Grid view ── */
+  .pt__grid-view {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 20px max(16px, env(safe-area-inset-left)) 48px max(16px, env(safe-area-inset-right));
+  }
+  .pt__grid-view[hidden] { display: none; }
+  .pt__grid-view:focus { outline: none; }
+  .pt__jump {
+    position: sticky;
+    top: -20px;
+    z-index: 1;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin: -20px -16px 8px;
+    padding: 12px 16px;
+    background: linear-gradient(var(--pt-bg) 75%, transparent);
+  }
+  .pt__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 100px;
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+  .pt__chip span { color: rgba(255, 255, 255, 0.55); font-weight: 500; }
+  .pt__chip:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.35); }
+  .pt__group { max-width: 1240px; margin: 0 auto; padding-top: 24px; }
+  .pt__group + .pt__group { margin-top: 32px; }
+  .pt__group-head { margin-bottom: 16px; }
+  .pt__group-head h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: clamp(1.4rem, 3vw, 1.9rem);
+    color: #fff;
+    letter-spacing: -0.01em;
+  }
+  .pt__group-head p { margin: 4px 0 0; font-size: 0.85rem; color: rgba(255, 255, 255, 0.6); }
+  /* Justified rows: each photo grows in proportion to its width/height, so a
+     row's photos share one height and nothing is cropped */
+  .pt__grid {
+    --row: 220px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .pt__grid::after { content: ''; flex-grow: 999; }
+  .pt__grid li { flex: var(--r) 1 calc(var(--r) * var(--row)); min-width: 0; }
+  /* Phones: low rows so two landscape photos share a row */
+  @media (max-width: 600px) {
+    .pt__grid { --row: 104px; gap: 4px; }
+    .pt__grid-view { padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right)); }
+  }
+  .pt__thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: var(--r);
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+    cursor: zoom-in;
+  }
+  .pt__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  }
+  .pt__thumb:hover img { transform: scale(1.04); }
+
+  /* ── Single photo ── */
+  .pt__single {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    padding: 12px 72px 0;
+    touch-action: pan-y;
+  }
+  .pt__single[hidden] { display: none; }
+  .pt__figure {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 100%;
+    max-height: 100%;
+  }
+  .pt__img {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100dvh - 60px - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    width: auto;
+    height: auto;
+    border-radius: 6px;
+    background-size: cover;
+    background-position: center;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  .pt__caption {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 14px 8px max(14px, env(safe-area-inset-bottom));
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.72);
+    text-align: center;
+  }
+  .pt__count { font-variant-numeric: tabular-nums; color: #fff; font-weight: 600; }
+  .pt__arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+  .pt__arrow:hover { background: rgba(255, 255, 255, 0.2); }
+  .pt__arrow--prev { left: 12px; }
+  .pt__arrow--next { right: 12px; }
+
+  @media (max-width: 700px) {
+    .pt__single { padding: 8px 0 0; }
+    .pt__img { border-radius: 0; }
+    /* Arrows sit under the photo on phones (swipe works too), never on it */
+    .pt__arrow { top: auto; bottom: max(8px, env(safe-area-inset-bottom)); transform: none; width: 44px; height: 44px; }
+    .pt__arrow--prev { left: 12px; }
+    .pt__arrow--next { right: 12px; }
+    .pt__caption { padding-inline: 64px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pt__thumb img { transition: none; }
+    .pt__thumb:hover img { transform: none; }
+  }
+</style>

@@ -371,7 +371,8 @@ const trustBadges = getTrustBadges(site);
     border-radius: 60px;
     background: var(--c-white);
     font-family: var(--font-body);
-    font-size: 15px;
+    /* 16px: under that, iPhone Safari zooms the whole page when the box gets focus */
+    font-size: 16px;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
   .newsletter-input:focus {

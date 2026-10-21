@@ -2,7 +2,16 @@
 /**
  * Events Page — Sunshine on a Ranney Day
  * Premium editorial layout: split hero, flagship spotlight with live countdown,
- * interactive upcoming grid with Add-to-Calendar, rich past-events showcase.
+ * interactive upcoming grid with Add-to-Calendar, and the past events told as
+ * chapters (photos, achievements, sponsors, a real quote) with a full-screen
+ * photo tour.
+ *
+ * With nothing scheduled the page becomes a look back at the latest year:
+ * the hero thanks everyone with real photos from those events and the rooms
+ * finished that year, then one chapter per event. Everything comes from the
+ * event records and the Gala/Golf page settings (public/admin/events-shared.js
+ * decides which photos and sponsors belong to which event), so a new year
+ * fills in with no code change.
  *
  * PERF: CF Images w/ srcset, LQIP blur-up, LCP preload, scoped CSS, contain
  * SEO:  Breadcrumbs, semantic HTML5, Event JSON-LD via detail pages
@@ -10,21 +19,30 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import EventCard from '../../components/events/EventCard.astro';
-import { getCollection } from 'astro:content';
-import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import PhotoTour from '../../components/events/PhotoTour.astro';
+import { getCollection, getEntry } from 'astro:content';
+import { cfRaw, cfSrcset, cfLqip, cfId } from '../../utils/cf-image';
 import { getSiteStats } from '../../utils/stats';
+import { getPublishedKids } from '../../utils/collections';
 import siteSettings from '../../content/site/settings.json';
+import photoShapes from '../../data/dimensions-events.json';
+import {
+  SERIES, seriesOf, isOver, dayIn, yearOf, eventPath, hasOwnPage, isLatest,
+  recapPhotos, recapSponsors, sponsorCount, splitSponsors, cleanHighlights, displayName, fmtDay as fmtWhen,
+} from '../../../public/admin/events-shared.js';
 
 /* ── Fetch & sort events ── */
 const allEvents = await getCollection('events');
-const today = new Date().toISOString().split('T')[0];
+/* Atlanta time: an event is over from the day after its last day */
+const today = dayIn();
+const eventData = allEvents.map(e => e.data);
 
 const events = allEvents.map(e => ({
   ...e,
   data: {
     ...e.data,
     // Multi-day events stay "upcoming" through their last day
-    status: e.data.status === 'cancelled' ? 'cancelled' : (e.data.endDate || e.data.date) < today ? 'past' : 'upcoming',
+    status: e.data.status === 'cancelled' ? 'cancelled' : isOver(e.data, today) ? 'past' : 'upcoming',
   },
 }));
 
@@ -38,62 +56,157 @@ const past = events
 
 const featured = upcoming.filter(e => e.data.featured);
 
-/* ── Detail page routing ──
-   Perennial pages (gala.astro, golf.astro) are matched by slug pattern so
-   next year's events (e.g. "2027-evening-of-sunshine") route there without
-   code changes. The current upcoming event claims the perennial page first;
-   otherwise the most recent past event of that family keeps it. Events with
-   their own content (body/photos/video) get an auto page via [slug].astro. */
-const perennialPages: Array<{ pattern: RegExp; url: string }> = [
-  { pattern: /evening-of-sunshine|gala/, url: '/events/gala/' },
-  { pattern: /fairway|golf/, url: '/events/golf/' },
-];
-const perennialUrl = (slug: string) => perennialPages.find(p => p.pattern.test(slug))?.url;
-
+/* ── Detail page routing (public/admin/events-shared.js) ──
+   The gala and golf tournament are series: the newest event of each lives at
+   /events/gala/ or /events/golf/, an older one at its year page
+   (/events/gala/2026/) once it's over. Anything else has /events/<slug>/
+   when it has content of its own or is over. */
 const detailPages: Record<string, string> = {};
-const claimed = new Set<string>();
-for (const e of upcoming) {
-  const url = perennialUrl(e.data.slug);
-  if (url && !claimed.has(url)) { detailPages[e.data.slug] = url; claimed.add(url); }
-}
-for (const e of past) {
-  const url = perennialUrl(e.data.slug);
-  if (url && !claimed.has(url)) { detailPages[e.data.slug] = url; claimed.add(url); }
-}
 for (const e of events) {
-  // Auto pages via [slug].astro: events with content, plus every past event —
-  // each past event keeps a permanent archive page even after a newer event
-  // takes over its perennial page.
-  if (!detailPages[e.data.slug] && (e.data.body || e.data.photos.length > 0 || e.data.streamVideoId || e.data.videoUrl || e.data.status === 'past')) {
-    detailPages[e.data.slug] = `/events/${e.data.slug}/`;
-  }
+  const path = eventPath(e.data, eventData, today);
+  if (path !== `/events/${e.data.slug}/` || hasOwnPage(e.data, eventData, today)) detailPages[e.data.slug] = path;
 }
 
-/* Past-card link label: only promise photos when the page actually has media
-   (a perennial page always carries its own CMS gallery) */
+/* ── Past events: what each one's recap shows ──
+   Photos and sponsors follow the shared rules (an event's own, else the ones
+   on its Gala/Golf page that belong to it). The quote is the event page's
+   testimonial while that page still describes this event. Highlights are the
+   numbers staff add in the Event editor ("$412,000" raised). */
+const pageDocs: Record<string, any> = {};
+for (const s of SERIES) pageDocs[s.key] = (await getEntry('site', s.doc as any))?.data ?? null;
+
+type Photo = { id: string; alt: string };
+type SponsorTier = { tier: string; size: string; names: Array<{ name: string; logo?: string; scale?: number }> };
+interface Recap {
+  name: string;
+  photos: Photo[];
+  sponsors: SponsorTier[];
+  sponsorTotal: number;
+  highlights: Array<{ value: string; label: string }>;
+  quote: { text: string; cite: string } | null;
+  lead: string;
+}
+const recaps: Record<string, Recap> = {};
+for (const e of events.filter(e => e.data.status === 'past')) {
+  const d = e.data as any;
+  const s = seriesOf(d);
+  const doc = s ? pageDocs[s.key] : null;
+  const photos = recapPhotos(d, eventData, doc) as Photo[];
+  const sponsors = recapSponsors(d, eventData, doc) as SponsorTier[];
+  const sponsorTotal = sponsorCount(sponsors);
+  const t = doc && isLatest(d, eventData) ? doc.testimonial : null;
+  const when = s?.key === 'gala' || /\bp\.?m\b/i.test(d.time || '') ? 'night' : 'day';
+  const day = fmtWhen(d.date, { month: 'long', day: 'numeric' });
+  /* "our Title Sponsor, Real Floors Commercial": the first tier, when it's the largest size */
+  const top = sponsors.find(tier => tier.size === 'xl') || null;
+  const topNames = (top?.names || []).map(n => n.name.trim()).filter(Boolean);
+  const topThanks = top && topNames.length
+    ? `, and to our ${top.tier.replace(/\s+sponsors?$/i, '').trim()} ${topNames.length > 1 ? 'Sponsors' : 'Sponsor'}, ${topNames.length > 1 ? `${topNames.slice(0, -1).join(', ')} and ${topNames[topNames.length - 1]}` : topNames[0]}`
+    : '';
+  recaps[d.slug] = {
+    name: displayName(d),
+    photos,
+    sponsors,
+    sponsorTotal,
+    highlights: cleanHighlights(d.highlights),
+    quote: t?.quote?.trim() ? { text: t.quote.trim(), cite: [t.name, t.title].map((x: string) => (x || '').trim()).filter(Boolean).join(', ') } : null,
+    lead: (d.recapNote || '').trim()
+      || `Thank you to everyone who joined us at ${d.location.trim()} on ${day}${topThanks}.${photos.length ? '' : ` Photos from the ${when} are on the way.`}`,
+  };
+}
+
+/* Photo shapes (scripts/generate-event-dimensions.js) → width / height */
+const shapes = photoShapes as Record<string, [number, number]>;
+function ratioOf(id: string): number {
+  const s = shapes[cfId(id)];
+  return s && s[0] > 0 && s[1] > 0 ? Math.round((s[0] / s[1]) * 1000) / 1000 : 4 / 3;
+}
+/* The first upright (portrait or square) photo among the first dozen, for frames that are taller than wide */
+function uprightPhoto(photos: Photo[], skip?: string): Photo | undefined {
+  const pool = photos.filter(p => p.id !== skip);
+  return pool.slice(0, 12).find(p => ratioOf(p.id) <= 1.05) || pool[0];
+}
+
+/* Past-card link label: only promise photos when the recap has them */
 function pastLinkLabel(ev: { slug: string; photos: Array<{ id: string }>; streamVideoId?: string | null; videoUrl?: string | null }): string {
-  const hasMedia = ev.photos.length > 0 || !!ev.streamVideoId || !!ev.videoUrl;
-  const isPerennial = detailPages[ev.slug] && detailPages[ev.slug] !== `/events/${ev.slug}/`;
-  return hasMedia || isPerennial ? 'View Photos & Details' : 'View Details';
+  const hasMedia = (recaps[ev.slug]?.photos.length ?? ev.photos.length) > 0 || !!ev.streamVideoId || !!ev.videoUrl;
+  return hasMedia ? 'See the Full Recap' : 'View Details';
 }
 
 /* ── Flagship = soonest featured upcoming event, else soonest upcoming.
-   No detail page required — the hero CTA falls back to tickets/calendar.
-   With no upcoming events at all, the most recent PAST event takes the hero
-   as a recap, so the page always showcases a real event. ── */
+   No detail page required — the hero CTA falls back to tickets/calendar. ── */
 const flagshipEvent = featured[0] ?? upcoming[0];
 const allOther = upcoming.filter(e => e !== flagshipEvent);
-const recapEvent = !flagshipEvent && past.length > 0 ? past[0] : undefined;
-const heroEvent = flagshipEvent ?? recapEvent;
-const heroIsRecap = !!recapEvent;
-/* Past events shown in the showcase section (minus the one in the hero) */
-const pastDisplay = heroIsRecap ? past.slice(1) : past;
+const heroEvent = flagshipEvent;
+
+/* ── Looking back: the events of the latest year that has a past event are
+   told as chapters; older years are smaller cards. With nothing scheduled the
+   hero looks back at that year instead of showing an empty state. ── */
+const recapYear = past.length ? String(yearOf(past[0].data)) : '';
+const chapterEvents = past.filter(e => String(yearOf(e.data)) === recapYear);
+const olderEvents = past.filter(e => String(yearOf(e.data)) !== recapYear);
+const heroIsRecap = !flagshipEvent && chapterEvents.length > 0;
+const recapIsThisYear = recapYear === today.slice(0, 4);
+
+/* What that year added up to: rooms finished (kids marked completed, by
+   room, the same count as the site stats), rooms underway, sponsors thanked */
+const yearKids = recapYear ? (await getPublishedKids()).filter(k => String(k.data.year) === recapYear) : [];
+const roomsFinished = yearKids.filter(k => k.data.status === 'completed').reduce((n, k) => n + (k.data.roomCount || 1), 0);
+const roomsUnderway = yearKids.filter(k => k.data.status === 'in-progress').reduce((n, k) => n + (k.data.roomCount || 1), 0);
+const yearSponsors = sponsorCount(chapterEvents.flatMap(e => recaps[e.data.slug]?.sponsors ?? []));
+const yearPhotos = chapterEvents.reduce((n, e) => n + (recaps[e.data.slug]?.photos.length ?? 0), 0);
+
+/* Recap hero words: where we were together, then what it built */
+const monthOf = (d: string) => fmtWhen(d, { month: 'long' });
+const places = [...chapterEvents].reverse().map(e => `${e.data.location.trim()} in ${monthOf(e.data.date)}`);
+const placeList = places.length > 1 ? `${places.slice(0, -1).join(', ')} and ${places[places.length - 1]}` : places[0] || '';
+const recapThanks = placeList ? `Thank you for joining us at ${placeList}.` : '';
+const recapBuilt = roomsFinished
+  ? `Every ticket, sponsorship and bid helps build rooms for kids with special needs. We finished ${roomsFinished} of them ${recapIsThisYear ? 'this year' : `in ${recapYear}`}${roomsUnderway ? `, and ${roomsUnderway} more are underway` : ''}.`
+  : 'Every ticket, sponsorship and bid helps build rooms for kids with special needs.';
+
+/* The year the next events fall in ("Hear About 2027 First") */
+const nextYear = Math.max(Number(recapYear || 0) + 1, Number(today.slice(0, 4)));
+
+/* Recap hero photos: the latest event's first photo (the one staff put
+   first), framed wide when it's a landscape shot, and a smaller upright one
+   from the event before it (or another from the same event) */
+const recapLatest = chapterEvents[0];
+const recapMain = recapLatest ? recaps[recapLatest.data.slug].photos[0] : undefined;
+const recapMainWide = !!recapMain && ratioOf(recapMain.id) > 1.05;
+const recapSecondEvent = chapterEvents[1];
+const recapSmall = recapSecondEvent && recaps[recapSecondEvent.data.slug].photos.length
+  ? uprightPhoto(recaps[recapSecondEvent.data.slug].photos)
+  : recapLatest ? uprightPhoto(recaps[recapLatest.data.slug].photos, recapMain?.id) : undefined;
+const recapSmallEvent = recapSecondEvent && recaps[recapSecondEvent.data.slug].photos.length ? recapSecondEvent : recapLatest;
+const recapSmallShown = recapSmall && recapSmall.id !== recapMain?.id ? recapSmall : undefined;
+/* Without photos, the latest event's poster stands in */
+const recapMainId = recapMain?.id || recapLatest?.data.image || '';
+const recapMainSrcset = recapMainId ? cfSrcset(recapMainId, [400, 640, 800, 1024], { fit: 'cover', gravity: 'auto', aspectRatio: recapMainWide ? 0.75 : 1.25 }) : '';
+const recapMainSizes = recapMainWide ? '(max-width: 767px) 340px, (max-width: 1200px) 42vw, 520px' : '(max-width: 767px) 280px, (max-width: 1200px) 38vw, 420px';
+/* Index of a photo inside its event's recap, for opening the tour at it */
+const photoIndex = (slug: string, id?: string) => Math.max(0, recaps[slug]?.photos.findIndex(p => p.id === id) ?? 0);
 
 /* Hero link target: detail page → ticket link (upcoming only) → none */
 const heroUrl = heroEvent
-  ? detailPages[heroEvent.data.slug] || (!heroIsRecap && heroEvent.data.ticketUrl) || null
+  ? detailPages[heroEvent.data.slug] || heroEvent.data.ticketUrl || null
   : null;
-const heroIsExternal = !!heroEvent && !heroIsRecap && !detailPages[heroEvent.data.slug] && !!heroEvent.data.ticketUrl;
+const heroIsExternal = !!heroEvent && !detailPages[heroEvent.data.slug] && !!heroEvent.data.ticketUrl;
+
+/* ── Photo tour: every past event with photos, newest first ── */
+const tourGroups = past
+  .filter(e => recaps[e.data.slug]?.photos.length)
+  .map(e => {
+    const d = e.data as any;
+    const r = recaps[d.slug];
+    return {
+      key: d.slug,
+      title: seriesOf(d) ? `${r.name} ${yearOf(d)}` : r.name,
+      subtitle: [fmtWhen(d.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }), d.location.trim(), d.photographer?.trim() ? `Photos by ${d.photographer.trim()}` : '']
+        .filter(Boolean).join(' · '),
+      photos: r.photos.map(p => ({ ...p, ratio: ratioOf(p.id) })),
+    };
+  });
 
 /* ── Labels & colors ── */
 const catLabel: Record<string, string> = {
@@ -133,13 +246,14 @@ const slugBrandOf = (slug: string) => brandFamilies.find(b => b.pattern.test(slu
 function eventGradient(ev: { slug: string; category: string }): string {
   return slugBrandOf(ev.slug)?.gradient || catGradient[ev.category];
 }
-/* Cover image precedence: explicit poster → first gallery photo → branded logo fallback → none */
+/* Cover image precedence: a photo from the event (past events) → explicit
+   poster → first gallery photo → branded logo fallback → none */
 function coverImage(ev: { slug: string; image?: string | null; photos?: Array<{ id: string }> }): string | null {
-  return ev.image || ev.photos?.[0]?.id || slugBrandOf(ev.slug)?.logo || null;
+  return recaps[ev.slug]?.photos[0]?.id || ev.image || ev.photos?.[0]?.id || slugBrandOf(ev.slug)?.logo || null;
 }
 /* Is the cover image a branded logo (render with contain) vs a real photo (render with cover)? */
 function coverIsLogo(ev: { slug: string; image?: string | null; photos?: Array<{ id: string }> }): boolean {
-  return !ev.image && !ev.photos?.length && !!slugBrandOf(ev.slug)?.logo;
+  return !recaps[ev.slug]?.photos.length && !ev.image && !ev.photos?.length && !!slugBrandOf(ev.slug)?.logo;
 }
 
 /* ── Date helpers ── */
@@ -187,10 +301,9 @@ const yearsOfImpact = computed.years;
 const totalKidsServed = computed.totalKids;
 const totalPartners = (await getCollection('partners')).length;
 
-/* ── Hero visual: poster image (or first gallery photo for a recap) →
-   branded logo (slugBrand) → category icon card.
-   LCP preload only when there's an actual image to paint. ── */
-const heroImageId = heroEvent ? heroEvent.data.image || (heroIsRecap ? heroEvent.data.photos[0]?.id : undefined) : undefined;
+/* ── Hero visual (upcoming event): poster image → branded logo (slugBrand)
+   → category icon card. LCP preload only when there's an actual image to paint. ── */
+const heroImageId = heroEvent ? heroEvent.data.image || undefined : undefined;
 const heroHasImage = !!heroImageId;
 const heroLogo = !heroHasImage && heroEvent ? slugBrandOf(heroEvent.data.slug)?.logo : undefined;
 const heroImageSrc = heroImageId || heroLogo || '';
@@ -220,29 +333,32 @@ const heroFrameAttrs = heroUrl
 
 <BaseLayout
   title="Events — Fundraisers, Reveals & Volunteer Days"
-  description="Join us at upcoming fundraisers, room reveals, and volunteer build days in Atlanta. See how you can help build dream rooms for kids with special needs."
+  description={heroIsRecap
+    ? `Photos and highlights from ${placeList ? `our ${recapYear} events at ${placeList}` : `our ${recapYear} events`}, and how to hear about ${nextYear} first.`
+    : 'Join us at upcoming fundraisers, room reveals, and volunteer build days in Atlanta. See how you can help build dream rooms for kids with special needs.'}
+  ogImage={heroIsRecap && recapMainId ? cfRaw(recapMainId, 'w=1200,h=630,fit=cover,gravity=auto,q=82') : undefined}
   breadcrumbs={[{ name: 'Events', url: '/events/' }]}
 >
   {/* LCP preload */}
   {heroEvent ? (
     heroSrcset && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
+  ) : heroIsRecap ? (
+    recapMainSrcset && <link slot="head" rel="preload" as="image" imagesrcset={recapMainSrcset} imagesizes={recapMainSizes} fetchpriority="high" />
   ) : (
     <link slot="head" rel="preload" as="image" imagesrcset={fallbackSrcset} imagesizes={fallbackSizes} fetchpriority="high" />
   )}
 
   <!-- ═══════════════════════════════════════════
-       HERO — Editorial split: next upcoming event,
-       or the latest past event as a recap
+       HERO — Editorial split: the next upcoming event,
+       else a look back at the latest year of events
        ═══════════════════════════════════════════ -->
   {heroEvent ? (
     <section class="hero hero--event">
       <div class="hero-inner">
         <div class="hero-text">
           <div class="hero-badges">
-            <p class="hero-eyebrow">{heroIsRecap ? 'Latest Event' : heroEvent.data.featured ? 'Featured Event' : 'Next Up'}</p>
-            {!heroIsRecap && (
-              <span class="hero-countdown" data-countdown={heroEvent.data.date} data-countdown-end={heroEvent.data.endDate || heroEvent.data.date} aria-live="polite"></span>
-            )}
+            <p class="hero-eyebrow">{heroEvent.data.featured ? 'Featured Event' : 'Next Up'}</p>
+            <span class="hero-countdown" data-countdown={heroEvent.data.date} data-countdown-end={heroEvent.data.endDate || heroEvent.data.date} aria-live="polite"></span>
           </div>
           <h1 class="hero-headline">{heroEvent.data.title}</h1>
           <p class="hero-sub">{heroEvent.data.shortDescription || heroEvent.data.description}</p>
@@ -255,24 +371,14 @@ const heroFrameAttrs = heroUrl
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
               {heroEvent.data.location}
             </div>
-            {!heroIsRecap && heroEvent.data.time && (
+            {heroEvent.data.time && (
               <div class="hero-meta__item">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                 {heroEvent.data.time}
               </div>
             )}
           </div>
-          {heroIsRecap ? (
-            <div class="hero-ctas">
-              <a href={detailPages[heroEvent.data.slug]} class="btn btn-primary btn-lg">
-                {pastLinkLabel(heroEvent.data)}
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              </a>
-              {pastDisplay.length > 0 && (
-                <a href="#past" class="btn btn-dark">More Past Events</a>
-              )}
-            </div>
-          ) : (
+          {(
             <div class="hero-ctas">
               {detailPages[heroEvent.data.slug] ? (
                 <a href={detailPages[heroEvent.data.slug]} class="btn btn-primary btn-lg">
@@ -290,9 +396,6 @@ const heroFrameAttrs = heroUrl
                 Add to Calendar
               </a>
             </div>
-          )}
-          {heroIsRecap && (
-            <p class="hero-nextnote">Our next event is in the works. Newsletter subscribers hear about it first.</p>
           )}
         </div>
         <HeroFrame class="hero-frame" {...heroFrameAttrs}>
@@ -329,6 +432,95 @@ const heroFrameAttrs = heroUrl
         </HeroFrame>
       </div>
     </section>
+  ) : heroIsRecap ? (
+    <section class="hero hero--recap">
+      <div class="hero-inner">
+        <div class="hero-text">
+          <div class="hero-badges">
+            <p class="hero-eyebrow">Looking Back at {recapYear}</p>
+          </div>
+          <h1 class="hero-headline">{recapYear} {recapIsThisYear ? 'Has Been' : 'Was'} Full of <em class="highlight">Sunshine</em></h1>
+          <p class="hero-sub">{recapThanks} {recapBuilt}</p>
+          <div class="hero-ctas">
+            {yearPhotos > 0 ? (
+              <a href="#past" class="btn btn-primary btn-lg" data-photo-tour>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                See All {yearPhotos} Photos
+              </a>
+            ) : (
+              <a href="#past" class="btn btn-primary btn-lg">Look Back at {recapYear}</a>
+            )}
+            <a href="#newsletter-email" class="btn btn-dark" data-newsletter-focus>Hear About {nextYear} First</a>
+          </div>
+        </div>
+        <div class={`hero-frame hero-frame--recap${recapMainWide ? ' hero-frame--wide' : ''}`}>
+          <div class="hero-accent" aria-hidden="true"></div>
+          {recapMainId ? (
+            <a
+              class={`hero-photo hero-photo--link${recapMainWide ? ' hero-photo--wide' : ''}`}
+              href={recapMain && detailPages[recapLatest.data.slug] ? `${detailPages[recapLatest.data.slug]}#photo-${photoIndex(recapLatest.data.slug, recapMain.id) + 1}` : '#past'}
+              {...(recapMain ? { 'data-photo-tour': recapLatest.data.slug, 'data-photo-index': photoIndex(recapLatest.data.slug, recapMain.id) } : {})}
+              aria-label={recapMain ? `Open the photos from ${recaps[recapLatest.data.slug].name}` : `Look back at ${recaps[recapLatest.data.slug].name}`}
+              style={`background-image:url('${cfLqip(recapMainId)}')`}
+            >
+              <img
+                src={cfRaw(recapMainId, recapMainWide ? 'w=800,h=600,fit=cover,gravity=auto,q=82' : 'w=640,h=800,fit=cover,gravity=auto,q=82')}
+                srcset={recapMainSrcset}
+                sizes={recapMainSizes}
+                alt={recapMain?.alt || `${recaps[recapLatest.data.slug].name}, ${monthOf(recapLatest.data.date)} ${recapYear}`}
+                width={recapMainWide ? 800 : 640} height={recapMainWide ? 600 : 800}
+                loading="eager" decoding="async" fetchpriority="high"
+                class="hero-photo__img"
+              />
+            </a>
+          ) : (
+            <div class="hero-photo" style={`background-image:url('${cfLqip(fallbackPhotoId)}')`}>
+              <img
+                src={cfRaw(fallbackPhotoId, 'w=640,h=800,fit=cover,gravity=face,q=82')}
+                srcset={fallbackSrcset}
+                sizes={fallbackSizes}
+                alt="A child smiling in their new dream room"
+                width="640" height="800"
+                loading="eager" decoding="async" fetchpriority="high"
+                class="hero-photo__img"
+              />
+            </div>
+          )}
+          {recapSmallShown && recapSmallEvent && (
+            <a
+              class="hero-photo hero-photo--small"
+              href={detailPages[recapSmallEvent.data.slug] ? `${detailPages[recapSmallEvent.data.slug]}#photo-${photoIndex(recapSmallEvent.data.slug, recapSmallShown.id) + 1}` : '#past'}
+              data-photo-tour={recapSmallEvent.data.slug}
+              data-photo-index={photoIndex(recapSmallEvent.data.slug, recapSmallShown.id)}
+              aria-label={`Open the photos from ${recaps[recapSmallEvent.data.slug].name}`}
+              style={`background-image:url('${cfLqip(recapSmallShown.id)}')`}
+            >
+              <img
+                src={cfRaw(recapSmallShown.id, 'w=360,h=432,fit=cover,gravity=auto,q=78')}
+                srcset={cfSrcset(recapSmallShown.id, [240, 360, 480], { fit: 'cover', gravity: 'auto', aspectRatio: 1.2, quality: 78 })}
+                sizes="180px"
+                alt={recapSmallShown.alt || `${recaps[recapSmallEvent.data.slug].name}, ${monthOf(recapSmallEvent.data.date)} ${yearOf(recapSmallEvent.data)}`}
+                width="360" height="432"
+                loading="eager" decoding="async"
+              />
+            </a>
+          )}
+          <div class="hero-stat">
+            {roomsFinished > 0 ? (
+              <>
+                <span class="hero-stat__num">{roomsFinished}</span>
+                <span class="hero-stat__label">rooms finished<br />in {recapYear}</span>
+              </>
+            ) : (
+              <>
+                <span class="hero-stat__num">{totalKidsServed}+</span>
+                <span class="hero-stat__label">children served<br />since 2012</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
   ) : (
     <section class="hero">
       <div class="hero-inner">
@@ -354,41 +546,6 @@ const heroFrameAttrs = heroUrl
               class="hero-photo__img lqip-img"
             />
           </div>
-        </div>
-      </div>
-    </section>
-  )}
-
-  <!-- ═══════════════════════════════════════════
-       LATEST EVENT PHOTO STRIP — a taste of the
-       gallery right on the events page (recap hero)
-       ═══════════════════════════════════════════ -->
-  {heroIsRecap && heroEvent && heroEvent.data.photos.length > 0 && (
-    <section class="ev-strip" aria-label={`Photos from ${heroEvent.data.title}`}>
-      <div class="container">
-        <div class="ev-strip__head" data-reveal>
-          <p class="ev-section-label">In Photos</p>
-          <a class="ev-strip__all" href={`/events/${heroEvent.data.slug}/#photos`}>
-            See all {heroEvent.data.photos.length} photos
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </a>
-        </div>
-        <div class="ev-strip__grid" data-reveal>
-          {heroEvent.data.photos.slice(0, 6).map((p, i) => (
-            <a href={`/events/${heroEvent.data.slug}/#photos`} class="ev-strip__item" aria-label={`Open the ${heroEvent.data.title} photo gallery`}>
-              <img
-                src={cfRaw(p.id, 'w=400,h=300,fit=cover,q=80')}
-                srcset={cfSrcset(p.id, [300, 400, 600], { height: 300, fit: 'cover' })}
-                sizes="(max-width: 767px) 42vw, 190px"
-                alt={p.alt || heroEvent.data.title}
-                width="400" height="300"
-                loading="lazy" decoding="async"
-              />
-              {i === 5 && heroEvent.data.photos.length > 6 && (
-                <span class="ev-strip__more">+{heroEvent.data.photos.length - 6}</span>
-              )}
-            </a>
-          ))}
         </div>
       </div>
     </section>
@@ -453,178 +610,165 @@ const heroFrameAttrs = heroUrl
   )}
 
   <!-- ═══════════════════════════════════════════
-       IMPACT TRUST SECTION (dark editorial split)
+       LOOKING BACK — the latest year's events as
+       chapters (photos, achievements, quote, sponsors),
+       earlier years as smaller cards
        ═══════════════════════════════════════════ -->
-  <section class="ev-impact">
-    <div class="ev-impact__glow" aria-hidden="true"></div>
-    <div class="container">
-      <div class="ev-impact__inner">
-        <div class="ev-impact__text" data-reveal>
-          <p class="ev-section-label ev-section-label--light">Why It Matters</p>
-          <h2 class="ev-impact__heading">Every Event Funds a <em class="highlight-dark">Dream&nbsp;Room</em></h2>
-          <p class="ev-impact__desc">From galas to build days, every event we host goes directly toward creating life-changing spaces for children with special needs. Your attendance and generosity make these transformations possible.</p>
-          <a href="/donate/" class="ev-btn ev-btn--gold">Support Our Mission</a>
-        </div>
-        <div class="ev-impact__stats" data-reveal data-delay="1">
-          <div class="ev-impact__card">
-            <div class="ev-impact__card-icon" aria-hidden="true">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            </div>
-            <span class="ev-impact__big">{yearsOfImpact}+</span>
-            <span class="ev-impact__label">Years of Impact</span>
-            <p>Hosting galas, build days, and reveals since 2012</p>
-          </div>
-          <div class="ev-impact__card">
-            <div class="ev-impact__card-icon" aria-hidden="true">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>
-            </div>
-            <span class="ev-impact__big">{totalKidsServed}+</span>
-            <span class="ev-impact__label">Children Served</span>
-            <p>Dream rooms built for kids with special needs</p>
-          </div>
-          <div class="ev-impact__card">
-            <div class="ev-impact__card-icon" aria-hidden="true">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/></svg>
-            </div>
-            <span class="ev-impact__big">{totalPartners}+</span>
-            <span class="ev-impact__label">Partners Strong</span>
-            <p>Contractors, sponsors, and volunteers united</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════════════════════════════════
-       BOTTOM CTA
-       ═══════════════════════════════════════════ -->
-  <section class="ev-cta">
-    <div class="container">
-      <div class="ev-cta__inner" data-reveal>
-        <p class="ev-section-label">Get Involved</p>
-        <h2 class="ev-section-heading">There's a Place for <em class="highlight">You</em></h2>
-        <p class="ev-cta__sub">Host, sponsor, or simply show up. Every hand makes a difference.</p>
-        <div class="ev-cta__grid">
-          <a href="mailto:info@soardcharity.com?subject=Event%20Partnership" class="ev-cta__option">
-            <div class="ev-cta__icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
-            </div>
-            <h3>Host an Event</h3>
-            <p>Partner with us to organize a fundraiser, volunteer day, or community event.</p>
-            <span class="ev-cta__link">Get in Touch <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
-          </a>
-          <a href="/donate/" class="ev-cta__option">
-            <div class="ev-cta__icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
-            </div>
-            <h3>Donate Directly</h3>
-            <p>Your donation helps build dream rooms for children with special needs.</p>
-            <span class="ev-cta__link">Give Today <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
-          </a>
-          <a href="/apply/" class="ev-cta__option">
-            <div class="ev-cta__icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>
-            </div>
-            <h3>Apply for a Room</h3>
-            <p>Know a child who deserves a dream room? Start the application today.</p>
-            <span class="ev-cta__link">Learn More <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
-          </a>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════════════════════════════════
-       PAST EVENTS SHOWCASE
-       ═══════════════════════════════════════════ -->
-  {pastDisplay.length > 0 && (
-    <section class="ev-past" id="past">
+  {past.length > 0 && (
+    <section class="ev-past" id="past" aria-labelledby="past-heading">
       <div class="container">
         <div class="ev-past__header" data-reveal>
-          <p class="ev-section-label">Looking Back</p>
-          <h2 class="ev-section-heading">Moments That <em class="highlight">Mattered</em></h2>
-          <p class="ev-section-sub">Every event we host writes another chapter in our story of impact.</p>
+          <p class="ev-section-label">{heroIsRecap ? `${recapYear} in Review` : 'Looking Back'}</p>
+          <h2 id="past-heading" class="ev-section-heading">Moments That <em class="highlight">Mattered</em></h2>
+          <p class="ev-section-sub">{heroIsRecap
+            ? `Here's how ${chapterEvents.length === 1 ? 'the day' : 'each day'} went, with the people and sponsors who made ${chapterEvents.length === 1 ? 'it' : 'them'} happen.`
+            : 'Every event we host writes another chapter in our story of impact.'}</p>
         </div>
 
-        {/* Highlight card for most recent past event */}
-        {pastDisplay.length > 0 && (
-          <article class="ev-highlight" data-reveal>
-            <div class={`ev-highlight__visual ${pastDisplay[0].data.photos.length >= 3 ? 'ev-highlight__visual--mosaic' : ''}`} style={`background: ${eventGradient(pastDisplay[0].data)}`}>
-              <div class="ev-highlight__pattern" aria-hidden="true"></div>
-              <div class="ev-highlight__glow" aria-hidden="true"></div>
-              {(() => {
-                const photos = pastDisplay[0].data.photos;
-                /* 3+ gallery photos → mini mosaic teaser of the archive page */
-                if (photos.length >= 3) {
-                  return (
-                    <div class="ev-highlight__mosaic">
-                      {photos.slice(0, 3).map((p, i) => (
-                        <div class={i === 0 ? 'ev-highlight__tile ev-highlight__tile--main' : 'ev-highlight__tile'}>
-                          <img
-                            src={cfRaw(p.id, i === 0 ? 'w=500,h=600,fit=cover,q=82' : 'w=400,h=300,fit=cover,q=80')}
-                            srcset={cfSrcset(p.id, i === 0 ? [400, 500, 700] : [300, 400, 500], { fit: 'cover' })}
-                            sizes={i === 0 ? '(max-width: 767px) 62vw, 220px' : '(max-width: 767px) 38vw, 140px'}
-                            alt={p.alt || pastDisplay[0].data.title}
-                            width={i === 0 ? 500 : 400} height={i === 0 ? 600 : 300}
-                            loading="lazy" decoding="async"
-                          />
-                          {i === 2 && photos.length > 3 && (
-                            <span class="ev-highlight__more">+{photos.length - 3} more</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                }
-                const cov = coverImage(pastDisplay[0].data);
-                const isLogo = coverIsLogo(pastDisplay[0].data);
-                if (!cov) {
-                  return (
-                    <div class="ev-highlight__placeholder">
-                      <div class="ev-highlight__icon" set:html={catIcon[pastDisplay[0].data.category]} />
-                      <span class="ev-highlight__placeholder-label">Photos Coming Soon</span>
-                    </div>
-                  );
-                }
-                const fit = isLogo ? 'contain' : 'cover';
-                return (
-                  <img
-                    src={cfRaw(cov, `w=720,fit=${fit},q=85`)}
-                    srcset={cfSrcset(cov, [400, 600, 800], { fit })}
-                    sizes="(max-width: 767px) 100vw, 360px"
-                    alt={pastDisplay[0].data.title}
-                    width="720" height="720"
-                    loading="lazy" decoding="async"
-                    class={isLogo ? 'ev-highlight__img ev-highlight__img--logo' : 'ev-highlight__img'}
-                  />
-                );
-              })()}
-            </div>
-            <div class="ev-highlight__content">
-              <div class="ev-highlight__top">
-                <span class="ev-highlight__cat" style={`--cat: ${catColor[pastDisplay[0].data.category]}`}>{catLabel[pastDisplay[0].data.category]}</span>
-                <time class="ev-highlight__date" datetime={pastDisplay[0].data.date}>{fmtDate(pastDisplay[0].data.date)}</time>
-              </div>
-              <h3 class="ev-highlight__title">{pastDisplay[0].data.title}</h3>
-              <p class="ev-highlight__loc">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-                {pastDisplay[0].data.location}
-              </p>
-              <p class="ev-highlight__desc">{pastDisplay[0].data.shortDescription || pastDisplay[0].data.description}</p>
-              {detailPages[pastDisplay[0].data.slug] && (
-                <a href={detailPages[pastDisplay[0].data.slug]} class="ev-btn ev-btn--gold" style="margin-top: var(--space-lg);">
-                  {pastLinkLabel(pastDisplay[0].data)}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                </a>
-              )}
-            </div>
-          </article>
+        {chapterEvents.length > 0 && (
+          <dl class="ev-year" aria-label={`${recapYear} at a glance`} data-reveal>
+            {roomsFinished > 0 && (
+              <div class="ev-year__item"><dt>Rooms finished in {recapYear}</dt><dd>{roomsFinished}</dd></div>
+            )}
+            {yearSponsors > 0 && (
+              <div class="ev-year__item"><dt>Sponsors thanked</dt><dd>{yearSponsors}</dd></div>
+            )}
+            <div class="ev-year__item"><dt>{chapterEvents.length === 1 ? 'Event' : 'Events'} in {recapYear}</dt><dd>{chapterEvents.length}</dd></div>
+            {yearPhotos > 0 && (
+              <div class="ev-year__item"><dt>Photos</dt><dd>{yearPhotos}</dd></div>
+            )}
+          </dl>
         )}
 
-        {/* Remaining past events in grid */}
-        {pastDisplay.length > 1 && (
+        <div class="ev-chapters">
+          {chapterEvents.map((event, ci) => {
+            const d = event.data as any;
+            const r = recaps[d.slug];
+            const url = detailPages[d.slug];
+            /* The hero already shows this event's first photo; start the mosaic after it */
+            const skip = heroIsRecap && event === recapLatest && recapMain && r.photos.length > 5 ? 1 : 0;
+            const tiles = r.photos.slice(skip, skip + 5);
+            const wide = tiles.length > 0 && ratioOf(tiles[0].id) > 1.05;
+            const more = r.photos.length - skip - tiles.length;
+            const { levels } = splitSponsors(r.sponsors) as { levels: SponsorTier[] };
+            const logos = levels.flatMap(t => t.names.filter(n => n.logo)).slice(0, 8);
+            const unlisted = r.sponsorTotal - logos.length;
+            const headingId = `recap-${d.slug}-heading`;
+            return (
+              <article class={`ev-chapter${ci % 2 ? ' ev-chapter--flip' : ''}`} id={`recap-${d.slug}`} aria-labelledby={headingId} data-reveal>
+                <div class="ev-chapter__media">
+                  {tiles.length > 0 ? (
+                    <div class={`ev-mosaic ev-mosaic--${tiles.length}${wide ? ' ev-mosaic--wide' : ''}`} style={`--n:${Math.max(1, tiles.length - 1)}`}>
+                      {tiles.map((p, i) => (
+                        <a
+                          class="ev-mosaic__tile"
+                          href={url ? `${url}#photo-${skip + i + 1}` : '#past'}
+                          data-photo-tour={d.slug}
+                          data-photo-index={skip + i}
+                          aria-label={`Open photo ${skip + i + 1} of ${r.photos.length} from ${r.name}`}
+                        >
+                          <img
+                            src={cfRaw(p.id, i === 0 ? (wide ? 'w=960,h=640,fit=cover,gravity=auto,q=82' : 'w=720,h=960,fit=cover,gravity=auto,q=82') : 'w=360,h=360,fit=cover,gravity=auto,q=78')}
+                            srcset={i === 0
+                              ? cfSrcset(p.id, [480, 720, 960, 1280], { fit: 'cover', gravity: 'auto', aspectRatio: wide ? 2 / 3 : 4 / 3, quality: 82 })
+                              : cfSrcset(p.id, [240, 360, 480], { fit: 'cover', gravity: 'auto', aspectRatio: 1, quality: 78 })}
+                            sizes={i === 0 ? (wide ? '(max-width: 899px) 92vw, 600px' : '(max-width: 899px) 60vw, 360px') : '(max-width: 899px) 23vw, 150px'}
+                            alt={p.alt || ''}
+                            width={i === 0 ? (wide ? 960 : 720) : 360} height={i === 0 ? (wide ? 640 : 960) : 360}
+                            loading="lazy" decoding="async"
+                          />
+                          {i === tiles.length - 1 && more > 0 && (
+                            <span class="ev-mosaic__more" aria-hidden="true">+{more}</span>
+                          )}
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <div class="ev-chapter__placeholder" style={`background: ${eventGradient(d)}`}>
+                      <div class="ev-chapter__placeholder-icon" aria-hidden="true" set:html={catIcon[d.category]} />
+                      <span>Photos on the way</span>
+                    </div>
+                  )}
+                </div>
+
+                <div class="ev-chapter__body">
+                  <p class="ev-chapter__kicker">
+                    <span class="ev-chapter__cat" style={`--cat: ${catColor[d.category]}`}>{seriesOf(d) ? seriesOf(d).kind.replace(/\b\w/g, (c: string) => c.toUpperCase()) : catLabel[d.category]}</span>
+                    <time datetime={d.date}>{fmtDate(d.date)}</time>
+                  </p>
+                  <h3 id={headingId} class="ev-chapter__title">{r.name}</h3>
+                  {d.theme?.trim() && <p class="ev-chapter__theme">{d.theme.trim()}</p>}
+                  <p class="ev-chapter__loc">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+                    {d.location}
+                  </p>
+                  <p class="ev-chapter__lead">{r.lead}</p>
+
+                  {r.highlights.length > 0 && (
+                    <dl class="ev-chapter__stats">
+                      {r.highlights.map(h => (
+                        <div class="ev-chapter__stat"><dt>{h.label}</dt><dd>{h.value}</dd></div>
+                      ))}
+                    </dl>
+                  )}
+
+                  {r.quote && (
+                    <blockquote class="ev-chapter__quote">
+                      <p>{r.quote.text}</p>
+                      {r.quote.cite && <cite>{r.quote.cite}</cite>}
+                    </blockquote>
+                  )}
+
+                  {logos.length > 0 && (
+                    <div class="ev-chapter__sponsors">
+                      <p class="ev-chapter__sponsors-label">Made possible by {r.sponsorTotal} sponsors</p>
+                      <ul class="ev-chapter__logos" role="list">
+                        {logos.map(n => (
+                          <li class="ev-chapter__logo" style={n.scale ? `--logo-scale:${n.scale}` : undefined}>
+                            <img
+                              src={cfRaw(n.logo!, 'w=240,h=120,fit=contain,q=88')}
+                              alt={n.name}
+                              width="240" height="120"
+                              loading="lazy" decoding="async"
+                            />
+                          </li>
+                        ))}
+                        {unlisted > 0 && (
+                          <li class="ev-chapter__logo ev-chapter__logo--more">
+                            {url ? <a href={url}>+{unlisted} more</a> : <span>+{unlisted} more</span>}
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div class="ev-chapter__actions">
+                    {r.photos.length > 0 && (
+                      <a href={url ? `${url}#photos` : '#past'} class="ev-btn ev-btn--gold" data-photo-tour={d.slug}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                        See All {r.photos.length} Photos
+                      </a>
+                    )}
+                    {url && (
+                      <a href={url} class="ev-chapter__link">
+                        {pastLinkLabel(d)}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        {/* Earlier years: smaller cards */}
+        {olderEvents.length > 0 && (
+          <h3 class="ev-older__heading" data-reveal>Earlier Events</h3>
+        )}
+        {olderEvents.length > 0 && (
           <div class="ev-memories">
-            {pastDisplay.slice(1).map((event, i) => (
+            {olderEvents.map((event, i) => (
               <article class="ev-memory" data-reveal data-delay={String(Math.min(i, 3))}>
                 <div class="ev-memory__visual" style={`background: ${eventGradient(event.data)}`}>
                   {(() => {
@@ -672,10 +816,10 @@ const heroFrameAttrs = heroUrl
                     <span class="ev-memory__day">{fmtDay(event.data.date)}</span>
                     <span class="ev-memory__year">{fmtYear(event.data.date)}</span>
                   </div>
-                  {event.data.photos.length > 0 && (
+                  {recaps[event.data.slug]?.photos.length > 0 && (
                     <span class="ev-memory__count">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-                      {event.data.photos.length} photos
+                      {recaps[event.data.slug].photos.length} photos
                     </span>
                   )}
                 </div>
@@ -688,15 +832,15 @@ const heroFrameAttrs = heroUrl
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
                     {event.data.location}
                   </p>
-                  <p class="ev-memory__desc">{event.data.description}</p>
+                  <p class="ev-memory__desc">{recaps[event.data.slug]?.lead || event.data.shortDescription || event.data.description}</p>
                   {(() => {
                     /* Mini gallery row — skip the photo already used as the card cover */
-                    const thumbs = event.data.image ? event.data.photos.slice(0, 3) : event.data.photos.slice(1, 4);
+                    const thumbs = (recaps[event.data.slug]?.photos ?? []).slice(1, 4);
                     if (thumbs.length === 0) return null;
                     return (
                       <div class="ev-memory__thumbs">
-                        {thumbs.map(p => (
-                          <a href={`/events/${event.data.slug}/#photos`} class="ev-memory__thumb" aria-label={`Open the ${event.data.title} photo gallery`}>
+                        {thumbs.map((p, ti) => (
+                          <a href={detailPages[event.data.slug] ? `${detailPages[event.data.slug]}#photo-${ti + 2}` : '#past'} class="ev-memory__thumb" data-photo-tour={event.data.slug} data-photo-index={ti + 1} aria-label={`Open photo ${ti + 2} from ${event.data.title}`}>
                             <img
                               src={cfRaw(p.id, 'w=200,h=150,fit=cover,q=78')}
                               srcset={cfSrcset(p.id, [150, 200, 300], { height: 150, fit: 'cover' })}
@@ -726,24 +870,128 @@ const heroFrameAttrs = heroUrl
   )}
 
   <!-- ═══════════════════════════════════════════
-       TESTIMONIAL PULLQUOTE
+       IMPACT TRUST SECTION (dark editorial split)
        ═══════════════════════════════════════════ -->
-  <section class="ev-quote">
+  <section class="ev-impact">
+    <div class="ev-impact__glow" aria-hidden="true"></div>
     <div class="container">
-      <div class="ev-quote__inner" data-reveal>
-        <div class="ev-quote__mark" aria-hidden="true">&ldquo;</div>
-        <blockquote class="ev-quote__text">
-          The gala was one of the most moving evenings I've ever experienced. Seeing the room reveals and meeting the families — it changed my perspective on what giving really means.
-        </blockquote>
-        <cite class="ev-quote__cite">— Sarah Mitchell, 2025 Gala Attendee</cite>
+      <div class="ev-impact__inner">
+        <div class="ev-impact__text" data-reveal>
+          <p class="ev-section-label ev-section-label--light">Why It Matters</p>
+          <h2 class="ev-impact__heading">Every Event Funds a <em class="highlight-dark">Dream&nbsp;Room</em></h2>
+          <p class="ev-impact__desc">From galas to build days, every event we host goes directly toward creating life-changing spaces for children with special needs. Your attendance and generosity make these transformations possible.</p>
+          <a href="/donate/" class="ev-btn ev-btn--gold">Support Our Mission</a>
+        </div>
+        <div class="ev-impact__stats" data-reveal data-delay="1">
+          <div class="ev-impact__card">
+            <div class="ev-impact__card-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            </div>
+            <span class="ev-impact__big">{yearsOfImpact}+</span>
+            <span class="ev-impact__label">Years of Impact</span>
+            <p>Hosting galas, build days, and reveals since 2012</p>
+          </div>
+          <div class="ev-impact__card">
+            <div class="ev-impact__card-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>
+            </div>
+            <span class="ev-impact__big">{totalKidsServed}+</span>
+            <span class="ev-impact__label">Children Served</span>
+            <p>Dream rooms built for kids with special needs</p>
+          </div>
+          <div class="ev-impact__card">
+            <div class="ev-impact__card-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/></svg>
+            </div>
+            <span class="ev-impact__big">{totalPartners}+</span>
+            <span class="ev-impact__label">Partners Strong</span>
+            <p>Contractors, sponsors, and volunteers united</p>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
+  <!-- ═══════════════════════════════════════════
+       BOTTOM CTA
+       ═══════════════════════════════════════════ -->
+  <section class="ev-cta" id="next">
+    <div class="container">
+      <div class="ev-cta__inner" data-reveal>
+        {heroIsRecap ? (
+          <>
+            <p class="ev-section-label">Until Next Time</p>
+            <h2 class="ev-section-heading">See You in <em class="highlight">{nextYear}</em></h2>
+            <p class="ev-cta__sub">Next year's dates are on the way. Here's how to stay close until then.</p>
+          </>
+        ) : (
+          <>
+            <p class="ev-section-label">Get Involved</p>
+            <h2 class="ev-section-heading">There's a Place for <em class="highlight">You</em></h2>
+            <p class="ev-cta__sub">Host, sponsor, or simply show up. Every hand makes a difference.</p>
+          </>
+        )}
+        <div class="ev-cta__grid">
+          {heroIsRecap && (
+            <a href="#newsletter-email" class="ev-cta__option" data-newsletter-focus>
+              <div class="ev-cta__icon" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              </div>
+              <h3>Get the Dates First</h3>
+              <p>Newsletter subscribers hear about the gala and the golf tournament before anyone else.</p>
+              <span class="ev-cta__link">Sign Up <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+            </a>
+          )}
+          {heroIsRecap && (
+            <a href="mailto:info@soardcharity.com?subject=Event%20Sponsorship" class="ev-cta__option">
+              <div class="ev-cta__icon" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>
+              </div>
+              <h3>Sponsor Next Year</h3>
+              <p>Tell us you're interested and we'll reach out as soon as sponsorships open.</p>
+              <span class="ev-cta__link">Get in Touch <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+            </a>
+          )}
+          {!heroIsRecap && (
+          <a href="mailto:info@soardcharity.com?subject=Event%20Partnership" class="ev-cta__option">
+            <div class="ev-cta__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+            </div>
+            <h3>Host an Event</h3>
+            <p>Partner with us to organize a fundraiser, volunteer day, or community event.</p>
+            <span class="ev-cta__link">Get in Touch <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+          </a>
+          )}
+          <a href="/donate/" class="ev-cta__option">
+            <div class="ev-cta__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
+            </div>
+            <h3>Donate Directly</h3>
+            <p>Your donation helps build dream rooms for children with special needs.</p>
+            <span class="ev-cta__link">Give Today <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+          </a>
+          {!heroIsRecap && (
+          <a href="/apply/" class="ev-cta__option">
+            <div class="ev-cta__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>
+            </div>
+            <h3>Apply for a Room</h3>
+            <p>Know a child who deserves a dream room? Start the application today.</p>
+            <span class="ev-cta__link">Learn More <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+          </a>
+          )}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Every photo from the past events, full screen (opened by [data-photo-tour]) -->
+  <PhotoTour groups={tourGroups} />
+
 </BaseLayout>
 
 <!-- ═══════════════════════════════════════════
-     CLIENT-SIDE: Countdown + Smooth Scroll
+     CLIENT-SIDE: Reveals, countdown, newsletter link
      ═══════════════════════════════════════════ -->
 <script>
   /* ── Upcoming reveals (confirmed in JobTread, via /api/reveals) ── */
@@ -844,18 +1092,20 @@ const heroFrameAttrs = heroUrl
     document.querySelectorAll('.hero-event-card__logo').forEach(el => el.classList.add('vt-freeze'));
   });
 
-  /* ── Smooth scroll for anchor links ── */
-  document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach(link => {
-    link.addEventListener('click', (e) => {
-      const id = link.getAttribute('href')?.slice(1);
-      if (!id) return;
-      const target = document.getElementById(id);
-      if (!target) return;
-      e.preventDefault();
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      history.pushState(null, '', `#${id}`);
-    });
-  });
+  /* In-page links (#past, #next) are left to Astro's router, which keeps the
+     back button working; a hand-rolled pushState here used to break it. */
+
+  /* ── "Get the dates first": the footer's newsletter signup, ready to type ── */
+  document.addEventListener('click', (e) => {
+    const link = (e.target as Element | null)?.closest?.('[data-newsletter-focus]');
+    if (!link) return;
+    const input = document.getElementById('newsletter-email') as HTMLInputElement | null;
+    if (!input) return;
+    e.preventDefault();
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    input.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
+    input.focus({ preventScroll: true });
+  }, true); // capture: runs before Astro's router, which then leaves the click alone
 </script>
 
 <style>
@@ -1018,12 +1268,6 @@ const heroFrameAttrs = heroUrl
     display: flex;
     gap: var(--space-md);
     flex-wrap: wrap;
-  }
-  /* Recap hero: quiet pointer to the next announcement */
-  .hero-nextnote {
-    margin-top: var(--space-md);
-    font-size: 0.8rem;
-    color: var(--c-text-light);
   }
 
   /* Hero image frame (shared) */
@@ -1227,88 +1471,111 @@ const heroFrameAttrs = heroUrl
   }
 
   /* ═══════════════════════════════════════════
-     LATEST EVENT PHOTO STRIP
+     RECAP HERO — a look back at the latest year:
+     real photos from its events, the site's split
+     pattern (big photo, small overlapping photo,
+     yellow accent, stat badge)
      ═══════════════════════════════════════════ */
-  .ev-strip {
-    background: var(--c-cream);
-    padding: 0 0 var(--space-3xl);
-    margin-top: calc(-1 * var(--space-xl));
-  }
-  .ev-strip__head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-md);
-    margin-bottom: var(--space-md);
-  }
-  .ev-strip__head .ev-section-label { margin-bottom: 0; }
-  .ev-strip__all {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--c-dark);
-    text-decoration: none;
-    transition: gap 0.2s ease, color 0.2s ease;
-  }
-  .ev-strip__all:hover { gap: 8px; color: var(--c-yellow-hover); }
-  .ev-strip__grid {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: var(--space-sm);
-  }
-  .ev-strip__item {
-    position: relative;
+  .hero-frame--recap {
     display: block;
-    aspect-ratio: 4 / 3;
-    border-radius: var(--border-radius, 10px);
-    overflow: hidden;
-    background: var(--c-warm-gray);
+    width: 100%;
+    max-width: 420px;
+    margin-inline: auto;
   }
-  .ev-strip__item img {
+  .hero--recap .hero-accent {
+    top: auto;
+    bottom: -16px;
+    right: -16px;
+    opacity: 0.35;
+  }
+  .hero-photo--link {
+    display: block;
+    color: inherit;
+    cursor: zoom-in;
+  }
+  .hero-frame--wide { max-width: 520px; }
+  .hero-photo.hero-photo--wide { aspect-ratio: 4 / 3; max-width: none; }
+  .hero-photo--link img,
+  .hero-photo--small img {
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .hero-photo--link:hover img,
+  .hero-photo--small:hover img { transform: scale(1.03); }
+  .hero-photo--link:focus-visible,
+  .hero-photo--small:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: 4px;
+  }
+  .hero-photo--small {
+    position: absolute;
+    left: -36px;
+    bottom: -28px;
+    z-index: 2;
+    display: block;
+    width: 40%;
+    max-width: 180px;
+    aspect-ratio: 5 / 6;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    border: 4px solid var(--c-cream);
+    background-size: cover;
+    background-position: center;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.06), 0 12px 36px rgba(0, 0, 0, 0.14);
+    cursor: zoom-in;
+  }
+  .hero-photo--small img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
-    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .ev-strip__item:hover img { transform: scale(1.05); }
-  .ev-strip__item:focus-visible {
-    outline: 3px solid var(--c-yellow);
-    outline-offset: 2px;
-  }
-  .ev-strip__more {
+  /* Hangs off the photo's corner, mostly outside it, so it never sits on a face or a sign */
+  .hero-stat {
     position: absolute;
-    inset: 0;
+    right: -44px;
+    bottom: -40px;
+    z-index: 3;
     display: flex;
     align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-size: 1.3rem;
+    gap: 12px;
+    padding: 14px 20px;
+    border-radius: var(--border-radius-lg);
+    background: var(--c-dark);
     color: #fff;
-    background: rgba(0, 0, 0, 0.45);
-    pointer-events: none;
+    text-align: left;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08), 0 16px 48px rgba(0, 0, 0, 0.18);
+  }
+  /* Below wide desktops the frame sits near the screen edge: keep the badge on it */
+  @media (max-width: 1279px) {
+    .hero-stat { right: -12px; }
+  }
+  .hero-stat__num {
+    font-family: var(--font-display);
+    font-size: clamp(1.9rem, 3vw, 2.5rem);
+    line-height: 1;
+    color: var(--c-yellow);
+  }
+  .hero-stat__label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72);
   }
   @media (max-width: 767px) {
-    .ev-strip__grid {
-      display: flex;
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
-      -webkit-overflow-scrolling: touch;
-      margin-inline: calc(-1 * var(--space-xl));
-      padding-inline: var(--space-xl);
-      scrollbar-width: none;
-    }
-    .ev-strip__grid::-webkit-scrollbar { display: none; }
-    .ev-strip__item {
-      flex: 0 0 42vw;
-      scroll-snap-align: start;
-    }
+    .hero--recap .hero-inner { gap: var(--space-3xl); }
+    .hero-frame--recap { max-width: 280px; }
+    .hero-frame--wide { max-width: 340px; }
+    .hero-photo.hero-photo--wide { aspect-ratio: 4 / 3; max-width: none; }
+    /* Phones keep one photo, like the other heroes on the site */
+    .hero-photo--small { display: none; }
+    .hero-stat { right: -8px; bottom: -36px; padding: 10px 14px; }
+    .hero--recap .hero-accent { bottom: -10px; right: -10px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .ev-strip__item img { transition: none; }
-    .ev-strip__item:hover img { transform: none; }
+    .hero-photo--link img, .hero-photo--small img { transition: none; }
+    .hero-photo--link:hover img, .hero-photo--small:hover img { transform: none; }
   }
 
   /* ═══════════════════════════════════════════
@@ -1536,54 +1803,6 @@ const heroFrameAttrs = heroUrl
   }
 
   /* ═══════════════════════════════════════════
-     TESTIMONIAL PULLQUOTE
-     ═══════════════════════════════════════════ */
-  .ev-quote {
-    padding: var(--space-4xl) 0;
-    background: var(--c-cream);
-  }
-  .ev-quote__inner {
-    position: relative;
-    max-width: 680px;
-    margin: 0 auto;
-    text-align: center;
-    padding: var(--space-2xl) var(--space-xl);
-    border-top: 1px solid var(--c-border);
-    border-bottom: 1px solid var(--c-border);
-  }
-  .ev-quote__mark {
-    font-family: var(--font-display);
-    font-size: 4.5rem;
-    line-height: 1;
-    color: var(--c-yellow);
-    opacity: 0.5;
-    position: absolute;
-    top: -0.2em;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--c-cream);
-    padding: 0 var(--space-md);
-  }
-  .ev-quote__text {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: clamp(1rem, 2vw, 1.2rem);
-    line-height: 1.75;
-    color: var(--c-dark);
-    margin: 0;
-    text-wrap: pretty;
-  }
-  .ev-quote__cite {
-    display: block;
-    margin-top: var(--space-lg);
-    font-size: 0.82rem;
-    font-style: normal;
-    font-weight: 600;
-    color: var(--c-text-muted);
-    letter-spacing: 0.02em;
-  }
-
-  /* ═══════════════════════════════════════════
      IMPACT TRUST SECTION (dark editorial split)
      ═══════════════════════════════════════════ */
   .ev-impact {
@@ -1694,192 +1913,6 @@ const heroFrameAttrs = heroUrl
   }
 
   /* ═══════════════════════════════════════════
-     PAST EVENTS — HIGHLIGHT CARD (most recent)
-     ═══════════════════════════════════════════ */
-  .ev-highlight {
-    display: grid;
-    grid-template-columns: 1fr;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    margin-bottom: var(--space-2xl);
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  @media (min-width: 768px) {
-    .ev-highlight { grid-template-columns: 0.45fr 1fr; }
-  }
-  .ev-highlight:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 56px rgba(0, 0, 0, 0.1);
-  }
-  .ev-highlight__visual {
-    position: relative;
-    min-height: 200px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-  .ev-highlight__pattern {
-    position: absolute;
-    inset: 0;
-    opacity: 0.04;
-    background-image: radial-gradient(circle, #fff 1px, transparent 1px);
-    background-size: 28px 28px;
-  }
-  .ev-highlight__glow {
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 60% 60% at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 55%);
-  }
-  .ev-highlight__icon {
-    color: rgba(255, 255, 255, 0.15);
-    z-index: 1;
-  }
-  .ev-highlight__placeholder {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-md);
-    color: rgba(255, 255, 255, 0.55);
-  }
-  .ev-highlight__placeholder .ev-highlight__icon {
-    color: inherit;
-    transform: scale(1.5);
-  }
-  .ev-highlight__placeholder-label {
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.7);
-  }
-  .ev-highlight__img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    z-index: 1;
-  }
-  .ev-highlight__img--logo {
-    position: relative;
-    inset: auto;
-    width: calc(100% - var(--space-xl) * 2);
-    height: calc(100% - var(--space-xl) * 2);
-    object-fit: contain;
-    filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.28));
-  }
-
-  /* Photo mosaic teaser (3+ gallery photos) */
-  .ev-highlight__visual--mosaic { min-height: 280px; }
-  .ev-highlight__mosaic {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    display: grid;
-    grid-template-columns: 1.55fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 3px;
-  }
-  .ev-highlight__tile {
-    position: relative;
-    overflow: hidden;
-  }
-  .ev-highlight__tile--main { grid-row: 1 / 3; }
-  .ev-highlight__tile img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .ev-highlight:hover .ev-highlight__tile img { transform: scale(1.04); }
-  .ev-highlight__more {
-    position: absolute;
-    bottom: var(--space-sm);
-    right: var(--space-sm);
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    color: #fff;
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    padding: 0.25rem 0.6rem;
-    border-radius: 100px;
-    pointer-events: none;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .ev-highlight__tile img { transition: none; }
-    .ev-highlight:hover .ev-highlight__tile img { transform: none; }
-  }
-  .ev-highlight__content {
-    padding: var(--space-xl) var(--space-lg);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
-  @media (min-width: 768px) {
-    .ev-highlight__content { padding: var(--space-2xl); }
-  }
-  .ev-highlight__top {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
-  }
-  .ev-highlight__cat {
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--cat);
-  }
-  .ev-highlight__date {
-    font-size: 0.78rem;
-    color: var(--c-text-light);
-  }
-  .ev-highlight__title {
-    font-family: var(--font-display);
-    font-size: clamp(1.2rem, 2.5vw, 1.6rem);
-    color: var(--c-dark);
-    line-height: 1.2;
-    margin-bottom: var(--space-sm);
-  }
-  .ev-highlight__loc {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.82rem;
-    color: var(--c-text-light);
-    margin-bottom: var(--space-md);
-  }
-  .ev-highlight__loc svg {
-    flex-shrink: 0;
-    color: var(--c-text-light);
-  }
-  .ev-highlight__desc {
-    font-size: 0.9rem;
-    line-height: 1.7;
-    color: var(--c-text-muted);
-    text-wrap: pretty;
-    display: -webkit-box;
-    -webkit-line-clamp: 5;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .ev-highlight { transition: none; }
-  }
-
-  /* ═══════════════════════════════════════════
      PAST EVENTS SHOWCASE
      ═══════════════════════════════════════════ */
   .ev-past {
@@ -1888,6 +1921,314 @@ const heroFrameAttrs = heroUrl
   }
   .ev-past__header {
     margin-bottom: var(--space-2xl);
+  }
+
+  /* The year at a glance: plain numbers, no counting animation */
+  .ev-year {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    margin: 0 0 var(--space-4xl);
+    background: var(--c-border);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+  }
+  .ev-year__item {
+    display: flex;
+    flex-direction: column-reverse;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 22px 24px;
+    background: var(--c-white);
+  }
+  .ev-year dd {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--c-dark);
+  }
+  .ev-year dt {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+  }
+  @media (max-width: 599px) {
+    .ev-year { grid-template-columns: 1fr 1fr; }
+    .ev-year__item { padding: 18px; }
+  }
+
+  /* One chapter per event: photos on one side, the story on the other */
+  .ev-chapters {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4xl);
+  }
+  .ev-chapter {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-xl);
+  }
+  @media (min-width: 900px) {
+    .ev-chapter {
+      grid-template-columns: 1.1fr 1fr;
+      gap: var(--space-3xl);
+      align-items: center;
+    }
+    .ev-chapter--flip { grid-template-columns: 1fr 1.1fr; }
+    .ev-chapter--flip .ev-chapter__media { order: 2; }
+  }
+
+  .ev-mosaic {
+    display: grid;
+    gap: 8px;
+    aspect-ratio: 4 / 3;
+    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  .ev-mosaic--1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .ev-mosaic--2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+  .ev-mosaic--3 { grid-template-columns: 2fr 1fr; }
+  .ev-mosaic--3 .ev-mosaic__tile:first-child,
+  .ev-mosaic--4 .ev-mosaic__tile:first-child,
+  .ev-mosaic--5 .ev-mosaic__tile:first-child { grid-row: 1 / span 2; }
+  .ev-mosaic--4 .ev-mosaic__tile:last-child { grid-column: 2 / span 2; }
+  /* A landscape first photo: full width on top, the rest in a row under it */
+  .ev-mosaic--wide {
+    aspect-ratio: auto;
+    grid-template-columns: repeat(var(--n), 1fr);
+    grid-template-rows: auto;
+  }
+  .ev-mosaic--wide .ev-mosaic__tile { aspect-ratio: 1; grid-row: auto; grid-column: auto; }
+  .ev-mosaic--wide .ev-mosaic__tile:first-child { grid-column: 1 / -1; grid-row: auto; aspect-ratio: 3 / 2; }
+  .ev-mosaic__tile {
+    position: relative;
+    display: block;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 10px;
+    background: var(--c-border);
+    cursor: zoom-in;
+  }
+  .ev-mosaic__tile:first-child { border-radius: var(--border-radius-lg); }
+  .ev-mosaic__tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-mosaic__tile:hover img { transform: scale(1.04); }
+  .ev-mosaic__tile:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: 2px;
+  }
+  .ev-mosaic__more {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(20, 20, 22, 0.55);
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: clamp(1.2rem, 2.5vw, 1.7rem);
+    pointer-events: none;
+  }
+  .ev-chapter__placeholder {
+    aspect-ratio: 4 / 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    border-radius: var(--border-radius-lg);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .ev-chapter__placeholder-icon :global(svg) { width: 44px; height: 44px; }
+
+  .ev-chapter__kicker {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 0 0 var(--space-sm);
+    font-size: 0.82rem;
+    color: var(--c-text-muted);
+  }
+  .ev-chapter__cat {
+    padding: 0.25rem 0.75rem;
+    border-radius: 100px;
+    background: color-mix(in srgb, var(--cat) 16%, var(--c-white));
+    color: var(--c-dark);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .ev-chapter__title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 3.6vw, 2.6rem);
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--c-dark);
+    text-wrap: balance;
+  }
+  .ev-chapter__theme {
+    margin: 6px 0 0;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.15rem;
+    color: var(--c-text-muted);
+  }
+  .ev-chapter__loc {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: var(--space-sm) 0 var(--space-md);
+    font-size: 0.86rem;
+    color: var(--c-text-muted);
+  }
+  .ev-chapter__loc svg { flex: none; color: var(--c-text-light); }
+  .ev-chapter__lead {
+    margin: 0;
+    max-width: 52ch;
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--c-text);
+  }
+  .ev-chapter__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-lg) var(--space-2xl);
+    margin: var(--space-lg) 0 0;
+  }
+  .ev-chapter__stat {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 6px;
+  }
+  .ev-chapter__stat dd {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 3vw, 2.3rem);
+    line-height: 1;
+    color: var(--c-dark);
+  }
+  .ev-chapter__stat dt {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+  }
+  .ev-chapter__quote {
+    margin: var(--space-lg) 0 0;
+    padding-left: var(--space-md);
+    border-left: 3px solid var(--c-yellow);
+  }
+  .ev-chapter__quote p {
+    margin: 0;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.1rem;
+    line-height: 1.55;
+    color: var(--c-dark);
+  }
+  .ev-chapter__quote cite {
+    display: block;
+    margin-top: 8px;
+    font-style: normal;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--c-text-muted);
+  }
+  .ev-chapter__sponsors { margin-top: var(--space-xl); }
+  .ev-chapter__sponsors-label {
+    margin: 0 0 var(--space-sm);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+  }
+  .ev-chapter__logos {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+  }
+  .ev-chapter__logo {
+    position: relative;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 2 / 1;
+    overflow: hidden;
+    border: 1px solid var(--c-border);
+    border-radius: 10px;
+    background: var(--c-white);
+  }
+  /* Pinned inside the tile so a tall logo shrinks to fit instead of spilling */
+  .ev-chapter__logo img {
+    position: absolute;
+    inset: 8px 12px;
+    width: calc(100% - 24px);
+    height: calc(100% - 16px);
+    object-fit: contain;
+    transform: scale(min(var(--logo-scale, 1), 1.2));
+  }
+  .ev-chapter__logo--more a,
+  .ev-chapter__logo--more span {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    text-decoration: none;
+  }
+  .ev-chapter__logo--more a:hover { text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .ev-chapter__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-md) var(--space-lg);
+    margin-top: var(--space-xl);
+  }
+  .ev-chapter__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    text-decoration: underline;
+    text-decoration-color: var(--c-yellow);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+    transition: gap 0.2s ease;
+  }
+  .ev-chapter__link:hover { gap: 9px; }
+  .ev-older__heading {
+    margin: var(--space-4xl) 0 var(--space-lg);
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 3vw, 1.8rem);
+    font-weight: 400;
+    color: var(--c-dark);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ev-mosaic__tile img, .ev-chapter__link { transition: none; }
+    .ev-mosaic__tile:hover img { transform: none; }
   }
   .ev-memories {
     display: grid;
