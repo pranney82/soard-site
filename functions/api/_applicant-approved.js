@@ -19,7 +19,9 @@
  * The job: the family's open job (or any job for that year) is used if there
  * is one; else createJob at their home, as the Qualification Committee. DataX
  * adds the cover photo and CompanyCam its project by themselves (JobTread's
- * history: within 2 seconds of every job created).
+ * history: within 2 seconds of every job created). A family who had their
+ * home visit with a CompanyCam project (./_companycam-sync.js) gets their job
+ * made with that project's id, so CompanyCam doesn't start a second one.
  *
  * The profile: a hidden draft in Admin → Kids, first name only, age, year,
  * rooms, Awaiting funding, linked by jobtreadJobId so its status follows the
@@ -56,6 +58,7 @@ import { slackPost, slackIssue, slackResolved, SITE_ORIGIN } from './_broadcast-
 import { slackCard } from './_slack-cards.js';
 import { kidRecord, buildFields, buildsOf } from '../../public/admin/kids-shared.js';
 import { applicationPhotoFile, coverFromFile, rememberCover } from './_job-covers.js';
+import { familyProjectId } from './_companycam-link.js';
 
 const FIELD_YEAR = '22P52xmCz3cx';      // customer: *Makeover Year
 const FIELD_TYPES = '22P5KVgrLeXK';     // customer: *Makeover Type (multi)
@@ -292,10 +295,12 @@ export async function readAccount(env, accountId, fetchImpl = fetch) {
 }
 
 /** createJob as the Qualification Committee (the Zap's author), falling back to the site's grant */
-async function createJob(env, { locationId, name, types }, fetchImpl) {
+async function createJob(env, { locationId, name, types, companycamId = null }, fetchImpl) {
   const customFieldValues = { [JOB_FIELD_STATUS]: JOB_START_STATUS };
   if (types.length) customFieldValues[JOB_FIELD_TYPES] = types;
-  const query = { createJob: { $: { locationId, name, customFieldValues }, createdJob: { id: {}, name: {} } } };
+  const input = { locationId, name, customFieldValues };
+  if (companycamId) input.companycamId = companycamId; // the home-visit project, not a new one
+  const query = { createJob: { $: input, createdJob: { id: {}, name: {} } } };
   const grants = [...new Set([qcGrant(env), env.JOBTREAD_GRANT_KEY].filter(Boolean))];
   let last = null;
   for (const grant of grants) {
@@ -456,7 +461,8 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
   if (!job) {
     if (!acct.locationId) return wait(env, row, acct, 'no-home', null, now);
     try {
-      job = await createJob(env, { locationId: acct.locationId, name: jobNameFor(acct.name, acct.year), types: acct.types }, fetchImpl);
+      const companycamId = await familyProjectId(DB, accountId);
+      job = await createJob(env, { locationId: acct.locationId, name: jobNameFor(acct.name, acct.year), types: acct.types, companycamId }, fetchImpl);
     } catch (e) {
       return wait(env, row, acct, 'error', e.message, now);
     }

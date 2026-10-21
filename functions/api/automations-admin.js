@@ -33,6 +33,7 @@ import { JT_URL, SOARD_ORG_ID } from './_reveals.js';
 import { approvalsStatus } from './_applicant-approved.js';
 import { coverFacts } from './_job-covers.js';
 import { eventRecapState } from './_event-recap.js';
+import { companycamFacts } from './_companycam-sync.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -66,6 +67,7 @@ export function envFacts(env) {
     jobtreadWebhookSecret: has(env.JOBTREAD_WEBHOOK_SECRET),
     zeffyApi: has(env.ZEFFY_API_KEY),
     slackBot: has(env.SLACK_BOT_TOKEN),
+    companycam: has(env.COMPANYCAM_TOKEN),
   };
 }
 
@@ -303,6 +305,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     press: await settle(() => pressFacts(DB)),
     quo: await settle(() => quoFacts(DB, now)),
     eventRecap: await settle(() => eventRecapFacts(DB)),
+    // Counts, times and on/off only: no names, ids or photos
+    companycam: await settle(() => companycamFacts(env)),
   };
 }
 

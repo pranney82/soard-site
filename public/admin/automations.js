@@ -369,6 +369,25 @@ const MAP = { t: 'SOARD', children: [
             if (a.waiting.length) return ATTN(a.waiting.map((x) => `${x.name} ${WHY[x.problem] || 'is waiting'}.`).join(' '), a.lastRunAt);
             return ON(a.last ? `Last set up ${a.last.name} (${stamp(a.last.at)}).` : 'No family has been approved since it started.', a.lastRunAt);
           } },
+        { t: 'CompanyCam for families in review', s: 'live', k: 'event',
+          when: 'A family moves to In Review (the home visit). Each photo taken in their CompanyCam project arrives through CompanyCam’s webhook within seconds, and a check every 10 minutes catches any it missed. Rides the heartbeat, once a minute.',
+          does: 'Makes one CompanyCam project for the family at their home, named the way their job will be, with their contact, a “Vetting” label and their application photos of the space, or uses one staff already started at that address. Copies every home-visit photo and document to the family in JobTread (Files → Home visit, tagged .BeforePics and any matching tag), and captions, tags and markup added later follow. When their job is made it uses the same project, so JobTread’s own CompanyCam sync takes over and the home-visit photos move to the job. Denied archives the project, and back in review restores it.',
+          touches: ['CompanyCam', 'JobTread', 'D1', 'Slack'], where: 'functions/api/_companycam-sync.js (broadcast-hooks.js) · companycam-webhook.js · _companycam.js; the job’s link in _applicant-approved.js',
+          info: 'JobTread’s own CompanyCam integration starts at the job, so home-visit photos used to be uploaded to the customer by hand. Uses CompanyCam’s Public API v1 with COMPANYCAM_TOKEN, a Personal Access Token (Read & Write) made by a CompanyCam admin at app.companycam.com/access-keys. The site sets up and signs its own webhook. A job that already has a project with photos keeps it, and the home-visit photos are copied to it. Videos stay in CompanyCam. A family with no full home address, a photo that won’t copy for hours, or CompanyCam turning the key down is one Slack problem that turns ✅ when it clears.',
+          live: (f) => {
+            if (!env(f)) return null;
+            if (!f.env.companycam) return OFF('Off until a CompanyCam Personal Access Token is saved in Cloudflare as COMPANYCAM_TOKEN.');
+            const c = f.companycam;
+            if (!c || c.error || !c.on) return null;
+            if (c.tokenBad) return ATTN(`CompanyCam turns the site’s key down (${c.tokenError}). Make a new Personal Access Token at app.companycam.com/access-keys and save it in Cloudflare as COMPANYCAM_TOKEN.`, c.lastRun);
+            if (!c.lastRun) return ATTN('It hasn’t run yet. It rides on the heartbeat, so check the Heartbeat entry.');
+            if (stale(c.lastRun, 15 * MIN)) return ATTN(`Hasn’t run since ${stamp(c.lastRun)}. It rides on the heartbeat, so check the Heartbeat entry.`, c.lastRun);
+            if (!c.webhook?.enabled) return ATTN('CompanyCam’s webhook isn’t on yet, so photos wait for the 10-minute check.', c.lastRun);
+            if (c.failing) return ATTN(`${plural(c.failing, 'photo')} won’t copy to JobTread yet. The site keeps trying.`, c.lastRun);
+            if (c.waiting) return ATTN(`${plural(c.waiting, 'family', 'families')} in review ${c.waiting === 1 ? 'has' : 'have'} no project yet, usually for a missing home address.`, c.lastRun);
+            const copied = (c.files?.copied || 0) + (c.files?.moved || 0);
+            return ON(`${plural(c.projects?.customer || 0, 'family', 'families')} in review with a project, ${plural(copied, 'photo')} copied${c.lastCopied ? `, the last ${stamp(c.lastCopied)}` : ''}.`, c.lastRun);
+          } },
       ]},
     ]},
 

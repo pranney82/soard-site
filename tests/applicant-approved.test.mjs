@@ -18,6 +18,7 @@ import {
 import { FIELD_STATUS as JOB_STATUS, linkJobs, syncKidStatuses } from '../functions/api/_kid-status.js';
 import { matchKid } from '../functions/api/_reveals.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
+import { ensureCompanyCamSchema } from '../functions/api/_companycam-sync.js';
 
 const STATUS = '22P46wDp3NLd';
 const YEAR = '22P52xmCz3cx';
@@ -449,6 +450,19 @@ test('the new job’s cover is the child’s photo from their application, not a
   assert.equal((await kids())[0].name, 'Nora', 'the form’s first-name answer names the profile');
   await sweep(...minutes(42, 60, 6));
   assert.equal(jt.state.coverCalls.length, 1, 'set once');
+});
+
+test('a family with a home-visit CompanyCam project gets their job made with it; one without, without', async () => {
+  await ensureCompanyCamSchema(env.DB);
+  const a = family('Quinn Avery', 'In Review');
+  const b = family('Rowan Blake', 'In Review');
+  await env.DB.prepare("INSERT INTO companycam_projects (account_id, project_id, stage, created_at, updated_at) VALUES (?, '9001', 'customer', ?, ?)").bind(a.id, iso(T0), iso(T0)).run();
+  await change(a, 'Approved', T0);
+  await change(b, 'Approved', T0);
+  await sweep(...minutes(30, 40));
+  const byName = Object.fromEntries(jt.state.jobCalls.map(c => [c.input.name, c.input]));
+  assert.equal(byName['Quinn Avery (2027)'].companycamId, '9001', 'so CompanyCam doesn’t start a second project');
+  assert.equal('companycamId' in byName['Rowan Blake (2027)'], false);
 });
 
 test('no application photo (a family added by hand): the job is made without a cover', async () => {

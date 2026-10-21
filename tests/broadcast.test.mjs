@@ -275,7 +275,7 @@ test('hub heartbeat: nonce verified over the binding', async () => {
   const waits = ctx.pending.length;
   const ok = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick', source: 'alarm' }, { 'x-hub-nonce': GOOD_NONCE })));
   assert.equal(ok.status, 200);
-  assert.equal(ctx.pending.length - waits, 12, 'the heartbeat also wakes the reveal checks, the invite sweep, the invite guest check, the JobTread schedule check, the application sweep, the kid status sync, the Zeffy gift check, the applications waitlist, the press monitor, the event recaps and the one-time Slack preview, and a tick slower than the answer publishes itself');
+  assert.equal(ctx.pending.length - waits, 13, 'the heartbeat also wakes the reveal checks, the invite sweep, the invite guest check, the JobTread schedule check, the application sweep, the kid status sync, the Zeffy gift check, the applications waitlist, the press monitor, the event recaps, CompanyCam for families in review and the one-time Slack preview, and a tick slower than the answer publishes itself');
   await flush();
   const body = await ok.json();
   assert.equal(body.ok, true);
