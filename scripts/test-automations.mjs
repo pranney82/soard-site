@@ -295,8 +295,8 @@ try {
 
   console.log('Desktop, CompanyCam');
   ok(await statusOf((await open(browser, base, { width: 1440, height: 1000 })).page, 'CompanyCam for families in review') === 'Off', 'families in review: off unless switched on');
-  const audit = { at: iso(30 * 60e3), repair: true, jobs: 18, linked: 18, unlinked: [], missing: 0, doubleCopies: 0, byHand: 120, relinks: 13, copied: 40, removed: 3, split: [], problems: [] };
-  const ccFacts = { ...FACTS, env: { ...FACTS.env, companycam: true }, companycamJobs: { on: true, repair: true, audit, lastChecked: iso(5 * 60e3), jobs: 18 } };
+  const audit = { at: iso(30 * 60e3), copy: true, dedupe: false, jobs: 21, linked: 6, withPhotos: 19, missing: 0, doubleCopies: 33, byHand: 176, copied: 98, removed: 0, missingBy: [], doublesBy: [], twoProjects: [], noProject: [], errors: [] };
+  const ccFacts = { ...FACTS, env: { ...FACTS.env, companycam: true }, companycamJobs: { on: true, copy: true, dedupe: false, audit, lastChecked: iso(5 * 60e3), jobs: 21 } };
   const cc = await open(browser, base, { width: 1440, height: 1000 }, { facts: ccFacts });
   await cc.page.type('#am-search', 'companycam');
   await pause(500);
@@ -304,13 +304,13 @@ try {
   await pause(300);
   ok(await panelTitle(cc.page) === 'CompanyCam photos on every job', 'search finds the job check');
   const ccPanel = await cc.page.$eval('.am-panel', (e) => e.textContent);
-  ok(ccPanel.includes('18 of 18 open jobs linked, every photo in JobTread'), 'it says how many jobs are linked');
+  ok(ccPanel.includes('19 open jobs with CompanyCam photos, every photo in JobTread. 33 second copies counted, not removed yet.'), 'it says what it found');
   await cc.page.screenshot({ path: join(OUT, 'desktop-companycam.png'), fullPage: false });
   ok(cc.errors.length === 0, `no console errors${cc.errors.length ? ': ' + cc.errors.slice(0, 3).join(' | ') : ''}`);
   await cc.page.close();
-  const looking = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...ccFacts, companycamJobs: { ...ccFacts.companycamJobs, repair: false, audit: { ...audit, repair: false, linked: 5, missing: 412 } } } });
-  ok(await statusOf(looking.page, 'CompanyCam photos on every job') === 'Needs attention', 'only looking: needs attention, with the numbers');
-  await looking.page.close();
+  const broken = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...ccFacts, companycamJobs: { ...ccFacts.companycamJobs, audit: { ...audit, errors: [{ job: 'Ava Stone (2026)', detail: 'JobTread returned 500' }] } } } });
+  ok(await statusOf(broken.page, 'CompanyCam photos on every job') === 'Needs attention', 'a job it couldn’t check needs attention');
+  await broken.page.close();
 
   console.log('Phone');
   const phone = await open(browser, base, { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });

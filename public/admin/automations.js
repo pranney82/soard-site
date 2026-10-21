@@ -393,10 +393,10 @@ const MAP = { t: 'SOARD', children: [
           info: 'Built and proven end to end on Oct 21, 2026, then switched off by Peter. COMPANYCAM_CUSTOMER_STAGE set to on in Cloudflare turns it back on. Its webhook, the CompanyCam key and the copies already made stay; the check below uses them.',
           live: (f) => (!env(f) ? null : f.env.companycamCustomerStage ? ON('On: families in review get a CompanyCam project.') : OFF('Off: the home visit happens at the job. COMPANYCAM_CUSTOMER_STAGE on in Cloudflare turns it back on.')) },
         { t: 'CompanyCam photos on every job', s: 'live', k: 'schedule',
-          when: 'Every open job (not TEST), about once an hour, a couple a minute on the heartbeat.',
-          does: 'Checks each job is still linked to its CompanyCam project (its own earlier photos say which one) and that JobTread has a copy of every photo in it. A job whose link JobTread dropped is linked again, so JobTread brings in what it missed; a photo still missing an hour later is copied by the site under JobTread’s own name; a second copy of the same photo is removed (never one someone commented on). Slack hears what was fixed, and once about anything a person has to do: two projects to merge in CompanyCam, or a project another job holds.',
-          touches: ['CompanyCam', 'JobTread', 'D1', 'Slack'], where: 'functions/api/_companycam-jobs.js (broadcast-hooks.js) · _companycam.js',
-          info: 'By Oct 21, 2026 JobTread’s own integration had dropped the link on 13 of 18 open makeover jobs (several in the same minutes on May 19), so photos taken since never reached JobTread and staff uploaded phone photos by hand. CompanyCam’s API can’t move photos between projects, so merging is the one thing left to a person.',
+          when: 'Every open job (not TEST) about once an hour, a couple a minute on the heartbeat. A new photo in a job’s project moves that job to the front (CompanyCam’s webhook).',
+          does: 'Copies to each job any CompanyCam photo it doesn’t have, under JobTread’s own name (“CompanyCam 123…”). A job’s photos come from the project it’s linked to, the project its own earlier photos came from, and a project at the same address under the family’s name. A photo in the project JobTread is still linked to waits an hour, so JobTread’s own sync goes first. It never relinks a job: relinking makes JobTread copy every photo again. Slack hears once a pass what was copied.',
+          touches: ['CompanyCam', 'JobTread', 'D1', 'Slack'], where: 'functions/api/_companycam-jobs.js (broadcast-hooks.js) · _companycam.js · companycam-webhook.js',
+          info: 'By Oct 21, 2026 JobTread’s own integration had dropped the link on 16 of 21 open jobs, some families’ photos sat in a second project, and staff were uploading phone photos by hand. A relink tested on Axel’s job brought all 33 photos in a second time, so that’s where duplicates come from. Removing second copies (oldest stays, never one with comments) is built and off until Peter says go. Videos stay in CompanyCam: its API gives a stream, not a file.',
           live: (f) => {
             if (!env(f)) return null;
             if (!f.env.companycam) return OFF('Off until COMPANYCAM_TOKEN is in Cloudflare.');
@@ -406,11 +406,9 @@ const MAP = { t: 'SOARD', children: [
             if (stale(c.lastChecked, 3 * HOUR)) return ATTN(`Hasn’t checked a job since ${stamp(c.lastChecked)}. It rides on the heartbeat.`, c.lastChecked);
             const a = c.audit;
             if (!a) return ON('Going through the open jobs for the first time.', c.lastChecked);
-            const unlinked = a.jobs - a.linked;
-            if (!c.repair) return ATTN(`Only looking so far: ${unlinked} of ${plural(a.jobs, 'open job')} unlinked, ${plural(a.missing, 'photo')} missing in JobTread.`, c.lastChecked);
-            const hands = a.split.length + a.problems.filter((p) => p.problem === 'project-held' || p.problem === 'link-refused').length;
-            if (hands) return ATTN(`${plural(hands, 'job needs', 'jobs need')} a person (see Slack). ${a.linked} of ${plural(a.jobs, 'open job')} linked.`, c.lastChecked);
-            return ON(`${a.linked} of ${plural(a.jobs, 'open job')} linked${a.missing ? `, ${plural(a.missing, 'photo')} still on the way` : ', every photo in JobTread'}.`, c.lastChecked);
+            if (a.errors?.length) return ATTN(`${plural(a.errors.length, 'job')} couldn’t be checked: ${a.errors[0].job} (${a.errors[0].detail}).`, c.lastChecked);
+            const doubles = a.doubleCopies ? ` ${plural(a.doubleCopies, 'second copy', 'second copies')} counted${c.dedupe ? '' : ', not removed yet'}.` : '';
+            return ON(`${plural(a.withPhotos, 'open job')} with CompanyCam photos${a.missing ? `, ${plural(a.missing, 'photo')} still to copy` : ', every photo in JobTread'}.${doubles}`, c.lastChecked);
           } },
       ]},
     ]},

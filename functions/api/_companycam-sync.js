@@ -988,9 +988,16 @@ export async function takeEvent(env, ev, { now = Date.now(), fetchImpl = fetch }
     } catch { projectId = ''; }
     if (!/^\d{1,20}$/.test(projectId)) return { ignored: 'no ids' };
   }
-  // Most events are a job's project, which JobTread's own integration copies
+  // Most events are a job's project: a new photo there moves the jobs it feeds to the front
+  // of ./_companycam-jobs.js's queue, which copies it if JobTread's own link doesn't
   const fam = await rowForProject(DB, projectId);
-  if (!fam || !['customer', 'separate', 'closed', 'selftest'].includes(fam.stage)) return { ignored: 'not a family project' };
+  if (!fam || !['customer', 'separate', 'closed', 'selftest'].includes(fam.stage)) {
+    if (type === 'photo.created') {
+      await DB.prepare("UPDATE companycam_jobs SET checked_at = 0 WHERE project_id = ? OR instr(COALESCE(sources, ''), ?) > 0")
+        .bind(projectId, `"id":"${projectId}"`).run().catch(() => null); // no table before the first pass
+    }
+    return { ignored: 'not a family project' };
+  }
   await putState(DB, 'webhook-seen', { at: iso(now), type }, now); // CompanyCam's webhook reaches the site
   if (kind === 'project') {
     await DB.prepare('UPDATE companycam_projects SET checked_at = 0 WHERE account_id = ?').bind(fam.account_id).run(); // the next check looks again
