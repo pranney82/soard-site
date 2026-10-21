@@ -486,7 +486,7 @@ try {
     await page.evaluate((id) => document.querySelector(`.afe-row[data-id="${id}"] button[aria-label="Move up"]`).click(), kindId);
     await waitSaved(page);
     ok((await order()).at(-2) === kindId, 'Move up');
-    await page.focus(`.afe-row[data-id="${kindId}"]`);
+    await page.focus(`.afe-row[data-id="${kindId}"] .afe-row-main`);
     await keyCombo(page, ['Alt'], 'ArrowDown');
     await waitSaved(page);
     ok((await order()).at(-1) === kindId, 'Alt+↓ moves it back');
@@ -507,7 +507,7 @@ try {
     // And back to the end with the keyboard
     await page.evaluate((id) => document.querySelector(`.afe-row[data-id="${id}"] button[aria-label="Move down"]`), petsId);
     const n = (await order()).length;
-    await page.focus(`.afe-row[data-id="${petsId}"]`);
+    await page.focus(`.afe-row[data-id="${petsId}"] .afe-row-main`);
     for (let i = 0; i < n - 2; i++) { await keyCombo(page, ['Alt'], 'ArrowDown'); await sleep(40); }
     await waitSaved(page);
     ok((await order()).at(-2) === petsId, 'Alt+↓ repeatedly walks it down');

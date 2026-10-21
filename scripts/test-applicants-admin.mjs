@@ -94,6 +94,8 @@ family({ name: 'Elizabeth Francis', status: 'Approved', parent: 'Michele Francis
 family({ name: 'Everett Burke', status: 'Denied', parent: 'Sam Burke', lat: 33.94, lng: -84.51, city: 'Marietta', county: 'Cobb', days: 90 });
 family({ name: 'Logan Logan', status: 'Denied', parent: 'Pat Logan', lat: 32.56, lng: -83.89, city: 'Fort Valley', county: 'Peach', days: 300, year: '2026' });
 family({ name: 'Kendall Thomas', status: 'Approved', parent: 'Ash Thomas', lat: 34.06, lng: -84.67, city: 'Acworth', county: 'Cobb', days: 400, year: '2026' });
+// A test account staff made in JobTread: off the board unless asked for
+family({ name: 'TEST Sample Family', status: 'Applied', parent: 'Pat Sample', lat: 32.9, lng: -84.9, city: 'Manchester', county: 'Meriwether', days: 1 });
 // Not applicants
 w.world.accounts.office = { id: 'office00001', name: 'Sunshine Office', type: 'customer', org: ORG, createdAt: day(900), fields: {}, contacts: [], locations: [], files: [], comments: [], jobs: [] };
 
@@ -183,6 +185,7 @@ ok(await page.$$eval('.apl-col', els => els.length) === 4, 'board has four statu
 const colCounts = await page.$$eval('.apl-col', els => els.map(e => [e.querySelector('h3').textContent, e.querySelector('.apl-count').textContent]));
 ok(JSON.stringify(colCounts) === JSON.stringify([['Applied', '3'], ['In Review', '2'], ['Approved', '2'], ['Denied', '1']]), `2027 season counts per column ${JSON.stringify(colCounts)}`);
 ok(!(await page.$$eval('.apl-card-name', els => els.map(e => e.textContent))).includes('Sunshine Office'), 'accounts that aren’t applicants stay off the board');
+ok(!(await page.$$eval('.apl-card-name', els => els.map(e => e.textContent))).includes('TEST Sample Family'), 'test families stay off the board unless asked for');
 ok(await page.$$eval('.apl-tag.is-out', els => els.some(e => /mi outside/.test(e.textContent))), 'a home outside the boundary is flagged with miles');
 ok(await page.$eval('.apl-tag.is-out', el => getComputedStyle(el).backgroundColor) === 'rgb(255, 246, 224)', 'and flagged in amber, like every other warning (red is for destructive buttons)');
 ok(await page.$$eval('.apl-tag.is-es', els => els.length >= 1 && els.every(e => e.textContent === 'Spanish')), 'a Spanish-speaking family is tagged "Spanish" (the same word Submissions uses)');
@@ -320,6 +323,11 @@ await sleep(200);
 const outside = await page.$$eval('.apl-table tbody tr strong', els => els.map(e => e.textContent));
 ok(outside.includes('Logan Logan') && outside.includes('Harper Lee'), `area filter lists homes outside the boundary (${outside.join(', ')})`);
 ok(/1/.test(await text(page, '.apl-fbtn b')), 'the Filters button counts the filters in use');
+await page.click('#apl-tests');
+await sleep(200);
+ok(await page.$$eval('.apl-table tbody tr strong', els => els.some(e => /TEST Sample Family/.test(e.textContent))) && /Including test families/.test(await text(page, '.apl-active')), 'Include test families brings them back, as a chip');
+await page.click('#apl-tests');
+await sleep(150);
 await page.keyboard.press('Escape');
 await sleep(150);
 ok(!(await page.$('.apl-popover')), 'Esc closes the Filters panel');

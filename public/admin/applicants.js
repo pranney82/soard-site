@@ -76,6 +76,8 @@ function ago(iso, now = Date.now()) {
   if (s < 86400 * 30) return `${Math.floor(s / 86400)}d ago`;
   return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: s > 86400 * 300 ? 'numeric' : undefined });
 }
+/** An activity title as a label ("Makeover job created:" with nothing after reads "Makeover job created") */
+const cleanTitle = (t) => String(t || '').replace(/[:\s]+$/, '');
 const daysSince = (iso, now = Date.now()) => (iso ? Math.max(0, Math.floor((now - Date.parse(iso)) / 86400000)) : null);
 function ageOf(birthday) {
   if (!/^\d{4}-\d{2}-\d{2}/.test(birthday || '')) return null;
@@ -186,7 +188,7 @@ const CSS = `
 .apl-card.is-ghost { opacity: .35; }
 .apl-card.is-chosen { box-shadow: var(--shadow-lg); transform: rotate(-1deg); }
 .apl-card-top { display: flex; gap: .6rem; align-items: center; min-width: 0; }
-.apl-avatar { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: .75rem; font-weight: 700; color: #fff; background: var(--c, #A3A4AA); overflow: hidden; }
+.apl-avatar { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: .75rem; font-weight: 700; color: #fff; background: color-mix(in srgb, var(--c, #A3A4AA) 76%, #000); overflow: hidden; }
 .apl-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .apl-card-name { font-weight: 650; font-size: .92rem; line-height: 1.25; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .apl-card-sub { font-size: .76rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -464,12 +466,15 @@ function Avatar({ a, size = null }) {
 }
 const Pill = ({ status }) => html`<span class="apl-pill" style=${`--c:${STATUS_COLOR[status || '']}`}>${status || 'No status'}</span>`;
 
+/** A JobTread account made for trying things out (the sample application, staff tests) */
+const isTestFamily = (a) => !!a.isTest || /^TEST\b/.test(a.name || '');
+
 function Flags({ a, compact = false }) {
   const out = [];
   if (a.area === 'outside') out.push(html`<span class="apl-tag is-out" title="Home is outside the service-area boundary">${a.areaMiles != null ? `${a.areaMiles} mi outside` : 'Outside area'}</span>`);
   if (a.repeat?.length) out.push(html`<span class="apl-tag is-warn" title=${`Possible repeat of ${a.repeat.join(', ')}`}>Possible repeat</span>`);
   if (a.lang === 'es' || a.fields?.language === 'Spanish') out.push(html`<span class="apl-tag is-es" title="The family reads Spanish: their emails go in Spanish">Spanish</span>`);
-  if (a.isTest || /^TEST\b/.test(a.name)) out.push(html`<span class="apl-tag is-test">Test</span>`);
+  if (isTestFamily(a)) out.push(html`<span class="apl-tag is-test">Test</span>`);
   if (a.archivedAt) out.push(html`<span class="apl-tag">Archived</span>`);
   if (!compact) for (const t of a.types || []) out.push(html`<span class="apl-tag">${TYPE_ICON[t] ? `${TYPE_ICON[t]} ` : ''}${t}</span>`);
   return out.length ? html`<div class="apl-tags">${out}</div>` : null;
@@ -479,7 +484,7 @@ function lastLine(a) {
   const l = a.lastActivity;
   if (!l) return a.createdAt ? `Added ${ago(a.createdAt)}` : '';
   const who = l.by && l.by !== 'JobTread' ? ` · ${l.by.split(' ')[0]}` : '';
-  const what = l.kind === 'status' ? `Moved to ${a.status || 'no status'}` : l.kind === 'textIn' ? 'Text from the family' : l.kind === 'reply' ? 'Reply from the family' : (l.title || l.kind);
+  const what = l.kind === 'status' ? `Moved to ${a.status || 'no status'}` : l.kind === 'textIn' ? 'Text from the family' : l.kind === 'reply' ? 'Reply from the family' : cleanTitle(l.title || l.kind);
   return `${what}${who} · ${ago(a.lastActivityAt)}`;
 }
 
@@ -510,6 +515,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
   const [area, setArea] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [archived, setArchived] = useState(false);
+  const [tests, setTests] = useState(false); // test accounts (TEST…) stay off the board unless asked for
   const [openId, setOpenId] = useState(() => (location.hash.match(/^#applications\/applicants\/([A-Za-z0-9]{6,32})$/) || [])[1] || null);
   const [sheet, setSheet] = useState(null);       // { a, status }
   const [syncing, setSyncing] = useState(false);
@@ -582,7 +588,8 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     else if (viewKeys.includes('submissions')) setViewRaw('submissions');
   }, [data, route?.n]);
 
-  const all = data?.applicants || [];
+  const all = useMemo(() => (data?.applicants || []).filter(a => tests || !isTestFamily(a)), [data, tests]);
+  const testCount = useMemo(() => (data?.applicants || []).filter(isTestFamily).length, [data]);
   const years = useMemo(() => {
     const m = new Map();
     for (const a of all) if (a.year) m.set(a.year, (m.get(a.year) || 0) + 1);
@@ -661,9 +668,10 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     county && { key: 'county', text: `${county} County`, clear: () => setCounty('') },
     area && { key: 'area', text: AREA_LABEL[area], clear: () => setArea('') },
     archived && { key: 'archived', text: 'Including archived', clear: () => setArchived(false) },
+    tests && { key: 'tests', text: 'Including test families', clear: () => setTests(false) },
   ].filter(Boolean);
-  const inPanel = [type, county, area, archived].filter(Boolean).length;
-  const clearAll = () => { setYear(season); setType(''); setCounty(''); setArea(''); setArchived(false); };
+  const inPanel = [type, county, area, archived, tests].filter(Boolean).length;
+  const clearAll = () => { setYear(season); setType(''); setCounty(''); setArea(''); setArchived(false); setTests(false); };
   const emails = data.emails || {};
   const menu = [
     emails.active
@@ -732,6 +740,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
             </select>
           </label>
           <span class="apl-check" style="font-size:.86rem;font-weight:600;color:var(--color-text)"><input type="checkbox" id="apl-archived" checked=${archived} onChange=${e => setArchived(e.target.checked)} /><label for="apl-archived" style="all:unset;cursor:pointer">Include archived families</label></span>
+          ${testCount > 0 && html`<span class="apl-check" style="font-size:.86rem;font-weight:600;color:var(--color-text)"><input type="checkbox" id="apl-tests" checked=${tests} onChange=${e => setTests(e.target.checked)} /><label for="apl-tests" style="all:unset;cursor:pointer">Include test families (${testCount})</label></span>`}
         <//>
       </div>`}
     </div>
@@ -760,7 +769,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     ${openId && html`<${Drawer}
       id=${openId}
       fields=${data.fields}
-      summary=${all.find(a => a.id === openId)}
+      summary=${(data.applicants || []).find(a => a.id === openId)}
       onClose=${() => open(null)}
       onPrev=${idx > 0 ? () => open(shown[idx - 1].id) : null}
       onNext=${idx >= 0 && idx < shown.length - 1 ? () => open(shown[idx + 1].id) : null}
@@ -1180,7 +1189,7 @@ function ActivityView({ onOpen }) {
   return html`<div class="apl-feed">
     ${rows.map(r => html`<div class="apl-feed-row" key=${r.id} role="button" tabindex="0" onClick=${() => onOpen(r.accountId)} onKeyDown=${e => { if (e.key === 'Enter') onOpen(r.accountId); }}>
       <span class="apl-feed-icon" aria-hidden="true">${FEED_ICON[r.kind] || '•'}</span>
-      <div class="apl-feed-main"><div><strong>${r.applicant}</strong> · ${r.title || r.kind}</div>
+      <div class="apl-feed-main"><div><strong>${r.applicant}</strong> · ${cleanTitle(r.title || r.kind)}</div>
         ${r.body && html`<p>${r.body}</p>`}
         <span class="apl-card-sub">${r.by ? `${r.by} ` : ''}${SOURCE_LABEL[r.source] || ''}</span></div>
       <span class="apl-feed-time" title=${fullDate(r.at)}>${ago(r.at)}</span>
@@ -1339,7 +1348,7 @@ function EventLine({ r }) {
   const who = r.by ? html` · ${r.by}${r.source && SOURCE_LABEL[r.source] ? ` ${SOURCE_LABEL[r.source]}` : ''}` : '';
   return html`<div class="apl-event" title=${fullDate(r.at)}>
     ${r.kind === 'status' ? html`<${Pill} status=${r.data?.to || r.title.replace(/^Status:\s*/, '')} />` : html`<span aria-hidden="true">${FEED_ICON[r.kind] || '•'}</span>`}
-    <span><b>${r.kind === 'status' ? (r.data?.from ? `Moved from ${r.data.from}` : 'Status set') : r.title}</b>${who}${r.kind === 'status' && r.body && /emailed|already|skipped|Noted/.test(r.body) ? html`<br /><span class="apl-card-sub">${r.body.split('\n').filter(l => !/^Was /.test(l)).join(' ')}</span>` : ''}${r.kind !== 'status' && r.body ? html`<br /><span class="apl-card-sub">${r.body.split('\n').slice(0, 3).join(' · ')}</span>` : ''}</span>
+    <span><b>${r.kind === 'status' ? (r.data?.from ? `Moved from ${r.data.from}` : 'Status set') : cleanTitle(r.title)}</b>${who}${r.kind === 'status' && r.body && /emailed|already|skipped|Noted/.test(r.body) ? html`<br /><span class="apl-card-sub">${r.body.split('\n').filter(l => !/^Was /.test(l)).join(' ')}</span>` : ''}${r.kind !== 'status' && r.body ? html`<br /><span class="apl-card-sub">${r.body.split('\n').slice(0, 3).join(' · ')}</span>` : ''}</span>
   </div>`;
 }
 

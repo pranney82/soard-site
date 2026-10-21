@@ -370,6 +370,8 @@ const CSS = `
 .afe-row.is-sel { border-color: var(--color-primary); background: var(--afe-sel); box-shadow: 0 0 0 2px var(--color-primary-ring); }
 .afe-row.has-problem { border-color: var(--afe-bad-line); }
 .afe-row:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
+.afe-row-main { all: unset; box-sizing: border-box; display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: .35rem .5rem; align-self: stretch; cursor: pointer; border-radius: 8px; }
+.afe-row:has(.afe-row-main:focus-visible) { box-shadow: var(--focus-ring-strong); }
 .afe-type { flex-shrink: 0; width: 5.9rem; color: var(--color-text-muted); font-size: .68rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .afe-row-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
 .afe-row-badges { display: flex; gap: .25rem; flex-shrink: 0; }
@@ -479,7 +481,7 @@ const CSS = `
 .afe-chip { min-height: 32px; padding: .2rem .7rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-card); color: var(--color-text-secondary); font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .afe-chip:hover { border-color: var(--color-border-strong); color: var(--color-text); }
 .afe-chip[aria-pressed="true"] { border-color: var(--color-text); background: var(--color-text); color: var(--color-bg-card); }
-.afe-chip .afe-chip-n { margin-left: .3rem; opacity: .75; font-weight: 500; }
+.afe-chip .afe-chip-n { margin-left: .3rem; font-weight: 500; }
 .afe-checks { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .5rem; }
 .afe-detail { margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--color-border); display: grid; gap: .6rem; }
 .afe-detail dl { margin: .35rem 0 .35rem .75rem; }
@@ -556,7 +558,7 @@ const CSS = `
 .afe-tr-en.is-html ul { padding-left: 1.1rem; }
 .afe-tr-es { display: grid; gap: .3rem; align-content: start; min-width: 0; }
 .afe-tr-es textarea { min-height: 2.6rem; field-sizing: content; max-height: 22rem; line-height: 1.5; resize: vertical; }
-.afe-ph { padding: 0 .15rem; border-radius: 4px; background: var(--afe-ph); color: var(--color-info); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
+.afe-ph { padding: 0 .15rem; border-radius: 4px; background: var(--afe-ph); color: color-mix(in srgb, var(--color-info) 72%, #000); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
 .afe-ph.is-missing { background: var(--afe-warn-bg); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--afe-warn-line); }
 .afe-progress { display: grid; gap: .35rem; margin-top: .75rem; }
 @media (max-width: 768px) { .afe-tr { grid-template-columns: 1fr; } }
@@ -786,6 +788,7 @@ button.afe-sub-name:focus-visible { outline: 2px solid var(--color-text); outlin
   .afe-row { min-height: 52px; flex-wrap: wrap; }
   .afe-row .afe-mini, .afe-page-head .afe-mini { display: none; }
   .afe-row.is-sel .afe-mini, .afe-page.is-sel .afe-page-head .afe-mini { display: flex; }
+  .afe-row-main { flex-wrap: wrap; }
   .afe-row-label { flex-basis: calc(100% - 3rem); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .afe-row .afe-mini { margin-left: auto; }
   .afe-row-badges { order: 3; }
@@ -2068,7 +2071,7 @@ function FormEditor({ d, RichTextEditor, addToast, initialSel = null, lead = nul
     else if (dir < 0 && at.pi > 0) { list.splice(at.fi, 1); w.pages[at.pi - 1].fields.push(at.f); }
     else if (dir > 0 && at.pi < w.pages.length - 1) { list.splice(at.fi, 1); w.pages[at.pi + 1].fields.unshift(at.f); }
     else return false;
-    if (refocus) focusSoon(`.afe-row[data-id="${id}"]`);
+    if (refocus) focusSoon(`.afe-row[data-id="${id}"] .afe-row-main`);
   });
   const movePage = (pi, dir, refocus = false) => d.update((w) => {
     const to = pi + dir;
@@ -2154,14 +2157,13 @@ function FormEditor({ d, RichTextEditor, addToast, initialSel = null, lead = nul
   const toggleFold = (id) => setFolded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   // ── Keyboard on the outline ──
+  // Each row's main button carries the keys (Enter clicks it like any button): ↑/↓ walk the list, Alt+↑/↓ move
   const rowKey = (e, f) => {
-    if (e.target !== e.currentTarget) return;
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectField(f.id, { scroll: true }); return; }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
     const dir = e.key === 'ArrowUp' ? -1 : 1;
     if (e.altKey) { moveField(f.id, dir, true); return; }
-    const rows = [...document.querySelectorAll('.afe-col .afe-row[data-id]')];
+    const rows = [...document.querySelectorAll('.afe-col .afe-row-main[data-id]')];
     const next = rows[rows.indexOf(e.currentTarget) + dir];
     if (next) { next.focus(); selectField(next.dataset.id); }
   };
@@ -2208,18 +2210,20 @@ function FormEditor({ d, RichTextEditor, addToast, initialSel = null, lead = nul
                         const first1 = pi === 0 && fi === 0;
                         const last1 = pi === work.pages.length - 1 && fi === p.fields.length - 1;
                         return html`
-                          <div key=${f.id} class="afe-row ${isSel ? 'is-sel' : ''} ${problemFor(`${p.id}/${f.id}`) ? 'has-problem' : ''}" data-id=${f.id} role="button" tabindex="0" aria-current=${isSel ? 'true' : undefined}
-                            onClick=${() => selectField(f.id, { scroll: true })} onKeyDown=${(e) => rowKey(e, f)}>
+                          <div key=${f.id} class="afe-row ${isSel ? 'is-sel' : ''} ${problemFor(`${p.id}/${f.id}`) ? 'has-problem' : ''}" data-id=${f.id}
+                            onClick=${() => selectField(f.id, { scroll: true })}>
                             <span class="afe-grip afe-row-grip" title="Drag to move (or Alt+↑/↓)" onClick=${(e) => e.stopPropagation()}><${Icon} name="grip" size=${14} /></span>
-                            <span class="afe-type" title=${types[f.type] || f.type}>${ROW_TYPE[f.type] || types[f.type] || f.type}</span>
-                            <span class="afe-row-label">${label || html`<em class="text-muted">No wording yet</em>`}</span>
-                            <span class="afe-row-badges">
-                              ${locked[f.id] && html`<span class="badge badge-blue" title=${locked[f.id].role}>JobTread</span>`}
-                              ${f.jobtread && html`<span class="badge badge-blue" title=${`Fills JobTread's "${f.jobtread.name}"`}>→ JobTread</span>`}
-                              ${f.required && html`<span class="badge badge-gray">Required</span>`}
-                              ${f.showIf && html`<span class="badge badge-yellow" title="Shown only for some answers">If…</span>`}
-                              ${f.stops && Object.keys(f.stops).length > 0 && html`<span class="badge badge-gray" title="An answer ends the application">Ends</span>`}
-                            </span>
+                            <button type="button" class="afe-row-main" data-id=${f.id} aria-current=${isSel ? 'true' : undefined} onKeyDown=${(e) => rowKey(e, f)}>
+                              <span class="afe-type" title=${types[f.type] || f.type}>${ROW_TYPE[f.type] || types[f.type] || f.type}</span>
+                              <span class="afe-row-label">${label || html`<em class="text-muted">No wording yet</em>`}</span>
+                              <span class="afe-row-badges">
+                                ${locked[f.id] && html`<span class="badge badge-blue" title=${locked[f.id].role}>JobTread</span>`}
+                                ${f.jobtread && html`<span class="badge badge-blue" title=${`Fills JobTread's "${f.jobtread.name}"`}>→ JobTread</span>`}
+                                ${f.required && html`<span class="badge badge-gray">Required</span>`}
+                                ${f.showIf && html`<span class="badge badge-yellow" title="Shown only for some answers">If…</span>`}
+                                ${f.stops && Object.keys(f.stops).length > 0 && html`<span class="badge badge-gray" title="An answer ends the application">Ends</span>`}
+                              </span>
+                            </button>
                             <span class="afe-mini" onClick=${(e) => e.stopPropagation()}>
                               <button aria-label="Move up" title="Move up (Alt+↑)" disabled=${first1} onClick=${() => moveField(f.id, -1)}><${Icon} name="up" size=${14} /></button>
                               <button aria-label="Move down" title="Move down (Alt+↓)" disabled=${last1} onClick=${() => moveField(f.id, 1)}><${Icon} name="down" size=${14} /></button>
