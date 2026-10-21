@@ -300,6 +300,15 @@ export function fakeApplicantWorld() {
       return json({ ok: false, error: 'unknown_method' });
     }
     if (url.host === 'challenges.cloudflare.com') return json({ success: world.turnstile });
+    // The Census geocoder: world.census maps a piece of an address to { lat, lng, county, matched };
+    // anything else isn't found. world.censusDown answers 500. world.censusCalls counts the asks.
+    if (url.host === 'geocoding.geo.census.gov') {
+      world.censusCalls = (world.censusCalls || 0) + 1;
+      if (world.censusDown) return new Response('down', { status: 500 });
+      const q = String(url.searchParams.get('address') || '').toLowerCase();
+      const m = Object.entries(world.census || {}).find(([k]) => q.includes(k.toLowerCase()))?.[1];
+      return json({ result: { addressMatches: m ? [{ coordinates: { x: m.lng, y: m.lat }, matchedAddress: m.matched || q.toUpperCase(), geographies: { Counties: m.county ? [{ BASENAME: m.county }] : [] } }] : [] } });
+    }
     throw new Error(`fake world has no route for ${url.href}`);
   };
 

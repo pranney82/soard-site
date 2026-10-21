@@ -12,7 +12,9 @@
  * POST { sweep: true }     → run the retry sweep now
  *
  * Open, closed, season (Admin → Applications → Settings), `application` in the site settings:
- * GET ?settings=1           → { settings, history, rules }
+ * GET ?settings=1           → { settings, history, rules, area: { points, history } } (area: every
+ *                             family's home on the Applicants map, for what a change would mean,
+ *                             and the outlines the service area has had)
  * POST { settings, base }   → save them ({ conflict } 409 when someone changed them since
  *                             `base`; { errors } 422); open/close times run on the heartbeat
  * The other settings there (who gets the new-application email, the service area, when
@@ -36,7 +38,7 @@
  * POST { formPutLive: true } → the draft becomes the form families see
  * POST { formDiscard: true } / { formRestore: <n> }
  * POST { translate: { path: english } } → Spanish drafts from Workers AI
- * POST { areaTest: address, polygon? } → is this address inside the service area?
+ * POST { areaTest: address, polygon?, nearMiles? } → where this address sits against the service area
  *
  * Staff review applications in JobTread; this page is the health check for
  * the pipe from the form to JobTread.
@@ -45,7 +47,7 @@
 import {
   ensureSchema, listApplications, getApplication, processApplication, createTestApplication,
   maybeSweepApplications, checklist, flags, jobtreadAccountUrl, isApplicationId, cleanYear, applicationSettings,
-  exportCsv, deleteApplicationData, insights, pickApplication, saveApplicationSettings, applicationSettingsHistory,
+  exportCsv, deleteApplicationData, insights, pickApplication, saveApplicationSettings, applicationSettingsHistory, applicantFiles,
 } from './_applications.js';
 import {
   answerSections, LOCKED_FIELDS, FIELD_TYPES, DEFAULT_DEFINITION, DEFAULT_SERVICE_AREA, validateDefinition, normalizeDefinition,
@@ -53,7 +55,7 @@ import {
 } from './_application-form.js';
 import {
   formFor, getLiveForm, getDraftForm, getFormVersion, saveDraftForm, putDraftLive, discardDraftForm,
-  restoreFormVersion, listFormVersions, diffForm, getFormRules, saveFormRules, pickRules,
+  restoreFormVersion, listFormVersions, diffForm, getFormRules, saveFormRules, pickRules, areaHistory,
 } from './_application-forms.js';
 import { checkServiceArea, areaText } from './_geo.js';
 import { translateStrings } from './_translate.js';
@@ -65,6 +67,20 @@ import { advanceOpening } from './_application-waitlist.js';
 
 /** When applications last opened or closed, and who did it ("schedule" for the timer) */
 const sinceOf = (a) => (a?.openChangedAt ? { at: a.openChangedAt, by: a.openChangedBy || null } : null);
+
+/**
+ * For Settings → Service area: every home on the Applicants map (no names, just
+ * where and how far along), so a change shows what it would mean, and the
+ * outlines the area has had.
+ */
+async function areaContext(DB) {
+  let points = [];
+  try {
+    const { results } = await DB.prepare('SELECT account_id, lat, lng, status, year FROM applicants WHERE lat IS NOT NULL AND lng IS NOT NULL').all();
+    points = (results || []).map(r => ({ id: r.account_id, lat: r.lat, lng: r.lng, status: r.status || null, year: r.year || null }));
+  } catch { /* the Applicants mirror isn't there yet */ }
+  return { points, history: await areaHistory(DB).catch(() => []) };
+}
 
 /** The settings as the site uses them now, and who last saved them */
 async function rulesNow(DB) {
@@ -81,16 +97,21 @@ export async function onRequestGet(context) {
   const fileApp = url.searchParams.get('file');
   if (fileApp) {
     const app = isApplicationId(fileApp) ? await getApplication(env.DB, fileApp) : null;
-    if (!app || !env.FILES) return new Response('Not found', { status: 404 });
+    if (!app || !applicantFiles(env)) return new Response('Not found', { status: 404 });
     const field = url.searchParams.get('field');
     const key = field === 'pdf' ? app.jt_state?.pdf?.key : (url.searchParams.get('thumb') ? app.files?.[field]?.thumbKey : app.files?.[field]?.key);
-    const obj = key ? await env.FILES.get(key) : null;
+    const obj = key ? await applicantFiles(env).get(key) : null;
     if (!obj) return new Response('Not found', { status: 404 });
+    // Shown in the browser only when it's a photo or the PDF; anything else downloads
+    const type = String(obj.httpMetadata?.contentType || 'application/octet-stream').toLowerCase();
+    const showable = /^image\/(jpeg|png|webp|heic|heif)$/.test(type) || type === 'application/pdf';
+    const name = `${(app.child_name || 'application').replace(/[^\w .-]/g, '')}${field === 'pdf' ? '_Application.pdf' : ''}`;
     return new Response(obj.body, {
       headers: {
-        'Content-Type': obj.httpMetadata?.contentType || 'application/octet-stream',
+        'Content-Type': showable ? type : 'application/octet-stream',
         'Cache-Control': 'private, max-age=300',
-        'Content-Disposition': field === 'pdf' ? `inline; filename="${(app.child_name || 'application').replace(/[^\w .-]/g, '')}_Application.pdf"` : 'inline',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': showable ? (field === 'pdf' ? `inline; filename="${name}"` : 'inline') : `attachment; filename="${name || 'file'}"`,
       },
     });
   }
@@ -101,8 +122,8 @@ export async function onRequestGet(context) {
     return new Response(`\uFEFF${csv}`, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store' } });
   }
   if (url.searchParams.get('settings')) {
-    const [stored, history, rules] = await Promise.all([applicationSettings(env.DB), applicationSettingsHistory(env.DB), rulesNow(env.DB)]);
-    return Response.json({ success: true, settings: pickApplication(stored), since: sinceOf(stored), history, rules, now: new Date().toISOString() });
+    const [stored, history, rules, area] = await Promise.all([applicationSettings(env.DB), applicationSettingsHistory(env.DB), rulesNow(env.DB), areaContext(env.DB)]);
+    return Response.json({ success: true, settings: pickApplication(stored), since: sinceOf(stored), history, rules, area, now: new Date().toISOString() });
   }
   if (url.searchParams.get('insights')) {
     const settings = await applicationSettings(env.DB);
@@ -231,7 +252,7 @@ export async function onRequestPost(context) {
       // A new boundary: every applicant on the map is placed against it again
       if (out.changes.some(c => c.field === 'application.serviceArea')) await replaceBoundary(env.DB, out.rules.serviceArea.polygon).catch(() => 0);
     }
-    return Response.json({ success: true, changes: out.changes, rules: await rulesNow(env.DB), history: await applicationSettingsHistory(env.DB) });
+    return Response.json({ success: true, changes: out.changes, rules: await rulesNow(env.DB), history: await applicationSettingsHistory(env.DB), area: await areaContext(env.DB) });
   }
 
   if (body.formSave) {
@@ -248,8 +269,11 @@ export async function onRequestPost(context) {
     }
   }
   if (body.areaTest) {
-    const polygon = Array.isArray(body.polygon) && body.polygon.length >= 3 ? body.polygon : (await formFor(env.DB, { year: '2027' })).serviceArea.polygon;
-    const area = await checkServiceArea(String(body.areaTest).slice(0, 300), polygon);
+    // Against what's on screen in Settings (unsaved changes too), else what's in use
+    const live = (await formFor(env.DB, { year: '2027' })).serviceArea;
+    const polygon = Array.isArray(body.polygon) && body.polygon.length >= 3 ? body.polygon : live.polygon;
+    const nearMiles = body.nearMiles != null ? body.nearMiles : live.nearMiles;
+    const area = await checkServiceArea(String(body.areaTest).slice(0, 300), { polygon, nearMiles });
     return Response.json({ success: true, area, text: areaText(area) });
   }
   if (body.deleteApp) {

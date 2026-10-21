@@ -36,7 +36,10 @@
  *     the save, ⌘S, the tab badge, one save bar for every card; the
  *     new-application email, email timing and the service area save straight
  *     to live (no Put live), a clash with another editor, Reshape on the map;
- *     the unsaved-changes guard, and Site Config no longer carrying the cards
+ *     the unsaved-changes guard, and Site Config no longer carrying the cards;
+ *     the service area's close distance and what families farther out get,
+ *     counted on the families on the Applicants map, and an earlier outline
+ *     put back; Insights' "Where families live"
  *   - phone: nothing wider than the screen
  * Screenshots in test-results/applications-admin/. Exits non-zero on failure.
  *
@@ -50,6 +53,8 @@ import * as adminApi from '../functions/api/applications-admin.js';
 import { getDraftForm, getLiveForm, clearFormCache, saveDraftForm, getFormRules, saveFormRules } from '../functions/api/_application-forms.js';
 import { resolveForm } from '../functions/api/_application-form.js';
 import { ensureSchema, runApplicationSchedule } from '../functions/api/_applications.js';
+import { ensureApplicantSchema } from '../functions/api/_applicants.js';
+import { axeScan, axeText } from './lib/axe.mjs';
 import { publicForm } from '../functions/api/apply.js';
 import * as readContentApi from '../functions/api/read-content.js';
 import * as saveContentApi from '../functions/api/save-content.js';
@@ -65,7 +70,9 @@ const JEN = 'jen.alvarez@soardcharity.com';
 const failures = [];
 const ok = (cond, msg) => { if (!cond) failures.push(msg); console.log(`${cond ? '  ✓' : '  ✗'} ${msg}`); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// ONLY=<regex> runs just the sections whose names match (each opens its own tab)
 async function section(name, fn) {
+  if (process.env.ONLY && !new RegExp(process.env.ONLY).test(name)) return;
   console.log(name);
   try { await fn(); } catch (e) { failures.push(`${name}: crashed: ${e.message}`); console.error(`  ✗ crashed: ${e.stack || e.message}`); }
 }
@@ -141,6 +148,19 @@ async function seed() {
   await draft({ id: 'd-test', created: NOW - DAY, updated: NOW - DAY, submitted: fixtures.test, ip: 'admin' });
   await app({ id: fixtures.test, draftId: 'd-test', child: 'TEST Applicant', test: true, at: NOW - DAY + 60e3, jt: done });
   for (let i = 0; i < 37; i++) await app({ id: appId(), year: '2026', child: `Past${i} Family`, at: NOW - (400 + i) * DAY, jt: done });
+  // The form's address check on some drafts (Insights → Where families live)
+  const placed = (id, a) => DB.prepare('UPDATE application_drafts SET area = ? WHERE id = ?').bind(JSON.stringify(a), id).run();
+  for (let i = 0; i < 12; i++) await placed(`d-sub-${i}`, { band: 'inside', miles: 0 });
+  await placed('d-sub-12', { band: 'near', miles: 4 });
+  await placed('d-sub-13', { band: 'near', miles: 11 });
+  await placed('d-sub-14', { band: 'far', miles: 28 });
+  await placed('d-stop-0', { band: 'far', miles: 82 });
+  await placed('d-wip-0', { band: 'unknown', reason: 'no-match' });
+  // Homes on the Applicants map: three inside, Buford (4 mi out), Cartersville (10 mi), Macon (82 mi)
+  await ensureApplicantSchema(DB);
+  const home = (id, lat, lng) => DB.prepare("INSERT INTO applicants (account_id, name, status, year, lat, lng, synced_at) VALUES (?, ?, 'Applied', '2027', ?, ?, ?)").bind(id, `Family ${id}`, lat, lng, iso(NOW)).run();
+  await home('h1', 33.953, -84.547); await home('h2', 34.071, -84.273); await home('h3', 34.039, -84.351);
+  await home('h4', 34.121, -83.990); await home('h5', 34.164, -84.799); await home('h6', 32.836, -83.632);
 }
 await seed();
 
@@ -198,6 +218,8 @@ async function open(width, height, hash, { user = PETER, previewProbe = false } 
   const page = await browser.newPage();
   await page.setViewport({ width, height, deviceScaleFactor: 1, isMobile: width < 500, hasTouch: width < 500 });
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+  // CPU_SLOWDOWN=<n> runs the page n times slower, to shake out timing races on purpose
+  if (Number(process.env.CPU_SLOWDOWN) > 1) await (await page.target().createCDPSession()).send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU_SLOWDOWN) });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|favicon|Content Security Policy|live-ws|dynamically imported module/.test(m.text())) errors.push(m.text()); });
@@ -921,6 +943,10 @@ try {
     ok(await count(page, '.afe-chart svg .afe-colbar') >= 6, `a column per week, empty weeks included (${await count(page, '.afe-chart svg .afe-colbar')})`);
     ok(/Spanish\s*\d/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Language/.test(v.querySelector('h4')?.textContent))?.innerText || '')), 'languages');
     ok(/Children’s Healthcare of Atlanta/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent))?.innerText || '')), 'referral sources');
+    const where = await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Where families live/.test(v.querySelector('h4')?.textContent))?.innerText || '');
+    ok(/Inside\s*1[12]\b/.test(where) && /Close\s*2/.test(where) && /Farther out\s*2/.test(where) && /Address not found\s*1/.test(where), `where families live, from the address check (${where.replace(/\s+/g, ' ').slice(0, 160)})`);
+    ok(/within 15 miles/.test(where) && /Up to 5 mi\s*close\s*1/.test(where) && /10 to 15 mi\s*close\s*1/.test(where) && /Over 50 mi\s*1/.test(where), 'how far out, with the close steps marked');
+    ok(/1\s*farther out who applied anyway/.test(where) && /1\s*stopped by the form/.test(where), 'and what the families farther out did');
     await shot(page, '13-insights.png');
     ok(await clickText(page, '.afe-checklist button', /See them/), '"See them" on a check');
     await page.waitForSelector('.afe-sub-list, .afe-subs .afe-empty', { timeout: 8000 }).catch(() => {});
@@ -949,10 +975,28 @@ try {
     await page.keyboard.press('Escape');
     await page.evaluate(() => { history.replaceState(null, '', '#applications/applicants/22PgaFvDKQ9L'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
     await page.waitForSelector('.apl-drawer', { timeout: 4000 }).catch(() => {});
-    await sleep(150);
+    // Once it's on screen and has focus, as a person would see it (a fixed pause loses on a busy machine)
+    await page.waitForFunction(() => !!document.activeElement?.closest('.apl-drawer') && !document.querySelector('.apl-menu'), { timeout: 4000 }).catch(() => {});
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => {});
-    ok(!(await page.$('.apl-drawer')), 'Esc closes it');
+    const left = await page.evaluate(() => (document.querySelector('.apl-drawer') ? { active: document.activeElement?.outerHTML?.slice(0, 120), dialogs: [...document.querySelectorAll('dialog[open], .afe-dialog, .apl-sheet-wrap, .apl-menu')].map(e => `${e.className}: ${e.innerText.slice(0, 90)}`), hash: location.hash } : null));
+    if (left) {
+      // Which key listeners are on the page right now (CDP), to find whatever took the Esc
+      const cdp = await page.target().createCDPSession();
+      for (const expr of ['window', 'document']) {
+        const { result } = await cdp.send('Runtime.evaluate', { expression: expr });
+        const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId });
+        const keys = listeners.filter(l => /key|focus/.test(l.type)).map(l => `${l.type}${l.useCapture ? ' (capture)' : ''} @${l.scriptId}:${l.lineNumber}`);
+        console.log(`    ${expr} listeners: ${keys.join(', ')}`);
+      }
+      const scripts = new Map();
+      cdp.on('Debugger.scriptParsed', (e) => scripts.set(e.scriptId, e.url));
+      await cdp.send('Debugger.enable');
+      await sleep(300);
+      console.log(`    scripts: ${[...scripts].filter(([, u]) => /admin/.test(u)).map(([id, u]) => `${id}=${u.split('/').pop()}`).join(' ')}`);
+      await cdp.detach();
+    }
+    ok(!left, `Esc closes it${left ? ` (still open: ${JSON.stringify(left)})` : ''}`);
   });
 
   await section('Settings: open or closed, season, schedule', async () => {
@@ -1140,8 +1184,46 @@ try {
     await settled();
     rs = await rules();
     ok(rs.notify.waits.decision === 45 && rs.notify.summary === false, 'a second Save uses mine and keeps hers');
-    // The service area: its outline, and Reshape on the map
-    ok(await count(page, '.afe-area-svg polygon') === 1 && /\d+ corners/.test(await text(page, '.afe-area-text')), 'the boundary’s outline and corners');
+    // The service area: its outline with the close ring, every family's home, and Reshape on the map
+    const areaCard = () => text(page, 'section[aria-labelledby="afe-set-area"]');
+    ok(await count(page, '.afe-area .afe-area-fill') === 1 && await count(page, '.afe-area .afe-area-ring') === 1 && /\d+ corners/.test(await text(page, '.afe-area-text')), 'the outline, its dashed close ring and its corners');
+    ok(await count(page, '.afe-area .afe-area-pt') === 5, `each home on the map drawn by band (${await count(page, '.afe-area .afe-area-pt')} in view; Macon is off it)`);
+    let card = await areaCard();
+    ok(/The 6 families on the Applicants map/.test(card) && /Inside\s*3/.test(card) && /Close \(within 15 miles\)\s*2/.test(card) && /Farther out\s*1/.test(card), 'the families on the map, by these settings');
+    await page.$eval('#afe-near', (el) => { el.value = '5'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    card = await areaCard();
+    ok(/Close \(within 5 miles\)\s*1/.test(card) && /Farther out\s*2/.test(card), 'a smaller close distance recounts them as you type');
+    ok(/1 family would count as farther out/.test(card), 'and says who it moves, against what’s in use');
+    ok(/Unsaved changes to the service area/.test(await text(page, '.afe-savebar')), 'the save bar names it');
+    ok(await clickText(page, '.afe-beyond button', /Stop the application/), 'Stop the application');
+    ok(await page.$eval('.afe-beyond [data-k="stop"]', (e) => e.getAttribute('aria-checked')) === 'true', 'a radio group says which');
+    ok(/2 families on the map live this far out: under this setting, the form would have stopped them/.test(await areaCard()), 'and what it would have meant');
+    await shot(page, '33-settings-area.png', { maxH: 2600 });
+    await saveBtn();
+    await settled();
+    rs = await rules();
+    ok(rs.serviceArea.nearMiles === 5 && rs.serviceArea.beyond === 'stop' && rs.serviceArea.polygon.length >= 3, 'saved as settings, the outline kept');
+    ok(/“Close to the area” is now within 5 miles/.test(await text(page, '.afe-log')) && /Families far outside the area are now stopped/.test(await text(page, '.afe-log')), 'both in Recent changes');
+    // Someone reshapes it on the map; the earlier one can be put back from here
+    const firstOutline = rs.serviceArea.polygon;
+    await saveFormRules(DB, { serviceArea: { polygon: [[34.3, -84.5], [34.2, -84.0], [33.9, -84.1], [33.9, -84.5]] } }, { user: JEN });
+    await page.click('.afe-tabs [data-tab="insights"]');
+    await page.waitForSelector('.afe-tile', { timeout: 8000 });
+    await page.click('.afe-tabs [data-tab="settings"]');
+    await page.waitForFunction(() => /Earlier outlines \(1\)/.test(document.querySelector('section[aria-labelledby="afe-set-area"]')?.innerText || ''), { timeout: 8000 }).catch(() => {});
+    ok(/4 corners/.test(await text(page, '.afe-area-text')), 'back on the tab, it shows the outline in use');
+    await page.evaluate(() => { const d = [...document.querySelectorAll('section[aria-labelledby="afe-set-area"] details')].find(x => /Earlier outlines/.test(x.innerText)); if (d) d.open = true; });
+    ok(/The original outline/.test(await areaCard()) && /In use/.test(await areaCard()), 'Earlier outlines: the original and the one in use');
+    ok(await clickText(page, '.afe-outlines button', /Use this one/), 'Use this one');
+    ok(/\d+ corners/.test(await text(page, '.afe-area-text')) && !/4 corners/.test(await text(page, '.afe-area-text')) && /Not saved/.test(await text(page, '.afe-area-text')), 'it’s on screen, not saved yet');
+    await saveBtn();
+    await settled();
+    ok(JSON.stringify((await rules()).serviceArea.polygon) === JSON.stringify(firstOutline), 'Save puts it back in use');
+    await saveFormRules(DB, { serviceArea: { beyond: 'warn', nearMiles: 15 } }, { user: JEN });
+    await page.click('.afe-tabs [data-tab="insights"]');
+    await page.waitForSelector('.afe-tile', { timeout: 8000 });
+    await page.click('.afe-tabs [data-tab="settings"]');
+    await page.waitForSelector('.afe-status', { timeout: 5000 });
     ok(await clickText(page, '.afe-area-text button', /Reshape it on the map/), 'Reshape it on the map');
     await page.waitForSelector('.apl-map-note', { timeout: 10000 }).catch(() => {});
     ok(await page.$eval('.afe-tabs .active', (e) => e.dataset.tab) === 'applicants' && !!(await page.$('.apl-map-note')), 'opens the Applicants map, already reshaping');
@@ -1164,6 +1246,8 @@ try {
     await page.waitForSelector('.afe-tile');
     await shot(page, '13-insights-dark.png');
     await clickText(page, '.hub-tab', /^Form/);
+    await page.waitForSelector('.afe-subnav [data-view="spanish"]');
+    await page.$eval('.afe-subnav', (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
     await page.click('.afe-subnav [data-view="spanish"]');
     await page.waitForSelector('.afe-tr');
     await shot(page, '09-spanish-dark.png', { maxH: 1400 });
@@ -1206,6 +1290,24 @@ try {
     ok(asked.some(m => /unsaved changes in Applications settings/.test(m)), `the admin asks before leaving (${asked[0] || 'no prompt'})`);
     ok((await storedSettings()).application.closedMessage === '', 'and nothing was saved');
     await lv.page.close();
+  });
+
+  await section('Accessibility (axe, WCAG 2.1 AA)', async () => {
+    // Its own page, like the sections around it (the desktop page is closed by now)
+    const ax = await open(1440, 900, '#applications/submissions');
+    const page = ax.page;
+    for (const [hash, sel, name] of [
+      ['#applications/submissions', '.afe-sub', 'Submissions'], ['#applications/insights', '.afe-tile', 'Insights'],
+      ['#applications/form', '.afe-row', 'Form'], ['#applications/form/spanish', '.afe-tr', 'Spanish'], ['#applications/form/versions', '.afe-hist', 'Versions'],
+      ['#applications/emails', '.afe-email-rail', 'Emails'], ['#applications/settings', '.afe-status', 'Settings'],
+    ]) {
+      await page.evaluate((h) => { location.hash = h; }, hash);
+      await page.waitForSelector(sel, { timeout: 8000 }).catch(() => {});
+      await sleep(600);
+      const v = await axeScan(page, '.afe-root');
+      ok(!v.length, `axe: ${name} has no WCAG 2.1 AA problems${v.length ? ` (${axeText(v)})` : ''}`);
+    }
+    await page.close();
   });
 
   await section('Phone', async () => {

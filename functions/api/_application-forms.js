@@ -14,7 +14,9 @@
  *   | 'old' (was live)
  *
  * Settings (Admin → Applications → Settings): who gets the new-application
- * email, the service-area boundary and when status emails go out. They're
+ * email, the service area (its outline, how far out counts as close, and
+ * whether families farther out can still apply) and when status emails go
+ * out. They're
  * rules, not wording, so they save straight away instead of waiting for the
  * form's Put live (and never drag a half-finished form edit live with them).
  * They live in application_form_rules (one row) and are laid over every form
@@ -34,6 +36,9 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_application_form_versions_state ON application_form_versions(state)`,
   `CREATE TABLE IF NOT EXISTS application_form_rules (
     id INTEGER PRIMARY KEY CHECK (id = 1), rules TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT)`,
+  // Every service-area outline that was ever live, newest last (Settings → Service area → History)
+  `CREATE TABLE IF NOT EXISTS application_area_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, polygon TEXT NOT NULL, at TEXT NOT NULL, by_user TEXT, note TEXT)`,
 ];
 
 /** The definition keys that are settings (saved at once) rather than form wording */
@@ -202,6 +207,8 @@ export function ruleChanges(a, b) {
   if (ea !== eb) add('staffEmails', ea, eb);
   if (JSON.stringify(a.serviceArea?.polygon || []) !== JSON.stringify(b.serviceArea?.polygon || [])) add('serviceArea', (a.serviceArea?.polygon || []).length, (b.serviceArea?.polygon || []).length);
   for (const k of ['inReview', 'decision', 'welcome']) if (a.notify?.waits?.[k] !== b.notify?.waits?.[k]) add(`notify.waits.${k}`, a.notify?.waits?.[k], b.notify?.waits?.[k]);
+  if (a.serviceArea?.nearMiles !== b.serviceArea?.nearMiles) add('serviceArea.nearMiles', a.serviceArea?.nearMiles ?? null, b.serviceArea?.nearMiles ?? null);
+  if ((a.serviceArea?.beyond || 'warn') !== (b.serviceArea?.beyond || 'warn')) add('serviceArea.beyond', a.serviceArea?.beyond || 'warn', b.serviceArea?.beyond || 'warn');
   const quiet = (n) => (n?.quiet && n.quiet.start !== n.quiet.end ? `${hourText(n.quiet.start)} to ${hourText(n.quiet.end)}` : 'off');
   if (quiet(a.notify) !== quiet(b.notify)) add('notify.quiet', quiet(a.notify), quiet(b.notify));
   if ((a.notify?.summary !== false) !== (b.notify?.summary !== false)) add('notify.summary', a.notify?.summary !== false, b.notify?.summary !== false);
@@ -223,6 +230,8 @@ export async function saveFormRules(DB, patch, { user = 'admin', base = null, fo
     return { conflict: { rules: current, updatedAt: saved.updatedAt, updatedBy: saved.updatedBy } };
   }
   const p = pickRules(patch && typeof patch === 'object' ? patch : {});
+  // Part of the service area (just the outline, say) keeps the rest as it is
+  if (p.serviceArea && typeof p.serviceArea === 'object') p.serviceArea = { ...current.serviceArea, ...p.serviceArea };
   // A part of the timing (just the waits, say) keeps the rest as it is
   if (p.notify && typeof p.notify === 'object') {
     const n = current.notify;
@@ -239,8 +248,25 @@ export async function saveFormRules(DB, patch, { user = 'admin', base = null, fo
   await DB.prepare(`INSERT INTO application_form_rules (id, rules, updated_at, updated_by) VALUES (1, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET rules = excluded.rules, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
     .bind(JSON.stringify(next), at, user).run();
+  if (changes.some(c => c.field === 'application.serviceArea')) await keepOutline(DB, current.serviceArea.polygon, next.serviceArea.polygon, { user, at, since: saved?.updatedAt || null });
   clearFormCache();
   return { rules: next, updatedAt: at, updatedBy: user, changes };
+}
+
+/** Note a new outline in the history (the first time, the one it replaced too, as "the original") */
+async function keepOutline(DB, before, after, { user, at, since }) {
+  const n = await DB.prepare('SELECT COUNT(*) AS n FROM application_area_history').first();
+  const stmts = [];
+  if (!Number(n?.n)) stmts.push(DB.prepare('INSERT INTO application_area_history (polygon, at, by_user, note) VALUES (?, ?, ?, ?)').bind(JSON.stringify(before), since || at, null, 'The original outline'));
+  stmts.push(DB.prepare('INSERT INTO application_area_history (polygon, at, by_user) VALUES (?, ?, ?)').bind(JSON.stringify(after), at, user));
+  await DB.batch(stmts);
+}
+
+/** The outlines the service area has had, newest first: [{ id, polygon, at, by, note, live }] */
+export async function areaHistory(DB, { limit = 20 } = {}) {
+  await ensureFormSchema(DB);
+  const { results } = await DB.prepare('SELECT id, polygon, at, by_user, note FROM application_area_history ORDER BY id DESC LIMIT ?').bind(limit).all();
+  return (results || []).map((r, i) => ({ id: r.id, polygon: parse(r.polygon) || [], at: r.at, by: r.by_user || null, note: r.note || null, live: i === 0 }));
 }
 
 export async function discardDraftForm(DB) {

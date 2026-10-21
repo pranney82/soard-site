@@ -3,7 +3,8 @@
  * ===========================================================================
  * The form at /apply/form/ (definition in ./_application-form.js) saves a
  * draft on every step, keyed by an unguessable token the family keeps in a
- * resume link. Photos go to private R2 (FILES, under applications/<draft>/),
+ * resume link. Photos go to R2 (applicantFiles(): APPLICANT_FILES, a bucket
+ * with no public domain, once it's bound; FILES until then), under applications/<draft>/,
  * the video straight from the browser to Cloudflare Stream (private, signed
  * URLs only). Submit freezes the draft into an `applications` row and runs
  * processApplication, which builds the JobTread customer the way the Jotform
@@ -42,8 +43,9 @@ import { slackCard } from './_slack-cards.js';
 import * as mail from './_email-shell.js';
 import { readApplicant, sendIntake, ensureCommsSchema } from './_applicant-comms.js';
 import { formFor, ensureFormSchema } from './_application-forms.js';
-import { isUpload, isInput, answerText, progressPercent, renderMessage, choice } from './_application-form.js';
-import { checkServiceArea, areaText } from './_geo.js';
+import { isUpload, isInput, answerText, progressPercent, renderMessage, choice, AREA_VALUES } from './_application-form.js';
+import { checkServiceArea, areaText, addressKey, checkableAddress, bandOf } from './_geo.js';
+import { placeHome } from '../../public/admin/area-shared.js';
 import { maybeSyncApplicants } from './_applicants.js';
 import { runNotifications } from './_applicant-notify.js';
 import { runApprovals } from './_applicant-approved.js';
@@ -139,7 +141,8 @@ export async function ensureSchema(DB) {
   //   applications.lang          the language it was answered in
   //   applications.deleted_*     staff deleted the family's data (the row stays as a record)
   //   application_drafts.*       language, furthest page, stop screen hit, reminder emails,
-  //                              and cleared_at (expired: personal data gone, kept for the funnel)
+  //                              cleared_at (expired: personal data gone, kept for the funnel),
+  //                              and the last service-area check of the home address (area)
   for (const sql of [
     'ALTER TABLE applications ADD COLUMN form_version INTEGER DEFAULT 0',
     "ALTER TABLE applications ADD COLUMN lang TEXT DEFAULT 'en'",
@@ -153,6 +156,8 @@ export async function ensureSchema(DB) {
     'ALTER TABLE application_drafts ADD COLUMN last_reminder_at TEXT',
     'ALTER TABLE application_drafts ADD COLUMN reminders_off INTEGER DEFAULT 0',
     'ALTER TABLE application_drafts ADD COLUMN cleared_at TEXT',
+    'ALTER TABLE application_drafts ADD COLUMN area TEXT',
+    'ALTER TABLE application_drafts ADD COLUMN area_checks INTEGER DEFAULT 0',
   ]) {
     try { await DB.prepare(sql).run(); } catch { /* already there */ }
   }
@@ -172,10 +177,23 @@ export const newApplicationId = () => `app-${Date.now().toString(36)}-${randomHe
 export const isDraftId = (s) => /^[0-9a-f]{32}$/.test(String(s || ''));
 export const isApplicationId = (s) => /^app-[0-9a-z]{6,12}-[0-9a-f]{6}$/.test(String(s || ''));
 
-export async function hashIp(ip) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`soard-apply:${ip || 'unknown'}`));
+/**
+ * A connection's address, hashed for the per-day limit. With a pepper (env
+ * APPLY_IP_PEPPER or LIVE_IP_PEPPER) it's an HMAC, which can't be reversed by
+ * trying every IPv4 address; without one, a plain hash as before.
+ */
+export async function hashIp(ip, pepper = '') {
+  const data = new TextEncoder().encode(`soard-apply:${ip || 'unknown'}`);
+  let buf;
+  if (pepper) {
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(pepper)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    buf = await crypto.subtle.sign('HMAC', key, data);
+  } else buf = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(buf)].slice(0, 12).map(b => b.toString(16).padStart(2, '0')).join('');
 }
+
+/** Where applicants' photos and PDFs live: one place, so the bucket can change without a hunt */
+export const applicantFiles = (env) => env?.APPLICANT_FILES || env?.FILES || null;
 
 /** A season year the form may be filled for: this year through two years out */
 export function cleanYear(y, now = Date.now()) {
@@ -329,7 +347,7 @@ export async function applyApplicationSchedule(env, { now = Date.now() } = {}) {
 
 function draftRow(r) {
   if (!r) return null;
-  return { ...r, answers: parse(r.answers, {}), files: parse(r.files, {}) };
+  return { ...r, answers: parse(r.answers, {}), files: parse(r.files, {}), area: parse(r.area, null) };
 }
 
 export async function getDraft(DB, id) {
@@ -357,6 +375,10 @@ export async function draftsToday(DB, ipHash, now = Date.now()) {
 export async function saveDraft(DB, draft, { answers, page, lang }, now = Date.now()) {
   const form = await formFor(DB, { year: draft.year });
   const clean = cleanAnswers(form, answers || {});
+  // The service-area answer is the check's when the address was placed on the map (not the browser's word for it)
+  const af = areaFieldOf(form);
+  const placed = af ? placedArea(draft.area, clean.address, form.serviceArea) : null;
+  if (placed) clean[af.id] = AREA_VALUES[placed.band];
   const email = clean.parentEmail || draft.email || null;
   const pageId = form.pages.some(p => p.id === page) ? page : draft.page;
   // For the funnel: the furthest page reached, and a stop screen if one was hit
@@ -368,6 +390,58 @@ export async function saveDraft(DB, draft, { answers, page, lang }, now = Date.n
   await DB.prepare('UPDATE application_drafts SET answers = ?, page = ?, email = ?, lang = ?, max_page = ?, max_page_id = ?, stop_key = ?, updated_at = ? WHERE id = ?')
     .bind(JSON.stringify(clean), pageId || null, email, language, maxPage, maxPageId || null, stop?.key || null, iso(now), draft.id).run();
   return { answers: clean, page: pageId };
+}
+
+// ─── The service-area check ─────────────────────────────────────────
+
+/** The form's service-area question (type 'area'), or null on a form without one */
+export function areaFieldOf(form) {
+  return allFields(form).find(f => f.type === 'area') || null;
+}
+
+/**
+ * A stored check, if it was for this address and found it on the map, placed
+ * against today's service area (the outline or the close distance may have
+ * changed since): { ...check, band, miles, edgeMiles }. Else null.
+ */
+export function placedArea(check, address, area) {
+  if (!check || check.lat == null || check.lng == null || !area?.polygon) return null;
+  if (check.key !== addressKey(address)) return null;
+  const p = placeHome(check.lat, check.lng, area);
+  return p.band === 'unknown' ? null : { ...check, ...p, nearMiles: area.nearMiles };
+}
+
+export const MAX_AREA_CHECKS = 40; // Census lookups per draft (a family retyping their address a few times uses a handful)
+
+/**
+ * Check a home address against the service area, for a draft (stored on it)
+ * or a staff preview (draft null). The same address isn't looked up twice:
+ * the stored check is placed again instead. Never throws.
+ * → { key, band: 'inside'|'near'|'far'|'unknown', miles, edgeMiles, nearMiles, lat, lng, county, matched,
+ *     reason?: 'incomplete' | 'no-match' | 'error' | 'limit', at }
+ */
+export async function areaCheck(env, form, address, { draft = null, fetchImpl = fetch, now = Date.now() } = {}) {
+  const key = addressKey(address);
+  const area = form.serviceArea;
+  if (!key || !checkableAddress(address)) return { key, band: 'unknown', reason: 'incomplete' };
+  const known = placedArea(draft?.area, address, area);
+  if (known) return known;
+  // The Census didn't know this exact address before: it won't now either
+  if (draft?.area?.key === key && draft.area.reason === 'no-match') return draft.area;
+  if (draft && (Number(draft.area_checks) || 0) >= MAX_AREA_CHECKS) return { key, band: 'unknown', reason: 'limit' };
+  const r = await checkServiceArea(addressText(address), area, fetchImpl);
+  const out = {
+    key, band: r.band, miles: r.miles ?? null, edgeMiles: r.edgeMiles ?? null, nearMiles: area.nearMiles,
+    lat: r.lat ?? null, lng: r.lng ?? null, county: r.county ?? null, matched: r.matched ?? null,
+    ...(r.reason ? { reason: r.reason } : {}), at: iso(now),
+  };
+  // Trouble reaching the Census isn't kept: the next save or the submit asks again
+  if (draft && env.DB && r.reason !== 'error') {
+    await env.DB.prepare('UPDATE application_drafts SET area = ?, area_checks = COALESCE(area_checks, 0) + 1 WHERE id = ?').bind(JSON.stringify(out), draft.id).run();
+    draft.area = out;
+    draft.area_checks = (Number(draft.area_checks) || 0) + 1;
+  }
+  return out;
 }
 
 export async function setDraftFile(DB, draftId, fieldId, record, now = Date.now()) {
@@ -494,6 +568,10 @@ export async function submitDraft(env, draft, { now = Date.now(), forceTest = fa
   const lang = draft.lang === 'es' ? 'es' : 'en';
   const form = await formFor(DB, { year: draft.year });
   const answers = cleanAnswers(form, draft.answers);
+  // The service area, checked again from the address on file (the family answers it only when the map can't place the home)
+  const af = areaFieldOf(form);
+  const area = af ? await areaCheck(env, form, answers.address, { draft, now }) : null;
+  if (af && area.band !== 'unknown') answers[af.id] = AREA_VALUES[area.band];
   const stop = stopFor(form, answers);
   if (stop) return { ok: false, error: 'stopped', stop: stop.key };
   const errors = formErrors(form, answers, draft.files, null, lang);
@@ -509,10 +587,12 @@ export async function submitDraft(env, draft, { now = Date.now(), forceTest = fa
     const again = await getDraft(DB, draft.id);
     return { ok: true, id: again?.submitted_id, duplicate: true };
   }
+  // The form's check rides along for intake, which reports it to staff
+  const state = area && area.band !== 'unknown' ? { formArea: area } : area?.reason ? { formArea: { key: area.key, band: 'unknown', reason: area.reason } } : {};
   await DB.prepare(`INSERT INTO applications (id, draft_id, year, child_name, parent_name, parent_email, makeover_types, answers, files, is_test,
-      jt_state, status, attempts, next_try_at, submitted_at, updated_at, form_version, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', 'processing', 0, ?, ?, ?, ?, ?)`)
+      jt_state, status, attempts, next_try_at, submitted_at, updated_at, form_version, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0, ?, ?, ?, ?, ?)`)
     .bind(id, draft.id, draft.year, childName, nameText(answers.parentName), answers.parentEmail || null,
-      JSON.stringify(answers.makeoverTypes || []), JSON.stringify(answers), JSON.stringify(draft.files || {}), isTest ? 1 : 0, now, at, at, form.version || 0, lang).run();
+      JSON.stringify(answers.makeoverTypes || []), JSON.stringify(answers), JSON.stringify(draft.files || {}), isTest ? 1 : 0, JSON.stringify(state), now, at, at, form.version || 0, lang).run();
   return { ok: true, id };
 }
 
@@ -666,8 +746,8 @@ async function attachFile(env, { accountId, name, uploadRequestId }, fetchImpl) 
 }
 
 async function r2Bytes(env, key) {
-  if (!key || !env.FILES) return null;
-  const obj = await env.FILES.get(key);
+  if (!key || !applicantFiles(env)) return null;
+  const obj = await applicantFiles(env).get(key);
   return obj ? new Uint8Array(await obj.arrayBuffer()) : null;
 }
 
@@ -685,7 +765,7 @@ async function ensurePdf(env, app) {
     if (bytes) photos[id] = bytes;
   }
   const bytes = await buildApplicationPdf({ form, answers: app.answers, files: app.files, submittedAt: app.submitted_at, photos });
-  await env.FILES.put(pdfKey(app), bytes, { httpMetadata: { contentType: 'application/pdf' } });
+  await applicantFiles(env).put(pdfKey(app), bytes, { httpMetadata: { contentType: 'application/pdf' } });
   app.jt_state.pdf = { key: pdfKey(app), size: bytes.byteLength };
   return bytes;
 }
@@ -702,7 +782,7 @@ export function staffEmail(app, accountId) {
   const { pill, TONES, esc } = mail;
   const areaHtml = !area ? null
     : area.status === 'inside' ? `${pill(area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside', TONES.green)}`
-    : area.status === 'outside' ? `${pill(`About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside`, TONES.amber)}`
+    : area.status === 'outside' ? `${pill(`About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside${bandOf(area) === 'near' ? ', close' : ''}`, TONES.amber)}`
     : `${pill('Couldn’t check the address', TONES.amber)}`;
   const countyClash = area?.county && a.county && area.county !== a.county ? ` <span class="muted" style="color:${mail.MUTED};">The Census says ${esc(area.county)} County.</span>` : '';
   const repeatHtml = repeats.length
@@ -755,7 +835,7 @@ export function staffSlack(app, accountId) {
   const area = s.area;
   const areaWords = !area ? null
     : area.status === 'inside' ? (area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside')
-    : area.status === 'outside' ? `⚠️ About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside`
+    : area.status === 'outside' ? `⚠️ About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside${bandOf(area) === 'near' ? ' (close)' : ''}`
     : '⚠️ Couldn’t check the address';
   const countyClash = area?.county && a.county && area.county !== a.county ? ` (the Census says ${area.county} County)` : '';
   return slackCard({
@@ -879,7 +959,7 @@ export function checklist(app) {
 export function flags(app) {
   const s = app.jt_state || {};
   return {
-    area: s.area ? { status: s.area.status, miles: s.area.miles ?? null, text: areaText(s.area), county: s.area.county || null } : null,
+    area: s.area ? { status: s.area.status, band: bandOf(s.area), miles: s.area.miles ?? null, text: areaText(s.area), county: s.area.county || null, from: s.area.from || null } : null,
     repeat: s.repeat?.matches?.length ? s.repeat.matches.map(m => ({ name: m.name, year: m.year || null, status: m.status || null, why: m.why, url: m.url })) : [],
     saidApplied: app.answers?.previouslyApplied === 'Yes',
     lang: app.lang || 'en',
@@ -990,13 +1070,19 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
   // Checks for staff. Neither ever holds the application up: a failure is noted and left
   await step('service area', async () => {
     if (s.area) return;
-    const polygon = form.serviceArea?.polygon;
-    s.area = await checkServiceArea(addressText(app.answers.address), polygon, fetchImpl);
+    // The form placed the home as the family typed it (and again on submit): use that, else ask the Census now
+    const fa = s.formArea;
+    const fromForm = fa && fa.lat != null && fa.key === addressKey(app.answers.address);
+    s.area = fromForm
+      ? { status: fa.band === 'inside' ? 'inside' : 'outside', band: fa.band, miles: fa.miles, edgeMiles: fa.edgeMiles, nearMiles: fa.nearMiles, lat: fa.lat, lng: fa.lng, county: fa.county, matched: fa.matched, from: 'form' }
+      : await checkServiceArea(addressText(app.answers.address), form.serviceArea, fetchImpl);
     if (s.area.status !== 'inside' || (s.area.county && app.answers.county && s.area.county !== app.answers.county)) {
       const lines = [areaText(s.area)];
       if (s.area.matched) lines.push(`The Census matched it to: ${s.area.matched}`);
       if (s.area.county && app.answers.county && s.area.county !== app.answers.county) lines.push(`The family picked ${app.answers.county} County; the Census says ${s.area.county} County.`);
-      lines.push(`The family's answer: ${app.answers.boundary || 'not given'}`);
+      const field = areaFieldOf(form) || { type: 'radio', options: [] };
+      const said = answerText(field, app.answers.boundary, true);
+      lines.push(fromForm ? 'The form placed the home from its address as the family typed it, so they didn’t answer this themselves.' : `The family's answer: ${said || 'not given'}`);
       await postInternal(env, accountId, 'Service area check (automatic)', lines.join('\n\n'), jt).catch(() => {});
     }
   });
@@ -1192,14 +1278,17 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
 export async function expireDrafts(env, { now = Date.now(), fetchImpl = fetch, limit = 10 } = {}) {
   const { DB } = env;
   const cutoff = iso(now - DRAFT_TTL_DAYS * 24 * 3600 * 1000);
-  const { results } = await DB.prepare('SELECT id, files FROM application_drafts WHERE submitted_id IS NULL AND cleared_at IS NULL AND updated_at < ? LIMIT ?').bind(cutoff, limit).all();
+  const { results } = await DB.prepare('SELECT id, files, area FROM application_drafts WHERE submitted_id IS NULL AND cleared_at IS NULL AND updated_at < ? LIMIT ?').bind(cutoff, limit).all();
   for (const r of results || []) {
     const files = parse(r.files, {});
     for (const [k, f] of Object.entries(files)) {
       if (k === 'video') { if (f?.uid) await deleteVideo(env, f.uid, fetchImpl); continue; }
-      if (env.FILES) for (const key of [f?.key, f?.thumbKey].filter(Boolean)) await env.FILES.delete(key).catch(() => {});
+      if (applicantFiles(env)) for (const key of [f?.key, f?.thumbKey].filter(Boolean)) await applicantFiles(env).delete(key).catch(() => {});
     }
-    await DB.prepare("UPDATE application_drafts SET answers = '{}', files = '{}', email = NULL, ip_hash = NULL, cleared_at = ? WHERE id = ? AND submitted_id IS NULL").bind(iso(now), r.id).run();
+    // The area check's band stays for the funnel (inside / close / far); the address, point and county go
+    const band = parse(r.area, null)?.band;
+    await DB.prepare("UPDATE application_drafts SET answers = '{}', files = '{}', email = NULL, ip_hash = NULL, area = ?, cleared_at = ? WHERE id = ? AND submitted_id IS NULL")
+      .bind(band ? JSON.stringify({ band }) : null, iso(now), r.id).run();
   }
   return (results || []).length;
 }
@@ -1330,9 +1419,11 @@ export async function listApplications(DB, { limit = 50, offset = 0, q = '', sho
   };
 }
 
+// A cell a spreadsheet would read as a formula (=, +, -, @, a tab or a return first) is kept as text
 const csvCell = (v) => {
-  const t = String(v ?? '');
-  return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  let t = String(v ?? '');
+  if (/^[=+\-@\t\r]/.test(t)) t = `'${t}`;
+  return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
 };
 
 /**
@@ -1367,10 +1458,14 @@ export async function exportCsv(DB, { year = '', includeTests = false } = {}) {
   return lines.join('\r\n');
 }
 
+const REMOVED = JSON.stringify({ removed: 'the family’s data was deleted' });
+
 /**
- * Delete a family's data from the site: answers, photos, the PDF and the
- * video. A row stays (dates, who deleted it) so the record shows it happened.
- * JobTread is left alone (archive the account there).
+ * Delete a family's data from the site: answers, photos, the PDF, the video,
+ * where the address check placed the home, the site's activity timeline for
+ * the family and the admin's change log entries about them. A row stays
+ * (dates, who deleted it) so the record shows it happened. JobTread is left
+ * alone (archive the account there).
  */
 export async function deleteApplicationData(env, id, { user = 'admin', now = Date.now(), fetchImpl = fetch } = {}) {
   const { DB } = env;
@@ -1383,14 +1478,31 @@ export async function deleteApplicationData(env, id, { user = 'admin', now = Dat
     keys.push(f?.key, f?.thumbKey);
   }
   keys.push(app.jt_state?.pdf?.key);
-  if (env.FILES) for (const key of keys.filter(Boolean)) await env.FILES.delete(key).catch(() => {});
+  if (applicantFiles(env)) for (const key of keys.filter(Boolean)) await applicantFiles(env).delete(key).catch(() => {});
   const first = String(app.answers?.childName?.first || '').trim();
-  await DB.batch([
-    DB.prepare("UPDATE applications SET answers = '{}', files = '{}', parent_name = NULL, parent_email = NULL, child_name = ?, deleted_at = ?, deleted_by = ?, status = 'done', next_try_at = NULL WHERE id = ?")
-      .bind(first ? `${first} (deleted)` : 'Deleted application', iso(now), user, id),
-    DB.prepare("UPDATE application_drafts SET answers = '{}', files = '{}', email = NULL, cleared_at = ? WHERE id = ?").bind(iso(now), app.draft_id),
-  ]);
-  return { ok: true, accountId: app.jt_account_id || null };
+  // What intake kept stays as a record of what was done (JobTread ids, which steps ran), minus where
+  // the family lives: the address check's point, matched address and county
+  const s = app.jt_state || {};
+  const keep = { ...s };
+  for (const k of ['area', 'formArea']) if (keep[k]) keep[k] = { band: keep[k].band || null, status: keep[k].status || null };
+  const accountId = app.jt_account_id || null;
+  const stmts = [
+    DB.prepare("UPDATE applications SET answers = '{}', files = '{}', parent_name = NULL, parent_email = NULL, child_name = ?, jt_state = ?, deleted_at = ?, deleted_by = ?, status = 'done', next_try_at = NULL WHERE id = ?")
+      .bind(first ? `${first} (deleted)` : 'Deleted application', JSON.stringify(keep), iso(now), user, id),
+    DB.prepare("UPDATE application_drafts SET answers = '{}', files = '{}', email = NULL, ip_hash = NULL, area = NULL, cleared_at = ? WHERE id = ?").bind(iso(now), app.draft_id),
+  ];
+  // The site's own notes about the family: its activity timeline (read from JobTread's log once,
+  // so it wouldn't come back) and the admin's change log (statuses, field values, messages).
+  // The Applicants mirror row stays: it's JobTread's copy, refreshed from JobTread while the family is there.
+  if (accountId) {
+    stmts.push(DB.prepare('DELETE FROM applicant_activity WHERE account_id = ?').bind(accountId));
+    stmts.push(DB.prepare("UPDATE audit_log SET changes = ?, entity_name = 'Deleted family' WHERE entity_slug = ?").bind(REMOVED, accountId));
+  }
+  stmts.push(DB.prepare("UPDATE audit_log SET changes = ?, entity_name = 'Deleted application' WHERE entity_slug = ?").bind(REMOVED, id));
+  // Either table may not exist on a fresh database; the application's own rows are what matter
+  await DB.batch(stmts.slice(0, 2));
+  for (const st of stmts.slice(2)) await st.run().catch(() => {});
+  return { ok: true, accountId };
 }
 
 /**
@@ -1401,7 +1513,7 @@ export async function deleteApplicationData(env, id, { user = 'admin', now = Dat
 export async function insights(DB, { year, now = Date.now() } = {}) {
   await ensureSchema(DB);
   const form = await formFor(DB, { year });
-  const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at FROM application_drafts WHERE year = ? AND COALESCE(ip_hash, '') != 'admin'").bind(String(year)).all()).results) || [];
+  const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at, area FROM application_drafts WHERE year = ? AND COALESCE(ip_hash, '') != 'admin'").bind(String(year)).all()).results) || [];
   const apps = ((await DB.prepare('SELECT id, draft_id, submitted_at, answers, lang, is_test, jt_state FROM applications WHERE year = ? AND deleted_at IS NULL').bind(String(year)).all()).results || []).map(applicationRow);
   const tests = new Set(apps.filter(a => a.is_test).map(a => a.draft_id));
   const real = drafts.filter(d => !tests.has(d.id));
@@ -1449,11 +1561,42 @@ export async function insights(DB, { year, now = Date.now() } = {}) {
     reminders: { sent: real.reduce((n, d) => n + (Number(d.reminders_sent) || 0), 0), finishedAfter: submitted.filter(d => Number(d.reminders_sent) > 0).length },
     referral: Object.entries(referral).map(([source, count]) => ({ source, count })).sort((x, y) => y.count - x.count),
     perWeek: Object.entries(weeks).sort().map(([week, count]) => ({ week, count })),
+    area: areaInsights(form, real, gone),
     checks: {
       outside: realApps.filter(a => a.jt_state?.area?.status === 'outside').length,
       unchecked: realApps.filter(a => a.jt_state?.area?.status === 'unknown').length,
       repeat: realApps.filter(a => a.jt_state?.repeat?.matches?.length).length,
     },
+  };
+}
+
+/**
+ * Where the families who started live, from the form's address check: how
+ * many it placed inside, close and farther out, how many addresses it
+ * couldn't find, how far out the outside ones are (in steps up to and past
+ * the close distance), and what families farther out did.
+ */
+function areaInsights(form, real, gone) {
+  const sa = form.serviceArea || {};
+  const checks = real.map(d => ({ d, a: parse(d.area, null) })).filter(x => x.a);
+  const count = (band) => checks.filter(x => x.a.band === band).length;
+  const near = Number(sa.nearMiles) || 0;
+  const edges = [...new Set([5, 10, near, 25, 50].filter(n => n > 0))].sort((x, y) => x - y);
+  const outside = checks.filter(x => x.a.band === 'near' || x.a.band === 'far').map(x => Number(x.a.miles)).filter(Number.isFinite);
+  const steps = edges.map((to, i) => ({ from: i ? edges[i - 1] : 0, to, count: outside.filter(m => m > (i ? edges[i - 1] : 0) && m <= to).length, close: to <= near }));
+  steps.push({ from: edges[edges.length - 1], to: null, count: outside.filter(m => m > edges[edges.length - 1]).length, close: false });
+  const far = checks.filter(x => x.a.band === 'far').map(x => x.d);
+  const goneIds = new Set(gone.map(d => d.id));
+  return {
+    nearMiles: near,
+    beyond: sa.beyond === 'stop' ? 'stop' : 'warn',
+    checked: checks.length,
+    inside: count('inside'),
+    near: count('near'),
+    far: count('far'),
+    notFound: checks.filter(x => x.a.band === 'unknown' && x.a.reason === 'no-match').length,
+    steps,
+    farDid: { applied: far.filter(d => d.submitted_id).length, stopped: far.filter(d => d.stop_key === 'outside').length, left: far.filter(d => goneIds.has(d.id)).length },
   };
 }
 
@@ -1487,8 +1630,8 @@ export async function createTestApplication(env, { email, year, now = Date.now()
   for (const id of PHOTO_FIELDS) {
     const key = photoKey(draftId, id);
     const thumbKey = photoKey(draftId, id, true);
-    await env.FILES.put(key, TEST_JPEG, { httpMetadata: { contentType: 'image/jpeg' } });
-    await env.FILES.put(thumbKey, TEST_JPEG, { httpMetadata: { contentType: 'image/jpeg' } });
+    await applicantFiles(env).put(key, TEST_JPEG, { httpMetadata: { contentType: 'image/jpeg' } });
+    await applicantFiles(env).put(thumbKey, TEST_JPEG, { httpMetadata: { contentType: 'image/jpeg' } });
     files[id] = { key, thumbKey, type: 'image/jpeg', size: TEST_JPEG.byteLength, name: `${id}.jpg` };
   }
   const answers = testAnswers(email, year);

@@ -41,6 +41,7 @@
 
 import { h, htm, render, Component, useState, useEffect, useRef, useMemo, Sortable, DOMPurify } from './vendor.js';
 import { WaitlistPanel, WaitlistOpenNote } from './waitlist.js';
+import { nearRing, bandCounts, bandChanges, placeHome, NEAR_MAX } from './area-shared.js';
 
 const html = htm.bind(h);
 const API = '/api/applications-admin';
@@ -762,10 +763,34 @@ button.afe-sub-name:focus-visible { outline: 2px solid var(--color-text); outlin
 .afe-addr button { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; border: 0; border-radius: 50%; background: none; color: var(--color-text-muted); cursor: pointer; }
 .afe-addr button:hover { background: var(--color-bg-hover); color: var(--color-text); }
 .afe-area { display: flex; gap: 1.1rem; align-items: center; margin-top: 1rem; flex-wrap: wrap; }
-.afe-area-svg { flex: none; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-secondary); }
-.afe-area-svg polygon { fill: color-mix(in srgb, #D92D20 7%, transparent); stroke: #D92D20; stroke-width: 2; stroke-linejoin: round; }
-.afe-area-svg circle { fill: var(--color-bg-card); stroke: #D92D20; stroke-width: 1.5; }
+.afe-area-svg { flex: none; max-width: 100%; height: auto; border: 1px solid var(--color-border); border-radius: 12px; background: #FBF9F3; }
+/* The area as families see it: brand yellow, a charcoal line; "close" is the dashed ring */
+.afe-area-svg .afe-area-fill { fill: rgba(255, 218, 36, .42); stroke: #373A36; stroke-width: 1.6; stroke-linejoin: round; }
+.afe-area-svg .afe-area-ring { fill: none; stroke: #373A36; stroke-width: 1.1; stroke-dasharray: 4 4; opacity: .55; }
+.afe-area-svg .afe-area-corner { fill: #fff; stroke: #373A36; stroke-width: 1.3; }
+.afe-area-svg .afe-area-pt { stroke: #fff; stroke-width: .9; }
+.afe-area-svg .afe-area-pt.is-inside { fill: #373A36; }
+.afe-area-svg .afe-area-pt.is-near { fill: #B88A00; }
+.afe-area-svg .afe-area-pt.is-far { fill: #8C8D93; }
+.afe-area-svg .afe-area-pt.is-moving { stroke: #373A36; stroke-width: 1.6; }
 .afe-area-svg.is-empty { display: grid; place-items: center; }
+.afe-near { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+.afe-near input[type="range"] { flex: 1 1 12rem; max-width: 22rem; accent-color: #373A36; min-height: 32px; }
+.afe-near .form-input { width: 5.2rem; }
+.afe-area-rules { display: grid; gap: 1rem; margin-top: 1.1rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }
+.afe-area-split { display: grid; gap: .35rem; }
+.afe-beyond { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.afe-beyond > button { display: grid; gap: .2rem; text-align: left; padding: .7rem .85rem; border: 1.5px solid var(--color-border); border-radius: 12px; background: var(--color-bg-card); color: var(--color-text); font: inherit; cursor: pointer; }
+.afe-beyond > button b { font-size: .9rem; }
+.afe-beyond > button span { font-size: .8rem; color: var(--color-text-secondary); line-height: 1.4; }
+.afe-beyond > button[aria-checked="true"] { border-color: var(--color-text); box-shadow: inset 0 0 0 .5px var(--color-text); background: #FFFBEA; }
+.afe-beyond > button:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
+@media (max-width: 640px) { .afe-beyond { grid-template-columns: minmax(0, 1fr); } }
+.afe-outlines { list-style: none; margin: .4rem 0 0; padding: 0; display: grid; gap: .35rem; }
+.afe-outlines li { display: flex; align-items: center; gap: .7rem; padding: .35rem .5rem .35rem .35rem; border: 1px solid var(--color-border); border-radius: 10px; }
+.afe-outlines li .afe-area-svg { border-radius: 8px; }
+.afe-outlines li > div { display: grid; gap: .1rem; min-width: 0; flex: 1; font-size: .85rem; }
+.afe-outlines li > div .afe-hint { font-size: .78rem; }
 .afe-area-text { display: grid; gap: .45rem; justify-items: start; min-width: 0; flex: 1 1 14rem; }
 .afe-area-text p { margin: 0; display: flex; gap: .4rem; align-items: center; }
 .afe-corners { margin-top: .75rem; }
@@ -1489,6 +1514,7 @@ function InsightsTab({ seasonYear, go }) {
               <span class="afe-hint">The last page each family reached before leaving without finishing.</span>
               <${StopBars} byPage=${ins.byPage || []} started=${ins.started} />
             </div>
+            ${ins.area?.checked > 0 && html`<${AreaInsight} a=${ins.area} go=${go} />`}
             <div class="afe-viz">
               <h4>How families heard about us</h4>
               <span class="afe-hint">From "Who referred you", on submitted applications.</span>
@@ -1528,6 +1554,42 @@ function InsightsTab({ seasonYear, go }) {
             </div>
             </div>
           </div>
+        </div>`}
+    </div>`;
+}
+
+/**
+ * Where the families who started live, from the address check on the form:
+ * inside, close, farther out, not found; how far out the outside ones are;
+ * and what the families farther out did.
+ */
+function AreaInsight({ a, go }) {
+  const steps = (a.steps || []).filter(st => st.count > 0 || st.close);
+  const max = Math.max(1, ...steps.map(st => st.count));
+  const span = (st) => (st.to == null ? `Over ${st.from} mi` : st.from ? `${st.from} to ${st.to} mi` : `Up to ${st.to} mi`);
+  return html`
+    <div class="afe-viz">
+      <h4>Where families live</h4>
+      <span class="afe-hint">From the address check as families type their home address. Close means within ${plural(a.nearMiles, 'mile')} of the area (<a href="#applications/settings" onClick=${(e) => { e.preventDefault(); go('settings'); }}>Settings</a>).</span>
+      <${StackBar} parts=${[
+        { label: 'Inside', n: a.inside, color: 'var(--afe-data)' },
+        { label: 'Close', n: a.near, color: 'var(--afe-data-2)' },
+        { label: 'Farther out', n: a.far, color: 'var(--afe-data-3)' },
+        { label: 'Address not found', n: a.notFound, color: 'var(--afe-rest)', note: 'they answered for themselves' },
+      ]} total=${a.inside + a.near + a.far + a.notFound} />
+      ${(a.near + a.far) > 0 && html`
+        <div class="afe-hbars" style="margin-top: .9rem;" aria-label="How far outside the area">
+          ${steps.map(st => html`
+            <div class="afe-hbar">
+              <span class="afe-hbar-label">${span(st)}${st.close ? html` <span class="afe-tag">close</span>` : ''}</span>
+              <span class="afe-hbar-val"><b>${num(st.count)}</b></span>
+              <span class="afe-hbar-track"><span style=${`width: ${(st.count / max) * 100}%;`}></span></span>
+            </div>`)}
+        </div>`}
+      ${a.far > 0 && html`
+        <div class="afe-stat-pair" style="margin-top: .9rem;">
+          <div><b>${num(a.farDid?.applied)}</b><span>farther out who applied anyway${a.beyond === 'stop' ? ' (before stopping was on)' : ''}</span></div>
+          <div><b>${num(a.farDid?.stopped)}</b><span>stopped by the form</span></div>
         </div>`}
     </div>`;
 }
@@ -3461,6 +3523,8 @@ function historyLines(h) {
     if (f === 'closesAt') return c.to ? `Set to close ${longWhen(c.to)}` : fields.has('open') ? null : 'Took off the scheduled close';
     if (f === 'staffEmails') return `New-application email goes to ${c.to || 'nobody'}`;
     if (f === 'serviceArea') return `Reshaped the service area (${plural(c.to, 'corner')})`;
+    if (f === 'serviceArea.nearMiles') return c.to > 0 ? `“Close to the area” is now within ${plural(c.to, 'mile')}` : 'Turned “close to the area” off';
+    if (f === 'serviceArea.beyond') return c.to === 'stop' ? 'Families far outside the area are now stopped' : 'Families far outside the area can now apply';
     if (f.startsWith('notify.waits.')) return `${WAIT_NAME[f.split('.')[2]] || 'Status'} emails wait ${plural(c.to, 'minute')}`;
     if (f === 'notify.quiet') return c.to === 'off' ? 'Turned quiet hours off' : `Quiet hours ${c.to} Eastern`;
     if (f === 'notify.summary') return `Turned the staff summary ${c.to ? 'on' : 'off'}`;
@@ -3486,7 +3550,8 @@ function useAppSettings(addToast, active) {
   const [conflict, setConflict] = useState(false);
   const [rulesConflict, setRulesConflict] = useState(null);
   const [serverErrors, setServerErrors] = useState({});
-  const take = (j) => { if (j.since !== undefined) setSince(j.since); if (j.history) setHistory(j.history); };
+  const [area, setArea] = useState(null);           // { points, history }: homes on the Applicants map, past outlines
+  const take = (j) => { if (j.since !== undefined) setSince(j.since); if (j.history) setHistory(j.history); if (j.area) setArea(j.area); };
   const load = async () => {
     setError(null);
     const j = await call(`${API}?settings=1`);
@@ -3553,6 +3618,7 @@ function useAppSettings(addToast, active) {
     }
     setRules(j.rules);
     setRulesEdit(clone(j.rules.values));
+    if (j.area) setArea(j.area);
     setRulesConflict(null);
     setServerErrors(x => Object.fromEntries(Object.entries(x).filter(([k]) => !RULE_FIELDS.includes(k))));
     if (j.history) setHistory(j.history);
@@ -3585,7 +3651,7 @@ function useAppSettings(addToast, active) {
   }, [active]);
 
   return {
-    saved, edit, rules, rulesEdit, since, history, error, busy, dirty, appFields, changedRules, problems, invalid, conflict, rulesConflict, save, setOpen, reload: load,
+    saved, edit, rules, rulesEdit, since, history, area, error, busy, dirty, appFields, changedRules, problems, invalid, conflict, rulesConflict, save, setOpen, reload: load,
     set: (patch) => { setEdit(e => ({ ...e, ...patch })); setServerErrors(x => { const y = { ...x }; Object.keys(patch).forEach(k => delete y[k]); return y; }); },
     setRules: (patch) => { setRulesEdit(r => ({ ...r, ...patch })); setServerErrors(x => { const y = { ...x }; Object.keys(patch).forEach(k => delete y[k]); return y; }); },
     discard: () => { setEdit(saved); if (rules) setRulesEdit(clone(rules.values)); setConflict(false); setRulesConflict(null); setServerErrors({}); },
@@ -3732,31 +3798,55 @@ function StaffEmailCard({ s }) {
     </section>`;
 }
 
-/** The boundary's outline, drawn to scale (no map needed to see its shape) */
-function AreaOutline({ polygon, size = 136 }) {
-  if (!polygon || polygon.length < 3) return html`<div class="afe-area-svg is-empty" style=${`width:${size}px;height:${size}px`}><span class="afe-hint">No boundary</span></div>`;
+/**
+ * The area drawn to scale, as families see it (yellow, a charcoal line), with
+ * the "close" ring dashed around it and, when given, every family's home as a
+ * dot by where it lands. No map tiles: the shape is the point.
+ */
+function AreaOutline({ polygon, nearMiles = 0, points = [], moving = null, size = 136, height = size, corners = true, label = null }) {
+  if (!polygon || polygon.length < 3) return html`<div class="afe-area-svg is-empty" style=${`width:${size}px;height:${height}px`}><span class="afe-hint">No boundary</span></div>`;
+  const ring = nearMiles > 0 ? nearRing(polygon, nearMiles, 96) : [];
+  const frame = ring.length ? ring : polygon;
   const lat0 = polygon.reduce((n, pt) => n + pt[0], 0) / polygon.length;
   const k = Math.cos((lat0 * Math.PI) / 180);
-  const pts = polygon.map(([lat, lng]) => [lng * k, -lat]);
-  const xs = pts.map(pt => pt[0]);
-  const ys = pts.map(pt => pt[1]);
-  const x0 = Math.min(...xs);
-  const y0 = Math.min(...ys);
-  const w = Math.max(...xs) - x0 || 1;
-  const hh = Math.max(...ys) - y0 || 1;
-  const pad = 12;
-  const sc = (size - 2 * pad) / Math.max(w, hh);
+  const xy = ([lat, lng]) => [lng * k, -lat];
+  const fx = frame.map(xy);
+  const x0 = Math.min(...fx.map(p => p[0]));
+  const y0 = Math.min(...fx.map(p => p[1]));
+  const w = Math.max(...fx.map(p => p[0])) - x0 || 1;
+  const hh = Math.max(...fx.map(p => p[1])) - y0 || 1;
+  const pad = 10;
+  const sc = Math.min((size - 2 * pad) / w, (height - 2 * pad) / hh);
   const ox = pad + (size - 2 * pad - w * sc) / 2;
-  const oy = pad + (size - 2 * pad - hh * sc) / 2;
-  const P = pts.map(([x, y]) => [ox + (x - x0) * sc, oy + (y - y0) * sc]);
-  return html`<svg class="afe-area-svg" width=${size} height=${size} viewBox=${`0 0 ${size} ${size}`} role="img" aria-label=${`Outline of the service area, ${polygon.length} corners`}>
-    <polygon points=${P.map(pt => pt.map(v => v.toFixed(1)).join(',')).join(' ')} />
-    ${P.map(([x, y], i) => html`<circle key=${i} cx=${x.toFixed(1)} cy=${y.toFixed(1)} r="2.6" />`)}
+  const oy = pad + (height - 2 * pad - hh * sc) / 2;
+  const P = (pt) => { const [x, y] = xy(pt); return [ox + (x - x0) * sc, oy + (y - y0) * sc]; };
+  const pts = (list) => list.map(pt => P(pt).map(v => v.toFixed(1)).join(',')).join(' ');
+  const area = { polygon, nearMiles };
+  const dots = points.map(p => ({ p, at: P([p.lat, p.lng]), band: placeHome(p.lat, p.lng, area).band }))
+    .filter(d => d.at[0] >= 2 && d.at[0] <= size - 2 && d.at[1] >= 2 && d.at[1] <= height - 2);
+  return html`<svg class="afe-area-svg" width=${size} height=${height} viewBox=${`0 0 ${size} ${height}`} role="img"
+    aria-label=${label || `The service area, ${polygon.length} corners${ring.length ? `, with the ${nearMiles}-mile close ring` : ''}`}>
+    ${ring.length > 0 && html`<polygon class="afe-area-ring" points=${pts(ring)} />`}
+    <polygon class="afe-area-fill" points=${pts(polygon)} />
+    ${dots.map(d => html`<circle key=${d.p.id || `${d.p.lat},${d.p.lng}`} class=${`afe-area-pt is-${d.band}${moving?.has(d.p.id) ? ' is-moving' : ''}`} cx=${d.at[0].toFixed(1)} cy=${d.at[1].toFixed(1)} r=${moving?.has(d.p.id) ? 3.6 : 2.3} />`)}
+    ${corners && polygon.map((pt, i) => { const [x, y] = P(pt); return html`<circle key=${`c${i}`} class="afe-area-corner" cx=${x.toFixed(1)} cy=${y.toFixed(1)} r="2.6" />`; })}
   </svg>`;
 }
 
+const BEYOND_TEXT = {
+  warn: { title: 'Tell them, and let them apply', hint: 'They read that the home is outside the area, with the distance, and can still send an application. Staff see it flagged.' },
+  stop: { title: 'Stop the application', hint: 'They see the “outside” stop screen with the map and their home on it, and can change the address. Its wording is in Form.' },
+};
+const ringText = (m) => (m > 0 ? `within ${plural(m, 'mile')}` : 'off');
+
 function ServiceAreaCard({ s, go }) {
-  const poly = s.rulesEdit.serviceArea?.polygon || [];
+  const sa = s.rulesEdit.serviceArea || {};
+  const poly = sa.polygon || [];
+  const nearMiles = sa.nearMiles ?? 15;
+  const beyond = sa.beyond === 'stop' ? 'stop' : 'warn';
+  const live = s.rules?.values?.serviceArea || {};
+  const points = s.area?.points || [];
+  const setArea = (patch) => s.setRules({ serviceArea: { ...sa, ...patch } });
   const asText = (pts) => pts.map(pt => pt.join(', ')).join('\n');
   const [text, setText] = useState(() => asText(poly));
   const [bad, setBad] = useState('');
@@ -3775,36 +3865,106 @@ function ServiceAreaCard({ s, go }) {
     if (pts.length < 3) { setBad('The area needs at least three corners.'); return; }
     setBad('');
     typing.current = true;
-    s.setRules({ serviceArea: { polygon: pts } });
+    setArea({ polygon: pts });
   };
   const test = async () => {
     if (!addr.trim()) return;
     setBusy(true);
-    const j = await call(API, { areaTest: addr.trim(), polygon: poly });
+    const j = await call(API, { areaTest: addr.trim(), polygon: poly, nearMiles });
     setBusy(false);
     setRes(j.success ? j : { error: j.error || 'Could not check it' });
   };
+  // What the settings on screen mean for the families already on the Applicants map
+  const counts = useMemo(() => bandCounts(points, { polygon: poly, nearMiles }), [points, key, nearMiles]);
+  const placed = counts.inside + counts.near + counts.far;
+  const moved = useMemo(() => (live.polygon ? bandChanges(points, { polygon: live.polygon, nearMiles: live.nearMiles ?? 15 }, { polygon: poly, nearMiles }) : []), [points, key, nearMiles, live.polygon, live.nearMiles]);
+  const movedSet = useMemo(() => new Set(moved.map(m => m.id)), [moved]);
+  const word = { inside: 'inside', near: 'close', far: 'farther out', unknown: 'off the map' };
+  const movedText = (() => {
+    if (!moved.length) return null;
+    const by = {};
+    for (const m of moved) by[word[m.to]] = (by[word[m.to]] || 0) + 1;
+    return `Compared with what's in use: ${listText(Object.entries(by).map(([w, n]) => `${plural(n, 'family')} would count as ${w}`))}.`;
+  })();
   const changed = s.changedRules.includes('serviceArea');
+  const history = (s.area?.history || []).filter(h => h.polygon?.length >= 3);
   return html`
     <section class="card afe-settings" aria-labelledby="afe-set-area">
       <h3 id="afe-set-area">Service area</h3>
-      <p class="afe-lede">Every new application's home address is checked against this boundary. Staff see the result on the family; families never do.</p>
+      <p class="afe-lede">Families see this area on a map as they type their home address, and the form answers “inside the service area?” from the address (the Census places it). Staff see the same check on every family.</p>
       <div class="afe-area">
-        <${AreaOutline} polygon=${poly} />
+        <${AreaOutline} polygon=${poly} nearMiles=${nearMiles} points=${points} moving=${movedSet} size=${220} height=${176} />
         <div class="afe-area-text">
           <p><strong>${plural(poly.length, 'corner')}</strong>${changed ? html` <span class="badge badge-yellow">Not saved</span>` : ''}</p>
           <button class="btn btn-ghost" disabled=${s.dirty} title=${s.dirty ? 'Save or discard the changes here first' : ''} onClick=${() => go('applicants', { editBoundary: true })}>Reshape it on the map</button>
           <span class="afe-hint">${s.dirty ? 'Save or discard the changes on this page first.' : 'The map shows every family’s home against it, and saves as soon as you’re done.'}</span>
         </div>
       </div>
+
+      <div class="afe-area-rules">
+        <div class="afe-field">
+          <label for="afe-near">Close to the area</label>
+          <div class="afe-near">
+            <input type="range" min="0" max=${NEAR_MAX} step="1" value=${nearMiles} aria-label="Close to the area, in miles" aria-valuetext=${ringText(nearMiles)}
+              onInput=${(ev) => setArea({ nearMiles: Number(ev.target.value) })} />
+            <input id="afe-near" class="form-input" type="number" min="0" max=${NEAR_MAX} inputmode="numeric" value=${nearMiles}
+              onInput=${(ev) => { const v = Math.round(Number(ev.target.value)); if (Number.isFinite(v)) setArea({ nearMiles: Math.max(0, Math.min(NEAR_MAX, v)) }); }} />
+            <span class="afe-hint">miles</span>
+          </div>
+          <span class="afe-hint">${nearMiles > 0 ? `Homes outside the line by ${plural(nearMiles, 'mile')} or less count as close: families there read that they can still apply. The dashed ring shows it.` : 'Off: every home outside the line counts as farther out.'}</span>
+        </div>
+        ${placed > 0 && html`
+          <div class="afe-area-split" aria-live="polite">
+            <span class="afe-label">The ${plural(placed, 'family', 'families')} on the Applicants map, by these settings</span>
+            <${StackBar} parts=${[
+              { label: 'Inside', n: counts.inside, color: '#373A36' },
+              { label: nearMiles > 0 ? `Close (${ringText(nearMiles)})` : 'Close', n: counts.near, color: '#D9A400' },
+              { label: 'Farther out', n: counts.far, color: '#A6A7AC' },
+            ]} total=${placed} />
+            ${movedText && html`<span class="afe-hint">${movedText}</span>`}
+          </div>`}
+        <div class="afe-field">
+          <span class="afe-label" id="afe-beyond-l">Families farther out than that</span>
+          <div class="afe-beyond" role="radiogroup" aria-labelledby="afe-beyond-l">
+            ${['warn', 'stop'].map(k => html`<button type="button" role="radio" aria-checked=${beyond === k ? 'true' : 'false'} tabindex=${beyond === k ? 0 : -1}
+              onClick=${() => setArea({ beyond: k })}
+              onKeyDown=${(ev) => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(ev.key)) { ev.preventDefault(); const n = k === 'warn' ? 'stop' : 'warn'; setArea({ beyond: n }); ev.currentTarget.parentElement.querySelector(`[data-k="${n}"]`)?.focus(); } }}
+              data-k=${k}><b>${BEYOND_TEXT[k].title}</b><span>${BEYOND_TEXT[k].hint}</span></button>`)}
+          </div>
+          ${placed > 0 && counts.far > 0 && html`<span class="afe-hint">${plural(counts.far, 'family', 'families')} on the map live this far out${beyond === 'stop' ? ': under this setting, the form would have stopped them.' : '.'}</span>`}
+        </div>
+      </div>
+
       <div class="afe-field" style="margin-top: 1rem;">
         <label for="afe-area-test">Try an address</label>
         <div class="afe-row-actions" style="flex-wrap: nowrap;">
           <input id="afe-area-test" class="form-input" placeholder="1 Main St, Marietta, GA 30060" value=${addr} onInput=${(ev) => setAddr(ev.target.value)} onKeyDown=${(ev) => { if (ev.key === 'Enter') test(); }} />
           <button class="btn btn-ghost" disabled=${busy || !addr.trim()} onClick=${test}>${busy ? 'Checking…' : 'Check'}</button>
         </div>
-        ${res && html`<p class=${res.error ? 'afe-bad' : 'afe-sum'}>${res.error || `${res.text}${res.area?.county ? ` (${res.area.county} County)` : ''}`}</p>`}
+        ${res && html`<p class=${res.error ? 'afe-bad' : 'afe-sum'} aria-live="polite">${res.error || `${res.text}${res.area?.county ? ` (${res.area.county} County)` : ''}${res.area?.band === 'far' ? (beyond === 'stop' ? '. The form would stop this family.' : '. The form tells this family, and they can still apply.') : ''}`}</p>`}
+        <span class="afe-hint">Uses what's on screen here, saved or not, the same way the form does.</span>
       </div>
+
+      ${history.length > 1 && html`
+        <details class="afe-corners">
+          <summary>Earlier outlines (${history.length - 1})</summary>
+          <ul class="afe-outlines">
+            ${history.map(h => {
+              const same = JSON.stringify(h.polygon) === key;
+              const shift = same ? [] : bandChanges(points, { polygon: poly, nearMiles }, { polygon: h.polygon, nearMiles });
+              return html`<li key=${h.id}>
+                <${AreaOutline} polygon=${h.polygon} size=${56} height=${44} corners=${false} label=${`Outline from ${shortDay(h.at)}`} />
+                <div>
+                  <span><b>${h.note || clock(h.at)}</b>${h.live ? html` <span class="badge badge-green">In use</span>` : ''}${same && !h.live ? html` <span class="badge badge-yellow">On screen</span>` : ''}</span>
+                  <span class="afe-hint">${[plural(h.polygon.length, 'corner'), h.by ? personName(h.by) : null, shift.length ? `${plural(shift.length, 'family', 'families')} would change` : null].filter(Boolean).join(' · ')}</span>
+                </div>
+                ${!same && html`<button class="btn btn-ghost btn-sm" onClick=${() => setArea({ polygon: h.polygon })}>Use this one</button>`}
+              </li>`;
+            })}
+          </ul>
+          <span class="afe-hint">“Use this one” puts it on screen here; Save makes it the one in use.</span>
+        </details>`}
+
       <details class="afe-corners">
         <summary>Edit the corners by hand</summary>
         <${Field} label=${`Corners (${parse(text).length})`} id="afe-area" hint="One corner per line: latitude, longitude. They join in order and back to the first.">

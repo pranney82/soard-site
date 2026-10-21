@@ -12,7 +12,10 @@
  *
  * It saves to /api/apply as they go (a draft keyed by a token kept in
  * localStorage and in the emailed resume link), suggests addresses as they
- * type the home address, uploads photos (resized here to JPEG) and the video
+ * type the home address and places it on the service-area map (the server
+ * asks the Census; the answer it gives is the service-area answer, and the
+ * family only answers that themselves when the address can't be found),
+ * uploads photos (resized here to JPEG) and the video
  * (straight to Cloudflare Stream over tus, resumable; on a computer it can
  * also record one with the camera), shows a review page, and submits.
  *
@@ -22,10 +25,12 @@
  */
 import * as tus from 'tus-js-client';
 import {
-  DEFAULT_DEFINITION, SERVICE_MAP_IMAGE, LANGS, resolveForm, allFields, indexById, isVisible, pageVisible,
+  DEFAULT_DEFINITION, LANGS, AREA_VALUES, resolveForm, allFields, indexById, isVisible, pageVisible,
   stopFor, fieldError, formErrors, answerSections, isInput, isUpload, dateText,
 } from '../../../functions/api/_application-form.js';
-import { renderPages, t as word, imageUrl } from './application-render.js';
+import { addressKey, checkableAddress } from '../../../functions/api/_geo.js';
+import { renderPages, t as word, imageHtml, mapWords, esc } from './application-render.js';
+import { areaMapHtml, declutter } from './area-map.js';
 import { signupCheck, postPlainly } from '../../utils/signup-check';
 
 const API = '/api/apply';
@@ -181,6 +186,7 @@ function init(root, cfg, mode) {
   let doneShown = null;
   let countyNote = null;
   let laterEmail = '';
+  let areaNow = null;        // the last service-area check of the home address: { key, band, answer, lat, lng, miles, county, matched, reason }
 
   const T = (k, v = {}) => word(lang, k, { year, ...v });
   /** A message spec: 'key', ['key', vars] or { raw: 'text' } → words in the current language */
@@ -201,6 +207,12 @@ function init(root, cfg, mode) {
       case 'ack': return el.querySelector('input:checked') ? f.options[0] : '';
       case 'name': case 'address':
         return Object.fromEntries([...el.querySelectorAll('[data-part]')].map(i => [i.dataset.part, i.value.trim()]));
+      // The check's answer while it matches the address on screen; else theirs, when they were asked
+      case 'area': {
+        const placed = areaPlaced();
+        if (placed) return placed.answer;
+        return el.querySelector('[data-area-ask]:not([hidden]) input:checked')?.value || '';
+      }
       default: return el.querySelector('input, textarea, select')?.value ?? '';
     }
   }
@@ -208,7 +220,7 @@ function init(root, cfg, mode) {
     const el = fieldEl(f.id);
     if (!el || v == null) return;
     switch (f.type) {
-      case 'radio': el.querySelectorAll('input').forEach(i => { i.checked = i.value === v; }); break;
+      case 'radio': case 'area': el.querySelectorAll('input[type=radio]').forEach(i => { i.checked = i.value === v; }); break;
       case 'checkbox': el.querySelectorAll('input').forEach(i => { i.checked = Array.isArray(v) && v.includes(i.value); }); break;
       case 'ack': el.querySelectorAll('input').forEach(i => { i.checked = v === f.options[0]; }); break;
       case 'name': case 'address':
@@ -244,6 +256,7 @@ function init(root, cfg, mode) {
     pageEls = Object.fromEntries([...ui.pages.querySelectorAll('[data-page]')].map(el => [el.dataset.page, el]));
     for (const f of fields) if (isInput(f)) writeField(f, answers[f.id]);
     for (const f of fields) if (isUpload(f)) paintUpload(f.id);
+    paintArea();
     if (!furthestId || order(furthestId) < 0) furthestId = form.pages[0]?.id || 'review';
     if (countyNote && answers[countyNote.field] === countyNote.value) showCountyNote();
     refresh({ animate: false });
@@ -422,6 +435,7 @@ function init(root, cfg, mode) {
     if (id === 'review') fromReview = false;
     for (const [pid, el] of Object.entries(pageEls)) el.hidden = pid !== id;
     ui.review.hidden = id !== 'review';
+    if (pageEl(id)?.querySelector('.af-map-frame')) requestAnimationFrame(() => declutter(pageEl(id)));
     if (id === 'review') buildReview();
     if (changed) {
       ui.steps.open = false;
@@ -446,6 +460,13 @@ function init(root, cfg, mode) {
     if (busy) return;
     navNote(null);
     if (currentId === 'review') { submit(); return; }
+    // An address check still on its way decides this page's answer: wait for it (briefly),
+    // unless the address itself needs fixing first (then there's nothing to wait for)
+    const home = homeAddressId() && byId[homeAddressId()];
+    if (areaWaiting() && !(home && fieldError(home, homeAddressNow(), lang))) {
+      setBusy(true);
+      try { await Promise.race([flushArea(), wait(9000)]); } finally { setBusy(false); }
+    }
     const a = readAnswers();
     const errors = formErrors(form, a, files, [currentId], lang);
     if (Object.keys(errors).length) { showPageErrors(errors); return; }
@@ -518,6 +539,8 @@ function init(root, cfg, mode) {
   function focusOn(id) {
     const el = fieldEl(id);
     if (!el || el.hidden) return;
+    // The service-area answer comes from the address until the family is asked: send them to the address
+    if (byId[id]?.type === 'area' && el.querySelector('[data-area-ask]')?.hidden && homeAddressId()) { focusOn(homeAddressId()); return; }
     el.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
     const target = el.querySelector('input:not([type=file]):not([type=radio]):not([type=checkbox]):not([disabled]), textarea, select')
       || el.querySelector('input:checked') || el.querySelector('input[type=radio], input[type=checkbox]')
@@ -626,22 +649,25 @@ function init(root, cfg, mode) {
     ui.stopTitle.focus({ preventScroll: true });
     save();
   }
+  /** The "outside" stop from the address check: the map shows where the home is, and the way back is the address */
+  const stopFromArea = () => stopShown?.key === 'outside' && byId[stopShown.field]?.type === 'area';
   function paintStop() {
     const s = form.stops?.[stopShown.key] || {};
     ui.stopTitle.textContent = s.title || '';
     ui.stopBody.innerHTML = s.body || '';
-    const img = ui.stopMap.querySelector('img');
-    if (s.image && s.image !== SERVICE_MAP_IMAGE) {
-      img.src = imageUrl(s.image, 'w=900,q=85');
-      img.srcset = [500, 700, 938].map(w => `${imageUrl(s.image, `w=${w},q=85`)} ${w}w`).join(', ');
-      ui.stopMap.style.backgroundImage = '';
-    }
-    // Its words come from the image question that shows the same picture, in this language
-    img.alt = fields.find(f => f.type === 'image' && f.image === s.image)?.alt || '';
-    ui.stopMap.hidden = !s.image;
+    const placed = stopFromArea() ? areaPlaced() : null;
+    if (placed) ui.stopMap.innerHTML = `<div class="af-map af-map--stop">${areaMapHtml(form.serviceArea, { ...placed }, mapWords(lang, true))}</div>`;
+    // An older stop screen with a picture: its words come from the image question showing the same picture
+    else if (s.image) ui.stopMap.innerHTML = imageHtml(s.image, fields.find(f => f.type === 'image' && f.image === s.image)?.alt || '');
+    else ui.stopMap.innerHTML = '';
+    ui.stopMap.hidden = !ui.stopMap.innerHTML;
+    requestAnimationFrame(() => declutter(ui.stopMap));
+    const back = ui.stop.querySelector('[data-stop-back] [data-af-t]');
+    back.dataset.afT = placed ? 'stopEditAddress' : 'stopBack';
+    back.textContent = T(back.dataset.afT);
   }
   ui.stop.querySelector('[data-stop-back]').addEventListener('click', () => {
-    const field = stopShown?.field;
+    const field = stopFromArea() && homeAddressId() ? homeAddressId() : stopShown?.field;
     stopShown = null;
     ui.stop.hidden = true;
     ui.form.hidden = false;
@@ -1173,7 +1199,7 @@ function init(root, cfg, mode) {
     set('zip', it.zip);
     const input = sug.input;
     closeSuggest();
-    if (el.dataset.field === homeAddressId()) fillCounty(it.county, el);
+    if (el.dataset.field === homeAddressId()) { fillCounty(it.county, el); scheduleArea(true); }
     liveCheck(el);
     refresh();
     markDirty();
@@ -1205,6 +1231,138 @@ function init(root, cfg, mode) {
     const note = fieldEl(countyNote.address)?.querySelector('.af-county-note');
     if (note) note.hidden = true;
     countyNote = null;
+  }
+
+  // ── The service-area check (the home address, placed on the map) ──
+  const area = { timer: 0, showTimer: 0, want: null, pending: null };
+  const areaField = () => fields.find(f => f.type === 'area') || null;
+  const homeAddressNow = () => { const id = homeAddressId(); return id && byId[id] ? readField(byId[id]) : null; };
+  /** The check, if it placed the address now on screen: { ...check, answer } */
+  function areaPlaced() {
+    if (!areaNow || !AREA_VALUES[areaNow.band]) return null;
+    return areaNow.key === addressKey(homeAddressNow()) ? { ...areaNow, answer: AREA_VALUES[areaNow.band] } : null;
+  }
+  /** A check is due or on its way for the address on screen */
+  function areaWaiting() {
+    const af = areaField();
+    if (!af || pageOf(af.id) !== currentId) return false;
+    const addr = homeAddressNow();
+    return checkableAddress(addr) && areaNow?.key !== addressKey(addr);
+  }
+  async function flushArea() {
+    const addr = homeAddressNow();
+    const key = addressKey(addr);
+    if (area.want === key && area.pending) return area.pending;
+    clearTimeout(area.timer);
+    return runArea(addr, key);
+  }
+  /** Check the address after a pause in typing (at once after picking a suggestion) */
+  function scheduleArea(now = false) {
+    if (!areaField()) return;
+    const addr = homeAddressNow();
+    const key = addressKey(addr);
+    clearTimeout(area.timer);
+    if (!checkableAddress(addr)) {
+      area.want = null;
+      if (areaNow) { areaNow = null; paintArea(); }
+      return;
+    }
+    if (areaNow?.key === key || area.want === key) return;
+    // The old result no longer describes what's typed
+    if (areaNow) paintArea('checking');
+    area.timer = setTimeout(() => runArea(addr, key), now ? 0 : 650);
+  }
+  function runArea(addr, key) {
+    area.want = key;
+    clearTimeout(area.showTimer);
+    area.showTimer = setTimeout(() => { if (area.want === key) paintArea('checking'); }, 180);
+    area.pending = (async () => {
+      let r;
+      try { r = await api({ action: 'area', ...(token && !previewing ? { token } : {}), address: addr }); } catch { r = { ok: false }; }
+      if (area.want !== key) return; // a newer address is being checked
+      clearTimeout(area.showTimer);
+      area.want = null;
+      area.pending = null;
+      areaNow = r.ok && r.area ? { ...r.area, key } : { key, band: 'unknown', reason: 'error' };
+      // The Census's county is the one JobTread should get: fill it unless the family picked one themselves
+      if (areaNow.county && homeAddressId()) {
+        const county = readAnswers().county;
+        if (!county || countyNote) fillCounty(areaNow.county, fieldEl(homeAddressId()));
+      }
+      paintArea();
+      const af = areaField();
+      if (af) liveCheck(fieldEl(af.id));
+      refresh();
+      markDirty();
+    })();
+    return area.pending;
+  }
+
+  /** "123 MAIN ST, MARIETTA, GA, 30060" → "123 Main St, Marietta, GA 30060" */
+  function prettyAddress(s) {
+    const parts = String(s || '').split(/\s*,\s*/).filter(Boolean);
+    if (parts.length < 3) return String(s || '');
+    const word = (w) => (/^(N|S|E|W|NE|NW|SE|SW)$/i.test(w) ? w.toUpperCase() : w.replace(/^(\w)(.*)$/, (m, a, b) => a.toUpperCase() + b.toLowerCase()));
+    const zip = /^\d{5}/.test(parts[parts.length - 1]) ? parts.pop() : '';
+    const state = parts.pop().toUpperCase();
+    return `${parts.map(p => p.split(/\s+/).map(word).join(' ')).join(', ')}, ${state}${zip ? ` ${zip}` : ''}`;
+  }
+  const milesText = (m) => (m == null ? '' : m >= 10 ? String(Math.round(m)) : String(Math.max(0.1, Math.round(m * 10) / 10)));
+  const AREA_ICONS = {
+    inside: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" class="af-area-i-fill"/><path d="M7 12.4l3.2 3.2L17 8.8" class="af-area-i-ink"/></svg>',
+    near: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.2" class="af-area-i-ring"/><circle cx="12" cy="12" r="4" class="af-area-i-dot"/></svg>',
+    far: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.2" class="af-area-i-ring"/><path d="M8 12h8M13 8.5l3.5 3.5-3.5 3.5" class="af-area-i-ink"/></svg>',
+    ask: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.2" class="af-area-i-ring"/><path d="M12 7.2v6.2M12 16.6v.2" class="af-area-i-ink"/></svg>',
+  };
+  function areaResultHtml(st, af) {
+    if (st === 'empty') return `<p class="af-area-prompt">${esc(T('areaPrompt'))}</p>`;
+    if (st === 'checking') return `<p class="af-area-checking"><span class="af-area-spin" aria-hidden="true"></span>${esc(T('areaChecking'))}</p>`;
+    if (st === 'unknown' || st === 'error') {
+      return `<div class="af-area-card" data-band="ask">${AREA_ICONS.ask}<div class="af-area-text"><p class="af-area-title">${esc(T(st === 'unknown' ? 'areaUnknown' : 'areaError'))}</p><p class="af-area-desc">${esc(T(st === 'unknown' ? 'areaUnknownBody' : 'areaErrorBody'))}</p></div></div>`;
+    }
+    const value = AREA_VALUES[st];
+    const stopping = st === 'far' && af.stops?.[value] && form.stops?.[af.stops[value]];
+    // Far out with Settings stopping them: what the stop screen will say; else the choice's own words
+    const desc = stopping ? form.stops[af.stops[value]].body : `<p class="af-area-desc">${esc(String(af.descriptions?.[value] || '').replace(/\{miles\}/g, milesText(areaNow.miles)))}</p>`;
+    const title = { inside: 'areaInside', near: 'areaNear', far: 'areaFar' }[st];
+    const found = areaNow.matched
+      ? `<p class="af-area-found">${esc(T(areaNow.county ? 'areaFoundCounty' : 'areaFound', { address: prettyAddress(areaNow.matched), county: areaNow.county || '' }))}</p>` : '';
+    return `<div class="af-area-card" data-band="${st}">${AREA_ICONS[st]}<div class="af-area-text"><p class="af-area-title">${esc(T(title))}</p><div class="af-area-desc-wrap">${desc}</div>${found}<button type="button" class="af-btn af-btn--link af-area-fix" data-act="area-fix">${esc(T('areaFix'))}</button></div></div>`;
+  }
+  /** Draw the check: map (with the home), what it found, and the question when it couldn't place the home */
+  function paintArea(force = null) {
+    const af = areaField();
+    const el = af && fieldEl(af.id);
+    if (!el) return;
+    const box = el.querySelector('[data-area]');
+    const placed = areaPlaced();
+    const st = force || (placed ? placed.band
+      : areaNow && areaNow.key === addressKey(homeAddressNow()) && areaNow.reason !== 'incomplete' ? (areaNow.reason === 'no-match' ? 'unknown' : 'error')
+        : 'empty');
+    const was = box.dataset.area;
+    box.dataset.area = st;
+    if (st !== 'checking') {
+      const home = placed && placed.lat != null ? { lat: placed.lat, lng: placed.lng, miles: placed.miles, band: placed.band } : null;
+      const mapEl = box.querySelector('[data-area-map]');
+      const sig = JSON.stringify([home?.lat, home?.lng, lang, form.serviceArea?.polygon]);
+      if (mapEl.dataset.sig !== sig) {
+        mapEl.innerHTML = areaMapHtml(form.serviceArea, home, mapWords(lang, !!home));
+        mapEl.dataset.sig = sig;
+        requestAnimationFrame(() => declutter(mapEl));
+      }
+    }
+    const res = box.querySelector('[data-area-result]');
+    const html = areaResultHtml(st, af);
+    if (res.innerHTML !== html) {
+      res.innerHTML = html;
+      if (was && was !== st && st !== 'checking') enter(res.firstElementChild, 0, 6, 320);
+    }
+    const ask = box.querySelector('[data-area-ask]');
+    const asking = st === 'unknown' || st === 'error';
+    if (ask.hidden === asking) {
+      ask.hidden = !asking;
+      if (asking) enter(ask, 0, -6);
+    }
   }
 
   // ── Save and finish later ────────────────────────────────────────
@@ -1403,6 +1561,8 @@ function init(root, cfg, mode) {
     // Their saved language wins over this device's
     if (LANGS[r.lang] && (form.languages || []).includes(r.lang)) { lang = r.lang; langPref.set(lang); }
     answers = { ...(r.answers || {}) };
+    // The last address check, for the address they left (the server placed it against today's area)
+    areaNow = r.area ? { ...r.area, key: addressKey(answers[homeAddressId() || 'address']) } : null;
     for (const [id, pf] of Object.entries(r.files || {})) {
       if (id === 'video') {
         if (pf.uploaded) { files.video = { uid: true, uploaded: true, name: pf.name }; uploadUi.video = { state: 'done', msg: ['videoDone', { name: pf.name }] }; }
@@ -1471,6 +1631,14 @@ function init(root, cfg, mode) {
         case 'record': openRecorder(f); break;
         case 'rec-toggle': toggleRecording(); break;
         case 'rec-cancel': closeRecorder(); break;
+        case 'area-fix': {
+          const addr = fieldEl(homeAddressId())?.querySelector('[data-part="line1"]');
+          if (!addr) break;
+          fieldEl(homeAddressId()).scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+          addr.focus({ preventScroll: true });
+          addr.select();
+          break;
+        }
         default:
       }
       return;
@@ -1496,6 +1664,7 @@ function init(root, cfg, mode) {
     const el = tgt.closest('[data-field]');
     liveCheck(el);
     if (tgt.dataset.part === 'line1' && el?.dataset.type === 'address') suggestFor(el, tgt);
+    if (el && el.dataset.field === homeAddressId()) scheduleArea();
     if (countyNote && el?.dataset.field === countyNote.field) hideCountyNote();
     refresh();
     markDirty();
@@ -1512,6 +1681,7 @@ function init(root, cfg, mode) {
     if (tgt.closest('.af-hp')) return;
     const el = tgt.closest('[data-field]');
     liveCheck(el);
+    if (el && el.dataset.field === homeAddressId()) scheduleArea();
     if (countyNote && el?.dataset.field === countyNote.field) hideCountyNote();
     refresh();
     markDirty();
@@ -1588,6 +1758,10 @@ function init(root, cfg, mode) {
   window.addEventListener('drop', (e) => { if (hasFiles(e) && !dropZone(e)) e.preventDefault(); }, { signal });
 
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && token) save(); }, { signal });
+  // Map names are spaced for the width they're shown at; a page shown after a hidden one gets its turn too
+  let declutterTimer = 0;
+  const redeclutter = () => { clearTimeout(declutterTimer); declutterTimer = setTimeout(() => { declutter(ui.pages); declutter(ui.stopMap); }, 120); };
+  window.addEventListener('resize', redeclutter, { signal });
   window.addEventListener('beforeunload', (e) => {
     if (uploads.size || recorder?.rec) { e.preventDefault(); e.returnValue = ''; }
   }, { signal });

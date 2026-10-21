@@ -89,7 +89,7 @@ test('questions that feed JobTread can be reworded but not removed or broken', (
 
 test('rules for show-when, stop screens, ids and messages', () => {
   const later = clone(DEFAULT_DEFINITION);
-  field(later, 'boundaryWhere').showIf = { field: 'ownership', in: ['No, the property is rented.'] };
+  field(later, 'referredBy').showIf = { field: 'ownership', in: ['No, the property is rented.'] };
   assert.match(problems(later), /must point to a question earlier/);
 
   const missingStop = clone(DEFAULT_DEFINITION);

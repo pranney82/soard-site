@@ -21,7 +21,7 @@ import {
 } from '../functions/api/_applications.js';
 import { handleApplicantEvent, QC_USER_ID } from '../functions/api/_applicant-comms.js';
 import { handleWorkflowCall, runNotifications } from '../functions/api/_applicant-notify.js';
-import { DEFAULT_MESSAGES, renderMessage } from '../functions/api/_application-form.js';
+import { DEFAULT_MESSAGES, DEFAULT_DEFINITION, renderMessage } from '../functions/api/_application-form.js';
 import { buildApplicationPdf } from '../functions/api/_application-pdf.js';
 import * as applyApi from '../functions/api/apply.js';
 
@@ -98,17 +98,21 @@ test('follow-up questions show only for the answer that asks for them', () => {
   const byId = Object.fromEntries(allFields(form).map(f => [f.id, f]));
   assert.equal(isVisible(byId.sensoryDetail, { sensory: 'No' }, byId), false);
   assert.equal(isVisible(byId.sensoryDetail, { sensory: 'Yes' }, byId), true);
-  assert.equal(isVisible(byId.boundaryWhere, { boundary: 'No, but it is close to the boundary.' }, byId), true);
+  assert.equal(isVisible(byId.permitsDetail, { permits: 'Yes' }, byId), true);
   // As in Jotform, the "please explain" follow-ups are optional
   const withYes = formErrors(form, fullAnswers({ sensory: 'Yes' }), {}, ['diagnosis']);
   assert.equal(withYes.sensoryDetail, undefined);
-  assert.ok(formErrors(form, fullAnswers({ county: 'Clayton' }), {}, ['basic']).county, 'county comes from the list');
+  assert.ok(formErrors(form, fullAnswers({ county: 'Clayton' }), {}, ['service-area']).county, 'county comes from the list');
 });
 
-test('renters and homes far outside the area get the stop screens', () => {
+test('renters get the stop screen; homes far outside the area do only when Settings say to stop them', () => {
+  const FAR = 'No, it is not within the boundary nor is it close.';
   assert.equal(stopFor(form, { ownership: 'No, the property is rented.' }).key, 'rental');
-  assert.equal(stopFor(form, { boundary: 'No, it is not within the boundary nor is it close.' }).key, 'outside');
+  assert.equal(stopFor(form, { boundary: FAR }), null, 'built in: families far out are told, and can still apply');
   assert.equal(stopFor(form, { boundary: 'No, but it is close to the boundary.' }), null);
+  const stopping = applicationForm({ year: YEAR, definition: { ...DEFAULT_DEFINITION, serviceArea: { ...DEFAULT_DEFINITION.serviceArea, beyond: 'stop' } } });
+  assert.equal(stopFor(stopping, { boundary: FAR }).key, 'outside');
+  assert.equal(stopFor(stopping, { boundary: 'No, but it is close to the boundary.' }), null, 'close is never stopped');
 });
 
 test('a complete application has no errors; formats are checked', () => {

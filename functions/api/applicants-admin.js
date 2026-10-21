@@ -73,6 +73,9 @@ export async function onRequestGet(context) {
       fields: Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, { label: f.label, type: f.type, options: f.options || null, long: !!f.long }])),
       boundary: {
         live: live.definition?.serviceArea?.polygon || DEFAULT_SERVICE_AREA.polygon,
+        // How far out counts as close (drawn as a dashed ring), and what families farther out get
+        nearMiles: live.definition?.serviceArea?.nearMiles ?? DEFAULT_SERVICE_AREA.nearMiles,
+        beyond: live.definition?.serviceArea?.beyond || DEFAULT_SERVICE_AREA.beyond,
         updatedAt: rules?.updatedAt || null,
       },
       season: cleanYear(settings.year),

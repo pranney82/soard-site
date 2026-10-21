@@ -36,6 +36,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo, useCallback, Sortable } from './vendor.js';
+import { nearRing, bandChanges } from './area-shared.js';
 
 const html = htm.bind(h);
 const API = '/api/applicants-admin';
@@ -47,7 +48,9 @@ const STATUS_HINT = {
   Approved: 'On the makeover waitlist',
   Denied: 'Not moving forward',
 };
-const BOUNDARY_RED = '#D92D20';
+// The area as families see it on the application: brand yellow, a charcoal line; "close" is a dashed ring
+const AREA_INK = '#373A36';
+const AREA_FILL = '#FFDA24';
 const SOURCE_LABEL = { website: 'on the website', jobtread: 'in JobTread', datax: 'by DataX', zapier: 'by Zapier', family: 'by the family', workflow: 'by a JobTread workflow', claude: 'by Claude' };
 const COMMENT_KINDS = new Set(['comment', 'reply', 'textIn', 'textOut', 'call', 'sent', 'note']);
 const DEFAULT_SUBJECT = 'A message from Sunshine on a Ranney Day';
@@ -239,14 +242,16 @@ const CSS = `
 .apl-legend button[aria-pressed="false"] { opacity: .45; }
 .apl-legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
 .apl-legend-line { display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: var(--color-text-secondary); padding: .3rem .35rem 0; border-top: 1px solid var(--color-border); margin-top: .2rem; }
-.apl-legend-line i { width: 18px; height: 0; border-top: 2.5px solid ${BOUNDARY_RED}; display: inline-block; }
+.apl-legend-line i { width: 18px; height: 11px; border: 2px solid ${AREA_INK}; background: color-mix(in srgb, ${AREA_FILL} 45%, transparent); border-radius: 3px; display: inline-block; }
+.apl-legend-line i.is-ring { background: none; border: 1.5px dashed ${AREA_INK}; opacity: .7; }
 .apl-map-tools { position: absolute; z-index: 500; top: .75rem; right: .75rem; display: grid; gap: .4rem; justify-items: end; }
 .apl-map-tools .btn { box-shadow: var(--shadow-md); }
 .apl-map-note { position: absolute; z-index: 500; left: 50%; bottom: .9rem; transform: translateX(-50%); background: #1A1B1F; color: #fff; border-radius: 10px; padding: .6rem .9rem; font-size: .84rem; box-shadow: var(--shadow-lg); display: flex; gap: .75rem; align-items: center; max-width: calc(100% - 2rem); flex-wrap: wrap; justify-content: center; }
 .apl-map-note .btn { min-height: 34px; }
 .apl-pin { width: 18px; height: 18px; border-radius: 50%; background: var(--c); border: 2.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); transition: transform .15s; }
+.apl-pin.is-moving { box-shadow: 0 0 0 3px #fff, 0 0 0 5.5px ${AREA_INK}, 0 1px 4px rgba(0,0,0,.35); }
 .apl-pin.is-focus { transform: scale(1.5); box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 30%, transparent), 0 1px 4px rgba(0,0,0,.35); }
-.apl-handle { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid ${BOUNDARY_RED}; box-shadow: 0 1px 3px rgba(0,0,0,.3); cursor: grab; }
+.apl-handle { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid ${AREA_INK}; box-shadow: 0 1px 3px rgba(0,0,0,.3); cursor: grab; }
 .apl-handle.is-mid { width: 10px; height: 10px; border-width: 2px; opacity: .8; }
 .apl-pop { font: 14px/1.4 Inter, system-ui, sans-serif; display: grid; gap: .35rem; min-width: 190px; }
 .apl-pop strong { font-size: .95rem; }
@@ -811,23 +816,29 @@ function CleanupSheet({ busy, onClose, onStart }) {
 
 /** Open state for a popover that closes on Escape and on a click anywhere else */
 function usePopover() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
   const ref = useRef(null);
+  // Closed means closed at once: its listeners go after the next paint, and until then
+  // they must not take an Escape or a click meant for whatever opened next
+  const isOpen = useRef(false);
+  const setOpen = useCallback((v) => { isOpen.current = typeof v === 'function' ? !!v(isOpen.current) : !!v; setOpenState(isOpen.current); }, []);
+  // Escape closes it. Its wrapper listens too (onKeyDown, pop.onKey), so it works from the
+  // moment it opens: the document listener below only arrives after the next paint
+  const onKey = useCallback((e) => {
+    if (e.key !== 'Escape' || !isOpen.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(false);
+    ref.current?.querySelector('[aria-expanded]')?.focus();
+  }, []);
   useEffect(() => {
     if (!open) return undefined;
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      e.stopPropagation();
-      setOpen(false);
-      ref.current?.querySelector('[aria-expanded]')?.focus();
-    };
+    const onDown = (e) => { if (isOpen.current && ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('keydown', onKey, true);
     return () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); };
   }, [open]);
-  return { open, setOpen, ref };
+  return { open, setOpen, ref, onKey };
 }
 
 /** The ⋯ menu: occasional actions, each with a line saying what it does */
@@ -845,7 +856,7 @@ function MoreMenu({ items, busy = false }) {
     btns[next]?.focus();
   };
   if (!items.length) return null;
-  return html`<div class="apl-pop-wrap" ref=${pop.ref}>
+  return html`<div class="apl-pop-wrap" ref=${pop.ref} onKeyDown=${pop.onKey}>
     <button class="btn btn-ghost btn-sm apl-more-btn" aria-haspopup="menu" aria-expanded=${pop.open} aria-label="More actions" title="More actions" disabled=${busy} onClick=${() => pop.setOpen(o => !o)}>${Icon.more()}</button>
     ${pop.open && html`<div class="apl-menu" role="menu" aria-label="More actions" ref=${list} onKeyDown=${onKey}>
       ${items.map((it, i) => (it === '-' ? html`<hr key=${`sep${i}`} />` : html`
@@ -859,7 +870,7 @@ function MoreMenu({ items, busy = false }) {
 /** Filters: one button; the panel holds the less-used ones */
 function FiltersButton({ count, onClear, children }) {
   const pop = usePopover();
-  return html`<div class="apl-pop-wrap" ref=${pop.ref}>
+  return html`<div class="apl-pop-wrap" ref=${pop.ref} onKeyDown=${pop.onKey}>
     <button class="btn btn-ghost apl-fbtn" aria-haspopup="dialog" aria-expanded=${pop.open} onClick=${() => pop.setOpen(o => !o)}>${Icon.filter()} Filters${count ? html`<b aria-label=${`${count} in use`}>${count}</b>` : ''}</button>
     ${pop.open && html`<div class="apl-popover" role="dialog" aria-label="Filters">
       ${children}
@@ -1071,21 +1082,28 @@ function MapView({ list, boundary, focus, startEditing = false, onEditDone, onOp
       maxZoom: 19, className: 'apl-tiles',
       attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
     }).addTo(map);
-    st.current = { map, pins: L.layerGroup().addTo(map), area: null, handles: L.layerGroup().addTo(map), markers: new Map() };
+    st.current = { map, pins: L.layerGroup().addTo(map), area: null, ring: null, handles: L.layerGroup().addTo(map), markers: new Map() };
+    // The area and its "close" ring in view: the families near the edge are the ones to look at
     const poly = boundary?.live || [];
-    if (poly.length >= 3) map.fitBounds(L.latLngBounds(poly), { padding: [30, 30] });
+    const ring = poly.length >= 3 && boundary?.nearMiles > 0 ? nearRing(poly, boundary.nearMiles, 48) : [];
+    if (poly.length >= 3) map.fitBounds(L.latLngBounds(ring.length ? ring : poly), { padding: [24, 24] });
     else map.setView([33.95, -84.35], 9);
     return () => { map.remove(); st.current = {}; };
   }, [L]);
 
-  // The boundary (live, or the one being edited)
+  // The boundary (live, or the one being edited), and the "close" ring around it
   const poly = useMemo(() => draftPoly || boundary?.live || [], [draftPoly, boundary?.live]);
+  const nearMiles = boundary?.nearMiles ?? 15;
   useEffect(() => {
     const s = st.current;
     if (!L || !s.map) return;
     if (s.area) s.area.remove();
+    if (s.ring) s.ring.remove();
+    s.ring = null;
     if (poly.length >= 3) {
-      s.area = L.polygon(poly, { color: BOUNDARY_RED, weight: editing ? 3 : 2.5, opacity: 0.95, fillColor: BOUNDARY_RED, fillOpacity: editing ? 0.07 : 0.035, dashArray: editing ? '6 6' : null, interactive: false }).addTo(s.map);
+      const ring = nearMiles > 0 ? nearRing(poly, nearMiles) : [];
+      if (ring.length) s.ring = L.polygon(ring, { color: AREA_INK, weight: 1.5, opacity: 0.6, dashArray: '5 6', fill: false, interactive: false }).addTo(s.map);
+      s.area = L.polygon(poly, { color: AREA_INK, weight: editing ? 3 : 2.5, opacity: 0.95, fillColor: AREA_FILL, fillOpacity: editing ? 0.2 : 0.16, dashArray: editing ? '6 6' : null, interactive: false }).addTo(s.map);
     }
     s.handles.clearLayers();
     if (!editing) return;
@@ -1102,6 +1120,21 @@ function MapView({ list, boundary, focus, startEditing = false, onEditDone, onOp
     });
   }, [L, poly, editing]);
 
+  // While reshaping: who the new outline moves in or out (against the one in use), ringed on the map
+  const moves = useMemo(() => {
+    if (!editing || !draftPoly || draftPoly.length < 3 || !boundary?.live) return [];
+    const pts = list.filter(a => a.lat != null && a.lng != null).map(a => ({ id: a.id, lat: a.lat, lng: a.lng }));
+    return bandChanges(pts, { polygon: boundary.live, nearMiles }, { polygon: draftPoly, nearMiles });
+  }, [editing, draftPoly, boundary?.live, list, nearMiles]);
+  const moving = useMemo(() => new Set(moves.map(m => m.id)), [moves]);
+  const moveText = (() => {
+    if (!moves.length) return draftPoly && JSON.stringify(draftPoly) !== JSON.stringify(boundary?.live) ? 'No family changes sides with this outline.' : null;
+    const into = moves.filter(m => m.to === 'inside').length;
+    const outOf = moves.filter(m => m.from === 'inside').length;
+    const other = moves.length - into - outOf;
+    return [into && `${plural(into, 'family moves', 'families move')} inside`, outOf && `${plural(outOf, 'family moves', 'families move')} outside`, other && `${plural(other, 'family', 'families')} change between close and farther out`].filter(Boolean).join(', ');
+  })();
+
   // Pins
   useEffect(() => {
     const s = st.current;
@@ -1111,7 +1144,7 @@ function MapView({ list, boundary, focus, startEditing = false, onEditDone, onOp
     for (const a of list) {
       if (a.lat == null || a.lng == null || hidden.has(a.status || '')) continue;
       const c = STATUS_COLOR[a.status || ''];
-      const icon = L.divIcon({ className: '', html: `<div class="apl-pin${focus === a.id ? ' is-focus' : ''}" style="--c:${c}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+      const icon = L.divIcon({ className: '', html: `<div class="apl-pin${focus === a.id ? ' is-focus' : ''}${moving.has(a.id) ? ' is-moving' : ''}" style="--c:${c}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
       const m = L.marker([a.lat, a.lng], { icon, title: a.name, riseOnHover: true, keyboard: true }).addTo(s.pins);
       const div = document.createElement('div');
       div.className = 'apl-pop';
@@ -1120,7 +1153,7 @@ function MapView({ list, boundary, focus, startEditing = false, onEditDone, onOp
       m.bindPopup(div, { closeButton: true, autoPanPadding: [40, 40] });
       s.markers.set(a.id, m);
     }
-  }, [L, list, hidden, focus]);
+  }, [L, list, hidden, focus, moving]);
 
   // "Show on map" from a family's drawer (once, not on every refresh)
   const focused = useRef(null);
@@ -1159,13 +1192,14 @@ function MapView({ list, boundary, focus, startEditing = false, onEditDone, onOp
       ${['Applied', 'In Review', 'Approved', 'Denied'].map(s => html`<button aria-pressed=${!hidden.has(s)} onClick=${() => setHidden(h => { const n = new Set(h); n.has(s) ? n.delete(s) : n.add(s); return n; })}>
         <span class="apl-dot" style=${`background:${STATUS_COLOR[s]};width:10px;height:10px`}></span>${s}<b>${counts[s]}</b></button>`)}
       <div class="apl-legend-line"><i></i> Service area${outside ? ` · ${outside} outside` : ''}</div>
+      ${nearMiles > 0 && html`<div class="apl-legend-line" style="border-top: 0; margin-top: 0; padding-top: 0;"><i class="is-ring"></i> Close: within ${plural(nearMiles, 'mile')}</div>`}
       ${noPoint > 0 && html`<div class="apl-card-sub" style="padding:.2rem .35rem 0">${plural(noPoint, 'family has', 'families have')} no home in JobTread yet</div>`}
     </div>
     <div class="apl-map-tools">
       ${!editing && html`<button class="btn btn-ghost btn-sm" onClick=${startEdit}>Edit boundary</button>`}
     </div>
     ${editing && html`<div class="apl-map-note" role="status">
-      <span>Drag a corner to move it, drag a small dot to add one, double-click a corner to remove it. Saving uses it for every family right away.</span>
+      <span>Drag a corner to move it, drag a small dot to add one, double-click a corner to remove it. Saving uses it for every family right away.${moveText ? html`<br /><b aria-live="polite">${moveText}</b>` : ''}</span>
       <button class="btn btn-ghost btn-sm" onClick=${stopEdit} disabled=${busy}>Cancel</button>
       <button class="btn btn-primary btn-sm" onClick=${save} disabled=${busy}>${busy ? 'Saving…' : 'Save boundary'}</button>
     </div>`}
@@ -1216,27 +1250,38 @@ function Drawer({ id, fields, summary, onClose, onPrev, onNext, onStatus, onChan
     const t = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 30000);
     return () => clearInterval(t);
   }, [load]);
-  useEffect(() => {
-    const prev = document.activeElement;
-    panel.current?.focus();
-    const onKey = (e) => {
-      if (e.key === 'Escape' && !document.querySelector('.apl-sheet-wrap')) { e.preventDefault(); onClose(); }
-      const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
-      if (!typing && e.key === 'k' && onPrev) onPrev();
-      if (!typing && e.key === 'j' && onNext) onNext();
-    };
-    window.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    document.body.classList.add('apl-drawer-open');
-    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; document.body.classList.remove('apl-drawer-open'); prev?.focus?.(); };
-  }, [onClose, onPrev, onNext]);
+  // Keys work from the moment the drawer is on screen (an effect waits for the next paint, and an
+  // Esc pressed on a busy page before then was lost), and focus comes back once, when it closes
+  const keys = useRef({});
+  keys.current = { onClose, onPrev, onNext };
+  const attach = useCallback((el) => {
+    if (el) {
+      panel.current = el;
+      const prev = document.activeElement;
+      el.focus();
+      const onKey = (e) => {
+        const k = keys.current;
+        if (e.key === 'Escape' && !document.querySelector('.apl-sheet-wrap')) { e.preventDefault(); k.onClose(); }
+        const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
+        if (!typing && e.key === 'k' && k.onPrev) k.onPrev();
+        if (!typing && e.key === 'j' && k.onNext) k.onNext();
+      };
+      window.addEventListener('keydown', onKey);
+      document.body.style.overflow = 'hidden';
+      document.body.classList.add('apl-drawer-open');
+      el._detach = () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; document.body.classList.remove('apl-drawer-open'); if (prev?.isConnected) prev.focus?.(); };
+    } else if (panel.current) {
+      panel.current._detach?.();
+      panel.current = null;
+    }
+  }, []);
 
   const a = d?.applicant ? { ...summary, ...d.applicant } : summary;
   const refresh = async (applicant) => { await load(); onChanged(applicant); };
 
   return html`<div>
     <div class="apl-scrim" onClick=${onClose}></div>
-    <aside class="apl-drawer" role="dialog" aria-modal="true" aria-label=${a ? a.name : 'Applicant'} tabindex="-1" ref=${panel}>
+    <aside class="apl-drawer" role="dialog" aria-modal="true" aria-label=${a ? a.name : 'Applicant'} tabindex="-1" ref=${attach}>
       ${a && html`<header class="apl-dhead">
         <${Avatar} a=${a} />
         <div class="apl-dtitle">
@@ -1390,7 +1435,7 @@ function Conversation({ d, onSent, addToast }) {
   };
   let lastDay = '';
   return html`<section class="apl-convo" aria-label="Conversation">
-    <div class="apl-thread" ref=${scroller}>
+    <div class="apl-thread" ref=${scroller} tabindex="0" role="log" aria-label="Messages and activity">
       <${NotifyBanner} d=${d} onChanged=${onSent} onCorrection=${startCorrection} addToast=${addToast} />
       ${!items.length && html`<div class="apl-skel">No messages yet.</div>`}
       ${items.map((it) => {

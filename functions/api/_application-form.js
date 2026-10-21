@@ -22,7 +22,12 @@
  *   ack (one box that must be ticked), signature (typed full name),
  *   photo, video (uploads; their values live in the draft's files, not answers),
  *   content (static html), image (static Cloudflare Images id),
- *   guidelines (the "what we do / don't" lists)
+ *   guidelines (the "what we do / don't" lists),
+ *   area (the service-area check: the form answers it from the home address
+ *     on the same page, by placing it on the map; the family only picks an
+ *     answer when the address can't be found. Its three choices are, in
+ *     order, inside / close / farther out (AREA_VALUES); each description is
+ *     what the family reads when the check lands there, {miles} filled in.)
  *
  * Choices are { value, label?, description? } (or a plain string, value =
  * label). Answers are stored as the value, which never changes once made, so
@@ -37,7 +42,9 @@
  */
 
 import { DEFAULT_ES } from './_application-form-es.js';
+import { areaRules, NEAR_MILES } from '../../public/admin/area-shared.js';
 
+// The old static map picture (the form draws a live map now; kept for older stop screens)
 export const SERVICE_MAP_IMAGE = 'd993cd7c-7863-4a1b-ea5e-50602623cb00';
 
 export const TEXT_MAX = 300;
@@ -70,8 +77,21 @@ export const FIELD_TYPES = {
   content: 'Text block',
   image: 'Image',
   guidelines: 'Guidelines (do / don’t lists)',
+  area: 'Service-area check',
 };
-export const CHOICE_TYPES = ['select', 'radio', 'checkbox', 'ack'];
+export const CHOICE_TYPES = ['select', 'radio', 'checkbox', 'ack', 'area'];
+
+/**
+ * The service-area answers, by band. Stored as these values (the Jotform
+ * wording, so every application ever made reads the same way); the family
+ * sees each choice's label and description.
+ */
+export const AREA_VALUES = {
+  inside: 'Yes, it is within the boundary.',
+  near: 'No, but it is close to the boundary.',
+  far: 'No, it is not within the boundary nor is it close.',
+};
+export const AREA_BANDS = Object.fromEntries(Object.entries(AREA_VALUES).map(([k, v]) => [v, k]));
 
 /**
  * Questions the site reads by id. `role` is shown in the editor; `types` are
@@ -83,6 +103,7 @@ export const LOCKED_FIELDS = {
   gender: { role: 'JobTread: Gender', types: ['radio', 'select'], values: ['Male', 'Female'], allValues: true },
   diagnosis: { role: 'JobTread: Diagnosis (and the medical note)', types: ['text', 'textarea'] },
   address: { role: 'JobTread: the home', types: ['address'] },
+  boundary: { role: 'The service-area check (Settings → Service area)', types: ['area'], values: Object.values(AREA_VALUES), allValues: true, required: true },
   county: { role: 'JobTread: County', types: ['select', 'radio', 'text'] },
   language: { role: 'JobTread: Primary Language', types: ['select', 'radio'], values: LANGUAGES },
   referredBy: { role: 'JobTread: Referred By', types: ['text', 'textarea', 'select', 'radio'] },
@@ -183,12 +204,17 @@ If you have questions or need help with any part of it, just reply to this email
 };
 
 /**
- * The red boundary on the service-area map, as [lat, lng] corners (traced
- * from the map: north of Canton, east of Cumming, Suwanee, Norcross, I-285,
- * west of Kennesaw). Used to check each home address; staff can adjust it.
+ * The service area, as [lat, lng] corners (traced from the old Jotform map:
+ * north of Canton, east of Cumming, Suwanee, Norcross, I-285, west of
+ * Kennesaw). Every home address is placed against it; staff reshape it on the
+ * Applicants map. nearMiles: homes outside it by no more than this count as
+ * close. beyond: what families farther out get ('warn': told, and they can
+ * still apply; 'stop': the "outside" stop screen).
  */
 export const DEFAULT_SERVICE_AREA = {
   polygon: [[34.330, -84.480], [34.222, -84.072], [33.969, -84.082], [33.893, -84.263], [33.884, -84.460], [34.005, -84.703]],
+  nearMiles: NEAR_MILES,
+  beyond: 'warn',
 };
 
 /** Version 0: the Jotform form as it stood for the 2027 season */
@@ -248,25 +274,24 @@ export const DEFAULT_DEFINITION = {
     },
     {
       id: 'service-area',
-      title: 'Makeover Service Area Notice',
+      title: 'Service Area',
       fields: [
         {
           id: 'serviceAreaText', type: 'content',
-          html: `<p>To ensure we can effectively serve our community, Sunshine on a Ranney Day's makeovers are limited to homes located <strong>within</strong> the red outlined service area shown below.</p>
-<p>Only applications for children whose primary residence is inside the red boundary will be considered.</p>`,
+          html: `<p>Sunshine on a Ranney Day's makeovers are for children whose home is <strong>inside</strong> our service area, shown on the map. Enter the address where the makeover would happen, and we'll check it for you.</p>`,
         },
-        { id: 'serviceMap', type: 'image', image: SERVICE_MAP_IMAGE, alt: 'Map of the makeover service area outlined in red: from Canton and Cumming in the north to Marietta, Sandy Springs and Norcross in the south', width: 938, height: 768 },
+        { id: 'address', type: 'address', required: true, label: "Child's Permanent Address (Address where the makeover will be completed)" },
         {
-          id: 'boundary', type: 'radio', required: true,
-          label: "Is the child's home located inside the red boundary shown above?",
-          options: ['Yes, it is within the boundary.', 'No, but it is close to the boundary.', 'No, it is not within the boundary nor is it close.'],
-          stops: { 'No, it is not within the boundary nor is it close.': 'outside' },
+          id: 'boundary', type: 'area', required: true,
+          label: "Is the child's home inside the service area shown on the map?",
+          options: [
+            { value: AREA_VALUES.inside, label: 'Yes, it is inside the service area.', description: 'Good news: this home is inside our service area.' },
+            { value: AREA_VALUES.near, label: 'No, but it is close to it.', description: 'This home is about {miles} miles outside our service area. You can still apply, and our team will review it.' },
+            { value: AREA_VALUES.far, label: 'No, it is not inside it or close to it.', description: 'This home is about {miles} miles outside our service area. We only do makeovers inside it, so we likely can’t help this time. You’re still welcome to send your application.' },
+          ],
         },
-        {
-          id: 'boundaryWhere', type: 'text',
-          label: "If no, where is the child's home located?",
-          showIf: { field: 'boundary', in: ['No, but it is close to the boundary.'] },
-        },
+        { id: 'county', type: 'select', required: true, label: "What county is the child's home located in?", options: COUNTIES },
+        { id: 'resides50', type: 'radio', required: true, options: YES_NO, label: 'Does the child reside at the above address at least 50% of their time?' },
       ],
     },
     {
@@ -277,9 +302,6 @@ export const DEFAULT_DEFINITION = {
         { id: 'birthdate', type: 'date', required: true, label: "Child's Birthdate" },
         { id: 'gender', type: 'radio', required: true, label: "Child's Gender", options: ['Male', 'Female'] },
         { id: 'diagnosis', type: 'text', required: true, label: "What is the child's illness or diagnosis?" },
-        { id: 'address', type: 'address', required: true, label: "Child's Permanent Address (Address where the makeover will be completed)" },
-        { id: 'county', type: 'select', required: true, label: "What county is the child's home located in?", options: COUNTIES },
-        { id: 'resides50', type: 'radio', required: true, options: YES_NO, label: 'Does the child reside at the above address at least 50% of their time?' },
         { id: 'previouslyApplied', type: 'radio', required: true, options: YES_NO, label: 'Has the child previously been nominated or applied for a Sunshine on a Ranney Day makeover?' },
         { id: 'referredBy', type: 'text', label: 'Who referred you to Sunshine on a Ranney Day?' },
       ],
@@ -393,10 +415,10 @@ export const DEFAULT_DEFINITION = {
     },
   ],
   stops: {
+    // Shown to families far outside the area when Settings say to stop them (with the map and their pin)
     outside: {
       title: 'Thank you so much for your interest in Sunshine on a Ranney Day.',
-      body: '<p>At this time, we are only able to provide makeovers within the area outlined in red below or its immediate surroundings. Please check back in the future to see if our service area has expanded.</p>',
-      image: SERVICE_MAP_IMAGE,
+      body: '<p>Our makeovers are only for homes inside our service area, and this address is outside it. Please check back in the future to see if our service area has grown.</p>',
     },
     rental: {
       title: 'Thank you so much for your interest in Sunshine on a Ranney Day.',
@@ -502,6 +524,7 @@ export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', ve
   const useLang = languages.includes(lang) ? lang : 'en';
   const tr = useLang === 'en' ? {} : (def.i18n?.[useLang]?.strings || {});
   const t = (path, en) => fillYear(tr[path] || en, y);
+  const area = areaRules(def.serviceArea, DEFAULT_SERVICE_AREA.polygon);
   const pages = (def.pages || []).map(p => ({
     id: p.id,
     title: t(`page:${p.id}`, p.title),
@@ -520,6 +543,11 @@ export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', ve
         if (useLang !== 'en') out.optionLabelsEn = Object.fromEntries(choices.map(c => [c.value, fillYear(c.label, y)]));
       }
       if (useLang !== 'en' && f.label) out.labelEn = fillYear(f.label, y);
+      // The service-area check ends the application only when Settings say to stop families far out
+      if (f.type === 'area') {
+        delete out.stops;
+        if (area.beyond === 'stop' && def.stops?.outside) out.stops = { [AREA_VALUES.far]: 'outside' };
+      }
       return out;
     }),
   }));
@@ -538,7 +566,7 @@ export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', ve
     messages,
     reminders: { ...rem, subject: fillYear(tr['reminder:subject'] || rem.subject, y), body: fillYear(tr['reminder:body'] || rem.body, y) },
     staffEmails: Array.isArray(def.staffEmails) && def.staffEmails.length ? def.staffEmails : DEFAULT_STAFF_EMAILS,
-    serviceArea: def.serviceArea?.polygon?.length >= 3 ? def.serviceArea : DEFAULT_SERVICE_AREA,
+    serviceArea: area,
     notify: notifySettings(def.notify),
   };
 }
@@ -612,27 +640,40 @@ export function ruleText(rule, labelOf = (id) => id, valueOf = (id, v) => v) {
 const ALLOWED_TAGS = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'a', 'h3', 'h4']);
 
 /**
- * Whitelist HTML for the text blocks and stop screens: the tags above, no
- * attributes except a safe href on links. Everything else is dropped (script
- * and style with their contents).
+ * Allow-listed HTML for the text blocks and stop screens: the tags above, no
+ * attributes except a safe href on links. It walks the text: a "<" that
+ * starts a whole tag (closed by ">") becomes that tag if it's allowed and
+ * nothing if not; any other "<" is shown as text, so a tag left unclosed can
+ * never carry its attributes into the page. Script, style and the like go
+ * with their contents.
  */
+const TAG_AT = /^<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:\s[^<>]*?)?)\/?>/;
 export function sanitizeHtml(html) {
   let s = String(html || '').slice(0, HTML_MAX * 2);
   s = s.replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|style|iframe|object|embed|template)[\s\S]*?<\/\1\s*>/gi, '');
-  s = s.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)([^<>]*)>/g, (m, tag, attrs) => {
-    const t = tag.toLowerCase();
-    if (!ALLOWED_TAGS.has(t)) return '';
-    if (m.startsWith('</')) return `</${t}>`;
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const lt = s.indexOf('<', i);
+    out += (lt < 0 ? s.slice(i) : s.slice(i, lt)).replace(/>/g, '&gt;');
+    if (lt < 0) break;
+    const m = TAG_AT.exec(s.slice(lt, lt + 2000));
+    if (!m) { out += '&lt;'; i = lt + 1; continue; }
+    i = lt + m[0].length;
+    const t = m[2].toLowerCase();
+    if (!ALLOWED_TAGS.has(t)) continue;
+    if (m[1]) { if (t !== 'br') out += `</${t}>`; continue; }
     if (t === 'a') {
+      const attrs = m[3] || '';
       const href = (attrs.match(/href\s*=\s*"([^"]*)"/i) || attrs.match(/href\s*=\s*'([^']*)'/i) || [])[1] || '';
-      const ok = /^(https?:\/\/|mailto:|tel:|\/)/i.test(href.trim()) && !/["<>]/.test(href);
-      return ok ? `<a href="${href.trim()}">` : '<a>';
+      const ok = /^(https?:\/\/|mailto:|tel:|\/)/i.test(href.trim()) && !/["'<>\s]/.test(href.trim());
+      out += ok ? `<a href="${href.trim()}">` : '<a>';
+      continue;
     }
-    return t === 'br' ? '<br>' : `<${t}>`;
-  });
-  // A stray "<" that isn't a tag can't start one now
-  s = s.replace(/<(?![a-z/])/gi, '&lt;');
-  return s.trim().slice(0, HTML_MAX);
+    out += t === 'br' ? '<br>' : `<${t}>`;
+  }
+  // Cut to size on a whole tag, never through one
+  return out.trim().slice(0, HTML_MAX).replace(/<[^>]*$/, '');
 }
 
 const str = (v, n) => String(v ?? '').replace(/\u0000/g, '').trim().slice(0, n);
@@ -674,7 +715,12 @@ export function normalizeDefinition(input) {
     body: str(r.body, 3000),
   };
   const poly = Array.isArray(d.serviceArea?.polygon) ? d.serviceArea.polygon : DEFAULT_SERVICE_AREA.polygon;
-  const serviceArea = { polygon: poly.slice(0, 200).map(pt => [Number(pt?.[0]), Number(pt?.[1])]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180) };
+  const { nearMiles, beyond } = areaRules(d.serviceArea);
+  const serviceArea = {
+    polygon: poly.slice(0, 200).map(pt => [Number(pt?.[0]), Number(pt?.[1])]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180),
+    nearMiles,
+    beyond,
+  };
   const i18n = {};
   for (const [lang, tr] of Object.entries(d.i18n && typeof d.i18n === 'object' ? d.i18n : {})) {
     if (!LANGS[lang] || lang === 'en') continue;
@@ -728,7 +774,8 @@ function normalizeField(f) {
   if (o.rows) out.rows = Math.max(1, Math.min(20, Math.floor(Number(o.rows)) || 5));
   const rule = normalizeRule(o.showIf);
   if (rule) out.showIf = rule;
-  if (o.stops && typeof o.stops === 'object') {
+  // The service-area check's stop comes from Settings, never the field
+  if (o.stops && typeof o.stops === 'object' && out.type !== 'area') {
     const stops = Object.fromEntries(Object.entries(o.stops).map(([v, k]) => [str(v, TEXT_MAX), str(k, 30)]).filter(([v, k]) => v && k));
     if (Object.keys(stops).length) out.stops = stops;
   }
@@ -789,7 +836,7 @@ export function validateDefinition(def) {
     if (!p.fields.length) err(p.id, 'This page has no questions or text.');
     // A page's rule can only look at questions on earlier pages
     if (p.showIf) checkRule(p.showIf, p.id, (fid) => pageOf.get(fid) !== p.id);
-    if (p.showIf && p.fields.some(f => LOCKED_FIELDS[f.id]?.required)) err(p.id, 'This page has questions JobTread needs, so it must always show.');
+    if (p.showIf && p.fields.some(f => LOCKED_FIELDS[f.id]?.required)) err(p.id, 'This page has questions the site needs, so it must always show.');
     for (const f of p.fields) {
       const where = `${p.id}/${f.id}`;
       if (!/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(f.id || '')) { err(where, 'A question has an invalid id.'); continue; }
@@ -821,7 +868,7 @@ export function validateDefinition(def) {
       if (lock) {
         if (!lock.types.includes(f.type)) err(where, `This question feeds ${lock.role.replace(/^JobTread: /, 'JobTread ')} and must stay a ${lock.types.map(t => FIELD_TYPES[t]).join(' or ')} question.`);
         if (lock.required && !f.required) err(where, 'This question must stay required.');
-        if (lock.required && f.showIf) err(where, 'This question must always show (JobTread needs it), so it can’t have "Show only when".');
+        if (lock.required && f.showIf) err(where, 'This question must always show (the site needs it), so it can’t have "Show only when".');
         if (lock.values && CHOICE_TYPES.includes(f.type)) {
           const values = (f.options || []).map(o => choice(o).value);
           if (values.some(v => !lock.values.includes(v))) err(where, `JobTread only knows these choices: ${lock.values.join(', ')}. You can reword them, not add new ones.`);
@@ -842,11 +889,17 @@ export function validateDefinition(def) {
           if (f.type === 'checkbox' && !jt.multiple) err(where, `JobTread's "${jt.name}" holds one choice; use One choice or Dropdown.`);
         }
       }
+      if (f.type === 'area') {
+        if ([...seen.values()].some(x => x.type === 'area')) err(where, 'A form has one service-area check.');
+        // It reads the home address, so the map and its answer sit just under it
+        if (pageOf.get('address') !== p.id) err(where, 'The service-area check reads the home address: keep it on the same page, below "Child’s Permanent Address".');
+      }
       seen.set(f.id, f);
       pageOf.set(f.id, p.id);
     }
   }
   for (const id of Object.keys(LOCKED_FIELDS)) if (!seen.has(id)) err(id, `The question "${id}" feeds ${LOCKED_FIELDS[id].role.replace(/^JobTread: /, 'JobTread ')}; it can be reworded or moved, not removed.`);
+  if ([...seen.values()].some(f => f.type === 'area') && !def.stops?.outside) err('stops/outside', 'Keep the "outside" stop screen: the service-area check shows it when Settings say to stop families far outside the area.');
   for (const [k, s] of Object.entries(def.stops || {})) {
     if (!/^[a-z0-9-]{1,30}$/.test(k)) err(`stops/${k}`, 'A stop screen has an invalid id.');
     if (!s.title) err(`stops/${k}`, 'This stop screen needs a title.');
@@ -969,6 +1022,10 @@ export function diffDefinitions(before, after) {
   if (na.summary !== nb.summary) add('changed', 'Email timing', `Change summaries for staff turned ${nb.summary ? 'on' : 'off'}`);
   if (JSON.stringify(a.staffEmails || DEFAULT_STAFF_EMAILS) !== JSON.stringify(b.staffEmails || DEFAULT_STAFF_EMAILS)) add('changed', 'Settings', `New-application email goes to ${(b.staffEmails || []).join(', ') || 'nobody'}`);
   if (JSON.stringify(a.serviceArea?.polygon || DEFAULT_SERVICE_AREA.polygon) !== JSON.stringify(b.serviceArea?.polygon || DEFAULT_SERVICE_AREA.polygon)) add('changed', 'Settings', 'The service area boundary changed');
+  const aa = areaRules(a.serviceArea);
+  const ab = areaRules(b.serviceArea);
+  if (aa.nearMiles !== ab.nearMiles) add('changed', 'Settings', `"Close to the area" is now ${ab.nearMiles ? `within ${ab.nearMiles} miles` : 'off'}`);
+  if (aa.beyond !== ab.beyond) add('changed', 'Settings', ab.beyond === 'stop' ? 'Families far outside the area are now stopped' : 'Families far outside the area can now apply');
   const ta = a.i18n?.es?.strings || {};
   const tb = b.i18n?.es?.strings || {};
   const tChanged = [...new Set([...Object.keys(ta), ...Object.keys(tb)])].filter(p => ta[p] !== tb[p]).length;
@@ -983,7 +1040,7 @@ export function allFields(form) {
   return form.pages.flatMap(p => p.fields.map(f => ({ ...f, page: p.id, ...(p.showIf ? { pageShowIf: p.showIf } : {}) })));
 }
 
-const INPUT_TYPES = new Set(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'radio', 'checkbox', 'name', 'address', 'ack', 'signature']);
+const INPUT_TYPES = new Set(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'radio', 'checkbox', 'name', 'address', 'ack', 'signature', 'area']);
 const UPLOAD_TYPES = new Set(['photo', 'video']);
 
 export function isInput(field) { return INPUT_TYPES.has(field.type); }
@@ -1050,6 +1107,7 @@ export const ERROR_TEXT = {
   en: {
     video: 'Please upload your video.', videoBusy: 'Your video is still uploading. Please wait for it to finish.', photo: 'Please add a photo.',
     ack: 'Please check the box to continue.', choose: 'Please choose an answer.', signature: 'Please type your full name.', answer: 'Please answer this question.',
+    area: 'Please enter the home address above so we can check it, or choose an answer.',
     email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.',
     date: 'Please enter a valid date.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
     address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.',
@@ -1061,6 +1119,7 @@ export const ERROR_TEXT = {
   es: {
     video: 'Suba su video.', videoBusy: 'Su video todavía se está subiendo. Espere a que termine.', photo: 'Agregue una foto.',
     ack: 'Marque la casilla para continuar.', choose: 'Elija una respuesta.', signature: 'Escriba su nombre completo.', answer: 'Responda esta pregunta.',
+    area: 'Escriba arriba la dirección de la casa para que podamos revisarla, o elija una respuesta.',
     email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.',
     date: 'Escriba una fecha válida.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
     address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.',
@@ -1087,6 +1146,7 @@ export function fieldError(field, value, lang = 'en') {
   if (blank) {
     if (!field.required) return null;
     if (field.type === 'ack') return E.ack;
+    if (field.type === 'area') return E.area;
     if (['radio', 'select', 'checkbox'].includes(field.type)) return E.choose;
     if (field.type === 'signature') return E.signature;
     return E.answer;
@@ -1123,7 +1183,7 @@ export function fieldError(field, value, lang = 'en') {
       if (value.zip && !/^\d{5}(-\d{4})?$/.test(String(value.zip).trim())) return E.zip;
       return null;
     }
-    case 'radio': case 'select': case 'ack':
+    case 'radio': case 'select': case 'ack': case 'area':
       return field.options.includes(value) ? null : E.oneOf;
     case 'checkbox': {
       if (!Array.isArray(value) || value.some(v => !field.options.includes(v))) return E.listed;
@@ -1231,7 +1291,7 @@ export function answerText(field, value, en = false) {
     case 'address': return addressText(value);
     case 'date': return dateText(value);
     case 'checkbox': return (value || []).map(v => optionLabel(field, v, en)).join(', ');
-    case 'radio': case 'select': case 'ack': return optionLabel(field, value, en);
+    case 'radio': case 'select': case 'ack': case 'area': return optionLabel(field, value, en);
     case 'phone': {
       const e = toE164(value);
       const m = e && e.match(/^\+1(\d{3})(\d{3})(\d{4})$/);

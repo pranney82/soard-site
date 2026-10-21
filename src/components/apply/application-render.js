@@ -10,6 +10,7 @@
  * server cleaned when they were saved (sanitizeHtml).
  */
 import { TEXT_MAX, TEXTAREA_MAX } from '../../../functions/api/_application-form.js';
+import { areaMapHtml } from './area-map.js';
 
 const CF_BASE = 'https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ';
 const US_STATES = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
@@ -64,6 +65,15 @@ export const UI = {
     yourPhoto: 'your photo', yourVideo: 'your video',
     leaveUpload: 'Your upload is still in progress. Leave this page and stop it?',
     suggestions: 'Suggested addresses', countyFilled: 'We filled in {county} County from your address.',
+    // The service-area check under the home address
+    areaPrompt: "Enter the address above, and we'll show it on the map.", areaChecking: 'Checking the address…',
+    areaInside: 'Inside our service area', areaNear: 'Close to our service area', areaFar: 'Outside our service area',
+    areaUnknown: "We couldn't find this address on the map", areaUnknownBody: 'Please check the street, city and ZIP code above. If they look right, just tell us:',
+    areaError: "We couldn't check the address just now", areaErrorBody: 'Please tell us instead:',
+    areaFound: 'We found {address}.', areaFoundCounty: 'We found {address}, in {county} County.', areaFix: 'Not right? Change the address',
+    areaMapLabel: 'Map of our service area in metro Atlanta, with county lines and nearby towns.', areaMapHome: ' The home you entered is marked on it.',
+    areaHome: 'Home', areaLegend: 'Our service area', areaLegendHome: 'The home you entered', areaAway: 'Home, {miles} mi away',
+    stopEditAddress: 'Change the address',
     steps: 'All steps', stepDone: 'Done', stepNow: 'You are here', stepLocked: 'Not reached yet',
     language: 'Language', loading: 'Loading the application…', optional: '(optional)', chooseOne: 'Choose one', choose: 'Choose', upTo: 'Choose up to {n}.',
     first: 'First name', last: 'Last name', street: 'Street address', apt: 'Apartment, suite, etc.', city: 'City', state: 'State', zip: 'ZIP code', signature: 'Type your full name',
@@ -125,6 +135,14 @@ export const UI = {
     yourPhoto: 'su foto', yourVideo: 'su video',
     leaveUpload: 'Todavía se está subiendo un archivo. ¿Salir de esta página y detenerlo?',
     suggestions: 'Direcciones sugeridas', countyFilled: 'Completamos el condado de {county} con su dirección.',
+    areaPrompt: 'Escriba la dirección arriba y la mostraremos en el mapa.', areaChecking: 'Revisando la dirección…',
+    areaInside: 'Dentro de nuestra área de servicio', areaNear: 'Cerca de nuestra área de servicio', areaFar: 'Fuera de nuestra área de servicio',
+    areaUnknown: 'No encontramos esta dirección en el mapa', areaUnknownBody: 'Revise la calle, la ciudad y el código postal. Si están bien, díganos:',
+    areaError: 'No pudimos revisar la dirección en este momento', areaErrorBody: 'Por favor, díganos:',
+    areaFound: 'Encontramos {address}.', areaFoundCounty: 'Encontramos {address}, en el condado de {county}.', areaFix: '¿No es correcta? Cambiar la dirección',
+    areaMapLabel: 'Mapa de nuestra área de servicio en el área metropolitana de Atlanta, con los límites de los condados y las ciudades cercanas.', areaMapHome: ' La casa que escribió está marcada.',
+    areaHome: 'Casa', areaLegend: 'Nuestra área de servicio', areaLegendHome: 'La casa que escribió', areaAway: 'Casa, a {miles} mi',
+    stopEditAddress: 'Cambiar la dirección',
     steps: 'Todos los pasos', stepDone: 'Listo', stepNow: 'Usted está aquí', stepLocked: 'Todavía no llega',
     language: 'Idioma', loading: 'Cargando la solicitud…', optional: '(opcional)', chooseOne: 'Elija una opción', choose: 'Elegir', upTo: 'Elija hasta {n}.',
     first: 'Nombre', last: 'Apellido', street: 'Dirección', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
@@ -161,11 +179,11 @@ const CHECK = '<svg class="af-check-draw" viewBox="0 0 16 16" aria-hidden="true"
 // The ring around an upload while it goes up (circumference 2πr = 113.1 at r=18), on a small disc
 const RING = '<svg class="af-ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="af-ring-disc" cx="22" cy="22" r="22" /><circle class="af-ring-track" cx="22" cy="22" r="18" /><circle class="af-ring-fill" cx="22" cy="22" r="18" /></svg>';
 
-function choices(f, id) {
-  const type = f.type === 'radio' ? 'radio' : 'checkbox';
+function choices(f, id, { plain = false } = {}) {
+  const type = f.type === 'radio' || f.type === 'area' ? 'radio' : 'checkbox';
   return `<div class="af-choices">${f.options.map((v, i) => {
     const label = f.optionLabels?.[v] ?? v;
-    const desc = f.descriptions?.[v];
+    const desc = plain ? '' : f.descriptions?.[v];
     const text = desc ? `<strong class="af-choice-title">${esc(label)}</strong><span class="af-choice-desc">${esc(desc)}</span>` : esc(label);
     return `<label class="af-choice"><input type="${type}" name="${id}" value="${esc(v)}" id="${id}-${i}"><span class="af-choice-box" aria-hidden="true">${CHECK}</span><span class="af-choice-text">${text}</span></label>`;
   }).join('')}</div>`;
@@ -179,8 +197,16 @@ function guidelines(f) {
 </div>`;
 }
 
-/** One question (or text block) as HTML, in `lang` for the page's own words */
-export function renderField(f, lang = 'en') {
+/** The service-area map's words in a language (the map is drawn by ./area-map.js) */
+export function mapWords(lang, home = false) {
+  return {
+    label: t(lang, 'areaMapLabel') + (home ? t(lang, 'areaMapHome') : ''), homeLabel: t(lang, 'areaHome'),
+    legendArea: t(lang, 'areaLegend'), legendHome: t(lang, 'areaLegendHome'), away: t(lang, 'areaAway'),
+  };
+}
+
+/** One question (or text block) as HTML, in `lang` for the page's own words; `area` = the form's service area */
+export function renderField(f, lang = 'en', area = null) {
   const T = (k, v) => t(lang, k, v);
   const id = `af-${f.id}`;
   const errId = `${id}-error`;
@@ -192,6 +218,16 @@ export function renderField(f, lang = 'en') {
   if (f.type === 'content') return `<div class="af-content" data-field="${esc(f.id)}" data-type="content">${f.html || ''}</div>`;
   if (f.type === 'guidelines') return `<div class="af-content af-content--scope" data-field="${esc(f.id)}" data-type="guidelines">${guidelines(f)}</div>`;
   if (f.type === 'image') return imageHtml(f.image, f.alt, f.width, f.height).replace('<figure class="af-image">', `<figure class="af-image" data-field="${esc(f.id)}" data-type="image">`);
+  // The service-area check: the map, what the check found (the script fills both in as the address
+  // is typed), and the question itself, shown only when the address can't be placed on the map
+  if (f.type === 'area') {
+    return `<div class="af-field af-field--area" data-field="${esc(f.id)}" data-type="area"${f.required ? ' data-required="1"' : ''}>
+<div class="af-area" data-area="empty">
+<div class="af-map" data-area-map>${areaMapHtml(area, null, mapWords(lang))}</div>
+<div class="af-area-result" data-area-result role="status" aria-live="polite"><p class="af-area-prompt">${esc(T('areaPrompt'))}</p></div>
+<fieldset class="af-area-ask" data-area-ask hidden ${described}><legend class="af-label">${esc(f.label)}</legend>${help}${choices(f, id, { plain: true })}</fieldset>
+</div><p class="af-error" id="${errId}"></p></div>`;
+  }
 
   const ownName = f.id === 'parentName';
   const homeAddress = f.id === 'address';
@@ -265,5 +301,5 @@ export function renderField(f, lang = 'en') {
 
 /** Every page (hidden until the script shows the current one) */
 export function renderPages(form, lang = 'en') {
-  return form.pages.map(p => `<div class="af-page" data-page="${esc(p.id)}" hidden>${p.fields.map(f => renderField(f, lang)).join('')}</div>`).join('');
+  return form.pages.map(p => `<div class="af-page" data-page="${esc(p.id)}" hidden>${p.fields.map(f => renderField(f, lang, form.serviceArea)).join('')}</div>`).join('');
 }

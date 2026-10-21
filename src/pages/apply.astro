@@ -35,7 +35,9 @@ const appYear = app.year || '2026';
 // The site's own form (/apply/form/) unless admin set an outside form URL as an override
 const appFormUrl = app.formUrl || '/apply/form/';
 const appFormExternal = !!app.formUrl;
-const appLinkAttrs = appFormExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {};
+// A full page load into the form (never the site's soft navigation): the form has its own
+// security headers (video uploads to Stream, the camera), which a soft visit wouldn't pick up
+const appLinkAttrs = { 'data-astro-reload': true, ...(appFormExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {}) };
 const closedMessage = app.closedMessage || `The ${appYear} application period is currently closed.`;
 // Both states are in the page; functions/apply/index.js shows the one the live
 // switch (Admin → Applications → Settings) says, so opening needs no Publish

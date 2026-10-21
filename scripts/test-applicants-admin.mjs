@@ -43,6 +43,7 @@ import * as api from '../functions/api/applicants-admin.js';
 import * as formsApi from '../functions/api/applications-admin.js';
 import { FIELDS } from '../functions/api/_applicants.js';
 import { clearFormCache, getDraftForm, getLiveForm } from '../functions/api/_application-forms.js';
+import { axeScan, axeText } from './lib/axe.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/applicants-admin/');
@@ -342,7 +343,10 @@ await page.click('.apl-views button:nth-child(3)');
 await page.waitForSelector('.leaflet-container', { timeout: 15000 });
 await sleep(1500);
 ok(await page.$$eval('.apl-pin', els => els.length) >= 9, 'every family with a home has a pin');
-ok(await page.$$eval('path.leaflet-interactive, svg path', els => els.some(e => (e.getAttribute('stroke') || '').toLowerCase() === '#d92d20')), 'the service-area boundary is drawn in red');
+const paths = await page.$$eval('.leaflet-overlay-pane path', els => els.map(e => ({ stroke: (e.getAttribute('stroke') || '').toLowerCase(), fill: (e.getAttribute('fill') || '').toLowerCase(), dash: e.getAttribute('stroke-dasharray') || '' })));
+ok(paths.some(p => p.stroke === '#373a36' && p.fill === '#ffda24' && !p.dash), 'the service area is drawn as families see it: yellow, a charcoal line');
+ok(paths.some(p => p.stroke === '#373a36' && p.dash === '5 6' && p.fill !== '#ffda24'), 'with the close ring dashed around it');
+ok(/Close: within 15 miles/.test(await text(page, '.apl-legend')), 'the legend says what the ring is');
 await page.click('.apl-legend button:nth-child(4)'); // hide Denied
 await sleep(200);
 ok(await page.$$eval('.apl-legend button[aria-pressed="false"]', els => els.length) === 1, 'legend toggles a status off');
@@ -360,6 +364,7 @@ await page.mouse.up();
 await sleep(300);
 await shot(page, 'desktop-map-edit');
 ok(/right away/.test(await text(page, '.apl-map-note')), 'editing says the boundary is used for everyone once saved');
+ok(/famil(y|ies) (moves?|change)|No family changes sides/.test(await text(page, '.apl-map-note')), `while reshaping, it says who changes sides (${(await text(page, '.apl-map-note b')) || 'nothing said'})`);
 const before = JSON.stringify((await getLiveForm(DB, { fresh: true })).definition.serviceArea.polygon);
 await page.click('.apl-map-note .btn-primary'); // Save boundary
 await page.waitForFunction(() => !document.querySelector('.apl-map-note'), { timeout: 8000 }).catch(() => null);
@@ -368,6 +373,13 @@ const after = (await getLiveForm(DB, { fresh: true })).definition.serviceArea.po
 ok(after?.length >= 3 && JSON.stringify(after) !== before, 'Save boundary puts the new boundary in use straight away');
 ok(!(await getDraftForm(DB)), 'with no form draft and no Put live');
 ok(await page.evaluate(() => window.__toasts.some(t => /new boundary is in use/.test(t.msg))), 'and says so');
+// Accessibility: each view and the family drawer, WCAG 2.1 AA
+for (const [i, name] of [[1, 'board'], [2, 'list'], [3, 'map'], [4, 'activity']]) {
+  await page.click(`.apl-views button:nth-child(${i})`);
+  await sleep(i === 3 ? 1200 : 500);
+  const v = await axeScan(page, '.apl');
+  ok(!v.length, `axe: the ${name} has no WCAG 2.1 AA problems${v.length ? ` (${axeText(v)})` : ''}`);
+}
 
 // Activity
 await page.click('.apl-views button:nth-child(4)');
@@ -423,6 +435,14 @@ await page.waitForFunction(() => !document.querySelector('.apl-held-list'), { ti
 ok(acct('Noah Pence').comments.filter(c => c.name === 'Application Decision').length === 1, 'Send emails that family, once');
 ok(!(await page.$('.apl-banner')), 'and the banner goes');
 ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'desktop: nothing wider than the window');
+await page.click('.apl-views button:nth-child(1)');
+await sleep(400);
+await page.click('.apl-card');
+await page.waitForSelector('.apl-drawer .apl-thread', { timeout: 8000 }).catch(() => null);
+await sleep(500);
+const dv = await axeScan(page, '.apl-drawer');
+ok(!dv.length, `axe: the family drawer has no WCAG 2.1 AA problems${dv.length ? ` (${axeText(dv)})` : ''}`);
+await page.keyboard.press('Escape');
 await page.close();
 
 console.log('Phone 390');

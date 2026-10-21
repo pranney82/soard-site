@@ -13,7 +13,7 @@ export const DEFAULT_ES = {
   title: 'Solicitud de Sunshine on a Ranney Day {year}',
 
   'page:welcome': 'Antes de comenzar',
-  'page:service-area': 'Aviso sobre el área de servicio',
+  'page:service-area': 'Área de servicio',
   'page:basic': 'Información básica',
   'page:parents': 'Información de los padres',
   'page:diagnosis': 'Diagnóstico',
@@ -57,14 +57,14 @@ export const DEFAULT_ES = {
   'field:ackSeason:label': 'Entiendo que esta solicitud es para la temporada de remodelaciones de {year}, y que se espera que la construcción comience no antes de la primavera de {year}.',
   'field:ackSeason:option:Yes, I have read and understand the above statement.': 'Sí, he leído y entiendo lo anterior.',
 
-  'field:serviceAreaText:html': `<p>Para poder servir bien a nuestra comunidad, las remodelaciones de Sunshine on a Ranney Day se limitan a casas ubicadas <strong>dentro</strong> del área de servicio marcada en rojo a continuación.</p>
-<p>Solo se considerarán solicitudes de niños cuya residencia principal esté dentro del límite rojo.</p>`,
-  'field:serviceMap:alt': 'Mapa del área de servicio marcada en rojo: desde Canton y Cumming en el norte hasta Marietta, Sandy Springs y Norcross en el sur',
-  'field:boundary:label': '¿La casa del niño o la niña está dentro del límite rojo que se muestra arriba?',
-  'field:boundary:option:Yes, it is within the boundary.': 'Sí, está dentro del límite.',
-  'field:boundary:option:No, but it is close to the boundary.': 'No, pero está cerca del límite.',
-  'field:boundary:option:No, it is not within the boundary nor is it close.': 'No, no está dentro del límite ni cerca.',
-  'field:boundaryWhere:label': 'Si no, ¿dónde está ubicada la casa?',
+  'field:serviceAreaText:html': `<p>Las remodelaciones de Sunshine on a Ranney Day son para niños cuya casa está <strong>dentro</strong> de nuestra área de servicio, que se muestra en el mapa. Escriba la dirección donde se haría la remodelación y la revisaremos por usted.</p>`,
+  'field:boundary:label': '¿La casa del niño o la niña está dentro del área de servicio que se muestra en el mapa?',
+  'field:boundary:option:Yes, it is within the boundary.': 'Sí, está dentro del área de servicio.',
+  'field:boundary:option:No, but it is close to the boundary.': 'No, pero está cerca.',
+  'field:boundary:option:No, it is not within the boundary nor is it close.': 'No, no está dentro ni cerca.',
+  'field:boundary:desc:Yes, it is within the boundary.': 'Buenas noticias: esta casa está dentro de nuestra área de servicio.',
+  'field:boundary:desc:No, but it is close to the boundary.': 'Esta casa está a unas {miles} millas de nuestra área de servicio. Puede presentar su solicitud, y nuestro equipo la revisará.',
+  'field:boundary:desc:No, it is not within the boundary nor is it close.': 'Esta casa está a unas {miles} millas de nuestra área de servicio. Solo hacemos remodelaciones dentro de ella, así que probablemente no podamos ayudar esta vez. Si quiere, de todos modos puede enviar su solicitud.',
 
   'field:childName:label': 'Nombre del niño o la niña',
   'field:birthdate:label': 'Fecha de nacimiento del niño o la niña',
@@ -163,7 +163,7 @@ export const DEFAULT_ES = {
   'field:signature:label': 'Al escribir mi nombre a continuación, certifico que la información en esta solicitud es verdadera, exacta y completa.',
 
   'stop:outside:title': 'Muchas gracias por su interés en Sunshine on a Ranney Day.',
-  'stop:outside:body': '<p>Por ahora, solo podemos hacer remodelaciones dentro del área marcada en rojo a continuación o en sus alrededores inmediatos. Vuelva a consultar en el futuro para ver si nuestra área de servicio se ha ampliado.</p>',
+  'stop:outside:body': '<p>Nuestras remodelaciones son solo para casas dentro de nuestra área de servicio, y esta dirección está fuera de ella. Vuelva a consultar en el futuro para ver si nuestra área de servicio se ha ampliado.</p>',
   'stop:rental:title': 'Muchas gracias por su interés en Sunshine on a Ranney Day.',
   'stop:rental:body': '<p>Las familias deben ser dueñas de su casa para calificar para una remodelación.</p>',
 
