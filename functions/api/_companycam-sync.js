@@ -71,7 +71,7 @@ const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const TICK_EVERY_MS = MIN;
 const RECONCILE_EVERY_MS = 10 * MIN;
-const WEBHOOK_CHECK_EVERY_MS = HOUR;
+const WEBHOOK_CHECK_EVERY_MS = 10 * MIN; // CompanyCam turns a webhook off after failed deliveries; back on within minutes
 const MOVE_AFTER_MS = 10 * MIN;          // JobTread copies a linked project's photos within seconds; this is room to spare
 const COPY_OURSELVES_AFTER_MS = 30 * MIN; // ...and past this, the site copies what JobTread didn't
 const CLAIM_STALE_MS = 5 * MIN;           // a claim this old means its worker died mid-way
@@ -899,7 +899,16 @@ export async function ensureWebhook(env, { fetchImpl = fetch, now = Date.now() }
     hook = await updateWebhook(env, hook.id, { enabled: 'true', scopes: WEBHOOK_SCOPES }, { fetchImpl }); // a string, as CompanyCam's spec has it
     action = 'turned back on';
   }
-  const value = { id: String(hook.id), fingerprint, enabled: hook.enabled !== false && hook.enabled !== 'false', checkedAt: iso(now), action: action === 'ok' ? st.action || 'made' : action, changedAt: action === 'ok' ? st.changedAt || iso(now) : iso(now) };
+  // What CompanyCam last sent and what the site answered, to see why it ever turned the webhook off
+  let recent = st.recent || [];
+  try {
+    recent = (await webhookDeliveries(env, hook.id, { limit: 10, fetchImpl })).map((d) => ({ event: d.event, status: d.response_status, ok: !!d.success, at: d.created_at, error: d.error_message ? String(d.error_message).slice(0, 160) : null }));
+  } catch { /* the history is a nice-to-have */ }
+  const value = {
+    id: String(hook.id), fingerprint, enabled: hook.enabled !== false && hook.enabled !== 'false', checkedAt: iso(now),
+    action: action === 'ok' ? st.action || 'made' : action, changedAt: action === 'ok' ? st.changedAt || iso(now) : iso(now),
+    turnedBackOn: (st.turnedBackOn || 0) + (action === 'turned back on' ? 1 : 0), recent, failing: recent.filter((d) => !d.ok).length,
+  };
   await putState(DB, 'webhook', value, now);
   return { ...value, action };
 }
@@ -995,7 +1004,7 @@ export async function maybeRunCompanyCam(env, { fetchImpl = fetch, now = Date.no
     const deadline = Date.now() + BUDGET_MS;
     const out = { families: [], files: [], reconciled: 0, moved: 0 };
 
-    if (force || (await takeTurn(DB, 'webhook', WEBHOOK_CHECK_EVERY_MS, now))) {
+    if (force || (await takeTurn(DB, 'webhook-check', WEBHOOK_CHECK_EVERY_MS, now))) {
       try {
         out.webhook = (await ensureWebhook(env, { fetchImpl, now })).action;
         await tokenOk(env, now);
@@ -1065,7 +1074,7 @@ export async function companycamFacts(env) {
   const by = (rows, k) => Object.fromEntries((rows?.results || []).map((r) => [r[k], r.n]));
   return {
     on: true, projects: by(stages, 'stage'), files: by(files, 'state'), lastCopied: last || null, failing: failing || 0, waiting: waiting || 0,
-    webhook: webhook ? { enabled: webhook.enabled, checkedAt: webhook.checkedAt } : null,
+    webhook: webhook ? { enabled: webhook.enabled, checkedAt: webhook.checkedAt, turnedBackOn: webhook.turnedBackOn || 0, recentFailing: webhook.failing || 0 } : null,
     tokenBad: !!token?.bad, tokenError: token?.bad ? token.error : null, lastRun: lastRun?.at || null, lastWebhook: seen?.at || null,
     selfTest: check ? { step: check.step, ok: check.ok ?? null, at: check.at || check.startedAt || null, error: check.error || null, seconds: check.copied?.seconds ?? null, linkKept: check.job?.linkKept ?? null, imported: check.job?.imported ?? null } : null,
   };

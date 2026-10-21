@@ -557,8 +557,13 @@ test('the webhook: kept in CompanyCam with the site’s token, and refused unsig
   assert.deepEqual(hooks[0].scopes, WEBHOOK_SCOPES);
   assert.equal(hooks[0].token, await webhookToken(env));
   hooks[0].enabled = false; // CompanyCam turned it off after failures
+  w.cc.deliveries = [{ id: 'd9', event: 'photo.created', resource_id: '5', success: false, response_status: 404, error_message: 'Not Found', created_at: new Date(at(60)).toISOString() }];
   await run(70);
   assert.equal(w.cc.webhooks.get(hooks[0].id).enabled, true);
+  const st = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_state WHERE key = 'webhook'").first('value'));
+  assert.deepEqual([st.action, st.turnedBackOn, st.failing], ['turned back on', 1, 1]);
+  assert.deepEqual(st.recent[0], { event: 'photo.created', status: 404, ok: false, at: new Date(at(60)).toISOString(), error: 'Not Found' }, 'what CompanyCam sent, and the answer');
+  w.cc.deliveries = [];
   // A new CompanyCam key means a new signing token: the webhook is replaced
   const before = hooks[0].id;
   env.COMPANYCAM_TOKEN = 'cc-token-2';
