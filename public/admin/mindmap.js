@@ -96,15 +96,25 @@ function textW(text, depth) {
   ctx2d.font = `${FONT[Math.min(depth, 3)]} Inter, system-ui, sans-serif`;
   return ctx2d.measureText(text).width;
 }
+// A leaf's tags: small labels drawn after its name (Emails & invites: who sends it)
+const TAG_FONT = '650 10.5px';
+const TAG_GAP = 7;   // between the name and the first tag
+const TAG_SEP = 3;   // between tags
+const tagW = (label) => {
+  ctx2d ||= document.createElement('canvas').getContext('2d');
+  ctx2d.font = `${TAG_FONT} Inter, system-ui, sans-serif`;
+  return ctx2d.measureText(label).width + 11;
+};
+const tagsW = (tags) => (tags?.length ? TAG_GAP + tags.reduce((w, t) => w + tagW(t.label), 0) + TAG_SEP * (tags.length - 1) : 0);
 function boxW(n, open) {
-  if (!n.children) return textW(n.t, 3) + 22;
+  if (!n.children) return textW(n.t, 3) + 22 + tagsW(n._tags);
   const d = Math.min(n.depth, 2);
   return textW(n.t, d) + PAD[d] * 2 + (n.depth > 0 && !open.has(n.id) ? BADGE : 0);
 }
 
 // Leaves and closed groups stack top to bottom, parents center on their
 // children; each side gets its own column offsets from its widest labels.
-function layout(MAP, open) {
+function layout(MAP, open, tagsOf = null) {
   const nodes = [];
   MAP._w = boxW(MAP, open);
   MAP._x = -MAP._w / 2;
@@ -118,6 +128,7 @@ function layout(MAP, open) {
     let lastParent = null;
     const place = (n) => {
       vis.push(n);
+      if (!n.children) n._tags = tagsOf ? tagsOf(n) || null : null;
       n._w = boxW(n, open);
       const kids = n.children && open.has(n.id) ? n.children : null;
       if (kids) {
@@ -185,6 +196,9 @@ const CSS = `
 .am-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
 .am-filters { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .am-filters button { cursor: pointer; }
+.am-filters-label { align-self: center; margin-right: 0.15rem; font-size: 0.78rem; font-weight: 600; color: var(--color-text-muted); }
+.am-node .am-tag rect { fill: var(--tg); fill-opacity: 0.13; }
+.am-node.leaf .am-tag text { font: 650 10.5px Inter, system-ui, sans-serif; fill: var(--tg); text-anchor: middle; dominant-baseline: central; }
 .am-filters button[aria-pressed="true"] { background: var(--color-text); color: var(--color-bg-card); }
 .am-svc { flex: 0 1 210px; min-width: 0; }
 .am-search { flex: 1 1 180px; min-width: 0; max-width: 260px; margin-left: auto; }
@@ -325,8 +339,10 @@ const smooth = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? '
  *  - title, sub: the page header; headerExtra sits on its right
  *  - factsUrl:   GET → { success, checkedAt, … } handed to each entry's live(); onFacts(body|null) too
  *  - written:    the date the tree was written ("Map written …")
- *  - filters:    [[key, label]]: 'all' clears, 'attn' is everything not live, any other key asks filterMatch(n, key)
- *  - lede({ stat, attn, parked, home }): the counts line, as <li>s
+ *  - filters:    [[key, label]], or groups [{ label, items: [[key, label]] }] shown side by side
+ *                ('Sent by: …'): 'all' clears, 'attn' is everything not live, any other key asks filterMatch(n, key)
+ *  - lede({ stat, attn, parked, home, show }): the counts line, as <li>s; show(key) applies a filter
+ *  - tags(n):    [{ label, color }] small labels drawn after an entry's name
  *  - entry(sel): the panel for a picked entry, under its title
  *  - homeNote:   the panel's last line when nothing is picked
  *  - depNoun:    [one, many] for "If X stops working: N … use it"
@@ -339,7 +355,7 @@ const smooth = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? '
 export function MindMap({
   model, palette = {}, title, sub, headerExtra = null, factsUrl, written, onFacts = () => {},
   filters, filterMatch = () => true, lede, entry, homeNote, depNoun = ['entry', 'entries'],
-  hay = () => [], shape = () => 'circle', legend = null, list, searchLabel, searchPlaceholder, ariaLabel, children = null,
+  hay = () => [], shape = () => 'circle', tags = null, legend = null, list, searchLabel, searchPlaceholder, ariaLabel, children = null,
 }) {
   ensureCss();
   const { MAP, byId, ALL, SERVICES, applyFacts, defaultOpen } = model;
@@ -400,7 +416,8 @@ export function MindMap({
 
   const filter = { kind, svc, q };
   const filtering = !!(kind || svc || q);
-  const { nodes, links } = useMemo(() => layout(MAP, open), [open, fontsReady]);
+  const lay = (o) => layout(MAP, o, tags);
+  const { nodes, links } = useMemo(() => lay(open), [open, fontsReady]);
   const sel = selId ? byId.get(selId) : null;
 
   const apply = () => {
@@ -516,7 +533,7 @@ export function MindMap({
     const next = new Set(open);
     if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
     const bx = n._x + (n._dir < 0 ? n._w : 0), by = n._y;
-    layout(MAP, next);
+    lay(next);
     const ax = n._x + (n._dir < 0 ? n._w : 0), ay = n._y;
     tf.current = { ...tf.current, x: tf.current.x - (ax - bx) * tf.current.k, y: tf.current.y - (ay - by) * tf.current.k };
     setOpen(next);
@@ -535,7 +552,7 @@ export function MindMap({
   const reveal = (n) => {
     const next = new Set(open);
     for (let p = n.parent; p; p = p.parent) next.add(p.id);
-    layout(MAP, next);
+    lay(next);
     centerOn(n);
     setOpen(next);
     setSelId(n.id);
@@ -554,7 +571,7 @@ export function MindMap({
       const walk = (n) => { if (n.children) { if (anyMatch(n, f)) o.add(n.id); n.children.forEach(walk); } };
       MAP.children.forEach(walk);
     } else o = defaultOpen();
-    const l = layout(MAP, o);
+    const l = lay(o);
     const filtered = f.kind || f.svc || f.q;
     setTall(null);
     setOpen(o);
@@ -576,7 +593,7 @@ export function MindMap({
   // (the panel moves below) and the canvas grows tall enough to hold it all
   const openAll = () => {
     const all = new Set([...byId.values()].filter((n) => n.children).map((n) => n.id));
-    const l = layout(MAP, all);
+    const l = lay(all);
     const el = wrapRef.current;
     const b = bounds(l.nodes);
     const W = el.parentElement.clientWidth;
@@ -641,8 +658,19 @@ export function MindMap({
         ? html`<rect class=${`am-dot s-${n.es}`} x=${dotX - 4} y="-4" width="8" height="8" rx="1.5" />`
         : html`<circle class=${`am-dot s-${n.es}`} cx=${dotX} cy="0" r="4.25" />`}
       <text x=${left ? n._w - 17 : 17} text-anchor=${left ? 'end' : 'start'}>${n.t}</text>
+      ${n._tags?.length && tagEls(n._tags, left ? 5 : 17 + textW(n.t, 3) + TAG_GAP)}
     </g>`;
   };
+  // A leaf's tags, left to right from x
+  const tagEls = (list, x) => list.map((t) => {
+    const w = tagW(t.label);
+    const el = html`<g class="am-tag" style=${`--tg: ${t.color || 'var(--color-text-secondary)'}`} transform=${`translate(${x},0)`}>
+      <rect x="0" y="-7.5" width=${w} height="15" rx="7.5" />
+      <text x=${w / 2} y="0.5">${t.label}</text>
+    </g>`;
+    x += w + TAG_SEP;
+    return el;
+  });
 
   const LeafDot = ({ n }) => html`<${Dot} n=${n} shape=${shape(n)} />`;
   // Entries that share a reason (one switch turns several off) read as one line
@@ -704,6 +732,8 @@ export function MindMap({
     </div>`;
   };
 
+  const filterGroups = Array.isArray(filters[0]) ? [{ label: null, items: filters }] : filters;
+  const show = (k) => { setSelId(null); applyFilter({ kind: k }); };
   const paletteStyle = Object.entries(palette).map(([k, v]) => `--am-b-${k}: ${v}`).join('; ');
 
   return html`<div class="am" style=${paletteStyle}>
@@ -714,7 +744,7 @@ export function MindMap({
       </div>
       ${headerExtra}
     </div>
-    <ul class="am-lede">${lede({ stat, attn, parked, home })}</ul>
+    <ul class="am-lede">${lede({ stat, attn, parked, home, show })}</ul>
     <p class=${`am-check${check.state === 'ok' ? '' : ' is-off'}`} aria-live="polite">
       <i aria-hidden="true"></i>
       ${check.state === 'loading' && 'Checking live status…'}
@@ -724,9 +754,10 @@ export function MindMap({
     </p>
 
     <div class="am-tools">
-      <div class="am-filters" role="group" aria-label="Show">
-        ${filters.map(([k, label]) => html`<button key=${k} type="button" class="chip" aria-pressed=${String((kind || 'all') === k)} onClick=${() => applyFilter({ kind: k === 'all' || kind === k ? null : k })}>${label}</button>`)}
-      </div>
+      ${filterGroups.map((g) => html`<div class="am-filters" role="group" aria-label=${g.label || 'Show'} key=${g.label || 'show'}>
+        ${g.label && html`<span class="am-filters-label" aria-hidden="true">${g.label}</span>`}
+        ${g.items.map(([k, label]) => html`<button key=${k} type="button" class="chip" aria-pressed=${String((kind || 'all') === k)} onClick=${() => applyFilter({ kind: k === 'all' || kind === k ? null : k })}>${label}</button>`)}
+      </div>`)}
       <div class="am-svc">
         <select id="am-svc" class="form-select" aria-label="Show what depends on a service" value=${svc || ''} onChange=${(e) => pickService(e.target.value)}>
           <option value="">Depends on…</option>

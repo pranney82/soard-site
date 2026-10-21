@@ -193,6 +193,7 @@ const MAP = { t: 'Everything we send', children: [
           when: 'Applications are switched open: 10 minutes later (time to take it back), or at once when the open time was scheduled.',
           subject: ['Applications are open: apply for a {year} room makeover', 'Ya abrimos las solicitudes para las remodelaciones de {year}'],
           does: 'Applications are open, with a button to the form. Kit sends it; families Kit can’t reach get it from the site at the same time.',
+          fromNote: { resend: 'Only for families Kit can’t reach, at the same moment, or for everyone if Kit can’t take it for 2 hours.' },
           touches: ['Kit', 'Resend', 'D1'], where: 'functions/api/_application-waitlist.js (advanceOpening, openingEmail)',
           info: 'Applications → Settings → Waitlist has the wording, “Try it on yourself” and “Rehearse through Kit”. If Kit can’t take it for 2 hours, the site emails everyone itself.',
           live: first(needs('kit', NO_KIT), (f) => {
@@ -488,32 +489,39 @@ const MAP = { t: 'Everything we send', children: [
 ]};
 
 // ─── Vocabulary ───────────────────────────
-const CHANNEL = {
-  email: 'Email from the site',
-  jobtread: 'Email through JobTread',
-  kit: 'Email through Kit',
-  invite: 'Calendar invite',
-  text: 'Text message',
-  push: 'Browser alert',
-  mail: 'From your own email',
+// ─── Who sends it ─────────────────────────
+// Each channel has one sender; an entry is sent by its channels' senders
+// (Applications are open: Kit, and Resend for families Kit can't reach)
+const SENDERS = {
+  resend: { label: 'Resend', color: '#3F3F46', from: 'Resend, as Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>. The site sends each one itself.' },
+  jobtread: { label: 'JobTread', color: '#2F6B1F', from: 'JobTread. The site posts it on the family’s JobTread account as the Qualification Committee, and JobTread emails it. Replies land on the family’s page.' },
+  kit: { label: 'Kit', color: '#1D5FA8', from: 'Kit, from SOARD’s Kit sender (linzi@soardcharity.com), to a list.' },
+  google: { label: 'Google Calendar', color: '#7A5B00', from: 'Google Calendar, from the organizer’s calendar (set in Reveals → Invites). Google sends the invitation and update emails.' },
+  twilio: { label: 'Twilio', color: '#9A4A12', from: 'Twilio, from SOARD’s toll-free number.' },
+  push: { label: 'Browser', color: '#5B4BC4', from: 'The person’s own browser, as a notification from sunshineonaranneyday.com.' },
+  you: { label: 'Your email', color: '#5F6066', from: 'Your own email app, from your own address. The site doesn’t send it.' },
 };
-const ALSO = { email: 'email', text: 'text', push: 'browser alert', kit: 'Kit' };
+const SENDER_OF = { email: 'resend', jobtread: 'jobtread', kit: 'kit', invite: 'google', text: 'twilio', push: 'push', mail: 'you' };
+const PART = { email: 'The email', jobtread: 'The email', kit: 'The email', invite: 'The invite', text: 'The text', push: 'The browser alert', mail: 'The email' };
+/** Who sends an entry, first sender first. Exported for tests */
+export const sendersOf = (n) => [...new Set([n.k, ...(n.also || [])].map((c) => SENDER_OF[c]))];
+/** One line per sender; "The text:" and the like only when the parts differ (a reminder's email, text and alert) */
+const fromLines = (n) => {
+  const chans = [n.k, ...(n.also || [])].filter((c, i, all) => all.findIndex((x) => SENDER_OF[x] === SENDER_OF[c]) === i);
+  const labelled = new Set(chans.map((c) => PART[c])).size > 1;
+  return chans.map((c) => {
+    const who = SENDER_OF[c];
+    return html`<p key=${c}>${labelled && html`<b>${PART[c]}:</b> `}${SENDERS[who].from}${n.fromNote?.[who] && html` ${n.fromNote[who]}`}</p>`;
+  });
+};
+const tagsOf = (n) => sendersOf(n).map((s) => ({ label: SENDERS[s].label, color: SENDERS[s].color }));
+const Sender = ({ s }) => html`<span class="mm-sender" style=${`--tg: ${SENDERS[s].color}`}>${SENDERS[s].label}</span>`;
 const BY = { auto: 'Goes out on its own', visitor: 'When someone signs up or asks', staff: 'Staff send it' };
 const FILTERS = [
-  ['all', 'Everything'],
-  ['email', 'Emails'],
-  ['invite', 'Calendar invites'],
-  ['text', 'Texts and alerts'],
-  ['auto', 'Go out on their own'],
-  ['staff', 'Staff send these'],
-  ['attn', 'Needs a look'],
+  { label: null, items: [['all', 'Everything'], ['auto', 'Go out on their own'], ['staff', 'Staff send these'], ['attn', 'Needs a look']] },
+  { label: 'Sent by', items: [['s:resend', 'Resend'], ['s:jobtread', 'JobTread'], ['s:kit', 'Kit'], ['s:google', 'Google Calendar'], ['s:twilio', 'Twilio']] },
 ];
-const channels = (n) => [n.k, ...(n.also || [])];
-const isEmail = (n) => ['email', 'jobtread', 'kit', 'mail'].includes(n.k);
-const filterMatch = (n, k) => (k === 'email' ? isEmail(n)
-  : k === 'text' ? channels(n).some((c) => c === 'text' || c === 'push')
-  : k === 'auto' || k === 'staff' ? n.by === k
-  : n.k === k);
+const filterMatch = (n, k) => (k.startsWith('s:') ? sendersOf(n).includes(k.slice(2)) : n.by === k);
 const shape = (n) => (n.k === 'invite' ? 'square' : 'circle');
 const PALETTE = { family: '#8C3D6B', reveals: '#B08900', live: '#6352C9', site: '#13807A', email: '#2B6CB0', board: '#A0571A' };
 const TEXT_FROM = 'SOARD’s toll-free number, through Twilio';
@@ -529,6 +537,10 @@ const subjectOf = (n, lang = 'en') => (Array.isArray(n.subject) ? n.subject[lang
 
 // ─── Styles (the map's own are mindmap.js's) ──
 const CSS = `
+.mm-sender { display: inline-flex; align-items: center; padding: 0.12rem 0.55rem; border-radius: 999px; font-size: 0.76rem; font-weight: 650; color: var(--tg); background: color-mix(in srgb, var(--tg) 13%, var(--color-bg-card)); }
+.am-meta .mm-sender { padding: 0 0.45rem; font-size: 0.72rem; margin-right: 0.2rem; }
+.mm-from p { margin: 0; }
+.mm-from p + p { margin-top: 0.35rem; }
 .mm-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 1rem; }
 .mm-subject { font-weight: 600; }
 .mm-subject small { display: block; margin-top: 0.15rem; font-weight: 400; color: var(--color-text-muted); }
@@ -751,6 +763,7 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
         <button type="button" class="am-close" ref=${closeRef} aria-label="Close" onClick=${onClose}>×</button>
       </div>
       ${p && html`<dl class="mm-env">
+        <dt>Sent by</dt><dd><${Sender} s=${showing === 'text' ? 'twilio' : showing === 'push' ? 'push' : sendersOf(entry)[0]} /></dd>
         <dt>From</dt><dd>${showing === 'text' && p.channel !== 'text' ? TEXT_FROM : showing === 'push' ? PUSH_FROM : p.from}</dd>
         <dt>To</dt><dd>${p.to}</dd>
         ${p.subject && showing === 'email' && html`<dt>Subject</dt><dd class="mm-env-subject">${p.subject}</dd>`}
@@ -806,11 +819,12 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
     return html`
       <div class="am-chips">
         <span class="chip"><${Dot} n=${sel} /> ${STATUS[sel.es]}</span>
-        <span class="chip">${CHANNEL[sel.k]}${sel.also?.length ? ` + ${sel.also.map((a) => ALSO[a]).join(', ')}` : ''}</span>
+        ${sendersOf(sel).map((x) => html`<${Sender} s=${x} key=${x} />`)}
         ${sel.spanish && html`<span class="chip">English and Spanish</span>`}
         <span class="chip am-chip-src" title=${p ? 'Checked against the live systems when this page opened' : `Can’t be checked from the site; as written on ${WRITTEN_ON}`}>${p ? 'Checked live' : 'From the map'}</span>
       </div>
       <dl>
+        <div><dt>Sent from</dt><dd class="mm-from">${fromLines(sel)}</dd></div>
         ${p && (p.why || p.last) && html`<div><dt>Right now</dt><dd class=${`am-now s-${sel.es}`}>${p.why || 'On.'}${p.last && html`<small>Last went <${Ago} iso=${p.last} /></small>`}</dd></div>`}
         ${reason && html`<div><dt>${sel.es === 'attn' ? 'What needs doing' : 'Why it’s off'}</dt><dd class=${`am-now s-${sel.es}`}>${reason}</dd></div>`}
         ${sel.who && html`<div><dt>Who gets it</dt><dd>${sel.who}</dd></div>`}
@@ -829,24 +843,22 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
     model=${model} palette=${PALETTE} factsUrl=${API} written=${WRITTEN_ON}
     title="Emails & invites"
     sub="Everything the site sends a person: emails, calendar invites, texts and browser alerts. Pick one to see who gets it, when it goes, and the message itself."
-    filters=${FILTERS} filterMatch=${filterMatch} shape=${shape}
-    lede=${({ stat, attn, parked, home }) => html`
-      <li><b>${stat(isEmail)}</b> emails</li>
-      <li><b>${stat((n) => n.k === 'invite')}</b> calendar invites</li>
-      <li><b>${stat((n) => channels(n).some((c) => c === 'text' || c === 'push'))}</b> by text or browser alert</li>
-      <li><b>${stat((n) => n.by === 'auto' && n.es === 'live')}</b> go out on their own</li>
+    filters=${FILTERS} filterMatch=${filterMatch} shape=${shape} tags=${tagsOf}
+    lede=${({ stat, attn, parked, home, show }) => html`
+      ${[['resend', 'sent by Resend'], ['jobtread', 'through JobTread'], ['kit', 'through Kit'], ['google', 'Google Calendar invites'], ['twilio', 'Twilio texts']].map(([x, words]) => html`
+        <li key=${x}><button type="button" onClick=${() => show(`s:${x}`)}><b>${stat((n) => sendersOf(n).includes(x))}</b> <span>${words}</span></button></li>`)}
       <li><button type="button" onClick=${home}><b>${parked.length}</b> <span>switched off</span></button></li>
       <li class="am-warnstat"><button type="button" onClick=${home}><b>${attn.length}</b> <span>need attention</span></button></li>`}
     entry=${Entry}
     homeNote="Pick anything on the map to see who gets it, when it goes and what it says, then See the email for the real thing."
     depNoun=${['message', 'messages']}
-    hay=${(n) => [subjectOf(n, 'en'), subjectOf(n, 'es'), n.who, CHANNEL[n.k]]}
+    hay=${(n) => [subjectOf(n, 'en'), subjectOf(n, 'es'), n.who, ...sendersOf(n).map((x) => SENDERS[x].label)]}
     legend=${html`<span><span class="am-dot-i s-live k-link"></span>Calendar invite</span>`}
     searchLabel="Search emails and invites" searchPlaceholder="Search: approved, Kit, reminder…" ariaLabel="Emails and invites map"
     list=${{
       title: 'Everything, as a list',
-      intro: 'The same map, written out. Green goes out, an open circle is switched off, amber needs someone. A square is a calendar invite.',
-      meta: (l) => `${STATUS[l.es]} · ${CHANNEL[l.k]}${l.also?.length ? ` + ${l.also.map((a) => ALSO[a]).join(', ')}` : ''} · ${BY[l.by] || ''}`,
+      intro: 'The same map, written out, with who sends each one. Green goes out, an open circle is switched off, amber needs someone. A square is a calendar invite.',
+      meta: (l) => html`${STATUS[l.es]} · ${sendersOf(l).map((x) => html`<${Sender} s=${x} key=${x} />`)} · ${BY[l.by] || ''}`,
       body: (l) => html`${l.when && html`<p>${l.when}</p>`}${subjectOf(l) && html`<p><b>Subject:</b> ${subjectOf(l)}</p>`}${l.preview && html`<p><button type="button" class="mm-change" onClick=${see(l)}>${SEE[l.k] || 'See it'}</button></p>`}`,
     }}>
     ${open && html`<${PreviewSheet} entry=${open} returnTo=${opener.current} onClose=${() => setOpen(null)} addToast=${addToast} />`}

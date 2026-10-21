@@ -17,7 +17,7 @@ import { ensureSchema as ensureInviteSchema } from '../functions/api/_reveal-inv
 import { ensureSchema as ensureApplicationSchema } from '../functions/api/_applications.js';
 import { ensureWaitlistSchema } from '../functions/api/_application-waitlist.js';
 import { ensureRequests } from '../functions/api/_profile-requests.js';
-import { ENTRIES, applyFacts } from '../public/admin/messages.js';
+import { ENTRIES, applyFacts, sendersOf } from '../public/admin/messages.js';
 
 const NOW = Date.parse('2026-10-21T15:00:00Z');
 const iso = (msAgo) => new Date(NOW - msAgo).toISOString();
@@ -200,4 +200,22 @@ test('GET: facts, or one preview', async (t) => {
   assert.equal(p.success, true);
   assert.equal(p.subject, "We're live: Avery's room reveal");
   assert.equal((await get('?preview=nope')).status, 404);
+});
+
+test('every message says who sends it: Resend, JobTread, Kit, Google Calendar, Twilio, the browser or your own email', () => {
+  const KNOWN = new Set(['resend', 'jobtread', 'kit', 'google', 'twilio', 'push', 'you']);
+  for (const n of ENTRIES) {
+    const s = sendersOf(n);
+    assert.ok(s.length && s.every((x) => KNOWN.has(x)), `${n.t} has a known sender (${s.join(', ')})`);
+  }
+  const by = (title) => sendersOf(ENTRIES.find((n) => n.t === title));
+  assert.deepEqual(by('Application received'), ['jobtread'], 'family status emails come from JobTread');
+  assert.deepEqual(by('Approved'), ['jobtread']);
+  assert.deepEqual(by('Pick up where you left off'), ['resend']);
+  assert.deepEqual(by('Applications are open'), ['kit', 'resend'], 'Kit, with Resend for families Kit can’t reach');
+  assert.deepEqual(by('We’re live (Kit)'), ['kit']);
+  assert.deepEqual(by('Save the date'), ['resend', 'twilio', 'push']);
+  assert.deepEqual(by('Confirmed invite'), ['google']);
+  assert.deepEqual(by('New application'), ['resend']);
+  assert.deepEqual(by('Bio request'), ['you']);
 });

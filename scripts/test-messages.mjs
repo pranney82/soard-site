@@ -147,6 +147,14 @@ try {
     return [...document.querySelectorAll('.am-node')].every((n) => { const r = n.getBoundingClientRect(); return r.left >= c.left - 1 && r.right <= c.right + 1 && r.top >= c.top - 1 && r.bottom <= c.bottom + 1; });
   });
   ok(inView, 'the opening view fits the whole map in the canvas');
+  await clickButton(page, '.am-tools', 'Open all');
+  await pause(400);
+  const tags = await page.evaluate(() => [...document.querySelectorAll('.am-node.leaf')].map((g) => ({ name: g.querySelector(':scope > text').textContent, tags: [...g.querySelectorAll('.am-tag text')].map((t) => t.textContent) })));
+  ok(tags.length > 30 && tags.every((t) => t.tags.length > 0), `every message on the map says who sends it (${tags.filter((t) => !t.tags.length).map((t) => t.name).join(', ') || 'all do'})`);
+  const tagOf = (name) => tags.find((t) => t.name === name)?.tags.join(' + ');
+  for (const [name, want] of [['Approved', 'JobTread'], ['New application', 'Resend'], ['Applications are open', 'Kit + Resend'], ['Save the date', 'Resend + Twilio + Browser'], ['Save-the-date invite', 'Google Calendar'], ['Bio request', 'Your email']]) ok(tagOf(name) === want, `${name}: ${want} (shows ${tagOf(name)})`);
+  await clickButton(page, '.am-tools', 'Reset');
+  await pause(300);
 
   for (const [title, want] of [
     ['Application received', 'Live'], ['Approved', 'Live'], ['Save-the-date invite', 'Live'], ['Save the date', 'Off'], ['We’re live', 'Off'],
@@ -166,7 +174,7 @@ try {
   await pause(300);
   ok(await panelTitle(page) === 'Approved', 'clicking an entry shows it in the panel');
   const panel = await page.$eval('.am-panel', (e) => e.textContent);
-  for (const want of ['Email through JobTread', 'English and Spanish', 'Checked live', 'Who gets it', 'When it goes', 'Application Decision', 'Decisión sobre la solicitud', 'Applications → Emails', 'Last went 14 h ago', '1 in the last 30 days']) ok(panel.includes(want), `the panel shows “${want}”`);
+  for (const want of ['Sent from', 'Qualification Committee, and JobTread emails it', 'English and Spanish', 'Checked live', 'Who gets it', 'When it goes', 'Application Decision', 'Decisión sobre la solicitud', 'Applications → Emails', 'Last went 14 h ago', '1 in the last 30 days']) ok(panel.includes(want), `the panel shows “${want}”`);
 
   await clickButton(page, '.am-panel', 'See the email');
   await page.waitForSelector('.mm-sheet');
@@ -185,6 +193,7 @@ try {
 
   await preview(page, 'New application');
   ok((await page.$eval('.mm-env-subject', (e) => e.textContent)) === 'New makeover application: Avery', 'the subject is the real one');
+  ok((await page.$eval('.mm-env .mm-sender', (e) => e.textContent)) === 'Resend', 'the preview says who sends it');
   ok((await frameText(page)).includes('Avery’s family applied'), 'the email itself renders in the frame');
   const frameH = await page.$eval('.mm-frame', (f) => f.getBoundingClientRect().height);
   ok(frameH > 600, `the frame grows to the email (${Math.round(frameH)}px)`);
@@ -208,7 +217,7 @@ try {
   await clickButton(page, '.mm-sheet', 'Text');
   await pause(200);
   ok((await page.$eval('.mm-bubble', (e) => e.textContent)).includes('Reply STOP to opt out'), 'its text shows as a text');
-  ok((await page.$eval('.mm-env dd', (e) => e.textContent)).includes('Twilio'), 'From follows the version on screen');
+  ok((await page.$eval('.mm-env .mm-sender', (e) => e.textContent)) === 'Twilio' && (await page.$$eval('.mm-env dd', (d) => d[1].textContent)).includes('Twilio'), 'Sent by and From follow the version on screen');
   ok(!(await page.$('.mm-foot .btn-primary')), 'a text can’t be sent as a preview');
   await clickButton(page, '.mm-sheet', 'Browser alert');
   await pause(200);
@@ -225,9 +234,20 @@ try {
   await page.screenshot({ path: join(OUT, 'sheet-invite.png') });
   await closeSheet(page);
 
-  await clickButton(page, '.am-filters', 'Calendar invites');
+  await clickButton(page, '.am-filters', 'Google Calendar');
   await pause(400);
-  ok((await page.$eval('.am-hits', (e) => e.textContent)) === '4 matches', 'the Calendar invites filter finds the four invites');
+  ok((await page.$eval('.am-hits', (e) => e.textContent)) === '4 matches', 'Sent by Google Calendar finds the four invites');
+  await clickButton(page, '.am-tools', 'Reset');
+  await clickButton(page, '.am-filters', 'Kit');
+  await pause(400);
+  const kitHits = await page.$$eval('.am-node.leaf.hit-on text:not(.am-tag text)', (t) => t.map((x) => x.textContent).filter((x) => x !== 'Kit'));
+  const KIT = ['Applications are open', 'We’re live (Kit)', 'Reveal drafts in Kit', 'Newsletter', 'Welcome to the newsletter'];
+  ok(KIT.every((k) => kitHits.includes(k)) && kitHits.length === KIT.length, `Sent by Kit finds what Kit sends (${kitHits.join(', ')})`);
+  await clickButton(page, '.am-tools', 'Reset');
+  const resendCount = await page.evaluate(() => [...document.querySelectorAll('.am-lede button')].find((b) => b.textContent.includes('sent by Resend')).querySelector('b').textContent);
+  await clickButton(page, '.am-lede', `${resendCount} sent by Resend`);
+  await pause(400);
+  ok((await page.$eval('.am-hits', (e) => e.textContent)) === `${resendCount} matches`, `the lede’s Resend count (${resendCount}) is a filter that finds as many`);
   await clickButton(page, '.am-tools', 'Reset');
   await page.type('#am-search', 'decisión');
   await pause(500);
