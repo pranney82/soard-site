@@ -189,7 +189,7 @@ test('reorder writes only the people who moved, in one request, and logs each', 
 
 test('reorder refuses bad input, unknown lists and people deleted meanwhile', async () => {
   const DB = await db([{ slug: 'a', name: 'A', group: 'team', order: 0, title: 'x' }]);
-  assert.equal((await reorder({ DB }, { collection: 'press', items: [{ slug: 'a', order: 0 }] })).status, 403);
+  assert.equal((await reorder({ DB }, { collection: 'articles', items: [{ slug: 'a', order: 0 }] })).status, 403);
   assert.equal((await reorder({ DB }, { collection: 'team', items: [] })).status, 400);
   assert.equal((await reorder({ DB }, { collection: 'team', items: [{ slug: 'a', order: 1.5 }] })).status, 400);
   assert.equal((await reorder({ DB }, { collection: 'team', items: [{ slug: 'a', order: 0 }, { slug: 'a', order: 1 }] })).status, 400);

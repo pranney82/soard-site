@@ -13,12 +13,15 @@ interface Props {
 const { theme = 'dark', linked = true } = Astro.props;
 import { getCollection } from 'astro:content';
 import { CF_BASE as CF, cfSrcset, cfId } from '../../utils/cf-image';
+import { inStrip } from '../../utils/press';
 const href = linked ? '/publicity/' : undefined;
 
 const allLogos = await getCollection('medialogos');
 const logos = allLogos
   .map(entry => entry.data)
-  // Order, then name: the order Admin → Partners → Media logos shows
+  // Every outlet that covered SOARD is a record; the strip shows the ones with a logo that staff keep in it
+  .filter(inStrip)
+  // Order, then name: the order Admin → Press → Outlets shows
   .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
 ---
 

@@ -4,7 +4,7 @@
  * order is never half-saved, and one audit entry per item that moved (so
  * Publish lists exactly who moved).
  *
- * Body: { collection: "team" | "kids" | "community" | "partners" | "community_partners" | "medialogos", items: [{ slug, order }] }
+ * Body: { collection: "team" | "kids" | "community" | "partners" | "community_partners" | "medialogos" | "press", items: [{ slug, order }] }
  * Returns: { success, changed: [slug], shas: { slug: sha } }
  *
  * Admin-only (the middleware requires Access for /api/* not in PUBLIC_ROUTES).
@@ -25,6 +25,8 @@ const REORDERABLE = {
   partners: { dir: 'src/content/partners/', field: 'order' },
   community_partners: { dir: 'src/content/communityPartners/', field: 'order' },
   medialogos: { dir: 'src/content/medialogos/', field: 'order' },
+  // Featured press stories, in the publicity page's order
+  press: { dir: 'src/content/press/', field: 'order' },
 };
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
 const MAX_ITEMS = 500;

@@ -604,10 +604,23 @@ const MAP = { t: 'SOARD', children: [
           when: 'Staff press Generate in an editor.',
           does: 'Workers AI looks at the photo and drafts alt text and SEO copy.',
           touches: ['Workers AI'], where: 'functions/api/generate.js', live: needsAi },
-        { t: 'Press monitor', s: 'live', k: 'admin',
-          when: 'Staff run a press scan.',
-          does: 'Searches Google News for SOARD, sorts results with Workers AI and saves each article’s preview image.',
-          touches: ['Google News', 'Workers AI', 'Cloudflare Images'], where: 'functions/api/press-scan.js · fetch-og-image.js', live: needsAi },
+        { t: 'Press monitor', s: 'live', k: 'schedule',
+          when: 'Google News and Bing News every 3 hours, the TV stations’ YouTube channels every 6, every link weekly, all on the live hub’s heartbeat. No buttons: it runs by itself.',
+          does: 'Finds SOARD coverage and reads each article. Workers AI checks it’s about SOARD, writes the summary in the site’s voice and links the kids and partners it names. A clear story goes on the publicity page with its outlet and picture, Slack hears, and the site publishes itself (at most every 30 minutes); an unsure one waits in Press → Found coverage. A story its outlet takes down links to its Internet Archive copy. Every change is logged in Press and can be undone.',
+          touches: ['Google News', 'Bing News', 'YouTube', 'Workers AI', 'Cloudflare Images', 'Internet Archive', 'Slack', 'D1'],
+          where: 'functions/api/_press.js (_press-sources.js, _press-page.js, press-admin.js; runs from broadcast-hooks.js)',
+          info: 'Replaced the old Press Monitor button (October 2026), which only ran when someone pressed it and kept its results in one browser. Its first run tidies the press list once: every story linked to an outlet, duplicates merged, Google News links swapped for the outlet’s own, pictures pulled, kids and partners linked.',
+          live: (f) => {
+            const p = f.press;
+            if (!p || !env(f)) return null;
+            if (!f.bindings?.ai) return ATTN('Workers AI isn’t bound to the site, so found articles all wait for a person.', p.lastFiledAt);
+            if (!p.lastScanAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(p.lastScanAt, 8 * HOUR)) return ATTN(`Hasn’t looked since ${stamp(p.lastScanAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, p.lastFiledAt);
+            if (p.scanErrors.length) return ATTN(`Couldn’t reach ${p.scanErrors.join(' and ')} on its last look.`, p.lastFiledAt);
+            if (!p.tidyDone) return ON('Tidying the press list (once, by itself). New coverage is still filed meanwhile.', p.lastFiledAt);
+            if (p.review) return ATTN(`${plural(p.review, 'article needs', 'articles need')} a look in Press → Found coverage.`, p.lastFiledAt);
+            return ON(p.lastFiledAt ? `Looking every few hours. Last story filed ${stamp(p.lastFiledAt)}.` : 'Looking every few hours. Nothing new found yet.', p.lastFiledAt);
+          } },
       ]},
       { t: 'Protection & records', children: [
         { t: 'Cloudflare Access', s: 'live', k: 'link',

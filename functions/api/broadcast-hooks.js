@@ -19,6 +19,7 @@ import { maybeSweepApplications } from './_applications.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
 import { maybeSweepZeffy } from './_zeffy.js';
 import { maybeRunWaitlist } from './_application-waitlist.js';
+import { maybeRunPress } from './_press.js';
 import { maybeSlackPreview } from './_slack-preview.js';
 
 export async function onRequestPost(context) {
@@ -39,7 +40,8 @@ export async function onRequestPost(context) {
     // the hourly check that kids' statuses match their JobTread jobs, and the
     // 15-minute catch-up check for Zeffy gifts the webhook missed, and the
     // applications waitlist (its Kit retries, and the email that goes the
-    // minute applications open).
+    // minute applications open), and the press monitor (scans every few
+    // hours, files coverage, the weekly link check).
     // Each decides for itself whether it's due; none ever throws.
     context.waitUntil(maybeNudge(env));
     context.waitUntil(maybeSweep(env));
@@ -49,6 +51,7 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeSyncKidStatuses(env));
     context.waitUntil(maybeSweepZeffy(env));
     context.waitUntil(maybeRunWaitlist(env));
+    context.waitUntil(maybeRunPress(env));
     // Once per alert redesign: the new Slack cards, posted in one thread (see _slack-preview.js)
     context.waitUntil(maybeSlackPreview(env));
     return Response.json({ ok: true, state: r.state, reason: r.reason, work: r.work, changed: r.changed, cached: !!r.cached });

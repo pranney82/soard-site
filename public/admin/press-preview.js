@@ -8,6 +8,7 @@
  * page and checks it against the real one.
  */
 import { CF_BASE as CF, cfRaw, cfId, checkBlobs, setLiveBlobs, loadTemplates, tools, guardFrame } from './page-preview.js';
+import { linkFor, outletNameFor, outletCount, isDraft } from './press-shared.js';
 
 export const pagePath = () => '/publicity/';
 export const listPage = true;
@@ -33,7 +34,8 @@ export function loadKit() {
  */
 export async function buildModel(item, kit, { collection = [], mediaLogos = [] } = {}) {
   const rest = collection.filter((p) => !item || p.slug !== item.slug);
-  const items = item ? [...rest, item] : rest;
+  // Drafts stay off the page, like the build
+  const items = (item ? [...rest, item] : rest).filter((p) => !isDraft(p));
   const blobs = await checkBlobs(item ? [item.image] : []);
   return { item, items, mediaLogos, notes: blobs.notes, liveBlobs: blobs.alive, templates: kit.templates };
 }
@@ -55,8 +57,13 @@ export function patchPage(doc, win, model) {
   const T = model.templates;
   const { take } = tools(doc, T);
   const logoById = {};
-  for (const m of model.mediaLogos) logoById[m.slug] = cfId(m.logo);
+  for (const m of model.mediaLogos) if (m.logo) logoById[m.slug] = cfId(m.logo);
   const logoFor = (key) => (key && logoById[key]) || null;
+  const outletBySlug = new Map(model.mediaLogos.map((m) => [m.slug, m]));
+  const outletName = (d) => outletNameFor(d, outletBySlug);
+  const archived = (d) => !!(d.linkGone && d.archiveUrl);
+  // A link's words, keeping the spaces around them (the arrow follows)
+  const relabel = (a, words) => { const t = [...a.childNodes].find((n) => n.nodeType === 3 && n.nodeValue.trim()); if (t) t.nodeValue = t.nodeValue.replace(/\S(.*\S)?/, words); };
 
   // Years as the build sees them: Cloudflare builds in UTC
   // The build's order: newest first, same-day stories by id (the file name)
@@ -69,7 +76,7 @@ export function patchPage(doc, win, model) {
   // ── Stats ──
   const nums = main.querySelectorAll('.stats__num');
   if (nums[0]) nums[0].textContent = `${press.length}+`;
-  if (nums[1]) nums[1].textContent = `${new Set(press.map((p) => p.outlet)).size}+`;
+  if (nums[1]) nums[1].textContent = `${outletCount(press, outletBySlug)}+`;
   if (nums[2]) nums[2].textContent = String(press.filter((p) => p.category === 'national-tv' || p.category === 'local-tv').length);
 
   const kind = (d) => (d.videoId ? 'video' : d.image ? 'image' : logoFor(d.outletLogo) ? 'logo' : 'text');
@@ -87,7 +94,7 @@ export function patchPage(doc, win, model) {
       img.src = `https://i.ytimg.com/vi/${d.videoId}/maxresdefault.jpg`;
       img.alt = headline;
       const play = media.querySelector('.fph__play');
-      play.setAttribute('aria-label', `Play ${d.outlet} video`);
+      play.setAttribute('aria-label', `Play ${outletName(d)} video`);
       play.dataset.ytId = d.videoId;
     } else if (d.image) {
       const img = media.querySelector('.fph__img');
@@ -100,15 +107,16 @@ export function patchPage(doc, win, model) {
       img.src = `${CF}/${logo}/w=480,fit=contain,q=85`;
       img.setAttribute('srcset', `${CF}/${logo}/w=480,fit=contain,q=85 1x, ${CF}/${logo}/w=960,fit=contain,q=85 2x`);
     } else {
-      fill(media, '.fph__logo--text span', d.outlet);
+      fill(media, '.fph__logo--text span', outletName(d));
     }
-    fill(fph, '.fph__outlet', d.outlet);
+    fill(fph, '.fph__outlet', outletName(d));
     fill(fph, '.fph__title', headline);
     fill(fph, '.fph__desc', plain(d.featuredDescription || d.excerpt));
     const time = fph.querySelector('.fph__date');
     time.setAttribute('datetime', d.date);
     time.textContent = formatDate(d.date);
-    fph.querySelector('.fph__body a').setAttribute('href', d.url);
+    const read = fph.querySelector('.fph__body a');
+    if (linkFor(d)) { read.setAttribute('href', linkFor(d)); read.textContent = archived(d) ? 'Read the archived story →' : 'Read the Story →'; } else read.remove();
   }
 
   // ── More featured stories, alternating sides ──
@@ -138,7 +146,7 @@ export function patchPage(doc, win, model) {
         img.src = `https://i.ytimg.com/vi/${d.videoId}/maxresdefault.jpg`;
         img.alt = headline;
         const play = media.querySelector('.fpe__play-btn');
-        play.setAttribute('aria-label', `Play ${d.outlet} video`);
+        play.setAttribute('aria-label', `Play ${outletName(d)} video`);
         play.dataset.ytId = d.videoId;
       } else if (d.image) {
         const img = media.querySelector('.fpe__img');
@@ -151,16 +159,17 @@ export function patchPage(doc, win, model) {
         img.src = `${CF}/${logo}/w=400,fit=contain,q=85`;
         img.setAttribute('srcset', `${CF}/${logo}/w=400,fit=contain,q=85 1x, ${CF}/${logo}/w=800,fit=contain,q=85 2x`);
       } else {
-        fill(media, '.fpe__logo--text span', d.outlet);
+        fill(media, '.fpe__logo--text span', outletName(d));
       }
       fill(item, '.fpe__num', String(i + 2).padStart(2, '0'));
-      fill(item, '.fpe__outlet', d.outlet);
+      fill(item, '.fpe__outlet', outletName(d));
       fill(item, '.fpe__title', headline);
       fill(item, '.fpe__desc', plain(d.featuredDescription || d.excerpt));
       const time = item.querySelector('.fpe__foot time');
       time.setAttribute('datetime', d.date);
       time.textContent = formatDate(d.date);
-      item.querySelector('.fpe__link').setAttribute('href', d.url);
+      const link = item.querySelector('.fpe__link');
+      if (linkFor(d)) { link.setAttribute('href', linkFor(d)); relabel(link, archived(d) ? 'Read the archived story' : 'Read the story'); } else link.remove();
       return item;
     }));
   }
@@ -184,20 +193,29 @@ export function patchPage(doc, win, model) {
   const noUrl = [...T.video.querySelectorAll('.archive__body .ci')].find((c) => !c.querySelector('.ci__arrow'));
   const noUrlProto = noUrl ? doc.importNode(noUrl.cloneNode(true), true) : null;
   const card = (p) => {
-    const c = (p.url ? withUrl : noUrlProto).cloneNode(true);
+    const href = linkFor(p);
+    const c = (href ? withUrl : noUrlProto).cloneNode(true);
     c.dataset.category = p.category;
-    fill(c, '.ci__outlet', p.outlet);
+    fill(c, '.ci__outlet', outletName(p));
     const time = c.querySelector('.ci__meta time');
     time.setAttribute('datetime', p.date);
     time.textContent = formatDate(p.date);
     fill(c, '.ci__tag', CATEGORY_LABELS[p.category]);
+    c.querySelectorAll('.ci__tag--archived').forEach((n) => n.remove());
+    if (archived(p)) {
+      const tag = c.querySelector('.ci__tag').cloneNode(true);
+      tag.className = 'ci__tag ci__tag--archived';
+      tag.setAttribute('title', 'The outlet took the story down. This links to a saved copy.');
+      tag.textContent = 'Archived copy';
+      c.querySelector('.ci__meta').append(tag);
+    }
     const title = c.querySelector('.ci__title');
-    if (p.url) {
+    if (href) {
       const a = title.querySelector('a');
-      a.setAttribute('href', p.url);
+      a.setAttribute('href', href);
       a.textContent = p.title;
       const arrow = c.querySelector('.ci__arrow');
-      arrow.setAttribute('href', p.url);
+      arrow.setAttribute('href', href);
       arrow.setAttribute('aria-label', `Read: ${p.title}`);
     } else {
       title.querySelector('span').textContent = p.title;

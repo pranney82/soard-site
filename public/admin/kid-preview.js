@@ -416,9 +416,11 @@ export function patchKidPage(doc, win, model) {
   textSwap(cta, 'Template', name);
   if (kid.fundraisingUrl) cta.querySelector('.page-cta__btn').href = kid.fundraisingUrl;
 
-  // ── Assemble: every section is rebuilt; "More Stories" stays the page's ──
+  // ── Assemble: every section is rebuilt; "In the news" (press stories,
+  // linked in Admin → Press) and "More Stories" stay the page's ──
+  const news = article.querySelector('.kid-news');
   const strip = article.querySelector('.kids-strip');
-  article.replaceChildren(...[hero, modal, nav, story, design, transform, reveal, gallery, village, strip, cta].filter(Boolean));
+  article.replaceChildren(...[hero, modal, nav, story, design, transform, reveal, gallery, village, news, strip, cta].filter(Boolean));
 
   const meta = doc.getElementById('lb-meta');
   if (meta) { meta.dataset.galleryCount = String(galleryPhotos.length); meta.dataset.planCount = String(plans.length); }

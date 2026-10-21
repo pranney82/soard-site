@@ -81,7 +81,8 @@ const partnersAll = [
 ];
 
 // Press: four featured layouts (video, photo, outlet logo, outlet name) and
-// archive stories across two years, with and without a link
+// archive stories across two years: with and without a link, an archived
+// copy, one gone for good, and a draft (never shown)
 const pressItem = (id, data) => ({ id, data: { featured: false, order: 0, image: null, videoId: null, url: 'https://example.com/story', excerpt: 'Template excerpt.', category: 'local-tv', ...data } });
 const pressFeatured = {
   video: pressItem('tpl-video', { outlet: 'Template TV', outletLogo: 'none', title: 'Template video story', date: '2025-05-01', featured: true, videoId: 'aaaaaaaaaaa', featuredHeadline: 'Template headline', featuredDescription: 'Template <b>description</b>.', category: 'national-tv' }),
@@ -92,6 +93,11 @@ const pressFeatured = {
 const pressArchive = [
   pressItem('tpl-archive-a', { outlet: 'Template Station', outletLogo: 'none', title: 'Template archive story', date: '2025-07-04', excerpt: '<p>Template <a href="#">excerpt</a>&nbsp;with markup.</p>' }),
   pressItem('tpl-archive-b', { outlet: 'Template Station', outletLogo: 'none', title: 'Template story without a link', date: '2024-09-09', url: '', category: 'print' }),
+  // Taken down by its outlet: links to the archived copy; and one taken down with no copy
+  pressItem('tpl-archive-c', { outlet: 'Template Station', outletLogo: 'none', title: 'Template archived story', date: '2024-06-06', url: 'https://example.com/gone', linkGone: '2026-01-01', archiveUrl: 'https://web.archive.org/web/20240606000000/https://example.com/gone' }),
+  pressItem('tpl-archive-d', { outlet: 'Template Station', outletLogo: 'none', title: 'Template story gone for good', date: '2024-05-05', url: 'https://example.com/lost', linkGone: '2026-01-01', category: 'print' }),
+  // A draft stays off the page
+  pressItem('tpl-archive-e', { outlet: 'Template Station', outletLogo: 'none', title: 'Template draft story', date: '2024-04-04', publishStatus: 'draft' }),
 ];
 const pressFor = (first) => [
   ...Object.entries(pressFeatured).map(([k, item]) => ({ ...item, data: { ...item.data, order: k === first ? 0 : 1 + Object.keys(pressFeatured).indexOf(k) } })),

@@ -291,6 +291,25 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     reminders: { subscribers: typeof reminders === 'number' ? reminders : null },
     jobtread: jobtread || { error: 'JobTread check failed' },
     waitlist: await settle(() => waitlistFacts(DB)),
+    press: await settle(() => pressFacts(DB)),
+  };
+}
+
+/** The press monitor (_press.js): when it last looked, what's waiting, the tidy. Times and counts only */
+export async function pressFacts(DB) {
+  const state = (await siteConfig(DB, 'press-monitor-state').catch(() => null))?.data || {};
+  const scans = state.scans || {};
+  const times = Object.values(scans).map((x) => x?.at).filter(Boolean).sort();
+  // The tables appear with the first heartbeat; until then these settle to nothing
+  const review = await DB.prepare("SELECT count(*) AS n FROM press_mentions WHERE state = 'review'").first('n').catch(() => 0);
+  const lastFiled = await DB.prepare("SELECT max(at) AS at FROM press_log WHERE kind = 'filed'").first('at').catch(() => null);
+  return {
+    lastScanAt: times[times.length - 1] || null,
+    scanErrors: Object.entries(scans).filter(([, x]) => x?.error).map(([k]) => ({ google: 'Google News', bing: 'Bing News', youtube: 'YouTube' })[k] || k),
+    tidyDone: !!state.tidy?.doneAt,
+    review: review || 0,
+    lastFiledAt: lastFiled || null,
+    deployPending: !!state.deployPending,
   };
 }
 

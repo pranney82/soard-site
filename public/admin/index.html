@@ -513,7 +513,11 @@
         flex-wrap: wrap !important;
       }
 
-      /* ─── Press Monitor page header ──── */
+      /* Press stories linked from a kid or partner editor */
+    .press-links { display: grid; gap: 2px; }
+    .press-links a { color: var(--color-text); font-weight: 500; line-height: 1.3; }
+    .press-links small { color: var(--color-text-muted); font-size: 12px; margin-bottom: 4px; }
+    /* ─── Press Monitor page header ──── */
       .page-header > div[style*="display: flex"][style*="gap: 0.5rem"], .page-header > :is(.u-row, .u-row-center, .u-row-start) {
         flex-wrap: wrap;
         width: 100%;
@@ -4046,6 +4050,7 @@
     import * as KS from './kids-shared.js';
     // Partner rules (levels, categories, what Save writes, which kid pages show a logo), shared with the unit tests
     import * as PS from './partners-shared.js';
+    import * as PRS from './press-shared.js';
     import * as CS from './community-shared.js';
     const html = htm.bind(h);
 
@@ -9779,6 +9784,7 @@
       const [boardEmails] = useBoardEmails(true);
       const [advisoryEmails] = useBoardEmails(true, 'advisory');
       const { requests: profileRequests } = useProfileRequests();
+      const pressNeedsLook = usePressReview();
       const [showAllNeeds, setShowAllNeeds] = useState(false);
       const [impactOpen, setImpactOpen] = useState(false);
       const thisYear = new Date().getFullYear();
@@ -9908,6 +9914,13 @@
         action: waitingBios.length === 1
           ? { label: 'Review', go: () => onNavigate('people-hub', waitingBios[0].p.slug, tsGroupOf(waitingBios[0].p.group).id) }
           : { label: 'Review them', go: () => onNavigate('people-hub', null, ['team', 'board', 'advisory'].find((g) => waitingBios.some((x) => x.p.group === g)) || 'team', 'profiles-waiting') },
+      });
+      // Coverage the press monitor wasn't sure about (it files clear stories by itself)
+      if (pressNeedsLook) needs.push({
+        key: 'press-review', tone: 'action', icon: DI.list,
+        title: pressNeedsLook === 1 ? 'An article the press monitor found needs a look' : `${pressNeedsLook} articles the press monitor found need a look`,
+        detail: 'It wasn’t sure they belong on the publicity page: a passing mention, a copy on MSN, or a video from someone’s own channel. Add or skip each one.',
+        action: { label: 'Review', go: () => onNavigate('press-hub', null, 'found') },
       });
       if (staleEvents.length && !hasNextEvent) needs.push({
         key: 'events', tone: 'fix', icon: DI.calendar,
@@ -12046,7 +12059,7 @@
       </li>`;
     }
 
-    function KidEditor({ slug, kids = [], partners = [], onBack, onSaved, addToast }) {
+    function KidEditor({ slug, kids = [], partners = [], press = [], onBack, onSaved, addToast }) {
       const existingSlugs = useMemo(() => kids.filter((k) => k.slug !== slug).map((k) => k.slug), [kids, slug]);
       const ix = useMemo(() => kdPartnerIndex(partners), [partners]);
       const blank = () => kdForEditing(kdBlankKid(), ix);
@@ -12761,6 +12774,7 @@
                 : slug ? html`<code>/kids/${slug}/</code> <span class="text-muted">hidden</span>` : data.slug ? html`<code>/kids/${data.slug}/</code>` : 'Made from the name'}</dd></div>
               <div><dt>Reveal</dt><dd>${reveal ? kdRevealLabel(reveal).replace(/^Reveal,? ?/, '').replace(/^tentatively/, 'Tentatively') : jobId ? 'No date in JobTread yet' : 'Not scheduled'}</dd></div>
               <div><dt>JobTread</dt><dd>${jobId ? html`<a href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Open the job ${kdIcon.external}</a>` : html`<span class="text-muted">No job matches this name and year</span>`}</dd></div>
+              ${slug ? html`<div><dt>In the news</dt><dd><${PressLinks} stories=${press.filter((st) => (st.kids || []).includes(slug) && st.publishStatus !== 'draft')} /></dd></div>` : null}
             </dl>
             <div class="kd-card__actions">
               <button type="button" class="btn btn-ghost btn-sm" aria-pressed=${showPreview} onClick=${() => setShowPreview((v) => !v)}>Preview the page</button>
@@ -14563,7 +14577,7 @@
     const ptFieldValue = (k, v) => (k === 'level' ? PS.levelOf(v).label : k === 'category' ? PS.categoriesOf({ category: v }).map(PS.categoryLabel).join(', ')
       : k === 'featured' ? (v ? 'Highlighted' : 'Not highlighted') : k === 'logo' ? (v ? 'A logo' : 'No logo') : String(v || '(empty)'));
 
-    function PartnerEditor({ slug, partners = [], kids = [], team = [], onBack, onSaved, onReload, onOpenKid, onOpenPartner, addToast }) {
+    function PartnerEditor({ slug, partners = [], kids = [], team = [], press = [], onBack, onSaved, onReload, onOpenKid, onOpenPartner, addToast }) {
       const [mergeInto, setMergeInto] = useState(null);
       const others = useMemo(() => partners.filter((p) => p.slug !== slug), [partners, slug]);
       const [conflict, setConflict] = useState(null); // { mine, theirs, sha, clashes }
@@ -14887,6 +14901,7 @@
             <dl class="kd-facts">
               <div><dt>Card links</dt><dd>${domain || html`<span class="text-muted">Nowhere: no website</span>`}</dd></div>
               <div><dt>Kid pages</dt><dd>${kidsOn.length ? ptKidsLine(kidsOn).replace(/^On /, '') : html`<span class="text-muted">None yet</span>`}</dd></div>
+              <div><dt>Press</dt><dd><${PressLinks} stories=${press.filter((st) => (st.partners || []).includes(slug) && st.publishStatus !== 'draft')} /></dd></div>
               <div><dt>Record</dt><dd><code>${slug}</code></dd></div>
             </dl>
             <div class="kd-card__actions">
@@ -15327,88 +15342,37 @@
     // MEDIA LOGOS (the "As Featured" strip; press stories use them too)
     // ═══════════════════════════════════════════
     const ML_PATH = (slug) => `src/content/medialogos/${slug}.json`;
-    function MediaLogosList({ logos, press = [], editing, onEditingDone, addToast, onReload }) {
-      const [open, setOpen] = useState(null);      // a slug, '' for a new one, or null
-      const [busy, setBusy] = useState(false);
-      const [deleted, setDeleted] = useState(false);
-      const publish = usePublishData();
-      useEffect(() => { if (editing != null) setOpen(editing); }, [editing]);
-      const sorted = useMemo(() => [...logos].sort(PS.compareSite), [logos]);
-      const bySlug = new Map(sorted.map((m) => [m.slug, m]));
-      const nameOf = (slug) => bySlug.get(slug)?.name || slug;
-      const drag = useKdReorder({
-        keys: sorted.map((m) => m.slug), nameOf, grid: true, disabled: busy,
-        onDrop: async (end, start) => {
-          setBusy(true);
-          const r = await ptReorder('medialogos', end);
-          setBusy(false);
-          if (!r.success) { addToast(`Couldn’t save the order: ${r.error}`, 'error'); return false; }
-          if (r.changed?.length) addToast('Order saved', 'success', { label: 'Undo', fn: async () => { const b = await ptReorder('medialogos', start); if (b.success) { addToast('Order put back', 'success'); onReload?.(); } else addToast(`Couldn’t undo: ${b.error}`, 'error'); } });
-          onReload?.();
-          return true;
-        },
-      });
-      const close = () => { setOpen(null); onEditingDone?.(); };
-      const changeOf = (slug) => publish?.changes?.find((c) => c.type === 'medialogos' && c.slug === slug)?.state;
-      return html`
-        <div class="page-header ppl-head pt-head">
-          <div>
-            <h2>Media logos</h2>
-            <p class="page-sub">The “As Featured” strip on the home, donate, resources and publicity pages, in this order. A press story without a picture shows its outlet’s logo from here. Changes go live when you publish.</p>
-          </div>
-          <div class="ppl-head__actions">
-            <a class="btn btn-ghost btn-sm" href="/publicity/" target="_blank" rel="noopener">Publicity page ${pplIcon.external}</a>
-            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDeleted(true)}>Recently deleted</button>
-            <button class="btn btn-primary" onClick=${() => setOpen('')}>+ Add media logo</button>
-          </div>
-        </div>
-        ${sorted.length ? html`
-          <figure class="card ml-strip" aria-label="How the strip looks">
-            <figcaption class="ml-strip__label">As featured</figcaption>
-            <div class="ml-strip__row">
-              ${drag.order.map((slug) => { const m = bySlug.get(slug); return m?.logo ? html`<img key=${slug} src=${`${CF}/${PS.cfId(m.logo)}/w=320,q=75`} alt=${m.name} />` : null; })}
-            </div>
-            <p class="ml-strip__note">What visitors see: dimmed until they hover, in this order.</p>
-          </figure>
-          <section class="card ppl-section pt-section" aria-labelledby="ml-sec">
-            <header class="ppl-section__head pt-section__head">
-              <div class="pt-section__title"><h3 id="ml-sec">Logos <span class="ppl-count">${sorted.length}</span></h3></div>
-              ${busy ? html`<span class="ppl-saving"><span class="spinner spinner-14" /> Saving order</span>` : sorted.length > 1 ? html`<span class="ppl-hint">Drag to reorder</span>` : null}
-            </header>
-            <ul class="pt-wall pt-wall--media">
-              ${drag.order.map((slug, i) => {
-                const m = bySlug.get(slug);
-                if (!m) return null;
-                const used = PS.pressUsing(press, slug).length;
-                const change = changeOf(slug);
-                return html`<li key=${slug} ref=${drag.itemRef(slug)} class=${`pt-tile pt-tile--media${drag.lifted?.key === slug ? ' is-lifted' : ''}`}
-                  onPointerDown=${(e) => { if (!e.target.closest('[data-kd-grip]')) drag.tileDown(e, slug); }}>
-                  <button type="button" class="pt-tile__open" onClick=${() => { if (!drag.justDragged()) setOpen(slug); }} aria-label=${`${m.name}, position ${i + 1}. Edit`}>
-                    <${PtLogo} name=${m.name} logo=${m.logo} w=${140} h=${44} className="pt-tile__logo" />
-                    <span class="pt-tile__name">${m.name}</span>
-                    <span class="pt-tile__meta">${change === 'waiting' ? 'Waiting to publish' : used ? `Used by ${kdPlural(used, 'press story', 'press stories')}` : 'In the strip only'}</span>
-                  </button>
-                  <span class="pt-tile__n" aria-hidden="true">${i + 1}</span>
-                  <button type="button" class="kd-grip kd-grip--tile pt-tile__grip" ...${drag.handleProps(slug, `Move ${m.name}`)}>${kdIcon.grip}</button>
-                </li>`;
-              })}
-            </ul>
-            <div class="sr-only" aria-live="assertive" aria-atomic="true">${drag.announce}</div>
-          </section>` : html`<div class="card ppl-empty-all">
-            <p><strong>No media logos yet.</strong></p>
-            <p class="text-muted">Outlets that have covered SOARD. They fill the “As Featured” strip.</p>
-            <button class="btn btn-primary" onClick=${() => setOpen('')}>+ Add media logo</button>
-          </div>`}
-        ${open !== null ? html`<${MediaLogoDialog} key=${open || 'new'} slug=${open || null} logos=${logos} press=${press} addToast=${addToast}
-          onClose=${close} onSaved=${() => { close(); onReload?.(); }} />` : null}
-        ${deleted ? html`<${PtDeletedDialog} collection="medialogos" taken=${new Set(logos.map((m) => m.slug))} noun="media logo"
-          path=${ML_PATH} addToast=${addToast} onClose=${() => setDeleted(false)} onRestored=${() => onReload?.()} />` : null}
-      `;
+    /** Press stories linked to a kid or a partner (Press → the story → Who it’s about), newest first, each opening in Press */
+    function PressLinks({ stories }) {
+      if (!stories.length) return html`<span class="text-muted">None linked yet</span>`;
+      const sorted = [...stories].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      const open = (e, slug) => { e.preventDefault(); history.replaceState?.(null, '', `#press/${slug}`); window.dispatchEvent(new CustomEvent('soard-navigate', { detail: 'press-hub' })); };
+      return html`<span class="press-links">${sorted.slice(0, 3).map((st) => html`<a key=${st.slug} href=${`#press/${st.slug}`} onClick=${(e) => open(e, st.slug)}>${st.title}</a><small>${st.outlet}${st.date ? `, ${String(st.date).slice(0, 4)}` : ''}</small>`)}${sorted.length > 3 ? html`<small>and ${sorted.length - 3} more</small>` : null}</span>`;
     }
 
+    /** Other spellings or websites: chips, and a field that adds one on Enter or comma */
+    function MlListField({ id, label, hint, values, onChange, placeholder, clean = (v) => v.trim() }) {
+      const [text, setText] = useState('');
+      const add = () => { const v = clean(text); if (v && !values.includes(v)) onChange([...values, v]); setText(''); };
+      return html`<div class="form-group">
+        <label class="form-label" for=${id}>${label}</label>
+        ${values.length ? html`<ul class="pr-people__chips">${values.map((v) => html`<li key=${v} class="pr-people__chip"><span>${v}</span>
+          <button type="button" class="pr-icon-btn" aria-label=${`Remove ${v}`} onClick=${() => onChange(values.filter((x) => x !== v))}>${kdIcon.x}</button></li>`)}</ul>` : null}
+        <input id=${id} class="form-input" value=${text} placeholder=${placeholder} autocomplete="off"
+          onInput=${(e) => setText(e.target.value)} onBlur=${add}
+          onKeyDown=${(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } }} />
+        <div class="form-hint">${hint}</div>
+      </div>`;
+    }
+
+    /**
+     * An outlet (src/content/medialogos): its name, logo, usual category,
+     * other spellings and websites (so stories and found articles match it),
+     * and whether it's in the "As Featured" strip. Opened from Press → Outlets.
+     */
     function MediaLogoDialog({ slug, logos, press, onClose, onSaved, addToast }) {
       const [loading, setLoading] = useState(!!slug);
-      const [rec, setRec] = useState({ name: '', logo: '' });
+      const [rec, setRec] = useState({ name: '', logo: '', strip: false });
       const [base, setBase] = useState(null);       // as loaded, for merging a save made meanwhile
       const [sha, setSha] = useState(null);
       const [saving, setSaving] = useState(false);
@@ -15458,17 +15422,19 @@
       const save = async (over) => {
         setTouched(true);
         const x = over || rec;
-        if (!String(x.name || '').trim() || !x.logo || uploading) return;
+        if (!String(x.name || '').trim() || (x.strip === true && !x.logo) || uploading) return;
         setSaving(true);
         const s = slug || kdDedupeSlug(PS.slugify(x.name) || 'outlet', logos.map((m) => m.slug));
-        const next = { ...x, name: String(x.name).trim(), slug: s, order: slug ? x.order ?? 0 : logos.reduce((m, o) => Math.max(m, (Number(o.order) || 0) + 1), 0) };
+        // A new outlet in the strip joins its end
+        const order = slug ? x.order ?? 0 : PRS.inStrip(x) ? logos.filter(PRS.inStrip).reduce((m, o) => Math.max(m, (Number(o.order) || 0) + 1), 0) : 0;
+        const next = { ...x, ...PRS.outletRecord({ ...x, slug: s, order }), slug: s };
         let res = await write(next, sha);
         if (!res.success && slug && /^Conflict:/.test(res.error || '')) {
           // Saved by someone else meanwhile: both kept where they don't overlap
           const r = await api.readContent(ML_PATH(slug));
           if (r.success) {
             const theirs = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
-            const { merged, clashes } = ptMerge(base, theirs, next, ['name', 'logo']);
+            const { merged, clashes } = ptMerge(base, theirs, next, ['name', 'logo', 'kind', 'aliases', 'domains', 'strip']);
             setSha(r.sha);
             setBase(theirs);
             if (clashes.length) { setSaving(false); setConflict({ mine: next, theirs, merged, clashes }); return; }
@@ -15492,7 +15458,8 @@
       }
       if (conflict) {
         return html`<${PtMergeDialog} clashes=${conflict.clashes} mine=${conflict.mine} theirs=${conflict.theirs}
-          labelOf=${(k) => (k === 'name' ? 'Outlet' : 'Logo')} valueOf=${(k, v) => (k === 'logo' ? (v ? 'A logo' : 'No logo') : String(v || '(empty)'))}
+          labelOf=${(k) => ({ name: 'Outlet', logo: 'Logo', kind: 'Usually', aliases: 'Other spellings', domains: 'Websites', strip: 'In the strip' })[k] || k}
+          valueOf=${(k, v) => (k === 'logo' ? (v ? 'A logo' : 'No logo') : Array.isArray(v) ? (v.join(', ') || '(none)') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : k === 'kind' ? (PRS.CATEGORY_LABELS[v] || 'Not set') : String(v || '(empty)'))}
           onCancel=${() => setConflict(null)} onSave=${(picked) => { const m = { ...conflict.merged, ...picked }; setConflict(null); setRec(m); save(m); }} />`;
       }
       const footer = html`
@@ -15500,8 +15467,8 @@
         ${slug && history.versions?.length ? html`<button type="button" class="btn btn-ghost" onClick=${() => setMode('history')} disabled=${saving}>${pplIcon.history} History</button>` : null}
         <span class="ppl-spacer"></span>
         <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${saving}>Cancel</button>
-        <button type="button" class="btn btn-primary" onClick=${() => save()} disabled=${saving || uploading || loading}>${saving ? html`<span class="spinner spinner-14" /> Saving…` : slug ? 'Save' : 'Add logo'}</button>`;
-      return html`<${KdDialog} title=${slug ? rec.name || 'Media logo' : 'Add a media logo'} sub=${slug ? null : 'An outlet that covered SOARD. It joins the end of the “As Featured” strip; drag it into place after.'}
+        <button type="button" class="btn btn-primary" onClick=${() => save()} disabled=${saving || uploading || loading}>${saving ? html`<span class="spinner spinner-14" /> Saving…` : slug ? 'Save' : 'Add outlet'}</button>`;
+      return html`<${KdDialog} title=${slug ? rec.name || 'Outlet' : 'Add an outlet'} sub=${slug ? null : 'An outlet that covered SOARD. With a logo it can join the end of the “As Featured” strip; drag it into place after.'}
         size="md" onClose=${onClose} busy=${saving} footer=${footer}>
         ${loading ? html`<p class="text-muted"><span class="spinner spinner-14" /> Loading…</p>` : html`
           <div class="pt-create">
@@ -15516,15 +15483,32 @@
               ${size && quality ? html`<p class="pt-logo-stage__size"><strong>${quality.vector ? 'SVG' : `${size[0].toLocaleString()} × ${size[1].toLocaleString()} px`}</strong>
                 <span class=${`pt-q pt-q--${quality.verdict}`}>${quality.verdict === 'sharp' ? 'Sharp' : quality.verdict === 'soft' ? 'Soft on Retina' : 'Blurry'}</span></p>` : null}
               <${PtCropNote} note=${cropNote} busy=${uploading} onOriginal=${() => upload(cropNote.original, { asIs: true })} />
-              <p class=${`form-hint${(touched && !rec.logo) || content?.blank ? ' kd-bad' : ''}`}>${touched && !rec.logo ? 'Add the outlet’s logo' : content?.blank ? 'This file draws nothing: the strip would show an empty space. Upload the logo again.' : quality && quality.verdict !== 'sharp' ? `The strip shows it 48px tall: ${quality.need}px across or more looks sharp.` : 'A dark logo on a clear background. The strip shows it 48px tall.'}</p>
+              <p class=${`form-hint${(touched && rec.strip === true && !rec.logo) || content?.blank ? ' kd-bad' : ''}`}>${touched && rec.strip === true && !rec.logo ? 'Add the outlet’s logo to show it in the strip' : !rec.logo ? 'Optional. A logo lets it join the strip, and featured stories without a picture show it.' : content?.blank ? 'This file draws nothing: the strip would show an empty space. Upload the logo again.' : quality && quality.verdict !== 'sharp' ? `The strip shows it 48px tall: ${quality.need}px across or more looks sharp.` : 'A dark logo on a clear background. The strip shows it 48px tall.'}</p>
             </div>
             <div class="pt-create__fields">
               <div class="form-group">
                 <label class="form-label" for="ml-name">Outlet</label>
                 <input id="ml-name" class=${`form-input${touched && !rec.name.trim() ? ' is-invalid' : ''}`} value=${rec.name} data-autofocus autocomplete="off"
                   placeholder="e.g. 11Alive" onInput=${(e) => setRec((r) => ({ ...r, name: e.target.value }))} />
-                <div class=${`form-hint${touched && !rec.name.trim() ? ' kd-bad' : ''}`}>${touched && !rec.name.trim() ? 'Add the outlet’s name' : 'The logo’s alt text.'}</div>
+                <div class=${`form-hint${touched && !rec.name.trim() ? ' kd-bad' : ''}`}>${touched && !rec.name.trim() ? 'Add the outlet’s name' : 'How every story from it shows the outlet, and the logo’s alt text.'}</div>
               </div>
+              <div class="form-group">
+                <label class="form-label" for="ml-kind">Usually</label>
+                <select id="ml-kind" class="form-select" value=${rec.kind || ''} onChange=${(e) => setRec((r) => { const n = { ...r }; if (e.target.value) n.kind = e.target.value; else delete n.kind; return n; })}>
+                  <option value="">Not set</option>
+                  ${PRS.CATEGORIES.map((k) => html`<option key=${k} value=${k}>${PRS.CATEGORY_LABELS[k]}</option>`)}
+                </select>
+                <div class="form-hint">A new story from this outlet starts in this category.</div>
+              </div>
+              <${MlListField} id="ml-aliases" label="Other spellings" values=${rec.aliases || []} onChange=${(v) => setRec((r) => ({ ...r, aliases: v }))}
+                placeholder="e.g. WSB-TV (ABC Atlanta)" hint="How stories and search results write its name, so they’re matched to it." />
+              <${MlListField} id="ml-domains" label="Websites" values=${rec.domains || []} onChange=${(v) => setRec((r) => ({ ...r, domains: v }))}
+                placeholder="wsbtv.com" clean=${(v) => PRS.hostOf(/^https?:/i.test(v.trim()) ? v.trim() : `https://${v.trim()}`)} hint="A story from one of these sites is this outlet’s." />
+              <label class="checkbox-label ml-strip-toggle">
+                <input type="checkbox" checked=${PRS.inStrip(rec)} disabled=${!rec.logo} onChange=${(e) => setRec((r) => ({ ...r, strip: e.target.checked }))} />
+                In the “As Featured” strip
+              </label>
+              <div class="form-hint">${rec.logo ? 'On the home, donate, resources and publicity pages, in the order Press → Outlets shows.' : 'Needs a logo first.'}</div>
               ${slug ? html`<div class="pt-used">
                 <span class="form-label">Press stories using it</span>
                 ${used.length ? html`<ul>${used.slice(0, 6).map((p) => html`<li key=${p.slug}>${p.title}</li>`)}${used.length > 6 ? html`<li class="text-muted">and ${used.length - 6} more</li>` : null}</ul>`
@@ -15571,18 +15555,18 @@
       };
       const footer = html`
         <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${busy}>Cancel</button>
-        <button type="button" class="btn btn-danger" onClick=${go} disabled=${busy || (choice === 'move' && !to)} data-autofocus>${busy ? html`<span class="spinner spinner-14" /> Deleting…` : 'Delete media logo'}</button>`;
+        <button type="button" class="btn btn-danger" onClick=${go} disabled=${busy || (choice === 'move' && !to)} data-autofocus>${busy ? html`<span class="spinner spinner-14" /> Deleting…` : 'Delete outlet'}</button>`;
       return html`<${KdDialog} title=${`Delete ${name}?`} size="sm" onClose=${onClose} busy=${busy} footer=${footer}>
-        <p class="pt-del__lead">It leaves the “As Featured” strip when you publish.${used.length ? ` ${kdPlural(used.length, 'press story', 'press stories')} use${used.length === 1 ? 's' : ''} it as a picture fallback.` : ''}</p>
+        <p class="pt-del__lead">${PRS.inStrip(logos.find((m) => m.slug === slug) || {}) ? 'It leaves the “As Featured” strip when the site next updates.' : 'Nothing else on the site uses it.'}${used.length ? ` ${kdPlural(used.length, 'press story is', 'press stories are')} from this outlet.` : ''}</p>
         ${used.length ? html`<fieldset class="pt-move">
           <legend class="sr-only">Those press stories</legend>
           <label class=${`pt-merge__opt${choice === 'move' ? ' is-on' : ''}`}><input type="radio" name="ml-move" checked=${choice === 'move'} onChange=${() => setChoice('move')} />
-            <span><strong>Move them to another outlet’s logo</strong>
+            <span><strong>Move them to another outlet</strong>
               <select class="form-select pt-move__select" value=${to} onChange=${(e) => { setTo(e.target.value); setChoice('move'); }} aria-label="Outlet">
                 ${others.map((m) => html`<option key=${m.slug} value=${m.slug}>${m.name}</option>`)}
               </select></span></label>
           <label class=${`pt-merge__opt${choice === 'none' ? ' is-on' : ''}`}><input type="radio" name="ml-move" checked=${choice === 'none'} onChange=${() => setChoice('none')} />
-            <span><strong>Leave them without an outlet logo</strong><small>Stories with a picture or video don’t need one.</small></span></label>
+            <span><strong>Leave them without an outlet</strong><small>They keep the name they show now. Press flags them as not linked.</small></span></label>
         </fieldset>` : null}
         <p class="form-hint">Changed your mind later? Bring it back from Recently deleted.</p>
       <//>`;
@@ -18376,9 +18360,6 @@ ${sections || '<p>No one yet.</p>'}
     const EVENT_STATUSES = ['upcoming', 'past', 'cancelled'];
     const EVENT_CAT_LABELS = { fundraiser: 'Fundraiser', volunteer: 'Volunteer', reveal: 'Room Reveal', community: 'Community', other: 'Other' };
 
-    const PRESS_CATEGORIES = ['national-tv', 'local-tv', 'print', 'magazine', 'entertainment'];
-    const PRESS_CAT_LABELS = { 'national-tv': 'National TV', 'local-tv': 'Local TV', 'print': 'Print & News', 'magazine': 'Magazine', 'entertainment': 'Entertainment' };
-
     function EventsList({ events, onEdit, onAdd, onDelete, onToggleFeatured, dashboardFilter, onClearFilter }) {
       const [search, setSearch] = useState('');
       const [togglingSlug, setTogglingSlug] = useState(null);
@@ -18900,564 +18881,6 @@ ${sections || '<p>No one yet.</p>'}
 
     // FAQ MANAGEMENT
     // ═══════════════════════════════════════════
-
-    // ═══════════════════════════════════════════
-    // PRESS LIST
-    // ═══════════════════════════════════════════
-    function PressList({ press, onEdit, onAdd, onDelete }) {
-      const [search, setSearch] = useState('');
-      const filtered = useMemo(() => {
-        if (!search) return press;
-        const q = search.toLowerCase();
-        return press.filter(p =>
-          p.title.toLowerCase().includes(q) ||
-          p.outlet.toLowerCase().includes(q) ||
-          (p.category || '').toLowerCase().includes(q)
-        );
-      }, [press, search]);
-
-      return html`
-        <div class="page-header">
-          <h2>Press & Media (${press.length})</h2>
-          <button class="btn btn-primary" onClick=${onAdd}>+ Add Article</button>
-        </div>
-        <div class="card filter-card">
-          <div class="search-bar" style="max-width: 100%;">
-            <span class="search-icon">${icons.search}</span>
-            <input placeholder="Search by title, outlet, or category..."
-              value=${search} onInput=${e => setSearch(e.target.value)} />
-          </div>
-        </div>
-        <div class="card">
-          <div class="table-wrap"><table>
-            <thead><tr><th>Image</th><th>Title</th><th>Outlet</th><th>Date</th><th>Category</th><th>Featured</th><th></th></tr></thead>
-            <tbody>
-              ${filtered.length === 0 ? html`<tr><td colspan="7"><${EmptyState}
-                icon="📰" title=${search ? 'No press articles match your search' : 'No press coverage yet'}
-                description=${search ? 'Try a different search term.' : 'Add press mentions or check the Press Monitor.'}
-                actionLabel=${search ? null : 'Add Press Article'} onAction=${onAdd} /></td></tr>` : null}
-              ${filtered.map(p => html`<tr class="u-clickable" key=${p.slug} onClick=${() => onEdit(p.slug)}>
-                <td style="width: 64px; padding: 0.4rem 0.5rem;">
-                  ${p.image ? html`<img src=${cfThumb(p.image, 'w=112,h=72,fit=cover,q=80')}
-                    alt="" style="width: 56px; height: 36px; object-fit: cover; border-radius: 4px; display: block;" />` : html`<div style="width: 56px; height: 36px; background: #eee; border-radius: 4px;" />`}
-                </td>
-                <td><strong>${p.title.length > 55 ? p.title.slice(0, 55) + '…' : p.title}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${p.outlet || ''}${p.date ? ` · ${p.date}` : ''}</span></td>
-                <td class="text-sm td-hide-mobile">${p.outlet}</td>
-                <td class="text-sm td-hide-mobile u-nowrap">${p.date || '—'}</td>
-                <td class="td-hide-mobile"><span class="badge badge-accent">${PRESS_CAT_LABELS[p.category] || p.category}</span></td>
-                <td class="td-hide-mobile">${p.featured ? icons.star : '—'}</td>
-                <td class="u-nowrap">
-                  <button class="btn btn-ghost btn-sm btn-row-danger" onClick=${(ev) => { ev.stopPropagation(); onDelete({ ...p, name: p.title }); }}>Delete</button>
-                </td>
-              </tr>`)}
-            </tbody>
-          </table></div>
-        </div>
-      `;
-    }
-
-    // ═══════════════════════════════════════════
-    // PRESS EDITOR
-    // ═══════════════════════════════════════════
-    function PressEditor({ slug, onBack, addToast, existingSlugs = [], allPress = [], mediaLogos = [] }) {
-      const [loading, setLoading] = useState(!!slug);
-      const [saving, setSaving] = useState(false);
-      const [sha, setSha] = useState(null);
-      const [dirty, setDirty] = useState(false);
-      const [showImagePicker, setShowImagePicker] = useState(false);
-      const CF_PRESS = CF; // Use same base as rest of admin
-      const [pullingImage, setPullingImage] = useState(false);
-      // Grab the story's og:image and save it to Cloudflare Images (no manual download/upload)
-      const pullImageFromUrl = async () => {
-        const url = (data.url || '').trim();
-        if (!url) { addToast('Add the article URL first', 'error'); return; }
-        const yr = (data.date || '').split('-')[0] || '';
-        const fileSlug = data.slug || slugify((data.outlet || 'article') + (yr ? ' ' + yr : ''));
-        setPullingImage(true);
-        try {
-          const res = await api.fetchOgImage(url, `press/${fileSlug}`);
-          if (res.success && res.imageId) {
-            update('image', res.imageId);
-            addToast('Image pulled from the article', 'success');
-          } else {
-            addToast(res.error || 'No image found on that page', 'error');
-          }
-        } catch (err) {
-          addToast(`Could not pull image: ${err.message}`, 'error');
-        }
-        setPullingImage(false);
-      };
-      const [data, setData] = useState(() => {
-        // Check for pre-filled data from Press Monitor
-        const prefill = sessionStorage.getItem('press-prefill');
-        if (prefill && !slug) {
-          sessionStorage.removeItem('press-prefill');
-          try { return { ...JSON.parse(prefill) }; } catch {}
-        }
-        return {
-          outlet: '', outletLogo: '', category: 'print',
-          title: '', slug: '', date: new Date().toISOString().split('T')[0],
-          url: '', excerpt: '', image: null,
-          featured: false, order: 0,
-          videoId: null, featuredHeadline: null, featuredDescription: null,
-        };
-      });
-
-      const [showPreview, setShowPreview] = useState(false);
-      // The story as Save writes it, keyed by the file name Save would use
-      const previewPress = useMemo(() => {
-        const yr = (data.date || '').split('-')[0] || '';
-        const d = { ...data, slug: data.slug || slugify((data.outlet || '') + (yr ? ' ' + yr : '')) };
-        if (!d.videoId) delete d.videoId;
-        if (!d.featuredHeadline) delete d.featuredHeadline;
-        if (!d.featuredDescription) delete d.featuredDescription;
-        return d;
-      }, [data]);
-
-      useGlobalDirty(dirty, slug ? `press article "${slug}"` : 'a new press article');
-      useSaveShortcut(() => { if (!saving) handleSave(); });
-
-      useEffect(() => {
-        if (!slug) return;
-        (async () => {
-          try {
-            const res = await api.readContent(`src/content/press/${slug}.json`);
-            if (res.success && res.content) {
-              const parsed = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
-              if (!parsed.slug) parsed.slug = slug;
-              setData(parsed);
-              setSha(res.sha);
-            } else {
-              addToast('Press article not found', 'error');
-              onBack();
-            }
-          } catch (err) {
-            addToast(`Load error: ${err.message}`, 'error');
-          }
-          setLoading(false);
-        })();
-      }, [slug]);
-
-      const update = (key, val) => {
-        setData(d => {
-          const updated = { ...d, [key]: val };
-          if (key === 'outlet' && !slug) {
-            const yr = (d.date || '').split('-')[0] || '';
-            updated.slug = slugify(val + (yr ? ' ' + yr : ''));
-          }
-          if (key === 'date' && !slug && d.outlet) {
-            const yr = (val || '').split('-')[0] || '';
-            updated.slug = slugify(d.outlet + (yr ? ' ' + yr : ''));
-          }
-          return updated;
-        });
-        setDirty(true);
-      };
-
-      const handleSave = async () => {
-        if (!data.title) { addToast('Title is required', 'error'); return; }
-        if (!data.outlet) { addToast('Outlet is required', 'error'); return; }
-        const fileSlug = data.slug || (() => {
-          const yr = (data.date || '').split('-')[0] || '';
-          return slugify(data.outlet + (yr ? ' ' + yr : ''));
-        })();
-        if (!data.slug) setData(d => ({ ...d, slug: fileSlug }));
-        if (!slug && existingSlugs.includes(fileSlug)) {
-          addToast(`A press article with slug "${fileSlug}" already exists. Edit the slug to make it unique.`, 'error'); return;
-        }
-        setSaving(true);
-        try {
-          const saveData = { ...data };
-          delete saveData.slug;
-          if (!saveData.videoId) delete saveData.videoId;
-          if (!saveData.featuredHeadline) delete saveData.featuredHeadline;
-          if (!saveData.featuredDescription) delete saveData.featuredDescription;
-          const path = `src/content/press/${fileSlug}.json`;
-          const content = JSON.stringify(saveData, null, 2);
-          const message = slug ? `Update press: ${saveData.title}` : `Add press: ${saveData.title}`;
-          const res = await api.saveContent(path, content, message, sha || undefined);
-          if (res.success) {
-            setSha(res.sha);
-            setDirty(false);
-            addToast('Press article saved', 'success');
-            logActivity(slug ? 'published' : 'created', 'press article', data.title);
-          } else {
-            addToast(`Save failed: ${res.error}`, 'error');
-          }
-        } catch (err) {
-          addToast(`Save error: ${err.message}`, 'error');
-        }
-        setSaving(false);
-      };
-
-      useEffect(() => {
-        const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
-        window.addEventListener('beforeunload', handler);
-        return () => window.removeEventListener('beforeunload', handler);
-      }, [dirty]);
-
-      if (loading) return html`<${EditorSkeleton} />`;
-
-      return html`
-        ${showImagePicker ? html`<${ImagePicker}
-          value=${data.image}
-          uploadPrefix=${`press/${data.slug || 'new'}`}
-          onSelect=${(id) => { update('image', id); setShowImagePicker(false); setDirty(true); }}
-          onClose=${() => setShowImagePicker(false)}
-        />` : null}
-        <nav class="breadcrumb" aria-label="Breadcrumb">
-          <button onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>Press & Media</button>
-          <span class="sep">›</span>
-          <span class="current">${slug ? data.title || 'Edit' : 'New Article'}</span>
-        </nav>
-        <div class="page-header">
-          <h2 class="u-row-center">${slug ? 'Edit Press Article' : 'New Press Article'} <${PublishBadge} type="press" slug=${slug} draft=${data.publishStatus === 'draft'} /></h2>
-          <div class="flex gap-1 items-center">
-            <button class="btn btn-ghost btn-sm" aria-pressed=${showPreview} onClick=${() => setShowPreview((v) => !v)}>Preview</button>
-            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
-              ${saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-        ${showPreview ? html`<${PagePreview} kind="press" item=${previewPress} slug=${slug} dirty=${dirty}
-          buildOpts=${{ collection: allPress, mediaLogos }} onClose=${() => setShowPreview(false)} />` : null}
-
-        <div class="card u-mb-2">
-          <h3 class="u-mb-2">Article Details</h3>
-          <div class="form-group u-mb-field">
-            <span class="form-label">Article Title *</span>
-            <input class="form-input" type="text" value=${data.title}
-              onInput=${e => update('title', e.target.value)} placeholder="How SOARD Transforms Homes and Lives" />
-          </div>
-          <div class="form-row u-mb-field">
-            <div class="form-group">
-              <span class="form-label">Outlet *</span>
-              <input class="form-input" type="text" value=${data.outlet}
-                onInput=${e => update('outlet', e.target.value)} placeholder="11Alive (NBC Atlanta)" />
-            </div>
-            <div class="form-group">
-              <span class="form-label">Outlet Logo Key</span>
-              <input class="form-input" type="text" value=${data.outletLogo || ''}
-                onInput=${e => update('outletLogo', e.target.value)} placeholder="11alive" />
-              <span class="form-hint">Used for logo matching on the page</span>
-            </div>
-          </div>
-          <div class="form-row u-mb-field">
-            <div class="form-group">
-              <span class="form-label">Date *</span>
-              <input class="form-input" type="date" value=${data.date}
-                onInput=${e => update('date', e.target.value)} />
-            </div>
-            <div class="form-group">
-              <span class="form-label">Category</span>
-              <select class="form-select" value=${data.category}
-                onChange=${e => update('category', e.target.value)}>
-                ${PRESS_CATEGORIES.map(c => html`<option key=${c} value=${c}>${PRESS_CAT_LABELS[c]}</option>`)}
-              </select>
-            </div>
-          </div>
-          <div class="form-group u-mb-field">
-            <span class="form-label">Slug</span>
-            <input class="form-input" type="text" value=${data.slug || ''}
-              onInput=${e => { setData(d => ({ ...d, slug: e.target.value })); setDirty(true); }}
-              placeholder="11alive-2025" />
-            <span class="form-hint">File name — auto-generated from outlet + year</span>
-          </div>
-          <div class="form-group u-mb-field">
-            <span class="form-label">Article URL *</span>
-            <input class="form-input" type="url" value=${data.url}
-              onInput=${e => update('url', e.target.value)} placeholder="https://www.11alive.com/article/..." />
-          </div>
-          <div class="form-group u-mb-field">
-            <span class="form-label">Excerpt *</span>
-            <textarea class="form-textarea" rows="3" value=${data.excerpt}
-              onInput=${e => update('excerpt', e.target.value)}
-              placeholder="Brief summary of the coverage..." />
-            <span class="form-hint">${(data.excerpt || '').length}/300 characters</span>
-          </div>
-        </div>
-
-        <div class="card u-mb-2">
-          <h3 class="u-mb-2">Image</h3>
-          <div class="form-group u-mb-field">
-            <span class="form-label">Cloudflare Image URL</span>
-            <div class="u-row">
-              <input class="form-input u-grow-1" type="text" value=${data.image || ''}
-                onInput=${e => update('image', e.target.value || null)}
-                placeholder="press/11alive-2025" />
-              <button class="btn btn-ghost" type="button" onClick=${() => setShowImagePicker(true)}>Browse</button>
-              <button class="btn btn-ghost" type="button" disabled=${pullingImage || !data.url} title="Grab the story's preview image and save it to Cloudflare Images" onClick=${pullImageFromUrl}>
-                ${pullingImage ? html`<span class="spinner" style="width:14px;height:14px;border-width:2px;" />` : 'Pull from article link'}
-              </button>
-            </div>
-            <span class="form-hint">Cloudflare Images ID (e.g. press/11alive-2025). "Pull from article link" grabs the story's preview image automatically; if the outlet blocks it, upload one with Browse. Leave blank and the card shows the outlet's logo instead.</span>
-            ${data.image ? html`
-              <div style="margin-top: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
-                <img src=${cfThumb(data.image, 'w=800,q=80')}
-                  alt="Article image preview" style="width: 100%; height: 200px; object-fit: cover; display: block;"
-                  onError=${e => { e.target.style.display = 'none'; }} />
-              </div>
-            ` : null}
-          </div>
-        </div>
-
-        <div class="card u-mb-2">
-          <h3 class="u-mb-2">Display Options</h3>
-          <div class="form-row">
-            <div class="form-group">
-              <span class="form-label">Display Order</span>
-              <input class="form-input" type="number" value=${data.order || 0}
-                onInput=${e => update('order', Number(e.target.value))} />
-              <span class="form-hint">Lower = higher priority in featured section</span>
-            </div>
-            <div class="form-group" style="display: flex; align-items: end; padding-bottom: 0.3rem;">
-              <label class="checkbox-label">
-                <input type="checkbox" checked=${data.featured}
-                  onChange=${e => update('featured', e.target.checked)} />
-                Featured article (shown in highlighted section)
-              </label>
-            </div>
-          </div>
-        </div>
-
-        ${data.featured ? html`
-        <div class="card">
-          <h3 class="u-mb-1">Featured Card Display</h3>
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 1.25rem;">These fields control how this article appears in the featured press section on the publicity page. Leave blank to use the article title and excerpt.</p>
-          <div class="form-group u-mb-field">
-            <span class="form-label">Featured Headline</span>
-            <input class="form-input" type="text" value=${data.featuredHeadline || ''}
-              onInput=${e => update('featuredHeadline', e.target.value || null)}
-              placeholder="Custom headline for the featured card (optional)" />
-            <span class="form-hint">Shorter, punchier version of the title for the card display</span>
-          </div>
-          <div class="form-group u-mb-field">
-            <span class="form-label">Featured Description</span>
-            <textarea class="form-textarea" rows="3" value=${data.featuredDescription || ''}
-              onInput=${e => update('featuredDescription', e.target.value || null)}
-              placeholder="Custom description for the featured card (optional)" />
-            <span class="form-hint">Brief, engaging summary for the card. Falls back to excerpt if blank.</span>
-          </div>
-          <div class="form-group">
-            <span class="form-label">YouTube Video ID</span>
-            <input class="form-input" type="text" value=${data.videoId || ''}
-              onInput=${e => update('videoId', e.target.value || null)}
-              placeholder="e.g. Tej9V0MPQbY" />
-            <span class="form-hint">The ID from the YouTube URL (youtube.com/watch?v=THIS_PART). Card will show a play button overlay. Leave blank for image-only cards.</span>
-            ${data.videoId ? html`
-              <div style="margin-top: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px; position: relative; aspect-ratio: 16/9;">
-                <img class="img-fill" src=${'https://i.ytimg.com/vi/' + data.videoId + '/maxresdefault.jpg'}
-                  alt="Video thumbnail preview"
-                  onError=${e => { e.target.style.display = 'none'; }} />
-              </div>
-            ` : null}
-          </div>
-        </div>
-        ` : null}
-      `;
-    }
-
-    // ═══════════════════════════════════════════
-    // PRESS MONITOR — Discover new media mentions
-    // ═══════════════════════════════════════════
-    function PressMonitor({ existingPress, addToast, onApprove }) {
-      const [scanning, setScanning] = useState(false);
-      const [mentions, setMentions] = useState([]);
-      const [dismissed, setDismissed] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('soard-press-dismissed') || '[]'); } catch { return []; }
-      });
-      const [lastScan, setLastScan] = useState(() => localStorage.getItem('soard-press-last-scan') || null);
-
-      // Build set of existing press URLs for dedup
-      const existingUrls = useMemo(() => {
-        const urls = new Set();
-        for (const p of existingPress) {
-          if (p.url) {
-            try {
-              const u = new URL(p.url);
-              urls.add(u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, ''));
-            } catch { urls.add(p.url); }
-          }
-        }
-        return urls;
-      }, [existingPress]);
-
-      const dismissedSet = useMemo(() => new Set(dismissed), [dismissed]);
-
-      const filteredMentions = useMemo(() => {
-        return mentions.filter(m => {
-          // Filter out already-published entries — check both RSS link and resolved URL
-          const urlsToCheck = [m.link, m.resolvedUrl].filter(Boolean);
-          for (const url of urlsToCheck) {
-            try {
-              const u = new URL(url);
-              const norm = u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, '');
-              if (existingUrls.has(norm)) return false;
-              if (dismissedSet.has(norm)) return false;
-            } catch {}
-          }
-          return true;
-        });
-      }, [mentions, existingUrls, dismissedSet]);
-
-      const doScan = async () => {
-        setScanning(true);
-        try {
-          const res = await fetch('/api/press-scan');
-          const data = await res.json();
-          if (data.success) {
-            setMentions(data.mentions);
-            const now = new Date().toLocaleString();
-            setLastScan(now);
-            localStorage.setItem('soard-press-last-scan', now);
-            // Compute the "new" count from the fresh results (state hasn't updated yet)
-            const isNew = (m) => {
-              for (const u of [m.link, m.resolvedUrl].filter(Boolean)) {
-                try {
-                  const parsed = new URL(u);
-                  const norm = parsed.hostname.replace(/^www\./, '') + parsed.pathname.replace(/\/$/, '');
-                  if (existingUrls.has(norm) || dismissedSet.has(norm)) return false;
-                } catch {}
-              }
-              return true;
-            };
-            addToast(`Found ${data.mentions.length} results, ${data.mentions.filter(isNew).length} new`, 'success');
-          } else {
-            addToast(`Scan failed: ${data.error}`, 'error');
-          }
-        } catch (err) {
-          addToast(`Scan error: ${err.message}`, 'error');
-        }
-        setScanning(false);
-      };
-
-      const dismiss = (mention) => {
-        const urls = [mention.link, mention.resolvedUrl].filter(Boolean);
-        const norms = [];
-        for (const url of urls) {
-          try {
-            const u = new URL(url);
-            norms.push(u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, ''));
-          } catch {}
-        }
-        if (norms.length) {
-          const updated = [...dismissed, ...norms];
-          setDismissed(updated);
-          localStorage.setItem('soard-press-dismissed', JSON.stringify(updated));
-        }
-      };
-
-      const clearDismissed = () => {
-        setDismissed([]);
-        localStorage.removeItem('soard-press-dismissed');
-        addToast('Dismissed list cleared', 'success');
-      };
-
-      const handleApprove = (mention) => {
-        const slug = mention.source
-          ? mention.source.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + (mention.date || 'new')
-          : 'press-' + Date.now();
-
-        onApprove({
-          outlet: mention.source || '',
-          outletLogo: mention.source ? mention.source.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : '',
-          category: 'print',
-          title: mention.title || '',
-          slug,
-          date: mention.date || new Date().toISOString().split('T')[0],
-          url: mention.resolvedUrl || mention.link || '',
-          excerpt: mention.description || '',
-          featured: false,
-          order: 99,
-        });
-      };
-
-      return html`
-        <div class="page-header">
-          <div>
-            <h2>Press Monitor</h2>
-            <p class="page-sub">
-              Scans Google News for SOARD media mentions. Approve to create press entries.
-            </p>
-          </div>
-          <div class="u-row-center">
-            ${dismissed.length > 0 ? html`
-              <button class="btn btn-ghost btn-sm" onClick=${clearDismissed}>
-                Clear ${dismissed.length} dismissed
-              </button>
-            ` : null}
-            <button class="btn btn-primary" onClick=${doScan} disabled=${scanning}>
-              ${scanning ? html`<span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:0.5rem;" />` : null}
-              ${scanning ? 'Scanning…' : 'Scan for Mentions'}
-            </button>
-          </div>
-        </div>
-
-        ${lastScan ? html`
-          <p class="text-sm text-muted u-mb-2">Last scan: ${lastScan}</p>
-        ` : null}
-
-        <div class="card" style="margin-bottom: 1rem; padding: 1rem;">
-          <p class="text-sm" style="margin: 0; color: #6B6C72;">
-            <strong>Search queries:</strong> "Sunshine on a Ranney Day", "SOARD" charity, "Peter Ranney" nonprofit, "Holly Ranney", "Sunny and Ranney", "sunshineonaranneyday"
-          </p>
-        </div>
-
-        ${mentions.length > 0 ? html`
-          <div class="card" style="margin-bottom: 0.75rem; padding: 0.75rem 1rem;">
-            <span class="text-sm">
-              <strong>${mentions.length}</strong> total results · 
-              <strong>${filteredMentions.length}</strong> new · 
-              <strong>${mentions.length - filteredMentions.length}</strong> already tracked or dismissed
-            </span>
-          </div>
-        ` : null}
-
-        ${!scanning && mentions.length === 0 ? html`
-          <div class="card" style="padding: 3rem; text-align: center; color: #6B6C72;">
-            <p style="font-size: 2rem; margin-bottom: 0.5rem;">📡</p>
-            <p>Click <strong>Scan for Mentions</strong> to search for new press coverage.</p>
-          </div>
-        ` : null}
-
-        ${scanning ? html`
-          <div class="card" style="padding: 3rem; text-align: center;">
-            <div class="spinner" style="width: 32px; height: 32px; border-width: 3px; margin: 0 auto 1rem;" />
-            <p class="text-muted">Searching Google News RSS feeds…</p>
-          </div>
-        ` : null}
-
-        ${filteredMentions.length > 0 ? html`
-          <div class="card">
-            <div class="table-wrap"><table>
-              <thead><tr><th>Title</th><th>Source</th><th>Date</th><th>Matched Query</th><th style="width: 190px;"></th></tr></thead>
-              <tbody>
-                ${filteredMentions.map(m => html`<tr key=${m.link}>
-                  <td>
-                    <a href=${safeHref(m.resolvedUrl || m.link) || '#'} target="_blank" rel="noopener" style="color: var(--c-dark); text-decoration: underline; text-underline-offset: 2px;">
-                      ${m.title.length > 70 ? m.title.slice(0, 70) + '…' : m.title}
-                    </a>
-                    ${m.resolvedUrl ? html`<br /><span class="text-sm text-muted" style="word-break: break-all;">${(() => { try { const u = new URL(m.resolvedUrl); return u.hostname + u.pathname; } catch { return ''; } })()}</span>` : m.description ? html`<br /><span class="text-sm text-muted">${m.description.length > 100 ? m.description.slice(0, 100) + '…' : m.description}</span>` : null}
-                    <span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${m.source || ''}${m.date ? ` · ${m.date}` : ''}</span>
-                  </td>
-                  <td class="text-sm td-hide-mobile">${m.source || '—'}</td>
-                  <td class="text-sm td-hide-mobile u-nowrap">${m.date || '—'}</td>
-                  <td class="td-hide-mobile"><span class="badge" style="font-size: 0.7rem;">${m.query.replace(/"/g, '')}</span></td>
-                  <td class="u-nowrap">
-                    <button class="btn btn-primary btn-sm" onClick=${() => handleApprove(m)}>Approve</button>
-                    <button class="btn btn-ghost btn-sm" style="color: #999;" onClick=${() => dismiss(m)}>Dismiss</button>
-                  </td>
-                </tr>`)}
-              </tbody>
-            </table></div>
-          </div>
-        ` : mentions.length > 0 && !scanning ? html`
-          <div class="card" style="padding: 2rem; text-align: center; color: #6B6C72;">
-            <p>All ${mentions.length} results are already tracked or dismissed.</p>
-          </div>
-        ` : null}
-      `;
-    }
 
     // ═══════════════════════════════════════════
     // COMMUNITY PROJECTS
@@ -22608,6 +22031,50 @@ ${sections || '<p>No one yet.</p>'}
       return mod ? html`<${mod.SiteConfigArea} ...${props} setGlobalDirty=${setGlobalDirty} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
+    // Press → stories, what the press monitor found and did, and outlets. Kept in
+    // ./press.js (+ ./press-shared.js), loaded on first visit. The editor borrows
+    // the admin's own parts (Preview, the image library, History, the outlet
+    // dialog), passed in as a kit.
+    let pressModule = null;
+    function PressLazy(props) {
+      const [mod, setMod] = useState(null);
+      const [err, setErr] = useState(null);
+      const kit = useMemo(() => ({ api, PagePreview, ImagePicker, PublishBadge, KdDialog, KdHistoryDialog, useContentHistory, OutletDialog: MediaLogoDialog }), []);
+      const load = () => {
+        pressModule ||= import('./press.js');
+        pressModule.then((m) => setMod(m)).catch((e) => { pressModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      // Leaving Press: the address stops pointing at it
+      useEffect(() => () => { if (location.hash.startsWith('#press')) history.replaceState?.(null, '', location.pathname + location.search); }, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load Press: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      return mod ? html`<${mod.PressArea} ...${props} setGlobalDirty=${setGlobalDirty} kit=${kit} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
+    }
+    // How many articles the press monitor found that need a look: the sidebar's
+    // badge on Press and a Dashboard item. Press tells it when that changes.
+    const pressReview = { n: 0, at: 0, subs: new Set() };
+    async function refreshPressReview() {
+      pressReview.at = Date.now();
+      try {
+        const j = await (await fetch('/api/press-admin?summary=1', { cache: 'no-store' })).json();
+        if (j.success) { pressReview.n = j.review || 0; pressReview.subs.forEach((f) => f(pressReview.n)); }
+      } catch { /* the badge waits for the next try */ }
+    }
+    function usePressReview() {
+      const [n, setN] = useState(pressReview.n);
+      useEffect(() => {
+        pressReview.subs.add(setN);
+        if (Date.now() - pressReview.at > 60000) refreshPressReview();
+        const t = setInterval(() => { if (!document.hidden) refreshPressReview(); }, 300000);
+        const on = () => refreshPressReview();
+        window.addEventListener('soard-press-changed', on);
+        return () => { pressReview.subs.delete(setN); clearInterval(t); window.removeEventListener('soard-press-changed', on); };
+      }, []);
+      return n;
+    }
+    /** Send the app somewhere else once (an old link to a moved page) */
+    function GoTo({ go }) { useEffect(() => { go(); }, []); return null; }
+
     // ═══════════════════════════════════════════
     // DEPLOYS
     // ═══════════════════════════════════════════
@@ -22847,7 +22314,7 @@ ${sections || '<p>No one yet.</p>'}
       press: { label: 'Press', dir: 'press', list: '/publicity/', cards: '.fph__title, .fpe__title, .ci__title', names: (d) => [d.title, d.featuredHeadline] },
       team: { label: 'Person', dir: 'team', list: '/about/leadership/', cards: '.board-name, .founder-name, .member-name',
         names: (d) => [normalizePerson(d).name], hidden: (d) => !tsIsListed(normalizePerson(d)) },
-      medialogos: { label: 'Media logo' }, community_partners: { label: 'Community partner' },
+      medialogos: { label: 'Outlet' }, community_partners: { label: 'Community partner' },
     };
     const publishTypeLabel = (t) => PUBLISH_TYPES[t]?.label || 'Site setting';
     const BUILD_STAGES = { queued: 'Waiting to start', initialize: 'Starting', clone_repo: 'Getting the latest code', build: 'Building the site', deploy: 'Putting it live' };
@@ -23065,14 +22532,14 @@ ${sections || '<p>No one yet.</p>'}
           { type: 'page', label: 'Community Projects', id: 'kids-hub', subTab: 'community', section: 'Pages' },
           { type: 'page', label: 'Partners', id: 'partners-hub', section: 'Pages' },
           { type: 'page', label: 'Community Partners', id: 'partners-hub', subTab: 'community-partners', section: 'Pages' },
-          { type: 'page', label: 'Media Logos', id: 'partners-hub', subTab: 'medialogos', section: 'Pages' },
+          { type: 'page', label: 'Outlets (As Featured strip)', id: 'press-hub', subTab: 'outlets', section: 'Pages' },
           { type: 'page', label: 'Board', id: 'people-hub', subTab: 'board', section: 'Pages' },
           { type: 'page', label: 'Team', id: 'people-hub', subTab: 'team', section: 'Pages' },
           { type: 'page', label: 'Advisory Board', id: 'people-hub', subTab: 'advisory', section: 'Pages' },
           { type: 'page', label: 'Articles', id: 'articles', section: 'Pages' },
           { type: 'page', label: 'Events', id: 'events', section: 'Pages' },
-          { type: 'page', label: 'Press & Media', id: 'press-hub', subTab: 'press', section: 'Pages' },
-          { type: 'page', label: 'Press Monitor', id: 'press-hub', subTab: 'press-monitor', section: 'Pages' },
+          { type: 'page', label: 'Press stories', id: 'press-hub', subTab: 'press', section: 'Pages' },
+          { type: 'page', label: 'Found coverage (press monitor)', id: 'press-hub', subTab: 'found', section: 'Pages' },
           { type: 'page', label: 'Site Config', id: 'site-hub', section: 'Pages' },
           // Site Config's pages (public/admin/site-config-shared.js PAGES)
           ...[['home', 'Homepage'], ['kids', 'Meet the Kids page'], ['how', 'How It Works page'], ['apply', 'Apply page'], ['donate', 'Donate page'],
@@ -23088,20 +22555,20 @@ ${sections || '<p>No one yet.</p>'}
           { type: 'action', label: 'Add New Kid', id: 'kids-hub', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Partner', id: 'partners-hub', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Community Partner', id: 'partners-hub', subTab: 'community-partners', slug: '', section: 'Actions' },
-          { type: 'action', label: 'Add New Media Logo', id: 'partners-hub', subTab: 'medialogos', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add an outlet', id: 'press-hub', subTab: 'outlets', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Board Member', id: 'people-hub', subTab: 'board', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Team Member', id: 'people-hub', subTab: 'team', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Advisory Board Member', id: 'people-hub', subTab: 'advisory', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Article', id: 'articles', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Event', id: 'events', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Community Project', id: 'kids-hub', subTab: 'community', slug: '', section: 'Actions' },
-          { type: 'action', label: 'Add New Press Article', id: 'press-hub', subTab: 'press', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add a press story', id: 'press-hub', subTab: 'press', slug: '', section: 'Actions' },
         ];
         const content = [
           ...(kids || []).map(k => ({ type: 'content', label: k.name, meta: `Kid · ${k.year || ''}`, id: 'kids-hub', slug: k.slug, section: 'Content' })),
           ...(partners || []).map(p => ({ type: 'content', label: p.name, meta: `Partner · ${p.level || ''}`, id: 'partners-hub', slug: p.slug, section: 'Content' })),
           ...(communityPartners || []).map(c => ({ type: 'content', label: c.name, meta: `Community Partner · ${c.category || ''}`, id: 'partners-hub', subTab: 'community-partners', slug: c.slug, section: 'Content' })),
-          ...(mediaLogos || []).map(m => ({ type: 'content', label: m.name, meta: 'Media Logo', id: 'partners-hub', subTab: 'medialogos', slug: m.slug, section: 'Content' })),
+          ...(mediaLogos || []).map(m => ({ type: 'content', label: m.name, meta: 'Outlet', id: 'press-hub', subTab: 'outlets', slug: m.slug, section: 'Content' })),
           ...(team || []).map(t => ({ type: 'content', label: t.name, meta: `${pplGroup(t.group).heading} · ${t.title || ''}`, id: 'people-hub', subTab: tsGroupOf(t.group).id, slug: t.slug, section: 'Content' })),
           ...(articles || []).map(a => ({ type: 'content', label: a.title || a.name, meta: 'Article', id: 'articles', slug: a.slug, section: 'Content' })),
           ...(events || []).map(e => ({ type: 'content', label: e.title || e.name, meta: `Event · ${e.date || ''}`, id: 'events', slug: e.slug, section: 'Content' })),
@@ -23414,7 +22881,7 @@ ${sections || '<p>No one yet.</p>'}
 
     function App() {
       useA11y();
-      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#applications') ? 'applications' : location.hash.startsWith('#site') ? 'site-hub' : 'dashboard'));
+      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#applications') ? 'applications' : location.hash.startsWith('#site') ? 'site-hub' : location.hash.startsWith('#press') ? 'press-hub' : 'dashboard'));
       const [editSlug, setEditSlug] = useState(null);
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);
@@ -23653,6 +23120,7 @@ ${sections || '<p>No one yet.</p>'}
       }, []);
 
       const [dashboardFilter, setDashboardFilter] = useState(null);
+      const pressNeedsLook = usePressReview();
       // Confirm before an in-app view/tab switch discards unsaved edits.
       // Editors register their dirty state via useGlobalDirty().
       const confirmDiscard = () => {
@@ -23801,7 +23269,7 @@ ${sections || '<p>No one yet.</p>'}
                 return html`<${CommunityEditor} key=${editSlug} slug=${editSlug} projects=${communityProjects} partners=${partners} addToast=${addToast}
                   onBack=${() => { setEditSlug(null); loadData(); }} onSaved=${(s) => { setEditSlug(s); loadData(); }} />`;
               }
-              return html`<${KidEditor} key=${editSlug || 'new-kid'} slug=${editSlug || undefined} kids=${kids} partners=${partners} addToast=${addToast}
+              return html`<${KidEditor} key=${editSlug || 'new-kid'} slug=${editSlug || undefined} kids=${kids} partners=${partners} press=${press} addToast=${addToast}
                 onBack=${() => { setEditSlug(null); loadData(); }} onSaved=${(s) => { setEditSlug(s); loadData(); }} />`;
             }
             return html`
@@ -23851,16 +23319,18 @@ ${sections || '<p>No one yet.</p>'}
             `;
           }
 
-          // ─── Partners Hub (tabs: Partners | Community partners | Media logos) ───
+          // ─── Partners Hub (tabs: Partners | Community partners) ───
           case 'partners-hub': {
             const pTab = subTab || 'partners';
-            // Adding a partner and editing a media logo happen in dialogs over their lists
-            if (editSlug !== null && !(pTab === 'partners' && editSlug === '') && pTab !== 'medialogos') {
+            // Media logos are outlets now: Press → Outlets
+            if (pTab === 'medialogos') return html`<${GoTo} go=${() => navigate('press-hub', null, 'outlets')} />`;
+            // Adding a partner happens in a dialog over the list
+            if (editSlug !== null && !(pTab === 'partners' && editSlug === '')) {
               if (pTab === 'community-partners') {
                 return html`<${CommunityPartnerEditor} key=${editSlug || 'new-cp'} slug=${editSlug || undefined} items=${communityPartners} projects=${communityProjects} addToast=${addToast}
                   onBack=${() => { setEditSlug(null); loadData(); }} onSaved=${(s) => { setEditSlug(s); loadData(); }} />`;
               }
-              return html`<${PartnerEditor} key=${editSlug} slug=${editSlug} partners=${partners} kids=${kids} team=${team} addToast=${addToast} onOpenPartner=${(s) => { setEditSlug(s); loadData(); }}
+              return html`<${PartnerEditor} key=${editSlug} slug=${editSlug} partners=${partners} kids=${kids} team=${team} press=${press} addToast=${addToast} onOpenPartner=${(s) => { setEditSlug(s); loadData(); }}
                 onBack=${() => { setEditSlug(null); loadData(); }} onSaved=${() => loadData()} onReload=${loadData}
                 onOpenKid=${(s) => navigate('kids-hub', s, 'kids')} />`;
             }
@@ -23869,14 +23339,10 @@ ${sections || '<p>No one yet.</p>'}
               <div class="hub-tabs">
                 ${tab('partners', 'Partners', partners.length)}
                 ${tab('community-partners', 'Community partners', communityPartners.length)}
-                ${tab('medialogos', 'Media logos', mediaLogos.length)}
               </div>
               ${pTab === 'community-partners'
                 ? listOrError('communityPartners', 'community partners', html`<${CommunityPartnersList} items=${communityPartners} projects=${communityProjects} addToast=${addToast} onReload=${loadData}
                     onEdit=${(s) => setEditSlug(s)} onAdd=${() => setEditSlug('')} />`)
-                : pTab === 'medialogos'
-                ? listOrError('medialogos', 'media logos', html`<${MediaLogosList} logos=${mediaLogos} press=${press} editing=${editSlug} onEditingDone=${() => setEditSlug(null)}
-                    addToast=${addToast} onReload=${loadData} />`)
                 : listOrError('partners', 'partners', html`<${PartnersList} partners=${partners} kids=${kids} creating=${editSlug === ''} onCreateClose=${() => setEditSlug(null)}
                     onEdit=${(s) => setEditSlug(s)} addToast=${addToast} onReload=${loadData} />`)
               }
@@ -23935,28 +23401,10 @@ ${sections || '<p>No one yet.</p>'}
             `);
           }
 
-          // ─── Press Hub (tabs: Press & Media | Press Monitor) ───
-          case 'press-hub': {
-            const prTab = subTab || 'press';
-            if (editSlug !== null && prTab === 'press') {
-              return html`<${PressEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} existingSlugs=${press.map(p => p.slug)} allPress=${press} mediaLogos=${mediaLogos} />`;
-            }
-            return html`
-              <div class="hub-tabs">
-                <button class="hub-tab ${prTab === 'press' ? 'active' : ''}" onClick=${() => { setSubTab('press'); setEditSlug(null); }}>Press & Media</button>
-                <button class="hub-tab ${prTab === 'press-monitor' ? 'active' : ''}" onClick=${() => { setSubTab('press-monitor'); setEditSlug(null); }}>Press Monitor</button>
-              </div>
-              ${prTab === 'press-monitor'
-                ? html`<${PressMonitor} existingPress=${press} addToast=${addToast} onApprove=${(mention) => {
-                    sessionStorage.setItem('press-prefill', JSON.stringify(mention));
-                    setSubTab('press');
-                    setEditSlug('');
-                  }} />`
-                : listOrError('press', 'press articles', html`<${PressList} press=${press} onEdit=${s => { setSubTab('press'); setEditSlug(s); }} onAdd=${() => { setSubTab('press'); setEditSlug(''); }}
-                    onDelete=${p => setDeleteModal({ type: 'press article', item: p })} />`)
-              }
-            `;
-          }
+          // ─── Press: ./press.js (Stories | Found coverage | Outlets), #press/… ───
+          case 'press-hub':
+            return listOrError('press', 'press stories', html`<${PressLazy} addToast=${addToast} press=${press} outlets=${mediaLogos} kids=${kids} partners=${partners}
+              onReload=${loadData} initialTab=${subTab} initialSlug=${editSlug} />`);
 
           case 'audit-log':
             return html`<${AuditLogPage} addToast=${addToast} />`;
@@ -24028,6 +23476,7 @@ ${sections || '<p>No one yet.</p>'}
                   onClick=${() => navigate(item.id)}>
                   <span class="nav-icon">${item.icon}</span>
                   ${item.label}
+                  ${item.id === 'press-hub' && pressNeedsLook ? html`<span class="nav-count" aria-label=${`${pressNeedsLook} found ${pressNeedsLook === 1 ? 'article needs' : 'articles need'} a look`}>${pressNeedsLook}</span>` : null}
                 </button>
               `)}
             `)}

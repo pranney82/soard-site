@@ -97,6 +97,25 @@ CREATE TABLE IF NOT EXISTS medialogos (
 );
 CREATE INDEX IF NOT EXISTS idx_medialogos_name ON medialogos(name);
 
+-- The press monitor (functions/api/_press.js creates these on first use too):
+-- articles it found, each story's link health, and every change it made
+CREATE TABLE IF NOT EXISTS press_mentions (
+  id TEXT PRIMARY KEY, key TEXT, provider TEXT, query TEXT, url TEXT, link TEXT, title TEXT, source TEXT, source_url TEXT,
+  published TEXT, description TEXT, video_id TEXT, state TEXT NOT NULL DEFAULT 'new', stage TEXT, reason TEXT, story TEXT,
+  data TEXT, tries INTEGER DEFAULT 0, found_at TEXT NOT NULL, updated_at TEXT, decided_at TEXT, decided_by TEXT, alerted INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS press_mentions_state ON press_mentions (state, found_at);
+CREATE INDEX IF NOT EXISTS press_mentions_key ON press_mentions (key);
+CREATE TABLE IF NOT EXISTS press_links (
+  slug TEXT PRIMARY KEY, url TEXT, status TEXT, http INTEGER, fails INTEGER DEFAULT 0, first_failed_at TEXT, checked_at TEXT,
+  archive_url TEXT, archive_checked_at TEXT, saved_at TEXT, data TEXT, enriched_at TEXT
+);
+CREATE TABLE IF NOT EXISTS press_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, kind TEXT NOT NULL, slug TEXT, label TEXT,
+  before TEXT, after TEXT, extra TEXT, undone_at TEXT, undone_by TEXT
+);
+CREATE INDEX IF NOT EXISTS press_log_at ON press_log (id);
+
 -- Articles (3+ rows)
 CREATE TABLE IF NOT EXISTS articles (
   slug TEXT PRIMARY KEY,

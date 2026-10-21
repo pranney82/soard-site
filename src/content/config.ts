@@ -83,13 +83,20 @@ const partners = defineCollection({
   }),
 });
 
+// Outlets that covered SOARD (Admin → Press → Outlets). The "As Featured"
+// strip shows the ones with a logo and strip not false; press stories point
+// at one by slug (press.outletLogo) and show its name.
 const medialogos = defineCollection({
   type: 'data',
   schema: z.object({
     name: z.string(),
     slug: z.string(),
-    logo: z.string(),
+    logo: z.string().default(''),
     order: z.number().default(0),
+    strip: z.boolean().optional(),
+    kind: z.enum(['national-tv', 'local-tv', 'print', 'magazine', 'entertainment']).optional(),
+    aliases: z.array(z.string()).optional(),
+    domains: z.array(z.string()).optional(),
   }),
 });
 
@@ -184,7 +191,7 @@ const press = defineCollection({
   type: 'data',
   schema: z.object({
     outlet: z.string(),
-    outletLogo: z.string(),
+    outletLogo: z.string().default(''),
     category: z.enum(['national-tv', 'local-tv', 'print', 'magazine', 'entertainment']),
     title: z.string(),
     date: z.string(),
@@ -196,6 +203,14 @@ const press = defineCollection({
     videoId: z.string().nullable().optional(),
     featuredHeadline: z.string().nullable().optional(),
     featuredDescription: z.string().nullable().optional(),
+    // Kids and partners the story is about (their pages list it under In the news)
+    kids: z.array(z.string()).optional(),
+    partners: z.array(z.string()).optional(),
+    // The press monitor's link check: once the outlet takes the story down,
+    // the page links to its Internet Archive copy (or shows it without a link)
+    archiveUrl: z.string().nullable().optional(),
+    linkGone: z.string().nullable().optional(),
+    publishStatus: z.enum(['published', 'draft']).optional(),
   }),
 });
 

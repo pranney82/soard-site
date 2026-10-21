@@ -16,7 +16,7 @@
 
 const KEEP = 50;
 // Collection → its D1 table (the same name today; listed so nothing else is queried)
-export const HISTORY_TABLES = { kids: 'kids', team: 'team', community: 'community', partners: 'partners', community_partners: 'community_partners', medialogos: 'medialogos' };
+export const HISTORY_TABLES = { kids: 'kids', team: 'team', community: 'community', partners: 'partners', community_partners: 'community_partners', medialogos: 'medialogos', press: 'press' };
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
 // Site Config documents (D1 site_config rows: settings, faq, our-story, media,
 // financial-snapshot, financials) keep versions too, as collection 'site' with

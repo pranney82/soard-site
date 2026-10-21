@@ -195,7 +195,7 @@ function writeFocusManifest() {
 // time), so writing them to src/content would just churn git on every build.
 // The schedule lock and the invite guest check hold bare numbers, which the site
 // collection's schema would reject.
-const RUNTIME_ONLY_KEYS = new Set(['live-status', 'broadcast', 'broadcast-config', 'broadcast-health', 'broadcast-schedule', 'broadcast-schedule-lock', 'reveal-invites-guest-check']);
+const RUNTIME_ONLY_KEYS = new Set(['live-status', 'broadcast', 'broadcast-config', 'broadcast-health', 'broadcast-schedule', 'broadcast-schedule-lock', 'reveal-invites-guest-check', 'press-monitor', 'press-monitor-state']);
 
 // ── Write site config to disk ──────────────────────────────────────
 export function writeSiteConfig(siteRows) {

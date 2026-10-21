@@ -24,11 +24,19 @@ import { getPublishedKids } from '../../utils/collections';
 import { getKidProfileSchema } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
 import { resolveKidVideo } from '../../utils/reveals';
+import { getCollection } from 'astro:content';
+import { isPublished, linkFor, isArchived, outletNameFor } from '../../utils/press';
 
 const computed = await getSiteStats();
 
 export async function getStaticPaths() {
   const kids = await getPublishedKids();
+  // Press stories about each kid (Admin → Press links them), newest first
+  const press = (await getCollection('press')).filter((p) => isPublished(p.data) && p.data.kids?.length);
+  const outlets = new Map((await getCollection('medialogos')).map((m) => [m.data.slug, m.data]));
+  const newsFor = (slug: string) => press.filter((p) => p.data.kids!.includes(slug))
+    .sort((a, b) => String(b.data.date).localeCompare(String(a.data.date)) || a.id.localeCompare(b.id))
+    .map((p) => ({ title: p.data.title, outlet: outletNameFor(p.data, outlets), date: p.data.date, href: linkFor(p.data), archived: isArchived(p.data) }));
   const sorted = kids.sort((a, b) => (b.data.year || 0) - (a.data.year || 0));
   const seedHash = (str: string) => {
     let h = 0;
@@ -73,12 +81,14 @@ export async function getStaticPaths() {
         prevKid: i > 0 ? { name: sorted[i - 1].data.name, slug: sorted[i - 1].data.slug, heroImage: sorted[i - 1].data.heroImage } : null,
         nextKid: i < sorted.length - 1 ? { name: sorted[i + 1].data.name, slug: sorted[i + 1].data.slug, heroImage: sorted[i + 1].data.heroImage } : null,
         relatedKids: related,
+        news: newsFor(slug),
       },
     };
   });
 }
 
-const { kid, prevKid, nextKid, relatedKids } = Astro.props;
+const { kid, prevKid, nextKid, relatedKids, news = [] } = Astro.props;
+const newsDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 /* The admin's Preview (public/admin/kid-preview.js) rebuilds this page's
    sections from unsaved edits by cloning this markup and mirroring the
    derivations below (bio split, hero hook, chapters, gallery split, plan
@@ -813,6 +823,28 @@ const planOrientation = (() => {
               ))}
             </div>
           </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ In the News — press stories about this kid (Admin → Press) ═══ -->
+    {news.length > 0 && (
+      <section class="kid-news" aria-labelledby="kid-news-heading">
+        <div class="container container--narrow">
+          <h2 class="kid-news__title" id="kid-news-heading">In the news</h2>
+          <ul class="kid-news__list">
+            {news.map((n) => (
+              <li class="kid-news__item">
+                <span class="kid-news__meta"><span class="kid-news__outlet">{n.outlet}</span><time datetime={n.date}>{newsDate(n.date)}</time>{n.archived && <span class="kid-news__archived">Archived copy</span>}</span>
+                {n.href ? (
+                  <a class="kid-news__link" href={n.href} target="_blank" rel="noopener noreferrer">{n.title}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></a>
+                ) : (
+                  <span class="kid-news__link">{n.title}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <a class="kid-news__all" href="/publicity/">All press coverage</a>
         </div>
       </section>
     )}
@@ -4571,6 +4603,36 @@ const planOrientation = (() => {
     height: auto;
     object-fit: contain;
   }
+
+  /* ═══ In the News ═══════════ */
+  .kid-news {
+    padding-block: clamp(64px, 10vw, 96px);
+    background: var(--c-white);
+    border-top: 1px solid var(--c-border);
+  }
+  .kid-news__title {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 3.4vw, 2.4rem);
+    font-weight: 700;
+    color: var(--c-dark);
+    text-align: center;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin: 0 0 clamp(28px, 5vw, 40px);
+  }
+  .kid-news__list { list-style: none; margin: 0 auto; padding: 0; max-width: 720px; }
+  .kid-news__item { padding: 18px 0; border-top: 1px solid var(--c-border); display: grid; gap: 6px; }
+  .kid-news__item:last-child { border-bottom: 1px solid var(--c-border); }
+  .kid-news__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 0.75rem; color: var(--c-text-light, #6D6E74); }
+  .kid-news__outlet { font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-dark); }
+  .kid-news__archived { padding: 1px 8px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--c-border); font-size: 0.68rem; }
+  .kid-news__link { font-family: var(--font-display); font-size: clamp(1.1rem, 2.2vw, 1.3rem); font-weight: 600; line-height: 1.3; color: var(--c-dark); text-decoration: none; }
+  a.kid-news__link svg { display: inline-block; vertical-align: -2px; margin-left: 6px; opacity: 0.5; transition: transform 0.2s ease, opacity 0.2s ease; }
+  a.kid-news__link:hover { text-decoration: underline; text-decoration-color: var(--c-yellow, #FFD500); text-decoration-thickness: 3px; text-underline-offset: 4px; }
+  a.kid-news__link:hover svg { opacity: 1; transform: translate(2px, -2px); }
+  a.kid-news__link:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 4px; border-radius: 2px; }
+  .kid-news__all { display: block; width: fit-content; margin: 24px auto 0; font-size: 0.9rem; font-weight: 600; color: var(--c-dark); text-decoration: underline; text-decoration-color: var(--c-yellow, #FFD500); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  @media (prefers-reduced-motion: reduce) { a.kid-news__link svg { transition: none; } }
 
   /* ═══ More Stories — Kids Strip ═══════════ */
   .kids-strip {

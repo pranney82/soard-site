@@ -34,7 +34,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
 
 // region: the part of the page compared; skip: parts that list other items
 const TYPES = {
-  kid: { dir: 'kids', path: (s) => `/kids/${s}/`, region: 'article.kid-profile', skip: ['.kids-strip'], include: (k) => k.publishStatus !== 'draft',
+  kid: { dir: 'kids', path: (s) => `/kids/${s}/`, region: 'article.kid-profile', skip: ['.kids-strip', '.kid-news'], include: (k) => k.publishStatus !== 'draft',
     parts: {
       full: ['section.hero .hero__portrait .hero__badge--building', 'section.hero .hero__accent', 'section.hero .hero__cta',
         'section.hero .hero__reveal-link', '#reveal-modal [role="dialog"]', '#chapter-nav .chapter-nav__link[data-target="chapter-partners"]',

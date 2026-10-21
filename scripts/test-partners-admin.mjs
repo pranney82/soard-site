@@ -21,7 +21,7 @@
  *     pages to it, kid pages that show an older logo, history and restore,
  *     merging a save made meanwhile, opening a kid page, Preview
  *   - Community partners (hidden section note, reorder, editor, logo) and
- *     Media logos (strip, reorder, dialog, press stories using one)
+ *     (Media logos moved to Press → Outlets: scripts/test-press-admin.mjs covers them)
  *   - phone: Select mode, nothing past the content column, 44px targets
  * Screenshots land in test-results/partners-admin/. Exits non-zero on any
  * failure or console error.
@@ -364,7 +364,7 @@ try {
     const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false });
     await goPartners(page);
     const tabs = await $text(page, '.hub-tab');
-    ok(tabs[0] === `Partners${fxPartners.length}` && tabs[1] === `Community partners${Object.keys(FX.communityPartners).length}` && tabs[2] === `Media logos${Object.keys(FX.medialogos).length}`, `tab counts (${tabs.join(' | ')})`);
+    ok(tabs.length === 2 && tabs[0] === `Partners${fxPartners.length}` && tabs[1] === `Community partners${Object.keys(FX.communityPartners).length}`, `tab counts (${tabs.join(' | ')})`);
     for (const l of PS.LEVELS) {
       const names = await rowNames(page, l.id);
       ok(JSON.stringify(names) === JSON.stringify(fxSections[l.id].map((p) => p.name.trim())), `${l.label}: ${names.length} rows in page order`);
@@ -866,65 +866,9 @@ try {
     await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
     await page.waitForSelector('.pt-row--cp');
 
-    // ── Media logos ──
-    await goPartners(page, 'Media logos');
-    await page.waitForSelector('.pt-tile--media');
-    ok((await page.$$eval('.ml-strip__row img', (i) => i.length)) === Object.keys(FX.medialogos).length, 'Media: the strip as visitors see it');
-    const used = Object.values(FX.press).filter((p) => p.outletLogo === 'ajc').length;
-    ok(new RegExp(`Used by ${used} press stor`).test(await page.evaluate(() => [...document.querySelectorAll('.pt-tile--media')].find((t) => t.textContent.includes('Atlanta Journal'))?.textContent || '')), `Media: the AJC logo is used by ${used} press stories`);
-    await page.focus('.pt-tile--media .pt-tile__grip');
-    await page.keyboard.press('Space');
-    await sleep(150);
-    await page.keyboard.press('ArrowRight');
-    await sleep(250);
-    await page.keyboard.press('Space');
-    await sleep(600);
-    ok(lastCall(api, '/api/reorder-content')?.body.collection === 'medialogos', 'Media: reorder by keyboard in one request');
-    await shot(page, 'desk-media');
-    await axeCheck(page, 'media logos');
-    await page.evaluate(() => [...document.querySelectorAll('.pt-tile--media .pt-tile__open')].find((b) => b.textContent.includes('Atlanta Journal'))?.click());
-    await page.waitForSelector('#ml-name');
-    ok(/Press stories using it/.test(await page.$eval('.kd-dialog', (e) => e.textContent)), 'the media logo dialog lists the press stories using it');
-    await axeCheck(page, 'media logo dialog');
-    await clickText(page, '.kd-dialog__foot .btn', 'Delete');
-    await page.waitForSelector('.pt-del__lead');
-    ok(/press stor(y|ies) use/.test(await page.$eval('.pt-del__lead', (e) => e.textContent)), 'deleting warns the press stories would lose their picture fallback');
-    await clickText(page, '.kd-dialog__foot .btn', 'Cancel');
-    await sleep(200);
-    await page.keyboard.press('Escape');
-    await clickText(page, '.ppl-head__actions .btn', '+ Add media logo');
-    await page.waitForSelector('#ml-name');
-    await clickText(page, '.kd-dialog__foot .btn', 'Add logo');
-    ok(/Add the outlet’s logo/.test(await page.$eval('.kd-dialog', (e) => e.textContent)), 'a new media logo needs its logo');
-    await typeInto(page, '#ml-name', 'WABE');
-    await (await page.$('.kd-dialog input[type="file"]')).uploadFile(UPLOAD);
-    await sleep(600);
-    await clickText(page, '.kd-dialog__foot .btn', 'Add logo');
-    await page.waitForFunction(() => !document.querySelector('#ml-name'), { timeout: 5000 }).catch(() => {});
-    ok(api.st.medialogos.wabe?.logo && api.st.medialogos.wabe.order > 0, 'WABE added at the end of the strip');
-    await page.waitForSelector('.pt-tile--media');
-    await page.evaluate(() => [...document.querySelectorAll('.pt-tile--media .pt-tile__open')].find((b) => b.textContent.includes('WABE'))?.click());
-    await page.waitForSelector('#ml-name');
-    await page.waitForFunction(() => [...document.querySelectorAll('.kd-dialog__foot .btn')].some((b) => b.textContent.includes('History')), { timeout: 5000 }).catch(() => {});
-    await clickText(page, '.kd-dialog__foot .btn', 'History');
-    await page.waitForSelector('.kd-hist__item', { timeout: 5000 }).catch(() => {});
-    ok((await page.$$('.kd-hist__item')).length >= 1, 'a media logo has its history too');
-    await clickText(page, '.kd-dialog__foot .btn', 'Close');
-    await sleep(200);
-    await page.keyboard.press('Escape');
-    await sleep(200);
-    // Deleting a logo press stories use: move them to another outlet first
-    await page.evaluate(() => [...document.querySelectorAll('.pt-tile--media .pt-tile__open')].find((b) => b.textContent.includes('Atlanta Journal'))?.click());
-    await page.waitForSelector('#ml-name');
-    await clickText(page, '.kd-dialog__foot .btn', 'Delete');
-    await page.waitForSelector('.pt-move');
-    await page.select('.pt-move__select', '11alive');
-    await clickText(page, '.kd-dialog__foot .btn', 'Delete media logo');
-    await page.waitForFunction(() => !document.querySelector('.pt-move'), { timeout: 6000 }).catch(() => {});
-    const ajcStories = Object.values(FX.press).filter((x) => x.outletLogo === 'ajc').map((x) => x.slug);
-    ok(!api.st.medialogos.ajc && ajcStories.every((sl) => api.st.press[sl].outletLogo === '11alive'), `AJC deleted; its ${ajcStories.length} press stories now use the 11Alive logo`);
+    // Media logos are outlets now, in Press → Outlets (scripts/test-press-admin.mjs)
 
-    // From anywhere: the command palette adds a partner, or a media logo, in their dialogs
+    // From anywhere: the command palette adds a partner in its dialog
     const palette = async (q) => {
       await page.keyboard.down('Meta'); await page.keyboard.press('KeyK'); await page.keyboard.up('Meta');
       await page.waitForSelector('.cmd-palette-input');
@@ -938,10 +882,6 @@ try {
     await page.keyboard.press('Escape');
     await sleep(200);
     ok(!(await page.$('#pt-new-name')), 'Escape closes it');
-    await palette('Add New Media Logo');
-    await page.waitForSelector('#ml-name', { timeout: 5000 }).catch(() => {});
-    ok(await page.evaluate(dialogTitle) === 'Add a media logo', 'command palette: Add New Media Logo opens its dialog');
-    await page.keyboard.press('Escape');
     ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
   }
@@ -1051,17 +991,12 @@ try {
     ok(sheet, 'phone: Add a partner fits the screen');
     await shot(page, 'phone-create', { grow: false });
     await page.keyboard.press('Escape');
-    // Community and media
+    // Community partners
     await clickText(page, '.hub-tab', 'Community partners');
     await page.waitForSelector('.pt-row--cp');
     const over4 = await overflow(page);
     ok(!over4.length, `phone community: nothing past the content column${over4.length ? ` (${over4.join(', ')})` : ''}`);
     await shot(page, 'phone-community');
-    await clickText(page, '.hub-tab', 'Media logos');
-    await page.waitForSelector('.pt-tile--media');
-    const over5 = await overflow(page);
-    ok(!over5.length, `phone media: nothing past the content column${over5.length ? ` (${over5.join(', ')})` : ''}`);
-    await shot(page, 'phone-media');
     ok(callsTo(api, '/api/delete-image') === 0, 'nothing deletes a logo file');
     ok(errors.length === 0, `no console errors on the phone${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
