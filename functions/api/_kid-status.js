@@ -103,11 +103,15 @@ async function pave(grantKey, query, fetchImpl) {
   return res.json();
 }
 
-/** One job, or every SOARD job (open and closed), with Status and the Reveal task */
+/**
+ * One job, or every SOARD job (open and closed), with Status and the Reveal
+ * task. A job asked for by id counts only when it's SOARD's (the org-wide
+ * list is SOARD's by how it's asked for).
+ */
 export async function fetchJobs(grantKey, { jobId = null, fetchImpl = fetch } = {}) {
   if (jobId) {
-    const body = await pave(grantKey, { job: { $: { id: jobId }, ...JOB_FIELDS } }, fetchImpl);
-    return body?.job ? [body.job] : [];
+    const body = await pave(grantKey, { job: { $: { id: jobId }, ...JOB_FIELDS, organization: { id: {} } } }, fetchImpl);
+    return body?.job && body.job.organization?.id === SOARD_ORG_ID ? [body.job] : [];
   }
   const jobs = [];
   let page = null;

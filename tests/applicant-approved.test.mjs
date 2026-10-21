@@ -12,7 +12,7 @@ import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
 import { handleWorkflowCall, runNotifications, pauseEmails, resolveHeld, resumeEmails } from '../functions/api/_applicant-notify.js';
 import {
-  runApprovals, approvalsStatus, siteNameOf, childCountOf, jobNameFor, ageOn, cleanYear, freeSlug, existingJob, newKidRecord,
+  runApprovals, approvalsStatus, siteNameOf, cleanName, childCountOf, jobNameFor, ageOn, cleanYear, freeSlug, existingJob, newKidRecord,
   JOB_FIELD_TYPES, JOB_START_STATUS,
 } from '../functions/api/_applicant-approved.js';
 import { FIELD_STATUS as JOB_STATUS, linkJobs, syncKidStatuses } from '../functions/api/_kid-status.js';
@@ -139,6 +139,39 @@ test('the name on the site: first names only, never the last name', () => {
   assert.equal(childCountOf('Max'), 1);
 });
 
+test('a typed first name reaches the public page only as letters, spaces, apostrophes, hyphens and periods', () => {
+  // Names from every alphabet, accents (composed or not) and the punctuation names use stay
+  assert.equal(siteNameOf('X', 'José'), 'José');
+  assert.equal(siteNameOf('X', 'Jose\u0301'), 'Jos\u00e9', 'a combining accent is kept (and composed)');
+  assert.equal(siteNameOf('X', "D'Andre"), "D'Andre");
+  assert.equal(siteNameOf('X', 'Mary-Kate'), 'Mary-Kate');
+  assert.equal(siteNameOf('X', 'J.J.'), 'J.J.');
+  assert.equal(siteNameOf('X', 'Zoë Anne'), 'Zoë Anne');
+  assert.equal(siteNameOf('X', '美咲'), '美咲');
+  // Markup and script breakouts don't survive, whatever's typed
+  assert.equal(siteNameOf('X', '<script>alert(1)</script>'), 'script alert script');
+  for (const typed of ['Ava</script><img src=x onerror=alert(1)>', 'Ava "\\u003c/script\\u003e', "Ava';alert`1`//", 'Ava{{7*7}}${1}']) {
+    const name = siteNameOf('X', typed);
+    assert.match(name, /^Ava\b/, typed);
+    assert.doesNotMatch(name, /[<>"=()/\\;`{}$*\d]/, typed);
+  }
+  assert.equal(siteNameOf('X', '  Ava   🎉  '), 'Ava', 'emoji and runs of spaces go');
+  assert.equal(siteNameOf('X', 'Ava\n\tLee'), 'Ava Lee');
+  // Twins typed as one answer: the " & " is the site's own
+  assert.equal(siteNameOf('X', 'Remi and Nico'), 'Remi & Nico');
+  assert.equal(siteNameOf('X', 'Remi <b>&</b> Nico'), 'Remi b & b Nico');
+  // Nothing usable typed: the account name decides
+  assert.equal(siteNameOf('Ava Stone', '<>{}'), 'Ava');
+  // Capped: 30 characters a name, 60 for the whole
+  assert.equal(siteNameOf('X', 'A'.repeat(80)), 'A'.repeat(30));
+  assert.ok(siteNameOf('X', `${'A'.repeat(29)} & ${'B'.repeat(29)} & ${'C'.repeat(29)}`).length <= 60);
+  assert.doesNotMatch(siteNameOf('X', `${'A'.repeat(29)} & ${'B'.repeat(29)} & C`), /[&,\s]$/, 'never ends on a separator');
+  // The account name's own path is cleaned too (it can come from the form)
+  assert.doesNotMatch(siteNameOf('<i>Ava</i> Stone'), /[<>/]/);
+  assert.equal(siteNameOf('Declan “<b>” Noel'), 'Declan');
+  assert.equal(cleanName(null), '');
+});
+
 test('the job’s name: "Name (Year)", inside JobTread’s 30 characters', () => {
   assert.equal(jobNameFor('Remi & Nico Powell', 2026), 'Remi & Nico Powell (2026)', 'the Zap’s format');
   assert.equal(jobNameFor('Oakley Faye Xiu Ping Roberson', 2027), 'Oakley Roberson (2027)', 'middle names go first');
@@ -258,6 +291,18 @@ test('a family approved before this started is never touched', async () => {
   // That first run happened at T0 - 60 min (beforeEach); the approval is older
   await sweep(...minutes(0, 60, 10));
   assert.equal(jt.state.jobCalls.length, 0);
+});
+
+test('a forged wake-up for a family approved long ago makes no job, no profile and no Slack post', async () => {
+  // Approved in a past season, no applicant_notify row: the old hole was a body saying "previously Applied"
+  const a = family('Finley Hart', 'Approved');
+  const r = await handleWorkflowCall(env, { accountId: a.id, previousStatus: 'Applied', nextStatus: 'Approved', status: 'Approved' }, { fetchImpl, now: T0 });
+  assert.equal(r.verified, false);
+  await sweep(...minutes(1, 120, 4));
+  assert.equal(a.comments.filter(c => c.name === 'Application Decision').length, 0, 'no email');
+  assert.equal(jt.state.jobCalls.length, 0, 'no JobTread job');
+  assert.equal((await kids()).length, 0, 'no kid draft (it would be committed to the public repo)');
+  assert.equal(news().length, 0, 'nothing in Slack');
 });
 
 // ─── What it reuses and what it can't do yet ────────────────────────

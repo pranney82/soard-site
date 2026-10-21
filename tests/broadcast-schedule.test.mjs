@@ -237,6 +237,34 @@ test('sync: two JobTread wake-ups at once plan the reveal once (one save-the-dat
   assert.equal(emails.length, 1);
 });
 
+test('public wake-ups check JobTread at most once a minute site-wide; one turned away is owed to the next heartbeat', async () => {
+  let reads = 0;
+  const counted = async (url, init) => { reads++; return jtFetch(url, init); };
+  const t0 = Date.now();
+  const wake = (now) => syncBroadcastSchedule(env, { fetchImpl: counted, wake: true, now });
+  const beat = (now) => syncBroadcastSchedule(env, { fetchImpl: counted, now });
+  assert.equal((await wake(t0)).action, 'schedule', 'the first wake-up checks at once');
+  assert.equal(reads, 1);
+  // A flood of wake-ups inside the minute: no JobTread reads, no second save-the-date
+  for (let i = 1; i <= 20; i++) assert.equal((await wake(t0 + i * 1000)).action, 'skipped');
+  assert.equal(reads, 1);
+  assert.equal(emails.length, 1);
+  // The change a turned-away wake-up was about: the reveal moved
+  jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(5, '18:00') })];
+  assert.equal((await beat(t0 + 30_000)).action, 'skipped', 'inside the minute, even the owed check waits');
+  assert.equal(reads, 1);
+  const owed = await beat(t0 + 61_000);
+  assert.equal(owed.action, 'update', 'the next heartbeat after the minute runs the owed check, well before its usual 5 minutes');
+  assert.equal(reads, 2);
+  assert.equal((await b.readState(env.DB)).scheduledAt, at(5, '18:00'));
+  // Paid: heartbeats go back to every 5 minutes
+  assert.equal((await beat(t0 + 120_000)).action, 'skipped');
+  assert.equal(reads, 2);
+  // Staff (force) aren't held to the wake-up minute
+  assert.notEqual((await syncBroadcastSchedule(env, { fetchImpl: counted, force: true, now: t0 + 121_000 })).action, 'skipped');
+  assert.equal(reads, 3);
+});
+
 test('tracker: each upcoming reveal gets its broadcast, reminder sends, signups and reveal-check comment', async () => {
   await sync();
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS reveal_nudges (job_id TEXT PRIMARY KEY, issues_key TEXT, message TEXT, posted_at INTEGER, updated_at TEXT)').run();

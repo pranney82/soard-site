@@ -136,7 +136,7 @@ const hostStyle = [`--faq-accent: ${accent}`, `--faq-accent-tint: ${accentTint}`
         name: faq.question,
         acceptedAnswer: { '@type': 'Answer', text: faq.answer },
       })),
-    })} />
+    }).replace(/</g, '\\u003c')} />
   )}
 </faq-accordion>
 

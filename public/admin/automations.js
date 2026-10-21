@@ -87,7 +87,9 @@ const lastSend = (f, channel) => {
   }
   return last;
 };
-const phoneEvent = (e) => (e ? e.replace('live_input.', '').replace(/_/g, ' ') : '');
+// Stream's three events in words; anything else stored (Cloudflare's test, an old record) reads as ''
+const PHONE_EVENTS = { 'live_input.connected': 'connected', 'live_input.disconnected': 'disconnected', 'live_input.errored': 'errored' };
+const phoneEvent = (e) => (typeof e === 'string' && Object.hasOwn(PHONE_EVENTS, e) ? PHONE_EVENTS[e] : '');
 
 const JT_INVITE_HOOK = 'JobTread workflow → POST /api/reveal-invites';
 
@@ -384,7 +386,7 @@ const MAP = { t: 'SOARD', children: [
             if (!b) return null;
             if (b.inputEnabled === null) return ATTN(`No live input is set up. Create one in ${SETTINGS}.`);
             if (!b.inputEnabled) return OFF(`The live input is switched off in ${SETTINGS}.`);
-            return ON(f.health?.webhookEvent ? `Ready. The phone last ${phoneEvent(f.health.webhookEvent)}` : 'Ready for the phone.', f.health?.webhookAt);
+            return ON(phoneEvent(f.health?.webhookEvent) ? `Ready. The phone last ${phoneEvent(f.health.webhookEvent)}` : 'Ready for the phone.', f.health?.webhookAt);
           } },
         { t: 'Simulcast to Facebook', s: 'live', k: 'event',
           when: 'The stream arrives at Stream.',
@@ -410,9 +412,14 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Stream event webhook', s: 'live', k: 'event',
           when: 'Stream reports the live input connected, disconnected or errored.',
-          does: 'Forces an immediate update and pushes it to every open page. An error sends an alert.',
+          does: 'Forces an immediate update and pushes it to every open page. An error sends an alert. Both need the webhook’s secret to match STREAM_WEBHOOK_SECRET; without it, a call is only a hint to check Stream.',
           touches: ['Cloudflare Stream', 'Cloudflare Notifications'], where: 'functions/api/stream-webhook.js',
-          live: (f) => (!f.health ? null : { why: f.health.webhookAt ? `Last event: ${phoneEvent(f.health.webhookEvent)}.` : 'No events received yet.', last: f.health.webhookAt }) },
+          live: (f) => {
+            if (!f.health) return null;
+            if (f.env && 'streamWebhookSecret' in f.env && !f.env.streamWebhookSecret) return ATTN('No STREAM_WEBHOOK_SECRET in Cloudflare, so Stream’s calls can’t be told from anyone else’s and send no alerts. Give the webhook destination a secret and add the same value as STREAM_WEBHOOK_SECRET.', f.health.webhookAt);
+            const ev = phoneEvent(f.health.webhookEvent);
+            return { why: f.health.webhookAt ? (ev ? `Last event: ${ev}.` : 'Last call was a test.') : 'No events received yet.', last: f.health.webhookAt };
+          } },
         { t: 'Heartbeat', s: 'live', k: 'schedule',
           when: 'Every 8 seconds while live, every 20 seconds in the half hour before a start, every minute otherwise.',
           does: 'The live hub wakes the site, which checks Stream and moves the reveal along: scheduled → armed → live → ending → replay.',

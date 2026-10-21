@@ -29,6 +29,12 @@
  * gifts or failing its signature) email peter@soardcharity.com and
  * ALERT_EMAILS once a day each. Gifts themselves only ever go to Slack.
  *
+ * Anyone can send a bad signature, so one alone never emails anybody: a
+ * refused delivery is noted at most every REJECT_NOTE_EVERY_MS (one D1 read
+ * per request, not a write), with the payment id it named, and the catch-up
+ * check asks Zeffy's API whether that payment is real. Only a real one (Zeffy
+ * itself signing with a secret the site doesn't have) means the secret changed.
+ *
  * Env: ZEFFY_WEBHOOK_SECRET (whsec_…), ZEFFY_API_KEY (the catch-up check),
  * SLACK_BOT_TOKEN (the site's Slack app; chat:write.public lets it post in
  * #team-everyone without joining). Posts go by channel id, so a rename
@@ -48,6 +54,7 @@ const SWEEP_WINDOW_S = 2 * 24 * 60 * 60;
 const SWEEP_GRACE_S = 10 * 60; // the webhook's head start
 const SWEEP_MAX_PAGES = 5;
 const CLAIM_STALE_MS = 5 * MIN; // a claim this old means its worker died mid-post
+const REJECT_NOTE_EVERY_MS = 10 * MIN; // refused deliveries noted at most this often
 const GIVE_UP_MS = 3 * 24 * 60 * MIN; // as long as Zeffy itself retries
 const ALERT_EVERY_MS = 24 * 60 * MIN;
 const FAILING_ALERT_AFTER_MS = 30 * MIN;
@@ -254,6 +261,24 @@ export async function handlePayment(env, p, { via = 'webhook', now = Date.now() 
 // ─── The webhook ────────────────────────────────────────────────────
 
 /**
+ * A delivery refused for its signature, kept for the admin and the catch-up
+ * check with the payment id it named. A note from the last 10 minutes stands
+ * (unless it named no payment and this one does), so a flood of forged
+ * requests costs a read each and writes nothing.
+ */
+async function noteRejected(env, raw, why, now) {
+  let paymentId = null;
+  try {
+    const event = JSON.parse(new TextDecoder().decode(raw));
+    const id = String(event?.data?.id || '');
+    if (event?.type === 'payment.completed' && PAYMENT_ID.test(id)) paymentId = id;
+  } catch { /* not JSON: nothing to ask Zeffy about later */ }
+  const last = (await readZeffyConfig(env.DB)).lastRejected;
+  if (last && now - Date.parse(last.at) < REJECT_NOTE_EVERY_MS && (last.paymentId || !paymentId)) return;
+  await writeZeffyConfig(env.DB, { lastRejected: { at: new Date(now).toISOString(), why, paymentId } });
+}
+
+/**
  * POST /api/zeffy-webhook. Answers 2xx once the gift is handled, so Zeffy
  * stops; 500 when the post failed, so Zeffy tries again (the catch-up check
  * retries too, and the claim keeps it to one post); 400 for a bad signature;
@@ -266,10 +291,8 @@ export async function handleWebhook(env, request, { now = Date.now(), selfTest =
   if (raw.length > MAX_BODY) return Response.json({ ok: false, error: 'too large' }, { status: 413 });
   const sig = await verifySignature(env.ZEFFY_WEBHOOK_SECRET, request.headers.get('Zeffy-Signature'), raw, now / 1000);
   if (!sig.ok) {
-    // Remembered so the admin (and the next catch-up check) can say why
-    if (request.headers.get('Zeffy-Signature')) {
-      await writeZeffyConfig(env.DB, { lastRejected: { at: new Date(now).toISOString(), why: sig.why } }).catch(() => {});
-    }
+    // Remembered (sparingly) so the admin and the next catch-up check can say why
+    if (request.headers.get('Zeffy-Signature')) await noteRejected(env, raw, sig.why, now).catch(() => {});
     return Response.json({ ok: false, error: sig.why }, { status: 400 });
   }
   let event;
@@ -316,6 +339,26 @@ export async function listPayments(env, { from, to }, fetchImpl = fetch) {
   return out;
 }
 
+/**
+ * Did a refused delivery come from Zeffy? Yes when the payment it named is
+ * one Zeffy's API knows (in this check's list, or looked up by id); no when
+ * Zeffy says there's no such payment, or the delivery named none; null when
+ * Zeffy can't be asked right now (no key, or an error), to try next time.
+ * The answer is kept on the note, so each refusal is looked up once.
+ */
+async function rejectedWasZeffy(env, rejected, listed, fetchImpl) {
+  if (typeof rejected.real === 'boolean') return rejected.real;
+  if (!rejected.paymentId || !PAYMENT_ID.test(rejected.paymentId)) return false;
+  if (listed.has(rejected.paymentId)) return true;
+  if (!env.ZEFFY_API_KEY) return null;
+  try {
+    const p = await zeffyGet(env, `/payments/${encodeURIComponent(rejected.paymentId)}`, {}, fetchImpl);
+    return String(p?.id || '') === rejected.paymentId;
+  } catch (e) {
+    return e.status === 404 ? false : null;
+  }
+}
+
 /** A gift-alert problem, as the email the people who look after this get */
 export function zeffyAlertEmail({ title, detail, fix }) {
   return {
@@ -354,6 +397,7 @@ export async function runSweep(env, { now = Date.now(), fetchImpl = fetch } = {}
     const since = cfg.since || iso;
     const sinceS = Math.floor(Date.parse(since) / 1000);
     const nowS = Math.floor(now / 1000);
+    const listed = new Set(); // payment ids Zeffy's API just named: real payments
 
     if (env.ZEFFY_API_KEY) {
       const from = Math.max(sinceS, nowS - SWEEP_WINDOW_S);
@@ -362,6 +406,7 @@ export async function runSweep(env, { now = Date.now(), fetchImpl = fetch } = {}
         try {
           const payments = await listPayments(env, { from, to }, fetchImpl);
           summary.checked = payments.length;
+          for (const p of payments) listed.add(String(p.id || ''));
           const known = new Set();
           for (let i = 0; i < payments.length; i += 50) {
             const ids = payments.slice(i, i + 50).map((p) => String(p.id || '')).filter((id) => PAYMENT_ID.test(id));
@@ -437,17 +482,25 @@ export async function runSweep(env, { now = Date.now(), fetchImpl = fetch } = {}
         fix: 'Check the site’s Slack app and SLACK_BOT_TOKEN in Cloudflare, then look the gift up in Zeffy.',
       }, now);
     }
+    // A refused delivery, and no good one since: only worth an email when it
+    // named a payment Zeffy really has (anyone can send a bad signature)
     const rejected = next.lastRejected;
+    let checkedRejected = null;
     if (rejected && now - Date.parse(rejected.at) < SWEEP_EVERY_MS * 2 && !(Date.parse(next.lastWebhookAt || 0) > Date.parse(rejected.at))) {
-      await alertOnce(env, next, 'signature', {
-        title: 'Zeffy’s webhook is being refused',
-        detail: `A delivery from Zeffy was turned away: ${rejected.why}.`,
-        fix: 'Copy the signing secret from Zeffy → Settings → Integrations → Webhook into Cloudflare as ZEFFY_WEBHOOK_SECRET.',
-      }, now);
+      const real = await rejectedWasZeffy(env, rejected, listed, fetchImpl);
+      if (real != null && rejected.real !== real) checkedRejected = { ...rejected, real };
+      if (real) {
+        await alertOnce(env, next, 'signature', {
+          title: 'Zeffy’s webhook is being refused',
+          detail: `A delivery from Zeffy about a real gift was turned away: ${rejected.why}.`,
+          fix: 'Copy the signing secret from Zeffy → Settings → Integrations → Webhook into Cloudflare as ZEFFY_WEBHOOK_SECRET.',
+        }, now);
+      }
     }
     await writeZeffyConfig(env.DB, {
       since, alerted: next.alerted || {}, lastSweep: summary,
       ...(summary.missed ? { lastMissed: { at: iso, count: summary.missed } } : {}),
+      ...(checkedRejected ? { lastRejected: checkedRejected } : {}),
     });
   } catch (e) {
     summary.error = e.message;

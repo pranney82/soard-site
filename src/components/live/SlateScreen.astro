@@ -91,7 +91,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     @font-face { font-family: 'Outfit'; font-style: normal; font-weight: 100 900; font-display: block; src: url('/fonts/outfit-latin-variable.woff2') format('woff2'); }
   </style>
 </head>
-<body data-o="landscape" data-state="soon" data-partners={partners.length ? 'yes' : 'no'}>
+<body data-o="landscape" data-state="soon" data-partners={partners.length ? 'yes' : 'no'} data-kid={kid?.slug || ''} data-music={MUSIC_URL}>
   <div class="canvas" id="canvas">
     <div class="glow" aria-hidden="true"></div>
 
@@ -143,7 +143,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
           <div class="marquee-track" style={`--n:${band.length}`}>
             {[...band, ...band].map((p, i) => (
               <span class="chip" aria-hidden={i >= band.length ? 'true' : undefined}>
-                <img src={cfRaw(p.url, 'trim=border,h=160,fit=scale-down,q=90')} alt={i < band.length ? p.name : ''} loading="eager" onerror="this.parentElement.remove()" />
+                <img src={cfRaw(p.url, 'trim=border,h=160,fit=scale-down,q=90')} alt={i < band.length ? p.name : ''} loading="eager" data-img-fallback=".chip" />
               </span>
             ))}
           </div>
@@ -152,10 +152,6 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     )}
   </div>
 
-  <script is:inline define:vars={{ slug: kid?.slug || '', music: MUSIC_URL }}>
-    window.__SLATE_KID__ = slug;
-    window.__SLATE_MUSIC__ = music;
-  </script>
   <script>
     import { getLiveClient, type LiveState } from '../../utils/live-client';
     import { cfRaw } from '../../utils/cf-image';
@@ -164,10 +160,20 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     const canvas = document.getElementById('canvas')!;
     const photo = document.getElementById('photo') as HTMLImageElement;
     const params = new URLSearchParams(location.search);
-    const kidSlug = (window as any).__SLATE_KID__ as string;
+    // The kid and the track ride on <body> (no inline script: the CSP allows those only by hash)
+    const kidSlug = body.dataset.kid || '';
     if (params.get('still') === '1') body.classList.add('still');
     const tv = params.get('tv') === '1';
     if (tv) body.classList.add('tv');
+
+    // ── A partner logo that fails to load drops out of the band ──
+    // A listener, not onerror="" (the CSP blocks inline handlers). This runs after
+    // parsing, so a logo that already failed is found by decode() rejecting.
+    document.querySelectorAll<HTMLImageElement>('img[data-img-fallback]').forEach((img) => {
+      const drop = () => img.closest(img.dataset.imgFallback || '.chip')?.remove();
+      img.addEventListener('error', drop);
+      if (img.complete) img.decode().catch(() => { if (!img.naturalWidth) drop(); });
+    });
 
     // ── Orientation + fit: fixed canvas scaled to the viewport ──
     function fit() {
@@ -241,7 +247,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     // Desktop browsers block sound without a click, which is fine: a TV at the house stays quiet.
     const musicParam = params.get('music');
     const embed = params.get('embed') === '1'; // inside the site's video frame: never makes sound
-    const musicSrc = tv || embed || musicParam === '0' ? null : (musicParam && /^https:\/\//.test(musicParam) ? musicParam : (window as any).__SLATE_MUSIC__);
+    const musicSrc = tv || embed || musicParam === '0' ? null : (musicParam && /^https:\/\//.test(musicParam) ? musicParam : body.dataset.music || null);
     let audio: HTMLAudioElement | null = null; // created on first play, so a page about to jump never fetches the track
     let fadeTimer: ReturnType<typeof setInterval> | undefined;
     const TARGET = 0.8;

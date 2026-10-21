@@ -57,7 +57,8 @@ async function copyImage(env, fromId, toId, fetchImpl) {
 }
 
 export async function rename(env, { collection, from, to } = {}, userEmail = 'unknown', fetchImpl = fetch) {
-  const cfg = RENAMABLE[collection];
+  // Own keys only: "constructor" or "__proto__" must not find something on Object.prototype
+  const cfg = typeof collection === 'string' && Object.hasOwn(RENAMABLE, collection) ? RENAMABLE[collection] : null;
   if (!cfg) return { status: 403, body: { success: false, error: 'This item’s web address can’t be changed here' } };
   if (!SLUG_RE.test(from || '') || !SLUG_RE.test(to || '') || to.length > 80) {
     return { status: 400, body: { success: false, error: 'Use lowercase letters, numbers and single hyphens, like jane-smith' } };

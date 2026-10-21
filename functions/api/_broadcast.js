@@ -7,6 +7,17 @@
  * Everything that changes state funnels through runTick() or adminAction()
  * so side effects fire exactly once.
  *
+ * Concurrency: ticks arrive from the hub, webhooks, visitors and the admin,
+ * on any number of isolates. Three guards keep them honest. A D1 lease lets
+ * one tick (or admin command) run at a time; it lasts 15 s and a long tick
+ * keeps extending it. Every state write bumps state.rev, and a tick saves
+ * only over the copy it read (a phase change is saved before its side
+ * effects run). Each one-time side effect takes a claim in D1
+ * (broadcast_claims, broadcast_sends), so even two ticks that slip past the
+ * lease can't post to Facebook or alert staff twice, and the go-live and
+ * ended effects are retried on later ticks until claimed, so a tick cut off
+ * after saving the phase change loses none of them.
+ *
  * Phases
  *   idle       nothing planned
  *   scheduled  a reveal has a date; countdown + reminders are armed
@@ -69,11 +80,19 @@ const KIT_LIVE_STEADY_MS = 3 * 60 * 1000;
 const KIT_LIVE_LATE_MS = 30 * 60 * 1000;
 // How often to look for clues about which kid an unscheduled reveal is for.
 const KID_CLUE_INTERVAL_MS = 60 * 1000;
+// Going live and ending set things off (the Facebook post, the staff alert, the "we're live"
+// reminders, the health report). Each is retried on every tick for this long until it has
+// happened, so a tick cut off right after saving the phase change loses none of them. Past
+// that, a broadcast is left alone (it ended long ago, or predates the claims).
+const EFFECTS_RETRY_MS = 10 * 60 * 1000;
 const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_URL'];
 
 // Per-isolate throttles (cheap; D1 stamps back them up)
 let _lastTickAt = 0;
 let _lastTickResult = null;
+// A busy no-op is remembered only for slow callers (visitors), never the hub's heartbeat
+let _lastBusyAt = 0;
+let _lastBusyResult = null;
 let _lastLifecycleAt = 0;
 let _schemaReady = false;
 
@@ -115,6 +134,15 @@ const SCHEMA = [
     broadcast_id TEXT, type TEXT NOT NULL, meta TEXT, created_at TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_bevents ON broadcast_events(broadcast_id, type)`,
+  // One-time side effects of a broadcast (claimOnce): the Facebook live post, staff alerts, the replay's Kit draft
+  `CREATE TABLE IF NOT EXISTS broadcast_claims (
+    broadcast_id TEXT NOT NULL, key TEXT NOT NULL, result TEXT, created_at TEXT,
+    PRIMARY KEY (broadcast_id, key)
+  )`,
+  // The tick lease (acquireTickLease): who holds it, until when, and when the last tick started
+  `CREATE TABLE IF NOT EXISTS broadcast_locks (
+    name TEXT PRIMARY KEY, holder TEXT, expires_at INTEGER NOT NULL DEFAULT 0, started_at INTEGER NOT NULL DEFAULT 0
+  )`,
 ];
 
 export async function ensureSchema(DB) {
@@ -206,9 +234,118 @@ async function writeJson(DB, key, value) {
 export const readConfig = (DB) => readJson(DB, CONFIG_KEY, defaultConfig);
 export const writeConfig = (DB, c) => writeJson(DB, CONFIG_KEY, { ...c, updatedAt: nowIso() });
 export const readState = (DB) => readJson(DB, STATE_KEY, defaultState);
-export const writeState = (DB, s) => writeJson(DB, STATE_KEY, s);
 export const readHealth = (DB) => readJson(DB, HEALTH_KEY, defaultHealth);
-export const writeHealth = (DB, h) => writeJson(DB, HEALTH_KEY, h);
+
+// A field of the stored row, NULL when the row isn't JSON (the readers then fall back to defaults)
+const stored = (col, path) => `(CASE WHEN json_valid(${col}) THEN json_extract(${col}, '${path}') END)`;
+
+// The state JSON (?1) as written: rev set in SQL, and the banner click count
+// never rolled back for the same broadcast (countBannerClick bumps it in place)
+const stateData = (col, revSql) => `json_set(?1, '$.rev', ${revSql}, '$.clicks',
+  CASE WHEN ${stored(col, '$.broadcastId')} IS json_extract(?1, '$.broadcastId')
+    THEN MAX(COALESCE(${stored(col, '$.clicks')}, 0), COALESCE(json_extract(?1, '$.clicks'), 0))
+    ELSE COALESCE(json_extract(?1, '$.clicks'), 0) END)`;
+
+/**
+ * Save the state. Every write bumps state.rev in SQL, so a tick that read an
+ * older copy can tell it lost the race (writeStateIf). Admin commands use this
+ * one: they hold the tick lease, and what staff asked for wins.
+ */
+export async function writeState(DB, s) {
+  await DB.prepare(`INSERT INTO site_config (key, data, updated_at) VALUES (?2, json_set(?1, '$.rev', 1), ?3)
+    ON CONFLICT(key) DO UPDATE SET data = ${stateData('site_config.data', `COALESCE(${stored('site_config.data', '$.rev')}, 0) + 1`)}, updated_at = ?3`)
+    .bind(JSON.stringify(s), STATE_KEY, nowIso()).run();
+}
+
+/** Save `s` only if the stored state is still at `rev`. → true when saved (the stored rev is then rev + 1) */
+export async function writeStateIf(DB, s, rev) {
+  const r = await DB.prepare(`UPDATE site_config SET data = ${stateData('data', '?2 + 1')}, updated_at = ?3
+    WHERE key = ?4 AND COALESCE(${stored('data', '$.rev')}, 0) = ?2`)
+    .bind(JSON.stringify(s), rev, nowIso(), STATE_KEY).run();
+  if ((r?.meta?.changes || 0) > 0) return true;
+  if (rev) return false;
+  // Nothing stored yet: the first write wins
+  const ins = await DB.prepare(`INSERT OR IGNORE INTO site_config (key, data, updated_at) VALUES (?, json_set(?, '$.rev', 1), ?)`)
+    .bind(STATE_KEY, JSON.stringify(s), nowIso()).run();
+  return (ins?.meta?.changes || 0) > 0;
+}
+
+const sameJson = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/**
+ * Three-way merge for a tick that lost the race to save. `base` is the copy
+ * it read, `ours` what it wants to save, `theirs` what is stored now. Each key
+ * the tick changed goes over theirs, unless they changed it too (theirs
+ * wins). A different broadcast or phase on their side (cancel, end, reset, a
+ * new schedule) wins outright. → { state, dropped }
+ */
+export function mergeState(base, ours, theirs) {
+  if ((theirs.broadcastId ?? null) !== (base.broadcastId ?? null) || (theirs.phase || 'idle') !== (base.phase || 'idle')) {
+    return { state: theirs, dropped: true };
+  }
+  const out = { ...theirs };
+  for (const k of new Set([...Object.keys(base), ...Object.keys(ours)])) {
+    if (k === 'rev' || k === 'updatedAt' || sameJson(ours[k], base[k]) || !sameJson(theirs[k], base[k])) continue;
+    if (ours[k] === undefined) delete out[k];
+    else out[k] = ours[k];
+  }
+  return { state: out, dropped: false };
+}
+
+/**
+ * Save a tick's state over the copy it read (`base`, at `rev`), merging over
+ * anything written since (mergeState). → { state, dropped }: `state` is what
+ * is stored now, `dropped` when the tick's changes gave way entirely.
+ */
+async function commitState(DB, base, ours, rev) {
+  let next = ours;
+  let at = rev;
+  for (let i = 0; i < 3; i++) {
+    if (await writeStateIf(DB, next, at)) return { state: { ...next, rev: at + 1 }, dropped: false };
+    const theirs = await readState(DB);
+    const m = mergeState(base, ours, theirs);
+    if (m.dropped) return { state: theirs, dropped: true };
+    next = m.state;
+    at = Number(theirs.rev) || 0;
+  }
+  return { state: await readState(DB), dropped: true };
+}
+
+/**
+ * Count a click on the LIVE banner for `broadcastId`, in place (json_set), so
+ * a public click never rewrites the state record. Only while that broadcast
+ * is the current one and not idle.
+ */
+export async function countBannerClick(DB, broadcastId) {
+  await DB.prepare(`UPDATE site_config SET data = json_set(data, '$.clicks', COALESCE(json_extract(data, '$.clicks'), 0) + 1)
+    WHERE key = ? AND ${stored('data', '$.broadcastId')} = ? AND ${stored('data', '$.phase')} != 'idle'`)
+    .bind(STATE_KEY, broadcastId).run();
+}
+
+/**
+ * Save the health record. Its `webhook` entry belongs to /api/stream-webhook
+ * (noteWebhook), so the stored one is kept whatever this copy says: a tick
+ * that read health before a webhook arrived can't wipe it.
+ */
+export async function writeHealth(DB, h) {
+  await DB.prepare(`INSERT INTO site_config (key, data, updated_at) VALUES (?1, ?2, ?3)
+    ON CONFLICT(key) DO UPDATE SET data = CASE WHEN json_type(${stored('site_config.data', '$.webhook')}) = 'object'
+      THEN json_set(?2, '$.webhook', json(json_extract(site_config.data, '$.webhook'))) ELSE ?2 END, updated_at = ?3`)
+    .bind(HEALTH_KEY, JSON.stringify(h), nowIso()).run();
+}
+
+/**
+ * Record a Cloudflare notification in health.webhook with one statement, so
+ * it never races a tick's health write. `event` is one of Stream's three
+ * event names or 'test'; `inputId` only when it is one of our inputs.
+ */
+export async function noteWebhook(DB, { event, inputId = null, signed = false }) {
+  const count = `COALESCE(${stored('site_config.data', '$.webhook.count')}, 0) + 1`;
+  const entry = (n) => `json_object('lastReceivedAt', ?2, 'lastEvent', ?3, 'lastInputId', ?4, 'signed', json(?5), 'count', ${n})`;
+  await DB.prepare(`INSERT INTO site_config (key, data, updated_at) VALUES (?1, json_object('webhook', ${entry('1')}), ?2)
+    ON CONFLICT(key) DO UPDATE SET data = json_set(CASE WHEN json_valid(site_config.data) THEN site_config.data ELSE '{}' END, '$.webhook', ${entry(count)}), updated_at = ?2`)
+    .bind(HEALTH_KEY, nowIso(), event, inputId, signed ? 'true' : 'false').run();
+}
 
 // ─── Derived views ──────────────────────────────────────────────────
 
@@ -285,9 +422,10 @@ export async function publishToHub(env, state, config, reason, event) {
   const stub = hubStub(env);
   if (!stub) return { ok: false, skipped: true, error: 'LIVE_HUB binding missing' };
   try {
+    // The hub hands `reason` to every open page, so only its kind goes ('admin', 'webhook', 'tick'), never details
     const res = await stub.fetch('https://hub/publish', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ state: publicState(state, config), reason, event }),
+      body: JSON.stringify({ state: publicState(state, config), reason: String(reason || 'publish').split(':')[0], event }),
     });
     return await res.json();
   } catch (e) {
@@ -295,9 +433,13 @@ export async function publishToHub(env, state, config, reason, event) {
   }
 }
 
+// The hub's nonces are crypto.randomUUID(); anything else is refused before it can wake the object
+const HUB_NONCE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function verifyHubNonce(env, nonce) {
+  if (typeof nonce !== 'string' || !HUB_NONCE.test(nonce)) return false;
   const stub = hubStub(env);
-  if (!stub || !nonce) return false;
+  if (!stub) return false;
   try {
     const res = await stub.fetch('https://hub/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }) });
     const data = await res.json();
@@ -376,6 +518,106 @@ async function triggerDeploy(env, health, reason) {
   } catch {
     return false;
   }
+}
+
+// ─── One tick at a time ─────────────────────────────────────────────
+
+// About two heartbeats: a holder that died mid-tick (a D1 error, a cancelled request)
+// blocks the next tick at most this long. A long tick keeps extending it (extendTickLease).
+const TICK_LEASE_MS = 15 * 1000;
+const LEASE_EXTEND_AFTER_MS = 5 * 1000;
+const ADMIN_LEASE_WAIT_MS = 8 * 1000;
+const FORCED_LEASE_WAIT_MS = 5 * 1000;
+const UNLEASED = 'unleased';
+
+/**
+ * Take the tick lease (one row in D1, shared by every isolate). A throttled
+ * caller (`minIntervalMs`) also needs the last tick to have started at least
+ * that long ago, so visitors and unsigned webhooks can't stack ticks however
+ * many isolates they land on. → holder id, or null when someone else has it.
+ * If D1 can't answer, the tick runs anyway ('unleased'): the rev check on the
+ * state write and the side-effect claims still hold.
+ */
+async function acquireTickLease(DB, { minIntervalMs = null } = {}) {
+  const holder = crypto.randomUUID();
+  const now = Date.now();
+  const startedBefore = minIntervalMs == null ? now + 60 * 1000 : now - minIntervalMs;
+  try {
+    const row = await DB.prepare(`INSERT INTO broadcast_locks (name, holder, expires_at, started_at) VALUES ('tick', ?1, ?2, ?3)
+      ON CONFLICT(name) DO UPDATE SET holder = excluded.holder, expires_at = excluded.expires_at, started_at = excluded.started_at
+      WHERE broadcast_locks.expires_at <= ?3 AND broadcast_locks.started_at <= ?4
+      RETURNING holder`).bind(holder, now + TICK_LEASE_MS, now, startedBefore).first();
+    return row?.holder === holder ? holder : null;
+  } catch {
+    return UNLEASED;
+  }
+}
+
+/** Wait up to `waitMs` for the lease (admin commands, forced ticks). Gives up and runs unleased rather than fail. */
+async function waitForTickLease(DB, waitMs) {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const holder = await acquireTickLease(DB);
+    if (holder) return holder;
+    if (Date.now() >= until) return UNLEASED;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
+
+/** Push the lease out again during a long tick. → false when another tick holds it now */
+async function extendTickLease(DB, holder) {
+  if (!holder || holder === UNLEASED) return true;
+  try {
+    const r = await DB.prepare(`UPDATE broadcast_locks SET expires_at = ? WHERE name = 'tick' AND holder = ?`)
+      .bind(Date.now() + TICK_LEASE_MS, holder).run();
+    return (r?.meta?.changes || 0) > 0;
+  } catch {
+    return true;
+  }
+}
+
+async function releaseTickLease(DB, holder) {
+  if (!holder || holder === UNLEASED) return;
+  await DB.prepare(`UPDATE broadcast_locks SET expires_at = 0 WHERE name = 'tick' AND holder = ?`).bind(holder).run().catch(() => {});
+}
+
+// ─── One-time side effects ──────────────────────────────────────────
+
+/**
+ * Claim a one-time side effect of a broadcast: the Facebook live post, the
+ * staff "Live now" and "Ended" alerts, the replay's Kit draft and rebuild.
+ * Only the first caller per (broadcast, key) gets true, in every isolate.
+ * settleClaim keeps what the side effect made (the Facebook video id, the Kit
+ * draft id) so a later tick can read it back with claimResult.
+ */
+async function claimOnce(DB, broadcastId, key) {
+  if (!broadcastId) return true;
+  try {
+    const r = await DB.prepare('INSERT OR IGNORE INTO broadcast_claims (broadcast_id, key, created_at) VALUES (?, ?, ?)')
+      .bind(broadcastId, key, nowIso()).run();
+    return (r?.meta?.changes || 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function settleClaim(DB, broadcastId, key, result) {
+  if (!broadcastId) return;
+  await DB.prepare('UPDATE broadcast_claims SET result = ? WHERE broadcast_id = ? AND key = ?')
+    .bind(JSON.stringify(result), broadcastId, key).run().catch(() => {});
+}
+
+/** Every claim a broadcast has taken, in one read */
+async function claimedKeys(DB, broadcastId) {
+  if (!broadcastId) return new Set();
+  const res = await DB.prepare('SELECT key FROM broadcast_claims WHERE broadcast_id = ?').bind(broadcastId).all().catch(() => null);
+  return new Set((res?.results || []).map((r) => r.key));
+}
+
+async function claimResult(DB, broadcastId, key) {
+  if (!broadcastId) return null;
+  const row = await DB.prepare('SELECT result FROM broadcast_claims WHERE broadcast_id = ? AND key = ?').bind(broadcastId, key).first().catch(() => null);
+  try { return row?.result ? JSON.parse(row.result) : null; } catch { return null; }
 }
 
 // ─── Transitions (pure; return a new state) ─────────────────────────
@@ -464,12 +706,94 @@ async function sendTestReminder(env, state, kind, work, summary) {
   return summary;
 }
 
-async function reminderRecipients(DB, channel, kidSlug) {
-  const res = await DB.prepare(
-    `SELECT id, address, subscription, last_sent_at, token FROM broadcast_reminders
-     WHERE channel = ? AND unsubscribed_at IS NULL AND (kid_slug IS NULL OR kid_slug = ?) AND fails < 5`
-  ).bind(channel, kidSlug || '').all();
-  return res?.results || [];
+// A reminder goes out in batches, a few seconds' worth per tick, so a long
+// list never holds up the tick that flips the site to live. Each recipient is
+// claimed in broadcast_reminder_deliveries before anything is sent (so two
+// ticks never send to the same person), and broadcast_reminder_runs remembers
+// which sends still have people waiting, so the next tick carries on.
+const REMINDER_BATCH = { email: 100, sms: 15, push: 50 };
+const REMINDER_TICK_BUDGET_MS = 3000;
+// When this isolate last sent batches for `${broadcastId}:${kind}`: a send started this tick
+// isn't carried on again in the same tick, so one tick spends at most one budget per kind
+const _reminderSentAt = new Map();
+
+const REMINDER_SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS broadcast_reminder_deliveries (
+    broadcast_id TEXT NOT NULL, kind TEXT NOT NULL, channel TEXT NOT NULL, reminder_id TEXT NOT NULL,
+    batch TEXT NOT NULL, at TEXT,
+    PRIMARY KEY (broadcast_id, kind, channel, reminder_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_reminder_deliveries_batch ON broadcast_reminder_deliveries(batch)`,
+  `CREATE TABLE IF NOT EXISTS broadcast_reminder_runs (
+    broadcast_id TEXT NOT NULL, kind TEXT NOT NULL, channel TEXT NOT NULL,
+    started_at TEXT, finished_at TEXT,
+    PRIMARY KEY (broadcast_id, kind, channel)
+  )`,
+];
+const _reminderTables = new WeakSet();
+async function ensureReminderTables(DB) {
+  if (_reminderTables.has(DB)) return;
+  await DB.batch(REMINDER_SCHEMA.map(sql => DB.prepare(sql)));
+  _reminderTables.add(DB);
+}
+
+/** Each kind is news only while the reveal is in the matching phase; a batch left over after that is dropped */
+function reminderStillNews(kind, state) {
+  if (kind === 'live') return state.phase === 'live' || state.phase === 'ending';
+  if (kind === 'replay') return state.phase === 'replay';
+  return state.phase === 'scheduled' || state.phase === 'armed';
+}
+
+/** A fresh send for (broadcast, kind, channel): forget earlier deliveries (a moved date re-sends) and open the run */
+async function openRun(DB, broadcastId, kind, channel) {
+  await DB.prepare('DELETE FROM broadcast_reminder_deliveries WHERE broadcast_id = ? AND kind = ? AND channel = ?').bind(broadcastId, kind, channel).run();
+  // Who-got-what is only needed while a send is going out; a month on, it goes
+  const monthAgo = new Date(Date.now() - 30 * 86400e3).toISOString();
+  await DB.prepare('DELETE FROM broadcast_reminder_deliveries WHERE at < ?').bind(monthAgo).run();
+  await DB.prepare('DELETE FROM broadcast_reminder_runs WHERE started_at < ?').bind(monthAgo).run();
+  await DB.prepare(`INSERT INTO broadcast_reminder_runs (broadcast_id, kind, channel, started_at, finished_at) VALUES (?, ?, ?, ?, NULL)
+    ON CONFLICT(broadcast_id, kind, channel) DO UPDATE SET started_at = excluded.started_at, finished_at = NULL`).bind(broadcastId, kind, channel, nowIso()).run();
+}
+
+async function runOpen(DB, broadcastId, kind, channel) {
+  const row = await DB.prepare('SELECT finished_at FROM broadcast_reminder_runs WHERE broadcast_id = ? AND kind = ? AND channel = ?').bind(broadcastId, kind, channel).first();
+  return !!row && !row.finished_at;
+}
+
+async function closeRun(DB, broadcastId, kind, channel) {
+  await DB.prepare('UPDATE broadcast_reminder_runs SET finished_at = ? WHERE broadcast_id = ? AND kind = ? AND channel = ? AND finished_at IS NULL').bind(nowIso(), broadcastId, kind, channel).run();
+}
+
+/** Kinds with people still waiting for this broadcast */
+async function openReminderKinds(DB, broadcastId) {
+  await ensureReminderTables(DB);
+  const res = await DB.prepare('SELECT DISTINCT kind FROM broadcast_reminder_runs WHERE broadcast_id = ? AND finished_at IS NULL').bind(broadcastId).all();
+  return (res?.results || []).map(r => r.kind);
+}
+
+/**
+ * Claim the next `size` recipients nobody has claimed for this send → their
+ * rows. One INSERT … SELECT, so two ticks running at once split the list.
+ */
+async function claimRecipients(DB, state, kind, channel, size) {
+  const batch = `${Date.now().toString(36)}-${crypto.randomUUID()}`;
+  await DB.prepare(`INSERT OR IGNORE INTO broadcast_reminder_deliveries (broadcast_id, kind, channel, reminder_id, batch, at)
+    SELECT ?, ?, ?, r.id, ?, ? FROM broadcast_reminders r
+    WHERE r.channel = ? AND r.unsubscribed_at IS NULL AND (r.kid_slug IS NULL OR r.kid_slug = ?) AND r.fails < 5
+      AND NOT EXISTS (SELECT 1 FROM broadcast_reminder_deliveries d WHERE d.broadcast_id = ? AND d.kind = ? AND d.channel = ? AND d.reminder_id = r.id)
+    ORDER BY r.id LIMIT ?`)
+    .bind(state.broadcastId, kind, channel, batch, nowIso(), channel, state.kidSlug || '', state.broadcastId, kind, channel, size).run();
+  const res = await DB.prepare(`SELECT r.id, r.address, r.subscription, r.last_sent_at, r.token FROM broadcast_reminder_deliveries d
+    JOIN broadcast_reminders r ON r.id = d.reminder_id WHERE d.batch = ?`).bind(batch).all();
+  return { batch, rows: res?.results || [] };
+}
+
+/** Add one batch's numbers to the send's row (the admin's reminder stats) */
+async function addSendStats(DB, broadcastId, kind, channel, { recipients, sent, failed, error }) {
+  try {
+    await DB.prepare('UPDATE broadcast_sends SET recipients = COALESCE(recipients, 0) + ?, sent = COALESCE(sent, 0) + ?, failed = COALESCE(failed, 0) + ?, error = COALESCE(?, error) WHERE broadcast_id = ? AND kind = ? AND channel = ?')
+      .bind(recipients, sent, failed, error || null, broadcastId, kind, channel).run();
+  } catch { /* stats only */ }
 }
 
 /** Claim a (broadcast, kind, channel) send so concurrent ticks never double-send. */
@@ -495,65 +819,100 @@ function unsubscribeUrl(token) {
 }
 
 /**
- * Send one reminder kind across all channels. Idempotent per broadcast.
- * Returns a summary; never throws.
+ * Send one reminder kind across all channels. Idempotent per broadcast: the
+ * first call claims the send (broadcast_sends) and opens its run, every call
+ * sends batches for up to `budgetMs`, and the next tick (dueReminderKinds)
+ * carries on until everyone has it. Returns this call's summary; never throws.
  */
-export async function sendReminders(env, config, state, kind, work) {
+export async function sendReminders(env, config, state, kind, work, { budgetMs = REMINDER_TICK_BUDGET_MS } = {}) {
   const { DB } = env;
   const summary = { kind, email: null, sms: null, push: null };
   if (!config.reminders?.enabled || !state.broadcastId) return summary;
   // A rehearsal follows the same switches as a real reveal, but only the test address hears it
   if (state.test) return sendTestReminder(env, state, kind, work, summary);
+  let open;
+  try {
+    await ensureReminderTables(DB);
+    open = new Set(((await DB.prepare('SELECT channel FROM broadcast_reminder_runs WHERE broadcast_id = ? AND kind = ? AND finished_at IS NULL').bind(state.broadcastId, kind).all())?.results || []).map(r => r.channel));
+  } catch (e) {
+    work.push(`reminders:${kind}:error`);
+    return summary;
+  }
   const common = {
     kind, kidName: state.kidName, scheduledAt: state.scheduledAt, tz: config.timezone,
     liveUrl: liveUrlFor(state),
     replayUrl: state.replayUid ? liveUrlFor(state) : liveUrlFor(state),
     image: state.image ? `${SITE_ORIGIN}/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/${state.image}/w=1200,h=630,fit=cover,q=82` : null,
   };
+  const news = reminderStillNews(kind, state);
+  const deadline = Date.now() + budgetMs;
 
-  // Email
-  if (notify.emailConfigured(env) && await claimSend(DB, state.broadcastId, kind, 'email')) {
-    const rows = await reminderRecipients(DB, 'email', state.kidSlug);
-    // Each recipient gets their own unsubscribe link; Resend takes 100 distinct messages per call
-    const items = rows.map(r => { const tpl = notify.reminderEmail({ ...common, unsubscribeUrl: unsubscribeUrl(r.token || r.id) }); return { to: r.address, subject: tpl.subject, html: tpl.html, text: tpl.text }; });
-    const res = await notify.sendEmailItems(env, items, { tags: [{ name: 'category', value: `reveal-${kind}` }] });
-    const { sent, failed } = res;
-    await finishSend(DB, state.broadcastId, kind, 'email', { recipients: rows.length, sent, failed, error: res.errors.slice(0, 3).join('; ') || null });
-    summary.email = { recipients: rows.length, sent, failed };
-    if (rows.length) work.push(`email:${kind}:${sent}/${rows.length}`);
-  }
+  // One channel: claim the send the first time, then batches until everyone has it or time is up
+  const channel = async (name, enabled, sendBatch) => {
+    try {
+      if (!enabled || !news) { if (open.has(name)) await closeRun(DB, state.broadcastId, kind, name); return; }
+      if (await claimSend(DB, state.broadcastId, kind, name)) await openRun(DB, state.broadcastId, kind, name);
+      else if (!open.has(name)) return;
+      const size = REMINDER_BATCH[name];
+      const total = { recipients: 0, sent: 0, failed: 0 };
+      for (;;) {
+        const { batch, rows } = await claimRecipients(DB, state, kind, name, size);
+        if (rows.length) {
+          const r = await sendBatch(rows, batch);
+          total.recipients += rows.length; total.sent += r.sent; total.failed += r.failed;
+          await addSendStats(DB, state.broadcastId, kind, name, { recipients: rows.length, sent: r.sent, failed: r.failed, error: r.error });
+        }
+        if (rows.length < size) { await closeRun(DB, state.broadcastId, kind, name); break; }
+        if (Date.now() >= deadline) { work.push(`${name}:${kind}:continues`); break; }
+      }
+      summary[name] = total;
+      if (total.recipients) work.push(`${name}:${kind}:${total.sent}/${total.recipients}`);
+    } catch (e) {
+      // The run stays open, so the next tick tries again with whoever is still waiting
+      work.push(`${name}:${kind}:error`);
+    }
+  };
 
-  // SMS
-  if (config.reminders?.sms && notify.smsConfigured(env) && await claimSend(DB, state.broadcastId, kind, 'sms')) {
-    const rows = await reminderRecipients(DB, 'sms', state.kidSlug);
-    const firstTimers = rows.filter(r => !r.last_sent_at).map(r => r.address);
-    const others = rows.filter(r => r.last_sent_at).map(r => r.address);
-    let sent = 0, failed = 0; const errors = []; const optedOut = [];
-    if (firstTimers.length) { const r = await notify.sendSms(env, { to: firstTimers, body: notify.reminderSms({ ...common, first: true }) }); sent += r.sent; failed += r.failed; errors.push(...r.errors); optedOut.push(...r.optedOut); }
-    if (others.length) { const r = await notify.sendSms(env, { to: others, body: notify.reminderSms(common) }); sent += r.sent; failed += r.failed; errors.push(...r.errors); optedOut.push(...r.optedOut); }
-    if (rows.length) await DB.prepare(`UPDATE broadcast_reminders SET last_sent_at = ? WHERE channel = 'sms' AND unsubscribed_at IS NULL`).bind(nowIso()).run();
-    for (const num of optedOut) await DB.prepare(`UPDATE broadcast_reminders SET unsubscribed_at = ? WHERE channel = 'sms' AND address = ?`).bind(nowIso(), num).run();
-    await finishSend(DB, state.broadcastId, kind, 'sms', { recipients: rows.length, sent, failed, error: errors.slice(0, 3).join('; ') || null });
-    summary.sms = { recipients: rows.length, sent, failed };
-    if (rows.length) work.push(`sms:${kind}:${sent}/${rows.length}`);
-  }
-
-  // Push
-  if (config.reminders?.push && config.vapid?.privateJwk && await claimSend(DB, state.broadcastId, kind, 'push')) {
-    const rows = await reminderRecipients(DB, 'push', state.kidSlug);
-    const subs = rows.map(r => { try { return { id: r.id, subscription: JSON.parse(r.subscription) }; } catch { return null; } }).filter(Boolean);
-    const payload = notify.reminderPush(common);
-    const r = await notify.sendPushBatch(subs, payload, config.vapid, { ttl: kind === 'live' ? 2 * 3600 : 24 * 3600, urgency: kind === 'live' ? 'high' : 'normal', topic: `reveal-${kind}` });
-    for (const id of r.gone) await DB.prepare('UPDATE broadcast_reminders SET unsubscribed_at = ? WHERE id = ?').bind(nowIso(), id).run();
-    await finishSend(DB, state.broadcastId, kind, 'push', { recipients: subs.length, sent: r.sent, failed: r.failed });
-    summary.push = { recipients: subs.length, sent: r.sent, failed: r.failed };
-    if (subs.length) work.push(`push:${kind}:${r.sent}/${subs.length}`);
-  }
+  await Promise.all([
+    // Email: each recipient gets their own unsubscribe link, in the footer and as one-click List-Unsubscribe
+    channel('email', notify.emailConfigured(env), async (rows) => {
+      const items = rows.map(r => {
+        const url = unsubscribeUrl(r.token || r.id);
+        const tpl = notify.reminderEmail({ ...common, unsubscribeUrl: url });
+        return { to: r.address, subject: tpl.subject, html: tpl.html, text: tpl.text, headers: notify.listUnsubscribeHeaders(url) };
+      });
+      const res = await notify.sendEmailItems(env, items, { tags: [{ name: 'category', value: `reveal-${kind}` }] });
+      return { sent: res.sent, failed: res.failed, error: res.errors.slice(0, 3).join('; ') || null };
+    }),
+    // SMS: a first text carries "Reply STOP to opt out"
+    channel('sms', !!(config.reminders?.sms && notify.smsConfigured(env)), async (rows, batch) => {
+      const firstTimers = rows.filter(r => !r.last_sent_at).map(r => r.address);
+      const others = rows.filter(r => r.last_sent_at).map(r => r.address);
+      let sent = 0, failed = 0; const errors = []; const optedOut = [];
+      if (firstTimers.length) { const r = await notify.sendSms(env, { to: firstTimers, body: notify.reminderSms({ ...common, first: true }) }); sent += r.sent; failed += r.failed; errors.push(...r.errors); optedOut.push(...r.optedOut); }
+      if (others.length) { const r = await notify.sendSms(env, { to: others, body: notify.reminderSms(common) }); sent += r.sent; failed += r.failed; errors.push(...r.errors); optedOut.push(...r.optedOut); }
+      await DB.prepare('UPDATE broadcast_reminders SET last_sent_at = ? WHERE id IN (SELECT reminder_id FROM broadcast_reminder_deliveries WHERE batch = ?)').bind(nowIso(), batch).run();
+      for (const num of optedOut) await DB.prepare(`UPDATE broadcast_reminders SET unsubscribed_at = ? WHERE channel = 'sms' AND address = ?`).bind(nowIso(), num).run();
+      return { sent, failed, error: errors.slice(0, 3).join('; ') || null };
+    }),
+    // Push: a dead subscription (404/410, or not a browser push service) is dropped
+    channel('push', !!(config.reminders?.push && config.vapid?.privateJwk), async (rows) => {
+      const subs = rows.map(r => { try { return { id: r.id, subscription: JSON.parse(r.subscription) }; } catch { return null; } }).filter(Boolean);
+      const r = await notify.sendPushBatch(subs, notify.reminderPush(common), config.vapid, { ttl: kind === 'live' ? 2 * 3600 : 24 * 3600, urgency: kind === 'live' ? 'high' : 'normal', topic: `reveal-${kind}` });
+      for (const id of r.gone) await DB.prepare('UPDATE broadcast_reminders SET unsubscribed_at = ? WHERE id = ?').bind(nowIso(), id).run();
+      return { sent: r.sent, failed: r.failed + (rows.length - subs.length), error: null };
+    }),
+  ]);
+  if (_reminderSentAt.size > 50) _reminderSentAt.clear();
+  _reminderSentAt.set(`${state.broadcastId}:${kind}`, Date.now());
   return summary;
 }
 
 async function dueReminderKinds(DB, state, config) {
   if (!state.broadcastId) return [];
+  // Sends with people still waiting carry on every tick (sendReminders drops them once they're old news)
+  const carrying = (await openReminderKinds(DB, state.broadcastId).catch(() => []))
+    .filter(k => Date.now() - (_reminderSentAt.get(`${state.broadcastId}:${k}`) || 0) >= REMINDER_TICK_BUDGET_MS);
   const kinds = [];
   const now = Date.now();
   const at = state.scheduledAt ? Date.parse(state.scheduledAt) : null;
@@ -563,10 +922,14 @@ async function dueReminderKinds(DB, state, config) {
     if (hours.includes(24) && lead <= 24 * 3600e3 && lead > 2 * 3600e3) kinds.push('day');
     if (hours.includes(1) && lead <= 3600e3 && lead > 5 * 60e3) kinds.push('hour');
   }
-  if (!kinds.length) return [];
-  const res = await DB.prepare('SELECT kind FROM broadcast_sends WHERE broadcast_id = ?').bind(state.broadcastId).all();
-  const done = new Set((res?.results || []).map(r => r.kind));
-  return kinds.filter(k => !done.has(k));
+  // "We're live": due from the tick that saves the go-live until it has started (see EFFECTS_RETRY_MS)
+  if ((state.phase === 'live' || state.phase === 'ending') && state.source === 'stream' && state.liveAt && now - Date.parse(state.liveAt) <= EFFECTS_RETRY_MS) kinds.push('live');
+  if (!kinds.length && !carrying.length) return [];
+  // Kit's "we're live" email is also kind 'live' (channel 'kit'); it doesn't count as the reminders having started
+  const res = await DB.prepare('SELECT kind, channel FROM broadcast_sends WHERE broadcast_id = ?').bind(state.broadcastId).all();
+  const done = new Set((res?.results || []).filter(r => r.channel !== 'kit').map(r => r.kind));
+  // A run carries on only while its send is still claimed: a moved date un-claims day and hour, which then wait for their new window
+  return [...new Set([...kinds.filter(k => !done.has(k)), ...carrying.filter(k => done.has(k))])];
 }
 
 // ─── Kit drafts ─────────────────────────────────────────────────────
@@ -688,15 +1051,27 @@ async function checkReplayReady(env, config, state, health, work) {
   if (s.kidSlug) {
     try {
       const attached = await attachToKid(env, s.kidSlug, uid, s.title, 'live-broadcast');
-      if (attached) { work.push(`attached:${s.kidSlug}`); if (await triggerDeploy(env, health, `Reveal replay attached to ${s.kidName || s.kidSlug}`)) work.push('deploy'); }
+      if (attached) {
+        work.push(`attached:${s.kidSlug}`);
+        if (await claimOnce(env.DB, s.broadcastId, 'replay-deploy') && await triggerDeploy(env, health, `Reveal replay attached to ${s.kidName || s.kidSlug}`)) work.push('deploy');
+      }
     } catch { /* retry never; admin can attach */ }
   }
   await sendReminders(env, config, s, 'replay', work);
-  const draft = await draftKit(env, s, 'replay');
+  // One Kit replay draft per broadcast; a tick that lost the race reads the winner's draft id
+  let draft = null;
+  if (await claimOnce(env.DB, s.broadcastId, 'kit-replay-draft')) {
+    draft = await draftKit(env, s, 'replay');
+    if (draft) await settleClaim(env.DB, s.broadcastId, 'kit-replay-draft', { id: draft });
+  } else {
+    draft = (await claimResult(env.DB, s.broadcastId, 'kit-replay-draft'))?.id || null;
+  }
   if (draft) s.kit = { ...(s.kit || {}), replayDraftId: draft };
   if (reels.reelEnabled(config)) { s.reel = reels.startReel(s, uid, s.revealAtSeconds); work.push('reel:start'); }
-  await recordEvent(env.DB, s.broadcastId, 'replay_ready', { uid });
-  await logAudit(env.DB, { userEmail: 'live-broadcast', action: 'created', entityType: 'stream-video', entitySlug: uid, entityName: `Reveal recording ready: ${s.title || s.broadcastId}`, gitStatus: 'ok' });
+  if (await claimOnce(env.DB, s.broadcastId, 'replay-ready')) {
+    await recordEvent(env.DB, s.broadcastId, 'replay_ready', { uid });
+    await logAudit(env.DB, { userEmail: 'live-broadcast', action: 'created', entityType: 'stream-video', entitySlug: uid, entityName: `Reveal recording ready: ${s.title || s.broadcastId}`, gitStatus: 'ok' });
+  }
   return s;
 }
 
@@ -714,7 +1089,7 @@ async function kitAutoLive(env, config, state, work) {
   const now = Date.now();
   const hold = async (error, title, detail) => {
     work.push('kit-live-held');
-    await notify.alertAdmins(env, config, { level: 'warn', title, detail, url: `${SITE_ORIGIN}/admin/` });
+    if (await claimOnce(env.DB, state.broadcastId, 'kit-live-held')) await notify.alertAdmins(env, config, { level: 'warn', title, detail, url: `${SITE_ORIGIN}/admin/` });
     return { ...state, kit: { ...(state.kit || {}), live: { id: null, held: true, error } } };
   };
   if (state.scheduledAt && Date.parse(state.liveAt) < Date.parse(state.scheduledAt) - KIT_LIVE_EARLY_MS) {
@@ -731,7 +1106,7 @@ async function kitAutoLive(env, config, state, work) {
     }
     if (!s.kidAlertAt) {
       s = { ...s, kidAlertAt: nowIso() };
-      await notify.alertAdmins(env, config, { level: 'warn', title: 'Live now: which kid is this?', detail: 'The Kit "we\'re live" email is waiting for the kid. Nothing on Facebook named one yet. Pick the kid in Admin → Broadcast → Now and the email goes out right away, or put the kid\'s name in the first line of the Facebook post.', url: `${SITE_ORIGIN}/admin/` });
+      if (await claimOnce(env.DB, s.broadcastId, 'kid-alert')) await notify.alertAdmins(env, config, { level: 'warn', title: 'Live now: which kid is this?', detail: 'The Kit "we\'re live" email is waiting for the kid. Nothing on Facebook named one yet. Pick the kid in Admin → Broadcast → Now and the email goes out right away, or put the kid\'s name in the first line of the Facebook post.', url: `${SITE_ORIGIN}/admin/` });
     }
     return s;
   }
@@ -790,13 +1165,23 @@ async function fbOnLive(env, config, state, work) {
   const s = { ...state, fb: { ...(state.fb || {}) } };
   if (!fb.fbConfigured(env)) return s;
   if (config.facebook?.mode === 'api' && !s.fb.liveVideoId && !s.fb.needsReview && config.liveInput?.uid) {
+    // One Facebook live post per broadcast, however many ticks race here; the claim keeps its ids
+    if (!(await claimOnce(env.DB, s.broadcastId, 'fb-live-post'))) {
+      const made = await claimResult(env.DB, s.broadcastId, 'fb-live-post');
+      if (made?.liveVideoId) { s.fb.liveVideoId = made.liveVideoId; s.fb.outputUid = made.outputUid || null; }
+      return s;
+    }
     const created = await fb.createFbLiveVideo(env, { title: s.title, description: s.message });
     if (created.ok) {
       s.fb.liveVideoId = created.id;
+      await settleClaim(env.DB, s.broadcastId, 'fb-live-post', { liveVideoId: created.id, outputUid: null });
       const split = fb.splitIngestUrl(created.ingestUrl);
       if (split && stream.streamConfigured(env)) {
         const out = await stream.createOutput(env, config.liveInput.uid, { url: split.url, streamKey: split.streamKey, enabled: true });
-        if (out.ok) { s.fb.outputUid = out.result?.uid || null; work.push('fb-api-output'); }
+        if (out.ok) {
+          s.fb.outputUid = out.result?.uid || null; work.push('fb-api-output');
+          await settleClaim(env.DB, s.broadcastId, 'fb-live-post', { liveVideoId: created.id, outputUid: s.fb.outputUid });
+        }
       }
       work.push('fb-live-post');
     } else {
@@ -880,25 +1265,122 @@ async function runHealth(env, config, state, health, work, { force = false } = {
   health.flags = { ...(health.flags || {}), problems: key };
 }
 
+// ─── Go-live and ended effects ──────────────────────────────────────
+
+const recent = (iso) => !!iso && Date.now() - Date.parse(iso) <= EFFECTS_RETRY_MS;
+
+/**
+ * What a stream going live sets off, each until its claim exists: the
+ * broadcast's row, the Facebook live post (API mode) and the staff "Live now"
+ * announcement (event, audit, alert). The "we're live" reminders follow the
+ * same rule through dueReminderKinds. Runs on the tick that saves the change
+ * and on every tick after for EFFECTS_RETRY_MS, so a tick cut off right after
+ * saving the phase (a D1 error, a cancelled request) loses none of them.
+ * A banner-only go-live is the admin's own command and sets off nothing here.
+ */
+async function goLiveEffects(env, config, state, work, by) {
+  const { DB } = env;
+  if (!['live', 'ending'].includes(state.phase) || state.source !== 'stream' || !state.broadcastId || !recent(state.liveAt)) return state;
+  const done = await claimedKeys(DB, state.broadcastId);
+  if (!done.has('live-row')) { await upsertBroadcastRow(DB, state); await claimOnce(DB, state.broadcastId, 'live-row'); }
+  // Also when the post was claimed but this state lacks its id (the tick that made it lost its save): fbOnLive reads it back
+  if (!done.has('fb-live-post') || (config.facebook?.mode === 'api' && !state.fb?.liveVideoId)) state = await fbOnLive(env, config, state, work);
+  if (!done.has('live-announce') && await claimOnce(DB, state.broadcastId, 'live-announce')) {
+    await recordEvent(DB, state.broadcastId, 'live_start', { source: state.source, videoUid: state.liveVideoUid });
+    await logAudit(DB, { userEmail: by || 'live-broadcast', action: 'published', entityType: 'live-status', entitySlug: state.broadcastId, entityName: state.title || 'Live broadcast', gitStatus: 'ok' });
+    await notify.alertAdmins(env, config, {
+      level: 'info', kind: 'news', icon: '📡', title: `Live now: ${state.title || 'the reveal'}`,
+      detail: 'The site, Facebook and YouTube are all showing it.',
+      facts: [['Started from', 'The phone']],
+      url: liveUrlFor(state), links: [{ label: 'Open the control room', url: `${SITE_ORIGIN}/admin/#broadcast/control-room` }],
+    });
+    work.push('announced-live');
+  }
+  return state;
+}
+
+/**
+ * What a stream ending sets off, by the same rule: the row, ending the
+ * Facebook live video (API mode), and the "Ended" announcement with the feed
+ * monitor's health report. "End now" in the admin claims the last two itself.
+ */
+async function endedEffects(env, config, state, health, work, by) {
+  const { DB } = env;
+  if (state.phase !== 'replay' || state.source !== 'stream' || !state.broadcastId || !recent(state.endedAt)) return state;
+  const done = await claimedKeys(DB, state.broadcastId);
+  if (!done.has('ended-row')) { await upsertBroadcastRow(DB, state); await claimOnce(DB, state.broadcastId, 'ended-row'); }
+  if (!done.has('fb-ended') && await claimOnce(DB, state.broadcastId, 'fb-ended')) state = await fbOnEnd(env, config, state, work);
+  if (!done.has('ended-announce') && await claimOnce(DB, state.broadcastId, 'ended-announce')) {
+    const mins = state.liveAt ? Math.round((Date.parse(state.endedAt || nowIso()) - Date.parse(state.liveAt)) / 60000) : null;
+    await recordEvent(DB, state.broadcastId, 'live_end', { minutes: mins });
+    await logAudit(DB, { userEmail: by || 'live-broadcast', action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: `Ended: ${state.title || 'Live broadcast'}`, changes: [{ field: 'minutes', from: null, to: mins }], gitStatus: 'ok' });
+    // The feed monitor's health report (sound, issues, Facebook/YouTube timing) rides along
+    const ended = await monitor.finish(env, config, state, health, recordEvent).catch(() => ({ summary: '' }));
+    await notify.alertAdmins(env, config, { level: 'info', kind: 'news', icon: '🎬', title: `Ended: ${state.title || 'the reveal'}`, detail: [mins != null ? `Ran ${mins} minutes.` : null, ended.summary || null, mins != null ? 'Replay will attach to the kid\'s page when Stream finishes processing.' : 'Replay will attach when ready.'].filter(Boolean).join('\n'), url: `${SITE_ORIGIN}/admin/` });
+    work.push('announced-end');
+  }
+  return state;
+}
+
 // ─── The tick ───────────────────────────────────────────────────────
 
 /**
  * Reconcile with Stream, apply timers, fire side effects, persist, and
- * return the public state. Safe to call from anywhere; throttled per
- * isolate unless `force`.
+ * return the public state. Safe to call from anywhere. One tick runs at a
+ * time across every isolate (the D1 lease); unless `force`, a tick also waits
+ * `minIntervalMs` after the last one started, here and everywhere else. A
+ * caller that finds a tick already running gets the current state with
+ * `busy: true`. Public routes never pass `force`.
  */
 export async function runTick(env, { source = 'tick', force = false, by = null, minIntervalMs = TICK_MIN_INTERVAL_MS } = {}) {
   const { DB } = env;
   await ensureSchema(DB);
-  const now = Date.now();
-  if (!force && _lastTickResult && now - _lastTickAt < Math.max(minIntervalMs, TICK_MIN_INTERVAL_MS)) return { ..._lastTickResult, cached: true };
+  const interval = Math.max(minIntervalMs, TICK_MIN_INTERVAL_MS);
+  if (!force && _lastTickResult && Date.now() - _lastTickAt < interval) return { ..._lastTickResult, cached: true };
+  if (!force && interval > TICK_MIN_INTERVAL_MS && _lastBusyResult && Date.now() - _lastBusyAt < interval) return { ..._lastBusyResult, cached: true };
 
+  // A forced tick (webhook, the admin's Refresh) waits a moment for a running one rather than skip
+  const lease = force ? await waitForTickLease(DB, FORCED_LEASE_WAIT_MS) : await acquireTickLease(DB, { minIntervalMs: interval });
+  if (!lease) {
+    const [config, state] = await Promise.all([readConfig(DB), readState(DB)]);
+    const result = { state: publicState(state, config), reason: source, work: [], changed: false, busy: true };
+    // Not the tick cache: a visitor that found the lease busy must not hold up the hub's next heartbeat
+    _lastBusyAt = Date.now();
+    _lastBusyResult = result;
+    return result;
+  }
+  // A long tick keeps the lease (at most one extend per LEASE_EXTEND_AFTER_MS); false once another tick has it
+  let extendedAt = Date.now();
+  const keepLease = async () => {
+    if (Date.now() - extendedAt < LEASE_EXTEND_AFTER_MS) return true;
+    extendedAt = Date.now();
+    return extendTickLease(DB, lease);
+  };
+  try {
+    const result = await tick(env, { source, force, by, keepLease });
+    _lastTickAt = Date.now();
+    _lastTickResult = result;
+    return result;
+  } finally {
+    await releaseTickLease(DB, lease);
+  }
+}
+
+// The state as far as "did anything change" goes (rev and updatedAt are bookkeeping)
+const stateSig = (s) => JSON.stringify({ ...s, rev: undefined, updatedAt: undefined });
+
+async function tick(env, { source, force, by, keepLease = async () => true }) {
+  const { DB } = env;
+  const now = Date.now();
   const [config, health] = await Promise.all([readConfig(DB), readHealth(DB)]);
   const healthBefore = JSON.stringify(health);
-  let state = await readState(DB);
-  const before = JSON.stringify(state);
+  const read = await readState(DB);
+  let rev = Number(read.rev) || 0;
+  let base = read;          // the stored copy, as far as this tick knows
+  let state = read;
   const prevPhase = state.phase;
   const work = [];
+  let missed = null;        // a scheduled reveal that never streamed, announced once the clear is saved
 
   // 1. Stream is the authority on "is video arriving"
   const inputUid = config.liveInput?.uid;
@@ -927,9 +1409,7 @@ export async function runTick(env, { source = 'tick', force = false, by = null, 
     state = { ...state, phase: 'armed', armedAt: nowIso() }; work.push('armed');
   }
   if ((state.phase === 'scheduled' || state.phase === 'armed') && state.scheduledAt && now - Date.parse(state.scheduledAt) > SCHEDULED_EXPIRE_MS) {
-    await notify.alertAdmins(env, config, { level: 'warn', icon: '⏰', title: 'Scheduled reveal never went live', detail: `${state.title || 'Reveal'} was scheduled for ${state.scheduledAt} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/` });
-    await recordEvent(DB, state.broadcastId, 'missed');
-    await closeBroadcastRow(DB, state, 'missed');
+    missed = state;
     state = tClear(state, 'missed'); work.push('missed');
   }
   if (state.phase === 'live' && state.source === 'manual' && state.manual?.until && now >= Date.parse(state.manual.until)) {
@@ -942,60 +1422,66 @@ export async function runTick(env, { source = 'tick', force = false, by = null, 
     state = tClear(state, 'replay-expired'); work.push('replay-expired');
   }
 
-  // 3. Phase-change side effects
+  // 3. A phase change is saved before any of its side effects, and only over
+  //    the copy this tick read. A tick that lost the race stops here; the next
+  //    one starts from whatever won. The side effects (step 4) are claimed, so
+  //    each happens once, on this tick or, if this one is cut off, a later one.
   if (state.phase !== prevPhase) {
-    if (state.phase === 'live' && prevPhase !== 'ending') {
-      state = await fbOnLive(env, config, state, work);
-      await sendReminders(env, config, state, 'live', work);
-      await recordEvent(DB, state.broadcastId, 'live_start', { source: state.source, videoUid: state.liveVideoUid });
-      await logAudit(DB, { userEmail: by || 'live-broadcast', action: 'published', entityType: 'live-status', entitySlug: state.broadcastId, entityName: state.title || 'Live broadcast', gitStatus: 'ok' });
-      await notify.alertAdmins(env, config, {
-        level: 'info', kind: 'news', icon: '📡', title: `Live now: ${state.title || 'the reveal'}`,
-        detail: 'The site, Facebook and YouTube are all showing it.',
-        facts: [['Started from', state.source === 'stream' ? 'The phone' : state.source === 'manual' ? 'The admin, by hand' : state.source]],
-        url: liveUrlFor(state), links: [{ label: 'Open the control room', url: `${SITE_ORIGIN}/admin/#broadcast/control-room` }],
-      });
+    state = { ...state, updatedAt: nowIso() };
+    if (!(await writeStateIf(DB, state, rev))) {
+      work.push('conflict');
+      return { state: publicState(await readState(DB), config), reason: 'conflict', work, changed: false, conflict: true };
     }
-    if (state.phase === 'replay') {
-      state = await fbOnEnd(env, config, state, work);
-      const mins = state.liveAt ? Math.round((Date.parse(state.endedAt || nowIso()) - Date.parse(state.liveAt)) / 60000) : null;
-      await recordEvent(DB, state.broadcastId, 'live_end', { minutes: mins });
-      await logAudit(DB, { userEmail: by || 'live-broadcast', action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: `Ended: ${state.title || 'Live broadcast'}`, changes: [{ field: 'minutes', from: null, to: mins }], gitStatus: 'ok' });
-      // The feed monitor's health report (sound, issues, Facebook/YouTube timing) rides along
-      const ended = state.source === 'stream' ? await monitor.finish(env, config, state, health, recordEvent).catch(() => ({ summary: '' })) : { summary: '' };
-      await notify.alertAdmins(env, config, { level: 'info', kind: 'news', icon: '🎬', title: `Ended: ${state.title || 'the reveal'}`, detail: [mins != null ? `Ran ${mins} minutes.` : null, ended.summary || null, mins != null ? 'Replay will attach to the kid\'s page when Stream finishes processing.' : 'Replay will attach when ready.'].filter(Boolean).join('\n'), url: `${SITE_ORIGIN}/admin/` });
+    rev += 1;
+    state = { ...state, rev };
+    base = state;
+    await upsertBroadcastRow(DB, state);
+    if (missed) {
+      if (await claimOnce(DB, missed.broadcastId, 'missed')) {
+        await notify.alertAdmins(env, config, { level: 'warn', icon: '⏰', title: 'Scheduled reveal never went live', detail: `${missed.title || 'Reveal'} was scheduled for ${missed.scheduledAt} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/` });
+        await recordEvent(DB, missed.broadcastId, 'missed');
+      }
+      await closeBroadcastRow(DB, missed, 'missed');
     }
     if (state.phase === 'ending') await recordEvent(DB, state.broadcastId, 'disconnected');
   }
 
-  // 4. Ongoing work
-  if (state.phase === 'live' || state.phase === 'ending') state = await fbRefreshPermalink(env, state, work);
-  // Feed watch, go/no-go and mic checks only report; nothing they do may stop the state machine
-  if ((state.phase === 'live' || state.phase === 'ending') && state.source === 'stream') await monitor.watch(env, config, state, health, work, recordEvent).catch((e) => work.push(`monitor-error: ${e.message}`));
-  if (state.phase === 'scheduled' || state.phase === 'armed') await preflight.auto(env, config, state, health, work, { hubStatus }).catch((e) => work.push(`preflight-error: ${e.message}`));
-  if (state.phase !== 'live' && state.phase !== 'ending' && await monitor.watchRehearsal(env, config, health).catch(() => false)) work.push('mic-check');
-  state = await kitAutoLive(env, config, state, work);
-  for (const kind of await dueReminderKinds(DB, state, config)) await sendReminders(env, config, state, kind, work);
-  state = await checkReplayReady(env, config, state, health, work);
-  state = await tickReel(env, config, state, work);
-  await runHealth(env, config, state, health, work);
+  // 4. What going live or ending sets off, until each part has happened (also on later ticks), then
+  //    ongoing work. Each step first keeps the lease; if another tick has taken it, this one stops
+  //    and saves what it has (over the copy it read, as always)
+  const live = () => state.phase === 'live' || state.phase === 'ending';
+  const steps = [
+    async () => { state = await goLiveEffects(env, config, state, work, by); },
+    async () => { state = await endedEffects(env, config, state, health, work, by); },
+    async () => { if (live()) state = await fbRefreshPermalink(env, state, work); },
+    // Feed watch, go/no-go and mic checks only report; nothing they do may stop the state machine
+    async () => { if (live() && state.source === 'stream') await monitor.watch(env, config, state, health, work, recordEvent).catch((e) => work.push(`monitor-error: ${e.message}`)); },
+    async () => { if (state.phase === 'scheduled' || state.phase === 'armed') await preflight.auto(env, config, state, health, work, { hubStatus }).catch((e) => work.push(`preflight-error: ${e.message}`)); },
+    async () => { if (!live() && await monitor.watchRehearsal(env, config, health).catch(() => false)) work.push('mic-check'); },
+    async () => { state = await kitAutoLive(env, config, state, work); },
+    async () => { for (const kind of await dueReminderKinds(DB, state, config)) await sendReminders(env, config, state, kind, work); },
+    async () => { state = await checkReplayReady(env, config, state, health, work); },
+    async () => { state = await tickReel(env, config, state, work); },
+    async () => { await runHealth(env, config, state, health, work); },
+  ];
+  for (const step of steps) {
+    if (!(await keepLease())) { work.push('lease-lost'); break; }
+    await step();
+  }
 
-  // 5. Persist
-  const after = JSON.stringify(state);
-  if (after !== before) {
-    state.updatedAt = nowIso();
-    await writeState(DB, state);
-    await upsertBroadcastRow(DB, state);
+  // 5. Persist, over the copy this tick knows; anything an admin saved meanwhile is merged, theirs winning
+  if (stateSig(state) !== stateSig(base)) {
+    const saved = await commitState(DB, base, { ...state, updatedAt: nowIso() }, rev);
+    if (saved.dropped) work.push('conflict');
+    else await upsertBroadcastRow(DB, saved.state);
+    state = saved.state;
   }
   health.lastTick = { at: nowIso(), source, work };
   // Only touch D1 when something meaningful changed (lastTick alone isn't worth a write every few seconds)
   const healthAfter = JSON.stringify({ ...health, lastTick: null });
   if (healthAfter !== JSON.stringify({ ...JSON.parse(healthBefore), lastTick: null }) || work.length) await writeHealth(DB, health);
 
-  const result = { state: publicState(state, config), reason: work.length ? work.join(',') : source, work, changed: after !== before };
-  _lastTickAt = Date.now();
-  _lastTickResult = result;
-  return result;
+  return { state: publicState(state, config), reason: work.length ? work.join(',') : source, work, changed: stateSig(state) !== stateSig(read) };
 }
 
 // ─── Admin commands ─────────────────────────────────────────────────
@@ -1033,11 +1519,22 @@ async function kidByName(DB, slug) {
 
 /**
  * Admin state commands. Returns { success, state, error }. Publishes to the
- * hub on success so open pages update immediately.
+ * hub on success so open pages update immediately. A command holds the tick
+ * lease (waiting a few seconds for a running tick), so a tick never saves a
+ * stale copy over what staff just asked for.
  */
 export async function adminAction(env, action, body = {}, userEmail = 'unknown') {
+  await ensureSchema(env.DB);
+  const lease = await waitForTickLease(env.DB, ADMIN_LEASE_WAIT_MS);
+  try {
+    return await runAdminAction(env, action, body, userEmail);
+  } finally {
+    await releaseTickLease(env.DB, lease);
+  }
+}
+
+async function runAdminAction(env, action, body, userEmail) {
   const { DB } = env;
-  await ensureSchema(DB);
   const config = await readConfig(DB);
   let state = await readState(DB);
   const fail = (error, status = 400) => ({ success: false, error, status });
@@ -1151,7 +1648,12 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       if (!['live', 'ending'].includes(state.phase)) return fail('Nothing is live');
       const work = [];
       if (state.source === 'manual') state = tClear(state, 'ended-manually', userEmail);
-      else { state = tEnd(state, config, { by: userEmail }); state = await fbOnEnd(env, config, state, work); }
+      else {
+        // This command ends Facebook's video and records the end itself, so the tick's ended effects skip both
+        await claimOnce(DB, state.broadcastId, 'fb-ended');
+        await claimOnce(DB, state.broadcastId, 'ended-announce');
+        state = tEnd(state, config, { by: userEmail }); state = await fbOnEnd(env, config, state, work);
+      }
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       await recordEvent(DB, state.broadcastId, 'live_end', { by: userEmail });
       await logAudit(DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: 'Ended by admin', gitStatus: 'ok' });
@@ -1209,6 +1711,7 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
   state.updatedAt = nowIso();
   await writeState(DB, state);
   _lastTickResult = null; // next tick must recompute
+  _lastBusyResult = null;
   await publishToHub(env, state, config, `admin:${action}`);
   return { success: true, state: publicState(state, config, { includeTest: true }), legacy: legacyState(state, config, { includeTest: true }) };
 }

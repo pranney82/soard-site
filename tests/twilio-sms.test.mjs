@@ -44,3 +44,16 @@ test('the auth token still works on its own', async () => {
   assert.equal(out.sent, 1);
   assert.equal(calls[0].init.headers.Authorization, 'Basic ' + btoa('AC123:tok'));
 });
+
+test('texts only ever go to US and Canadian numbers', async () => {
+  const calls = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => { calls.push(init.body.get('To')); return new Response('{}', { status: 201 }); };
+  try {
+    const out = await sendSms(KEY, { to: ['+44 7700 900123', '+1 876 555 0123', '(888) 555-0100', '+1 (416) 555-0199'], body: 'hi' });
+    assert.equal(out.sent, 1);
+    assert.deepEqual(calls, ['+14165550199'], 'abroad, the Caribbean and toll-free numbers are never texted');
+  } finally {
+    globalThis.fetch = real;
+  }
+});

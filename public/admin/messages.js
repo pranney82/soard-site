@@ -82,6 +82,10 @@ const reminderLive = (kind) => (f) => {
   const channels = ['email', r.sms && f.env.twilio ? 'text' : null, r.push && r.vapid ? 'browser alert' : null].filter(Boolean);
   return ON(`Goes by ${channels.join(', ').replace(/, ([^,]*)$/, ' and $1')}.${signed}${by.length ? ` Sent so far: ${by.join(', ')}.` : ''}`, latest(s.email?.last, s.sms?.last, s.push?.last));
 };
+const textsLive = first(
+  (f) => (!f.reminders ? null : !f.reminders.enabled ? OFF(REM_OFF) : !f.reminders.sms ? OFF(`Texts are switched off in ${REM_SETTINGS}.`) : null),
+  (f) => (!f.env ? null : f.env.twilio ? ON() : ATTN('Twilio isn’t set up in Cloudflare (TWILIO_ACCOUNT_SID, the API key and TWILIO_FROM), so text signups can’t get their code.')),
+);
 const inviteLive = (which) => first(needs('calendar', NO_CAL), (f) => {
   const v = f.invites;
   if (!v) return null;
@@ -235,6 +239,28 @@ const MAP = { t: 'Everything we send', children: [
   { t: 'Reveal watchers', sub: 'People who asked for reminders on a reveal page', color: 'live', side: 'r',
     about: 'Anyone can sign up on a reveal or kid page for reminders by email, text or browser alert. Newsletter subscribers hear about reveals through Kit instead.',
     children: [
+      { t: 'Signing up', children: [
+        { t: 'Confirm your reminders', s: 'live', k: 'email', by: 'visitor', preview: 'rem-confirm', change: CHANGE.revealSettings,
+          who: 'A new address signed up on a reveal page.',
+          when: 'Right after they sign up. Nothing else goes until they tap the link (it works for 3 days).',
+          subject: 'Confirm your reminders for {kid}’s reveal',
+          does: 'One button that confirms the address. If it wasn’t them, nothing else is sent.',
+          touches: ['Resend', 'D1'], where: 'functions/api/reminders.js · _broadcast-notify.js (confirmEmail)',
+          info: 'While reminders are switched off, reveal pages hide the sign-up box.',
+          live: first((f) => (!f.reminders ? null : !f.reminders.enabled ? OFF(REM_OFF) : null), needs('resend', NO_RESEND), () => ON()) },
+        { t: 'Text code', s: 'live', k: 'text', by: 'visitor', preview: 'rem-code', change: CHANGE.revealSettings,
+          who: 'A phone number signed up on a reveal page.',
+          when: 'Right after they sign up for texts.',
+          does: 'A 6-digit code that proves the phone is theirs. It expires in 10 minutes.',
+          touches: ['Twilio', 'D1'], where: 'functions/api/reminders.js · _broadcast-notify.js (smsCodeText)',
+          live: textsLive },
+        { t: 'Text welcome', s: 'live', k: 'text', by: 'visitor', preview: 'rem-welcome', change: CHANGE.revealSettings,
+          who: 'A phone number that just confirmed its code.',
+          when: 'Right after the code is confirmed.',
+          does: 'Confirms the signup: up to 6 texts per reveal, rates may apply, reply HELP or STOP.',
+          touches: ['Twilio'], where: 'functions/api/reminders.js · _broadcast-notify.js (SMS_WELCOME)',
+          live: textsLive },
+      ]},
       { t: 'Reminders', children: [
         { t: 'Save the date', s: 'live', k: 'email', also: ['text', 'push'], by: 'auto', preview: 'rem-scheduled', change: CHANGE.revealSettings,
           who: 'Everyone signed up for reminders (for this kid, or for every reveal).',

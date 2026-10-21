@@ -37,6 +37,17 @@ async function call(body) {
 }
 
 const families = (n) => `${n} ${n === 1 ? 'family' : 'families'}`;
+
+/**
+ * One CSV cell, quoted. Anyone can type into the signup form, so a value a
+ * spreadsheet would run as a formula (= + - @, or a leading tab or return)
+ * gets a ' in front and stays plain text.
+ */
+export function csvCell(v) {
+  let s = String(v ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
+}
 /** peter@soardcharity.com → Peter, jen.alvarez@… → Jen Alvarez */
 const who = (by) => (!by || by === 'automatic' ? null : /@/.test(by) ? by.split('@')[0].split(/[._-]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ') : by);
 
@@ -444,7 +455,7 @@ function FamilyList({ st, act, busy }) {
   const csv = () => {
     const lines = [['email', 'language', 'signed_up', 'where', 'kit', 'emailed_at', 'emailed_via']]
       .concat(shown.map(r => [r.email, r.lang, r.createdAt, r.page || '', r.kit, r.notifiedAt || '', r.notifiedVia || '']));
-    const blob = new Blob([lines.map(l => l.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' });
+    const blob = new Blob([lines.map(l => l.map(csvCell).join(',')).join('\n')], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `application-waitlist-${new Date().toISOString().slice(0, 10)}.csv`;

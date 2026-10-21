@@ -316,10 +316,59 @@ test('catch-up: a refused API key is reported once a day, and webhook gifts stil
   assert.equal((await r.json()).result, 'posted');
 });
 
-test('catch-up: a wrong signing secret is reported', async () => {
+test('catch-up: a wrong signing secret is reported when Zeffy itself is refused', async () => {
+  // Zeffy rotated the secret: its delivery of a real gift fails the check
+  world.payments = [payment()];
   await handleWebhook(env, signed(completed(payment()), { secret: 'whsec_wrong' }), { now: NOW });
   await runSweep(env, { now: NOW + MIN });
   assert.ok(world.emails.some((e) => /being refused/.test(e.subject)));
+  assert.ok(world.zeffyCalls.some((u) => u.endsWith('/payments/pay_0001')), 'asked Zeffy whether the gift is real');
+  assert.equal((await readZeffyConfig(env.DB)).lastRejected.real, true);
+});
+
+test('bad signatures from anyone else: no email, and a flood writes one note, not one per request', async () => {
+  // Count writes to site_config
+  let writes = 0;
+  const prepare = env.DB.prepare.bind(env.DB);
+  env.DB.prepare = (sql) => { if (/INSERT OR REPLACE INTO site_config/.test(sql)) writes++; return prepare(sql); };
+  for (let i = 0; i < 25; i++) {
+    const r = await handleWebhook(env, signed(completed(payment({ id: `pay_fake${i}` })), { secret: 'whsec_attacker' }), { now: NOW + i * 1000 });
+    assert.equal(r.status, 400);
+  }
+  await handleWebhook(env, new Request('https://sunshineonaranneyday.com/api/zeffy-webhook', { method: 'POST', headers: { 'Zeffy-Signature': 'garbage' }, body: 'x' }), { now: NOW + 30e3 });
+  assert.equal(writes, 1, 'one note for the whole flood');
+  const note = (await readZeffyConfig(env.DB)).lastRejected;
+  assert.equal(note.paymentId, 'pay_fake0');
+  assert.match(note.why, /does not match/);
+
+  // The catch-up check asks Zeffy once, hears there's no such payment, and tells nobody
+  await runSweep(env, { now: NOW + MIN });
+  await runSweep(env, { now: NOW + 16 * MIN });
+  assert.equal(world.zeffyCalls.filter((u) => u.includes('/payments/pay_fake0')).length, 1, 'the answer is kept');
+  assert.equal((await readZeffyConfig(env.DB)).lastRejected.real, false);
+  assert.deepEqual(world.emails, []);
+  assert.deepEqual(world.slack, []);
+});
+
+test('bad signatures: none naming a payment, a good delivery since, or no API key to ask means no email', async () => {
+  // Nothing to look up: not an email
+  await handleWebhook(env, new Request('https://sunshineonaranneyday.com/api/zeffy-webhook', { method: 'POST', headers: { 'Zeffy-Signature': `t=${S(NOW)},v1=${'0'.repeat(64)}` }, body: '{}' }), { now: NOW });
+  await runSweep(env, { now: NOW + MIN });
+  assert.deepEqual(world.emails, []);
+
+  // A real refusal, but Zeffy delivered fine afterwards: the secret is right
+  world.payments = [payment(), payment({ id: 'pay_0002' })];
+  await handleWebhook(env, signed(completed(payment({ id: 'pay_0002' })), { secret: 'whsec_wrong', t: S(NOW + 11 * MIN) }), { now: NOW + 11 * MIN });
+  assert.equal((await (await handleWebhook(env, signed(completed(payment()), { t: S(NOW + 12 * MIN) }), { now: NOW + 12 * MIN })).json()).result, 'posted');
+  await runSweep(env, { now: NOW + 13 * MIN });
+  assert.equal(world.emails.filter((e) => /being refused/.test(e.subject)).length, 0);
+
+  // Without ZEFFY_API_KEY there's no telling Zeffy from anyone else
+  const noKey = { ...env, ZEFFY_API_KEY: '' };
+  await handleWebhook(noKey, signed(completed(payment({ id: 'pay_0002' })), { secret: 'whsec_wrong', t: S(NOW + 30 * MIN) }), { now: NOW + 30 * MIN });
+  assert.ok((await readZeffyConfig(env.DB)).lastRejected.at.startsWith(new Date(NOW + 30 * MIN).toISOString().slice(0, 16)), 'noted');
+  await runSweep(noKey, { now: NOW + 31 * MIN });
+  assert.equal(world.emails.filter((e) => /being refused/.test(e.subject)).length, 0);
 });
 
 test('the heartbeat: every 15 minutes, and only once Zeffy is connected', async () => {

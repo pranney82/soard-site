@@ -10,8 +10,9 @@ import { createD1 } from './lib/d1-shim.mjs';
 import { siteStatusFor, planKid, jobFacts, syncKidStatuses, maybeSyncKidStatuses, FIELD_STATUS, REVEAL_TASK_TYPE, SYNC_USER } from '../functions/api/_kid-status.js';
 import { buildAdminView } from '../functions/api/reveals-admin.js';
 
-const job = (id, name, status, { revealDone = null, closedOn = null } = {}) => ({
-  id, name, closedOn,
+const SOARD = '22NJw42j5GLg';
+const job = (id, name, status, { revealDone = null, closedOn = null, org = SOARD } = {}) => ({
+  id, name, closedOn, organization: { id: org },
   customFieldValues: { nodes: status ? [{ value: status, customField: { id: FIELD_STATUS } }] : [] },
   tasks: { nodes: revealDone === null ? [] : [{ progress: revealDone ? 1 : 0.5 }] },
 });
@@ -143,6 +144,23 @@ test('the Reveal task query asks for the Reveal task type', async () => {
   const DB = await world([]);
   await syncKidStatuses({ DB, JOBTREAD_GRANT_KEY: 'k' }, { jobId: 'abc123', fetchImpl });
   assert.deepEqual(seen[0].job.tasks.$.where, [['taskType', 'id'], '=', REVEAL_TASK_TYPE]);
+});
+
+test('a wake-up for one job only counts a SOARD job: another org, or no org at all, changes nothing', async () => {
+  for (const organization of [{ id: 'someOtherOrg' }, null, undefined]) {
+    const DB = await world([{ slug: 'max', name: 'Max', year: 2026, status: 'in-progress', publishStatus: 'published' }]);
+    const seen = [];
+    const theirs = { ...job('j1', 'Max Sample (2026)', 'Denied'), organization };
+    const fetchImpl = async (url, init) => { seen.push(JSON.parse(init.body).query); return Response.json({ job: theirs }); };
+    assert.deepEqual(await syncKidStatuses({ DB, JOBTREAD_GRANT_KEY: 'k' }, { jobId: 'j1', fetchImpl }), [], JSON.stringify(organization));
+    assert.deepEqual(seen[0].job.organization, { id: {} }, 'the job read asks whose it is');
+    assert.equal((await row(DB, 'max')).publishStatus, 'published', 'not hidden');
+  }
+  // The same job, SOARD's: Denied hides it
+  const DB = await world([{ slug: 'max', name: 'Max', year: 2026, status: 'in-progress', publishStatus: 'published' }]);
+  const out = await syncKidStatuses({ DB, JOBTREAD_GRANT_KEY: 'k' }, { jobId: 'j1', fetchImpl: jtFetch([job('j1', 'Max Sample (2026)', 'Denied')]) });
+  assert.equal(out.length, 1);
+  assert.equal((await row(DB, 'max')).publishStatus, 'draft');
 });
 
 test('the sweep asks for a jobs page JobTread accepts (no 413)', async () => {

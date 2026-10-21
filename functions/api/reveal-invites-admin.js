@@ -18,7 +18,8 @@
  * GET ?board=1               → the website's board with each member's private reveal email
  * GET ?advisory=1            → the Advisory Board with each member's private reveal email
  * POST { boardEmail: { slug, email } } → set or clear one (board or advisory) and update open invites
- * POST { enabled, organizer } → turn sending on/off, change the organizer
+ * POST { enabled, organizer } → turn sending on/off, change the organizer (one of
+ *                               allowedOrganizers: the site sends as that person)
  *
  * Test links are GETs on purpose: open them in a browser signed in to Access.
  */
@@ -26,6 +27,7 @@
 import {
   ensureSchema, readConfig, writeConfig, reconcileJob, reconcileAll, sendTestInvite,
   listUpcoming, maybeSweep, maybeCheckGuests, boardRoster, setBoardEmail, refreshForBoardChange, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
+  allowedOrganizers,
 } from './_reveal-invites.js';
 import { readNudgeConfig, writeNudgeConfig, runNudges, maybeNudge, summarize, SANDBOX_JOB_ID } from './_reveal-nudges.js';
 import { logAudit } from './_audit.js';
@@ -239,8 +241,10 @@ export async function onRequestPost(context) {
     const patch = {};
     if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;
     if (typeof body.organizer === 'string') {
+      // The site sends as the organizer, so only the mailboxes set aside for invites
       const o = body.organizer.trim().toLowerCase();
-      if (!/^[^\s@]+@soardcharity\.com$/.test(o)) return fail('organizer must be a soardcharity.com address');
+      const allowed = allowedOrganizers(env);
+      if (!allowed.includes(o)) return fail(`Invites can only come from ${allowed.join(' or ')}.`);
       patch.organizer = o;
     }
     if (body.template && typeof body.template === 'object') {

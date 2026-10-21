@@ -19,6 +19,16 @@
 
 const KIT_API = 'https://api.kit.com/v4';
 
+/**
+ * The state a newsletter signup from the website starts in. 'active' means
+ * on the list at once. Double opt-in is this one line: 'inactive' makes Kit
+ * hold a new address, unconfirmed, until its owner clicks the confirmation
+ * email Kit sends from KIT_FORM_ID's form (turn that form's incentive email
+ * on in Kit first). The applications waitlist keeps 'active' either way: its
+ * one email goes out whether or not Kit can reach them (_application-waitlist.js).
+ */
+export const NEWSLETTER_SIGNUP_STATE = 'active';
+
 export function kitConfigured(env) {
   return Boolean(env.KIT_API_KEY);
 }
@@ -42,7 +52,8 @@ function kitFetch(env, path, init = {}) {
  *
  * @param {{source?: string}} [opts] — where the signup came from; mapped to a
  *   Kit tag (see SOURCE_TAGS) so the team can email one audience at a time,
- *   e.g. only the families waiting for applications to reopen.
+ *   e.g. only the families waiting for applications to reopen. A request
+ *   can't name a tag: the only ones ever made here are SOURCE_TAGS' own.
  * @returns {Promise<{configured: boolean, ok: boolean}>}
  */
 export async function kitSubscribe(env, email, opts = {}) {
@@ -50,7 +61,7 @@ export async function kitSubscribe(env, email, opts = {}) {
   try {
     const res = await kitFetch(env, '/subscribers', {
       method: 'POST',
-      body: JSON.stringify({ email_address: email, state: 'active' }),
+      body: JSON.stringify({ email_address: email, state: NEWSLETTER_SIGNUP_STATE }),
     });
     if (!res.ok) {
       console.error(`Kit subscribe error ${res.status}: ${await res.text()}`);
@@ -70,11 +81,10 @@ export async function kitSubscribe(env, email, opts = {}) {
       }
     }
 
+    // Best-effort: a tagging failure never fails the signup. Only the
+    // allowlist's own tag names may be made if Kit doesn't have them yet.
     const tagName = tagForSource(opts.source);
-    if (tagName) {
-      // Best-effort: a tagging failure never fails the signup
-      await kitTagSubscriber(env, email, tagName);
-    }
+    await kitTagSubscriber(env, email, tagName, { create: ALLOWED_TAG_NAMES.has(tagName) });
     // A family who first only asked to hear when applications open has now
     // asked for the newsletter too: list mail may reach them from here on
     if (opts.source === 'newsletter' && subscriberId) {
@@ -90,22 +100,73 @@ export async function kitSubscribe(env, email, opts = {}) {
 }
 
 /* ── Source → tag ──
- * Form `source` values (validated by /api/newsletter) map to human-readable
- * Kit tags. Unknown-but-well-formed sources become Title Case tags so a new
- * form can start tagging without a code change. */
-const SOURCE_TAGS = {
-  'newsletter': 'Newsletter',
-  'application-waitlist': 'Application Waitlist',
-};
+ * Every `source` the site's own signup forms send, and the one Kit tag each
+ * goes to. Nothing else: a request can't pick an audience (and its Kit
+ * automations) or make a tag, so anything unknown is a plain newsletter
+ * signup. A new form adds its source here. */
+export const SOURCE_TAGS = Object.freeze({
+  'newsletter': 'Newsletter',                     // the footer on every page
+  'application-waitlist': 'Application Waitlist', // Apply page and the closed application form
+});
+export const DEFAULT_SOURCE = 'newsletter';
+// Fixed names in code, so making one Kit doesn't have yet is safe
+const ALLOWED_TAG_NAMES = new Set(Object.values(SOURCE_TAGS));
+
+/** A request's `source`, or the newsletter when it isn't one the site sends */
+export function cleanSource(source) {
+  const key = String(source || '').trim().toLowerCase();
+  return Object.hasOwn(SOURCE_TAGS, key) ? key : DEFAULT_SOURCE;
+}
+
 function tagForSource(source) {
-  if (!source) return null;
-  const key = String(source).toLowerCase();
-  if (SOURCE_TAGS[key]) return SOURCE_TAGS[key];
-  if (!/^[a-z0-9-]{2,40}$/.test(key)) return null;
-  return key.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  return SOURCE_TAGS[cleanSource(source)];
 }
 
 const _tagIds = new Map(); // tag name → id, per isolate
+
+/* Tag ids found once are kept in D1 too, so a fresh isolate doesn't page
+ * through every tag in Kit again (Kit allows 120 calls a minute). A week
+ * old, or refused by Kit, and the id is looked up again. A tag Kit doesn't
+ * have (id 0) is believed for TAG_MISSING_MS, by lookups that won't make it. */
+const TAG_CACHE_MS = 7 * 24 * 3600 * 1000;
+const TAG_MISSING_MS = 10 * 60 * 1000;
+const _tagTable = new WeakSet();
+async function tagCache(DB) {
+  if (!DB) return null;
+  if (!_tagTable.has(DB)) {
+    await DB.prepare('CREATE TABLE IF NOT EXISTS kit_tag_ids (name TEXT PRIMARY KEY, id INTEGER NOT NULL, checked_at INTEGER NOT NULL)').run();
+    _tagTable.add(DB);
+  }
+  return DB;
+}
+/** → the id, null when Kit is known not to have it, undefined when it has to be looked up */
+async function cachedTagId(env, name, { create }) {
+  try {
+    const DB = await tagCache(env.DB);
+    const row = DB ? await DB.prepare('SELECT id, checked_at FROM kit_tag_ids WHERE name = ?').bind(name.toLowerCase()).first() : null;
+    if (!row) return undefined;
+    const age = Date.now() - Number(row.checked_at);
+    if (Number(row.id) > 0 && age < TAG_CACHE_MS) return Number(row.id);
+    if (Number(row.id) === 0 && !create && age < TAG_MISSING_MS) return null;
+  } catch { /* look it up */ }
+  return undefined;
+}
+async function rememberTagId(env, name, id) {
+  // Missing is kept in D1 only, so a tag made by one isolate is seen by all at once
+  if (id) _tagIds.set(name, id);
+  try {
+    const DB = await tagCache(env.DB);
+    if (DB) await DB.prepare('INSERT OR REPLACE INTO kit_tag_ids (name, id, checked_at) VALUES (?, ?, ?)').bind(name.toLowerCase(), id || 0, Date.now()).run();
+  } catch { /* the isolate still remembers */ }
+}
+/** Kit no longer has this tag id (deleted, or remade under a new id): look it up again next time */
+async function forgetTagId(env, id) {
+  for (const [name, known] of _tagIds) if (known === id) _tagIds.delete(name);
+  try {
+    const DB = await tagCache(env.DB);
+    if (DB) await DB.prepare('DELETE FROM kit_tag_ids WHERE id = ?').bind(id).run();
+  } catch { /* looked up again after a week regardless */ }
+}
 
 /**
  * Subscribers who only asked to hear when applications open (they came in
@@ -122,23 +183,30 @@ export const WAITLIST_ONLY_TAG = 'Application Waitlist only (no newsletter)';
  */
 export async function kitTagId(env, name, { create = true } = {}) {
   if (_tagIds.has(name)) return _tagIds.get(name);
+  const cached = await cachedTagId(env, name, { create });
+  if (cached) { _tagIds.set(name, cached); return cached; }
+  if (cached === null) return null;
   try {
     let cursor = null;
+    let seenAll = false;
     for (let page = 0; page < 20; page++) {
       const res = await kitFetch(env, `/tags?per_page=500${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`);
       if (!res.ok) { console.error(`Kit list tags error ${res.status}: ${await res.text()}`); break; }
       const data = await res.json();
       const hit = (data.tags || []).find(t => (t.name || '').toLowerCase() === name.toLowerCase());
-      if (hit) { _tagIds.set(name, hit.id); return hit.id; }
-      if (!data.pagination?.has_next_page) break;
+      if (hit) { await rememberTagId(env, name, hit.id); return hit.id; }
+      if (!data.pagination?.has_next_page) { seenAll = true; break; }
       cursor = data.pagination.end_cursor;
     }
-    if (!create) return null;
+    if (!create) {
+      if (seenAll) await rememberTagId(env, name, 0);
+      return null;
+    }
     const created = await kitFetch(env, '/tags', { method: 'POST', body: JSON.stringify({ name }) });
     const body = await created.json().catch(() => ({}));
     const id = body.tag?.id;
     if (!created.ok || !id) { console.error(`Kit create tag "${name}" error ${created.status}:`, JSON.stringify(body)); return null; }
-    _tagIds.set(name, id);
+    await rememberTagId(env, name, id);
     return id;
   } catch (err) {
     console.error('Kit tag lookup failed:', err);
@@ -146,16 +214,17 @@ export async function kitTagId(env, name, { create = true } = {}) {
   }
 }
 
-/** Add a tag to an existing subscriber by email. Never throws. */
-export async function kitTagSubscriber(env, email, tagName) {
-  if (!kitConfigured(env)) return false;
-  const tagId = await kitTagId(env, tagName);
+/** Add a tag to an existing subscriber by email. `create: false` skips a tag Kit doesn't have. Never throws. */
+export async function kitTagSubscriber(env, email, tagName, { create = true } = {}) {
+  if (!kitConfigured(env) || !tagName) return false;
+  const tagId = await kitTagId(env, tagName, { create });
   if (!tagId) return false;
   try {
     const res = await kitFetch(env, `/tags/${tagId}/subscribers`, {
       method: 'POST',
       body: JSON.stringify({ email_address: email }),
     });
+    if (res.status === 404) await forgetTagId(env, tagId);
     if (!res.ok) { console.error(`Kit tag subscriber error ${res.status}: ${await res.text()}`); return false; }
     return true;
   } catch (err) {
@@ -206,6 +275,7 @@ export async function kitTagSubscriberId(env, tagId, subscriberId) {
   if (!kitConfigured(env) || !tagId || !subscriberId) return false;
   try {
     const res = await kitFetch(env, `/tags/${tagId}/subscribers/${subscriberId}`, { method: 'POST', body: '{}' });
+    if (res.status === 404) await forgetTagId(env, tagId);
     if (!res.ok) { console.error(`Kit tag subscriber ${subscriberId} error ${res.status}: ${await res.text()}`); return false; }
     return true;
   } catch (err) {

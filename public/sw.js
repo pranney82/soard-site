@@ -6,8 +6,16 @@
 const CACHE_NAME = 'soard-v2';
 const IMAGE_CACHE_NAME = 'soard-images-v1';
 const IMAGE_CACHE_MAX_ENTRIES = 300;
-const PAGE_CACHE_NAME = 'soard-pages-v1';
+// v2: v1 could hold private pages (admin, family links); bumping the name clears it
+const PAGE_CACHE_NAME = 'soard-pages-v2';
 const PAGE_CACHE_MAX_ENTRIES = 60;
+
+// Never kept on the device: signed-in pages, a family's application, and any
+// page reached through a personal link (tokens in the query string)
+const PRIVATE_PATHS = ['/admin', '/apply/form', '/profile-update', '/api/', '/cdn-cgi/access'];
+const PRIVATE_PARAMS = ['t', 'token', 'confirm', 'unsubscribe', 'key', 'draft', 'resume'];
+const isPrivate = (url) =>
+  PRIVATE_PATHS.some((p) => url.pathname.startsWith(p)) || PRIVATE_PARAMS.some((k) => url.searchParams.has(k));
 
 const PRECACHE_URLS = [
   '/fonts/outfit-latin-variable.woff2',
@@ -47,6 +55,7 @@ self.addEventListener('fetch', (event) => {
   if (!isSameOrigin && !isCFImage) return;
   // The admin's Preview loads a fresh ?admin-preview URL per edit; don't cache those pages
   if (url.searchParams.has('admin-preview')) return;
+  if (isSameOrigin && isPrivate(url)) return;
 
   // CF Images: separate cache with eviction limit.
   // The site serves these same-origin via /cdn-cgi/imagedelivery/ —
@@ -119,7 +128,8 @@ async function cacheFirstWithLimit(request, cacheName, maxEntries) {
 async function networkFirst(request) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    const cacheControl = response.headers.get('Cache-Control') || '';
+    if (response.ok && !response.redirected && !/no-store|private/i.test(cacheControl)) {
       const cache = await caches.open(PAGE_CACHE_NAME);
       cache.put(request, response.clone());
       // Bound the offline-page cache so it can't grow forever
@@ -156,7 +166,9 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/live/';
+  let url = (event.notification.data && event.notification.data.url) || '/live/';
+  // Only ever open a page on this site
+  try { if (new URL(url, self.location.origin).origin !== self.location.origin) url = '/live/'; } catch { url = '/live/'; }
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const c of list) {

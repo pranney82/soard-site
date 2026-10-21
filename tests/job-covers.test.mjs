@@ -33,7 +33,7 @@ async function jt(url, init) {
   throw new Error(`unexpected JobTread call: ${Object.keys(rest)}`);
 }
 let JOBS = [];
-const job = (id, name, status = 'Build') => ({ id, name, closedOn: null, customFieldValues: { nodes: [{ value: status, customField: { id: FIELD_STATUS } }] }, tasks: { nodes: [] } });
+const job = (id, name, status = 'Build') => ({ id, name, closedOn: null, organization: { id: '22NJw42j5GLg' }, customFieldValues: { nodes: [{ value: status, customField: { id: FIELD_STATUS } }] }, tasks: { nodes: [] } });
 
 beforeEach(async () => {
   env = { DB: await createD1({ schemaFiles: ['scripts/schema.sql'] }), JOBTREAD_GRANT_KEY: 'site-grant' };

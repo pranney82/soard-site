@@ -2,16 +2,19 @@
  * POST /api/broadcast-hooks — heartbeat from the real-time hub
  * =============================================================
  * The soard-live-hub Durable Object calls this every few seconds with a
- * one-time nonce in X-Hub-Nonce. We verify the nonce back over the private
+ * one-time nonce in X-Hub-Nonce (a UUID; anything else is refused before the
+ * hub is asked). We verify the nonce back over the private
  * LIVE_HUB binding (only this Pages project can reach it), run a tick, and
  * return the public state; the hub pushes it to every open socket if it
- * changed. No shared secret exists anywhere. The same heartbeat wakes the
+ * changed. The answer comes within 10 s (the hub gives up at 15): a slower
+ * tick finishes after the reply and publishes its own change. No shared
+ * secret exists anywhere. The same heartbeat wakes the
  * reveal checks, the reveal invite sweep and guest check, the JobTread
  * schedule check, the makeover application sweep and the Zeffy gift check
  * (see below).
  */
 
-import { runTick, verifyHubNonce } from './_broadcast.js';
+import { runTick, verifyHubNonce, publishToHub, publicPayload, readState, readConfig } from './_broadcast.js';
 import { maybeNudge } from './_reveal-nudges.js';
 import { maybeSweep, maybeCheckGuests } from './_reveal-invites.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
@@ -22,6 +25,9 @@ import { maybeRunWaitlist } from './_application-waitlist.js';
 import { maybeRunPress } from './_press.js';
 import { maybeSlackPreview } from './_slack-preview.js';
 
+// The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
+const HUB_ANSWER_MS = 10 * 1000;
+
 export async function onRequestPost(context) {
   const { env, request } = context;
   const nonce = request.headers.get('x-hub-nonce');
@@ -31,7 +37,15 @@ export async function onRequestPost(context) {
   let body = {};
   try { body = await request.json(); } catch { /* empty */ }
   try {
-    const r = await runTick(env, { source: body.source ? `hub:${body.source}` : 'hub', force: !!body.force });
+    const ticking = runTick(env, { source: body.source ? `hub:${body.source}` : 'hub', force: !!body.force });
+    let answered = false;
+    // A tick that outlasts the answer still finishes (waitUntil), and pushes what it changed to the hub itself
+    context.waitUntil(ticking.then(async (t) => {
+      if (answered && t.changed) await publishToHub(env, await readState(env.DB), await readConfig(env.DB), 'tick');
+    }).catch(() => {}));
+    let timer;
+    const late = new Promise((resolve) => { timer = setTimeout(() => { answered = true; resolve(null); }, HUB_ANSWER_MS); });
+    const r = await Promise.race([ticking, late]).finally(() => clearTimeout(timer));
     // The hub's heartbeat (every minute even when idle) is the site's clock for
     // reveal work: weekday 8 AM reveal checks, the 6-hourly invite sweep, the
     // 5-minute invite guest check (new vendors on a job), the 5-minute check
@@ -54,7 +68,11 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunPress(env));
     // Once per alert redesign: the new Slack cards, posted in one thread (see _slack-preview.js)
     context.waitUntil(maybeSlackPreview(env));
-    return Response.json({ ok: true, state: r.state, reason: r.reason, work: r.work, changed: r.changed, cached: !!r.cached });
+    // The hub passes `reason` to every open page and keeps `work` in its status, so both go
+    // as kinds only ('email', 'kid', 'auto-start'), never kid slugs or send counts
+    if (!r) return Response.json({ ok: true, state: (await publicPayload(env)).state, reason: 'tick', work: [], changed: false, cached: false, busy: true });
+    const work = [...new Set((r.work || []).map((w) => String(w).split(':')[0]))];
+    return Response.json({ ok: true, state: r.state, reason: 'tick', work, changed: r.changed, cached: !!r.cached, busy: !!r.busy });
   } catch (err) {
     return Response.json({ ok: false, error: err.message }, { status: 500 });
   }

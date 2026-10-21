@@ -2,7 +2,8 @@
  * /api/applicant-email-action — the buttons in a status summary email
  * =====================================================================
  * Public (no sign-in, so it works from a phone): each link carries the
- * one-time token of one status change (./_applicant-notify.js). GET only
+ * one-time token of one status change (./_applicant-notify.js; D1 keeps only
+ * its hash, and it works for 7 days). GET only
  * shows what would happen, because mail scanners open links on their own;
  * the change happens when a person presses the button (POST).
  *   ?t=<token>&do=back  move the status back in JobTread (no email)
@@ -56,6 +57,7 @@ const adminHref = (id) => `${SITE_ORIGIN}/admin/#applications/applicants/${encod
 const adminBtn = (id) => `<a class="btn" href="${adminHref(id)}">Open in the admin</a>`;
 const adminLink = (id) => `<div class="actions">${adminBtn(id)}</div>`;
 const gone = () => page('Already handled', '<h1>Already handled</h1><p>This change was already handled, or the status has changed again since. The admin shows where things stand.</p>' + adminLink(''), { status: 410 });
+const expired = () => page('Link expired', '<h1>This link has expired</h1><p>The links in a status summary work for 7 days. Make the change from the family’s page in the admin.</p>' + adminLink(''), { status: 410 });
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return page('Unavailable', '<h1>Not available right now</h1><p>Please try again in a minute.</p>', { status: 500 });
@@ -64,6 +66,7 @@ export async function onRequestGet({ request, env }) {
   const act = url.searchParams.get('do') || '';
   if (!ACTIONS.includes(act)) return page('Not found', '<h1>This link isn’t complete</h1><p>Open the family in the admin instead.</p>' + adminLink(''), { status: 400 });
   const row = await linkPreview(env, tok);
+  if (row?.expired) return expired();
   if (!row || (act !== 'back' && !row.kind)) return gone();
   const name = escapeHtml(row.name || 'this family');
   const label = escapeHtml(row.label || row.status);
@@ -87,12 +90,14 @@ export async function onRequestPost({ request, env }) {
   } catch { /* fall through to the error page */ }
   if (!ACTIONS.includes(act)) return page('Not found', '<h1>This link isn’t complete</h1>', { status: 400 });
   const preview = await linkPreview(env, tok);
+  if (preview?.expired) return expired();
   let out;
   try {
     out = await linkAction(env, tok, act);
   } catch (e) {
     return page('Something went wrong', `<h1>That didn’t work</h1><p>${escapeHtml(e.message)}. Nothing was sent to the family. Try again from the admin.</p>${adminLink(preview?.account_id)}`, { status: 500 });
   }
+  if (out.expired) return expired();
   if (out.gone) return gone();
   if (!out.ok) return page('Not done', `<h1>Not done</h1><p>${escapeHtml(out.error || 'That didn’t work.')}</p>${adminLink(preview?.account_id)}`, { status: 409 });
   const name = escapeHtml(out.name || preview?.name || 'The family');

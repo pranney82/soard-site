@@ -32,7 +32,8 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
 const MAX_ITEMS = 500;
 
 export async function reorder(env, { collection, items } = {}, userEmail = 'unknown') {
-  const cfg = REORDERABLE[collection];
+  // Own keys only: "constructor" or "__proto__" must not find something on Object.prototype
+  const cfg = typeof collection === 'string' && Object.hasOwn(REORDERABLE, collection) ? REORDERABLE[collection] : null;
   if (!cfg) return { status: 403, body: { success: false, error: 'This list can’t be reordered here' } };
   if (!Array.isArray(items) || !items.length || items.length > MAX_ITEMS) {
     return { status: 400, body: { success: false, error: 'Send the items in their new order' } };

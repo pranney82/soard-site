@@ -41,5 +41,12 @@ export default defineConfig({
     server: {
       allowedHosts: ['.trycloudflare.com'],
     },
+    build: {
+      // Page scripts always ship as /_astro/*.js files, never inlined into the
+      // HTML (Astro inlines ones under 4 KB): the CSP allows inline scripts
+      // only by hash (scripts/csp-hash.mjs), and a file needs no hash.
+      // undefined keeps Vite's default for everything else (small images, fonts).
+      assetsInlineLimit: (file) => (file.endsWith('.js') ? false : undefined),
+    },
   },
 });

@@ -252,16 +252,21 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <ClientRouter />
 
   <!-- JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas -->
-  <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
+  <script type="application/ld+json" set:html={JSON.stringify(structuredData).replace(/</g, '\\u003c')} />
 
   <!-- YouTube posters ask for the HD frame (maxresdefault). Older videos don't
        have one: YouTube answers with a 120×90 gray placeholder, so swap in the
        standard frame (hqdefault, which every video has). It's 4:3 with black
        bars baked in, so it's shown 16:9 and cropped, which trims the bars.
        Capturing listeners here catch every poster on the page, including ones
-       set later. -->
+       set later.
+       Broken images marked data-img-fallback recover here too, in place of
+       onerror="" attributes (the CSP blocks inline handlers): "next" hides the
+       image and shows the placeholder after it; any other value is a selector
+       for the box around it to hide. Once the page is parsed, a sweep catches
+       any that failed before this ran. -->
   <script is:inline>
-    (function(){var re=/i\.ytimg\.com\/vi(_webp)?\/([^/]+)\/maxresdefault\.(jpg|webp)/;function f(e){var i=e.target,s=i&&i.tagName==='IMG'&&(i.currentSrc||i.src),m=s&&re.exec(s);if(!m||(e.type==='load'&&i.naturalWidth>120))return;var p=i.closest('picture');if(p)p.querySelectorAll('source').forEach(function(x){x.remove()});i.style.aspectRatio='16/9';i.style.objectFit='cover';i.src='https://i.ytimg.com/vi/'+m[2]+'/hqdefault.jpg'}document.addEventListener('load',f,true);document.addEventListener('error',f,true)})();
+    (function(){var re=/i\.ytimg\.com\/vi(_webp)?\/([^/]+)\/maxresdefault\.(jpg|webp)/;function f(e){var i=e.target,s=i&&i.tagName==='IMG'&&(i.currentSrc||i.src),m=s&&re.exec(s);if(!m||(e.type==='load'&&i.naturalWidth>120))return;var p=i.closest('picture');if(p)p.querySelectorAll('source').forEach(function(x){x.remove()});i.style.aspectRatio='16/9';i.style.objectFit='cover';i.src='https://i.ytimg.com/vi/'+m[2]+'/hqdefault.jpg'}function g(i){var v=i.getAttribute('data-img-fallback'),n;if(v==='next'){i.style.display='none';if(n=i.nextElementSibling)n.style.display=''}else if(v&&(n=i.closest(v)))n.style.display='none'}document.addEventListener('load',f,true);document.addEventListener('error',function(e){f(e);var i=e.target;if(i&&i.tagName==='IMG'&&i.hasAttribute('data-img-fallback'))g(i)},true);document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('img[data-img-fallback]').forEach(function(i){if(i.complete&&i.decode)i.decode().catch(function(){if(i.complete&&!i.naturalWidth)g(i)})})})})();
   </script>
 
   <!-- Page-specific head content (preloads, etc.) -->

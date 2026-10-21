@@ -28,10 +28,13 @@ const closesLabel = bidClosesLabel();
 {show && (
   <>
     {/* Runs before the bar is parsed so a dismissed or expired bar never
-        paints. The class goes on <html> because the bar is not in the DOM yet. */}
-    <script is:inline define:vars={{ closesAt: BID_CLOSES_MS }}>
+        paints. The class goes on <html> because the bar is not in the DOM yet.
+        The close time rides on data-closes so both script bodies stay
+        constant: the CSP allows inline scripts only by hash. */}
+    <script is:inline data-closes={BID_CLOSES_MS}>
       (function () {
         try {
+          var closesAt = +document.currentScript.getAttribute('data-closes');
           var dead = Date.now() >= closesAt;
           var gone = sessionStorage.getItem('soard-auction-bar') === 'dismissed';
           if (dead || gone) document.documentElement.classList.add('auction-bar-off');
@@ -63,8 +66,9 @@ const closesLabel = bidClosesLabel();
       </button>
     </aside>
 
-    <script is:inline define:vars={{ closesAt: BID_CLOSES_MS }}>
+    <script is:inline data-closes={BID_CLOSES_MS}>
       (function () {
+        var closesAt = +document.currentScript.getAttribute('data-closes');
         var HOUR = 3600000, MIN = 60000;
 
         /* Only the time phrase changes; the item context is static. Goes

@@ -339,7 +339,7 @@ try {
   const [tent, conf] = cards;
   ok(/\(tentative\)/.test(tent) && /All day/.test(tent), 'the tentative preview is a name-first, all-day save-the-date');
   ok(/Lizzie's therapy room reveal is penciled in/.test(tent) && /sees the new therapy room/.test(conf), "{space} names what was built, from the job's Makeover Type");
-  ok(/Where\s*100 Example Way/.test(tent) && /Where\s*100 Example Way/.test(conf), 'both stages show the full address');
+  ok(/Where\s*2060 Example Way/.test(tent) && /Where\s*2060 Example Way/.test(conf), 'both stages show the full address');
   ok(/Shows as\s*Free/.test(tent) && /Shows as\s*Busy/.test(conf), 'free until there is a confirmed time, then busy');
   ok(/^Meet \w+: https:\/\/sunshineonaranneyday\.com\/kids\//m.test(tent) && /^Watch live from anywhere: /m.test(tent) && /^Questions\? Email Clareece Cunningham at ccunningham@soardcharity\.com\.$/m.test(tent) && /^Sunshine on a Ranney Day$/m.test(tent), 'labeled links and who to ask, as the server writes them');
   const testUrls = [];

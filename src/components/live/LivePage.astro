@@ -93,23 +93,35 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
             <label class="sr-only" for="remind-email">Email address</label>
             <input class="remind-input" id="remind-email" type="email" name="email" placeholder="you@example.com" autocomplete="email" required />
             <button class="btn btn-primary remind-btn" type="submit">
-              <span class="btn-text">Email me</span><span class="btn-done">You're on the list</span>
+              <span class="btn-text">Email me</span><span class="btn-done">Check your email</span>
             </button>
           </div>
           <div class="remind-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
           <p class="remind-note" role="status" aria-live="polite"></p>
         </form>
-        <form class="remind-form" data-live="form-sms" hidden novalidate>
-          <div class="remind-row">
+        <!-- Two steps: the number, then the 6-digit code we text to it -->
+        <form class="remind-form" data-live="form-sms" data-step="phone" hidden novalidate>
+          <div class="remind-row remind-step--phone">
             <label class="sr-only" for="remind-phone">Mobile number</label>
             <input class="remind-input" id="remind-phone" type="tel" name="phone" placeholder="(404) 555-0123" autocomplete="tel" required />
             <button class="btn btn-dark remind-btn" type="submit">
               <span class="btn-text">Text me</span><span class="btn-done">We'll text you</span>
             </button>
           </div>
+          <div class="remind-row remind-step--code">
+            <label class="sr-only" for="remind-code">6-digit code from the text</label>
+            <input class="remind-input remind-code" id="remind-code" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" />
+            <button class="btn btn-dark remind-btn" type="submit">Confirm</button>
+          </div>
+          <p class="remind-again remind-step--code">
+            <button class="remind-link" type="button" data-sms="resend">Send a new code</button>
+            <button class="remind-link" type="button" data-sms="change">Use a different number</button>
+          </p>
           <p class="remind-consent">By entering your number, you agree to receive reveal reminder texts from Sunshine on a Ranney Day. Up to 6 texts per reveal. Message and data rates may apply. Reply HELP for help or STOP to opt out. See our <a href="/terms/#text-messages">Terms</a> and <a href="/privacy-policy/#text-messages">Privacy Policy</a>.</p>
           <p class="remind-note" role="status" aria-live="polite"></p>
         </form>
+        <!-- The quick check (Turnstile) runs in a small frame here, out of sight unless it needs a click -->
+        <div class="remind-check" data-live="remind-check"></div>
         <div class="remind-extras">
           <button class="remind-link" type="button" data-live="push-btn" hidden>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
@@ -271,6 +283,16 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .remind-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
   .remind-note { font-size: 14px; color: var(--c-text-muted); min-height: 1.4em; margin: 8px 0 0; }
   .remind-note--error { color: var(--c-text); font-weight: 600; }
+  /* The text form shows one step at a time */
+  .remind-form[data-step='phone'] .remind-step--code,
+  .remind-form[data-step='code'] .remind-step--phone { display: none; }
+  .remind-form[data-step='done'] .remind-step--code { display: none; }
+  .remind-code { letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+  .remind-code::placeholder { letter-spacing: normal; }
+  .remind-again { display: flex; gap: 20px; flex-wrap: wrap; margin: 12px 0 0; }
+  .remind-check { max-width: 400px; }
+  .remind-check :global(iframe) { display: block; width: 100%; height: 0; border: 0; overflow: hidden; transition: height var(--transition-fast); }
+  .remind-check.is-shown :global(iframe) { height: 72px; margin: 4px 0 12px; }
   .remind-consent { font-size: 12px; color: var(--c-text-light); max-width: 520px; line-height: 1.5; margin: 10px 0 0; }
   .remind-consent a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
   .remind-extras { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; }
@@ -535,33 +557,171 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     q('cta-facebook')?.addEventListener('click', () => client.beacon('click_facebook'));
     q('cta-calendar')?.addEventListener('click', () => client.beacon('click_calendar'));
 
-    // Reminder forms
-    async function submitReminder(form: HTMLFormElement, payload: Record<string, string>) {
-      const note = form.querySelector('.remind-note') as HTMLElement;
-      const btn = form.querySelector('button') as HTMLButtonElement;
-      btn.disabled = true; note.className = 'remind-note'; note.textContent = 'One moment…';
-      try {
-        const res = await fetch('/api/reminders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, kidSlug: pageKid || last?.kidSlug || undefined, source: pageKid ? 'live-kid' : 'live' }) });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data.ok) { form.classList.add('is-done'); note.textContent = payload.channel === 'sms' ? 'Done. We will text you before the reveal.' : 'Done. Check your inbox on reveal day.'; }
-        else { note.className = 'remind-note remind-note--error'; note.textContent = res.status === 429 ? 'Too many tries. Give it a minute.' : (data.error || 'Something went wrong. Please try again.'); btn.disabled = false; }
-      } catch { note.className = 'remind-note remind-note--error'; note.textContent = 'No connection. Please try again.'; btn.disabled = false; }
+    // ── Reminder forms ──────────────────────────────────────────────
+    // Nobody is on the list until the address proves it's theirs: email
+    // gets a link to confirm, a phone gets a 6-digit code to type back here.
+
+    // The quick check (Turnstile) while the server asks for one. The page's
+    // CSP doesn't load Turnstile, so it runs in a frame /api/reminders serves
+    // with its own policy, and posts its token up to this page.
+    const checkBox = bq<HTMLElement>('remind-check');
+    let checkOn: Promise<boolean> | null = null;
+    let checkFrame: HTMLIFrameElement | null = null;
+    let checkToken = '';
+    const checkWaiters: ((token: string) => void)[] = [];
+    // Out of sight is out of the tab order and the screen reader too, until Cloudflare wants a click
+    const showCheck = (on: boolean) => {
+      checkBox?.classList.toggle('is-shown', on);
+      checkBox?.setAttribute('aria-hidden', String(!on));
+      if (checkFrame) checkFrame.tabIndex = on ? 0 : -1;
+    };
+    const checkNeeded = () => (checkOn ||= fetch('/api/reminders?config=1', { cache: 'no-store' }).then((r) => r.json()).then((d) => !!d.turnstile).catch(() => { checkOn = null; return false; }));
+    async function warmCheck() {
+      if (checkFrame || !checkBox || !(await checkNeeded()) || checkFrame) return;
+      checkFrame = document.createElement('iframe');
+      checkFrame.src = '/api/reminders?check=1';
+      checkFrame.title = 'Quick check that you are a person';
+      checkBox.append(checkFrame);
+      showCheck(false);
     }
-    bq<HTMLFormElement>('form-email')?.addEventListener('submit', (e) => {
+    function onCheckMessage(e: MessageEvent) {
+      if (!checkFrame || e.source !== checkFrame.contentWindow || e.origin !== location.origin) return;
+      const d = e.data || {};
+      if (d.type !== 'soard-check') return;
+      if (d.show) showCheck(true);
+      if (d.expired) checkToken = '';
+      if (d.token) { checkToken = String(d.token); showCheck(false); for (const w of checkWaiters.splice(0)) w(checkToken); }
+      if (d.error) { showCheck(true); for (const w of checkWaiters.splice(0)) w(''); }
+    }
+    window.addEventListener('message', onCheckMessage);
+    /** A fresh token, '' when none came (the person sees the check), or null when no check is on */
+    async function checkTokenFor(note: HTMLElement): Promise<string | null> {
+      if (!(await checkNeeded())) return null;
+      await warmCheck();
+      let token = checkToken;
+      if (!token) {
+        token = await new Promise<string>((resolve) => {
+          const slow = setTimeout(() => { showCheck(true); note.textContent = 'Almost there. Finish the quick check below.'; }, 6000);
+          const give = setTimeout(() => resolve(''), 90_000);
+          checkWaiters.push((t) => { clearTimeout(slow); clearTimeout(give); resolve(t); });
+        });
+      }
+      // Each token works once: start the next one now
+      checkToken = '';
+      checkFrame?.contentWindow?.postMessage({ type: 'soard-check-reset' }, location.origin);
+      return token;
+    }
+    for (const k of ['form-email', 'form-sms']) {
+      const f = bq<HTMLFormElement>(k);
+      f?.addEventListener('focusin', () => { void warmCheck(); }, { once: true });
+      f?.addEventListener('pointerenter', () => { void warmCheck(); }, { once: true });
+    }
+
+    const say = (form: HTMLFormElement, text: string, error = false) => {
+      const note = form.querySelector('.remind-note') as HTMLElement;
+      note.className = error ? 'remind-note remind-note--error' : 'remind-note';
+      note.textContent = text;
+    };
+    /** POST to /api/reminders → [ok, data, status]; adds the kid, the source and (when needed) the check's token */
+    async function sendReminder(form: HTMLFormElement, payload: Record<string, string>, { check = true, again = false } = {}): Promise<[boolean, Record<string, any>, number]> {
+      const body: Record<string, unknown> = { ...payload, kidSlug: pageKid || last?.kidSlug || undefined, source: pageKid ? 'live-kid' : 'live' };
+      if (check) {
+        const token = await checkTokenFor(form.querySelector('.remind-note') as HTMLElement);
+        if (token === '') return [false, { error: 'Please finish the quick check below, then try again.' }, 403];
+        if (token) body.turnstileToken = token;
+      }
+      try {
+        const res = await fetch('/api/reminders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        // The check was switched on since this page asked: ask again and send once more, with a token
+        if (data.code === 'turnstile' && check && !body.turnstileToken && !again) { checkOn = null; return sendReminder(form, payload, { check, again: true }); }
+        return [res.ok && !!data.ok, data, res.status];
+      } catch {
+        return [false, { error: 'No connection. Please try again.' }, 0];
+      }
+    }
+    const errorText = (data: Record<string, any>, status: number) => data.error || (status === 429 ? 'Too many tries. Give it a minute.' : 'Something went wrong. Please try again.');
+
+    bq<HTMLFormElement>('form-email')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = e.currentTarget as HTMLFormElement;
+      const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
       const email = (form.querySelector('input[name="email"]') as HTMLInputElement).value.trim();
       const hp = (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { const n = form.querySelector('.remind-note') as HTMLElement; n.className = 'remind-note remind-note--error'; n.textContent = 'Enter a valid email address.'; return; }
-      submitReminder(form, { channel: 'email', email, hp });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { say(form, 'Enter a valid email address.', true); return; }
+      btn.disabled = true; say(form, 'One moment…');
+      const [ok, data, status] = await sendReminder(form, { channel: 'email', email, hp });
+      if (ok) {
+        form.classList.add('is-done');
+        say(form, `Check your email to confirm. We sent a link to ${email}. Nothing comes until you tap it.`);
+      } else {
+        say(form, errorText(data, status), true);
+        btn.disabled = false;
+      }
     });
-    bq<HTMLFormElement>('form-sms')?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const form = e.currentTarget as HTMLFormElement;
-      const phone = (form.querySelector('input[name="phone"]') as HTMLInputElement).value.trim();
-      if (phone.replace(/\D/g, '').length < 10) { const n = form.querySelector('.remind-note') as HTMLElement; n.className = 'remind-note remind-note--error'; n.textContent = 'Enter a valid mobile number.'; return; }
-      submitReminder(form, { channel: 'sms', phone });
+    // A typo in the address? Editing it opens the form again
+    bq<HTMLFormElement>('form-email')?.querySelector('input[name="email"]')?.addEventListener('input', (e) => {
+      const form = (e.currentTarget as HTMLInputElement).form;
+      if (!form?.classList.contains('is-done')) return;
+      form.classList.remove('is-done');
+      (form.querySelector('button[type="submit"]') as HTMLButtonElement).disabled = false;
+      say(form, '');
     });
+
+    // Text reminders: the number, then the code we text to it
+    const smsForm = bq<HTMLFormElement>('form-sms');
+    if (smsForm) {
+      const phoneInput = smsForm.querySelector('input[name="phone"]') as HTMLInputElement;
+      const codeInput = smsForm.querySelector('input[name="code"]') as HTMLInputElement;
+      const buttons = () => smsForm.querySelectorAll<HTMLButtonElement>('button');
+      const busy = (on: boolean) => buttons().forEach((b) => { b.disabled = on; });
+      const step = (s: 'phone' | 'code' | 'done') => { smsForm.dataset.step = s; };
+      let number = '';
+      async function textCode() {
+        busy(true); say(smsForm!, 'Sending your code…');
+        const [ok, data, status] = await sendReminder(smsForm!, { channel: 'sms', phone: number });
+        busy(false);
+        if (!ok) { say(smsForm!, errorText(data, status), true); return false; }
+        step('code');
+        codeInput.value = '';
+        say(smsForm!, `We texted a 6-digit code to ${number}. Enter it here to finish.`);
+        codeInput.focus();
+        return true;
+      }
+      codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6); });
+      smsForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (smsForm.dataset.step === 'done') return;
+        if (smsForm.dataset.step !== 'code') {
+          number = phoneInput.value.trim();
+          if (number.replace(/\D/g, '').length < 10) { say(smsForm, 'Enter a valid mobile number.', true); return; }
+          await textCode();
+          return;
+        }
+        const code = codeInput.value.replace(/\D/g, '');
+        if (code.length !== 6) { say(smsForm, 'Enter the 6-digit code from the text.', true); codeInput.focus(); return; }
+        busy(true); say(smsForm, 'Checking…');
+        const [ok, data, status] = await sendReminder(smsForm, { channel: 'sms', phone: number, code }, { check: false });
+        busy(false);
+        if (ok) {
+          step('done');
+          smsForm.classList.add('is-done');
+          phoneInput.disabled = true;
+          buttons().forEach((b) => { b.disabled = true; });
+          say(smsForm, "You're all set. We'll text you before the reveal.");
+        } else {
+          say(smsForm, errorText(data, status), true);
+          codeInput.select();
+        }
+      });
+      smsForm.querySelector('[data-sms="resend"]')?.addEventListener('click', () => { void textCode(); });
+      smsForm.querySelector('[data-sms="change"]')?.addEventListener('click', () => {
+        step('phone');
+        say(smsForm, '');
+        phoneInput.focus();
+        phoneInput.select();
+      });
+    }
 
     // Browser push
     const pushBtn = bq<HTMLButtonElement>('push-btn');
@@ -607,6 +767,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     const countdown = setInterval(() => { if (last?.upcoming) render(last, { reminders: client.reminders }); }, 15_000);
     return () => {
       unsubscribe();
+      window.removeEventListener('message', onCheckMessage);
       clearInterval(countdown);
       give?.destroy();
       stage.destroy();

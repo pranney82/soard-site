@@ -34,7 +34,8 @@ export async function onRequestPost(context) {
     return Response.json({ ok: false, error: 'Missing "data.blocks" — expected an array of block descriptors.' }, { status: 400 });
   }
 
-  const tpl = customTemplate(data, opts);
+  // The reveal invite's calendar link is signed with the server's secret, never one from the request
+  const tpl = customTemplate(data, opts, { calendarSecret: env.CALENDAR_LINK_SECRET || '' });
 
   // A test copy isn't sent to the list, so merge tags get plain values
   const fill = (s) => fillMergeTags(s, { email: testEmail });

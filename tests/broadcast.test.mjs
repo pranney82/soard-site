@@ -40,7 +40,9 @@ globalThis.fetch = async (input, init = {}) => {
 };
 
 // ─── Fake hub binding ───────────────────────────────────────────────
-const hub = { published: [], nonces: new Set(['good']) };
+// The hub's nonces are UUIDs; anything else is refused before the hub is asked
+const GOOD_NONCE = '6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7';
+const hub = { published: [], nonces: new Set([GOOD_NONCE]), verifies: 0 };
 const LIVE_HUB = {
   idFromName: () => 'main',
   get: () => ({
@@ -48,7 +50,7 @@ const LIVE_HUB = {
       const path = new URL(url).pathname;
       const body = init.body ? JSON.parse(init.body) : {};
       if (path === '/publish') { hub.published.push(body); return Response.json({ ok: true, changed: true, clients: 1 }); }
-      if (path === '/verify') { const ok = hub.nonces.delete(body.nonce); return Response.json({ ok }); }
+      if (path === '/verify') { hub.verifies++; const ok = hub.nonces.delete(body.nonce); return Response.json({ ok }); }
       if (path === '/status') return Response.json({ ok: true, clients: 1, phase: 'idle' });
       return new Response('nf', { status: 404 });
     },
@@ -120,10 +122,20 @@ test('schedule a reveal for a kid', async () => {
 });
 
 test('visitor signs up for email reminders', async () => {
+  calls.length = 0;
   const res = await endpoints.reminders.onRequestPost(ctx(post('https://x/api/reminders', { channel: 'email', email: 'Fan@Example.com', kidSlug: 'remi', hp: '' })));
-  assert.equal((await res.json()).ok, true);
+  const signup = await res.json();
+  assert.equal(signup.ok, true, signup.error);
+  if (signup.pending) {
+    // Double opt-in: the sign-up counts once the emailed link is confirmed
+    const mail = calls.find((c) => c.url.includes('resend.com/emails') && /confirm=/.test(c.body || ''));
+    assert.ok(mail, 'a confirmation email went out');
+    const token = decodeURIComponent(mail.body.match(/confirm=([A-Za-z0-9_%-]+)/)[1]);
+    const confirmed = await endpoints.reminders.onRequestPost(ctx(new Request(`https://x/api/reminders?confirm=${encodeURIComponent(token)}`, { method: 'POST' })));
+    assert.equal(confirmed.status, 200);
+  }
   const res2 = await endpoints.reminders.onRequestPost(ctx(post('https://x/api/reminders', { channel: 'email', email: 'fan@example.com' })));
-  assert.equal((await res2.json()).ok, true, 'upsert on conflict');
+  assert.equal((await res2.json()).ok, true, 'signing up again is fine');
   const rows = await env.DB.prepare('SELECT * FROM broadcast_reminders').all();
   assert.equal(rows.results.length, 1);
   assert.equal(rows.results[0].address, 'fan@example.com');
@@ -259,31 +271,41 @@ test('legacy live-status POST start with future startsAt schedules', async () =>
 });
 
 test('hub heartbeat: nonce verified over the binding', async () => {
-  hub.nonces.add('good');
+  hub.nonces.add(GOOD_NONCE);
   const waits = ctx.pending.length;
-  const ok = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick', source: 'alarm' }, { 'x-hub-nonce': 'good' })));
+  const ok = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick', source: 'alarm' }, { 'x-hub-nonce': GOOD_NONCE })));
   assert.equal(ok.status, 200);
-  assert.equal(ctx.pending.length - waits, 10, 'the heartbeat also wakes the reveal checks, the invite sweep, the invite guest check, the JobTread schedule check, the application sweep, the kid status sync, the Zeffy gift check, the applications waitlist, the press monitor and the one-time Slack preview');
+  assert.equal(ctx.pending.length - waits, 11, 'the heartbeat also wakes the reveal checks, the invite sweep, the invite guest check, the JobTread schedule check, the application sweep, the kid status sync, the Zeffy gift check, the applications waitlist, the press monitor and the one-time Slack preview, and a tick slower than the answer publishes itself');
   await flush();
   const body = await ok.json();
   assert.equal(body.ok, true);
   assert.equal(body.state.phase, 'idle');
+  assert.equal(body.reason, 'tick', 'the hub passes reason to every page, so only its kind');
+  assert.ok(body.work.every((w) => !w.includes(':')), 'work goes as kinds only, no kid slugs or counts');
+  const verifies = hub.verifies;
   const bad = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick' }, { 'x-hub-nonce': 'bad' })));
   assert.equal(bad.status, 401);
+  assert.equal(hub.verifies, verifies, 'a nonce that is not a UUID never wakes the hub');
+  const wrong = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick' }, { 'x-hub-nonce': '00000000-0000-4000-8000-000000000000' })));
+  assert.equal(wrong.status, 401, 'a well-formed but unknown nonce is refused by the hub');
   assert.equal(ctx.pending.length, 0, 'a forged tick wakes nothing');
-  const replayed = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick' }, { 'x-hub-nonce': 'good' })));
+  const replayed = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick' }, { 'x-hub-nonce': GOOD_NONCE })));
   assert.equal(replayed.status, 401, 'nonce is single-use');
 });
 
 test('webhook is only a wake-up call: forged connect with idle stream does nothing', async () => {
   sim.live = false;
+  travel(5 * S); // past the shared tick throttle: an unsigned webhook only gets an ordinary tick
   const res = await endpoints.webhook.onRequestPost(ctx(post('https://x/api/stream-webhook', { data: { input_id: 'in1', event_type: 'live_input.connected' } })));
-  const data = await res.json();
-  assert.equal(data.ok, true);
-  assert.equal(data.phase, 'idle');
+  assert.deepEqual(await res.json(), { ok: true }, 'the reply says nothing');
+  await flush(); // the tick runs after the reply
+  assert.equal((await b.readState(env.DB)).phase, 'idle');
   sim.live = true; sim.videoUID = 'vid2'; sim.videoState = 'live-inprogress';
+  travel(5 * S);
   const res2 = await endpoints.webhook.onRequestPost(ctx(post('https://x/api/stream-webhook', { data: { input_id: 'in1', event_type: 'live_input.connected' } })));
-  assert.equal((await res2.json()).phase, 'live', 'real stream → live even with no schedule');
+  assert.deepEqual(await res2.json(), { ok: true });
+  await flush();
+  assert.equal((await b.readState(env.DB)).phase, 'live', 'real stream → live even with no schedule');
   await flush();
   const st = await b.readState(env.DB);
   assert.equal(st.kidSlug, null, 'unplanned broadcast has no kid');

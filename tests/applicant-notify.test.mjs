@@ -15,6 +15,8 @@ import {
 } from '../functions/api/_applicant-notify.js';
 import { readApplicant } from '../functions/api/_applicant-comms.js';
 import * as actionPage from '../functions/api/applicant-email-action.js';
+import * as syncRoute from '../functions/api/applicant-sync.js';
+import { hashToken, TOKEN_TTL_MS, verifiedChange } from '../functions/api/_applicant-notify.js';
 
 const STATUS = '22P46wDp3NLd';
 const LANGUAGE = '22P46u8a49hk';
@@ -246,4 +248,211 @@ test('the summary email reads well for one family', () => {
   const late = summaryEmail([{ account_id: 'A1', name: 'Avery Stone', status: 'Denied', previous: 'In Review', kind: 'denied', due_at: T0 + 30 * MIN, token: 'a'.repeat(32) }], { now: T0, quiet: { start: 21, end: 7 } });
   assert.match(late.html, /between 9&nbsp;PM and 7&nbsp;AM Eastern/);
   assert.ok(!/—/.test(msg.html + msg.text), 'no em dashes');
+});
+
+// ─── The wake-up can't be forged (POST /api/applicant-sync) ─────────
+
+const rows = async (sql, ...args) => (await env.DB.prepare(sql).bind(...args).all()).results;
+const notifyRow = (id) => env.DB.prepare('SELECT * FROM applicant_notify WHERE account_id = ?').bind(id).first();
+/** A JobTread event on an account, as JobTread logs it */
+function logEvent(a, { at = T0, type = 'accountUpdated', data, by = { name: 'Linzi Berkowitz', emailAddress: 'linzi@soardcharity.com' } } = {}) {
+  const id = `evtLog${String(++n).padStart(6, '0')}`;
+  w.world.events.push({ id, createdAt: iso(at), type, createdByGrantId: 'g1', createdByGrantName: 'JobTread App', createdByUser: by, data, account: { id: a.id, type: 'customer' } });
+  return id;
+}
+
+test('a forged wake-up never emails a family decided long ago, and says nothing back', async () => {
+  // Approved in a past season: no applicant_notify row, the decision emailed back then by hand
+  const a = family('Avery Stone', 'Approved', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  const forged = { accountId: a.id, previousStatus: 'Applied', nextStatus: 'Approved', status: 'Approved', changedBy: 'Linzi' };
+  const r = await handleWorkflowCall(env, forged, { fetchImpl: w.fetchImpl, now: T0 });
+  assert.deepEqual([r.ok, r.verified, r.actions], [true, false, {}]);
+  // A real event, but too old, or another family's: no better
+  const old = logEvent(a, { at: T0 - 20 * MIN, data: { next: { custom: { Status: 'Approved' } }, previous: { custom: { Status: 'Applied' } } } });
+  assert.equal((await handleWorkflowCall(env, { ...forged, eventId: old }, { fetchImpl: w.fetchImpl, now: T0 })).verified, false);
+  const b = family('Blake Ray', 'In Review');
+  const theirs = logEvent(b, { data: { next: { custom: { Status: 'In Review' } }, previous: { custom: { Status: 'Applied' } } } });
+  assert.equal((await handleWorkflowCall(env, { ...forged, eventId: theirs }, { fetchImpl: w.fetchImpl, now: T0 })).verified, false);
+  await tick(T0 + 4 * MIN, T0 + 31 * MIN, T0 + 24 * 60 * MIN);
+  assert.equal(named(a, 'Application Decision').length, 0, 'never emailed');
+  assert.equal(await notifyRow(a.id), null, 'and nothing recorded that could start the approval work');
+  assert.equal((await rows('SELECT COUNT(*) AS n FROM applicant_events'))[0].n, 0, 'unverified calls are not logged');
+});
+
+test('the status before the change comes from JobTread\'s event, never the body', async () => {
+  const a = family('Avery Stone', 'Approved', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  // A real, fresh Diagnosis edit; the body claims it was Applied → Approved
+  const id = logEvent(a, { data: { next: { custom: { Diagnosis: 'Spina bifida' } }, previous: { custom: { Diagnosis: null } } } });
+  const r = await handleWorkflowCall(env, { eventId: id, accountId: a.id, previousStatus: 'Applied', nextStatus: 'Approved' }, { fetchImpl: w.fetchImpl, now: T0 });
+  assert.equal(r.verified, true);
+  assert.equal(r.actions.approved, undefined, 'a Diagnosis edit is not a status move, whatever the body says');
+  // A real move In Review → Denied, with a body that says Applied → Approved: the event decides
+  const c = family('Casey Moore', 'Denied', { comments: [{ id: 'w2', name: 'Application Status', message: 'old' }] });
+  const moved = logEvent(c, { data: { next: { custom: { Status: 'Denied' } }, previous: { custom: { Status: 'In Review' } } } });
+  const out = await handleWorkflowCall(env, { eventId: moved, accountId: c.id, previousStatus: 'Applied', nextStatus: 'Approved' }, { fetchImpl: w.fetchImpl, now: T0 });
+  assert.match(out.actions.denied, /^scheduled/);
+  const row = await notifyRow(c.id);
+  assert.deepEqual([row.previous, row.told, row.since], ['In Review', 'In Review', iso(T0)], 'from the event: what they knew, and when it changed');
+  const [logged] = await rows('SELECT event_id, previous_status FROM applicant_events WHERE account_id = ?', c.id);
+  assert.deepEqual(logged, { event_id: moved, previous_status: 'In Review' }, 'the admin\'s log has the event\'s word too');
+});
+
+test('the same event twice (JobTread retrying, or a replay) is acted on once', async () => {
+  const a = family('Avery Stone', 'In Review', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  const id = logEvent(a, { data: { next: { custom: { Status: 'In Review' } }, previous: { custom: { Status: 'Applied' } } } });
+  const call = (now) => handleWorkflowCall(env, { eventId: id, accountId: a.id }, { fetchImpl: w.fetchImpl, now });
+  assert.match((await call(T0)).actions.inReview, /^scheduled/);
+  assert.deepEqual((await call(T0 + MIN)).actions, { skipped: 'already handled' });
+  assert.equal((await rows('SELECT COUNT(*) AS n FROM applicant_events'))[0].n, 1);
+});
+
+test('no event id: the account\'s own Status change from the last 15 minutes stands in', async () => {
+  const a = family('Avery Stone', 'In Review', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  logEvent(a, { at: T0 - 2 * MIN, data: { next: { custom: { Status: 'In Review' } }, previous: { custom: { Status: 'Applied' } } } });
+  const r = await handleWorkflowCall(env, { accountId: a.id, previousStatus: 'Denied' }, { fetchImpl: w.fetchImpl, now: T0 });
+  assert.match(r.actions.inReview, /^scheduled/);
+  assert.equal((await notifyRow(a.id)).previous, 'Applied');
+  // A new account (accountCreated): the family knows nothing yet, so its welcome is scheduled
+  const fresh = family('Blake Ray', 'Applied');
+  const made = logEvent(fresh, { type: 'accountCreated', data: { next: { custom: { Status: 'Applied' } }, previous: null } });
+  assert.deepEqual(await verifiedChange(env, { eventId: made, accountId: fresh.id }, { fetchImpl: w.fetchImpl, now: T0 }), {
+    id: made, at: iso(T0), via: 'jobtread', by: { name: 'Linzi Berkowitz', email: 'linzi@soardcharity.com' }, statusChanged: true, previous: '',
+  });
+});
+
+test('JobTread down: the wake-up fails (so it can be retried) and the event isn\'t marked as handled', async () => {
+  const a = family('Avery Stone', 'In Review', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  const id = logEvent(a, { data: { next: { custom: { Status: 'In Review' } }, previous: { custom: { Status: 'Applied' } } } });
+  w.failNext.set('event', 1);
+  const down = await handleWorkflowCall(env, { eventId: id, accountId: a.id }, { fetchImpl: w.fetchImpl, now: T0 });
+  assert.equal(down.ok, false);
+  // The account read failing after the event checked out: the event is let go too
+  w.failNext.set('account', 1);
+  assert.equal((await handleWorkflowCall(env, { eventId: id, accountId: a.id }, { fetchImpl: w.fetchImpl, now: T0 })).ok, false);
+  assert.equal((await rows('SELECT COUNT(*) AS n FROM applicant_wakeups'))[0].n, 0, 'not marked handled');
+  assert.match((await handleWorkflowCall(env, { eventId: id, accountId: a.id }, { fetchImpl: w.fetchImpl, now: T0 + MIN })).actions.inReview, /^scheduled/);
+});
+
+async function callSync(body, { url = 'https://x/api/applicant-sync', headers = {}, envOver = {}, ip = '198.51.100.7' } = {}) {
+  const waits = [];
+  const res = await syncRoute.onRequestPost({ request: new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip, ...headers }, body: JSON.stringify(body) }), env: { ...env, ...envOver }, waitUntil: (p) => waits.push(p) });
+  await Promise.allSettled(waits);
+  return { status: res.status, body: await res.json() };
+}
+
+test('the route: the shared secret when one is set, and { ok } and nothing more', async () => {
+  const a = family('Avery Stone', 'In Review', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  const secret = { JOBTREAD_WEBHOOK_SECRET: 'wake-secret-example' };
+  const id = logEvent(a, { at: Date.now(), data: { next: { custom: { Status: 'In Review' } }, previous: { custom: { Status: 'Applied' } } } });
+  const reads = () => w.world.calls.length;
+  assert.equal((await callSync({ eventId: id, accountId: a.id }, { envOver: secret })).status, 401);
+  assert.equal((await callSync({ eventId: id, accountId: a.id }, { envOver: secret, url: 'https://x/api/applicant-sync?key=wrong' })).status, 401);
+  assert.equal(reads(), 0, 'refused before JobTread is read');
+  assert.equal((await callSync({ accountId: 'x' })).status, 400);
+  const ok = await callSync({ eventId: id, accountId: a.id }, { envOver: secret, headers: { 'X-Webhook-Secret': 'wake-secret-example' } });
+  assert.deepEqual([ok.status, ok.body], [200, { ok: true }], 'no actions, decisions or send times in the answer');
+  assert.equal((await notifyRow(a.id)).kind, 'inReview', 'and the email is scheduled');
+  // A forged call looks exactly the same from outside
+  const b = family('Blake Ray', 'Denied');
+  const forged = await callSync({ accountId: b.id, previousStatus: 'Applied', nextStatus: 'Denied' });
+  assert.deepEqual([forged.status, forged.body], [200, { ok: true }]);
+  assert.equal(await notifyRow(b.id), null);
+});
+
+const limitCount = async (key) => (await env.DB.prepare('SELECT count FROM rate_limits WHERE key = ?').bind(key).first())?.count || 0;
+
+test('junk from one address is cut off at 30 a minute and never counted, so a real wake-up still runs', async () => {
+  // A family with a real move, about to be woken by JobTread
+  const a = family('Avery Stone', 'In Review', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  // About two junk calls a second for a minute from one address, naming the real family
+  const answers = [];
+  for (let i = 0; i < 120; i++) answers.push((await callSync({ accountId: a.id, eventId: `junk${String(i).padStart(6, '0')}`, previousStatus: 'Applied', nextStatus: 'In Review' }, { ip: '203.0.113.9' })).status);
+  assert.equal(answers.filter((x) => x === 200).length, 30);
+  assert.equal(answers.filter((x) => x === 429).length, 90, 'the rest refused before JobTread is asked');
+  // Spread over many addresses: none of it counts against the family or the site
+  for (let i = 0; i < 150; i++) await callSync({ accountId: a.id, eventId: `junkB${String(i).padStart(6, '0')}` }, { ip: `203.0.113.${10 + (i % 6)}` });
+  assert.equal(await limitCount(`applicant-sync:acct:${a.id}`), 0);
+  assert.equal(await limitCount('applicant-sync:all'), 0);
+  assert.equal((await rows('SELECT COUNT(*) AS n FROM applicant_events'))[0].n, 0);
+  // JobTread's real wake-up, from its own address: the family's email is scheduled
+  const id = logEvent(a, { at: Date.now(), data: { next: { custom: { Status: 'In Review' } }, previous: { custom: { Status: 'Applied' } } } });
+  assert.deepEqual((await callSync({ eventId: id, accountId: a.id })).body, { ok: true });
+  assert.equal((await notifyRow(a.id)).kind, 'inReview');
+  assert.equal(await limitCount(`applicant-sync:acct:${a.id}`), 1, 'only the real change counted');
+});
+
+test('with the secret set, JobTread itself is never held to the per-address limit', async () => {
+  const secret = { JOBTREAD_WEBHOOK_SECRET: 'wake-secret-example' };
+  const statuses = [];
+  for (let i = 0; i < 40; i++) statuses.push((await callSync({ accountId: `acctBurst${String(i).padStart(4, '0')}` }, { envOver: secret, headers: { 'X-Webhook-Secret': 'wake-secret-example' } })).status);
+  assert.ok(statuses.every((x) => x === 200), 'a screening session moving 40 families, all from JobTread');
+});
+
+test('a family\'s real changes past ten a minute are logged and left for a retry, not done', async () => {
+  const a = family('Avery Stone', 'In Review', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  const ids = [];
+  for (let i = 0; i < 11; i++) ids.push(logEvent(a, { data: { next: { custom: { Diagnosis: `note ${i}` } }, previous: { custom: { Diagnosis: null } } } }));
+  const out = [];
+  for (const id of ids) out.push(await handleWorkflowCall(env, { eventId: id, accountId: a.id }, { fetchImpl: w.fetchImpl, now: T0 }));
+  assert.deepEqual(out[10].actions, { skipped: 'too many changes at once' });
+  assert.equal((await rows("SELECT COUNT(*) AS n FROM applicant_events WHERE actions LIKE '%too many%'"))[0].n, 1, 'staff can see it in the log');
+  // A minute on, JobTread retrying that event is acted on
+  assert.notDeepEqual((await handleWorkflowCall(env, { eventId: ids[10], accountId: a.id }, { fetchImpl: w.fetchImpl, now: T0 + MIN })).actions, { skipped: 'already handled' });
+});
+
+// ─── The summary's links: hashed, single use, a week long ───────────
+
+test('link tokens are kept only as hashes, and stop working after 7 days', async () => {
+  const a = family('Avery Stone', 'In Review', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  await change(a, 'Denied', T0);
+  await tick(T0 + 4 * MIN);
+  const html = emailsTo('linzi@soardcharity.com')[0].html;
+  const tok = html.match(/applicant-email-action\?t=([0-9a-f]{32})&amp;do=skip/)[1];
+  const row = await notifyRow(a.id);
+  assert.notEqual(row.token, tok, 'the emailed token is not in D1');
+  assert.equal(row.token, await hashToken(tok));
+  assert.equal(row.token_expires, T0 + 4 * MIN + TOKEN_TTL_MS);
+  // Eight days on, the link shows it has expired and changes nothing
+  const later = T0 + 8 * 24 * 60 * MIN;
+  const out = await linkAction(env, tok, 'skip', { fetchImpl: w.fetchImpl, now: later });
+  assert.deepEqual([out.ok, out.expired], [false, true]);
+  assert.equal((await notifyRow(a.id)).kind, 'denied', 'nothing changed');
+  // Inside the week it works once
+  const b = family('Blake Ray', 'In Review', { comments: [{ id: 'w2', name: 'Application Status', message: 'old' }] });
+  await change(b, 'Denied', T0 + 10 * MIN, { by: { name: 'Sam Lee', emailAddress: 'sam@example.com' } });
+  await tick(T0 + 14 * MIN);
+  const tokB = emailsTo('sam@example.com')[0].html.match(/t=([0-9a-f]{32})&amp;do=skip/)[1];
+  assert.equal((await linkAction(env, tokB, 'skip', { fetchImpl: w.fetchImpl, now: T0 + 6 * 24 * 60 * MIN })).ok, true);
+  assert.equal((await linkAction(env, tokB, 'skip', { fetchImpl: w.fetchImpl, now: T0 + 6 * 24 * 60 * MIN })).gone, true, 'single use');
+});
+
+test('the link page says when a link has expired', async () => {
+  const a = family('Avery Stone', 'In Review', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  await change(a, 'Denied', T0);
+  await tick(T0 + 4 * MIN);
+  const tok = emailsTo('linzi@soardcharity.com')[0].html.match(/t=([0-9a-f]{32})&amp;do=skip/)[1];
+  // Expire it (the page uses the real clock)
+  await env.DB.prepare('UPDATE applicant_notify SET token_expires = ? WHERE account_id = ?').bind(Date.now() - 1, a.id).run();
+  const res = await actionPage.onRequestGet({ request: new Request(`https://x/api/applicant-email-action?t=${tok}&do=skip`), env });
+  assert.equal(res.status, 410);
+  assert.match(await res.text(), /This link has expired/);
+});
+
+test('a token stored the old way (as typed) still works, now kept as its hash, until it expires', async () => {
+  const a = family('Avery Stone', 'Denied', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  const b = family('Blake Ray', 'Denied', { comments: [{ id: 'w2', name: 'Application Status', message: 'old' }] });
+  // Rows as the code before Oct 21 2026 wrote them (no token_expires column yet)
+  const DB = env.DB;
+  await DB.prepare(`CREATE TABLE applicant_notify (
+    account_id TEXT PRIMARY KEY, name TEXT, told TEXT, told_at TEXT, status TEXT, since TEXT, previous TEXT,
+    kind TEXT, due_at INTEGER, hold TEXT, by_name TEXT, by_email TEXT, via TEXT, summary_at INTEGER, token TEXT,
+    note_due INTEGER, updated_at TEXT NOT NULL)`).run();
+  const legacy = (acct, tok, since) => DB.prepare("INSERT INTO applicant_notify (account_id, name, told, status, since, previous, kind, due_at, via, summary_at, token, updated_at) VALUES (?, ?, 'In Review', 'Denied', ?, 'In Review', 'denied', ?, 'jobtread', ?, ?, ?)")
+    .bind(acct.id, acct.name, iso(since), since + 30 * MIN, since, tok, iso(since)).run();
+  await legacy(a, 'a'.repeat(32), T0);
+  await legacy(b, 'b'.repeat(32), T0 - 8 * 24 * 60 * MIN);
+  // The first read migrates: no plaintext left at rest
+  assert.equal((await linkAction(env, 'a'.repeat(32), 'skip', { fetchImpl: w.fetchImpl, now: T0 + MIN })).ok, true, 'the emailed link still works');
+  assert.equal((await rows("SELECT COUNT(*) AS n FROM applicant_notify WHERE length(token) = 32"))[0].n, 0);
+  assert.equal((await linkAction(env, 'b'.repeat(32), 'skip', { fetchImpl: w.fetchImpl, now: T0 + MIN })).expired, true, 'older than a week: expired');
 });

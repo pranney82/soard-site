@@ -495,7 +495,29 @@ function seedAccount({ status = 'Applied', diagnosis = 'Autism', comments = [], 
 // run on a fixed clock: 11 AM Eastern, well clear of quiet hours
 const T0 = Date.parse('2026-10-21T15:00:00Z');
 const MIN = 60 * 1000;
-const hook = (payload, now = T0) => handleWorkflowCall(env, { accountId: 'acctZAP00001', ...payload }, { fetchImpl: w.fetchImpl, now });
+/**
+ * JobTread logs the change, then its workflow wakes the site with the event's
+ * id. The site reads the status before the change from that event (never the
+ * body), so each call logs the event the payload describes: a new account
+ * (previousStatus "null", no nextStatus), a Status move, or a Diagnosis edit
+ * (nextStatus "null").
+ */
+let hookSeq = 0;
+const hook = (payload, now = T0) => {
+  const status = (s) => (s == null || s === 'null' ? null : s);
+  const next = payload.nextStatus !== undefined ? status(payload.nextStatus) : status(payload.status);
+  const created = payload.previousStatus === 'null' && payload.nextStatus === undefined;
+  const id = `evtZAP${String(++hookSeq).padStart(6, '0')}`;
+  w.world.events.push({
+    id, createdAt: new Date(now).toISOString(), type: created ? 'accountCreated' : 'accountUpdated',
+    createdByGrantId: 'g1', createdByGrantName: 'JobTread App', createdByUser: { name: 'Linzi Berkowitz', emailAddress: 'linzi@example.com' },
+    data: next == null ? { next: { custom: { Diagnosis: 'Autism' } }, previous: { custom: { Diagnosis: null } } }
+      : created ? { next: { custom: { Status: next } }, previous: null }
+      : { next: { custom: { Status: next } }, previous: { custom: { Status: status(payload.previousStatus) } } },
+    account: { id: 'acctZAP00001', type: 'customer' },
+  });
+  return handleWorkflowCall(env, { accountId: 'acctZAP00001', eventId: id }, { fetchImpl: w.fetchImpl, now });
+};
 /** The sweep at a few points in time (the summary goes ~4 min in, emails after the wait) */
 const tick = async (...times) => { for (const t of times) await runNotifications(env, { fetchImpl: w.fetchImpl, now: t }); };
 

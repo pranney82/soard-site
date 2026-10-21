@@ -66,14 +66,66 @@ export function isEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s || '').trim());
 }
 
-/** Normalize a US/intl phone number to E.164; null if it doesn't look like one. */
+// +1 area codes that aren't the US or Canada (the Caribbean and Bermuda, where
+// texts cost international rates and SMS pumping fraud lives), toll-free
+// numbers (they can't get texts) and 900 (premium rate).
+const NOT_US_CA = new Set([
+  '242', '246', '264', '268', '284', '345', '441', '473', '649', '658', '664', '721', '758', '767', '784',
+  '809', '829', '849', '868', '869', '876',
+  '800', '833', '844', '855', '866', '877', '888', '900',
+]);
+
+/**
+ * A US or Canadian number in E.164 (+1NXXNXXXXXX); null for anything else.
+ * Reminder texts only go to North America: an international number is how
+ * SMS pumping bills a sender for texts nobody asked for.
+ */
 export function normalizePhone(s) {
-  const digits = String(s || '').replace(/[^\d+]/g, '');
-  if (!digits) return null;
-  if (digits.startsWith('+')) return /^\+\d{8,15}$/.test(digits) ? digits : null;
-  if (/^1\d{10}$/.test(digits)) return `+${digits}`;
-  if (/^\d{10}$/.test(digits)) return `+1${digits}`;
-  return null;
+  const raw = String(s || '').trim();
+  if (!raw) return null;
+  // A + or an international dialing prefix must lead to +1
+  if (/^(\+|00|011)/.test(raw) && !/^(\+|00|011)\s*\(?1/.test(raw)) return null;
+  let digits = raw.replace(/\D/g, '').replace(/^(011|00)/, '');
+  if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+  // NANP: area code and exchange both start 2-9; N11 codes are services, not areas
+  if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(digits) || /^\d11/.test(digits)) return null;
+  if (NOT_US_CA.has(digits.slice(0, 3))) return null;
+  return `+1${digits}`;
+}
+
+/** (404) 555-0123 for a +1 number, for people to read */
+export function formatPhone(e164) {
+  const d = String(e164 || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+  return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(e164 || '');
+}
+
+/** SHA-256 of a string, as hex. Sign-up tokens and codes are stored only this way. */
+export async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', utf8(String(text)));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Browsers' push services. A subscription anywhere else would have the site
+// POST to a host someone picked, so it is refused (and never sent to).
+const PUSH_HOSTS = new Set(['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com']);
+const PUSH_HOST_SUFFIXES = ['.push.apple.com', '.notify.windows.com'];
+
+/** A Web Push endpoint on a real browser push service (https, default port, no credentials) */
+export function pushEndpointOk(endpoint) {
+  let u;
+  try { u = new URL(String(endpoint || '')); } catch { return false; }
+  if (u.protocol !== 'https:' || u.username || u.password || u.port) return false;
+  const host = u.hostname.toLowerCase();
+  return PUSH_HOSTS.has(host) || PUSH_HOST_SUFFIXES.some(s => host.endsWith(s) && host.length > s.length);
+}
+
+/**
+ * Headers that let mail apps show their own "Unsubscribe" button and stop the
+ * reminders in one click (RFC 2369 + RFC 8058): the app POSTs
+ * "List-Unsubscribe=One-Click" to the same link the email's footer has.
+ */
+export function listUnsubscribeHeaders(url) {
+  return { 'List-Unsubscribe': `<${url}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' };
 }
 
 export function formatWhen(iso, tz = 'America/New_York') {
@@ -128,8 +180,9 @@ export async function sendEmails(env, { to, subject, html, text, from = EMAIL_FR
 
 /**
  * Send pre-built messages (each with its own html, e.g. a personal
- * unsubscribe link), 100 per Resend call.
- * @param {{to:string, subject:string, html:string, text?:string}[]} items
+ * unsubscribe link, and its own `headers`, e.g. List-Unsubscribe), 100 per
+ * Resend call.
+ * @param {{to:string, subject:string, html:string, text?:string, headers?:Record<string,string>}[]} items
  */
 export async function sendEmailItems(env, items, { from = EMAIL_FROM, tags = [] } = {}) {
   const out = { sent: 0, failed: 0, errors: [] };
@@ -142,7 +195,7 @@ export async function sendEmailItems(env, items, { from = EMAIL_FROM, tags = [] 
       const res = await fetch(`${RESEND_API}/emails/batch`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk.map(m => ({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, tags }))),
+        body: JSON.stringify(chunk.map(m => ({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, tags, ...(m.headers ? { headers: m.headers } : {}) }))),
         signal: AbortSignal.timeout(20000),
       });
       if (res.ok) out.sent += chunk.length;
@@ -256,6 +309,8 @@ export async function encryptPushPayload(subscription, plaintext) {
  * means the subscription is dead (404/410) and should be deleted.
  */
 export async function sendWebPush(subscription, payload, vapid, { ttl = 3600, urgency = 'high', topic, subject = 'mailto:sunshine@sunshineonaranneyday.com' } = {}) {
+  // Only ever POST to a browser's push service; an older row pointing anywhere else is dropped
+  if (!pushEndpointOk(subscription?.endpoint)) return { ok: false, status: 0, gone: true, error: 'not a push service' };
   try {
     const body = await encryptPushPayload(subscription, typeof payload === 'string' ? payload : JSON.stringify(payload));
     const headers = {
@@ -296,7 +351,8 @@ function icsDate(iso) {
 }
 
 function icsEscape(s) {
-  return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  // Every line break (\r\n, \n or a bare \r) becomes \n: a raw one would end the property and start a new one
+  return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n');
 }
 
 export function buildIcs({ uid, title, description, start, durationMin = 60, url, location = 'Online' }) {
@@ -332,7 +388,7 @@ const Y = '#FFDA24';
 const D = '#2D2E33';
 const CREAM = '#FEFCF5';
 
-function emailShell({ preheader, heading, body, cta, ctaUrl, image, unsubscribeUrl, list = false }) {
+function emailShell({ preheader, heading, body, cta, ctaUrl, image, unsubscribeUrl, list = false, footer = null }) {
   const img = image
     ? `<tr><td style="padding:0;"><img src="${escapeHtml(image)}" width="600" alt="" style="display:block;width:100%;max-width:600px;height:auto;border-radius:16px 16px 0 0;" /></td></tr>`
     : '';
@@ -351,7 +407,7 @@ ${img}
   <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:${Y};color:${D};font-weight:700;text-decoration:none;padding:14px 24px;border-radius:10px;font-size:16px;">${escapeHtml(cta)}</a>
 </td></tr>
 <tr><td style="padding:16px 32px 28px;font-size:12px;color:#6B6C72;border-top:1px solid #E5E4E0;">
-  ${list
+  ${footer != null ? footer : list
     ? `You're getting this because you subscribed to updates from Sunshine on a Ranney Day. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#6B6C72;">Unsubscribe</a>.`
     : `You asked us to remind you about live room reveals. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#6B6C72;">Stop these reminders</a>.`}
 </td></tr>
@@ -449,6 +505,32 @@ export function reminderPush({ kind, kidName, scheduledAt, tz, liveUrl, replayUr
   const m = map[kind] || map.live;
   return { ...m, icon: '/apple-touch-icon.png', image: image || undefined, tag: `reveal-${kind}` };
 }
+
+// ─── Sign-up confirmations ──────────────────────────────────────────
+
+/** The one email a new address gets before any reminder: a link that confirms it */
+export function confirmEmail({ confirmUrl, kidName }) {
+  const what = kidName ? `${kidName}'s room reveal` : 'our live room reveals';
+  const t = {
+    subject: kidName ? `Confirm your reminders for ${kidName}'s reveal` : 'Confirm your reveal reminders',
+    preheader: "One tap and you're on the list.",
+    heading: 'One tap to confirm',
+    body: `<p>Someone asked us to email this address about ${escapeHtml(what)}. If that was you, tap the button and you're on the list.</p><p>If it wasn't you, ignore this email. We won't send anything else.</p>`,
+    cta: 'Yes, remind me', ctaUrl: confirmUrl,
+  };
+  const footer = 'You got this one email because someone entered this address on a reveal page at sunshineonaranneyday.com. The link works for 3 days.';
+  const html = emailShell({ ...t, footer: escapeHtml(footer) });
+  const text = `${t.heading}\n\nSomeone asked us to email this address about ${what}. If that was you, open this link and you're on the list:\n${confirmUrl}\n\nIf it wasn't you, ignore this email. We won't send anything else.`;
+  return { subject: t.subject, html, text };
+}
+
+/** The text with a sign-up code */
+export function smsCodeText(code) {
+  return `Sunshine on a Ranney Day: ${code} is your code for reveal reminder texts. It expires in 10 minutes. Didn't ask for it? Ignore this text.`;
+}
+
+/** The first text after a number is confirmed: what they signed up for and how to stop */
+export const SMS_WELCOME = "Sunshine on a Ranney Day: you're signed up for reveal reminder texts. Up to 6 texts per reveal. Msg & data rates may apply. Reply HELP for help, STOP to opt out.";
 
 // ─── Admin alerts: Slack ────────────────────────────────────────────
 // Two ways in. Preferred: a Slack app's bot token (SLACK_BOT_TOKEN, scopes

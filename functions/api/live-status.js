@@ -39,7 +39,8 @@ export async function onRequestGet(context) {
       _lastSweepAttempt = Date.now();
       context.waitUntil(sweepArchives(env));
     }
-    // Keep the state machine moving even without the hub (throttled per isolate)
+    // Keep the state machine moving even without the hub. Never forced: runTick's
+    // shared D1 lease skips it unless no tick has started anywhere in the last 20 s
     context.waitUntil(runTick(env, { source: 'visitor', minIntervalMs: 20000 }).catch(() => {}));
 
     const [config, state] = await Promise.all([readConfig(env.DB), readState(env.DB)]);

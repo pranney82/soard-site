@@ -1,4 +1,16 @@
 import { defineCollection, z } from 'astro:content';
+import { isWebLink, scriptLinks, linkScheme } from '../../functions/api/_collections.js';
+
+// Every link a page renders: an http(s) address, a path on this site or an
+// image ID, never javascript:, data: or any other scheme (the same rule
+// save-content and the press monitor apply; functions/api/_collections.js).
+// One that slips into D1 anyway is left out of the page, with a warning in
+// the build log, rather than stopping every deploy until someone fixes it.
+const link = () => z.preprocess((v) => {
+  if (typeof v !== 'string' || isWebLink(v)) return v;
+  console.warn(`  ⚠ content: left out a link that isn't a web address: ${JSON.stringify(v.slice(0, 60))}`);
+  return '';
+}, z.string().refine(isWebLink, (v) => ({ message: `must be an http(s) address or a path on this site, not ${linkScheme(v)}:` })));
 
 const kids = defineCollection({
   type: 'data',
@@ -15,29 +27,29 @@ const kids = defineCollection({
     heroImage: z.string().nullable(),
     accentImage: z.string().nullable().optional(),
     photos: z.array(z.object({
-      url: z.string(),
+      url: link(),
       alt: z.string().default(''),
       /** Focal point set in the admin, as fractions across and down: crops center on it */
       focus: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).optional(),
     })).default([]),
     storyPhotos: z.array(z.object({
-      url: z.string(),
+      url: link(),
       alt: z.string().default(''),
     })).max(4).default([]),
     plans: z.array(z.object({
-      url: z.string(),
+      url: link(),
       label: z.string().default(''),
       type: z.enum(['as-built', 'proposed']),
     })).default([]),
     photoCount: z.number().default(0),
-    videoUrl: z.string().nullable().optional(),
+    videoUrl: link().nullable().optional(),
     streamVideoId: z.string().nullable().optional(),
     /** "Watch the live reveal" hero link — written by the FB live auto-archiver */
-    revealVideoUrl: z.string().nullable().optional(),
+    revealVideoUrl: link().nullable().optional(),
     photographer: z.string().nullable().optional(),
     // name is the logo's alt text on the kid page (without it every logo read "Project partner")
     partnerLogos: z.array(z.object({
-      url: z.string(),
+      url: link(),
       name: z.string().nullable().optional(),
     })).default([]),
     heroSummary: z.string().nullable().optional(),
@@ -45,7 +57,7 @@ const kids = defineCollection({
     metaDescription: z.string().nullable().optional(),
     altTexts: z.any().nullable().optional(),
     jsonLd: z.any().nullable().optional(),
-    fundraisingUrl: z.string().nullable().optional(),
+    fundraisingUrl: link().nullable().optional(),
     childCount: z.number().default(1),
     roomCount: z.number().default(1),
     bedroomCount: z.number().default(0),
@@ -71,7 +83,7 @@ const partners = defineCollection({
     name: z.string(),
     slug: z.string(),
     logo: z.string().optional(),
-    website: z.string().optional(),
+    website: link().optional(),
     level: z.enum(['signature', 'champion', 'builder', 'friend']).default('friend'),
     category: z.preprocess(
       (v) => Array.isArray(v) ? v : [v ?? 'build'],
@@ -121,7 +133,7 @@ const team = defineCollection({
     until: z.number().nullable().optional(),
     committees: z.array(z.string()).optional(),
     partner: z.string().nullable().optional(),
-    linkedin: z.string().nullable().optional(),
+    linkedin: link().nullable().optional(),
     publishStatus: z.enum(['published', 'draft']).optional(),
     photoCrop: z.object({ x: z.number(), y: z.number(), size: z.number() }).nullable().optional(),
     photoSize: z.tuple([z.number(), z.number()]).nullable().optional(),
@@ -148,9 +160,9 @@ const articles = defineCollection({
     })).default([]),
     ctaHeading: z.string().default('Need help with your home?'),
     ctaText: z.string().default('Sunshine on a Ranney Day builds accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs — at no cost to families in the greater Atlanta area.'),
-    ctaPrimaryLink: z.string().default('/apply/'),
+    ctaPrimaryLink: link().default('/apply/'),
     ctaPrimaryLabel: z.string().default('Apply for a Makeover'),
-    ctaSecondaryLink: z.string().default('/donate/'),
+    ctaSecondaryLink: link().default('/donate/'),
     ctaSecondaryLabel: z.string().default('Support Our Mission'),
     featured: z.boolean().default(false),
     order: z.number().default(0),
@@ -173,12 +185,12 @@ const events = defineCollection({
     image: z.string().nullable().optional(),
     dressCodeImage: z.string().nullable().optional(),
     streamVideoId: z.string().nullable().optional(),
-    videoUrl: z.string().nullable().optional(),
+    videoUrl: link().nullable().optional(),
     photos: z.array(z.object({
       id: z.string(),
       alt: z.string().default(''),
     })).default([]),
-    ticketUrl: z.string().optional(),
+    ticketUrl: link().optional(),
     ticketPrice: z.string().optional(),
     category: z.enum(['fundraiser', 'volunteer', 'reveal', 'community', 'other']).default('other'),
     featured: z.boolean().default(false),
@@ -195,7 +207,7 @@ const press = defineCollection({
     category: z.enum(['national-tv', 'local-tv', 'print', 'magazine', 'entertainment']),
     title: z.string(),
     date: z.string(),
-    url: z.string(),
+    url: link(),
     excerpt: z.string(),
     image: z.string().nullable().optional(),
     featured: z.boolean().default(false),
@@ -208,7 +220,7 @@ const press = defineCollection({
     partners: z.array(z.string()).optional(),
     // The press monitor's link check: once the outlet takes the story down,
     // the page links to its Internet Archive copy (or shows it without a link)
-    archiveUrl: z.string().nullable().optional(),
+    archiveUrl: link().nullable().optional(),
     linkGone: z.string().nullable().optional(),
     publishStatus: z.enum(['published', 'draft']).optional(),
   }),
@@ -220,7 +232,7 @@ const communityPartners = defineCollection({
     name: z.string(),
     slug: z.string(),
     logo: z.string().optional(),
-    website: z.string().optional(),
+    website: link().optional(),
     description: z.string(),
     category: z.enum(['education', 'health', 'community', 'faith', 'government']).default('community'),
     impact: z.string().optional(),
@@ -231,9 +243,13 @@ const communityPartners = defineCollection({
   }),
 });
 
+// Site docs are free-form, so every link-named field in them (url, href, link,
+// website, *Url, *Link...) is checked: none may run script when clicked
 const site = defineCollection({
   type: 'data',
-  schema: z.record(z.any()),
+  schema: z.record(z.any()).superRefine((doc, ctx) => {
+    for (const bad of scriptLinks(doc)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [bad.path], message: `must be an http(s) address or a path on this site, not ${linkScheme(bad.value)}:` });
+  }),
 });
 
 const community = defineCollection({
@@ -268,16 +284,16 @@ const community = defineCollection({
     quoteBy: z.string().nullable().optional(),
     heroImage: z.string().nullable().optional(),
     metaDescription: z.string().optional(),
-    videoUrl: z.string().nullable().optional(),
+    videoUrl: link().nullable().optional(),
     streamVideoId: z.string().nullable().optional(),
     photos: z.array(z.object({
-      url: z.string(),
+      url: link(),
       alt: z.string().default(''),
       /** Focal point set in the admin, as fractions across and down: crops center on it */
       focus: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).optional(),
     })).default([]),
     partnerLogos: z.array(z.object({
-      url: z.string(),
+      url: link(),
       name: z.string().default(''),
     })).default([]),
   }),

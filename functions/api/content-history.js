@@ -9,6 +9,7 @@
  * Admin-only (the middleware requires Access for /api/* by default).
  */
 import { SLUG_RE, hasHistory, listVersions, getVersion, listDeleted } from './_content-history.js';
+import { isSiteDocKey } from './_collections.js';
 
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
@@ -21,6 +22,8 @@ export async function onRequestGet(context) {
     const DB = context.env.DB;
     if (url.searchParams.get('deleted')) return Response.json({ success: true, deleted: await listDeleted(DB, collection) }, { headers });
     if (!SLUG_RE.test(slug)) return Response.json({ success: false, error: 'Unknown item' }, { status: 400, headers });
+    // Runtime rows (broadcast config with stream keys, health, state) never come back through history
+    if (collection === 'site' && !isSiteDocKey(slug)) return Response.json({ success: false, error: 'Unknown item' }, { status: 400, headers });
     if (id) {
       const data = await getVersion(DB, collection, slug, Number(id));
       return data ? Response.json({ success: true, data }, { headers }) : Response.json({ success: false, error: 'That version is gone' }, { status: 404, headers });

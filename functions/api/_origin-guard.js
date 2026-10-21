@@ -10,19 +10,26 @@
  * service token) and can't ride a visitor's cookie, so it passes to the
  * Access check as before. Reads (GET, HEAD) are untouched.
  *
+ * A local page (astro dev on another port) counts as the admin only when this
+ * server is local too (wrangler pages dev). In production a page on someone's
+ * own machine is another website like any other.
+ *
  * Returns why a request is refused, or null.
  */
 const CHANGES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/** This machine, by exact name (not localhost.evil.com) */
+export const isLocalHost = (hostname) => hostname === 'localhost' || hostname === '127.0.0.1';
+
 export function crossSiteChange(request, allowedOrigins = []) {
   if (!CHANGES.has(String(request.method || '').toUpperCase())) return null;
-  const self = new URL(request.url).origin;
+  const selfUrl = new URL(request.url);
+  const self = selfUrl.origin;
   const origin = request.headers.get('Origin');
   if (origin && origin !== 'null') {
     if (origin === self || allowedOrigins.includes(origin)) return null;
     try {
-      const host = new URL(origin).hostname;
-      if (host === 'localhost' || host === '127.0.0.1') return null;
+      if (isLocalHost(selfUrl.hostname) && isLocalHost(new URL(origin).hostname)) return null;
     } catch {}
     return `from ${origin}`;
   }

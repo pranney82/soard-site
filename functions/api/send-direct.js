@@ -53,7 +53,8 @@ export async function onRequestPost(context) {
     return Response.json({ ok: false, error: `Too many recipients (max ${MAX_RECIPIENTS}). Got ${cleaned.length}.` }, { status: 400 });
   }
 
-  const tpl = customTemplate(data, opts);
+  // The reveal invite's calendar link is signed with the server's secret, never one from the request
+  const tpl = customTemplate(data, opts, { calendarSecret: env.CALENDAR_LINK_SECRET || '' });
 
   // Direct sends aren't list mail: merge tags get plain values (no
   // unsubscribe link), and each copy carries its recipient's own address.

@@ -146,11 +146,7 @@ export function createMessages(opts: Options) {
     try { if (value === undefined) return localStorage.getItem(key) || ''; localStorage.setItem(key, value); } catch { /* private mode */ }
     return '';
   }
-  const clientId = store('soard-live-id') || (() => {
-    const id = (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^a-zA-Z0-9-]/g, '');
-    store('soard-live-id', id);
-    return id;
-  })();
+  // Who posted is the server's business: it sets its own HttpOnly cookie on the first post
   if (form) {
     const nameInput = form.querySelector<HTMLInputElement>('input[name="name"]');
     const bodyInput = form.querySelector<HTMLTextAreaElement>('textarea[name="body"]');
@@ -171,8 +167,8 @@ export function createMessages(opts: Options) {
       btn.disabled = true; say('Posting…');
       try {
         const res = await fetch('/api/live-messages', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, body: text, clientId, website: (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '' }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+          body: JSON.stringify({ name, body: text, website: (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '' }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.ok) {

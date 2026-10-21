@@ -61,6 +61,8 @@ const trustBadges = getTrustBadges(site);
         <!-- Honeypot — hidden field that bots fill out, humans don't see -->
         <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
         <input type="hidden" name="source" value="newsletter" />
+        <!-- The quick check (src/utils/signup-check.ts): out of sight unless Cloudflare wants a click -->
+        <div class="newsletter-check" data-signup-check></div>
         <p class="newsletter-note" id="newsletter-note" role="status" aria-live="polite">No spam, ever. Unsubscribe anytime.</p>
       </form>
     </div>
@@ -222,12 +224,16 @@ const trustBadges = getTrustBadges(site);
     </div>
   </div>
   <script>
+    import { signupCheck, postPlainly } from '../../utils/signup-check';
+
     document.addEventListener('astro:page-load', () => {
-      const form = document.getElementById('newsletter-form');
+      const form = document.getElementById('newsletter-form') as HTMLFormElement | null;
       if (!form) return;
       const note = document.getElementById('newsletter-note');
       const btn = document.getElementById('newsletter-btn');
       const input = document.getElementById('newsletter-email');
+      const check = signupCheck(form);
+      document.addEventListener('astro:before-swap', () => check.destroy(), { once: true });
 
       // ── No-JS fallback: read query params from form redirect ──
       const params = new URLSearchParams(window.location.search);
@@ -242,7 +248,7 @@ const trustBadges = getTrustBadges(site);
         const messages = {
           invalid_email: 'Please enter a valid email address.',
           not_configured: 'Newsletter signup is temporarily unavailable. Please try again later.',
-          rate_limited: 'Too many attempts — please wait a minute and try again.',
+          rate_limited: 'Lots of signups from here just now. Please try again in a little while.',
           server: 'Something went wrong. Please try again.',
         };
         note.textContent = messages[err] || messages.server;
@@ -272,13 +278,18 @@ const trustBadges = getTrustBadges(site);
         input.disabled = true;
 
         try {
+          // The quick check: no token to be had → the plain form post and its confirm page
+          const turnstileToken = await check.token();
+          if (turnstileToken === '') { postPlainly(form); return; }
           const res = await fetch('/api/newsletter', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, hp, source: 'newsletter' }),
+            body: JSON.stringify({ email, hp, source: 'newsletter', ...(turnstileToken ? { turnstileToken } : {}) }),
           });
           // Body may not be JSON (e.g. Cloudflare error pages) — don't throw on parse
           const data = await res.json().catch(() => null);
+          check.reset();
+          if (data && data.code === 'turnstile') { postPlainly(form); return; }
 
           btn.classList.remove('is-sending');
 
@@ -289,7 +300,7 @@ const trustBadges = getTrustBadges(site);
             note.classList.add('newsletter-note--success');
           } else {
             note.textContent = res.status === 429
-              ? 'Too many attempts — please wait a minute and try again.'
+              ? 'Lots of signups from here just now. Please try again in a little while.'
               : (data && data.error) || 'Something went wrong. Please try again.';
             note.classList.add('newsletter-note--error');
             btn.disabled = false;
@@ -402,6 +413,8 @@ const trustBadges = getTrustBadges(site);
     transition: color 0.3s ease;
   }
   .newsletter-note--success { color: #22c55e; }
+  /* The quick check's widget, only when Cloudflare wants a click */
+  .newsletter-check.is-shown { margin-top: 12px; }
   /* Error state stays on-brand (no red): dark weight + yellow highlight */
   .newsletter-note--error {
     color: var(--c-dark);

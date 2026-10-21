@@ -7,7 +7,7 @@
 import { writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
-import { COLLECTION_MAP } from '../functions/api/_collections.js';
+import { COLLECTION_MAP, isSiteDocKey, withoutScriptLinks } from '../functions/api/_collections.js';
 import { SETTINGS_DEFAULTS } from './settings-defaults.js';
 
 export const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -191,29 +191,37 @@ function writeFocusManifest() {
   writeFileSync(file, json);
 }
 
-// Runtime-only site_config keys — served live from D1 (never read at build
-// time), so writing them to src/content would just churn git on every build.
-// The schedule lock and the invite guest check hold bare numbers, which the site
-// collection's schema would reject.
-const RUNTIME_ONLY_KEYS = new Set(['live-status', 'broadcast', 'broadcast-config', 'broadcast-health', 'broadcast-schedule', 'broadcast-schedule-lock', 'reveal-invites-guest-check', 'press-monitor', 'press-monitor-state']);
-
 // ── Write site config to disk ──────────────────────────────────────
+// Only the site docs (functions/api/_collections.js SITE_DOC_KEYS, the list the
+// admin API serves): every other site_config row is runtime state a Function
+// keeps in D1 (the live broadcast's config holds Stream and push keys), never
+// read at build time, and never written into src/content or the build.
 export function writeSiteConfig(siteRows) {
   const siteDir = join(CONTENT, 'site');
   ensureDir(siteDir);
   for (const row of siteRows) {
-    if (!SAFE_FILE_NAME.test(String(row.key || ''))) { console.warn(`  ⚠ skipped site config row with an unsafe key: ${JSON.stringify(row.key)}`); continue; }
-    const filePath = join(siteDir, `${row.key}.json`);
-    // A copy left from before the key was runtime-only would still break `astro dev`
-    if (RUNTIME_ONLY_KEYS.has(row.key)) { if (existsSync(filePath)) unlinkSync(filePath); continue; }
+    const key = String(row.key || '');
+    // Runtime state, not content (a doc key is always a safe file name). A copy
+    // left from an older build, before the key was runtime-only, goes too
+    if (!isSiteDocKey(key)) {
+      const stale = SAFE_FILE_NAME.test(key) ? join(siteDir, `${key}.json`) : null;
+      if (stale && existsSync(stale)) unlinkSync(stale);
+      continue;
+    }
+    const filePath = join(siteDir, `${key}.json`);
     let data = safeParse(row.data);
     // Astro fails the whole build on a site entry that isn't an object, so a
-    // runtime value nobody listed above is skipped instead of breaking every deploy
+    // doc saved as something else is skipped instead of breaking every deploy
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
-      console.warn(`  ⚠ site/${row.key}: not an object, skipped (add it to RUNTIME_ONLY_KEYS if it's runtime state)`);
+      console.warn(`  ⚠ site/${row.key}: not an object, skipped`);
       continue;
     }
     if (row.key === 'settings') data = deepMerge(SETTINGS_DEFAULTS, data);
+    // Pages import these files directly, so a link that runs script (javascript:,
+    // data:) is emptied here; save-content refuses them, so this is the backstop
+    const cleaned = withoutScriptLinks(data);
+    if (cleaned.dropped.length) console.warn(`  ⚠ site/${key}: left out links that aren't web addresses: ${cleaned.dropped.join(', ')}`);
+    data = cleaned.data;
     writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
   }
 }

@@ -17,7 +17,7 @@
  *           GITHUB_BRANCH (optional, default "main")
  */
 
-import { EXTRACTORS, parsePath, generateSha } from './_collections.js';
+import { EXTRACTORS, parsePath, generateSha, scriptLinks, linkScheme } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit, diffJson, getEntityName } from './_audit.js';
 import { refreshForBoardChange } from './_reveal-invites.js';
@@ -48,6 +48,15 @@ export async function onRequestPost(context) {
     }
 
     const data = typeof content === 'string' ? JSON.parse(content) : content;
+    // A link that runs script when clicked (javascript:, data:, vbscript:) never
+    // reaches the site or the public repo, whatever screen sent it
+    const scripted = scriptLinks(data);
+    if (scripted.length) {
+      return Response.json(
+        { success: false, error: `That link can’t be saved: ${scripted[0].path} must be a web address starting with https:// (not ${linkScheme(scripted[0].value)}:)`, fields: scripted.map((s) => s.path) },
+        { status: 400 }
+      );
+    }
     const jsonStr = JSON.stringify(data);
     const prettyJson = JSON.stringify(data, null, 2);
     const now = new Date().toISOString();

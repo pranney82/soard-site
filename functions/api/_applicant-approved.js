@@ -92,20 +92,36 @@ export function cleanYear(v) {
 const namesIn = (s) => String(s || '').replace(/\s*\(\d{4}\)\s*$/, '').split(/\s*(?:&|\+|,|\band\b)\s*/i).map(p => p.trim()).filter(Boolean);
 const joinNames = (list) => (list.length > 2 ? `${list.slice(0, -1).join(', ')} & ${list.at(-1)}` : list.join(' & '));
 
+const NAME_MAX = 30;      // one child's name
+const SITE_NAME_MAX = 60; // all of them, joined
+
+/**
+ * One name as the public pages may show it: letters (any alphabet), their
+ * accents, spaces, apostrophes, hyphens and periods. Anything else a family
+ * typed (markup, quotes, emoji, digits) becomes a space; runs of spaces close
+ * up, and it's capped at NAME_MAX characters.
+ */
+export function cleanName(s, max = NAME_MAX) {
+  const clean = String(s ?? '').normalize('NFC').replace(/[^\p{L}\p{M}\s'’.-]/gu, ' ').replace(/\s+/g, ' ').trim();
+  return [...clean].slice(0, max).join('').trim();
+}
+
 /**
  * The name the site shows: the first name(s), never the last.
  *   "Remi & Nico Powell" → "Remi & Nico", "Declan “Dex” Noel" → "Dex",
  *   "Logan Michael Sesto" → "Logan". `first` (the form's first-name answer)
- *   wins when there is one.
+ *   wins when there is one. The name ends up in the kid's page (HTML and
+ *   JSON-LD), so each name is cleaned and only the " & " and ", " between
+ *   names are the site's own.
  */
 export function siteNameOf(accountName, first = null) {
-  const typed = String(first || '').trim();
+  const done = (names) => [...joinNames(names.map(n => cleanName(n)).filter(Boolean))].slice(0, SITE_NAME_MAX).join('').replace(/[\s,&]+$/, '');
+  const typed = done(namesIn(first));
   if (typed) return typed;
   const raw = String(accountName || '').replace(/\s*\(\d{4}\)\s*$/, '').trim();
-  const nick = raw.match(/["“”]([^"“”]{2,30})["“”]/);
-  if (nick) return nick[1].trim();
-  const names = namesIn(raw).map(p => p.split(/\s+/)[0]).filter(Boolean);
-  return joinNames(names) || raw;
+  const nick = cleanName(raw.match(/["“”]([^"“”]{2,30})["“”]/)?.[1]);
+  if (nick.length >= 2) return nick;
+  return done(namesIn(raw).map(p => p.split(/\s+/)[0])) || cleanName(raw);
 }
 
 /** How many children the name covers: "Remi & Nico" → 2 */

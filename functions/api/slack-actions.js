@@ -4,7 +4,8 @@
  * Every button on the site's Slack cards opens a page, but Slack also tells
  * the app about the click and marks the button with a warning when nothing
  * answers. This answers. It takes no action, so a forged request can't do
- * anything; with SLACK_SIGNING_SECRET set, unsigned requests are refused.
+ * anything. Only a click signed with SLACK_SIGNING_SECRET is kept; until
+ * that's set, every request gets the same empty 200 and nothing is written.
  *
  * Public (in _middleware's PUBLIC_ROUTES). Set up once in api.slack.com/apps
  * → the SOARD Website app → Interactivity & Shortcuts: turn it on, Request URL
@@ -33,15 +34,16 @@ export async function verifySlack(secret, { timestamp, signature, body, now = Da
 }
 
 export async function onRequestPost({ env, request }) {
+  // Unsigned (no secret to check against): answered, never recorded, so anyone
+  // on the internet can't write to D1 through here
+  if (!env.SLACK_SIGNING_SECRET) return new Response('', { status: 200 });
   const body = await request.text();
-  if (env.SLACK_SIGNING_SECRET) {
-    const ok = await verifySlack(env.SLACK_SIGNING_SECRET, {
-      timestamp: request.headers.get('X-Slack-Request-Timestamp'),
-      signature: request.headers.get('X-Slack-Signature'),
-      body,
-    });
-    if (!ok) return new Response('bad signature', { status: 401 });
-  }
+  const ok = await verifySlack(env.SLACK_SIGNING_SECRET, {
+    timestamp: request.headers.get('X-Slack-Request-Timestamp'),
+    signature: request.headers.get('X-Slack-Signature'),
+    body,
+  });
+  if (!ok) return new Response('bad signature', { status: 401 });
   let payload = null;
   try { payload = JSON.parse(new URLSearchParams(body).get('payload') || 'null'); } catch { /* not Slack */ }
   if (payload?.type === 'block_actions' && env.DB) {

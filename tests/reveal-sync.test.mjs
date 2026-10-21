@@ -7,11 +7,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { fakeJobTread } from './lib/fake-jobtread.mjs';
-import { planSync, syncJob, taskKey, fieldKey, whenLabel } from '../functions/api/_reveal-sync.js';
+import { planSync, syncJob, wakeSync, taskKey, fieldKey, whenLabel } from '../functions/api/_reveal-sync.js';
 import { easternToUtcIso, easternParts, longDay, clockTime, daysBetween, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED } from '../functions/api/_reveals.js';
+import * as route from '../functions/api/reveal-sync.js';
 
 const NOW = Date.parse('2026-10-16T14:00:00Z');
 const JOB = '22PTestJob001';
+const ORG = '22NJw42j5GLg';
+const SITE_GRANT = '22PgGhFHkmbz';
+const REVEAL_TYPE = '22NZSbkR5rZw';
+const MIN = 60_000;
 
 function jobState({ field = null, confirmed = false, reveals } = {}) {
   return {
@@ -24,8 +29,28 @@ function jobState({ field = null, confirmed = false, reveals } = {}) {
 async function setup(opts) {
   const jt = fakeJobTread([jobState(opts)]);
   const env = { DB: await createD1(), JOBTREAD_GRANT_KEY: 'test-grant' };
-  const sync = (payload, now = NOW) => syncJob(env, { jobId: JOB, ...payload }, { fetchImpl: jt.fetchImpl, now });
-  return { jt, env, sync, job: jt.job(JOB) };
+  // JobTread's event log, for the wake-ups (the shared fake answers everything else)
+  const events = {};
+  const fetchImpl = async (url, init) => {
+    const { query } = JSON.parse(init.body);
+    if (query.event) return Response.json({ event: events[query.event.$.id] || null });
+    return jt.fetchImpl(url, init);
+  };
+  const sync = (payload, now = NOW) => syncJob(env, { jobId: JOB, ...payload }, { fetchImpl, now });
+  let n = 0;
+  /** JobTread logs a change (a person's, unless `by` says otherwise); returns the event's id */
+  const log = (kind, { at = NOW, by = 'personGrant', job = JOB, org = ORG, ...rest } = {}) => {
+    const id = `evt${String(++n).padStart(6, '0')}`;
+    const base = { id, createdAt: new Date(at).toISOString(), createdByGrantId: by, organization: { id: org }, job: { id: job }, task: null };
+    events[id] = kind === 'task'
+      ? { ...base, type: 'taskUpdated', task: { id: 'rt1', taskType: { id: REVEAL_TYPE } }, ...rest }
+      : { ...base, type: 'jobUpdated', ...rest };
+    return id;
+  };
+  /** The workflow's wake-up for a change */
+  const wake = (eventId, now = NOW) => wakeSync(env, { jobId: JOB, eventId }, { fetchImpl, now });
+  const writes = () => jt.state.calls.filter(c => c.updateJob || c.updateTask).length;
+  return { jt, env, sync, log, wake, writes, fetchImpl, events, job: jt.job(JOB) };
 }
 
 // ── Time helpers ────────────────────────────────────────────────────────────
@@ -156,29 +181,82 @@ test('confirmed: changing the field reschedules the task, no note', async () => 
   assert.equal(jt.state.comments.length, 0);
 });
 
-// ── Echoes ──────────────────────────────────────────────────────────────────
+// ── Wake-ups: JobTread's event decides, never the body ──────────────────────
 
-test('our own write coming back is ignored, and a person\'s quick second edit still counts', async () => {
-  const { sync, job, jt } = await setup({ field: '2026-11-18T20:00:00.000Z' });
-  await sync({ source: 'task', taskStartDate: '2026-11-20', taskStartTime: '15:00:00.000' });
-  assert.equal(job.fields[FIELD_REVEAL_DATE], '2026-11-20T20:00:00.000Z');
+test('which side changed comes from the JobTread event: a Reveal task event is the task, a job event the field', async () => {
+  // The two sides disagree and nothing is confirmed, so the side that changed wins
+  let s = await setup({ field: '2026-11-18T20:00:00.000Z' });
+  let r = await s.wake(s.log('task'));
+  assert.deepEqual([r.action, r.ran], ['task-to-field', true]);
+  assert.equal(s.job.fields[FIELD_REVEAL_DATE], '2026-11-20T20:00:00.000Z');
 
-  // JobTread's field workflow fires for the value we just wrote
-  const before = jt.state.calls.length;
-  assert.equal((await sync({ source: 'field', revealDate: '2026-11-20T20:00:00.000Z' }, NOW + 20_000)).action, 'echo');
-  assert.equal(jt.state.calls.length, before, 'no writes for an echo');
-
-  // A minute later Clareece edits the field herself: that is not an echo
-  job.fields[FIELD_REVEAL_DATE] = '2026-11-20T21:00:00.000Z';
-  const r = await sync({ source: 'field', revealDate: '2026-11-20T21:00:00.000Z' }, NOW + 60_000);
+  s = await setup({ field: '2026-11-18T20:00:00.000Z' });
+  r = await s.wake(s.log('field'));
   assert.equal(r.action, 'field-to-task');
-  assert.equal(job.reveals[0].startTime, '16:00');
+  assert.equal(s.job.reveals[0].startDate, '2026-11-18', 'the task follows the field');
+  assert.equal(s.job.fields[FIELD_REVEAL_DATE], '2026-11-18T20:00:00.000Z', 'the field is untouched');
 });
 
-test('the echo of a task write matches JobTread\'s "10:00:00.000" time format', async () => {
-  const { sync } = await setup({ field: '2026-11-24T19:00:00.000Z' });
-  await sync({ source: 'field', revealDate: '2026-11-24T19:00:00.000Z' });
-  assert.equal((await sync({ source: 'task', taskStartDate: '2026-11-24', taskStartTime: '14:00:00.000' }, NOW + 15_000)).action, 'echo');
+test('a wake-up that doesn\'t check out with JobTread does nothing', async () => {
+  const s = await setup({ field: '2026-11-18T20:00:00.000Z' });
+  // Each try a minute apart, so the per-job limit never answers for the check
+  let t = NOW;
+  const nothing = async (event, why) => {
+    t += MIN;
+    const eventId = typeof event === 'function' ? event(t) : event;
+    const r = await s.wake(eventId, t);
+    assert.deepEqual([r.action, r.ran], ['unverified', false], why);
+  };
+  await nothing('', 'no event id (a body with only a jobId and a source)');
+  await nothing('evtNoSuchThing', 'an event JobTread never logged');
+  await nothing((at) => s.log('task', { at, job: '22POtherJob01' }), 'another job\'s event');
+  await nothing((at) => s.log('task', { at, org: 'someOtherOrg' }), 'another organization\'s event');
+  await nothing((at) => s.log('task', { at, org: null }), 'an event that doesn\'t say whose it is');
+  await nothing((at) => s.log('task', { at: at - 16 * MIN }), 'older than 15 minutes (a replay)');
+  await nothing((at) => s.log('task', { at: at + 10 * MIN }), 'from the future');
+  await nothing((at) => s.log('task', { at, task: { id: 'other', taskType: { id: 'notReveal' } } }), 'a task that isn\'t the Reveal task');
+  await nothing((at) => s.log('task', { at, type: 'taskDeleted' }), 'not a create or update');
+  await nothing((at) => s.log('task', { at, type: 'accountUpdated' }), 'not a job or task event');
+  assert.equal(s.writes(), 0);
+  assert.equal(s.job.fields[FIELD_REVEAL_DATE], '2026-11-18T20:00:00.000Z');
+});
+
+test('our own write coming back is an echo, and a person\'s quick second edit still counts', async () => {
+  const s = await setup({ field: '2026-11-18T20:00:00.000Z' });
+  await s.wake(s.log('task'));
+  assert.equal(s.job.fields[FIELD_REVEAL_DATE], '2026-11-20T20:00:00.000Z');
+  const before = s.writes();
+  // JobTread logs our field write (made with the site's grant); a wake-up for it changes nothing
+  const r = await s.wake(s.log('field', { by: SITE_GRANT, at: NOW + 20_000 }), NOW + 20_000);
+  assert.deepEqual([r.action, r.ran], ['echo', false]);
+  assert.equal(s.writes(), before, 'no writes for an echo');
+  // A minute later Clareece edits the field herself: that is not an echo
+  s.job.fields[FIELD_REVEAL_DATE] = '2026-11-20T21:00:00.000Z';
+  assert.equal((await s.wake(s.log('field', { at: NOW + MIN }), NOW + MIN)).action, 'field-to-task');
+  assert.equal(s.job.reveals[0].startTime, '16:00');
+});
+
+test('the same event twice (JobTread retrying, or a replay) is handled once', async () => {
+  const s = await setup({ field: '2026-11-18T20:00:00.000Z' });
+  const id = s.log('task');
+  assert.equal((await s.wake(id)).action, 'task-to-field');
+  // Someone moves the field back by hand; replaying the old task event mustn't undo that
+  s.job.fields[FIELD_REVEAL_DATE] = '2026-11-18T20:00:00.000Z';
+  const again = await s.wake(id, NOW + 2 * MIN);
+  assert.deepEqual([again.action, again.ran], ['already handled', false]);
+  assert.equal(s.job.fields[FIELD_REVEAL_DATE], '2026-11-18T20:00:00.000Z');
+});
+
+test('a flood of wake-ups for one job stops after six a minute (the weekday check settles the rest)', async () => {
+  const s = await setup({ field: '2026-11-20T20:00:00.000Z' });
+  const reads = () => s.jt.state.calls.length;
+  const out = [];
+  for (let i = 0; i < 9; i++) out.push((await s.wake(s.log('task'))).action);
+  assert.deepEqual(out.slice(6), ['throttled', 'throttled', 'throttled']);
+  assert.ok(out.slice(0, 6).every(a => a !== 'throttled'));
+  // A minute on, it listens again
+  assert.notEqual((await s.wake(s.log('task', { at: NOW + MIN + 1 }), NOW + MIN + 1)).action, 'throttled');
+  assert.equal(reads(), 0, 'no writes: the sides already agreed');
 });
 
 test('an old remembered write isn\'t mistaken for an echo', async () => {
@@ -226,7 +304,75 @@ test('nothing to do', () => {
   });
   assert.equal(planSync(job(), 'task').reason, 'already in sync');
   assert.equal(planSync(job({ organization: { id: 'someone-else' } }), 'task').reason, 'not a SOARD job');
+  assert.equal(planSync(job({ organization: null }), 'task').reason, 'not a SOARD job', 'no organization is not SOARD\'s either');
+  assert.equal(planSync(job({ organization: undefined }), 'task').reason, 'not a SOARD job');
   assert.equal(planSync(job({ tasks: { nodes: [{ id: 'rt1', startDate: '2026-10-07', progress: 1 }] } }), 'task').reason, 'the reveal is marked complete');
   assert.equal(planSync(null, 'task').reason, 'job not found');
   assert.equal(planSync(job({ customFieldValues: { nodes: [] }, tasks: { nodes: [{ id: 'rt1', startDate: null }] } }), 'task').reason, 'no date on either side');
+});
+
+// ── The public route ────────────────────────────────────────────────────────
+
+async function callRoute(s, body, { url = 'https://x/api/reveal-sync', headers = {}, env = s.env, ip = '198.51.100.7' } = {}) {
+  const waits = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = s.fetchImpl;
+  try {
+    const res = await route.onRequestPost({ request: new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip, ...headers }, body: JSON.stringify(body) }), env, waitUntil: (p) => waits.push(p) });
+    await Promise.allSettled(waits);
+    return { status: res.status, body: await res.json(), waits: waits.length };
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+test('the route: the shared secret when one is set, and { ok } is all it ever says', async () => {
+  const s = await setup({ field: '2026-11-18T20:00:00.000Z' });
+  const secured = { ...s.env, JOBTREAD_WEBHOOK_SECRET: 'wake-secret-example' };
+  const id = s.log('task', { at: Date.now() });
+  // Wrong or missing secret: refused before anything is read
+  assert.equal((await callRoute(s, { jobId: JOB, eventId: id }, { env: secured })).status, 401);
+  assert.equal((await callRoute(s, { jobId: JOB, eventId: id }, { env: secured, url: 'https://x/api/reveal-sync?key=nope' })).status, 401);
+  assert.equal(s.writes(), 0);
+  // The secret in the URL (or the X-Webhook-Secret header) lets it through
+  const ok = await callRoute(s, { jobId: JOB, eventId: id, source: 'field' }, { env: secured, url: 'https://x/api/reveal-sync?key=wake-secret-example' });
+  assert.deepEqual([ok.status, ok.body], [200, { ok: true }], 'no action, reason or dates in the answer');
+  assert.equal(s.job.fields[FIELD_REVEAL_DATE], '2026-11-20T20:00:00.000Z', 'the event said task, so the body\'s "field" was ignored');
+  assert.equal(ok.waits, 1, 'the countdown takes a look');
+  const header = await callRoute(s, { jobId: JOB, eventId: s.log('field', { at: Date.now() }) }, { env: secured, headers: { 'X-Webhook-Secret': 'wake-secret-example' } });
+  assert.equal(header.status, 200);
+  // A forged body that names no real event: { ok: true }, nothing done, nothing said, no countdown check
+  const forged = await callRoute(s, { jobId: JOB, source: 'field', revealDate: '2030-01-01T00:00:00Z' }, { env: secured, headers: { 'X-Webhook-Secret': 'wake-secret-example' } });
+  assert.deepEqual([forged.status, forged.body, forged.waits], [200, { ok: true }, 0]);
+  assert.equal((await callRoute(s, { jobId: 'bad id!' })).status, 400);
+});
+
+test('the route: junk from one address is cut off at 30 a minute and never counted, so a real wake-up still runs', async () => {
+  const s = await setup({ field: '2026-11-18T20:00:00.000Z' });
+  const count = async (key) => (await s.env.DB.prepare('SELECT count FROM rate_limits WHERE key = ?').bind(key).first())?.count || 0;
+  const answers = [];
+  for (let i = 0; i < 120; i++) answers.push((await callRoute(s, { jobId: JOB, eventId: `junk${String(i).padStart(6, '0')}`, source: 'field' }, { ip: '203.0.113.9' })).status);
+  assert.equal(answers.filter((x) => x === 200).length, 30);
+  assert.equal(answers.filter((x) => x === 429).length, 90, 'refused before JobTread is asked');
+  // Spread over many addresses: none of it counts against the job or the site
+  for (let i = 0; i < 150; i++) await callRoute(s, { jobId: JOB, eventId: `junkB${String(i).padStart(6, '0')}` }, { ip: `203.0.113.${10 + (i % 6)}` });
+  assert.equal(await count(`reveal-sync:job:${JOB}`), 0);
+  assert.equal(await count('reveal-sync:all'), 0);
+  assert.equal(s.writes(), 0);
+  // JobTread's real wake-up, from its own address, goes straight through
+  const real = await callRoute(s, { jobId: JOB, eventId: s.log('task', { at: Date.now() }) });
+  assert.deepEqual(real.body, { ok: true });
+  assert.equal(s.job.fields[FIELD_REVEAL_DATE], '2026-11-20T20:00:00.000Z', 'the task\'s date reached the field');
+  assert.equal(await count(`reveal-sync:job:${JOB}`), 1, 'only the real change counted');
+});
+
+test('a real change past the limits waits for a retry: it isn\'t marked as handled', async () => {
+  const s = await setup({ field: '2026-11-20T20:00:00.000Z' });
+  const ids = [];
+  for (let i = 0; i < 7; i++) ids.push(s.log('task'));
+  const out = [];
+  for (const id of ids) out.push((await s.wake(id)).action);
+  assert.equal(out[6], 'throttled');
+  // A minute on, JobTread retrying that same event is acted on
+  assert.notEqual((await s.wake(ids[6], NOW + MIN + 1)).action, 'already handled');
 });

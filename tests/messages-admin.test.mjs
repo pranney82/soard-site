@@ -138,6 +138,7 @@ test('the map’s live checks read the facts', async (t) => {
   applyFacts(f);
   assert.equal(by('Save the date').es, 'off', 'reminders switched off');
   assert.match(by('Save the date').probe.why, /switched off/);
+  assert.equal(by('Text code').es, 'off');
   assert.equal(by('Application received').es, 'live');
   assert.match(by('Application received').probe.why, /1 in the last 30 days, 2 in all/);
   assert.match(by('Approved').probe.why, /1 email is waiting to go/);
@@ -178,6 +179,7 @@ test('Send it to me: only to the person signed in, marked [Preview]', async (t) 
   assert.match(sent[1][0].subject, /^\[Preview\] Ya está en la lista$/);
 
   assert.equal((await post({ send: 'app-approved' })).status, 400, 'JobTread sends the status emails; no copy from here');
+  assert.equal((await post({ send: 'rem-code' })).status, 400, 'texts aren’t sent as previews');
   assert.equal((await post({ send: 'nope' })).status, 404);
   assert.equal((await post({ send: 'staff-new-app' }, {})).status, 403, 'nobody signed in, nothing sent');
   assert.equal((await post({ send: 'staff-new-app' }, undefined, ENV(DB, { RESEND_API_KEY: '' }))).status, 503);

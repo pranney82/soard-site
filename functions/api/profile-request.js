@@ -14,6 +14,7 @@
  */
 import { findRequest, saveSubmission, LIMITS, normalizeLinkedIn, cleanText } from './_profile-requests.js';
 import { personName } from './_team.js';
+import { checkImage } from './_image-types.js';
 
 const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 const GONE = { expired: 'This link has expired. Ask SOARD for a new one.', closed: 'This link has already been used or replaced. Ask SOARD for a new one if you need to send changes.' };
@@ -95,8 +96,10 @@ export async function onRequestPost(context) {
 
     let photo = '';
     if (hasPhoto) {
-      if (!/^image\//.test(file.type || '')) return Response.json({ ok: false, error: 'The photo should be a JPG, PNG, WebP or HEIC image.' }, { status: 400 });
       if (file.size > LIMITS.photoBytes) return Response.json({ ok: false, error: 'That photo is over 10 MB. Try a smaller copy.' }, { status: 413 });
+      // JPG, PNG, WebP, HEIC or GIF by its own bytes as well as its label: never SVG or anything else
+      const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+      if (!checkImage(head, file.type).ok) return Response.json({ ok: false, error: 'The photo should be a JPG, PNG, WebP or HEIC image.' }, { status: 400 });
       if (!context.env.CF_ACCOUNT_ID || !context.env.CF_IMAGES_TOKEN) return Response.json({ ok: false, error: 'Photos can’t be received right now. Send the rest, and email the photo to SOARD.' }, { status: 503 });
       try { photo = await uploadPhoto(context.env, file, row.slug); }
       catch { return Response.json({ ok: false, error: 'The photo didn’t upload. Try again, or send the rest without it.' }, { status: 500 }); }

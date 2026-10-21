@@ -23,12 +23,14 @@
  * never get a second copy.
  *
  * Woken by a JobTread workflow (customerCreatedOrUpdated, Status or Diagnosis
- * changed, not by the site's grant) posting { eventId, accountId,
- * previousStatus, nextStatus, status } to /api/applicant-sync (previous/next
- * are "null" unless Status itself changed). The body only says which
- * account to look at; everything is re-read from JobTread. Accounts made by
- * the site's own application form are left to ./_applications.js, which posts
- * their welcome with the PDF attached.
+ * changed, not by the site's grant) posting { eventId, accountId, … } to
+ * /api/applicant-sync. Only the account and event ids are read from the body:
+ * the event is looked up in JobTread (./_applicant-notify.js verifiedChange)
+ * and gives the status before the change, and the account is re-read. A
+ * wake-up whose event doesn't check out does nothing and isn't logged; the
+ * event-log sync (./_applicants.js) still catches any real Status change.
+ * Accounts made by the site's own application form are left to
+ * ./_applications.js, which posts their welcome with the PDF attached.
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
@@ -96,10 +98,12 @@ const SCHEMA = [
     account_id TEXT NOT NULL, kind TEXT NOT NULL, comment_id TEXT, state TEXT NOT NULL,
     detail TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     PRIMARY KEY (account_id, kind))`,
-  // Every wake-up from JobTread, newest first in the admin (last 500 kept)
+  // Every verified wake-up from JobTread, newest first in the admin (last 500 kept)
   `CREATE TABLE IF NOT EXISTS applicant_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT, account_id TEXT, previous_status TEXT,
     status TEXT, actions TEXT, error TEXT, created_at TEXT NOT NULL)`,
+  // JobTread events already acted on, so a retried or replayed wake-up is a no-op (a day kept)
+  'CREATE TABLE IF NOT EXISTS applicant_wakeups (event_id TEXT PRIMARY KEY, account_id TEXT, at INTEGER NOT NULL)',
 ];
 const _schemaReady = new WeakSet();
 export async function ensureCommsSchema(DB) {
@@ -405,25 +409,62 @@ export async function statusMessagePreview(env, applicant, status) {
 
 export const STATUS_RANK = RANK;
 
-const cleanStatus = (s) => {
+/** A status as JobTread's event data holds it: blank, "null" and missing all mean blank */
+export const cleanStatus = (s) => {
   const v = String(s ?? '').trim();
   return v === 'null' || v === 'undefined' ? '' : v;
 };
 
+const WAKEUP_KEEP_MS = 24 * 60 * 60 * 1000;
+
+/** True the first time an event is seen; a retried or replayed wake-up gets false */
+async function firstWakeup(DB, eventId, accountId, now) {
+  await DB.prepare('DELETE FROM applicant_wakeups WHERE at < ?').bind(now - WAKEUP_KEEP_MS).run();
+  const ins = await DB.prepare('INSERT OR IGNORE INTO applicant_wakeups (event_id, account_id, at) VALUES (?, ?, ?)').bind(eventId, accountId, now).run();
+  return ins?.meta?.changes > 0;
+}
+
 /**
- * One wake-up from the JobTread workflow. Never trusts the body beyond the
- * account id and the previous status (which only decides forward vs back).
+ * One wake-up from the JobTread workflow. The body only names the account
+ * (and the event): `verify(accountId)` looks the change up in JobTread and
+ * returns { id, previous, statusChanged, at, by, via }, or null when there's
+ * no such recent change on this account. Nothing else in the body is read.
+ *   - unverified: nothing is done or logged (the event-log sync is the backup)
+ *   - an event already handled: nothing again
+ *   - `admit(accountId)` false (a real change, past the rate limits): logged,
+ *     not done, and not marked handled, so a retry of it still counts. Only
+ *     verified changes are counted, so junk can't use up the limits.
+ * Returns { ok, verified, actions } for the caller's log; the public route
+ * answers { ok } only.
  */
-export async function handleApplicantEvent(env, payload, { fetchImpl = fetch, now = Date.now(), onStatus = null } = {}) {
+export async function handleApplicantEvent(env, payload, { fetchImpl = fetch, now = Date.now(), verify = null, admit = null, onStatus = null } = {}) {
   const { DB } = env;
   if (!DB || !env.JOBTREAD_GRANT_KEY) return { ok: false, error: 'not configured' };
   const accountId = String(payload?.accountId || '');
   if (!/^[A-Za-z0-9]{6,32}$/.test(accountId)) return { ok: false, error: 'bad accountId' };
   await ensureCommsSchema(DB);
 
+  // Which change this is, from JobTread's own record. A JobTread error is a
+  // 500, so the workflow's retry (or the event-log sync) gets another go.
+  let change = null;
+  try {
+    change = verify ? await verify(accountId) : null;
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  if (!change) return { ok: true, verified: false, actions: {} };
+  if (!(await firstWakeup(DB, change.id, accountId, now))) return { ok: true, verified: true, actions: { skipped: 'already handled' } };
+  const release = () => DB.prepare('DELETE FROM applicant_wakeups WHERE event_id = ?').bind(change.id).run().catch(() => {});
+
   const actions = {};
   let error = null;
   let applicant = null;
+  if (admit && !(await admit(accountId))) {
+    await release();
+    actions.skipped = 'too many changes at once';
+    await logWakeup(DB, { change, accountId, applicant, actions, error, now });
+    return { ok: true, verified: true, actions };
+  }
   try {
     applicant = await readApplicant(env, accountId, fetchImpl);
     if (!applicant) {
@@ -437,25 +478,28 @@ export async function handleApplicantEvent(env, payload, { fetchImpl = fetch, no
         actions.medical = await sendMedical(env, applicant, { fetchImpl, now, fallback: true });
       }
       // Status moves (and the welcome for a hand-made account) wait until the
-      // status settles: `onStatus` is ./_applicant-notify.js. JobTread sends
-      // nextStatus only when Status itself changed (a Diagnosis edit arrives
-      // with both as "null"); without the field, assume it did.
-      const previous = cleanStatus(payload?.previousStatus);
-      const statusChanged = payload?.nextStatus === undefined || cleanStatus(payload.nextStatus) !== '';
-      if (statusChanged && onStatus) Object.assign(actions, await onStatus(applicant, { previous }));
+      // status settles: `onStatus` is ./_applicant-notify.js. A Diagnosis edit
+      // isn't a status move; the event says which it was.
+      if (change.statusChanged && onStatus) Object.assign(actions, await onStatus(applicant, change));
     }
   } catch (e) {
     error = e.message;
+    // Let JobTread's retry have another go at this event
+    await release();
   }
 
+  await logWakeup(DB, { change, accountId, applicant, actions, error, now });
+  return error ? { ok: false, verified: true, error, actions } : { ok: true, verified: true, actions };
+}
+
+/** One verified wake-up in the admin's log (the last 500 kept). Best effort. */
+async function logWakeup(DB, { change, accountId, applicant, actions, error, now }) {
   try {
     await DB.prepare(`INSERT INTO applicant_events (event_id, account_id, previous_status, status, actions, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .bind(String(payload?.eventId || '').slice(0, 64) || null, accountId, cleanStatus(payload?.previousStatus) || null,
+      .bind(String(change.id).slice(0, 64), accountId, change.previous || null,
         applicant?.status || null, JSON.stringify(actions), error, new Date(now).toISOString()).run();
     await DB.prepare('DELETE FROM applicant_events WHERE id <= (SELECT MAX(id) - 500 FROM applicant_events)').run();
   } catch { /* the log is best effort */ }
-
-  return error ? { ok: false, error, actions } : { ok: true, actions };
 }
 
 export async function recentEvents(DB, limit = 50) {

@@ -154,7 +154,7 @@ const breadcrumbs = [
                         alt={p.data.name}
                         width="200" height="60"
                         loading="lazy" decoding="async"
-                        onerror="this.style.display='none';this.nextElementSibling.style.display=''"
+                        data-img-fallback="next"
                       />
                       <span class="logo-placeholder" style="display:none">{p.data.name}</span>
                     </Fragment>
@@ -232,7 +232,7 @@ const breadcrumbs = [
                         alt={p.data.name}
                         width="140" height="40"
                         loading="lazy" decoding="async"
-                        onerror="this.style.display='none';this.nextElementSibling.style.display=''"
+                        data-img-fallback="next"
                       />
                       <span class="logo-placeholder" style="display:none">{p.data.name}</span>
                     </Fragment>
@@ -377,7 +377,7 @@ const breadcrumbs = [
                       alt={p.data.name}
                       width="90" height="32"
                       loading="lazy" decoding="async"
-                      onerror="this.style.display='none';this.nextElementSibling.style.display=''"
+                      data-img-fallback="next"
                     />
                     <span class="logo-placeholder" style="display:none">{p.data.name}</span>
                   </Fragment>

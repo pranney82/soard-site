@@ -219,7 +219,9 @@ test('family messages follow the live form', async () => {
     primaryContactId: 'c1', locations: [], files: [], comments: [],
   };
   const T0 = Date.parse('2026-10-21T15:00:00Z');
-  await handleWorkflowCall(env, { accountId: id, previousStatus: 'Applied', nextStatus: 'In Review' }, { fetchImpl: w.fetchImpl, now: T0 });
+  // JobTread logs the move, and its workflow wakes the site with the event's id
+  w.world.events.push({ id: 'evtFORM000001', createdAt: new Date(T0).toISOString(), type: 'accountUpdated', createdByGrantId: 'g1', createdByGrantName: 'JobTread App', createdByUser: { name: 'Linzi Berkowitz', emailAddress: 'linzi@example.com' }, data: { next: { custom: { Status: 'In Review' } }, previous: { custom: { Status: 'Applied' } } }, account: { id, type: 'customer' } });
+  await handleWorkflowCall(env, { accountId: id, eventId: 'evtFORM000001' }, { fetchImpl: w.fetchImpl, now: T0 });
   for (const t of [T0 + 4 * 60000, T0 + 11 * 60000]) await runNotifications(env, { fetchImpl: w.fetchImpl, now: t });
   assert.equal(w.world.accounts[id].comments.at(-1).message, 'Hi Morgan Park! Good news for *Riley Park*: next is the home visit.');
   assert.equal(renderMessage('{parent} {child}{copyNote}', { parent: 'A', child: 'B', copyNote: 'Copy.' }), 'A B\n\nCopy.');

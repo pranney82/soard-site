@@ -56,14 +56,24 @@ export function notPressReason(url, title = '') {
 
 // ── Text ─────────────────────────────────────────────────────────────
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', hellip: '…' };
+/** A character a numeric entity may stand for: none past U+10FFFF, no lone surrogate halves, no NUL */
+const validCodePoint = (n) => Number.isInteger(n) && n > 0 && n <= 0x10FFFF && !(n >= 0xD800 && n <= 0xDFFF);
 export function decodeEntities(s) {
   return String(s ?? '').replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
-    if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return Number.isFinite(n) ? String.fromCodePoint(n) : m; }
+    if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return validCodePoint(n) ? String.fromCodePoint(n) : m; }
     return ENTITIES[e.toLowerCase()] ?? m;
   });
 }
-/** Words only: tags out, entities decoded, spaces collapsed (the page does the same) */
-export const plain = (s) => decodeEntities(String(s ?? '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+/**
+ * Words only: entities decoded once, then tags out, spaces collapsed (the
+ * page does the same). Decoding first means "&lt;script&gt;" ends up as
+ * nothing, never as a real tag, however many times a title passes through;
+ * a "<" left opening a tag (a letter, "/", "!" or "?" after it) goes too.
+ */
+export const plain = (s) => decodeEntities(String(s ?? ''))
+  .replace(/<[^>]*>/g, ' ')
+  .replace(/<(?=[a-z/!?])/gi, '')
+  .replace(/\s+/g, ' ').trim();
 export const hasMarkup = (s) => /<\/?[a-z][^>]*>|&(nbsp|amp|#\d+);/i.test(String(s ?? ''));
 
 export function slugify(s) {
@@ -101,6 +111,23 @@ export function cleanTitle(title, source = '') {
 export const titleKey = (title) => plain(title).toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean).slice(0, 18).join(' ');
 
 // ── Web addresses ────────────────────────────────────────────────────
+/**
+ * An address a page can link to: http(s), or none at all. Any other scheme
+ * (javascript:, data:, vbscript:...) comes back as '', read the way a browser
+ * reads it (tabs and newlines dropped, any case). functions/api/_collections.js
+ * linkScheme() is the server's copy of this rule.
+ */
+export function webLink(url) {
+  const s = String(url ?? '').trim();
+  const scheme = s.replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+/, '').match(/^([a-z][a-z0-9+.-]*):/i)?.[1]?.toLowerCase();
+  return !scheme || scheme === 'http' || scheme === 'https' ? s : '';
+}
+/** A full https:// (or http://) web address */
+export function isWebAddress(url) {
+  const s = String(url ?? '').trim();
+  if (!/^https?:\/\//i.test(s)) return false;
+  try { return !!new URL(s).hostname; } catch { return false; }
+}
 export function hostOf(url) {
   try { return new URL(String(url).trim()).hostname.toLowerCase().replace(/^(www\d?|m|amp|mobile)\./, ''); } catch { return ''; }
 }
@@ -207,7 +234,8 @@ export function storyRecord(d = {}) {
   r.category = CATEGORIES.includes(d.category) ? d.category : 'print';
   r.title = founderNames(plain(d.title));
   r.date = /^\d{4}-\d{2}-\d{2}$/.test(String(d.date || '')) ? d.date : new Date().toISOString().slice(0, 10);
-  r.url = String(d.url || '').trim();
+  // Only a web address: a javascript: or data: link never reaches the page
+  r.url = webLink(d.url);
   r.excerpt = founderNames(plain(d.excerpt));
   r.image = d.image ? String(d.image) : null;
   r.featured = !!d.featured;
@@ -221,7 +249,7 @@ export function storyRecord(d = {}) {
   if (kids.length) r.kids = kids;
   const partners = uniq(d.partners);
   if (partners.length) r.partners = partners;
-  if (d.archiveUrl) r.archiveUrl = String(d.archiveUrl);
+  if (webLink(d.archiveUrl)) r.archiveUrl = webLink(d.archiveUrl);
   if (d.linkGone) r.linkGone = String(d.linkGone);
   if (d.publishStatus === 'draft') r.publishStatus = 'draft';
   // Fields this file doesn't know about stay as they were

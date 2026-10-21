@@ -5,7 +5,8 @@
  *                  Every public GET also piggybacks a throttled tick in
  *                  waitUntil, so the state machine keeps moving even if the
  *                  real-time hub is ever down (the same trick live-status
- *                  used for the archive sweep).
+ *                  used for the archive sweep). Never forced: it runs only
+ *                  when no tick has started anywhere in the last 20 s.
  * POST (Access)  → { action, ... }  schedule | update | cancel | goLiveManual |
  *                  endNow | clearReplay | extendReplay | setReplay | reset
  */

@@ -9,7 +9,14 @@
  *
  * Admin-only (the middleware requires Access for anything not in PUBLIC_ROUTES).
  * Env: CF_ACCOUNT_ID, CF_IMAGES_TOKEN (same as /api/upload-image).
+ *
+ * Only JPEG, PNG, WebP, HEIC and GIF are saved, decided by the downloaded
+ * bytes (./_image-types.js), never an SVG. Outlets label images loosely
+ * (image/x-png, a WebP sent as image/jpeg), so their Content-Type is only
+ * reported; the image is saved as the type its bytes are.
  */
+
+import { checkImage } from './_image-types.js';
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 const MAX_HTML = 1_500_000;      // bytes of HTML we bother scanning
@@ -122,24 +129,25 @@ export async function onRequestPost(context) {
     // 3. Download it
     const imgRes = await fetch(imageUrl, {
       redirect: 'follow',
-      headers: { 'User-Agent': UA, Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', Referer: finalUrl },
+      // Only the types we keep, so an image CDN doesn't pick AVIF for us
+      headers: { 'User-Agent': UA, Accept: 'image/webp,image/jpeg,image/png,image/gif;q=0.9,*/*;q=0.5', Referer: finalUrl },
       signal: AbortSignal.timeout(15000),
     });
     if (!imgRes.ok) return json({ success: false, error: `The image could not be downloaded (${imgRes.status}). Save it manually with Browse.`, sourceImage: imageUrl }, 500);
     const contentType = (imgRes.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    const looksLikeImage = contentType.startsWith('image/') || /\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(imageUrl);
-    if (!looksLikeImage) return json({ success: false, error: `That link did not return an image (${contentType || 'unknown type'}).`, sourceImage: imageUrl }, 422);
     const bytes = await imgRes.arrayBuffer();
     if (bytes.byteLength === 0) return json({ success: false, error: 'The image download was empty.', sourceImage: imageUrl }, 500);
     if (bytes.byteLength > MAX_IMAGE) return json({ success: false, error: 'Image is larger than 10 MB. Save a smaller copy with Browse.', sourceImage: imageUrl }, 413);
+    // The bytes decide, whatever the label says, and must be an allowed type
+    const image = checkImage(new Uint8Array(bytes, 0, Math.min(64, bytes.byteLength)));
+    if (!image.ok) return json({ success: false, error: `That link did not return a JPG, PNG, WebP or GIF image (${contentType || 'unknown type'}). Save one with Browse.`, sourceImage: imageUrl }, 422);
 
     // 4. Save to Cloudflare Images (retry with a suffix if the id is taken)
-    const ext = contentType.startsWith('image/') ? contentType.split('/')[1].replace('jpeg', 'jpg') : 'jpg';
-    const filename = `press-image.${ext}`;
-    let result = await uploadToImages(env, bytes, contentType || 'image/jpeg', filename, id);
+    const filename = `press-image.${image.kind === 'jpeg' ? 'jpg' : image.kind}`;
+    let result = await uploadToImages(env, bytes, image.type, filename, id);
     if (!result.success && id && (result.errors || []).some(e => e.code === 5409 || /already exists/i.test(e.message || ''))) {
       id = `${id}-${Date.now()}`;
-      result = await uploadToImages(env, bytes, contentType || 'image/jpeg', filename, id);
+      result = await uploadToImages(env, bytes, image.type, filename, id);
     }
     if (!result.success) {
       return json({ success: false, error: result.errors?.[0]?.message || 'Cloudflare Images upload failed', sourceImage: imageUrl }, 500);

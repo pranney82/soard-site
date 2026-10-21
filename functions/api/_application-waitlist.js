@@ -51,6 +51,7 @@ import { slackCard } from './_slack-cards.js';
 import * as applications from './_applications.js';
 import { formFor } from './_application-forms.js';
 import { logAudit } from './_audit.js';
+import { limit } from './_rate-limit.js';
 
 export const WAITLIST_TAG = 'Application Waitlist';
 const REHEARSAL_TAG = 'Application Waitlist rehearsal';
@@ -437,6 +438,19 @@ async function syncToKit(env, email, { now = Date.now() } = {}) {
 }
 
 /**
+ * A signup from the website sends at most one email to an address a day
+ * (the confirmation, or the link when applications are open), so the form
+ * can't be used to fill a stranger's inbox. Staff adding a family isn't capped.
+ */
+const SIGNUP_EMAILS_PER_DAY = 1;
+async function mayEmailNow(DB, email, by, now) {
+  if (by) return true;
+  const key = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(email))))
+    .slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return (await limit(DB, `waitlist-mail:${key}`, SIGNUP_EMAILS_PER_DAY, 86400, { now })).ok;
+}
+
+/**
  * A family asks to hear when applications open.
  * → { ok, status: 'added' | 'already' | 'open', formUrl?, emailed? }
  *   'open': applications are open right now; they were shown the link and
@@ -459,7 +473,9 @@ export async function recordSignup(env, { email, lang = 'en', page = 'apply', co
     let emailed = false;
     if (!told) {
       const msg = openingEmail({ lang, settings, wording: await readWording(DB), list: false });
-      const r = emailConfigured(env) ? await sendEmails(env, { to: [email], subject: msg.subject, html: msg.html, text: msg.text, tags: [{ name: 'type', value: 'application-open' }] }) : { sent: 0 };
+      const r = emailConfigured(env) && await mayEmailNow(DB, email, by, now)
+        ? await sendEmails(env, { to: [email], subject: msg.subject, html: msg.html, text: msg.text, tags: [{ name: 'type', value: 'application-open' }] })
+        : { sent: 0 };
       emailed = r.sent > 0;
       await DB.prepare(`INSERT INTO waitlist_signups (email, lang, page, created_at, updated_at, opening_id, notified_at, notified_via)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -492,6 +508,7 @@ export async function recordSignup(env, { email, lang = 'en', page = 'apply', co
     row.kit_id && row.kit_state === 'active' && !row.kit_error ? { ok: true } : syncToKit(env, email, { now }),
     confirm && !row.confirmed_at && emailConfigured(env)
       ? (async () => {
+        if (!(await mayEmailNow(DB, email, by, now))) return;
         const msg = confirmationEmail({ lang });
         const r = await sendEmails(env, { to: [email], ...msg, tags: [{ name: 'type', value: 'application-waitlist' }] });
         await noteResend(DB, { ok: r.sent > 0, error: r.errors?.[0] }, now);

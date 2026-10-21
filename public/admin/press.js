@@ -433,6 +433,8 @@ function AddStoryDialog({ c, onClose }) {
       const story = await ensureOutlet({ ...found.story, featured: false, order: 0 });
       if (edit) { sessionStorage.setItem('press-draft', JSON.stringify(story)); c.onReload(); onClose(); c.go({ tab: 'stories', slug: '__new' }); return; }
       if (!story.title) throw new Error('The page didn’t give a headline. Use “Edit first” to write one.');
+      // The editor's check too: the story's link must be a web address (Edit first keeps it to fix there)
+      if (!PS.isWebAddress(story.url)) throw new Error('The story’s link should start with https://. Use “Edit first” to fix it.');
       const slug = PS.storySlug(story, c.press.map((s) => s.slug));
       const res = await c.kit.api.saveContent(PATH(slug), JSON.stringify(PS.storyRecord(story), null, 2), `Add press: ${story.title}`);
       if (!res.success) throw new Error(res.error);
@@ -540,7 +542,7 @@ function StoryEditor({ slug, c, onBack, onDirty }) {
     !PS.plain(rec.title) ? 'Add the headline' : null,
     !rec.outletLogo && !PS.plain(rec.outlet) ? 'Pick the outlet' : null,
     !/^\d{4}-\d{2}-\d{2}$/.test(rec.date || '') ? 'Add the date' : null,
-    rec.url && !/^https?:\/\/\S+\.\S+/i.test(rec.url) ? 'The link should start with https://' : null,
+    rec.url && (!/^https?:\/\/\S+\.\S+/i.test(rec.url) || !PS.isWebAddress(rec.url)) ? 'The link should start with https://' : null,
   ].filter(Boolean) : [];
   const link = c.links[slug];
   const issues = rec ? c.issuesOf({ ...rec, slug }) : [];

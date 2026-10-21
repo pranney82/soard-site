@@ -6,7 +6,9 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, reconcileAll, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, maybeCheckGuests, realJobFor, BY_HAND, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
+import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, reconcileAll, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, maybeCheckGuests, realJobFor, BY_HAND, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL, admitWake, runOwedWakes, allowedOrganizers, DEFAULT_ORGANIZER } from '../functions/api/_reveal-invites.js';
+import * as wakeRoute from '../functions/api/reveal-invites.js';
+import * as inviteAdmin from '../functions/api/reveal-invites-admin.js';
 import { serviceAccountJwt, eventIdFor, clearTokenCache, parseServiceAccount } from '../functions/api/_google-calendar.js';
 import { FIELD_REVEAL_CONFIRMED } from '../functions/api/_reveals.js';
 
@@ -87,6 +89,14 @@ test('confirmed with a time becomes a timed, confirmed event in Eastern time', (
   assert.equal(allDay.event.location, '100 Example Way, Atlanta, GA 30301, USA');
 });
 
+test('only a job that says it is SOARD\'s gets an invite (another org, or no org at all, never)', () => {
+  assert.equal(planInvite(job(), STAFF, { now: NOW }).action, 'upsert');
+  for (const organization of [{ id: 'other' }, null, undefined, {}]) {
+    const p = planInvite({ ...job(), organization }, STAFF, { now: NOW });
+    assert.deepEqual([p.action, p.reason], ['skip', 'not a SOARD job'], JSON.stringify(organization));
+  }
+});
+
 test('when there should be no invite', () => {
   const plan = (o) => planInvite(job(o), STAFF, { kids: KIDS, now: NOW });
   assert.equal(plan({ demo: false }).action, 'skip', 'construction not started yet: nothing to send');
@@ -145,7 +155,7 @@ function islaLike(o) {
   j.aces = { nodes: [
     access('Makeover Family', 'Erin Example', 'erin.example@example.com'),
     access('Sponsor', 'Morgan Lee', 'wish.coordinator@example.com'),
-    access('Vendor', 'Mike Kamber', 'gym.vendor@example.com'),
+    access('Vendor', 'Alex Rivera', 'gym.vendor@example.com'),
     access('Vendor', 'Niki Murphy', 'niki.photo@example.com'),
     access('Board Member', 'Holly Board', 'holly.board@example.com'),
     access('Application Reviewer', 'A Reviewer', 'reviewer@example.com'),
@@ -279,7 +289,7 @@ const BASE_MEMBERS = [
   { isInternal: false, role: { name: 'Makeover Family' }, user: { name: 'Someone Else', emailAddress: 'other@family.com' } },
   { isInternal: false, role: { name: 'Vendor' }, user: { name: 'Real Floors', emailAddress: 'vendor@floors.com' } },
 ];
-let env, calls, events, jt, members, boardMembers;
+let env, calls, events, jt, members, boardMembers, jtEvents;
 beforeEach(async () => {
   members = [...BASE_MEMBERS];
   boardMembers = [];
@@ -292,6 +302,7 @@ beforeEach(async () => {
   env = { DB, JOBTREAD_GRANT_KEY: 'grant_test', GOOGLE_CALENDAR_KEY: JSON.stringify(KEY) };
   calls = [];
   events = new Map();
+  jtEvents = new Map();
   jt = job();
 });
 
@@ -300,6 +311,7 @@ async function fakeFetch(url, init = {}) {
   calls.push(`${init.method || 'GET'} ${u.hostname}${u.pathname}${u.search}`);
   if (u.hostname === 'api.jobtread.com') {
     const q = JSON.parse(init.body).query;
+    if (q.event) return Response.json({ event: jtEvents.get(q.event.$.id) || null });
     if (q.job) return Response.json({ job: jt });
     // Board Member users (none here); otherwise the staff read
     if (JSON.stringify(q.organization?.memberships?.$?.where || '').includes('role')) return Response.json({ organization: { memberships: { nodes: boardMembers } } });
@@ -876,4 +888,160 @@ test('one update per invite at a time: two at the same moment never email everyo
   // A crashed update's lock expires
   await env.DB.prepare('INSERT INTO reveal_invite_locks (job_id, until) VALUES (?, ?)').bind(jt.id, Date.now() - 1).run();
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW, wait: false })).action, 'unchanged', 'a stale lock is taken over');
+});
+
+// ─── JobTread wake-ups (POST /api/reveal-invites) ──────────────────────
+
+const jobReads = () => calls.filter((c) => c.startsWith('POST api.jobtread.com')).length;
+
+test('wake-ups: a few a minute per job; past that the job is owed one look, which the next heartbeat gives it', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  const turns = [];
+  for (let i = 0; i < 5; i++) turns.push(await admitWake(env.DB, jt.id, { now: NOW }));
+  assert.deepEqual(turns, ['run', 'run', 'run', 'later', 'later']);
+  const owed = await env.DB.prepare('SELECT job_id, due FROM reveal_invite_owed').all();
+  assert.deepEqual(owed.results, [{ job_id: jt.id, due: NOW + 60_000 }], 'one note, from the first turned away');
+
+  // Not yet due: nothing read
+  assert.deepEqual(await runOwedWakes(env, { fetchImpl: fakeFetch, now: NOW + 30_000 }), []);
+  assert.equal(jobReads(), 0);
+  // Due: the job gets its look (the invite goes out), once, and the note is gone
+  const [r] = await runOwedWakes(env, { fetchImpl: fakeFetch, now: NOW + 61_000 });
+  assert.equal(r.action, 'created');
+  assert.deepEqual(await runOwedWakes(env, { fetchImpl: fakeFetch, now: NOW + 62_000 }), []);
+  // The next minute, the job takes wake-ups again
+  assert.equal(await admitWake(env.DB, jt.id, { now: NOW + 61_000 }), 'run');
+});
+
+test('an owed look that finds the invite busy stays owed', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  for (let i = 0; i < 4; i++) await admitWake(env.DB, jt.id, { now: NOW });
+  await env.DB.prepare('INSERT INTO reveal_invite_locks (job_id, until) VALUES (?, ?)').bind(jt.id, Date.now() + 60_000).run();
+  const [r] = await runOwedWakes(env, { fetchImpl: fakeFetch, now: NOW + 61_000 });
+  assert.equal(r.action, 'busy');
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM reveal_invite_owed').first()).n, 1, 'still owed');
+  await env.DB.prepare('DELETE FROM reveal_invite_locks').run();
+  assert.deepEqual((await runOwedWakes(env, { fetchImpl: fakeFetch, now: NOW + 125_000 })).map((x) => x.action), ['created']);
+});
+
+test('past the site-wide limit too, the job is owed a look, never just dropped', async () => {
+  const out = [];
+  for (let i = 0; i < 125; i++) out.push(await admitWake(env.DB, `22PFlood${String(i).padStart(4, '0')}`, { now: NOW }));
+  assert.equal(out.filter((x) => x === 'run').length, 120);
+  assert.deepEqual(out.slice(120), ['later', 'later', 'later', 'later', 'later']);
+  const owed = (await env.DB.prepare('SELECT job_id FROM reveal_invite_owed ORDER BY job_id').all()).results.map((r) => r.job_id);
+  assert.deepEqual(owed, ['22PFlood0120', '22PFlood0121', '22PFlood0122', '22PFlood0123', '22PFlood0124'], 'each gets its look on the next heartbeat');
+});
+
+let evSeq = 0;
+/** JobTread logs a change on a job (the event a workflow wake-up names) */
+function logJobEvent({ jobId = jt.id, at = Date.now(), org = '22NJw42j5GLg' } = {}) {
+  const id = `evtJob${String(++evSeq).padStart(6, '0')}`;
+  jtEvents.set(id, { id, createdAt: new Date(at).toISOString(), organization: { id: org }, job: { id: jobId } });
+  return id;
+}
+
+async function wake(body, { url = 'https://x/api/reveal-invites', headers = {}, envOver = {}, ip = '198.51.100.7' } = {}) {
+  const waits = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = fakeFetch;
+  try {
+    const res = await wakeRoute.onRequestPost({ request: new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip, ...headers }, body: JSON.stringify(body) }), env: { ...env, ...envOver }, waitUntil: (p) => waits.push(p) });
+    await Promise.allSettled(waits);
+    return { status: res.status, body: await res.json() };
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+const limitCount = async (key) => (await env.DB.prepare('SELECT count FROM rate_limits WHERE key = ?').bind(key).first())?.count || 0;
+
+test('the wake-up route: the shared secret when one is set, and { ok } is all it says', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  const secret = { JOBTREAD_WEBHOOK_SECRET: 'wake-secret-example' };
+  assert.equal((await wake({ jobId: jt.id, eventId: logJobEvent() }, { envOver: secret })).status, 401);
+  assert.equal((await wake({ jobId: jt.id, eventId: logJobEvent() }, { envOver: secret, headers: { 'X-Webhook-Secret': 'wrong' } })).status, 401);
+  assert.equal(jobReads(), 0, 'refused before JobTread is read');
+  assert.equal((await wake({ jobId: 'nope!' })).status, 400);
+
+  const r = await wake({ jobId: jt.id, eventId: logJobEvent() }, { envOver: secret, url: 'https://x/api/reveal-invites?key=wake-secret-example' });
+  assert.deepEqual([r.status, r.body], [200, { ok: true }], 'no action, reason, guests or event details');
+  assert.ok(events.has(eventIdFor('soardreveal', jt.id)), 'and the invite went out');
+
+  // A closed job holds its invite: still just { ok: true }, nothing about the job
+  jt = job({ closed: '2026-10-15' });
+  const held = await wake({ jobId: jt.id, eventId: logJobEvent() }, { envOver: secret, headers: { 'X-Webhook-Secret': 'wake-secret-example' } });
+  assert.deepEqual(held.body, { ok: true });
+});
+
+test('the wake-up route: only a change JobTread logged on the job counts', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  const junk = [
+    {},                                                                  // no event at all
+    { eventId: 'evtNoSuchThing' },                                       // never logged
+    { eventId: logJobEvent({ jobId: '22POtherJob01' }) },                // another job's
+    { eventId: logJobEvent({ org: 'someOtherOrg' }) },                   // another org's
+    { eventId: logJobEvent({ at: Date.now() - 16 * 60_000 }) },          // a replay
+  ];
+  for (const extra of junk) assert.deepEqual((await wake({ jobId: jt.id, ...extra })).body, { ok: true }, JSON.stringify(extra));
+  assert.ok(!events.has(eventIdFor('soardreveal', jt.id)), 'no invite');
+  assert.equal(await limitCount(`reveal-invites:job:${jt.id}`), 0, 'and none of it counted against the job');
+  assert.equal(await limitCount('reveal-invites:all'), 0);
+  assert.equal((await wake({ jobId: jt.id, eventId: logJobEvent() })).status, 200);
+  assert.ok(events.has(eventIdFor('soardreveal', jt.id)), 'the real one goes through');
+});
+
+test('junk from one address is cut off at 30 a minute, never counted, and a real wake-up still runs', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  // About two junk calls a second for a minute, naming the real job, from one address
+  const answers = [];
+  for (let i = 0; i < 120; i++) answers.push((await wake({ jobId: jt.id, eventId: `junk${String(i).padStart(6, '0')}` }, { ip: '203.0.113.9' })).status);
+  assert.equal(answers.filter((x) => x === 200).length, 30);
+  assert.equal(answers.filter((x) => x === 429).length, 90, 'the rest refused before JobTread is asked');
+  assert.equal(jobReads(), 30, 'one event lookup per call it let through');
+  // Junk spread over many addresses: still never counted against the job or the site
+  for (let i = 0; i < 150; i++) await wake({ jobId: jt.id, eventId: `junkB${String(i).padStart(6, '0')}` }, { ip: `203.0.113.${10 + (i % 6)}` });
+  assert.equal(await limitCount(`reveal-invites:job:${jt.id}`), 0);
+  assert.equal(await limitCount('reveal-invites:all'), 0);
+  // JobTread's real wake-up (its own address) runs at once
+  assert.deepEqual((await wake({ jobId: jt.id, eventId: logJobEvent() })).body, { ok: true });
+  assert.ok(events.has(eventIdFor('soardreveal', jt.id)), 'the invite went out');
+});
+
+test('with the secret set, JobTread itself is never held to the per-address limit', async () => {
+  const secret = { JOBTREAD_WEBHOOK_SECRET: 'wake-secret-example' };
+  const statuses = [];
+  for (let i = 0; i < 40; i++) {
+    jt = job();
+    jt.id = `22PJob${String(i).padStart(6, '0')}`;
+    statuses.push((await wake({ jobId: jt.id, eventId: logJobEvent() }, { envOver: secret, headers: { 'X-Webhook-Secret': 'wake-secret-example' } })).status);
+  }
+  assert.ok(statuses.every((x) => x === 200), 'a burst of task check-offs across jobs, all from JobTread');
+});
+
+test('the wake-up route: hammering one job never holds its invite; the real change still lands', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  for (let i = 0; i < 3; i++) assert.deepEqual((await wake({ jobId: jt.id, eventId: logJobEvent() })).body, { ok: true });
+  const reads = jobReads();
+  // Past three a minute: answered after the event lookup, nothing else read, the job owed a look
+  assert.deepEqual((await wake({ jobId: jt.id, eventId: logJobEvent() })).body, { ok: true });
+  assert.equal(jobReads(), reads + 1, 'only the event lookup for a turned-away wake-up');
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM reveal_invite_locks').first()).n, 0, 'no lock held');
+  // The change that wake-up was about (confirmed) reaches the invite on the next heartbeat
+  jt = job({ confirmed: true, time: '16:00:00.000' });
+  await maybeCheckGuests(env, { fetchImpl: fakeFetch, now: Date.now() + 61_000 });
+  assert.equal(events.get(eventIdFor('soardreveal', jt.id)).status, 'confirmed');
+});
+
+test('the invite organizer is one of the mailboxes set aside for it, never any soardcharity.com address', async () => {
+  assert.deepEqual(allowedOrganizers({}), [DEFAULT_ORGANIZER]);
+  assert.deepEqual(allowedOrganizers({ REVEAL_INVITE_ORGANIZERS: ' Reveals@SOARDcharity.com, someone@example.com, x@soardcharity.com.example.com' }), [DEFAULT_ORGANIZER, 'reveals@soardcharity.com'], 'other domains never count');
+  const post = (body, extra = {}) => inviteAdmin.onRequestPost({ env: { ...env, ...extra }, data: { userEmail: 'staff@soardcharity.com' }, request: new Request('https://x/api/reveal-invites-admin', { method: 'POST', body: JSON.stringify(body) }), waitUntil: () => {} });
+  const refused = await post({ organizer: 'ceo@soardcharity.com' });
+  assert.equal(refused.status, 400);
+  assert.match((await refused.json()).error, /^Invites can only come from ccunningham@soardcharity\.com\.$/);
+  assert.equal((await readConfig(env.DB)).organizer, DEFAULT_ORGANIZER, 'unchanged');
+  // The configured organizer keeps working, and an added mailbox can be chosen
+  assert.equal((await post({ organizer: 'CCunningham@soardcharity.com' })).status, 200);
+  assert.equal((await post({ organizer: 'reveals@soardcharity.com' }, { REVEAL_INVITE_ORGANIZERS: 'reveals@soardcharity.com' })).status, 200);
+  assert.equal((await readConfig(env.DB)).organizer, 'reveals@soardcharity.com');
 });

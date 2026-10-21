@@ -10,7 +10,7 @@
  * Env bindings: DB (D1)
  */
 
-import { SITE_PREFIX, parsePath, resolveDirToTable, generateSha } from './_collections.js';
+import { SITE_PREFIX, parsePath, resolveDirToTable, generateSha, isSiteDocKey } from './_collections.js';
 
 export async function onRequestGet(context) {
   try {
@@ -67,7 +67,8 @@ export async function onRequestGet(context) {
       let fileList;
       if (resolved.table === 'site_config') {
         const rows = await DB.prepare('SELECT key, data FROM site_config').all();
-        fileList = await Promise.all((rows.results || []).map(async (r) => ({
+        // Site docs only: runtime rows (Stream and push keys, caches, locks) never leave D1 this way
+        fileList = await Promise.all((rows.results || []).filter((r) => isSiteDocKey(r.key)).map(async (r) => ({
           name: `${r.key}.json`,
           path: `${SITE_PREFIX}${r.key}.json`,
           sha: await generateSha(r.data),

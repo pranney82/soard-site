@@ -150,13 +150,13 @@ try {
 
   for (const [title, want] of [
     ['Application received', 'Live'], ['Approved', 'Live'], ['Save-the-date invite', 'Live'], ['Save the date', 'Off'], ['We’re live', 'Off'],
-    ['We’re live (Kit)', 'Live'], ['New application', 'Live'], ['Invite problem', 'Live'], ['Bio request', 'Live'],
+    ['Text code', 'Off'], ['We’re live (Kit)', 'Live'], ['New application', 'Live'], ['Invite problem', 'Live'], ['Bio request', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
 
   const home = await page.$eval('.am-panel', (e) => e.innerText);
   ok(home.includes('Nothing needs attention'), 'nothing needs attention in these facts');
   const groups = await page.$$eval('.am-panel .am-mini-group', (g) => g.map((x) => x.querySelectorAll('.am-mini-names button').length));
-  ok(groups.length === 1 && groups[0] === 6, `the six reminders the switch turns off read as one line (${groups.join(', ')})`);
+  ok(groups.length === 1 && groups[0] === 9, `the nine entries reminders switch off read as one line (${groups.join(', ')})`);
   ok((home.match(/Reminders are switched off/g) || []).length === 1, 'the reason is written once');
   await page.screenshot({ path: join(OUT, 'desktop.png') });
 

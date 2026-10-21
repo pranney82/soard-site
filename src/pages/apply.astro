@@ -191,6 +191,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
           <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
           <input type="hidden" name="source" value="application-waitlist" />
           <input type="hidden" name="page" value="apply" />
+          <!-- The quick check (src/utils/signup-check.ts): out of sight unless Cloudflare wants a click -->
+          <div class="notify-check" data-signup-check></div>
           <fieldset class="notify-lang">
             <legend class="notify-lang-label">Email me in</legend>
             <label class="notify-lang-opt"><input type="radio" name="lang" value="en" checked /><span>English</span></label>
@@ -459,6 +461,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
      The family picks the language of their emails (Spanish is preselected for
      a Spanish browser, or for someone who used the form in Spanish). -->
 <script>
+  import { signupCheck, postPlainly } from '../utils/signup-check';
+
   document.addEventListener('astro:page-load', () => {
     const form = document.getElementById('notify-form') as HTMLFormElement | null;
     if (!form) return;
@@ -467,6 +471,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     const input = document.getElementById('notify-email') as HTMLInputElement | null;
     const openLink = document.getElementById('notify-open-link');
     if (!note || !btn || !input) return;
+    const check = signupCheck(form, { lang: () => chosen() });
+    document.addEventListener('astro:before-swap', () => check.destroy(), { once: true });
 
     const IDLE_LABEL = btn.textContent || 'Notify Me';
     const IDLE_NOTE = note.textContent || '';
@@ -542,13 +548,18 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       input.disabled = true;
 
       try {
+        // The quick check: no token to be had → the plain form post and its confirm page
+        const turnstileToken = await check.token();
+        if (turnstileToken === '') { postPlainly(form); return; }
         const res = await fetch('/api/newsletter', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, hp, source: 'application-waitlist', lang: chosen(), page: 'apply' }),
+          body: JSON.stringify({ email, hp, source: 'application-waitlist', lang: chosen(), page: 'apply', ...(turnstileToken ? { turnstileToken } : {}) }),
         });
         // Body may not be JSON (e.g. Cloudflare error pages): don't throw on parse
         const data = await res.json().catch(() => null);
+        check.reset();
+        if (data && data.code === 'turnstile') { postPlainly(form); return; }
 
         if (data && data.ok) {
           done(data.status || 'added', data.formUrl, data.confirmed !== false);
@@ -558,7 +569,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
           input.disabled = false;
           setNote(
             res.status === 429
-              ? 'Too many attempts. Please wait a minute and try again.'
+              ? 'Lots of signups from here just now. Please try again in a little while.'
               : (data && data.error) || 'Something went wrong. Please try again.',
             'error',
           );
@@ -898,6 +909,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     margin-top: 8px;
     padding-left: 20px;
   }
+  /* The quick check's widget, only when Cloudflare wants a click */
+  .notify-check.is-shown { margin-top: 12px; }
   /* Success/error states — brand palette only (dark text, yellow accent; no red) */
   .notify-note--success {
     color: var(--c-dark);

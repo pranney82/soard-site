@@ -425,7 +425,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   </noscript>
 
   <!-- Overflow kids data — rendered client-side on demand to reduce initial DOM size -->
-  <script type="application/json" id="kids-overflow" set:html={JSON.stringify(overflowKids)} />
+  <script type="application/json" id="kids-overflow" set:html={JSON.stringify(overflowKids).replace(/</g, '\\u003c')} />
 </BaseLayout>
 
 <!-- ══════ FILTERING + INTERACTIONS ══════ -->
@@ -542,8 +542,9 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       el.appendChild(frag);
     }
 
+    // Safe in text and in a quoted attribute (the card's alt="…")
     function escapeHtml(s: string): string {
-      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // ── State ──
@@ -631,11 +632,11 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       const alt = escapeHtml(`Photo of ${kid.n}${roomTypes ? ` — ${roomTypes}` : ''} — Sunshine on a Ranney Day`);
       let imgHtml: string;
       if (kid.i) {
-        imgHtml = `<picture><source media="(max-width:768px)" srcset="${cfSS(kid.i,[160,240,360,480],5/4,kid.f)}" sizes="calc(50vw - 31px)"/><img src="${cfCard(kid.i,220,293,kid.f)}" srcset="${cfSS(kid.i,[180,260,380,520],4/3,kid.f)}" sizes="(min-width:1400px) 240px,(min-width:1100px) calc(25vw - 30px),calc(33vw - 27px)" alt="${alt}" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"/></picture>`;
+        imgHtml = `<picture><source media="(max-width:768px)" srcset="${escapeHtml(cfSS(kid.i,[160,240,360,480],5/4,kid.f))}" sizes="calc(50vw - 31px)"/><img src="${escapeHtml(cfCard(kid.i,220,293,kid.f))}" srcset="${escapeHtml(cfSS(kid.i,[180,260,380,520],4/3,kid.f))}" sizes="(min-width:1400px) 240px,(min-width:1100px) calc(25vw - 30px),calc(33vw - 27px)" alt="${alt}" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"/></picture>`;
       } else {
         imgHtml = `<div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div>`;
       }
-      const blurStyle = kid.i ? ` style="background-image:url(${cfBlur(kid.i)})"` : '';
+      const blurStyle = kid.i ? ` style="background-image:url(${escapeHtml(cfBlur(kid.i))})"` : '';
       const sortedTypes = sortRoomTypes(kid.t);
       const roomHtml = sortedTypes.length > 0 ? `<span class="kid-card__room">${escapeHtml(sortedTypes[0])}</span>` : '';
       const statusHtml = kid.st === 'in-progress'

@@ -410,14 +410,26 @@ test('alertAdmins: the level picks the icon, the URL picks the button, "TEST · 
 const click = (body, headers = {}) => new Request('https://x/api/slack-actions', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers }, body });
 const blockActions = `payload=${encodeURIComponent(JSON.stringify({ type: 'block_actions', actions: [{ action_id: 'open-0' }] }))}`;
 
-test('button clicks get the empty 200 Slack wants, and the last one is kept', async () => {
-  const r = await actions.onRequestPost({ env, request: click(blockActions) });
+const lastClick = () => env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(actions.SLACK_ACTIONS_KEY).first();
+
+test('button clicks get the empty 200 Slack wants; only a signed one is kept', async () => {
+  const secret = 'shh';
+  const t = String(Math.floor(Date.now() / 1000));
+  const sig = `v0=${createHmac('sha256', secret).update(`v0:${t}:${blockActions}`).digest('hex')}`;
+  const r = await actions.onRequestPost({ env: { ...env, SLACK_SIGNING_SECRET: secret }, request: click(blockActions, { 'X-Slack-Request-Timestamp': t, 'X-Slack-Signature': sig }) });
   assert.equal(r.status, 200);
   assert.equal(await r.text(), '');
-  const row = await env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(actions.SLACK_ACTIONS_KEY).first();
-  assert.equal(JSON.parse(row.data).action, 'open-0');
+  assert.equal(JSON.parse((await lastClick()).data).action, 'open-0');
   // Anything else is still a quiet 200, and isn't kept
   assert.equal((await actions.onRequestPost({ env: { ...env, DB: null }, request: click('hello') })).status, 200);
+});
+
+test('without SLACK_SIGNING_SECRET every request gets the empty 200 and nothing is written', async () => {
+  await env.DB.prepare('DELETE FROM site_config WHERE key = ?').bind(actions.SLACK_ACTIONS_KEY).run();
+  const r = await actions.onRequestPost({ env: { ...env, SLACK_SIGNING_SECRET: '' }, request: click(blockActions) });
+  assert.equal(r.status, 200);
+  assert.equal(await r.text(), '');
+  assert.equal(await lastClick(), null, 'an unsigned click is never recorded');
 });
 
 test('with SLACK_SIGNING_SECRET set, only Slack-signed clicks are answered', async () => {

@@ -7050,7 +7050,7 @@
     }
 
     // ─── Broadcast → Now ─────────────────────────────────────
-    function BcNow({ data, kids, busy, act, setup, setConfirm, addToast, openSettings, roomKey }) {
+    function BcNow({ data, kids, busy, act, setup, setConfirm, addToast, openSettings, roomKey, load }) {
       const st = data.state; const pub = data.public; const s = data.setup; const c = data.config; const h = data.health;
       const sch = data.schedule || {};
       const phase = st.phase || 'idle';
@@ -7199,7 +7199,7 @@
       const micPanel = micCheck && !live ? html`<section class="bc-room" aria-labelledby="bc-mic-h">
         <div class="bc-card-head"><h3 id="bc-mic-h">Mic check <span class="badge badge-gray">private</span></h3><button class="btn btn-secondary btn-sm" type="button" onClick=${endMicCheck}>Done</button></div>
         <p class="text-sm text-muted" style="margin:-.25rem 0 .75rem">On the phone, open Larix on the <strong>SOARD Rehearsal</strong> profile and start streaming, then talk the way you will on the day. "Sound is good" means you're set. Nothing here reaches the public.</p>
-        ${data.larix?.rehearsal ? html`<details class="bc-more u-m-0 u-mb-2"><summary>Rehearsal profile not on the phone yet? Show its setup code</summary><div style="margin-top:.75rem"><${QrCode} value=${data.larix.rehearsal} size=${160} label="Scan with the phone's camera" /></div></details>` : null}
+        ${hasRehearsal ? html`<details class="bc-more u-m-0 u-mb-2" onToggle=${(e) => { if (e.currentTarget.open && !data.larix?.rehearsal) load({ reveal: true }); }}><summary>Rehearsal profile not on the phone yet? Show its setup code</summary><div style="margin-top:.75rem">${data.larix?.rehearsal ? html`<${QrCode} value=${data.larix.rehearsal} size=${160} label="Scan with the phone's camera" />` : html`<p class="text-sm text-muted u-m-0">Getting the setup code…</p>`}</div></details>` : null}
         <${ControlRoomLazy} key="room-rehearsal" feed="rehearsal" phase=${phase} refreshKey=${roomKey} />
       </section>` : null;
       const liveRoom = showRoom && !micPanel ? html`<section class="bc-room" id="bc-room" aria-label="Control room"><${ControlRoomLazy} key="room-live" feed="live" phase=${phase} refreshKey=${roomKey} /></section>` : null;
@@ -7403,7 +7403,8 @@
       // ── System checks: only what needs a fix stays open
       const fbOut = out('facebook'); const ytOut = out('youtube');
       const webhookHelp = html`<details class="bc-more"><summary>How to set it up</summary><ol class="bc-steps">
-        <li>Cloudflare dashboard → Notifications → <strong>Destinations</strong> → Webhooks → Create. URL: <code>${s.webhookUrl}</code> <${CopyBtn} text=${s.webhookUrl} /> (leave the secret blank). Save and test.</li>
+        <li>Cloudflare dashboard → Notifications → <strong>Destinations</strong> → Webhooks → Create. URL: <code>${s.webhookUrl}</code> <${CopyBtn} text=${s.webhookUrl} />. Secret: a long random value (a password manager can make one). Save and test.</li>
+        <li>Cloudflare Pages → the site → Settings → Variables and Secrets: add a secret named <code>STREAM_WEBHOOK_SECRET</code> with the same value, then deploy. Until it's there, the site only treats these calls as a hint to check Stream, and sends no alerts from them.</li>
         <li>Notifications → All Notifications → <strong>Add</strong> → Stream → <em>Stream Live Notifications</em> → attach that webhook → Create.</li>
       </ol></details>`;
       const checks = [
@@ -7623,14 +7624,23 @@
       const [roomKey, setRoomKey] = useState(0);    // bump to re-check the feed right now
       const [jump, setJump] = useState(null);       // Settings section to scroll to
       const wsRef = useRef(null);
+      const tabRef = useRef(tab);
+      tabRef.current = tab;
 
       const load = useCallback(async (opts = {}) => {
         try {
-          const r = await fetch(`/api/broadcast-admin?reveal=1${opts.fb ? '&fb=1' : ''}`);
+          // The phone's stream keys come down only while Settings (where Phones shows them) is open, or when
+          // the mic check's "Show its setup code" asks for them (opts.reveal), not on every poll
+          const qs = new URLSearchParams();
+          if (tabRef.current === 'settings' || opts.reveal) qs.set('reveal', '1');
+          if (opts.fb) qs.set('fb', '1');
+          const q = qs.toString();
+          const r = await fetch(`/api/broadcast-admin${q ? `?${q}` : ''}`);
           const d = await apiJson(r, '/api/broadcast-admin');
           if (!d.success) { addToast(`Broadcast: ${d.error}`, 'error'); return; }
-          // Facebook's list costs Graph quota, so it's only fetched on request; keep it through polls
-          setData((prev) => ({ ...d, fbRecent: d.fbRecent ?? prev?.fbRecent ?? null }));
+          // Facebook's list costs Graph quota, so it's only fetched on request; keep it through polls.
+          // The setup codes stay for the session once Settings fetched them (the mic check shows one too)
+          setData((prev) => ({ ...d, fbRecent: d.fbRecent ?? prev?.fbRecent ?? null, larix: d.larix ?? prev?.larix ?? null }));
           const base = bcCfgFrom(d.config);
           setCfgBase(base);
           setCfg((cur) => cur || base);
@@ -7639,6 +7649,8 @@
       }, []);
 
       useEffect(() => { load(); }, []);
+      // Opening Settings fetches the setup codes right away
+      useEffect(() => { if (tab === 'settings' && !loading) load(); }, [tab]);
 
       // Live updates: WebSocket for instant state, polling for the rest
       useEffect(() => {
@@ -8155,7 +8167,7 @@
       const parts = rows.filter((x) => x.recipients).map((x) => { const [one, many] = RT_CHANNEL[x.channel] || [x.channel, x.channel]; return `${x.sent} ${x.sent === 1 ? one : many}`; });
       return { at, text: `Sent ${rtWhen(at)}: ${parts.join(', ')}${failed ? `, ${failed} failed` : ''}`, failed };
     }
-    // "Niki Murphy (vendor), Morgan Lee (sponsor) and Mike Kamber (vendor)"
+    // "Niki Murphy (vendor), Morgan Lee (sponsor) and Alex Rivera (vendor)"
     const rtWhoAdds = (list = []) => {
       const parts = list.map((p) => `${p.name || p.email} (${p.kind})`);
       return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0] || '';

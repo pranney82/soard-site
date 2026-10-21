@@ -162,7 +162,7 @@ test('a photo goes to Cloudflare Images under their folder', async () => {
   try {
     const f = new FormData();
     f.set('token', token);
-    f.set('photo', new File([new Uint8Array(10)], 'me.jpg', { type: 'image/jpeg' }));
+    f.set('photo', new File([Uint8Array.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 16, 74, 70, 73, 70, 0, 1])], 'me.jpg', { type: 'image/jpeg' }));
     const r = await publicApi.onRequestPost(ctx(DB, new Request('https://x/api/profile-request', { method: 'POST', body: f }), { CF_ACCOUNT_ID: 'acct', CF_IMAGES_TOKEN: 'tok' }));
     assert.equal(r.status, 200);
     assert.match(uploadedId, /^team\/a-b\/submitted-\d+$/);
@@ -183,7 +183,7 @@ test('sending again: the form shows what was sent, an earlier photo stays unless
   };
   const waits = [];
   const send = (fields) => { const f = new FormData(); f.set('token', token); for (const [k, v] of Object.entries(fields)) f.set(k, v); return publicApi.onRequestPost({ ...ctx(DB, new Request('https://x', { method: 'POST', body: f }), { CF_ACCOUNT_ID: 'acct', CF_IMAGES_TOKEN: 'tok' }), waitUntil: (p) => waits.push(p) }); };
-  const photo = () => new File([new Uint8Array(10)], 'me.jpg', { type: 'image/jpeg' });
+  const photo = () => new File([Uint8Array.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 16, 74, 70, 73, 70, 0, 1])], 'me.jpg', { type: 'image/jpeg' });
   try {
     await send({ photo: photo() });
     await send({ bio: 'Sent bio.' });

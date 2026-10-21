@@ -60,6 +60,8 @@ export function envFacts(env) {
     turnstile: has(env.TURNSTILE_SECRET_KEY),
     turnstileSite: has(env.TURNSTILE_SITE_KEY),
     zeffyWebhook: has(env.ZEFFY_WEBHOOK_SECRET),
+    streamWebhookSecret: has(env.STREAM_WEBHOOK_SECRET),
+    jobtreadWebhookSecret: has(env.JOBTREAD_WEBHOOK_SECRET),
     zeffyApi: has(env.ZEFFY_API_KEY),
     slackBot: has(env.SLACK_BOT_TOKEN),
   };

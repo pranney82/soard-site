@@ -42,10 +42,16 @@
  * Triggered by SOARD JobTread workflows posting { jobId } to
  * /api/reveal-invites. The post is only a wake-up call: everything is
  * re-read from JobTread with JOBTREAD_GRANT_KEY, so a forged post can only
- * make the calendar match what JobTread already says. JobTread has no
- * workflow trigger for job access, so every 5 minutes the guest check
- * (maybeCheckGuests) re-reads each reveal with an invite out: a vendor given
- * access after the invite went out is added within minutes.
+ * make the calendar match what JobTread already says. A wake-up counts only
+ * for a change JobTread logged on that job (verifiedJobEvent), so junk is
+ * never counted against the limits. Each job then takes a few wake-ups a
+ * minute (admitWake); one past that (or past the site-wide limit), or one that
+ * finds the invite busy, leaves the job owed a look, which the next heartbeat
+ * gives it (runOwedWakes), so a burst of task check-offs can't hold an
+ * invite's lock or spend JobTread's request budget, and no change is lost.
+ * JobTread has no workflow trigger for job access, so every 5 minutes the
+ * guest check (maybeCheckGuests) re-reads each reveal with an invite out: a
+ * vendor given access after the invite went out is added within minutes.
  *
  * Sending is off until enabled from /api/reveal-invites-admin (site_config
  * "reveal-invites"). While off, each wake-up records what it would have done.
@@ -56,6 +62,8 @@ import { accessToken, eventIdFor, upsertEvent, cancelEvent, getEvent } from './_
 import { sendEmails, slackPost, slackIssue, slackResolved, emailConfigured } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { personStatus, personName } from './_team.js';
+import { limit } from './_rate-limit.js';
+import { syncKidStatuses } from './_kid-status.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
 export const FIELD_STATUS = '22P52qfFub9b';
@@ -63,6 +71,18 @@ export const FIELD_INVITE_DETAILS = '22PgGhdabNcJ';
 export const FIELD_CONTACT_EMAIL = '22NJw43QvHeJ';
 export const FIELD_MAKEOVER_TYPE = '22P3SQTcgurh'; // Bedroom, Bathroom, Therapy Room, Ramp
 export const DEFAULT_ORGANIZER = 'ccunningham@soardcharity.com';
+
+/**
+ * Whose calendar an invite may come from. The site acts as the organizer
+ * through Google domain-wide delegation, so this is a short list rather than
+ * anyone at soardcharity.com: the default organizer, plus any in
+ * REVEAL_INVITE_ORGANIZERS (comma-separated, soardcharity.com addresses only).
+ */
+export function allowedOrganizers(env) {
+  const list = [DEFAULT_ORGANIZER, ...String(env?.REVEAL_INVITE_ORGANIZERS || '').split(',')];
+  return [...new Set(list.map(e => e.trim().toLowerCase()).filter(e => /^[^\s@]+@soardcharity\.com$/.test(e)))];
+}
+
 // The internal office job is a sandbox: both JobTread workflows skip it, so only
 // deliberate tests reach it. Its invites always send (even with sending off), go
 // only to the test guests, and are marked TEST.
@@ -163,6 +183,16 @@ const GUEST_CHECK_KEY = 'reveal-invites-guest-check';
 const LOCK_MS = 60 * 1000;
 const LOCK_TRIES = 8;
 const LOCK_RETRY_MS = 2500;
+// Verified JobTread wake-ups: a few a minute per job (one change can fire two
+// workflows) and WAKE_ALL a minute across every job; past either, the job is
+// owed one look after the minute is out.
+const WAKE_PER_JOB = 3;
+const WAKE_ALL = 120;
+const WAKE_WINDOW_S = 60;
+const OWED_PER_RUN = 10;
+// A wake-up counts only for a change JobTread logged this recently (a little clock skew allowed)
+const EVENT_FRESH_MS = 15 * 60 * 1000;
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS reveal_invites (
@@ -178,6 +208,8 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS reveal_board_emails (slug TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at TEXT)`,
   // One update per invite at a time (see lockJob); a row holds its expiry in ms
   `CREATE TABLE IF NOT EXISTS reveal_invite_locks (job_id TEXT PRIMARY KEY, until INTEGER NOT NULL)`,
+  // Jobs owed a look after a wake-up was turned away (see admitWake); due is in ms
+  `CREATE TABLE IF NOT EXISTS reveal_invite_owed (job_id TEXT PRIMARY KEY, due INTEGER NOT NULL)`,
 ];
 const _schemaReady = new WeakSet();
 export async function ensureSchema(DB) {
@@ -431,7 +463,8 @@ export function revealHappened(reveal, now = Date.now()) {
  */
 export function planInvite(job, staff, { kids = [], board = [], organizer = DEFAULT_ORGANIZER, now = Date.now(), onlyGuests = null, template = DEFAULT_TEMPLATE, sent = false } = {}) {
   if (!job) return { action: 'skip', reason: 'job not found' };
-  if (job.organization?.id && job.organization.id !== SOARD_ORG_ID) return { action: 'skip', reason: 'not a SOARD job' };
+  // Strict: a job that doesn't say it's SOARD's (organization missing) never gets an invite
+  if (job.organization?.id !== SOARD_ORG_ID) return { action: 'skip', reason: 'not a SOARD job' };
 
   const tasks = job.tasks?.nodes || [];
   const reveals = tasks.filter(t => t.taskType?.id === REVEAL_TASK_TYPE);
@@ -823,6 +856,69 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   }
 }
 
+/** This job gets a look once the current minute is out (the earliest note stands) */
+export async function oweWake(DB, jobId, now = Date.now()) {
+  await ensureSchema(DB);
+  await DB.prepare('INSERT OR IGNORE INTO reveal_invite_owed (job_id, due) VALUES (?, ?)').bind(jobId, now + WAKE_WINDOW_S * 1000).run();
+}
+
+/**
+ * Is `eventId` a change JobTread logged on this SOARD job in the last 15
+ * minutes? Every invite workflow sends its event's id (a task moved, checked
+ * off or deleted, or the job's own fields). Throws when JobTread can't be read.
+ */
+export async function verifiedJobEvent(grantKey, { jobId, eventId }, { fetchImpl = fetch, now = Date.now() } = {}) {
+  if (!/^[A-Za-z0-9]{6,32}$/.test(String(eventId || ''))) return false;
+  const ev = (await pave(grantKey, {
+    event: { $: { id: eventId }, id: {}, createdAt: {}, organization: { id: {} }, job: { _on_job: { id: {} } } },
+  }, fetchImpl))?.event;
+  const t = Date.parse(ev?.createdAt || '');
+  return !!ev && ev.organization?.id === SOARD_ORG_ID && ev.job?.id === jobId && t > now - EVENT_FRESH_MS && t <= now + CLOCK_SKEW_MS;
+}
+
+/**
+ * May this verified wake-up for `jobId` do its work now? 'run', or 'later':
+ * the job has had its few this minute, or every job together has had
+ * WAKE_ALL, so it's owed a look on the next heartbeat instead. Only call it
+ * for a change that checked out (verifiedJobEvent): junk mustn't use up
+ * either limit and crowd out a real change.
+ */
+export async function admitWake(DB, jobId, { now = Date.now() } = {}) {
+  await ensureSchema(DB);
+  const job = await limit(DB, `reveal-invites:job:${jobId}`, WAKE_PER_JOB, WAKE_WINDOW_S, { now });
+  if (job.ok && (await limit(DB, 'reveal-invites:all', WAKE_ALL, WAKE_WINDOW_S, { now })).ok) return 'run';
+  await oweWake(DB, jobId, now);
+  return 'later';
+}
+
+/**
+ * The looks owed from turned-away or busy wake-ups, once due: the kid's
+ * status and the invite, exactly what the wake-up would have done (both
+ * re-read JobTread). A few per run; each claimed with one conditional delete,
+ * so overlapping heartbeats don't double up. Never throws.
+ */
+export async function runOwedWakes(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  try {
+    const { DB } = env;
+    if (!DB || !env.JOBTREAD_GRANT_KEY) return null;
+    await ensureSchema(DB);
+    const { results } = await DB.prepare('SELECT job_id, due FROM reveal_invite_owed WHERE due <= ? ORDER BY due LIMIT ?').bind(now, OWED_PER_RUN).all();
+    const out = [];
+    for (const { job_id, due } of results || []) {
+      const mine = await DB.prepare('DELETE FROM reveal_invite_owed WHERE job_id = ? AND due = ?').bind(job_id, due).run();
+      if (!(mine?.meta?.changes > 0)) continue;
+      await syncKidStatuses(env, { jobId: job_id, fetchImpl, now });
+      const r = await reconcileJob(env, job_id, { fetchImpl, now, wait: false })
+        .catch((err) => ({ jobId: job_id, action: 'error', error: err.message }));
+      if (r.action === 'busy') await oweWake(DB, job_id, now);
+      out.push(r);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 /** Every open SOARD job, reconciled one at a time (go-live catch-up and the safety sweep) */
 export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), dryRun = false, rewrite = false, verify = false } = {}) {
   const [body, staff, kids, board] = await Promise.all([
@@ -873,13 +969,15 @@ export async function maybeSweep(env, { fetchImpl = fetch, now = Date.now() } = 
  * a family contact added) gets the invite within minutes. An invite that hasn't
  * changed is left alone. The slot is claimed with one conditional write (its
  * row holds when the next check is due), so overlapping wake-ups run it once.
- * Never throws.
+ * Every call first gives owed wake-ups their look (runOwedWakes). Never throws.
  */
 export async function maybeCheckGuests(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   try {
     const { DB } = env;
     if (!DB || !env.JOBTREAD_GRANT_KEY) return null;
     await ensureSchema(DB);
+    // Wake-ups turned away earlier get their look first (kid status too, so even with sending off)
+    await runOwedWakes(env, { fetchImpl, now });
     if (!(await readConfig(DB)).enabled) return null;
     const next = String(now + GUEST_CHECK_EVERY_MS);
     const at = new Date(now).toISOString();

@@ -13,7 +13,7 @@
  * Env bindings: DB (D1), FILES (R2)
  */
 
-import { SITE_PREFIX, NAME_COLUMN, resolveDirToTable } from './_collections.js';
+import { SITE_PREFIX, NAME_COLUMN, resolveDirToTable, isSiteDocKey } from './_collections.js';
 
 const MAX_PER_PAGE = 200;
 
@@ -62,7 +62,8 @@ export async function onRequestGet(context) {
 
     if (table === 'site_config') {
       const rows = await DB.prepare('SELECT key, data FROM site_config').all();
-      const items = (rows.results || []).map(r => ({
+      // Site docs only: runtime rows (Stream and push keys, caches, locks) never leave D1 this way
+      const items = (rows.results || []).filter(r => isSiteDocKey(r.key)).map(r => ({
         name: `${r.key}.json`,
         path: `${SITE_PREFIX}${r.key}.json`,
         sha: r.key,

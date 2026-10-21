@@ -35,7 +35,10 @@
  *
  * Runs on the live hub's heartbeat at most every 5 minutes, right away when a
  * JobTread workflow reports a reveal change (/api/reveal-sync, /api/reveal-invites),
- * and when staff open Reveals. Changes go through adminAction() as "JobTread",
+ * and when staff open Reveals. Those two routes are public, so their wake-ups
+ * (`wake`) read JobTread at most once a minute across the site; one turned away
+ * inside that minute leaves a note, and the next heartbeat after it runs the
+ * check. Changes go through adminAction() as "JobTread",
  * so reminders, Kit drafts, History and the audit log behave as they always did.
  * A JobTread read that fails changes nothing. Never throws.
  *
@@ -52,6 +55,10 @@ const RECORD_KEY = 'broadcast-schedule';
 const LOCK_KEY = 'broadcast-schedule-lock';
 const LOCK_MS = 60 * 1000;
 const EVERY_MS = 5 * 60 * 1000;
+// JobTread wake-ups (public routes) check JobTread at most this often, site-wide
+const WAKE_KEY = 'broadcast-schedule-wake';         // when the next wake-up may check (ms)
+const WAKE_OWED_KEY = 'broadcast-schedule-wake-owed'; // a wake-up turned away at this time (ms)
+const WAKE_EVERY_MS = 60 * 1000;
 // A replay hands the live page to the next reveal this close to its start
 const REPLAY_HANDOFF_MS = 24 * 3600e3;
 // ...once its recording is saved and its Reel is finished, or this long after it ended regardless
@@ -192,6 +199,25 @@ async function takeLock(DB) {
 
 const releaseLock = (DB) => DB.prepare("UPDATE site_config SET data = '0' WHERE key = ?").bind(LOCK_KEY).run().catch(() => {});
 
+/**
+ * The wake-up slot: true for the first wake-up in a minute (one conditional
+ * write, so simultaneous wake-ups can't both take it).
+ */
+async function claimWake(DB, now) {
+  const next = String(now + WAKE_EVERY_MS);
+  const at = new Date(now).toISOString();
+  const ins = await DB.prepare('INSERT OR IGNORE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(WAKE_KEY, next, at).run();
+  if ((ins?.meta?.changes || 0) > 0) return true;
+  const upd = await DB.prepare('UPDATE site_config SET data = ?, updated_at = ? WHERE key = ? AND CAST(data AS INTEGER) <= ?').bind(next, at, WAKE_KEY, now).run();
+  return (upd?.meta?.changes || 0) > 0;
+}
+
+/** A wake-up turned away: the next heartbeat owes a check (the earliest note stands) */
+const oweWake = (DB, now) => DB.prepare('INSERT OR IGNORE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(WAKE_OWED_KEY, String(now), new Date(now).toISOString()).run();
+const wakeOwed = async (DB) => Number((await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(WAKE_OWED_KEY).first())?.data) || 0;
+/** A check that started at `startedAt` covers every wake-up turned away before it */
+const payWake = (DB, startedAt) => DB.prepare('DELETE FROM site_config WHERE key = ? AND CAST(data AS INTEGER) <= ?').bind(WAKE_OWED_KEY, startedAt).run();
+
 /** A JobTread wake-up waits its turn (it may carry the newer change); a heartbeat just skips */
 async function waitForLock(DB, wait) {
   for (let i = 0; i < (wait ? 8 : 1); i++) {
@@ -260,15 +286,28 @@ async function tellStaff(env, { plan, before, result, reveals, alerted, now }) {
 
 /**
  * Bring the live broadcast in line with JobTread. Skips when it ran in the last
- * `minIntervalMs` unless `force`. Returns { action, record } (action 'skipped'
- * or 'error' included); never throws.
+ * `minIntervalMs` unless `force` (staff). `wake`: a JobTread wake-up from a
+ * public route, which checks at once if no wake-up has in the last minute,
+ * and otherwise leaves the check owed to the next heartbeat. Returns
+ * { action, record } (action 'skipped' or 'error' included); never throws.
  */
-export async function syncBroadcastSchedule(env, { fetchImpl = fetch, now = Date.now(), force = false, minIntervalMs = EVERY_MS } = {}) {
+export async function syncBroadcastSchedule(env, { fetchImpl = fetch, now = Date.now(), force = false, wake = false, minIntervalMs = EVERY_MS } = {}) {
   const DB = env.DB;
   let prev = null;
   let locked = false;
   try {
     prev = await readRecord(DB);
+    if (wake && !force) {
+      if (!(await claimWake(DB, now))) {
+        await oweWake(DB, now);
+        return { action: 'skipped', reason: 'a wake-up checked in the last minute', record: prev };
+      }
+      force = true;
+    } else if (!force) {
+      // A wake-up was turned away since the last check: run as soon as the slot frees
+      const owed = await wakeOwed(DB);
+      if (owed && owed >= Date.parse(prev?.checkedAt || 0) && await claimWake(DB, now)) force = true;
+    }
     if (!force && prev?.checkedAt && now - Date.parse(prev.checkedAt) < minIntervalMs) return { action: 'skipped', record: prev };
     if (!env.JOBTREAD_GRANT_KEY) throw new Error('JOBTREAD_GRANT_KEY is not set');
     if (!(await waitForLock(DB, force))) return { action: 'skipped', reason: 'another check is running', record: prev };
@@ -305,6 +344,7 @@ export async function syncBroadcastSchedule(env, { fetchImpl = fetch, now = Date
       },
     };
     await writeRecord(DB, record);
+    await payWake(DB, now);
     return { action: result && !result.success ? 'error' : plan.action, reason: plan.reason, record };
   } catch (err) {
     // Keep what was last known; the admin shows the error and the next run tries again

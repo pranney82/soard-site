@@ -5,17 +5,31 @@
  * Defense-in-depth: even if the Access policy is misconfigured, requests
  * without a valid JWT are rejected before reaching any API handler.
  *
+ * Every /api/ response, public or not, also leaves with the security headers
+ * public/_headers gives static files (that file never reaches Functions):
+ * nosniff, HSTS, a referrer policy, a frame policy and a CSP (see
+ * withSecurityHeaders below).
+ *
  * Required environment variables (set in CF Pages → Settings → Environment Variables):
  *   CF_ACCESS_TEAM_DOMAIN  — e.g. "soard" (the <team>.cloudflareaccess.com subdomain)
  *   CF_ACCESS_AUD          — the Application Audience (AUD) tag from the Access policy
  */
 
-import { crossSiteChange } from './_origin-guard.js';
+import { crossSiteChange, isLocalHost } from './_origin-guard.js';
+import { limit } from './_rate-limit.js';
+import { clientIp } from './_secure.js';
 
 // Cache JWKS keys in module scope (persists across requests within same isolate)
 let _cachedKeys = null;
+let _cachedKeysFor = '';
 let _cachedKeysExpiry = 0;
+let _keysFetchedAt = 0;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+// A token signed with a key we haven't seen means Access rotated its keys:
+// the certs are fetched again, but at most this often (junk tokens can't hammer it)
+const KEYS_REFETCH_MIN_MS = 30 * 1000;
+// Clock difference allowed between Access and this isolate for exp, nbf and iat
+const CLOCK_SKEW_S = 60;
 
 // CORS: public endpoints allow any origin, authenticated endpoints restrict to our domain.
 const ALLOWED_ORIGIN = 'https://sunshineonaranneyday.com';
@@ -39,15 +53,16 @@ function accessOrigin(env) {
   }
 }
 
-function isAllowedOrigin(origin, teamOrigin) {
+export function isAllowedOrigin(origin, teamOrigin, selfUrl = ALLOWED_ORIGIN) {
   if (!origin) return false;
   if (origin === ALLOWED_ORIGIN) return true;
   // Only the team's own Access domain — not any *.cloudflareaccess.com tenant.
   if (teamOrigin && origin === teamOrigin) return true;
-  // Strict localhost check — only exact hostname, not localhost.evil.com
+  // A local page (astro dev on another port) only for a server that is itself
+  // local (wrangler pages dev): never in production. Exact hostnames only, not
+  // localhost.evil.com
   try {
-    const url = new URL(origin);
-    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return true;
+    if (isLocalHost(new URL(selfUrl).hostname) && isLocalHost(new URL(origin).hostname)) return true;
   } catch {}
   return false;
 }
@@ -56,7 +71,7 @@ function authedCors(request, env) {
   const origin = request.headers.get('Origin') || '';
   const teamOrigin = accessOrigin(env);
   return {
-    'Access-Control-Allow-Origin': isAllowedOrigin(origin, teamOrigin) ? origin : ALLOWED_ORIGIN,
+    'Access-Control-Allow-Origin': isAllowedOrigin(origin, teamOrigin, request.url) ? origin : ALLOWED_ORIGIN,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, CF-Access-JWT-Assertion',
     'Access-Control-Allow-Credentials': 'true',
@@ -107,9 +122,15 @@ PUBLIC_ROUTES.push('/api/applicant-email-action');
 // SLACK_SIGNING_SECRET is set
 PUBLIC_ROUTES.push('/api/slack-actions');
 
-// ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
-// Limits POST /api/newsletter to 5 requests per IP per 60 seconds.
-// Resets when the Workers isolate recycles — good enough for spam prevention.
+// Browsers' Content-Security-Policy violation reports (no credentials): size
+// capped, rate limited and deduped inside the handler, always answered 204
+PUBLIC_ROUTES.push('/api/csp-report');
+
+// ─── Rate Limiting ──────────────────────────────────────────────────
+// Each limited route allows 5 calls per address (clientIp: IPv6 by its /64)
+// per 60 seconds. The in-memory count is a cheap first filter that only sees
+// one isolate; the D1 count (_rate-limit.js) holds across every isolate and
+// data center, so spreading requests out doesn't get around it.
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
@@ -118,33 +139,53 @@ const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', 
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
 // The application form autosaves every step and uploads photos one by one, so
 // a family filling it in makes far more than 5 calls a minute; it gets its own bucket.
+// Per minute per address. A watch party or a gala table shares one Wi-Fi, so the
+// beacons and the signup forms get room for a crowd; the handlers add their own
+// per-person limits behind these.
+const ROUTE_LIMITS = { '/api/broadcast-event': 120, '/api/live-click': 120, '/api/newsletter': 20, '/api/reminders': 20, '/api/profile-request': 10 };
 const APPLY_ROUTE = '/api/apply';
 const APPLY_RATE_LIMIT_MAX = 60;
-const _rateLimitMap = new Map(); // ip (or "apply:" + ip) → { count, resetAt }
+const _rateLimitMap = new Map(); // "<route>:<ip>" → { count, resetAt }
 let _lastPrune = 0;
 const PRUNE_INTERVAL_MS = 5 * 60 * 1000; // prune stale entries every 5 min
 
-function isRateLimited(ip, max = RATE_LIMIT_MAX) {
+function isRateLimited(key, max = RATE_LIMIT_MAX) {
   const now = Date.now();
 
   // Periodically prune expired entries so the Map doesn't grow unbounded
   if (now - _lastPrune > PRUNE_INTERVAL_MS) {
     _lastPrune = now;
-    for (const [key, val] of _rateLimitMap) {
-      if (now > val.resetAt) _rateLimitMap.delete(key);
+    for (const [k, val] of _rateLimitMap) {
+      if (now > val.resetAt) _rateLimitMap.delete(k);
     }
   }
 
-  const entry = _rateLimitMap.get(ip);
+  const entry = _rateLimitMap.get(key);
   if (!entry || now > entry.resetAt) {
-    _rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    _rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
     return false;
   }
   entry.count++;
   return entry.count > max;
 }
 
+/**
+ * Count one call against a route's limit for this address: this isolate's
+ * count first (no D1 trip once it's over), then D1's. Returns the seconds to
+ * wait when over, else 0.
+ */
+async function overLimit(context, key, max) {
+  if (isRateLimited(key, max)) return Math.ceil(RATE_LIMIT_WINDOW_MS / 1000);
+  const r = await limit(context.env?.DB, `mw:${key}`, max, RATE_LIMIT_WINDOW_MS / 1000);
+  return r.ok ? 0 : r.retryAfter;
+}
+
+/** Every /api/ response leaves with the security headers (see withSecurityHeaders) */
 export async function onRequest(context) {
+  return withSecurityHeaders(await handle(context));
+}
+
+async function handle(context) {
   const url = new URL(context.request.url);
   const isPublic = PUBLIC_ROUTES.some(route => url.pathname === route)
     || (PUBLIC_GET_ROUTES.some(route => url.pathname === route)
@@ -158,12 +199,15 @@ export async function onRequest(context) {
 
   // Rate limit abuse-prone public endpoints (POST forms/beacons + GET fan-outs)
   const method = context.request.method;
+  // A reminder link's own token is the proof: mail apps send one-click
+  // unsubscribes (RFC 8058) in bursts from a few shared addresses
+  const tokenLink = url.pathname === '/api/reminders' && (url.searchParams.has('unsubscribe') || url.searchParams.has('confirm'));
   const rateLimitThisRoute =
-    (method === 'POST' && RATE_LIMITED_POST_ROUTES.has(url.pathname)) ||
+    (method === 'POST' && RATE_LIMITED_POST_ROUTES.has(url.pathname) && !tokenLink) ||
     (method === 'GET' && RATE_LIMITED_GET_ROUTES.has(url.pathname));
   if (rateLimitThisRoute) {
-    const ip = context.request.headers.get('CF-Connecting-IP') || 'unknown';
-    if (isRateLimited(ip)) {
+    const wait = await overLimit(context, `${url.pathname}:${clientIp(context.request)}`, ROUTE_LIMITS[url.pathname] || RATE_LIMIT_MAX);
+    if (wait) {
       // No-JS newsletter form posts get a friendly redirect back with an error
       // param instead of raw JSON. Everything else gets a plain 429.
       if (url.pathname === '/api/newsletter') {
@@ -172,7 +216,8 @@ export async function onRequest(context) {
           const back = new URL('/', url.origin);
           try {
             const ref = new URL(context.request.headers.get('Referer') || '');
-            if (ref.origin === url.origin) back.pathname = ref.pathname;
+            // Back to the page the form was on, never to an API route (the no-JS confirm page lives at /api/newsletter)
+            if (ref.origin === url.origin && !ref.pathname.startsWith('/api/')) back.pathname = ref.pathname;
           } catch { /* invalid Referer, redirect to home */ }
           back.searchParams.set('newsletter_error', 'rate_limited');
           back.hash = 'newsletter-form';
@@ -181,17 +226,17 @@ export async function onRequest(context) {
       }
       return Response.json(
         { ok: false, error: 'Too many attempts — please wait a minute and try again.' },
-        { status: 429, headers: { ...publicCors, 'Retry-After': '60' } }
+        { status: 429, headers: { ...publicCors, 'Retry-After': String(wait) } }
       );
     }
   }
 
   if (method === 'POST' && url.pathname === APPLY_ROUTE) {
-    const ip = context.request.headers.get('CF-Connecting-IP') || 'unknown';
-    if (isRateLimited(`apply:${ip}`, APPLY_RATE_LIMIT_MAX)) {
+    const wait = await overLimit(context, `apply:${clientIp(context.request)}`, APPLY_RATE_LIMIT_MAX);
+    if (wait) {
       return Response.json(
         { ok: false, error: 'Lots of saves in a short time. Please wait a minute and try again; your answers are safe.' },
-        { status: 429, headers: { ...publicCors, 'Retry-After': '60' } }
+        { status: 429, headers: { ...publicCors, 'Retry-After': String(wait) } }
       );
     }
   }
@@ -237,8 +282,10 @@ export async function onRequest(context) {
   try {
     payload = await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
   } catch (err) {
+    // Why stays in the logs: the caller only learns that it didn't pass
+    console.warn(`[middleware] Access token refused on ${url.pathname}: ${err.message}`);
     return Response.json(
-      { success: false, error: `Unauthorized — ${err.message}` },
+      { success: false, error: 'Your admin sign-in expired or isn’t valid. Reload the page to sign in again.' },
       { status: 403, headers: cors }
     );
   }
@@ -266,20 +313,101 @@ function injectCors(response, corsHeaders) {
   });
 }
 
+// ─── Security headers ──────────────────────────────────────────────
+// public/_headers only reaches static files, so Function responses get the
+// same basics here. A header a handler set itself is kept as it is.
+export const SECURITY_HEADERS = Object.freeze({
+  'X-Content-Type-Options': 'nosniff',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'SAMEORIGIN',
+});
+// JSON, files, calendars, images: nothing in them may run, load anything or be framed
+export const DATA_CSP = "default-src 'none'; frame-ancestors 'none'; sandbox";
+/**
+ * The few pages /api/ answers with (an email button's confirmation,
+ * "Reminders stopped"): their own inline styles, the site's fonts, forms that
+ * post back to the page itself, and only the inline scripts they were sent
+ * with (allowed by hash, so nothing injected into them runs).
+ */
+export function pageCsp(scriptHashes = []) {
+  return [
+    "default-src 'none'",
+    "style-src 'unsafe-inline'",
+    "font-src 'self'",
+    "img-src 'self' data:",
+    ...(scriptHashes.length ? [`script-src ${scriptHashes.join(' ')}`] : []),
+    "form-action 'self'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+}
+
+/** CSP hashes ('sha256-…') of a page's inline scripts */
+export async function inlineScriptHashes(html) {
+  const out = new Set();
+  for (const m of String(html || '').matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+    if (/\bsrc\s*=/i.test(m[1]) || !m[2]) continue;
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(m[2])));
+    let bin = '';
+    for (const b of digest) bin += String.fromCharCode(b);
+    out.add(`'sha256-${btoa(bin)}'`);
+  }
+  return [...out];
+}
+
+const isHtmlType = (type) => /^\s*(text\/html|application\/xhtml\+xml)\b/i.test(type || '');
+
+/** A copy of a response with the security headers it lacks (a WebSocket upgrade passes as it is) */
+export async function withSecurityHeaders(response) {
+  if (!response || response.status === 101 || response.webSocket) return response;
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    if (!headers.has(name)) headers.set(name, value);
+  }
+  let body = response.body;
+  if (!headers.has('Content-Security-Policy')) {
+    if (isHtmlType(headers.get('Content-Type'))) {
+      let hashes = [];
+      if (body) {
+        body = await response.text();
+        headers.delete('Content-Length');
+        hashes = await inlineScriptHashes(body);
+      }
+      headers.set('Content-Security-Policy', pageCsp(hashes));
+    } else if (!/^\s*application\/pdf\b/i.test(headers.get('Content-Type') || '')) {
+      // (a PDF is left without one: it opens in the browser's own viewer, and Safari and Firefox won't render it sandboxed)
+      headers.set('Content-Security-Policy', DATA_CSP);
+    }
+  }
+  return new Response(body, { status: response.status, statusText: response.statusText, headers });
+}
+
 // ─── JWT Verification ──────────────────────────────────────────────
 
-async function verifyJwt(token, teamDomain, expectedAud) {
-  const parts = token.split('.');
+export async function verifyJwt(token, teamDomain, expectedAud) {
+  const parts = String(token || '').split('.');
   if (parts.length !== 3) throw new Error('malformed token');
 
-  const header = JSON.parse(b64UrlDecode(parts[0]));
-  const payload = JSON.parse(b64UrlDecode(parts[1]));
-
-  // Check expiration
-  const now = Math.floor(Date.now() / 1000);
-  if (payload.exp && payload.exp < now) {
-    throw new Error('token expired');
+  let header;
+  let payload;
+  try {
+    header = JSON.parse(utf8.decode(b64UrlToUint8(parts[0])));
+    payload = JSON.parse(utf8.decode(b64UrlToUint8(parts[1])));
+  } catch {
+    throw new Error('malformed token');
   }
+  if (!header || typeof header !== 'object' || !payload || typeof payload !== 'object') throw new Error('malformed token');
+
+  // Access signs with RS256 only: anything else (none, HS256 with the public key) is refused
+  if (header.alg !== 'RS256') throw new Error(`unexpected algorithm ${String(header.alg).slice(0, 20)}`);
+
+  // Times, with a minute's leeway for clock drift. A token with no expiry would never expire
+  const now = Math.floor(Date.now() / 1000);
+  if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) throw new Error('token has no expiry');
+  if (payload.exp + CLOCK_SKEW_S < now) throw new Error('token expired');
+  if (payload.nbf !== undefined && (typeof payload.nbf !== 'number' || payload.nbf - CLOCK_SKEW_S > now)) throw new Error('token not valid yet');
+  if (payload.iat !== undefined && (typeof payload.iat !== 'number' || payload.iat - CLOCK_SKEW_S > now)) throw new Error('token issued in the future');
 
   // Check issuer
   const expectedIss = `https://${teamDomain}.cloudflareaccess.com`;
@@ -294,10 +422,7 @@ async function verifyJwt(token, teamDomain, expectedAud) {
   }
 
   // Fetch public keys and verify signature
-  const keys = await getPublicKeys(teamDomain);
-  const kid = header.kid;
-  const key = keys.find(k => k.kid === kid);
-  if (!key) throw new Error('signing key not found');
+  const key = await signingKey(teamDomain, header.kid);
 
   const cryptoKey = await crypto.subtle.importKey(
     'jwk',
@@ -341,20 +466,46 @@ export async function isAuthenticated(request, env) {
   }
 }
 
-async function getPublicKeys(teamDomain) {
-  if (_cachedKeys && Date.now() < _cachedKeysExpiry) {
+async function getPublicKeys(teamDomain, { refresh = false } = {}) {
+  if (!refresh && _cachedKeys && _cachedKeysFor === teamDomain && Date.now() < _cachedKeysExpiry) {
     return _cachedKeys;
   }
-
+  // Noted before the fetch, so requests arriving meanwhile don't each refetch.
+  // (Each request awaits its own fetch: Workers can't share one across requests.)
+  _keysFetchedAt = Date.now();
   const certsUrl = `https://${teamDomain}.cloudflareaccess.com/cdn-cgi/access/certs`;
   const res = await fetch(certsUrl);
   if (!res.ok) throw new Error('failed to fetch access certs');
-
   const data = await res.json();
+  if (!Array.isArray(data?.keys)) throw new Error('access certs had no keys');
   _cachedKeys = data.keys;
+  _cachedKeysFor = teamDomain;
   _cachedKeysExpiry = Date.now() + CACHE_TTL_MS;
-
   return _cachedKeys;
+}
+
+/**
+ * The public key a token names. An unknown kid usually means Access rotated
+ * its keys within the cache hour: the certs are fetched again (at most every
+ * KEYS_REFETCH_MIN_MS) instead of locking admins out until the cache expires.
+ */
+async function signingKey(teamDomain, kid) {
+  if (typeof kid !== 'string' || !kid) throw new Error('token names no signing key');
+  const find = (keys) => keys.find((k) => k && k.kid === kid);
+  let key = find(await getPublicKeys(teamDomain));
+  if (!key && Date.now() - _keysFetchedAt >= KEYS_REFETCH_MIN_MS) {
+    key = find(await getPublicKeys(teamDomain, { refresh: true }));
+  }
+  if (!key) throw new Error('signing key not found');
+  return key;
+}
+
+/** Tests: forget the cached keys */
+export function _resetKeyCacheForTests() {
+  _cachedKeys = null;
+  _cachedKeysFor = '';
+  _cachedKeysExpiry = 0;
+  _keysFetchedAt = 0;
 }
 
 // ─── Cookie Helper ────────────────────────────────────────────────
@@ -366,6 +517,8 @@ function getCookieValue(request, name) {
 }
 
 // ─── Base64URL Helpers ─────────────────────────────────────────────
+
+const utf8 = new TextDecoder('utf-8', { fatal: true });
 
 function b64UrlDecode(str) {
   const padded = str.replace(/-/g, '+').replace(/_/g, '/');

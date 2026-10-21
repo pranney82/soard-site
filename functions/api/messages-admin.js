@@ -344,6 +344,12 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     case 'invite-confirmed':
     case 'invite-update':
       return invitePreview(env, 'confirmed', now);
+    case 'rem-confirm':
+      return email(notify.confirmEmail({ confirmUrl: '#', kidName: SAMPLE.childFirst }), { to: 'A new address signed up on a reveal page' });
+    case 'rem-code':
+      return { channel: 'text', from: 'SOARD’s toll-free number, through Twilio', to: 'A phone number signed up on a reveal page', sms: notify.smsCodeText('482913'), send: null };
+    case 'rem-welcome':
+      return { channel: 'text', from: 'SOARD’s toll-free number, through Twilio', to: 'A phone number that just confirmed its code', sms: notify.SMS_WELCOME, send: null };
     case 'kit-live': {
       const m = notify.reminderEmail({ kind: 'live', kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, unsubscribeUrl: '#', tz: TZ, list: true });
       return { channel: 'kit', from: KIT_FROM, to: 'The whole newsletter list (not waitlist-only families)', subject: m.subject, html: m.html, text: m.text, send: 'email' };

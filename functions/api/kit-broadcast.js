@@ -32,7 +32,8 @@ export async function onRequestPost(context) {
     return Response.json({ ok: false, error: 'Missing "data.blocks" — expected an array of block descriptors.' }, { status: 400 });
   }
 
-  const tpl = customTemplate(data, opts);
+  // The reveal invite's calendar link is signed with the server's secret, never one from the request
+  const tpl = customTemplate(data, opts, { calendarSecret: env.CALENDAR_LINK_SECRET || '' });
   // The draft's name in Kit and the history list: staff-facing, so plain text
   const name = fillMergeTags(opts.name || tpl.subject || 'Custom Broadcast');
 

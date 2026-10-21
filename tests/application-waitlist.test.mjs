@@ -146,6 +146,9 @@ after(() => { Date.now = realNow; globalThis.fetch = realFetch; });
 beforeEach(async () => {
   kitReset();
   for (const t of ['waitlist_signups', 'waitlist_openings', 'waitlist_runtime']) await env.DB.prepare(`DELETE FROM ${t}`).run();
+  // The per-address email limit is D1's rate_limits table: each test starts clean
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)').run();
+  await env.DB.prepare('DELETE FROM rate_limits').run();
   await setOpen(false);
 });
 
@@ -307,6 +310,34 @@ test('a family who signs up while applications are open is told on the spot and 
   assert.equal(kit.subs.has('late@example.com'), false, 'no Kit list for someone who just needs the link');
   await w.recordSignup(env, { email: 'late@example.com', lang: 'es' });
   assert.equal(resend.length, 1, 'once');
+});
+
+test('the signup form emails an address at most once a day, however it is used', async () => {
+  // Applications open: the link goes out once
+  await setOpen(true);
+  await w.recordSignup(env, { email: 'target@example.com' });
+  assert.equal(resend.length, 1);
+  // Closed again the same day, and the address entered again: no confirmation on top
+  await setOpen(false);
+  const r = await w.recordSignup(env, { email: 'target@example.com' });
+  assert.equal(r.ok, true, 'still saved and on the list');
+  assert.equal(r.confirmed, false);
+  assert.equal(resend.length, 1, 'no second email today');
+  assert.ok((await row('target@example.com')).created_at, 'waiting');
+  // The next day the confirmation it's owed goes
+  travel(25 * 3600e3);
+  await w.recordSignup(env, { email: 'target@example.com' });
+  assert.equal(resend.length, 2);
+  assert.deepEqual(subjects().slice(-1), ["You're on the list"]);
+});
+
+test('staff adding a family by hand isn\'t held to the daily email limit', async () => {
+  await setOpen(true);
+  await w.recordSignup(env, { email: 'called@example.com' });
+  await setOpen(false);
+  const r = await w.recordSignup(env, { email: 'called@example.com', by: 'linzi@example.com' });
+  assert.equal(r.confirmed, true);
+  assert.equal(resend.length, 2);
 });
 
 test('a scheduled opening sends right away (no countdown)', async () => {
@@ -559,4 +590,15 @@ test('"all subscribers" sends leave out families who only asked about applicatio
   // Joining the newsletter takes them off the waitlist-only list
   await k.kitSubscribe(env, 'only@example.com', { source: 'newsletter' });
   assert.equal(tagsOf('only@example.com').includes(k.WAITLIST_ONLY_TAG), false);
+});
+
+// ─── The admin's CSV ────────────────────────────────────────────────
+
+test('the waitlist CSV never hands a spreadsheet a formula', async () => {
+  const { csvCell } = await import('../public/admin/waitlist.js');
+  assert.equal(csvCell('=HYPERLINK("https://evil.example","Click")'), `"'=HYPERLINK(""https://evil.example"",""Click"")"`);
+  for (const lead of ['=', '+', '-', '@', '\t', '\r']) assert.ok(csvCell(`${lead}cmd|' /C calc'!A0`).startsWith(`"'${lead}`), JSON.stringify(lead));
+  assert.equal(csvCell('maria@example.com'), '"maria@example.com"');
+  assert.equal(csvCell('2026-10-21T12:00:00.000Z'), '"2026-10-21T12:00:00.000Z"');
+  assert.equal(csvCell(null), '""');
 });

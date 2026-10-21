@@ -21,7 +21,8 @@
  *     a correction.
  *   - Whoever changed statuses in JobTread gets one summary per working
  *     session, with Move back / Don't email / Send now links (no sign-in; a
- *     one-time token per change).
+ *     one-time token per change, made with the summary, kept only as its
+ *     SHA-256 and good for 7 days).
  *   - "Pause family emails" (for cleanup, 2 hours at most): nothing that
  *     changes while paused is sent unless someone chooses to send it.
  *
@@ -38,13 +39,14 @@
 import { pave, SOARD_ORG_ID, easternParts, easternToUtcIso } from './_reveals.js';
 import {
   readApplicant, sendStatusMessage, sentKinds, madeByForm, postAccountComment, handleApplicantEvent, applicationLang,
-  familyMessage, COMMENT_NAMES, COMMENT_NAMES_ES,
+  familyMessage, cleanStatus, COMMENT_NAMES, COMMENT_NAMES_ES,
   SITE_GRANT_ID, STATUS_RANK, INTAKE_SINCE, FIELD_STATUS,
 } from './_applicant-comms.js';
 import { getLiveForm } from './_application-forms.js';
 import { resolveForm, notifySettings, renderMessage, DEFAULT_MESSAGES } from './_application-form.js';
 import { sendEmails, SITE_ORIGIN } from './_broadcast-notify.js';
 import { emailShell, panel, pill, button, link, esc, MUTED, SANS } from './_email-shell.js';
+import { limitAll } from './_rate-limit.js';
 
 const KIND = { Applied: 'welcome', 'In Review': 'inReview', Approved: 'approved', Denied: 'denied' };
 const STATUS_OF = Object.fromEntries(Object.entries(KIND).map(([s, k]) => [k, s]));
@@ -54,11 +56,15 @@ const SUMMARY_MAX_MS = 12 * 60 * 1000;   // long sessions still get a summary by
 const AFTER_SUMMARY_MS = 5 * 60 * 1000;  // time to act on the summary before emails go
 const NOTE_WAIT_MS = 10 * 60 * 1000;     // a move back settles this long before the staff note
 const RETRY_MS = 5 * 60 * 1000;
+export const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // a summary's links work this long
 
 const iso = (t = Date.now()) => new Date(t).toISOString();
 const rank = (s) => STATUS_RANK[s || ''];
 const known = (s) => rank(s) !== undefined;
-const token = () => [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
+const hex = (bytes) => [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+const newToken = () => hex(crypto.getRandomValues(new Uint8Array(16)));
+/** What D1 keeps for a link token: its SHA-256, so the table alone can't act on a family */
+export const hashToken = async (tok) => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(tok))));
 
 /** Does a family that was told `told` need an email now that the status is `status`? */
 export function needsEmail(status, told) {
@@ -126,7 +132,7 @@ const SCHEMA = [
     status TEXT, since TEXT, previous TEXT,
     kind TEXT, due_at INTEGER, hold TEXT,
     by_name TEXT, by_email TEXT, via TEXT, summary_at INTEGER, token TEXT,
-    note_due INTEGER, updated_at TEXT NOT NULL)`,
+    note_due INTEGER, updated_at TEXT NOT NULL, token_expires INTEGER)`,
   'CREATE INDEX IF NOT EXISTS idx_applicant_notify_due ON applicant_notify(kind, due_at)',
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_applicant_notify_token ON applicant_notify(token)',
   'CREATE TABLE IF NOT EXISTS applicant_notify_state (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL)',
@@ -139,10 +145,19 @@ const _ready = new WeakSet();
 export async function ensureNotifySchema(DB) {
   if (_ready.has(DB)) return;
   await DB.batch(SCHEMA.map(sql => DB.prepare(sql)));
+  // Added Oct 21 2026 (a no-op once there): when a link token stops working
+  try { await DB.prepare('ALTER TABLE applicant_notify ADD COLUMN token_expires INTEGER').run(); } catch { /* already there */ }
+  // Tokens from before then were kept as typed (32 hex characters): keep only
+  // their hash, good for 7 days from the change, so links already emailed still work
+  const { results } = await DB.prepare('SELECT account_id, token, since, updated_at FROM applicant_notify WHERE length(token) = 32').all();
+  for (const r of results || []) {
+    const expires = (Date.parse(r.since || '') || Date.parse(r.updated_at || '') || 0) + TOKEN_TTL_MS;
+    await DB.prepare('UPDATE applicant_notify SET token = ?, token_expires = ? WHERE account_id = ? AND token = ?').bind(await hashToken(r.token), expires, r.account_id, r.token).run();
+  }
   _ready.add(DB);
 }
 
-const COLS = ['account_id', 'name', 'told', 'told_at', 'status', 'since', 'previous', 'kind', 'due_at', 'hold', 'by_name', 'by_email', 'via', 'summary_at', 'token', 'note_due', 'updated_at'];
+const COLS = ['account_id', 'name', 'told', 'told_at', 'status', 'since', 'previous', 'kind', 'due_at', 'hold', 'by_name', 'by_email', 'via', 'summary_at', 'token', 'token_expires', 'note_due', 'updated_at'];
 async function getRow(DB, id) {
   return DB.prepare('SELECT * FROM applicant_notify WHERE account_id = ?').bind(id).first();
 }
@@ -212,7 +227,8 @@ export async function noteStatus(env, applicant, { previous = null, at = null, b
     by_name: by?.name || null, by_email: by?.email || null, via,
     // Changes made on the site were already confirmed with a preview: no summary for those
     summary_at: kind && (via === 'website' || !s.summary) ? now : null,
-    token: kind || backward ? token() : null,
+    // A new change ends the last summary's links; the next summary makes new ones
+    token: null, token_expires: null,
     note_due: backward ? changeAt + NOTE_WAIT_MS : null,
   };
   await putRow(DB, next, now);
@@ -236,42 +252,80 @@ export async function noteStatus(env, applicant, { previous = null, at = null, b
 
 // ─── The JobTread workflow ──────────────────────────────────────────
 
-/** Who made a JobTread change and when, from its event (the workflow sends the id) */
-export async function changeInfo(env, { eventId = null, accountId }, { fetchImpl = fetch, now = Date.now() } = {}) {
-  const pick = (ev) => {
-    if (!ev) return null;
-    const grant = String(ev.createdByGrantName || '');
-    const via = ev.createdByGrantId === SITE_GRANT_ID ? 'website'
-      : /zapier|datax/i.test(grant) || ev.createdByUser?.name === 'JobTread' ? 'integration' : 'jobtread';
-    return { at: ev.createdAt, via, by: ev.createdByUser ? { name: ev.createdByUser.name || null, email: ev.createdByUser.emailAddress || null } : null };
+// A wake-up counts only for a change JobTread logged this recently (and not
+// meaningfully in the future: a little clock skew is allowed)
+export const EVENT_FRESH_MS = 15 * 60 * 1000;
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
+const ACCOUNT_EVENTS = ['accountCreated', 'accountUpdated'];
+// Verified changes a minute: one family, and every family. Only changes that
+// checked out with JobTread count, so junk wake-ups never use these up.
+const WAKE_PER_ACCOUNT = 10;
+const WAKE_ALL = 120;
+const EV = { id: {}, type: {}, createdAt: {}, createdByGrantId: {}, createdByGrantName: {}, createdByUser: { name: {}, emailAddress: {} }, account: { _on_account: { id: {} } }, data: {} };
+const touches = (ev, field) => !!ev?.data?.next?.custom && field in ev.data.next.custom;
+
+/**
+ * The change behind a workflow wake-up, checked with JobTread: an
+ * accountCreated or accountUpdated event on this account from the last 15
+ * minutes. The workflow sends the event's id; without one (or one that
+ * doesn't check out) the account's latest Status or Diagnosis change in that
+ * window stands in. Everything comes from the event, never the wake-up's body:
+ *   { id, at, by, via, statusChanged, previous }
+ * previous: the status before (blank for a new account), or null when the
+ * event doesn't say. Null when there's no such change. Throws when JobTread
+ * can't be read.
+ */
+export async function verifiedChange(env, { eventId = null, accountId }, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const fits = (ev) => {
+    const t = Date.parse(ev?.createdAt || '');
+    return !!ev && ev.account?.id === accountId && ACCOUNT_EVENTS.includes(ev.type) && t > now - EVENT_FRESH_MS && t <= now + CLOCK_SKEW_MS;
   };
-  const EV = { id: {}, createdAt: {}, createdByGrantId: {}, createdByGrantName: {}, createdByUser: { name: {}, emailAddress: {} }, account: { _on_account: { id: {} } }, data: {} };
-  try {
-    if (/^[A-Za-z0-9]{6,32}$/.test(String(eventId || ''))) {
-      const ev = (await pave(env.JOBTREAD_GRANT_KEY, { event: { $: { id: eventId }, ...EV } }, fetchImpl))?.event;
-      if (ev?.account?.id === accountId) return pick(ev);
-    }
-    // No usable id: the latest Status change on this account in the last 15 minutes
-    const data = await pave(env.JOBTREAD_GRANT_KEY, {
-      organization: { $: { id: SOARD_ORG_ID }, events: { $: { size: 100, where: { and: [['createdAt', '>', iso(now - 15 * 60 * 1000)], ['type', '=', 'accountUpdated']] }, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: EV } },
-    }, fetchImpl);
-    const ev = (data?.organization?.events?.nodes || []).find(e => e.account?.id === accountId && e.data?.next?.custom && 'Status' in e.data.next.custom);
-    return pick(ev) || { at: iso(now), via: 'jobtread', by: null };
-  } catch {
-    return { at: iso(now), via: 'jobtread', by: null };
+  let ev = null;
+  if (/^[A-Za-z0-9]{6,32}$/.test(String(eventId || ''))) {
+    const one = (await pave(env.JOBTREAD_GRANT_KEY, { event: { $: { id: eventId }, ...EV } }, fetchImpl))?.event;
+    if (fits(one)) ev = one;
   }
+  if (!ev) {
+    const data = await pave(env.JOBTREAD_GRANT_KEY, {
+      organization: { $: { id: SOARD_ORG_ID }, events: { $: { size: 100, where: { and: [['createdAt', '>', iso(now - EVENT_FRESH_MS)], ['type', 'in', ACCOUNT_EVENTS]] }, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: EV } },
+    }, fetchImpl);
+    ev = (data?.organization?.events?.nodes || []).find(e => fits(e) && (e.type === 'accountCreated' || touches(e, 'Status') || touches(e, 'Diagnosis'))) || null;
+  }
+  if (!ev) return null;
+  const created = ev.type === 'accountCreated';
+  const before = ev.data?.previous?.custom;
+  const grant = String(ev.createdByGrantName || '');
+  return {
+    id: ev.id,
+    at: ev.createdAt,
+    via: ev.createdByGrantId === SITE_GRANT_ID ? 'website'
+      : /zapier|datax/i.test(grant) || ev.createdByUser?.name === 'JobTread' ? 'integration' : 'jobtread',
+    by: ev.createdByUser ? { name: ev.createdByUser.name || null, email: ev.createdByUser.emailAddress || null } : null,
+    statusChanged: created || touches(ev, 'Status'),
+    previous: created ? '' : before && 'Status' in before ? cleanStatus(before.Status) : null,
+  };
+}
+
+/** Who made a JobTread change and when, from its verified event, or null */
+export async function changeInfo(env, { eventId = null, accountId }, opts = {}) {
+  const c = await verifiedChange(env, { eventId, accountId }, opts).catch(() => null);
+  return c && { at: c.at, via: c.via, by: c.by };
 }
 
 /**
  * One call from JobTread's workflow (/api/applicant-sync): the medical note
- * goes now; the welcome and status emails are scheduled here.
+ * goes now; the welcome and status emails are scheduled here. The status
+ * before the change and when it happened come from JobTread's event, so a
+ * forged call can't make the site think a family hasn't heard yet; with no
+ * verified event nothing is scheduled.
  */
 export async function handleWorkflowCall(env, payload, { fetchImpl = fetch, now = Date.now() } = {}) {
   return handleApplicantEvent(env, payload, {
     fetchImpl, now,
-    onStatus: async (applicant, { previous }) => {
-      const info = await changeInfo(env, { eventId: payload?.eventId, accountId: applicant.id }, { fetchImpl, now });
-      const out = await noteStatus(env, applicant, { previous, at: info.at, by: info.by, via: info.via, fetchImpl, now });
+    verify: (accountId) => verifiedChange(env, { eventId: payload?.eventId, accountId }, { fetchImpl, now }),
+    admit: async (accountId) => (await limitAll(env.DB, [[`applicant-sync:acct:${accountId}`, WAKE_PER_ACCOUNT, 60], ['applicant-sync:all', WAKE_ALL, 60]], { now })).ok,
+    onStatus: async (applicant, change) => {
+      const out = await noteStatus(env, applicant, { previous: change.previous, at: change.at, by: change.by, via: change.via, fetchImpl, now });
       const actions = {};
       if (out.kind) actions[out.kind] = out.hold ? 'held: paused' : `scheduled for ${iso(out.dueAt)}`;
       if (out.cancelled) actions.cancelled = out.cancelled;
@@ -404,10 +458,19 @@ async function sendSummaries(env, { now, fetchImpl = fetch }) {
     }
     const previews = {};
     for (const r of rows.slice(0, 30)) previews[r.account_id] = await familyPreview(env, r, fetchImpl);
-    const msg = summaryEmail(rows, { now, staff: key === 'staff', previews, quiet: (await settings(env)).quiet });
+    // Each change's links: the token goes in the email, only its hash in D1 (in
+    // place before the email goes, so a quick tap works)
+    const links = [];
+    for (const r of rows) {
+      const tok = newToken();
+      const kept = { token: await hashToken(tok), token_expires: now + TOKEN_TTL_MS };
+      await DB.prepare('UPDATE applicant_notify SET token = ?, token_expires = ? WHERE account_id = ?').bind(kept.token, kept.token_expires, r.account_id).run();
+      links.push({ row: r, tok, kept });
+    }
+    const msg = summaryEmail(links.map(l => ({ ...l.row, token: l.tok })), { now, staff: key === 'staff', previews, quiet: (await settings(env)).quiet });
     const res = await sendEmails(env, { to, ...msg, tags: [{ name: 'type', value: 'applicant-status-summary' }] });
     // Even if the email failed, the families' emails must not wait forever
-    for (const r of rows) await putRow(DB, { ...r, summary_at: now }, now);
+    for (const { row, kept } of links) await putRow(DB, { ...row, ...kept, summary_at: now }, now);
     if (res.sent) sent++;
   }
   return sent;
@@ -524,13 +587,29 @@ export async function moveBack(env, accountId, { user = null, fetchImpl = fetch,
   return { ok: true, status: row.previous, ...out };
 }
 
-/** One of the summary's links: 'back' | 'skip' | 'send'. Single use (a new change gets a new token). */
+/**
+ * The family a summary link is for: { row }, { expired: true } (more than 7
+ * days old), or null (not a token, already used, or the status moved since).
+ * Looked up by the token's hash; a row an older deploy wrote while this one
+ * rolled out may still hold the token itself, which is honored the same way.
+ */
+async function linkRow(DB, tok, now) {
+  if (!/^[0-9a-f]{32}$/.test(String(tok || ''))) return null;
+  const row = await DB.prepare('SELECT * FROM applicant_notify WHERE token IN (?, ?)').bind(await hashToken(tok), tok).first();
+  if (!row) return null;
+  const expires = row.token_expires ?? ((Date.parse(row.since || '') || 0) + TOKEN_TTL_MS);
+  return expires > now ? { row } : { expired: true };
+}
+
+/** One of the summary's links: 'back' | 'skip' | 'send'. Single use (a new change gets a new token), good for 7 days. */
 export async function linkAction(env, tok, act, { fetchImpl = fetch, now = Date.now() } = {}) {
   const { DB } = env;
   await ensureNotifySchema(DB);
   if (!/^[0-9a-f]{32}$/.test(String(tok || ''))) return { ok: false, error: 'This link isn’t valid.' };
-  const row = await DB.prepare('SELECT * FROM applicant_notify WHERE token = ?').bind(tok).first();
-  if (!row) return { ok: false, gone: true, error: 'This change was already handled, or the status has changed again since.' };
+  const found = await linkRow(DB, tok, now);
+  if (found?.expired) return { ok: false, gone: true, expired: true, error: 'This link has expired.' };
+  if (!found) return { ok: false, gone: true, error: 'This change was already handled, or the status has changed again since.' };
+  const { row } = found;
   const who = row.by_name || 'Staff';
   if (act === 'back') return { ...(await moveBack(env, row.account_id, { user: who, fetchImpl, now })), name: row.name };
   if (act === 'skip') return { ...(await dontSend(env, row.account_id, { user: who, now })), name: row.name, status: row.status };
@@ -538,12 +617,13 @@ export async function linkAction(env, tok, act, { fetchImpl = fetch, now = Date.
   return { ok: false, error: 'Unknown action.' };
 }
 
-/** What a link would do, for its confirmation page (no change made) */
-export async function linkPreview(env, tok) {
+/** What a link would do, for its confirmation page (no change made): the row, { expired: true } or null */
+export async function linkPreview(env, tok, { now = Date.now() } = {}) {
   await ensureNotifySchema(env.DB);
-  if (!/^[0-9a-f]{32}$/.test(String(tok || ''))) return null;
-  const row = await env.DB.prepare('SELECT account_id, name, status, previous, kind, due_at, hold FROM applicant_notify WHERE token = ?').bind(tok).first();
-  return row ? { ...row, label: row.kind ? LABEL[row.kind] : null } : null;
+  const found = await linkRow(env.DB, tok, now);
+  if (!found?.row) return found;
+  const { account_id, name, status, previous, kind, due_at, hold } = found.row;
+  return { account_id, name, status, previous, kind, due_at, hold, label: kind ? LABEL[kind] : null };
 }
 
 // ─── Pause ──────────────────────────────────────────────────────────

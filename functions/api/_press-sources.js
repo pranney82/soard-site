@@ -37,6 +37,8 @@ function tag(block, name) {
 }
 const attr = (block, name, a) => block.match(new RegExp(`<${name}\\b[^>]*\\s${a}="([^"]*)"`, 'i'))?.[1] || '';
 export const rssItems = (xml) => [...String(xml || '').matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].map((m) => m[1]);
+/** Each item read on its own: one that can't be read is left out, never the whole feed */
+const eachItem = (list, read) => list.map((x) => { try { return read(x); } catch { return null; } }).filter(Boolean);
 
 // ── Google News ──────────────────────────────────────────────────────
 /** Google News search results (its links are Google's own; decodeGoogleLink finds the outlet's) */
@@ -48,7 +50,7 @@ export async function googleNews(query, { fetchImpl = fetch } = {}) {
   } catch (e) { return { items: [], error: `Google News: ${e.message}` }; }
 }
 export function parseGoogleRss(xml, query = '') {
-  return rssItems(xml).map((b) => {
+  return eachItem(rssItems(xml), (b) => {
     const link = decodeEntities(tag(b, 'link'));
     const source = decodeEntities(tag(b, 'source'));
     const articleId = link.match(/\/articles\/([^?#/]+)/)?.[1];
@@ -58,7 +60,7 @@ export function parseGoogleRss(xml, query = '') {
       title: cleanTitle(decodeEntities(tag(b, 'title')), source), source, sourceUrl: attr(b, 'source', 'url'),
       published: isoDate(tag(b, 'pubDate')), description: '', query,
     };
-  }).filter(Boolean);
+  });
 }
 /**
  * The outlet's own address behind a Google News link. Google stopped
@@ -101,7 +103,7 @@ export async function bingNews(query, { fetchImpl = fetch } = {}) {
   } catch (e) { return { items: [], error: `Bing News: ${e.message}` }; }
 }
 export function parseBingRss(xml, query = '') {
-  return rssItems(xml).map((b) => {
+  return eachItem(rssItems(xml), (b) => {
     const raw = decodeEntities(tag(b, 'link'));
     let url = raw;
     try { const u = new URL(raw); if (/bing\.com$/i.test(u.hostname) && u.searchParams.get('url')) url = u.searchParams.get('url'); } catch { return null; }
@@ -112,7 +114,7 @@ export function parseBingRss(xml, query = '') {
       title: cleanTitle(decodeEntities(tag(b, 'title')), source), source, sourceUrl: '',
       published: isoDate(tag(b, 'pubDate')), description: plain(decodeEntities(tag(b, 'description'))), query,
     };
-  }).filter(Boolean);
+  });
 }
 
 // ── YouTube ──────────────────────────────────────────────────────────
@@ -125,7 +127,7 @@ export async function youTubeChannel(channel, { fetchImpl = fetch } = {}) {
   } catch (e) { return { items: [], error: `${channel.name} feed: ${e.message}` }; }
 }
 export function parseYouTubeFeed(xml, channel = {}) {
-  return [...String(xml || '').matchAll(/<entry>([\s\S]*?)<\/entry>/gi)].map((m) => {
+  return eachItem([...String(xml || '').matchAll(/<entry>([\s\S]*?)<\/entry>/gi)], (m) => {
     const b = m[1];
     const videoId = tag(b, 'yt:videoId');
     const title = decodeEntities(tag(b, 'title'));
@@ -138,7 +140,7 @@ export function parseYouTubeFeed(xml, channel = {}) {
       // A station on the watch list: its videos count as that station's coverage
       published: isoDate(tag(b, 'published')), description: description.slice(0, 600), query: `channel:${channel.id || ''}`, videoId,
     };
-  }).filter(Boolean);
+  });
 }
 /** YouTube search results, newest first, without SOARD's own channel */
 export async function youTubeSearch(query, { fetchImpl = fetch } = {}) {
@@ -157,17 +159,20 @@ export function parseYouTubeSearch(html, query = '') {
   const walk = (v) => {
     if (!v || typeof v !== 'object') return;
     if (v.videoRenderer?.videoId) {
-      const r = v.videoRenderer;
-      const text = (x) => (x?.runs || []).map((t) => t.text).join('') || x?.simpleText || '';
-      const title = text(r.title);
-      const channel = text(r.ownerText) || text(r.longBylineText);
-      const description = (r.detailedMetadataSnippets || []).map((s) => text(s.snippetText)).join(' ') || text(r.descriptionSnippet);
-      if (!OWN_CHANNELS.some((re) => re.test(channel)) && relevance({ title, description }).any) {
-        out.push({
-          provider: 'youtube', id: `y:${r.videoId}`, url: `https://www.youtube.com/watch?v=${r.videoId}`, link: `https://www.youtube.com/watch?v=${r.videoId}`,
-          title, source: channel, sourceUrl: '', published: relativeDate(text(r.publishedTimeText)), publishedText: text(r.publishedTimeText), description: description.slice(0, 600), query, videoId: r.videoId,
-        });
-      }
+      // One video that can't be read is left out, never the whole page of results
+      try {
+        const r = v.videoRenderer;
+        const text = (x) => (x?.runs || []).map((t) => t.text).join('') || x?.simpleText || '';
+        const title = text(r.title);
+        const channel = text(r.ownerText) || text(r.longBylineText);
+        const description = (r.detailedMetadataSnippets || []).map((s) => text(s.snippetText)).join(' ') || text(r.descriptionSnippet);
+        if (!OWN_CHANNELS.some((re) => re.test(channel)) && relevance({ title, description }).any) {
+          out.push({
+            provider: 'youtube', id: `y:${r.videoId}`, url: `https://www.youtube.com/watch?v=${r.videoId}`, link: `https://www.youtube.com/watch?v=${r.videoId}`,
+            title, source: channel, sourceUrl: '', published: relativeDate(text(r.publishedTimeText)), publishedText: text(r.publishedTimeText), description: description.slice(0, 600), query, videoId: r.videoId,
+          });
+        }
+      } catch { /* skipped */ }
       return;
     }
     for (const k in v) walk(v[k]);

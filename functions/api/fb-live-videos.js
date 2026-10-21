@@ -6,19 +6,43 @@
  * Powers the "Test connection" button on the admin Go Live page: if this
  * returns videos, the whole chain — page id, token, permissions — works.
  *
- * Public for GET (see middleware PUBLIC_GET_ROUTES): the response is only the
- * page's public video permalinks — the token never leaves the server. A short
- * module-scope cache keeps anonymous traffic from burning Graph API quota;
- * pass ?fresh=1 (the admin button does) to bypass it.
+ * Public for GET (see middleware PUBLIC_GET_ROUTES), but anonymous callers
+ * only see broadcasts that are live now or published replays (LIVE, VOD),
+ * always from a short module-scope cache, so anonymous traffic can't burn
+ * Graph API quota. A signed-in admin (Cloudflare Access) sees every broadcast
+ * and may pass ?fresh=1 to skip the cache. The token never leaves the server,
+ * and Facebook's own error text is never passed on: errors are reported by
+ * kind (token, permission, page id) and Facebook's numeric code.
  *
  * Env bindings: none beyond env vars FB_PAGE_ID, FB_PAGE_TOKEN
  */
 
 import { annotateArchived } from './_fb-archive.js';
+import { isAuthenticated } from './_middleware.js';
 
 const FB_GRAPH = 'https://graph.facebook.com/v25.0';
 const CACHE_TTL_MS = 2 * 60 * 1000;
-let _cache = { at: 0, body: null };
+const ERROR_TTL_MS = 60 * 1000;
+// What anyone may see: live right now, or a published replay
+const PUBLIC_STATUSES = new Set(['LIVE', 'VOD']);
+// The cache holds every broadcast; each response is cut down for its audience
+let _cache = { at: 0, videos: null, error: null };
+
+/** Facebook's error as our own words, by its numeric code (the message itself is never echoed) */
+export function graphError(err, status) {
+  const code = Number.isFinite(Number(err?.code)) ? Number(err.code) : null;
+  const what = code === 190 ? 'The Facebook token expired or was revoked'
+    : code === 10 || code === 200 || (code >= 200 && code < 300) ? 'The Facebook token is missing a permission'
+    : code === 100 || code === 803 ? 'Facebook does not recognize the page id'
+    : code === 4 || code === 17 || code === 32 || code === 613 ? 'Facebook is rate limiting requests right now'
+    : `Facebook returned an error${status ? ` (HTTP ${status})` : ''}`;
+  return code != null ? `${what} (code ${code})` : what;
+}
+
+function respond(videos, error, admin) {
+  if (error) return Response.json({ success: false, configured: true, error: admin ? error : 'Facebook is not answering right now' });
+  return Response.json({ success: true, configured: true, videos: admin ? videos : videos.filter((v) => PUBLIC_STATUSES.has(v.status)) });
+}
 
 export async function onRequestGet(context) {
   const { FB_PAGE_ID, FB_PAGE_TOKEN } = context.env;
@@ -27,9 +51,11 @@ export async function onRequestGet(context) {
     return Response.json({ success: true, configured: false, videos: [] });
   }
 
-  const fresh = new URL(context.request.url).searchParams.get('fresh') === '1';
-  if (!fresh && _cache.body && Date.now() - _cache.at < CACHE_TTL_MS) {
-    return Response.json(_cache.body);
+  const admin = await isAuthenticated(context.request, context.env);
+  const fresh = admin && new URL(context.request.url).searchParams.get('fresh') === '1';
+  const age = Date.now() - _cache.at;
+  if (!fresh && (_cache.videos || _cache.error) && age < (_cache.error ? ERROR_TTL_MS : CACHE_TTL_MS)) {
+    return respond(_cache.videos, _cache.error, admin);
   }
 
   try {
@@ -42,17 +68,13 @@ export async function onRequestGet(context) {
       limit: '25',
       access_token: FB_PAGE_TOKEN,
     });
-    const res = await fetch(`${FB_GRAPH}/${FB_PAGE_ID}/videos?${qs}`);
+    const res = await fetch(`${FB_GRAPH}/${FB_PAGE_ID}/videos?${qs}`, { signal: AbortSignal.timeout(10000) });
     const data = await res.json();
 
     if (!res.ok || data.error) {
-      // Surface Facebook's own message — it says exactly what's wrong
-      // (expired token, missing permission, wrong page id, ...)
-      return Response.json({
-        success: false,
-        configured: true,
-        error: data.error?.message || `Graph API returned ${res.status}`,
-      });
+      // Say what kind of problem it is (expired token, missing permission, wrong page id), never Facebook's text
+      _cache = { at: Date.now(), videos: null, error: graphError(data.error, res.status) };
+      return respond(null, _cache.error, admin);
     }
 
     // Annotate which broadcasts the auto-archiver has already saved to Stream,
@@ -70,10 +92,10 @@ export async function onRequestGet(context) {
           : null,
       })));
 
-    const body = { success: true, configured: true, videos };
-    _cache = { at: Date.now(), body };
-    return Response.json(body);
-  } catch (err) {
-    return Response.json({ success: false, configured: true, error: err.message });
+    _cache = { at: Date.now(), videos, error: null };
+    return respond(videos, null, admin);
+  } catch {
+    _cache = { at: Date.now(), videos: null, error: 'Could not reach Facebook' };
+    return respond(null, _cache.error, admin);
   }
 }

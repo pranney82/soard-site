@@ -31,8 +31,17 @@
  *
  * The Pages project binds this class as LIVE_HUB (wrangler.toml,
  * durable_objects.bindings with script_name = "soard-live-hub") and pushes
- * state changes with POST /publish over the binding. Nothing but /ws and
- * /health is reachable from the public internet.
+ * state changes with POST /publish over the binding. Sockets come only
+ * through the site's /api/live-ws, which checks the page's origin, decides
+ * the role (admin needs a Cloudflare Access login) and passes the caller's
+ * address in X-Soard-Client-Ip. The Worker has no public URL (workers_dev
+ * and preview_urls are off in wrangler.toml); its own fetch answers only
+ * /health.
+ *
+ * Limits: 5000 sockets in all, the last 50 kept for the admin so viewers can
+ * never lock out the control room; 40 site sockets per address (a reveal
+ * party shares one wifi); and a token bucket per socket that closes one
+ * sending more than a person could.
  *
  * Env: PAGES_ORIGIN (plain text, e.g. https://sunshineonaranneyday.com)
  */
@@ -44,6 +53,15 @@ const NEAR_MS = 20 * 1000;   // within 30 min of a scheduled start
 const IDLE_MS = 60 * 1000;   // nothing scheduled soon
 const NEAR_WINDOW_MS = 30 * 60 * 1000;
 const MAX_CLIENTS = 5000;
+const ADMIN_RESERVED = 50;   // of MAX_CLIENTS, only admin sockets may use these
+const MAX_PER_IP = 40;       // site sockets from one address
+const IP_HEADER = 'x-soard-client-ip';
+// Per socket: a burst of 60 messages, then 10 a second (pings never count: the runtime answers them)
+const MSG_BURST = 60;
+const MSG_PER_SEC = 10;
+// The only reasons a state frame gives, and the only events passed on
+const REASONS = new Set(['connect', 'refresh', 'tick', 'admin', 'webhook', 'publish']);
+const EVENTS = new Set(['live_input.connected', 'live_input.disconnected', 'live_input.errored']);
 const NONCE_TTL_MS = 90 * 1000;
 const REACTIONS = new Set(['heart', 'sun', 'clap', 'wow']);
 const REACT_FLUSH_MS = 400;
@@ -66,6 +84,12 @@ function same(a, b) {
   try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
 }
 
+/** 'admin:cancel' → 'admin'; anything not on the list → 'tick' */
+function reasonKind(reason) {
+  const kind = String(reason || '').split(':')[0];
+  return REASONS.has(kind) ? kind : 'tick';
+}
+
 export class LiveHub extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -80,6 +104,7 @@ export class LiveHub extends DurableObject {
     this.viewersTimer = null;
     this.lastViewers = -1;
     this.reactRate = new WeakMap();
+    this.msgBuckets = new WeakMap();
   }
 
   async fetch(request) {
@@ -87,16 +112,25 @@ export class LiveHub extends DurableObject {
     const path = url.pathname;
 
     if (path === '/ws') {
+      // Binding only: /api/live-ws has already checked the origin and the admin login
       if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
         return new Response('Expected WebSocket', { status: 426 });
       }
-      if (this.ctx.getWebSockets().length >= MAX_CLIENTS) {
+      const role = url.searchParams.get('role') === 'admin' ? 'admin' : 'site';
+      const ip = (request.headers.get(IP_HEADER) || '').slice(0, 64);
+      const total = this.ctx.getWebSockets().length;
+      // The last ADMIN_RESERVED places are the control room's, so a flood of viewers can't lock staff out
+      if (total >= MAX_CLIENTS || (role === 'site' && total >= MAX_CLIENTS - ADMIN_RESERVED)) {
         return new Response('Too many clients', { status: 503 });
+      }
+      // Sockets from one address (no address: an older site deploy, so no per-address count)
+      if (role === 'site' && ip && this.ctx.getWebSockets(`ip:${ip}`).length >= MAX_PER_IP) {
+        return new Response('Too many connections from one address', { status: 429 });
       }
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
-      const role = url.searchParams.get('role') === 'admin' ? 'admin' : 'site';
-      this.ctx.acceptWebSocket(server, [role]);
+      // Site sockets carry their address as a tag, so counting them per address is one lookup
+      this.ctx.acceptWebSocket(server, role === 'site' && ip ? [role, `ip:${ip}`] : [role]);
       const state = (await this.ctx.storage.get('state')) || null;
       server.send(JSON.stringify({ type: 'state', state, reason: 'connect', ts: Date.now() }));
       await this.ensureAlarm(state);
@@ -108,7 +142,8 @@ export class LiveHub extends DurableObject {
       let body;
       try { body = await request.json(); } catch { return Response.json({ ok: false, error: 'bad json' }, { status: 400 }); }
       const changed = await this.setSnapshot(body.state ?? null, body.reason || 'publish');
-      if (body.event) this.broadcast({ type: 'event', event: body.event, ts: Date.now() });
+      // Only Stream's three event names go out, never whatever object came with them
+      if (EVENTS.has(body.event?.type)) this.broadcast({ type: 'event', event: { type: body.event.type }, ts: Date.now() });
       return Response.json({ ok: true, changed, clients: this.ctx.getWebSockets().length });
     }
 
@@ -138,6 +173,7 @@ export class LiveHub extends DurableObject {
     }
 
     if (path === '/status') {
+      // Binding only (the admin's health card and Automations); the Worker's own fetch never forwards it
       const [state, lastTick, alarm] = await Promise.all([
         this.ctx.storage.get('state'), this.ctx.storage.get('lastTick'), this.ctx.storage.getAlarm(),
       ]);
@@ -163,7 +199,7 @@ export class LiveHub extends DurableObject {
     const changed = !same(prev, state);
     if (changed) {
       await this.ctx.storage.put('state', state);
-      this.broadcast({ type: 'state', state, reason, ts: Date.now() });
+      this.broadcast({ type: 'state', state, reason: reasonKind(reason), ts: Date.now() });
     }
     await this.ensureAlarm(state);
     return changed;
@@ -176,7 +212,24 @@ export class LiveHub extends DurableObject {
     }
   }
 
+  /** Token bucket per socket: true while it sends like a person (bursts of taps included) */
+  allowMessage(ws) {
+    const now = Date.now();
+    const b = this.msgBuckets.get(ws) || { tokens: MSG_BURST, at: now };
+    b.tokens = Math.min(MSG_BURST, b.tokens + ((now - b.at) / 1000) * MSG_PER_SEC);
+    b.at = now;
+    this.msgBuckets.set(ws, b);
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
+  }
+
   async webSocketMessage(ws, message) {
+    // Every message wakes the object, so a socket that floods is closed (the page reconnects later, politely)
+    if (!this.allowMessage(ws)) {
+      try { ws.close(1008, 'too many messages'); } catch {}
+      return;
+    }
     if (typeof message !== 'string') return;
     if (message === 'state') {
       const state = (await this.ctx.storage.get('state')) || null;
@@ -307,7 +360,8 @@ export class LiveHub extends DurableObject {
       if (res.ok) {
         const data = await res.json();
         result.ok = true;
-        result.work = data.work || null;
+        // Kinds of work only ('email', 'kid'), never kid slugs or send counts
+        result.work = Array.isArray(data.work) ? [...new Set(data.work.map((w) => String(w).split(':')[0]))].slice(0, 20) : null;
         if (data.state !== undefined) result.changed = await this.setSnapshot(data.state, data.reason || 'tick');
       } else {
         result.error = `hooks returned ${res.status}`;
@@ -330,14 +384,13 @@ export class LiveHub extends DurableObject {
   }
 }
 
+// The Worker's own fetch. It has no public URL (wrangler.toml), and even if
+// one is switched on it answers /health only: sockets come through the
+// site's /api/live-ws over the binding, and /status is binding only.
 export default {
-  async fetch(request, env) {
+  async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === '/health') return Response.json({ ok: true, service: 'soard-live-hub' });
-    const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName('main'));
-    if (url.pathname === '/ws') return stub.fetch(request);
-    // /status is intentionally public read-only (no secrets), useful for the admin health card
-    if (url.pathname === '/status') return stub.fetch(request);
     return new Response('Not found', { status: 404 });
   },
 };

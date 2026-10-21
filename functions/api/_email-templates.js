@@ -13,6 +13,8 @@
  *   Buttons: pill (100px radius)  Section labels: 28px line + 0.14em caps
  */
 
+import { calendarIcsUrl } from './_calendar-links.js';
+
 const SITE_URL = 'https://sunshineonaranneyday.com';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
@@ -280,12 +282,16 @@ const FROM = 'Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>
  * @param {string} [opts.subject]
  * @param {string} [opts.preheader]
  * @param {string} [opts.from]
+ * @param {object} [server] — from the server, never the request
+ * @param {string} [server.calendarSecret] — env.CALENDAR_LINK_SECRET: the reveal
+ *   invite's "Apple" calendar link then carries the email's own words, signed
+ *   (see _calendar-links.js). Without it the link looks the reveal up.
  */
-export function customTemplate(blockData, opts = {}) {
+export function customTemplate(blockData, opts = {}, server = {}) {
   const blocks = (blockData && blockData.blocks) || [];
   const subject = opts.subject || 'A note from Sunshine on a Ranney Day';
   const preheader = opts.preheader || '';
-  const body = blocks.map(b => renderBlock(b)).filter(Boolean).join('\n');
+  const body = blocks.map(b => renderBlock(b, server)).filter(Boolean).join('\n');
   return {
     from: opts.from || FROM,
     subject,
@@ -914,7 +920,7 @@ const BLOCKS = {
       </td></tr>`;
   },
 
-  revealInvite(p) {
+  revealInvite(p, server = {}) {
     const k = p.kid || {};
     const name = k.name || p.kidName || '';
     const slug = k.slug || p.slug || '';
@@ -954,6 +960,8 @@ const BLOCKS = {
       url: profileUrl,
       tz,
       uid: slug && p.date ? `reveal-${slug}-${p.date.replace(/-/g, '')}@sunshineonaranneyday.com` : '',
+      reveal: slug,
+      secret: server.calendarSecret,
     });
 
     // Detail-box rows. Each known row is only shown if it has a value. The
@@ -1481,9 +1489,10 @@ function ymdCompact(s) { return String(s).replace(/-/g, ''); }
  * For timed events, all three URLs encode UTC instants so recipients in any
  * timezone see the correct local time. For all-day events (no `time`), Google
  * uses inclusive/exclusive YYYYMMDD pairs and the .ics endpoint emits
- * VALUE=DATE entries.
+ * VALUE=DATE entries. The .ics link is signed with `secret`, or else names
+ * the `reveal` (kid slug) or `event` to look up; with none of those it's ''.
  */
-function buildCalLinks({ title, date, time, endDate, endTime, location, details, url, tz, uid }) {
+function buildCalLinks({ title, date, time, endDate, endTime, location, details, url, tz, uid, reveal = '', event = '', secret = '' }) {
   if (!date) return { google: '', outlook: '', ical: '' };
   const TZ = tz || 'America/New_York';
   const start = parseTime(time);
@@ -1549,27 +1558,23 @@ function buildCalLinks({ title, date, time, endDate, endTime, location, details,
   });
   const outlook = `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams}`;
 
-  const icalParams = new URLSearchParams({
-    title: safeTitle,
-    start: icsStart,
-    end: icsEnd,
-    location: safeLocation,
-    details: safeDetails,
-  });
-  if (icsAllDay) icalParams.set('allday', '1');
-  if (uid) icalParams.set('uid', uid);
-  if (url) icalParams.set('url', url);
-  const ical = `${SITE_URL}/api/calendar.ics?${icalParams}`;
+  // Our own .ics link: this email's words signed with CALENDAR_LINK_SECRET, or
+  // without it the reveal (or event) looked up as the site has it now. Never
+  // unsigned words: /api/calendar.ics won't serve those (see _calendar-links.js).
+  const ical = calendarIcsUrl({
+    title: safeTitle, start: icsStart, end: icsEnd, allDay: icsAllDay,
+    location: safeLocation, details: safeDetails, url, uid, reveal, event,
+  }, { secret, site: SITE_URL });
 
   return { google, outlook, ical };
 }
 
-function renderBlock(b) {
+function renderBlock(b, server = {}) {
   if (!b || !b.type) return '';
   const fn = BLOCKS[b.type];
   if (!fn) return '';
   try {
-    return fn(b.props || b) || '';
+    return fn(b.props || b, server) || '';
   } catch (e) {
     console.error(`Block render error (${b.type}):`, e);
     return '';

@@ -1311,6 +1311,8 @@ function init(root, cfg, mode) {
     }, { signal });
     // Typing another address after a signup starts over
     notifyUi.input.addEventListener('input', () => { if (notifyState?.done || notifyState?.error) { notifyState = null; paintNotify(); } }, { signal });
+    // The quick check (src/utils/signup-check.ts); without a token, the plain form post and its confirm page
+    const notifyCheck = signupCheck(notifyForm, { lang: () => lang });
     notifyForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = notifyUi.input.value.trim();
@@ -1318,12 +1320,16 @@ function init(root, cfg, mode) {
       notifyState = 'sending';
       paintNotify();
       try {
+        const turnstileToken = await notifyCheck.token();
+        if (turnstileToken === '') { postPlainly(notifyForm); return; }
         const res = await fetch('/api/newsletter', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, hp: notifyForm.querySelector('[name="website"]')?.value || '', source: 'application-waitlist', lang, page: 'apply-form' }),
+          body: JSON.stringify({ email, hp: notifyForm.querySelector('[name="website"]')?.value || '', source: 'application-waitlist', lang, page: 'apply-form', ...(turnstileToken ? { turnstileToken } : {}) }),
         });
         const data = await res.json().catch(() => null);
+        notifyCheck.reset();
+        if (data?.code === 'turnstile') { postPlainly(notifyForm); return; }
         if (data?.ok && data.status === 'open') {
           // Opened since this page loaded: straight to the form
           notifyState = null;

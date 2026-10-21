@@ -7,8 +7,11 @@
  * A Reveal task with no time is the field at 12:00 AM Eastern ("no time yet").
  *
  * JobTread workflows POST { eventId, source: 'task' | 'field', jobId, ... } to
- * /api/reveal-sync when either side changes. Everything is re-read from
- * JobTread before deciding, so the post only says "look at this job".
+ * /api/reveal-sync when either side changes. Only jobId and eventId are read:
+ * the event is looked up in JobTread (wakeSync), and its kind says which side
+ * changed (a Reveal task event is the task, a job event is the field). Both
+ * sides are re-read from JobTread before deciding, so the post only says
+ * "look at this change".
  *
  * Who wins:
  *   - Not confirmed: the side that just changed. Copy it to the other.
@@ -17,24 +20,40 @@
  *     it because an earlier task moved) is put back, with an internal comment.
  *   - One side empty: copy the side that has a date.
  *
- * Echoes: writing one side makes JobTread fire the workflow for that side.
- * We remember what we wrote (D1 reveal_sync) and ignore exactly that event,
- * so it can never undo a person's quick second edit.
+ * Echoes: writing one side makes JobTread log an event for it, made by the
+ * site's own grant. The workflows skip those, and a wake-up for one is
+ * ignored here too, so it can never undo a person's quick second edit.
+ * reveal_sync keeps what was last written, for the record.
  */
 
 import {
   SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED,
   easternParts, easternToUtcIso, longDay, clockTime, pave,
 } from './_reveals.js';
+import { limitAll } from './_rate-limit.js';
 
 const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
-const ECHO_WINDOW_MS = 10 * 60 * 1000;
+const SITE_GRANT_ID = '22PgGhFHkmbz'; // "soard-site-CF", the grant this writes with
 const COMMENT_TITLE = 'Reveal date sync (automatic)';
+// A wake-up counts only for a change JobTread logged this recently (a little clock skew allowed)
+export const EVENT_FRESH_MS = 15 * 60 * 1000;
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
+const TASK_EVENTS = ['taskCreated', 'taskUpdated'];
+const JOB_EVENTS = ['jobCreated', 'jobUpdated'];
+// Verified changes past these (a minute's worth) are acknowledged without
+// work: a person doesn't move one reveal six times a minute, and the weekday
+// reveal check (./_reveal-nudges.js) settles any mismatch left behind. Only
+// changes that checked out with JobTread count, so junk never uses them up.
+const WAKE_PER_JOB = 6;
+const WAKE_ALL = 60;
+const SEEN_KEEP_MS = 24 * 60 * 60 * 1000;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS reveal_sync (
     job_id TEXT PRIMARY KEY, wrote_side TEXT, wrote_value TEXT, wrote_at INTEGER,
     last_action TEXT, last_note TEXT, note_at INTEGER, updated_at TEXT)`,
+  // JobTread events already acted on, so a retried or replayed wake-up is a no-op (a day kept)
+  'CREATE TABLE IF NOT EXISTS reveal_sync_events (event_id TEXT PRIMARY KEY, job_id TEXT, at INTEGER NOT NULL)',
 ];
 const _schemaReady = new WeakSet();
 async function ensureSchema(DB) {
@@ -89,7 +108,8 @@ export async function fetchSyncJob(grantKey, jobId, fetchImpl = fetch) {
  */
 export function planSync(job, source) {
   if (!job) return { action: 'none', reason: 'job not found' };
-  if (job.organization?.id && job.organization.id !== SOARD_ORG_ID) return { action: 'none', reason: 'not a SOARD job' };
+  // Strict: a job that doesn't say it's SOARD's (organization missing) isn't touched either
+  if (job.organization?.id !== SOARD_ORG_ID) return { action: 'none', reason: 'not a SOARD job' };
 
   const reveals = job.tasks?.nodes || [];
   const open = reveals.filter(t => (t.progress ?? 0) < 1);
@@ -154,22 +174,72 @@ async function postComment(grantKey, jobId, message, fetchImpl) {
 }
 
 /**
- * Handle one wake-up from JobTread. `payload` is what the workflow sent:
- * { source, jobId, taskStartDate?, taskStartTime?, revealDate? }.
+ * The change a workflow wake-up is about, checked with JobTread: a SOARD
+ * event on this job from the last 15 minutes, either its Reveal task
+ * (created or updated) or the job itself (its Reveal Date field).
+ * → { id, source: 'task' | 'field', bySite } or null. Throws when JobTread
+ * can't be read.
  */
-export async function syncJob(env, payload, { fetchImpl = fetch, now = Date.now() } = {}) {
-  const { DB, JOBTREAD_GRANT_KEY: key } = env;
-  const jobId = payload.jobId;
-  const source = payload.source === 'field' ? 'field' : 'task';
-  await ensureSchema(DB);
+export async function verifiedSyncEvent(grantKey, { jobId, eventId }, { fetchImpl = fetch, now = Date.now() } = {}) {
+  if (!/^[A-Za-z0-9]{6,32}$/.test(String(eventId || ''))) return null;
+  const ev = (await pave(grantKey, {
+    event: {
+      $: { id: eventId },
+      id: {}, type: {}, createdAt: {}, createdByGrantId: {}, organization: { id: {} },
+      job: { _on_job: { id: {} } }, task: { _on_task: { id: {}, taskType: { id: {} } } },
+    },
+  }, fetchImpl))?.event;
+  const t = Date.parse(ev?.createdAt || '');
+  if (!ev || ev.organization?.id !== SOARD_ORG_ID || ev.job?.id !== jobId || !(t > now - EVENT_FRESH_MS && t <= now + CLOCK_SKEW_MS)) return null;
+  const bySite = ev.createdByGrantId === SITE_GRANT_ID;
+  if (TASK_EVENTS.includes(ev.type) && ev.task?.taskType?.id === REVEAL_TASK_TYPE) return { id: ev.id, source: 'task', bySite };
+  if (JOB_EVENTS.includes(ev.type)) return { id: ev.id, source: 'field', bySite };
+  return null;
+}
 
-  // Our own write coming back? Ignore exactly that, nothing else.
-  const row = await readRow(DB, jobId);
-  const incoming = source === 'task' ? taskKey(payload.taskStartDate, payload.taskStartTime) : fieldKey(payload.revealDate);
-  if (incoming && row?.wrote_side === source && row.wrote_value === incoming && now - (row.wrote_at || 0) < ECHO_WINDOW_MS) {
-    await writeRow(DB, jobId, { wrote_side: null, wrote_value: null, wrote_at: null });
-    return { jobId, action: 'echo' };
+/**
+ * One wake-up from a JobTread workflow: { jobId, eventId } is all that's
+ * read. When the event doesn't check out, nothing is done (and nothing is
+ * counted); an event already handled is done once; a real change past the
+ * limits waits for a retry or the weekday check; the site's own write coming
+ * back is an echo. → { jobId, action, ran } (ran: both sides were looked at,
+ * so the live countdown may want a look too).
+ */
+export async function wakeSync(env, { jobId, eventId }, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  await ensureSchema(DB);
+  const ev = await verifiedSyncEvent(env.JOBTREAD_GRANT_KEY, { jobId, eventId }, { fetchImpl, now });
+  if (!ev) return { jobId, action: 'unverified', ran: false };
+  await DB.prepare('DELETE FROM reveal_sync_events WHERE at < ?').bind(now - SEEN_KEEP_MS).run();
+  const first = await DB.prepare('INSERT OR IGNORE INTO reveal_sync_events (event_id, job_id, at) VALUES (?, ?, ?)').bind(ev.id, jobId, now).run();
+  if (!(first?.meta?.changes > 0)) return { jobId, action: 'already handled', ran: false };
+  // Let a retry of this event have another go
+  const release = () => DB.prepare('DELETE FROM reveal_sync_events WHERE event_id = ?').bind(ev.id).run().catch(() => {});
+  // Our own write coming back: nothing to do (the workflows skip these too)
+  if (ev.bySite) return { jobId, action: 'echo', ran: false };
+  const gate = await limitAll(DB, [[`reveal-sync:job:${jobId}`, WAKE_PER_JOB, 60], ['reveal-sync:all', WAKE_ALL, 60]], { now });
+  if (!gate.ok) {
+    await release();
+    return { jobId, action: 'throttled', ran: false };
   }
+  try {
+    return { ...(await syncJob(env, { jobId, source: ev.source }, { fetchImpl, now })), ran: true };
+  } catch (err) {
+    await release();
+    throw err;
+  }
+}
+
+/**
+ * Bring one job's two sides together. `source` says which side changed
+ * ('task' | 'field'): from a verified JobTread event (wakeSync) or the
+ * weekday reveal check, never from a request body.
+ */
+export async function syncJob(env, { jobId, source: changed }, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB, JOBTREAD_GRANT_KEY: key } = env;
+  const source = changed === 'field' ? 'field' : 'task';
+  await ensureSchema(DB);
+  const row = await readRow(DB, jobId);
 
   const job = await fetchSyncJob(key, jobId, fetchImpl);
   const plan = planSync(job, source);
