@@ -26,6 +26,7 @@ import {
   stopFor, fieldError, formErrors, answerSections, isInput, isUpload, dateText,
 } from '../../../functions/api/_application-form.js';
 import { renderPages, t as word, imageUrl } from './application-render.js';
+import { signupCheck, postPlainly } from '../../utils/signup-check';
 
 const API = '/api/apply';
 const STORE_KEY = 'soard-application-draft';
