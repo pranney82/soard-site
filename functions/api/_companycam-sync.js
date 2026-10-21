@@ -63,7 +63,7 @@ import {
   companycamOn, CompanyCamError, getProject, searchProjects, createProject, archiveProject, unarchiveProject,
   setProjectDescription, addProjectLabels, removeProjectLabel, projectUrl, projectPhotos, projectDocuments,
   getPhoto, getDocument, photoImageUrl, markupText, uploadPhoto, listWebhooks, createWebhook, updateWebhook,
-  deleteWebhook, webhookToken,
+  deleteWebhook, webhookToken, setPhotoDescription, addPhotoTags, listTags,
 } from './_companycam.js';
 
 const MIN = 60 * 1000;
@@ -282,7 +282,16 @@ function whenText(t) {
   return Number.isNaN(d.getTime()) ? '' : WHEN.format(d);
 }
 const plainCaption = (item) => String(typeof item?.description === 'string' ? item.description : item?.description?.plain_text_content || '').replace(/\s+/g, ' ').trim();
-const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+const safeName = (s) => String(s || '').replace(/[\\/\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** A caption short enough for a file name: a whole first sentence that fits, else whole words and "…" */
+export function captionWords(caption, max = 60) {
+  const c = safeName(caption);
+  if (c.length <= max) return c;
+  const cut = c.slice(0, max);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  if (end >= 20) return cut.slice(0, end + (cut[end] === '.' || cut[end] === ';' ? 0 : 1));
+  return `${cut.replace(/\s+\S*$/, '').replace(/[\s,;:.-]+$/, '')}…`;
+}
 
 /** The JobTread file a CompanyCam photo or document becomes: { name, description } */
 export function copyOf(kind, item) {
@@ -290,11 +299,11 @@ export function copyOf(kind, item) {
     return { name: safeName(item?.name).slice(0, 120) || 'CompanyCam document', description: item?.project_id ? `From CompanyCam: ${projectUrl(item.project_id)}` : null };
   }
   const caption = plainCaption(item);
-  const words = safeName(caption).slice(0, 60).replace(/\s+\S*$/, (m) => (caption.length > 60 ? '' : m)).trim();
+  const words = captionWords(caption);
   const when = whenText(item?.captured_at);
   const markup = markupText(item);
   return {
-    name: `${words || FOLDER}${when ? ` ${when}` : ''}.jpg`,
+    name: `${words || FOLDER}${when ? ` · ${when}` : ''}.jpg`,
     description: [caption, markup && `Markup: ${markup}`, item?.photo_url && `In CompanyCam: ${item.photo_url}`].filter(Boolean).join('\n').slice(0, 4000) || null,
   };
 }
@@ -1065,29 +1074,38 @@ export async function companycamFacts(env) {
 /**
  * Once, on the first heartbeat with a working key and webhook (again only
  * when SELF_TEST changes): the whole path on the real CompanyCam and
- * JobTread, with test things only. A "TEST CompanyCam check" project at the
- * office gets one picture (the site's share card), and CompanyCam's webhook
- * has to bring it to the office account in JobTread (Home visit, .BeforePics).
- * Then a TEST job made with the project's id, the way an approval makes it,
- * shows whether JobTread keeps that link and copies the photo to the job
- * itself. Afterwards the test file is removed, the TEST job closed (like the
- * other rehearsal jobs there) and the test project archived. The result is
- * in companycam_state "self-test" and on Site → Automations. No button.
+ * JobTread, with test things only, at the office.
+ *   1. A TEST project gets one picture (the site's share card), and
+ *      CompanyCam's webhook has to bring it to the office account in JobTread
+ *      (Home visit, .BeforePics).
+ *   2. A caption, and a tag the company already has in CompanyCam, are added
+ *      there; both have to follow to the JobTread copy.
+ *   3. A TEST job made with the project's id, the way an approval makes it,
+ *      shows whether JobTread keeps that link and copies the photo itself.
+ *   4. The move: JobTread's copy gets the folder and tag, and the customer's
+ *      copy goes.
+ * Afterwards the TEST job is closed (like the other rehearsal jobs there)
+ * and the test project archived. The result is in companycam_state
+ * "self-test" and on Site → Automations. No button.
  */
-export const SELF_TEST = '2026-10-21';
+export const SELF_TEST = '2026-10-21b';
 export const OFFICE_ACCOUNT = '22P3HT8y9dhc'; // "Sunshine Office", where the rehearsal jobs live
-const SELF_TEST_NAME = 'TEST CompanyCam check';
+const SELF_TEST_JOB = 'TEST CompanyCam check';
 const SELF_TEST_CAPTION = 'TEST: the website checking CompanyCam to JobTread. Safe to ignore.';
+const SELF_TEST_CAPTION_2 = 'TEST: a caption added later in CompanyCam';
 const todayEastern = (now) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(now));
 
 export async function maybeSelfTest(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const { DB } = env;
   let st = await getState(DB, 'self-test');
   if (st?.id === SELF_TEST && st.step === 'done') return null;
+  // An earlier check still under way: its TEST job, project and file are tidied first
+  if (st && st.id !== SELF_TEST && st.step !== 'done') return finishSelfTest(env, { ...st, error: 'replaced by a newer check' }, { fetchImpl, now });
   if (!st || st.id !== SELF_TEST) st = { id: SELF_TEST, step: 'start', startedAt: iso(now) };
   try {
     if (st.step === 'start') return await selfTestStart(env, st, { fetchImpl, now });
     if (st.step === 'photo') return await selfTestPhoto(env, st, { fetchImpl, now });
+    if (st.step === 'update') return await selfTestUpdate(env, st, { fetchImpl, now });
     if (st.step === 'job') return await selfTestJob(env, st, { fetchImpl, now });
     return null;
   } catch (e) {
@@ -1100,12 +1118,13 @@ async function selfTestStart(env, st, { fetchImpl, now }) {
   const office = await readFamily(env, OFFICE_ACCOUNT, fetchImpl);
   const h = office?.home;
   if (!h?.street || !h.city || !h.state || !h.postal || !office.locationId) throw new Error('The office account has no full address in JobTread');
-  const body = { name: SELF_TEST_NAME, street_address_1: h.street, city: h.city, state: h.state, postal_code: h.postal, country: h.country || 'US' };
+  // Its own name each run: CompanyCam hands back a project it already has by name and address
+  const body = { name: `${SELF_TEST_JOB} ${SELF_TEST}`, street_address_1: h.street, city: h.city, state: h.state, postal_code: h.postal, country: h.country || 'US' };
   if (h.lat != null && h.lng != null) body.coordinates = { lat: String(h.lat), lon: String(h.lng) };
   const project = await createProject(env, body, { fetchImpl });
   if (!project?.id) throw new Error('CompanyCam didn’t make the test project');
   const projectId = String(project.id);
-  await saveFamily(DB, { account_id: OFFICE_ACCOUNT, project_id: projectId, project_url: project.project_url || projectUrl(projectId), name: SELF_TEST_NAME, stage: 'selftest', how: 'made', checked_at: now }, now);
+  await saveFamily(DB, { account_id: OFFICE_ACCOUNT, project_id: projectId, project_url: project.project_url || projectUrl(projectId), name: body.name, stage: 'selftest', how: 'made', checked_at: now }, now);
   const next = { ...st, step: 'photo', projectId, locationId: office.locationId };
   await putState(DB, 'self-test', next, now); // the project exists: cleaned up even if the photo fails
   const img = await fetchImpl(`${SITE_ORIGIN}/og/home.png`, { signal: AbortSignal.timeout(20000) });
@@ -1128,43 +1147,78 @@ async function selfTestPhoto(env, st, { fetchImpl, now }) {
   }
   const seen = await getState(DB, 'webhook-seen');
   const file = await jtFile(env, f.jt_file_id, fetchImpl);
-  const before = (await fileTags(env, fetchImpl, now)).get(tagKey(BEFORE_TAG));
+  const tags = await fileTags(env, fetchImpl, now);
+  const before = tags.get(tagKey(BEFORE_TAG));
   const copied = {
-    fileId: f.jt_file_id, seconds: Math.max(0, Math.round((Date.parse(f.copied_at) - Date.parse(st.photoAt)) / 1000)),
+    fileId: f.jt_file_id, name: file?.name || null, seconds: Math.max(0, Math.round((Date.parse(f.copied_at) - Date.parse(st.photoAt)) / 1000)),
     byWebhook: !!seen && Date.parse(seen.at) >= Date.parse(st.photoAt), folder: file?.folder === FOLDER, beforeTag: !before || tagIdsOf(file).includes(before),
   };
+  // A caption and a tag added in CompanyCam later: a tag the company already has whose name JobTread also has, never a new one
+  const ccTag = (await listTags(env, { fetchImpl })).find((t) => { const k = tagKey(t.display_value || t.value); return k && k !== tagKey(BEFORE_TAG) && tags.has(k); }) || null;
+  await setPhotoDescription(env, st.photoId, SELF_TEST_CAPTION_2, { fetchImpl });
+  if (ccTag) await addPhotoTags(env, st.photoId, [ccTag.display_value || ccTag.value], { fetchImpl });
+  const next = { ...st, step: 'update', copied, tag: ccTag ? { name: ccTag.display_value || ccTag.value, jtId: tags.get(tagKey(ccTag.display_value || ccTag.value)) } : null, updateAt: iso(now) };
+  await putState(DB, 'self-test', next, now);
+  return next;
+}
+
+async function selfTestUpdate(env, st, { fetchImpl, now }) {
+  const { DB } = env;
+  const file = await jtFile(env, st.copied.fileId, fetchImpl);
+  const fresh = await jt(env, { file: { $: { id: st.copied.fileId }, description: {} } }, fetchImpl).catch(() => null);
+  const updated = {
+    caption: String(fresh?.file?.description || '').startsWith(SELF_TEST_CAPTION_2),
+    tag: st.tag ? tagIdsOf(file).includes(st.tag.jtId) : null,
+    tagsKept: tagIdsOf(file).length > 0,
+  };
+  if (!(updated.caption && updated.tag !== false) && now - Date.parse(st.updateAt) < 10 * MIN) return st; // its webhooks, or the 10-minute check
   // The job, made with the project's id the way an approval makes it
-  const out = await jt(env, { createJob: { $: { locationId: st.locationId, name: SELF_TEST_NAME, companycamId: st.projectId }, createdJob: { id: {} } } }, fetchImpl);
+  const out = await jt(env, { createJob: { $: { locationId: st.locationId, name: SELF_TEST_JOB, companycamId: st.projectId }, createdJob: { id: {} } } }, fetchImpl);
   const jobId = out?.createJob?.createdJob?.id;
-  if (!jobId) return finishSelfTest(env, { ...st, copied, error: 'JobTread didn’t make the TEST job' }, { fetchImpl, now });
-  const next = { ...st, step: 'job', copied, jobId, jobAt: iso(now) };
+  if (!jobId) return finishSelfTest(env, { ...st, updated, error: 'JobTread didn’t make the TEST job' }, { fetchImpl, now });
+  const next = { ...st, step: 'job', updated, jobId, jobAt: iso(now) };
   await putState(DB, 'self-test', next, now);
   return next;
 }
 
 async function selfTestJob(env, st, { fetchImpl, now }) {
+  const { DB } = env;
   const waited = now - Date.parse(st.jobAt);
   if (waited < 3 * MIN) return st;
   const r = await jt(env, { job: { $: { id: st.jobId }, id: {}, companycamId: {}, files: { $: { size: 5, where: ['name', '=', `CompanyCam ${st.photoId}`] }, nodes: { id: {} } } } }, fetchImpl);
   const job = { linkKept: String(r?.job?.companycamId || '') === st.projectId, imported: !!r?.job?.files?.nodes?.length, projectNow: r?.job?.companycamId ? String(r.job.companycamId) : null };
   if (!job.imported && waited < 10 * MIN) return st; // more time for JobTread's own copy
-  return finishSelfTest(env, { ...st, job }, { fetchImpl, now });
+  // The move, exactly as a family's runs once their job has the photos
+  let moved = null;
+  if (job.imported) {
+    const linkedAt = iso(now - MOVE_AFTER_MS - 1000);
+    await saveFamily(DB, { account_id: OFFICE_ACCOUNT, stage: 'linked', job_id: st.jobId, linked_at: linkedAt }, now);
+    const row = await getFamilyRow(DB, OFFICE_ACCOUNT);
+    const done = await moveToJob(env, row, { fetchImpl, now });
+    const theirs = r.job.files.nodes[0].id;
+    const native = await jtFile(env, theirs, fetchImpl);
+    const ours = await jtFile(env, st.copied.fileId, fetchImpl).catch(() => null);
+    const before = (await fileTags(env, fetchImpl, now)).get(tagKey(BEFORE_TAG));
+    moved = { ran: done.length === 1, folder: native?.folder === FOLDER, beforeTag: !before || tagIdsOf(native).includes(before), customerCopyGone: !ours };
+  }
+  return finishSelfTest(env, { ...st, job, moved }, { fetchImpl, now });
 }
 
 /** Clean up what the check made and keep the result. Never throws. */
 async function finishSelfTest(env, st, { fetchImpl, now }) {
   const { DB } = env;
   const tidy = async (what, fn) => { try { await fn(); } catch (e) { console.warn('[companycam] self-test tidy', what, e.message); } };
-  if (st.copied?.fileId) await tidy('file', () => deleteJtFile(env, st.copied.fileId, fetchImpl));
+  if (st.copied?.fileId && !st.moved?.customerCopyGone) await tidy('file', async () => { if (await jtFile(env, st.copied.fileId, fetchImpl)) await deleteJtFile(env, st.copied.fileId, fetchImpl); });
   if (st.jobId) await tidy('job', () => jt(env, { updateJob: { $: { id: st.jobId, closedOn: todayEastern(now) } } }, fetchImpl));
   for (const id of new Set([st.projectId, st.job?.projectNow].filter(Boolean))) await tidy('project', () => archiveProject(env, id, { fetchImpl }));
   await tidy('rows', async () => {
-    await DB.prepare("DELETE FROM companycam_projects WHERE account_id = ? AND stage = 'selftest'").bind(OFFICE_ACCOUNT).run();
+    await DB.prepare("DELETE FROM companycam_projects WHERE account_id = ? AND stage IN ('selftest', 'linked')").bind(OFFICE_ACCOUNT).run();
     await DB.prepare('DELETE FROM companycam_files WHERE account_id = ?').bind(OFFICE_ACCOUNT).run();
   });
-  const ok = !st.error && !!st.copied?.folder && !!st.copied?.beforeTag;
+  const ok = !st.error && !!st.copied?.folder && !!st.copied?.beforeTag && !!st.updated?.caption && st.updated?.tag !== false
+    && !!st.job?.linkKept && !!st.job?.imported && !!st.moved?.ran && !!st.moved?.folder && !!st.moved?.beforeTag && !!st.moved?.customerCopyGone;
   const done = { ...st, step: 'done', ok, at: iso(now) };
   await putState(DB, 'self-test', done, now).catch(() => null);
-  console.log('[companycam] self-test', JSON.stringify({ ok, error: st.error || null, copied: st.copied || null, job: st.job || null }));
+  console.log('[companycam] self-test', JSON.stringify({ ok, error: st.error || null, copied: st.copied || null, updated: st.updated || null, job: st.job || null, moved: st.moved || null }));
   return done;
 }

@@ -15,7 +15,7 @@ import { ensureApplicantSchema } from '../functions/api/_applicants.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { webhookToken, signatureFor, CC_API } from '../functions/api/_companycam.js';
 import {
-  maybeRunCompanyCam, syncFamily, getFamilyRow, takeEvent, processFile, streetKey, copyOf, tagIdsFor, companycamFacts, ensureCompanyCamSchema,
+  maybeRunCompanyCam, syncFamily, getFamilyRow, takeEvent, processFile, streetKey, copyOf, captionWords, tagIdsFor, companycamFacts, ensureCompanyCamSchema,
   WEBHOOK_URL, WEBHOOK_SCOPES, FOLDER, VETTING_LABEL, SELF_TEST, OFFICE_ACCOUNT,
 } from '../functions/api/_companycam-sync.js';
 import { familyProjectId } from '../functions/api/_companycam-link.js';
@@ -56,7 +56,7 @@ function accountNode(a) {
   };
 }
 function fileNode(f) {
-  return { id: f.id, name: f.name, folder: f.folder ?? null, type: f.type || 'image/jpeg', url: f.url || `https://cdn.example.com/jt/${f.id}.jpg`, createdAt: f.createdAt || new Date(T0).toISOString(), fileTags: { nodes: (f.fileTagIds || []).map((id) => ({ id })) }, comments: { nodes: (f.comments || []).map((id) => ({ id })) } };
+  return { id: f.id, name: f.name, folder: f.folder ?? null, description: f.description ?? null, type: f.type || 'image/jpeg', url: f.url || `https://cdn.example.com/jt/${f.id}.jpg`, createdAt: f.createdAt || new Date(T0).toISOString(), fileTags: { nodes: (f.fileTagIds || []).map((id) => ({ id })) }, comments: { nodes: (f.comments || []).map((id) => ({ id })) } };
 }
 function jobtread(body) {
   const { query } = body;
@@ -175,6 +175,19 @@ async function companycam(url, init) {
     if (!w.cc.projects.has(m[1])) return notFound();
     return page([...w.cc.documents.values()].filter((d) => d.project_id === m[1]));
   }
+  if ((m = path.match(/^\/photos\/(\d+)\/descriptions$/)) && method === 'POST') {
+    const p = w.cc.photos.get(m[1]);
+    p.description = { id: `d${p.id}b`, html_content: body.description.content, plain_text_content: body.description.content };
+    p.updated_at = new Date(w.now).toISOString();
+    return one(p, 201);
+  }
+  if ((m = path.match(/^\/photos\/(\d+)\/tags$/)) && method === 'POST') {
+    const p = w.cc.photos.get(m[1]);
+    p.tags = [...p.tags, ...body.tags.map((t) => ({ id: `t-${t}`, display_value: t, value: t.toLowerCase() }))];
+    p.updated_at = new Date(w.now).toISOString();
+    return one(p.tags, 201);
+  }
+  if (method === 'GET' && path === '/tags') return page([{ id: 'cct1', display_value: 'Roof', value: 'roof' }, { id: 'cct2', display_value: 'Exterior', value: 'exterior' }]);
   if ((m = path.match(/^\/photos\/(\d+)$/)) && method === 'GET') return w.cc.photos.has(m[1]) ? one(w.cc.photos.get(m[1])) : notFound();
   if ((m = path.match(/^\/documents\/(\d+)$/)) && method === 'GET') return w.cc.documents.has(m[1]) ? one(w.cc.documents.get(m[1])) : notFound();
   if (method === 'POST' && path === '/uploads') {
@@ -374,7 +387,7 @@ test('a home-visit photo copies to the customer once, from CompanyCam’s own re
   const [copy] = customerFiles(a);
   assert.ok(copy, 'on the customer');
   assert.equal(copy.folder, FOLDER);
-  assert.match(copy.name, /^Hallway to the bedroom Oct 21, 2026, 11:00 AM\.jpg$/);
+  assert.match(copy.name, /^Hallway to the bedroom · Oct 21, 2026, 11:00 AM\.jpg$/);
   assert.deepEqual(copy.fileTagIds, ['tagBefore', 'tagExterior'], '.BeforePics, and the CompanyCam tag JobTread also has');
   assert.match(copy.description, /^Hallway to the bedroom\nIn CompanyCam: https:\/\/app\.companycam\.com\/photos\//);
   assert.doesNotMatch(copy.description, /whatever the body says/, 'the webhook body is only a wake-up');
@@ -416,7 +429,7 @@ test('the catch-up check copies what no webhook mentioned, and JobTread fetching
   await run(11);
   await run(12);
   const names = customerFiles(a).map((f) => f.name).sort();
-  assert.deepEqual(names, ['Measurements.pdf', 'Missed one Oct 21, 2026, 11:00 AM.jpg']);
+  assert.deepEqual(names, ['Measurements.pdf', 'Missed one · Oct 21, 2026, 11:00 AM.jpg']);
   assert.ok(w.jtCalls.some((c) => c.op === 'createUploadRequest' && c.args.size === 6), 'the site carried the bytes');
 });
 
@@ -606,8 +619,10 @@ test('streets match however they’re written', () => {
 });
 
 test('a copy’s name and tags', () => {
-  assert.equal(copyOf('photo', { description: { plain_text_content: '' }, captured_at: '2026-10-21T18:05:00Z' }).name, 'Home visit Oct 21, 2026, 2:05 PM.jpg');
-  assert.equal(copyOf('photo', { description: { plain_text_content: 'a/b: c' }, captured_at: 1792000000 }).name.startsWith('a b c '), true, 'webhook seconds, and no slashes in a file name');
+  assert.equal(copyOf('photo', { description: { plain_text_content: '' }, captured_at: '2026-10-21T18:05:00Z' }).name, 'Home visit · Oct 21, 2026, 2:05 PM.jpg');
+  assert.equal(copyOf('photo', { description: { plain_text_content: 'a/b: c' }, captured_at: 1792000000 }).name.startsWith('a b: c · '), true, 'webhook seconds, and no slashes in a file name');
+  assert.equal(captionWords('TEST: the website checking CompanyCam to JobTread. Safe to ignore.'), 'TEST: the website checking CompanyCam to JobTread', 'a whole first sentence when it fits');
+  assert.equal(captionWords('A really long caption about the hallway leading into the bedroom and the doorway width'), 'A really long caption about the hallway leading into the…', 'else whole words');
   assert.equal(copyOf('document', { name: 'Plan.pdf', project_id: '9' }).name, 'Plan.pdf');
   const tags = new Map([['beforepics', 'B'], ['exterior', 'E']]);
   assert.deepEqual(tagIdsFor('photo', [{ display_value: 'EXTERIOR' }, { display_value: 'Exterior' }], tags), ['B', 'E']);
@@ -643,38 +658,48 @@ test('a photo still processing waits, and one JobTread keeps refusing reaches Sl
   assert.equal((await processFile(env, `photo:${p.id}`, { fetchImpl: fakeFetch, now: at(2401) })).busy, true, 'nothing owed');
 });
 
-test('the one-time check: a test photo at the office reaches JobTread by the webhook, a TEST job keeps the link, and it all gets tidied', async () => {
+test('the one-time check: copy, update, link and move, on test things at the office, then tidied', async () => {
   await env.DB.prepare("DELETE FROM companycam_state WHERE key = 'self-test'").run();
   const office = { id: OFFICE_ACCOUNT, name: 'Sunshine Office', status: null, year: null, types: [], home: { street: '1 Office Park', city: 'Sampleton', state: 'GA', postal: '30001' }, contact: null };
   w.accounts.set(office.id, office);
   await run(0);
-  const project = [...w.cc.projects.values()].find((p) => p.name === 'TEST CompanyCam check');
-  assert.ok(project, 'a TEST project at the office');
+  const project = [...w.cc.projects.values()].find((p) => p.name === `TEST CompanyCam check ${SELF_TEST}`);
+  assert.ok(project, 'a TEST project at the office, its own name each run');
   const [photo] = [...w.cc.photos.values()].filter((p) => p.project_id === project.id);
-  assert.ok(photo);
-  // CompanyCam processes it, and its webhook comes
+  // 1. CompanyCam processes it, and its webhook comes
   w.now = at(0.5);
   await signed(photoCreated(photo));
   const copy = customerFiles(office)[0];
-  assert.equal(copy.folder, FOLDER);
-  assert.ok(copy.fileTagIds.includes('tagBefore'));
+  assert.equal(copy.name, 'TEST: the website checking CompanyCam to JobTread · Oct 21, 2026, 11:00 AM.jpg');
+  // 2. A caption and a tag the company already has, added in CompanyCam
   await run(1);
-  const job = [...w.jobs.values()].find((j) => j.name === 'TEST CompanyCam check');
-  assert.equal(job.companycamId, project.id, 'made with the project’s id, as an approval does');
-  jobtreadImports(job.id);
+  assert.equal(photo.description.plain_text_content, 'TEST: a caption added later in CompanyCam');
+  assert.deepEqual(photo.tags.map((t) => t.display_value), ['Exterior'], 'the CompanyCam tag JobTread also has (":Exterior"), never a new one');
+  w.now = at(1.2);
+  await signed({ event_type: 'photo.description_updated', payload: { photo: { id: photo.id, project_id: photo.project_id } } });
+  assert.match(copy.description, /^TEST: a caption added later in CompanyCam\n/);
+  assert.ok(copy.fileTagIds.includes('tagExterior') && copy.fileTagIds.includes('tagBefore'));
+  // 3. The TEST job, made with the project's id
   await run(2);
+  const job = [...w.jobs.values()].find((j) => j.name === 'TEST CompanyCam check');
+  assert.equal(job.companycamId, project.id);
+  jobtreadImports(job.id);
+  await run(3);
   assert.equal((await companycamFacts(env)).selfTest.step, 'job', 'JobTread gets three minutes');
-  await run(5);
+  // 4. The move
+  await run(6);
   const facts = (await companycamFacts(env)).selfTest;
   assert.deepEqual([facts.step, facts.ok, facts.linkKept, facts.imported], ['done', true, true, true]);
-  assert.equal(typeof facts.seconds, 'number', 'how long CompanyCam → JobTread took (the webhook route runs on the real clock)');
-  assert.deepEqual(customerFiles(office), [], 'the test file is gone');
+  const [native] = jobFiles(job.id);
+  assert.equal(native.folder, FOLDER);
+  assert.ok(native.fileTagIds.includes('tagBefore'));
+  assert.deepEqual(customerFiles(office), [], 'the customer’s copy moved off');
   assert.equal(w.jobs.get(job.id).closedOn, '2026-10-21', 'the TEST job is closed');
   assert.equal(project.archived, true);
   assert.equal(await getFamilyRow(env.DB, OFFICE_ACCOUNT), null);
   // Never again
   await run(10);
-  assert.equal([...w.cc.projects.values()].filter((p) => p.name === 'TEST CompanyCam check').length, 1);
+  assert.equal([...w.cc.projects.values()].filter((p) => p.name.startsWith('TEST CompanyCam check')).length, 1);
 });
 
 test('the one-time check fails clearly when the webhook never comes, and still tidies up', async () => {
@@ -686,7 +711,7 @@ test('the one-time check fails clearly when the webhook never comes, and still t
   const facts = (await companycamFacts(env)).selfTest;
   assert.equal(facts.ok, false);
   assert.match(facts.error, /webhook never brought the photo/);
-  assert.equal([...w.cc.projects.values()].find((p) => p.name === 'TEST CompanyCam check').archived, true);
+  assert.equal([...w.cc.projects.values()].find((p) => p.name.startsWith('TEST CompanyCam check')).archived, true);
   assert.equal([...w.jobs.values()].length, 0, 'no TEST job without a copied photo');
 });
 
@@ -717,4 +742,19 @@ test('a new makeover at a house with an earlier one: never the old project, even
   assert.equal(w.cc.projects.get(row.project_id).name, 'Quill Moss (2027) home visit');
   await run(15);
   assert.equal(customerFiles(a).length, 0, 'the old build photos never copy');
+});
+
+test('a newer check tidies an earlier one still under way before it starts', async () => {
+  const office = { id: OFFICE_ACCOUNT, name: 'Sunshine Office', home: { street: '1 Office Park', city: 'Sampleton', state: 'GA', postal: '30001' }, contact: null, types: [] };
+  w.accounts.set(office.id, office);
+  w.cc.projects.set('950', { id: '950', name: 'TEST CompanyCam check', status: 'active', archived: false, address: { street_address_1: '1 Office Park' }, project_url: 'https://app.companycam.com/projects/950' });
+  w.files.set('oldcopy', { id: 'oldcopy', name: 'old.jpg', targetType: 'account', targetId: OFFICE_ACCOUNT, createdBy: 'site' });
+  w.jobs.set('oldjob', { id: 'oldjob', accountId: OFFICE_ACCOUNT, name: 'TEST CompanyCam check', companycamId: '950', createdAt: new Date(T0).toISOString() });
+  await env.DB.prepare("UPDATE companycam_state SET value = ? WHERE key = 'self-test'").bind(JSON.stringify({ id: 'older', step: 'job', projectId: '950', copied: { fileId: 'oldcopy' }, jobId: 'oldjob', jobAt: new Date(T0).toISOString() })).run();
+  await run(0);
+  assert.equal(w.cc.projects.get('950').archived, true);
+  assert.equal(w.jobs.get('oldjob').closedOn, '2026-10-21');
+  assert.equal(w.files.has('oldcopy'), false);
+  await run(1);
+  assert.ok([...w.cc.projects.values()].some((p) => p.name === `TEST CompanyCam check ${SELF_TEST}`), 'then the new one starts');
 });
