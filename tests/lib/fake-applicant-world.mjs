@@ -177,6 +177,9 @@ export function fakeApplicantWorld() {
           break;
         }
         case 'updateAccount': {
+          // Like JobTread: updateAccount returns the query root, so selecting
+          // "account" under it is a new lookup that needs its own id
+          if (v.account && !v.account.$) throw Object.assign(new Error('A non-null value is required at "updateAccount"."account"."$"'), { status: 400 });
           const a = world.accounts[input.id];
           if (!a) throw Object.assign(new Error('no account'), { status: 400 });
           if ('archive' in input) {
@@ -196,7 +199,7 @@ export function fakeApplicantWorld() {
             }
             logEvent('accountUpdated', a, { next: { custom: next }, previous: { custom: previous } });
           }
-          out.updateAccount = { account: { id: a.id } };
+          out.updateAccount = {};
           break;
         }
         case 'account':

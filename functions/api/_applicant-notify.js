@@ -512,7 +512,7 @@ export async function moveBack(env, accountId, { user = null, fetchImpl = fetch,
   await ensureNotifySchema(DB);
   const row = await getRow(DB, accountId);
   if (!row || !known(row.previous) || !row.previous) return { ok: false, error: 'There’s no earlier status to go back to.' };
-  await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: accountId, customFieldValues: { [FIELD_STATUS]: row.previous } }, account: { id: {} } } }, fetchImpl);
+  await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: accountId, customFieldValues: { [FIELD_STATUS]: row.previous } } } }, fetchImpl);
   const applicant = await readApplicant(env, accountId, fetchImpl);
   const out = applicant ? await noteStatus(env, applicant, { at: iso(now), by: { name: user }, via: 'website', fetchImpl, now }) : {};
   await log(DB, accountId, { title: `Moved back to ${row.previous}`, body: 'From the status summary email. Nothing was sent to the family.', by: user, source: 'website' }, now);

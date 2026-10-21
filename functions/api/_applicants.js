@@ -644,7 +644,7 @@ export function fieldInput(key, value) {
 }
 
 async function updateAccountFields(env, accountId, customFieldValues, fetchImpl) {
-  await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: accountId, customFieldValues }, account: { id: {} } } }, fetchImpl);
+  await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: accountId, customFieldValues } } }, fetchImpl);
 }
 
 /**
@@ -739,7 +739,7 @@ export async function addNote(env, accountId, { message, user = 'admin', fetchIm
 
 /** Archive (or bring back) the account in JobTread */
 export async function archiveApplicant(env, accountId, { archive = true, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
-  await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: accountId, archive: !!archive }, account: { id: {} } } }, fetchImpl);
+  await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: accountId, archive: !!archive } } }, fetchImpl);
   await refreshApplicants(env, [accountId], { fetchImpl, now });
   await logSite(env.DB, accountId, { kind: archive ? 'archived' : 'unarchived', title: archive ? 'Archived' : 'Unarchived', user, now });
   return getApplicantRow(env.DB, accountId);
