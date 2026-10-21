@@ -358,7 +358,7 @@ const MAP = { t: 'Everything we send', children: [
           live: first(needs('resend', NO_RESEND), (f) => {
             const l = f.applicationLimit;
             if (!l) return null;
-            if (!l.max) return OFF(`No limit is set for ${l.year}, so this never goes. Set one in Applications → Settings → Application limit.`);
+            if (!l.max) return OFF(`No limit is set for ${l.year}, so this never goes. Set one in Applications → Settings: switch on “Close at a number of applications”.`);
             return ON(l.full ? `The ${l.year} season is full (${l.received} of ${l.max}).` : `${l.received} of ${l.max} are in for ${l.year}; the heads-up goes at ${l.warnAt}.`, l.last?.at);
           }) },
         { t: 'Application stuck', s: 'live', k: 'email', by: 'auto', preview: 'staff-stuck',

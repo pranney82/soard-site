@@ -29,9 +29,11 @@
  *     family's data, the notice on the other views
  *   - Insights: tiles, funnel, where people stop, per week, links back
  *   - Applicants: ./applicants.js loads (or a friendly card)
- *   - Settings: open and close through the confirm step, the since line, the
- *     Apply page's publish state, season/closed message/outside form, open and
- *     close times (and the heartbeat opening it), the family preview, Recent
+ *   - Settings: one "open and closed" card (where things stand and what
+ *     happens next, the season, each way it opens and closes by itself behind
+ *     a switch, what families read); open and close through the confirm step,
+ *     the since line, season/closed message/outside form, open and close
+ *     times (and the heartbeat opening it), the family preview, Recent
  *     changes; only `application` is written, a change saved elsewhere stops
  *     the save, ⌘S, the tab badge, one save bar for every card; the
  *     new-application email, email timing and the service area save straight
@@ -1012,7 +1014,12 @@ try {
     await page.waitForSelector('.afe-status', { timeout: 8000 });
     ok(/#applications\/settings$/.test(await page.evaluate(() => location.hash)), 'its hash');
     ok(/Applications are closed/.test(await status()) && /Season: 2027/.test(await status()), 'the status says closed, season 2027');
-    ok(/Application form[\s\S]*right away[\s\S]*Apply page[\s\S]*right away/i.test(await status()), 'where it shows: the form and the Apply page, both right away');
+    ok(/The Apply page and the application form follow this right away/.test(await status()), 'where it shows: the Apply page and the form, both right away');
+    ok(/Stays closed until someone opens it\./.test(await status()), 'and what happens next: nothing, until someone opens it');
+    ok(await count(page, '.afe-avail') === 1 && await count(page, '.afe-avail .afe-status') === 1 && !(await page.$('#afe-set-season, #afe-set-times, #afe-set-limit')), 'open and closed live in one card, not three');
+    const rowsInCard = await page.$$eval('.afe-avail .afe-srow', (els) => els.map(e => (e.querySelector('.afe-srow-l label')?.textContent || '').trim()));
+    ok(JSON.stringify(rowsInCard) === JSON.stringify(['Season', 'Open on a date', 'Close on a date', 'Close at a number of applications', 'While closed', 'Outside form optional']), `its rows, in order (${rowsInCard.join(' / ')})`);
+    ok(await page.$eval('#afe-sw-closesAt', (e) => e.disabled && !e.checked) && /Turn on “Open on a date” first/.test(await text(page, '#afe-way-closesAt')), 'closed: a close time waits for an opening time, and says so');
     ok((await saveOff()) === true, 'nothing to save yet');
     await page.waitForFunction(() => /3\s*families are waiting/.test(document.querySelector('.wl')?.innerText || ''), { timeout: 8000 }).catch(() => {});
     const wl = () => text(page, '.wl');
@@ -1068,9 +1075,9 @@ try {
     await page.select('#afe-season', '2028');
     await typeInto(page, '#afe-closed', 'Applications reopen in January.');
     await typeInto(page, '#afe-formurl', 'example.com/form');
-    ok(/starts with https/.test(await text(page, '.afe-settings')) && (await saveOff()) === true, 'a link without https:// blocks Save');
+    ok(/starts with https/.test(await text(page, '.afe-avail')) && (await saveOff()) === true, 'a link without https:// blocks Save');
     await typeInto(page, '#afe-formurl', '');
-    ok((await saveOff()) === false && /Unsaved changes to season and wording/.test(await text(page, '.afe-savebar')), 'unsaved, the save bar says what, and Save is on');
+    ok((await saveOff()) === false && /Unsaved changes to the season and what families read/.test(await text(page, '.afe-savebar')), 'unsaved, the save bar says what, and Save is on');
     await clickText(page, '.afe-fam .afe-seg button', /^Closed$/);
     ok(/Applications reopen in January\./.test(await text(page, '.afe-fam-banner')) && /with your unsaved changes/.test(await text(page, '.afe-fam')), 'the preview draws the unsaved closed message');
     await clickText(page, '.afe-fam .afe-seg button', /^Open$/);
@@ -1084,12 +1091,26 @@ try {
 
     // Close on a time
     const closeAt = Date.now() + 3 * 864e5;
+    ok(!(await page.$('#afe-opensAt')) && !(await page.$('#afe-way-opensAt')), 'open: no "Open on a date" row');
+    ok(!(await page.$('#afe-closesAt')) && /Off: no closing date/.test(await text(page, '#afe-way-closesAt')), 'off: no box, and it says so');
+    await page.click('#afe-sw-closesAt');
+    await page.waitForSelector('#afe-closesAt', { timeout: 3000 }).catch(() => {});
+    await sleep(80);
+    ok(await page.evaluate(() => document.activeElement?.id) === 'afe-closesAt', 'switching it on puts the cursor in its box');
+    ok(!(await page.$('.afe-savebar')), 'switched on but blank: nothing to save yet');
     await setLocal('#afe-closesAt', local(closeAt));
+    ok(/In 3 days\./.test(await text(page, '#afe-way-closesAt')), 'the box says how far off it is');
+    ok(/After you save: Closes by itself on .* \(in 3 days\)\./.test(await text(page, '.afe-after')), `and the card says what Save will do (${await text(page, '.afe-after')})`);
+    if (typeof axeScan === 'function') {
+      const axeTimes = await axeScan(page, '.afe-avail');
+      ok(!axeTimes.length, `axe: with a time box showing, the card has no WCAG 2.1 AA problems${axeTimes.length ? ` (${axeText(axeTimes)})` : ''}`);
+    }
     await saveBtn();
     await settled();
     st = await storedSettings();
     ok(st.application.closesAt && Math.abs(Date.parse(st.application.closesAt) - closeAt) < 60e3, 'a close time is stored');
-    ok(/Closes by itself/.test(await status()), 'the status says when it closes');
+    ok(await page.$eval('.afe-after', (e) => e.hidden), 'saved: the "after you save" line goes, the top says it now');
+    ok(/Closes by itself on .* \(in 3 days\)\./.test(await status()), `the status says when it closes (${(await status()).split('\n').find(l => /Closes by itself/.test(l))})`);
 
     // Close by hand: the scheduled close comes off
     await clickText(page, '.afe-status button', /^Close applications…$/);
@@ -1102,9 +1123,21 @@ try {
 
     // Open on a time; the heartbeat opens it
     const openAt = Date.now() + 2 * 864e5;
+    ok(await page.$eval('#afe-sw-closesAt', (e) => e.disabled), 'closed again: the close time waits for an opening');
+    await page.click('#afe-sw-opensAt');
+    await page.waitForSelector('#afe-opensAt', { timeout: 3000 }).catch(() => {});
     await setLocal('#afe-opensAt', local(openAt));
-    await page.waitForSelector('#afe-closesAt', { timeout: 3000 }).catch(() => {});
-    ok(!!(await page.$('#afe-closesAt')), 'with an opening set, a close time can be set too');
+    await sleep(80);
+    ok(await page.$eval('#afe-sw-closesAt', (e) => !e.disabled), 'with an opening set, a close time can be set too');
+    // Turning the opening off takes a close time with it (there'd be nothing to close)
+    await page.click('#afe-sw-closesAt');
+    await setLocal('#afe-closesAt', local(openAt + 864e5));
+    await page.click('#afe-sw-opensAt');
+    await sleep(80);
+    ok(!(await page.$('#afe-opensAt')) && !(await page.$('#afe-closesAt')) && !(await page.$('.afe-savebar')), 'switching the opening off clears both, nothing left to save');
+    await page.click('#afe-sw-opensAt');
+    await page.waitForSelector('#afe-opensAt', { timeout: 3000 }).catch(() => {});
+    await setLocal('#afe-opensAt', local(openAt));
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('soard-save')));
     await settled();
     st = await storedSettings();
@@ -1239,6 +1272,7 @@ try {
     const before = await storedSettings();
     const app = async () => (await storedSettings()).application;
     const card = () => text(page, '#afe-limit');
+    const meter = () => text(page, '.afe-status .afe-cap');
     const status = () => text(page, '.afe-status');
     const badge = () => text(page, '.afe-tabs [data-tab="settings"] .afe-tab-state');
     const saveOff = () => page.evaluate(() => [...document.querySelectorAll('.afe-savebar button')].find(x => /^(Save|Saving…)$/.test(x.textContent))?.disabled ?? true);
@@ -1253,18 +1287,32 @@ try {
     const warnAt = Math.floor(max * 0.8);
     await writeSettings({ ...before, application: { ...before.application, open: true, year: '2027', maxApplications: max, warnAt: 0, fullMessage: '', opensAt: '', closesAt: '', openChangedAt: new Date(NOW - 5 * DAY).toISOString(), openChangedBy: PETER } });
     await reloadTab();
-    await page.waitForFunction((m) => new RegExp(`of ${m} in for 2027`).test(document.querySelector('#afe-limit')?.innerText || ''), { timeout: 8000 }, max).catch(() => {});
-    ok(new RegExp(`${n}\\s*of ${max} in for 2027\\s*·\\s*5 left`).test(await card()), `the card counts the season (${(await card()).split('\n').slice(2, 5).join(' / ')})`);
-    ok(await page.$eval('#afe-limit .afe-cap-bar', (e) => e.classList.contains('is-near')), 'the bar is past the heads-up mark');
-    ok(new RegExp(`Team hears at ${warnAt}`).test(await card()) && /partway through/.test(await card()), 'it shows the heads-up mark and the families partway through');
-    ok(new RegExp(`${n} of ${max} in\\. Closes by itself at ${max}\\.`).test(await status()), `the status says where it stands (${(await status()).split('\n').find(l => /in\./.test(l))})`);
+    await page.waitForFunction((m) => new RegExp(`of ${m} in for 2027`).test(document.querySelector('.afe-status .afe-cap')?.innerText || ''), { timeout: 8000 }, max).catch(() => {});
+    ok(new RegExp(`${n}\\s*of ${max} in for 2027\\s*·\\s*5 left`).test(await meter()), `the top of the card counts the season (${(await meter()).split('\n').slice(0, 3).join(' / ')})`);
+    ok(await page.$eval('.afe-status .afe-cap-bar', (e) => e.classList.contains('is-near')), 'the bar is past the heads-up mark');
+    ok(new RegExp(`Team hears at ${warnAt}`).test(await meter()) && /partway through/.test(await meter()), 'it shows the heads-up mark and the families partway through');
+    ok(new RegExp(`Closes by itself at ${max} applications\\.`).test(await status()), `the status says what closes it (${(await status()).split('\n').find(l => /Closes by itself/.test(l))})`);
+    ok(await page.$eval('#afe-sw-limit', (e) => e.checked) && !!(await page.$('#afe-limit #afe-max')), 'the limit row is switched on, with its numbers');
+    ok(/When the season is full/.test(await text(page, '.afe-avail')), 'and the message when full sits with what families read');
     ok(await page.$eval('#afe-warn', (e) => e.placeholder) === String(warnAt), 'a blank heads-up shows its 80% point');
     // axe (scripts/lib/axe.mjs), where this copy of the script has it
     if (typeof axeScan === 'function') {
-      const axeCard = await axeScan(page, '#afe-limit');
-      ok(!axeCard.length, `axe: the limit card has no WCAG 2.1 AA problems${axeCard.length ? ` (${axeText(axeCard)})` : ''}`);
+      const axeCard = await axeScan(page, '.afe-avail');
+      ok(!axeCard.length, `axe: the open and closed card has no WCAG 2.1 AA problems${axeCard.length ? ` (${axeText(axeCard)})` : ''}`);
     }
     await shot(page, '34-settings-limit.png', { maxH: 2800 });
+
+    // Typing a new limit says what it would mean, before Save
+    const bigger = max + 10;
+    await setVal('#afe-max', String(bigger));
+    await sleep(120);
+    const after = (await text(page, '.afe-after')).replace(/\s+/g, ' ');
+    ok(after.includes(`After you save: Closes by itself at ${bigger} applications. ${n} are in, so there’s room for ${bigger - n} more families; the team hears at ${Math.floor(bigger * 0.8)}.`), `a bigger limit: what Save will do (${after})`);
+    ok(new RegExp(`${n}\\s*of ${max} in`).test(await meter()), 'while the top still shows what’s saved');
+    await shot(page, '34b-settings-limit-typing.png', { maxH: 1400 });
+    await setVal('#afe-max', String(max));
+    await sleep(120);
+    ok(await page.$eval('.afe-after', (e) => e.hidden) && !(await page.$('.afe-savebar')), 'back to the saved number: nothing to say, nothing to save');
 
     // Numbers that can't work are caught before saving
     await setVal('#afe-warn', String(max + 3));
@@ -1316,7 +1364,7 @@ try {
     await page.waitForFunction(() => /Applications are open/.test(document.querySelector('.afe-status')?.innerText || ''), { timeout: 8000 }).catch(() => {});
     a = await app();
     ok(a.open === true && a.maxApplications === raised, `stored: open with the new limit (${JSON.stringify({ open: a.open, max: a.maxApplications })})`);
-    ok(new RegExp(`${n} of ${raised} in\\. Closes by itself at ${raised}\\.`).test(await status()), 'the status follows');
+    ok(new RegExp(`Closes by itself at ${raised} applications\\.`).test(await status()) && new RegExp(`${n}\\s*of ${raised} in`).test(await meter()), 'the status follows');
     ok((await badge()) === 'Open', 'and the badge');
 
     // Phone width: the card fits (only the width changes, so the page doesn't reload)
@@ -1341,7 +1389,15 @@ try {
     await setVal('#afe-max', '');
     await sleep(100);
     ok(await page.$eval('#afe-warn', (e) => e.disabled) && !(await page.$('#afe-full')) && !(await page.$('.afe-fam button:nth-child(3)')), 'no limit: no heads-up, no full message, no Full preview');
+    ok(!!(await page.$('#afe-max')) && await page.$eval('#afe-sw-limit', (e) => e.checked), 'a blank limit box stays open while it is being retyped');
     await clickText(page, '.afe-savebar button', /^Discard$/);
+    // The switch takes it off in one go
+    await page.click('#afe-sw-limit');
+    await sleep(100);
+    ok(!(await page.$('#afe-max')) && /Off: no limit/.test(await card()) && /Unsaved changes to the application limit/.test(await text(page, '.afe-savebar')), 'switching the limit off clears it, ready to save');
+    await clickText(page, '.afe-savebar button', /^Discard$/);
+    await sleep(100);
+    ok(await page.$eval('#afe-sw-limit', (e) => e.checked) && !(await page.$('.afe-savebar')), 'Discard puts it back');
 
     // Back to how the sections before left it (settings, and scrolled to the top)
     await writeSettings(before);
@@ -1452,6 +1508,9 @@ try {
       if (tab === 'settings') {
         const seen = await p.$eval('.afe-tabs', (l) => { const lr = l.getBoundingClientRect(); const r = l.querySelector('[data-tab="settings"]').getBoundingClientRect(); return r.left >= lr.left - 1 && r.right <= lr.right + 1; });
         ok(seen, 'the tab row scrolls so Settings and its badge are in view');
+        const smallSwitch = await p.$$eval('.afe-avail .afe-switch', (els) => els.filter(e => e.getBoundingClientRect().height < 44).map(e => e.textContent.trim()));
+        ok(smallSwitch.length === 0, `the open and closed switches are big enough to tap${smallSwitch.length ? `: ${smallSwitch.join(', ')}` : ''}`);
+        ok(await p.$$eval('.afe-avail .form-input', (els) => els.every(e => parseFloat(getComputedStyle(e).fontSize) >= 16)), 'and its boxes are 16px (no zoom on focus)');
       }
       await p.evaluate(() => window.scrollTo(0, 0));
       await p.screenshot({ path: join(OUT, name) });

@@ -584,7 +584,7 @@ const CSS = `
 .afe-switch input:checked { background: var(--color-success); }
 .afe-switch input:checked::after { transform: translateX(16px); }
 .afe-switch input:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
-/* Settings: status + fields on the left, what families see + history on the right */
+/* Settings: open and closed + the other cards on the left, what families see + history on the right */
 .afe-set { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 1.25rem; align-items: start; }
 @media (max-width: 1100px) { .afe-set { grid-template-columns: minmax(0, 1fr); } }
 .afe-set-main, .afe-set-side { display: grid; gap: 1.25rem; min-width: 0; }
@@ -592,7 +592,6 @@ const CSS = `
 .afe-set h4 { margin: 0; font-size: .98rem; }
 .afe-set-fields { display: grid; gap: .1rem; margin-top: 1.1rem; max-width: 40rem; }
 .afe-set-fields select { max-width: 12rem; }
-.afe-set-times { max-width: 40rem; align-items: start; margin-top: 1rem; }
 .afe-opt { margin-left: .3rem; font-weight: 500; color: var(--color-text-muted); font-size: .78rem; }
 .afe-label { font-weight: 600; font-size: .85rem; }
 .afe-when { display: flex; gap: .5rem; align-items: center; }
@@ -600,13 +599,48 @@ const CSS = `
 .afe-root [aria-invalid="true"] { border-color: var(--color-danger); }
 .afe-status-row { display: flex; gap: .9rem 1rem; align-items: flex-start; flex-wrap: wrap; }
 .afe-status-dot { position: absolute; left: 0; top: .55rem; width: 14px; height: 14px; border-radius: 50%; background: var(--color-border-strong); }
-.afe-status.is-open { border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-border)); }
-.afe-status.is-open .afe-status-dot { background: var(--color-success); box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-success) 18%, transparent); }
+.afe-avail.is-open .afe-status-dot { background: var(--color-success); box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-success) 18%, transparent); }
 .afe-status-text { position: relative; flex: 1 1 18rem; min-width: 0; padding-left: 1.75rem; }
 .afe-status-text h3 { margin: 0 0 .25rem; font-size: 1.4rem; letter-spacing: -.01em; }
 .afe-status-text p { margin: 0; color: var(--color-text-secondary); font-size: .92rem; line-height: 1.5; }
-.afe-status-text .afe-status-next { display: flex; gap: .4rem; align-items: center; margin-top: .5rem; color: var(--color-text); font-weight: 600; }
+.afe-status-text .afe-status-next { display: flex; gap: .45rem; align-items: flex-start; margin-top: .6rem; color: var(--color-text); font-weight: 600; }
+.afe-status-next .afe-ico { margin-top: .2rem; }
 .afe-status-btn { flex-shrink: 0; }
+/* Open and closed, one card: where things stand on top, then bands of setting rows */
+.afe-avail { padding: 0; }
+.afe-avail.is-open { border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-border)); }
+.afe-avail .afe-status { padding: 1.4rem 1.5rem 1.25rem; }
+.afe-avail.is-open .afe-status { background: color-mix(in srgb, var(--color-success) 4%, var(--color-bg-card)); }
+.afe-reach { margin: 1rem 0 0; font-size: .84rem; line-height: 1.55; color: var(--color-text-secondary); }
+.afe-reach .afe-live { display: inline-block; margin: 0 .45rem 1px 0; vertical-align: middle; }
+.afe-reach a { color: inherit; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.afe-band { padding: 1.25rem 1.5rem 1.4rem; border-top: 1px solid var(--color-border); }
+.afe-band > h4 { margin: 0; font-size: 1rem; }
+.afe-band > .afe-lede { margin-top: .2rem; max-width: 46rem; font-size: .86rem; }
+.afe-rows { margin-top: .35rem; }
+.afe-srow { display: grid; grid-template-columns: minmax(0, 18rem) minmax(0, 1fr); gap: .45rem 2rem; padding: 1rem 0; }
+.afe-srow + .afe-srow { border-top: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent); }
+.afe-srow:last-child { padding-bottom: 0; }
+.afe-srow-l { display: grid; gap: .25rem; align-content: start; min-width: 0; }
+.afe-srow-l > label { font-weight: 600; font-size: .9rem; }
+.afe-srow-c { display: grid; gap: .35rem; align-content: start; min-width: 0; max-width: 34rem; }
+.afe-srow-c select.form-input { max-width: 10rem; }
+.afe-srow-c > .afe-note { margin: .3rem 0 0; }
+.afe-way .afe-switch { align-items: flex-start; font-size: .9rem; line-height: 1.35; min-height: 24px; }
+.afe-way .afe-switch input { flex: none; margin-top: -1px; }
+.afe-way .afe-srow-l > .afe-hint { padding-left: calc(38px + .55rem); }
+.afe-switch:has(input:disabled) { cursor: default; color: var(--color-text-muted); }
+.afe-after { margin: 1rem 0 0; }
+@media (pointer: coarse), (max-width: 768px) { .afe-switch { min-height: 44px; } .afe-way .afe-switch { min-height: 44px; align-items: center; } .afe-way .afe-switch input { margin-top: 0; } }
+.afe-switch input:disabled { opacity: .45; cursor: not-allowed; }
+.afe-way-off { margin: 0; padding-top: .15rem; color: var(--color-text-muted); }
+.afe-srow-c .afe-when .form-input { max-width: 16rem; }
+.afe-limit-fields { align-items: start; gap: .9rem; }
+.afe-limit-fields .afe-field { margin-bottom: 0; }
+.afe-limit-fields .form-input { max-width: 9rem; }
+@media (max-width: 768px) { .afe-avail .afe-status, .afe-band { padding-left: 1rem; padding-right: 1rem; } }
+@media (max-width: 720px) { .afe-srow { grid-template-columns: minmax(0, 1fr); gap: .55rem; } .afe-srow-c { max-width: none; } }
+@media (max-width: 480px) { .afe-limit-fields { grid-template-columns: minmax(0, 1fr); } }
 /* The application limit: how full the season is, the heads-up mark, and what's next */
 .afe-cap { max-width: 40rem; margin-top: 1rem; padding: .9rem 1rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-secondary); }
 .afe-cap-nums { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .55rem; font-size: .92rem; color: var(--color-text-secondary); }
@@ -619,16 +653,9 @@ const CSS = `
 .afe-cap-meta { display: flex; flex-wrap: wrap; gap: .25rem 1rem; font-size: .82rem; line-height: 1.45; color: var(--color-text-secondary); }
 .afe-cap-meta .afe-cap-mark { display: inline-flex; align-items: center; gap: .35rem; }
 .afe-cap-meta .afe-cap-mark::before { content: ''; width: 2px; height: 12px; border-radius: 1px; background: var(--color-text); opacity: .5; }
-.afe-cap-fields { max-width: 40rem; margin-top: 1rem; align-items: start; }
-.afe-cap-fields .form-input { max-width: 10rem; }
 .afe-cap-raise { display: grid; gap: .3rem; margin-top: 1rem; }
 .afe-status-text .afe-status-next a { color: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
 .afe-cap-raise .form-input { max-width: 10rem; }
-.afe-where { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem 1.5rem; margin: 1.15rem 0 0; padding: 1rem 0 0; border-top: 1px solid var(--color-border); }
-.afe-where > div { display: grid; gap: .3rem; min-width: 0; }
-.afe-where dt { font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-muted); }
-.afe-where dd { margin: 0; display: flex; gap: .3rem; align-items: center; flex-wrap: wrap; font-size: .88rem; color: var(--color-text-secondary); }
-.afe-where a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .afe-live { width: 8px; height: 8px; margin-right: .2rem; border-radius: 50%; background: var(--color-border-strong); flex-shrink: 0; }
 .afe-live.is-on { background: var(--color-success); }
 .afe-live.is-wait { background: var(--color-warning); }
@@ -652,7 +679,6 @@ const CSS = `
 .afe-log li:first-child { border-top: 0; padding-top: 0; }
 @media (max-width: 600px) {
   .afe-status-btn { width: 100%; justify-content: center; }
-  .afe-where { grid-template-columns: minmax(0, 1fr); }
   .afe-status-text h3 { font-size: 1.2rem; }
 }
 .afe-hist { display: grid; gap: .5rem; }
@@ -3472,7 +3498,6 @@ function VersionsView({ d, lead = null }) {
 //    functions/api/_application-forms.js), laid over every version of the form.
 // One save bar covers both; ⌘S saves.
 const SETTINGS_FIELDS = ['year', 'closedMessage', 'formUrl', 'opensAt', 'closesAt', 'maxApplications', 'warnAt', 'fullMessage'];
-const LIMIT_FIELDS = ['maxApplications', 'warnAt', 'fullMessage'];
 const RULE_FIELDS = ['staffEmails', 'serviceArea', 'notify'];
 const RULE_NAME = { staffEmails: 'the new-application email', serviceArea: 'the service area', notify: 'email timing' };
 const HTTPS_LINK = /^https:\/\/[^\s/]+\.[^\s]+$/i;
@@ -3592,6 +3617,7 @@ function useAppSettings(addToast, active) {
   const [serverErrors, setServerErrors] = useState({});
   const [area, setArea] = useState(null);           // { points, history }: homes on the Applicants map, past outlines
   const [cap, setCap] = useState(null);             // where the season stands against its limit (applications-admin capNow)
+  const [ways, setWays] = useState({});             // ways to open or close switched on by hand, kept open while blank until Save or Discard
   const take = (j) => { if (j.since !== undefined) setSince(j.since); if (j.history) setHistory(j.history); if (j.area) setArea(j.area); if (j.cap !== undefined) setCap(j.cap); };
   const load = async () => {
     setError(null);
@@ -3599,6 +3625,7 @@ function useAppSettings(addToast, active) {
     if (!j.success) { setError(j.error || 'Could not load the settings.'); return; }
     setSaved(j.settings);
     setEdit(j.settings);
+    setWays({});
     if (j.rules) { setRules(j.rules); setRulesEdit(clone(j.rules.values)); }
     take(j);
     setConflict(false);
@@ -3636,6 +3663,7 @@ function useAppSettings(addToast, active) {
       return null;
     }
     follow(saved, j.settings, kind === 'save');
+    setWays({});
     if (j.capClosed) addToast(`Applications are closed: the limit of ${num(j.settings.maxApplications)} is reached`, 'success');
     setSaved(j.settings);
     take(j);
@@ -3694,16 +3722,17 @@ function useAppSettings(addToast, active) {
   }, [active]);
 
   return {
-    saved, edit, rules, rulesEdit, since, history, area, cap, error, busy, dirty, appFields, changedRules, problems, invalid, conflict, rulesConflict, save, setOpen, reload: load,
+    saved, edit, rules, rulesEdit, since, history, area, cap, ways, error, busy, dirty, appFields, changedRules, problems, invalid, conflict, rulesConflict, save, setOpen, reload: load,
+    setWay: (k, v) => setWays(w => (!!w[k] === v ? w : { ...w, [k]: v })),
     set: (patch) => { setEdit(e => ({ ...e, ...patch })); setServerErrors(x => { const y = { ...x }; Object.keys(patch).forEach(k => delete y[k]); return y; }); },
     setRules: (patch) => { setRulesEdit(r => ({ ...r, ...patch })); setServerErrors(x => { const y = { ...x }; Object.keys(patch).forEach(k => delete y[k]); return y; }); },
-    discard: () => { setEdit(saved); if (rules) setRulesEdit(clone(rules.values)); setConflict(false); setRulesConflict(null); setServerErrors({}); },
+    discard: () => { setEdit(saved); setWays({}); if (rules) setRulesEdit(clone(rules.values)); setConflict(false); setRulesConflict(null); setServerErrors({}); },
   };
 }
 
 function SettingsTab({ s, go, addToast = () => {} }) {
   const [ask, setAsk] = useState(null);
-  const head = html`<${Head} title="Settings" sub="How applications run: open or closed, the season, how many the season takes, who hears about new ones, the service area and when families are emailed. Changes here are used as soon as you save; none of them wait for the form's Put live." />`;
+  const head = html`<${Head} title="Settings" sub="Whether applications are open, and everything that opens or closes them; who hears about new ones, the service area and when families are emailed. Changes here are used as soon as you save; none of them wait for the form's Put live." />`;
   if (s.error && !s.edit) return html`
     <div>${head}
       <div class="card">
@@ -3712,60 +3741,12 @@ function SettingsTab({ s, go, addToast = () => {} }) {
       </div>
     </div>`;
   if (!s.edit) return html`<div>${head}<${Spinner} /></div>`;
-  const e = s.edit;
-  const p = s.problems;
-  const zone = zoneName();
-  const timeField = (k, label, hint) => html`
-    <div class="afe-field">
-      <label for=${`afe-${k}`}>${label}</label>
-      <div class="afe-when">
-        <input id=${`afe-${k}`} class="form-input" type="datetime-local" value=${toLocalInput(e[k])} aria-invalid=${p[k] ? 'true' : 'false'}
-          onInput=${(ev) => s.set({ [k]: fromLocalInput(ev.target.value) })} />
-        ${e[k] && html`<button class="btn btn-ghost" onClick=${() => s.set({ [k]: '' })}>Clear</button>`}
-      </div>
-      ${p[k] ? html`<span class="afe-bad">${p[k]}</span>` : html`<span class="afe-hint">${hint}</span>`}
-    </div>`;
   return html`
     <div class="afe-settings-tab">
       ${head}
       <div class="afe-set">
         <div class="afe-set-main">
-          <${StatusCard} s=${s} onAsk=${setAsk} />
-
-          <section class="card afe-settings" aria-labelledby="afe-set-season">
-            <h3 id="afe-set-season">Season and wording</h3>
-            <p class="afe-lede">What families read, and where the Apply button goes.</p>
-            <div class="afe-set-fields">
-              <${Field} label="Season" id="afe-season" hint="The year families apply for. It fills in {year} across the form and the emails.">
-                <select id="afe-season" class="form-input" value=${e.year} onChange=${(ev) => s.set({ year: ev.target.value })}>
-                  ${seasonChoices().map(y => html`<option value=${y}>${y}</option>`)}
-                </select>
-              <//>
-              <${Field} label="Message while closed" id="afe-closed" hint=${`On the Apply page and the form. Blank shows "${defaultClosed(e.year)}"`}>
-                <input id="afe-closed" class="form-input" maxlength="200" value=${e.closedMessage} placeholder=${defaultClosed(e.year)} onInput=${(ev) => s.set({ closedMessage: ev.target.value })} />
-              <//>
-              <div class="afe-field">
-                <label for="afe-formurl">Outside form <span class="afe-opt">optional</span></label>
-                <input id="afe-formurl" class="form-input" type="url" inputmode="url" value=${e.formUrl} placeholder="https://" aria-invalid=${p.formUrl ? 'true' : 'false'} onInput=${(ev) => s.set({ formUrl: ev.target.value })} />
-                ${p.formUrl ? html`<span class="afe-bad">${p.formUrl}</span>` : html`<span class="afe-hint">Leave blank to use the site's own form. A link here sends the Apply button to that form instead, in a new tab.</span>`}
-              </div>
-            </div>
-          </section>
-
-          <section class="card afe-settings" aria-labelledby="afe-set-times">
-            <h3 id="afe-set-times">Open and close by itself</h3>
-            <p class="afe-lede">Set a time and the site does it within a minute, posts a note in Slack and logs it under Recent changes. Times are your time${zone ? ` (${zone})` : ''}.</p>
-            <div class="afe-pair afe-set-times">
-              ${s.saved.open
-                ? html`<div class="afe-field"><span class="afe-label">Open</span><span class="afe-sum">Already open.</span></div>`
-                : timeField('opensAt', 'Open on', 'Blank: stays closed until you open it.')}
-              ${s.saved.open || e.opensAt
-                ? timeField('closesAt', 'Close on', 'Blank: stays open until you close it.')
-                : html`<div class="afe-field"><span class="afe-label">Close on</span><span class="afe-sum">Set an opening time first.</span></div>`}
-            </div>
-          </section>
-
-          <${LimitCard} s=${s} />
+          <${AvailabilityCard} s=${s} onAsk=${setAsk} />
 
           ${s.rulesEdit && html`
             <${StaffEmailCard} s=${s} />
@@ -3784,91 +3765,228 @@ function SettingsTab({ s, go, addToast = () => {} }) {
     </div>`;
 }
 
+/** "in 3 days" beside a time still to come */
+const fromNow = (iso, now = Date.now()) => {
+  const ms = Date.parse(iso) - now;
+  if (!Number.isFinite(ms) || ms <= 0) return '';
+  const hours = ms / 36e5;
+  if (hours < 1) return `in ${plural(Math.max(1, Math.round(ms / 6e4)), 'minute')}`;
+  if (hours < 36) return `in ${plural(Math.round(hours), 'hour')}`;
+  return `in ${plural(Math.round(hours / 24), 'day')}`;
+};
+const whenText = (iso) => { const rel = fromNow(iso); return `${longWhen(iso)}${rel ? ` (${rel})` : ''}`; };
 /**
- * The application limit (functions/api/_application-cap.js): how full the
- * season is, the most it takes, when the team hears it's close, and what
- * new families read once it's full. The bar follows the number being typed,
- * so a new limit shows what it would mean before it's saved.
+ * What opens or closes applications next by themselves, in one sentence:
+ * a time, the limit, whichever comes first. `x` is the settings (as saved,
+ * or as edited), `open` whether they're open, `received` how many are in.
  */
-function LimitCard({ s }) {
+function nextText(x, open, received) {
+  const max = limitOf(x);
+  const full = !!max && received >= max;
+  const ends = [x.closesAt && `on ${whenText(x.closesAt)}`, max && `at ${plural(max, 'application')}`].filter(Boolean);
+  const endText = `${ends.join(' or ')}${ends.length > 1 ? ', whichever comes first' : ''}`;
+  if (open) return full ? `Closes within a minute: the limit of ${num(max)} is reached.` : ends.length ? `Closes by itself ${endText}.` : 'Stays open until someone closes it.';
+  if (full) return 'Stays closed until the limit goes up.';
+  if (x.opensAt) return `Opens by itself ${whenText(x.opensAt)}.${ends.length ? ` Then closes by itself ${endText}.` : ''}`;
+  return `Stays closed until someone opens it.${max ? ` Once open, it closes by itself at ${plural(max, 'application')}.` : ''}`;
+}
+const PLAN_FIELDS = ['opensAt', 'closesAt', 'maxApplications', 'warnAt'];
+
+/** One setting: what it is on the left, the control on the right (stacked on a phone) */
+const SetRow = ({ id = null, rowId = null, label = null, lead = null, hint = null, cls = '', children }) => html`
+  <div class=${`afe-srow ${cls}`} id=${rowId || undefined}>
+    <div class="afe-srow-l">
+      ${lead || html`<label for=${id}>${label}</label>`}
+      ${hint && html`<span class="afe-hint">${hint}</span>`}
+    </div>
+    <div class="afe-srow-c">${children}</div>
+  </div>`;
+
+/**
+ * Open and closed, in one card. The top is where things stand, as saved:
+ * open or closed, since when, what opens or closes them next (a time or the
+ * limit, whichever comes first) and the season against its limit, with the
+ * one button that opens or closes them. Below: the season, each way they
+ * open and close by themselves (a switch per way), and what families read
+ * while closed. Everything below goes out with the tab's one Save.
+ * The limit is ./_application-cap.js on the server.
+ */
+function AvailabilityCard({ s, onAsk }) {
+  const a = s.saved;
   const e = s.edit;
   const p = s.problems;
-  const c = s.cap && s.cap.year === e.year ? s.cap : null; // the counts are for the saved season
-  const max = limitOf(e);
-  const warnAt = warnOf(e);
+  const zone = zoneName();
+  // A way switched on by hand stays open while its box is blank (a number being retyped), until Save or Discard
+  const on = s.ways;
+  const mark = (k) => s.setWay(k, true);
+
+  // Where the season stands, as saved
+  const c = s.cap && s.cap.year === a.year ? s.cap : null;
+  const max = limitOf(a);
   const received = c?.received ?? 0;
-  const full = !!max && received >= max;
-  const near = !!max && !full && received >= warnAt;
+  const full = !a.open && !!max && !!c?.full;
+  const warnAt = warnOf(a);
+  const near = !!max && !full && received >= warnAt && received < max;
   const pct = (n) => `${Math.min(100, Math.max(0, (n / max) * 100))}%`;
   // The same words as paceWords in functions/api/_application-cap.js; a full season has no pace to speak of
-  const pace = c?.perDay && !full ? (c.perDay >= 1 ? `about ${num(Math.round(c.perDay))} a day this week` : `about ${num(Math.max(1, Math.round(c.perDay * 7)))} a week`) : null;
+  const pace = c?.perDay && !c.full ? (c.perDay >= 1 ? `about ${num(Math.round(c.perDay))} a day this week` : `about ${num(Math.max(1, Math.round(c.perDay * 7)))} a week`) : null;
   const left = max ? Math.max(0, max - received) : 0;
   const days = c?.perDay && left ? left / c.perDay : null;
   const fills = days && days <= 90 ? (days < 1 ? 'within a day' : days < 1.5 ? 'in about a day' : `in about ${num(Math.round(days))} days`) : null;
-  // No limit, no heads-up point either (the message stays, for when a limit comes back)
-  const setMax = (v) => s.set({ maxApplications: v === '' ? 0 : Number(v), ...(v === '' ? { warnAt: 0 } : {}) });
+
+  const editMax = limitOf(e);
+  // What happens next by itself, as saved; and, while the times or the limit are being changed, after Save
+  const next = nextText(a, a.open, received);
+  const planEdited = s.appFields.some(k => PLAN_FIELDS.includes(k)) && !PLAN_FIELDS.some(k => p[k]) && !closesOnSave(s);
+  const inNow = e.year === a.year ? received : 0;
+  const newWarn = warnOf(e);
+  const room = editMax && inNow < editMax && (editMax !== max || newWarn !== warnAt)
+    ? ` ${num(inNow)} ${inNow === 1 ? 'is' : 'are'} in, so there’s room for ${plural(editMax - inNow, 'more family', 'more families')}; ${newWarn > inNow ? `the team hears at ${num(newWarn)}` : 'the team hears how many are left right away'}.` : '';
+  const afterSave = planEdited ? `${nextText(e, a.open, inNow)}${room}` : null;
+
+  // The ways it opens and closes by itself, as edited
+  const fullIfSaved = !!c && !!editMax && c.received >= editMax;
+  const isOn = { opensAt: !!e.opensAt || !!on.opensAt, closesAt: !!e.closesAt || !!on.closesAt, limit: !!e.maxApplications || !!on.limit };
+  const boxId = { opensAt: 'afe-opensAt', closesAt: 'afe-closesAt', limit: 'afe-max' };
+  const flip = (k, v) => {
+    s.setWay(k, v);
+    if (k === 'opensAt' && !v && !a.open) s.setWay('closesAt', false);
+    if (v) { requestAnimationFrame(() => document.getElementById(boxId[k])?.focus()); return; }
+    if (k === 'limit') s.set({ maxApplications: 0, warnAt: 0 });
+    // Closed, a close time needs an opening before it (the server drops it otherwise)
+    else if (k === 'opensAt' && !a.open) s.set({ opensAt: '', closesAt: '' });
+    else s.set({ [k]: '' });
+  };
+  const blocked = {
+    opensAt: !a.open && fullIfSaved && !e.opensAt ? `The season is full: ${num(c.received)} are in. Raise the limit below first.` : null,
+    closesAt: !a.open && !e.opensAt ? 'Turn on “Open on a date” first: there’s nothing to close yet.' : null,
+  };
+  const way = (k, title, what, offText, control) => {
+    const live = isOn[k] && !blocked[k];
+    return html`
+      <${SetRow} cls=${`afe-way ${live ? 'is-on' : ''}`} rowId=${k === 'limit' ? 'afe-limit' : `afe-way-${k}`} hint=${what}
+        lead=${html`<label class="afe-switch"><input type="checkbox" role="switch" id=${`afe-sw-${k}`} checked=${live} disabled=${!!blocked[k]} onChange=${(ev) => flip(k, ev.target.checked)} />${title}</label>`}>
+        ${live ? control : html`<p class="afe-sum afe-way-off">${blocked[k] || offText}</p>`}
+      <//>`;
+  };
+  const timeBox = (k) => html`
+    <div class="afe-when">
+      <input id=${boxId[k]} class="form-input" type="datetime-local" value=${toLocalInput(e[k])} aria-invalid=${p[k] ? 'true' : 'false'}
+        aria-label=${k === 'opensAt' ? 'Open on: date and time' : 'Close on: date and time'} aria-describedby=${`${boxId[k]}-h`} onInput=${(ev) => { mark(k); s.set({ [k]: fromLocalInput(ev.target.value) }); }} />
+    </div>
+    ${p[k] ? html`<span class="afe-bad" id=${`${boxId[k]}-h`}>${p[k]}</span>`
+      : html`<span class="afe-hint" id=${`${boxId[k]}-h`}>${e[k] ? `${fromNow(e[k]) ? `${fromNow(e[k])[0].toUpperCase()}${fromNow(e[k]).slice(1)}. ` : ''}Your time${zone ? ` (${zone})` : ''}.` : `Pick a date and time, your time${zone ? ` (${zone})` : ''}.`}</span>`}`;
+  const setMax = (v) => { mark('limit'); s.set({ maxApplications: v === '' ? 0 : Number(v), ...(v === '' ? { warnAt: 0 } : {}) }); };
+  const limitBox = html`
+    <div class="afe-pair afe-limit-fields">
+      <div class="afe-field">
+        <label for="afe-max">Most applications</label>
+        <input id="afe-max" class="form-input" type="number" min="1" max=${MAX_LIMIT} step="1" inputmode="numeric" placeholder="25"
+          value=${e.maxApplications || ''} aria-invalid=${p.maxApplications ? 'true' : 'false'} onInput=${(ev) => setMax(ev.target.value)} />
+        ${p.maxApplications ? html`<span class="afe-bad">${p.maxApplications}</span>`
+          : html`<span class="afe-hint">${c && e.year === a.year ? `${num(received)} in so far. ` : ''}Only applications sent through the form count.</span>`}
+      </div>
+      <div class="afe-field">
+        <label for="afe-warn">Tell the team at</label>
+        <input id="afe-warn" class="form-input" type="number" min="1" max=${editMax ? editMax - 1 : undefined} step="1" inputmode="numeric" disabled=${!editMax}
+          placeholder=${editMax ? String(defaultWarnAt(editMax)) : ''} value=${editMax && e.warnAt ? e.warnAt : ''} aria-invalid=${p.warnAt ? 'true' : 'false'}
+          onInput=${(ev) => { mark('limit'); s.set({ warnAt: ev.target.value === '' ? 0 : Number(ev.target.value) }); }} />
+        ${p.warnAt ? html`<span class="afe-bad">${p.warnAt}</span>` : html`<span class="afe-hint">${editMax ? `Blank: at ${num(defaultWarnAt(editMax))}, 80% of the limit. One heads-up in Slack and by email to the staff list.` : 'Set the limit first.'}</span>`}
+      </div>
+    </div>
+    ${closesOnSave(s) && html`
+      <p class="afe-note is-warn" role="status"><${Icon} name="warn" size=${16} />
+        <span>${num(received)} applications are already in, so saving a limit of ${num(editMax)} closes applications right away. New families will see the message when full, and the team gets the notice.</span>
+      </p>`}
+`;
+
   return html`
-    <section class="card afe-settings" id="afe-limit" aria-labelledby="afe-set-limit">
-      <h3 id="afe-set-limit">Application limit</h3>
-      <p class="afe-lede">The most applications the season takes. When it gets close, the team hears in Slack and by email, and at the limit applications close by themselves. Families who already started can still finish, so the season can end a little over.</p>
-
-      ${c && html`
-        <div class="afe-cap" role="group" aria-label="Applications so far">
-          <div class="afe-cap-nums">
-            <b>${num(received)}</b>
-            <span>${max ? `of ${num(max)} in for ${c.year}` : `in for ${c.year} so far`}</span>
-            ${max ? html`<span>· ${full ? 'the limit is reached' : `${num(left)} left`}</span>` : null}
+    <section class=${`card afe-avail ${a.open ? 'is-open' : ''}`} aria-labelledby="afe-status-h">
+      <div class="afe-status">
+        <div class="afe-status-row">
+          <div class="afe-status-text">
+            <span class="afe-status-dot" aria-hidden="true"></span>
+            <h3 id="afe-status-h" aria-live="polite">${a.open ? 'Applications are open' : full ? 'Applications are closed: the season is full' : 'Applications are closed'}</h3>
+            <p>${a.open ? `Families can start a ${a.year} application.` : full ? `All ${num(max)} applications the ${a.year} season takes are in${received > max ? ` (${num(received)} with families who finished after it closed)` : ''}. New families see the message when full.` : `New families can't start an application. Season: ${a.year}.`}${s.since ? ` ${a.open ? 'Opened' : 'Closed'} ${clock(s.since.at)} by ${whoName(s.since.by)}.` : ''}</p>
+            <p class="afe-status-next"><${Icon} name="clock" size=${15} /><span>${next}</span></p>
           </div>
-          ${max ? html`
-            <div class=${`afe-cap-bar ${full ? 'is-full' : near ? 'is-near' : ''}`} role="img" aria-label=${`${num(received)} of ${num(max)} applications in; the team hears at ${num(warnAt)}`}>
-              <span style=${`width: ${pct(received)}`}></span>
-              ${warnAt < max && html`<i style=${`left: ${pct(warnAt)}`}></i>`}
-            </div>` : null}
-          <div class="afe-cap-meta">
-            ${max && warnAt < max ? html`<span class="afe-cap-mark">Team hears at ${num(warnAt)}</span>` : null}
-            ${c.filling ? html`<span>${plural(c.filling, 'family is', 'families are')} partway through</span>` : null}
-            ${pace && html`<span>${pace}${max && fills ? `, so it fills ${fills}` : ''}</span>`}
-            ${c.addedInJobTread ? html`<span>${plural(c.addedInJobTread, 'family', 'families')} added in JobTread for ${c.year} ${c.addedInJobTread === 1 ? 'doesn’t' : 'don’t'} count</span>` : null}
-            ${!max && !c.filling && !pace && !c.addedInJobTread ? html`<span>Tests and deleted applications don’t count.</span>` : null}
-          </div>
-        </div>`}
+          <button class=${`btn ${a.open ? 'btn-ghost' : 'btn-primary'} afe-status-btn`} disabled=${!!s.busy} onClick=${() => onAsk(a.open ? 'close' : 'open')}>
+            ${s.busy === 'open' ? 'Opening…' : s.busy === 'close' ? 'Closing…' : a.open ? 'Close applications…' : 'Open applications…'}
+          </button>
+        </div>
 
-      <div class="afe-pair afe-cap-fields">
-        <div class="afe-field">
-          <label for="afe-max">Most applications</label>
-          <input id="afe-max" class="form-input" type="number" min="1" max=${MAX_LIMIT} step="1" inputmode="numeric" placeholder="No limit"
-            value=${e.maxApplications || ''} aria-invalid=${p.maxApplications ? 'true' : 'false'} onInput=${(ev) => setMax(ev.target.value)} />
-          ${p.maxApplications ? html`<span class="afe-bad">${p.maxApplications}</span>` : html`<span class="afe-hint">Blank: no limit. Counts applications sent through the form for ${e.year}; tests and deleted ones don’t count.</span>`}
-        </div>
-        <div class="afe-field">
-          <label for="afe-warn">Tell the team at</label>
-          <input id="afe-warn" class="form-input" type="number" min="1" max=${max ? max - 1 : undefined} step="1" inputmode="numeric" disabled=${!max}
-            placeholder=${max ? String(defaultWarnAt(max)) : ''} value=${max && e.warnAt ? e.warnAt : ''} aria-invalid=${p.warnAt ? 'true' : 'false'}
-            onInput=${(ev) => s.set({ warnAt: ev.target.value === '' ? 0 : Number(ev.target.value) })} />
-          ${p.warnAt ? html`<span class="afe-bad">${p.warnAt}</span>` : html`<span class="afe-hint">${max ? `Blank: at ${num(defaultWarnAt(max))}, 80% of the limit. One heads-up in Slack and by email to the staff list, with how many are left and the pace.` : 'Set a limit first.'}</span>`}
-        </div>
+        ${c && html`
+          <div class="afe-cap" role="group" aria-label="Applications so far">
+            <div class="afe-cap-nums">
+              <b>${num(received)}</b>
+              <span>${max ? `of ${num(max)} in for ${c.year}` : `in for ${c.year} so far`}</span>
+              ${max ? html`<span>· ${c.full ? 'the limit is reached' : `${num(left)} left`}</span>` : html`<span>· no limit</span>`}
+            </div>
+            ${max ? html`
+              <div class=${`afe-cap-bar ${c.full ? 'is-full' : near ? 'is-near' : ''}`} role="img" aria-label=${`${num(received)} of ${num(max)} applications in; the team hears at ${num(warnAt)}`}>
+                <span style=${`width: ${pct(received)}`}></span>
+                ${warnAt < max && html`<i style=${`left: ${pct(warnAt)}`}></i>`}
+              </div>` : null}
+            <div class="afe-cap-meta">
+              ${max && warnAt < max ? html`<span class="afe-cap-mark">Team hears at ${num(warnAt)}</span>` : null}
+              ${c.filling ? html`<span>${plural(c.filling, 'family is', 'families are')} partway through</span>` : null}
+              ${pace && html`<span>${pace}${max && fills ? `, so it fills ${fills}` : ''}</span>`}
+              ${c.addedInJobTread ? html`<span>${plural(c.addedInJobTread, 'family', 'families')} added in JobTread for ${c.year} ${c.addedInJobTread === 1 ? 'doesn’t' : 'don’t'} count</span>` : null}
+              ${!max && !c.filling && !pace && !c.addedInJobTread ? html`<span>Tests and deleted applications don’t count.</span>` : null}
+            </div>
+          </div>`}
+
+        <p class="afe-reach"><span class="afe-live is-on" aria-hidden="true"></span>The Apply page and the application form follow this right away: <a href="/apply/" target="_blank" rel="noopener">/apply/</a> · <a href="/apply/form/" target="_blank" rel="noopener">/apply/form/</a></p>
       </div>
 
-      ${closesOnSave(s) && html`
-        <p class="afe-note is-warn" role="status" style="margin-top: 1rem;"><${Icon} name="warn" size=${16} />
-          <span>${num(received)} applications are already in, so saving a limit of ${num(max)} closes applications right away. New families will see the message below, and the team gets the notice.</span>
-        </p>`}
-
-      ${max ? html`
-        <div class="afe-set-fields">
-          <${Field} label="Message when full" id="afe-full" hint=${`On the Apply page and the form while applications are closed and the season is full. Blank shows "${defaultFull(e.year)}", in Spanish on the Spanish form.`}>
-            <input id="afe-full" class="form-input" maxlength="200" value=${e.fullMessage} placeholder=${defaultFull(e.year)} onInput=${(ev) => s.set({ fullMessage: ev.target.value })} />
+      <div class="afe-band" role="group" aria-labelledby="afe-band-when">
+        <h4 id="afe-band-when">When applications run</h4>
+        <p class="afe-lede">The season, then each way they open and close by themselves. Whichever comes first wins: the site acts within a minute, posts a note in Slack and logs it under Recent changes.</p>
+        <div class="afe-rows">
+          <${SetRow} id="afe-season" label="Season" hint="The year families apply for. It fills in {year} across the form and the emails.">
+            <select id="afe-season" class="form-input" value=${e.year} onChange=${(ev) => s.set({ year: ev.target.value })}>
+              ${seasonChoices().map(y => html`<option value=${y}>${y}</option>`)}
+            </select>
           <//>
-        </div>` : null}
+          ${!a.open && way('opensAt', 'Open on a date', 'Applications open by themselves at this time.', 'Off: they stay closed until someone opens them.', timeBox('opensAt'))}
+          ${way('closesAt', 'Close on a date', 'Applications close by themselves at this time.', a.open || e.opensAt ? 'Off: no closing date.' : '', timeBox('closesAt'))}
+          ${way('limit', 'Close at a number of applications', 'Applications close by themselves once this many are in. Families partway through can still finish, so a season can end a little over.', 'Off: no limit.', limitBox)}
+        </div>
+        <p class="afe-note afe-after" role="status" aria-live="polite" hidden=${!afterSave}><${Icon} name="clock" size=${16} />
+          <span><b>After you save:</b> ${afterSave}</span>
+        </p>
+      </div>
+
+      <div class="afe-band" role="group" aria-labelledby="afe-band-words">
+        <h4 id="afe-band-words">What families read</h4>
+        <p class="afe-lede">On the Apply page and the form. “What families see” shows each one as you type.</p>
+        <div class="afe-rows">
+          <${SetRow} id="afe-closed" label="While closed" hint="Beside the “notify me” box, so families can hear when applications open.">
+            <input id="afe-closed" class="form-input" maxlength="200" value=${e.closedMessage} placeholder=${defaultClosed(e.year)} onInput=${(ev) => s.set({ closedMessage: ev.target.value })} />
+            <span class="afe-hint">Blank shows “${defaultClosed(e.year)}”</span>
+          <//>
+          ${editMax ? html`
+            <${SetRow} id="afe-full" label="When the season is full" hint="Instead of the closed message, once the limit closes applications.">
+              <input id="afe-full" class="form-input" maxlength="200" value=${e.fullMessage} placeholder=${defaultFull(e.year)} onInput=${(ev) => s.set({ fullMessage: ev.target.value })} />
+              <span class="afe-hint">Blank shows “${defaultFull(e.year)}”, in Spanish on the Spanish form.</span>
+            <//>` : null}
+          <${SetRow} id="afe-formurl" lead=${html`<label for="afe-formurl">Outside form <span class="afe-opt">optional</span></label>`} hint="Where Apply Now goes while applications are open.">
+            <input id="afe-formurl" class="form-input" type="url" inputmode="url" value=${e.formUrl} placeholder="https://" aria-invalid=${p.formUrl ? 'true' : 'false'} onInput=${(ev) => s.set({ formUrl: ev.target.value })} />
+            ${p.formUrl ? html`<span class="afe-bad">${p.formUrl}</span>` : html`<span class="afe-hint">Blank: the site’s own form. A link here sends Apply Now to that form instead, in a new tab.</span>`}
+          <//>
+        </div>
+      </div>
     </section>`;
 }
 
 /** Shown while anything on the tab is unsaved: what, and Save or Discard (⌘S saves) */
 function SaveBar({ s }) {
+  const touched = (ks) => s.appFields.some(k => ks.includes(k));
   const what = [
-    s.appFields.some(k => ['year', 'closedMessage', 'formUrl'].includes(k)) && 'season and wording',
-    s.appFields.some(k => ['opensAt', 'closesAt'].includes(k)) && 'the open and close times',
-    s.appFields.some(k => LIMIT_FIELDS.includes(k)) && 'the application limit',
+    touched(['year']) && 'the season',
+    touched(['opensAt', 'closesAt']) && 'the open and close times',
+    touched(['maxApplications', 'warnAt']) && 'the application limit',
+    touched(['closedMessage', 'fullMessage', 'formUrl']) && 'what families read',
     ...s.changedRules.map(k => RULE_NAME[k]),
   ].filter(Boolean);
   const closing = closesOnSave(s);
@@ -4149,43 +4267,6 @@ function TimingCard({ s }) {
           </div>
         </div>
       </div>
-    </section>`;
-}
-
-/** Open or closed, since when and by whom, what's scheduled, and where it shows */
-function StatusCard({ s, onAsk }) {
-  const a = s.saved;
-  const next = !a.open && a.opensAt ? `Opens by itself ${longWhen(a.opensAt)}` : a.open && a.closesAt ? `Closes by itself ${longWhen(a.closesAt)}` : null;
-  // The application limit, as saved: how many are in, or that it's full
-  const c = s.cap && s.cap.year === a.year && s.cap.max ? s.cap : null;
-  const full = !a.open && !!c?.full;
-  const limitLine = !c ? null
-    : a.open ? `${num(c.received)} of ${num(c.max)} in. Closes by itself at ${num(c.max)}.`
-    : full ? null : `${num(c.received)} of ${num(c.max)} in. The limit closes it again at ${num(c.max)}.`;
-  return html`
-    <section class="card afe-status ${a.open ? 'is-open' : ''}" aria-labelledby="afe-status-h">
-      <div class="afe-status-row">
-        <div class="afe-status-text">
-          <span class="afe-status-dot" aria-hidden="true"></span>
-          <h3 id="afe-status-h" aria-live="polite">${a.open ? 'Applications are open' : full ? 'Applications are closed: the season is full' : 'Applications are closed'}</h3>
-          <p>${a.open ? `Families can start a ${a.year} application.` : full ? `All ${num(c.max)} applications the ${a.year} season takes are in${c.received > c.max ? ` (${num(c.received)} with families who finished after it closed)` : ''}. New families see the full message.` : `New families can't start an application. Season: ${a.year}.`}${s.since ? ` ${a.open ? 'Opened' : 'Closed'} ${clock(s.since.at)} by ${whoName(s.since.by)}.` : ''}</p>
-          ${next && html`<p class="afe-status-next"><${Icon} name="clock" size=${15} />${next}</p>`}
-          ${limitLine && html`<p class="afe-status-next">${limitLine} <a href="#afe-limit" onClick=${(ev) => { ev.preventDefault(); document.getElementById('afe-limit')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>Change the limit</a></p>`}
-        </div>
-        <button class=${`btn ${a.open ? 'btn-ghost' : 'btn-primary'} afe-status-btn`} disabled=${!!s.busy} onClick=${() => onAsk(a.open ? 'close' : 'open')}>
-          ${s.busy === 'open' ? 'Opening…' : s.busy === 'close' ? 'Closing…' : a.open ? 'Close applications…' : 'Open applications…'}
-        </button>
-      </div>
-      <dl class="afe-where">
-        <div>
-          <dt>Application form</dt>
-          <dd><span class="afe-live is-on"></span>Follows this right away · <a href="/apply/form/" target="_blank" rel="noopener">/apply/form/</a></dd>
-        </div>
-        <div>
-          <dt>Apply page</dt>
-          <dd><span class="afe-live is-on"></span>Follows this right away · <a href="/apply/" target="_blank" rel="noopener">/apply/</a></dd>
-        </div>
-      </dl>
     </section>`;
 }
 
