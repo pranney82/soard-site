@@ -68,7 +68,7 @@ export function buildAdminView(jobs, kids, now = Date.now()) {
   const reveals = [];
   let unmatched = 0;
   for (const job of jobs) {
-    const kid = matchKid(job.name, kids);
+    const kid = matchKid(job.name, kids, job.id);
     // A kid can only match a job from their own year; prefer the open one if there are two
     const values = {};
     for (const v of job.customFieldValues?.nodes || []) values[v.customField?.id] = v.value;

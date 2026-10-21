@@ -25,9 +25,11 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 const failures = [];
 const ok = (cond, msg) => { if (!cond) failures.push(msg); console.log(`${cond ? '  ✓' : '  ✗'} ${msg}`); };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+const sameSet = (got, want) => got.length === want.length && want.every((x) => got.includes(x));
+const setDiff = (got, want) => { const extra = got.filter((x) => !want.includes(x)); const missing = want.filter((x) => !got.includes(x)); return `${extra.length ? `; unexpected: ${extra.join(', ')}` : ''}${missing.length ? `; missing: ${missing.join(', ')}` : ''}`; };
 
 const iso = (msAgo) => new Date(Date.now() - msAgo).toISOString();
-// Shaped like production on October 16, 2026
+// Shaped like production on October 16, 2026; JobTread as of October 20 (Zaps off, their webhooks gone, the applicant workflow on)
 const FACTS = {
   success: true,
   checkedAt: iso(0),
@@ -42,14 +44,16 @@ const FACTS = {
   kidStatus: { lastSweepAt: iso(20 * 60e3), lastRunAt: iso(5 * 60e3), changed: 1, lastErrorAt: iso(60 * 60e3), deployPending: false, lastAutoDeployAt: iso(5 * 60e3), hidden: 1 },
   zeffy: { since: iso(3 * 86400e3), lastWebhookAt: iso(2 * 3600e3), lastPostAt: iso(2 * 3600e3), lastSweepAt: iso(10 * 60e3), sweepError: null, missed: 0, missedAt: null, rejectedAt: null, failing: 0, failingWhy: null },
   reveals: { cachedAt: iso(5 * 60e3) },
+  approvals: { lastRunAt: iso(60e3), lastErrorAt: null, last: { name: 'Ava Stone', at: iso(3 * 3600e3), slug: 'ava' }, waiting: [] },
+  covers: { covers: 23, last: { slug: 'max', at: iso(2 * 3600e3) }, failing: 0 },
   sends: { live: { kit: { last: iso(2 * 86400e3), sent: 1, failed: 0 } } },
   reminders: { subscribers: 4 },
   jobtread: {
     workflows: Object.fromEntries([
       ['22PJYm7aXBgK', true], ['22PJxRJ37KSs', true], ['22PJxRLV9Y3i', true], ['22PRvF7pG9VM', false], ['22PZF9ENDgxn', false],
-      ['22PgHVceQhvW', true], ['22PgHVcgDXFN', true], ['22PgPECxg6UP', true], ['22PgPED4vi7W', true], ['22PgQQ6JnJDm', true], ['22PgYwQvKkTs', true]
+      ['22PgHVceQhvW', true], ['22PgHVcgDXFN', true], ['22PgPECxg6UP', true], ['22PgPED4vi7W', true], ['22PgQQ6JnJDm', true], ['22PgYwQvKkTs', true], ['22PgaEgWTBRH', true]
     ].map(([id, active]) => [id, { name: id, active }])),
-    webhooks: Object.fromEntries(['22PDDmxBcvpA', '22PJxV5yimrd', '22P5rFX2hhQW', '22PRvE87suYz', '22PaN5dFNj8s', '22PXNK6fZGzA'].map((id) => [id, { where: 'example.com/x', events: [] }])),
+    webhooks: Object.fromEntries(['22PDDmxBcvpA', '22PJxV5yimrd', '22PaN5dFNj8s'].map((id) => [id, { where: 'example.com/x', events: [] }])),
   },
 };
 
@@ -128,12 +132,16 @@ try {
     ['Slack posts', 'Off'], ['Facebook replay rescue', 'Needs attention'], ['Invite engine', 'Live'],
     ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],
     ['Reveal checks for PMs', 'Off'], ['Kid status follows JobTread', 'Live'], ['Gift alerts in Slack', 'Live'],
+    ['Status → family message', 'Live'], ['Zapier: new account', 'Off'], ['Zapier: account updated', 'Off'], ['Approved → job and kid page', 'Live'], ['Kid photo as the job’s cover', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
 
   const attnItems = await page.$$eval('.am-panel .am-mini li', (l) => l.length);
   ok((await page.$eval('.am-panel', (e) => e.textContent)).includes('Needs attention') && attnItems >= 5, `the side panel lists what needs attention and what's parked (${attnItems} entries)`);
+  // Each one is a real problem in these facts: no YouTube key, the hub on old code, a replay with no kid page
+  const attnTitles = await page.$$eval('.am-inv-branch li', (l) => l.filter((x) => x.querySelector('.am-meta')?.textContent.startsWith('Needs attention')).map((x) => x.querySelector('b').textContent));
+  ok(sameSet(attnTitles, ['Simulcast to YouTube', 'Live hub', 'Facebook replay rescue']), `exactly the entries with a real problem need attention${setDiff(attnTitles, ['Simulcast to YouTube', 'Live hub', 'Facebook replay rescue'])}`);
   const lede = await page.$eval('.am-lede .am-warnstat b', (e) => e.textContent);
-  ok(lede === '4', `the lede counts 4 needing attention (shows ${lede})`);
+  ok(lede === String(attnTitles.length), `the lede counts the ${attnTitles.length} needing attention (shows ${lede})`);
   await page.screenshot({ path: join(OUT, 'desktop.png'), fullPage: false });
 
   const before = await boxOf(page, 'Calendar invites');
@@ -157,9 +165,13 @@ try {
   ok(/\d+ match/.test(await page.$eval('.am-hits', (e) => e.textContent)), 'and highlights them on the map');
   await page.select('#am-svc', 'Resend');
   await pause(400);
-  const resendCount = await page.$$eval('.am-panel .am-mini li', (l) => l.length);
-  // Resend only sends one-off mail now (the list is Kit's): links, notices, reminders, alerts, editor tests, gift alert problems
-  ok(await panelTitle(page) === 'If Resend stops working' && resendCount === 11, `"Depends on" lists everything that uses Resend (${resendCount}, want 11)`);
+  const resendTitles = await page.$$eval('.am-panel .am-mini li', (l) => l.map((li) => [...li.querySelectorAll('span')].find((x) => x.querySelector('em'))?.firstChild?.textContent || li.textContent));
+  // Resend only sends one-off mail now (the list is Kit's). Each of these calls sendEmails: invite problems, the resume link,
+  // the waitlist's confirmation and its Kit fallback, the staff heads-up, a stuck application, the status summary,
+  // go / no-go, alerts, reminders, editor tests, direct sends, the connection itself, gift alert problems, and a Denied kid
+  const RESEND = ['Invite problem alerts', 'Save and finish later', 'Tell me when applications open', 'Applications-open email', 'Staff heads-up', 'Application sweep',
+    'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Send test', 'Send to specific people', 'Resend', 'Gift alerts in Slack', 'Kid status follows JobTread'];
+  ok(await panelTitle(page) === 'If Resend stops working' && sameSet(resendTitles, RESEND), `"Depends on" lists everything that uses Resend (${resendTitles.length})${setDiff(resendTitles, RESEND)}`);
   await page.screenshot({ path: join(OUT, 'desktop-depends.png'), fullPage: false });
 
   await clickButton(page, '.am-tools', 'Open all');
@@ -252,6 +264,26 @@ try {
   await gifts.page.screenshot({ path: join(OUT, 'desktop-gift-alerts.png'), fullPage: false });
   ok(gifts.errors.length === 0, `no console errors${gifts.errors.length ? ': ' + gifts.errors.slice(0, 3).join(' | ') : ''}`);
   await gifts.page.close();
+
+  console.log('Desktop, a Zap comes back');
+  const zap = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, jobtread: { ...FACTS.jobtread, webhooks: { ...FACTS.jobtread.webhooks, '22PRvE87suYz': { where: 'hooks.zapier.com/x', events: [] } } } } });
+  ok(await statusOf(zap.page, 'Zapier: account updated') === 'Needs attention', 'a Zapier webhook back in JobTread needs attention');
+  ok(await statusOf(zap.page, 'Zapier: new account') === 'Off', 'the other Zap stays off');
+  ok(zap.errors.length === 0, `no console errors${zap.errors.length ? ': ' + zap.errors.slice(0, 3).join(' | ') : ''}`);
+  await zap.page.close();
+
+  console.log('Desktop, approved families');
+  const ap = await open(browser, base, { width: 1440, height: 1000 });
+  await ap.page.type('#am-search', 'approved');
+  await pause(500);
+  await clickNode(ap.page, 'Approved → job and kid page');
+  await pause(300);
+  ok(await panelTitle(ap.page) === 'Approved → job and kid page', 'search finds the approved-family entry');
+  const apPanel = await ap.page.$eval('.am-panel', (e) => e.textContent);
+  ok(apPanel.includes('Last set up Ava Stone'), 'it says which family it set up last');
+  await ap.page.screenshot({ path: join(OUT, 'desktop-approved.png'), fullPage: false });
+  ok(ap.errors.length === 0, `no console errors${ap.errors.length ? ': ' + ap.errors.slice(0, 3).join(' | ') : ''}`);
+  await ap.page.close();
 
   console.log('Phone');
   const phone = await open(browser, base, { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });

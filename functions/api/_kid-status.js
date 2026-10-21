@@ -30,6 +30,7 @@ import { logAudit, diffJson } from './_audit.js';
 import { recordVersion } from './_content-history.js';
 import { sendEmails, slackPost, emailConfigured } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
+import { syncJobCovers } from './_job-covers.js';
 
 export const FIELD_STATUS = '22P52qfFub9b';
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
@@ -137,7 +138,7 @@ export function linkJobs(jobs, kids) {
   for (const job of jobs) {
     // Office test jobs ("TEST Colin Lindsay (2026)") would match the real kid
     if (/^\s*test\b/i.test(job.name || '')) continue;
-    const kid = matchKid(job.name, kids);
+    const kid = matchKid(job.name, kids, job.id);
     if (kid && (!links.has(kid.slug) || !job.closedOn)) links.set(kid.slug, job);
   }
   return links;
@@ -232,7 +233,8 @@ export async function syncKidStatuses(env, { jobId = null, fetchImpl = fetch, no
     const alerted = { ...(state.alerted || {}) };
     const out = [];
     const iso = new Date(now).toISOString();
-    for (const [slug, job] of linkJobs(jobs, kids)) {
+    const links = linkJobs(jobs, kids);
+    for (const [slug, job] of links) {
       const kid = kids.find((k) => k.slug === slug);
       const facts = jobFacts(job);
       if (facts.status !== 'Denied') delete alerted[slug];
@@ -243,7 +245,9 @@ export async function syncKidStatuses(env, { jobId = null, fetchImpl = fetch, no
       out.push({ slug, name: kid.name, change });
       if (plan.hide === 'denied' && !alerted[slug]) { await alertDenied(env, { kid, jobId: job.id }); alerted[slug] = iso; }
     }
-    const patch = { alerted, lastRun: { at: iso, scope: jobId ? 'job' : 'all', changed: out.length } };
+    // Each job's cover shows the kid's Main photo (./_job-covers.js)
+    const covers = await syncJobCovers(env, links, kids, { fetchImpl, now });
+    const patch = { alerted, lastRun: { at: iso, scope: jobId ? 'job' : 'all', changed: out.length, covers: covers.length } };
     if (!jobId) patch.lastSweepAt = iso;
     if (out.length || state.deployPending) {
       const d = await deploy(env, state, now);

@@ -48,14 +48,24 @@ function kidTokens(kidName) {
   return normalizeName(kidName).split(' ').filter(t => t && t !== 'and');
 }
 
+/** The job a profile names as its own (jobtreadJobId, set when approval made it) */
+const pinnedJob = (k) => k?.jobtreadJobId || k?.data?.jobtreadJobId || null;
+
 /**
  * The kid a job belongs to, or null when there's no match or more than one
- * (a wrong date on the wrong kid's page is worse than no date).
+ * (a wrong date on the wrong kid's page is worse than no date). With the
+ * job's id, a profile linked to that job wins, and one linked to another job
+ * never matches by name.
  */
-export function matchKid(jobName, kids) {
+export function matchKid(jobName, kids, jobId = null) {
+  if (jobId) {
+    const pinned = kids.filter(k => pinnedJob(k) === jobId);
+    if (pinned.length === 1) return pinned[0];
+  }
   const { year, tokens } = parseJobName(jobName);
   if (!year || tokens.size === 0) return null;
   const hits = kids.filter(k => {
+    if (jobId && pinnedJob(k) && pinnedJob(k) !== jobId) return false;
     if (Number(k.year) !== year) return false;
     const kt = kidTokens(k.name);
     return kt.length > 0 && kt.every(t => tokens.has(t));
@@ -161,7 +171,7 @@ export async function loadKids(DB) {
     let data = {};
     try { data = JSON.parse(row.data || '{}'); } catch { /* bad row, use columns */ }
     if (data.publishStatus === 'draft') continue;
-    kids.push({ slug: row.slug, name: data.name || row.name, year: row.year ?? data.year, heroImage: data.heroImage || data.photos?.[0]?.url || null });
+    kids.push({ slug: row.slug, name: data.name || row.name, year: row.year ?? data.year, heroImage: data.heroImage || data.photos?.[0]?.url || null, jobtreadJobId: data.jobtreadJobId || null });
   }
   return kids;
 }
@@ -214,7 +224,7 @@ export function buildReveals(jobs, kids, now = Date.now()) {
     const startsAt = values[FIELD_REVEAL_DATE];
     const parts = startsAt ? easternParts(startsAt) : null;
     if (!parts || parts.date < today) continue;
-    const kid = matchKid(job.name, kids);
+    const kid = matchKid(job.name, kids, job.id);
     if (!kid) continue;
     out.push({
       slug: kid.slug,

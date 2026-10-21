@@ -402,7 +402,7 @@ function longDate(date) {
 
 /** First name for the title: the matched kid's site name, else the job name's first word */
 function displayName(job, kids) {
-  const kid = matchKid(job.name, kids);
+  const kid = matchKid(job.name, kids, job.id);
   if (kid) return { name: kid.name, slug: kid.slug };
   const base = String(job.name || '').replace(/\(\d{4}\)\s*$/, '').trim();
   return { name: base.split(/\s+/)[0] || 'The', slug: null };

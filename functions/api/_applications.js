@@ -46,6 +46,7 @@ import { isUpload, isInput, answerText, progressPercent, renderMessage, choice }
 import { checkServiceArea, areaText } from './_geo.js';
 import { maybeSyncApplicants } from './_applicants.js';
 import { runNotifications } from './_applicant-notify.js';
+import { runApprovals } from './_applicant-approved.js';
 import { logAudit } from './_audit.js';
 
 // ─── JobTread fields (SOARD org) ────────────────────────────────────
@@ -1178,9 +1179,11 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
     const expired = await expireDrafts(env, { now, fetchImpl });
     // Family status emails whose wait is over, and staff summaries (./_applicant-notify.js)
     const notified = await runNotifications(env, { fetchImpl, now });
+    // Settled approvals: the makeover's JobTread job and the kid's profile (./_applicant-approved.js)
+    const approved = await runApprovals(env, { fetchImpl, now });
     // Every applicant in JobTread, for Admin → Applications → Applicants
     const applicants = await maybeSyncApplicants(env, { fetchImpl, now });
-    return { processed, reminded, expired, notified, applicants };
+    return { processed, reminded, expired, notified, approved, applicants };
   } catch {
     return null;
   }

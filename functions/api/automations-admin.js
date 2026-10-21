@@ -28,6 +28,8 @@
 import { hubStatus } from './_broadcast.js';
 import { slackStatus } from './_broadcast-notify.js';
 import { JT_URL, SOARD_ORG_ID } from './_reveals.js';
+import { approvalsStatus } from './_applicant-approved.js';
+import { coverFacts } from './_job-covers.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -291,7 +293,21 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     reminders: { subscribers: typeof reminders === 'number' ? reminders : null },
     jobtread: jobtread || { error: 'JobTread check failed' },
     waitlist: await settle(() => waitlistFacts(DB)),
+    approvals: approvalFacts(await settle(() => approvalsStatus(DB))),
+    covers: await settle(() => coverFacts(DB)).then((c) => (c && !c.error ? c : null)),
     press: await settle(() => pressFacts(DB)),
+  };
+}
+
+/** Approved → job and kid page (_applicant-approved.js): last run, the last family set up, who's waiting and why */
+export function approvalFacts(s) {
+  if (!s || s.error) return null;
+  const last = s.recent?.[0];
+  return {
+    lastRunAt: s.lastRun?.at || null,
+    lastErrorAt: s.lastError?.at || null,
+    last: last ? { name: last.name, at: last.done_at, slug: last.kid_slug || null } : null,
+    waiting: (s.waiting || []).map((w) => ({ name: w.name, problem: w.problem })),
   };
 }
 

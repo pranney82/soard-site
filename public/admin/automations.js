@@ -226,7 +226,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Kid status follows JobTread', s: 'live', k: 'event',
           when: 'A JobTread workflow reports a job’s status, closed date or task change (right away), and an hourly sweep on the live hub’s heartbeat. Visits to the reveals feed are the backup.',
           does: 'Sets each kid page’s status from its job: Awaiting Funding shows “Needs funding”, Design through Build shows “In progress”, and the Reveal task done, Closed Done or Warranty shows “Completed”. On Site and Denied take the profile off the site (Denied tells staff once by email and Slack), and it comes back by itself when the job moves on. Each change is saved like an admin save, with History, then the site publishes, at most every 10 minutes.',
-          touches: ['JobTread', 'D1', 'GitHub', 'Cloudflare Pages'], where: 'functions/api/_kid-status.js (from reveal-invites.js, broadcast-hooks.js, reveals.js)',
+          touches: ['JobTread', 'D1', 'GitHub', 'Cloudflare Pages', 'Resend', 'Slack'], where: 'functions/api/_kid-status.js (from reveal-invites.js, broadcast-hooks.js, reveals.js)',
           info: 'Staff can’t change a linked kid’s status in the admin: Kids shows the JobTread status with a link to the job. Kids with no job in JobTread (older years) stay under the admin’s control, a profile staff hid themselves stays hidden, and jobs named TEST are ignored.',
           live: (f) => {
             const k = f.kidStatus;
@@ -238,6 +238,18 @@ const MAP = { t: 'SOARD', children: [
             if (env(f) && !f.env.deployHook) return ATTN('No deploy hook is set in Cloudflare, so changes are saved but wait for the next Publish.', k.lastRunAt);
             const hidden = k.hidden ? ` ${plural(k.hidden, 'profile is', 'profiles are')} hidden because of JobTread.` : '';
             return ON(`${k.changed ? `The last check changed ${plural(k.changed, 'kid')}.` : 'Every linked kid matches JobTread.'}${hidden}`, k.lastRunAt);
+          } },
+        { t: 'Kid photo as the job’s cover', s: 'live', k: 'schedule',
+          when: 'With the kid status sync: JobTread’s workflows for one job, the hourly sweep for all of them.',
+          does: 'Puts each kid’s Main photo (Admin → Kids) on their JobTread job as its cover photo, cropped around the face or the focal point, and changes it when the Main photo changes. A job made when a family is approved starts with the child’s photo from their application.',
+          touches: ['JobTread'], where: 'functions/api/_job-covers.js (from _kid-status.js and _applicant-approved.js)',
+          info: 'Replaces the Google Street View picture of the house that DataX used to add (Peter turned that off in DataX on Oct 20, 2026). A cover only changes when the kid’s photo does, so one picked by hand in JobTread stays until then. A few jobs per run.',
+          live: (f) => {
+            const c = f.covers;
+            if (!c) return null;
+            if (env(f) && !f.env.jobtread) return ATTN('JOBTREAD_GRANT_KEY is missing, so job covers can’t be set.');
+            if (c.failing) return ATTN(`${plural(c.failing, 'job')} couldn’t take the kid’s photo yet. It tries again with the next sync.`, c.last?.at);
+            return ON(c.covers ? `${plural(c.covers, 'job shows', 'jobs show')} the kid’s photo.` : 'No job has a kid’s photo yet: the first sync sets them.', c.last?.at);
           } },
         { t: 'Reveals → Now tracker', s: 'live', k: 'admin',
           when: 'Staff open Reveals → Now.',
@@ -350,6 +362,22 @@ const MAP = { t: 'SOARD', children: [
           touches: ['JobTread'], where: 'JobTread workflow “Applicant Status/Diagnosis → Site applicant messages” → functions/api/applicant-sync.js',
           info: 'Switched on Oct 20, 2026; the Zapier Zaps were turned off the same day. If a Zap comes back on, families could get a message twice.',
           live: wf('22PgaEgWTBRH') },
+        { t: 'Approved → job and kid page', s: 'live', k: 'schedule',
+          when: 'A family’s Approved status has settled: their decision email is out (or staff chose not to email) and 30 minutes have passed. Checked by the application sweep every 2 minutes; nothing happens while family emails are paused for a cleanup.',
+          does: 'Makes the makeover’s JobTread job the way the old Zap did (“Name (Year)”, Status On Site, Makeover Type, at the family’s home, as the Qualification Committee), or uses the job they already have, with the child’s photo from the application as its cover. Then makes a hidden profile in Kids (first name, age, year, rooms, Awaiting funding), linked to that job so its status follows JobTread. Posts the good news to Slack and notes both in the family’s history.',
+          touches: ['JobTread', 'D1', 'GitHub', 'Slack'], where: 'functions/api/_applicant-approved.js (from _applications.js maybeSweepApplications)',
+          info: 'Nothing private goes in the profile, because its GitHub copy is public: no last name, diagnosis, address or photos. It stays off Meet the Kids until staff add the story and photos and switch on “Show on Meet the Kids”. A profile staff already made for the family is linked, never rewritten. An organization (no birthday or diagnosis) gets the job only. Families approved before this started are never touched, and nothing is deleted if a family is moved back later. A family missing a home address or *Makeover Year is one Slack problem that turns ✅ once it’s done. Replaces the Zapier “account updated” Zap.',
+          live: (f) => {
+            const a = f.approvals;
+            if (!a) return null;
+            if (env(f) && !f.env.jobtread) return ATTN('JOBTREAD_GRANT_KEY is missing, so approved families get no job or profile.');
+            if (!a.lastRunAt) return ATTN('It hasn’t run yet. It rides on the application sweep, so check the Heartbeat entry.');
+            if (a.lastErrorAt && a.lastErrorAt > a.lastRunAt) return ATTN(`The last run failed (${stamp(a.lastErrorAt)}). It tries again with the next sweep.`, a.lastRunAt);
+            if (stale(a.lastRunAt, 30 * MIN)) return ATTN(`Hasn’t run since ${stamp(a.lastRunAt)}. It rides on the application sweep, so check the Heartbeat entry.`, a.lastRunAt);
+            const WHY = { 'no-home': 'needs a home address in JobTread', 'no-year': 'needs a *Makeover Year in JobTread', error: 'JobTread refused, trying again' };
+            if (a.waiting.length) return ATTN(a.waiting.map((x) => `${x.name} ${WHY[x.problem] || 'is waiting'}.`).join(' '), a.lastRunAt);
+            return ON(a.last ? `Last set up ${a.last.name} (${stamp(a.last.at)}).` : 'No family has been approved since it started.', a.lastRunAt);
+          } },
       ]},
     ]},
 
@@ -731,7 +759,7 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Zapier: account updated', s: 'off', k: 'event',
           when: 'An account changes.',
-          does: 'Posted “Application In Review”, “Application Decision” and “Moved back to …” comments as the Qualification Committee when Status changed. The Applications branch does this now, after the status settles.',
+          does: 'Posted “Application In Review”, “Application Decision” and “Moved back to …” comments as the Qualification Committee when Status changed, and on Approved made the makeover’s JobTread job (“Name (Year)”, Status On Site, Makeover Type). The Applications branch does both now, after the status settles.',
           touches: ['JobTread', 'Zapier'], where: 'JobTread webhook → hooks.zapier.com',
           info: 'Turned off in Zapier on Oct 20, 2026, and its JobTread webhook is gone. If it ever shows as registered again, a Zap was turned back on: families could get messages twice.', live: (f) => {
             const h = hook('22PRvE87suYz')(f);
@@ -739,7 +767,7 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'DataX: new job', s: 'live', k: 'event',
           when: 'A new job is created.',
-          does: 'Tells DataX about the job.',
+          does: 'Tells DataX about the job. DataX used to add a Google Street View picture of the house as the cover; Peter turned that off on Oct 20, 2026, and the kid’s photo is the cover now (Kid photo as the job’s cover).',
           touches: ['JobTread', 'DataX'], where: 'JobTread webhook → datax.to/api/webhooks/jobtread', live: hook('22PaN5dFNj8s') },
       ]},
     ]},

@@ -71,7 +71,7 @@ async function allKids(DB) {
   return (results || []).map((row) => {
     let d = {};
     try { d = JSON.parse(row.data || '{}'); } catch { /* columns are enough */ }
-    return { slug: row.slug, name: d.name || row.name, year: row.year ?? d.year, draft: d.publishStatus === 'draft' };
+    return { slug: row.slug, name: d.name || row.name, year: row.year ?? d.year, draft: d.publishStatus === 'draft', jobtreadJobId: d.jobtreadJobId || null };
   });
 }
 
@@ -92,8 +92,8 @@ export function confirmedReveals(jobs, kids, now = Date.now()) {
     if (!String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes')) continue;
     const parts = values[FIELD_REVEAL_DATE] ? easternParts(values[FIELD_REVEAL_DATE]) : null;
     if (!parts || parts.date < today) continue;
-    const kid = matchKid(job.name, published);
-    const draft = kid ? null : matchKid(job.name, drafts);
+    const kid = matchKid(job.name, published, job.id);
+    const draft = kid ? null : matchKid(job.name, drafts, job.id);
     // No kid that year: is there exactly one under the year before or after? (suggested, never used)
     const year = parseJobName(job.name).year;
     const near = kid || draft || !year ? null : matchKid(job.name, published.filter((k) => Math.abs(Number(k.year) - year) === 1).map((k) => ({ ...k, year, filedUnder: Number(k.year) })));
