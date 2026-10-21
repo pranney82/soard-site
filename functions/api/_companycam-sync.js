@@ -56,7 +56,7 @@
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { FIELDS, jobtreadAccountUrl, jobtreadJobUrl, refreshApplicants } from './_applicants.js';
 import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from './_applicant-comms.js';
-import { jobNameFor, cleanYear, isTestFamily, existingJob, approveFamily, ensureApprovalSchema } from './_applicant-approved.js';
+import { cleanYear, isTestFamily, existingJob, approveFamily, ensureApprovalSchema } from './_applicant-approved.js';
 import { slackIssue, slackResolved, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import {
@@ -462,8 +462,15 @@ const ABBR = { street: 'st', road: 'rd', drive: 'dr', lane: 'ln', court: 'ct', a
 /** "210 Gold Valley Crossing" and "210 gold valley xing." are the same street */
 export const streetKey = (s) => String(s || '').toLowerCase().replace(/[.,#]/g, ' ').split(/\s+/).filter(Boolean).map((w) => ABBR[w] || w).join(' ');
 
-/** The project's name: the job's name to come ("Ava Smith (2027)"), or the family's name before a year is set */
-const projectNameFor = (fam) => (fam.year ? jobNameFor(fam.name, fam.year) : String(fam.name || 'Makeover family').replace(/\s+/g, ' ').trim().slice(0, 60));
+/**
+ * The project's name: the family and their year ("Ava Smith (2027)"), in full.
+ * (JobTread's 30-character limit is for job names only; shortened names could
+ * collide, and CompanyCam treats the same name at the same address as the same project.)
+ */
+const projectNameFor = (fam) => {
+  const name = String(fam.name || 'Makeover family').replace(/\s*\(\d{4}\)\s*$/, '').replace(/\s+/g, ' ').trim().slice(0, 90);
+  return fam.year ? `${name} (${fam.year})` : name;
+};
 
 /** Of these CompanyCam projects, the ones any JobTread job uses (any customer's) */
 async function projectsWithJobs(env, ids, fetchImpl) {
@@ -518,12 +525,14 @@ async function findOrMakeProject(env, fam, { fetchImpl, now }) {
   };
   // CompanyCam answers with the project it already has under this name and address (restoring a deleted one)
   const existed = (p) => { const t = Date.parse(p?.created_at || ''); return Number.isFinite(t) && t < now - 10 * MIN; };
-  const usable = async (p) => !existed(p) || (thisVisit(p) && !(await projectsWithJobs(env, [p.id], fetchImpl)).has(String(p.id)));
+  // Never another family's (CompanyCam answers by name and address), an earlier makeover's, or a job's
+  const usable = async (p) => !taken.has(String(p.id)) && (!existed(p) || (thisVisit(p) && !(await projectsWithJobs(env, [p.id], fetchImpl)).has(String(p.id))));
   let project = await create(body);
-  if (project?.id && !(await usable(project))) {
-    project = await create({ ...body, name: `${body.name} home visit` }); // an earlier makeover's project, or a job's, has the name
-    if (project?.id && !(await usable(project))) throw new Error('CompanyCam keeps answering with an older project at this address');
+  for (const name of [`${body.name} home visit`, `${body.name} home visit ${String(fam.id).slice(-4)}`]) {
+    if (!project?.id || (await usable(project))) break;
+    project = await create({ ...body, name });
   }
+  if (project?.id && !(await usable(project))) throw new Error('CompanyCam keeps answering with another project at this address');
   if (!project?.id) throw new Error('CompanyCam didn’t make the project');
   // An archived one sends no webhooks: open it again first
   if (project.archived) { await unarchiveProject(env, project.id, { fetchImpl }); project = { ...project, archived: false }; }
@@ -1376,7 +1385,7 @@ async function finishSelfTest(env, st, { fetchImpl, now }) {
  * projects archived and both TEST customers archived in JobTread. The result
  * is in companycam_state "rehearsal". No button.
  */
-export const REHEARSAL = '2026-10-21b'; // b: projects of their own (a, at the office, adopted the TEST rehearsal jobs' projects)
+export const REHEARSAL = '2026-10-21c'; // c: full names (b's shortened names collided into one project); b: never a job's project
 const R_NAMES = { a: 'TEST CompanyCam Family', b: 'TEST CompanyCam Approved' };
 const R_CAPTION = 'TEST: a home visit photo for the rehearsal';
 const R_WAIT_MS = 20 * MIN;

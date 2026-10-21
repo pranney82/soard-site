@@ -960,3 +960,19 @@ test('a project JobTread won’t link (already another job’s): the job keeps i
   await run(3);
   assert.equal(jobFiles(job.id).length, 1, 'the home-visit photo is on the job');
 });
+
+test('two families at one address whose names look alike still get a project each', async () => {
+  const a = await family('acct24', 'Remi Powell', 'In Review', { appPhotos: false });
+  const b = await family('acct25', 'Remi Powell', 'In Review', { appPhotos: false }); // same name, a second account
+  await run(0);
+  const pa = (await getFamilyRow(env.DB, a.id)).project_id;
+  const pb = (await getFamilyRow(env.DB, b.id)).project_id;
+  assert.ok(pa && pb && pa !== pb, `${pa} / ${pb}`);
+  assert.equal(w.cc.projects.get(pb).name, 'Remi Powell (2027) home visit');
+});
+
+test('the project carries the family’s full name, not the job’s 30-character cut', async () => {
+  const a = await family('acct26', 'Oakley Faye Xiu Ping Roberson', 'In Review', { appPhotos: false });
+  await run(0);
+  assert.equal(w.cc.projects.get((await getFamilyRow(env.DB, a.id)).project_id).name, 'Oakley Faye Xiu Ping Roberson (2027)');
+});
