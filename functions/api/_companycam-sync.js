@@ -1211,6 +1211,13 @@ async function finishSelfTest(env, st, { fetchImpl, now }) {
   if (st.copied?.fileId && !st.moved?.customerCopyGone) await tidy('file', async () => { if (await jtFile(env, st.copied.fileId, fetchImpl)) await deleteJtFile(env, st.copied.fileId, fetchImpl); });
   if (st.jobId) await tidy('job', () => jt(env, { updateJob: { $: { id: st.jobId, closedOn: todayEastern(now) } } }, fetchImpl));
   for (const id of new Set([st.projectId, st.job?.projectNow].filter(Boolean))) await tidy('project', () => archiveProject(env, id, { fetchImpl }));
+  // Any test copy an interrupted check left on the office account (a job's copies stay with their closed TEST job)
+  await tidy('strays', async () => {
+    const out = await jt(env, { account: { $: { id: OFFICE_ACCOUNT }, files: { $: { size: 50, where: ['folder', '=', FOLDER] }, nodes: { id: {}, description: {}, job: { id: {} } } } } }, fetchImpl);
+    for (const f of out?.account?.files?.nodes || []) {
+      if (!f.job && String(f.description || '').startsWith('TEST: ')) await deleteJtFile(env, f.id, fetchImpl);
+    }
+  });
   await tidy('rows', async () => {
     await DB.prepare("DELETE FROM companycam_projects WHERE account_id = ? AND stage IN ('selftest', 'linked')").bind(OFFICE_ACCOUNT).run();
     await DB.prepare('DELETE FROM companycam_files WHERE account_id = ?').bind(OFFICE_ACCOUNT).run();

@@ -67,6 +67,11 @@ function jobtread(body) {
   switch (op) {
     case 'account': {
       const a = w.accounts.get(q.$.id);
+      if (a && q.files) {
+        const folder = q.files.$?.where?.[2];
+        const files = [...w.files.values()].filter((f) => f.targetId === a.id && (folder == null || f.folder === folder));
+        return json({ account: { files: { nodes: files.map((f) => ({ id: f.id, description: f.description ?? null, job: f.targetType === 'job' ? { id: f.targetId } : null })) } } });
+      }
       return json({ account: a ? accountNode(a) : null });
     }
     case 'organization': return json({ organization: { fileTags: { nodes: w.tags } } });
@@ -751,7 +756,12 @@ test('a newer check tidies an earlier one still under way before it starts', asy
   w.files.set('oldcopy', { id: 'oldcopy', name: 'old.jpg', targetType: 'account', targetId: OFFICE_ACCOUNT, createdBy: 'site' });
   w.jobs.set('oldjob', { id: 'oldjob', accountId: OFFICE_ACCOUNT, name: 'TEST CompanyCam check', companycamId: '950', createdAt: new Date(T0).toISOString() });
   await env.DB.prepare("UPDATE companycam_state SET value = ? WHERE key = 'self-test'").bind(JSON.stringify({ id: 'older', step: 'job', projectId: '950', copied: { fileId: 'oldcopy' }, jobId: 'oldjob', jobAt: new Date(T0).toISOString() })).run();
+  // An interrupted run's copy, and a file that isn't a test's
+  w.files.set('stray', { id: 'stray', name: 'TEST: x.jpg', folder: FOLDER, description: 'TEST: the website checking CompanyCam to JobTread. Safe to ignore.', targetType: 'account', targetId: OFFICE_ACCOUNT, createdBy: 'site' });
+  w.files.set('real', { id: 'real', name: 'Office.jpg', folder: FOLDER, description: 'The office', targetType: 'account', targetId: OFFICE_ACCOUNT, createdBy: 'site' });
   await run(0);
+  assert.equal(w.files.has('stray'), false, 'a test copy left behind goes');
+  assert.equal(w.files.has('real'), true, 'anything else stays');
   assert.equal(w.cc.projects.get('950').archived, true);
   assert.equal(w.jobs.get('oldjob').closedOn, '2026-10-21');
   assert.equal(w.files.has('oldcopy'), false);
