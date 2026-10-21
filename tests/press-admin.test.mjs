@@ -55,6 +55,13 @@ describe('press-shared', () => {
     assert.equal(P.linkFor({ url: 'https://a.com/x', linkGone: '2026-10-01', archiveUrl: 'https://web.archive.org/web/2019/https://a.com/x' }), 'https://web.archive.org/web/2019/https://a.com/x');
     assert.equal(P.linkFor({ url: 'https://a.com/x', linkGone: '2026-10-01' }), null);
   });
+  test('the founder is always Peter, never Pete; a child named Pete stays Pete', () => {
+    assert.equal(P.cleanTitle('Holly and Pete Ranney Saluted by Braves as Community Heroes - News & Views', 'News & Views'), 'Holly and Peter Ranney Saluted by Braves as Community Heroes');
+    assert.equal(P.founderNames('Pete and Holly Ranney; Holly & Pete; Pete Ranney’s charity; Pete’s Ranney Day'), 'Peter and Holly Ranney; Holly & Peter; Peter Ranney’s charity; Peter’s Ranney Day');
+    assert.equal(P.founderNames('Pete got a new room. Peter Ranney visited Pete.'), 'Pete got a new room. Peter Ranney visited Pete.');
+    const r = P.storyRecord({ title: 'Holly and Pete Ranney honored', excerpt: 'Pete Ranney spoke.', featuredHeadline: 'Pete and Holly', featuredDescription: 'With Pete Ranney' });
+    assert.deepEqual([r.title, r.excerpt, r.featuredHeadline, r.featuredDescription], ['Holly and Peter Ranney honored', 'Peter Ranney spoke.', 'Peter and Holly', 'With Peter Ranney']);
+  });
   test('a story as saved keeps what it doesn’t know about and drops empty extras', () => {
     const r = P.storyRecord({ outlet: ' WSB-TV ', outletLogo: 'wsb-tv', category: 'nope', title: '<b>Hi</b>', date: '2026-01-02', url: 'https://x.com', excerpt: 'A&amp;B <a href="x">link</a>', image: '', videoId: 'https://youtu.be/Tej9V0MPQbY', featured: false, featuredHeadline: 'Kept', kids: ['a', 'a', ''], somethingNew: 7 });
     assert.equal(r.outlet, 'WSB-TV');

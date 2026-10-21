@@ -77,9 +77,18 @@ export function dedupeSlug(base, taken) {
   for (let i = 2; ; i++) if (!t.has(`${b}-${i}`)) return `${b}-${i}`;
 }
 
+/**
+ * The founder is always "Peter", never "Pete" (the brand guide's rule), even when an
+ * outlet's headline says Pete. Only next to "Ranney" or "Holly": a child can be a Pete.
+ */
+export const founderNames = (s) => String(s ?? '')
+  .replace(/\bPete(?=(?:['’]s)?\s+Ranney\b)/g, 'Peter')
+  .replace(/\b(Holly\s+(?:and|&)\s+)Pete\b/g, '$1Peter')
+  .replace(/\bPete(?=\s+(?:and|&)\s+Holly\b)/g, 'Peter');
+
 /** A headline without the " - Outlet" Google News and some sites put after it */
 export function cleanTitle(title, source = '') {
-  let t = plain(title);
+  let t = founderNames(plain(title));
   const src = plain(source);
   if (src) {
     for (const sep of [' - ', ' | ', ' — ', ' – ', ': ']) {
@@ -196,18 +205,18 @@ export function storyRecord(d = {}) {
   r.outlet = plain(d.outlet);
   r.outletLogo = String(d.outletLogo || '');
   r.category = CATEGORIES.includes(d.category) ? d.category : 'print';
-  r.title = plain(d.title);
+  r.title = founderNames(plain(d.title));
   r.date = /^\d{4}-\d{2}-\d{2}$/.test(String(d.date || '')) ? d.date : new Date().toISOString().slice(0, 10);
   r.url = String(d.url || '').trim();
-  r.excerpt = plain(d.excerpt);
+  r.excerpt = founderNames(plain(d.excerpt));
   r.image = d.image ? String(d.image) : null;
   r.featured = !!d.featured;
   r.order = Number.isFinite(Number(d.order)) ? Number(d.order) : 0;
   const vid = youTubeId(d.videoId);
   if (vid) r.videoId = vid;
   // Kept when a story stops being featured, so featuring it again brings them back
-  if (plain(d.featuredHeadline)) r.featuredHeadline = plain(d.featuredHeadline);
-  if (plain(d.featuredDescription)) r.featuredDescription = plain(d.featuredDescription);
+  if (plain(d.featuredHeadline)) r.featuredHeadline = founderNames(plain(d.featuredHeadline));
+  if (plain(d.featuredDescription)) r.featuredDescription = founderNames(plain(d.featuredDescription));
   const kids = uniq(d.kids);
   if (kids.length) r.kids = kids;
   const partners = uniq(d.partners);

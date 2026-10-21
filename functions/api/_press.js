@@ -57,7 +57,7 @@ const LOCK_MS = 45000;
 export const TIDY_VERSION = 1;
 const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_URL'];
-const STYLE = 'Plain, warm and specific. Facts from the text only; never invent names, dates or outcomes. No em dashes or en dashes (use commas or periods). No exclamation marks. Avoid stock phrases such as "journey", "testament", "heartwarming", "life-changing", "truly", "a space where".';
+const STYLE = 'Plain, warm and specific. The founder is always "Peter Ranney" or "Peter", never "Pete", even when the story says Pete. Facts from the text only; never invent names, dates or outcomes. No em dashes or en dashes (use commas or periods). No exclamation marks. Avoid stock phrases such as "journey", "testament", "heartwarming", "life-changing", "truly", "a space where".';
 
 const iso = (t = Date.now()) => new Date(t).toISOString();
 // The Internet Archive turns a burst away (429), so it's asked one thing at a
