@@ -353,7 +353,7 @@ test('in the Slack app, a stuck application is one thread that turns ✅ when it
   await run(sub.id, t);
   const edit = (w.world.slackEdits || []).find(e => e.ts === ts);
   assert.ok(edit, 'the stuck post was edited');
-  assert.match(renderSlack(edit), /^✅ Unstuck: Avery Stone’s application\nIt loaded into JobTread on its own after \d+ tries\. Nothing to do\./);
+  assert.equal(renderSlack(edit), '✅ Resolved: Avery Stone’s application was stuck\nIt got through on its own.', 'a short ✅, never a copy of the reply');
   const reply = w.world.slack.filter(p => p.thread_ts === ts).at(-1);
   assert.equal(reply.reply_broadcast, true);
   assert.match(reply.text, /^✅ Unstuck/);

@@ -1096,7 +1096,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
   }, now);
 
   if (error && attempts >= ALERT_AFTER_ATTEMPTS && app.alerted !== error) {
-    // A new problem on an application already reported goes in that post's thread
+    // A new problem on an application already reported replies in that post's thread, and the channel
     const open = s.stuckSlack?.ts ? s.stuckSlack : null;
     const [, posted] = await Promise.all([
       sendEmails(env, {
@@ -1113,19 +1113,20 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     }
     await DB.prepare('UPDATE applications SET alerted = ? WHERE id = ?').bind(error, app.id).run();
   }
-  // It got through on its own: the stuck post turns into a ✅ and says so in its thread
+  // It got through on its own: a reply says so (in the channel too), and the stuck post turns a short ✅
   if (!error && s.stuckSlack?.ts) {
     const ref = { channel: s.stuckSlack.channel, ts: s.stuckSlack.ts };
     const tries = (app.attempts || 0) + 1;
-    const done = slackCard({
-      icon: '✅',
-      title: `Unstuck: ${accountName(app)}’s application`,
-      lead: `It loaded into JobTread on its own after ${tries} tries. Nothing to do.`,
-      buttons: [{ label: 'Open the application', url: applicationUrl(app.id) }],
-    });
     await Promise.all([
-      slackPost(env, done, { update: ref }).catch(() => null),
-      slackPost(env, done, { thread: { ...ref, broadcast: true } }).catch(() => null),
+      slackPost(env, slackCard({
+        icon: '✅', title: `Resolved: ${accountName(app)}’s application was stuck`, lead: 'It got through on its own.',
+      }), { update: ref }).catch(() => null),
+      slackPost(env, slackCard({
+        icon: '✅',
+        title: `Unstuck: ${accountName(app)}’s application`,
+        lead: `It loaded into JobTread on its own after ${tries} tries. Nothing to do.`,
+        buttons: [{ label: 'Open the application', url: applicationUrl(app.id) }],
+      }), { thread: { ...ref, broadcast: true } }).catch(() => null),
     ]);
     delete s.stuckSlack;
     // Fixed and said so: if the same error comes back later, that's news again
