@@ -25,9 +25,10 @@
  * Every open job (not TEST) about once an hour, a couple a minute on the
  * heartbeat; a new photo in a job's source moves that job to the front
  * (CompanyCam's webhook, ./_companycam-sync.js takeEvent). Slack hears once
- * a pass what was copied. Copies JobTread holds twice are counted;
- * removing them (DEDUPE: keep the oldest, never one someone commented on)
- * waits for Peter's go.
+ * a pass what was copied and removed. A photo JobTread holds twice keeps
+ * its oldest copy; later ones made by JobTread's integration or the site are
+ * removed (DEDUPE), never a file a person uploaded or one someone commented
+ * on, at most MAX_REMOVE_PER_RUN a run.
  *
  * Results in D1 companycam_jobs and companycam_jobs_state "jobs-audit" (Site
  * → Automations). Videos stay in CompanyCam: its API gives a stream, not a
@@ -41,7 +42,7 @@ import { companycamOn, CompanyCamError, ccAll, getPhoto, projectPhotos, photoIma
 import { uploadToJobTread } from './_companycam-sync.js';
 
 export const COPY = true;    // copy what a job is missing
-export const DEDUPE = false; // remove JobTread's second copies: waits for Peter's go
+export const DEDUPE = true;  // remove JobTread's second copies (Peter, Oct 21 2026: "ok do those")
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
@@ -52,6 +53,7 @@ const BUDGET_MS = 18000;
 const LINKED_GRACE_MS = HOUR;      // JobTread's own sync gets its turn with the linked project
 const FRESH_MS = 2 * MIN;          // a photo CompanyCam is still settling
 const COPY_PER_RUN = 15;
+const MAX_REMOVE_PER_RUN = 50;
 const MAX_PHOTOS = 2000;
 const SAME_FAMILY_WITHIN_MS = 183 * DAY;
 
@@ -137,7 +139,8 @@ async function jobCopies(env, jobId, fetchImpl) {
     const cc = r?.job?.cc;
     for (const f of cc?.nodes || []) {
       const photoId = photoIdOf(f.name);
-      if (photoId) copies.push({ id: f.id, photoId, createdAt: f.createdAt, byCompanyCam: f.createdByUser?.name === 'CompanyCam', comments: (f.comments?.nodes || []).length });
+      // Made by JobTread's integration ("CompanyCam") or by the site's own key (no user): never a person's upload
+      if (photoId) copies.push({ id: f.id, photoId, createdAt: f.createdAt, byMachine: !f.createdByUser?.name || f.createdByUser.name === 'CompanyCam', comments: (f.comments?.nodes || []).length });
     }
     if (!cc?.nextPage) break;
     page = cc.nextPage;
@@ -259,7 +262,7 @@ export async function checkJob(env, job, index, { fetchImpl = fetch, now = Date.
       for (const list of doubles) {
         const keep = [...list].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))[0];
         for (const c of list) {
-          if (c === keep || c.comments || !c.byCompanyCam) continue;
+          if (c === keep || c.comments || !c.byMachine || removedNow >= MAX_REMOVE_PER_RUN) continue;
           await jt(env, { deleteFile: { $: { id: c.id } } }, fetchImpl);
           removedNow += 1;
         }
@@ -317,7 +320,7 @@ export async function maybeCheckJobs(env, { fetchImpl = fetch, now = Date.now(),
     for (const job of due) {
       if (Date.now() > deadline) break;
       const r = await checkJob(env, job, index, { fetchImpl, now, copy, dedupe });
-      if (r.copied) pass.copied.push({ job: job.name, count: r.copied });
+      if (r.copied || r.removed) pass.copied.push({ job: job.name, count: r.copied, removed: r.removed });
     }
     const { results: after } = await DB.prepare('SELECT job_id, checked_at FROM companycam_jobs').all();
     const fresh = new Map((after || []).map((r) => [r.job_id, r.checked_at || 0]));
@@ -355,11 +358,13 @@ async function auditSummary(DB, jobs, now, { copy, dedupe }) {
 }
 
 function copiedCard(copied) {
-  const total = copied.reduce((n, c) => n + c.count, 0);
+  const total = copied.reduce((n, c) => n + (c.count || 0), 0);
+  const gone = copied.reduce((n, c) => n + (c.removed || 0), 0);
+  const parts = [total && `${total} CompanyCam photo${total === 1 ? '' : 's'} copied into JobTread`, gone && `${gone} second cop${gone === 1 ? 'y' : 'ies'} removed`].filter(Boolean);
   return slackCard({
-    icon: '📸', title: `${total} CompanyCam photo${total === 1 ? '' : 's'} copied into JobTread`,
-    lead: copied.slice(0, 20).map((c) => `${c.job}: ${c.count}`).join('\n'),
-    footer: 'They were in CompanyCam but not on the job (JobTread’s link had dropped, or the photos were in a second project). The site checks every open job hourly.',
+    icon: '📸', title: parts.join(', '),
+    lead: copied.slice(0, 20).map((c) => `${c.job}: ${[c.count && `${c.count} copied`, c.removed && `${c.removed} second cop${c.removed === 1 ? 'y' : 'ies'} removed`].filter(Boolean).join(', ')}`).join('\n'),
+    footer: 'Copied: in CompanyCam but not on the job (JobTread’s link had dropped, or the photos were in a second project). Removed: the same photo twice, made by JobTread re-importing; the oldest stays. The site checks every open job hourly.',
   });
 }
 

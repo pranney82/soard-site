@@ -174,7 +174,7 @@ test('never another job’s project, nor an earlier makeover’s at the same add
   assert.equal((await row('j5')).problem, 'no-project');
 });
 
-test('second copies are counted; with DEDUPE the oldest stays, and one someone commented on is never touched', async () => {
+test('a photo JobTread copied twice keeps its oldest copy; a person’s upload or a commented copy is never touched', async () => {
   project('500', 'Ava Stone (2026) (019)');
   job('j1', 'Ava Stone (2026)', { companycamId: '500' });
   photo('3009001', '500');
@@ -183,12 +183,15 @@ test('second copies are counted; with DEDUPE the oldest stays, and one someone c
   photo('3009002', '500');
   copy('j1', '3009002', { created: at(-10000) });
   const talked = copy('j1', '3009002', { created: at(-50), comments: true });
-  await run(0);
-  assert.equal((await row('j1')).double_copies, 2);
-  assert.ok(w.files.has(second), 'DEDUPE is off: nothing removed');
-  await run(61, { dedupe: true });
-  assert.ok(w.files.has(first) && !w.files.has(second));
-  assert.ok(w.files.has(talked));
+  const theirs = copy('j1', '3009002', { created: at(-40), by: 'Linzi Berkowitz' }); // a person's upload with the same name
+  await run(0, { dedupe: false });
+  assert.equal((await row('j1')).double_copies, 3, 'counted while removal is off');
+  assert.ok(w.files.has(second));
+  await run(61);
+  assert.ok(w.files.has(first) && !w.files.has(second), 'the oldest stays, the second goes');
+  assert.ok(w.files.has(talked), 'one someone commented on stays');
+  assert.ok(w.files.has(theirs), 'a person’s upload is never touched');
+  assert.match(JSON.stringify(w.slack.at(-1)?.blocks || []), /1 second copy removed/);
 });
 
 test('a new photo in a job’s source sends that job to the front of the queue', async () => {
