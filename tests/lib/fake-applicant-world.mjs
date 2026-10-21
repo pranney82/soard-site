@@ -288,6 +288,14 @@ export function fakeApplicantWorld() {
       world.slack.push(JSON.parse(init.body));
       return new Response('ok');
     }
+    // The Slack app (when a test sets SLACK_BOT_TOKEN): posts land in world.slack too, edits in world.slackEdits
+    if (url.host === 'slack.com') {
+      if (world.slackDown) return json({ ok: false, error: 'invalid_auth' });
+      const body = JSON.parse(init.body || '{}');
+      if (url.pathname.endsWith('/chat.update')) { (world.slackEdits ||= []).push(body); return json({ ok: true, channel: body.channel, ts: body.ts }); }
+      if (url.pathname.endsWith('/chat.postMessage')) { world.slack.push(body); return json({ ok: true, channel: body.channel, ts: `${world.slack.length}.0001` }); }
+      return json({ ok: false, error: 'unknown_method' });
+    }
     if (url.host === 'challenges.cloudflare.com') return json({ success: world.turnstile });
     throw new Error(`fake world has no route for ${url.href}`);
   };

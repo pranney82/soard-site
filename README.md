@@ -250,8 +250,9 @@ The admin panel can also trigger deploys after content changes via the `/api/dep
 | OAuth client ID/secret | Yes | Admin panel authentication |
 | `KIT_API_KEY` | Yes | Kit (ConvertKit) v4 key. Kit is the only list tool: newsletter signups, "Push to Kit" broadcast drafts, and the "applications are open" email to the waitlist |
 | `RESEND_API_KEY` | Yes | One-off emails only: application links and notices, waitlist "you're on the list" confirmations, reveal reminders, staff alerts, editor test sends |
-| `SLACK_BOT_TOKEN` | No | The site's Slack app (`xoxb-…`; scopes `chat:write`, `chat:write.public`, `channels:read`, `groups:read`). Staff alerts and new-application posts go to the channel picked in Reveals → Settings → Alerts |
+| `SLACK_BOT_TOKEN` | No | The site's Slack app (`xoxb-…`; scopes `chat:write`, `chat:write.public`, `channels:read`, `groups:read`). Reveals → Settings → Alerts picks two channels: Good news (gifts, new applications, reveals going live) and Needs attention (problems, which thread and turn ✅ when fixed; live failures add @here). With only Good news picked, everything goes there |
 | `SLACK_WEBHOOK_URL` | No | Older incoming webhook, used only when the Slack app isn't set or can't post |
+| `SLACK_SIGNING_SECRET` | No | The Slack app's signing secret. When set, `/api/slack-actions` (the app's Interactivity Request URL, which answers button clicks so Slack shows no warning mark) refuses unsigned requests |
 | `ZEFFY_WEBHOOK_SECRET` | No | Zeffy's `whsec_…` signing secret for `/api/zeffy-webhook` (each gift is posted to #team-everyone by the Slack app, `SLACK_BOT_TOKEN`) |
 | `ZEFFY_API_KEY` | No | Zeffy API key: the 15-minute catch-up check for gifts the webhook missed |
 | `KIT_FORM_ID` | No | Also add new subscribers to this Kit form (opt-in rules/automations apply) |

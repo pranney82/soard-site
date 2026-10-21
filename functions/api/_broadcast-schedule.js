@@ -45,7 +45,8 @@
 import { FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, easternParts, todayEastern, matchKid, parseJobName, fetchJobs, longDay, clockTime } from './_reveals.js';
 import { SANDBOX_JOB_ID, isTestJob } from './_reveal-invites.js';
 import { adminAction, readState, readConfig, ensureSchema, SITE_ORIGIN } from './_broadcast.js';
-import { alertAdmins } from './_broadcast-notify.js';
+import { alertAdmins, slackResolved } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
 
 const RECORD_KEY = 'broadcast-schedule';
 const LOCK_KEY = 'broadcast-schedule-lock';
@@ -221,12 +222,12 @@ async function tellStaff(env, { plan, before, result, reveals, alerted, now }) {
   const tag = (x) => (x?.test ? 'TEST · ' : '');
   const rehearsal = ' This is a rehearsal from a TEST job: nothing shows on the public site, and reminders go only to the test address.';
   if (result?.success && plan.action === 'schedule') {
-    sends.push({ level: 'info', title: `${tag(t)}Countdown is up: ${t.name}'s reveal`, detail: `${whenText(t)}. It's confirmed in JobTread, so the site put up the countdown and reminder signup. Reminders go out the day before and an hour before.${t.test ? rehearsal : ''}${before.phase === 'scheduled' || before.phase === 'armed' ? ` It replaces ${before.kidName || 'the reveal'} planned before it.` : ''}`, url: ADMIN_URL, links: [{ label: 'Live page', url: `${SITE_ORIGIN}/live/${t.slug}/` }, { label: 'JobTread schedule', url: jtSchedule(t.jobId) }] });
+    sends.push({ level: 'info', kind: t.test ? 'attention' : 'news', icon: '⏳', title: `${tag(t)}Countdown is up: ${t.name}'s reveal`, detail: `${whenText(t)}. It's confirmed in JobTread, so the site put up the countdown and reminder signup. Reminders go out the day before and an hour before.${t.test ? rehearsal : ''}${before.phase === 'scheduled' || before.phase === 'armed' ? ` It replaces ${before.kidName || 'the reveal'} planned before it.` : ''}`, url: ADMIN_URL, links: [{ label: 'Live page', url: `${SITE_ORIGIN}/live/${t.slug}/` }, { label: 'JobTread schedule', url: jtSchedule(t.jobId) }] });
   } else if (result?.success && plan.action === 'update' && before.scheduledAt !== t.startsAt) {
     const from = easternParts(before.scheduledAt);
     const fromText = from ? `${longDay(from.date)}${from.time ? ` at ${clockTime(from.time)}` : ''}` : 'its old time';
     const newDay = from?.date !== t.date;
-    sends.push({ level: 'info', title: `${tag(before)}Reveal moved: ${t.name}`, detail: `From ${fromText} to ${whenText(t)}, as changed in JobTread. The countdown follows.${newDay ? ' Everyone who signed up for reminders hears about the new date, and the day-before and hour-before reminders go out for it.' : ''}`, url: ADMIN_URL, links: [{ label: 'JobTread schedule', url: jtSchedule(t.jobId) }] });
+    sends.push({ level: 'info', kind: before.test ? 'attention' : 'news', icon: '📅', title: `${tag(before)}Reveal moved: ${t.name}`, detail: `From ${fromText} to ${whenText(t)}, as changed in JobTread. The countdown follows.${newDay ? ' Everyone who signed up for reminders hears about the new date, and the day-before and hour-before reminders go out for it.' : ''}`, url: ADMIN_URL, links: [{ label: 'JobTread schedule', url: jtSchedule(t.jobId) }] });
   } else if (result?.success && plan.action === 'cancel') {
     sends.push({ level: before.test ? 'info' : 'warn', title: `${tag(before)}Countdown taken down: ${before.kidName || 'the reveal'}`, detail: 'It is no longer confirmed with a time in JobTread, so the countdown and reminder signup came off the site. Reminders already sent can\'t be recalled.', url: ADMIN_URL, links: before.jobId ? [{ label: 'JobTread schedule', url: jtSchedule(before.jobId) }] : [] });
   }
@@ -241,9 +242,19 @@ async function tellStaff(env, { plan, before, result, reveals, alerted, now }) {
     next[key] = alerted?.[key] || new Date(now).toISOString();
     if (alerted?.[key]) continue;
     const { detail, fix } = stuckText(r);
-    sends.push({ level: 'warn', title: `${tag(r)}No countdown yet: ${r.name || r.jobName}`, detail, fix, url: ADMIN_URL, links: [{ label: 'JobTread schedule', url: jtSchedule(r.jobId) }] });
+    sends.push({ level: 'warn', title: `${tag(r)}No countdown yet: ${r.name || r.jobName}`, detail, fix, url: ADMIN_URL, links: [{ label: 'JobTread schedule', url: jtSchedule(r.jobId) }], issue: `countdown:${key}` });
   }
   for (const a of sends) await alertAdmins(env, config, a).catch(() => {});
+  // A problem that went away: its Slack post turns ✅ (Slack only; the email said nothing needs undoing)
+  for (const key of Object.keys(alerted || {}).filter((k) => !next[k])) {
+    const jobId = key.split(':')[0];
+    const r = reveals.find((x) => String(x.jobId) === jobId);
+    const name = r?.name || r?.jobName || 'the reveal';
+    const [title, why] = !r ? [`Nothing to fix now: ${name}`, 'It\'s no longer a confirmed reveal in the next three weeks.']
+      : r.problem ? [`Changed: ${name}`, 'It has a different problem now: see the newer post.']
+      : [`Countdown unblocked: ${name}`, 'JobTread and the site agree now, so the countdown goes up when it\'s the next reveal.'];
+    await slackResolved(env, `countdown:${key}`, slackCard({ icon: '✅', title, lead: why }), { summary: why }).catch(() => null);
+  }
   return next;
 }
 

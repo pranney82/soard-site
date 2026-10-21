@@ -7,6 +7,8 @@ import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
+import { renderSlack } from './lib/slack-render.mjs';
+import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import {
   giftMessage, screenPayment, verifySignature, handleWebhook, runSweep, maybeSweepZeffy,
   readZeffyConfig, MAJOR_GIFT_CENTS, maybeSelfTest, SELF_TEST,
@@ -30,7 +32,7 @@ const payment = (o = {}) => ({
 const realFetch = globalThis.fetch;
 let world;
 function freshWorld() {
-  return { slack: [], emails: [], payments: [], slackError: null, zeffyStatus: 200, zeffyCalls: [] };
+  return { slack: [], channels: [], emails: [], payments: [], slackError: null, zeffyStatus: 200, zeffyCalls: [] };
 }
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(typeof input === 'string' ? input : input.url);
@@ -38,9 +40,9 @@ globalThis.fetch = async (input, init = {}) => {
     // The site's Slack app, posting by channel id (Slack answers 200 with ok:false on errors)
     assert.equal(init.headers.Authorization, 'Bearer xoxb-test');
     const body = JSON.parse(init.body);
-    assert.equal(body.channel, 'C04NJ4W4QG6');
+    world.channels.push(body.channel);
     if (world.slackError) return Response.json({ ok: false, error: world.slackError });
-    world.slack.push(body.text);
+    world.slack.push(renderSlack(body));
     return Response.json({ ok: true, channel: body.channel, ts: '1.2' });
   }
   if (url.host === 'api.zeffy.com') {
@@ -87,39 +89,53 @@ const row = (id) => env.DB.prepare('SELECT * FROM zeffy_gifts WHERE payment_id =
 
 // ── The post ────────────────────────────────────────────────────────────────
 
-test('the post: the agent’s four lines, in Eastern dates', () => {
-  assert.equal(giftMessage(payment()), '🎉 New donation - $50.00\nFrom: Jane Doe\nCampaign: Help Build a Brighter Home\nReceived: October 20, 2026');
+test('the post: the amount and giver up top, then the campaign and the day, in Eastern dates', () => {
+  const card = giftMessage(payment());
+  assert.equal(card.blocks[0].type, 'header');
+  assert.equal(card.text, '💛 $50.00 gift from Jane Doe', 'the phone notification');
+  assert.equal(card.plain, '💛 $50.00 gift from Jane Doe\nCampaign: Help Build a Brighter Home\nReceived: October 20, 2026');
   // 11:30 PM Eastern on the 19th is the 20th in UTC; the post says the 19th
-  assert.match(giftMessage(payment({ created: S(Date.parse('2026-10-20T03:30:00Z')) })), /Received: October 19, 2026$/);
+  assert.match(giftMessage(payment({ created: S(Date.parse('2026-10-20T03:30:00Z')) })).plain, /Received: October 19, 2026$/);
 });
 
 test('$1,000 and up is a major gift; $999.99 is not', () => {
   assert.equal(MAJOR_GIFT_CENTS, 100000);
-  assert.match(giftMessage(payment({ amount: 100000 })), /^🚨 MAJOR GIFT - \$1,000\.00\n/);
-  assert.match(giftMessage(payment({ amount: 275000 })), /^🚨 MAJOR GIFT - \$2,750\.00\n/);
-  assert.match(giftMessage(payment({ amount: 99999 })), /^🎉 New donation - \$999\.99\n/);
+  assert.equal(giftMessage(payment({ amount: 100000 })).text, '🌟 Major gift: $1,000.00 from Jane Doe');
+  assert.equal(giftMessage(payment({ amount: 275000 })).text, '🌟 Major gift: $2,750.00 from Jane Doe');
+  assert.equal(giftMessage(payment({ amount: 99999 })).text, '💛 $999.99 gift from Jane Doe');
 });
 
 test('a missing field leaves its line out, never empty or guessed', () => {
   const msg = giftMessage(payment({ buyer: { first_name: '', last_name: null }, description: '  ', created: null }));
-  assert.equal(msg, '🎉 New donation - $50.00');
-  assert.equal(giftMessage(payment({ buyer: { first_name: 'Cher', last_name: '' } })).split('\n')[1], 'From: Cher');
-  assert.equal(giftMessage({ id: 'pay_x', description: 'Golf' }), '🎉 New donation\nCampaign: Golf');
+  assert.equal(msg.plain, '💛 $50.00 gift');
+  assert.equal(msg.blocks.length, 1, 'just the headline: no empty grid');
+  assert.equal(giftMessage(payment({ buyer: { first_name: 'Cher', last_name: '' } })).text, '💛 $50.00 gift from Cher');
+  assert.equal(giftMessage({ id: 'pay_x', description: 'Golf' }).plain, '💛 New gift\nCampaign: Golf');
 });
 
 test('no email address or contact details, ever', () => {
   const msg = giftMessage(payment({ buyer: { email: 'jane@example.com', first_name: 'Jane', last_name: 'Doe', address: { line1: '1 Main St' } }, buyer_questions: [{ question: 'Phone', type: 'phone', answer: '555-1234' }] }));
-  assert.doesNotMatch(msg, /example\.com|Main St|555/);
+  assert.doesNotMatch(JSON.stringify(msg), /example\.com|Main St|555/);
 });
 
 test('organizations, monthly gifts, other currencies, and Slack markup', () => {
-  assert.match(giftMessage(payment({ buyer: { first_name: 'Ann', last_name: 'Lee', is_corporate: true, company_name: 'Pulte Homes' } })), /From: Pulte Homes \(Ann Lee\)/);
-  assert.match(giftMessage(payment({ buyer: { is_corporate: true, company_name: 'Northside' } })), /From: Northside\n/);
-  assert.match(giftMessage(payment({ amount: 2500, recurring: { is_recurring: true, interval: 'month' } })), /^🎉 New donation - \$25\.00 \(monthly\)\n/);
-  assert.match(giftMessage(payment({ currency: 'cad' })), /^🎉 New donation - CA\$50\.00/);
+  assert.equal(giftMessage(payment({ buyer: { first_name: 'Ann', last_name: 'Lee', is_corporate: true, company_name: 'Pulte Homes' } })).text, '💛 $50.00 gift from Pulte Homes (Ann Lee)');
+  assert.equal(giftMessage(payment({ buyer: { is_corporate: true, company_name: 'Northside' } })).text, '💛 $50.00 gift from Northside');
+  assert.equal(giftMessage(payment({ amount: 2500, recurring: { is_recurring: true, interval: 'month' } })).text, '💛 $25.00 monthly gift from Jane Doe');
+  assert.equal(giftMessage(payment({ amount: 250000, recurring: { is_recurring: true, interval: 'month' } })).text, '🌟 Major gift: $2,500.00 monthly from Jane Doe');
+  assert.match(giftMessage(payment({ currency: 'cad' })).text, /^💛 CA\$50\.00 gift/);
   const sneaky = giftMessage(payment({ buyer: { first_name: '<!channel>', last_name: 'A&B' }, description: '<https://evil|click>' }));
-  assert.match(sneaky, /From: &lt;!channel&gt; A&amp;B/);
-  assert.match(sneaky, /Campaign: &lt;https:\/\/evil\|click&gt;/);
+  // The headline is plain text, which Slack never reads as a mention or link; everything else is escaped
+  assert.equal(sneaky.blocks[0].text.type, 'plain_text');
+  assert.match(sneaky.text, /from &lt;!channel&gt; A&amp;B/);
+  assert.match(JSON.stringify(sneaky.blocks[1]), /Campaign\*\\n&lt;https:\/\/evil\|click&gt;/);
+  assert.doesNotMatch(JSON.stringify(sneaky.blocks.slice(1)), /<!channel>|<https:\/\/evil/);
+});
+
+test('gifts follow the Good news channel picked in the admin', async () => {
+  await writeSlackConfig(env.DB, { channel: { id: 'C0GOODNEWS', name: 'good-news' }, attention: { id: 'C0ALERTS', name: 'website-alerts' } });
+  await handleWebhook(env, signed(completed(payment())), { now: NOW });
+  assert.deepEqual(world.channels, ['C0GOODNEWS']);
 });
 
 test('what isn’t posted', () => {
@@ -156,7 +172,8 @@ test('webhook: a completed payment posts once, however often Zeffy sends it', as
   const r2 = await handleWebhook(env, signed(completed(payment())), { now: NOW + 5000 });
   assert.equal(r2.status, 200);
   assert.equal((await r2.json()).result, 'duplicate');
-  assert.deepEqual(world.slack, ['🎉 New donation - $50.00\nFrom: Jane Doe\nCampaign: Help Build a Brighter Home\nReceived: October 20, 2026']);
+  assert.deepEqual(world.slack, ['💛 $50.00 gift from Jane Doe\nCampaign: Help Build a Brighter Home\nReceived: October 20, 2026']);
+  assert.deepEqual(world.channels, ['C04NJ4W4QG6'], '#team-everyone until a Good news channel is picked');
   const r = await row('pay_0001');
   assert.equal(r.state, 'posted');
   assert.equal(r.pending, null, 'no amount or name is kept once posted');
@@ -233,7 +250,7 @@ test('catch-up: a gift the webhook never delivered is posted, once, and Peter he
   const s = await runSweep(env, { now: NOW + 20 * MIN });
   assert.equal(s.missed, 1);
   assert.equal(s.posted, 1);
-  assert.match(world.slack[0], /^🚨 MAJOR GIFT - \$2,500\.00\nFrom: Ben Wood\n/);
+  assert.match(world.slack[0], /^🌟 Major gift: \$2,500\.00 from Ben Wood\n/);
   assert.equal((await row('pay_missed')).via, 'sweep');
   assert.equal(world.emails.length, 1);
   assert.equal(world.emails[0].to, 'peter@soardcharity.com');
@@ -283,7 +300,7 @@ test('catch-up: a claim whose worker died is picked up after 5 minutes', async (
   await env.DB.prepare("INSERT INTO zeffy_gifts (payment_id, state, via, pending, created_at, updated_at) VALUES ('pay_stuck', 'posting', 'webhook', ?, ?, ?)").bind('🎉 New donation - $5.00', iso, iso).run();
   assert.equal((await runSweep(env, { now: NOW + 2 * MIN })).retried, 0, 'still in flight');
   assert.equal((await runSweep(env, { now: NOW + 6 * MIN })).retried, 1);
-  assert.deepEqual(world.slack, ['🎉 New donation - $5.00']);
+  assert.deepEqual(world.slack, ['🎉 New donation - $5.00'], 'a row saved before cards still posts, as the text it was');
 });
 
 test('catch-up: a refused API key is reported once a day, and webhook gifts still post', async () => {
@@ -330,7 +347,7 @@ test('self-test: once per SELF_TEST, through the real webhook path, plainly mark
   const r = await maybeSelfTest(env, { now: NOW });
   assert.deepEqual(r, { id: SELF_TEST, at: new Date(NOW).toISOString(), status: 200, result: 'posted', error: null });
   assert.equal(world.slack.length, 1);
-  assert.match(world.slack[0], /^🧪 Test from the website: no gift was made\. Gift alerts are connected, and real gifts will look like this:\n🎉 New donation - \$50\.00\nFrom: Test Donor\nCampaign: Website test\nReceived: October 20, 2026$/);
+  assert.equal(world.slack[0], '💛 $50.00 gift from Test Donor\n🧪 *Test from the website · no gift was made*\nGift alerts are connected. Real gifts look just like this.\nCampaign: Website test\nReceived: October 20, 2026');
   assert.equal(await maybeSelfTest(env, { now: NOW + 60e3 }), null, 'never twice');
   const cfg = await readZeffyConfig(env.DB);
   assert.equal(cfg.lastWebhookAt, undefined, 'a self-test isn’t Zeffy reaching the site');
@@ -350,6 +367,6 @@ test('self-test: Slack refusing is recorded, retried by the catch-up check, and 
   assert.equal(r.error, 'not_in_channel');
   world.slackError = null;
   await runSweep(env, { now: NOW + 15 * MIN });
-  assert.match(world.slack[0], /^🧪 Test from the website/);
-  assert.doesNotMatch(giftMessage(payment()), /🧪/);
+  assert.match(world.slack[0], /^💛 \$50\.00 gift from Test Donor\n🧪 \*Test from the website/);
+  assert.doesNotMatch(JSON.stringify(giftMessage(payment())), /🧪|Test/);
 });

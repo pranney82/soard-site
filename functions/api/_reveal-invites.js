@@ -53,7 +53,8 @@
 
 import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, easternParts, matchKid, parseJobName, loadKids } from './_reveals.js';
 import { accessToken, eventIdFor, upsertEvent, cancelEvent, getEvent } from './_google-calendar.js';
-import { sendEmails, slackAlert, emailConfigured } from './_broadcast-notify.js';
+import { sendEmails, slackPost, slackIssue, slackResolved, emailConfigured } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
 import { personStatus, personName } from './_team.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
@@ -565,7 +566,12 @@ async function alertProblem(env, config, { jobId, name, error, taskId }) {
     ? 'The Google key or its domain-wide delegation needs attention (Cloudflare GOOGLE_CALENDAR_KEY, Workspace Admin → Domain-wide delegation).'
     : 'Open Reveals in the admin, open this reveal under Upcoming reveals and press Retry. If it keeps failing, check the job in JobTread.';
   await Promise.allSettled([
-    slackAlert(env, `🟡 ${title}: ${detail} Fix: ${fix} ${ADMIN_URL}`),
+    // One thread per job: a new problem replies under the first, and a good sync turns it ✅
+    slackIssue(env, `invite:${jobId}`, slackCard({
+      icon: '⚠️', title, lead: detail, fix,
+      buttons: [{ label: 'Open Reveals', url: ADMIN_URL }, { label: 'JobTread schedule', url: scheduleUrl(jobId, taskId) }],
+      footer: 'Reveal calendar invites',
+    }), { title }),
     emailConfigured(env) && to.length ? sendEmails(env, {
       to,
       subject: `[SOARD] ${title}`,
@@ -588,7 +594,11 @@ async function alertHeld(env, config, { jobId, name, reason, taskId }) {
   const detail = `JobTread says: ${reason}. The calendar invite hasn't been cancelled; the site never cancels one on its own.`;
   const fix = 'If the reveal is off, delete the event in the organizer\'s Google Calendar and choose to email the guests. If the reveal is still on, there is nothing to do.';
   await Promise.allSettled([
-    slackAlert(env, `🟡 ${title}: ${detail} ${fix} ${ADMIN_URL}`),
+    slackPost(env, slackCard({
+      icon: '📅', title, lead: detail, fix,
+      buttons: [{ label: 'Open Reveals', url: ADMIN_URL }, { label: 'JobTread schedule', url: scheduleUrl(jobId, taskId) }],
+      footer: 'Reveal calendar invites',
+    })),
     emailConfigured(env) && to.length ? sendEmails(env, {
       to,
       subject: `[SOARD] ${title}`,
@@ -785,6 +795,11 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
       guests: JSON.stringify(plan.guests), last_action: sendUpdates === 'none' ? 'updated quietly (staff guest list only)' : action, error: null,
     });
     await logInvite(DB, { jobId, action, state: plan.event.status, guests: plan.guests.length, revealDate: plan.date });
+    if (row?.error) {
+      const who = displayName(job, kids).name;
+      const summary = `${who ? `${who}'s invite` : 'The invite'} went out after all (${action}).`;
+      await slackResolved(env, `invite:${jobId}`, slackCard({ icon: '✅', title: `Invite fixed${who ? `: ${who}` : ''}`, lead: summary }), { summary }).catch(() => null);
+    }
     return { jobId, action, eventId: plan.event.id, status: plan.event.status, guests: plan.guests.length };
   } catch (err) {
     return failed(row, err);

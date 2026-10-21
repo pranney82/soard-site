@@ -341,7 +341,9 @@ test('watch: silence opens an issue in Slack with the fix, reminds, then posts w
     assert.equal(slack.length, 1);
     const post = slack[0];
     assert.match(post.text, /Reveal audio is silent/);
-    assert.ok(post.blocks.some((b) => /\*Fix:\*/.test(b.text?.text || '')), 'Slack post has the fix');
+    assert.ok(post.blocks.some((b) => /^\*What to do\*\n/.test(b.text?.text || '')), 'Slack post has the fix');
+    assert.equal(post.blocks[0].type, 'header');
+    assert.match(post.blocks[0].text.text, /^🚨 /, 'a live problem that is failing now');
     assert.ok(JSON.stringify(post.blocks).includes('/admin/#broadcast/control-room'), 'links to the control room');
     assert.match(JSON.stringify(post.blocks), /Sam's room reveal · live/);
     const issue = s.health.monitor.issues.silent;
@@ -465,7 +467,12 @@ test('go/no-go: missing pieces fail or warn with the fix', async () => {
   assert.equal(r.ready, false);
   assert.equal(by.stream.status, 'fail');
   assert.equal(by.slack.status, 'fail');
-  assert.match(by.slack.fix, /SLACK_WEBHOOK_URL/);
+  assert.match(by.slack.fix, /SLACK_BOT_TOKEN/);
+  // The app is connected but nobody picked a channel: alerts would go nowhere
+  const noPick = await preflight.run({ SLACK_BOT_TOKEN: 'xoxb-test' }, { ...baseConfig, outputs: {} }, { phase: 'scheduled', scheduledAt: '2026-10-14T22:00:00Z' }, {});
+  const slackItem = noPick.items.find((i) => i.key === 'slack');
+  assert.equal(slackItem.status, 'fail');
+  assert.match(slackItem.label, /No Slack channel is picked/);
   assert.equal(by.micCheck.status, 'warn');
   assert.equal(by.facebookOutput.status, 'fail');
   assert.equal(by.youtube.status, 'off');
@@ -491,7 +498,7 @@ test('go/no-go: posts an hour before, and again at 10 minutes only if something 
     const work = [];
     await preflight.auto(env, config, state, health, work, { hubStatus });   // 55 min out
     assert.equal(slack.length, 1);
-    assert.match(slack[0].text, /^🟢 Go: Sam's room reveal at 6:00 PM/);
+    assert.match(slack[0].text, /^🚦 Go: Sam's room reveal at 6:00 PM/);
     assert.equal(health.preflight.last.ready, true);
     await preflight.auto(env, config, state, health, work, { hubStatus });
     assert.equal(slack.length, 1, 'once per stage');

@@ -9,6 +9,8 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
+import { renderSlack, slackButtons } from './lib/slack-render.mjs';
+import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import {
   applicationForm, formErrors, stopFor, cleanAnswers, isVisible, allFields, answerSections, toE164,
 } from '../functions/api/_application-form.js';
@@ -179,8 +181,14 @@ test('submit loads everything into JobTread; the video follows once Stream is do
   assert.match(w.world.emails[0].subject, /New makeover application: Avery/);
   assert.equal(w.world.slack.length, 1);
   const post = JSON.stringify(w.world.slack[0]);
-  assert.match(w.world.slack[0].text, /^🟢 New makeover application: Avery/);
-  assert.ok(post.includes(`https://app.jobtread.com/customers/${acct.id}|Open in JobTread`));
+  assert.match(w.world.slack[0].text, /^📝 New application: Avery, age \d+\nAccessible Bathroom and Dream Bedroom · /, 'the phone notification: who and what, no link');
+  const card = renderSlack(w.world.slack[0]);
+  for (const fact of ['Applied before: No', 'Video: Sent', 'Diagnosis and contact details stay in the application.']) assert.ok(card.includes(fact), `${fact}\n${card}`);
+  assert.match(card, /\nService area: /);
+  assert.deepEqual(slackButtons(w.world.slack[0]), [
+    { label: 'Open the application', url: `https://sunshineonaranneyday.com/admin/#applications/${sub.id}` },
+    { label: 'Open in JobTread', url: `https://app.jobtread.com/customers/${acct.id}` },
+  ]);
   assert.doesNotMatch(post, /Spina bifida|mom@example\.com/);
 
   // Not ready yet: nothing more happens
@@ -290,7 +298,8 @@ test('a TEST application is marked, named TEST, and only emails Peter', async ()
   const [acct] = Object.values(w.world.accounts);
   assert.equal(acct.name, 'TEST Applicant');
   assert.deepEqual(w.world.emails.map(e => e.to[0]), ['peter@soardcharity.com']);
-  assert.match(w.world.slack[0].text, /^🟢 \[TEST\] New makeover application/);
+  assert.match(w.world.slack[0].text, /^🧪 Test · 📝 New application: TEST/);
+  assert.match(renderSlack(w.world.slack[0]), /^📝 New application: TEST, age \d+\n🧪 \*Test application · not a real family\*\n/);
   const list = await listApplications(env.DB);
   assert.equal(list.applications[0].isTest, true);
   assert.equal(list.applications[0].checklist.familyMessage, true);
@@ -308,9 +317,39 @@ test('a stuck application alerts Peter once per new problem', async () => {
   const alerts = w.world.emails.filter(e => /is stuck/.test(e.subject));
   assert.equal(alerts.length, 1);
   assert.deepEqual(alerts[0].to, ['peter@soardcharity.com']);
-  const posts = w.world.slack.filter(p => /is stuck/.test(p.text));
+  const posts = w.world.slack.filter(p => /Stuck: /.test(p.text));
   assert.equal(posts.length, 1, 'and once in Slack');
-  assert.match(posts[0].text, /after 4 tries/);
+  assert.match(posts[0].text, /^⚠️ Stuck: Avery Stone’s application\nThe website couldn’t finish loading it into JobTread after 4 tries\.$/);
+  assert.match(renderSlack(posts[0]), /\*What to do\*\nNothing, usually: it keeps retrying on its own/);
+});
+
+test('in the Slack app, a stuck application is one thread that turns ✅ when it gets through on its own', async () => {
+  env.SLACK_BOT_TOKEN = 'xoxb-test';
+  delete env.SLACK_WEBHOOK_URL;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)').run();
+  await writeSlackConfig(env.DB, { channel: { id: 'C0ALERTS', name: 'website-alerts' } });
+  const sub = await submitDraft(env, await readyDraft(fullAnswers(), { video: 'ready' }));
+  let t = Date.now();
+  for (let i = 0; i < 4; i++) {
+    w.failNext.set('createAccount', 1);
+    t += 7 * 3600 * 1000;
+    await run(sub.id, t);
+  }
+  const stuck = w.world.slack.filter(p => /Stuck: /.test(p.text));
+  assert.equal(stuck.length, 1);
+  assert.equal(stuck[0].thread_ts, undefined, 'the first report is its own post');
+  const ts = `${w.world.slack.indexOf(stuck[0]) + 1}.0001`;
+  // Then it gets through
+  t += 7 * 3600 * 1000;
+  await run(sub.id, t);
+  const edit = (w.world.slackEdits || []).find(e => e.ts === ts);
+  assert.ok(edit, 'the stuck post was edited');
+  assert.match(renderSlack(edit), /^✅ Unstuck: Avery Stone’s application\nIt loaded into JobTread on its own after \d+ tries\. Nothing to do\./);
+  const reply = w.world.slack.filter(p => p.thread_ts === ts).at(-1);
+  assert.equal(reply.reply_broadcast, true);
+  assert.match(reply.text, /^✅ Unstuck/);
+  const app = await getApplication(env.DB, sub.id);
+  assert.equal(app.jt_state.stuckSlack, undefined, 'forgotten once it cleared');
 });
 
 test('the sweep runs at most every two minutes and clears old drafts with their files', async () => {

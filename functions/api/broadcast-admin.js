@@ -13,7 +13,8 @@
  *   setConfig { ...partial }
  *   generateVapid { force? }
  *   testStream | testFacebook | testHub | testAlert | runTick | lifecycle
- *   slackStatus | slackChannels | setSlackChannel { id }   the Slack app's connection and alerts channel
+ *   slackStatus | slackChannels | setSlackChannel { id, role }   the Slack app's connection and its two channels
+ *     (role 'news': good news everyone sees; 'attention': alerts that need a hand, id '' to share the news one)
  *   monitor { feed: live|rehearsal }   Control room: picture, audio level, every destination's verdict, open issues
  *   preflight                          go/no-go checklist for the next reveal (also posted to Slack an hour before)
  *   sendTestReminder { kind, email }
@@ -24,6 +25,7 @@
 import * as b from './_broadcast.js';
 import * as stream from './_stream-live.js';
 import * as notify from './_broadcast-notify.js';
+import { slackCard, personName, helloCard } from './_slack-cards.js';
 import * as fb from './_broadcast-fb.js';
 import { kitConfigured } from './_kit.js';
 import * as reels from './_broadcast-reel.js';
@@ -374,20 +376,39 @@ export async function onRequestPost(context) {
       }
       case 'setSlackChannel': {
         if (!env.SLACK_BOT_TOKEN) return fail('Add SLACK_BOT_TOKEN in Cloudflare Pages first');
+        const role = body.role === 'attention' ? 'attention' : 'news';
         const id = String(body.id || '');
+        const cfg = await notify.readSlackConfig(env.DB, { fresh: true });
+        const stamp = { updatedAt: new Date().toISOString(), updatedBy: userEmail };
+        // Needs attention can go back to sharing the good-news channel
+        if (role === 'attention' && !id) {
+          const { attention, ...rest } = cfg;
+          await notify.writeSlackConfig(env.DB, { ...rest, ...stamp });
+          await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'slack', entityName: `Slack: alerts that need a hand back in #${cfg.channel?.name || 'the good-news channel'}`, gitStatus: 'ok' });
+          return Response.json({ success: true, channel: null, posted: false, slack: await notify.slackStatus(env) });
+        }
         if (!/^[CG][A-Z0-9]{6,}$/.test(id)) return fail('Pick a channel');
         const info = await notify.slackApi(env, 'conversations.info', { channel: id });
         if (!info.ok) return fail(`Slack said: ${info.error}${info.needed ? ` (the app needs ${info.needed})` : ''}`);
         const channel = { id, name: info.channel?.name || id, private: !!info.channel?.is_private };
-        await notify.writeSlackConfig(env.DB, { ...(await notify.readSlackConfig(env.DB, { fresh: true })), channel, updatedAt: new Date().toISOString(), updatedBy: userEmail });
-        await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'slack', entityName: `Slack alerts channel: #${channel.name}`, gitStatus: 'ok' });
-        // Say hello in the channel: proves the app can post there, right now
-        const hello = await notify.slackAlert(env, `🟢 The SOARD website will post its alerts here (picked by ${userEmail}).`, null, { channel: id });
+        const next = { ...cfg, [role === 'attention' ? 'attention' : 'channel']: channel, ...stamp };
+        await notify.writeSlackConfig(env.DB, next);
+        await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'slack', entityName: `Slack ${role === 'attention' ? 'Needs attention' : 'Good news'} channel: #${channel.name}`, gitStatus: 'ok' });
+        // Say hello in the channel: proves the app can post there, right now, and says what will
+        const who = personName(userEmail);
+        const shared = !next.attention?.id || next.attention.id === next.channel?.id;
+        const hello = await notify.slackPost(env, helloCard({ role, who, shared, adminUrl: `${b.SITE_ORIGIN}/admin/` }), { channel: id });
         return Response.json({ success: true, channel, posted: hello.ok, postError: hello.ok ? null : hello.error, slack: await notify.slackStatus(env) });
       }
       case 'testAlert': {
-        const r = await notify.alertAdmins(env, config, { level: 'info', title: 'Test alert from the Broadcast control center', detail: `Sent by ${userEmail}. If you can read this, alerts work.`, url: `${b.SITE_ORIGIN}/admin/` });
-        return Response.json({ success: true, result: r });
+        const who = personName(userEmail);
+        const cfg = await notify.readSlackConfig(env.DB, { fresh: true });
+        const r = await notify.alertAdmins(env, config, { level: 'info', icon: '🧪', title: 'Test alert', detail: `${who} sent this from the Broadcast control center. If you can read it, alerts work.`, url: `${b.SITE_ORIGIN}/admin/` });
+        // Two channels: the good-news one gets its own test, so both are proven
+        const news = cfg.attention?.id && cfg.channel?.id && cfg.attention.id !== cfg.channel.id
+          ? await notify.slackPost(env, slackCard({ icon: '🧪', title: 'Test alert', lead: `${who} sent this from the Broadcast control center. Good news posts here; alerts that need a hand go to #${cfg.attention.name}.`, buttons: [{ label: 'Open the admin', url: `${b.SITE_ORIGIN}/admin/` }] }), { kind: 'news' })
+          : null;
+        return Response.json({ success: true, result: r, news });
       }
       case 'syncSchedule': {
         const r = await syncBroadcastSchedule(env, { force: true });

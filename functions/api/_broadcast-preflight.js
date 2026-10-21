@@ -97,8 +97,12 @@ export async function run(env, config, state, health, { hub = null } = {}) {
   }
 
   // Alerts reach Slack
-  if (notify.slackConfigured(env)) add('slack', 'ok', 'Problems during the reveal post to Slack');
-  else add('slack', 'fail', 'Slack alerts aren\'t set up', 'Nobody hears about silent audio or a frozen picture unless they are watching.', 'Set SLACK_WEBHOOK_URL in Cloudflare Pages, then Settings → Alerts → Send test alert.');
+  // Live problems go to the Needs attention channel, or the good-news one when that's all there is
+  const slackCfg = env.SLACK_BOT_TOKEN ? await notify.readSlackConfig(env.DB).catch(() => ({})) : {};
+  const slackChannel = slackCfg.attention?.id ? slackCfg.attention : slackCfg.channel;
+  if (env.SLACK_BOT_TOKEN && !slackChannel?.id && !env.SLACK_WEBHOOK_URL) add('slack', 'fail', 'No Slack channel is picked for alerts', 'Nobody hears about silent audio or a frozen picture unless they are watching.', 'Pick the channel in Settings → Alerts.');
+  else if (notify.slackConfigured(env)) add('slack', 'ok', `Problems during the reveal post to Slack${slackChannel?.name ? ` (#${slackChannel.name})` : ''}`);
+  else add('slack', 'fail', 'Slack alerts aren\'t set up', 'Nobody hears about silent audio or a frozen picture unless they are watching.', 'Add the Slack app\'s SLACK_BOT_TOKEN in Cloudflare Pages, then pick the channel in Settings → Alerts.');
 
   // Site plumbing
   if (hub) add('hub', hub.ok ? 'ok' : 'warn', hub.ok ? 'The live page updates instantly' : 'The real-time hub isn\'t answering', hub.ok ? null : `${hub.error || 'unreachable'}. Pages fall back to checking every 10 seconds.`, hub.ok ? null : 'Redeploy workers/live-hub, then the site.');
@@ -125,7 +129,7 @@ export function slackText(result, state, config) {
     ? open.map((i) => `${ICON[i.status]} ${i.label}${i.detail ? ` (${i.detail})` : ''}${i.fix ? `\n      → ${i.fix}` : ''}`)
     : ['Everything checks out.'];
   lines.push(`${result.counts.ok} of ${result.items.filter((i) => i.status !== 'off').length} checks pass.`);
-  return { level: result.counts.fail ? 'error' : open.length ? 'warn' : 'info', title, detail: lines.join('\n') };
+  return { level: result.counts.fail ? 'error' : open.length ? 'warn' : 'info', icon: result.counts.fail ? '🚨' : open.length ? '⚠️' : '🚦', title, detail: lines.join('\n') };
 }
 
 /**
@@ -146,7 +150,7 @@ export async function auto(env, config, state, health, work, { hubStatus } = {})
   }
   const result = await run(env, config, state, health, { hub: hubStatus ? await hubStatus(env).catch(() => null) : null });
   const post = slackText(result, state, config);
-  await notify.alertAdmins(env, config, { ...post, url: ADMIN_URL, context: stage === 't60' ? 'Automatic check an hour before' : 'Automatic check 10 minutes before' });
+  await notify.alertAdmins(env, config, { ...post, url: ADMIN_URL, context: stage === 't60' ? 'Automatic check an hour before' : 'Automatic check 10 minutes before', urgent: post.level === 'error' });
   p.last = result;
   p.posted[stage] = nowIso();
   health.preflight = p;

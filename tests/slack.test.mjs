@@ -10,6 +10,10 @@ import { createD1 } from './lib/d1-shim.mjs';
 import * as notify from '../functions/api/_broadcast-notify.js';
 import * as admin from '../functions/api/broadcast-admin.js';
 import { gatherFacts } from '../functions/api/automations-admin.js';
+import { slackCard, personName, esc } from '../functions/api/_slack-cards.js';
+import * as actions from '../functions/api/slack-actions.js';
+import { renderSlack, slackButtons } from './lib/slack-render.mjs';
+import { createHmac } from 'node:crypto';
 
 const realFetch = globalThis.fetch;
 const TOKEN = 'xoxb-test';
@@ -26,7 +30,7 @@ const CHANNELS = [
 
 beforeEach(async () => {
   calls = [];
-  slack = { token: TOKEN, postError: null, blocksOk: true, hookDown: false, pageSize: 2, rateLimitOnce: false, scopes: new Set(['chat:write', 'chat:write.public', 'channels:read', 'groups:read']) };
+  slack = { token: TOKEN, seq: 0, postError: null, blocksOk: true, hookDown: false, pageSize: 2, rateLimitOnce: false, scopes: new Set(['chat:write', 'chat:write.public', 'channels:read', 'groups:read']) };
   env = { DB: await createD1({ schemaFiles: ['scripts/schema.sql'] }), SLACK_BOT_TOKEN: TOKEN };
   globalThis.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url;
@@ -57,7 +61,11 @@ beforeEach(async () => {
       if (slack.rateLimitOnce) { slack.rateLimitOnce = false; return new Response('', { status: 429, headers: { 'Retry-After': '1' } }); }
       if (slack.postError) return json({ ok: false, error: slack.postError });
       if (body.blocks && !slack.blocksOk) return json({ ok: false, error: 'invalid_blocks' });
-      return json({ ok: true, channel: body.channel, ts: '1.2' });
+      return json({ ok: true, channel: body.channel, ts: `${++slack.seq}.000100` });
+    }
+    if (method === 'chat.update') {
+      if (slack.postError) return json({ ok: false, error: slack.postError });
+      return json({ ok: true, channel: body.channel, ts: body.ts });
     }
     return json({ ok: false, error: 'unknown_method' });
   };
@@ -177,7 +185,7 @@ test('the health check names the workspace, the bot and the channel, and spots e
   slack.token = 'xoxb-rotated';
   assert.equal((await notify.slackStatus(env)).error, 'invalid_auth');
 
-  assert.deepEqual(await notify.slackStatus({ DB: env.DB, SLACK_WEBHOOK_URL: HOOK }), { mode: 'webhook', webhook: true, ok: true, error: null, team: null, bot: null, channel: { id: 'G0PRIVATE', name: 'board', private: false } });
+  assert.deepEqual(await notify.slackStatus({ DB: env.DB, SLACK_WEBHOOK_URL: HOOK }), { mode: 'webhook', webhook: true, ok: true, error: null, errorFor: null, team: null, bot: null, channel: { id: 'G0PRIVATE', name: 'board', private: false }, attention: null });
 });
 
 test('the channel list pages through Slack and comes back sorted', async () => {
@@ -216,7 +224,9 @@ test('picking a channel in the admin saves it and says hello there', async () =>
   assert.equal(d.slack.ok, true);
   const hello = posts().at(-1);
   assert.equal(hello.body.channel, 'C0ALERTS1');
-  assert.match(hello.body.text, /will post its alerts here \(picked by peter@test\)/);
+  assert.equal(hello.body.text, '🎉 Good news from the website will post here\nPeter picked this channel in the admin for the moments everyone celebrates: gifts, new applications, reveals going live and their replays.');
+  assert.match(renderSlack(hello.body), /\nUntil a Needs attention channel is picked, alerts that need a hand post here too\./);
+  assert.doesNotMatch(JSON.stringify(hello.body), /peter@test/, 'a name, not an address');
   assert.equal((await notify.readSlackConfig(env.DB, { fresh: true })).channel.name, 'website-alerts');
   assert.equal((await notify.readSlackConfig(env.DB, { fresh: true })).updatedBy, 'peter@test');
 
@@ -262,7 +272,11 @@ test('Automations reports the live Slack connection: mode, channel, workspace or
   await pick();
   let f = await gatherFacts(env, { fetchImpl: async () => new Response('{}', { status: 500 }) });
   assert.equal(f.env.slack, true);
-  assert.deepEqual(f.slack, { mode: 'bot', ok: true, error: null, team: 'SOARD', channel: 'website-alerts', bot: 'soard_website' });
+  assert.deepEqual(f.slack, { mode: 'bot', ok: true, error: null, team: 'SOARD', channel: 'website-alerts', attention: null, bot: 'soard_website' });
+  await pickBoth();
+  f = await gatherFacts(env, { fetchImpl: async () => new Response('{}', { status: 500 }) });
+  assert.deepEqual([f.slack.channel, f.slack.attention], ['general', 'website-alerts'], 'both channels named');
+  await pick();
 
   slack.token = 'xoxb-other';
   f = await gatherFacts(env, { fetchImpl: async () => new Response('{}', { status: 500 }) });
@@ -272,4 +286,291 @@ test('Automations reports the live Slack connection: mode, channel, workspace or
   f = await gatherFacts({ DB: env.DB }, { fetchImpl: async () => new Response('{}', { status: 500 }) });
   assert.equal(f.env.slack, false);
   assert.equal(f.slack.mode, null);
+});
+
+
+// ─── The card: one look for every post ───────────────────────────────
+
+test('a card: icon headline, test marker, lead, a grid of facts, what to do, buttons, footer', () => {
+  const c = slackCard({
+    icon: '📝', title: 'New application: Avery, age 9', test: 'Test application · not a real family',
+    lead: 'Accessible Bathroom · Cobb County · 2027 season',
+    facts: [['Service area', 'Inside'], ['Language', null], ['Video', ''], { label: 'Photos', value: 4 }],
+    fix: 'Nothing to do.',
+    buttons: [{ label: 'Open the application', url: 'https://x.test/a' }, null, { label: 'Open in JobTread', url: 'https://jt.test/b' }],
+    footer: ['From the website', 'Applications'],
+  });
+  assert.deepEqual(c.blocks.map((b) => b.type), ['header', 'context', 'section', 'section', 'section', 'actions', 'context']);
+  assert.deepEqual(c.blocks[0].text, { type: 'plain_text', text: '📝 New application: Avery, age 9', emoji: true });
+  assert.equal(renderSlack(c), [
+    '📝 New application: Avery, age 9',
+    '🧪 *Test application · not a real family*',
+    'Accessible Bathroom · Cobb County · 2027 season',
+    'Service area: Inside',
+    'Photos: 4',
+    '*What to do*\nNothing to do.',
+    '[Open the application] [Open in JobTread]',
+    'From the website  ·  Applications',
+  ].join('\n'), 'empty facts are left out');
+  const [main, other] = c.blocks.find((b) => b.type === 'actions').elements;
+  assert.equal(main.style, 'primary', 'the first button is the main one');
+  assert.equal(other.style, undefined);
+  assert.notEqual(main.action_id, other.action_id);
+  // The lock screen: headline and the lead's first line, marked as a test, never a URL
+  assert.equal(c.text, '🧪 Test · 📝 New application: Avery, age 9\nAccessible Bathroom · Cobb County · 2027 season');
+  // If Slack refuses the blocks, the text resend still carries every part
+  for (const part of ['Service area: Inside', 'What to do: Nothing to do.', 'Open in JobTread: https://jt.test/b', 'From the website']) assert.ok(c.plain.includes(part), part);
+});
+
+test('a card never puts a URL in the notification, escapes what people typed, and stays inside Slack’s limits', () => {
+  const c = slackCard({ icon: '⚠️', title: 'x'.repeat(200), lead: 'See https://evil.test/a?b=1 now <!channel> & more', buttons: Array.from({ length: 8 }, (_, i) => ({ label: `B${i}`, url: `https://x.test/${i}` })) });
+  assert.doesNotMatch(c.text, /https?:/);
+  assert.ok(c.blocks[0].text.text.length <= 150);
+  assert.match(c.blocks[1].text.text, /&lt;!channel&gt; &amp; more/);
+  assert.equal(c.blocks.find((b) => b.type === 'actions').elements.length, 5);
+  assert.equal(esc('<a>&'), '&lt;a&gt;&amp;');
+});
+
+test('people are named, not addressed', () => {
+  assert.equal(personName('peter@soardcharity.com'), 'Peter');
+  assert.equal(personName('jane.doe-smith@x.org'), 'Jane Doe Smith');
+  assert.equal(personName('info@soardcharity.com'), 'info@soardcharity.com', 'a shared inbox stays the address');
+  assert.equal(personName(''), 'someone');
+});
+
+// ─── Threads, edits, and problems that clear ─────────────────────────
+
+test('a reply goes in the thread (and the channel when asked); an edit uses chat.update', async () => {
+  await pick();
+  const first = await notify.slackAlert(env, 'First', null);
+  assert.ok(first.ts);
+  await notify.slackAlert(env, 'Reply', null, { thread: { channel: first.channel, ts: first.ts, broadcast: true } });
+  const reply = posts().at(-1).body;
+  assert.equal(reply.thread_ts, first.ts);
+  assert.equal(reply.reply_broadcast, true);
+  const edit = await notify.slackAlert(env, 'Edited', [{ type: 'section', text: { type: 'mrkdwn', text: 'Edited' } }], { update: { channel: first.channel, ts: first.ts } });
+  assert.equal(edit.ok, true);
+  const upd = calls.filter((c) => c.url.endsWith('/chat.update')).at(-1).body;
+  assert.equal(upd.ts, first.ts);
+  assert.equal(upd.channel, 'C0ALERTS1');
+});
+
+test('through the old webhook a reply is a new post and an edit is skipped', async () => {
+  const hookEnv = { SLACK_WEBHOOK_URL: HOOK };
+  assert.equal((await notify.slackAlert(hookEnv, 'Reply', null, { thread: { channel: 'C1', ts: '1.1' } })).via, 'webhook');
+  assert.equal((await notify.slackAlert(hookEnv, 'Edit', null, { update: { channel: 'C1', ts: '1.1' } })).skipped, true);
+  assert.equal(hookPosts().length, 1);
+});
+
+test('a problem is one thread: follow-ups reply under it, and clearing turns the first post ✅', async () => {
+  await pick();
+  const card = (t) => slackCard({ icon: '⚠️', title: t, lead: 'Something broke.' });
+  const a = await notify.slackIssue(env, 'invite:42', card('Reveal invite problem: Max'), { title: 'Reveal invite problem: Max' });
+  assert.equal(a.ok, true);
+  assert.equal((await notify.slackOpenPost(env, 'invite:42')).ts, a.ts);
+
+  await notify.slackIssue(env, 'invite:42', card('Reveal invite problem: Max'));
+  const follow = posts().at(-1).body;
+  assert.equal(follow.thread_ts, a.ts, 'a second post for the same problem replies under the first');
+  assert.equal(follow.reply_broadcast, true, 'and still shows in the channel');
+
+  const done = await notify.slackResolved(env, 'invite:42', slackCard({ icon: '✅', title: 'Invite fixed: Max' }), { summary: 'Max’s invite went out after all.' });
+  assert.equal(done.ok, true);
+  const edit = calls.filter((c) => c.url.endsWith('/chat.update')).at(-1).body;
+  assert.equal(edit.ts, a.ts);
+  assert.equal(renderSlack(edit), '✅ Resolved: Reveal invite problem: Max\nMax’s invite went out after all.');
+  assert.equal(posts().at(-1).body.thread_ts, a.ts);
+  assert.equal(await notify.slackOpenPost(env, 'invite:42'), null, 'forgotten once it cleared');
+  assert.equal(await notify.slackResolved(env, 'invite:42', card('again')), null, 'nothing open: nothing to clear');
+
+  await notify.slackIssue(env, 'invite:42', card('Reveal invite problem: Max'));
+  assert.equal(posts().at(-1).body.thread_ts, undefined, 'the next time it breaks is a new post');
+});
+
+test('alertAdmins: the level picks the icon, the URL picks the button, "TEST · " marks a test, and issue/resolves thread', async () => {
+  await pick();
+  await notify.alertAdmins(env, {}, { level: 'error', title: 'TEST · Live broadcast health check failed', detail: '• Stream is down', url: 'https://sunshineonaranneyday.com/admin/#broadcast/control-room', issue: 'broadcast-health' });
+  const first = posts().at(-1).body;
+  assert.equal(renderSlack(first), '🚨 Live broadcast health check failed\n🧪 *Test reveal · not a real family*\n• Stream is down\n[Open the control room]');
+  assert.equal(first.text, '🧪 Test · 🚨 Live broadcast health check failed\n• Stream is down');
+  await notify.alertAdmins(env, {}, { level: 'info', title: 'Live broadcast health recovered', detail: 'All checks pass again.', resolves: 'broadcast-health' });
+  const edit = calls.filter((c) => c.url.endsWith('/chat.update')).at(-1).body;
+  assert.equal(renderSlack(edit), '✅ Resolved: Live broadcast health check failed\nLive broadcast health recovered. All checks pass again.');
+  assert.match(renderSlack(posts().at(-1).body), /^✅ Live broadcast health recovered/);
+  // A clear with nothing open still says so, as a plain post
+  await notify.alertAdmins(env, {}, { level: 'info', title: 'The reveal has sound again', resolves: 'live:b1:silent' });
+  assert.equal(posts().at(-1).body.thread_ts, undefined);
+  await notify.alertAdmins(env, {}, { level: 'warn', title: 'Heads up', url: 'https://sunshineonaranneyday.com/live/' });
+  assert.deepEqual(slackButtons(posts().at(-1).body), [{ label: 'Watch live', url: 'https://sunshineonaranneyday.com/live/' }]);
+  assert.match(posts().at(-1).body.blocks[0].text.text, /^⚠️ Heads up/);
+});
+
+// ─── The button endpoint ─────────────────────────────────────────────
+
+const click = (body, headers = {}) => new Request('https://x/api/slack-actions', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers }, body });
+const blockActions = `payload=${encodeURIComponent(JSON.stringify({ type: 'block_actions', actions: [{ action_id: 'open-0' }] }))}`;
+
+test('button clicks get the empty 200 Slack wants, and the last one is kept', async () => {
+  const r = await actions.onRequestPost({ env, request: click(blockActions) });
+  assert.equal(r.status, 200);
+  assert.equal(await r.text(), '');
+  const row = await env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(actions.SLACK_ACTIONS_KEY).first();
+  assert.equal(JSON.parse(row.data).action, 'open-0');
+  // Anything else is still a quiet 200, and isn't kept
+  assert.equal((await actions.onRequestPost({ env: { ...env, DB: null }, request: click('hello') })).status, 200);
+});
+
+test('with SLACK_SIGNING_SECRET set, only Slack-signed clicks are answered', async () => {
+  const secret = 'shh';
+  const t = String(Math.floor(Date.now() / 1000));
+  const sig = `v0=${createHmac('sha256', secret).update(`v0:${t}:${blockActions}`).digest('hex')}`;
+  const signedEnv = { ...env, SLACK_SIGNING_SECRET: secret };
+  assert.equal((await actions.onRequestPost({ env: signedEnv, request: click(blockActions, { 'X-Slack-Request-Timestamp': t, 'X-Slack-Signature': sig }) })).status, 200);
+  assert.equal((await actions.onRequestPost({ env: signedEnv, request: click(blockActions, { 'X-Slack-Request-Timestamp': t, 'X-Slack-Signature': 'v0=00' }) })).status, 401);
+  const old = String(Math.floor(Date.now() / 1000) - 600);
+  const oldSig = `v0=${createHmac('sha256', secret).update(`v0:${old}:${blockActions}`).digest('hex')}`;
+  assert.equal((await actions.onRequestPost({ env: signedEnv, request: click(blockActions, { 'X-Slack-Request-Timestamp': old, 'X-Slack-Signature': oldSig }) })).status, 401, 'a replayed click is refused');
+});
+
+// ─── The one-time preview in Slack ───────────────────────────────────
+
+test('the preview: one top post, every sample in its thread five a minute, once, and nobody emailed', async () => {
+  const preview = await import('../functions/api/_slack-preview.js');
+  await pick();
+  const total = preview.previewSamples().length;
+  assert.ok(total >= 25, 'every kind of message is in it');
+  const t0 = Date.now();
+  const first = await preview.maybeSlackPreview(env, { now: t0, gapMs: 0 });
+  assert.deepEqual({ posted: first.posted, next: first.next, done: first.done }, { posted: 5, next: 5, done: false });
+  const [top, ...replies] = posts().map((p) => p.body);
+  assert.equal(top.thread_ts, undefined);
+  assert.equal(renderSlack(top).split('\n')[0], '🧪 Preview: the new website alerts');
+  assert.equal(replies.length, 5);
+  for (const r of replies) {
+    assert.ok(r.thread_ts, 'samples go in the thread');
+    assert.equal(r.reply_broadcast, undefined, 'and never into the channel');
+  }
+  assert.match(replies[0].blocks[0].elements[0].text, new RegExp(`^\\*1 of ${total}\\* · Applications · New application · posts in #website-alerts$`));
+  assert.equal(replies[0].blocks[1].type, 'header');
+
+  // A heartbeat that overlaps the one posting does nothing
+  const row = await env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(preview.SLACK_PREVIEW_KEY).first();
+  const st = JSON.parse(row.data);
+  await env.DB.prepare('UPDATE site_config SET data = ? WHERE key = ?').bind(JSON.stringify({ ...st, leaseUntil: t0 + 60e3 }), preview.SLACK_PREVIEW_KEY).run();
+  assert.equal(await preview.maybeSlackPreview(env, { now: t0 + 1000, gapMs: 0 }), null);
+  await env.DB.prepare('UPDATE site_config SET data = ? WHERE key = ?').bind(JSON.stringify(st), preview.SLACK_PREVIEW_KEY).run();
+
+  let n = 0;
+  let r;
+  do { r = await preview.maybeSlackPreview(env, { now: t0 + (++n) * 60e3, gapMs: 0 }); } while (r && !r.done && n < 20);
+  assert.equal(r.done, true);
+  const all = posts().map((p) => p.body);
+  assert.equal(all.length, total + 1, 'the top post and each sample exactly once');
+  assert.ok(all.slice(1).every((p) => p.thread_ts === all.slice(1)[0].thread_ts), 'all under the one top post');
+  assert.equal(await preview.maybeSlackPreview(env, { now: t0 + 30 * 60e3, gapMs: 0 }), null, 'and never again');
+  assert.equal(calls.filter((c) => !c.url.startsWith('https://slack.com/')).length, 0, 'no email, nothing else');
+  assert.doesNotMatch(JSON.stringify(all), /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, 'no email address anywhere in it');
+});
+
+test('the preview waits for a channel, and a Slack refusal is retried on the next heartbeat without a second top post', async () => {
+  const preview = await import('../functions/api/_slack-preview.js');
+  assert.equal(await preview.maybeSlackPreview(env, { gapMs: 0 }), null, 'no channel picked yet: nothing, and nothing recorded');
+  await pick();
+  slack.postError = 'not_in_channel';
+  const failed = await preview.maybeSlackPreview(env, { gapMs: 0 });
+  assert.equal(failed.error, 'not_in_channel');
+  slack.postError = null;
+  const ok = await preview.maybeSlackPreview(env, { now: Date.now() + 120e3, gapMs: 0 });
+  assert.equal(ok.posted, 5);
+  assert.equal(posts().filter((p) => !p.body.thread_ts && p.body.blocks?.[0]?.text?.text === '🧪 Preview: the new website alerts').length, 2, 'one refused by Slack, then the one that landed: never two in the channel');
+  assert.equal(new Set(posts().filter((p) => p.body.thread_ts).map((p) => p.body.thread_ts)).size, 1);
+});
+
+
+// ─── Two channels: good news, and what needs a hand ──────────────────
+
+const pickBoth = () => notify.writeSlackConfig(env.DB, { channel: { id: 'C0GENERAL', name: 'general', private: false }, attention: { id: 'C0ALERTS1', name: 'website-alerts', private: false } });
+
+test('good news and alerts each go to their own channel; with one channel picked, both go there', async () => {
+  await pick('C0GENERAL', 'general');
+  await notify.slackAlert(env, 'A gift!', null, { kind: 'news' });
+  await notify.slackAlert(env, 'Stuck');
+  assert.deepEqual(posts().map((p) => p.body.channel), ['C0GENERAL', 'C0GENERAL'], 'one channel: everything there');
+  await pickBoth();
+  await notify.slackAlert(env, 'A gift!', null, { kind: 'news' });
+  await notify.slackAlert(env, 'Stuck');
+  await notify.alertAdmins(env, {}, { level: 'info', kind: 'news', icon: '📡', title: 'Live now: Max' });
+  await notify.alertAdmins(env, {}, { level: 'warn', title: 'No countdown yet: Max' });
+  assert.deepEqual(posts().slice(2).map((p) => p.body.channel), ['C0GENERAL', 'C0ALERTS1', 'C0GENERAL', 'C0ALERTS1']);
+  assert.equal(notify.slackChannelFor({ channel: { id: 'A' } }, 'attention'), 'A');
+  assert.equal(notify.slackChannelFor({}, 'news'), null);
+});
+
+test('@here only for an urgent problem, only in a Needs attention channel of its own, never for a test', async () => {
+  await pick('C0GENERAL', 'general');
+  await notify.alertAdmins(env, {}, { level: 'error', title: 'Reveal audio is silent', urgent: true });
+  assert.doesNotMatch(JSON.stringify(posts().at(-1).body), /<!here>/, 'no @here in the channel everyone talks in');
+  await pickBoth();
+  await notify.alertAdmins(env, {}, { level: 'error', title: 'Reveal audio is silent', urgent: true });
+  const loud = posts().at(-1).body;
+  assert.equal(loud.channel, 'C0ALERTS1');
+  assert.match(loud.text, /^<!here> 🚨 Reveal audio is silent/, 'phones buzz');
+  assert.equal(loud.blocks[1].elements[0].text, '<!here> needs someone right now');
+  await notify.alertAdmins(env, {}, { level: 'error', title: 'TEST · Reveal audio is silent', urgent: true });
+  assert.doesNotMatch(JSON.stringify(posts().at(-1).body), /<!here>/, 'a rehearsal never pings anyone');
+  await notify.alertAdmins(env, {}, { level: 'warn', title: 'Reveal audio is very quiet' });
+  assert.doesNotMatch(JSON.stringify(posts().at(-1).body), /<!here>/);
+  await notify.writeSlackConfig(env.DB, { channel: { id: 'C0GENERAL', name: 'general' }, attention: { id: 'C0GENERAL', name: 'general' } });
+  await notify.alertAdmins(env, {}, { level: 'error', title: 'Reveal audio is silent', urgent: true });
+  assert.doesNotMatch(JSON.stringify(posts().at(-1).body), /<!here>/, 'the same channel picked twice is still the shared one');
+});
+
+test('the admin picks each channel, says hello in it, can put alerts back with the good news, and tests both', async () => {
+  await adminPost({ action: 'setSlackChannel', id: 'C0GENERAL' });
+  const d = await adminPost({ action: 'setSlackChannel', id: 'C0ALERTS1', role: 'attention' });
+  assert.equal(d.success, true);
+  assert.deepEqual(d.slack.attention, { id: 'C0ALERTS1', name: 'website-alerts', private: false, member: false });
+  assert.equal(d.slack.channel.name, 'general');
+  const hello = posts().at(-1).body;
+  assert.equal(hello.channel, 'C0ALERTS1');
+  assert.match(hello.text, /^👋 Website alerts that need a hand will post here\nPeter picked this channel/);
+  assert.match(renderSlack(hello), /Something failing during a live reveal says @here\./);
+
+  const t = await adminPost({ action: 'testAlert' });
+  assert.equal(t.success, true);
+  assert.deepEqual(posts().slice(-2).map((p) => p.body.channel), ['C0ALERTS1', 'C0GENERAL'], 'one test in each channel');
+  assert.match(renderSlack(posts().at(-1).body), /alerts that need a hand go to #website-alerts/);
+
+  const back = await adminPost({ action: 'setSlackChannel', id: '', role: 'attention' });
+  assert.equal(back.success, true);
+  assert.equal(back.slack.attention, null);
+  assert.equal((await notify.readSlackConfig(env.DB, { fresh: true })).attention, undefined);
+  await notify.slackAlert(env, 'Stuck');
+  assert.equal(posts().at(-1).body.channel, 'C0GENERAL');
+  assert.equal((await adminPost({ action: 'setSlackChannel', id: '' })).success, false, 'the good-news channel can’t be left empty');
+});
+
+test('the health check checks both channels and says which one needs the fix', async () => {
+  await notify.writeSlackConfig(env.DB, { channel: { id: 'C0GENERAL', name: 'general' }, attention: { id: 'G0PRIVATE', name: 'board' } });
+  const st = await notify.slackStatus(env);
+  assert.equal(st.ok, false);
+  assert.equal(st.error, 'not_in_channel');
+  assert.equal(st.errorFor, 'attention');
+  assert.equal(st.channel.name, 'general');
+  await pickBoth();
+  assert.equal((await notify.slackStatus(env)).ok, true);
+});
+
+test('the preview says where each sample posts, and its @here sample never pings anyone', async () => {
+  const preview = await import('../functions/api/_slack-preview.js');
+  await pickBoth();
+  let r;
+  let n = 0;
+  do { r = await preview.maybeSlackPreview(env, { now: Date.now() + (n++) * 60e3, gapMs: 0 }); } while (r && !r.done && n < 20);
+  const replies = posts().map((p) => p.body).filter((b) => b.thread_ts);
+  const caption = (b) => b.blocks[0].elements[0].text;
+  assert.match(caption(replies.find((b) => / · Gift · /.test(caption(b)))), /posts in #general$/);
+  assert.match(caption(replies.find((b) => / · Kid profile hidden · /.test(caption(b)))), /posts in #website-alerts$/);
+  assert.doesNotMatch(JSON.stringify(posts().map((p) => p.body)), /<!here>|<!channel>/, 'nobody is pinged by the preview');
+  assert.ok(replies.some((b) => /@here/.test(JSON.stringify(b))), 'but the @here sample shows it');
 });

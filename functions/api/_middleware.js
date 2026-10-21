@@ -102,6 +102,11 @@ PUBLIC_ROUTES.push('/api/profile-request');
 // checked inside the handler; GET only shows a confirmation page
 PUBLIC_ROUTES.push('/api/applicant-email-action');
 
+// Slack's button clicks on the site's alert cards: answered with an empty 200
+// and nothing else (the buttons only open links); signed when
+// SLACK_SIGNING_SECRET is set
+PUBLIC_ROUTES.push('/api/slack-actions');
+
 // ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
 // Limits POST /api/newsletter to 5 requests per IP per 60 seconds.
 // Resets when the Workers isolate recycles — good enough for spam prevention.

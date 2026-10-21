@@ -28,7 +28,8 @@ import { EXTRACTORS, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit, diffJson } from './_audit.js';
 import { recordVersion } from './_content-history.js';
-import { sendEmails, slackAlert, emailConfigured } from './_broadcast-notify.js';
+import { sendEmails, slackPost, emailConfigured } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
 
 export const FIELD_STATUS = '22P52qfFub9b';
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
@@ -190,7 +191,10 @@ async function alertDenied(env, { kid, jobId }) {
   const admin = `${SITE}/admin/#kids-hub`;
   const job = `https://app.jobtread.com/jobs/${jobId}`;
   await Promise.allSettled([
-    slackAlert(env, `🟡 ${title}: ${detail} ${fix} ${admin}`),
+    slackPost(env, slackCard({
+      icon: '⚠️', title, lead: detail, fix,
+      buttons: [{ label: 'Open the job in JobTread', url: job }, { label: 'Open Kids', url: admin }],
+    })),
     emailConfigured(env) && to.length ? sendEmails(env, {
       to, subject: `[SOARD] ${title}`,
       html: `<p><strong>${title}</strong></p><p>${detail}</p><p>${fix}</p><p><a href="${job}">Open the job in JobTread</a> · <a href="${admin}">Open Kids in the admin</a></p>`,

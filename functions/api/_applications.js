@@ -37,7 +37,8 @@ import {
   cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, DEFAULT_STAFF_EMAILS,
 } from './_application-form.js';
 import { buildApplicationPdf } from './_application-pdf.js';
-import { sendEmails, escapeHtml, SITE_ORIGIN, slackAlert, slackEscape } from './_broadcast-notify.js';
+import { sendEmails, escapeHtml, SITE_ORIGIN, slackPost } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
 import { readApplicant, sendIntake, ensureCommsSchema } from './_applicant-comms.js';
 import { formFor, ensureFormSchema } from './_application-forms.js';
 import { isUpload, isInput, answerText, progressPercent, renderMessage, choice } from './_application-form.js';
@@ -294,9 +295,17 @@ export async function runApplicationSchedule(env, { now = Date.now() } = {}) {
   const out = await saveApplicationSettings(env, due, { user: 'schedule', base: s, now });
   if (!out.changes?.length) return null;
   const done = due.open ? 'opened' : 'closed';
-  await slackAlert(env, due.open
-    ? `Makeover applications opened on schedule for the ${s.year} season. Families can apply at ${SITE_ORIGIN}/apply/form/`
-    : `Makeover applications closed on schedule. Families who already started can still finish.`).catch(() => null);
+  await slackPost(env, due.open
+    ? slackCard({
+      icon: '📬', title: `Applications are open for ${s.year}`,
+      lead: 'They opened on schedule, so families can apply now.',
+      buttons: [{ label: 'See the form', url: `${SITE_ORIGIN}/apply/form/` }, { label: 'Open Applications', url: `${SITE_ORIGIN}/admin/#applications` }],
+    })
+    : slackCard({
+      icon: '📪', title: `Applications are closed for ${s.year}`,
+      lead: 'They closed on schedule. Families who already started can still finish.',
+      buttons: [{ label: 'Open Applications', url: `${SITE_ORIGIN}/admin/#applications` }],
+    }), { kind: 'news' }).catch(() => null);
   return done;
 }
 
@@ -709,23 +718,52 @@ function staffEmail(app, accountId) {
 }
 
 /** The same heads-up for Slack. Kept short: no diagnosis or contact details in the channel. */
-function staffSlack(app, accountId) {
+export function staffSlack(app, accountId) {
   const a = app.answers;
-  const first = String(a.childName?.first || 'A new applicant').trim();
-  const types = (a.makeoverTypes || []).join(' and ') || 'a makeover';
-  const title = `${app.is_test ? '[TEST] ' : ''}New makeover application: ${first}`;
-  const detail = [app.year, types, a.county].filter(Boolean).join(' · ');
-  const links = [
-    accountId ? { label: 'Open in JobTread', url: jobtreadAccountUrl(accountId) } : null,
-    { label: 'Open the application', url: applicationUrl(app.id) },
-  ].filter(Boolean);
-  return {
-    text: `🟢 ${title}: ${detail} ${links[0].url}`,
-    blocks: [
-      { type: 'section', text: { type: 'mrkdwn', text: `🟢 *${slackEscape(title)}*\n${slackEscape(detail)}` } },
-      { type: 'context', elements: [{ type: 'mrkdwn', text: links.map((l) => `<${l.url}|${slackEscape(l.label)}>`).join('  ·  ') }] },
+  const s = app.jt_state || {};
+  const first = String(a.childName?.first || '').trim();
+  const age = ageOn(a.birthdate, app.submitted_at);
+  const who = first ? `${first}${age != null ? `, age ${age}` : ''}` : 'a new family';
+  const types = (a.makeoverTypes || []).join(' and ');
+  const repeats = s.repeat?.matches || [];
+  const photos = Object.keys(app.files || {}).filter((k) => k !== 'video' && app.files[k]?.key).length;
+  const area = s.area;
+  const areaWords = !area ? null
+    : area.status === 'inside' ? (area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside')
+    : area.status === 'outside' ? `⚠️ About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside`
+    : '⚠️ Couldn’t check the address';
+  const countyClash = area?.county && a.county && area.county !== a.county ? ` (the Census says ${area.county} County)` : '';
+  return slackCard({
+    icon: '📝',
+    title: `New application: ${who}`,
+    test: app.is_test ? 'Test application · not a real family' : null,
+    lead: [types, a.county ? `${a.county} County` : null, app.year ? `${app.year} season` : null].filter(Boolean).join(' · '),
+    facts: [
+      ['Service area', areaWords ? `${areaWords}${countyClash}` : null],
+      ['Applied before', repeats.length
+        ? `⚠️ Possible repeat: ${repeats.slice(0, 2).map((m) => `${m.name}${m.year ? ` (${m.year})` : ''}`).join('; ')}${repeats.length > 2 ? ` and ${repeats.length - 2} more` : ''}`
+        : a.previouslyApplied === 'Yes' ? 'The family says yes; no match found' : 'No'],
+      ['Video', app.files?.video ? 'Sent' : 'None'],
+      ['Photos', photos ? String(photos) : 'None'],
+      ['Language', app.lang === 'es' ? 'Spanish' : null],
+      ['Heard about us', a.referredBy],
     ],
-  };
+    buttons: [
+      { label: 'Open the application', url: applicationUrl(app.id) },
+      accountId ? { label: 'Open in JobTread', url: jobtreadAccountUrl(accountId) } : null,
+    ],
+    footer: 'Diagnosis and contact details stay in the application.',
+  });
+}
+
+/** Whole years old on the day they applied, or null */
+function ageOn(birthdate, on) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthdate || '');
+  const d = new Date(on || Date.now());
+  if (!m || Number.isNaN(d.getTime())) return null;
+  let years = d.getUTCFullYear() - Number(m[1]);
+  if (d.getUTCMonth() + 1 < Number(m[2]) || (d.getUTCMonth() + 1 === Number(m[2]) && d.getUTCDate() < Number(m[3]))) years--;
+  return years >= 0 && years < 40 ? years : null;
 }
 
 /** A staff-only comment on the account (not emailed to anyone) */
@@ -996,8 +1034,8 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
       else s.staffEmail = iso(now);
     }
     if (!s.staffSlack) {
-      const { text, blocks } = staffSlack(app, accountId);
-      const r = await slackAlert(env, text, blocks);
+      // A test application is staff's business, not good news for the whole team
+      const r = await slackPost(env, staffSlack(app, accountId), { kind: app.is_test ? 'attention' : 'news' });
       if (r.ok) s.staffSlack = iso(now);
       else if (r.skipped) s.staffSlack = 'off'; // Slack not connected, or no channel picked
       else failed.push(`Slack: ${r.error || `HTTP ${r.status}`}`);
@@ -1025,18 +1063,55 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
   }, now);
 
   if (error && attempts >= ALERT_AFTER_ATTEMPTS && app.alerted !== error) {
-    await Promise.all([
+    // A new problem on an application already reported goes in that post's thread
+    const open = s.stuckSlack?.ts ? s.stuckSlack : null;
+    const [, posted] = await Promise.all([
       sendEmails(env, {
         to: ALERT_EMAILS,
         subject: `Application for ${accountName(app)} is stuck`,
         html: `<p>The website couldn't finish loading an application into JobTread after ${attempts} tries.</p><p><strong>${escapeHtml(error)}</strong></p><p>It keeps retrying on its own. <a href="${escapeHtml(applicationUrl(app.id))}">Open it in the admin</a> to retry now.</p>`,
         text: `The website couldn't finish loading an application into JobTread after ${attempts} tries.\n\n${error}\n\nIt keeps retrying on its own. Admin: ${applicationUrl(app.id)}`,
       }).catch(() => {}),
-      slackAlert(env, `🟡 Application for ${accountName(app)} is stuck: the website couldn't finish loading it into JobTread after ${attempts} tries. ${error}. It keeps retrying on its own; open it in the admin to retry now. ${applicationUrl(app.id)}`).catch(() => {}),
+      slackPost(env, stuckCard(app, { attempts, error, again: !!open }), open ? { thread: { ...open, broadcast: true } } : {}).catch(() => null),
     ]);
+    if (!open && posted?.ok && posted.ts) {
+      s.stuckSlack = { channel: posted.channel, ts: posted.ts, since: iso(now) };
+      await saveState(DB, app, {}, now);
+    }
     await DB.prepare('UPDATE applications SET alerted = ? WHERE id = ?').bind(error, app.id).run();
   }
+  // It got through on its own: the stuck post turns into a ✅ and says so in its thread
+  if (!error && s.stuckSlack?.ts) {
+    const ref = { channel: s.stuckSlack.channel, ts: s.stuckSlack.ts };
+    const tries = (app.attempts || 0) + 1;
+    const done = slackCard({
+      icon: '✅',
+      title: `Unstuck: ${accountName(app)}’s application`,
+      lead: `It loaded into JobTread on its own after ${tries} tries. Nothing to do.`,
+      buttons: [{ label: 'Open the application', url: applicationUrl(app.id) }],
+    });
+    await Promise.all([
+      slackPost(env, done, { update: ref }).catch(() => null),
+      slackPost(env, done, { thread: { ...ref, broadcast: true } }).catch(() => null),
+    ]);
+    delete s.stuckSlack;
+    // Fixed and said so: if the same error comes back later, that's news again
+    await saveState(DB, app, { alerted: null }, now);
+  }
   return error ? { status, error } : { status };
+}
+
+/** The Slack post for an application that can't get into JobTread */
+export function stuckCard(app, { attempts, error, again }) {
+  return slackCard({
+    icon: '⚠️',
+    title: again ? `Still stuck: ${accountName(app)}’s application` : `Stuck: ${accountName(app)}’s application`,
+    test: app.is_test ? 'Test application · not a real family' : null,
+    lead: `${again ? 'A different problem now. ' : ''}The website couldn’t finish loading it into JobTread after ${attempts} tries.`,
+    facts: [['Error', error]],
+    fix: 'Nothing, usually: it keeps retrying on its own, and this post changes to ✅ when it gets through. To try right away, open it in the admin and press Retry.',
+    buttons: [{ label: 'Open the application', url: applicationUrl(app.id) }],
+  });
 }
 
 // ─── Sweep ──────────────────────────────────────────────────────────

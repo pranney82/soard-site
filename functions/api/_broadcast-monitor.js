@@ -288,6 +288,8 @@ function makeCtx(env, config, state, m, work, record) {
   const at = new Date(now).toISOString();
   const liveFrom = Date.parse(state.liveAt || m.startedAt);
   const context = `${state.title || 'Live reveal'} · live ${fmtDur(now - liveFrom)}`;
+  // One Slack thread per problem per broadcast: reminders reply in it, clearing turns it ✅
+  const issueKey = (key) => `live:${state.broadcastId || 'broadcast'}:${key}`;
   const log = (entry) => { m.log.push({ at, ...entry }); if (m.log.length > 40) m.log.splice(0, m.log.length - 40); };
 
   const raise = async (key, { level = 'warn', title, detail, fix, links = [], after = 0 }) => {
@@ -298,7 +300,7 @@ function makeCtx(env, config, state, m, work, record) {
       Object.assign(open, { level, title, detail, fix });
       const last = Date.parse(open.remindedAt || open.postedAt || open.since);
       if (now - last < (open.remindedAt ? RULES.remindEvery : RULES.remindFirst)) return;
-      const r = await notify.alertAdmins(env, config, { level, title: `Still: ${title}`, detail: `${detail} Going on ${fmtDur(now - Date.parse(open.since))}.`, fix, url: ADMIN_URL, links, context });
+      const r = await notify.alertAdmins(env, config, { level, title: `Still: ${title}`, detail: `${detail} Going on ${fmtDur(now - Date.parse(open.since))}.`, fix, url: ADMIN_URL, links, context, issue: issueKey(key) });
       open.remindedAt = at;
       open.reminders = (open.reminders || 0) + 1;
       open.slack = slackStatus(r.slack);
@@ -306,7 +308,8 @@ function makeCtx(env, config, state, m, work, record) {
       work.push(`remind:${key}`);
       return;
     }
-    const r = await notify.alertAdmins(env, config, { level, title, detail, fix, url: ADMIN_URL, links, context });
+    // Something failing during the reveal itself buzzes whoever is watching the alerts channel
+    const r = await notify.alertAdmins(env, config, { level, title, detail, fix, url: ADMIN_URL, links, context, issue: issueKey(key), urgent: level === 'error' });
     m.issues[key] = { key, level, title, detail, fix, since: m.pending[key], postedAt: at, slack: slackStatus(r.slack) };
     log({ key, kind: 'open', title, slack: m.issues[key].slack });
     await record(env.DB, state.broadcastId, 'issue', { key, level, title });
@@ -323,7 +326,7 @@ function makeCtx(env, config, state, m, work, record) {
     if (m.closed.length > 30) m.closed.shift();
     let slack = null;
     if (!quiet) {
-      const r = await notify.alertAdmins(env, config, { level: 'info', title: RESOLVED[key] || `Resolved: ${open.title}`, detail: `It lasted ${fmtDur(lasted)}.`, url: ADMIN_URL, context });
+      const r = await notify.alertAdmins(env, config, { level: 'info', title: RESOLVED[key] || `Resolved: ${open.title}`, detail: `It lasted ${fmtDur(lasted)}.`, url: ADMIN_URL, context, resolves: issueKey(key) });
       slack = slackStatus(r.slack);
       work.push(`resolved:${key}`);
     }

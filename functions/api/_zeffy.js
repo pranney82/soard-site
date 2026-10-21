@@ -35,7 +35,8 @@
  * doesn't break them.
  */
 
-import { slackAlert, slackEscape, sendEmails, emailConfigured, escapeHtml, isEmail, SITE_ORIGIN } from './_broadcast-notify.js';
+import { slackAlert, slackPost, readSlackConfig, sendEmails, emailConfigured, escapeHtml, isEmail, SITE_ORIGIN } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
 
 export const ZEFFY_API = 'https://api.zeffy.com/api/v1';
 export const MAJOR_GIFT_CENTS = 100000; // $1,000
@@ -158,22 +159,32 @@ function receivedOn(created) {
   return new Date(s * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
 }
 
-/** The Slack text for one Zeffy payment (the shape GET /payments/:id returns) */
+/**
+ * The Slack card for one Zeffy payment (the shape GET /payments/:id returns):
+ * "💛 $50.00 gift from Jane Doe", or "🌟 Major gift: …" from $1,000. Only the
+ * amount, the giver's name, the campaign and the day: never an email,
+ * address or phone, and a missing one is left out.
+ */
 export function giftMessage(p) {
   const cents = Number(p?.amount);
   const has = Number.isFinite(cents) && p?.amount != null;
   const major = has && cents >= MAJOR_GIFT_CENTS;
   const every = recurringLabel(p);
-  const lines = [`${major ? '🚨 MAJOR GIFT' : '🎉 New donation'}${has ? ` - ${money(cents, p.currency)}` : ''}${every ? ` (${every})` : ''}`];
+  const amount = has ? money(cents, p.currency) : null;
   const from = donor(p?.buyer);
-  if (from) lines.push(`From: ${slackEscape(from)}`);
-  const campaign = clean(p?.description);
-  if (campaign) lines.push(`Campaign: ${slackEscape(campaign)}`);
-  const day = receivedOn(p?.created);
-  if (day) lines.push(`Received: ${day}`);
+  const kind = every ? `${every} gift` : 'gift';
+  const title = major
+    ? `Major gift: ${amount}${every ? ` ${every}` : ''}${from ? ` from ${from}` : ''}`
+    : `${amount ? `${amount} ${kind}` : `New ${kind}`}${from ? ` from ${from}` : ''}`;
   // The site's own self-test (below), never a real gift
-  if (p?.metadata?.soardSelfTest === true) lines.unshift('🧪 Test from the website: no gift was made. Gift alerts are connected, and real gifts will look like this:');
-  return lines.join('\n');
+  const test = p?.metadata?.soardSelfTest === true;
+  return slackCard({
+    icon: major ? '🌟' : '💛',
+    title,
+    test: test ? 'Test from the website · no gift was made' : null,
+    lead: test ? 'Gift alerts are connected. Real gifts look just like this.' : null,
+    facts: [['Campaign', clean(p?.description) || null], ['Received', receivedOn(p?.created)]],
+  });
 }
 
 /** Why a payment isn't posted, or null when it should be */
@@ -186,9 +197,18 @@ export function screenPayment(p) {
   return null;
 }
 
-async function postToSlack(env, text) {
+/**
+ * `pending` holds the card as JSON; a row saved before cards is plain text.
+ * Gifts go to the Good news channel picked in the admin, #team-everyone until one is.
+ */
+async function postToSlack(env, pending) {
   if (!env.SLACK_BOT_TOKEN) return { ok: false, error: 'SLACK_BOT_TOKEN is not set' };
-  const r = await slackAlert(env, text, null, { channel: GIFT_CHANNEL });
+  let card = null;
+  try { card = JSON.parse(pending); } catch { /* plain text */ }
+  const channel = (await readSlackConfig(env.DB).catch(() => ({}))).channel?.id || GIFT_CHANNEL;
+  const r = card?.blocks
+    ? await slackPost(env, card, { channel })
+    : await slackAlert(env, String(pending), null, { channel });
   return r.ok ? { ok: true } : { ok: false, error: r.error || `Slack answered ${r.status}` };
 }
 
@@ -214,7 +234,7 @@ export async function handlePayment(env, p, { via = 'webhook', now = Date.now() 
   const id = String(p?.id || '');
   if (!PAYMENT_ID.test(id)) return { result: 'invalid', reason: 'not a payment' };
   const skip = screenPayment(p);
-  const text = skip ? null : giftMessage(p);
+  const text = skip ? null : JSON.stringify(giftMessage(p));
   const iso = new Date(now).toISOString();
   const paidAt = Number.isFinite(Number(p.created)) ? Math.floor(Number(p.created)) : null;
   const ins = await env.DB.prepare(`INSERT OR IGNORE INTO zeffy_gifts

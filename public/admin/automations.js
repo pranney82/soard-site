@@ -63,7 +63,7 @@ const slackLive = (f) => {
   if (!env(f)) return null;
   const sl = f.slack;
   if (sl?.mode === 'bot') {
-    if (sl.ok) return ON(`Posting to #${sl.channel}${sl.team ? ` in ${sl.team}` : ''}.`);
+    if (sl.ok) return ON(sl.attention ? `Good news to #${sl.channel}, alerts that need a hand to #${sl.attention}${sl.team ? `, in ${sl.team}` : ''}.` : `Posting everything to #${sl.channel}${sl.team ? ` in ${sl.team}` : ''}.`);
     return ATTN(sl.error === 'no_channel' ? `The Slack app is connected, but no channel is picked yet: ${SETTINGS} → Alerts.` : `Slack won’t take posts (${sl.error}). ${SETTINGS} → Alerts says how to fix it.`);
   }
   if (f.env.slack) return ON('Through the old incoming webhook, which can’t say which channel it posts to. Add the Slack app to name and check the channel.');

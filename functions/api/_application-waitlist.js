@@ -46,7 +46,8 @@ import {
   kitTagSubscribersPage, kitCreateBroadcast, kitBroadcastStats, kitListBroadcasts, kitDeleteBroadcast, kitAccount, kitListAudiences,
   WAITLIST_ONLY_TAG,
 } from './_kit.js';
-import { sendEmails, escapeHtml, isEmail, SITE_ORIGIN, slackAlert, slackEscape, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
+import { sendEmails, escapeHtml, isEmail, SITE_ORIGIN, slackPost, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
 import * as applications from './_applications.js';
 import { formFor } from './_application-forms.js';
 import { logAudit } from './_audit.js';
@@ -357,21 +358,29 @@ async function staffList(env, year, { problem = false } = {}) {
   return [...new Set([...(staff || []), ...(problem ? applications.ALERT_EMAILS : [])].filter(isEmail))];
 }
 
-/** Tell staff by email and Slack. Never throws. */
-export async function tellStaff(env, { year, level = 'info', title, detail, problem = false }) {
-  const icon = level === 'warn' ? '🟡' : '🟢';
+/**
+ * Tell staff by email and Slack. `links` [{ label, url }] go under the
+ * waitlist button in both. `kind` 'news' is for the good news (the email is
+ * going out, it went); everything else needs attention. Never throws.
+ */
+export async function tellStaff(env, { year, level = 'info', title, detail, problem = false, links = [], kind = 'attention' }) {
   const to = await staffList(env, year, { problem });
+  const more = links.map(l => `<a href="${escapeHtml(l.url)}" style="color:#373A36">${escapeHtml(l.label)}</a>`).join(' &nbsp;·&nbsp; ');
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#373A36;max-width:560px">
 <p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail || '').replace(/\n/g, '<br>')}</p>
-<p><a href="${ADMIN_URL}" style="display:inline-block;background:#FFDA24;color:#373A36;padding:10px 20px;border-radius:999px;text-decoration:none;font-weight:bold">Open the waitlist</a></p></div>`;
+<p><a href="${ADMIN_URL}" style="display:inline-block;background:#FFDA24;color:#373A36;padding:10px 20px;border-radius:999px;text-decoration:none;font-weight:bold">Open the waitlist</a></p>${more ? `<p>${more}</p>` : ''}</div>`;
+  const text = `${title}\n\n${detail || ''}\n\n${ADMIN_URL}${links.map(l => `\n${l.label}: ${l.url}`).join('')}`;
   await Promise.all([
     to.length && emailConfigured(env)
-      ? sendEmails(env, { to, subject: title, html, text: `${title}\n\n${detail || ''}\n\n${ADMIN_URL}`, tags: [{ name: 'type', value: 'application-waitlist' }] }).catch(() => null)
+      ? sendEmails(env, { to, subject: title, html, text, tags: [{ name: 'type', value: 'application-waitlist' }] }).catch(() => null)
       : null,
-    slackAlert(env, `${icon} ${title}: ${detail || ''} ${ADMIN_URL}`, [
-      { type: 'section', text: { type: 'mrkdwn', text: `${icon} *${slackEscape(title)}*${detail ? `\n${slackEscape(detail)}` : ''}` } },
-      { type: 'context', elements: [{ type: 'mrkdwn', text: `<${ADMIN_URL}|Open the waitlist>` }] },
-    ]).catch(() => null),
+    slackPost(env, slackCard({
+      icon: level === 'warn' ? '⚠️' : '📨',
+      title,
+      lead: detail,
+      buttons: [{ label: 'Open the waitlist', url: ADMIN_URL }, ...links],
+      footer: 'Applications waitlist',
+    }), { kind }).catch(() => null),
   ]);
 }
 
@@ -723,8 +732,12 @@ async function stopOpening(env, op, { now, mode, why, by = null }) {
     op.error = `Couldn't take the scheduled email back yet (${r.error}). Trying again every minute`;
     op.next_try_at = null;
     if (op.stop.tries === 2) {
-      const links = Object.values(op.broadcasts || {}).filter(b => b?.id).map(b => `https://app.kit.com/campaigns/${b.id}`).join(' ');
-      await tellStaff(env, { year: op.year, level: 'warn', problem: true, title: 'The applications-open email may still go out', detail: `It was ${mode === 'hold' ? 'put on hold' : 'stopped because applications closed'}, but the site can't reach Kit to take it back (${r.error}). It keeps trying. To be sure, delete it in Kit before ${when(op.send_at)}: ${links}` });
+      const kit = Object.entries(op.broadcasts || {}).filter(([, b]) => b?.id).map(([lang, b]) => ({ lang, url: `https://app.kit.com/campaigns/${b.id}` }));
+      await tellStaff(env, {
+        year: op.year, level: 'warn', problem: true, title: 'The applications-open email may still go out',
+        detail: `It was ${mode === 'hold' ? 'put on hold' : 'stopped because applications closed'}, but the site can't reach Kit to take it back (${r.error}). It keeps trying. To be sure, delete it in Kit before ${when(op.send_at)}.`,
+        links: kit.map(k => ({ label: kit.length > 1 ? `Open in Kit (${k.lang === 'es' ? 'Spanish' : 'English'})` : 'Open in Kit', url: k.url })),
+      });
     }
     await saveOpening(DB, op, now);
     return { ok: false, error: op.error };
@@ -899,7 +912,7 @@ async function stage(env, op, { now, fetchImpl }) {
       op.checks = (op.checks || 0) + 1;
       op.error = 'The application form still shows closed, so the email is waiting for it';
       if (op.checks === FORM_CHECKS) {
-        await tellStaff(env, { year: op.year, level: 'warn', problem: true, title: 'The applications-open email is waiting on the form', detail: `Applications are switched on, but ${SITE_ORIGIN}/apply/form/ still shows the closed message after ${FORM_CHECKS} minutes. The email goes as soon as the form opens.` });
+        await tellStaff(env, { year: op.year, level: 'warn', problem: true, title: 'The applications-open email is waiting on the form', detail: `Applications are switched on, but the application form still shows the closed message after ${FORM_CHECKS} minutes. The email goes as soon as the form opens.`, links: [{ label: 'See the form', url: `${SITE_ORIGIN}/apply/form/` }] });
       }
       op.next_try_at = now + 60e3;
       await saveOpening(DB, op, now);
@@ -1053,6 +1066,7 @@ async function finishSending(env, op, now, { note = null } = {}) {
   const directN = op.direct?.sent || 0;
   await tellStaff(env, {
     year: op.year,
+    kind: 'news',
     title: `The applications-open email is going out to ${families(kitN + directN)}`,
     detail: [
       `${op.year} applications are open and the families who asked are being told (${split(op.counts)}).`,
@@ -1089,7 +1103,7 @@ async function followSending(env, op, now, { force = false } = {}) {
     changed = true;
     if (langs.length) {
       const got = langs.reduce((n, l) => n + (op.broadcasts[l].stats?.recipients ?? op.broadcasts[l].recipients ?? 0), 0) + (op.direct?.sent || 0);
-      await tellStaff(env, { year: op.year, title: `The applications-open email was sent to ${families(got)}`, detail: `Every family who asked to hear when ${op.year} applications open has been emailed. Opens and clicks are in the admin.` });
+      await tellStaff(env, { year: op.year, kind: 'news', title: `The applications-open email was sent to ${families(got)}`, detail: `Every family who asked to hear when ${op.year} applications open has been emailed. Opens and clicks are in the admin.` });
     }
   }
   if (changed) await saveOpening(env.DB, op, now);

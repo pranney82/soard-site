@@ -653,7 +653,7 @@ async function tickReel(env, config, state, work, opts) {
     if (reel.stage === 'done') {
       await recordEvent(env.DB, state.broadcastId, 'reel_published', { permalink: reel.permalink, method: reel.method, start: reel.start, end: reel.end });
       await logAudit(env.DB, { userEmail: 'live-broadcast', action: 'published', entityType: 'instagram-reel', entitySlug: reel.mediaId, entityName: `Instagram Reel: ${state.title || state.broadcastId}`, changes: [{ field: 'window', from: null, to: `${reel.start}-${reel.end}s (${reel.method})` }], gitStatus: 'ok' });
-      await notify.alertAdmins(env, config, { level: 'info', title: `Instagram Reel posted: ${state.title || 'reveal'}`, detail: `Cut ${Math.floor(reel.start / 60)}:${String(Math.floor(reel.start % 60)).padStart(2, '0')} to ${Math.floor(reel.end / 60)}:${String(Math.floor(reel.end % 60)).padStart(2, '0')} of the recording (picked by ${reel.method}).`, url: reel.permalink || undefined });
+      await notify.alertAdmins(env, config, { level: 'info', kind: 'news', icon: '📱', title: `Instagram Reel posted: ${state.title || 'reveal'}`, detail: `Cut ${Math.floor(reel.start / 60)}:${String(Math.floor(reel.start % 60)).padStart(2, '0')} to ${Math.floor(reel.end / 60)}:${String(Math.floor(reel.end % 60)).padStart(2, '0')} of the recording (picked by ${reel.method}).`, url: reel.permalink || undefined });
     } else if (reel.stage === 'failed' || reel.stage === 'blocked') {
       await notify.alertAdmins(env, config, { level: 'warn', title: `Instagram Reel ${reel.stage === 'blocked' ? 'needs setup' : 'failed'}: ${state.title || 'reveal'}`, detail: reel.error || 'unknown error', url: `${SITE_ORIGIN}/admin/` });
     }
@@ -872,10 +872,10 @@ async function runHealth(env, config, state, health, work, { force = false } = {
   const key = problems.length ? problems.join(' | ') : '';
   const prev = health.flags?.problems || '';
   if (key && key !== prev) {
-    await notify.alertAdmins(env, config, { level: 'error', title: soon ? 'Reveal-day check found problems' : 'Live broadcast health check failed', detail: problems.join('\n'), url: `${SITE_ORIGIN}/admin/` });
+    await notify.alertAdmins(env, config, { level: 'error', title: soon ? 'Reveal-day check found problems' : 'Live broadcast health check failed', detail: problems.map((p) => `• ${p}`).join('\n'), url: `${SITE_ORIGIN}/admin/`, issue: 'broadcast-health' });
     work.push('alert:health');
   } else if (!key && prev) {
-    await notify.alertAdmins(env, config, { level: 'info', title: 'Live broadcast health recovered', detail: 'All checks pass again.' });
+    await notify.alertAdmins(env, config, { level: 'info', title: 'Live broadcast health recovered', detail: 'All checks pass again.', url: `${SITE_ORIGIN}/admin/`, resolves: 'broadcast-health' });
   }
   health.flags = { ...(health.flags || {}), problems: key };
 }
@@ -927,7 +927,7 @@ export async function runTick(env, { source = 'tick', force = false, by = null, 
     state = { ...state, phase: 'armed', armedAt: nowIso() }; work.push('armed');
   }
   if ((state.phase === 'scheduled' || state.phase === 'armed') && state.scheduledAt && now - Date.parse(state.scheduledAt) > SCHEDULED_EXPIRE_MS) {
-    await notify.alertAdmins(env, config, { level: 'warn', title: 'Scheduled reveal never went live', detail: `${state.title || 'Reveal'} was scheduled for ${state.scheduledAt} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/` });
+    await notify.alertAdmins(env, config, { level: 'warn', icon: '⏰', title: 'Scheduled reveal never went live', detail: `${state.title || 'Reveal'} was scheduled for ${state.scheduledAt} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/` });
     await recordEvent(DB, state.broadcastId, 'missed');
     await closeBroadcastRow(DB, state, 'missed');
     state = tClear(state, 'missed'); work.push('missed');
@@ -949,7 +949,12 @@ export async function runTick(env, { source = 'tick', force = false, by = null, 
       await sendReminders(env, config, state, 'live', work);
       await recordEvent(DB, state.broadcastId, 'live_start', { source: state.source, videoUid: state.liveVideoUid });
       await logAudit(DB, { userEmail: by || 'live-broadcast', action: 'published', entityType: 'live-status', entitySlug: state.broadcastId, entityName: state.title || 'Live broadcast', gitStatus: 'ok' });
-      await notify.alertAdmins(env, config, { level: 'info', title: `LIVE: ${state.title || 'broadcast started'}`, detail: `Source: ${state.source}. Site, Facebook and YouTube outputs are running.`, url: liveUrlFor(state) });
+      await notify.alertAdmins(env, config, {
+        level: 'info', kind: 'news', icon: '📡', title: `Live now: ${state.title || 'the reveal'}`,
+        detail: 'The site, Facebook and YouTube are all showing it.',
+        facts: [['Started from', state.source === 'stream' ? 'The phone' : state.source === 'manual' ? 'The admin, by hand' : state.source]],
+        url: liveUrlFor(state), links: [{ label: 'Open the control room', url: `${SITE_ORIGIN}/admin/#broadcast/control-room` }],
+      });
     }
     if (state.phase === 'replay') {
       state = await fbOnEnd(env, config, state, work);
@@ -958,7 +963,7 @@ export async function runTick(env, { source = 'tick', force = false, by = null, 
       await logAudit(DB, { userEmail: by || 'live-broadcast', action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: `Ended: ${state.title || 'Live broadcast'}`, changes: [{ field: 'minutes', from: null, to: mins }], gitStatus: 'ok' });
       // The feed monitor's health report (sound, issues, Facebook/YouTube timing) rides along
       const ended = state.source === 'stream' ? await monitor.finish(env, config, state, health, recordEvent).catch(() => ({ summary: '' })) : { summary: '' };
-      await notify.alertAdmins(env, config, { level: 'info', title: `Ended: ${state.title || 'broadcast'}`, detail: [mins != null ? `Ran ${mins} minutes.` : null, ended.summary || null, mins != null ? 'Replay will attach to the kid\'s page when Stream finishes processing.' : 'Replay will attach when ready.'].filter(Boolean).join('\n') });
+      await notify.alertAdmins(env, config, { level: 'info', kind: 'news', icon: '🎬', title: `Ended: ${state.title || 'the reveal'}`, detail: [mins != null ? `Ran ${mins} minutes.` : null, ended.summary || null, mins != null ? 'Replay will attach to the kid\'s page when Stream finishes processing.' : 'Replay will attach when ready.'].filter(Boolean).join('\n'), url: `${SITE_ORIGIN}/admin/` });
     }
     if (state.phase === 'ending') await recordEvent(DB, state.broadcastId, 'disconnected');
   }

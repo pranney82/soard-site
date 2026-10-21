@@ -10,6 +10,7 @@ import { FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, easternToUtcIso, easternPart
 import * as b from '../functions/api/_broadcast.js';
 import { addTracking } from '../functions/api/reveal-invites-admin.js';
 import { reminderEmail, reminderSms, reminderPush, isRevealToday } from '../functions/api/_broadcast-notify.js';
+import { renderSlack } from './lib/slack-render.mjs';
 
 const H = 3600e3, D = 24 * H;
 const SANDBOX = '22P3HTX9cXn4';
@@ -125,7 +126,7 @@ before(async () => {
   globalThis.fetch = async (url, init = {}) => {
     const u = String(url);
     if (u.startsWith('https://api.resend.com/emails/batch')) { emails.push(...JSON.parse(init.body)); return Response.json({ data: [] }); }
-    if (u.startsWith('https://hooks.slack.test/')) { slack.push(JSON.parse(init.body).text); return new Response('ok'); }
+    if (u.startsWith('https://hooks.slack.test/')) { slack.push(renderSlack(JSON.parse(init.body))); return new Response('ok'); }
     if (u.startsWith('https://api.kit.com/v4/broadcasts')) {
       const method = init.method || 'GET';
       kit.calls.push({ method, url: u, body: init.body ? JSON.parse(init.body) : null });
@@ -350,7 +351,7 @@ test('rehearsal end to end: the real path runs, the public sees nothing, reminde
   assert.deepEqual(emails.map(toOf), ['peter@soardcharity.com'], 'the subscriber gets nothing');
   assert.match(emails[0].subject, /^TEST · Save the date: Isla's room reveal/);
   assert.equal(kit.calls.length, 0, 'no Kit drafts for a rehearsal');
-  assert.ok(slack.some((t) => t.includes("TEST · Countdown is up: Isla's reveal") && t.includes('rehearsal')), slack.join('\n'));
+  assert.ok(slack.some((t) => t.includes("Countdown is up: Isla's reveal") && t.includes('Test reveal · not a real family') && t.includes('rehearsal')), slack.join('\n'));
   // Moves and take-down follow JobTread the same way
   jobs = [job('jobTst0001', 'TEST Isla Example (2026)', { startsAt: at(8) })];
   assert.equal((await sync()).action, 'update');

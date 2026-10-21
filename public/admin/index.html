@@ -6438,7 +6438,7 @@
     }
     // Slack: the app's connection and the channel alerts go to (slackStatus in _broadcast-notify.js)
     const SLACK_FIX = {
-      no_channel: 'Pick the channel for alerts below.',
+      no_channel: 'Pick the Good news channel below.',
       not_in_channel: 'It is a private channel: type /invite @{bot} in it, then check again.',
       channel_not_found: 'That channel is gone, or the app can’t see it. Pick another one.',
       is_archived: 'That channel was archived. Pick another one.',
@@ -6454,15 +6454,20 @@
         <li>Under OAuth & Permissions → Bot Token Scopes, add <code>chat:write</code>, <code>chat:write.public</code>, <code>channels:read</code> and <code>groups:read</code>.</li>
         <li>Choose Install to Workspace, then copy the Bot User OAuth Token (it starts with <code>xoxb-</code>).</li>
         <li>In Cloudflare: Workers & Pages → soard-site → Settings → Variables and Secrets, add <code>SLACK_BOT_TOKEN</code> as a secret, then Publish so the site picks it up.</li>
-        <li>Come back here and pick the channel.</li>
+        <li>Come back here and pick the channels.</li>
       </ol>`;
     }
+    // Two channels: good news everyone celebrates in, and alerts that need a hand
+    const SLACK_ROLES = [
+      { role: 'news', label: 'Good news', save: 'Post good news here', what: 'Gifts, new applications, a countdown going up, reveals going live, replays and Reels. The channel everyone celebrates in.' },
+      { role: 'attention', label: 'Needs attention', save: 'Post alerts here', what: 'Problems during a live reveal (with @here once alerts have a channel of their own, so phones buzz), the go/no-go checks, stuck applications, reveal invites and countdowns. Each problem is one thread, and its first post turns ✅ when it’s fixed.' },
+    ];
     function BcSlack({ mode, addToast }) {
       const [st, setSt] = useState(null); // slackStatus result; null while checking
       const [channels, setChannels] = useState(null);
       const [chErr, setChErr] = useState(null); // { error, needed } when Slack won't list channels
       const [missing, setMissing] = useState(null); // a scope that hides private channels
-      const [pick, setPick] = useState('');
+      const [picks, setPicks] = useState({}); // role → channel id the person chose, not saved yet
       const [working, setWorking] = useState('');
       const post = async (action, body = {}) => apiJson(await fetch('/api/broadcast-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...body }) }), '/api/broadcast-admin');
       const check = async () => {
@@ -6478,14 +6483,19 @@
         } catch (e) { setChannels([]); setChErr({ error: e.message }); }
       };
       useEffect(() => { if (mode === 'bot') { check(); loadChannels(); } }, [mode]);
-      const save = async () => {
-        setWorking('save');
+      const saved = { news: st?.channel?.id || '', attention: st?.attention?.id || '' };
+      const save = async (role) => {
+        const id = picks[role] ?? saved[role];
+        setWorking(`save-${role}`);
         try {
-          const d = await post('setSlackChannel', { id: pick });
+          const d = await post('setSlackChannel', { id, role });
           if (!d.success) addToast(d.error, 'error');
           else {
-            setSt(d.slack); setPick('');
-            addToast(d.posted ? `Alerts now go to #${d.channel.name}. Look for the hello there.` : `Saved #${d.channel.name}, but Slack said: ${d.postError}`, d.posted ? 'success' : 'error');
+            setSt(d.slack); setPicks((p) => ({ ...p, [role]: undefined }));
+            const where = d.channel ? `#${d.channel.name}` : null;
+            const what = role === 'news' ? 'Good news' : 'Alerts that need a hand';
+            if (!where) addToast(`${what} post in #${d.slack?.channel?.name || 'the good-news channel'} again.`, 'success');
+            else addToast(d.posted ? `${what} now post in ${where}. Look for the hello there.` : `Saved ${where}, but Slack said: ${d.postError}`, d.posted ? 'success' : 'error');
           }
         } catch (e) { addToast(e.message, 'error'); }
         setWorking('');
@@ -6494,32 +6504,47 @@
       if (mode !== 'bot') return html`<div class="bc-block">
         <div class="bc-inline"><strong class="text-sm">Slack</strong>${mode === 'webhook' ? html`<span class="badge badge-yellow">Webhook only</span>` : html`<span class="badge badge-yellow">Not connected</span>`}</div>
         <p class="text-sm text-muted" style="margin:.4rem 0 0">${mode === 'webhook'
-          ? 'Alerts post through SLACK_WEBHOOK_URL, and Slack never says which channel a webhook posts to. Connect the Slack app to choose the channel by name and have the site check it:'
-          : 'Alerts go by email only. Connect the Slack app so they also post in a channel you choose:'}</p>
+          ? 'Alerts post through SLACK_WEBHOOK_URL, and Slack never says which channel a webhook posts to. Connect the Slack app to choose the channels by name and have the site check them:'
+          : 'Alerts go by email only. Connect the Slack app so they also post in the channels you choose:'}</p>
         <${BcSlackSteps} />
       </div>`;
 
-      const current = st?.channel?.id || '';
       // Slack names missing scopes as "a,b": say "the a and b permissions"
       const scopeText = (needed) => { const l = String(needed || 'chat:write,chat:write.public,channels:read,groups:read').split(',').filter(Boolean); return `the ${l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)} permissions` : `${l[0]} permission`}`; };
       const fixText = (error, needed) => (SLACK_FIX[error] || `Slack said: ${error}`).replace('{bot}', st?.bot || 'the app').replace('{needed}', scopeText(needed));
       // A channel list Slack refused is the more useful thing to fix first
-      const fix = chErr ? fixText(chErr.error, chErr.needed) : st && !st.ok ? fixText(st.error, st.needed) : null;
+      const fix = chErr ? fixText(chErr.error, chErr.needed)
+        : st && !st.ok ? `${st.errorFor === 'attention' ? 'Needs attention channel: ' : st.errorFor === 'news' && st.error !== 'no_channel' ? 'Good news channel: ' : ''}${fixText(st.error, st.needed)}` : null;
+      const newsName = st?.channel?.name;
       return html`<div class="bc-block">
         <div class="bc-inline"><strong class="text-sm">Slack</strong>${st === null ? html`<span class="text-sm text-muted">Checking Slack…</span>` : st.ok && !chErr ? html`<span class="badge badge-green">Connected</span>` : html`<span class="badge badge-yellow">Needs a fix</span>`}</div>
-        ${st?.ok ? html`<p class="text-sm" style="margin:.4rem 0 0">Posting to <strong>#${st.channel.name}</strong>${st.team ? ` in ${st.team}` : ''}${st.bot ? ` as @${st.bot}` : ''}.</p>` : null}
+        ${st?.ok ? html`<p class="text-sm" style="margin:.4rem 0 0">Posting${st.team ? ` in ${st.team}` : ''}${st.bot ? ` as @${st.bot}` : ''}. ${st.attention?.id && st.attention.id !== st.channel?.id
+          ? html`Good news goes to <strong>#${st.channel.name}</strong>, alerts that need a hand to <strong>#${st.attention.name}</strong>.`
+          : html`Everything goes to <strong>#${st.channel.name}</strong>.`}</p>` : null}
         ${fix ? html`<p class="text-sm" style="margin:.4rem 0 0">${fix}</p>` : null}
-        <div class="bc-inline" style="margin-top:.6rem;flex-wrap:wrap;gap:.5rem">
-          <select class="form-select" aria-label="Slack channel for alerts" style="max-width:320px" value=${pick || current} onChange=${(e) => setPick(e.target.value)} disabled=${channels === null}>
-            ${channels === null ? html`<option value="">Loading channels…</option>` : null}
-            ${channels && !current ? html`<option value="">Choose a channel…</option>` : null}
-            ${(channels || []).map((c) => html`<option value=${c.id}>${c.private ? '🔒 ' : '#'}${c.name}</option>`)}
-          </select>
-          <button class="btn btn-secondary btn-sm" type="button" disabled=${!pick || pick === current || !!working} onClick=${save}>${working === 'save' ? 'Saving…' : 'Post alerts here'}</button>
+        ${SLACK_ROLES.map(({ role, label, save: saveLabel, what }) => {
+          const value = picks[role] ?? saved[role];
+          const changed = value !== saved[role];
+          const blocked = role === 'attention' && !saved.news;
+          return html`<div style="margin-top:.75rem">
+            <label class="text-sm" for=${`slack-${role}`}><strong>${label}</strong></label>
+            <div class="bc-inline" style="margin-top:.3rem;flex-wrap:wrap;gap:.5rem">
+              <select id=${`slack-${role}`} class="form-select" style="max-width:320px" value=${value} onChange=${(e) => setPicks((p) => ({ ...p, [role]: e.target.value }))} disabled=${channels === null || blocked}>
+                ${channels === null ? html`<option value="">Loading channels…</option>` : null}
+                ${channels && role === 'news' && !saved.news ? html`<option value="">Choose a channel…</option>` : null}
+                ${channels && role === 'attention' ? html`<option value="">${newsName ? `Same as good news (#${newsName})` : 'Same as good news'}</option>` : null}
+                ${(channels || []).map((c) => html`<option value=${c.id}>${c.private ? '🔒 ' : '#'}${c.name}</option>`)}
+              </select>
+              <button class="btn btn-secondary btn-sm" type="button" disabled=${!changed || (role === 'news' && !value) || !!working} onClick=${() => save(role)}>${working === `save-${role}` ? 'Saving…' : role === 'attention' && !value ? 'Post alerts with good news' : saveLabel}</button>
+            </div>
+            <div class="form-hint">${blocked ? 'Pick the Good news channel first.' : what}</div>
+          </div>`;
+        })}
+        <div class="bc-inline" style="margin-top:.75rem">
           <button class="btn btn-ghost btn-sm" type="button" disabled=${!!working} onClick=${() => { check(); loadChannels(); }}>${working === 'check' ? 'Checking…' : 'Check again'}</button>
         </div>
         ${missing ? html`<div class="form-hint">Only public channels are listed: private ones need the ${missing} permission too (add it, reinstall the app, then Check again).</div>` : null}
-        <div class="form-hint">Private channels show up once the app is invited (/invite @${st?.bot || 'the app'}). Every alert, application heads-up and reveal post goes to this channel.${st?.webhook ? ' SLACK_WEBHOOK_URL is a backup, used only if the app can’t post.' : ''}</div>
+        <div class="form-hint">Private channels show up once the app is invited (/invite @${st?.bot || 'the app'}). Everyone in a channel sees what posts there.${st?.webhook ? ' SLACK_WEBHOOK_URL is a backup, used only if the app can’t post.' : ''}</div>
       </div>`;
     }
     function CopyBtn({ text, label = 'Copy' }) {

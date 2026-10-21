@@ -19,6 +19,8 @@
  * (broadcast-config.vapid) so the site never needs a new env var for push.
  */
 
+import { slackCard } from './_slack-cards.js';
+
 const RESEND_API = 'https://api.resend.com';
 export const EMAIL_FROM = 'Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>';
 export const SITE_ORIGIN = 'https://sunshineonaranneyday.com';
@@ -460,7 +462,12 @@ const SLACK_API = 'https://slack.com/api';
 export const SLACK_CONFIG_KEY = 'slack';
 let _slackCfg = { db: null, at: 0, value: {} }; // per isolate, so every alert isn't a D1 read
 
-/** { channel: { id, name, private }, updatedAt, updatedBy } — never the token */
+/**
+ * { channel, attention, updatedAt, updatedBy } — never the token. `channel`
+ * ({ id, name, private }) is the Good news channel: gifts, new applications,
+ * reveals going live. `attention` is the Needs attention channel: anything
+ * that needs a hand; without it those go to `channel` too.
+ */
 export async function readSlackConfig(DB, { fresh = false } = {}) {
   if (!DB) return {};
   if (!fresh && _slackCfg.db === DB && Date.now() - _slackCfg.at < 60e3) return _slackCfg.value;
@@ -479,6 +486,11 @@ export async function writeSlackConfig(DB, value) {
   _slackCfg = { db: DB, at: Date.now(), value };
 }
 
+/** Which kind of post goes where. 'news' | 'attention' → a channel id or null */
+export function slackChannelFor(cfg, kind = 'attention') {
+  return (kind === 'attention' ? cfg?.attention?.id : null) || cfg?.channel?.id || null;
+}
+
 export function slackConfigured(env) {
   return !!(env.SLACK_BOT_TOKEN || env.SLACK_WEBHOOK_URL);
 }
@@ -490,7 +502,7 @@ export function slackConfigured(env) {
  */
 export async function slackApi(env, method, params = {}) {
   if (!env.SLACK_BOT_TOKEN) return { ok: false, error: 'not_connected', status: 0 };
-  const asJson = method === 'chat.postMessage';
+  const asJson = method === 'chat.postMessage' || method === 'chat.update';
   try {
     const res = await fetch(`${SLACK_API}/${method}`, {
       method: 'POST',
@@ -513,21 +525,36 @@ export async function slackApi(env, method, params = {}) {
  * on a network error, 429 or 5xx; if Slack rejects the blocks, the same
  * message again as plain text; and if the bot can't post (token revoked,
  * not in the channel), the webhook when there is one.
- * `channel` (id or #name) sends to that channel instead of the alerts one;
- * it needs the bot token and never falls back to the webhook.
- * → { ok, status, attempts, via: 'bot'|'webhook', channel?, plain?, error?, botError?, skipped? }
+ * `kind` picks the channel: 'attention' (the default: anything that needs a
+ * hand) or 'news' (good news everyone sees). `channel` (id or #name) sends
+ * to that channel instead; it needs the bot token and never falls back to
+ * the webhook.
+ * `plain` is the whole message as text, for that plain resend (else `text`).
+ * `thread` ({ channel, ts } of an earlier post, `broadcast` to show it in the
+ * channel too) replies under it; `update` ({ channel, ts }) edits that post
+ * instead. Both need the bot: through the webhook a reply is a new post and
+ * an edit is skipped.
+ * → { ok, status, attempts, via: 'bot'|'webhook', channel?, ts?, plain?, error?, botError?, skipped? }
  */
-export async function slackAlert(env, text, blocks = null, { channel = null } = {}) {
-  const picked = env.SLACK_BOT_TOKEN ? (channel || (await readSlackConfig(env.DB)).channel?.id || null) : null;
-  const webhook = !channel && env.SLACK_WEBHOOK_URL ? env.SLACK_WEBHOOK_URL : null;
+export async function slackAlert(env, text, blocks = null, { channel = null, plain = null, thread = null, update = null, kind = 'attention' } = {}) {
+  const ref = update || thread;
+  const picked = env.SLACK_BOT_TOKEN ? (ref?.channel || channel || slackChannelFor(await readSlackConfig(env.DB), kind)) : null;
+  const webhook = !channel && !update && env.SLACK_WEBHOOK_URL ? env.SLACK_WEBHOOK_URL : null;
   if (!picked && !webhook) {
     const error = channel ? 'Posting to a named channel needs SLACK_BOT_TOKEN'
+      : update ? 'Editing a post needs SLACK_BOT_TOKEN'
       : env.SLACK_BOT_TOKEN ? 'No Slack channel picked yet (Reveals → Settings → Alerts)' : 'Slack is not connected';
     return { ok: false, skipped: true, error };
   }
   const viaBot = async (payload) => {
-    const d = await slackApi(env, 'chat.postMessage', { channel: picked, unfurl_links: false, unfurl_media: false, ...payload });
-    return { ok: d.ok, status: d.status, error: d.ok ? null : d.error };
+    const d = update?.ts
+      ? await slackApi(env, 'chat.update', { channel: picked, ts: update.ts, ...payload, ...(payload.blocks ? {} : { blocks: [] }) })
+      : await slackApi(env, 'chat.postMessage', {
+        channel: picked, unfurl_links: false, unfurl_media: false,
+        ...(thread?.ts ? { thread_ts: thread.ts, ...(thread.broadcast ? { reply_broadcast: true } : {}) } : {}),
+        ...payload,
+      });
+    return { ok: d.ok, status: d.status, error: d.ok ? null : d.error, ts: d.ts || null, channel: d.channel || null };
   };
   const viaWebhook = async (payload) => {
     try {
@@ -540,7 +567,7 @@ export async function slackAlert(env, text, blocks = null, { channel = null } = 
   let attempts = 0;
   const send = async (post) => {
     let r = { ok: false };
-    for (const payload of blocks ? [{ text, blocks }, { text }] : [{ text }]) {
+    for (const payload of blocks ? [{ text, blocks }, { text: plain || text }] : [{ text: plain || text }]) {
       for (let i = 0; i < 2; i++) {
         attempts++;
         r = await post(payload);
@@ -555,7 +582,7 @@ export async function slackAlert(env, text, blocks = null, { channel = null } = 
   let botError = null;
   if (picked) {
     const r = await send(viaBot);
-    if (r.ok) return { ok: true, status: r.status, attempts, via: 'bot', channel: picked, plain: r.plain };
+    if (r.ok) return { ok: true, status: r.status, attempts, via: 'bot', channel: r.channel || picked, ts: r.ts || update?.ts || null, plain: r.plain };
     botError = r.error;
     if (!webhook) return { ok: false, status: r.status, attempts, via: 'bot', channel: picked, error: r.error };
   }
@@ -572,20 +599,30 @@ export async function slackAlert(env, text, blocks = null, { channel = null } = 
  */
 export async function slackStatus(env) {
   const cfg = await readSlackConfig(env.DB, { fresh: true });
-  const out = { mode: env.SLACK_BOT_TOKEN ? 'bot' : env.SLACK_WEBHOOK_URL ? 'webhook' : null, webhook: !!env.SLACK_WEBHOOK_URL, ok: false, error: null, team: null, bot: null, channel: cfg.channel || null };
+  const out = { mode: env.SLACK_BOT_TOKEN ? 'bot' : env.SLACK_WEBHOOK_URL ? 'webhook' : null, webhook: !!env.SLACK_WEBHOOK_URL, ok: false, error: null, errorFor: null, team: null, bot: null, channel: cfg.channel || null, attention: cfg.attention || null };
   if (out.mode !== 'bot') { out.ok = out.mode === 'webhook'; return out; }
   const auth = await slackApi(env, 'auth.test');
   if (!auth.ok) { out.error = auth.error; out.needed = auth.needed || null; return out; }
   out.team = auth.team || null;
   out.bot = auth.user || null;
-  if (!cfg.channel?.id) { out.error = 'no_channel'; return out; }
-  const info = await slackApi(env, 'conversations.info', { channel: cfg.channel.id });
-  if (!info.ok) { out.error = info.error; out.needed = info.needed || null; return out; }
-  const c = info.channel || {};
-  out.channel = { id: c.id, name: c.name, private: !!c.is_private, member: !!c.is_member };
-  if (c.is_archived) { out.error = 'is_archived'; return out; }
-  // chat:write.public lets the app post in any public channel; a private one needs an invite
-  if (c.is_private && !c.is_member) { out.error = 'not_in_channel'; return out; }
+  if (!cfg.channel?.id) { out.error = 'no_channel'; out.errorFor = 'news'; return out; }
+  // Each picked channel must exist, be open, and (if private) have the app in it
+  const check = async (picked) => {
+    const info = await slackApi(env, 'conversations.info', { channel: picked.id });
+    if (!info.ok) return { error: info.error, needed: info.needed || null, channel: picked };
+    const c = info.channel || {};
+    const channel = { id: c.id, name: c.name, private: !!c.is_private, member: !!c.is_member };
+    if (c.is_archived) return { error: 'is_archived', channel };
+    // chat:write.public lets the app post in any public channel; a private one needs an invite
+    if (c.is_private && !c.is_member) return { error: 'not_in_channel', channel };
+    return { channel };
+  };
+  const news = await check(cfg.channel);
+  out.channel = news.channel;
+  const attention = cfg.attention?.id ? await check(cfg.attention) : null;
+  if (attention) out.attention = attention.channel;
+  const bad = news.error ? ['news', news] : attention?.error ? ['attention', attention] : null;
+  if (bad) { out.error = bad[1].error; out.needed = bad[1].needed || null; out.errorFor = bad[0]; return out; }
   out.ok = true;
   return out;
 }
@@ -631,23 +668,130 @@ export function alertEmails(env, config) {
   return [...new Set([...fromEnv, ...fromConfig])];
 }
 
+/** Post a card from _slack-cards.js. Same options and result as slackAlert. */
+export function slackPost(env, card, opts = {}) {
+  return slackAlert(env, card.text, card.blocks, { plain: card.plain, ...opts });
+}
+
+// ─── Problems that clear ────────────────────────────────────────────
+// A problem's first post is remembered by a key the caller picks
+// ("invite:<jobId>", "live:<broadcastId>:noAudio"). While it's open, more
+// posts for that key go in its thread (shown in the channel too), so one
+// problem is one conversation. When it clears, the first post is edited into
+// a ✅ and the thread says so: scrolling the channel shows what's still open.
+
+let _openReady = { db: null, p: null }; // the table is made once per isolate and database
+async function openPosts(DB) {
+  if (!DB) return false;
+  if (_openReady.db !== DB || !_openReady.p) {
+    _openReady = { db: DB, p: DB.prepare(`CREATE TABLE IF NOT EXISTS slack_open_posts (
+      key TEXT PRIMARY KEY, channel TEXT NOT NULL, ts TEXT NOT NULL, title TEXT, posted_at TEXT NOT NULL)`).run().then(() => true, () => false) };
+  }
+  const ok = await _openReady.p;
+  if (!ok) _openReady = { db: null, p: null };
+  return ok;
+}
+
+/** The open post for `key` → { key, channel, ts, title, posted_at } or null */
+export async function slackOpenPost(env, key) {
+  if (!(await openPosts(env.DB))) return null;
+  return (await env.DB.prepare('SELECT * FROM slack_open_posts WHERE key = ?').bind(key).first().catch(() => null)) || null;
+}
+
+/**
+ * Post a problem. The first time for `key` it's a new post, remembered; while
+ * it's open, a reply in that post's thread. `title` is what the ✅ edit says
+ * was resolved. Same result as slackAlert.
+ */
+export async function slackIssue(env, key, card, { title = null, kind = 'attention' } = {}) {
+  const open = await slackOpenPost(env, key);
+  const r = await slackPost(env, card, open ? { thread: { channel: open.channel, ts: open.ts, broadcast: true } } : { kind });
+  if (!open && r.ok && r.ts && r.via === 'bot' && (await openPosts(env.DB))) {
+    const now = new Date().toISOString();
+    await env.DB.prepare('INSERT OR REPLACE INTO slack_open_posts (key, channel, ts, title, posted_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(key, r.channel, r.ts, title, now).run().catch(() => {});
+    // A problem nobody cleared in a month is history, not open
+    await env.DB.prepare('DELETE FROM slack_open_posts WHERE posted_at < ?').bind(new Date(Date.now() - 30 * 86400e3).toISOString()).run().catch(() => {});
+  }
+  return r;
+}
+
+/**
+ * The problem for `key` cleared: its first post becomes "✅ Resolved: <title>"
+ * with `summary` under it, and `card` goes in the thread (shown in the
+ * channel too). → slackAlert's result for the reply, or null when nothing
+ * was open for the key (the caller decides whether to post anyway).
+ */
+export async function slackResolved(env, key, card, { summary = null } = {}) {
+  const open = await slackOpenPost(env, key);
+  if (!open) return null;
+  const ref = { channel: open.channel, ts: open.ts };
+  const [, reply] = await Promise.all([
+    slackPost(env, slackCard({ icon: '✅', title: `Resolved: ${open.title || 'this problem'}`, lead: summary }), { update: ref }),
+    slackPost(env, card, { thread: { ...ref, broadcast: true } }),
+  ]);
+  await env.DB.prepare('DELETE FROM slack_open_posts WHERE key = ?').bind(key).run().catch(() => {});
+  return reply;
+}
+
+/** The icon a problem or notice gets when the caller doesn't pick one */
+export const LEVEL_ICON = { error: '🚨', warn: '⚠️', info: '📣' };
+
+/** The main button's words for where `url` goes */
+function urlLabelFor(url) {
+  if (!url) return null;
+  if (url.includes('#broadcast/control-room')) return 'Open the control room';
+  if (/\/admin\/#broadcast(\/|$)/.test(url)) return 'Open Reveals';
+  if (url.includes('/admin/')) return 'Open the admin';
+  if (/\/live\/?(\?|#|$)/.test(url)) return 'Watch live';
+  if (url.includes('instagram.com')) return 'Open on Instagram';
+  return 'Open';
+}
+
+/** The Slack card alertAdmins posts, for the same options (no sending) */
+export function adminCard({ level = 'warn', icon, title, detail, url, urlLabel, fix, context, facts = [], links = [], resolves = null, mention = null }) {
+  const isTest = /^TEST · /.test(title || '');
+  return slackCard({
+    mention,
+    icon: icon || (resolves ? '✅' : LEVEL_ICON[level] || LEVEL_ICON.info),
+    title: isTest ? title.replace(/^TEST · /, '') : title,
+    test: isTest ? 'Test reveal · not a real family' : null,
+    lead: detail,
+    facts,
+    fix,
+    buttons: [...(url ? [{ label: urlLabel || urlLabelFor(url), url }] : []), ...links].filter((l) => l?.url),
+    footer: context,
+  });
+}
+
 /**
  * Tell the humans. Slack if configured, email to the alert list. `level` is
- * 'info' | 'warn' | 'error'. Optional: `fix` (what to do), `context` (one
- * small line: which reveal, how long live), `links` [{ label, url }] beyond
- * `url`. Never throws.
+ * 'info' | 'warn' | 'error'. Optional: `icon` (else one for the level),
+ * `fix` (what to do), `context` (one small line: which reveal, how long
+ * live), `facts` [[label, value]], `links` [{ label, url }] beyond `url`
+ * (whose button says `urlLabel`). `issue` (a key) makes it a problem that
+ * can clear (see slackIssue); `resolves` (the same key) clears it, turning
+ * the first post into a ✅. `kind` is 'attention' (the default) or 'news'
+ * (good news, for the channel everyone celebrates in). `urgent` adds @here,
+ * but only in a Needs attention channel of its own, never the good-news one.
+ * A title starting "TEST · " is marked as a test. Never throws.
+ * → { slack: slackAlert's result (with ts), email }
  */
-export async function alertAdmins(env, config, { level = 'warn', title, detail, url, fix, context, links = [] }) {
-  const icon = level === 'error' ? '🔴' : level === 'warn' ? '🟡' : '🟢';
-  const urlLabel = url?.includes('#broadcast/control-room') ? 'Open the control room' : url?.includes('/admin/') ? 'Open the admin' : 'Open';
-  const allLinks = [...(url ? [{ label: urlLabel, url }] : []), ...links].filter((l) => l?.url);
-  const text = `${icon} ${title}${detail ? `: ${detail}` : ''}${fix ? ` Fix: ${fix}` : ''}${url ? ` ${url}` : ''}`;
-  const blocks = [
-    { type: 'section', text: { type: 'mrkdwn', text: `${icon} *${slackEscape(title)}*${detail ? `\n${slackEscape(detail)}` : ''}` } },
-    fix ? { type: 'section', text: { type: 'mrkdwn', text: `*Fix:* ${slackEscape(fix)}` } } : null,
-    context || allLinks.length ? { type: 'context', elements: [{ type: 'mrkdwn', text: [context ? slackEscape(context) : null, ...allLinks.map((l) => `<${l.url}|${slackEscape(l.label)}>`)].filter(Boolean).join('  ·  ') }] } : null,
-  ].filter(Boolean);
-  const results = { slack: await slackAlert(env, text, blocks), email: null };
+export async function alertAdmins(env, config, { level = 'warn', icon, title, detail, url, urlLabel, fix, context, facts = [], links = [], issue = null, resolves = null, kind = 'attention', urgent = false }) {
+  const headline = /^TEST · /.test(title || '') ? title.replace(/^TEST · /, '') : title;
+  const allLinks = [...(url ? [{ label: urlLabel || urlLabelFor(url), url }] : []), ...links].filter((l) => l?.url);
+  const cfg = urgent && kind === 'attention' && env.SLACK_BOT_TOKEN ? await readSlackConfig(env.DB) : null;
+  const separate = !!(cfg?.attention?.id && cfg.attention.id !== cfg.channel?.id);
+  const card = adminCard({ level, icon, title, detail, url, urlLabel, fix, context, facts, links, resolves, mention: separate ? 'here' : null });
+  let slack;
+  try {
+    slack = resolves ? (await slackResolved(env, resolves, card, { summary: [headline, detail].filter(Boolean).join('. ').replace(/\.\./g, '.') })) || (await slackPost(env, card, { kind }))
+      : issue ? await slackIssue(env, issue, card, { title: headline.replace(/^Still: /, ''), kind })
+      : await slackPost(env, card, { kind });
+  } catch (e) {
+    slack = { ok: false, error: e.message };
+  }
+  const results = { slack, email: null };
   const to = alertEmails(env, config);
   if (to.length && emailConfigured(env)) {
     results.email = await sendEmails(env, {

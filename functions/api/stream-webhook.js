@@ -46,8 +46,11 @@ export async function onRequestPost(context) {
       const err = data.live_input_errored?.error || {};
       context.waitUntil(notify.alertAdmins(env, config, {
         level: 'error',
+        urgent: !!isLiveInput,
         title: `Stream input error${isLiveInput ? '' : ' (rehearsal)'}: ${err.code || 'unknown'}`,
-        detail: `${err.message || 'Stream reported a problem with the incoming broadcast.'}\nVideo codec: ${data.live_input_errored?.video_codec || '?'} · Audio codec: ${data.live_input_errored?.audio_codec || '?'}\nCheck the phone's Larix profile (H.264, AAC, keyframe 2s).`,
+        detail: err.message || 'Stream reported a problem with the incoming broadcast.',
+        facts: [['Video codec', data.live_input_errored?.video_codec || 'unknown'], ['Audio codec', data.live_input_errored?.audio_codec || 'unknown']],
+        fix: 'Check the phone\'s Larix profile: H.264 video, AAC audio, a keyframe every 2 seconds.',
         url: 'https://sunshineonaranneyday.com/admin/',
       }));
     }

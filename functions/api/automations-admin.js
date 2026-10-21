@@ -284,7 +284,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     kidStatus: kidStatusFacts(ok(kidState), typeof kidsHidden === 'number' ? kidsHidden : null),
     zeffy: zeffyFacts(ok(zeffyCfg), ok(zeffyFailing)),
     slack: slackLink?.error && !slackLink.mode ? { mode: null, ok: false, error: slackLink.error }
-      : { mode: slackLink?.mode || null, ok: !!slackLink?.ok, error: slackLink?.error || null, team: slackLink?.team || null, channel: slackLink?.channel?.name || null, bot: slackLink?.bot || null },
+      : { mode: slackLink?.mode || null, ok: !!slackLink?.ok, error: slackLink?.error || null, team: slackLink?.team || null, channel: slackLink?.channel?.name || null, attention: slackLink?.attention?.id && slackLink.attention.id !== slackLink.channel?.id ? slackLink.attention.name || null : null, bot: slackLink?.bot || null },
     fbArchive: archiveFacts(ok(archive), await settle(() => placedUids(DB, ok(archive))).then((p) => (p instanceof Set ? p : new Set()))),
     reveals: { cachedAt: typeof reveals === 'string' ? reveals : null },
     sends: sendMap,

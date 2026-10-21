@@ -19,6 +19,7 @@ import { maybeSweepApplications } from './_applications.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
 import { maybeSweepZeffy } from './_zeffy.js';
 import { maybeRunWaitlist } from './_application-waitlist.js';
+import { maybeSlackPreview } from './_slack-preview.js';
 
 export async function onRequestPost(context) {
   const { env, request } = context;
@@ -48,6 +49,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeSyncKidStatuses(env));
     context.waitUntil(maybeSweepZeffy(env));
     context.waitUntil(maybeRunWaitlist(env));
+    // Once per alert redesign: the new Slack cards, posted in one thread (see _slack-preview.js)
+    context.waitUntil(maybeSlackPreview(env));
     return Response.json({ ok: true, state: r.state, reason: r.reason, work: r.work, changed: r.changed, cached: !!r.cached });
   } catch (err) {
     return Response.json({ ok: false, error: err.message }, { status: 500 });
