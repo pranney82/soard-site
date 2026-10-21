@@ -10355,6 +10355,43 @@
         return file;
       }
     }
+    // A drawing sheet's title block runs along the bottom and carries the
+    // family's street address. The kid page crops it, but the stored picture
+    // would still have it, so a sheet goes up without it: its top rule is a
+    // dark line across nine tenths of the width in the bottom fifth. The new
+    // name ends in -notitle, so the page knows there's nothing left to crop.
+    async function kdTrimTitleBlock(file) {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap !== 'function') return { file, trimmed: false };
+      try {
+        const bmp = await createImageBitmap(file);
+        const W = bmp.width, H = bmp.height;
+        const c = document.createElement('canvas');
+        c.width = W; c.height = H;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(bmp, 0, 0);
+        bmp.close?.();
+        const y0 = Math.floor(H * 0.8);
+        const { data } = ctx.getImageData(0, y0, W, H - y0);
+        let top = null;
+        for (let y = 0; y < H - y0 && top == null; y++) {
+          let dark = 0;
+          for (let x = 0; x < W; x++) {
+            const i = (y * W + x) * 4;
+            if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 110) dark++;
+          }
+          if (dark > W * 0.9) top = y0 + y;
+        }
+        if (top == null || top > H * 0.97) return { file, trimmed: false };
+        const out = document.createElement('canvas');
+        out.width = W; out.height = Math.max(1, top - 2);
+        out.getContext('2d').drawImage(c, 0, 0);
+        const blob = await new Promise((done) => out.toBlob(done, 'image/png'));
+        if (!blob) return { file, trimmed: false };
+        return { file: new File([blob], `${file.name.replace(/\.\w+$/, '')}-notitle.png`, { type: 'image/png' }), trimmed: true, original: file };
+      } catch {
+        return { file, trimmed: false };
+      }
+    }
     /** Uploads a few images at a time and reports each as it lands */
     async function kdUploadAll(items, { idFor, onDone, onFail, limit = 3 }) {
       const queue = [...items];
@@ -12395,11 +12432,21 @@
         nameOf: (k) => `Plan ${dataRef.current.plans.findIndex((p) => p._key === k) + 1}`,
         onDrop: (next) => set((d) => { const m = new Map(d.plans.map((p) => [p._key, p])); return { plans: next.map((k) => m.get(k)).filter(Boolean) }; }),
       });
-      const addPlans = async (files) => {
+      // whole === true: "Keep it whole" after a trim, so nothing is taken off this time
+      const addPlans = async (files, whole) => {
         const imgs = [...files].filter((f) => /^image\//.test(f.type));
         if (imgs.length < files.length) addToast('Plans go up as images. Export a PDF page as a PNG or JPG first.', 'info');
         if (!imgs.length) return;
-        const items = imgs.map((file) => ({ file, key: kdNewKey(), local: URL.createObjectURL(file) }));
+        // Drawing sheets lose their title block (the family's address) before they leave this computer
+        const prepared = whole === true ? imgs.map((file) => ({ file, trimmed: false })) : await Promise.all(imgs.map(kdTrimTitleBlock));
+        const items = prepared.map(({ file, trimmed, original }) => ({ file, trimmed, original, key: kdNewKey(), local: URL.createObjectURL(file) }));
+        const trimmedItems = items.filter((it) => it.trimmed);
+        if (trimmedItems.length) {
+          addToast(`${trimmedItems.length === 1 ? 'Took the title block, with the family’s address, off that drawing' : `Took the title block, with the family’s address, off ${trimmedItems.length} drawings`}.`, 'info', {
+            label: 'Keep it whole',
+            fn: () => addPlans(trimmedItems.map((it) => it.original), true).then(() => set((d) => ({ plans: d.plans.filter((p) => !trimmedItems.some((it) => it.key === p._key)) }))),
+          });
+        }
         set((d) => ({ plans: [...d.plans, ...items.map((it) => ({ url: it.local, label: '', type: 'as-built', _key: it.key, _tempId: it.key }))] }));
         setUploads((u) => ({ ...u, ...Object.fromEntries(items.map((it) => [it.key, true])) }));
         const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
