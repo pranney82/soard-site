@@ -28,7 +28,7 @@ import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 20, 2026';
+const WRITTEN_ON = 'October 21, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -360,8 +360,11 @@ const MAP = { t: 'SOARD', children: [
           when: 'Someone changes an applicant’s Status (or Diagnosis) in JobTread, or on the site.',
           does: 'Emails the family the status they should know once it has stayed put: In Review after 10 minutes, Approved or Denied after 30, never 8 PM to 8 AM Eastern (all set in Admin → Applications → Messages). A status flipped back and forth sends one email for where it lands, or none; cleared or unknown statuses never email. Moving below what the family was told leaves a staff note and offers a correction. Replaces the Zapier Zaps.',
           touches: ['JobTread'], where: 'JobTread workflow “Applicant Status/Diagnosis → Site applicant messages” → functions/api/applicant-sync.js',
-          info: 'Switched on Oct 20, 2026; the Zapier Zaps were turned off the same day. If a Zap comes back on, families could get a message twice.',
-          live: wf('22PgaEgWTBRH') },
+          info: 'Switched on Oct 20, 2026, the day the Zapier Zaps were retired. If a Zapier webhook ever shows up in JobTread again, this turns Needs attention, because families could get a message twice.',
+          live: (f) => {
+            const zap = Object.values(f.jobtread?.webhooks || {}).some((h) => /zapier\.com/i.test(h.where || ''));
+            return zap ? ATTN('A Zapier webhook is back in JobTread, so families could get a status message twice. Turn the Zap off in Zapier.') : wf('22PgaEgWTBRH')(f);
+          } },
         { t: 'Approved → job and kid page', s: 'live', k: 'schedule',
           when: 'A family’s Approved status has settled: their decision email is out (or staff chose not to email) and 30 minutes have passed. Checked by the application sweep every 2 minutes; nothing happens while family emails are paused.',
           does: 'Makes the makeover’s JobTread job the way the old Zap did (“Name (Year)”, Status On Site, Makeover Type, at the family’s home, as the Qualification Committee), or uses the job they already have, with the child’s photo from the application as its cover. Then makes a hidden profile in Kids (first name, age, year, rooms, Awaiting funding), linked to that job so its status follows JobTread. Posts the good news to Slack and notes both in the family’s history.',
@@ -713,8 +716,8 @@ const MAP = { t: 'SOARD', children: [
       ]},
     ]},
 
-  { t: 'JobTread', sub: 'Other SOARD workflows & webhooks', color: 'jt', side: 'l',
-    about: 'Automations that live inside SOARD’s JobTread account, outside the website.',
+  { t: 'JobTread', sub: 'SOARD workflows, and DataX', color: 'jt', side: 'l',
+    about: 'Automations inside SOARD’s JobTread account, outside the website, and DataX, which connects JobTread to SOARD’s Quo phone line and to Zillow.',
     children: [
       { t: 'Workflows', children: [
         { t: 'Scope approved → Mobilization', s: 'live', k: 'event',
@@ -740,35 +743,27 @@ const MAP = { t: 'SOARD', children: [
           does: 'Sends each new comment’s text to a DataX agent, most likely the Grammar Checker (which is also in test mode).',
           touches: ['JobTread', 'DataX'], where: 'JobTread workflow “Comment/Log Created Trigger”', live: wf('22PZF9ENDgxn') },
       ]},
-      { t: 'Webhooks', children: [
-        { t: '/text → SMS', s: 'live', k: 'event',
+      { t: 'DataX', children: [
+        { t: 'Quo texts and calls → JobTread', s: 'live', k: 'event',
+          when: 'A family texts or calls SOARD’s Quo number, or staff text or call them from it.',
+          does: 'DataX logs each text and call as a comment on the family’s JobTread account, so the whole conversation sits with the family. Admin → Applicants shows these in each family’s history.',
+          touches: ['Quo', 'DataX', 'JobTread'], where: 'DataX’s Quo connection → comments on the JobTread account',
+          info: 'Checked from the applicant families’ history, so it asks for a look only after 30 quiet days (the longest gap since logging began in March 2026 was 11 days).',
+          live: (f) => {
+            const q = f.quo;
+            if (!q || q.error) return null;
+            if (!q.lastAt) return ATTN('No Quo text or call has been logged in JobTread yet. Check Quo’s connection in DataX.');
+            if (stale(q.lastAt, 30 * 24 * HOUR)) return ATTN(`No Quo text or call has reached JobTread since ${stamp(q.lastAt)}. Check Quo’s connection in DataX.`, q.lastAt);
+            return ON(`${plural(q.last30, 'text or call', 'texts and calls')} with applicant families in the last 30 days. The latest was logged ${stamp(q.lastAt)}.`, q.lastAt);
+          } },
+        { t: '/text → Quo text', s: 'live', k: 'event',
           when: 'Any new comment.',
-          does: 'Comments starting with /text are texted to the account’s primary contact.',
-          touches: ['JobTread', 'winyourdata.com'], where: 'JobTread webhook → winyourdata.com/api/phone/texting', live: hook('22PDDmxBcvpA') },
+          does: 'Comments starting with /text are texted to the account’s primary contact from SOARD’s Quo number.',
+          touches: ['JobTread', 'DataX', 'Quo'], where: 'JobTread webhook → DataX (winyourdata.com/api/phone/texting)', live: hook('22PDDmxBcvpA') },
         { t: 'Zillow lookup', s: 'live', k: 'event',
           when: 'A new location is added.',
-          does: 'Looks up the property on Zillow.',
-          touches: ['JobTread', 'Zillow', 'winyourdata.com'], where: 'JobTread webhook → winyourdata.com/api/zillow', live: hook('22PJxV5yimrd') },
-        { t: 'Zapier: new account', s: 'off', k: 'event',
-          when: 'A new account is created.',
-          does: 'Posted the “Application Status” and “Child’s Medical Condition” comments as the Qualification Committee and kept a Zapier Table row per account. The Applications branch does this now.',
-          touches: ['JobTread', 'Zapier'], where: 'JobTread webhook → hooks.zapier.com',
-          info: 'Turned off in Zapier on Oct 20, 2026, and its JobTread webhook is gone. If it ever shows as registered again, a Zap was turned back on: families could get messages twice.', live: (f) => {
-            const h = hook('22P5rFX2hhQW')(f);
-            return h && h.s !== 'off' ? ATTN('This Zap’s webhook is back in JobTread: a Zap was turned on again, so families could get messages twice. Turn it off in Zapier.') : h;
-          } },
-        { t: 'Zapier: account updated', s: 'off', k: 'event',
-          when: 'An account changes.',
-          does: 'Posted “Application In Review”, “Application Decision” and “Moved back to …” comments as the Qualification Committee when Status changed, and on Approved made the makeover’s JobTread job (“Name (Year)”, Status On Site, Makeover Type). The Applications branch does both now, after the status settles.',
-          touches: ['JobTread', 'Zapier'], where: 'JobTread webhook → hooks.zapier.com',
-          info: 'Turned off in Zapier on Oct 20, 2026, and its JobTread webhook is gone. If it ever shows as registered again, a Zap was turned back on: families could get messages twice.', live: (f) => {
-            const h = hook('22PRvE87suYz')(f);
-            return h && h.s !== 'off' ? ATTN('This Zap’s webhook is back in JobTread: a Zap was turned on again, so families could get messages twice. Turn it off in Zapier.') : h;
-          } },
-        { t: 'DataX: new job', s: 'live', k: 'event',
-          when: 'A new job is created.',
-          does: 'Tells DataX about the job. DataX used to add a Google Street View picture of the house as the cover; Peter turned that off on Oct 20, 2026, and the kid’s photo is the cover now (Kid photo as the job’s cover).',
-          touches: ['JobTread', 'DataX'], where: 'JobTread webhook → datax.to/api/webhooks/jobtread', live: hook('22PaN5dFNj8s') },
+          does: 'Looks up the property on Zillow and saves the Zillow link on the account.',
+          touches: ['JobTread', 'DataX', 'Zillow'], where: 'JobTread webhook → DataX (winyourdata.com/api/zillow)', live: hook('22PJxV5yimrd') },
       ]},
     ]},
 

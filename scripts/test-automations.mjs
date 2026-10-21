@@ -46,6 +46,7 @@ const FACTS = {
   reveals: { cachedAt: iso(5 * 60e3) },
   approvals: { lastRunAt: iso(60e3), lastErrorAt: null, last: { name: 'Ava Stone', at: iso(3 * 3600e3), slug: 'ava' }, waiting: [] },
   covers: { covers: 23, last: { slug: 'max', at: iso(2 * 3600e3) }, failing: 0 },
+  quo: { lastAt: iso(2 * 3600e3), last30: 77 },
   sends: { live: { kit: { last: iso(2 * 86400e3), sent: 1, failed: 0 } } },
   reminders: { subscribers: 4 },
   jobtread: {
@@ -53,7 +54,7 @@ const FACTS = {
       ['22PJYm7aXBgK', true], ['22PJxRJ37KSs', true], ['22PJxRLV9Y3i', true], ['22PRvF7pG9VM', false], ['22PZF9ENDgxn', false],
       ['22PgHVceQhvW', true], ['22PgHVcgDXFN', true], ['22PgPECxg6UP', true], ['22PgPED4vi7W', true], ['22PgQQ6JnJDm', true], ['22PgYwQvKkTs', true], ['22PgaEgWTBRH', true]
     ].map(([id, active]) => [id, { name: id, active }])),
-    webhooks: Object.fromEntries(['22PDDmxBcvpA', '22PJxV5yimrd', '22PaN5dFNj8s'].map((id) => [id, { where: 'example.com/x', events: [] }])),
+    webhooks: Object.fromEntries(['22PDDmxBcvpA', '22PJxV5yimrd'].map((id) => [id, { where: 'example.com/x', events: [] }])),
   },
 };
 
@@ -132,8 +133,10 @@ try {
     ['Slack posts', 'Off'], ['Facebook replay rescue', 'Needs attention'], ['Invite engine', 'Live'],
     ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],
     ['Reveal checks for PMs', 'Off'], ['Kid status follows JobTread', 'Live'], ['Gift alerts in Slack', 'Live'],
-    ['Status → family message', 'Live'], ['Zapier: new account', 'Off'], ['Zapier: account updated', 'Off'], ['Approved → job and kid page', 'Live'], ['Kid photo as the job’s cover', 'Live'],
+    ['Status → family message', 'Live'], ['Quo texts and calls → JobTread', 'Live'], ['/text → Quo text', 'Live'], ['Zillow lookup', 'Live'], ['Approved → job and kid page', 'Live'], ['Kid photo as the job’s cover', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
+  const zapier = await page.evaluate(() => [...document.querySelectorAll('.am-inv-branch li b, #am-svc option')].map((e) => e.textContent).filter((x) => /zapier/i.test(x)));
+  ok(zapier.length === 0, `Zapier is retired: no entry or service for it${zapier.length ? ` (found ${zapier.join(', ')})` : ''}`);
 
   const attnItems = await page.$$eval('.am-panel .am-mini li', (l) => l.length);
   ok((await page.$eval('.am-panel', (e) => e.textContent)).includes('Needs attention') && attnItems >= 5, `the side panel lists what needs attention and what's parked (${attnItems} entries)`);
@@ -267,10 +270,15 @@ try {
 
   console.log('Desktop, a Zap comes back');
   const zap = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, jobtread: { ...FACTS.jobtread, webhooks: { ...FACTS.jobtread.webhooks, '22PRvE87suYz': { where: 'hooks.zapier.com/x', events: [] } } } } });
-  ok(await statusOf(zap.page, 'Zapier: account updated') === 'Needs attention', 'a Zapier webhook back in JobTread needs attention');
-  ok(await statusOf(zap.page, 'Zapier: new account') === 'Off', 'the other Zap stays off');
+  ok(await statusOf(zap.page, 'Status → family message') === 'Needs attention', 'a Zapier webhook back in JobTread puts the family messages in Needs attention');
   ok(zap.errors.length === 0, `no console errors${zap.errors.length ? ': ' + zap.errors.slice(0, 3).join(' | ') : ''}`);
   await zap.page.close();
+
+  console.log('Desktop, Quo gone quiet');
+  const quiet = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, quo: { lastAt: iso(31 * 24 * 3600e3), last30: 0 } } });
+  ok(await statusOf(quiet.page, 'Quo texts and calls → JobTread') === 'Needs attention', '31 days with no Quo text or call logged needs attention');
+  ok(quiet.errors.length === 0, `no console errors${quiet.errors.length ? ': ' + quiet.errors.slice(0, 3).join(' | ') : ''}`);
+  await quiet.page.close();
 
   console.log('Desktop, approved families');
   const ap = await open(browser, base, { width: 1440, height: 1000 });

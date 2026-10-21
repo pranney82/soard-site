@@ -19,6 +19,7 @@
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
  *  - sends:     last reminder send per kind and channel (counts only)
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
+ *  - quo:       Quo texts and calls DataX logged with applicant families (last one, count in 30 days; never content)
  *  - waitlist:  families waiting for the applications-open email, signups not in Kit yet, the last opening
  *
  * Not in _middleware's public list, so Access guards it. Never cached.
@@ -296,6 +297,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     approvals: approvalFacts(await settle(() => approvalsStatus(DB))),
     covers: await settle(() => coverFacts(DB)).then((c) => (c && !c.error ? c : null)),
     press: await settle(() => pressFacts(DB)),
+    quo: await settle(() => quoFacts(DB, now)),
   };
 }
 
@@ -309,6 +311,13 @@ export function approvalFacts(s) {
     last: last ? { name: last.name, at: last.done_at, slug: last.kid_slug || null } : null,
     waiting: (s.waiting || []).map((w) => ({ name: w.name, problem: w.problem })),
   };
+}
+
+/** Quo texts and calls DataX logs onto applicant families in JobTread, as the Applicants history records them (_applicants.js). Times and counts only */
+export async function quoFacts(DB, now = Date.now()) {
+  const r = await DB.prepare(`SELECT max(at) AS lastAt, sum(CASE WHEN at >= ? THEN 1 ELSE 0 END) AS last30
+    FROM applicant_activity WHERE source = 'datax' AND kind IN ('textIn', 'textOut', 'call')`).bind(new Date(now - 30 * 864e5).toISOString()).first();
+  return { lastAt: r?.lastAt || null, last30: r?.last30 || 0 };
 }
 
 /** The press monitor (_press.js): when it last looked, what's waiting, the tidy. Times and counts only */

@@ -215,3 +215,22 @@ test('gift alerts report keys present, times and failing posts, never a key, an 
   const out = JSON.stringify(f);
   for (const s of [SECRETS[4], 'xoxb-secret-2', 'zk-secret-1', 'Zed', '$77']) assert.ok(!out.includes(s), `${s} stays out`);
 });
+
+test('Quo texts and calls DataX logs report the last one and a 30-day count, never what was said or who', async () => {
+  const DB = await makeDb();
+  // Before the first Applicants sync the applicant_activity table doesn't exist yet
+  let f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch() });
+  assert.ok(f.quo.error, 'settles to an error, which the map reads as "can\'t check"');
+
+  await DB.prepare('CREATE TABLE applicant_activity (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL, by_name TEXT, source TEXT, title TEXT, body TEXT, data TEXT)').run();
+  const row = (id, at, kind, source, body) => DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, body) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, 'acct1', at, kind, 'Staff Person', source, body).run();
+  await row('a', '2026-09-01T12:00:00Z', 'textIn', 'datax', 'New incoming _message_ secret-ish words');
+  await row('b', '2026-10-10T12:00:00Z', 'call', 'datax', 'New outgoing _call_');
+  await row('c', '2026-10-20T19:17:59Z', 'textOut', 'datax', 'New outgoing _message_ more words');
+  await row('d', '2026-10-21T01:00:00Z', 'home', 'datax', 'Zillow URL updated');
+  await row('e', '2026-10-21T02:00:00Z', 'comment', 'jobtread', 'a staff note');
+  f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch(), now: Date.parse('2026-10-21T12:00:00Z') });
+  assert.deepEqual(f.quo, { lastAt: '2026-10-20T19:17:59Z', last30: 2 });
+  const text = JSON.stringify(f);
+  assert.ok(!text.includes('secret-ish') && !text.includes('Staff Person'), 'no message text or names');
+});
