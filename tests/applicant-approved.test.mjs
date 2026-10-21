@@ -409,3 +409,19 @@ test('no application photo (a family added by hand): the job is made without a c
   assert.equal(a.jobs.length, 1);
   assert.equal((jt.state.coverCalls || []).length, 0);
 });
+
+test('an office TEST family: its job is made, the profile is a dry run, and Slack says it’s a test', async () => {
+  const a = family('TEST Notify Check', 'In Review');
+  await change(a, 'Approved', T0);
+  await sweep(...minutes(30, 40));
+  assert.equal(a.jobs[0].name, 'TEST Notify Check (2027)', 'TEST jobs are skipped by everything else');
+  assert.equal((await kids()).length, 0, 'no profile saved');
+  const log = await activity(a.id);
+  assert.match(log.map(r => r.title).join('\n'), /Test family: profile not saved/);
+  assert.match(log.find(r => /Test family/.test(r.title)).body, /\/kids\/test-and-notify|\/kids\/test/);
+  assert.equal(news().length, 1);
+  assert.match(news()[0].text, /🧪 Test/, 'marked as a test on the lock screen too');
+  const audit = await env.DB.prepare("SELECT count(*) AS n FROM audit_log WHERE entity_type = 'kids'").first('n');
+  assert.equal(audit, 0, 'nothing in Recent changes');
+  assert.equal((await approvalsStatus(env.DB)).recent[0].kid_slug, null);
+});

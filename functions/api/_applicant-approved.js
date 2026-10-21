@@ -27,7 +27,10 @@
  * in: no last name, diagnosis, address or photos. Staff add the story and
  * photos and switch on "Show on Meet the Kids". A kid already in Kids for that
  * job (same name and year) is linked, never rewritten. An organization (no
- * birthday or diagnosis, e.g. a school) gets the job only.
+ * birthday or diagnosis, e.g. a school) gets the job only. An office test (an
+ * account named "TEST …") gets its job, which everything else ignores, and a
+ * dry-run profile: worked out and logged, never saved; its Slack posts say
+ * it's a test.
  *
  * Once per family (claimed in applicant_approvals first), retried with
  * backoff. What was made goes to Slack (good news) and the family's history
@@ -75,6 +78,9 @@ const accountUrl = (id) => `https://app.jobtread.com/customers/${id}`;
 const iso = (t = Date.now()) => new Date(t).toISOString();
 
 // ─── Names, years, ages ─────────────────────────────────────────────
+
+/** An office test ("TEST Notify Check"): it gets its job (TEST jobs are skipped everywhere else) but its profile isn't saved */
+export const isTestFamily = (name) => /^\s*test\b/i.test(String(name || ''));
 
 /** A real makeover year from the field ("2027"), else null ("**ADD YEAR**", blank) */
 export function cleanYear(v) {
@@ -317,8 +323,12 @@ async function createKid(env, record, now) {
   try { await recordVersion(DB, { collection: 'kids', slug: record.slug, data: record, userEmail: SYNC_USER, now: iso(now) }); } catch { /* history is a nicety */ }
 }
 
-/** The family's profile: the one already linked or named for this job, else a new hidden draft → { slug, name, made } */
-async function profileFor(env, acct, job, year, now) {
+/**
+ * The family's profile: the one already linked or named for this job, else a
+ * new hidden draft → { slug, name, made }. A dry run (a TEST family) works it
+ * all out and saves nothing → { slug, name, made: false, test: true }.
+ */
+async function profileFor(env, acct, job, year, now, { dryRun = false } = {}) {
   const { DB } = env;
   const kids = await loadAllKids(DB);
   const linked = kids.find(k => k.data?.jobtreadJobId === job.id);
@@ -332,6 +342,7 @@ async function profileFor(env, acct, job, year, now) {
   for (let i = 0; i < 5; i++) {
     const slug = freeSlug(name, year, taken);
     const record = newKidRecord({ name, slug, year, age, types: acct.types, jobId: job.id });
+    if (dryRun) return { slug, name, made: false, test: true };
     try {
       await createKid(env, record, now);
       return { slug, name, made: true };
@@ -377,6 +388,7 @@ const PROBLEMS = {
 function problemCard({ acct, problem, detail }) {
   const p = PROBLEMS[problem] || PROBLEMS.error;
   return slackCard({
+    test: isTestFamily(acct.name) ? 'Test family · nothing real is waiting' : null,
     icon: '⚠️', title: `${acct.name}: makeover job not made yet`,
     lead: `${acct.name} is approved, but the site couldn’t make their JobTread job and website profile.\n${p.why}`,
     facts: problem === 'error' ? [['JobTread said', String(detail || '').slice(0, 200)]] : [],
@@ -443,7 +455,7 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
   let kid = null;
   if (child) {
     try {
-      kid = await profileFor(env, acct, job, acct.year, now);
+      kid = await profileFor(env, acct, job, acct.year, now, { dryRun: isTestFamily(acct.name) });
     } catch (e) {
       return wait(env, { ...(await getRow(DB, accountId)) }, acct, 'error', e.message, now);
     }
@@ -451,11 +463,12 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
 
   const done = {
     ...(await getRow(DB, accountId)), state: 'done', job_id: job.id, job_name: job.name, job_made: jobMade ? 1 : 0,
-    kid_slug: kid?.slug || null, kid_made: kid?.made ? 1 : 0, problem: null, detail: child ? null : 'organization: no profile', next_try_at: null, claimed_at: null, done_at: iso(now),
+    kid_slug: kid?.test ? null : kid?.slug || null, kid_made: kid?.made ? 1 : 0, problem: null, detail: kid?.test ? `test: profile not saved (/kids/${kid.slug}/)` : child ? null : 'organization: no profile', next_try_at: null, claimed_at: null, done_at: iso(now),
   };
   await putRow(DB, done, now);
   if (!jobMade) await logActivity(DB, accountId, { title: `Makeover job: ${job.name}`, body: 'The family already had this job in JobTread, so the site used it.', data: { jobId: job.id } }, now);
-  if (kid?.made) await logActivity(DB, accountId, { title: `Website profile made: ${kid.name}`, body: `/kids/${kid.slug}/ in Admin → Kids. It stays off Meet the Kids until someone adds the story and photos and switches on “Show on Meet the Kids”.`, data: { slug: kid.slug, jobId: job.id } }, now);
+  if (kid?.test) await logActivity(DB, accountId, { title: 'Test family: profile not saved', body: `A real family would get /kids/${kid.slug}/ (${kid.name}, ${acct.year}) as a hidden draft in Admin → Kids.`, data: { slug: kid.slug, jobId: job.id, test: true } }, now);
+  else if (kid?.made) await logActivity(DB, accountId, { title: `Website profile made: ${kid.name}`, body: `/kids/${kid.slug}/ in Admin → Kids. It stays off Meet the Kids until someone adds the story and photos and switches on “Show on Meet the Kids”.`, data: { slug: kid.slug, jobId: job.id } }, now);
   else if (kid) await logActivity(DB, accountId, { title: `Website profile: ${kid.name}`, body: `Already in Admin → Kids (/kids/${kid.slug}/), so the site linked it to the job.`, data: { slug: kid.slug, jobId: job.id } }, now);
   else await logActivity(DB, accountId, { title: 'No website profile', body: 'This account has no birthday or diagnosis, so it looks like an organization. Add a Community project in the admin if it should have a page.', data: { jobId: job.id } }, now);
   if (row?.alerted) {
@@ -466,24 +479,25 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
 
 // ─── Slack: what each run made ──────────────────────────────────────
 
-export function madeCard(made) {
+export function madeCard(made, { test = false } = {}) {
+  const testWords = test ? 'Test family · the profile isn’t saved' : null;
   const line = (m) => [
     m.job.made ? `JobTread job ${m.job.name}` : `JobTread job ${m.job.name} (already there)`,
-    m.kid ? (m.kid.made ? `profile /kids/${m.kid.slug}/ (hidden until it’s ready)` : `profile /kids/${m.kid.slug}/ (already in Kids)`) : 'no profile (an organization)',
+    m.kid ? (m.kid.test ? `profile /kids/${m.kid.slug}/ (a test: not saved)` : m.kid.made ? `profile /kids/${m.kid.slug}/ (hidden until it’s ready)` : `profile /kids/${m.kid.slug}/ (already in Kids)`) : 'no profile (an organization)',
   ].join(', ');
   if (made.length === 1) {
     const m = made[0];
     const who = m.kid?.name || m.name;
     return slackCard({
-      icon: '🛠', title: `${who}’s makeover is set up`,
+      test: testWords, icon: '🛠', title: `${who}’s makeover is set up`,
       lead: `${m.name} was approved, so the site ${m.job.made ? 'made the JobTread job' : 'found the JobTread job'}${m.kid?.made ? ' and a website profile' : ''}.`,
-      facts: [['JobTread job', m.job.made ? m.job.name : `${m.job.name} (already there)`], ['Website profile', m.kid ? `/kids/${m.kid.slug}/${m.kid.made ? ', hidden until the story and photos are in' : ', already in Kids'}` : 'none (an organization)']],
+      facts: [['JobTread job', m.job.made ? m.job.name : `${m.job.name} (already there)`], ['Website profile', m.kid ? `/kids/${m.kid.slug}/${m.kid.test ? ', a test: not saved' : m.kid.made ? ', hidden until the story and photos are in' : ', already in Kids'}` : 'none (an organization)']],
       buttons: [{ label: 'Open the job in JobTread', url: jobUrl(m.job.id) }, ...(m.kid ? [{ label: 'Open Kids', url: KIDS_ADMIN }] : [])],
       footer: 'Approved in JobTread',
     });
   }
   return slackCard({
-    icon: '🛠', title: `${made.length} approved families are set up`,
+    test: testWords, icon: '🛠', title: `${made.length} approved families are set up`,
     lead: made.map(m => `${m.name}: ${line(m)}`).join('\n'),
     buttons: [{ label: 'Open Kids', url: KIDS_ADMIN }, { label: 'Open Applicants', url: APPLICANTS_ADMIN }],
     footer: 'Approved in JobTread',
@@ -534,8 +548,11 @@ export async function runApprovals(env, { fetchImpl = fetch, now = Date.now(), l
       if (r.job) out.made.push(r); else if (r.waiting) out.waiting.push(r); else out.other.push(r);
     }
     // Good news when something new exists; finding what was already there (a past family's status bounced) is no news
-    const news = out.made.filter(m => m.job.made || m.kid?.made);
-    if (news.length) await slackPost(env, madeCard(news), { kind: 'news' }).catch(() => null);
+    const news = out.made.filter(m => m.job.made || m.kid?.made || m.kid?.test);
+    const real = news.filter(m => !isTestFamily(m.name));
+    const tests = news.filter(m => isTestFamily(m.name));
+    if (real.length) await slackPost(env, madeCard(real), { kind: 'news' }).catch(() => null);
+    if (tests.length) await slackPost(env, madeCard(tests, { test: true }), { kind: 'news' }).catch(() => null);
     await setState(DB, 'lastRun', { at: iso(now), made: out.made.length, waiting: out.waiting.length }, now);
   } catch (e) {
     out.error = e.message;
