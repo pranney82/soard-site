@@ -38,6 +38,7 @@ import { slackCard } from './_slack-cards.js';
 import * as P from '../../public/admin/press-shared.js';
 import { googleNews, decodeGoogleLink, findOnSite, bingNews, youTubeChannel, youTubeSearch, UA } from './_press-sources.js';
 import { readPage, checkLink, archiveLookup, archiveSave, archiveRaw, saveImage, safeUrl } from './_press-page.js';
+import { browserGet, hasBrowser } from './_press-browser.js';
 
 export const PRESS_USER = 'Press monitor (automatic)';
 export const SETTINGS_KEY = 'press-monitor';
@@ -62,6 +63,8 @@ const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_UR
 const STYLE = 'Plain, warm and specific. The founder is always "Peter Ranney" or "Peter", never "Pete", even when the story says Pete. Facts from the text only; never invent names, dates or outcomes. No em dashes or en dashes (use commas or periods). No exclamation marks. Avoid stock phrases such as "journey", "testament", "heartwarming", "life-changing", "truly", "a space where".';
 
 const iso = (t = Date.now()) => new Date(t).toISOString();
+/** Pages that turn the server away (Google, some outlets) opened in a real browser instead, when there is one */
+const browserOf = (env) => (hasBrowser(env) ? (url, opts) => browserGet(env, url, opts) : (env?.browser || null));
 // The Internet Archive turns a burst away (429), so it's asked one thing at a
 // time, and left alone for an hour after it says to slow down
 const ARCHIVE_GAP_MS = 20000;
@@ -344,13 +347,14 @@ export async function scanPart(env, provider, { from = 0, limit = 2, now = Date.
   const settings = await readSettings(env.DB);
   const runs = provider === 'youtube'
     ? [...settings.channels.map((c) => () => youTubeChannel(c, { fetchImpl })), () => youTubeSearch('"Sunshine on a Ranney Day"', { fetchImpl })]
-    : settings.queries.map((q) => () => (provider === 'google' ? googleNews(q, { fetchImpl }) : bingNews(q, { fetchImpl })));
+    : settings.queries.map((q) => () => (provider === 'google' ? googleNews(q, { fetchImpl, browser: browserOf(env) }) : bingNews(q, { fetchImpl })));
   const out = { found: 0, added: 0, errors: 0, ran: 0, firstError: null, next: Math.min(from + limit, runs.length), total: runs.length };
   for (const run of runs.slice(from, from + limit)) {
     const r = await run();
     out.ran += 1;
     out.found += r.items.length;
     if (r.error) { out.errors += 1; out.firstError ||= r.error; out.diag ||= r.diag || null; }
+    if (r.via === 'browser') { out.via = 'browser'; out.refused ||= r.refused || null; }
     out.added += await insertMentions(env.DB, r.items, now);
   }
   return out;
@@ -358,7 +362,7 @@ export async function scanPart(env, provider, { from = 0, limit = 2, now = Date.
 /** A whole scan at once (the tests and a person's own check) */
 export async function scan(env, provider, { now = Date.now(), fetchImpl = fetch } = {}) {
   const r = await scanPart(env, provider, { from: 0, limit: 100, now, fetchImpl });
-  return { at: iso(now), found: r.found, added: r.added, error: r.ran && r.errors === r.ran ? r.firstError : null, partial: r.errors && r.errors < r.ran ? r.errors : 0 };
+  return { at: iso(now), found: r.found, added: r.added, error: r.ran && r.errors === r.ran ? r.firstError : null, partial: r.errors && r.errors < r.ran ? r.errors : 0, ...(r.via ? { via: r.via } : {}) };
 }
 
 // ── Each found article, one step at a time ───────────────────────────
@@ -412,7 +416,7 @@ export async function stepMention(env, m, { fetchImpl = fetch, ctx = null, force
     const onSite = storyFor(ctx, { url: m.url, title: m.title, source: m.source, sourceUrl: m.source_url });
     if (onSite && !force) { await setMention(DB, m.id, { state: 'duplicate', reason: 'Already on the publicity page', story: onSite.slug }); return { done: true }; }
     let decodeDiag = null;
-    let url = m.url || (m.provider === 'google' ? await decodeGoogleLink(m.link, { fetchImpl, onFail: (d) => { decodeDiag = d; } }) : m.link);
+    let url = m.url || (m.provider === 'google' ? await decodeGoogleLink(m.link, { fetchImpl, onFail: (d) => { decodeDiag = d; }, browser: browserOf(env) }) : m.link);
     // Google turns Cloudflare's servers away some hours: the headline, looked up on the outlet's own site
     if (!url && m.source_url) url = await findOnSite(m.source_url, m.title, { fetchImpl });
     if (!url) {
@@ -445,9 +449,10 @@ export async function stepMention(env, m, { fetchImpl = fetch, ctx = null, force
     return { next: 'read' };
   }
   if (stage === 'read') {
-    const r = await readPage(m.url, { fetchImpl });
+    const r = await readPage(m.url, { fetchImpl, browser: browserOf(env) });
     data.page = r.ok ? { ...r.page, finalUrl: r.finalUrl, text: clip(r.page.text, 6000) } : null;
     data.read = r.ok ? 'ok' : r.blocked ? 'blocked' : (r.error || `HTTP ${r.status}`);
+    if (r.via === 'browser') data.readVia = 'browser';
     await setMention(DB, m.id, { stage: 'judge', data: JSON.stringify(data) });
     return { next: 'judge' };
   }
@@ -617,7 +622,7 @@ export async function tidyStep(env, state, { fetchImpl = fetch, gate = OPEN_GATE
     const done = new Set(((await DB.prepare("SELECT slug FROM press_links WHERE data LIKE '%\"url\":%' OR data LIKE '%decodeFailed%'").all()).results || []).map((r) => r.slug));
     const next = stories.find((st) => P.googleLink(st.data.url) && !done.has(st.slug));
     if (!next) { t.phase = 'outlets'; return { did: 'decoding done' }; }
-    const real = await decodeGoogleLink(next.data.url, { fetchImpl });
+    const real = await decodeGoogleLink(next.data.url, { fetchImpl, browser: browserOf(env) });
     const link = await DB.prepare('SELECT data FROM press_links WHERE slug = ?').bind(next.slug).first();
     const d = { ...parse(link?.data, {}), ...(real ? { url: real } : { decodeFailed: true }) };
     await DB.prepare('INSERT INTO press_links (slug, url, data) VALUES (?, ?, ?) ON CONFLICT(slug) DO UPDATE SET data = excluded.data').bind(next.slug, next.data.url, JSON.stringify(d)).run();
@@ -705,7 +710,7 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   if (stage !== 'save') { data.tries = { ...(data.tries || {}), [stage]: (data.tries?.[stage] || 0) + 1 }; await save({ data: JSON.stringify(data) }); }
   const s = rec.data;
   if (stage === 'decode') {
-    if (P.googleLink(s.url) && !data.url && !data.decodeFailed) { const real = await decodeGoogleLink(s.url, { fetchImpl }); if (real) data.url = real; else data.decodeFailed = true; }
+    if (P.googleLink(s.url) && !data.url && !data.decodeFailed) { const real = await decodeGoogleLink(s.url, { fetchImpl, browser: browserOf(env) }); if (real) data.url = real; else data.decodeFailed = true; }
     data.stage = 'read';
     await save({ data: JSON.stringify(data) });
     return { did: `${slug} decode` };
@@ -713,8 +718,9 @@ export async function storyStep(env, slug, { fetchImpl = fetch, tidy = { counts:
   const url = data.url || s.url;
   if (stage === 'read') {
     if (!url || P.googleLink(url)) { data.stage = 'judge'; await save({ data: JSON.stringify(data) }); return { did: `${slug} no link` }; }
-    const r = await readPage(url, { fetchImpl });
+    const r = await readPage(url, { fetchImpl, browser: browserOf(env) });
     let page = r.ok ? r.page : null;
+    if (r.via === 'browser') data.readVia = 'browser';
     const linkFields = { url, checked_at: iso(), http: r.status || 0 };
     if (r.ok) Object.assign(linkFields, { status: 'ok', fails: 0, first_failed_at: null });
     else if ([404, 410].includes(r.status) || r.unreachable) Object.assign(linkFields, { status: 'failing', fails: (link.fails || 0) + 1, first_failed_at: link.first_failed_at || iso() });
@@ -966,9 +972,11 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
         for (const k of ['found', 'added', 'errors', 'ran']) acc[k] += r[k];
         acc.firstError ||= r.firstError;
         acc.diag ||= r.diag || null;
+        if (r.via === 'browser') { acc.via = 'browser'; acc.refused ||= r.refused || null; }
         if (r.next >= r.total) {
-          // What a refusal looked like is kept until a scan goes through
-          state.scans[p] = { at: iso(now), found: acc.found, added: acc.added, error: acc.ran && acc.errors === acc.ran ? acc.firstError : null, partial: acc.errors && acc.errors < acc.ran ? acc.errors : 0, ...(acc.diag ? { diag: acc.diag } : {}) };
+          // What a refusal looked like is kept until a scan goes through; a scan that took
+          // a browser keeps what the plain request got, so Press can say why
+          state.scans[p] = { at: iso(now), found: acc.found, added: acc.added, error: acc.ran && acc.errors === acc.ran ? acc.firstError : null, partial: acc.errors && acc.errors < acc.ran ? acc.errors : 0, ...(acc.diag ? { diag: acc.diag } : {}), ...(acc.via ? { via: acc.via, refused: acc.refused } : {}) };
           log.push(`scan ${p}: ${acc.found} found, ${acc.added} new`);
           const fixed = await fixGuessedDates(env);
           if (fixed) { state.deployPending = true; log.push(`${fixed} dates corrected`); }
@@ -1114,11 +1122,11 @@ export async function overview(env) {
 export async function fillFromUrl(env, rawUrl, { fetchImpl = fetch } = {}) {
   const { DB } = env;
   let url = String(rawUrl || '').trim();
-  if (P.googleLink(url)) url = (await decodeGoogleLink(url, { fetchImpl })) || url;
+  if (P.googleLink(url)) url = (await decodeGoogleLink(url, { fetchImpl, browser: browserOf(env) })) || url;
   if (!safeUrl(url)) return { success: false, error: 'Paste the story’s full web address (starting with https://)' };
   const ctx = await context(DB);
   const vid = P.youTubeId(url);
-  const r = await readPage(url, { fetchImpl });
+  const r = await readPage(url, { fetchImpl, browser: browserOf(env) });
   const page = r.ok ? r.page : {};
   const finalUrl = r.finalUrl || url;
   const siteName = page.siteName || '';

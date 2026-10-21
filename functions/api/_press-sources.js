@@ -11,6 +11,10 @@
 import { decodeEntities, plain, cleanTitle, urlKey, youTubeId, relevance, OWN_CHANNELS, sameHeadline, hostOf } from '../../public/admin/press-shared.js';
 
 export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+/** A page that isn't Google's: where a Google News link sends a browser */
+export const offGoogle = (u) => {
+  try { const x = new URL(u); return /^https?:$/.test(x.protocol) && !/(^|\.)(google\.com|gstatic\.com|googleusercontent\.com|googleapis\.com)$/i.test(x.hostname); } catch { return false; }
+};
 const TIMEOUT = 10000;
 
 async function get(fetchImpl, url, opts = {}) {
@@ -60,11 +64,19 @@ const eachItem = (list, read) => list.map((x) => { try { return read(x); } catch
 
 // ── Google News ──────────────────────────────────────────────────────
 /** Google News search results (its links are Google's own; decodeGoogleLink finds the outlet's) */
-export async function googleNews(query, { fetchImpl = fetch } = {}) {
+export async function googleNews(query, { fetchImpl = fetch, browser = null } = {}) {
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
   try {
-    const res = await get(fetchImpl, `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`);
-    if (!res.ok) return { items: [], error: `Google News answered ${res.status}`, diag: await responseDiag(res, 'search') };
-    return { items: parseGoogleRss(await res.text(), query) };
+    const res = await get(fetchImpl, url);
+    if (res.ok) return { items: parseGoogleRss(await res.text(), query), via: 'direct' };
+    const diag = await responseDiag(res, 'search');
+    // Google takes the server for a bot ("unusual traffic", 503): the same search in a browser
+    if (browser) {
+      const b = await browser(url);
+      if (b.ok && /<rss\b|<item\b/i.test(b.body || '')) return { items: parseGoogleRss(b.body, query), via: 'browser', refused: diag };
+      return { items: [], error: `Google News answered ${res.status}, and ${b.status ? `${b.status} in a browser` : `the browser failed (${b.error})`}`, diag };
+    }
+    return { items: [], error: `Google News answered ${res.status}`, diag };
   } catch (e) { return { items: [], error: `Google News: ${e.message}` }; }
 }
 export function parseGoogleRss(xml, query = '') {
@@ -86,9 +98,16 @@ export function parseGoogleRss(xml, query = '') {
  * the way its page does: the article page carries a signature and time,
  * which its batchexecute endpoint trades for the address.
  */
-export async function decodeGoogleLink(link, { fetchImpl = fetch, onFail = null } = {}) {
+export async function decodeGoogleLink(link, { fetchImpl = fetch, onFail = null, browser = null } = {}) {
   const id = String(link || '').match(/news\.google\.com\/(?:rss\/)?articles\/([^?#/]+)/)?.[1];
   if (!id) return null;
+  const direct = await decodeDirect(id, { fetchImpl, onFail });
+  if (direct || !browser) return direct;
+  // Google turns the server away: open the link in a browser and see where Google sends it
+  const b = await browser(`https://news.google.com/rss/articles/${id}`, { leave: offGoogle });
+  return b.ok && offGoogle(b.finalUrl) ? b.finalUrl : null;
+}
+async function decodeDirect(id, { fetchImpl, onFail }) {
   try {
     const page = await get(fetchImpl, `https://news.google.com/rss/articles/${id}`);
     if (!page.ok) { if (onFail) onFail(await responseDiag(page, 'article')); return null; }

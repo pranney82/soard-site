@@ -84,13 +84,23 @@ export function parsePage(html, pageUrl) {
  * Read a page. { ok, status, finalUrl, blocked, page } — blocked means the
  * outlet refused an automated visit (403/429/5xx), not that the story is gone.
  */
-export async function readPage(url, { fetchImpl = fetch, timeout = 9000 } = {}) {
+export async function readPage(url, { fetchImpl = fetch, timeout = 9000, browser = null } = {}) {
   const u = safeUrl(url);
   if (!u) return { ok: false, status: 0, error: 'Not a web address' };
   try {
     const res = await fetchImpl(u.toString(), { redirect: 'follow', headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(timeout) });
     const finalUrl = res.url || u.toString();
-    if (!res.ok) return { ok: false, status: res.status, finalUrl, blocked: [401, 403, 429, 451, 999].includes(res.status) || res.status >= 500 };
+    if (!res.ok) {
+      const blocked = [401, 403, 429, 451, 999].includes(res.status) || res.status >= 500;
+      // The outlet turns the server away (not the story gone): the page in a browser
+      if (blocked && browser) {
+        const b = await browser(u.toString(), { rendered: true });
+        const page = b.ok && b.body ? parsePage(b.body.slice(0, MAX_HTML), b.finalUrl || finalUrl) : null;
+        // A bot check (11Alive's "press and hold") is a page with no headline and no words: still turned away
+        if (page && (page.title || page.text)) return { ok: true, status: b.status, finalUrl: b.finalUrl || finalUrl, page, via: 'browser', refused: res.status };
+      }
+      return { ok: false, status: res.status, finalUrl, blocked };
+    }
     const type = res.headers.get('content-type') || '';
     if (type && !/html|xml/i.test(type)) return { ok: false, status: res.status, finalUrl, error: `Not a web page (${type})` };
     const html = (await res.text()).slice(0, MAX_HTML);

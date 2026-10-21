@@ -18,6 +18,7 @@
   "license": "ISC",
   "dependencies": {
     "@astrojs/sitemap": "^3.7.0",
+    "@cloudflare/puppeteer": "^1.4.0",
     "astro": "^5.18.0",
     "pdf-lib": "^1.17.1",
     "satori": "^0.25.0",

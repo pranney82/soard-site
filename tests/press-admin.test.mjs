@@ -728,6 +728,52 @@ describe('press monitor: the second look (what production showed on Oct 21 2026)
     assert.equal(d.decodeDiag.status, 503);
   });
 
+  test('Google turns the server away: the search, its links and a blocked outlet’s page are opened in a browser', async () => {
+    const { googleNews: gn, decodeGoogleLink: dg } = await import('../functions/api/_press-sources.js');
+    const { readPage: rp } = await import('../functions/api/_press-page.js');
+    const sorry = (url) => withUrl(new Response('<title>Sorry...</title>unusual traffic', { status: 503, headers: { 'content-type': 'text/html' } }), url);
+    const blockedFetch = async (input) => { const url = typeof input === 'string' ? input : input.url; return /google\.com/.test(url) ? sorry(url) : withUrl(new Response('', { status: 403 }), url); };
+    const opened = [];
+    const browser = async (url, opts = {}) => {
+      opened.push([url, Object.keys(opts).sort().join(',')]);
+      if (/rss\/search/.test(url)) return { ok: true, status: 200, body: FIX('google-rss.xml'), finalUrl: url, via: 'browser' };
+      if (/rss\/articles\//.test(url)) return opts.leave?.('https://www.11alive.com/article/news/x/85-1') ? { ok: true, status: 200, finalUrl: 'https://www.11alive.com/article/news/x/85-1', via: 'browser' } : { ok: false };
+      return { ok: true, status: 200, finalUrl: url, body: article({ title: 'A room built with dignity', site: '11Alive', date: '2025-03-01', image: 'https://www.11alive.com/pic.jpg', text: 'Sunshine on a Ranney Day built a room.' }), via: 'browser' };
+    };
+    const r = await gn('"Sunshine on a Ranney Day"', { fetchImpl: blockedFetch, browser });
+    assert.equal(r.via, 'browser');
+    assert.ok(r.items.length > 3, 'the feed, read from the browser');
+    assert.equal(r.refused.title, 'Sorry...', 'and what the plain request got, for Press');
+    assert.equal(await dg('https://news.google.com/rss/articles/CBMiabc?oc=5', { fetchImpl: blockedFetch, browser }), 'https://www.11alive.com/article/news/x/85-1');
+    const page = await rp('https://www.11alive.com/article/news/x/85-1', { fetchImpl: blockedFetch, browser });
+    assert.equal(page.ok, true);
+    assert.equal(page.via, 'browser');
+    assert.equal(page.page.image, 'https://www.11alive.com/pic.jpg');
+    assert.deepEqual(opened.map((o) => o[1]), ['', 'leave', 'rendered'], 'a feed as sent, a link followed to where it leads, an article as drawn');
+    // A story that's gone (404) is never retried in a browser; without a browser nothing changes
+    opened.length = 0;
+    const gone = await rp('https://www.11alive.com/gone', { fetchImpl: async (u) => withUrl(new Response('', { status: 404 }), u), browser });
+    assert.equal(gone.ok, false);
+    assert.equal(opened.length, 0);
+    assert.match((await gn('q', { fetchImpl: blockedFetch })).error, /answered 503/);
+  });
+
+  test('the beat uses the browser: the Google scan goes through and says how', async () => {
+    const env = { ...(await newEnv({ press: [], medialogos: OUTLETS, kids: KIDS, partners: [] })) };
+    await quietState(env);
+    const s = await E.readState(env.DB);
+    s.scans.google = { at: new Date(NOW - 864e5).toISOString(), error: 'Google News answered 503' };
+    await env.DB.prepare('INSERT OR REPLACE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(E.STATE_KEY, JSON.stringify(s), new Date(NOW).toISOString()).run();
+    const refuse = async (input, init) => { const url = typeof input === 'string' ? input : input.url; return /news\.google\.com/.test(url) ? withUrl(new Response('<title>Sorry...</title>', { status: 503, headers: { 'content-type': 'text/html' } }), url) : fakeFetch(input, init); };
+    env.browser = async (url) => ({ ok: true, status: 200, body: FIX('google-rss.xml'), finalUrl: url, via: 'browser' });
+    for (let i = 0; i < 6; i++) await E.maybeRunPress(env, { now: NOW + i * 1000, fetchImpl: refuse, budgetMs: 1, archiveGapMs: 0 });
+    const st = await E.readState(env.DB);
+    assert.equal(st.scans.google.error, null, 'it went through');
+    assert.equal(st.scans.google.via, 'browser');
+    assert.ok(st.scans.google.found > 0);
+    assert.equal(st.scans.google.refused.title, 'Sorry...');
+  });
+
   test('an image server that offers AVIF is asked for a format Cloudflare Images takes (AJC’s, live on Oct 21)', async () => {
     const { saveImage } = await import('../functions/api/_press-page.js');
     const sent = [];

@@ -1052,6 +1052,7 @@ function FoundView({ c, error }) {
         <p class="pr-source__name">${s.name}</p>
         <p class="pr-source__when">${x?.at ? `Checked ${ago(x.at)}` : 'Not checked yet'}</p>
         <p class=${`pr-source__what${x?.error ? ' kd-bad' : ''}`}>${x?.error ? `Couldn’t reach it: ${x.error}${x.diag?.title ? ` (“${x.diag.title}”)` : ''}` : x?.at ? `${plural(x.found || 0, 'result')}, ${x.added || 0} new` : `Checks ${s.every}`}</p>
+        ${!x?.error && x?.via === 'browser' ? html`<p class="pr-source__via">Opened in a browser: ${s.name.split(' ')[0]} turns the server’s plain requests away.</p>` : null}
       </div>`; })}
       <div class="card pr-source">
         <p class="pr-source__name">Link check</p>
@@ -1507,6 +1508,7 @@ const CSS = `
 .pr-pic__tools { display: grid; gap: 12px; }
 .pr-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .pr-btns .btn { display: inline-flex; gap: 6px; align-items: center; }
+.pr-source__via { font-size: 12px; color: var(--color-text-muted); margin-top: 4px; }
 .pr-pic__from { font-size: 12px; color: var(--color-text-muted); margin-top: 6px; }
 .pr-people__chip.pr-people__chip--face { padding-left: 4px; gap: 6px; }
 .pr-kidpics { display: grid; gap: 6px; }
