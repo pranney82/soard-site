@@ -5,15 +5,17 @@
  * The process page for donors, partners, and funders. Instead of a generic
  * four-step list, it follows ONE real project from application to reveal using
  * the artifacts that project already has on file: the designer's presentation
- * boards, the dimensioned floor plans, the partner roster, the site photos,
- * the reveal video, and the before/after pair.
+ * boards, the dimensioned floor plans, the site photos, the reveal video, and
+ * the before/after pair. Sourcing is the one step shown as a mechanism (the
+ * materials list), since partners change from room to room.
  *
  * Featured project: siteSettings.howItWorks.kidSlug (Admin → Kids on Site),
  * falling back to the most recent kid that has drawings and a video.
  *
  * MOTION: the chapter rail's line fills as you read and its bead rides the tip;
  *   chapter heads rise out of a mask; the active chapter's numeral lights up;
- *   photos and logos settle in sequence; the before/after handle sweeps once to
+ *   photos settle in sequence; the materials list checks itself off line by
+ *   line; the before/after handle sweeps once to
  *   show it moves; the rooms-per-year columns grow from the baseline. All of it
  *   stops under prefers-reduced-motion. No number counters.
  * PERF: hero LCP preload, lazy media below the fold, click-to-load video.
@@ -124,26 +126,17 @@ const sparePhoto = sitePhotos.find(p => !shownStems.has(stem(p.url)));
 const filePhotoId = sparePhoto ? cfId(sparePhoto.url) : pair ? cfId(pair.before) : portraitId;
 const filePhotoIsBefore = !!(sparePhoto || pair);
 
-/* ── The crew: match the project's partner logos to the partners collection ── */
+/* ── Sourcing: how every room's materials list gets filled ──
+   The partners change from room to room (sponsors take on a few rooms a year),
+   so this chapter shows the mechanism, not one project's logo wall. The
+   project's own partners are credited on its kid page; we link there. */
 const partnerCollection = await getCollection('partners');
-const byLogo = new Map(partnerCollection.filter(p => p.data.logo).map(p => [cfId(p.data.logo!), p.data]));
-type Crew = { name: string; logo: string; role: string };
-const roleOf = (cats: string[]) =>
-  cats.includes('design') ? 'design' : cats.includes('funding') ? 'funding' : cats.includes('build') ? 'build' : 'community';
-const crew: Crew[] = [];
-for (const pl of k.partnerLogos || []) {
-  const id = cfId(pl.url);
-  let match = byLogo.get(id);
-  if (!match) for (const [lid, data] of byLogo) { if (id.startsWith(lid) || lid.startsWith(id)) { match = data; break; } }
-  if (match) crew.push({ name: match.name, logo: id, role: roleOf(match.category as string[]) });
-  else crew.push({ name: '', logo: id, role: 'build' });
-}
-const roleGroups = [
-  { key: 'funding', title: 'Funded it', blurb: 'Sponsors and foundations who covered what nobody could donate.' },
-  { key: 'design', title: 'Designed it', blurb: 'Designers who drew the room and picked every finish.' },
-  { key: 'build', title: 'Built and supplied it', blurb: 'Manufacturers, suppliers, and trades who gave materials and labor.' },
-  { key: 'community', title: 'Showed up for it', blurb: 'Photographers, caterers, and neighbors who made reveal day.' },
-].map(g => ({ ...g, members: crew.filter(c => c.role === g.key) })).filter(g => g.members.length > 0);
+const sourceLines = [
+  { what: 'Flooring, tile, cabinets, fixtures, paint, and furniture', who: 'Manufacturers and suppliers', how: 'Donated', kind: 'gift' },
+  { what: 'Demolition, framing, plumbing, electrical, and finish work', who: 'Trade partners', how: 'Donated labor', kind: 'gift' },
+  { what: 'Specialty equipment and anything not donated', who: 'Donors and foundations, and on some rooms a sponsor', how: 'Funded by gifts', kind: 'funded' },
+];
+const projectPartners = (k.partnerLogos || []).length;
 
 /* ── Scale ── */
 const stats = await getSiteStats();
@@ -172,7 +165,7 @@ const featuredCol = yearCols.find(c => c.featured);
 const chapters = [
   { id: 'apply', num: '01', short: 'Apply', title: "It starts with a family's story.", who: ['The family', 'Selection committee'], schema: 'A family applies online, shares photos, and records a video walkthrough of the space. Applications are read by the selection committee, followed by an interview and a home visit.' },
   { id: 'design', num: '02', short: 'Design', title: 'Drawn three ways, then walked at full scale.', who: ['Design partners', 'The family', 'Walk Your Plans'], schema: 'Design partners measure the space and draw several layouts. Three go to the family, who walk them at full size at Walk Your Plans before choosing one. Only then are the theme, colors, and finishes chosen.' },
-  { id: 'crew', num: '03', short: 'Crew', title: 'Then the crew assembles.', who: ['Sponsors', 'Suppliers', 'Trades'], schema: 'The drawings become a materials list. Manufacturers and suppliers donate materials, sponsors fund the rest, and trade partners donate labor.' },
+  { id: 'source', num: '03', short: 'Source', title: 'Then the materials list gets filled.', who: ['Suppliers', 'Trades', 'Donors'], schema: 'The drawings become a materials list. Manufacturers and suppliers donate products, trade partners donate labor, and gifts from donors and foundations pay for the rest. Some rooms also have a sponsor.' },
   { id: 'build', num: '04', short: 'Build', title: 'Walls come down.', who: ['Contractor', 'Trade partners'], schema: 'The contractor documents the existing space, then runs a full renovation: demolition, framing, plumbing, electrical, and finishes. Build time varies by project.' },
   { id: 'reveal', num: '05', short: 'Reveal', title: 'The child walks in.', who: ['The family', 'The whole crew', 'Livestream viewers'], schema: 'The finished room is revealed to the child and family, filmed, and often streamed live.' },
   { id: 'scale', num: '06', short: 'Scale', title: 'Every room since 2012 has followed these steps.', who: [] as string[], schema: 'The same six steps have produced hundreds of rooms across greater Atlanta since 2012.' },
@@ -401,38 +394,39 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
         )}
       </section>
 
-      <!-- 03 CREW -->
-      <section class="chapter" id="crew" data-chapter="crew" aria-labelledby="h-crew">
+      <!-- 03 SOURCE -->
+      <section class="chapter" id="source" data-chapter="source" aria-labelledby="h-source">
         <div class="chapter__head" data-reveal>
           <span class="chapter__num" aria-hidden="true">03</span>
           <div class="chapter__titles">
-            <h2 id="h-crew">{ch.crew.title}</h2>
-            <p class="chapter__who"><span class="chapter__who-k">Who</span>{ch.crew.who.map(w => <span>{w}</span>)}</p>
+            <h2 id="h-source">{ch.source.title}</h2>
+            <p class="chapter__who"><span class="chapter__who-k">Who</span>{ch.source.who.map(w => <span>{w}</span>)}</p>
           </div>
         </div>
         <div class="chapter__text chapter__text--wide" data-reveal>
-          <p>The drawings become a materials list, and partners fill it. Manufacturers donate flooring, tile, and fixtures. Sponsors fund what nobody donates. Trades donate their labor. {crew.length > 0 && <>On this project, <strong>{crew.length} partners</strong> signed on.</>}</p>
+          <p>Once the family picks a layout, the drawings become a materials list: every product, every trade, and every piece of equipment the room needs. Partners donate what they make and the work they do, and gifts pay for the rest. The partners change from room to room, so every list is filled fresh.</p>
         </div>
-        {roleGroups.length > 0 && (
-          <div class="crew">
-            {roleGroups.map(g => (
-              <div class="crew__group" data-reveal>
-                <div class="crew__group-head">
-                  <h3>{g.title} <span class="crew__count">{g.members.length}</span></h3>
-                  <p>{g.blurb}</p>
-                </div>
-                <ul class="crew__logos" role="list">
-                  {g.members.map((m, i) => (
-                    <li class="crew__logo" style={`--i:${Math.min(i, 10)}`}>
-                      <img src={`${CF}/${m.logo}/w=240,h=120,fit=contain,trim=10,q=80`} srcset={`${CF}/${m.logo}/w=240,h=120,fit=contain,trim=10,q=80 1x, ${CF}/${m.logo}/w=480,h=240,fit=contain,trim=10,q=80 2x`} alt={m.name || 'Partner logo'} width="240" height="120" loading="lazy" decoding="async" onerror="this.closest('li').style.display='none'" />
-                      {m.name && <span class="crew__name">{m.name}</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+        <div class="mlist" data-reveal data-delay="1">
+          <div class="mlist__head">
+            <h3 class="mlist__title">Materials list</h3>
+            <span class="mlist__note">How every room's list gets filled</span>
           </div>
-        )}
+          <ol class="mlist__rows">
+            {sourceLines.map((l, i) => (
+              <li class="mlist__row" style={`--i:${i}`}>
+                <span class="mlist__check" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path class="mlist__tick" d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/></svg></span>
+                <span class="mlist__what"><strong>{l.what}</strong><span>{l.who}</span></span>
+                <span class={`mlist__how mlist__how--${l.kind}`}>{l.how}</span>
+              </li>
+            ))}
+          </ol>
+          {projectPartners > 0 && (
+            <a class="mlist__foot" href={`/kids/${k.slug}/#chapter-partners`}>
+              <span><strong>{projectPartners} partners</strong> are credited on {name}'s room.</span>
+              <span class="mlist__go">See who <Fragment set:html={arrow} /></span>
+            </a>
+          )}
+        </div>
       </section>
 
       <!-- 04 BUILD -->
@@ -844,25 +838,39 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
   .boards__count { font-size: 13px; font-weight: 600; color: var(--c-text-muted); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: center; }
   .boards__count b { color: var(--c-dark); }
 
-  /* Crew: logos grouped by role */
-  .crew { display: grid; gap: 26px; }
-  .crew__group { border-top: 1px solid var(--c-border); padding-top: 22px; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 24px; }
-  .crew__group[data-reveal] { opacity: 1; transform: none; }
-  .crew__group-head h3 { font-size: 19px; margin: 0 0 6px; }
-  .crew__count { vertical-align: 3px; margin-left: 6px; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 22px; padding: 0 7px; border-radius: 100px; background: var(--c-warm-gray); border: 1px solid var(--c-border); font-family: var(--font-body, inherit); font-size: 12px; font-weight: 700; color: var(--c-dark); }
-  .crew__group-head p { font-size: 14px; line-height: 1.55; color: var(--c-text-muted); margin: 0; }
-  .crew__logos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 10px; }
-  .crew__logo {
-    background: #fff; border: 1px solid var(--c-border); border-radius: 12px; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 104px;
-    transition: border-color 0.25s ease, box-shadow 0.35s ease, transform 0.45s var(--ease-out), opacity 0.6s var(--ease-out);
-    transition-delay: 0s, 0s, 0s, calc(var(--i, 0) * 45ms);
+  /* Source: the materials list, checked off line by line as it comes into view */
+  .mlist { max-width: 860px; background: #fff; border: 1px solid var(--c-border); border-radius: 16px; overflow: hidden; box-shadow: 0 14px 40px rgba(0,0,0,0.07); }
+  .mlist__head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; padding: 20px 26px 16px; border-bottom: 2px solid var(--c-dark); }
+  .mlist__title { font-size: 20px; line-height: 1.2; letter-spacing: -0.01em; margin: 0; }
+  .mlist__note { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-text-light); }
+  .mlist__rows { list-style: none; margin: 0; padding: 0 26px; }
+  .mlist__row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--c-border); }
+  .mlist__row:last-child { border-bottom: none; }
+  .mlist__check {
+    width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--c-border); color: var(--c-dark);
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background-color 0.35s ease, border-color 0.35s ease; transition-delay: calc(0.35s + var(--i, 0) * 0.28s);
   }
-  .crew__group[data-reveal]:not(.is-visible) .crew__logo { opacity: 0; transform: translateY(14px); transition-delay: 0s, 0s, calc(var(--i, 0) * 45ms), calc(var(--i, 0) * 45ms); }
-  .crew__group.is-visible .crew__logo { transition-delay: 0s, 0s, calc(var(--i, 0) * 45ms), calc(var(--i, 0) * 45ms); }
-  .crew__group.is-settled .crew__logo { transition-delay: 0s; }
-  .crew__logo:hover { border-color: var(--c-yellow); box-shadow: 0 10px 24px rgba(0,0,0,0.07); transform: translateY(-3px); }
-  .crew__logo img { width: 100%; height: 52px; object-fit: contain; }
-  .crew__name { font-size: 11.5px; font-weight: 600; color: var(--c-text-muted); text-align: center; line-height: 1.3; }
+  .mlist__tick { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 0.45s var(--ease-out); transition-delay: calc(0.45s + var(--i, 0) * 0.28s); }
+  .mlist.is-visible .mlist__check { background: var(--c-yellow); border-color: var(--c-yellow); }
+  .mlist.is-visible .mlist__tick { stroke-dashoffset: 0; }
+  .mlist__what { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .mlist__what strong { font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--c-dark); }
+  .mlist__what span { font-size: 14px; line-height: 1.45; color: var(--c-text-muted); }
+  .mlist__how { justify-self: end; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 11px; border-radius: 100px; }
+  .mlist__how--gift { background: var(--c-yellow-soft); border: 1px solid rgba(255,218,36,0.7); color: var(--c-dark); }
+  .mlist__how--funded { background: var(--c-dark); border: 1px solid var(--c-dark); color: var(--c-yellow); }
+  .mlist__foot {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px;
+    padding: 16px 26px; background: var(--c-warm-gray); border-top: 1px solid var(--c-border);
+    font-size: 14.5px; color: var(--c-text); text-decoration: none; transition: background-color 0.25s ease;
+  }
+  .mlist__foot strong { color: var(--c-dark); }
+  .mlist__foot:hover { background: var(--c-yellow-soft); }
+  .mlist__foot:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: -3px; }
+  .mlist__go { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--c-dark); white-space: nowrap; }
+  .mlist__go :global(svg) { transition: transform 0.3s var(--ease-out); }
+  .mlist__foot:hover .mlist__go :global(svg) { transform: translateX(3px); }
 
   /* Site photos: laid down one after another */
   .site { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(0, auto); gap: 12px; }
@@ -1041,7 +1049,6 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
       transform-origin: left; transform: scaleX(var(--fill, 0)); will-change: transform;
     }
     .chapter__grid { grid-template-columns: 1fr; }
-    .crew__group { grid-template-columns: 1fr; gap: 14px; }
     .scale { grid-template-columns: 1fr 1fr 1fr; }
     .yrs { grid-column: 1 / -1; grid-row: auto; }
   }
@@ -1071,9 +1078,12 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
     .seg__btn { padding: 0 16px; }
     .planview__paper { padding: 6px; border-radius: 12px; }
     .ba__container { aspect-ratio: 1 / 1; }
-    .crew__logos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .crew__logo { min-height: 92px; padding: 12px 10px 10px; }
-    .crew__logo img { height: 44px; }
+    .mlist { border-radius: 14px; }
+    .mlist__head, .mlist__foot { padding-left: 18px; padding-right: 18px; }
+    .mlist__rows { padding: 0 18px; }
+    .mlist__row { grid-template-columns: 24px minmax(0, 1fr); align-items: start; gap: 8px 14px; padding: 16px 0; }
+    .mlist__check { width: 24px; height: 24px; margin-top: 1px; }
+    .mlist__how { grid-column: 2; justify-self: start; }
     .lb__nav { top: auto; bottom: 18px; margin-top: 0; }
     .lb__stage { padding: 8px 12px 84px; }
     .lb__img { max-height: calc(100dvh - 220px); }
@@ -1087,6 +1097,7 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
     .boards__scroll { flex-wrap: wrap; overflow: visible; }
     .board { opacity: 1 !important; }
     .planview__img--proposed { display: none; }
+    .mlist__tick { stroke-dashoffset: 0 !important; }
     [data-reveal], [data-reveal] * { opacity: 1 !important; transform: none !important; clip-path: none !important; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1094,7 +1105,6 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
     [data-reveal] { opacity: 1; transform: none; }
     .chapter__head[data-reveal]:not(.is-visible) .chapter__num,
     .chapter__head[data-reveal]:not(.is-visible) .chapter__who,
-    .crew__group[data-reveal]:not(.is-visible) .crew__logo,
     .site[data-reveal]:not(.is-visible) .site__shot,
     .yrs[data-reveal]:not(.is-visible) .yrs__note { opacity: 1; transform: none; }
     .chapter__head[data-reveal]:not(.is-visible) h2 { clip-path: none; transform: none; }
@@ -1102,7 +1112,9 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
     .hero-text h1, .hero-lead, .hero-ctas, .hero-frame, .hero-accent { animation: none; opacity: 1; transform: none; }
     .facade__ring { animation: none; }
     .lqip-img.lqip-pending { opacity: initial; }
-    .site__shot img, .facade__poster, .planview__img, .seg__thumb, .rail__link, .rail__bead, .lb, .lb__img, .board, .board__paper, .crew__logo, .chapter__num { transition: none; }
+    .site__shot img, .facade__poster, .planview__img, .seg__thumb, .rail__link, .rail__bead, .lb, .lb__img, .board, .board__paper, .chapter__num { transition: none; }
+    .mlist__check { background: var(--c-yellow); border-color: var(--c-yellow); }
+    .mlist__tick { stroke-dashoffset: 0; }
     .planview__caption > span { animation: none; }
     .rail__link.is-active { transform: none; }
   }
@@ -1409,16 +1421,6 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
       }, { signal });
       sync();
     }
-
-    /* ══ Crew: once the logos have settled, hover responds without the stagger ══ */
-    caseEl.querySelectorAll<HTMLElement>('.crew__group').forEach(g => {
-      const mo = new MutationObserver(() => {
-        if (g.classList.contains('is-visible')) { mo.disconnect(); window.setTimeout(() => g.classList.add('is-settled'), 1200); }
-      });
-      mo.observe(g, { attributes: true, attributeFilter: ['class'] });
-      if (g.classList.contains('is-visible')) { mo.disconnect(); g.classList.add('is-settled'); }
-      signal.addEventListener('abort', () => mo.disconnect());
-    });
 
     /* ══ Video facade: load the player on demand ══ */
     const facade = document.getElementById('video-facade');

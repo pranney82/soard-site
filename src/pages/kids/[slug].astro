@@ -1193,23 +1193,44 @@ const planOrientation = (() => {
         });
       }
 
-      /* ── Scroll-spy ── */
+      /* ── Scroll-spy ──
+         The current chapter is the last one whose top has passed a line 30%
+         down the screen. At the bottom of the page it is the last chapter on
+         screen: Partners is short and sits near the end, so it can never climb
+         to that line, and a link to #chapter-partners used to light up Gallery. */
       let clickScrolling = false;
-      _chapterObserver = new IntersectionObserver((entries) => {
+      let spyId = firstActive?.dataset.target || '';
+      const spy = () => {
         if (clickScrolling) return;
-        for (const e of entries) {
-          if (e.isIntersecting && e.target.id) {
-            activate(e.target.id);
-            break;
-          }
-        }
-      }, { rootMargin: '-25% 0px -65% 0px' });
-      chapterSections.forEach(t => { if (t.id) _chapterObserver!.observe(t); });
+        const line = innerHeight * 0.3;
+        const atEnd = innerHeight + scrollY >= document.documentElement.scrollHeight - 4;
+        let id = '';
+        chapterSections.forEach(s => {
+          if (!s.id) return;
+          const top = s.getBoundingClientRect().top;
+          if (top <= line || (atEnd && top < innerHeight)) id = s.id;
+        });
+        if (id && id !== spyId) { spyId = id; activate(id); }
+      };
+      let spyRaf = 0;
+      const onSpyScroll = () => { if (!spyRaf) spyRaf = requestAnimationFrame(() => { spyRaf = 0; spy(); }); };
+      window.addEventListener('scroll', onSpyScroll, { passive: true });
+      (_cleanupFns as (() => void)[]).push(() => { window.removeEventListener('scroll', onSpyScroll); if (spyRaf) cancelAnimationFrame(spyRaf); });
+      spy();
 
       /* ── Scroll offset ── */
       function getOffset() {
         const headerH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 84;
         return headerH + chapterNav.offsetHeight - 2;
+      }
+
+      /* ── Arriving on a chapter link (/kids/max/#chapter-partners) ──
+         Chrome sometimes drops the jump on a fresh load and leaves the page at
+         the top (seen on short pages at desktop width, live too). If we are
+         still at the top, make the jump ourselves. */
+      const hashTarget = location.hash.length > 1 ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
+      if (hashTarget?.matches('[data-chapter]') && hashTarget.id !== 'chapter-meet' && window.scrollY === 0) {
+        window.scrollTo({ top: hashTarget.getBoundingClientRect().top - getOffset(), behavior: 'auto' });
       }
 
       /* ── Click ── */
@@ -1220,7 +1241,8 @@ const planOrientation = (() => {
           if (!section) return;
           e.preventDefault();
           clickScrolling = true;
-          activate(link.dataset.target || section.id);
+          spyId = link.dataset.target || section.id;
+          activate(spyId);
           const top = section.getBoundingClientRect().top + window.scrollY - getOffset();
           window.scrollTo({ top, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
           setTimeout(() => { clickScrolling = false; }, prefersReducedMotion ? 100 : 800);

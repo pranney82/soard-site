@@ -16,6 +16,8 @@
  *     keyboard and the pointer
  *   - the rooms-per-year columns add up to the rooms-built total and the
  *     featured project's year is the highlighted column; hovering shows a tip
+ *   - the materials list checks off its three lines, carries no logo wall, and
+ *     "See who" lands on the featured room's Partners section
  *   - the reveal video loads its player on click
  *   - with reduced motion, chapters are visible at once and jumps are instant
  *   - hover never drops a control's text under WCAG contrast
@@ -104,7 +106,7 @@ async function clickRail(page, id) {
 async function checkWidth(name, width, height, mobile) {
   console.log(`\n${name} (${width}×${height})`);
   const { page, errors } = await open(width, height, { mobile });
-  const ids = ['apply', 'design', 'crew', 'build', 'reveal', 'scale'];
+  const ids = ['apply', 'design', 'source', 'build', 'reveal', 'scale'];
 
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: nothing wider than the screen`);
 
@@ -282,6 +284,27 @@ async function checkWidth(name, width, height, mobile) {
   }
 
   // Video facade loads the player
+  // Source: one designed materials list, checked off line by line; no logo wall
+  await page.$eval('.mlist', (el) => el.scrollIntoView({ block: 'center' }));
+  await sleep(2000);
+  const ml = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.mlist__row')];
+    const r = document.querySelector('.mlist').getBoundingClientRect();
+    return {
+      rows: rows.length,
+      ticked: rows.filter((row) => parseFloat(getComputedStyle(row.querySelector('.mlist__tick')).strokeDashoffset) === 0).length,
+      chips: rows.map((row) => row.querySelector('.mlist__how').textContent.trim()),
+      imgs: document.querySelectorAll('#source img').length,
+      fits: r.left >= 0 && r.right <= innerWidth,
+      href: document.querySelector('.mlist__foot')?.getAttribute('href') || '',
+    };
+  });
+  ok(ml.rows === 3 && ml.ticked === 3, `${name}: the materials list checks off all ${ml.rows} lines as it comes into view (${ml.ticked} ticked)`);
+  ok(ml.imgs === 0, `${name}: the sourcing chapter has no logo wall (${ml.imgs} images)`);
+  ok(ml.fits, `${name}: the materials list fits the screen`);
+  ok(/^\/kids\/[^/]+\/#chapter-partners$/.test(ml.href), `${name}: "See who" points at the room's partners (${ml.href})`);
+  await shot(page, `${name}-materials-list`);
+
   await page.$eval('#video-facade', (el) => el.scrollIntoView({ block: 'center' }));
   await sleep(400);
   await page.click('#video-facade');
@@ -291,7 +314,7 @@ async function checkWidth(name, width, height, mobile) {
   // Full-page look at rest
   await page.evaluate(() => scrollTo(0, 0));
   await sleep(300);
-  for (const id of ['apply', 'design', 'crew', 'build', 'reveal', 'scale']) {
+  for (const id of ['apply', 'design', 'source', 'build', 'reveal', 'scale']) {
     await page.$eval(`#${id}`, (el) => el.scrollIntoView({ block: 'start' }));
     await sleep(1300);
     await shot(page, `${name}-${id}`);
@@ -304,18 +327,37 @@ async function checkWidth(name, width, height, mobile) {
   await page.close();
 }
 
+async function checkSeeWho(width, height, mobile) {
+  const { page } = await open(width, height, { mobile });
+  const href = await page.$eval('.mlist__foot', (a) => a.getAttribute('href'));
+  await page.$eval('.mlist__foot', (a) => a.scrollIntoView({ block: 'center' }));
+  await sleep(300);
+  await Promise.all([page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }), page.click('.mlist__foot')]);
+  await sleep(1500);
+  const land = await page.evaluate(() => {
+    const sec = document.getElementById('chapter-partners');
+    const header = document.querySelector('.site-header')?.getBoundingClientRect().bottom || 0;
+    const tab = document.querySelector('.chapter-nav__link.is-active');
+    return sec ? { top: Math.round(sec.getBoundingClientRect().top - header), logos: sec.querySelectorAll('img').length, tab: tab?.dataset.target || '', path: location.pathname + location.hash } : null;
+  });
+  ok(land && land.top >= -10 && land.top < height * 0.5 && land.logos > 0, `${width}px: "See who" (${href}) lands on the room's partners with their logos (${JSON.stringify(land)})`);
+  ok(land?.tab === 'chapter-partners', `${width}px: the kid page's chapter bar says Partners on arrival (${land?.tab})`);
+  await shot(page, `see-who-${width}`);
+  await page.close();
+}
+
 async function checkReduced() {
   console.log('\nreduced motion (1440×900)');
   const { page, errors } = await open(1440, 900, { reduced: true });
-  await page.$eval('#crew', (el) => el.scrollIntoView({ block: 'start' }));
+  await page.$eval('#source', (el) => el.scrollIntoView({ block: 'start' }));
   await sleep(80);
   const vis = await page.evaluate(() => {
-    const head = document.querySelector('#crew .chapter__head');
+    const head = document.querySelector('#source .chapter__head');
     const h2 = head.querySelector('h2');
-    const logo = document.querySelector('#crew .crew__logo');
-    return { h2Clip: getComputedStyle(h2).clipPath, h2Op: getComputedStyle(h2).opacity, logoOp: getComputedStyle(logo).opacity, numOp: getComputedStyle(head.querySelector('.chapter__num')).opacity };
+    const ticks = [...document.querySelectorAll('#source .mlist__tick')];
+    return { h2Clip: getComputedStyle(h2).clipPath, h2Op: getComputedStyle(h2).opacity, listOp: getComputedStyle(document.querySelector('.mlist')).opacity, ticked: ticks.length > 0 && ticks.every((t) => parseFloat(getComputedStyle(t).strokeDashoffset) === 0), numOp: getComputedStyle(head.querySelector('.chapter__num')).opacity };
   });
-  ok(!/100%/.test(vis.h2Clip) && vis.h2Op === '1' && vis.numOp === '1' && vis.logoOp === '1', `reduced: chapter content is visible at once (${JSON.stringify(vis)})`);
+  ok(!/100%/.test(vis.h2Clip) && vis.h2Op === '1' && vis.numOp === '1' && vis.listOp === '1' && vis.ticked, `reduced: chapter content is visible at once, the list already checked off (${JSON.stringify(vis)})`);
   await page.evaluate(() => scrollTo(0, 0));
   await page.click('[data-rail="reveal"]').catch(async () => { await page.click('[data-jump="apply"]'); });
   await sleep(120);
@@ -333,6 +375,8 @@ try {
   await checkWidth('tablet', 900, 800, false);
   await checkWidth('phone', 390, 844, true);
   await checkReduced();
+  await checkSeeWho(1440, 900, false);
+  await checkSeeWho(390, 844, true);
 } catch (e) {
   failures.push(`crashed: ${e.stack || e}`);
   console.error(e);
