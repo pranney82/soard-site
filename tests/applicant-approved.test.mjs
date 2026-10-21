@@ -50,7 +50,8 @@ function withJobs(inner) {
       if (rest.createJob) {
         const input = rest.createJob.$;
         state.jobCalls.push({ grantKey: $.grantKey, input });
-        if (state.deny.has($.grantKey)) return new Response('{"errors":["This grant may not create jobs"]}', { status: 403 });
+        // JobTread's refusal wording isn't something to match on: any 4xx means nothing was made
+        if (state.deny.has($.grantKey)) return new Response('{"errors":["You can’t do that in this organization"]}', { status: 400 });
         if (state.fail > 0) { state.fail--; return new Response('busy', { status: 500 }); }
         if (input.name.length > 30) return new Response('name too long', { status: 400 });
         const owner = Object.values(w.world.accounts).find(a => a.locations.some(l => l.id === input.locationId));
@@ -238,6 +239,7 @@ test('paused for a cleanup: nothing until staff decide; "Don’t send" still mak
   await change(a, 'Approved', T0);
   const [r] = await sweep(T0 + 40 * MIN);
   assert.equal(r.paused, true);
+  assert.equal((await approvalsStatus(env.DB)).lastRun.paused, true, 'Site → Automations still sees it running');
   assert.equal(jt.state.jobCalls.length, 0);
   await resolveHeld(env, { send: false, user: 'Peter', fetchImpl, now: T0 + 50 * MIN });
   await sweep(T0 + 52 * MIN);
@@ -343,10 +345,12 @@ test('a grant JobTread refuses falls back to the site’s; a busy JobTread is re
   assert.equal(a.jobs.length, 1);
 
   const b = family('Lena Fox', 'In Review');
+  jt.state.deny.clear();
   jt.state.fail = 1;
   await change(b, 'Approved', T0 + 60 * MIN);
   await sweep(...minutes(90, 100));
   assert.equal(b.jobs.length, 0, 'the first try failed');
+  assert.equal(jt.state.jobCalls.filter(c => c.input.name === 'Lena Fox (2027)').length, 1, 'a 5xx might have made the job: no second grant tries right away');
   await sweep(...minutes(102, 110));
   assert.equal(b.jobs.length, 1, 'the retry five minutes later made it');
   assert.equal(w.world.slack.filter(s => /not made yet/.test(s.text || '')).length, 0, 'one hiccup is no Slack problem');

@@ -23,6 +23,8 @@ import { logAudit, diffJson, getEntityName } from './_audit.js';
 import { refreshForBoardChange } from './_reveal-invites.js';
 import { getsRevealInvites } from './_team.js';
 import { HISTORY_TABLES, SITE_COLLECTION, recordVersion as recordContentVersion } from './_content-history.js';
+import { coverOf } from './_job-covers.js';
+import { syncCoverForKid } from './_kid-status.js';
 
 export async function onRequestPost(context) {
   try {
@@ -149,6 +151,8 @@ export async function onRequestPost(context) {
 
     // Joining or leaving the board changes who confirmed reveal invites reach: follow it now
     if (parsed.table === 'team' && getsRevealInvites(oldData) !== getsRevealInvites(data)) context.waitUntil(refreshForBoardChange(context.env));
+    // A kid's best photo is their JobTread job's cover: new family photos go up now, not at the hourly sync
+    if (parsed.table === 'kids' && coverOf(data) && coverOf(oldData)?.source !== coverOf(data).source) context.waitUntil(syncCoverForKid(context.env, parsed.slug));
 
     return Response.json({
       success: true,

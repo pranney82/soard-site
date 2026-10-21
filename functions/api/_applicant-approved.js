@@ -289,8 +289,9 @@ async function createJob(env, { locationId, name, types }, fetchImpl) {
       last = new Error('JobTread didn’t return the new job');
     } catch (e) {
       last = e;
-      // Only a refusal for this grant is worth trying the next one; anything else would just repeat
-      if (!/\b(401|403)\b|permission|not allowed|unauthori/i.test(e.message)) break;
+      // JobTread refused this grant's request (4xx), so nothing was made: the next grant may do it.
+      // A 5xx or a lost answer might have made the job; the next run finds it rather than making two.
+      if (!/JobTread returned 4\d\d/.test(e.message)) break;
     }
   }
   throw last;
@@ -532,7 +533,11 @@ export async function runApprovals(env, { fetchImpl = fetch, now = Date.now(), l
     await ensureApprovalSchema(DB);
     await ensureNotifySchema(DB);
     const launch = await launchAt(DB, now);
-    if ((await pauseState(DB, now)).active) return { ...out, paused: true };
+    if ((await pauseState(DB, now)).active) {
+      // Statuses may be moving for a cleanup: nothing is made, but it did run (Site → Automations)
+      await setState(DB, 'lastRun', { at: iso(now), made: 0, waiting: 0, paused: true }, now);
+      return { ...out, paused: true };
+    }
     await dropUnapproved(env, now);
     const due = await dueFamilies(DB, { launch, settledBy: now - (await decisionWaitMs(env)), now, limit });
     for (const f of due) {

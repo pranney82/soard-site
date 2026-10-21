@@ -8,8 +8,11 @@
  *   - A job made when a family is approved (./_applicant-approved.js) starts
  *     with the child's photo from their application (the "Child Name.jpg"
  *     file the form attached to the account).
- *   - Once the kid's profile has a Main photo (Admin → Kids), that's the
- *     cover, and it follows when staff change the Main photo. The first run
+ *   - Once the kid's profile has photos (Admin → Kids; the family photos are
+ *     usually taken after the job exists), the best one is the cover: the
+ *     Main photo, else the gallery's first. It goes up as soon as the profile
+ *     is saved (./save-content.js), follows every change of Main photo or its
+ *     focal point, and the hourly sync catches anything missed. The first run
  *     does this for every job already linked to a profile.
  *
  * A cover is only set when the photo behind it changes (job_covers remembers
@@ -31,17 +34,18 @@ const iso = (t = Date.now()) => new Date(t).toISOString();
  * The profile's Main photo as a cover, or null: { source, url }. `source`
  * names the photo and its focal point, so moving the focal point counts as a
  * change; `url` is a 3:2 crop the size JobTread shows, centered the way the
- * site centers it.
+ * site centers it, always a JPEG (a fetcher that accepts AVIF would get AVIF).
  */
 export function coverOf(kid) {
-  const hero = kid?.heroImage;
+  // The best photo: the Main photo staff picked (top of the page, the Meet the Kids card), else the gallery's first
+  const hero = kid?.heroImage || kid?.photos?.find((p) => p?.url)?.url;
   const id = hero ? cfImageId(hero) : null;
   if (!id) return null;
   const photo = (kid.photos || []).find((p) => p?.url && cfImageId(p.url) === id);
   const gravity = focusGravity(photo);
   return {
     source: `photo:${id}@${gravity}`,
-    url: `${SITE}/cdn-cgi/imagedelivery/${CF_HASH}/${id.split('/').map(encodeURIComponent).join('/')}/w=1500,h=1000,fit=cover,gravity=${gravity},q=85`,
+    url: `${SITE}/cdn-cgi/imagedelivery/${CF_HASH}/${id.split('/').map(encodeURIComponent).join('/')}/w=1500,h=1000,fit=cover,gravity=${gravity},q=85,format=jpeg`,
   };
 }
 

@@ -264,6 +264,26 @@ export async function syncKidStatuses(env, { jobId = null, fetchImpl = fetch, no
   }
 }
 
+/**
+ * One kid's job cover right after an admin save, so new family photos reach
+ * JobTread now rather than at the hourly sweep (./_job-covers.js). Never throws.
+ */
+export async function syncCoverForKid(env, slug, { fetchImpl = fetch, now = Date.now() } = {}) {
+  try {
+    if (!env.DB || !env.JOBTREAD_GRANT_KEY) return [];
+    const kids = await loadAllKids(env.DB);
+    const kid = kids.find((k) => k.slug === slug);
+    if (!kid) return [];
+    // A profile that names its job needs only that job; otherwise match it like the sweep does
+    const jobs = await fetchJobs(env.JOBTREAD_GRANT_KEY, { jobId: kid.data?.jobtreadJobId || null, fetchImpl });
+    const job = linkJobs(jobs, kids).get(slug);
+    return job ? await syncJobCovers(env, new Map([[slug, job]]), kids, { fetchImpl, now }) : [];
+  } catch (err) {
+    console.error('[kid-status] cover', err.message);
+    return [];
+  }
+}
+
 /** The hourly safety sweep (and a deploy the cooldown held back). Never throws. */
 export async function maybeSyncKidStatuses(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   try {

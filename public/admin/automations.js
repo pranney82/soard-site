@@ -240,9 +240,9 @@ const MAP = { t: 'SOARD', children: [
             return ON(`${k.changed ? `The last check changed ${plural(k.changed, 'kid')}.` : 'Every linked kid matches JobTread.'}${hidden}`, k.lastRunAt);
           } },
         { t: 'Kid photo as the job’s cover', s: 'live', k: 'schedule',
-          when: 'With the kid status sync: JobTread’s workflows for one job, the hourly sweep for all of them.',
-          does: 'Puts each kid’s Main photo (Admin → Kids) on their JobTread job as its cover photo, cropped around the face or the focal point, and changes it when the Main photo changes. A job made when a family is approved starts with the child’s photo from their application.',
-          touches: ['JobTread'], where: 'functions/api/_job-covers.js (from _kid-status.js and _applicant-approved.js)',
+          when: 'As soon as a kid’s profile is saved with a new best photo, and with the kid status sync (JobTread’s workflows for one job, the hourly sweep for all of them) as the safety net.',
+          does: 'Puts each kid’s best photo on their JobTread job as its cover: the profile’s Main photo, else the gallery’s first, cropped around the face or the focal point. A job made when a family is approved starts with the child’s photo from their application, and the family photos replace it once they’re on the profile, usually after the job exists.',
+          touches: ['JobTread'], where: 'functions/api/_job-covers.js (from save-content.js, _kid-status.js and _applicant-approved.js)',
           info: 'Replaces the Google Street View picture of the house that DataX used to add (Peter turned that off in DataX on Oct 20, 2026). A cover only changes when the kid’s photo does, so one picked by hand in JobTread stays until then. A few jobs per run.',
           live: (f) => {
             const c = f.covers;

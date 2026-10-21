@@ -8,7 +8,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { coverOf, syncJobCovers, coverFacts, applicationPhotoFile } from '../functions/api/_job-covers.js';
-import { syncKidStatuses, FIELD_STATUS } from '../functions/api/_kid-status.js';
+import { syncKidStatuses, syncCoverForKid, FIELD_STATUS } from '../functions/api/_kid-status.js';
 
 const HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 const photo = (id) => `https://imagedelivery.net/${HASH}/${id}/public`;
@@ -29,6 +29,7 @@ async function jt(url, init) {
     return Response.json({ updateJob: {} });
   }
   if (rest.organization?.jobs) return Response.json({ organization: { jobs: { nodes: JOBS, nextPage: null } } });
+  if (rest.job) return Response.json({ job: JOBS.find((j) => j.id === rest.job.$.id) || null });
   throw new Error(`unexpected JobTread call: ${Object.keys(rest)}`);
 }
 let JOBS = [];
@@ -44,12 +45,13 @@ const kidRow = (slug, data) => env.DB.prepare('INSERT INTO kids (slug, name, yea
 
 test('the cover is the profile’s Main photo, cropped to 3:2 around the face or the focal point', () => {
   const plain = coverOf({ heroImage: photo('kids/ava/hero.jpg'), photos: [{ url: photo('kids/ava/hero.jpg') }] });
-  assert.equal(plain.url, `https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/${HASH}/kids/ava/hero.jpg/w=1500,h=1000,fit=cover,gravity=face,q=85`);
+  assert.equal(plain.url, `https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/${HASH}/kids/ava/hero.jpg/w=1500,h=1000,fit=cover,gravity=face,q=85,format=jpeg`);
   assert.equal(plain.source, 'photo:kids/ava/hero.jpg@face');
   const focused = coverOf({ heroImage: photo('kids/ava/hero.jpg'), photos: [{ url: photo('kids/ava/hero.jpg'), focus: { x: 0.42, y: 0.31 } }] });
   assert.match(focused.url, /gravity=0\.42x0\.31/, 'the focal point set in the admin');
   assert.notEqual(focused.source, plain.source, 'moving the focal point is a new cover');
-  assert.equal(coverOf({ heroImage: '' }), null, 'no Main photo, no cover');
+  assert.equal(coverOf({ heroImage: '', photos: [] }), null, 'no photos, no cover');
+  assert.equal(coverOf({ heroImage: '', photos: [{ url: photo('kids/ava/g1.jpg') }, { url: photo('kids/ava/g2.jpg') }] }).source, 'photo:kids/ava/g1.jpg@face', 'no Main photo picked yet: the gallery’s first');
   assert.equal(coverOf({ heroImage: 'https://example.com/a.jpg' }), null, 'only the site’s own photos');
   assert.equal(coverOf(null), null);
 });
@@ -57,7 +59,7 @@ test('the cover is the profile’s Main photo, cropped to 3:2 around the face or
 test('set once per photo, again when the Main photo changes, and retried if JobTread can’t take it', async () => {
   const kids = [
     { slug: 'ava', data: { heroImage: photo('kids/ava/1.jpg') } },
-    { slug: 'ben', data: { heroImage: '' } },
+    { slug: 'ben', data: { heroImage: '', photos: [] } },
   ];
   const links = new Map([['ava', { id: 'J1' }], ['ben', { id: 'J2' }]]);
   assert.deepEqual(await syncJobCovers(env, links, kids, { fetchImpl: jt, now: T0 }), [{ slug: 'ava', jobId: 'J1' }]);
@@ -103,4 +105,44 @@ test('the application’s child photo: the file the form attached to the account
   await env.DB.prepare('INSERT INTO applications VALUES (?, ?, ?, ?)').bind('app1', 'acct1', JSON.stringify({ files: { photoChild: { id: 'FILE1' }, photoFamily: { id: 'FILE2' } } }), '{}').run();
   assert.equal(await applicationPhotoFile(env.DB, 'acct1'), 'FILE1');
   assert.equal(await applicationPhotoFile(env.DB, 'acct2'), null, 'a family who didn’t apply on the site');
+});
+
+test('family photos uploaded after the job exists: the save puts the best one on the job now', async () => {
+  // Made at approval: no photos yet, linked to its job
+  await kidRow('ava', { name: 'Ava', year: 2027, heroImage: '', photos: [], jobtreadJobId: 'JAVA' });
+  JOBS = [job('JAVA', 'Ava Stone (2027)', 'On Site')];
+  assert.deepEqual(await syncCoverForKid(env, 'ava', { fetchImpl: jt, now: T0 }), [], 'no photos yet: the application photo stays');
+  // The photographer's set goes up and staff pick the Main photo
+  await env.DB.prepare('UPDATE kids SET data = ? WHERE slug = ?').bind(JSON.stringify({ slug: 'ava', name: 'Ava', year: 2027, jobtreadJobId: 'JAVA', heroImage: photo('kids/ava/family-3.jpg'), photos: [{ url: photo('kids/ava/family-1.jpg') }, { url: photo('kids/ava/family-3.jpg'), focus: { x: 0.5, y: 0.25 } }] }), 'ava').run();
+  assert.deepEqual(await syncCoverForKid(env, 'ava', { fetchImpl: jt, now: T0 + 1 }), [{ slug: 'ava', jobId: 'JAVA' }]);
+  const up = calls.find((c) => c.op === 'upload');
+  assert.match(up.url, /kids\/ava\/family-3\.jpg\/w=1500,h=1000,fit=cover,gravity=0\.5x0\.25,q=85,format=jpeg/, 'the Main photo, around its focal point');
+  assert.equal(calls.find((c) => c.op === 'cover').jobId, 'JAVA');
+  // Saving again without a photo change does nothing
+  calls = [];
+  assert.deepEqual(await syncCoverForKid(env, 'ava', { fetchImpl: jt, now: T0 + 2 }), []);
+  assert.equal(calls.filter((c) => c.op !== 'jobs').length, 0);
+});
+
+test('the admin save puts a new best photo on the job, and leaves JobTread alone otherwise', async () => {
+  const { onRequestPost } = await import('../functions/api/save-content.js');
+  await kidRow('ben', { name: 'Ben', year: 2027, heroImage: '', photos: [], jobtreadJobId: 'JBEN', bio: '' });
+  JOBS = [job('JBEN', 'Ben Ray (2027)', 'Awaiting Funding')];
+  globalThis.fetch = jt;
+  const save = async (data) => {
+    const waits = [];
+    const res = await onRequestPost({
+      env, data: { userEmail: 'linzi@soardcharity.com' }, waitUntil: (p) => waits.push(p),
+      request: new Request('https://x/api/save-content', { method: 'POST', body: JSON.stringify({ path: 'src/content/kids/ben.json', content: JSON.stringify(data, null, 2), message: 'Edit kid: Ben' }) }),
+    });
+    await Promise.all(waits);
+    return { ok: (await res.json()).success, waits: waits.length };
+  };
+  const base = { name: 'Ben', slug: 'ben', year: 2027, jobtreadJobId: 'JBEN', photos: [] };
+  assert.deepEqual(await save({ ...base, heroImage: '', bio: '<p>Ben loves trains.</p>' }), { ok: true, waits: 0 }, 'a story edit: nothing for JobTread');
+  const withPhotos = { ...base, heroImage: photo('kids/ben/fam-2.jpg'), photos: [{ url: photo('kids/ben/fam-1.jpg') }, { url: photo('kids/ben/fam-2.jpg') }] };
+  assert.deepEqual(await save(withPhotos), { ok: true, waits: 1 }, 'the family photos went up');
+  assert.deepEqual(calls.filter((c) => c.op === 'cover').map((c) => c.jobId), ['JBEN']);
+  assert.match(calls.find((c) => c.op === 'upload').url, /kids\/ben\/fam-2\.jpg/, 'the Main photo, not the first one');
+  assert.deepEqual(await save({ ...withPhotos, bio: '<p>Ben loves trains and buses.</p>' }), { ok: true, waits: 0 }, 'same photo: nothing again');
 });
