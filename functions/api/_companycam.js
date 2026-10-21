@@ -157,6 +157,9 @@ export const listWebhooks = (env, o = {}) => ccAll(env, '/webhooks', { max: 100,
 export const createWebhook = async (env, webhook, o) => (await cc(env, 'POST', '/webhooks', { ...o, body: { webhook } })).data;
 export const updateWebhook = async (env, webhookId, webhook, o) => (await cc(env, 'PATCH', `/webhooks/${id(webhookId)}`, { ...o, body: { webhook } })).data;
 export const deleteWebhook = (env, webhookId, o) => cc(env, 'DELETE', `/webhooks/${id(webhookId)}`, o);
+/** What CompanyCam sent to a webhook (newest first): event, resource, success, the site's answer */
+export const webhookDeliveries = async (env, webhookId, { since = null, limit = 20, fetchImpl = fetch } = {}) =>
+  (await cc(env, 'GET', `/webhooks/${id(webhookId)}/deliveries`, { query: { limit, created_after: since }, fetchImpl })).data || [];
 
 async function hmac(algo, key, message, encoding) {
   const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: algo }, false, ['sign']);

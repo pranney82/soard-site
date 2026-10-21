@@ -144,7 +144,7 @@ async function companycam(url, init) {
     const p = body.project;
     // CompanyCam's own rule: the same name at the same address is the project it already has
     const same = [...w.cc.projects.values()].find((x) => x.name === p.name && streetKey(x.address?.street_address_1) === streetKey(p.street_address_1));
-    if (same) { same.archived = false; return one(projectOut(same), 200); }
+    if (same) return one(projectOut(same), 200); // as it is, archived or not
     const id = ccId();
     const proj = { id, name: p.name, status: 'active', archived: false, address: { street_address_1: p.street_address_1, city: p.city, state: p.state, postal_code: p.postal_code, country: p.country }, coordinates: p.coordinates, primary_contact: p.primary_contact || null, description: null, created_at: new Date(w.now).toISOString(), updated_at: new Date(w.now).toISOString(), project_url: `https://app.companycam.com/projects/${id}` };
     w.cc.projects.set(id, proj);
@@ -207,6 +207,7 @@ async function companycam(url, init) {
     w.cc.webhooks.set(id, { id, enabled: true, ...body.webhook });
     return one(w.cc.webhooks.get(id), 201);
   }
+  if ((m = path.match(/^\/webhooks\/(\d+)\/deliveries$/)) && method === 'GET') return page(w.cc.deliveries || []);
   if ((m = path.match(/^\/webhooks\/(\d+)$/))) {
     if (method === 'DELETE') { w.cc.webhooks.delete(m[1]); return new Response(null, { status: 204 }); }
     const { enabled, ...rest } = body.webhook;
@@ -707,17 +708,23 @@ test('the one-time check: copy, update, link and move, on test things at the off
   assert.equal([...w.cc.projects.values()].filter((p) => p.name.startsWith('TEST CompanyCam check')).length, 1);
 });
 
-test('the one-time check fails clearly when the webhook never comes, and still tidies up', async () => {
+test('the one-time check without CompanyCam’s webhook: the 10-minute check carries it, and the result says so', async () => {
   await env.DB.prepare("DELETE FROM companycam_state WHERE key = 'self-test'").run();
   w.accounts.set(OFFICE_ACCOUNT, { id: OFFICE_ACCOUNT, name: 'Sunshine Office', home: { street: '1 Office Park', city: 'Sampleton', state: 'GA', postal: '30001' }, contact: null, types: [] });
-  await run(0);
-  await run(10);
-  await run(21);
-  const facts = (await companycamFacts(env)).selfTest;
-  assert.equal(facts.ok, false);
-  assert.match(facts.error, /webhook never brought the photo/);
+  for (let m = 0; m <= 60; m += 1) {
+    await run(m);
+    const job = [...w.jobs.values()].find((j) => j.name === 'TEST CompanyCam check');
+    if (job) jobtreadImports(job.id);
+  }
+  const st = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_state WHERE key = 'self-test'").first('value'));
+  assert.equal(st.step, 'done');
+  assert.equal(st.ok, false, 'not proven without the webhook');
+  assert.match(st.warn, /webhook didn’t bring the photo; the 10-minute check did/);
+  assert.equal(st.copied.byWebhook, false);
+  assert.equal(st.updated.via, 'catch-up');
+  assert.equal(st.updated.caption, true, 'the caption still followed');
   assert.equal([...w.cc.projects.values()].find((p) => p.name.startsWith('TEST CompanyCam check')).archived, true);
-  assert.equal([...w.jobs.values()].length, 0, 'no TEST job without a copied photo');
+  assert.deepEqual(customerFiles(w.accounts.get(OFFICE_ACCOUNT)), []);
 });
 
 test('in review with their makeover’s job already open (a status nobody moved on): no home-visit project', async () => {
@@ -767,4 +774,27 @@ test('a newer check tidies an earlier one still under way before it starts', asy
   assert.equal(w.files.has('oldcopy'), false);
   await run(1);
   assert.ok([...w.cc.projects.values()].some((p) => p.name === `TEST CompanyCam check ${SELF_TEST}`), 'then the new one starts');
+});
+
+test('a project CompanyCam hands back archived (same name, this visit) is opened again before it’s used', async () => {
+  const a = await family('acct19', 'Sam Ray', 'In Review', { appPhotos: false });
+  w.cc.projects.set('980', { id: '980', name: 'Sam Ray (2027)', status: 'active', archived: true, address: { street_address_1: HOME.street }, created_at: new Date(at(-2 * 24 * 60)).toISOString(), updated_at: new Date(at(-60)).toISOString(), project_url: 'https://app.companycam.com/projects/980' });
+  await run(0);
+  const row = await getFamilyRow(env.DB, a.id);
+  assert.equal(row.project_id, '980');
+  assert.equal(w.cc.projects.get('980').archived, false, 'an archived project sends no webhooks');
+});
+
+test('the one-time check keeps what CompanyCam sent it, for reading the result', async () => {
+  await env.DB.prepare("DELETE FROM companycam_state WHERE key = 'self-test'").run();
+  w.accounts.set(OFFICE_ACCOUNT, { id: OFFICE_ACCOUNT, name: 'Sunshine Office', home: { street: '1 Office Park', city: 'Sampleton', state: 'GA', postal: '30001' }, contact: null, types: [] });
+  w.cc.deliveries = [{ id: 'd1', event: 'photo.created', resource_id: '1', success: true, response_status: 200, created_at: new Date(T0).toISOString() }];
+  for (let m = 0; m <= 60; m += 1) {
+    await run(m);
+    const job = [...w.jobs.values()].find((j) => j.name === 'TEST CompanyCam check');
+    if (job) jobtreadImports(job.id);
+  }
+  const st = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_state WHERE key = 'self-test'").first('value'));
+  assert.equal(st.step, 'done');
+  assert.deepEqual(st.deliveries, [{ event: 'photo.created', id: '1', ok: true, status: 200, at: new Date(T0).toISOString() }]);
 });

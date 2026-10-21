@@ -63,7 +63,7 @@ import {
   companycamOn, CompanyCamError, getProject, searchProjects, createProject, archiveProject, unarchiveProject,
   setProjectDescription, addProjectLabels, removeProjectLabel, projectUrl, projectPhotos, projectDocuments,
   getPhoto, getDocument, photoImageUrl, markupText, uploadPhoto, listWebhooks, createWebhook, updateWebhook,
-  deleteWebhook, webhookToken, setPhotoDescription, addPhotoTags, listTags,
+  deleteWebhook, webhookToken, setPhotoDescription, addPhotoTags, listTags, webhookDeliveries,
 } from './_companycam.js';
 
 const MIN = 60 * 1000;
@@ -504,6 +504,8 @@ async function findOrMakeProject(env, fam, { fetchImpl, now }) {
     if (project?.id && existed(project) && !thisVisit(project)) throw new Error('CompanyCam keeps answering with an older project at this address');
   }
   if (!project?.id) throw new Error('CompanyCam didn’t make the project');
+  // An archived one sends no webhooks: open it again first
+  if (project.archived) { await unarchiveProject(env, project.id, { fetchImpl }); project = { ...project, archived: false }; }
   return { project, how: existed(project) ? 'adopted' : 'made' };
 }
 
@@ -1018,7 +1020,7 @@ export async function maybeRunCompanyCam(env, { fetchImpl = fetch, now = Date.no
       out.files.push(await processFile(env, r.cc_id, { fetchImpl, now }));
     }
 
-    const { results: stale } = await DB.prepare("SELECT * FROM companycam_projects WHERE stage IN ('customer', 'separate') AND COALESCE(checked_at, 0) <= ? ORDER BY checked_at LIMIT ?")
+    const { results: stale } = await DB.prepare("SELECT * FROM companycam_projects WHERE stage IN ('customer', 'separate', 'selftest') AND COALESCE(checked_at, 0) <= ? ORDER BY checked_at LIMIT ?")
       .bind(now - RECONCILE_EVERY_MS, PER_TICK.reconcile).all();
     for (const row of stale || []) {
       if (Date.now() > deadline) break;
@@ -1124,6 +1126,7 @@ async function selfTestStart(env, st, { fetchImpl, now }) {
   const project = await createProject(env, body, { fetchImpl });
   if (!project?.id) throw new Error('CompanyCam didn’t make the test project');
   const projectId = String(project.id);
+  if (project.archived) await unarchiveProject(env, projectId, { fetchImpl }); // last run's, archived: it sends no webhooks until it's open
   await saveFamily(DB, { account_id: OFFICE_ACCOUNT, project_id: projectId, project_url: project.project_url || projectUrl(projectId), name: body.name, stage: 'selftest', how: 'made', checked_at: now }, now);
   const next = { ...st, step: 'photo', projectId, locationId: office.locationId };
   await putState(DB, 'self-test', next, now); // the project exists: cleaned up even if the photo fails
@@ -1157,7 +1160,8 @@ async function selfTestPhoto(env, st, { fetchImpl, now }) {
   const ccTag = (await listTags(env, { fetchImpl })).find((t) => { const k = tagKey(t.display_value || t.value); return k && k !== tagKey(BEFORE_TAG) && tags.has(k); }) || null;
   await setPhotoDescription(env, st.photoId, SELF_TEST_CAPTION_2, { fetchImpl });
   if (ccTag) await addPhotoTags(env, st.photoId, [ccTag.display_value || ccTag.value], { fetchImpl });
-  const next = { ...st, step: 'update', copied, tag: ccTag ? { name: ccTag.display_value || ccTag.value, jtId: tags.get(tagKey(ccTag.display_value || ccTag.value)) } : null, updateAt: iso(now) };
+  const warn = copied.byWebhook ? null : 'CompanyCam’s webhook didn’t bring the photo; the 10-minute check did';
+  const next = { ...st, step: 'update', copied, ...(warn ? { warn } : {}), tag: ccTag ? { name: ccTag.display_value || ccTag.value, jtId: tags.get(tagKey(ccTag.display_value || ccTag.value)) } : null, updateAt: iso(now) };
   await putState(DB, 'self-test', next, now);
   return next;
 }
@@ -1166,12 +1170,14 @@ async function selfTestUpdate(env, st, { fetchImpl, now }) {
   const { DB } = env;
   const file = await jtFile(env, st.copied.fileId, fetchImpl);
   const fresh = await jt(env, { file: { $: { id: st.copied.fileId }, description: {} } }, fetchImpl).catch(() => null);
+  const seen = await getState(DB, 'webhook-seen');
   const updated = {
+    via: seen && Date.parse(seen.at) > Date.parse(st.updateAt) ? 'webhook' : 'catch-up',
     caption: String(fresh?.file?.description || '').startsWith(SELF_TEST_CAPTION_2),
     tag: st.tag ? tagIdsOf(file).includes(st.tag.jtId) : null,
     tagsKept: tagIdsOf(file).length > 0,
   };
-  if (!(updated.caption && updated.tag !== false) && now - Date.parse(st.updateAt) < 10 * MIN) return st; // its webhooks, or the 10-minute check
+  if (!(updated.caption && updated.tag !== false) && now - Date.parse(st.updateAt) < 12 * MIN) return st; // its webhooks, or the 10-minute check
   // The job, made with the project's id the way an approval makes it
   const out = await jt(env, { createJob: { $: { locationId: st.locationId, name: SELF_TEST_JOB, companycamId: st.projectId }, createdJob: { id: {} } } }, fetchImpl);
   const jobId = out?.createJob?.createdJob?.id;
@@ -1222,7 +1228,14 @@ async function finishSelfTest(env, st, { fetchImpl, now }) {
     await DB.prepare("DELETE FROM companycam_projects WHERE account_id = ? AND stage IN ('selftest', 'linked')").bind(OFFICE_ACCOUNT).run();
     await DB.prepare('DELETE FROM companycam_files WHERE account_id = ?').bind(OFFICE_ACCOUNT).run();
   });
-  const ok = !st.error && !!st.copied?.folder && !!st.copied?.beforeTag && !!st.updated?.caption && st.updated?.tag !== false
+  // What CompanyCam sent the site meanwhile, for anyone reading the result
+  let deliveries = null;
+  await tidy('deliveries', async () => {
+    const hook = await getState(DB, 'webhook');
+    if (hook?.id && st.startedAt) deliveries = (await webhookDeliveries(env, hook.id, { since: st.startedAt, limit: 20, fetchImpl })).map((d) => ({ event: d.event, id: d.resource_id, ok: d.success, status: d.response_status, at: d.created_at }));
+  });
+  st = { ...st, deliveries };
+  const ok = !st.error && !!st.copied?.byWebhook && !!st.copied?.folder && !!st.copied?.beforeTag && !!st.updated?.caption && st.updated?.tag !== false
     && !!st.job?.linkKept && !!st.job?.imported && !!st.moved?.ran && !!st.moved?.folder && !!st.moved?.beforeTag && !!st.moved?.customerCopyGone;
   const done = { ...st, step: 'done', ok, at: iso(now) };
   await putState(DB, 'self-test', done, now).catch(() => null);
