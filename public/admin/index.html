@@ -5519,6 +5519,13 @@
 
       useEffect(() => { loadTemplates(); }, []);
       useEffect(() => { if (emailTab === 'history') loadHistory(); }, [emailTab]);
+      // Broadcasts are sent in Kit: coming back to this tab shows the latest
+      useEffect(() => {
+        if (emailTab !== 'history') return;
+        const onBack = () => { if (document.visibilityState === 'visible') loadHistory(); };
+        document.addEventListener('visibilitychange', onBack);
+        return () => document.removeEventListener('visibilitychange', onBack);
+      }, [emailTab]);
 
       // Open / close editor — preview opens by default so editing is WYSIWYG
       const openEditor = (tpl) => {
@@ -5700,8 +5707,9 @@
       };
 
       const handleTestSend = async () => {
-        if (!testEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
-          addToast?.('Enter a valid test email address', 'error');
+        // Blank means me (the signed-in person); another address is optional
+        if (testEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
+          addToast?.('That isn’t an email address', 'error');
           return;
         }
         setSendingTest(true);
@@ -5710,10 +5718,10 @@
           const res = await fetch('/api/send-test-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...body, testEmail }),
+            body: JSON.stringify({ ...body, testEmail: testEmail || undefined }),
           });
           const data = await res.json();
-          if (data.ok) addToast?.(`Test sent to ${testEmail}`, 'success');
+          if (data.ok) addToast?.(`Sent to ${data.to}. Look for [TEST] in the subject.`, 'success');
           else addToast?.(data.error || 'Test send failed', 'error');
         } catch (e) {
           addToast?.(e.message || 'Test send failed', 'error');
@@ -5892,7 +5900,7 @@
               </div>
             </div>
             <div style="margin-top: 0.75rem; text-align: right;">
-              <button class="btn btn-sm btn-ghost" onClick=${loadHistory} disabled=${historyLoading}>${historyLoading ? html`<div class="spinner spinner-12" />` : 'Refresh'}</button>
+              ${historyLoading ? html`<div class="spinner spinner-12" />` : html`<span class="text-sm text-muted">Updates when you come back from Kit</span>`}
             </div>
           `}
         ` : html`
@@ -5970,17 +5978,17 @@
         <div class="email-editor-grid" style="display: grid; grid-template-columns: ${showPreview ? '420px 1fr' : '1fr'}; gap: 1.5rem; align-items: start;">
           <div class="card" style="padding: 1.5rem;">
             <div style="margin-bottom: 1rem; padding: 0.85rem 1rem; border: 1px dashed var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-secondary);">
-              <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); margin-bottom: 0.5rem;">Send a Test</div>
+              <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); margin-bottom: 0.5rem;">See it in your inbox</div>
               <div class="u-row">
-                <input class="form-input" type="email" placeholder="you@example.com"
+                <input class="form-input" type="email" placeholder="Your inbox, or another address" aria-label="Send it to (blank for you)"
                   value=${testEmail} onInput=${e => setTestEmail(e.target.value)} style="flex: 1; font-size: 0.85rem;" />
                 <button class="btn btn-ghost" onClick=${handleTestSend}
                   disabled=${sendingTest || !eBlocks.length || !eSubject}
                   style="font-size: 0.85rem; padding: 0.5rem 1rem;">
-                  ${sendingTest ? html`<div class="spinner spinner-12" />` : 'Send Test'}
+                  ${sendingTest ? html`<div class="spinner spinner-12" />` : (testEmail ? 'Send it' : 'Send it to me')}
                 </button>
               </div>
-              <div class="form-hint" style="margin-top: 0.4rem;">Sends a one-off email so you can preview in your inbox. Subject is prefixed [TEST].</div>
+              <div class="form-hint" style="margin-top: 0.4rem;">One copy, so you can see it in a real inbox before it goes to Kit. The subject starts with [TEST].</div>
             </div>
 
             <div style="margin-bottom: 1rem; padding: 0.85rem 1rem; border: 1px dashed var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-secondary);">
@@ -6488,6 +6496,15 @@
         } catch (e) { setChannels([]); setChErr({ error: e.message }); }
       };
       useEffect(() => { if (mode === 'bot') { check(); loadChannels(); } }, [mode]);
+      // Fixing Slack happens in Slack: coming back to this tab checks again by itself
+      const needsFix = useRef(false);
+      useEffect(() => {
+        if (mode !== 'bot') return;
+        let last = 0;
+        const onBack = () => { if (document.visibilityState === 'visible' && needsFix.current && Date.now() - last > 15000) { last = Date.now(); check(); loadChannels(); } };
+        document.addEventListener('visibilitychange', onBack);
+        return () => document.removeEventListener('visibilitychange', onBack);
+      }, [mode]);
       const saved = { news: st?.channel?.id || '', attention: st?.attention?.id || '' };
       const save = async (role) => {
         const id = picks[role] ?? saved[role];
@@ -6521,6 +6538,7 @@
       const fix = chErr ? fixText(chErr.error, chErr.needed)
         : st && !st.ok ? `${st.errorFor === 'attention' ? 'Needs attention channel: ' : st.errorFor === 'news' && st.error !== 'no_channel' ? 'Good news channel: ' : ''}${fixText(st.error, st.needed)}` : null;
       const newsName = st?.channel?.name;
+      needsFix.current = !!(fix || missing);
       return html`<div class="bc-block">
         <div class="bc-inline"><strong class="text-sm">Slack</strong>${st === null ? html`<span class="text-sm text-muted">Checking Slack…</span>` : st.ok && !chErr ? html`<span class="badge badge-green">Connected</span>` : html`<span class="badge badge-yellow">Needs a fix</span>`}</div>
         ${st?.ok ? html`<p class="text-sm" style="margin:.4rem 0 0">Posting${st.team ? ` in ${st.team}` : ''}${st.bot ? ` as @${st.bot}` : ''}. ${st.attention?.id && st.attention.id !== st.channel?.id
@@ -6545,9 +6563,10 @@
             <div class="form-hint">${blocked ? 'Pick the Good news channel first.' : what}</div>
           </div>`;
         })}
-        <div class="bc-inline" style="margin-top:.75rem">
+        ${fix || missing ? html`<div class="bc-inline" style="margin-top:.75rem">
           <button class="btn btn-ghost btn-sm" type="button" disabled=${!!working} onClick=${() => { check(); loadChannels(); }}>${working === 'check' ? 'Checking…' : 'Check again'}</button>
-        </div>
+          <span class="text-sm text-muted">It also checks again when you come back to this tab.</span>
+        </div>` : null}
         ${missing ? html`<div class="form-hint">Only public channels are listed: private ones need the ${missing} permission too (add it, reinstall the app, then Check again).</div>` : null}
         <div class="form-hint">Private channels show up once the app is invited (/invite @${st?.bot || 'the app'}). Everyone in a channel sees what posts there.${st?.webhook ? ' SLACK_WEBHOOK_URL is a backup, used only if the app can’t post.' : ''}</div>
       </div>`;
@@ -7102,9 +7121,28 @@
         setTrackKey((k) => k + 1);
         addToast({ schedule: 'Countdown is up for the next confirmed reveal', update: 'Countdown moved to match JobTread', cancel: 'Countdown taken down: nothing confirmed with a time in JobTread' }[d.action] || 'Already matches JobTread', 'success');
       };
+      // The site checks JobTread every 5 minutes. Coming back to this tab (say, after moving the reveal in
+      // JobTread) checks right away, so a button is only needed when the check is failing or has stopped
+      const jtStale = !sch.checkedAt || !!sch.error || Date.now() - Date.parse(sch.checkedAt) > 15 * 60 * 1000;
+      const quietJt = useRef({ last: 0, on: false });
+      quietJt.current.on = (phase === 'idle' || !!sched) && !busy;
+      useEffect(() => {
+        const onBack = async () => {
+          const q = quietJt.current;
+          if (document.visibilityState !== 'visible' || !q.on || Date.now() - q.last < 60000) return;
+          q.last = Date.now();
+          const d = await setup('syncSchedule', {}, 'JobTread');
+          if (d.success && ['schedule', 'update', 'cancel'].includes(d.action)) {
+            setTrackKey((k) => k + 1);
+            addToast({ schedule: 'Countdown is up for the next confirmed reveal', update: 'Countdown moved to match JobTread', cancel: 'Countdown taken down: nothing confirmed with a time in JobTread' }[d.action], 'success');
+          }
+        };
+        document.addEventListener('visibilitychange', onBack);
+        return () => document.removeEventListener('visibilitychange', onBack);
+      }, []);
       const jtLine = (phase === 'idle' || sched) ? html`<div class="bc-sub">
         <span>${sch.checkedAt ? `Checked JobTread ${bcAgo(sch.checkedAt)}` : 'Not checked against JobTread yet'}${sch.error ? html`<span style="color:#744210">: ${sch.error}</span>` : null}</span>
-        <button class="bc-link" type="button" disabled=${!!busy} onClick=${checkJobTread}>${busy === 'JobTread' ? 'Checking…' : 'Check now'}</button>
+        ${jtStale || busy === 'JobTread' ? html`<button class="bc-link" type="button" disabled=${!!busy} onClick=${checkJobTread}>${busy === 'JobTread' ? 'Checking…' : 'Check JobTread now'}</button>` : null}
       </div>` : null;
       const waiting = (phase === 'idle' || sched) ? (sch.waiting || []).map((w) => html`<div class="bc-note" role="note" key=${w.jobId}>${icons.warning}<span>${bcWaitingNote(w)} <a href=${`https://app.jobtread.com/jobs/${w.jobId}/schedule`} target="_blank" rel="noopener">Open in JobTread ↗</a></span></div>`) : null;
 
@@ -7369,12 +7407,26 @@
       const fixes = checks.filter((x) => x.ok === false);
       const checkRow = (x) => html`<${BcCheck} ok=${x.ok} label=${x.label} detail=${x.detail}>${x.ok !== true ? x.more : null}<//>`;
       const flags = { checks: fixes.length > 0, phones: !s.inputReady || !s.streamConfigured, facebook: !s.fbConfigured || h.facebook?.ok === false, alerts: !(s.slackConfigured || s.alertEmails?.length) };
-      const runChecks = async () => {
+      // One live check, asked straight (in parallel); the state tick at the end reloads the page once
+      const probe = (action) => fetch('/api/broadcast-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) })
+        .then((r) => r.json()).catch((e) => ({ success: false, error: e.message }));
+      const runChecks = async (quiet = false) => {
         setChecking(true);
-        await setup('runTick', {}, 'Checks'); await setup('testStream', {}, 'Stream'); await setup('testHub', {}, 'Hub');
+        const [fbR, igR] = await Promise.all([
+          s.fbConfigured ? probe('testFacebook') : null,
+          c.reels?.enabled ? probe('testInstagram') : null,
+          probe('testStream'), probe('testHub'),
+          c.liveInput?.uid ? probe('refreshInput') : null,
+        ]);
+        if (fbR) setFbResult(fbR);
+        if (igR) setIgCheck(igR);
+        await setup('runTick', {}, 'Checks');
         setChecking(false);
-        addToast('Checks finished', 'success');
+        if (!quiet) addToast('Checks finished', 'success');
       };
+      // Opening Settings runs every live check, so what it shows is always fresh; a button stays only for a fix
+      useEffect(() => { runChecks(true); }, []);
+      const checkInstagram = async () => { setIgCheck(null); setIgCheck(await setup('testInstagram', {}, 'Instagram check')); };
       const section = (id, title, aside, body) => html`<section class="card bc-set" id=${`bc-set-${id}`} aria-labelledby=${`bc-set-${id}-h`}>
         <div class="bc-card-head"><h3 id=${`bc-set-${id}-h`}>${title}</h3>${aside}</div>
         ${body}
@@ -7387,7 +7439,7 @@
 
         ${section('checks', 'System checks', html`<div class="bc-btns">
             <span class=${`badge ${fixes.length ? 'badge-yellow' : 'badge-green'}`}>${fixes.length ? `${fixes.length} need${fixes.length === 1 ? 's' : ''} a fix` : 'All required checks pass'}</span>
-            <button class="btn btn-ghost btn-sm" type="button" disabled=${checking || !!busy} onClick=${runChecks}>${checking ? 'Checking…' : 'Run checks'}</button>
+            ${checking ? html`<span class="text-sm text-muted">Checking…</span>` : fixes.length ? html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => runChecks()}>Check again</button>` : null}
           </div>`, html`
           ${fixes.length ? html`<div class="bc-checks">${fixes.map(checkRow)}</div>` : null}
           <details class="bc-more"><summary>All ${checks.length} checks</summary><div class="bc-checks">${checks.map(checkRow)}</div></details>
@@ -7398,7 +7450,6 @@
             <div class="bc-block-head"><h4>Stream live input</h4>
               ${c.liveInput ? html`<div class="bc-btns">
                 <span class=${`badge ${c.liveInput.enabled === false ? 'badge-yellow' : 'badge-green'}`}>${c.liveInput.enabled === false ? 'Switched off' : 'Ready'}</span>
-                <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setup('refreshInput', {}, 'Refresh input')}>Refresh</button>
                 <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Rotate the ingest keys?', message: 'Every phone must scan a new code afterwards. Do this if a phone was lost or a key showed on a screenshare.', danger: true, confirmLabel: 'Rotate keys', busyLabel: 'Rotating…', fn: () => setup('rotateKeys', {}, 'Rotate') })}>Rotate keys</button>
                 ${c.liveInput.enabled === false
                   ? html`<button class="btn btn-secondary btn-sm" type="button" disabled=${!!busy} onClick=${() => setup('enableInput', {}, 'Enable')}>Switch on</button>`
@@ -7437,9 +7488,9 @@
             <div><strong>Larix setup link:</strong> <${CopyBtn} text=${larix.standard} label="Copy" /></div>
           </div></details>` : null}`)}
 
-        ${section('facebook', 'Facebook', html`<div class="bc-btns">${!s.fbConfigured ? html`<span class="text-sm text-muted">FB_PAGE_ID / FB_PAGE_TOKEN aren't set</span>` : null}<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy || !s.fbConfigured} onClick=${async () => { setFbResult(null); setFbResult(await setup('testFacebook', {}, 'Facebook test')); }}>Test connection</button></div>`, html`
-          ${fbResult ? html`<div class=${`bc-result ${fbResult.success ? 'is-ok' : 'is-warn'}`}>${fbResult.success ? `Connected to "${fbResult.token?.name}". Recent lives: ${(fbResult.recent?.videos || []).length}.` : `Failed: ${fbResult.token?.error || fbResult.error}`}</div>` : null}
-          ${fbResult?.info?.appId ? html`<div class="bc-result">
+        ${section('facebook', 'Facebook', html`<div class="bc-btns">${!s.fbConfigured ? html`<span class="text-sm text-muted">FB_PAGE_ID / FB_PAGE_TOKEN aren't set</span>` : null}${s.fbConfigured && checking && !fbResult ? html`<span class="text-sm text-muted">Checking…</span>` : null}${s.fbConfigured && fbResult && !fbResult.success ? html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${async () => { setFbResult(null); setFbResult(await setup('testFacebook', {}, 'Facebook test')); }}>Check again</button>` : null}</div>`, html`
+          ${fbResult ? html`<div class=${`bc-result ${fbResult.success ? 'is-ok' : 'is-warn'}`}>${fbResult.success ? `Connected to "${fbResult.token?.name}". Recent lives: ${(fbResult.recent?.videos || []).length}.${fbResult.info?.appId && !fbResult.info.missingForApiMode?.length ? ' Every permission automatic mode needs is granted.' : ''}` : `Failed: ${fbResult.token?.error || fbResult.error}`}</div>` : null}
+          ${fbResult?.info?.appId && (!fbResult.success || fbResult.info.missingForApiMode?.length) ? html`<div class="bc-result">
             <div><strong>App Review helper</strong> · app id <code>${fbResult.info.appId}</code> · token ${fbResult.info.expiresAt ? `expires ${bcFmt(fbResult.info.expiresAt)}` : 'never expires'}</div>
             <div>Granted: ${(fbResult.info.scopes || []).map((sc) => html`<code style="margin-right:4px">${sc}</code>`)}</div>
             ${fbResult.info.missingForApiMode?.length ? html`<div>Still needed for automatic mode: ${fbResult.info.missingForApiMode.map((sc) => html`<code style="margin-right:4px;background:#FEFCBF">${sc}</code>`)} plus the <strong>Live Video API</strong> feature.</div>` : html`<div style="color:#22543D">Every permission automatic mode needs is granted. If the site still gets error #10, the Live Video API feature itself is pending review.</div>`}
@@ -7462,7 +7513,7 @@
             ${!s.youtubeConfigured ? html`<div class="form-hint">Add <code>YOUTUBE_API_KEY</code> (YouTube Data API v3) in Cloudflare Pages so the site can confirm YouTube actually went live.</div>` : null}
           </div>`)}
 
-        ${section('instagram', 'Instagram', html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${async () => { setIgCheck(null); setIgCheck(await setup('testInstagram', {}, 'Instagram check')); }}>Test connection</button>`, html`
+        ${section('instagram', 'Instagram', igCheck && !igCheck.success ? html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${checkInstagram}>Check again</button>` : null, html`
           ${igCheck ? html`<div class=${`bc-result ${igCheck.success ? 'is-ok' : 'is-warn'}`}>
             ${igCheck.account?.ok ? html`Linked Instagram: <strong>@${igCheck.account.username || igCheck.account.id}</strong>. ` : html`Instagram: ${igCheck.account?.error || igCheck.error} `}
             ${igCheck.missing?.length ? html`The token is missing ${igCheck.missing.map((m) => html`<code style="margin:0 3px">${m}</code>`)}. Follow "Instagram Reels" in docs/facebook-app-review.md to regenerate it.` : igCheck.account?.ok ? 'Ready to post.' : ''}
@@ -7470,7 +7521,7 @@
           <div class="bc-block">
             <h4>A Reel of every reveal</h4>
             <p class="text-sm text-muted">When the replay is ready, the site finds the reveal moment in the captions (with AI as a second opinion), cuts up to 15 minutes around it, and posts it as a Reel. Shorter recordings post whole.</p>
-            <label class="checkbox-label"><input type="checkbox" checked=${f.reelsEnabled} onChange=${set('reelsEnabled')} /> Post a Reel after every reveal</label>
+            <label class="checkbox-label"><input type="checkbox" checked=${f.reelsEnabled} onChange=${(e) => { set('reelsEnabled')(e); if (e.target.checked && !igCheck?.success) checkInstagram(); }} /> Post a Reel after every reveal</label>
             <label class="checkbox-label"><input type="checkbox" checked=${f.reelsFeed} onChange=${set('reelsFeed')} /> Also show it on the main grid, not only the Reels tab</label>
             <div class="form-grid">
               <div class="form-group span-2"><label class="form-label" for="bc-reel-caption">Caption</label><textarea class="form-textarea" id="bc-reel-caption" rows="3" maxlength="2200" value=${f.reelsCaption} onInput=${set('reelsCaption')}></textarea><span class="form-hint"><code>{kid}</code> becomes the kid's name. Links in captions aren't clickable, so point to the link in bio.</span></div>
@@ -7503,8 +7554,8 @@
             <h4>Preview an email</h4>
             <div class="bc-inline">
               <select class="form-select" aria-label="Which email" value=${testKind} onChange=${(e) => setTestKind(e.target.value)} style="max-width:200px">${[['scheduled', 'Save the date'], ['day', 'Day before'], ['hour', 'One hour'], ['live', "We're live"], ['replay', 'Replay ready']].map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select>
-              <input class="form-input" type="email" aria-label="Send it to" placeholder="your@email" value=${testEmail} onInput=${(e) => setTestEmail(e.target.value)} style="max-width:260px" />
-              <button class="btn btn-secondary btn-sm" type="button" disabled=${!!busy || !s.emailConfigured} onClick=${async () => { const d = await setup('sendTestReminder', { kind: testKind, email: testEmail || undefined }, 'Test email'); if (d.success) addToast('Test email sent', 'success'); }}>Send test</button>
+              <input class="form-input" type="email" aria-label="Send it to (blank for you)" placeholder="Your inbox, or another address" value=${testEmail} onInput=${(e) => setTestEmail(e.target.value)} style="max-width:260px" />
+              <button class="btn btn-secondary btn-sm" type="button" disabled=${!!busy || !s.emailConfigured} onClick=${async () => { const d = await setup('sendTestReminder', { kind: testKind, email: testEmail || undefined }, 'Test email'); if (d.success) addToast(`Sent to ${testEmail || 'your inbox'}. Look for [TEST] in the subject.`, 'success'); }}>${testEmail ? 'Send it' : 'Send it to me'}</button>
             </div>
           </div>
           ${s.kitConfigured ? html`<div class="bc-block"><h4>Kit</h4><p class="text-sm text-muted u-m-0">When a scheduled reveal goes live, "We're live" goes to ${kitAudience} by itself (each reveal can opt out when you schedule it). Scheduling also makes a "save the date" draft in Kit, and the replay makes a "watch the replay" draft. Review and send those from Kit.</p></div>` : null}
@@ -22126,9 +22177,12 @@ ${sections || '<p>No one yet.</p>'}
         loadDeploys(); loadPendingChanges();
         // Refresh when someone publishes and when that update goes live
         const onDeploy = () => { loadPendingChanges(); loadDeploys(); };
+        // ...and when you come back to this tab
+        const onBack = () => { if (document.visibilityState === 'visible') onDeploy(); };
         window.addEventListener('soard-deployed', onDeploy);
         window.addEventListener('soard-site-updated', onDeploy);
-        return () => { window.removeEventListener('soard-deployed', onDeploy); window.removeEventListener('soard-site-updated', onDeploy); };
+        document.addEventListener('visibilitychange', onBack);
+        return () => { window.removeEventListener('soard-deployed', onDeploy); window.removeEventListener('soard-site-updated', onDeploy); document.removeEventListener('visibilitychange', onBack); };
       }, []);
 
       const timeAgo = (dateStr) => {
@@ -22197,7 +22251,6 @@ ${sections || '<p>No one yet.</p>'}
           <div class="u-row-center">
             ${source === 'github' ? html`<span class="badge badge-gray u-fs-2xs">via GitHub commits</span>` : null}
             ${source === 'cloudflare' ? html`<span class="badge badge-blue u-fs-2xs">via Cloudflare Pages</span>` : null}
-            <button class="btn btn-ghost btn-sm" onClick=${() => { loadDeploys(); loadPendingChanges(); }}>↻ Refresh</button>
             ${onDeploy ? html`<button class="btn btn-primary btn-sm" onClick=${onDeploy} title="Rebuild the live site from what’s saved. Always available, even with nothing waiting.">Publish to site</button>` : null}
           </div>
         </div>

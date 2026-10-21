@@ -33,6 +33,9 @@ const iso = (msFromNow) => new Date(Date.now() + msFromNow).toISOString();
 const day = (n) => iso(n * D).slice(0, 10);
 const maxAt = new Date(`${day(10)}T20:00:00Z`).toISOString(); // 4:00 PM Eastern
 
+// Per-scenario tweaks to the stubbed server
+const KNOBS = { schedule: {}, setup: {}, slack: null, fb: null };
+
 function adminData(phase) {
   const rehearsal = phase === 'rehearsal';
   if (rehearsal) phase = 'scheduled';
@@ -47,7 +50,7 @@ function adminData(phase) {
       ? { phase, live: false, upcoming: true, replay: false, id: 'live-1', kidSlug: 'max', kidName: 'Max', ...(rehearsal ? { test: true } : {}), title: state.title, message: state.message, scheduledAt: maxAt, liveUrl: 'https://sunshineonaranneyday.com/live/max/', url: 'https://sunshineonaranneyday.com/live/max/' }
       : { phase: 'idle', live: false, upcoming: false, replay: false },
     config: { kitLive: { enabled: true, audience: { name: 'All subscribers' } }, messages: { enabled: true }, rehearsalInput: { uid: 'r1' }, liveInput: { uid: 'in1', enabled: true }, facebook: { mode: 'api', pageUrl: 'https://www.facebook.com/SunshineOnaRanneyDay' }, youtube: {}, instagram: {}, reminders: { enabled: true, hoursBefore: [24, 1], sms: false, push: true }, orientation: 'portrait', reels: { enabled: true }, defaults: { title: 'Live room reveal', message: "It's reveal day!" }, alerts: { emails: [] }, replayHours: 72, timezone: 'America/New_York', outputs: {} },
-    setup: { streamConfigured: true, inputReady: true, hubBound: true, kitConfigured: true, emailConfigured: true, smsConfigured: false, slackConfigured: false, fbConfigured: true, youtubeConfigured: false, deployHook: true, pushReady: true, alertEmails: ['peter@soardcharity.com'], webhookUrl: 'https://sunshineonaranneyday.com/api/stream-webhook' },
+    setup: { ...KNOBS.setup, streamConfigured: true, inputReady: true, hubBound: true, kitConfigured: true, emailConfigured: true, smsConfigured: false, slackConfigured: false, fbConfigured: true, youtubeConfigured: false, deployHook: true, pushReady: true, alertEmails: ['peter@soardcharity.com'], webhookUrl: 'https://sunshineonaranneyday.com/api/stream-webhook', ...KNOBS.setup },
     health: { lastTick: { at: iso(-30e3), source: 'hub:alarm', work: [] }, preflight: null, stream: { ok: true }, facebook: { ok: true }, webhook: {}, lifecycle: {} },
     hub: { ok: true, clients: 1, lastTick: { at: iso(-30e3) } },
     live: { lifecycle: { live: false } },
@@ -61,6 +64,7 @@ function adminData(phase) {
         { jobId: 'jobLiz0001', jobName: 'Lizzie Francis (2026)', name: 'Lizzie', slug: 'lizzie', date: day(5), time: null, problem: 'no-time' },
         { jobId: 'jobAdr0001', jobName: 'Adrian Scala (2025)', name: null, slug: null, date: day(12), time: '16:00', problem: 'no-kid', nearMiss: { slug: 'adrian', name: 'Adrian', year: 2026 } },
       ],
+      ...KNOBS.schedule,
     },
   };
 }
@@ -125,7 +129,14 @@ async function open(browser, base, viewport, phase, hash = '#broadcast', waitSel
     if (url.origin !== base) return req.abort();
     if (req.method() === 'POST' && url.pathname.startsWith('/api/')) { try { posts.push({ path: url.pathname, body: JSON.parse(req.postData() || '{}') }); } catch { posts.push({ path: url.pathname, body: null }); } }
     if (url.pathname === '/api/broadcast-admin' && req.method() === 'GET') return json(adminData(phase));
-    if (url.pathname === '/api/broadcast-admin' && req.method() === 'POST') return json({ success: true, action: 'none', schedule: adminData(phase).schedule });
+    if (url.pathname === '/api/broadcast-admin' && req.method() === 'POST') {
+      const action = JSON.parse(req.postData() || '{}').action;
+      if (action === 'slackStatus') return json({ success: true, slack: KNOBS.slack?.status || { ok: true, bot: 'soard', channel: { id: 'C1', name: 'team-everyone' } } });
+      if (action === 'slackChannels') return json({ success: true, channels: [{ id: 'C1', name: 'team-everyone' }, { id: 'C2', name: 'staff' }] });
+      if (action === 'testInstagram') return json({ success: true, account: { ok: true, username: 'soardcharity' }, missing: [] });
+      if (action === 'testFacebook') return json(KNOBS.fb || { success: true, token: { ok: true, name: 'Sunshine on a Ranney Day' }, recent: { videos: [{}, {}] }, info: { appId: '123', scopes: ['pages_manage_posts'], missingForApiMode: [], appReviewUrl: 'https://developers.facebook.com/apps/123/app-review', appSettingsUrl: 'https://developers.facebook.com/apps/123/settings/basic' } });
+      return json({ success: true, action: 'none', schedule: adminData(phase).schedule });
+    }
     if (url.pathname === '/api/broadcast') return json({ success: true, state: adminData(phase).public });
     if (url.pathname === '/api/reveal-invites-admin' && url.searchParams.get('board') === '1') return json({ ok: true, board: [{ slug: 'scott-wierson', name: 'Scott Wierson', email: null, memorial: false }] });
     if (url.pathname === '/api/reveal-invites-admin' && req.method() === 'POST') return json({ ok: true, board: [] });
@@ -216,11 +227,71 @@ try {
   ok(await clickButton(page, '.bc-status', 'Turn off'), 'the Kit email switch is on the card');
   await pause(300);
   ok(posts.some((x) => x.path === '/api/broadcast' && x.body?.action === 'update' && x.body.kitLiveEmail === false), 'turning it off sends kitLiveEmail: false');
-  ok(await clickButton(page, '.bc-status', 'Check now'), 'Check now is on the card');
+  // The site checks JobTread every 5 minutes: no standing button while that works
+  const hasButton = (pg, scope, label) => pg.evaluate((scope, label) => [...document.querySelectorAll(`${scope} button`)].some((x) => x.textContent.trim() === label), scope, label);
+  ok(!(await hasButton(page, '.bc-status', 'Check JobTread now')) && !(await hasButton(page, '.bc-status', 'Check now')), 'no Check now button while the JobTread check is fresh');
+  const syncs = () => posts.filter((x) => x.path === '/api/broadcast-admin' && x.body?.action === 'syncSchedule').length;
+  const before = syncs();
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await pause(400);
+  ok(syncs() === before + 1, 'coming back to the tab (after changing the reveal in JobTread) checks JobTread right away');
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await pause(300);
-  ok(posts.some((x) => x.path === '/api/broadcast-admin' && x.body?.action === 'syncSchedule'), 'Check now asks the server to check JobTread');
+  ok(syncs() === before + 1, 'but not again within a minute');
   ok(errors.length === 0, `no console errors (${errors.join(' | ')})`);
   await page.close();
+
+  console.log('JobTread check failing');
+  KNOBS.schedule = { checkedAt: iso(-25 * 60e3), error: 'JobTread returned 500' };
+  const stale = await open(browser, base, { width: 1440, height: 1000 }, 'scheduled');
+  ok((await text(stale.page, '.bc-status')).includes('JobTread returned 500'), 'the card says why the check failed');
+  ok(await clickButton(stale.page, '.bc-status', 'Check JobTread now'), 'and only then offers Check JobTread now');
+  await pause(300);
+  ok(stale.posts.some((x) => x.path === '/api/broadcast-admin' && x.body?.action === 'syncSchedule'), 'which asks the server to check JobTread');
+  ok(stale.errors.length === 0, `no console errors (${stale.errors.join(' | ')})`);
+  await stale.page.close();
+  KNOBS.schedule = {};
+
+  console.log('Settings: checks run on their own');
+  KNOBS.setup = { slackMode: 'bot' };
+  const set = await open(browser, base, { width: 1440, height: 1000 }, 'scheduled', '#broadcast/settings', '.bc-settings');
+  await set.page.waitForFunction(() => !document.querySelector('#bc-set-checks')?.textContent.includes('Checking…'), { timeout: 10000 }).catch(() => {});
+  const acts = set.posts.filter((x) => x.path === '/api/broadcast-admin').map((x) => x.body?.action);
+  ok(['runTick', 'testStream', 'testHub'].every((a) => acts.includes(a)), `opening Settings runs the live checks (${acts.join(', ')})`);
+  ok((await text(set.page, '#bc-set-checks')).includes('All required checks pass'), 'all pass');
+  ok(!(await hasButton(set.page, '#bc-set-checks', 'Run checks')) && !(await hasButton(set.page, '#bc-set-checks', 'Check again')), 'and there is no button to run them');
+  ok(!(await set.page.evaluate(() => [...document.querySelectorAll('.bc-settings button')].some((b) => b.textContent.trim() === 'Check again'))), 'Slack is fine, so it has no Check again either');
+  ok(!(await set.page.evaluate(() => [...document.querySelectorAll('.bc-settings button')].some((b) => b.textContent.trim() === 'Send test'))) && await set.page.evaluate(() => [...document.querySelectorAll('.bc-settings button')].some((b) => b.textContent.trim() === 'Send it to me')), 'the reminder preview is "Send it to me"');
+  ok(acts.includes('testFacebook') && acts.includes('refreshInput') && acts.includes('testInstagram'), 'it checks Facebook, the phone input and (Reels are on here) Instagram too');
+  ok((await text(set.page, '#bc-set-instagram')).includes('Linked Instagram: @soardcharity') && (await text(set.page, '#bc-set-instagram')).includes('Ready to post'), 'Instagram says it is linked');
+  const fbText = await text(set.page, '#bc-set-facebook');
+  ok(fbText.includes('Connected to "Sunshine on a Ranney Day"') && fbText.includes('Every permission automatic mode needs is granted') && !fbText.includes('App Review helper'), 'Facebook says it is connected, in one line');
+  ok(!(await set.page.evaluate(() => [...document.querySelectorAll('.bc-settings button')].some((b) => ['Test connection', 'Refresh', 'Run checks'].includes(b.textContent.trim())))), 'no Test connection, Refresh or Run checks buttons anywhere in Settings');
+  ok(set.errors.length === 0, `no console errors (${set.errors.join(' | ')})`);
+  await set.page.close();
+
+  console.log('Settings: something needs a fix');
+  KNOBS.setup = { slackMode: 'bot', deployHook: false };
+  KNOBS.slack = { status: { ok: false, error: 'not_in_channel', errorFor: 'news', bot: 'soard', channel: { id: 'C2', name: 'staff' } } };
+  KNOBS.fb = { success: false, token: { ok: false, error: 'Session has expired' }, recent: null, info: { appId: '123', scopes: [], missingForApiMode: ['publish_video'], appReviewUrl: 'https://developers.facebook.com/apps/123/app-review', appSettingsUrl: 'https://developers.facebook.com/apps/123/settings/basic' } };
+  const fixy = await open(browser, base, { width: 1440, height: 1000 }, 'scheduled', '#broadcast/settings', '.bc-settings');
+  await fixy.page.waitForFunction(() => !document.querySelector('#bc-set-checks')?.textContent.includes('Checking…'), { timeout: 10000 }).catch(() => {});
+  ok((await text(fixy.page, '#bc-set-checks')).includes('1 needs a fix'), 'the missing deploy hook needs a fix');
+  ok(await hasButton(fixy.page, '#bc-set-checks', 'Check again'), 'so the checks offer Check again');
+  const slackChecks = () => fixy.posts.filter((x) => x.body?.action === 'slackStatus').length;
+  ok(await fixy.page.evaluate(() => [...document.querySelectorAll('.bc-settings button')].filter((b) => b.textContent.trim() === 'Check again').length === 3), 'and Slack (needs inviting to its channel) and Facebook (token expired) offer one too');
+  const fbFail = await text(fixy.page, '#bc-set-facebook');
+  ok(fbFail.includes('Failed: Session has expired') && fbFail.includes('App Review helper') && fbFail.includes('publish_video'), 'a failing Facebook says why and shows the App Review details');
+  const n0 = slackChecks();
+  await fixy.page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await pause(400);
+  ok(slackChecks() === n0 + 1, 'coming back from Slack checks Slack again by itself');
+  await fixy.page.screenshot({ path: join(OUT, 'settings-needs-fix.png'), fullPage: false });
+  ok(fixy.errors.length === 0, `no console errors (${fixy.errors.join(' | ')})`);
+  await fixy.page.close();
+  KNOBS.setup = {};
+  KNOBS.slack = null;
+  KNOBS.fb = null;
 
   console.log('Laptop, nothing scheduled');
   const idle = await open(browser, base, { width: 1440, height: 1000 }, 'idle');

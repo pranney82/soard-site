@@ -329,14 +329,14 @@ const MAP = { t: 'SOARD', children: [
           does: 'Finishes anything unfinished (with growing waits), attaches videos once ready, and clears unsubmitted drafts after 60 days. Emails Peter and posts to Slack once if an application is stuck.',
           touches: ['JobTread', 'D1', 'Cloudflare Stream', 'Resend', 'Slack'], where: 'functions/api/_applications.js · broadcast-hooks.js' },
         { t: 'Admin → Applications', s: 'live', k: 'admin',
-          does: 'Each application’s checklist (account, contacts, home, PDF, photos, video, messages) with Retry and a test application; the form editor (questions, choices, show-when rules, stop screens), the family messages, and version history. Put live takes effect right away, no Publish.',
+          does: 'Each application’s checklist (account, contacts, home, PDF, photos, video, messages) with Retry and “See what a family receives” (a sample sent only to the person who asks, archived in JobTread on its own); the form editor (questions, choices, show-when rules, stop screens), the family messages, and version history. Put live takes effect right away, no Publish.',
           touches: ['D1'], where: 'public/admin/applications.js · functions/api/applications-admin.js · _application-forms.js' },
         { t: 'Admin → Applicants', s: 'live', k: 'admin',
           does: 'Every applicant family in JobTread as a board (drag to change status), list, map against the red service-area boundary, and activity feed. A family’s page shows the whole conversation (emails, replies, logged texts and calls, notes) and edits the JobTread details in place. Status changes, emails, notes and archiving are written to JobTread first (no texting from the site: families text SOARD’s Quo number); a status change shows the family’s email before it goes and sends the same message a change in JobTread would, once.',
           touches: ['JobTread', 'D1'], where: 'public/admin/applicants.js · functions/api/applicants-admin.js · _applicants.js' },
         { t: 'Status change summary', s: 'live', k: 'schedule',
           when: 'A few minutes after someone stops changing statuses in JobTread.',
-          does: 'Emails that person one summary of the families they moved and when each family will be emailed, with Move back, Don’t email and Send now for each (one-time links; a confirmation page, so mail scanners can’t trigger them). Changes by an integration go to the staff list. Families’ emails wait 5 minutes after the summary. Admin → Applicants also has “Pause family emails” for cleanup.',
+          does: 'Emails that person one summary of the families they moved and when each family will be emailed, with Move back, Don’t email and Send now for each (one-time links; a confirmation page, so mail scanners can’t trigger them). Changes by an integration go to the staff list. Families’ emails wait 5 minutes after the summary. Admin → Applicants also has “Clean up statuses quietly”, which holds family emails for up to 2 hours while a batch of statuses is fixed.',
           touches: ['Resend', 'JobTread', 'D1'], where: 'functions/api/_applicant-notify.js · applicant-email-action.js' },
         { t: 'JobTread → Applicants sync', s: 'live', k: 'schedule',
           when: 'With the application sweep (every 2 minutes), right after the status workflow’s call, and whenever a family is opened.',
@@ -1471,7 +1471,7 @@ export function AutomationsMap() {
       ${check.state === 'loading' && 'Checking live status…'}
       ${check.state === 'ok' && html`<span>Statuses checked live <${Ago} iso=${check.at} />. Map written ${WRITTEN_ON}.</span>`}
       ${check.state === 'error' && html`<span>Couldn’t check live status (${check.error}). Showing the map as written ${WRITTEN_ON}.</span>`}
-      ${check.state !== 'loading' && html`<button type="button" onClick=${loadFacts}>Check again</button>`}
+      ${check.state === 'error' && html`<button type="button" onClick=${loadFacts}>Try again</button>`}
     </p>
 
     <div class="am-tools">

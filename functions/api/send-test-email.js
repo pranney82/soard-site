@@ -5,7 +5,7 @@
  * address — for QA before pushing the broadcast to Kit.
  *
  * Body:
- *   { testEmail: 'user@example.com', data: { blocks }, opts }
+ *   { testEmail?: 'user@example.com', data: { blocks }, opts }  (no testEmail: the signed-in admin)
  *
  * Authenticated endpoint (behind CF Access). Sends through the site's
  * one-off sender (_broadcast-notify.js), not Kit.
@@ -22,10 +22,12 @@ export async function onRequestPost(context) {
   }
 
   const body = await context.request.json();
-  const { testEmail, data, opts = {} } = body;
+  const { data, opts = {} } = body;
+  // No address means "Send it to me": the person signed in to the admin
+  const testEmail = String(body.testEmail || context.data?.userEmail || '').trim();
 
   if (!testEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
-    return Response.json({ ok: false, error: 'Please provide a valid test email address.' }, { status: 400 });
+    return Response.json({ ok: false, error: 'That isn’t an email address.' }, { status: 400 });
   }
 
   if (!data || !Array.isArray(data.blocks)) {
