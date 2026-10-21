@@ -612,6 +612,9 @@ const trustBadges = getTrustBadges(site);
     transition: opacity var(--transition-fast);
   }
   .trust-badge:hover { opacity: 0.8; }
+  /* Text badges stay legible under the pointer: underline the value instead of fading */
+  .trust-badge--text:hover { opacity: 1; }
+  a.trust-badge--text:hover .trust-badge-value { text-decoration: underline; text-underline-offset: 3px; }
   .trust-badge img {
     border-radius: 8px;
     opacity: 0.85;
