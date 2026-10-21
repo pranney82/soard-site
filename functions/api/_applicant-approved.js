@@ -315,6 +315,10 @@ async function createJob(env, { locationId, name, types, companycamId = null }, 
       if (!/JobTread returned 4\d\d/.test(e.message)) break;
     }
   }
+  // JobTread refuses a project already linked to another job: the job matters more than the link
+  if (companycamId && /JobTread returned 4\d\d/.test(last?.message || '') && /companycam/i.test(last.message)) {
+    return createJob(env, { locationId, name, types }, fetchImpl);
+  }
   throw last;
 }
 

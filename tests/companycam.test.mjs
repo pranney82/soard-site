@@ -79,6 +79,10 @@ function jobtread(body) {
       return json({ account: a ? accountNode(a) : null });
     }
     case 'organization': {
+      if (q.jobs) {
+        const ids = [].concat(q.jobs.$?.where?.[2] || []).map(String);
+        return json({ organization: { jobs: { nodes: [...w.jobs.values()].filter((j) => ids.includes(String(j.companycamId))).map((j) => ({ companycamId: j.companycamId })) } } });
+      }
       if (q.accounts) {
         const ids = [].concat(q.accounts.$?.where?.[2] || []);
         return json({ organization: { accounts: { nodes: ids.map((id) => w.accounts.get(id)).filter(Boolean).map(accountNode), nextPage: null } } });
@@ -140,6 +144,9 @@ function jobtread(body) {
     }
     case 'updateJob': {
       const { id, ...changes } = q.$;
+      // JobTread links a CompanyCam project to one job at most
+      const holder = changes.companycamId && [...w.jobs.values()].find((j) => j.id !== id && j.companycamId === changes.companycamId);
+      if (holder) return new Response(`This CompanyCam project is already linked to ${holder.name}. If you want to link it to this job, unlink it there first.`, { status: 400 });
       Object.assign(w.jobs.get(id), changes);
       return json({});
     }
@@ -822,7 +829,7 @@ test('a newer check tidies an earlier one still under way before it starts', asy
 
 test('a project CompanyCam hands back archived (same name, this visit) is opened again before it’s used', async () => {
   const a = await family('acct19', 'Sam Ray', 'In Review', { appPhotos: false });
-  w.cc.projects.set('980', { id: '980', name: 'Sam Ray (2027)', status: 'active', archived: true, address: { street_address_1: HOME.street }, created_at: new Date(at(-2 * 24 * 60)).toISOString(), updated_at: new Date(at(-60)).toISOString(), project_url: 'https://app.companycam.com/projects/980' });
+  w.cc.projects.set('980', { id: '980', name: 'Sam Ray (2027)', status: 'active', archived: true, address: { street_address_1: HOME.street }, created_at: new Date(at(-12 * 60)).toISOString(), updated_at: new Date(at(-60)).toISOString(), project_url: 'https://app.companycam.com/projects/980' });
   await run(0);
   const row = await getFamilyRow(env.DB, a.id);
   assert.equal(row.project_id, '980');
@@ -920,4 +927,36 @@ test('the rehearsal: two TEST families through the real stages, by the heartbeat
   assert.equal(pa.archived && pb.archived, true);
   await run(10);
   assert.equal([...w.accounts.values()].filter((x) => x.name.startsWith('TEST CompanyCam')).length, 2, 'once');
+});
+
+test('never a project another customer’s job uses at the same address, nor one from before the family applied', async () => {
+  const a = await family('acct22', 'Vale Shaw', 'In Review', { appPhotos: false });
+  // A job on someone else's account at this address, with its project, made after this family applied
+  w.accounts.set('other', { id: 'other', name: 'Old Owner', home: HOME, contact: null, types: [] });
+  w.cc.projects.set('990', { id: '990', name: 'Old Owner (2026)', status: 'active', archived: false, address: { street_address_1: HOME.street }, created_at: new Date(at(-60)).toISOString(), updated_at: new Date(at(-60)).toISOString(), project_url: 'https://app.companycam.com/projects/990' });
+  w.jobs.set('otherjob', { id: 'otherjob', accountId: 'other', name: 'Old Owner (2026)', companycamId: '990', createdAt: new Date(at(-60)).toISOString() });
+  // And a project nobody's job uses, but started before this family was a customer
+  w.cc.projects.set('991', { id: '991', name: 'Something old', status: 'active', archived: false, address: { street_address_1: HOME.street }, created_at: new Date(at(-5 * 24 * 60)).toISOString(), updated_at: new Date(at(-5 * 24 * 60)).toISOString(), project_url: 'https://app.companycam.com/projects/991' });
+  await run(0);
+  const row = await getFamilyRow(env.DB, a.id);
+  assert.ok(!['990', '991'].includes(row.project_id), `made its own (${row.project_id})`);
+  assert.equal(row.how, 'made');
+});
+
+test('a project JobTread won’t link (already another job’s): the job keeps its own, and the home-visit photos follow it', async () => {
+  const a = await family('acct23', 'Wren Hale', 'In Review', { appPhotos: false });
+  await run(0);
+  const project = await familyProject(a);
+  const p = addPhoto(project, { caption: 'Before' });
+  await signed(photoCreated(p));
+  // Someone linked the home-visit project to another job by hand
+  w.jobs.set('elsewhere', { id: 'elsewhere', accountId: 'someone', name: 'Another job', companycamId: project, createdAt: new Date(at(-1)).toISOString() });
+  w.cc.projects.set('801', { id: '801', name: 'Wren Hale (2027) (050)', status: 'active', archived: false, address: { street_address_1: HOME.street }, project_url: 'https://app.companycam.com/projects/801' });
+  const job = await makeJob(a, { companycamId: '801' });
+  await run(2);
+  const row = await getFamilyRow(env.DB, a.id);
+  assert.equal(row.stage, 'separate', 'not stuck retrying a link JobTread refuses');
+  assert.equal(w.jobs.get(job.id).companycamId, '801');
+  await run(3);
+  assert.equal(jobFiles(job.id).length, 1, 'the home-visit photo is on the job');
 });

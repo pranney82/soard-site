@@ -63,7 +63,7 @@ import {
   companycamOn, CompanyCamError, getProject, searchProjects, createProject, archiveProject, unarchiveProject,
   setProjectDescription, addProjectLabels, removeProjectLabel, projectUrl, projectPhotos, projectDocuments,
   getPhoto, getDocument, photoImageUrl, markupText, uploadPhoto, listWebhooks, createWebhook, updateWebhook,
-  deleteWebhook, webhookToken, setPhotoDescription, addPhotoTags, listTags, webhookDeliveries, projectLabels,
+  deleteWebhook, webhookToken, setPhotoDescription, addPhotoTags, listTags, webhookDeliveries, projectLabels, deletePhoto,
 } from './_companycam.js';
 
 const MIN = 60 * 1000;
@@ -175,7 +175,7 @@ const jt = (env, query, fetchImpl) => pave(env.JOBTREAD_GRANT_KEY, query, fetchI
 
 // Small explicit sizes: JobTread sizes a query by its worst case (413 otherwise)
 const ACCOUNT = {
-  id: {}, name: {}, type: {}, archivedAt: {}, organization: { id: {} },
+  id: {}, name: {}, type: {}, createdAt: {}, archivedAt: {}, organization: { id: {} },
   customFieldValues: { $: { size: 8, where: [['customField', 'id'], 'in', [FIELDS.status.id, FIELDS.year.id, FIELDS.types.id]] }, nodes: { value: {}, customField: { id: {} } } },
   primaryLocation: { id: {}, street: {}, city: {}, state: {}, postalCode: {}, country: {}, latitude: {}, longitude: {} },
   primaryContact: { id: {}, name: {}, customFieldValues: { $: { size: 2, where: [['customField', 'id'], 'in', [FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE]] }, nodes: { value: {}, customField: { id: {} } } } },
@@ -203,7 +203,7 @@ export async function readFamily(env, accountId, fetchImpl = fetch) {
   const loc = a.primaryLocation || {};
   const types = v[FIELDS.types.id];
   return {
-    id: a.id, name: String(a.name || '').trim(), archived: !!a.archivedAt, status: v[FIELDS.status.id] || '',
+    id: a.id, name: String(a.name || '').trim(), createdAt: a.createdAt || null, archived: !!a.archivedAt, status: v[FIELDS.status.id] || '',
     year: cleanYear(v[FIELDS.year.id]), types: (Array.isArray(types) ? types : types ? [types] : []).map(String),
     locationId: loc.id || null,
     home: {
@@ -465,6 +465,14 @@ export const streetKey = (s) => String(s || '').toLowerCase().replace(/[.,#]/g, 
 /** The project's name: the job's name to come ("Ava Smith (2027)"), or the family's name before a year is set */
 const projectNameFor = (fam) => (fam.year ? jobNameFor(fam.name, fam.year) : String(fam.name || 'Makeover family').replace(/\s+/g, ' ').trim().slice(0, 60));
 
+/** Of these CompanyCam projects, the ones any JobTread job uses (any customer's) */
+async function projectsWithJobs(env, ids, fetchImpl) {
+  const list = [...new Set(ids.map(String))];
+  if (!list.length) return new Set();
+  const out = await jt(env, { organization: { $: { id: SOARD_ORG_ID }, jobs: { $: { size: 100, where: ['companycamId', 'in', list] }, nodes: { companycamId: {} } } } }, fetchImpl);
+  return new Set((out?.organization?.jobs?.nodes || []).map((j) => String(j.companycamId)));
+}
+
 /**
  * A project for the family: one staff already started at their home for this
  * visit, else a new one. { project, how }. Never a project from an earlier
@@ -477,14 +485,21 @@ async function findOrMakeProject(env, fam, { fetchImpl, now }) {
   const { results: others } = await env.DB.prepare('SELECT project_id FROM companycam_projects WHERE account_id != ? AND project_id IS NOT NULL').bind(fam.id).all();
   for (const r of others || []) taken.add(String(r.project_id));
   const lastJobAt = Math.max(0, ...fam.jobs.map((j) => Date.parse(j.createdAt || '') || 0));
+  // Started for them: after they became a customer (and their last job), in the last 180 days
+  const since = Math.max(lastJobAt, (Date.parse(fam.createdAt || '') || 0) - DAY, now - ADOPT_WITHIN_MS);
   const thisVisit = (p) => {
     const t = Date.parse(p?.created_at || '');
-    return Number.isFinite(t) && t > lastJobAt && t > now - ADOPT_WITHIN_MS && !taken.has(String(p.id));
+    return Number.isFinite(t) && t > since && !taken.has(String(p.id));
   };
   const want = streetKey(fam.home.street);
-  const found = (await searchProjects(env, fam.home.street, { fetchImpl }))
+  let found = (await searchProjects(env, fam.home.street, { fetchImpl }))
     .filter((p) => p && !p.archived && p.status !== 'deleted' && streetKey(p.address?.street_address_1) === want && thisVisit(p))
     .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+  // Never one a job uses, whoever's job it is (the people who lived there before, a rehearsal at the office)
+  if (found.length) {
+    const used = await projectsWithJobs(env, found.map((p) => p.id), fetchImpl);
+    found = found.filter((p) => !used.has(String(p.id)));
+  }
   if (found.length) return { project: found[0], how: 'adopted' };
 
   const body = {
@@ -503,10 +518,11 @@ async function findOrMakeProject(env, fam, { fetchImpl, now }) {
   };
   // CompanyCam answers with the project it already has under this name and address (restoring a deleted one)
   const existed = (p) => { const t = Date.parse(p?.created_at || ''); return Number.isFinite(t) && t < now - 10 * MIN; };
+  const usable = async (p) => !existed(p) || (thisVisit(p) && !(await projectsWithJobs(env, [p.id], fetchImpl)).has(String(p.id)));
   let project = await create(body);
-  if (project?.id && existed(project) && !thisVisit(project)) {
-    project = await create({ ...body, name: `${body.name} home visit` }); // an earlier makeover's project has the name
-    if (project?.id && existed(project) && !thisVisit(project)) throw new Error('CompanyCam keeps answering with an older project at this address');
+  if (project?.id && !(await usable(project))) {
+    project = await create({ ...body, name: `${body.name} home visit` }); // an earlier makeover's project, or a job's, has the name
+    if (project?.id && !(await usable(project))) throw new Error('CompanyCam keeps answering with an older project at this address');
   }
   if (!project?.id) throw new Error('CompanyCam didn’t make the project');
   // An archived one sends no webhooks: open it again first
@@ -692,8 +708,14 @@ async function handOver(env, row, mirror, { fetchImpl, now }) {
     if (theirs && (theirs.photo_count > 0 || theirs.document_count > 0)) stage = 'separate';
   }
   if (stage === 'linked' && job.companycamId !== row.project_id) {
-    await jt(env, { updateJob: { $: { id: job.id, companycamId: row.project_id } } }, fetchImpl);
-    if (other) await archiveProject(env, other, { fetchImpl }).catch((e) => console.warn('[companycam] archive the empty one', e.message));
+    try {
+      await jt(env, { updateJob: { $: { id: job.id, companycamId: row.project_id } } }, fetchImpl);
+      if (other) await archiveProject(env, other, { fetchImpl }).catch((e) => console.warn('[companycam] archive the empty one', e.message));
+    } catch (e) {
+      // JobTread links a project to one job at most: one already linked elsewhere can't be this job's
+      if (!(/JobTread returned 4\d\d/.test(e.message) && /companycam/i.test(e.message))) throw e;
+      stage = 'separate';
+    }
   }
   if (row.label_id) await removeProjectLabel(env, row.project_id, row.label_id, { fetchImpl }).catch(() => null);
   await saveFamily(DB, { account_id: row.account_id, stage, job_id: job.id, seen_job_id: job.id, other_project_id: other, linked_at: iso(now), label_id: null, problem: null, detail: null }, now);
@@ -1354,7 +1376,7 @@ async function finishSelfTest(env, st, { fetchImpl, now }) {
  * projects archived and both TEST customers archived in JobTread. The result
  * is in companycam_state "rehearsal". No button.
  */
-export const REHEARSAL = '2026-10-21';
+export const REHEARSAL = '2026-10-21b'; // b: projects of their own (a, at the office, adopted the TEST rehearsal jobs' projects)
 const R_NAMES = { a: 'TEST CompanyCam Family', b: 'TEST CompanyCam Approved' };
 const R_CAPTION = 'TEST: a home visit photo for the rehearsal';
 const R_WAIT_MS = 20 * MIN;
@@ -1379,6 +1401,7 @@ export async function maybeRehearsal(env, { fetchImpl = fetch, now = Date.now() 
   const { DB } = env;
   let st = await getState(DB, 'rehearsal');
   if (st?.id === REHEARSAL && st.step === 'done') return null;
+  if (st && st.id !== REHEARSAL && st.step !== 'done') return finishRehearsal(env, { ...st, error: 'replaced by a newer rehearsal' }, { fetchImpl, now });
   if (!st || st.id !== REHEARSAL) st = { id: REHEARSAL, step: 'start', startedAt: iso(now), checks: {} };
   const save = async (next) => { await putState(DB, 'rehearsal', next, now); return next; };
   const late = (since) => now - Date.parse(since) > R_WAIT_MS;
@@ -1498,7 +1521,17 @@ async function finishRehearsal(env, st, { fetchImpl, now }) {
   });
   for (const r of rows.filter(Boolean)) {
     if (r.job_id) await tidy('job', () => jt(env, { updateJob: { $: { id: r.job_id, closedOn: todayEastern(now) } } }, fetchImpl));
-    for (const p of new Set([r.project_id, r.other_project_id].filter(Boolean))) await tidy('project', () => archiveProject(env, p, { fetchImpl }));
+    if (r.how === 'made' && r.project_id) await tidy('project', () => archiveProject(env, r.project_id, { fetchImpl }));
+    if (r.other_project_id) await tidy('project', () => archiveProject(env, r.other_project_id, { fetchImpl }));
+    if (r.how === 'adopted' && r.project_id) {
+      // Someone else's project: only what the rehearsal added comes off
+      if (r.label_id) await tidy('label', () => removeProjectLabel(env, r.project_id, r.label_id, { fetchImpl }));
+      await tidy('description', async () => {
+        const p = await getProject(env, r.project_id, { fetchImpl });
+        if (/Home visit photos copy to the family in JobTread/.test(String(p?.description || ''))) await setProjectDescription(env, r.project_id, ' ', { fetchImpl });
+      });
+      if (r.account_id === st.a?.id && st.photoId) await tidy('photo', () => deletePhoto(env, st.photoId, { fetchImpl })); // its test picture
+    }
   }
   if (st.jobA && !rows.some((r) => r?.job_id === st.jobA)) await tidy('job', () => jt(env, { updateJob: { $: { id: st.jobA, closedOn: todayEastern(now) } } }, fetchImpl));
   // A test copy still on a TEST customer, then the customers themselves

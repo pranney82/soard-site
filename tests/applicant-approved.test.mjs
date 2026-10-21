@@ -55,6 +55,7 @@ function withJobs(inner) {
         if (state.deny.has($.grantKey)) return new Response('{"errors":["You can’t do that in this organization"]}', { status: 400 });
         if (state.fail > 0) { state.fail--; return new Response('busy', { status: 500 }); }
         if (input.name.length > 30) return new Response('name too long', { status: 400 });
+        if (input.companycamId === 'linked-elsewhere') return new Response('This CompanyCam project is already linked to Another Job. If you want to link it to this job, unlink it there first.', { status: 400 });
         const owner = Object.values(w.world.accounts).find(a => a.locations.some(l => l.id === input.locationId));
         if (!owner) return new Response('no such location', { status: 400 });
         const job = { id: `job${String(++seq).padStart(8, '0')}`, name: input.name, closedOn: null, fields: input.customFieldValues };
@@ -463,6 +464,17 @@ test('a family with a home-visit CompanyCam project gets their job made with it;
   const byName = Object.fromEntries(jt.state.jobCalls.map(c => [c.input.name, c.input]));
   assert.equal(byName['Quinn Avery (2027)'].companycamId, '9001', 'so CompanyCam doesn’t start a second project');
   assert.equal('companycamId' in byName['Rowan Blake (2027)'], false);
+});
+
+test('JobTread refusing the CompanyCam link (it’s another job’s) still makes the family’s job, without it', async () => {
+  await ensureCompanyCamSchema(env.DB);
+  const a = family('Sky Lane', 'In Review');
+  await env.DB.prepare("INSERT INTO companycam_projects (account_id, project_id, stage, created_at, updated_at) VALUES (?, 'linked-elsewhere', 'customer', ?, ?)").bind(a.id, iso(T0), iso(T0)).run();
+  await change(a, 'Approved', T0);
+  await sweep(...minutes(30, 40));
+  assert.equal(a.jobs.length, 1, 'the job is made');
+  const calls = jt.state.jobCalls.map(c => c.input.companycamId ?? null);
+  assert.equal(calls.at(-1), null, 'the last try went without the link');
 });
 
 test('no application photo (a family added by hand): the job is made without a cover', async () => {

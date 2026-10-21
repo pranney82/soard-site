@@ -103,6 +103,7 @@ export const projectPhotos = (env, projectId, { max = 500, fetchImpl = fetch } =
 export const projectDocuments = (env, projectId, { max = 200, fetchImpl = fetch } = {}) => ccAll(env, `/projects/${id(projectId)}/documents`, { max, fetchImpl });
 export const getPhoto = async (env, photoId, o) => (await cc(env, 'GET', `/photos/${id(photoId)}`, { ...o, query: { include: 'tags,annotations' } })).data;
 export const getDocument = async (env, documentId, o) => (await cc(env, 'GET', `/documents/${id(documentId)}`, o)).data;
+export const deletePhoto = (env, photoId, o) => cc(env, 'DELETE', `/photos/${id(photoId)}`, o);
 export const setPhotoDescription = (env, photoId, content, o) => cc(env, 'POST', `/photos/${id(photoId)}/descriptions`, { ...o, body: { description: { content: String(content).slice(0, 2000) } } });
 export const addPhotoTags = (env, photoId, tags, o) => cc(env, 'POST', `/photos/${id(photoId)}/tags`, { ...o, body: { tags } });
 /** The company's photo tags */
