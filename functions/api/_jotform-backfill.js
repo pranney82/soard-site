@@ -451,10 +451,20 @@ export async function runJotformBackfill(env, { fetchImpl = fetch, now = Date.no
   }
 }
 
-/** Where the backfill stands, for a person (counts only) */
+/** Where the backfill stands, for Site → Automations (counts and times only, no names or files) */
 export async function backfillFacts(DB) {
   await ensureSchema(DB);
-  const { results } = await DB.prepare('SELECT kind, status, matched_by, count(*) AS n FROM jotform_backfill GROUP BY kind, status, matched_by').all();
+  const { results } = await DB.prepare('SELECT status, account_id, attached, tries FROM jotform_backfill').all();
   const { results: state } = await DB.prepare('SELECT key, value, updated_at FROM jotform_backfill_state').all();
-  return { rows: results || [], state: Object.fromEntries((state || []).map(r => [r.key, r.value])) };
+  const st = Object.fromEntries((state || []).map((r) => [r.key, r]));
+  const rows = results || [];
+  const added = (r) => (parse(r.attached, []) || []).filter((a) => a?.id).length;
+  return {
+    total: rows.length, copied: rows.filter((r) => r.status === 'done').length,
+    left: rows.filter((r) => r.status !== 'done' && r.tries < MAX_TRIES).length,
+    gaveUp: rows.filter((r) => r.status !== 'done' && r.tries >= MAX_TRIES).length,
+    families: new Set(rows.filter((r) => r.account_id && added(r)).map((r) => r.account_id)).size,
+    files: rows.reduce((n, r) => n + added(r), 0),
+    listedAt: st.listed?.value || null, doneAt: st.done?.value || null, blockedAt: st.blocked?.updated_at || null,
+  };
 }

@@ -23,6 +23,8 @@
  *  - waitlist:  families waiting for the applications-open email, signups not in Kit yet, the last opening
  *  - applicationLimit: the season's limit, how many are in, the last heads-up or close (counts only)
  *  - eventRecap: event pages turning into their recap (last check, last rebuild, a rebuild still waiting)
+ *  - jotform:   the one-time Jotform copy (submissions copied, left, families and files added; counts only)
+ *  - advisory:  Advisory Board applications (how many, New, the last one and who heard; counts only)
  *
  * Not in _middleware's public list, so Access guards it. Never cached.
  * Each section fails on its own: one unreachable service never blanks the rest.
@@ -33,6 +35,8 @@ import { slackStatus, readAlertTexts, alertPhones } from './_broadcast-notify.js
 import { JT_URL, SOARD_ORG_ID } from './_reveals.js';
 import { approvalsStatus } from './_applicant-approved.js';
 import { coverFacts } from './_job-covers.js';
+import { backfillFacts } from './_jotform-backfill.js';
+import { advisoryFacts } from './_advisory-applications.js';
 import { eventRecapState } from './_event-recap.js';
 import { companycamFacts } from './_companycam-sync.js';
 import { jobsFacts } from './_companycam-jobs.js';
@@ -323,6 +327,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     press: await settle(() => pressFacts(DB)),
     quo: await settle(() => quoFacts(DB, now)),
     eventRecap: await settle(() => eventRecapFacts(DB)),
+    jotform: await settle(() => backfillFacts(DB)),
+    advisory: await settle(() => advisoryFacts(DB)),
     // Counts, times and on/off only: no names, ids or photos
     companycam: await settle(() => companycamFacts(env)),
     companycamJobs: await settle(() => jobsFacts(env)),

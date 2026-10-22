@@ -208,6 +208,26 @@ test('the Jotform applications come in once; anyone already on People → Adviso
   assert.equal(sent.emails.length + sent.slack.length, 0, 'bringing them in emails nobody');
 });
 
+test('a fixable answer never spends the Turnstile check; a TEST application reaches only the tester', async () => {
+  env.TURNSTILE_SECRET_KEY = 'secret';
+  let verifies = 0;
+  const base = globalThis.fetch;
+  globalThis.fetch = async (input, init) => { if (String(input).includes('challenges.cloudflare.com')) verifies++; return base(input, init); };
+  const typo = await apply({ ...GOOD, email: 'jordan@' }, { turnstileToken: 'tok' });
+  assert.equal(typo.res.status, 422);
+  assert.equal(verifies, 0, 'answers are checked first, so the token is still good for the fixed send');
+  const good = await apply({ ...GOOD, fullName: 'TEST Advisory Check', email: 'tester@example.org', signature: 'TEST Advisory Check' }, { turnstileToken: 'tok' });
+  assert.equal(good.res.status, 200);
+  assert.equal(verifies, 1);
+  delete env.TURNSTILE_SECRET_KEY;
+  assert.deepEqual(sent.emails.map((e) => e.to[0]).sort(), ['tester@example.org', 'tester@example.org'], 'the copy and the staff email both go to the tester, never the staff list');
+  assert.match(sent.emails.find((e) => /New Advisory/.test(e.subject)).subject, /^\[TEST\] /);
+  assert.match(JSON.stringify(sent.slack[0]), /Test application · not a real applicant/, 'Slack marks it 🧪');
+  const list = await admin('GET');
+  assert.equal(list.applications[0].isTest, true, 'the admin tags it');
+  assert.equal((await admin('GET', null, '?count=1')).new, 0, 'and it never counts as New');
+});
+
 test('the emails read well without the site: plain text and the staff list default', async () => {
   const app = { id: 'adv-test-0001', answers: checkAnswers(GOOD).answers };
   const mine = applicantEmail(app);

@@ -5,6 +5,7 @@
  * POST JSON { answers, website, turnstileToken, startedAt }
  *                   → { ok: true, first } once it's stored
  *                   → 422 { ok: false, problems: { field: message } } when an answer needs a look
+ *                     (checked before Turnstile, so fixing a typo doesn't need a second robot check)
  *
  * Public: listed in the middleware's PUBLIC_ROUTES and rate limited per IP
  * there (5 a minute), and here per day across every isolate. A honeypot field
@@ -15,6 +16,7 @@
  */
 
 import { submitApplication, notifyNew } from './_advisory-applications.js';
+import { checkAnswers } from './_advisory-form.js';
 import { turnstileOn, turnstileSiteKey, verifyTurnstile, clientIp } from './_secure.js';
 import { limit } from './_rate-limit.js';
 
@@ -53,6 +55,9 @@ export async function onRequestPost(context) {
   if (String(body?.website || '').trim() || (Number.isFinite(started) && started > 0 && now - started < TOO_FAST_MS)) {
     return json({ ok: true, first: '' });
   }
+  // Answers first: a fixable mistake must not spend the applicant's Turnstile check (each token works once)
+  const { problems: early } = checkAnswers(body?.answers || {});
+  if (Object.keys(early).length) return json({ ok: false, problems: early, error: 'A few answers need a look.' }, 422);
   const ip = clientIp(request);
   if (turnstileOn(env) && !(await verifyTurnstile(env, body?.turnstileToken, ip))) {
     return json({ ok: false, code: 'turnstile', error: 'Please confirm you’re not a robot, then send it again.' }, 400);

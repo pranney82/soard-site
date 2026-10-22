@@ -46,6 +46,8 @@ const FACTS = {
   reveals: { cachedAt: iso(5 * 60e3) },
   approvals: { lastRunAt: iso(60e3), lastErrorAt: null, last: { name: 'Ava Stone', at: iso(3 * 3600e3), slug: 'ava' }, waiting: [] },
   covers: { covers: 23, last: { slug: 'max', at: iso(2 * 3600e3) }, failing: 0 },
+  jotform: { total: 60, copied: 31, left: 29, gaveUp: 0, families: 14, files: 52, listedAt: iso(3600e3), doneAt: null, blockedAt: null },
+  advisory: { total: 8, new: 1, fromJotform: 7, lastAt: iso(5 * 3600e3), lastNotified: { applicant: true, staff: 1, slack: true } },
   quo: { lastAt: iso(2 * 3600e3), last30: 77 },
   sends: { live: { kit: { last: iso(2 * 86400e3), sent: 1, failed: 0 } } },
   reminders: { subscribers: 4 },
@@ -134,6 +136,7 @@ try {
     ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],
     ['Reveal checks for PMs', 'Off'], ['Kid status follows JobTread', 'Live'], ['Gift alerts in Slack', 'Live'],
     ['Status → family message', 'Live'], ['Quo texts and calls → JobTread', 'Live'], ['/text → Quo text', 'Live'], ['Zillow lookup', 'Live'], ['Approved → job and kid page', 'Live'], ['Kid photo as the job’s cover', 'Live'],
+    ['Jotform copy', 'Live'], ['Advisory Board application', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
   const zapier = await page.evaluate(() => [...document.querySelectorAll('.am-inv-branch li b, #am-svc option')].map((e) => e.textContent).filter((x) => /zapier/i.test(x)));
   ok(zapier.length === 0, `Zapier is retired: no entry or service for it${zapier.length ? ` (found ${zapier.join(', ')})` : ''}`);
@@ -173,7 +176,8 @@ try {
   // the waitlist's confirmation and its Kit fallback, the staff heads-up, a stuck application, the status summary,
   // go / no-go, alerts, reminders, editor tests, direct sends, the connection itself, gift alert problems, a Denied kid, and a staff text that didn't arrive
   const RESEND = ['Invite problem alerts', 'Save and finish later', 'Tell me when applications open', 'Applications-open email', 'Staff heads-up', 'Application sweep',
-    'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Send test', 'Send to specific people', 'Resend', 'Gift alerts in Slack', 'Kid status follows JobTread', 'Text delivery reports'];
+    'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Send test', 'Send to specific people', 'Resend', 'Gift alerts in Slack', 'Kid status follows JobTread', 'Text delivery reports',
+    'Application limit', 'Advisory Board application'];
   ok(await panelTitle(page) === 'If Resend stops working' && sameSet(resendTitles, RESEND), `"Depends on" lists everything that uses Resend (${resendTitles.length})${setDiff(resendTitles, RESEND)}`);
   await page.screenshot({ path: join(OUT, 'desktop-depends.png'), fullPage: false });
 

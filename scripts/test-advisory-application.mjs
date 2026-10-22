@@ -266,8 +266,12 @@ if (DIST) {
     const next = async () => { await p.click('#adv-next'); await sleep(400); };
     ok(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)), 'nothing scrolls sideways');
     ok((await p.$$eval('.adv-step-name', (els) => els.map((e) => e.textContent))).join() === 'About you,Interest,Strengths,Commitment,Reference', 'the five steps, by short name');
+    const a0 = await axeScan(p, '#application');
+    ok(!a0.length, `axe: the first step has no WCAG 2.1 AA problems${a0.length ? ` (${axeText(a0)})` : ''}`);
     await next();
     ok((await p.$$eval('.adv-page[data-step="0"] .adv-field.is-invalid', (els) => els.map((e) => e.dataset.field))).join() === 'fullName,email,phone', 'an empty step marks what’s needed');
+    const a1 = await axeScan(p, '#application');
+    ok(!a1.length, `axe: with its problems showing too${a1.length ? ` (${axeText(a1)})` : ''}`);
     ok(await p.evaluate(() => document.activeElement?.id) === 'adv-fullName', 'focus on the first');
     await type('fullName', 'Taylor Brooks'); await type('email', `taylor${width}@example.org`); await type('phone', '404 555 0199'); await type('company', 'Brooks Law');
     await next();
@@ -285,6 +289,8 @@ if (DIST) {
     await choose('hostEvent', 'Yes'); await choose('meetings', 'Yes'); await choose('ambassador', 'Yes');
     await next();
     ok(/Send my application/.test(await text(p, '#adv-next')), 'the last step sends');
+    const a4 = await axeScan(p, '#application');
+    ok(!a4.length, `axe: the last step (choices, the checkbox) has no problems${a4.length ? ` (${axeText(a4)})` : ''}`);
     await type('refName', 'Pat Kim'); await type('refRelationship', 'Colleague'); await type('refEmail', 'pat@example.org');
     await p.click('#adv-acknowledge'); await type('signature', 'Taylor Brooks');
     await sleep(500);
@@ -294,6 +300,8 @@ if (DIST) {
     await p.click('#adv-next');
     await p.waitForSelector('#adv-done:not([hidden])', { timeout: 8000 }).catch(() => null);
     ok(/Thank you, Taylor\./.test(await text(p, '#adv-done h2')), 'sent: thanks by name');
+    const a5 = await axeScan(p, '#application');
+    ok(!a5.length, `axe: the thank-you has no problems${a5.length ? ` (${axeText(a5)})` : ''}`);
     ok(await p.evaluate(() => localStorage.getItem('soard-advisory-application')) === null, 'the device forgets the answers');
     ok((await listAdvisoryApplications(DB)).some((a) => a.email === `taylor${width}@example.org`), 'stored, for the admin');
     await p.screenshot({ path: join(OUT, `apply-done-${width}.png`) });

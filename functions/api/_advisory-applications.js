@@ -13,6 +13,10 @@
  * email). The applications sent to Jotform come in once, from the Jotform
  * backfill's copy (./_jotform-backfill.js); anyone who's already on People →
  * Advisory is marked Joined.
+ *
+ * A name starting with TEST is a test, as on the makeover form: the staff
+ * email goes only to the address on the application (the tester), Slack
+ * marks it 🧪, the admin tags it, and it never counts as New.
  */
 
 import { ADVISORY_FIELDS, checkAnswers, answerSections, JOTFORM_FIELDS, OVERVIEW_PDF, EMAIL_RE } from './_advisory-form.js';
@@ -33,6 +37,9 @@ const iso = (t = Date.now()) => new Date(t).toISOString();
 const parse = (s, d = null) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
 export const isApplicationId = (s) => /^adv-[0-9a-z-]{8,40}$/.test(String(s || ''));
 const newId = () => `adv-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+/** A test application: the full name starts with TEST, like the makeover form's test families */
+export const isTestApplication = (nameOrAnswers) => /^\s*test\b/i.test(typeof nameOrAnswers === 'string' ? nameOrAnswers : nameOrAnswers?.fullName || '');
+const TEST_LABEL = 'Test application · not a real applicant';
 const firstName = (a) => String(a?.preferredName || a?.fullName || '').trim().split(/\s+/)[0] || '';
 const normalizeName = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -65,6 +72,7 @@ function fromRow(r, { full = false } = {}) {
     personSlug: r.person_slug, createdAt: r.created_at, updatedAt: r.updated_at,
     link: answers.link || null, preferredName: answers.preferredName || null,
     notes: parse(r.notes, []).length,
+    isTest: isTestApplication(r.name),
     // One line for the list: why they want to serve
     why: String(answers.why || '').replace(/\s+/g, ' ').slice(0, 220),
   };
@@ -167,7 +175,7 @@ export function staffEmail(app) {
   const why = a.why ? `<div style="font-family:${mail.SANS};font-size:13px;color:${mail.MUTED};margin:16px 0 4px;" class="muted">Why they want to serve</div>${mail.paragraphs(a.why)}` : '';
   const html = mail.emailShell({
     preheader: `${work || 'A new applicant'}. Read it and reply from the admin.`,
-    eyebrow: 'New Advisory Board application',
+    eyebrow: isTestApplication(a) ? TEST_LABEL : 'New Advisory Board application',
     heading: `${a.fullName} applied to the Advisory Board`,
     intro: 'It came in through the website. They have a copy of what they sent.',
     bodyHtml: mail.panel(mail.facts(rows) + why)
@@ -176,7 +184,7 @@ export function staffEmail(app) {
   });
   const text = `${a.fullName} applied to the Advisory Board.\n\n${[['Email', a.email], ['Phone', a.phone], ['Work', work], ['Heard about us', a.heardFrom], ...yesNoFacts(a)]
     .filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nRead the application: ${adminUrl(app.id)}`;
-  return { subject: `New Advisory Board application: ${a.fullName}`, html, text };
+  return { subject: `${isTestApplication(a) ? '[TEST] ' : ''}New Advisory Board application: ${a.fullName}`, html, text };
 }
 
 /** The same heads-up for Slack, without contact details */
@@ -185,6 +193,7 @@ export function staffSlack(app) {
   return slackCard({
     icon: '🤝',
     title: `Advisory Board application: ${a.fullName}`,
+    test: isTestApplication(a) ? TEST_LABEL : null,
     lead: [a.jobTitle, a.company].filter(Boolean).join(', ') || null,
     facts: [['Heard about us', a.heardFrom], ...yesNoFacts(a)],
     buttons: [{ label: 'Read the application', url: adminUrl(app.id) }],
@@ -201,8 +210,9 @@ export async function notifyNew(env, app, { now = Date.now() } = {}) {
     out.applicant = r.sent > 0;
   } catch { /* recorded below */ }
   try {
-    const { staffEmails } = await getAdvisorySettings(env.DB);
-    const r = await sendEmails(env, { to: staffEmails, ...staffEmail(app), tags: [{ name: 'kind', value: 'advisory-application-staff' }] });
+    // A test's staff email goes to the tester, never the staff list
+    const to = isTestApplication(app.answers) ? [app.answers.email] : (await getAdvisorySettings(env.DB)).staffEmails;
+    const r = await sendEmails(env, { to, ...staffEmail(app), tags: [{ name: 'kind', value: 'advisory-application-staff' }] });
     out.staff = r.sent;
   } catch { /* recorded below */ }
   try {
@@ -230,7 +240,7 @@ export async function getAdvisoryApplication(DB, id) {
 
 export async function countNew(DB) {
   await ensureAdvisorySchema(DB);
-  return (await DB.prepare("SELECT count(*) AS n FROM advisory_applications WHERE status = 'new'").first('n')) || 0;
+  return (await DB.prepare("SELECT count(*) AS n FROM advisory_applications WHERE status = 'new' AND upper(name) NOT LIKE 'TEST%'").first('n')) || 0;
 }
 
 export async function setAdvisoryStatus(DB, id, status, { by = null, now = Date.now() } = {}) {
@@ -343,4 +353,17 @@ export async function importJotformApplications(DB, { now = Date.now() } = {}) {
   }
   if (stmts.length) await DB.batch(stmts);
   return stmts.length;
+}
+
+/** For Site → Automations: how many, how many New, and the last one (counts and times only) */
+export async function advisoryFacts(DB) {
+  await ensureAdvisorySchema(DB);
+  const row = await DB.prepare(`SELECT count(*) AS total,
+      sum(CASE WHEN status = 'new' AND upper(name) NOT LIKE 'TEST%' THEN 1 ELSE 0 END) AS fresh,
+      sum(CASE WHEN source = 'jotform' THEN 1 ELSE 0 END) AS jotform,
+      max(CASE WHEN source = 'site' THEN created_at END) AS last_at
+    FROM advisory_applications`).first();
+  const last = await DB.prepare("SELECT notified FROM advisory_applications WHERE source = 'site' ORDER BY created_at DESC LIMIT 1").first('notified');
+  const n = parse(last, null);
+  return { total: row?.total || 0, new: row?.fresh || 0, fromJotform: row?.jotform || 0, lastAt: row?.last_at || null, lastNotified: n ? { applicant: !!n.applicant, staff: n.staff || 0, slack: !!n.slack } : null };
 }

@@ -298,6 +298,21 @@ const MAP = { t: 'SOARD', children: [
           touches: ['Cloudflare Turnstile'], where: 'functions/api/apply.js',
           live: (f) => (!env(f) ? null : f.env.turnstile && f.env.turnstileSite ? ON('Turnstile is checked on every new application.') : OFF('Needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY in Cloudflare; the honeypot and limits work without them.')) },
       ]},
+      { t: 'Moving off Jotform', children: [
+        { t: 'Jotform copy', s: 'live', k: 'schedule',
+          when: 'Every 2 minutes on the application sweep, a few at a time, until every Jotform submission is copied (once, October 2026).',
+          does: 'Copies every submission of the 2025 and 2026 makeover forms and the Advisory Board form: the answers into the database, the photos and Jotform’s PDF into private storage, and, for each family it can match in JobTread, whatever their account is missing (“<Child>.jpg”, Family, Space 1 and 2, the application PDF). It never makes a JobTread account.',
+          touches: ['Jotform', 'JobTread', 'D1', 'R2'], where: 'functions/api/_jotform-backfill.js (on the sweep in _applications.js)',
+          info: 'A family is matched by JobTread’s Application URL, else by the child’s name when exactly one family has it. Needs JOTFORM_API_KEY in Cloudflare. Once it’s done, nothing on the site uses Jotform, and the forms there can be switched off.',
+          live: (f) => {
+            const j = f.jotform;
+            if (!j || j.error) return null;
+            if (j.blockedAt) return ATTN(`Stopped ${stamp(j.blockedAt)}: Jotform handed over no files.`);
+            if (j.doneAt) return OFF(`Done ${stamp(j.doneAt)}: ${j.copied} of ${j.total} copied, ${plural(j.files, 'file')} added to ${plural(j.families, 'family', 'families')} in JobTread.`, j.doneAt);
+            if (!j.total) return ON('Starting: the first run lists every submission.');
+            return ON(`${j.copied} of ${j.total} copied so far, a few every 2 minutes.`);
+          } },
+      ]},
       { t: 'Waitlist', children: [
         { t: 'Tell me when applications open', s: 'live', k: 'visitor',
           when: 'While applications are closed, a family leaves their email on the Apply page or the closed application form, in English or Spanish.',
@@ -857,8 +872,21 @@ const MAP = { t: 'SOARD', children: [
           touches: ['Zeffy'], where: 'src/pages/donate.astro · LiveGive.astro' },
         { t: 'Qtego auction', s: 'live', k: 'link',
           does: 'The gala auction link.', touches: ['Qtego'], where: 'src/utils/auction.ts' },
-        { t: 'Advisory board application', s: 'live', k: 'link',
-          does: 'The Jotform application on the advisory board page (the makeover application moved onto the site).', touches: ['Jotform'], where: 'src/pages/advisory-board.astro' },
+        { t: 'Advisory Board application', s: 'live', k: 'visitor',
+          when: 'Someone applies on /advisory-board/apply/ (always open; it replaced the Jotform form in October 2026).',
+          does: 'Five steps, saved on their device as they go. Each application is stored; the applicant gets a copy of what they sent; staff get an email (the list in People → Applications) and a Slack post without contact details. A name starting with TEST is a test: both emails go only to the address on it.',
+          touches: ['D1', 'Resend', 'Slack', 'Cloudflare Turnstile'], where: 'src/pages/advisory-board/apply.astro · functions/api/advisory-apply.js · _advisory-applications.js',
+          info: 'Staff work through them in People → Applications: where each stands, notes, and Add as an advisor (a hidden draft on People → Advisory with their private email). Turnstile, a hidden honeypot and a daily limit per address keep bots out.',
+          live: (f) => {
+            if (!env(f)) return null;
+            if (!f.env.resend) return ATTN('RESEND_API_KEY is missing, so neither the applicant nor staff are emailed.');
+            const a = f.advisory;
+            if (!a || a.error) return ON();
+            const n = a.lastNotified;
+            const heard = n ? ` The applicant was ${n.applicant ? '' : 'not '}emailed, staff ${n.staff ? `got ${plural(n.staff, 'email')}` : 'got no email'}${n.slack ? ' and Slack' : ', no Slack'}.` : '';
+            const word = a.new ? `${plural(a.new, 'new one')} to look at` : 'none new';
+            return a.lastAt ? ON(`${plural(a.total, 'application')}, ${word}. The last came in ${stamp(a.lastAt)}.${heard}`, a.lastAt) : ON(`Waiting for the first application on the site${a.fromJotform ? ` (${a.fromJotform} came over from Jotform)` : ''}.`);
+          } },
         { t: 'Rating badges', s: 'live', k: 'link',
           does: 'Charity Navigator and Candid badges in the footer and on Financials, set in Site Config → Settings.',
           touches: ['Charity Navigator', 'Candid'], where: 'src/utils/trust-badges.ts' },

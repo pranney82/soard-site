@@ -234,7 +234,7 @@ export function AdvisoryApplications({ addToast, kit = {} }) {
     ${apps.length === 0 ? html`<div class="ava-zero"><strong>No applications yet</strong>When someone applies on the <a href=${APPLY_PAGE} target="_blank" rel="noopener">Advisory Board’s Apply page</a>, it shows here, and you get an email and a Slack post.</div>`
       : list.length === 0 ? html`<div class="ava-zero"><strong>Nobody matches</strong><button class="btn btn-ghost btn-sm" onClick=${() => { setFilter(''); setQ(''); }}>Show everyone</button></div>`
       : html`<ul class="ava-list">
-        ${list.map((a) => html`<li key=${a.id}><button class=${`ava-row ${a.status === 'new' ? 'is-new' : ''}`} onClick=${() => open(a.id)} aria-label=${`${a.name}, ${statusLabel(a.status)}. Open`}>
+        ${list.map((a) => html`<li key=${a.id}><button class=${`ava-row ${a.status === 'new' && !a.isTest ? 'is-new' : ''}`} onClick=${() => open(a.id)} aria-label=${`${a.name}, ${statusLabel(a.status)}. Open`}>
           <${Avatar} a=${a} />
           <span class="ava-who">
             <span class="ava-name">${shown(a)}</span>
@@ -243,7 +243,7 @@ export function AdvisoryApplications({ addToast, kit = {} }) {
           </span>
           <span class="ava-meta">
             <${Pill} status=${a.status} label=${statusLabel(a.status)} />
-            <span class="ava-when" title=${longDate(a.createdAt)}>${a.source === 'jotform' ? html`<span class="ava-tag" title="Sent on the old Jotform form">Jotform</span> ` : ''}${ago(a.createdAt)}</span>
+            <span class="ava-when" title=${longDate(a.createdAt)}>${a.isTest ? html`<span class="ava-tag" title="A test: its email went only to the address on it">Test</span> ` : ''}${a.source === 'jotform' ? html`<span class="ava-tag" title="Sent on the old Jotform form">Jotform</span> ` : ''}${ago(a.createdAt)}</span>
           </span>
         </button></li>`)}
       </ul>`}

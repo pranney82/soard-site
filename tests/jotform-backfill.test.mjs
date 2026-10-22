@@ -174,7 +174,10 @@ test('backfill: each family gets what JobTread is missing; the site keeps every 
   assert.equal(Object.values(w.world.accounts).reduce((n, a) => n + a.files.length, 0), files);
   assert.equal(jf.state.calls.length, calls, 'Jotform isn\'t asked again');
   const facts = await backfillFacts(env.DB);
-  assert.ok(facts.state.done);
+  assert.ok(facts.doneAt);
+  assert.deepEqual({ total: facts.total, copied: facts.copied, left: facts.left, families: facts.families, files: facts.files }, { total: 5, copied: 5, left: 0, families: 2, files: 6 },
+    'Site → Automations: counts only (Milo got 5 files, June 1)');
+  assert.equal(JSON.stringify(facts).includes('Milo'), false, 'no names');
 });
 
 test('when Jotform hands over no files, it stops after three tries and says what each way answered', async () => {
