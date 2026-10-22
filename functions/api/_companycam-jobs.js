@@ -19,8 +19,10 @@
  * plus a project at the same address under the family's name, started
  * within half a year of the job (never one another job holds, nor TEST). Any
  * photo in a source that the job doesn't have ("CompanyCam <id>", JobTread's
- * own naming) is copied to it. A photo in the project JobTread is still
- * linked to waits an hour first, so JobTread's own sync has its turn.
+ * own naming) is copied to it, as soon as CompanyCam has processed it. A
+ * photo in the project JobTread is still linked to waits an hour first, so
+ * JobTread's own sync has its turn. A job with photos still to copy comes
+ * round every 10 minutes, not hourly.
  *
  * Every open job (not TEST) about once an hour, a couple a minute on the
  * heartbeat; a new photo in a job's source moves that job to the front
@@ -47,11 +49,11 @@ const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const CHECK_EVERY_MS = HOUR;
+const RECHECK_MISSING_MS = 10 * MIN;  // a job with photos still to copy comes round sooner
 const INDEX_EVERY_MS = HOUR;
 const PER_TICK = 2;
 const BUDGET_MS = 18000;
 const LINKED_GRACE_MS = HOUR;      // JobTread's own sync gets its turn with the linked project
-const FRESH_MS = 2 * MIN;          // a photo CompanyCam is still settling
 const COPY_PER_RUN = 15;
 const MAX_REMOVE_PER_RUN = 50;
 const MAX_PHOTOS = 2000;
@@ -245,7 +247,7 @@ export async function checkJob(env, job, index, { fetchImpl = fetch, now = Date.
     if (copy) {
       const due = missing.filter((p) => {
         const age = now - Date.parse(p.created_at || p.captured_at || 0);
-        return p.source === job.companycamId ? age > LINKED_GRACE_MS : age > FRESH_MS;
+        return p.source === job.companycamId ? age > LINKED_GRACE_MS : true; // listed only once CompanyCam has processed it
       }).slice(0, COPY_PER_RUN);
       const done = new Set();
       for (const p of due) {
@@ -310,9 +312,11 @@ export async function maybeCheckJobs(env, { fetchImpl = fetch, now = Date.now(),
     if (!force && !(await takeTurn(DB, 'tick', MIN, now))) return null;
     const deadline = Date.now() + BUDGET_MS;
     const jobs = await openJobs(env, fetchImpl);
-    const { results } = await DB.prepare('SELECT job_id, checked_at FROM companycam_jobs').all();
+    const { results } = await DB.prepare('SELECT job_id, checked_at, missing FROM companycam_jobs').all();
     const last = new Map((results || []).map((r) => [r.job_id, r.checked_at || 0]));
-    const due = jobs.filter((j) => (last.get(j.id) || 0) <= now - CHECK_EVERY_MS).sort((a, b) => (last.get(a.id) || 0) - (last.get(b.id) || 0)).slice(0, PER_TICK);
+    const waiting = new Set((results || []).filter((r) => r.missing > 0).map((r) => r.job_id));
+    const every = (id) => (waiting.has(id) ? RECHECK_MISSING_MS : CHECK_EVERY_MS);
+    const due = jobs.filter((j) => (last.get(j.id) || 0) <= now - every(j.id)).sort((a, b) => (last.get(a.id) || 0) - (last.get(b.id) || 0)).slice(0, PER_TICK);
     if (!due.length) return { checked: 0 };
     const index = await projectIndex(env, { fetchImpl, now });
     const pass = (await getState(DB, 'pass')) || { copied: [] };

@@ -206,3 +206,24 @@ test('a new photo in a job’s source sends that job to the front of the queue',
   assert.equal((await row('j2')).checked_at, 0);
   assert.ok((await row('j1')).checked_at > 0, 'other jobs keep their place');
 });
+
+test('a new photo CompanyCam tells the site about is copied on the very next run, and a job still owed photos comes round in 10 minutes', async () => {
+  twoJobs();
+  await run(0);
+  photo('3009104', '600', { created: at(5) }); // taken just now in a project JobTread lost the link to
+  await takeEvent(env, { event_type: 'photo.created', payload: { photo: { id: '3009104', project_id: '600' } } }, { now: at(5) });
+  await run(6);
+  assert.ok(names('j2').includes('CompanyCam 3009104'), 'copied a minute after the alert');
+  // A photo JobTread's own link should bring: it gets its hour, and the job is looked at every 10 minutes meanwhile
+  photo('3009003', '500', { created: at(6) });
+  await nudgeJobsFor(env.DB, '500');
+  await run(7);
+  assert.equal((await row('j1')).missing, 1);
+  const before = (await row('j1')).checked_at;
+  await run(12);
+  assert.equal((await row('j1')).checked_at, before, 'not due again yet');
+  await run(18);
+  assert.ok((await row('j1')).checked_at > before, 'back after 10 minutes, not an hour');
+  await run(70);
+  assert.ok(names('j1').includes('CompanyCam 3009003'), 'the site copies it once JobTread’s hour is up');
+});
