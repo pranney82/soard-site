@@ -280,6 +280,7 @@ const ICONS = {
   image: html`<rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 16-5-5-9 9" />`,
   clock: html`<circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />`,
   sparkle: html`<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5" />`,
+  play: html`<path d="M8 5.5v13l10.5-6.5z" />`,
 };
 const Icon = ({ name, size = 16 }) => html`<svg class="afe-ico" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
 
@@ -1040,6 +1041,19 @@ function SampleButton({ d, addToast }) {
       ${d?.hasDraft && html`<div class="afe-note is-warn" style="margin-bottom: .85rem;"><${Icon} name="warn" /><span>It uses what families get today. Your changes that aren’t live yet won’t be in it, so put them live first to see them.</span></div>`}
       <p class="afe-hint" style="margin: 0;">It also shows in Submissions and in Slack, marked as a test.</p>
     <//>`}`;
+}
+
+/**
+ * "Go through it as a family": the real form in a new tab (/apply/form/?test=1), open or closed.
+ * Saving, the map check, uploads and Submit all run for real; every email goes to the person
+ * running it, and the JobTread account is marked TEST and archives itself. The page offers
+ * sample answers a page at a time and, after Submit, shows the intake step by step.
+ */
+function TestRunButton({ d }) {
+  const tip = d?.hasDraft
+    ? 'Opens the real form in a new tab, as families see it today (put your changes live first to try them). Every email comes to you.'
+    : 'Opens the real form in a new tab. Every email comes to you, and nothing reaches the team or a real family.';
+  return html`<a class="btn btn-primary afe-sample-btn" href="/apply/form/?test=1" target="_blank" rel="noopener" title=${tip}><${Icon} name="play" size=${15} /> Go through it as a family</a>`;
 }
 
 export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, initialTab = null, setGlobalDirty = null }) {
@@ -2112,6 +2126,7 @@ function FormArea({ d, view, onView, spanishLeft, RichTextEditor, addToast, init
   return html`
     <div>
       <${Head} title="Form" sub=${html`The application families fill in at <a href="/apply/form/" target="_blank" rel="noopener">/apply/form/</a>. Every edit saves as a draft, and Put live makes it what families see. Questions that feed JobTread can be reworded and moved, never removed.`}>
+        <${TestRunButton} d=${d} />
         <${SampleButton} d=${d} addToast=${addToast} />
       <//>
       ${view === 'questions' && html`<${FormEditor} d=${d} lead=${nav} RichTextEditor=${RichTextEditor} addToast=${addToast} initialSel=${initialSel} go=${go} />`}
@@ -3243,6 +3258,7 @@ function EmailsTab({ d, go, addToast = () => {} }) {
   return html`
     <div>
       <${Head} title="Emails" sub="Every email a family gets from us, in the order they get it. Status emails post on the family's JobTread account as the Qualification Committee, and JobTread emails them; their replies come back to the family's page. Wording changes go live with Put live.">
+        <${TestRunButton} d=${d} />
         <${SampleButton} d=${d} addToast=${addToast} />
       <//>
       <${DraftBar} d=${d} emails />

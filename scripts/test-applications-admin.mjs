@@ -300,6 +300,8 @@ try {
     ok(JSON.stringify(tabs) === JSON.stringify(['Applicants', 'Insights', 'Form', 'Emails', 'Settings']), `five tabs, grouped by job (${tabs.join(', ')})`);
     ok(await text(page, '.afe-head h2') === 'Form', 'each tab has the admin’s page header');
     ok(!!(await page.$('.afe-head .afe-sample-btn')), 'the Form header has See what a family receives');
+    const run = await page.$$eval('.afe-head a.afe-sample-btn', (els) => els.map(a => ({ text: a.textContent.trim(), href: a.getAttribute('href'), target: a.target })));
+    ok(run.some(r => /Go through it as a family/.test(r.text) && r.href === '/apply/form/?test=1' && r.target === '_blank'), 'and "Go through it as a family", the real form as a test run in a new tab');
     ok(JSON.stringify(await page.$$eval('.afe-subnav button', els => els.map(e => e.dataset.view))) === '["questions","spanish","versions"]', 'the Form has Questions, Spanish and Versions, at the start of its draft bar');
     ok(!/Settings/.test(await text(page, '.afe-col')) || /are in Settings/.test(await text(page, '.afe-form-foot')), 'the form outline has no settings of its own; it points to Settings');
     await page.waitForSelector('.afe-tabs [data-tab="settings"] .afe-tab-state', { timeout: 8000 }).catch(() => {});

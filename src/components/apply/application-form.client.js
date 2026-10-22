@@ -22,6 +22,12 @@
  * Preview modes save nothing: ?preview=draft (staff: the unsaved draft) and
  * ?preview=live (the admin editor's live pane: it posts each change here).
  * ?preview=1 only shows the form while applications are closed.
+ *
+ * ?test=1 is a staff test run (Admin → Applications → Form, "Go through it as a
+ * family"): the real form, saving, uploads and submit, open or closed, with every
+ * email going to the signed-in staff member. A bar says so and fills a page with
+ * sample answers on request; after Submit, the thank-you shows the intake in
+ * JobTread step by step as it happens. Its draft is kept apart from a real one.
  */
 import * as tus from 'tus-js-client';
 import {
@@ -35,6 +41,7 @@ import { signupCheck, postPlainly } from '../../utils/signup-check';
 
 const API = '/api/apply';
 const STORE_KEY = 'soard-application-draft';
+const TEST_STORE_KEY = 'soard-application-test-run';
 const LANG_KEY = 'soard-application-lang';
 const CHUNK = 10 * 1024 * 1024; // tus chunks: small enough for a phone on a weak signal
 const PHOTO_MAX = 2560;
@@ -121,6 +128,10 @@ function init(root, cfg, mode) {
 
   const live = mode === 'live';
   const previewing = live || !!cfg.preview;
+  // A staff test run: { by: their email } once signed in, { signIn: true } before (the page's Function decides)
+  let testRun = !previewing && cfg.testRun ? cfg.testRun : null;
+  // Its draft is kept apart, so this browser's own application (if any) is never mixed up with it
+  let store = local(testRun ? TEST_STORE_KEY : STORE_KEY);
   const year = String(cfg.year || root.dataset.year || '');
   const version = cfg.version || 0;
   // The raw definition (resolved here per language); an older server only sends the English form
@@ -335,9 +346,10 @@ function init(root, cfg, mode) {
   function headerOffset() {
     return parseInt(getComputedStyle(document.documentElement).scrollPaddingTop, 10) || 100;
   }
-  /** Bring the top of the form back into view if the family has scrolled past it */
+  /** Bring the top of the form back into view if the family has scrolled past it (a test run: its bar, where Fill is) */
   function scrollToForm(force = false) {
-    const top = ui.form.getBoundingClientRect().top;
+    const bar = testRun?.by ? root.querySelector('[data-testbar]:not([hidden])') : null;
+    const top = (bar || ui.form).getBoundingClientRect().top;
     const offset = headerOffset();
     if (!force && top >= offset - 8) return;
     window.scrollTo({ top: Math.max(0, window.scrollY + top - offset), behavior: reducedMotion() ? 'auto' : 'smooth' });
@@ -506,6 +518,11 @@ function init(root, cfg, mode) {
       enter(pageEl(id), dir * 28);
       enter(ui.stepTitle, dir * 14);
     }
+    if (testRun) {
+      paintTestBar();
+      const note = changed && root.querySelector('[data-test-note]'); // "Filled in …" was about the last page
+      if (note) note.textContent = '';
+    }
     if (scroll && !focusField) scrollToForm();
     growPage(id);
     requestAnimationFrame(paintMini);
@@ -653,9 +670,11 @@ function init(root, cfg, mode) {
   // ── Server calls ─────────────────────────────────────────────────
   async function start() {
     if (previewing || token) return true; // a preview walks the pages and saves nothing
-    if (turnstileSiteKey && !turnstileToken) { navNote('turnstile'); return false; }
+    if (testRun?.signIn) { navNote({ raw: TEST.signInNote }); return false; }
+    if (turnstileSiteKey && !turnstileToken && !testRun) { navNote('turnstile'); return false; }
     let r;
-    try { r = await api({ action: 'start', year, lang, turnstileToken, website: ui.honeypot?.value || '' }); } catch { r = { ok: false }; }
+    try { r = await api({ action: 'start', year, lang, turnstileToken, website: ui.honeypot?.value || '', ...(testRun ? { test: true } : {}) }); } catch { r = { ok: false }; }
+    if (r.code === 'staff-only') { testRun = { signIn: true }; paintTestBar(); }
     if (!r.ok) {
       // The quick check's own words here (the server's are English and name a different button)
       navNote(r.code === 'turnstile' ? 'turnstile' : r.error ? { raw: r.error } : 'startFail');
@@ -856,7 +875,7 @@ function init(root, cfg, mode) {
   function finished(already = false) {
     store.clear();
     closeRecorder();
-    doneShown = { already, email: readAnswers().parentEmail || answers.parentEmail || '' };
+    doneShown = { already, email: testRun?.by || readAnswers().parentEmail || answers.parentEmail || '' };
     notice(null);
     ui.form.hidden = true;
     ui.stop.hidden = true;
@@ -864,6 +883,7 @@ function init(root, cfg, mode) {
     root.classList.add('is-done'); // the steps beside the form have done their job
     paintMini();
     paintDone();
+    if (testRun?.by) startTrace();
     // The sun rises once (the styles keep it still under reduced motion)
     ui.done.classList.remove('is-in');
     void ui.done.offsetWidth;
@@ -1430,6 +1450,290 @@ function init(root, cfg, mode) {
     }
   }
 
+  // ── A staff test run (?test=1) ──────────────────────────────────
+  // Staff words (the admin is English); the form itself stays in the family's language
+  const TEST = {
+    lead: (to) => `You're going through the real form as a family. Every email comes to you at ${to}. Nothing reaches the team or a real family: no Slack post, and the JobTread account it makes is marked TEST and archives itself.`,
+    signIn: 'Test runs are for SOARD staff. Sign in to the admin, then start the test run from Applications → Form.',
+    signInNote: 'Sign in to the admin to start a test run.',
+    fill: 'Fill this page with sample answers', filling: 'Filling in…',
+    filled: (n) => (n ? `Filled in ${n} answer${n === 1 ? '' : 's'}. Change anything you like, then press Next.` : 'Everything on this page is already answered.'),
+    noVideo: "This browser can't make a sample video. Choose or record any short video instead.",
+  };
+  const ui2 = {
+    bar: root.querySelector('[data-testbar]'),
+    barText: root.querySelector('[data-testbar-text]'),
+    fill: root.querySelector('[data-test-fill]'),
+    fillNote: root.querySelector('[data-test-note]'),
+    signIn: root.querySelector('[data-test-signin]'),
+    end: root.querySelector('[data-test-end]'),
+    trace: root.querySelector('[data-trace]'),
+  };
+  function paintTestBar() {
+    root.classList.toggle('is-test', !!testRun?.by);
+    // Not signed in: only the bar (with the way to sign in) shows, never a form that can't start
+    const signIn = !!testRun?.signIn;
+    root.classList.toggle('is-signin', signIn);
+    if (signIn) { root.hidden = false; ui.form.hidden = true; if (closedCard) closedCard.hidden = true; }
+    if (!ui2.bar) return;
+    ui2.bar.hidden = !testRun;
+    if (!testRun) return;
+    ui2.bar.dataset.state = testRun.by ? 'on' : 'sign-in';
+    // After the first page it's one slim row (the badge, Fill, End): the words were read once
+    ui2.bar.classList.toggle('is-compact', !!testRun.by && !!currentId && currentId !== stepIds()[0]);
+    ui2.barText.textContent = testRun.by ? TEST.lead(testRun.by) : TEST.signIn;
+    ui2.fill.hidden = !testRun.by;
+    ui2.signIn.hidden = !!testRun.by;
+    if (ui2.end) ui2.end.hidden = !testRun.by;
+    if (testRun.by && !/^Test run · /.test(document.title)) document.title = `Test run · ${document.title}`;
+  }
+  ui2.end?.addEventListener('click', () => store.clear()); // the link goes back to the admin
+
+  /** Sample answers for a test run, by question (anything else gets one by its type) */
+  const sampleParent = { first: 'Jordan', last: 'Rivera' };
+  function sampleFor(f) {
+    const known = {
+      childName: { first: 'Maya', last: 'Rivera' }, parentName: sampleParent, signature: `${sampleParent.first} ${sampleParent.last}`,
+      birthdate: `${Number(year || new Date().getFullYear()) - 9}-04-12`, diagnosis: 'Cerebral palsy', referredBy: 'A friend from church',
+      parentRelation: 'Mother', residesWith: 'Both parents', residingDuration: 'At least ten more years',
+      diagnosisImpact: 'Maya uses a wheelchair and needs help with every transfer. Bath time takes two of us and a lot of lifting, and her room is too small to turn her chair around.',
+      interests: 'Dinosaurs, the color purple, and anything with music. She loves Bluey and dancing in her chair.',
+      otherChildren: 'Her younger brother has asthma.', equipment: 'A power wheelchair, a bath chair and a standing frame.',
+      makeoverWhy: 'The bathroom. A roll-in shower would make bath time safe for her and for us.',
+      positiveImpact: 'She could get ready on her own more often, and we could stop lifting her over the tub.',
+    };
+    if (f.id in known) return known[f.id];
+    const choose = (want) => f.options.find(o => o === want) ?? null;
+    switch (f.type) {
+      case 'name': return sampleParent;
+      // SOARD's own office: a real address inside the service area, so the map check runs for real
+      case 'address': return { line1: '250 Hembree Park Drive', line2: 'Suite 106', city: 'Roswell', state: 'GA', zip: '30076' };
+      case 'email': return testRun.by;
+      case 'phone': return '(404) 555-0100';
+      case 'date': return `${Number(year || new Date().getFullYear()) - 9}-04-12`;
+      case 'number': return '3';
+      case 'signature': return `${sampleParent.first} ${sampleParent.last}`;
+      case 'textarea': return 'A sample answer from a staff test run.';
+      case 'text': return 'Sample answer';
+      case 'ack': return f.options[0];
+      case 'select': return choose('Fulton') ?? choose('English') ?? f.options[0];
+      case 'checkbox': return f.options.slice(0, Math.min(2, f.max || 2));
+      case 'radio': {
+        const prefer = { resides50: 'Yes', previouslyApplied: 'No', verbal: 'Yes', ambulatory: 'No', sensory: 'No', destructive: 'No', permits: 'No', conviction: 'No', gender: 'Female' }[f.id];
+        const order = [prefer, ...f.options].filter(o => o != null && f.options.includes(o));
+        // Never an answer that ends the application here (renting, outside the area)
+        return order.find(o => { const st = stopFor(form, { ...readAnswers(), [f.id]: o }); return !st || st.page !== currentId; }) ?? f.options[0];
+      }
+      default: return null;
+    }
+  }
+
+  /** A sample photo made here (a JPEG): the brand's sun on cream, named for the question */
+  async function samplePhoto(f) {
+    const c = document.createElement('canvas');
+    c.width = 1200; c.height = 900;
+    const g = c.getContext('2d');
+    const bg = g.createLinearGradient(0, 0, 1200, 900);
+    bg.addColorStop(0, '#FFF8DE'); bg.addColorStop(1, '#F3EEE0');
+    g.fillStyle = bg; g.fillRect(0, 0, 1200, 900);
+    g.fillStyle = '#FFDA24'; g.beginPath(); g.arc(600, 380, 150, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#E6C400'; g.lineWidth = 16; g.lineCap = 'round';
+    for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4; g.beginPath(); g.moveTo(600 + Math.cos(a) * 200, 380 + Math.sin(a) * 200); g.lineTo(600 + Math.cos(a) * 250, 380 + Math.sin(a) * 250); g.stroke(); }
+    g.fillStyle = '#373A36'; g.textAlign = 'center';
+    g.font = '700 54px system-ui, sans-serif'; g.fillText('Sample photo', 600, 720);
+    g.font = '500 32px system-ui, sans-serif'; g.fillText(`Staff test run · ${String(f.label || '').slice(0, 60)}`, 600, 780);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.86));
+    return blob ? new File([blob], `sample-${f.id}.jpg`, { type: 'image/jpeg' }) : null;
+  }
+  /** A three-second sample video made here (a moving sun), where the browser can record a canvas */
+  async function sampleVideo() {
+    const c = document.createElement('canvas');
+    c.width = 640; c.height = 360;
+    if (!c.captureStream || typeof MediaRecorder === 'undefined') return null;
+    const type = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(t => MediaRecorder.isTypeSupported?.(t));
+    if (!type) return null;
+    const g = c.getContext('2d');
+    const stream = c.captureStream(30);
+    const rec = new MediaRecorder(stream, { mimeType: type });
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+    const stopped = new Promise(r => { rec.onstop = r; });
+    const t0 = performance.now();
+    let frame = 0;
+    const draw = () => {
+      const t = (performance.now() - t0) / 1000;
+      g.fillStyle = '#FFF8DE'; g.fillRect(0, 0, 640, 360);
+      g.fillStyle = '#FFDA24'; g.beginPath(); g.arc(120 + t * 130, 200 - Math.sin(t * 1.4) * 60, 60, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#373A36'; g.font = '700 30px system-ui, sans-serif'; g.textAlign = 'center';
+      g.fillText('Sample video · staff test run', 320, 320);
+      frame = requestAnimationFrame(draw);
+    };
+    draw();
+    rec.start(250);
+    await wait(3000);
+    rec.stop();
+    await stopped;
+    cancelAnimationFrame(frame);
+    stream.getTracks().forEach(tr => tr.stop());
+    const blob = new Blob(chunks, { type: type.split(';')[0] });
+    return blob.size ? new File([blob], `sample-video.${type.startsWith('video/mp4') ? 'mp4' : 'webm'}`, { type: blob.type }) : null;
+  }
+
+  /** "Fill this page with sample answers": every question showing and still blank on this page */
+  async function fillWithSamples() {
+    if (!testRun?.by || busy || currentId === 'review') return;
+    ui2.fill.disabled = true;
+    ui2.fill.setAttribute('aria-busy', 'true');
+    const label = ui2.fill.querySelector('span');
+    label.textContent = TEST.filling;
+    ui2.fillNote.textContent = '';
+    let n = 0;
+    let note = '';
+    const taken = new Set(); // an upload starts a moment after it's handed over: never hand one over twice
+    try {
+      // Twice: an answer can bring up a follow-up question
+      for (let pass = 0; pass < 2; pass++) {
+        for (const f of fields) {
+          if (f.page !== currentId || !(isInput(f) || isUpload(f))) continue;
+          const el = fieldEl(f.id);
+          if (!el || el.hidden || el.closest('[hidden]')) continue;
+          if (isUpload(f)) {
+            if (files[f.id] || uploads.has(f.id) || taken.has(f.id)) continue;
+            taken.add(f.id);
+            const file = f.type === 'video' ? await sampleVideo() : await samplePhoto(f);
+            if (!file) { if (f.type === 'video') note = TEST.noVideo; continue; }
+            takeFile(f, file);
+            n++;
+            continue;
+          }
+          if (f.type === 'area') continue; // the address answers it (or it's asked below)
+          if (!unanswered(f, readAnswers())) continue;
+          const v = sampleFor(f);
+          if (v == null) continue;
+          writeField(f, v);
+          touched.add(f.id);
+          setFieldError(f.id, null);
+          n++;
+          refresh({ animate: false });
+        }
+      }
+      const home = homeAddressId();
+      if (home && pageOf(home) === currentId) {
+        hideCountyNote();
+        scheduleArea(true);
+        await Promise.race([flushArea(), wait(9000)]);
+        // The map couldn't place it: answer the question it asks instead
+        const af = areaField();
+        const ask = af && fieldEl(af.id)?.querySelector('[data-area-ask]');
+        if (ask && !ask.hidden && !ask.querySelector('input:checked')) { ask.querySelector('input')?.click(); n++; }
+      }
+      fields.filter(f => f.type === 'textarea' && f.page === currentId).forEach(f => grow(fieldEl(f.id)?.querySelector('textarea')));
+      refresh();
+      markDirty();
+    } finally {
+      ui2.fill.disabled = false;
+      ui2.fill.removeAttribute('aria-busy');
+      label.textContent = TEST.fill;
+    }
+    const said = note || TEST.filled(n);
+    ui2.fillNote.textContent = said;
+    announce(said);
+  }
+  ui2.fill?.addEventListener('click', fillWithSamples);
+
+  /**
+   * After a test run's Submit: what the real intake does with it, step by step, as it happens
+   * (/api/apply test-status, which nudges a due retry along). Checked every few seconds until
+   * the account has archived itself, or for 20 minutes.
+   */
+  // Named so they read right done, under way or stuck
+  const TRACE = [
+    { key: 'saved', title: 'Saved on the site', done: () => true },
+    { key: 'account', title: (st) => `JobTread account: ${st.name || 'TEST'}`, done: (st) => st.steps.account },
+    { key: 'people', title: 'Parents and home, in JobTread', done: (st) => st.steps.contacts && st.steps.home },
+    { key: 'files', title: 'Application PDF and photos, in JobTread', done: (st) => st.steps.pdf && st.steps.photos },
+    { key: 'welcome', title: (st) => `The family's welcome email with the PDF copy, to ${st.to}`, done: (st) => st.steps.familyMessage === true },
+    { key: 'medical', title: 'Medical note for the team', done: (st) => st.steps.medicalNote === true || /^skipped/.test(String(st.steps.medicalNote)) },
+    { key: 'staff', title: (st) => `Staff heads-up, to ${st.to}${st.steps.staffSlack === true ? ' and in Slack' : ''}`, done: (st) => st.steps.staffEmail },
+    { key: 'video', title: 'Video, in JobTread', done: (st) => st.steps.video === true || st.steps.video === 'none', wait: (st) => st.steps.video === 'waiting' && 'Waiting for the video to finish processing' },
+    { key: 'archived', title: 'Archived in JobTread (the test cleans itself up)', done: (st) => st.steps.archived },
+  ];
+  const ICON = {
+    done: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" class="af-tr-fill"/><path d="M6 10.4l2.6 2.6L14 7.6" class="af-tr-ink" pathLength="1"/></svg>',
+    work: '<span class="af-tr-spin" aria-hidden="true"></span>',
+    wait: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.5" class="af-tr-ring"/><path d="M10 5.6V10l2.8 1.8" class="af-tr-ink"/></svg>',
+    todo: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.5" class="af-tr-ring af-tr-ring--todo"/></svg>',
+    error: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.5" class="af-tr-ring af-tr-ring--attn"/><path d="M10 5.8v5.2M10 14v.1" class="af-tr-ink af-tr-ink--attn"/></svg>',
+  };
+  const trace = { timer: 0, started: 0, last: null };
+  function paintTrace(st) {
+    const el = ui2.trace;
+    const list = el.querySelector('[data-trace-list]');
+    el.querySelector('[data-trace-lead]').textContent = `Every step below happens in the real system, in the order it runs. Emails go to ${st.to || testRun.by}; the team's Slack stays quiet, and no real family hears a thing.`;
+    let current = false;
+    const rows = TRACE.map((step) => {
+      const title = typeof step.title === 'function' ? step.title(st) : step.title;
+      const done = step.key === 'saved' || (st.submitted && step.done(st));
+      const waiting = !done && st.submitted && step.wait?.(st);
+      let state = done ? 'done' : 'todo';
+      if (!done && !current) {
+        current = true;
+        state = st.error ? 'error' : waiting ? 'wait' : 'work';
+      }
+      return { key: step.key, title, state, note: state === 'wait' ? waiting : '' };
+    });
+    // Updated in place, so a step that just finished draws its check once
+    if (list.children.length !== rows.length) {
+      list.replaceChildren(...rows.map((r) => {
+        const li = document.createElement('li');
+        li.className = 'af-tr-step';
+        li.dataset.key = r.key;
+        li.innerHTML = '<span class="af-tr-icon"></span><span class="af-tr-text"><span class="af-tr-title"></span><span class="af-tr-note"></span></span>';
+        return li;
+      }));
+    }
+    rows.forEach((r, i) => {
+      const li = list.children[i];
+      if (li.dataset.state !== r.state) { li.dataset.state = r.state; li.querySelector('.af-tr-icon').innerHTML = ICON[r.state]; }
+      li.querySelector('.af-tr-title').textContent = r.title;
+      li.querySelector('.af-tr-note').textContent = r.note || '';
+    });
+    const err = el.querySelector('[data-trace-error]');
+    err.hidden = !st.error;
+    err.textContent = st.error ? `Stopped at: ${st.error}. It tries again on its own; this page keeps watching.` : '';
+    const admin = el.querySelector('[data-trace-admin]');
+    if (st.adminUrl) admin.href = st.adminUrl;
+    const jt = el.querySelector('[data-trace-jt]');
+    jt.hidden = !st.jobtreadUrl;
+    if (st.jobtreadUrl) jt.href = st.jobtreadUrl;
+    const doneAll = rows.every(r => r.state === 'done');
+    el.dataset.complete = doneAll ? '1' : '';
+    const sum = el.querySelector('[data-trace-sum]');
+    const n = rows.filter(r => r.state === 'done').length;
+    const said = doneAll ? `All ${rows.length} steps done` : `${n} of ${rows.length} steps done`;
+    if (sum.textContent !== said) { sum.textContent = said; if (doneAll) announce('The test run went all the way through.'); }
+    return doneAll;
+  }
+  async function pollTrace() {
+    clearTimeout(trace.timer);
+    if (!token || ui2.trace.hidden) return;
+    let st = null;
+    try { st = await api({ action: 'test-status', token }); } catch { st = null; }
+    if (st?.ok) trace.last = st;
+    const finished = trace.last ? paintTrace(trace.last) : false;
+    const age = Date.now() - trace.started;
+    if (finished || age > 20 * 60 * 1000) return;
+    trace.timer = setTimeout(pollTrace, age < 2 * 60 * 1000 ? 3000 : 8000);
+  }
+  function startTrace() {
+    if (!ui2.trace) return;
+    ui2.trace.hidden = false;
+    trace.started = Date.now();
+    paintTrace({ submitted: false, to: testRun.by, steps: {} });
+    pollTrace();
+  }
+  document.addEventListener('astro:before-swap', () => clearTimeout(trace.timer), { once: true });
+
   // ── Optional questions behind a button (application-render.js TUCKED) ──
   /** Open the group a question sits in (an answer to show, a problem to fix, the editor pointing at it) */
   function openTucked(el, { animate = true, focus = false } = {}) {
@@ -1559,9 +1863,10 @@ function init(root, cfg, mode) {
   const dlg = ui.dialog;
   const openLater = () => {
     if (previewing) { notice('previewNoSave', 'info'); return; }
-    const email = readAnswers().parentEmail;
+    const email = testRun?.by || readAnswers().parentEmail;
     const input = dlg.querySelector('input[type=email]');
-    if (email && !input.value) input.value = email;
+    if (email && (!input.value || testRun?.by)) input.value = email;
+    input.readOnly = !!testRun?.by; // a test run's link only ever goes to the person running it
     dlg.querySelector('[data-later-status]').textContent = '';
     dlg.querySelector('[data-later-form]').hidden = false;
     dlg.querySelector('[data-later-sent]').hidden = true;
@@ -1705,12 +2010,13 @@ function init(root, cfg, mode) {
   }
   function applyConfig() {
     // ?preview shows the form while closed; the server still only lets signed-in staff start one
-    if (!token && cfg.open != null) showApp(!!cfg.open || mode != null);
+    if (!token && cfg.open != null) showApp(!!cfg.open || mode != null || !!testRun);
+    if (testRun?.signIn) paintTestBar();
     if (previewing) {
       notice(live ? 'previewLive' : 'preview', 'info');
       document.getElementById('application')?.scrollIntoView({ block: 'start' }); // straight to the form, past the hero
     }
-    if (!cfg.turnstileSiteKey || token || previewing) return;
+    if (!cfg.turnstileSiteKey || token || previewing || testRun) return;
     turnstileSiteKey = cfg.turnstileSiteKey;
     window.onSoardTurnstile = () => {
       window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
@@ -1748,6 +2054,13 @@ function init(root, cfg, mode) {
       return;
     }
     token = candidate;
+    // A test run's link (from its "finish later" email) carries on as a test run, kept apart
+    if (r.test?.by && !testRun?.by) {
+      testRun = r.test;
+      if (!fromLink) store.clear();
+      store = local(TEST_STORE_KEY);
+      paintTestBar();
+    }
     showApp(true); // a saved application can always be finished, even after we close
     // Their saved language wins over this device's
     if (LANGS[r.lang] && (form.languages || []).includes(r.lang)) { lang = r.lang; langPref.set(lang); }
@@ -2002,6 +2315,7 @@ function init(root, cfg, mode) {
   draw();
   if (previewing) furthestId = 'review'; // staff can jump to any page
   applyWords();
+  paintTestBar();
   show(stepIds()[0], { focus: false, scroll: false });
   if (previewing) {
     applyConfig();

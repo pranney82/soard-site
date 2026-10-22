@@ -15,7 +15,12 @@
  *   video-done { token }                            → marks the video uploaded once Stream has it
  *   remove-file{ token, field }                     → clears a photo or the video
  *   submit     { token }                            → { id } and loads it into JobTread
+ *   test-status{ token }                            → a staff test run's intake, step by step
  * POST multipart (action=photo, token, field, file, thumb?) → stores a photo
+ *
+ * Test runs: signed-in staff open /apply/form/?test=1 (Admin → Applications → Form, "Go through it
+ * as a family") and start with { test: true }. That works while applications are closed, makes a
+ * TEST application, and sends every email to the staff member (createDraft, submitDraft).
  *
  * The token is the draft's 128-bit id: whoever holds the resume link can see
  * and change that draft, nobody else. Public route (see _middleware.js), rate
@@ -25,11 +30,11 @@
  * accepted, which bots don't bother with.
  */
 
-import { isAuthenticated } from './_middleware.js';
+import { isAuthenticated, verifyJwt } from './_middleware.js';
 import {
   ensureSchema, getDraft, createDraft, saveDraft, setDraftFile, draftsToday, hashIp, cleanYear,
   applicationSettings, publicFiles, photoKey, createVideoUpload, getVideo, deleteVideo, videoUploaded,
-  submitDraft, processApplication, enforceApplicationCap, stopReminders, DRAFT_TTL_DAYS, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, MAX_VIDEO_BYTES,
+  submitDraft, processApplication, enforceApplicationCap, stopReminders, testRunStatus, DRAFT_TTL_DAYS, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, MAX_VIDEO_BYTES,
   areaCheck, placedArea, areaFieldOf, applicantFiles,
 } from './_applications.js';
 import { allFields, resolveForm, AREA_VALUES } from './_application-form.js';
@@ -52,6 +57,26 @@ const fail = (error, status = 400, extra = {}) => json({ ok: false, error, ...ex
 export function greetingName(s) {
   const t = String(s || '').trim();
   return /^[\p{L}][\p{L}'’.-]{0,23}$/u.test(t) ? t : '';
+}
+
+/**
+ * The signed-in staff member's email (their Cloudflare Access sign-in), or null. The same check
+ * as isAuthenticated: the Access header, else the CF_Authorization cookie the admin sign-in sets
+ * for the whole site.
+ */
+export async function staffEmail(request, env) {
+  const { CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD } = env || {};
+  if (!CF_ACCESS_TEAM_DOMAIN || !CF_ACCESS_AUD) return null;
+  const cookie = (request.headers.get('Cookie') || '').split(/;\s*/).find(c => c.startsWith('CF_Authorization='));
+  const jwt = request.headers.get('CF-Access-JWT-Assertion') || (cookie ? cookie.slice('CF_Authorization='.length) : '');
+  if (!jwt) return null;
+  try {
+    const payload = await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
+    const email = String(payload?.email || '').trim().toLowerCase();
+    return isEmail(email) ? email : null;
+  } catch {
+    return null;
+  }
 }
 
 /** j•••@example.com: an address shown back without spelling it out */
@@ -184,7 +209,11 @@ export async function onRequestPost(context) {
       area = placedArea(draft.area, draft.answers?.address, form.serviceArea)
         || (draft.area.reason === 'no-match' && draft.area.key === addressKey(draft.answers?.address) ? draft.area : null);
     }
-    return json({ ok: true, year: draft.year, lang: draft.lang || 'en', answers: draft.answers, files: publicFiles(draft.files), page: draft.page || null, maxPage: draft.max_page_id || null, submitted: !!draft.submitted_id, remindersOff: body.reminders === 'off' || !!draft.reminders_off, area: publicArea(area) });
+    return json({ ok: true, year: draft.year, lang: draft.lang || 'en', answers: draft.answers, files: publicFiles(draft.files), page: draft.page || null, maxPage: draft.max_page_id || null, submitted: !!draft.submitted_id, remindersOff: body.reminders === 'off' || !!draft.reminders_off, area: publicArea(area), test: draft.test_by ? { by: draft.test_by } : null });
+  }
+  if (action === 'test-status') {
+    const st = await testRunStatus(env, draft, { nudge: (p) => context.waitUntil(p) });
+    return st ? json({ ok: true, ...st }) : fail('Not a test run', 404, { code: 'not-test' });
   }
   if (action === 'reminders-off') {
     await stopReminders(env.DB, draft.id);
@@ -221,9 +250,16 @@ async function handleStart(context, body) {
   const { env, request } = context;
   // Honeypot: people never see this field. Answer as if it worked.
   if (String(body.website || '').trim()) return json({ ok: true, token: '0'.repeat(32) });
-  const admin = await isAuthenticated(request, env);
   const settings = await applicationSettings(env.DB);
   const es = body.lang === 'es';
+  // A staff test run: open or closed, no quick check or limit; every email goes to them
+  if (body.test) {
+    const by = await staffEmail(request, env);
+    if (!by) return fail('Test runs are for signed-in SOARD staff. Sign in to the admin, then start the test run again.', 403, { code: 'staff-only' });
+    const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), testBy: by, lang: es ? 'es' : 'en' });
+    return json({ ok: true, token, ttlDays: DRAFT_TTL_DAYS, test: { by } });
+  }
+  const admin = await isAuthenticated(request, env);
   if (settings.open !== true && !admin) return fail(es ? 'Las solicitudes están cerradas en este momento.' : 'Applications are closed right now.', 403, { code: 'closed' });
   const ip = request.headers.get('CF-Connecting-IP') || '';
   const ipHash = await hashIp(ip, env.APPLY_IP_PEPPER || env.LIVE_IP_PEPPER);
@@ -240,25 +276,28 @@ async function handleStart(context, body) {
 async function handleEmailLink(context, draft, body) {
   const { env, request } = context;
   const es = (body.lang || draft.lang) === 'es';
-  const to = String(body.email || draft.answers?.parentEmail || draft.email || '').trim();
+  // A test run's link goes to the staff member running it, whatever is typed
+  const to = draft.test_by || String(body.email || draft.answers?.parentEmail || draft.email || '').trim();
   if (!isEmail(to)) return fail(es ? 'Escriba un correo electrónico válido.' : 'Please enter a valid email address.');
   // Once a link has gone to an address, it goes only there (or to the email the family answered),
   // so a draft can't be used to send our email to anyone a stranger types in
   const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
-  if (draft.email && !same(to, draft.email) && !same(to, draft.answers?.parentEmail)) {
+  if (!draft.test_by && draft.email && !same(to, draft.email) && !same(to, draft.answers?.parentEmail)) {
     return fail(es ? `Por su privacidad, solo podemos enviar este enlace a ${maskEmail(draft.email)}, el correo que usó antes.` : `For your privacy, we can only send this link to ${maskEmail(draft.email)}, the address you used before.`, 403, { code: 'email-locked' });
   }
   if ((draft.link_sends || 0) >= MAX_LINK_SENDS) return fail(es ? 'Ya le enviamos este enlace varias veces. Revise su bandeja de entrada y la carpeta de correo no deseado.' : 'We have already emailed this link several times. Please check your inbox and spam folder.', 429);
   const origin = new URL(request.url).origin;
   const link = `${origin}/apply/form/?resume=${draft.id}`;
+  const msg = resumeLinkEmail({ year: draft.year, first: greetingName(draft.answers?.parentName?.first), link, lang: es ? 'es' : 'en' });
+  if (draft.test_by) msg.subject = `[Test run] ${msg.subject}`;
   const r = await sendEmails(env, {
     to: [to],
-    ...resumeLinkEmail({ year: draft.year, first: greetingName(draft.answers?.parentName?.first), link, lang: es ? 'es' : 'en' }),
+    ...msg,
     tags: [{ name: 'type', value: 'application-resume' }],
   });
   if (!r.sent) return fail(es ? 'No pudimos enviar el correo en este momento. Intente de nuevo en un minuto.' : 'We could not send the email just now. Please try again in a minute.', 500);
   await env.DB.prepare('UPDATE application_drafts SET link_sends = COALESCE(link_sends, 0) + 1, email = COALESCE(email, ?) WHERE id = ?').bind(to, draft.id).run();
-  return json({ ok: true });
+  return json({ ok: true, to });
 }
 
 /** The "pick up where you left off" email a family asks for on the form */

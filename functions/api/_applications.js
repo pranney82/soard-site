@@ -144,7 +144,8 @@ export async function ensureSchema(DB) {
   //   applications.deleted_*     staff deleted the family's data (the row stays as a record)
   //   application_drafts.*       language, furthest page, stop screen hit, reminder emails,
   //                              cleared_at (expired: personal data gone, kept for the funnel),
-  //                              and the last service-area check of the home address (area)
+  //                              the last service-area check of the home address (area),
+  //                              and test_by: a staff test run, every email going to that person
   for (const sql of [
     'ALTER TABLE applications ADD COLUMN form_version INTEGER DEFAULT 0',
     "ALTER TABLE applications ADD COLUMN lang TEXT DEFAULT 'en'",
@@ -160,6 +161,7 @@ export async function ensureSchema(DB) {
     'ALTER TABLE application_drafts ADD COLUMN cleared_at TEXT',
     'ALTER TABLE application_drafts ADD COLUMN area TEXT',
     'ALTER TABLE application_drafts ADD COLUMN area_checks INTEGER DEFAULT 0',
+    'ALTER TABLE application_drafts ADD COLUMN test_by TEXT',
   ]) {
     try { await DB.prepare(sql).run(); } catch { /* already there */ }
   }
@@ -422,11 +424,17 @@ export async function getDraft(DB, id) {
   return draftRow(await DB.prepare('SELECT * FROM application_drafts WHERE id = ? AND cleared_at IS NULL').bind(id).first());
 }
 
-export async function createDraft(DB, { year, ipHash, verified = false, lang = 'en', now = Date.now() }) {
+/**
+ * A new draft. testBy: a staff member's test run (Admin → Applications → Form, "Go through it as a
+ * family"): it's kept out of the funnel and the per-connection limit (ip_hash 'admin'), gets no
+ * reminders, and every email it sends goes to that person (see submitDraft).
+ */
+export async function createDraft(DB, { year, ipHash, verified = false, lang = 'en', testBy = null, now = Date.now() }) {
   await ensureSchema(DB);
   const id = newDraftId();
-  await DB.prepare(`INSERT INTO application_drafts (id, year, answers, files, ip_hash, verified, lang, created_at, updated_at) VALUES (?, ?, '{}', '{}', ?, ?, ?, ?, ?)`)
-    .bind(id, year, ipHash || null, verified ? 1 : 0, lang === 'es' ? 'es' : 'en', iso(now), iso(now)).run();
+  const by = testBy ? String(testBy).trim().toLowerCase() : null;
+  await DB.prepare(`INSERT INTO application_drafts (id, year, answers, files, ip_hash, verified, lang, email, test_by, created_at, updated_at) VALUES (?, ?, '{}', '{}', ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, year, by ? 'admin' : (ipHash || null), by || verified ? 1 : 0, lang === 'es' ? 'es' : 'en', by, by, iso(now), iso(now)).run();
   return id;
 }
 
@@ -444,7 +452,8 @@ export async function saveDraft(DB, draft, { answers, page, lang }, now = Date.n
   const af = areaFieldOf(form);
   const placed = af ? placedArea(draft.area, clean.address, form.serviceArea) : null;
   if (placed) clean[af.id] = AREA_VALUES[placed.band];
-  const email = clean.parentEmail || draft.email || null;
+  // A test run's emails only ever go to the staff member running it
+  const email = draft.test_by || clean.parentEmail || draft.email || null;
   const pageId = form.pages.some(p => p.id === page) ? page : draft.page;
   // For the funnel: the furthest page reached, and a stop screen if one was hit
   const at = form.pages.findIndex(p => p.id === pageId);
@@ -642,9 +651,16 @@ export async function submitDraft(env, draft, { now = Date.now(), forceTest = fa
   const errors = formErrors(form, answers, draft.files, null, lang);
   if (Object.keys(errors).length) return { ok: false, errors };
 
+  // A staff test run: whatever emails were typed, the family's emails (JobTread's, from the
+  // contacts made with these) and the staff heads-up all go to the person running it
+  const testTo = draft.test_by || null;
+  if (testTo) {
+    answers.parentEmail = testTo;
+    if (answers.parent2Email) answers.parent2Email = testTo;
+  }
   const id = newApplicationId();
   const childName = nameText(answers.childName);
-  const isTest = forceTest || isTestAnswers(answers);
+  const isTest = forceTest || !!testTo || isTestAnswers(answers);
   const at = iso(now);
   // Claim the draft first so a double tap can't make two applications
   const claimed = await DB.prepare('UPDATE application_drafts SET submitted_id = ?, updated_at = ? WHERE id = ? AND submitted_id IS NULL').bind(id, at, draft.id).run();
@@ -654,6 +670,8 @@ export async function submitDraft(env, draft, { now = Date.now(), forceTest = fa
   }
   // The form's check rides along for intake, which reports it to staff
   const state = area && area.band !== 'unknown' ? { formArea: area } : area?.reason ? { formArea: { key: area.key, band: 'unknown', reason: area.reason } } : {};
+  // A staff test run: the intake knows, so the team's Slack channel stays quiet
+  if (testTo) state.testRun = testTo;
   await DB.prepare(`INSERT INTO applications (id, draft_id, year, child_name, parent_name, parent_email, makeover_types, answers, files, is_test,
       jt_state, status, attempts, next_try_at, submitted_at, updated_at, form_version, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0, ?, ?, ?, ?, ?)`)
     .bind(id, draft.id, draft.year, childName, nameText(answers.parentName), answers.parentEmail || null,
@@ -1020,6 +1038,32 @@ export function checklist(app) {
   };
 }
 
+/**
+ * Where a staff test run's application has got to, for the checklist on its thank-you screen:
+ * each intake step as it finishes, where the emails went, and the links to it. Nudges the
+ * intake along when a retry is due, so the screen doesn't wait for the sweep.
+ */
+export async function testRunStatus(env, draft, { now = Date.now(), nudge = null } = {}) {
+  if (!draft?.test_by) return null;
+  if (!draft.submitted_id) return { submitted: false, to: draft.test_by };
+  const app = await getApplication(env.DB, draft.submitted_id);
+  if (!app) return { submitted: false, to: draft.test_by };
+  if (nudge && app.status !== 'done' && (!app.next_try_at || app.next_try_at <= now) && !(app.locked_until > now)) nudge(processApplication(env, app.id, { now }));
+  const s = app.jt_state || {};
+  return {
+    submitted: true,
+    id: app.id,
+    status: app.status,
+    error: app.status === 'error' ? app.last_error || null : null,
+    to: app.parent_email || draft.test_by,
+    name: accountName(app),
+    steps: { ...checklist(app), archived: !!s.archived },
+    // Its row in Applicants → Submissions, which opens even once the JobTread account is archived
+    adminUrl: `${SITE_ORIGIN}/admin/#applications/submissions/${app.id}`,
+    jobtreadUrl: app.jt_account_id ? jobtreadAccountUrl(app.jt_account_id) : null,
+  };
+}
+
 /** The checks staff see beside each application */
 export function flags(app) {
   const s = app.jt_state || {};
@@ -1209,6 +1253,8 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
       if (r.errors.length && !r.sent) failed.push(`email: ${r.errors[0]}`);
       else s.staffEmail = iso(now);
     }
+    // A staff member's own test run of the form is nobody else's business: no team Slack post
+    if (!s.staffSlack && s.testRun) s.staffSlack = 'off';
     if (!s.staffSlack) {
       // A test application is staff's business, not good news for the whole team
       const r = await slackPost(env, staffSlack(app, accountId), { kind: app.is_test ? 'attention' : 'news' });
@@ -1416,7 +1462,7 @@ export async function sendReminders(env, { now = Date.now(), limit = 20 } = {}) 
   if (!live.reminders?.enabled || !live.reminders.days?.length) return 0;
   const days = live.reminders.days;
   const { results } = await DB.prepare(`SELECT * FROM application_drafts
-    WHERE submitted_id IS NULL AND cleared_at IS NULL AND email IS NOT NULL AND verified = 1
+    WHERE submitted_id IS NULL AND cleared_at IS NULL AND email IS NOT NULL AND verified = 1 AND test_by IS NULL
       AND COALESCE(reminders_off, 0) = 0 AND stop_key IS NULL AND COALESCE(reminders_sent, 0) < ?
       AND updated_at < ? AND (last_reminder_at IS NULL OR last_reminder_at < ?)
     ORDER BY updated_at LIMIT ?`).bind(days.length, iso(now - days[0] * DAY_MS), iso(now - DAY_MS), limit).all();

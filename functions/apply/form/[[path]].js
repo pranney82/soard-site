@@ -7,12 +7,16 @@
  * the page as JSON, so the browser draws the right questions on first paint
  * without asking the API. If anything here fails the page is served as built
  * and the script asks /api/apply?config instead.
+ *
+ * ?test=1 is a staff test run (Admin → Applications → Form, "Go through it as a family"): for a
+ * signed-in staff member the form opens even while applications are closed, and the page says
+ * whose inbox every email will go to. Without a sign-in it says to sign in first.
  */
 
 import { applicationSettings, cleanYear } from '../../api/_applications.js';
 import { getLiveForm } from '../../api/_application-forms.js';
 import { resolveForm } from '../../api/_application-form.js';
-import { publicForm, publicDefinition } from '../../api/apply.js';
+import { publicForm, publicDefinition, staffEmail } from '../../api/apply.js';
 import { seasonFull, defaultFullMessage } from '../../api/_application-cap.js';
 
 export async function onRequest(context) {
@@ -27,11 +31,17 @@ export async function onRequest(context) {
     const form = resolveForm(live.definition, { year, version: live.version });
     // Closed at the application limit, the closed card says the season is full (./_application-cap.js)
     const full = await seasonFull(env.DB, settings, year);
+    const testBy = url.searchParams.has('test') ? await staffEmail(request, env) : null;
     const config = {
       open: settings.open === true, full, year, version: live.version,
       definition: publicDefinition(live.definition), form: publicForm(form),
       turnstileSiteKey: env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY ? env.TURNSTILE_SITE_KEY : null,
+      ...(url.searchParams.has('test') ? { testRun: testBy ? { by: testBy } : { signIn: true } } : {}),
     };
+    // A staff test run shows the form whether or not applications are open; without a sign-in,
+    // the test-run bar says to sign in (and the form stays out of reach)
+    const showForm = config.open || !!config.testRun;
+    const signIn = !!config.testRun?.signIn;
     // Always the full page (never a 304): a cached copy would skip the embed
     const fresh = new Request(request);
     fresh.headers.delete('If-None-Match');
@@ -45,13 +55,15 @@ export async function onRequest(context) {
         element(el) {
           el.setAttribute('data-year', year);
           el.prepend(`<script type="application/json" id="af-config">${json}</script>`, { html: true });
-          if (config.open) el.removeAttribute('hidden');
+          if (showForm) el.removeAttribute('hidden');
           else el.setAttribute('hidden', '');
+          if (signIn) el.setAttribute('class', `${el.getAttribute('class') || ''} is-signin`.trim());
         },
       })
+      .on('[data-form]', { element(el) { if (signIn) el.setAttribute('hidden', ''); } })
       .on('[data-closed]', {
         element(el) {
-          if (config.open) el.setAttribute('hidden', '');
+          if (showForm) el.setAttribute('hidden', '');
           else el.removeAttribute('hidden');
         },
       })
@@ -69,6 +81,8 @@ export async function onRequest(context) {
     const headers = new Headers(out.headers);
     // The form and its switch change without a deploy: browsers and the edge recheck every visit
     headers.set('Cache-Control', 'no-cache');
+    // A test run's page names the staff member: never kept by any cache
+    if (config.testRun) headers.set('Cache-Control', 'private, no-store');
     headers.delete('ETag');
     headers.delete('Last-Modified');
     headers.delete('Content-Length');

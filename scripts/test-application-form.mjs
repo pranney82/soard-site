@@ -799,6 +799,12 @@ try {
   await desk.click('[data-rail-list] [data-goto="welcome"]');
   await sleep(400);
   ok((await stepTitle(desk)) === 'Before You Begin', 'a step in the rail goes straight to it');
+  // A staff test run's link (?test=1) without the admin sign-in: only a bar saying to sign in.
+  // (Signed in, the whole run is covered by tests/application-test-run.test.mjs on the server side.)
+  await desk.goto(`${SITE}/apply/form/?test=1`, { waitUntil: 'networkidle0' });
+  await sleep(400);
+  ok(await visible('[data-testbar]', desk) && /for SOARD staff/.test(await desk.$eval('[data-testbar-text]', (e) => e.textContent)), 'a test-run link without the admin sign-in says test runs are for staff');
+  ok(await visible('[data-test-signin]', desk) && !(await visible('[data-form]', desk)) && !(await visible('[data-test-fill]', desk)), 'with the way to sign in, and no form or sample answers');
   await dCtx.close();
 
   console.log('Screenshots: phone and desktop, light and dark, English and Spanish');

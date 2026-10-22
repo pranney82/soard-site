@@ -126,6 +126,23 @@ const breadcrumbs = [
         <noscript><p class="af-card af-closed">This application needs JavaScript to upload your photos and video. Please turn it on, or email <a href={`mailto:${siteSettings.email}`}>{siteSettings.email}</a> and we'll help.</p></noscript>
 
         <div class="af-main">
+        <!-- A staff test run (?test=1, Admin → Applications → Form): whose inbox the emails go to,
+             sample answers a page at a time, and the way back. Staff words, so English. -->
+        <section class="af-testbar" data-testbar aria-label="Test run" lang="en" hidden>
+          <div class="af-testbar-top">
+            <span class="af-test-badge"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 1.8h4M6.8 1.8v4.1L2.9 12.4A1.2 1.2 0 0 0 4 14.2h8a1.2 1.2 0 0 0 1.1-1.8L9.2 5.9V1.8" /><path d="M4.6 10h6.8" /></svg>Test run</span>
+            <a class="af-testbar-end" href="/admin/#applications/form" data-test-end>End test run</a>
+          </div>
+          <p class="af-testbar-text" data-testbar-text></p>
+          <div class="af-testbar-actions">
+            <button type="button" class="af-btn af-btn--sm af-testbar-fill" data-test-fill hidden>
+              <svg class="af-btn-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5l7-7M9 3.2l.6-1.7.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6zM12.6 7.4l.4-1 .4 1 1 .4-1 .4-.4 1-.4-1-1-.4z" /></svg>
+              <span>Fill this page with sample answers</span>
+            </button>
+            <a class="af-btn af-btn--sm af-testbar-fill" href="/admin/#applications/form" data-test-signin hidden><span>Sign in to the admin</span></a>
+            <span class="af-testbar-note" data-test-note role="status"></span>
+          </div>
+        </section>
         <p class="af-notice" data-notice role="status" hidden></p>
 
         <form class="af-card af-form" data-form novalidate>
@@ -223,6 +240,23 @@ const breadcrumbs = [
             <p class="af-next-note" data-af-t="doneNote">{w('doneNote')}</p>
           </div>
           <a href="/kids/" class="af-btn af-btn--primary" data-af-t="doneLink">{w('doneLink')}</a>
+
+          <!-- A staff test run: what the real intake does with it, step by step as it happens -->
+          <section class="af-trace" data-trace aria-labelledby="af-trace-title" lang="en" hidden>
+            <div class="af-trace-head">
+              <span class="af-test-badge">Test run</span>
+              <h3 id="af-trace-title">Behind the scenes</h3>
+              <span class="af-trace-sum" data-trace-sum role="status"></span>
+            </div>
+            <p class="af-trace-lead" data-trace-lead></p>
+            <ol class="af-trace-list" data-trace-list></ol>
+            <p class="af-trace-error" data-trace-error hidden></p>
+            <div class="af-trace-actions">
+              <a class="af-btn af-btn--ghost af-btn--sm" data-trace-admin href="/admin/#applications" target="_blank" rel="noopener">Open it in Applications</a>
+              <a class="af-btn af-btn--ghost af-btn--sm" data-trace-jt href="https://app.jobtread.com/" target="_blank" rel="noopener" hidden>Open it in JobTread</a>
+              <a class="af-btn af-btn--primary af-btn--sm" href="/apply/form/?test=1" data-trace-again>Start another test run</a>
+            </div>
+          </section>
         </div>
         </div>
 
@@ -230,7 +264,7 @@ const breadcrumbs = [
              (A phone has "All steps" in the card and the bar that follows it down the page.)
              After the form in the page, so the form comes first for a screen reader; the grid puts it on the left. -->
         <aside class="af-rail" data-rail aria-labelledby="af-rail-title">
-          <p class="af-rail-title" id="af-rail-title" data-af-t="railTitle">{w('railTitle')}</p>
+          <p class="af-rail-head"><span class="af-rail-title" id="af-rail-title" data-af-t="railTitle">{w('railTitle')}</span><span class="af-test-badge af-test-chip" lang="en">Test run</span></p>
           <nav aria-label={w('railLabel')} data-af-t-aria="railLabel"><ol class="af-rail-list" data-rail-list></ol></nav>
           <div class="af-rail-foot">
             <p class="af-rail-left" data-time-left></p>
@@ -244,7 +278,7 @@ const breadcrumbs = [
 
         <!-- A phone (or a narrow window): where they are, once the step's heading has scrolled away. A tap goes back up to it. -->
         <button type="button" class="af-mini" data-mini tabindex="-1" aria-hidden="true">
-          <span class="af-mini-row"><span class="af-mini-step" data-mini-step></span><span class="af-mini-title" data-mini-title></span>
+          <span class="af-mini-row"><span class="af-test-badge af-test-chip" lang="en">Test</span><span class="af-mini-step" data-mini-step></span><span class="af-mini-title" data-mini-title></span>
             <svg class="af-mini-up" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4" /></svg></span>
           <span class="af-mini-track"><span class="af-mini-bar" data-mini-bar></span></span>
         </button>
@@ -383,10 +417,10 @@ const breadcrumbs = [
     .af-wrap { max-width: 1180px; padding: 0 32px; }
     .af-wrap > .af-closed { max-width: 760px; margin-inline: auto; }
     .af-app { display: grid; grid-template-columns: 264px minmax(0, 760px); gap: clamp(32px, 4vw, 56px); justify-content: center; align-items: start; }
-    .af-app.is-done { grid-template-columns: minmax(0, 760px); }
-    .af-app.is-done .af-rail { display: none; }
+    .af-app:is(.is-done, .is-signin) { grid-template-columns: minmax(0, 760px); }
+    .af-app:is(.is-done, .is-signin) .af-rail { display: none; }
     .af-main { grid-column: 2; grid-row: 1; }
-    .af-app.is-done .af-main { grid-column: 1; }
+    .af-app:is(.is-done, .is-signin) .af-main { grid-column: 1; }
     .af-rail { grid-column: 1; grid-row: 1; display: grid; gap: 22px; position: sticky; top: calc(var(--header-height) + 28px); padding-top: 10px; animation: afRise .5s var(--af-ease) both; }
     /* The rail replaces "All steps" and the save line under the buttons */
     .af-head .af-steps, .af-form .af-save-row { display: none; }
@@ -805,6 +839,76 @@ const breadcrumbs = [
   .af-done.is-in .af-sun-rays { animation: afSunRays 1.2s var(--af-ease) .25s both; }
   .af-done.is-in .af-sun-halo { animation: afSunGlow 2.2s ease-out .35s both; }
 
+  /* ══════════ A staff test run (?test=1) ══════════
+     A dark bar above the card (whose inbox, sample answers, the way back), a chip on the rail
+     and the phone bar, and after Submit the intake step by step. */
+  .af-test-badge {
+    display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 5px 10px 5px 9px; border-radius: 999px;
+    background: var(--c-dark); color: var(--c-yellow); font-size: 11.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; line-height: 1;
+  }
+  .af-test-badge svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .af-test-chip { display: none; }
+  .af-app.is-test .af-test-chip { display: inline-flex; }
+  .af-rail-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; }
+  .af-mini .af-test-chip { padding: 4px 8px; font-size: 10.5px; }
+
+  .af-testbar {
+    position: relative; margin: 0 0 16px; padding: 18px 20px 16px; border-radius: 20px; color: #fff; overflow: hidden;
+    background: var(--c-dark-deep, #262825); box-shadow: inset 0 3px 0 var(--c-yellow), 0 18px 40px -18px rgba(30,31,37,.45);
+    animation: afRise .4s var(--af-ease) both;
+  }
+  .af-testbar::after { content: ''; position: absolute; right: -60px; top: -60px; width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle, rgba(255,218,36,.22), rgba(255,218,36,0) 70%); pointer-events: none; }
+  .af-testbar > * { position: relative; z-index: 1; }
+  .af-testbar-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .af-testbar .af-test-badge { background: var(--c-yellow); color: var(--c-dark); }
+  .af-testbar-end { color: rgba(255,255,255,.85); font-size: 14px; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255,255,255,.35); text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center; }
+  .af-testbar-end:hover { color: #fff; text-decoration-color: #fff; }
+  .af-testbar-end:focus-visible, .af-testbar .af-btn:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 2px; border-radius: 6px; }
+  .af-testbar-text { margin: 8px 0 14px; font-size: 15px; line-height: 1.6; color: rgba(255,255,255,.88); max-width: 62ch; }
+  .af-testbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+  .af-testbar-fill { background: var(--c-yellow); color: var(--c-dark); }
+  .af-testbar-fill:hover:not(:disabled) { background: #FFD60A; box-shadow: 0 10px 24px -8px rgba(255,218,36,.55); }
+  .af-testbar-fill[aria-busy="true"] { opacity: .8; cursor: progress; }
+  .af-testbar-note { font-size: 14px; line-height: 1.45; color: var(--c-yellow); }
+  .af-testbar-note:empty { display: none; }
+  /* After the first page: one slim row, the badge, Fill and End */
+  .af-testbar.is-compact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 14px 10px 16px; }
+  .af-testbar.is-compact .af-testbar-top { display: contents; }
+  .af-testbar.is-compact .af-testbar-text { display: none; }
+  .af-testbar.is-compact .af-testbar-actions { order: 1; flex: 1 1 auto; }
+  .af-testbar.is-compact .af-testbar-end { order: 2; margin-left: auto; }
+  .af-testbar.is-compact::after { display: none; }
+
+  .af-done .af-trace { position: relative; max-width: 580px; margin: 36px auto 0; padding: 22px 22px 18px; border-radius: 20px; text-align: left; background: #FBFAF6; border: 1px solid var(--c-border); transition: border-color .4s var(--af-ease), background-color .4s var(--af-ease); }
+  .af-done .af-trace[data-complete="1"] { background: var(--af-picked); border-color: var(--c-yellow); }
+  .af-trace-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+  .af-done .af-trace-head h3 { font-size: 20px; line-height: 1.25; margin: 0; }
+  .af-trace-sum { margin-left: auto; font-size: 13.5px; font-weight: 600; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+  .af-done p.af-trace-lead { margin: 10px 0 16px; max-width: none; font-size: 14.5px; line-height: 1.55; color: var(--c-text); }
+  .af-trace-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .af-tr-step { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; align-items: start; padding: 7px 0; }
+  .af-tr-icon { width: 22px; height: 22px; display: grid; place-items: center; }
+  .af-tr-icon svg { width: 22px; height: 22px; overflow: visible; }
+  .af-tr-fill { fill: var(--c-yellow); }
+  .af-tr-ink { fill: none; stroke: var(--c-dark); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .af-tr-step[data-state="done"] .af-tr-ink { stroke-dasharray: 1; stroke-dashoffset: 0; animation: afTrDraw .35s var(--af-ease) both; }
+  .af-tr-step[data-state="done"] .af-tr-icon svg { animation: afPick .3s var(--af-ease) both; }
+  .af-tr-ring { fill: #fff; stroke: var(--af-line-strong); stroke-width: 1.5; }
+  .af-tr-ring--todo { stroke: var(--af-line); }
+  .af-tr-ring--attn { fill: var(--af-attn-bg); stroke: var(--af-gold); }
+  .af-tr-ink--attn { stroke: var(--af-gold); }
+  .af-tr-spin { display: block; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--af-line); border-top-color: var(--c-dark); animation: afSpin .8s linear infinite; }
+  .af-tr-text { display: grid; gap: 1px; padding-top: 1px; min-width: 0; }
+  .af-tr-title { font-size: 15px; line-height: 1.45; color: var(--c-text-muted); overflow-wrap: anywhere; }
+  .af-tr-step[data-state="done"] .af-tr-title { color: var(--c-dark); }
+  .af-tr-step:is([data-state="work"], [data-state="wait"], [data-state="error"]) .af-tr-title { color: var(--c-dark); font-weight: 700; }
+  .af-tr-note { font-size: 13.5px; color: var(--c-text-muted); }
+  .af-tr-note:empty { display: none; }
+  .af-done p.af-trace-error { margin: 12px 0 0; max-width: none; padding: 10px 14px; border-radius: 12px; background: var(--af-attn-bg); color: var(--af-attn-ink); font-size: 14px; font-weight: 600; line-height: 1.45; }
+  .af-trace-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--c-border); }
+  .af-done .af-trace-actions .af-btn { margin-top: 0; }
+  @keyframes afTrDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
   /* What happens next: three steps, joined, rising in after the sun */
   .af-next-up { max-width: 540px; margin: 28px auto 8px; padding: 24px 24px 20px; border-radius: 20px; background: var(--c-cream); text-align: left; }
   .af-done .af-next-title { font-family: var(--font-body); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--c-text-muted); margin: 0 0 16px; }
@@ -855,6 +959,14 @@ const breadcrumbs = [
     .af-ic { width: 32px; height: 32px; }
     .af-more-body { padding-left: 14px; }
     .af-next-up { padding: 20px 18px 16px; margin-top: 24px; }
+    .af-testbar { padding: 16px 16px 14px; border-radius: 18px; }
+    /* The slim bar on a phone: the badge and End on one line, Fill the width under them */
+    .af-testbar.is-compact { padding: 6px 12px 12px 14px; gap: 2px 12px; }
+    .af-testbar.is-compact .af-testbar-end { order: 1; }
+    .af-testbar.is-compact .af-testbar-actions { order: 2; flex-basis: 100%; }
+    .af-testbar.is-compact .af-testbar-fill { flex: 1 1 100%; }
+    .af-done .af-trace { padding: 18px 16px 14px; margin-top: 28px; }
+    .af-trace-sum { margin-left: 0; flex-basis: 100%; }
     .af-row--3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
     .af-row--3 > :first-child { grid-column: 1 / -1; }
     /* Uploads: picture and status side by side, buttons on their own row */
@@ -953,6 +1065,8 @@ const breadcrumbs = [
     .af-area-spin { animation-duration: 2.4s; }
     .af-rail, .af-rail .af-step[aria-current="step"] .af-step-mark, .af-rail .af-step-mark svg path, .af-done.is-in .af-next-step, .af-mailfix { animation: none; }
     .af-rail-list li::after, .af-mini-bar, .af-rail .af-step-mark { transition: none; }
+    .af-testbar, .af-tr-step[data-state="done"] .af-tr-ink, .af-tr-step[data-state="done"] .af-tr-icon svg { animation: none; }
+    .af-tr-spin { animation-duration: 2.4s; }
     .af-mini, .af-mini.is-on { transition: none; }
   }
 </style>
