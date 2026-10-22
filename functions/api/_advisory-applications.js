@@ -206,13 +206,15 @@ export async function notifyNew(env, app, { now = Date.now() } = {}) {
   const out = { applicant: false, staff: 0, slack: false };
   try {
     const mine = applicantEmail(app);
-    const r = await sendEmails(env, { to: [app.answers.email], ...mine, tags: [{ name: 'kind', value: 'advisory-application' }] });
+    // A reply reaches SOARD, not the sending address
+    const r = await sendEmails(env, { to: [app.answers.email], ...mine, replyTo: 'info@soardcharity.com', tags: [{ name: 'kind', value: 'advisory-application' }] });
     out.applicant = r.sent > 0;
   } catch { /* recorded below */ }
   try {
     // A test's staff email goes to the tester, never the staff list
     const to = isTestApplication(app.answers) ? [app.answers.email] : (await getAdvisorySettings(env.DB)).staffEmails;
-    const r = await sendEmails(env, { to, ...staffEmail(app), tags: [{ name: 'kind', value: 'advisory-application-staff' }] });
+    // Staff answering the heads-up write straight to the applicant
+    const r = await sendEmails(env, { to, ...staffEmail(app), replyTo: app.answers.email, tags: [{ name: 'kind', value: 'advisory-application-staff' }] });
     out.staff = r.sent;
   } catch { /* recorded below */ }
   try {
