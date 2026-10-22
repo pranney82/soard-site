@@ -8,6 +8,8 @@
  * site's app icon, read from the site itself. Public: Twilio fetches it.
  */
 
+import { normalizePhone } from './api/_broadcast-notify.js';
+
 const SITE = 'https://sunshineonaranneyday.com';
 
 /** vCard 3.0 lines fold at 75 octets: CRLF, then a space */
@@ -18,7 +20,8 @@ function fold(line) {
 }
 
 export function contactCard({ number, photo = null }) {
-  const digits = String(number || '').replace(/[^\d+]/g, '');
+  // +1 and ten digits whatever way TWILIO_FROM was typed, so phones match it to the texts' sender
+  const digits = normalizePhone(number) || String(number || '').replace(/[^\d+]/g, '');
   return [
     'BEGIN:VCARD', 'VERSION:3.0',
     'FN:SOARD Reveal Alerts', 'N:Reveal Alerts;SOARD;;;', 'ORG:Sunshine on a Ranney Day',

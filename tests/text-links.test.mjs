@@ -60,5 +60,8 @@ test('the contact card: the alert number, the name, the icon, folded as vCard wa
   const none = await card({ env: {}, request: new Request('https://sunshineonaranneyday.com/alert-contact') });
   assert.equal(none.status, 404, 'no number, no card');
   assert.ok(!contactCard({ number: '+16786883160' }).includes('PHOTO'), 'and it works without its picture');
+  for (const typed of ['6786883160', '(678) 688-3160', '+1 678 688 3160']) {
+    assert.match(contactCard({ number: typed }), /\r\nTEL;TYPE=CELL,VOICE:\+16786883160\r\n/, `"${typed}" goes in as +1`);
+  }
   assert.equal(ALERT_CONTACT_URL, 'https://sunshineonaranneyday.com/alert-contact');
 });
