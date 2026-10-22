@@ -40,7 +40,7 @@ export const JOTFORM_FORMS = [
 const API_BASES = ['https://api.jotform.com', 'https://eu-api.jotform.com', 'https://hipaa-api.jotform.com'];
 const PER_RUN = 3;
 // Bump when a fix should retry what didn't copy (a blocked run, rows out of tries)
-const VERSION = 1;
+const VERSION = 2;
 const MAX_TRIES = 4;
 const iso = (t = Date.now()) => new Date(t).toISOString();
 const parse = (s, d = null) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
@@ -148,6 +148,28 @@ export function submissionFiles(answers) {
   return out;
 }
 
+/**
+ * What a file is, from its first bytes. Jotform sends widget uploads as
+ * application/octet-stream, so the header alone can't say.
+ */
+export function sniffType(bytes) {
+  if (!bytes || bytes.byteLength < 12) return null;
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  const head = String.fromCharCode(...bytes.slice(0, 12));
+  if (head.startsWith('GIF8')) return 'image/gif';
+  if (head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP') return 'image/webp';
+  if (head.startsWith('%PDF-')) return 'application/pdf';
+  if (head.slice(4, 8) === 'ftyp') {
+    const brand = head.slice(8, 12);
+    if (/^avi[fs]$/.test(brand)) return 'image/avif';
+    if (/^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(brand)) return 'image/heic';
+    if (brand === 'qt  ') return 'video/quicktime';
+    return 'video/mp4';
+  }
+  return null;
+}
+
 const looksRight = (kind, type, bytes) => {
   if (!bytes || bytes.byteLength < 200) return false;
   if (kind === 'pdf') return new TextDecoder().decode(bytes.slice(0, 5)) === '%PDF-';
@@ -181,8 +203,9 @@ async function download(env, file, fetchImpl) {
         continue;
       }
       if (res.ok) {
-        const type = String(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
         const bytes = new Uint8Array(await res.arrayBuffer());
+        const said = String(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        const type = /^(image|video)\/|^application\/pdf$/.test(said) ? said : (sniffType(bytes) || said);
         if (looksRight(file.kind, type, bytes)) return { bytes, type: type || 'application/octet-stream' };
         tried.push(`  not a ${file.kind} (${type || 'no type'}, ${bytes.byteLength} bytes)`);
       }
@@ -381,10 +404,11 @@ export async function runJotformBackfill(env, { fetchImpl = fetch, now = Date.no
     await ensureSchema(DB);
     const finished = await getState(DB, 'done');
     if (finished) return { done: true };
-    // A new version retries what didn't copy
+    // A new version retries what didn't copy: unfinished submissions, and done ones with a file left behind
     if (String(await getState(DB, 'version')) !== String(VERSION)) {
       await DB.batch([
         DB.prepare("UPDATE jotform_backfill SET tries = 0 WHERE status != 'done'"),
+        DB.prepare(`UPDATE jotform_backfill SET status = 'pending', tries = 0 WHERE status = 'done' AND saved LIKE '%"error"%'`),
         DB.prepare("DELETE FROM jotform_backfill_state WHERE key = 'blocked'"),
       ]);
       await setState(DB, 'version', VERSION, now);

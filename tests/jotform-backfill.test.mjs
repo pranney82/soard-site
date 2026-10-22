@@ -8,7 +8,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
-import { runJotformBackfill, matchAccount, submissionFiles, submissionName, backfillFacts } from '../functions/api/_jotform-backfill.js';
+import { runJotformBackfill, matchAccount, submissionFiles, submissionName, backfillFacts, sniffType } from '../functions/api/_jotform-backfill.js';
 import { syncAllApplicants, listApplicants, FIELDS } from '../functions/api/_applicants.js';
 
 const KEY = 'jf-secret-key';
@@ -53,10 +53,15 @@ function fakeJotform() {
       return json({ responseCode: 404 }, 404);
     }
     if (url.hostname === 'www.jotform.com') {
-      // Like Jotform: uploads only open with the account's key
-      const bytes = state.files[url.pathname];
-      if (state.downloadsDown || !bytes || key !== KEY) return new Response('<html>not found</html>', { status: 404, headers: { 'content-type': 'text/html' } });
-      return new Response(bytes, { headers: { 'content-type': 'image/jpeg' } });
+      // Like Jotform (seen Oct 22 2026): a widget upload redirects to its file host, which needs the key
+      // and sends the photo as application/octet-stream
+      if (state.downloadsDown || !state.files[url.pathname]) return new Response('<html>not found</html>', { status: 404, headers: { 'content-type': 'text/html' } });
+      return new Response(null, { status: 302, headers: { location: `https://files.jotform.com/jotformWidgets/${encodeURIComponent(url.pathname.replace(/^\/widget-uploads\//, ''))}` } });
+    }
+    if (url.hostname === 'files.jotform.com') {
+      const bytes = state.files[`/widget-uploads/${decodeURIComponent(url.pathname.replace(/^\/jotformWidgets\//, ''))}`];
+      if (!bytes || key !== KEY) return new Response('denied', { status: 403 });
+      return new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } });
     }
     return w.fetchImpl(input, init);
   }
@@ -207,6 +212,18 @@ test('a redirect to storage never carries the key, and the key only goes to Jotf
   for (let n = 0; n < 4; n++) await runJotformBackfill(env, { fetchImpl });
   assert.deepEqual(jf.state.leaks, []);
   assert.ok(Object.values(w.world.accounts).find(a => a.name === 'Ava Lin').files.some(f => f.name === 'Ava Lin.jpg'));
+});
+
+test('what a file is, from its first bytes (Jotform says octet-stream)', () => {
+  const b = (...xs) => new Uint8Array([...xs, ...new Array(20).fill(0)]);
+  const s = (str) => new Uint8Array([...new TextEncoder().encode(str), ...new Array(20).fill(0)]);
+  assert.equal(sniffType(b(0xff, 0xd8, 0xff, 0xe1)), 'image/jpeg');
+  assert.equal(sniffType(b(0x89, 0x50, 0x4e, 0x47)), 'image/png');
+  assert.equal(sniffType(s('\0\0\0\x18ftypheic')), 'image/heic');
+  assert.equal(sniffType(s('\0\0\0\x18ftypqt  ')), 'video/quicktime');
+  assert.equal(sniffType(s('\0\0\0\x18ftypisom')), 'video/mp4');
+  assert.equal(sniffType(s('%PDF-1.7')), 'application/pdf');
+  assert.equal(sniffType(s('<html><body>')), null);
 });
 
 test('nothing runs without the key', async () => {
