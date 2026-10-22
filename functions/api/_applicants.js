@@ -28,7 +28,8 @@
  * /api/applicant-sync call, so a status change in JobTread shows up at once.
  */
 
-import { pave, SOARD_ORG_ID } from './_reveals.js';
+import { pave, SOARD_ORG_ID, matchKid, normalizeName } from './_reveals.js';
+import { bestPhotoOf, photoUrl } from './_job-covers.js';
 import {
   readApplicant, statusMessagePreview, postAccountComment, SITE_GRANT_ID, STATUS_RANK,
   FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE,
@@ -80,7 +81,7 @@ const SCHEMA = [
     location_id TEXT, address TEXT, city TEXT, county TEXT, lat REAL, lng REAL, area TEXT, area_miles REAL,
     contact_name TEXT, contact_email TEXT, contact_phone TEXT, contacts TEXT,
     job_id TEXT, job_name TEXT, comms_thread_id TEXT, application_url TEXT,
-    created_at TEXT, archived_at TEXT, synced_at TEXT NOT NULL)`,
+    created_at TEXT, archived_at TEXT, synced_at TEXT NOT NULL, photo_file_id TEXT, photo_url TEXT)`,
   'CREATE INDEX IF NOT EXISTS idx_applicants_status ON applicants(status, year)',
   `CREATE TABLE IF NOT EXISTS applicant_activity (
     id TEXT PRIMARY KEY, account_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL,
@@ -93,6 +94,10 @@ const _ready = new WeakSet();
 export async function ensureApplicantSchema(DB) {
   if (_ready.has(DB)) return;
   await DB.batch(SCHEMA.map(sql => DB.prepare(sql)));
+  // The child's photo (added Oct 2026) on mirrors made before it
+  for (const col of ['photo_file_id', 'photo_url']) {
+    try { await DB.prepare(`ALTER TABLE applicants ADD COLUMN ${col} TEXT`).run(); } catch { /* already there */ }
+  }
   _ready.add(DB);
 }
 
@@ -120,6 +125,7 @@ async function takeTurn(DB, key, everyMs, now) {
 // Request Entity Too Large". So every nested list has a small explicit
 // size, and pages are 25 accounts (PAGE). Checked against JobTread itself.
 const PAGE = 25;
+const PHOTOS = 12;
 const CONTACT = {
   id: {}, name: {}, title: {},
   customFieldValues: { $: { size: 2, where: [['customField', 'id'], 'in', [FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE]] }, nodes: { value: {}, customField: { id: {} } } },
@@ -136,6 +142,11 @@ const ACCOUNT = {
   },
   jobs: { $: { size: 2, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: { id: {}, name: {} } },
   comms: { _: 'comments', $: { size: 1, where: ['name', '=', 'Comms Thread'] }, nodes: { id: {} } },
+  // Photos on the account itself (the application's), oldest first; the job's are build photos
+  files: {
+    $: { size: PHOTOS, where: { and: [['type', 'like', 'image/%'], [['job', 'id'], '=', null]] }, sortBy: [{ field: 'createdAt', order: 'asc' }] },
+    nodes: { id: {}, name: {}, type: {}, thumb: { _: 'url', $: { size: 256 } } },
+  },
 };
 
 // A multi-choice field (Makeover Type) comes back as one value per choice
@@ -162,6 +173,47 @@ export function placeOnArea(lat, lng, polygon) {
   return { area: 'outside', miles: Math.round(milesToEdge([lat, lng], polygon) * 10) / 10 };
 }
 
+// ─── The child's photo (the avatar) ─────────────────────────────────
+//
+// What families send with an application lands on the account as files:
+// the form attaches "<Child>.jpg", "<Child> Family.jpg" and "Space" photos;
+// staff upload Jotform's as "<Name>.jpg" next to "<Name> Family.jpg", or keep
+// Jotform's own names ("5f2face<Name>_…" is the child's field, "…family…" the
+// family's). Camera names (IMG_0978) could be the child or a room, so they're
+// never guessed at; those families keep their initials.
+
+// Words that mean the photo is of someone or something else
+const NOT_CHILD = new Set(['family', 'families', 'parents', 'siblings', 'space', 'room', 'rooms', 'bedroom', 'bathroom', 'bath', 'bed', 'kitchen',
+  'house', 'home', 'ramp', 'therapy', 'mood', 'board', 'plan', 'plans', 'floor', 'before', 'after', 'site', 'onsite', 'note', 'notes',
+  'render', 'rendr', 'design', 'layout', 'logo', 'screenshot', 'scan', 'door', 'doorway', 'hall', 'hallway', 'stair', 'stairs', 'yard',
+  'porch', 'closet', 'tub', 'shower', 'toilet', 'sink', 'garage', 'exterior', 'interior', 'existing', 'proposed', 'resume', 'letter', 'map']);
+const CAMERA = /^(?:img|dsc|dscn|dcim|pxl|photo|image|screenshot|scan|untitled|companycam|whatsapp|mvimg|pic)[\s_-]*\d/i;
+const fileBase = (name) => String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').trim();
+// Words in a file name, with Jotform's glued ones split ("7d4faceBen_5e81d0" → face, ben)
+const fileWords = (name) => fileBase(name).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z]+/).filter(w => w.length > 1);
+const nameWords = (s) => normalizeName(s).split(' ').filter(w => w.length > 2 && !/^(test|and|the|for|jr|sr|iii?)$/.test(w));
+
+/**
+ * The child's own photo among an account's files, or null. `names` are the
+ * account's and job's names. A name only counts with a reason to believe it's
+ * the child: the child's name in it, a "<same> Family" photo beside it, or
+ * Jotform's child field.
+ */
+export function childPhotoFile(files, names = []) {
+  const child = new Set(names.flatMap(nameWords));
+  const key = (name) => fileWords(name).filter(w => w !== 'family' && w !== 'families').join(' ');
+  const besideFamily = new Set((files || []).filter(f => fileWords(f.name).some(w => w === 'family' || w === 'families')).map(f => key(f.name)).filter(Boolean));
+  let best = null;
+  for (const f of files || []) {
+    if (!f?.id || (f.type && !/^image\//.test(f.type)) || CAMERA.test(fileBase(f.name))) continue;
+    const words = fileWords(f.name);
+    if (!words.length || words.some(w => NOT_CHILD.has(w))) continue;
+    const score = (besideFamily.has(words.join(' ')) ? 4 : 0) + (words.some(w => child.has(w)) ? 3 : 0) + (words.includes('face') ? 3 : 0);
+    if (score >= 3 && (!best || score > best.score)) best = { score, file: f };
+  }
+  return best?.file || null;
+}
+
 /** Is this JobTread account an applicant? (customer, with a Status or Makeover Year, or made by the form) */
 export function isApplicantAccount(a) {
   if (!a || a.type !== 'customer') return false;
@@ -181,6 +233,7 @@ export function rowFromAccount(a, polygon, now = Date.now()) {
   const lng = num(loc?.longitude);
   const { area, miles } = placeOnArea(lat, lng, polygon);
   const job = a.jobs?.nodes?.[0] || null;
+  const photo = childPhotoFile(a.files?.nodes, [a.name, job?.name]);
   return {
     account_id: a.id, name: a.name || '(no name)', status: fields.status || null, year: fields.year || null,
     types: JSON.stringify(fields.types || []), fields: JSON.stringify(fields),
@@ -190,11 +243,13 @@ export function rowFromAccount(a, polygon, now = Date.now()) {
     contacts: JSON.stringify(contacts), job_id: job?.id || null, job_name: cut(job?.name, 200),
     comms_thread_id: a.comms?.nodes?.[0]?.id || null, application_url: cut(v[FIELD_APPLICATION_URL], 300),
     created_at: a.createdAt || null, archived_at: a.archivedAt || null, synced_at: iso(now),
+    photo_file_id: photo?.id || null, photo_url: cut(photo?.thumb, 1000),
   };
 }
 
 const COLUMNS = ['account_id', 'name', 'status', 'year', 'types', 'fields', 'location_id', 'address', 'city', 'county', 'lat', 'lng', 'area', 'area_miles',
-  'contact_name', 'contact_email', 'contact_phone', 'contacts', 'job_id', 'job_name', 'comms_thread_id', 'application_url', 'created_at', 'archived_at', 'synced_at'];
+  'contact_name', 'contact_email', 'contact_phone', 'contacts', 'job_id', 'job_name', 'comms_thread_id', 'application_url', 'created_at', 'archived_at', 'synced_at',
+  'photo_file_id', 'photo_url'];
 const UPSERT = `INSERT INTO applicants (${COLUMNS.join(', ')}) VALUES (${COLUMNS.map(() => '?').join(', ')})
   ON CONFLICT(account_id) DO UPDATE SET ${COLUMNS.slice(1).map(c => `${c} = excluded.${c}`).join(', ')}`;
 const upsert = (DB, row) => DB.prepare(UPSERT).bind(...COLUMNS.map(c => row[c] ?? null));
@@ -541,7 +596,41 @@ function applicantFromRow(r) {
     createdAt: r.created_at, archivedAt: r.archived_at, syncedAt: r.synced_at,
     stageAt: r.stage_at || null, lastActivityAt: r.last_at || null, lastActivity: r.last_title || r.last_kind ? { kind: r.last_kind, title: r.last_title, by: r.last_by, source: r.last_source } : null,
     jobtreadUrl: jobtreadAccountUrl(r.account_id), jobUrl: r.job_id ? jobtreadJobUrl(r.job_id) : null,
+    // The child's photo from the application, in JobTread (a kid page's photo replaces it: pagePhotos)
+    ...(r.photo_url ? { photo: r.photo_url, photoFrom: 'application' } : {}),
   };
+}
+
+/**
+ * Once the family photos are on the kid's page, its best photo (the Main
+ * photo, centered on its focal point) is the family's avatar here too. The
+ * page is the one the family's job links to (jobtreadJobId, else the name
+ * and year, like the reveal dates and job covers).
+ */
+async function pagePhotos(DB, list) {
+  const linked = list.filter(a => a.jobId && !/^\s*test\b/i.test(a.jobName || a.name || ''));
+  if (!linked.length) return;
+  // Only the kids one of these jobs could be: its year, or linked to it by id
+  const years = [...new Set(linked.map(a => Number((String(a.jobName || '').match(/\((\d{4})\)\s*$/) || [])[1])).filter(Boolean))];
+  const jobIds = [...new Set(linked.map(a => a.jobId))].slice(0, 80);
+  let kids = [];
+  try {
+    const { results } = await DB.prepare(`SELECT slug, name, year, data FROM kids WHERE year IN (${years.map(() => '?').join(', ') || 'NULL'})
+      OR json_extract(data, '$.jobtreadJobId') IN (${jobIds.map(() => '?').join(', ')})`).bind(...years, ...jobIds).all();
+    kids = (results || []).map((row) => {
+      const data = parse(row.data, {}) || {};
+      return { slug: row.slug, name: data.name || row.name, year: row.year ?? data.year, data };
+    });
+  } catch { return; /* no kids table (tests) */ }
+  if (!kids.length) return;
+  // Office test jobs ("TEST <name> (2026)") would match the real kid, so they were left out above
+  for (const a of linked) {
+    const kid = matchKid(a.jobName, kids, a.jobId);
+    if (!kid) continue;
+    a.kid = { slug: kid.slug, name: kid.name, draft: kid.data?.publishStatus === 'draft' };
+    const best = bestPhotoOf(kid.data);
+    if (best) { a.photo = photoUrl(best, 'w=128,h=128,fit=cover', 'q=80'); a.photoFrom = 'page'; }
+  }
 }
 
 // When it reached its current status, and its latest activity, alongside each row
@@ -575,16 +664,19 @@ export async function listApplicants(DB, { archived = false } = {}) {
       a.isTest = !!app.is_test;
       a.submittedAt = app.submitted_at;
       a.repeat = (st.repeat?.matches || []).map(m => m.name).slice(0, 3);
-      // The child's photo from the form, through the admin's file proxy
-      if (parse(app.files, {})?.photoChild?.thumbKey) a.photo = `/api/applications-admin?file=${app.id}&field=photoChild&thumb=1`;
+      // The child's photo from the form, through the admin's file proxy, until JobTread has it too
+      if (!a.photo && parse(app.files, {})?.photoChild?.thumbKey) { a.photo = `/api/applications-admin?file=${app.id}&field=photoChild&thumb=1`; a.photoFrom = 'application'; }
     }
   } catch { /* no applications table yet */ }
+  await pagePhotos(DB, list);
   return list;
 }
 
 export async function getApplicantRow(DB, id) {
   await ensureApplicantSchema(DB);
-  return applicantFromRow(await DB.prepare(`${LIST_SQL} WHERE a.account_id = ?`).bind(id).first());
+  const row = applicantFromRow(await DB.prepare(`${LIST_SQL} WHERE a.account_id = ?`).bind(id).first());
+  if (row) await pagePhotos(DB, [row]);
+  return row;
 }
 
 export async function activityFor(DB, id, { limit = 300 } = {}) {

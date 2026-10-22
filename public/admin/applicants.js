@@ -122,7 +122,11 @@ const CSS = `
 .apl-views button[aria-pressed="true"] { background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-sm); }
 .apl-views button:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
 .apl-view-n { min-width: 1.25rem; padding: 0 .38rem; border-radius: 999px; background: var(--apl-warn-bg); border: 1px solid var(--apl-warn-line); color: var(--apl-warn-ink); font-size: .72rem; font-weight: 700; line-height: 1.15rem; text-align: center; font-variant-numeric: tabular-nums; }
-.apl-filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; justify-content: flex-end; flex: 1 1 26rem; min-width: 0; }
+/* Search, season and Filters stay together on one line; short of room, they move under the views as a group */
+.apl-filters { display: flex; flex-wrap: nowrap; gap: .5rem; align-items: center; justify-content: flex-end; flex: 1 1 26rem; min-width: 0; }
+.apl-filters > * { flex-shrink: 0; }
+.apl-filters > .apl-search { flex-shrink: 1; min-width: 8.5rem; }
+.apl-filters > .apl-season { flex-shrink: 1; min-width: 7.5rem; }
 .apl-filters .form-select, .apl-filters .form-input { width: auto; min-height: 38px; font-size: .88rem; }
 .apl-filters .form-select { max-width: 13rem; }
 .apl-search { position: relative; flex: 1 1 200px; max-width: 320px; }
@@ -130,7 +134,7 @@ const CSS = `
 .apl-search input::-webkit-search-cancel-button { cursor: pointer; }
 .apl-search svg { position: absolute; left: .65rem; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--color-text-muted); pointer-events: none; }
 .apl-search kbd { position: absolute; right: .5rem; top: 50%; transform: translateY(-50%); font: 600 .7rem/1 ui-monospace, monospace; color: var(--color-text-muted); border: 1px solid var(--color-border); border-radius: 4px; padding: 2px 5px; background: var(--color-bg-secondary); pointer-events: none; }
-@media (pointer: coarse) { .apl-search kbd { display: none; } }
+@media (pointer: coarse) { .apl-search kbd { display: none; } .apl-fbtn, .apl-more-btn, .apl-sortbar .btn { min-height: 44px; } }
 .apl-fbtn { display: inline-flex; align-items: center; gap: .4rem; min-height: 38px; white-space: nowrap; }
 .apl-fbtn[aria-expanded="true"] { border-color: var(--color-text); }
 .apl-fbtn b { min-width: 1.2rem; padding: 0 .35rem; border-radius: 999px; background: var(--color-text); color: var(--color-bg-card); font-size: .7rem; line-height: 1.2rem; text-align: center; }
@@ -173,26 +177,52 @@ const CSS = `
 .apl-strip button.is-all[aria-pressed="true"] { border-color: var(--color-text); background: var(--color-text); color: var(--color-bg-card); box-shadow: none; }
 .apl-strip button.is-all[aria-pressed="true"] b { color: inherit; }
 
-.apl-board { display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: .75rem; align-items: start; overflow-x: auto; padding-bottom: .5rem; scroll-snap-type: x proximity; }
-.apl-col { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); min-width: 0; display: flex; flex-direction: column; max-height: calc(100vh - 230px); scroll-snap-align: start; }
-.apl-col-head { display: flex; align-items: center; gap: .5rem; padding: .7rem .8rem .55rem; border-bottom: 1px solid var(--color-border); }
-.apl-col-head h3 { margin: 0; font-size: .92rem; }
+/* The board always fits the page: four columns share the width, and the
+   cards inside shrink with them. Too narrow for four (phones, a small
+   window), one status shows at a time under a switcher. Never a sideways scroll. */
+.apl-board-wrap { container: apl-board / inline-size; }
+.apl-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; align-items: start; }
+.apl-col { container: apl-col / inline-size; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); min-width: 0; display: flex; flex-direction: column; max-height: calc(100vh - 230px); }
+.apl-col-head { display: flex; align-items: center; gap: .5rem; padding: .7rem .8rem .55rem; border-bottom: 1px solid var(--color-border); min-width: 0; }
+.apl-col-head h3 { margin: 0; font-size: .92rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .apl-col-head .apl-count { margin-left: auto; font-size: .78rem; font-weight: 700; color: var(--color-text-secondary); background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
-.apl-col-hint { font-size: .75rem; color: var(--color-text-muted); padding: .35rem .8rem 0; }
-.apl-cards { display: grid; gap: .5rem; padding: .6rem; overflow-y: auto; min-height: 90px; align-content: start; flex: 1; }
+.apl-col-hint { font-size: .75rem; line-height: 1.35; color: var(--color-text-muted); padding: .35rem .8rem 0; }
+.apl-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem; padding: .6rem; overflow-y: auto; overflow-x: hidden; min-height: 90px; align-content: start; flex: 1; }
 .apl-cards.is-target { background: var(--color-primary-bg); outline: 2px dashed var(--color-primary); outline-offset: -6px; border-radius: 10px; }
 .apl-empty-col { font-size: .8rem; color: var(--color-text-muted); text-align: center; padding: 1.2rem .5rem; border: 1px dashed var(--color-border-strong); border-radius: 10px; }
-@media (max-width: 960px) { .apl-board { grid-template-columns: repeat(4, minmax(260px, 82vw)); } }
-@media (min-width: 961px) and (max-width: 1100px) { .apl-board { grid-template-columns: repeat(4, minmax(215px, 1fr)); gap: .6rem; } }
+.apl-empty-col .is-narrow { display: none; }
 
-.apl-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 10px; padding: .65rem .7rem; display: grid; gap: .4rem; cursor: pointer; box-shadow: var(--shadow-xs); transition: box-shadow .15s, border-color .15s, transform .15s; text-align: left; font: inherit; color: inherit; width: 100%; }
+/* The switcher: one button per status with its count (shown only when the columns can't all fit) */
+.apl-board-tabs { display: none; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; padding: 3px; margin-bottom: .6rem; border-radius: 12px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
+.apl-board-tabs button { display: grid; justify-items: center; align-content: center; gap: 2px; min-width: 0; min-height: 52px; padding: .35rem .25rem; border: 0; border-radius: 9px; background: none; font: inherit; color: var(--color-text-secondary); cursor: pointer; transition: background .15s, color .15s, box-shadow .15s; }
+.apl-board-tabs button span { display: inline-flex; align-items: center; gap: .3rem; max-width: 100%; font-size: .78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.apl-board-tabs button b { font-size: 1.05rem; line-height: 1.1; color: var(--color-text); font-variant-numeric: tabular-nums; }
+.apl-board-tabs button .apl-dot { width: 7px; height: 7px; background: var(--c); }
+.apl-board-tabs button:hover { color: var(--color-text); }
+.apl-board-tabs button[aria-pressed="true"] { background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-sm), inset 0 -2px 0 var(--c); }
+.apl-board-tabs button:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
+@container apl-board (max-width: 699px) {
+  .apl-board-tabs { display: grid; }
+  .apl-board { grid-template-columns: minmax(0, 1fr); }
+  .apl-col:not(.is-shown) { display: none; }
+  .apl-col { max-height: none; }
+  .apl-col-head { display: none; }
+  .apl-col-hint { padding-top: .6rem; }
+  .apl-cards { overflow: visible; }
+  .apl-empty-col .is-wide { display: none; }
+  .apl-empty-col .is-narrow { display: inline; }
+}
+
+.apl-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 10px; padding: .65rem .7rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: .4rem; cursor: pointer; box-shadow: var(--shadow-xs); transition: box-shadow .15s, border-color .15s, transform .15s; text-align: left; font: inherit; color: inherit; width: 100%; min-width: 0; }
+.apl-card > * { min-width: 0; }
 .apl-card:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-md); }
 .apl-card:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
 .apl-card.is-ghost { opacity: .35; }
 .apl-card.is-chosen { box-shadow: var(--shadow-lg); transform: rotate(-1deg); }
 .apl-card-top { display: flex; gap: .6rem; align-items: center; min-width: 0; }
-.apl-avatar { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: .75rem; font-weight: 700; color: #fff; background: color-mix(in srgb, var(--c, #A3A4AA) 76%, #000); overflow: hidden; }
-.apl-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.apl-avatar { position: relative; width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: .75rem; font-weight: 700; color: #fff; background: color-mix(in srgb, var(--c, #A3A4AA) 76%, #000); overflow: hidden; }
+/* The photo covers the initials; a photo that won't load hides and they show */
+.apl-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .apl-card-name { font-weight: 650; font-size: .92rem; line-height: 1.25; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .apl-card-sub { font-size: .76rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .apl-tags { display: flex; flex-wrap: wrap; gap: .3rem; }
@@ -204,6 +234,20 @@ const CSS = `
 .apl-card-foot { display: flex; justify-content: space-between; gap: .5rem; font-size: .74rem; color: var(--color-text-muted); }
 .apl-card-foot span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .apl-stage.is-long { color: #8A5A00; font-weight: 600; }
+/* Narrow columns (a laptop window, an iPad): the name may take two lines, nothing is cut off */
+@container apl-col (max-width: 215px) {
+  .apl-col-head { padding: .6rem .6rem .5rem; gap: .4rem; }
+  .apl-col-hint { padding: .35rem .6rem 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .apl-cards { padding: .45rem; gap: .4rem; }
+  .apl-card { padding: .55rem .55rem .5rem; gap: .35rem; }
+  /* The name beside the photo (two lines if it needs them); age and town under both, the card's full width */
+  .apl-card-top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .3rem .5rem; align-items: center; }
+  .apl-card-top > div { display: contents; }
+  .apl-card .apl-avatar { width: 28px; height: 28px; font-size: .66rem; }
+  .apl-card-name { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .apl-card .apl-card-sub { grid-column: 1 / -1; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .apl-tag { padding: 1px 6px; font-size: .7rem; }
+}
 .apl-mail { font-size: .72rem; font-weight: 650; padding: 2px 7px; border-radius: 999px; background: #FFF6D6; border: 1px solid #F2D899; color: #6B4A00; white-space: nowrap; }
 .apl-mail.is-held { background: #EEF0F3; border-color: #D9DDE3; color: #4A4F57; }
 .apl-mail.is-fix { background: #FFE6B8; border-color: #EBC16A; color: #5C3D00; }
@@ -230,6 +274,27 @@ const CSS = `
 .apl-table tbody tr { cursor: pointer; transition: background .1s; }
 .apl-table tbody tr:hover { background: var(--color-bg-hover); }
 .apl-table tbody tr:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
+.apl-table .apl-td-last { max-width: 260px; }
+/* Narrower than the table (a laptop window, an iPad, a phone): each family is a short row, never a sideways scroll */
+.apl-list { container: apl-list / inline-size; display: grid; gap: .6rem; }
+.apl-sortbar { display: none; align-items: center; justify-content: flex-end; gap: .4rem; }
+.apl-sortbar label { display: inline-flex; align-items: center; gap: .45rem; font-size: .84rem; font-weight: 600; color: var(--color-text-secondary); }
+.apl-sortbar .form-select { width: auto; min-height: 38px; font-size: .88rem; }
+.apl-sortbar .btn { min-width: 38px; min-height: 38px; justify-content: center; }
+.apl-table .apl-td-meta { display: none; }
+@container apl-list (max-width: 899px) {
+  .apl-sortbar { display: flex; }
+  .apl-table-wrap { overflow: visible; }
+  .apl-table thead { display: none; }
+  .apl-table, .apl-table tbody { display: block; }
+  .apl-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who status" "meta meta" "last last"; gap: .3rem .75rem; align-items: center; padding: .75rem .9rem; border-bottom: 1px solid var(--color-border); }
+  .apl-table tbody tr:last-child { border-bottom: 0; }
+  .apl-table td { display: none; padding: 0; border: 0; min-width: 0; }
+  .apl-table td:nth-child(1) { display: block; grid-area: who; }
+  .apl-table td:nth-child(2) { display: block; grid-area: status; }
+  .apl-table .apl-td-meta { display: block; grid-area: meta; font-size: .84rem; color: var(--color-text-secondary); padding-left: calc(28px + .55rem); }
+  .apl-table .apl-td-last { display: block; grid-area: last; max-width: none; white-space: normal; padding-left: calc(28px + .55rem); }
+}
 .apl-pill { display: inline-flex; align-items: center; gap: .35rem; font-size: .78rem; font-weight: 650; padding: 3px 9px 3px 7px; border-radius: 999px; background: color-mix(in srgb, var(--c) 12%, white); color: color-mix(in srgb, var(--c) 80%, black); border: 1px solid color-mix(in srgb, var(--c) 28%, white); white-space: nowrap; }
 .apl-pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
 
@@ -465,9 +530,15 @@ const Icon = {
 };
 const FEED_ICON = { notify: '📨', status: '●', fields: '✎', comment: '💬', reply: '↩', textIn: '📱', textOut: '📱', call: '📞', sent: '✉', note: '📝', file: '📎', contact: '👤', home: '🏠', job: '🛠', created: '✨', archived: '🗄', unarchived: '🗄', renamed: '✎' };
 
+const PHOTO_FROM = { page: 'Photo from their kid page', application: 'Photo from their application' };
+/** Where the avatar comes from, and why it isn't the kid page's yet */
+const photoTitle = (a) => [a.photo ? PHOTO_FROM[a.photoFrom] : null, a.kid && a.photoFrom !== 'page' ? 'their kid page has no photos yet' : null].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase());
+/** The child's photo (their kid page's once it has one, else the application's), or their initials */
 function Avatar({ a, size = null }) {
   const c = STATUS_COLOR[a.status || ''];
-  return html`<span class="apl-avatar" style=${`--c:${c}${size ? `;width:${size}px;height:${size}px` : ''}`} aria-hidden="true">${a.photo ? html`<img src=${a.photo} alt="" loading="lazy" />` : initials(a.name)}</span>`;
+  return html`<span class="apl-avatar" style=${`--c:${c}${size ? `;width:${size}px;height:${size}px` : ''}`} title=${photoTitle(a)} aria-hidden="true">
+    ${initials(a.name)}${a.photo && html`<img key=${a.photo} src=${a.photo} alt="" loading="lazy" decoding="async" onError=${e => { e.currentTarget.style.display = 'none'; }} />`}
+  </span>`;
 }
 const Pill = ({ status }) => html`<span class="apl-pill" style=${`--c:${STATUS_COLOR[status || '']}`}>${status || 'No status'}</span>`;
 
@@ -945,6 +1016,10 @@ function Board({ list, onOpen, onMove }) {
   moveRef.current = onMove;
   const mapRef = useRef(byId);
   mapRef.current = byId;
+  // Where one status shows at a time (too narrow for four columns): the one picked,
+  // and when a search leaves it empty, the first status that has someone
+  const [picked, setPicked] = useState(null);
+  const shown = picked && (groups[picked].length || !STATUS_ORDER.some(s => groups[s].length)) ? picked : (STATUS_ORDER.find(s => groups[s].length) || 'Applied');
 
   useEffect(() => {
     const made = [];
@@ -973,8 +1048,10 @@ function Board({ list, onOpen, onMove }) {
   }, []);
 
   const now = Date.now();
+  // One season showing: its year on every card says nothing
+  const oneYear = list.length > 0 && list.every(a => a.year === list[0].year);
   const column = (s) => html`
-    <section class="apl-col" aria-label=${s}>
+    <section class=${`apl-col ${s === shown ? 'is-shown' : ''}`} aria-label=${s} data-status=${s}>
       <div class="apl-col-head"><span class="apl-dot" style=${`background:${STATUS_COLOR[s]}`}></span><h3>${s}</h3><span class="apl-count">${groups[s].length}</span></div>
       <div class="apl-col-hint">${STATUS_HINT[s]}</div>
       <div class="apl-cards" ref=${el => { cols.current[s] = el; }} data-status=${s}>
@@ -985,17 +1062,22 @@ function Board({ list, onOpen, onMove }) {
           return html`<button class="apl-card" key=${a.id} data-id=${a.id} onClick=${() => { if (Date.now() - lastDragEnd > 350) onOpen(a.id); }} aria-label=${`${a.name}, ${s}. Open`}>
             <div class="apl-card-top"><${Avatar} a=${a} />
               <div style="min-width:0"><div class="apl-card-name">${a.name}</div>
-              <div class="apl-card-sub">${[age != null ? `${age} yrs` : null, a.city || a.county, a.year].filter(Boolean).join(' · ')}</div></div>
+              <div class="apl-card-sub">${[age != null ? `${age} yrs` : null, a.city || a.county, oneYear ? null : a.year].filter(Boolean).join(' · ')}</div></div>
             </div>
             <${Flags} a=${a} />
             ${a.notify && html`<div class="apl-tags">${a.notify.kind ? html`<span class=${`apl-mail ${a.notify.hold ? 'is-held' : ''}`} title=${a.notify.hold ? 'Held: family emails are paused' : `The ${a.notify.label} email goes out at ${clock(a.notify.dueAt)} unless the status changes back`}>${a.notify.hold ? 'Email held' : `Emails ${clock(a.notify.dueAt)}`}</span>` : a.notify.correction ? html`<span class="apl-mail is-fix" title=${`The family was emailed ${a.notify.told}, but the status is now ${a.status}`}>Needs a correction</span>` : null}</div>`}
             <div class="apl-card-foot"><span>${lastLine(a)}</span>${days != null && html`<span class=${`apl-stage ${long ? 'is-long' : ''}`} title=${`In ${s} for ${plural(days, 'day')}`}>${days}d</span>`}</div>
           </button>`;
         })}
-        ${!groups[s].length && html`<div class="apl-empty-col">Nobody here${s === 'Applied' ? ' yet' : ''}. Drag a family here to move them.</div>`}
+        ${!groups[s].length && html`<div class="apl-empty-col">Nobody here${s === 'Applied' ? ' yet' : ''}. <span class="is-wide">Drag a family here to move them.</span><span class="is-narrow">To move a family, open them and change their status.</span></div>`}
       </div>
     </section>`;
-  return html`<div>
+  return html`<div class="apl-board-wrap">
+    <div class="apl-board-tabs" role="group" aria-label="Show status">
+      ${STATUS_ORDER.map(s => html`<button key=${s} style=${`--c:${STATUS_COLOR[s]}`} aria-pressed=${s === shown} onClick=${() => setPicked(s)} title=${STATUS_HINT[s]}>
+        <span><i class="apl-dot" aria-hidden="true"></i>${s}</span><b>${groups[s].length}</b>
+      </button>`)}
+    </div>
     <div class="apl-board">${STATUS_ORDER.map(column)}</div>
     ${groups.none.length > 0 && html`<div class="apl-callout" style="margin-top:.75rem">${plural(groups.none.length, 'applicant has', 'applicants have')} a Makeover Year but no Status in JobTread: ${groups.none.slice(0, 6).map((a, i) => html`${i ? ', ' : ''}<button class="apl-more" onClick=${() => onOpen(a.id)}>${a.name}</button>`)}${groups.none.length > 6 ? '…' : ''}</div>`}
   </div>`;
@@ -1025,19 +1107,32 @@ function ListView({ list, onOpen }) {
   }, [list, sort]);
   if (!list.length) return html`<div class="apl-zero">No applicants match these filters.</div>`;
   const now = Date.now();
-  return html`<div class="apl-table-wrap"><table class="apl-table">
+  const oneYear = list.every(a => a.year === list[0].year);
+  return html`<div class="apl-list">
+    <div class="apl-sortbar">
+      <label>Sort by <select class="form-select" value=${sort.k} onChange=${e => setSort(s => ({ k: e.target.value, dir: s.dir }))} aria-label="Sort by">
+        ${LIST_COLS.map(c => html`<option value=${c.k}>${c.label}</option>`)}
+      </select></label>
+      <button class="btn btn-ghost btn-sm" onClick=${() => setSort(s => ({ ...s, dir: -s.dir }))} aria-label=${sort.dir > 0 ? 'Sorted first to last; reverse' : 'Sorted last to first; reverse'}>${sort.dir > 0 ? '↑' : '↓'}</button>
+    </div>
+    <div class="apl-table-wrap"><table class="apl-table">
     <thead><tr>${LIST_COLS.map(c => html`<th aria-sort=${sort.k === c.k ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}><button onClick=${() => setSort(s => ({ k: c.k, dir: s.k === c.k ? -s.dir : 1 }))}>${c.label}${sort.k === c.k ? (sort.dir > 0 ? ' ↑' : ' ↓') : ''}</button></th>`)}</tr></thead>
-    <tbody>${rows.map(a => html`<tr key=${a.id} tabindex="0" onClick=${() => onOpen(a.id)} onKeyDown=${e => { if (e.key === 'Enter') onOpen(a.id); }}>
-      <td><div style="display:flex;gap:.55rem;align-items:center"><${Avatar} a=${a} size=${28} /><div><strong>${a.name}</strong><div class="apl-card-sub">${a.contact?.name || ''}</div></div></div></td>
+    <tbody>${rows.map(a => {
+      const days = daysSince(a.stageAt || a.createdAt, now);
+      return html`<tr key=${a.id} tabindex="0" onClick=${() => onOpen(a.id)} onKeyDown=${e => { if (e.key === 'Enter') onOpen(a.id); }}>
+      <td><div style="display:flex;gap:.55rem;align-items:center"><${Avatar} a=${a} size=${28} /><div style="min-width:0"><strong>${a.name}</strong><div class="apl-card-sub">${a.contact?.name || ''}</div></div></div></td>
       <td><${Pill} status=${a.status} /></td>
       <td>${a.year || '—'}</td>
       <td>${(a.types || []).join(', ') || '—'}</td>
       <td>${a.county || '—'}</td>
       <td>${a.area === 'outside' ? html`<span class="apl-tag is-out">${a.areaMiles} mi outside</span>` : a.area === 'inside' ? 'Inside' : '—'}</td>
-      <td>${daysSince(a.stageAt || a.createdAt, now) != null ? `${daysSince(a.stageAt || a.createdAt, now)}d` : '—'}</td>
-      <td class="apl-card-sub" style="max-width:260px">${lastLine(a)}</td>
-    </tr>`)}</tbody>
-  </table></div>`;
+      <td>${days != null ? `${days}d` : '—'}</td>
+      <td class="apl-card-sub apl-td-last">${lastLine(a)}</td>
+      <td class="apl-td-meta">${[oneYear ? null : a.year, (a.types || []).join(', '), a.county, days != null ? `${days}d in ${a.status || 'no status'}` : null].filter(Boolean).join(' · ')}${a.area === 'outside' ? html` <span class="apl-tag is-out">${a.areaMiles} mi outside</span>` : ''}</td>
+    </tr>`;
+    })}</tbody>
+  </table></div>
+  </div>`;
 }
 
 // ─── Map ────────────────────────────────────────────────────────────

@@ -37,17 +37,29 @@ const iso = (t = Date.now()) => new Date(t).toISOString();
  * site centers it, always a JPEG (a fetcher that accepts AVIF would get AVIF).
  */
 export function coverOf(kid) {
-  // The best photo: the Main photo staff picked (top of the page, the Meet the Kids card), else the gallery's first
+  const best = bestPhotoOf(kid);
+  if (!best) return null;
+  return {
+    source: `photo:${best.id}@${best.gravity}`,
+    url: photoUrl(best, 'w=1500,h=1000,fit=cover', 'q=85,format=jpeg'),
+  };
+}
+
+/**
+ * The profile's best photo, or null: { id, gravity }. The Main photo staff
+ * picked (top of the page, the Meet the Kids card), else the gallery's first,
+ * centered on its focal point. Also the kid's avatar in Admin → Applicants.
+ */
+export function bestPhotoOf(kid) {
   const hero = kid?.heroImage || kid?.photos?.find((p) => p?.url)?.url;
   const id = hero ? cfImageId(hero) : null;
   if (!id) return null;
   const photo = (kid.photos || []).find((p) => p?.url && cfImageId(p.url) === id);
-  const gravity = focusGravity(photo);
-  return {
-    source: `photo:${id}@${gravity}`,
-    url: `${SITE}/cdn-cgi/imagedelivery/${CF_HASH}/${id.split('/').map(encodeURIComponent).join('/')}/w=1500,h=1000,fit=cover,gravity=${gravity},q=85,format=jpeg`,
-  };
+  return { id, gravity: focusGravity(photo) };
 }
+
+/** A best photo as a Cloudflare Images URL: `fit` the crop, `extra` quality and format */
+export const photoUrl = ({ id, gravity }, fit, extra) => `${SITE}/cdn-cgi/imagedelivery/${CF_HASH}/${id.split('/').map(encodeURIComponent).join('/')}/${fit},gravity=${gravity},${extra}`;
 
 async function ensureTable(DB) {
   await DB.prepare(`CREATE TABLE IF NOT EXISTS job_covers (

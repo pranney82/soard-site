@@ -29,6 +29,11 @@
  *   - phone: nothing wider than the screen; the drawer fills it, with
  *     Conversation and Details as tabs and the composer pinned inside the screen
  *   - iPad landscape (1024): all four board columns fit
+ *   - In the real admin shell (the 240px sidebar), at phone, iPad and every
+ *     laptop width: no view ever scrolls sideways; the board shows four
+ *     columns while they fit, else one status at a time under a switcher
+ *   - Avatars: the child's photo from the application (JobTread's file), the
+ *     kid page's Main photo once it has one, initials when a photo won't load
  * Screenshots in test-results/applicants-admin/. Exits non-zero on failure.
  *
  *   node scripts/test-applicants-admin.mjs
@@ -90,11 +95,11 @@ family({ name: 'Mateo García', status: 'Applied', parent: 'Lucía García', lat
 family({ name: 'Harper Lee', status: 'Applied', parent: 'Dana Lee', lat: 33.749, lng: -84.388, city: 'Atlanta', county: 'Fulton', days: 2, types: ['Ramp'] });
 family({ name: 'Noah Pence', status: 'In Review', parent: 'Erin Pence', lat: 34.24, lng: -84.49, city: 'Canton', county: 'Cherokee', days: 40, types: ['Therapy Room'] });
 family({ name: 'Isla Example', status: 'In Review', parent: 'Kate Example', lat: 34.2367, lng: -84.4908, city: 'Canton', county: 'Cherokee', days: 60 });
-family({ name: 'Colin Lindsay', status: 'Approved', parent: 'Meg Lindsay', lat: 33.99, lng: -84.45, city: 'Marietta', county: 'Cobb', days: 120, types: ['Bathroom'] });
-family({ name: 'Elizabeth Francis', status: 'Approved', parent: 'Michele Francis', lat: 34.0987, lng: -84.4823, city: 'Woodstock', county: 'Cherokee', days: 200 });
-family({ name: 'Everett Burke', status: 'Denied', parent: 'Sam Burke', lat: 33.94, lng: -84.51, city: 'Marietta', county: 'Cobb', days: 90 });
+family({ name: 'Owen Lindgren', status: 'Approved', parent: 'Meg Lindgren', lat: 33.99, lng: -84.45, city: 'Marietta', county: 'Cobb', days: 120, types: ['Bathroom'] });
+family({ name: 'Eliza Franklin', status: 'Approved', parent: 'Mia Franklin', lat: 34.0987, lng: -84.4823, city: 'Woodstock', county: 'Cherokee', days: 200 });
+family({ name: 'Evan Burkett', status: 'Denied', parent: 'Sam Burkett', lat: 33.94, lng: -84.51, city: 'Marietta', county: 'Cobb', days: 90 });
 family({ name: 'Logan Logan', status: 'Denied', parent: 'Pat Logan', lat: 32.56, lng: -83.89, city: 'Fort Valley', county: 'Peach', days: 300, year: '2026' });
-family({ name: 'Kendall Thomas', status: 'Approved', parent: 'Ash Thomas', lat: 34.06, lng: -84.67, city: 'Acworth', county: 'Cobb', days: 400, year: '2026' });
+family({ name: 'Kenna Thomason', status: 'Approved', parent: 'Ash Thomason', lat: 34.06, lng: -84.67, city: 'Acworth', county: 'Cobb', days: 400, year: '2026' });
 // A test account staff made in JobTread: off the board unless asked for
 family({ name: 'TEST Sample Family', status: 'Applied', parent: 'Pat Sample', lat: 32.9, lng: -84.9, city: 'Manchester', county: 'Meriwether', days: 1 });
 // Not applicants
@@ -106,6 +111,15 @@ await DB.exec(`CREATE TABLE IF NOT EXISTS site_config (key TEXT PRIMARY KEY, dat
 await DB.prepare("INSERT INTO site_config (key, data) VALUES ('settings', ?)").bind(JSON.stringify({ application: { open: true, year: '2027' } })).run();
 await DB.exec(`CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_email TEXT, action TEXT, entity_type TEXT, entity_slug TEXT, entity_name TEXT, changes TEXT, path TEXT, git_status TEXT, created_at TEXT)`);
 const env = { ...w.env, DB, JOBTREAD_QC_GRANT_KEY: 'qc-grant' };
+// Owen's kid page has its family photos: they're his avatar, not the application's
+const owen = Object.values(w.world.accounts).find(a => a.name === 'Owen Lindgren');
+await DB.exec('CREATE TABLE kids (slug TEXT PRIMARY KEY, name TEXT NOT NULL, year INTEGER, data TEXT NOT NULL)');
+await DB.prepare('INSERT INTO kids (slug, name, year, data) VALUES (?, ?, ?, ?)').bind('owen', 'Owen', 2027, JSON.stringify({
+  slug: 'owen', name: 'Owen', year: 2027, jobtreadJobId: `${owen.id}-job`, heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/owen/photo-03/public',
+  photos: [{ url: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/owen/photo-03/public', focus: { x: 0.5, y: 0.3 } }],
+})).run();
+// Harper's photo won't load
+const harper = Object.values(w.world.accounts).find(a => a.name === 'Harper Lee');
 
 // ── A static server for public/, plus the harness page ──
 const adminHtml = readFileSync(join(ROOT, 'public/admin/index.html'), 'utf8');
@@ -122,10 +136,14 @@ window.__toasts = [];
 const addToast = (msg, kind) => { window.__toasts.push({ msg, kind }); const t = document.createElement('div'); t.textContent = msg; t.dataset.kind = kind; t.className = 'toast'; t.style.cssText = 'background:#1A1B1F;color:#fff;padding:10px 14px;border-radius:10px;font-size:14px'; document.getElementById('toasts').appendChild(t); setTimeout(() => t.remove(), 2500); };
 render(h(ApplicantsArea, { addToast }), document.getElementById('root'));
 </script></body></html>`;
+// The real admin shell around the same module: the 240px sidebar and .main's padding
+const shell = harness.replace('<main class="harness"><h1 style="margin:0 0 16px;font-size:1.5rem">Applications</h1><div id="root"></div></main>',
+  '<div class="app"><aside class="sidebar"></aside><div class="main"><div id="root"></div></div></div>');
 const TYPES = { '.js': 'text/javascript', '.html': 'text/html', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
 const server = createServer((req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (path === '/admin/__applicants.html') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(harness); }
+  if (path === '/admin/__shell.html') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(shell); }
   const file = join(ROOT, 'public', path);
   if (file.startsWith(join(ROOT, 'public')) && existsSync(file) && statSync(file).isFile()) {
     res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream' });
@@ -139,7 +157,8 @@ const SITE = `http://127.0.0.1:${server.address().port}`;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
 async function answer(req) {
   const url = new URL(req.url());
-  if (url.host === 'cdn.fake') return req.respond({ status: 200, contentType: 'image/png', body: PNG });
+  if (url.host === 'cdn.fake' && url.pathname.startsWith(`/${harper.id}-`)) return req.respond({ status: 404, body: 'gone' });
+  if (url.host === 'cdn.fake' || url.pathname.startsWith('/cdn-cgi/imagedelivery/')) return req.respond({ status: 200, contentType: 'image/png', body: PNG });
   if (url.pathname === '/api/applicants-admin' || url.pathname === '/api/applications-admin') {
     clearFormCache();
     const request = new Request(`https://admin.test${url.pathname}${url.search}`, { method: req.method(), body: req.method() === 'POST' ? req.postData() : undefined, headers: { 'content-type': 'application/json' } });
@@ -153,7 +172,7 @@ async function answer(req) {
 
 const browser = await puppeteer.launch({ headless: true, args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
 const consoleErrors = [];
-async function open(width, height) {
+async function open(width, height, harnessPage = '__applicants.html') {
   const page = await browser.newPage();
   await page.setViewport({ width, height, deviceScaleFactor: 2, isMobile: width < 500, hasTouch: width < 500 });
   await page.setRequestInterception(true);
@@ -167,7 +186,7 @@ async function open(width, height) {
   });
   page.on('console', (m) => { if (m.type() === 'error' && !/tile|cartocdn|favicon|Failed to load resource/.test(m.text())) consoleErrors.push(m.text()); });
   page.on('pageerror', (e) => consoleErrors.push(e.message));
-  await page.goto(`${SITE}/admin/__applicants.html`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${SITE}/admin/${harnessPage}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.apl-board, .apl-table, .apl-map, .apl-feed', { timeout: 20000 });
   return page;
 }
@@ -196,6 +215,15 @@ ok(Math.abs(vb - fbx) < 6, 'views, search and filters share one toolbar row');
 ok(!(await page.$('button[title^="For cleaning up statuses"]')), 'the cleanup switch isn’t a button on its own row');
 ok(!(await page.$$eval('.apl-head-actions button', els => els.some(b => /Sync now|Check JobTread now/.test(b.textContent)))) && /In sync with JobTread · checked/.test(await text(page, '.apl-sync')), 'all well: no sync button, just when JobTread was last checked');
 ok(await page.$$eval('.apl-stage.is-long', els => els.length >= 1), 'families waiting long in a stage stand out');
+// Avatars: the child's photo from the application, the kid page's once it has photos, initials when a photo won't load
+const avatar = (id) => page.$eval(`.apl-card[data-id="${id}"] .apl-avatar`, el => ({ src: el.querySelector('img')?.getAttribute('src') || null, shown: !!el.querySelector('img') && el.querySelector('img').style.display !== 'none' && el.querySelector('img').naturalWidth > 0, title: el.title, initials: el.textContent.trim() }));
+await page.waitForFunction(() => [...document.querySelectorAll('.apl-card .apl-avatar img')].every(i => i.complete), { timeout: 5000 }).catch(() => null);
+const av = await avatar(acct('Avery Stone').id);
+ok(av.src === `https://cdn.fake/${acct('Avery Stone').id}-f2?size=256` && av.shown && av.title === 'Photo from their application', `a card shows the child's photo from the application (JobTread's "Avery Stone.jpg"): ${av.src}`);
+const cv = await avatar(owen.id);
+ok(/^https:\/\/sunshineonaranneyday\.com\/cdn-cgi\/imagedelivery\/ROYFuPmfN2vPS6mt5sCkZQ\/kids\/owen\/photo-03\/w=128,h=128,fit=cover,gravity=0\.5x0\.3,q=80$/.test(cv.src || '') && cv.title === 'Photo from their kid page', `once the kid page has photos, its Main photo replaces the application's: ${cv.src}`);
+const hv = await avatar(harper.id);
+ok(!hv.shown && hv.initials === 'HL', `a photo that won't load leaves the initials showing (${JSON.stringify(hv)})`);
 await shot(page, 'desktop-board');
 
 // Drag Avery from Applied to In Review → the sheet
@@ -451,7 +479,17 @@ await phone.evaluate(() => localStorage.setItem('apl-view', 'board'));
 await phone.reload({ waitUntil: 'domcontentloaded' });
 await phone.waitForSelector('.apl-board');
 await sleep(400);
-ok(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'phone: the page itself never scrolls sideways (the board scrolls inside)');
+ok(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'phone: the page itself never scrolls sideways');
+// One status at a time under a switcher with the counts, never a sideways-scrolling board
+const tabs = await phone.$$eval('.apl-board-tabs button', els => els.filter(e => e.offsetParent).map(e => ({ label: e.querySelector('span').textContent.trim(), n: Number(e.querySelector('b').textContent), on: e.getAttribute('aria-pressed') === 'true', cards: document.querySelectorAll(`.apl-col[data-status="${e.querySelector('span').textContent.trim()}"] .apl-card`).length })));
+ok(tabs.map(t => t.label).join() === 'Applied,In Review,Approved,Denied' && tabs.every(t => t.n === t.cards) && tabs[0].on && tabs.filter(t => t.on).length === 1, `phone: a status switcher with each status's count, Applied first (${JSON.stringify(tabs)})`);
+ok(await phone.evaluate(() => { const b = document.querySelector('.apl-board'); return b.scrollWidth <= b.clientWidth + 1 && [...document.querySelectorAll('.apl-col')].filter(c => c.offsetParent).map(c => c.dataset.status).join() === 'Applied'; }), 'phone: just the Applied column shows, the full width of the screen');
+await phone.click('.apl-board-tabs button:nth-child(2)');
+await sleep(150);
+ok(await phone.evaluate(() => [...document.querySelectorAll('.apl-col')].filter(c => c.offsetParent).map(c => c.dataset.status).join() === 'In Review' && document.querySelectorAll('.apl-col.is-shown .apl-card').length === 2), 'phone: tapping In Review shows its two families');
+await shot(phone, 'phone-board-in-review');
+await phone.click('.apl-board-tabs button:nth-child(1)');
+await sleep(150);
 await shot(phone, 'phone-board');
 await phone.click('.apl-card');
 await phone.waitForSelector('.apl-drawer .apl-thread', { timeout: 8000 });
@@ -493,6 +531,31 @@ await sleep(300);
 ok(await pad.$eval('.apl-board', el => el.scrollWidth <= el.clientWidth + 1), 'iPad landscape: all four columns fit, nothing hides off the side');
 await shot(pad, 'ipad-board');
 await pad.close();
+
+// In the real admin shell (the sidebar takes 240px): no view ever scrolls sideways, at any width
+console.log('Every view, every width, in the admin shell');
+for (const width of [390, 768, 820, 1025, 1100, 1180, 1280, 1440]) {
+  const p = await open(width, 900, '__shell.html');
+  for (const view of ['board', 'list', 'map', 'activity']) {
+    await p.click(`.apl-views button[data-view="${view}"]`);
+    await sleep(view === 'map' ? 700 : 250);
+    const m = await p.evaluate(() => {
+      const main = document.querySelector('.main');
+      const right = main.getBoundingClientRect().right - parseFloat(getComputedStyle(main).paddingRight) + 1;
+      const own = (el) => !el.closest('.leaflet-container');
+      return {
+        page: document.documentElement.scrollWidth > innerWidth,
+        scrolls: [...document.querySelectorAll('.apl *')].filter(el => own(el) && el.scrollWidth > el.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(el).overflowX)).map(el => el.className),
+        past: [...document.querySelectorAll('.apl *')].filter(el => own(el) && el.getBoundingClientRect().width && el.getBoundingClientRect().right > right && getComputedStyle(el).position !== 'fixed').slice(0, 3).map(el => `${el.tagName}.${el.className}`),
+        cols: [...document.querySelectorAll('.apl-col')].filter(c => c.offsetParent).length,
+      };
+    });
+    ok(!m.page && !m.scrolls.length && !m.past.length, `${width}px ${view}: fits, nothing scrolls sideways${m.scrolls.length || m.past.length ? ` (${[...m.scrolls, ...m.past].join(', ')})` : ''}`);
+    if (view === 'board') ok(m.cols === (width >= 820 && width !== 1025 ? 4 : 1), `${width}px board: ${m.cols === 4 ? 'all four columns side by side' : 'one status at a time'}`);
+    if (view === 'board' || view === 'list') await shot(p, `shell-${view}-${width}`);
+  }
+  await p.close();
+}
 
 ok(consoleErrors.length === 0, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 3).join(' | ')}` : ''}`);
 await browser.close();

@@ -77,7 +77,13 @@ export function fakeApplicantWorld() {
           })) };
           break;
         }
-        case 'files': out[key] = { nodes: a.files.map(f => ({ id: f.id, name: f.name, type: f.type, size: f.size, createdAt: f.createdAt || null, url: `https://cdn.fake/${f.id}`, thumb: null, job: null })) }; break;
+        case 'files': {
+          // Filtered like JobTread (images only, the account's own and not a job's), in upload order
+          const list = a.files.filter(f => test({ type: f.type, 'job.id': f.jobId || null }, sub.$?.where)).slice(0, sub.$?.size || 100);
+          const thumb = Object.values(sub.nodes || {}).find(n => n?._ === 'url')?.$?.size || 600;
+          out[key] = { nodes: list.map(f => ({ id: f.id, name: f.name, type: f.type, size: f.size, createdAt: f.createdAt || null, url: `https://cdn.fake/${f.id}`, thumb: `https://cdn.fake/${f.id}?size=${thumb}`, job: f.jobId ? { id: f.jobId } : null })) };
+          break;
+        }
         default: break;
       }
     }
@@ -96,6 +102,7 @@ export function fakeApplicantWorld() {
     if (op === '>=') return v >= val;
     if (op === '<') return v < val;
     if (op === '<=') return v <= val;
+    if (op === 'like') return new RegExp(`^${String(val).split('%').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`, 'i').test(String(v ?? ''));
     return true;
   };
   const pageOf = (list, $) => {

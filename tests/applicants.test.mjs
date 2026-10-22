@@ -11,7 +11,7 @@ import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
 import {
   syncAllApplicants, refreshApplicants, syncEvents, backfillActivity, maybeSyncApplicants, listApplicants, getApplicantRow,
   activityFor, activityFromEvent, setApplicantStatus, previewStatus, updateApplicantFields, messageFamily, addNote,
-  archiveApplicant, applicantDetail, placeOnArea, replaceBoundary, fieldInput, adminName, FIELDS, syncState,
+  archiveApplicant, applicantDetail, placeOnArea, replaceBoundary, fieldInput, adminName, FIELDS, syncState, childPhotoFile,
 } from '../functions/api/_applicants.js';
 import { handleWorkflowCall, runNotifications, notifyFor } from '../functions/api/_applicant-notify.js';
 import { DEFAULT_SERVICE_AREA } from '../functions/api/_application-form.js';
@@ -292,4 +292,68 @@ test('the sweep keeps the mirror fresh and never throws', async () => {
   assert.ok(Date.parse(ok.eventsCheckedAt) > Date.now() + 31 * 60 * 1000, 'a check with no new changes still counts as checked');
   // The sweep stops reaching JobTread: that's a problem too
   assert.match((await syncState(env.DB, Date.now() + 60 * 60 * 1000)).problem.reason, /stopped running/);
+});
+
+test("the child's photo: the one the family sent of the child, never the family's, a room's or a camera name", () => {
+  const files = (...names) => names.map((name, i) => ({ id: `f${i}`, name, type: name.endsWith('.png') ? 'image/png' : 'image/jpeg' }));
+  const pick = (names, list) => childPhotoFile(list, names)?.name || null;
+  // Staff's names for Jotform photos: "<child>.jpg" beside "<child> Family.jpg" (a nickname or a misspelling still pairs)
+  assert.equal(pick(['Milo Rivera Cruz'], files('Milo Family.jpg', 'Milo.jpg')), 'Milo.jpg');
+  assert.equal(pick(['Jonah Reed'], files('Jonnah Family.jpeg', 'Jonnah.jpeg')), 'Jonnah.jpeg');
+  assert.equal(pick(['Theodore Hale', 'Theodore Hale (2026)'], files('Teddy.jpeg', 'Teddy Family.jpeg')), 'Teddy.jpeg');
+  assert.equal(pick(['Katherine Moss', 'Katie Moss (2026)'], files('Katie Family.jpeg', 'Katie.jpeg')), 'Katie.jpeg');
+  // Jotform's own names: the child field is "face", the family's "family"
+  assert.equal(pick(['Benjamin Ortiz', 'Ben Ortiz (2026)'], files('3a1b2c9family5e81d0f7a42c.jpg', '7d4faceBen_5e81d0f9b3e7.jpeg')), '7d4faceBen_5e81d0f9b3e7.jpeg');
+  // The site's form: "<Child>.jpg", "<Child> Family.jpg", "<Child> Space 1.jpg"
+  assert.equal(pick(['Avery Stone'], files('Avery Stone Family.jpg', 'Avery Stone Space 1.jpg', 'Avery Stone.jpg', 'Avery Stone Space 2.jpg')), 'Avery Stone.jpg');
+  // Never a guess: camera names, rooms, plans, or a photo with nothing tying it to the child
+  assert.equal(pick(['Ava Lin'], files('IMG_0978.jpeg', 'IMG_0977.jpeg', 'Photo Jun 16 2026, 14 00 07.jpg')), null);
+  assert.equal(pick(['Leo Park'], files('Leo Park Mood Board.png', 'Leo bedroom.jpg', 'Leo Family.jpg')), null);
+  assert.equal(pick(['Noah Pence'], files('sunset.jpg')), null);
+  assert.equal(pick(['Noah Pence'], [{ id: 'p', name: 'Noah.pdf', type: 'application/pdf' }]), null);
+  // A name with a family photo beside it beats one that only shares a word
+  assert.equal(pick(['June & Wren Ellis'], files('June and Wren at the park.jpg', 'June Family.jpeg', 'June.jpeg')), 'June.jpeg');
+});
+
+test("the avatar: the application's photo from JobTread, then the kid page's Main photo once it has one", async () => {
+  const CHILD = 'file-child';
+  const a = addAccount({ name: 'Milo Rivera', fields: { [F.status]: 'Approved', [F.year]: '2026' }, jobs: [{ id: 'job-milo', name: 'Milo Rivera (2026)' }] });
+  a.files.push(
+    { id: 'pdf', name: 'Milo Rivera_Application.pdf', type: 'application/pdf' },
+    { id: 'fam', name: 'Milo Family.jpg', type: 'image/jpeg' },
+    { id: CHILD, name: 'Milo.jpg', type: 'image/jpeg' },
+    { id: 'build', name: 'CompanyCam 1000000001', type: 'image/jpeg', jobId: 'job-milo' },
+  );
+  const b = addAccount({ name: 'Noah Pence', fields: { [F.status]: 'Applied', [F.year]: '2027' } });
+  b.files.push({ id: 'img', name: 'IMG_0978.jpeg', type: 'image/jpeg' });
+  await syncAllApplicants(env, opts());
+  let [milo] = (await listApplicants(env.DB)).filter(x => x.id === a.id);
+  assert.equal(milo.photo, `https://cdn.fake/${CHILD}?size=256`, "JobTread's small thumbnail of the child's photo");
+  assert.equal(milo.photoFrom, 'application');
+  assert.equal((await listApplicants(env.DB)).find(x => x.id === b.id).photo, undefined, 'no guess: initials');
+
+  // The kid's page: a draft made at approval has no photos yet, so nothing changes
+  await env.DB.exec('CREATE TABLE kids (slug TEXT PRIMARY KEY, name TEXT NOT NULL, year INTEGER, data TEXT NOT NULL)');
+  const putKid = (data) => env.DB.prepare('INSERT OR REPLACE INTO kids (slug, name, year, data) VALUES (?, ?, ?, ?)').bind(data.slug, data.name, data.year, JSON.stringify(data)).run();
+  await putKid({ slug: 'milo', name: 'Milo', year: 2026, publishStatus: 'draft', jobtreadJobId: 'job-milo', photos: [] });
+  [milo] = (await listApplicants(env.DB)).filter(x => x.id === a.id);
+  assert.equal(milo.photoFrom, 'application');
+  assert.deepEqual(milo.kid, { slug: 'milo', name: 'Milo', draft: true }, 'the page is known even before it has photos');
+
+  // The family photos go up: the Main photo, centered on its focal point, replaces it everywhere
+  const main = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/milo/photo-07/public';
+  await putKid({ slug: 'milo', name: 'Milo', year: 2026, jobtreadJobId: 'job-milo', heroImage: main,
+    photos: [{ url: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/milo/photo-01/public' }, { url: main, focus: { x: 0.4, y: 0.25 } }] });
+  [milo] = (await listApplicants(env.DB)).filter(x => x.id === a.id);
+  assert.equal(milo.photo, 'https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/kids/milo/photo-07/w=128,h=128,fit=cover,gravity=0.4x0.25,q=80');
+  assert.equal(milo.photoFrom, 'page');
+  assert.equal((await getApplicantRow(env.DB, a.id)).photo, milo.photo, 'a row sent back after an edit carries the same photo (the card never flips back)');
+
+  // No jobtreadJobId (older pages): the job's name and year find it; an office TEST job never does
+  await env.DB.exec("DELETE FROM kids");
+  await putKid({ slug: 'milo-2026', name: 'Milo', year: 2026, photos: [{ url: main }] });
+  assert.equal((await getApplicantRow(env.DB, a.id)).photoFrom, 'page');
+  a.jobs = [{ id: 'job-test', name: 'TEST Milo Rivera (2026)' }];
+  await refreshApplicants(env, [a.id], opts());
+  assert.equal((await getApplicantRow(env.DB, a.id)).photoFrom, 'application');
 });
