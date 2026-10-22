@@ -5,7 +5,9 @@
  * Editorial split hero, same skeleton as apply/donate: text left, frame
  * right. The frame (LiveStage) holds the kid's photo until the last 30
  * minutes, then the starting-soon screen, then the live video, then the
- * replay. Everything dynamic comes from the shared live client, so the page
+ * replay. On /live/ between reveals the frame shows what's coming up
+ * instead (HeroUpcoming: each child with their own calendar invite,
+ * RevealInvite). Everything dynamic comes from the shared live client, so the page
  * flips within a second of the phone connecting and never needs a rebuild.
  *
  * /live/ has no kid of its own: it follows whichever reveal is current. The
@@ -32,6 +34,9 @@ import LiveStage from './LiveStage.astro';
 import LiveMessages from './LiveMessages.astro';
 import LiveGive from './LiveGive.astro';
 import UpcomingReveals from './UpcomingReveals.astro';
+import HeroUpcoming from './HeroUpcoming.astro';
+import RevealInvite from './RevealInvite.astro';
+import { upcomingAtBuild } from '../../utils/reveals-copy';
 
 interface KidLite {
   slug: string; name: string; heroImage: string | null; heroSummary?: string | null; shortDescription?: string | null;
@@ -45,10 +50,12 @@ const photo = kid?.heroImage || fallbackImage;
 const name = kid?.name || null;
 const summary = kid?.heroSummary || kid?.shortDescription || null;
 const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
+// /live/ between reveals: the hero shows what's coming up (the page script keeps this current)
+const heroNext = !kid && upcomingAtBuild().length > 0;
 const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>';
 ---
 
-<div class="live-page" data-view="loading">
+<div class="live-page" data-view="loading" data-next={heroNext ? '' : undefined}>
 <section class="hero" id="live-hero" data-phase="loading" data-orientation="portrait" data-kid={kid?.slug || ''} data-generic-lead={GENERIC_LEAD} data-generic-photo={cfRaw(fallbackImage, 'w=640,h=800,fit=cover,gravity=face,q=82')}>
   <div class="hero-inner">
     <div class="hero-text">
@@ -66,7 +73,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         <a class="btn btn-primary btn-lg hero-glow" href="#remind" data-live="cta-remind" hidden>Remind me</a>
         <a class="btn btn-outline-dark" href="/api/reminders?ics=1" data-live="cta-calendar" hidden>Add to calendar</a>
         <a class="btn btn-outline-dark" href="#messages" data-live="cta-messages" hidden>Leave a message</a>
-        <a class="btn btn-outline-dark" href="#up-next" data-live="cta-next" hidden>See what's coming up</a>
         <a class="btn btn-outline-dark" href="#past-reveals" data-live="cta-past" hidden>Watch past reveals</a>
         <a class="btn btn-outline-dark" href="/donate/?src=live" data-live="cta-donate">Fund the next room</a>
         <button class="btn btn-outline-dark hero-share" type="button" data-live="cta-share" hidden><Fragment set:html={SHARE} /><span data-live="share-label">Share</span></button>
@@ -75,6 +81,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
     <div class="hero-frame" id="player">
       <LiveStage photo={photo} alt={name || 'A child in a newly built room'} />
+      {!kid && <HeroUpcoming />}
     </div>
   </div>
 </section>
@@ -141,22 +148,28 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   </div>
 </section>
 
-<!-- Coming up, then past reveals, lead the page when nothing is scheduled (see .live-page order rules) -->
+<!-- Past reveals lead the page when nothing is scheduled; what's coming up is in the hero then (see .live-page order rules) -->
 <div class="live-next"><UpcomingReveals exclude={kid?.slug} where={kid ? 'live-kid' : 'live'} /></div>
 <div class="live-past"><PastReveals limit={6} /></div>
 <LiveGive />
+<RevealInvite />
 </div>
 
 <style>
-  /* ── Page order: what's coming up, then past reveals, lead when nothing is on; otherwise they close the page ── */
+  /* ── Page order: past reveals lead when nothing is on, otherwise they close the page.
+     What's coming up is in the hero on /live/ between reveals; otherwise it closes the page too. ── */
   .live-page { display: flex; flex-direction: column; }
   .live-page > .hero { order: 0; }
   .live-page > .live-msgs { order: 1; }
   .live-page > .live-body { order: 4; }
   .live-page > :global(.live-next) { order: 5; }
   .live-page > :global(.live-past) { order: 6; }
-  .live-page[data-view='idle'] > :global(.live-next) { order: 2; }
-  .live-page[data-view='idle'] > :global(.live-past) { order: 3; }
+  .live-page[data-view='idle'] > :global(.live-past) { order: 2; }
+  .live-page[data-next] > :global(.live-next) { display: none; }
+
+  /* ── The frame: the stage, or what's coming up ── */
+  .live-page[data-next] .hero-frame > :global([data-stage]) { display: none; }
+  .live-page:not([data-next]) .hero-frame > :global([data-hero-next]) { display: none; }
 
   /* ── Editorial split hero (matches apply/donate) ── */
   .hero {
@@ -300,6 +313,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     .hero-lead, .hero-status { margin-inline: auto; }
     .hero-ctas { justify-content: center; }
     .hero-frame { width: 100%; max-width: 380px; margin: 0 auto; }
+    .live-page[data-next] .hero-frame { max-width: 560px; }
     .hero-eyebrow { justify-content: center; }
     .live-grid { grid-template-columns: 1fr; }
     .live-side { position: static; }
@@ -336,7 +350,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   import { createMessages } from '../../utils/live-messages';
   import { createGive } from '../../utils/live-give';
   import { cfRaw } from '../../utils/cf-image';
-  import { loadUpcoming, revealWhen, revealIcsUrl, type UpcomingReveal } from '../../utils/reveals-client';
+  import { loadUpcoming, revealWhen, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
+  import { heroRowsHtml, rowsSignature } from '../../utils/upcoming-rows';
 
   /** The crew may start streaming up to 30 minutes early (runbook), so the starting-soon screen fills that window here too. */
   const SLATE_LEAD_MS = 30 * 60 * 1000;
@@ -378,8 +393,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     let rendered = false;
     let alive = true;
     const slateFailed = new Set<string>();
-    // What's coming up (JobTread via /api/reveals): the idle hero names the next reveal
+    // What's coming up (JobTread via /api/reveals): the idle hero names the next reveal and lists them
     let upcoming: UpcomingReveal[] = [];
+    let upcomingLoaded = false;
 
     const stage = createStage(stageEl, {
       client,
@@ -503,18 +519,27 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         if (status) status.textContent = idleStatus();
       }
 
+      // What's coming up fills the frame on /live/ between reveals (as the build had it until the live list arrives)
+      if (page && !pageKid) setAttr(page, 'data-next', display === 'idle' && (upcomingLoaded ? upcoming.length > 0 : page.hasAttribute('data-next')));
+
       // CTAs: reminders stop making sense once the starting-soon screen is up
       setHidden(q('cta-remind'), !(display === 'upcoming' || display === 'idle') || !meta.reminders?.enabled);
-      // The broadcast's own calendar file once it's scheduled; before that, this kid's confirmed reveal
-      const calCta = q<HTMLAnchorElement>('cta-calendar');
-      const mineSet = pageKid ? upcoming.find((r) => r.slug === pageKid && r.confirmed) : null;
-      if (calCta) {
-        calCta.href = display !== 'upcoming' && mineSet ? revealIcsUrl(mineSet.slug) : '/api/reminders?ics=1';
-        setHidden(calCta, !(display === 'upcoming' || (display === 'idle' && mineSet)));
+      // Calendar: this child's own invite (the live link only), whether or not the day is set yet;
+      // the broadcast's own file when a scheduled reveal isn't in the list
+      const inviteFor = kidSlug ? upcoming.find((r) => r.slug === kidSlug) : undefined;
+      for (const el of [q<HTMLAnchorElement>('cta-calendar'), bq<HTMLAnchorElement>('calendar-link')]) {
+        if (!el) continue;
+        if (inviteFor) {
+          for (const [k, v] of Object.entries(inviteData(inviteFor))) el.setAttribute(k, v);
+          el.href = inviteLinks(inviteFor).copy;
+        } else {
+          for (const k of ['data-invite', 'data-invite-name', 'data-invite-when', 'data-invite-set']) el.removeAttribute(k);
+          el.href = '/api/reminders?ics=1';
+        }
       }
-      const showNext = display === 'idle' && upcoming.some((r) => r.slug !== pageKid) && !!document.getElementById('up-next');
-      setHidden(q('cta-next'), !showNext);
-      setHidden(q('cta-past'), view !== 'idle' || showNext || !document.getElementById('past-reveals'));
+      const showCalendar = display === 'upcoming' || (display === 'idle' && !!pageKid && !!inviteFor);
+      setHidden(q('cta-calendar'), !showCalendar);
+      setHidden(q('cta-past'), view !== 'idle' || !document.getElementById('past-reveals'));
       setHidden(q('cta-share'), view === 'idle');
       const fbCta = q<HTMLAnchorElement>('cta-facebook');
       if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !((view === 'live' || view === 'replay') && !hasPlayer)); }
@@ -535,7 +560,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       const pushBtn = bq<HTMLButtonElement>('push-btn');
       if (pushBtn) pushBtn.hidden = !(meta.reminders?.push && meta.reminders.pushKey && 'PushManager' in window && 'serviceWorker' in navigator && Notification.permission !== 'denied');
       const cal = bq<HTMLElement>('calendar-link');
-      if (cal) cal.hidden = view !== 'upcoming';
+      if (cal) cal.hidden = !(view === 'upcoming' || (view === 'idle' && !!pageKid && !!inviteFor));
       const rh = bq<HTMLElement>('remind-heading');
       if (rh) rh.textContent = view === 'upcoming' && s.kidName ? `Don't miss ${s.kidName}'s reveal` : view === 'replay' ? 'Hear about the next reveal' : 'Never miss a reveal';
 
@@ -562,13 +587,22 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       return `Next up: ${next.name}'s reveal, ${next.confirmed ? revealWhen(next) : next.window.label}.`;
     }
     loadUpcoming().then((list) => {
+      if (!alive) return;
       upcoming = list;
-      if (alive && rendered && last) render(last, lastMeta);
+      upcomingLoaded = true;
+      // The hero's rows as JobTread has them now (the build wrote the last copy's)
+      const box = hero.querySelector<HTMLElement>('[data-hero-next]');
+      const rows = box?.querySelector<HTMLElement>('[data-hnx-list]');
+      const sig = rowsSignature(list);
+      if (box && rows && box.dataset.sig !== sig) { rows.innerHTML = heroRowsHtml(list); box.dataset.sig = sig; }
+      if (rendered && last) render(last, lastMeta);
+      else if (page && !pageKid) setAttr(page, 'data-next', list.length > 0);
     });
 
     // Beacons on the primary actions
     q('cta-facebook')?.addEventListener('click', () => client.beacon('click_facebook'));
-    q('cta-calendar')?.addEventListener('click', () => client.beacon('click_calendar'));
+    // (A child's invite counts its own clicks in the invite sheet)
+    q('cta-calendar')?.addEventListener('click', (e) => { if (!(e.currentTarget as HTMLElement).dataset.invite) client.beacon('click_calendar'); });
 
     // ── Reminder forms ──────────────────────────────────────────────
     // Nobody is on the list until the address proves it's theirs: email

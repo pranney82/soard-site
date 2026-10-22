@@ -70,6 +70,8 @@ function rewrite(res, { kid, party, messages }) {
       .on('meta[property="og:image:alt"]', content(`${kid.name}'s room reveal, live`))
       .on('meta[name="twitter:image:alt"]', content(`${kid.name}'s room reveal, live`))
       .on('#live-hero', setAttrs({ 'data-follow': kid.slug }))
+      // A reveal is on: the frame is the stage, not the "Coming up" list
+      .on('.live-page', setAttrs({ 'data-next': null }))
       .on('#live-hero h1', { element(e) { e.setInnerContent(`${esc(kid.name)}'s <em>room reveal</em>`, { html: true }); } });
     if (kid.summary) rw = rw.on('#live-hero [data-live="lead"]', { element(e) { e.setInnerContent(kid.summary); } });
     if (kid.published) {

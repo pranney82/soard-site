@@ -11,9 +11,13 @@
  *   - /api/reveals.ics is a calendar: CRLF, lines ≤ 75 octets, named, one
  *     event per confirmed reveal with its live link, no tentative kid in it;
  *     ?reveal= for a confirmed kid is a file, for a tentative kid a 404
- *   - in a browser: /live/ (the hero line and the list match the feed), each
- *     tentative kid's page badge, /kids/ cards, the events page, the home
- *     strip's date line, and the slate's "Coming up next" card
+ *   - every child's own invite (?kid=): a placeholder across the window
+ *     while tentative, the day and time once confirmed, the live link as
+ *     its location, never an address
+ *   - in a browser: /live/ (the hero lists what the feed has, each with its
+ *     invite, and the sheet opens), each tentative kid's page badge and
+ *     invite, /kids/ cards, the events page, the home strip's date line,
+ *     and the slate's "Coming up next" card
  *   - no console errors on any of them, no sideways scroll on a phone
  * Exits non-zero on any failure.
  */
@@ -67,6 +71,18 @@ if (tentative[0]) {
   ok(none.status === 404, `${tentative[0].name} (tentative): no calendar file yet`, String(none.status));
 }
 
+console.log('\n── each child\'s invite (?kid=) ──');
+for (const r of upcoming || []) {
+  const res = await fetch(`${SITE}/api/reveals.ics?kid=${r.slug}`);
+  const t = (await res.text()).replace(/\r\n /g, '');
+  const day = r.confirmed ? null : `${r.window.month.replace('-', '')}${r.window.part === 'early' ? '01' : r.window.part === 'mid' ? '11' : '21'}`;
+  const good = res.ok
+    && t.includes(`UID:live-reveal-${r.slug}@sunshineonaranneyday.com`)
+    && t.includes(`LOCATION:https://sunshineonaranneyday.com/live/${r.slug}/`)
+    && (r.confirmed ? /STATUS:CONFIRMED/.test(t) : t.includes(`DTSTART;VALUE=DATE:${day}`) && /\(day to come\)/.test(t) && /STATUS:TENTATIVE/.test(t));
+  ok(good, `${r.name}: ${r.confirmed ? 'day and time' : `placeholder from ${day}`}, live link, no address`);
+}
+
 // ── The pages ──
 const browser = await puppeteer.launch({ headless: 'new', args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'] });
 async function open(path, { width = 1440, height = 900 } = {}) {
@@ -86,19 +102,29 @@ for (const width of [1440, 390]) {
   const { page, errors } = await open('/live/', { width, height: width < 600 ? 844 : 900 });
   const r = await page.evaluate(() => ({
     view: document.querySelector('.live-page')?.dataset.view,
+    next: document.querySelector('.live-page')?.hasAttribute('data-next'),
     status: document.querySelector('[data-live="status"]')?.textContent || '',
-    hidden: document.querySelector('#up-next')?.hidden,
-    names: [...document.querySelectorAll('#up-next .upn-card__name')].map((n) => n.textContent),
+    names: [...document.querySelectorAll('[data-hero-next] .hnx-name')].map((n) => n.textContent),
+    invites: [...document.querySelectorAll('[data-hero-next] .hnx-add')].map((b) => b.dataset.invite),
+    band: getComputedStyle(document.querySelector('#up-next')).display !== 'none' && !document.querySelector('#up-next').hidden,
     sideways: document.documentElement.scrollWidth - document.documentElement.clientWidth,
   }));
   if (r.view === 'idle') {
     const next = upcoming?.[0];
     ok(next ? r.status.startsWith(`Next up: ${next.name}'s reveal, `) : /^No reveal is scheduled/.test(r.status), 'the hero line matches the feed', r.status);
-    ok(JSON.stringify(r.names) === JSON.stringify((upcoming || []).map((x) => x.name)), 'the list matches the feed, in order', JSON.stringify(r.names));
+    ok(upcoming?.length ? r.next && !r.band : !r.next, upcoming?.length ? 'what\'s coming up is in the hero, no second section' : 'the photo, with nothing coming up');
+    ok(JSON.stringify(r.names) === JSON.stringify((upcoming || []).map((x) => x.name)), 'the hero list matches the feed, in order', JSON.stringify(r.names));
+    ok(JSON.stringify(r.invites) === JSON.stringify((upcoming || []).map((x) => x.slug)), 'every child has their own invite button');
+    if (upcoming?.length) {
+      const slug = upcoming[0].slug;
+      await page.click(`[data-hero-next] .hnx-row[data-slug="${slug}"] .hnx-add`);
+      await wait(600);
+      const d = await page.evaluate(() => { const dlg = document.querySelector('dialog[data-reveal-invite]'); return { open: dlg?.open, copy: dlg?.querySelector('[data-how="copy"]')?.dataset.link }; });
+      ok(d.open && d.copy === `https://sunshineonaranneyday.com/api/reveals.ics?kid=${slug}`, `${upcoming[0].name}'s invite opens`, JSON.stringify(d));
+    }
   } else {
-    ok(true, `a reveal is on (${r.view}); the list leaves it out: ${JSON.stringify(r.names)}`);
+    ok(!r.next, `a reveal is on (${r.view}): the frame is the stage`);
   }
-  ok(upcoming?.length ? r.hidden === false : r.hidden === true, upcoming?.length ? 'the section shows' : 'no section with nothing coming up');
   ok(r.sideways <= 0, 'no sideways scroll');
   ok(errors.length === 0, 'no console errors', errors.join(' | '));
   await page.close();
@@ -107,8 +133,8 @@ for (const width of [1440, 390]) {
 console.log('\n── kid pages, /kids/, events, home, slate ──');
 for (const r of tentative.slice(0, 3)) {
   const { page, errors } = await open(r.kidUrl);
-  const badge = await page.evaluate(() => ({ badge: document.querySelector('[data-kid-reveal-badge]')?.textContent, link: document.querySelector('.hero__reveal-day')?.textContent }));
-  ok(/^Reveal (early|mid|late) [A-Z][a-z]{2}$/.test(badge.badge || '') && badge.link === `Reveal planned for ${r.window.label}`, `${r.name}'s page: ${badge.badge} / ${badge.link}`);
+  const badge = await page.evaluate(() => ({ badge: document.querySelector('[data-kid-reveal-badge]')?.textContent, link: document.querySelector('.hero__reveal-day')?.textContent, add: document.querySelector('.hero__reveal-add')?.dataset.invite }));
+  ok(/^Reveal (early|mid|late) [A-Z][a-z]{2}$/.test(badge.badge || '') && badge.link === `Reveal planned for ${r.window.label}` && badge.add === r.slug, `${r.name}'s page: ${badge.badge} / ${badge.link} / its own invite`);
   ok(errors.length === 0, `${r.name}'s page: no console errors`, errors.join(' | '));
   await page.close();
 }
@@ -122,8 +148,8 @@ for (const r of tentative.slice(0, 3)) {
 }
 {
   const { page, errors } = await open('/events/');
-  const ev = await page.evaluate(() => ({ hidden: document.querySelector('#reveals')?.hidden, rows: document.querySelectorAll('#reveals .upn-row').length }));
-  ok(upcoming?.length ? ev.hidden === false && ev.rows === upcoming.length : ev.hidden === true, `events page: ${ev.rows} reveals`);
+  const ev = await page.evaluate(() => ({ hidden: document.querySelector('#reveals')?.hidden, rows: document.querySelectorAll('#reveals .upn-row').length, adds: document.querySelectorAll('#reveals .upn-add').length }));
+  ok(upcoming?.length ? ev.hidden === false && ev.rows === upcoming.length && ev.adds === upcoming.length : ev.hidden === true, `events page: ${ev.rows} reveals, ${ev.adds} invites`);
   ok(errors.length === 0, 'events page: no console errors', errors.join(' | '));
   await page.close();
 }

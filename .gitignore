@@ -16,6 +16,8 @@ src/content/team/
 src/content/community/
 src/content/articles/
 src/content/site/
+# Upcoming reveals for build-time pages, written by prebuild from D1 (scripts/d1-helpers.js)
+src/data/upcoming-reveals.json
 
 # Financial PDFs are stored in R2
 public/financials/*.pdf

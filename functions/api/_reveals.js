@@ -326,7 +326,7 @@ async function writeCache(DB, value) {
 }
 
 /** A cached upcoming entry is still ahead: a confirmed day from today on, or a window that hasn't closed */
-const stillAhead = (today) => (r) => (r.confirmed === false ? String(r.window?.through || '') >= today : String(r.date || '') >= today);
+export const stillAhead = (today) => (r) => (r.confirmed === false ? String(r.window?.through || '') >= today : String(r.date || '') >= today);
 
 /**
  * The last good copy in D1 as getReveals serves it (reveals that have since

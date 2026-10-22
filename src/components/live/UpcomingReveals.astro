@@ -10,15 +10,16 @@
  * A confirmed reveal shows its day and time, "Watch live" and its own
  * calendar file. A tentative one shows only its third of the month, "Mid
  * November", on a three-part month bar, never a day (Peter, Oct 22 2026).
- * The calendar panel subscribes people to /api/reveals.ics, so each reveal
- * lands in their own calendar, with its live link, as soon as its day is set.
+ * Every child has their own "Add to calendar" invite (the live link only;
+ * it fills in the day and time on its own, RevealInvite.astro), and the
+ * panel adds every reveal in one calendar. On /live/ between reveals the
+ * hero shows these instead (HeroUpcoming), so this band closes the page.
  *
  * A timeline: the "when" in a column, a dot on a line, the kid beside it.
  * On a phone the when sits above each card and the calendar panel follows
  * the list. Motion: the line draws, rows rise in turn, the month bar fills;
  * all of it off with reduced motion.
  */
-import { subscribeLinks } from '../../utils/reveals-client';
 
 interface Props {
   /** Heading HTML (fixed strings from the page; <em> gets the marker) */
@@ -41,10 +42,9 @@ const {
   id = 'up-next',
 } = Astro.props;
 
-const links = subscribeLinks();
 ---
 
-<section class="upn" id={id} data-upnext data-exclude={exclude || ''} data-where={where} hidden aria-labelledby={`${id}-title`}>
+<section class="upn" id={id} data-invite-where={where} data-upnext data-exclude={exclude || ''} hidden aria-labelledby={`${id}-title`}>
   <div class="upn__bg" aria-hidden="true"><div class="upn__glow"></div></div>
   <div class="container upn__grid">
     <div class="upn__side">
@@ -61,16 +61,10 @@ const links = subscribeLinks();
           </span>
           <div>
             <h3 class="upn-cal__title">Get every reveal in your calendar</h3>
-            <p class="upn-cal__text">Add our reveal calendar once. Each reveal shows up with its day, time and live link as soon as it's set, and moves on its own if plans change.</p>
+            <p class="upn-cal__text">Or add one child at a time with their own invite. Each shows up with its day, time and live link as soon as it's set, and moves on its own if plans change.</p>
           </div>
         </div>
-        <div class="upn-cal__options" data-upn-options>
-          <a class="upn-cal__opt" data-how="apple" href={links.apple}>Apple Calendar</a>
-          <a class="upn-cal__opt" data-how="google" href={links.google} target="_blank" rel="noopener">Google Calendar</a>
-          <a class="upn-cal__opt" data-how="outlook" href={links.outlook} target="_blank" rel="noopener">Outlook</a>
-          <button class="upn-cal__opt" data-how="copy" data-link={links.copy} type="button"><span data-copy-label>Copy link</span></button>
-        </div>
-        <p class="upn-cal__note" data-upn-note role="status" aria-live="polite"></p>
+        <button class="upn-cal__btn" type="button" data-invite="all">Add every reveal</button>
       </div>
     </div>
 
@@ -136,22 +130,15 @@ const links = subscribeLinks();
   }
   .upn-cal__title { margin: 0 0 6px; font-family: var(--font-body); font-size: 17px; font-weight: 700; letter-spacing: -0.005em; color: var(--upn-ink); }
   .upn-cal__text { margin: 0; color: var(--upn-muted); font-size: 14.5px; line-height: 1.6; }
-  .upn-cal__options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .upn-cal__opt {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 10px 14px;
-    border-radius: 100px; border: 1.5px solid rgba(254, 252, 245, 0.22); background: transparent;
-    font: inherit; font-size: 14.5px; font-weight: 700; color: var(--upn-ink); text-decoration: none; cursor: pointer;
-    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.3s var(--ease);
+  .upn-cal__btn {
+    display: inline-flex; align-items: center; justify-content: center; width: 100%; min-height: 50px; padding: 12px 20px;
+    border-radius: 100px; border: 0; background: var(--c-yellow); color: var(--c-dark-deep);
+    font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+    transition: background 0.2s ease, transform 0.3s var(--ease), box-shadow 0.3s var(--ease);
   }
-  .upn-cal__opt:hover { border-color: var(--c-yellow); background: rgba(255, 218, 36, 0.08); transform: translateY(-1px); }
-  .upn-cal__opt:active { transform: scale(0.98); transition-duration: 80ms; }
-  .upn-cal__opt:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
-  /* The one that fits this device leads, in yellow */
-  .upn-cal__opt.is-pick { background: var(--c-yellow); border-color: var(--c-yellow); color: var(--c-dark-deep); }
-  .upn-cal__opt.is-pick:hover { background: var(--c-yellow-hover); border-color: var(--c-yellow-hover); }
-  .upn-cal__opt.is-done { border-color: var(--c-yellow); color: var(--c-yellow); }
-  .upn-cal__note { margin: 12px 0 0; min-height: 0; color: var(--upn-muted); font-size: 13.5px; line-height: 1.55; }
-  .upn-cal__note:empty { display: none; }
+  .upn-cal__btn:hover { background: var(--c-yellow-hover); transform: translateY(-1px); box-shadow: 0 10px 26px rgba(255, 218, 36, 0.18); }
+  .upn-cal__btn:active { transform: scale(0.98); transition-duration: 80ms; }
+  .upn-cal__btn:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
 
   /* ── Timeline ── */
   .upn__list { position: relative; list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
@@ -241,11 +228,16 @@ const links = subscribeLinks();
   :global(.upn-act:hover svg) { transform: translateX(3px); }
   :global(.upn-act:hover) { color: var(--c-yellow); }
   :global(.upn-act:focus-visible) { outline: 2px solid var(--c-yellow); outline-offset: 3px; border-radius: 2px; }
-  :global(.upn-act--quiet) { border-bottom-color: rgba(254, 252, 245, 0.3); font-weight: 600; }
-  :global(.upn-story) { font-size: 14px; font-weight: 600; color: var(--upn-muted); display: inline-flex; align-items: center; gap: 6px; }
-  :global(.upn-story svg) { transition: transform 0.25s ease; }
-  :global(.upn-card:hover .upn-story) { color: var(--upn-ink); }
-  :global(.upn-card:hover .upn-story svg) { transform: translateX(3px); }
+  /* The child's own invite */
+  :global(.upn-add) {
+    position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px;
+    border-radius: 100px; border: 1.5px solid rgba(254, 252, 245, 0.35); background: transparent; color: var(--upn-ink);
+    font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.3s var(--ease);
+  }
+  :global(.upn-add:hover) { background: var(--c-yellow); border-color: var(--c-yellow); color: var(--c-dark-deep); transform: translateY(-1px); }
+  :global(.upn-add:focus-visible) { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
+  :global(.upn-row[data-state='confirmed'] .upn-add) { background: var(--c-yellow); border-color: var(--c-yellow); color: var(--c-dark-deep); }
 
   /* ── Tablet and phone: one column, the calendar panel after the list ── */
   @media (max-width: 960px) {
@@ -270,10 +262,7 @@ const links = subscribeLinks();
     :global(.upn-card) { grid-area: card; margin-left: 10px; padding: 12px 14px 12px 12px; gap: 14px; border-radius: 16px; }
     :global(.upn-card__photo) { width: 76px; height: 76px; border-radius: 12px; }
     :global(.upn-card__foot) { margin-top: 10px; }
-    /* The whole card opens the story; on a phone the pill alone is enough */
-    :global(.upn-story) { display: none; }
     .upn-cal { padding: 20px; }
-    .upn-cal__options { grid-template-columns: 1fr; }
   }
   @media (hover: none) {
     :global(.upn-card:hover) { transform: none; box-shadow: none; }
@@ -286,14 +275,15 @@ const links = subscribeLinks();
     :global(.upn-month span.is-on)::after { transform: none; }
     .upn__title :global(em) { background-size: 100% 100%; }
     :global(.upn-row.is-next .upn-node)::after { animation: none; }
-    :global(.upn-card), :global(.upn-card__photo img), .upn-cal__opt { transition: none; }
+    :global(.upn-card), :global(.upn-card__photo img), .upn-cal__btn, :global(.upn-add) { transition: none; }
   }
 </style>
 
 <script>
-  import { loadUpcoming, windowTitle, revealIcsUrl, revealTime, type UpcomingReveal } from '../../utils/reveals-client';
+  import { loadUpcoming, windowTitle, revealTime, inviteData, possessive, type UpcomingReveal } from '../../utils/reveals-client';
   import { cfRaw } from '../../utils/cf-image';
 
+  const CAL_ADD = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M12 14v4"/><path d="M10 16h4"/></svg>';
   const ARROW = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
   const CF_PATH = /\/cdn-cgi\/imagedelivery\/[^/]+\/(.+)\/[^/]+$|imagedelivery\.net\/[^/]+\/(.+)\/[^/]+$/;
   /** A square crop of the kid's photo at the size it's shown */
@@ -302,7 +292,6 @@ const links = subscribeLinks();
     const id = m?.[1] || m?.[2];
     return id ? cfRaw(id, `w=${px},h=${px},fit=cover,gravity=face,q=80`) : null;
   }
-  const possessive = (name: string) => (/s$/i.test(name) ? `${name}’` : `${name}’s`);
   const roomsText = (rooms: string[]) => {
     const r = rooms.map((x) => x.toLowerCase());
     const list = r.length > 1 ? `${r.slice(0, -1).join(', ')} and ${r.at(-1)}` : r[0] || '';
@@ -314,15 +303,6 @@ const links = subscribeLinks();
     if (className) node.className = className;
     if (text) node.textContent = text;
     return node;
-  }
-
-  function beacon(how: string, where: string) {
-    try {
-      const body = JSON.stringify({ type: 'click_calendar', meta: { how, where } });
-      if (!(navigator.sendBeacon && navigator.sendBeacon('/api/broadcast-event', new Blob([body], { type: 'application/json' })))) {
-        fetch('/api/broadcast-event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
-      }
-    } catch { /* analytics only */ }
   }
 
   /** No photo (or it failed): the kid's initial in its place */
@@ -352,7 +332,7 @@ const links = subscribeLinks();
     return when;
   }
 
-  function row(r: UpcomingReveal, i: number, where: string) {
+  function row(r: UpcomingReveal, i: number) {
     const li = el('li', 'upn-row');
     li.dataset.slug = r.slug;
     li.dataset.state = r.confirmed ? 'confirmed' : 'tentative';
@@ -398,22 +378,24 @@ const links = subscribeLinks();
       watch.href = r.liveUrl;
       watch.innerHTML = `Watch live ${ARROW}`;
       watch.setAttribute('aria-label', `Watch ${possessive(r.name)} reveal live`);
-      const cal = el('a', 'upn-act upn-act--quiet', 'Add to calendar');
-      cal.href = revealIcsUrl(r.slug);
-      cal.setAttribute('aria-label', `Add ${possessive(r.name)} reveal to your calendar`);
-      cal.addEventListener('click', () => beacon('one', where));
-      foot.append(watch, cal);
+      foot.append(watch, inviteButton(r));
     } else {
-      foot.append(el('span', 'upn-pill', 'Exact day to come'));
-      const story = el('span', 'upn-story');
-      story.setAttribute('aria-hidden', 'true');
-      story.innerHTML = `${possessive(r.name)} story ${ARROW}`;
-      foot.append(story);
+      foot.append(el('span', 'upn-pill', 'Exact day to come'), inviteButton(r));
     }
     body.append(foot);
     card.append(media, body);
     li.append(whenBlock(r), node, card);
     return li;
+  }
+
+  /** The child's own calendar invite (opens RevealInvite) */
+  function inviteButton(r: UpcomingReveal) {
+    const b = el('button', 'upn-add');
+    b.type = 'button';
+    for (const [k, v] of Object.entries(inviteData(r))) b.setAttribute(k, v);
+    b.setAttribute('aria-label', `Add ${possessive(r.name)} reveal to your calendar`);
+    b.innerHTML = `${CAL_ADD}<span>Add to calendar</span>`;
+    return b;
   }
 
   /** Line ends at the first and last dots, wherever the rows wrap */
@@ -427,46 +409,11 @@ const links = subscribeLinks();
     list.style.setProperty('--upn-line-bottom', `${box.bottom - last.bottom + last.height / 2}px`);
   }
 
-  /** The calendar app that fits this device leads */
-  function pickCalendar(section: HTMLElement) {
-    const how = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) ? 'apple' : 'google';
-    const options = section.querySelector<HTMLElement>('[data-upn-options]');
-    const pick = options?.querySelector<HTMLElement>(`[data-how="${how}"]`);
-    if (!options || !pick) return;
-    pick.classList.add('is-pick');
-    options.prepend(pick);
-  }
-
-  function wireCalendar(section: HTMLElement, where: string) {
-    const note = section.querySelector<HTMLElement>('[data-upn-note]');
-    section.querySelectorAll<HTMLElement>('[data-how]').forEach((opt) => {
-      const how = opt.dataset.how || '';
-      opt.addEventListener('click', async () => {
-        beacon(how, where);
-        if (how === 'apple' && note) note.textContent = 'Your calendar app asks to subscribe. Say yes and the reveals appear on their own.';
-        if (how !== 'copy') return;
-        const label = opt.querySelector<HTMLElement>('[data-copy-label]');
-        try {
-          await navigator.clipboard.writeText(opt.dataset.link || '');
-          opt.classList.add('is-done');
-          if (label) label.textContent = 'Link copied';
-          if (note) note.textContent = 'In your calendar app, choose "Add calendar" or "Subscribe", then paste the link.';
-          setTimeout(() => { opt.classList.remove('is-done'); if (label) label.textContent = 'Copy link'; }, 2600);
-        } catch {
-          if (note) note.textContent = `Copy this link into your calendar app's "Subscribe" option: ${opt.dataset.link}`;
-        }
-      });
-    });
-  }
-
   async function setUp(section: HTMLElement) {
     if (section.dataset.ready) return;
     section.dataset.ready = '1';
     const list = section.querySelector<HTMLElement>('[data-upn-list]');
-    const where = section.dataset.where || 'up-next';
     if (!list) return;
-    pickCalendar(section);
-    wireCalendar(section, where);
 
     const all = await loadUpcoming();
     if (!section.isConnected) return;
@@ -479,7 +426,7 @@ const links = subscribeLinks();
       const key = shown.map((r) => r.slug).join(' ');
       if (key === drawn) return;
       drawn = key;
-      list.replaceChildren(...shown.map((r, i) => row(r, i, where)));
+      list.replaceChildren(...shown.map((r, i) => row(r, i)));
       section.hidden = !shown.length;
       if (shown.length) placeLine(list);
     };

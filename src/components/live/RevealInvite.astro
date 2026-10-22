@@ -1,0 +1,206 @@
+---
+/**
+ * RevealInvite.astro — the "add to your calendar" sheet for a reveal invite
+ * ==========================================================================
+ * Any button with data-invite="<kid slug>" (or "all") opens it: the child's
+ * own invite, or every reveal in one calendar. It offers Apple Calendar,
+ * Google Calendar, Outlook and Copy link, the one that fits this device
+ * first. The invite is the live link only, never an address, and fills in
+ * the day and time on its own once JobTread confirms them (see
+ * functions/api/reveals.ics.js). The button's data-invite-name, -when and
+ * -set say what it adds, so the sheet opens at once.
+ *
+ * Place once per page, at page level (not inside a section that can be
+ * hidden): a native <dialog> in the top layer, so it sits above the header.
+ * A bottom sheet on phones, a small card on larger screens.
+ */
+---
+
+<dialog class="rinv" data-reveal-invite aria-labelledby="rinv-title" aria-describedby="rinv-text">
+  <div class="rinv__inner">
+    <form method="dialog" class="rinv__close-form">
+      <button class="rinv__close" type="submit" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </form>
+    <span class="rinv__icon" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M12 14v4"/><path d="M10 16h4"/></svg>
+    </span>
+    <p class="rinv__eyebrow">Add to your calendar</p>
+    <h2 class="rinv__title" id="rinv-title" data-rinv="title">Room reveal</h2>
+    <p class="rinv__text" id="rinv-text" data-rinv="text"></p>
+    <div class="rinv__options" data-rinv="options">
+      <a class="rinv__opt" data-how="apple" href="#">Apple Calendar</a>
+      <a class="rinv__opt" data-how="google" href="#" target="_blank" rel="noopener">Google Calendar</a>
+      <a class="rinv__opt" data-how="outlook" href="#" target="_blank" rel="noopener">Outlook</a>
+      <button class="rinv__opt" data-how="copy" type="button"><span data-rinv="copy-label">Copy link</span></button>
+    </div>
+    <p class="rinv__note" data-rinv="note" role="status" aria-live="polite"></p>
+    <p class="rinv__foot">Just the day and the link to watch.</p>
+  </div>
+</dialog>
+
+<style is:global>
+  .rinv {
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    width: min(440px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px);
+    margin: auto; padding: 0; border: 0; border-radius: 24px;
+    background: var(--c-white, #fff); color: var(--c-text, #373A36);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.28), 0 8px 24px rgba(0, 0, 0, 0.12);
+    overflow: auto; overscroll-behavior: contain;
+  }
+  .rinv[open] { animation: rinv-in 0.42s var(--ease) both; }
+  .rinv::backdrop { background: rgba(30, 31, 37, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+  .rinv[open]::backdrop { animation: rinv-fade 0.3s ease both; }
+  @keyframes rinv-in { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+  @keyframes rinv-fade { from { opacity: 0; } to { opacity: 1; } }
+  html:has(.rinv[open]) { overflow: hidden; }
+
+  .rinv__inner { position: relative; padding: 28px 28px 24px; }
+  .rinv__close-form { position: absolute; top: 14px; right: 14px; margin: 0; }
+  .rinv__close {
+    width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--c-warm-gray, #F5F4F0); color: var(--c-dark, #373A36);
+    display: grid; place-items: center; cursor: pointer; transition: background 0.2s ease, transform 0.3s var(--ease);
+  }
+  .rinv__close:hover { background: var(--c-border, #E5E4E0); transform: rotate(90deg); }
+  .rinv__close:focus-visible { outline: 2px solid var(--c-dark, #373A36); outline-offset: 2px; }
+  .rinv__icon {
+    width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center;
+    background: var(--c-yellow, #FFDA24); color: var(--c-dark-deep, #1E1F25); margin-bottom: 18px;
+  }
+  .rinv__eyebrow { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted, #5A5B61); }
+  .rinv__title { margin: 0 52px 10px 0; font-size: clamp(1.5rem, 4vw, 1.85rem); letter-spacing: -0.02em; line-height: 1.15; }
+  .rinv__text { margin: 0 0 22px; color: var(--c-text-muted, #5A5B61); font-size: 15.5px; line-height: 1.6; }
+  .rinv__text strong { color: var(--c-text, #373A36); font-weight: 700; }
+  .rinv__options { display: grid; gap: 10px; }
+  .rinv__opt {
+    display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 12px 18px;
+    border-radius: 100px; border: 1.5px solid var(--c-border, #E5E4E0); background: var(--c-white, #fff);
+    font: inherit; font-size: 15.5px; font-weight: 700; color: var(--c-dark, #373A36); text-decoration: none; cursor: pointer;
+    opacity: 0; animation: rinv-opt 0.45s var(--ease) both;
+    transition: border-color 0.2s ease, background 0.2s ease, transform 0.3s var(--ease);
+  }
+  .rinv__opt:nth-child(1) { animation-delay: 0.08s; }
+  .rinv__opt:nth-child(2) { animation-delay: 0.13s; }
+  .rinv__opt:nth-child(3) { animation-delay: 0.18s; }
+  .rinv__opt:nth-child(4) { animation-delay: 0.23s; }
+  @keyframes rinv-opt { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .rinv__opt:hover { border-color: var(--c-dark, #373A36); transform: translateY(-1px); }
+  .rinv__opt:active { transform: scale(0.98); transition-duration: 80ms; }
+  .rinv__opt:focus-visible { outline: 2px solid var(--c-dark, #373A36); outline-offset: 3px; }
+  /* The one that fits this device leads, in yellow */
+  .rinv__opt.is-pick { background: var(--c-yellow, #FFDA24); border-color: var(--c-yellow, #FFDA24); color: var(--c-dark-deep, #1E1F25); }
+  .rinv__opt.is-pick:hover { background: var(--c-yellow-hover, #E6C400); border-color: var(--c-yellow-hover, #E6C400); }
+  .rinv__opt.is-done { border-color: var(--c-dark, #373A36); }
+  .rinv__note { margin: 14px 0 0; font-size: 14px; line-height: 1.55; color: var(--c-text, #373A36); font-weight: 600; }
+  .rinv__note:empty { display: none; }
+  .rinv__foot { margin: 16px 0 0; font-size: 13px; color: var(--c-text-light, #5F6066); text-align: center; }
+
+  /* Phone: a sheet that rises from the bottom */
+  @media (max-width: 640px) {
+    .rinv { width: 100%; max-height: 92dvh; margin: auto 0 0; border-radius: 24px 24px 0 0; }
+    .rinv[open] { animation: rinv-up 0.48s var(--ease) both; }
+    @keyframes rinv-up { from { transform: translateY(100%); } to { transform: none; } }
+    .rinv__inner { padding: 26px 20px calc(20px + env(safe-area-inset-bottom)); }
+    .rinv__inner::before { content: ''; display: block; width: 40px; height: 5px; border-radius: 5px; background: var(--c-border, #E5E4E0); margin: -12px auto 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rinv[open], .rinv[open]::backdrop, .rinv__opt { animation: none; opacity: 1; }
+    .rinv__close:hover { transform: none; }
+  }
+</style>
+
+<script>
+  import { inviteLinks, possessive } from '../../utils/reveals-client';
+
+  const COPY_HELP = 'Link copied. In your calendar app, choose Add calendar or Subscribe, then paste it.';
+
+  function beacon(how: string, kid: string, where: string) {
+    try {
+      const body = JSON.stringify({ type: 'click_calendar', meta: { how, kid, where } });
+      if (!(navigator.sendBeacon && navigator.sendBeacon('/api/broadcast-event', new Blob([body], { type: 'application/json' })))) {
+        fetch('/api/broadcast-event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+      }
+    } catch { /* analytics only */ }
+  }
+
+  let current = { kid: 'all', where: '' };
+
+  function fill(dialog: HTMLDialogElement, btn: HTMLElement) {
+    const slug = btn.dataset.invite || 'all';
+    const name = btn.dataset.inviteName || '';
+    const when = btn.dataset.inviteWhen || '';
+    const set = btn.dataset.inviteSet === '1';
+    current = { kid: slug, where: btn.closest('[data-invite-where]')?.getAttribute('data-invite-where') || location.pathname };
+    const q = (k: string) => dialog.querySelector<HTMLElement>(`[data-rinv="${k}"]`)!;
+    const kid = slug !== 'all' && name ? { slug, name } : null;
+    q('title').textContent = kid ? `${possessive(kid.name)} room reveal` : 'Every room reveal';
+    const text = q('text');
+    text.replaceChildren();
+    const strong = (t: string) => { const b = document.createElement('strong'); b.textContent = t; return b; };
+    if (!kid) {
+      text.append('Each reveal shows up in your calendar with its day, time and the link to watch live as soon as it’s set.');
+    } else if (set) {
+      text.append(strong(when), '. It goes in your calendar with the link to watch live, and moves on its own if plans change.');
+    } else {
+      text.append('Planned for ', strong(when || 'soon'), '. It goes in your calendar now, and the exact day, time and link to watch fill in on their own once they’re set.');
+    }
+    const links = inviteLinks(kid);
+    dialog.querySelectorAll<HTMLAnchorElement>('a[data-how]').forEach((a) => { a.href = links[a.dataset.how as 'apple' | 'google' | 'outlook']; });
+    dialog.querySelector<HTMLElement>('[data-how="copy"]')!.dataset.link = links.copy;
+    q('note').textContent = '';
+    q('copy-label').textContent = 'Copy link';
+    dialog.querySelector('[data-how="copy"]')?.classList.remove('is-done');
+  }
+
+  /** The calendar app that fits this device leads */
+  function pick(dialog: HTMLDialogElement) {
+    const options = dialog.querySelector<HTMLElement>('[data-rinv="options"]');
+    const how = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) ? 'apple' : 'google';
+    const first = options?.querySelector<HTMLElement>(`[data-how="${how}"]`);
+    if (!options || !first || first.classList.contains('is-pick')) return;
+    first.classList.add('is-pick');
+    options.prepend(first);
+  }
+
+  function wire(dialog: HTMLDialogElement) {
+    if (dialog.dataset.wired) return;
+    dialog.dataset.wired = '1';
+    pick(dialog);
+    const note = dialog.querySelector<HTMLElement>('[data-rinv="note"]')!;
+    dialog.querySelectorAll<HTMLElement>('[data-how]').forEach((opt) => {
+      opt.addEventListener('click', async () => {
+        const how = opt.dataset.how || '';
+        beacon(how, current.kid, current.where);
+        if (how === 'apple') note.textContent = 'Your calendar asks to subscribe. Say yes, and it’s there.';
+        if (how === 'google' || how === 'outlook') note.textContent = 'Finish in the tab that opened.';
+        if (how !== 'copy') return;
+        const label = opt.querySelector<HTMLElement>('[data-rinv="copy-label"]');
+        try {
+          await navigator.clipboard.writeText(opt.dataset.link || '');
+          opt.classList.add('is-done');
+          if (label) label.textContent = 'Link copied';
+          note.textContent = COPY_HELP;
+        } catch {
+          note.textContent = `Copy this link into your calendar app’s Subscribe option: ${opt.dataset.link}`;
+        }
+      });
+    });
+    // A tap on the dimmed backdrop closes it
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+  }
+
+  // One listener for the whole site visit: any [data-invite] opens the sheet on whichever page is showing
+  document.addEventListener('click', (e) => {
+    const btn = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-invite]') : null;
+    if (!btn) return;
+    const dialog = document.querySelector<HTMLDialogElement>('dialog[data-reveal-invite]');
+    if (!dialog || typeof dialog.showModal !== 'function') return; // no sheet here: the link's own href, if any, still works
+    e.preventDefault();
+    wire(dialog);
+    fill(dialog, btn);
+    if (!dialog.open) dialog.showModal();
+    // Start on the calendar app that fits this device
+    dialog.querySelector<HTMLElement>('.rinv__opt.is-pick')?.focus({ preventScroll: true });
+  });
+</script>

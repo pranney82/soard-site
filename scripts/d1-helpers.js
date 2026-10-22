@@ -9,6 +9,7 @@ import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { COLLECTION_MAP, isSiteDocKey, withoutScriptLinks } from '../functions/api/_collections.js';
 import { SETTINGS_DEFAULTS } from './settings-defaults.js';
+import { stillAhead, todayEastern } from '../functions/api/_reveals.js';
 
 export const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(__dirname, '..');
@@ -224,4 +225,23 @@ export function writeSiteConfig(siteRows) {
     data = cleaned.data;
     writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
   }
+  writeUpcomingReveals(siteRows);
+}
+
+// ── Upcoming reveals for build-time pages ──────────────────────────
+// The reveals row is runtime state (functions/api/_reveals.js keeps it from
+// JobTread), so it never goes into src/content. Its public part, the list
+// /api/reveals serves as `upcoming` (no exact tentative day, no surname), is
+// written to src/data/upcoming-reveals.json so /live/'s hero and the home
+// strip start out right (src/utils/reveals-copy.ts); pages refresh it live.
+export const UPCOMING_FILE = join(ROOT, 'src', 'data', 'upcoming-reveals.json');
+export function writeUpcomingReveals(siteRows, now = Date.now()) {
+  const row = siteRows.find((r) => r.key === 'reveals');
+  const copy = row ? safeParse(row.data) : null;
+  const upcoming = Array.isArray(copy?.upcoming) ? copy.upcoming.filter(stillAhead(todayEastern(now))) : [];
+  const json = JSON.stringify({ upcoming, updatedAt: copy?.updatedAt || null }, null, 2) + '\n';
+  // Unchanged: leave the file alone (no rebuild in dev)
+  if (existsSync(UPCOMING_FILE) && readFileSync(UPCOMING_FILE, 'utf8') === json) return;
+  ensureDir(join(ROOT, 'src', 'data'));
+  writeFileSync(UPCOMING_FILE, json);
 }

@@ -7,16 +7,17 @@
  *
  * /api/broadcast and /api/reveals are mocked (a static preview serves no
  * Functions): one confirmed reveal and tentative ones that carry only
- * "early/mid/late <month>". Checks, at 1440, 820 and 390px:
- *   - /live/ between reveals: the hero names the next reveal, "See what's
- *     coming up" replaces "Watch past reveals", the section leads the page
- *     and its rows come in date order; a tentative row never shows a day
- *   - the confirmed row: day, time, Watch live, its own calendar file
- *   - the calendar panel: Apple (webcal), Google (cid), Outlook (addfromweb)
- *     and Copy link (clipboard + where to paste); the device's own app leads
- *   - the "See what's coming up" link lands below the header
- *   - /live/<kid>/: that kid's timing in the hero, the kid left out of the
- *     list, and a confirmed kid's own calendar button
+ * "early/mid/late <month>", different from the build's copy so the live
+ * refresh is tested too. Checks, at 1440, 820 and 390px:
+ *   - /live/ between reveals: the hero frame lists what's coming up (no
+ *     photo, no second section), in date order, a tentative row never with
+ *     a day, every child with their own invite button
+ *   - the invite sheet: that child's Apple (webcal ?kid=), Google (cid),
+ *     Outlook (addfromweb) and Copy link; on screen above the header;
+ *     Escape and the backdrop close it; the device's own app leads; a
+ *     bottom sheet on phones; "Add every reveal" offers the one calendar
+ *   - /live/<kid>/: that kid's timing and invite in the hero, the other
+ *     reveals after the page body
  *   - while a reveal is scheduled, /live/ follows it and the list leaves it out
  *   - nothing coming up: no section, the old hero line, past reveals back
  *   - the events page section, a kid page's badge, the /kids/ cards'
@@ -114,86 +115,93 @@ async function axeScan(page, scope, label) {
   ok(res.length === 0, `axe: ${label}`, res.join('\n      '));
 }
 
-// ── /live/ between reveals ──
+// ── /live/ between reveals: what's coming up is in the hero ──
+const KID_FEED = (slug) => `https://sunshineonaranneyday.com/api/reveals.ics?kid=${slug}`;
 for (const width of [1440, 820, 390]) {
   console.log(`\n── /live/ at ${width}px ──`);
   const { page, errors } = await open('/live/', { width, height: width < 600 ? 844 : 900 });
-  const hero = await page.evaluate(() => ({
-    status: document.querySelector('[data-live="status"]')?.textContent,
-    next: !document.querySelector('[data-live="cta-next"]')?.hidden,
-    past: !document.querySelector('[data-live="cta-past"]')?.hidden,
-  }));
-  ok(hero.status === "Next up: Peter's reveal, early " + UPCOMING[0].window.label.split(' ')[1] + '.', 'hero names the next reveal and its window', hero.status);
-  ok(hero.next && !hero.past, '"See what\'s coming up" replaces "Watch past reveals"');
-
-  const sec = await page.evaluate(() => {
-    const s = document.querySelector('#up-next');
-    const past = document.querySelector('#past-reveals');
-    const rows = [...s.querySelectorAll('.upn-row')];
+  const r = await page.evaluate(() => {
+    const vis = (el) => !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0;
+    const rows = [...document.querySelectorAll('.hnx-row')];
     return {
-      hidden: s.hidden,
-      leadsPast: past ? s.getBoundingClientRect().top < past.getBoundingClientRect().top : true,
-      names: rows.map((r) => r.querySelector('.upn-card__name')?.textContent),
-      states: rows.map((r) => r.dataset.state),
-      tentativeWhen: rows.filter((r) => r.dataset.state === 'tentative').map((r) => r.querySelector('.upn-when')?.textContent),
-      bars: rows.filter((r) => r.dataset.state === 'tentative').map((r) => [...r.querySelectorAll('.upn-month span')].findIndex((x) => x.classList.contains('is-on'))),
-      confirmed: (() => {
-        const r = rows.find((x) => x.dataset.state === 'confirmed');
-        return r && { when: r.querySelector('.upn-when')?.textContent, watch: r.querySelector('.upn-act:not(.upn-act--quiet)')?.getAttribute('href'), cal: r.querySelector('.upn-act--quiet')?.getAttribute('href') };
-      })(),
-      cardLink: rows[0]?.querySelector('.upn-card__name a')?.getAttribute('href'),
+      next: document.querySelector('.live-page')?.hasAttribute('data-next'),
+      card: vis(document.querySelector('[data-hero-next]')),
+      stage: vis(document.querySelector('.hero-frame [data-stage]')),
+      band: vis(document.querySelector('#up-next')),
+      cardInHero: !!document.querySelector('#live-hero [data-hero-next]'),
+      status: document.querySelector('[data-live="status"]')?.textContent,
+      past: !document.querySelector('[data-live="cta-past"]')?.hidden,
+      names: rows.map((x) => x.querySelector('.hnx-name')?.textContent),
+      tentativeWhen: rows.filter((x) => x.dataset.state === 'tentative').map((x) => x.querySelector('.hnx-when')?.innerText),
+      confirmedWhen: rows.filter((x) => x.dataset.state === 'confirmed').map((x) => x.querySelector('.hnx-when')?.innerText),
+      invites: rows.map((x) => x.querySelector('.hnx-add')?.dataset.invite),
+      bars: rows.filter((x) => x.dataset.state === 'tentative').map((x) => [...x.querySelectorAll('.hnx-month i')].findIndex((i) => i.classList.contains('is-on'))),
     };
   });
-  ok(!sec.hidden, 'section shows');
-  ok(sec.leadsPast, 'it comes before past reveals');
-  ok(JSON.stringify(sec.names) === JSON.stringify(['Peter', 'Colin', 'Max', 'Dylan']), 'rows in date order', JSON.stringify(sec.names));
-  ok(sec.tentativeWhen.every((t) => !/\d/.test(t)), 'a tentative row never shows a day', JSON.stringify(sec.tentativeWhen));
-  ok(JSON.stringify(sec.bars) === '[0,1,2]', 'month bar marks early, mid, late', JSON.stringify(sec.bars));
-  ok(/\d/.test(sec.confirmed?.when || '') && /PM ET/.test(sec.confirmed?.when || ''), 'confirmed row shows its day and time', sec.confirmed?.when);
-  ok(sec.confirmed?.watch === '/live/colin/' && sec.confirmed?.cal === '/api/reveals.ics?reveal=colin', 'Watch live and its own calendar file', JSON.stringify(sec.confirmed));
-  ok(sec.cardLink === '/kids/peter/', 'a card opens the kid\'s story');
-
-  const links = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#up-next [data-how]')].map((a) => [a.dataset.how, a.getAttribute('href') || a.dataset.link])));
-  ok(links.apple === 'webcal://sunshineonaranneyday.com/api/reveals.ics', 'Apple subscribes over webcal', links.apple);
-  ok(links.google === `https://calendar.google.com/calendar/render?cid=${encodeURIComponent('webcal://sunshineonaranneyday.com/api/reveals.ics')}`, 'Google adds by URL', links.google);
-  ok(links.outlook?.startsWith('https://outlook.live.com/calendar/0/addfromweb?url=https%3A%2F%2Fsunshineonaranneyday.com%2Fapi%2Freveals.ics'), 'Outlook adds from web', links.outlook);
-  ok(links.copy === 'https://sunshineonaranneyday.com/api/reveals.ics', 'Copy link is the https address');
-
-  // Motion settles: rows visible once the section is in view
-  await page.evaluate(() => document.querySelector('#up-next').scrollIntoView());
-  await wait(1800);
-  const shown = await page.evaluate(() => [...document.querySelectorAll('.upn-row')].every((r) => getComputedStyle(r).opacity === '1'));
-  ok(shown, 'rows are in after scrolling to them');
+  ok(r.next && r.card && r.cardInHero && !r.stage, 'the hero frame shows what\'s coming up, not a photo');
+  ok(!r.band, 'no second "Coming up" section on the page');
+  ok(/^Next up: Peter's reveal, early \w+\.$/.test(r.status || ''), 'the hero line names the next reveal', r.status);
+  ok(r.past, '"Watch past reveals" is in the hero');
+  ok(JSON.stringify(r.names) === JSON.stringify(['Peter', 'Colin', 'Max', 'Dylan']), 'rows follow the live list, in date order', JSON.stringify(r.names));
+  ok(r.tentativeWhen.every((t) => !/\d/.test(t)), 'a tentative row never shows a day', JSON.stringify(r.tentativeWhen));
+  ok(r.confirmedWhen.every((t) => /\d/.test(t) && /PM ET/.test(t)), 'the confirmed row shows its day and time', JSON.stringify(r.confirmedWhen));
+  ok(JSON.stringify(r.bars) === '[0,1,2]', 'month bars mark early, mid, late', JSON.stringify(r.bars));
+  ok(JSON.stringify(r.invites) === JSON.stringify(['peter', 'colin', 'max', 'dylan-2026']), 'every child has their own invite button');
+  await wait(1200);
+  ok(await page.evaluate(() => [...document.querySelectorAll('.hnx-row')].every((x) => getComputedStyle(x).opacity === '1')), 'rows are in');
   ok(await sideways(page) <= 0, 'no sideways scroll');
+  await page.evaluate(() => document.querySelector('[data-hero-next]').scrollIntoView({ block: 'center' }));
+  await wait(300);
   await shot(page, `live-${width}`);
-  await axeScan(page, '#up-next', `up-next at ${width}px`);
+  await axeScan(page, '[data-hero-next]', `hero list at ${width}px`);
+
+  // A tentative child's invite
+  await page.click('.hnx-row[data-slug="max"] .hnx-add');
+  await wait(700);
+  const d = await page.evaluate(() => {
+    const dlg = document.querySelector('dialog[data-reveal-invite]');
+    const href = (h) => dlg.querySelector(`[data-how="${h}"]`)?.getAttribute('href');
+    const box = dlg.getBoundingClientRect();
+    return { open: dlg.open, title: dlg.querySelector('[data-rinv="title"]')?.textContent, text: dlg.querySelector('[data-rinv="text"]')?.textContent, apple: href('apple'), google: href('google'), outlook: href('outlook'), copy: dlg.querySelector('[data-how="copy"]')?.dataset.link, onScreen: box.top >= 0 && box.bottom <= innerHeight + 1 && box.left >= 0 && box.right <= innerWidth + 1, top: document.elementFromPoint(box.left + box.width / 2, box.top + 40)?.closest('dialog') === dlg };
+  });
+  ok(d.open && d.title === 'Max’s room reveal', "Add opens that child's invite", JSON.stringify(d.title));
+  ok(/^Planned for mid \w+\. It goes in your calendar now/.test(d.text || '') && !/\d/.test(d.text), 'it explains the day fills in later, and shows no day', d.text);
+  ok(d.apple === KID_FEED('max').replace('https:', 'webcal:'), 'Apple subscribes to that child', d.apple);
+  ok(d.google === `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(KID_FEED('max').replace('https:', 'webcal:'))}`, 'Google adds that child', d.google);
+  ok(d.outlook?.includes(encodeURIComponent(KID_FEED('max'))) && d.outlook.includes(encodeURIComponent('Max’s room reveal')), 'Outlook adds that child', d.outlook);
+  ok(d.copy === KID_FEED('max'), 'Copy link is that child\'s https address');
+  ok(d.onScreen && d.top, 'the sheet is fully on screen, above everything (header included)');
+  await shot(page, `invite-${width}`);
+  await axeScan(page, 'dialog[data-reveal-invite]', `invite sheet at ${width}px`);
+  await page.keyboard.press('Escape');
+  await wait(300);
+  ok(!(await page.evaluate(() => document.querySelector('dialog[data-reveal-invite]').open)), 'Escape closes it');
+
+  // Every reveal at once
+  await page.click('[data-hero-next] .hnx__all');
+  await wait(500);
+  const all = await page.evaluate(() => { const dlg = document.querySelector('dialog[data-reveal-invite]'); return { title: dlg.querySelector('[data-rinv="title"]')?.textContent, copy: dlg.querySelector('[data-how="copy"]')?.dataset.link }; });
+  ok(all.title === 'Every room reveal' && all.copy === 'https://sunshineonaranneyday.com/api/reveals.ics', '"Add every reveal" offers the one calendar', JSON.stringify(all));
+  // A tap on the dimmed backdrop closes it
+  await page.mouse.click(5, 5);
+  await wait(300);
+  ok(!(await page.evaluate(() => document.querySelector('dialog[data-reveal-invite]').open)), 'tapping outside closes it');
   ok(errors.length === 0, 'no console errors', errors.join(' | '));
   await page.close();
 }
 
-// ── The hero link lands below the header ──
+// ── The invite sheet: Copy link, and the device's own calendar first ──
 {
-  console.log('\n── "See what\'s coming up" ──');
+  console.log('\n── invite sheet ──');
   const { page } = await open('/live/');
-  await page.click('[data-live="cta-next"]');
-  await wait(2200);
-  const pos = await page.evaluate(() => {
-    const h = document.querySelector('header')?.getBoundingClientRect().bottom || 0;
-    return { top: document.querySelector('#up-next').getBoundingClientRect().top, header: h };
-  });
-  ok(Math.abs(pos.top - pos.header) <= 4, 'the section top sits flush under the header', JSON.stringify(pos));
-  await page.close();
-}
-
-// ── Copy link and the device's own calendar ──
-{
-  console.log('\n── calendar panel ──');
-  const { page } = await open('/live/');
-  await page.evaluate(() => document.querySelector('#up-next').scrollIntoView());
-  await page.click('#up-next [data-how="copy"]');
+  await page.click('.hnx-row[data-slug="colin"] .hnx-add');
+  await wait(500);
+  const confirmedText = await page.evaluate(() => document.querySelector('[data-rinv="text"]')?.textContent);
+  ok(/^\w+day, \w+ \d{1,2} at \d{1,2}:\d{2} PM ET\. It goes in your calendar with the link to watch live/.test(confirmedText || ''), "a confirmed child's invite says the day and time", confirmedText);
+  await page.click('dialog[data-reveal-invite] [data-how="copy"]');
   await wait(300);
-  const copied = await page.evaluate(async () => ({ clip: await navigator.clipboard.readText(), label: document.querySelector('#up-next [data-copy-label]')?.textContent, note: document.querySelector('#up-next [data-upn-note]')?.textContent }));
-  ok(copied.clip === 'https://sunshineonaranneyday.com/api/reveals.ics', 'Copy link puts the address on the clipboard', copied.clip);
+  const copied = await page.evaluate(async () => ({ clip: await navigator.clipboard.readText(), label: document.querySelector('[data-rinv="copy-label"]')?.textContent, note: document.querySelector('[data-rinv="note"]')?.textContent }));
+  ok(copied.clip === KID_FEED('colin'), 'Copy link puts that child\'s address on the clipboard', copied.clip);
   ok(copied.label === 'Link copied' && /Subscribe/.test(copied.note || ''), 'and says where to paste it', `${copied.label} / ${copied.note}`);
   await page.close();
 
@@ -201,46 +209,64 @@ for (const width of [1440, 820, 390]) {
   const android = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
   for (const [ua, want] of [[iphone, 'apple'], [android, 'google']]) {
     const { page: p } = await open('/live/', { width: 390, height: 844, ua });
-    const first = await p.evaluate(() => { const o = document.querySelector('#up-next [data-how]'); return { how: o?.dataset.how, pick: o?.classList.contains('is-pick') }; });
-    ok(first.how === want && first.pick, `${want === 'apple' ? 'iPhone' : 'Android'}: ${want} leads, in yellow`, JSON.stringify(first));
+    await p.click('.hnx-row[data-slug="peter"] .hnx-add');
+    await wait(500);
+    const first = await p.evaluate(() => { const o = document.querySelector('dialog[data-reveal-invite] [data-how]'); return { how: o?.dataset.how, pick: o?.classList.contains('is-pick'), focused: document.activeElement === o }; });
+    ok(first.how === want && first.pick && first.focused, `${want === 'apple' ? 'iPhone' : 'Android'}: ${want} leads, in yellow, focused`, JSON.stringify(first));
+    const sheet = await p.evaluate(() => { const b = document.querySelector('dialog[data-reveal-invite]').getBoundingClientRect(); return { bottom: Math.round(innerHeight - b.bottom), width: Math.round(b.width) }; });
+    ok(sheet.bottom <= 1 && sheet.width === 390, 'on a phone it is a sheet along the bottom', JSON.stringify(sheet));
     await p.close();
   }
 }
 
-// ── A kid's own live page ──
+// ── A kid's own live page: their timing and their invite in the hero ──
 {
   console.log('\n── /live/<kid>/ ──');
   const { page, errors } = await open('/live/max/');
-  const r = await page.evaluate(() => ({
-    status: document.querySelector('[data-live="status"]')?.textContent,
-    names: [...document.querySelectorAll('.upn-card__name')].map((n) => n.textContent),
-    cal: !document.querySelector('[data-live="cta-calendar"]')?.hidden,
-  }));
+  const r = await page.evaluate(() => {
+    const cal = document.querySelector('[data-live="cta-calendar"]');
+    const band = document.querySelector('#up-next');
+    return {
+      status: document.querySelector('[data-live="status"]')?.textContent,
+      names: [...document.querySelectorAll('#up-next .upn-card__name')].map((n) => n.textContent),
+      cal: { shown: !cal.hidden, invite: cal.dataset.invite, set: cal.dataset.inviteSet },
+      bandAfterBody: band.getBoundingClientRect().top > document.querySelector('.live-body').getBoundingClientRect().top,
+      noHeroList: !document.querySelector('#live-hero [data-hero-next]'),
+    };
+  });
   ok(/^Max's reveal is planned for mid /.test(r.status || '') && !/\d/.test(r.status), "a tentative kid's window, no day", r.status);
-  ok(!r.names.includes('Max') && r.names.length === 3, 'the kid is left out of the list', JSON.stringify(r.names));
-  ok(!r.cal, 'no calendar button without a day');
+  ok(r.cal.shown && r.cal.invite === 'max' && r.cal.set === '0', "the hero's Add to calendar is that child's invite", JSON.stringify(r.cal));
+  ok(r.noHeroList, 'the frame stays the kid\'s photo');
+  ok(!r.names.includes('Max') && r.names.length === 3 && r.bandAfterBody, 'the other reveals close the page, without the kid', JSON.stringify(r));
+  await page.click('[data-live="cta-calendar"]');
+  await wait(500);
+  ok(await page.evaluate(() => document.querySelector('[data-rinv="title"]')?.textContent === 'Max’s room reveal'), 'it opens Max\'s invite');
   ok(errors.length === 0, 'no console errors', errors.join(' | '));
   await page.close();
 
   const { page: c } = await open('/live/colin/');
-  const rc = await c.evaluate(() => ({ status: document.querySelector('[data-live="status"]')?.textContent, cal: document.querySelector('[data-live="cta-calendar"]') }));
-  const cal = await c.evaluate(() => { const a = document.querySelector('[data-live="cta-calendar"]'); return { shown: !a.hidden, href: a.getAttribute('href') }; });
+  const rc = await c.evaluate(() => { const a = document.querySelector('[data-live="cta-calendar"]'); return { status: document.querySelector('[data-live="status"]')?.textContent, shown: !a.hidden, invite: a.dataset.invite, set: a.dataset.inviteSet }; });
   ok(/^Colin's reveal is \w+day, \w+ \d+ at \d/.test(rc.status || ''), "a confirmed kid's day and time", rc.status);
-  ok(cal.shown && cal.href === '/api/reveals.ics?reveal=colin', "the hero's calendar button is that reveal's file", JSON.stringify(cal));
+  ok(rc.shown && rc.invite === 'colin' && rc.set === '1', "the hero's calendar button is Colin's invite", JSON.stringify(rc));
   await c.close();
 }
 
-// ── A reveal scheduled: /live/ follows it, the list leaves it out ──
+// ── A reveal scheduled: /live/ follows it, the list moves down the page without it ──
 {
   console.log('\n── /live/ with a reveal scheduled ──');
   const scheduled = { ...IDLE, phase: 'scheduled', upcoming: true, id: 'live-1', kidSlug: 'colin', kidName: 'Colin', title: "Colin's room reveal", scheduledAt: confirmedAt.toISOString(), url: `${SITE}/live/colin/`, liveUrl: `${SITE}/live/colin/` };
   const { page, errors } = await open('/live/', { state: scheduled });
   const r = await page.evaluate(() => ({
+    next: document.querySelector('.live-page')?.hasAttribute('data-next'),
+    stage: getComputedStyle(document.querySelector('.hero-frame [data-stage]')).display !== 'none',
     status: document.querySelector('[data-live="status"]')?.textContent,
     names: [...document.querySelectorAll('#up-next .upn-card__name')].map((n) => n.textContent),
+    cal: document.querySelector('[data-live="cta-calendar"]')?.dataset.invite,
   }));
+  ok(!r.next && r.stage, 'the frame is the stage again');
   ok(/^We go live/.test(r.status || ''), 'the hero counts down to the scheduled reveal', r.status);
-  ok(JSON.stringify(r.names) === JSON.stringify(['Peter', 'Max', 'Dylan']), 'the list leaves that reveal out', JSON.stringify(r.names));
+  ok(JSON.stringify(r.names) === JSON.stringify(['Peter', 'Max', 'Dylan']), 'the list below leaves that reveal out', JSON.stringify(r.names));
+  ok(r.cal === 'colin', "Add to calendar is Colin's invite");
   ok(errors.length === 0, 'no console errors', errors.join(' | '));
   await page.close();
 }
@@ -250,14 +276,15 @@ for (const width of [1440, 820, 390]) {
   console.log('\n── nothing coming up ──');
   const { page, errors } = await open('/live/', { upcoming: [] });
   const r = await page.evaluate(() => ({
-    hidden: document.querySelector('#up-next')?.hidden,
+    next: document.querySelector('.live-page')?.hasAttribute('data-next'),
+    stage: getComputedStyle(document.querySelector('.hero-frame [data-stage]')).display !== 'none',
+    band: document.querySelector('#up-next')?.hidden,
     status: document.querySelector('[data-live="status"]')?.textContent,
-    next: !document.querySelector('[data-live="cta-next"]')?.hidden,
     past: !document.querySelector('[data-live="cta-past"]')?.hidden,
   }));
-  ok(r.hidden, 'no section, no placeholder');
+  ok(!r.next && r.stage && r.band, 'the photo, no list, no section');
   ok(/^No reveal is scheduled right now/.test(r.status || ''), 'the hero says nothing is scheduled', r.status);
-  ok(!r.next && (r.past || !(await page.$('#past-reveals'))), '"Watch past reveals" is back');
+  ok(r.past || !(await page.$('#past-reveals')), '"Watch past reveals" is there');
   ok(errors.length === 0, 'no console errors', errors.join(' | '));
   await page.close();
 }
@@ -266,7 +293,7 @@ for (const width of [1440, 820, 390]) {
 {
   console.log('\n── reduced motion ──');
   const { page } = await open('/live/', { reduced: true });
-  const r = await page.evaluate(() => [...document.querySelectorAll('.upn-row')].map((x) => getComputedStyle(x).opacity));
+  const r = await page.evaluate(() => [...document.querySelectorAll('.hnx-row')].map((x) => getComputedStyle(x).opacity));
   ok(r.length === 4 && r.every((o) => o === '1'), 'every row shows at once', JSON.stringify(r));
   await page.close();
 }
@@ -278,13 +305,24 @@ for (const width of [1440, 820, 390]) {
   const ev = await page.evaluate(() => { const s = document.querySelector('#reveals'); return { hidden: s?.hidden, rows: s?.querySelectorAll('.upn-row').length, title: s?.querySelector('h2')?.textContent }; });
   ok(ev.hidden === false && ev.rows === 4, 'events page lists the reveals', JSON.stringify(ev));
   ok(ev.title === 'Watch a room reveal live', 'with its own heading', ev.title);
+  const evInv = await page.evaluate(() => ({ adds: [...document.querySelectorAll('#reveals .upn-add')].map((b) => b.dataset.invite), all: document.querySelector('#reveals .upn-cal__btn')?.dataset.invite }));
+  ok(JSON.stringify(evInv.adds) === JSON.stringify(['peter', 'colin', 'max', 'dylan-2026']) && evInv.all === 'all', 'events page: every child has their own invite, plus every reveal', JSON.stringify(evInv));
+  await page.evaluate(() => document.querySelector('#reveals').scrollIntoView());
+  await wait(1500);
+  await page.click('#reveals .upn-row[data-slug="dylan-2026"] .upn-add');
+  await wait(500);
+  ok(await page.evaluate(() => document.querySelector('dialog[data-reveal-invite]')?.open && document.querySelector('[data-rinv="title"]')?.textContent === 'Dylan’s room reveal'), "events page: Add opens Dylan's invite");
   ok(errors.length === 0, 'no console errors', errors.join(' | '));
   await shot(page, 'events');
   await page.close();
 
   const { page: k } = await open('/kids/max/');
-  const badge = await k.evaluate(() => ({ badge: document.querySelector('[data-kid-reveal-badge]')?.textContent, link: document.querySelector('.hero__reveal-day')?.textContent }));
+  const badge = await k.evaluate(() => ({ badge: document.querySelector('[data-kid-reveal-badge]')?.textContent, link: document.querySelector('.hero__reveal-day')?.textContent, add: document.querySelector('.hero__reveal-add')?.dataset.invite }));
   ok(/^Reveal mid [A-Z][a-z]{2}$/.test(badge.badge || ''), 'kid badge: "Reveal mid <Mon>"', badge.badge);
+  ok(badge.add === 'max', 'kid page: their own Add to calendar beside it');
+  await k.click('.hero__reveal-add');
+  await wait(500);
+  ok(await k.evaluate(() => document.querySelector('dialog[data-reveal-invite]')?.open && document.querySelector('[data-rinv="title"]')?.textContent === 'Max’s room reveal'), "kid page: it opens Max's invite");
   ok(/^Reveal planned for mid \w+/.test(badge.link || '') && !/\d{1,2}\b(?! *\d{4})/.test(badge.link.replace(/\d{4}/, '')), 'kid link: the window, no day', badge.link);
   await k.close();
 

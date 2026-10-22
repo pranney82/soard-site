@@ -71,20 +71,42 @@ export function windowShort(w: RevealWindow): string {
   return `${w.part.charAt(0).toUpperCase()}${w.part.slice(1)} ${mon}`;
 }
 
-// ─── The reveal calendar people subscribe to (functions/api/reveals.ics.js) ───
+// ─── Reveal invites people add to their calendars (functions/api/reveals.ics.js) ───
+// Each child has their own (?kid=<slug>): live link only, never an address;
+// it fills in the day and time on its own once they're set.
 export const FEED_PATH = '/api/reveals.ics';
 export const CALENDAR_NAME = 'Sunshine on a Ranney Day reveals';
 const SITE = 'https://sunshineonaranneyday.com';
 
-/** Where each calendar app subscribes, and the plain address to paste anywhere else */
-export function subscribeLinks(origin = SITE) {
-  const https = `${origin}${FEED_PATH}`;
+/** "Max’s", "James’" */
+export const possessive = (name: string) => (/s$/i.test(name) ? `${name}’` : `${name}’s`);
+
+/** Where each calendar app adds an invite (one child's, or every reveal), and the plain address to paste anywhere else */
+export function inviteLinks(kid?: { slug: string; name: string } | null, origin = SITE) {
+  const https = `${origin}${FEED_PATH}${kid ? `?kid=${encodeURIComponent(kid.slug)}` : ''}`;
   const webcal = https.replace(/^https?:/, 'webcal:');
+  const name = kid ? `${possessive(kid.name)} room reveal` : CALENDAR_NAME;
   return {
     apple: webcal,
     google: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`,
-    outlook: `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=${encodeURIComponent(CALENDAR_NAME)}`,
+    outlook: `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=${encodeURIComponent(name)}`,
     copy: https,
+  };
+}
+
+/** The calendar with every confirmed reveal */
+export const subscribeLinks = (origin = SITE) => inviteLinks(null, origin);
+
+/**
+ * What an invite button carries, so the invite sheet can say what it adds
+ * without another request: data-invite (slug), -name, -when, -set.
+ */
+export function inviteData(r: UpcomingReveal): Record<string, string> {
+  return {
+    'data-invite': r.slug,
+    'data-invite-name': r.name,
+    'data-invite-when': r.confirmed ? revealWhen(r) : r.window.label,
+    'data-invite-set': r.confirmed ? '1' : '0',
   };
 }
 
