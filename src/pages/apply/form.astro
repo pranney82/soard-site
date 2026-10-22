@@ -125,19 +125,19 @@ const breadcrumbs = [
       <div class="af-app" data-application data-year={year} data-open={isOpen ? '1' : undefined} hidden={!isOpen}>
         <noscript><p class="af-card af-closed">This application needs JavaScript to upload your photos and video. Please turn it on, or email <a href={`mailto:${siteSettings.email}`}>{siteSettings.email}</a> and we'll help.</p></noscript>
 
-        <div class="af-toolbar">
-          <div class="af-lang" data-lang-switch role="group" aria-label="Language" data-af-t-aria="language" hidden>
-            <svg class="af-lang-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
-            <button type="button" class="af-lang-btn" data-lang="en" lang="en" aria-pressed="true">English</button>
-            <button type="button" class="af-lang-btn" data-lang="es" lang="es" aria-pressed="false">Español</button>
-          </div>
-        </div>
-
+        <div class="af-main">
         <p class="af-notice" data-notice role="status" hidden></p>
 
         <form class="af-card af-form" data-form novalidate>
           <header class="af-head">
-            <p class="af-step-text" data-step-text>Step 1 of {steps}</p>
+            <div class="af-head-top">
+              <p class="af-step-text" data-step-text>Step 1 of {steps}</p>
+              <div class="af-lang" data-lang-switch role="group" aria-label="Language" data-af-t-aria="language" hidden>
+                <svg class="af-lang-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                <button type="button" class="af-lang-btn" data-lang="en" lang="en" aria-pressed="true">English</button>
+                <button type="button" class="af-lang-btn" data-lang="es" lang="es" aria-pressed="false">Español</button>
+              </div>
+            </div>
             <h2 class="af-step-title" data-step-title tabindex="-1">{form.pages[0].title}</h2>
             <div class="af-progress" aria-hidden="true"><div class="af-progress-bar" data-progress-bar style={`transform:translateX(${Math.round(100 / steps) - 100}%)`}></div></div>
             <details class="af-steps" data-steps>
@@ -210,9 +210,44 @@ const breadcrumbs = [
           </div>
           <h2 data-done-title tabindex="-1" data-af-t="doneTitle">{w('doneTitle')}</h2>
           <p class="af-done-email" data-done-email></p>
-          <p data-af-t="doneBody">{w('doneBody')}</p>
+          <div class="af-next-up">
+            <h3 class="af-next-title" data-af-t="doneNext">{w('doneNext')}</h3>
+            <ol class="af-next-list">
+              {[1, 2, 3].map((i) => (
+                <li class="af-next-step" style={`--i:${i}`}>
+                  <span class="af-next-num" aria-hidden="true">{i}</span>
+                  <span class="af-next-text"><strong data-af-t={`doneStep${i}`}>{w(`doneStep${i}`)}</strong><span data-af-t={`doneStep${i}Text`}>{w(`doneStep${i}Text`)}</span></span>
+                </li>
+              ))}
+            </ol>
+            <p class="af-next-note" data-af-t="doneNote">{w('doneNote')}</p>
+          </div>
           <a href="/kids/" class="af-btn af-btn--primary" data-af-t="doneLink">{w('doneLink')}</a>
         </div>
+        </div>
+
+        <!-- On a computer: every step beside the form, how long is left, saving, and who to ask.
+             (A phone has "All steps" in the card and the bar that follows it down the page.)
+             After the form in the page, so the form comes first for a screen reader; the grid puts it on the left. -->
+        <aside class="af-rail" data-rail aria-labelledby="af-rail-title">
+          <p class="af-rail-title" id="af-rail-title" data-af-t="railTitle">{w('railTitle')}</p>
+          <nav aria-label={w('railLabel')} data-af-t-aria="railLabel"><ol class="af-rail-list" data-rail-list></ol></nav>
+          <div class="af-rail-foot">
+            <p class="af-rail-left" data-time-left></p>
+            <p class="af-save-state" data-save-state></p>
+            <button type="button" class="af-btn af-btn--ghost af-btn--sm af-rail-later" data-save-later data-af-t="saveLater">{w('saveLater')}</button>
+            <p class="af-rail-help"><span data-af-t="railHelp">{w('railHelp')}</span>
+              <a href={`mailto:${siteSettings.email}`}>{siteSettings.email}</a>
+              <a href={`tel:${String(siteSettings.phone || '').replace(/[^\d+]/g, '')}`}>{siteSettings.phone}</a></p>
+          </div>
+        </aside>
+
+        <!-- A phone (or a narrow window): where they are, once the step's heading has scrolled away. A tap goes back up to it. -->
+        <button type="button" class="af-mini" data-mini tabindex="-1" aria-hidden="true">
+          <span class="af-mini-row"><span class="af-mini-step" data-mini-step></span><span class="af-mini-title" data-mini-title></span>
+            <svg class="af-mini-up" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4" /></svg></span>
+          <span class="af-mini-track"><span class="af-mini-bar" data-mini-bar></span></span>
+        </button>
 
         <dialog class="af-dialog" data-later-dialog aria-labelledby="af-later-title">
           <button type="button" class="af-dialog-close" data-later-close aria-label="Close" data-af-t-aria="close">
@@ -341,11 +376,82 @@ const breadcrumbs = [
     .af-notify-row { flex-direction: column; }
   }
 
-  /* ── Language switch ── */
-  .af-toolbar { display: flex; justify-content: flex-end; margin-bottom: 16px; }
-  .af-lang { display: inline-flex; align-items: center; gap: 2px; padding: 3px; background: #EAE8E1; border-radius: 999px; }
-  .af-lang-icon { width: 17px; height: 17px; margin: 0 4px 0 11px; color: var(--c-text-muted); flex-shrink: 0; }
-  .af-lang-btn { font: inherit; font-size: 15px; font-weight: 600; color: var(--c-text-muted); background: transparent; border: 0; border-radius: 999px; min-height: 44px; padding: 0 16px; cursor: pointer; transition: background-color .2s var(--af-ease), color .2s var(--af-ease), box-shadow .2s var(--af-ease); }
+  /* ══════════ Two columns on a computer: the steps beside the card ══════════ */
+  .af-main { min-width: 0; }
+  .af-rail { display: none; }
+  @media (min-width: 1080px) {
+    .af-wrap { max-width: 1180px; padding: 0 32px; }
+    .af-wrap > .af-closed { max-width: 760px; margin-inline: auto; }
+    .af-app { display: grid; grid-template-columns: 264px minmax(0, 760px); gap: clamp(32px, 4vw, 56px); justify-content: center; align-items: start; }
+    .af-app.is-done { grid-template-columns: minmax(0, 760px); }
+    .af-app.is-done .af-rail { display: none; }
+    .af-main { grid-column: 2; grid-row: 1; }
+    .af-app.is-done .af-main { grid-column: 1; }
+    .af-rail { grid-column: 1; grid-row: 1; display: grid; gap: 22px; position: sticky; top: calc(var(--header-height) + 28px); padding-top: 10px; animation: afRise .5s var(--af-ease) both; }
+    /* The rail replaces "All steps" and the save line under the buttons */
+    .af-head .af-steps, .af-form .af-save-row { display: none; }
+    .af-mini { display: none !important; }
+  }
+  /* A short laptop screen: the rail tightens so all of it fits beside the card */
+  @media (min-width: 1080px) and (max-height: 820px) {
+    .af-rail { gap: 16px; top: calc(var(--header-height) + 16px); }
+    .af-rail .af-step { min-height: 38px; padding-top: 5px; padding-bottom: 5px; }
+    .af-rail-list li:not(:last-child)::after { top: 34px; bottom: -4px; }
+    .af-rail-foot { gap: 8px; padding-top: 14px; }
+    .af-rail-help { display: none; }
+  }
+  .af-rail-title { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin: 0; }
+  .af-rail-list { list-style: none; margin: 0; padding: 0; display: grid; }
+  .af-rail-list li { position: relative; }
+  /* The line from one step's circle down to the next: it fills in dark once the next step is reached */
+  .af-rail-list li:not(:last-child)::after {
+    content: ''; position: absolute; left: 21px; top: 37px; bottom: -7px; width: 2px; border-radius: 2px;
+    background: linear-gradient(var(--c-dark), var(--c-dark)) no-repeat top / 100% var(--fill, 0%), var(--af-line);
+    transition: background-size .5s var(--af-ease);
+  }
+  .af-rail-list li[data-line]::after { --fill: 100%; }
+  .af-rail .af-step { align-items: flex-start; min-height: 44px; padding: 8px 10px 8px 8px; font-size: 15px; gap: 12px; position: relative; z-index: 1; }
+  .af-rail .af-step-name { padding-top: 4px; }
+  .af-rail .af-step:hover:not(:disabled) { background: rgba(255,255,255,.75); }
+  .af-rail .af-step[aria-current="step"] { background: #fff; box-shadow: 0 1px 2px rgba(30,31,37,.05), 0 6px 18px -8px rgba(30,31,37,.16); }
+  .af-rail .af-step-mark { flex-basis: 28px; transition: background-color .3s var(--af-ease), border-color .3s var(--af-ease), color .3s var(--af-ease); }
+  .af-rail .af-step[aria-current="step"] .af-step-mark { animation: afPick .35s var(--af-ease) both; }
+  .af-rail .af-step-mark svg path { stroke-dasharray: 20; stroke-dashoffset: 0; animation: afDraw .4s var(--af-ease) both; }
+  .af-rail .af-step-now { display: none; }
+  .af-rail .af-step:disabled { color: #8C8D92; }
+  .af-rail-foot { display: grid; gap: 10px; justify-items: start; padding-top: 18px; border-top: 1px solid var(--af-line); }
+  .af-rail-left { margin: 0; font-size: 14.5px; font-weight: 600; color: var(--c-dark); display: flex; align-items: center; gap: 8px; }
+  .af-rail-left::before { content: ''; flex: 0 0 16px; height: 16px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23373A36' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.4'/%3E%3Cpath d='M8 4.6V8l2.2 1.4'/%3E%3C/svg%3E"); }
+  .af-rail-left:empty { display: none; }
+  .af-rail .af-save-state { min-height: 18px; }
+  .af-rail-later { margin-top: 2px; }
+  .af-rail-help { margin: 6px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--c-text-muted); display: grid; gap: 2px; }
+  .af-rail-help a { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-decoration-color: rgba(55,58,54,.3); text-underline-offset: 3px; width: fit-content; }
+  .af-rail-help a:hover { text-decoration-color: var(--c-dark); }
+
+  /* ══════════ A phone: the step follows them down the page ══════════ */
+  .af-mini {
+    position: fixed; z-index: 990; left: 0; right: 0; top: var(--header-height); display: grid; gap: 0; padding: 0; margin: 0;
+    font: inherit; color: var(--c-dark); text-align: left; background: rgba(255,255,255,.97); border: 0; cursor: pointer;
+    box-shadow: 0 1px 0 rgba(30,31,37,.06), 0 10px 24px -14px rgba(30,31,37,.28); -webkit-tap-highlight-color: transparent;
+    transform: translateY(calc(-100% - 8px)); opacity: 0; visibility: hidden;
+    transition: transform .32s var(--af-ease), opacity .2s var(--af-ease), visibility 0s linear .32s;
+  }
+  @supports (backdrop-filter: blur(1px)) { .af-mini { background: rgba(255,255,255,.88); backdrop-filter: saturate(1.4) blur(14px); } }
+  .af-mini.is-on { transform: none; opacity: 1; visibility: visible; transition: transform .32s var(--af-ease), opacity .2s var(--af-ease), visibility 0s; }
+  .af-mini-row { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 16px; max-width: 760px; width: 100%; margin: 0 auto; }
+  .af-mini-step { flex-shrink: 0; font-size: 11.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+  .af-mini-title { flex: 1; min-width: 0; font-family: var(--font-display); font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .af-mini-up { flex: 0 0 16px; width: 16px; height: 16px; fill: none; stroke: var(--c-text-muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .af-mini-track { display: block; height: 3px; background: #EFEDE6; overflow: hidden; }
+  .af-mini-bar { display: block; height: 100%; width: 100%; background: var(--c-yellow); transform-origin: left; transform: scaleX(0); transition: transform .55s var(--af-ease); }
+
+  /* ── Language switch (top right of the card) ── */
+  .af-head-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; min-height: 44px; }
+  .af-head-top .af-step-text { margin: 0; }
+  .af-lang { display: inline-flex; align-items: center; gap: 2px; padding: 3px; background: #F0EEE8; border-radius: 999px; flex-shrink: 0; }
+  .af-lang-icon { width: 16px; height: 16px; margin: 0 2px 0 10px; color: var(--c-text-muted); flex-shrink: 0; }
+  .af-lang-btn { font: inherit; font-size: 14px; font-weight: 600; color: var(--c-text-muted); background: transparent; border: 0; border-radius: 999px; min-height: 44px; padding: 0 14px; cursor: pointer; transition: background-color .2s var(--af-ease), color .2s var(--af-ease), box-shadow .2s var(--af-ease); }
   .af-lang-btn:hover { color: var(--c-dark); }
   .af-lang-btn[aria-pressed="true"] { background: #fff; color: var(--c-dark); box-shadow: 0 1px 2px rgba(30,31,37,.08), 0 3px 10px -2px rgba(30,31,37,.10); }
   .af-lang-btn:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
@@ -403,16 +509,23 @@ const breadcrumbs = [
   .af-content ul { padding-left: 22px; list-style: disc; }
   .af-content li + li { margin-top: 6px; }
   .af-content a { color: var(--c-dark); text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
-  .af-content .af-scope-title { font-size: 19px; margin: 4px 0 12px; }
-  .af-content .af-scope { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; }
-  .af-content .af-scope-col { background: var(--c-cream); border-radius: 18px; padding: 22px 24px; }
-  .af-content .af-scope-col h3 { font-size: 17px; margin-bottom: 10px; }
-  .af-content .af-scope-col:first-child { box-shadow: inset 0 4px 0 var(--c-yellow); }
-  .af-content .af-scope-col ul { font-size: 15px; padding-left: 0; list-style: none; }
-  .af-content .af-scope-col li { position: relative; padding-left: 26px; }
-  .af-content .af-scope-col li::before { content: ''; position: absolute; left: 2px; top: 0.45em; width: 14px; height: 14px; background: no-repeat center / contain; }
-  .af-content .af-scope-col:first-child li::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23373A36' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.2 3L13 4.5'/%3E%3C/svg%3E"); }
-  .af-content .af-scope-col:last-child li::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%235A5B61' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E"); }
+  /* What a makeover includes: a card for each kind, with its drawing; then what SOARD doesn't do */
+  .af-content .af-scope-title { font-size: clamp(20px, 2.2vw, 23px); line-height: 1.3; margin: 8px 0 16px; text-wrap: balance; }
+  .af-content .af-scope { display: grid; gap: 14px; }
+  .af-content .af-offer-head { font-family: var(--font-body); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--c-text-muted); margin: 0 0 10px; }
+  .af-content .af-offer-grid { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .af-content .af-offer-grid li + li { margin-top: 0; }
+  .af-content .af-offer-card { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 14px; align-items: start; padding: 18px; border-radius: 18px; background: var(--c-cream); border: 1px solid #EFEADB; }
+  .af-content .af-offer-icon { width: 52px; height: 52px; border-radius: 15px; background: #fff; display: grid; place-items: center; box-shadow: 0 1px 2px rgba(30,31,37,.06), inset 0 0 0 1px #EFEADB; }
+  .af-ic { width: 34px; height: 34px; flex-shrink: 0; max-width: none; fill: none; stroke: var(--c-dark); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+  .af-ic .af-ic-fill { fill: var(--c-yellow); }
+  .af-content .af-offer-text { display: grid; gap: 4px; font-size: 14.5px; line-height: 1.55; color: var(--c-text); }
+  .af-content .af-offer-text strong { font-size: 16px; line-height: 1.35; color: var(--c-dark); }
+  .af-content .af-nope { padding: 18px 20px; border-radius: 18px; border: 1px dashed var(--af-line-strong); }
+  .af-content .af-nope-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; font-size: 14.5px; line-height: 1.5; }
+  .af-content .af-nope-list li + li { margin-top: 0; }
+  .af-content .af-nope-list li { position: relative; padding-left: 24px; }
+  .af-content .af-nope-list li::before { content: ''; position: absolute; left: 0; top: .2em; width: 16px; height: 16px; border-radius: 50%; background: #EFEDE6 no-repeat center / 8px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%235A5B61' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E"); }
 
   .af-image { margin: 0; border-radius: 18px; overflow: hidden; background-size: cover; background-position: center; border: 1px solid var(--c-border); }
   .af-image img { display: block; width: 100%; height: auto; }
@@ -494,6 +607,40 @@ const breadcrumbs = [
   .af-choice-desc { font-size: 14px; line-height: 1.5; color: var(--c-text-muted); }
   .af-field--ack .af-choice { background: var(--c-cream); }
   .af-field--ack .af-choice:has(input:checked) { background: var(--af-picked); }
+  /* Yes / No and other short answers: side by side */
+  .af-choices--row { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+  .af-choices--row .af-choice { align-items: center; }
+  .af-choices--row .af-choice-text { padding-top: 0; }
+
+  /* "Did you mean …@gmail.com?" under an email address */
+  .af-mailfix { margin: 0; font-size: 14.5px; line-height: 2.1; color: var(--c-dark); animation: afFadeIn .22s var(--af-ease) both; }
+  .af-mailfix button { display: inline; margin: 0 1px 0 4px; font: inherit; line-height: 1.4; font-weight: 700; color: var(--c-dark); background: var(--af-picked); border: 1.5px solid var(--c-yellow); border-radius: 999px; min-height: 36px; padding: 4px 12px; cursor: pointer; overflow-wrap: anywhere; text-align: left; transition: background-color .18s var(--af-ease), transform .14s var(--af-ease); }
+  .af-mailfix button:hover { background: var(--c-yellow-soft); }
+  .af-mailfix button:active { transform: scale(.97); }
+  .af-mailfix button:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
+
+  /* Optional questions behind a button: a second parent, the parent's own address */
+  .af-more { display: grid; }
+  .af-more-btn {
+    display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 14px 18px; text-align: left; cursor: pointer;
+    font: inherit; font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--c-dark); background: #fff;
+    border: 1.5px dashed var(--af-line-strong); border-radius: 16px; -webkit-tap-highlight-color: transparent;
+    transition: border-color .18s var(--af-ease), background-color .18s var(--af-ease), transform .14s var(--af-ease);
+  }
+  @media (hover: hover) { .af-more-btn:hover { border-color: var(--c-dark); background: var(--c-cream); } }
+  .af-more-btn:active { transform: scale(.985); }
+  .af-more-btn:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
+  .af-more-plus { flex: 0 0 26px; width: 26px; height: 26px; padding: 5px; border-radius: 50%; background: var(--c-yellow); fill: none; stroke: var(--c-dark); stroke-width: 2.2; stroke-linecap: round; }
+  .af-more-body { display: grid; gap: 28px; padding: 22px 0 4px 20px; border-left: 3px solid var(--c-yellow-soft); }
+  .af-more-body[hidden] { display: none; }
+  .af-more-remove { justify-self: start; margin-top: -12px; }
+
+  /* A long answer box grows with what's written in it (the script does it where the browser can't) */
+  .af-field textarea { field-sizing: content; max-height: 60vh; }
+
+  /* An empty photo or video box: the whole box opens the picker */
+  .af-upload[data-state="empty"] { cursor: pointer; }
+  @media (hover: hover) { .af-upload[data-state="empty"]:hover { border-color: var(--c-dark); background: #FBF8EE; } }
 
   /* ── Uploads ── */
   .af-upload {
@@ -658,6 +805,18 @@ const breadcrumbs = [
   .af-done.is-in .af-sun-rays { animation: afSunRays 1.2s var(--af-ease) .25s both; }
   .af-done.is-in .af-sun-halo { animation: afSunGlow 2.2s ease-out .35s both; }
 
+  /* What happens next: three steps, joined, rising in after the sun */
+  .af-next-up { max-width: 540px; margin: 28px auto 8px; padding: 24px 24px 20px; border-radius: 20px; background: var(--c-cream); text-align: left; }
+  .af-done .af-next-title { font-family: var(--font-body); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--c-text-muted); margin: 0 0 16px; }
+  .af-next-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+  .af-next-step { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .af-next-step:not(:last-child)::after { content: ''; position: absolute; left: 15px; top: 36px; bottom: -16px; width: 2px; border-radius: 2px; background: #E6E1D2; }
+  .af-next-num { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 700; background: var(--c-yellow); color: var(--c-dark); font-variant-numeric: tabular-nums; }
+  .af-next-text { display: grid; gap: 2px; padding-top: 4px; font-size: 15px; line-height: 1.55; color: var(--c-text); }
+  .af-next-text strong { font-size: 16px; color: var(--c-dark); }
+  .af-done p.af-next-note { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid #E6E1D2; font-size: 14.5px; color: var(--c-text-muted); max-width: none; }
+  .af-done.is-in .af-next-step { animation: afRise .5s var(--af-ease) both; animation-delay: calc(.45s + var(--i) * .12s); }
+
   /* margin: auto puts it back in the middle; the site's reset zeroes dialog margins. A modal dialog sits in the top layer, over the header. */
   .af-dialog { margin: auto; max-height: calc(100dvh - 32px); overflow: auto; border: 0; border-radius: 28px; padding: 36px 32px 32px; width: min(480px, calc(100vw - 32px)); box-shadow: 0 32px 80px rgba(0,0,0,0.25); color: var(--c-dark); z-index: 1200; }
   .af-dialog[open] { animation: afRise .28s var(--af-ease) both; }
@@ -676,6 +835,7 @@ const breadcrumbs = [
   @keyframes afDrop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
   @keyframes afRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
   @keyframes afPick { from { transform: scale(.82); } to { transform: scale(1); } }
+  @keyframes afDraw { from { stroke-dashoffset: 20; } to { stroke-dashoffset: 0; } }
   @keyframes afRecDot { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,218,36,.55); } 50% { box-shadow: 0 0 0 6px rgba(255,218,36,0); } }
   @keyframes afFlash {
     0%, 35% { box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--c-yellow); }
@@ -686,12 +846,17 @@ const breadcrumbs = [
   @keyframes afSunGlow { 0% { opacity: 0; transform: scale(.6); } 45% { opacity: 1; transform: scale(1.04); } 100% { opacity: .75; transform: scale(1); } }
 
   @media (max-width: 768px) {
-    .af-card { border-radius: 22px; padding: 26px 18px; }
-    .af-toolbar { margin-bottom: 12px; }
+    .af-card { border-radius: 22px; padding: 22px 18px 26px; }
     .af-head { margin-bottom: 28px; }
     .af-page { gap: 28px; }
-    .af-content .af-scope { grid-template-columns: 1fr; }
-    .af-row--2, .af-row--3 { grid-template-columns: 1fr; }
+    .af-content .af-offer-grid, .af-content .af-nope-list { grid-template-columns: 1fr; }
+    .af-content .af-offer-card { grid-template-columns: 48px minmax(0, 1fr); padding: 16px; gap: 12px; }
+    .af-content .af-offer-icon { width: 48px; height: 48px; border-radius: 13px; }
+    .af-ic { width: 32px; height: 32px; }
+    .af-more-body { padding-left: 14px; }
+    .af-next-up { padding: 20px 18px 16px; margin-top: 24px; }
+    .af-row--3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .af-row--3 > :first-child { grid-column: 1 / -1; }
     /* Uploads: picture and status side by side, buttons on their own row */
     .af-upload { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 14px; align-items: center; padding: 14px; }
     .af-upload-preview { width: 72px; height: 72px; border-radius: 12px; }
@@ -708,9 +873,12 @@ const breadcrumbs = [
     .af-field { scroll-margin-bottom: 96px; }
     .af-dialog { padding: 32px 20px 24px; }
   }
+  @media (max-width: 340px) {
+    .af-row--2 { grid-template-columns: 1fr; }
+  }
   @media (max-width: 380px) {
     .af-lang-icon { display: none; }
-    .af-lang-btn { padding: 0 14px; }
+    .af-lang-btn { padding: 0 12px; }
   }
 
   /* ══════════ The service-area check (under the home address) ══════════
@@ -783,5 +951,8 @@ const breadcrumbs = [
     .af-map-pin-head, .af-map-pin-label { animation: none; }
     .af-map-pin::before { display: none; }
     .af-area-spin { animation-duration: 2.4s; }
+    .af-rail, .af-rail .af-step[aria-current="step"] .af-step-mark, .af-rail .af-step-mark svg path, .af-done.is-in .af-next-step, .af-mailfix { animation: none; }
+    .af-rail-list li::after, .af-mini-bar, .af-rail .af-step-mark { transition: none; }
+    .af-mini, .af-mini.is-on { transition: none; }
   }
 </style>

@@ -34,7 +34,11 @@ export const UI = {
     edit: 'Edit', editSection: 'Edit {name}', fix: 'Answer it', photoAdded: 'Photo added', videoUploaded: 'Video uploaded', notAnswered: 'Not answered yet',
     attentionOne: '1 answer on this page needs attention.', attentionMany: '{n} answers on this page need attention.',
     doneTitle: 'Thank you. Your application is in!', doneEmail: 'We just sent a message to {email} from our Qualification Committee with a copy of your application.',
-    doneBody: 'Every application is read by a real person on our team. Families who move forward are invited to a short Zoom interview, and then a home visit where we see the space together. This can take some time, and we will reach out either way.',
+    doneNext: 'What happens next',
+    doneStep1: 'We read every application', doneStep1Text: 'A real person on our team reads yours from start to finish.',
+    doneStep2: 'A short Zoom interview', doneStep2Text: 'Families who move forward are invited to a video call with us.',
+    doneStep3: 'A visit to your home', doneStep3Text: 'We come see the space together and talk about what your child needs.',
+    doneNote: 'This can take some time, and we will reach out either way.',
     doneAgain: 'This application has already been submitted. Thank you!', doneLink: "Meet some of the kids we've served",
     stopBack: 'I need to change my answer', stopApply: 'Back to the Apply page',
     laterTitle: 'Save and finish later', laterIntro: "Your answers are already saved. We'll email you a link to pick up where you left off, on this device or any other.",
@@ -75,6 +79,12 @@ export const UI = {
     areaHome: 'Home', areaLegend: 'Our service area', areaLegendHome: 'The home you entered', areaAway: 'Home, {miles} mi away',
     stopEditAddress: 'Change the address',
     steps: 'All steps', stepDone: 'Done', stepNow: 'You are here', stepLocked: 'Not reached yet',
+    // The steps beside the form on a computer, and the bar that follows a phone down the page
+    railLabel: 'Your progress', railTitle: 'Your application', leftMany: 'About {n} minutes left', leftOne: 'About a minute left', leftReview: 'Last step: look it over and submit',
+    railHelp: 'Questions? We are happy to help.', miniUp: 'Back to the top of this step',
+    // Optional questions tucked behind a button until wanted
+    addParent2: 'Add another parent or guardian', addParentAddress: "Add the parent's address, if it's different from the child's",
+    mailFix: 'Did you mean {email}?', mailFixUse: 'Use {email}',
     language: 'Language', loading: 'Loading the application…', optional: '(optional)', chooseOne: 'Choose one', choose: 'Choose', upTo: 'Choose up to {n}.',
     first: 'First name', last: 'Last name', street: 'Street address', apt: 'Apartment, suite, etc.', city: 'City', state: 'State', zip: 'ZIP code', signature: 'Type your full name',
     // The hero above the form
@@ -106,7 +116,11 @@ export const UI = {
     edit: 'Editar', editSection: 'Editar {name}', fix: 'Responder', photoAdded: 'Foto agregada', videoUploaded: 'Video subido', notAnswered: 'Sin responder todavía',
     attentionOne: '1 respuesta en esta página necesita atención.', attentionMany: '{n} respuestas en esta página necesitan atención.',
     doneTitle: '¡Gracias! Recibimos su solicitud.', doneEmail: 'Le acabamos de enviar un mensaje a {email} de nuestro Comité de Calificación con una copia de su solicitud.',
-    doneBody: 'Una persona de nuestro equipo lee cada solicitud. Las familias que avanzan reciben una invitación a una entrevista corta por Zoom y luego a una visita a su casa para ver el espacio juntos. Esto puede tomar algo de tiempo, y nos comunicaremos con usted en cualquier caso.',
+    doneNext: 'Qué sigue',
+    doneStep1: 'Leemos cada solicitud', doneStep1Text: 'Una persona de nuestro equipo lee la suya de principio a fin.',
+    doneStep2: 'Una entrevista corta por Zoom', doneStep2Text: 'Las familias que avanzan reciben una invitación a una videollamada con nosotros.',
+    doneStep3: 'Una visita a su casa', doneStep3Text: 'Vamos a ver el espacio juntos y a hablar de lo que su hijo o hija necesita.',
+    doneNote: 'Esto puede tomar algo de tiempo, y nos comunicaremos con usted en cualquier caso.',
     doneAgain: 'Esta solicitud ya fue enviada. ¡Gracias!', doneLink: 'Conozca a algunos de los niños que hemos ayudado',
     stopBack: 'Necesito cambiar mi respuesta', stopApply: 'Volver a la página de solicitud',
     laterTitle: 'Guardar y terminar después', laterIntro: 'Sus respuestas ya están guardadas. Le enviaremos un enlace por correo para continuar donde se quedó, en este dispositivo o en cualquier otro.',
@@ -146,6 +160,10 @@ export const UI = {
     areaHome: 'Casa', areaLegend: 'Nuestra área de servicio', areaLegendHome: 'La casa que escribió', areaAway: 'Casa, a {miles} mi',
     stopEditAddress: 'Cambiar la dirección',
     steps: 'Todos los pasos', stepDone: 'Listo', stepNow: 'Usted está aquí', stepLocked: 'Todavía no llega',
+    railLabel: 'Su progreso', railTitle: 'Su solicitud', leftMany: 'Quedan unos {n} minutos', leftOne: 'Queda más o menos un minuto', leftReview: 'Último paso: revisar y enviar',
+    railHelp: '¿Preguntas? Con gusto le ayudamos.', miniUp: 'Volver al principio de este paso',
+    addParent2: 'Agregar otro padre, madre o tutor', addParentAddress: 'Agregar la dirección del padre, la madre o el tutor, si es diferente a la del niño',
+    mailFix: '¿Quiso decir {email}?', mailFixUse: 'Usar {email}',
     language: 'Idioma', loading: 'Cargando la solicitud…', optional: '(opcional)', chooseOne: 'Elija una opción', choose: 'Elegir', upTo: 'Elija hasta {n}.',
     first: 'Nombre', last: 'Apellido', street: 'Dirección', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
     heroEyebrow: 'Para familias · Solicitud {year}', heroTitleHtml: 'Cuéntenos sobre <em>su hijo o hija</em>.',
@@ -182,9 +200,16 @@ const CHECK = '<svg class="af-check-draw" viewBox="0 0 16 16" aria-hidden="true"
 // The ring around an upload while it goes up (circumference 2πr = 113.1 at r=18), on a small disc
 const RING = '<svg class="af-ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="af-ring-disc" cx="22" cy="22" r="22" /><circle class="af-ring-track" cx="22" cy="22" r="18" /><circle class="af-ring-fill" cx="22" cy="22" r="18" /></svg>';
 
+/** Short answers with nothing to explain (Yes / No, Male / Female) sit side by side */
+function sideBySide(f, plain) {
+  if (f.type !== 'radio' || f.options.length < 2 || f.options.length > 3) return false;
+  if (!plain && f.options.some(v => f.descriptions?.[v])) return false;
+  return f.options.every(v => String(f.optionLabels?.[v] ?? v).length <= 14);
+}
+
 function choices(f, id, { plain = false } = {}) {
   const type = f.type === 'radio' || f.type === 'area' ? 'radio' : 'checkbox';
-  return `<div class="af-choices">${f.options.map((v, i) => {
+  return `<div class="af-choices${sideBySide(f, plain) ? ' af-choices--row' : ''}">${f.options.map((v, i) => {
     const label = f.optionLabels?.[v] ?? v;
     const desc = plain ? '' : f.descriptions?.[v];
     const text = desc ? `<strong class="af-choice-title">${esc(label)}</strong><span class="af-choice-desc">${esc(desc)}</span>` : esc(label);
@@ -192,11 +217,21 @@ function choices(f, id, { plain = false } = {}) {
   }).join('')}</div>`;
 }
 
+/** A small drawing for each kind of makeover, matched on its name (English or Spanish); a check otherwise */
+const OFFER_ICONS = [
+  [/bed|dorm|cuarto|habitaci/i, '<rect class="af-ic-fill" x="7" y="12.5" width="8" height="4.5" rx="2"/><path d="M4 8v17M4 21h24v4M4 17h20a4 4 0 0 1 4 4"/>'],
+  [/bath|baño|bano|shower|ducha/i, '<path d="M7 27V10a5 5 0 0 1 10 0v1"/><path class="af-ic-fill" d="M13 11h8l-1.6 3.2h-4.8z"/><path d="M15 18.5v1.6M18 18.5v1.6M21 18.5v1.6M16.5 23v1.6M19.5 23v1.6"/>'],
+  [/therap|terap/i, '<circle class="af-ic-fill" cx="13" cy="18" r="8"/><path d="M5.6 15.6c4.6 2.2 10.2 2.2 14.8 0M25 5v5M22.5 7.5h5"/>'],
+  [/ramp/i, '<path class="af-ic-fill" d="M4 26L27 14v12z"/><path d="M5 19.5L27 8M12 16v6.4M20 12v10.2"/>'],
+];
+const OFFER_CHECK = '<circle class="af-ic-fill" cx="16" cy="16" r="11"/><path d="M11 16.4l3.4 3.4L21.4 12"/>';
+const offerIcon = (title) => `<svg class="af-ic" viewBox="3 3 26 26" aria-hidden="true">${(OFFER_ICONS.find(([re]) => re.test(title || '')) || [null, OFFER_CHECK])[1]}</svg>`;
+
+/** What a makeover includes (a card each, with its drawing), then what SOARD doesn't do */
 function guidelines(f) {
-  const end = (s) => (/[.!?:]$/.test(s) ? s : `${s}.`);
   return `${f.title ? `<h3 class="af-scope-title">${esc(f.title)}</h3>` : ''}<div class="af-scope">
-<div class="af-scope-col"><h3>${esc(f.doTitle || 'What we do')}</h3><ul>${(f.doItems || []).map(i => `<li>${i.title ? `<strong>${esc(end(i.title))}</strong> ` : ''}${esc(i.text)}</li>`).join('')}</ul></div>
-<div class="af-scope-col"><h3>${esc(f.dontTitle || 'What we don’t do')}</h3><ul>${(f.dontItems || []).map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>
+<div class="af-offer"><h3 class="af-offer-head">${esc(f.doTitle || 'What we do')}</h3><ul class="af-offer-grid">${(f.doItems || []).map(i => `<li class="af-offer-card"><span class="af-offer-icon">${offerIcon(i.title)}</span><span class="af-offer-text">${i.title ? `<strong>${esc(i.title.replace(/[.:]$/, ''))}</strong>` : ''}<span>${esc(i.text)}</span></span></li>`).join('')}</ul></div>
+<div class="af-nope"><h3 class="af-offer-head">${esc(f.dontTitle || 'What we don’t do')}</h3><ul class="af-nope-list">${(f.dontItems || []).map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>
 </div>`;
 }
 
@@ -267,7 +302,8 @@ export function renderField(f, lang = 'en', area = null) {
     switch (f.type) {
       case 'text': control = `<input type="text" id="${id}" maxlength="${f.rules?.maxLength || TEXT_MAX}" ${desc}>`; break;
       case 'number': control = `<input type="text" inputmode="decimal" id="${id}" maxlength="20" ${desc}>`; break;
-      case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" ${desc}>`; break;
+      // A likely typo in the address ("gmial.com") gets a one-tap fix under it (the script fills this in)
+      case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" ${desc}><p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>`; break;
       case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" ${desc}>`; break;
       case 'date': control = `<input type="date" id="${id}" max="${new Date().toISOString().slice(0, 10)}" min="1990-01-01" ${desc}>`; break;
       case 'textarea': control = `<textarea id="${id}" rows="${Number(f.rows) || 5}" maxlength="${f.rules?.maxLength || TEXTAREA_MAX}" ${desc}></textarea>`; break;
@@ -302,7 +338,38 @@ export function renderField(f, lang = 'en', area = null) {
   return `<div class="af-field af-field--${f.type}" data-field="${esc(f.id)}" data-type="${f.type}"${f.required ? ' data-required="1"' : ''}${f.showIf ? ' hidden' : ''}>${inner}<p class="af-error" id="${errId}"></p></div>`;
 }
 
+/**
+ * Optional questions most families skip, behind a button until wanted: a second parent, and the
+ * parent's own address. Only when they sit together, in this order, are all optional and have no
+ * show/hide rule of their own; otherwise they're drawn like any other question. The script opens
+ * a group that has answers in it.
+ */
+export const TUCKED = [
+  { key: 'parentAddress', ids: ['parentAddress'], word: 'addParentAddress' },
+  { key: 'parent2', ids: ['parent2Name', 'parent2Email', 'parent2Phone', 'parent2Relation'], word: 'addParent2' },
+];
+const PLUS = '<svg class="af-more-plus" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>';
+
+function pageHtml(p, lang, area) {
+  const out = [];
+  for (let i = 0; i < p.fields.length; i++) {
+    const g = TUCKED.find(x => x.ids[0] === p.fields[i].id);
+    const run = g ? p.fields.slice(i, i + g.ids.length) : [];
+    if (g && run.length === g.ids.length && run.every((f, k) => f.id === g.ids[k] && !f.required && !f.showIf)) {
+      const body = `af-more-${g.key}`;
+      out.push(`<div class="af-more" data-more="${g.key}">
+<button type="button" class="af-more-btn" data-more-open aria-expanded="false" aria-controls="${body}">${PLUS}<span>${esc(t(lang, g.word))}</span></button>
+<div class="af-more-body" id="${body}" hidden>${run.map(f => renderField(f, lang, area)).join('')}
+<button type="button" class="af-btn af-btn--link af-more-remove" data-more-close>${esc(t(lang, 'remove'))}</button></div></div>`);
+      i += g.ids.length - 1;
+      continue;
+    }
+    out.push(renderField(p.fields[i], lang, area));
+  }
+  return out.join('');
+}
+
 /** Every page (hidden until the script shows the current one) */
 export function renderPages(form, lang = 'en') {
-  return form.pages.map(p => `<div class="af-page" data-page="${esc(p.id)}" hidden>${p.fields.map(f => renderField(f, lang, form.serviceArea)).join('')}</div>`).join('');
+  return form.pages.map(p => `<div class="af-page" data-page="${esc(p.id)}" hidden>${pageHtml(p, lang, form.serviceArea)}</div>`).join('');
 }

@@ -143,8 +143,15 @@ function init(root, cfg, mode) {
     next: $('[data-next]'),
     nextLabel: $('[data-next-label]'),
     navNote: $('[data-nav-note]'),
-    saveLater: $('[data-save-later]'),
-    saveState: $('[data-save-state]'),
+    saveLaters: [...root.querySelectorAll('[data-save-later]')],   // under the buttons, and in the rail on a computer
+    saveStates: [...root.querySelectorAll('[data-save-state]')],
+    rail: $('[data-rail]'),
+    railList: $('[data-rail-list]'),
+    timeLeft: $('[data-time-left]'),
+    mini: $('[data-mini]'),
+    miniStep: $('[data-mini-step]'),
+    miniTitle: $('[data-mini-title]'),
+    miniBar: $('[data-mini-bar]'),
     live: $('[data-live]'),
     notice: $('[data-notice]'),
     langSwitch: $('[data-lang-switch]'),
@@ -256,6 +263,7 @@ function init(root, cfg, mode) {
     pageEls = Object.fromEntries([...ui.pages.querySelectorAll('[data-page]')].map(el => [el.dataset.page, el]));
     for (const f of fields) if (isInput(f)) writeField(f, answers[f.id]);
     for (const f of fields) if (isUpload(f)) paintUpload(f.id);
+    openAnsweredTucked();
     paintArea();
     if (!furthestId || order(furthestId) < 0) furthestId = form.pages[0]?.id || 'review';
     if (countyNote && answers[countyNote.field] === countyNote.value) showCountyNote();
@@ -355,23 +363,71 @@ function init(root, cfg, mode) {
     ui.stepText.textContent = T('step', { n: i + 1, total: ids.length });
     const title = currentId === 'review' ? T('reviewTitle') : (form.pages.find(p => p.id === currentId)?.title || '');
     if (ui.stepTitle.textContent !== title) ui.stepTitle.textContent = title;
-    ui.bar.style.transform = `translateX(${((i + 1) / ids.length) * 100 - 100}%)`;
+    const done = (i + 1) / ids.length;
+    ui.bar.style.transform = `translateX(${done * 100 - 100}%)`;
+    // The bar that follows a phone down the page says the same
+    if (ui.mini) {
+      ui.miniStep.textContent = `${i + 1}/${ids.length}`;
+      ui.miniTitle.textContent = title;
+      ui.miniBar.style.transform = `scaleX(${done})`;
+      ui.mini.setAttribute('title', T('miniUp'));
+    }
+    paintTimeLeft(ids);
     paintStepList(ids);
     paintNav(ids);
   }
 
   /**
-   * The "All steps" list: done ones checked, this one marked, later ones not open yet.
+   * About how long is left: the questions still unanswered on this page and the pages after
+   * it, at a rough time each (a long answer or the video takes longest; an optional one
+   * counts for less, since many skip it). Scaled so a fresh application reads about 15
+   * minutes, which is what the hero promises.
+   */
+  const SECONDS = { content: 20, guidelines: 40, ack: 6, address: 35, select: 6, radio: 5, checkbox: 10, name: 14, date: 10, text: 15, number: 8, textarea: 70, email: 12, phone: 10, signature: 10, photo: 35, video: 240 };
+  function secondsLeft(ids, a, from, fresh = false) {
+    let s = 0;
+    for (const id of ids) {
+      const p = form.pages.find(x => x.id === id);
+      if (!p || order(id) < order(from)) continue;
+      for (const f of p.fields) {
+        const fl = byId[f.id] || f;
+        if (!isVisible(fl, a, byId)) continue;
+        const each = SECONDS[f.type] || 0;
+        if (!each) continue;
+        if (!isInput(fl) && !isUpload(fl)) { if (fresh || order(id) > order(from)) s += each; continue; } // reading a page not seen yet
+        if (!fresh && !unanswered(fl, a)) continue;
+        s += fl.required ? each : each * 0.3;
+      }
+    }
+    return s;
+  }
+  function paintTimeLeft(ids) {
+    if (!ui.timeLeft || !railShown()) return;
+    if (currentId === 'review') { ui.timeLeft.textContent = T('leftReview'); return; }
+    const a = readAnswers();
+    const all = secondsLeft(ids, a, ids[0], true) || 1;
+    const mins = Math.max(1, Math.ceil((secondsLeft(ids, a, currentId) / all) * 15));
+    ui.timeLeft.textContent = mins <= 1 ? T('leftOne') : T('leftMany', { n: mins });
+  }
+
+  /**
+   * The step lists ("All steps" in the card, and the rail beside it on a computer): done ones
+   * checked, this one marked, later ones not open yet. Each is painted only while it shows.
    * Updated in place: an answer saved as someone presses a step (a blur's change event)
    * must not swap the button out from under the press.
    */
+  const railShown = () => !!ui.rail && ui.rail.offsetParent !== null;
   function paintStepList(ids = stepIds()) {
-    if (!ui.steps.open) return;
+    const lists = [ui.steps.open && ui.stepsList, railShown() && ui.railList].filter(Boolean);
+    if (!lists.length) return;
     const errs = formErrors(form, readAnswers(), files, null, lang);
     const needs = new Set(Object.keys(errs).map(pageOf));
-    const items = [...ui.stepsList.children];
+    for (const list of lists) paintList(list, ids, needs);
+  }
+  function paintList(list, ids, needs) {
+    const items = [...list.children];
     if (items.map(li => li.firstChild?.dataset.goto).join('|') !== ids.join('|')) {
-      ui.stepsList.replaceChildren(...ids.map((id) => {
+      list.replaceChildren(...ids.map((id) => {
         const li = document.createElement('li');
         const b = document.createElement('button');
         b.type = 'button';
@@ -388,8 +444,10 @@ function init(root, cfg, mode) {
       }));
     }
     ids.forEach((id, i) => {
-      const b = ui.stepsList.children[i].firstChild;
+      const li = list.children[i];
+      const b = li.firstChild;
       const [mark, name, state] = b.children;
+      li.toggleAttribute('data-line', i + 1 < ids.length && reached(ids[i + 1])); // the rail's joining line, dark once the next is reached
       const now = id === currentId;
       const open = reached(id);
       const done = !now && open && id !== 'review' && !needs.has(id) && order(id) < order(furthestId);
@@ -449,6 +507,8 @@ function init(root, cfg, mode) {
       enter(ui.stepTitle, dir * 14);
     }
     if (scroll && !focusField) scrollToForm();
+    growPage(id);
+    requestAnimationFrame(paintMini);
     const after = () => {
       if (focusField) focusOn(focusField);
       else if (focus) ui.stepTitle.focus({ preventScroll: true });
@@ -541,6 +601,7 @@ function init(root, cfg, mode) {
     if (!el || el.hidden) return;
     // The service-area answer comes from the address until the family is asked: send them to the address
     if (byId[id]?.type === 'area' && el.querySelector('[data-area-ask]')?.hidden && homeAddressId()) { focusOn(homeAddressId()); return; }
+    openTucked(el, { animate: false });
     el.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
     const target = el.querySelector('input:not([type=file]):not([type=radio]):not([type=checkbox]):not([disabled]), textarea, select')
       || el.querySelector('input:checked') || el.querySelector('input[type=radio], input[type=checkbox]')
@@ -583,8 +644,10 @@ function init(root, cfg, mode) {
     paintSaveState();
   }
   function paintSaveState() {
-    ui.saveState.textContent = lastSave ? T(lastSave) : '';
-    ui.saveState.dataset.kind = lastSave || '';
+    for (const el of ui.saveStates) {
+      el.textContent = lastSave ? T(lastSave) : '';
+      el.dataset.kind = lastSave || '';
+    }
   }
 
   // ── Server calls ─────────────────────────────────────────────────
@@ -798,6 +861,8 @@ function init(root, cfg, mode) {
     ui.form.hidden = true;
     ui.stop.hidden = true;
     ui.done.hidden = false;
+    root.classList.add('is-done'); // the steps beside the form have done their job
+    paintMini();
     paintDone();
     // The sun rises once (the styles keep it still under reduced motion)
     ui.done.classList.remove('is-in');
@@ -1365,9 +1430,134 @@ function init(root, cfg, mode) {
     }
   }
 
+  // ── Optional questions behind a button (application-render.js TUCKED) ──
+  /** Open the group a question sits in (an answer to show, a problem to fix, the editor pointing at it) */
+  function openTucked(el, { animate = true, focus = false } = {}) {
+    const box = el?.closest?.('[data-more]');
+    if (!box) return;
+    const body = box.querySelector('.af-more-body');
+    const btn = box.querySelector('[data-more-open]');
+    if (!body.hidden) return;
+    body.hidden = false;
+    btn.hidden = true;
+    btn.setAttribute('aria-expanded', 'true');
+    body.querySelectorAll('textarea').forEach(grow);
+    if (animate) enter(body, 0, -8);
+    if (focus) body.querySelector('input, select, textarea')?.focus();
+  }
+  function closeTucked(box) {
+    const ids = [...box.querySelectorAll('[data-field]')].map(el => el.dataset.field);
+    for (const id of ids) {
+      const f = byId[id];
+      if (!f) continue;
+      const parts = fieldEl(id).querySelectorAll('[data-part]');
+      if (parts.length) parts.forEach(i => { i.value = ''; });
+      else writeField(f, '');
+      setFieldError(id, null);
+      touched.delete(id);
+      answers[id] = readField(f);
+    }
+    box.querySelectorAll('[data-mailfix]').forEach(p => { p.hidden = true; p.textContent = ''; });
+    const body = box.querySelector('.af-more-body');
+    const btn = box.querySelector('[data-more-open]');
+    body.hidden = true;
+    btn.hidden = false;
+    btn.setAttribute('aria-expanded', 'false');
+    btn.focus();
+    refresh();
+    markDirty();
+  }
+  /** After a redraw: a group with an answer in it stays open */
+  function openAnsweredTucked() {
+    ui.pages.querySelectorAll('[data-more]').forEach(box => {
+      const has = [...box.querySelectorAll('[data-field]')].some(el => { const f = byId[el.dataset.field]; return f && !unanswered(f, answers); });
+      if (has) openTucked(box.querySelector('[data-field]'), { animate: false });
+    });
+  }
+
+  // ── Small helps while typing ─────────────────────────────────────
+  /** A long answer box grows with what's in it (the page's styles do this where the browser can) */
+  const sizesItself = typeof CSS !== 'undefined' && CSS.supports?.('field-sizing', 'content');
+  function grow(ta) {
+    if (sizesItself || !ta || ta.offsetParent === null) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight + 3, Math.round(innerHeight * 0.6))}px`;
+  }
+  const growPage = (id) => pageEl(id)?.querySelectorAll('textarea').forEach(grow);
+
+  /** A US number reads as (404) 555-0123 as it's typed (only while typing at the end, never while deleting) */
+  function phoneShape(v, whole) {
+    if (/^\s*\+/.test(v) && !/^\s*\+1/.test(v)) return v; // another country's number: as typed
+    let d = v.replace(/\D/g, '');
+    if (d.length === 11 && d[0] === '1') d = d.slice(1);
+    if (d.length > 10) return v;
+    if (whole) return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : v;
+    if (d.length < 4) return v;
+    return d.length < 7 ? `(${d.slice(0, 3)}) ${d.slice(3)}` : `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  }
+
+  /** "jordan@gmial.com" → "jordan@gmail.com": the big email services, a letter or two off, or a .con */
+  const MAIL_HOSTS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'comcast.net', 'att.net', 'bellsouth.net', 'live.com', 'msn.com', 'me.com', 'ymail.com', 'sbcglobal.net', 'verizon.net', 'charter.net', 'protonmail.com', 'mac.com', 'yahoo.com.mx', 'hotmail.es', 'outlook.es', 'yahoo.es'];
+  function editDistance(a, b) { // with a swap of two letters counting as one
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+    return d[a.length][b.length];
+  }
+  function mailFix(v) {
+    const m = /^([^\s@]+)@([^\s@]+)$/.exec(String(v || '').trim());
+    if (!m) return null;
+    const host = m[2].toLowerCase();
+    if (MAIL_HOSTS.includes(host)) return null;
+    let best = null;
+    let bestD = Infinity;
+    for (const h of MAIL_HOSTS) {
+      const dist = editDistance(host, h);
+      if (dist < bestD) { bestD = dist; best = h; }
+    }
+    const allowed = best && best.length <= 7 ? 1 : 2;
+    if (best && bestD > 0 && bestD <= allowed) return `${m[1]}@${best}`;
+    const tld = host.replace(/\.(con|cmo|cpm|vom|xom|comm|coom)$/, '.com');
+    return tld !== host ? `${m[1]}@${tld}` : null;
+  }
+  function paintMailFix(input) {
+    const p = input.closest('[data-field]')?.querySelector('[data-mailfix]');
+    if (!p) return;
+    const fix = mailFix(input.value);
+    p.hidden = !fix;
+    p.replaceChildren();
+    if (!fix) return;
+    const [before, after] = T('mailFix').split('{email}');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.mailfixUse = fix;
+    b.textContent = fix;
+    b.setAttribute('aria-label', T('mailFixUse', { email: fix }));
+    p.append(before || '', b, after || '');
+  }
+
+  // ── The bar that follows a phone down the page ───────────────────
+  let miniFrame = 0;
+  function paintMini() {
+    miniFrame = 0;
+    if (!ui.mini) return;
+    // On as the step's own progress line goes under the site header; off near the end of the card
+    const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 72;
+    const line = ui.bar.parentElement.getBoundingClientRect();
+    const card = ui.form.getBoundingClientRect();
+    const on = !root.hidden && !ui.form.hidden && line.bottom < top + 2 && card.bottom > top + 160;
+    if (ui.mini.classList.contains('is-on') !== on) ui.mini.classList.toggle('is-on', on);
+  }
+  const onScroll = () => { if (!miniFrame) miniFrame = requestAnimationFrame(paintMini); };
+
   // ── Save and finish later ────────────────────────────────────────
   const dlg = ui.dialog;
-  ui.saveLater.addEventListener('click', () => {
+  const openLater = () => {
     if (previewing) { notice('previewNoSave', 'info'); return; }
     const email = readAnswers().parentEmail;
     const input = dlg.querySelector('input[type=email]');
@@ -1376,7 +1566,8 @@ function init(root, cfg, mode) {
     dlg.querySelector('[data-later-form]').hidden = false;
     dlg.querySelector('[data-later-sent]').hidden = true;
     dlg.showModal();
-  });
+  };
+  ui.saveLaters.forEach(b => b.addEventListener('click', openLater));
   dlg.querySelector('[data-later-close]').addEventListener('click', () => dlg.close());
   dlg.querySelectorAll('[data-later-done]').forEach(b => b.addEventListener('click', () => dlg.close()));
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // a tap on the dimmed backdrop
@@ -1600,11 +1791,12 @@ function init(root, cfg, mode) {
       applyWords();
       const focusPage = d.focus ? (form.pages.some(p => p.id === d.focus) ? d.focus : pageOf(d.focus)) : null;
       if (focusPage && stopShown) { stopShown = null; ui.stop.hidden = true; ui.form.hidden = false; }
-      if (focusPage && doneShown) { doneShown = null; ui.done.hidden = true; ui.form.hidden = false; }
+      if (focusPage && doneShown) { doneShown = null; ui.done.hidden = true; ui.form.hidden = false; root.classList.remove('is-done'); }
       const target = focusPage || (pageEl(currentId) ? currentId : stepIds()[0]);
       if (target !== currentId) currentId = null;
       show(target, { focus: false, scroll: false });
       const el = d.focus && byId[d.focus] ? fieldEl(d.focus) : null;
+      if (el) openTucked(el, { animate: false });
       if (el && !el.hidden) {
         el.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' });
         flash(el);
@@ -1618,8 +1810,34 @@ function init(root, cfg, mode) {
   ui.form.addEventListener('submit', (e) => { e.preventDefault(); next(); });
   ui.back.addEventListener('click', back);
   ui.steps.addEventListener('toggle', () => paintStepList());
+  ui.rail?.addEventListener('click', (e) => {
+    const go = e.target.closest('[data-goto]');
+    if (go) jump(go.dataset.goto);
+  });
+  // The rail appears or goes as the window crosses its width: paint it when it shows up
+  matchMedia('(min-width: 1080px)').addEventListener?.('change', () => { paintHeader(); paintMini(); }, { signal });
+  ui.mini?.addEventListener('click', () => scrollToForm(true));
+  window.addEventListener('scroll', onScroll, { passive: true, signal });
 
   ui.form.addEventListener('click', (e) => {
+    const more = e.target.closest('[data-more-open], [data-more-close]');
+    if (more) {
+      if (more.matches('[data-more-open]')) openTucked(more.closest('[data-more]').querySelector('[data-field]'), { focus: true });
+      else closeTucked(more.closest('[data-more]'));
+      return;
+    }
+    const fixMail = e.target.closest('[data-mailfix-use]');
+    if (fixMail) {
+      const input = fixMail.closest('[data-field]').querySelector('input[type=email]');
+      input.value = fixMail.dataset.mailfixUse;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.focus();
+      return;
+    }
+    // An empty photo or video box opens the picker wherever it's pressed, not just on its button
+    const box = e.target.closest('.af-upload[data-state="empty"]');
+    if (box && !e.target.closest('button, a, input')) { box.querySelector('[data-act="choose"]')?.click(); return; }
     const act = e.target.closest('[data-act]');
     if (act) {
       const el = act.closest('[data-field]');
@@ -1662,6 +1880,12 @@ function init(root, cfg, mode) {
     const tgt = e.target;
     if (tgt.type === 'file' || tgt.closest('.af-hp')) return;
     const el = tgt.closest('[data-field]');
+    if (tgt.type === 'tel' && e.inputType && !e.inputType.startsWith('delete') && tgt.selectionStart === tgt.value.length) {
+      const shaped = phoneShape(tgt.value, false);
+      if (shaped !== tgt.value) tgt.value = shaped;
+    }
+    if (tgt.type === 'email' && e.isTrusted) { const p = el?.querySelector('[data-mailfix]'); if (p && !p.hidden) p.hidden = true; }
+    if (tgt.tagName === 'TEXTAREA') grow(tgt);
     liveCheck(el);
     if (tgt.dataset.part === 'line1' && el?.dataset.type === 'address') suggestFor(el, tgt);
     if (el && el.dataset.field === homeAddressId()) scheduleArea();
@@ -1680,6 +1904,8 @@ function init(root, cfg, mode) {
     }
     if (tgt.closest('.af-hp')) return;
     const el = tgt.closest('[data-field]');
+    if (tgt.type === 'tel') { const shaped = phoneShape(tgt.value, true); if (shaped !== tgt.value) tgt.value = shaped; }
+    if (tgt.type === 'email') paintMailFix(tgt);
     liveCheck(el);
     if (el && el.dataset.field === homeAddressId()) scheduleArea();
     if (countyNote && el?.dataset.field === countyNote.field) hideCountyNote();

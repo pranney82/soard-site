@@ -396,6 +396,28 @@ try {
   await next();
   const pErr = await page.$$eval('[data-field^="parent"] .af-error', (els) => els.map((e) => e.textContent).filter(Boolean));
   ok(pErr.some((t) => /valid email/.test(t)) && pErr.some((t) => /10-digit/.test(t)), 'email and phone formats are checked');
+  // Small helps while typing: the phone number takes its shape, a likely email typo gets a one-tap fix
+  await clear('#af-parentPhone');
+  await page.type('#af-parentPhone', '4045550123');
+  ok(await page.$eval('#af-parentPhone', (e) => e.value) === '(404) 555-0123', 'a phone number reads as (404) 555-0123 as it is typed');
+  await type('#af-parentEmail', 'jordan+apply@gmial.com');
+  await page.keyboard.press('Tab');
+  await sleep(150);
+  ok(await visible('[data-field="parentEmail"] [data-mailfix-use]') && /Did you mean/.test(await page.$eval('[data-field="parentEmail"] [data-mailfix]', (e) => e.textContent)), '"gmial.com" gets "Did you mean …@gmail.com?"');
+  await tap('[data-field="parentEmail"] [data-mailfix-use]');
+  ok(await page.$eval('#af-parentEmail', (e) => e.value) === 'jordan+apply@gmail.com' && !(await visible('[data-field="parentEmail"] [data-mailfix]')), 'a tap on it fixes the address, and the note goes');
+  // A second parent waits behind a button until wanted
+  ok(!(await visible('#af-parent2Email')) && await visible('[data-more="parent2"] [data-more-open]'), 'the second parent is tucked behind "Add another parent or guardian"');
+  await tap('[data-more="parent2"] [data-more-open]');
+  await sleep(150);
+  ok(await visible('#af-parent2Email') && await page.evaluate(() => document.activeElement?.id === 'af-parent2Name-first'), 'the button opens it, with the cursor in the first name');
+  await page.type('#af-parent2Name-first', 'Sam');
+  await tap('[data-more="parent2"] [data-more-close]');
+  ok(!(await visible('#af-parent2Email')) && await page.$eval('#af-parent2Name-first', (e) => e.value) === '', 'Remove clears it and tucks it away again');
+  // Down the page, the step follows along at the top
+  await page.$eval('[data-field="ownership"]', (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await sleep(250);
+  ok(await page.$eval('[data-mini]', (e) => e.classList.contains('is-on') && /4\/10/.test(e.textContent) && /Parents/.test(e.textContent)), 'scrolled down, a bar at the top keeps the step in sight');
   await type('#af-parentEmail', 'jordan+apply@example.com');
   await type('#af-parentPhone', '(404) 555-0123');
   await pick('ownership', 'No, the property is rented.');
@@ -735,6 +757,18 @@ try {
   await desk.reload({ waitUntil: 'networkidle0' });
   await sleep(400);
   ok((await stepTitle(desk)) === 'Video', 'resumes on the video page');
+  // A computer: every step beside the card (in place of "All steps"), time left, saving, and help
+  const rail = await desk.evaluate(() => ({
+    shown: !!document.querySelector('[data-rail]').offsetParent,
+    dropdown: !!document.querySelector('[data-steps]').offsetParent,
+    now: document.querySelector('[data-rail-list] [aria-current="step"]')?.textContent || '',
+    open: [...document.querySelectorAll('[data-rail-list] .af-step')].filter((b) => !b.disabled).length,
+    left: document.querySelector('[data-time-left]').textContent,
+    mini: getComputedStyle(document.querySelector('[data-mini]')).display,
+  }));
+  ok(rail.shown && !rail.dropdown && rail.mini === 'none', 'on a computer the steps sit beside the card (no "All steps", no phone bar)');
+  ok(/Video/.test(rail.now) && rail.open >= 8, `the rail marks this step and opens the ones reached (${rail.open})`);
+  ok(/minutes? left/.test(rail.left), `and says about how long is left ("${rail.left}")`);
   ok(await visible('[data-field="video"] .af-drag-hint', desk), 'computers are told they can drag a file in');
   const canRecord = await visible('[data-field="video"] [data-act="record"]', desk);
   if (!canRecord) {
@@ -762,6 +796,9 @@ try {
     await sleep(300);
     ok(/couldn't use your camera/.test(await desk.$eval('[data-field="video"] .af-upload-status', (e) => e.textContent)), 'a blocked camera says so');
   }
+  await desk.click('[data-rail-list] [data-goto="welcome"]');
+  await sleep(400);
+  ok((await stepTitle(desk)) === 'Before You Begin', 'a step in the rail goes straight to it');
   await dCtx.close();
 
   console.log('Screenshots: phone and desktop, light and dark, English and Spanish');
