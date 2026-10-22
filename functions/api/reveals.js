@@ -1,8 +1,11 @@
 /**
- * GET /api/reveals (public) — confirmed upcoming reveals for the kid pages
- * and the events page. See ./_reveals.js for where the dates come from.
+ * GET /api/reveals (public) — upcoming reveals for the kid pages, the events
+ * page, the live page's "Coming up" list and the starting-soon screen. See
+ * ./_reveals.js for where the dates come from and what may be shown.
  *
- * → { reveals: [{ slug, name, startsAt, date, time, image, kidUrl, liveUrl }],
+ * → { reveals: [{ slug, name, startsAt, date, time, image, kidUrl, liveUrl }],   confirmed only
+ *     upcoming: [{ slug, name, confirmed, image, rooms, kidUrl, liveUrl,
+ *                  startsAt, date, time  (confirmed) | window (tentative) }],
  *     updatedAt, source: 'jobtread' | 'cache' | 'none', error? }
  *
  * Cached at the edge for EDGE_TTL seconds so visitors never wait on JobTread;
@@ -28,7 +31,8 @@ export async function onRequestGet(context) {
     if (hit) return hit;
   }
 
-  const body = await getReveals(env);
+  // The past reveals kept for the calendar feed aren't for pages
+  const { past: _past, ...body } = await getReveals(env);
   // Reveal invites safety net: re-check every open job every few hours, after
   // the response, so a missed JobTread webhook can't leave an invite stale
   context.waitUntil(maybeSweep(env));

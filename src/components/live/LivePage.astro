@@ -31,6 +31,7 @@ import PastReveals from './PastReveals.astro';
 import LiveStage from './LiveStage.astro';
 import LiveMessages from './LiveMessages.astro';
 import LiveGive from './LiveGive.astro';
+import UpcomingReveals from './UpcomingReveals.astro';
 
 interface KidLite {
   slug: string; name: string; heroImage: string | null; heroSummary?: string | null; shortDescription?: string | null;
@@ -65,6 +66,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         <a class="btn btn-primary btn-lg hero-glow" href="#remind" data-live="cta-remind" hidden>Remind me</a>
         <a class="btn btn-outline-dark" href="/api/reminders?ics=1" data-live="cta-calendar" hidden>Add to calendar</a>
         <a class="btn btn-outline-dark" href="#messages" data-live="cta-messages" hidden>Leave a message</a>
+        <a class="btn btn-outline-dark" href="#up-next" data-live="cta-next" hidden>See what's coming up</a>
         <a class="btn btn-outline-dark" href="#past-reveals" data-live="cta-past" hidden>Watch past reveals</a>
         <a class="btn btn-outline-dark" href="/donate/?src=live" data-live="cta-donate">Fund the next room</a>
         <button class="btn btn-outline-dark hero-share" type="button" data-live="cta-share" hidden><Fragment set:html={SHARE} /><span data-live="share-label">Share</span></button>
@@ -139,19 +141,22 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   </div>
 </section>
 
-<!-- Leads the page when nothing is scheduled (see .live-page order rules) -->
+<!-- Coming up, then past reveals, lead the page when nothing is scheduled (see .live-page order rules) -->
+<div class="live-next"><UpcomingReveals exclude={kid?.slug} where={kid ? 'live-kid' : 'live'} /></div>
 <div class="live-past"><PastReveals limit={6} /></div>
 <LiveGive />
 </div>
 
 <style>
-  /* ── Page order: past reveals lead when nothing is on, otherwise they close the page ── */
+  /* ── Page order: what's coming up, then past reveals, lead when nothing is on; otherwise they close the page ── */
   .live-page { display: flex; flex-direction: column; }
   .live-page > .hero { order: 0; }
   .live-page > .live-msgs { order: 1; }
-  .live-page > .live-body { order: 3; }
-  .live-page > :global(.live-past) { order: 4; }
-  .live-page[data-view='idle'] > :global(.live-past) { order: 2; }
+  .live-page > .live-body { order: 4; }
+  .live-page > :global(.live-next) { order: 5; }
+  .live-page > :global(.live-past) { order: 6; }
+  .live-page[data-view='idle'] > :global(.live-next) { order: 2; }
+  .live-page[data-view='idle'] > :global(.live-past) { order: 3; }
 
   /* ── Editorial split hero (matches apply/donate) ── */
   .hero {
@@ -331,6 +336,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   import { createMessages } from '../../utils/live-messages';
   import { createGive } from '../../utils/live-give';
   import { cfRaw } from '../../utils/cf-image';
+  import { loadUpcoming, revealWhen, revealIcsUrl, type UpcomingReveal } from '../../utils/reveals-client';
 
   /** The crew may start streaming up to 30 minutes early (runbook), so the starting-soon screen fills that window here too. */
   const SLATE_LEAD_MS = 30 * 60 * 1000;
@@ -369,7 +375,11 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     let display = 'loading';
     let shownKid = pageKid || followKid;
     let viewed = false;
+    let rendered = false;
+    let alive = true;
     const slateFailed = new Set<string>();
+    // What's coming up (JobTread via /api/reveals): the idle hero names the next reveal
+    let upcoming: UpcomingReveal[] = [];
 
     const stage = createStage(stageEl, {
       client,
@@ -458,6 +468,13 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       setAttr(hero, 'data-party', party);
       if (page) page.dataset.view = display;
       follow(s, view);
+      // "Coming up" leaves out the reveal this page is showing
+      const upNext = document.getElementById('up-next');
+      const showing = view !== 'idle' ? kidSlug : '';
+      if (upNext && (upNext.dataset.current || '') !== showing) {
+        upNext.dataset.current = showing;
+        upNext.dispatchEvent(new Event('upnext:current'));
+      }
 
       const eyebrow = q<HTMLElement>('eyebrow');
       const status = q<HTMLElement>('status');
@@ -483,13 +500,21 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         badge = rel ? `Live ${rel}` : 'Coming up';
       } else {
         if (eyebrow) eyebrow.textContent = 'Live reveal';
-        if (status) status.textContent = pageKid ? '' : 'No reveal is scheduled right now. Get a reminder for the next one, and watch the last few while you wait.';
+        if (status) status.textContent = idleStatus();
       }
 
       // CTAs: reminders stop making sense once the starting-soon screen is up
       setHidden(q('cta-remind'), !(display === 'upcoming' || display === 'idle') || !meta.reminders?.enabled);
-      setHidden(q('cta-calendar'), display !== 'upcoming');
-      setHidden(q('cta-past'), view !== 'idle' || !document.getElementById('past-reveals'));
+      // The broadcast's own calendar file once it's scheduled; before that, this kid's confirmed reveal
+      const calCta = q<HTMLAnchorElement>('cta-calendar');
+      const mineSet = pageKid ? upcoming.find((r) => r.slug === pageKid && r.confirmed) : null;
+      if (calCta) {
+        calCta.href = display !== 'upcoming' && mineSet ? revealIcsUrl(mineSet.slug) : '/api/reminders?ics=1';
+        setHidden(calCta, !(display === 'upcoming' || (display === 'idle' && mineSet)));
+      }
+      const showNext = display === 'idle' && upcoming.some((r) => r.slug !== pageKid) && !!document.getElementById('up-next');
+      setHidden(q('cta-next'), !showNext);
+      setHidden(q('cta-past'), view !== 'idle' || showNext || !document.getElementById('past-reveals'));
       setHidden(q('cta-share'), view === 'idle');
       const fbCta = q<HTMLAnchorElement>('cta-facebook');
       if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !((view === 'live' || view === 'replay') && !hasPlayer)); }
@@ -514,6 +539,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       const rh = bq<HTMLElement>('remind-heading');
       if (rh) rh.textContent = view === 'upcoming' && s.kidName ? `Don't miss ${s.kidName}'s reveal` : view === 'replay' ? 'Hear about the next reveal' : 'Never miss a reveal';
 
+      rendered = true;
       if (!viewed) {
         viewed = true;
         const src = new URLSearchParams(location.search).get('src') || '';
@@ -521,6 +547,24 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         if (src === 'qr') client.beacon('qr_scan', { kid: s.kidSlug || '' });
       }
     }
+
+    /** Between reveals: when this kid's reveal is, or which reveal is next */
+    function idleStatus() {
+      if (pageKid) {
+        const mine = upcoming.find((r) => r.slug === pageKid);
+        if (!mine) return '';
+        return mine.confirmed
+          ? `${mine.name}'s reveal is ${revealWhen(mine)}.`
+          : `${mine.name}'s reveal is planned for ${mine.window.label}. The exact day and time go up here as soon as they're set.`;
+      }
+      const next = upcoming[0];
+      if (!next) return 'No reveal is scheduled right now. Get a reminder for the next one, and watch the last few while you wait.';
+      return `Next up: ${next.name}'s reveal, ${next.confirmed ? revealWhen(next) : next.window.label}.`;
+    }
+    loadUpcoming().then((list) => {
+      upcoming = list;
+      if (alive && rendered && last) render(last, lastMeta);
+    });
 
     // Beacons on the primary actions
     q('cta-facebook')?.addEventListener('click', () => client.beacon('click_facebook'));
@@ -680,6 +724,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     // Keeps the countdown fresh and opens the starting-soon window on time
     const countdown = setInterval(() => { if (last?.upcoming) render(last, { reminders: client.reminders }); }, 15_000);
     return () => {
+      alive = false;
       unsubscribe();
       window.removeEventListener('message', onCheckMessage);
       clearInterval(countdown);

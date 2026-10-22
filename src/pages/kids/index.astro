@@ -1440,6 +1440,48 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   document.addEventListener('astro:before-swap', cleanupKidsIndex);
 </script>
 
+<script>
+  /* ── Reveal timing on kids in build (JobTread via /api/reveals) ──
+     A Building badge becomes "Reveal mid Nov" (tentative: a third of the
+     month, never a day) or "Reveal Nov 25" (confirmed), on the cards already
+     there and on any the page adds later (the rest load as you scroll). */
+  import { loadUpcoming, revealShortDate, windowShort, type UpcomingReveal } from '../../utils/reveals-client';
+
+  const CALENDAR = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>';
+  const badgeText = (r: UpcomingReveal) => r.confirmed
+    ? `Reveal ${revealShortDate(r)}`
+    : `Reveal ${windowShort(r.window).replace(/^\w/, (c) => c.toLowerCase())}`;
+
+  let observer: MutationObserver | null = null;
+
+  function patch(cards: Iterable<Element>, bySlug: Map<string, UpcomingReveal>) {
+    for (const card of cards) {
+      const slug = (card.getAttribute('href') || '').match(/^\/kids\/([^/]+)\/$/)?.[1];
+      const r = slug ? bySlug.get(slug) : undefined;
+      const badge = card.querySelector<HTMLElement>('.kid-card__badge--building');
+      if (!r || !badge || badge.dataset.reveal) continue;
+      badge.dataset.reveal = '1';
+      badge.innerHTML = `${CALENDAR}${badgeText(r)}`;
+    }
+  }
+
+  async function showRevealTiming() {
+    observer?.disconnect();
+    const grid = document.getElementById('kids-grid');
+    if (!grid || !grid.querySelector('.kid-card__badge--building')) return;
+    const bySlug = new Map((await loadUpcoming()).map((r) => [r.slug, r]));
+    if (!bySlug.size || !grid.isConnected) return;
+    patch(grid.querySelectorAll('a.kid-card'), bySlug);
+    observer = new MutationObserver((records) => {
+      for (const rec of records) patch([...rec.addedNodes].filter((n): n is Element => n instanceof Element && n.matches('a.kid-card')), bySlug);
+    });
+    observer.observe(grid, { childList: true });
+  }
+
+  document.addEventListener('astro:page-load', showRevealTiming);
+  document.addEventListener('astro:before-swap', () => { observer?.disconnect(); observer = null; });
+</script>
+
 <!-- Cursor glow: warm light follows mouse across card frames -->
 <script>
   function initCursorGlow() {

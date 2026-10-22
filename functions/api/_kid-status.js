@@ -23,7 +23,7 @@
  * a task finished) for one job at a time, and swept every hour from the
  * live hub heartbeat and /api/reveals as a safety net.
  */
-import { JT_URL, SOARD_ORG_ID, matchKid } from './_reveals.js';
+import { JT_URL, SOARD_ORG_ID, matchKid, BUILDING_STATUSES as BUILDING } from './_reveals.js';
 import { EXTRACTORS, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit, diffJson } from './_audit.js';
@@ -42,7 +42,6 @@ const MAX_PAGES = 8;
 const SITE = 'https://sunshineonaranneyday.com';
 const DEFAULT_ALERT_EMAILS = ['peter@soardcharity.com'];
 
-const BUILDING = new Set(['Design', 'Finalization', 'Approval', 'Mobilization', 'Build']);
 const DONE = new Set(['Closed Done', 'Warranty']);
 
 /**

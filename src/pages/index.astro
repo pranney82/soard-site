@@ -13,6 +13,8 @@ import { getSiteStats } from '../utils/stats';
 import { getPublishedKids } from '../utils/collections';
 
 import { CF_BASE as CF, cfId as extractCfId, cfRaw, cfSrcset, cfLqip, withFocus } from '../utils/cf-image';
+import { revealDateLine } from '../utils/reveals-client';
+import { upcomingAtBuild } from '../utils/reveals-copy';
 
 /* ── Site settings (all editable from admin) ── */
 import siteSettings from '../content/site/settings.json';
@@ -110,11 +112,15 @@ const heroSrcset = `${heroImg320} 320w, ${heroImg480} 480w, ${heroImg640} 640w, 
 const heroSizes = '(max-width:480px) 80vw, (max-width:768px) 60vw, 530px';
 
 /* ── "Up Next" strip (admin: Site Config → Kids on Site → Up Next Strip) ──
-   auto   → the kid currently in build (pinned via upNext.kidSlug, else the first
-            "in-progress" kid); if none, the next upcoming event
+   auto   → the kid currently in build (pinned via upNext.kidSlug, else the one
+            whose reveal is next in JobTread, else the first "in-progress" kid),
+            dated from JobTread ("Reveal mid November", then the day once it's
+            confirmed; the page refreshes it live) unless upNext.dateText says
+            otherwise; if no kid is in build, the next upcoming event
    manual → everything typed in admin
    off    → strip hidden */
-type UpNext = { label: string; headline: string; body: string; date: string; photoId: string; ctaLabel: string; ctaLink: string; external: boolean };
+type UpNext = { label: string; headline: string; body: string; date: string; photoId: string; ctaLabel: string; ctaLink: string; external: boolean; revealKid?: string };
+const upcomingReveals = upcomingAtBuild();
 const un = (siteSettings as any).upNext || {};
 const upNextMode: string = un.mode || 'auto';
 let upNext: UpNext | null = null;
@@ -133,16 +139,20 @@ if (upNextMode === 'manual' && un.headline) {
   const inBuild = allKids
     .filter(k => k.data.status === 'in-progress')
     .sort((a, b) => (a.data.sortOrder ?? 9999) - (b.data.sortOrder ?? 9999) || a.data.name.localeCompare(b.data.name));
-  const building = (un.kidSlug && inBuild.find(k => k.data.slug === un.kidSlug)) || inBuild[0];
+  const nextUp = upcomingReveals.map(r => inBuild.find(k => k.data.slug === r.slug)).find(Boolean);
+  const building = (un.kidSlug && inBuild.find(k => k.data.slug === un.kidSlug)) || nextUp || inBuild[0];
   if (building) {
     const k = building.data;
+    const reveal = upcomingReveals.find(r => r.slug === k.slug);
     const rooms = (k.roomTypes || []).map(r => r.toLowerCase());
     const what = rooms.length > 1 ? `${rooms.slice(0, -1).join(', ')} and ${rooms[rooms.length - 1]}` : (rooms[0] || 'dream room');
     upNext = {
       label: 'Now Building',
       headline: `${k.name}'s ${what}`,
       body: k.shortDescription || k.heroSummary || '',
-      date: un.dateText || 'Reveal coming soon',
+      date: un.dateText || (reveal ? revealDateLine(reveal) : 'Reveal coming soon'),
+      // The date line follows JobTread live unless staff typed their own
+      revealKid: un.dateText ? undefined : k.slug,
       photoId: extractCfId(k.heroImage || '') || `kids/${k.slug}/hero`,
       ctaLabel: `Meet ${k.name}`,
       ctaLink: `/kids/${k.slug}/`,
@@ -230,7 +240,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
           <div class="upnext-body">
             <div class="upnext-top">
               <span class="upnext-label"><span class="upnext-pulse" aria-hidden="true"></span>{upNext.label}</span>
-              {upNext.date && <span class="upnext-date">{upNext.date}</span>}
+              {upNext.date && <span class="upnext-date" data-reveal-kid={upNext.revealKid}>{upNext.date}</span>}
             </div>
             <h2 id="upnext-heading" class="upnext-headline">{upNext.headline}</h2>
             {upNext.body && <p class="upnext-text">{upNext.body}</p>}
@@ -1139,4 +1149,23 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     });
   }
   document.addEventListener('astro:page-load', initHomeKidTransitions);
+</script>
+
+<script>
+  /* ── Up Next strip: the reveal date line follows JobTread live ──
+     The build wrote it from the last copy; a date set or moved since shows here
+     without a rebuild ("Reveal mid November", then the day once it's confirmed). */
+  import { loadUpcoming, revealDateLine } from '../utils/reveals-client';
+
+  async function refreshUpNextDate() {
+    const el = document.querySelector<HTMLElement>('.upnext-date[data-reveal-kid]');
+    const slug = el?.dataset.revealKid;
+    if (!el || !slug) return;
+    const list = await loadUpcoming();
+    const r = list.find((x) => x.slug === slug);
+    // An empty list may just be a failed request: then the built line stays
+    if (!el.isConnected || (!r && !list.length)) return;
+    el.textContent = r ? revealDateLine(r) : 'Reveal coming soon';
+  }
+  document.addEventListener('astro:page-load', refreshUpNextDate);
 </script>

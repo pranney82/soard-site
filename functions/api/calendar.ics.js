@@ -33,32 +33,11 @@
 import { verifyCalendarParams, SITE_URL } from './_calendar-links.js';
 import { easternParts, easternToUtcIso, normalizeName, getReveals, todayEastern } from './_reveals.js';
 import { limit } from './_rate-limit.js';
+import { ical, fold } from './_ics.js';
 
 const PRODID = '-//Sunshine on a Ranney Day//Reveal Invite//EN';
 const REVEAL_MINUTES = 120;              // the reveal email's own default length
 const REVEAL_CACHE_FRESH_MS = 15 * 60 * 1000;
-
-/** Escape per RFC 5545 §3.3.11 — for SUMMARY/LOCATION/DESCRIPTION. */
-function ical(text) {
-  return String(text || '')
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\r\n|\n|\r/g, '\\n');
-}
-
-/** Fold a single content line to ≤75 octets per RFC 5545 §3.1. */
-function fold(line) {
-  if (line.length <= 75) return line;
-  const out = [];
-  let i = 0;
-  while (i < line.length) {
-    const chunk = line.slice(i, i + (i === 0 ? 75 : 74));
-    out.push(i === 0 ? chunk : ' ' + chunk);
-    i += chunk.length;
-  }
-  return out.join('\r\n');
-}
 
 function isCompactDateTime(s) { return /^\d{8}T\d{6}Z$/.test(s); }
 function isCompactDate(s) { return /^\d{8}$/.test(s); }

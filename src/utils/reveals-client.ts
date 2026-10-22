@@ -1,7 +1,8 @@
 /**
- * Confirmed reveal dates for public pages (kid pages, events page).
- * Data comes from /api/reveals, which reads JobTread; see
- * functions/api/_reveals.js. Only confirmed reveals are ever returned.
+ * Reveal dates for public pages (kid pages, events page, the live page's
+ * "Coming up" list, the starting-soon screen). Data comes from /api/reveals,
+ * which reads JobTread; see functions/api/_reveals.js. A confirmed reveal
+ * has its day and time; a tentative one only "early/mid/late <month>".
  */
 
 export interface Reveal {
@@ -15,21 +16,80 @@ export interface Reveal {
   liveUrl: string;
 }
 
+/** A third of a month, the only timing a tentative reveal ever shows */
+export interface RevealWindow {
+  part: 'early' | 'mid' | 'late';
+  month: string;         // YYYY-MM
+  through: string;       // YYYY-MM-DD, the window's last day
+  label: string;         // "mid November" ("early January 2027" in another year)
+}
+
+/** One entry in the upcoming list: a confirmed reveal, or a tentative one with only its window */
+export type UpcomingReveal =
+  | (Reveal & { confirmed: true; rooms: string[] })
+  | { slug: string; name: string; confirmed: false; window: RevealWindow; image: string | null; kidUrl: string; liveUrl: string; rooms: string[] };
+
+interface Schedule { reveals: Reveal[]; upcoming: UpcomingReveal[] }
+
 const TZ = 'America/New_York';
-let pending: Promise<Reveal[]> | null = null;
+let pending: Promise<Schedule> | null = null;
 let pendingAt = 0;
 
 /** One request per page view (re-fetched after a minute for long-lived tabs). Never rejects. */
-export function loadReveals(): Promise<Reveal[]> {
+function loadSchedule(): Promise<Schedule> {
   if (!pending || Date.now() - pendingAt > 60_000) {
     pendingAt = Date.now();
     pending = fetch('/api/reveals', { headers: { Accept: 'application/json' } })
-      .then(r => (r.ok ? r.json() : { reveals: [] }))
-      .then(body => (Array.isArray(body?.reveals) ? body.reveals as Reveal[] : []))
-      .catch(() => []);
+      .then(r => (r.ok ? r.json() : {}))
+      .then((body: { reveals?: unknown; upcoming?: unknown }) => {
+        const reveals = Array.isArray(body?.reveals) ? body.reveals as Reveal[] : [];
+        const upcoming = Array.isArray(body?.upcoming) ? body.upcoming as UpcomingReveal[] : reveals.map(r => ({ ...r, confirmed: true as const, rooms: [] }));
+        return { reveals, upcoming };
+      })
+      .catch(() => ({ reveals: [], upcoming: [] }));
   }
   return pending;
 }
+
+/** Confirmed reveals only, soonest first */
+export function loadReveals(): Promise<Reveal[]> {
+  return loadSchedule().then(s => s.reveals);
+}
+
+/** Everything coming up, confirmed and tentative, soonest first */
+export function loadUpcoming(): Promise<UpcomingReveal[]> {
+  return loadSchedule().then(s => s.upcoming);
+}
+
+/** "mid November" → "Mid November" */
+export const windowTitle = (w: RevealWindow) => w.label.charAt(0).toUpperCase() + w.label.slice(1);
+
+/** "Mid Nov" for tight spaces */
+export function windowShort(w: RevealWindow): string {
+  const [y, m] = w.month.split('-').map(Number);
+  const mon = new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+  return `${w.part.charAt(0).toUpperCase()}${w.part.slice(1)} ${mon}`;
+}
+
+// ─── The reveal calendar people subscribe to (functions/api/reveals.ics.js) ───
+export const FEED_PATH = '/api/reveals.ics';
+export const CALENDAR_NAME = 'Sunshine on a Ranney Day reveals';
+const SITE = 'https://sunshineonaranneyday.com';
+
+/** Where each calendar app subscribes, and the plain address to paste anywhere else */
+export function subscribeLinks(origin = SITE) {
+  const https = `${origin}${FEED_PATH}`;
+  const webcal = https.replace(/^https?:/, 'webcal:');
+  return {
+    apple: webcal,
+    google: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`,
+    outlook: `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=${encodeURIComponent(CALENDAR_NAME)}`,
+    copy: https,
+  };
+}
+
+/** One confirmed reveal as a calendar file */
+export const revealIcsUrl = (slug: string) => `${FEED_PATH}?reveal=${encodeURIComponent(slug)}`;
 
 // Date-only values are formatted at noon UTC so no time zone can shift the day
 const dayDate = (r: Reveal) => new Date(`${r.date}T12:00:00Z`);
@@ -59,24 +119,7 @@ export function revealWhen(r: Reveal, style: 'long' | 'short' = 'long'): string 
   return t ? `${revealDay(r, style)} at ${t}` : revealDay(r, style);
 }
 
-/** Google Calendar link for watching online: the event's location is the live page */
-export function revealCalendarUrl(r: Reveal, origin = location.origin): string {
-  const live = new URL(r.liveUrl, origin).toString();
-  const compact = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  let dates: string;
-  if (r.time) {
-    const start = new Date(r.startsAt);
-    dates = `${compact(start)}/${compact(new Date(start.getTime() + 60 * 60 * 1000))}`;
-  } else {
-    const next = new Date(dayDate(r).getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    dates = `${r.date.replace(/-/g, '')}/${next.replace(/-/g, '')}`;
-  }
-  const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: `${r.name}'s Room Reveal (watch live)`,
-    dates,
-    details: `Watch ${r.name} see the finished room for the first time: ${live}`,
-    location: live,
-  });
-  return `https://calendar.google.com/calendar/render?${params}`;
+/** A one-line reveal date: "Reveal mid November", or "Reveal Tuesday, November 25" once confirmed */
+export function revealDateLine(r: UpcomingReveal): string {
+  return r.confirmed ? `Reveal ${revealDay(r)}` : `Reveal ${r.window.label}`;
 }

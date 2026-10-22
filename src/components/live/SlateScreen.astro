@@ -15,7 +15,9 @@
  * bottom ~20%).
  *
  * Live data: the scheduled time and the admin-picked photo come from the
- * shared live client, so rescheduling needs no rebuild. In the final hour
+ * shared live client, so rescheduling needs no rebuild. A "Coming up next"
+ * card joins the rotation with the reveals after this one, from
+ * /api/reveals (tentative ones only as "Mid November"). In the final hour
  * the start time becomes a running clock; music (MUSIC_URL, loaded by Larix
  * when the layer has "Play media" on) fades out when the clock reaches zero
  * so it never plays over the reveal.
@@ -65,6 +67,9 @@ const cards = [
     ? { key: 'story', kicker: `Meet ${kid.name}`, text: `Scan to read ${possessive} story, or visit`, url: `sunshineonaranneyday.com/kids/${kid.slug}`, qr: qr(`${SITE}/kids/${kid.slug}/?src=slate`) }
     : { key: 'story', kicker: 'Meet the kids', text: 'Scan to see every room we have built, or visit', url: 'sunshineonaranneyday.com/kids', qr: qr(`${SITE}/kids/?src=slate`) },
 ];
+
+// The reveals after this one, filled in from /api/reveals; the code opens the list and the calendar
+const nextQr = qr(`${SITE}/live/?src=slate-next#up-next`);
 
 const photoSrc = {
   landscape: cfRaw(photo, 'w=1400,h=1750,fit=cover,gravity=face,q=88'),
@@ -134,6 +139,17 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
           </div>
         </div>
       ))}
+      <div class="card card--next" data-card="next" hidden>
+        <svg class="qr" viewBox={`-2 -2 ${nextQr.n + 4} ${nextQr.n + 4}`} shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="-2" y="-2" width={nextQr.n + 4} height={nextQr.n + 4} fill="#fff" />
+          <path d={nextQr.d} fill="#373A36" />
+        </svg>
+        <div class="card-text">
+          <p class="card-kicker">Coming up next</p>
+          <ul class="card-next" data-next-list></ul>
+          <p class="card-url">sunshineonaranneyday.com/<wbr />live</p>
+        </div>
+      </div>
     </div>
 
     {band.length > 0 && (
@@ -155,6 +171,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
   <script>
     import { getLiveClient, type LiveState } from '../../utils/live-client';
     import { cfRaw } from '../../utils/cf-image';
+    import { loadUpcoming, windowTitle, revealDay } from '../../utils/reveals-client';
 
     const body = document.body;
     const canvas = document.getElementById('canvas')!;
@@ -314,14 +331,34 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       if (kidSlug && !params.get('photo') && s.image) setPhoto(s.image);
     });
 
+    // ── Coming up next: the reveals after this one, joining the rotation once there are any ──
+    loadUpcoming().then((list) => {
+      const next = list.filter((r) => r.slug !== kidSlug).slice(0, 3);
+      const card = document.querySelector<HTMLElement>('[data-card="next"]');
+      const ul = card?.querySelector('[data-next-list]');
+      if (!card || !ul || !next.length) return;
+      ul.replaceChildren(...next.map((r) => {
+        const li = document.createElement('li');
+        const name = document.createElement('b');
+        name.textContent = r.name;
+        const when = document.createElement('span');
+        when.textContent = r.confirmed ? revealDay(r, 'short') : windowTitle(r.window);
+        li.append(name, when);
+        return li;
+      }));
+      card.hidden = false;
+    });
+
     // ── Info cards rotate every 10 s ──
-    const cards = [...document.querySelectorAll<HTMLElement>('.card')];
-    let i = 0;
-    if (cards.length > 1 && !body.classList.contains('still')) {
+    let shown = document.querySelector<HTMLElement>('.card.is-on');
+    if (!body.classList.contains('still')) {
       setInterval(() => {
-        cards[i].classList.remove('is-on');
-        i = (i + 1) % cards.length;
-        cards[i].classList.add('is-on');
+        const cards = [...document.querySelectorAll<HTMLElement>('.card:not([hidden])')];
+        if (cards.length < 2 || !shown) return;
+        const next = cards[(cards.indexOf(shown) + 1) % cards.length];
+        shown.classList.remove('is-on');
+        next.classList.add('is-on');
+        shown = next;
       }, 10_000);
     }
   </script>
@@ -476,6 +513,15 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       opacity: 0; transform: translateY(14px); transition: opacity 0.8s var(--ease), transform 0.8s var(--ease);
     }
     .card.is-on { opacity: 1; transform: none; }
+    .card[hidden] { display: none; }
+    /* Coming up next: name, then when */
+    .card-next { list-style: none; margin: 2px 0 10px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 22px; line-height: 1.3; }
+    .card-next li { display: contents; }
+    .card-next b { font-weight: 700; color: var(--c-text); white-space: nowrap; }
+    .card-next span { color: var(--c-text-muted); white-space: nowrap; }
+    .card-next span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); margin-right: 12px; vertical-align: 2px; }
+    .card--next .card-kicker { margin-bottom: 6px; }
+    body[data-o='portrait'] .card-next { font-size: 21px; }
     .qr { width: 168px; height: 168px; flex-shrink: 0; border-radius: 10px; }
     .card-text { min-width: 0; }
     .for-tv, body.tv .for-stream { display: none; }

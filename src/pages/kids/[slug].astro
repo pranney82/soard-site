@@ -2312,11 +2312,12 @@ const planOrientation = (() => {
 </script>
 
 <script>
-  /* ── Confirmed reveal day (live from JobTread via /api/reveals) ──
-     The Building badge becomes "Reveal Oct 27" with a calendar icon, and a
-     link to the live page appears under the meta row. Completed kids skip
-     the request. */
-  import { loadReveals, revealShortDate, revealWhen } from '../../utils/reveals-client';
+  /* ── Reveal day (live from JobTread via /api/reveals) ──
+     Confirmed: the Building badge becomes "Reveal Oct 27" with a calendar
+     icon, and a link to the live page appears under the meta row.
+     Tentative: the same, with only the third of the month ("Reveal mid
+     Nov", "Reveal planned for mid November"). Completed kids skip the request. */
+  import { loadUpcoming, revealShortDate, revealWhen, windowShort } from '../../utils/reveals-client';
 
   const CALENDAR_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>';
 
@@ -2324,13 +2325,14 @@ const planOrientation = (() => {
     const hero = document.querySelector<HTMLElement>('[data-kid-slug]');
     if (!hero || hero.dataset.kidStatus === 'completed') return;
     const slug = hero.dataset.kidSlug;
-    const reveal = (await loadReveals()).find(r => r.slug === slug);
+    const reveal = (await loadUpcoming()).find(r => r.slug === slug);
     // The visitor may have navigated away while the request was in flight
     if (!reveal || !hero.isConnected) return;
 
     const badge = hero.querySelector('[data-kid-reveal-badge]');
     if (badge) {
-      badge.textContent = `Reveal ${revealShortDate(reveal)}`;
+      // "Reveal Oct 27", or "Reveal mid Nov"
+      badge.textContent = reveal.confirmed ? `Reveal ${revealShortDate(reveal)}` : `Reveal ${windowShort(reveal.window).replace(/^\w/, (c) => c.toLowerCase())}`;
       badge.parentElement?.querySelector('svg')?.insertAdjacentHTML('afterend', CALENDAR_ICON);
       badge.parentElement?.querySelector('svg')?.remove();
     }
@@ -2340,8 +2342,13 @@ const planOrientation = (() => {
       const link = document.createElement('a');
       link.className = 'hero__reveal-day';
       link.href = reveal.liveUrl;
-      link.textContent = `Reveal day: ${revealWhen(reveal, 'short')}`;
-      link.setAttribute('aria-label', `${reveal.name}'s reveal day is ${revealWhen(reveal)}. Watch it live.`);
+      if (reveal.confirmed) {
+        link.textContent = `Reveal day: ${revealWhen(reveal, 'short')}`;
+        link.setAttribute('aria-label', `${reveal.name}'s reveal day is ${revealWhen(reveal)}. Watch it live.`);
+      } else {
+        link.textContent = `Reveal planned for ${reveal.window.label}`;
+        link.setAttribute('aria-label', `${reveal.name}'s reveal is planned for ${reveal.window.label}, streamed live. See the live page.`);
+      }
       meta.after(link);
     }
   }

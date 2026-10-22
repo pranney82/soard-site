@@ -105,7 +105,8 @@ const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo'
 // Routes public for reads only — GET/HEAD skip auth, mutations still require Access.
 // fb-live-videos returns only the page's public video permalinks (never the token),
 // so it's safe to read anonymously; responses are cached in the function.
-const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos', '/api/broadcast', '/api/reveals'];
+// reveals.ics is the reveal calendar people subscribe to (confirmed reveals only, never an address).
+const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos', '/api/broadcast', '/api/reveals', '/api/reveals.ics'];
 
 // A board or team member sending their own bio (/profile-update/): keyed by an
 // unguessable link token checked inside the handler, rate limited below, and

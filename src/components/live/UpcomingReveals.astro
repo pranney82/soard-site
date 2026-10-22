@@ -1,0 +1,504 @@
+---
+/**
+ * UpcomingReveals.astro — "Coming up": the next reveals, in date order
+ * =====================================================================
+ * On /live/ (it leads the page between reveals) and the events page.
+ * Filled in the browser from /api/reveals (JobTread, edge-cached), so a date
+ * set or moved in JobTread shows within minutes, with no rebuild. Hidden
+ * until there's a reveal to show; no placeholder while it loads.
+ *
+ * A confirmed reveal shows its day and time, "Watch live" and its own
+ * calendar file. A tentative one shows only its third of the month, "Mid
+ * November", on a three-part month bar, never a day (Peter, Oct 22 2026).
+ * The calendar panel subscribes people to /api/reveals.ics, so each reveal
+ * lands in their own calendar, with its live link, as soon as its day is set.
+ *
+ * A timeline: the "when" in a column, a dot on a line, the kid beside it.
+ * On a phone the when sits above each card and the calendar panel follows
+ * the list. Motion: the line draws, rows rise in turn, the month bar fills;
+ * all of it off with reduced motion.
+ */
+import { subscribeLinks } from '../../utils/reveals-client';
+
+interface Props {
+  /** Heading HTML (fixed strings from the page; <em> gets the marker) */
+  heading?: string;
+  lead?: string;
+  label?: string;
+  /** A kid left out of the list (the live page's own kid, whose timing its hero shows) */
+  exclude?: string | null;
+  /** Where clicks are counted from (broadcast History) */
+  where?: string;
+  id?: string;
+}
+
+const {
+  heading = 'The next rooms to <em>reveal</em>',
+  lead = 'These families are in the middle of their builds. Each reveal gets its exact day and time once the build is close, and every one streams live right here.',
+  label = 'Coming up',
+  exclude = null,
+  where = 'up-next',
+  id = 'up-next',
+} = Astro.props;
+
+const links = subscribeLinks();
+---
+
+<section class="upn" id={id} data-upnext data-exclude={exclude || ''} data-where={where} hidden aria-labelledby={`${id}-title`}>
+  <div class="upn__bg" aria-hidden="true"><div class="upn__glow"></div></div>
+  <div class="container upn__grid">
+    <div class="upn__side">
+      <div class="upn__intro">
+        <p class="section-label section-label--yellow upn__label">{label}</p>
+        <h2 id={`${id}-title`} class="upn__title" set:html={heading} />
+        <p class="upn__lead">{lead}</p>
+      </div>
+
+      <div class="upn-cal" data-upn-cal>
+        <div class="upn-cal__head">
+          <span class="upn-cal__icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
+          </span>
+          <div>
+            <h3 class="upn-cal__title">Get every reveal in your calendar</h3>
+            <p class="upn-cal__text">Add our reveal calendar once. Each reveal shows up with its day, time and live link as soon as it's set, and moves on its own if plans change.</p>
+          </div>
+        </div>
+        <div class="upn-cal__options" data-upn-options>
+          <a class="upn-cal__opt" data-how="apple" href={links.apple}>Apple Calendar</a>
+          <a class="upn-cal__opt" data-how="google" href={links.google} target="_blank" rel="noopener">Google Calendar</a>
+          <a class="upn-cal__opt" data-how="outlook" href={links.outlook} target="_blank" rel="noopener">Outlook</a>
+          <button class="upn-cal__opt" data-how="copy" data-link={links.copy} type="button"><span data-copy-label>Copy link</span></button>
+        </div>
+        <p class="upn-cal__note" data-upn-note role="status" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <ol class="upn__list" data-upn-list aria-label="Upcoming reveals"></ol>
+  </div>
+</section>
+
+<style>
+  /* ── Section: a dark band, so the schedule reads apart from the cream and white around it ── */
+  .upn {
+    --upn-ink: var(--c-cream);
+    --upn-muted: rgba(254, 252, 245, 0.68);
+    --upn-faint: rgba(254, 252, 245, 0.14);
+    --upn-card: rgba(255, 255, 255, 0.045);
+    --upn-card-hover: rgba(255, 255, 255, 0.08);
+    --upn-line: rgba(255, 218, 36, 0.28);
+    --upn-when: 150px;
+    --upn-node: 28px;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    /* No overflow clipping here: it would stop the intro column from sticking (the glow clips itself) */
+    position: relative; isolation: isolate;
+    background: var(--c-dark-deep); color: var(--upn-ink);
+    padding-block: clamp(64px, 8vw, 112px);
+    /* The page's scroll-padding already clears the header plus 1rem; the dark band lands flush under the header */
+    scroll-margin-top: -1rem;
+  }
+  .upn[hidden] { display: none; }
+  .upn__bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+  .upn__glow {
+    position: absolute; width: 900px; height: 900px; left: -320px; top: -360px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 218, 36, 0.12) 0%, rgba(255, 218, 36, 0.04) 42%, transparent 68%);
+    pointer-events: none;
+  }
+  .upn__grid {
+    display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: clamp(40px, 6vw, 96px); align-items: start;
+  }
+  .upn__side { position: sticky; top: calc(var(--header-height) + 32px); display: grid; gap: 32px; }
+
+  /* ── Intro ── */
+  .upn__label { color: var(--c-yellow); }
+  .upn__title {
+    margin: 0; color: var(--upn-ink);
+    font-size: clamp(2rem, 3.6vw, 3rem); letter-spacing: -0.03em; line-height: 1.08;
+  }
+  .upn__title :global(em) {
+    font-style: italic; background-image: linear-gradient(transparent 58%, rgba(255, 218, 36, 0.38) 58%, rgba(255, 218, 36, 0.38) 92%, transparent 92%);
+    background-repeat: no-repeat; background-size: 0% 100%; padding: 0 0.05em;
+    transition: background-size 1.1s var(--ease) 0.35s;
+  }
+  .upn.is-in .upn__title :global(em) { background-size: 100% 100%; }
+  .upn__lead { margin: 18px 0 0; color: var(--upn-muted); font-size: clamp(15px, 1.4vw, 17px); line-height: 1.7; max-width: 460px; }
+
+  /* ── Calendar panel ── */
+  .upn-cal {
+    background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 20px; padding: 24px;
+  }
+  .upn-cal__head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
+  .upn-cal__icon {
+    flex-shrink: 0; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+    background: var(--c-yellow); color: var(--c-dark-deep);
+  }
+  .upn-cal__title { margin: 0 0 6px; font-family: var(--font-body); font-size: 17px; font-weight: 700; letter-spacing: -0.005em; color: var(--upn-ink); }
+  .upn-cal__text { margin: 0; color: var(--upn-muted); font-size: 14.5px; line-height: 1.6; }
+  .upn-cal__options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .upn-cal__opt {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 10px 14px;
+    border-radius: 100px; border: 1.5px solid rgba(254, 252, 245, 0.22); background: transparent;
+    font: inherit; font-size: 14.5px; font-weight: 700; color: var(--upn-ink); text-decoration: none; cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.3s var(--ease);
+  }
+  .upn-cal__opt:hover { border-color: var(--c-yellow); background: rgba(255, 218, 36, 0.08); transform: translateY(-1px); }
+  .upn-cal__opt:active { transform: scale(0.98); transition-duration: 80ms; }
+  .upn-cal__opt:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
+  /* The one that fits this device leads, in yellow */
+  .upn-cal__opt.is-pick { background: var(--c-yellow); border-color: var(--c-yellow); color: var(--c-dark-deep); }
+  .upn-cal__opt.is-pick:hover { background: var(--c-yellow-hover); border-color: var(--c-yellow-hover); }
+  .upn-cal__opt.is-done { border-color: var(--c-yellow); color: var(--c-yellow); }
+  .upn-cal__note { margin: 12px 0 0; min-height: 0; color: var(--upn-muted); font-size: 13.5px; line-height: 1.55; }
+  .upn-cal__note:empty { display: none; }
+
+  /* ── Timeline ── */
+  .upn__list { position: relative; list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+  /* The line runs through the dots, from the first to the last */
+  .upn__list::before {
+    content: ''; position: absolute; left: calc(var(--upn-when) + var(--upn-node) / 2 - 1px); width: 2px;
+    top: var(--upn-line-top, 40px); bottom: var(--upn-line-bottom, 40px);
+    background: linear-gradient(var(--upn-line), var(--upn-line) 85%, transparent);
+    transform-origin: top; transform: scaleY(0); transition: transform 1.2s var(--ease) 0.15s;
+  }
+  .upn.is-in .upn__list::before { transform: scaleY(1); }
+
+  :global(.upn-row) {
+    display: grid; grid-template-columns: var(--upn-when) var(--upn-node) minmax(0, 1fr); align-items: center;
+    opacity: 0; transform: translateY(18px);
+    transition: opacity 0.7s var(--ease), transform 0.7s var(--ease);
+    transition-delay: calc(0.25s + var(--i, 0) * 0.09s);
+  }
+  .upn.is-in :global(.upn-row) { opacity: 1; transform: none; }
+
+  /* When */
+  :global(.upn-when) { padding-right: 18px; text-align: right; }
+  :global(.upn-when__top) { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c-yellow); }
+  :global(.upn-when__main) { margin: 4px 0 0; font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: -0.02em; line-height: 1.15; color: var(--upn-ink); white-space: nowrap; }
+  :global(.upn-when__sub) { margin: 4px 0 0; font-size: 13.5px; color: var(--upn-muted); }
+  /* A month in thirds; the reveal's third fills in */
+  :global(.upn-month) { display: inline-flex; gap: 4px; margin-top: 10px; }
+  :global(.upn-month span) { position: relative; width: 22px; height: 4px; border-radius: 4px; background: var(--upn-faint); overflow: hidden; }
+  :global(.upn-month span.is-on)::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--c-yellow);
+    transform-origin: left; transform: scaleX(0); transition: transform 0.8s var(--ease);
+    transition-delay: calc(0.65s + var(--i, 0) * 0.09s);
+  }
+  .upn.is-in :global(.upn-month span.is-on)::after { transform: scaleX(1); }
+
+  /* Dot */
+  :global(.upn-node) { position: relative; justify-self: center; width: 14px; height: 14px; border-radius: 50%; background: var(--c-dark-deep); border: 2px solid var(--c-yellow); }
+  :global(.upn-row[data-state='confirmed'] .upn-node) { background: var(--c-yellow); box-shadow: 0 0 0 5px rgba(255, 218, 36, 0.16); }
+  :global(.upn-row.is-next .upn-node)::after {
+    content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--c-yellow); opacity: 0;
+    animation: upn-ping 2.4s cubic-bezier(0, 0, 0.2, 1) 1.4s infinite;
+  }
+  @keyframes upn-ping { 0% { transform: scale(0.6); opacity: 0.85; } 70%, 100% { transform: scale(1.7); opacity: 0; } }
+
+  /* Card */
+  :global(.upn-card) {
+    position: relative; display: flex; align-items: center; gap: 18px; min-width: 0;
+    padding: 14px 20px 14px 14px; border-radius: 20px;
+    background: var(--upn-card); border: 1px solid rgba(255, 255, 255, 0.07);
+    transition: background 0.3s ease, border-color 0.3s ease, transform 0.4s var(--ease), box-shadow 0.4s var(--ease);
+  }
+  :global(.upn-card:hover) { background: var(--upn-card-hover); border-color: rgba(255, 255, 255, 0.12); transform: translateY(-2px); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28); }
+  :global(.upn-row[data-state='confirmed'] .upn-card) { border-color: rgba(255, 218, 36, 0.35); }
+  :global(.upn-card__photo) {
+    flex-shrink: 0; width: 96px; height: 96px; border-radius: 14px; overflow: hidden; display: block;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  :global(.upn-card__photo img) { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.7s var(--ease); }
+  :global(.upn-card:hover .upn-card__photo img) { transform: scale(1.06); }
+  :global(.upn-card__photo--blank) {
+    display: grid; place-items: center; color: var(--c-yellow);
+    font-family: var(--font-display); font-weight: 700; font-size: 38px; line-height: 1;
+    background: radial-gradient(circle at 30% 25%, rgba(255, 218, 36, 0.16), rgba(255, 255, 255, 0.04) 70%);
+  }
+  :global(.upn-card__body) { min-width: 0; flex: 1; }
+  :global(.upn-card__name) { margin: 0; font-size: clamp(1.25rem, 2vw, 1.5rem); letter-spacing: -0.02em; line-height: 1.2; color: var(--upn-ink); }
+  /* The whole card opens the story; the actions sit above that link */
+  :global(.upn-card__name a) { color: inherit; text-decoration: none; }
+  :global(.upn-card__name a)::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+  :global(.upn-card__name a:focus-visible) { outline: none; }
+  :global(.upn-card:has(.upn-card__name a:focus-visible)) { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
+  :global(.upn-card__rooms) {
+    margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: var(--upn-muted);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  :global(.upn-card__foot) { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; }
+  :global(.upn-pill) {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 100px;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: var(--upn-muted); border: 1px solid rgba(254, 252, 245, 0.18);
+  }
+  :global(.upn-act) {
+    position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 14px; font-weight: 700; color: var(--upn-ink); text-decoration: none;
+    border-bottom: 2px solid var(--c-yellow); padding: 6px 0 2px;
+  }
+  :global(.upn-act svg) { transition: transform 0.25s ease; }
+  :global(.upn-act:hover svg) { transform: translateX(3px); }
+  :global(.upn-act:hover) { color: var(--c-yellow); }
+  :global(.upn-act:focus-visible) { outline: 2px solid var(--c-yellow); outline-offset: 3px; border-radius: 2px; }
+  :global(.upn-act--quiet) { border-bottom-color: rgba(254, 252, 245, 0.3); font-weight: 600; }
+  :global(.upn-story) { font-size: 14px; font-weight: 600; color: var(--upn-muted); display: inline-flex; align-items: center; gap: 6px; }
+  :global(.upn-story svg) { transition: transform 0.25s ease; }
+  :global(.upn-card:hover .upn-story) { color: var(--upn-ink); }
+  :global(.upn-card:hover .upn-story svg) { transform: translateX(3px); }
+
+  /* ── Tablet and phone: one column, the calendar panel after the list ── */
+  @media (max-width: 960px) {
+    .upn__grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+    .upn__side { display: contents; }
+    .upn__intro { order: 1; }
+    .upn__list { order: 2; }
+    .upn-cal { order: 3; }
+    .upn__lead { max-width: 560px; }
+  }
+  /* Phone: the when moves above each card, the line runs down the left edge */
+  @media (max-width: 640px) {
+    .upn { --upn-node: 22px; }
+    .upn__list { gap: 22px; }
+    .upn__list::before { left: calc(var(--upn-node) / 2 - 1px); top: 10px; bottom: 30px; }
+    :global(.upn-row) { grid-template-columns: var(--upn-node) minmax(0, 1fr); grid-template-areas: 'node when' '. card'; align-items: start; row-gap: 10px; }
+    :global(.upn-node) { grid-area: node; margin-top: 3px; width: 12px; height: 12px; }
+    :global(.upn-when) { grid-area: when; text-align: left; padding: 0 0 0 10px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+    :global(.upn-when__top), :global(.upn-when__main), :global(.upn-when__sub) { margin: 0; }
+    :global(.upn-when__main) { font-size: 18px; }
+    :global(.upn-month) { margin: 0; align-self: center; }
+    :global(.upn-card) { grid-area: card; margin-left: 10px; padding: 12px 14px 12px 12px; gap: 14px; border-radius: 16px; }
+    :global(.upn-card__photo) { width: 76px; height: 76px; border-radius: 12px; }
+    :global(.upn-card__foot) { margin-top: 10px; }
+    /* The whole card opens the story; on a phone the pill alone is enough */
+    :global(.upn-story) { display: none; }
+    .upn-cal { padding: 20px; }
+    .upn-cal__options { grid-template-columns: 1fr; }
+  }
+  @media (hover: none) {
+    :global(.upn-card:hover) { transform: none; box-shadow: none; }
+    :global(.upn-card:hover .upn-card__photo img) { transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .upn__list::before, :global(.upn-row), :global(.upn-month span.is-on)::after, .upn__title :global(em) { transition: none; }
+    .upn__list::before { transform: none; }
+    :global(.upn-row) { opacity: 1; transform: none; }
+    :global(.upn-month span.is-on)::after { transform: none; }
+    .upn__title :global(em) { background-size: 100% 100%; }
+    :global(.upn-row.is-next .upn-node)::after { animation: none; }
+    :global(.upn-card), :global(.upn-card__photo img), .upn-cal__opt { transition: none; }
+  }
+</style>
+
+<script>
+  import { loadUpcoming, windowTitle, revealIcsUrl, revealTime, type UpcomingReveal } from '../../utils/reveals-client';
+  import { cfRaw } from '../../utils/cf-image';
+
+  const ARROW = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+  const CF_PATH = /\/cdn-cgi\/imagedelivery\/[^/]+\/(.+)\/[^/]+$|imagedelivery\.net\/[^/]+\/(.+)\/[^/]+$/;
+  /** A square crop of the kid's photo at the size it's shown */
+  function photo(src: string | null, px: number) {
+    const m = src ? CF_PATH.exec(src) : null;
+    const id = m?.[1] || m?.[2];
+    return id ? cfRaw(id, `w=${px},h=${px},fit=cover,gravity=face,q=80`) : null;
+  }
+  const possessive = (name: string) => (/s$/i.test(name) ? `${name}’` : `${name}’s`);
+  const roomsText = (rooms: string[]) => {
+    const r = rooms.map((x) => x.toLowerCase());
+    const list = r.length > 1 ? `${r.slice(0, -1).join(', ')} and ${r.at(-1)}` : r[0] || '';
+    return list ? list.charAt(0).toUpperCase() + list.slice(1) : '';
+  };
+
+  function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text?: string) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text) node.textContent = text;
+    return node;
+  }
+
+  function beacon(how: string, where: string) {
+    try {
+      const body = JSON.stringify({ type: 'click_calendar', meta: { how, where } });
+      if (!(navigator.sendBeacon && navigator.sendBeacon('/api/broadcast-event', new Blob([body], { type: 'application/json' })))) {
+        fetch('/api/broadcast-event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+      }
+    } catch { /* analytics only */ }
+  }
+
+  /** No photo (or it failed): the kid's initial in its place */
+  function blank(media: HTMLElement, name: string) {
+    media.classList.add('upn-card__photo--blank');
+    media.textContent = name.trim().charAt(0).toUpperCase();
+    media.setAttribute('aria-hidden', 'true');
+  }
+
+  function whenBlock(r: UpcomingReveal) {
+    const when = el('div', 'upn-when');
+    if (r.confirmed) {
+      const day = new Date(`${r.date}T12:00:00Z`);
+      when.append(
+        el('p', 'upn-when__top', day.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })),
+        el('p', 'upn-when__main', day.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })),
+        el('p', 'upn-when__sub', revealTime(r) || 'Time to come'),
+      );
+    } else {
+      const [part, ...month] = windowTitle(r.window).split(' ');
+      when.append(el('p', 'upn-when__top', part), el('p', 'upn-when__main', month.join(' ')));
+      const bar = el('span', 'upn-month');
+      bar.setAttribute('aria-hidden', 'true');
+      for (const p of ['early', 'mid', 'late']) bar.append(el('span', p === r.window.part ? 'is-on' : ''));
+      when.append(bar);
+    }
+    return when;
+  }
+
+  function row(r: UpcomingReveal, i: number, where: string) {
+    const li = el('li', 'upn-row');
+    li.dataset.slug = r.slug;
+    li.dataset.state = r.confirmed ? 'confirmed' : 'tentative';
+    li.style.setProperty('--i', String(i));
+    if (i === 0) li.classList.add('is-next');
+
+    const node = el('span', 'upn-node');
+    node.setAttribute('aria-hidden', 'true');
+
+    const card = el('article', 'upn-card');
+    const media = el('div', 'upn-card__photo');
+    const src = photo(r.image, 192);
+    if (src) {
+      const img = el('img');
+      img.src = src;
+      img.srcset = `${photo(r.image, 192)} 1x, ${photo(r.image, 288)} 1.5x, ${photo(r.image, 384)} 2x`;
+      img.alt = '';
+      img.width = 96;
+      img.height = 96;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.addEventListener('error', () => blank(media, r.name), { once: true });
+      media.append(img);
+    } else {
+      blank(media, r.name);
+    }
+
+    const body = el('div', 'upn-card__body');
+    const name = el('h3', 'upn-card__name');
+    const link = el('a', '', r.name);
+    link.href = r.kidUrl;
+    link.setAttribute('aria-label', r.confirmed
+      ? `${r.name}: reveal ${new Date(`${r.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })}${revealTime(r) ? ` at ${revealTime(r)}` : ''}. Read the story.`
+      : `${r.name}: reveal planned for ${r.window.label}. Read the story.`);
+    name.append(link);
+    body.append(name);
+    const rooms = roomsText(r.rooms || []);
+    if (rooms) body.append(el('p', 'upn-card__rooms', rooms));
+
+    const foot = el('div', 'upn-card__foot');
+    if (r.confirmed) {
+      const watch = el('a', 'upn-act');
+      watch.href = r.liveUrl;
+      watch.innerHTML = `Watch live ${ARROW}`;
+      watch.setAttribute('aria-label', `Watch ${possessive(r.name)} reveal live`);
+      const cal = el('a', 'upn-act upn-act--quiet', 'Add to calendar');
+      cal.href = revealIcsUrl(r.slug);
+      cal.setAttribute('aria-label', `Add ${possessive(r.name)} reveal to your calendar`);
+      cal.addEventListener('click', () => beacon('one', where));
+      foot.append(watch, cal);
+    } else {
+      foot.append(el('span', 'upn-pill', 'Exact day to come'));
+      const story = el('span', 'upn-story');
+      story.setAttribute('aria-hidden', 'true');
+      story.innerHTML = `${possessive(r.name)} story ${ARROW}`;
+      foot.append(story);
+    }
+    body.append(foot);
+    card.append(media, body);
+    li.append(whenBlock(r), node, card);
+    return li;
+  }
+
+  /** Line ends at the first and last dots, wherever the rows wrap */
+  function placeLine(list: HTMLElement) {
+    const nodes = list.querySelectorAll<HTMLElement>('.upn-node');
+    if (!nodes.length) return;
+    const box = list.getBoundingClientRect();
+    const first = nodes[0].getBoundingClientRect();
+    const last = nodes[nodes.length - 1].getBoundingClientRect();
+    list.style.setProperty('--upn-line-top', `${first.top - box.top + first.height / 2}px`);
+    list.style.setProperty('--upn-line-bottom', `${box.bottom - last.bottom + last.height / 2}px`);
+  }
+
+  /** The calendar app that fits this device leads */
+  function pickCalendar(section: HTMLElement) {
+    const how = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) ? 'apple' : 'google';
+    const options = section.querySelector<HTMLElement>('[data-upn-options]');
+    const pick = options?.querySelector<HTMLElement>(`[data-how="${how}"]`);
+    if (!options || !pick) return;
+    pick.classList.add('is-pick');
+    options.prepend(pick);
+  }
+
+  function wireCalendar(section: HTMLElement, where: string) {
+    const note = section.querySelector<HTMLElement>('[data-upn-note]');
+    section.querySelectorAll<HTMLElement>('[data-how]').forEach((opt) => {
+      const how = opt.dataset.how || '';
+      opt.addEventListener('click', async () => {
+        beacon(how, where);
+        if (how === 'apple' && note) note.textContent = 'Your calendar app asks to subscribe. Say yes and the reveals appear on their own.';
+        if (how !== 'copy') return;
+        const label = opt.querySelector<HTMLElement>('[data-copy-label]');
+        try {
+          await navigator.clipboard.writeText(opt.dataset.link || '');
+          opt.classList.add('is-done');
+          if (label) label.textContent = 'Link copied';
+          if (note) note.textContent = 'In your calendar app, choose "Add calendar" or "Subscribe", then paste the link.';
+          setTimeout(() => { opt.classList.remove('is-done'); if (label) label.textContent = 'Copy link'; }, 2600);
+        } catch {
+          if (note) note.textContent = `Copy this link into your calendar app's "Subscribe" option: ${opt.dataset.link}`;
+        }
+      });
+    });
+  }
+
+  async function setUp(section: HTMLElement) {
+    if (section.dataset.ready) return;
+    section.dataset.ready = '1';
+    const list = section.querySelector<HTMLElement>('[data-upn-list]');
+    const where = section.dataset.where || 'up-next';
+    if (!list) return;
+    pickCalendar(section);
+    wireCalendar(section, where);
+
+    const all = await loadUpcoming();
+    if (!section.isConnected) return;
+    // Left out: the page's own kid (data-exclude) and, on /live/, the reveal the page is
+    // showing right now (data-current, set by LivePage, which fires upnext:current)
+    let drawn = '';
+    const draw = () => {
+      const skip = new Set([section.dataset.exclude, section.dataset.current].filter(Boolean));
+      const shown = all.filter((r) => !skip.has(r.slug));
+      const key = shown.map((r) => r.slug).join(' ');
+      if (key === drawn) return;
+      drawn = key;
+      list.replaceChildren(...shown.map((r, i) => row(r, i, where)));
+      section.hidden = !shown.length;
+      if (shown.length) placeLine(list);
+    };
+    draw();
+    section.addEventListener('upnext:current', draw);
+    const ro = new ResizeObserver(() => placeLine(list));
+    ro.observe(list);
+    document.addEventListener('astro:before-swap', () => ro.disconnect(), { once: true });
+
+    // Motion starts when the section comes into view
+    if (!('IntersectionObserver' in window)) { section.classList.add('is-in'); return; }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { section.classList.add('is-in'); io.disconnect(); }
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    io.observe(section);
+    document.addEventListener('astro:before-swap', () => io.disconnect(), { once: true });
+  }
+
+  document.addEventListener('astro:page-load', () => {
+    document.querySelectorAll<HTMLElement>('[data-upnext]').forEach((s) => { void setUp(s); });
+  });
+</script>

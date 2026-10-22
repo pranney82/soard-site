@@ -824,6 +824,23 @@ function PhotoPicker({ title, spec = {}, value = '', kids = [], kidSlug = null, 
 // kids, and c.go(pageKey, anchor) / c.open(view, hash) to move around.
 
 const heroIdOf = (kids, slug) => S.cfIdOf(kids.find(k => k.slug === slug)?.heroImage || '') || (slug ? `kids/${slug}/hero` : '');
+/** "Reveal mid November", "Reveal Tuesday, November 25", or "Reveal coming soon" (the site's own wording, src/utils/reveals-client.ts) */
+const revealDateLine = (r) => !r ? 'Reveal coming soon'
+  : r.confirmed ? `Reveal ${new Date(`${r.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })}`
+  : `Reveal ${r.window?.label || 'coming soon'}`;
+/** Upcoming reveals from the public feed (null while loading, [] if it can't be read) */
+function useUpcomingReveals() {
+  const [list, setList] = useState(null);
+  useEffect(() => {
+    let on = true;
+    fetch('/api/reveals', { headers: { Accept: 'application/json' } })
+      .then(r => (r.ok ? r.json() : {}))
+      .then(b => { if (on) setList(Array.isArray(b.upcoming) ? b.upcoming : []); })
+      .catch(() => { if (on) setList([]); });
+    return () => { on = false; };
+  }, []);
+  return list;
+}
 const roomsText = (k) => { const r = (k?.roomTypes || []).map(x => String(x).toLowerCase()); return r.length > 1 ? `${r.slice(0, -1).join(', ')} and ${r[r.length - 1]}` : (r[0] || 'dream room'); };
 const photoProps = (c, path, extra = {}) => ({ path, value: S.getPath(c.doc('settings'), path) || '', onChange: (v) => c.photo(path, v), kids: c.kids, stamp: c.doc('settings')?.photoTimestamps?.[path] || null, ...extra });
 const Photos = ({ children, cols = null }) => html`<div class="sc-photos ${cols ? `cols-${cols}` : ''}">${children}</div>`;
@@ -839,7 +856,12 @@ function HomePage({ c }) {
   const mode = up.mode || 'auto';
   const setUp = (k) => (v) => c.set('settings', `upNext.${k}`, v);
   const building = S.publishedKids(c.kids).filter(k => k.status === 'in-progress').sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999) || String(a.name).localeCompare(String(b.name)));
-  const nowBuilding = (up.kidSlug && building.find(k => k.slug === up.kidSlug)) || building[0];
+  // The site picks the build whose reveal is next in JobTread and dates the strip from it (src/pages/index.astro)
+  const upcoming = useUpcomingReveals();
+  const nextUp = (upcoming || []).map(r => building.find(k => k.slug === r.slug)).find(Boolean);
+  const nowBuilding = (up.kidSlug && building.find(k => k.slug === up.kidSlug)) || nextUp || building[0];
+  const nowReveal = nowBuilding && (upcoming || []).find(r => r.slug === nowBuilding.slug);
+  const autoDate = upcoming === null ? '' : revealDateLine(nowReveal);
   const strip = Array.isArray(st.kidShowcase) ? st.kidShowcase : [];
   const [adding, setAdding] = useState(false);
   const snap = c.doc('financial-snapshot');
@@ -878,11 +900,11 @@ function HomePage({ c }) {
       <${Segmented} label="What the strip shows" value=${mode} onChange=${setUp('mode')} options=${[['auto', 'The build in progress'], ['manual', 'Something I write'], ['off', 'Nothing (hidden)']]} />
       ${mode === 'auto' && html`
         <p class="sc-note">${nowBuilding
-          ? html`Showing <strong>${nowBuilding.name}’s ${roomsText(nowBuilding)}</strong>, “Now Building”, with a Meet ${nowBuilding.name} button.`
+          ? html`Showing <strong>${nowBuilding.name}’s ${roomsText(nowBuilding)}</strong>, “Now Building”${(up.dateText || autoDate) ? html`, “${up.dateText || autoDate}”` : ''}, with a Meet ${nowBuilding.name} button.`
           : 'No build is in progress, so it shows the next event, or hides when there isn’t one.'}</p>
         <div class="sc-pair">
-          <${KidPicker} label="Which build" value=${up.kidSlug || ''} kids=${c.kids} filter=${(k) => k.status === 'in-progress'} blankLabel="The first build in progress" onChange=${setUp('kidSlug')} hint="Only kids being built now are listed." />
-          <${TextField} label="Date line" value=${up.dateText} onChange=${setUp('dateText')} placeholder="Reveal coming soon" max=${40} hint="Beside the label, e.g. Reveal day is October 18." />
+          <${KidPicker} label="Which build" value=${up.kidSlug || ''} kids=${c.kids} filter=${(k) => k.status === 'in-progress'} blankLabel="The next reveal in JobTread" onChange=${setUp('kidSlug')} hint="Only kids being built now are listed." />
+          <${TextField} label="Date line" value=${up.dateText} onChange=${setUp('dateText')} placeholder=${autoDate || 'Reveal coming soon'} max=${40} optional hint="Fills in from JobTread: “Reveal mid November” while the date is tentative, the day once it’s confirmed. Type here only to say something else." />
         </div>`}
       ${mode === 'manual' && html`
         <div class="sc-split">

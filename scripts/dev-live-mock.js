@@ -18,6 +18,10 @@
  * by default, like the crew), and &reveal=<seconds> to mark the reveal on a
  * replay. The switch redirects to the home page.
  *
+ * Also answers /api/reveals with sample upcoming reveals from the in-progress
+ * kids: &reveals=demo (one confirmed, the rest tentative; the default),
+ * &reveals=tentative (none confirmed) or &reveals=none (nothing coming up).
+ *
  * Also answers /api/live-messages from memory (a few sample notes, and
  * anything you post that has no link in it), so the messages wall works in
  * dev, and /api/live-replay with the &reveal moment. Reactions animate locally only: there is no
@@ -55,6 +59,7 @@ let kidSlug = null;
 let videoSrc = null;
 let orientation = 'portrait';
 let revealAt = null;
+let revealsMode = 'demo';
 
 function readKid(slug) {
   try { return JSON.parse(readFileSync(new URL(`${slug}.json`, KIDS_DIR), 'utf8')); } catch { return null; }
@@ -105,6 +110,36 @@ function buildState(origin) {
   return { ...common, phase: 'scheduled', upcoming: true, scheduledAt: new Date(Math.ceil((Date.now() + 3 * 3600e3) / halfHour) * halfHour).toISOString() };
 }
 
+/** Sample /api/reveals: in-progress kids, spread over the coming weeks */
+function buildReveals() {
+  if (revealsMode === 'none') return { reveals: [], upcoming: [], updatedAt: new Date().toISOString(), source: 'dev-mock' };
+  const kids = readdirSync(KIDS_DIR)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => readKid(f.replace(/\.json$/, '')))
+    .filter((k) => k?.status === 'in-progress' && k.publishStatus !== 'draft')
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    .slice(0, 6);
+  const parts = ['early', 'mid', 'late'];
+  const upcoming = kids.map((k, i) => {
+    const d = new Date(Date.now() + (12 + i * 6) * 86400e3);
+    const date = d.toISOString().slice(0, 10);
+    const image = k.heroImage ? `https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/${imageId(k.heroImage)}/w=640,h=480,fit=cover,gravity=face,q=80` : null;
+    const links = { image, kidUrl: `/kids/${k.slug}/`, liveUrl: `/live/${k.slug}/`, rooms: k.roomTypes || [] };
+    if (revealsMode === 'demo' && i === 1) {
+      d.setUTCHours(20, 0, 0, 0);
+      return { slug: k.slug, name: k.name, confirmed: true, startsAt: d.toISOString(), date, time: '16:00', ...links };
+    }
+    const day = d.getUTCDate();
+    const part = parts[day <= 10 ? 0 : day <= 20 ? 1 : 2];
+    const month = d.toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+    const last = part === 'early' ? 10 : part === 'mid' ? 20 : new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    const through = `${date.slice(0, 8)}${String(last).padStart(2, '0')}`;
+    return { slug: k.slug, name: k.name, confirmed: false, window: { part, month: date.slice(0, 7), through, label: `${part} ${month}` }, ...links };
+  });
+  const reveals = upcoming.filter((r) => r.confirmed).map(({ confirmed, rooms, ...r }) => r);
+  return { reveals, upcoming, updatedAt: new Date().toISOString(), source: 'dev-mock' };
+}
+
 function handler(logger) {
   return (req, res, next) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -116,6 +151,7 @@ function handler(logger) {
       if (url.searchParams.has('src')) videoSrc = url.searchParams.get('src') || null;
       if (['portrait', 'landscape'].includes(url.searchParams.get('o'))) orientation = url.searchParams.get('o');
       if (url.searchParams.has('reveal')) revealAt = Number(url.searchParams.get('reveal')) || null;
+      if (['demo', 'tentative', 'none'].includes(url.searchParams.get('reveals'))) revealsMode = url.searchParams.get('reveals');
       logger.info(`live banner mock: ${mode}${mode !== 'off' ? ` (${(kidSlug && readKid(kidSlug)?.name) || defaultKid()?.name})` : ''}`);
       res.writeHead(302, { Location: '/' });
       return res.end();
@@ -130,6 +166,11 @@ function handler(logger) {
         timezone: 'America/New_York',
         hub: false,
       }));
+    }
+
+    if (url.pathname === '/api/reveals' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(buildReveals()));
     }
 
     if (url.pathname === '/api/live-replay') {

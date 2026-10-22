@@ -122,6 +122,8 @@ async function answer(req, user = 'peter@soardcharity.com') {
   if (p === '/api/upload-file') { state.files++; return json({ success: true, url: `${SITE}/files/financials/x.pdf` }); }
   if (p.startsWith('/api/pending-changes')) return json({ success: true, changes: [], publish: { live: null, active: null, failed: null } });
   if (p.startsWith('/api/kit-broadcast')) return json({ ok: true, configured: true });
+  // Upcoming reveals (JobTread): the Up Next strip's date line comes from here
+  if (p === '/api/reveals') return json({ reveals: [], upcoming: [{ slug: 'colin', name: 'Colin', confirmed: false, window: { part: 'late', month: '2026-11', through: '2099-11-30', label: 'late November' }, image: null, kidUrl: '/kids/colin/', liveUrl: '/live/colin/', rooms: ['Bathroom'] }] });
   if (p.startsWith('/api/live-ws')) return req.abort();
   return json({ success: true, ok: true, items: [], list: [], entries: [] });
 }
@@ -206,6 +208,15 @@ try {
     await page.$eval('.sc-rail .sc-search input', (el) => { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); });
     ok(/Everything is saved/.test(await barState(page)), 'nothing unsaved to start');
     await shot(page, '01-homepage.png');
+  });
+
+  await section('Up Next strip: dated from JobTread', async () => {
+    const pinned = seedDocs.settings.upNext?.kidSlug;
+    const note = await text(page, '#sc-upnext .sc-note');
+    if (!pinned || pinned === 'colin') ok(/Colin’s .*“Reveal late November”/.test(note), `the note shows the JobTread date (${note})`);
+    else ok(/“Reveal coming soon”/.test(note), `a build with no reveal date says coming soon (${note})`);
+    const ph = await page.$$eval('#sc-upnext input', (els) => els.map((e) => e.placeholder));
+    ok(ph.includes(!pinned || pinned === 'colin' ? 'Reveal late November' : 'Reveal coming soon'), `the date line's placeholder is the automatic one (${JSON.stringify(ph)})`);
   });
 
   await section('Homepage words', async () => {
