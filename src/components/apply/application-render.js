@@ -217,15 +217,19 @@ function choices(f, id, { plain = false } = {}) {
   }).join('')}</div>`;
 }
 
-/** A small drawing for each kind of makeover, matched on its name (English or Spanish); a check otherwise */
+/**
+ * An icon for each kind of makeover, matched on its name (English or Spanish); a check otherwise.
+ * Phosphor Icons, duotone (MIT, phosphoricons.com): one family, one grid and weight, the second
+ * tone in the brand yellow. The wheelchair's wheel is filled to match the others' yellow.
+ */
 const OFFER_ICONS = [
-  [/bed|dorm|cuarto|habitaci/i, '<rect class="af-ic-fill" x="7" y="12.5" width="8" height="4.5" rx="2"/><path d="M4 8v17M4 21h24v4M4 17h20a4 4 0 0 1 4 4"/>'],
-  [/bath|baño|bano|shower|ducha/i, '<path d="M7 27V10a5 5 0 0 1 10 0v1"/><path class="af-ic-fill" d="M13 11h8l-1.6 3.2h-4.8z"/><path d="M15 18.5v1.6M18 18.5v1.6M21 18.5v1.6M16.5 23v1.6M19.5 23v1.6"/>'],
-  [/therap|terap/i, '<circle class="af-ic-fill" cx="13" cy="18" r="8"/><path d="M5.6 15.6c4.6 2.2 10.2 2.2 14.8 0M25 5v5M22.5 7.5h5"/>'],
-  [/ramp/i, '<path class="af-ic-fill" d="M4 26L27 14v12z"/><path d="M5 19.5L27 8M12 16v6.4M20 12v10.2"/>'],
+  [/bed|dorm|cuarto|habitaci/i, '<path class="af-ic-fill" d="M248,112v56H112V80H216A32,32,0,0,1,248,112Z"/><path d="M216,72H32V48a8,8,0,0,0-16,0V208a8,8,0,0,0,16,0V176H240v32a8,8,0,0,0,16,0V112A40,40,0,0,0,216,72ZM32,88h72v72H32Zm88,72V88h96a24,24,0,0,1,24,24v48Z"/>'],
+  [/bath|baño|bano|shower|ducha/i, '<path class="af-ic-fill" d="M167.92,222.87A8,8,0,0,1,160,232H96a8,8,0,0,1-7.92-9.13l4.34-30.36h0a88.21,88.21,0,0,0,71.14,0h0ZM184,32H72a8,8,0,0,0-8,8v72H192V40A8,8,0,0,0,184,32Z"/><path d="M120,64a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h16A8,8,0,0,1,120,64Zm52.32,133.14,3.52,24.6A16,16,0,0,1,160,240H96a16,16,0,0,1-15.84-18.26l3.52-24.6A96.09,96.09,0,0,1,32,112a8,8,0,0,1,8-8H56V40A16,16,0,0,1,72,24H184a16,16,0,0,1,16,16v64h16a8,8,0,0,1,8,8A96.09,96.09,0,0,1,172.32,197.14ZM72,104H184V40H72Zm85.07,99.5a96.15,96.15,0,0,1-58.14,0L96,224h64ZM207.6,120H48.4a80,80,0,0,0,159.2,0Z"/>'],
+  [/therap|terap/i, '<path class="af-ic-fill" d="M16,152H48v56H16a8,8,0,0,1-8-8V160A8,8,0,0,1,16,152ZM192.54,40A39.12,39.12,0,0,0,156,64a39.12,39.12,0,0,0-36.54-24C97.67,40,80,58.31,80,80c0,14.56,7,27.71,16.73,40H140a20,20,0,0,1,0,40h4l37.78-8.68C203.82,135.07,232,109.23,232,80,232,58.31,214.33,40,192.54,40Z"/><path d="M230.33,141.06a24.34,24.34,0,0,0-18.61-4.77C230.5,117.33,240,98.48,240,80c0-26.47-21.29-48-47.46-48A47.58,47.58,0,0,0,156,48.75,47.58,47.58,0,0,0,119.46,32C93.29,32,72,53.53,72,80c0,11,3.24,21.69,10.06,33a31.87,31.87,0,0,0-14.75,8.4L44.69,144H16A16,16,0,0,0,0,160v40a16,16,0,0,0,16,16H120a7.93,7.93,0,0,0,1.94-.24l64-16a6.94,6.94,0,0,0,1.19-.4L226,182.82l.44-.2a24.6,24.6,0,0,0,3.93-41.56ZM119.46,48A31.15,31.15,0,0,1,148.6,67a8,8,0,0,0,14.8,0,31.15,31.15,0,0,1,29.14-19C209.59,48,224,62.65,224,80c0,19.51-15.79,41.58-45.66,63.9l-11.09,2.55A28,28,0,0,0,140,112H100.68C92.05,100.36,88,90.12,88,80,88,62.65,102.41,48,119.46,48ZM16,160H40v40H16Zm203.43,8.21-38,16.18L119,200H56V155.31l22.63-22.62A15.86,15.86,0,0,1,89.94,128H140a12,12,0,0,1,0,24H112a8,8,0,0,0,0,16h32a8.32,8.32,0,0,0,1.79-.2l67-15.41.31-.08a8.6,8.6,0,0,1,6.3,15.9Z"/>'],
+  [/ramp/i, '<circle class="af-ic-fill" cx="112" cy="160" r="60"/><path class="af-ic-fill" d="M128,48a24,24,0,1,1-24-24A24,24,0,0,1,128,48Z"/><path d="M255.59,189.47a8,8,0,0,0-10.12-5.06l-17.42,5.81-28.9-57.8A8,8,0,0,0,192,128H112V104h56a8,8,0,0,0,0-16H112V79a32,32,0,1,0-16,0V89.81A72,72,0,0,0,112,232c33.52,0,63.69-22.71,71.75-54a8,8,0,1,0-15.5-4C162.09,198,137.91,216,112,216A56,56,0,0,1,96,106.34V136a8,8,0,0,0,8,8h83.05l29.79,59.58a8,8,0,0,0,9.69,4l24-8A8,8,0,0,0,255.59,189.47ZM88,48a16,16,0,1,1,16,16A16,16,0,0,1,88,48Z"/>'],
 ];
-const OFFER_CHECK = '<circle class="af-ic-fill" cx="16" cy="16" r="11"/><path d="M11 16.4l3.4 3.4L21.4 12"/>';
-const offerIcon = (title) => `<svg class="af-ic" viewBox="3 3 26 26" aria-hidden="true">${(OFFER_ICONS.find(([re]) => re.test(title || '')) || [null, OFFER_CHECK])[1]}</svg>`;
+const OFFER_CHECK = '<path class="af-ic-fill" d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z"/><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>';
+const offerIcon = (title) => `<svg class="af-ic" viewBox="0 0 256 256" aria-hidden="true">${(OFFER_ICONS.find(([re]) => re.test(title || '')) || [null, OFFER_CHECK])[1]}</svg>`;
 
 /** What a makeover includes (a card each, with its drawing), then what SOARD doesn't do */
 function guidelines(f) {
