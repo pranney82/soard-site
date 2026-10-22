@@ -86,24 +86,83 @@ function fromRow(r, { full = false } = {}) {
 }
 
 // ─── Settings: who hears about a new application ─────────────────────
+// Peter, Oct 22 2026: "holly, linzi and the board member in charge of that
+// committee". The emails are a list saved here (from the admin, never the
+// code); the committee member is whoever People → Board says is on it, read
+// when each email goes, so a new chair needs no change here.
+
+export const DEFAULT_COMMITTEE = 'Advisory Board';
+const COMMITTEE_MAX = 60;
+const sameName = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
+/** Active board members on a committee, with their private email (People → Board) */
+export async function committeeMembers(DB, committee) {
+  if (!String(committee || '').trim()) return [];
+  let rows = [];
+  try { rows = (await DB.prepare('SELECT slug, data FROM team').all()).results || []; } catch { return []; }
+  let emails = {};
+  try { emails = Object.fromEntries(((await DB.prepare('SELECT slug, email FROM reveal_board_emails').all()).results || []).map((r) => [r.slug, r.email])); } catch { /* no emails saved yet */ }
+  return rows.map((r) => ({ slug: r.slug, d: parse(r.data, {}) || {} }))
+    .filter(({ d }) => d.group === 'board' && (d.status || 'active') === 'active' && !/^in memoriam\b/i.test(d.name || '')
+      && Array.isArray(d.committees) && d.committees.some((c) => sameName(c, committee)))
+    .map(({ slug, d }) => ({ slug, name: d.name || slug, email: emails[slug] || null }));
+}
+
+/** Every committee name the board uses, for the admin's pick (the saved list, the names on records, and this one) */
+async function committeeNames(DB) {
+  const names = new Map();
+  const add = (n) => { const t = String(n || '').trim(); if (t && !names.has(t.toLowerCase())) names.set(t.toLowerCase(), t); };
+  add(DEFAULT_COMMITTEE);
+  try {
+    const doc = await DB.prepare("SELECT data FROM site_config WHERE key = 'board-committees'").first();
+    for (const n of parse(doc?.data, {})?.committees || []) add(n);
+  } catch { /* no site docs (tests) */ }
+  try {
+    for (const r of (await DB.prepare('SELECT data FROM team').all()).results || []) {
+      const d = parse(r.data, {}) || {};
+      if (d.group === 'board') for (const c of d.committees || []) add(c);
+    }
+  } catch { /* no team table (tests) */ }
+  return [...names.values()].sort((a, b) => a.localeCompare(b));
+}
 
 export async function getAdvisorySettings(DB) {
   await ensureAdvisorySchema(DB);
-  const row = await DB.prepare("SELECT value, updated_at, updated_by FROM advisory_settings WHERE key = 'staffEmails'").first();
-  const list = parse(row?.value, null);
-  return { staffEmails: Array.isArray(list) ? list : DEFAULT_STAFF_EMAILS, updatedAt: row?.updated_at || null, updatedBy: row?.updated_by || null, isDefault: !Array.isArray(list) };
+  const { results } = await DB.prepare("SELECT key, value, updated_at, updated_by FROM advisory_settings WHERE key IN ('staffEmails', 'committee')").all();
+  const row = Object.fromEntries((results || []).map((r) => [r.key, r]));
+  const list = parse(row.staffEmails?.value, null);
+  const committee = row.committee ? String(parse(row.committee.value, '') || '') : DEFAULT_COMMITTEE;
+  const members = await committeeMembers(DB, committee);
+  const latest = [row.staffEmails, row.committee].filter(Boolean).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0];
+  return {
+    staffEmails: Array.isArray(list) ? list : DEFAULT_STAFF_EMAILS,
+    committee,
+    committeeMembers: members.map((m) => ({ name: m.name, hasEmail: !!m.email })),
+    committees: await committeeNames(DB),
+    updatedAt: latest?.updated_at || null, updatedBy: latest?.updated_by || null, isDefault: !Array.isArray(list),
+  };
 }
 
-/** Save the staff list: { settings } or { problems } */
-export async function saveAdvisorySettings(DB, { staffEmails }, { by = null, now = Date.now() } = {}) {
+/** Everyone a new (real) application emails: the list, and the committee's members who have an email */
+export async function staffRecipients(DB) {
+  const s = await getAdvisorySettings(DB);
+  const members = await committeeMembers(DB, s.committee);
+  return [...new Set([...s.staffEmails, ...members.map((m) => m.email).filter(Boolean)].map((e) => String(e).toLowerCase()))];
+}
+
+/** Save who hears: { settings } or { problems }. `committee` '' means no committee. */
+export async function saveAdvisorySettings(DB, { staffEmails, committee }, { by = null, now = Date.now() } = {}) {
   await ensureAdvisorySchema(DB);
   const list = [...new Set((Array.isArray(staffEmails) ? staffEmails : String(staffEmails || '').split(/[\s,;]+/)).map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
   const bad = list.filter((e) => !EMAIL_RE.test(e));
   if (bad.length) return { problems: { staffEmails: `${bad.join(', ')} ${bad.length === 1 ? 'isn’t an email address' : 'aren’t email addresses'}.` } };
-  if (!list.length) return { problems: { staffEmails: 'Add at least one email, or nobody hears about new applications.' } };
   if (list.length > 20) return { problems: { staffEmails: 'That’s more than 20 people. Use a group address instead.' } };
-  await DB.prepare("INSERT INTO advisory_settings (key, value, updated_at, updated_by) VALUES ('staffEmails', ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by")
-    .bind(JSON.stringify(list), iso(now), by).run();
+  const c = committee === undefined ? undefined : String(committee || '').replace(/\s+/g, ' ').trim().slice(0, COMMITTEE_MAX);
+  const keepCommittee = c === undefined ? (await getAdvisorySettings(DB)).committee : c;
+  if (!list.length && !keepCommittee) return { problems: { staffEmails: 'Add at least one email or pick a committee, or nobody hears about new applications.' } };
+  const put = (key, value) => DB.prepare('INSERT INTO advisory_settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by')
+    .bind(key, JSON.stringify(value), iso(now), by);
+  await DB.batch([put('staffEmails', list), ...(c === undefined ? [] : [put('committee', c)])]);
   return { settings: await getAdvisorySettings(DB) };
 }
 
@@ -212,7 +271,7 @@ export async function notifyNew(env, app, { now = Date.now() } = {}) {
   } catch { /* recorded below */ }
   try {
     // A test's staff email goes to the tester, never the staff list
-    const to = isTestApplication(app.answers) ? [app.answers.email] : (await getAdvisorySettings(env.DB)).staffEmails;
+    const to = isTestApplication(app.answers) ? [app.answers.email] : await staffRecipients(env.DB);
     // Staff answering the heads-up write straight to the applicant
     const r = await sendEmails(env, { to, ...staffEmail(app), replyTo: app.answers.email, tags: [{ name: 'kind', value: 'advisory-application-staff' }] });
     out.staff = r.sent;

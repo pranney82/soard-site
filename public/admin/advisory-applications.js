@@ -48,6 +48,14 @@ function ago(iso, now = Date.now()) {
   return longDate(iso);
 }
 const work = (a) => [a.jobTitle, a.company].filter(Boolean).join(', ');
+const list = (xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+/** Who a new application emails, in words: the list, and the committee with who's on it */
+function whoHears(st) {
+  const emails = st.staffEmails || [];
+  const people = (st.committeeMembers || []).map((m) => m.name);
+  const committee = st.committee ? `the ${st.committee} committee${people.length ? ` (${list(people)})` : ' (nobody is on it yet)'}` : null;
+  return list([...(emails.length > 3 ? [plural(emails.length, 'person', 'people')] : emails), committee].filter(Boolean));
+}
 const shown = (a) => (a.preferredName && a.preferredName !== a.name.split(' ')[0] ? `${a.name} (${a.preferredName})` : a.name);
 
 // ─── Styles (prefixed ava-, injected once) ─────────────────────────
@@ -215,7 +223,7 @@ export function AdvisoryApplications({ addToast, kit = {} }) {
     <div class="ava-head">
       <div>
         <h2>Advisory Board applications</h2>
-        <p>From the <a href=${APPLY_PAGE} target="_blank" rel="noopener">Apply page</a>. Each applicant gets a copy of what they sent, and ${data.settings.staffEmails.length === 1 ? data.settings.staffEmails[0] : plural(data.settings.staffEmails.length, 'person', 'people')} ${data.settings.staffEmails.length === 1 ? 'gets' : 'get'} an email, plus a Slack post.</p>
+        <p>From the <a href=${APPLY_PAGE} target="_blank" rel="noopener">Apply page</a>. Each applicant gets a copy of what they sent. ${whoHears(data.settings) ? `${whoHears(data.settings)} hear about each one by email` : 'Nobody hears by email yet'}, and it’s posted in Slack.</p>
       </div>
       <div class="ava-head-actions">
         <button class="btn btn-ghost btn-sm" onClick=${() => setSettingsOpen(true)}>Who hears about them</button>
@@ -442,22 +450,37 @@ function Drawer({ id, statuses, kit, addToast, onClose, onPrev, onNext, onChange
 
 function SettingsDialog({ settings, addToast, onClose, onSaved }) {
   const [text, setText] = useState(settings.staffEmails.join('\n'));
+  const [committee, setCommittee] = useState(settings.committee || '');
   const [problem, setProblem] = useState(null);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
-    const j = await call(API, { settings: { staffEmails: text } });
+    const j = await call(API, { settings: { staffEmails: text, committee } });
     setBusy(false);
     if (!j.success) { setProblem(j.problems?.staffEmails || j.error || 'That didn’t save'); return; }
     addToast?.('Saved. The next application emails them.', 'info');
     onSaved(j.settings);
   };
+  const members = committee === settings.committee ? settings.committeeMembers || [] : null;
+  const noEmail = (members || []).filter((m) => !m.hasEmail).map((m) => m.name);
   return html`<${Dialog} title="Who hears about new applications" busy=${busy} onClose=${onClose}>
-    <p>Each new application emails these people, with the applicant’s contact details and answers, and posts to Slack without them.</p>
+    <p>Each new application emails these people, with the applicant’s contact details and answers, and posts to Slack without them. A test application (a name starting with TEST) emails only the address on it.</p>
     <div class="form-group">
       <label class="form-label" for="ava-staff">Emails, one per line</label>
-      <textarea id="ava-staff" class="form-input" rows="4" spellcheck=${false} value=${text} onInput=${(e) => { setText(e.target.value); setProblem(null); }}></textarea>
-      ${problem ? html`<p class="form-hint" style="color:#8A5200;font-weight:600">${problem}</p>` : settings.isDefault ? html`<p class="form-hint">Until someone saves a list, it goes to ${settings.staffEmails.join(', ')}.</p>` : null}
+      <textarea id="ava-staff" class="form-input" rows="3" spellcheck=${false} value=${text} onInput=${(e) => { setText(e.target.value); setProblem(null); }}></textarea>
+      ${problem ? html`<p class="form-hint" style="color:#8A5200;font-weight:600">${problem}</p>` : settings.isDefault ? html`<p class="form-hint">Until someone saves this, it goes to ${settings.staffEmails.join(', ')}.</p>` : null}
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="ava-committee">And the board committee</label>
+      <select id="ava-committee" class="form-select" value=${committee} onChange=${(e) => { setCommittee(e.target.value); setProblem(null); }}>
+        <option value="">No committee</option>
+        ${(settings.committees || []).map((c) => html`<option key=${c} value=${c}>${c}</option>`)}
+      </select>
+      ${committee && html`<p class="form-hint">${members === null
+        ? `Board members on the ${committee} committee get them, using their private email from People → Board.`
+        : members.length
+          ? html`On it now: ${list(members.map((m) => m.name))}.${noEmail.length ? html` <strong>${list(noEmail)} ${noEmail.length === 1 ? 'has' : 'have'} no email yet</strong>: add it on their page in People → Board.` : ''}`
+          : html`Nobody on People → Board is on the ${committee} committee yet. Open the board member who leads it, add ${committee} under Committees, and they’ll get these from then on.`}</p>`}
     </div>
     <div class="modal-buttons">
       <button class="btn btn-ghost" onClick=${onClose} disabled=${busy}>Cancel</button>

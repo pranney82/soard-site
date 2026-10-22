@@ -63,6 +63,10 @@ await DB.exec('CREATE TABLE jotform_backfill (submission_id TEXT PRIMARY KEY, fo
 await DB.exec('CREATE TABLE team (slug TEXT PRIMARY KEY, data TEXT)');
 await DB.exec('CREATE TABLE audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_email TEXT, action TEXT, entity_type TEXT, entity_slug TEXT, entity_name TEXT, changes TEXT, path TEXT, git_status TEXT, created_at TEXT)');
 await DB.prepare('INSERT INTO team (slug, data) VALUES (?, ?)').bind('casey-reed', JSON.stringify({ name: 'Casey Reed', group: 'advisory', publishStatus: 'published' })).run();
+// The board member who leads the Advisory Board committee (People → Board), with a private email
+await DB.prepare('INSERT INTO team (slug, data) VALUES (?, ?)').bind('lee-lead', JSON.stringify({ name: 'Lee Lead', group: 'board', committees: ['Advisory Board'] })).run();
+await DB.exec('CREATE TABLE reveal_board_emails (slug TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at TEXT)');
+await DB.prepare("INSERT INTO reveal_board_emails VALUES ('lee-lead', 'lee@example.org', null)").run();
 const jf = (first, last) => JSON.stringify({ createdAt: '2026-07-08 14:20:00', answers: {
   3: { type: 'control_fullname', text: 'Full Name', answer: { first, last } },
   5: { type: 'control_email', text: 'Email Address', answer: `${first.toLowerCase()}@example.org` },
@@ -220,13 +224,15 @@ await page.keyboard.press('Escape'); await sleep(200);
 // Who hears about new applications
 await clickText(page, '.ava-head button', /Who hears about them/);
 await page.waitForSelector('#ava-staff');
+ok(/On it now: Lee Lead\./.test(await text(page, '.ava-dialog')), 'the committee shows who’s on it now');
+await page.screenshot({ path: join(OUT, 'admin-who-hears-1440.png') });
 await page.$eval('#ava-staff', (el) => { el.value = 'peter@example.org\nnope'; el.dispatchEvent(new Event('input', { bubbles: true })); });
 await clickText(page, '.ava-dialog button', /^Save$/); await sleep(300);
 ok(/nope isn’t an email address/.test(await text(page, '.ava-dialog')), 'a bad address is named');
 await page.$eval('#ava-staff', (el) => { el.value = 'peter@example.org\nlinzi@example.org'; el.dispatchEvent(new Event('input', { bubbles: true })); });
 await clickText(page, '.ava-dialog button', /^Save$/);
 await page.waitForFunction(() => !document.querySelector('.ava-dialog'), { timeout: 5000 }).catch(() => null);
-ok(/2 people get an email/.test(await text(page, '.ava-head')), 'saved, and the header says who hears');
+ok(/peter@example\.org, linzi@example\.org and the Advisory Board committee \(Lee Lead\) hear about each one/.test(await text(page, '.ava-head')), `saved, and the header says who hears (${await text(page, '.ava-head p')})`);
 
 // Delete Riley's (a person asked)
 await clickText(page, '.ava-row', /Riley Stone/);
@@ -309,8 +315,8 @@ if (DIST) {
   }
   const copies = sent.emails.filter((e) => e.subject === 'We have your Advisory Board application' && /Taylor/.test(e.html));
   const staff = sent.emails.filter((e) => e.subject === 'New Advisory Board application: Taylor Brooks');
-  ok(copies.length === 2 && staff.length === 4 && staff.every((e) => /^(peter|linzi)@example\.org$/.test(e.to[0])) && sent.slack.length === 2,
-    `each one: the applicant’s copy, the staff email to the two people saved above, and Slack (${copies.length}, ${staff.length}, ${sent.slack.length})`);
+  ok(copies.length === 2 && staff.length === 6 && staff.every((e) => /^(peter|linzi|lee)@example\.org$/.test(e.to[0])) && sent.slack.length === 2,
+    `each one: the applicant’s copy, the staff email to the two saved above and the committee’s Lee Lead, and Slack (${copies.length}, ${staff.length}, ${sent.slack.length})`);
   const ab = await open(1440, '/advisory-board/');
   const links = await ab.$$eval('a', (els) => els.filter((a) => /Apply to Join/.test(a.textContent)).map((a) => [a.getAttribute('href'), a.target]));
   ok(links.length === 3 && links.every(([h, t]) => h === '/advisory-board/apply/' && !t), 'the Advisory Board page’s three Apply buttons go to the new page, same tab');

@@ -228,6 +228,33 @@ test('a fixable answer never spends the Turnstile check; a TEST application reac
   assert.equal((await admin('GET', null, '?count=1')).new, 0, 'and it never counts as New');
 });
 
+test('who hears: the saved emails, and whoever People → Board puts on the committee, read when each email goes', async () => {
+  await env.DB.exec('CREATE TABLE team (slug TEXT PRIMARY KEY, data TEXT)');
+  await env.DB.exec('CREATE TABLE reveal_board_emails (slug TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at TEXT)');
+  const board = (slug, name, extra) => env.DB.prepare('INSERT OR REPLACE INTO team (slug, data) VALUES (?, ?)').bind(slug, JSON.stringify({ name, group: 'board', ...extra })).run();
+  await board('pat-chair', 'Pat Chair', { committees: ['Finance'] });
+  await env.DB.prepare("INSERT INTO reveal_board_emails VALUES ('pat-chair', 'pat@example.org', null), ('lee-lead', 'lee@example.org', null)").run();
+
+  let st = (await admin('GET')).settings;
+  assert.equal(st.committee, 'Advisory Board', 'the Advisory Board committee unless someone picks another');
+  assert.deepEqual(st.committeeMembers, [], 'nobody is on it yet');
+  assert.ok(st.committees.includes('Advisory Board') && st.committees.includes('Finance'), 'the pick lists the board’s committees');
+
+  const saved = await admin('POST', { settings: { staffEmails: 'holly@example.org\nlinzi@example.org', committee: 'Advisory Board' } });
+  assert.deepEqual(saved.settings.staffEmails, ['holly@example.org', 'linzi@example.org']);
+  // Someone takes the committee on in People → Board: no change here
+  await board('lee-lead', 'Lee Lead', { committees: ['Advisory Board', 'Gala'] });
+  await board('old-hand', 'Old Hand', { committees: ['advisory board'], status: 'alumni' });
+  await board('new-face', 'New Face', { committees: ['Advisory Board'] });
+  st = (await admin('GET')).settings;
+  assert.deepEqual(st.committeeMembers, [{ name: 'Lee Lead', hasEmail: true }, { name: 'New Face', hasEmail: false }], 'active members only, and who has no email yet');
+  await apply(GOOD);
+  assert.deepEqual(sent.emails.filter((e) => /^New Advisory/.test(e.subject)).map((e) => e.to[0]).sort(), ['holly@example.org', 'lee@example.org', 'linzi@example.org']);
+
+  assert.equal((await admin('POST', { settings: { staffEmails: '', committee: '' } })).problems.staffEmails, 'Add at least one email or pick a committee, or nobody hears about new applications.');
+  assert.deepEqual((await admin('POST', { settings: { staffEmails: '', committee: 'Advisory Board' } })).settings.staffEmails, [], 'the committee alone is enough');
+});
+
 test('the emails read well without the site: plain text and the staff list default', async () => {
   const app = { id: 'adv-test-0001', answers: checkAnswers(GOOD).answers };
   const mine = applicantEmail(app);
