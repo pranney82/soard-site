@@ -550,8 +550,17 @@ const MAP = { t: 'SOARD', children: [
             if (!n) return OFF(`No staff numbers yet. Add them in ${SETTINGS} → Alerts.`);
             const t = f.broadcast?.alertTexts;
             if (t?.failed) return ATTN(`The last text didn’t reach ${plural(t.failed, 'number')}${t.error ? `: ${t.error}` : ''}.`, t.at);
+            const miss = f.broadcast?.textMisses;
+            if (miss) return ATTN(`Twilio says the last text to ${plural(miss.count, 'staff number')} didn’t arrive${miss.why ? `: ${miss.why}` : ''}.`, miss.at);
             return ON(`${plural(n, 'staff number')} on the list.`, t?.at || null);
           } },
+        { t: 'Text delivery reports', s: 'off', k: 'event',
+          when: 'Twilio reports on each staff text, a few seconds after it goes.',
+          does: 'Keeps whether each staff number’s last text arrived (shown in Reveals → Settings → Alerts). A text that didn’t arrive tells staff in Slack and by email, once a day per number.',
+          touches: ['Twilio', 'D1', 'Slack', 'Resend'], where: 'functions/api/twilio-status.js · _broadcast-notify.js (recordTextStatus)',
+          info: 'Signed by Twilio with the account’s auth token; anything unsigned is refused.',
+          note: 'Off until TWILIO_AUTH_TOKEN is in Cloudflare.',
+          live: (f) => (!env(f) ? null : !f.env.twilioToken ? OFF('Off until TWILIO_AUTH_TOKEN is in Cloudflare (the reports are checked with it).') : f.broadcast?.textMisses ? ATTN(`The last text to ${plural(f.broadcast.textMisses.count, 'staff number')} didn’t arrive${f.broadcast.textMisses.why ? `: ${f.broadcast.textMisses.why}` : ''}.`, f.broadcast.textMisses.at) : ON('Every staff number’s last text arrived, or none has gone yet.')) },
         { t: 'YouTube live check', s: 'off', k: 'event',
           when: 'Runs with the feed monitor and go/no-go.',
           does: 'Confirms the YouTube channel is actually live and counts viewers.',

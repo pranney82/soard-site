@@ -126,14 +126,16 @@ export function errorAlert(which, errored) {
   const code = typeof raw.error?.code === 'string' && Object.hasOwn(ERRORS, raw.error.code) ? raw.error.code : null;
   const [what, fix] = code ? ERRORS[code] : ['Stream reported a problem with the incoming broadcast.', null];
   const codec = (v) => (typeof v === 'string' && CODECS.has(v.trim().toLowerCase()) ? v.trim().toLowerCase() : 'unknown');
+  const theFix = fix || 'Check the phone\'s Larix profile: H.264 video, AAC audio, a keyframe every 2 seconds.';
   return {
     level: 'error',
     urgent: which === 'live',
-    text: which === 'live',
+    // Staff phones get the plain-words version: what's wrong, the fix (never the error code)
+    text: which === 'live' ? notify.alertText({ title: `Stream error: ${what.replace(/\.$/, '')}`, fix: theFix, url: `${notify.SITE_ORIGIN}/admin/#broadcast/control-room`, tone: 'alert' }) : false,
     title: `Stream input error${which === 'live' ? '' : ' (rehearsal)'}: ${code || 'unknown'}`,
     detail: what,
     facts: [['Video codec', codec(raw.video_codec)], ['Audio codec', codec(raw.audio_codec)]],
-    fix: fix || 'Check the phone\'s Larix profile: H.264 video, AAC audio, a keyframe every 2 seconds.',
+    fix: theFix,
     url: `${SITE_ORIGIN}/admin/`,
   };
 }

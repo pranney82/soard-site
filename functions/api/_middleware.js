@@ -131,6 +131,11 @@ PUBLIC_ROUTES.push('/api/csp-report');
 // which refuses everything when the key isn't set; rate limited there too
 PUBLIC_ROUTES.push('/api/companycam-webhook');
 
+// Twilio's delivery reports for staff alert texts: signed with
+// TWILIO_AUTH_TOKEN and checked inside the handler, which refuses everything
+// when the token isn't set; it only records delivered or why not
+PUBLIC_ROUTES.push('/api/twilio-status');
+
 // ─── Rate Limiting ──────────────────────────────────────────────────
 // Each limited route allows 5 calls per address (clientIp: IPv6 by its /64)
 // per 60 seconds. The in-memory count is a cheap first filter that only sees

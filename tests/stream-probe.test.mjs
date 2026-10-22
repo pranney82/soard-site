@@ -381,7 +381,7 @@ test('watch: a problem texts the staff when it opens and when it clears, never t
     await s.step(1000); await s.step(15e3); await s.step(16e3);
     assert.deepEqual(sms.map((x) => x.to), ['+14045550123', '+16785550199'], 'each number once');
     assert.equal(sms[0].service, 'MG1', 'through the messaging service');
-    assert.match(sms[0].body, /^SOARD: Reveal audio is silent\nFix: Check the mic/);
+    assert.match(sms[0].body, /^SOARD ALERT: Reveal audio is silent\nFix: Check the mic/, 'a problem reads as an alert on the lock screen');
     assert.match(sms[0].body, /\nhttps:\/\/sunshineonaranneyday\.com\/admin\/#broadcast\/control-room$/);
     for (let i = 0; i < 12; i++) await s.step(15e3);
     assert.ok(slack.some((p) => /Still: Reveal audio is silent/.test(p.text)), 'Slack reminds');
@@ -389,7 +389,7 @@ test('watch: a problem texts the staff when it opens and when it clears, never t
     s.feed.audioSeg = 'pink-32.m4s';
     await s.step(15e3);
     assert.equal(sms.length, 4);
-    assert.match(sms[2].body, /^SOARD: Reveal audio is back\nIt lasted \d+:\d\d\./);
+    assert.match(sms[2].body, /^SOARD FIXED: Reveal audio is back\nIt lasted \d+:\d\d\./, 'and the fix as fixed');
     assert.ok(sms.every((x) => plainText(x.body)), 'plain characters, two segments at most');
   } finally { s.restore(); }
 });
@@ -420,7 +420,7 @@ test('watch: no "All green" while sound is wrong; it comes a minute after the fi
     assert.ok(!slack.some((p) => /All green/.test(p.text)));
     s.feed.audioSeg = 'pink-32.m4s';
     await s.step(15e3);
-    assert.match(sms.at(-1).body, /^SOARD: Reveal audio is back/);
+    assert.match(sms.at(-1).body, /^SOARD FIXED: Reveal audio is back/);
     await s.step(15e3); await s.step(15e3);
     assert.ok(!sms.some((x) => /All green/.test(x.body)), 'not straight after the fix');
     await s.step(15e3); await s.step(15e3);

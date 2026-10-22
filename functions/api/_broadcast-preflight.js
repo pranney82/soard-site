@@ -132,13 +132,23 @@ export function slackText(result, state, config) {
   return { level: result.counts.fail ? 'error' : open.length ? 'warn' : 'info', icon: result.counts.fail ? '🚨' : open.length ? '⚠️' : '🚦', title, detail: lines.join('\n') };
 }
 
-/** The go/no-go in one line, for the staff text: all green, or the names of what's open */
+/**
+ * The go/no-go in a line or two, for the staff text: all green; or what isn't
+ * ready and what to do first; or what to look at when it's a go with notes
+ */
 export function textLine(result) {
   const total = result.items.filter((i) => i.status !== 'off').length;
   const fails = result.items.filter((i) => i.status === 'fail');
   const notes = result.items.filter((i) => i.status === 'warn' || i.status === 'unknown');
+  const list = (items) => items.map((i) => i.label.replace(/\.$/, '')).join('; ');
   if (!fails.length && !notes.length) return `All green: ${result.counts.ok} of ${total} checks pass.`;
-  return [fails.length ? `Fix: ${fails.map((i) => i.label).join('; ')}.` : null, notes.length ? `Notes: ${notes.map((i) => i.label).join('; ')}.` : null].filter(Boolean).join(' ');
+  if (fails.length) return [`Not ready: ${list(fails)}.`, fails[0].fix ? `First: ${fails[0].fix}` : null].filter(Boolean).join(' ');
+  return `${result.counts.ok} of ${total} pass. Check: ${list(notes)}.`;
+}
+
+/** The whole go/no-go text: "SOARD ALERT:" when it's a no-go */
+export function goText(result, state, config) {
+  return notify.alertText({ title: slackText(result, state, config).title, detail: textLine(result), url: ADMIN_URL, tone: result.counts.fail ? 'alert' : 'info' });
 }
 
 /**
@@ -160,7 +170,7 @@ export async function auto(env, config, state, health, work, { hubStatus } = {})
   const result = await run(env, config, state, health, { hub: hubStatus ? await hubStatus(env).catch(() => null) : null });
   const post = slackText(result, state, config);
   await notify.alertAdmins(env, config, { ...post, url: ADMIN_URL, context: stage === 't60' ? 'Automatic check an hour before' : 'Automatic check 10 minutes before', urgent: post.level === 'error',
-    text: notify.alertText({ title: post.title, detail: textLine(result), url: ADMIN_URL }) });
+    text: goText(result, state, config) });
   p.last = result;
   p.posted[stage] = nowIso();
   health.preflight = p;

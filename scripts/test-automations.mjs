@@ -171,9 +171,9 @@ try {
   const resendTitles = await page.$$eval('.am-panel .am-mini li', (l) => l.map((li) => [...li.querySelectorAll('span')].find((x) => x.querySelector('em'))?.firstChild?.textContent || li.textContent));
   // Resend only sends one-off mail now (the list is Kit's). Each of these calls sendEmails: invite problems, the resume link,
   // the waitlist's confirmation and its Kit fallback, the staff heads-up, a stuck application, the status summary,
-  // go / no-go, alerts, reminders, editor tests, direct sends, the connection itself, gift alert problems, and a Denied kid
+  // go / no-go, alerts, reminders, editor tests, direct sends, the connection itself, gift alert problems, a Denied kid, and a staff text that didn't arrive
   const RESEND = ['Invite problem alerts', 'Save and finish later', 'Tell me when applications open', 'Applications-open email', 'Staff heads-up', 'Application sweep',
-    'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Send test', 'Send to specific people', 'Resend', 'Gift alerts in Slack', 'Kid status follows JobTread'];
+    'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Send test', 'Send to specific people', 'Resend', 'Gift alerts in Slack', 'Kid status follows JobTread', 'Text delivery reports'];
   ok(await panelTitle(page) === 'If Resend stops working' && sameSet(resendTitles, RESEND), `"Depends on" lists everything that uses Resend (${resendTitles.length})${setDiff(resendTitles, RESEND)}`);
   await page.screenshot({ path: join(OUT, 'desktop-depends.png'), fullPage: false });
 

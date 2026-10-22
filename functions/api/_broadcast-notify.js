@@ -222,9 +222,13 @@ export function smsConfigured(env) {
   return !!(env.TWILIO_ACCOUNT_SID && twilioCredentials(env) && (env.TWILIO_FROM || env.TWILIO_MESSAGING_SERVICE_SID));
 }
 
-/** @returns {{sent:number, failed:number, errors:string[], optedOut:string[], delivered:string[]}} */
+/**
+ * Twilio accepting a text isn't the phone getting it: with TWILIO_AUTH_TOKEN set, each
+ * text asks Twilio to report delivery to /api/twilio-status (see recordTextStatus).
+ * @returns {{sent:number, failed:number, errors:string[], optedOut:string[], accepted:string[]}}
+ */
 export async function sendSms(env, { to, body }) {
-  const out = { sent: 0, failed: 0, errors: [], optedOut: [], delivered: [] };
+  const out = { sent: 0, failed: 0, errors: [], optedOut: [], accepted: [] };
   const list = (to || []).map(normalizePhone).filter(Boolean);
   if (!list.length) return out;
   if (!smsConfigured(env)) { out.failed = list.length; out.errors.push('Twilio not configured'); return out; }
@@ -238,9 +242,10 @@ export async function sendSms(env, { to, body }) {
       const form = new URLSearchParams({ To: num, Body: body });
       if (env.TWILIO_MESSAGING_SERVICE_SID) form.set('MessagingServiceSid', env.TWILIO_MESSAGING_SERVICE_SID);
       else form.set('From', env.TWILIO_FROM);
+      if (env.TWILIO_AUTH_TOKEN) form.set('StatusCallback', TEXT_STATUS_URL);
       try {
         const res = await fetch(url, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form, signal: AbortSignal.timeout(15000) });
-        if (res.ok) { out.sent++; out.delivered.push(num); continue; }
+        if (res.ok) { out.sent++; out.accepted.push(num); continue; }
         const err = await res.json().catch(() => ({}));
         // 21610 = the number replied STOP, so Twilio refuses to text it
         if (err.code === 21610) out.optedOut.push(num);
@@ -513,7 +518,9 @@ export function confirmEmail({ confirmUrl, kidName }) {
 // The public is never texted. Texts go only to the staff numbers in
 // Reveals → Settings → Alerts, and only for the reveal alerts that ask for
 // one (alertAdmins' `text`): problems while live and when they clear, the
-// go / no-go check before a reveal, and "Live now".
+// go / no-go check before a reveal, "Live now" and "All green". Each text
+// opens with what it is ("SOARD ALERT:", "SOARD FIXED:", "SOARD:") so a lock
+// screen says it at a glance, and Twilio reports whether it arrived.
 
 export const ALERT_TEXTS_KEY = 'alert-texts';
 
@@ -524,7 +531,7 @@ export function alertPhones(config) {
 
 // Plain GSM characters keep a text at 160 characters a segment: one curly
 // quote or emoji would switch the whole text to 70
-const SMS_SWAPS = [[/[\u2018\u2019\u201A\u2032]/g, "'"], [/[\u201C\u201D\u201E\u2033]/g, '"'], [/[\u2013\u2014]/g, '-'], [/\u2026/g, '...'], [/[\u2022\u00B7]/g, '-'], [/\u2192/g, '->'], [/\u00A0/g, ' ']];
+const SMS_SWAPS = [[/[\u2018\u2019\u201A\u2032]/g, "'"], [/[\u201C\u201D\u201E\u2033]/g, '"'], [/[\u2013\u2014]/g, '-'], [/\u2026/g, '...'], [/[\u2022\u00B7]/g, '-'], [/\u2192/g, '>'], [/\u00A0/g, ' ']];
 export function smsSafe(s) {
   let out = String(s ?? '');
   for (const [re, to] of SMS_SWAPS) out = out.replace(re, to);
@@ -533,9 +540,16 @@ export function smsSafe(s) {
 
 const TEXT_MAX = 306; // two segments
 
-/** A staff alert as a text: the headline, then the fix (or the first line of what happened), then the link */
-export function alertText({ title, detail, fix, url }) {
-  const head = `SOARD: ${smsSafe(title)}`;
+// What a lock screen shows first: a problem, a fix, or news
+const TONE = { alert: 'SOARD ALERT', fixed: 'SOARD FIXED', info: 'SOARD' };
+/** The tone an alertAdmins call reads as: clearing a problem, a problem (warn or error), or news */
+export function toneFor({ level = 'warn', resolves = null } = {}) {
+  return resolves ? 'fixed' : level === 'error' || level === 'warn' ? 'alert' : 'info';
+}
+
+/** A staff alert as a text: "SOARD ALERT:" / "SOARD FIXED:" / "SOARD:", the headline, then the fix (or the first line of what happened), then the link */
+export function alertText({ title, detail, fix, url, tone = 'info' }) {
+  const head = `${TONE[tone] || TONE.info}: ${smsSafe(title)}`;
   const more = fix ? `Fix: ${smsSafe(fix)}` : smsSafe(String(detail || '').split('\n')[0]);
   const link = url ? `\n${url}` : '';
   const room = TEXT_MAX - head.length - link.length - 1;
@@ -543,16 +557,56 @@ export function alertText({ title, detail, fix, url }) {
   return `${head}${body}${link}`;
 }
 
+/** "Live now": only what's known the second the phone connects; the feed monitor's "All green" follows */
+export function liveNowText({ title, url }) {
+  return alertText({ title: `Live now: ${title || 'the reveal'}`, detail: 'Checking sound, picture, Facebook and YouTube. "All green" follows in about a minute.', url });
+}
+
 /** The first text a new number on the alert list gets: proof texts reach it, and how to stop */
 export function alertHelloText({ by = null } = {}) {
   return `SOARD: ${by ? `${smsSafe(by)} added you to` : "You're on"} the live reveal alert texts. You'll get a text when a reveal has a problem, when the go/no-go check runs before it, and when it goes live. Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.`;
 }
 
+export const TEXT_STATUS_URL = `${SITE_ORIGIN}/api/twilio-status`;
+const TEXT_STATUS_PREFIX = 'alert-text-status:';
+
+/** Twilio's delivery error codes, in words staff can act on */
+export const TEXT_ERRORS = {
+  21610: 'the number replied STOP',
+  30003: 'the phone was off or out of service',
+  30004: 'the carrier or the phone blocked it',
+  30005: 'the number doesn’t exist',
+  30006: 'it’s a landline or can’t get texts',
+  30007: 'the carrier filtered it as spam',
+  30008: 'the carrier gave no reason',
+  30032: 'the toll-free number isn’t verified',
+  30034: 'the number’s A2P campaign isn’t approved',
+};
+
+/** The last send, the numbers that replied STOP, and each number's last delivery report */
 export async function readAlertTexts(DB) {
   try {
     const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(ALERT_TEXTS_KEY).first();
-    return row?.data ? JSON.parse(row.data) : {};
+    const rec = row?.data ? JSON.parse(row.data) : {};
+    const rows = (await DB.prepare("SELECT key, data FROM site_config WHERE key LIKE 'alert-text-status:%'").all())?.results || [];
+    rec.numbers = Object.fromEntries(rows.map((r) => { try { return [r.key.slice(TEXT_STATUS_PREFIX.length), JSON.parse(r.data)]; } catch { return null; } }).filter(Boolean));
+    return rec;
   } catch { return {}; }
+}
+
+/**
+ * A delivery report from Twilio (/api/twilio-status): delivered, or why not.
+ * One row per number, so reports for several numbers never overwrite each other.
+ * → { status, error } for a final report, null for an in-between one (queued, sent)
+ */
+export async function recordTextStatus(DB, { to, status, code = null, sid = null }) {
+  const num = normalizePhone(to);
+  if (!DB || !num || !['delivered', 'undelivered', 'failed'].includes(status)) return null;
+  const n = Number(code) || null;
+  const rec = { status, at: new Date().toISOString(), code: n, error: n ? (TEXT_ERRORS[n] || `Twilio error ${n}`) : null, sid };
+  await DB.prepare('INSERT INTO site_config (key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at')
+    .bind(`${TEXT_STATUS_PREFIX}${num}`, JSON.stringify(rec), rec.at).run();
+  return rec;
 }
 
 /** What the last staff text did, and which numbers replied STOP (Twilio then refuses them) */
@@ -563,7 +617,7 @@ export async function recordAlertTexts(DB, { title, result }) {
   rec.last = { at, title: String(title || '').slice(0, 140), sent: result.sent || 0, failed: result.failed || 0, error: result.errors?.[0] || null };
   rec.stopped = rec.stopped || {};
   for (const n of result.optedOut || []) rec.stopped[n] = at;
-  for (const n of result.delivered || []) delete rec.stopped[n];
+  for (const n of result.accepted || []) delete rec.stopped[n];
   await DB.prepare(`INSERT INTO site_config (key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`)
     .bind(ALERT_TEXTS_KEY, JSON.stringify(rec), at).run();
 }
@@ -944,6 +998,6 @@ export async function alertAdmins(env, config, { level = 'warn', icon, title, de
     });
   }
   // Texts only for the reveal alerts that ask (see Staff alert texts above)
-  results.text = text ? await textStaff(env, config, { title, body: typeof text === 'string' ? text : alertText({ title, detail, fix, url: allLinks[0]?.url }) }) : null;
+  results.text = text ? await textStaff(env, config, { title, body: typeof text === 'string' ? text : alertText({ title, detail, fix, url: allLinks[0]?.url, tone: toneFor({ level, resolves }) }) }) : null;
   return results;
 }

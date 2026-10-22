@@ -82,6 +82,16 @@ const reminderLive = (kind) => (f) => {
   const channels = ['email', r.push && r.vapid ? 'browser alert' : null].filter(Boolean);
   return ON(`Goes by ${channels.join(' and ')}.${signed}${by.length ? ` Sent so far: ${by.join(', ')}.` : ''}`, latest(s.email?.last, s.push?.last));
 };
+// Staff texts: Twilio connected, someone on the list, and did the last ones arrive (Twilio's delivery reports)
+const textsLive = (f) => {
+  if (!f.env) return null;
+  if (!f.env.twilio) return OFF('Off until the Twilio keys are in Cloudflare.');
+  const n = f.reminders?.alertPhones || 0;
+  if (!n) return OFF('No staff numbers on the alert list yet. Add them in Reveals → Settings → Alerts.');
+  const miss = f.reminders?.textMisses;
+  if (miss?.count) return ATTN(`The last text to ${plural(miss.count, 'staff number')} didn’t arrive${miss.why ? `: ${miss.why}` : ''}.`, miss.at);
+  return ON(`Goes to ${plural(n, 'staff number')}.`);
+};
 const inviteLive = (which) => first(needs('calendar', NO_CAL), (f) => {
   const v = f.invites;
   if (!v) return null;
@@ -394,7 +404,20 @@ const MAP = { t: 'Everything we send', children: [
           when: 'Someone adds the number in Reveals → Settings → Alerts and saves.',
           does: 'Proof that texts reach the phone, what they’re about, and that replying STOP ends them.',
           touches: ['Twilio'], where: 'functions/api/broadcast-admin.js · _broadcast-notify.js (alertHelloText)',
-          live: (f) => (!f.env ? null : !f.env.twilio ? OFF('Off until the Twilio keys are in Cloudflare.') : !f.reminders?.alertPhones ? OFF('No staff numbers on the alert list yet.') : ON()) },
+          live: textsLive },
+        { t: 'Reveal-day texts', s: 'live', k: 'text', by: 'auto', preview: 'staff-reveal-texts', change: CHANGE.revealSettings,
+          who: 'The staff numbers in Reveals → Settings → Alerts.',
+          when: 'The check an hour before, the phone going live, “All green” about a minute in, and any problem while live and when it’s fixed.',
+          does: 'Each opens with what it is (SOARD ALERT, SOARD FIXED, or SOARD for good news), then the fix and a link. Twilio reports whether each one arrived.',
+          touches: ['Twilio'], where: 'functions/api/_broadcast-notify.js (alertText, textStaff) · _broadcast-monitor.js · _broadcast-preflight.js (goText)',
+          info: 'Text it to me sends the whole sequence to your phone, each starting [Preview].',
+          live: textsLive },
+        { t: 'Problem texts', s: 'live', k: 'text', by: 'auto', preview: 'staff-problem-texts', change: CHANGE.revealSettings,
+          who: 'The staff numbers in Reveals → Settings → Alerts.',
+          when: 'The reveal-day health check fails, the check an hour before says no-go, Stream refuses the phone’s settings, Facebook or YouTube never shows it, or the reveal never goes live.',
+          does: 'What’s wrong in plain words, what to do first, and a link. Never an error code.',
+          touches: ['Twilio'], where: 'functions/api/_broadcast.js · stream-webhook.js (errorAlert) · _broadcast-preflight.js (goText)',
+          live: textsLive },
         { t: 'Invite problem', s: 'live', k: 'email', by: 'auto', preview: 'staff-invite-problem', change: CHANGE.invites,
           who: 'The invite alert list, the organizer, and Peter.',
           when: 'A reveal’s calendar invite can’t be updated.',
@@ -583,6 +606,10 @@ const CSS = `
 .mm-invite-desc { white-space: pre-line; font-size: 0.9rem; line-height: 1.55; margin: 0; padding-top: 0.75rem; border-top: 1px solid #EEE; overflow-wrap: anywhere; }
 .mm-phone { max-width: 340px; margin: 0 auto; padding: 1rem 0.9rem 1.2rem; border-radius: 28px; background: #fff; border: 1px solid #E5E4E0; }
 .mm-phone-from { text-align: center; font-size: 0.74rem; color: #6B6C72; margin-bottom: 0.7rem; }
+.mm-thread { display: flex; flex-direction: column; gap: 0.85rem; }
+.mm-when { text-align: center; font-size: 0.7rem; color: #8A8B90; margin-bottom: 0.3rem; }
+.mm-textto { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.84rem; color: var(--color-text-secondary); }
+.mm-textto .form-select { width: auto; min-height: 36px; padding: 0.2rem 1.8rem 0.2rem 0.6rem; }
 .mm-bubble { max-width: 85%; padding: 0.55rem 0.8rem; border-radius: 18px 18px 18px 6px; background: #E9E9EB; color: #1C1C1E; font: 15px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; overflow-wrap: anywhere; white-space: pre-line; }
 .mm-push { max-width: 380px; margin: 0 auto; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 0.15rem 0.7rem; padding: 0.8rem 0.9rem; border-radius: 16px; background: rgba(255,255,255,0.92); border: 1px solid #E5E4E0; box-shadow: 0 6px 24px rgba(0,0,0,0.08); color: #1C1C1E; font: 14px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
 .mm-push i { grid-row: span 2; width: 38px; height: 38px; border-radius: 9px; background: #FFDA24; }
@@ -669,6 +696,7 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
   const [p, setP] = useState(null);
   const [err, setErr] = useState(null);
   const [send, setSend] = useState({ state: 'idle' });
+  const [textTo, setTextTo] = useState('0');
   const closeRef = useRef(null);
   // Focus goes back to what opened it (Safari doesn't focus a clicked button, so it's passed in)
   const back = useRef(returnTo || document.activeElement);
@@ -693,12 +721,14 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
   const sendIt = async () => {
     setSend({ state: 'busy' });
     try {
-      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ send: entry.preview, lang }) });
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ send: entry.preview, lang, ...(p?.send === 'text' ? { to: Number(textTo) } : {}) }) });
       const b = await r.json().catch(() => null);
       if (!r.ok || !b?.success) throw new Error(b?.error || `HTTP ${r.status}`);
       const text = b.kind === 'invite'
         ? `A TEST ${b.stage === 'confirmed' ? 'confirmed' : 'save-the-date'} invite is on its way to ${b.sentTo}. It’s on the office sandbox job, and nobody else is invited.`
-        : `Sent to ${b.sentTo}. Look for [Preview] in the subject.`;
+        : b.kind === 'text'
+          ? `${b.count === 1 ? 'Texted' : `${b.count} texts sent`} to ${b.sentTo}, each starting [Preview].${b.failed ? ` ${b.failed} didn’t go: ${b.error || 'Twilio refused them'}.` : ''}`
+          : `Sent to ${b.sentTo}. Look for [Preview] in the subject.`;
       setSend({ state: 'ok', text });
       addToast?.(text, 'success');
     } catch (e) {
@@ -716,9 +746,13 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
     if (err) return html`<div class="mm-wait" role="alert">${err}</div>`;
     if (!p) return html`<div class="mm-wait">Loading the preview…</div>`;
     if (showing === 'text' && p.sms) {
-      return html`<div class="mm-phone" aria-label="The text message">
+      const texts = Array.isArray(p.sms) ? p.sms : [{ when: null, text: p.sms }];
+      return html`<div class="mm-phone" aria-label=${texts.length > 1 ? 'The text messages' : 'The text message'}>
         <div class="mm-phone-from">${p.channel === 'text' ? p.from : TEXT_FROM}</div>
-        <div class="mm-bubble">${p.sms}</div>
+        <div class="mm-thread">${texts.map((t) => html`<div class="mm-msg">
+          ${t.when && html`<div class="mm-when">${t.when}</div>`}
+          <div class="mm-bubble">${t.text}</div>
+        </div>`)}</div>
       </div>`;
     }
     if (showing === 'push' && p.push) {
@@ -756,13 +790,14 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
     return html`<div class="mm-wait">Nothing to show.</div>`;
   };
 
-  const canSend = p && (p.send === 'invite' || (p.send === 'email' && showing === 'email'));
+  const textNumbers = p?.send === 'text' ? (p.textTo || []) : [];
+  const canSend = p && (p.send === 'invite' || (p.send === 'email' && showing === 'email') || (p.send === 'text' && p.texting && textNumbers.length > 0));
   return html`<div class="mm-sheet-wrap" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
     <div class="mm-sheet" role="dialog" aria-modal="true" aria-labelledby="mm-sheet-title">
       <div class="mm-sheet-head">
         <div>
           <h3 id="mm-sheet-title">${entry.t}</h3>
-          <p>As it goes out, filled in for a sample family (the Stones). Nothing is sent from here unless you press Send it to me.</p>
+          <p>As it goes out, filled in for a sample family (the Stones). Nothing is sent from here unless you press ${p?.send === 'text' ? 'Text it to me' : 'Send it to me'}.</p>
         </div>
         <button type="button" class="am-close" ref=${closeRef} aria-label="Close" onClick=${onClose}>×</button>
       </div>
@@ -795,8 +830,13 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
           : !p ? '' : p.send === 'invite' ? 'Send it to me makes a separate TEST invite on the office sandbox job, inviting only you.'
           : p.send === 'email' ? (showing === 'email' ? 'Send it to me emails this copy to you, with [Preview] in the subject.' : 'Texts and browser alerts can’t be sent as a preview. Switch to Email to send that one to yourself.')
           : p.channel === 'jobtread' ? 'JobTread sends this one from the family’s account, so it can’t be sent to you from here.'
+          : p.send === 'text' ? (!p.texting ? 'Texting isn’t connected yet (the Twilio keys in Cloudflare).'
+            : !textNumbers.length ? 'Add your number in Reveals → Settings → Alerts, then text it to yourself from here.'
+            : `Texts ${Array.isArray(p.sms) && p.sms.length > 1 ? `all ${p.sms.length}` : 'it'} to your phone, each starting [Preview]. Only numbers on the alert list can get them.`)
           : 'Texts can’t be sent as a preview.'}</p>
-        ${canSend && html`<button type="button" class="btn btn-primary btn-sm" disabled=${send.state === 'busy'} onClick=${sendIt}>${send.state === 'busy' ? html`<span class="spinner spinner-12" /> Sending…` : 'Send it to me'}</button>`}
+        ${canSend && p.send === 'text' && textNumbers.length > 1 && html`<label class="mm-textto">To the number ending
+          <select class="form-select" value=${textTo} onChange=${(e) => setTextTo(e.target.value)}>${textNumbers.map((n) => html`<option value=${String(n.i)}>${n.last4}</option>`)}</select></label>`}
+        ${canSend && html`<button type="button" class="btn btn-primary btn-sm" disabled=${send.state === 'busy'} onClick=${sendIt}>${send.state === 'busy' ? html`<span class="spinner spinner-12" /> Sending…` : p.send === 'text' ? 'Text it to me' : 'Send it to me'}</button>`}
       </div>
     </div>
   </div>`;

@@ -1309,6 +1309,9 @@
     .bc-snav button:hover { color: var(--color-text); border-color: #CFCDC6; }
     .bc-snav button.is-flag::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #D69E2E; margin-left: .4rem; vertical-align: middle; }
     .bc-set { scroll-margin-top: 1rem; }
+    .bc-text-status { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .25rem; font-size: .84rem; color: var(--color-text-secondary); }
+    .bc-text-status li.is-ok strong { color: var(--color-success); }
+    .bc-text-status li.is-bad { color: var(--color-warning, #B7791F); }
     .bc-set-lede { font-size: .88rem; color: var(--color-text-muted); margin: -.35rem 0 1rem; line-height: 1.55; }
     .bc-block { padding: 1rem 0; border-top: 1px solid var(--color-border); }
     .bc-card-head + .bc-block, .bc-set-lede + .bc-block, .bc-result + .bc-block { border-top: 0; padding-top: 0; }
@@ -7596,8 +7599,17 @@
             <input class="form-input" id="bc-alert-phones" type="text" inputmode="tel" autocomplete="off" value=${f.alertPhones} placeholder="(404) 555-0123, (678) 555-0199" onInput=${set('alertPhones')} style="max-width:520px" />
             <div class="form-hint">Staff mobile numbers, comma separated. They get a text when something goes wrong on reveal day and when it's fixed, the go / no-go check an hour before, "Live now", and "All green" once sound, picture, Facebook and YouTube check out. Anyone you add gets a hello text when you save. Only these numbers are ever texted; the public never is.</div>
             ${!s.smsConfigured ? html`<div class="form-hint">Texts start once Twilio is connected in Cloudflare: <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> (or a restricted API key) and <code>TWILIO_MESSAGING_SERVICE_SID</code>.</div>` : null}
-            ${Object.keys(s.alertTexts?.stopped || {}).filter((n) => (s.alertPhones || []).includes(n)).map((n) => html`<div class="form-hint"><strong>${bcPhone(n)}</strong> replied STOP, so Twilio won't text it. Texting START to the alert number turns texts back on.</div>`)}
-            ${s.alertTexts?.last ? html`<div class="form-hint">Last text ${bcFmt(s.alertTexts.last.at)}: “${s.alertTexts.last.title}”, ${s.alertTexts.last.sent} sent${s.alertTexts.last.failed ? `, ${s.alertTexts.last.failed} failed${s.alertTexts.last.error ? ` (${s.alertTexts.last.error})` : ''}` : ''}.</div>` : null}
+            ${(s.alertPhones || []).length ? html`<ul class="bc-text-status">${s.alertPhones.map((n) => {
+              // Twilio's last delivery report for each number: arrived, or why not
+              const r = s.alertTexts?.numbers?.[n];
+              const stop = s.alertTexts?.stopped?.[n];
+              const [tone, words] = stop ? ['bad', 'Replied STOP, so Twilio won’t text it. Texting START to the alert number turns texts back on.']
+                : !r ? ['', 'No texts yet.']
+                : r.status === 'delivered' ? ['ok', `Last text arrived ${bcFmt(r.at)}.`]
+                : ['bad', `Last text didn’t arrive (${r.error || r.status}), ${bcFmt(r.at)}.`];
+              return html`<li class=${tone ? `is-${tone}` : ''}><strong>${bcPhone(n)}</strong> ${words}</li>`;
+            })}</ul>` : null}
+            ${s.alertTexts?.last ? html`<div class="form-hint">Last text ${bcFmt(s.alertTexts.last.at)}: “${s.alertTexts.last.title}”, ${s.alertTexts.last.sent} sent${s.alertTexts.last.failed ? `, ${s.alertTexts.last.failed} failed${s.alertTexts.last.error ? ` (${s.alertTexts.last.error})` : ''}` : ''}. To see every reveal-day text on your phone, open Site → Emails & invites → Reveal-day texts → Text it to me.</div>` : null}
           </div>`)}
 
         ${section('site', 'Site', null, html`

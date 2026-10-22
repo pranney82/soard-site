@@ -10,10 +10,13 @@
  *                               message when it last went and how many went in 30 days.
  *                               Times and counts only, never an address or a family's name.
  *  GET ?preview=<id>&lang=es  → that message as it goes out, filled in for a sample family
- *                               (the Stones), built by the same function that sends it.
+ *                               (the Stones), built by the same function that sends it. A staff
+ *                               text also lists the alert numbers it may go to (last 4 digits).
  *  POST { send: <id>, lang }  → "Send it to me": the preview to the person signed in, with
  *                               [Preview] in the subject. An invite goes as a separate TEST
  *                               event on the office sandbox job, inviting only them.
+ *  POST { send: <id>, to: i } → "Text it to me": a staff text preview to number i on the alert
+ *                               list (never any other number), each text starting [Preview].
  *
  * Not in _middleware's public list, so Access guards it. Never cached. Each
  * fact fails on its own: one missing table never blanks the rest.
@@ -37,6 +40,10 @@ import { SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED } from './_reveals.js';
 import { deniedAlert } from './_kid-status.js';
 import { zeffyAlertEmail } from './_zeffy.js';
 import { alertHelloEmail } from './broadcast-admin.js';
+import { readConfig } from './_broadcast.js';
+import { goText } from './_broadcast-preflight.js';
+import { ADMIN_URL as CONTROL_ROOM, SILENT, RESOLVED, greenDetail } from './_broadcast-monitor.js';
+import { errorAlert } from './stream-webhook.js';
 
 const { SITE_ORIGIN, EMAIL_FROM } = notify;
 const DAY = 864e5;
@@ -174,10 +181,18 @@ async function reminderFacts(DB, now) {
     kitLive: c.kitLive?.enabled !== false,
     alertEmails: Array.isArray(c.alerts?.emails) ? c.alerts.emails.length : 0,
     alertPhones: Array.isArray(c.alerts?.phones) ? c.alerts.phones.length : 0,
+    // Twilio's last delivery report per staff number: how many didn't arrive, and why (no numbers)
+    textMisses: await textMisses(DB, c),
     vapid: !!c.vapid?.publicKey,
     sends,
     subscribers: subs,
   };
+}
+
+async function textMisses(DB, c) {
+  const numbers = (await notify.readAlertTexts(DB)).numbers || {};
+  const misses = notify.alertPhones(c).map((n) => numbers[n]).filter((r) => r && r.status !== 'delivered');
+  return { count: misses.length, why: misses[0]?.error || null, at: misses[0]?.at || null };
 }
 
 async function newsletterFacts(DB, now) {
@@ -302,6 +317,45 @@ const liveAlertSample = (now) => ({
   links: [{ label: 'Open the admin', url: `${SITE_ORIGIN}/admin/` }],
 });
 
+const TEXT_FROM = 'SOARD’s alert number, through Twilio';
+const STAFF_TEXTS_TO = 'The staff numbers in Reveals → Settings → Alerts';
+
+/**
+ * The staff texts for a sample reveal (Avery's, a week out at 4 PM), built by
+ * the same functions the real ones use: 'good' is reveal day with a hiccup, in
+ * the order they'd arrive; 'problems' is each text for a day that goes wrong.
+ * → [{ when, text }]
+ */
+export function revealDayTexts(now, which) {
+  const { at } = sampleReveal(now);
+  const t0 = Date.parse(at);
+  const clock = (min) => new Date(t0 + min * 60e3).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
+  const title = `${SAMPLE.childFirst}'s room reveal`;
+  const state = { title, scheduledAt: at };
+  const result = (items) => {
+    const counts = items.reduce((c, i) => ({ ...c, [i.status]: c[i.status] + 1 }), { ok: 0, warn: 0, fail: 0, unknown: 0, off: 0 });
+    return { items, counts, ready: counts.fail === 0 };
+  };
+  const checks = ['Stream is ready', 'The live input is on', 'Mic check passed', 'Facebook output', 'Facebook token', 'YouTube output', 'The live hub', 'Slack alerts', 'The kid page'].map((label) => ({ status: 'ok', label }));
+  if (which === 'good') {
+    return [
+      { when: `${clock(-60)} · the check an hour before`, text: goText(result(checks), state, { timezone: TZ }) },
+      { when: `${clock(-1)} · the phone starts streaming`, text: notify.liveNowText({ title, url: `${SITE_ORIGIN}/live/` }) },
+      { when: `${clock(0)} · a minute in, everything checks out`, text: notify.alertText({ title: `All green: ${title}`, detail: greenDetail(['the site', 'Facebook', 'YouTube']), url: CONTROL_ROOM }) },
+      { when: `${clock(12)} · the mic cuts out`, text: notify.alertText({ ...SILENT, url: CONTROL_ROOM, tone: 'alert' }) },
+      { when: `${clock(13)} · sound is back`, text: notify.alertText({ title: RESOLVED.silent, detail: 'It lasted 1:05.', url: CONTROL_ROOM, tone: 'fixed' }) },
+    ];
+  }
+  const notReady = [...checks.slice(0, 1), { status: 'fail', label: 'No live input for the phone', fix: 'Settings → Phones → Create the live input, then scan its code with the phone.' }, ...checks.slice(2)];
+  return [
+    { when: 'Reveal morning · the health check finds a problem', text: notify.alertText({ title: 'Reveal-day check found problems', detail: '• Facebook token failed: the session has expired', url: `${SITE_ORIGIN}/admin/`, tone: 'alert' }) },
+    { when: `${clock(-60)} · the check an hour before fails`, text: goText(result(notReady), state, { timezone: TZ }) },
+    { when: 'While live · Stream refuses the phone’s settings', text: errorAlert('live', { error: { code: 'ERR_GOP_OUT_OF_RANGE' } }).text },
+    { when: 'While live · Facebook never shows it', text: notify.alertText({ title: 'Facebook isn\'t showing the reveal (post not live)', fix: 'Open Live Producer. The preview should show the feed; press Go Live.', url: CONTROL_ROOM, tone: 'alert' }) },
+    { when: `${clock(240)} · it never went live`, text: notify.alertText({ title: 'Scheduled reveal never went live', detail: `${title} was scheduled for ${notify.formatWhen(at, TZ)} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/`, tone: 'alert' }) },
+  ];
+}
+
 export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.now() } = {}) {
   lang = lang === 'es' ? 'es' : 'en';
   const { at: scheduledAt } = sampleReveal(now);
@@ -390,10 +444,14 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     }
     case 'staff-live-alert': {
       const a = liveAlertSample(now);
-      return email(notify.alertEmail(a), { to: 'The alert list in Reveals → Settings → Alerts', sms: notify.alertText({ ...a, url: a.links[0].url }) });
+      return email(notify.alertEmail(a), { to: 'The alert list in Reveals → Settings → Alerts', sms: notify.alertText({ ...a, url: a.links[0].url, tone: 'alert' }) });
     }
     case 'staff-alert-hello-text':
-      return { channel: 'text', from: 'SOARD’s alert number, through Twilio', to: 'A new number on the alert list', sms: notify.alertHelloText({ by: me || 'Someone on the staff' }), send: null };
+      return { channel: 'text', from: TEXT_FROM, to: 'A new number on the alert list', sms: notify.alertHelloText({ by: me ? me.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Someone on the staff' }), send: 'text' };
+    case 'staff-reveal-texts':
+      return { channel: 'text', from: TEXT_FROM, to: STAFF_TEXTS_TO, sms: revealDayTexts(now, 'good'), send: 'text' };
+    case 'staff-problem-texts':
+      return { channel: 'text', from: TEXT_FROM, to: STAFF_TEXTS_TO, sms: revealDayTexts(now, 'problems'), send: 'text' };
     case 'staff-alert-hello':
       return email(alertHelloEmail(me || 'Someone on the staff'), { to: 'A new address on the alert list' });
     case 'staff-invite-problem':
@@ -426,7 +484,9 @@ export async function onRequestGet(context) {
     if (q.has('preview')) {
       const p = await buildPreview(env, q.get('preview'), { lang: q.get('lang'), me: context.data?.userEmail || '' });
       if (!p) return fail('There’s no preview for that message', 404);
-      return Response.json({ success: true, id: q.get('preview'), ...p }, { headers: HEADERS });
+      // A text preview goes only to a number already on the alert list: its last four digits to pick from
+      const textTo = p.send === 'text' ? notify.alertPhones(await readConfig(env.DB)).map((n, i) => ({ i, last4: n.slice(-4) })) : undefined;
+      return Response.json({ success: true, id: q.get('preview'), ...p, textTo, texting: p.send === 'text' ? notify.smsConfigured(env) : undefined }, { headers: HEADERS });
     }
     return Response.json({ success: true, ...(await gatherFacts(env)) }, { headers: HEADERS });
   } catch (err) {
@@ -450,6 +510,22 @@ export async function onRequestPost(context) {
       const r = await sendTestInvite(env, SANDBOX_JOB_ID, me, { date: sampleReveal().date, time: '16:00', stage });
       if (r.action === 'skip') return fail(`The test invite couldn’t be made: ${r.reason}`, 409);
       return Response.json({ success: true, sentTo: me, kind: 'invite', stage }, { headers: HEADERS });
+    }
+    if (p.send === 'text') {
+      // Only to a number on the alert list (its owner agreed to these texts), one text at a time so they arrive in order
+      if (!notify.smsConfigured(env)) return fail('Texting isn’t set up (the Twilio keys in Cloudflare)', 503);
+      const to = notify.alertPhones(await readConfig(env.DB))[Number(body.to)];
+      if (!to || !Number.isInteger(Number(body.to))) return fail('Pick a number on the alert list (Reveals → Settings → Alerts)', 400);
+      const texts = Array.isArray(p.sms) ? p.sms.map((x) => x.text) : [p.sms];
+      let sent = 0;
+      const errors = [];
+      for (const t of texts) {
+        const r = await notify.sendSms(env, { to: [to], body: `[Preview] ${t}` });
+        sent += r.sent;
+        errors.push(...r.errors);
+      }
+      if (!sent) return fail(`The text didn’t go: ${errors[0] || 'Twilio refused it'}`, 500);
+      return Response.json({ success: true, sentTo: `the number ending ${to.slice(-4)}`, kind: 'text', count: sent, failed: texts.length - sent, error: errors[0] || null }, { headers: HEADERS });
     }
     if (p.send !== 'email') return fail('This one can’t be sent as a preview', 400);
     if (!notify.emailConfigured(env)) return fail('Email sending isn’t set up (RESEND_API_KEY in Cloudflare)', 503);

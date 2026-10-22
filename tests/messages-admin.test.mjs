@@ -80,7 +80,8 @@ test('every message on the map with a preview builds, in Spanish too where famil
       const p = await buildPreview(env, n.preview, { lang, me: 'me@example.com', now: NOW });
       assert.ok(p, `${n.t} has a preview`);
       assert.ok(p.from && p.to, `${n.t} says who it's from and to`);
-      const shown = p.html || p.text || p.sms || p.invite?.description;
+      const sms = Array.isArray(p.sms) ? p.sms.map((x) => x.text).join('\n') : p.sms;
+      const shown = p.html || p.text || sms || p.invite?.description;
       assert.ok(shown && shown.length > 30, `${n.t} (${lang}) shows the message`);
       if (p.channel !== 'text') assert.ok(p.subject, `${n.t} has a subject`);
       assert.ok(!/\{(parent|child|name|space|date|year|kid)\}/.test(`${p.subject} ${shown}`), `${n.t} (${lang}) has no unfilled placeholder`);
@@ -98,7 +99,7 @@ test('every message on the map with a preview builds, in Spanish too where famil
   const reminder = await buildPreview(env, 'rem-day', { now: NOW });
   assert.ok(reminder.push?.title && !reminder.sms, 'a reminder shows its browser alert too, and never a text: the public is never texted');
   const alert = await buildPreview(env, 'staff-live-alert', { now: NOW });
-  assert.match(alert.sms, /^SOARD: Scheduled reveal never went live\n/, 'the staff alert shows its text');
+  assert.match(alert.sms, /^SOARD ALERT: Scheduled reveal never went live\n/, 'the staff alert shows its text, as an alert');
   assert.match((await buildPreview(env, 'staff-alert-hello-text', { now: NOW })).sms, /Reply STOP to opt out/);
   assert.equal(await buildPreview(env, 'nope', { now: NOW }), null);
 });
@@ -182,7 +183,7 @@ test('Send it to me: only to the person signed in, marked [Preview]', async (t) 
   assert.match(sent[1][0].subject, /^\[Preview\] Ya está en la lista$/);
 
   assert.equal((await post({ send: 'app-approved' })).status, 400, 'JobTread sends the status emails; no copy from here');
-  assert.equal((await post({ send: 'staff-alert-hello-text' })).status, 400, 'texts aren’t sent as previews');
+  assert.equal((await post({ send: 'staff-alert-hello-text' })).status, 503, 'a text needs Twilio');
   assert.equal((await post({ send: 'nope' })).status, 404);
   assert.equal((await post({ send: 'staff-new-app' }, {})).status, 403, 'nobody signed in, nothing sent');
   assert.equal((await post({ send: 'staff-new-app' }, undefined, ENV(DB, { RESEND_API_KEY: '' }))).status, 503);
@@ -222,4 +223,42 @@ test('every message says who sends it: Resend, JobTread, Kit, Google Calendar, T
   assert.deepEqual(by('Confirmed invite'), ['google']);
   assert.deepEqual(by('New application'), ['resend']);
   assert.deepEqual(by('Bio request'), ['you']);
+});
+
+test('Text it to me: the reveal-day texts, in order, only to a number on the alert list', async (t) => {
+  const texts = [];
+  offline(t, async (url, init) => {
+    if (url.startsWith('https://api.twilio.com/')) { texts.push({ to: init.body.get('To'), body: init.body.get('Body'), cb: init.body.get('StatusCallback') }); return Response.json({ sid: `SM${texts.length}` }, { status: 201 }); }
+    throw new Error(`offline: ${url}`);
+  });
+  const DB = await makeDb();
+  await DB.prepare("UPDATE site_config SET data = ? WHERE key = 'broadcast-config'").bind(JSON.stringify({ alerts: { emails: [], phones: ['+14045550123', '+16785550199'] } })).run();
+  const env = ENV(DB, { TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_MESSAGING_SERVICE_SID: 'MG1' });
+  const get = async (id) => (await onRequestGet({ env, data: { userEmail: 'me@example.com' }, request: new Request(`https://x/api/messages-admin?preview=${id}`) })).json();
+  const post = (body) => onRequestPost({ env, data: { userEmail: 'me@example.com' }, request: new Request('https://x/api/messages-admin', { method: 'POST', body: JSON.stringify(body) }) });
+
+  const p = await get('staff-reveal-texts');
+  assert.deepEqual(p.textTo, [{ i: 0, last4: '0123' }, { i: 1, last4: '0199' }], 'the alert numbers by their last 4 digits only');
+  assert.equal(p.texting, true);
+  assert.deepEqual(p.sms.map((x) => x.text.split('\n')[0]), [
+    "SOARD: Go: Avery's room reveal at 4:00 PM", "SOARD: Live now: Avery's room reveal", "SOARD: All green: Avery's room reveal",
+    'SOARD ALERT: Reveal audio is silent', 'SOARD FIXED: Reveal audio is back',
+  ], 'reveal day, with a hiccup, as the phone would show it');
+  const bad = await get('staff-problem-texts');
+  assert.ok(bad.sms.every((x) => /^SOARD ALERT: /.test(x.text)), 'every problem text reads as an alert');
+  assert.ok(bad.sms.every((x) => !/ERR_|\{|\}/.test(x.text)), 'plain words: no error codes, no placeholders');
+  assert.ok([...p.sms, ...bad.sms].every((x) => /^[\x20-\x7E\n]+$/.test(x.text) && x.text.length <= 306), 'plain characters, two segments at most');
+
+  const r = await post({ send: 'staff-reveal-texts', to: 1 });
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { success: true, sentTo: 'the number ending 0199', kind: 'text', count: 5, failed: 0, error: null });
+  assert.deepEqual(texts.map((x) => x.to), Array(5).fill('+16785550199'), 'only the number picked');
+  assert.ok(texts.every((x) => x.body.startsWith('[Preview] SOARD')), 'each marked [Preview]');
+  assert.equal(texts[3].body.split('\n')[0], '[Preview] SOARD ALERT: Reveal audio is silent', 'in the order they arrive');
+  assert.equal(texts[0].cb, 'https://sunshineonaranneyday.com/api/twilio-status', 'Twilio reports whether each arrived');
+
+  assert.equal((await post({ send: 'staff-reveal-texts', to: 2 })).status, 400, 'no number beyond the list');
+  assert.equal((await post({ send: 'staff-reveal-texts', to: 'x' })).status, 400);
+  assert.equal((await post({ send: 'staff-reveal-texts', to: '+15555550100' })).status, 400, 'never a number typed in');
+  assert.equal(texts.length, 5, 'nothing else went');
 });

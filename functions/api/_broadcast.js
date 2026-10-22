@@ -1283,7 +1283,7 @@ async function goLiveEffects(env, config, state, work, by) {
       facts: [['Started from', 'The phone']],
       url: liveUrlFor(state), links: [{ label: 'Open the control room', url: `${SITE_ORIGIN}/admin/#broadcast/control-room` }],
       // The text promises only what's known this second; "All green" follows once the feed monitor has checked
-      text: notify.alertText({ title: `Live now: ${state.title || 'the reveal'}`, detail: 'The phone is streaming. An "All green" text follows once sound, picture, Facebook and YouTube check out.', url: liveUrlFor(state) }),
+      text: notify.liveNowText({ title: state.title, url: liveUrlFor(state) }),
     });
     work.push('announced-live');
   }

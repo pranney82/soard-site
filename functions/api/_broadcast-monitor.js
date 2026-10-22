@@ -259,8 +259,17 @@ export async function report(env, config, state, health, { feed = 'live' } = {})
 
 // ─── Issues ─────────────────────────────────────────────────────────
 
+/** Silent sound, the problem staff most need to hear about fast (also the texts' preview sample) */
+export const SILENT = { level: 'error', after: RULES.silentAfter, title: 'Reveal audio is silent', detail: 'No sound reaching the site, Facebook or YouTube.', fix: 'Check the mic: receiver plugged into the phone, transmitter switched on and unmuted, Larix not muted.' };
+
+/** "All green" in words: where it's confirmed live, and what can't be confirmed from here */
+export function greenDetail(live, unsure = []) {
+  const name = (list) => list.join(', ').replace(/, ([^,]*)$/, ' and $1');
+  return `Sound and picture are good, and it's live on ${name(live)}.${unsure.length ? ` ${name(unsure)} can't be confirmed from here.` : ''}`;
+}
+
 /** What each issue says when it clears. */
-const RESOLVED = {
+export const RESOLVED = {
   noAudio: 'The reveal has sound again',
   silent: 'Reveal audio is back',
   loud: 'Reveal audio is back to a normal level',
@@ -401,7 +410,7 @@ export async function watch(env, config, state, health, work, record = async () 
       if (c.liveForMs > RULES.noAudioAfter) await c.raise('noAudio', { level: 'error', title: 'The reveal has no sound track', detail: 'Stream is getting video from the phone with no audio at all, so the site, Facebook and YouTube are silent.', fix: 'In Larix: Settings → Audio, turn audio on, then stop and start the stream.' });
     } else if (verdict !== 'unknown') await c.clear('noAudio');
     const sound = {
-      silent: ['silent', { level: 'error', after: RULES.silentAfter, title: 'Reveal audio is silent', detail: 'No sound reaching the site, Facebook or YouTube.', fix: 'Check the mic: receiver plugged into the phone, transmitter switched on and unmuted, Larix not muted.' }],
+      silent: ['silent', SILENT],
       loud: ['loud', { level: 'warn', after: RULES.loudAfter, title: 'Reveal audio is very loud', detail: `Loudness ${lufsText(a.lufs)} (aim for about -16). It is probably distorting.`, fix: 'Turn the gain down on the mic transmitter, or move the mic a little further from the loudest voice.' }],
       onesided: ['oneSided', { level: 'warn', after: RULES.oneSidedAfter, title: `Sound is only on the ${deadSide(a) === 'left' ? 'right' : 'left'} side`, detail: 'Viewers with headphones hear it in one ear only.', fix: 'Set Larix audio to mono (Settings → Audio → Channels: 1), or reseat the mic receiver\'s cable in the phone.' }],
       quiet: ['quiet', { level: 'warn', after: RULES.quietAfter, title: 'Reveal audio is very quiet', detail: `Loudness ${lufsText(a.lufs)} (aim for about -16).`, fix: 'Move the mic closer to whoever is talking, or turn up the gain on the mic transmitter.' }],
@@ -465,10 +474,9 @@ async function allGreen(env, config, state, m, c, d) {
   if (m.audio?.verdict !== 'ok' || m.signal?.status === 'weak' || d.site?.status !== 'ok') return;
   const places = [['facebook', 'Facebook'], ['youtube', 'YouTube']].filter(([k]) => d[k]?.status !== 'off');
   if (places.some(([k]) => !['ok', 'unknown'].includes(d[k]?.status))) return;
-  const name = (list) => list.join(', ').replace(/, ([^,]*)$/, ' and $1');
   const live = ['the site', ...places.filter(([k]) => d[k].status === 'ok').map(([, l]) => l)];
   const unsure = places.filter(([k]) => d[k].status === 'unknown').map(([, l]) => l);
-  const detail = `Sound and picture are good, and it's live on ${name(live)}.${unsure.length ? ` ${name(unsure)} can't be confirmed from here.` : ''}`;
+  const detail = greenDetail(live, unsure);
   m.greenAt = c.at;
   const r = await notify.alertAdmins(env, config, { level: 'info', kind: 'news', icon: '🟢', title: `All green: ${state.title || 'the reveal'}`, detail, url: ADMIN_URL, context: c.context, text: true });
   m.log.push({ at: c.at, kind: 'green', title: 'All green', slack: slackStatus(r.slack) });

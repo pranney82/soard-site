@@ -29,7 +29,7 @@
  */
 
 import { hubStatus } from './_broadcast.js';
-import { slackStatus } from './_broadcast-notify.js';
+import { slackStatus, readAlertTexts, alertPhones } from './_broadcast-notify.js';
 import { JT_URL, SOARD_ORG_ID } from './_reveals.js';
 import { approvalsStatus } from './_applicant-approved.js';
 import { coverFacts } from './_job-covers.js';
@@ -51,6 +51,7 @@ export function envFacts(env) {
   return {
     slack: has(env.SLACK_BOT_TOKEN) || has(env.SLACK_WEBHOOK_URL),
     twilio: has(env.TWILIO_ACCOUNT_SID) && (has(env.TWILIO_AUTH_TOKEN) || (has(env.TWILIO_API_KEY_SID) && has(env.TWILIO_API_KEY_SECRET))) && (has(env.TWILIO_FROM) || has(env.TWILIO_MESSAGING_SERVICE_SID)),
+    twilioToken: has(env.TWILIO_AUTH_TOKEN),
     youtube: has(env.YOUTUBE_API_KEY),
     kit: has(env.KIT_API_KEY),
     resend: has(env.RESEND_API_KEY),
@@ -76,6 +77,11 @@ export function envFacts(env) {
   };
 }
 
+function textMisses(c, texts) {
+  const misses = alertPhones(c).map((n) => texts?.numbers?.[n]).filter((r) => r && r.status !== 'delivered');
+  return misses.length ? { count: misses.length, why: misses[0].error || null, at: misses[0].at || null } : null;
+}
+
 /** The Broadcast settings, reduced to switches. Keys, stream URLs, secrets and phone numbers never leave. */
 export function broadcastFacts(cfg, texts = null) {
   if (!cfg) return null;
@@ -93,6 +99,8 @@ export function broadcastFacts(cfg, texts = null) {
     alertCount: Array.isArray(c.alerts?.emails) ? c.alerts.emails.length : 0,
     alertPhones: Array.isArray(c.alerts?.phones) ? c.alerts.phones.length : 0,
     alertTexts: texts?.last ? { at: texts.last.at, sent: texts.last.sent || 0, failed: texts.last.failed || 0, error: texts.last.error || null } : null,
+    // Twilio's delivery reports: how many staff numbers' last text didn't arrive, and why (never a number)
+    textMisses: textMisses(c, texts),
     updatedAt: cfg.updatedAt,
   };
 }
@@ -279,8 +287,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     settle(() => slackStatus(env)),
   ]);
   const ok = (v) => (v && !v.error ? v : null);
-  // What the last staff alert text did (counts and Twilio's words only)
-  const alertTexts = await siteConfig(DB, 'alert-texts').catch(() => null);
+  // What the last staff alert text did, and each number's delivery report (counts and Twilio's words only)
+  const alertTexts = await readAlertTexts(DB).catch(() => null);
   const sendMap = {};
   for (const r of ok(sends)?.results || []) {
     sendMap[r.kind] ||= {};
@@ -290,7 +298,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     checkedAt: new Date(now).toISOString(),
     env: envFacts(env),
     bindings: { db: !!env.DB, files: !!env.FILES, ai: !!env.AI, hub: !!env.LIVE_HUB },
-    broadcast: broadcastFacts(ok(cfg), alertTexts?.data),
+    broadcast: broadcastFacts(ok(cfg), alertTexts),
     health: healthFacts(ok(health)),
     hub: hub?.error && !hub.bound
       ? { ok: false, error: hub.error }
