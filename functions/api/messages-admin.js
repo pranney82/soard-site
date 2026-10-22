@@ -447,7 +447,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return email(notify.alertEmail(a), { to: 'The alert list in Reveals → Settings → Alerts', sms: notify.alertText({ ...a, url: a.links[0].url, tone: 'alert', icon: '⏰' }) });
     }
     case 'staff-alert-hello-text':
-      return { channel: 'text', from: TEXT_FROM, to: 'A new number on the alert list', sms: notify.alertHelloText({ by: me ? me.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Someone on the staff' }), send: 'text' };
+      return { channel: 'text', from: TEXT_FROM, to: 'A new number on the alert list', sms: notify.alertHelloText({ by: me ? me.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Someone on the staff' }), contact: env.TWILIO_FROM ? 'SOARD Reveal Alerts' : null, send: 'text' };
     case 'staff-reveal-texts':
       return { channel: 'text', from: TEXT_FROM, to: STAFF_TEXTS_TO, sms: revealDayTexts(now, 'good'), send: 'text' };
     case 'staff-problem-texts':
@@ -519,8 +519,10 @@ export async function onRequestPost(context) {
       const texts = Array.isArray(p.sms) ? p.sms.map((x) => x.text) : [p.sms];
       let sent = 0;
       const errors = [];
-      for (const t of texts) {
-        const r = await notify.sendSms(env, { to: [to], body: `[Preview] ${t}` });
+      for (const [i, t] of texts.entries()) {
+        // The hello text carries the contact card, as it does for real
+        const mediaUrl = p.contact && i === texts.length - 1 ? notify.ALERT_CONTACT_URL : null;
+        const r = await notify.sendSms(env, { to: [to], body: `[Preview] ${t}`, mediaUrl });
         sent += r.sent;
         errors.push(...r.errors);
       }

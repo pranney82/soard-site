@@ -608,6 +608,8 @@ const CSS = `
 .mm-phone-from { text-align: center; font-size: 0.74rem; color: #6B6C72; margin-bottom: 0.7rem; }
 .mm-thread { display: flex; flex-direction: column; gap: 0.85rem; }
 .mm-when { text-align: center; font-size: 0.7rem; color: #8A8B90; margin-bottom: 0.3rem; }
+.mm-contact { display: flex; flex-direction: column; gap: 0.15rem; }
+.mm-contact span { font-size: 0.78rem; color: #6B6C72; }
 .mm-textto { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.84rem; color: var(--color-text-secondary); }
 .mm-textto .form-select { width: auto; min-height: 36px; padding: 0.2rem 1.8rem 0.2rem 0.6rem; }
 .mm-bubble { max-width: 85%; padding: 0.55rem 0.8rem; border-radius: 18px 18px 18px 6px; background: #E9E9EB; color: #1C1C1E; font: 15px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; overflow-wrap: anywhere; white-space: pre-line; }
@@ -752,7 +754,8 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
         <div class="mm-thread">${texts.map((t) => html`<div class="mm-msg">
           ${t.when && html`<div class="mm-when">${t.when}</div>`}
           <div class="mm-bubble">${t.text}</div>
-        </div>`)}</div>
+        </div>`)}
+        ${p.contact && html`<div class="mm-msg"><div class="mm-bubble mm-contact" aria-label="A contact card"><b>${p.contact}</b><span>Contact card · tap to save</span></div></div>`}</div>
       </div>`;
     }
     if (showing === 'push' && p.push) {

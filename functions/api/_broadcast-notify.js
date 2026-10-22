@@ -227,7 +227,7 @@ export function smsConfigured(env) {
  * text asks Twilio to report delivery to /api/twilio-status (see recordTextStatus).
  * @returns {{sent:number, failed:number, errors:string[], optedOut:string[], accepted:string[]}}
  */
-export async function sendSms(env, { to, body }) {
+export async function sendSms(env, { to, body, mediaUrl = null }) {
   const out = { sent: 0, failed: 0, errors: [], optedOut: [], accepted: [] };
   const list = (to || []).map(normalizePhone).filter(Boolean);
   if (!list.length) return out;
@@ -240,6 +240,7 @@ export async function sendSms(env, { to, body }) {
     while (queue.length) {
       const num = queue.shift();
       const form = new URLSearchParams({ To: num, Body: body });
+      if (mediaUrl) form.set('MediaUrl', mediaUrl); // a picture message: the contact card
       if (env.TWILIO_MESSAGING_SERVICE_SID) form.set('MessagingServiceSid', env.TWILIO_MESSAGING_SERVICE_SID);
       else form.set('From', env.TWILIO_FROM);
       if (env.TWILIO_AUTH_TOKEN) form.set('StatusCallback', TEXT_STATUS_URL);
@@ -541,6 +542,13 @@ export function smsSafe(s) {
 
 const TEXT_MAX = 306; // two segments
 
+// The control room is behind the sign-in, so a phone can't preview it: texts link to
+// /control-room/ instead, which shows previewers a card and sends people straight on
+export const TEXT_LINK = `${SITE_ORIGIN}/control-room/`;
+/** The contact card for the alert number (functions/alert-contact.js), sent with the hello text */
+export const ALERT_CONTACT_URL = `${SITE_ORIGIN}/alert-contact`;
+const textLink = (url) => (url && url.startsWith(`${SITE_ORIGIN}/admin/`) ? TEXT_LINK : url);
+
 // What a lock screen shows first: a picture, then a problem, a fix, or news.
 // Any emoji makes the whole text Unicode (70 characters a segment, not 160):
 // a few cents more per text for a handful of staff, worth reading at a glance.
@@ -561,7 +569,7 @@ export function alertText({ title, detail, fix, url, tone = 'info', icon = undef
   const pic = icon === undefined ? { alert: '🚨', fixed: '✅' }[tone] : icon;
   const head = `${pic ? `${pic} ` : ''}${TONE[tone] || TONE.info}: ${smsSafe(title)}`;
   const more = fix ? `Fix: ${smsSafe(fix)}` : smsSafe(String(detail || '').split('\n')[0]);
-  const link = url ? `\n${url}` : '';
+  const link = url ? `\n${textLink(url)}` : '';
   const room = TEXT_MAX - head.length - link.length - 1;
   const body = more && room > 24 ? `\n${more.length > room ? `${more.slice(0, room - 3).trimEnd()}...` : more}` : '';
   return `${head}${body}${link}`;

@@ -26,7 +26,7 @@ beforeEach(async () => {
     if (url.startsWith('https://api.twilio.com/')) {
       const to = init.body.get('To');
       if (to === '+14045550666') return json({ code: 21610, message: 'Attempt to send to unsubscribed recipient' }, 400);
-      texts.push({ to, body: init.body.get('Body') });
+      texts.push({ to, body: init.body.get('Body'), media: init.body.get('MediaUrl') });
       return json({ sid: 'SM1' }, 201);
     }
     throw new Error(`no fake for ${url}`);
@@ -112,4 +112,14 @@ test('a number that replied STOP is remembered, and the public text switch canâ€
   const rec = JSON.parse((await env.DB.prepare("SELECT data FROM site_config WHERE key = 'alert-texts'").first()).data);
   assert.ok(rec.stopped['+14045550666']);
   assert.equal(rec.last.failed, 1);
+});
+
+test('the hello text carries the contact card when the site has its own number', async () => {
+  Object.assign(env, TWILIO, { TWILIO_FROM: '+16786883160' });
+  const r = await save({ alerts: { phones: ['(404) 555-0123'] } });
+  assert.equal(r.texted.sent, 1);
+  assert.equal(texts[0].media, 'https://sunshineonaranneyday.com/alert-contact', 'a picture message with the card');
+  delete env.TWILIO_FROM;
+  await save({ alerts: { phones: ['(404) 555-0123', '(678) 555-0199'] } });
+  assert.equal(texts[1].media, null, 'no number of its own, no card');
 });

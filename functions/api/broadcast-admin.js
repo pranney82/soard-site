@@ -349,7 +349,8 @@ export async function onRequestPost(context) {
         if (newPhones.length) {
           if (!notify.smsConfigured(env)) texted = { sent: 0, failed: newPhones.length, error: 'Twilio isn’t connected, so no hello text went out.' };
           else {
-            const r = await notify.sendSms(env, { to: newPhones, body: notify.alertHelloText({ by: personName(userEmail) }) });
+            // With the contact card, so the alerts arrive as "SOARD Reveal Alerts" (and phones show their link previews)
+            const r = await notify.sendSms(env, { to: newPhones, body: notify.alertHelloText({ by: personName(userEmail) }), mediaUrl: env.TWILIO_FROM ? notify.ALERT_CONTACT_URL : null });
             await notify.recordAlertTexts(env.DB, { title: 'Hello text', result: r }).catch(() => {});
             texted = { sent: r.sent, failed: r.failed, error: r.errors[0] || null };
           }

@@ -382,7 +382,7 @@ test('watch: a problem texts the staff when it opens and when it clears, never t
     assert.deepEqual(sms.map((x) => x.to), ['+14045550123', '+16785550199'], 'each number once');
     assert.equal(sms[0].service, 'MG1', 'through the messaging service');
     assert.match(sms[0].body, /^🚨 SOARD ALERT: Reveal audio is silent\nFix: Check the mic/, 'a serious problem reads 🚨 SOARD ALERT on the lock screen');
-    assert.match(sms[0].body, /\nhttps:\/\/sunshineonaranneyday\.com\/admin\/#broadcast\/control-room$/);
+    assert.match(sms[0].body, /\nhttps:\/\/sunshineonaranneyday\.com\/control-room\/$/, 'texts link to the previewable door, not the sign-in');
     for (let i = 0; i < 12; i++) await s.step(15e3);
     assert.ok(slack.some((p) => /Still: Reveal audio is silent/.test(p.text)), 'Slack reminds');
     assert.equal(sms.length, 2, 'the reminder is not texted');
@@ -429,7 +429,7 @@ test('watch: "All green" once, a minute in, in Slack and by text', async () => {
     await s.step(15e3);
     assert.equal(slack.length, 1);
     assert.match(slack[0].text, /All green: Sam's room reveal/);
-    assert.deepEqual(sms.map((x) => x.body), ["🟢 SOARD: All green: Sam's room reveal\nSound and picture are good, and it's live on the site.\nhttps://sunshineonaranneyday.com/admin/#broadcast/control-room"]);
+    assert.deepEqual(sms.map((x) => x.body), ["🟢 SOARD: All green: Sam's room reveal\nSound and picture are good, and it's live on the site.\nhttps://sunshineonaranneyday.com/control-room/"]);
     for (let i = 0; i < 8; i++) await s.step(15e3);
     assert.equal(slack.length, 1, 'once per reveal');
     assert.equal(sms.length, 1);

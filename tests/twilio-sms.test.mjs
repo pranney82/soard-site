@@ -66,7 +66,7 @@ import { textLine } from '../functions/api/_broadcast-preflight.js';
 test('an alert text is the headline, the fix and the link, in plain characters within two segments', () => {
   assert.equal(
     alertText({ title: 'Reveal audio is silent', detail: 'No sound reaching the site.', fix: 'Check the mic: receiver plugged in.', url: 'https://sunshineonaranneyday.com/admin/' }),
-    'SOARD: Reveal audio is silent\nFix: Check the mic: receiver plugged in.\nhttps://sunshineonaranneyday.com/admin/',
+    'SOARD: Reveal audio is silent\nFix: Check the mic: receiver plugged in.\nhttps://sunshineonaranneyday.com/control-room/',
   );
   assert.equal(alertText({ title: 'Live now: Sam’s reveal', detail: 'First line.\nSecond line.' }), "SOARD: Live now: Sam's reveal\nFirst line.");
   const long = alertText({ title: '🚨 Reveal-day check found problems', detail: `• ${'x'.repeat(500)}`, url: 'https://sunshineonaranneyday.com/admin/' });
@@ -103,7 +103,7 @@ test('alertAdmins texts the staff only when the alert asks', async () => {
     assert.equal(sent.length, 0, 'news without text: true is Slack and email only');
     const r = await alertAdmins(env, config, { level: 'error', title: 'Reveal audio is silent', fix: 'Check the mic.', url: 'https://sunshineonaranneyday.com/admin/', text: true });
     assert.equal(r.text.sent, 1);
-    assert.equal(sent[0], '🚨 SOARD ALERT: Reveal audio is silent\nFix: Check the mic.\nhttps://sunshineonaranneyday.com/admin/', 'a serious problem opens 🚨 SOARD ALERT');
+    assert.equal(sent[0], '🚨 SOARD ALERT: Reveal audio is silent\nFix: Check the mic.\nhttps://sunshineonaranneyday.com/control-room/', 'a serious problem opens 🚨 SOARD ALERT; an admin link becomes the previewable /control-room/');
     await alertAdmins(env, config, { level: 'warn', title: 'Reveal audio is very loud', fix: 'Turn the gain down.', text: true });
     assert.match(sent.at(-1), /^⚠️ SOARD ALERT: Reveal audio is very loud\n/, 'a lesser one ⚠️');
     await alertAdmins(env, config, { level: 'warn', icon: '⏰', title: 'Scheduled reveal never went live', text: true });
@@ -130,7 +130,7 @@ test('"Live now" promises only what is known, and the no-go reads as an alert', 
     '📡 SOARD: Live now: Sam\'s room reveal\nChecking sound, picture, Facebook and YouTube. "All green" follows in about a minute.\nhttps://sunshineonaranneyday.com/live/sam/');
   const items = [{ status: 'ok', label: 'Stream' }, { status: 'fail', label: 'No live input for the phone', fix: 'Settings → Phones → Create the live input.' }];
   const text = goText({ ready: false, counts: { ok: 1, warn: 0, fail: 1, unknown: 0, off: 0 }, items }, { title: "Sam's room reveal", scheduledAt: '2026-10-28T20:00:00Z' }, { timezone: 'America/New_York' });
-  assert.equal(text, "🚨 SOARD ALERT: No-go: Sam's room reveal at 4:00 PM\nNot ready: No live input for the phone. First: Settings > Phones > Create the live input.\nhttps://sunshineonaranneyday.com/admin/#broadcast/control-room");
+  assert.equal(text, "🚨 SOARD ALERT: No-go: Sam's room reveal at 4:00 PM\nNot ready: No live input for the phone. First: Settings > Phones > Create the live input.\nhttps://sunshineonaranneyday.com/control-room/");
 });
 
 test('every text asks Twilio for a delivery report when the auth token is set', async () => {
