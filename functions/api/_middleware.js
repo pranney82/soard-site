@@ -136,6 +136,11 @@ PUBLIC_ROUTES.push('/api/companycam-webhook');
 // when the token isn't set; it only records delivered or why not
 PUBLIC_ROUTES.push('/api/twilio-status');
 
+// The Advisory Board application (/advisory-board/apply/): GET says whether
+// Turnstile is on; POST stores an application. Checked inside the handler
+// (honeypot, too-fast, Turnstile, a per-day limit in D1) and rate limited below
+PUBLIC_ROUTES.push('/api/advisory-apply');
+
 // ─── Rate Limiting ──────────────────────────────────────────────────
 // Each limited route allows 5 calls per address (clientIp: IPv6 by its /64)
 // per 60 seconds. The in-memory count is a cheap first filter that only sees
@@ -144,7 +149,7 @@ PUBLIC_ROUTES.push('/api/twilio-status');
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
-const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request']);
+const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply']);
 // Public GET routes that fan out to paid upstreams / build large responses.
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
 // The application form autosaves every step and uploads photos one by one, so

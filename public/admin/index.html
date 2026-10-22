@@ -22270,6 +22270,27 @@ ${sections || '<p>No one yet.</p>'}
       return mod ? html`<${mod.ApplicationsArea} addToast=${addToast} RichTextEditor=${RichTextEditor} setGlobalDirty=${setGlobalDirty} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
+    // People → Applications: Advisory Board applications from /advisory-board/apply/.
+    // Kept in ./advisory-applications.js, loaded on first visit. Add as an advisor
+    // saves through the admin's own api and person record, passed in as a kit.
+    let advisoryModule = null;
+    const loadAdvisory = () => (advisoryModule ||= import('./advisory-applications.js').catch((e) => { advisoryModule = null; throw e; }));
+    function AdvisoryApplicationsLazy({ addToast, team, onTeamChanged, onOpenPerson }) {
+      const [mod, setMod] = useState(null);
+      const [err, setErr] = useState(null);
+      const kit = { api, toPersonRecord, team, onTeamChanged, onOpenPerson };
+      const load = () => loadAdvisory().then(setMod).catch((e) => setErr(e.message));
+      useEffect(() => { load(); }, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load applications: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      return mod ? html`<${mod.AdvisoryApplications} addToast=${addToast} kit=${kit} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
+    }
+    /** People → Applications' badge: how many are New */
+    function AdvisoryNewBadge() {
+      const [n, setN] = useState(0);
+      useEffect(() => { loadAdvisory().then((m) => m.newCount()).then(setN).catch(() => {}); }, []);
+      return n > 0 ? html`<span class="ppl-tab-count" title=${`${n} new`}>${n}</span>` : null;
+    }
+
     // Site Config → every public page's words and photos, page by page. Kept in
     // ./site-config.js (+ ./site-config-shared.js), loaded on first visit.
     let siteConfigModule = null;
@@ -23139,7 +23160,7 @@ ${sections || '<p>No one yet.</p>'}
 
     function App() {
       useA11y();
-      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#messages') ? 'messages' : location.hash.startsWith('#applications') ? 'applications' : location.hash.startsWith('#site') ? 'site-hub' : location.hash.startsWith('#press') ? 'press-hub' : 'dashboard'));
+      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#messages') ? 'messages' : location.hash.startsWith('#applications') ? 'applications' : location.hash.startsWith('#site') ? 'site-hub' : location.hash.startsWith('#press') ? 'press-hub' : location.hash.startsWith('#advisory-applications') ? 'people-hub' : 'dashboard'));
       const [editSlug, setEditSlug] = useState(null);
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);
@@ -23153,7 +23174,7 @@ ${sections || '<p>No one yet.</p>'}
       const [communityPartners, setCommunityPartners] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
-      const [subTab, setSubTab] = useState(null);
+      const [subTab, setSubTab] = useState(() => (location.hash.startsWith('#advisory-applications') ? 'applications' : null));
       const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
       const [shortcutsOpen, setShortcutsOpen] = useState(false);
       const [deploying, setDeploying] = useState(false);
@@ -23567,9 +23588,13 @@ ${sections || '<p>No one yet.</p>'}
                 <button class="hub-tab ${pTab === 'team' ? 'active' : ''}" onClick=${() => { setSubTab('team'); setEditSlug(null); }}>Team<span class="ppl-tab-count">${onSite('team')}</span></button>
                 <button class="hub-tab ${pTab === 'board' ? 'active' : ''}" onClick=${() => { setSubTab('board'); setEditSlug(null); }}>Board<span class="ppl-tab-count">${onSite('board')}</span></button>
                 <button class="hub-tab ${pTab === 'advisory' ? 'active' : ''}" onClick=${() => { setSubTab('advisory'); setEditSlug(null); }}>Advisory<span class="ppl-tab-count">${onSite('advisory')}</span></button>
+                <button class="hub-tab ${pTab === 'applications' ? 'active' : ''}" onClick=${() => { setSubTab('applications'); setEditSlug(null); }}>Applications<${AdvisoryNewBadge} /></button>
                 <button class="hub-tab ${pTab === 'photos' ? 'active' : ''}" onClick=${() => { setSubTab('photos'); setEditSlug(null); }}>Photos</button>
               </div>
-              ${pTab === 'photos'
+              ${pTab === 'applications'
+                ? html`<${AdvisoryApplicationsLazy} addToast=${addToast} team=${team} onTeamChanged=${loadData}
+                    onOpenPerson=${(slug) => { setSubTab('advisory'); setEditSlug(slug); }} />`
+              : pTab === 'photos'
                 ? listOrError('team', 'photos', html`<${PeoplePhotos} team=${team} onEdit=${(p) => setEditSlug(p.slug)} addToast=${addToast} onReload=${loadData} />`)
                 : listOrError('team', `${pplGroup(pTab).noun}s`, html`<${PeopleList} key=${pTab} team=${team} group=${pTab}
                     initialFilter=${arrive} onClearFilter=${() => setDashboardFilter(null)}

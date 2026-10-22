@@ -28,7 +28,8 @@ const SITE_URL = 'https://sunshineonaranneyday.com';
 const orgName = siteSettings.name;
 const email = siteSettings.email;
 
-const APPLY_URL = 'https://form.jotform.com/261805783731058';
+// The application lives on the site (it was a Jotform until Oct 2026)
+const APPLY_URL = '/advisory-board/apply/';
 const PDF_URL = 'https://files.sunshineonaranneyday.com/advisory/SOARD_Advisory%20Board%20Overview.docx.pdf';
 
 /* ── Photos (from admin settings, with fallbacks) ── */
@@ -68,7 +69,7 @@ const breadcrumbs = [
         <h1 class="hero-headline">Lend your expertise. Build more <em>dreams</em>.</h1>
         <p class="hero-lead">Our Advisory Board is a team of advocates, connectors, and ambassadors who work together to fund a SOARD room makeover every year. Applications are <strong>always open</strong>.</p>
         <div class="hero-ctas">
-          <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-glow btn-lg">Apply to Join →</a>
+          <a href={APPLY_URL} class="btn btn-primary btn-glow btn-lg">Apply to Join →</a>
           <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview (PDF)</a>
         </div>
         <div class="hero-trust">
@@ -258,7 +259,7 @@ const breadcrumbs = [
           <span class="ab-step-num" aria-hidden="true">2</span>
           <h3>Submit your application</h3>
           <p>Tell us who you are, what you'd bring, and why the mission speaks to you. Plan for about 20 minutes, and have a reference in mind. Applications are <strong>always open</strong>.</p>
-          <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="ab-step-cta">Apply to Join →</a>
+          <a href={APPLY_URL} class="ab-step-cta">Apply to Join →</a>
         </li>
         <li class="ab-step" data-reveal data-delay="2">
           <span class="ab-step-num" aria-hidden="true">3</span>
@@ -276,7 +277,7 @@ const breadcrumbs = [
       <h2 data-reveal>Ready to pull up a <em>seat</em>?</h2>
       <p data-reveal data-delay="1">Your experience could be the reason the next child walks into a room built just for them.</p>
       <div class="ab-finale-ctas" data-reveal data-delay="2">
-        <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="btn btn-dark btn-lg">Apply to Join →</a>
+        <a href={APPLY_URL} class="btn btn-dark btn-lg">Apply to Join →</a>
         <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview</a>
       </div>
       <p class="ab-finale-note" data-reveal data-delay="3">Applications always open · Questions? Reach us at <a href={`mailto:${email}`}>{email}</a> · {orgName} is a 501(c)(3) nonprofit</p>

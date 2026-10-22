@@ -34,7 +34,9 @@ export const RUNTIME_TYPES = ['live-status', 'email-broadcast', 'newsletter', 'i
   // Admin → Partners: logos on kid pages marked as not a partner (the admin's own note)
   'partner-logo-dismissed',
   // Admin → Applications → Settings: the form and the Apply page read open/closed live
-  'application-settings'];
+  'application-settings',
+  // Admin → People → Applications: Advisory Board applications and who hears about them (D1 only)
+  'advisory-settings', 'advisory-application'];
 
 /** Normalize a timestamp to SQLite datetime format (YYYY-MM-DD HH:MM:SS) to compare with audit_log.created_at */
 export function toSqliteTimestamp(dateStr) {

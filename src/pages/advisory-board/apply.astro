@@ -1,0 +1,300 @@
+---
+/**
+ * /advisory-board/apply/ — the Advisory Board application (replaced the
+ * Jotform one, Oct 2026). Five steps from functions/api/_advisory-form.js,
+ * which the server checks again. Answers save on this device as people go,
+ * so leaving and coming back keeps them. Sends to /api/advisory-apply; staff
+ * read applications in Admin → People → Applications.
+ * Applications are always open: no deadline language here.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import siteSettings from '../../content/site/settings.json';
+import { cfRaw, cfLqip } from '../../utils/cf-image';
+import { ADVISORY_STEPS, OVERVIEW_PDF } from '../../../functions/api/_advisory-form.js';
+
+const SITE_URL = 'https://sunshineonaranneyday.com';
+const email = siteSettings.email;
+const ab = (siteSettings as any).advisoryBoardPhotos || {};
+const photoId = ab.apply || ab.hero || 'kids/karter/1774384957640-Karter-Reveal-People-9.jpg';
+const breadcrumbs = [
+  { name: 'Home', url: `${SITE_URL}/` },
+  { name: 'Advisory Board', url: `${SITE_URL}/advisory-board/` },
+  { name: 'Apply', url: `${SITE_URL}/advisory-board/apply/` },
+];
+const total = ADVISORY_STEPS.length;
+const fid = (id: string) => `adv-${id}`;
+---
+
+<BaseLayout
+  title="Apply to the Advisory Board"
+  description="Apply to join the SOARD Advisory Board: advocates, connectors, and fundraisers who fund a room makeover every year. Applications are always open."
+  breadcrumbs={breadcrumbs}
+>
+  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(photoId, 'w=360,h=450,fit=cover,gravity=face,q=65')} 360w, ${cfRaw(photoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w`} imagesizes="(max-width:768px) 60vw, 340px" fetchpriority="high" />
+
+  <!-- ══════ HERO — Editorial Split ══════ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow"><a href="/advisory-board/">Advisory Board</a></p>
+        <h1 class="hero-headline">Apply to join the <em>Advisory Board</em></h1>
+        <p class="hero-lead">Tell us who you are, what you’d bring, and why the mission speaks to you. It takes about 20 minutes, with a reference in mind. Applications are <strong>always open</strong>.</p>
+        <div class="hero-trust">
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>About 20 minutes</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M17 21v-8H7v8M7 3v5h8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Saves on this device as you go</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><a href={OVERVIEW_PDF} target="_blank" rel="noopener noreferrer">Read the overview first</a></span>
+        </div>
+      </div>
+      <div class="hero-photo-wrap">
+        <div class="hero-frame" style={`background-image:url('${cfLqip(photoId)}')`}>
+          <img
+            src={cfRaw(photoId, 'w=560,h=700,fit=cover,gravity=face,q=65')}
+            srcset={`${cfRaw(photoId, 'w=360,h=450,fit=cover,gravity=face,q=65')} 360w, ${cfRaw(photoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w`}
+            sizes="(max-width:768px) 60vw, 340px"
+            alt="Volunteers and family celebrating at a SOARD room reveal"
+            width="560" height="700" fetchpriority="high" loading="eager" decoding="sync"
+          />
+        </div>
+        <div class="hero-accent" aria-hidden="true"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ THE APPLICATION ══════ -->
+  <section class="adv" id="application" aria-label="Advisory Board application">
+    <div class="adv-card">
+      <noscript><p class="adv-note">The application needs JavaScript. If you can’t turn it on, email <a href={`mailto:${email}`}>{email}</a> and we’ll send it another way.</p></noscript>
+
+      <div class="adv-restored" id="adv-restored" hidden role="status">
+        <span>We kept what you started on this device.</span>
+        <button type="button" class="adv-linkbtn" id="adv-start-over">Start over</button>
+      </div>
+
+      <form id="adv-form" novalidate data-total={total}>
+        <div class="adv-progress" aria-hidden="true">
+          <ol class="adv-steps">
+            {ADVISORY_STEPS.map((s, i) => (
+              <li class="adv-step-dot" data-step-dot={i}><span class="adv-step-num">{i + 1}</span><span class="adv-step-name">{s.short || s.title}</span></li>
+            ))}
+          </ol>
+          <div class="adv-bar"><span id="adv-bar-fill"></span></div>
+        </div>
+
+        {ADVISORY_STEPS.map((s, i) => (
+          <section class="adv-page" data-step={i} data-step-id={s.id} hidden={i !== 0} aria-labelledby={`adv-h-${s.id}`}>
+            <p class="adv-kicker">Step {i + 1} of {total}</p>
+            <h2 id={`adv-h-${s.id}`} tabindex="-1">{s.title}</h2>
+            <p class="adv-intro">{s.intro}</p>
+            <div class="adv-summary" data-summary role="alert" hidden></div>
+
+            {s.fields.map((f) => (
+              <div class={`adv-field adv-field--${f.type}`} data-field={f.id} data-show-if={f.showIf ? JSON.stringify(f.showIf) : undefined} hidden={!!f.showIf}>
+                {f.type === 'choice' ? (
+                  <fieldset aria-describedby={[f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boolean).join(' ')}>
+                    <legend class="adv-label">{f.label}{!f.required && <span class="adv-optional">optional</span>}</legend>
+                    {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
+                    <div class="adv-choices">
+                      {f.options.map((o) => (
+                        <label class="adv-choice"><input type="radio" name={f.id} value={o} /><span>{o}</span></label>
+                      ))}
+                    </div>
+                  </fieldset>
+                ) : f.type === 'check' ? (
+                  <label class="adv-check">
+                    <input type="checkbox" name={f.id} id={fid(f.id)} aria-describedby={`${fid(f.id)}-err`} />
+                    <span>{f.label} <a href={OVERVIEW_PDF} target="_blank" rel="noopener noreferrer">Open the overview (PDF)</a></span>
+                  </label>
+                ) : (
+                  <>
+                    <label class="adv-label" for={fid(f.id)}>{f.label}{!f.required && <span class="adv-optional">optional</span>}</label>
+                    {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
+                    {f.type === 'textarea' ? (
+                      <textarea id={fid(f.id)} name={f.id} rows={f.rows || 5} maxlength={f.max} autocomplete={f.autocomplete || 'off'}
+                        aria-describedby={[f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boolean).join(' ')}></textarea>
+                    ) : (
+                      <input id={fid(f.id)} name={f.id} type={f.type} maxlength={f.max} autocomplete={f.autocomplete || 'off'}
+                        inputmode={f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : undefined}
+                        aria-describedby={[f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boolean).join(' ')} />
+                    )}
+                  </>
+                )}
+                <p class="adv-error" id={`${fid(f.id)}-err`} hidden></p>
+              </div>
+            ))}
+
+            {i === total - 1 && (
+              <>
+                <p class="adv-date">Signed today, <span id="adv-today"></span></p>
+                <div class="adv-turnstile" id="adv-turnstile" hidden><div class="cf-turnstile"></div></div>
+              </>
+            )}
+          </section>
+        ))}
+
+        <!-- Left empty by people; bots fill it in -->
+        <div class="adv-hp" aria-hidden="true">
+          <label for="adv-website">Website</label>
+          <input id="adv-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+        </div>
+
+        <p class="adv-send-error" id="adv-send-error" role="alert" hidden></p>
+        <div class="adv-nav">
+          <button type="button" class="btn btn-outline-dark" id="adv-back" hidden>Back</button>
+          <button type="submit" class="btn btn-primary" id="adv-next">Continue</button>
+        </div>
+        <p class="adv-saved" id="adv-saved" aria-live="polite"></p>
+      </form>
+
+      <div class="adv-done" id="adv-done" hidden tabindex="-1">
+        <div class="adv-done-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <h2>Thank you<span id="adv-done-name"></span>.</h2>
+        <p>We have your application, and a copy is on its way to your inbox. We review applications on a rolling basis and will be in touch soon.</p>
+        <div class="adv-done-links">
+          <a class="btn btn-dark" href="/advisory-board/">Back to the Advisory Board</a>
+          <a class="btn btn-outline-dark" href={OVERVIEW_PDF} target="_blank" rel="noopener noreferrer">The overview (PDF)</a>
+        </div>
+        <p class="adv-done-note">Questions? Write to <a href={`mailto:${email}`}>{email}</a>.</p>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  :is(h1, h2) em { font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%); padding: 0 0.05em; }
+
+  /* ── Buttons (the Advisory Board page's) ── */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--font-body); font-weight: 600; font-size: 16px; padding: 14px 32px; border: none; border-radius: 100px; cursor: pointer; text-decoration: none; min-height: 52px; transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s cubic-bezier(0.16,1,0.3,1), background 0.25s ease, color 0.25s ease; }
+  .btn:hover { transform: translateY(-2px); }
+  .btn:disabled { opacity: 0.6; cursor: default; transform: none; }
+  .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
+  .btn-primary:hover { box-shadow: 0 8px 24px var(--c-yellow-glow); }
+  .btn-dark { background: var(--c-dark); color: #fff; }
+  .btn-outline-dark { background: transparent; color: var(--c-dark); border: 2px solid var(--c-dark); }
+  .btn-outline-dark:hover { background: var(--c-dark); color: var(--c-yellow); }
+
+  /* ── Hero: editorial split (matches /advisory-board/) ── */
+  .hero { background: var(--c-cream); padding: clamp(40px, 7vh, 88px) 0 clamp(32px, 5vh, 56px); overflow: hidden; }
+  .hero-inner { max-width: var(--max-width-wide, 1400px); margin: 0 auto; padding: 0 var(--page-padding); display: grid; grid-template-columns: 1.25fr 0.75fr; gap: clamp(32px, 5vw, 80px); align-items: center; }
+  .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 24px; }
+  .hero-eyebrow a { color: inherit; text-decoration: none; }
+  .hero-eyebrow a:hover { text-decoration: underline; }
+  .hero-headline { font-size: clamp(38px, 5.4vw, 72px); line-height: 1.05; letter-spacing: -0.035em; color: var(--c-dark); margin-bottom: 24px; }
+  .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 540px; margin-bottom: 24px; }
+  .hero-trust { display: flex; gap: 12px 22px; flex-wrap: wrap; }
+  .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--c-text-muted); }
+  .hero-trust-item a { color: inherit; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .hero-trust-icon { width: 16px; height: 16px; flex-shrink: 0; }
+  .hero-photo-wrap { position: relative; max-width: 360px; justify-self: end; width: 100%; }
+  .hero-frame { position: relative; border-radius: 24px; overflow: hidden; aspect-ratio: 4 / 5; background-size: cover; background-position: center; box-shadow: 0 32px 80px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.06); }
+  .hero-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-accent { position: absolute; z-index: -1; bottom: -16px; right: -16px; width: 55%; height: 55%; border-radius: 20px; background: var(--c-yellow); opacity: 0.35; }
+
+  /* ── The application card ── */
+  .adv { background: var(--c-cream); padding: 0 var(--page-padding) clamp(64px, 9vw, 120px); scroll-margin-top: calc(var(--header-height, 84px) + 16px); }
+  .adv-card { max-width: 780px; margin: 0 auto; background: #fff; border: 1px solid var(--c-border); border-radius: 24px; padding: clamp(22px, 4.5vw, 48px); box-shadow: 0 12px 40px rgba(0,0,0,0.05); }
+  .adv-note, .adv-restored { padding: 12px 16px; border-radius: 12px; background: var(--c-warm-gray); font-size: 15px; margin-bottom: 20px; }
+  .adv-restored { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .adv-restored[hidden] { display: none; }
+  .adv-linkbtn { background: none; border: 0; padding: 6px 0; font: inherit; font-weight: 600; color: var(--c-dark); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: 44px; }
+
+  /* Progress: the five steps by name, and a bar */
+  .adv-progress { margin-bottom: 32px; }
+  .adv-steps { list-style: none; padding: 0; margin: 0 0 12px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+  .adv-step-dot { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--c-text-muted); }
+  .adv-step-num { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--c-warm-gray); color: var(--c-text-muted); transition: background 0.25s ease, color 0.25s ease; }
+  .adv-step-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .adv-step-dot.is-done .adv-step-num { background: var(--c-dark); color: var(--c-yellow); }
+  .adv-step-dot.is-now { color: var(--c-dark); font-weight: 700; }
+  .adv-step-dot.is-now .adv-step-num { background: var(--c-yellow); color: var(--c-dark); }
+  .adv-bar { height: 6px; border-radius: 99px; background: var(--c-warm-gray); overflow: hidden; }
+  .adv-bar span { display: block; height: 100%; width: 20%; background: var(--c-yellow); border-radius: inherit; transition: width 0.45s cubic-bezier(0.16,1,0.3,1); }
+
+  .adv-kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 8px; }
+  .adv-page h2 { font-size: clamp(26px, 3.4vw, 34px); line-height: 1.2; margin-bottom: 8px; }
+  .adv-page h2:focus { outline: none; }
+  .adv-intro { color: var(--c-text-muted); font-size: 16px; line-height: 1.6; margin-bottom: 28px; }
+  .adv-summary { padding: 14px 16px; border-radius: 12px; background: #FFF3BF; color: #5C4500; font-weight: 600; margin-bottom: 24px; }
+  .adv-summary ul { margin: 6px 0 0 18px; font-weight: 500; }
+  .adv-summary a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  .adv-summary li { margin-top: 4px; }
+
+  .adv-field { margin-bottom: 26px; }
+  .adv-field[hidden] { display: none; }
+  .adv-field fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  .adv-label { display: block; font-weight: 700; font-size: 16px; line-height: 1.45; color: var(--c-dark); margin-bottom: 8px; padding: 0; }
+  .adv-optional { font-weight: 400; font-size: 14px; color: var(--c-text-muted); margin-left: 8px; }
+  .adv-hint { font-size: 14px; color: var(--c-text-muted); line-height: 1.5; margin: -2px 0 10px; }
+  .adv-field input:not([type="radio"]):not([type="checkbox"]), .adv-field textarea {
+    width: 100%; font: inherit; font-size: 16px; line-height: 1.55; color: var(--c-text);
+    padding: 12px 14px; border: 1.5px solid #D4D2CB; border-radius: 12px; background: #fff; min-height: 50px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .adv-field textarea { resize: vertical; min-height: 120px; }
+  .adv-field input:focus, .adv-field textarea:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 4px var(--c-yellow-soft); }
+  .adv-field.is-invalid input:not([type="radio"]):not([type="checkbox"]), .adv-field.is-invalid textarea { border-color: #B26B00; }
+  .adv-error { margin-top: 8px; font-size: 14px; font-weight: 600; color: #8A5200; }
+  .adv-error::before { content: '⚠ '; }
+
+  /* Choices: pills, big enough to tap */
+  .adv-choices { display: flex; flex-wrap: wrap; gap: 10px; }
+  .adv-choice { position: relative; display: inline-flex; }
+  .adv-choice input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .adv-choice span { display: inline-flex; align-items: center; min-height: 48px; min-width: 88px; justify-content: center; padding: 10px 22px; border: 1.5px solid #D4D2CB; border-radius: 99px; font-weight: 600; font-size: 15px; color: var(--c-dark); background: #fff; transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
+  .adv-choice:hover span { border-color: var(--c-dark); }
+  .adv-choice input:checked + span { background: var(--c-dark); border-color: var(--c-dark); color: #fff; }
+  .adv-choice input:focus-visible + span { box-shadow: 0 0 0 4px var(--c-yellow-soft); border-color: var(--c-dark); }
+
+  .adv-check { display: flex; gap: 12px; align-items: flex-start; font-size: 16px; line-height: 1.5; cursor: pointer; padding: 14px 16px; border-radius: 14px; background: var(--c-cream); }
+  .adv-check input { width: 22px; height: 22px; margin-top: 1px; accent-color: var(--c-dark); flex: none; }
+  .adv-check a { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; white-space: nowrap; }
+  .adv-date { font-size: 14px; color: var(--c-text-muted); margin: -8px 0 20px; }
+  .adv-turnstile { margin: 4px 0 20px; min-height: 65px; }
+  .adv-turnstile[hidden] { display: none; }
+
+  .adv-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .adv-send-error { margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; background: #FFF3BF; color: #5C4500; font-weight: 600; }
+  .adv-nav { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--c-border); margin-top: 8px; padding-top: 24px; }
+  .adv-nav #adv-next { margin-left: auto; min-width: 200px; }
+  .adv-saved { margin: 12px 0 0; min-height: 1.4em; font-size: 13px; color: var(--c-text-muted); text-align: right; }
+
+  .adv-done { text-align: center; padding: 12px 0; }
+  .adv-done:focus { outline: none; }
+  .adv-done-mark { width: 64px; height: 64px; margin: 0 auto 20px; border-radius: 50%; background: var(--c-yellow); color: var(--c-dark); display: grid; place-items: center; }
+  .adv-done-mark svg { width: 30px; height: 30px; }
+  .adv-done h2 { font-size: clamp(28px, 4vw, 38px); margin-bottom: 12px; }
+  .adv-done p { color: var(--c-text); line-height: 1.7; max-width: 520px; margin: 0 auto 24px; }
+  .adv-done-links { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+  .adv-done-note { font-size: 14px; color: var(--c-text-muted); margin-bottom: 0; }
+  .adv-done-note a { color: var(--c-dark); font-weight: 600; }
+
+  @media (max-width: 860px) {
+    .adv-step-name { display: none; }
+    .adv-step-dot.is-now .adv-step-name { display: block; }
+    .adv-steps { grid-template-columns: repeat(5, auto); justify-content: space-between; }
+  }
+  @media (max-width: 768px) {
+    .hero-inner { grid-template-columns: 1fr; gap: 28px; }
+    .hero-photo-wrap { order: -1; max-width: 200px; justify-self: start; }
+    .hero-frame { aspect-ratio: 1; border-radius: 20px; }
+    .hero-accent { bottom: -10px; right: -10px; }
+    .hero-headline { font-size: clamp(34px, 9vw, 48px); }
+    .adv { padding-inline: 12px; }
+    .adv-card { border-radius: 20px; }
+    .adv-nav { flex-direction: column-reverse; align-items: stretch; }
+    .adv-nav .btn, .adv-nav #adv-next { width: 100%; min-width: 0; margin-left: 0; }
+    .adv-saved { text-align: center; }
+    .adv-done-links { flex-direction: column; }
+  }
+  @media (max-width: 460px) {
+    .adv-step-dot.is-now .adv-step-name { display: none; }
+    .adv-choice { flex: 1 1 0; }
+    .adv-choice span { width: 100%; min-width: 0; padding: 10px 12px; }
+  }
+  @media (pointer: coarse) { .btn:hover { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .btn, .adv-bar span, .adv-step-num { transition: none; } .btn:hover { transform: none; } }
+</style>
+
+<script>
+  import { initAdvisoryForm } from '../../components/advisory/advisory-form.client.js';
+  initAdvisoryForm();
+</script>
