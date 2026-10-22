@@ -136,6 +136,11 @@ PUBLIC_ROUTES.push('/api/companycam-webhook');
 // when the token isn't set; it only records delivered or why not
 PUBLIC_ROUTES.push('/api/twilio-status');
 
+// Resend's delivery reports for the site's emails: Svix-signed with the webhook
+// secret and checked inside the handler, which refuses everything until there
+// is one; it only records delivered, bounced and the like (see _email-log.js)
+PUBLIC_ROUTES.push('/api/resend-webhook');
+
 // The Advisory Board application (/advisory-board/apply/): GET says whether
 // Turnstile is on; POST stores an application. Checked inside the handler
 // (honeypot, too-fast, Turnstile, a per-day limit in D1) and rate limited below

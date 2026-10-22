@@ -206,8 +206,8 @@ test('GET: facts, or one preview', async (t) => {
   assert.equal((await get('?preview=nope')).status, 404);
 });
 
-test('every message says who sends it: Resend, JobTread, Kit, Google Calendar, Twilio, the browser or your own email', () => {
-  const KNOWN = new Set(['resend', 'jobtread', 'kit', 'google', 'twilio', 'push', 'you']);
+test('every message says who sends it: Resend, JobTread, Kit, Google Calendar, Twilio, the browser, Slack or your own email', () => {
+  const KNOWN = new Set(['resend', 'jobtread', 'kit', 'google', 'twilio', 'push', 'slack', 'you']);
   for (const n of ENTRIES) {
     const s = sendersOf(n);
     assert.ok(s.length && s.every((x) => KNOWN.has(x)), `${n.t} has a known sender (${s.join(', ')})`);
@@ -223,6 +223,8 @@ test('every message says who sends it: Resend, JobTread, Kit, Google Calendar, T
   assert.deepEqual(by('Confirmed invite'), ['google']);
   assert.deepEqual(by('New application'), ['resend']);
   assert.deepEqual(by('Bio request'), ['you']);
+  assert.deepEqual(by('Child’s medical condition'), ['jobtread'], 'an internal note is still JobTread');
+  assert.deepEqual(by('New gift'), ['slack'], 'a Slack-only post says so');
 });
 
 test('Text it to me: the reveal-day texts, in order, only to a number on the alert list', async (t) => {

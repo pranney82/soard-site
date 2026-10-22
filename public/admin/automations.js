@@ -777,6 +777,24 @@ const MAP = { t: 'SOARD', children: [
           does: 'Sends each of up to 100 people their own copy through Resend.',
           touches: ['Resend'], where: 'functions/api/send-direct.js', live: needsKey('resend', 'RESEND_API_KEY is missing.') },
       ]},
+      { t: 'Did it arrive', children: [
+        { t: 'Email delivery reports', s: 'live', k: 'event',
+          when: 'Resend reports on each email the site sends, seconds after it goes. Every 30 minutes the heartbeat keeps the webhook registered and catches up any report it missed.',
+          does: 'Keeps whether each email arrived, bounced (and why) or was marked as spam, for Emails & invites → What went out. A family’s or staff email that can’t be delivered tells staff in Slack and by email, once a week per address; a reveal-reminder address that bounces or reports spam is unsubscribed.',
+          touches: ['Resend', 'D1', 'Slack'], where: 'functions/api/_email-log.js · resend-webhook.js · broadcast-hooks.js',
+          info: 'The site registers its own webhook with Resend and keeps the signing secret in D1’s email_tracking table (RESEND_WEBHOOK_SECRET in Cloudflare is used instead when set). It needs a Resend key with Full access; a “Sending access” key sends fine but can’t hear back.',
+          live: (f) => {
+            const t = f.emailTracking;
+            if (!t || !env(f)) return null;
+            if (t.state === 'off') return OFF('RESEND_API_KEY is missing, so the site sends no email of its own.');
+            if (t.state === 'send-only') return ATTN('The site’s Resend key can only send, so Resend can’t report back. Make a Full access key in Resend and put it in Cloudflare as RESEND_API_KEY; the site does the rest.', t.checkedAt);
+            if (t.state === 'error') return ATTN(`Resend’s reports aren’t coming in (${t.error || 'no answer'}). It tries again every 30 minutes.`, t.checkedAt);
+            if (t.state === 'waiting') return ON('Starting: the heartbeat registers the webhook within half an hour.');
+            if (stale(t.checkedAt, 2 * HOUR)) return ATTN(`The delivery check hasn’t run since ${stamp(t.checkedAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, t.lastReportAt);
+            const proof = t.selfTest?.result === 'passed' ? ` Proven ${stamp(t.selfTest.at)}: Resend’s test “delivered” and “bounced” both came back through the webhook.` : t.selfTest?.result === 'waiting' ? ' The one-time check is out: two emails to Resend’s test addresses, waiting for their reports.' : '';
+            return ON(`${t.lastReportAt ? `Resend reports back on every email. Last report ${stamp(t.lastReportAt)}.` : 'Registered with Resend. Waiting for the first report.'}${proof}`, t.lastReportAt);
+          } },
+      ]},
       { t: 'Sender accounts', children: [
         { t: 'Resend', s: 'live', k: 'link',
           does: 'Sends the site’s one-off mail from sunshine@comms.sunshineonaranneyday.com (the verified domain). The list itself lives in Kit.',
@@ -784,7 +802,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Kit', s: 'live', k: 'link',
           does: 'The main list and its broadcasts; sends from Clareece’s soardcharity.com address.',
           touches: ['Kit'], where: 'KIT_API_KEY in Cloudflare',
-          info: 'soardcharity.com has no Kit domain authentication yet (DMARC is p=none, SPF covers Google only), which can hurt delivery.',
+          info: 'soardcharity.com is authenticated for Kit (its DKIM key and return path are in DNS); DMARC is still p=none, watching only. Emails & invites → What went out checks these each time it opens.',
           live: needsKey('kit', 'KIT_API_KEY is missing.') },
       ]},
     ]},

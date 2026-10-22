@@ -20,6 +20,7 @@
  */
 
 import { slackCard } from './_slack-cards.js';
+import { logSent, batchIds } from './_email-log.js';
 
 const RESEND_API = 'https://api.resend.com';
 export const EMAIL_FROM = 'Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>';
@@ -149,12 +150,20 @@ export function emailConfigured(env) {
   return !!env.RESEND_API_KEY;
 }
 
+/** replyTo (one address or a list) → Resend's reply_to, valid addresses only; null when there's none */
+const replyToOf = (r) => {
+  const list = (Array.isArray(r) ? r : r ? [r] : []).map((x) => String(x).trim()).filter(isEmail);
+  return list.length ? (list.length === 1 ? list[0] : list) : null;
+};
+
 /**
  * Send one message to many recipients, each as its own email (no one sees
- * anyone else's address). Batches of 100 per Resend call.
+ * anyone else's address). Batches of 100 per Resend call. replyTo: where a
+ * reply goes, since the sending address is no one's inbox.
  * @returns {{sent:number, failed:number, errors:string[]}}
  */
-export async function sendEmails(env, { to, subject, html, text, from = EMAIL_FROM, tags = [] }) {
+export async function sendEmails(env, { to, subject, html, text, from = EMAIL_FROM, tags = [], replyTo = null }) {
+  const reply = replyToOf(replyTo);
   const out = { sent: 0, failed: 0, errors: [] };
   const list = (to || []).filter(isEmail);
   if (!list.length) return out;
@@ -165,11 +174,15 @@ export async function sendEmails(env, { to, subject, html, text, from = EMAIL_FR
       const res = await fetch(`${RESEND_API}/emails/batch`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk.map(addr => ({ from, to: [addr], subject, html, text, tags }))),
+        body: JSON.stringify(chunk.map(addr => ({ from, to: [addr], subject, html, text, tags, ...(reply ? { reply_to: reply } : {}) }))),
         signal: AbortSignal.timeout(20000),
       });
-      if (res.ok) out.sent += chunk.length;
-      else { out.failed += chunk.length; out.errors.push(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`); }
+      if (res.ok) {
+        out.sent += chunk.length;
+        // Resend's ids, so its delivery reports find each email (Site → Emails & invites → What went out)
+        const ids = batchIds(await res.json().catch(() => null));
+        await logSent(env, chunk.map((addr, j) => ({ id: ids[j], to: addr, subject })), { tags });
+      } else { out.failed += chunk.length; out.errors.push(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`); }
     } catch (e) {
       out.failed += chunk.length;
       out.errors.push(e.message);
@@ -184,7 +197,8 @@ export async function sendEmails(env, { to, subject, html, text, from = EMAIL_FR
  * Resend call.
  * @param {{to:string, subject:string, html:string, text?:string, headers?:Record<string,string>}[]} items
  */
-export async function sendEmailItems(env, items, { from = EMAIL_FROM, tags = [] } = {}) {
+export async function sendEmailItems(env, items, { from = EMAIL_FROM, tags = [], replyTo = null } = {}) {
+  const reply = replyToOf(replyTo);
   const out = { sent: 0, failed: 0, errors: [] };
   const list = (items || []).filter(i => isEmail(i.to));
   if (!list.length) return out;
@@ -195,11 +209,14 @@ export async function sendEmailItems(env, items, { from = EMAIL_FROM, tags = [] 
       const res = await fetch(`${RESEND_API}/emails/batch`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk.map(m => ({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, tags, ...(m.headers ? { headers: m.headers } : {}) }))),
+        body: JSON.stringify(chunk.map(m => ({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, tags, ...(reply ? { reply_to: reply } : {}), ...(m.headers ? { headers: m.headers } : {}) }))),
         signal: AbortSignal.timeout(20000),
       });
-      if (res.ok) out.sent += chunk.length;
-      else { out.failed += chunk.length; out.errors.push(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`); }
+      if (res.ok) {
+        out.sent += chunk.length;
+        const ids = batchIds(await res.json().catch(() => null));
+        await logSent(env, chunk.map((m, j) => ({ id: ids[j], to: m.to, subject: m.subject })), { tags });
+      } else { out.failed += chunk.length; out.errors.push(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`); }
     } catch (e) {
       out.failed += chunk.length;
       out.errors.push(e.message);

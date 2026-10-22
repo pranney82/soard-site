@@ -52,6 +52,7 @@ import * as applications from './_applications.js';
 import { formFor } from './_application-forms.js';
 import { logAudit } from './_audit.js';
 import { limit } from './_rate-limit.js';
+import { logSent, markCanceled } from './_email-log.js';
 
 export const WAITLIST_TAG = 'Application Waitlist';
 const REHEARSAL_TAG = 'Application Waitlist rehearsal';
@@ -378,7 +379,7 @@ export async function tellStaff(env, { year, level = 'info', title, detail, prob
   const { html, text } = staffNoticeEmail({ title, detail, links });
   await Promise.all([
     to.length && emailConfigured(env)
-      ? sendEmails(env, { to, subject: title, html, text, tags: [{ name: 'type', value: 'application-waitlist' }] }).catch(() => null)
+      ? sendEmails(env, { to, subject: title, html, text, tags: [{ name: 'type', value: 'application-waitlist-staff' }] }).catch(() => null)
       : null,
     slackPost(env, slackCard({
       icon: level === 'warn' ? '⚠️' : '📨',
@@ -828,6 +829,7 @@ async function scheduleEmail(env, { to, subject, html, text, at }) {
       signal: AbortSignal.timeout(15000),
     });
     const body = await res.json().catch(() => ({}));
+    if (res.ok && body.id) await logSent(env, [{ id: body.id, to, subject, scheduled: true }], { tags: [{ name: 'type', value: 'application-open' }] });
     return res.ok && body.id ? { ok: true, id: body.id } : { ok: false, error: `Resend ${res.status}: ${JSON.stringify(body).slice(0, 160)}` };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -839,6 +841,7 @@ async function cancelScheduledEmail(env, id) {
     const res = await fetch(`${RESEND_API}/emails/${encodeURIComponent(id)}/cancel`, {
       method: 'POST', headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` }, signal: AbortSignal.timeout(15000),
     });
+    if (res.ok) await markCanceled(env, id);
     return { ok: res.ok || res.status === 404 };
   } catch {
     return { ok: false };

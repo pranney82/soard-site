@@ -5,6 +5,9 @@
  * person, on the same map as Site → Automations (./mindmap.js): who gets it,
  * when it goes, what it says, whether it's on right now, when it last went,
  * and the message itself, filled in for a sample family, with "Send it to me".
+ * The second tab, What went out (./messages-sent.js), is every message that
+ * actually went, newest first, with whether it arrived (Resend's reports),
+ * what goes next, and whether mail from SOARD can land (SPF, DKIM, DMARC).
  *
  * Two layers, like the automations map:
  *  - MAP below is the curated description. Update it when a message is added
@@ -15,8 +18,11 @@
  *    { s, why, last }; leave out s to keep the written status.
  *
  * Channels (k): email (the site, through Resend) | jobtread (posted on the
- * family's JobTread account; JobTread emails it) | kit (Kit, to a list) |
- * invite (Google Calendar) | text (Twilio) | mail (opens your own email app).
+ * family's JobTread account; JobTread emails it) | jtnote (an internal
+ * JobTread note: staff only) | kit (Kit, to a list) | invite (Google Calendar)
+ * | text (Twilio) | slack (a Slack card only) | mail (opens your own email app).
+ * An entry's key for What went out and its delivery numbers is its `preview`
+ * id, or `key` when it has no preview.
  * `also` lists more channels the same message goes by. by: auto | visitor | staff.
  * spanish: the family gets it in Spanish when that's their language. (Not `es`:
  * the map uses that for an entry's effective status.)
@@ -24,6 +30,7 @@
 
 import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { MindMap, prepareMap, Ago, STATUS, plural } from './mindmap.js';
+import { SentView } from './messages-sent.js';
 
 const html = htm.bind(h);
 
@@ -53,6 +60,7 @@ const NO_RESEND = 'RESEND_API_KEY isn’t in Cloudflare, so the site can’t sen
 const NO_JT = 'No JobTread key in Cloudflare (JOBTREAD_QC_GRANT_KEY, or JOBTREAD_GRANT_KEY), so status messages can’t be posted.';
 const NO_KIT = 'KIT_API_KEY isn’t in Cloudflare, so Kit can’t be reached.';
 const NO_CAL = 'GOOGLE_CALENDAR_KEY isn’t in Cloudflare, so invites can’t be made.';
+const NO_SLACK = 'No Slack connection in Cloudflare (SLACK_BOT_TOKEN), so these posts go nowhere.';
 const REM_SETTINGS = 'Reveals → Settings → Reminders';
 const REM_OFF = `Reminders are switched off in ${REM_SETTINGS}, so nobody gets them.`;
 
@@ -92,6 +100,18 @@ const textsLive = (f) => {
   if (miss?.count) return ATTN(`The last text to ${plural(miss.count, 'staff number')} didn’t arrive${miss.why ? `: ${miss.why}` : ''}.`, miss.at);
   return ON(`Goes to ${plural(n, 'staff number')}.`);
 };
+// Resend's delivery reports: on, waiting for the first check, or the key can only send
+const trackingLive = (f) => {
+  const t = f.delivery?.tracking;
+  if (!t || !f.env) return null;
+  if (t.state === 'off') return OFF(NO_RESEND);
+  if (t.state === 'send-only') return ATTN('The site’s Resend key can only send, so Resend can’t say whether emails arrive. What went out shows the one change that turns the reports on.');
+  if (t.state === 'error') return ATTN(`Resend’s reports aren’t coming in (${t.error || 'no answer'}). The site tries again every 30 minutes.`, t.checkedAt);
+  if (t.state === 'waiting') return ON('Resend’s reports start within half an hour; the site sets them up itself.');
+  const proof = t.selfTest?.result === 'passed' ? ' Proven by the one-time check: Resend’s test “delivered” and “bounced” both came back.' : '';
+  return ON(`Resend reports back on every email the site sends.${proof}`, t.lastReportAt);
+};
+const slackLive = (f) => (!f.env ? null : f.env.slack ? ON() : OFF(NO_SLACK));
 const inviteLive = (which) => first(needs('calendar', NO_CAL), (f) => {
   const v = f.invites;
   if (!v) return null;
@@ -178,7 +198,7 @@ const MAP = { t: 'Everything we send', children: [
           does: 'Asks the family to disregard the last message, and says where the application really stands.',
           touches: ['JobTread', 'D1'], where: 'functions/api/_applicant-notify.js (correctionDraft, sendCorrection)',
           live: first(needs('jobtread', NO_JT), (f) => (!f.family ? null : ON(sentLine(f.family.correction), f.family.correction?.last))) },
-        { t: 'A note from staff', s: 'live', k: 'jobtread', by: 'staff',
+        { t: 'A note from staff', s: 'live', k: 'jobtread', by: 'staff', key: 'app-note',
           who: 'A family contact staff pick.',
           when: 'Staff write it on the family’s page in Applicants and press Send.',
           subject: 'A message from Sunshine on a Ranney Day (staff can change it)',
@@ -196,7 +216,7 @@ const MAP = { t: 'Everything we send', children: [
           live: first(needs('resend', NO_RESEND), (f) => (!f.waitlist?.confirmations ? null : ON(sentLine(f.waitlist.confirmations), f.waitlist.confirmations.last))) },
         { t: 'Applications are open', s: 'live', k: 'kit', also: ['email'], by: 'auto', spanish: true, preview: 'waitlist-open', change: CHANGE.appSettings,
           who: 'Every family on the waitlist, in their language.',
-          when: 'Applications are switched open: 10 minutes later (time to take it back), or at once when the open time was scheduled.',
+          when: 'Applications are switched open: 10 minutes later (time to take it back), or at once when the open time was scheduled. A family who signs up while applications are already open gets it from the site right away.',
           subject: ['Applications are open: apply for a {year} room makeover', 'Ya abrimos las solicitudes para las remodelaciones de {year}'],
           does: 'Applications are open, with a button to the form. Kit sends it; families Kit can’t reach get it from the site at the same time.',
           fromNote: { resend: 'Only for families Kit can’t reach, at the same moment, or for everyone if Kit can’t take it for 2 hours.' },
@@ -215,7 +235,7 @@ const MAP = { t: 'Everything we send', children: [
     ]},
 
   { t: 'Reveal guests', sub: 'One calendar invite per reveal, from save-the-date to the day', color: 'reveals', side: 'r',
-    about: 'One Google Calendar event per reveal, on the organizer’s calendar, so Google sends the invitation and update emails. JobTread decides what it says and who’s on it. The site never cancels an invite.',
+    about: 'One Google Calendar event per reveal, on the organizer’s calendar, so Google sends the invitation and update emails. JobTread decides what it says and who’s on it. The site never cancels a real reveal’s invite.',
     children: [
       { t: 'The invite', children: [
         { t: 'Save-the-date invite', s: 'live', k: 'invite', by: 'auto', preview: 'invite-tentative', change: CHANGE.invites,
@@ -224,7 +244,7 @@ const MAP = { t: 'Everything we send', children: [
           subject: '{name}’s Reveal Day (tentative)',
           does: 'An all-day save-the-date, shown as free so it blocks no one’s day, with the full address and a link to watch live. No time yet, and no need to reply.',
           touches: ['Google Calendar', 'JobTread', 'D1'], where: 'functions/api/_reveal-invites.js (planInvite)',
-          info: 'Per-reveal notes go in the JobTread field “Reveal Invite Details”. Send it to me makes a separate TEST invite on the office sandbox job, inviting only you.',
+          info: 'Per-reveal notes go in the JobTread field “Reveal Invite Details”. Send it to me makes a separate TEST invite on the office sandbox job, inviting only you; the site takes it back later, and Google emails you that it was cancelled.',
           live: inviteLive('tentative') },
         { t: 'Confirmed invite', s: 'live', k: 'invite', by: 'auto', preview: 'invite-confirmed', change: CHANGE.invites,
           who: 'Everyone on the save-the-date, plus vendors, sponsors, photographers and design partners on the job.',
@@ -240,11 +260,16 @@ const MAP = { t: 'Everything we send', children: [
           does: 'Google’s “Updated invitation” email with the new details. Wording edits alone never re-send.',
           touches: ['Google Calendar', 'JobTread', 'D1'], where: 'functions/api/_reveal-invites.js (reconcile, the 5-minute guest check)',
           live: inviteLive('updated') },
+        { t: 'Test invite taken back', s: 'live', k: 'invite', by: 'auto', key: 'invite-cancel',
+          who: 'Whoever was on a TEST invite: the office sandbox job, or a Send it to me copy.',
+          when: 'The site takes a test invite back. A real reveal’s invite is never cancelled by the site: staff do that in Google Calendar, after the “Invite still out” email.',
+          does: 'Google’s “Cancelled event” email.',
+          touches: ['Google Calendar', 'D1'], where: 'functions/api/_reveal-invites.js (cancelEvent for the sandbox job and test invites)' },
       ]},
     ]},
 
   { t: 'Reveal watchers', sub: 'People who asked for reminders on a reveal page', color: 'live', side: 'r',
-    about: 'Anyone can sign up on a reveal or kid page for reminders by email or browser alert. The public is never texted. Newsletter subscribers hear about reveals through Kit instead.',
+    about: 'Anyone can sign up on a reveal or kid page for reminders by email or browser alert. The public is never texted. Newsletter subscribers hear about reveals through Kit instead. A rehearsal on a TEST job sends “TEST ·” copies only to the test address, and an address that bounces or reports spam is unsubscribed by itself.',
     children: [
       { t: 'Signing up', children: [
         { t: 'Confirm your reminders', s: 'live', k: 'email', by: 'visitor', preview: 'rem-confirm', change: CHANGE.revealSettings,
@@ -302,7 +327,7 @@ const MAP = { t: 'Everything we send', children: [
       ]},
       { t: 'To the newsletter list', children: [
         { t: 'We’re live (Kit)', s: 'live', k: 'kit', by: 'auto', preview: 'kit-live', change: CHANGE.revealSettings,
-          who: 'The whole newsletter list in Kit, except families on the applications waitlist only.',
+          who: 'The whole newsletter list in Kit, except families on the applications waitlist only. When a tag or segment is picked in Reveals → Settings → Kit, that group instead (waitlist-only families in it get it too), and if Kit ever refuses the leave-out filter, everyone.',
           when: 'Three minutes into a steady stream with the kid known. Held if the stream starts more than 30 minutes early. Each reveal can opt out when it’s scheduled.',
           subject: 'We’re live: {kid}’s room reveal',
           does: 'It’s happening right now, with the link to watch.',
@@ -364,7 +389,7 @@ const MAP = { t: 'Everything we send', children: [
           subject: '{n} of {limit} applications are in for {year}',
           does: 'How many are in and left, families partway through the form, the pace, and how to take more. When it fills: that applications closed by themselves and what new families now read.',
           touches: ['Resend', 'Slack', 'D1'], where: 'functions/api/_application-cap.js (tellCap, capEmail)',
-          info: 'If a scheduled opening finds the season already full, the same email says it stayed closed, and the Slack post goes to Needs attention.',
+          info: 'If a scheduled opening finds the season already full, the same email says it stayed closed, and the Slack post goes to Needs attention. Once after a new version ships, the site sends Peter both notices for a sample season, marked [TEST], to prove they work.',
           live: first(needs('resend', NO_RESEND), (f) => {
             const l = f.applicationLimit;
             if (!l) return null;
@@ -379,10 +404,39 @@ const MAP = { t: 'Everything we send', children: [
           touches: ['Resend', 'Slack', 'JobTread'], where: 'functions/api/_applications.js (stuckEmail)',
           live: (f) => (!f.staff ? null : f.staff.stuck ? ATTN(`${plural(f.staff.stuck, 'application is', 'applications are')} stuck right now. Applications → Applicants shows which.`) : ON('Nothing is stuck.')) },
       ]},
+      { t: 'Notes in JobTread', children: [
+        { t: 'Child’s medical condition', s: 'live', k: 'jtnote', by: 'auto', preview: 'staff-medical',
+          who: 'Staff, on the family’s JobTread page. The family never sees it.',
+          when: 'A family applies with a diagnosis, or one is added to their application later.',
+          subject: 'Child’s Medical Condition',
+          does: 'What the condition is in everyday words, and how it can affect a child’s body, movement, senses and daily care at home, so staff understand it before meeting the family.',
+          touches: ['JobTread', 'Workers AI', 'D1'], where: 'functions/api/_applicant-comms.js (sendMedical, writeMedicalNote)',
+          info: 'Workers AI writes it from what the family typed. When it can’t, the family’s own words go up with a note to look the condition up.',
+          live: first(needs('jobtread', NO_JT), (f) => (!f.family ? null : ON(sentLine(f.family.comms?.medical || { n30: 0, total: 0 }, 'noted'), f.family.comms?.medical?.last))) },
+        { t: 'Service area and repeat checks', s: 'live', k: 'jtnote', by: 'auto', key: 'staff-checks',
+          who: 'Staff, on the family’s JobTread page.',
+          when: 'Right after a website application reaches JobTread.',
+          subject: 'Service area check (automatic) · Possible repeat applicant (automatic)',
+          does: 'Whether the home is inside the service area (and how far outside it), and whether the family applied before, with the earlier application.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_applications.js (postInternal)' },
+        { t: 'Reveal check', s: 'live', k: 'jtnote', by: 'auto', key: 'staff-reveal-check',
+          who: 'The job’s Project Manager, as a note on the JobTread job.',
+          when: 'Each weekday after 8 AM, for a job whose reveal needs a hand: the date passed with the Reveal task open, it’s within 14 days and not confirmed, it’s confirmed with no time, work ends after it, or the date and task disagree. At most every 3 days per problem.',
+          subject: 'Reveal check (automatic)',
+          does: 'What’s off with the reveal and what to change in JobTread.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_reveal-nudges.js',
+          info: 'Off until it’s switched on in Reveals → Invites.' },
+        { t: 'Reveal date sync', s: 'live', k: 'jtnote', by: 'auto', key: 'staff-reveal-sync',
+          who: 'Staff, as a note on the JobTread job.',
+          when: 'The site keeps the Reveal Date field and the Reveal task the same, and puts a confirmed reveal’s task back after JobTread moved it.',
+          subject: 'Reveal date sync (automatic)',
+          does: 'Which side changed, and what the site set the other to.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_reveal-sync.js' },
+      ]},
       { t: 'Reveals', children: [
         { t: 'Live reveal alerts', s: 'live', k: 'email', also: ['text'], by: 'auto', preview: 'staff-live-alert', change: CHANGE.revealSettings,
           who: 'The alert list in Reveals → Settings → Alerts. Reveal-day alerts also text the staff numbers there.',
-          when: 'A reveal never starts streaming, Stream reports an error, a check fails, or (while live) the sound drops, the picture freezes or Facebook isn’t live. Good news too: live now, ended.',
+          when: 'A reveal never starts streaming, Stream reports an error, the reveal-day check or the check an hour before fails, or while live the phone loses its connection, viewers can’t load it, the sound drops or is very loud, quiet or one-sided, the picture freezes, the signal is weak, Facebook or YouTube isn’t showing it, or it went live without the site knowing which kid. Then again when each is fixed.',
           subject: '[SOARD Live] {what happened}',
           does: 'What happened, the fix, and a link. The same words post in Slack as a card. Texts carry the headline, the fix and the link: a feed problem and when it clears, the go / no-go, “Live now” and “All green”.',
           touches: ['Resend', 'Slack', 'Twilio'], where: 'functions/api/_broadcast-notify.js (alertAdmins, alertEmail, alertText)',
@@ -392,6 +446,41 @@ const MAP = { t: 'Everything we send', children: [
             const texts = f.env.twilio && f.reminders.alertPhones ? `, texts to ${plural(f.reminders.alertPhones, 'staff number')}` : '';
             return n ? ON(`Goes to ${plural(n, 'address', 'addresses')}${texts}, and Slack.`) : ATTN(`Nobody is on the alert list. Add an address in Reveals → Settings → Alerts.`);
           }) },
+        { t: 'Reveal good news', s: 'live', k: 'email', also: ['text'], by: 'auto', preview: 'staff-good-news', change: CHANGE.revealSettings,
+          who: 'The alert list in Reveals → Settings → Alerts, and Slack. The staff numbers get “Go”, “Live now” and “All green” by text.',
+          when: 'The check an hour before says go, the phone goes live, everything checks out about a minute in, and the reveal ends.',
+          subject: '[SOARD Live] Live now: {kid}’s room reveal',
+          does: 'What happened, with a link to watch or to the control room. “Ended” says how long it ran and how the sound held up.',
+          touches: ['Resend', 'Slack', 'Twilio'], where: 'functions/api/_broadcast.js (liveEffects, endedEffects) · _broadcast-monitor.js (All green) · _broadcast-preflight.js (goText)',
+          live: needs('resend', NO_RESEND) },
+        { t: 'Countdown changes', s: 'live', k: 'email', by: 'auto', preview: 'staff-countdown', change: CHANGE.revealSettings,
+          who: 'The alert list in Reveals → Settings → Alerts, and Slack.',
+          when: 'JobTread confirms a reveal and the countdown goes up, it moves or comes down, the countdown can’t follow JobTread, or a confirmed reveal in the next three weeks can’t have a countdown yet.',
+          subject: '[SOARD Live] Countdown is up: {name}’s reveal',
+          does: 'What the countdown did on its own, or why it can’t, and the fix in JobTread.',
+          touches: ['Resend', 'Slack', 'JobTread'], where: 'functions/api/_broadcast-schedule.js (tellStaff)',
+          live: needs('resend', NO_RESEND) },
+        { t: 'Kit “we’re live” problems', s: 'live', k: 'email', by: 'auto', preview: 'staff-kit-live', change: CHANGE.revealSettings,
+          who: 'The alert list in Reveals → Settings → Alerts, and Slack.',
+          when: 'Kit’s “we’re live” email didn’t send, or it was held: the stream started more than 30 minutes early, the site can’t tell which kid it is, or it’s too late to send.',
+          subject: '[SOARD Live] Kit "we’re live" email did not send',
+          does: 'What happened, and “Email the list now” in Reveals to send it by hand.',
+          touches: ['Resend', 'Slack', 'Kit'], where: 'functions/api/_broadcast.js (sendKitLive, kitAutoLive)',
+          live: needs('resend', NO_RESEND) },
+        { t: 'Replay and Instagram Reel', s: 'live', k: 'email', by: 'auto', preview: 'staff-replay', change: CHANGE.revealSettings,
+          who: 'The alert list in Reveals → Settings → Alerts, and Slack.',
+          when: 'The Instagram Reel is posted, needs setup or fails, or a reveal’s replay is saved but can’t go on a kid page by itself.',
+          subject: '[SOARD Live] Instagram Reel posted: {kid}’s room reveal',
+          does: 'A link to the Reel, or what to pick so the replay lands on the right kid page.',
+          touches: ['Resend', 'Slack', 'Cloudflare Stream'], where: 'functions/api/_broadcast.js (tickReel) · _fb-archive.js (alertNeedsKid)',
+          live: needs('resend', NO_RESEND) },
+        { t: 'A staff text didn’t arrive', s: 'live', k: 'email', by: 'auto', preview: 'staff-text-missed', change: CHANGE.revealSettings,
+          who: 'The alert list in Reveals → Settings → Alerts, and Slack. Never by text: texting is what failed.',
+          when: 'Twilio reports a staff text didn’t reach the phone. At most once a day per number.',
+          subject: '[SOARD Live] A staff text didn’t arrive: {number}',
+          does: 'Which number, what Twilio said, and what to check.',
+          touches: ['Resend', 'Slack', 'Twilio'], where: 'functions/api/twilio-status.js',
+          live: textsLive },
         { t: 'Welcome to the alert list', s: 'live', k: 'email', by: 'staff', preview: 'staff-alert-hello', change: CHANGE.revealSettings,
           who: 'A new address on the alert list.',
           when: 'Someone adds the address in Reveals → Settings → Alerts and saves.',
@@ -414,7 +503,7 @@ const MAP = { t: 'Everything we send', children: [
           live: textsLive },
         { t: 'Problem texts', s: 'live', k: 'text', by: 'auto', preview: 'staff-problem-texts', change: CHANGE.revealSettings,
           who: 'The staff numbers in Reveals → Settings → Alerts.',
-          when: 'The reveal-day health check fails, the check an hour before says no-go, Stream refuses the phone’s settings, Facebook or YouTube never shows it, or the reveal never goes live.',
+          when: 'The reveal-day health check fails, the check an hour before says no-go, Stream refuses the phone’s settings, Facebook or YouTube never shows it, it went live without the site knowing which kid, or the reveal never goes live.',
           does: 'What’s wrong in plain words, what to do first, and a link. Never an error code.',
           touches: ['Twilio'], where: 'functions/api/_broadcast.js · stream-webhook.js (errorAlert) · _broadcast-preflight.js (goText)',
           live: textsLive },
@@ -448,13 +537,55 @@ const MAP = { t: 'Everything we send', children: [
           touches: ['Resend', 'Zeffy'], where: 'functions/api/_zeffy.js (zeffyAlertEmail)',
           live: (f) => (!f.staff ? null : ON(f.staff.giftProblems?.total ? `Last one ${day(f.staff.giftProblems.last)}.` : 'None needed so far.', f.staff.giftProblems?.last)) },
       ]},
+      { t: 'Email problems', children: [
+        { t: 'An email didn’t arrive', s: 'live', k: 'email', by: 'auto', preview: 'staff-email-lost',
+          who: 'The alert list in Reveals → Settings → Alerts, and Slack.',
+          when: 'Resend reports that an email to a family or a staff address couldn’t be delivered: the address doesn’t exist, the mailbox is full, it was marked as spam, or Resend wouldn’t send it. Once a week per address.',
+          subject: '[SOARD Live] An email didn’t reach {address}',
+          does: 'Which email, to whom, why, and what to do. A reveal-reminder address that bounces or reports spam is unsubscribed instead, with no email.',
+          touches: ['Resend', 'Slack', 'D1'], where: 'functions/api/_email-log.js (followUp) · resend-webhook.js',
+          info: 'Every email the site sends is listed in What went out, with Resend’s report on it.',
+          live: trackingLive },
+      ]},
+      { t: 'In Slack only', children: [
+        { t: 'New gift', s: 'live', k: 'slack', by: 'auto', key: 'slack-gift',
+          who: '#team-everyone.',
+          when: 'Someone gives through Zeffy: the webhook at once, or the 15-minute check that catches any it missed.',
+          does: 'The gift, who gave it and the campaign, as a card.',
+          touches: ['Slack', 'Zeffy', 'D1'], where: 'functions/api/_zeffy.js', live: slackLive },
+        { t: 'Makeover set up', s: 'live', k: 'slack', by: 'auto', key: 'slack-approved',
+          who: '#team-everyone.',
+          when: 'An Approved family’s JobTread job and hidden kid page are made, or can’t be made yet (and when that’s fixed).',
+          does: 'The family, the new job and kid page, or what’s in the way.',
+          touches: ['Slack', 'JobTread', 'D1'], where: 'functions/api/_applicant-approved.js', live: slackLive },
+        { t: 'Applications opened or closed', s: 'live', k: 'slack', by: 'auto', key: 'slack-applications',
+          who: '#team-everyone.',
+          when: 'Applications open or close for a season, by hand, on schedule or at the limit.',
+          does: 'Open or closed, for which season, and who or what did it.',
+          touches: ['Slack'], where: 'functions/api/_applications.js', live: slackLive },
+        { t: 'Press coverage', s: 'live', k: 'slack', by: 'auto', key: 'slack-press',
+          who: '#team-everyone.',
+          when: 'The press monitor files new coverage, a press link needs a look or changed, or the press list was tidied.',
+          does: 'The outlet and headline, or what needs a look, with the link.',
+          touches: ['Slack', 'D1'], where: 'functions/api/_press.js (tell)', live: slackLive },
+        { t: 'Event page became its thank-you', s: 'live', k: 'slack', by: 'auto', key: 'slack-event',
+          who: '#team-everyone.',
+          when: 'The morning after an event, its page turns into its recap (photos, then sponsors).',
+          does: 'Which event page changed, with the link.',
+          touches: ['Slack', 'D1'], where: 'functions/api/_event-recap.js', live: slackLive },
+        { t: 'CompanyCam photos', s: 'live', k: 'slack', by: 'auto', key: 'slack-companycam',
+          who: '#team-everyone.',
+          when: 'Home-visit photos reach JobTread for a family in review, a project is handed over to the job, or CompanyCam and JobTread disagree.',
+          does: 'Which family or job, how many photos, or what needs a hand.',
+          touches: ['Slack', 'CompanyCam', 'JobTread'], where: 'functions/api/_companycam-sync.js · _companycam-jobs.js', live: slackLive },
+      ]},
     ]},
 
   { t: 'Newsletter list', sub: 'Supporters, through Kit', color: 'email', side: 'l',
     about: 'Kit holds the list. Staff build newsletters in Comms → Email; the site makes them drafts in Kit and staff send them from there.',
     children: [
       { t: 'From the email builder', children: [
-        { t: 'Newsletter', s: 'live', k: 'kit', by: 'staff', change: CHANGE.composer,
+        { t: 'Newsletter', s: 'live', k: 'kit', by: 'staff', key: 'newsletter', change: CHANGE.composer,
           who: 'The Kit list, or the part of it staff pick in Kit.',
           when: 'Staff build it in Comms → Email and press Push to Kit; it goes when they send the draft from Kit.',
           subject: 'Whatever staff write',
@@ -466,13 +597,13 @@ const MAP = { t: 'Everything we send', children: [
             if (!d) return null;
             return ON(d.total ? `${plural(d.n30, 'draft')} pushed to Kit in the last 30 days, ${d.total} in all.` : 'No drafts pushed to Kit yet.', d.last);
           }) },
-        { t: 'Send to specific people', s: 'live', k: 'email', by: 'staff', change: CHANGE.composer,
+        { t: 'Send to specific people', s: 'live', k: 'email', by: 'staff', key: 'direct', change: CHANGE.composer,
           who: 'Up to 100 addresses staff type in, each getting their own copy.',
           when: 'Staff press Send to specific people in Comms → Email.',
           subject: 'A note from Sunshine on a Ranney Day (staff can change it)',
           does: 'The same email-builder design, sent one by one from the site (for a reveal RSVP, a sponsor thank-you).',
           touches: ['Resend'], where: 'functions/api/send-direct.js',
-          info: 'These aren’t logged, so there’s no count here.',
+          info: 'Each copy is in What went out, with whether it arrived.',
           live: needs('resend', NO_RESEND) },
       ]},
       { t: 'Kit’s own', children: [
@@ -488,6 +619,22 @@ const MAP = { t: 'Everything we send', children: [
   { t: 'Board & advisors', sub: 'Every reveal invite, and bio requests', color: 'board', side: 'l',
     about: 'Board members and advisors are guests on every reveal invite. Bio requests and notes to the board go from your own email.',
     children: [
+      { t: 'Advisory applications', children: [
+        { t: 'We have your application', s: 'live', k: 'email', by: 'visitor', preview: 'advisory-thanks',
+          who: 'Someone who applies to the Advisory Board, at the address they typed.',
+          when: 'Right after they send the application on /advisory-board/apply/.',
+          subject: 'We have your Advisory Board application',
+          does: 'Thanks them, and says what happens next.',
+          touches: ['Resend', 'D1'], where: 'functions/api/_advisory-applications.js (applicantEmail)',
+          live: needs('resend', NO_RESEND) },
+        { t: 'New advisory application', s: 'live', k: 'email', by: 'auto', preview: 'advisory-staff',
+          who: 'The list in People → Applications → “Who hears about them” (info@soardcharity.com unless changed), and Slack.',
+          when: 'Someone applies to the Advisory Board.',
+          subject: 'New Advisory Board application: {name}',
+          does: 'Who applied and their answers, with a button to the application in the admin. The Slack card leaves out their contact details.',
+          touches: ['Resend', 'Slack', 'D1'], where: 'functions/api/_advisory-applications.js (staffEmail, staffSlack)',
+          live: needs('resend', NO_RESEND) },
+      ]},
       { t: 'From the site', children: [
         { t: 'Reveal invites', s: 'live', k: 'invite', by: 'auto', preview: 'board-invites', change: CHANGE.board,
           who: 'Board members and advisors with an email on file, plus JobTread Board Member users.',
@@ -526,10 +673,13 @@ const SENDERS = {
   google: { label: 'Google Calendar', color: '#7A5B00', from: 'Google Calendar, from the organizer’s calendar (set in Reveals → Invites). Google sends the invitation and update emails.' },
   twilio: { label: 'Twilio', color: '#9A4A12', from: 'Twilio, from SOARD’s toll-free number.' },
   push: { label: 'Browser', color: '#5B4BC4', from: 'The person’s own browser, as a notification from sunshineonaranneyday.com.' },
+  slack: { label: 'Slack', color: '#6B2D6B', from: 'Slack, as a card from the site’s Slack app in the alerts channel (#team-everyone). Nobody is emailed.' },
   you: { label: 'Your email', color: '#5F6066', from: 'Your own email app, from your own address. The site doesn’t send it.' },
 };
-const SENDER_OF = { email: 'resend', jobtread: 'jobtread', kit: 'kit', invite: 'google', text: 'twilio', push: 'push', mail: 'you' };
-const PART = { email: 'The email', jobtread: 'The email', kit: 'The email', invite: 'The invite', text: 'The text', push: 'The browser alert', mail: 'The email' };
+const SENDER_OF = { email: 'resend', jobtread: 'jobtread', jtnote: 'jobtread', kit: 'kit', invite: 'google', text: 'twilio', push: 'push', slack: 'slack', mail: 'you' };
+const PART = { email: 'The email', jobtread: 'The email', jtnote: 'The note', kit: 'The email', invite: 'The invite', text: 'The text', push: 'The browser alert', slack: 'The Slack card', mail: 'The email' };
+// A channel whose words differ from its sender's usual ones (an internal JobTread note is never emailed)
+const FROM_OF = { jtnote: 'JobTread, as an internal note on the family’s page (or the job). Only staff see it, and JobTread emails no one outside SOARD.' };
 /** Who sends an entry, first sender first. Exported for tests */
 export const sendersOf = (n) => [...new Set([n.k, ...(n.also || [])].map((c) => SENDER_OF[c]))];
 /** One line per sender; "The text:" and the like only when the parts differ (a reminder's email, text and alert) */
@@ -538,7 +688,7 @@ const fromLines = (n) => {
   const labelled = new Set(chans.map((c) => PART[c])).size > 1;
   return chans.map((c) => {
     const who = SENDER_OF[c];
-    return html`<p key=${c}>${labelled && html`<b>${PART[c]}:</b> `}${SENDERS[who].from}${n.fromNote?.[who] && html` ${n.fromNote[who]}`}</p>`;
+    return html`<p key=${c}>${labelled && html`<b>${PART[c]}:</b> `}${FROM_OF[c] || SENDERS[who].from}${n.fromNote?.[who] && html` ${n.fromNote[who]}`}</p>`;
   });
 };
 const tagsOf = (n) => sendersOf(n).map((s) => ({ label: SENDERS[s].label, color: SENDERS[s].color }));
@@ -546,19 +696,33 @@ const Sender = ({ s }) => html`<span class="mm-sender" style=${`--tg: ${SENDERS[
 const BY = { auto: 'Goes out on its own', visitor: 'When someone signs up or asks', staff: 'Staff send it' };
 const FILTERS = [
   { label: null, items: [['all', 'Everything'], ['auto', 'Go out on their own'], ['staff', 'Staff send these'], ['attn', 'Needs a look']] },
-  { label: 'Sent by', items: [['s:resend', 'Resend'], ['s:jobtread', 'JobTread'], ['s:kit', 'Kit'], ['s:google', 'Google Calendar'], ['s:twilio', 'Twilio']] },
+  { label: 'Sent by', items: [['s:resend', 'Resend'], ['s:jobtread', 'JobTread'], ['s:kit', 'Kit'], ['s:google', 'Google Calendar'], ['s:twilio', 'Twilio'], ['s:slack', 'Slack']] },
 ];
 const filterMatch = (n, k) => (k.startsWith('s:') ? sendersOf(n).includes(k.slice(2)) : n.by === k);
 const shape = (n) => (n.k === 'invite' ? 'square' : 'circle');
 const PALETTE = { family: '#8C3D6B', reveals: '#B08900', live: '#6352C9', site: '#13807A', email: '#2B6CB0', board: '#A0571A' };
 const TEXT_FROM = 'SOARD’s alert number, through Twilio';
 const PUSH_FROM = 'sunshineonaranneyday.com, as a browser notification';
-const SEE = { email: 'See the email', jobtread: 'See the email', kit: 'See the email', invite: 'See the invite', text: 'See the text' };
+const SEE = { email: 'See the email', jobtread: 'See the email', jtnote: 'See the note', kit: 'See the email', invite: 'See the invite', text: 'See the text' };
 
 const model = prepareMap(MAP, 'm');
 /** Apply the live facts to every entry. Exported for tests. */
 export const applyFacts = model.applyFacts;
 export const ENTRIES = model.ALL;
+/** An entry's key in What went out and the delivery numbers */
+export const keyOf = (n) => n?.preview || n?.key || null;
+const BY_KEY = new Map(ENTRIES.filter(keyOf).map((n) => [keyOf(n), n]));
+export const entryOf = (k) => (k ? BY_KEY.get(k) || null : null);
+const branchOf = (n) => { let p = n; while (p && p.depth > 1) p = p.parent; return p && p.depth === 1 ? p.t : null; };
+// The channels What went out can show (Slack posts and your own email app aren't logged)
+const LOGGED = new Set(['email', 'jobtread', 'jtnote', 'kit', 'invite', 'text', 'push']);
+const rowLabel = (r) => {
+  const e = entryOf(r.entry);
+  if (e) return e.t;
+  if (r.entry === 'preview') return r.channel === 'invite' ? 'A TEST invite' : r.channel === 'text' ? 'A preview text' : 'A preview or test copy';
+  return r.subject || 'An email';
+};
+const rowSender = (r) => r.sender || SENDER_OF[r.channel] || 'resend';
 
 const subjectOf = (n, lang = 'en') => (Array.isArray(n.subject) ? n.subject[lang === 'es' ? 1 : 0] : n.subject);
 
@@ -846,11 +1010,70 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
 }
 
 // ─── The page ─────────────────────────────
+const TABS = [['map', 'Everything we send'], ['sent', 'What went out']];
+const tabOfHash = () => (location.hash.startsWith('#messages/sent') ? 'sent' : 'map');
+const TAB_CSS = `
+.mm-tabs { margin-bottom: 1.25rem; }
+.mm-tab-n { display: inline-grid; place-items: center; min-width: 1.25rem; height: 1.25rem; margin-left: 0.4rem; padding: 0 0.35rem; border-radius: 999px; background: color-mix(in srgb, #B7791F 18%, var(--color-bg-card)); color: #8A5A12; font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mm-arrive small { display: block; margin-top: 0.15rem; color: var(--color-text-muted); font-size: 0.8rem; }
+.mm-arrive .is-bad { color: #8A5A12; font-weight: 600; }
+`;
+let tabCssDone = false;
+
+/** How an entry's emails fared in 30 days (Resend's reports), in words; null when it isn't the site's email */
+function arrivalLine(n, delivery) {
+  if (!delivery || !sendersOf(n).includes('resend')) return null;
+  const t = delivery.tracking || {};
+  if (t.state === 'send-only') return { text: 'Can’t tell: the site’s Resend key can only send.' };
+  if (t.state === 'off') return null;
+  const d = delivery.byEntry?.[keyOf(n)];
+  if (!d || !d.sent) return { text: t.since ? 'None sent in the last 30 days.' : 'Resend’s reports start with the next one.' };
+  const bad = d.bounced + d.complained + d.failed + d.suppressed;
+  const got = d.delivered + d.complained;
+  const waiting = d.sent - got - bad - d.scheduled - d.canceled;
+  return {
+    text: `${d.sent} sent in 30 days: ${got} delivered${waiting > 0 ? `, ${waiting} not reported yet` : ''}${d.opened ? `, ${d.opened} opened` : ''}.`,
+    bad: bad ? `${bad} didn’t arrive${d.complained ? ` (${d.complained} marked as spam)` : ''}.` : null,
+  };
+}
+
 export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
   ensureCss();
+  if (!tabCssDone) { const st = document.createElement('style'); st.textContent = TAB_CSS; document.head.appendChild(st); tabCssDone = true; }
+  const [tab, setTab] = useState(tabOfHash);
+  const [mapSeen, setMapSeen] = useState(() => tabOfHash() === 'map');
   const [open, setOpen] = useState(null); // the entry whose preview is open
+  const [facts, setFacts] = useState(null);
+  const [only, setOnly] = useState(null); // What went out, narrowed to one entry
+  const [show, setShow] = useState('all');
+  const [problems, setProblems] = useState(null);
   const opener = useRef(null);
   const see = (entry) => (e) => { opener.current = e.currentTarget; setOpen(entry); };
+  const preview = (entry) => { opener.current = document.activeElement; setOpen(entry); };
+
+  const goTab = (t) => {
+    history.replaceState(null, '', t === 'sent' ? '#messages/sent' : '#messages');
+    setTab(t);
+  };
+  useEffect(() => {
+    const onHash = () => { if (location.hash.startsWith('#messages')) setTab(tabOfHash()); };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  useEffect(() => {
+    if (tab !== 'map') return;
+    if (!mapSeen) { setMapSeen(true); return; }
+    // The map was hidden: fit it to the space it has again
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  }, [tab]);
+  const onTabKey = (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const next = TABS[(TABS.findIndex((t) => t[0] === tab) + 1) % TABS.length][0];
+    e.preventDefault();
+    goTab(next);
+    requestAnimationFrame(() => document.querySelector(`.mm-tabs [data-tab="${next}"]`)?.focus());
+  };
+  const sentFor = (n) => { setOnly(keyOf(n)); setShow('all'); goTab('sent'); window.scrollTo({ top: 0 }); };
 
   const go = (c) => {
     if (!c || !onNavigate) return;
@@ -858,11 +1081,17 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
     onNavigate(c.view, null, c.tab || null);
   };
 
+  const delivery = facts?.delivery || null;
+  const lost = delivery ? (({ bounced, complained, failed, suppressed }) => bounced + complained + failed + suppressed)(delivery.all || { bounced: 0, complained: 0, failed: 0, suppressed: 0 }) : 0;
+  const badge = problems ?? lost;
+
   const Entry = (sel, { pickService, Dot }) => {
     const p = sel.probe;
     const reason = sel.es !== 'live' && !(p?.s && p.why) ? sel.note : null;
     const subj = subjectOf(sel);
     const subjEs = Array.isArray(sel.subject) ? sel.subject[1] : null;
+    const arrive = arrivalLine(sel, delivery);
+    const logged = keyOf(sel) && [sel.k, ...(sel.also || [])].some((c) => LOGGED.has(c));
     return html`
       <div class="am-chips">
         <span class="chip"><${Dot} n=${sel} /> ${STATUS[sel.es]}</span>
@@ -874,6 +1103,7 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
         <div><dt>Sent from</dt><dd class="mm-from">${fromLines(sel)}</dd></div>
         ${p && (p.why || p.last) && html`<div><dt>Right now</dt><dd class=${`am-now s-${sel.es}`}>${p.why || 'On.'}${p.last && html`<small>Last went <${Ago} iso=${p.last} /></small>`}</dd></div>`}
         ${reason && html`<div><dt>${sel.es === 'attn' ? 'What needs doing' : 'Why it’s off'}</dt><dd class=${`am-now s-${sel.es}`}>${reason}</dd></div>`}
+        ${arrive && html`<div><dt>Did it arrive</dt><dd class="mm-arrive">${arrive.text}${arrive.bad && html` <span class="is-bad">${arrive.bad}</span>`}</dd></div>`}
         ${sel.who && html`<div><dt>Who gets it</dt><dd>${sel.who}</dd></div>`}
         ${sel.when && html`<div><dt>When it goes</dt><dd>${sel.when}</dd></div>`}
         ${subj && html`<div><dt>Subject</dt><dd class="mm-subject">${subj}${subjEs && html`<small lang="es">${subjEs}</small>`}</dd></div>`}
@@ -883,31 +1113,47 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
         ${sel.where && html`<div><dt>Where it lives</dt><dd class="am-mono">${sel.where}</dd></div>`}
         ${sel.info && html`<div><dt>Good to know</dt><dd>${sel.info}</dd></div>`}
       </dl>
-      ${sel.preview && html`<div class="mm-actions"><button type="button" class="btn btn-secondary btn-sm" onClick=${see(sel)}>${SEE[sel.k] || 'See it'}</button></div>`}`;
+      ${(sel.preview || logged) && html`<div class="mm-actions">
+        ${sel.preview && html`<button type="button" class="btn btn-secondary btn-sm" onClick=${see(sel)}>${SEE[sel.k] || 'See it'}</button>`}
+        ${logged && html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => sentFor(sel)}>What went out</button>`}
+      </div>`}`;
   };
 
-  return html`<${MindMap}
-    model=${model} palette=${PALETTE} factsUrl=${API} written=${WRITTEN_ON}
-    title="Emails & invites"
-    sub="Everything the site sends a person: emails, calendar invites, texts and browser alerts. Pick one to see who gets it, when it goes, and the message itself."
-    filters=${FILTERS} filterMatch=${filterMatch} shape=${shape} tags=${tagsOf}
-    lede=${({ stat, attn, parked, home, show }) => html`
-      ${[['resend', 'sent by Resend'], ['jobtread', 'through JobTread'], ['kit', 'through Kit'], ['google', 'Google Calendar invites'], ['twilio', 'Twilio texts']].map(([x, words]) => html`
-        <li key=${x}><button type="button" onClick=${() => show(`s:${x}`)}><b>${stat((n) => sendersOf(n).includes(x))}</b> <span>${words}</span></button></li>`)}
-      <li><button type="button" onClick=${home}><b>${parked.length}</b> <span>switched off</span></button></li>
-      <li class="am-warnstat"><button type="button" onClick=${home}><b>${attn.length}</b> <span>need attention</span></button></li>`}
-    entry=${Entry}
-    homeNote="Pick anything on the map to see who gets it, when it goes and what it says, then See the email for the real thing."
-    depNoun=${['message', 'messages']}
-    hay=${(n) => [subjectOf(n, 'en'), subjectOf(n, 'es'), n.who, ...sendersOf(n).map((x) => SENDERS[x].label)]}
-    legend=${html`<span><span class="am-dot-i s-live k-link"></span>Calendar invite</span>`}
-    searchLabel="Search emails and invites" searchPlaceholder="Search: approved, Kit, reminder…" ariaLabel="Emails and invites map"
-    list=${{
-      title: 'Everything, as a list',
-      intro: 'The same map, written out, with who sends each one. Green goes out, an open circle is switched off, amber needs someone. A square is a calendar invite.',
-      meta: (l) => html`${STATUS[l.es]} · ${sendersOf(l).map((x) => html`<${Sender} s=${x} key=${x} />`)} · ${BY[l.by] || ''}`,
-      body: (l) => html`${l.when && html`<p>${l.when}</p>`}${subjectOf(l) && html`<p><b>Subject:</b> ${subjectOf(l)}</p>`}${l.preview && html`<p><button type="button" class="mm-change" onClick=${see(l)}>${SEE[l.k] || 'See it'}</button></p>`}`,
-    }}>
+  return html`<div class="mm-root">
+    <div class="hub-tabs mm-tabs" role="tablist" aria-label="Emails & invites" onKeyDown=${onTabKey}>
+      ${TABS.map(([k, label]) => html`<button key=${k} type="button" class=${`hub-tab ${tab === k ? 'active' : ''}`} role="tab" data-tab=${k} aria-selected=${String(tab === k)} tabindex=${tab === k ? 0 : -1} onClick=${() => goTab(k)}>
+        ${label}${k === 'sent' && badge > 0 && html`<span class="mm-tab-n" title=${`${plural(badge, 'email')} didn’t arrive in the last 30 days`}>${badge}<span class="sr-only"> didn’t arrive</span></span>`}
+      </button>`)}
+    </div>
+    <div role="tabpanel" aria-label="Everything we send" hidden=${tab !== 'map'}>
+      ${mapSeen && html`<${MindMap}
+        model=${model} palette=${PALETTE} factsUrl=${API} written=${WRITTEN_ON} onFacts=${setFacts}
+        title="Emails & invites"
+        sub="Everything the site sends a person: emails, calendar invites, texts, browser alerts and Slack cards. Pick one to see who gets it, when it goes, and the message itself."
+        filters=${FILTERS} filterMatch=${filterMatch} shape=${shape} tags=${tagsOf}
+        lede=${({ stat, attn, parked, home, show: showMap }) => html`
+          ${[['resend', 'sent by Resend'], ['jobtread', 'through JobTread'], ['kit', 'through Kit'], ['google', 'Google Calendar invites'], ['twilio', 'Twilio texts'], ['slack', 'Slack cards']].map(([x, words]) => html`
+            <li key=${x}><button type="button" onClick=${() => showMap(`s:${x}`)}><b>${stat((n) => sendersOf(n).includes(x))}</b> <span>${words}</span></button></li>`)}
+          <li><button type="button" onClick=${home}><b>${parked.length}</b> <span>switched off</span></button></li>
+          <li class="am-warnstat"><button type="button" onClick=${home}><b>${attn.length}</b> <span>need attention</span></button></li>
+          ${lost > 0 && html`<li class="am-warnstat"><button type="button" onClick=${() => { setOnly(null); setShow('problems'); goTab('sent'); }}><b>${lost}</b> <span>didn’t arrive (30 days)</span></button></li>`}`}
+        entry=${Entry}
+        homeNote="Pick anything on the map to see who gets it, when it goes and what it says, then See the email for the real thing. What went out shows each one that went, and whether it arrived."
+        depNoun=${['message', 'messages']}
+        hay=${(n) => [subjectOf(n, 'en'), subjectOf(n, 'es'), n.who, ...sendersOf(n).map((x) => SENDERS[x].label)]}
+        legend=${html`<span><span class="am-dot-i s-live k-link"></span>Calendar invite</span>`}
+        searchLabel="Search emails and invites" searchPlaceholder="Search: approved, Kit, reminder…" ariaLabel="Emails and invites map"
+        list=${{
+          title: 'Everything, as a list',
+          intro: 'The same map, written out, with who sends each one. Green goes out, an open circle is switched off, amber needs someone. A square is a calendar invite.',
+          meta: (l) => html`${STATUS[l.es]} · ${sendersOf(l).map((x) => html`<${Sender} s=${x} key=${x} />`)} · ${BY[l.by] || ''}`,
+          body: (l) => html`${l.when && html`<p>${l.when}</p>`}${subjectOf(l) && html`<p><b>Subject:</b> ${subjectOf(l)}</p>`}${l.preview && html`<p><button type="button" class="mm-change" onClick=${see(l)}>${SEE[l.k] || 'See it'}</button></p>`}`,
+        }} />`}
+    </div>
+    ${tab === 'sent' && html`<div role="tabpanel" aria-label="What went out">
+      <${SentView} entryOf=${entryOf} branchOf=${branchOf} labelOf=${rowLabel} senderOf=${rowSender} Sender=${Sender} EmailFrame=${EmailFrame}
+        onPreview=${preview} only=${only} setOnly=${setOnly} show=${show} setShow=${setShow} onProblems=${setProblems} />
+    </div>`}
     ${open && html`<${PreviewSheet} entry=${open} returnTo=${opener.current} onClose=${() => setOpen(null)} addToast=${addToast} />`}
-  <//>`;
+  </div>`;
 }

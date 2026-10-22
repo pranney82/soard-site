@@ -17,6 +17,10 @@
  *                               event on the office sandbox job, inviting only them.
  *  POST { send: <id>, to: i } → "Text it to me": a staff text preview to number i on the alert
  *                               list (never any other number), each text starting [Preview].
+ *  GET ?activity=1[&before=&q=] → What went out: every message, newest first, with whether it
+ *                               arrived; what's coming up; and whether mail can land (SPF, DKIM,
+ *                               DMARC, bounce and spam rates). Names and addresses, for staff.
+ *  GET ?email=<Resend id>     → one email exactly as it went, with every report Resend sent.
  *
  * Not in _middleware's public list, so Access guards it. Never cached. Each
  * fact fails on its own: one missing table never blanks the rest.
@@ -44,6 +48,10 @@ import { readConfig } from './_broadcast.js';
 import { goText } from './_broadcast-preflight.js';
 import { ADMIN_URL as CONTROL_ROOM, SILENT, RESOLVED, greenDetail } from './_broadcast-monitor.js';
 import { errorAlert } from './stream-webhook.js';
+import { medicalNote, fallbackMedicalNote } from './_applicant-comms.js';
+import { activity, comingUp, deliverability, deliveryFacts, emailDetail, invitesOut } from './_messages-activity.js';
+import { applicantEmail as advisoryThanks, staffEmail as advisoryStaff } from './_advisory-applications.js';
+import { checkAnswers as advisoryAnswers } from './_advisory-form.js';
 
 const { SITE_ORIGIN, EMAIL_FROM } = notify;
 const DAY = 864e5;
@@ -209,7 +217,7 @@ async function bioFacts(DB) {
 
 export async function gatherFacts(env, { now = Date.now() } = {}) {
   const DB = env.DB;
-  const [family, form, drafts, waitlist, invites, reminders, staff, newsletter, bios, pause] = await Promise.all([
+  const [family, form, drafts, waitlist, invites, reminders, staff, newsletter, bios, pause, delivery] = await Promise.all([
     settle(() => familyFacts(DB, now)),
     settle(() => formFacts(DB)),
     settle(() => draftFacts(DB, now)),
@@ -220,6 +228,7 @@ export async function gatherFacts(env, { now = Date.now() } = {}) {
     settle(() => newsletterFacts(DB, now)),
     settle(() => bioFacts(DB)),
     settle(() => pauseState(DB, now)),
+    settle(() => deliveryFacts(env, { now })),
   ]);
   const confirmations = await settle(async () => {
     const r = await DB.prepare(`SELECT max(confirmed_at) AS last, sum(CASE WHEN confirmed_at >= ? THEN 1 ELSE 0 END) AS n30, count(confirmed_at) AS total FROM waitlist_signups`)
@@ -250,6 +259,8 @@ export async function gatherFacts(env, { now = Date.now() } = {}) {
     staff: ok(staff),
     newsletter: ok(newsletter),
     bios: ok(bios),
+    // Did the site's emails arrive: per message, 30 days, counts only (Resend's reports)
+    delivery: ok(delivery),
     // Paused family emails: until when, and how many are held (never who)
     pause: p ? { active: !!p.active, until: p.until ? new Date(p.until).toISOString() : null, by: p.by ? String(p.by).split('@')[0] : null, held: (p.held || []).length } : null,
   };
@@ -319,6 +330,16 @@ const liveAlertSample = (now) => ({
 
 const TEXT_FROM = 'SOARD’s alert number, through Twilio';
 const STAFF_TEXTS_TO = 'The staff numbers in Reveals → Settings → Alerts';
+const STAFF_ALERTS_TO = 'The alert list in Reveals → Settings → Alerts, and Slack';
+const ADVISORY_SAMPLE = {
+  fullName: 'Jordan Stone', preferredName: 'Jordan', email: 'jordan@example.com', phone: '(770) 555-0142', address: '123 Sample Lane\nRoswell, GA 30075',
+  company: 'Sample Builders', jobTitle: 'Director of Partnerships', link: 'linkedin.com/in/sample',
+  heardFrom: 'A friend on the board', why: 'I have watched what a room can do for a child.', connection: 'My nephew uses a wheelchair.',
+  involved: 'Yes', involvedHow: 'Volunteered at the gala.', strengths: 'Corporate partnerships and event planning.', fundraising: 'An employer match.',
+  introductions: 'Yes', networks: 'Maybe', networksMore: 'A local builders association.', conflict: 'No', hostEvent: 'Maybe', meetings: 'Yes', ambassador: 'Yes',
+  meetingTimes: 'Weekday evenings', hopeToGain: 'Purpose and friendships.', anythingElse: '',
+  refName: 'Sam Lee', refRelationship: 'Former manager', refEmail: 'sam@example.com', refPhone: '', acknowledge: true, signature: 'Jordan Stone',
+};
 
 /**
  * The staff texts for a sample reveal (Avery's, a week out at 4 PM), built by
@@ -454,6 +475,53 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return { channel: 'text', from: TEXT_FROM, to: STAFF_TEXTS_TO, sms: revealDayTexts(now, 'problems'), send: 'text' };
     case 'staff-alert-hello':
       return email(alertHelloEmail(me || 'Someone on the staff'), { to: 'A new address on the alert list' });
+    case 'staff-good-news': {
+      const title = `${SAMPLE.childFirst}'s room reveal`;
+      return email(notify.alertEmail({ title: `Live now: ${title}`, detail: 'The site, Facebook and YouTube are all showing it.', links: [{ label: 'Watch it', url: live }, { label: 'Open the control room', url: CONTROL_ROOM }] }), {
+        to: STAFF_ALERTS_TO, sms: notify.liveNowText({ title, url: live }),
+        note: 'Also: “Go” from the check an hour before, “All green” about a minute in, and “Ended” with how long it ran and how the sound held up.',
+      });
+    }
+    case 'staff-countdown':
+      return email(notify.alertEmail({
+        title: `Countdown is up: ${SAMPLE.child}'s reveal`,
+        detail: `${notify.formatWhen(scheduledAt, TZ)}. It's confirmed in JobTread, so the site put up the countdown and reminder signup. Reminders go out the day before and an hour before.`,
+        links: [{ label: 'Live page', url: `${SITE_ORIGIN}/live/` }],
+      }), { to: STAFF_ALERTS_TO, note: 'The same kind of note says when a reveal moves, when the countdown comes down, when it can’t follow JobTread, and when a confirmed reveal can’t have a countdown yet (and why).' });
+    case 'staff-kit-live':
+      return email(notify.alertEmail({ title: 'Kit "we\'re live" email did not send', detail: 'Kit answered 500. Use "Email the list now" in Admin → Broadcast to retry.', links: [{ label: 'Open the admin', url: `${SITE_ORIGIN}/admin/` }] }), {
+        to: STAFF_ALERTS_TO, note: 'Also when Kit’s email is held: the stream went live more than 30 minutes early, the site can’t tell which kid it is, or it’s too late to send.',
+      });
+    case 'staff-replay':
+      return email(notify.alertEmail({ title: `Instagram Reel posted: ${SAMPLE.childFirst}'s room reveal`, detail: 'Cut 2:10 to 2:55 of the recording (picked by sound).', links: [{ label: 'See the Reel', url: 'https://www.instagram.com/' }] }), {
+        to: STAFF_ALERTS_TO, note: 'Also when the Reel needs setup or fails, and when a reveal’s replay is saved but can’t go on a kid page by itself.',
+      });
+    case 'staff-text-missed':
+      return email(notify.alertEmail({ title: 'A staff text didn’t arrive: (678) 555-0123', detail: 'Twilio says the phone is switched off or out of range.', fix: 'Check the number in Reveals → Settings → Alerts, and the text in Twilio’s message log.', links: [{ label: 'Open Reveals → Settings', url: `${SITE_ORIGIN}/admin/#broadcast/settings` }] }), {
+        to: STAFF_ALERTS_TO, note: 'Never by text: texting is what failed. Once a day per number at most.',
+      });
+    case 'staff-email-lost':
+      return email(notify.alertEmail({ title: 'An email didn’t reach jordan@exmaple.com', detail: '“Your SOARD application: pick up where you left off”. The address doesn’t exist (the mail server said no such mailbox).', fix: 'The family typed this address on the application. Their answers are saved; reach them another way for a working address.', links: [{ label: 'What went out', url: `${SITE_ORIGIN}/admin/#messages/sent` }] }), {
+        to: STAFF_ALERTS_TO, note: 'A staff address that bounces says which list to fix instead. A reveal-reminder address that bounces or reports spam is simply unsubscribed, with no email. Once a week per address at most.',
+      });
+    case 'advisory-thanks':
+    case 'advisory-staff': {
+      // A made-up applicant, through the form's own rules
+      const app = { id: 'adv-sample-0001', answers: advisoryAnswers(ADVISORY_SAMPLE).answers };
+      return id === 'advisory-thanks'
+        ? email(advisoryThanks(app), { to: 'The applicant, at the address they typed' })
+        : email(advisoryStaff(app), { to: 'The list in People → Applications → “Who hears about them”', note: 'The Slack card says the same, without their email, phone or address.' });
+    }
+    case 'staff-medical': {
+      const diagnosis = 'Cerebral palsy';
+      const note = await medicalNote(env, diagnosis).catch(() => null);
+      return {
+        channel: 'jobtread', from: JT_FROM, to: 'Staff, on the family’s JobTread page. The family never sees it.',
+        subject: COMMENT_NAMES.medical, text: note || fallbackMedicalNote(diagnosis, 'the writer isn’t reachable from here'),
+        note: 'Workers AI writes it from the diagnosis the family typed (here, “Cerebral palsy”). When it can’t, the family’s own words go up with a note to look the condition up.',
+        send: null,
+      };
+    }
     case 'staff-invite-problem':
       return email(inviteAlert('problem', { jobId: 'sample', name: SAMPLE.childFirst, error: 'Google Calendar returned 503 (backend error)', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });
     case 'staff-invite-held':
@@ -487,6 +555,23 @@ export async function onRequestGet(context) {
       // A text preview goes only to a number already on the alert list: its last four digits to pick from
       const textTo = p.send === 'text' ? notify.alertPhones(await readConfig(env.DB)).map((n, i) => ({ i, last4: n.slice(-4) })) : undefined;
       return Response.json({ success: true, id: q.get('preview'), ...p, textTo, texting: p.send === 'text' ? notify.smsConfigured(env) : undefined }, { headers: HEADERS });
+    }
+    if (q.has('activity')) {
+      const now = Date.now();
+      const before = q.get('before');
+      const [log, coming, delivery, invites] = await Promise.all([
+        activity(env, { before: before && !Number.isNaN(Date.parse(before)) ? new Date(before).toISOString() : null, q: q.get('q') || '', now }),
+        before ? null : settle(() => comingUp(env, { now })),
+        before ? null : settle(() => deliveryFacts(env, { now })),
+        before ? null : settle(() => invitesOut(env, { now })),
+      ]);
+      const health = before ? null : await settle(() => deliverability(env, { now, rates: ok(delivery)?.all || null }));
+      return Response.json({ success: true, checkedAt: new Date(now).toISOString(), ...log, coming: ok(coming) || (coming ? [] : undefined), tracking: ok(delivery)?.tracking, health: ok(health), invites: Array.isArray(invites) ? invites : undefined }, { headers: HEADERS });
+    }
+    if (q.has('email')) {
+      const d = await emailDetail(env, q.get('email'));
+      if (!d) return fail('That email isn’t in the log', 404);
+      return Response.json({ success: true, ...d }, { headers: HEADERS });
     }
     return Response.json({ success: true, ...(await gatherFacts(env)) }, { headers: HEADERS });
   } catch (err) {

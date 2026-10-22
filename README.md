@@ -249,7 +249,8 @@ The admin panel can also trigger deploys after content changes via the `/api/dep
 | `CF_PAGES_DEPLOY_HOOK` | Yes | Trigger rebuilds after content saves |
 | OAuth client ID/secret | Yes | Admin panel authentication |
 | `KIT_API_KEY` | Yes | Kit (ConvertKit) v4 key. Kit is the only list tool: newsletter signups, "Push to Kit" broadcast drafts, and the "applications are open" email to the waitlist |
-| `RESEND_API_KEY` | Yes | One-off emails only: application links and notices, waitlist "you're on the list" confirmations, reveal reminders, staff alerts, editor test sends |
+| `RESEND_API_KEY` | Yes | One-off emails only: application links and notices, waitlist "you're on the list" confirmations, reveal reminders, staff alerts, editor test sends. Make it with **Full access**: the site then registers its own `/api/resend-webhook` and shows whether each email arrived (Admin → Emails & invites → What went out). A "Sending access" key sends fine but can't hear back |
+| `RESEND_WEBHOOK_SECRET` | No | Only if you'd rather register the Resend webhook by hand: its `whsec_…` signing secret. Without it the site registers the webhook itself and keeps the secret in D1 (`email_tracking`) |
 | `SLACK_BOT_TOKEN` | No | The site's Slack app (`xoxb-…`; scopes `chat:write`, `chat:write.public`, `channels:read`, `groups:read`). Reveals → Settings → Alerts picks two channels: Good news (gifts, new applications, reveals going live) and Needs attention (problems, which thread and turn ✅ when fixed; live failures add @here). With only Good news picked, everything goes there |
 | `SLACK_WEBHOOK_URL` | No | Older incoming webhook, used only when the Slack app isn't set or can't post |
 | `SLACK_SIGNING_SECRET` | No | The Slack app's signing secret. When set, `/api/slack-actions` (the app's Interactivity Request URL, which answers button clicks so Slack shows no warning mark) refuses unsigned requests |

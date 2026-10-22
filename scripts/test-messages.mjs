@@ -10,8 +10,14 @@
  * message, calendar invite, text, browser alert), Spanish swaps the words,
  * Send it to me posts only the message id and language, Escape closes and
  * gives focus back, filters and search work, labels never overlap with
- * everything open, and the page and preview fit a phone. Screenshots land in
- * test-results/messages/. Exits non-zero on any failure or console error.
+ * everything open, and the page and preview fit a phone. What went out: the
+ * emails that didn't arrive get their own card, what's coming up is listed,
+ * "Will it land?" reads DNS, search finds a person, a row opens the email as
+ * it went with Resend's reports, previews stay apart, an entry's panel says
+ * how its emails fared and opens the log narrowed to it, and it fits every
+ * laptop width and a phone. The server side never reaches the internet (DNS
+ * and Resend are answered here). Screenshots land in test-results/messages/.
+ * Exits non-zero on any failure or console error.
  *
  *   node scripts/test-messages.mjs
  */
@@ -28,6 +34,27 @@ import { ensureSchema as ensureInviteSchema } from '../functions/api/_reveal-inv
 import { ensureSchema as ensureApplicationSchema } from '../functions/api/_applications.js';
 import { ensureWaitlistSchema } from '../functions/api/_application-waitlist.js';
 import { ensureRequests } from '../functions/api/_profile-requests.js';
+import { ensureEmailLog } from '../functions/api/_email-log.js';
+
+// The handlers run here in Node: public DNS and Resend are answered here, everything else is offline
+const DNS = {
+  'send.comms.sunshineonaranneyday.com:TXT': ['"v=spf1 include:amazonses.com ~all"'],
+  'send.comms.sunshineonaranneyday.com:MX': ['10 feedback-smtp.us-east-1.amazonses.com.'],
+  'resend._domainkey.comms.sunshineonaranneyday.com:TXT': [`"p=${'A'.repeat(200)}"`],
+  '_dmarc.comms.sunshineonaranneyday.com:TXT': ['"v=DMARC1; p=none; rua=mailto:owner@example.com"'],
+  '_dmarc.sunshineonaranneyday.com:TXT': ['"v=DMARC1; p=none; rua=mailto:x@dmarc-reports.cloudflare.net"'],
+  'soardcharity.com:TXT': ['"v=spf1 include:_spf.google.com ~all"'],
+  'google._domainkey.soardcharity.com:TXT': [`"v=DKIM1; k=rsa; p=${'B'.repeat(200)}"`],
+  'cka._domainkey.soardcharity.com:CNAME': ['dkim.dm-1.sg6.convertkit.com.'],
+  'ckespa.soardcharity.com:CNAME': ['spf.dm-1.sg6.convertkit.com.'],
+  '_dmarc.soardcharity.com:TXT': ['"v=DMARC1; p=none; rua=mailto:y@dmarc-reports.cloudflare.net"'],
+};
+globalThis.fetch = async (url) => {
+  const u = new URL(String(url));
+  if (u.host === 'cloudflare-dns.com') return Response.json({ Status: 0, Answer: (DNS[`${u.searchParams.get('name')}:${u.searchParams.get('type')}`] || []).map((data) => ({ data })) });
+  if (u.host === 'api.resend.com' && u.pathname.startsWith('/emails/')) return Response.json({ object: 'email', id: u.pathname.split('/')[2], html: '<html><head></head><body style="font-family: sans-serif"><h1>You’re on the list</h1><p>We’ll email you the moment applications open.</p></body></html>' });
+  throw new Error(`offline: ${u.href}`);
+};
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/messages/');
@@ -59,6 +86,24 @@ async function seed({ invitesProblem = false } = {}) {
   await run("INSERT INTO reveal_invites (job_id, state, error, updated_at) VALUES ('j1', 'tentative', ?, ?), ('j2', 'tentative', NULL, ?)", invitesProblem ? 'Google returned 503' : null, iso(0), iso(0));
   await run("INSERT INTO reveal_invite_log (job_id, action, state, guests, created_at) VALUES ('j1', 'created', 'tentative', 9, ?), ('j1', 'updated', 'tentative', 9, ?)", iso(3 * DAY), iso(3600e3));
   await run("INSERT INTO reveal_board_emails (slug, email, updated_at) VALUES ('ann', 'ann@example.com', ?)", iso(0));
+  // What went out: emails the site sent, with Resend's reports
+  await ensureEmailLog(DB);
+  await run("INSERT INTO applications (id, child_name, parent_name, parent_email, status, submitted_at, updated_at) VALUES ('app1', 'Avery Stone', 'Jordan Stone', 'jordan@example.com', 'done', ?, ?)", iso(DAY), iso(DAY));
+  const sent = (id, type, to, subject, ago, status, extra = {}) => run(`INSERT INTO email_log (id, type, to_addr, subject, sent_at, status, status_at, detail, bounce_type, opened_at, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'site')`,
+    id, type, to, subject, iso(ago), status, iso(ago - 60e3), extra.detail || null, extra.bounce || null, extra.opened ? iso(ago - 600e3) : null);
+  await sent('em_resume', 'application-resume', 'jordan@example.com', 'Your SOARD application: pick up where you left off', 3 * 3600e3, 'delivered', { opened: true });
+  await sent('em_wait', 'application-waitlist', 'fan1@example.com', 'You’re on the list', DAY + 3600e3, 'delivered');
+  await sent('em_bounce', 'application-waitlist', 'typo@exmaple.com', 'You’re on the list', 2 * 3600e3, 'bounced', { detail: 'The address doesn’t exist (the mail server said no such mailbox).', bounce: 'Permanent' });
+  await sent('em_staff', 'application', 'staff@example.com', 'New makeover application: Avery', 40 * 60e3, 'sent');
+  await sent('em_prev', 'admin-preview', 'me@example.com', '[Preview] You’re on the list', 30 * 60e3, 'delivered');
+  for (const [id, type, ago, detail] of [['em_bounce', 'bounced', 2 * 3600e3 - 60e3, 'The address doesn’t exist (the mail server said no such mailbox).'], ['em_resume', 'delivered', 3 * 3600e3 - 60e3, null], ['em_resume', 'opened', 3 * 3600e3 - 600e3, null]]) {
+    await run('INSERT INTO email_events (email_id, type, at, detail) VALUES (?, ?, ?, ?)', id, type, iso(ago), detail);
+  }
+  await run("INSERT INTO email_tracking (key, value, updated_at) VALUES ('status', ?, ?)", JSON.stringify({ state: 'on', checkedAt: iso(5 * 60e3) }), iso(0));
+  // An invite on calendars now, for a reveal next week (Google isn't reachable here, so no answers)
+  await run("UPDATE reveal_invites SET event_id = 'ev2', reveal_date = ?, guests = ? WHERE job_id = 'j2'", new Date(Date.now() + 7 * DAY).toISOString().slice(0, 10), JSON.stringify(['a@example.com', 'b@example.com', 'c@example.com']));
+  // Coming up: a family's Approved email waiting out its half hour
+  await run("INSERT INTO applicant_notify (account_id, name, status, kind, due_at, updated_at) VALUES ('acc9', 'Riley Park', 'Approved', 'approved', ?, ?)", Date.now() + 25 * 60e3, iso(0));
   return DB;
 }
 
@@ -164,7 +209,7 @@ try {
   const home = await page.$eval('.am-panel', (e) => e.innerText);
   ok(home.includes('Nothing needs attention'), 'nothing needs attention in these facts');
   const groups = await page.$$eval('.am-panel .am-mini-group', (g) => g.map((x) => x.querySelectorAll('.am-mini-names button').length));
-  ok(groups.join(',') === '7,3', `the seven entries reminders switch off read as one line, and the three staff texts waiting on Twilio as another (${groups.join(', ')})`);
+  ok(groups.join(',') === '7,4,6', `the seven entries reminders switch off read as one line, the four waiting on Twilio as another, and the six Slack-only posts as a third (${groups.join(', ')})`);
   ok((home.match(/Reminders are switched off/g) || []).length === 1, 'the reason is written once');
   await page.screenshot({ path: join(OUT, 'desktop.png') });
 
@@ -187,6 +232,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.mm-sheet')?.innerText.includes('Decisión sobre la solicitud'), { timeout: 8000 }).catch(() => {});
   text = await sheetText(page);
   ok(text.includes('Decisión sobre la solicitud') && /aprobada/.test(text), 'Spanish shows what Spanish-speaking families get');
+  await pause(400); // the sheet fades in
   await page.screenshot({ path: join(OUT, 'sheet-jobtread-es.png') });
   await closeSheet(page);
   ok(await page.evaluate(() => document.activeElement?.textContent.trim() === 'See the email'), 'Escape closes it and gives focus back');
@@ -248,7 +294,7 @@ try {
 
   await clickButton(page, '.am-filters', 'Google Calendar');
   await pause(400);
-  ok((await page.$eval('.am-hits', (e) => e.textContent)) === '4 matches', 'Sent by Google Calendar finds the four invites');
+  ok((await page.$eval('.am-hits', (e) => e.textContent)) === '5 matches', 'Sent by Google Calendar finds the five invite messages');
   await clickButton(page, '.am-tools', 'Reset');
   await clickButton(page, '.am-filters', 'Kit');
   await pause(400);
@@ -287,6 +333,81 @@ try {
   await page.screenshot({ path: join(OUT, 'desktop-all-open.png') });
   await clickButton(page, '.am-tools', 'Reset');
 
+  // ── What went out ──
+  ok(await page.$eval('.mm-tabs [data-tab="sent"] .mm-tab-n', (e) => e.textContent.trim().startsWith('1')).catch(() => false), 'the tab says one email didn’t arrive');
+  ok((await page.$eval('.am-lede', (e) => e.textContent)).includes('1 didn’t arrive (30 days)'), 'and so does the map’s lede');
+  await clickNode(page, 'Waitlist');
+  await pause(350);
+  await clickNode(page, 'You’re on the list');
+  await pause(300);
+  const arrive = await page.$eval('.am-panel', (e) => e.innerText);
+  ok(/Did it arrive/i.test(arrive) && arrive.includes('2 sent in 30 days: 1 delivered') && arrive.includes('1 didn’t arrive'), `an entry says how its emails fared (${arrive.match(/\d+ sent in 30 days[^\n]*/)?.[0]})`);
+  await clickButton(page, '.am-panel', 'What went out');
+  await page.waitForSelector('.ms-row', { timeout: 10000 });
+  ok(await page.evaluate(() => location.hash) === '#messages/sent', 'the panel’s What went out opens the log');
+  ok((await page.$eval('.ms-only', (e) => e.textContent)).includes('Only “You’re on the list”'), 'narrowed to that message');
+  const onlyRows = await page.$$eval('.ms-row b', (b) => [...new Set(b.map((x) => x.textContent))]);
+  ok(onlyRows.length === 1 && onlyRows[0] === 'You’re on the list', `and only it (${onlyRows.join(', ')})`);
+  await clickButton(page, '.ms-only', '×');
+  await pause(200);
+  let sentText = await page.$eval('.ms', (e) => e.innerText);
+  ok(/Didn’t arrive/.test(sentText) && sentText.includes('typo@exmaple.com') && sentText.includes('The address doesn’t exist'), 'what didn’t arrive gets its own card: who, and why');
+  ok(sentText.includes('Riley Park’s family'), 'coming up: a family email waiting out its quiet time');
+  ok(sentText.includes('Jordan Stone (Avery’s family)'), 'a family’s address shows their name');
+  ok(/Delivered, opened/.test(sentText), 'an opened email says so');
+  ok(sentText.includes('Posted to JobTread, which emails it'), 'JobTread’s emails are in the same timeline');
+  ok(!sentText.includes('me@example.com'), 'previews to yourself stay out of the way');
+  const marks = await page.$$eval('.ms-health li', (l) => l.map((x) => x.querySelector('span')?.getAttribute('aria-label')));
+  ok(marks.length === 9 && marks.every((m) => m === 'Passes'), `Will it land? checks SPF, DKIM and DMARC on both domains (${marks.join(', ')})`);
+  ok(sentText.includes('not to Cloudflare’s DMARC dashboard'), 'and says the comms subdomain’s DMARC reports skip Cloudflare');
+  ok(/Invites out now[\s\S]*Save-the-date[\s\S]*3 guests. No reply needed/.test(sentText), 'invites out now: the next reveal, its guests, and that a save-the-date needs no reply');
+  ok(/Resend reports back on every email/.test(await page.$eval('.ms-check', (e) => e.textContent)), 'it says Resend reports back');
+  await page.screenshot({ path: join(OUT, 'sent-desktop.png') });
+
+  await clickButton(page, '.ms-chips', 'Previews and tests1');
+  await pause(200);
+  ok((await page.$eval('.ms-log', (e) => e.innerText)).includes('me@example.com'), 'Previews and tests shows them');
+  await clickButton(page, '.ms-chips', 'Didn’t arrive1');
+  await pause(200);
+  ok((await page.$$('.ms-row')).length === 1, 'Didn’t arrive shows just that one');
+  await clickButton(page, '.ms-chips', 'Didn’t arrive1');
+  await page.type('.ms-search input', 'jordan');
+  await pause(300);
+  const jordan = await page.$$eval('.ms-row .ms-who', (w) => w.map((x) => x.textContent));
+  ok(jordan.length >= 1 && jordan.every((w) => /jordan/i.test(w)), `search finds a person (${jordan.length})`);
+  await page.evaluate(() => { const i = document.querySelector('.ms-search input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await pause(200);
+
+  const rowBtn = await page.evaluateHandle(() => [...document.querySelectorAll('.ms-log .ms-row')].find((b) => b.textContent.includes('typo@exmaple.com')));
+  await rowBtn.click();
+  await page.waitForSelector('#ms-sheet-title');
+  await page.waitForFunction(() => document.querySelector('.mm-frame')?.contentDocument?.body?.innerText.includes('on the list'), { timeout: 8000 }).catch(() => {});
+  const rs = await page.$eval('.mm-sheet', (e) => e.innerText);
+  ok(rs.includes('Bounced') && rs.includes('The address doesn’t exist'), 'a row opens with what Resend reported, and why');
+  ok((await frameText(page)).includes('We’ll email you the moment applications open'), 'and the email exactly as it went');
+  ok(rs.includes('See the sample'), 'with the sample one click away');
+  await pause(400); // the sheet fades in
+  await page.screenshot({ path: join(OUT, 'sent-row.png') });
+  await closeSheet(page);
+  ok(await page.evaluate(() => document.activeElement?.classList.contains('ms-row')), 'Escape gives focus back to the row');
+
+  // Every laptop width, inside the admin's own shell: nothing scrolls sideways
+  for (const width of [768, 820, 1025, 1100, 1180, 1280, 1440]) {
+    await page.setViewport({ width, height: 900 });
+    await pause(250);
+    const o = await page.evaluate(() => {
+      const main = document.querySelector('.main')?.getBoundingClientRect();
+      const page = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+      const past = [...document.querySelectorAll('.ms *')].filter((el) => { const r = el.getBoundingClientRect(); return r.width && main && r.right > main.right + 1; }).map((el) => el.className || el.tagName).slice(0, 3);
+      return { page, past };
+    });
+    ok(o.page <= 0 && !o.past.length, `${width}px: no sideways scroll${o.past.length ? ` (past the edge: ${o.past.join(', ')})` : ''}`);
+  }
+  await page.setViewport({ width: 1440, height: 1000 });
+  await page.evaluate(() => document.querySelector('.mm-tabs [data-tab="map"]').click());
+  await pause(500);
+  ok(await page.evaluate(() => { const r = document.querySelector('.am-canvas')?.getBoundingClientRect(); return r && r.width > 400; }), 'back on the map, it’s drawn at full size');
+
   ok(errors.length === 0, `no console errors${errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''}`);
 
   // "Change it in" takes you there (the stubbed Applications page that opens isn't under test)
@@ -321,6 +442,16 @@ try {
   ok(await phone.page.$eval('.mm-frame', (f) => f.getBoundingClientRect().width <= 390), 'and the email fits inside it');
   ok(!(await phone.page.$('.mm-width')) || await phone.page.$eval('.mm-width', (e) => getComputedStyle(e).display === 'none'), 'a phone has no Computer / Phone switch');
   await phone.page.screenshot({ path: join(OUT, 'phone-sheet.png') });
+  await closeSheet(phone.page);
+  await phone.page.evaluate(() => document.querySelector('.mm-tabs [data-tab="sent"]').click());
+  await phone.page.waitForSelector('.ms-row', { timeout: 10000 });
+  const side2 = await phone.page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  ok(side2 <= 0, `What went out: no sideways scroll at 390px (${side2}px)`);
+  await phone.page.screenshot({ path: join(OUT, 'sent-phone.png'), fullPage: false });
+  await phone.page.evaluate(() => [...document.querySelectorAll('.ms-log .ms-row')][0].click());
+  await phone.page.waitForSelector('#ms-sheet-title');
+  const sh2 = await phone.page.$eval('.mm-sheet', (e) => { const r = e.getBoundingClientRect(); return { w: r.width, b: r.bottom }; });
+  ok(sh2.w <= 390 && sh2.b <= 845, 'a row opens as a bottom sheet that fits the phone');
   ok(phone.errors.length === 0, `no console errors on a phone${phone.errors.length ? ': ' + phone.errors.slice(0, 3).join(' | ') : ''}`);
   await phone.page.close();
 } catch (e) {

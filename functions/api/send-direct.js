@@ -65,7 +65,7 @@ export async function onRequestPost(context) {
   }));
 
   try {
-    const r = await sendEmailItems(env, items, { from: tpl.from });
+    const r = await sendEmailItems(env, items, { from: tpl.from, tags: [{ name: 'type', value: 'direct' }] });
 
     if (r.failed) {
       // Log the upstream detail server-side; keep the client message generic.

@@ -15,6 +15,7 @@
  *  - liveSchedule: the live countdown's last JobTread check (what it follows, what's waiting)
  *  - kidStatus: kid statuses following JobTread (last sweep, last run, profiles it hid)
  *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
+ *  - emailTracking: Resend's delivery reports (on, waiting, send-only key, or the last error)
  *  - slack:     how alerts reach Slack (app or webhook), the channel's name, and Slack's own error if any
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
  *  - sends:     last reminder send per kind and channel (counts only)
@@ -42,6 +43,7 @@ import { companycamFacts } from './_companycam-sync.js';
 import { jobsFacts } from './_companycam-jobs.js';
 import { applicationSettings, pickApplication } from './_applications.js';
 import { capFacts, lastCapNotice } from './_application-cap.js';
+import { trackingState } from './_email-log.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -313,6 +315,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     liveSchedule: liveScheduleFacts(ok(liveSchedule)),
     kidStatus: kidStatusFacts(ok(kidState), typeof kidsHidden === 'number' ? kidsHidden : null),
     zeffy: zeffyFacts(ok(zeffyCfg), ok(zeffyFailing)),
+    // Resend's delivery reports: registered, waiting, or the key can only send (never the secret)
+    emailTracking: ok(await settle(() => trackingState(env))),
     slack: slackLink?.error && !slackLink.mode ? { mode: null, ok: false, error: slackLink.error }
       : { mode: slackLink?.mode || null, ok: !!slackLink?.ok, error: slackLink?.error || null, team: slackLink?.team || null, channel: slackLink?.channel?.name || null, attention: slackLink?.attention?.id && slackLink.attention.id !== slackLink.channel?.id ? slackLink.attention.name || null : null, bot: slackLink?.bot || null },
     fbArchive: archiveFacts(ok(archive), await settle(() => placedUids(DB, ok(archive))).then((p) => (p instanceof Set ? p : new Set()))),

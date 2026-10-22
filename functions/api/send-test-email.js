@@ -46,6 +46,7 @@ export async function onRequestPost(context) {
       from: tpl.from,
       subject: `[TEST] ${fill(tpl.subject)}`,
       html: fill(tpl.html),
+      tags: [{ name: 'type', value: 'email-test' }],
     });
 
     if (!r.sent) {

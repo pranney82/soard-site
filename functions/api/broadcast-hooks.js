@@ -28,6 +28,8 @@ import { maybeRunEventRecaps } from './_event-recap.js';
 import { maybeRunCompanyCam } from './_companycam-sync.js';
 import { maybeCheckJobs } from './_companycam-jobs.js';
 import { maybeCapSelfTest } from './_application-cap.js';
+import { maybeTrackEmails } from './_email-log.js';
+import { alertAdmins } from './_broadcast-notify.js';
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
 const HUB_ANSWER_MS = 10 * 1000;
@@ -80,6 +82,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeSlackPreview(env));
     // Once per CAP_SELF_TEST: the application limit's two notices for a sample season, marked as tests (see _application-cap.js)
     context.waitUntil(maybeCapSelfTest(env));
+    // Every 30 minutes: Resend reports on each email the site sent (it registers its own webhook), and any missed report is caught up (see _email-log.js)
+    context.waitUntil(maybeTrackEmails(env, { alert: async (e, card) => alertAdmins(e, await readConfig(e.DB), card) }));
     // The hub passes `reason` to every open page and keeps `work` in its status, so both go
     // as kinds only ('email', 'kid', 'auto-start'), never kid slugs or send counts
     if (!r) return Response.json({ ok: true, state: (await publicPayload(env)).state, reason: 'tick', work: [], changed: false, cached: false, busy: true });
