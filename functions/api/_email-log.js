@@ -124,7 +124,7 @@ const BY_TAG = {
  */
 export function entryFor(type, subject = '') {
   const s = String(subject || '');
-  if (/^\[(preview|test|test run|rehearsal)\]\s|^TEST · /i.test(s)) return 'preview';
+  if (/^\[(preview|test|test run|rehearsal)\]\s|^TEST · |^\[SOARD Live\] TEST · |^\[SOARD\] TEST · /i.test(s)) return 'preview';
   if (type === 'reveal-invite-alert') return /still out/i.test(s) ? 'staff-invite-held' : 'staff-invite-problem';
   // Every staff alert (alertAdmins) shares one tag: its title says which it is
   if (type === 'live-alert' || /^\[SOARD Live\] /.test(s)) return alertEntry(s.replace(/^\[SOARD Live\] /, ''));
@@ -138,7 +138,20 @@ export function entryFor(type, subject = '') {
   if (/^New makeover application/i.test(s)) return 'staff-new-app';
   if (/^You’re on the list|^You're on the list|^Ya está en la lista/i.test(s)) return 'waitlist-confirm';
   if (/^Application for .+ is stuck$/i.test(s)) return 'staff-stuck';
-  if (/^Confirm your reminders/i.test(s)) return 'rem-confirm';
+  // A status change summary about a TEST family is a test; any other is the real thing
+  if (/ moved to .+ · family emails? (at|from)|^\d+ families moved · | was added as an applicant · /.test(s)) return /^TEST /.test(s) ? 'preview' : 'staff-summary';
+  if (/^Family emails are back on\./.test(s)) return 'staff-pause-ended';
+  if (/^You’ll get live reveal alerts|^You'll get live reveal alerts/.test(s)) return 'staff-alert-hello';
+  if (/^\d[\d,]* of \d[\d,]* applications are in for |^Applications are closed for \d{4}: the limit|^Applications didn’t open on schedule/.test(s)) return 'staff-app-limit';
+  if (/^Applications are open: apply|^Ya abrimos las solicitudes/.test(s)) return 'waitlist-open';
+  if (/^We have your Advisory Board application/.test(s)) return 'advisory-thanks';
+  if (/^New Advisory Board application: /.test(s)) return 'advisory-staff';
+  if (/^\[SOARD\] Reveal invite problem: /.test(s)) return 'staff-invite-problem';
+  if (/^\[SOARD\] .+ reveal invite is still out$/.test(s)) return 'staff-invite-held';
+  if (/^\[SOARD\] .+ profile is hidden$/.test(s)) return 'staff-kid-hidden';
+  const rem = s.match(/^(Save the date|New date|Tomorrow|Today|One hour to go|We’re live|We're live|Watch the replay): /);
+  if (rem) return { 'Save the date': 'rem-scheduled', 'New date': 'rem-moved', Tomorrow: 'rem-day', Today: 'rem-day', 'One hour to go': 'rem-hour', 'We’re live': 'rem-live', "We're live": 'rem-live', 'Watch the replay': 'rem-replay' }[rem[1]];
+  if (/^Confirm your (reveal )?reminders/i.test(s)) return 'rem-confirm';
   return null;
 }
 
@@ -437,7 +450,8 @@ export async function catchUp(env, { pages = 1, fetchImpl = fetch, now = Date.no
     if (!r.json?.has_more || !data.length) break;
     after = data[data.length - 1].id;
   }
-  return { state: 'on', seen, updated, added };
+  const tagged = await fillTags(env, { fetchImpl });
+  return { state: 'on', seen, updated, added, tagged };
 }
 
 // ─── The one-time proof ─────────────────────────────────────────────
@@ -507,6 +521,23 @@ export async function selfTest(env, { now = Date.now(), fetchImpl = fetch } = {}
   return { state: 'sent', ...st };
 }
 
+/**
+ * Emails added from Resend's list (sent before tracking, or by a path that
+ * doesn't log) have no tag yet: read each one's tags from Resend, up to
+ * `max` a turn. type '' means Resend had none, so the subject decides.
+ */
+export async function fillTags(env, { fetchImpl = fetch, max = 25 } = {}) {
+  const ids = ((await env.DB.prepare("SELECT id FROM email_log WHERE type IS NULL AND source = 'resend' ORDER BY sent_at DESC LIMIT ?").bind(max).all())?.results || []).map((r) => r.id);
+  let n = 0;
+  for (const id of ids) {
+    const r = await resend(env, `/emails/${encodeURIComponent(id)}`, { fetchImpl }).catch(() => null);
+    if (!r?.ok && r?.status !== 404) break; // Resend is down or the key can't read: try again next turn
+    await env.DB.prepare('UPDATE email_log SET type = ? WHERE id = ?').bind(tagOf(r?.json?.tags) || '', id).run();
+    n++;
+  }
+  return n;
+}
+
 /** The tracking's state for the admin (never the secret) */
 export async function trackingState(env) {
   if (!env.RESEND_API_KEY) return { state: 'off' };
@@ -551,7 +582,7 @@ export async function maybeTrackEmails(env, { now = Date.now(), fetchImpl = fetc
     await env.DB.prepare('DELETE FROM email_events WHERE at < ?').bind(iso(now - KEEP_MS)).run();
     const state = hook.state === 'send-only' || caught.state === 'send-only' ? 'send-only'
       : hook.state === 'error' || caught.state === 'error' ? 'error' : 'on';
-    const next = { state: state === 'on' && proof?.state === 'failed' ? 'error' : state, checkedAt: iso(now), error: hook.error || caught.error || (proof?.state === 'failed' ? `The delivery check failed: ${proof.why}` : null), ...(caught.seen != null ? { seen: caught.seen, updated: caught.updated, added: caught.added } : {}) };
+    const next = { state: state === 'on' && proof?.state === 'failed' ? 'error' : state, checkedAt: iso(now), error: hook.error || caught.error || (proof?.state === 'failed' ? `The delivery check failed: ${proof.why}` : null), ...(caught.seen != null ? { seen: caught.seen, updated: caught.updated, added: caught.added, tagged: caught.tagged } : {}) };
     await writeKey(env.DB, 'status', next, now);
     return next;
   } catch (e) {

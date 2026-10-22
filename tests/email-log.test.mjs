@@ -126,6 +126,16 @@ test('which message an email is, even where two share a tag', () => {
     [null, 'Application for Avery Stone is stuck', 'staff-stuck'],
     ['reveal-day-test', 'TEST · Tomorrow: Avery', 'preview'],
     ['kind-we-never-made', 'Something else', null],
+    // What production's first catch-up found (Oct 22 2026): rehearsals, and summaries sent before the tag existed
+    [null, '[SOARD Live] TEST · Reveal moved: Max Sample', 'preview'],
+    ['', 'TEST Notify Check moved to Denied · family email at Wed 8:10 AM', 'preview'],
+    ['', 'The Lionheart School moved to Approved · family email at 10:15 AM', 'staff-summary'],
+    ['', 'Family emails are back on. 1 email is held from the pause', 'staff-pause-ended'],
+    ['', 'You’ll get live reveal alerts at this address', 'staff-alert-hello'],
+    ['', 'Save the date: Avery’s room reveal', 'rem-scheduled'],
+    ['', 'Today: Avery’s room reveal, live', 'rem-day'],
+    ['', '120 of 120 applications are in for 2027', 'staff-app-limit'],
+    ['', '[SOARD] Avery’s profile is hidden', 'staff-kid-hidden'],
   ];
   for (const [type, subject, want] of cases) assert.equal(log.entryFor(type, subject), want, `${type} · ${subject}`);
   // Every message the log can name is an entry on the map
@@ -271,6 +281,7 @@ test('missed reports are caught up from Resend’s list, and old rows are delete
   await DB.prepare('INSERT INTO email_tracking (key, value, updated_at) VALUES (?, ?, ?)').bind('webhook', JSON.stringify({ id: 'wh', secret: SECRET, endpoint: 'https://sunshineonaranneyday.com/api/resend-webhook' }), iso(NOW)).run();
   offline(t, async (url) => {
     if (url === 'https://api.resend.com/webhooks/wh') return Response.json({ object: 'webhook', id: 'wh', status: 'enabled' });
+    if (url === 'https://api.resend.com/emails/z') return Response.json({ object: 'email', id: 'z', tags: [{ name: 'category', value: 'reminder-confirm' }] });
     if (url.startsWith('https://api.resend.com/emails?limit=100')) {
       return Response.json({ object: 'list', has_more: false, data: [
         { id: 'a', to: ['one@example.com'], subject: 'You’re on the list', created_at: '2026-10-22 13:00:00.000+00', last_event: 'delivered' },
@@ -281,7 +292,8 @@ test('missed reports are caught up from Resend’s list, and old rows are delete
     throw new Error(`offline: ${url}`);
   });
   const r = await log.maybeTrackEmails(env, { now: NOW });
-  assert.deepEqual([r.state, r.seen, r.updated, r.added], ['on', 3, 1, 1]);
+  assert.deepEqual([r.state, r.seen, r.updated, r.added, r.tagged], ['on', 3, 1, 1, 1]);
+  assert.equal((await rowOf(DB, 'z')).type, 'reminder-confirm', 'its tag read back from Resend (the list carries none)');
   assert.equal((await rowOf(DB, 'a')).status, 'delivered');
   assert.equal((await rowOf(DB, 'b')).status, 'sent');
   assert.equal((await rowOf(DB, 'z')).status, 'bounced', 'one sent before tracking began is added with Resend’s word for it');
@@ -496,4 +508,34 @@ test('the one-time proof: Resend’s test addresses, and both reports back throu
   await DB2.prepare("UPDATE email_tracking SET value = json_set(value, '$.at', ?) WHERE key = 'webhook-seen'").bind(iso(t0 + 3 * 3600e3)).run();
   const fixed = await log.maybeTrackEmails(env2, { now: t0 + 3 * 3600e3 + 2 * MIN });
   assert.equal(fixed.state, 'on', 'a report through the webhook since proves it works');
+});
+
+test('invite rows say who Google actually emailed: a new guest only, everyone for a new date, nobody for a quiet update', async () => {
+  const DB = await makeDb();
+  await run(DB, "INSERT INTO kids (slug, data) VALUES ('avery', ?)", JSON.stringify({ name: 'Avery', jobtreadJobId: 'job1' }));
+  const at = (h) => iso(NOW - h * 3600e3);
+  await run(DB, `INSERT INTO reveal_invite_log (job_id, action, state, guests, reveal_date, created_at) VALUES
+    ('job1', 'created', 'tentative', 6, '2026-11-02', ?), ('job1', 'updated', 'tentative', 7, '2026-11-02', ?),
+    ('job1', 'updated quietly', 'tentative', 8, '2026-11-02', ?), ('job1', 'kept: status is Awaiting Funding', 'tentative', 8, '2026-11-02', ?),
+    ('job1', 'updated', 'tentative', 8, '2026-11-03', ?), ('job1', 'cancelled in Google Calendar', 'cancelled', 8, '2026-11-03', ?)`, at(6), at(5), at(4), at(3), at(2), at(1));
+  const { items } = await activity({ DB }, { now: NOW });
+  const inv = items.filter((r) => r.channel === 'invite').reverse();
+  assert.deepEqual(inv.map((r) => [r.entry, r.who, r.note]), [
+    ['invite-tentative', '6 guests for Avery’s reveal', 'Google sent the invitation to every guest.'],
+    ['invite-update', '1 new guest on Avery’s invite', 'Google emailed only the new guest; everyone else’s calendar updated quietly.'],
+    ['invite-update', '8 guests for Avery’s reveal', 'Moved to Tue, Nov 3: Google emailed every guest the new date.'],
+    [null, '8 guests', 'Staff cancelled it in Google Calendar, and Google told the guests.'],
+  ], 'a quiet update and the site’s own note never show as sent');
+});
+
+test('a burst of guests added minutes apart is one row', async () => {
+  const DB = await makeDb();
+  await run(DB, "INSERT INTO kids (slug, data) VALUES ('avery', ?)", JSON.stringify({ name: 'Avery', jobtreadJobId: 'job1' }));
+  const at = (m) => iso(NOW - 3 * 3600e3 + m * 60e3);
+  await run(DB, "INSERT INTO reveal_invite_log (job_id, action, state, guests, reveal_date, created_at) VALUES ('job1', 'created', 'tentative', 13, '2026-11-03', ?)", at(0));
+  for (let i = 1; i <= 5; i++) await run(DB, "INSERT INTO reveal_invite_log (job_id, action, state, guests, reveal_date, created_at) VALUES ('job1', 'updated', 'tentative', ?, '2026-11-03', ?)", 13 + i, at(60 + i));
+  await run(DB, "INSERT INTO reveal_invite_log (job_id, action, state, guests, reveal_date, created_at) VALUES ('job1', 'updated', 'tentative', 19, '2026-11-03', ?)", at(150));
+  const inv = (await activity({ DB }, { now: NOW })).items.filter((r) => r.channel === 'invite');
+  assert.deepEqual(inv.map((r) => r.who), ['1 new guest on Avery’s invite', '5 new guests on Avery’s invite', '13 guests for Avery’s reveal'], 'five additions in five minutes are one row; one an hour and a half later is its own');
+  assert.match(inv[1].note, /^Added \d+:\d\d [AP]M to \d+:\d\d [AP]M\. Google emailed only the new guests/);
 });

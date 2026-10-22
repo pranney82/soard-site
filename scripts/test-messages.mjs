@@ -35,6 +35,10 @@ import { ensureSchema as ensureApplicationSchema } from '../functions/api/_appli
 import { ensureWaitlistSchema } from '../functions/api/_application-waitlist.js';
 import { ensureRequests } from '../functions/api/_profile-requests.js';
 import { ensureEmailLog } from '../functions/api/_email-log.js';
+import { generateKeyPairSync } from 'node:crypto';
+
+// A made-up Google service account, so the invite card reads guests' answers from the fake calendar below
+const GOOGLE_KEY = JSON.stringify({ client_email: 'reveals@example.iam.gserviceaccount.com', private_key: generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }) });
 
 // The handlers run here in Node: public DNS and Resend are answered here, everything else is offline
 const DNS = {
@@ -52,6 +56,8 @@ const DNS = {
 globalThis.fetch = async (url) => {
   const u = new URL(String(url));
   if (u.host === 'cloudflare-dns.com') return Response.json({ Status: 0, Answer: (DNS[`${u.searchParams.get('name')}:${u.searchParams.get('type')}`] || []).map((data) => ({ data })) });
+  if (u.host === 'oauth2.googleapis.com') return Response.json({ access_token: 'ya29.test', expires_in: 3600 });
+  if (u.host === 'www.googleapis.com' && u.pathname.endsWith('/events/ev2')) return Response.json({ id: 'ev2', attendees: [{ email: 'a@example.com', responseStatus: 'accepted' }, { email: 'b@example.com', responseStatus: 'tentative' }, { email: 'c@example.com', responseStatus: 'needsAction' }] });
   if (u.host === 'api.resend.com' && u.pathname.startsWith('/emails/')) return Response.json({ object: 'email', id: u.pathname.split('/')[2], html: '<html><head></head><body style="font-family: sans-serif"><h1>You’re on the list</h1><p>We’ll email you the moment applications open.</p></body></html>' });
   throw new Error(`offline: ${u.href}`);
 };
@@ -127,7 +133,7 @@ async function open(browser, base, viewport, { DB, down = false } = {}) {
   page.on('console', (m) => { if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(e.message));
   await page.setRequestInterception(true);
-  const env = { DB, RESEND_API_KEY: 'x', KIT_API_KEY: 'x', GOOGLE_CALENDAR_KEY: 'x', JOBTREAD_GRANT_KEY: 'x', JOBTREAD_QC_GRANT_KEY: 'x' };
+  const env = { DB, RESEND_API_KEY: 'x', KIT_API_KEY: 'x', GOOGLE_CALENDAR_KEY: GOOGLE_KEY, JOBTREAD_GRANT_KEY: 'x', JOBTREAD_QC_GRANT_KEY: 'x' };
   page.on('request', async (req) => {
     const url = new URL(req.url());
     const json = (obj, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(obj) });
@@ -360,7 +366,7 @@ try {
   const marks = await page.$$eval('.ms-health li', (l) => l.map((x) => x.querySelector('span')?.getAttribute('aria-label')));
   ok(marks.length === 9 && marks.every((m) => m === 'Passes'), `Will it land? checks SPF, DKIM and DMARC on both domains (${marks.join(', ')})`);
   ok(sentText.includes('not to Cloudflare’s DMARC dashboard'), 'and says the comms subdomain’s DMARC reports skip Cloudflare');
-  ok(/Invites out now[\s\S]*Save-the-date[\s\S]*3 guests. No reply needed/.test(sentText), 'invites out now: the next reveal, its guests, and that a save-the-date needs no reply');
+  ok(/Invites out now[\s\S]*Save-the-date[\s\S]*1 coming[\s\S]*0 can’t[\s\S]*1 maybe[\s\S]*1 haven’t answered[\s\S]*answered the save-the-date on their own/.test(sentText), 'invites out now: guests who answered a save-the-date show, read from Google Calendar');
   ok(/Resend reports back on every email/.test(await page.$eval('.ms-check', (e) => e.textContent)), 'it says Resend reports back');
   await page.screenshot({ path: join(OUT, 'sent-desktop.png') });
 

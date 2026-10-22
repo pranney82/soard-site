@@ -128,24 +128,61 @@ export async function activity(env, { before = null, limit = 150, q = '', now = 
     });
   }
 
-  // Reveal invites (Google sends the invitation and the updates)
+  // Reveal invites. Google sends the invitation and the updates, and who hears depends on what
+  // changed: a new guest gets the invite and nobody else is emailed; a new date or new details go
+  // to everyone. A quiet update (staff guests only) and the site's own notes send nothing.
   const invites = await rowsNamed(DB, `SELECT l.id, l.job_id, l.action, l.state, l.guests, l.reveal_date, l.created_at,
       (SELECT name FROM applicants WHERE job_id = l.job_id LIMIT 1) AS name
-    FROM reveal_invite_log l WHERE l.created_at < ? AND l.created_at >= ? ORDER BY l.created_at DESC LIMIT ?`,
-  'SELECT id, job_id, action, state, guests, reveal_date, created_at FROM reveal_invite_log WHERE created_at < ? AND created_at >= ? ORDER BY created_at DESC LIMIT ?', until, since, take);
+    FROM reveal_invite_log l WHERE l.created_at >= ? ORDER BY l.created_at`,
+  'SELECT id, job_id, action, state, guests, reveal_date, created_at FROM reveal_invite_log WHERE created_at >= ? ORDER BY created_at', iso(now - 150 * DAY));
   const kidNames = new Map((await rows(DB.prepare("SELECT json_extract(data, '$.jobtreadJobId') AS job, json_extract(data, '$.name') AS name FROM kids WHERE json_extract(data, '$.jobtreadJobId') IS NOT NULL")))
     .map((r) => [String(r.job), r.name]));
+  const lastOf = new Map();
+  const dayOf = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }) : null);
+  const inviteRows = [];
+  const runOf = new Map(); // job → its last "guests added" row, so a burst of additions reads as one
   for (const r of invites) {
+    const prev = lastOf.get(r.job_id);
+    lastOf.set(r.job_id, r);
+    const act = String(r.action || '');
+    if (act === 'updated quietly' || act.startsWith('kept')) continue;
+    if (r.created_at >= until || r.created_at < since) continue;
     const test = String(r.job_id) === String(SANDBOX_JOB_ID);
     const kid = kidNames.get(String(r.job_id)) || (r.name ? first(r.name) : null);
-    const entry = r.action === 'cancelled' ? 'invite-cancel' : r.action === 'created' ? (r.state === 'confirmed' ? 'invite-confirmed' : 'invite-tentative') : 'invite-update';
-    items.push({
-      key: `i:${r.id}`, at: r.created_at, entry: test && r.action !== 'cancelled' ? 'preview' : entry, channel: 'invite', sender: 'google',
-      who: test ? 'You (a TEST invite on the office sandbox job)' : `${r.guests != null ? plural(Number(r.guests) || 0, 'guest') : 'The guests'}${kid ? ` for ${possessive(kid)} reveal` : ''}`,
-      subject: kid ? `${possessive(kid)} Reveal Day${r.state === 'tentative' ? ' (tentative)' : ''}` : null,
-      status: r.action === 'cancelled' ? 'cancelled' : 'sent', count: r.guests ?? null, revealDate: r.reveal_date || null, test,
+    const g = Number(r.guests) || 0;
+    const subject = kid ? `${possessive(kid)} Reveal Day${r.state === 'tentative' ? ' (tentative)' : ''}` : null;
+    const base = { key: `i:${r.id}`, at: r.created_at, channel: 'invite', sender: 'google', subject, count: r.guests ?? null, revealDate: r.reveal_date || null, test };
+    if (act === 'cancelled') { inviteRows.push({ ...base, entry: 'invite-cancel', who: test ? 'You (a TEST invite on the office sandbox job)' : plural(g, 'guest'), status: 'cancelled' }); continue; }
+    if (act.startsWith('cancelled in Google')) { inviteRows.push({ ...base, entry: null, subject: `${subject || 'A reveal invite'}, cancelled in Google Calendar`, who: plural(g, 'guest'), status: 'cancelled', note: 'Staff cancelled it in Google Calendar, and Google told the guests.' }); continue; }
+    if (test) { inviteRows.push({ ...base, entry: 'preview', who: 'You (a TEST invite on the office sandbox job)', status: 'sent' }); continue; }
+    if (act === 'created') { inviteRows.push({ ...base, entry: r.state === 'confirmed' ? 'invite-confirmed' : 'invite-tentative', who: `${plural(g, 'guest')}${kid ? ` for ${possessive(kid)} reveal` : ''}`, status: 'sent', note: 'Google sent the invitation to every guest.' }); continue; }
+    // Updated: what changed decides who Google emailed
+    const moved = prev && prev.reveal_date && r.reveal_date && prev.reveal_date !== r.reveal_date;
+    const confirmed = prev && prev.state !== 'confirmed' && r.state === 'confirmed';
+    const added = prev && !moved && !confirmed && g > (Number(prev.guests) || 0) ? g - (Number(prev.guests) || 0) : 0;
+    const run = runOf.get(r.job_id);
+    if (added && run && Date.parse(r.created_at) - Date.parse(run.at) <= 30 * MIN) {
+      run.added += added;
+      run.at = r.created_at;
+      run.key = `i:${r.id}`;
+      run.count = r.guests ?? run.count;
+      run.who = `${plural(run.added, 'new guest')}${kid ? ` on ${possessive(kid)} invite` : ''}`;
+      run.note = `Added ${new Date(run.from).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} to ${new Date(r.created_at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })}. Google emailed only the new guests; everyone else’s calendar updated quietly.`;
+      continue;
+    }
+    runOf.delete(r.job_id);
+    inviteRows.push({
+      ...base, entry: confirmed ? 'invite-confirmed' : 'invite-update', status: 'sent',
+      who: added ? `${plural(added, 'new guest')}${kid ? ` on ${possessive(kid)} invite` : ''}` : `${plural(g, 'guest')}${kid ? ` for ${possessive(kid)} reveal` : ''}`,
+      note: moved ? `Moved to ${dayOf(r.reveal_date)}: Google emailed every guest the new date.`
+        : confirmed ? 'Confirmed with a time: Google emailed every guest.'
+        : added ? `Google emailed only the ${added === 1 ? 'new guest' : 'new guests'}; everyone else’s calendar updated quietly.`
+        : 'Google emailed every guest the new details.',
+      ...(added ? { added, from: r.created_at } : {}),
     });
+    if (added) runOf.set(r.job_id, inviteRows[inviteRows.length - 1]);
   }
+  items.push(...inviteRows);
 
   // Reveal reminders' browser alerts and Kit's "we're live" (emails are in the log once it began)
   const sends = await rowsNamed(DB, `SELECT s.id, s.broadcast_id, s.kind, s.channel, s.recipients, s.sent, s.failed, s.error, s.created_at, b.kid_name

@@ -62,7 +62,7 @@ export function statusLine(r, tracking, now = Date.now()) {
     if (s === 'canceled') return 'Taken back before it went';
   }
   if (r.channel === 'jobtread') return s === 'failed' ? `Didn’t post${r.detail ? `: ${r.detail}` : ''}` : s === 'noted' ? 'Noted in JobTread (staff only)' : 'Posted to JobTread, which emails it';
-  if (r.channel === 'invite') return s === 'cancelled' ? 'Cancelled; Google tells the guests' : 'Google sent it';
+  if (r.channel === 'invite') return r.note || (s === 'cancelled' ? 'Cancelled; Google tells the guests' : 'Google sent it');
   if (r.channel === 'kit') {
     if (s === 'draft') return `Draft in Kit${r.by ? `, from ${r.by}` : ''}`;
     if (r.kit?.recipients) return `Kit sent it to ${plural(r.kit.recipients, 'person', 'people')}${r.kit.openRate != null ? `, ${r.kit.openRate}% opened` : ''}`;
@@ -89,10 +89,11 @@ const CSS = `
 .ms-check.is-idle i { background: var(--ms-idle); }
 .ms-work { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 1rem; align-items: start; }
 .ms-rail { display: grid; gap: 1rem; position: sticky; top: 1rem; }
+.ms-rail > .card { margin: 0; }
 .ms-card { padding: 1rem 1.15rem; }
 .ms-card h3 { margin: 0 0 0.2rem; font-size: 1rem; letter-spacing: -0.01em; }
 .ms-card > p { margin: 0 0 0.6rem; font-size: 0.84rem; color: var(--color-text-secondary); line-height: 1.45; }
-.ms-card + .ms-card { margin-top: 1rem; }
+.ms-main > .ms-card + .ms-card { margin-top: 1rem; }
 .ms-main > .ms-card:first-child { margin-top: 0; }
 .ms-look { border-color: color-mix(in srgb, var(--ms-warn) 45%, var(--color-border)); background: color-mix(in srgb, var(--ms-warn) 6%, var(--color-bg-card)); }
 .ms-look ul, .ms-next ul { list-style: none; margin: 0; padding: 0; display: grid; }
@@ -481,8 +482,9 @@ export function SentView({ entryOf, branchOf, labelOf, senderOf, Sender, EmailFr
           <ul>${data.invites.map((v) => html`<li key=${v.jobId}>
             <b>${v.kid ? `${v.kid}’s Reveal Day` : 'A reveal'}</b>
             <span class="ms-inv-when">${new Date(`${v.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })} · ${v.state === 'confirmed' ? 'Confirmed' : 'Save-the-date'}</span>
-            ${v.state === 'confirmed' && v.answers
-              ? html`<span class="ms-rsvp"><em class="is-yes">${v.answers.yes} coming</em><em>${v.answers.no} can’t</em>${v.answers.maybe > 0 && html`<em>${v.answers.maybe} maybe</em>`}<em class="is-wait">${v.answers.waiting} haven’t answered</em></span>`
+            ${v.answers && (v.state === 'confirmed' || v.answers.yes + v.answers.no + v.answers.maybe > 0)
+              ? html`<span class="ms-rsvp"><em class="is-yes">${v.answers.yes} coming</em><em>${v.answers.no} can’t</em>${v.answers.maybe > 0 && html`<em>${v.answers.maybe} maybe</em>`}<em class="is-wait">${v.answers.waiting} haven’t answered</em></span>
+                ${v.state !== 'confirmed' && html`<span class="ms-inv-when">Guests answered the save-the-date on their own; replies are asked for once it’s confirmed.</span>`}`
               : html`<span class="ms-inv-when">${v.guests != null ? `${plural(v.guests, 'guest')}. ` : ''}${v.state === 'confirmed' ? 'Answers show once Google Calendar can be read.' : 'No reply needed until it’s confirmed.'}</span>`}
           </li>`)}</ul>
         </section>`}
