@@ -223,7 +223,7 @@ try {
   await preview(page, 'Live reveal alerts');
   await clickButton(page, '.mm-sheet', 'Text');
   await pause(200);
-  ok((await page.$eval('.mm-bubble', (e) => e.textContent)).startsWith('SOARD ALERT: Scheduled reveal never went live'), 'a staff alert shows its text, as an alert');
+  ok((await page.$eval('.mm-bubble', (e) => e.textContent)).startsWith('⏰ SOARD ALERT: Scheduled reveal never went live'), 'a staff alert shows its text, as an alert');
   ok((await page.$eval('.mm-env .mm-sender', (e) => e.textContent)) === 'Twilio' && (await page.$$eval('.mm-env dd', (d) => d[1].textContent)).includes('Twilio'), 'Sent by and From follow the version on screen');
   ok(!(await page.$('.mm-foot .btn-primary')), 'a text can’t be sent as a preview');
   await page.screenshot({ path: join(OUT, 'sheet-staff-text.png') });
@@ -231,7 +231,7 @@ try {
 
   await preview(page, 'Reveal-day texts');
   const thread = await page.$$eval('.mm-thread .mm-msg', (m) => m.map((x) => [x.querySelector('.mm-when')?.textContent || '', x.querySelector('.mm-bubble').textContent.split('\n')[0]]));
-  ok(thread.length === 5 && thread[3][1] === 'SOARD ALERT: Reveal audio is silent' && /the check an hour before/.test(thread[0][0]), `reveal day shows as a conversation, each text with when it comes (${thread.map((t) => t[1]).join(' | ')})`);
+  ok(thread.length === 5 && thread[3][1] === '🚨 SOARD ALERT: Reveal audio is silent' && /the check an hour before/.test(thread[0][0]), `reveal day shows as a conversation, each text with when it comes (${thread.map((t) => t[1]).join(' | ')})`);
   ok(/Texting isn’t connected yet/.test(await page.$eval('.mm-foot p', (e) => e.textContent)) && !(await page.$('.mm-foot .btn-primary')), 'without Twilio it says so, and offers no button');
   await page.screenshot({ path: join(OUT, 'sheet-reveal-texts.png') });
   await closeSheet(page);

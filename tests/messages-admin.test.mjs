@@ -99,7 +99,7 @@ test('every message on the map with a preview builds, in Spanish too where famil
   const reminder = await buildPreview(env, 'rem-day', { now: NOW });
   assert.ok(reminder.push?.title && !reminder.sms, 'a reminder shows its browser alert too, and never a text: the public is never texted');
   const alert = await buildPreview(env, 'staff-live-alert', { now: NOW });
-  assert.match(alert.sms, /^SOARD ALERT: Scheduled reveal never went live\n/, 'the staff alert shows its text, as an alert');
+  assert.match(alert.sms, /^⏰ SOARD ALERT: Scheduled reveal never went live\n/, 'the staff alert shows its text, as an alert');
   assert.match((await buildPreview(env, 'staff-alert-hello-text', { now: NOW })).sms, /Reply STOP to opt out/);
   assert.equal(await buildPreview(env, 'nope', { now: NOW }), null);
 });
@@ -241,20 +241,20 @@ test('Text it to me: the reveal-day texts, in order, only to a number on the ale
   assert.deepEqual(p.textTo, [{ i: 0, last4: '0123' }, { i: 1, last4: '0199' }], 'the alert numbers by their last 4 digits only');
   assert.equal(p.texting, true);
   assert.deepEqual(p.sms.map((x) => x.text.split('\n')[0]), [
-    "SOARD: Go: Avery's room reveal at 4:00 PM", "SOARD: Live now: Avery's room reveal", "SOARD: All green: Avery's room reveal",
-    'SOARD ALERT: Reveal audio is silent', 'SOARD FIXED: Reveal audio is back',
-  ], 'reveal day, with a hiccup, as the phone would show it');
+    "🟢 SOARD: Go: Avery's room reveal at 4:00 PM", "📡 SOARD: Live now: Avery's room reveal", "🟢 SOARD: All green: Avery's room reveal",
+    '🚨 SOARD ALERT: Reveal audio is silent', '✅ SOARD FIXED: Reveal audio is back',
+  ], 'reveal day, with a hiccup, as the phone would show it: a picture first');
   const bad = await get('staff-problem-texts');
-  assert.ok(bad.sms.every((x) => /^SOARD ALERT: /.test(x.text)), 'every problem text reads as an alert');
+  assert.ok(bad.sms.every((x) => /^(🚨|⚠️|⏰) SOARD ALERT: /.test(x.text)), 'every problem text reads as an alert, picture first');
   assert.ok(bad.sms.every((x) => !/ERR_|\{|\}/.test(x.text)), 'plain words: no error codes, no placeholders');
-  assert.ok([...p.sms, ...bad.sms].every((x) => /^[\x20-\x7E\n]+$/.test(x.text) && x.text.length <= 306), 'plain characters, two segments at most');
+  assert.ok([...p.sms, ...bad.sms].every((x) => /^\S+ [\x20-\x7E\n]+$/u.test(x.text) && x.text.length <= 306), 'a picture, then plain characters, never longer than 306');
 
   const r = await post({ send: 'staff-reveal-texts', to: 1 });
   assert.equal(r.status, 200);
   assert.deepEqual(await r.json(), { success: true, sentTo: 'the number ending 0199', kind: 'text', count: 5, failed: 0, error: null });
   assert.deepEqual(texts.map((x) => x.to), Array(5).fill('+16785550199'), 'only the number picked');
-  assert.ok(texts.every((x) => x.body.startsWith('[Preview] SOARD')), 'each marked [Preview]');
-  assert.equal(texts[3].body.split('\n')[0], '[Preview] SOARD ALERT: Reveal audio is silent', 'in the order they arrive');
+  assert.ok(texts.every((x) => /^\[Preview\] \S+ SOARD/u.test(x.body)), 'each marked [Preview]');
+  assert.equal(texts[3].body.split('\n')[0], '[Preview] 🚨 SOARD ALERT: Reveal audio is silent', 'in the order they arrive');
   assert.equal(texts[0].cb, 'https://sunshineonaranneyday.com/api/twilio-status', 'Twilio reports whether each arrived');
 
   assert.equal((await post({ send: 'staff-reveal-texts', to: 2 })).status, 400, 'no number beyond the list');

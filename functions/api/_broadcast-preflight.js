@@ -146,9 +146,10 @@ export function textLine(result) {
   return `${result.counts.ok} of ${total} pass. Check: ${list(notes)}.`;
 }
 
-/** The whole go/no-go text: "SOARD ALERT:" when it's a no-go */
+/** The whole go/no-go text: 🟢 a go, ⚠️ a go with notes, 🚨 "SOARD ALERT:" for a no-go */
 export function goText(result, state, config) {
-  return notify.alertText({ title: slackText(result, state, config).title, detail: textLine(result), url: ADMIN_URL, tone: result.counts.fail ? 'alert' : 'info' });
+  const post = slackText(result, state, config);
+  return notify.alertText({ title: post.title, detail: textLine(result), url: ADMIN_URL, tone: result.counts.fail ? 'alert' : 'info', icon: result.counts.fail ? '🚨' : post.level === 'warn' ? '⚠️' : '🟢' });
 }
 
 /**

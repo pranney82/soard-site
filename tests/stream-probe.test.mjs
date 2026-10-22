@@ -371,7 +371,7 @@ const staffTexts = (sc, phones = ['+14045550123', '+16785550199']) => {
   sc.config.alerts = { phones };
   sms.length = 0;
 };
-const plainText = (body) => /^[\x20-\x7E\n]+$/.test(body) && body.length <= 306;
+const plainText = (body) => /^\S+ [\x20-\x7E\n]+$/u.test(body) && body.length <= 306; // a picture, then plain characters
 
 test('watch: a problem texts the staff when it opens and when it clears, never the Slack reminders', async () => {
   const s = scenario('w-text', { audioSeg: 'silence.m4s' });
@@ -381,7 +381,7 @@ test('watch: a problem texts the staff when it opens and when it clears, never t
     await s.step(1000); await s.step(15e3); await s.step(16e3);
     assert.deepEqual(sms.map((x) => x.to), ['+14045550123', '+16785550199'], 'each number once');
     assert.equal(sms[0].service, 'MG1', 'through the messaging service');
-    assert.match(sms[0].body, /^SOARD ALERT: Reveal audio is silent\nFix: Check the mic/, 'a problem reads as an alert on the lock screen');
+    assert.match(sms[0].body, /^🚨 SOARD ALERT: Reveal audio is silent\nFix: Check the mic/, 'a serious problem reads 🚨 SOARD ALERT on the lock screen');
     assert.match(sms[0].body, /\nhttps:\/\/sunshineonaranneyday\.com\/admin\/#broadcast\/control-room$/);
     for (let i = 0; i < 12; i++) await s.step(15e3);
     assert.ok(slack.some((p) => /Still: Reveal audio is silent/.test(p.text)), 'Slack reminds');
@@ -389,8 +389,33 @@ test('watch: a problem texts the staff when it opens and when it clears, never t
     s.feed.audioSeg = 'pink-32.m4s';
     await s.step(15e3);
     assert.equal(sms.length, 4);
-    assert.match(sms[2].body, /^SOARD FIXED: Reveal audio is back\nIt lasted \d+:\d\d\./, 'and the fix as fixed');
+    assert.match(sms[2].body, /^✅ SOARD FIXED: Reveal audio is back\nIt lasted \d+:\d\d\./, 'and the fix as ✅ fixed');
     assert.ok(sms.every((x) => plainText(x.body)), 'plain characters, two segments at most');
+  } finally { s.restore(); }
+});
+
+test('watch: a mic cutting in and out texts once and once fixed; if it sticks, one "Still:" text', async () => {
+  const s = scenario('w-flap', { audioSeg: 'silence.m4s' });
+  staffTexts(s, ['+14045550123']);
+  slack.length = 0;
+  const heads = () => sms.map((x) => x.body.split('\n')[0]);
+  try {
+    await s.step(1000); await s.step(15e3); await s.step(16e3);                 // silent 31 s
+    s.feed.audioSeg = 'pink-32.m4s'; await s.step(15e3);                        // back
+    assert.deepEqual(heads(), ['🚨 SOARD ALERT: Reveal audio is silent', '✅ SOARD FIXED: Reveal audio is back']);
+    for (let round = 0; round < 3; round++) {                                    // drops long enough to alert, and comes back, three more times
+      s.feed.audioSeg = 'silence.m4s'; for (let i = 0; i < 4; i++) await s.step(15e3);
+      s.feed.audioSeg = 'pink-32.m4s'; await s.step(15e3);
+    }
+    const opened = s.health.monitor.log.filter((l) => l.kind === 'open' && l.key === 'silent').length;
+    assert.equal(opened, 4, 'each drop opened an alert');
+    assert.equal(sms.length, 2, `the phones aren't buzzed for every drop (${heads().join(' | ')})`);
+    assert.ok(slack.filter((p) => /Reveal audio is silent/.test(p.text)).length >= 4, 'Slack hears every one');
+    s.feed.audioSeg = 'silence.m4s';                                             // now it sticks
+    for (let i = 0; i < 16; i++) await s.step(15e3);
+    assert.deepEqual(heads().slice(2), ['🚨 SOARD ALERT: Still: Reveal audio is silent'], 'one text once it sticks around');
+    s.feed.audioSeg = 'pink-32.m4s'; await s.step(15e3);
+    assert.equal(heads().at(-1), '✅ SOARD FIXED: Reveal audio is back', 'and the fix, since they heard about it');
   } finally { s.restore(); }
 });
 
@@ -404,7 +429,7 @@ test('watch: "All green" once, a minute in, in Slack and by text', async () => {
     await s.step(15e3);
     assert.equal(slack.length, 1);
     assert.match(slack[0].text, /All green: Sam's room reveal/);
-    assert.deepEqual(sms.map((x) => x.body), ["SOARD: All green: Sam's room reveal\nSound and picture are good, and it's live on the site.\nhttps://sunshineonaranneyday.com/admin/#broadcast/control-room"]);
+    assert.deepEqual(sms.map((x) => x.body), ["🟢 SOARD: All green: Sam's room reveal\nSound and picture are good, and it's live on the site.\nhttps://sunshineonaranneyday.com/admin/#broadcast/control-room"]);
     for (let i = 0; i < 8; i++) await s.step(15e3);
     assert.equal(slack.length, 1, 'once per reveal');
     assert.equal(sms.length, 1);
@@ -420,11 +445,11 @@ test('watch: no "All green" while sound is wrong; it comes a minute after the fi
     assert.ok(!slack.some((p) => /All green/.test(p.text)));
     s.feed.audioSeg = 'pink-32.m4s';
     await s.step(15e3);
-    assert.match(sms.at(-1).body, /^SOARD FIXED: Reveal audio is back/);
+    assert.match(sms.at(-1).body, /^✅ SOARD FIXED: Reveal audio is back/);
     await s.step(15e3); await s.step(15e3);
     assert.ok(!sms.some((x) => /All green/.test(x.body)), 'not straight after the fix');
     await s.step(15e3); await s.step(15e3);
-    assert.match(sms.at(-1).body, /^SOARD: All green/);
+    assert.match(sms.at(-1).body, /^🟢 SOARD: All green/);
   } finally { s.restore(); }
 });
 

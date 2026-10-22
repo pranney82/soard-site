@@ -341,7 +341,7 @@ export function revealDayTexts(now, which) {
     return [
       { when: `${clock(-60)} · the check an hour before`, text: goText(result(checks), state, { timezone: TZ }) },
       { when: `${clock(-1)} · the phone starts streaming`, text: notify.liveNowText({ title, url: `${SITE_ORIGIN}/live/` }) },
-      { when: `${clock(0)} · a minute in, everything checks out`, text: notify.alertText({ title: `All green: ${title}`, detail: greenDetail(['the site', 'Facebook', 'YouTube']), url: CONTROL_ROOM }) },
+      { when: `${clock(0)} · a minute in, everything checks out`, text: notify.alertText({ title: `All green: ${title}`, detail: greenDetail(['the site', 'Facebook', 'YouTube']), url: CONTROL_ROOM, icon: '🟢' }) },
       { when: `${clock(12)} · the mic cuts out`, text: notify.alertText({ ...SILENT, url: CONTROL_ROOM, tone: 'alert' }) },
       { when: `${clock(13)} · sound is back`, text: notify.alertText({ title: RESOLVED.silent, detail: 'It lasted 1:05.', url: CONTROL_ROOM, tone: 'fixed' }) },
     ];
@@ -351,8 +351,8 @@ export function revealDayTexts(now, which) {
     { when: 'Reveal morning · the health check finds a problem', text: notify.alertText({ title: 'Reveal-day check found problems', detail: '• Facebook token failed: the session has expired', url: `${SITE_ORIGIN}/admin/`, tone: 'alert' }) },
     { when: `${clock(-60)} · the check an hour before fails`, text: goText(result(notReady), state, { timezone: TZ }) },
     { when: 'While live · Stream refuses the phone’s settings', text: errorAlert('live', { error: { code: 'ERR_GOP_OUT_OF_RANGE' } }).text },
-    { when: 'While live · Facebook never shows it', text: notify.alertText({ title: 'Facebook isn\'t showing the reveal (post not live)', fix: 'Open Live Producer. The preview should show the feed; press Go Live.', url: CONTROL_ROOM, tone: 'alert' }) },
-    { when: `${clock(240)} · it never went live`, text: notify.alertText({ title: 'Scheduled reveal never went live', detail: `${title} was scheduled for ${notify.formatWhen(at, TZ)} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/`, tone: 'alert' }) },
+    { when: 'While live · Facebook never shows it', text: notify.alertText({ title: 'Facebook isn\'t showing the reveal (post not live)', fix: 'Open Live Producer. The preview should show the feed; press Go Live.', url: CONTROL_ROOM, tone: 'alert', icon: '⚠️' }) },
+    { when: `${clock(240)} · it never went live`, text: notify.alertText({ title: 'Scheduled reveal never went live', detail: `${title} was scheduled for ${notify.formatWhen(at, TZ)} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/`, tone: 'alert', icon: '⏰' }) },
   ];
 }
 
@@ -444,7 +444,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     }
     case 'staff-live-alert': {
       const a = liveAlertSample(now);
-      return email(notify.alertEmail(a), { to: 'The alert list in Reveals → Settings → Alerts', sms: notify.alertText({ ...a, url: a.links[0].url, tone: 'alert' }) });
+      return email(notify.alertEmail(a), { to: 'The alert list in Reveals → Settings → Alerts', sms: notify.alertText({ ...a, url: a.links[0].url, tone: 'alert', icon: '⏰' }) });
     }
     case 'staff-alert-hello-text':
       return { channel: 'text', from: TEXT_FROM, to: 'A new number on the alert list', sms: notify.alertHelloText({ by: me ? me.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Someone on the staff' }), send: 'text' };

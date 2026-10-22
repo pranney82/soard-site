@@ -50,6 +50,7 @@ export const RULES = {
   fbGrace: 120e3,
   ytGrace: 150e3,
   greenAfter: 60e3,       // live this long with nothing wrong before "All green"
+  textQuiet: 10 * 60e3,   // a problem back this soon after its last text doesn't text again (Slack still posts)
   remindFirst: 3 * 60e3,
   remindEvery: 10 * 60e3,
 };
@@ -304,6 +305,12 @@ function makeCtx(env, config, state, m, work, record) {
   const issueKey = (key) => `live:${state.broadcastId || 'broadcast'}:${key}`;
   const log = (entry) => { m.log.push({ at, ...entry }); if (m.log.length > 40) m.log.splice(0, m.log.length - 40); };
 
+  // Phones hear about a problem once, and once when it's fixed. One that keeps coming back
+  // (a mic cutting in and out) texts again only after textQuiet, or if it sticks around long
+  // enough for a Slack reminder; Slack hears every time.
+  const texted = (key) => { (m.texted ||= {})[key] = at; };
+  const textedLately = (key) => !!m.texted?.[key] && now - Date.parse(m.texted[key]) < RULES.textQuiet;
+
   const raise = async (key, { level = 'warn', title, detail, fix, links = [], after = 0 }) => {
     m.pending[key] ||= at;
     if (now - Date.parse(m.pending[key]) < after) return;
@@ -312,7 +319,9 @@ function makeCtx(env, config, state, m, work, record) {
       Object.assign(open, { level, title, detail, fix });
       const last = Date.parse(open.remindedAt || open.postedAt || open.since);
       if (now - last < (open.remindedAt ? RULES.remindEvery : RULES.remindFirst)) return;
-      const r = await notify.alertAdmins(env, config, { level, title: `Still: ${title}`, detail: `${detail} Going on ${fmtDur(now - Date.parse(open.since))}.`, fix, url: ADMIN_URL, links, context, issue: issueKey(key) });
+      const textIt = !open.texted; // it came back too soon to text, and it's sticking: one text now
+      const r = await notify.alertAdmins(env, config, { level, title: `Still: ${title}`, detail: `${detail} Going on ${fmtDur(now - Date.parse(open.since))}.`, fix, url: ADMIN_URL, links, context, issue: issueKey(key), text: textIt });
+      if (textIt) { open.texted = true; texted(key); }
       open.remindedAt = at;
       open.reminders = (open.reminders || 0) + 1;
       open.slack = slackStatus(r.slack);
@@ -321,8 +330,10 @@ function makeCtx(env, config, state, m, work, record) {
       return;
     }
     // Something failing during the reveal itself buzzes whoever is watching the alerts channel
-    const r = await notify.alertAdmins(env, config, { level, title, detail, fix, url: ADMIN_URL, links, context, issue: issueKey(key), urgent: level === 'error', text: true });
-    m.issues[key] = { key, level, title, detail, fix, since: m.pending[key], postedAt: at, slack: slackStatus(r.slack) };
+    const textIt = !textedLately(key);
+    const r = await notify.alertAdmins(env, config, { level, title, detail, fix, url: ADMIN_URL, links, context, issue: issueKey(key), urgent: level === 'error', text: textIt });
+    if (textIt) texted(key);
+    m.issues[key] = { key, level, title, detail, fix, since: m.pending[key], postedAt: at, slack: slackStatus(r.slack), texted: textIt };
     log({ key, kind: 'open', title, slack: m.issues[key].slack });
     await record(env.DB, state.broadcastId, 'issue', { key, level, title });
     work.push(`alert:${key}`);
@@ -338,7 +349,9 @@ function makeCtx(env, config, state, m, work, record) {
     if (m.closed.length > 30) m.closed.shift();
     let slack = null;
     if (!quiet) {
-      const r = await notify.alertAdmins(env, config, { level: 'info', title: RESOLVED[key] || `Resolved: ${open.title}`, detail: `It lasted ${fmtDur(lasted)}.`, url: ADMIN_URL, context, resolves: issueKey(key), text: true });
+      // The phones hear it's fixed only if they heard it was broken
+      const r = await notify.alertAdmins(env, config, { level: 'info', title: RESOLVED[key] || `Resolved: ${open.title}`, detail: `It lasted ${fmtDur(lasted)}.`, url: ADMIN_URL, context, resolves: issueKey(key), text: !!open.texted });
+      if (open.texted) texted(key);
       slack = slackStatus(r.slack);
       work.push(`resolved:${key}`);
     }

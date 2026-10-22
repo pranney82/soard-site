@@ -519,8 +519,9 @@ export function confirmEmail({ confirmUrl, kidName }) {
 // Reveals → Settings → Alerts, and only for the reveal alerts that ask for
 // one (alertAdmins' `text`): problems while live and when they clear, the
 // go / no-go check before a reveal, "Live now" and "All green". Each text
-// opens with what it is ("SOARD ALERT:", "SOARD FIXED:", "SOARD:") so a lock
-// screen says it at a glance, and Twilio reports whether it arrived.
+// opens with a picture and what it is ("🚨 SOARD ALERT:", "✅ SOARD FIXED:",
+// "🟢 SOARD:") so a lock screen says it at a glance, and Twilio reports
+// whether it arrived. The hello text stays plain: it's the consent message.
 
 export const ALERT_TEXTS_KEY = 'alert-texts';
 
@@ -540,16 +541,25 @@ export function smsSafe(s) {
 
 const TEXT_MAX = 306; // two segments
 
-// What a lock screen shows first: a problem, a fix, or news
+// What a lock screen shows first: a picture, then a problem, a fix, or news.
+// Any emoji makes the whole text Unicode (70 characters a segment, not 160):
+// a few cents more per text for a handful of staff, worth reading at a glance.
 const TONE = { alert: 'SOARD ALERT', fixed: 'SOARD FIXED', info: 'SOARD' };
 /** The tone an alertAdmins call reads as: clearing a problem, a problem (warn or error), or news */
 export function toneFor({ level = 'warn', resolves = null } = {}) {
   return resolves ? 'fixed' : level === 'error' || level === 'warn' ? 'alert' : 'info';
 }
+/** The picture for a text: the alert's own (📡 live, 🟢 all green, ⏰ missed), else 🚨 serious, ⚠️ a problem, ✅ fixed */
+export function textIcon({ level = 'warn', resolves = null, icon = null } = {}) {
+  if (resolves) return '✅';
+  if (icon) return icon;
+  return level === 'error' ? '🚨' : level === 'warn' ? '⚠️' : null;
+}
 
-/** A staff alert as a text: "SOARD ALERT:" / "SOARD FIXED:" / "SOARD:", the headline, then the fix (or the first line of what happened), then the link */
-export function alertText({ title, detail, fix, url, tone = 'info' }) {
-  const head = `${TONE[tone] || TONE.info}: ${smsSafe(title)}`;
+/** A staff alert as a text: a picture, "SOARD ALERT:" / "SOARD FIXED:" / "SOARD:", the headline, then the fix (or the first line of what happened), then the link */
+export function alertText({ title, detail, fix, url, tone = 'info', icon = undefined }) {
+  const pic = icon === undefined ? { alert: '🚨', fixed: '✅' }[tone] : icon;
+  const head = `${pic ? `${pic} ` : ''}${TONE[tone] || TONE.info}: ${smsSafe(title)}`;
   const more = fix ? `Fix: ${smsSafe(fix)}` : smsSafe(String(detail || '').split('\n')[0]);
   const link = url ? `\n${url}` : '';
   const room = TEXT_MAX - head.length - link.length - 1;
@@ -559,7 +569,7 @@ export function alertText({ title, detail, fix, url, tone = 'info' }) {
 
 /** "Live now": only what's known the second the phone connects; the feed monitor's "All green" follows */
 export function liveNowText({ title, url }) {
-  return alertText({ title: `Live now: ${title || 'the reveal'}`, detail: 'Checking sound, picture, Facebook and YouTube. "All green" follows in about a minute.', url });
+  return alertText({ title: `Live now: ${title || 'the reveal'}`, detail: 'Checking sound, picture, Facebook and YouTube. "All green" follows in about a minute.', url, icon: '📡' });
 }
 
 /** The first text a new number on the alert list gets: proof texts reach it, and how to stop */
@@ -998,6 +1008,6 @@ export async function alertAdmins(env, config, { level = 'warn', icon, title, de
     });
   }
   // Texts only for the reveal alerts that ask (see Staff alert texts above)
-  results.text = text ? await textStaff(env, config, { title, body: typeof text === 'string' ? text : alertText({ title, detail, fix, url: allLinks[0]?.url, tone: toneFor({ level, resolves }) }) }) : null;
+  results.text = text ? await textStaff(env, config, { title, body: typeof text === 'string' ? text : alertText({ title, detail, fix, url: allLinks[0]?.url, tone: toneFor({ level, resolves }), icon: textIcon({ level, resolves, icon }) }) }) : null;
   return results;
 }

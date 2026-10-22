@@ -408,7 +408,7 @@ const MAP = { t: 'Everything we send', children: [
         { t: 'Reveal-day texts', s: 'live', k: 'text', by: 'auto', preview: 'staff-reveal-texts', change: CHANGE.revealSettings,
           who: 'The staff numbers in Reveals → Settings → Alerts.',
           when: 'The check an hour before, the phone going live, “All green” about a minute in, and any problem while live and when it’s fixed.',
-          does: 'Each opens with what it is (SOARD ALERT, SOARD FIXED, or SOARD for good news), then the fix and a link. Twilio reports whether each one arrived.',
+          does: 'Each opens with a picture and what it is: 🚨 or ⚠️ SOARD ALERT, ✅ SOARD FIXED, 🟢 or 📡 SOARD for good news. Then the fix and a link. Twilio reports whether each one arrived.',
           touches: ['Twilio'], where: 'functions/api/_broadcast-notify.js (alertText, textStaff) · _broadcast-monitor.js · _broadcast-preflight.js (goText)',
           info: 'Text it to me sends the whole sequence to your phone, each starting [Preview].',
           live: textsLive },
