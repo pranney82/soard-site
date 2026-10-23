@@ -147,7 +147,7 @@ test('status from the site: JobTread first; the family is emailed once it settle
   assert.equal(preview.forward, true);
   assert.equal(preview.message.title, 'Application In Review');
   assert.match(preview.message.message, /Jordan Stone/);
-  assert.equal(preview.message.to.email, 'jordan@example.com');
+  assert.deepEqual(preview.message.to.map(t => t.email), ['jordan@example.com']);
   assert.ok(preview.sendAt > Date.now(), 'the sheet says when it goes');
 
   const out = await setApplicantStatus(env, a.id, 'In Review', { user: 'linzi@soardcharity.com', ...opts(), now: T0 });
@@ -227,10 +227,18 @@ test('details: options are checked, Makeover type is a list, empty clears', asyn
 
 test('an email and a note go to JobTread the way staff would post them', async () => {
   const a = addAccount({ name: 'Avery Stone', fields: { [F.status]: 'Applied' }, contact: { name: 'Jordan Stone', email: 'jordan@example.com', phone: '+17705550100' } });
+  // Every contact listed on the family gets it: a second parent, a grandparent; not one without an email, and an address once
+  a.contacts.push({ id: `${a.id}-c2`, name: 'Sam Stone', title: 'Dad', fields: { [EMAIL]: 'sam@example.com' } });
+  a.contacts.push({ id: `${a.id}-c3`, name: 'Pat Lee', title: 'Grandmother', fields: { [EMAIL]: 'pat@example.com' } });
+  a.contacts.push({ id: `${a.id}-c4`, name: 'No Email Aunt', title: 'Aunt', fields: {} });
+  a.contacts.push({ id: `${a.id}-c5`, name: 'Jordan Stone', title: 'Mom (work)', fields: { [EMAIL]: 'Jordan@Example.com' } });
   await syncAllApplicants(env, opts());
-  await messageFamily(env, a.id, { subject: 'Your home visit', message: 'Does Tuesday at 3 work?', user: 'linzi@soardcharity.com', ...opts() });
+  const out = await messageFamily(env, a.id, { subject: 'Your home visit', message: 'Does Tuesday at 3 work?', user: 'linzi@soardcharity.com', ...opts() });
   const msg = a.comments.find(c => c.name === 'Your home visit');
-  assert.equal(msg.assignees[0].emailAddress, 'jordan@example.com');
+  assert.deepEqual(msg.assignees.map(x => x.emailAddress), ['jordan@example.com', 'sam@example.com', 'pat@example.com']);
+  assert.deepEqual(msg.assignees.map(x => x.accountType), ['customer', 'customer', 'customer']);
+  assert.deepEqual(out.to.map(t => t.name), ['Jordan Stone', 'Sam Stone', 'Pat Lee']);
+  assert.equal((await activityFor(env.DB, a.id)).find(r => r.kind === 'sent').title, 'Emailed Jordan Stone, Sam Stone and Pat Lee');
   assert.equal(msg.grantKey, 'qc-grant');
   await addNote(env, a.id, { message: 'Mom prefers texts.', user: 'linzi@soardcharity.com', ...opts() });
   const note = a.comments.find(c => /^Mom prefers texts\./.test(c.message));

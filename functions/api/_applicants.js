@@ -32,12 +32,12 @@ import { pave, SOARD_ORG_ID, matchKid, normalizeName } from './_reveals.js';
 import { bestPhotoOf, photoUrl } from './_job-covers.js';
 import {
   readApplicant, statusMessagePreview, postAccountComment, SITE_GRANT_ID, STATUS_RANK,
-  FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE,
+  FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE, familyRecipients, greetingNames,
 } from './_applicant-comms.js';
 import { noteStatus, changeInfo, dontSend, sendNow as sendNowNotify, whenWouldSend, notifyMap, notifyFor, ensureNotifySchema } from './_applicant-notify.js';
 import { insidePolygon, milesToEdge } from './_geo.js';
 import { getLiveForm } from './_application-forms.js';
-import { DEFAULT_SERVICE_AREA, isEmailAddress, toE164 } from './_application-form.js';
+import { DEFAULT_SERVICE_AREA, toE164 } from './_application-form.js';
 
 export const STATUSES = ['Applied', 'In Review', 'Approved', 'Denied'];
 
@@ -829,22 +829,24 @@ export async function setApplicantStatus(env, accountId, status, { notify = true
 
 /**
  * A message to the family from the Qualification Committee: a comment
- * assigned to their contact, which JobTread emails. Replies come back onto
- * the account and show in the thread here.
+ * assigned to everyone on the account with an email address, which
+ * JobTread emails to each. Replies come back onto the account and show in
+ * the thread here. Read fresh from JobTread, so a contact added a minute ago
+ * is included.
  */
-export async function messageFamily(env, accountId, { subject, message, contactId = null, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
+export async function messageFamily(env, accountId, { subject, message, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
   const text = String(message || '').trim();
   if (!text) throw new Error('Write a message first');
-  const row = await getApplicantRow(env.DB, accountId);
-  if (!row) throw new Error('Unknown applicant');
-  const to = (contactId && row.contacts.find(c => c.id === contactId)) || row.contacts.find(c => c.email === row.contact?.email) || row.contacts.find(c => c.email);
-  if (!to?.email || !isEmailAddress(to.email)) throw new Error('This family has no email address in JobTread');
+  const applicant = await readApplicant(env, accountId, fetchImpl);
+  if (!applicant) throw new Error('Unknown applicant');
+  const to = familyRecipients(applicant);
+  if (!to.length) throw new Error('This family has no email address in JobTread');
   const commentId = await postAccountComment(env, {
     accountId, name: String(subject || '').trim().slice(0, 128) || 'A message from Sunshine on a Ranney Day', message: text,
-    assignTo: { name: to.name || to.email, email: to.email },
+    assignTo: to,
   }, fetchImpl);
-  await logSite(env.DB, accountId, { kind: 'sent', title: `Emailed ${to.name || to.email}`, body: text.slice(0, 4000), data: { commentId, to: to.email, subject }, user, now });
-  return { commentId, to: { name: to.name, email: to.email } };
+  await logSite(env.DB, accountId, { kind: 'sent', title: `Emailed ${greetingNames(to, { fallback: 'the family' })}`, body: text.slice(0, 4000), data: { commentId, to: to.map(p => p.email), subject }, user, now });
+  return { commentId, to };
 }
 
 /** An internal note on the account (staff only in JobTread), signed with who wrote it */

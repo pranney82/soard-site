@@ -11,7 +11,7 @@
  *
  * POST { status: { id, status, notify, denialReason } }
  * POST { fields: { id, changes: { key: value } } }
- * POST { message: { id, subject, message, contactId? } }  → JobTread emails the family
+ * POST { message: { id, subject, message } }             → JobTread emails everyone on the account
  * POST { note: { id, message } }                          → internal note
  * POST { archive: { id, archive } }
  * POST { sync: true }                                     → re-read everything now ("Check JobTread now")
@@ -150,8 +150,8 @@ export async function onRequestPost(context) {
     }
     if (body.message) {
       const id = target(body.message);
-      const out = await messageFamily(env, id, { subject: body.message.subject, message: body.message.message, contactId: body.message.contactId || null, user });
-      await audit('message', id, { to: out.to.email, subject: body.message.subject || null });
+      const out = await messageFamily(env, id, { subject: body.message.subject, message: body.message.message, user });
+      await audit('message', id, { to: out.to.map(p => p.email).join(', '), subject: body.message.subject || null });
       return ok(out);
     }
     if (body.note) {
@@ -195,7 +195,7 @@ export async function onRequestPost(context) {
     if (body.correction) {
       const id = target(body.correction);
       const out = await sendCorrection(env, id, { subject: body.correction.subject, message: body.correction.message, user: adminNameOf(user) });
-      await audit('correction', id, { to: out.to.email });
+      await audit('correction', id, { to: out.to.map(p => p.email).join(', ') });
       return ok(out);
     }
     if (body.sync) {

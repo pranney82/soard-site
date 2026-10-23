@@ -40,8 +40,14 @@ import { pave, SOARD_ORG_ID, easternParts, easternToUtcIso } from './_reveals.js
 import {
   readApplicant, sendStatusMessage, sentKinds, madeByForm, postAccountComment, handleApplicantEvent, applicationLang,
   familyMessage, cleanStatus, COMMENT_NAMES, COMMENT_NAMES_ES,
-  SITE_GRANT_ID, STATUS_RANK, INTAKE_SINCE, FIELD_STATUS,
+  SITE_GRANT_ID, STATUS_RANK, INTAKE_SINCE, FIELD_STATUS, familyRecipients, greetingNames,
 } from './_applicant-comms.js';
+
+/** "Jordan Stone (jordan@…) and Sam Stone (sam@…)" for the history */
+const toWhom = (people) => {
+  const list = people.map(p => (p.name && p.name !== p.email ? `${p.name} (${p.email})` : p.email));
+  return list.length < 2 ? list[0] || 'the family' : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
+};
 import { getLiveForm } from './_application-forms.js';
 import { resolveForm, notifySettings, renderMessage, DEFAULT_MESSAGES } from './_application-form.js';
 import { sendEmails, SITE_ORIGIN } from './_broadcast-notify.js';
@@ -351,12 +357,12 @@ async function sendRow(env, row, { fetchImpl, now }) {
   const result = await sendStatusMessage(env, applicant, row.kind, { fetchImpl, now });
   if (result === 'sent' || result === 'already') {
     await putRow(DB, { ...row, told: row.status, told_at: result === 'sent' ? iso(now) : row.told_at, kind: null, due_at: null, hold: null, token: null }, now);
-    await log(DB, row.account_id, { title: result === 'sent' ? `Emailed the family: ${LABEL[row.kind]}` : `Not emailed again: ${LABEL[row.kind]}`, body: result === 'sent' ? `To ${applicant.primary?.name || 'the main contact'}${applicant.primary?.email ? ` (${applicant.primary.email})` : ''}, from the Qualification Committee.` : 'The family already had this message.', source: 'website' }, now);
+    await log(DB, row.account_id, { title: result === 'sent' ? `Emailed the family: ${LABEL[row.kind]}` : `Not emailed again: ${LABEL[row.kind]}`, body: result === 'sent' ? `To ${toWhom(familyRecipients(applicant))}, from the Qualification Committee.` : 'The family already had this message.', source: 'website' }, now);
     return result;
   }
   if (String(result).startsWith('skipped')) {
     await putRow(DB, { ...row, kind: null, due_at: null, token: null }, now);
-    await log(DB, row.account_id, { title: `Couldn't email the family: ${LABEL[row.kind]}`, body: 'There is no email address for the main contact in JobTread. Add one there, then send it from the family’s page.', source: 'website' }, now);
+    await log(DB, row.account_id, { title: `Couldn't email the family: ${LABEL[row.kind]}`, body: 'No one on the family’s account in JobTread has an email address. Add one there, then send it from the family’s page.', source: 'website' }, now);
     return result;
   }
   await putRow(DB, { ...row, due_at: now + RETRY_MS }, now); // busy or failed: try again shortly
@@ -429,10 +435,11 @@ async function familyPreview(env, row, fetchImpl) {
     const applicant = await readApplicant(env, row.account_id, fetchImpl);
     if (!applicant) return null;
     const lang = (await applicationLang(env.DB, row.account_id)) || applicant.lang || 'en';
-    const text = await familyMessage(env, row.kind, { parent: applicant.primary?.name || 'Hello', child: applicant.name, lang });
+    const to = familyRecipients(applicant);
+    const text = await familyMessage(env, row.kind, { parent: greetingNames(to, { lang }), child: applicant.name, lang });
     const snippet = previewSnippet(text);
     const titles = lang === 'es' ? COMMENT_NAMES_ES : COMMENT_NAMES;
-    return { to: applicant.primary?.name || null, title: titles[row.kind] || COMMENT_NAMES[row.kind], snippet, lang };
+    return { to: greetingNames(to, { fallback: null }), many: to.length > 1, title: titles[row.kind] || COMMENT_NAMES[row.kind], snippet, lang };
   } catch {
     return null;
   }
@@ -526,7 +533,7 @@ export function summaryEmail(rows, { now = Date.now(), staff = false, previews =
     ].join('');
     return panel(`${one ? '' : `<div class="ink" style="font-family:${SANS};font-size:17px;font-weight:700;line-height:1.3;color:#2D2E33;margin-bottom:9px;">${esc(r.name || 'A family')}</div>`}
 <div style="margin:0 0 10px;line-height:26px;">${change}</div>
-<div class="muted" style="font-family:${SANS};font-size:14px;line-height:1.5;color:${MUTED};">${esc(p?.to || 'The family')} is emailed at <strong class="ink" style="color:#2D2E33;">${esc(when.time)}</strong>, ${esc(when.rel)}.</div>
+<div class="muted" style="font-family:${SANS};font-size:14px;line-height:1.5;color:${MUTED};">${esc(p?.to || 'The family')} ${p?.many ? 'are' : 'is'} emailed at <strong class="ink" style="color:#2D2E33;">${esc(when.time)}</strong>, ${esc(when.rel)}.</div>
 ${quote}
 <div style="margin-top:12px;">${actions}</div>
 <div style="font-family:${SANS};font-size:13px;margin-top:2px;">${link(`Open ${firstName} in the admin`, adminUrl(r.account_id))}</div>`);
@@ -534,7 +541,7 @@ ${quote}
 
   const html = emailShell({
     preheader: one
-      ? `${p0(previews, first)} is emailed at ${firstWhen.time}. Nothing to do if that’s right.`
+      ? `${p0(previews, first)} ${previews[first.account_id]?.many ? 'are' : 'is'} emailed at ${firstWhen.time}. Nothing to do if that’s right.`
       : `${sorted.length} families are emailed from ${firstWhen.time}. Nothing to do if they’re right.`,
     eyebrow: 'Applicants · Status emails',
     heading: headline,
@@ -735,9 +742,9 @@ export async function correctionDraft(env, accountId, { fetchImpl = fetch } = {}
   const template = resolveForm(live.definition, { lang }).messages?.correction || DEFAULT_MESSAGES.correction;
   return {
     lang,
-    to: applicant.primary?.email ? { name: applicant.primary.name, email: applicant.primary.email } : null,
+    to: familyRecipients(applicant).length ? familyRecipients(applicant) : null,
     subject: lang === 'es' ? 'Una actualización sobre su solicitud' : 'An update on your application',
-    message: renderMessage(template, { parent: applicant.primary?.name || 'Hello', child: applicant.name, status: WHERE_IT_STANDS[lang]?.[applicant.status || ''] || WHERE_IT_STANDS.en[''] }),
+    message: renderMessage(template, { parent: greetingNames(familyRecipients(applicant), { lang }), child: applicant.name, status: WHERE_IT_STANDS[lang]?.[applicant.status || ''] || WHERE_IT_STANDS.en[''] }),
   };
 }
 
@@ -747,17 +754,18 @@ export async function sendCorrection(env, accountId, { subject, message, user = 
   await ensureNotifySchema(DB);
   const applicant = await readApplicant(env, accountId, fetchImpl);
   if (!applicant) throw new Error('That account isn’t a SOARD customer in JobTread');
-  if (!applicant.primary?.email) throw new Error('This family has no email address in JobTread');
+  const to = familyRecipients(applicant);
+  if (!to.length) throw new Error('This family has no email address in JobTread');
   const text = String(message || '').trim();
   if (!text) throw new Error('Write the correction first');
   const commentId = await postAccountComment(env, {
     accountId, name: String(subject || '').trim().slice(0, 128) || 'An update on your application', message: text,
-    assignTo: { name: applicant.primary.name, email: applicant.primary.email },
+    assignTo: to,
   }, fetchImpl);
   const row = await getRow(DB, accountId);
   await putRow(DB, { ...(row || { account_id: accountId, name: applicant.name, since: iso(now) }), status: applicant.status || '', told: applicant.status || '', told_at: iso(now), kind: null, due_at: null, hold: null, token: null, note_due: null }, now);
-  await log(DB, accountId, { title: 'Correction sent to the family', body: text.slice(0, 2000), by: user, source: 'website', data: { commentId } }, now);
-  return { commentId, to: { name: applicant.primary.name, email: applicant.primary.email } };
+  await log(DB, accountId, { title: 'Correction sent to the family', body: text.slice(0, 2000), by: user, source: 'website', data: { commentId, to: to.map(p => p.email) } }, now);
+  return { commentId, to };
 }
 
 // ─── For the admin ──────────────────────────────────────────────────

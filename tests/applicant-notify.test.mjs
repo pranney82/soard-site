@@ -13,7 +13,7 @@ import {
   handleWorkflowCall, runNotifications, notifyFor, pauseEmails, pauseState, resolveHeld, correctionDraft, sendCorrection,
   linkAction, summaryEmail, outsideQuiet, needsEmail, overdueCount, noteStatus,
 } from '../functions/api/_applicant-notify.js';
-import { readApplicant } from '../functions/api/_applicant-comms.js';
+import { readApplicant, familyRecipients, greetingNames } from '../functions/api/_applicant-comms.js';
 import * as actionPage from '../functions/api/applicant-email-action.js';
 import * as syncRoute from '../functions/api/applicant-sync.js';
 import { hashToken, TOKEN_TTL_MS, verifiedChange } from '../functions/api/_applicant-notify.js';
@@ -139,6 +139,43 @@ test("the summary's links: Move back (nothing sent), Don't email, Send now; each
   assert.equal(b.fields[STATUS], 'Approved');
   assert.equal(named(c, 'Application Decision').length, 1, 'and not twice');
   assert.equal((await linkAction(env, '0'.repeat(32), 'send')).gone, true);
+});
+
+test('every parent or contact on the family gets the email, and the greeting names them all', async () => {
+  const a = family('Avery Stone', 'Applied', { comments: [{ id: 'w1', name: 'Application Status', message: 'old' }] });
+  a.contacts[0].name = 'Jordan Stone';
+  a.contacts.push({ id: `${a.id}-c2`, name: 'Sam Stone', fields: { [EMAIL]: 'sam@example.com' } });
+  a.contacts.push({ id: `${a.id}-c3`, name: 'Case Worker', fields: {} });
+  await change(a, 'In Review', T0);
+  await tick(T0 + 4 * MIN, T0 + 11 * MIN);
+  const [sent] = named(a, 'Application In Review');
+  assert.ok(sent, 'emailed');
+  assert.deepEqual(sent.assignees.map(x => x.emailAddress), ['avery@example.com', 'sam@example.com'], 'both parents, no one without an email');
+  assert.match(sent.message, /^Jordan and Sam Stone\n/);
+  // Denied after: a correction goes to everyone too
+  await change(a, 'Denied', T0 + 60 * MIN);
+  await tick(T0 + 64 * MIN, T0 + 91 * MIN);
+  await change(a, 'In Review', T0 + 100 * MIN);
+  await tick(T0 + 111 * MIN);
+  const draft = await correctionDraft(env, a.id, { fetchImpl: w.fetchImpl });
+  assert.deepEqual(draft.to.map(t => t.email), ['avery@example.com', 'sam@example.com']);
+  const out = await sendCorrection(env, a.id, { subject: draft.subject, message: draft.message, user: 'Linzi', fetchImpl: w.fetchImpl, now: T0 + 120 * MIN });
+  assert.deepEqual(a.comments.at(-1).assignees.map(x => x.emailAddress), ['avery@example.com', 'sam@example.com']);
+  assert.equal(out.to.length, 2);
+});
+
+test('who a family message goes to, and how it greets them', () => {
+  const p = (name, email) => ({ id: name, name, email });
+  const fam = { primary: p('Jordan Stone', 'j@example.com'), contacts: [p('Jordan Stone', 'J@example.com'), p('Sam Stone', 's@example.com'), p('Nobody', ''), p('Bad', 'not-an-email')] };
+  assert.deepEqual(familyRecipients(fam).map(x => x.email), ['j@example.com', 's@example.com']);
+  assert.deepEqual(familyRecipients({ primary: null, contacts: [] }), []);
+  assert.equal(greetingNames([p('Jordan Stone')]), 'Jordan Stone');
+  assert.equal(greetingNames([p('Jordan Stone'), p('Sam Stone')]), 'Jordan and Sam Stone');
+  assert.equal(greetingNames([p('Jordan Stone'), p('Sam Lee')]), 'Jordan Stone and Sam Lee');
+  assert.equal(greetingNames([p('Ana García'), p('Luis García'), p('Rosa García')], { lang: 'es' }), 'Ana, Luis y Rosa García');
+  assert.equal(greetingNames([p('Jordan'), p('Sam Stone')]), 'Jordan and Sam Stone');
+  assert.equal(greetingNames([]), 'Hello');
+  assert.equal(greetingNames([{ name: 'x@example.com' }], { fallback: null }), null);
 });
 
 test('data cleanup through a temporary status emails nobody', async () => {

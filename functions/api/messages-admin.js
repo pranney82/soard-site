@@ -314,7 +314,7 @@ async function invitePreview(env, stage, now) {
 async function jobtreadPreview(env, kind, lang) {
   const message = await familyMessage(env, kind, { parent: SAMPLE.parent, child: SAMPLE.child, withCopy: kind === 'welcome', lang });
   return {
-    channel: 'jobtread', from: JT_FROM, to: `${SAMPLE.parent}, the family's main contact`,
+    channel: 'jobtread', from: JT_FROM, to: `${SAMPLE.parent} and everyone else on the family's account`,
     subject: (lang === 'es' && COMMENT_NAMES_ES[kind]) || COMMENT_NAMES[kind],
     text: message,
     note: kind === 'welcome' ? 'The family’s application PDF is attached. JobTread adds its own header and a reply button; replies land on the family’s page in Applicants.' : 'JobTread adds its own header and a reply button; replies land on the family’s page in Applicants.',
@@ -395,7 +395,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     case 'app-correction': {
       const form = resolveForm((await getLiveForm(env.DB)).definition, { lang });
       return {
-        channel: 'jobtread', from: JT_FROM, to: `${SAMPLE.parent}, the family's main contact`,
+        channel: 'jobtread', from: JT_FROM, to: `${SAMPLE.parent} and everyone else on the family's account`,
         subject: lang === 'es' ? 'Una actualización sobre su solicitud' : 'An update on your application',
         text: renderMessage(form.messages?.correction || DEFAULT_MESSAGES.correction, { parent: SAMPLE.parent, child: SAMPLE.child, status: WHERE_IT_STANDS[lang]['In Review'] }),
         note: 'Staff can edit it on the family’s page before it goes. This sample is for a family whose application is really In Review.',

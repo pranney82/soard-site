@@ -12,8 +12,9 @@
  * They kept a Zapier Table row per account as a run-once flag. This module
  * does the same work from site code, with the same wording.
  *
- * Family messages are comments assigned to the account's primary contact:
- * JobTread emails them, and the family's replies thread back onto the account.
+ * Family messages are comments assigned to everyone on the account with an
+ * email address (parents, guardians, any contact listed): JobTread emails
+ * each of them, and their replies thread back onto the account.
  * Posted with JOBTREAD_QC_GRANT_KEY (a grant made while logged in as the
  * Qualification Committee user) so they read as before; until that key is in
  * Cloudflare they fall back to the site's own JOBTREAD_GRANT_KEY.
@@ -188,10 +189,45 @@ export async function readApplicant(env, accountId, fetchImpl = fetch) {
   };
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /**
- * Post one comment on an account. `assignTo` ({ name, email }) makes it a
- * family message JobTread emails; without it the comment is internal.
- * `uploadRequestIds` attach files (from createUploadRequest).
+ * Everyone a family message goes to: each contact on the account with an
+ * email address, main contact first, each address once. [{ id, name, email }]
+ */
+export function familyRecipients(applicant) {
+  const seen = new Set();
+  const out = [];
+  for (const c of [applicant?.primary, ...(applicant?.contacts || [])]) {
+    const email = String(c?.email || '').trim();
+    if (!EMAIL_RE.test(email) || seen.has(email.toLowerCase())) continue;
+    seen.add(email.toLowerCase());
+    out.push({ id: c.id || null, name: String(c.name || '').trim() || email, email });
+  }
+  return out;
+}
+
+/**
+ * The people a message greets, as a family would write it: "Jordan Stone",
+ * "Jordan and Sam Stone", "Jordan Stone and Sam Lee". `fallback` when there's no one.
+ */
+export function greetingNames(people, { lang = 'en', fallback = 'Hello' } = {}) {
+  const names = [...new Set((people || []).map(p => String(p?.name || '').trim()).filter(n => n && !/@/.test(n)))];
+  if (!names.length) return fallback;
+  const and = lang === 'es' ? ' y ' : ' and ';
+  const join = (list) => (list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')}${and}${list.at(-1)}`);
+  const parts = names.map(n => n.split(/\s+/));
+  const last = parts[0].at(-1);
+  if (names.length > 1 && parts.every(p => p.length > 1 && p.at(-1).toLowerCase() === last.toLowerCase())) {
+    return `${join(parts.map(p => p.slice(0, -1).join(' ')))} ${last}`;
+  }
+  return join(names);
+}
+
+/**
+ * Post one comment on an account. `assignTo` ({ name, email }, or a list of
+ * them) makes it a family message JobTread emails to each; without it the
+ * comment is internal. `uploadRequestIds` attach files (from createUploadRequest).
  */
 export async function postAccountComment(env, { accountId, name, message, assignTo = null, uploadRequestIds = [], grant = null }, fetchImpl = fetch) {
   const input = {
@@ -199,7 +235,8 @@ export async function postAccountComment(env, { accountId, name, message, assign
     isVisibleToInternalRoles: true, isVisibleToCustomerRoles: false, isVisibleToVendorRoles: false,
   };
   if (name) input.name = name;
-  if (assignTo?.email) input.assignees = [{ name: assignTo.name || assignTo.email, emailAddress: assignTo.email, accountType: 'customer' }];
+  const people = (Array.isArray(assignTo) ? assignTo : [assignTo]).filter(p => p?.email);
+  if (people.length) input.assignees = people.map(p => ({ name: p.name || p.email, emailAddress: p.email, accountType: 'customer' }));
   if (uploadRequestIds.length) input.files = uploadRequestIds.map(f => ({ name: f.name, uploadRequestId: f.id }));
   const out = await pave(grant || qcGrant(env), { createComment: { $: input, createdComment: { id: {} } } }, fetchImpl);
   return out?.createComment?.createdComment?.id || null;
@@ -315,7 +352,8 @@ async function sendOnce(env, applicant, kind, build, { assign = false, uploadReq
     await claim(DB, applicant.id, kind, now).then(won => won && settle(DB, applicant.id, kind, 'already', { detail: 'posted before (Zap era or by hand)' }, now));
     return 'already';
   }
-  if (assign && !applicant.primary?.email) return 'skipped: no contact email';
+  const to = familyRecipients(applicant);
+  if (assign && !to.length) return 'skipped: no contact email';
   const message = await build();
   if (!message) return 'skipped: nothing to say';
   if (!(await claim(DB, applicant.id, kind, now))) {
@@ -327,7 +365,7 @@ async function sendOnce(env, applicant, kind, build, { assign = false, uploadReq
       accountId: applicant.id,
       name: (lang === 'es' && COMMENT_NAMES_ES[kind]) || COMMENT_NAMES[kind],
       message,
-      assignTo: assign ? { name: applicant.primary.name, email: applicant.primary.email } : null,
+      assignTo: assign ? to : null,
       uploadRequestIds,
     }, fetchImpl);
     await settle(DB, applicant.id, kind, 'sent', { commentId }, now);
@@ -340,8 +378,8 @@ async function sendOnce(env, applicant, kind, build, { assign = false, uploadReq
 
 /** The first-contact pair: the welcome to the family and the medical note for staff */
 export async function sendIntake(env, applicant, { uploadRequestIds = [], fetchImpl = fetch, now = Date.now(), lang = null, medicalFallback = false } = {}) {
-  const parent = applicant.primary?.name || 'Hello';
   const language = lang || applicant.lang || 'en';
+  const parent = greetingNames(familyRecipients(applicant), { lang: language });
   const welcome = await sendOnce(env, applicant, 'welcome',
     () => familyMessage(env, 'welcome', { parent, child: applicant.name, withCopy: uploadRequestIds.length > 0, lang: language }),
     { assign: true, uploadRequestIds, fetchImpl, now, lang: language });
@@ -379,7 +417,7 @@ export async function madeByForm(DB, accountId) {
 export async function sendStatusMessage(env, applicant, kind, { fetchImpl = fetch, now = Date.now() } = {}) {
   await ensureCommsSchema(env.DB);
   const lang = (await applicationLang(env.DB, applicant.id)) || applicant.lang || 'en';
-  const parent = applicant.primary?.name || 'Hello';
+  const parent = greetingNames(familyRecipients(applicant), { lang });
   return sendOnce(env, applicant, kind, () => familyMessage(env, kind, { parent, child: applicant.name, lang }), { assign: true, fetchImpl, now, lang });
 }
 
@@ -402,8 +440,9 @@ export async function statusMessagePreview(env, applicant, status) {
   return {
     kind, lang, already,
     title: (lang === 'es' && COMMENT_NAMES_ES[kind]) || COMMENT_NAMES[kind],
-    to: applicant.primary?.email ? { name: applicant.primary.name, email: applicant.primary.email } : null,
-    message: await familyMessage(env, kind, { parent: applicant.primary?.name || 'Hello', child: applicant.name, lang }),
+    // Everyone it goes to, or null when no one on the account has an email address
+    to: familyRecipients(applicant).length ? familyRecipients(applicant) : null,
+    message: await familyMessage(env, kind, { parent: greetingNames(familyRecipients(applicant), { lang }), child: applicant.name, lang }),
   };
 }
 

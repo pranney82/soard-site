@@ -171,10 +171,11 @@ test('submit loads everything into JobTread; the video follows once Stream is do
 
   // The family's confirmation is the JobTread "Application Status" message, with the PDF
   const welcome = acct.comments.find(c => c.name === 'Application Status');
-  assert.deepEqual(welcome.assignees, [{ name: 'Jordan Stone', emailAddress: 'mom@example.com', accountType: 'customer' }]);
+  // Both parents from the form get the welcome
+  assert.deepEqual(welcome.assignees, [{ name: 'Jordan Stone', emailAddress: 'mom@example.com', accountType: 'customer' }, { name: 'Sam Stone', emailAddress: 'dad@example.com', accountType: 'customer' }]);
   assert.equal(welcome.files.length, 1);
   assert.equal(welcome.files[0].name, 'Avery Stone_Application.pdf');
-  assert.match(welcome.message, /^Jordan Stone\n\nThe application for \*Avery Stone\* is under review\./);
+  assert.match(welcome.message, /^Jordan and Sam Stone\n\nThe application for \*Avery Stone\* is under review\./);
   assert.match(welcome.message, /copy of your application is attached/);
   const medical = acct.comments.find(c => c.name === "Child's Medical Condition");
   assert.equal(medical.internal, true);

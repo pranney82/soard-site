@@ -91,6 +91,8 @@ const avery = family({ name: 'Avery Stone', status: 'Applied', parent: 'Jordan S
     { name: 'RE: Application Status', message: 'Thank you so much! We are so excited.', by: 'Jordan Stone', fromEmail: true, days: 3 },
     TEXT_OUT('Jordan Stone', 'Hi Jordan! This is Linzi from SOARD. Do you have a minute to talk this week?', 2),
     TEXT_IN('Jordan Stone', 'Yes! Thursday after 3 works great.', 2)] });
+// A second parent on the account: every family email goes to both
+avery.contacts.push({ id: `${avery.id}-c2`, name: 'Sam Stone', title: 'Dad', fields: { [EMAIL]: 'sam@example.com' } });
 family({ name: 'Mateo García', status: 'Applied', parent: 'Lucía García', lat: 34.07, lng: -84.29, city: 'Alpharetta', county: 'Fulton', days: 25, lang: 'Spanish' });
 family({ name: 'Harper Lee', status: 'Applied', parent: 'Dana Lee', lat: 33.749, lng: -84.388, city: 'Atlanta', county: 'Fulton', days: 2, types: ['Ramp'] });
 family({ name: 'Noah Pence', status: 'In Review', parent: 'Erin Pence', lat: 34.24, lng: -84.49, city: 'Canton', county: 'Cherokee', days: 40, types: ['Therapy Room'] });
@@ -239,7 +241,7 @@ await page.waitForSelector('.apl-sheet', { timeout: 5000 }).catch(() => null);
 ok(!!(await page.$('.apl-sheet')), 'dragging a card to another column opens the status sheet');
 await page.waitForSelector('.apl-preview-body', { timeout: 5000 }).catch(() => null);
 ok(/Congratulations, the application for/.test(await text(page, '.apl-preview-body')), 'the sheet previews the exact In Review email');
-ok(/jordan@example\.com/.test(await text(page, '.apl-sheet .apl-check')), 'the sheet names who gets it');
+ok(/jordan@example\.com/.test(await text(page, '.apl-sheet .apl-check')) && /sam@example\.com/.test(await text(page, '.apl-sheet .apl-check')), 'the sheet names everyone who gets it (both parents)');
 ok(/Goes out at/.test(await text(page, '.apl-sheet')), 'the sheet says when it goes (after the status settles)');
 ok(acct('Avery Stone').fields[F.status] === 'Applied', 'nothing changes in JobTread before confirming');
 ok(await page.$eval('.apl-card[data-id="acct00000001"]', el => el.closest('.apl-cards').dataset.status) === 'Applied', 'the card stays put until confirmed');
@@ -254,15 +256,20 @@ ok(/Emails /.test(await text(page, '.apl-card[data-id="acct00000001"] .apl-mail'
 await page.waitForFunction(() => document.querySelector('.apl-card[data-id="acct00000001"]')?.closest('.apl-cards')?.dataset.status === 'In Review', { timeout: 8000 }).catch(() => null);
 ok(await page.$eval('.apl-card[data-id="acct00000001"]', el => el.closest('.apl-cards').dataset.status).catch(() => '') === 'In Review', 'the card moved to In Review');
 
+// A long history line, like "No website profile" on an organization's page
+await DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, body, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+  .bind('site-long-1', 'acct00000001', '2026-10-01T15:00:00.000Z', 'job', 'Website (automatic)', 'website', 'No website profile', 'This account has no birthday or diagnosis, so it looks like an organization. Add a Community project in the admin if it should have a page.', null).run();
+
 // Open Avery
 await page.click('.apl-card[data-id="acct00000001"]');
 await page.waitForSelector('.apl-drawer .apl-thread .apl-msg', { timeout: 8000 });
 await sleep(450);
-ok(/The In Review email to Jordan Stone goes out at/.test(await text(page, '.apl-thread-banner')), 'the family’s page says what’s about to be emailed');
+ok(/The In Review email to Jordan Stone and Sam Stone goes out at/.test(await text(page, '.apl-thread-banner')), 'the family’s page says what’s about to be emailed, and to whom');
 await shot(page, 'desktop-family-pending');
 await page.click('.apl-thread-banner .btn-primary'); // Send now
 await page.waitForFunction(() => !document.querySelector('.apl-thread-banner'), { timeout: 8000 }).catch(() => null);
 ok(acct('Avery Stone').comments.filter(c => c.name === 'Application In Review').length === 1, 'Send now posts the In Review message once');
+ok(acct('Avery Stone').comments.find(c => c.name === 'Application In Review')?.assignees?.length === 2, 'the In Review message goes to both parents');
 ok(acct('Avery Stone').comments.find(c => c.name === 'Application In Review')?.grantKey === 'qc-grant', 'posted as the Qualification Committee');
 ok(await page.$$eval('.apl-msg.is-text', els => els.length) === 2, 'texts show as text bubbles');
 ok(await page.$$eval('.apl-msg.is-email', els => els.length) === 1, 'the family’s email reply shows');
@@ -271,13 +278,23 @@ await page.waitForFunction(() => [...document.querySelectorAll('.apl-event')].so
 ok(await page.$$eval('.apl-event', els => els.some(e => /Moved from Applied/.test(e.textContent))), 'the status change shows in the conversation');
 ok(await page.$$eval('.apl-event', els => els.some(e => /Emailed the family: In Review/.test(e.textContent))), 'and so does the email going out');
 ok(/Linzi/.test(await page.$$eval('.apl-event', els => els.map(e => e.textContent).join(' '))), 'with who did it');
+const longLine = await page.evaluate(() => {
+  const ev = [...document.querySelectorAll('.apl-event')].find(e => /No website profile/.test(e.textContent));
+  if (!ev) return null;
+  const t = ev.closest('.apl-thread').getBoundingClientRect();
+  const icon = ev.firstElementChild.getBoundingClientRect();
+  const words = ev.lastElementChild.getBoundingClientRect();
+  return { inside: [...ev.querySelectorAll('*')].every(n => { const r = n.getBoundingClientRect(); return r.left >= t.left - 1 && r.right <= t.right + 1; }), besideIcon: icon.top + icon.height / 2 > words.top && icon.top + icon.height / 2 < words.bottom };
+});
+ok(longLine?.inside && longLine?.besideIcon, `a long history line wraps inside the conversation, beside its icon (${JSON.stringify(longLine)})`);
 await shot(page, 'desktop-family');
 // Email the family
+ok(/Jordan Stone/.test(await text(page, '.apl-to')) && /Sam Stone/.test(await text(page, '.apl-to')), 'the composer shows it goes to both parents');
 await page.type('.apl-composer textarea', 'Hi Jordan, could we visit on Tuesday at 3?');
 await page.click('.apl-composer .btn-primary');
 await page.waitForFunction(() => !document.querySelector('.apl-composer textarea').value, { timeout: 8000 }).catch(() => null);
 const emailed = acct('Avery Stone').comments.find(c => /visit on Tuesday/.test(c.message));
-ok(emailed?.assignees?.[0]?.emailAddress === 'jordan@example.com', 'Email family: a JobTread comment assigned to the parent (JobTread emails it)');
+ok(emailed?.assignees?.map(x => x.emailAddress).join() === 'jordan@example.com,sam@example.com', `Email family: one JobTread comment assigned to both parents, so JobTread emails each (${emailed?.assignees?.map(x => x.emailAddress)})`);
 // No texting from the site (families text SOARD's Quo number): just email and notes
 ok(await page.$$eval('.apl-modes button', els => els.map(e => e.textContent.trim()).join('|')) === 'Email family|Internal note', 'the composer offers email and an internal note, no texting');
 // Note (⌘+Enter sends)

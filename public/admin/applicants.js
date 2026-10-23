@@ -396,7 +396,10 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 .apl-msg.is-internal .apl-bubble { --bubble-bg: #F6F5F0; background: #F6F5F0; border-style: dashed; border-color: var(--color-border-strong); font-size: .86rem; }
 .apl-files { display: flex; flex-wrap: wrap; gap: .35rem; }
 .apl-file-chip { font-size: .76rem; text-decoration: none; color: var(--color-text); border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 8px; padding: 3px 8px; }
-.apl-event { align-self: center; display: flex; gap: .45rem; align-items: center; font-size: .8rem; color: var(--color-text-secondary); max-width: 92%; text-align: center; flex-wrap: wrap; justify-content: center; }
+.apl-event { align-self: center; display: flex; gap: .45rem; align-items: center; font-size: .8rem; color: var(--color-text-secondary); max-width: 92%; text-align: center; justify-content: center; }
+/* The words wrap beside the icon or pill; long details never run past the thread's edges */
+.apl-event > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.apl-event-sub { display: block; font-size: .76rem; color: var(--color-text-muted); }
 .apl-event b { color: var(--color-text); }
 .apl-event .apl-pill { font-size: .74rem; }
 .apl-composer { border-top: 1px solid var(--color-border); background: var(--color-bg-card); padding: .75rem 1rem .9rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: .55rem; }
@@ -409,6 +412,8 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 @media (pointer: coarse) { .apl-kbd-hint { display: none; } }
 /* On a phone the To and Subject fold into one line until tapped */
 .apl-email-sum { display: none; }
+.apl-to { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; min-height: 40px; padding: .3rem .6rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-hover); font-size: .84rem; color: var(--color-text-secondary); }
+.apl-to-chip { padding: .1rem .5rem; border-radius: 999px; background: var(--color-bg-card); border: 1px solid var(--color-border); color: var(--color-text); font-weight: 600; font-size: .8rem; }
 @media (max-width: 640px) {
   .apl-composer:not(.is-head-open) .apl-email-row { display: none !important; }
   .apl-email-sum { all: unset; box-sizing: border-box; display: flex; gap: .4rem; align-items: center; min-height: 40px; font-size: .84rem; color: var(--color-text-secondary); cursor: pointer; }
@@ -1488,8 +1493,21 @@ function EventLine({ r }) {
   const who = r.by ? html` · ${r.by}${r.source && SOURCE_LABEL[r.source] ? ` ${SOURCE_LABEL[r.source]}` : ''}` : '';
   return html`<div class="apl-event" title=${fullDate(r.at)}>
     ${r.kind === 'status' ? html`<${Pill} status=${r.data?.to || r.title.replace(/^Status:\s*/, '')} />` : html`<span aria-hidden="true">${FEED_ICON[r.kind] || '•'}</span>`}
-    <span><b>${r.kind === 'status' ? (r.data?.from ? `Moved from ${r.data.from}` : 'Status set') : cleanTitle(r.title)}</b>${who}${r.kind === 'status' && r.body && /emailed|already|skipped|Noted/.test(r.body) ? html`<br /><span class="apl-card-sub">${r.body.split('\n').filter(l => !/^Was /.test(l)).join(' ')}</span>` : ''}${r.kind !== 'status' && r.body ? html`<br /><span class="apl-card-sub">${r.body.split('\n').slice(0, 3).join(' · ')}</span>` : ''}</span>
+    <span><b>${r.kind === 'status' ? (r.data?.from ? `Moved from ${r.data.from}` : 'Status set') : cleanTitle(r.title)}</b>${who}${r.kind === 'status' && r.body && /emailed|already|skipped|Noted/.test(r.body) ? html`<span class="apl-event-sub">${r.body.split('\n').filter(l => !/^Was /.test(l)).join(' ')}</span>` : ''}${r.kind !== 'status' && r.body ? html`<span class="apl-event-sub">${r.body.split('\n').slice(0, 3).join(' · ')}</span>` : ''}</span>
   </div>`;
+}
+
+/** Everyone a family email goes to: each contact with an email address, main contact first, each address once */
+function familyEmails(a) {
+  const seen = new Set();
+  const all = (a.contacts || []).slice().sort((x, y) => (y.email === a.contact?.email) - (x.email === a.contact?.email));
+  return all.filter(c => c.email && !seen.has(c.email.toLowerCase()) && seen.add(c.email.toLowerCase()));
+}
+
+/** "Jordan Stone and Sam Stone" */
+function namesOf(people, fallback = 'the family') {
+  const n = [...new Set((people || []).map(p => p.name || p.email).filter(Boolean))];
+  return !n.length ? fallback : n.length === 1 ? n[0] : `${n.slice(0, -1).join(', ')} and ${n.at(-1)}`;
 }
 
 function Conversation({ d, onSent, addToast }) {
@@ -1497,25 +1515,23 @@ function Conversation({ d, onSent, addToast }) {
   const items = useMemo(() => timelineOf(d), [d]);
   const scroller = useRef(null);
   useEffect(() => { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; }, [items.length, a.id]);
-  const emailable = (a.contacts || []).filter(c => c.email);
+  const emailable = familyEmails(a);
   const [mode, setMode] = useState(emailable.length ? 'email' : 'note');
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
-  const [to, setTo] = useState(emailable.find(c => c.email === a.contact?.email)?.id || emailable[0]?.id || '');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [headOpen, setHeadOpen] = useState(false); // phones: To and Subject, folded until tapped
   const box = useRef(null);
-  const toContact = emailable.find(c => c.id === to) || emailable[0];
   const send = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
     const body = correcting ? { correction: { id: a.id, subject, message: text } }
-      : mode === 'email' ? { message: { id: a.id, subject, message: text, contactId: to || null } } : { note: { id: a.id, message: text } };
+      : mode === 'email' ? { message: { id: a.id, subject, message: text } } : { note: { id: a.id, message: text } };
     const j = await call(API, body);
     setBusy(false);
     if (!j.success) { addToast(j.error || 'Not sent', 'error'); return; }
-    addToast(correcting ? `Correction sent to ${j.to?.name || 'the family'}` : mode === 'email' ? `Emailed ${j.to?.name || 'the family'} through JobTread` : 'Note added in JobTread', 'success');
+    addToast(correcting ? `Correction sent to ${namesOf(j.to)}` : mode === 'email' ? `Emailed ${namesOf(j.to)} through JobTread` : 'Note added in JobTread', 'success');
     setText('');
     if (correcting) { setCorrecting(false); setSubject(DEFAULT_SUBJECT); }
     onSent();
@@ -1545,12 +1561,12 @@ function Conversation({ d, onSent, addToast }) {
         <button aria-pressed=${mode === 'email'} onClick=${() => setMode('email')} disabled=${!emailable.length} title=${emailable.length ? '' : 'No email address in JobTread'}>Email family</button>
         <button aria-pressed=${mode === 'note'} onClick=${() => setMode('note')}>Internal note</button>
       </div>
-      ${mode === 'email' && !headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label="Change who it goes to, or the subject"><span>To <b>${toContact?.name || toContact?.email || 'the family'}</b> · ${subject}</span><em>Edit</em></button>`}
+      ${mode === 'email' && !headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label="See who it goes to, or change the subject"><span>To <b>${namesOf(emailable)}</b> · ${subject}</span><em>Edit</em></button>`}
       ${mode === 'email' && html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">
-        <select class="form-select" value=${to} onChange=${e => setTo(e.target.value)} aria-label="To">${emailable.map(c => html`<option value=${c.id}>To ${c.name || c.email} (${c.email})</option>`)}</select>
+        <div class="apl-to" aria-label="To">To ${emailable.map(c => html`<span class="apl-to-chip" title=${c.email}>${c.name || c.email}</span>`)}</div>
         <input class="form-input" value=${subject} onInput=${e => setSubject(e.target.value)} maxlength="128" aria-label="Subject" />
       </div>`}
-      ${correcting && html`<div class="apl-callout">Writing a correction. When it's sent, the site counts ${a.contact?.name || 'the family'} as knowing where things stand now. <button class="apl-more" onClick=${() => { setCorrecting(false); setSubject(DEFAULT_SUBJECT); setText(''); }}>Cancel</button></div>`}
+      ${correcting && html`<div class="apl-callout">Writing a correction. When it's sent, the site counts ${namesOf(emailable)} as knowing where things stand now. <button class="apl-more" onClick=${() => { setCorrecting(false); setSubject(DEFAULT_SUBJECT); setText(''); }}>Cancel</button></div>`}
       <textarea ref=${box} class="form-input" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
         placeholder=${mode === 'email' ? 'Write to the family. JobTread emails it from the Qualification Committee, and their reply lands here.' : 'Only staff see notes. Saved on the account in JobTread.'}
         aria-label="Message" maxlength="4000"></textarea>
@@ -1570,7 +1586,7 @@ function NotifyBanner({ d, onChanged, onCorrection, addToast }) {
   const [, tick] = useState(0);
   useEffect(() => { const t = setInterval(() => tick(x => x + 1), 30000); return () => clearInterval(t); }, []);
   if (!n || (!n.kind && !n.correction)) return null;
-  const parent = a.contact?.name || 'the family';
+  const parent = namesOf(familyEmails(a));
   const act = async (action) => {
     setBusy(action);
     const j = await call(API, { notify: { id: a.id, action } });
@@ -1768,7 +1784,8 @@ function StatusSheet({ a, status, paused = false, onClose, onDone, addToast }) {
   }, [onClose]);
   const m = p?.message;
   const willEmail = !!(m && !m.already && m.to && notify);
-  const first = (a.contact?.name || '').split(' ')[0];
+  // One person by first name; several are "the family"
+  const first = m?.to?.length > 1 ? '' : (m?.to?.[0]?.name || a.contact?.name || '').split(' ')[0];
   const go = async (emailNow = false) => {
     setBusy(true);
     const j = await call(API, { status: { id: a.id, status, notify: willEmail, emailNow: willEmail && emailNow, denialReason: status === 'Denied' ? reason : null } });
@@ -1791,7 +1808,7 @@ function StatusSheet({ a, status, paused = false, onClose, onDone, addToast }) {
       ${m && !m.already && !m.to && html`<div class="apl-callout is-warn">There's no email address for this family in JobTread, so the ${m.title} message can't be sent. Add one in JobTread, then send it from the conversation.</div>`}
       ${m && !m.already && m.to && html`
         <label class="apl-check"><input type="checkbox" checked=${notify} onChange=${e => setNotify(e.target.checked)} />
-          <span>Email this to ${m.to.name} <span class="apl-card-sub" style="display:inline">(${m.to.email})</span>${m.lang === 'es' ? ' in Spanish' : ''}</span></label>
+          <span>Email this to ${m.to.map((t, i) => html`${i ? (i === m.to.length - 1 ? ' and ' : ', ') : ''}${t.name} <span class="apl-card-sub" style="display:inline">(${t.email})</span>`)}${m.lang === 'es' ? ' in Spanish' : ''}</span></label>
         <div class="apl-preview" style=${notify ? '' : 'opacity:.45'}>
           <div class="apl-preview-head"><span>From <b>Qualification Committee</b> through JobTread</span><span>Subject <b>${m.title}</b></span></div>
           <div class="apl-preview-body" dangerouslySetInnerHTML=${{ __html: richText(m.message) }}></div>
