@@ -712,8 +712,8 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
         nodes: {
           id: {}, name: {}, message: {}, createdAt: {}, isFromEmail: {}, isPinned: {}, isVisibleToCustomerRoles: {},
           createdByUser: { id: {}, name: {} }, parentComment: { id: {} },
-          // Who it's shared with: a message shared with the family's contacts is one JobTread emailed them
-          aces: { nodes: { membership: { accountType: {}, user: { name: {}, emailAddress: {} } } } },
+          // Shared with anyone? Who with is read below: membership details here make the query too big for JobTread
+          aces: { $: { size: 10 }, nodes: { id: {} } },
           files: { nodes: { id: {}, name: {}, type: {} } },
         },
       },
@@ -726,13 +726,43 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
   const comments = (data?.account?.comments?.nodes || []).map(c => ({
     id: c.id, name: c.name || null, message: c.message || '', at: c.createdAt, fromEmail: !!c.isFromEmail, pinned: !!c.isPinned,
     by: c.createdByUser?.name || null, parentId: c.parentComment?.id || null, files: (c.files?.nodes || []).map(f => ({ id: f.id, name: f.name, type: f.type })),
-    to: (c.aces?.nodes || []).filter(x => x.membership?.accountType === 'customer' && x.membership.user?.emailAddress)
-      .map(({ membership: { user: u } }) => ({ name: u.name || u.emailAddress, email: u.emailAddress })),
+    shared: (c.aces?.nodes || []).length,
   }));
+  // Who each shared message went to: shared with the family's contacts means JobTread emailed them
+  const recipients = await sharedWith(env, comments.filter(c => c.shared).slice(0, 40).map(c => c.id), fetchImpl);
+  for (const c of comments) {
+    c.to = recipients.get(c.id) || [];
+    delete c.shared;
+  }
   const files = (data?.account?.files?.nodes || []).filter(f => !f.job?.id).map(f => ({
     id: f.id, name: f.name, type: f.type, size: f.size, at: f.createdAt, url: f.url, thumb: /^image\//.test(f.type || '') ? f.thumb : null,
   }));
   return { applicant: row, comments, files, activity: await activityFor(DB, id), notify: await notifyFor(DB, id).catch(() => null), live: !!data };
+}
+
+/**
+ * The family contacts each comment is shared with: Map(commentId → [{ name, email }]).
+ * Eight comments a call keeps each query inside JobTread's size limit. A
+ * failed read leaves those comments out (the page still shows them).
+ */
+async function sharedWith(env, ids, fetchImpl) {
+  const out = new Map();
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 8) chunks.push(ids.slice(i, i + 8));
+  await Promise.all(chunks.map(async (chunk) => {
+    const query = {};
+    chunk.forEach((id, i) => {
+      query[`c${i}`] = { _: 'comment', $: { id }, aces: { $: { size: 10 }, nodes: { membership: { accountType: {}, user: { name: {}, emailAddress: {} } } } } };
+    });
+    const data = await pave(env.JOBTREAD_GRANT_KEY, query, fetchImpl).catch(() => null);
+    chunk.forEach((id, i) => {
+      const nodes = data?.[`c${i}`]?.aces?.nodes;
+      if (!nodes) return;
+      out.set(id, nodes.filter(x => x.membership?.accountType === 'customer' && x.membership.user?.emailAddress)
+        .map(({ membership: { user: u } }) => ({ name: u.name || u.emailAddress, email: u.emailAddress })));
+    });
+  }));
+  return out;
 }
 
 // ─── Acting (JobTread first, then the mirror) ───────────────────────

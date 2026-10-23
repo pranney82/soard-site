@@ -69,12 +69,14 @@ export function fakeApplicantWorld() {
         }
         case 'jobs': out[key] = { nodes: (a.jobs || []).map(j => ({ id: j.id, name: j.name })) }; break;
         case 'comments': {
+          // Like JobTread: membership details under a page of comments is too big a query (413)
+          if (sub.nodes?.aces?.nodes?.membership) throw Object.assign(new Error('Request Entity Too Large'), { status: 413 });
           const list = a.comments.filter(c => nameMatch(sub.$?.where, c.name));
           out[key] = { nodes: list.map(c => ({
             id: c.id, name: c.name, message: c.message, createdAt: c.createdAt || null, isFromEmail: !!c.fromEmail, isPinned: !!c.pinned,
             isVisibleToCustomerRoles: false, createdByUser: { id: 'u1', name: c.by || 'Qualification Committee' },
             parentComment: c.parentCommentId ? { id: c.parentCommentId } : null, files: { nodes: [] },
-            aces: { nodes: (c.assignees || []).map(x => ({ membership: { accountType: x.accountType || 'customer', user: { name: x.name, emailAddress: x.emailAddress } } })) },
+            aces: { nodes: (c.assignees || []).map((x, i) => ({ id: `${c.id}-ace${i}` })) },
           })) };
           break;
         }
@@ -126,6 +128,12 @@ export function fakeApplicantWorld() {
       const fails = failNext.get(key);
       if (fails) { failNext.set(key, fails - 1); throw Object.assign(new Error(`${key} failed`), { status: 500 }); }
       const input = v.$ || {};
+      // One comment by id (aliased, as the family page reads who each shared message went to)
+      if (v._ === 'comment') {
+        const c = Object.values(world.accounts).flatMap(a => a.comments).find(x => x.id === input.id);
+        out[key] = c ? { aces: { nodes: (c.assignees || []).map(x => ({ membership: { accountType: x.accountType || 'customer', user: { name: x.name, emailAddress: x.emailAddress } } })) } } : null;
+        continue;
+      }
       switch (key) {
         case 'createAccount': {
           const id = nextId('acct');
