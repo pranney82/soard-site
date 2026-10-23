@@ -184,6 +184,20 @@ export async function activity(env, { before = null, limit = 150, q = '', now = 
   }
   items.push(...inviteRows);
 
+  // Demo day invites (Google sends these too). Notes like "sent by hand" or "kept" aren't sends,
+  // and a quiet update (staff guests only) emails no one
+  const demos = await rows(DB.prepare("SELECT id, job_id, action, guests, created_at FROM demo_invite_log WHERE created_at < ? AND created_at >= ? AND action IN ('created', 'updated', 'cancelled') ORDER BY created_at DESC LIMIT ?").bind(until, since, take));
+  for (const r of demos) {
+    const test = String(r.job_id) === String(SANDBOX_JOB_ID);
+    const kid = kidNames.get(String(r.job_id)) || null;
+    items.push({
+      key: `d:${r.id}`, at: r.created_at, entry: test ? 'preview' : r.action === 'created' ? 'demo-invite' : r.action === 'cancelled' ? 'invite-cancel' : 'demo-invite-update', channel: 'invite', sender: 'google',
+      who: test ? 'You (a TEST invite on the office sandbox job)' : `${r.guests != null ? plural(Number(r.guests) || 0, 'guest') : 'The guests'}${kid ? ` for ${possessive(kid)} demo day` : ''}`,
+      subject: kid ? `${possessive(kid)} Demo Day` : null,
+      status: r.action === 'cancelled' ? 'cancelled' : 'sent', count: r.guests ?? null, test,
+    });
+  }
+
   // Reveal reminders' browser alerts and Kit's "we're live" (emails are in the log once it began)
   const sends = await rowsNamed(DB, `SELECT s.id, s.broadcast_id, s.kind, s.channel, s.recipients, s.sent, s.failed, s.error, s.created_at, b.kid_name
     FROM broadcast_sends s LEFT JOIN broadcasts b ON b.id = s.broadcast_id

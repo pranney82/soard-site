@@ -52,6 +52,7 @@ import { medicalNote, fallbackMedicalNote } from './_applicant-comms.js';
 import { activity, comingUp, deliverability, deliveryFacts, emailDetail, invitesOut } from './_messages-activity.js';
 import { applicantEmail as advisoryThanks, staffEmail as advisoryStaff } from './_advisory-applications.js';
 import { checkAnswers as advisoryAnswers } from './_advisory-form.js';
+import { planDemo, demoAlert, sendTestDemo, readConfig as readDemoConfig, listPeople as demoPeople } from './_demo-invites.js';
 
 const { SITE_ORIGIN, EMAIL_FROM } = notify;
 const DAY = 864e5;
@@ -169,6 +170,25 @@ async function inviteFacts(DB, now) {
   };
 }
 
+/** Demo day invites: the switch, invites out, problems, and sends by the log (counts only) */
+async function demoInviteFacts(DB, now) {
+  const since = new Date(now - 30 * DAY).toISOString();
+  const cfg = await readDemoConfig(DB);
+  const people = await demoPeople(DB);
+  const out = await DB.prepare(`SELECT sum(CASE WHEN state = 'sent' THEN 1 ELSE 0 END) AS sent, sum(CASE WHEN state = 'by-hand' THEN 1 ELSE 0 END) AS byHand,
+    sum(CASE WHEN error IS NOT NULL AND error != '' THEN 1 ELSE 0 END) AS errors FROM demo_invites`).first();
+  const log = async (action) => {
+    const r = await DB.prepare('SELECT max(created_at) AS last, sum(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS n30, count(*) AS total FROM demo_invite_log WHERE action = ?').bind(since, action).first();
+    return tally(r?.last, r?.n30, r?.total);
+  };
+  return {
+    enabled: !!cfg.enabled,
+    out: out?.sent || 0, byHand: out?.byHand || 0, problems: out?.errors || 0,
+    sent: await log('created'), updated: await log('updated'),
+    always: people.always.length,
+  };
+}
+
 async function reminderFacts(DB, now) {
   const since = new Date(now - 30 * DAY).toISOString();
   const c = (await siteConfig(DB, 'broadcast-config'))?.data || {};
@@ -255,6 +275,7 @@ export async function gatherFacts(env, { now = Date.now() } = {}) {
     drafts: ok(drafts),
     waitlist: ok(waitlist) ? { ...waitlist, confirmations: ok(confirmations) } : null,
     invites: ok(invites),
+    demoInvites: ok(await settle(() => demoInviteFacts(DB, now))),
     reminders: ok(reminders),
     staff: ok(staff),
     newsletter: ok(newsletter),
@@ -307,6 +328,38 @@ async function invitePreview(env, stage, now) {
     to: stage === 'confirmed' ? 'The family, staff, the board and advisors, plus vendors, sponsors, photographers and design partners' : 'The family, staff, and the board and advisors',
     subject: `Invitation: ${e.summary}`,
     invite: { title: e.summary, status: e.status, start: e.start, end: e.end, location: e.location || null, description: e.description, organizer: cfg.organizer, busy: e.transparency !== 'transparent' },
+    send: 'invite',
+  };
+}
+
+/** A made-up job whose demo day is a week out, with Set Start Date checked off */
+function sampleDemoJob(now) {
+  const { date } = sampleReveal(now);
+  return {
+    id: 'sample', name: `${SAMPLE.childFirst} Stone`, organization: { id: SOARD_ORG_ID },
+    tasks: { nodes: [
+      { id: 'demo', name: 'Demo', startDate: date, endDate: date, startTime: null, endTime: null, progress: 0 },
+      { id: 'set', name: 'Set Start Date', progress: 1 },
+    ] },
+    customFieldValues: { nodes: [{ customField: { id: FIELD_MAKEOVER_TYPE }, value: 'Bedroom' }] },
+    location: { address: SAMPLE.address },
+  };
+}
+
+async function demoPreview(env, now) {
+  const [cfg, inviteCfg] = await Promise.all([readDemoConfig(env.DB), readInviteConfig(env.DB)]);
+  const staff = env.JOBTREAD_GRANT_KEY ? await fetchStaff(env.JOBTREAD_GRANT_KEY).catch(() => []) : [];
+  const plan = planDemo(sampleDemoJob(now), staff, { organizer: inviteCfg.organizer, now, config: cfg });
+  if (plan.action !== 'upsert') throw new Error(`No sample invite: ${plan.reason}`);
+  const e = plan.event;
+  return {
+    channel: 'invite',
+    from: `${inviteCfg.organizer}'s Google Calendar`,
+    to: 'The family, the internal team, the monetary sponsor (Sponsor users on the job in JobTread), and the every-demo-day list',
+    subject: `Invitation: ${e.summary}`,
+    invite: { title: e.summary, status: e.status, start: e.start, end: e.end, location: e.location || null, description: e.description, organizer: inviteCfg.organizer, busy: true },
+    note: 'A sample demo day a week from now, at the default time, with the wording saved in Reveals → Demo Day.',
+    testNote: 'Send it to me makes a separate TEST invite inviting only you.',
     send: 'invite',
   };
 }
@@ -422,6 +475,9 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     case 'invite-confirmed':
     case 'invite-update':
       return invitePreview(env, 'confirmed', now);
+    case 'demo-invite':
+    case 'demo-invite-update':
+      return demoPreview(env, now);
     case 'rem-confirm':
       return email(notify.confirmEmail({ confirmUrl: '#', kidName: SAMPLE.childFirst }), { to: 'A new address signed up on a reveal page' });
     case 'kit-live': {
@@ -526,6 +582,10 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return email(inviteAlert('problem', { jobId: 'sample', name: SAMPLE.childFirst, error: 'Google Calendar returned 503 (backend error)', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });
     case 'staff-invite-held':
       return email(inviteAlert('held', { jobId: 'sample', name: SAMPLE.childFirst, reason: 'status is Awaiting Funding', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });
+    case 'staff-demo-problem':
+      return email(demoAlert('problem', { jobId: 'sample', name: SAMPLE.childFirst, error: 'Google Calendar returned 503 (backend error)', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });
+    case 'staff-demo-heads-up':
+      return email(demoAlert('waiting', { jobId: 'sample', name: SAMPLE.childFirst, reason: 'the Demo task has no date', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });
     case 'staff-kid-hidden':
       return email(deniedAlert({ kid: { name: SAMPLE.childFirst }, jobId: 'sample' }), { to: 'peter@soardcharity.com' });
     case 'staff-gift-problem':
@@ -591,6 +651,12 @@ export async function onRequestPost(context) {
     if (!p) return fail('There’s no preview for that message', 404);
     if (p.send === 'invite') {
       if (!env.GOOGLE_CALENDAR_KEY || !env.JOBTREAD_GRANT_KEY) return fail('Calendar invites aren’t set up (GOOGLE_CALENDAR_KEY and JOBTREAD_GRANT_KEY in Cloudflare)', 503);
+      // Demo day: the sample job's invite, as a TEST event to you only
+      if (id.startsWith('demo-')) {
+        const r = await sendTestDemo(env, 'sample', me, { sample: sampleDemoJob(Date.now()) });
+        if (r.action === 'skip') return fail(`The test invite couldn’t be made: ${r.reason}`, 409);
+        return Response.json({ success: true, sentTo: me, kind: 'invite', stage: 'demo' }, { headers: HEADERS });
+      }
       const stage = id === 'invite-tentative' || id === 'board-invites' ? 'tentative' : 'confirmed';
       const r = await sendTestInvite(env, SANDBOX_JOB_ID, me, { date: sampleReveal().date, time: '16:00', stage });
       if (r.action === 'skip') return fail(`The test invite couldn’t be made: ${r.reason}`, 409);

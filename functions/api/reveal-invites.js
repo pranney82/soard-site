@@ -3,8 +3,10 @@
  * workflows: { jobId, eventId }. The event must be a change JobTread logged
  * on that job in the last 15 minutes, and everything is re-read from JobTread
  * before the calendar is touched (see ./_reveal-invites.js), so the body is
- * untrusted. A few verified wake-ups a minute per job do the work; past that
- * the job is owed a look on the next heartbeat (admitWake). The answer is
+ * untrusted. The same wake-up checks the job's demo day invite (./_demo-invites.js:
+ * a task checked off, Set Start Date among them, is what sends it). A few
+ * verified wake-ups a minute per job do the work; past that the job is owed a
+ * look on the next heartbeat (admitWake). The answer is
  * { ok } and nothing more: never guests, addresses, event details or what
  * JobTread says about the job.
  *
@@ -28,6 +30,7 @@
 import { verifiedJobEvent, admitWake, oweWake, reconcileJob } from './_reveal-invites.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 import { syncKidStatuses } from './_kid-status.js';
+import { reconcileDemo } from './_demo-invites.js';
 import { wakeSecretOk, clientIp } from './_secure.js';
 import { limit, tooMany } from './_rate-limit.js';
 
@@ -56,6 +59,8 @@ export async function onRequestPost(context) {
     if (turn !== 'run') return Response.json({ ok: true });
     // The kid's status on the site follows the job (a status change, the Reveal task done)
     context.waitUntil(syncKidStatuses(env, { jobId }));
+    // Demo day: Set Start Date checked off sends it (anything it misses, the 5-minute check catches)
+    context.waitUntil(reconcileDemo(env, jobId).catch(() => null));
     const r = await reconcileJob(env, jobId);
     if (r.action === 'busy') await oweWake(env.DB, jobId);
     return Response.json({ ok: r.action !== 'error' });

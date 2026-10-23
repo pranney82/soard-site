@@ -9,7 +9,8 @@
  * changed. The answer comes within 10 s (the hub gives up at 15): a slower
  * tick finishes after the reply and publishes its own change. No shared
  * secret exists anywhere. The same heartbeat wakes the
- * reveal checks, the reveal invite sweep and guest check, the JobTread
+ * reveal checks, the reveal invite sweep and guest check, the demo day
+ * invite check, the JobTread
  * schedule check, the makeover application sweep and the Zeffy gift check
  * (see below).
  */
@@ -17,6 +18,7 @@
 import { runTick, verifyHubNonce, publishToHub, publicPayload, readState, readConfig } from './_broadcast.js';
 import { maybeNudge } from './_reveal-nudges.js';
 import { maybeSweep, maybeCheckGuests } from './_reveal-invites.js';
+import { maybeCheckDemos } from './_demo-invites.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 import { maybeSweepApplications } from './_applications.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
@@ -66,6 +68,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeNudge(env));
     context.waitUntil(maybeSweep(env));
     context.waitUntil(maybeCheckGuests(env));
+    // Demo day invites: a Demo task that moved, a sponsor set, a wake-up JobTread missed (every 5 minutes; see _demo-invites.js)
+    context.waitUntil(maybeCheckDemos(env));
     context.waitUntil(syncBroadcastSchedule(env));
     context.waitUntil(maybeSweepApplications(env));
     context.waitUntil(maybeSyncKidStatuses(env));

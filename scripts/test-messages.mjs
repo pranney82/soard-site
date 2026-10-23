@@ -191,7 +191,7 @@ try {
   ok(await page.$eval('.sidebar .active, [aria-current="page"]', (e) => e.textContent.includes('Emails & invites')).catch(() => true), 'its menu item is the current one');
   ok((await page.$eval('.am-check', (e) => e.textContent)).includes('Statuses checked live'), 'it says the statuses were checked live');
   const branches = await page.$$eval('.am-node.d1 text', (t) => t.map((x) => x.textContent));
-  const WANT = ['Families', 'Reveal guests', 'Reveal watchers', 'Staff', 'Newsletter list', 'Board & advisors'];
+  const WANT = ['Families', 'Reveal guests', 'Demo day guests', 'Reveal watchers', 'Staff', 'Newsletter list', 'Board & advisors'];
   ok(WANT.every((b) => branches.includes(b)) && branches.length === WANT.length, `every audience is a branch (${branches.join(', ')})`);
   const inView = await page.evaluate(() => {
     const c = document.querySelector('.am-canvas').getBoundingClientRect();
@@ -215,7 +215,7 @@ try {
   const home = await page.$eval('.am-panel', (e) => e.innerText);
   ok(home.includes('Nothing needs attention'), 'nothing needs attention in these facts');
   const groups = await page.$$eval('.am-panel .am-mini-group', (g) => g.map((x) => x.querySelectorAll('.am-mini-names button').length));
-  ok(groups.join(',') === '7,4,6', `the seven entries reminders switch off read as one line, the four waiting on Twilio as another, and the six Slack-only posts as a third (${groups.join(', ')})`);
+  ok(groups.join(',') === '2,7,4,6', `the two demo day invites (paused) read as one line, the seven entries reminders switch off as another, the four waiting on Twilio as a third, and the six Slack-only posts as a fourth (${groups.join(', ')})`);
   ok((home.match(/Reminders are switched off/g) || []).length === 1, 'the reason is written once');
   await page.screenshot({ path: join(OUT, 'desktop.png') });
 
@@ -298,9 +298,15 @@ try {
   await page.screenshot({ path: join(OUT, 'sheet-invite.png') });
   await closeSheet(page);
 
+  await preview(page, 'Demo day invite');
+  text = await sheetText(page);
+  ok(text.includes("Avery's Demo Day") && text.includes('9:00 AM') && text.includes('123 Sample Lane') && text.includes('Please accept or decline'), `the demo day invite: the sample kid at the default time, with the address (${text.slice(0, 160)})`);
+  await page.screenshot({ path: join(OUT, 'sheet-demo-invite.png') });
+  await closeSheet(page);
+
   await clickButton(page, '.am-filters', 'Google Calendar');
   await pause(400);
-  ok((await page.$eval('.am-hits', (e) => e.textContent)) === '5 matches', 'Sent by Google Calendar finds the five invite messages');
+  ok((await page.$eval('.am-hits', (e) => e.textContent)) === '7 matches', 'Sent by Google Calendar finds the seven invite messages (five for reveals, two for demo day)');
   await clickButton(page, '.am-tools', 'Reset');
   await clickButton(page, '.am-filters', 'Kit');
   await pause(400);

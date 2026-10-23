@@ -34,7 +34,7 @@ import { SentView } from './messages-sent.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 21, 2026';
+const WRITTEN_ON = 'October 22, 2026';
 const API = '/api/messages-admin';
 
 // ─── Live check helpers ───────────────────
@@ -122,12 +122,22 @@ const inviteLive = (which) => first(needs('calendar', NO_CAL), (f) => {
   const now = which === 'tentative' ? `${plural(out.tentative || 0, 'save-the-date')} on calendars now.` : which === 'confirmed' ? `${plural(out.confirmed || 0, 'confirmed invite')} on calendars now.` : '';
   return ON(`${now} ${sentLine(t)}`.trim(), t?.last);
 });
+// Demo day invites: the switch, problems, what's out, and sends by the log
+const demoLive = (which) => first(needs('calendar', NO_CAL), (f) => {
+  const v = f.demoInvites;
+  if (!v) return null;
+  if (!v.enabled) return OFF('Paused in Reveals → Demo Day. The site works out each invite and sends nothing.');
+  if (v.problems) return ATTN(`${plural(v.problems, 'demo day invite')} couldn’t be sent. Reveals → Demo Day shows which, with Retry.`);
+  const now = which === 'sent' ? `${plural(v.out, 'demo day invite')} on calendars now${v.byHand ? `, ${v.byHand} sent by hand instead` : ''}.` : '';
+  return ON(`${now} ${sentLine(v[which])}`.trim(), v[which]?.last);
+});
 
 // ─── The map ──────────────────────────────
 const CHANGE = {
   appEmails: { label: 'Applications → Emails', view: 'applications', hash: '#applications/emails' },
   appSettings: { label: 'Applications → Settings', view: 'applications', hash: '#applications/settings' },
   invites: { label: 'Reveals → Invites', view: 'broadcast', hash: '#broadcast/invites' },
+  demo: { label: 'Reveals → Demo Day', view: 'broadcast', hash: '#broadcast/demo' },
   revealSettings: { label: 'Reveals → Settings', view: 'broadcast', hash: '#broadcast/settings' },
   composer: { label: 'Comms → Email', view: 'email' },
   board: { label: 'People → Board', view: 'people-hub', tab: 'board' },
@@ -265,6 +275,28 @@ const MAP = { t: 'Everything we send', children: [
           when: 'The site takes a test invite back. A real reveal’s invite is never cancelled by the site: staff do that in Google Calendar, after the “Invite still out” email.',
           does: 'Google’s “Cancelled event” email.',
           touches: ['Google Calendar', 'D1'], where: 'functions/api/_reveal-invites.js (cancelEvent for the sandbox job and test invites)' },
+      ]},
+    ]},
+
+  { t: 'Demo day guests', sub: 'One calendar invite per job, for the first day of construction', color: 'reveals', side: 'r',
+    about: 'One Google Calendar event per job, on the organizer’s calendar, like reveal invites. Checking off Set Start Date in JobTread sends it; the Demo task decides the day. The site never cancels one.',
+    children: [
+      { t: 'The invite', children: [
+        { t: 'Demo day invite', s: 'live', k: 'invite', by: 'auto', preview: 'demo-invite', change: CHANGE.demo,
+          who: 'The family, the internal team (JobTread Admins and Designers), the monetary sponsor (anyone with the Sponsor role on the job in JobTread), and the every-demo-day list, such as social media.',
+          when: 'Set Start Date is checked off in JobTread, for the date on the Demo task. Not when one was already sent by hand from the organizer’s calendar.',
+          subject: '{name}’s Demo Day',
+          does: 'The date and time (the Demo task’s, or the default 9:00 AM for an hour), the full address, the kid’s page, and a request to accept or decline.',
+          touches: ['Google Calendar', 'JobTread', 'D1'], where: 'functions/api/_demo-invites.js (planDemo)',
+          info: 'The every-demo-day list is kept in Reveals → Demo Day; everyone else comes from JobTread. Send it to me makes a separate TEST invite inviting only you.',
+          live: demoLive('sent') },
+        { t: 'Changed demo day invite', s: 'live', k: 'invite', by: 'auto', preview: 'demo-invite-update', change: CHANGE.demo,
+          who: 'Everyone on the invite.',
+          when: 'The Demo task moves, the address changes, or someone is added or taken off. A change to staff guests only goes quietly.',
+          subject: 'Updated invitation: {name}’s Demo Day',
+          does: 'Google’s “Updated invitation” email with the new details. Wording edits alone never re-send.',
+          touches: ['Google Calendar', 'JobTread', 'D1'], where: 'functions/api/_demo-invites.js (reconcileDemo, the 5-minute check)',
+          live: demoLive('updated') },
       ]},
     ]},
 
@@ -520,6 +552,19 @@ const MAP = { t: 'Everything we send', children: [
           subject: '[SOARD] {kid}’s reveal invite is still out',
           does: 'The invite is still on everyone’s calendar, and how to cancel it if the reveal is off.',
           touches: ['Resend', 'Slack'], where: 'functions/api/_reveal-invites.js (inviteAlert)' },
+        { t: 'Demo day invite problem', s: 'live', k: 'email', by: 'auto', preview: 'staff-demo-problem', change: CHANGE.demo,
+          who: 'The invite alert list, the organizer, and Peter.',
+          when: 'A demo day invite can’t be sent or updated.',
+          subject: '[SOARD] Demo day invite problem: {kid}',
+          does: 'What Google or JobTread said, and the fix.',
+          touches: ['Resend', 'Slack'], where: 'functions/api/_demo-invites.js (demoAlert)',
+          live: (f) => (!f.demoInvites ? null : f.demoInvites.problems ? ATTN(`${plural(f.demoInvites.problems, 'demo day invite has', 'demo day invites have')} a problem right now. Reveals → Demo Day shows which.`) : ON('No demo day invite has a problem right now.')) },
+        { t: 'Demo day heads-up', s: 'live', k: 'email', by: 'auto', preview: 'staff-demo-heads-up', change: CHANGE.demo,
+          who: 'The invite alert list, the organizer, and Peter.',
+          when: 'Set Start Date is checked off but the Demo task has no date, or a job is closed or put on hold while its demo day invite is out. Once each.',
+          subject: '[SOARD] {kid}’s demo day invite is waiting',
+          does: 'What JobTread says and what to do: give the Demo task its date, or delete the invite in Google Calendar if demo day is off.',
+          touches: ['Resend', 'Slack'], where: 'functions/api/_demo-invites.js (demoAlert)' },
         { t: 'Kid profile hidden', s: 'live', k: 'email', by: 'auto', preview: 'staff-kid-hidden',
           who: 'Peter.',
           when: 'JobTread marks a kid’s job Denied and the site takes the profile off Meet the Kids.',
@@ -891,7 +936,7 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
       const b = await r.json().catch(() => null);
       if (!r.ok || !b?.success) throw new Error(b?.error || `HTTP ${r.status}`);
       const text = b.kind === 'invite'
-        ? `A TEST ${b.stage === 'confirmed' ? 'confirmed' : 'save-the-date'} invite is on its way to ${b.sentTo}. It’s on the office sandbox job, and nobody else is invited.`
+        ? (b.stage === 'demo' ? `A TEST demo day invite is on its way to ${b.sentTo}. Nobody else is invited.` : `A TEST ${b.stage === 'confirmed' ? 'confirmed' : 'save-the-date'} invite is on its way to ${b.sentTo}. It’s on the office sandbox job, and nobody else is invited.`)
         : b.kind === 'text'
           ? `${b.count === 1 ? 'Texted' : `${b.count} texts sent`} to ${b.sentTo}, each starting [Preview].${b.failed ? ` ${b.failed} didn’t go: ${b.error || 'Twilio refused them'}.` : ''}`
           : `Sent to ${b.sentTo}. Look for [Preview] in the subject.`;
@@ -947,7 +992,7 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
           </dl>
           <p class="mm-invite-desc">${v.description}</p>
         </div>
-        <p class="mm-note">A sample reveal a week from now, with the wording saved in Reveals → Invites. Google adds its own Yes / No / Maybe buttons and the calendar details around it.</p>
+        <p class="mm-note">${p.note || 'A sample reveal a week from now, with the wording saved in Reveals → Invites.'} Google adds its own Yes / No / Maybe buttons and the calendar details around it.</p>
       </div>`;
     }
     if (p.html) {
@@ -994,7 +1039,7 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
       <div class="mm-body" tabindex="0" role="region" aria-label="The message">${body()}</div>
       <div class="mm-foot">
         <p class=${send.state === 'ok' ? 'is-ok' : send.state === 'error' ? 'is-bad' : ''} aria-live="polite">${send.state === 'ok' || send.state === 'error' ? send.text
-          : !p ? '' : p.send === 'invite' ? 'Send it to me makes a separate TEST invite on the office sandbox job, inviting only you.'
+          : !p ? '' : p.send === 'invite' ? (p.testNote || 'Send it to me makes a separate TEST invite on the office sandbox job, inviting only you.')
           : p.send === 'email' ? (showing === 'email' ? 'Send it to me emails this copy to you, with [Preview] in the subject.' : 'Texts and browser alerts can’t be sent as a preview. Switch to Email to send that one to yourself.')
           : p.channel === 'jobtread' ? 'JobTread sends this one from the family’s account, so it can’t be sent to you from here.'
           : p.send === 'text' ? (!p.texting ? 'Texting isn’t connected yet (the Twilio keys in Cloudflare).'

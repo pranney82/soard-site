@@ -6401,9 +6401,9 @@
       ending: { label: 'Reconnecting', color: '#FFD500' },
       replay: { label: 'Replay', color: '#38A169' },
     };
-    const BC_TABS = [['now', 'Now'], ['invites', 'Invites'], ['history', 'History'], ['settings', 'Settings']];
+    const BC_TABS = [['now', 'Now'], ['invites', 'Invites'], ['demo', 'Demo Day'], ['history', 'History'], ['settings', 'Settings']];
     // #broadcast/control-room (every Slack post links there) opens Now, where the control room lives
-    const bcTabFromHash = () => (location.hash.startsWith('#broadcast/settings') ? 'settings' : location.hash.startsWith('#broadcast/history') ? 'history' : (location.hash.startsWith('#broadcast/invites') || location.hash.startsWith('#reveal-invites')) ? 'invites' : 'now');
+    const bcTabFromHash = () => (location.hash.startsWith('#broadcast/settings') ? 'settings' : location.hash.startsWith('#broadcast/history') ? 'history' : location.hash.startsWith('#broadcast/demo') ? 'demo' : (location.hash.startsWith('#broadcast/invites') || location.hash.startsWith('#reveal-invites')) ? 'invites' : 'now');
     const bcFmt = (iso) => iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
     const bcAgo = (iso) => {
       if (!iso) return 'never';
@@ -6627,6 +6627,21 @@
       useEffect(load, []);
       if (err) return html`<${LoadErrorCard} error=${`Could not load the emails and invites map: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
       return mod ? html`<${mod.MessagesMap} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
+    }
+
+    // Reveals → Demo Day: calendar invites for each job's demo day (Set Start Date
+    // checked off in JobTread), kept in ./demo-invites.js and loaded on first visit.
+    let demoInvitesModule = null;
+    function DemoInvitesLazy(props) {
+      const [mod, setMod] = useState(null);
+      const [err, setErr] = useState(null);
+      const load = () => {
+        demoInvitesModule ||= import('./demo-invites.js');
+        demoInvitesModule.then((m) => setMod(m)).catch((e) => { demoInvitesModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load demo day invites: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      return mod ? html`<${mod.DemoInvitesPanel} ...${props} ConfirmModal=${ConfirmModal} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
     // ─── Broadcast: family invite QR, viewer messages, keepsake ─────────
@@ -7759,6 +7774,7 @@
         <div id="bc-panel" role="tabpanel" aria-labelledby=${`bc-tab-${tab}`}>
           ${tab === 'now' ? html`<${BcNow} ...${ctx} />`
             : tab === 'invites' ? html`<${RevealInvitesPanel} addToast=${addToast} onShowNow=${() => setTab('now')} />`
+            : tab === 'demo' ? html`<${DemoInvitesLazy} addToast=${addToast} />`
             : tab === 'history' ? html`<${BcHistory} ...${ctx} />`
             : html`<${BcSettings} ...${ctx} cfg=${cfg} setCfg=${setCfg} dirty=${dirty} jump=${jump} clearJump=${() => setJump(null)} />`}
         </div>

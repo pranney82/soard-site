@@ -145,6 +145,18 @@ export async function getEvent(token, calendarId, eventId, { fetchImpl = fetch }
   return res.data;
 }
 
+/**
+ * Events on the calendar between two instants (RFC 3339), optionally matching
+ * Google's free-text search `q`. Repeating events come back as their single
+ * days. Cancelled events are left out.
+ */
+export async function listEvents(token, calendarId, { timeMin, timeMax, q, fetchImpl = fetch } = {}) {
+  const params = new URLSearchParams({ singleEvents: 'true', maxResults: '100', timeMin, timeMax, ...(q ? { q } : {}) });
+  const res = await call(token, 'GET', `/calendars/${encodeURIComponent(calendarId)}/events?${params}`, null, fetchImpl);
+  if (!res.ok) throw new Error(`Google Calendar read failed (${res.status}): ${res.data?.error?.message || ''}`.trim());
+  return (res.data?.items || []).filter((e) => e.status !== 'cancelled');
+}
+
 /** Cancel the event (guests get a cancellation). Already gone is fine. */
 export async function cancelEvent(token, calendarId, eventId, { fetchImpl = fetch, sendUpdates = 'all' } = {}) {
   const res = await call(token, 'DELETE', `/calendars/${encodeURIComponent(calendarId)}/events/${eventId}?sendUpdates=${sendUpdates}`, null, fetchImpl);

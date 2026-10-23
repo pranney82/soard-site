@@ -129,7 +129,7 @@ export function realJobFor(testJob, jobs) {
  * location.address) saves a read when the caller has them. Never throws:
  * without a match the job keeps its own address.
  */
-async function borrowRealAddress(grantKey, job, fetchImpl, openJobs = null) {
+export async function borrowRealAddress(grantKey, job, fetchImpl, openJobs = null) {
   if (!isTestJob(job)) return;
   try {
     const jobs = openJobs || (await pave(grantKey, {
@@ -155,11 +155,11 @@ const CONFIRMED_ROLES = { Vendor: 'vendor', Sponsor: 'sponsor', Photographer: 'p
 const BOARD_ROLE = 'Board Member';
 export const BOARD_ROLE_ID = '22PgGdtxTATR';
 // Logins with staff roles that aren't people: the Qualification Committee and the DATAx integration
-const NOT_STAFF = new Set(['selection@soardcharity.com', 'hello@contractorcto.com']);
+export const NOT_STAFF = new Set(['selection@soardcharity.com', 'hello@contractorcto.com']);
 // JobTread logins that aren't where that person wants reveal invites
-const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
-const STAFF_DOMAIN = '@soardcharity.com';
-const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
+export const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
+export const STAFF_DOMAIN = '@soardcharity.com';
+export const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
 const SITE = 'https://sunshineonaranneyday.com';
 // How an invite deleted by hand in Google Calendar is recorded (last_action and the log)
 export const BY_HAND = 'cancelled in Google Calendar';
@@ -277,7 +277,7 @@ export async function writeConfig(DB, patch) {
   return next;
 }
 
-async function pave(grantKey, query, fetchImpl) {
+export async function pave(grantKey, query, fetchImpl) {
   const res = await fetchImpl(JT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -312,11 +312,11 @@ export async function fetchJob(grantKey, jobId, fetchImpl = fetch) {
 /** Who has been given access to a job in JobTread (family, vendors, sponsors…), for the guest list */
 export const JOB_ACCESS = { $: { size: 50 }, nodes: { membership: { isInternal: {}, role: { name: {} }, user: { name: {}, emailAddress: {} } } } };
 
-const normEmail = (e) => {
+export const normEmail = (e) => {
   const x = String(e || '').trim().toLowerCase();
   return EMAIL_ALIASES[x] || x;
 };
-const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');
+export const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');
 
 /**
  * The website's board (People → Board) with each member's private reveal email:
@@ -418,8 +418,8 @@ export async function fetchStaff(grantKey, fetchImpl = fetch) {
     .filter(s => !NOT_STAFF.has(s.email));
 }
 
-const fieldValues = (nodes) => Object.fromEntries((nodes || []).map(v => [v.customField?.id, v.value]));
-const hhmm = (t) => (t ? String(t).slice(0, 5) : null);
+export const fieldValues = (nodes) => Object.fromEntries((nodes || []).map(v => [v.customField?.id, v.value]));
+export const hhmm = (t) => (t ? String(t).slice(0, 5) : null);
 
 function addHour(time) {
   const [h, m] = time.split(':').map(Number);
@@ -433,7 +433,7 @@ function longDate(date) {
 }
 
 /** First name for the title: the matched kid's site name, else the job name's first word */
-function displayName(job, kids) {
+export function displayName(job, kids) {
   const kid = matchKid(job.name, kids, job.id);
   if (kid) return { name: kid.name, slug: kid.slug };
   const base = String(job.name || '').replace(/\(\d{4}\)\s*$/, '').trim();
@@ -560,7 +560,7 @@ function hasFacts(ev, plan) {
     && (!plan.facts.details || String(ev.description || '').includes(plan.facts.details));
 }
 
-async function hashOf(value) {
+export async function hashOf(value) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)));
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
 }
@@ -586,7 +586,7 @@ async function logInvite(DB, { jobId, action, state, guests, revealDate }) {
  * organizer, plus Slack when configured. Only called for a new problem, so a
  * stuck job doesn't email on every JobTread change.
  */
-const alertList = (env, config) => [...new Set([
+export const alertList = (env, config) => [...new Set([
   ...(config.alertEmails || DEFAULT_ALERT_EMAILS), config.organizer,
   ...String(env.ALERT_EMAILS || '').split(',').map(s => s.trim()),
 ].filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '')))];
@@ -659,7 +659,7 @@ async function alertHeld(env, config, { jobId, name, reason, taskId }) {
   ]);
 }
 
-function escapeHtml(s) {
+export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
@@ -671,7 +671,7 @@ function escapeHtml(s) {
  * its turn (it may carry the newer change, and re-reads JobTread once it has
  * the lock); the checks just skip a busy job and catch it next time.
  */
-async function lockJob(DB, jobId, wait) {
+export async function lockJob(DB, jobId, wait) {
   for (let i = 0; i < (wait ? LOCK_TRIES : 1); i++) {
     if (i) await new Promise((r) => setTimeout(r, LOCK_RETRY_MS));
     const t = Date.now();
@@ -683,7 +683,7 @@ async function lockJob(DB, jobId, wait) {
   return false;
 }
 
-const unlockJob = (DB, jobId) => DB.prepare('DELETE FROM reveal_invite_locks WHERE job_id = ?').bind(jobId).run().catch(() => {});
+export const unlockJob = (DB, jobId) => DB.prepare('DELETE FROM reveal_invite_locks WHERE job_id = ?').bind(jobId).run().catch(() => {});
 
 /**
  * Make the calendar match JobTread for one job. Sends nothing unless the

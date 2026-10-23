@@ -126,6 +126,7 @@ export function entryFor(type, subject = '') {
   const s = String(subject || '');
   if (/^\[(preview|test|test run|rehearsal)\]\s|^TEST · |^\[SOARD Live\] TEST · |^\[SOARD\] TEST · /i.test(s)) return 'preview';
   if (type === 'reveal-invite-alert') return /still out/i.test(s) ? 'staff-invite-held' : 'staff-invite-problem';
+  if (type === 'demo-invite-alert') return /still out|is waiting/i.test(s) ? 'staff-demo-heads-up' : 'staff-demo-problem';
   // Every staff alert (alertAdmins) shares one tag: its title says which it is
   if (type === 'live-alert' || /^\[SOARD Live\] /.test(s)) return alertEntry(s.replace(/^\[SOARD Live\] /, ''));
   if (type === 'application-waitlist' && /^(Applications are open|The applications-open email|Waitlist|Kit)/i.test(s)) return 'staff-waitlist';

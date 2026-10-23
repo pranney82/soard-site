@@ -28,7 +28,7 @@ import { MindMap, prepareMap, Ago, STATUS, MIN, HOUR, ms, ago, stamp, stale, plu
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 21, 2026';
+const WRITTEN_ON = 'October 22, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -154,7 +154,7 @@ const MAP = { t: 'SOARD', children: [
           does: 'Wakes the invite engine for that job.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgPECxg6UP') },
         { t: 'Task checked or un-checked', s: 'live', k: 'event',
           when: 'Any task’s progress changes (JobTread can’t tell the site which group a task is in, so the site counts Demo and Construction itself).',
-          does: 'Wakes the invite engine, so construction starting sends the tentative invite. Skips the countdown check.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgYwQvKkTs') },
+          does: 'Wakes the invite engine, so construction starting sends the tentative invite, and Set Start Date checked off sends the demo day invite. Skips the countdown check.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgYwQvKkTs') },
         { t: 'Confirmed, notes or status changed', s: 'live', k: 'event',
           when: 'Reveal Date Confirmed, Reveal Invite Details, job status or closed date changes.',
           does: 'Wakes the invite engine for that job.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgPED4vi7W') },
@@ -190,6 +190,24 @@ const MAP = { t: 'SOARD', children: [
           does: 'Emails Peter and the organizer, and posts to Slack once Slack is connected.',
           touches: ['Resend', 'Slack'], where: 'functions/api/_reveal-invites.js',
           live: (f) => (!env(f) ? null : !f.env.resend ? ATTN('RESEND_API_KEY is missing, so problem alerts can’t be emailed.') : ON(f.env.slack ? 'By email and Slack.' : 'By email only: Slack isn’t connected.')) },
+        { t: 'Demo day invites', s: 'live', k: 'event',
+          when: 'A job’s Set Start Date task is checked off in JobTread (the “Task checked or un-checked” workflow wakes it), and every 5 minutes on the live hub’s heartbeat.',
+          does: 'Sends “Max’s Demo Day” for the date on the job’s Demo task, at its time or the default (9:00 AM, an hour), to the family, the internal team, the monetary sponsor (anyone with the Sponsor role on the job in JobTread; the job’s Monetary Sponsor field names which sponsor) and everyone on the every-demo-day list (social media). Nobody else with access to the job. The Demo task moving moves the invite within 5 minutes. An invite already sent by hand from the organizer’s calendar (“demo” and the kid’s name in its title) is left alone. Like reveal invites, the site never cancels one: delete it in Google Calendar. A job closed or on hold keeps its invite and staff get one heads-up; Set Start Date done with no Demo date gets one too.',
+          touches: ['JobTread', 'Google Calendar', 'D1'], where: 'functions/api/_demo-invites.js (from reveal-invites.js and broadcast-hooks.js) · demo-invites-admin.js',
+          info: 'From Clareece’s Google Calendar, like reveal invites. The every-demo-day list is kept in Reveals → Demo Day; everyone else comes from JobTread.',
+          live: (f) => {
+            const d = f.demoInvites;
+            if (!d) return null;
+            if (env(f) && !f.env.calendar) return ATTN('GOOGLE_CALENDAR_KEY is missing in Cloudflare, so no invites can go out.');
+            if (!d.enabled) return OFF('Switched off in Reveals → Demo Day.');
+            if (d.errors) return ATTN(`${plural(d.errors, 'demo day invite')} couldn’t be sent. Retry is on Reveals → Demo Day.`, d.lastCheckAt);
+            if (d.lastCheckAt && stale(d.lastCheckAt, HOUR)) return ATTN(`Hasn’t checked JobTread since ${stamp(d.lastCheckAt)}. It rides on the live hub’s heartbeat, so check the Live hub entry.`, d.lastCheckAt);
+            return ON(`Sending is on. ${plural(d.sent, 'demo day has', 'demo days have')} an invite out${d.byHand ? `, ${d.byHand} sent by hand` : ''}.`, d.lastSentAt || d.lastCheckAt);
+          } },
+        { t: 'Reveals → Demo Day page', s: 'live', k: 'admin',
+          when: 'Staff open Reveals → Demo Day.',
+          does: 'Turn demo day invites on or off, see every demo day coming up with where its invite stands and exactly who gets it, keep the every-demo-day list, edit the wording and the default time, and send a test to yourself. Retry when one fails; Send ours anyway when one was sent by hand. Dates change in JobTread.',
+          touches: ['JobTread', 'Google Calendar', 'D1'], where: 'functions/api/demo-invites-admin.js · public/admin/demo-invites.js' },
         { t: 'Reveals → Invites page', s: 'live', k: 'admin',
           when: 'Staff open Reveals → Invites.',
           does: 'Turn invites on or off, edit the invite wording, preview it and send a test. Turn the reveal checks on or off and preview today’s comments before they post. Retrying a failed invite is on Reveals → Now. Dates and notes are changed in JobTread.',

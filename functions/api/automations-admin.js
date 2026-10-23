@@ -26,6 +26,7 @@
  *  - eventRecap: event pages turning into their recap (last check, last rebuild, a rebuild still waiting)
  *  - jotform:   the one-time Jotform copy (submissions copied, left, families and files added; counts only)
  *  - advisory:  Advisory Board applications (how many, New, the last one and who heard; counts only)
+ *  - demoInvites: demo day invites (the switch, the last 5-minute check, invites out; counts only)
  *
  * Not in _middleware's public list, so Access guards it. Never cached.
  * Each section fails on its own: one unreachable service never blanks the rest.
@@ -44,6 +45,7 @@ import { jobsFacts } from './_companycam-jobs.js';
 import { applicationSettings, pickApplication } from './_applications.js';
 import { capFacts, lastCapNotice } from './_application-cap.js';
 import { trackingState } from './_email-log.js';
+import { demoFacts } from './_demo-invites.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -333,6 +335,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     eventRecap: await settle(() => eventRecapFacts(DB)),
     jotform: await settle(() => backfillFacts(DB)),
     advisory: await settle(() => advisoryFacts(DB)),
+    demoInvites: await settle(() => demoFacts(DB)),
     // Counts, times and on/off only: no names, ids or photos
     companycam: await settle(() => companycamFacts(env)),
     companycamJobs: await settle(() => jobsFacts(env)),
