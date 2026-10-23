@@ -228,3 +228,19 @@ test('what they wrote, without the quoted history mail apps add', () => {
   assert.equal(replyText('On Tuesday we can do 3.\nThanks!'), 'On Tuesday we can do 3.\nThanks!', 'a reply that starts with "On" stays whole');
   assert.equal(replyText(''), '');
 });
+
+test('staff can open a JobTread document’s PDF through the admin (JobTread answers with the PDF itself)', async () => {
+  const admin = await import('../functions/api/applicants-admin.js');
+  const seen = [];
+  globalThis.fetch = async (url, init) => {
+    seen.push(JSON.parse(init.body).query);
+    return new Response('%PDF-1.4 test', { headers: { 'Content-Type': 'application/pdf' } });
+  };
+  const res = await admin.onRequestGet({ env, request: new Request('https://x.test/api/applicants-admin?pdf=22PgPBT4mJm5'), data: { userEmail: 'linzi@soardcharity.com' } });
+  assert.equal(res.headers.get('content-type'), 'application/pdf');
+  assert.equal(await res.text(), '%PDF-1.4 test');
+  assert.deepEqual(seen[0].pdf, { $: { id: 'document', options: { id: '22PgPBT4mJm5' } } });
+  assert.equal((await admin.onRequestGet({ env, request: new Request('https://x.test/api/applicants-admin?pdf=../x'), data: {} })).status, 400, 'only a JobTread id');
+  globalThis.fetch = async () => Response.json({ error: 'nope' }, { status: 400 });
+  assert.equal((await admin.onRequestGet({ env, request: new Request('https://x.test/api/applicants-admin?pdf=22PgPBT4mJm5'), data: {} })).status, 500, 'says so when JobTread sends no PDF');
+});

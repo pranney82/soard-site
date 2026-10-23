@@ -35,6 +35,7 @@ import { applicationSettings, cleanYear } from './_applications.js';
 import { getLiveForm, getFormRules, saveFormRules } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA } from './_application-form.js';
 import { logAudit } from './_audit.js';
+import { JT_URL } from './_reveals.js';
 import {
   sendNow, dontSend, moveBack, pauseEmails, resumeEmails, pauseState, resolveHeld, correctionDraft, sendCorrection,
   runNotifications, overdueCount,
@@ -88,6 +89,23 @@ export async function onRequestGet(context) {
 
   const id = url.searchParams.get('id');
   if (id && !isAccountId(id)) return fail('Bad id');
+
+  // A JobTread document exactly as JobTread prints it (an agreement, an estimate): its PDF, for staff.
+  // JobTread answers this one with the PDF itself, not JSON, so it doesn't go through pave().
+  if (url.searchParams.has('pdf')) {
+    const doc = url.searchParams.get('pdf');
+    if (!isAccountId(doc)) return fail('Bad document id');
+    try {
+      const res = await fetch(JT_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: { $: { grantKey: env.JOBTREAD_GRANT_KEY }, pdf: { $: { id: 'document', options: { id: doc } } } } }),
+      });
+      if (!res.ok || !/pdf/i.test(res.headers.get('content-type') || '')) return fail(`JobTread didn’t return a PDF (${res.status})`, 500);
+      return new Response(res.body, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${doc}.pdf"`, 'Cache-Control': 'private, no-store' } });
+    } catch (e) {
+      return fail(e.message, 500);
+    }
+  }
 
   if (url.searchParams.has('correction')) {
     const cid = url.searchParams.get('correction');
