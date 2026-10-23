@@ -1440,15 +1440,18 @@ function timelineOf(d) {
     else if (/New (incoming|outgoing) _call_/i.test(msg)) kind = 'call';
     else if (c.fromEmail || fromLog.get(c.id)?.source === 'family') kind = 'reply';
     else if (site?.kind === 'note' || /_[^_]+, from the website_$/.test(msg)) kind = 'note';
-    else if (site?.kind === 'sent' || FAMILY_TITLES.has(c.name || '')) kind = 'sent';
+    else if (site?.kind === 'sent' || c.to?.length || FAMILY_TITLES.has(c.name || '')) kind = 'sent';
     else if (c.by === 'Qualification Committee' || /\(automatic\)$/.test(c.name || '') || /^Moved back to /.test(msg)) kind = 'internal';
     items.push({ type: 'msg', kind, at: c.at, c, site });
   }
-  for (const r of d.activity || []) {
+  // Oldest first, so lines written in the same moment keep the order they happened in
+  for (const r of [...(d.activity || [])].reverse()) {
     if (COMMENT_KINDS.has(r.kind)) continue;
     items.push({ type: 'event', kind: r.kind, at: r.at, r });
   }
-  return items.sort((x, y) => String(x.at).localeCompare(String(y.at)));
+  // A status move made from the site leads the lines it set off (its own line is written last)
+  const rank = (it) => (it.type === 'event' && it.kind === 'status' ? 0 : 1);
+  return items.sort((x, y) => String(x.at).localeCompare(String(y.at)) || rank(x) - rank(y));
 }
 
 function textParts(msg) {
@@ -1471,7 +1474,7 @@ function Message({ it }) {
     label = kind === 'textIn' ? `Text from ${p.contact || 'the family'}` : kind === 'textOut' ? `Text to ${p.contact || 'the family'}` : `Call with ${p.contact || 'the family'}`;
     body = kind === 'call' ? (p.summary || 'Call logged (no summary).') : (p.text ?? c.message);
   } else if (kind === 'reply') label = c.fromEmail ? 'Email reply from the family' : 'Message from the family';
-  else if (kind === 'sent') label = `Emailed to the family${site?.by ? ` by ${site.by}` : ''}`;
+  else if (kind === 'sent') label = `Emailed to ${c.to?.length ? namesOf(c.to) : 'the family'}${site?.by ? ` by ${site.by}` : ''}`;
   else if (kind === 'note') label = 'Internal note';
   else if (kind === 'internal') label = 'Staff only';
   else label = 'Comment in JobTread';

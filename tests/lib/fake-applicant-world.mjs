@@ -74,6 +74,7 @@ export function fakeApplicantWorld() {
             id: c.id, name: c.name, message: c.message, createdAt: c.createdAt || null, isFromEmail: !!c.fromEmail, isPinned: !!c.pinned,
             isVisibleToCustomerRoles: false, createdByUser: { id: 'u1', name: c.by || 'Qualification Committee' },
             parentComment: c.parentCommentId ? { id: c.parentCommentId } : null, files: { nodes: [] },
+            aces: { nodes: (c.assignees || []).map(x => ({ membership: { accountType: x.accountType || 'customer', user: { name: x.name, emailAddress: x.emailAddress } } })) },
           })) };
           break;
         }

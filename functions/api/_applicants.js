@@ -681,7 +681,8 @@ export async function getApplicantRow(DB, id) {
 
 export async function activityFor(DB, id, { limit = 300 } = {}) {
   await ensureApplicantSchema(DB);
-  const { results } = await DB.prepare('SELECT * FROM applicant_activity WHERE account_id = ? ORDER BY at DESC LIMIT ?').bind(id, limit).all();
+  // Rows written in the same moment keep the order they happened in
+  const { results } = await DB.prepare('SELECT * FROM applicant_activity WHERE account_id = ? ORDER BY at DESC, rowid DESC LIMIT ?').bind(id, limit).all();
   return (results || []).map(r => ({ id: r.id, at: r.at, kind: r.kind, by: r.by_name, source: r.source, title: r.title, body: r.body, data: parse(r.data, null) }));
 }
 
@@ -711,6 +712,8 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
         nodes: {
           id: {}, name: {}, message: {}, createdAt: {}, isFromEmail: {}, isPinned: {}, isVisibleToCustomerRoles: {},
           createdByUser: { id: {}, name: {} }, parentComment: { id: {} },
+          // Who it's shared with: a message shared with the family's contacts is one JobTread emailed them
+          aces: { nodes: { membership: { accountType: {}, user: { name: {}, emailAddress: {} } } } },
           files: { nodes: { id: {}, name: {}, type: {} } },
         },
       },
@@ -723,6 +726,8 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
   const comments = (data?.account?.comments?.nodes || []).map(c => ({
     id: c.id, name: c.name || null, message: c.message || '', at: c.createdAt, fromEmail: !!c.isFromEmail, pinned: !!c.isPinned,
     by: c.createdByUser?.name || null, parentId: c.parentComment?.id || null, files: (c.files?.nodes || []).map(f => ({ id: f.id, name: f.name, type: f.type })),
+    to: (c.aces?.nodes || []).filter(x => x.membership?.accountType === 'customer' && x.membership.user?.emailAddress)
+      .map(({ membership: { user: u } }) => ({ name: u.name || u.emailAddress, email: u.emailAddress })),
   }));
   const files = (data?.account?.files?.nodes || []).filter(f => !f.job?.id).map(f => ({
     id: f.id, name: f.name, type: f.type, size: f.size, at: f.createdAt, url: f.url, thumb: /^image\//.test(f.type || '') ? f.thumb : null,
@@ -813,7 +818,7 @@ export async function setApplicantStatus(env, accountId, status, { notify = true
   await updateAccountFields(env, accountId, input, fetchImpl);
   // The family's email follows the same timing as a change made in JobTread (./_applicant-notify.js)
   const name = adminName(user);
-  const out = previous === status ? {} : await noteStatus(env, { ...before, status }, { previous, at: new Date(now).toISOString(), by: { name, email: /@/.test(user) ? user : null }, via: 'website', fetchImpl, now });
+  const out = previous === status ? {} : await noteStatus(env, { ...before, status }, { previous, at: new Date(now).toISOString(), by: { name, email: /@/.test(user) ? user : null }, via: 'website', sendingNow: notify && emailNow, fetchImpl, now });
   let email = out.kind ? 'scheduled' : null;
   if (out.kind && !notify) { await dontSend(env, accountId, { user: name, now }); email = 'not sent'; }
   else if (out.kind && emailNow) { const r = await sendNowNotify(env, accountId, { user: name, fetchImpl, now }); email = r.result || 'sent'; }

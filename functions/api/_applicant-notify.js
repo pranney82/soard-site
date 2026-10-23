@@ -202,7 +202,7 @@ const LABEL = { welcome: 'Application Status (welcome)', inReview: 'In Review', 
  *   by:       { name, email } of whoever made it; via: 'jobtread' | 'website' | 'integration'
  * Returns { kind, dueAt, cancelled, unchanged }.
  */
-export async function noteStatus(env, applicant, { previous = null, at = null, by = null, via = 'jobtread', fetchImpl = fetch, now = Date.now() } = {}) {
+export async function noteStatus(env, applicant, { previous = null, at = null, by = null, via = 'jobtread', sendingNow = false, fetchImpl = fetch, now = Date.now() } = {}) {
   const { DB } = env;
   await ensureNotifySchema(DB);
   const s = await settings(env);
@@ -246,7 +246,8 @@ export async function noteStatus(env, applicant, { previous = null, at = null, b
     cancelled = row.kind;
     await log(DB, applicant.id, { title: `Not emailed: ${LABEL[row.kind]}`, body: `The status changed to ${status || 'blank'} before it went out, so the family wasn't emailed.`, by: who, source }, now);
   }
-  if (kind) {
+  // Sent straight away from the status sheet: the history says it was emailed, not when it would have gone
+  if (kind && !(sendingNow && !next.hold)) {
     await log(DB, applicant.id, {
       title: next.hold ? `Held: ${LABEL[kind]} email` : `Email scheduled: ${LABEL[kind]}`,
       body: next.hold ? 'Family emails are paused, so this waits for someone to send it or not.' : `Goes to the family at ${sendTimeText(next.due_at, now)} unless the status changes back first.`,

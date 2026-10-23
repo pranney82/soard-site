@@ -183,6 +183,13 @@ test('"Move and email now" skips the wait; "don\'t email" holds even when JobTre
   const now = await setApplicantStatus(env, b.id, 'Approved', { emailNow: true, ...opts(), now: T0 });
   assert.equal(now.email, 'sent');
   assert.equal(b.comments.filter(c => c.name === 'Application Decision').length, 1);
+  // The history reads in the order it happened: the move, then the email; no "scheduled for 8 AM" line for an email already sent
+  const lines = (await activityFor(env.DB, b.id)).reverse().map(r => r.title);
+  assert.ok(!lines.some(t => /^Email scheduled/.test(t)), `no scheduled line (${lines})`);
+  assert.deepEqual(lines.filter(t => /Approved/.test(t) && !/^Status/.test(t)), ['Send now: Approved', 'Emailed the family: Approved'], `in order (${lines})`);
+  // The conversation shows it as emailed to the family's contacts (JobTread's own record of who it's shared with)
+  const detail = await applicantDetail(env, b.id, opts());
+  assert.deepEqual(detail.comments.find(c => c.name === 'Application Decision').to, [{ name: 'Sam', email: 'sam@example.com' }]);
 
   const out = await setApplicantStatus(env, a.id, 'Approved', { notify: false, ...opts(), now: T0 });
   assert.equal(out.email, 'not sent');

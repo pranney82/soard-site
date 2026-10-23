@@ -270,6 +270,9 @@ await page.click('.apl-thread-banner .btn-primary'); // Send now
 await page.waitForFunction(() => !document.querySelector('.apl-thread-banner'), { timeout: 8000 }).catch(() => null);
 ok(acct('Avery Stone').comments.filter(c => c.name === 'Application In Review').length === 1, 'Send now posts the In Review message once');
 ok(acct('Avery Stone').comments.find(c => c.name === 'Application In Review')?.assignees?.length === 2, 'the In Review message goes to both parents');
+await page.waitForFunction(() => [...document.querySelectorAll('.apl-msg-meta')].some(e => /Emailed to Jordan Stone and Sam Stone/.test(e.textContent)), { timeout: 8000 }).catch(() => null);
+ok(await page.$$eval('.apl-msg-meta', els => els.some(e => /Emailed to Jordan Stone and Sam Stone/.test(e.textContent))), 'the conversation says who it was emailed to (from JobTread’s own record)');
+ok(await page.$$eval('.apl-thread > *', els => { const t = els.map(e => e.textContent); const move = t.findIndex(x => /Moved from Applied/.test(x) && /website/.test(x)); const sent = t.findIndex(x => /Emailed the family: In Review/.test(x)); return move >= 0 && sent > move; }), 'the history reads in order: the move, then the email');
 ok(acct('Avery Stone').comments.find(c => c.name === 'Application In Review')?.grantKey === 'qc-grant', 'posted as the Qualification Committee');
 ok(await page.$$eval('.apl-msg.is-text', els => els.length) === 2, 'texts show as text bubbles');
 ok(await page.$$eval('.apl-msg.is-email', els => els.length) === 1, 'the family’s email reply shows');
