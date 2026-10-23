@@ -160,7 +160,9 @@ const hashFor = ({ tab, slug }) => (slug != null && tab === 'stories' ? `#press/
 
 export function PressArea({ addToast = () => {}, setGlobalDirty = null, press = [], outlets = [], kids = [], partners = [], onReload = () => {}, initialTab = null, initialSlug = null, kit = {} }) {
   injectStyles();
-  const [route, setRoute] = useState(() => readHash() || { tab: ({ found: 'found', 'press-monitor': 'found', outlets: 'outlets', medialogos: 'outlets' })[initialTab] || 'stories', slug: initialSlug ?? undefined });
+  // What the admin asked for (⌘K, the Dashboard, a kid's story link) beats the address; the address beats the default
+  const asked = initialTab != null || initialSlug != null;
+  const [route, setRoute] = useState(() => (!asked && readHash()) || { tab: ({ found: 'found', 'press-monitor': 'found', outlets: 'outlets', medialogos: 'outlets' })[initialTab] || 'stories', slug: initialSlug ?? undefined });
   const [ov, setOv] = useState(null);       // /api/press-admin: monitor state, found articles, link health, changes
   const [ovError, setOvError] = useState(null);
   const [adding, setAdding] = useState(false);

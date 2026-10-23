@@ -86,90 +86,120 @@
     .main > * { animation: fadeIn 0.18s ease-out; }
 
     /* ─── Layout ────────────────────────── */
-    .app { display: flex; min-height: 100vh; }
+    /* --side-w is the sidebar's width: 240px, or the 64px icon rail ([ or the
+       panel button). The content column, the Reveals save bar and the publish
+       tracker all follow it. */
+    .app { --side-w: 240px; display: flex; min-height: 100vh; }
     .sidebar {
-      width: 240px;
+      width: var(--side-w);
       background: var(--color-sidebar);
       color: #fff;
-      padding: 1rem 0 0.75rem;
       position: fixed;
       top: 0; left: 0; bottom: 0;
-      overflow-y: auto;
       z-index: 100;
-      transition: transform 0.28s var(--ease-out);
       display: flex;
       flex-direction: column;
-      border-right: 1px solid rgba(255,255,255,0.04);
-      scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,0.14) transparent;
+      border-right: 1px solid rgba(255,255,255,0.05);
+      transition: transform 0.28s var(--ease-out), width 0.2s var(--ease-out);
     }
     .main {
-      margin-left: 240px;
+      margin-left: var(--side-w);
       flex: 1;
       min-width: 0;
       /* clip, not hidden: hidden would make .main a scroll container and stop position: sticky from working */
       overflow-x: clip;
       /* Content column caps at ~1320px and centers on very wide screens */
-      padding: 2rem max(2rem, calc((100vw - 240px - 1320px) / 2)) 3rem;
+      padding: 2rem max(2rem, calc((100vw - var(--side-w) - 1320px) / 2)) 3rem;
       min-height: 100vh;
+      transition: margin-left 0.2s var(--ease-out);
     }
-    .sidebar-logo {
-      padding: 0.35rem 1.1rem 1rem;
-      margin-bottom: 0.25rem;
-      display: flex;
-      align-items: center;
-      gap: 0.65rem;
+    /* Head (brand, search) and foot (publish, who's signed in) stay put; only the menu scrolls */
+    .side-head { display: grid; gap: 0.6rem; padding: 0.85rem 0.75rem 0.65rem; }
+    .side-brand { display: flex; align-items: center; gap: 0.15rem; min-height: 36px; }
+    .side-brand-link {
+      display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 0;
+      padding: 0.15rem 0.35rem; margin-left: -0.1rem; border-radius: 8px; color: #fff; text-decoration: none;
     }
-    .sidebar-logo img {
-      height: 34px;
-      width: auto;
-      display: block;
-      flex-shrink: 0;
+    .side-brand-link:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-primary); }
+    .side-brand-link img, .side-expand img { height: 30px; width: auto; display: block; flex-shrink: 0; }
+    .side-brand-name { min-width: 0; line-height: 1.15; }
+    .side-brand-name strong { display: block; font-size: 0.92rem; font-weight: 700; letter-spacing: -0.01em; }
+    .side-brand-name small { display: block; font-size: max(11px, 0.72rem); color: rgba(255,255,255,0.55); letter-spacing: 0.01em; }
+    .side-icon-btn {
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+      width: 30px; height: 30px; padding: 0; border: none; border-radius: 7px;
+      background: none; color: rgba(255,255,255,0.55); text-decoration: none;
+      transition: color 0.15s, background 0.15s;
     }
-    .sidebar-logo strong {
-      display: block;
-      font-size: 0.92rem;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      color: #fff;
-      line-height: 1.2;
+    .side-icon-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
+    .side-icon-btn:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-primary); color: #fff; }
+    .side-icon-btn svg, .side-expand svg, .sidebar-search svg, .mobile-bar-link svg {
+      width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
     }
-    .sidebar-logo small {
-      font-size: max(11px, 0.72rem);
-      color: rgba(255,255,255,0.6);
-      display: block;
-      letter-spacing: 0.01em;
+    /* The rail's top: the logo, which turns into "expand" on hover or focus */
+    .side-expand {
+      display: none; position: relative; align-items: center; justify-content: center;
+      width: 44px; height: 40px; padding: 0; border: none; border-radius: 9px; background: none; color: #fff;
     }
+    .side-expand img { height: 28px; transition: opacity 0.15s; }
+    .side-expand svg { position: absolute; width: 19px; height: 19px; opacity: 0; transition: opacity 0.15s; }
+    .side-expand:hover, .side-expand:focus-visible { background: rgba(255,255,255,0.08); outline: none; }
+    .side-expand:focus-visible { box-shadow: inset 0 0 0 2px var(--color-primary); }
+    .side-expand:hover img, .side-expand:focus-visible img { opacity: 0; }
+    .side-expand:hover svg, .side-expand:focus-visible svg { opacity: 1; }
     .sidebar-search {
       display: flex; align-items: center; gap: 0.55rem;
-      margin: 0 0.75rem 0.5rem; padding: 0.5rem 0.65rem;
-      width: calc(100% - 1.5rem);
+      width: 100%; min-height: 34px; padding: 0.4rem 0.6rem;
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 8px;
-      color: rgba(255,255,255,0.62);
+      color: rgba(255,255,255,0.6);
       font-size: 0.86rem;
       text-align: left;
       transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
-    .sidebar-search:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); color: rgba(255,255,255,0.75); }
+    .sidebar-search svg { width: 15px; height: 15px; }
+    .sidebar-search:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); color: rgba(255,255,255,0.78); }
+    .sidebar-search:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-primary); }
+    @media (hover: none) { .sidebar-search kbd { display: none; } }
     .sidebar-search kbd {
       margin-left: auto; font: 500 0.68rem/1 inherit; padding: 3px 5px;
       background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
       border-radius: 4px; color: rgba(255,255,255,0.7);
     }
+    .side-nav {
+      flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+      padding: 0.2rem 0.75rem 0.75rem;
+      scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.14) transparent;
+    }
+    /* Only when the menu is taller than the room: a shadow under the head once it's
+       scrolled, and over the foot while there's more below (data-over / data-more) */
+    .side-head, .side-foot { position: relative; z-index: 1; transition: box-shadow 0.15s; }
+    .sidebar[data-over] .side-head { box-shadow: 0 1px 0 rgba(255,255,255,0.06), 0 8px 12px -8px rgba(0,0,0,0.7); }
+    .sidebar[data-more] .side-foot { box-shadow: 0 -8px 12px -8px rgba(0,0,0,0.7); }
+    .nav-group + .nav-group { margin-top: 0.85rem; }
+    .nav-section {
+      font-size: max(11px, 0.68rem);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: rgba(255,255,255,0.45);
+      padding: 0 0.65rem 0.35rem;
+    }
     .nav-item {
       position: relative;
       display: flex; align-items: center; gap: 0.7rem;
-      margin: 1px 0.75rem;
-      width: calc(100% - 1.5rem);
-      padding: 0.55rem 0.65rem;
-      font-size: 0.93rem;
+      width: 100%; min-height: 32px;
+      margin: 1px 0;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.9rem;
       font-weight: 500;
-      color: rgba(255,255,255,0.62);
+      line-height: 1.25;
+      color: rgba(255,255,255,0.66);
       border: none; background: none;
       border-radius: 8px;
       text-align: left;
+      text-decoration: none;
       transition: color 0.15s, background 0.15s;
     }
     .nav-item:hover { color: #fff; background: rgba(255,255,255,0.06); }
@@ -179,34 +209,43 @@
       background: rgba(255,255,255,0.09);
     }
     .nav-item.active::before {
-      content: ''; position: absolute; left: -0.75rem; top: 8px; bottom: 8px;
+      content: ''; position: absolute; left: -0.75rem; top: 7px; bottom: 7px;
       width: 3px; border-radius: 0 3px 3px 0; background: var(--color-primary);
     }
     .nav-item.active .nav-icon { color: var(--color-primary); }
     .nav-icon { width: 1.25rem; height: 1.25rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
     .nav-icon svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .nav-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .nav-count {
       margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px;
       border-radius: 10px; background: var(--color-primary); color: #1A1B1F;
       font-size: max(11px, 0.7rem); font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
       font-variant-numeric: tabular-nums;
     }
-    .nav-section {
-      font-size: max(11px, 0.68rem);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.09em;
-      color: rgba(255,255,255,0.5);
-      padding: 1.15rem 1.4rem 0.4rem;
+    /* A reveal on air: brand yellow and a slow pulse, never red */
+    .nav-live {
+      margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem;
+      height: 20px; padding: 0 0.5rem 0 0.4rem; border-radius: 10px;
+      background: rgba(255,213,0,0.14); color: var(--color-primary);
+      font-size: max(11px, 0.7rem); font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
     }
-    .sidebar-foot {
-      margin-top: auto;
-      padding-top: 0.75rem;
+    .nav-live::before {
+      content: ''; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+      background: var(--color-primary); animation: navLive 1.8s ease-in-out infinite;
     }
+    @keyframes navLive { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,213,0,0.55); } 55% { box-shadow: 0 0 0 5px rgba(255,213,0,0); } }
+    @media (prefers-reduced-motion: reduce) { .nav-live::before { animation: none; } }
+    .side-foot {
+      display: grid; gap: 0.4rem;
+      padding: 0.6rem 0.75rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid rgba(255,255,255,0.07);
+    }
+    .side-foot:empty { display: none; }
     .sidebar-deploy {
+      position: relative;
       display: flex; align-items: center; gap: 0.6rem;
-      margin: 0.25rem 0.75rem 0.6rem; width: calc(100% - 1.5rem);
-      padding: 0.6rem 0.75rem;
+      width: 100%; min-height: 38px;
+      padding: 0.5rem 0.7rem;
       background: var(--color-primary); color: #1A1B1F;
       border: none; border-radius: 9px;
       font-size: 0.9rem; font-weight: 700; text-align: left;
@@ -218,7 +257,52 @@
     .sidebar-deploy:disabled { opacity: 0.7; cursor: progress; }
     .sidebar-deploy .nav-icon svg { stroke-width: 2.2; }
     .sidebar-deploy .nav-count { background: #1A1B1F; color: var(--color-primary); }
-    .sidebar-deploy:focus-visible { box-shadow: 0 0 0 2px var(--color-sidebar), 0 0 0 4px #fff; }
+    .sidebar-deploy:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--color-sidebar), 0 0 0 4px #fff; }
+    /* Who's signed in (Cloudflare Access), and the way out */
+    .side-me { display: flex; align-items: center; gap: 0.6rem; min-height: 40px; padding: 0.1rem 0 0 0.4rem; }
+    .side-avatar {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      display: grid; place-items: center;
+      background: rgba(255,213,0,0.16); color: var(--color-primary);
+      font-size: max(11px, 0.7rem); font-weight: 700; letter-spacing: 0.02em;
+    }
+    .side-me-text { flex: 1; min-width: 0; line-height: 1.2; }
+    .side-me-text strong { display: block; font-size: 0.86rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .side-me-text small { display: block; font-size: max(11px, 0.72rem); color: rgba(255,255,255,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* The rail's labels: a floating tip beside the icon (the sidebar itself clips anything wider) */
+    .nav-tip {
+      position: fixed; left: calc(var(--side-w) + 10px); z-index: 1300; transform: translateY(-50%);
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.34rem 0.6rem; border-radius: 7px;
+      background: #2D2E33; color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+      font-size: 0.82rem; font-weight: 600; white-space: nowrap; pointer-events: none;
+      animation: navTipIn 0.12s var(--ease-out);
+    }
+    .nav-tip small { font-size: max(11px, 0.74rem); font-weight: 500; color: rgba(255,255,255,0.62); }
+    .nav-tip kbd { font: 500 0.68rem/1 inherit; padding: 2px 5px; border: 1px solid rgba(255,255,255,0.18); border-radius: 4px; color: rgba(255,255,255,0.75); }
+    @keyframes navTipIn { from { opacity: 0; transform: translate(-4px, -50%); } }
+    /* The icon rail (desktop only; phones and tablets use the drawer) */
+    @media (min-width: 1025px) {
+      .app.is-rail { --side-w: 64px; }
+      .is-rail .sidebar .side-head { justify-items: center; padding: 0.85rem 0.5rem 0.65rem; }
+      .is-rail .sidebar .side-brand { display: none; }
+      .is-rail .sidebar .side-expand { display: flex; }
+      .is-rail .sidebar .sidebar-search { width: 44px; justify-content: center; padding: 0.4rem 0; }
+      .is-rail .sidebar .sidebar-search .search-text, .is-rail .sidebar .sidebar-search kbd { display: none; }
+      .is-rail .sidebar .side-nav { padding: 0.2rem 0.5rem 0.75rem; }
+      .is-rail .sidebar .nav-section { height: 1px; margin: 0 0.6rem 0.6rem; padding: 0; overflow: hidden; color: transparent; background: rgba(255,255,255,0.1); }
+      .is-rail .sidebar .nav-item { width: 44px; min-height: 40px; margin: 2px auto; padding: 0; justify-content: center; }
+      .is-rail .sidebar .nav-item.active::before { left: -0.5rem; }
+      .is-rail .sidebar .nav-label, .is-rail .sidebar .nav-live-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      .is-rail .sidebar .nav-count { position: absolute; top: 2px; right: 0; min-width: 17px; height: 17px; padding: 0 4px; font-size: 11px; box-shadow: 0 0 0 2px var(--color-sidebar); }
+      .is-rail .sidebar .nav-live { position: absolute; top: 5px; right: 5px; height: auto; padding: 0; background: none; }
+      .is-rail .sidebar .side-foot { justify-items: center; padding-left: 0.5rem; padding-right: 0.5rem; }
+      .is-rail .sidebar .sidebar-deploy { width: 44px; min-height: 40px; padding: 0; justify-content: center; }
+      .is-rail .sidebar .sidebar-deploy .nav-count { position: absolute; top: -6px; right: -6px; box-shadow: 0 0 0 2px var(--color-sidebar); }
+      .is-rail .sidebar .side-me { padding: 0; justify-content: center; }
+      .is-rail .sidebar .side-me-text, .is-rail .sidebar .side-signout { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) { .sidebar, .main { transition: none; } .nav-tip { animation: none; } }
 
     /* ─── Hub Tabs ─────────────────────── */
     .hub-tabs {
@@ -312,18 +396,20 @@
       .mobile-bar-brand { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1; }
       .mobile-bar-brand img { height: 28px; width: auto; display: block; }
       .mobile-bar-brand span { font-size: 0.95rem; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
-      .mobile-bar-search {
-        display: flex; align-items: center; justify-content: center;
+      .mobile-bar-search, .mobile-bar-link {
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
         width: 44px; height: 44px; border: none; border-radius: 10px;
         background: transparent; color: rgba(255,255,255,0.75);
         -webkit-tap-highlight-color: transparent;
       }
-      .mobile-bar-search:active { background: rgba(255,255,255,0.08); }
+      .mobile-bar-link svg { width: 19px; height: 19px; }
+      .mobile-bar-search:active, .mobile-bar-link:active { background: rgba(255,255,255,0.08); }
       .hamburger { display: flex; }
-      .sidebar { top: calc(56px + env(safe-area-inset-top, 0px)); transform: translateX(-100%); width: min(300px, 85vw); padding-top: 0.75rem; }
-      .sidebar.open { transform: translateX(0); overscroll-behavior: contain; box-shadow: var(--shadow-lg); }
-      .sidebar .sidebar-logo { display: none; }
-      .nav-item { padding-top: 0.7rem; padding-bottom: 0.7rem; }
+      /* Closed, the drawer is out of the tab order too (visibility waits for the slide) */
+      .sidebar { top: calc(56px + env(safe-area-inset-top, 0px)); transform: translateX(-100%); width: min(300px, 85vw); visibility: hidden; transition: transform 0.28s var(--ease-out), visibility 0s linear 0.28s; }
+      .sidebar.open { transform: translateX(0); visibility: visible; transition: transform 0.28s var(--ease-out); overscroll-behavior: contain; box-shadow: var(--shadow-lg); }
+      .side-brand, .side-expand { display: none; }
+      .nav-item { min-height: 44px; }
       .overlay { top: calc(56px + env(safe-area-inset-top, 0px)); }
       .overlay.open { display: block; }
       body:has(.sidebar.open) { overflow: hidden; }
@@ -1333,7 +1419,7 @@
     .bc-check-detail { font-size: .8rem; color: var(--color-text-muted); overflow-wrap: anywhere; line-height: 1.5; }
     /* Fixed, so it lines up with the content column whatever card it sits under */
     .bc-settings.is-dirty { padding-bottom: 4.5rem; }
-    .bc-savebar { position: fixed; bottom: 1rem; left: calc(240px + max(2rem, (100vw - 240px - 1320px) / 2)); right: max(2rem, (100vw - 240px - 1320px) / 2); z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; padding: .7rem .8rem .7rem 1.1rem; background: #1A1B1F; color: #fff; border-radius: 12px; box-shadow: var(--shadow-lg); font-weight: 600; font-size: .9rem; }
+    .bc-savebar { position: fixed; bottom: 1rem; left: calc(var(--side-w, 240px) + max(2rem, (100vw - var(--side-w, 240px) - 1320px) / 2)); right: max(2rem, (100vw - var(--side-w, 240px) - 1320px) / 2); z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; padding: .7rem .8rem .7rem 1.1rem; background: #1A1B1F; color: #fff; border-radius: 12px; box-shadow: var(--shadow-lg); font-weight: 600; font-size: .9rem; }
     .bc-savebar .btn-ghost { color: #fff; border-color: rgba(255,255,255,.35); background: transparent; box-shadow: none; }
     .bc-savebar .btn-ghost:hover { background: rgba(255,255,255,.08); }
     @media (max-width: 768px) {
@@ -1695,8 +1781,8 @@
     .publish-list__meta { font-size: max(11px, 0.78rem); color: var(--color-text-muted); }
 
     .pub-tracker {
-      position: fixed; left: calc(240px + 1.25rem); bottom: 1.25rem; z-index: 900;
-      width: min(380px, calc(100vw - 240px - 2.5rem)); padding: 0.8rem 1rem 1rem;
+      position: fixed; left: calc(var(--side-w, 240px) + 1.25rem); bottom: 1.25rem; z-index: 900;
+      width: min(380px, calc(100vw - var(--side-w, 240px) - 2.5rem)); padding: 0.8rem 1rem 1rem;
       background: #1A1B1F; color: #fff; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,0.28);
     }
     .pub-tracker.is-failed { box-shadow: inset 4px 0 0 #FFD500, 0 16px 40px rgba(0,0,0,0.28); }
@@ -2344,6 +2430,9 @@
       .form-group input:not([type="checkbox"]):not([type="radio"]),
       .modal-content input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
       .hub-tab, .nav-item, .sidebar-search, .sidebar-deploy { min-height: 44px; }
+      .side-brand-link { min-height: 44px; }
+      .side-icon-btn { width: 44px; height: 44px; }
+      .side-expand { height: 44px; }
       button.chip { min-height: 44px; padding-inline: 0.95rem; }
       .checkbox-label { min-height: 44px; }
       .fav-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
@@ -4605,10 +4694,10 @@
     // part: 'room' (default) | 'preflight' | 'report'
     let controlRoomModule = null;
     function ControlRoomLazy({ part = 'room', ...props }) {
-      const [mod, setMod] = useState(null);
+      const [mod, setMod] = useState(() => lazyNow(controlRoomModule));
       const [err, setErr] = useState(null);
       const load = () => {
-        controlRoomModule ||= import('./control-room.js');
+        controlRoomModule ||= lazyKeep(import('./control-room.js'));
         controlRoomModule.then((m) => setMod(m)).catch((e) => { controlRoomModule = null; setErr(e.message); });
       };
       useEffect(load, []);
@@ -4622,10 +4711,10 @@
     // kept in ./automations.js and loaded on first visit.
     let automationsModule = null;
     function AutomationsLazy() {
-      const [mod, setMod] = useState(null);
+      const [mod, setMod] = useState(() => lazyNow(automationsModule));
       const [err, setErr] = useState(null);
       const load = () => {
-        automationsModule ||= import('./automations.js');
+        automationsModule ||= lazyKeep(import('./automations.js'));
         automationsModule.then((m) => setMod(m)).catch((e) => { automationsModule = null; setErr(e.message); });
       };
       useEffect(load, []);
@@ -4637,10 +4726,10 @@
     // sends, on the same map, kept in ./messages.js and loaded on first visit.
     let messagesModule = null;
     function MessagesLazy(props) {
-      const [mod, setMod] = useState(null);
+      const [mod, setMod] = useState(() => lazyNow(messagesModule));
       const [err, setErr] = useState(null);
       const load = () => {
-        messagesModule ||= import('./messages.js');
+        messagesModule ||= lazyKeep(import('./messages.js'));
         messagesModule.then((m) => setMod(m)).catch((e) => { messagesModule = null; setErr(e.message); });
       };
       useEffect(load, []);
@@ -4653,10 +4742,10 @@
     // loaded on first visit. Nothing to do with reveals.
     let demoInvitesModule = null;
     function DemoInvitesLazy(props) {
-      const [mod, setMod] = useState(null);
+      const [mod, setMod] = useState(() => lazyNow(demoInvitesModule));
       const [err, setErr] = useState(null);
       const load = () => {
-        demoInvitesModule ||= import('./demo-invites.js');
+        demoInvitesModule ||= lazyKeep(import('./demo-invites.js'));
         demoInvitesModule.then((m) => setMod(m)).catch((e) => { demoInvitesModule = null; setErr(e.message); });
       };
       useEffect(load, []);
@@ -5685,6 +5774,18 @@
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [tab, setTab] = useState(bcTabFromHash);
+      // The address follows the tab (#broadcast, #broadcast/invites …) and the tab follows the
+      // address (Back, ⌘K). The first render keeps whatever address brought you here.
+      const tabShown = useRef(false);
+      useEffect(() => {
+        if (!tabShown.current) { tabShown.current = true; return; }
+        if (/^#(broadcast|reveal-invites)\b/.test(location.hash)) history.replaceState(null, '', tab === 'now' ? '#broadcast' : `#broadcast/${tab}`);
+      }, [tab]);
+      useEffect(() => {
+        const follow = () => { if (location.hash.startsWith('#broadcast')) setTab(bcTabFromHash()); };
+        window.addEventListener('hashchange', follow);
+        return () => window.removeEventListener('hashchange', follow);
+      }, []);
       const [busy, setBusy] = useState('');
       const [confirm, setConfirm] = useState(null); // { title, message, danger, confirmLabel, cancelLabel, busyLabel, fn }
       const [cfg, setCfg] = useState(null);         // Settings form, kept across tabs
@@ -20304,13 +20405,15 @@ ${sections || '<p>No one yet.</p>'}
     // Kept in ./applications.js, loaded on first visit.
     let applicationsModule = null;
     function ApplicationsLazy({ addToast }) {
-      const [mod, setMod] = useState(null);
+      const [mod, setMod] = useState(() => lazyNow(applicationsModule));
       const [err, setErr] = useState(null);
       const load = () => {
-        applicationsModule ||= import('./applications.js');
+        applicationsModule ||= lazyKeep(import('./applications.js'));
         applicationsModule.then((m) => setMod(m)).catch((e) => { applicationsModule = null; setErr(e.message); });
       };
       useEffect(load, []);
+      // Leaving the board: the sidebar's count catches up with the families just moved on
+      useEffect(() => () => { applicantsNew.refresh(); }, []);
       if (err) return html`<${LoadErrorCard} error=${`Could not load Applications: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
       return mod ? html`<${mod.ApplicationsArea} addToast=${addToast} RichTextEditor=${RichTextEditor} setGlobalDirty=${setGlobalDirty} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
@@ -20326,13 +20429,14 @@ ${sections || '<p>No one yet.</p>'}
       const kit = { api, toPersonRecord, team, onTeamChanged, onOpenPerson };
       const load = () => loadAdvisory().then(setMod).catch((e) => setErr(e.message));
       useEffect(() => { load(); }, []);
+      // Leaving the list: the badges catch up with what was read or decided there
+      useEffect(() => () => { advisoryNew.refresh(); }, []);
       if (err) return html`<${LoadErrorCard} error=${`Could not load applications: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
       return mod ? html`<${mod.AdvisoryApplications} addToast=${addToast} kit=${kit} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
-    /** People → Applications' badge: how many are New */
+    /** People → Applications' badge: how many are New (the same count as People's in the sidebar) */
     function AdvisoryNewBadge() {
-      const [n, setN] = useState(0);
-      useEffect(() => { loadAdvisory().then((m) => m.newCount()).then(setN).catch(() => {}); }, []);
+      const n = advisoryNew.use();
       return n > 0 ? html`<span class="ppl-tab-count" title=${`${n} new`}>${n}</span>` : null;
     }
 
@@ -20340,10 +20444,10 @@ ${sections || '<p>No one yet.</p>'}
     // ./site-config.js (+ ./site-config-shared.js), loaded on first visit.
     let siteConfigModule = null;
     function SiteConfigLazy(props) {
-      const [mod, setMod] = useState(null);
+      const [mod, setMod] = useState(() => lazyNow(siteConfigModule));
       const [err, setErr] = useState(null);
       const load = () => {
-        siteConfigModule ||= import('./site-config.js');
+        siteConfigModule ||= lazyKeep(import('./site-config.js'));
         siteConfigModule.then((m) => setMod(m)).catch((e) => { siteConfigModule = null; setErr(e.message); });
       };
       useEffect(load, []);
@@ -20357,11 +20461,11 @@ ${sections || '<p>No one yet.</p>'}
     // dialog), passed in as a kit.
     let pressModule = null;
     function PressLazy(props) {
-      const [mod, setMod] = useState(null);
+      const [mod, setMod] = useState(() => lazyNow(pressModule));
       const [err, setErr] = useState(null);
       const kit = useMemo(() => ({ api, PagePreview, ImagePicker, PublishBadge, KdDialog, KdHistoryDialog, useContentHistory, OutletDialog: MediaLogoDialog }), []);
       const load = () => {
-        pressModule ||= import('./press.js');
+        pressModule ||= lazyKeep(import('./press.js'));
         pressModule.then((m) => setMod(m)).catch((e) => { pressModule = null; setErr(e.message); });
       };
       useEffect(load, []);
@@ -20849,20 +20953,16 @@ ${sections || '<p>No one yet.</p>'}
 
       const allItems = useMemo(() => {
         const pages = [
-          { type: 'page', label: 'Dashboard', id: 'dashboard', section: 'Pages' },
-          { type: 'page', label: 'Kids', id: 'kids-hub', section: 'Pages' },
+          // The sidebar's areas first, in its order, then the places inside them
+          ...NAV_ITEMS.map((it) => ({ type: 'page', label: it.label, meta: it.meta, id: it.id, section: 'Pages' })),
           { type: 'page', label: 'Community Projects', id: 'kids-hub', subTab: 'community', section: 'Pages' },
-          { type: 'page', label: 'Partners', id: 'partners-hub', section: 'Pages' },
           { type: 'page', label: 'Community Partners', id: 'partners-hub', subTab: 'community-partners', section: 'Pages' },
           { type: 'page', label: 'Outlets (As Featured strip)', id: 'press-hub', subTab: 'outlets', section: 'Pages' },
           { type: 'page', label: 'Board', id: 'people-hub', subTab: 'board', section: 'Pages' },
           { type: 'page', label: 'Team', id: 'people-hub', subTab: 'team', section: 'Pages' },
           { type: 'page', label: 'Advisory Board', id: 'people-hub', subTab: 'advisory', section: 'Pages' },
-          { type: 'page', label: 'Articles', id: 'articles', section: 'Pages' },
-          { type: 'page', label: 'Events', id: 'events', section: 'Pages' },
           { type: 'page', label: 'Press stories', id: 'press-hub', subTab: 'press', section: 'Pages' },
           { type: 'page', label: 'Found coverage (press monitor)', id: 'press-hub', subTab: 'found', section: 'Pages' },
-          { type: 'page', label: 'Site Config', id: 'site-hub', section: 'Pages' },
           // Site Config's pages (public/admin/site-config-shared.js PAGES)
           ...[['home', 'Homepage'], ['kids', 'Meet the Kids page'], ['how', 'How It Works page'], ['apply', 'Apply page'], ['donate', 'Donate page'],
             ['ways', 'Ways to Give page'], ['partners', 'Partners page'], ['community', 'Community Projects page'], ['resources', 'Resources page'],
@@ -20870,10 +20970,10 @@ ${sections || '<p>No one yet.</p>'}
             ['store', 'Sunny & Ranney page'], ['media', 'Media Kit'], ['org', 'Organization, phone, email, address'], ['social', 'Social links'],
             ['badges', 'Trust badges'], ['newsletter', 'Newsletter']]
             .map(([k, label]) => ({ type: 'page', label, meta: 'Site Config', id: 'site-hub', subTab: k, section: 'Pages' })),
-          { type: 'page', label: 'Publish history', id: 'deploys', section: 'Pages' },
-          { type: 'page', label: 'Broadcast (live reveals)', id: 'broadcast', section: 'Pages' },
-          { type: 'page', label: 'Automations', id: 'automations', section: 'Pages' },
-          { type: 'page', label: 'Emails & invites (everything the site sends)', id: 'messages', section: 'Pages' },
+          { type: 'page', label: 'Reveal invites', meta: 'Reveals', id: 'broadcast', hash: '#broadcast/invites', section: 'Pages' },
+          { type: 'page', label: 'What went out', meta: 'Emails & invites', id: 'messages', hash: '#messages/sent', section: 'Pages' },
+          { type: 'link', label: 'View site', meta: 'sunshineonaranneyday.com', href: '/', section: 'Links' },
+          { type: 'link', label: 'GitHub repository', meta: 'The site’s code', href: 'https://github.com/pranney82/soard', section: 'Links' },
         ];
         const actions = [
           { type: 'action', label: 'Add New Kid', id: 'kids-hub', slug: '', section: 'Actions' },
@@ -20904,17 +21004,35 @@ ${sections || '<p>No one yet.</p>'}
 
       const filtered = useMemo(() => {
         if (!query) return allItems.slice(0, 20);
-        const q = query.toLowerCase();
-        return allItems.filter(item =>
-          item.label.toLowerCase().includes(q) ||
-          (item.meta || '').toLowerCase().includes(q) ||
-          item.section.toLowerCase().includes(q)
-        ).slice(0, 20);
+        const q = query.toLowerCase().trim();
+        // Best match first: the name itself, then a name that starts with it, a word in
+        // the name that starts with it, a name that has it, and last the hints
+        const rank = (item) => {
+          const l = item.label.toLowerCase();
+          if (l === q) return 0;
+          if (l.startsWith(q)) return 1;
+          if (l.split(/[\s(&·-]+/).some((w) => w.startsWith(q))) return 2;
+          if (l.includes(q)) return 3;
+          return (item.meta || '').toLowerCase().includes(q) || item.section.toLowerCase().includes(q) ? 4 : -1;
+        };
+        const hits = allItems.map((item, i) => ({ item, i, r: rank(item) })).filter((x) => x.r >= 0);
+        // Each section stays together, the section with the best match first
+        const best = {};
+        for (const x of hits) best[x.item.section] = Math.min(best[x.item.section] ?? 9, x.r);
+        return hits.sort((a, b) => best[a.item.section] - best[b.item.section] || (a.item.section === b.item.section ? a.r - b.r || a.i - b.i : a.i - b.i))
+          .slice(0, 20).map((x) => x.item);
       }, [query, allItems]);
 
       useEffect(() => { setActiveIdx(0); }, [query]);
 
       const handleSelect = (item) => {
+        if (item.type === 'link') {
+          window.open(item.href, '_blank', 'noopener');
+          onClose();
+          return;
+        }
+        // A place inside an area: its address first, so the area opens on it (or, already open, follows it)
+        if (item.hash) { history.replaceState(null, '', item.hash); window.dispatchEvent(new HashChangeEvent('hashchange')); }
         if (item.type === 'action') {
           onNavigate(item.id, '', item.subTab || null);
         } else if (item.type === 'content') {
@@ -20948,6 +21066,7 @@ ${sections || '<p>No one yet.</p>'}
       const typeIcon = (type) => {
         if (type === 'page') return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>`;
         if (type === 'action') return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>`;
+        if (type === 'link') return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>`;
         return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`;
       };
 
@@ -21006,6 +21125,7 @@ ${sections || '<p>No one yet.</p>'}
         { keys: [mod, 'K'], label: 'Command palette' },
         { keys: [mod, 'S'], label: 'Save current item' },
         { keys: ['?'], label: 'Keyboard shortcuts' },
+        { keys: ['['], label: 'Collapse or expand the sidebar' },
         { keys: ['Esc'], label: 'Close modal / palette' },
         { keys: ['↑', '↓'], label: 'Navigate palette results' },
         { keys: ['Enter'], label: 'Select palette result' },
@@ -21203,10 +21323,165 @@ ${sections || '<p>No one yet.</p>'}
       }, []);
     }
 
+    // ─── The menu: one list for the sidebar, the address bar and ⌘K ───
+    // Grouped by job, each group ordered by how often staff use it (the audit
+    // log, Oct 2026): the daily work, then the public website, then the
+    // machinery. Every area has its own address, so reload, back and forward,
+    // and ⌘-click into a new tab all work.
+    const NAV = [
+      { label: null, items: [
+        { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', hash: '' },
+        { id: 'applications', label: 'Applications', icon: 'applications', hash: '#applications', meta: 'Families applying' },
+        { id: 'kids-hub', label: 'Kids', icon: 'kids', hash: '#kids', meta: 'Kid pages and community projects' },
+        { id: 'demo-day', label: 'Demo Day', icon: 'demoDay', hash: '#demo-day', meta: 'Calendar invites for the first day of construction' },
+        { id: 'broadcast', label: 'Reveals', icon: 'goLive', hash: '#broadcast', meta: 'Live broadcast and invites' },
+      ] },
+      { label: 'Website', items: [
+        { id: 'people-hub', label: 'People', icon: 'team', hash: '#people', meta: 'Team, board, advisors' },
+        { id: 'partners-hub', label: 'Partners', icon: 'partners', hash: '#partners', meta: 'Sponsors and community partners' },
+        { id: 'press-hub', label: 'Press', icon: 'press', hash: '#press', meta: 'Stories, found coverage, outlets' },
+        { id: 'events', label: 'Events', icon: 'events', hash: '#events' },
+        { id: 'articles', label: 'Articles', icon: 'articles', hash: '#articles' },
+        { id: 'site-hub', label: 'Site Config', icon: 'settings', hash: '#site', meta: 'Every public page, page by page' },
+      ] },
+      { label: 'System', items: [
+        { id: 'messages', label: 'Emails & invites', icon: 'mail', hash: '#messages', meta: 'Everything the site sends' },
+        { id: 'automations', label: 'Automations', icon: 'automations', hash: '#automations' },
+        { id: 'audit-log', label: 'Audit log', icon: 'auditLog', hash: '#audit-log', meta: 'Who changed what' },
+        { id: 'deploys', label: 'Publish history', icon: 'history', hash: '#publish-history' },
+      ] },
+    ];
+    const NAV_ITEMS = NAV.flatMap((g) => g.items);
+    // Older addresses, and the ones Slack posts and emails link to
+    const NAV_ALIASES = { 'reveal-invites': 'broadcast', 'go-live': 'broadcast', 'advisory-applications': 'people-hub', deploys: 'deploys' };
+    /** The area an address is in ('dashboard' with no hash), or null for one the menu doesn't know (an in-page anchor) */
+    function viewOfHash(hash = location.hash) {
+      // Demo Day was a Reveals tab first; its old address still opens it
+      if (/^#broadcast\/demo\b/.test(String(hash))) return 'demo-day';
+      const seg = (String(hash).match(/^#([\w-]+)/) || [])[1];
+      if (!seg) return 'dashboard';
+      return NAV_ITEMS.find((it) => it.hash === `#${seg}`)?.id || NAV_ALIASES[seg] || null;
+    }
+    const navIdOf = (view) => (view === 'go-live' ? 'broadcast' : view);
+    // The areas whose tab and open editor the admin itself keeps; they go in the
+    // address too (#kids/community, #people/board/jane-doe, #events/gala-2026).
+    // The other areas keep their own (#press/outlets, #site/faq, #broadcast/invites).
+    const NAV_TABS = { 'kids-hub': ['kids', 'community'], 'people-hub': ['team', 'board', 'advisory', 'applications', 'photos'], 'partners-hub': ['partners', 'community-partners'], articles: [], events: [] };
+    const tabOf = (view, t) => (t && NAV_TABS[view]?.includes(t) && t !== NAV_TABS[view][0] ? t : null);
+    /** Where in one of those areas an address points: { subTab, editSlug } (null for the other areas) */
+    function placeOfHash(view, hash = location.hash) {
+      if (!NAV_TABS[view]) return null;
+      if (view === 'people-hub' && /^#advisory-applications\b/.test(hash)) return { subTab: 'applications', editSlug: null };
+      const parts = String(hash).replace(/^#/, '').split('?')[0].split('/').slice(1).filter(Boolean)
+        .map((x) => { try { return decodeURIComponent(x); } catch { return x; } });
+      const subTab = parts[0] && NAV_TABS[view].includes(parts[0]) ? parts.shift() : null;
+      return { subTab: tabOf(view, subTab), editSlug: parts[0] || null };
+    }
+    /** That place's address: the area's, plus a tab other than the first, plus the open item */
+    function addressOfPlace(view, subTab, editSlug) {
+      const base = addressOf(view);
+      if (base === null || !NAV_TABS[view]) return base;
+      const tab = tabOf(view, subTab);
+      return `${base}${tab ? `/${tab}` : ''}${typeof editSlug === 'string' && editSlug ? `/${encodeURIComponent(editSlug)}` : ''}`;
+    }
+
+    // Areas that load their code on first use: kept once loaded, so going back (or arriving
+    // after a hover started the load) renders on the first frame instead of a spinner
+    const lazyDone = new WeakMap();
+    function lazyKeep(p) { p.then((m) => lazyDone.set(p, m), () => {}); return p; }
+    function lazyNow(p) { return (p && lazyDone.get(p)) || null; }
+    const NAV_PRELOAD = {
+      applications: [() => applicationsModule, (p) => { applicationsModule = p; }, './applications.js'],
+      'demo-day': [() => demoInvitesModule, (p) => { demoInvitesModule = p; }, './demo-invites.js'],
+      broadcast: [() => controlRoomModule, (p) => { controlRoomModule = p; }, './control-room.js'],
+      'press-hub': [() => pressModule, (p) => { pressModule = p; }, './press.js'],
+      'site-hub': [() => siteConfigModule, (p) => { siteConfigModule = p; }, './site-config.js'],
+      messages: [() => messagesModule, (p) => { messagesModule = p; }, './messages.js'],
+      automations: [() => automationsModule, (p) => { automationsModule = p; }, './automations.js'],
+    };
+    /** Start loading an area's code (hover, focus, or a quiet moment after the admin opens) */
+    function preloadArea(id) {
+      const e = NAV_PRELOAD[id];
+      if (!e || e[0]()) return;
+      const p = lazyKeep(import(e[2]));
+      e[1](p);
+      // A failed early load leaves nothing behind: the area's own load tries again
+      p.catch(() => { if (e[0]() === p) e[1](null); });
+    }
+    /** An area's own address: its hash, or the bare admin URL for the Dashboard */
+    const addressOf = (view) => {
+      const it = NAV_ITEMS.find((x) => x.id === navIdOf(view));
+      return it ? it.hash || location.pathname + location.search : null;
+    };
+
+    /** A number or flag the sidebar shows, shared by every reader: one request
+     *  at a time, refreshed while someone's looking and the tab is visible */
+    function sharedPoll(url, read, everyMs) {
+      const s = { v: read(null), at: 0, subs: new Set(), timer: null };
+      const refresh = async () => {
+        s.at = Date.now();
+        try {
+          const r = await fetch(url, { cache: 'no-store' });
+          if (!r.ok) return;
+          const v = read(await r.json());
+          if (v !== s.v) { s.v = v; s.subs.forEach((f) => f(v)); }
+        } catch { /* keeps what it had until the next look */ }
+      };
+      const back = () => { if (!document.hidden && Date.now() - s.at > everyMs / 2) refresh(); };
+      function use() {
+        const [v, setV] = useState(s.v);
+        useEffect(() => {
+          s.subs.add(setV);
+          if (s.subs.size === 1) {
+            s.timer = setInterval(() => { if (!document.hidden) refresh(); }, everyMs);
+            document.addEventListener('visibilitychange', back);
+          }
+          if (Date.now() - s.at > everyMs / 2) refresh();
+          return () => {
+            s.subs.delete(setV);
+            if (!s.subs.size) { clearInterval(s.timer); document.removeEventListener('visibilitychange', back); }
+          };
+        }, []);
+        return v;
+      }
+      return { use, refresh };
+    }
+    // A reveal on air right now (the public site's own live flag)
+    const liveNow = sharedPoll('/api/live-status', (j) => j?.live === true, 60e3);
+    // New advisory board applications: People's badge, and the tab's inside it
+    const advisoryNew = sharedPoll('/api/advisory-applications-admin?count=1', (j) => (j?.success ? j.new || 0 : 0), 300e3);
+    // Families at Applied, waiting for a first look: Applications' badge
+    const applicantsNew = sharedPoll('/api/applicants-count', (j) => (j?.success ? j.applied || 0 : 0), 300e3);
+
+    // Who's signed in, from Cloudflare Access. Nothing to show where Access
+    // isn't in front (local tests), so the sidebar leaves the row out.
+    let identityAsk = null;
+    function useIdentity() {
+      const [me, setMe] = useState(null);
+      useEffect(() => {
+        identityAsk ||= fetch('/cdn-cgi/access/get-identity', { credentials: 'same-origin' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            const email = typeof j?.email === 'string' ? j.email : '';
+            if (!email.includes('@')) return null;
+            const local = email.split('@')[0];
+            const name = String(j.name || '').trim() || local.split(/[._-]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+            const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || local.slice(0, 2).toUpperCase();
+            return { email, name, initials };
+          })
+          .catch(() => null);
+        identityAsk.then(setMe);
+      }, []);
+      return me;
+    }
+
     function App() {
       useA11y();
-      const [view, setView] = useState(() => ((location.hash.startsWith('#demo-day') || location.hash.startsWith('#broadcast/demo')) ? 'demo-day' : (location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#messages') ? 'messages' : location.hash.startsWith('#applications') ? 'applications' : location.hash.startsWith('#site') ? 'site-hub' : location.hash.startsWith('#press') ? 'press-hub' : location.hash.startsWith('#advisory-applications') ? 'people-hub' : 'dashboard'));
-      const [editSlug, setEditSlug] = useState(null);
+      const [view, setView] = useState(() => viewOfHash() || 'dashboard');
+      const viewRef = useRef(view);
+      viewRef.current = view;
+      // An address can point inside an area: a tab, an open item (#people/board/jane-doe)
+      const [editSlug, setEditSlug] = useState(() => placeOfHash(viewOfHash())?.editSlug ?? null);
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);
       const [partners, setPartners] = useState([]);
@@ -21219,7 +21494,12 @@ ${sections || '<p>No one yet.</p>'}
       const [communityPartners, setCommunityPartners] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
-      const [subTab, setSubTab] = useState(() => (location.hash.startsWith('#advisory-applications') ? 'applications' : null));
+      // The icon rail: this person's choice, remembered on this computer
+      const [rail, setRail] = useState(() => { try { return localStorage.getItem('soard-admin-rail') === '1'; } catch { return false; } });
+      const toggleRail = () => setRail((r) => { try { localStorage.setItem('soard-admin-rail', r ? '0' : '1'); } catch { /* still toggles */ } return !r; });
+      const [subTab, setSubTab] = useState(() => placeOfHash(viewOfHash())?.subTab ?? null);
+      const placeNow = useRef(null);
+      placeNow.current = { subTab, editSlug };
       const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
       const [shortcutsOpen, setShortcutsOpen] = useState(false);
       const [deploying, setDeploying] = useState(false);
@@ -21438,6 +21718,12 @@ ${sections || '<p>No one yet.</p>'}
             e.preventDefault();
             setShortcutsOpen(o => !o);
           }
+          // [ — the sidebar to an icon rail and back (desktop; not while typing or in a dialog)
+          if (e.key === '[' && !e.metaKey && !e.ctrlKey && !e.altKey && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) && !e.target.isContentEditable
+            && !document.querySelector('.modal-overlay, .cmd-palette-overlay') && matchMedia('(min-width: 1025px)').matches) {
+            e.preventDefault();
+            toggleRail();
+          }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
@@ -21456,12 +21742,64 @@ ${sections || '<p>No one yet.</p>'}
       };
       const navigate = (v, slug = null, tab = null, filter = null) => {
         if (!confirmDiscard()) return;
+        // The address follows the area. One the caller already set inside it
+        // (#broadcast/invites, #site/newsletter) stays as it is.
+        const to = addressOf(v);
+        if (to !== null && viewOfHash() !== navIdOf(v)) history.pushState(null, '', to);
         setView(v);
         setEditSlug(slug);
         setSubTab(tab);
         setDashboardFilter(filter);
         setSidebarOpen(false);
       };
+      // Back, forward and typed addresses move between areas too (an anchor
+      // the menu doesn't know, or a move inside the same area, is left to the page)
+      useEffect(() => {
+        const onAddress = () => {
+          const v = viewOfHash();
+          const cur = navIdOf(viewRef.current);
+          if (!v) return;
+          const place = placeOfHash(v);
+          const was = placeNow.current;
+          if (v === cur) {
+            // Inside an area the admin keeps: Back closes the open item, Forward opens it again
+            if (!place || (place.subTab === tabOf(cur, was.subTab) && place.editSlug === (was.editSlug || null))) return;
+            if (!confirmDiscard()) { history.pushState(null, '', addressOfPlace(cur, was.subTab, was.editSlug)); return; }
+            setSubTab(place.subTab);
+            setEditSlug(place.editSlug);
+            return;
+          }
+          if (!confirmDiscard()) { history.pushState(null, '', addressOfPlace(cur, was.subTab, was.editSlug)); return; }
+          setView(v);
+          setEditSlug(place?.editSlug ?? null);
+          setSubTab(place?.subTab ?? null);
+          setDashboardFilter(null);
+          setSidebarOpen(false);
+        };
+        window.addEventListener('popstate', onAddress);
+        window.addEventListener('hashchange', onAddress);
+        return () => { window.removeEventListener('popstate', onAddress); window.removeEventListener('hashchange', onAddress); };
+      }, []);
+      // The address follows the tab and the open item in the areas the admin keeps. Opening
+      // an item is a step Back can undo; a tab, or closing the item, just updates the address.
+      const placeWas = useRef({ view, editSlug });
+      useEffect(() => {
+        const was = placeWas.current;
+        placeWas.current = { view, editSlug };
+        if (!NAV_TABS[view] || viewOfHash() !== view) return;
+        const want = addressOfPlace(view, subTab, editSlug);
+        if (want === null || location.hash === want) return;
+        const opened = was.view === view && !was.editSlug && !!editSlug;
+        history[opened ? 'pushState' : 'replaceState'](null, '', want);
+      }, [view, subTab, editSlug]);
+      // A quiet moment after the admin opens: the areas that load their code on first use
+      // start loading, so the first click on each is instant (desktop, and not on Save-Data)
+      useEffect(() => {
+        if (navigator.connection?.saveData || !matchMedia('(min-width: 1025px)').matches) return undefined;
+        const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1));
+        const t = setTimeout(() => idle(() => Object.keys(NAV_PRELOAD).forEach(preloadArea)), 4000);
+        return () => clearTimeout(t);
+      }, []);
       // A part of the admin without `navigate` asks for a view with a 'soard-navigate' event
       useEffect(() => {
         const go = (e) => { if (typeof e.detail === 'string') navigate(e.detail); };
@@ -21519,7 +21857,7 @@ ${sections || '<p>No one yet.</p>'}
         kids: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M6 21v-2a6 6 0 0 1 12 0v2" /></svg>`,
         partners: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m11 17 2 2a1 1 0 1 0 3-3" /><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4" /><path d="m21 3 1 11h-2" /><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3" /><path d="M3 4h8" /></svg>`,
         team: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="9" cy="7" r="3" /><path d="M3 21v-1a5 5 0 0 1 10 0v1" /><circle cx="18" cy="9" r="2.5" /><path d="M15 21v-1a3.5 3.5 0 0 1 7 0v1" /></svg>`,
-        articles: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>`,
+        articles: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z" /></svg>`,
         events: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>`,
         community: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>`,
         faq: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><circle cx="12" cy="17" r="0.5" /></svg>`,
@@ -21534,7 +21872,13 @@ ${sections || '<p>No one yet.</p>'}
         mail: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>`,
         goLive: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" /><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" /><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" /><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" /></svg>`,
         demoDay: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9" /><path d="m18 15 4-4" /><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5" /></svg>`,
-        auditLog: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>`,
+        auditLog: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 12h-2.5a2 2 0 0 0-1.9 1.5l-2.4 8.3a.3.3 0 0 1-.5 0L9.2 2.2a.3.3 0 0 0-.5 0l-2.4 8.3A2 2 0 0 1 4.5 12H2" /></svg>`,
+        history: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l4 2" /></svg>`,
+        external: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>`,
+        panelClose: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /><path d="m16 15-3-3 3-3" /></svg>`,
+        panelOpen: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /><path d="m14 9 3 3-3 3" /></svg>`,
+        logOut: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>`,
+        search: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>`,
         applications: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 3.5h6v2.5H9z" /><path d="M8.5 11h7M8.5 15h4.5" /></svg>`,
         automations: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="8" height="8" x="3" y="3" rx="2" /><path d="M7 11v4a2 2 0 0 0 2 2h4" /><rect width="8" height="8" x="13" y="13" rx="2" /></svg>`,
         pressMonitor: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 12a10 10 0 1 0 10-10" /><path d="M2 16.1A5 5 0 0 1 5.9 20" /><path d="M2 12.05A10 10 0 0 1 9.95 20" /><path d="M2 8.05A15 15 0 0 1 13.95 20" /><circle cx="2" cy="20" r="2" /></svg>`,
@@ -21542,30 +21886,108 @@ ${sections || '<p>No one yet.</p>'}
         x: html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
       };
 
-      const navSections = [
-        { label: null, items: [
-          { id: 'dashboard', icon: icons.dashboard, label: 'Dashboard' },
-        ]},
-        { label: 'Content', items: [
-          { id: 'kids-hub', icon: icons.kids, label: 'Kids' },
-          { id: 'applications', icon: icons.applications, label: 'Applications' },
-          { id: 'people-hub', icon: icons.team, label: 'People' },
-          { id: 'partners-hub', icon: icons.partners, label: 'Partners' },
-          { id: 'articles', icon: icons.articles, label: 'Articles' },
-          { id: 'events', icon: icons.events, label: 'Events' },
-          { id: 'press-hub', icon: icons.press, label: 'Press' },
-        ]},
-        { label: 'Comms', items: [
-          { id: 'broadcast', icon: icons.goLive, label: 'Reveals' },
-          { id: 'demo-day', icon: icons.demoDay, label: 'Demo Day' },
-        ]},
-        { label: 'Site', items: [
-          { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
-          { id: 'automations', icon: icons.automations, label: 'Automations' },
-          { id: 'messages', icon: icons.mail, label: 'Emails & invites' },
-          { id: 'audit-log', icon: icons.auditLog, label: 'Audit Log' },
-        ]},
-      ];
+      // The sidebar's live bits: a reveal on air, and what's waiting for a look
+      const liveOn = liveNow.use();
+      const advisoryCount = advisoryNew.use();
+      const appliedCount = applicantsNew.use();
+      const me = useIdentity();
+      const activeId = navIdOf(view);
+      const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+      const badgeOf = (id) => {
+        if (id === 'applications' && appliedCount) return { n: appliedCount, note: `${plural(appliedCount, 'family waits', 'families wait')} for a first look` };
+        if (id === 'press-hub' && pressNeedsLook) return { n: pressNeedsLook, note: `${plural(pressNeedsLook, 'found article needs', 'found articles need')} a look` };
+        if (id === 'people-hub' && advisoryCount) return { n: advisoryCount, note: `${plural(advisoryCount, 'new advisory application', 'new advisory applications')}` };
+        return null;
+      };
+      // A plain click moves inside the admin; ⌘/Ctrl/Shift/middle click opens the area's address in a new tab
+      const follow = (e, id) => {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        navigate(id);
+      };
+      const isMac = navigator.platform?.includes('Mac');
+
+      // The rail's labels float beside the icon under the pointer or focus
+      const navRef = useRef(null);
+      const [tip, setTip] = useState(null);
+      useEffect(() => {
+        const el = navRef.current;
+        if (!el) return undefined;
+        const railOn = () => el.closest('.app')?.classList.contains('is-rail') && matchMedia('(min-width: 1025px)').matches;
+        const show = (e) => {
+          const t = e.target.closest?.('[data-tip]');
+          if (!t || !el.contains(t) || !railOn()) return;
+          const r = t.getBoundingClientRect();
+          setTip({ text: t.dataset.tip, note: t.dataset.tipNote || '', key: t.dataset.tipKey || '', y: r.top + r.height / 2 });
+        };
+        const hide = (e) => {
+          const t = e.target.closest?.('[data-tip]');
+          if (t && e.relatedTarget && t.contains(e.relatedTarget)) return;
+          setTip(null);
+        };
+        const clear = () => setTip(null);
+        el.addEventListener('mouseover', show);
+        el.addEventListener('focusin', show);
+        el.addEventListener('mouseout', hide);
+        el.addEventListener('focusout', hide);
+        el.addEventListener('scroll', clear, true);
+        return () => {
+          el.removeEventListener('mouseover', show);
+          el.removeEventListener('focusin', show);
+          el.removeEventListener('mouseout', hide);
+          el.removeEventListener('focusout', hide);
+          el.removeEventListener('scroll', clear, true);
+        };
+      }, []);
+      useEffect(() => { setTip(null); }, [rail, view]);
+      // The menu's edges: shadows only while part of it is out of sight
+      useEffect(() => {
+        const side = navRef.current;
+        const list = side?.querySelector('.side-nav');
+        if (!list) return undefined;
+        const edges = () => {
+          side.toggleAttribute('data-over', list.scrollTop > 0);
+          side.toggleAttribute('data-more', list.scrollTop + list.clientHeight < list.scrollHeight - 1);
+        };
+        edges();
+        list.addEventListener('scroll', edges, { passive: true });
+        const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(edges) : null;
+        ro?.observe(list);
+        list.firstElementChild && ro?.observe(list.lastElementChild);
+        return () => { list.removeEventListener('scroll', edges); ro?.disconnect(); };
+      }, []);
+
+      // Widening past tablet size puts the sidebar back beside the page: a drawer left open would keep the page inert
+      useEffect(() => {
+        let mq;
+        try { mq = matchMedia('(min-width: 1025px)'); } catch { return undefined; }
+        const wide = () => { if (mq.matches) setSidebarOpen(false); };
+        mq.addEventListener?.('change', wide);
+        return () => mq.removeEventListener?.('change', wide);
+      }, []);
+      // The phone/tablet drawer: Escape closes it and focus goes back to the menu button;
+      // opening it puts focus on the current area
+      useEffect(() => {
+        if (!sidebarOpen) return undefined;
+        const onKey = (e) => { if (e.key === 'Escape') { setSidebarOpen(false); document.querySelector('.hamburger')?.focus(); } };
+        window.addEventListener('keydown', onKey);
+        const f = requestAnimationFrame(() => navRef.current?.querySelector('.nav-item.active, .nav-item')?.focus({ preventScroll: true }));
+        return () => { window.removeEventListener('keydown', onKey); cancelAnimationFrame(f); };
+      }, [sidebarOpen]);
+
+      const navLink = (it) => {
+        const on = activeId === it.id;
+        const b = badgeOf(it.id);
+        const live = it.id === 'broadcast' && liveOn;
+        return html`<a key=${it.id} href=${it.hash || './'} class="nav-item ${on ? 'active' : ''}" aria-current=${on ? 'page' : null}
+          data-tip=${it.label} data-tip-note=${live ? 'Live now' : b ? b.note : null} onClick=${(e) => follow(e, it.id)}
+          onPointerEnter=${() => preloadArea(it.id)} onFocus=${() => preloadArea(it.id)}>
+          <span class="nav-icon">${icons[it.icon]}</span>
+          <span class="nav-label">${it.label}</span>
+          ${live ? html`<span class="nav-live" aria-hidden="true"><span class="nav-live-text">Live</span></span><span class="sr-only">, live now</span>` : null}
+          ${b ? html`<span class="nav-count" aria-hidden="true">${b.n}</span><span class="sr-only">, ${b.note}</span>` : null}
+        </a>`;
+      };
 
       // Render a list only when its collection actually loaded — a failed
       // fetch shows an error card with Retry, never a fake "No items yet".
@@ -21772,7 +22194,7 @@ ${sections || '<p>No one yet.</p>'}
       };
 
       return html`
-        <div class="app">
+        <div class="app ${rail ? 'is-rail' : ''}">
           ${deleteModal ? html`<${ConfirmModal}
             title="Delete ${deleteModal.item.name}?"
             message="This will permanently remove this ${deleteModal.type} from the site. This cannot be undone."
@@ -21782,67 +22204,73 @@ ${sections || '<p>No one yet.</p>'}
             onCancel=${() => { if (!deleteLoading) setDeleteModal(null); }}
           />` : null}
           <header class="mobile-bar">
-            <button class="hamburger" onClick=${() => setSidebarOpen(!sidebarOpen)} aria-label="${sidebarOpen ? 'Close menu' : 'Open menu'}" aria-expanded=${sidebarOpen}>
+            <button class="hamburger" onClick=${() => setSidebarOpen(!sidebarOpen)} aria-label="${sidebarOpen ? 'Close menu' : 'Open menu'}" aria-expanded=${sidebarOpen} aria-controls="admin-menu">
               ${sidebarOpen ? icons.x : icons.menu}
             </button>
             <div class="mobile-bar-brand">
               <img src="https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128" alt="" />
               <span>SOARD Admin</span>
             </div>
+            <a class="mobile-bar-link" href="/" target="_blank" rel="noopener" aria-label="View site (opens in a new tab)">${icons.external}</a>
             <button class="mobile-bar-search" onClick=${() => setCmdPaletteOpen(true)} aria-label="Search">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
             </button>
           </header>
           <div class="overlay ${sidebarOpen ? 'open' : ''}" onClick=${() => setSidebarOpen(false)} />
 
-          <nav class="sidebar ${sidebarOpen ? 'open' : ''}" aria-label="Admin">
-            <div class="sidebar-logo">
-              <img src="https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128" alt="" />
-              <div><strong>SOARD</strong><small>Content Admin</small></div>
+          <nav id="admin-menu" class="sidebar ${sidebarOpen ? 'open' : ''}" aria-label="Admin" ref=${navRef}>
+            <div class="side-head">
+              <div class="side-brand">
+                <a class="side-brand-link" href="./" onClick=${(e) => follow(e, 'dashboard')} aria-label="SOARD Admin, Dashboard">
+                  <img src="https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128" alt="" />
+                  <span class="side-brand-name"><strong>SOARD</strong><small>Admin</small></span>
+                </a>
+                <a class="side-icon-btn" href="/" target="_blank" rel="noopener" aria-label="View site (opens in a new tab)" title="View site">${icons.external}</a>
+                <button class="side-icon-btn" onClick=${toggleRail} aria-label="Collapse the sidebar" title="Collapse the sidebar ( [ )">${icons.panelClose}</button>
+              </div>
+              <button class="side-expand" onClick=${toggleRail} aria-label="Expand the sidebar" data-tip="Expand the sidebar" data-tip-key="[">
+                <img src="https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128" alt="" />
+                ${icons.panelOpen}
+              </button>
+              <button class="sidebar-search" onClick=${() => setCmdPaletteOpen(true)} data-tip="Search" data-tip-key=${isMac ? '⌘K' : 'Ctrl+K'}>
+                ${icons.search}
+                <span class="search-text">Search</span>
+                <kbd>${isMac ? '⌘K' : 'Ctrl+K'}</kbd>
+              </button>
             </div>
-            <button class="sidebar-search" onClick=${() => setCmdPaletteOpen(true)}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-              Search
-              <kbd>${navigator.platform?.includes('Mac') ? '⌘K' : 'Ctrl+K'}</kbd>
-            </button>
-            ${navSections.map(section => html`
-              ${section.label ? html`<div class="nav-section">${section.label}</div>` : null}
-              ${section.items.map(item => html`
-                <button key=${item.id}
-                  class="nav-item ${view === item.id ? 'active' : ''}"
-                  onClick=${() => navigate(item.id)}>
-                  <span class="nav-icon">${item.icon}</span>
-                  ${item.label}
-                  ${item.id === 'press-hub' && pressNeedsLook ? html`<span class="nav-count" aria-label=${`${pressNeedsLook} found ${pressNeedsLook === 1 ? 'article needs' : 'articles need'} a look`}>${pressNeedsLook}</span>` : null}
-                </button>
+            <div class="side-nav">
+              ${NAV.map((g) => html`
+                <div class="nav-group" role="group" aria-label=${g.label || 'Daily work'} key=${g.label || 'main'}>
+                  ${g.label ? html`<div class="nav-section" aria-hidden="true">${g.label}</div>` : null}
+                  ${g.items.map(navLink)}
+                </div>
               `)}
-            `)}
-            <div class="sidebar-foot">
-            <div class="nav-section">Publishing</div>
-            ${waitingCount > 0 ? html`
-              <button class="sidebar-deploy" onClick=${promptDeploy} disabled=${deploying}
-                title="Saved changes aren’t on the site until you publish">
-                <span class="nav-icon">${icons.deploys}</span>
-                Publish to site <span class="nav-count" aria-label=${`${waitingCount} waiting`}>${waitingCount}</span>
-              </button>
-            ` : building ? html`
-              <button class="nav-item sidebar-publishing" onClick=${() => navigate('deploys')}>
-                <span class="nav-icon"><span class="pub-dot" /></span> Publishing…
-              </button>
-            ` : null}
-            <button class="nav-item ${view === 'deploys' ? 'active' : ''}" onClick=${() => navigate('deploys')}>
-              <span class="nav-icon">${icons.deploys}</span> Publish history
-            </button>
-            <a href="/" class="nav-item" target="_blank">
-              <span class="nav-icon">${icons.globe}</span> View Site ↗
-            </a>
-            <a href="https://github.com/pranney82/soard" class="nav-item" target="_blank">
-              <span class="nav-icon">${icons.github}</span> GitHub ↗
-            </a>
             </div>
+            <div class="side-foot">${[
+              waitingCount > 0 ? html`
+                <button class="sidebar-deploy" onClick=${promptDeploy} disabled=${deploying}
+                  title="Saved changes aren’t on the site until you publish" data-tip="Publish to site" data-tip-note=${`${waitingCount} waiting`}>
+                  <span class="nav-icon">${icons.deploys}</span>
+                  <span class="nav-label">Publish to site</span>
+                  <span class="nav-count" aria-hidden="true">${waitingCount}</span><span class="sr-only">, ${waitingCount} waiting</span>
+                </button>`
+              : building ? html`
+                <a href="#publish-history" class="nav-item sidebar-publishing" onClick=${(e) => follow(e, 'deploys')} data-tip="Publishing…" data-tip-note="See it in Publish history">
+                  <span class="nav-icon"><span class="pub-dot" /></span><span class="nav-label">Publishing…</span>
+                </a>`
+              : null,
+              me ? html`
+                <div class="side-me" data-tip=${me.name} data-tip-note=${me.email}>
+                  <span class="side-avatar" aria-hidden="true">${me.initials}</span>
+                  <span class="side-me-text"><strong>${me.name}</strong><small>${me.email}</small></span>
+                  <a class="side-icon-btn side-signout" href="/cdn-cgi/access/logout" aria-label="Sign out" title="Sign out">${icons.logOut}</a>
+                </div>`
+              : null,
+            ].filter(Boolean)}</div>
           </nav>
+          ${tip ? html`<div class="nav-tip" style=${`top:${tip.y}px`} role="tooltip">${tip.text}${tip.note ? html`<small>${tip.note}</small>` : null}${tip.key ? html`<kbd>${tip.key}</kbd>` : null}</div>` : null}
 
-          <main class="main">
+          <main class="main" inert=${sidebarOpen}>
             <h1 class="sr-only">SOARD Admin</h1>
             ${renderView()}
           </main>
