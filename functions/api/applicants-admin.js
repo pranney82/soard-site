@@ -12,7 +12,6 @@
  * POST { status: { id, status, notify, denialReason } }
  * POST { fields: { id, changes: { key: value } } }
  * POST { message: { id, subject, message } }             → JobTread emails everyone on the account
- * POST { note: { id, message } }                          → internal note
  * POST { archive: { id, archive } }
  * POST { sync: true }                                     → re-read everything now ("Check JobTread now")
  * POST { sync: 'catchup' }                                → just the changes since the last look
@@ -29,7 +28,7 @@
 
 import {
   ensureApplicantSchema, listApplicants, applicantDetail, recentActivity, previewStatus, setApplicantStatus,
-  updateApplicantFields, messageFamily, addNote, archiveApplicant, maybeSyncApplicants, syncState,
+  updateApplicantFields, messageFamily, archiveApplicant, maybeSyncApplicants, syncState,
   isAccountId, STATUSES, FIELDS, replaceBoundary,
 } from './_applicants.js';
 import { applicationSettings, cleanYear } from './_applications.js';
@@ -152,12 +151,6 @@ export async function onRequestPost(context) {
       const id = target(body.message);
       const out = await messageFamily(env, id, { subject: body.message.subject, message: body.message.message, user });
       await audit('message', id, { to: out.to.map(p => p.email).join(', '), subject: body.message.subject || null });
-      return ok(out);
-    }
-    if (body.note) {
-      const id = target(body.note);
-      const out = await addNote(env, id, { message: body.note.message, user });
-      await audit('note', id, {});
       return ok(out);
     }
     if (body.archive) {

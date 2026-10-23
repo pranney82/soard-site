@@ -259,6 +259,11 @@ ok(await page.$eval('.apl-card[data-id="acct00000001"]', el => el.closest('.apl-
 // JobTread's own record of the move just made on the site (it used the site's key): the conversation shows the move once
 await DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, body, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
   .bind('jt-event-echo', 'acct00000001', new Date().toISOString(), 'status', 'Peter Ranney', 'website', 'Status: In Review', 'Was Applied', JSON.stringify({ from: 'Applied', to: 'In Review' })).run();
+// A details change made on the site, and JobTread's record of the same change: shown once
+for (const [id, by, body] of [['site:fields-1', 'Linzi', 'Makeover type: Bedroom, Ramp'], ['jt-fields-echo', 'Linzi Ranney', 'Makeover type: Ramp, Bedroom']]) {
+  await DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, body, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, 'acct00000001', '2026-10-02T15:00:00.000Z', 'fields', by, 'website', 'Makeover type changed', body, JSON.stringify({ changes: [{ field: 'types', to: ['Bedroom', 'Ramp'] }] })).run();
+}
 
 // A long history line, like "No website profile" on an organization's page
 await DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, body, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -284,6 +289,7 @@ ok(await page.$$eval('.apl-msg.is-internal', els => els.some(e => /Medical Condi
 await page.waitForFunction(() => [...document.querySelectorAll('.apl-event')].some(e => /Emailed the family: In Review/.test(e.textContent)), { timeout: 8000 }).catch(() => null);
 ok(await page.$$eval('.apl-event', els => els.some(e => /Moved from Applied/.test(e.textContent))), 'the status change shows in the conversation');
 ok(await page.$$eval('.apl-event', els => els.filter(e => /Moved from Applied/.test(e.textContent) && /website/.test(e.textContent)).length) === 1, 'a move made on the site shows once, not again as JobTread’s record of it');
+ok(await page.$$eval('.apl-event', els => els.filter(e => /Makeover type changed/.test(e.textContent) && /Bedroom, Ramp|Ramp, Bedroom/.test(e.textContent)).length) === 1, 'a details change made on the site shows once too');
 ok(await page.$$eval('.apl-event', els => els.some(e => /Emailed the family: In Review/.test(e.textContent))), 'and so does the email going out');
 ok(/Linzi/.test(await page.$$eval('.apl-event', els => els.map(e => e.textContent).join(' '))), 'with who did it');
 const longLine = await page.evaluate(() => {
@@ -303,16 +309,14 @@ await page.click('.apl-composer .btn-primary');
 await page.waitForFunction(() => !document.querySelector('.apl-composer textarea').value, { timeout: 8000 }).catch(() => null);
 const emailed = acct('Avery Stone').comments.find(c => /visit on Tuesday/.test(c.message));
 ok(emailed?.assignees?.map(x => x.emailAddress).join() === 'jordan@example.com,sam@example.com', `Email family: one JobTread comment assigned to both parents, so JobTread emails each (${emailed?.assignees?.map(x => x.emailAddress)})`);
-// No texting from the site (families text SOARD's Quo number): just email and notes
-ok(await page.$$eval('.apl-modes button', els => els.map(e => e.textContent.trim()).join('|')) === 'Email family|Internal note', 'the composer offers email and an internal note, no texting');
-// Note (⌘+Enter sends)
-await page.click('.apl-modes button:nth-child(2)');
-await page.type('.apl-composer textarea', 'Mom prefers texts after 3pm.');
+// The box only messages the family, through JobTread: no internal note (Peter, Oct 23 2026), no texting (families text SOARD's Quo number)
+ok(!(await page.$('.apl-modes')) && !/Internal note|Text/.test(await text(page, '.apl-composer')) && /Message the family/.test(await text(page, '.apl-composer')), 'the box only messages the family');
+ok((await page.evaluate(async (b) => (await fetch('/api/applicants-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).json(), { note: { id: 'acct00000001', message: 'x' } })).success !== true && !acct('Avery Stone').comments.some(c => c.message === 'x'), 'and the admin API has no internal note to post');
+// ⌘+Enter sends
+await page.type('.apl-composer textarea', 'Thank you! See you Tuesday.');
 await page.keyboard.down('Meta'); await page.keyboard.press('Enter'); await page.keyboard.up('Meta');
 await page.waitForFunction(() => !document.querySelector('.apl-composer textarea').value, { timeout: 8000 });
-ok(acct('Avery Stone').comments.some(c => /^Mom prefers texts/.test(c.message) && c.internal), 'Internal note posted, staff only');
-await page.waitForFunction(() => [...document.querySelectorAll('.apl-msg.is-note')].some(e => /Mom prefers texts/.test(e.textContent)), { timeout: 8000 }).catch(() => null);
-ok(await page.$$eval('.apl-msg.is-note', els => els.some(e => /Mom prefers texts/.test(e.textContent) && !/from the website_/.test(e.textContent))), 'the note shows in the thread (signature tucked away)');
+ok(acct('Avery Stone').comments.find(c => /See you Tuesday/.test(c.message))?.assignees?.length === 2, '⌘+Enter sends it to the family the same way');
 // Edit details in place
 const typesBtn = await page.$$('.apl-type-picks button');
 await typesBtn[3].click(); // Ramp
@@ -334,6 +338,15 @@ ok(!/Avery Stone/.test(await text(page, '.apl-dtitle h2')), 'J moves to the next
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => null);
 ok(!(await page.$('.apl-drawer')), 'Esc closes the family');
+// A family no one can be emailed at: the box says who needs an email address in JobTread, and offers nothing to send
+const evan = acct('Evan Burkett');
+evan.contacts[0].fields[EMAIL] = '';
+await page.click(`.apl-card[data-id="${evan.id}"]`);
+await page.waitForFunction(() => /No one on this family has an email address/.test(document.querySelector('.apl-composer')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+ok(/No one on this family has an email address in JobTread.*Sam Burkett/.test(await text(page, '.apl-composer')) && !(await page.$('.apl-composer textarea')), 'a family no one can be emailed at: the box names who needs an email in JobTread, and offers nothing to send');
+await shot(page, 'desktop-family-no-email');
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => null);
 
 // Status sheet from the drawer: Denied with a reason, without email
 await page.click('.apl-card[data-id="acct00000003"]');

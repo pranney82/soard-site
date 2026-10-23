@@ -403,9 +403,9 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 .apl-event b { color: var(--color-text); }
 .apl-event .apl-pill { font-size: .74rem; }
 .apl-composer { border-top: 1px solid var(--color-border); background: var(--color-bg-card); padding: .75rem 1rem .9rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: .55rem; }
-.apl-modes { display: flex; gap: .3rem; flex-wrap: wrap; }
-.apl-modes button { border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 999px; padding: .32rem .8rem; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; color: var(--color-text-secondary); min-height: 34px; }
-.apl-modes button[aria-pressed="true"] { background: #1A1B1F; border-color: #1A1B1F; color: #fff; }
+.apl-composer-head { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+.apl-composer-head b { font-size: .9rem; }
+.apl-composer-head span { font-size: .78rem; color: var(--color-text-muted); }
 .apl-composer textarea { min-height: 84px; resize: vertical; }
 .apl-composer-foot { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; font-size: .78rem; color: var(--color-text-muted); }
 .apl-composer-foot .btn { margin-left: auto; }
@@ -508,7 +508,7 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
   .apl-kv { grid-template-columns: 1fr; }
   .apl-kv dt { padding-bottom: 0; }
   .apl-composer textarea, .apl-composer input, .apl-kv .form-input, .apl-kv .form-select { font-size: 16px; }
-  .apl-type-picks button, .apl-modes button { min-height: 44px; }
+  .apl-type-picks button { min-height: 44px; }
   .apl-edit { min-height: 44px; display: flex; align-items: center; }
   .apl-icon-btn { width: 44px; height: 44px; }
   .apl-more { min-height: 36px; display: inline-flex; align-items: center; }
@@ -1446,9 +1446,13 @@ function timelineOf(d) {
   }
   // A move made on the site is in the history twice: the site's own line, and JobTread's record of
   // the same change (made with the site's key). Keep the site's, which says who and what was emailed.
-  const siteMoves = (d.activity || []).filter(r => r.kind === 'status' && String(r.id).startsWith('site:'));
-  const echo = (r) => r.kind === 'status' && r.source === 'website' && !String(r.id).startsWith('site:')
-    && siteMoves.some(s => (s.data?.to || '') === (r.data?.to || '') && Math.abs(Date.parse(s.at) - Date.parse(r.at)) < 2 * 60 * 1000);
+  // The same goes for details changed on the site.
+  const echoed = new Set(['status', 'fields']);
+  const siteMoves = (d.activity || []).filter(r => echoed.has(r.kind) && String(r.id).startsWith('site:'));
+  const fieldsOf = (r) => (r.data?.changes || []).map(c => c.field).sort().join();
+  const same = (s, r) => s.kind === r.kind && (r.kind === 'status' ? (s.data?.to || '') === (r.data?.to || '') : fieldsOf(s) === fieldsOf(r));
+  const echo = (r) => echoed.has(r.kind) && r.source === 'website' && !String(r.id).startsWith('site:')
+    && siteMoves.some(s => same(s, r) && Math.abs(Date.parse(s.at) - Date.parse(r.at)) < 2 * 60 * 1000);
   // Oldest first, so lines written in the same moment keep the order they happened in
   for (const r of [...(d.activity || [])].reverse()) {
     if (COMMENT_KINDS.has(r.kind) || echo(r)) continue;
@@ -1524,7 +1528,6 @@ function Conversation({ d, onSent, addToast }) {
   const scroller = useRef(null);
   useEffect(() => { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; }, [items.length, a.id]);
   const emailable = familyEmails(a);
-  const [mode, setMode] = useState(emailable.length ? 'email' : 'note');
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1532,20 +1535,18 @@ function Conversation({ d, onSent, addToast }) {
   const [headOpen, setHeadOpen] = useState(false); // phones: To and Subject, folded until tapped
   const box = useRef(null);
   const send = async () => {
-    if (!text.trim() || busy) return;
+    if (!text.trim() || busy || !emailable.length) return;
     setBusy(true);
-    const body = correcting ? { correction: { id: a.id, subject, message: text } }
-      : mode === 'email' ? { message: { id: a.id, subject, message: text } } : { note: { id: a.id, message: text } };
+    const body = correcting ? { correction: { id: a.id, subject, message: text } } : { message: { id: a.id, subject, message: text } };
     const j = await call(API, body);
     setBusy(false);
     if (!j.success) { addToast(j.error || 'Not sent', 'error'); return; }
-    addToast(correcting ? `Correction sent to ${namesOf(j.to)}` : mode === 'email' ? `Emailed ${namesOf(j.to)} through JobTread` : 'Note added in JobTread', 'success');
+    addToast(`${correcting ? 'Correction sent' : 'Sent'} to ${namesOf(j.to)} through JobTread`, 'success');
     setText('');
     if (correcting) { setCorrecting(false); setSubject(DEFAULT_SUBJECT); }
     onSent();
   };
   const startCorrection = (draft) => {
-    setMode('email');
     setCorrecting(true);
     setHeadOpen(true);
     setSubject(draft.subject);
@@ -1564,25 +1565,24 @@ function Conversation({ d, onSent, addToast }) {
         return html`${sep}${it.type === 'msg' ? html`<${Message} it=${it} key=${it.c.id} />` : html`<${EventLine} r=${it.r} key=${it.r.id} />`}`;
       })}
     </div>
-    <div class=${`apl-composer ${headOpen ? 'is-head-open' : ''}`}>
-      <div class="apl-modes" role="group" aria-label="Send as">
-        <button aria-pressed=${mode === 'email'} onClick=${() => setMode('email')} disabled=${!emailable.length} title=${emailable.length ? '' : 'No email address in JobTread'}>Email family</button>
-        <button aria-pressed=${mode === 'note'} onClick=${() => setMode('note')}>Internal note</button>
-      </div>
-      ${mode === 'email' && !headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label="See who it goes to, or change the subject"><span>To <b>${namesOf(emailable)}</b> · ${subject}</span><em>Edit</em></button>`}
-      ${mode === 'email' && html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">
+    ${!emailable.length ? html`<div class="apl-composer" aria-label="Message the family">
+      <div class="apl-callout is-warn">No one on this family has an email address in JobTread, so there's no one to message yet. Add an email address for ${namesOf(a.contacts || [], 'a contact')} in JobTread and they'll show here.</div>
+    </div>` : html`<div class=${`apl-composer ${headOpen ? 'is-head-open' : ''}`} aria-label="Message the family">
+      <div class="apl-composer-head"><b>Message the family</b><span>Sent through JobTread, which emails it. Replies come back here.</span></div>
+      ${!headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label="See who it goes to, or change the subject"><span>To <b>${namesOf(emailable)}</b> · ${subject}</span><em>Edit</em></button>`}
+      ${html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">
         <div class="apl-to" aria-label="To">To ${emailable.map(c => html`<span class="apl-to-chip" title=${c.email}>${c.name || c.email}</span>`)}</div>
         <input class="form-input" value=${subject} onInput=${e => setSubject(e.target.value)} maxlength="128" aria-label="Subject" />
       </div>`}
       ${correcting && html`<div class="apl-callout">Writing a correction. When it's sent, the site counts ${namesOf(emailable)} as knowing where things stand now. <button class="apl-more" onClick=${() => { setCorrecting(false); setSubject(DEFAULT_SUBJECT); setText(''); }}>Cancel</button></div>`}
       <textarea ref=${box} class="form-input" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
-        placeholder=${mode === 'email' ? 'Write to the family. JobTread emails it from the Qualification Committee, and their reply lands here.' : 'Only staff see notes. Saved on the account in JobTread.'}
+        placeholder="Write to the family. JobTread emails it from the Qualification Committee to everyone listed, and their replies land here."
         aria-label="Message" maxlength="4000"></textarea>
       <div class="apl-composer-foot">
         <span class="apl-kbd-hint">⌘/Ctrl + Enter to send</span>
-        <button class="btn btn-primary" onClick=${send} disabled=${busy || !text.trim()}>${busy ? 'Sending…' : correcting ? 'Send correction' : mode === 'email' ? 'Send email' : 'Add note'}</button>
+        <button class="btn btn-primary" onClick=${send} disabled=${busy || !text.trim()}>${busy ? 'Sending…' : correcting ? 'Send correction' : 'Send'}</button>
       </div>
-    </div>
+    </div>`}
   </section>`;
 }
 

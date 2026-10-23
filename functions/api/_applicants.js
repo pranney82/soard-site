@@ -16,8 +16,8 @@
  *    home, the makeover job. It records who did it and where (JobTread, the
  *    website, DataX, Zapier). It's read forward from a cursor about every
  *    minute and backfilled once to Jan 2025.
- *  - Actions from the site (status, fields, family email, internal note,
- *    archive) go to JobTread first and then refresh the mirror. Families text
+ *  - Actions from the site (status, fields, messaging the family, archive)
+ *    go to JobTread first and then refresh the mirror. Families text
  *    SOARD's Quo number; the site doesn't send texts. A
  *    status change sends the same family message a change made in JobTread
  *    would, through the same send-once claim (./_applicant-comms.js).
@@ -882,15 +882,6 @@ export async function messageFamily(env, accountId, { subject, message, user = '
   }, fetchImpl);
   await logSite(env.DB, accountId, { kind: 'sent', title: `Emailed ${greetingNames(to, { fallback: 'the family' })}`, body: text.slice(0, 4000), data: { commentId, to: to.map(p => p.email), subject }, user, now });
   return { commentId, to };
-}
-
-/** An internal note on the account (staff only in JobTread), signed with who wrote it */
-export async function addNote(env, accountId, { message, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
-  const text = String(message || '').trim();
-  if (!text) throw new Error('Write a note first');
-  const commentId = await postAccountComment(env, { accountId, message: `${text}\n\n_${adminName(user)}, from the website_`.slice(0, 4096), grant: env.JOBTREAD_GRANT_KEY }, fetchImpl);
-  await logSite(env.DB, accountId, { kind: 'note', title: 'Internal note', body: text.slice(0, 4000), data: { commentId }, user, now });
-  return { commentId };
 }
 
 /** Archive (or bring back) the account in JobTread */

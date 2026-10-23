@@ -10,7 +10,7 @@ import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
 import {
   syncAllApplicants, refreshApplicants, syncEvents, backfillActivity, maybeSyncApplicants, listApplicants, getApplicantRow,
-  activityFor, activityFromEvent, setApplicantStatus, previewStatus, updateApplicantFields, messageFamily, addNote,
+  activityFor, activityFromEvent, setApplicantStatus, previewStatus, updateApplicantFields, messageFamily,
   archiveApplicant, applicantDetail, placeOnArea, replaceBoundary, fieldInput, adminName, FIELDS, syncState, childPhotoFile,
 } from '../functions/api/_applicants.js';
 import { handleWorkflowCall, runNotifications, notifyFor } from '../functions/api/_applicant-notify.js';
@@ -232,7 +232,7 @@ test('details: options are checked, Makeover type is a list, empty clears', asyn
   assert.equal(adminName('linzi.ranney@soardcharity.com'), 'Linzi');
 });
 
-test('an email and a note go to JobTread the way staff would post them', async () => {
+test('a message to the family goes to JobTread the way staff would post it, to everyone listed', async () => {
   const a = addAccount({ name: 'Avery Stone', fields: { [F.status]: 'Applied' }, contact: { name: 'Jordan Stone', email: 'jordan@example.com', phone: '+17705550100' } });
   // Every contact listed on the family gets it: a second parent, a grandparent; not one without an email, and an address once
   a.contacts.push({ id: `${a.id}-c2`, name: 'Sam Stone', title: 'Dad', fields: { [EMAIL]: 'sam@example.com' } });
@@ -247,12 +247,8 @@ test('an email and a note go to JobTread the way staff would post them', async (
   assert.deepEqual(out.to.map(t => t.name), ['Jordan Stone', 'Sam Stone', 'Pat Lee']);
   assert.equal((await activityFor(env.DB, a.id)).find(r => r.kind === 'sent').title, 'Emailed Jordan Stone, Sam Stone and Pat Lee');
   assert.equal(msg.grantKey, 'qc-grant');
-  await addNote(env, a.id, { message: 'Mom prefers texts.', user: 'linzi@soardcharity.com', ...opts() });
-  const note = a.comments.find(c => /^Mom prefers texts\./.test(c.message));
-  assert.ok(note.internal);
-  assert.match(note.message, /Linzi, from the website/);
   const kinds = (await activityFor(env.DB, a.id)).map(r => r.kind);
-  assert.deepEqual(kinds.sort(), ['note', 'sent']);
+  assert.deepEqual(kinds, ['sent']);
   // No email: a clear error
   const b = addAccount({ name: 'No Email', fields: { [F.status]: 'Applied' }, comms: false });
   await refreshApplicants(env, [b.id], opts());

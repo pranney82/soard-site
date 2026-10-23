@@ -208,7 +208,7 @@ const MAP = { t: 'Everything we send', children: [
           does: 'Asks the family to disregard the last message, and says where the application really stands.',
           touches: ['JobTread', 'D1'], where: 'functions/api/_applicant-notify.js (correctionDraft, sendCorrection)',
           live: first(needs('jobtread', NO_JT), (f) => (!f.family ? null : ON(sentLine(f.family.correction), f.family.correction?.last))) },
-        { t: 'A note from staff', s: 'live', k: 'jobtread', by: 'staff', key: 'app-note',
+        { t: 'A message from staff', s: 'live', k: 'jobtread', by: 'staff', key: 'app-note',
           who: 'Everyone on the family’s account in JobTread with an email address: parents, guardians and any other contact listed.',
           when: 'Staff write it on the family’s page in Applicants and press Send.',
           subject: 'A message from Sunshine on a Ranney Day (staff can change it)',
