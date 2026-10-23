@@ -83,7 +83,12 @@ const SPONSORS = ['Jackson Healthcare', 'Helen & Jimmy Carlos', 'Beazer', 'SOARF
 
 // ── A pretend Google Calendar: Leo's demo day was already sent by hand ──
 const events = new Map();
-const handEvents = [{ id: 'handmade01', status: 'confirmed', summary: 'CONFIRMED: Leo Demo Day', start: { dateTime: `${easternDay(4)}T09:00:00-04:00` } }];
+const handEvents = [{ id: 'handmade01', status: 'confirmed', summary: 'CONFIRMED: Leo Demo Day', start: { dateTime: `${easternDay(4)}T09:00:00-04:00` }, attendees: [
+  { email: ORGANIZER, organizer: true, self: true, responseStatus: 'accepted' },
+  { email: 'cnielsen@soardcharity.com', responseStatus: 'accepted' },
+  { email: 'family.xmp1@example.com', displayName: 'Leo’s mom', responseStatus: 'accepted' },
+  { email: 'linzi@soardcharity.com', responseStatus: 'needsAction' },
+] }];
 let googleDown = false;
 const googleCalls = [];
 async function fakeFetch(url, init = {}) {
@@ -242,6 +247,7 @@ try {
   const leo = await row(page, 'Leo');
   ok(leo?.chip === 'Sent by hand' && leo.text.includes('(“CONFIRMED: Leo Demo Day”)'.replace(/[“”]/g, '"')), `Leo: found sent by hand, with its title (${leo?.text.slice(0, 160)})`);
   ok(leo?.buttons.includes('Send ours anyway'), 'Leo: Send ours anyway');
+  ok(leo?.text.includes('Answers on the invite sent by hand: 2 coming, 1 not answered yet.'), `Leo: the answers on Clareece's own invite (${leo?.text.match(/Answers[^.]*\./)?.[0]})`);
   const ava = await row(page, 'Ava');
   ok(ava?.chip === 'Ready' && ava.when.endsWith('1:30 PM'), `Ava: ready, at the Demo task's own time (${ava?.when})`);
   ok(ava?.text.includes('Monetary Sponsor: Beazer (Bea Sponsor).'), 'Ava: the sponsor named, with who from it is on the job');
@@ -260,7 +266,7 @@ try {
   const inv = await text(page, '.dd-row .dd-invite');
   ok(inv.startsWith("Max's Demo Day") && inv.includes('Example Way') && inv.includes("Max's bathroom makeover starts with demo day on"), `the invite as sent (${inv.slice(0, 140)})`);
   ok(inv.includes('Meet Max: https://sunshineonaranneyday.com/kids/max-2026/'), 'with the kid\'s page');
-  const guests = await text(page, '.dd-row .dd-guests');
+  const guests = await text(page, '.dd-row > .dd-guests');
   ok(guests.includes('Family') && guests.includes('Internal team') && guests.includes('Christian Nielsen') && !guests.includes('Jen Designer') && !guests.includes('Qualification'), `guests by group, nobody else on the job (${guests})`);
   ok(!guests.includes('Clareece'), 'the organizer is never a guest');
 
@@ -294,8 +300,8 @@ try {
   ok((await row(page, 'Max')).text.includes('Monetary Sponsor: Jackson Healthcare (Jo Giving).'), 'Max\'s row names the sponsor\'s person on the job');
   ok((await text(page, '.dd-who')).includes('Nobody from the sponsor is on this job in JobTread yet: Isla (Brian Robins Family Foundation).'), 'and Max comes off the flag (Isla is still on it)');
   await clickIn(page, 'row:Max', 'See the invite (5 guests)');
-  await until(page, () => document.querySelector('.dd-row .dd-guests'));
-  const g2 = await text(page, '.dd-row .dd-guests');
+  await until(page, () => document.querySelector('.dd-row > .dd-guests'));
+  const g2 = await text(page, '.dd-row > .dd-guests');
   ok(g2.includes('Sponsor') && g2.includes('Jo Giving') && g2.includes('Every demo day') && g2.includes('Mindi (Social media)') && !g2.includes('Jen Designer'), `Max's invite gains the sponsor and Mindi, still not the designer (${g2})`);
 
   // Take Mindi off, then put her back
@@ -328,6 +334,17 @@ try {
   await page.waitForSelector('.dd-list');
   const ava2 = await row(page, 'Ava');
   ok(ava2?.chip === 'Sent', `Ava's invite went out once turned on (${ava2?.chip})`);
+  ok(ava2?.text.includes('Answers: 5 not answered yet.'), `Ava: nobody has answered yet (${ava2?.text.match(/Answers[^.]*\./)?.[0]})`);
+  // Guests answer in their calendars: the page says who's coming
+  const avaEv = [...events.values()].find((e) => e.summary === "Ava's Demo Day");
+  avaEv.attendees = avaEv.attendees.map((a, i) => ({ ...a, responseStatus: ['accepted', 'declined', 'tentative'][i] || 'needsAction' }));
+  await page.reload({ waitUntil: 'networkidle2' });
+  await page.waitForSelector('.dd-list');
+  ok((await row(page, 'Ava')).text.includes('Answers: 1 coming, 1 maybe, 1 can’t make it, 2 not answered yet.'), 'Ava: answers counted');
+  await clickIn(page, 'row:Ava', 'See the invite (5 guests)');
+  await until(page, () => document.querySelector('.dd-row .dd-answers'));
+  const ans = await text(page, '.dd-row .dd-answers');
+  ok(/Coming.+Maybe.+Can’t make it.+Not answered yet/.test(ans) && ans.includes('Bea Sponsor'), `and who, by name (${ans})`);
 
   // Retry Nora (Google is fine now)
   await clickIn(page, 'row:Nora', 'Retry');

@@ -140,7 +140,9 @@ export async function onRequestPost(context) {
     // A new default time is a fact (guests are emailed); new wording reaches invites
     // out when their facts next change, or now when asked
     const rewrite = !!patch.template && body.updateExisting === true;
-    const touched = config.enabled && (rewrite || patch.startTime || patch.minutes);
+    // Turning sending on sends what's ready right away (Set Start Date already checked off)
+    const turnedOn = patch.enabled === true && !before.enabled;
+    const touched = config.enabled && (rewrite || patch.startTime || patch.minutes || turnedOn);
     const updated = touched ? await checkAll(env, { rewrite }) : null;
     return Response.json({ ok: true, config, ...(updated ? { updated } : {}) });
   } catch (err) {

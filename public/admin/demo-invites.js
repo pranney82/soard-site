@@ -107,6 +107,7 @@ const STYLES = `
   .dd-token span { color: var(--color-text-muted); margin-left: 0.35rem; font-family: system-ui, sans-serif; }
   .dd-time { display: flex; flex-wrap: wrap; gap: 0.75rem; }
   .dd-time .form-group { flex: 1 1 9rem; margin: 0; }
+  .dd-answers { margin-top: 0.85rem; }
   .dd-label { display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 0.35rem; }
   .dd-savebar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin-top: 1.25rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }
   .dd-check { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; color: var(--color-text-secondary); }
@@ -148,6 +149,24 @@ function Guests({ guests }) {
           <dd>${groups[k].map((g) => (g.name ? `${g.name}${g.role ? ` (${g.role})` : ''}` : g.email)).join(', ')}</dd>
         </div>`)}
     </dl>`;
+}
+
+// Guests' answers, from Google (on our invite, or on one sent by hand)
+const ANSWERS = [['yes', 'Coming'], ['maybe', 'Maybe'], ['no', 'Can’t make it'], ['waiting', 'Not answered yet']];
+const answersLine = (a) => {
+  const parts = [a.yes.length && `${a.yes.length} coming`, a.maybe.length && `${a.maybe.length} maybe`, a.no.length && `${a.no.length} can’t make it`, a.waiting.length && `${a.waiting.length} not answered yet`].filter(Boolean);
+  return `${a.from === 'by-hand' ? 'Answers on the invite sent by hand' : 'Answers'}: ${parts.join(', ') || 'no guests'}.`;
+};
+function Answers({ a }) {
+  const rows = ANSWERS.filter(([k]) => a[k]?.length);
+  if (!rows.length) return null;
+  return html`
+    <div class="dd-answers">
+      <span class="dd-label">${a.from === 'by-hand' ? 'Answers on the invite sent by hand' : 'Answers so far'}</span>
+      <dl class="dd-guests">
+        ${rows.map(([k, label]) => html`<div class="dd-guests__group" key=${k}><dt>${label}</dt><dd>${a[k].join(', ')}</dd></div>`)}
+      </dl>
+    </div>`;
 }
 
 /** Where a demo day stands: { chip, tone, line, act } */
@@ -195,6 +214,7 @@ function DemoRow({ d, enabled, organizer, organizerName, busy, onTest, onSync })
       </div>
       <p class=${`dd-meta${s.tone === 'warn' ? ' dd-warn' : ''}`}>${s.line}</p>
       <p class=${`dd-meta${sponsorMissing && (d.startSet || d.invite?.state === 'sent') ? ' dd-warn' : ''}`}>${sponsorLine}</p>
+      ${d.answers ? html`<p class="dd-meta">${answersLine(d.answers)}</p>` : null}
       <div class="dd-actions">
         ${s.act === 'retry' ? html`<button class="btn btn-primary btn-sm" disabled=${!!busy} onClick=${() => onSync(d, false)}>${busy === `sync-${d.jobId}` ? html`<span class="spinner" /> Retrying...` : 'Retry'}</button>` : null}
         ${s.act === 'anyway' || s.act === 'again' ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => onSync(d, true)}>${s.act === 'anyway' ? 'Send ours anyway' : 'Send it again'}</button>` : null}
@@ -202,6 +222,7 @@ function DemoRow({ d, enabled, organizer, organizerName, busy, onTest, onSync })
         ${d.preview ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => onTest(d)}>${busy === `test-${d.jobId}` ? html`<span class="spinner" /> Sending...` : 'Send it to me'}</button>` : null}
       </div>
       ${open && d.preview ? html`
+        ${d.answers ? html`<${Answers} a=${d.answers} />` : null}
         <${InviteCard} ...${d.preview} organizer=${organizer} />
         <${Guests} guests=${d.preview.guests} />` : null}
     </li>`;

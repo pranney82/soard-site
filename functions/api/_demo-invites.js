@@ -43,7 +43,11 @@
  * also the safety net for a missed wake-up.
  *
  * Off until turned on in the admin (its own Demo Day page). TEST jobs and the
- * office sandbox send even while off, only to the test guests, marked TEST.
+ * office sandbox send even while off, only to the test guests, marked TEST,
+ * and the 5-minute check keeps following TEST jobs while off, so a whole
+ * rehearsal (Set Start Date, then the Demo task moving) can run before it's on.
+ * The admin shows each invite's answers (yes, no, maybe, not yet) by name,
+ * read from Google, including on an invite someone sent by hand.
  */
 
 import { SOARD_ORG_ID, todayEastern, easternParts, loadKids } from './_reveals.js';
@@ -562,7 +566,7 @@ async function alertDemo(env, inviteConfig, kind, info) {
 // ─── Checks, the admin, tests ───────────────────
 
 /** Open jobs whose demo day is ahead and that are due an invite (or have one out), plus invites out on jobs since closed */
-async function dueJobs(env, { fetchImpl, now }) {
+async function dueJobs(env, { fetchImpl, now, onlyTest = false }) {
   const { DB } = env;
   const today = todayEastern(now);
   const [jobs, rowsRes] = await Promise.all([
@@ -580,7 +584,9 @@ async function dueJobs(env, { fetchImpl, now }) {
     // Due: Set Start Date checked off and the Demo date ahead (or none yet: staff are told)
     if (startSet && (!demo?.startDate || (demo.startDate >= today && (demo.progress ?? 0) < 1))) ids.add(job.id);
   }
-  return [...ids].filter((id) => id !== SANDBOX_JOB_ID && !leftAlone.has(id));
+  // While sending is off, only rehearsals: jobs named "TEST …" (they reach only the test guests)
+  const tests = new Set(jobs.filter(isTestJob).map((j) => j.id));
+  return [...ids].filter((id) => id !== SANDBOX_JOB_ID && !leftAlone.has(id) && (!onlyTest || tests.has(id)));
 }
 
 /**
@@ -594,7 +600,7 @@ export async function maybeCheckDemos(env, { fetchImpl = fetch, now = Date.now()
     const { DB } = env;
     if (!DB || !env.JOBTREAD_GRANT_KEY) return null;
     await ensureSchema(DB);
-    if (!(await readConfig(DB)).enabled) return null;
+    const { enabled } = await readConfig(DB);
     const next = String(now + CHECK_EVERY_MS);
     const at = new Date(now).toISOString();
     const ins = await DB.prepare('INSERT OR IGNORE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(CHECK_KEY, next, at).run();
@@ -602,15 +608,16 @@ export async function maybeCheckDemos(env, { fetchImpl = fetch, now = Date.now()
       const upd = await DB.prepare('UPDATE site_config SET data = ?, updated_at = ? WHERE key = ? AND CAST(data AS INTEGER) <= ?').bind(next, at, CHECK_KEY, now).run();
       if (!(upd?.meta?.changes > 0)) return null;
     }
-    return await checkAll(env, { fetchImpl, now, verify: true });
+    // Off: TEST jobs only, so a rehearsal can run end to end before sending is turned on
+    return await checkAll(env, { fetchImpl, now, verify: true, onlyTest: !enabled });
   } catch {
     return null;
   }
 }
 
 /** Reconcile every job that's due (the 5-minute check, and the admin after a list or wording change) */
-export async function checkAll(env, { fetchImpl = fetch, now = Date.now(), verify = false, rewrite = false } = {}) {
-  const ids = await dueJobs(env, { fetchImpl, now });
+export async function checkAll(env, { fetchImpl = fetch, now = Date.now(), verify = false, rewrite = false, onlyTest = false } = {}) {
+  const ids = await dueJobs(env, { fetchImpl, now, onlyTest });
   if (!ids.length) return [];
   const [staff, kids, people] = await Promise.all([
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
@@ -702,15 +709,13 @@ export async function listDemos(env, { fetchImpl = fetch, now = Date.now() } = {
   const logs = {};
   for (const l of logRes.results || []) (logs[l.job_id] ||= []).push({ action: l.action, guests: l.guests, date: l.demo_date, at: l.created_at });
 
-  // Due an invite and none sent yet: one already sent by hand shows before sending is turned on
+  // Google, for an invite sent by hand (shown before sending is on) and for everyone's answers
   let token = null;
-  const handSent = async (job, plan) => {
-    try {
-      token ||= await accessToken(env, organizer, { fetchImpl, now });
-      const e = await findSentByHand(token, organizer, { date: plan.date, name: plan.name, jobName: job.name }, { fetchImpl });
-      return e ? { title: String(e.summary || '').slice(0, 120), date: e.start?.date || easternParts(e.start?.dateTime || '')?.date || null } : null;
-    } catch { return null; }
+  const google = async () => (token ||= await accessToken(env, organizer, { fetchImpl, now }));
+  const findHand = async (job, plan) => {
+    try { return await findSentByHand(await google(), organizer, { date: plan.date, name: plan.name, jobName: job.name }, { fetchImpl }); } catch { return null; }
   };
+  const staffNames = Object.fromEntries(staff.map((x) => [x.email, { name: x.name }]));
   const demos = [];
   for (const [i, brief] of ahead.entries()) {
     const job = full[i];
@@ -723,7 +728,18 @@ export async function listDemos(env, { fetchImpl = fetch, now = Date.now() } = {
     const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent: true, onlyGuests: test ? (inviteConfig.testGuests || DEFAULT_TEST_GUESTS) : null });
     const row = rows[job.id];
     const sponsor = String(values[FIELD_MONETARY_SPONSOR] || '').trim() || null;
-    const byHand = !row?.state && !test && startSet && plan.action === 'upsert' && env.GOOGLE_CALENDAR_KEY ? await handSent(job, plan) : null;
+    const canLook = !!env.GOOGLE_CALENDAR_KEY && plan.action === 'upsert';
+    // An invite sent by hand: before ours would go (shown before sending is on), or already found
+    const handEvent = canLook && !test && ((!row?.state && startSet) || row?.state === 'by-hand') ? await findHand(job, plan) : null;
+    const byHand = handEvent && !row?.state ? { title: String(handEvent.summary || '').slice(0, 120), date: handEvent.start?.date || easternParts(handEvent.start?.dateTime || '')?.date || null } : null;
+    // Who's coming, from Google: on our invite once it's out, or on the one sent by hand
+    let answers = null;
+    if (canLook && row?.state === 'sent' && row.event_id) {
+      const ev = await google().then((t) => getEvent(t, organizer, row.event_id, { fetchImpl })).catch(() => null);
+      if (ev) answers = { from: 'ours', ...answersOf(ev.attendees, { ...staffNames, ...plan.people }) };
+    } else if (handEvent) {
+      answers = { from: 'by-hand', ...answersOf(handEvent.attendees, { ...staffNames, ...plan.people }) };
+    }
     demos.push({
       jobId: job.id,
       jobName: job.name,
@@ -756,6 +772,7 @@ export async function listDemos(env, { fetchImpl = fetch, now = Date.now() } = {
         log: logs[job.id] || [],
       } : null,
       ...(byHand ? { handSent: byHand } : {}),
+      ...(answers ? { answers } : {}),
     });
   }
   demos.sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
@@ -766,6 +783,21 @@ export async function listDemos(env, { fetchImpl = fetch, now = Date.now() } = {
     people,
     demos,
   };
+}
+
+/**
+ * Guests' answers on a Google event, by name: { yes, no, maybe, waiting }.
+ * The organizer and rooms aren't guests. `known` names people by email.
+ */
+export function answersOf(attendees, known = {}) {
+  const out = { yes: [], no: [], maybe: [], waiting: [] };
+  for (const a of attendees || []) {
+    if (a.organizer || a.self || a.resource) continue;
+    const email = normEmail(a.email);
+    const name = known[email]?.name || a.displayName || a.email;
+    out[{ accepted: 'yes', declined: 'no', tentative: 'maybe' }[a.responseStatus] || 'waiting'].push(name);
+  }
+  return out;
 }
 
 /** For Site → Automations: the switch, the last 5-minute check, and counts only (never names or emails) */

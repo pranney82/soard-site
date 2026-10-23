@@ -8,7 +8,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import {
   planDemo, demoTasks, demoSlot, reconcileDemo, maybeCheckDemos, sendTestDemo, listDemos, listPeople, savePerson, removePerson,
-  readConfig, writeConfig, demoAlert, findSentByHand, DEFAULT_TEMPLATE, FIELD_MONETARY_SPONSOR, SENT_BY_HAND,
+  readConfig, writeConfig, demoAlert, findSentByHand, answersOf, DEFAULT_TEMPLATE, FIELD_MONETARY_SPONSOR, SENT_BY_HAND,
 } from '../functions/api/_demo-invites.js';
 import { FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_CONTACT_EMAIL, BY_HAND, writeConfig as writeInviteConfig } from '../functions/api/_reveal-invites.js';
 import * as wakeRoute from '../functions/api/reveal-invites.js';
@@ -358,8 +358,9 @@ test('the test invite goes only to the person who asked, as its own event', asyn
   assert.ok(!events.has(id()), 'the real invite is untouched');
 });
 
-test('the 5-minute check: only while on, at most every 5 minutes, and only jobs that are due', async () => {
-  assert.equal(await maybeCheckDemos(env, { fetchImpl: fakeFetch, now: NOW }), null, 'off: nothing');
+test('the 5-minute check: on, every due job at most every 5 minutes; off, nothing real goes', async () => {
+  assert.deepEqual(await maybeCheckDemos(env, { fetchImpl: fakeFetch, now: NOW - 10 * 60_000 }), [], 'off: a real job\'s invite never goes');
+  assert.ok(!events.has(id()));
   await writeConfig(env.DB, { enabled: true });
   const first = await maybeCheckDemos(env, { fetchImpl: fakeFetch, now: NOW });
   assert.deepEqual(first.map((r) => r.action), ['created']);
@@ -373,6 +374,53 @@ test('the 5-minute check: only while on, at most every 5 minutes, and only jobs 
   calls.length = 0;
   assert.deepEqual(await maybeCheckDemos(env, { fetchImpl: fakeFetch, now: NOW + 10 * 60_000 }), []);
   assert.ok(!calls.some((c) => c.includes('googleapis')));
+});
+
+test('a rehearsal runs whole while sending is off: a TEST job sends on Set Start Date, and follows the Demo task moving', async () => {
+  await writeInviteConfig(env.DB, { testGuests: ['tester@soardcharity.com'] });
+  const testJob = (o) => ({ ...job(o), name: 'TEST Max Example (2026)' });
+  jt = testJob({ startSet: false });
+  assert.deepEqual(await maybeCheckDemos(env, { fetchImpl: fakeFetch, now: NOW - 20 * 60_000 }), [], 'not until Set Start Date');
+  jt = testJob();
+  const sent = await maybeCheckDemos(env, { fetchImpl: fakeFetch, now: NOW - 10 * 60_000 });
+  assert.deepEqual(sent.map((r) => r.action), ['created']);
+  assert.deepEqual(events.get(id()).attendees, [{ email: 'tester@soardcharity.com' }], 'only the test guests');
+  assert.match(events.get(id()).summary, /^TEST · /);
+  jt = testJob({ demoDate: '2026-10-28', demoTime: '10:30:00.000' });
+  const moved = await maybeCheckDemos(env, { fetchImpl: fakeFetch, now: NOW - 4 * 60_000 });
+  assert.deepEqual(moved.map((r) => r.action), ['updated'], 'the Demo task moving reaches the rehearsal invite within 5 minutes, still off');
+  assert.equal(events.get(id()).start.dateTime, '2026-10-28T10:30:00');
+  assert.equal((await readConfig(env.DB)).enabled, false);
+});
+
+test('answers: by name, from Google; the organizer and rooms are not guests', () => {
+  const a = answersOf([
+    { email: 'ccunningham@soardcharity.com', organizer: true, self: true, responseStatus: 'accepted' },
+    { email: 'room@resource.calendar.google.com', resource: true, responseStatus: 'accepted' },
+    { email: 'Natalia@Example.com', responseStatus: 'accepted' },
+    { email: 'cnielsen@soardcharity.com', responseStatus: 'declined' },
+    { email: 'holly@soardcharity.com', displayName: 'Holly R', responseStatus: 'tentative' },
+    { email: 'linzi@soardcharity.com', responseStatus: 'needsAction' },
+  ], { 'natalia@example.com': { name: 'Natalia' }, 'cnielsen@soardcharity.com': { name: 'Christian Nielsen' } });
+  assert.deepEqual(a, { yes: ['Natalia'], no: ['Christian Nielsen'], maybe: ['Holly R'], waiting: ['linzi@soardcharity.com'] });
+});
+
+test('admin: each invite out shows who answered, and so does one sent by hand', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  await run();
+  events.get(id()).attendees = [{ email: 'pat.sample@example.com', responseStatus: 'accepted' }, { email: 'cnielsen@soardcharity.com', responseStatus: 'needsAction' }];
+  let d = (await adminGet()).demos[0];
+  assert.deepEqual(d.answers, { from: 'ours', yes: ['Pat Sample'], no: [], maybe: [], waiting: ['Christian Nielsen'] });
+  // Sent by hand: Clareece's own invite's answers
+  await env.DB.prepare('DELETE FROM demo_invites').run();
+  events.clear();
+  handEvents = [{ id: 'clareecesown1', summary: 'Max Demo Day', start: { dateTime: '2026-10-26T09:00:00-04:00' }, attendees: [
+    { email: ORGANIZER, organizer: true, self: true, responseStatus: 'accepted' },
+    { email: 'pat.sample@example.com', responseStatus: 'accepted' },
+    { email: 'vendor@design.example', displayName: 'Jen Designer', responseStatus: 'needsAction' },
+  ] }];
+  d = (await adminGet()).demos[0];
+  assert.deepEqual(d.answers, { from: 'by-hand', yes: ['Pat Sample'], no: [], maybe: [], waiting: ['Jen Designer'] });
 });
 
 test('the JobTread wake-up for a task checked off sends the demo day invite too', async () => {
@@ -470,6 +518,12 @@ test('admin: lists, wording and the default time are checked; a list change reac
   assert.equal(events.get(id()).summary, "Max's Demo Day", 'new wording alone never emails guests');
   r = await adminPost({ template: { title: '{name} Demo Day', message: 'Demo day for {name} is {when}.' }, updateExisting: true });
   assert.equal(events.get(id()).summary, 'Max Demo Day', 'unless asked');
+});
+
+test('admin: turning invites on sends what is ready right away, not on the next check', async () => {
+  assert.equal((await adminPost({ enabled: true })).ok, true);
+  assert.ok(events.has(id()), 'Set Start Date was already checked off: out as soon as it is on');
+  assert.equal((await env.DB.prepare('SELECT state FROM demo_invites WHERE job_id = ?').bind(jt.id).first()).state, 'sent');
 });
 
 test('admin: Retry, Send ours anyway, and the test invite', async () => {
