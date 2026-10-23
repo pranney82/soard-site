@@ -36,6 +36,7 @@ import { hubStatus } from './_broadcast.js';
 import { slackStatus, readAlertTexts, alertPhones } from './_broadcast-notify.js';
 import { JT_URL, SOARD_ORG_ID } from './_reveals.js';
 import { approvalsStatus } from './_applicant-approved.js';
+import { replyAlertFacts } from './_applicant-replies.js';
 import { coverFacts } from './_job-covers.js';
 import { backfillFacts } from './_jotform-backfill.js';
 import { advisoryFacts } from './_advisory-applications.js';
@@ -329,6 +330,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     waitlist: await settle(() => waitlistFacts(DB)),
     applicationLimit: await settle(() => applicationLimitFacts(DB, now)),
     approvals: approvalFacts(await settle(() => approvalsStatus(DB))),
+    replyAlerts: await settle(() => replyAlertFacts(DB)).then((r) => (r && !r.error ? r : null)),
     covers: await settle(() => coverFacts(DB)).then((c) => (c && !c.error ? c : null)),
     press: await settle(() => pressFacts(DB)),
     quo: await settle(() => quoFacts(DB, now)),

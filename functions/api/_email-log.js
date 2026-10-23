@@ -93,6 +93,7 @@ const BY_TAG = {
   'application-stuck': 'staff-stuck',
   'applicant-status-summary': 'staff-summary',
   'applicant-status-pause': 'staff-pause-ended',
+  'applicant-reply': 'staff-family-reply',
   'application-waitlist': 'waitlist-confirm',
   'application-waitlist-staff': 'staff-waitlist',
   'application-open': 'waitlist-open',
@@ -289,6 +290,7 @@ export async function markCanceled(env, id, { now = Date.now() } = {}) {
 
 const LIST_FIX = {
   'staff-new-app': 'Check the staff list in Applications → Settings.',
+  'staff-family-reply': 'Check the staff list in Applications → Settings.',
   'staff-summary': 'Check that person’s address in JobTread, or the staff list in Applications → Settings.',
   'staff-waitlist': 'Check the staff list in Applications → Settings.',
   'staff-app-limit': 'Check the staff list in Applications → Settings.',

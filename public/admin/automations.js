@@ -419,6 +419,18 @@ const MAP = { t: 'SOARD', children: [
             if (a.waiting.length) return ATTN(a.waiting.map((x) => `${x.name} ${WHY[x.problem] || 'is waiting'}.`).join(' '), a.lastRunAt);
             return ON(a.last ? `Last set up ${a.last.name} (${stamp(a.last.at)}).` : 'No family has been approved since it started.', a.lastRunAt);
           } },
+        { t: 'A family replied → staff alert', s: 'live', k: 'event',
+          when: 'A family answers a JobTread message, by replying to its email or in JobTread. The Applicants sync reads JobTread about every minute, and each reply alerts once.',
+          does: 'Posts a card in the Slack alerts channel and emails the staff list in Applications → Settings: who replied, what they wrote and the family’s status, with buttons to the family’s page and JobTread. JobTread itself notifies no one about these replies.',
+          touches: ['JobTread', 'Slack', 'Resend', 'D1'], where: 'functions/api/_applicant-replies.js (from _applicants.js syncEvents)',
+          info: 'Only replies that arrive after it was switched on (Oct 23, 2026). TEST families get a test card, and their email goes only to the alert address.',
+          live: (f) => {
+            const r = f.replyAlerts;
+            if (!r) return null;
+            if (!r.last) return ON('No family has replied since it started.');
+            if (/^not/.test(r.last.slack || '') || /^not/.test(r.last.email || '')) return ATTN(`The last alert (${stamp(r.last.at)}): Slack ${r.last.slack || 'unknown'}, email ${r.last.email || 'unknown'}.`, r.last.at);
+            return ON(`Last alert ${stamp(r.last.at)}, in Slack and by email.`, r.last.at);
+          } },
         { t: 'CompanyCam for families in review', s: 'off', k: 'event',
           when: 'Would run when a family moves to In Review (the home visit). Off since Oct 21, 2026: the home visit happens at the job, where JobTread’s own CompanyCam sync (and the check below) has it.',
           does: 'Makes one CompanyCam project for the family at their home, with their contact, a “Vetting” label and their application photos of the space, copies every home-visit photo to the family in JobTread (Files → Home visit, .BeforePics), and links the job to that project when it’s made.',

@@ -603,6 +603,7 @@ ok(pane.compRight <= 391 && pane.compBottom <= 845, 'phone: the composer fits on
 ok(!!(await phone.$('.apl-email-sum')) && !(await phone.$eval('.apl-email-row', el => !!el.offsetParent).catch(() => false)), 'phone: To and Subject fold into one line');
 await phone.click('.apl-email-sum');
 ok(await phone.$eval('.apl-email-row', el => !!el.offsetParent).catch(() => false), 'and open when tapped');
+ok(/^Subject/.test(await phone.$eval('.apl-subject', el => el.textContent.trim()).catch(() => '')) && !!(await phone.$('.apl-subject input[aria-label="Subject"]')), 'the box beside who it goes to says it’s the subject');
 await shot(phone, 'phone-family');
 await phone.click('.apl-dtabs button:nth-child(2)');
 await sleep(200);

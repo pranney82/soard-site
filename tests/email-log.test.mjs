@@ -136,6 +136,7 @@ test('which message an email is, even where two share a tag', () => {
     ['', 'Today: Avery’s room reveal, live', 'rem-day'],
     ['', '120 of 120 applications are in for 2027', 'staff-app-limit'],
     ['', '[SOARD] Avery’s profile is hidden', 'staff-kid-hidden'],
+    ['applicant-reply', 'Jordan Stone replied: Avery Stone', 'staff-family-reply'],
   ];
   for (const [type, subject, want] of cases) assert.equal(log.entryFor(type, subject), want, `${type} · ${subject}`);
   // Every message the log can name is an entry on the map

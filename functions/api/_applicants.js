@@ -36,6 +36,7 @@ import {
 } from './_applicant-comms.js';
 import { noteStatus, changeInfo, dontSend, sendNow as sendNowNotify, whenWouldSend, notifyMap, notifyFor, ensureNotifySchema } from './_applicant-notify.js';
 import { insidePolygon, milesToEdge } from './_geo.js';
+import { alertFamilyReplies } from './_applicant-replies.js';
 import { getLiveForm } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA, toE164 } from './_application-form.js';
 
@@ -436,6 +437,13 @@ export async function syncEvents(env, { fetchImpl = fetch, now = Date.now(), max
     await setSync(DB, 'events_cursor', cursor, now);
     await setSync(DB, 'backfill_before', cursor, now);
   }
+  // Family replies alert staff from the first sync that knows how (never ones from before)
+  let repliesSince = await getSync(DB, 'replies_since');
+  if (!repliesSince) {
+    repliesSince = iso(now);
+    await setSync(DB, 'replies_since', repliesSince, now);
+  }
+  const replies = [];
   const touched = new Set();
   const statusEvents = new Map(); // account → its latest Status change in this batch
   let stored = 0;
@@ -447,6 +455,7 @@ export async function syncEvents(env, { fetchImpl = fetch, now = Date.now(), max
     const rows = nodes.map(activityFromEvent).filter(Boolean);
     if (rows.length) await DB.batch(rows.map(r => insertActivity(DB, r)));
     stored += rows.length;
+    replies.push(...rows.filter(r => r.kind === 'reply'));
     for (const ev of nodes) {
       if (ev.account?.type === 'customer') touched.add(ev.account.id);
       if (ev.createdAt > last) last = ev.createdAt;
@@ -460,9 +469,11 @@ export async function syncEvents(env, { fetchImpl = fetch, now = Date.now(), max
   const ids = [...touched];
   if (ids.length) await refreshApplicants(env, ids, { fetchImpl, now });
   const missed = await catchStatusChanges(env, statusEvents, { fetchImpl, now });
+  // A family answered a JobTread message: Slack and the staff list hear about it (./_applicant-replies.js)
+  const alerts = replies.length ? await alertFamilyReplies(env, replies, { since: repliesSince, getApplicant: (id) => getApplicantRow(DB, id), now }) : null;
   // When JobTread was last read, changes or not (the cursor only moves when something happened)
   await setSync(DB, 'events_checked', iso(now), now);
-  return { stored, touched: ids.length, cursor: last, missed };
+  return { stored, touched: ids.length, cursor: last, missed, ...(alerts ? { replyAlerts: alerts } : {}) };
 }
 
 /**

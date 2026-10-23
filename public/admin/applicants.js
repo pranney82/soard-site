@@ -421,6 +421,9 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 /* On a phone the To and Subject fold into one line until tapped */
 .apl-email-sum { display: none; }
 .apl-to { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; min-height: 40px; padding: .3rem .6rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-hover); font-size: .84rem; color: var(--color-text-secondary); }
+.apl-subject { display: flex; align-items: center; gap: .45rem; min-height: 40px; padding: 0 .6rem; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-bg-card); font-size: .84rem; color: var(--color-text-secondary); cursor: text; }
+.apl-subject:focus-within { border-color: var(--color-text); box-shadow: 0 0 0 3px rgba(26, 27, 31, .08); }
+.apl-subject input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; padding: .45rem 0; font: inherit; font-size: .9rem; color: var(--color-text); }
 .apl-to-chip { padding: .1rem .5rem; border-radius: 999px; background: var(--color-bg-card); border: 1px solid var(--color-border); color: var(--color-text); font-weight: 600; font-size: .8rem; }
 @media (max-width: 640px) {
   .apl-composer:not(.is-head-open) .apl-email-row { display: none !important; }
@@ -1665,7 +1668,7 @@ function Conversation({ d, onSent, addToast }) {
       ${!headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label="See who it goes to, or change the subject"><span>To <b>${namesOf(emailable)}</b> · ${subject}</span><em>Edit</em></button>`}
       ${html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">
         <div class="apl-to" aria-label="To">To ${emailable.map(c => html`<span class="apl-to-chip" title=${c.email}>${c.name || c.email}</span>`)}</div>
-        <input class="form-input" value=${subject} onInput=${e => setSubject(e.target.value)} maxlength="128" aria-label="Subject" />
+        <label class="apl-subject">Subject <input value=${subject} onInput=${e => setSubject(e.target.value)} maxlength="128" aria-label="Subject" /></label>
       </div>`}
       ${correcting && html`<div class="apl-callout">Writing a correction. When it's sent, the site counts ${namesOf(emailable)} as knowing where things stand now. <button class="apl-more" onClick=${() => { setCorrecting(false); setSubject(DEFAULT_SUBJECT); setText(''); }}>Cancel</button></div>`}
       <textarea ref=${box} class="form-input" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
