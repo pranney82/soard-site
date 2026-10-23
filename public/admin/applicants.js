@@ -323,7 +323,15 @@ const CSS = `
 .apl-pop button { justify-self: start; }
 .leaflet-container { font: inherit; }
 .apl-tiles { filter: grayscale(1) contrast(.8) brightness(1.13); }
-.apl-map img { max-width: none !important; max-height: none !important; border-radius: 0 !important; box-shadow: none !important; }
+.apl-map img, .apl-homemap img { max-width: none !important; max-height: none !important; border-radius: 0 !important; box-shadow: none !important; }
+/* isolation keeps Leaflet's own z-indexes (400+) under the drawer's menus */
+/* width: 100% keeps the 280px height cap from narrowing it (aspect-ratio would trade width for height) */
+.apl-homemap { width: 100%; height: auto; aspect-ratio: 21 / 10; min-height: 180px; max-height: 280px; border: 1px solid var(--color-border); border-radius: 10px; overflow: hidden; background: #EEF0EC; isolation: isolate; }
+.apl-homemap .leaflet-control-attribution { font-size: 10px; }
+.apl-gap { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; background: #fff; color: ${AREA_INK}; border: 1.5px solid ${AREA_INK}; border-radius: 999px; padding: .05rem .45rem; font-size: .74rem; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.apl-home-links { display: flex; gap: .9rem; text-transform: none; letter-spacing: 0; }
+/* Leaflet's own CSS lands after this, so these need the extra class to win */
+@media (pointer: coarse) { .apl-homemap.leaflet-container .leaflet-control-zoom a { width: 40px; height: 40px; line-height: 40px; } .apl-home-links .apl-more { min-height: 44px; display: inline-flex; align-items: center; } }
 .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: var(--shadow-lg); }
 
 .apl-feed { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); }
@@ -850,6 +858,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     ${openId && html`<${Drawer}
       id=${openId}
       fields=${data.fields}
+      boundary=${data.boundary}
       summary=${(data.applicants || []).find(a => a.id === openId)}
       onClose=${() => open(null)}
       onPrev=${idx > 0 ? () => open(shown[idx - 1].id) : null}
@@ -1153,6 +1162,90 @@ function loadLeaflet() {
   return _leaflet;
 }
 
+// The nearest point on the area's edge, so a home outside it is framed with the gap to the area
+function nearestEdgePoint([lat, lng], polygon) {
+  const k = Math.cos((lat * Math.PI) / 180);
+  let best = null;
+  let bestD = Infinity;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [ay, ax] = polygon[j];
+    const [by, bx] = polygon[i];
+    const dx = (bx - ax) * k;
+    const dy = by - ay;
+    const t = dx || dy ? Math.max(0, Math.min(1, ((lng - ax) * k * dx + (lat - ay) * dy) / (dx * dx + dy * dy))) : 0;
+    const p = [ay + t * (by - ay), ax + t * (bx - ax)];
+    const d = Math.hypot((lng - p[1]) * k, lat - p[0]);
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}
+
+/** A family's home on a small map in their drawer: the streets around it, or the gap to the area when it's outside */
+function HomeMap({ a, boundary }) {
+  const box = useRef(null);
+  const st = useRef({});
+  const [L, setL] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => { loadLeaflet().then(setL).catch(e => setErr(e.message)); }, []);
+
+  // The map itself, once. A drawer that opens on Conversation (phones) has a hidden map, so it's framed when it shows.
+  useEffect(() => {
+    if (!L || !box.current || st.current.map) return;
+    const map = L.map(box.current, { zoomControl: false, scrollWheelZoom: false, dragging: !L.Browser.mobile }); // phones: one finger scrolls the drawer, two move the map. Whole zoom levels only: in-between ones leave seams between tiles
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, className: 'apl-tiles',
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+    }).addTo(map);
+    const layers = L.layerGroup().addTo(map);
+    let width = 0;
+    const ro = new ResizeObserver(() => {
+      const w = box.current?.offsetWidth || 0;
+      if (w && !width) { map.invalidateSize(); st.current.frame?.(); } else if (w) map.invalidateSize();
+      width = w;
+    });
+    ro.observe(box.current);
+    st.current = { map, layers };
+    return () => { ro.disconnect(); map.remove(); st.current = {}; };
+  }, [L]);
+
+  // The area, its "close" ring, and the home
+  const poly = boundary?.live || [];
+  const nearMiles = boundary?.nearMiles ?? 15;
+  const polyKey = JSON.stringify(poly);
+  useEffect(() => {
+    const s = st.current;
+    if (!L || !s.map) return;
+    s.layers.clearLayers();
+    const home = [a.lat, a.lng];
+    const outside = a.area === 'outside' && poly.length >= 3;
+    if (poly.length >= 3) {
+      // Up close on a home inside, the yellow would wash over every street: just the line there
+      const ring = outside && nearMiles > 0 ? nearRing(poly, nearMiles) : [];
+      if (ring.length) L.polygon(ring, { color: AREA_INK, weight: 1.5, opacity: 0.6, dashArray: '5 6', fill: false, interactive: false }).addTo(s.layers);
+      L.polygon(poly, { color: AREA_INK, weight: 2.5, opacity: 0.95, fill: outside, fillColor: AREA_FILL, fillOpacity: 0.16, interactive: false }).addTo(s.layers);
+    }
+    const edge = outside ? nearestEdgePoint(home, poly) : null;
+    if (edge) {
+      L.polyline([home, edge], { color: AREA_INK, weight: 2, dashArray: '2 6', opacity: 0.8, interactive: false }).addTo(s.layers);
+      const label = L.divIcon({ className: '', html: `<span class="apl-gap">${esc(String(a.areaMiles))} mi</span>`, iconSize: [0, 0] });
+      L.marker([(home[0] + edge[0]) / 2, (home[1] + edge[1]) / 2], { icon: label, interactive: false, keyboard: false }).addTo(s.layers);
+    }
+    const icon = L.divIcon({ className: '', html: `<div class="apl-pin is-focus" style="--c:${STATUS_COLOR[a.status || '']}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+    L.marker(home, { icon, title: a.address || a.name, keyboard: false }).addTo(s.layers);
+    s.frame = () => {
+      // The home, the gap, and a little of the area past its edge, so the shape reads
+      if (edge) s.map.fitBounds(L.latLngBounds([home, [edge[0] + (edge[0] - home[0]) * 0.35, edge[1] + (edge[1] - home[1]) * 0.35]]), { padding: [30, 30], maxZoom: 13 });
+      else s.map.setView(home, 13);
+    };
+    if (box.current?.offsetWidth) s.frame();
+  }, [L, a.lat, a.lng, a.area, a.status, polyKey, nearMiles]);
+
+  if (err) return null;
+  return html`<div class="apl-homemap" ref=${box} role="region" aria-label=${`Map of ${a.address || 'the home'}${a.area === 'outside' ? `, ${a.areaMiles} miles outside the service area` : a.area === 'inside' ? ', inside the service area' : ''}`}></div>`;
+}
+
 function MapView({ list, boundary, focus, startEditing = false, onEditDone, onOpen, addToast, onSaved }) {
   const box = useRef(null);
   const st = useRef({});
@@ -1334,7 +1427,7 @@ function ActivityView({ onOpen }) {
 
 // ─── One family (drawer) ────────────────────────────────────────────
 
-function Drawer({ id, fields, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
+function Drawer({ id, fields, boundary, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const [pane, setPane] = useState('convo'); // phones: which half shows
@@ -1414,7 +1507,7 @@ function Drawer({ id, fields, summary, onClose, onPrev, onNext, onStatus, onChan
       ${d && !a && html`<div class="apl-skel">This family isn't in JobTread any more. <button class="apl-more" onClick=${onClose}>Close</button></div>`}
       ${d && a && html`<div class="apl-dbody" data-pane=${pane}>
         <${Conversation} d=${{ ...d, applicant: a }} onSent=${refresh} addToast=${addToast} />
-        <${SidePanel} d=${{ ...d, applicant: a }} fields=${fields} onSaved=${refresh} onShowOnMap=${onShowOnMap} addToast=${addToast} />
+        <${SidePanel} d=${{ ...d, applicant: a }} fields=${fields} boundary=${boundary} onSaved=${refresh} onShowOnMap=${onShowOnMap} addToast=${addToast} />
       </div>`}
     </aside>
   </div>`;
@@ -1672,7 +1765,7 @@ function FieldRow({ k, meta, value, onSave }) {
   return html`<input ref=${ref} class="form-input" value=${v} onInput=${e => setV(e.target.value)} onBlur=${() => commit()} onKeyDown=${keys} />`;
 }
 
-function SidePanel({ d, fields, onSaved, onShowOnMap, addToast }) {
+function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   const a = d.applicant;
   const [archBusy, setArchBusy] = useState(false);
   const save = async (k, value) => {
@@ -1711,13 +1804,18 @@ function SidePanel({ d, fields, onSaved, onShowOnMap, addToast }) {
     </div>
 
     <div class="apl-panel">
-      <h3>Home ${a.lat != null && html`<button class="apl-more" style="text-transform:none;letter-spacing:0" onClick=${() => onShowOnMap(a)}>Show on map</button>`}</h3>
+      <h3>Home <span class="apl-home-links">
+        ${a.address && html`<a class="apl-more" href=${`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(a.address)}`} target="_blank" rel="noopener">Directions</a>`}
+        ${a.lat != null && html`<button class="apl-more" onClick=${() => onShowOnMap(a)}>Show on map</button>`}
+      </span></h3>
       ${a.address ? html`<div style="font-size:.9rem">${a.address}</div>` : html`<p class="apl-card-sub">No home address in JobTread.</p>`}
       <div class="apl-tags">
         ${a.county && html`<span class="apl-tag">${a.county} County</span>`}
         ${a.area === 'inside' && html`<span class="apl-tag is-in">Inside the service area</span>`}
         ${a.area === 'outside' && html`<span class="apl-tag is-out">${a.areaMiles} miles outside the service area</span>`}
       </div>
+      ${a.lat != null && a.lng != null ? html`<${HomeMap} a=${a} boundary=${boundary} />`
+        : a.address && html`<p class="apl-card-sub">JobTread has no map point for this address, so it can't be checked against the service area.</p>`}
     </div>
 
     ${(photos.length > 0 || docs.length > 0 || a.applicationId || a.applicationUrl) && html`<div class="apl-panel">

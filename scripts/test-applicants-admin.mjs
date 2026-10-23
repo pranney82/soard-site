@@ -331,10 +331,42 @@ await page.keyboard.press('Enter');
 await sleep(600);
 ok(acct('Avery Stone').fields[F.birthday] === '2016-05-20' || /2016/.test(JSON.stringify(acct('Avery Stone').fields)), 'a text/date detail edits in place');
 await shot(page, 'desktop-family-after');
+// The home on a small map in the Home card, inside the area: centered on the pin, the area drawn
+await page.waitForSelector('.apl-homemap .apl-pin', { timeout: 15000 }).catch(() => null);
+const hm = await page.evaluate(() => {
+  const plain = (r) => r && { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom }; // DOMRects come back empty
+  const box = plain(document.querySelector('.apl-homemap')?.getBoundingClientRect());
+  const pin = plain(document.querySelector('.apl-homemap .apl-pin')?.getBoundingClientRect());
+  const paths = [...document.querySelectorAll('.apl-homemap .leaflet-overlay-pane path')].map(e => ({ stroke: (e.getAttribute('stroke') || '').toLowerCase(), fill: (e.getAttribute('fill') || '').toLowerCase(), dash: e.getAttribute('stroke-dasharray') || '' }));
+  const dir = document.querySelector('.apl-home-links a')?.href || '';
+  return { box, pin, paths, dir, label: !!document.querySelector('.apl-homemap .apl-gap') };
+});
+ok(hm.box?.width > 200 && hm.box?.height > 150, `the Home card shows the home on a map (${Math.round(hm.box?.width || 0)}×${Math.round(hm.box?.height || 0)})`);
+// Whole zoom levels only: tiles drawn at exactly 256px, so no white seams between them
+await page.waitForFunction(() => document.querySelectorAll('.apl-homemap img.leaflet-tile').length > 0, { timeout: 8000 }).catch(() => null);
+const tileW = await page.$$eval('.apl-homemap img.leaflet-tile', els => [...new Set(els.map(e => Math.round(e.getBoundingClientRect().width * 100) / 100))]);
+ok(tileW.length === 1 && tileW[0] === 256, `map tiles aren't scaled, so no seams show between them (${tileW.join(', ')}px)`);
+ok(hm.pin && Math.abs(hm.pin.x + hm.pin.width / 2 - (hm.box.x + hm.box.width / 2)) < 6 && Math.abs(hm.pin.y + hm.pin.height / 2 - (hm.box.y + hm.box.height / 2)) < 6, 'the home sits in the middle of it');
+ok(hm.paths.some(p => p.stroke === '#373a36' && p.fill === 'none') && !hm.paths.some(p => p.fill === '#ffda24'), 'the area is a line only, so no yellow washes over the streets');
+ok(!hm.paths.some(p => p.dash === '2 6') && !hm.label, 'and no gap line or miles for a home inside it');
+ok(/^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&destination=101%20Maple%20Dr/.test(hm.dir), `Directions opens Google Maps to the home (${hm.dir.slice(0, 80)})`);
+await page.$eval('.apl-homemap', el => el.scrollIntoView({ block: 'center' }));
+await sleep(800);
+await page.$eval('.apl-homemap', el => el.scrollIntoView({ block: 'center' }));
+await page.screenshot({ path: join(OUT, 'desktop-family-homemap.png'), clip: await page.$eval('.apl-side', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: Math.max(0, r.y), width: r.width, height: Math.min(r.height, 900) }; }) });
 // Keyboard: next family, then close
 await page.keyboard.press('j');
 await sleep(500);
 ok(!/Avery Stone/.test(await text(page, '.apl-dtitle h2')), 'J moves to the next family');
+await page.waitForFunction(() => /Avery/.test(document.querySelector('.apl-homemap')?.getAttribute('aria-label') || '') === false, { timeout: 4000 }).catch(() => null);
+await sleep(400);
+const nx = await page.evaluate(() => {
+  const plain = (r) => r && { x: r.x, y: r.y, width: r.width, height: r.height }; // DOMRects come back empty
+  const box = plain(document.querySelector('.apl-homemap')?.getBoundingClientRect());
+  const pin = plain(document.querySelector('.apl-homemap .apl-pin')?.getBoundingClientRect());
+  return { box, pin, label: document.querySelector('.apl-homemap')?.getAttribute('aria-label') || '' };
+});
+ok(!/101 Maple/.test(nx.label) && nx.pin && nx.box && Math.abs(nx.pin.x + nx.pin.width / 2 - (nx.box.x + nx.box.width / 2)) < 6 && Math.abs(nx.pin.y + nx.pin.height / 2 - (nx.box.y + nx.box.height / 2)) < 6, `and the small map moves to that family's home (${nx.label})`);
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => null);
 ok(!(await page.$('.apl-drawer')), 'Esc closes the family');
@@ -398,6 +430,29 @@ await sleep(150);
 await page.keyboard.press('Escape');
 await sleep(150);
 ok(!(await page.$('.apl-popover')), 'Esc closes the Filters panel');
+// A home outside the area: its small map frames the home and the nearest edge, with the gap drawn
+await page.evaluate(() => [...document.querySelectorAll('.apl-table tbody tr')].find(r => /Logan Logan/.test(r.textContent))?.click());
+await page.waitForSelector('.apl-homemap .apl-pin', { timeout: 15000 }).catch(() => null);
+await sleep(400);
+const far = await page.evaluate(() => {
+  const plain = (r) => r && { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom }; // DOMRects come back empty
+  const box = plain(document.querySelector('.apl-homemap')?.getBoundingClientRect());
+  const pin = plain(document.querySelector('.apl-homemap .apl-pin')?.getBoundingClientRect());
+  const gap = plain([...document.querySelectorAll('.apl-homemap .leaflet-overlay-pane path')].find(e => e.getAttribute('stroke-dasharray') === '2 6')?.getBoundingClientRect());
+  const label = document.querySelector('.apl-homemap .apl-gap');
+  const fill = [...document.querySelectorAll('.apl-homemap .leaflet-overlay-pane path')].some(e => (e.getAttribute('fill') || '').toLowerCase() === '#ffda24');
+  return { box, pin, gap, fill, label: label?.textContent || '', labelBox: plain(label?.getBoundingClientRect()), tag: document.querySelector('.apl-side .apl-tag.is-out')?.textContent || '' };
+});
+ok(!!far.gap && far.gap.width + far.gap.height > 60, 'a home outside the area: the small map draws the gap to the area');
+ok(!!far.label && far.tag.startsWith(far.label.replace(' mi', ' miles')), `the gap is labeled with the same miles as the tag (${far.label})`);
+ok(far.labelBox && far.labelBox.x >= far.box.x && far.labelBox.right <= far.box.right && far.labelBox.y >= far.box.y && far.labelBox.bottom <= far.box.bottom, 'and the label sits inside the map');
+ok(far.fill, 'the area is filled yellow, so its shape reads from outside');
+ok(far.pin && far.box && far.pin.x >= far.box.x && far.pin.right <= far.box.right && far.pin.y >= far.box.y && far.pin.bottom <= far.box.bottom, 'and keeps the home in view');
+await page.$eval('.apl-homemap', el => el.scrollIntoView({ block: 'center' }));
+await sleep(800);
+await page.screenshot({ path: join(OUT, 'desktop-family-homemap-outside.png'), clip: await page.$eval('.apl-side', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: Math.max(0, r.y), width: r.width, height: Math.min(r.height, 900) }; }) });
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => null);
 await shot(page, 'desktop-list-filtered');
 await page.evaluate(() => [...document.querySelectorAll('.apl-active button')].find(b => /Outside the boundary/.test(b.textContent))?.click());
 await sleep(200);
@@ -552,6 +607,20 @@ await shot(phone, 'phone-family');
 await phone.click('.apl-dtabs button:nth-child(2)');
 await sleep(200);
 ok(await phone.evaluate(() => !!document.querySelector('.apl-side')?.offsetParent && !document.querySelector('.apl-convo')?.offsetParent), 'phone: Details shows the details instead');
+// The home map was hidden behind Conversation when it was made: shown, it's framed on the home
+await phone.$eval('.apl-homemap', el => el.scrollIntoView({ block: 'center' })).catch(() => null);
+await sleep(600);
+const pm = await phone.evaluate(() => {
+  const plain = (r) => r && { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom }; // DOMRects come back empty
+  const box = plain(document.querySelector('.apl-homemap')?.getBoundingClientRect());
+  const pin = plain(document.querySelector('.apl-homemap .apl-pin')?.getBoundingClientRect());
+  return { box, pin };
+});
+ok(pm.box?.width > 300 && pm.pin && Math.abs(pm.pin.x + pm.pin.width / 2 - (pm.box.x + pm.box.width / 2)) < 6 && Math.abs(pm.pin.y + pm.pin.height / 2 - (pm.box.y + pm.box.height / 2)) < 6, 'phone: on Details, the home map is full width and centered on the home');
+const zoomH = await phone.$$eval('.apl-homemap .leaflet-control-zoom a', els => els.map(e => Math.round(e.getBoundingClientRect().height)));
+ok(zoomH.length === 2 && zoomH.every(h => h >= 40), `phone: the map's zoom buttons are big enough to tap (${zoomH.join(', ')}px)`);
+const linkH = await phone.$$eval('.apl-home-links > *', els => els.map(e => `${e.textContent.trim()} ${Math.round(e.getBoundingClientRect().height)}`));
+ok(linkH.length === 2 && linkH.every(t => +t.split(' ').pop() >= 44), `phone: Directions and Show on map are big enough to tap (${linkH.join(', ')}px)`);
 await shot(phone, 'phone-family-details');
 await phone.keyboard.press('Escape');
 await phone.click('.apl-views button:nth-child(3)');
@@ -569,6 +638,36 @@ await sleep(300);
 ok(await pad.$eval('.apl-board', el => el.scrollWidth <= el.clientWidth + 1), 'iPad landscape: all four columns fit, nothing hides off the side');
 await shot(pad, 'ipad-board');
 await pad.close();
+
+// The family drawer's home map at every width between phone and laptop: inside the Details column, on the home
+console.log('Home map, every width');
+for (const width of [768, 820, 1025, 1100, 1180, 1280]) {
+  const pg = await open(width, 900);
+  await pg.evaluate(() => localStorage.setItem('apl-view', 'list'));
+  await pg.reload({ waitUntil: 'domcontentloaded' });
+  await pg.waitForSelector('.apl-table tbody tr');
+  await pg.click('.apl-table tbody tr');
+  await pg.waitForSelector('.apl-drawer .apl-thread', { timeout: 8000 }).catch(() => null);
+  await pg.evaluate(() => { const t = [...document.querySelectorAll('.apl-dtabs button')].find(x => x.offsetParent && /Details/.test(x.textContent)); t?.click(); });
+  await pg.waitForSelector('.apl-homemap .apl-pin', { timeout: 15000 }).catch(() => null);
+  await pg.$eval('.apl-homemap', el => el.scrollIntoView({ block: 'center' })).catch(() => null);
+  await sleep(500);
+  const r = await pg.evaluate(() => {
+    const plain = (x) => x && { x: x.x, y: x.y, width: x.width, height: x.height, right: x.right, bottom: x.bottom }; // DOMRects come back empty
+    const box = plain(document.querySelector('.apl-homemap')?.getBoundingClientRect());
+    const pin = plain(document.querySelector('.apl-homemap .apl-pin')?.getBoundingClientRect());
+    const panel = plain(document.querySelector('.apl-homemap')?.closest('.apl-panel')?.getBoundingClientRect());
+    return { box, pin, panel, gap: !!document.querySelector('.apl-homemap .apl-gap'), wide: document.documentElement.scrollWidth > window.innerWidth + 1 };
+  });
+  // A home inside the area sits in the middle; one outside shares the frame with the gap, so it only has to be in view
+  const onHome = r.pin && r.box && (r.gap
+    ? r.pin.x >= r.box.x && r.pin.right <= r.box.right && r.pin.y >= r.box.y && r.pin.bottom <= r.box.bottom
+    : Math.abs(r.pin.x + r.pin.width / 2 - (r.box.x + r.box.width / 2)) < 6 && Math.abs(r.pin.y + r.pin.height / 2 - (r.box.y + r.box.height / 2)) < 6);
+  // Fills its card (the card's padding either side), never past it
+  const fits = r.box?.width >= 200 && r.panel && r.box.x >= r.panel.x && r.box.right <= r.panel.right && r.panel.right - r.box.right < 40;
+  ok(fits && onHome && !r.wide, `${width}px: the home map fits its card and sits on the home (${Math.round(r.box?.width || 0)}px wide${r.gap ? ', a home outside' : ''}${!fits ? ', past its card' : ''}${!onHome ? ', off the home' : ''}${r.wide ? ', page scrolls sideways' : ''})`);
+  await pg.close();
+}
 
 // In the real admin shell (the sidebar takes 240px): no view ever scrolls sideways, at any width
 console.log('Every view, every width, in the admin shell');
