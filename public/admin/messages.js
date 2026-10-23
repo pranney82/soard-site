@@ -126,8 +126,8 @@ const inviteLive = (which) => first(needs('calendar', NO_CAL), (f) => {
 const demoLive = (which) => first(needs('calendar', NO_CAL), (f) => {
   const v = f.demoInvites;
   if (!v) return null;
-  if (!v.enabled) return OFF('Paused in Reveals → Demo Day. The site works out each invite and sends nothing.');
-  if (v.problems) return ATTN(`${plural(v.problems, 'demo day invite')} couldn’t be sent. Reveals → Demo Day shows which, with Retry.`);
+  if (!v.enabled) return OFF('Paused on the Demo Day page. The site works out each invite and sends nothing.');
+  if (v.problems) return ATTN(`${plural(v.problems, 'demo day invite')} couldn’t be sent. The Demo Day page shows which, with Retry.`);
   const now = which === 'sent' ? `${plural(v.out, 'demo day invite')} on calendars now${v.byHand ? `, ${v.byHand} sent by hand instead` : ''}.` : '';
   return ON(`${now} ${sentLine(v[which])}`.trim(), v[which]?.last);
 });
@@ -137,7 +137,7 @@ const CHANGE = {
   appEmails: { label: 'Applications → Emails', view: 'applications', hash: '#applications/emails' },
   appSettings: { label: 'Applications → Settings', view: 'applications', hash: '#applications/settings' },
   invites: { label: 'Reveals → Invites', view: 'broadcast', hash: '#broadcast/invites' },
-  demo: { label: 'Reveals → Demo Day', view: 'broadcast', hash: '#broadcast/demo' },
+  demo: { label: 'Demo Day', view: 'demo-day', hash: '#demo-day' },
   revealSettings: { label: 'Reveals → Settings', view: 'broadcast', hash: '#broadcast/settings' },
   composer: { label: 'Comms → Email', view: 'email' },
   board: { label: 'People → Board', view: 'people-hub', tab: 'board' },
@@ -288,7 +288,7 @@ const MAP = { t: 'Everything we send', children: [
           subject: '{name}’s Demo Day',
           does: 'The date and time (the Demo task’s, or the default 9:00 AM for an hour), the full address, the kid’s page, and a request to accept or decline.',
           touches: ['Google Calendar', 'JobTread', 'D1'], where: 'functions/api/_demo-invites.js (planDemo)',
-          info: 'The every-demo-day list is kept in Reveals → Demo Day; everyone else comes from JobTread. Send it to me makes a separate TEST invite inviting only you.',
+          info: 'The every-demo-day list is kept on the Demo Day page; everyone else comes from JobTread. Send it to me makes a separate TEST invite inviting only you.',
           live: demoLive('sent') },
         { t: 'Changed demo day invite', s: 'live', k: 'invite', by: 'auto', preview: 'demo-invite-update', change: CHANGE.demo,
           who: 'Everyone on the invite.',
@@ -558,7 +558,7 @@ const MAP = { t: 'Everything we send', children: [
           subject: '[SOARD] Demo day invite problem: {kid}',
           does: 'What Google or JobTread said, and the fix.',
           touches: ['Resend', 'Slack'], where: 'functions/api/_demo-invites.js (demoAlert)',
-          live: (f) => (!f.demoInvites ? null : f.demoInvites.problems ? ATTN(`${plural(f.demoInvites.problems, 'demo day invite has', 'demo day invites have')} a problem right now. Reveals → Demo Day shows which.`) : ON('No demo day invite has a problem right now.')) },
+          live: (f) => (!f.demoInvites ? null : f.demoInvites.problems ? ATTN(`${plural(f.demoInvites.problems, 'demo day invite has', 'demo day invites have')} a problem right now. The Demo Day page shows which.`) : ON('No demo day invite has a problem right now.')) },
         { t: 'Demo day heads-up', s: 'live', k: 'email', by: 'auto', preview: 'staff-demo-heads-up', change: CHANGE.demo,
           who: 'The invite alert list, the organizer, and Peter.',
           when: 'Set Start Date is checked off but the Demo task has no date, or a job is closed or put on hold while its demo day invite is out. Once each.',

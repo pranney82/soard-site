@@ -1,5 +1,5 @@
 /**
- * /api/demo-invites-admin (Cloudflare Access) — demo day calendar invites, for Reveals → Demo Day
+ * /api/demo-invites-admin (Cloudflare Access) — demo day calendar invites, for the admin's Demo Day page
  *
  * GET                          → settings, setup checks, every demo day ahead with its exact invite
  *                                and guests (the sponsor's people on each job), and the every-demo-day list

@@ -42,7 +42,7 @@
  * heartbeat) the open jobs whose demo day is ahead are re-read; that check is
  * also the safety net for a missed wake-up.
  *
- * Off until turned on in the admin (Reveals → Demo Day). TEST jobs and the
+ * Off until turned on in the admin (its own Demo Day page). TEST jobs and the
  * office sandbox send even while off, only to the test guests, marked TEST.
  */
 
@@ -65,7 +65,7 @@ const CHECK_KEY = 'demo-invites-check';
 const CHECK_EVERY_MS = 5 * 60 * 1000;
 const TZ = 'America/New_York';
 const SITE = 'https://sunshineonaranneyday.com';
-const ADMIN_URL = `${SITE}/admin/#broadcast/demo`;
+const ADMIN_URL = `${SITE}/admin/#demo-day`;
 // An invite sent by hand counts when it's within this many days of the Demo task's date
 const BY_HAND_WINDOW_DAYS = 14;
 export const SENT_BY_HAND = 'sent by hand';
@@ -533,7 +533,7 @@ export function demoAlert(kind, { jobId, name, error, reason, taskId }) {
     detail = `The demo day invite for ${name || `job ${jobId}`} couldn't be sent. Google or JobTread said: ${error}`;
     fix = /unauthorized_client|GOOGLE_CALENDAR_KEY|sign-in/i.test(error || '')
       ? 'The Google key or its domain-wide delegation needs attention (Cloudflare GOOGLE_CALENDAR_KEY, Workspace Admin → Domain-wide delegation).'
-      : 'Open Reveals → Demo Day in the admin and press Retry on this job. If it keeps failing, check the job in JobTread.';
+      : 'Open Demo Day in the admin and press Retry on this job. If it keeps failing, check the job in JobTread.';
   }
   const schedule = scheduleUrl(jobId, taskId);
   return {

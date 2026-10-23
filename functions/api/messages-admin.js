@@ -358,7 +358,7 @@ async function demoPreview(env, now) {
     to: 'The family, the internal team, the monetary sponsor (Sponsor users on the job in JobTread), and the every-demo-day list',
     subject: `Invitation: ${e.summary}`,
     invite: { title: e.summary, status: e.status, start: e.start, end: e.end, location: e.location || null, description: e.description, organizer: inviteCfg.organizer, busy: true },
-    note: 'A sample demo day a week from now, at the default time, with the wording saved in Reveals → Demo Day.',
+    note: 'A sample demo day a week from now, at the default time, with the wording saved on the Demo Day page.',
     testNote: 'Send it to me makes a separate TEST invite inviting only you.',
     send: 'invite',
   };

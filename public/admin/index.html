@@ -6401,9 +6401,9 @@
       ending: { label: 'Reconnecting', color: '#FFD500' },
       replay: { label: 'Replay', color: '#38A169' },
     };
-    const BC_TABS = [['now', 'Now'], ['invites', 'Invites'], ['demo', 'Demo Day'], ['history', 'History'], ['settings', 'Settings']];
+    const BC_TABS = [['now', 'Now'], ['invites', 'Invites'], ['history', 'History'], ['settings', 'Settings']];
     // #broadcast/control-room (every Slack post links there) opens Now, where the control room lives
-    const bcTabFromHash = () => (location.hash.startsWith('#broadcast/settings') ? 'settings' : location.hash.startsWith('#broadcast/history') ? 'history' : location.hash.startsWith('#broadcast/demo') ? 'demo' : (location.hash.startsWith('#broadcast/invites') || location.hash.startsWith('#reveal-invites')) ? 'invites' : 'now');
+    const bcTabFromHash = () => (location.hash.startsWith('#broadcast/settings') ? 'settings' : location.hash.startsWith('#broadcast/history') ? 'history' : (location.hash.startsWith('#broadcast/invites') || location.hash.startsWith('#reveal-invites')) ? 'invites' : 'now');
     const bcFmt = (iso) => iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
     const bcAgo = (iso) => {
       if (!iso) return 'never';
@@ -6629,8 +6629,9 @@
       return mod ? html`<${mod.MessagesMap} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
-    // Reveals → Demo Day: calendar invites for each job's demo day (Set Start Date
-    // checked off in JobTread), kept in ./demo-invites.js and loaded on first visit.
+    // Demo Day: calendar invites for each job's demo day (Set Start Date checked
+    // off in JobTread), its own page (#demo-day), kept in ./demo-invites.js and
+    // loaded on first visit. Nothing to do with reveals.
     let demoInvitesModule = null;
     function DemoInvitesLazy(props) {
       const [mod, setMod] = useState(null);
@@ -6642,6 +6643,16 @@
       useEffect(load, []);
       if (err) return html`<${LoadErrorCard} error=${`Could not load demo day invites: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
       return mod ? html`<${mod.DemoInvitesPanel} ...${props} ConfirmModal=${ConfirmModal} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
+    }
+    function DemoDayPage(props) {
+      return html`
+        <div class="page-header">
+          <div>
+            <h2>Demo Day</h2>
+            <p class="page-sub">Calendar invites for the first day of construction, sent when Set Start Date is checked off in JobTread.</p>
+          </div>
+        </div>
+        <${DemoInvitesLazy} ...${props} />`;
     }
 
     // ─── Broadcast: family invite QR, viewer messages, keepsake ─────────
@@ -7774,7 +7785,6 @@
         <div id="bc-panel" role="tabpanel" aria-labelledby=${`bc-tab-${tab}`}>
           ${tab === 'now' ? html`<${BcNow} ...${ctx} />`
             : tab === 'invites' ? html`<${RevealInvitesPanel} addToast=${addToast} onShowNow=${() => setTab('now')} />`
-            : tab === 'demo' ? html`<${DemoInvitesLazy} addToast=${addToast} />`
             : tab === 'history' ? html`<${BcHistory} ...${ctx} />`
             : html`<${BcSettings} ...${ctx} cfg=${cfg} setCfg=${setCfg} dirty=${dirty} jump=${jump} clearJump=${() => setJump(null)} />`}
         </div>
@@ -23176,7 +23186,7 @@ ${sections || '<p>No one yet.</p>'}
 
     function App() {
       useA11y();
-      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#messages') ? 'messages' : location.hash.startsWith('#applications') ? 'applications' : location.hash.startsWith('#site') ? 'site-hub' : location.hash.startsWith('#press') ? 'press-hub' : location.hash.startsWith('#advisory-applications') ? 'people-hub' : 'dashboard'));
+      const [view, setView] = useState(() => ((location.hash.startsWith('#demo-day') || location.hash.startsWith('#broadcast/demo')) ? 'demo-day' : (location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : location.hash.startsWith('#messages') ? 'messages' : location.hash.startsWith('#applications') ? 'applications' : location.hash.startsWith('#site') ? 'site-hub' : location.hash.startsWith('#press') ? 'press-hub' : location.hash.startsWith('#advisory-applications') ? 'people-hub' : 'dashboard'));
       const [editSlug, setEditSlug] = useState(null);
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);
@@ -23504,6 +23514,7 @@ ${sections || '<p>No one yet.</p>'}
         press: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" /></svg>`,
         mail: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>`,
         goLive: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" /><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" /><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" /><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" /></svg>`,
+        demoDay: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9" /><path d="m18 15 4-4" /><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5" /></svg>`,
         auditLog: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>`,
         applications: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 3.5h6v2.5H9z" /><path d="M8.5 11h7M8.5 15h4.5" /></svg>`,
         automations: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="8" height="8" x="3" y="3" rx="2" /><path d="M7 11v4a2 2 0 0 0 2 2h4" /><rect width="8" height="8" x="13" y="13" rx="2" /></svg>`,
@@ -23528,6 +23539,7 @@ ${sections || '<p>No one yet.</p>'}
         { label: 'Comms', items: [
           { id: 'email', icon: icons.mail, label: 'Email' },
           { id: 'broadcast', icon: icons.goLive, label: 'Reveals' },
+          { id: 'demo-day', icon: icons.demoDay, label: 'Demo Day' },
         ]},
         { label: 'Site', items: [
           { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
@@ -23728,6 +23740,9 @@ ${sections || '<p>No one yet.</p>'}
           case 'broadcast':
           case 'go-live':
             return html`<${Broadcast} addToast=${addToast} kids=${kids} />`;
+
+          case 'demo-day':
+            return html`<${DemoDayPage} addToast=${addToast} />`;
 
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} onDeploy=${promptDeploy} />`;

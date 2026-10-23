@@ -194,18 +194,18 @@ const MAP = { t: 'SOARD', children: [
           when: 'A job’s Set Start Date task is checked off in JobTread (the “Task checked or un-checked” workflow wakes it), and every 5 minutes on the live hub’s heartbeat.',
           does: 'Sends “Max’s Demo Day” for the date on the job’s Demo task, at its time or the default (9:00 AM, an hour), to the family, the internal team, the monetary sponsor (anyone with the Sponsor role on the job in JobTread; the job’s Monetary Sponsor field names which sponsor) and everyone on the every-demo-day list (social media). Nobody else with access to the job. The Demo task moving moves the invite within 5 minutes. An invite already sent by hand from the organizer’s calendar (“demo” and the kid’s name in its title) is left alone. Like reveal invites, the site never cancels one: delete it in Google Calendar. A job closed or on hold keeps its invite and staff get one heads-up; Set Start Date done with no Demo date gets one too.',
           touches: ['JobTread', 'Google Calendar', 'D1'], where: 'functions/api/_demo-invites.js (from reveal-invites.js and broadcast-hooks.js) · demo-invites-admin.js',
-          info: 'From Clareece’s Google Calendar, like reveal invites. The every-demo-day list is kept in Reveals → Demo Day; everyone else comes from JobTread.',
+          info: 'From Clareece’s Google Calendar, like reveal invites. The every-demo-day list is kept on the Demo Day page; everyone else comes from JobTread.',
           live: (f) => {
             const d = f.demoInvites;
             if (!d) return null;
             if (env(f) && !f.env.calendar) return ATTN('GOOGLE_CALENDAR_KEY is missing in Cloudflare, so no invites can go out.');
-            if (!d.enabled) return OFF('Switched off in Reveals → Demo Day.');
-            if (d.errors) return ATTN(`${plural(d.errors, 'demo day invite')} couldn’t be sent. Retry is on Reveals → Demo Day.`, d.lastCheckAt);
+            if (!d.enabled) return OFF('Switched off on the Demo Day page.');
+            if (d.errors) return ATTN(`${plural(d.errors, 'demo day invite')} couldn’t be sent. Retry is on the Demo Day page.`, d.lastCheckAt);
             if (d.lastCheckAt && stale(d.lastCheckAt, HOUR)) return ATTN(`Hasn’t checked JobTread since ${stamp(d.lastCheckAt)}. It rides on the live hub’s heartbeat, so check the Live hub entry.`, d.lastCheckAt);
             return ON(`Sending is on. ${plural(d.sent, 'demo day has', 'demo days have')} an invite out${d.byHand ? `, ${d.byHand} sent by hand` : ''}.`, d.lastSentAt || d.lastCheckAt);
           } },
-        { t: 'Reveals → Demo Day page', s: 'live', k: 'admin',
-          when: 'Staff open Reveals → Demo Day.',
+        { t: 'Demo Day page', s: 'live', k: 'admin',
+          when: 'Staff open Demo Day in the admin.',
           does: 'Turn demo day invites on or off, see every demo day coming up with where its invite stands and exactly who gets it, keep the every-demo-day list, edit the wording and the default time, and send a test to yourself. Retry when one fails; Send ours anyway when one was sent by hand. Dates change in JobTread.',
           touches: ['JobTread', 'Google Calendar', 'D1'], where: 'functions/api/demo-invites-admin.js · public/admin/demo-invites.js' },
         { t: 'Reveals → Invites page', s: 'live', k: 'admin',

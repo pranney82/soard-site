@@ -1,7 +1,8 @@
 /**
- * test-demo-invites.mjs — drive Reveals → Demo Day in a real browser
- * ==================================================================
- * Opens the admin at #broadcast/demo with public/ served directly. Every
+ * test-demo-invites.mjs — drive the admin's Demo Day page in a real browser
+ * ==========================================================================
+ * Opens the admin at #demo-day (its own page in the menu, not a Reveals tab)
+ * with public/ served directly. Every
  * /api/demo-invites-admin call goes to the real handler
  * (functions/api/demo-invites-admin.js) running here in Node over a local
  * D1 copy (sql.js) with JobTread and Google Calendar faked, so the page and
@@ -172,7 +173,7 @@ const BROADCAST = {
   schedule: { checkedAt: new Date().toISOString(), error: null, next: null, waiting: [] },
 };
 
-async function open(browser, base, viewport) {
+async function open(browser, base, viewport, hash = '#demo-day') {
   const page = await browser.newPage();
   await page.setViewport(viewport);
   const errors = [];
@@ -197,8 +198,8 @@ async function open(browser, base, viewport) {
     if (url.pathname.startsWith('/api/')) return json({ success: true, ok: true });
     return req.continue();
   });
-  await page.goto(`${base}/admin/#broadcast/demo`, { waitUntil: 'networkidle2' });
-  await page.waitForSelector('.dd-list, .dd .card', { timeout: 20000 });
+  await page.goto(`${base}/admin/${hash}`, { waitUntil: 'networkidle2' });
+  await page.waitForSelector(hash === '#broadcast' ? '.bc-tabs' : '.dd-list, .dd .card', { timeout: 20000 });
   return { page, errors };
 }
 
@@ -225,8 +226,9 @@ const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', 
 try {
   console.log('Desktop');
   const { page, errors } = await open(browser, base, { width: 1280, height: 1000 });
-  ok((await page.$$eval('.bc-tabs [role="tab"]', (t) => t.map((x) => x.textContent.trim()))).includes('Demo Day'), 'Reveals has a Demo Day tab');
-  ok(await page.$eval('#bc-tab-demo', (t) => t.getAttribute('aria-selected') === 'true'), '#broadcast/demo opens it');
+  ok((await text(page, '.page-header h2')) === 'Demo Day' && !(await page.$('.bc-tabs')), 'Demo Day is its own page, not inside Reveals');
+  const menu = await page.evaluate(() => [...document.querySelectorAll('.sidebar a, .sidebar button, nav a, nav button')].map((e) => e.textContent.trim()));
+  ok(menu.includes('Demo Day') && menu.includes('Reveals'), `the menu has Demo Day beside Reveals (${menu.filter((m) => /Demo|Reveal/.test(m)).join(', ')})`);
   ok((await text(page, '.dd-status h3')) === 'Demo day invites are paused', 'paused until turned on');
   ok((await text(page, '.dd-status')).includes('Set Start Date'), 'says Set Start Date is what sends it');
   await page.screenshot({ path: join(OUT, 'desktop.png'), fullPage: true });
@@ -358,6 +360,16 @@ try {
   ok(errors.length === 0, `no console errors${errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''}`);
   await page.screenshot({ path: join(OUT, 'desktop-after.png'), fullPage: true });
   await page.close();
+
+  console.log('Reveals, and the old address');
+  const rv = await open(browser, base, { width: 1280, height: 1000 }, '#broadcast');
+  const tabs = await rv.page.$$eval('.bc-tabs [role="tab"]', (t) => t.map((x) => x.textContent.trim()));
+  ok(!tabs.includes('Demo Day'), `Reveals has no Demo Day tab (${tabs.join(', ')})`);
+  await rv.page.close();
+  const old = await open(browser, base, { width: 1280, height: 1000 }, '#broadcast/demo');
+  ok((await text(old.page, '.page-header h2')) === 'Demo Day', 'the old #broadcast/demo address (in early alert emails) opens the Demo Day page');
+  ok(old.errors.length === 0, `no console errors there${old.errors.length ? ': ' + old.errors.slice(0, 3).join(' | ') : ''}`);
+  await old.page.close();
 
   console.log('Phone');
   const phone = await open(browser, base, { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });

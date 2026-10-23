@@ -1,7 +1,8 @@
 /**
- * Reveals → Demo Day (admin)
- * ==========================
- * Loaded on demand by the Demo Day tab. Demo day calendar invites go out from
+ * Demo Day (admin)
+ * ================
+ * Loaded on demand by the admin's Demo Day page (#demo-day), its own place
+ * in the menu: demo day has nothing to do with reveals. Demo day calendar invites go out from
  * the organizer's Google Calendar when a job's "Set Start Date" task is
  * checked off in JobTread, for the date on its Demo task
  * (functions/api/_demo-invites.js). Dates and times change only in JobTread;
