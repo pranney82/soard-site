@@ -139,6 +139,46 @@ export async function alertFamilyReplies(env, rows, { since, getApplicant, now =
   return out;
 }
 
+/**
+ * Families waiting on us: their latest reply (since alerts began) that no one
+ * has answered. Answered means, after it: a message from the site (a family
+ * email, a reply, a status email or a correction), staff answering in a
+ * JobTread conversation, or someone marking it "No reply needed". Archived
+ * families and staff test runs are left out. Newest first:
+ * [{ id, name, status, at, by, snippet, thread }]
+ */
+export async function waitingReplies(DB, { since = null } = {}) {
+  let from = since;
+  if (!from) {
+    try { from = await DB.prepare("SELECT value FROM applicant_sync WHERE key = 'replies_since'").first('value'); } catch { from = null; }
+  }
+  if (!from) return [];
+  const sql = (notTest) => `SELECT x.account_id, x.at, x.kind, x.by_name, x.title, x.body, x.data, a.name AS applicant, a.status
+    FROM applicant_activity x JOIN applicants a ON a.account_id = x.account_id
+    WHERE x.at >= ? AND a.archived_at IS NULL ${notTest}
+      AND (x.kind IN ('reply', 'sent', 'handled')
+        OR (x.kind = 'notify' AND (x.title LIKE 'Emailed the family%' OR x.title LIKE 'Correction sent%'))
+        OR (x.kind = 'comment' AND json_extract(x.data, '$.parentCommentId') IS NOT NULL))
+    ORDER BY x.at`;
+  const notTest = 'AND NOT EXISTS (SELECT 1 FROM applications p WHERE p.jt_account_id = a.account_id AND p.is_test = 1)';
+  let rows;
+  try { rows = (await DB.prepare(sql(notTest)).bind(from).all()).results || []; } catch { rows = (await DB.prepare(sql('')).bind(from).all()).results || []; }
+  const fam = new Map();
+  for (const r of rows) {
+    const f = fam.get(r.account_id) || { id: r.account_id, name: r.applicant, status: r.status || null, reply: null, answered: '' };
+    if (r.kind === 'reply') f.reply = r;
+    else if (r.at > f.answered) f.answered = r.at;
+    fam.set(r.account_id, f);
+  }
+  return [...fam.values()]
+    .filter((f) => f.reply && f.reply.at > f.answered)
+    .map((f) => ({
+      id: f.id, name: f.name, status: f.status, at: f.reply.at, by: f.reply.by_name || null,
+      snippet: clip(replyText(f.reply.body).replace(/\s+/g, ' '), 140), thread: threadIdOf(f.reply),
+    }))
+    .sort((a, b) => b.at.localeCompare(a.at));
+}
+
 /** For Automations: when it last alerted, and whether that one reached Slack and email. No names or text */
 export async function replyAlertFacts(DB) {
   await ensureReplyAlertSchema(DB);

@@ -541,6 +541,32 @@ ok(await clickText(page, '.apl-head-actions button', /Check JobTread now/), 'wit
   ok(/Replying in Application Status/.test(await text(linked, '.apl-thread-to')), 'the alert’s Reply link opens the family answering in that conversation');
   await linked.close();
 }
+// A family replied and is waiting on us: Applicants says so, their card says so, and a "thanks" can be marked No reply needed
+{
+  const mateo = acct('Mateo García');
+  await DB.prepare("INSERT OR IGNORE INTO applicant_sync (key, value, updated_at) VALUES ('replies_since', ?, ?)").bind(new Date(Date.now() - 3600e3).toISOString(), new Date().toISOString()).run();
+  await DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, body, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind('evt-mateo-reply', mateo.id, new Date().toISOString(), 'reply', 'Lucía García', 'family', null, '¡Gracias! Nos vemos el jueves.', JSON.stringify({ commentId: 'mateo-r1', parentCommentId: null })).run();
+  const wp = await open(1440, 1000);
+  await wp.click('.apl-views button:nth-child(1)'); // the board (the page remembers the last view)
+  await wp.waitForSelector('.apl-waiting', { timeout: 10000 }).catch(() => null);
+  await wp.waitForSelector('.apl-card', { timeout: 10000 }).catch(() => null);
+  ok(/A family replied and is waiting for an answer/.test(await text(wp, '.apl-waiting')) && /Mateo García/.test(await text(wp, '.apl-waiting')), 'Applicants says a family replied and is waiting, and who');
+  ok(await wp.$eval(`.apl-card[data-id="${mateo.id}"]`, (el) => el.classList.contains('is-waiting') && /Lucía replied/.test(el.textContent) && el.parentElement.querySelector('.apl-card') === el).catch(() => false), 'their card says so, first in its column');
+  await shot(wp, 'desktop-waiting');
+  await clickText(wp, '.apl-waiting-who button', /Mateo García/);
+  await wp.waitForSelector('.apl-reply-banner', { timeout: 8000 }).catch(() => null);
+  ok(/Lucía García replied/.test(await text(wp, '.apl-reply-banner')) && /waiting for an answer/.test(await text(wp, '.apl-reply-banner')), 'the family’s page says they’re waiting on an answer');
+  await shot(wp, 'desktop-waiting-family');
+  await clickText(wp, '.apl-reply-banner button', /No reply needed/);
+  await wp.waitForFunction(() => !document.querySelector('.apl-reply-banner'), { timeout: 8000 }).catch(() => null);
+  ok(!(await wp.$('.apl-reply-banner')), 'No reply needed: the banner goes');
+  ok(!!(await DB.prepare("SELECT 1 AS y FROM applicant_activity WHERE account_id = ? AND kind = 'handled'").bind(mateo.id).first('y')), 'and the history notes who marked it');
+  await wp.keyboard.press('Escape');
+  await wp.waitForFunction((id) => !document.querySelector(`.apl-card[data-id="${id}"]`)?.classList.contains('is-waiting') && !document.querySelector('.apl-waiting'), { timeout: 8000 }, mateo.id).catch(() => null);
+  ok(!(await wp.$('.apl-waiting')) && !(await wp.$eval(`.apl-card[data-id="${mateo.id}"]`, (el) => el.classList.contains('is-waiting')).catch(() => true)), 'and the board stops showing them as waiting');
+  await wp.close();
+}
 await page.waitForFunction(() => !/Check JobTread now/.test(document.querySelector('.apl-head-actions')?.innerText || ''), { timeout: 8000 }).catch(() => null);
 ok(/In sync with JobTread/.test(await text(page, '.apl-sync')), 'once JobTread answers, the problem clears');
 

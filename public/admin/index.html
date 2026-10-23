@@ -1068,6 +1068,20 @@
       color: #fff; font-size: 0.85rem;
     }
 
+    /* ─── A family replied (reply notices) ── */
+    .reply-notices { position: fixed; top: 104px; right: 20px; z-index: 1200; display: grid; gap: 10px; width: min(360px, calc(100vw - 32px)); }
+    .reply-notice { background: var(--color-bg-card, #fff); color: var(--color-text, #1A1B1F); border: 1px solid #E5BF1A; border-left: 5px solid #FFD400; border-radius: 14px; box-shadow: 0 14px 34px rgba(26, 27, 31, .18); padding: 12px 14px 12px 13px; animation: reply-in .25s ease-out; }
+    .reply-notice-head { display: flex; align-items: baseline; gap: 7px; font-size: .95rem; }
+    .reply-notice-head b { font-weight: 700; }
+    .reply-notice-when { margin-left: auto; font-size: .78rem; color: var(--color-text-muted, #6B6E76); white-space: nowrap; }
+    .reply-notice-about { font-size: .82rem; color: var(--color-text-secondary, #4A4F57); margin-top: 2px; }
+    .reply-notice-text { margin: 8px 0 0; font-size: .88rem; line-height: 1.45; color: var(--color-text, #1A1B1F); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .reply-notice-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .reply-notice-more { all: unset; cursor: pointer; justify-self: end; font-size: .82rem; font-weight: 600; padding: 6px 12px; border-radius: 999px; background: #FFF8D6; border: 1px solid #E5BF1A; color: #2B2200; }
+    @keyframes reply-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+    @media (max-width: 640px) { .reply-notices { top: auto; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; width: auto; } }
+    @media (prefers-reduced-motion: reduce) { .reply-notice { animation: none; } }
+
     /* ─── Toast ──────────────────────────── */
     .toast-container {
       position: fixed; bottom: 1.5rem; right: 1.5rem;
@@ -8044,6 +8058,7 @@
       const [advisoryEmails] = useBoardEmails(true, 'advisory');
       const { requests: profileRequests } = useProfileRequests();
       const pressNeedsLook = usePressReview();
+      const familyReplies = useReplies();
       const [showAllNeeds, setShowAllNeeds] = useState(false);
       const [impactOpen, setImpactOpen] = useState(false);
       const thisYear = new Date().getFullYear();
@@ -8112,6 +8127,16 @@
       const isLive = !!live?.live;
 
       const needs = [];
+      // A family replied and is waiting on us
+      if (familyReplies.n) {
+        const first = familyReplies.replies[0];
+        needs.push({
+          key: 'family-replies', tone: 'action', icon: DI.list,
+          title: familyReplies.n === 1 ? `${first?.by || 'A family'} replied and is waiting for an answer` : `${familyReplies.n} families replied and are waiting for an answer`,
+          detail: familyReplies.replies.slice(0, 3).map((r) => `${r.name}: “${r.snippet}”`).join(' · ') || 'In Applicants.',
+          action: familyReplies.n === 1 && first ? { label: 'Reply', go: () => { location.hash = replyLinkOf(first); } } : { label: 'See them', go: () => { location.hash = '#applications/applicants'; } },
+        });
+      }
       if (lastDeploy && /fail|error|cancel/i.test(lastDeploy.status || '')) needs.push({
         key: 'deploy-failed', tone: 'urgent', icon: DI.alert,
         title: 'The last site update failed',
@@ -21455,6 +21480,96 @@ ${sections || '<p>No one yet.</p>'}
     // Families at Applied, waiting for a first look: Applications' badge
     const applicantsNew = sharedPoll('/api/applicants-count', (j) => (j?.success ? j.applied || 0 : 0), 300e3);
 
+    // Families who replied and are waiting on us (Applicants): the sidebar's count on
+    // Applications, the reply notices on any page, the Dashboard and the tab's title.
+    // Asked every minute while the admin is open, and at once when a family's page
+    // answers one or says no reply is needed.
+    const replyWatch = { v: { n: 0, replies: [] }, at: 0, key: null, subs: new Set(), timer: null };
+    async function refreshReplies() {
+      replyWatch.at = Date.now();
+      try {
+        const r = await fetch('/api/applicants-count', { cache: 'no-store' });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!j.success) return;
+        const v = { n: j.waiting || 0, replies: j.replies || [] };
+        const key = `${v.n}|${v.replies.map((x) => `${x.id}@${x.at}`).join(',')}`;
+        if (key === replyWatch.key) return;
+        const arrived = replyWatch.key !== null && v.replies.some((x) => !replyWatch.v.replies.some((y) => y.id === x.id && y.at === x.at));
+        replyWatch.key = key;
+        replyWatch.v = v;
+        replyWatch.subs.forEach((f) => f(v));
+        if (arrived) window.dispatchEvent(new Event('soard-replies-arrived'));
+      } catch { /* the next look tries again */ }
+    }
+    const repliesBack = () => { if (!document.hidden && Date.now() - replyWatch.at > 30000) refreshReplies(); };
+    function useReplies() {
+      const [v, setV] = useState(replyWatch.v);
+      useEffect(() => {
+        replyWatch.subs.add(setV);
+        if (replyWatch.subs.size === 1) {
+          replyWatch.timer = setInterval(() => { if (!document.hidden) refreshReplies(); }, 60000);
+          document.addEventListener('visibilitychange', repliesBack);
+          window.addEventListener('soard-replies-changed', refreshReplies);
+        }
+        if (Date.now() - replyWatch.at > 30000) refreshReplies();
+        return () => {
+          replyWatch.subs.delete(setV);
+          if (!replyWatch.subs.size) {
+            clearInterval(replyWatch.timer);
+            document.removeEventListener('visibilitychange', repliesBack);
+            window.removeEventListener('soard-replies-changed', refreshReplies);
+          }
+        };
+      }, []);
+      return v;
+    }
+    const replyAgo = (iso) => {
+      const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+      return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    };
+    const replyLinkOf = (r) => `#applications/applicants/${r.id}${r.thread ? `/reply/${r.thread}` : ''}`;
+    /** "(2) …" in the tab's title while families wait on a reply, so it's seen from another tab */
+    function ReplyTitle() {
+      const { n } = useReplies();
+      useEffect(() => {
+        const base = document.title.replace(/^\(\d+\) /, '');
+        document.title = n ? `(${n}) ${base}` : base;
+      }, [n]);
+      return null;
+    }
+    // A family replied: a notice on whatever page someone is on, until they choose Reply or Later.
+    // Each reply shows once per browser; the sidebar keeps counting until someone answers it.
+    const REPLIES_SEEN = 'soard-replies-seen';
+    function ReplyNotices() {
+      const { replies } = useReplies();
+      const [seen, setSeen] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem(REPLIES_SEEN) || '[]')); } catch { return new Set(); } });
+      const [hash, setHash] = useState(location.hash);
+      useEffect(() => { const on = () => setHash(location.hash); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
+      const keyOf = (r) => `${r.id}@${r.at}`;
+      const mark = (list) => setSeen((s) => {
+        const next = new Set(s);
+        list.forEach((r) => next.add(keyOf(r)));
+        try { localStorage.setItem(REPLIES_SEEN, JSON.stringify([...next].slice(-200))); } catch { /* private window: shows again next visit */ }
+        return next;
+      });
+      // Not for the family already open on screen
+      const fresh = replies.filter((r) => !seen.has(keyOf(r)) && !hash.startsWith(`#applications/applicants/${r.id}`));
+      if (!fresh.length) return null;
+      return html`<div class="reply-notices" role="region" aria-label="Families who replied">
+        ${fresh.slice(0, 3).map((r) => html`<div class="reply-notice" key=${keyOf(r)} role="alert">
+          <div class="reply-notice-head"><span aria-hidden="true">💬</span><b>${r.by || 'A family'} replied</b><span class="reply-notice-when">${replyAgo(r.at)}</span></div>
+          <div class="reply-notice-about">About ${r.name}${r.status ? ` · ${r.status}` : ''}</div>
+          ${r.snippet ? html`<p class="reply-notice-text">“${r.snippet}”</p>` : null}
+          <div class="reply-notice-actions">
+            <button class="btn btn-primary btn-sm" onClick=${() => { mark([r]); location.hash = replyLinkOf(r); }}>Reply</button>
+            <button class="btn btn-ghost btn-sm" onClick=${() => mark([r])}>Later</button>
+          </div>
+        </div>`)}
+        ${fresh.length > 3 ? html`<button class="reply-notice-more" onClick=${() => { mark(fresh); location.hash = '#applications/applicants'; }}>${fresh.length - 3} more waiting · See them</button>` : null}
+      </div>`;
+    }
+
     // Who's signed in, from Cloudflare Access. Nothing to show where Access
     // isn't in front (local tests), so the sidebar leaves the row out.
     let identityAsk = null;
@@ -21892,10 +22007,13 @@ ${sections || '<p>No one yet.</p>'}
       const liveOn = liveNow.use();
       const advisoryCount = advisoryNew.use();
       const appliedCount = applicantsNew.use();
+      const familyReplies = useReplies();
       const me = useIdentity();
       const activeId = navIdOf(view);
       const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
       const badgeOf = (id) => {
+        // A family waiting on a reply comes first; new applications are in the note
+        if (id === 'applications' && familyReplies.n) return { n: familyReplies.n, note: `${plural(familyReplies.n, 'family replied and is', 'families replied and are')} waiting for an answer${appliedCount ? ` · ${plural(appliedCount, 'new application', 'new applications')}` : ''}` };
         if (id === 'applications' && appliedCount) return { n: appliedCount, note: `${plural(appliedCount, 'family waits', 'families wait')} for a first look` };
         if (id === 'press-hub' && pressNeedsLook) return { n: pressNeedsLook, note: `${plural(pressNeedsLook, 'found article needs', 'found articles need')} a look` };
         if (id === 'people-hub' && advisoryCount) return { n: advisoryCount, note: `${plural(advisoryCount, 'new advisory application', 'new advisory applications')}` };
@@ -22278,6 +22396,8 @@ ${sections || '<p>No one yet.</p>'}
           </main>
 
           <${ToastContainer} toasts=${toasts} onDismiss=${(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
+          <${ReplyNotices} />
+          <${ReplyTitle} />
           <${CommandPalette} open=${cmdPaletteOpen} onClose=${() => setCmdPaletteOpen(false)}
             onNavigate=${navigate} kids=${kids} partners=${partners} communityPartners=${communityPartners} mediaLogos=${mediaLogos} team=${team}
             articles=${articles} events=${events} communityProjects=${communityProjects} press=${press} />

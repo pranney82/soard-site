@@ -6,8 +6,9 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
-import { syncAllApplicants, syncEvents, FIELDS, activityFor, relabelFamilyComments } from '../functions/api/_applicants.js';
-import { alertFamilyReplies, replyText, replyAlertFacts } from '../functions/api/_applicant-replies.js';
+import { syncAllApplicants, syncEvents, FIELDS, activityFor, relabelFamilyComments, messageFamily, markReplyHandled, listApplicants } from '../functions/api/_applicants.js';
+import { alertFamilyReplies, replyText, replyAlertFacts, waitingReplies } from '../functions/api/_applicant-replies.js';
+import * as countRoute from '../functions/api/applicants-count.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 
 const F = Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, f.id]));
@@ -166,6 +167,55 @@ test('once: past portal messages by a family contact become replies in the histo
   assert.equal(kinds['old-2'], 'comment');
   assert.equal(await relabelFamilyComments(env.DB), 0, 'only once');
   assert.equal(w.world.slack.length, 0);
+});
+
+test('waiting on us: a family’s reply until someone answers it (site, a JobTread reply in the thread) or marks it No reply needed', async () => {
+  const a = family('Avery Stone');
+  const b = family('Blake Ray');
+  await syncAllApplicants(env, opts());
+  await syncEvents(env, opts());
+  reply(a, 'Tuesday works!\n\nOn Mon, Oct 20, 2026 at 9:00 AM SOARD <x@y.org> wrote:\n> Could we visit?', Date.now() + 1000, 'Jordan Stone', 'cm-visit');
+  reply(b, 'Thanks so much', Date.now() + 2000, 'Pat Ray', 'cm-hello');
+  await syncEvents(env, opts());
+  let waiting = await waitingReplies(env.DB);
+  assert.deepEqual(waiting.map((x) => x.name), ['Blake Ray', 'Avery Stone'], 'newest first');
+  assert.deepEqual({ by: waiting[1].by, snippet: waiting[1].snippet, thread: waiting[1].thread }, { by: 'Jordan Stone', snippet: 'Tuesday works!', thread: 'cm-visit' });
+  // The board and the sidebar see the same thing
+  assert.equal((await listApplicants(env.DB)).find((x) => x.name === 'Avery Stone').waiting.by, 'Jordan Stone');
+  const res = await countRoute.onRequestGet({ env });
+  const j = await res.json();
+  assert.equal(j.waiting, 2);
+  assert.equal(j.replies[0].name, 'Blake Ray');
+
+  // Answered from the site
+  a.comments.push({ id: 'cm-visit', name: 'Onsite Scheduling', message: 'Could we visit?', by: 'Qualification Committee', assignees: [{ name: 'Jordan Stone', emailAddress: 'jordan@example.com' }] });
+  await messageFamily(env, a.id, { message: 'See you Tuesday at 3!', replyTo: 'cm-visit', user: 'linzi@soardcharity.com', ...opts(), now: Date.now() + 5000 });
+  // "Thanks so much" needs no answer
+  await markReplyHandled(env, b.id, { user: 'linzi@soardcharity.com', now: Date.now() + 5000 });
+  assert.deepEqual(await waitingReplies(env.DB), []);
+  assert.equal((await activityFor(env.DB, b.id)).find((r) => r.kind === 'handled').title, 'No reply needed');
+
+  // They write again; Linzi answers in the thread from JobTread
+  reply(a, 'Can we make it 4?', Date.now() + 8000, 'Jordan Stone', 'cm-visit');
+  await syncEvents(env, opts());
+  assert.deepEqual((await waitingReplies(env.DB)).map((x) => x.name), ['Avery Stone']);
+  w.world.events.push({ id: 'evt-linzi', createdAt: new Date(Date.now() + 9000).toISOString(), type: 'commentCreated', createdByGrantId: 'g-app', createdByGrantName: 'JobTread App', createdByUser: { name: 'Linzi Berkowitz', emailAddress: 'linzi@soardcharity.com' },
+    data: { next: { id: 'cm-linzi', message: '4 works', targetType: 'account', parentCommentId: 'cm-visit' } }, account: { id: a.id, type: 'customer' } });
+  await syncEvents(env, opts());
+  assert.deepEqual(await waitingReplies(env.DB), [], 'answered in JobTread');
+});
+
+test('waiting on us leaves out replies from before alerts began, and archived families', async () => {
+  const a = family('Avery Stone');
+  const c = family('Casey Archived');
+  await syncAllApplicants(env, opts());
+  await syncEvents(env, opts());
+  reply(a, 'Old one', Date.now() - 60 * 1000);
+  reply(c, 'Hello?');
+  c.archivedAt = new Date().toISOString();
+  await syncEvents(env, opts());
+  await syncAllApplicants(env, opts());
+  assert.deepEqual(await waitingReplies(env.DB), []);
 });
 
 test('what they wrote, without the quoted history mail apps add', () => {

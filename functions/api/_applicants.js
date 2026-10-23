@@ -36,7 +36,7 @@ import {
 } from './_applicant-comms.js';
 import { noteStatus, changeInfo, dontSend, sendNow as sendNowNotify, whenWouldSend, notifyMap, notifyFor, ensureNotifySchema } from './_applicant-notify.js';
 import { insidePolygon, milesToEdge } from './_geo.js';
-import { alertFamilyReplies } from './_applicant-replies.js';
+import { alertFamilyReplies, waitingReplies } from './_applicant-replies.js';
 import { getLiveForm } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA, toE164 } from './_application-form.js';
 
@@ -691,6 +691,9 @@ export async function listApplicants(DB, { archived = false } = {}) {
   // Status emails waiting to go (or a family told something that's no longer true)
   const pending = await notifyMap(DB).catch(() => ({}));
   for (const a of list) if (pending[a.id]) a.notify = pending[a.id];
+  // Families who replied and are waiting on us (./_applicant-replies.js)
+  const waiting = new Map((await waitingReplies(DB).catch(() => [])).map(w => [w.id, w]));
+  for (const a of list) if (waiting.has(a.id)) a.waiting = waiting.get(a.id);
   // The site's application for each (photos, flags), when it came from the form
   try {
     const { results: apps } = await DB.prepare('SELECT id, jt_account_id, lang, jt_state, files, is_test, submitted_at FROM applications WHERE jt_account_id IS NOT NULL AND deleted_at IS NULL').all();
@@ -777,6 +780,8 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
   const files = (data?.account?.files?.nodes || []).filter(f => !f.job?.id).map(f => ({
     id: f.id, name: f.name, type: f.type, size: f.size, at: f.createdAt, url: f.url, thumb: /^image\//.test(f.type || '') ? f.thumb : null,
   }));
+  // Waiting on us: always set (null when answered), so the family's page never shows a stale banner
+  row.waiting = (await waitingReplies(DB).catch(() => [])).find(w => w.id === id) || null;
   return { applicant: row, comments, files, activity: await activityFor(DB, id), notify: await notifyFor(DB, id).catch(() => null), live: !!data };
 }
 
@@ -949,6 +954,12 @@ async function threadOf(env, accountId, commentId, fetchImpl) {
   const to = (root.aces?.nodes || []).filter(x => x.membership?.accountType === 'customer' && x.membership.user?.emailAddress)
     .map(({ membership: { user: u } }) => ({ name: u.name || u.emailAddress, email: u.emailAddress }));
   return { id: root.id, name: root.name || null, to };
+}
+
+/** A family's reply needs no answer (a "thanks"): they stop waiting on us. Site only; nothing goes to JobTread */
+export async function markReplyHandled(env, accountId, { user = 'admin', now = Date.now() } = {}) {
+  await logSite(env.DB, accountId, { kind: 'handled', title: 'No reply needed', user, now });
+  return getApplicantRow(env.DB, accountId);
 }
 
 /** Archive (or bring back) the account in JobTread */

@@ -251,6 +251,17 @@ const CSS = `
 .apl-mail { font-size: .72rem; font-weight: 650; padding: 2px 7px; border-radius: 999px; background: #FFF6D6; border: 1px solid #F2D899; color: #6B4A00; white-space: nowrap; }
 .apl-mail.is-held { background: #EEF0F3; border-color: #D9DDE3; color: #4A4F57; }
 .apl-mail.is-fix { background: #FFE6B8; border-color: #EBC16A; color: #5C3D00; }
+/* A family replied and is waiting on us: brand yellow, never red */
+.apl-mail.is-reply { background: #FFE14D; border-color: #E5BF1A; color: #2B2200; }
+.apl-card.is-waiting { box-shadow: inset 4px 0 0 #FFD400; }
+.apl-waiting { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .65rem .9rem; border: 1px solid #E5BF1A; border-radius: 12px; background: #FFF8D6; font-size: .9rem; color: var(--color-text); }
+.apl-waiting > b { font-weight: 700; }
+.apl-waiting-who { display: flex; gap: .35rem; flex-wrap: wrap; min-width: 0; }
+.apl-waiting-who button { all: unset; cursor: pointer; padding: .15rem .55rem; border-radius: 999px; background: #fff; border: 1px solid #E5BF1A; font-size: .82rem; font-weight: 600; }
+.apl-waiting-who button:hover, .apl-waiting-who button:focus-visible { background: #FFE14D; }
+.apl-waiting .btn { margin-left: auto; }
+.apl-reply-banner { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; background: #FFF8D6; border-color: #E5BF1A; }
+.apl-reply-banner .apl-more { margin-left: auto; }
 .apl-banner { display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; border-radius: var(--radius-md); padding: .7rem .9rem; border: 1px solid #F2D899; background: #FFFBEB; font-size: .88rem; }
 .apl-banner.is-info { border-color: var(--color-border); background: var(--color-bg-card); }
 .apl-banner.is-warn { border-color: #F5C2BD; background: #FFF5F4; }
@@ -549,7 +560,7 @@ const Icon = {
   filter: () => html`<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2.5 4h11M4.5 8h7M6.5 12h3" stroke-linecap="round"/></svg>`,
   x: () => html`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke-linecap="round"/></svg>`,
 };
-const FEED_ICON = { notify: '📨', status: '●', fields: '✎', comment: '💬', reply: '↩', textIn: '📱', textOut: '📱', call: '📞', sent: '✉', note: '📝', file: '📎', contact: '👤', home: '🏠', job: '🛠', created: '✨', archived: '🗄', unarchived: '🗄', renamed: '✎' };
+const FEED_ICON = { handled: '✓', notify: '📨', status: '●', fields: '✎', comment: '💬', reply: '↩', textIn: '📱', textOut: '📱', call: '📞', sent: '✉', note: '📝', file: '📎', contact: '👤', home: '🏠', job: '🛠', created: '✨', archived: '🗄', unarchived: '🗄', renamed: '✎' };
 
 const PHOTO_FROM = { page: 'Photo from their kid page', application: 'Photo from their application' };
 /** Where the avatar comes from, and why it isn't the kid page's yet */
@@ -615,7 +626,8 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
   const [tests, setTests] = useState(false); // test accounts (TEST…) stay off the board unless asked for
   const [openId, setOpenId] = useState(() => (location.hash.match(/^#applications\/applicants\/([A-Za-z0-9]{6,32})(?:\/reply\/[A-Za-z0-9_-]{4,64})?$/) || [])[1] || null);
   // A family-reply alert's Reply link: open the family answering in that JobTread thread
-  const [replyLink] = useState(() => (location.hash.match(/^#applications\/applicants\/[A-Za-z0-9]{6,32}\/reply\/([A-Za-z0-9_-]{4,64})$/) || [])[1] || null);
+  const [replyLink, setReplyLink] = useState(() => (location.hash.match(/^#applications\/applicants\/[A-Za-z0-9]{6,32}\/reply\/([A-Za-z0-9_-]{4,64})$/) || [])[1] || null);
+  const [waitingOnly, setWaitingOnly] = useState(false); // just the families waiting on a reply
   const [sheet, setSheet] = useState(null);       // { a, status }
   const [syncing, setSyncing] = useState(false);
   const [focusPin, setFocusPin] = useState(null);
@@ -636,6 +648,8 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     setYear(y => (y == null ? (j.applicants.some(a => a.year === j.season && !a.archivedAt) ? j.season : '') : y));
   }, [archived]);
   useEffect(() => { load(); }, [load]);
+  const loadRef = useRef(load);
+  loadRef.current = load;
   // Stay current while the page is open (JobTread changes arrive through the sweep)
   useEffect(() => {
     const t = setInterval(() => { if (document.visibilityState === 'visible') load(true); }, 60000);
@@ -669,6 +683,21 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     setOpenId(id);
     history.replaceState(null, '', id ? `#applications/applicants/${id}` : extraViews.some(x => x.key === view) ? `#applications/${view}` : '#applications/applicants');
   };
+  // Open a family answering in the conversation they replied in
+  const openReply = (w) => { setReplyLink(w.thread || null); open(w.id); };
+  // A reply notice elsewhere in the admin (or its link) opens a family here, already answering;
+  // a new reply arriving brings the board up to date
+  useEffect(() => {
+    const onHash = () => {
+      const m = location.hash.match(/^#applications\/applicants\/([A-Za-z0-9]{6,32})(?:\/reply\/([A-Za-z0-9_-]{4,64}))?$/);
+      if (m) { setReplyLink(m[2] || null); setOpenId(m[1]); }
+    };
+    const onReplies = () => loadRef.current(true);
+    window.addEventListener('hashchange', onHash);
+    window.addEventListener('soard-replies-arrived', onReplies);
+    window.addEventListener('soard-replies-changed', onReplies);
+    return () => { window.removeEventListener('hashchange', onHash); window.removeEventListener('soard-replies-arrived', onReplies); window.removeEventListener('soard-replies-changed', onReplies); };
+  }, []);
 
   // A link from somewhere else: a view, the boundary editor, or one website application
   // (which opens that family when they're in JobTread, else its row in Submissions)
@@ -704,13 +733,16 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
       if (county && a.county !== county) return false;
       if (area && a.area !== area) return false;
       if (statusFilter && view !== 'board' && (a.status || '') !== statusFilter) return false;
+      if (waitingOnly && !a.waiting) return false;
       if (words.length) {
         const hay = [a.name, a.contact?.name, a.contact?.email, a.contact?.phone, a.address, a.city, a.county, a.fields?.diagnosis, a.fields?.referredBy].join(' ').toLowerCase();
         if (!words.every(w => hay.includes(w))) return false;
       }
       return true;
     });
-  }, [all, q, year, type, county, area, statusFilter, view]);
+  }, [all, q, year, type, county, area, statusFilter, view, waitingOnly]);
+  // Families who replied and are waiting on us, newest reply first
+  const waitingList = useMemo(() => all.filter(a => a.waiting).sort((x, y) => y.waiting.at.localeCompare(x.waiting.at)), [all]);
   // The status counts leave the status filter out, so every count stays visible while one is picked
   const counts = useMemo(() => {
     const m = Object.fromEntries(STATUS_ORDER.map(s => [s, 0]));
@@ -768,9 +800,10 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     area && { key: 'area', text: AREA_LABEL[area], clear: () => setArea('') },
     archived && { key: 'archived', text: 'Including archived', clear: () => setArchived(false) },
     tests && { key: 'tests', text: 'Including test families', clear: () => setTests(false) },
+    waitingOnly && { key: 'waiting', text: 'Waiting on a reply', clear: () => setWaitingOnly(false) },
   ].filter(Boolean);
   const inPanel = [type, county, area, archived, tests].filter(Boolean).length;
-  const clearAll = () => { setYear(season); setType(''); setCounty(''); setArea(''); setArchived(false); setTests(false); };
+  const clearAll = () => { setYear(season); setType(''); setCounty(''); setArea(''); setArchived(false); setTests(false); setWaitingOnly(false); };
   const emails = data.emails || {};
   const menu = [
     emails.active
@@ -849,6 +882,12 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     </div>`}
 
     ${!extra && notice}
+    ${!extra && waitingList.length > 0 && html`<div class="apl-waiting" role="status">
+      <span aria-hidden="true">💬</span>
+      <b>${waitingList.length === 1 ? 'A family replied and is waiting for an answer' : `${waitingList.length} families replied and are waiting for an answer`}</b>
+      <span class="apl-waiting-who">${waitingList.slice(0, 6).map(a => html`<button key=${a.id} onClick=${() => openReply({ id: a.id, thread: a.waiting.thread })} title=${`“${a.waiting.snippet}”`}>${a.name} · ${ago(a.waiting.at)}</button>`)}${waitingList.length > 6 ? html`<span>and ${waitingList.length - 6} more</span>` : null}</span>
+      ${waitingList.length > 1 && html`<button class="btn btn-ghost btn-sm" onClick=${() => setWaitingOnly(v => !v)} aria-pressed=${waitingOnly}>${waitingOnly ? 'Show everyone' : 'Show only them'}</button>`}
+    </div>`}
     <${EmailBanner} emails=${emails} busy=${busy} onPost=${post} onDone=${doneCleanup} onOpen=${open} addToast=${addToast} onChanged=${() => load(true)} />
 
     ${(view === 'list' || view === 'map') && html`<div class="apl-strip" role="group" aria-label="Show status">
@@ -1031,7 +1070,8 @@ function Board({ list, onOpen, onMove }) {
     for (const a of list) (g[a.status] || none).push(a);
     // Longest waiting first in the working columns; newest decisions first in the last two
     for (const s of STATUS_ORDER) {
-      g[s].sort((x, y) => (s === 'Applied' || s === 'In Review'
+      // Families waiting on a reply first, newest reply on top
+      g[s].sort((x, y) => (y.waiting ? 1 : 0) - (x.waiting ? 1 : 0) || String(y.waiting?.at || '').localeCompare(String(x.waiting?.at || '')) || (s === 'Applied' || s === 'In Review'
         ? String(x.stageAt || x.createdAt).localeCompare(String(y.stageAt || y.createdAt))
         : String(y.stageAt || y.createdAt).localeCompare(String(x.stageAt || x.createdAt))));
     }
@@ -1084,12 +1124,13 @@ function Board({ list, onOpen, onMove }) {
           const days = daysSince(a.stageAt || a.createdAt, now);
           const long = (s === 'Applied' && days > 21) || (s === 'In Review' && days > 45);
           const age = ageOf(a.fields?.birthday);
-          return html`<button class="apl-card" key=${a.id} data-id=${a.id} onClick=${() => { if (Date.now() - lastDragEnd > 350) onOpen(a.id); }} aria-label=${`${a.name}, ${s}. Open`}>
+          return html`<button class=${`apl-card ${a.waiting ? 'is-waiting' : ''}`} key=${a.id} data-id=${a.id} onClick=${() => { if (Date.now() - lastDragEnd > 350) onOpen(a.id); }} aria-label=${`${a.name}, ${s}. Open`}>
             <div class="apl-card-top"><${Avatar} a=${a} />
               <div style="min-width:0"><div class="apl-card-name">${a.name}</div>
               <div class="apl-card-sub">${[age != null ? `${age} yrs` : null, a.city || a.county, oneYear ? null : a.year].filter(Boolean).join(' · ')}</div></div>
             </div>
             <${Flags} a=${a} />
+            ${a.waiting && html`<div class="apl-tags"><span class="apl-mail is-reply" title=${`${a.waiting.by || 'The family'} replied ${fullDate(a.waiting.at)}: “${a.waiting.snippet}”`}>💬 ${a.waiting.by ? a.waiting.by.split(' ')[0] : 'They'} replied ${ago(a.waiting.at)}</span></div>`}
             ${a.notify && html`<div class="apl-tags">${a.notify.kind ? html`<span class=${`apl-mail ${a.notify.hold ? 'is-held' : ''}`} title=${a.notify.hold ? 'Held: family emails are paused' : `The ${a.notify.label} email goes out at ${clock(a.notify.dueAt)} unless the status changes back`}>${a.notify.hold ? 'Email held' : `Emails ${clock(a.notify.dueAt)}`}</span>` : a.notify.correction ? html`<span class="apl-mail is-fix" title=${`The family was emailed ${a.notify.told}, but the status is now ${a.status}`}>Needs a correction</span>` : null}</div>`}
             <div class="apl-card-foot"><span>${lastLine(a)}</span>${days != null && html`<span class=${`apl-stage ${long ? 'is-long' : ''}`} title=${`In ${s} for ${plural(days, 'day')}`}>${days}d</span>`}</div>
           </button>`;
@@ -1145,7 +1186,7 @@ function ListView({ list, onOpen }) {
     <tbody>${rows.map(a => {
       const days = daysSince(a.stageAt || a.createdAt, now);
       return html`<tr key=${a.id} tabindex="0" onClick=${() => onOpen(a.id)} onKeyDown=${e => { if (e.key === 'Enter') onOpen(a.id); }}>
-      <td><div style="display:flex;gap:.55rem;align-items:center"><${Avatar} a=${a} size=${28} /><div style="min-width:0"><strong>${a.name}</strong><div class="apl-card-sub">${a.contact?.name || ''}</div></div></div></td>
+      <td><div style="display:flex;gap:.55rem;align-items:center"><${Avatar} a=${a} size=${28} /><div style="min-width:0"><strong>${a.name}</strong><div class="apl-card-sub">${a.contact?.name || ''}</div>${a.waiting && html`<span class="apl-mail is-reply" title=${`“${a.waiting.snippet}”`}>💬 Replied ${ago(a.waiting.at)}</span>`}</div></div></td>
       <td><${Pill} status=${a.status} /></td>
       <td>${a.year || '—'}</td>
       <td>${(a.types || []).join(', ') || '—'}</td>
@@ -1677,8 +1718,19 @@ function Conversation({ d, onSent, addToast, replyLink = null }) {
     if (!j.success) { addToast(j.error || 'Not sent', 'error'); return; }
     addToast(correcting ? `Correction sent to ${namesOf(j.to)} through JobTread` : thread ? `Replied to ${namesOf(j.to)} in “${thread.title || 'their conversation'}” through JobTread` : `Sent to ${namesOf(j.to)} through JobTread`, 'success');
     if (!thread) setPicked(undefined);
+    window.dispatchEvent(new Event('soard-replies-changed'));
     setText('');
     if (correcting) { setCorrecting(false); setSubject(DEFAULT_SUBJECT); }
+    onSent();
+  };
+  // A "thanks" needs no answer: the family stops waiting on us (site only)
+  const handled = async () => {
+    setBusy(true);
+    const j = await call(API, { handled: { id: a.id } });
+    setBusy(false);
+    if (!j.success) { addToast(j.error || 'That didn’t work', 'error'); return; }
+    addToast(`Done. ${a.name} isn’t waiting on a reply.`, 'success');
+    window.dispatchEvent(new Event('soard-replies-changed'));
     onSent();
   };
   const startCorrection = (draft) => {
@@ -1691,6 +1743,10 @@ function Conversation({ d, onSent, addToast, replyLink = null }) {
   let lastDay = '';
   return html`<section class="apl-convo" aria-label="Conversation">
     <div class="apl-thread" ref=${scroller} tabindex="0" role="log" aria-label="Messages and activity">
+      ${a.waiting && html`<div class="apl-callout apl-reply-banner" role="status">
+        <span><b>💬 ${a.waiting.by || 'The family'} replied ${ago(a.waiting.at)}</b> and ${a.waiting.by ? 'is' : 'are'} waiting for an answer. Your reply below goes back in the same conversation.</span>
+        <button class="apl-more" onClick=${handled} disabled=${busy}>No reply needed</button>
+      </div>`}
       <${NotifyBanner} d=${d} onChanged=${onSent} onCorrection=${startCorrection} addToast=${addToast} />
       ${!items.length && html`<div class="apl-skel">No messages yet.</div>`}
       ${items.map((it) => {

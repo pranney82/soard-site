@@ -61,7 +61,7 @@ async function open(w, h, hash = '', { rail = false } = {}) {
     page.reqs.push(url.pathname + url.search);
     if (url.pathname === '/cdn-cgi/access/get-identity') return state.me ? json({ email: 'linzi@soardcharity.com', name: '' }) : req.respond({ status: 404, body: '' });
     if (url.pathname === '/api/live-status') return json({ live: state.live, phase: state.live ? 'live' : 'idle' });
-    if (url.pathname === '/api/applicants-count') return json({ success: true, applied: state.applied });
+    if (url.pathname === '/api/applicants-count') return json({ success: true, applied: state.applied, waiting: (state.replies || []).length, replies: state.replies || [] });
     if (url.pathname === '/api/advisory-applications-admin') return url.searchParams.get('count') ? json({ success: true, new: 2 }) : json({ success: false, error: 'not in this test' }, 500);
     if (url.pathname === '/api/press-admin') return url.searchParams.get('summary') ? json({ success: true, review: 3 }) : json({ success: false, error: 'not in this test' }, 500);
     if (url.pathname === '/api/broadcast-admin') return json({ success: false, error: 'not in this test' }, 500);
@@ -230,6 +230,31 @@ try {
   ok(await active(page) === 'Partners' && !(await page.$('.sidebar.open')) && hashOf(page) === '#partners', 'picking an area closes the drawer');
   ok(page.errors.length === 0, `no errors (${page.errors.slice(0, 2).join(' | ')})`);
   await page.close();
+
+  console.log('A family replied');
+  const reply = (id, name, by, mins, snippet, thread) => ({ id, name, status: 'In Review', at: new Date(Date.now() - mins * 60000).toISOString(), by, snippet, thread });
+  state.replies = [reply('acct00000001', 'Avery Stone', 'Jordan Stone', 5, 'Tuesday works for us!', 'cm-visit')];
+  page = await open(1440, 900);
+  const appCount = await page.$eval('.side-nav a[href="#applications"]', (a) => ({ n: a.querySelector('.nav-count')?.textContent, text: a.textContent }));
+  ok(appCount.n === '1' && /1 family replied and is waiting for an answer · 4 new applications/.test(appCount.text), `Applications counts the family waiting on a reply, and says so (${appCount.n}: ${appCount.text.replace(/\s+/g, ' ').trim()})`);
+  ok(/^\(1\) /.test(await page.title()), `the tab’s title counts it (${await page.title()})`);
+  const notice = await page.$eval('.reply-notice', (el) => el.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
+  ok(/Jordan Stone replied/.test(notice) && /5 min ago/.test(notice) && /About Avery Stone · In Review/.test(notice) && /Tuesday works for us!/.test(notice), `a notice on any page, with who, when and what (${notice})`);
+  ok(/Jordan Stone replied and is waiting for an answer/.test(await page.evaluate(() => document.querySelector('.main')?.textContent || '')), 'the Dashboard lists it first in what needs doing');
+  await page.screenshot({ path: join(OUT, 'reply-notice.png') });
+  await clickText(page, '.reply-notice button', 'Later'); await pause(300);
+  ok(!(await page.$('.reply-notice')), 'Later puts it away');
+  await page.reload({ waitUntil: 'networkidle2' }); await page.waitForSelector('.side-nav .nav-item'); await pause(500);
+  ok(!(await page.$('.reply-notice')) && await page.$eval('.side-nav a[href="#applications"] .nav-count', (c) => c.textContent).catch(() => '') === '1', 'and it stays away after a reload, while the count stays until someone answers');
+  // Another family writes while the admin is open: a notice pops without a reload
+  state.replies = [reply('acct00000002', 'Mateo García', 'Lucía García', 0, '¿Podemos cambiar la cita?', 'cm-cita'), ...state.replies];
+  await page.evaluate(() => window.dispatchEvent(new Event('soard-replies-changed'))); await pause(600);
+  ok(/Lucía García replied/.test(await page.$eval('.reply-notice', (el) => el.textContent).catch(() => '')) && await page.$eval('.side-nav a[href="#applications"] .nav-count', (c) => c.textContent).catch(() => '') === '2', 'a new reply pops up while the admin is open, and the count goes up');
+  await clickText(page, '.reply-notice button', 'Reply'); await pause(500);
+  ok(hashOf(page) === '#applications/applicants/acct00000002/reply/cm-cita' && await active(page) === 'Applications', `Reply opens that family, answering in their conversation (${hashOf(page)})`);
+  ok(!(await page.$('.reply-notice')), 'and the notice goes');
+  await page.close();
+  state.replies = null;
 
   console.log('Quiet states');
   Object.assign(state, { live: false, waiting: 0, me: false, applied: 0 });

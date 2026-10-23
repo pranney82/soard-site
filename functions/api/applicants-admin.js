@@ -28,7 +28,7 @@
 
 import {
   ensureApplicantSchema, listApplicants, applicantDetail, recentActivity, previewStatus, setApplicantStatus,
-  updateApplicantFields, messageFamily, archiveApplicant, maybeSyncApplicants, syncState,
+  updateApplicantFields, messageFamily, archiveApplicant, markReplyHandled, maybeSyncApplicants, syncState,
   isAccountId, STATUSES, FIELDS, replaceBoundary,
 } from './_applicants.js';
 import { applicationSettings, cleanYear } from './_applications.js';
@@ -154,6 +154,12 @@ export async function onRequestPost(context) {
       const out = await messageFamily(env, id, { subject: body.message.subject, message: body.message.message, replyTo, user });
       await audit('message', id, { to: out.to.map(p => p.email).join(', '), subject: body.message.subject || null });
       return ok(out);
+    }
+    if (body.handled) {
+      const id = target(body.handled);
+      const applicant = await markReplyHandled(env, id, { user });
+      await audit('reply-handled', id, {});
+      return ok({ applicant });
     }
     if (body.archive) {
       const id = target(body.archive);
