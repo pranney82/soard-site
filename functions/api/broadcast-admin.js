@@ -405,24 +405,25 @@ export async function onRequestPost(context) {
       }
       case 'setSlackChannel': {
         if (!env.SLACK_BOT_TOKEN) return fail('Add SLACK_BOT_TOKEN in Cloudflare Pages first');
-        const role = body.role === 'attention' ? 'attention' : 'news';
+        const role = ['attention', 'applications'].includes(body.role) ? body.role : 'news';
+        const key = role === 'news' ? 'channel' : role;
         const id = String(body.id || '');
         const cfg = await notify.readSlackConfig(env.DB, { fresh: true });
         const stamp = { updatedAt: new Date().toISOString(), updatedBy: userEmail };
-        // Needs attention can go back to sharing the good-news channel
-        if (role === 'attention' && !id) {
-          const { attention, ...rest } = cfg;
+        // Needs attention and Makeover applications can go back to sharing the channels above
+        if (role !== 'news' && !id) {
+          const { [key]: _gone, ...rest } = cfg;
           await notify.writeSlackConfig(env.DB, { ...rest, ...stamp });
-          await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'slack', entityName: `Slack: alerts that need a hand back in #${cfg.channel?.name || 'the good-news channel'}`, gitStatus: 'ok' });
+          await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'slack', entityName: role === 'attention' ? `Slack: alerts that need a hand back in #${cfg.channel?.name || 'the good-news channel'}` : 'Slack: makeover applications back with good news and alerts', gitStatus: 'ok' });
           return Response.json({ success: true, channel: null, posted: false, slack: await notify.slackStatus(env) });
         }
         if (!/^[CG][A-Z0-9]{6,}$/.test(id)) return fail('Pick a channel');
         const info = await notify.slackApi(env, 'conversations.info', { channel: id });
         if (!info.ok) return fail(`Slack said: ${info.error}${info.needed ? ` (the app needs ${info.needed})` : ''}`);
         const channel = { id, name: info.channel?.name || id, private: !!info.channel?.is_private };
-        const next = { ...cfg, [role === 'attention' ? 'attention' : 'channel']: channel, ...stamp };
+        const next = { ...cfg, [key]: channel, ...stamp };
         await notify.writeSlackConfig(env.DB, next);
-        await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'slack', entityName: `Slack ${role === 'attention' ? 'Needs attention' : 'Good news'} channel: #${channel.name}`, gitStatus: 'ok' });
+        await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'slack', entityName: `Slack ${role === 'attention' ? 'Needs attention' : role === 'applications' ? 'Makeover applications' : 'Good news'} channel: #${channel.name}`, gitStatus: 'ok' });
         // Say hello in the channel: proves the app can post there, right now, and says what will
         const who = personName(userEmail);
         const shared = !next.attention?.id || next.attention.id === next.channel?.id;

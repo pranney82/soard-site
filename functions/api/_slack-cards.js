@@ -134,6 +134,12 @@ export function resolvedCard({ title, lead, footer }) {
  */
 export function helloCard({ role, who, shared = false, adminUrl }) {
   const common = { buttons: [{ label: 'Open the admin', url: adminUrl }], footer: 'To change it, pick another channel in Reveals → Settings → Alerts.' };
+  if (role === 'applications') {
+    return slackCard({
+      icon: '🏡', title: 'Makeover applications will post here', ...common,
+      lead: `${who} picked this channel in the admin for the makeover team: new applications, families replying to a message (with a Reply button that answers in the same conversation), approvals that make a JobTread job, and application problems.`,
+    });
+  }
   return role === 'attention'
     ? slackCard({
       icon: '👋', title: 'Website alerts that need a hand will post here', ...common,

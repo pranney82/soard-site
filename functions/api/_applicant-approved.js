@@ -431,7 +431,7 @@ async function wait(env, row, acct, problem, detail, now) {
   const tell = !row.alerted && (problem !== 'error' || attempts >= ALERT_AFTER);
   if (tell) {
     next.alerted = 1;
-    await slackIssue(env, `approved:${acct.id}`, problemCard({ acct, problem, detail }), { title: `${acct.name}: makeover job`, kind: 'attention' }).catch(() => null);
+    await slackIssue(env, `approved:${acct.id}`, problemCard({ acct, problem, detail }), { title: `${acct.name}: makeover job`, kind: 'attention', area: 'applications' }).catch(() => null);
     await logActivity(env.DB, acct.id, { title: 'Couldn’t make the makeover job yet', body: `${(PROBLEMS[problem] || PROBLEMS.error).why} ${(PROBLEMS[problem] || PROBLEMS.error).fix}`, data: { problem } }, now);
   }
   await putRow(env.DB, next, now);
@@ -582,8 +582,8 @@ export async function runApprovals(env, { fetchImpl = fetch, now = Date.now(), l
     const news = out.made.filter(m => m.job.made || m.kid?.made || m.kid?.test);
     const real = news.filter(m => !isTestFamily(m.name));
     const tests = news.filter(m => isTestFamily(m.name));
-    if (real.length) await slackPost(env, madeCard(real), { kind: 'news' }).catch(() => null);
-    if (tests.length) await slackPost(env, madeCard(tests, { test: true }), { kind: 'news' }).catch(() => null);
+    if (real.length) await slackPost(env, madeCard(real), { kind: 'news', area: 'applications' }).catch(() => null);
+    if (tests.length) await slackPost(env, madeCard(tests, { test: true }), { kind: 'news', area: 'applications' }).catch(() => null);
     await setState(DB, 'lastRun', { at: iso(now), made: out.made.length, waiting: out.waiting.length }, now);
   } catch (e) {
     out.error = e.message;

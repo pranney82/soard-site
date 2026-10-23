@@ -387,7 +387,7 @@ export async function tellStaff(env, { year, level = 'info', title, detail, prob
       lead: detail,
       buttons: [{ label: 'Open the waitlist', url: ADMIN_URL }, ...links],
       footer: 'Applications waitlist',
-    }), { kind }).catch(() => null),
+    }), { kind, area: 'applications' }).catch(() => null),
   ]);
 }
 

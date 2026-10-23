@@ -282,7 +282,7 @@ export async function tellCap(env, kind, f, extra = {}) {
     to.length && emailConfigured(env)
       ? sendEmails(env, { to, ...capEmail(kind, f, extra), tags: [{ name: 'type', value: 'application-limit' }] }).catch(e => ({ sent: 0, failed: to.length, errors: [e.message] }))
       : null,
-    slackPost(env, capCard(kind, f, extra), { kind: kind === 'blocked' || extra.test ? 'attention' : 'news' }).catch(e => ({ ok: false, error: e.message })),
+    slackPost(env, capCard(kind, f, extra), { kind: kind === 'blocked' || extra.test ? 'attention' : 'news', area: 'applications' }).catch(e => ({ ok: false, error: e.message })),
   ]);
   if (extra.test) return { slack, email };
   const at = iso(extra.at || Date.now());

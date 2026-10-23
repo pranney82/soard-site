@@ -185,7 +185,7 @@ test('the health check names the workspace, the bot and the channel, and spots e
   slack.token = 'xoxb-rotated';
   assert.equal((await notify.slackStatus(env)).error, 'invalid_auth');
 
-  assert.deepEqual(await notify.slackStatus({ DB: env.DB, SLACK_WEBHOOK_URL: HOOK }), { mode: 'webhook', webhook: true, ok: true, error: null, errorFor: null, team: null, bot: null, channel: { id: 'G0PRIVATE', name: 'board', private: false }, attention: null });
+  assert.deepEqual(await notify.slackStatus({ DB: env.DB, SLACK_WEBHOOK_URL: HOOK }), { mode: 'webhook', webhook: true, ok: true, error: null, errorFor: null, team: null, bot: null, channel: { id: 'G0PRIVATE', name: 'board', private: false }, attention: null, applications: null });
 });
 
 test('the channel list pages through Slack and comes back sorted', async () => {
@@ -461,6 +461,28 @@ test('good news and alerts each go to their own channel; with one channel picked
   assert.deepEqual(posts().slice(2).map((p) => p.body.channel), ['C0GENERAL', 'C0ALERTS1', 'C0GENERAL', 'C0ALERTS1']);
   assert.equal(notify.slackChannelFor({ channel: { id: 'A' } }, 'attention'), 'A');
   assert.equal(notify.slackChannelFor({}, 'news'), null);
+});
+
+test('a Makeover applications channel takes everything about applicants; without one they go by kind', async () => {
+  await pick('C0GENERAL', 'general');
+  await notify.slackAlert(env, 'New application', null, { kind: 'news', area: 'applications' });
+  assert.equal(posts().at(-1).body.channel, 'C0GENERAL', 'none picked: with good news, as before');
+  const d = await adminPost({ action: 'setSlackChannel', id: 'C0ALERTS1', role: 'applications' });
+  assert.equal(d.success, true);
+  assert.equal(d.slack.applications.name, 'website-alerts');
+  const hello = posts().at(-1).body;
+  assert.equal(hello.channel, 'C0ALERTS1');
+  assert.match(hello.text, /^🏡 Makeover applications will post here\nPeter picked this channel/);
+  await notify.slackAlert(env, 'New application', null, { kind: 'news', area: 'applications' });
+  await notify.slackIssue(env, 'approved:x', slackCard({ title: 'Can’t make the job' }), { kind: 'attention', area: 'applications' });
+  await notify.slackAlert(env, 'A gift!', null, { kind: 'news' });
+  assert.deepEqual(posts().slice(-3).map((p) => p.body.channel), ['C0ALERTS1', 'C0ALERTS1', 'C0GENERAL'], 'applicant posts go to the makeover channel; everything else doesn’t');
+  const back = await adminPost({ action: 'setSlackChannel', id: '', role: 'applications' });
+  assert.equal(back.success, true);
+  assert.equal(back.slack.applications, null);
+  await notify.slackAlert(env, 'New application', null, { kind: 'news', area: 'applications' });
+  assert.equal(posts().at(-1).body.channel, 'C0GENERAL');
+  assert.equal(notify.slackChannelFor({ channel: { id: 'A' }, applications: { id: 'B' } }, 'attention', 'applications'), 'B');
 });
 
 test('@here only for an urgent problem, only in a Needs attention channel of its own, never for a test', async () => {

@@ -362,7 +362,7 @@ export async function runApplicationSchedule(env, { now = Date.now() } = {}) {
       icon: '📪', title: `Applications are closed for ${s.year}`,
       lead: 'They closed on schedule. Families who already started can still finish.',
       buttons: [{ label: 'Open Applications', url: `${SITE_ORIGIN}/admin/#applications` }],
-    }), { kind: 'news' }).catch(() => null);
+    }), { kind: 'news', area: 'applications' }).catch(() => null);
   return done;
 }
 
@@ -1257,7 +1257,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     if (!s.staffSlack && s.testRun) s.staffSlack = 'off';
     if (!s.staffSlack) {
       // A test application is staff's business, not good news for the whole team
-      const r = await slackPost(env, staffSlack(app, accountId), { kind: app.is_test ? 'attention' : 'news' });
+      const r = await slackPost(env, staffSlack(app, accountId), { kind: app.is_test ? 'attention' : 'news', area: 'applications' });
       if (r.ok) s.staffSlack = iso(now);
       else if (r.skipped) s.staffSlack = 'off'; // Slack not connected, or no channel picked
       else failed.push(`Slack: ${r.error || `HTTP ${r.status}`}`);
@@ -1298,7 +1298,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     const open = s.stuckSlack?.ts ? s.stuckSlack : null;
     const [, posted] = await Promise.all([
       sendEmails(env, { to: ALERT_EMAILS, ...stuckEmail(app, { attempts, error }) }).catch(() => {}),
-      slackPost(env, stuckCard(app, { attempts, error, again: !!open }), open ? { thread: { ...open, broadcast: true } } : {}).catch(() => null),
+      slackPost(env, stuckCard(app, { attempts, error, again: !!open }), open ? { thread: { ...open, broadcast: true } } : { area: 'applications' }).catch(() => null),
     ]);
     if (!open && posted?.ok && posted.ts) {
       s.stuckSlack = { channel: posted.channel, ts: posted.ts, since: iso(now) };

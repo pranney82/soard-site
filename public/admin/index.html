@@ -4588,6 +4588,7 @@
     const SLACK_ROLES = [
       { role: 'news', label: 'Good news', save: 'Post good news here', what: 'Gifts, new applications, a countdown going up, reveals going live, replays and Reels. The channel everyone celebrates in.' },
       { role: 'attention', label: 'Needs attention', save: 'Post alerts here', what: 'Problems during a live reveal (with @here once alerts have a channel of their own, so phones buzz), the go/no-go checks, stuck applications, reveal invites and countdowns. Updates on a problem reply under its first post and show in the channel too, and the first post turns ✅ when it’s fixed.' },
+      { role: 'applications', label: 'Makeover applications', save: 'Post applications here', what: 'For the makeover team: new applications, families replying to a message (with Reply, which answers in the same conversation), approvals that make a JobTread job, application problems, the application limit and the waitlist. Without one, these go with good news and alerts above.' },
     ];
     function BcSlack({ mode, addToast }) {
       const [st, setSt] = useState(null); // slackStatus result; null while checking
@@ -4619,7 +4620,7 @@
         document.addEventListener('visibilitychange', onBack);
         return () => document.removeEventListener('visibilitychange', onBack);
       }, [mode]);
-      const saved = { news: st?.channel?.id || '', attention: st?.attention?.id || '' };
+      const saved = { news: st?.channel?.id || '', attention: st?.attention?.id || '', applications: st?.applications?.id || '' };
       const save = async (role) => {
         const id = picks[role] ?? saved[role];
         setWorking(`save-${role}`);
@@ -4629,8 +4630,8 @@
           else {
             setSt(d.slack); setPicks((p) => ({ ...p, [role]: undefined }));
             const where = d.channel ? `#${d.channel.name}` : null;
-            const what = role === 'news' ? 'Good news' : 'Alerts that need a hand';
-            if (!where) addToast(`${what} post in #${d.slack?.channel?.name || 'the good-news channel'} again.`, 'success');
+            const what = role === 'news' ? 'Good news' : role === 'applications' ? 'Makeover applications' : 'Alerts that need a hand';
+            if (!where) addToast(role === 'applications' ? 'Makeover applications post with good news and alerts again.' : `${what} post in #${d.slack?.channel?.name || 'the good-news channel'} again.`, 'success');
             else addToast(d.posted ? `${what} now post in ${where}. Look for the hello there.` : `Saved ${where}, but Slack said: ${d.postError}`, d.posted ? 'success' : 'error');
           }
         } catch (e) { addToast(e.message, 'error'); }
@@ -4650,19 +4651,19 @@
       const fixText = (error, needed) => (SLACK_FIX[error] || `Slack said: ${error}`).replace('{bot}', st?.bot || 'the app').replace('{needed}', scopeText(needed));
       // A channel list Slack refused is the more useful thing to fix first
       const fix = chErr ? fixText(chErr.error, chErr.needed)
-        : st && !st.ok ? `${st.errorFor === 'attention' ? 'Needs attention channel: ' : st.errorFor === 'news' && st.error !== 'no_channel' ? 'Good news channel: ' : ''}${fixText(st.error, st.needed)}` : null;
+        : st && !st.ok ? `${st.errorFor === 'attention' ? 'Needs attention channel: ' : st.errorFor === 'applications' ? 'Makeover applications channel: ' : st.errorFor === 'news' && st.error !== 'no_channel' ? 'Good news channel: ' : ''}${fixText(st.error, st.needed)}` : null;
       const newsName = st?.channel?.name;
       needsFix.current = !!(fix || missing);
       return html`<div class="bc-block">
         <div class="bc-inline"><strong class="text-sm">Slack</strong>${st === null ? html`<span class="text-sm text-muted">Checking Slack…</span>` : st.ok && !chErr ? html`<span class="badge badge-green">Connected</span>` : html`<span class="badge badge-yellow">Needs a fix</span>`}</div>
         ${st?.ok ? html`<p class="text-sm" style="margin:.4rem 0 0">Posting${st.team ? ` in ${st.team}` : ''}${st.bot ? ` as @${st.bot}` : ''}. ${st.attention?.id && st.attention.id !== st.channel?.id
           ? html`Good news goes to <strong>#${st.channel.name}</strong>, alerts that need a hand to <strong>#${st.attention.name}</strong>.`
-          : html`Everything goes to <strong>#${st.channel.name}</strong>.`}</p>` : null}
+          : html`Everything goes to <strong>#${st.channel.name}</strong>.`}${st.applications?.id ? html` Makeover applications go to <strong>#${st.applications.name}</strong>.` : null}</p>` : null}
         ${fix ? html`<p class="text-sm" style="margin:.4rem 0 0">${fix}</p>` : null}
         ${SLACK_ROLES.map(({ role, label, save: saveLabel, what }) => {
           const value = picks[role] ?? saved[role];
           const changed = value !== saved[role];
-          const blocked = role === 'attention' && !saved.news;
+          const blocked = role !== 'news' && !saved.news;
           return html`<div style="margin-top:.75rem">
             <label class="text-sm" for=${`slack-${role}`}><strong>${label}</strong></label>
             <div class="bc-inline" style="margin-top:.3rem;flex-wrap:wrap;gap:.5rem">
@@ -4670,9 +4671,10 @@
                 ${channels === null ? html`<option value="">Loading channels…</option>` : null}
                 ${channels && role === 'news' && !saved.news ? html`<option value="">Choose a channel…</option>` : null}
                 ${channels && role === 'attention' ? html`<option value="">${newsName ? `Same as good news (#${newsName})` : 'Same as good news'}</option>` : null}
+                ${channels && role === 'applications' ? html`<option value="">With good news and alerts</option>` : null}
                 ${(channels || []).map((c) => html`<option value=${c.id}>${c.private ? '🔒 ' : '#'}${c.name}</option>`)}
               </select>
-              <button class="btn btn-secondary btn-sm" type="button" disabled=${!changed || (role === 'news' && !value) || !!working} onClick=${() => save(role)}>${working === `save-${role}` ? 'Saving…' : role === 'attention' && !value ? 'Post alerts with good news' : saveLabel}</button>
+              <button class="btn btn-secondary btn-sm" type="button" disabled=${!changed || (role === 'news' && !value) || !!working} onClick=${() => save(role)}>${working === `save-${role}` ? 'Saving…' : role === 'attention' && !value ? 'Post alerts with good news' : role === 'applications' && !value ? 'Post them with good news and alerts' : saveLabel}</button>
             </div>
             <div class="form-hint">${blocked ? 'Pick the Good news channel first.' : what}</div>
           </div>`;

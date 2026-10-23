@@ -686,7 +686,9 @@ let _slackCfg = { db: null, at: 0, value: {} }; // per isolate, so every alert i
  * { channel, attention, updatedAt, updatedBy } — never the token. `channel`
  * ({ id, name, private }) is the Good news channel: gifts, new applications,
  * reveals going live. `attention` is the Needs attention channel: anything
- * that needs a hand; without it those go to `channel` too.
+ * that needs a hand; without it those go to `channel` too. `applications`
+ * is the Makeover applications channel: everything about applicants and
+ * their families, for the makeover team; without it those go by their kind.
  */
 export async function readSlackConfig(DB, { fresh = false } = {}) {
   if (!DB) return {};
@@ -706,8 +708,12 @@ export async function writeSlackConfig(DB, value) {
   _slackCfg = { db: DB, at: Date.now(), value };
 }
 
-/** Which kind of post goes where. 'news' | 'attention' → a channel id or null */
-export function slackChannelFor(cfg, kind = 'attention') {
+/**
+ * Which kind of post goes where. 'news' | 'attention' → a channel id or null.
+ * `area` 'applications' goes to the Makeover applications channel when one is picked.
+ */
+export function slackChannelFor(cfg, kind = 'attention', area = null) {
+  if (area === 'applications' && cfg?.applications?.id) return cfg.applications.id;
   return (kind === 'attention' ? cfg?.attention?.id : null) || cfg?.channel?.id || null;
 }
 
@@ -756,9 +762,9 @@ export async function slackApi(env, method, params = {}) {
  * an edit is skipped.
  * → { ok, status, attempts, via: 'bot'|'webhook', channel?, ts?, plain?, error?, botError?, skipped? }
  */
-export async function slackAlert(env, text, blocks = null, { channel = null, plain = null, thread = null, update = null, kind = 'attention' } = {}) {
+export async function slackAlert(env, text, blocks = null, { channel = null, plain = null, thread = null, update = null, kind = 'attention', area = null } = {}) {
   const ref = update || thread;
-  const picked = env.SLACK_BOT_TOKEN ? (ref?.channel || channel || slackChannelFor(await readSlackConfig(env.DB), kind)) : null;
+  const picked = env.SLACK_BOT_TOKEN ? (ref?.channel || channel || slackChannelFor(await readSlackConfig(env.DB), kind, area)) : null;
   const webhook = !channel && !update && env.SLACK_WEBHOOK_URL ? env.SLACK_WEBHOOK_URL : null;
   if (!picked && !webhook) {
     const error = channel ? 'Posting to a named channel needs SLACK_BOT_TOKEN'
@@ -819,7 +825,7 @@ export async function slackAlert(env, text, blocks = null, { channel = null, pla
  */
 export async function slackStatus(env) {
   const cfg = await readSlackConfig(env.DB, { fresh: true });
-  const out = { mode: env.SLACK_BOT_TOKEN ? 'bot' : env.SLACK_WEBHOOK_URL ? 'webhook' : null, webhook: !!env.SLACK_WEBHOOK_URL, ok: false, error: null, errorFor: null, team: null, bot: null, channel: cfg.channel || null, attention: cfg.attention || null };
+  const out = { mode: env.SLACK_BOT_TOKEN ? 'bot' : env.SLACK_WEBHOOK_URL ? 'webhook' : null, webhook: !!env.SLACK_WEBHOOK_URL, ok: false, error: null, errorFor: null, team: null, bot: null, channel: cfg.channel || null, attention: cfg.attention || null, applications: cfg.applications || null };
   if (out.mode !== 'bot') { out.ok = out.mode === 'webhook'; return out; }
   const auth = await slackApi(env, 'auth.test');
   if (!auth.ok) { out.error = auth.error; out.needed = auth.needed || null; return out; }
@@ -841,7 +847,9 @@ export async function slackStatus(env) {
   out.channel = news.channel;
   const attention = cfg.attention?.id ? await check(cfg.attention) : null;
   if (attention) out.attention = attention.channel;
-  const bad = news.error ? ['news', news] : attention?.error ? ['attention', attention] : null;
+  const applications = cfg.applications?.id ? await check(cfg.applications) : null;
+  if (applications) out.applications = applications.channel;
+  const bad = news.error ? ['news', news] : attention?.error ? ['attention', attention] : applications?.error ? ['applications', applications] : null;
   if (bad) { out.error = bad[1].error; out.needed = bad[1].needed || null; out.errorFor = bad[0]; return out; }
   out.ok = true;
   return out;
@@ -923,9 +931,9 @@ export async function slackOpenPost(env, key) {
  * it's open, a reply in that post's thread, shown in the channel too. `title`
  * is what the ✅ edit says was resolved. Same result as slackAlert.
  */
-export async function slackIssue(env, key, card, { title = null, kind = 'attention' } = {}) {
+export async function slackIssue(env, key, card, { title = null, kind = 'attention', area = null } = {}) {
   const open = await slackOpenPost(env, key);
-  const r = await slackPost(env, card, open ? { thread: { channel: open.channel, ts: open.ts, broadcast: true } } : { kind });
+  const r = await slackPost(env, card, open ? { thread: { channel: open.channel, ts: open.ts, broadcast: true } } : { kind, area });
   if (!open && r.ok && r.ts && r.via === 'bot' && (await openPosts(env.DB))) {
     const now = new Date().toISOString();
     await env.DB.prepare('INSERT OR REPLACE INTO slack_open_posts (key, channel, ts, title, posted_at) VALUES (?, ?, ?, ?, ?)')

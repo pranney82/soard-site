@@ -126,7 +126,7 @@ export async function alertFamilyReplies(env, rows, { since, getApplicant, now =
       const to = test ? [...new Set([...ALERT_EMAILS, ...alertEmails(env)])] : staff;
       const [slack, sent] = await Promise.all([
         // One Slack thread per JobTread thread: the first reply posts, later ones reply under it
-        slackIssue(env, `family-thread:${threadIdOf(row) || row.id}`, card, { title: `${applicant.name}: conversation`, kind: 'news' }).catch((e) => ({ ok: false, error: e.message })),
+        slackIssue(env, `family-thread:${threadIdOf(row) || row.id}`, card, { title: `${applicant.name}: conversation`, kind: 'news', area: 'applications' }).catch((e) => ({ ok: false, error: e.message })),
         sendEmails(env, { to, ...email, tags: [{ name: 'type', value: 'applicant-reply' }] }).catch((e) => ({ sent: 0, errors: [e.message] })),
       ]);
       await env.DB.prepare('UPDATE applicant_reply_alerts SET slack = ?, email = ? WHERE id = ?')
