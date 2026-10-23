@@ -780,7 +780,7 @@ const MAP = { t: 'SOARD', children: [
     ]},
 
   { t: 'Email & newsletters', sub: 'Kit for the list, Resend for one-off mail', color: 'email', side: 'l',
-    about: 'Kit holds the list and sends its broadcasts. Resend only sends one-off mail: application links and notices, reveal reminders, staff alerts and editor tests.',
+    about: 'Kit holds the list, and staff write and send newsletters there. Resend only sends one-off mail: application links and notices, reveal reminders and staff alerts.',
     children: [
       { t: 'Signups', children: [
         { t: 'Newsletter signup', s: 'live', k: 'visitor',
@@ -792,20 +792,6 @@ const MAP = { t: 'SOARD', children: [
           does: 'Stores their email, phone or browser for the reminder sends.',
           touches: ['D1', 'Web Push'], where: 'functions/api/reminders.js',
           live: (f) => reminderBlock(f, 'email') || (f.broadcast ? ON(typeof f.reminders?.subscribers === 'number' ? `${plural(f.reminders.subscribers, 'person has', 'people have')} signed up.` : null) : null) },
-      ]},
-      { t: 'Sending', children: [
-        { t: 'Push to Kit', s: 'live', k: 'admin',
-          when: 'Staff press Push to Kit in Email.',
-          does: 'Creates a Kit draft from the admin template; the audience is picked in Kit.',
-          touches: ['Kit'], where: 'functions/api/kit-broadcast.js', live: needsKey('kit', 'KIT_API_KEY is missing.') },
-        { t: 'Send test', s: 'live', k: 'admin',
-          when: 'Staff send a test.',
-          does: 'Sends one copy through Resend, with the name and email tags filled in.',
-          touches: ['Resend'], where: 'functions/api/send-test-email.js', live: needsKey('resend', 'RESEND_API_KEY is missing.') },
-        { t: 'Send to specific people', s: 'live', k: 'admin',
-          when: 'Staff send to a hand-picked group.',
-          does: 'Sends each of up to 100 people their own copy through Resend.',
-          touches: ['Resend'], where: 'functions/api/send-direct.js', live: needsKey('resend', 'RESEND_API_KEY is missing.') },
       ]},
       { t: 'Did it arrive', children: [
         { t: 'Email delivery reports', s: 'live', k: 'event',

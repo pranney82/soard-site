@@ -139,7 +139,6 @@ const CHANGE = {
   invites: { label: 'Reveals → Invites', view: 'broadcast', hash: '#broadcast/invites' },
   demo: { label: 'Demo Day', view: 'demo-day', hash: '#demo-day' },
   revealSettings: { label: 'Reveals → Settings', view: 'broadcast', hash: '#broadcast/settings' },
-  composer: { label: 'Comms → Email', view: 'email' },
   board: { label: 'People → Board', view: 'people-hub', tab: 'board' },
 };
 
@@ -635,31 +634,17 @@ const MAP = { t: 'Everything we send', children: [
     ]},
 
   { t: 'Newsletter list', sub: 'Supporters, through Kit', color: 'email', side: 'l',
-    about: 'Kit holds the list. Staff build newsletters in Comms → Email; the site makes them drafts in Kit and staff send them from there.',
+    about: 'Kit holds the list. Staff write and send newsletters in Kit itself.',
     children: [
-      { t: 'From the email builder', children: [
-        { t: 'Newsletter', s: 'live', k: 'kit', by: 'staff', key: 'newsletter', change: CHANGE.composer,
-          who: 'The Kit list, or the part of it staff pick in Kit.',
-          when: 'Staff build it in Comms → Email and press Push to Kit; it goes when they send the draft from Kit.',
-          subject: 'Whatever staff write',
-          does: 'Blocks from the email builder: reveals, events, stories, photos.',
-          touches: ['Kit'], where: 'functions/api/kit-broadcast.js · _email-templates.js',
-          info: 'Comms → Email has its own live preview and Send it to me.',
-          live: first(needs('kit', NO_KIT), (f) => {
-            const d = f.newsletter?.drafts;
-            if (!d) return null;
-            return ON(d.total ? `${plural(d.n30, 'draft')} pushed to Kit in the last 30 days, ${d.total} in all.` : 'No drafts pushed to Kit yet.', d.last);
-          }) },
-        { t: 'Send to specific people', s: 'live', k: 'email', by: 'staff', key: 'direct', change: CHANGE.composer,
-          who: 'Up to 100 addresses staff type in, each getting their own copy.',
-          when: 'Staff press Send to specific people in Comms → Email.',
-          subject: 'A note from Sunshine on a Ranney Day (staff can change it)',
-          does: 'The same email-builder design, sent one by one from the site (for a reveal RSVP, a sponsor thank-you).',
-          touches: ['Resend'], where: 'functions/api/send-direct.js',
-          info: 'Each copy is in What went out, with whether it arrived.',
-          live: needs('resend', NO_RESEND) },
-      ]},
       { t: 'Kit’s own', children: [
+        { t: 'Newsletter', s: 'live', k: 'kit', by: 'staff', key: 'newsletter',
+          who: 'The Kit list, or the part of it staff pick in Kit.',
+          when: 'Staff write it in Kit and send it from there.',
+          subject: 'Whatever staff write',
+          does: 'Whatever staff put in it: reveals, events, stories, photos.',
+          touches: ['Kit'],
+          info: 'Write, preview, test and send it in Kit → Send → Broadcasts.',
+          live: first(needs('kit', NO_KIT), () => ON()) },
         { t: 'Welcome to the newsletter', s: 'live', k: 'kit', by: 'visitor',
           who: 'Someone who signs up for the newsletter on the site.',
           when: 'Only if a welcome automation is set up in Kit. The site adds the subscriber and a tag, and sends nothing itself.',

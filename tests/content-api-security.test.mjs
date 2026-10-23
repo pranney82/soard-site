@@ -32,12 +32,14 @@ const RUNTIME = {
   'zeffy-alerts': { lastPaymentId: 'p1' },
   'replay-meta:abc': { uid: 'abc' },
 };
-const DOCS = { settings: { name: 'SOARD', email: 'info@soardcharity.com' }, faq: { items: [] }, 'email-template-recap': { subject: 'Thanks' } };
+const DOCS = { settings: { name: 'SOARD', email: 'info@soardcharity.com' }, faq: { items: [] } };
+// Saved by the old Email tab (newsletters are written in Kit now): left in D1, never served or built
+const OLD = { 'email-template-recap': { subject: 'Thanks' } };
 
 async function siteDb() {
   const DB = await createD1({ schemaFiles: [`${ROOT}scripts/schema.sql`] });
   await DB.exec('CREATE TABLE IF NOT EXISTS site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)');
-  for (const [key, data] of Object.entries({ ...RUNTIME, ...DOCS })) {
+  for (const [key, data] of Object.entries({ ...RUNTIME, ...OLD, ...DOCS })) {
     await DB.prepare('INSERT OR REPLACE INTO site_config (key, data) VALUES (?, ?)').bind(key, JSON.stringify(data)).run();
   }
   return DB;
@@ -50,14 +52,14 @@ const post = (handler, DB, body) => handler({
 
 test('site docs: the ones the admin edits; every runtime row a Function keeps is left out', () => {
   for (const k of SITE_DOC_KEYS) assert.ok(isSiteDocKey(k), k);
-  assert.ok(isSiteDocKey('email-template-event-recap'));
-  for (const k of ['email-template-', 'broadcast-config', 'broadcast-health', 'broadcast', 'broadcast-schedule', 'broadcast-schedule-lock', 'live-status',
+  for (const k of ['email-template-', 'email-template-event-recap', 'broadcast-config', 'broadcast-health', 'broadcast', 'broadcast-schedule', 'broadcast-schedule-lock', 'live-status',
     'press-monitor', 'press-monitor-state', 'reveal-invites', 'reveal-invites-guest-check', 'reveal-nudges', 'reveals', 'slack', 'slack-actions',
     'slack-preview', 'slack-preview-news', 'zeffy-alerts', 'fb-archive', 'replay-meta:abc', '__proto__', 'constructor', '../settings', 'settings/x']) {
     assert.equal(isSiteDocKey(k), false, k);
   }
   assert.equal(parsePath('src/content/site/broadcast-config.json'), null);
-  assert.deepEqual(parsePath('src/content/site/email-template-recap.json'), { type: 'site', key: 'email-template-recap' });
+  assert.equal(parsePath('src/content/site/email-template-recap.json'), null);
+  assert.deepEqual(parsePath('src/content/site/faq.json'), { type: 'site', key: 'faq' });
 });
 
 test('every site_config key a Function writes for itself is runtime, not a doc', () => {
@@ -93,7 +95,7 @@ test('read-content and list-content never return a runtime row', async () => {
     assert.equal(res.status, 200);
     assert.ok(!raw.includes(SECRET) && !raw.includes(PRIVATE_JWK), 'no Stream or push secret');
     const names = (JSON.parse(raw).files || JSON.parse(raw).items).map((f) => f.name).sort();
-    assert.deepEqual(names, ['email-template-recap.json', 'faq.json', 'settings.json']);
+    assert.deepEqual(names, ['faq.json', 'settings.json']);
   }
   const one = await get(readContent, DB, 'path=src/content/site/broadcast-config.json');
   assert.equal(one.status, 403);

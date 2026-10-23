@@ -29,14 +29,11 @@ export const SITE_PREFIX = 'src/content/site/';
  *   golf, gala                                                       Events
  *   board-committees                                                 People
  *   partner-logo-dismissed                                           Partners
- *   email-template-<slug>                                            Email
  * scripts/d1-helpers.js uses the same list.
  */
 export const SITE_DOC_KEYS = Object.freeze(['settings', 'faq', 'our-story', 'media', 'financial-snapshot', 'financials', 'golf', 'gala', 'board-committees', 'partner-logo-dismissed']);
-export const SITE_DOC_PREFIXES = Object.freeze(['email-template-']);
 export function isSiteDocKey(key) {
-  if (!isSafeName(key)) return false;
-  return SITE_DOC_KEYS.includes(key) || SITE_DOC_PREFIXES.some((p) => key.startsWith(p) && key.length > p.length);
+  return isSafeName(key) && SITE_DOC_KEYS.includes(key);
 }
 
 /**

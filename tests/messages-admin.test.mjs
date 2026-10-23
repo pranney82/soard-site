@@ -120,7 +120,7 @@ test('live facts: times and counts, never an address or a family’s name', asyn
   assert.equal(f.reminders.enabled, false);
   assert.equal(f.reminders.alertEmails, 1);
   assert.equal(f.waitlist.confirmations.total, 1);
-  assert.equal(f.newsletter.drafts.last, '2026-10-01T12:00:00Z', 'SQLite’s datetime stamps read as UTC');
+  assert.equal(f.newsletter, undefined, 'newsletters are written in Kit: the map keeps no count of them');
   assert.equal(f.env.resend, true);
   assert.equal(f.env.twilio, false);
 });

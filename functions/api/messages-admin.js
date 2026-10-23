@@ -223,12 +223,6 @@ async function textMisses(DB, c) {
   return { count: misses.length, why: misses[0]?.error || null, at: misses[0]?.at || null };
 }
 
-async function newsletterFacts(DB, now) {
-  const r = await DB.prepare(`SELECT max(created_at) AS last, sum(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS n30, count(*) AS total
-    FROM audit_log WHERE entity_type = 'email-broadcast'`).bind(new Date(now - 30 * DAY).toISOString()).first();
-  return { drafts: tally(r?.last, r?.n30, r?.total) };
-}
-
 async function bioFacts(DB) {
   const r = await DB.prepare(`SELECT count(*) AS total, sum(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open,
       sum(CASE WHEN submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS answered, max(created_at) AS last FROM profile_requests`).first();
@@ -237,7 +231,7 @@ async function bioFacts(DB) {
 
 export async function gatherFacts(env, { now = Date.now() } = {}) {
   const DB = env.DB;
-  const [family, form, drafts, waitlist, invites, reminders, staff, newsletter, bios, pause, delivery] = await Promise.all([
+  const [family, form, drafts, waitlist, invites, reminders, staff, bios, pause, delivery] = await Promise.all([
     settle(() => familyFacts(DB, now)),
     settle(() => formFacts(DB)),
     settle(() => draftFacts(DB, now)),
@@ -245,7 +239,6 @@ export async function gatherFacts(env, { now = Date.now() } = {}) {
     settle(() => inviteFacts(DB, now)),
     settle(() => reminderFacts(DB, now)),
     settle(() => staffFacts(DB, now)),
-    settle(() => newsletterFacts(DB, now)),
     settle(() => bioFacts(DB)),
     settle(() => pauseState(DB, now)),
     settle(() => deliveryFacts(env, { now })),
@@ -278,7 +271,6 @@ export async function gatherFacts(env, { now = Date.now() } = {}) {
     demoInvites: ok(await settle(() => demoInviteFacts(DB, now))),
     reminders: ok(reminders),
     staff: ok(staff),
-    newsletter: ok(newsletter),
     bios: ok(bios),
     // Did the site's emails arrive: per message, 30 days, counts only (Resend's reports)
     delivery: ok(delivery),

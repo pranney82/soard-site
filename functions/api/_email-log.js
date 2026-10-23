@@ -109,7 +109,6 @@ const BY_TAG = {
   'reveal-hour': 'rem-hour',
   'reveal-live': 'rem-live',
   'reveal-replay': 'rem-replay',
-  direct: 'direct',
   'advisory-application': 'advisory-thanks',
   'advisory-application-staff': 'advisory-staff',
   'admin-preview': 'preview',

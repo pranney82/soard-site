@@ -11,7 +11,6 @@ import { createHmac } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import { onRequestGet, parseEventTime } from '../functions/api/calendar.ics.js';
 import { calendarIcsUrl, hmacSha256Hex, signCalendarParams } from '../functions/api/_calendar-links.js';
-import { customTemplate } from '../functions/api/_email-templates.js';
 
 const SITE = 'https://sunshineonaranneyday.com';
 const SECRET = 'cal_test_secret';
@@ -63,7 +62,7 @@ async function refused(query, e) {
   return body;
 }
 
-// The link the reveal invite email has always built (functions/api/_email-templates.js)
+// The link the old Email tab's reveal invite emails carry (emails already sent still have it)
 const emailLink = (o = {}) => new URLSearchParams({
   title: "Rowan's Reveal Day — Sunshine on a Ranney Day", start: '20270312T200000Z', end: '20270312T220000Z',
   location: "Rowan's Home, 12 Example Ln, Kennesaw, GA 30152", details: 'After months of planning and building, the day is almost here.\n\nhttps://sunshineonaranneyday.com/kids/rowan-test',
@@ -163,42 +162,6 @@ test('a rehearsal (a TEST job) resolves from the broadcast’s plan, marked TEST
   // A kid page in draft, or a job with no kid page, is never served
   await env.DB.prepare("UPDATE site_config SET data = ? WHERE key = 'broadcast-schedule'").bind(JSON.stringify({ waiting: [{ ...rehearsal, slug: 'drafty', test: false, problem: 'draft' }] })).run();
   await refused('reveal=drafty');
-});
-
-const inviteBlock = { type: 'revealInvite', slug: 'rowan-test', kidName: 'Rowan', date: '2027-03-12', time: '3:00 PM', location: "Rowan's Home", address: '12 Example Ln, Kennesaw, GA 30152', calendarTitle: 'Rowan’s big day!', calendarDetails: 'Park on the street.' };
-const appleLink = (html) => new URL(html.match(/href="([^"]*\/api\/calendar\.ics\?[^"]*)"/)[1].replace(/&amp;/g, '&'));
-
-test('the reveal invite email: without the secret its Apple link looks the reveal up, as it is now', async () => {
-  const href = appleLink(customTemplate({ blocks: [inviteBlock] }).html);
-  assert.equal(href.toString(), `${SITE}/api/calendar.ics?reveal=rowan-test`);
-  assert.equal((await ics(href.search.slice(1))).field('DTSTART'), '20270312T200000Z');
-  // No kid picked: no Apple link at all (Google and Outlook stay)
-  const none = customTemplate({ blocks: [{ ...inviteBlock, slug: '' }] }).html;
-  assert.doesNotMatch(none, /api\/calendar\.ics/);
-  assert.match(none, /calendar\.google\.com/);
-});
-
-test('the reveal invite email: with the secret its Apple link carries staff’s own words, signed', async () => {
-  const href = appleLink(customTemplate({ blocks: [inviteBlock] }, {}, { calendarSecret: SECRET }).html);
-  assert.match(href.search, /&sig=[0-9a-f]{64}$/);
-  const { field } = await ics(href.search.slice(1), { ...env, CALENDAR_LINK_SECRET: SECRET });
-  assert.equal(field('SUMMARY'), 'Rowan’s big day!');
-  assert.equal(field('LOCATION'), "Rowan's Home, 12 Example Ln, Kennesaw, GA 30152");
-  assert.match(field('DESCRIPTION'), /^Park on the street\./);
-  assert.equal(field('DTSTART'), '20270312T200000Z');
-  // A request's own opts can't supply a secret
-  assert.match(appleLink(customTemplate({ blocks: [inviteBlock] }, { calendarSecret: 'attacker' }).html).search, /^\?reveal=rowan-test$/);
-});
-
-test('the three senders sign with the server’s secret', async () => {
-  const { onRequestPost: kitPost } = await import('../functions/api/kit-broadcast.js');
-  const res = await kitPost({ env: { CALENDAR_LINK_SECRET: SECRET }, data: {}, request: new Request(`${SITE}/api/kit-broadcast`, { method: 'POST', body: JSON.stringify({ preview: true, data: { blocks: [inviteBlock] }, opts: { subject: 'x' } }) }) });
-  const href = appleLink((await res.json()).previewHtml);
-  assert.equal(href.searchParams.get('sig'), signCalendarParams(href.searchParams, SECRET));
-  for (const f of ['send-direct.js', 'send-test-email.js']) {
-    const src = (await import('node:fs')).readFileSync(new URL(`../functions/api/${f}`, import.meta.url), 'utf8');
-    assert.match(src, /customTemplate\(data, opts, \{ calendarSecret: env\.CALENDAR_LINK_SECRET/, f);
-  }
 });
 
 test('signed links carry staff’s own words; a changed field loses them', async () => {

@@ -121,7 +121,7 @@ async function mockApi(page, state) {
     if (url.pathname.startsWith('/api/pending-changes')) return json({ success: true, changes: [], since: null });
     if (url.pathname.startsWith('/api/audit-log')) return json({ success: true, entries: [], total: 0 });
     if (url.pathname.startsWith('/api/deployments')) return json({ success: true, deploys: [], source: 'cloudflare' });
-    if (url.pathname.startsWith('/api/kit-broadcast')) return json({ ok: true, configured: true });
+    if (url.pathname.startsWith('/api/kit-status')) return json({ ok: true, configured: true });
     if (url.pathname.startsWith('/api/')) return json({ success: true, ok: true });
     req.continue();
   });
@@ -201,7 +201,7 @@ try {
     await mockApi(page, state);
     await page.setViewport({ width: 1360, height: 900 });
     await page.goto(`${BASE}/admin/index.html`, { waitUntil: 'networkidle0' });
-    const clicked = await page.evaluate(() => { const b = [...document.querySelectorAll('button.nav-item')].find((x) => /^(Broadcast|Reveals)/.test(x.textContent.trim())); if (b) { b.click(); return true; } return false; });
+    const clicked = await page.evaluate(() => { const b = [...document.querySelectorAll('.nav-item')].find((x) => /^(Broadcast|Reveals)/.test(x.textContent.trim())); if (b) { b.click(); return true; } return false; });
     ok(clicked, `nav has Reveals (${name})`);
     await page.waitForFunction(() => [...document.querySelectorAll('h2')].some((h) => h.textContent.trim() === 'Broadcast'), { timeout: 8000 }).catch(() => {});
     const tabs = await page.$$('.hub-tab');

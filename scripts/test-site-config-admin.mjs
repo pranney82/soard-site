@@ -121,7 +121,7 @@ async function answer(req, user = 'peter@soardcharity.com') {
   if (p === '/api/upload-image') { state.uploads++; return json({ success: true, imageId: `kids/test-upload-${state.uploads}`, imageUrl: '' }); }
   if (p === '/api/upload-file') { state.files++; return json({ success: true, url: `${SITE}/files/financials/x.pdf` }); }
   if (p.startsWith('/api/pending-changes')) return json({ success: true, changes: [], publish: { live: null, active: null, failed: null } });
-  if (p.startsWith('/api/kit-broadcast')) return json({ ok: true, configured: true });
+  if (p.startsWith('/api/kit-status')) return json({ ok: true, configured: true });
   // Upcoming reveals (JobTread): the Up Next strip's date line comes from here
   if (p === '/api/reveals') return json({ reveals: [], upcoming: [{ slug: 'colin', name: 'Colin', confirmed: false, window: { part: 'late', month: '2026-11', through: '2099-11-30', label: 'late November' }, image: null, kidUrl: '/kids/colin/', liveUrl: '/live/colin/', rooms: ['Bathroom'] }] });
   if (p.startsWith('/api/live-ws')) return req.abort();

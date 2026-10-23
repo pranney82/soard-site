@@ -11,7 +11,7 @@
  *                           its incentive/opt-in settings and automations
  *                           apply. Without it, subscribers are created
  *                           account-wide in the "active" state.
- *   KIT_EMAIL_TEMPLATE_ID — Kit template that wraps pushed broadcasts.
+ *   KIT_EMAIL_TEMPLATE_ID — Kit template that wraps the drafts the site makes.
  *                           Account default template is used when unset;
  *                           our HTML is a full document, so a minimal
  *                           "HTML only" template in Kit renders cleanest.

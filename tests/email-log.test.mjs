@@ -140,7 +140,7 @@ test('which message an email is, even where two share a tag', () => {
   ];
   for (const [type, subject, want] of cases) assert.equal(log.entryFor(type, subject), want, `${type} · ${subject}`);
   // Every message the log can name is an entry on the map
-  const named = new Set([...cases.map((c) => c[2]), 'app-resume', 'app-reminder', 'staff-new-app', 'staff-summary', 'staff-pause-ended', 'waitlist-open', 'staff-app-limit', 'staff-alert-hello', 'staff-kid-hidden', 'staff-gift-problem', 'rem-confirm', 'rem-scheduled', 'rem-moved', 'rem-day', 'rem-hour', 'rem-live', 'rem-replay', 'direct', 'advisory-thanks', 'advisory-staff',
+  const named = new Set([...cases.map((c) => c[2]), 'app-resume', 'app-reminder', 'staff-new-app', 'staff-summary', 'staff-pause-ended', 'waitlist-open', 'staff-app-limit', 'staff-alert-hello', 'staff-kid-hidden', 'staff-gift-problem', 'rem-confirm', 'rem-scheduled', 'rem-moved', 'rem-day', 'rem-hour', 'rem-live', 'rem-replay', 'advisory-thanks', 'advisory-staff',
     'app-welcome', 'app-in-review', 'app-approved', 'app-denied', 'staff-medical', 'app-note', 'app-correction', 'invite-tentative', 'invite-confirmed', 'invite-update', 'invite-cancel', 'kit-live', 'newsletter', 'staff-reveal-texts', 'staff-problem-texts', 'staff-email-lost'].filter(Boolean));
   named.delete('preview');
   for (const k of named) assert.ok(entryOf(k), `${k} is on the map`);

@@ -9,7 +9,8 @@
  *  - reveal calendar invites (reveal_invite_log);
  *  - reveal reminders' browser alerts and Kit's "we're live" (broadcast_sends);
  *  - the applications-open email through Kit (waitlist_openings, with Kit's numbers);
- *  - newsletter drafts pushed to Kit (audit_log), and the last staff text.
+ *  - newsletter drafts the old Email tab pushed to Kit (audit_log; newsletters
+ *    are written in Kit now), and the last staff text.
  * On the first page, Kit's own numbers for its latest "we're live" emails,
  * and for the invites out now, how guests answered (Google Calendar; counts only).
  * And what's coming up: family status emails waiting out their quiet time,
@@ -240,7 +241,7 @@ export async function activity(env, { before = null, limit = 150, q = '', now = 
     });
   }
 
-  // Newsletter drafts pushed to Kit
+  // Newsletter drafts the old Email tab pushed to Kit (history; newsletters are written in Kit now)
   for (const r of await rows(DB.prepare("SELECT id, user_email, entity_name, created_at FROM audit_log WHERE entity_type = 'email-broadcast' AND created_at < ? ORDER BY created_at DESC LIMIT 20").bind(until.replace('T', ' ').slice(0, 19)))) {
     items.push({
       key: `n:${r.id}`, at: isoOf(r.created_at), entry: 'newsletter', channel: 'kit', sender: 'kit',

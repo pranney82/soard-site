@@ -1698,11 +1698,11 @@ function BadgesPage({ c }) {
 
 function NewsletterPage() {
   const [kit, setKit] = useState(null);
-  useEffect(() => { call('/api/kit-broadcast?check=1').then(d => setKit(!!(d.ok && d.configured))).catch(() => setKit(false)); }, []);
+  useEffect(() => { call('/api/kit-status').then(d => setKit(!!(d.ok && d.configured))).catch(() => setKit(false)); }, []);
   return html`
-    <${Card} title="Newsletter" sub="Signups from the site go to Kit, tagged by the form they used. Choose who gets each broadcast in Kit when you send it.">
+    <${Card} title="Newsletter" sub="Signups from the site go to Kit, tagged by the form they used. Write and send newsletters in Kit, and choose who gets each one there.">
       ${kit === null ? html`<p class="sc-hint">Checking Kit…</p>`
-        : kit ? html`<p class="sc-callout is-open"><span class="sc-dot" aria-hidden="true"></span><span>Kit is connected. New subscribers land there, and templates can be pushed there as draft broadcasts.</span></p>`
+        : kit ? html`<p class="sc-callout is-open"><span class="sc-dot" aria-hidden="true"></span><span>Kit is connected. New subscribers land there.</span></p>`
           : html`<p class="sc-callout"><span class="sc-dot" aria-hidden="true"></span><span>Kit isn’t connected. Set <code>KIT_API_KEY</code> in the Cloudflare Pages dashboard; until then the site can’t save signups.</span></p>`}
     <//>`;
 }
