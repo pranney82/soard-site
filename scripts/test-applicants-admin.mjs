@@ -95,6 +95,8 @@ const avery = family({ name: 'Avery Stone', status: 'Applied', parent: 'Jordan S
 avery.contacts.push({ id: `${avery.id}-c2`, name: 'Sam Stone', title: 'Dad', fields: { [EMAIL]: 'sam@example.com' } });
 // Jordan's email reply sits in the thread of the message it answers, as JobTread files it
 avery.comments.find(c => c.name === 'RE: Application Status').parentCommentId = `${avery.id}-m0`;
+// That first message went to Jordan only (Sam was added later)
+avery.comments.find(c => c.id === `${avery.id}-m0`).assignees = [{ name: 'Jordan Stone', emailAddress: 'jordan@example.com', accountType: 'customer' }];
 family({ name: 'Mateo García', status: 'Applied', parent: 'Lucía García', lat: 34.07, lng: -84.29, city: 'Alpharetta', county: 'Fulton', days: 25, lang: 'Spanish' });
 family({ name: 'Harper Lee', status: 'Applied', parent: 'Dana Lee', lat: 33.749, lng: -84.388, city: 'Atlanta', county: 'Fulton', days: 2, types: ['Ramp'] });
 family({ name: 'Noah Pence', status: 'In Review', parent: 'Erin Pence', lat: 34.24, lng: -84.49, city: 'Canton', county: 'Cherokee', days: 40, types: ['Therapy Room'] });
@@ -324,11 +326,13 @@ ok(await page.$$eval('.apl-msg.is-email .apl-msg-actions button', els => els.som
 await page.$$eval('.apl-msg.is-email .apl-msg-actions button', els => els.find(e => e.textContent.trim() === 'Reply')?.click());
 await page.waitForSelector('.apl-thread-to', { timeout: 5000 }).catch(() => null);
 ok(/Replying in Application Status/.test(await text(page, '.apl-thread-to')) && !(await page.$('.apl-subject')), 'Reply: the box says which conversation it goes in, with no new subject');
+ok(/Jordan Stone/.test(await text(page, '.apl-to')) && !/Sam Stone/.test(await text(page, '.apl-to')), 'To shows who’s on that conversation (a reply reaches them)');
+ok(/Sam Stone isn’t on this conversation/.test(await text(page, '.apl-thread-note')), 'and says who isn’t, with New message to reach everyone');
 await page.type('.apl-composer textarea', 'Thank you, Jordan! See you Thursday.');
 await page.click('.apl-composer .btn-primary');
 await page.waitForFunction(() => !document.querySelector('.apl-composer textarea').value, { timeout: 8000 }).catch(() => null);
 const threaded = acct('Avery Stone').comments.find(c => /See you Thursday/.test(c.message));
-ok(threaded?.parentCommentId === `${avery.id}-m0` && !threaded?.name && threaded?.assignees?.length === 2, `the reply goes in the family’s JobTread thread, to both parents (${JSON.stringify({ parent: threaded?.parentCommentId, name: threaded?.name, to: threaded?.assignees?.length })})`);
+ok(threaded?.parentCommentId === `${avery.id}-m0` && !threaded?.name, `the reply goes in the family’s JobTread thread, with no new subject (${JSON.stringify({ parent: threaded?.parentCommentId, name: threaded?.name })})`);
 await page.waitForFunction(() => [...document.querySelectorAll('.apl-msg')].some(e => /See you Thursday/.test(e.textContent)), { timeout: 8000 }).catch(() => null);
 ok(await page.$$eval('.apl-msg', els => els.some(e => /See you Thursday/.test(e.textContent) && /In “Application Status”/.test(e.textContent))), 'and shows in the conversation as part of that thread');
 await shot(page, 'desktop-family-reply');

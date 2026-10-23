@@ -911,36 +911,44 @@ export async function setApplicantStatus(env, accountId, status, { notify = true
  *
  * `replyTo` (a comment on this account) answers in that comment's thread,
  * the way staff reply in JobTread: no new subject, and the family gets it
- * as part of the same conversation.
+ * as part of the same conversation. JobTread sends a reply to whoever is on
+ * the thread (it ignores a reply's own assignees), so that's who it goes to.
  */
 export async function messageFamily(env, accountId, { subject, message, replyTo = null, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
   const text = String(message || '').trim();
   if (!text) throw new Error('Write a message first');
   const applicant = await readApplicant(env, accountId, fetchImpl);
   if (!applicant) throw new Error('Unknown applicant');
-  const to = familyRecipients(applicant);
-  if (!to.length) throw new Error('This family has no email address in JobTread');
   const thread = replyTo ? await threadOf(env, accountId, replyTo, fetchImpl) : null;
-  const commentId = await postAccountComment(env, {
-    accountId, message: text, assignTo: to,
-    ...(thread ? { parentCommentId: thread.id } : { name: String(subject || '').trim().slice(0, 128) || 'A message from Sunshine on a Ranney Day' }),
-  }, fetchImpl);
+  if (thread && !thread.to.length) throw new Error('No one in the family is on that conversation in JobTread, so a reply wouldn’t reach them. Send a new message instead.');
+  const to = thread ? thread.to : familyRecipients(applicant);
+  if (!to.length) throw new Error('This family has no email address in JobTread');
+  const commentId = await postAccountComment(env, thread
+    ? { accountId, message: text, parentCommentId: thread.id }
+    : { accountId, message: text, assignTo: to, name: String(subject || '').trim().slice(0, 128) || 'A message from Sunshine on a Ranney Day' }, fetchImpl);
   const names = greetingNames(to, { fallback: 'the family' });
   await logSite(env.DB, accountId, {
     kind: 'sent', title: thread ? `Replied to ${names}` : `Emailed ${names}`, body: text.slice(0, 4000),
     data: { commentId, to: to.map(p => p.email), subject: thread ? null : subject, ...(thread ? { replyTo: thread.id, thread: thread.name } : {}) }, user, now,
   });
-  return { commentId, to, ...(thread ? { thread } : {}) };
+  return { commentId, to, ...(thread ? { thread: { id: thread.id, name: thread.name } } : {}) };
 }
 
-/** The thread a comment belongs to (its first message), checked to be on this family's account */
+/**
+ * The thread a comment belongs to (its first message), checked to be on this
+ * family's account, with the family members on it (who a reply reaches).
+ */
 async function threadOf(env, accountId, commentId, fetchImpl) {
+  const people = { $: { size: 10 }, nodes: { membership: { accountType: {}, user: { name: {}, emailAddress: {} } } } };
   const data = await pave(env.JOBTREAD_GRANT_KEY, {
-    comment: { $: { id: commentId }, id: {}, name: {}, account: { id: {} }, parentComment: { id: {}, name: {} } },
+    comment: { $: { id: commentId }, id: {}, name: {}, account: { id: {} }, aces: people, parentComment: { id: {}, name: {}, aces: people } },
   }, fetchImpl);
   const c = data?.comment;
   if (!c || c.account?.id !== accountId) throw new Error('That message isn’t on this family’s account');
-  return c.parentComment?.id ? { id: c.parentComment.id, name: c.parentComment.name || null } : { id: c.id, name: c.name || null };
+  const root = c.parentComment?.id ? c.parentComment : c;
+  const to = (root.aces?.nodes || []).filter(x => x.membership?.accountType === 'customer' && x.membership.user?.emailAddress)
+    .map(({ membership: { user: u } }) => ({ name: u.name || u.emailAddress, email: u.emailAddress }));
+  return { id: root.id, name: root.name || null, to };
 }
 
 /** Archive (or bring back) the account in JobTread */

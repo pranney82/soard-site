@@ -255,7 +255,7 @@ test('a message to the family goes to JobTread the way staff would post it, to e
   await assert.rejects(() => messageFamily(env, b.id, { message: 'hi', ...opts() }), /no email address/);
 });
 
-test('a reply goes in the thread it answers: same conversation, no new subject, to everyone listed', async () => {
+test('a reply goes in the thread it answers: same conversation, no new subject, to the family members on it', async () => {
   const a = addAccount({ name: 'Avery Stone', fields: { [F.status]: 'In Review' }, contact: { name: 'Jordan Stone', email: 'jordan@example.com' } });
   a.contacts.push({ id: `${a.id}-c2`, name: 'Sam Stone', title: 'Dad', fields: { [EMAIL]: 'sam@example.com' } });
   a.comments.push({ id: 'root-1', name: 'Onsite Scheduling', message: 'Could we visit Tuesday?', by: 'Linzi Berkowitz', assignees: [{ name: 'Jordan Stone', emailAddress: 'jordan@example.com' }] });
@@ -268,11 +268,15 @@ test('a reply goes in the thread it answers: same conversation, no new subject, 
   const sent = a.comments.find(c => c.message === 'See you at 3!');
   assert.equal(sent.parentCommentId, 'root-1');
   assert.equal(sent.name, null, 'a reply keeps the thread’s subject');
-  assert.deepEqual(sent.assignees.map(x => x.emailAddress), ['jordan@example.com', 'sam@example.com'], 'everyone listed, including a parent added since');
+  // JobTread sends a reply to whoever is on the thread: Jordan (Sam was added after it started)
+  assert.deepEqual(out.to.map(x => x.email), ['jordan@example.com']);
   assert.deepEqual(out.thread, { id: 'root-1', name: 'Onsite Scheduling' });
   const row = (await activityFor(env.DB, a.id)).find(r => r.kind === 'sent');
-  assert.equal(row.title, 'Replied to Jordan and Sam Stone');
+  assert.equal(row.title, 'Replied to Jordan Stone');
   assert.equal(row.data.replyTo, 'root-1');
+  // A conversation with no family member on it: a reply would reach no one, so it says so
+  a.comments.push({ id: 'staff-only', name: 'Notes', message: 'internal', by: 'Linzi Berkowitz' });
+  await assert.rejects(() => messageFamily(env, a.id, { message: 'x', replyTo: 'staff-only', ...opts() }), /wouldn’t reach them/);
   // Never into another family's conversation
   const before = a.comments.length + other.comments.length;
   await assert.rejects(() => messageFamily(env, a.id, { message: 'x', replyTo: 'theirs-1', ...opts() }), /isn’t on this family’s account/);

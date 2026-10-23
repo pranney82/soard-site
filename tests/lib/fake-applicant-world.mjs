@@ -133,10 +133,11 @@ export function fakeApplicantWorld() {
         const owner = Object.values(world.accounts).find(a => a.comments.some(x => x.id === input.id));
         const c = owner?.comments.find(x => x.id === input.id);
         const parent = c?.parentCommentId ? owner.comments.find(x => x.id === c.parentCommentId) : null;
+        const acesOf = (x) => ({ nodes: (x.assignees || []).map(p => ({ membership: { accountType: p.accountType || 'customer', user: { name: p.name, emailAddress: p.emailAddress } } })) });
         out[key] = c ? {
           id: c.id, name: c.name ?? null, account: { id: owner.id },
-          parentComment: parent ? { id: parent.id, name: parent.name ?? null } : null,
-          aces: { nodes: (c.assignees || []).map(x => ({ membership: { accountType: x.accountType || 'customer', user: { name: x.name, emailAddress: x.emailAddress } } })) },
+          parentComment: parent ? { id: parent.id, name: parent.name ?? null, aces: acesOf(parent) } : null,
+          aces: acesOf(c),
         } : null;
         continue;
       }
@@ -185,7 +186,10 @@ export function fakeApplicantWorld() {
           break;
         }
         case 'createComment': {
-          const a = world.accounts[input.targetId];
+          // Like JobTread: a reply names its thread only, and goes to whoever is on that thread (its own assignees are ignored)
+          if (input.parentCommentId && input.targetId) throw Object.assign(new Error('JobTread returned 400: Either parent comment ID or target ID must be provided'), { status: 400 });
+          const owner = input.parentCommentId ? Object.values(world.accounts).find(x => x.comments.some(c => c.id === input.parentCommentId)) : null;
+          const a = owner || world.accounts[input.targetId];
           if (!a) throw Object.assign(new Error('no account'), { status: 400 });
           for (const f of input.files || []) {
             const req = world.uploadRequests[f.uploadRequestId];
@@ -193,7 +197,8 @@ export function fakeApplicantWorld() {
             req.used = true;
           }
           const id = nextId('cmt');
-          a.comments.push({ id, name: input.name ?? null, message: input.message, assignees: input.assignees || [], files: input.files || [], grantKey: $?.grantKey, internal: !input.assignees?.length, parentCommentId: input.parentCommentId || null, createdAt: new Date().toISOString() });
+          const reply = !!input.parentCommentId;
+          a.comments.push({ id, name: input.name ?? null, message: input.message, assignees: reply ? [] : (input.assignees || []), files: input.files || [], grantKey: $?.grantKey, internal: !reply && !input.assignees?.length, parentCommentId: input.parentCommentId || null, createdAt: new Date().toISOString() });
           logEvent('commentCreated', a, { next: { id, name: input.name ?? null, message: input.message, targetType: 'account', jobId: null, parentCommentId: input.parentCommentId || null }, previous: null });
           out.createComment = { createdComment: { id } };
           break;

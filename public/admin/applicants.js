@@ -1551,7 +1551,8 @@ function timelineOf(d) {
     else if (c.by === 'Qualification Committee' || /\(automatic\)$/.test(c.name || '') || /^Moved back to /.test(msg)) kind = 'internal';
     // The conversation it belongs to: its first message (a reply's parent)
     const rootId = c.parentId || c.id;
-    items.push({ type: 'msg', kind, at: c.at, c, site, rootId, rootTitle: byId.get(rootId)?.name || null });
+    // Who's on that conversation: a reply in it reaches them (JobTread's own record)
+    items.push({ type: 'msg', kind, at: c.at, c, site, rootId, rootTitle: byId.get(rootId)?.name || null, rootTo: byId.get(rootId)?.to || [] });
   }
   // Staff answering inside a family's conversation are writing to the family
   const familyThreads = new Set(items.filter(it => it.kind === 'sent' || it.kind === 'reply').map(it => it.rootId));
@@ -1611,7 +1612,7 @@ function Message({ it, onReply }) {
     ${(body.length > 420 || (onReply && (kind === 'sent' || kind === 'reply'))) && html`<div class="apl-msg-actions" style=${out && kind !== 'comment' ? 'justify-content:flex-end' : ''}>
       ${c.parentId && it.rootTitle && html`<span class="apl-inreply">In “${it.rootTitle}”</span>`}
       ${body.length > 420 && html`<button class="apl-more" onClick=${() => setOpenFull(v => !v)}>${openFull ? 'Show less' : 'Show all'}</button>`}
-      ${onReply && (kind === 'sent' || kind === 'reply') && html`<button class="apl-more" onClick=${() => onReply({ id: it.rootId, title: it.rootTitle })} aria-label=${`Reply in “${it.rootTitle || 'this conversation'}”`}>Reply</button>`}
+      ${onReply && (kind === 'sent' || kind === 'reply') && html`<button class="apl-more" onClick=${() => onReply({ id: it.rootId, title: it.rootTitle, to: it.rootTo })} aria-label=${`Reply in “${it.rootTitle || 'this conversation'}”`}>Reply</button>`}
     </div>`}
     ${c.files?.length > 0 && html`<div class="apl-files">${c.files.map(f => html`<span class="apl-file-chip">📎 ${f.name}</span>`)}</div>`}
   </div>`;
@@ -1645,11 +1646,11 @@ function Conversation({ d, onSent, addToast, replyLink = null }) {
   // It starts on the alert's thread, else the one the family wrote in last (if they wrote last).
   const linked = useMemo(() => {
     const it = replyLink && items.find(x => x.type === 'msg' && (x.c.id === replyLink || x.rootId === replyLink));
-    return it ? { id: it.rootId, title: it.rootTitle } : null;
+    return it ? { id: it.rootId, title: it.rootTitle, to: it.rootTo } : null;
   }, [items, replyLink]);
   const familyLast = useMemo(() => {
     const last = [...items].reverse().find(x => x.type === 'msg' && (x.kind === 'sent' || x.kind === 'reply'));
-    return last?.kind === 'reply' ? { id: last.rootId, title: last.rootTitle } : null;
+    return last?.kind === 'reply' ? { id: last.rootId, title: last.rootTitle, to: last.rootTo } : null;
   }, [items]);
   const [picked, setPicked] = useState(undefined); // undefined: follow the default above
   useEffect(() => { setPicked(undefined); }, [a.id]);
@@ -1664,6 +1665,9 @@ function Conversation({ d, onSent, addToast, replyLink = null }) {
   const box = useRef(null);
   const thread = correcting ? null : picked === undefined ? (linked || familyLast) : picked;
   const reply = (t) => { setPicked(t); setHeadOpen(true); setTimeout(() => box.current?.focus(), 0); };
+  // A reply reaches the family members on that conversation; anyone else needs a new message
+  const recipients = thread ? (thread.to || []) : emailable;
+  const left = thread ? emailable.filter(c => !recipients.some(r => r.email.toLowerCase() === c.email.toLowerCase())) : [];
   const send = async () => {
     if (!text.trim() || busy || !emailable.length) return;
     setBusy(true);
@@ -1700,19 +1704,21 @@ function Conversation({ d, onSent, addToast, replyLink = null }) {
       <div class="apl-callout is-warn">No one on this family has an email address in JobTread, so there's no one to message yet. Add an email address for ${namesOf(a.contacts || [], 'a contact')} in JobTread and they'll show here.</div>
     </div>` : html`<div class=${`apl-composer ${headOpen ? 'is-head-open' : ''}`} aria-label="Message the family">
       <div class="apl-composer-head"><b>Message the family</b><span>Sent through JobTread, which emails it. Replies come back here.</span></div>
-      ${!headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label=${thread ? 'See who it goes to, or start a new message' : 'See who it goes to, or change the subject'}><span>To <b>${namesOf(emailable)}</b> · ${thread ? `Replying in “${thread.title || 'their conversation'}”` : subject}</span><em>Edit</em></button>`}
+      ${!headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label=${thread ? 'See who it goes to, or start a new message' : 'See who it goes to, or change the subject'}><span>To <b>${namesOf(recipients, 'no one yet')}</b> · ${thread ? `Replying in “${thread.title || 'their conversation'}”` : subject}</span><em>Edit</em></button>`}
       ${html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">
-        <div class="apl-to" aria-label="To">To ${emailable.map(c => html`<span class="apl-to-chip" title=${c.email}>${c.name || c.email}</span>`)}</div>
+        <div class="apl-to" aria-label="To">To ${recipients.length ? recipients.map(c => html`<span class="apl-to-chip" title=${c.email}>${c.name || c.email}</span>`) : html`<span>no one in the family</span>`}</div>
         ${thread ? html`<div class="apl-thread-to"><span>Replying in <b>${thread.title || 'their conversation'}</b></span><button class="apl-more" onClick=${() => setPicked(null)}>New message</button></div>`
           : html`<label class="apl-subject">Subject <input value=${subject} onInput=${e => setSubject(e.target.value)} maxlength="128" aria-label="Subject" /></label>`}
       </div>`}
+      ${thread && !recipients.length && html`<div class="apl-callout is-warn">No one in the family is on this conversation in JobTread, so a reply wouldn't reach them. <button class="apl-more" onClick=${() => setPicked(null)}>Send a new message</button> to everyone listed instead.</div>`}
+      ${thread && recipients.length > 0 && left.length > 0 && html`<div class="apl-callout apl-thread-note">${namesOf(left)} ${left.length === 1 ? 'isn’t' : 'aren’t'} on this conversation, so the reply won’t reach them. <button class="apl-more" onClick=${() => setPicked(null)}>New message</button> reaches everyone.</div>`}
       ${correcting && html`<div class="apl-callout">Writing a correction. When it's sent, the site counts ${namesOf(emailable)} as knowing where things stand now. <button class="apl-more" onClick=${() => { setCorrecting(false); setSubject(DEFAULT_SUBJECT); setText(''); }}>Cancel</button></div>`}
       <textarea ref=${box} class="form-input" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
-        placeholder=${thread ? 'Write your reply. It goes back to everyone listed in the same JobTread conversation.' : 'Write to the family. JobTread emails it from the Qualification Committee to everyone listed, and their replies land here.'}
+        placeholder=${thread ? 'Write your reply. It goes back in the same JobTread conversation.' : 'Write to the family. JobTread emails it from the Qualification Committee to everyone listed, and their replies land here.'}
         aria-label=${thread ? 'Reply' : 'Message'} maxlength="4000"></textarea>
       <div class="apl-composer-foot">
         <span class="apl-kbd-hint">⌘/Ctrl + Enter to send</span>
-        <button class="btn btn-primary" onClick=${send} disabled=${busy || !text.trim()}>${busy ? 'Sending…' : correcting ? 'Send correction' : thread ? 'Send reply' : 'Send'}</button>
+        <button class="btn btn-primary" onClick=${send} disabled=${busy || !text.trim() || !recipients.length}>${busy ? 'Sending…' : correcting ? 'Send correction' : thread ? 'Send reply' : 'Send'}</button>
       </div>
     </div>`}
   </section>`;

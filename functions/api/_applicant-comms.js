@@ -227,17 +227,19 @@ export function greetingNames(people, { lang = 'en', fallback = 'Hello' } = {}) 
 /**
  * Post one comment on an account. `assignTo` ({ name, email }, or a list of
  * them) makes it a family message JobTread emails to each; without it the
- * comment is internal. `parentCommentId` posts it as a reply in that thread.
+ * comment is internal. `parentCommentId` posts it as a reply in that thread
+ * instead: JobTread takes the thread alone (no account, subject or
+ * assignees) and it reaches whoever is on that thread.
  * `uploadRequestIds` attach files (from createUploadRequest).
  */
 export async function postAccountComment(env, { accountId, name, message, assignTo = null, parentCommentId = null, uploadRequestIds = [], grant = null }, fetchImpl = fetch) {
   const input = {
-    targetType: 'account', targetId: accountId, message: String(message).slice(0, 4096),
+    ...(parentCommentId ? { parentCommentId } : { targetType: 'account', targetId: accountId }),
+    message: String(message).slice(0, 4096),
     isVisibleToInternalRoles: true, isVisibleToCustomerRoles: false, isVisibleToVendorRoles: false,
   };
-  if (name) input.name = name;
-  if (parentCommentId) input.parentCommentId = parentCommentId;
-  const people = (Array.isArray(assignTo) ? assignTo : [assignTo]).filter(p => p?.email);
+  if (name && !parentCommentId) input.name = name;
+  const people = parentCommentId ? [] : (Array.isArray(assignTo) ? assignTo : [assignTo]).filter(p => p?.email);
   if (people.length) input.assignees = people.map(p => ({ name: p.name || p.email, emailAddress: p.email, accountType: 'customer' }));
   if (uploadRequestIds.length) input.files = uploadRequestIds.map(f => ({ name: f.name, uploadRequestId: f.id }));
   const out = await pave(grant || qcGrant(env), { createComment: { $: input, createdComment: { id: {} } } }, fetchImpl);
