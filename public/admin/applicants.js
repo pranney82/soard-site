@@ -421,6 +421,11 @@ body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * {
 /* On a phone the To and Subject fold into one line until tapped */
 .apl-email-sum { display: none; }
 .apl-to { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; min-height: 40px; padding: .3rem .6rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-hover); font-size: .84rem; color: var(--color-text-secondary); }
+.apl-thread-to { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-height: 40px; padding: .3rem .6rem; border: 1px solid #F0DE8A; border-radius: 8px; background: #FFF8D6; font-size: .84rem; color: var(--color-text-secondary); min-width: 0; }
+.apl-thread-to span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apl-thread-to b { color: var(--color-text); }
+.apl-msg-actions { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+.apl-inreply { font-size: .76rem; color: var(--color-text-muted); }
 .apl-subject { display: flex; align-items: center; gap: .45rem; min-height: 40px; padding: 0 .6rem; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-bg-card); font-size: .84rem; color: var(--color-text-secondary); cursor: text; }
 .apl-subject:focus-within { border-color: var(--color-text); box-shadow: 0 0 0 3px rgba(26, 27, 31, .08); }
 .apl-subject input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; padding: .45rem 0; font: inherit; font-size: .9rem; color: var(--color-text); }
@@ -608,7 +613,9 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
   const [statusFilter, setStatusFilter] = useState('');
   const [archived, setArchived] = useState(false);
   const [tests, setTests] = useState(false); // test accounts (TEST…) stay off the board unless asked for
-  const [openId, setOpenId] = useState(() => (location.hash.match(/^#applications\/applicants\/([A-Za-z0-9]{6,32})$/) || [])[1] || null);
+  const [openId, setOpenId] = useState(() => (location.hash.match(/^#applications\/applicants\/([A-Za-z0-9]{6,32})(?:\/reply\/[A-Za-z0-9_-]{4,64})?$/) || [])[1] || null);
+  // A family-reply alert's Reply link: open the family answering in that JobTread thread
+  const [replyLink] = useState(() => (location.hash.match(/^#applications\/applicants\/[A-Za-z0-9]{6,32}\/reply\/([A-Za-z0-9_-]{4,64})$/) || [])[1] || null);
   const [sheet, setSheet] = useState(null);       // { a, status }
   const [syncing, setSyncing] = useState(false);
   const [focusPin, setFocusPin] = useState(null);
@@ -860,6 +867,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
 
     ${openId && html`<${Drawer}
       id=${openId}
+      replyLink=${replyLink}
       fields=${data.fields}
       boundary=${data.boundary}
       summary=${(data.applicants || []).find(a => a.id === openId)}
@@ -1430,7 +1438,7 @@ function ActivityView({ onOpen }) {
 
 // ─── One family (drawer) ────────────────────────────────────────────
 
-function Drawer({ id, fields, boundary, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
+function Drawer({ id, replyLink = null, fields, boundary, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const [pane, setPane] = useState('convo'); // phones: which half shows
@@ -1509,7 +1517,7 @@ function Drawer({ id, fields, boundary, summary, onClose, onPrev, onNext, onStat
       ${!d && !err && html`<div class="apl-skel">Reading ${summary?.name || 'this family'} from JobTread…</div>`}
       ${d && !a && html`<div class="apl-skel">This family isn't in JobTread any more. <button class="apl-more" onClick=${onClose}>Close</button></div>`}
       ${d && a && html`<div class="apl-dbody" data-pane=${pane}>
-        <${Conversation} d=${{ ...d, applicant: a }} onSent=${refresh} addToast=${addToast} />
+        <${Conversation} d=${{ ...d, applicant: a }} onSent=${refresh} addToast=${addToast} replyLink=${replyLink} />
         <${SidePanel} d=${{ ...d, applicant: a }} fields=${fields} boundary=${boundary} onSaved=${refresh} onShowOnMap=${onShowOnMap} addToast=${addToast} />
       </div>`}
     </aside>
@@ -1526,6 +1534,9 @@ function timelineOf(d) {
     else fromLog.set(r.data.commentId, r);
   }
   const items = [];
+  // A family member writing in JobTread's family portal isn't an email reply, but it's them all the same
+  const familyNames = new Set((d.applicant?.contacts || []).map(c => String(c.name || '').trim().toLowerCase()).filter(Boolean));
+  const byId = new Map((d.comments || []).map(c => [c.id, c]));
   for (const c of d.comments || []) {
     if (c.name === 'Comms Thread' && !c.parentId) continue; // the texting thread's starter
     const msg = c.message || '';
@@ -1534,12 +1545,17 @@ function timelineOf(d) {
     if (/^\/text\s/i.test(msg)) continue;                   // the command; DataX logs the sent text
     if (/New (incoming|outgoing) _message_/i.test(msg)) kind = /incoming/i.test(msg) ? 'textIn' : 'textOut';
     else if (/New (incoming|outgoing) _call_/i.test(msg)) kind = 'call';
-    else if (c.fromEmail || fromLog.get(c.id)?.source === 'family') kind = 'reply';
+    else if (c.fromEmail || fromLog.get(c.id)?.source === 'family' || fromLog.get(c.id)?.kind === 'reply' || familyNames.has(String(c.by || '').trim().toLowerCase())) kind = 'reply';
     else if (site?.kind === 'note' || /_[^_]+, from the website_$/.test(msg)) kind = 'note';
     else if (site?.kind === 'sent' || c.to?.length || FAMILY_TITLES.has(c.name || '')) kind = 'sent';
     else if (c.by === 'Qualification Committee' || /\(automatic\)$/.test(c.name || '') || /^Moved back to /.test(msg)) kind = 'internal';
-    items.push({ type: 'msg', kind, at: c.at, c, site });
+    // The conversation it belongs to: its first message (a reply's parent)
+    const rootId = c.parentId || c.id;
+    items.push({ type: 'msg', kind, at: c.at, c, site, rootId, rootTitle: byId.get(rootId)?.name || null });
   }
+  // Staff answering inside a family's conversation are writing to the family
+  const familyThreads = new Set(items.filter(it => it.kind === 'sent' || it.kind === 'reply').map(it => it.rootId));
+  for (const it of items) if (it.kind === 'comment' && it.c.parentId && familyThreads.has(it.rootId)) it.kind = 'sent';
   // A move made on the site is in the history twice: the site's own line, and JobTread's record of
   // the same change (made with the site's key). Keep the site's, which says who and what was emailed.
   // The same goes for details changed on the site.
@@ -1567,7 +1583,7 @@ function textParts(msg) {
   return { contact, text: text != null ? text.trim() : null, summary: summary ? summary.trim() : null };
 }
 
-function Message({ it }) {
+function Message({ it, onReply }) {
   const [openFull, setOpenFull] = useState(false);
   const { c, kind, site } = it;
   const out = ['sent', 'textOut', 'note'].includes(kind) || (kind === 'comment' && c.by !== null);
@@ -1579,7 +1595,7 @@ function Message({ it }) {
     label = kind === 'textIn' ? `Text from ${p.contact || 'the family'}` : kind === 'textOut' ? `Text to ${p.contact || 'the family'}` : `Call with ${p.contact || 'the family'}`;
     body = kind === 'call' ? (p.summary || 'Call logged (no summary).') : (p.text ?? c.message);
   } else if (kind === 'reply') label = c.fromEmail ? 'Email reply from the family' : 'Message from the family';
-  else if (kind === 'sent') label = `Emailed to ${c.to?.length ? namesOf(c.to) : 'the family'}${site?.by ? ` by ${site.by}` : ''}`;
+  else if (kind === 'sent') label = `${c.parentId ? 'Replied to' : 'Emailed to'} ${c.to?.length ? namesOf(c.to) : 'the family'}${site?.by ? ` by ${site.by}` : ''}`;
   else if (kind === 'note') label = 'Internal note';
   else if (kind === 'internal') label = 'Staff only';
   else label = 'Comment in JobTread';
@@ -1592,7 +1608,11 @@ function Message({ it }) {
       ${c.name && !['textIn', 'textOut', 'call'].includes(kind) && html`<h4>${c.name}</h4>`}
       <div dangerouslySetInnerHTML=${{ __html: richText(body) }}></div>
     </div>
-    ${body.length > 420 && html`<button class="apl-more" style=${out && kind !== 'comment' ? 'justify-self:end' : ''} onClick=${() => setOpenFull(v => !v)}>${openFull ? 'Show less' : 'Show all'}</button>`}
+    ${(body.length > 420 || (onReply && (kind === 'sent' || kind === 'reply'))) && html`<div class="apl-msg-actions" style=${out && kind !== 'comment' ? 'justify-content:flex-end' : ''}>
+      ${c.parentId && it.rootTitle && html`<span class="apl-inreply">In “${it.rootTitle}”</span>`}
+      ${body.length > 420 && html`<button class="apl-more" onClick=${() => setOpenFull(v => !v)}>${openFull ? 'Show less' : 'Show all'}</button>`}
+      ${onReply && (kind === 'sent' || kind === 'reply') && html`<button class="apl-more" onClick=${() => onReply({ id: it.rootId, title: it.rootTitle })} aria-label=${`Reply in “${it.rootTitle || 'this conversation'}”`}>Reply</button>`}
+    </div>`}
     ${c.files?.length > 0 && html`<div class="apl-files">${c.files.map(f => html`<span class="apl-file-chip">📎 ${f.name}</span>`)}</div>`}
   </div>`;
 }
@@ -1618,9 +1638,21 @@ function namesOf(people, fallback = 'the family') {
   return !n.length ? fallback : n.length === 1 ? n[0] : `${n.slice(0, -1).join(', ')} and ${n.at(-1)}`;
 }
 
-function Conversation({ d, onSent, addToast }) {
+function Conversation({ d, onSent, addToast, replyLink = null }) {
   const a = d.applicant;
   const items = useMemo(() => timelineOf(d), [d]);
+  // Where an answer goes: a JobTread conversation ({ id, title }), or null for a new message.
+  // It starts on the alert's thread, else the one the family wrote in last (if they wrote last).
+  const linked = useMemo(() => {
+    const it = replyLink && items.find(x => x.type === 'msg' && (x.c.id === replyLink || x.rootId === replyLink));
+    return it ? { id: it.rootId, title: it.rootTitle } : null;
+  }, [items, replyLink]);
+  const familyLast = useMemo(() => {
+    const last = [...items].reverse().find(x => x.type === 'msg' && (x.kind === 'sent' || x.kind === 'reply'));
+    return last?.kind === 'reply' ? { id: last.rootId, title: last.rootTitle } : null;
+  }, [items]);
+  const [picked, setPicked] = useState(undefined); // undefined: follow the default above
+  useEffect(() => { setPicked(undefined); }, [a.id]);
   const scroller = useRef(null);
   useEffect(() => { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; }, [items.length, a.id]);
   const emailable = familyEmails(a);
@@ -1630,14 +1662,17 @@ function Conversation({ d, onSent, addToast }) {
   const [correcting, setCorrecting] = useState(false);
   const [headOpen, setHeadOpen] = useState(false); // phones: To and Subject, folded until tapped
   const box = useRef(null);
+  const thread = correcting ? null : picked === undefined ? (linked || familyLast) : picked;
+  const reply = (t) => { setPicked(t); setHeadOpen(true); setTimeout(() => box.current?.focus(), 0); };
   const send = async () => {
     if (!text.trim() || busy || !emailable.length) return;
     setBusy(true);
-    const body = correcting ? { correction: { id: a.id, subject, message: text } } : { message: { id: a.id, subject, message: text } };
+    const body = correcting ? { correction: { id: a.id, subject, message: text } } : { message: { id: a.id, subject, message: text, ...(thread ? { replyTo: thread.id } : {}) } };
     const j = await call(API, body);
     setBusy(false);
     if (!j.success) { addToast(j.error || 'Not sent', 'error'); return; }
-    addToast(`${correcting ? 'Correction sent' : 'Sent'} to ${namesOf(j.to)} through JobTread`, 'success');
+    addToast(correcting ? `Correction sent to ${namesOf(j.to)} through JobTread` : thread ? `Replied to ${namesOf(j.to)} in “${thread.title || 'their conversation'}” through JobTread` : `Sent to ${namesOf(j.to)} through JobTread`, 'success');
+    if (!thread) setPicked(undefined);
     setText('');
     if (correcting) { setCorrecting(false); setSubject(DEFAULT_SUBJECT); }
     onSent();
@@ -1658,25 +1693,26 @@ function Conversation({ d, onSent, addToast }) {
         const day = new Date(it.at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: new Date(it.at).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
         const sep = day !== lastDay ? html`<div class="apl-day">${day}</div>` : null;
         lastDay = day;
-        return html`${sep}${it.type === 'msg' ? html`<${Message} it=${it} key=${it.c.id} />` : html`<${EventLine} r=${it.r} key=${it.r.id} />`}`;
+        return html`${sep}${it.type === 'msg' ? html`<${Message} it=${it} key=${it.c.id} onReply=${emailable.length ? reply : null} />` : html`<${EventLine} r=${it.r} key=${it.r.id} />`}`;
       })}
     </div>
     ${!emailable.length ? html`<div class="apl-composer" aria-label="Message the family">
       <div class="apl-callout is-warn">No one on this family has an email address in JobTread, so there's no one to message yet. Add an email address for ${namesOf(a.contacts || [], 'a contact')} in JobTread and they'll show here.</div>
     </div>` : html`<div class=${`apl-composer ${headOpen ? 'is-head-open' : ''}`} aria-label="Message the family">
       <div class="apl-composer-head"><b>Message the family</b><span>Sent through JobTread, which emails it. Replies come back here.</span></div>
-      ${!headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label="See who it goes to, or change the subject"><span>To <b>${namesOf(emailable)}</b> · ${subject}</span><em>Edit</em></button>`}
+      ${!headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label=${thread ? 'See who it goes to, or start a new message' : 'See who it goes to, or change the subject'}><span>To <b>${namesOf(emailable)}</b> · ${thread ? `Replying in “${thread.title || 'their conversation'}”` : subject}</span><em>Edit</em></button>`}
       ${html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">
         <div class="apl-to" aria-label="To">To ${emailable.map(c => html`<span class="apl-to-chip" title=${c.email}>${c.name || c.email}</span>`)}</div>
-        <label class="apl-subject">Subject <input value=${subject} onInput=${e => setSubject(e.target.value)} maxlength="128" aria-label="Subject" /></label>
+        ${thread ? html`<div class="apl-thread-to"><span>Replying in <b>${thread.title || 'their conversation'}</b></span><button class="apl-more" onClick=${() => setPicked(null)}>New message</button></div>`
+          : html`<label class="apl-subject">Subject <input value=${subject} onInput=${e => setSubject(e.target.value)} maxlength="128" aria-label="Subject" /></label>`}
       </div>`}
       ${correcting && html`<div class="apl-callout">Writing a correction. When it's sent, the site counts ${namesOf(emailable)} as knowing where things stand now. <button class="apl-more" onClick=${() => { setCorrecting(false); setSubject(DEFAULT_SUBJECT); setText(''); }}>Cancel</button></div>`}
       <textarea ref=${box} class="form-input" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
-        placeholder="Write to the family. JobTread emails it from the Qualification Committee to everyone listed, and their replies land here."
-        aria-label="Message" maxlength="4000"></textarea>
+        placeholder=${thread ? 'Write your reply. It goes back to everyone listed in the same JobTread conversation.' : 'Write to the family. JobTread emails it from the Qualification Committee to everyone listed, and their replies land here.'}
+        aria-label=${thread ? 'Reply' : 'Message'} maxlength="4000"></textarea>
       <div class="apl-composer-foot">
         <span class="apl-kbd-hint">⌘/Ctrl + Enter to send</span>
-        <button class="btn btn-primary" onClick=${send} disabled=${busy || !text.trim()}>${busy ? 'Sending…' : correcting ? 'Send correction' : 'Send'}</button>
+        <button class="btn btn-primary" onClick=${send} disabled=${busy || !text.trim()}>${busy ? 'Sending…' : correcting ? 'Send correction' : thread ? 'Send reply' : 'Send'}</button>
       </div>
     </div>`}
   </section>`;

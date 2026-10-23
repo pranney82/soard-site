@@ -421,7 +421,7 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'A family replied → staff alert', s: 'live', k: 'event',
           when: 'A family answers a JobTread message, by replying to its email or in JobTread. The Applicants sync reads JobTread about every minute, and each reply alerts once.',
-          does: 'Posts a card in the Slack alerts channel and emails the staff list in Applications → Settings: who replied, what they wrote and the family’s status, with buttons to the family’s page and JobTread. JobTread itself notifies no one about these replies.',
+          does: 'Posts a card in the Slack alerts channel and emails the staff list in Applications → Settings: who replied (by email, or in JobTread’s family portal), what they wrote and the family’s status. Reply opens the family’s page answering in that same JobTread conversation; more replies in one conversation thread under one Slack post. JobTread itself notifies no one about these replies.',
           touches: ['JobTread', 'Slack', 'Resend', 'D1'], where: 'functions/api/_applicant-replies.js (from _applicants.js syncEvents)',
           info: 'Only replies that arrive after it was switched on (Oct 23, 2026). TEST families get a test card, and their email goes only to the alert address.',
           live: (f) => {

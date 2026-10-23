@@ -6,8 +6,9 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
-import { syncAllApplicants, syncEvents, FIELDS } from '../functions/api/_applicants.js';
+import { syncAllApplicants, syncEvents, FIELDS, activityFor, relabelFamilyComments } from '../functions/api/_applicants.js';
 import { alertFamilyReplies, replyText, replyAlertFacts } from '../functions/api/_applicant-replies.js';
+import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 
 const F = Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, f.id]));
 const EMAIL = '22NJw43QvHeJ';
@@ -26,11 +27,11 @@ function family(name, fields = { [F.status]: 'In Review', [F.year]: '2027' }) {
 }
 
 /** JobTread's event for a family's email reply landing on their account */
-function reply(a, message, at = Date.now() + 1000, by = 'Jordan Stone') {
+function reply(a, message, at = Date.now() + 1000, by = 'Jordan Stone', thread = 'cm-thread') {
   const id = `evt-reply-${++n}`;
   w.world.events.push({
     id, createdAt: new Date(at).toISOString(), type: 'commentCreated', createdByGrantId: null, createdByUser: { name: by },
-    data: { next: { id: `cm-${n}`, name: 'RE: Application In Review', message, targetType: 'account', fromEmailStorageId: `es-${n}` } },
+    data: { next: { id: `cm-${n}`, name: null, message, targetType: 'account', fromEmailStorageId: `es-${n}`, parentCommentId: thread } },
     account: { id: a.id, type: 'customer' },
   });
   return id;
@@ -58,14 +59,15 @@ test('a family replies: one Slack card and one email to the staff list, with wha
   assert.match(card, /About Avery Stone \(In Review · 2027 season\)/);
   assert.match(card, /Tuesday at 3 works for us/);
   assert.doesNotMatch(card, /Could we visit/, 'the quoted email history is left out');
-  assert.match(card, /admin\/#applications\/applicants\/acctR/, 'a button to the family’s page');
+  assert.match(card, /"Reply".*admin\/#applications\/applicants\/acctR\d+\/reply\/cm-thread/, 'Reply opens the family’s page answering in that JobTread thread');
 
   const mails = w.world.emails.filter((e) => /replied/.test(e.subject));
   assert.equal(mails.length, 1);
   assert.deepEqual(mails[0].to, ['selection@soardcharity.com'], 'the staff list in Applications → Settings');
   assert.equal(mails[0].subject, 'Jordan Stone replied: Avery Stone');
   assert.match(mails[0].html, /Tuesday at 3 works for us/);
-  assert.match(mails[0].text, /Answer from the family's page/);
+  assert.match(mails[0].text, /Reply: .*\/reply\/cm-thread/);
+  assert.match(mails[0].html, />Reply</);
 
   // Read again, or a second sweep: never twice
   await syncEvents(env, opts());
@@ -115,6 +117,55 @@ test('Slack or email down: the reply is still claimed once, and the record says 
   assert.equal(facts.count, 1);
   assert.match(facts.last.slack, /^not posted/);
   assert.equal(w.world.emails.filter((e) => /replied/.test(e.subject)).length, 1, 'the email still went');
+});
+
+test('in the Slack app, more replies in one JobTread thread reply in one Slack thread', async () => {
+  env.SLACK_BOT_TOKEN = 'xoxb-test';
+  delete env.SLACK_WEBHOOK_URL;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)').run();
+  await writeSlackConfig(env.DB, { channel: { id: 'C0ALERTS', name: 'website-alerts' } });
+  const a = family('Avery Stone');
+  await syncAllApplicants(env, opts());
+  await syncEvents(env, opts());
+  reply(a, 'Tuesday works', Date.now() + 1000, 'Jordan Stone', 'cm-visit');
+  await syncEvents(env, opts());
+  reply(a, 'Actually, can we do 4?', Date.now() + 2000, 'Sam Stone', 'cm-visit');
+  reply(a, 'A different question', Date.now() + 3000, 'Jordan Stone', 'cm-other');
+  await syncEvents(env, opts());
+  const posts = w.world.slack;
+  assert.equal(posts.length, 3);
+  assert.ok(!posts[0].thread_ts, 'the first reply in a thread is a new post');
+  assert.ok(posts[1].thread_ts && posts[1].reply_broadcast, 'the next one in the same JobTread thread replies under it, shown in the channel too');
+  assert.ok(!posts[2].thread_ts, 'another JobTread thread starts its own');
+});
+
+test('a family member writing in JobTread’s family portal is a reply too (matched by their email); staff comments aren’t', async () => {
+  const a = family('Avery Stone');
+  await syncAllApplicants(env, opts());
+  await syncEvents(env, opts());
+  const at = new Date(Date.now() + 1000).toISOString();
+  w.world.events.push(
+    { id: 'evt-portal', createdAt: at, type: 'commentCreated', createdByGrantId: 'g-portal', createdByGrantName: 'JobTread App', createdByUser: { name: 'Jordan Stone', emailAddress: 'Jordan@Example.com' },
+      data: { next: { id: 'cm-portal', message: 'We can do Tuesday', targetType: 'account', parentCommentId: 'cm-visit', isVisibleToCustomerRoles: true } }, account: { id: a.id, type: 'customer' } },
+    { id: 'evt-staff', createdAt: at, type: 'commentCreated', createdByGrantId: 'g-app', createdByGrantName: 'JobTread App', createdByUser: { name: 'Linzi Berkowitz', emailAddress: 'linzi@soardcharity.com' },
+      data: { next: { id: 'cm-staff', message: 'Great, see you then', targetType: 'account', parentCommentId: 'cm-visit' } }, account: { id: a.id, type: 'customer' } });
+  await syncEvents(env, opts());
+  const kinds = Object.fromEntries((await activityFor(env.DB, a.id)).filter(r => ['evt-portal', 'evt-staff'].includes(r.id)).map(r => [r.id, r.kind]));
+  assert.deepEqual(kinds, { 'evt-portal': 'reply', 'evt-staff': 'comment' });
+  assert.equal(w.world.slack.length, 1);
+  assert.match(w.world.slack[0].text, /Jordan Stone replied/);
+});
+
+test('once: past portal messages by a family contact become replies in the history (no alerts)', async () => {
+  const a = family('Avery Stone');
+  await syncAllApplicants(env, opts());
+  await env.DB.prepare("INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, body, data) VALUES ('old-1', ?, '2025-12-15T15:43:06Z', 'comment', 'Jordan Stone', 'jobtread', NULL, 'Thursday works', NULL), ('old-2', ?, '2025-12-15T15:47:00Z', 'comment', 'Linzi Berkowitz', 'jobtread', NULL, 'Great', NULL)").bind(a.id, a.id).run();
+  assert.equal(await relabelFamilyComments(env.DB), 1);
+  const kinds = Object.fromEntries((await activityFor(env.DB, a.id)).map(r => [r.id, r.kind]));
+  assert.equal(kinds['old-1'], 'reply');
+  assert.equal(kinds['old-2'], 'comment');
+  assert.equal(await relabelFamilyComments(env.DB), 0, 'only once');
+  assert.equal(w.world.slack.length, 0);
 });
 
 test('what they wrote, without the quoted history mail apps add', () => {

@@ -255,6 +255,30 @@ test('a message to the family goes to JobTread the way staff would post it, to e
   await assert.rejects(() => messageFamily(env, b.id, { message: 'hi', ...opts() }), /no email address/);
 });
 
+test('a reply goes in the thread it answers: same conversation, no new subject, to everyone listed', async () => {
+  const a = addAccount({ name: 'Avery Stone', fields: { [F.status]: 'In Review' }, contact: { name: 'Jordan Stone', email: 'jordan@example.com' } });
+  a.contacts.push({ id: `${a.id}-c2`, name: 'Sam Stone', title: 'Dad', fields: { [EMAIL]: 'sam@example.com' } });
+  a.comments.push({ id: 'root-1', name: 'Onsite Scheduling', message: 'Could we visit Tuesday?', by: 'Linzi Berkowitz', assignees: [{ name: 'Jordan Stone', emailAddress: 'jordan@example.com' }] });
+  a.comments.push({ id: 'fam-1', name: null, message: 'Tuesday works!', by: 'Jordan Stone', fromEmail: true, parentCommentId: 'root-1' });
+  const other = addAccount({ name: 'Other Family', fields: { [F.status]: 'Applied' }, contact: { name: 'Pat', email: 'pat@example.com' } });
+  other.comments.push({ id: 'theirs-1', name: 'Hello', message: 'x', by: 'Linzi Berkowitz' });
+  await syncAllApplicants(env, opts());
+  // Answering the family's reply goes in the thread it belongs to (its first message)
+  const out = await messageFamily(env, a.id, { subject: 'ignored', message: 'See you at 3!', replyTo: 'fam-1', user: 'linzi@soardcharity.com', ...opts() });
+  const sent = a.comments.find(c => c.message === 'See you at 3!');
+  assert.equal(sent.parentCommentId, 'root-1');
+  assert.equal(sent.name, null, 'a reply keeps the thread’s subject');
+  assert.deepEqual(sent.assignees.map(x => x.emailAddress), ['jordan@example.com', 'sam@example.com'], 'everyone listed, including a parent added since');
+  assert.deepEqual(out.thread, { id: 'root-1', name: 'Onsite Scheduling' });
+  const row = (await activityFor(env.DB, a.id)).find(r => r.kind === 'sent');
+  assert.equal(row.title, 'Replied to Jordan and Sam Stone');
+  assert.equal(row.data.replyTo, 'root-1');
+  // Never into another family's conversation
+  const before = a.comments.length + other.comments.length;
+  await assert.rejects(() => messageFamily(env, a.id, { message: 'x', replyTo: 'theirs-1', ...opts() }), /isn’t on this family’s account/);
+  assert.equal(a.comments.length + other.comments.length, before, 'nothing posted');
+});
+
 test('archive hides an applicant from the default list; detail reads the thread live', async () => {
   const a = addAccount({ name: 'Avery Stone', fields: { [F.status]: 'Denied' }, contact: { name: 'Jordan', email: 'j@example.com' } });
   await syncAllApplicants(env, opts());

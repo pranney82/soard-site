@@ -93,6 +93,8 @@ const avery = family({ name: 'Avery Stone', status: 'Applied', parent: 'Jordan S
     TEXT_IN('Jordan Stone', 'Yes! Thursday after 3 works great.', 2)] });
 // A second parent on the account: every family email goes to both
 avery.contacts.push({ id: `${avery.id}-c2`, name: 'Sam Stone', title: 'Dad', fields: { [EMAIL]: 'sam@example.com' } });
+// Jordan's email reply sits in the thread of the message it answers, as JobTread files it
+avery.comments.find(c => c.name === 'RE: Application Status').parentCommentId = `${avery.id}-m0`;
 family({ name: 'Mateo García', status: 'Applied', parent: 'Lucía García', lat: 34.07, lng: -84.29, city: 'Alpharetta', county: 'Fulton', days: 25, lang: 'Spanish' });
 family({ name: 'Harper Lee', status: 'Applied', parent: 'Dana Lee', lat: 33.749, lng: -84.388, city: 'Atlanta', county: 'Fulton', days: 2, types: ['Ramp'] });
 family({ name: 'Noah Pence', status: 'In Review', parent: 'Erin Pence', lat: 34.24, lng: -84.49, city: 'Canton', county: 'Cherokee', days: 40, types: ['Therapy Room'] });
@@ -317,6 +319,21 @@ await page.type('.apl-composer textarea', 'Thank you! See you Tuesday.');
 await page.keyboard.down('Meta'); await page.keyboard.press('Enter'); await page.keyboard.up('Meta');
 await page.waitForFunction(() => !document.querySelector('.apl-composer textarea').value, { timeout: 8000 });
 ok(acct('Avery Stone').comments.find(c => /See you Tuesday/.test(c.message))?.assignees?.length === 2, '⌘+Enter sends it to the family the same way');
+// Reply in a conversation: the answer goes in that JobTread thread, so the family gets it in the same conversation
+ok(await page.$$eval('.apl-msg.is-email .apl-msg-actions button', els => els.some(e => e.textContent.trim() === 'Reply')), 'the family’s reply has a Reply button');
+await page.$$eval('.apl-msg.is-email .apl-msg-actions button', els => els.find(e => e.textContent.trim() === 'Reply')?.click());
+await page.waitForSelector('.apl-thread-to', { timeout: 5000 }).catch(() => null);
+ok(/Replying in Application Status/.test(await text(page, '.apl-thread-to')) && !(await page.$('.apl-subject')), 'Reply: the box says which conversation it goes in, with no new subject');
+await page.type('.apl-composer textarea', 'Thank you, Jordan! See you Thursday.');
+await page.click('.apl-composer .btn-primary');
+await page.waitForFunction(() => !document.querySelector('.apl-composer textarea').value, { timeout: 8000 }).catch(() => null);
+const threaded = acct('Avery Stone').comments.find(c => /See you Thursday/.test(c.message));
+ok(threaded?.parentCommentId === `${avery.id}-m0` && !threaded?.name && threaded?.assignees?.length === 2, `the reply goes in the family’s JobTread thread, to both parents (${JSON.stringify({ parent: threaded?.parentCommentId, name: threaded?.name, to: threaded?.assignees?.length })})`);
+await page.waitForFunction(() => [...document.querySelectorAll('.apl-msg')].some(e => /See you Thursday/.test(e.textContent)), { timeout: 8000 }).catch(() => null);
+ok(await page.$$eval('.apl-msg', els => els.some(e => /See you Thursday/.test(e.textContent) && /In “Application Status”/.test(e.textContent))), 'and shows in the conversation as part of that thread');
+await shot(page, 'desktop-family-reply');
+await page.$$eval('.apl-thread-to button', els => els[0]?.click());
+ok(!!(await page.$('.apl-subject')) && !(await page.$('.apl-thread-to')), '“New message” switches back to a new message with a subject');
 // Edit details in place
 const typesBtn = await page.$$('.apl-type-picks button');
 await typesBtn[3].click(); // Ramp
@@ -513,6 +530,13 @@ await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
 await page.waitForFunction(() => /Check JobTread now/.test(document.querySelector('.apl-head-actions')?.innerText || ''), { timeout: 8000 }).catch(() => null);
 ok(/JobTread didn't answer/.test(await text(page, '.apl-sync')) && !!(await page.$('.apl-sync .apl-dot.is-stale')), 'a failed check says so in the header, in amber');
 ok(await clickText(page, '.apl-head-actions button', /Check JobTread now/), 'with Check JobTread now');
+// A family-reply alert's Reply link opens the family already answering in that thread
+{
+  const linked = await open(1440, 1000, `__applicants.html#applications/applicants/${avery.id}/reply/${avery.id}-m2`);
+  await linked.waitForSelector('.apl-drawer .apl-thread-to', { timeout: 15000 }).catch(() => null);
+  ok(/Replying in Application Status/.test(await text(linked, '.apl-thread-to')), 'the alert’s Reply link opens the family answering in that conversation');
+  await linked.close();
+}
 await page.waitForFunction(() => !/Check JobTread now/.test(document.querySelector('.apl-head-actions')?.innerText || ''), { timeout: 8000 }).catch(() => null);
 ok(/In sync with JobTread/.test(await text(page, '.apl-sync')), 'once JobTread answers, the problem clears');
 

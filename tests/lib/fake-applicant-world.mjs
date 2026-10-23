@@ -128,10 +128,16 @@ export function fakeApplicantWorld() {
       const fails = failNext.get(key);
       if (fails) { failNext.set(key, fails - 1); throw Object.assign(new Error(`${key} failed`), { status: 500 }); }
       const input = v.$ || {};
-      // One comment by id (aliased, as the family page reads who each shared message went to)
-      if (v._ === 'comment') {
-        const c = Object.values(world.accounts).flatMap(a => a.comments).find(x => x.id === input.id);
-        out[key] = c ? { aces: { nodes: (c.assignees || []).map(x => ({ membership: { accountType: x.accountType || 'customer', user: { name: x.name, emailAddress: x.emailAddress } } })) } } : null;
+      // One comment by id (aliased, as the family page reads who each shared message went to; or the thread a reply goes in)
+      if (v._ === 'comment' || key === 'comment') {
+        const owner = Object.values(world.accounts).find(a => a.comments.some(x => x.id === input.id));
+        const c = owner?.comments.find(x => x.id === input.id);
+        const parent = c?.parentCommentId ? owner.comments.find(x => x.id === c.parentCommentId) : null;
+        out[key] = c ? {
+          id: c.id, name: c.name ?? null, account: { id: owner.id },
+          parentComment: parent ? { id: parent.id, name: parent.name ?? null } : null,
+          aces: { nodes: (c.assignees || []).map(x => ({ membership: { accountType: x.accountType || 'customer', user: { name: x.name, emailAddress: x.emailAddress } } })) },
+        } : null;
         continue;
       }
       switch (key) {

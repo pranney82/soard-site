@@ -7,7 +7,9 @@
  * JobTread itself notifies no one (Tiffany Moody's reply in Mar 2026 made no
  * notification at all), so this does: a card in the Slack alerts channel and
  * an email to the staff list in Applications → Settings, once per reply,
- * with what they wrote and buttons to the family's page and JobTread.
+ * with what they wrote. Reply opens the family's page already answering in
+ * that thread, so the answer goes back through JobTread in the same
+ * conversation. More replies in one JobTread thread reply in one Slack thread.
  *
  * Only replies that arrive after this first ran (`since`), and within two
  * days, so a history backfill or a late sync never floods anyone. Each reply
@@ -18,7 +20,7 @@
  * site's alert address, never the staff list.
  */
 
-import { sendEmails, slackPost, SITE_ORIGIN, alertEmails } from './_broadcast-notify.js';
+import { sendEmails, slackIssue, SITE_ORIGIN, alertEmails } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import * as mail from './_email-shell.js';
 import { getLiveForm } from './_application-forms.js';
@@ -34,6 +36,13 @@ export async function ensureReplyAlertSchema(DB) {
 }
 
 const isTest = (name) => /^test\b/i.test(String(name || '').trim());
+
+/** The JobTread thread a reply belongs to: its first message */
+export function threadIdOf(row) {
+  let d = row?.data;
+  if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = null; } }
+  return d?.parentCommentId || d?.commentId || null;
+}
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n).replace(/\s+\S*$/, '')}…` : s);
 
 /** What they wrote, without the quoted email history some mail apps keep under a reply */
@@ -56,7 +65,9 @@ export function replyAlert(row, applicant) {
   const who = row.by_name || 'The family';
   const family = applicant.name;
   const text = replyText(row.body) || '(The reply had no text; it may be an attachment.)';
-  const page = `${SITE_ORIGIN}/admin/#applications/applicants/${applicant.id}`;
+  const thread = threadIdOf(row);
+  // Opens the family's page with the box already answering in this thread
+  const page = `${SITE_ORIGIN}/admin/#applications/applicants/${applicant.id}${thread ? `/reply/${thread}` : ''}`;
   const jt = `https://app.jobtread.com/customers/${applicant.id}`;
   const test = isTest(family);
   const where = [applicant.status || null, applicant.year ? `${applicant.year} season` : null].filter(Boolean).join(' · ');
@@ -65,8 +76,8 @@ export function replyAlert(row, applicant) {
     title: `${who} replied`,
     test: test ? 'Test family · not a real family' : null,
     lead: `About ${family}${where ? ` (${where})` : ''}\n“${clip(text.replace(/\s+/g, ' '), SLACK_CHARS)}”`,
-    fix: 'Answer from the family’s page on the site, so it goes back to them through JobTread.',
-    buttons: [{ label: 'Open the family', url: page }, { label: 'Open in JobTread', url: jt }],
+    fix: 'Reply opens the family’s page with your answer going back in the same JobTread conversation.',
+    buttons: [{ label: 'Reply', url: page }, { label: 'Open in JobTread', url: jt }],
   });
   const { esc } = mail;
   const html = mail.emailShell({
@@ -75,15 +86,15 @@ export function replyAlert(row, applicant) {
     heading: `${who} replied`,
     intro: `About ${esc(family)}${where ? ` (${esc(where)})` : ''}. JobTread filed it on the family’s account.`,
     bodyHtml: mail.panel(`<div style="font-family:${mail.SANS};font-size:15px;line-height:1.55;white-space:pre-wrap;">${esc(clip(text, 4000))}</div>`, { accent: true })
-      + `<div style="margin-top:16px;">${mail.button('Open the family', page, 'primary')}${mail.button('Open in JobTread', jt, 'outline')}</div>`,
-    footerHtml: `Answer from the family’s page on the site so it goes back to them through JobTread. This goes to the staff list in ${mail.link('Applications settings', `${SITE_ORIGIN}/admin/#applications/settings`)}.`,
+      + `<div style="margin-top:16px;">${mail.button('Reply', page, 'primary')}${mail.button('Open in JobTread', jt, 'outline')}</div>`,
+    footerHtml: `Reply opens the family’s page with your answer going back to them in the same JobTread conversation. This goes to the staff list in ${mail.link('Applications settings', `${SITE_ORIGIN}/admin/#applications/settings`)}.`,
   });
   return {
     card,
     email: {
       subject: `${test ? '[TEST] ' : ''}${who} replied: ${family}`,
       html,
-      text: `${who} replied about ${family}${where ? ` (${where})` : ''}:\n\n${text}\n\nOpen the family: ${page}\nOpen in JobTread: ${jt}\n\nAnswer from the family's page so it goes back through JobTread.`,
+      text: `${who} replied about ${family}${where ? ` (${where})` : ''}:\n\n${text}\n\nReply: ${page}\nOpen in JobTread: ${jt}\n\nYour answer goes back to them in the same JobTread conversation.`,
     },
   };
 }
@@ -114,7 +125,8 @@ export async function alertFamilyReplies(env, rows, { since, getApplicant, now =
       }
       const to = test ? [...new Set([...ALERT_EMAILS, ...alertEmails(env)])] : staff;
       const [slack, sent] = await Promise.all([
-        slackPost(env, card, { kind: 'news' }).catch((e) => ({ ok: false, error: e.message })),
+        // One Slack thread per JobTread thread: the first reply posts, later ones reply under it
+        slackIssue(env, `family-thread:${threadIdOf(row) || row.id}`, card, { title: `${applicant.name}: conversation`, kind: 'news' }).catch((e) => ({ ok: false, error: e.message })),
         sendEmails(env, { to, ...email, tags: [{ name: 'type', value: 'applicant-reply' }] }).catch((e) => ({ sent: 0, errors: [e.message] })),
       ]);
       await env.DB.prepare('UPDATE applicant_reply_alerts SET slack = ?, email = ? WHERE id = ?')

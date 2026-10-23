@@ -444,6 +444,8 @@ export async function syncEvents(env, { fetchImpl = fetch, now = Date.now(), max
     await setSync(DB, 'replies_since', repliesSince, now);
   }
   const replies = [];
+  const portal = [];            // comments that may be a family member writing in JobTread's portal
+  const authors = new Map();    // event → who wrote the comment (their email)
   const touched = new Set();
   const statusEvents = new Map(); // account → its latest Status change in this batch
   let stored = 0;
@@ -456,6 +458,8 @@ export async function syncEvents(env, { fetchImpl = fetch, now = Date.now(), max
     if (rows.length) await DB.batch(rows.map(r => insertActivity(DB, r)));
     stored += rows.length;
     replies.push(...rows.filter(r => r.kind === 'reply'));
+    for (const ev of nodes) if (ev.type === 'commentCreated' && ev.createdByUser?.emailAddress) authors.set(ev.id, ev.createdByUser.emailAddress);
+    portal.push(...rows.filter(r => r.kind === 'comment' && authors.has(r.id)));
     for (const ev of nodes) {
       if (ev.account?.type === 'customer') touched.add(ev.account.id);
       if (ev.createdAt > last) last = ev.createdAt;
@@ -469,6 +473,14 @@ export async function syncEvents(env, { fetchImpl = fetch, now = Date.now(), max
   const ids = [...touched];
   if (ids.length) await refreshApplicants(env, ids, { fetchImpl, now });
   const missed = await catchStatusChanges(env, statusEvents, { fetchImpl, now });
+  // Written in JobTread's family portal by one of the family's contacts: a reply too, not an email one
+  for (const r of portal) {
+    const row = await getApplicantRow(DB, r.account_id);
+    const email = String(authors.get(r.id) || '').toLowerCase();
+    if (!row || !(row.contacts || []).some(c => String(c.email || '').toLowerCase() === email)) continue;
+    await DB.prepare("UPDATE applicant_activity SET kind = 'reply' WHERE id = ?").bind(r.id).run();
+    replies.push({ ...r, kind: 'reply' });
+  }
   // A family answered a JobTread message: Slack and the staff list hear about it (./_applicant-replies.js)
   const alerts = replies.length ? await alertFamilyReplies(env, replies, { since: repliesSince, getApplicant: (id) => getApplicantRow(DB, id), now }) : null;
   // When JobTread was last read, changes or not (the cursor only moves when something happened)
@@ -539,6 +551,22 @@ export async function backfillActivity(env, { fetchImpl = fetch, now = Date.now(
  * catchUp: just the changes since the last look (the admin coming back to
  * the tab), which takes a second or two.
  */
+/**
+ * Once: history from before the site knew family members also write in
+ * JobTread's family portal. A comment there by one of the family's contacts
+ * (matched by name; the history keeps no email) becomes a 'reply'. No alerts.
+ */
+export async function relabelFamilyComments(DB, now = Date.now()) {
+  await ensureApplicantSchema(DB);
+  if (await getSync(DB, 'family_comments_relabelled')) return 0;
+  const { results } = await DB.prepare(`SELECT x.id, x.by_name, a.contacts FROM applicant_activity x JOIN applicants a ON a.account_id = x.account_id
+    WHERE x.kind = 'comment' AND x.by_name IS NOT NULL`).all();
+  const ids = (results || []).filter(r => parse(r.contacts, []).some(c => c.name && c.name.trim().toLowerCase() === String(r.by_name).trim().toLowerCase())).map(r => r.id);
+  for (let i = 0; i < ids.length; i += 50) await DB.batch(ids.slice(i, i + 50).map(id => DB.prepare("UPDATE applicant_activity SET kind = 'reply' WHERE id = ?").bind(id)));
+  await setSync(DB, 'family_comments_relabelled', iso(now), now);
+  return ids.length;
+}
+
 export async function maybeSyncApplicants(env, { fetchImpl = fetch, now = Date.now(), force = false, catchUp = false } = {}) {
   const { DB } = env;
   if (!DB || !env.JOBTREAD_GRANT_KEY) return null;
@@ -549,6 +577,7 @@ export async function maybeSyncApplicants(env, { fetchImpl = fetch, now = Date.n
     if (force || catchUp || await takeTurn(DB, 'events_turn', 50 * 1000, now)) {
       out.events = await syncEvents(env, { fetchImpl, now });
       if (!catchUp) out.backfill = await backfillActivity(env, { fetchImpl, now });
+      if (!catchUp) out.relabelled = await relabelFamilyComments(DB, now);
       // JobTread answered: an earlier failure is over
       await DB.prepare("DELETE FROM applicant_sync WHERE key = 'last_error'").run();
     }
@@ -879,20 +908,39 @@ export async function setApplicantStatus(env, accountId, status, { notify = true
  * JobTread emails to each. Replies come back onto the account and show in
  * the thread here. Read fresh from JobTread, so a contact added a minute ago
  * is included.
+ *
+ * `replyTo` (a comment on this account) answers in that comment's thread,
+ * the way staff reply in JobTread: no new subject, and the family gets it
+ * as part of the same conversation.
  */
-export async function messageFamily(env, accountId, { subject, message, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
+export async function messageFamily(env, accountId, { subject, message, replyTo = null, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
   const text = String(message || '').trim();
   if (!text) throw new Error('Write a message first');
   const applicant = await readApplicant(env, accountId, fetchImpl);
   if (!applicant) throw new Error('Unknown applicant');
   const to = familyRecipients(applicant);
   if (!to.length) throw new Error('This family has no email address in JobTread');
+  const thread = replyTo ? await threadOf(env, accountId, replyTo, fetchImpl) : null;
   const commentId = await postAccountComment(env, {
-    accountId, name: String(subject || '').trim().slice(0, 128) || 'A message from Sunshine on a Ranney Day', message: text,
-    assignTo: to,
+    accountId, message: text, assignTo: to,
+    ...(thread ? { parentCommentId: thread.id } : { name: String(subject || '').trim().slice(0, 128) || 'A message from Sunshine on a Ranney Day' }),
   }, fetchImpl);
-  await logSite(env.DB, accountId, { kind: 'sent', title: `Emailed ${greetingNames(to, { fallback: 'the family' })}`, body: text.slice(0, 4000), data: { commentId, to: to.map(p => p.email), subject }, user, now });
-  return { commentId, to };
+  const names = greetingNames(to, { fallback: 'the family' });
+  await logSite(env.DB, accountId, {
+    kind: 'sent', title: thread ? `Replied to ${names}` : `Emailed ${names}`, body: text.slice(0, 4000),
+    data: { commentId, to: to.map(p => p.email), subject: thread ? null : subject, ...(thread ? { replyTo: thread.id, thread: thread.name } : {}) }, user, now,
+  });
+  return { commentId, to, ...(thread ? { thread } : {}) };
+}
+
+/** The thread a comment belongs to (its first message), checked to be on this family's account */
+async function threadOf(env, accountId, commentId, fetchImpl) {
+  const data = await pave(env.JOBTREAD_GRANT_KEY, {
+    comment: { $: { id: commentId }, id: {}, name: {}, account: { id: {} }, parentComment: { id: {}, name: {} } },
+  }, fetchImpl);
+  const c = data?.comment;
+  if (!c || c.account?.id !== accountId) throw new Error('That message isn’t on this family’s account');
+  return c.parentComment?.id ? { id: c.parentComment.id, name: c.parentComment.name || null } : { id: c.id, name: c.name || null };
 }
 
 /** Archive (or bring back) the account in JobTread */

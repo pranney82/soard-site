@@ -11,7 +11,7 @@
  *
  * POST { status: { id, status, notify, denialReason } }
  * POST { fields: { id, changes: { key: value } } }
- * POST { message: { id, subject, message } }             → JobTread emails everyone on the account
+ * POST { message: { id, subject, message, replyTo? } }    → JobTread emails everyone on the account (replyTo: in that thread)
  * POST { archive: { id, archive } }
  * POST { sync: true }                                     → re-read everything now ("Check JobTread now")
  * POST { sync: 'catchup' }                                → just the changes since the last look
@@ -149,7 +149,9 @@ export async function onRequestPost(context) {
     }
     if (body.message) {
       const id = target(body.message);
-      const out = await messageFamily(env, id, { subject: body.message.subject, message: body.message.message, user });
+      const replyTo = body.message.replyTo == null ? null : String(body.message.replyTo);
+      if (replyTo && !/^[A-Za-z0-9_-]{4,64}$/.test(replyTo)) throw Object.assign(new Error('Which message?'), { status: 400 });
+      const out = await messageFamily(env, id, { subject: body.message.subject, message: body.message.message, replyTo, user });
       await audit('message', id, { to: out.to.map(p => p.email).join(', '), subject: body.message.subject || null });
       return ok(out);
     }
