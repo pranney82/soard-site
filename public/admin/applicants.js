@@ -1444,9 +1444,14 @@ function timelineOf(d) {
     else if (c.by === 'Qualification Committee' || /\(automatic\)$/.test(c.name || '') || /^Moved back to /.test(msg)) kind = 'internal';
     items.push({ type: 'msg', kind, at: c.at, c, site });
   }
+  // A move made on the site is in the history twice: the site's own line, and JobTread's record of
+  // the same change (made with the site's key). Keep the site's, which says who and what was emailed.
+  const siteMoves = (d.activity || []).filter(r => r.kind === 'status' && String(r.id).startsWith('site:'));
+  const echo = (r) => r.kind === 'status' && r.source === 'website' && !String(r.id).startsWith('site:')
+    && siteMoves.some(s => (s.data?.to || '') === (r.data?.to || '') && Math.abs(Date.parse(s.at) - Date.parse(r.at)) < 2 * 60 * 1000);
   // Oldest first, so lines written in the same moment keep the order they happened in
   for (const r of [...(d.activity || [])].reverse()) {
-    if (COMMENT_KINDS.has(r.kind)) continue;
+    if (COMMENT_KINDS.has(r.kind) || echo(r)) continue;
     items.push({ type: 'event', kind: r.kind, at: r.at, r });
   }
   // A status move made from the site leads the lines it set off (its own line is written last)

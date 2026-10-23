@@ -256,6 +256,10 @@ ok(/Emails /.test(await text(page, '.apl-card[data-id="acct00000001"] .apl-mail'
 await page.waitForFunction(() => document.querySelector('.apl-card[data-id="acct00000001"]')?.closest('.apl-cards')?.dataset.status === 'In Review', { timeout: 8000 }).catch(() => null);
 ok(await page.$eval('.apl-card[data-id="acct00000001"]', el => el.closest('.apl-cards').dataset.status).catch(() => '') === 'In Review', 'the card moved to In Review');
 
+// JobTread's own record of the move just made on the site (it used the site's key): the conversation shows the move once
+await DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, body, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+  .bind('jt-event-echo', 'acct00000001', new Date().toISOString(), 'status', 'Peter Ranney', 'website', 'Status: In Review', 'Was Applied', JSON.stringify({ from: 'Applied', to: 'In Review' })).run();
+
 // A long history line, like "No website profile" on an organization's page
 await DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, body, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
   .bind('site-long-1', 'acct00000001', '2026-10-01T15:00:00.000Z', 'job', 'Website (automatic)', 'website', 'No website profile', 'This account has no birthday or diagnosis, so it looks like an organization. Add a Community project in the admin if it should have a page.', null).run();
@@ -279,6 +283,7 @@ ok(await page.$$eval('.apl-msg.is-email', els => els.length) === 1, 'the familyâ
 ok(await page.$$eval('.apl-msg.is-internal', els => els.some(e => /Medical Condition/.test(e.textContent))), 'the medical note shows as staff only, not as an email');
 await page.waitForFunction(() => [...document.querySelectorAll('.apl-event')].some(e => /Emailed the family: In Review/.test(e.textContent)), { timeout: 8000 }).catch(() => null);
 ok(await page.$$eval('.apl-event', els => els.some(e => /Moved from Applied/.test(e.textContent))), 'the status change shows in the conversation');
+ok(await page.$$eval('.apl-event', els => els.filter(e => /Moved from Applied/.test(e.textContent) && /website/.test(e.textContent)).length) === 1, 'a move made on the site shows once, not again as JobTreadâ€™s record of it');
 ok(await page.$$eval('.apl-event', els => els.some(e => /Emailed the family: In Review/.test(e.textContent))), 'and so does the email going out');
 ok(/Linzi/.test(await page.$$eval('.apl-event', els => els.map(e => e.textContent).join(' '))), 'with who did it');
 const longLine = await page.evaluate(() => {
