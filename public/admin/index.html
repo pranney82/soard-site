@@ -261,11 +261,14 @@
     /* Who's signed in (Cloudflare Access), and the way out */
     .side-me { display: flex; align-items: center; gap: 0.6rem; min-height: 40px; padding: 0.1rem 0 0 0.4rem; }
     .side-avatar {
+      position: relative; overflow: hidden;
       width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
       display: grid; place-items: center;
       background: rgba(255,213,0,0.16); color: var(--color-primary);
       font-size: max(11px, 0.7rem); font-weight: 700; letter-spacing: 0.02em;
     }
+    /* Their photo from People, over the initials (which stay if it can't load) */
+    .side-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
     .side-me-text { flex: 1; min-width: 0; line-height: 1.2; }
     .side-me-text strong { display: block; font-size: 0.86rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .side-me-text small { display: block; font-size: max(11px, 0.72rem); color: rgba(255,255,255,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -21592,6 +21595,26 @@ ${sections || '<p>No one yet.</p>'}
       return me;
     }
 
+    // The signed-in person's People record, so the account row shows their
+    // website photo. Staff sign in as first@soardcharity.com, so a first name
+    // (or firstlast@, flast@) that only one Team member has is enough; a full
+    // name, from Access or a first.last@ address, can match anyone on People.
+    function personOfIdentity(me, team) {
+      if (!me || !team?.length) return null;
+      const words = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z]+/).filter(Boolean);
+      const people = team.map(normalizePerson).filter((p) => p.name && p.status !== 'memorial')
+        .map((p) => ({ p, w: words(p.name) })).filter((x) => x.w.length);
+      const one = (list) => {
+        const active = list.length > 1 ? list.filter((x) => x.p.status === 'active') : list;
+        return active.length === 1 ? active[0].p : null;
+      };
+      const full = (w) => (w.length > 1 ? one(people.filter((x) => x.w[0] === w[0] && x.w.at(-1) === w.at(-1))) : null);
+      const local = words(me.email.split('@')[0]).join('');
+      return full(words(me.name)) || full(words(me.email.split('@')[0]))
+        || one(people.filter((x) => tsGroupOf(x.p.group).id === 'team'
+          && [x.w[0], x.w.join(''), x.w[0][0] + x.w.at(-1)].includes(local)));
+    }
+
     function App() {
       useA11y();
       const [view, setView] = useState(() => viewOfHash() || 'dashboard');
@@ -22009,6 +22032,8 @@ ${sections || '<p>No one yet.</p>'}
       const appliedCount = applicantsNew.use();
       const familyReplies = useReplies();
       const me = useIdentity();
+      const mine = useMemo(() => personOfIdentity(me, team), [me, team]);
+      const myPhoto = mine?.photo ? pplPhoto(mine, 56) : '';
       const activeId = navIdOf(view);
       const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
       const badgeOf = (id) => {
@@ -22380,9 +22405,11 @@ ${sections || '<p>No one yet.</p>'}
                 </a>`
               : null,
               me ? html`
-                <div class="side-me" data-tip=${me.name} data-tip-note=${me.email}>
-                  <span class="side-avatar" aria-hidden="true">${me.initials}</span>
-                  <span class="side-me-text"><strong>${me.name}</strong><small>${me.email}</small></span>
+                <div class="side-me" data-tip=${mine?.name || me.name} data-tip-note=${me.email}>
+                  <span class="side-avatar" aria-hidden="true">${me.initials}${myPhoto
+                    ? html`<img key=${myPhoto} src=${myPhoto} alt="" width="28" height="28" decoding="async" draggable=${false} onError=${(e) => { e.currentTarget.hidden = true; }} />`
+                    : null}</span>
+                  <span class="side-me-text"><strong>${mine?.name || me.name}</strong><small>${me.email}</small></span>
                   <a class="side-icon-btn side-signout" href="/cdn-cgi/access/logout" aria-label="Sign out" title="Sign out">${icons.logOut}</a>
                 </div>`
               : null,

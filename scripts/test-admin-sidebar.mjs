@@ -7,6 +7,9 @@
  *     a name match ranked above a hint match
  *   - the counts (Applications, People, Press) and the LIVE marker on Reveals,
  *     Publish to site, who's signed in and Sign out; nothing when there's none
+ *   - the signed-in person's website photo from People (first@ matches a Team
+ *     member's first name, never a board member's), initials when there's no
+ *     match or the photo can't load
  *   - addresses: every area, a tab inside one (#people/board), an open item
  *     (#events/test-picnic) that Back closes and Forward reopens, old addresses
  *     (#broadcast/demo, #deploys, #advisory-applications), Reveals' tabs,
@@ -44,7 +47,15 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 const EVENT = { slug: 'test-picnic', title: 'Test Picnic', date: '2027-05-01', status: 'upcoming', location: 'Example Park' };
-const state = { live: true, waiting: 3, me: true, applied: 4 };
+const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+const TEAM = [
+  { slug: 'linzi-berkowitz', name: 'Linzi Lawsky', group: 'team', status: 'active', photo: `${CF}/team/linzi-berkowitz/1/public` },
+  { slug: 'linzi-board', name: 'Linzi Board', group: 'board', status: 'active', photo: `${CF}/team/linzi-board/1/public` },
+  { slug: 'casey-bradley', name: 'Casey Bradley', group: 'board', status: 'active', photo: `${CF}/team/casey-bradley/1/public` },
+];
+// A 1×1 PNG for every Cloudflare Images request (or a 404 when the test says the photo is gone)
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
+const state = { live: true, waiting: 3, me: true, applied: 4, email: 'linzi@soardcharity.com', photoGone: false };
 const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'] });
 
 async function open(w, h, hash = '', { rail = false } = {}) {
@@ -57,16 +68,26 @@ async function open(w, h, hash = '', { rail = false } = {}) {
   page.on('request', (req) => {
     const url = new URL(req.url());
     const json = (o, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(o) });
+    if (url.hostname === 'imagedelivery.net' || url.pathname.startsWith('/cdn-cgi/imagedelivery/')) {
+      const headers = { 'Access-Control-Allow-Origin': '*' };
+      if (url.pathname.endsWith('/f=json')) return req.respond({ status: 200, headers, contentType: 'application/json', body: JSON.stringify({ width: 1200, height: 1200 }) });
+      return state.photoGone ? req.respond({ status: 404, headers, body: '' }) : req.respond({ status: 200, headers, contentType: 'image/png', body: PNG });
+    }
     if (url.origin !== base) return req.abort();
     page.reqs.push(url.pathname + url.search);
-    if (url.pathname === '/cdn-cgi/access/get-identity') return state.me ? json({ email: 'linzi@soardcharity.com', name: '' }) : req.respond({ status: 404, body: '' });
+    if (url.pathname === '/cdn-cgi/access/get-identity') return state.me ? json({ email: state.email, name: '' }) : req.respond({ status: 404, body: '' });
     if (url.pathname === '/api/live-status') return json({ live: state.live, phase: state.live ? 'live' : 'idle' });
     if (url.pathname === '/api/applicants-count') return json({ success: true, applied: state.applied, waiting: (state.replies || []).length, replies: state.replies || [] });
     if (url.pathname === '/api/advisory-applications-admin') return url.searchParams.get('count') ? json({ success: true, new: 2 }) : json({ success: false, error: 'not in this test' }, 500);
     if (url.pathname === '/api/press-admin') return url.searchParams.get('summary') ? json({ success: true, review: 3 }) : json({ success: false, error: 'not in this test' }, 500);
     if (url.pathname === '/api/broadcast-admin') return json({ success: false, error: 'not in this test' }, 500);
     if (url.pathname === '/api/pending-changes') return json({ success: true, since: null, changes: Array.from({ length: state.waiting }, (_, i) => ({ type: 'kids', slug: `k${i}`, name: `Kid ${i}`, at: new Date().toISOString(), state: 'waiting' })), publish: { tracking: false } });
-    if (url.pathname === '/api/list-content') return json(url.searchParams.get('dir') === 'src/content/events' ? { success: true, items: [{ name: 'test-picnic.json', content: EVENT }], pages: 1 } : { success: true, items: [], files: [], pages: 1 });
+    if (url.pathname === '/api/list-content') {
+      const dir = url.searchParams.get('dir');
+      if (dir === 'src/content/events') return json({ success: true, items: [{ name: 'test-picnic.json', content: EVENT }], pages: 1 });
+      if (dir === 'src/content/team') return json({ success: true, items: TEAM.map((t) => ({ name: `${t.slug}.json`, content: t })), pages: 1 });
+      return json({ success: true, items: [], files: [], pages: 1 });
+    }
     if (url.pathname === '/api/read-content') return json(/events\/test-picnic\.json$/.test(url.searchParams.get('path') || '') ? { success: true, content: EVENT, sha: 'abc' } : { success: false, error: 'not in this test' }, /test-picnic/.test(url.search) ? 200 : 404);
     if (url.pathname.startsWith('/api/')) return json({ success: true, ok: true, items: [], entries: [], deploys: [] });
     return req.continue();
@@ -94,7 +115,10 @@ try {
   ok(JSON.stringify(badges) === JSON.stringify({ Applications: '4', Reveals: 'LIVE', People: '2', Press: '3' }), `counts and LIVE (${JSON.stringify(badges)})`);
   ok(await page.$eval('.side-nav a[href="#applications"]', (a) => a.textContent.includes('4 families wait for a first look')), 'the Applications count says what it counts, for screen readers');
   ok(/^Publish to site\s*3/.test(await page.$eval('.sidebar-deploy', (b) => b.textContent.replace(/\s+/g, ' ').trim())), 'Publish to site with its count');
-  ok(await page.$eval('.side-me', (e) => e.textContent.replace(/\s+/g, ' ').trim()) === 'LLinzilinzi@soardcharity.com', 'who is signed in');
+  ok(await page.$eval('.side-me', (e) => e.textContent.replace(/\s+/g, ' ').trim()) === 'LLinzi Lawskylinzi@soardcharity.com', 'who is signed in, by their name on People');
+  const avatar = () => page.$eval('.side-avatar', (a) => { const i = a.querySelector('img'); return { src: i?.getAttribute('src') || '', shown: !!i && !i.hidden && i.complete && i.naturalWidth > 0, w: i?.getBoundingClientRect().width, round: getComputedStyle(a).borderRadius }; });
+  let av = await avatar();
+  ok(av.shown && av.src.includes('/team/linzi-berkowitz/') && /w=56,h=56/.test(av.src) && av.w === 28 && av.round === '50%', `their website photo is the avatar, the Team member not the board member (${av.src})`);
   ok(await page.$eval('.side-signout', (a) => a.getAttribute('href')) === '/cdn-cgi/access/logout', 'Sign out goes to Access');
   ok(await page.$eval('.side-brand a[target=_blank]', (a) => a.getAttribute('href')) === '/', 'View site beside the logo');
   await page.screenshot({ path: join(OUT, 'desktop.png') });
@@ -255,6 +279,22 @@ try {
   ok(!(await page.$('.reply-notice')), 'and the notice goes');
   await page.close();
   state.replies = null;
+
+  console.log('Avatar fallbacks');
+  state.photoGone = true;
+  page = await open(1440, 900);
+  ok(await page.$eval('.side-avatar img', (i) => i.hidden).catch(() => false) && await page.$eval('.side-avatar', (a) => a.innerText.trim()) === 'L', 'a photo that can’t load leaves the initials');
+  await page.close();
+  Object.assign(state, { photoGone: false, email: 'casey@soardcharity.com' });
+  page = await open(1440, 900);
+  ok(!(await page.$('.side-avatar img')) && await page.$eval('.side-me-text strong', (s) => s.textContent) === 'Casey', 'a first name only a board member has is no match: initials, as before');
+  await page.close();
+  state.email = 'casey.bradley@soardcharity.com';
+  page = await open(1440, 900);
+  ok((await page.$eval('.side-avatar img', (i) => i.getAttribute('src')).catch(() => '')).includes('/team/casey-bradley/') && await page.$eval('.side-me-text strong', (s) => s.textContent) === 'Casey Bradley', 'a first.last@ address matches anyone on People');
+  ok(page.errors.length === 0, `no errors (${page.errors.slice(0, 2).join(' | ')})`);
+  await page.close();
+  state.email = 'linzi@soardcharity.com';
 
   console.log('Quiet states');
   Object.assign(state, { live: false, waiting: 0, me: false, applied: 0 });
