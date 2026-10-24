@@ -253,7 +253,7 @@ try {
   console.log('Desktop, live check fails');
   const down = await open(browser, base, { width: 1440, height: 1000 }, { facts: null });
   ok((await down.page.$eval('.am-check', (e) => e.textContent)).includes('Couldn’t check live status (JobTread timed out)'), 'a failed live check says so');
-  ok(await statusOf(down.page, 'Instagram Reel') === 'Live' && await statusOf(down.page, 'Live hub') === 'Needs attention', 'and the written statuses stand in');
+  ok(await statusOf(down.page, 'Instagram Reel') === 'Live' && await statusOf(down.page, 'Live hub') === 'Live', 'and the written statuses stand in');
   ok(await statusOf(down.page, 'Gift alerts in Slack') === 'Off', 'gift alerts fall back to “not connected yet”');
   ok(down.errors.length === 0, `no console errors${down.errors.length ? ': ' + down.errors.slice(0, 3).join(' | ') : ''}`);
   await down.page.close();

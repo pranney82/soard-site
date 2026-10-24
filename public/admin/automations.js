@@ -527,17 +527,16 @@ const MAP = { t: 'SOARD', children: [
           when: 'Someone opens /live/ (the family QR always points here).',
           does: 'Shows whichever reveal is coming up, live, or on replay, with the starting-soon slate for the last 30 minutes. QR scans are counted.',
           touches: ['Cloudflare Stream', 'D1'], where: 'functions/live/[[path]].js · _watch-party.js' },
-        { t: 'Live hub', s: 'attn', k: 'event',
+        { t: 'Live hub', s: 'live', k: 'event',
           when: 'Every open page keeps a socket to the hub.',
           does: 'Pushes live state, viewer counts, reactions and approved family messages to every viewer instantly.',
           touches: ['Live hub'], where: 'workers/live-hub (Worker “soard-live-hub”)',
-          note: 'The deployed hub dates from September 29 and is missing the October watch-party code. Redeploy it: cd workers/live-hub && npx wrangler deploy.',
           live: (f) => {
             const hb = f.hub;
             if (!hb || !f.bindings) return null;
             if (!f.bindings.hub) return ATTN('The site isn’t connected to the hub (the LIVE_HUB binding is missing).');
             if (!hb.ok) return ATTN(`The hub isn’t answering${hb.error ? `: ${hb.error}` : ''}.`);
-            if (!hb.current) return ATTN('It’s running code from before the watch party, so reactions and viewer counts don’t work and family messages fall back to 20-second polling. Redeploy it: cd workers/live-hub && npx wrangler deploy.', hb.lastTickAt);
+            if (!hb.current) return ATTN('It’s running code from before the watch party, so reactions and viewer counts don’t work and family messages fall back to 20-second polling. Redeploy workers/live-hub while signed in to SOARD’s Cloudflare account.', hb.lastTickAt);
             return ON(`${plural(hb.clients ?? 0, 'page')} connected right now.`, hb.lastTickAt);
           } },
         { t: 'Family messages, AI screened', s: 'live', k: 'visitor',
