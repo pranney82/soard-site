@@ -17,5 +17,11 @@
   "category": "other",
   "featured": false,
   "status": "upcoming",
-  "order": 0
+  "order": 0,
+  "highlights": [
+    {
+      "value": "$305,000",
+      "label": "Raised"
+    }
+  ]
 }

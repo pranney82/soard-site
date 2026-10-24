@@ -59,12 +59,15 @@ try {
     query('SELECT key, data FROM site_config'),
   ]);
 
-  for (const { dir, rows, skipped } of collectionResults) {
+  // A collection that couldn't be read stops here, before anything is written:
+  // a deploy without it would take those pages off the site
+  const missed = collectionResults.filter(r => r.skipped).map(r => r.dir);
+  if (missed.length) throw new Error(`couldn't read ${missed.join(', ')}`);
+
+  for (const { dir, rows } of collectionResults) {
     ensureDir(join(CONTENT, dir));
 
-    if (skipped) {
-      // Already warned in catch block — skip file writes, stale git files remain as fallback
-    } else if (rows.length === 0) {
+    if (rows.length === 0) {
       console.warn(`  ⚠ ${dir}: 0 items (table may be empty or query failed silently)`);
     } else {
       console.log(`  ${dir}: ${rows.length} items`);
@@ -87,13 +90,15 @@ try {
   }
 
 } catch (err) {
-  // ─── Fallback: use stale JSON files already in git ─────────────────
+  // ─── Fallback: a local copy from an earlier run ────────────────────
+  // Content isn't in git, so a Cloudflare build has none and stops here; the
+  // live site keeps its last good deploy. Local dev keeps working offline.
   const staleKids = countExistingFiles('kids');
 
   if (staleKids > 0) {
     usedFallback = true;
     console.warn(`\n⚠ D1 UNREACHABLE: ${err.message}`);
-    console.warn(`  Falling back to ${staleKids} existing kid files in git.`);
+    console.warn(`  Falling back to ${staleKids} kid files from an earlier run.`);
     console.warn('  Content may be stale — deploy again once D1 recovers.\n');
 
     for (const { dir } of collections) {

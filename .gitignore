@@ -16,6 +16,8 @@ src/content/team/
 src/content/community/
 src/content/articles/
 src/content/site/
+src/content/medialogos/
+src/content/community_partners/
 # Upcoming reveals for build-time pages, written by prebuild from D1 (scripts/d1-helpers.js)
 src/data/upcoming-reveals.json
 
