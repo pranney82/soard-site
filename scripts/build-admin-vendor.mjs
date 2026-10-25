@@ -132,3 +132,6 @@ const map = await esbuild.build({
 });
 const mapOut = map.metafile.outputs['public/admin/vendor-map.js'];
 console.log(`vendor-map.js written: ${(mapOut.bytes / 1024).toFixed(1)} KB (minified, pre-gzip)`);
+
+// pdf.js (the file viewer's PDFs) is built by its own script: it isn't in package.json
+await import('./build-admin-pdf.mjs');

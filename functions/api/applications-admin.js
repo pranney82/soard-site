@@ -189,7 +189,7 @@ export async function onRequestGet(context) {
         flags: flags(app),
         deletedAt: app.deleted_at || null,
         sections: answerSections(form, app.answers, app.files, { en: true }).map(s => ({
-          ...s, items: s.items.map(i => (i.upload ? { id: i.id, type: i.type, label: i.label, upload: true, hasThumb: !!i.file?.thumbKey, video: i.type === 'video' ? { uploaded: !!i.file?.uploaded, duration: i.file?.duration || null } : undefined } : i)),
+          ...s, items: s.items.map(i => (i.upload ? { id: i.id, type: i.type, label: i.label, upload: true, hasThumb: !!i.file?.thumbKey, fileType: i.file?.type || null, size: i.file?.size || null, video: i.type === 'video' ? { uploaded: !!i.file?.uploaded, duration: i.file?.duration || null } : undefined } : i)),
         })),
         hasPdf: !!app.jt_state?.pdf?.key,
       },

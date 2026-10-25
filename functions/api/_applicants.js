@@ -737,6 +737,12 @@ export async function recentActivity(DB, { limit = 60, before = null } = {}) {
   return (results || []).map(r => ({ id: r.id, accountId: r.account_id, applicant: r.applicant, at: r.at, kind: r.kind, by: r.by_name, source: r.source, title: r.title, body: r.body ? String(r.body).slice(0, 280) : null }));
 }
 
+/** A JobTread file as the admin's file viewer takes it (thumb: JobTread's JPEG of a photo, PDF or video) */
+const fileOut = (f) => ({
+  id: f.id, name: f.name, type: f.type, size: f.size ?? null, at: f.createdAt ?? null, url: f.url || null,
+  thumb: /^(image|video)\/|^application\/pdf$/.test(f.type || '') ? f.thumb || null : null,
+});
+
 /**
  * One applicant, live from JobTread: the comments thread (family messages,
  * replies, texts, notes) and files, plus the mirror's fields and the
@@ -757,7 +763,8 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
           createdByUser: { id: {}, name: {} }, parentComment: { id: {} },
           // Shared with anyone? Who with is read below: membership details here make the query too big for JobTread
           aces: { $: { size: 10 }, nodes: { id: {} } },
-          files: { nodes: { id: {}, name: {}, type: {} } },
+          // What a family attached to a message, so the admin can show it (JobTread makes a thumbnail of photos, PDFs and videos)
+          files: { $: { size: 10 }, nodes: { id: {}, name: {}, type: {}, size: {}, url: {}, thumb: { _: 'url', $: { size: 600 } } } },
         },
       },
       files: {
@@ -768,7 +775,7 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
   }, fetchImpl).catch(() => null);
   const comments = (data?.account?.comments?.nodes || []).map(c => ({
     id: c.id, name: c.name || null, message: c.message || '', at: c.createdAt, fromEmail: !!c.isFromEmail, pinned: !!c.isPinned,
-    by: c.createdByUser?.name || null, parentId: c.parentComment?.id || null, files: (c.files?.nodes || []).map(f => ({ id: f.id, name: f.name, type: f.type })),
+    by: c.createdByUser?.name || null, parentId: c.parentComment?.id || null, files: (c.files?.nodes || []).map(fileOut),
     shared: (c.aces?.nodes || []).length,
   }));
   // Who each shared message went to: shared with the family's contacts means JobTread emailed them
@@ -777,9 +784,7 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
     c.to = recipients.get(c.id) || [];
     delete c.shared;
   }
-  const files = (data?.account?.files?.nodes || []).filter(f => !f.job?.id).map(f => ({
-    id: f.id, name: f.name, type: f.type, size: f.size, at: f.createdAt, url: f.url, thumb: /^image\//.test(f.type || '') ? f.thumb : null,
-  }));
+  const files = (data?.account?.files?.nodes || []).filter(f => !f.job?.id).map(fileOut);
   // Waiting on us: always set (null when answered), so the family's page never shows a stale banner
   row.waiting = (await waitingReplies(DB).catch(() => [])).find(w => w.id === id) || null;
   return { applicant: row, comments, files, activity: await activityFor(DB, id), notify: await notifyFor(DB, id).catch(() => null), live: !!data };

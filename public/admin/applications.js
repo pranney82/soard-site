@@ -42,6 +42,7 @@
 import { h, htm, render, Component, useState, useEffect, useRef, useMemo, Sortable, DOMPurify } from './vendor.js';
 import { WaitlistPanel, WaitlistOpenNote } from './waitlist.js';
 import { nearRing, bandCounts, bandChanges, placeHome, NEAR_MAX } from './area-shared.js';
+import { viewerLink, extOf } from './file-viewer.js';
 
 const html = htm.bind(h);
 const API = '/api/applications-admin';
@@ -1427,11 +1428,16 @@ function SubmissionDetail({ a, detail, onDelete }) {
   const f = detail.flags || a.flags || {};
   const cm = countyMismatch(f, pickedCounty(detail));
   const deleted = detail.deletedAt || a.deletedAt;
+  // The PDF and the family's photos open in the file viewer, over the list (⌘/Ctrl-click: a new tab)
+  const fileUrl = (field, thumb = false) => `${API}?file=${detail.id}&field=${field}${thumb ? '&thumb=1' : ''}`;
+  const pdf = detail.hasPdf ? [{ name: `${detail.child || 'Application'}_Application.pdf`, type: 'application/pdf', url: fileUrl('pdf') }] : [];
+  const shots = (detail.sections || []).flatMap(s => s.items).filter(i => i.upload && i.type === 'photo')
+    .map(i => ({ id: i.id, name: i.label, filename: `${detail.child || 'Application'} - ${i.label}${extOf(i.fileType)}`, type: i.fileType || 'image/jpeg', size: i.size, url: fileUrl(i.id), thumb: i.hasThumb ? fileUrl(i.id, true) : null }));
   return html`
     <div class="afe-detail">
       <p class="text-sm" style="margin: 0;">
         ${detail.parent || 'No contact (deleted)'}${detail.email && html` · <a href=${`mailto:${detail.email}`}>${detail.email}</a>`}
-        ${detail.hasPdf && html` · <a href=${`${API}?file=${detail.id}&field=pdf`} target="_blank">Application PDF</a>`}
+        ${detail.hasPdf && html` · <a ...${viewerLink(pdf, 0)}>Application PDF</a>`}
         ${detail.jobtreadUrl && html` · <a href=${detail.jobtreadUrl} target="_blank" rel="noopener">Open in JobTread</a>`}
         <span class="text-muted"> · form version ${detail.formVersion || 'built in'}${detail.lang === 'es' ? ' · answered in Spanish' : ''}</span>
       </p>
@@ -1454,7 +1460,7 @@ function SubmissionDetail({ a, detail, onDelete }) {
               ${s.items.map(i => html`
                 <dt>${i.label}${i.labelEn && i.labelEn !== i.label ? html` <span class="afe-hint">(${i.labelEn})</span>` : ''}</dt>
                 <dd>${i.upload
-                  ? (i.type === 'photo' ? html`<a href=${`${API}?file=${detail.id}&field=${i.id}`} target="_blank"><img src=${`${API}?file=${detail.id}&field=${i.id}${i.hasThumb ? '&thumb=1' : ''}`} alt=${i.label} style="max-width: 160px; max-height: 120px; border-radius: 6px;" /></a>` : `Video ${i.video?.uploaded ? 'uploaded' : 'not finished'}${i.video?.duration ? ` (${Math.round(i.video.duration)} s)` : ''}`)
+                  ? (i.type === 'photo' ? html`<a ...${viewerLink(shots, shots.findIndex(x => x.id === i.id))}><img src=${fileUrl(i.id, i.hasThumb)} alt=${i.label} style="max-width: 160px; max-height: 120px; border-radius: 6px;" /></a>` : `Video ${i.video?.uploaded ? 'uploaded' : 'not finished'}${i.video?.duration ? ` (${Math.round(i.video.duration)} s)` : ''}`)
                   : i.text}</dd>`)}
             </dl>
           </details>`)}

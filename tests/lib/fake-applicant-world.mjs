@@ -75,7 +75,9 @@ export function fakeApplicantWorld() {
           out[key] = { nodes: list.map(c => ({
             id: c.id, name: c.name, message: c.message, createdAt: c.createdAt || null, isFromEmail: !!c.fromEmail, isPinned: !!c.pinned,
             isVisibleToCustomerRoles: false, createdByUser: { id: 'u1', name: c.by || 'Qualification Committee' },
-            parentComment: c.parentCommentId ? { id: c.parentCommentId } : null, files: { nodes: [] },
+            parentComment: c.parentCommentId ? { id: c.parentCommentId } : null,
+            // What the family attached (a fixture's `attachments`; those sent from the site aren't read back)
+            files: { nodes: (c.attachments || []).map(f => ({ id: f.id, name: f.name, type: f.type, size: f.size ?? null, url: `https://cdn.fake/${f.id}`, thumb: `https://cdn.fake/${f.id}?size=600` })) },
             aces: { nodes: (c.assignees || []).map((x, i) => ({ id: `${c.id}-ace${i}` })) },
           })) };
           break;
