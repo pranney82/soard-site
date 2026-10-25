@@ -1945,7 +1945,9 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   let appPdf = files.find(f => kindOf(f) === 'pdf' && /application/i.test(f.name || ''));
   if (!appPdf && a.applicationId) appPdf = { name: `${a.name}_Application.pdf`, type: 'application/pdf', url: `/api/applications-admin?file=${encodeURIComponent(a.applicationId)}&field=pdf` };
   const appVideo = files.find(f => kindOf(f) === 'video' && /application/i.test(f.name || ''));
-  const photos = files.filter(f => kindOf(f) === 'image');
+  // The way the form asks for them: the child, the family, the spaces; anything else after, oldest first
+  const rank = (f) => { const l = photoLabel(f, a.name); return l === 'Child' ? 0 : l === 'Family' ? 1 : /^Space/.test(l) ? 2 + (Number(l.split(' ')[1]) || 0) : 20; };
+  const photos = files.filter(f => kindOf(f) === 'image').sort((x, y) => rank(x) - rank(y) || String(x.at || '').localeCompare(String(y.at || '')));
   const docs = files.filter(f => kindOf(f) !== 'image' && f !== appPdf && f !== appVideo);
   const shown = [appPdf, appVideo, ...photos, ...docs].filter(Boolean); // one set in the viewer, in the order it's shown here
   const visible = SIDE_FIELDS.filter(k => fields[k] && (k !== 'denialReason' || a.status === 'Denied' || a.fields?.denialReason));

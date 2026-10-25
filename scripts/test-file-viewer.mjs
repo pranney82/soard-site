@@ -110,9 +110,9 @@ const avery = {
   contacts: [{ id: 'av-c1', name: 'Jordan Stone', title: 'Mom', fields: {} }], primaryContactId: 'av-c1',
   locations: [{ id: 'av-l1', address: '101 Maple Dr, Marietta, GA 30062, USA', city: 'Marietta', county: 'Cobb County', latitude: 33.97, longitude: -84.53 }],
   files: [
-    { id: 'f-child', name: 'Avery Stone.jpg', type: 'image/jpeg', size: BODIES.child.body.length, createdAt: day(5) },
-    { id: 'f-family', name: 'Avery Stone Family.jpg', type: 'image/jpeg', size: BODIES.family.body.length, createdAt: day(5) },
     { id: 'f-gone', name: 'Avery Stone Space 1.jpg', type: 'image/jpeg', size: 1000, createdAt: day(5) },
+    { id: 'f-family', name: 'Avery Stone Family.jpg', type: 'image/jpeg', size: BODIES.family.body.length, createdAt: day(5) },
+    { id: 'f-child', name: 'Avery Stone.jpg', type: 'image/jpeg', size: BODIES.child.body.length, createdAt: day(5) },
     { id: 'f-pdf', name: 'Avery Stone_Application.pdf', type: 'application/pdf', size: PDF.length, createdAt: day(5) },
     { id: 'f-video', name: 'Avery Stone_Application.mp4', type: 'video/mp4', size: 90000, createdAt: day(5) },
     { id: 'f-docx', name: 'Therapist letter.docx', type: BODIES.docx.type, size: 23000, createdAt: day(4) },
