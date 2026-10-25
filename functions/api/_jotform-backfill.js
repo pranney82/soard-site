@@ -392,6 +392,43 @@ async function copySubmission(env, row, { fetchImpl, now }) {
   return { status, saved: came, attached: attached.filter(a => a.id).length };
 }
 
+// ─── Unfinished on the old form ─────────────────────────────────────
+
+// What isn't a question on a Jotform page (headings, text, page breaks, buttons)
+const NOT_ASKED = new Set(['control_head', 'control_text', 'control_button', 'control_pagebreak', 'control_divider', 'control_image', 'control_collapse', 'control_widget_header']);
+const filled = (v) => v != null && v !== '' && !(typeof v === 'object' && !Object.values(v).some((x) => x != null && String(x).trim() !== ''));
+
+/**
+ * The makeover applications started on the old form that never became a family in JobTread (nobody to
+ * place them with), for Applications → Submissions: who, when, how far they got, and whether the site
+ * kept the PDF. Peter, Oct 24 2026: listed as unfinished, read-only, never sent to JobTread.
+ */
+export async function unfinishedOldForm(DB) {
+  try {
+    const { results } = await DB.prepare("SELECT submission_id, name, submitted_at, answers, saved FROM jotform_backfill WHERE kind = 'makeover' AND account_id IS NULL ORDER BY submitted_at DESC").all();
+    return (results || []).map((r) => {
+      const qs = Object.values(parse(r.answers, {})?.answers || {}).filter((x) => x && !NOT_ASKED.has(x.type));
+      return {
+        id: r.submission_id, name: r.name || null, startedAt: r.submitted_at ? `${String(r.submitted_at).replace(' ', 'T')}Z` : null,
+        answered: qs.filter((x) => filled(x.answer)).length, questions: qs.length,
+        hasPdf: parse(r.saved, []).some((x) => x.kind === 'pdf' && x.key),
+      };
+    });
+  } catch {
+    return []; // no copy yet (a new database)
+  }
+}
+
+/** The bucket key of the PDF the site kept for an unfinished old-form application, or null */
+export async function oldFormPdfKey(DB, submissionId) {
+  try {
+    const row = await DB.prepare("SELECT saved FROM jotform_backfill WHERE submission_id = ? AND kind = 'makeover' AND account_id IS NULL").bind(String(submissionId)).first();
+    return parse(row?.saved, []).find((x) => x.kind === 'pdf' && x.key)?.key || null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── A second look (Oct 24 2026) ────────────────────────────────────
 
 const SECOND_LOOK = 1;

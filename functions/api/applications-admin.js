@@ -69,6 +69,7 @@ import { recentEvents } from './_applicant-comms.js';
 import { logAudit } from './_audit.js';
 import { replaceBoundary } from './_applicants.js';
 import { advanceOpening } from './_application-waitlist.js';
+import { unfinishedOldForm, oldFormPdfKey } from './_jotform-backfill.js';
 
 /** When applications last opened or closed, and who did it ("schedule" for the timer, "limit" when it filled) */
 const sinceOf = (a) => (a?.openChangedAt ? { at: a.openChangedAt, by: a.openChangedBy || null } : null);
@@ -101,6 +102,16 @@ export async function onRequestGet(context) {
   if (!env.DB) return Response.json({ success: false, error: 'DB not bound' }, { status: 500 });
   await ensureSchema(env.DB);
   const url = new URL(request.url);
+
+  // The PDF of an application started on the old form and never finished, kept by the site
+  const oldForm = url.searchParams.get('oldform');
+  if (oldForm) {
+    if (!/^\d{6,24}$/.test(oldForm)) return new Response('Not found', { status: 404 });
+    const key = await oldFormPdfKey(env.DB, oldForm);
+    const obj = key && applicantFiles(env) ? await applicantFiles(env).get(key) : null;
+    if (!obj) return new Response('Not found', { status: 404 });
+    return new Response(obj.body, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="Unfinished application.pdf"', 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' } });
+  }
 
   const fileApp = url.searchParams.get('file');
   if (fileApp) {
@@ -210,6 +221,7 @@ export async function onRequestGet(context) {
     open: settings.open === true,
     year: cleanYear(settings.year),
     events: await recentEvents(env.DB, 25),
+    oldForm: await unfinishedOldForm(env.DB),
     qcGrant: !!env.JOBTREAD_QC_GRANT_KEY,
     stream: !!(env.CF_ACCOUNT_ID && env.CF_STREAM_TOKEN),
   });

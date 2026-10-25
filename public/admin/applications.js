@@ -735,6 +735,9 @@ button.afe-sub-name:focus-visible { outline: 2px solid var(--color-text); outlin
 .afe-sub-note { margin: -.3rem .9rem .7rem; font-size: .84rem; color: var(--color-text-secondary); }
 .afe-sub-note.is-bad { color: var(--color-danger); }
 .afe-sub .afe-detail { margin: 0 .9rem .9rem; }
+.afe-oldform { display: grid; gap: .45rem; margin-top: 1.4rem; }
+.afe-oldform h3 { margin: 0; font-size: .95rem; }
+.afe-oldform .afe-hint { margin: 0; }
 .afe-events summary { cursor: pointer; font-weight: 600; font-size: .88rem; }
 .afe-events .afe-hint { display: block; margin: .4rem 0; }
 .afe-events > div { display: grid; gap: .25rem; }
@@ -1394,6 +1397,19 @@ function SubmissionsView({ addToast, openFirst, initialShow, attention = 0, onCh
               <button class="btn btn-ghost btn-sm" disabled=${offset + PAGE_SIZE >= total || loading} onClick=${() => setOffset(o => o + PAGE_SIZE)}>Next</button>
             </span>`}
           </div>`}
+        ${(data.oldForm || []).length > 0 && show === 'all' && !qd && !year && html`
+          <section class="afe-oldform" aria-labelledby="afe-oldform-title">
+            <h3 id="afe-oldform-title">Started on the old form, never finished</h3>
+            <p class="afe-hint">Kept from the form families used before this one. They never reached JobTread, so there's no family to write to.</p>
+            <div class="afe-sub-list">${data.oldForm.map(o => html`<div class="afe-sub"><div class="afe-sub-row">
+              <div class="afe-sub-main">
+                <div class="afe-sub-who"><span class="afe-sub-name">${o.name || 'No name given'}</span></div>
+                <div class="afe-sub-meta">${[o.startedAt ? `Started ${new Date(o.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}` : null, `${o.answered} of ${o.questions} questions answered`].filter(Boolean).join(' · ')}</div>
+              </div>
+              <div class="afe-sub-state"></div>
+              <div class="afe-row-actions afe-sub-actions">${o.hasPdf && html`<a class="btn btn-ghost btn-sm" ...${viewerLink([{ name: `${o.name || 'Unfinished application'}.pdf`, type: 'application/pdf', url: `${API}?oldform=${o.id}` }], 0)}>Read what they filled in</a>`}</div>
+            </div></div>`)}</div>
+          </section>`}
         ${(data.events || []).length > 0 && html`
           <details class="afe-events">
             <summary>Status messages from JobTread (last ${data.events.length})</summary>

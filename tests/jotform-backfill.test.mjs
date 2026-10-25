@@ -281,3 +281,31 @@ test('second look: the families the copy couldn’t place get their files from t
   assert.deepEqual(await jotformSecondLook(env, { fetchImpl: jf.fetchImpl }), { done: true });
   assert.deepEqual(names(logan), ['Logan Logan Family.jpg', 'Logan Logan.jpg', 'Logan Logan_Application.pdf']);
 });
+
+test('unfinished on the old form: listed for Submissions with how far they got, and their PDF from the site', async () => {
+  const api = await import('../functions/api/applications-admin.js');
+  addAccount({ name: 'Milo Rivera', fields: { [APP_URL]: 'https://www.jotform.com/submission/6380000000000000001' } });
+  jf.addSub('252326779451161', '6380000000000000001', { child: 'Milo Rivera', photos: { child: 'IMG_1.jpeg' } });
+  // Stopped early: a name, nothing else; and one with nothing at all
+  jf.addSub('252326779451161', '6367243150804139701', { child: 'Isa Quinn', createdAt: '2025-10-19 19:05:16' });
+  jf.state.subs['6367243150804139701'].answers[12] = { type: 'control_head', text: 'Basic Information' };
+  jf.state.subs['6367243150804139701'].answers[13] = { type: 'control_textbox', text: 'Diagnosis', answer: '' };
+  jf.addSub('252326779451161', '6385177356116245840', { child: ' ', createdAt: '2025-11-09 12:15:35' });
+  await syncAllApplicants(env, { fetchImpl: w.fetchImpl });
+  await runJotformBackfill(env, opts());
+  assert.equal((await runUntilDone()).done, true);
+
+  const get = (q) => api.onRequestGet({ env, request: new Request(`https://admin.test/api/applications-admin?${q}`), data: {}, waitUntil: () => {} });
+  const list = await (await get('show=all')).json();
+  assert.deepEqual(list.oldForm.map((o) => [o.id, o.name, o.answered, o.questions, o.hasPdf]), [
+    ['6385177356116245840', null, 0, 1, true],
+    ['6367243150804139701', 'Isa Quinn', 1, 2, true],
+  ], 'newest first; headings aren’t questions; the matched family isn’t here');
+  assert.match(list.oldForm[1].startedAt, /^2025-10-19T19:05:16Z$/);
+  const pdf = await get('oldform=6367243150804139701');
+  assert.equal(pdf.status, 200);
+  assert.equal(pdf.headers.get('content-type'), 'application/pdf');
+  assert.match(new TextDecoder().decode(new Uint8Array(await pdf.arrayBuffer())).slice(0, 5), /%PDF-/);
+  assert.equal((await get('oldform=6380000000000000001')).status, 404, 'a family’s application isn’t served here');
+  assert.equal((await get('oldform=../x')).status, 404);
+});
