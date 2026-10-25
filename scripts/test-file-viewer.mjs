@@ -432,6 +432,8 @@ ok(await page.$$eval('.apl-file-chip', els => els.some(e => e.tagName === 'A' &&
 await page.click('a.apl-file-chip');
 await page.waitForSelector('.fv', { timeout: 3000 }).catch(() => null);
 ok(await title(page) === 'Avery Stone_Application.pdf' && !(await page.$('.fv-bar .fv-count')), 'it opens in the viewer, on its own');
+await page.waitForSelector('.fv-tools button', { timeout: 10000 }).catch(() => null);
+ok(await page.$eval('.fv-tools', (el) => el.getBoundingClientRect().right > innerWidth - 40).catch(() => false), 'on its own (no strip), the zoom buttons stay at the right');
 await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1, { timeout: 10000 }).catch(() => null);
 ok(await page.$$eval('.fv-pdf .page', els => els.length) === 2, 'the attached PDF draws');
 await closeViewer(page);

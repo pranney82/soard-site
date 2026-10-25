@@ -792,7 +792,7 @@ body.fv-open .toast-container { z-index: 1450; }
 .fv-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .fv-thumb-icon { display: grid; place-items: center; height: 100%; font-size: 1.3rem; }
 .fv-thumb-kind { position: absolute; left: 3px; bottom: 3px; padding: 1px 4px; border-radius: 4px; background: rgba(14, 15, 17, .82); color: #FFFFFF; font-size: .6rem; font-weight: 700; letter-spacing: .02em; line-height: 1.3; }
-.fv-tools { justify-self: end; display: flex; align-items: center; gap: .15rem; }
+.fv-tools { grid-column: 3; justify-self: end; display: flex; align-items: center; gap: .15rem; } /* right, with or without the strip */
 .fv-pct { width: auto; min-width: 62px; padding: 0 .5rem; font-size: .84rem; font-variant-numeric: tabular-nums; }
 /* Hover only where there's a mouse: on a phone a tapped arrow would stay lit */
 @media (hover: hover) {
@@ -810,6 +810,7 @@ body.fv-open .toast-container { z-index: 1450; }
   .fv-foot { grid-template-columns: minmax(0, 1fr) auto; min-height: 60px; padding: .35rem .5rem; padding-bottom: max(.35rem, env(safe-area-inset-bottom)); }
   .fv-foot-start { gap: .5rem; flex-wrap: wrap; }
   .fv-pnav { display: flex; align-items: center; gap: .1rem; }
+  .fv-tools { grid-column: 2; }
   .fv-btn { width: 44px; height: 44px; }
   .fv-pct { display: none; } /* − and + stay; a pinch or double-tap does the rest */
 }
