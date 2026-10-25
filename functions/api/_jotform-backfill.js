@@ -449,7 +449,7 @@ export async function jotformSecondLook(env, { fetchImpl = fetch, now = Date.now
         organization: {
           $: { id: SOARD_ORG_ID },
           accounts: {
-            $: { size: 100, where: [['type', '=', 'customer']], ...(page ? { page } : {}) },
+            $: { size: 100, where: ['type', 'customer'], ...(page ? { page } : {}) }, // (JobTread refuses ['type', '=', …] here)
             nodes: { id: {}, name: {}, customFieldValues: { $: { where: [['customField', 'id'], '=', APPLICATION_URL] }, nodes: { value: {} } } },
             nextPage: {},
           },
