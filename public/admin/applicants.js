@@ -360,6 +360,8 @@ const CSS = `
 /* The admin's toasts sit at z-index 1000, under the drawer: lift them while it's open, and let clicks pass through */
 body.apl-drawer-open .toast-container { z-index: 1350; }
 body.apl-drawer-open .toast-container, body.apl-drawer-open .toast-container * { pointer-events: none !important; }
+/* …except the one that asks for a reload after an update */
+body.apl-drawer-open .toast-container .toast-pinned, body.apl-drawer-open .toast-container .toast-pinned * { pointer-events: auto !important; }
 .apl-scrim { position: fixed; inset: 0; background: rgba(26,27,31,.36); z-index: 1200; animation: apl-fade .18s ease-out; }
 .apl-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(1080px, 100vw); background: var(--color-bg); z-index: 1201; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; animation: apl-in .26s cubic-bezier(.2,.8,.2,1); }
 @keyframes apl-in { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -483,15 +485,31 @@ a.apl-file-chip:hover { border-color: var(--color-text-muted); background: var(-
 .apl-contact strong { font-size: .9rem; }
 .apl-contact a { font-size: .84rem; color: var(--color-info); text-decoration: none; }
 .apl-contact a:hover { text-decoration: underline; }
-.apl-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: .45rem; }
-.apl-gallery a { display: block; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
-.apl-gallery img { width: 100%; height: 100%; object-fit: cover; transition: transform .2s; }
+.apl-files-panel { gap: .55rem; }
+.apl-files-label { margin-top: .35rem; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-muted); }
+.apl-app { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: .85rem; align-items: center; padding: .7rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-secondary); }
+.apl-app-cover { display: grid; place-items: center; width: 74px; height: 96px; border-radius: 6px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px var(--color-border), 0 2px 6px rgba(0, 0, 0, .06); font-size: 1.6rem; text-decoration: none; transition: transform .15s, box-shadow .15s; }
+.apl-app-cover img { width: 100%; height: 100%; object-fit: cover; object-position: top; border: 0; border-radius: 0; }
+.apl-app-cover:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px var(--color-border-strong), 0 6px 14px rgba(0, 0, 0, .1); }
+.apl-app-cover:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
+.apl-app-body { display: grid; gap: .25rem; min-width: 0; }
+.apl-app-actions { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .2rem; }
+.apl-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: .55rem .45rem; }
+.apl-gallery a { display: grid; gap: .3rem; text-decoration: none; color: var(--color-text-secondary); font-size: .76rem; }
+.apl-ph { display: block; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
+.apl-ph img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
+.apl-ph.is-broken { display: grid; place-items: center; font-size: 1.4rem; opacity: .6; }
 .apl-gallery a:hover img { transform: scale(1.04); }
+.apl-gallery a:focus-visible .apl-ph { outline: 2px solid var(--color-text); outline-offset: 2px; }
+.apl-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .apl-doclist { display: grid; gap: .3rem; }
-.apl-doclist a { display: flex; gap: .5rem; align-items: center; font-size: .86rem; text-decoration: none; color: var(--color-text); padding: .35rem .45rem; border-radius: 6px; }
+.apl-doclist a { display: flex; gap: .65rem; align-items: center; font-size: .86rem; text-decoration: none; color: var(--color-text); padding: .4rem .45rem; border-radius: 8px; }
 .apl-doclist a:hover { background: var(--color-bg-hover); }
-.apl-doclist small { color: var(--color-text-muted); margin-left: auto; white-space: nowrap; }
-.apl-doclist img { width: 32px; height: 32px; flex: none; object-fit: cover; border-radius: 5px; border: 1px solid var(--color-border); background: var(--color-bg-secondary); }
+.apl-doc { display: grid; min-width: 0; }
+.apl-doc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.apl-doclist small { color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.apl-doclist img { width: 34px; height: 44px; flex: none; object-fit: cover; object-position: top; border-radius: 4px; border: 1px solid var(--color-border); background: #fff; }
+.apl-doclist a > span[aria-hidden] { display: grid; place-items: center; width: 34px; height: 44px; flex: none; font-size: 1.1rem; }
 .apl-answers { display: grid; gap: .5rem; }
 .apl-answers a { color: var(--color-info); }
 .apl-answer-sec { border-top: 1px solid var(--color-border); padding-top: .4rem; }
@@ -1834,6 +1852,27 @@ function NotifyBanner({ d, onChanged, onCorrection, addToast }) {
 
 // ─── Details, contacts, home, files ─────────────────────────────────
 
+const shortDate = (iso) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+/** What a family photo is, from the name JobTread has (the form names them "<Child> Family.jpg", "<Child> Space 1.jpg"…) */
+function photoLabel(f, child) {
+  const n = String(f.name || '').replace(/\.[a-z0-9]{2,5}$/i, '');
+  if (/famil/i.test(n)) return 'Family';
+  const sp = n.match(/space ?(\d)/i);
+  if (sp) return `Space ${sp[1]}`;
+  if (/space/i.test(n)) return 'Space';
+  const first = String(child || '').trim().split(/\s+/)[0]?.toLowerCase();
+  if (n.toLowerCase() === String(child || '').trim().toLowerCase() || (first && n.toLowerCase() === first)) return 'Child';
+  return n;
+}
+
+/** A photo's tile; one that won't load shows a quiet placeholder, not the browser's broken image */
+function PhotoTile({ f }) {
+  const [broken, setBroken] = useState(false);
+  return html`<span class=${`apl-ph${broken ? ' is-broken' : ''}`}>${broken
+    ? html`<span aria-hidden="true">🖼</span>`
+    : html`<img src=${f.thumb || f.url} alt=${f.name} loading="lazy" onError=${() => setBroken(true)} />`}</span>`;
+}
+
 /** A file's thumbnail from JobTread (a photo, a PDF's first page, a frame of a video), else its icon */
 function FileThumb({ f }) {
   const [broken, setBroken] = useState(false);
@@ -1899,12 +1938,16 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
     addToast(a.archivedAt ? 'Unarchived' : 'Archived in JobTread', 'success');
     onSaved(j.applicant);
   };
+  const [answersOpen, setAnswersOpen] = useState(false);
   const files = (d.files || []).map(f => (kindOf(f) === 'image' && f.thumb ? { ...f, preview: f.thumb.replace(/([?&]size=)\d+/, '$12048') } : f));
+  // The application leads: its PDF (JobTread's copy; for a website-form family without one, the site's)
+  // and its video. Then the photos, labeled, then the documents (onsite and Zoom notes, letters).
+  let appPdf = files.find(f => kindOf(f) === 'pdf' && /application/i.test(f.name || ''));
+  if (!appPdf && a.applicationId) appPdf = { name: `${a.name}_Application.pdf`, type: 'application/pdf', url: `/api/applications-admin?file=${encodeURIComponent(a.applicationId)}&field=pdf` };
+  const appVideo = files.find(f => kindOf(f) === 'video' && /application/i.test(f.name || ''));
   const photos = files.filter(f => kindOf(f) === 'image');
-  const docs = files.filter(f => kindOf(f) !== 'image');
-  const shown = [...photos, ...docs]; // one set in the viewer, in the order it's shown here
-  // A family who applied before the website form: their application is the PDF in JobTread
-  const appPdf = docs.find(f => kindOf(f) === 'pdf' && /application/i.test(f.name || ''));
+  const docs = files.filter(f => kindOf(f) !== 'image' && f !== appPdf && f !== appVideo);
+  const shown = [appPdf, appVideo, ...photos, ...docs].filter(Boolean); // one set in the viewer, in the order it's shown here
   const visible = SIDE_FIELDS.filter(k => fields[k] && (k !== 'denialReason' || a.status === 'Denied' || a.fields?.denialReason));
   return html`<section class="apl-side" aria-label="Details">
     <div class="apl-panel">
@@ -1936,12 +1979,33 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
         : a.address && html`<p class="apl-card-sub">JobTread has no map point for this address, so it can't be checked against the service area.</p>`}
     </div>
 
-    ${(photos.length > 0 || docs.length > 0 || a.applicationId) && html`<div class="apl-panel">
+    ${shown.length > 0 && html`<div class="apl-panel apl-files-panel">
       <h3>Application and files</h3>
-      ${a.applicationId ? html`<${WebsiteAnswers} id=${a.applicationId} key=${a.applicationId} video=${docs.find(f => kindOf(f) === 'video' && /application/i.test(f.name || ''))} />`
-        : appPdf && html`<button class="btn btn-ghost btn-sm" style="justify-self:start" onPointerEnter=${() => warmFiles([appPdf])} onFocus=${() => warmFiles([appPdf])} onClick=${() => openViewer(shown, shown.indexOf(appPdf))}>Read the application</button>`}
-      ${photos.length > 0 && html`<div class="apl-gallery">${photos.map((f, i) => html`<a ...${viewerLink(shown, i)} title=${f.name}><img src=${f.thumb || f.url} alt=${f.name} loading="lazy" /></a>`)}</div>`}
-      ${docs.length > 0 && html`<div class="apl-doclist">${docs.map((f, i) => html`<a ...${viewerLink(shown, photos.length + i)}><${FileThumb} f=${f} />${f.name}<small>${sizeText(f.size)}</small></a>`)}</div>`}
+      ${(appPdf || appVideo) && html`<div class="apl-app">
+        ${appPdf && html`<a class="apl-app-cover" ...${viewerLink(shown, shown.indexOf(appPdf))} aria-label="Read the application">
+          ${appPdf.thumb ? html`<${FileThumb} f=${appPdf} />` : html`<span aria-hidden="true">${kindIcon(appPdf)}</span>`}
+        </a>`}
+        <div class="apl-app-body">
+          <strong>Application</strong>
+          <span class="apl-card-sub">${[a.applicationId ? 'Sent on the website form' : 'Sent before the website form', appPdf?.at || a.createdAt ? shortDate(appPdf?.at || a.createdAt) : null].filter(Boolean).join(' · ')}</span>
+          <div class="apl-app-actions">
+            ${appPdf && html`<button class="btn btn-ghost btn-sm" onPointerEnter=${() => warmFiles([appPdf])} onFocus=${() => warmFiles([appPdf])} onClick=${() => openViewer(shown, shown.indexOf(appPdf))}>Read the application</button>`}
+            ${appVideo && html`<button class="btn btn-ghost btn-sm" onClick=${() => openViewer(shown, shown.indexOf(appVideo))}>▶ Watch the video</button>`}
+            ${a.applicationId && html`<button class="btn btn-ghost btn-sm" aria-expanded=${answersOpen} onClick=${() => setAnswersOpen(o => !o)}>${answersOpen ? 'Hide the answers' : 'Answers'}</button>`}
+          </div>
+        </div>
+      </div>`}
+      ${a.applicationId && answersOpen && html`<${WebsiteAnswers} id=${a.applicationId} key=${a.applicationId} video=${appVideo} />`}
+      ${photos.length > 0 && html`<div class="apl-files-label">Photos</div>
+        <div class="apl-gallery">${photos.map(f => html`<a ...${viewerLink(shown, shown.indexOf(f))} title=${f.name}>
+          <${PhotoTile} f=${f} />
+          <span class="apl-cap">${photoLabel(f, a.name)}</span>
+        </a>`)}</div>`}
+      ${docs.length > 0 && html`<div class="apl-files-label">Documents</div>
+        <div class="apl-doclist">${docs.map(f => html`<a ...${viewerLink(shown, shown.indexOf(f))}>
+          <${FileThumb} f=${f} />
+          <span class="apl-doc"><span class="apl-doc-name">${String(f.name || 'File').replace(/\.[a-z0-9]{2,4}$/i, '')}</span><small>${[kindOf(f) === 'pdf' ? 'PDF' : kindOf(f) === 'video' ? 'Video' : (String(f.name || '').match(/\.([a-z0-9]{2,4})$/i)?.[1] || 'File').toUpperCase(), sizeText(f.size), f.at ? shortDate(f.at) : null].filter(Boolean).join(' · ')}</small></span>
+        </a>`)}</div>`}
     </div>`}
 
     ${a.jobId && html`<div class="apl-panel"><h3>Makeover job</h3><a class="btn btn-ghost btn-sm" style="justify-self:start" href=${a.jobUrl} target="_blank" rel="noopener">${a.jobName || 'Open the job'} ${Icon.ext()}</a></div>`}
@@ -1958,22 +2022,18 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
  * Submissions has the same with the intake checks; a problem there shows here too.
  */
 function WebsiteAnswers({ id, video = null }) {
-  const [open, setOpen] = useState(false);
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   useEffect(() => {
-    if (!open || d) return;
     call(`/api/applications-admin?id=${encodeURIComponent(id)}`).then(j => { if (j.success) setD(j.application); else setErr(j.error || 'Couldn’t load the answers'); });
-  }, [open]);
+  }, [id]);
   const unfinished = d ? Object.values(d.checklist || {}).some(v => v !== true && v !== 'none') : false;
   const file = (f, thumb = false) => `/api/applications-admin?file=${encodeURIComponent(id)}&field=${encodeURIComponent(f)}${thumb ? '&thumb=1' : ''}`;
   // The family's photos as one set in the viewer; a photo the browser can't open (HEIC) shows its thumbnail
   const shots = (d?.sections || []).flatMap(sec => sec.items).filter(i => i.upload && i.type === 'photo')
     .map(i => ({ id: i.id, name: i.label, filename: `${d.child || 'Application'} - ${i.label}${extOf(i.fileType)}`, type: i.fileType || 'image/jpeg', size: i.size, url: file(i.id), thumb: i.hasThumb ? file(i.id, true) : null }));
-  const pdf = d?.hasPdf ? [{ name: `${d.child || 'Application'}_Application.pdf`, type: 'application/pdf', url: file('pdf') }] : [];
   return html`<div class="apl-answers">
-    <button class="btn btn-ghost btn-sm" style="justify-self:start" aria-expanded=${open} onClick=${() => setOpen(o => !o)}>${open ? 'Hide the answers' : 'Show the answers from the website form'}</button>
-    ${open && !d && !err && html`<div class="apl-card-sub">Loading the answers…</div>`}
+    ${!d && !err && html`<div class="apl-card-sub">Loading the answers…</div>`}
     ${err && html`<div class="apl-callout is-warn">${err}</div>`}
     ${d && html`
       ${unfinished && !d.deletedAt && html`<div class="apl-callout is-warn">This application hasn't fully reached JobTread yet. It retries on its own. <a href=${`#applications/submissions/${id}`}>See it in Submissions</a></div>`}
@@ -1987,7 +2047,7 @@ function WebsiteAnswers({ id, video = null }) {
                   : `Video ${i.video?.uploaded ? 'uploaded' : 'not finished'}${i.video?.duration ? ` (${Math.round(i.video.duration)} s)` : ''}`)
               : i.text}</dd>`)}</dl>
           </details>`)}
-      <div class="apl-card-sub">${[d.lang === 'es' ? 'Answered in Spanish' : null, `form version ${d.formVersion || 'built in'}`].filter(Boolean).join(' · ')}${d.hasPdf ? html` · <a ...${viewerLink(pdf, 0)}>PDF</a>` : ''} · <a href=${`#applications/submissions/${id}`}>Open in Submissions</a></div>`}
+      <div class="apl-card-sub">${[d.lang === 'es' ? 'Answered in Spanish' : null, `form version ${d.formVersion || 'built in'}`].filter(Boolean).join(' · ')} · <a href=${`#applications/submissions/${id}`}>Open in Submissions</a></div>`}
   </div>`;
 }
 

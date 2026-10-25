@@ -16,6 +16,10 @@
  *                                      The admin's CSP has no 'wasm-unsafe-eval', so
  *                                      pdf.js runs with useWasm: false and imports these instead.
  *
+ * The legacy build: the modern one calls JavaScript added in 2025-26 (Map's getOrInsertComputed,
+ * Promise.withResolvers, AbortSignal.any…) with no fallback, so an iPhone or Mac on Safari 18 or
+ * older couldn't open any PDF. The legacy build carries those, a little bigger, loaded only for PDFs.
+ *
  * pdfjs-dist isn't in package.json: its optional native canvas (for Node)
  * would download into every Pages build for nothing. The exact version is
  * installed into a temporary folder here instead; npm checks it against the
@@ -32,6 +36,11 @@ import { dirname, join } from 'node:path';
 const PDFJS = '6.4.299';
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const adminDir = join(rootDir, 'public/admin');
+
+// The legacy build still expects two things from 2024 (Safari 17.4): fallbacks for older phones, page and worker
+const POLYFILLS = `if (!Promise.withResolvers) Promise.withResolvers = function () { let resolve, reject; const promise = new this((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
+if (typeof AbortSignal !== 'undefined' && !AbortSignal.any) AbortSignal.any = function (signals) { const c = new AbortController(); for (const s of signals) { if (s.aborted) { c.abort(s.reason); break; } s.addEventListener('abort', () => c.abort(s.reason), { once: true, signal: c.signal }); } return c.signal; };
+`;
 
 // pdf_viewer.css also styles pdf.js's own app (.sidebar, .dialog, .toggle-button…), which would
 // restyle the admin. Keep the rules for what the viewer draws: pages, their text and links.
@@ -70,21 +79,23 @@ try {
 
   // The page viewer's stylesheet, minified: only the pages, text and links (the admin draws its own
   // controls), and its variables on the viewer instead of :root, so nothing else in the admin changes
-  const rawCss = readFileSync(join(pkg, 'web/pdf_viewer.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/url\((?!["']?data:)[^)]*\)/g, 'none');
+  const rawCss = readFileSync(join(pkg, 'legacy/web/pdf_viewer.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/url\((?!["']?data:)[^)]*\)/g, 'none');
   const { code: css } = await esbuild.transform(pageRules(rawCss), { loader: 'css', minify: true, logLevel: 'warning' });
 
   // web/pdf_viewer.mjs reads pdf.js from globalThis.pdfjsLib, so that's set first
-  writeFileSync(join(tmp, 'global.js'), `import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
+  writeFileSync(join(tmp, 'polyfills.js'), POLYFILLS);
+  writeFileSync(join(tmp, 'global.js'), `import './polyfills.js';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 globalThis.pdfjsLib = pdfjsLib;
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor-pdf.worker.js', import.meta.url).href;
 export { pdfjsLib };
 `);
   writeFileSync(join(tmp, 'entry.js'), `export { pdfjsLib } from './global.js';
-export { PDFViewer, EventBus, PDFLinkService } from 'pdfjs-dist/web/pdf_viewer.mjs';
+export { PDFViewer, EventBus, PDFLinkService, PDFFindController } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs';
 export const pdfCss = ${JSON.stringify(css)};
 `);
   const banner = `/*! SOARD admin vendor bundle (lazy) — built by scripts/build-admin-pdf.mjs
- * pdfjs-dist@${version} (Apache-2.0). Do not edit by hand.
+ * pdfjs-dist@${version}, legacy build (Apache-2.0). Do not edit by hand.
  */`;
   const built = await esbuild.build({
     entryPoints: [join(tmp, 'entry.js')],
@@ -102,11 +113,11 @@ export const pdfCss = ${JSON.stringify(css)};
   const out = Object.values(built.metafile.outputs)[0];
   console.log(`vendor-pdf.js written: ${(out.bytes / 1024).toFixed(1)} KB (minified, pre-gzip)`);
 
-  const worker = readFileSync(join(pkg, 'build/pdf.worker.min.mjs'), 'utf8');
+  const worker = readFileSync(join(pkg, 'legacy/build/pdf.worker.min.mjs'), 'utf8');
   writeFileSync(join(adminDir, 'vendor-pdf.worker.js'), `/*! SOARD admin vendor file (lazy) — copied by scripts/build-admin-pdf.mjs
- * pdfjs-dist@${version} build/pdf.worker.min.mjs (Apache-2.0). Do not edit by hand.
+ * pdfjs-dist@${version} legacy/build/pdf.worker.min.mjs (Apache-2.0), after two small fallbacks. Do not edit by hand.
  */
-${worker}`);
+${POLYFILLS}${worker}`);
   console.log(`vendor-pdf.worker.js written: ${(worker.length / 1024).toFixed(1)} KB`);
 
   const assets = join(adminDir, 'pdf');

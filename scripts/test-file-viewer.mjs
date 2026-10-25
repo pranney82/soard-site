@@ -263,6 +263,16 @@ async function open(width, height, phone = false, harness = '__viewer.html') {
   page.on('pageerror', (e) => consoleErrors.push(e.message));
   page.on('error', (e) => { consoleErrors.push(`page crashed: ${e.message}`); console.log('  ✗ the page crashed:', e.message); });
   page.on('close', () => { if (process.env.FV_DEBUG) console.log('DEBUG page closed', new Error().stack.split('\n').slice(2, 5).join(' | ')); });
+  if (harness === '__old.html') {
+    // An older browser too (Safari 18 and before): none of the JavaScript added in 2025-26 that pdf.js 6 uses
+    await page.evaluateOnNewDocument(() => {
+      delete Map.prototype.getOrInsertComputed; delete Map.prototype.getOrInsert;
+      delete WeakMap.prototype.getOrInsertComputed; delete WeakMap.prototype.getOrInsert;
+      delete Promise.withResolvers; delete AbortSignal.any;
+      delete Uint8Array.prototype.toHex; delete Uint8Array.prototype.toBase64; delete Uint8Array.fromBase64;
+      window.__old = !Map.prototype.getOrInsertComputed && !Promise.withResolvers;
+    });
+  }
   const cdp = await page.createCDPSession();
   await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: DOWNLOADS });
   await page.goto(`${SITE}/admin/${harness}`, { waitUntil: 'domcontentloaded' });
@@ -288,11 +298,25 @@ const page = await open(1440, 900);
 await openFamily(page, avery.id);
 const sidebarBefore = await page.$eval('aside.sidebar', el => { const s = getComputedStyle(el); return [s.position, s.width, s.backgroundColor, s.display].join('|'); });
 
-// Pointing at a PDF loads pdf.js ahead, so the first PDF opens at once
+// The panel: the application leads (its first page, Read, the video, the answers), then labeled photos, then documents
+const panel = await page.evaluate(() => ({
+  card: !!document.querySelector('.apl-app .apl-app-cover img'),
+  actions: [...document.querySelectorAll('.apl-app-actions button')].map(b => b.textContent.trim()),
+  caps: [...document.querySelectorAll('.apl-gallery .apl-cap')].map(c => c.textContent.trim()),
+  docs: [...document.querySelectorAll('.apl-doclist a')].map(a => a.textContent.replace(/\s+/g, ' ').trim()),
+  labels: [...document.querySelectorAll('.apl-files-label')].map(l => l.textContent.trim()),
+}));
+ok(panel.card && JSON.stringify(panel.actions) === JSON.stringify(['Read the application', '▶ Watch the video', 'Answers']), `the application card: its first page, Read, the video, the answers (${panel.actions.join(', ')})`);
+ok(JSON.stringify(panel.caps) === JSON.stringify(['Child', 'Family', 'Space 1']), `photos are labeled (${panel.caps.join(', ')})`);
+ok(JSON.stringify(panel.labels) === JSON.stringify(['Photos', 'Documents']) && panel.docs.length === 1 && /Therapist letter\s*DOCX · 22 KB · /.test(panel.docs[0]) && await page.$eval('.apl-doc-name', (el) => el.textContent) === 'Therapist letter', `documents list what each is (${panel.docs.join(' | ')})`);
+await page.$eval('.apl-files-panel', (el) => el.scrollIntoView({ block: 'center' }));
+await sleep(300);
+await page.screenshot({ path: join(OUT, 'desktop-panel.png'), clip: await page.$eval('.apl-files-panel', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 8, y: r.y - 8, width: r.width + 16, height: r.height + 16 }; }) });
+
+// Pointing at the application loads pdf.js ahead, so the first PDF opens at once
 const pdfjsAsked = [];
 page.on('request', (r) => { if (/vendor-pdf/.test(r.url())) pdfjsAsked.push(r.url()); });
-const pdfRow = await page.$$eval('.apl-doclist a', els => els.findIndex(a => /\.pdf$/.test(a.textContent.replace(/\d+ KB$/, '').trim())));
-await (await page.$$('.apl-doclist a'))[Math.max(0, pdfRow)].hover();
+await page.hover('.apl-app-cover');
 for (let t = 0; t < 20 && pdfjsAsked.length < 2; t++) await sleep(100);
 ok(pdfjsAsked.some(u => /vendor-pdf\.js$/.test(u)) && pdfjsAsked.some(u => /vendor-pdf\.worker\.js$/.test(u)), `pointing at a PDF loads pdf.js and its worker before the click (${pdfjsAsked.length})`);
 await page.mouse.move(5, 5);
@@ -306,7 +330,7 @@ ok(newTabs === tabsBefore, 'and no new tab opened');
 ok(!!(await page.$('.apl-drawer')), 'the family’s drawer stays open underneath');
 ok(await title(page) === 'Avery Stone.jpg', `the viewer names the file (${await title(page)})`);
 ok(/Photo · \d+ KB/.test(await text(page, '.fv-title small')), `with its kind and size (${await text(page, '.fv-title small')})`);
-ok(await count(page) === '1 of 6', `the family’s photos and files are one set (${await count(page)})`);
+ok(await count(page) === '3 of 6', `the family’s application, photos and files are one set, in the panel’s order (${await count(page)})`);
 ok(await page.$$eval('.fv-thumb', els => els.length) === 6, 'the strip has a thumbnail for each');
 ok(await page.evaluate(() => document.querySelector('.fv').contains(document.activeElement)), 'focus moved into the viewer');
 ok(await page.$eval('.fv', el => el.getAttribute('aria-modal') === 'true' && /Avery Stone\.jpg/.test(el.getAttribute('aria-label'))), 'it’s a labeled modal dialog');
@@ -342,21 +366,23 @@ await sleep(250);
 ok(await imgTransform(page) === '', 'the zoom button fits it again');
 
 // ← / →, the strip, the ends
-ok(await page.$eval('.fv-side .fv-nav', el => el.disabled), 'Previous is off on the first file');
 await page.keyboard.press('ArrowRight');
 await sleep(150);
-ok(await title(page) === 'Avery Stone Family.jpg' && await count(page) === '2 of 6', '→ goes to the next file');
+ok(await title(page) === 'Avery Stone Family.jpg' && await count(page) === '4 of 6', '→ goes to the next file');
 await page.keyboard.press('ArrowLeft');
 await sleep(150);
 ok(await title(page) === 'Avery Stone.jpg', '← goes back');
+await page.click('.fv-thumb:nth-child(1)');
+await sleep(150);
+ok(await page.$eval('.fv-side .fv-nav', el => el.disabled) && await count(page) === '1 of 6', 'Previous is off on the first file (the application)');
 
 // The photo that's gone says so
-await page.click('.fv-thumb:nth-child(3)');
+await page.click('.fv-thumb:nth-child(5)');
 await page.waitForSelector('.fv-card', { timeout: 4000 }).catch(() => null);
 ok(/didn’t load/.test(await text(page, '.fv-card')) && !!(await page.$('.fv-card .fv-pill')), 'a photo that won’t load says so, with Download and a new tab');
 
 // The PDF: pdf.js under the admin's CSP
-await page.click('.fv-thumb:nth-child(4)');
+await page.click('.fv-thumb:nth-child(1)');
 await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1 && [...document.querySelectorAll('.fv-pdf .textLayer span')].some(s => /Avery Stone application/.test(s.textContent)), { timeout: 15000 }).catch(() => null);
 ok(await page.$$eval('.fv-pdf .page', els => els.length) === 2, 'the PDF’s two pages are there');
 ok(await page.$$eval('.fv-pdf .textLayer span', els => els.some(s => /Avery Stone application/.test(s.textContent))), 'its text is real text (selectable), Helvetica from the standard fonts');
@@ -373,6 +399,46 @@ const sidebarAfter = await page.$eval('aside.sidebar', el => { const s = getComp
 ok(sidebarAfter === sidebarBefore, `pdf.js’s stylesheet leaves the admin’s sidebar alone (${sidebarAfter})`);
 ok(await page.$$eval('style', els => els.some(s => s.id === 'fv-pdfjs-style') && !els.some(s => /(^|[}\s,])\.sidebar\b|:root\s*\{/.test(s.id === 'fv-pdfjs-style' ? s.textContent : ''))), 'and its rules are only for pages (no .sidebar or :root)');
 await shot(page, 'desktop-pdf');
+
+// Find (⌘F): a box over the PDF, matches highlighted, Enter steps, Esc closes the box and leaves the PDF open
+await page.focus('.fv');
+await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control'); await page.keyboard.press('f'); await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+await page.waitForSelector('.fv-find input', { timeout: 3000 }).catch(() => null);
+ok(await page.evaluate(() => document.activeElement === document.querySelector('.fv-find input')), '⌘F opens the find box, ready to type');
+await page.keyboard.type('Jordan');
+await page.waitForFunction(() => /of 2/.test(document.querySelector('.fv-find-count')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+ok(await text(page, '.fv-find-count') === '1 of 2' && await page.$$eval('.fv-pdf .textLayer .highlight', els => els.length) >= 1, `it finds every match and highlights it (${await text(page, '.fv-find-count')})`);
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.querySelector('.fv-find-count')?.textContent === '2 of 2', { timeout: 4000 }).catch(() => null);
+ok(await text(page, '.fv-find-count') === '2 of 2', 'Enter goes to the next one');
+await page.keyboard.press('Backspace'); await page.keyboard.press('Backspace');
+await page.keyboard.type('zzzz');
+await page.waitForFunction(() => document.querySelector('.fv-find-count')?.textContent === 'No matches', { timeout: 4000 }).catch(() => null);
+ok(await text(page, '.fv-find-count') === 'No matches', 'and says when there’s nothing');
+await shot(page, 'desktop-find');
+await page.keyboard.press('Escape');
+await sleep(200);
+ok(!(await page.$('.fv-find')) && await viewerOpen(page), 'Esc closes the find box, not the viewer');
+
+// Print (⌘P): every page drawn for paper, only the document printed, tidied up after
+await page.evaluate(() => {
+  window.__prints = [];
+  window.print = () => window.__prints.push({ pages: document.querySelectorAll('#fv-print .fv-print-page img').length, on: document.body.classList.contains('fv-printing'), paper: document.getElementById('fv-print-paper')?.textContent || '' });
+});
+await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control'); await page.keyboard.press('p'); await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+await page.waitForFunction(() => window.__prints.length > 0, { timeout: 15000 }).catch(() => null);
+const printed = await page.evaluate(() => window.__prints[0] || null);
+ok(printed?.pages === 2 && printed.on && /size: 612pt 792pt/.test(printed.paper), `⌘P prints both pages, on the PDF’s own paper size (${JSON.stringify(printed)})`);
+await page.emulateMediaType('print');
+const onPaper = await page.evaluate(() => ({ viewer: getComputedStyle(document.querySelector('.fv-host')).display, sheet: getComputedStyle(document.getElementById('fv-print')).display, drawer: getComputedStyle(document.querySelector('.app')).display }));
+ok(onPaper.viewer === 'none' && onPaper.drawer === 'none' && onPaper.sheet === 'block', `on paper, only the document (${JSON.stringify(onPaper)})`);
+await page.emulateMediaType(null);
+await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+ok(await page.evaluate(() => !document.getElementById('fv-print') && !document.body.classList.contains('fv-printing')), 'and it tidies up after printing');
+await page.click('.fv-actions button[aria-label^="Print"]');
+await page.waitForFunction(() => window.__prints.length > 1, { timeout: 15000 }).catch(() => null);
+ok(await page.evaluate(() => window.__prints.length) === 2, 'the Print button does the same');
+await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
 
 // The video: plays, nothing drawn on the picture (not even the browser's control bar), the player's bar under it
 await page.keyboard.press('ArrowRight');
@@ -413,13 +479,13 @@ ok(await page.$eval('.fv-video', v => !v.paused), 'K plays again');
 await shot(page, 'desktop-video');
 
 // The Word file: can't be shown, Download
-await page.keyboard.press('ArrowRight');
+await page.click('.fv-thumb:nth-child(6)');
 await sleep(200);
 ok(/can’t be shown here/.test(await text(page, '.fv-card')) && await page.$eval('.fv-side:last-child .fv-nav', el => el.disabled), 'a Word file says it can’t be shown, offers Download; Next is off on the last file');
 await shot(page, 'desktop-other');
 
 // Download saves under the file's own name (JobTread's files are on another site)
-await page.click('.fv-thumb:nth-child(1)');
+await page.click('.fv-thumb:nth-child(3)');
 await sleep(200);
 await page.click('.fv-actions button[aria-label="Download"]');
 let saved = [];
@@ -477,8 +543,8 @@ await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas
 ok(await page.$$eval('.fv-pdf .page', els => els.length) === 2, 'the attached PDF draws');
 await closeViewer(page);
 
-// The website form's answers: photos, PDF, video
-await clickText(page, '.apl-answers button', /Show the answers/);
+// The website form's answers, from the application card: photos, video
+ok(await clickText(page, '.apl-app-actions button', /^Answers$/), 'Answers opens the website form’s answers');
 await page.waitForSelector('.apl-answer-sec', { timeout: 6000 }).catch(() => null);
 await page.evaluate(() => document.querySelectorAll('.apl-answer-sec').forEach(d => { d.open = true; }));
 const answerPhoto = await page.$('.apl-answer-sec a img');
@@ -498,10 +564,11 @@ ok(await clickText(page, '.apl-answers .apl-more', /Watch the video/), 'the answ
 await page.waitForFunction(() => { const v = document.querySelector('.fv-video'); return v && !v.paused; }, { timeout: 6000 }).catch(() => null);
 ok(await title(page) === 'Avery Stone_Application.mp4' && await page.$eval('.fv-video', v => !v.paused).catch(() => false), 'and plays it in the viewer');
 await closeViewer(page);
-ok(await clickText(page, '.apl-answers a', /^PDF$/), 'the answers’ PDF link');
+ok(await clickText(page, '.apl-app-actions button', /Read the application/), 'Read the application, on the card');
 await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1, { timeout: 10000 }).catch(() => null);
-ok(await title(page) === 'Avery Stone_Application.pdf' && await page.$$eval('.fv-pdf .page', els => els.length) === 2, 'opens the PDF from the site’s storage in the viewer');
+ok(await title(page) === 'Avery Stone_Application.pdf' && await page.$$eval('.fv-pdf .page', els => els.length) === 2 && await count(page) === '1 of 6', 'opens the application first in the family’s set');
 await closeViewer(page);
+ok(await clickText(page, '.apl-app-actions button', /Hide the answers/) && !(await page.$('.apl-answers')), 'Hide the answers folds them away');
 
 // A Jotform-era family: the application is the PDF in JobTread
 await page.keyboard.press('Escape'); // close Avery
@@ -510,7 +577,9 @@ await openFamily(page, nora.id);
 ok(!(await page.$$eval('.apl-side a', els => els.some(a => /jotform/.test(a.href)))), 'no link out to Jotform when JobTread has the application PDF');
 ok(await clickText(page, '.apl-side button', /Read the application/), 'Read the application');
 await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1, { timeout: 10000 }).catch(() => null);
-ok(await title(page) === 'Nora Kim_Application.pdf' && await count(page) === '2 of 2', `opens the PDF in the viewer, with the family’s photo a step away (${await count(page)})`);
+ok(await title(page) === 'Nora Kim_Application.pdf' && await count(page) === '1 of 2', `opens the PDF in the viewer, with the family’s photo a step away (${await count(page)})`);
+await closeViewer(page);
+ok(/Sent before the website form/.test(await text(page, '.apl-app')) && !(await page.$('.apl-app-actions button[aria-expanded]')), 'their card says it came before the website form (no website answers to show)');
 await closeViewer(page);
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 3000 }).catch(() => null);
@@ -522,7 +591,7 @@ await page.close();
 
 // A tab opened before this work still runs under the old CSP: JobTread's CDN can't be fetched from it.
 // PDFs and Download come through the admin instead (images and videos never needed connect-src).
-console.log('A tab on the old CSP');
+console.log('A tab on the old CSP, in an older browser');
 JT_CDN['/old-letter'] = PDF;
 JT_CDN['/old-scan'] = SCAN;
 const old = await open(1440, 900, false, '__old.html');
@@ -533,6 +602,7 @@ const oldFiles = [
 await old.evaluate(async (files) => (await import('/admin/file-viewer.js')).openViewer(files, 0), oldFiles);
 await old.waitForFunction(() => document.querySelector('.fv-pdf .page canvas') && !document.querySelector('.fv-pdf-wait') || document.querySelector('.fv-card'), { timeout: 15000 }).catch(() => null);
 ok((await old.evaluate(() => window.__csp)).some((v) => /connect-src https:\/\/cdn\.jobtread\.com/.test(v)), 'the old CSP does block JobTread’s CDN in this tab (the case staff hit)');
+ok(await old.evaluate(() => window.__old === true), 'this tab is an older browser too: no Map.getOrInsertComputed, Promise.withResolvers or AbortSignal.any');
 ok(await old.$$eval('.fv-pdf .page', (els) => els.length).catch(() => 0) === 2 && !(await old.$('.fv-card')) && viaAdmin.includes('whole'), `a PDF still opens, through the admin (${viaAdmin.length} request(s))`);
 const before = viaAdmin.length;
 await old.keyboard.press('ArrowRight');
@@ -577,16 +647,22 @@ await tc.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ 
 for (let s = 1; s <= 6; s++) { await tc.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: box.x + box.width - 40 - s * 45, y }] }); await sleep(16); }
 await tc.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 await sleep(300);
-ok(await text(phone, '.fv-pnav .fv-count') === '2 of 6', `a swipe goes to the next file (${await text(phone, '.fv-pnav .fv-count')})`);
-// The PDF fits the phone's width
+ok(await text(phone, '.fv-pnav .fv-count') === '4 of 6', `a swipe goes to the next file (${await text(phone, '.fv-pnav .fv-count')})`);
+// Past the photo that's gone, back to the application: the PDF fits the phone's width
 await phone.evaluate(() => document.querySelectorAll('.fv-pnav .fv-nav')[1].click());
-await phone.evaluate(() => document.querySelectorAll('.fv-pnav .fv-nav')[1].click());
+for (let k = 0; k < 4; k++) await phone.evaluate(() => document.querySelectorAll('.fv-pnav .fv-nav')[0].click());
 await phone.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1, { timeout: 10000 }).catch(() => null);
 const pw = await phone.$eval('.fv-pdf .page', el => el.getBoundingClientRect().width).catch(() => 0);
 const pwide = await phone.evaluate(() => [...document.querySelectorAll('.fv, .fv-bar, .fv-stage, .fv-media, .fv-foot, .fv-foot *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => e.className).slice(0, 3));
 ok(!pwide.length, `with a PDF open too, nothing is wider than the screen${pwide.length ? `: ${pwide.join(', ')}` : ''}`);
 ok(pw > 300 && pw <= 390, `the PDF fits the phone’s width (${Math.round(pw)}px)`);
 ok(!(await phone.$('.fv-note')), `a photo stepped past says nothing about the PDF (${await text(phone, '.fv-note')})`);
+const pbar = await phone.evaluate(() => ({
+  wide: [...document.querySelectorAll('.fv-bar *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).length,
+  small: [...document.querySelectorAll('.fv-bar button, .fv-bar a')].filter(e => e.getBoundingClientRect().width < 44 || e.getBoundingClientRect().height < 44).length,
+  buttons: document.querySelectorAll('.fv-actions .fv-btn').length,
+}));
+ok(pbar.buttons === 5 && !pbar.wide && !pbar.small, `a PDF’s bar (find, print, download, open, close) fits the phone at 44px (${JSON.stringify(pbar)})`);
 await shot(phone, 'phone-pdf');
 const axp = await axeScan(phone, '.fv');
 ok(axp.length === 0, `phone viewer: no axe violations${axp.length ? `: ${axeText(axp)}` : ''}`);

@@ -7268,11 +7268,12 @@
     // on its own). Using a toast's action (Undo, Publish) closes it, so what
     // follows replaces it instead of stacking on top
     const TOAST_SHOWN = 3;
-    function ToastContainer({ toasts, onDismiss }) {
+    function ToastContainer({ toasts, onDismiss, pinned = null }) {
       const [all, setAll] = useState(false);
       useEffect(() => { if (toasts.length <= TOAST_SHOWN) setAll(false); }, [toasts.length]);
       const folded = all ? 0 : Math.max(0, toasts.length - TOAST_SHOWN);
       return html`<div class="toast-container" role="status" aria-live="polite" aria-atomic="true">
+        ${pinned ? html`<div class="toast toast-info toast-pinned"><span class="toast-action"><span>${pinned.msg}</span><button class="toast-undo" onClick=${pinned.fn}>${pinned.label}</button></span></div>` : null}
         ${folded ? html`<button type="button" class="toast-more" onClick=${() => setAll(true)} aria-label=${`Show ${folded} earlier ${folded === 1 ? 'message' : 'messages'}`}>${folded} more</button>` : null}
         ${toasts.slice(folded).map(t => html`<div key=${t.id} class="toast toast-${t.type}" role="alert">
           ${t.action ? html`<span class="toast-action">
@@ -21871,6 +21872,29 @@ ${sections || '<p>No one yet.</p>'}
 
       const [dashboardFilter, setDashboardFilter] = useState(null);
       const pressNeedsLook = usePressReview();
+      // A deploy while this page was open (scripts/admin-version.mjs writes the commit at build time):
+      // say so once, with Reload, so nobody works on old code. Checked on coming back to the tab and
+      // every 10 minutes; a content Publish rebuilds the same commit, so it never asks over content.
+      const [updated, setUpdated] = useState(false);
+      useEffect(() => {
+        let first = null;
+        let done = false;
+        const check = async () => {
+          if (done) return;
+          try {
+            const r = await fetch('/admin/version.json', { cache: 'no-store' });
+            const build = r.ok ? (await r.json()).build : null;
+            if (!build) return;
+            if (first === null) first = build;
+            else if (build !== first) { done = true; setUpdated(true); }
+          } catch { /* offline: next time */ }
+        };
+        check();
+        const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+        document.addEventListener('visibilitychange', onVisible);
+        const t = setInterval(() => { if (document.visibilityState === 'visible') check(); }, 10 * 60 * 1000);
+        return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(t); };
+      }, []);
       // Confirm before an in-app view/tab switch discards unsaved edits.
       // Editors register their dirty state via useGlobalDirty().
       const confirmDiscard = () => {
@@ -22422,7 +22446,8 @@ ${sections || '<p>No one yet.</p>'}
             ${renderView()}
           </main>
 
-          <${ToastContainer} toasts=${toasts} onDismiss=${(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
+          <${ToastContainer} toasts=${toasts} onDismiss=${(id) => setToasts((t) => t.filter((x) => x.id !== id))}
+            pinned=${updated ? { msg: 'The admin was updated while this page was open.', label: 'Reload', fn: () => { if (confirmDiscard()) location.reload(); } } : null} />
           <${ReplyNotices} />
           <${ReplyTitle} />
           <${CommandPalette} open=${cmdPaletteOpen} onClose=${() => setCmdPaletteOpen(false)}

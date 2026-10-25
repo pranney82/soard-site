@@ -166,9 +166,12 @@ async function seed() {
 }
 await seed();
 
+// What /admin/version.json says is deployed (scripts/admin-version.mjs); a test changes it to play a deploy
+let adminBuild = 'build-1';
 async function answer(req, user) {
   const url = new URL(req.url());
   const json = (o, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(o) });
+  if (url.pathname === '/admin/version.json') return json({ build: adminBuild });
   if (url.pathname === '/api/applications-admin') {
     if (url.searchParams.get('jobtread-fields')) return json({ success: true, fields: JT_FIELDS });
     clearFormCache();
@@ -1451,6 +1454,25 @@ try {
     await sc.page.waitForSelector('.afe-status', { timeout: 10000 }).catch(() => {});
     ok(await sc.page.$eval('.afe-tabs .active', (e) => e.dataset.tab).catch(() => null) === 'settings', 'which opens the Settings tab');
     await sc.page.close();
+  });
+
+  await section('A deploy while the admin is open', async () => {
+    adminBuild = 'build-1';
+    const up = await open(1280, 900, '#applications/submissions');
+    await up.page.waitForSelector('.afe-subs', { timeout: 20000 }).catch(() => {});
+    await sleep(400);
+    ok(!(await up.page.$('.toast-pinned')), 'nothing to say while the admin is current');
+    adminBuild = 'build-2';
+    await up.page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await up.page.waitForSelector('.toast-pinned', { timeout: 5000 }).catch(() => {});
+    ok(/updated while this page was open/.test(await text(up.page, '.toast-pinned')), 'coming back to the tab after a deploy: it says so, with Reload');
+    const reloaded = up.page.waitForNavigation({ timeout: 15000 }).catch(() => null);
+    await clickText(up.page, '.toast-pinned button', /Reload/);
+    await reloaded;
+    await up.page.waitForSelector('.afe-subs', { timeout: 20000 }).catch(() => {});
+    await sleep(400);
+    ok(!(await up.page.$('.toast-pinned')) && /#applications\/submissions$/.test(up.page.url()), 'Reload brings the new version up on the same page');
+    await up.page.close();
   });
 
   await section('Leaving with unsaved settings asks first', async () => {
