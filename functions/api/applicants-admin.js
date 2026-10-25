@@ -8,6 +8,7 @@
  * GET ?id=<account>          → { applicant, comments, files, activity } (live from JobTread)
  * GET ?activity=1[&before=]  → recent activity across every family
  * GET ?preview=<status>&id=  → what moving to that status would send the family
+ * GET ?cdn=<JobTread file URL> → that file, passed through (Range too) for the file viewer
  *
  * POST { status: { id, status, notify, denialReason } }
  * POST { fields: { id, changes: { key: value } } }
@@ -50,6 +51,30 @@ export async function onRequestGet(context) {
   if (!env.JOBTREAD_GRANT_KEY) return fail('JOBTREAD_GRANT_KEY is not set in Cloudflare', 500);
   await ensureApplicantSchema(env.DB);
   const url = new URL(request.url);
+
+  // A file on JobTread's CDN, passed through for the file viewer (public/admin/file-viewer.js) when the
+  // browser can't fetch it from the CDN itself: a tab opened before the admin's CSP allowed the CDN, or a
+  // network that blocks it. JobTread's CDN only (staff-only, behind Access); a Range request is passed
+  // on, so a big PDF still opens page by page.
+  if (url.searchParams.has('cdn')) {
+    let target;
+    try { target = new URL(url.searchParams.get('cdn')); } catch { return fail('Bad file link'); }
+    if (target.protocol !== 'https:' || target.host !== 'cdn.jobtread.com') return fail('Only JobTread’s files', 400);
+    try {
+      const range = request.headers.get('range');
+      const res = await fetch(target, { headers: range ? { range } : {} });
+      // (500, not 502: Cloudflare swaps a 502's body for its own error page)
+      if (!res.ok) return new Response(`JobTread answered ${res.status}`, { status: res.status === 404 ? 404 : 500 });
+      const headers = new Headers({ 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' });
+      for (const k of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'content-disposition', 'etag', 'last-modified']) {
+        const v = res.headers.get(k);
+        if (v) headers.set(k, v);
+      }
+      return new Response(res.body, { status: res.status, headers });
+    } catch (e) {
+      return fail(e.message, 500);
+    }
+  }
 
   if (url.searchParams.get('list')) {
     // First visit ever: fill the mirror before answering

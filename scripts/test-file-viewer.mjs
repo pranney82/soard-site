@@ -61,6 +61,18 @@ for (const [i, line] of ['Avery Stone application', 'Page two: the bedroom'].ent
   pg.drawText(`Page ${i + 1} of 2. Jordan Stone, 404-555-0100.`, { x: 72, y: 660, size: 12, font: helv });
 }
 const PDF = Buffer.from(await pdfDoc.save());
+// A scan-sized PDF (over 4 MB, so it's read in parts): one page of photographic noise
+const scanDoc = await PDFDocument.create();
+const scanFont = await scanDoc.embedFont(StandardFonts.Helvetica);
+for (let pg = 1; pg <= 2; pg++) {
+  const noise = Buffer.alloc(1800 * 1800 * 3);
+  for (let k = 0; k < noise.length; k++) noise[k] = (Math.random() * 256) | 0;
+  const scanJpg = await scanDoc.embedJpg(await sharp(noise, { raw: { width: 1800, height: 1800, channels: 3 } }).jpeg({ quality: 95 }).toBuffer());
+  const scanPage = scanDoc.addPage([612, 792]);
+  scanPage.drawImage(scanJpg, { x: 36, y: 100, width: 540, height: 540 });
+  scanPage.drawText(`Scanned letter, page ${pg}`, { x: 72, y: 700, size: 24, font: scanFont });
+}
+const SCAN = Buffer.from(await scanDoc.save());
 const BODIES = {
   child: { type: 'image/jpeg', body: await jpeg(2400, 1600, 'Avery', 210) },
   family: { type: 'image/jpeg', body: await jpeg(1600, 2000, 'Family', 30) },
@@ -73,6 +85,22 @@ const THUMB = await jpeg(600, 400, 'thumb', 0);
 // ── JobTread (fake): Avery's account with everything, and a Jotform-era family ──
 const w = fakeApplicantWorld();
 globalThis.fetch = w.fetchImpl;
+// Files on JobTread's real CDN host, which the admin passes through (?cdn=) when a tab can't reach it
+const JT_CDN = {};
+const viaAdmin = [];
+globalThis.fetch = async (input, init = {}) => {
+  const u = new URL(input instanceof Request ? input.url : String(input));
+  if (u.host !== 'cdn.jobtread.com') return w.fetchImpl(input, init);
+  const body = JT_CDN[u.pathname];
+  if (!body) return new Response('gone', { status: 404 });
+  const range = new Headers(init.headers).get('range');
+  viaAdmin.push(range || 'whole');
+  const m = range && range.match(/^bytes=(\d+)-(\d*)$/);
+  if (!m) return new Response(body, { headers: { 'Content-Type': 'application/pdf', 'Content-Length': String(body.length), 'Accept-Ranges': 'bytes' } });
+  const from = Number(m[1]);
+  const to = Math.min(m[2] ? Number(m[2]) : body.length - 1, body.length - 1);
+  return new Response(body.subarray(from, to + 1), { status: 206, headers: { 'Content-Type': 'application/pdf', 'Content-Length': String(to - from + 1), 'Content-Range': `bytes ${from}-${to}/${body.length}`, 'Accept-Ranges': 'bytes' } });
+};
 const F = Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, f.id]));
 const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
 const APP_ID = 'app-avery001-a1b2c3';
@@ -101,9 +129,17 @@ const nora = {
   contacts: [], locations: [], comments: [], jobs: [],
   files: [{ id: 'n-pdf', name: 'Nora Kim_Application.pdf', type: 'application/pdf', size: PDF.length, createdAt: day(2) }, { id: 'n-photo', name: 'Nora Kim.jpg', type: 'image/jpeg', size: BODIES.space.body.length, createdAt: day(2) }],
 };
+// Applied before the website form, and no application PDF in JobTread: the drawer still never points at Jotform
+const remy = {
+  id: 'acctremy0001', name: 'Remy Hale', type: 'customer', org: ORG, createdAt: day(500),
+  fields: { [F.status]: 'Approved', [F.year]: '2026', [F.types]: ['Bedroom'], [F.diagnosis]: 'Autism', [F.birthday]: '2012-03-03', '22P4v2gNtdFR': 'https://www.jotform.com/submission/6987654321' },
+  contacts: [], locations: [], comments: [], jobs: [],
+  files: [{ id: 'r-photo', name: 'Remy.jpg', type: 'image/jpeg', size: BODIES.child.body.length, createdAt: day(400) }],
+};
 w.world.accounts[avery.id] = avery;
 w.world.accounts[nora.id] = nora;
-const FILE_BODY = { 'f-child': 'child', 'f-family': 'family', 'f-pdf': 'pdf', 'f-pdf2': 'pdf', 'f-docx': 'docx', 'n-pdf': 'pdf', 'n-photo': 'space' };
+w.world.accounts[remy.id] = remy;
+const FILE_BODY = { 'r-photo': 'child', 'f-child': 'child', 'f-family': 'family', 'f-pdf': 'pdf', 'f-pdf2': 'pdf', 'f-docx': 'docx', 'n-pdf': 'pdf', 'n-photo': 'space' };
 
 // ── D1 and R2: Avery's website application (answers, four photos, the PDF) ──
 const DB = await createD1();
@@ -129,6 +165,7 @@ await DB.prepare(`INSERT INTO applications (id, year, child_name, parent_name, p
 const headersFile = readFileSync(join(ROOT, 'public/_headers'), 'utf8');
 const adminCsp = (headersFile.split('/admin/*')[1].match(/^\s+Content-Security-Policy: (.+)$/m) || [])[1];
 const CSP = adminCsp.replaceAll('https://cdn.jobtread.com', 'https://cdn.jobtread.com https://cdn.fake');
+const OLD_CSP = CSP.replace(/connect-src [^;]+/, (d) => d.replace(/ https:\/\/cdn\.(jobtread\.com|fake)/g, ''));
 
 // ── A static server for public/, plus the harness page in the admin shell ──
 const adminHtml = readFileSync(join(ROOT, 'public/admin/index.html'), 'utf8');
@@ -151,6 +188,7 @@ const server = createServer((req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   const csp = path.startsWith('/admin/') ? { 'content-security-policy': CSP } : {};
   if (path === '/admin/__viewer.html') { res.writeHead(200, { 'content-type': 'text/html', ...csp }); return res.end(shell); }
+  if (path === '/admin/__old.html') { res.writeHead(200, { 'content-type': 'text/html', 'content-security-policy': OLD_CSP }); return res.end(shell); }
   const file = join(ROOT, 'public', path);
   if (file.startsWith(join(ROOT, 'public')) && existsSync(file) && statSync(file).isFile()) {
     res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream', ...csp });
@@ -197,7 +235,8 @@ async function answer(req) {
   }
   if (url.pathname === '/api/applicants-admin' || url.pathname === '/api/applications-admin') {
     clearFormCache();
-    const request = new Request(`https://admin.test${url.pathname}${url.search}`, { method: req.method(), body: req.method() === 'POST' ? req.postData() : undefined, headers: { 'content-type': 'application/json' } });
+    const range = req.headers().range;
+    const request = new Request(`https://admin.test${url.pathname}${url.search}`, { method: req.method(), body: req.method() === 'POST' ? req.postData() : undefined, headers: { 'content-type': 'application/json', ...(range ? { range } : {}) } });
     const ctx = { env, request, data: { userEmail: 'linzi@soardcharity.com' }, waitUntil: () => {} };
     const mod = url.pathname === '/api/applicants-admin' ? api : formsApi;
     const res = req.method() === 'POST' ? await mod.onRequestPost(ctx) : await mod.onRequestGet(ctx);
@@ -210,7 +249,7 @@ async function answer(req) {
 const consoleErrors = [];
 let newTabs = 0;
 browser.on('targetcreated', (t) => { if (t.type() === 'page') newTabs++; });
-async function open(width, height, phone = false) {
+async function open(width, height, phone = false, harness = '__viewer.html') {
   const page = await browser.newPage();
   await page.setViewport({ width, height, deviceScaleFactor: 2, isMobile: phone, hasTouch: phone });
   await page.setRequestInterception(true);
@@ -220,13 +259,13 @@ async function open(width, height, phone = false) {
       req.respond({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, error: e.message }) });
     }
   });
-  page.on('console', (m) => { if (m.type() === 'error' && !/tile|favicon|Failed to load resource/.test(m.text())) consoleErrors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/tile|favicon|Failed to load resource/.test(m.text()) && !(harness === '__old.html' && /cdn\.jobtread\.com.*Content Security Policy/.test(m.text()))) consoleErrors.push(m.text()); });
   page.on('pageerror', (e) => consoleErrors.push(e.message));
   page.on('error', (e) => { consoleErrors.push(`page crashed: ${e.message}`); console.log('  ✗ the page crashed:', e.message); });
   page.on('close', () => { if (process.env.FV_DEBUG) console.log('DEBUG page closed', new Error().stack.split('\n').slice(2, 5).join(' | ')); });
   const cdp = await page.createCDPSession();
   await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: DOWNLOADS });
-  await page.goto(`${SITE}/admin/__viewer.html`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${SITE}/admin/${harness}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.apl-board, .apl-table', { timeout: 20000 });
   return page;
 }
@@ -473,9 +512,39 @@ ok(await clickText(page, '.apl-side button', /Read the application/), 'Read the 
 await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1, { timeout: 10000 }).catch(() => null);
 ok(await title(page) === 'Nora Kim_Application.pdf' && await count(page) === '2 of 2', `opens the PDF in the viewer, with the family’s photo a step away (${await count(page)})`);
 await closeViewer(page);
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 3000 }).catch(() => null);
+await openFamily(page, remy.id);
+ok(!(await page.$$eval('.apl-drawer a', (els) => els.some((a) => /jotform/i.test(a.href)))) && !/original application/i.test(await text(page, '.apl-side')), 'a family with no application PDF in JobTread gets no link to Jotform either');
 const csp = await page.evaluate(() => window.__csp);
 ok(csp.length === 0, `no CSP violations${csp.length ? `: ${csp.slice(0, 4).join(' | ')}` : ''}`);
 await page.close();
+
+// A tab opened before this work still runs under the old CSP: JobTread's CDN can't be fetched from it.
+// PDFs and Download come through the admin instead (images and videos never needed connect-src).
+console.log('A tab on the old CSP');
+JT_CDN['/old-letter'] = PDF;
+JT_CDN['/old-scan'] = SCAN;
+const old = await open(1440, 900, false, '__old.html');
+const oldFiles = [
+  { name: 'Old tab letter.pdf', type: 'application/pdf', size: PDF.length, url: 'https://cdn.jobtread.com/old-letter' },
+  { name: 'Old tab scan.pdf', type: 'application/pdf', size: SCAN.length, url: 'https://cdn.jobtread.com/old-scan' },
+];
+await old.evaluate(async (files) => (await import('/admin/file-viewer.js')).openViewer(files, 0), oldFiles);
+await old.waitForFunction(() => document.querySelector('.fv-pdf .page canvas') && !document.querySelector('.fv-pdf-wait') || document.querySelector('.fv-card'), { timeout: 15000 }).catch(() => null);
+ok((await old.evaluate(() => window.__csp)).some((v) => /connect-src https:\/\/cdn\.jobtread\.com/.test(v)), 'the old CSP does block JobTread’s CDN in this tab (the case staff hit)');
+ok(await old.$$eval('.fv-pdf .page', (els) => els.length).catch(() => 0) === 2 && !(await old.$('.fv-card')) && viaAdmin.includes('whole'), `a PDF still opens, through the admin (${viaAdmin.length} request(s))`);
+const before = viaAdmin.length;
+await old.keyboard.press('ArrowRight');
+await old.waitForFunction(() => document.querySelector('.fv-pdf .page canvas') && !document.querySelector('.fv-pdf-wait') || document.querySelector('.fv-card'), { timeout: 20000 }).catch(() => null);
+const scanAsks = viaAdmin.slice(before);
+ok(!(await old.$('.fv-card')) && await old.$$eval('.fv-pdf .page canvas', (els) => els.length).catch(() => 0) >= 1 && scanAsks.length && scanAsks.every((r) => /^bytes=/.test(r)), `a ${Math.round(SCAN.length / 1048576)} MB scan opens in parts through the admin (${scanAsks.join(', ')})`);
+await old.keyboard.press('ArrowLeft');
+await sleep(300);
+await old.click('.fv-actions button[aria-label="Download"]');
+for (let t = 0; t < 30 && !saved.includes('Old tab letter.pdf'); t++) { await sleep(150); saved = readdirSync(DOWNLOADS); }
+ok(saved.includes('Old tab letter.pdf'), 'Download works from that tab too (through the admin)');
+await old.close();
 
 console.log('Phone 390');
 const phone = await open(390, 844, true);

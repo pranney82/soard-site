@@ -83,3 +83,57 @@ test('a family’s files and what they attach to messages come with links and th
   assert.equal(byName['Letter.docx'].thumb, null, 'a Word file has none (its icon shows)');
   assert.deepEqual(d.comments.find((c) => c.id === 'c1').files, [{ id: 'a1', name: 'Avery Stone_Application.pdf', type: 'application/pdf', size: 2000, at: null, url: 'https://cdn.fake/a1', thumb: 'https://cdn.fake/a1?size=600' }]);
 });
+
+test('a JobTread file the browser can’t fetch itself comes through the admin, Range and all, and only JobTread’s', async () => {
+  const api = await import('../functions/api/applicants-admin.js');
+  const w = fakeApplicantWorld();
+  const env = { ...w.env, DB: await createD1() };
+  const get = (q, headers = {}) => api.onRequestGet({ env, request: new Request(`https://admin.test/api/applicants-admin?${q}`, { headers }), data: {}, waitUntil: () => {} });
+  const realFetch = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const u = new URL(input instanceof Request ? input.url : String(input));
+    asked.push({ host: u.host, range: new Headers(init.headers).get('range') });
+    return new Response('%PDF-1.7 part', { status: 206, headers: { 'Content-Type': 'application/pdf', 'Content-Length': '13', 'Content-Range': 'bytes 0-12/99', 'Accept-Ranges': 'bytes', 'Set-Cookie': 'x=1' } });
+  };
+  try {
+    const off = await get(`cdn=${encodeURIComponent('https://evil.example/x.pdf')}`);
+    assert.equal(off.status, 400);
+    assert.equal((await get(`cdn=${encodeURIComponent('http://cdn.jobtread.com/x')}`)).status, 400, 'https only');
+    assert.equal(asked.length, 0, 'nothing fetched for another site');
+    const res = await get(`cdn=${encodeURIComponent('https://cdn.jobtread.com/abc')}`, { range: 'bytes=0-12' });
+    assert.equal(res.status, 206);
+    assert.deepEqual(asked, [{ host: 'cdn.jobtread.com', range: 'bytes=0-12' }]);
+    assert.equal(res.headers.get('content-range'), 'bytes 0-12/99');
+    assert.equal(res.headers.get('accept-ranges'), 'bytes');
+    assert.equal(res.headers.get('set-cookie'), null, 'only the file’s own headers come along');
+    assert.equal(await res.text(), '%PDF-1.7 part');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('a makeover family’s application shows even when their job has hundreds of newer files', async () => {
+  const w = fakeApplicantWorld();
+  const env = { ...w.env, DB: await createD1() };
+  const F = Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, f.id]));
+  const day = (n) => new Date(Date.UTC(2026, 0, 1) + n * 86400000).toISOString();
+  w.world.accounts.acct2 = {
+    id: 'acct2', name: 'Remy Hale', type: 'customer', org: ORG, createdAt: day(0), fields: { [F.status]: 'Approved', [F.year]: '2026' },
+    contacts: [], primaryContactId: null, locations: [], comments: [], jobs: [{ id: 'job2', name: 'Remy Hale (2026)' }],
+    files: [
+      { id: 'app', name: 'Remy Hale_Application.pdf', type: 'application/pdf', size: 2000, createdAt: day(1) },
+      { id: 'kid', name: 'Remy.jpg', type: 'image/jpeg', size: 1000, createdAt: day(2) },
+      // The build: plan sets, receipts and CompanyCam photos on the job, all newer
+      ...Array.from({ length: 90 }, (_, k) => ({ id: `job-${k}`, name: `CompanyCam ${k}`, type: 'image/jpeg', size: 500, createdAt: day(100 + k), jobId: 'job2' })),
+    ],
+  };
+  await syncAllApplicants(env, { fetchImpl: w.fetchImpl });
+  const d = await applicantDetail(env, 'acct2', { fetchImpl: w.fetchImpl });
+  assert.deepEqual(d.files.map((f) => f.name).sort(), ['Remy Hale_Application.pdf', 'Remy.jpg']);
+});
+
+test('the drawer never links out to Jotform', () => {
+  const src = read('public/admin/applicants.js');
+  assert.ok(!/href=\$\{a\.applicationUrl\}/.test(src), 'no link to the old Application URL (a Jotform submission for families who applied before the website form)');
+});

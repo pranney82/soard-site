@@ -99,6 +99,11 @@ export function viewerLink(files, i) {
   };
 }
 
+// The admin's own way to a JobTread file (functions/api/applicants-admin.js ?cdn=), for when the browser can't
+// fetch from JobTread's CDN itself: a tab opened before the admin's CSP allowed the CDN, or a network that blocks it
+const onJobTread = (url) => /^https:\/\/cdn\.jobtread\.com\//.test(url);
+const viaSite = (url) => new URL(`/api/applicants-admin?cdn=${encodeURIComponent(url)}`, location.href).href;
+
 /** Save a file under its own name. JobTread's files are on another site, where <a download> is ignored */
 async function saveFile(f, onProgress) {
   const a = document.createElement('a');
@@ -107,7 +112,9 @@ async function saveFile(f, onProgress) {
   let blobUrl = null;
   if (new URL(f.url, location.href).origin === location.origin) a.href = f.url;
   else {
-    const r = await fetch(f.url, { credentials: 'omit' });
+    const direct = new URL(f.url, location.href).href;
+    let r = await fetch(direct, { credentials: 'omit' }).catch((e) => (onJobTread(direct) ? null : Promise.reject(e)));
+    if (!r?.ok && onJobTread(direct)) r = await fetch(viaSite(direct));
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     // Read it in pieces so a big file (families send videos and scans of 100 MB) shows how far along it is
     const total = Number(r.headers.get('content-length')) || f.size || 0;
@@ -517,6 +524,7 @@ function PdfView({ f, ctl, onZoom, onPage, fail }) {
   const [state, setState] = useState('loading'); // loading | ready | failed | locked
   const [got, setGot] = useState(null); // how much of a big PDF has arrived: { loaded, total? }
   const [whole, setWhole] = useState(false); // reading it in parts failed: read the whole file instead
+  const [site, setSite] = useState(false); // the CDN can't be reached from this page: through the admin instead
   // JobTread's picture of page 1, shown while the PDF opens
   const peek = f.thumb ? f.thumb.replace(/([?&]size=)\d+/, '$12048') : null;
   useEffect(() => {
@@ -524,7 +532,19 @@ function PdfView({ f, ctl, onZoom, onPage, fail }) {
     let task = null;
     let viewer = null;
     let doc = null;
+    let locked = false; // asked for a password: never fall back from that
+    let range = null;
     const ac = new AbortController();
+    const direct = new URL(f.url, location.href).href;
+    const url = site ? viaSite(direct) : direct;
+    // When JobTread's CDN can't be reached from this page, the admin passes the file through; past that,
+    // a file read in parts is read whole, and only then does it fail
+    const fallBack = () => {
+      if (dead) return;
+      if (!site && onJobTread(direct)) setSite(true);
+      else if (range && !whole) setWhole(true);
+      else setState('failed');
+    };
     (async () => {
       try {
         const { pdfjsLib, PDFViewer, EventBus, PDFLinkService } = await loadPdf();
@@ -545,23 +565,21 @@ function PdfView({ f, ctl, onZoom, onPage, fail }) {
         eventBus.on('scalechanging', (e) => onZoom({ pct: Math.round(e.scale * 100), canIn: e.scale < 4, canOut: e.scale > 0.3 }));
         const base = new URL('./pdf/', import.meta.url).href;
         pdfWorker ||= new pdfjsLib.PDFWorker();
-        const url = new URL(f.url, location.href).href;
         // A big PDF on JobTread's CDN (scans run to 100 MB) is read in parts, only what the pages on screen
         // need, so page 1 shows in seconds, not after the whole file. The CDN takes a Range request with no
         // preflight but doesn't expose Accept-Ranges, so pdf.js can't find that out for itself.
-        let range = null;
-        if (!whole && (f.size || 0) > 4 * 1048576 && new URL(url).origin !== location.origin) {
+        if (!whole && (f.size || 0) > 4 * 1048576 && (site || new URL(url).origin !== location.origin)) {
           let read = 0;
           range = new pdfjsLib.PDFDataRangeTransport(f.size, null);
           range.requestDataRange = (begin, end) => {
-            fetch(url, { headers: { Range: `bytes=${begin}-${end - 1}` }, credentials: 'omit', signal: ac.signal })
+            fetch(url, { headers: { Range: `bytes=${begin}-${end - 1}` }, credentials: site ? 'same-origin' : 'omit', signal: ac.signal })
               .then((r) => (r.status === 206 ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
               .then((buf) => {
                 read += buf.byteLength;
                 if (!dead && read > 2 * 1048576) setGot({ loaded: read, total: null });
                 range.onDataRange(begin, new Uint8Array(buf));
               })
-              .catch(() => { if (!dead) setWhole(true); });
+              .catch(fallBack);
           };
         }
         task = pdfjsLib.getDocument({
@@ -569,7 +587,7 @@ function PdfView({ f, ctl, onZoom, onPage, fail }) {
           worker: pdfWorker,
           standardFontDataUrl: `${base}standard_fonts/`, wasmUrl: `${base}wasm/`, useWasm: false, enableXfa: false,
         });
-        task.onPassword = () => { if (!dead) setState('locked'); task.destroy(); };
+        task.onPassword = () => { locked = true; if (!dead) setState('locked'); task.destroy(); };
         let pct = -1;
         // (read in parts, the count is what's been read; pdf.js's own would read as if all of it were coming)
         if (!range) task.onProgress = ({ loaded, total }) => {
@@ -588,7 +606,9 @@ function PdfView({ f, ctl, onZoom, onPage, fail }) {
           fit: () => { viewer.currentScaleValue = 'auto'; },
         };
       } catch (e) {
-        if (!dead) setState((s) => (s === 'locked' || e?.name === 'PasswordException' ? 'locked' : 'failed'));
+        if (dead) return;
+        if (locked || e?.name === 'PasswordException') setState('locked');
+        else fallBack();
       }
     })();
     // ⌘/Ctrl-scroll (or a trackpad pinch) zooms around the pointer
@@ -607,7 +627,7 @@ function PdfView({ f, ctl, onZoom, onPage, fail }) {
       if (!doc) end();
       else Promise.race([Promise.allSettled(Array.from({ length: doc.numPages }, (_, k) => doc.getPage(k + 1))), new Promise((r) => setTimeout(r, 10000))]).then(end);
     };
-  }, [f.url, whole]);
+  }, [f.url, whole, site]);
   if (state === 'locked') return fail({ title: 'This PDF has a password', text: 'Download it and open it with the password.' });
   if (state === 'failed') return fail({ title: 'This PDF didn’t open', text: 'It may have moved in JobTread. Download it, or open it in a new tab.' });
   return html`<div class="fv-pdf" ref=${wrap} tabindex="0" aria-label=${`${f.name || 'PDF'}, pages`}>

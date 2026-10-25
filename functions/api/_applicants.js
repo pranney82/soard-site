@@ -767,8 +767,10 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
           files: { $: { size: 10 }, nodes: { id: {}, name: {}, type: {}, size: {}, url: {}, thumb: { _: 'url', $: { size: 600 } } } },
         },
       },
+      // The family's own files only. Asking for the newest of everything and dropping the job's afterwards
+      // lost a makeover family's application to the job's hundreds of newer photos, receipts and plans.
       files: {
-        $: { size: 60, sortBy: [{ field: 'createdAt', order: 'desc' }] },
+        $: { size: 60, where: [['job', 'id'], '=', null], sortBy: [{ field: 'createdAt', order: 'desc' }] },
         nodes: { id: {}, name: {}, type: {}, size: {}, createdAt: {}, url: {}, thumb: { _: 'url', $: { size: 600 } }, job: { id: {} } },
       },
     },

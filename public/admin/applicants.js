@@ -1903,8 +1903,8 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   const photos = files.filter(f => kindOf(f) === 'image');
   const docs = files.filter(f => kindOf(f) !== 'image');
   const shown = [...photos, ...docs]; // one set in the viewer, in the order it's shown here
-  // A Jotform-era family's application is the PDF copied into JobTread (the site keeps no answers for them)
-  const appPdf = docs.find(f => kindOf(f) === 'pdf' && /application\.pdf$/i.test(f.name || ''));
+  // A family who applied before the website form: their application is the PDF in JobTread
+  const appPdf = docs.find(f => kindOf(f) === 'pdf' && /application/i.test(f.name || ''));
   const visible = SIDE_FIELDS.filter(k => fields[k] && (k !== 'denialReason' || a.status === 'Denied' || a.fields?.denialReason));
   return html`<section class="apl-side" aria-label="Details">
     <div class="apl-panel">
@@ -1936,11 +1936,10 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
         : a.address && html`<p class="apl-card-sub">JobTread has no map point for this address, so it can't be checked against the service area.</p>`}
     </div>
 
-    ${(photos.length > 0 || docs.length > 0 || a.applicationId || a.applicationUrl) && html`<div class="apl-panel">
+    ${(photos.length > 0 || docs.length > 0 || a.applicationId) && html`<div class="apl-panel">
       <h3>Application and files</h3>
       ${a.applicationId ? html`<${WebsiteAnswers} id=${a.applicationId} key=${a.applicationId} video=${docs.find(f => kindOf(f) === 'video' && /application/i.test(f.name || ''))} />`
-        : appPdf ? html`<button class="btn btn-ghost btn-sm" style="justify-self:start" onPointerEnter=${() => warmFiles([appPdf])} onFocus=${() => warmFiles([appPdf])} onClick=${() => openViewer(shown, shown.indexOf(appPdf))}>Read the application</button>`
-          : a.applicationUrl && html`<a class="btn btn-ghost btn-sm" style="justify-self:start" href=${a.applicationUrl} target="_blank" rel="noopener">Open the original application ${Icon.ext()}</a>`}
+        : appPdf && html`<button class="btn btn-ghost btn-sm" style="justify-self:start" onPointerEnter=${() => warmFiles([appPdf])} onFocus=${() => warmFiles([appPdf])} onClick=${() => openViewer(shown, shown.indexOf(appPdf))}>Read the application</button>`}
       ${photos.length > 0 && html`<div class="apl-gallery">${photos.map((f, i) => html`<a ...${viewerLink(shown, i)} title=${f.name}><img src=${f.thumb || f.url} alt=${f.name} loading="lazy" /></a>`)}</div>`}
       ${docs.length > 0 && html`<div class="apl-doclist">${docs.map((f, i) => html`<a ...${viewerLink(shown, photos.length + i)}><${FileThumb} f=${f} />${f.name}<small>${sizeText(f.size)}</small></a>`)}</div>`}
     </div>`}
