@@ -29,6 +29,7 @@
  */
 
 import { pave, SOARD_ORG_ID, normalizeName } from './_reveals.js';
+import { SITE_ORIGIN } from './_broadcast-notify.js';
 import { refreshApplicants, childPhotoFile, ensureApplicantSchema } from './_applicants.js';
 
 export const JOTFORM_FORMS = [
@@ -243,7 +244,8 @@ async function accountFiles(env, accountId, fetchImpl) {
     account: {
       $: { id: accountId }, id: {}, name: {},
       jobs: { $: { size: 2, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: { id: {}, name: {} } },
-      files: { $: { size: 100 }, nodes: { id: {}, name: {}, type: {}, job: { id: {} } } },
+      // The family's own files (a busy job's hundreds of newer files would push them out of a page of everything)
+      files: { $: { size: 100, where: [['job', 'id'], '=', null] }, nodes: { id: {}, name: {}, type: {}, job: { id: {} } } },
     },
   }, fetchImpl);
   const a = data?.account;
@@ -388,6 +390,113 @@ async function copySubmission(env, row, { fetchImpl, now }) {
   await DB.prepare('UPDATE jotform_backfill SET status = ?, saved = ?, attached = ?, error = ?, tries = tries + 1, updated_at = ? WHERE submission_id = ?')
     .bind(status, JSON.stringify(saved), JSON.stringify(attached), status === 'done' ? null : 'No file could be downloaded', iso(now), row.submission_id).run();
   return { status, saved: came, attached: attached.filter(a => a.id).length };
+}
+
+// ─── A second look (Oct 24 2026) ────────────────────────────────────
+
+const SECOND_LOOK = 1;
+const APPLICATION_URL = '22P4v2gNtdFR'; // JobTread's Application URL field (FIELDS in ./_applications.js)
+
+/** What a family's account is missing, from the copies the site saved (its bucket, not Jotform) */
+async function attachSaved(env, row, accountId, fetchImpl) {
+  const files = bucket(env);
+  const acct = await accountFiles(env, accountId, fetchImpl);
+  if (!acct) return [{ error: 'The JobTread account is gone' }];
+  const saved = parse(row.saved, []);
+  const out = [];
+  for (const kind of ['child', 'family', 'space1', 'space2', 'pdf', 'video']) {
+    const s = saved.find((x) => x.kind === kind && x.key);
+    if (!s || hasKind(kind, acct.files, [acct.name, acct.jobName])) continue;
+    const obj = await files?.get(s.key);
+    if (!obj) { out.push({ kind, error: 'Not in the bucket' }); continue; }
+    const bytes = new Uint8Array(await obj.arrayBuffer());
+    const type = s.type || obj.httpMetadata?.contentType || (kind === 'pdf' ? 'application/pdf' : 'image/jpeg');
+    const name = jobtreadName(kind, acct.name, type);
+    const id = await uploadToJobTread(env, { accountId, name, bytes, type }, fetchImpl);
+    acct.files.push({ id, name, type });
+    out.push({ kind, name, id });
+  }
+  return out;
+}
+
+/**
+ * Peter, Oct 24 2026: "any jotform files should be brought into the website/app, no redirect to
+ * jotform at all". The copy matched only families on the Applicants board, by the words of the
+ * child's name, so two families' files stayed in the site's bucket: one whose JobTread account links
+ * the submission but isn't on the board, one whose first and last names are the same word. And
+ * JobTread's Application URL still sent the families who applied before the website form to Jotform.
+ * Once, after the copy:
+ *  - what's still unmatched is matched against every customer account: the one whose Application
+ *    URL names the submission, else the one named exactly as the child;
+ *  - that account gets what it's missing, from the site's saved copies;
+ *  - every Application URL on Jotform points at the family's page in the admin instead (cleared on
+ *    an account that isn't on the board). The old links stay in jotform_backfill_state, to undo.
+ * Never throws.
+ */
+export async function jotformSecondLook(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  try {
+    const { DB } = env;
+    if (!DB || !env.JOBTREAD_GRANT_KEY) return null;
+    await ensureSchema(DB);
+    if (!(await getState(DB, 'done'))) return null;
+    if (String(await getState(DB, 'second_look')) === String(SECOND_LOOK)) return { done: true };
+
+    // Every customer account, with its Application URL
+    const accounts = [];
+    let page = null;
+    for (let i = 0; i < 50; i++) {
+      const data = await pave(env.JOBTREAD_GRANT_KEY, {
+        organization: {
+          $: { id: SOARD_ORG_ID },
+          accounts: {
+            $: { size: 100, where: [['type', '=', 'customer']], ...(page ? { page } : {}) },
+            nodes: { id: {}, name: {}, customFieldValues: { $: { where: [['customField', 'id'], '=', APPLICATION_URL] }, nodes: { value: {} } } },
+            nextPage: {},
+          },
+        },
+      }, fetchImpl);
+      const got = data?.organization?.accounts;
+      for (const a of got?.nodes || []) accounts.push({ id: a.id, name: a.name || '', url: String(a.customFieldValues?.nodes?.[0]?.value || '') });
+      page = got?.nextPage || null;
+      if (!page) break;
+    }
+
+    const matched = [];
+    const { results: left } = await DB.prepare("SELECT * FROM jotform_backfill WHERE kind = 'makeover' AND account_id IS NULL").all();
+    for (const row of left || []) {
+      const linked = accounts.filter((a) => a.url.includes(row.submission_id));
+      const named = row.name ? accounts.filter((a) => normalizeName(a.name) === normalizeName(row.name)) : [];
+      const hit = linked.length === 1 ? { id: linked[0].id, by: 'link' } : named.length === 1 ? { id: named[0].id, by: 'name' } : null;
+      if (!hit) continue;
+      const attached = await attachSaved(env, row, hit.id, fetchImpl);
+      await DB.prepare('UPDATE jotform_backfill SET account_id = ?, matched_by = ?, attached = ?, updated_at = ? WHERE submission_id = ?')
+        .bind(hit.id, hit.by, JSON.stringify(attached), iso(now), row.submission_id).run();
+      matched.push({ id: hit.id, by: hit.by, files: attached.filter((a) => a.id).length });
+    }
+
+    await ensureApplicantSchema(DB);
+    const { results: board } = await DB.prepare('SELECT account_id FROM applicants').all();
+    const onBoard = new Set((board || []).map((r) => r.account_id));
+    const pointed = [];
+    for (const a of accounts.filter((x) => /jotform\.com/i.test(x.url))) {
+      const next = onBoard.has(a.id) ? `${SITE_ORIGIN}/admin/#applications/applicants/${a.id}` : null;
+      try {
+        await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: a.id, customFieldValues: { [APPLICATION_URL]: next } } } }, fetchImpl);
+        pointed.push({ id: a.id, was: a.url, now: next });
+      } catch (e) {
+        pointed.push({ id: a.id, was: a.url, error: String(e.message || e).slice(0, 200) });
+      }
+    }
+
+    const touched = [...new Set([...matched.map((m) => m.id), ...pointed.filter((p) => !p.error && p.now).map((p) => p.id)])];
+    if (touched.length) await refreshApplicants(env, touched, { fetchImpl, now }).catch(() => 0);
+    await setState(DB, 'second_look_result', JSON.stringify({ at: iso(now), matched, pointed }), now);
+    await setState(DB, 'second_look', SECOND_LOOK, now);
+    return { matched: matched.length, files: matched.reduce((n, m) => n + m.files, 0), pointed: pointed.filter((p) => !p.error).length, failed: pointed.filter((p) => p.error).length };
+  } catch (e) {
+    try { await setState(env.DB, 'last_error', `${iso(now)} second look: ${String(e.message || e).slice(0, 300)}`, now); } catch { /* best effort */ }
+    return { error: String(e.message || e) };
+  }
 }
 
 /**

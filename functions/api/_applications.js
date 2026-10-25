@@ -47,7 +47,7 @@ import { isUpload, isInput, answerText, progressPercent, renderMessage, choice, 
 import { checkServiceArea, areaText, addressKey, checkableAddress, bandOf } from './_geo.js';
 import { placeHome } from '../../public/admin/area-shared.js';
 import { maybeSyncApplicants } from './_applicants.js';
-import { runJotformBackfill } from './_jotform-backfill.js';
+import { runJotformBackfill, jotformSecondLook } from './_jotform-backfill.js';
 import { runNotifications } from './_applicant-notify.js';
 import { runApprovals } from './_applicant-approved.js';
 import { logAudit } from './_audit.js';
@@ -1379,7 +1379,9 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
     const applicants = await maybeSyncApplicants(env, { fetchImpl, now });
     // Jotform's applications, copied home once (./_jotform-backfill.js); a no-op once done
     const jotform = await runJotformBackfill(env, { fetchImpl, now });
-    return { processed, reminded, expired, notified, approved, applicants, capped, jotform };
+    // Then, once: the families it couldn't place, and JobTread's Application URLs off Jotform
+    const jotformLook = await jotformSecondLook(env, { fetchImpl, now });
+    return { processed, reminded, expired, notified, approved, applicants, capped, jotform, jotformLook };
   } catch {
     return null;
   }

@@ -8,7 +8,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
-import { runJotformBackfill, matchAccount, submissionFiles, submissionName, backfillFacts, sniffType } from '../functions/api/_jotform-backfill.js';
+import { runJotformBackfill, jotformSecondLook, matchAccount, submissionFiles, submissionName, backfillFacts, sniffType } from '../functions/api/_jotform-backfill.js';
 import { syncAllApplicants, listApplicants, FIELDS } from '../functions/api/_applicants.js';
 
 const KEY = 'jf-secret-key';
@@ -233,4 +233,51 @@ test('nothing runs without the key', async () => {
   delete env.JOTFORM_API_KEY;
   assert.equal(await runJotformBackfill(env, opts()), null);
   assert.equal(jf.state.calls.length, 0);
+});
+
+test('second look: the families the copy couldn’t place get their files from the site’s copies, and no Application URL sends anyone to Jotform', async () => {
+  // On the board, linked (the copy handles it); its Application URL still points at Jotform
+  const milo = addAccount({ name: 'Milo Rivera', fields: { [APP_URL]: 'https://www.jotform.com/submission/6380000000000000001' } });
+  jf.addSub('252326779451161', '6380000000000000001', { child: 'Milo Rivera', photos: { child: 'IMG_1.jpeg' } });
+  // First and last name the same word: the copy's word match finds both, the exact name finds one
+  const logan = addAccount({ name: 'Logan Logan', fields: { [F.year]: '2025' } });
+  addAccount({ name: 'Logan Smith' });
+  jf.addSub('250455568355161', '6200000000000000011', { child: 'Logan Logan', photos: { child: 'IMG_2.jpeg', family: 'IMG_3.jpeg' }, createdAt: '2025-04-09 10:00:00' });
+  // Linked from a JobTread account that isn't on the board (no Status or season), which already has the PDF
+  const ben = { id: 'acctben00001', name: 'Benjamin Whitten', type: 'customer', org: ORG, createdAt: '2025-10-15T19:47:25.000Z', fields: { [APP_URL]: 'https://www.jotform.com/submission/6363668348339671580' },
+    contacts: [], primaryContactId: null, locations: [], comments: [], jobs: [], files: [{ id: 'ben-pdf', name: 'Benjamin Whitten_Application.pdf', type: 'application/pdf' }] };
+  w.world.accounts[ben.id] = ben;
+  jf.addSub('252326779451161', '6363668348339671580', { child: 'Benjamin Whitten', photos: { child: 'IMG_4.jpeg', space1: 'image.jpg' } });
+  // Two families with the name: still no guess
+  addAccount({ name: 'Sam Lee' });
+  addAccount({ name: 'Sam Lee', createdAt: '2025-06-12T12:00:00.000Z' });
+  jf.addSub('250455568355161', '6200000000000000012', { child: 'Sam Lee', photos: { child: 'IMG_5.jpeg' }, createdAt: '2025-04-10 10:00:00' });
+  await syncAllApplicants(env, { fetchImpl: w.fetchImpl });
+  await runJotformBackfill(env, opts());
+  assert.equal((await runUntilDone()).done, true);
+  const before = Object.fromEntries((await env.DB.prepare('SELECT submission_id, matched_by FROM jotform_backfill').all()).results.map((r) => [r.submission_id, r.matched_by]));
+  assert.deepEqual([before['6200000000000000011'], before['6363668348339671580'], before['6200000000000000012']], ['several', 'none', 'several'], 'what the copy couldn’t place');
+  assert.equal(logan.files.length + (ben.files.length - 1), 0);
+
+  // Jotform is gone: the second look never asks it for anything
+  jf.state.downloadsDown = true;
+  const calls = jf.state.calls.length;
+  const r = await jotformSecondLook(env, { fetchImpl: jf.fetchImpl });
+  assert.deepEqual(r, { matched: 2, files: 5, pointed: 2, failed: 0 }); // Logan 3, Benjamin 2
+  assert.equal(jf.state.calls.length, calls, 'from the site’s copies, not Jotform');
+  const names = (a) => a.files.map((f) => f.name).sort();
+  assert.deepEqual(names(logan), ['Logan Logan Family.jpg', 'Logan Logan.jpg', 'Logan Logan_Application.pdf']);
+  assert.deepEqual(names(ben), ['Benjamin Whitten Space 1.jpg', 'Benjamin Whitten.jpg', 'Benjamin Whitten_Application.pdf'], 'only what was missing (the PDF was there)');
+  for (const a of Object.values(w.world.accounts).filter((x) => x.name === 'Sam Lee')) assert.equal(a.files.length, 0);
+
+  // No Application URL points at Jotform: the family's page in the admin, cleared off the board
+  assert.equal(milo.fields[APP_URL], `https://sunshineonaranneyday.com/admin/#applications/applicants/${milo.id}`);
+  assert.equal(ben.fields[APP_URL] ?? null, null);
+  assert.ok(Object.values(w.world.accounts).every((a) => !/jotform/i.test(String(a.fields[APP_URL] || ''))));
+  const kept = JSON.parse((await env.DB.prepare("SELECT value FROM jotform_backfill_state WHERE key = 'second_look_result'").first('value')));
+  assert.deepEqual(kept.pointed.map((p) => p.was).sort(), ['https://www.jotform.com/submission/6363668348339671580', 'https://www.jotform.com/submission/6380000000000000001'], 'the old links are kept, to undo');
+
+  // Once
+  assert.deepEqual(await jotformSecondLook(env, { fetchImpl: jf.fetchImpl }), { done: true });
+  assert.deepEqual(names(logan), ['Logan Logan Family.jpg', 'Logan Logan.jpg', 'Logan Logan_Application.pdf']);
 });

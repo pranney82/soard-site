@@ -321,7 +321,7 @@ const MAP = { t: 'SOARD', children: [
           when: 'Every 2 minutes on the application sweep, a few at a time, until every Jotform submission is copied (once, October 2026).',
           does: 'Copies every submission of the 2025 and 2026 makeover forms and the Advisory Board form: the answers into the database, the photos and Jotform’s PDF into private storage, and, for each family it can match in JobTread, whatever their account is missing (“<Child>.jpg”, Family, Space 1 and 2, the application PDF). It never makes a JobTread account.',
           touches: ['Jotform', 'JobTread', 'D1', 'R2'], where: 'functions/api/_jotform-backfill.js (on the sweep in _applications.js)',
-          info: 'A family is matched by JobTread’s Application URL, else by the child’s name when exactly one family has it. Needs JOTFORM_API_KEY in Cloudflare. Once it’s done, nothing on the site uses Jotform, and the forms there can be switched off.',
+          info: 'A family is matched by JobTread’s Application URL, else by the child’s name when exactly one family has it. Needs JOTFORM_API_KEY in Cloudflare. Once it’s done, nothing on the site uses Jotform, and the forms there can be switched off. Then, once (October 24 2026): the families it couldn’t place are matched against every JobTread account (its Application URL, else exactly the child’s name) and get their files from the site’s own copies, and every Application URL that still pointed at Jotform points at the family’s page in the admin.',
           live: (f) => {
             const j = f.jotform;
             if (!j || j.error) return null;
