@@ -38,6 +38,7 @@ import * as historyApi from '../functions/api/content-history.js';
 import * as reorderApi from '../functions/api/reorder-content.js';
 import * as pressApi from '../functions/api/press-admin.js';
 import { ensurePressTables, STATE_KEY } from '../functions/api/_press.js';
+import { answerAsks } from './lib/ask.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/press-admin/');
@@ -166,6 +167,7 @@ async function open(width, height, hash) {
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|favicon|Content Security Policy|live-ws/.test(m.text())) errors.push(m.text()); });
   page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+  await answerAsks(page, { onAsk: (m) => dialogs.push(m) });
   await page.setRequestInterception(true);
   page.on('request', async (req) => {
     if (req.isInterceptResolutionHandled()) return;

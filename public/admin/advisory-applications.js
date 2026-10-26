@@ -63,12 +63,11 @@ const CSS = `
 .ava { display: grid; gap: .9rem; min-width: 0; }
 .ava > * { min-width: 0; }
 .ava-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .6rem 1rem; }
-.ava-head h2 { margin: 0; font-size: 1.15rem; }
-.ava-head p { margin: .2rem 0 0; color: var(--color-text-secondary); font-size: .88rem; max-width: 60ch; }
+.ava-head.page-header { margin-bottom: 0; }
 .ava-head-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 .ava-toolbar { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; }
 .ava-strip { display: flex; flex-wrap: wrap; gap: .35rem; flex: 1 1 auto; }
-.ava-strip button { display: inline-flex; align-items: center; gap: .45rem; min-height: 34px; padding: .2rem .75rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-card); color: var(--color-text-secondary); font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer; }
+.ava-strip button { display: inline-flex; align-items: center; gap: .45rem; min-height: 34px; padding: .2rem .75rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-card); color: var(--color-text-secondary); font: inherit; font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
 .ava-strip button:hover { border-color: var(--color-border-strong); color: var(--color-text); }
 .ava-strip button b { color: var(--color-text); font-variant-numeric: tabular-nums; }
 .ava-strip button[aria-pressed="true"] { border-color: var(--c, var(--color-text)); background: color-mix(in srgb, var(--c, var(--color-text)) 9%, var(--color-bg-card)); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--c, var(--color-text)); }
@@ -76,26 +75,27 @@ const CSS = `
 .ava-strip button.is-all[aria-pressed="true"] b { color: inherit; }
 .ava-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; display: inline-block; }
 .ava-search { flex: 0 1 260px; min-width: 0; }
-.ava-search input { width: 100%; min-height: 36px; font-size: .88rem; }
+.ava-search input { width: 100%; min-height: 36px; font-size: var(--fs-sm); }
 .ava-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); overflow: hidden; }
 .ava-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: .35rem .85rem; align-items: center; padding: .8rem 1rem; border-bottom: 1px solid var(--color-border); cursor: pointer; background: none; border-left: 0; border-right: 0; border-top: 0; width: 100%; text-align: left; font: inherit; color: inherit; }
 .ava-list li:last-child .ava-row { border-bottom: 0; }
 .ava-row:hover { background: var(--color-bg-hover); }
 .ava-row:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
-.ava-row.is-new .ava-name::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #2B6CB0; margin-left: .45rem; vertical-align: middle; }
-.ava-avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem; font-weight: 700; color: #fff; background: color-mix(in srgb, var(--c, #A3A4AA) 78%, #000); flex: none; }
+.ava-row.is-new .ava-name::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--tone-info-dot); margin-left: .45rem; vertical-align: middle; }
+.ava-avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-xs); font-weight: 700; color: var(--tone-warn-fg); background: var(--tone-warn-bg); flex: none; }
 .ava-who { min-width: 0; display: grid; gap: .1rem; }
-.ava-name { font-weight: 650; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ava-sub { font-size: .8rem; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ava-why { font-size: .84rem; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+.ava-name { font-weight: 650; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ava-sub { font-size: var(--fs-xs); color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ava-why { font-size: var(--fs-xs); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
 .ava-meta { display: grid; justify-items: end; gap: .3rem; }
-.ava-when { font-size: .78rem; color: var(--color-text-muted); white-space: nowrap; }
-.ava-pill { display: inline-flex; align-items: center; gap: .35rem; font-size: .76rem; font-weight: 650; padding: 3px 9px 3px 7px; border-radius: 999px; background: color-mix(in srgb, var(--c) 12%, white); color: color-mix(in srgb, var(--c) 80%, black); border: 1px solid color-mix(in srgb, var(--c) 28%, white); white-space: nowrap; }
+.ava-when { font-size: var(--fs-2xs); color: var(--color-text-muted); white-space: nowrap; }
+.ava-pill { display: inline-flex; align-items: center; gap: .35rem; font-size: var(--fs-2xs); font-weight: 650; padding: 3px 9px 3px 7px; border-radius: 999px; background: color-mix(in srgb, var(--c) 12%, white); color: color-mix(in srgb, var(--c) 80%, black); border: 1px solid color-mix(in srgb, var(--c) 28%, white); white-space: nowrap; }
 .ava-pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
-.ava-tag { font-size: .7rem; font-weight: 650; padding: 1px 7px; border-radius: 999px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-secondary); white-space: nowrap; }
-.ava-zero { text-align: center; padding: 2.5rem 1rem; color: var(--color-text-secondary); border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-bg-card); }
-.ava-zero strong { display: block; color: var(--color-text); margin-bottom: .3rem; }
-.ava-skel { color: var(--color-text-muted); font-size: .9rem; padding: 2rem; text-align: center; }
+.ava-tag { display: inline-flex; align-items: center; min-height: 20px; padding: .1rem .5rem; border-radius: 999px; background: var(--tone-neutral-bg); color: var(--tone-neutral-fg); font-size: var(--fs-2xs); font-weight: 600; white-space: nowrap; }
+/* Empty, nobody matching, a load that failed: the admin's empty card */
+.ava-zero { padding: 2.25rem 1.5rem; text-align: center; font-size: var(--fs-sm); line-height: 1.5; color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); box-shadow: var(--shadow-sm); }
+.ava-zero strong { display: block; margin-bottom: .25rem; font-size: var(--fs-base); font-weight: 600; color: var(--color-text); }
+.ava-zero .btn { margin-top: .9rem; }
 
 body.ava-drawer-open .toast-container { z-index: 1350; }
 .ava-scrim { position: fixed; inset: 0; background: rgba(26,27,31,.36); z-index: 1200; animation: ava-fade .18s ease-out; }
@@ -105,39 +105,41 @@ body.ava-drawer-open .toast-container { z-index: 1350; }
 @keyframes ava-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .ava-drawer, .ava-scrim { animation: none; } }
 .ava-dhead { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .3rem .85rem; align-items: center; padding: .9rem 1.1rem; background: var(--color-bg-card); border-bottom: 1px solid var(--color-border); }
-.ava-dhead .ava-avatar { width: 46px; height: 46px; font-size: .95rem; }
-.ava-dhead h2 { margin: 0; font-size: 1.2rem; line-height: 1.25; font-family: inherit; text-transform: none; letter-spacing: -.01em; color: var(--color-text); overflow-wrap: anywhere; }
-.ava-dhead p { margin: .15rem 0 0; font-size: .84rem; color: var(--color-text-secondary); }
+.ava-dhead .ava-avatar { width: 46px; height: 46px; font-size: var(--fs-sm); }
+.ava-dhead h2 { margin: 0; font-size: var(--fs-lg); line-height: 1.25; font-family: inherit; text-transform: none; letter-spacing: -.01em; color: var(--color-text); overflow-wrap: anywhere; }
+.ava-dhead p { margin: .15rem 0 0; font-size: var(--fs-xs); color: var(--color-text-secondary); }
 .ava-close { width: 40px; height: 40px; display: inline-grid; place-items: center; border-radius: 10px; border: 1px solid var(--color-border); background: var(--color-bg-card); cursor: pointer; color: var(--color-text); }
 .ava-close:hover { background: var(--color-bg-hover); }
 .ava-close:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
 .ava-dbody { flex: 1; overflow-y: auto; padding: 1rem 1.1rem 2rem; display: grid; gap: .9rem; align-content: start; }
 .ava-panel { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: .9rem 1rem; display: grid; gap: .6rem; }
-.ava-panel h3 { margin: 0; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-secondary); }
+.ava-panel h3 { margin: 0; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-secondary); }
 .ava-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .ava-status { display: flex; flex-wrap: wrap; gap: .35rem; }
-.ava-status button { display: inline-flex; align-items: center; gap: .4rem; min-height: 38px; padding: .3rem .8rem; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-card); font: inherit; font-size: .84rem; font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
+.ava-status button { display: inline-flex; align-items: center; gap: .4rem; min-height: 38px; padding: .3rem .8rem; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-card); font: inherit; font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
 .ava-status button[aria-pressed="true"] { color: var(--color-text); border-color: var(--c); background: color-mix(in srgb, var(--c) 10%, var(--color-bg-card)); box-shadow: inset 0 0 0 1px var(--c); }
 .ava-status button:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
-.ava-contact { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem .9rem; margin: 0; font-size: .9rem; }
-.ava-contact dt { color: var(--color-text-muted); font-size: .82rem; padding-top: .1rem; }
+.ava-contact { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem .9rem; margin: 0; font-size: var(--fs-sm); }
+.ava-contact dt { color: var(--color-text-muted); font-size: var(--fs-xs); padding-top: .1rem; }
 .ava-contact dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
 .ava-contact a { color: var(--color-text); }
 .ava-qa { display: grid; gap: .75rem; }
-.ava-q { font-size: .8rem; color: var(--color-text-muted); margin: 0 0 .15rem; line-height: 1.4; }
-.ava-a { margin: 0; font-size: .92rem; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
-.ava-a.is-flag { color: #6B4A00; background: #FFF6E0; border: 1px solid #F2D899; border-radius: 8px; padding: .35rem .55rem; justify-self: start; }
+.ava-q { font-size: var(--fs-xs); color: var(--color-text-muted); margin: 0 0 .15rem; line-height: 1.4; }
+.ava-a { margin: 0; font-size: var(--fs-sm); line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+.ava-a.is-flag { color: var(--tone-warn-fg); background: var(--tone-warn-surface); border: 1px solid var(--tone-warn-line-strong); border-radius: 8px; padding: .35rem .55rem; justify-self: start; }
 .ava-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
-.ava-notes li { border-left: 3px solid var(--color-border-strong); padding: .1rem 0 .1rem .7rem; font-size: .9rem; white-space: pre-line; }
-.ava-notes small { display: block; color: var(--color-text-muted); font-size: .76rem; margin-top: .15rem; }
+.ava-notes li { border-left: 3px solid var(--color-border-strong); padding: .1rem 0 .1rem .7rem; font-size: var(--fs-sm); white-space: pre-line; }
+.ava-notes small { display: block; color: var(--color-text-muted); font-size: var(--fs-2xs); margin-top: .15rem; }
 .ava-note-form { display: grid; gap: .45rem; }
 .ava-note-form textarea { min-height: 70px; }
 .ava-note-form .btn { justify-self: end; }
-.ava-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; align-items: center; font-size: .8rem; color: var(--color-text-muted); }
-.ava-callout { font-size: .86rem; border-radius: 10px; padding: .6rem .75rem; background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-secondary); }
-.ava-callout.is-good { background: #EAF6EF; border-color: #BFE3CD; color: #1F5C39; }
-.ava-dialog p { font-size: .92rem; line-height: 1.55; }
-.ava-dialog ul { margin: .25rem 0 .75rem 1.1rem; font-size: .9rem; line-height: 1.55; }
+.ava-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; align-items: center; font-size: var(--fs-xs); color: var(--color-text-muted); }
+.ava-callout { font-size: var(--fs-xs); border-radius: 10px; padding: .6rem .75rem; background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-secondary); }
+.ava-callout.is-good { background: var(--tone-success-surface); border-color: var(--tone-success-line); color: var(--tone-success-fg); }
+.ava-overlay { z-index: 1300; }
+.ava-dialog .kd-dialog__body > p { margin: 0 0 .75rem; font-size: var(--fs-sm); line-height: 1.55; color: var(--color-text-secondary); }
+.ava-dialog .kd-dialog__body > p:last-child { margin-bottom: 0; }
+.ava-dialog ul { margin: .25rem 0 .75rem 1.1rem; font-size: var(--fs-sm); line-height: 1.55; }
 @media (max-width: 640px) {
   .ava-row { grid-template-columns: 40px minmax(0, 1fr); }
   .ava-meta { grid-column: 2; justify-items: start; grid-auto-flow: column; justify-content: start; align-items: center; gap: .5rem; }
@@ -161,20 +163,47 @@ function injectCss() {
 const Pill = ({ status, label }) => html`<span class="ava-pill" style=${`--c:${STATUS_COLOR[status] || '#7C7D84'}`}>${label}</span>`;
 const Avatar = ({ a }) => html`<span class="ava-avatar" style=${`--c:${STATUS_COLOR[a.status]}`} aria-hidden="true">${initials(a.name)}</span>`;
 
-/** A small dialog over the admin (Escape and the scrim close it) */
-function Dialog({ title, children, onClose, busy = false }) {
+/** The admin's shared dialog (its kd-dialog classes): title and ✕, body, footer.
+ *  Escape and the scrim close it (not while it works); Tab stays inside; focus goes
+ *  back where it was. A [data-autofocus] element gets the focus first. */
+let dlgSeq = 0;
+function Dialog({ title, sub = '', children, footer = null, onClose, busy = false, size = 'md' }) {
   const ref = useRef(null);
+  const idRef = useRef(null);
+  if (!idRef.current) idRef.current = `ava-dlg-${++dlgSeq}`;
+  const live = useRef({ busy, onClose });
+  live.current = { busy, onClose };
   useEffect(() => {
     const prev = document.activeElement;
-    const onKey = (e) => { if (e.key === 'Escape' && !busy) { e.stopPropagation(); onClose(); } };
+    document.body.classList.add('modal-open');
+    const onKey = (e) => {
+      if (e.key === 'Escape') { if (!live.current.busy) { e.preventDefault(); e.stopPropagation(); live.current.onClose(); } return; }
+      if (e.key !== 'Tab') return;
+      const f = [...(ref.current?.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])') || [])].filter((el) => el.getClientRects().length);
+      if (!f.length) return;
+      const inside = ref.current.contains(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === f[0])) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && (!inside || document.activeElement === f[f.length - 1])) { e.preventDefault(); f[0].focus(); }
+    };
     window.addEventListener('keydown', onKey, true);
-    requestAnimationFrame(() => ref.current?.querySelector('textarea, input, button.btn-primary')?.focus());
-    return () => { window.removeEventListener('keydown', onKey, true); prev?.focus?.(); };
-  }, [busy]);
-  return html`<div class="modal-overlay" style="z-index:1300" onClick=${() => !busy && onClose()}>
-    <div class="modal ava-dialog" role="dialog" aria-modal="true" aria-label=${title} ref=${ref} onClick=${(e) => e.stopPropagation()}>
-      <h3>${title}</h3>
-      ${children}
+    requestAnimationFrame(() => (ref.current?.querySelector('[data-autofocus], .kd-dialog__body textarea, .kd-dialog__body input, .kd-dialog__foot .btn-primary') || ref.current)?.focus());
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      if (document.querySelectorAll('.modal-overlay').length <= 1) document.body.classList.remove('modal-open');
+      if (prev?.isConnected) prev.focus?.();
+    };
+  }, []);
+  const id = idRef.current;
+  return html`<div class="modal-overlay kd-overlay ava-overlay" onClick=${(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+    <div class=${`modal kd-dialog kd-dialog--${size} ava-dialog`} role="dialog" aria-modal="true" aria-labelledby=${id} ref=${ref} tabindex="-1">
+      <header class="kd-dialog__head">
+        <div class="kd-dialog__titles"><h2 id=${id}>${title}</h2>${sub ? html`<p class="kd-dialog__sub">${sub}</p>` : null}</div>
+        <button type="button" class="kd-x" aria-label="Close" onClick=${onClose} disabled=${busy}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </header>
+      <div class="kd-dialog__body">${children}</div>
+      ${footer ? html`<footer class="kd-dialog__foot">${footer}</footer>` : null}
     </div>
   </div>`;
 }
@@ -195,7 +224,7 @@ export function AdvisoryApplications({ addToast, kit = {} }) {
     if (!j.success) { setErr(j.error || 'Couldn’t load the applications'); return; }
     setErr(null);
     setData(j);
-    if (j.imported) addToast?.(`${plural(j.imported, 'application')} from Jotform ${j.imported === 1 ? 'is' : 'are'} here now.`, 'info');
+    if (j.imported) addToast?.(`${plural(j.imported, 'application')} from the old form ${j.imported === 1 ? 'is' : 'are'} here now.`, 'info');
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -215,15 +244,15 @@ export function AdvisoryApplications({ addToast, kit = {} }) {
   const replace = (app) => setData((d) => d && { ...d, applications: d.applications.map((x) => (x.id === app.id ? { ...x, ...app, notes: Array.isArray(app.notes) ? app.notes.length : app.notes } : x)) });
   const drop = (id) => setData((d) => d && { ...d, applications: d.applications.filter((x) => x.id !== id) });
 
-  if (err && !data) return html`<div class="ava"><div class="ava-zero"><strong>Couldn’t load the applications</strong>${err}<div style="margin-top:.75rem"><button class="btn btn-ghost btn-sm" onClick=${load}>Try again</button></div></div></div>`;
-  if (!data) return html`<div class="ava"><div class="ava-skel">Loading applications…</div></div>`;
+  if (err && !data) return html`<div class="ava"><div class="ava-zero"><strong>Couldn’t load the applications</strong>${err}<div><button class="btn btn-ghost btn-sm" onClick=${load}>Try again</button></div></div></div>`;
+  if (!data) return html`<div class="ava"><div class="area-loading" aria-label="Loading the applications"><span class="spinner" /></div></div>`;
 
   const idx = list.findIndex((a) => a.id === openId);
   return html`<div class="ava">
-    <div class="ava-head">
+    <div class="page-header ava-head">
       <div>
         <h2>Advisory Board applications</h2>
-        <p>From the <a href=${APPLY_PAGE} target="_blank" rel="noopener">Apply page</a>. Each applicant gets a copy of what they sent. ${whoHears(data.settings) ? `${whoHears(data.settings)} hear about each one by email` : 'Nobody hears by email yet'}, and it’s posted in Slack.</p>
+        <p class="page-sub">From the <a href=${APPLY_PAGE} target="_blank" rel="noopener">Apply page</a>. Each applicant gets a copy of what they sent. ${whoHears(data.settings) ? `${whoHears(data.settings)} hear about each one by email` : 'Nobody hears by email yet'}, and it’s posted in Slack.</p>
       </div>
       <div class="ava-head-actions">
         <button class="btn btn-ghost btn-sm" onClick=${() => setSettingsOpen(true)}>Who hears about them</button>
@@ -251,7 +280,7 @@ export function AdvisoryApplications({ addToast, kit = {} }) {
           </span>
           <span class="ava-meta">
             <${Pill} status=${a.status} label=${statusLabel(a.status)} />
-            <span class="ava-when" title=${longDate(a.createdAt)}>${a.isTest ? html`<span class="ava-tag" title="A test: its email went only to the address on it">Test</span> ` : ''}${a.source === 'jotform' ? html`<span class="ava-tag" title="Sent on the old Jotform form">Jotform</span> ` : ''}${ago(a.createdAt)}</span>
+            <span class="ava-when" title=${longDate(a.createdAt)}>${a.isTest ? html`<span class="ava-tag" title="A test: its email went only to the address on it">Test</span> ` : ''}${a.source === 'jotform' ? html`<span class="ava-tag" title="Sent before the website form">Earlier form</span> ` : ''}${ago(a.createdAt)}</span>
           </span>
         </button></li>`)}
       </ul>`}
@@ -363,7 +392,7 @@ function Drawer({ id, statuses, kit, addToast, onClose, onPrev, onNext, onChange
         ${app ? html`<${Avatar} a=${app} />` : html`<span></span>`}
         <div style="min-width:0">
           <h2>${app ? shown(app) : 'Loading…'}</h2>
-          ${app && html`<p>${[work(app), `Applied ${longDate(app.createdAt)}`, app.source === 'jotform' ? 'on Jotform' : null].filter(Boolean).join(' · ')}</p>`}
+          ${app && html`<p>${[work(app), `Applied ${longDate(app.createdAt)}`, app.source === 'jotform' ? 'before the website form' : null].filter(Boolean).join(' · ')}</p>`}
         </div>
         <div class="ava-actions">
           <button class="ava-close" onClick=${onPrev} disabled=${!onPrev} aria-label="Previous application" title="Previous">↑</button>
@@ -412,7 +441,7 @@ function Drawer({ id, statuses, kit, addToast, onClose, onPrev, onNext, onChange
               <label class="sr-only" for="ava-note" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Add a note</label>
               <textarea id="ava-note" class="form-input" placeholder="A note for staff: a call, next steps…" value=${note} onInput=${(e) => setNote(e.target.value)}
                 onKeyDown=${(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && note.trim()) addNote(); }}></textarea>
-              <button class="btn btn-secondary btn-sm" disabled=${!note.trim() || !!busy} onClick=${addNote}>${busy === 'note' ? 'Saving…' : 'Add note'}</button>
+              <button class="btn btn-primary btn-sm" disabled=${!note.trim() || !!busy} onClick=${addNote}>${busy === 'note' ? 'Saving…' : 'Add note'}</button>
             </div>
           </section>
 
@@ -423,7 +452,10 @@ function Drawer({ id, statuses, kit, addToast, onClose, onPrev, onNext, onChange
         `}
       </div>
     </aside>
-    ${confirm === 'add' && app && html`<${Dialog} title=${already?.group === 'advisory' ? `Link ${app.name}` : `Add ${app.name} as an advisor`} busy=${busy === 'add'} onClose=${() => setConfirm(null)}>
+    ${confirm === 'add' && app && html`<${Dialog} title=${already?.group === 'advisory' ? `Link ${app.name}` : `Add ${app.name} as an advisor`} busy=${busy === 'add'} onClose=${() => setConfirm(null)}
+      footer=${html`
+        <button class="btn btn-ghost" onClick=${() => setConfirm(null)} disabled=${busy === 'add'}>Cancel</button>
+        <button class="btn btn-primary" onClick=${addAdvisor} disabled=${busy === 'add'}>${busy === 'add' ? 'Adding…' : already?.group === 'advisory' ? 'Link them' : 'Add them'}</button>`}>
       <p>${already?.group === 'advisory' ? `${already.name} is already on People → Advisory. This links the application to them and marks it Joined.` : 'This:'}</p>
       ${!(already?.group === 'advisory') && html`<ul>
         <li>adds them to People → Advisory as a <strong>hidden draft</strong>${app.company ? `, at ${app.company}` : ''},</li>
@@ -431,17 +463,12 @@ function Drawer({ id, statuses, kit, addToast, onClose, onPrev, onNext, onChange
         <li>and marks this application Joined.</li>
       </ul>
       <p>They show on the site once you add a photo and turn on Show on the site, then publish.</p>`}
-      <div class="modal-buttons">
-        <button class="btn btn-ghost" onClick=${() => setConfirm(null)} disabled=${busy === 'add'}>Cancel</button>
-        <button class="btn btn-primary" onClick=${addAdvisor} disabled=${busy === 'add'}>${busy === 'add' ? 'Adding…' : already?.group === 'advisory' ? 'Link them' : 'Add them'}</button>
-      </div>
     <//>`}
-    ${confirm === 'remove' && app && html`<${Dialog} title=${`Delete ${app.name}’s application?`} busy=${busy === 'remove'} onClose=${() => setConfirm(null)}>
+    ${confirm === 'remove' && app && html`<${Dialog} title=${`Delete ${app.name}’s application?`} size="sm" busy=${busy === 'remove'} onClose=${() => setConfirm(null)}
+      footer=${html`
+        <button class="btn btn-ghost" data-autofocus onClick=${() => setConfirm(null)} disabled=${busy === 'remove'}>Keep it</button>
+        <button class="btn btn-danger" onClick=${remove} disabled=${busy === 'remove'}>${busy === 'remove' ? 'Deleting…' : 'Delete application'}</button>`}>
       <p>Their answers and contact details leave the site for good. Use this when someone asks to be removed, or for a test. ${app.personSlug ? 'Their page on People → Advisory stays.' : ''}</p>
-      <div class="modal-buttons">
-        <button class="btn btn-ghost" onClick=${() => setConfirm(null)} disabled=${busy === 'remove'}>Keep it</button>
-        <button class="btn btn-danger" onClick=${remove} disabled=${busy === 'remove'}>${busy === 'remove' ? 'Deleting…' : 'Delete application'}</button>
-      </div>
     <//>`}
   </div>`;
 }
@@ -463,12 +490,15 @@ function SettingsDialog({ settings, addToast, onClose, onSaved }) {
   };
   const members = committee === settings.committee ? settings.committeeMembers || [] : null;
   const noEmail = (members || []).filter((m) => !m.hasEmail).map((m) => m.name);
-  return html`<${Dialog} title="Who hears about new applications" busy=${busy} onClose=${onClose}>
+  return html`<${Dialog} title="Who hears about new applications" busy=${busy} onClose=${onClose}
+    footer=${html`
+      <button class="btn btn-ghost" onClick=${onClose} disabled=${busy}>Cancel</button>
+      <button class="btn btn-primary" onClick=${save} disabled=${busy}>${busy ? 'Saving…' : 'Save'}</button>`}>
     <p>Each new application emails these people, with the applicant’s contact details and answers, and posts to Slack without them. A test application (a name starting with TEST) emails only the address on it.</p>
     <div class="form-group">
       <label class="form-label" for="ava-staff">Emails, one per line</label>
       <textarea id="ava-staff" class="form-input" rows="3" spellcheck=${false} value=${text} onInput=${(e) => { setText(e.target.value); setProblem(null); }}></textarea>
-      ${problem ? html`<p class="form-hint" style="color:#8A5200;font-weight:600">${problem}</p>` : settings.isDefault ? html`<p class="form-hint">Until someone saves this, it goes to ${settings.staffEmails.join(', ')}.</p>` : null}
+      ${problem ? html`<p class="form-hint ink-warn ava-strong">${problem}</p>` : settings.isDefault ? html`<p class="form-hint">Until someone saves this, it goes to ${settings.staffEmails.join(', ')}.</p>` : null}
     </div>
     <div class="form-group">
       <label class="form-label" for="ava-committee">And the board committee</label>
@@ -481,10 +511,6 @@ function SettingsDialog({ settings, addToast, onClose, onSaved }) {
         : members.length
           ? html`On it now: ${list(members.map((m) => m.name))}.${noEmail.length ? html` <strong>${list(noEmail)} ${noEmail.length === 1 ? 'has' : 'have'} no email yet</strong>: add it on their page in People → Board.` : ''}`
           : html`Nobody on People → Board is on the ${committee} committee yet. Open the board member who leads it, add ${committee} under Committees, and they’ll get these from then on.`}</p>`}
-    </div>
-    <div class="modal-buttons">
-      <button class="btn btn-ghost" onClick=${onClose} disabled=${busy}>Cancel</button>
-      <button class="btn btn-primary" onClick=${save} disabled=${busy}>${busy ? 'Saving…' : 'Save'}</button>
     </div>
   <//>`;
 }

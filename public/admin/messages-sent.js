@@ -76,14 +76,14 @@ export function statusLine(r, tracking, now = Date.now()) {
 
 // ─── Styles ───────────────────────────────
 const CSS = `
-.ms { --ms-ok: var(--color-success); --ms-warn: #B7791F; --ms-idle: #8C8D93; }
-.ms-lede { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin: 0.15rem 0 0.4rem; padding: 0; list-style: none; font-size: 0.88rem; color: var(--color-text-secondary); }
+.ms { --ms-ok: var(--tone-success-dot); --ms-warn: var(--tone-warn-dot); --ms-idle: var(--tone-neutral-dot); }
+.ms-lede { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin: 0.15rem 0 0.4rem; padding: 0; list-style: none; font-size: var(--fs-sm); color: var(--color-text-secondary); }
 .ms-lede b { color: var(--color-text); font-variant-numeric: tabular-nums; font-weight: 700; }
 .ms-lede .is-warn b { color: var(--ms-warn); }
 .ms-lede button { all: unset; cursor: pointer; border-radius: 4px; }
 .ms-lede button:hover span { text-decoration: underline; }
 .ms-lede button:focus-visible { box-shadow: var(--focus-ring); }
-.ms-check { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; margin: 0 0 1rem; font-size: 0.8rem; color: var(--color-text-muted); }
+.ms-check { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; margin: 0 0 1rem; font-size: var(--fs-xs); color: var(--color-text-muted); }
 .ms-check i { width: 7px; height: 7px; border-radius: 50%; background: var(--ms-ok); flex: none; }
 .ms-check.is-warn i { background: var(--ms-warn); }
 .ms-check.is-idle i { background: var(--ms-idle); }
@@ -91,8 +91,8 @@ const CSS = `
 .ms-rail { display: grid; gap: 1rem; position: sticky; top: 1rem; }
 .ms-rail > .card { margin: 0; }
 .ms-card { padding: 1rem 1.15rem; }
-.ms-card h3 { margin: 0 0 0.2rem; font-size: 1rem; letter-spacing: -0.01em; }
-.ms-card > p { margin: 0 0 0.6rem; font-size: 0.84rem; color: var(--color-text-secondary); line-height: 1.45; }
+.ms-card h3 { margin: 0 0 0.2rem; font-size: var(--fs-base); letter-spacing: -0.01em; }
+.ms-card > p { margin: 0 0 0.6rem; font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.45; }
 .ms-main > .ms-card + .ms-card { margin-top: 1rem; }
 .ms-main > .ms-card:first-child { margin-top: 0; }
 .ms-look { border-color: color-mix(in srgb, var(--ms-warn) 45%, var(--color-border)); background: color-mix(in srgb, var(--ms-warn) 6%, var(--color-bg-card)); }
@@ -100,29 +100,26 @@ const CSS = `
 .ms-look li { padding: 0.6rem 0; border-top: 1px dashed var(--color-border); }
 .ms-look li:first-child { border-top: 0; padding-top: 0.2rem; }
 .ms-look li b { font-weight: 650; }
-.ms-look li p { margin: 0.2rem 0 0; font-size: 0.85rem; line-height: 1.45; color: var(--color-text-secondary); }
+.ms-look li p { margin: 0.2rem 0 0; font-size: var(--fs-xs); line-height: 1.45; color: var(--color-text-secondary); }
 .ms-look li .ms-fix { color: var(--color-text); }
-.ms-look .ms-links { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; margin-top: 0.3rem; font-size: 0.84rem; }
+.ms-look .ms-links { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; margin-top: 0.3rem; font-size: var(--fs-xs); }
 .ms-link { all: unset; cursor: pointer; color: var(--color-link, #2B6CB0); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .ms-link:focus-visible { box-shadow: var(--focus-ring); border-radius: 3px; }
-.ms-next li { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 0.15rem 0.75rem; padding: 0.5rem 0; border-top: 1px dashed var(--color-border); font-size: 0.88rem; }
+.ms-next li { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 0.15rem 0.75rem; padding: 0.5rem 0; border-top: 1px dashed var(--color-border); font-size: var(--fs-sm); }
 .ms-next li:first-child { border-top: 0; padding-top: 0.2rem; }
-.ms-next time { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; font-size: 0.84rem; }
-.ms-next small { display: block; color: var(--color-text-muted); font-size: 0.8rem; line-height: 1.4; margin-top: 0.1rem; }
+.ms-next time { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; font-size: var(--fs-xs); }
+.ms-next small { display: block; color: var(--color-text-muted); font-size: var(--fs-xs); line-height: 1.4; margin-top: 0.1rem; }
 .ms-next .is-off { color: var(--color-text-muted); }
 .ms-next .is-off b { font-weight: 600; text-decoration: line-through; text-decoration-color: var(--color-border-strong); }
 .ms-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 1.25rem 0 0.6rem; }
-.ms-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.ms-chips button[aria-pressed="true"] { background: var(--color-text); color: var(--color-bg-card); }
-.ms-chips .chip em { font-style: normal; font-variant-numeric: tabular-nums; opacity: 0.7; margin-left: 0.3rem; }
 .ms-search { flex: 1 1 220px; max-width: 320px; margin-left: auto; }
 .ms-search input { width: 100%; }
-.ms-only { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0 0 0.6rem; padding: 0.25rem 0.35rem 0.25rem 0.65rem; border-radius: 999px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: 0.82rem; font-weight: 600; }
+.ms-only { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0 0 0.6rem; padding: 0.25rem 0.35rem 0.25rem 0.65rem; border-radius: 999px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: var(--fs-xs); font-weight: 600; }
 .ms-only button { all: unset; cursor: pointer; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: var(--color-text-muted); }
 .ms-only button:hover { background: var(--color-bg-hover); color: var(--color-text); }
 .ms-only button:focus-visible { box-shadow: var(--focus-ring); }
 .ms-log { padding: 0; overflow: hidden; }
-.ms-day { margin: 0; padding: 0.55rem 1rem; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); background: var(--color-bg-secondary); border-top: 1px solid var(--color-border); position: sticky; top: 0; z-index: 1; }
+.ms-day { margin: 0; padding: 0.55rem 1rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); background: var(--color-bg-secondary); border-top: 1px solid var(--color-border); position: sticky; top: 0; z-index: 1; }
 .ms-day:first-child { border-top: 0; }
 .ms-rows { list-style: none; margin: 0; padding: 0; }
 .ms-rows li + li { border-top: 1px solid var(--color-border); }
@@ -133,44 +130,44 @@ const CSS = `
 .ms-dot.t-ok { background: var(--ms-ok); }
 .ms-dot.t-idle { background: color-mix(in srgb, var(--ms-idle) 45%, var(--color-bg-card)); border: 1.5px solid var(--ms-idle); width: 6px; height: 6px; }
 .ms-dot.t-warn, .ms-dot.t-bad { background: var(--ms-warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ms-warn) 22%, transparent); }
-.ms-time { font-size: 0.82rem; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ms-time { font-size: var(--fs-xs); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ms-what { min-width: 0; }
-.ms-what b { font-weight: 650; font-size: 0.9rem; }
-.ms-what .mm-sender { margin-left: 0.4rem; padding: 0 0.45rem; font-size: 0.7rem; vertical-align: 1px; }
-.ms-who { display: block; font-size: 0.84rem; color: var(--color-text-secondary); overflow-wrap: anywhere; }
-.ms-why { display: block; margin-top: 0.1rem; font-size: 0.82rem; color: #8A5A12; }
-.ms-state { font-size: 0.84rem; color: var(--color-text-secondary); text-align: right; overflow-wrap: anywhere; }
+.ms-what b { font-weight: 650; font-size: var(--fs-sm); }
+.ms-what .mm-sender { margin-left: 0.4rem; padding: 0 0.45rem; font-size: var(--fs-2xs); vertical-align: 1px; }
+.ms-who { display: block; font-size: var(--fs-xs); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.ms-why { display: block; margin-top: 0.1rem; font-size: var(--fs-xs); color: var(--tone-warn-fg); }
+.ms-state { font-size: var(--fs-xs); color: var(--color-text-secondary); text-align: right; overflow-wrap: anywhere; }
 .ms-state.t-ok { color: var(--ms-ok); }
-.ms-state.t-warn, .ms-state.t-bad { color: #8A5A12; font-weight: 600; }
-.ms-empty { margin: 0; padding: 1.5rem 1rem; text-align: center; color: var(--color-text-secondary); font-size: 0.9rem; }
+.ms-state.t-warn, .ms-state.t-bad { color: var(--tone-warn-fg); font-weight: 600; }
+.ms-empty { margin: 0; padding: 1.5rem 1rem; text-align: center; color: var(--color-text-secondary); font-size: var(--fs-sm); }
 .ms-more { display: flex; justify-content: center; padding: 0.8rem; border-top: 1px solid var(--color-border); }
-.ms-health h4 { margin: 0.9rem 0 0.1rem; font-size: 0.84rem; font-weight: 700; }
-.ms-health h4 small { display: block; font-weight: 500; color: var(--color-text-muted); font-size: 0.78rem; margin-top: 0.05rem; }
+.ms-health h4 { margin: 0.9rem 0 0.1rem; font-size: var(--fs-xs); font-weight: 700; }
+.ms-health h4 small { display: block; font-weight: 500; color: var(--color-text-muted); font-size: var(--fs-2xs); margin-top: 0.05rem; }
 .ms-health ul { list-style: none; margin: 0.35rem 0 0; padding: 0; display: grid; gap: 0.35rem; }
-.ms-health li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 0.45rem; font-size: 0.84rem; line-height: 1.4; }
+.ms-health li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 0.45rem; font-size: var(--fs-xs); line-height: 1.4; }
 .ms-health li span { color: var(--color-text-secondary); }
 .ms-health li b { font-weight: 650; color: var(--color-text); }
-.ms-ok-i, .ms-no-i, .ms-q-i { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 0.72rem; font-weight: 800; margin-top: 0.1rem; }
+.ms-ok-i, .ms-no-i, .ms-q-i { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-2xs); font-weight: 800; margin-top: 0.1rem; }
 .ms-ok-i { background: color-mix(in srgb, var(--ms-ok) 16%, var(--color-bg-card)); color: var(--ms-ok); }
-.ms-no-i { background: color-mix(in srgb, var(--ms-warn) 20%, var(--color-bg-card)); color: #8A5A12; }
+.ms-no-i { background: color-mix(in srgb, var(--ms-warn) 20%, var(--color-bg-card)); color: var(--tone-warn-fg); }
 .ms-q-i { background: var(--color-bg-secondary); color: var(--color-text-muted); }
 .ms-rates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; margin: 0.3rem 0 0.2rem; }
 .ms-rates div { padding: 0.55rem 0.6rem; border-radius: 8px; background: var(--color-bg); }
-.ms-rates b { display: block; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
-.ms-rates span { font-size: 0.74rem; color: var(--color-text-muted); }
-.ms-rates .is-warn b { color: #8A5A12; }
-.ms-note { margin: 0.5rem 0 0; font-size: 0.78rem; color: var(--color-text-muted); line-height: 1.45; }
+.ms-rates b { display: block; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.ms-rates span { font-size: var(--fs-2xs); color: var(--color-text-muted); }
+.ms-rates .is-warn b { color: var(--tone-warn-fg); }
+.ms-note { margin: 0.5rem 0 0; font-size: var(--fs-2xs); color: var(--color-text-muted); line-height: 1.45; }
 .ms-inv ul { list-style: none; margin: 0; padding: 0; display: grid; }
-.ms-inv li { display: grid; gap: 0.1rem; padding: 0.55rem 0; border-top: 1px dashed var(--color-border); font-size: 0.88rem; }
+.ms-inv li { display: grid; gap: 0.1rem; padding: 0.55rem 0; border-top: 1px dashed var(--color-border); font-size: var(--fs-sm); }
 .ms-inv li:first-child { border-top: 0; padding-top: 0.15rem; }
 .ms-inv b { font-weight: 650; }
-.ms-inv-when { font-size: 0.8rem; color: var(--color-text-secondary); }
+.ms-inv-when { font-size: var(--fs-xs); color: var(--color-text-secondary); }
 .ms-rsvp { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.25rem; }
-.ms-rsvp em { font-style: normal; font-size: 0.78rem; font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--color-bg-secondary); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.ms-rsvp em { font-style: normal; font-size: var(--fs-2xs); font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--color-bg-secondary); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .ms-rsvp em.is-yes { background: color-mix(in srgb, var(--ms-ok) 13%, var(--color-bg-card)); color: var(--ms-ok); }
 .ms-rsvp em.is-wait { background: transparent; border: 1px dashed var(--color-border-strong); }
-.ms-steps { margin: 0.4rem 0 0; padding-left: 1.15rem; font-size: 0.85rem; line-height: 1.5; color: var(--color-text-secondary); }
-.ms-tl { list-style: none; margin: 0; padding: 0.75rem 1.25rem; display: grid; gap: 0.35rem; border-bottom: 1px solid var(--color-border); font-size: 0.86rem; }
+.ms-steps { margin: 0.4rem 0 0; padding-left: 1.15rem; font-size: var(--fs-xs); line-height: 1.5; color: var(--color-text-secondary); }
+.ms-tl { list-style: none; margin: 0; padding: 0.75rem 1.25rem; display: grid; gap: 0.35rem; border-bottom: 1px solid var(--color-border); font-size: var(--fs-xs); }
 .ms-tl li { display: grid; grid-template-columns: 10px 9.5rem minmax(0, 1fr); gap: 0.6rem; align-items: baseline; }
 .ms-tl time { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .ms-tl small { display: block; color: var(--color-text-secondary); }
@@ -284,8 +281,8 @@ function RowSheet({ row, label, entry, onClose, onPreview, Sender, senderOf, Ema
       <div class="mm-foot">
         <p>${row.link ? 'The family’s page in Applicants has every email and reply.' : entry?.preview ? 'The sample uses the same code that sent this one.' : ''}</p>
         <div style="display: flex; flex-wrap: wrap; gap: 0.45rem;">
-          ${row.link && html`<a class="btn btn-secondary btn-sm" href=${row.link} onClick=${() => onClose()}>Open in Applicants</a>`}
-          ${entry?.preview && html`<button type="button" class="btn btn-secondary btn-sm" onClick=${() => { onClose(); onPreview(entry); }}>See the sample</button>`}
+          ${row.link && html`<a class="btn btn-ghost btn-sm" href=${row.link} onClick=${() => onClose()}>Open in Applicants</a>`}
+          ${entry?.preview && html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { onClose(); onPreview(entry); }}>See the sample</button>`}
         </div>
       </div>
     </div>
@@ -445,10 +442,10 @@ export function SentView({ entryOf, branchOf, labelOf, senderOf, Sender, EmailFr
         </section>
 
         <div class="ms-tools">
-          <div class="ms-chips" role="group" aria-label="Show">
+          <div class="pill-row ms-chips" role="group" aria-label="Show">
             ${[['all', 'Everything', counts(() => true)], ...branches.map((b) => [b, b, counts((r) => branchOf(entryOf(r.entry)) === b)]), ['problems', 'Didn’t arrive', problems.length], ['tests', 'Previews and tests', all.filter(isTest).length]]
               .filter(([k, , n]) => k === 'all' || n > 0)
-              .map(([k, label, n]) => html`<button key=${k} type="button" class="chip" aria-pressed=${String(show === k)} onClick=${() => setShow(show === k && k !== 'all' ? 'all' : k)}>${label}<em>${n}</em></button>`)}
+              .map(([k, label, n]) => html`<button key=${k} type="button" class="pill" aria-pressed=${String(show === k)} onClick=${() => setShow(show === k && k !== 'all' ? 'all' : k)}>${label}<span class="count">${n}</span></button>`)}
           </div>
           <div class="ms-search"><input class="form-input" type="search" aria-label="Find a person or an email" placeholder="Find a person, address or subject…" value=${q} onInput=${(e) => setQ(e.target.value)} /></div>
         </div>

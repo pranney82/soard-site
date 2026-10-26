@@ -129,7 +129,8 @@ const harper = Object.values(w.world.accounts).find(a => a.name === 'Harper Lee'
 
 // ── A static server for public/, plus the harness page ──
 const adminHtml = readFileSync(join(ROOT, 'public/admin/index.html'), 'utf8');
-const adminStyles = [...adminHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(m => m[1]).join('\n');
+// The admin's own stylesheet only: later <style> blocks belong to pages the admin opens in their own window (the printable roster)
+const adminStyles = [...adminHtml.slice(0, adminHtml.indexOf('<script')).matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(m => m[1]).join('\n');
 const harness = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Applicants harness</title><link rel="preconnect" href="https://fonts.googleapis.com"><style>${adminStyles}</style>
 <style>body{margin:0;background:var(--color-bg);font-family:Inter,system-ui,sans-serif;color:var(--color-text)} .harness{padding:24px;max-width:1500px;margin:0 auto} @media (max-width:640px){.harness{padding:12px}}</style></head>
@@ -213,7 +214,7 @@ ok(JSON.stringify(colCounts) === JSON.stringify([['Applied', '3'], ['In Review',
 ok(!(await page.$$eval('.apl-card-name', els => els.map(e => e.textContent))).includes('Sunshine Office'), 'accounts that aren’t applicants stay off the board');
 ok(!(await page.$$eval('.apl-card-name', els => els.map(e => e.textContent))).includes('TEST Sample Family'), 'test families stay off the board unless asked for');
 ok(await page.$$eval('.apl-tag.is-out', els => els.some(e => /mi outside/.test(e.textContent))), 'a home outside the boundary is flagged with miles');
-ok(await page.$eval('.apl-tag.is-out', el => getComputedStyle(el).backgroundColor) === 'rgb(255, 246, 224)', 'and flagged in amber, like every other warning (red is for destructive buttons)');
+ok(await page.$eval('.apl-tag.is-out', (el) => { const ref = document.createElement('span'); ref.style.background = 'var(--tone-warn-bg)'; document.body.append(ref); const want = getComputedStyle(ref).backgroundColor; ref.remove(); return getComputedStyle(el).backgroundColor === want; }), 'and flagged in the admin’s one warning amber (red is for destructive buttons)');
 ok(await page.$$eval('.apl-tag.is-es', els => els.length >= 1 && els.every(e => e.textContent === 'Spanish')), 'a Spanish-speaking family is tagged "Spanish" (the same word Submissions uses)');
 ok(await text(page, '.apl > .page-header h2') === 'Applicants', 'the tab has the admin’s page header');
 const [vb, fbx] = await Promise.all([page.$eval('.apl-views', el => el.getBoundingClientRect().top), page.$eval('.apl-filters', el => el.getBoundingClientRect().top)]);
@@ -740,10 +741,12 @@ for (const width of [390, 768, 820, 1025, 1100, 1180, 1280, 1440]) {
         scrolls: [...document.querySelectorAll('.apl *')].filter(el => own(el) && el.scrollWidth > el.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(el).overflowX)).map(el => el.className),
         past: [...document.querySelectorAll('.apl *')].filter(el => own(el) && el.getBoundingClientRect().width && el.getBoundingClientRect().right > right && getComputedStyle(el).position !== 'fixed').slice(0, 3).map(el => `${el.tagName}.${el.className}`),
         cols: [...document.querySelectorAll('.apl-col')].filter(c => c.offsetParent).length,
+        boardW: document.querySelector('.apl-board-wrap')?.getBoundingClientRect().width || 0,
       };
     });
     ok(!m.page && !m.scrolls.length && !m.past.length, `${width}px ${view}: fits, nothing scrolls sideways${m.scrolls.length || m.past.length ? ` (${[...m.scrolls, ...m.past].join(', ')})` : ''}`);
-    if (view === 'board') ok(m.cols === (width >= 820 && width !== 1025 ? 4 : 1), `${width}px board: ${m.cols === 4 ? 'all four columns side by side' : 'one status at a time'}`);
+    // The board's own rule: four columns from 700px of board, else one status at a time
+    if (view === 'board') ok(m.cols === (m.boardW >= 700 ? 4 : 1), `${width}px board (${Math.round(m.boardW)}px): ${m.cols === 4 ? 'all four columns side by side' : 'one status at a time'}`);
     if (view === 'board' || view === 'list') await shot(p, `shell-${view}-${width}`);
   }
   await p.close();

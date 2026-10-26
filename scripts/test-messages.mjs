@@ -304,11 +304,12 @@ try {
   await page.screenshot({ path: join(OUT, 'sheet-demo-invite.png') });
   await closeSheet(page);
 
-  await clickButton(page, '.am-filters', 'Google Calendar');
+  // Sent by is a menu beside Depends on (one sender at a time)
+  await page.select('.am-filters--pick select', 's:google');
   await pause(400);
   ok((await page.$eval('.am-hits', (e) => e.textContent)) === '7 matches', 'Sent by Google Calendar finds the seven invite messages (five for reveals, two for demo day)');
   await clickButton(page, '.am-tools', 'Reset');
-  await clickButton(page, '.am-filters', 'Kit');
+  await page.select('.am-filters--pick select', 's:kit');
   await pause(400);
   const kitHits = await page.$$eval('.am-node.leaf.hit-on text:not(.am-tag text)', (t) => t.map((x) => x.textContent).filter((x) => x !== 'Kit'));
   const KIT = ['Applications are open', 'We’re live (Kit)', 'Reveal drafts in Kit', 'Newsletter', 'Welcome to the newsletter'];

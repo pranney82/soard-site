@@ -968,9 +968,9 @@ function Entry(sel, { pickService, Dot }) {
   const reason = sel.es !== 'live' && !(p?.s && p.why) ? sel.note : null;
   return html`
     <div class="am-chips">
-      <span class="chip"><${Dot} n=${sel} /> ${STATUS[sel.es]}</span>
-      <span class="chip">${KIND[sel.k]}</span>
-      <span class="chip am-chip-src" title=${p ? 'Checked against the live systems when this page opened' : `Can’t be checked from the site; as written on ${WRITTEN_ON}`}>${p ? 'Checked live' : 'From the map'}</span>
+      <span class="tag"><${Dot} n=${sel} /> ${STATUS[sel.es]}</span>
+      <span class="tag">${KIND[sel.k]}</span>
+      <span class="tag am-chip-src" title=${p ? 'Checked against the live systems when this page opened' : `Can’t be checked from the site; as written on ${WRITTEN_ON}`}>${p ? 'Checked live' : 'From the map'}</span>
     </div>
     <dl>
       ${p && (p.why || p.last) && html`<div><dt>Right now</dt><dd class=${`am-now s-${sel.es}`}>${p.why || 'Running.'}${p.last && html`<small>Last ran <${Ago} iso=${p.last} /></small>`}</dd></div>`}

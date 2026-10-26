@@ -139,14 +139,14 @@ try {
   ok(await active(page) === 'People' && await activeTab(page) === 'Board', 'reload keeps People → Board');
 
   await clickNav(page, 'Events'); await pause(500);
-  await page.evaluate(() => [...document.querySelectorAll('tr.u-clickable')].find((r) => r.textContent.includes('Test Picnic'))?.click()); await pause(600);
+  await page.evaluate(() => [...document.querySelectorAll('.ev-row')].find((r) => r.textContent.includes('Test Picnic'))?.click()); await pause(600);
   ok(hashOf(page) === '#events/test-picnic', 'opening an event: #events/test-picnic');
   await page.goBack(); await pause(500);
-  ok(hashOf(page) === '#events' && !!(await page.$('tr.u-clickable')), 'Back closes it, back on the list');
+  ok(hashOf(page) === '#events' && !!(await page.$('.ev-row')), 'Back closes it, back on the list');
   await page.goForward(); await pause(600);
-  ok(hashOf(page) === '#events/test-picnic' && !(await page.$('tr.u-clickable')), 'Forward opens it again');
+  ok(hashOf(page) === '#events/test-picnic' && !(await page.$('.ev-row')), 'Forward opens it again');
   await page.reload({ waitUntil: 'networkidle2' }); await page.waitForSelector('.side-nav .nav-item'); await pause(800);
-  ok(await active(page) === 'Events' && !(await page.$('tr.u-clickable')) && await page.evaluate(() => [...document.querySelectorAll('.main input')].some((i) => i.value === 'Test Picnic')), 'reload keeps the event open');
+  ok(await active(page) === 'Events' && !(await page.$('.ev-row')) && await page.evaluate(() => [...document.querySelectorAll('.main input')].some((i) => i.value === 'Test Picnic')), 'reload keeps the event open');
 
   const before = (await browser.pages()).length;
   await page.keyboard.down(MOD); await page.click('.side-nav a[href="#press"]'); await page.keyboard.up(MOD); await pause(800);

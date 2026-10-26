@@ -766,8 +766,8 @@ const subjectOf = (n, lang = 'en') => (Array.isArray(n.subject) ? n.subject[lang
 
 // ─── Styles (the map's own are mindmap.js's) ──
 const CSS = `
-.mm-sender { display: inline-flex; align-items: center; padding: 0.12rem 0.55rem; border-radius: 999px; font-size: 0.76rem; font-weight: 650; color: var(--tg); background: color-mix(in srgb, var(--tg) 13%, var(--color-bg-card)); }
-.am-meta .mm-sender { padding: 0 0.45rem; font-size: 0.72rem; margin-right: 0.2rem; }
+.mm-sender { display: inline-flex; align-items: center; padding: 0.12rem 0.55rem; border-radius: 999px; font-size: var(--fs-2xs); font-weight: 650; color: var(--tg); background: color-mix(in srgb, var(--tg) 13%, var(--color-bg-card)); }
+.am-meta .mm-sender { padding: 0 0.45rem; font-size: var(--fs-2xs); margin-right: 0.2rem; }
 .mm-from p { margin: 0; }
 .mm-from p + p { margin-top: 0.35rem; }
 .mm-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 1rem; }
@@ -778,15 +778,15 @@ const CSS = `
 .mm-sheet-wrap { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(20,21,24,0.48); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: overlayIn 0.18s ease-out; }
 .mm-sheet { display: flex; flex-direction: column; width: min(760px, 100%); max-height: calc(100vh - 2rem); background: var(--color-bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; }
 .mm-sheet-head { display: flex; align-items: start; justify-content: space-between; gap: 0.75rem; padding: 1.1rem 1.25rem 0.8rem; border-bottom: 1px solid var(--color-border); }
-.mm-sheet-head h3 { margin: 0; font-size: 1.1rem; letter-spacing: -0.015em; }
-.mm-sheet-head p { margin: 0.15rem 0 0; font-size: 0.82rem; color: var(--color-text-muted); }
-.mm-env { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.2rem 0.85rem; margin: 0; padding: 0.75rem 1.25rem; font-size: 0.86rem; border-bottom: 1px solid var(--color-border); background: var(--color-bg-secondary); }
+.mm-sheet-head h3 { margin: 0; font-size: var(--fs-md); letter-spacing: -0.015em; }
+.mm-sheet-head p { margin: 0.15rem 0 0; font-size: var(--fs-xs); color: var(--color-text-muted); }
+.mm-env { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.2rem 0.85rem; margin: 0; padding: 0.75rem 1.25rem; font-size: var(--fs-xs); border-bottom: 1px solid var(--color-border); background: var(--color-bg-secondary); }
 .mm-env dt { color: var(--color-text-muted); }
 .mm-env dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .mm-env dd.mm-env-subject { font-weight: 650; }
 .mm-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.6rem 1.25rem; border-bottom: 1px solid var(--color-border); }
 .mm-seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
-.mm-seg button { all: unset; cursor: pointer; padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.82rem; font-weight: 600; color: var(--color-text-secondary); }
+.mm-seg button { all: unset; cursor: pointer; padding: 0.3rem 0.7rem; border-radius: 6px; font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); }
 .mm-seg button[aria-pressed="true"] { background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-xs); }
 .mm-seg button:focus-visible { box-shadow: var(--focus-ring); }
 .mm-body:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
@@ -795,36 +795,33 @@ const CSS = `
 .mm-frame-wrap.is-phone { max-width: 380px; }
 .mm-frame { display: block; width: 100%; height: 420px; border: 0; background: #F5F4F0; transform-origin: 0 0; }
 .mm-jt { max-width: 600px; margin: 0 auto; background: #fff; color: #2D2E33; border: 1px solid #E5E4E0; border-radius: 12px; padding: 1.1rem 1.25rem; font: 15px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
-.mm-jt-title { font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem; }
+.mm-jt-title { font-weight: 700; font-size: var(--fs-base); margin-bottom: 0.5rem; }
 .mm-jt-body { white-space: pre-line; overflow-wrap: anywhere; }
 .mm-invite { max-width: 600px; margin: 0 auto; background: #fff; color: #2D2E33; border: 1px solid #E5E4E0; border-radius: 12px; padding: 1.1rem 1.25rem; }
-.mm-invite-title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.55rem; font-weight: 700; font-size: 1.05rem; margin-bottom: 0.6rem; }
-.mm-chip { display: inline-flex; align-items: center; padding: 0.12rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
-.mm-chip.is-tentative { background: #FFF6CC; color: #6B5300; }
-.mm-chip.is-confirmed { background: rgba(47,125,79,0.12); color: #2F7D4F; }
-.mm-invite dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.2rem 0.85rem; margin: 0 0 0.8rem; font-size: 0.88rem; }
+.mm-invite-title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.55rem; font-weight: 700; font-size: var(--fs-md); margin-bottom: 0.6rem; }
+.mm-invite dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.2rem 0.85rem; margin: 0 0 0.8rem; font-size: var(--fs-sm); }
 .mm-invite dt { color: #6B6C72; }
 .mm-invite dd { margin: 0; overflow-wrap: anywhere; }
-.mm-invite-desc { white-space: pre-line; font-size: 0.9rem; line-height: 1.55; margin: 0; padding-top: 0.75rem; border-top: 1px solid #EEE; overflow-wrap: anywhere; }
+.mm-invite-desc { white-space: pre-line; font-size: var(--fs-sm); line-height: 1.55; margin: 0; padding-top: 0.75rem; border-top: 1px solid #EEE; overflow-wrap: anywhere; }
 .mm-phone { max-width: 340px; margin: 0 auto; padding: 1rem 0.9rem 1.2rem; border-radius: 28px; background: #fff; border: 1px solid #E5E4E0; }
-.mm-phone-from { text-align: center; font-size: 0.74rem; color: #6B6C72; margin-bottom: 0.7rem; }
+.mm-phone-from { text-align: center; font-size: var(--fs-2xs); color: #6B6C72; margin-bottom: 0.7rem; }
 .mm-thread { display: flex; flex-direction: column; gap: 0.85rem; }
-.mm-when { text-align: center; font-size: 0.7rem; color: #8A8B90; margin-bottom: 0.3rem; }
+.mm-when { text-align: center; font-size: var(--fs-2xs); color: #8A8B90; margin-bottom: 0.3rem; }
 .mm-contact { display: flex; flex-direction: column; gap: 0.15rem; }
-.mm-contact span { font-size: 0.78rem; color: #6B6C72; }
-.mm-textto { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.84rem; color: var(--color-text-secondary); }
+.mm-contact span { font-size: var(--fs-2xs); color: #6B6C72; }
+.mm-textto { display: inline-flex; align-items: center; gap: 0.4rem; font-size: var(--fs-xs); color: var(--color-text-secondary); }
 .mm-textto .form-select { width: auto; min-height: 36px; padding: 0.2rem 1.8rem 0.2rem 0.6rem; }
 .mm-bubble { max-width: 85%; padding: 0.55rem 0.8rem; border-radius: 18px 18px 18px 6px; background: #E9E9EB; color: #1C1C1E; font: 15px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; overflow-wrap: anywhere; white-space: pre-line; }
 .mm-push { max-width: 380px; margin: 0 auto; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 0.15rem 0.7rem; padding: 0.8rem 0.9rem; border-radius: 16px; background: rgba(255,255,255,0.92); border: 1px solid #E5E4E0; box-shadow: 0 6px 24px rgba(0,0,0,0.08); color: #1C1C1E; font: 14px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
 .mm-push i { grid-row: span 2; width: 38px; height: 38px; border-radius: 9px; background: #FFDA24; }
 .mm-push b { font-weight: 650; }
-.mm-push small { grid-column: 2; display: block; color: #6B6C72; font-size: 0.74rem; margin-top: 0.2rem; }
-.mm-note { margin: 0.8rem auto 0; max-width: 600px; font-size: 0.82rem; line-height: 1.5; color: #5A5B61; }
+.mm-push small { grid-column: 2; display: block; color: #6B6C72; font-size: var(--fs-2xs); margin-top: 0.2rem; }
+.mm-note { margin: 0.8rem auto 0; max-width: 600px; font-size: var(--fs-xs); line-height: 1.5; color: #5A5B61; }
 .mm-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.8rem 1.25rem; border-top: 1px solid var(--color-border); }
-.mm-foot p { margin: 0; font-size: 0.84rem; color: var(--color-text-secondary); flex: 1 1 260px; }
+.mm-foot p { margin: 0; font-size: var(--fs-xs); color: var(--color-text-secondary); flex: 1 1 260px; }
 .mm-foot p.is-ok { color: var(--color-success); }
-.mm-foot p.is-bad { color: var(--am-warn, #B7791F); }
-.mm-wait { display: grid; place-items: center; min-height: 240px; color: #6B6C72; font-size: 0.88rem; }
+.mm-foot p.is-bad { color: var(--tone-warn-fg); }
+.mm-wait { display: grid; place-items: center; min-height: 240px; color: #6B6C72; font-size: var(--fs-sm); }
 @media (max-width: 640px) {
   .mm-width { display: none !important; }
   .mm-bar:not(:has(.mm-seg:not(.mm-width))) { display: none; }
@@ -976,7 +973,7 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
       const v = p.invite;
       return html`<div>
         <div class="mm-invite">
-          <div class="mm-invite-title">${v.title}<span class=${`mm-chip is-${v.status === 'confirmed' ? 'confirmed' : 'tentative'}`}>${v.status === 'confirmed' ? 'Confirmed' : 'Tentative'}</span></div>
+          <div class="mm-invite-title">${v.title}<span class=${`tag mm-chip ${v.status === 'confirmed' ? 'tag--success is-confirmed' : 'tag--warn is-tentative'}`}>${v.status === 'confirmed' ? 'Confirmed' : 'Tentative'}</span></div>
           <dl>
             <dt>When</dt><dd>${whenText(v.start, v.end)}</dd>
             ${v.location && html`<dt>Where</dt><dd>${v.location}</dd>`}
@@ -1052,9 +1049,9 @@ const TABS = [['map', 'Everything we send'], ['sent', 'What went out']];
 const tabOfHash = () => (location.hash.startsWith('#messages/sent') ? 'sent' : 'map');
 const TAB_CSS = `
 .mm-tabs { margin-bottom: 1.25rem; }
-.mm-tab-n { display: inline-grid; place-items: center; min-width: 1.25rem; height: 1.25rem; margin-left: 0.4rem; padding: 0 0.35rem; border-radius: 999px; background: color-mix(in srgb, #B7791F 18%, var(--color-bg-card)); color: #8A5A12; font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.mm-arrive small { display: block; margin-top: 0.15rem; color: var(--color-text-muted); font-size: 0.8rem; }
-.mm-arrive .is-bad { color: #8A5A12; font-weight: 600; }
+.mm-tab-n { display: inline-grid; place-items: center; min-width: 1.25rem; height: 1.25rem; margin-left: 0.4rem; padding: 0 0.35rem; border-radius: 999px; background: color-mix(in srgb, var(--tone-warn-dot) 18%, var(--color-bg-card)); color: #8A5A12; font-size: var(--fs-2xs); font-weight: 700; font-variant-numeric: tabular-nums; }
+.mm-arrive small { display: block; margin-top: 0.15rem; color: var(--color-text-muted); font-size: var(--fs-xs); }
+.mm-arrive .is-bad { color: var(--tone-warn-fg); font-weight: 600; }
 `;
 let tabCssDone = false;
 
@@ -1132,10 +1129,10 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
     const logged = keyOf(sel) && [sel.k, ...(sel.also || [])].some((c) => LOGGED.has(c));
     return html`
       <div class="am-chips">
-        <span class="chip"><${Dot} n=${sel} /> ${STATUS[sel.es]}</span>
+        <span class="tag"><${Dot} n=${sel} /> ${STATUS[sel.es]}</span>
         ${sendersOf(sel).map((x) => html`<${Sender} s=${x} key=${x} />`)}
-        ${sel.spanish && html`<span class="chip">English and Spanish</span>`}
-        <span class="chip am-chip-src" title=${p ? 'Checked against the live systems when this page opened' : `Can’t be checked from the site; as written on ${WRITTEN_ON}`}>${p ? 'Checked live' : 'From the map'}</span>
+        ${sel.spanish && html`<span class="tag">English and Spanish</span>`}
+        <span class="tag am-chip-src" title=${p ? 'Checked against the live systems when this page opened' : `Can’t be checked from the site; as written on ${WRITTEN_ON}`}>${p ? 'Checked live' : 'From the map'}</span>
       </div>
       <dl>
         <div><dt>Sent from</dt><dd class="mm-from">${fromLines(sel)}</dd></div>
@@ -1152,7 +1149,7 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
         ${sel.info && html`<div><dt>Good to know</dt><dd>${sel.info}</dd></div>`}
       </dl>
       ${(sel.preview || logged) && html`<div class="mm-actions">
-        ${sel.preview && html`<button type="button" class="btn btn-secondary btn-sm" onClick=${see(sel)}>${SEE[sel.k] || 'See it'}</button>`}
+        ${sel.preview && html`<button type="button" class="btn btn-primary btn-sm" onClick=${see(sel)}>${SEE[sel.k] || 'See it'}</button>`}
         ${logged && html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => sentFor(sel)}>What went out</button>`}
       </div>`}`;
   };

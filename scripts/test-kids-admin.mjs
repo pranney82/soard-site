@@ -37,6 +37,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path';
 import { hoverSweep } from './lib/hover-sweep.mjs';
 import * as KS from '../public/admin/kids-shared.js';
+import { answerAsks } from './lib/ask.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/kids-admin/');
@@ -167,6 +168,7 @@ async function open(browser, { width, height, mobile }) {
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|favicon|net::ERR/.test(m.text())) errors.push(m.text().slice(0, 300)); });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.slice(0, 300)}`));
   page.on('dialog', (d) => d.accept());
+  await answerAsks(page);
   const api = makeApi();
   await page.setRequestInterception(true);
   page.on('request', (req) => {

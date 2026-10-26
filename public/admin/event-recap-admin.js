@@ -34,25 +34,25 @@ const CSS = `
 .er-status.is-over { background: rgba(46, 125, 50, 0.07); border-color: rgba(46, 125, 50, 0.28); }
 .er-status__dot { flex-shrink: 0; width: 10px; height: 10px; margin-top: 0.4rem; border-radius: 50%; background: var(--text-tertiary); }
 .er-status.is-over .er-status__dot { background: #2e7d32; box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.15); }
-.er-status__text { display: grid; gap: 0.25rem; font-size: 0.9rem; line-height: 1.5; }
+.er-status__text { display: grid; gap: 0.25rem; font-size: var(--fs-sm); line-height: 1.5; }
 .er-status__text a { color: inherit; font-weight: 600; }
 .er-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
 .er-count { display: grid; gap: 0.1rem; padding: 0.9rem 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-primary, #fff); }
-.er-count__n { font-size: 1.7rem; font-weight: 800; line-height: 1.1; }
-.er-count__l { font-weight: 600; font-size: 0.88rem; }
-.er-count__how { font-size: 0.8rem; color: var(--text-tertiary); }
+.er-count__n { font-size: var(--fs-2xl); font-weight: 800; line-height: 1.1; }
+.er-count__l { font-weight: 600; font-size: var(--fs-sm); }
+.er-count__how { font-size: var(--fs-xs); color: var(--text-tertiary); }
 .er-block { display: grid; gap: 0.8rem; padding-top: 0.25rem; }
-.er-block h3 { margin: 0; font-size: 1rem; }
-.er-hint { margin: 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.55; }
+.er-block h3 { margin: 0; font-size: var(--fs-base); }
+.er-hint { margin: 0; font-size: var(--fs-xs); color: var(--text-secondary); line-height: 1.55; }
 .er-drop { display: flex; gap: 0.9rem; align-items: center; padding: 1.15rem 1.2rem; border: 2px dashed var(--border); border-radius: 14px; background: var(--bg-secondary); color: var(--text-secondary); transition: border-color 0.15s, background 0.15s; }
-.er-drop strong { display: block; color: var(--text-primary, inherit); font-size: 0.95rem; }
-.er-drop span { font-size: 0.84rem; }
+.er-drop strong { display: block; color: var(--text-primary, inherit); font-size: var(--fs-sm); }
+.er-drop span { font-size: var(--fs-xs); }
 .er-drop.is-over { border-color: var(--color-primary); background: rgba(255, 213, 0, 0.1); }
 .er-drop.is-busy { opacity: 0.75; }
 .er-link { border: 0; background: none; padding: 0; font: inherit; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; min-height: 0; }
 .er-progress { height: 6px; border-radius: 3px; background: var(--bg-secondary); overflow: hidden; }
 .er-progress span { display: block; height: 100%; background: var(--color-primary); transition: width 0.3s ease; }
-.er-fail { padding: 0.8rem 1rem; border-radius: 10px; border: 1px solid rgba(180, 83, 9, 0.35); background: rgba(245, 158, 11, 0.08); font-size: 0.85rem; }
+.er-fail { padding: 0.8rem 1rem; border-radius: 10px; border: 1px solid rgba(180, 83, 9, 0.35); background: rgba(245, 158, 11, 0.08); font-size: var(--fs-xs); }
 .er-fail ul { margin: 0.4rem 0; padding-left: 1.1rem; }
 .er-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; }
 .er-hl { display: grid; grid-template-columns: 7rem 1fr auto; gap: 0.5rem; margin-bottom: 0.45rem; }
@@ -62,7 +62,7 @@ const CSS = `
 .er-sp__head { display: grid; grid-template-columns: 1fr 10rem auto; gap: 0.5rem; }
 .er-sp__name { display: grid; grid-template-columns: 64px 1fr auto; gap: 0.5rem; align-items: center; }
 .er-sp__name img { width: 64px; height: 32px; object-fit: contain; }
-.er-sp__nologo { font-size: 0.72rem; color: var(--text-tertiary); text-align: center; }
+.er-sp__nologo { font-size: var(--fs-2xs); color: var(--text-tertiary); text-align: center; }
 @media (max-width: 640px) { .er-sp__head { grid-template-columns: 1fr; } .er-hl { grid-template-columns: 5.5rem 1fr auto; } }
 `;
 function injectStyles() {
@@ -243,7 +243,7 @@ export function AfterEventPanel({ api, event, events = [], pageDoc = null, onEve
             <strong>${plural(failures.length, 'photo')} didn’t upload</strong>
             <ul>${failures.slice(0, 8).map((f) => html`<li>${f.file.name}: ${f.error}</li>`)}</ul>
             ${failures.length > 8 ? html`<p>…and ${failures.length - 8} more.</p>` : null}
-            <button type="button" class="btn btn-secondary btn-sm" onClick=${() => upload(failures.map((f) => f.file))}>Try those again</button>
+            <button type="button" class="btn btn-primary btn-sm" onClick=${() => upload(failures.map((f) => f.file))}>Try those again</button>
           </div>` : null}
         <div class="er-row">
           <label class="form-group">
@@ -305,7 +305,7 @@ export function SponsorsList({ value, onChange }) {
             </div>`)}
           <button type="button" class="btn btn-ghost btn-sm er-add" onClick=${() => set((x) => { x[ti].names.push({ name: '' }); return x; })}>+ Add a sponsor</button>
         </div>`)}
-      <button type="button" class="btn btn-secondary btn-sm" onClick=${() => onChange([...tiers, { tier: '', size: 'md', names: [{ name: '' }] }])}>+ Add a level</button>
+      <button type="button" class="btn btn-ghost btn-sm" onClick=${() => onChange([...tiers, { tier: '', size: 'md', names: [{ name: '' }] }])}>+ Add a level</button>
     </div>`;
 }
 

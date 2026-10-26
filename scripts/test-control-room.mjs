@@ -248,7 +248,8 @@ try {
 
   console.log('\n▶ Mic check live, mono mic');
   await mock(page, { phase: 'scheduled', live: false, rehearsalLive: true });
-  await clickText(page, '.bc-header button', /^Refresh$/);
+  // No Refresh button: coming back to the tab brings Reveals up to date
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await page.waitForFunction(() => (document.querySelector('.cr-stage video')?.currentTime || 0) > 1, { timeout: 15000 }).catch(() => {});
   ok(await waitVerdict(page, /Sound is good/, 12000), `mono → good (saw: ${await verdictText(page)})`);
   await new Promise((r) => setTimeout(r, 9000)); // past the 8 s one-sided window

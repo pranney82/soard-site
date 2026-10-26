@@ -62,6 +62,7 @@ import * as readContentApi from '../functions/api/read-content.js';
 import * as saveContentApi from '../functions/api/save-content.js';
 import * as waitlistApi from '../functions/api/application-waitlist-admin.js';
 import { ensureWaitlistSchema } from '../functions/api/_application-waitlist.js';
+import { answerAsks } from './lib/ask.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/applications-admin/');
@@ -229,6 +230,7 @@ async function open(width, height, hash, { user = PETER, previewProbe = false } 
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|favicon|Content Security Policy|live-ws|dynamically imported module/.test(m.text())) errors.push(m.text()); });
   page.on('dialog', (d) => d.accept());
+  await answerAsks(page);
   if (previewProbe) {
     // Plays the family form's half of the preview contract: say ready, keep what arrives
     await page.evaluateOnNewDocument(() => {
@@ -708,7 +710,7 @@ try {
     await waitSaved(page);
     ok(!(await page.$('.afe-problems')), 'inserting {child} fixes it');
     // Spanish, beside it
-    await clickText(page, '.afe-email-top .afe-seg button', /^Spanish/);
+    await clickText(page, '.afe-email-top .afe-seg-text button', /^Spanish/);
     await page.waitForSelector('#afe-m-approved[lang="es"]');
     ok(/The English changed after this was translated/.test(await text(page, '.afe-email-ed')), 'its Spanish shows as out of date, with the old English');
     ok(/Decisión sobre la solicitud/.test(await text(page, '.afe-email-prev')), 'the Spanish preview has the Spanish subject');
@@ -717,7 +719,7 @@ try {
     const es = (await draftDef()).i18n.es;
     ok(es.strings['message:approved'] === '{parent}, la solicitud de *{child}* fue aprobada.' && es.sources['message:approved'] === (await draftDef()).messages.approved, 'typing the Spanish saves it against the current English');
     ok(/Jordan Stone, la solicitud de Avery Stone fue aprobada/.test(await text(page, '.afe-email-prev')), 'and the preview reads it');
-    await clickText(page, '.afe-email-top .afe-seg button', /^English$/);
+    await clickText(page, '.afe-email-top .afe-seg-text button', /^English$/);
     // Reminders
     await page.click('.afe-email-rail [data-email="reminders"]');
     await page.waitForSelector('input[aria-label="Send reminder emails"]');
@@ -1057,7 +1059,7 @@ try {
     await page.evaluate(() => { const d = [...document.querySelectorAll('.wl-sec')].find(x => /The email/.test(x.querySelector('summary')?.textContent || '')); if (d) d.open = true; });
     await page.waitForFunction(() => (document.querySelector('.wl-frame iframe')?.getAttribute('srcdoc') || '').includes('Applications are open'), { timeout: 8000 }).catch(() => {});
     ok(/Subject: Applications are open: apply for a 2027 room makeover/.test(await text(page, '.wl-sec[open]')), 'the email preview shows its subject');
-    await clickText(page, '.wl-sec[open] .afe-seg button', /^Spanish$/);
+    await clickText(page, '.wl-sec[open] .afe-seg-text button', /^Spanish$/);
     await page.waitForFunction(() => (document.querySelector('.wl-frame iframe')?.getAttribute('srcdoc') || '').includes('Ya puede presentar su solicitud'), { timeout: 8000 }).catch(() => {});
     ok((await page.$eval('.wl-frame iframe', (f) => f.getAttribute('srcdoc') || '')).includes('Ya puede presentar su solicitud'), 'and the Spanish one');
     await page.$eval('.wl-sec[open]', (el) => el.scrollIntoView({ block: 'start' }));
@@ -1083,9 +1085,9 @@ try {
     ok(/starts with https/.test(await text(page, '.afe-avail')) && (await saveOff()) === true, 'a link without https:// blocks Save');
     await typeInto(page, '#afe-formurl', '');
     ok((await saveOff()) === false && /Unsaved changes to the season and what families read/.test(await text(page, '.afe-savebar')), 'unsaved, the save bar says what, and Save is on');
-    await clickText(page, '.afe-fam .afe-seg button', /^Closed$/);
+    await clickText(page, '.afe-fam .afe-seg-text button', /^Closed$/);
     ok(/Applications reopen in January\./.test(await text(page, '.afe-fam-banner')) && /with your unsaved changes/.test(await text(page, '.afe-fam')), 'the preview draws the unsaved closed message');
-    await clickText(page, '.afe-fam .afe-seg button', /^Open$/);
+    await clickText(page, '.afe-fam .afe-seg-text button', /^Open$/);
     ok(/The 2028 application is now open!/.test(await text(page, '.afe-fam-banner')), 'and the open banner with the new season');
     await saveBtn();
     await settled();
@@ -1478,12 +1480,12 @@ try {
   await section('Leaving with unsaved settings asks first', async () => {
     const lv = await open(1280, 900, '#applications/settings');
     const asked = [];
-    lv.page.on('dialog', (d) => asked.push(d.message()));
+    await answerAsks(lv.page, { accept: false, onAsk: (m) => asked.push(m) });
     await lv.page.waitForSelector('#afe-closed', { timeout: 20000 });
     await lv.page.type('#afe-closed', 'Back soon.');
     await clickText(lv.page, '.nav-item', /Site Config/);
     await sleep(400);
-    ok(asked.some(m => /unsaved changes in Applications settings/.test(m)), `the admin asks before leaving (${asked[0] || 'no prompt'})`);
+    ok(asked.some(m => /changes in Applications settings aren’t saved/.test(m)), `the admin asks before leaving, in its own dialog (${asked[0] || 'no prompt'})`);
     ok((await storedSettings()).application.closedMessage === '', 'and nothing was saved');
     await lv.page.close();
   });

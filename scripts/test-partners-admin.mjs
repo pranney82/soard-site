@@ -38,6 +38,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as PS from '../public/admin/partners-shared.js';
 import { hoverSweep } from './lib/hover-sweep.mjs';
+import { answerAsks } from './lib/ask.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/partners-admin/');
@@ -256,6 +257,7 @@ async function open(browser, { width, height, mobile }) {
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|favicon|net::ERR/.test(m.text())) errors.push(m.text().slice(0, 300)); });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.slice(0, 300)}`));
   page.on('dialog', (d) => d.accept());
+  await answerAsks(page);
   const api = makeApi();
   await page.setRequestInterception(true);
   page.on('request', (req) => {
@@ -567,7 +569,7 @@ try {
     ok(new RegExp(`On ${crCount} kid pages`).test(crSub || ''), `Construction Resources now counts their old CR Construction pages (${crSub})`);
 
     // Add a partner: duplicate warning, web address tidied, Champion goes last
-    await clickText(page, '.ppl-head__actions .btn', '+ Add partner');
+    await clickText(page, '.ppl-head__actions .btn', 'Add a partner');
     await page.waitForSelector('#pt-new-name');
     await typeInto(page, '#pt-new-name', 'Pella');
     await sleep(150);
@@ -985,7 +987,7 @@ try {
     // Add dialog fits as a sheet
     await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
     await page.waitForSelector('.pt-row');
-    await clickText(page, '.ppl-head__actions .btn', '+ Add partner');
+    await clickText(page, '.ppl-head__actions .btn', 'Add a partner');
     await page.waitForSelector('#pt-new-name');
     const sheet = await page.$eval('.kd-dialog', (e) => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= 390; });
     ok(sheet, 'phone: Add a partner fits the screen');

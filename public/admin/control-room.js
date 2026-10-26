@@ -53,11 +53,11 @@ const CSS = `
 .cr .card { margin: 0; }
 .cr-bar { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between; }
 .cr-feedbar { margin-bottom: .75rem; }
-.cr-chips { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; font-size: .85rem; color: var(--color-text-secondary); }
+.cr-chips { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; font-size: var(--fs-xs); color: var(--color-text-secondary); }
 .cr-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .65rem; border-radius: 999px; background: var(--color-bg); border: 1px solid var(--color-border); font-weight: 600; color: var(--color-text); white-space: nowrap; }
 .cr-chip[data-tone] { background: var(--tone-bg); border-color: transparent; color: var(--tone-fg); }
 button.cr-chip { cursor: pointer; font: inherit; font-weight: 600; }
-.cr-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--dot, #CBD5E0); }
+.cr-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--dot, var(--tone-neutral-dot)); }
 .cr-dot.is-live { box-shadow: 0 0 0 4px rgba(255,213,0,.3); animation: cr-pulse 1.6s ease-in-out infinite; }
 @keyframes cr-pulse { 50% { box-shadow: 0 0 0 7px rgba(255,213,0,.08); } }
 @media (prefers-reduced-motion: reduce) { .cr-dot.is-live, .cr-issues.is-new { animation: none; } }
@@ -72,66 +72,66 @@ button.cr-chip { cursor: pointer; font: inherit; font-weight: 600; }
 .cr-stage.is-empty { aspect-ratio: auto; min-height: 200px; max-height: none; }
 .cr-stage.is-empty video { position: absolute; inset: 0; opacity: 0; }
 @media (max-width: 1000px) { .cr-stage.is-portrait:not(.is-empty) { max-width: 380px; } }
-.cr-over { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 1.25rem; color: #f5f4f0; font-size: .9rem; line-height: 1.5; background: rgba(15,16,18,.72); }
-.cr-over strong { display: block; font-size: 1rem; margin-bottom: .25rem; color: #fff; }
-.cr-stats { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin-top: .6rem; font-size: .8rem; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.cr-over { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 1.25rem; color: #f5f4f0; font-size: var(--fs-sm); line-height: 1.5; background: rgba(15,16,18,.72); }
+.cr-over strong { display: block; font-size: var(--fs-base); margin-bottom: .25rem; color: #fff; }
+.cr-stats { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin-top: .6rem; font-size: var(--fs-xs); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .cr-stats b { color: var(--color-text); font-weight: 600; }
 .cr-verdict { display: flex; gap: .75rem; align-items: flex-start; padding: .8rem .9rem; border-radius: var(--radius-sm); background: var(--tone-bg); color: var(--tone-fg); }
-.cr-verdict strong { display: block; font-size: 1rem; }
-.cr-verdict p { margin: .15rem 0 0; font-size: .85rem; line-height: 1.45; }
+.cr-verdict strong { display: block; font-size: var(--fs-base); }
+.cr-verdict p { margin: .15rem 0 0; font-size: var(--fs-xs); line-height: 1.45; }
 .cr-loud { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin: .9rem 0 .2rem; }
 .cr-loud div { background: var(--color-bg-secondary); border-radius: 8px; padding: .45rem .6rem; }
-.cr-loud span { display: block; font-size: max(11px, 0.72rem); color: var(--color-text-muted); }
-.cr-loud b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.cr-loud span { display: block; font-size: var(--fs-2xs); color: var(--color-text-muted); }
+.cr-loud b { font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
 .cr-meters { display: grid; gap: .45rem; margin: .75rem 0 .25rem; }
-.cr-meter { display: grid; grid-template-columns: 2.6rem 1fr 4.4rem; gap: .5rem; align-items: center; font-size: .78rem; font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
-.cr-track { position: relative; height: 16px; border-radius: 4px; overflow: hidden; background: #EDECE8; }
+.cr-meter { display: grid; grid-template-columns: 2.6rem 1fr 4.4rem; gap: .5rem; align-items: center; font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+.cr-track { position: relative; height: 16px; border-radius: 4px; overflow: hidden; background: var(--seg-bg); }
 .cr-track.is-lufs { height: 22px; }
 .cr-zone { position: absolute; top: 0; bottom: 0; background: rgba(56,161,105,.13); border-left: 1px dashed rgba(56,161,105,.5); border-right: 1px dashed rgba(56,161,105,.5); }
-.cr-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #38A169 0%, #38A169 70%, #D69E2E 85%, #E53E3E 99%); background-size: var(--full, 300px) 100%; transition: width 100ms linear; }
-.cr-track.is-lufs .cr-fill { background: linear-gradient(90deg, #A0AEC0 0%, #A0AEC0 34%, #38A169 52%, #38A169 76%, #D69E2E 84%, #E53E3E 99%); background-size: var(--full, 300px) 100%; }
+.cr-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, var(--tone-success-dot) 0%, var(--tone-success-dot) 70%, var(--tone-warn-dot) 85%, var(--tone-danger-dot) 99%); background-size: var(--full, 300px) 100%; transition: width 100ms linear; }
+.cr-track.is-lufs .cr-fill { background: linear-gradient(90deg, var(--tone-neutral-dot) 0%, var(--tone-neutral-dot) 34%, var(--tone-success-dot) 52%, var(--tone-success-dot) 76%, var(--tone-warn-dot) 84%, var(--tone-danger-dot) 99%); background-size: var(--full, 300px) 100%; }
 .cr-peak { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: var(--color-text); opacity: .75; }
 .cr-mark { position: absolute; top: -2px; bottom: -2px; width: 3px; left: 0; background: #2D2E33; border-radius: 2px; transition: left 300ms ease-out; }
-.cr-scale { display: grid; grid-template-columns: 2.6rem 1fr 4.4rem; gap: .5rem; font-size: max(11px, 0.7rem); color: var(--color-text-muted); }
+.cr-scale { display: grid; grid-template-columns: 2.6rem 1fr 4.4rem; gap: .5rem; font-size: var(--fs-2xs); color: var(--color-text-muted); }
 .cr-scale div { position: relative; height: 1rem; }
 .cr-scale div span { position: absolute; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
 .cr-hist { width: 100%; height: 56px; display: block; margin-top: .75rem; background: var(--color-bg-secondary); border-radius: 6px; }
 .cr-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .75rem; }
-.cr-note { font-size: .8rem; color: var(--color-text-muted); line-height: 1.5; }
+.cr-note { font-size: var(--fs-xs); color: var(--color-text-muted); line-height: 1.5; }
 .cr-issues { border-left: 4px solid var(--dot); }
 .cr-issues.is-new { animation: cr-flash 1.2s ease-out 2; }
 @keyframes cr-flash { 30% { box-shadow: 0 0 0 4px rgba(214,158,46,.35); } }
 .cr-issue { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: .2rem .7rem; padding: .7rem 0; border-top: 1px solid var(--color-border); align-items: baseline; }
 .cr-issue:first-of-type { border-top: 0; padding-top: .2rem; }
 .cr-issue .cr-dot { align-self: center; }
-.cr-issue strong { font-size: .95rem; }
-.cr-issue .cr-fixline { grid-column: 2 / -1; font-size: .85rem; color: var(--color-text-secondary); line-height: 1.45; }
-.cr-issue .cr-slack { grid-column: 2 / -1; font-size: .78rem; color: var(--color-text-muted); }
-.cr-issue time { font-size: .8rem; color: var(--color-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cr-issue strong { font-size: var(--fs-sm); }
+.cr-issue .cr-fixline { grid-column: 2 / -1; font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.45; }
+.cr-issue .cr-slack { grid-column: 2 / -1; font-size: var(--fs-2xs); color: var(--color-text-muted); }
+.cr-issue time { font-size: var(--fs-xs); color: var(--color-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cr-dests { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .cr-dest { border-top: 4px solid var(--dot); display: flex; flex-direction: column; gap: .35rem; }
-.cr-dest h4 { margin: 0; font-size: .95rem; display: flex; align-items: center; gap: .5rem; justify-content: space-between; }
-.cr-dest .cr-title { font-weight: 600; font-size: .9rem; }
-.cr-dest .cr-detail { font-size: .82rem; color: var(--color-text-secondary); line-height: 1.45; }
-.cr-dest .cr-fix { font-size: .82rem; line-height: 1.45; background: #FEFCBF; color: #744210; border-radius: 6px; padding: .45rem .6rem; }
+.cr-dest h4 { margin: 0; font-size: var(--fs-sm); display: flex; align-items: center; gap: .5rem; justify-content: space-between; }
+.cr-dest .cr-title { font-weight: 600; font-size: var(--fs-sm); }
+.cr-dest .cr-detail { font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.45; }
+.cr-dest .cr-fix { font-size: var(--fs-xs); line-height: 1.45; background: var(--tone-warn-bg); color: var(--tone-warn-fg); border-radius: 6px; padding: .45rem .6rem; }
 .cr-dest .cr-actions { margin-top: auto; padding-top: .35rem; display: flex; gap: .4rem; flex-wrap: wrap; }
 .cr-embed { margin-top: .5rem; border-radius: 8px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; }
 .cr-embed iframe { width: 100%; height: 100%; border: 0; display: block; }
-.cr-pill { font-size: max(11px, 0.72rem); font-weight: 700; letter-spacing: .02em; padding: .15rem .5rem; border-radius: 999px; background: var(--tone-bg); color: var(--tone-fg); white-space: nowrap; }
+.cr-pill { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .02em; padding: .15rem .5rem; border-radius: 999px; background: var(--tone-bg); color: var(--tone-fg); white-space: nowrap; }
 .cr-go { border-left: 4px solid var(--dot); }
 .cr-go-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem 1rem; flex-wrap: wrap; }
 .cr-go-head h3 { display: flex; align-items: center; gap: .6rem; }
-.cr-check { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) auto; gap: .1rem .5rem; padding: .6rem 0; border-top: 1px solid var(--color-border); font-size: .88rem; align-items: start; }
+.cr-check { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) auto; gap: .1rem .5rem; padding: .6rem 0; border-top: 1px solid var(--color-border); font-size: var(--fs-sm); align-items: start; }
 .cr-checks { margin-top: .5rem; }
 .cr-checks > .cr-check:first-child { border-top: 0; }
 .cr-check i { font-style: normal; font-weight: 700; color: var(--tone-fg); text-align: center; }
-.cr-check small { grid-column: 2; color: var(--color-text-muted); font-size: .8rem; line-height: 1.45; }
-.cr-check .cr-fixline { grid-column: 2; font-size: .82rem; color: #744210; line-height: 1.45; }
+.cr-check small { grid-column: 2; color: var(--color-text-muted); font-size: var(--fs-xs); line-height: 1.45; }
+.cr-check .cr-fixline { grid-column: 2; font-size: var(--fs-xs); color: var(--tone-warn-fg); line-height: 1.45; }
 .cr-check .cr-do { grid-column: 3; grid-row: 1 / span 3; align-self: center; white-space: nowrap; }
 @media (max-width: 600px) { .cr-check .cr-do { grid-column: 2; grid-row: auto; justify-self: start; margin-top: .3rem; } }
-.cr-all { margin-top: .5rem; font-size: .85rem; }
+.cr-all { margin-top: .5rem; font-size: var(--fs-xs); }
 .cr-all summary { cursor: pointer; color: var(--color-text-secondary); font-weight: 600; }
-.cr-toggles { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .8rem; color: var(--color-text-secondary); }
+.cr-toggles { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: var(--fs-xs); color: var(--color-text-secondary); }
 .cr-toggles label { display: inline-flex; gap: .35rem; align-items: center; cursor: pointer; }
 .cr-report { padding: .25rem 0 0; }
 .cr-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -148,14 +148,14 @@ function injectCss() {
 // ─── Words and tones ────────────────────────────────────────────────
 
 const TONES = {
-  ok: { bg: '#C6F6D5', fg: '#22543D', dot: '#38A169', pill: 'OK' },
-  wait: { bg: '#E2E8F0', fg: '#4A5568', dot: '#A0AEC0', pill: 'Starting' },
-  warn: { bg: '#FEFCBF', fg: '#744210', dot: '#D69E2E', pill: 'Needs a fix' },
-  bad: { bg: '#FED7D7', fg: '#822727', dot: '#E53E3E', pill: 'Problem' },
-  off: { bg: '#EDF2F7', fg: '#718096', dot: '#CBD5E0', pill: 'Off' },
-  unknown: { bg: '#EDF2F7', fg: '#4A5568', dot: '#A0AEC0', pill: 'Can\'t confirm' },
-  idle: { bg: '#EDF2F7', fg: '#4A5568', dot: '#CBD5E0', pill: 'Ready' },
-  fail: { bg: '#FED7D7', fg: '#822727', dot: '#E53E3E', pill: 'Fix first' },
+  ok: { bg: 'var(--tone-success-bg)', fg: 'var(--tone-success-fg)', dot: 'var(--tone-success-dot)', pill: 'OK' },
+  wait: { bg: 'var(--tone-neutral-bg)', fg: 'var(--tone-neutral-fg)', dot: 'var(--tone-neutral-dot)', pill: 'Starting' },
+  warn: { bg: 'var(--tone-warn-bg)', fg: 'var(--tone-warn-fg)', dot: 'var(--tone-warn-dot)', pill: 'Needs a fix' },
+  bad: { bg: 'var(--tone-danger-bg)', fg: 'var(--tone-danger-fg)', dot: 'var(--tone-danger-dot)', pill: 'Problem' },
+  off: { bg: 'var(--tone-neutral-bg)', fg: 'var(--tone-neutral-fg)', dot: 'var(--tone-neutral-dot)', pill: 'Off' },
+  unknown: { bg: 'var(--tone-neutral-bg)', fg: 'var(--tone-neutral-fg)', dot: 'var(--tone-neutral-dot)', pill: 'Can\'t confirm' },
+  idle: { bg: 'var(--tone-neutral-bg)', fg: 'var(--tone-neutral-fg)', dot: 'var(--tone-neutral-dot)', pill: 'Ready' },
+  fail: { bg: 'var(--tone-danger-bg)', fg: 'var(--tone-danger-fg)', dot: 'var(--tone-danger-dot)', pill: 'Fix first' },
 };
 const tone = (t) => TONES[t] || TONES.idle;
 const toneStyle = (t) => `--tone-bg:${tone(t).bg};--tone-fg:${tone(t).fg};--dot:${tone(t).dot}`;
@@ -594,7 +594,7 @@ function History({ hist }) {
   const pts = (hist || []).map((db, i, a) => `${((n - a.length + i) / (n - 1)) * 240},${y(db).toFixed(1)}`).join(' ');
   return html`<svg class="cr-hist" viewBox="0 0 240 56" preserveAspectRatio="none" role="img" aria-label="Short-term loudness over the last minute">
     <rect x="0" width="240" y=${y(TARGET[1])} height=${y(TARGET[0]) - y(TARGET[1])} fill="rgba(56,161,105,.12)" />
-    <line x1="0" x2="240" y1=${y(QUIET_LUFS)} y2=${y(QUIET_LUFS)} stroke="#CBD5E0" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke" />
+    <line x1="0" x2="240" y1=${y(QUIET_LUFS)} y2=${y(QUIET_LUFS)} stroke="var(--tone-neutral-dot)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke" />
     ${pts ? html`<polyline points=${pts} fill="none" stroke="#2D2E33" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />` : null}
   </svg>`;
 }
@@ -690,7 +690,7 @@ export function Preflight({ initial = null, actions = {}, refreshKey = 0 }) {
       ${i.fix && i.status !== 'ok' ? html`<span class="cr-fixline">${i.fix}</span>` : null}
       ${a ? (a.href
         ? html`<a class="btn btn-ghost btn-sm cr-do" href=${a.href} target="_blank" rel="noopener">${a.label} ↗</a>`
-        : html`<button class="btn btn-secondary btn-sm cr-do" type="button" onClick=${a.onClick}>${a.label}</button>`) : null}
+        : html`<button class="btn btn-primary btn-sm cr-do" type="button" onClick=${a.onClick}>${a.label}</button>`) : null}
     </div>`;
   };
   return html`<div class="card cr-go" style=${toneStyle(verdict ? verdict[0] : 'idle')}>
@@ -698,7 +698,7 @@ export function Preflight({ initial = null, actions = {}, refreshKey = 0 }) {
       <h3>Go / no-go ${verdict ? html`<span class="cr-pill">${verdict[1]}</span>` : null}</h3>
       <div class="cr-chips">${res?.at ? html`<span>Checked ${ago(res.at)}</span>` : null}<button class="btn btn-ghost btn-sm" type="button" disabled=${busy} onClick=${run}>${busy ? 'Checking…' : 'Run again'}</button></div>
     </div>
-    ${err ? html`<p class="cr-note" style="color:#744210">${err}</p>` : null}
+    ${err ? html`<p class="cr-note ink-warn">${err}</p>` : null}
     ${!res && !err ? html`<p class="cr-note">Checking…</p>` : null}
     ${open.length ? html`<div class="cr-checks">${open.map((i) => row(i, true))}</div>` : null}
     ${items.length ? html`<details class="cr-all"><summary>${open.length ? `All ${items.length} checks` : `All ${items.length} checks pass`}</summary><div class="cr-checks">${items.map((i) => row(i, false))}</div></details>` : null}
@@ -724,12 +724,12 @@ export function HealthReport({ report: x }) {
   const maxT = Math.max(1, ...(x.series || []).map((p) => p[0]));
   const y = (l) => 40 - (pctOf(l, LUFS_FLOOR) / 100) * 36 - 2;
   return html`<div class="cr-report">
-    <div><strong style="font-size:.9rem">Feed health</strong> <span class="cr-note">${x.minutes} min · ${parts.join(' · ')}</span></div>
+    <div><strong style="font-size: var(--fs-sm)">Feed health</strong> <span class="cr-note">${x.minutes} min · ${parts.join(' · ')}</span></div>
     ${series.length > 1 ? html`<svg class="cr-hist" style="height:40px" viewBox="0 0 240 40" preserveAspectRatio="none" role="img" aria-label="Loudness through the reveal">
       <rect x="0" width="240" y=${y(TARGET[1])} height=${y(TARGET[0]) - y(TARGET[1])} fill="rgba(56,161,105,.12)" />
       <polyline points=${series.map((p) => `${(p[0] / maxT) * 240},${y(p[1]).toFixed(1)}`).join(' ')} fill="none" stroke="#2D2E33" stroke-width="1.5" vector-effect="non-scaling-stroke" />
     </svg>` : null}
-    ${x.issues?.length ? html`<ul style="margin:.5rem 0 0;padding-left:1.1rem;font-size:.85rem;line-height:1.6">${x.issues.map((i) => html`<li>${at(i.at)}: ${i.t} for ${at(i.s)}${i.e ? ' (still open at the end)' : ''}</li>`)}</ul>` : html`<p class="cr-note" style="margin:.4rem 0 0">No issues during the reveal.</p>`}
+    ${x.issues?.length ? html`<ul style="margin:.5rem 0 0;padding-left:1.1rem;font-size: var(--fs-xs);line-height:1.6">${x.issues.map((i) => html`<li>${at(i.at)}: ${i.t} for ${at(i.s)}${i.e ? ' (still open at the end)' : ''}</li>`)}</ul>` : html`<p class="cr-note" style="margin:.4rem 0 0">No issues during the reveal.</p>`}
   </div>`;
 }
 
@@ -810,11 +810,11 @@ export function ControlRoom({ feed = 'live', phase, refreshKey = 0 }) {
   // Phone, signal and freshness sit on the picture's own card, so they read as the feed's status
   const feedBar = html`<div class="cr-bar cr-feedbar">
     <div class="cr-chips">
-      <span class="cr-chip" data-tone style=${toneStyle(conn[0])}><span class=${`cr-dot ${live ? 'is-live' : ''}`} style=${live ? '--dot:#FFD500' : ''}></span>${conn[1]}</span>
+      <span class="cr-chip" data-tone style=${toneStyle(conn[0])}><span class=${`cr-dot ${live ? 'is-live' : ''}`} style=${live ? '--dot:var(--color-primary)' : ''}></span>${conn[1]}</span>
       ${signal ? html`<span class="cr-chip" data-tone style=${toneStyle(signal.status === 'strong' ? 'ok' : 'warn')} title=${signal.ratio != null ? `Video arriving at ${Math.round(signal.ratio * 100)}% of real time${signal.reconnects5m ? `, ${signal.reconnects5m} reconnect(s) in 5 min` : ''}` : ''}>Signal ${signal.status}</span>` : null}
       ${report && report.slack === false && feed === 'live' ? html`<span class="cr-chip" data-tone style=${toneStyle('warn')}>Slack alerts off</span>` : null}
     </div>
-    ${error ? html`<span class="cr-note" style="color:#744210">${error}</span>` : null}
+    ${error ? html`<span class="cr-note ink-warn">${error}</span>` : null}
   </div>`;
 
   const stage = html`<div class="card">

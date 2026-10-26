@@ -37,6 +37,7 @@ import { createD1 } from '../tests/lib/d1-shim.mjs';
 import * as readContentApi from '../functions/api/read-content.js';
 import * as saveContentApi from '../functions/api/save-content.js';
 import * as historyApi from '../functions/api/content-history.js';
+import { answerAsks } from './lib/ask.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/site-config-admin/');
@@ -138,6 +139,7 @@ async function open(width, height, hash) {
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|favicon|Content Security Policy|live-ws/.test(m.text())) errors.push(m.text()); });
   page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+  await answerAsks(page, { onAsk: (m) => dialogs.push(m) });
   await page.setRequestInterception(true);
   page.on('request', async (req) => {
     if (req.isInterceptResolutionHandled()) return;
@@ -504,7 +506,7 @@ try {
     dialogs.length = 0;
     await clickText(page, '.nav-item', /^Kids$/);
     await sleep(300);
-    ok(dialogs.some((m) => /unsaved changes in Site Config/.test(m)), `the admin asks (${dialogs[0] || 'no prompt'})`);
+    ok(dialogs.some((m) => /changes in Site Config aren’t saved/.test(m)), `the admin asks, in its own dialog (${dialogs[0] || 'no prompt'})`);
   });
 
   await section('Dark', async () => {

@@ -15,7 +15,7 @@
  *     gallery/gala/<time>-<file> and save themselves
  *   - the credit, the thank-you note and the numbers save onto the event
  *   - the Sponsors tab says this year's list is the thank-you's
- *   - golf: Event Details edits the tournament's date and registration link,
+ *   - golf: Event details edits the tournament's date and registration link,
  *     After the tournament works the same way
  *   - with next year's gala added, this year's opens in the Event editor with
  *     its After the event and Sponsors cards
@@ -33,6 +33,7 @@ import { join, extname } from 'node:path';
 import { createD1 } from '../tests/lib/d1-shim.mjs';
 import * as readContentApi from '../functions/api/read-content.js';
 import * as saveContentApi from '../functions/api/save-content.js';
+import { answerAsks } from './lib/ask.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/events-admin/');
@@ -120,6 +121,7 @@ async function open(w, width = 1440, height = 1000) {
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|favicon|Content Security Policy|live-ws/.test(m.text())) errors.push(m.text()); });
   page.on('dialog', (d) => d.accept());
+  await answerAsks(page);
   // Uploads: answered in the page, so the test sees what the browser sent
   await page.evaluateOnNewDocument(() => {
     window.__uploads = [];
@@ -154,11 +156,11 @@ const clickText = (page, sel, re) => page.evaluate((s, src, flags) => {
 }, sel, re.source, re.flags);
 async function toEvents(page) {
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('soard-navigate', { detail: 'events' })));
-  await page.waitForFunction(() => [...document.querySelectorAll('tr.u-clickable')].length > 0, { timeout: 15000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('.ev-row')].length > 0, { timeout: 15000 });
 }
 async function openEvent(page, title) {
   await toEvents(page);
-  await clickText(page, 'tr.u-clickable', new RegExp(title));
+  await clickText(page, '.ev-row', new RegExp(title));
   await sleep(800);
 }
 const typeInto = async (page, handle, value) => { await handle.click({ clickCount: 3 }); await page.keyboard.press('Backspace'); await handle.type(value); };
@@ -189,8 +191,8 @@ try {
 
   await section('Events list', async () => {
     await toEvents(page);
-    const badge = await page.evaluate(() => [...document.querySelectorAll('tr.u-clickable')].find((r) => /Evening of Sunshine/.test(r.textContent))?.querySelector('.badge:not(.badge-accent)')?.textContent.trim());
-    ok(badge === 'past', `the gala that’s over reads “past” (${badge})`);
+    const where = await page.evaluate(() => { const r = [...document.querySelectorAll('.ev-row')].find((x) => /Evening of Sunshine/.test(x.textContent)); return { section: r?.closest('section')?.getAttribute('aria-labelledby'), tag: r?.querySelector('.ev-when')?.textContent.trim() || '' }; });
+    ok(where.section === 'ev-sec-over' && !where.tag, `the gala that’s over is listed under Past, with no “upcoming” tag (${JSON.stringify(where)})`);
   });
 
   await section('Gala: After the gala', async () => {
@@ -241,13 +243,13 @@ try {
     ok(/these are the sponsors its thank-you page shows/.test(await page.evaluate(() => document.body.innerText)), 'the Sponsors tab says the list is the thank-you’s');
   });
 
-  await section('Golf: Event Details and After the tournament', async () => {
+  await section('Golf: Event details and After the tournament', async () => {
     await openEvent(page, 'Sunshine on a Ranney Fairway');
     await page.waitForSelector('.er', { timeout: 15000 });
     ok(/After the tournament/.test(await text(page, '.hub-tab.active')), 'it opens on After the tournament');
     const counts = await page.$$eval('.er-count__n', (n) => n.map((x) => x.textContent.trim()));
     ok(counts[0] === '73', `73 photos on the page (${counts[0]})`);
-    await clickText(page, '.hub-tab', /^Event Details$/);
+    await clickText(page, '.hub-tab', /^Event details$/);
     await sleep(300);
     const date = await page.$eval('.er-row input[type=date]', (i) => i.value).catch(() => '');
     ok(date === '2026-05-18', `the tournament’s date is there to edit (${date})`);
@@ -270,13 +272,13 @@ try {
     await openEvent(o.page, '^2026 Evening of Sunshine');
     await o.page.waitForSelector('.er', { timeout: 15000 });
     const body = await o.page.evaluate(() => document.body.innerText);
-    ok(/Edit Event/.test(body), 'the 2026 gala opens in the Event editor');
+    ok(!(await o.page.$('.hub-tab')) && /Event details/.test(body) && /Its page is/.test(body), 'the 2026 gala opens in the Event editor (one page, no gala tabs)');
     ok(/\/events\/gala\/2026\//.test(await text(o.page, '.er-status')), 'it points at its year page');
-    ok(/Sponsors \(\d+\)/.test(body) && await o.page.$('.er-sp') != null, 'its own sponsor list is there');
+    ok(/Sponsors\s*\d+/.test(body) && await o.page.$('.er-sp') != null, 'its own sponsor list is there');
     await shot(o.page, 'older-gala-event-editor.png');
     await openEvent(o.page, '^2027 Evening of Sunshine');
     await sleep(500);
-    ok(/Evening of Sunshine Gala/.test(await o.page.evaluate(() => document.body.innerText)) && /Event Details/.test(await text(o.page, '.hub-tab.active')), '2027 opens in the Gala editor, on Event Details before it happens');
+    ok(/Gala page/.test(await o.page.evaluate(() => document.body.innerText)) && /Event details/.test(await text(o.page, '.hub-tab.active')), '2027 opens in the Gala editor, on Event details before it happens');
     ok(!o.errors.length, `no errors${o.errors.length ? `: ${o.errors.slice(0, 3).join(' | ')}` : ''}`);
     await o.page.close();
   });

@@ -35,6 +35,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { hoverSweep } from './lib/hover-sweep.mjs';
+import { answerAsks } from './lib/ask.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/people-admin/');
@@ -236,6 +237,7 @@ async function open(browser, { width, height, mobile }) {
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|favicon|net::ERR/.test(m.text())) errors.push(m.text().slice(0, 300)); });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.slice(0, 300)}`));
   page.on('dialog', (d) => d.accept());
+  await answerAsks(page);
   const api = makeApi();
   await page.setRequestInterception(true);
   page.on('request', (req) => {
@@ -802,21 +804,21 @@ try {
     await page.click('.ppl-filter--clear');
 
     // ── Email the board ──
-    await clickText(page, '.ppl-head-menu', 'Email');
+    await clickText(page, '.ppl-head-menu', 'More');
     await page.waitForSelector('.ppl-menu__pop');
     await shot(page, 'desk-email-menu', { grow: false });
     await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'Write to the whole board');
     await sleep(200);
     const mail = await page.evaluate(() => window.__mail.at(-1) || '');
     ok(/^mailto:\?bcc=/.test(mail) && mail.includes('scott@example.com') && mail.includes('mary@example.com'), `Email the board opens a Bcc email to the invite addresses (${mail})`);
-    await clickText(page, '.ppl-head-menu', 'Email');
+    await clickText(page, '.ppl-head-menu', 'More');
     await page.waitForSelector('.ppl-menu__pop');
     await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'Copy the addresses');
     await sleep(200);
     ok(await page.evaluate(() => window.__copied.at(-1)) === 'scott@example.com, mary@example.com' || await page.evaluate(() => window.__copied.at(-1)) === 'mary@example.com, scott@example.com', 'Copy the addresses copies both');
 
     // ── Export ──
-    await clickText(page, '.ppl-head-menu', 'Export');
+    await clickText(page, '.ppl-head-menu', 'More');
     await page.waitForSelector('.ppl-menu__pop');
     await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'Download a spreadsheet');
     await sleep(200);
@@ -830,7 +832,7 @@ try {
     ok(bom && lines[0].startsWith('"Name","Seat","Title","Company","On the board since"'), 'the spreadsheet starts with a UTF-8 mark (so Excel reads accents) and a header row');
     ok(lines[1].startsWith('"Scott Wierson","Chair","Board Chair"') && lines[1].includes('"scott@example.com"'), `Scott first, with seat and invite email (${lines[1]})`);
     ok(lines.length === 14 && lines.at(-1).startsWith('"Brent Aronson"'), `everyone on the board, the memorial last (${lines.length - 1} rows)`);
-    await clickText(page, '.ppl-head-menu', 'Export');
+    await clickText(page, '.ppl-head-menu', 'More');
     await page.waitForSelector('.ppl-menu__pop');
     const popup = new Promise((resolve) => browser.once('targetcreated', (t) => resolve(t.page())));
     await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'Print the roster');
@@ -941,7 +943,7 @@ try {
     api.st.external('holly-ranney', { bio: 'Theirs.' });
     await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
     await page.waitForSelector('.ppl-merge');
-    ok((await page.$eval('#ppl-merge-title', (e) => e.textContent)) === 'Jen saved Holly Ranney while you were editing' && (await $text(page, '.ppl-merge__field legend')).join() === 'Bio',
+    ok((await page.$eval('.ppl-merge h2', (e) => e.textContent)) === 'Jen saved Holly Ranney while you were editing' && (await $text(page, '.ppl-merge__field legend')).join() === 'Bio',
       'the same field changed on both sides is asked about');
     await sleep(500);
     await shot(page, 'desk-merge', { grow: false });
@@ -1057,7 +1059,7 @@ try {
     await page.waitForSelector('.ppl-empty-all');
     await sleep(600);
     const empty = await page.$eval('.ppl-empty-all', (e) => e.textContent.replace(/\s+/g, ' ').trim());
-    ok(/No one on the Advisory Board yet/.test(empty) && /Paste a list/.test(empty) && /\+ Add advisor/.test(empty), `the empty tab offers Paste a list and Add advisor (${empty.slice(0, 90)})`);
+    ok(/No one on the Advisory Board yet/.test(empty) && /Paste a list/.test(empty) && /Add an advisor/.test(empty), `the empty tab offers Paste a list and Add advisor (${empty.slice(0, 90)})`);
     ok(await page.$eval('.ppl-head a.btn', (a) => a.getAttribute('href') === '/advisory-board/' && a.textContent.includes('Advisory Board page')), 'the header links to the Advisory Board page');
     await shot(page, 'adv-empty');
     await axeCheck(page, 'the empty Advisory tab');
@@ -1075,12 +1077,12 @@ try {
     ok(JSON.stringify(plan.map((p) => p[2])) === JSON.stringify(['Adds them with their email', 'Adds them with their email', 'Adds them with their email', 'Adds them, no email yet',
       'Already in Board of Directors', 'Listed twice', 'The email doesn’t look right']), `each pasted line says what happens (${plan.map((p) => `${p[0]}: ${p[2]}`).join('; ')})`);
     ok(plan[0][1] === 'ada@example.com' && plan[2][0] === 'Alan Turing', 'names and emails come out clean (lowercase email, no bullet or brackets)');
-    const addBtn = await page.$eval('.ppl-paste .modal-buttons .btn-primary', (b) => b.textContent.trim());
+    const addBtn = await page.$eval('.ppl-paste .kd-dialog__foot .btn-primary', (b) => b.textContent.trim());
     ok(addBtn === 'Add 4 advisors', `the button counts who it adds (${addBtn})`);
     await shot(page, 'adv-paste', { grow: false });
     await axeCheck(page, 'Paste a list');
     const saves = callsTo(api, '/api/save-content');
-    await clickText(page, '.ppl-paste .modal-buttons .btn-primary', 'Add 4');
+    await clickText(page, '.ppl-paste .kd-dialog__foot .btn-primary', 'Add 4');
     await page.waitForFunction(() => !document.querySelector('.ppl-paste'), { timeout: 15000 });
     await page.waitForSelector('.ppl-row', { timeout: 10000 });
     await sleep(500);
@@ -1169,20 +1171,21 @@ try {
     ok(await page.$eval('#ppl-title', (i) => i.value === 'Advisory Board Member'), 'and back: Advisory Board Member');
     await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
     await sleep(400);
-    await page.evaluate(() => [...document.querySelectorAll('.modal-buttons .btn')].find((b) => /Discard|Leave/.test(b.textContent))?.click());
     await page.waitForSelector('.hub-tabs');
 
     // A pasted line for someone already here saves their email only
     await clickText(page, '.hub-tab', 'Advisory');
     await page.waitForSelector('.ppl-row');
-    await clickText(page, '.ppl-head .btn', 'Paste a list');
+    await clickText(page, '.ppl-head-menu', 'More');
+    await page.waitForSelector('.ppl-menu__pop');
+    await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'Paste a list');
     await page.waitForSelector('#ppl-paste');
     await page.$eval('#ppl-paste', (t) => { t.value = 'Ada Lovelace: ada@example.com\nMary Jackson: mary.j@example.com'; t.dispatchEvent(new Event('input', { bubbles: true })); });
     await sleep(300);
     const again = await $text(page, '.ppl-paste__state');
     ok(again[0] === 'Already here' && /replaces mary@example\.com/.test(again[1]), `a second paste knows who's here (${again.join(' | ')})`);
     const saves2 = callsTo(api, '/api/save-content');
-    await clickText(page, '.ppl-paste .modal-buttons .btn-primary', 'Save 1 email');
+    await clickText(page, '.ppl-paste .kd-dialog__foot .btn-primary', 'Save 1 email');
     await page.waitForFunction(() => !document.querySelector('.ppl-paste'), { timeout: 10000 });
     ok(callsTo(api, '/api/save-content') === saves2 && api.st.emails['mary-jackson'] === 'mary.j@example.com', 'it saves the new email and no record');
 
@@ -1227,7 +1230,7 @@ try {
     });
     ok(!sheet.wide && sheet.who >= 300 && !sheet.btns, `the paste dialog on an iPad: rows use the width, 44px buttons (${JSON.stringify(sheet)})`);
     await shot(page, 'ipad-adv-paste', { grow: false });
-    await clickText(page, '.ppl-paste .modal-buttons .btn-primary', 'Add 2');
+    await clickText(page, '.ppl-paste .kd-dialog__foot .btn-primary', 'Add 2');
     await page.waitForFunction(() => !document.querySelector('.ppl-paste'), { timeout: 15000 });
     await page.waitForSelector('.ppl-row');
     await sleep(600);
@@ -1277,7 +1280,7 @@ try {
     ok(sheet.who >= 220 && sheet.nameLines <= 1, `each pasted name gets the sheet's width, on one line (${sheet.who}px, ${sheet.nameLines} line)`);
     await shot(page, 'phone-adv-paste', { grow: false });
     await axeCheck(page, 'Paste a list on a phone');
-    await clickText(page, '.ppl-paste .modal-buttons .btn-primary', 'Add 2');
+    await clickText(page, '.ppl-paste .kd-dialog__foot .btn-primary', 'Add 2');
     await page.waitForFunction(() => !document.querySelector('.ppl-paste'), { timeout: 15000 });
     await page.waitForSelector('.ppl-row');
     await sleep(600);

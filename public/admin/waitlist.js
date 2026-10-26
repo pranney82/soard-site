@@ -18,6 +18,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
+import { ask } from './ask.js';
 
 const html = htm.bind(h);
 const API = '/api/application-waitlist-admin';
@@ -78,27 +79,28 @@ const importStale = (st) => !!st && !st.open && !!st.kit && (!st.lastImportAt ||
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 const CSS = `
+.wl-lang { margin-bottom: .85rem; }
 .wl.card { padding: 0; overflow: hidden; }
 .wl-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .75rem 1rem; padding: 1rem 1.1rem .85rem; }
 .wl-title { margin: 0 0 .2rem; }
 .wl-count { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .6rem; margin: .1rem 0 0; }
-.wl-count strong { font-size: 1.6rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.wl-count span { color: var(--color-text-secondary); font-size: .88rem; }
+.wl-count strong { font-size: var(--fs-2xl); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.wl-count span { color: var(--color-text-secondary); font-size: var(--fs-sm); }
 .wl-state { margin: 0 1.1rem 1rem; padding: .85rem 1rem; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-secondary); }
 .wl-state.is-live { border-color: color-mix(in srgb, var(--color-warning) 50%, var(--color-border)); background: color-mix(in srgb, var(--color-warning) 9%, var(--color-bg-card)); }
 .wl-state.is-done { border-color: color-mix(in srgb, var(--color-success) 40%, var(--color-border)); background: color-mix(in srgb, var(--color-success) 7%, var(--color-bg-card)); }
 .wl-state.is-warn { border-color: var(--afe-warn-line); background: var(--afe-warn-bg); }
 .wl-state-line { margin: 0; font-weight: 600; line-height: 1.45; }
-.wl-state-sub { margin: .25rem 0 0; font-size: .85rem; line-height: 1.5; color: var(--color-text-secondary); }
+.wl-state-sub { margin: .25rem 0 0; font-size: var(--fs-xs); line-height: 1.5; color: var(--color-text-secondary); }
 .wl-timer { font-variant-numeric: tabular-nums; }
 .wl-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
 .wl-actions .btn { min-height: 40px; }
 .wl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .5rem; margin-top: .75rem; }
 .wl-stat { padding: .55rem .7rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-card); }
-.wl-stat b { display: block; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
-.wl-stat span { font-size: .78rem; color: var(--color-text-secondary); }
+.wl-stat b { display: block; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.wl-stat span { font-size: var(--fs-2xs); color: var(--color-text-secondary); }
 .wl-health { display: grid; gap: .5rem; margin: 0 1.1rem 1rem; }
-.wl-fix { margin-top: .35rem; font-size: .82rem; color: var(--color-text-secondary); }
+.wl-fix { margin-top: .35rem; font-size: var(--fs-xs); color: var(--color-text-secondary); }
 .wl-fix summary { cursor: pointer; font-weight: 600; color: var(--color-text); }
 .wl-conn { margin: 0; line-height: 1.6; }
 .wl-sec { border-top: 1px solid var(--color-border); }
@@ -111,22 +113,22 @@ const CSS = `
 .wl-frame { position: relative; overflow: hidden; border: 1px solid var(--color-border); border-radius: 10px; background: #F5F4F0; }
 .wl-frame iframe { position: absolute; top: 0; left: 0; width: 600px; height: 820px; border: 0; transform-origin: 0 0; }
 .wl-field { display: grid; gap: .3rem; margin-bottom: .8rem; }
-.wl-field label { font-size: .85rem; font-weight: 600; }
+.wl-field label { font-size: var(--fs-xs); font-weight: 600; }
 .wl-field textarea { min-height: 11rem; line-height: 1.55; resize: vertical; }
 .wl-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .wl-row .form-input { flex: 1 1 14rem; min-width: 0; }
-.wl-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-.wl-table th { text-align: left; font-size: .75rem; font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .04em; padding: .4rem .5rem; border-bottom: 1px solid var(--color-border); }
+.wl-table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+.wl-table th { text-align: left; font-size: var(--fs-2xs); font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .04em; padding: .4rem .5rem; border-bottom: 1px solid var(--color-border); }
 .wl-table td { padding: .5rem; border-bottom: 1px solid var(--color-border); vertical-align: middle; }
 .wl-table td.wl-email { word-break: break-all; }
 .wl-table-wrap { max-height: 28rem; overflow: auto; border: 1px solid var(--color-border); border-radius: 10px; }
-.wl-pill { display: inline-block; padding: .05rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 600; background: var(--afe-track); color: var(--color-text-secondary); white-space: nowrap; }
+.wl-pill { display: inline-block; padding: .05rem .5rem; border-radius: 999px; font-size: var(--fs-2xs); font-weight: 600; background: var(--afe-track); color: var(--color-text-secondary); white-space: nowrap; }
 .wl-pill.is-ok { background: color-mix(in srgb, var(--color-success) 13%, transparent); color: color-mix(in srgb, var(--color-success) 85%, var(--color-text)); }
 .wl-pill.is-warn { background: var(--afe-warn-bg); color: var(--color-text); }
-.wl-remove { padding: .2rem .5rem; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--color-text-secondary); font: inherit; font-size: .8rem; cursor: pointer; min-height: 32px; }
+.wl-remove { padding: .2rem .5rem; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--color-text-secondary); font: inherit; font-size: var(--fs-xs); cursor: pointer; min-height: 32px; }
 .wl-remove:hover { border-color: var(--color-border); color: var(--color-danger); }
 .wl-history { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
-.wl-history li { padding: .6rem .75rem; border: 1px solid var(--color-border); border-radius: 8px; font-size: .85rem; line-height: 1.5; }
+.wl-history li { padding: .6rem .75rem; border: 1px solid var(--color-border); border-radius: 8px; font-size: var(--fs-xs); line-height: 1.5; }
 @media (max-width: 640px) {
   .wl-head, .wl-sec > summary, .wl-body { padding-left: .85rem; padding-right: .85rem; }
   .wl-state, .wl-health { margin-left: .85rem; margin-right: .85rem; }
@@ -381,7 +383,7 @@ function EmailEditor({ st, act, busy, addToast }) {
   return html`
     <div>
       <div>
-        <div class="afe-seg afe-seg-text" role="group" aria-label="Language" style="margin-bottom: .85rem;">
+        <div class="seg afe-seg-text wl-lang" role="group" aria-label="Language">
           ${['en', 'es'].map(l => html`<button aria-pressed=${lang === l} onClick=${() => setLang(l)}>${LANG_NAMES[l]}</button>`)}
         </div>
         <p class="afe-hint" style="margin: 0 0 .85rem;">Families get the ${LANG_NAMES[lang]} email if they signed up in ${LANG_NAMES[lang]}. Leave a box blank to use the wording shown in it. {year} becomes the season (${st.year}).</p>
@@ -482,7 +484,7 @@ function FamilyList({ st, act, busy }) {
     </div>
     <div class="wl-row" style="margin-bottom: .6rem;">
       <input class="form-input" type="search" placeholder="Search emails" aria-label="Search emails" value=${q} onInput=${(e) => setQ(e.target.value)} />
-      <div class="afe-seg afe-seg-text" role="group" aria-label="Show">
+      <div class="seg afe-seg-text" role="group" aria-label="Show">
         ${[['waiting', 'Waiting'], ['told', 'Emailed'], ['all', 'All']].map(([k, label]) => html`<button aria-pressed=${show === k} onClick=${() => setShow(k)}>${label}</button>`)}
       </div>
       <button class="btn btn-ghost" disabled=${!shown.length} onClick=${csv}>Download CSV</button>
@@ -501,7 +503,7 @@ function FamilyList({ st, act, busy }) {
                     ? html`<span class="wl-pill" title=${r.notifiedVia === 'email' ? 'The site sends it' : 'Kit sends it'}>Scheduled ${clock(r.notifiedAt)}</span>`
                     : html`<span class="wl-pill is-ok" title=${r.notifiedVia === 'email' ? 'Emailed by the site' : 'Emailed through Kit'}>Emailed ${dayOnly(r.notifiedAt)}</span>`)
                   : kitPill(r)}</td>
-                <td style="text-align: right;"><button class="wl-remove" disabled=${!!busy} onClick=${() => { if (window.confirm(`Take ${r.email} off the waitlist? They won't get the opening email.`)) act('remove', { email: r.email }, 'Taken off the list'); }}>Remove</button></td>
+                <td style="text-align: right;"><button class="wl-remove" disabled=${!!busy} onClick=${async () => { if (await ask({ title: `Take ${r.email} off the waitlist?`, text: 'They won’t get the email when applications open.', yes: 'Take them off', danger: true })) act('remove', { email: r.email }, 'Taken off the list'); }}>Remove</button></td>
               </tr>`)}
           </tbody>
         </table>

@@ -55,45 +55,51 @@ const ago = (iso) => {
 };
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const STYLES = `
-  .dd { display: grid; gap: 1.25rem; }
-  .dd h3 { margin: 0; font-size: 1.05rem; }
-  .dd h4 { margin: 0; font-size: 0.95rem; }
+  .dd { display: grid; gap: 1rem; }
+  .dd > .card { margin-bottom: 0; }
+  .dd h3 { margin: 0; font-size: var(--fs-md); }
+  .dd-status h3 { font-size: var(--fs-lg); letter-spacing: -0.015em; line-height: 1.3; }
+  .dd h4 { margin: 0; font-size: var(--fs-sm); }
   .dd-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 1.5rem; }
   .dd-status__main { display: flex; gap: 0.85rem; align-items: flex-start; min-width: 0; flex: 1 1 26rem; }
-  .dd-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 0.45rem; flex-shrink: 0; background: var(--color-text-muted); }
-  .dd-dot--on { background: var(--color-success); box-shadow: 0 0 0 4px rgba(47,125,79,0.14); }
-  .dd-meta { margin: 0.2rem 0 0; color: var(--color-text-secondary); font-size: 0.85rem; line-height: 1.5; overflow-wrap: anywhere; }
-  .dd-warn { color: var(--color-danger); }
-  .dd-chip { display: inline-flex; align-items: center; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
-  .dd-chip--on { background: rgba(47,125,79,0.1); color: var(--color-success); }
-  .dd-chip--neutral { background: var(--color-bg-secondary); color: var(--color-text-secondary); box-shadow: inset 0 0 0 1px var(--color-border); }
-  .dd-chip--ready { background: var(--color-primary-bg); color: var(--color-primary-ink); box-shadow: inset 0 0 0 1px rgba(214,158,46,0.35); }
-  .dd-chip--warn { background: rgba(197,48,48,0.08); color: var(--color-danger); }
-  .dd-chip--muted { background: var(--color-bg-secondary); color: var(--color-text-muted); }
+  .dd-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 0.55rem; flex-shrink: 0; background: var(--tone-neutral-dot); }
+  .dd-dot--on { background: var(--tone-success-dot); box-shadow: 0 0 0 3px var(--tone-success-bg); }
+  .dd-meta { margin: 0.25rem 0 0; color: var(--color-text-secondary); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
+  .dd-warn { color: var(--tone-warn-fg); }
+  .dd-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: var(--fs-2xs); font-weight: 600; line-height: 1.35; white-space: nowrap; background: var(--tone-neutral-bg); color: var(--tone-neutral-fg); }
+  .dd-chip--on { background: var(--tone-success-bg); color: var(--tone-success-fg); }
+  .dd-chip--ready { background: var(--tone-info-bg); color: var(--tone-info-fg); }
+  .dd-chip--warn { background: var(--tone-warn-bg); color: var(--tone-warn-fg); box-shadow: inset 0 0 0 1px var(--tone-warn-line); }
+  .dd-chip--muted { color: var(--color-text-muted); }
   .dd-list { list-style: none; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.75rem; }
   .dd-row { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.9rem 1rem; background: var(--color-bg-card); }
   .dd-row__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; }
-  .dd-row__name { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.55rem; font-weight: 700; font-size: 1rem; }
-  .dd-row__when { color: var(--color-text-secondary); font-size: 0.88rem; margin-top: 0.15rem; }
-  .dd-row__head a, .dd-link { color: var(--color-text-secondary); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; }
+  .dd-row__name { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.55rem; font-weight: 700; font-size: var(--fs-base); }
+  .dd-row__when { color: var(--color-text-secondary); font-size: var(--fs-sm); margin-top: 0.15rem; }
+  .dd-row__head a, .dd-link { color: var(--color-text-secondary); font-size: var(--fs-xs); text-decoration: underline; text-underline-offset: 3px; }
   .dd-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.75rem; }
   .dd-invite { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.95rem 1rem; background: var(--color-bg-secondary); margin-top: 0.85rem; }
-  .dd-invite__title { font-weight: 700; font-size: 1rem; margin-bottom: 0.45rem; overflow-wrap: anywhere; }
-  .dd-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.15rem 0.75rem; margin: 0 0 0.6rem; font-size: 0.86rem; }
+  .dd-invite__title { font-weight: 700; font-size: var(--fs-base); margin-bottom: 0.45rem; overflow-wrap: anywhere; }
+  .dd-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.15rem 0.75rem; margin: 0 0 0.6rem; font-size: var(--fs-xs); }
   .dd-facts dt { color: var(--color-text-muted); }
   .dd-facts dd { margin: 0; overflow-wrap: anywhere; }
-  .dd-desc { white-space: pre-line; font-size: 0.88rem; line-height: 1.55; margin: 0; overflow-wrap: anywhere; }
-  .dd-guests { display: grid; gap: 0.5rem; margin-top: 0.85rem; font-size: 0.86rem; }
+  .dd-desc { white-space: pre-line; font-size: var(--fs-sm); line-height: 1.55; margin: 0; overflow-wrap: anywhere; }
+  .dd-guests { display: grid; gap: 0.5rem; margin-top: 0.85rem; font-size: var(--fs-xs); }
   .dd-guests__group { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: 0.15rem 0.75rem; }
   .dd-guests__group dt { color: var(--color-text-muted); }
   .dd-guests__group dd { margin: 0; overflow-wrap: anywhere; }
-  .dd-who { display: grid; gap: 1.1rem; margin-top: 0.9rem; }
-  .dd-who__group { display: grid; gap: 0.35rem; }
+  /* Who gets it: one row per group, the name on the left (the same list as Reveal invites) */
+  .dd-who { display: grid; gap: 0.7rem; margin-top: 0.9rem; }
+  .dd-who__group { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: 0.15rem 1rem; align-items: start; }
+  .dd-who__group + .dd-who__group { padding-top: 0.7rem; border-top: 1px solid var(--color-border); }
+  .dd-who__group > h4 { font-size: var(--fs-sm); font-weight: 600; }
+  .dd-who__body { display: grid; gap: 0.35rem; min-width: 0; }
+  .dd-who__group .dd-meta { margin: 0; }
   .dd-people { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.15rem; }
-  .dd-person { display: inline-flex; align-items: center; gap: 0.4rem; max-width: 100%; border: 1px solid var(--color-border); border-radius: 999px; padding: 0.2rem 0.3rem 0.2rem 0.7rem; font-size: 0.84rem; background: var(--color-bg-card); }
+  .dd-person { display: inline-flex; align-items: center; gap: 0.4rem; max-width: 100%; border: 1px solid var(--color-border); border-radius: 999px; padding: 0.2rem 0.3rem 0.2rem 0.7rem; font-size: var(--fs-xs); background: var(--color-bg-card); }
   .dd-person span { overflow-wrap: anywhere; }
   .dd-person small { color: var(--color-text-muted); }
-  .dd-person button { border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; border-radius: 999px; width: 1.6rem; height: 1.6rem; font-size: 1rem; line-height: 1; flex-shrink: 0; }
+  .dd-person button { border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; border-radius: 999px; width: 1.6rem; height: 1.6rem; font-size: var(--fs-base); line-height: 1; flex-shrink: 0; }
   .dd-person button:hover { background: var(--color-bg-hover); color: var(--color-text); }
   .dd-person button:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
   .dd-add { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.4rem; }
@@ -101,20 +107,22 @@ const STYLES = `
   .dd-add .form-input--short { flex: 0 1 10rem; }
   .dd-wording { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; margin-top: 1rem; }
   .dd-tokens { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: -0.25rem 0 0.9rem; }
-  .dd-token { border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 0.78rem; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .dd-token { border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 999px; padding: 0.2rem 0.6rem; font-size: var(--fs-2xs); cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .dd-token:hover { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
   .dd-token:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
   .dd-token span { color: var(--color-text-muted); margin-left: 0.35rem; font-family: system-ui, sans-serif; }
+  @media (pointer: coarse) { .dd-token { min-height: 44px; padding-inline: 0.85rem; } }
   .dd-time { display: flex; flex-wrap: wrap; gap: 0.75rem; }
   .dd-time .form-group { flex: 1 1 9rem; margin: 0; }
   .dd-answers { margin-top: 0.85rem; }
-  .dd-label { display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 0.35rem; }
+  .dd-label { display: block; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 0.35rem; }
   .dd-savebar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin-top: 1.25rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }
-  .dd-check { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; color: var(--color-text-secondary); }
+  .dd-check { display: inline-flex; align-items: center; gap: 0.5rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
   @media (max-width: 900px) {
     .dd-wording { grid-template-columns: minmax(0, 1fr); }
   }
   @media (max-width: 600px) {
+    .dd-who__group { grid-template-columns: minmax(0, 1fr); }
     .dd-guests__group { grid-template-columns: minmax(0, 1fr); gap: 0; }
     .dd-guests__group dd { margin-bottom: 0.35rem; }
   }
@@ -216,10 +224,10 @@ function DemoRow({ d, enabled, organizer, organizerName, busy, onTest, onSync })
       <p class=${`dd-meta${sponsorMissing && (d.startSet || d.invite?.state === 'sent') ? ' dd-warn' : ''}`}>${sponsorLine}</p>
       ${d.answers ? html`<p class="dd-meta">${answersLine(d.answers)}</p>` : null}
       <div class="dd-actions">
-        ${s.act === 'retry' ? html`<button class="btn btn-primary btn-sm" disabled=${!!busy} onClick=${() => onSync(d, false)}>${busy === `sync-${d.jobId}` ? html`<span class="spinner" /> Retrying...` : 'Retry'}</button>` : null}
+        ${s.act === 'retry' ? html`<button class="btn btn-primary btn-sm" disabled=${!!busy} onClick=${() => onSync(d, false)}>${busy === `sync-${d.jobId}` ? html`<span class="spinner" /> Retrying…` : 'Retry'}</button>` : null}
         ${s.act === 'anyway' || s.act === 'again' ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => onSync(d, true)}>${s.act === 'anyway' ? 'Send ours anyway' : 'Send it again'}</button>` : null}
         ${d.preview ? html`<button class="btn btn-ghost btn-sm" aria-expanded=${open} onClick=${() => setOpen(!open)}>${open ? 'Hide the invite' : `See the invite (${plural(d.preview.guests.length, 'guest')})`}</button>` : null}
-        ${d.preview ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => onTest(d)}>${busy === `test-${d.jobId}` ? html`<span class="spinner" /> Sending...` : 'Send it to me'}</button>` : null}
+        ${d.preview ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => onTest(d)}>${busy === `test-${d.jobId}` ? html`<span class="spinner" /> Sending…` : 'Send it to me'}</button>` : null}
       </div>
       ${open && d.preview ? html`
         ${d.answers ? html`<${Answers} a=${d.answers} />` : null}
@@ -253,7 +261,7 @@ function People({ list, people, busy, onAdd, onRemove }) {
           <input id=${`dd-name-${id}`} class="form-input" type="text" placeholder="Name" autocomplete="off" value=${form.name} onInput=${(e) => setForm({ ...form, name: e.target.value })} />
           <label class="sr-only" for=${`dd-role-${id}`}>What they do</label>
           <input id=${`dd-role-${id}`} class="form-input form-input--short" type="text" placeholder="e.g. Social media" autocomplete="off" value=${form.role} onInput=${(e) => setForm({ ...form, role: e.target.value })} />
-          <button class="btn btn-primary btn-sm" type="submit" disabled=${!!busy}>${busy === `add-${list}` ? html`<span class="spinner" /> Adding...` : 'Add'}</button>
+          <button class="btn btn-primary" type="submit" disabled=${!!busy}>${busy === `add-${list}` ? html`<span class="spinner spinner-14" /> Adding…` : 'Add'}</button>
       </form>
     </div>`;
 }
@@ -321,7 +329,7 @@ export function DemoInvitesPanel({ addToast = () => {}, ConfirmModal = null }) {
       ? `Families, the internal team, each job's sponsor and everyone on the every-demo-day list will get a calendar invite from ${data.organizerName || organizerEmail} when Set Start Date is checked off in JobTread.${ready.length ? ` Ready now: ${ready.map((d) => `${d.name} (${day(d.date, 'short')})`).join(', ')}.` : ''}`
       : 'Nothing new goes out while paused. Invites already sent stay on calendars as they are.';
     if (!ConfirmModal) return setEnabled(enabled);
-    setConfirm({ title: enabled ? 'Turn on demo day invites?' : 'Pause demo day invites?', message, confirmLabel: enabled ? 'Turn on' : 'Pause', busyLabel: enabled ? 'Turning on...' : 'Pausing...', fn: () => setEnabled(enabled) });
+    setConfirm({ title: enabled ? 'Turn on demo day invites?' : 'Pause demo day invites?', message, confirmLabel: enabled ? 'Turn on' : 'Pause', busyLabel: enabled ? 'Turning on…' : 'Pausing…', fn: () => setEnabled(enabled) });
   };
 
   const sendTest = (d) => run(`test-${d.jobId}`, async () => {
@@ -343,7 +351,7 @@ export function DemoInvitesPanel({ addToast = () => {}, ConfirmModal = null }) {
       message: handSent
         ? 'An invite for this demo day was already sent by hand, so guests on both may see two. The site\'s invite then follows the Demo task in JobTread from here on.'
         : 'It was deleted in Google Calendar. Sending it again puts it back on every guest\'s calendar.',
-      confirmLabel: 'Send it', busyLabel: 'Sending...', fn: () => doSync(d, true),
+      confirmLabel: 'Send it', busyLabel: 'Sending…', fn: () => doSync(d, true),
     });
   };
 
@@ -423,21 +431,29 @@ export function DemoInvitesPanel({ addToast = () => {}, ConfirmModal = null }) {
         <div class="dd-who">
           <div class="dd-who__group">
             <h4>Family</h4>
-            <p class="dd-meta">The job's customer contacts with an email, and anyone with the Makeover Family role who has access to the job. From JobTread.</p>
+            <div class="dd-who__body">
+              <p class="dd-meta">The job's customer contacts with an email, and anyone with the Makeover Family role who has access to the job. From JobTread.</p>
+            </div>
           </div>
           <div class="dd-who__group">
             <h4>Internal team</h4>
-            <p class="dd-meta">${staff.length ? `${staff.map((s) => s.name).join(', ')}: ` : ''}the Admin and Designer users in JobTread.</p>
+            <div class="dd-who__body">
+              <p class="dd-meta">${staff.length ? `${staff.map((s) => s.name).join(', ')}: the Admin and Designer users` : 'The Admin and Designer users'} in JobTread.</p>
+            </div>
           </div>
           <div class="dd-who__group">
             <h4>The monetary sponsor</h4>
-            <p class="dd-meta">Anyone with the <strong>Sponsor</strong> role who has access to the job in JobTread. The job's <strong>Monetary Sponsor</strong> field says which sponsor it is. Give someone from the sponsor access to the job and they're added within 5 minutes, even to an invite already out.</p>
-            ${noSponsorOnJob.length ? html`<p class="dd-meta dd-warn">Nobody from the sponsor is on ${noSponsorOnJob.length === 1 ? 'this job' : 'these jobs'} in JobTread yet: ${noSponsorOnJob.map((d) => `${d.name} (${d.sponsor})`).join(', ')}.</p>` : null}
+            <div class="dd-who__body">
+              <p class="dd-meta">Anyone with the <strong>Sponsor</strong> role who has access to the job in JobTread. The job's <strong>Monetary Sponsor</strong> field says which sponsor it is. Give someone from the sponsor access to the job and they're added within 5 minutes, even to an invite already out.</p>
+              ${noSponsorOnJob.length ? html`<p class="dd-meta dd-warn">Nobody from the sponsor is on ${noSponsorOnJob.length === 1 ? 'this job' : 'these jobs'} in JobTread yet: ${noSponsorOnJob.map((d) => `${d.name} (${d.sponsor})`).join(', ')}.</p>` : null}
+            </div>
           </div>
           <div class="dd-who__group">
             <h4>Every demo day</h4>
-            <p class="dd-meta">People invited to every demo day, like whoever covers it for social media.</p>
-            <${People} list="always" people=${people.always || []} busy=${busy} onAdd=${addPerson} onRemove=${removePerson} />
+            <div class="dd-who__body">
+              <p class="dd-meta">People invited to every demo day, like whoever covers it for social media.</p>
+              <${People} list="always" people=${people.always || []} busy=${busy} onAdd=${addPerson} onRemove=${removePerson} />
+            </div>
           </div>
         </div>
       </div>
@@ -483,7 +499,7 @@ export function DemoInvitesPanel({ addToast = () => {}, ConfirmModal = null }) {
         </div>
         <div class="dd-savebar">
           <button class="btn btn-primary" disabled=${!dirty || busy === 'save'} onClick=${save}>
-            ${busy === 'save' ? html`<span class="spinner" /> Saving...` : dirty ? 'Save' : 'Saved'}
+            ${busy === 'save' ? html`<span class="spinner" /> Saving…` : dirty ? 'Save' : 'Saved'}
           </button>
           ${dirty ? html`<button class="btn btn-ghost" onClick=${() => setForm({ template: { ...config.template }, startTime: config.startTime, minutes: config.minutes })}>Undo changes</button>` : null}
           <label class="dd-check">

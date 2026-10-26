@@ -22,6 +22,7 @@
 
 import { h, htm, useState, useEffect, useRef, useMemo, Sortable } from './vendor.js';
 import * as PS from './press-shared.js';
+import { askToLeave } from './ask.js';
 
 const html = htm.bind(h);
 const CF = `/cdn-cgi/imagedelivery/${PS.CF_HASH}`;
@@ -188,7 +189,13 @@ export function PressArea({ addToast = () => {}, setGlobalDirty = null, press = 
   }, [initialTab, initialSlug]);
 
   const go = (r) => {
-    if (editorDirty.current && route.slug !== undefined && r.slug !== route.slug && !confirm('You have unsaved changes to this story. Leave without saving?')) return;
+    if (editorDirty.current && route.slug !== undefined && r.slug !== route.slug) {
+      askToLeave('this story').then((ok) => { if (ok) goNow(r); });
+      return;
+    }
+    goNow(r);
+  };
+  const goNow = (r) => {
     editorDirty.current = false;
     setGlobalDirty?.(false);
     const next = { tab: r.tab || 'stories', ...(r.slug !== undefined ? { slug: r.slug } : {}) };
@@ -352,14 +359,14 @@ function StoriesView({ c, onAdd }) {
     ${!needle && filter === 'all' && featured.length ? html`<${FeaturedOrder} c=${c} featured=${featured} />` : null}
     <section class="card pr-list" aria-labelledby="pr-all" ref=${listRef}>
       <header class="pr-list__head">
-        <h3 id="pr-all">${filter === 'all' && !needle ? 'All stories' : 'Stories'} <span class="ppl-count">${shown.length}</span></h3>
+        <h3 id="pr-all">${filter === 'all' && !needle ? 'All stories' : 'Stories'} <span class="count ppl-count">${shown.length}</span></h3>
         <div class="pr-search">
           <${Icon} name="search" />
           <input ref=${searchRef} type="search" class="form-input" placeholder="Search headlines, outlets, kids" aria-label="Search stories" aria-keyshortcuts="/" value=${q} onInput=${(e) => setQ(e.target.value)} />
         </div>
       </header>
-      <div class="pr-pills" role="group" aria-label="Show">
-        ${FILTERS.map((f) => counts[f.id] || f.id === 'all' || filter === f.id ? html`<button type="button" key=${f.id} class="pr-pill" aria-pressed=${filter === f.id} onClick=${() => setFilter(filter === f.id && f.id !== 'all' ? 'all' : f.id)}>${f.label} <span>${counts[f.id]}</span></button>` : null)}
+      <div class="pill-row pr-pills" role="group" aria-label="Show">
+        ${FILTERS.map((f) => counts[f.id] || f.id === 'all' || filter === f.id ? html`<button type="button" key=${f.id} class="pill pr-pill" aria-pressed=${filter === f.id} onClick=${() => setFilter(filter === f.id && f.id !== 'all' ? 'all' : f.id)}>${f.label} <span class="count">${counts[f.id]}</span></button>` : null)}
       </div>
       ${shown.length ? [...byYear.entries()].map(([year, list]) => html`
         <div class="pr-year" key=${year}>
@@ -397,10 +404,10 @@ function StoryRow({ s, issues, c, monitor }) {
           ${partners.length > 3 ? html`<span class="pr-who pr-who--more">+${partners.length - 3} more</span>` : null}
         </span>` : null}
         ${PS.isDraft(s) || monitor || warn.length || info.length ? html`<span class="pr-row__chips">
-          ${PS.isDraft(s) ? html`<span class="pr-chip pr-chip--draft">Draft</span>` : null}
-          ${monitor ? html`<span class="pr-chip pr-chip--auto">Added by the monitor</span>` : null}
-          ${warn.map((i) => html`<span class="pr-chip pr-chip--warn" title=${i.detail}>${i.label}</span>`)}
-          ${info.slice(0, 2).map((i) => html`<span class="pr-chip" title=${i.detail}>${i.label}</span>`)}
+          ${PS.isDraft(s) ? html`<span class="tag pr-chip pr-chip--draft">Draft</span>` : null}
+          ${monitor ? html`<span class="tag pr-chip pr-chip--auto">Added by the monitor</span>` : null}
+          ${warn.map((i) => html`<span class="tag tag--warn pr-chip pr-chip--warn" title=${i.detail}>${i.label}</span>`)}
+          ${info.slice(0, 2).map((i) => html`<span class="tag pr-chip" title=${i.detail}>${i.label}</span>`)}
         </span>` : null}
       </span>
     </button>
@@ -449,7 +456,7 @@ function FeaturedOrder({ c, featured }) {
   return html`<section class="card pr-feat" aria-labelledby="pr-feat-h">
     <header class="pr-list__head">
       <div>
-        <h3 id="pr-feat-h">Featured <span class="ppl-count">${featured.length}</span></h3>
+        <h3 id="pr-feat-h">Featured <span class="count ppl-count">${featured.length}</span></h3>
         <p class="pr-sub">The big cards at the top of the publicity page, in this order. The first is the large one.</p>
       </div>
       ${busy ? html`<span class="pr-saving"><span class="spinner spinner-14" /> Saving order</span>` : featured.length > 1 ? html`<span class="pr-hint">Drag to reorder</span>` : null}
@@ -534,7 +541,7 @@ function AddStoryDialog({ c, onClose }) {
       <div class="pr-filled__card">
         <${StoryThumb} story=${st} outlet=${outlet} w=${160} h=${104} />
         <div>
-          <p class="pr-filled__outlet">${st.outlet || 'Outlet unknown'}${found.newOutlet ? html` <span class="pr-chip">New outlet</span>` : null} · ${st.date ? longDate(st.date) : 'Date unknown'} · ${PS.CATEGORY_LABELS[st.category]}</p>
+          <p class="pr-filled__outlet">${st.outlet || 'Outlet unknown'}${found.newOutlet ? html` <span class="tag pr-chip">New outlet</span>` : null} · ${st.date ? longDate(st.date) : 'Date unknown'} · ${PS.CATEGORY_LABELS[st.category]}</p>
           <p class="pr-filled__title">${st.title || html`<em>No headline found</em>`}</p>
           <p class="pr-filled__sum">${st.excerpt || html`<em>No summary yet</em>`}</p>
           ${st.kids?.length || st.partners?.length ? html`<p class="pr-filled__people">${[...(st.kids || []).map((k) => c.kids.find((x) => x.slug === k)?.name || k), ...(st.partners || []).map((p) => c.partners.find((x) => x.slug === p)?.name || p)].join(', ')}</p>` : null}
@@ -791,7 +798,7 @@ function StoryEditor({ slug, c, onBack, onDirty }) {
             </div>
             <div class="form-group">
               <span class="form-label" id="pr-cat-l">Kind</span>
-              <div class="pr-seg" role="radiogroup" aria-labelledby="pr-cat-l">
+              <div class="seg seg--wrap pr-seg" role="radiogroup" aria-labelledby="pr-cat-l">
                 ${PS.CATEGORIES.map((k) => html`<button type="button" key=${k} role="radio" aria-checked=${rec.category === k} class="pr-seg__btn" onClick=${() => set('category', k)}>${PS.CATEGORY_LABELS[k]}</button>`)}
               </div>
               <p class="form-hint">The archive’s filter on the publicity page.${outlet?.kind && outlet.kind !== rec.category ? ` ${outlet.name} is usually ${PS.CATEGORY_LABELS[outlet.kind]}.` : ''}</p>
@@ -1069,15 +1076,19 @@ function FoundView({ c, error }) {
     </div>
 
     ${tidying || tidyBits.length ? html`<section class=${`card pr-tidy${tidying ? ' is-running' : ''}`}>
+      <div class="status-head"><div class="status-head__main">
+      <span class=${`dot ${tidying ? 'dot--info' : 'dot--on'}`} aria-hidden="true"></span>
+      <div>
       <h3>${(st.tidy?.round || 0) > 2 ? (tidying ? 'Finding a real makeover picture for every story' : 'Every story has a real makeover picture') : second ? (tidying ? 'Taking a second look at every story' : 'Every story had a second look') : tidying ? 'Tidying the press list' : 'The press list was tidied'}${st.tidy?.doneAt ? html` <span class="pr-muted">${ago(st.tidy.doneAt)}</span>` : null}</h3>
       <p>${(st.tidy?.round || 0) > 2 && tidying ? 'Once, by itself: each story without a picture or a kid read again (through a browser when the outlet refuses the server), then given the best real makeover picture: the article’s own, the room of the kid it’s about, the community project it names, or a room SOARD built that year. Each change is listed below and can be undone.'
         : second && tidying ? 'Once, by itself: each story’s page read again for its picture (or its archived copy’s), the kids and partners it names linked, a kid whose makeover came after the story taken off, and Google News finds that never got their link tried again. Each change is listed below and can be undone.'
         : tidying ? 'Once, by itself: every story linked to its outlet, duplicates merged, Google News links swapped for the outlet’s own, pictures pulled from the stories, kids and partners linked. Each change is listed below and can be undone.' : 'Each change is listed below and can be undone.'}</p>
       ${tidyBits.length ? html`<p class="pr-tidy__bits">${tidyBits.join(' · ')}</p>` : null}
+      </div></div></div>
     </section>` : null}
 
     <section class="card pr-list" aria-labelledby="pr-review">
-      <header class="pr-list__head"><h3 id="pr-review">Needs a look <span class="ppl-count">${review.length}</span></h3></header>
+      <header class="pr-list__head"><h3 id="pr-review">Needs a look <span class="count ppl-count">${review.length}</span></h3></header>
       ${review.length ? html`<ul class="pr-found">${review.map((m) => html`<${MentionRow} key=${m.id} m=${m} c=${c} busy=${busy}
         actions=${html`<button type="button" class="btn btn-primary btn-sm" disabled=${!!busy} onClick=${() => act('add', m.id, 'Added to the publicity page')}>${busy === `add:${m.id}` ? html`<span class="spinner spinner-14" /> Adding` : 'Add to the page'}</button>
           <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => act('skip', m.id, 'Skipped')}>Skip</button>`} />`)}</ul>`
@@ -1092,7 +1103,7 @@ function FoundView({ c, error }) {
     </section>` : null}
 
     <section class="card pr-list" aria-labelledby="pr-changes">
-      <header class="pr-list__head"><h3 id="pr-changes">What changed <span class="ppl-count">${changes.length}</span></h3></header>
+      <header class="pr-list__head"><h3 id="pr-changes">What changed <span class="count ppl-count">${changes.length}</span></h3></header>
       ${changes.length ? html`<ul class="pr-log">${(showAllChanges ? changes : changes.slice(0, 25)).map((e) => html`<li key=${e.id} class=${`pr-log__item${e.undone_at ? ' is-undone' : ''}`}>
         <span class="pr-log__when">${ago(e.at)}</span>
         <span class="pr-log__what">${e.slug && storyOf(e.slug) && !e.kind.startsWith('outlet') ? html`<button type="button" class="pr-linkbtn" onClick=${() => c.go({ tab: 'stories', slug: e.slug })}>${e.label}</button>` : e.label}
@@ -1104,7 +1115,7 @@ function FoundView({ c, error }) {
     </section>
 
     ${skipped.length ? html`<section class="card pr-list">
-      <button type="button" class="pr-disclose" aria-expanded=${showSkipped} onClick=${() => setShowSkipped((v) => !v)}><${Icon} name=${showSkipped ? 'up' : 'down'} /> Skipped and left out <span class="ppl-count">${skipped.length}</span></button>
+      <button type="button" class="pr-disclose" aria-expanded=${showSkipped} onClick=${() => setShowSkipped((v) => !v)}><${Icon} name=${showSkipped ? 'up' : 'down'} /> Skipped and left out <span class="count ppl-count">${skipped.length}</span></button>
       ${showSkipped ? html`<ul class="pr-found">${skipped.map((m) => html`<${MentionRow} key=${m.id} m=${m} c=${c} quiet=${true} story=${m.story ? storyOf(m.story) : null}
         actions=${m.state === 'duplicate' && m.story && storyOf(m.story) ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => c.go({ tab: 'stories', slug: m.story })}>Open the story</button>`
           : html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => act('add', m.id, 'Added to the publicity page')}>Add anyway</button>`} />`)}</ul>` : null}
@@ -1121,7 +1132,7 @@ function MentionRow({ m, c, actions, quiet = false, story = null }) {
         <span class="pr-mention__src">${m.source || host || 'Unknown'}</span>
         ${story?.date || m.published ? html`<span>${longDate(String(story?.date || m.published).slice(0, 10))}</span>` : html`<span>Found ${ago(m.found_at)}</span>`}
         <span>${m.provider === 'youtube' ? 'YouTube' : m.provider === 'bing' ? 'Bing News' : 'Google News'}</span>
-        ${quiet ? html`<span class="pr-chip">${STATE_WORDS[m.state] || m.state}</span>` : null}
+        ${quiet ? html`<span class="tag pr-chip">${STATE_WORDS[m.state] || m.state}</span>` : null}
       </p>
       <p class="pr-mention__title"><a href=${m.url || m.link} target="_blank" rel="noopener">${m.title}</a></p>
       ${m.summary && !quiet ? html`<p class="pr-mention__sum">${m.summary}</p>` : null}
@@ -1247,7 +1258,7 @@ function OutletsView({ c, initialOpen = undefined }) {
     </div>
     <${StripOrder} c=${c} strip=${strip} onOpen=${(s) => setOpen(s)} />
     ${pairs.length ? html`<section class="card pr-list" aria-labelledby="pr-pairs">
-      <header class="pr-list__head"><div><h3 id="pr-pairs">These look like one outlet <span class="ppl-count">${pairs.length}</span></h3><p class="pr-sub">Merging moves the stories, other spellings and websites into the one you keep.</p></div></header>
+      <header class="pr-list__head"><div><h3 id="pr-pairs">These look like one outlet <span class="count ppl-count">${pairs.length}</span></h3><p class="pr-sub">Merging moves the stories, other spellings and websites into the one you keep.</p></div></header>
       <ul class="pr-pairs">${pairs.map(({ a, b, key }) => {
         const [keep, drop] = (stories.get(a.slug)?.length || 0) + (a.logo ? 100 : 0) >= (stories.get(b.slug)?.length || 0) + (b.logo ? 100 : 0) ? [a, b] : [b, a];
         return html`<li key=${key} class="pr-pair">
@@ -1260,11 +1271,11 @@ function OutletsView({ c, initialOpen = undefined }) {
     </section>` : null}
     <section class="card pr-list" aria-labelledby="pr-outlets">
       <header class="pr-list__head">
-        <h3 id="pr-outlets">All outlets <span class="ppl-count">${shown.length}</span></h3>
+        <h3 id="pr-outlets">All outlets <span class="count ppl-count">${shown.length}</span></h3>
         <div class="pr-search"><${Icon} name="search" /><input type="search" class="form-input" placeholder="Search outlets" aria-label="Search outlets" value=${q} onInput=${(e) => setQ(e.target.value)} /></div>
       </header>
-      <div class="pr-pills" role="group" aria-label="Show">
-        ${OUTLET_FILTERS.map((f) => counts[f.id] || f.id === 'all' || filter === f.id ? html`<button type="button" key=${f.id} class="pr-pill" aria-pressed=${filter === f.id} onClick=${() => setFilter(filter === f.id && f.id !== 'all' ? 'all' : f.id)}>${f.label} <span>${counts[f.id]}</span></button>` : null)}
+      <div class="pill-row pr-pills" role="group" aria-label="Show">
+        ${OUTLET_FILTERS.map((f) => counts[f.id] || f.id === 'all' || filter === f.id ? html`<button type="button" key=${f.id} class="pill pr-pill" aria-pressed=${filter === f.id} onClick=${() => setFilter(filter === f.id && f.id !== 'all' ? 'all' : f.id)}>${f.label} <span class="count">${counts[f.id]}</span></button>` : null)}
       </div>
       <ul class="pr-outlets">${shown.map((o) => { const n = stories.get(o.slug)?.length || 0; return html`<li key=${o.slug}>
         <button type="button" class="pr-outlet" onClick=${() => Dialog && setOpen(o.slug)} disabled=${!Dialog}>
@@ -1273,9 +1284,9 @@ function OutletsView({ c, initialOpen = undefined }) {
             <span class="pr-outlet__name">${o.name}</span>
             <span class="pr-outlet__meta">${[plural(n, 'story', 'stories'), o.kind ? PS.CATEGORY_LABELS[o.kind] : null, (o.domains || [])[0]].filter(Boolean).join(' · ')}</span>
             <span class="pr-row__chips">
-              ${PS.inStrip(o) ? html`<span class="pr-chip pr-chip--on">In the strip</span>` : null}
-              ${needs(o) ? html`<span class="pr-chip pr-chip--warn" title="A featured story shows this outlet’s name in plain type">Featured story needs a logo or picture</span>` : null}
-              ${(o.aliases || []).length ? html`<span class="pr-chip" title=${o.aliases.join(', ')}>${plural(o.aliases.length, 'other spelling')}</span>` : null}
+              ${PS.inStrip(o) ? html`<span class="tag tag--success pr-chip pr-chip--on">In the strip</span>` : null}
+              ${needs(o) ? html`<span class="tag tag--warn pr-chip pr-chip--warn" title="A featured story shows this outlet’s name in plain type">Featured story needs a logo or picture</span>` : null}
+              ${(o.aliases || []).length ? html`<span class="tag pr-chip" title=${o.aliases.join(', ')}>${plural(o.aliases.length, 'other spelling')}</span>` : null}
             </span>
           </span>
         </button>
@@ -1318,7 +1329,7 @@ function StripOrder({ c, strip, onOpen }) {
   const move = (i, d) => { const j = i + d; if (j < 0 || j >= order.length) return; const next = [...order]; [next[i], next[j]] = [next[j], next[i]]; save(next, order); };
   return html`<section class="card pr-strip" aria-labelledby="pr-strip-h">
     <header class="pr-list__head">
-      <div><h3 id="pr-strip-h">“As Featured” strip <span class="ppl-count">${strip.length}</span></h3><p class="pr-sub">What visitors see, in this order: dimmed until they point at it. Drag to reorder, or open a logo to move it with the keyboard.</p></div>
+      <div><h3 id="pr-strip-h">“As Featured” strip <span class="count ppl-count">${strip.length}</span></h3><p class="pr-sub">What visitors see, in this order: dimmed until they point at it. Drag to reorder, or open a logo to move it with the keyboard.</p></div>
       ${busy ? html`<span class="pr-saving"><span class="spinner spinner-14" /> Saving order</span>` : null}
     </header>
     ${strip.length ? html`<ol class="pr-strip__row" ref=${ref}>${order.map((slug, i) => { const o = by.get(slug); return o ? html`<li key=${slug} class="pr-strip__item">
@@ -1337,28 +1348,29 @@ function StripOrder({ c, strip, onOpen }) {
 const CSS = `
 .pr-root { --pr-gap: 16px; }
 .pr-root .hub-tab { display: inline-flex; align-items: center; gap: 6px; }
-.pr-tab-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--color-primary); color: #1A1B1F; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.pr-tab-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--color-primary); color: #1A1B1F; font-size: var(--fs-2xs); font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .pr-head { align-items: flex-start; gap: 16px; }
 .pr-head .page-sub { max-width: 68ch; }
 .pr-head__actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.pr-sub { color: var(--color-text-secondary); font-size: 13px; margin-top: 2px; max-width: 70ch; }
-.pr-muted { color: var(--color-text-muted); font-weight: 400; font-size: 13px; }
-.pr-hint, .pr-saving { color: var(--color-text-muted); font-size: 12px; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.pr-sub { color: var(--color-text-secondary); font-size: var(--fs-sm); margin-top: 2px; max-width: 70ch; }
+.pr-muted { color: var(--color-text-muted); font-weight: 400; font-size: var(--fs-sm); }
+.pr-hint, .pr-saving { color: var(--color-text-muted); font-size: var(--fs-xs); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
 .pr-loading { display: flex; justify-content: center; padding: 48px; }
 .pr-empty { text-align: center; padding: 32px 16px; color: var(--color-text-secondary); display: grid; gap: 12px; justify-items: center; }
 .pr-empty--inline { text-align: left; padding: 4px 0 8px; display: block; }
-.pr-linkbtn { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: left; }
-.pr-linkbtn:hover { color: var(--color-text); text-decoration-color: var(--color-primary); }
+.pr-linkbtn { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; cursor: pointer; text-align: left; }
+.pr-linkbtn:hover { color: var(--color-text); text-decoration-color: currentColor; }
 .pr-icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--color-text-secondary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
 .pr-icon-btn:hover:not(:disabled) { background: var(--color-bg-hover); color: var(--color-text); }
 .pr-icon-btn:disabled { opacity: 0.35; cursor: default; }
-.pr-icon-btn:focus-visible, .pr-row__open:focus-visible, .pr-feat__open:focus-visible, .pr-outlet:focus-visible, .pr-strip__logo:focus-visible, .pr-pill:focus-visible, .pr-seg__btn:focus-visible, .pr-disclose:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
+.pr-icon-btn:focus-visible, .pr-row__open:focus-visible, .pr-feat__open:focus-visible, .pr-outlet:focus-visible, .pr-strip__logo:focus-visible, .pr-disclose:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
 .pr-flip svg { transform: scaleX(-1); }
 
 /* The monitor's line (under Where things stand) */
 .pr-monitor__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 4px var(--color-primary-ring); flex: none; animation: pr-pulse 2.4s ease-in-out infinite; }
 @keyframes pr-pulse { 50% { box-shadow: 0 0 0 7px transparent; } }
-.pr-monitor__go { font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: underline; text-decoration-color: var(--color-primary); text-underline-offset: 3px; }
+.pr-monitor__go { font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; }
+.pr-monitor__go:hover { text-decoration-color: currentColor; }
 
 /* Where things stand */
 .pr-status { margin-bottom: var(--pr-gap); padding: 0; overflow: hidden; }
@@ -1368,12 +1380,12 @@ const CSS = `
 .pr-stat--btn { background: transparent; border: 0; border-radius: 0; cursor: pointer; }
 .pr-stat--btn:hover { background: var(--color-bg-hover); }
 .pr-stat--btn:focus-visible, .pr-status__foot:focus-visible { outline: none; box-shadow: inset var(--focus-ring-strong); }
-.pr-stat__label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
-.pr-stat__big { display: flex; align-items: center; gap: 8px; font-size: 22px; font-weight: 700; line-height: 1.2; color: var(--color-text); }
-.pr-stat__of { font-size: 15px; font-weight: 600; color: var(--color-text-muted); }
+.pr-stat__label { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }
+.pr-stat__big { display: flex; align-items: center; gap: 8px; font-size: var(--fs-2xl); font-weight: 700; line-height: 1.2; color: var(--color-text); }
+.pr-stat__of { font-size: var(--fs-md); font-weight: 600; color: var(--color-text-muted); }
 .pr-stat.is-ok .pr-stat__big svg { color: var(--color-success); }
 .pr-stat.is-warn .pr-stat__big svg { color: var(--color-warning); }
-.pr-stat__sub { font-size: 12.5px; line-height: 1.45; color: var(--color-text-secondary); }
+.pr-stat__sub { font-size: var(--fs-sm); line-height: 1.45; color: var(--color-text-secondary); }
 .pr-stat__acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .pr-faces { display: flex; align-items: center; padding-left: 6px; margin: 2px 0; }
 .pr-faces .pr-face { margin-left: -6px; box-shadow: 0 0 0 2px var(--color-bg-card); }
@@ -1382,50 +1394,39 @@ const CSS = `
 .pr-face--text, .pr-face--more { display: inline-flex; align-items: center; justify-content: center; font-size: calc(var(--s, 22px) * 0.38); font-weight: 700; color: var(--color-text-muted); }
 .pr-meter { display: block; height: 6px; border-radius: 3px; background: var(--color-bg-secondary); overflow: hidden; margin: 4px 0 2px; }
 .pr-meter span { display: block; height: 100%; border-radius: 3px; background: var(--color-primary); }
-.pr-status__foot { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 18px; border: 0; border-top: 1px solid var(--color-border); background: var(--color-bg-secondary); font: inherit; font-size: 13px; color: var(--color-text-secondary); text-align: left; cursor: pointer; }
+.pr-status__foot { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 18px; border: 0; border-top: 1px solid var(--color-border); background: var(--color-bg-secondary); font: inherit; font-size: var(--fs-sm); color: var(--color-text-secondary); text-align: left; cursor: pointer; }
 .pr-status__foot > span:nth-child(2) { flex: 1; }
 .pr-status__foot strong { color: var(--color-text); }
 .pr-status__foot:hover { color: var(--color-text); }
 
 /* Who a story is about */
 .pr-row__who { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 3px; }
-.pr-who { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 12px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: 12px; font-weight: 500; color: var(--color-text-secondary); max-width: 100%; }
+.pr-who { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 12px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: var(--fs-xs); font-weight: 500; color: var(--color-text-secondary); max-width: 100%; }
 .pr-who--kid { padding-left: 2px; color: var(--color-text); }
-.pr-who small { font-size: 11px; color: var(--color-text-muted); }
+.pr-who small { font-size: var(--fs-2xs); color: var(--color-text-muted); }
 .pr-who--more { background: transparent; }
 
 /* Lists */
 .pr-list, .pr-feat, .pr-strip { margin-bottom: var(--pr-gap); }
 .pr-list__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-.pr-list__head h3 { font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.pr-list__head h3 { font-size: var(--fs-md); display: flex; align-items: center; gap: 8px; }
 .pr-search { position: relative; flex: 0 1 320px; min-width: 200px; }
 .pr-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted); pointer-events: none; }
 .pr-search .form-input { padding-left: 32px; }
-.pr-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.pr-pill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-secondary); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
-.pr-pill span { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px; background: var(--color-bg-secondary); color: var(--color-text-muted); }
-.pr-pill:hover { border-color: var(--color-border-strong); color: var(--color-text); }
-.pr-pill[aria-pressed="true"] { background: var(--color-text); border-color: var(--color-text); color: var(--color-bg-card); }
-.pr-pill[aria-pressed="true"] span { background: rgba(255,255,255,0.18); color: inherit; }
 .pr-year + .pr-year { margin-top: 8px; }
-.pr-year__label { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 8px 0 6px; background: var(--color-bg-card); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--color-text-muted); }
+.pr-year__label { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 8px 0 6px; background: var(--color-bg-card); font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; color: var(--color-text-muted); }
 .pr-year__n { font-weight: 600; letter-spacing: 0; }
 .pr-rows, .pr-found, .pr-log, .pr-outlets, .pr-pairs, .pr-needs { list-style: none; margin: 0; padding: 0; }
 .pr-row + .pr-row { border-top: 1px solid var(--color-border); }
 .pr-row__open { width: 100%; display: flex; gap: 14px; align-items: flex-start; padding: 10px 8px; border: 0; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; border-radius: var(--radius-sm); }
 .pr-row__open:hover { background: var(--color-bg-hover); }
 .pr-row__body { flex: 1; min-width: 0; display: grid; gap: 3px; }
-.pr-row__title { font-weight: 600; font-size: 14px; line-height: 1.35; color: var(--color-text); display: block; overflow-wrap: anywhere; }
+.pr-row__title { font-weight: 600; font-size: var(--fs-base); line-height: 1.35; color: var(--color-text); display: block; overflow-wrap: anywhere; }
 .pr-star { color: var(--color-primary-ink); margin-right: 5px; vertical-align: -1px; }
 .pr-star svg { fill: var(--color-primary); }
-.pr-row__meta { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--color-text-secondary); }
+.pr-row__meta { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: var(--fs-sm); color: var(--color-text-secondary); }
 .pr-row__outlet { font-weight: 600; color: var(--color-text); }
 .pr-row__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
-.pr-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
-.pr-chip--warn { background: var(--color-primary-bg); border-color: rgba(214, 158, 46, 0.45); color: var(--color-text); }
-.pr-chip--draft { background: var(--color-bg); border-style: dashed; }
-.pr-chip--auto { border-color: var(--color-border-strong); }
-.pr-chip--on { background: var(--color-text); border-color: var(--color-text); color: var(--color-bg-card); }
 
 /* Thumbnails and outlet marks */
 .pr-thumb { position: relative; width: var(--w); height: var(--h); flex: none; border-radius: 8px; overflow: hidden; background: var(--color-bg-secondary); border: 1px solid var(--color-border); display: inline-flex; align-items: center; justify-content: center; }
@@ -1439,40 +1440,43 @@ const CSS = `
 .pr-omark--text { background: var(--color-bg); font-weight: 800; font-size: calc(var(--s) * 0.36); color: var(--color-text-muted); }
 
 /* Featured order */
-.pr-feat__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.pr-feat__item { display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-card); }
+.pr-feat__list { list-style: none; margin: 0 -8px; padding: 0; display: grid; }
+.pr-feat__item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-bg-card); }
+.pr-feat__item + .pr-feat__item { border-top: 1px solid var(--color-border); border-radius: 0; }
+.pr-feat__item:hover { background: var(--color-bg-hover); }
 .pr-feat__item.is-ghost { opacity: 0.5; }
-.pr-feat__item.is-lead { border-color: var(--color-border-strong); background: var(--color-bg-secondary); }
+.pr-feat__item.is-lead { padding-block: 10px; }
 .pr-feat__grip { width: 28px; height: 44px; border: 0; background: transparent; color: var(--color-text-muted); cursor: grab; flex: none; display: inline-flex; align-items: center; justify-content: center; touch-action: none; }
-.pr-feat__n { width: 22px; text-align: center; font-weight: 700; font-size: 13px; color: var(--color-text-muted); flex: none; }
+.pr-feat__n { width: 22px; text-align: center; font-weight: 700; font-size: var(--fs-sm); color: var(--color-text-muted); flex: none; }
 .pr-feat__open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 2px; border-radius: 6px; }
 .pr-feat__text { display: grid; gap: 2px; min-width: 0; }
 .pr-feat__title { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-.is-lead .pr-feat__title { font-size: 15px; }
-.pr-feat__meta { font-size: 12.5px; color: var(--color-text-secondary); }
+.is-lead .pr-feat__title { font-size: var(--fs-md); }
+.pr-feat__meta { font-size: var(--fs-sm); color: var(--color-text-secondary); }
 .pr-feat__moves { display: flex; gap: 2px; flex: none; }
 
 /* Add a story */
 .pr-add { display: grid; gap: 6px; }
 .pr-filled { display: grid; gap: 12px; }
 .pr-filled__card { display: flex; gap: 16px; align-items: flex-start; }
-.pr-filled__outlet { font-size: 12.5px; color: var(--color-text-secondary); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pr-filled__outlet { font-size: var(--fs-sm); color: var(--color-text-secondary); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .pr-filled__title { font-weight: 700; font-size: 16px; line-height: 1.3; margin: 4px 0; }
-.pr-filled__sum { color: var(--color-text-secondary); font-size: 13.5px; }
-.pr-filled__people { margin-top: 6px; font-size: 12.5px; color: var(--color-text-secondary); }
-.pr-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: 13px; }
+.pr-filled__sum { color: var(--color-text-secondary); font-size: var(--fs-base); }
+.pr-filled__people { margin-top: 6px; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+.pr-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: var(--fs-sm); }
 .pr-note svg { flex: none; margin-top: 2px; color: var(--color-warning); }
-.pr-note--warn { background: var(--color-primary-bg); border-color: rgba(214, 158, 46, 0.45); }
+.pr-note--warn { background: var(--tone-warn-surface); border-color: var(--tone-warn-line-strong); }
+.pr-note--warn svg { color: var(--tone-warn-fg); }
 
 /* The editor */
 .pr-bar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 10px; padding: 10px 0 12px; margin-bottom: 8px; background: var(--color-bg); border-bottom: 1px solid var(--color-border); }
 .pr-bar__title { flex: 1; min-width: 0; }
-.pr-bar__crumb { font-size: 12px; color: var(--color-text-muted); display: flex; align-items: center; gap: 8px; min-height: 22px; }
-.pr-bar__title h2 { font-size: 1.25rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pr-bar__state { font-size: 12.5px; color: var(--color-text-muted); white-space: nowrap; }
+.pr-bar__crumb { font-size: var(--fs-xs); color: var(--color-text-muted); display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.pr-bar__title h2 { font-size: var(--fs-lg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-bar__state { font-size: var(--fs-sm); color: var(--color-text-muted); white-space: nowrap; }
 .pr-editor__grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--pr-gap); align-items: start; }
 .pr-editor__main { display: grid; gap: var(--pr-gap); min-width: 0; }
-.pr-card h3, .pr-side__card h3 { font-size: 15px; margin-bottom: 12px; }
+.pr-card h3, .pr-side__card h3 { font-size: var(--fs-md); margin-bottom: 12px; }
 .pr-card h3 + .pr-sub { margin: -6px 0 14px; }
 .pr-card .form-group + .form-group, .pr-card .pr-two + .form-group, .pr-card .form-group + .pr-two { margin-top: 14px; }
 .pr-two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; }
@@ -1480,54 +1484,50 @@ const CSS = `
 .pr-row-input .form-input { flex: 1; min-width: 0; }
 .pr-row-input .btn { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .pr-open { width: 40px; padding: 0; justify-content: center; }
-.pr-seg { display: flex; flex-wrap: wrap; gap: 6px; }
-.pr-seg__btn { height: 34px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
-.pr-seg__btn:hover { border-color: var(--color-border-strong); color: var(--color-text); }
-.pr-seg__btn[aria-checked="true"] { background: var(--color-text); border-color: var(--color-text); color: var(--color-bg-card); font-weight: 600; }
 .pr-side { position: sticky; top: 76px; display: grid; gap: var(--pr-gap); }
 .pr-side--stacked { position: static; }
 .pr-side__card { padding: 16px !important; }
-.pr-side__p { font-size: 13px; color: var(--color-text-secondary); }
+.pr-side__p { font-size: var(--fs-sm); color: var(--color-text-secondary); }
 .pr-side__p + .pr-side__p { margin-top: 8px; }
 .pr-side__p a { color: var(--color-text); }
 .pr-side__links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
 .pr-side__links .btn { display: inline-flex; gap: 6px; align-items: center; }
 .pr-switch { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
 .pr-switch + .pr-switch { border-top: 1px solid var(--color-border); }
-.pr-switch input { appearance: none; width: 36px; height: 20px; border-radius: 10px; background: var(--color-border-strong); position: relative; flex: none; margin-top: 2px; cursor: pointer; transition: background 0.15s; }
-.pr-switch input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); transition: transform 0.15s var(--ease-out); }
-.pr-switch input:checked { background: var(--color-text); }
+.pr-switch input { appearance: none; width: 40px; height: 24px; border-radius: 12px; background: var(--switch-off); position: relative; flex: none; margin-top: 2px; cursor: pointer; transition: background 0.15s; }
+.pr-switch input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(26,27,31,.25); transition: transform 0.15s var(--ease-out); }
+.pr-switch input:checked { background: var(--switch-on); }
 .pr-switch input:checked::after { transform: translateX(16px); }
 .pr-switch input:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
-.pr-switch span { display: grid; gap: 2px; font-size: 13.5px; }
-.pr-switch small { color: var(--color-text-secondary); font-size: 12.5px; }
-.pr-needs li { display: grid; gap: 2px; padding: 8px 0 8px 12px; border-left: 3px solid var(--color-border); font-size: 13px; }
+.pr-switch span { display: grid; gap: 2px; font-size: var(--fs-base); }
+.pr-switch small { color: var(--color-text-secondary); font-size: var(--fs-sm); }
+.pr-needs li { display: grid; gap: 2px; padding: 8px 0 8px 12px; border-left: 3px solid var(--color-border); font-size: var(--fs-sm); }
 .pr-needs li + li { margin-top: 6px; }
 .pr-needs li.is-warn { border-left-color: var(--color-primary); }
-.pr-needs span { color: var(--color-text-secondary); font-size: 12.5px; }
+.pr-needs span { color: var(--color-text-secondary); font-size: var(--fs-sm); }
 .pr-dupes { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
 .pr-dupes li { display: grid; gap: 4px; justify-items: start; }
-.pr-dupes small { color: var(--color-text-muted); font-size: 12px; }
+.pr-dupes small { color: var(--color-text-muted); font-size: var(--fs-xs); }
 .pr-delete { justify-self: start; display: inline-flex; gap: 6px; align-items: center; color: var(--color-text-secondary); }
 .pr-delete:hover { color: var(--color-danger); }
 .pr-pic { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
 .pr-pic__thumb { width: 100% !important; height: auto !important; aspect-ratio: 16 / 10; }
-.pr-pic__says { margin-top: 8px; font-size: 12.5px; color: var(--color-text-secondary); }
+.pr-pic__says { margin-top: 8px; font-size: var(--fs-sm); color: var(--color-text-secondary); }
 .pr-pic__tools { display: grid; gap: 12px; }
 .pr-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .pr-btns .btn { display: inline-flex; gap: 6px; align-items: center; }
-.pr-source__via { font-size: 12px; color: var(--color-text-muted); margin-top: 4px; }
-.pr-pic__from { font-size: 12px; color: var(--color-text-muted); margin-top: 6px; }
+.pr-source__via { font-size: var(--fs-xs); color: var(--color-text-muted); margin-top: 4px; }
+.pr-pic__from { font-size: var(--fs-xs); color: var(--color-text-muted); margin-top: 6px; }
 .pr-people__chip.pr-people__chip--face { padding-left: 4px; gap: 6px; }
 .pr-kidpics { display: grid; gap: 6px; }
-.pr-kidpics__label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); }
+.pr-kidpics__label { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--color-text-secondary); }
 .pr-kidpics__row { display: flex; flex-wrap: wrap; gap: 6px; }
 .pr-kidpic { width: 96px; height: 64px; padding: 0; border-radius: 6px; overflow: hidden; border: 2px solid transparent; background: var(--color-bg-secondary); cursor: pointer; flex: none; }
 .pr-kidpic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pr-kidpic:hover { border-color: var(--color-border-strong); }
 .pr-kidpic[aria-pressed="true"] { border-color: var(--color-primary); }
 .pr-kidpic:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
-.pr-suggest { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: var(--radius-sm); border: 1px dashed var(--color-border-strong); background: var(--color-bg-secondary); font-size: 12.5px; }
+.pr-suggest { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: var(--radius-sm); border: 1px dashed var(--color-border-strong); background: var(--color-bg-secondary); font-size: var(--fs-sm); }
 .pr-suggest img { width: 80px; height: 50px; object-fit: cover; border-radius: 4px; flex: none; }
 .pr-suggest span { flex: 1; color: var(--color-text-secondary); }
 .pr-video { margin: 0; }
@@ -1538,11 +1538,11 @@ const CSS = `
 .pr-combo__opt { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 6px; cursor: pointer; min-height: 40px; }
 .pr-combo__opt.is-hi { background: var(--color-bg-hover); }
 .pr-combo__name { flex: 1; min-width: 0; font-weight: 500; }
-.pr-combo__n { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
+.pr-combo__n { font-size: var(--fs-xs); color: var(--color-text-muted); white-space: nowrap; }
 .pr-combo__none { padding: 10px; color: var(--color-text-muted); }
 .pr-people + .pr-people { margin-top: 14px; }
 .pr-people__chips { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.pr-people__chip { display: inline-flex; align-items: center; gap: 2px; height: 32px; padding-left: 12px; border-radius: 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: 13px; font-weight: 500; }
+.pr-people__chip { display: inline-flex; align-items: center; gap: 2px; height: 32px; padding-left: 12px; border-radius: 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: var(--fs-sm); font-weight: 500; }
 .pr-people__chip .pr-icon-btn { width: 28px; height: 28px; border-radius: 14px; }
 .pr-people__chip small { color: var(--color-text-muted); }
 .pr-people__add { position: relative; }
@@ -1557,35 +1557,33 @@ const CSS = `
 /* Found coverage */
 .pr-sources { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: var(--pr-gap); }
 .pr-source { padding: 14px 16px !important; }
-.pr-source__name { font-weight: 700; font-size: 13px; }
-.pr-source__when { font-size: 12.5px; color: var(--color-text-secondary); margin-top: 2px; }
-.pr-source__what { font-size: 12.5px; color: var(--color-text-muted); margin-top: 2px; }
-.pr-tidy { margin-bottom: var(--pr-gap); border-left: 4px solid var(--color-border-strong) !important; }
-.pr-tidy.is-running { border-left-color: var(--color-primary) !important; }
-.pr-tidy h3 { font-size: 15px; margin-bottom: 4px; }
-.pr-tidy p { font-size: 13px; color: var(--color-text-secondary); max-width: 80ch; }
+.pr-source__name { font-weight: 700; font-size: var(--fs-sm); }
+.pr-source__when { font-size: var(--fs-sm); color: var(--color-text-secondary); margin-top: 2px; }
+.pr-source__what { font-size: var(--fs-sm); color: var(--color-text-muted); margin-top: 2px; }
+.pr-tidy .status-head__main { flex-basis: 100%; }
+.pr-tidy p { margin-top: 0.25rem; font-size: var(--fs-sm); line-height: 1.5; color: var(--color-text-secondary); max-width: 80ch; }
 .pr-tidy__bits { margin-top: 8px; color: var(--color-text) !important; font-weight: 500; }
 .pr-mention { display: flex; gap: 16px; align-items: flex-start; padding: 12px 0; }
 .pr-mention + .pr-mention { border-top: 1px solid var(--color-border); }
 .pr-mention__body { flex: 1; min-width: 0; display: grid; gap: 4px; }
-.pr-mention__meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--color-text-secondary); align-items: center; }
+.pr-mention__meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--fs-sm); color: var(--color-text-secondary); align-items: center; }
 .pr-mention__src { font-weight: 700; color: var(--color-text); }
 .pr-mention__title a { font-weight: 600; color: var(--color-text); text-decoration: none; overflow-wrap: anywhere; }
-.pr-mention__title a:hover { text-decoration: underline; text-decoration-color: var(--color-primary); text-underline-offset: 3px; }
-.pr-mention__sum { font-size: 13px; color: var(--color-text-secondary); }
-.pr-mention__why { font-size: 12.5px; color: var(--color-text-muted); }
+.pr-mention__title a:hover { text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: 3px; }
+.pr-mention__sum { font-size: var(--fs-sm); color: var(--color-text-secondary); }
+.pr-mention__why { font-size: var(--fs-sm); color: var(--color-text-muted); }
 .pr-mention.is-quiet .pr-mention__title a { font-weight: 500; }
 .pr-mention__actions { display: flex; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
 .pr-mention__actions .btn { display: inline-flex; gap: 6px; align-items: center; }
-.pr-log__item { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; font-size: 13px; }
+.pr-log__item { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; font-size: var(--fs-sm); }
 .pr-log__item + .pr-log__item { border-top: 1px solid var(--color-border); }
-.pr-log__when { color: var(--color-text-muted); font-size: 12.5px; }
+.pr-log__when { color: var(--color-text-muted); font-size: var(--fs-sm); }
 .pr-log__what { display: grid; gap: 2px; overflow-wrap: anywhere; }
 .pr-log__what small { color: var(--color-text-muted); }
 .pr-log__item.is-undone .pr-log__what > :first-child { text-decoration: line-through; color: var(--color-text-muted); }
 .pr-log__item .btn { display: inline-flex; gap: 6px; align-items: center; }
 .pr-more { margin-top: 8px; }
-.pr-disclose { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 0; border: 0; background: transparent; font: inherit; font-weight: 600; font-size: 15px; color: var(--color-text); cursor: pointer; text-align: left; border-radius: 6px; }
+.pr-disclose { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 0; border: 0; background: transparent; font: inherit; font-weight: 600; font-size: var(--fs-md); color: var(--color-text); cursor: pointer; text-align: left; border-radius: 6px; }
 .pr-set__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .pr-set__save { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-border); }
 
@@ -1603,10 +1601,10 @@ const CSS = `
 .pr-outlet:hover:not(:disabled) { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
 .pr-outlet__body { display: grid; gap: 3px; min-width: 0; }
 .pr-outlet__name { font-weight: 600; overflow-wrap: anywhere; }
-.pr-outlet__meta { font-size: 12.5px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.pr-outlet__meta { font-size: var(--fs-sm); color: var(--color-text-secondary); overflow-wrap: anywhere; }
 .pr-pair { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; flex-wrap: wrap; }
 .pr-pair + .pr-pair { border-top: 1px solid var(--color-border); }
-.pr-pair__names { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.pr-pair__names { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--fs-base); }
 .pr-pair__names svg { color: var(--color-text-muted); }
 .pr-pair__actions { display: flex; gap: 6px; }
 
@@ -1620,7 +1618,7 @@ const CSS = `
   .pr-sources { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 768px) {
-  .pr-head { flex-direction: column; }
+  .pr-head { flex-direction: column; flex-wrap: nowrap; }
   .pr-head__actions { width: 100%; }
   .pr-head__actions .btn-primary { flex: 1; justify-content: center; }
   .pr-search { flex: 1 1 100%; }
@@ -1649,15 +1647,12 @@ const CSS = `
 }
 @media (pointer: coarse) {
   .pr-icon-btn { width: 44px; height: 44px; }
-  .pr-pill, .pr-seg__btn { height: 44px; }
   .pr-people__chip { height: 44px; }
   .pr-kidpic { width: 112px; height: 76px; }
   .pr-people__chip .pr-icon-btn { width: 44px; height: 44px; border-radius: 22px; }
-  /* The whole row is the switch; the knob itself is a thumb's width too */
+  /* The whole row is the switch, so it's a thumb's height; the switch keeps the admin's one size */
   .pr-switch { min-height: 48px; align-items: center; }
-  .pr-switch input { width: 48px; height: 28px; border-radius: 14px; margin-top: 0; }
-  .pr-switch input::after { top: 3px; left: 3px; width: 22px; height: 22px; }
-  .pr-switch input:checked::after { transform: translateX(20px); }
+  .pr-switch input { margin-top: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pr-monitor__dot { animation: none; }
