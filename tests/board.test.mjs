@@ -14,8 +14,8 @@ import * as admin from '../functions/api/board-admin.js';
 import * as portal from '../functions/api/board-portal.js';
 import * as fileRoute from '../functions/api/board-file.js';
 import { syncBoardAccess, accessStatus, maybeSyncBoardAccess, GROUP_NAME, POLICY_NAME, NOBODY } from '../functions/api/_board-access.js';
-import { packetEmail, cashNow, getMeeting, listMeetings, maybeRunBoard, cashHistory } from '../functions/api/_board.js';
-import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange } from '../public/admin/board-shared.js';
+import { packetEmail, cashNow, getMeeting, listMeetings, maybeRunBoard, cashHistory, provideBoardFinance, liveNumbers } from '../functions/api/_board.js';
+import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
 const TEAM = 'soard';
@@ -382,6 +382,43 @@ test('cash in the bank: Mercury’s own checking and savings, not external or cl
   const history = await cashHistory(env.DB);
   assert.deepEqual(history.map((h) => [h.month, h.total]), [['2026-10', 375000.5]]);
   assert.equal(outside.length, 2, 'once a day: the check above and one heartbeat');
+});
+
+// ─── Finance from Job Costs ─────────────────────────────────────────
+
+const FINANCE = {
+  at: '2026-10-27T15:00:00.000Z',
+  months: [{ month: '2026-09', income: 90000, makeovers: 40000, store: 15000, operating: 20000, storeSales: 30000, net: 15000 }],
+  ytd: { year: 2026, through: '2026-10-27', income: 900000, makeovers: 500000, store: 150000, operating: 200000, net: 50000 },
+  lastYtd: { year: 2025, through: '2025-10-27', income: 800000, makeovers: 480000, store: 140000, operating: 200000, net: -20000 },
+  cash: { today: 375000, lowest: { dollars: 210000, week: '2027-01-04' }, cautiousLowest: { dollars: 180000, week: '2027-01-11' }, in13Weeks: 260000, floor: 150000, belowFloor: false },
+  close: { month: '2026-09', label: 'September', state: 'ready', closedAt: null },
+  perMakeover: { count: 12, average: 21000 },
+};
+
+test('finance from Job Costs: nothing until its module registers, then on the board page and in the packet; a failure never breaks the page', async (t) => {
+  t.after(() => provideBoardFinance(null));
+  provideBoardFinance(null);
+  assert.equal((await portalApi(MEMBER)).body.numbers.finance, null, 'no finance module yet: no section');
+  let calls = 0;
+  provideBoardFinance(async () => { calls += 1; return FINANCE; });
+  const page = (await portalApi(MEMBER)).body;
+  assert.deepEqual(page.numbers.finance.ytd, FINANCE.ytd);
+  await portalApi(MEMBER);
+  assert.equal(calls, 1, 'a 15-minute copy, not a fresh read every page');
+  const lines = liveLines('cash', page.numbers);
+  assert.ok(lines.some((l) => l === '2026 so far (through October): $900,000 in, $850,000 out, net $50,000; 2025 to the same day: net −$20,000'), lines.join(' | '));
+  assert.ok(lines.some((l) => /^Cash forecast: lowest \$210,000 the week of Jan 4, \$260,000 in 13 weeks$/.test(l)));
+  assert.ok(lines.includes('September’s books: ready to close'));
+  // Locking the packet keeps the finance lines with it
+  const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: '2026-11-19' })).body.meeting;
+  const locked = (await adminApi(FOUNDER, { action: 'snapshot', id: m.id })).body.meeting;
+  assert.deepEqual(locked.snapshot.finance.ytd, FINANCE.ytd);
+  // The module throwing (its tables not made yet) leaves the last good copy, or nothing
+  provideBoardFinance(async () => { throw new Error('no such table: mercury_txns'); });
+  await env.DB.exec("DELETE FROM board_state WHERE key = 'finance'");
+  assert.equal((await liveNumbers(env)).finance, null);
+  assert.equal((await portalApi(MEMBER)).status, 200);
 });
 
 // ─── The rules ──────────────────────────────────────────────────────

@@ -20,7 +20,7 @@
 import { h, htm, render, useState, useEffect } from '../vendor.js';
 import { viewerLink, sizeText } from '../file-viewer.js';
 import {
-  RSVP, DOC_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern,
+  RSVP, DOC_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName,
 } from '../board-shared.js';
 
 const html = htm.bind(h);
@@ -340,18 +340,45 @@ function FinancialsPage({ ctx }) {
   const cash = data.numbers.cash;
   const history = data.cashHistory;
   const s = data.snapshot;
+  const f = data.numbers.finance;
+  const spent = (p) => (p.makeovers || 0) + (p.store || 0) + (p.operating || 0);
+  const signed = (n) => (typeof n === 'number' ? `${n < 0 ? '−' : ''}${money(Math.abs(n))}` : '');
+  const monthShort = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' });
   return html`
     <h1 class="bp-h1">Financials</h1>
-    <p class="bp-lede" style="margin-bottom:1.25rem">Cash, the statements from each meeting, budgets and audits, and the tax returns.</p>
+    <p class="bp-lede" style="margin-bottom:1.25rem">Cash, money in and out, the statements from each meeting, budgets and audits, and the tax returns.</p>
     <div class="bp-grid">
       <div class="bp-stack">
         <div class="bp-card">
           <h2 class="bp-h2">Cash in the bank</h2>
           ${cash ? html`<p class="bp-when" style="margin:0">${money(cash.total)}</p><p class="bp-muted">${cash.accounts.length > 1 ? `${cash.accounts.map((a) => `${a.name} ${money(a.balance)}`).join(' · ')} · ` : ''}from Mercury, ${shortDate(cash.at.slice(0, 10))}</p>` : html`<p class="bp-muted">The balance shows here once the bank is connected.</p>`}
+          ${f?.cash ? html`<div class="bp-live" style="margin-top:0.9rem">
+            <div class="bp-live__label">The next 13 weeks</div>
+            <ul>
+              <li>Lowest point: ${money(f.cash.lowest.dollars)}${f.cash.lowest.week ? `, the week of ${shortDate(f.cash.lowest.week)}` : ''}${f.cash.cautiousLowest && f.cash.cautiousLowest.dollars !== f.cash.lowest.dollars ? ` (a cautious estimate: ${money(f.cash.cautiousLowest.dollars)})` : ''}</li>
+              <li>In 13 weeks: ${money(f.cash.in13Weeks)}</li>
+              ${f.cash.floor ? html`<li>${f.cash.belowFloor ? html`<span class="bp-chip bp-chip--warn">Under the floor</span> ` : null}The floor SOARD keeps: ${money(f.cash.floor)}</li>` : null}
+            </ul>
+          </div>` : null}
           ${history.length > 1 ? html`<table class="bp-table" style="margin-top:1rem"><thead><tr><th>Month</th><th class="num">Balance</th><th class="num">Change</th></tr></thead><tbody>
             ${history.map((r, i) => { const prev = history[i + 1]; const d = prev ? r.total - prev.total : null; return html`<tr><td>${monthOf(r.month)}</td><td class="num">${money(r.total)}</td><td class="num">${d == null ? '' : `${d >= 0 ? '+' : '−'}${money(Math.abs(d))}`}</td></tr>`; })}
           </tbody></table>` : null}
         </div>
+        ${f?.ytd ? html`<div class="bp-card">
+          <h2 class="bp-h2">Money in and out</h2>
+          <table class="bp-table">
+            <thead><tr><th></th><th class="num">${f.ytd.year} so far</th>${f.lastYtd ? html`<th class="num">${f.lastYtd.year}, same days</th>` : null}</tr></thead>
+            <tbody>
+              ${[['Money in', (p) => money(p.income)], ['Makeovers', (p) => money(p.makeovers)], ['The store', (p) => money(p.store)], ['Operating', (p) => money(p.operating)], ['Money out', (p) => money(spent(p))], ['Net', (p) => signed(p.net)]]
+                .map(([label, val]) => html`<tr><td>${label === 'Net' || label === 'Money out' || label === 'Money in' ? html`<strong>${label}</strong>` : label}</td><td class="num">${val(f.ytd)}</td>${f.lastYtd ? html`<td class="num">${val(f.lastYtd)}</td>` : null}</tr>`)}
+            </tbody>
+          </table>
+          <p class="bp-muted" style="margin-top:0.6rem">Through ${monthName(f.ytd.through)} ${Number(String(f.ytd.through).slice(8, 10)) || ''}, from Mercury. ${f.close?.label ? `${f.close.label}’s books are ${{ closed: 'closed', ready: 'ready to close', open: 'still open' }[f.close.state] || f.close.state}.` : ''}${f.perMakeover ? ` ${plural(f.perMakeover.count, 'makeover')} finished this year, ${money(f.perMakeover.average)} each on average.` : ''}</p>
+          ${f.months?.length ? html`<table class="bp-table" style="margin-top:1rem">
+            <thead><tr><th>Month</th><th class="num">In</th><th class="num">Out</th><th class="num">Net</th></tr></thead>
+            <tbody>${[...f.months].reverse().map((r) => html`<tr><td>${monthShort(r.month)}</td><td class="num">${money(r.income)}</td><td class="num">${money(spent(r))}</td><td class="num">${signed(r.net)}</td></tr>`)}</tbody>
+          </table>` : null}
+        </div>` : null}
         <div class="bp-card">
           <h2 class="bp-h2">Financial statements</h2>
           ${statements.length ? html`<ul class="bp-list">${statements.map((f, i) => html`<li><div class="bp-list__main"><a class="bp-list__title" ...${viewerLink(sv, i)}>${f.name}</a><div class="bp-list__meta">${meetingName(f.meeting)} · ${shortDate(f.meeting.date)}</div></div></li>`)}</ul>` : html`<p class="bp-muted">The income statement and balance sheet from each meeting show here.</p>`}

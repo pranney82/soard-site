@@ -463,20 +463,46 @@ async function eventsList(DB, today = todayEastern()) {
 
 const revealRow = (r) => ({ slug: r.slug, name: r.name, confirmed: r.confirmed !== false, date: r.date || '', time: r.time || '', window: r.window || null, kidUrl: r.kidUrl || `/kids/${r.slug}/` });
 
+// ─── Finance summaries from Job Costs ───────────────────────────────
+// The money in and out (12 months by makeovers, store and operating, the year
+// so far against last year, the cash forecast, the month's close) comes from
+// the finance module, which registers itself here when it ships:
+//   provideBoardFinance(boardFinance)   in functions/api/_finance.js
+// so the board never imports Job Costs code, and shows the section once it's there.
+let financeSource = null;
+export function provideBoardFinance(fn) { financeSource = typeof fn === 'function' ? fn : null; }
+
+/** The finance summary (totals only, whole dollars), a 15-minute copy; null until the finance module is live or has history */
+export async function boardFinanceNow(env, { now = Date.now(), fresh = false } = {}) {
+  if (!financeSource || !env.DB) return null;
+  const c = await readState(env.DB, 'finance');
+  if (!fresh && c.at && now - Date.parse(c.at) < 15 * 60 * 1000) return c.value || null;
+  try {
+    const value = (await financeSource(env, { now })) || null;
+    await writeState(env.DB, 'finance', { at: new Date(now).toISOString(), value });
+    return value;
+  } catch (err) {
+    console.error('[board] finance', err.message);
+    return c.value || null;
+  }
+}
+
 /** Everything an agenda's live items show, as of now */
 export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const today = todayEastern(now);
-  const [cash, projects, reveals, events, meetings, kids] = await Promise.all([
+  const [cash, projects, reveals, events, meetings, kids, finance] = await Promise.all([
     cachedCash(env, { fetchImpl, now }),
     projectsNow(env, { fetchImpl, now }),
     cachedReveals(env, now).catch(() => ({ upcoming: [], past: [] })),
     eventsList(env.DB, today),
     listMeetings(env.DB),
     impact(env.DB),
+    boardFinanceNow(env, { now }),
   ]);
   return {
     at: new Date(now).toISOString(),
     cash,
+    finance,
     projects,
     reveals: (reveals.upcoming || []).map(revealRow),
     pastReveals: (reveals.past || []).map((r) => revealRow({ ...r, confirmed: true })),
@@ -505,7 +531,7 @@ export async function takeSnapshot(env, id, { by, fetchImpl = fetch, now = Date.
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
   const n = await liveNumbers(env, { fetchImpl, now });
-  const snapshot = { at: n.at, by: by || '', cash: n.cash, projects: n.projects, reveals: n.reveals, events: n.events, meetings: n.meetings.filter((x) => x.id !== id), impact: n.impact };
+  const snapshot = { at: n.at, by: by || '', cash: n.cash, finance: n.finance, projects: n.projects, reveals: n.reveals, events: n.events, meetings: n.meetings.filter((x) => x.id !== id), impact: n.impact };
   await writeMeeting(env.DB, { ...m, snapshot, updatedAt: nowIso(), updatedBy: by || m.updatedBy });
   return getMeeting(env.DB, id);
 }

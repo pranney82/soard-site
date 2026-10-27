@@ -32,6 +32,7 @@ import { onRequest as middleware, _resetKeyCacheForTests } from '../functions/ap
 import * as boardAdmin from '../functions/api/board-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
+import { provideBoardFinance } from '../functions/api/_board.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
@@ -129,6 +130,16 @@ globalThis.fetch = async (input, init = {}) => {
   return realFetch(input, init);
 };
 _resetKeyCacheForTests();
+// Job Costs' finance summary, the way _finance.js registers it (totals only, whole dollars)
+provideBoardFinance(async () => ({
+  at: new Date().toISOString(),
+  months: Array.from({ length: 12 }, (_, i) => ({ month: new Date(Date.UTC(2025, 10 + i, 15)).toISOString().slice(0, 7), income: 80000 + i * 1000, makeovers: 40000, store: 12000, operating: 18000, storeSales: 25000, net: 10000 + i * 1000 })),
+  ytd: { year: 2026, through: day(0), income: 900000, makeovers: 500000, store: 150000, operating: 200000, net: 50000 },
+  lastYtd: { year: 2025, through: day(-365), income: 800000, makeovers: 480000, store: 140000, operating: 200000, net: -20000 },
+  cash: { today: 375000, lowest: { dollars: 210000, week: day(40) }, cautiousLowest: { dollars: 180000, week: day(47) }, in13Weeks: 260000, floor: 150000, belowFloor: false },
+  close: { month: '2026-09', label: 'September', state: 'ready', closedAt: null },
+  perMakeover: { count: 12, average: 21000 },
+}));
 
 // ── The server ──
 const ROUTES = { '/api/board-admin': boardAdmin, '/api/board-portal': boardPortal, '/api/board-file': boardFile };
@@ -247,6 +258,7 @@ try {
   ok(/Minutes of the .* Board Meeting/.test(t1.replace(/\n/g, ' ')) || await jane.evaluate(() => [...document.querySelectorAll('input[aria-label="Item"]')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
   ok(await jane.evaluate(() => document.querySelectorAll('.bd-person').length) === 4, 'the board (3) and the founder are on the list');
   ok(/\$375,000 in the bank/.test(t1), 'the Financial item shows today’s cash from Mercury');
+  ok(/2026 so far \(through \w+\): \$900,000 in, \$850,000 out, net \$50,000/.test(t1), 'and the year so far from Job Costs’ finance summary');
   ok(/3 makeovers in progress: 2 in Design, 1 in Build/.test(t1) && /Design: Leo, Not Published Yet/.test(t1), 'the projects item shows JobTread’s makeovers, by kid');
 
   // Notes, a private note, confidential, an action, a motion
@@ -374,7 +386,7 @@ try {
       ok(res === 403, 'the Board area’s API refuses a board member');
     }
 
-    for (const [p, re] of [['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Financial statements[\s\S]*Balance-sheet/], ['reveals', /Coming up[\s\S]*Maya[\s\S]*Being built now/], ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/], ['documents', /Conflict of interest policy/]]) {
+    for (const [p, re] of [['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Lowest point: \$210,000[\s\S]*Money in and out[\s\S]*\$900,000[\s\S]*−\$20,000[\s\S]*September’s books are ready to close[\s\S]*Financial statements[\s\S]*Balance-sheet/], ['reveals', /Coming up[\s\S]*Maya[\s\S]*Being built now/], ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/], ['documents', /Conflict of interest policy/]]) {
       await alex.goto(`${SITE}/admin/board/#/${p}`, { waitUntil: 'networkidle0' });
       ok(await waitText(alex, re), `${p} shows what it should`);
       ok(await overflow(alex) <= 0, `${p}: nothing past the right edge`);

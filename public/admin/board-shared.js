@@ -439,6 +439,11 @@ export function parseAgendaText(text, people = []) {
 
 const STATUS_ORDER = ['Design', 'Finalization', 'Approval', 'Mobilization', 'Build'];
 const dayOf = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }) : '');
+/** "2026-10" or "2026-10-27" → "October" */
+export const monthName = (s) => (/^\d{4}-\d{2}/.test(String(s || '')) ? new Date(`${String(s).slice(0, 7)}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }) : '');
+const shortDay = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : String(d || ''));
+/** "net $12,000" / "net −$3,000" */
+export const netText = (n) => (typeof n === 'number' ? `net ${n < 0 ? '−' : ''}${money(Math.abs(n))}` : '');
 const windowText = (w) => (w?.label ? String(w.label) : w?.part && w?.month ? `${w.part} ${w.month}` : 'date to come');
 
 /**
@@ -448,9 +453,19 @@ const windowText = (w) => (w?.label ? String(w.label) : w?.part && w?.month ? `$
 export function liveLines(kind, n, { meetingId = null } = {}) {
   if (!n) return [];
   if (kind === 'cash') {
-    if (!n.cash) return [];
-    const parts = (n.cash.accounts || []).length > 1 ? ` (${n.cash.accounts.map((a) => `${a.name} ${money(a.balance)}`).join(', ')})` : '';
-    return [`${money(n.cash.total)} in the bank${parts}`];
+    const out = [];
+    if (n.cash) {
+      const parts = (n.cash.accounts || []).length > 1 ? ` (${n.cash.accounts.map((a) => `${a.name} ${money(a.balance)}`).join(', ')})` : '';
+      out.push(`${money(n.cash.total)} in the bank${parts}`);
+    }
+    const f = n.finance;
+    if (f?.ytd) {
+      const spent = (p) => (p.makeovers || 0) + (p.store || 0) + (p.operating || 0);
+      out.push(`${f.ytd.year} so far (through ${monthName(f.ytd.through)}): ${money(f.ytd.income)} in, ${money(spent(f.ytd))} out, ${netText(f.ytd.net)}${f.lastYtd ? `; ${f.lastYtd.year} to the same day: ${netText(f.lastYtd.net)}` : ''}`);
+    }
+    if (f?.cash?.lowest) out.push(`Cash forecast: lowest ${money(f.cash.lowest.dollars)}${f.cash.lowest.week ? ` the week of ${shortDay(f.cash.lowest.week)}` : ''}, ${money(f.cash.in13Weeks)} in 13 weeks${f.cash.belowFloor ? `, under the ${money(f.cash.floor)} floor` : ''}`);
+    if (f?.close?.label) out.push(`${f.close.label}’s books: ${{ closed: 'closed', ready: 'ready to close', open: 'still open' }[f.close.state] || f.close.state}`);
+    return out;
   }
   if (kind === 'projects') {
     const p = n.projects;
