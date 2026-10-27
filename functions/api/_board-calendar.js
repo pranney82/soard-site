@@ -14,7 +14,8 @@
  * own quarter numbering, not one worked out from the date) until someone types
  * another one in Board. A moved event moves its meeting: the calendar is where the day changes. A
  * meeting added here by hand on the same day is linked to the event instead
- * of doubled. A meeting whose event is gone stays, marked gone for the admins.
+ * of doubled, and so is each admin's own copy of the same meeting: one meeting
+ * per day, named and timed by the copy that organized it. A meeting whose event is gone stays, marked gone for the admins.
  * New meetings start from Settings' agenda, not shared, like any new meeting.
  *
  * It reads through the site's Google service account (GOOGLE_CALENDAR_KEY,
@@ -25,12 +26,14 @@
 import { accessToken, listEvents } from './_google-calendar.js';
 import { easternParts } from './_reveals.js';
 import { boardAdmins, activeBoard, readState, writeState } from './_board-roles.js';
-import { listMeetings, saveMeeting, createMeeting, ensureSchema } from './_board.js';
-import { todayEastern } from '../../public/admin/board-shared.js';
+import { listMeetings, saveMeeting, createMeeting, deleteMeeting, ensureSchema } from './_board.js';
+import { todayEastern, cleanMeeting } from '../../public/admin/board-shared.js';
 
 const KEY = 'calendar';
 const EVERY_MS = 60 * 60 * 1000;
 const AHEAD_DAYS = 400;
+// A look by older code is redone at once (2: one meeting per day across calendars)
+const VERSION = 2;
 export const CALENDAR_BY = 'the calendar';
 
 const NAMED = /\b(meeting|mtg)\b|\bQ[1-4]\b/i;
@@ -70,6 +73,7 @@ export function eventPlace(ev) {
   const comma = location.indexOf(',');
   if (comma > 0 && /\d/.test(location.slice(comma))) { address = location.slice(comma + 1).trim(); location = location.slice(0, comma).trim(); }
   else if (/^\d/.test(location)) { address = location; location = ''; }
+  if (/^(tbd|tba|to be (determined|announced|confirmed))\.?$/i.test(location)) location = '';
   return { location, address, video: video.replace(/[).,]+$/, '') };
 }
 
@@ -115,46 +119,73 @@ async function look(env, { fetchImpl, now }) {
       errors.push(`${email.split('@')[0]}’s calendar: ${String(err.message).slice(0, 200)}`);
     }
   }
-  const counts = { added: 0, moved: 0, linked: 0, gone: 0 };
-  let meetings = await listMeetings(env.DB);
+  // One meeting per day. Peter's and Holly's copies of the same meeting are one meeting: the copy that
+  // organized it names it and sets its times, and a video link or a real place comes from whichever copy has one
+  const days = new Map(); // date → [{ uid, ev, from, when, place }]
   for (const [uid, { ev, from }] of found) {
     const when = eventWhen(ev);
     if (!when.date || when.date < today) continue;
-    const place = eventPlace(ev);
-    let m = meetings.find((x) => x.calendar?.uid === uid)
-      || meetings.find((x) => !x.calendar?.uid && x.date === when.date);
+    if (!days.has(when.date)) days.set(when.date, []);
+    days.get(when.date).push({ uid, ev, from, when, place: eventPlace(ev) });
+  }
+  const counts = { added: 0, moved: 0, linked: 0, gone: 0, merged: 0 };
+  const onCalendar = new Set();
+  let meetings = await listMeetings(env.DB);
+  for (const [date, copies] of days) {
+    const lead = copies.find((c) => c.ev.organizer?.self) || copies[0];
+    const uids = [lead.uid, ...copies.filter((c) => c !== lead).map((c) => c.uid)];
+    uids.forEach((u) => onCalendar.add(u));
+    const hasPlace = (c) => !!(c.place.location || c.place.address);
+    const place = hasPlace(lead) ? lead.place : (copies.find(hasPlace)?.place || lead.place);
+    const video = lead.place.video || copies.find((c) => c.place.video)?.place.video || '';
+    const { when, ev, from } = lead;
+    // Its meeting: one a person has worked on, else the oldest. An untouched extra copy goes (one per calendar, before)
+    const linked = meetings.filter((x) => x.calendar && [x.calendar.uid, ...(x.calendar.others || [])].some((u) => uids.includes(u)))
+      .sort((a, b) => (Number(b.updatedBy !== CALENDAR_BY) - Number(a.updatedBy !== CALENDAR_BY)) || String(a.createdAt).localeCompare(String(b.createdAt)));
+    for (const extra of linked.slice(1)) {
+      if (extra.updatedBy !== CALENDAR_BY || extra.shared || extra.files.length) continue;
+      await deleteMeeting(env, extra.id);
+      counts.merged += 1;
+    }
+    let m = linked[0] || meetings.find((x) => !x.calendar?.uid && x.date === date) || null;
     // What the calendar says wins; what it leaves out stays as typed here (place: it has a place; call: it has a video link)
-    const link = { uid, title: String(ev.summary || '').slice(0, 200), from, link: /^https:\/\//.test(ev.htmlLink || '') ? ev.htmlLink : '', gone: false, place: !!(place.location || place.address), call: !!place.video };
+    const link = {
+      uid: lead.uid, others: uids.slice(1), title: String(ev.summary || '').slice(0, 200), from,
+      link: /^https:\/\//.test(ev.htmlLink || '') ? ev.htmlLink : '', gone: false, place: !!(place.location || place.address), call: !!video,
+    };
     if (!m) {
-      m = await createMeeting(env, { date: when.date, by: CALENDAR_BY });
+      m = await createMeeting(env, { date, by: CALENDAR_BY });
       counts.added += 1;
     } else if (!m.calendar?.uid) counts.linked += 1;
     const next = {
-      ...m, date: when.date, start: when.start, end: when.end,
+      ...m, date, start: when.start, end: when.end,
       title: !m.title || m.title === m.calendar?.title ? link.title : m.title,
       location: place.location || m.location,
       address: place.address || (place.location && place.location !== m.location ? '' : m.address),
-      video: place.video || m.video,
+      video: video || m.video,
       calendar: link,
     };
-    const changed = ['date', 'start', 'end', 'title', 'location', 'address', 'video'].some((k) => next[k] !== m[k]) || JSON.stringify(m.calendar || null) !== JSON.stringify(link);
+    // Compared as the stored record has it (cleanMeeting's field order), or every look would save again
+    const sameLink = JSON.stringify(cleanMeeting({ calendar: link }).calendar) === JSON.stringify(cleanMeeting({ calendar: m.calendar }).calendar);
+    const changed = ['date', 'start', 'end', 'title', 'location', 'address', 'video'].some((k) => next[k] !== m[k]) || !sameLink;
     if (changed) {
       if (m.calendar?.uid && (m.date !== next.date || m.start !== next.start)) counts.moved += 1;
       await saveMeeting(env.DB, next, { by: CALENDAR_BY });
     }
   }
-  // A meeting from today on whose event is no longer on any calendar: kept, marked gone (only when every calendar was read)
+  // A meeting from today on whose event is on no calendar any more: kept, marked gone (only when every calendar was read)
   if (!errors.length) {
     meetings = await listMeetings(env.DB);
     for (const m of meetings) {
-      if (!m.calendar?.uid || m.calendar.gone || m.date < today || found.has(m.calendar.uid)) continue;
+      if (!m.calendar?.uid || m.calendar.gone || m.date < today) continue;
+      if ([m.calendar.uid, ...(m.calendar.others || [])].some((u) => onCalendar.has(u))) continue;
       await saveMeeting(env.DB, { ...m, calendar: { ...m.calendar, gone: true } }, { by: CALENDAR_BY });
       counts.gone += 1;
     }
   }
   return writeState(env.DB, KEY, {
-    ok: !errors.length, configured: true, checkedAt: new Date(now).toISOString(),
-    found: [...found.values()].filter(({ ev }) => eventWhen(ev).date >= today).length, ...counts, calendars: read, errors,
+    version: VERSION, ok: !errors.length, configured: true, checkedAt: new Date(now).toISOString(),
+    found: days.size, ...counts, calendars: read, errors,
   });
 }
 
@@ -165,7 +196,7 @@ export async function maybeSyncBoardCalendar(env, { fetchImpl = fetch, now = Dat
   try {
     if (!env.DB || !env.GOOGLE_CALENDAR_KEY) return null;
     const s = await readState(env.DB, KEY);
-    if (s.checkedAt && now - Date.parse(s.checkedAt) < minAgeMs) return null;
+    if (s.version === VERSION && s.checkedAt && now - Date.parse(s.checkedAt) < minAgeMs) return null;
     return await syncBoardCalendar(env, { fetchImpl, now });
   } catch (err) {
     console.error('[board-calendar]', err.message);

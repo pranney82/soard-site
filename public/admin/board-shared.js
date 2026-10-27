@@ -18,7 +18,8 @@
  *   files        [{ id, name, type, size, kind, staffOnly, at }]
  *   snapshot     the numbers locked in for the packet (see _board.js takeSnapshot)
  *   calendar     the calendar event it follows (functions/api/_board-calendar.js):
- *                { uid, title, from, link, gone, place, call }, or null
+ *                { uid, others (the same meeting on another admin's calendar), title,
+ *                from, link, gone, place, call }, or null
  *   packetSentAt, packetSentTo
  * Notes are plain text: a line starting with "- " is a point, two spaces
  * deeper for each level under it.
@@ -195,6 +196,7 @@ export function cleanMeeting(raw = {}) {
     snapshot: raw.snapshot && typeof raw.snapshot === 'object' ? raw.snapshot : null,
     calendar: raw.calendar && typeof raw.calendar === 'object' && one(raw.calendar.uid, 400) ? {
       uid: one(raw.calendar.uid, 400), title: one(raw.calendar.title, 200), from: one(raw.calendar.from, 200),
+      others: (Array.isArray(raw.calendar.others) ? raw.calendar.others : []).map((u) => one(u, 400)).filter(Boolean).slice(0, 5),
       link: /^https:\/\//.test(String(raw.calendar.link || '')) ? one(raw.calendar.link, 1000) : '',
       gone: bool(raw.calendar.gone), place: bool(raw.calendar.place), call: bool(raw.calendar.call),
     } : null,

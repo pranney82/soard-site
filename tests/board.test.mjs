@@ -537,6 +537,51 @@ test('a meeting added by hand on the same day is linked, not doubled; a calendar
   assert.match(JSON.stringify((await adminApi(FOUNDER)).body.calendar), /pat’s calendar/);
 });
 
+test('the same meeting on two admins’ calendars is one meeting: the organizer’s name and times, a video link or place from either; old duplicates merge', async () => {
+  const day = new Date(Date.now() + 9 * 86400000).toISOString().slice(0, 10);
+  await adminApi(FOUNDER, { action: 'save-settings', settings: { admins: [FOUNDER, STAFF] } });
+  // What production had on Oct 27 2026: each admin's own copy, made into two meetings by the first version
+  for (const [from, uid, title] of [[FOUNDER, 'a1', 'SOARD Board Meeting'], [STAFF, 'b2', 'SOARD Board Q3 meeting']]) {
+    const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: day })).body.meeting;
+    await saveMeeting(env.DB, { ...m, title, calendar: { uid: `${uid}@google.com`, title, from } }, { by: 'the calendar' });
+  }
+  assert.equal((await listMeetings(env.DB)).length, 2);
+  fakeGoogle({
+    [FOUNDER]: [ev('a1', 'SOARD Board Meeting', `${day}T13:00:00Z`, `${day}T15:00:00Z`, { location: 'TBD', organizer: { email: FOUNDER, self: true } })],
+    [STAFF]: [ev('b2', 'SOARD Board Q3 meeting', `${day}T13:00:00Z`, `${day}T14:55:00Z`, { location: 'TBD', description: 'Join: https://teams.microsoft.com/meet/123?p=abc', organizer: { email: 'someone@example.com' } })],
+  });
+  const r = await syncBoardCalendar(env);
+  assert.deepEqual([r.found, r.merged, r.added], [1, 1, 0]);
+  const all = await listMeetings(env.DB);
+  assert.equal(all.length, 1, 'one meeting');
+  const [m] = all;
+  assert.deepEqual([m.title, m.start, m.end, m.location, m.video], ['SOARD Board Meeting', '08:00', '10:00', '', 'https://teams.microsoft.com/meet/123?p=abc'], 'the organizer’s name and times; TBD is no place; the Teams link from the other copy');
+  assert.deepEqual([m.calendar.uid, m.calendar.others], ['a1@google.com', ['b2@google.com']]);
+  // Next look: still one, nothing to change, and neither copy is "gone"
+  const again = await syncBoardCalendar(env);
+  assert.deepEqual([again.merged, again.added, again.gone], [0, 0, 0]);
+  assert.equal((await listMeetings(env.DB)).length, 1);
+  // A copy someone worked on is never deleted
+  const day2 = new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10);
+  const worked = (await adminApi(FOUNDER, { action: 'new-meeting', date: day2 })).body.meeting;
+  await saveMeeting(env.DB, { ...worked, calendar: { uid: 'c3@google.com', title: 'Board Meeting', from: FOUNDER } }, { by: FOUNDER });
+  const untouched = (await adminApi(FOUNDER, { action: 'new-meeting', date: day2 })).body.meeting;
+  await saveMeeting(env.DB, { ...untouched, calendar: { uid: 'd4@google.com', title: 'Board Meeting', from: STAFF } }, { by: 'the calendar' });
+  fakeGoogle({ [FOUNDER]: [ev('c3', 'Board Meeting', `${day2}T13:00:00Z`, `${day2}T15:00:00Z`)], [STAFF]: [ev('d4', 'Board Meeting', `${day2}T13:00:00Z`, `${day2}T15:00:00Z`)] });
+  await syncBoardCalendar(env);
+  const left = (await listMeetings(env.DB)).filter((x) => x.date === day2).map((x) => x.id);
+  assert.deepEqual(left, [worked.id], 'the one a person worked on stays; the untouched copy goes');
+});
+
+test('a look made by the first version is redone right away', async () => {
+  fakeGoogle({ [FOUNDER]: [] });
+  const { maybeSyncBoardCalendar } = await import('../functions/api/_board-calendar.js');
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS board_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)');
+  await env.DB.prepare("INSERT OR REPLACE INTO board_state (key, data) VALUES ('calendar', ?)").bind(JSON.stringify({ ok: true, checkedAt: new Date().toISOString(), found: 2 })).run();
+  assert.ok(await maybeSyncBoardCalendar(env), 'no version 2 in the last look: look now');
+  assert.equal(await maybeSyncBoardCalendar(env), null, 'then hourly');
+});
+
 test('two looks at once add a new event once', async () => {
   const day = new Date(Date.now() + 50 * 86400000).toISOString().slice(0, 10);
   fakeGoogle({ [FOUNDER]: [ev('q2', 'Board Meeting', `${day}T13:00:00Z`, `${day}T15:00:00Z`)] });
