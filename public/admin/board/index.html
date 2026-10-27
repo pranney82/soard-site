@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#FEFCF5" />
+  <title>SOARD Board</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="/fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="./portal.css" />
+</head>
+<body>
+  <!-- The board's own page: everything about SOARD a board member needs, signed in with
+       the same emailed code as staff. Only board members (People → Board) and the Board
+       area's admins get anything from /api/board-portal. See ./portal.js. -->
+  <div id="board-app"><p class="bp-loading">Opening the board page…</p></div>
+  <script type="module" src="./portal.js"></script>
+</body>
+</html>

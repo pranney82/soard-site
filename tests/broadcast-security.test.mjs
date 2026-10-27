@@ -81,7 +81,7 @@ async function accessToken() {
   accessKey = { ...(await crypto.subtle.exportKey('jwk', kp.publicKey)), kid: 'k1', alg: 'RS256' };
   const b64u = (x) => Buffer.from(typeof x === 'string' ? x : new Uint8Array(x)).toString('base64url');
   const head = b64u(JSON.stringify({ alg: 'RS256', kid: 'k1', typ: 'JWT' }));
-  const body = b64u(JSON.stringify({ iss: 'https://soard-test.cloudflareaccess.com', aud: ['aud-test'], email: 'staff@example.com', exp: Math.floor(Date.now() / 1000) + 90 * 86400 }));
+  const body = b64u(JSON.stringify({ iss: 'https://soard-test.cloudflareaccess.com', aud: ['aud-test'], email: 'staff@soardcharity.com', exp: Math.floor(Date.now() / 1000) + 90 * 86400 }));
   const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', kp.privateKey, new TextEncoder().encode(`${head}.${body}`));
   return `${head}.${body}.${b64u(sig)}`;
 }

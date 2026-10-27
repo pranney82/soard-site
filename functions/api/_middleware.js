@@ -18,6 +18,7 @@
 import { crossSiteChange, isLocalHost } from './_origin-guard.js';
 import { limit } from './_rate-limit.js';
 import { clientIp } from './_secure.js';
+import { isStaffEmail, boardMemberFor, BOARD_ROUTES, BOARD_PAGE } from './_board-roles.js';
 
 // Cache JWKS keys in module scope (persists across requests within same isolate)
 let _cachedKeys = null;
@@ -315,6 +316,23 @@ async function handle(context) {
   context.data = context.data || {};
   context.data.userEmail = payload.email || payload.sub || 'unknown';
 
+  // The same emailed code lets in staff and board members. Staff (a
+  // soardcharity.com sign-in) reach the admin's APIs; a board member (People →
+  // Board, by their private email) reaches only the board page's own routes;
+  // anyone else Access somehow let in reaches nothing (see _board-roles.js)
+  if (!isStaffEmail(context.data.userEmail)) {
+    const member = await boardMemberFor(context.env.DB, context.data.userEmail).catch(() => null);
+    if (!member || !BOARD_ROUTES.includes(url.pathname)) {
+      return Response.json(
+        member
+          ? { success: false, error: 'This sign-in opens the board page only.', board: BOARD_PAGE }
+          : { success: false, error: 'This sign-in isn’t on SOARD’s team or board list.' },
+        { status: 403, headers: cors }
+      );
+    }
+    context.data.boardMember = member;
+  }
+
   // Call downstream handler, then inject CORS headers into its response.
   // Handlers don't set CORS themselves — middleware owns it centrally.
   const response = await context.next();
@@ -471,8 +489,9 @@ export async function verifyJwt(token, teamDomain, expectedAud) {
 /**
  * Reusable auth check for public handlers that expose an admin-only branch
  * (e.g. live-status ?sweep=1). Returns true only when the request carries a
- * valid Cloudflare Access JWT. Never throws; fails closed when the Access env
- * vars are unset or the token is missing/invalid.
+ * valid Cloudflare Access JWT for a staff sign-in (never a board member's).
+ * Never throws; fails closed when the Access env vars are unset or the token
+ * is missing/invalid.
  */
 export async function isAuthenticated(request, env) {
   const { CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD } = env || {};
@@ -480,8 +499,9 @@ export async function isAuthenticated(request, env) {
   const jwt = request.headers.get('CF-Access-JWT-Assertion') || getCookieValue(request, 'CF_Authorization');
   if (!jwt) return false;
   try {
-    await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
-    return true;
+    // A board member's sign-in passes Access too; only staff count here
+    const payload = await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
+    return isStaffEmail(payload?.email);
   } catch {
     return false;
   }

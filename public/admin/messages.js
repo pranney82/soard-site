@@ -140,6 +140,7 @@ const CHANGE = {
   demo: { label: 'Demo Day', view: 'demo-day', hash: '#demo-day' },
   revealSettings: { label: 'Reveals → Settings', view: 'broadcast', hash: '#broadcast/settings' },
   board: { label: 'People → Board', view: 'people-hub', tab: 'board' },
+  boardArea: { label: 'Board', view: 'board', hash: '#board' },
 };
 
 const MAP = { t: 'Everything we send', children: [
@@ -654,8 +655,8 @@ const MAP = { t: 'Everything we send', children: [
       ]},
     ]},
 
-  { t: 'Board & advisors', sub: 'Every reveal invite, and bio requests', color: 'board', side: 'l',
-    about: 'Board members and advisors are guests on every reveal invite. Bio requests and notes to the board go from your own email.',
+  { t: 'Board & advisors', sub: 'Every reveal invite, the board packet, and bio requests', color: 'board', side: 'l',
+    about: 'Board members and advisors are guests on every reveal invite. The board packet comes from the site when Peter or Holly sends it. Bio requests and notes to the board go from your own email.',
     children: [
       { t: 'Advisory applications', children: [
         { t: 'We have your application', s: 'live', k: 'email', by: 'visitor', preview: 'advisory-thanks',
@@ -674,6 +675,13 @@ const MAP = { t: 'Everything we send', children: [
           live: needs('resend', NO_RESEND) },
       ]},
       { t: 'From the site', children: [
+        { t: 'Board packet', s: 'live', k: 'email', by: 'staff', preview: 'board-packet', change: CHANGE.boardArea,
+          who: 'Each active board member with an email on People → Board, on their own.',
+          when: 'Peter or Holly presses Email the board on a shared meeting in Board. Send it to me sends them a preview first.',
+          subject: 'Board packet: {meeting}, {date}',
+          does: 'When and where, the agenda’s headings, and a button to the meeting on the board page (they sign in with that email’s code). Never notes, numbers or files; a confidential item shows only as “a confidential item”.',
+          touches: ['Resend', 'D1'], where: 'functions/api/_board.js (packetEmail, sendPacket)',
+          live: needs('resend', NO_RESEND) },
         { t: 'Reveal invites', s: 'live', k: 'invite', by: 'auto', preview: 'board-invites', change: CHANGE.board,
           who: 'Board members and advisors with an email on file, plus JobTread Board Member users.',
           when: 'Every reveal, from the save-the-date on, the same invite the family gets.',

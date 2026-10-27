@@ -51,6 +51,8 @@ import { errorAlert } from './stream-webhook.js';
 import { medicalNote, fallbackMedicalNote } from './_applicant-comms.js';
 import { activity, comingUp, deliverability, deliveryFacts, emailDetail, invitesOut } from './_messages-activity.js';
 import { applicantEmail as advisoryThanks, staffEmail as advisoryStaff } from './_advisory-applications.js';
+import { packetEmail } from './_board.js';
+import { newMeeting } from '../../public/admin/board-shared.js';
 import { checkAnswers as advisoryAnswers } from './_advisory-form.js';
 import { planDemo, demoAlert, sendTestDemo, readConfig as readDemoConfig, listPeople as demoPeople } from './_demo-invites.js';
 
@@ -552,6 +554,15 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return email(notify.alertEmail({ title: 'An email didn’t reach jordan@exmaple.com', detail: '“Your SOARD application: pick up where you left off”. The address doesn’t exist (the mail server said no such mailbox).', fix: 'The family typed this address on the application. Their answers are saved; reach them another way for a working address.', links: [{ label: 'What went out', url: `${SITE_ORIGIN}/admin/#messages/sent` }] }), {
         to: STAFF_ALERTS_TO, note: 'A staff address that bounces says which list to fix instead. A reveal-reminder address that bounces or reports spam is simply unsubscribed, with no email. Once a week per address at most.',
       });
+    case 'board-packet': {
+      // A made-up meeting from the usual agenda, with one item marked confidential
+      const m = newMeeting({ date: '2026-11-19', defaults: { start: '08:00', end: '10:00', location: 'Example Design Group', address: '100 Example St, Roswell, GA' } });
+      m.sections[2].items[0] = { ...m.sections[2].items[0], confidential: true };
+      return email(packetEmail({ ...m, id: 'm_sample', shared: true }), {
+        from: EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board '), to: 'Each active board member with an email on People → Board, on their own',
+        note: 'Peter or Holly sends it from Board, after sharing the meeting. Send it to me sends a [Preview] copy first.',
+      });
+    }
     case 'advisory-thanks':
     case 'advisory-staff': {
       // A made-up applicant, through the form's own rules

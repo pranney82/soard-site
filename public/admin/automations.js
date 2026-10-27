@@ -664,6 +664,51 @@ const MAP = { t: 'SOARD', children: [
     ]},
 
   // ─── Left side ──────────────────────────
+  { t: 'The board', sub: 'Meetings, minutes and the board’s own page', color: 'board', side: 'r',
+    children: [
+      { t: 'Signing in', children: [
+        { t: 'Board sign-in list', s: 'off', k: 'schedule',
+          when: 'Every 5 minutes on the live hub’s heartbeat when People → Board changed (someone joins, leaves, or gets a new email), and every 6 hours anyway.',
+          does: 'Keeps Cloudflare Access’s group “SOARD board (kept by the website)” to exactly the active board’s private emails, so each can sign in at sunshineonaranneyday.com/board with an emailed code, the way staff do. A board sign-in opens the board page and nothing else in the admin.',
+          touches: ['Cloudflare Access', 'D1'], where: 'functions/api/_board-access.js, _board-roles.js (broadcast-hooks.js, _middleware.js)',
+          note: 'Needs CF_ACCESS_API_TOKEN in Cloudflare (Access groups, and apps and policies, Edit), then the “SOARD board members” policy added once to the admin’s Access application. Board → Members walks through it.',
+          info: 'The site never edits the admin’s Access application itself, so a mistake can’t lock staff out. Staff are soardcharity.com sign-ins; anyone else Access lets in reaches only /api/board-portal and /api/board-file, and only if they’re on the active board.',
+          live: (f) => {
+            const b = f.board;
+            if (!b || b.error) return null;
+            const a = b.access;
+            if (!a.configured) return ATTN('Not connected yet. Add CF_ACCESS_API_TOKEN in Cloudflare; Board → Members has the steps.');
+            if (a.error && !a.ok) return ATTN(`Cloudflare refused the list: ${a.error}`, a.syncedAt);
+            if (!a.attached) return ATTN('The list is kept, but the “SOARD board members” policy isn’t on the admin’s Access application yet. Board → Members says where.', a.syncedAt);
+            if (!a.current) return ATTN('People → Board changed and the list hasn’t caught up. It rides on the live hub’s heartbeat, so check the Heartbeat entry.', a.syncedAt);
+            return ON(`${plural(a.emails, 'board member')} can sign in.${a.missing ? ` ${plural(a.missing, 'member has', 'members have')} no email on People → Board.` : ''}`, a.syncedAt);
+          } },
+      ]},
+      { t: 'Meetings', children: [
+        { t: 'The packet email', s: 'live', k: 'admin',
+          when: 'Peter or Holly presses Email the board on a shared meeting in Board (Send it to me first sends them a preview).',
+          does: 'Emails each active board member on their own: when and where, the agenda’s headings and a button to the meeting on the board page. Never notes, numbers or files; a confidential item shows only as “a confidential item”.',
+          touches: ['Resend', 'D1'], where: 'functions/api/_board.js (sendPacket, packetEmail) · board-admin.js',
+          live: (f) => {
+            const b = f.board;
+            if (!env(f)) return null;
+            if (!f.env.resend) return ATTN('RESEND_API_KEY is missing, so the packet can’t be emailed.');
+            return ON(b?.lastPacketAt ? `Last packet emailed ${stamp(b.lastPacketAt)}.` : 'No packet emailed yet.', b?.lastPacketAt || null);
+          } },
+        { t: 'Cash in the bank, month by month', s: 'off', k: 'schedule',
+          when: 'Once a day on the live hub’s heartbeat.',
+          does: 'Reads Mercury’s checking and savings balances (never moves money) for the board page’s Financials: the latest balance, and one row a month for the history. Locking a meeting’s numbers keeps that day’s balance with its packet.',
+          touches: ['Mercury', 'D1'], where: 'functions/api/_board.js (cashNow, maybeRunBoard) · _mercury.js (through the relay)',
+          live: (f) => {
+            const b = f.board;
+            if (!b || b.error) return null;
+            if (!b.cash.mercury) return ATTN('Not connected yet: the board page needs MERCURY_API_TOKEN and MERCURY_RELAY_KEY (Mercury answers only through SOARD’s relay) in Cloudflare.');
+            if (!b.cash.lastAt) return ATTN('Hasn’t read Mercury yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(b.cash.lastAt, 30 * HOUR)) return ATTN(`Hasn’t read Mercury since ${stamp(b.cash.lastAt)}. Check the Heartbeat entry.`, b.cash.lastAt);
+            return ON(`${plural(b.cash.months, 'month')} of history.`, b.cash.lastAt);
+          } },
+      ]},
+    ]},
   { t: 'Website & content', sub: 'sunshineonaranneyday.com on Cloudflare Pages', color: 'site', side: 'l',
     about: 'The admin writes to the D1 database. Every build pulls D1 into the site, so the admin, not the code, is where content changes.',
     children: [
@@ -954,7 +999,7 @@ const FILTERS = [
   ['link', 'Connections'],
   ['attn', 'Needs a look'],
 ];
-const PALETTE = { reveals: '#B08900', live: '#6352C9', email: '#2B6CB0', site: '#13807A', give: '#A0571A', jt: '#4E7A2E', apply: '#8C3D6B' };
+const PALETTE = { reveals: '#B08900', live: '#6352C9', email: '#2B6CB0', site: '#13807A', give: '#A0571A', jt: '#4E7A2E', apply: '#8C3D6B', board: '#4A5A6A' };
 
 const model = prepareMap(MAP, 'a');
 /** Apply the live facts to every entry. Exported for tests. */

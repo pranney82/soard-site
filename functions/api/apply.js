@@ -31,6 +31,7 @@
  */
 
 import { isAuthenticated, verifyJwt } from './_middleware.js';
+import { isStaffEmail } from './_board-roles.js';
 import {
   ensureSchema, getDraft, createDraft, saveDraft, setDraftFile, draftsToday, hashIp, cleanYear,
   applicationSettings, publicFiles, photoKey, createVideoUpload, getVideo, deleteVideo, videoUploaded,
@@ -73,7 +74,8 @@ export async function staffEmail(request, env) {
   try {
     const payload = await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
     const email = String(payload?.email || '').trim().toLowerCase();
-    return isEmail(email) ? email : null;
+    // A board member's sign-in passes Access too; only staff run test applications
+    return isEmail(email) && isStaffEmail(email) ? email : null;
   } catch {
     return null;
   }

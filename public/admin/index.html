@@ -4923,6 +4923,22 @@
       return mod ? html`<${mod.AutomationsMap} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
+    // Board: the board's meetings, minutes, files and documents (its admins only),
+    // kept in ./board-admin.js and loaded on first visit. Board members see what's
+    // shared on their own page, /admin/board/.
+    let boardModule = null;
+    function BoardLazy(props) {
+      const [mod, setMod] = useState(() => lazyNow(boardModule));
+      const [err, setErr] = useState(null);
+      const load = () => {
+        boardModule ||= lazyKeep(import('./board-admin.js'));
+        boardModule.then((m) => setMod(m)).catch((e) => { boardModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load the Board area: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      return mod ? html`<${mod.BoardArea} ...${props} />` : html`<div class="area-loading"><span class="spinner" /></div>`;
+    }
+
     // Site → Emails & invites: every email, calendar invite and text the site
     // sends, on the same map, kept in ./messages.js and loaded on first visit.
     let messagesModule = null;
@@ -21133,6 +21149,7 @@ ${sections || '<p>No one yet.</p>'}
     // ═══════════════════════════════════════════
     function CommandPalette({ open, onClose, onNavigate, kids, partners, communityPartners, mediaLogos, team, articles, events, communityProjects, press }) {
       const [query, setQuery] = useState('');
+      const boardAdmin = boardAdminGate.use();
       const [activeIdx, setActiveIdx] = useState(0);
       const inputRef = useRef();
 
@@ -21150,7 +21167,7 @@ ${sections || '<p>No one yet.</p>'}
       const allItems = useMemo(() => {
         const pages = [
           // The sidebar's areas first, in its order, then the places inside them
-          ...NAV_ITEMS.map((it) => ({ type: 'page', label: it.label, meta: it.meta, id: it.id, section: 'Pages' })),
+          ...NAV_ITEMS.filter((it) => navShown(it, boardAdmin)).map((it) => ({ type: 'page', label: it.label, meta: it.meta, id: it.id, section: 'Pages' })),
           { type: 'page', label: 'Community Projects', id: 'kids-hub', subTab: 'community', section: 'Pages' },
           { type: 'page', label: 'Community Partners', id: 'partners-hub', subTab: 'community-partners', section: 'Pages' },
           { type: 'page', label: 'Outlets (As Featured strip)', id: 'press-hub', subTab: 'outlets', section: 'Pages' },
@@ -21196,7 +21213,7 @@ ${sections || '<p>No one yet.</p>'}
           ...(press || []).map(p => ({ type: 'content', label: p.title || p.name, meta: `Press · ${p.outlet || ''}`, id: 'press-hub', subTab: 'press', slug: p.slug, section: 'Content' })),
         ];
         return [...pages, ...actions, ...content];
-      }, [kids, partners, communityPartners, mediaLogos, team, articles, events, communityProjects, press]);
+      }, [kids, partners, communityPartners, mediaLogos, team, articles, events, communityProjects, press, boardAdmin]);
 
       const filtered = useMemo(() => {
         if (!query) return allItems.slice(0, 20);
@@ -21509,6 +21526,8 @@ ${sections || '<p>No one yet.</p>'}
         { id: 'kids-hub', label: 'Kids', icon: 'kids', hash: '#kids', meta: 'Kid pages and community projects' },
         { id: 'demo-day', label: 'Demo Day', icon: 'demoDay', hash: '#demo-day', meta: 'Calendar invites for the first day of construction' },
         { id: 'broadcast', label: 'Reveals', icon: 'goLive', hash: '#broadcast', meta: 'Live broadcast and invites' },
+        // Only the Board area's admins see it (boardAdminGate); its API refuses everyone else
+        { id: 'board', label: 'Board', icon: 'board', hash: '#board', meta: 'Meetings, minutes and documents for the board', gate: 'board' },
       ] },
       { label: 'Website', items: [
         { id: 'people-hub', label: 'People', icon: 'team', hash: '#people', meta: 'Team, board, advisors' },
@@ -21572,6 +21591,7 @@ ${sections || '<p>No one yet.</p>'}
       'site-hub': [() => siteConfigModule, (p) => { siteConfigModule = p; }, './site-config.js'],
       messages: [() => messagesModule, (p) => { messagesModule = p; }, './messages.js'],
       automations: [() => automationsModule, (p) => { automationsModule = p; }, './automations.js'],
+      board: [() => boardModule, (p) => { boardModule = p; }, './board-admin.js'],
     };
     /** Start loading an area's code (hover, focus, or a quiet moment after the admin opens) */
     function preloadArea(id) {
@@ -21626,6 +21646,9 @@ ${sections || '<p>No one yet.</p>'}
     const advisoryNew = sharedPoll('/api/advisory-applications-admin?count=1', (j) => (j?.success ? j.new || 0 : 0), 300e3);
     // Families at Applied, waiting for a first look: Applications' badge
     const applicantsNew = sharedPoll('/api/applicants-count', (j) => (j?.success ? j.applied || 0 : 0), 300e3);
+    // One of the Board area's admins (Board → Settings): the menu and ⌘K show Board only to them
+    const boardAdminGate = sharedPoll('/api/board-admin?me=1', (j) => j?.admin === true, 30 * 60e3);
+    const navShown = (it, boardAdmin) => it.gate !== 'board' || boardAdmin;
 
     // Families who replied and are waiting on us (Applicants): the sidebar's count on
     // Applications, the reply notices on any page, the Dashboard and the tab's title.
@@ -22206,6 +22229,7 @@ ${sections || '<p>No one yet.</p>'}
         community: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>`,
         faq: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><circle cx="12" cy="17" r="0.5" /></svg>`,
         financials: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>`,
+        board: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3h20" /><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" /><path d="m7 21 5-5 5 5" /></svg>`,
         deploys: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" /><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" /><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /></svg>`,
         settings: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>`,
         globe: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>`,
@@ -22237,6 +22261,9 @@ ${sections || '<p>No one yet.</p>'}
       const familyReplies = useReplies();
       const me = useIdentity();
       const mine = useMemo(() => personOfIdentity(me, team), [me, team]);
+      const boardAdmin = boardAdminGate.use();
+      // Board members sign in with the same code; every admin API refuses them, so their page is the board's
+      useEffect(() => { if (me?.email && !/@soardcharity\.com$/i.test(me.email)) location.replace('/admin/board/'); }, [me]);
       // Everyone who shows who did something (audit log, Dashboard, Publish) reads People from here
       useEffect(() => { setPeopleList(team); }, [team]);
       const myPhoto = mine?.photo ? pplPhoto(mine, 56) : '';
@@ -22520,6 +22547,10 @@ ${sections || '<p>No one yet.</p>'}
           case 'automations':
             return html`<${AutomationsLazy} />`;
 
+          // ─── Board: ./board-admin.js (#board, #board/meeting/<id>, #board/documents…) ───
+          case 'board':
+            return html`<${BoardLazy} addToast=${addToast} setGlobalDirty=${setGlobalDirty} />`;
+
           case 'messages':
             return html`<${MessagesLazy} addToast=${addToast} onNavigate=${navigate} />`;
 
@@ -22594,7 +22625,7 @@ ${sections || '<p>No one yet.</p>'}
               ${NAV.map((g) => html`
                 <div class="nav-group" role="group" aria-label=${g.label || 'Daily work'} key=${g.label || 'main'}>
                   ${g.label ? html`<div class="nav-section" aria-hidden="true">${g.label}</div>` : null}
-                  ${g.items.map(navLink)}
+                  ${g.items.filter((it) => navShown(it, boardAdmin)).map(navLink)}
                 </div>
               `)}
             </div>

@@ -15,6 +15,7 @@
  *  - liveSchedule: the live countdown's last JobTread check (what it follows, what's waiting)
  *  - kidStatus: kid statuses following JobTread (last sweep, last run, profiles it hid)
  *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
+ *  - board:     Access's board sign-in list (synced, the policy on the app, members without an email), bank history months, the last packet
  *  - emailTracking: Resend's delivery reports (on, waiting, send-only key, or the last error)
  *  - slack:     how alerts reach Slack (app or webhook), the channel's name, and Slack's own error if any
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
@@ -47,6 +48,7 @@ import { applicationSettings, pickApplication } from './_applications.js';
 import { capFacts, lastCapNotice } from './_application-cap.js';
 import { trackingState } from './_email-log.js';
 import { demoFacts } from './_demo-invites.js';
+import { boardFacts } from './_board.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -341,6 +343,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     // Counts, times and on/off only: no names, ids or photos
     companycam: await settle(() => companycamFacts(env)),
     companycamJobs: await settle(() => jobsFacts(env)),
+    // Access's board list and the monthly bank balance: counts, times and on/off only (_board.js)
+    board: await settle(() => boardFacts(env)),
   };
 }
 

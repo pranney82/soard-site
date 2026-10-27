@@ -111,6 +111,8 @@ const BY_TAG = {
   'reveal-replay': 'rem-replay',
   'advisory-application': 'advisory-thanks',
   'advisory-application-staff': 'advisory-staff',
+  'board-packet': 'board-packet',
+  'board-packet-preview': 'preview',
   'admin-preview': 'preview',
   'email-self-test': 'preview',
   'email-test': 'preview',

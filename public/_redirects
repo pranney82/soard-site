@@ -249,7 +249,8 @@
 /tag/2026/  /kids/  301
 
 # ─── Google Search Console 404 fixes ────────────────────────
-/board  /  301
+/board  /admin/board/  302
+/board/  /admin/board/  302
 /jack-2016  /kids/  301
 /oliver.html  /kids/  301
 /rachel-buckner-22014.html  /kids/  301
