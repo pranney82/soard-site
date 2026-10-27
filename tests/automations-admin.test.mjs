@@ -251,7 +251,8 @@ test('Mercury through the relay: both keys, then the account names it answers wi
       { id: 'acc-2', nickname: 'Reserve', name: 'Mercury Savings', kind: 'savings', status: 'active', currentBalance: 62500 },
       { id: 'acc-3', name: 'Old', kind: 'checking', status: 'archived' },
     ] })
-    : Response.json({ accounts: [{ id: 'acc-4', name: 'Mercury Credit', status: 'active' }] }))));
+    // Mercury's credit accounts come without a name
+    : Response.json({ accounts: [{ id: 'acc-4', status: 'active' }] }))));
   assert.deepEqual(f, { token: true, relayKey: true, error: null, accounts: [
     { name: 'Mercury Checking', kind: 'checking' }, { name: 'Reserve', kind: 'savings' }, { name: 'Mercury Credit', kind: 'credit' },
   ] });

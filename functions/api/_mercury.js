@@ -120,7 +120,7 @@ export async function listAccounts(env, o = {}) {
     mercury(env, '/accounts', o).then((r) => r?.accounts || []),
     mercury(env, '/credit', o).then((r) => r?.accounts || []).catch(() => []),
   ]);
-  return [...dep, ...credit].map((a) => ({ id: a.id, name: a.nickname || a.name || 'Account', kind: a.kind || 'credit', lastFour: a.lastFour || null, status: a.status }));
+  return [...dep, ...credit].map((a) => ({ id: a.id, name: a.nickname || a.name || (a.kind ? 'Account' : 'Mercury Credit'), kind: a.kind || 'credit', lastFour: a.lastFour || null, status: a.status }));
 }
 
 export async function listCategories(env, o = {}) {
