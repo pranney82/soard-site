@@ -120,7 +120,7 @@ try {
   ok(await page.$eval('.page-header h2', (e) => e.textContent) === 'Automations', 'the page opens from #automations');
   ok((await page.$eval('.am-check', (e) => e.textContent)).includes('Statuses checked live'), 'it says the statuses were checked live');
   const branches = await page.$$eval('.am-node.d1 text', (t) => t.map((x) => x.textContent));
-  ok(branches.length === 7, `${branches.length} branches drawn (${branches.join(', ')})`);
+  ok(branches.length === 8, `${branches.length} branches drawn (${branches.join(', ')})`);
   const canvasTop = await page.$eval('.am-canvas', (e) => e.getBoundingClientRect().top);
   ok(canvasTop < 360, `the map starts above the fold on a laptop (${Math.round(canvasTop)}px down)`);
   const inView = await page.evaluate(() => {
@@ -175,10 +175,10 @@ try {
   // Resend only sends one-off mail now (the list is Kit's). Each of these calls sendEmails: invite problems, the resume link,
   // the waitlist's confirmation and its Kit fallback, the staff heads-up, a stuck application, the status summary,
   // go / no-go, alerts, reminders, the connection itself, gift alert problems, a Denied kid, a staff text that didn't arrive,
-  // the application limit's notices, and Resend's own reports on each email
+  // the application limit's notices, Resend's own reports on each email, and the board packet
   const RESEND = ['Invite problem alerts', 'Save and finish later', 'Tell me when applications open', 'Applications-open email', 'Staff heads-up', 'Application sweep',
     'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Resend', 'Gift alerts in Slack', 'Kid status follows JobTread', 'Text delivery reports',
-    'Application limit', 'Email delivery reports', 'Advisory Board application', 'A family replied → staff alert'];
+    'Application limit', 'Email delivery reports', 'Advisory Board application', 'A family replied → staff alert', 'The packet email'];
   ok(await panelTitle(page) === 'If Resend stops working' && sameSet(resendTitles, RESEND), `"Depends on" lists everything that uses Resend (${resendTitles.length})${setDiff(resendTitles, RESEND)}`);
   await page.screenshot({ path: join(OUT, 'desktop-depends.png'), fullPage: false });
 
