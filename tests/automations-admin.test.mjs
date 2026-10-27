@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { gatherFacts } from '../functions/api/automations-admin.js';
+import { gatherFacts, mercuryFacts } from '../functions/api/automations-admin.js';
 
 const SECRETS = ['STREAMKEY-abc123', 'PASSPHRASE-xyz', 'VAPID-PRIVATE-999', 'hooks-token-777', 'whsec-555', 'SLACKURL-1'];
 
@@ -235,4 +235,32 @@ test('Quo texts and calls DataX logs report the last one and a 30-day count, nev
   assert.deepEqual(f.quo, { lastAt: '2026-10-20T19:17:59Z', last30: 2 });
   const text = JSON.stringify(f);
   assert.ok(!text.includes('secret-ish') && !text.includes('Staff Person'), 'no message text or names');
+});
+
+test('Mercury through the relay: both keys, then the account names it answers with, never a balance, a number or a key', async () => {
+  assert.deepEqual(await mercuryFacts({ MERCURY_API_TOKEN: 'secret-token:mercury-1' }), { token: true, relayKey: false, accounts: null, error: null });
+  const calls = [];
+  const relay = (answer) => async (url, init) => {
+    calls.push({ url, key: init.headers['X-Relay-Key'], auth: init.headers.Authorization });
+    return answer(new URL(url).pathname);
+  };
+  const env = { MERCURY_API_TOKEN: 'secret-token:mercury-1', MERCURY_RELAY_KEY: 'relay-secret-2' };
+  const f = await mercuryFacts(env, relay((p) => (p === '/api/v1/accounts'
+    ? Response.json({ accounts: [
+      { id: 'acc-1', name: 'Mercury Checking', kind: 'checking', status: 'active', currentBalance: 312500, accountNumber: '123456789', lastFour: '6789' },
+      { id: 'acc-2', nickname: 'Reserve', name: 'Mercury Savings', kind: 'savings', status: 'active', currentBalance: 62500 },
+      { id: 'acc-3', name: 'Old', kind: 'checking', status: 'archived' },
+    ] })
+    : Response.json({ accounts: [{ id: 'acc-4', name: 'Mercury Credit', status: 'active' }] }))));
+  assert.deepEqual(f, { token: true, relayKey: true, error: null, accounts: [
+    { name: 'Mercury Checking', kind: 'checking' }, { name: 'Reserve', kind: 'savings' }, { name: 'Mercury Credit', kind: 'credit' },
+  ] });
+  assert.ok(calls.length === 2 && calls.every((c) => c.url.startsWith('https://mercury-relay.sunshineonaranneyday.com/api/v1/') && c.key === 'relay-secret-2' && c.auth === 'Bearer secret-token:mercury-1'), 'every call goes through the relay with both keys');
+  const out = JSON.stringify(f);
+  for (const s of ['secret-token', 'relay-secret', '312500', '6789', 'acc-1']) assert.ok(!out.includes(s), `${s} stays out`);
+
+  // The relay's own bare "Forbidden" means its key is missing or wrong, and says so
+  const refused = await mercuryFacts(env, relay(() => new Response('Forbidden', { status: 403 })));
+  assert.equal(refused.relay, true);
+  assert.match(refused.error, /MERCURY_RELAY_KEY is missing or wrong/);
 });

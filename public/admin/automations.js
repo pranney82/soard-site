@@ -28,7 +28,7 @@ import { MindMap, prepareMap, Ago, STATUS, MIN, HOUR, ms, ago, stamp, stale, plu
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 22, 2026';
+const WRITTEN_ON = 'October 27, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -942,6 +942,20 @@ const MAP = { t: 'SOARD', children: [
             if (stale(z.lastSweepAt, HOUR)) return ATTN(`The catch-up check hasn’t run since ${stamp(z.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, z.lastPostAt);
             if (z.missed && !stale(z.missedAt, 7 * 24 * HOUR)) return ATTN(`Zeffy’s webhook missed ${plural(z.missed, 'gift')} on ${stamp(z.missedAt)}, and the catch-up check posted ${z.missed === 1 ? 'it' : 'them'}. Check the webhook in Zeffy → Settings → Integrations.`, z.lastPostAt);
             return ON(z.lastPostAt ? `Connected. Last gift posted ${stamp(z.lastPostAt)}.` : 'Connected. Waiting for the first gift.', z.lastPostAt);
+          } },
+      ]},
+      { t: 'The bank', children: [
+        { t: 'Mercury connection', s: 'live', k: 'link',
+          does: 'Every call the site makes to Mercury goes through SOARD’s relay, a small server with one fixed address: the one on the Mercury token’s IP allow-list. Each time this page opens it reads Mercury’s list of accounts through the relay. It never reads balances or moves money.',
+          touches: ['Mercury'], where: 'functions/api/_mercury.js (MERCURY_BASE) · relay: mercury-relay.sunshineonaranneyday.com (DigitalOcean, Toronto)',
+          info: 'The relay passes each call to api.mercury.com unchanged once its X-Relay-Key header matches MERCURY_RELAY_KEY. Mercury’s own token is MERCURY_API_TOKEN. Both live in Cloudflare (soard-site → Settings → Variables and secrets).',
+          live: (f) => {
+            const m = f.mercury;
+            if (!m || !('token' in m)) return null;
+            const missing = [!m.token && 'MERCURY_API_TOKEN', !m.relayKey && 'MERCURY_RELAY_KEY'].filter(Boolean);
+            if (missing.length) return ATTN(`Not connected yet. Add ${missing.join(' and ')} in Cloudflare (soard-site → Settings → Variables and secrets).`);
+            if (m.error) return ATTN(m.relay ? `${m.error}.` : `Mercury turned the relay’s call down: ${m.error}`);
+            return ON(`Connected. Mercury shows ${plural(m.accounts.length, 'account')}${m.accounts.length ? `: ${m.accounts.map((a) => a.name).join(', ')}` : ''}.`);
           } },
       ]},
       { t: 'On the pages', children: [

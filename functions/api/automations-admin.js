@@ -15,6 +15,7 @@
  *  - liveSchedule: the live countdown's last JobTread check (what it follows, what's waiting)
  *  - kidStatus: kid statuses following JobTread (last sweep, last run, profiles it hid)
  *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
+ *  - mercury:   Mercury through SOARD's relay (both keys present, and the accounts it answers with: names and kinds only)
  *  - board:     Access's board sign-in list (synced, the policy on the app, members without an email), bank history months, the last packet
  *  - emailTracking: Resend's delivery reports (on, waiting, send-only key, or the last error)
  *  - slack:     how alerts reach Slack (app or webhook), the channel's name, and Slack's own error if any
@@ -48,6 +49,7 @@ import { applicationSettings, pickApplication } from './_applications.js';
 import { capFacts, lastCapNotice } from './_application-cap.js';
 import { trackingState } from './_email-log.js';
 import { demoFacts } from './_demo-invites.js';
+import { listAccounts } from './_mercury.js';
 import { boardFacts } from './_board.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
@@ -209,6 +211,18 @@ export function zeffyFacts(cfg, failing = null) {
   };
 }
 
+/** Mercury through SOARD's relay (_mercury.js): both keys present, and the accounts Mercury answers with. Names and kinds only, never balances, numbers or the keys */
+export async function mercuryFacts(env, fetchImpl = fetch) {
+  const keys = { token: has(env.MERCURY_API_TOKEN), relayKey: has(env.MERCURY_RELAY_KEY) };
+  if (!keys.token || !keys.relayKey) return { ...keys, accounts: null, error: null };
+  try {
+    const open = (await listAccounts(env, { fetchImpl })).filter((a) => !['deleted', 'archived', 'closed'].includes(String(a.status || '').toLowerCase()));
+    return { ...keys, accounts: open.map((a) => ({ name: a.name, kind: a.kind })), error: null };
+  } catch (e) {
+    return { ...keys, accounts: null, error: e.message, relay: !!e.relay };
+  }
+}
+
 /** placed: Stream uids some kid page already uses (staff can attach a replay by hand in the kid editor) */
 export function archiveFacts(a, placed = new Set()) {
   if (!a) return null;
@@ -343,6 +357,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     // Counts, times and on/off only: no names, ids or photos
     companycam: await settle(() => companycamFacts(env)),
     companycamJobs: await settle(() => jobsFacts(env)),
+    // Mercury through the relay: account names and kinds only (_mercury.js)
+    mercury: await settle(() => mercuryFacts(env, fetchImpl)),
     // Access's board list and the monthly bank balance: counts, times and on/off only (_board.js)
     board: await settle(() => boardFacts(env)),
   };
