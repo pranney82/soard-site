@@ -402,23 +402,19 @@ function FinancialsPage({ ctx }) {
 function RevealsPage({ ctx }) {
   const { data } = ctx;
   const n = data.numbers;
-  const feed = data.revealFeed;
-  const webcal = feed.replace(/^https:/, 'webcal:');
   const order = ['Build', 'Mobilization', 'Approval', 'Finalization', 'Design'];
   const building = n.projects?.building || [];
   return html`
     <h1 class="bp-h1">Reveals</h1>
-    <p class="bp-lede" style="margin-bottom:1.25rem">Every reveal coming up, and the makeovers being built. You also get a calendar invite with the address for each one.</p>
+    <p class="bp-lede" style="margin-bottom:1.25rem">Every reveal coming up, and the makeovers being built.</p>
     <div class="bp-grid">
       <div class="bp-stack">
         <div class="bp-card">
           <h2 class="bp-h2">Coming up</h2>
           ${n.reveals.length ? html`<ul class="bp-list">${n.reveals.map((r) => html`<li key=${r.slug}><div class="bp-list__main"><a class="bp-list__title" href=${r.kidUrl} target="_blank" rel="noopener">${r.name}</a><div class="bp-list__meta">${r.confirmed ? `${dayOf(r.date)}${r.time ? `, ${clock(r.time)}` : ''}` : r.window?.label || 'Date to come'}</div></div><span class=${`bp-chip ${r.confirmed ? 'bp-chip--ok' : ''}`}>${r.confirmed ? 'Confirmed' : 'Not confirmed yet'}</span></li>`)}</ul>` : html`<p class="bp-muted">No reveals on the calendar right now.</p>`}
-          <div class="bp-btns">
-            <a class="bp-btn bp-btn--primary" href=${webcal}>Subscribe on iPhone or Mac</a>
-            <a class="bp-btn" href=${`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} target="_blank" rel="noopener">Subscribe in Google Calendar</a>
-          </div>
-          <p class="bp-muted" style="margin-top:0.6rem">The subscription adds each reveal once its day is confirmed, and moves it if the day changes.</p>
+          <p class="bp-muted" style="margin-top:0.9rem">${data.me.email
+            ? html`Each reveal comes to <strong>${data.me.email}</strong> as a calendar invite with the address, so it’s already on your calendar (Outlook, Google or Apple). It moves there if the day changes.`
+            : 'Each board member gets a calendar invite with the address for every reveal, at the email on file, and it moves on their calendar if the day changes.'}</p>
         </div>
         ${n.pastReveals.length ? html`<div class="bp-card"><h2 class="bp-h2">Recent reveals</h2><ul class="bp-list">${n.pastReveals.map((r) => html`<li key=${r.slug}><div class="bp-list__main"><a class="bp-list__title" href=${r.kidUrl} target="_blank" rel="noopener">${r.name}</a><div class="bp-list__meta">${dayOf(r.date)}</div></div></li>`)}</ul></div>` : null}
       </div>

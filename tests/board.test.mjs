@@ -14,7 +14,10 @@ import * as admin from '../functions/api/board-admin.js';
 import * as portal from '../functions/api/board-portal.js';
 import * as fileRoute from '../functions/api/board-file.js';
 import { syncBoardAccess, accessStatus, maybeSyncBoardAccess, GROUP_NAME, POLICY_NAME, NOBODY } from '../functions/api/_board-access.js';
-import { packetEmail, cashNow, getMeeting, listMeetings, maybeRunBoard, cashHistory, provideBoardFinance, liveNumbers } from '../functions/api/_board.js';
+import { packetEmail, cashNow, getMeeting, listMeetings, maybeRunBoard, cashHistory, provideBoardFinance, liveNumbers, saveMeeting } from '../functions/api/_board.js';
+import { isBoardMeetingEvent, eventWhen, eventPlace, syncBoardCalendar, calendarStatus } from '../functions/api/_board-calendar.js';
+import { clearTokenCache } from '../functions/api/_google-calendar.js';
+import { generateKeyPairSync } from 'node:crypto';
 import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
@@ -76,7 +79,8 @@ beforeEach(async () => {
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
     if (url === `${ISS}/cdn-cgi/access/certs`) return Response.json({ keys: [jwk] });
-    outside.push({ url, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null, headers: init.headers || {} });
+    const json = (b) => { try { return typeof b === 'string' ? JSON.parse(b) : null; } catch { return null; } };
+    outside.push({ url, method: init.method || 'GET', body: json(init.body), headers: init.headers || {} });
     if (answer) return answer(url, init);
     if (url.startsWith('https://api.resend.com/')) return Response.json({ data: JSON.parse(init.body).map((_, i) => ({ id: `em_${i}` })) });
     throw new Error(`unexpected fetch ${url}`);
@@ -419,6 +423,126 @@ test('finance from Job Costs: nothing until its module registers, then on the bo
   await env.DB.exec("DELETE FROM board_state WHERE key = 'finance'");
   assert.equal((await liveNumbers(env)).finance, null);
   assert.equal((await portalApi(MEMBER)).status, 200);
+});
+
+// ─── Board meetings from the calendar ───────────────────────────────
+
+const { privateKey: SA_PEM } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+const SERVICE_ACCOUNT = JSON.stringify({ type: 'service_account', client_email: 'board-reader@example.iam.gserviceaccount.com', private_key: SA_PEM });
+
+/** Google, holding `events` on each calendar (by owner email); read-only calls only */
+function fakeGoogle(byCalendar) {
+  const seen = { reads: [], writes: 0 };
+  answer = async (url, init) => {
+    if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'g-token', expires_in: 3600 });
+    const m = url.match(/^https:\/\/www\.googleapis\.com\/calendar\/v3\/calendars\/([^/]+)\/events\?(.*)$/);
+    if (m && (init.method || 'GET') === 'GET') {
+      const cal = decodeURIComponent(m[1]);
+      seen.reads.push({ cal, q: new URLSearchParams(m[2]).get('q') });
+      if (byCalendar[cal] instanceof Error) return Response.json({ error: { message: byCalendar[cal].message } }, { status: 403 });
+      return Response.json({ items: byCalendar[cal] || [] });
+    }
+    seen.writes += 1;
+    throw new Error(`unexpected Google call ${init.method} ${url}`);
+  };
+  env.GOOGLE_CALENDAR_KEY = SERVICE_ACCOUNT;
+  clearTokenCache();
+  return seen;
+}
+const ev = (id, summary, start, end, extra = {}) => ({ id, iCalUID: `${id}@google.com`, summary, status: 'confirmed', start: { dateTime: start }, end: { dateTime: end }, htmlLink: `https://www.google.com/calendar/event?eid=${id}`, ...extra });
+
+test('which calendar events are board meetings, and their day, time and place in Atlanta', () => {
+  const board = ['a@example.com', 'b@example.com', 'c@example.com'];
+  for (const t of ['SOARD Q4 Board Meeting', 'Board Meeting', 'Board of Directors mtg', 'Q4 Board']) assert.equal(isBoardMeetingEvent({ summary: t }), true, t);
+  for (const t of ['Advisory Board meeting', 'Board reveal walkthrough', 'Demo day: board tour', 'Board game night', 'Golf committee meeting']) assert.equal(isBoardMeetingEvent({ summary: t }), false, t);
+  assert.equal(isBoardMeetingEvent({ summary: 'SOARD board', attendees: board.slice(0, 2).map((email) => ({ email })) }, board), false);
+  assert.equal(isBoardMeetingEvent({ summary: 'SOARD board', attendees: board.map((email) => ({ email })) }, board), true, 'three board members invited');
+  assert.equal(isBoardMeetingEvent({ summary: 'Board Meeting', status: 'cancelled' }), false);
+  assert.deepEqual(eventWhen({ start: { dateTime: '2026-11-19T13:00:00Z' }, end: { dateTime: '2026-11-19T15:00:00Z' } }), { date: '2026-11-19', start: '08:00', end: '10:00' }, 'November is Eastern standard time');
+  assert.deepEqual(eventWhen({ start: { dateTime: '2026-08-06T08:00:00-04:00' }, end: { dateTime: '2026-08-06T10:00:00-04:00' } }), { date: '2026-08-06', start: '08:00', end: '10:00' });
+  assert.deepEqual(eventWhen({ start: { date: '2026-11-19' }, end: { date: '2026-11-20' } }), { date: '2026-11-19', start: '', end: '' });
+  assert.deepEqual(eventPlace({ location: 'Example Design Group, 100 Example St, Roswell, GA 30075' }), { location: 'Example Design Group', address: '100 Example St, Roswell, GA 30075', video: '' });
+  assert.deepEqual(eventPlace({ location: '100 Example St, Roswell, GA' }), { location: '', address: '100 Example St, Roswell, GA', video: '' });
+  assert.equal(eventPlace({ location: 'https://zoom.us/j/123' }).video, 'https://zoom.us/j/123');
+  assert.equal(eventPlace({ hangoutLink: 'https://meet.google.com/abc-defg-hij' }).video, 'https://meet.google.com/abc-defg-hij');
+  assert.equal(eventPlace({ description: 'Join: https://teams.microsoft.com/l/meetup-join/xyz.' }).video, 'https://teams.microsoft.com/l/meetup-join/xyz');
+  assert.equal(eventPlace({ description: 'Agenda: https://example.com/doc' }).video, '', 'a link that isn’t a call stays out');
+});
+
+test('the calendar makes the meetings: added, moved, linked to one added by hand, and marked when gone; never written to', async () => {
+  const later = new Date(Date.now() + 30 * 86400000);
+  const day = later.toISOString().slice(0, 10);
+  const q4 = ev('q4', 'SOARD Q4 Board Meeting', `${day}T13:00:00Z`, `${day}T15:00:00Z`, { location: 'Example Design Group, 100 Example St, Roswell, GA', hangoutLink: 'https://meet.google.com/abc-defg-hij' });
+  const past = ev('q3', 'SOARD Q3 Board Meeting', '2026-01-08T13:00:00Z', '2026-01-08T15:00:00Z');
+  const advisory = ev('adv', 'Advisory Board meeting', `${day}T22:00:00Z`, `${day}T23:00:00Z`);
+  const cal = { [FOUNDER]: [q4, past, advisory] };
+  const google = fakeGoogle(cal);
+  const first = await syncBoardCalendar(env);
+  assert.deepEqual([first.ok, first.found, first.added], [true, 1, 1]);
+  assert.deepEqual(google.reads, [{ cal: FOUNDER, q: 'board' }], 'reads the Board area’s admins’ calendars, searching for "board"');
+  let [m] = await listMeetings(env.DB);
+  assert.deepEqual([m.date, m.start, m.end, m.location, m.address, m.video, m.shared], [day, '08:00', '10:00', 'Example Design Group', '100 Example St, Roswell, GA', 'https://meet.google.com/abc-defg-hij', false]);
+  assert.equal(m.calendar.title, 'SOARD Q4 Board Meeting');
+  assert.equal(meetingName(m), 'SOARD Q4 Board Meeting', 'the event’s own name, not a quarter worked out from the date');
+  assert.ok(m.sections.length > 3, 'starts from the agenda template');
+  // The board page never learns whose calendar it came from
+  const shared = await saveMeeting(env.DB, { ...m, shared: true }, { by: FOUNDER });
+  assert.equal((await portalApi(MEMBER)).body.meetings.find((x) => x.id === m.id).calendar, undefined);
+
+  // Moved on the calendar: the meeting follows, its agenda and sharing kept; a renamed event renames it
+  q4.start.dateTime = `${day}T14:00:00Z`; q4.end.dateTime = `${day}T16:00:00Z`;
+  q4.summary = 'SOARD Q4 Board Meeting (moved)';
+  const second = await syncBoardCalendar(env);
+  assert.equal(second.moved, 1);
+  m = (await listMeetings(env.DB))[0];
+  assert.deepEqual([m.start, m.end, m.shared, m.sections.length, m.title], ['09:00', '11:00', true, shared.sections.length, 'SOARD Q4 Board Meeting (moved)']);
+  // A name typed in Board wins over the calendar's from then on
+  m = await saveMeeting(env.DB, { ...m, title: 'Fall board meeting' }, { by: FOUNDER });
+  q4.summary = 'SOARD Q4 Board Meeting';
+  await syncBoardCalendar(env);
+  m = (await listMeetings(env.DB))[0];
+  assert.equal(m.title, 'Fall board meeting');
+  assert.equal((await listMeetings(env.DB)).length, 1, 'never doubled');
+  // Nothing changed: nothing saved
+  const before = m.updatedAt;
+  await syncBoardCalendar(env);
+  assert.equal((await listMeetings(env.DB))[0].updatedAt, before);
+
+  // Gone from the calendar: kept, marked gone
+  cal[FOUNDER] = [];
+  assert.equal((await syncBoardCalendar(env)).gone, 1);
+  assert.equal((await listMeetings(env.DB))[0].calendar.gone, true);
+  assert.equal(google.writes, 0, 'never writes to a calendar');
+});
+
+test('a meeting added by hand on the same day is linked, not doubled; a calendar that can’t be read is reported and nothing is marked gone', async () => {
+  const day = new Date(Date.now() + 40 * 86400000).toISOString().slice(0, 10);
+  const hand = (await adminApi(FOUNDER, { action: 'new-meeting', date: day })).body.meeting;
+  await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...hand, location: 'Typed by hand' }, base: hand.updatedAt });
+  const cal = { [FOUNDER]: [ev('q1', 'Board Meeting', `${day}T13:00:00Z`, `${day}T15:00:00Z`)] };
+  fakeGoogle(cal);
+  const r = await syncBoardCalendar(env);
+  assert.equal(r.linked, 1);
+  const all = await listMeetings(env.DB);
+  assert.equal(all.length, 1);
+  assert.deepEqual([all[0].id, all[0].location, all[0].calendar.place], [hand.id, 'Typed by hand', false], 'no place on the event: what was typed stays');
+  // Settings names a second admin whose calendar refuses: reported, and the linked meeting isn't marked gone
+  await adminApi(FOUNDER, { action: 'save-settings', settings: { admins: [FOUNDER, STAFF] } });
+  cal[STAFF] = new Error('Not Found');
+  cal[FOUNDER] = [];
+  const bad = await syncBoardCalendar(env);
+  assert.equal(bad.ok, false);
+  assert.match(bad.errors[0], /^pat’s calendar: .*Not Found/);
+  assert.equal((await listMeetings(env.DB))[0].calendar.gone, false);
+  assert.match(JSON.stringify((await adminApi(FOUNDER)).body.calendar), /pat’s calendar/);
+});
+
+test('two looks at once add a new event once', async () => {
+  const day = new Date(Date.now() + 50 * 86400000).toISOString().slice(0, 10);
+  fakeGoogle({ [FOUNDER]: [ev('q2', 'Board Meeting', `${day}T13:00:00Z`, `${day}T15:00:00Z`)] });
+  await Promise.all([syncBoardCalendar(env), syncBoardCalendar(env), syncBoardCalendar(env)]);
+  assert.equal((await listMeetings(env.DB)).length, 1);
+  assert.equal((await calendarStatus(env.DB)).added, 1);
 });
 
 // ─── The rules ──────────────────────────────────────────────────────

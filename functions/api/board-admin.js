@@ -32,6 +32,7 @@ import {
 } from './_board.js';
 import { isBoardAdmin, isStaffEmail } from './_board-roles.js';
 import { accessStatus, syncBoardAccess } from './_board-access.js';
+import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
@@ -60,15 +61,19 @@ export async function onRequestGet(context) {
     const { me, refused } = await gate(context);
     if (refused) return refused;
     if (q.has('numbers')) return Response.json({ ok: true, numbers: await liveNumbers(env) });
-    const [settings, meetings, docs, members, people, access, numbers, recipients] = await Promise.all([
+    // A look at the calendars when the last one is over 10 minutes old (at most 6 seconds; the rest finishes after)
+    const looking = maybeSyncBoardCalendar(env, { minAgeMs: 10 * 60 * 1000 });
+    context.waitUntil?.(looking);
+    await Promise.race([looking, new Promise((r) => setTimeout(r, 6000))]);
+    const [settings, meetings, docs, members, people, access, numbers, recipients, calendar] = await Promise.all([
       getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB), memberStatus(env.DB), roster(env.DB),
-      accessStatus(env), liveNumbers(env), packetList(env.DB),
+      accessStatus(env), liveNumbers(env), packetList(env.DB), calendarStatus(env.DB),
     ]);
     return Response.json({
-      ok: true, me, settings, meetings, docs, members, access, numbers,
+      ok: true, me, settings, meetings, docs, members, access, numbers, calendar,
       people: { board: people.board, staff: people.staff },
       // Mercury answers only through SOARD's relay (_mercury.js), so the balance needs both keys
-      setup: { mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY) },
+      setup: { calendar: Boolean(env.GOOGLE_CALENDAR_KEY), mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY) },
       packetTo: recipients.length,
     });
   } catch (err) {

@@ -685,6 +685,20 @@ const MAP = { t: 'SOARD', children: [
           } },
       ]},
       { t: 'Meetings', children: [
+        { t: 'Board meetings from the calendar', s: 'off', k: 'schedule',
+          when: 'Every hour on the live hub’s heartbeat, and whenever Peter or Holly opens Board (if the last look is over 10 minutes old).',
+          does: 'Reads the Board area’s admins’ Google calendars for events named like a board meeting (“SOARD Q4 Board Meeting”, “Board Meeting”, or “board” in the name with three or more board members invited), from today on, and makes each one a meeting in Board with its day, time, place and video link. A moved event moves the meeting; a meeting added by hand on the same day is linked, not doubled. Advisory Board, reveal and demo day events never count.',
+          touches: ['Google Calendar', 'D1'], where: 'functions/api/_board-calendar.js (broadcast-hooks.js via _board.js maybeRunBoard, board-admin.js)',
+          info: 'Read-only: it never changes anyone’s calendar. New meetings aren’t shared with the board until Peter or Holly shares them.',
+          live: (f) => {
+            const c = f.board?.calendar;
+            if (!c) return null;
+            if (!c.configured) return ATTN('GOOGLE_CALENDAR_KEY is missing, so meetings are added by hand in Board.');
+            if (c.failing) return ATTN(`Couldn’t read ${plural(c.failing, 'calendar')} on the last look. Board → Meetings says why.`, c.checkedAt);
+            if (!c.checkedAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(c.checkedAt, 3 * HOUR)) return ATTN(`Hasn’t looked since ${stamp(c.checkedAt)}. Check the Heartbeat entry.`, c.checkedAt);
+            return ON(`${plural(c.found, 'board meeting')} ahead on the calendars.`, c.checkedAt);
+          } },
         { t: 'The packet email', s: 'live', k: 'admin',
           when: 'Peter or Holly presses Email the board on a shared meeting in Board (Send it to me first sends them a preview).',
           does: 'Emails each active board member on their own: when and where, the agenda’s headings and a button to the meeting on the board page. Never notes, numbers or files; a confidential item shows only as “a confidential item”.',

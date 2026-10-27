@@ -34,6 +34,7 @@ import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
 import { provideBoardFinance } from '../functions/api/_board.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
+import { generateKeyPairSync } from 'node:crypto';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/board/');
@@ -115,7 +116,10 @@ const site = {
 };
 for (const [key, data] of Object.entries(site)) await DB.prepare('INSERT INTO site_config (key, data) VALUES (?, ?)').bind(key, JSON.stringify(data)).run();
 
-const env = { DB, FILES: new FakeR2(), CF_ACCESS_TEAM_DOMAIN: 'soard', CF_ACCESS_AUD: 'aud-tag', RESEND_API_KEY: 're_test', MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test', JOBTREAD_GRANT_KEY: 'jt-test' };
+// Google Calendar: a real service-account key (made here) and the founder's calendar, empty until the calendar check
+const { privateKey: saPem } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+const calendar = { [FOUNDER]: [] };
+const env = { GOOGLE_CALENDAR_KEY: JSON.stringify({ type: 'service_account', client_email: 'reader@example.iam.gserviceaccount.com', private_key: saPem }), DB, FILES: new FakeR2(), CF_ACCESS_TEAM_DOMAIN: 'soard', CF_ACCESS_AUD: 'aud-tag', RESEND_API_KEY: 're_test', MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test', JOBTREAD_GRANT_KEY: 'jt-test' };
 const mail = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
@@ -123,6 +127,9 @@ globalThis.fetch = async (input, init = {}) => {
   if (url === 'https://soard.cloudflareaccess.com/cdn-cgi/access/certs') return Response.json({ keys: [jwk] });
   if (url.startsWith('https://api.resend.com/')) { const list = JSON.parse(init.body); mail.push(...list); return Response.json({ data: list.map((_, i) => ({ id: `em_${mail.length}_${i}` })) }); }
   if (url === 'https://mercury-relay.sunshineonaranneyday.com/api/v1/accounts') return Response.json({ accounts: [{ name: 'Operating', kind: 'checking', type: 'mercury', status: 'active', currentBalance: 312500 }, { nickname: 'Reserve', kind: 'savings', type: 'mercury', status: 'active', currentBalance: 62500 }] });
+  if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'g-test', expires_in: 3600 });
+  const gcal = url.match(/^https:\/\/www\.googleapis\.com\/calendar\/v3\/calendars\/([^/]+)\/events\?/);
+  if (gcal && (init.method || 'GET') === 'GET') return Response.json({ items: calendar[decodeURIComponent(gcal[1])] || [] });
   if (url === 'https://api.jobtread.com/pave') {
     const job = (id, name, status) => ({ id, name, customFieldValues: { nodes: [{ value: status, customField: { id: FIELD_JOB_STATUS } }] } });
     return Response.json({ organization: { jobs: { nodes: [job('j1', 'Maya (2026)', 'Build'), job('j2', 'Leo (2026)', 'Design'), job('j3', 'Someone Else (2026)', 'Awaiting Funding'), job('j4', 'Not Published Yet (2026)', 'Design')], nextPage: null } } });
@@ -328,6 +335,22 @@ try {
   ok(await waitText(jane, /jane@soardcharity\.com/), 'Settings: the founder can open it until it’s saved');
   await shot(jane, '06-settings');
 
+  // A board meeting on the founder's calendar becomes a meeting in Board, its day, time and place kept to the calendar
+  const calDay = day(35);
+  calendar[FOUNDER].push({ id: 'q1', iCalUID: 'q1@google.com', summary: 'SOARD Q4 Board Meeting', status: 'confirmed', start: { dateTime: `${calDay}T13:00:00Z` }, end: { dateTime: `${calDay}T15:00:00Z` }, location: 'Example Design Group, 100 Example St, Roswell, GA', hangoutLink: 'https://meet.google.com/abc-defg-hij', htmlLink: 'https://www.google.com/calendar/event?eid=q1' });
+  await DB.exec("DELETE FROM board_state WHERE key = 'calendar'");
+  await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
+  ok(await waitText(jane, /Meetings come from Jane’s calendar: any event named like “Board Meeting”/), 'Meetings says where meetings come from');
+  ok(await waitText(jane, /From the calendar/), 'the event on the founder’s calendar is a meeting in Board');
+  const calId = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings.find((m) => m.calendar)?.id);
+  await jane.goto(`${SITE}/admin/#board/meeting/${calId}`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' });
+  ok(await waitText(jane, /From Jane’s calendar \(“SOARD Q4 Board Meeting”\)/), 'its editor says it follows the calendar');
+  ok(await jane.$eval('.bd-head h2', (e) => e.textContent) === 'SOARD Q4 Board Meeting', 'and goes by the event’s own name');
+  ok(await jane.evaluate(() => document.querySelector('#bd-date').disabled && document.querySelector('#bd-start').value === '08:00' && document.querySelector('#bd-loc').disabled && document.querySelector('#bd-loc').value === 'Example Design Group' && document.querySelector('#bd-video').value === 'https://meet.google.com/abc-defg-hij'), 'its day, time, place and video link come from the event, and are changed there');
+  await shot(jane, '09-calendar-meeting');
+
   // ⌘K
   await jane.keyboard.down('Meta'); await jane.keyboard.press('k'); await jane.keyboard.up('Meta');
   await jane.keyboard.type('Board');
@@ -386,7 +409,7 @@ try {
       ok(res === 403, 'the Board area’s API refuses a board member');
     }
 
-    for (const [p, re] of [['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Lowest point: \$210,000[\s\S]*Money in and out[\s\S]*\$900,000[\s\S]*−\$20,000[\s\S]*September’s books are ready to close[\s\S]*Financial statements[\s\S]*Balance-sheet/], ['reveals', /Coming up[\s\S]*Maya[\s\S]*Being built now/], ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/], ['documents', /Conflict of interest policy/]]) {
+    for (const [p, re] of [['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Lowest point: \$210,000[\s\S]*Money in and out[\s\S]*\$900,000[\s\S]*−\$20,000[\s\S]*September’s books are ready to close[\s\S]*Financial statements[\s\S]*Balance-sheet/], ['reveals', /Coming up[\s\S]*Maya[\s\S]*Each reveal comes to alex\.board@example\.com as a calendar invite[\s\S]*Being built now/], ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/], ['documents', /Conflict of interest policy/]]) {
       await alex.goto(`${SITE}/admin/board/#/${p}`, { waitUntil: 'networkidle0' });
       ok(await waitText(alex, re), `${p} shows what it should`);
       ok(await overflow(alex) <= 0, `${p}: nothing past the right edge`);

@@ -191,8 +191,19 @@ const statusTags = (m) => {
   out.push(m.shared ? html`<span class="tag tag--success">On the board page</span>` : html`<span class="tag">Not shared yet</span>`);
   if (m.date && m.date < todayEastern()) out.push(m.minutes === 'approved' ? html`<span class="tag tag--success">Minutes approved</span>` : html`<span class="tag tag--warn">Minutes draft</span>`);
   if (m.packetSentAt) out.push(html`<span class="tag tag--info">Packet emailed</span>`);
+  if (m.calendar) out.push(m.calendar.gone ? html`<span class="tag tag--warn">Off the calendar</span>` : html`<span class="tag">From the calendar</span>`);
   return out;
 };
+const firstOf = (email) => { const f = String(email || '').split('@')[0]; return f ? f[0].toUpperCase() + f.slice(1) : 'the'; };
+/** Where meetings come from: the admins' calendars, when they were last read, and anything that went wrong */
+function CalendarLine({ data }) {
+  const c = data.calendar || {};
+  const names = data.settings.admins.map(firstOf);
+  const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}’s` : `${names[0] || 'your'}’s`;
+  if (!data.setup.calendar) return html`<p class="bd-muted" style="margin-top:0.85rem">Add meetings with New meeting. (Board can take them from the calendar once GOOGLE_CALENDAR_KEY is in Cloudflare.)</p>`;
+  if (c.errors?.length) return html`<div class="notice notice--warn" style="margin:0.85rem 0 0"><div class="notice__body"><strong>Couldn’t read every calendar.</strong> ${c.errors.join(' · ')}</div></div>`;
+  return html`<p class="bd-muted" style="margin-top:0.85rem">Meetings come from ${who} ${names.length > 1 ? 'calendars' : 'calendar'}: any event named like “Board Meeting” from today on, with its day, time and place. ${c.checkedAt ? `Last looked ${ago(c.checkedAt)}${typeof c.found === 'number' ? `, ${plural(c.found, 'meeting')} ahead` : ''}.` : 'Looking for the first time.'}</p>`;
+}
 function Seg({ value, options, onChange, label, small = false }) {
   return html`<div class="seg" role="radiogroup" aria-label=${label}>
     ${options.map((o) => html`<button type="button" role="radio" aria-checked=${value === o.id} class=${small ? 'btn-sm' : ''} onClick=${() => onChange(o.id)}>${o.label}</button>`)}
@@ -333,6 +344,7 @@ function MeetingsTab({ ctx }) {
           <button class="btn btn-ghost btn-sm" onClick=${() => setImporting(!importing)} aria-expanded=${importing}>Bring in an old agenda</button>
         </div>
       </div>
+      <${CalendarLine} data=${data} />
     </div>
     ${importing ? html`<${ImportPanel} ctx=${ctx} onDone=${(m) => { setImporting(false); if (m) go({ meetingId: m.id }); }} />` : null}
 
@@ -528,6 +540,8 @@ function MeetingEditor({ meeting, ctx }) {
 
   const c = attendanceCounts(m);
   const quorum = data.settings.quorum;
+  const cal = m.calendar;
+  const fromCal = !!cal && !cal.gone;
   return html`
     <div>
       <a class="bd-back" href="#board" onClick=${(e) => { e.preventDefault(); go({}); }}>← All meetings</a>
@@ -541,14 +555,17 @@ function MeetingEditor({ meeting, ctx }) {
     </div>
 
     <div class="card">
-      <div class="bd-card-head"><h3>When and where</h3></div>
+      <div class="bd-card-head"><h3>When and where</h3>${cal ? html`<p>${cal.gone
+        ? html`This meeting is no longer on ${firstOf(cal.from)}’s calendar. If it’s off, delete it here.`
+        : html`From ${firstOf(cal.from)}’s calendar (“${cal.title}”). Change the day, time${cal.place ? ' or place' : ''} there, and it follows here within the hour.${cal.link ? html` <a class="link" href=${cal.link} target="_blank" rel="noopener">Open the event</a>` : null}`}</p>` : null}</div>
+      ${cal?.gone ? html`<div class="notice notice--warn"><div class="notice__body"><strong>Off the calendar.</strong> The event “${cal.title}” is gone from every calendar Board reads.</div></div>` : null}
       <div class="bd-grid3">
-        <div class="form-group"><label class="form-label" for="bd-date">Date</label><input id="bd-date" class="form-input" type="date" value=${m.date} onInput=${(e) => set({ date: e.target.value })} /></div>
-        <div class="form-group"><label class="form-label" for="bd-start">Starts</label><input id="bd-start" class="form-input" type="time" value=${m.start} onInput=${(e) => set({ start: e.target.value })} /></div>
-        <div class="form-group"><label class="form-label" for="bd-end">Ends</label><input id="bd-end" class="form-input" type="time" value=${m.end} onInput=${(e) => set({ end: e.target.value })} /></div>
-        <div class="form-group"><label class="form-label" for="bd-loc">Place</label><input id="bd-loc" class="form-input" value=${m.location} placeholder="Crosby Design Group" onInput=${(e) => set({ location: e.target.value })} /></div>
-        <div class="form-group"><label class="form-label" for="bd-addr">Address <span class="form-optional">optional</span></label><input id="bd-addr" class="form-input" value=${m.address} onInput=${(e) => set({ address: e.target.value })} /></div>
-        <div class="form-group"><label class="form-label" for="bd-video">Video link <span class="form-optional">optional</span></label><input id="bd-video" class="form-input" type="url" value=${m.video} placeholder="https://" onInput=${(e) => set({ video: e.target.value })} /></div>
+        <div class="form-group"><label class="form-label" for="bd-date">Date</label><input id="bd-date" class="form-input" type="date" value=${m.date} disabled=${fromCal} onInput=${(e) => set({ date: e.target.value })} /></div>
+        <div class="form-group"><label class="form-label" for="bd-start">Starts</label><input id="bd-start" class="form-input" type="time" value=${m.start} disabled=${fromCal} onInput=${(e) => set({ start: e.target.value })} /></div>
+        <div class="form-group"><label class="form-label" for="bd-end">Ends</label><input id="bd-end" class="form-input" type="time" value=${m.end} disabled=${fromCal} onInput=${(e) => set({ end: e.target.value })} /></div>
+        <div class="form-group"><label class="form-label" for="bd-loc">Place</label><input id="bd-loc" class="form-input" value=${m.location} placeholder="Crosby Design Group" disabled=${fromCal && cal.place} onInput=${(e) => set({ location: e.target.value })} /></div>
+        <div class="form-group"><label class="form-label" for="bd-addr">Address <span class="form-optional">optional</span></label><input id="bd-addr" class="form-input" value=${m.address} disabled=${fromCal && cal.place} onInput=${(e) => set({ address: e.target.value })} /></div>
+        <div class="form-group"><label class="form-label" for="bd-video">Video link <span class="form-optional">optional</span></label><input id="bd-video" class="form-input" type="url" value=${m.video} placeholder="https://" disabled=${fromCal && cal.call} onInput=${(e) => set({ video: e.target.value })} /></div>
         <div class="form-group span-3"><label class="form-label" for="bd-title">Name <span class="form-optional">optional</span></label><input id="bd-title" class="form-input" value=${m.title} placeholder=${m.date ? `${quarterOf(m.date)} Board Meeting` : 'Board meeting'} onInput=${(e) => set({ title: e.target.value })} /><p class="form-hint">Left empty, the quarter names it.</p></div>
       </div>
     </div>

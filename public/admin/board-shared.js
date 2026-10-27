@@ -17,6 +17,8 @@
  *   actions      [{ id, text, owner (a People slug), ownerName, due, done, doneOn }]
  *   files        [{ id, name, type, size, kind, staffOnly, at }]
  *   snapshot     the numbers locked in for the packet (see _board.js takeSnapshot)
+ *   calendar     the calendar event it follows (functions/api/_board-calendar.js):
+ *                { uid, title, from, link, gone, place, call }, or null
  *   packetSentAt, packetSentTo
  * Notes are plain text: a line starting with "- " is a point, two spaces
  * deeper for each level under it.
@@ -191,6 +193,11 @@ export function cleanMeeting(raw = {}) {
       kind: pick(f?.kind, FILE_KINDS, 'other'), staffOnly: bool(f?.staffOnly), at: one(f?.at, 40),
     })).filter((f) => f.id && f.name),
     snapshot: raw.snapshot && typeof raw.snapshot === 'object' ? raw.snapshot : null,
+    calendar: raw.calendar && typeof raw.calendar === 'object' && one(raw.calendar.uid, 400) ? {
+      uid: one(raw.calendar.uid, 400), title: one(raw.calendar.title, 200), from: one(raw.calendar.from, 200),
+      link: /^https:\/\//.test(String(raw.calendar.link || '')) ? one(raw.calendar.link, 1000) : '',
+      gone: bool(raw.calendar.gone), place: bool(raw.calendar.place), call: bool(raw.calendar.call),
+    } : null,
     packetSentAt: one(raw.packetSentAt, 40),
     packetSentTo: Number(raw.packetSentTo) > 0 ? Math.round(raw.packetSentTo) : 0,
     createdAt: one(raw.createdAt, 40),
@@ -209,6 +216,7 @@ export function forBoard(m) {
     ...m,
     sections: m.sections.map((s) => ({ ...s, items: s.items.map(({ staffNote, ...it }) => it) })),
     files: m.files.filter((f) => !f.staffOnly),
+    calendar: undefined,
     updatedBy: undefined,
   };
 }

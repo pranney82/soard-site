@@ -38,6 +38,7 @@ import { sendEmails, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js'
 import { emailShell, button, esc, facts } from './_email-shell.js';
 import { sniffType } from './upload-file.js';
 import { maybeSyncBoardAccess } from './_board-access.js';
+import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { mercury } from './_mercury.js';
 
 export const SITE = 'https://sunshineonaranneyday.com';
@@ -605,7 +606,7 @@ export async function portalData(env, { member = null, admin = false, now = Date
   // A member's own answers, whether or not they're on that meeting's list yet
   const answers = mine ? Object.fromEntries(((await env.DB.prepare('SELECT meeting_id, answer FROM board_rsvps WHERE slug = ?').bind(mine).all()).results || []).map((r) => [r.meeting_id, r.answer])) : {};
   return {
-    me: member ? { name: member.name, slug: member.slug, title: member.title, admin } : { name: null, slug: null, admin },
+    me: member ? { name: member.name, slug: member.slug, title: member.title, email: member.email, admin } : { name: null, slug: null, admin },
     today,
     meetings: shared.map((m) => ({ ...m, myRsvp: answers[m.id] || '' })),
     next: nextMeeting(shared, today)?.id || null,
@@ -621,7 +622,6 @@ export async function portalData(env, { member = null, admin = false, now = Date
       staff: people.staff.map(({ email, ...p }) => p),
       advisory: people.advisory.map(({ email, ...p }) => p),
     },
-    revealFeed: `${SITE}/api/reveals.ics`,
   };
 }
 
@@ -636,14 +636,16 @@ export async function memberStatus(DB) {
 
 /**
  * Every 5 minutes at most: keep Access's board list in step with People → Board
- * (./_board-access.js); once a day, the month's bank balance for the board
- * page's history. Never throws.
+ * (./_board-access.js); every hour, the board meetings on Peter and Holly's
+ * calendars (./_board-calendar.js); once a day, the month's bank balance for
+ * the board page's history. Never throws.
  */
 export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   try {
     if (!env.DB) return;
     await ensureSchema(env.DB);
     await maybeSyncBoardAccess(env, { fetchImpl, now });
+    await maybeSyncBoardCalendar(env, { fetchImpl, now });
     if (!String(env.MERCURY_API_TOKEN || '').trim()) return;
     const runs = await readState(env.DB, 'runs');
     if (runs.cashAt && now - Date.parse(runs.cashAt) < 20 * 60 * 60 * 1000) return;
@@ -664,14 +666,16 @@ export { LIMITS };
 export async function boardFacts(env) {
   const { accessStatus } = await import('./_board-access.js');
   await ensureSchema(env.DB);
-  const [a, cash, packet] = await Promise.all([
+  const [a, cash, packet, cal] = await Promise.all([
     accessStatus(env),
     env.DB.prepare('SELECT count(*) AS n, max(at) AS last FROM board_cash').first(),
     env.DB.prepare('SELECT data FROM board_meetings').all().then((r) => (r.results || []).map((x) => parse(x.data).packetSentAt).filter(Boolean).sort().at(-1) || null),
+    calendarStatus(env.DB),
   ]);
   return {
     access: { configured: a.configured, ok: !!a.ok, attached: !!a.attached, current: !!a.current, emails: a.emails, missing: (a.missing || []).length, syncedAt: a.syncedAt || null, error: a.error ? String(a.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null },
     cash: { mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), months: cash?.n || 0, lastAt: cash?.last || null },
     lastPacketAt: packet,
+    calendar: { configured: Boolean(env.GOOGLE_CALENDAR_KEY), ok: !!cal.ok, checkedAt: cal.checkedAt || null, found: cal.found || 0, failing: (cal.errors || []).length },
   };
 }
