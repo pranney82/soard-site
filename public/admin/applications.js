@@ -696,8 +696,8 @@ const CSS = `
 .afe-form-foot { margin: .15rem .2rem 0; }
 @media (max-width: 768px) { .afe-bar.has-lead .afe-bar-text { padding-left: 0; border-left: 0; flex-basis: 100%; } .afe-bar-lead { width: 100%; } .afe-subnav { width: 100%; } .afe-subnav > button { flex: 1; justify-content: center; } }
 /* Makeovers | Community projects, above the Form, Emails and Insights tabs */
-.afe-kind { margin: 0 0 1rem; }
-@media (max-width: 768px) { .afe-kind { display: flex; width: 100%; } .afe-kind > button { flex: 1; justify-content: center; } }
+.afe-appkind { margin: 0 0 1rem; }
+@media (max-width: 768px) { .afe-appkind { display: flex; width: 100%; } .afe-appkind > button { flex: 1; justify-content: center; } }
 
 /* Applications that haven't reached JobTread, above the Applicants views */
 .afe-intake { align-items: center; }
@@ -1037,7 +1037,7 @@ const hashFor = (t, o = {}) => (t === 'applicants' ? (o.view === 'submissions' ?
 /** Makeovers | Community projects: which application the Form, Emails and Insights tabs show */
 function KindSwitch({ kind, onKind }) {
   return html`
-    <div class="seg afe-seg-text afe-kind" role="group" aria-label="Which application">
+    <div class="seg afe-seg-text afe-appkind" role="group" aria-label="Which application">
       ${KINDS.map(([k, label]) => html`<button aria-pressed=${kind === k} data-kind=${k} onClick=${() => onKind(k)}>${label}</button>`)}
     </div>`;
 }

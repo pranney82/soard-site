@@ -1414,10 +1414,10 @@ try {
 
   await section('Community projects: their own form, emails and switch', async () => {
     await clickText(page, '.hub-tab', /^Form/);
-    await page.waitForSelector('.afe-kind', { timeout: 8000 });
-    ok(JSON.stringify(await page.$$eval('.afe-kind button', (els) => els.map((b) => b.textContent.trim()))) === '["Makeovers","Community projects"]', 'Form has a Makeovers | Community projects switch');
-    ok(await page.$eval('.afe-kind [data-kind="family"]', (b) => b.getAttribute('aria-pressed')) === 'true', 'on Makeovers to start');
-    await page.click('.afe-kind [data-kind="organization"]');
+    await page.waitForSelector('.afe-appkind', { timeout: 8000 });
+    ok(JSON.stringify(await page.$$eval('.afe-appkind button', (els) => els.map((b) => b.textContent.trim()))) === '["Makeovers","Community projects"]', 'Form has a Makeovers | Community projects switch');
+    ok(await page.$eval('.afe-appkind [data-kind="family"]', (b) => b.getAttribute('aria-pressed')) === 'true', 'on Makeovers to start');
+    await page.click('.afe-appkind [data-kind="organization"]');
     await page.waitForFunction(() => /apply\/community-project/.test(document.querySelector('.afe-head .page-sub')?.textContent || ''), { timeout: 8000 }).catch(() => {});
     ok(/\/apply\/community-project\//.test(await text(page, '.afe-head .page-sub')), 'the header names the organization form');
     ok(/#applications\/form\/organization$/.test(await page.evaluate(() => location.hash)), 'and the address says which');
@@ -1435,7 +1435,7 @@ try {
 
     await clickText(page, '.hub-tab', /^Emails/);
     await page.waitForSelector('.afe-email-rail', { timeout: 8000 });
-    ok(await page.$eval('.afe-kind [data-kind="organization"]', (b) => b.getAttribute('aria-pressed')) === 'true', 'Emails follows the switch');
+    ok(await page.$eval('.afe-appkind [data-kind="organization"]', (b) => b.getAttribute('aria-pressed')) === 'true', 'Emails follows the switch');
     await page.click('.afe-email-rail [data-email="approved"]');
     await page.waitForSelector('#afe-m-approved');
     const chips = await page.$$eval('.afe-email-ed .afe-chips button', (els) => els.map((b) => b.textContent.trim()));
@@ -1461,8 +1461,8 @@ try {
 
     // Back to the family form, for everything after this
     await clickText(page, '.hub-tab', /^Form/);
-    await page.waitForSelector('.afe-kind', { timeout: 8000 });
-    await page.click('.afe-kind [data-kind="family"]');
+    await page.waitForSelector('.afe-appkind', { timeout: 8000 });
+    await page.click('.afe-appkind [data-kind="family"]');
     await page.waitForFunction(() => /apply\/form\//.test(document.querySelector('.afe-head .page-sub')?.textContent || ''), { timeout: 8000 }).catch(() => {});
     ok((await page.$$('.afe-panel[aria-label^="Page"]')).length === 9 && /#applications\/form$/.test(await page.evaluate(() => location.hash)), 'Makeovers again: its nine pages');
   });
