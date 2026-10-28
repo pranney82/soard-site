@@ -364,12 +364,7 @@ function App() {
     <header class="bp-top">
       <div class="bp-bar">
         <a class="bp-brand" href="#/" aria-label="SOARD Board, Home"><img src=${LOGO} alt="" width="44" height="44" /><span class="bp-brand__words"><strong>Sunshine on a Ranney Day</strong><small>Board of Directors</small></span></a>
-        <nav class="bp-nav" aria-label="Board">
-          ${NAV.map(([p, label, icon]) => html`<a href=${`#/${p}`} aria-current=${route.page === p ? 'page' : null} key=${p}>
-            ${route.page === p ? html`<span class="bp-nav__ink" aria-hidden="true"></span>` : null}
-            <${Icon} name=${icon} size=${20} /><span class="bp-nav__label">${label}</span>
-          </a>`)}
-        </nav>
+        <${Nav} page=${route.page} />
         <div class="bp-tools">
           <button type="button" class="bp-find" onClick=${() => setFinding(true)} aria-label="Search the board page" aria-keyshortcuts="Meta+K Control+K /">
             <${Icon} name="search" size=${18} /><span class="bp-find__label">Search</span><kbd class="bp-kbd">${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
@@ -387,6 +382,31 @@ function App() {
     </footer>
     <div class=${`bp-toast ${note ? 'is-on' : ''} ${note?.tone ? `bp-toast--${note.tone}` : ''}`} role="status" aria-live="polite">${note ? html`<${Icon} name="check" size=${18} /><span>${note.text}</span>` : null}</div>
     ${finding ? html`<${Finder} ctx=${ctx} onClose=${() => setFinding(false)} />` : null}`;
+}
+
+/**
+ * The five pages. The yellow marker is one element that slides behind the labels to the open page (a CSS move).
+ * It's never part of the page's view transition: as its own layer there it was drawn over the labels while it moved.
+ */
+function Nav({ page }) {
+  const ref = useRef(null);
+  const [ink, setInk] = useState(null);
+  useEffect(() => {
+    const place = () => {
+      const a = ref.current?.querySelector('a[aria-current="page"]');
+      if (a) setInk((was) => ({ x: a.offsetLeft, y: a.offsetTop, w: a.offsetWidth, h: a.offsetHeight, moving: !!was }));
+    };
+    place();
+    document.fonts?.ready.then(place);
+    addEventListener('resize', place);
+    return () => removeEventListener('resize', place);
+  }, [page]);
+  return html`<nav class="bp-nav" aria-label="Board" ref=${ref}>
+    ${ink ? html`<span class=${`bp-nav__ink ${ink.moving ? 'is-moving' : ''}`} style=${`--x:${ink.x}px;--y:${ink.y}px;--w:${ink.w}px;--h:${ink.h}px`} aria-hidden="true"></span>` : null}
+    ${NAV.map(([p, label, icon]) => html`<a href=${`#/${p}`} aria-current=${page === p ? 'page' : null} key=${p}>
+      <${Icon} name=${icon} size=${20} /><span class="bp-nav__label">${label}</span>
+    </a>`)}
+  </nav>`;
 }
 
 /** Who's signed in, and the way out */
@@ -507,7 +527,8 @@ function HomePage({ ctx }) {
 
 /** Families being built for right now, in their own photos (a different one leads each day) */
 function HeroPhotos({ n, today }) {
-  const withPhoto = (n.projects?.building || []).filter((b) => b.photo && b.name);
+  // Kids only: community projects never lead Home (Peter, Oct 28 2026)
+  const withPhoto = (n.projects?.building || []).filter((b) => b.photo && b.name && b.kind !== 'community');
   const stats = n.impact;
   if (!withPhoto.length) {
     return html`<aside class="bp-hero__panel bp-rise" style=${rise(2)} aria-label="SOARD at a glance">
