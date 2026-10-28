@@ -21,11 +21,12 @@
  *   - Documents (one asking for a signature), Members (Cloudflare's steps,
  *     the sign-in email), Settings (who invites come from)
  *   - a board member opening /admin/ lands on /admin/board/; Home (the next
- *     meeting with its place, Google Meet, already on their calendar, coming
- *     up and being built), answering whether they'll come, ticking off their
- *     action, the meeting (never the private note or a staff-only file), the
- *     file viewer, Financials, People, Documents (signing), the phone's tab
- *     bar; the founders see it as the board does
+ *     meeting with its place, Google Meet, already on their calendar, the
+ *     makeovers by stage, coming up), answering whether they'll come, ticking
+ *     off their action, search (⌘K) landing on a point in the minutes, the
+ *     meeting (never the private note or a staff-only file), the file viewer,
+ *     Financials, People, Documents (signing, every meeting's files), the
+ *     phone's tab bar; the founders see it as the board does
  *   - nothing past the page's right edge on a phone, no console errors
  * Screenshots land in test-results/board/. Exits non-zero on any failure.
  *
@@ -271,7 +272,9 @@ const server = http.createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const SITE = `http://localhost:${server.address().port}`;
 
-const browser = await puppeteer.launch({ headless: 'shell', args: ['--no-sandbox', '--disable-gpu-vsync', '--disable-frame-rate-limit', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'] });
+// No --disable-frame-rate-limit: in headless Chrome it stops all drawing once a view transition starts (the board
+// page's page changes), and every screenshot after it times out. --disable-gpu keeps screenshots working while the display sleeps
+const browser = await puppeteer.launch({ headless: 'shell', args: ['--no-sandbox', '--disable-gpu', '--disable-gpu-vsync', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--disable-background-timer-throttling'] });
 const consoleErrors = [];
 async function tab(email, width = 1440) {
   const page = await browser.newPage();
@@ -547,8 +550,8 @@ try {
     ok(width === 1440 ? /You answered the calendar invite: Coming/.test(home) : /You said “I’ll join by video\.” You can change it any time\./.test(home), width === 1440 ? 'Home: their reply to the invite shows' : 'Home: the answer they gave here shows');
     ok(width === 1440 ? /Send the venue contract/.test(home) : !/Send the venue contract/.test(home), width === 1440 ? 'Home: their own action item' : 'Home: the action item they ticked off is gone');
     ok(/\$375,000/.test(home) && /children served/.test(home), 'Home: SOARD at a glance');
-    ok(/Coming up[\s\S]*Maya’s reveal[\s\S]*Sunshine Golf Classic[\s\S]*Leo’s reveal/.test(home) && /Date not set yet/.test(home), 'Home: reveals and events coming up, in date order, a tentative one marked');
-    ok(/Being built now[\s\S]*build[\s\S]*Maya[\s\S]*design[\s\S]*Leo and 1 more/i.test(home), 'Home: being built now, published kids by name only');
+    ok(/Coming up[\s\S]*Maya’s reveal[\s\S]*Sunshine Golf Classic[\s\S]*Leo’s reveal/.test(home) && /Day not set yet/.test(home), 'Home: reveals and events coming up, in date order, a tentative one marked');
+    ok(/Makeovers in progress[\s\S]*Design[\s\S]*Leo[\s\S]*1 more family[\s\S]*Build[\s\S]*Maya/i.test(home) && !/Not Published Yet/.test(home), 'Home: the makeovers by stage, published kids by name only');
     ok(await overflow(alex) <= 0, 'Home: nothing past the right edge');
     if (width === 390) {
       const bar = await alex.evaluate(() => { const n = getComputedStyle(document.querySelector('.bp-nav')); return { pos: n.position, bottom: n.bottom, top: getComputedStyle(document.querySelector('.bp-top')).position, tabs: document.querySelectorAll('.bp-nav a').length }; });
@@ -556,11 +559,21 @@ try {
     }
     await shot(alex, `10-home-${width}`);
     if (width === 1440) {
-      await clickText(alex, '.bp-choice', /^I’ll join by video$/);
+      await clickText(alex, '.bp-choice', /^By video$/);
       ok(await waitText(alex, /Thanks\. Jane can see your answer\./), 'they answer whether they’re coming, and it says who sees it');
-      ok(await alex.evaluate(() => document.querySelector('.bp-choice[aria-pressed="true"]')?.textContent.trim() === 'I’ll join by video'), 'their answer stays picked');
+      ok(await alex.evaluate(() => document.querySelector('.bp-choice[aria-pressed="true"]')?.textContent.trim() === 'By video' && getComputedStyle(document.querySelector('.bp-seg')).getPropertyValue('--at').trim() === '1'), 'their answer stays picked, the yellow marker under it');
       await alex.evaluate(() => document.querySelector('.bp-todo input').click());
       await sleep(1500);
+      // Search: ⌘K, a word from the meeting's notes, Enter opens the meeting at that point
+      await alex.keyboard.down('Meta'); await alex.keyboard.press('k'); await alex.keyboard.up('Meta');
+      ok(await alex.waitForSelector('dialog.bp-finder[open]', { timeout: 4000 }).then(() => true, () => false), '⌘K opens search');
+      await alex.keyboard.type('insurance renewal');
+      // textContent, not innerText: the group's label is set in capitals by CSS
+      ok(await alex.waitForFunction(() => /In agendas and minutes[\s\S]*Insurance renewal/.test(document.querySelector('.bp-finder__list')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'search finds the point in the agenda');
+      ok(!/ask counsel/.test(await text(alex)), 'search never shows the private note');
+      await alex.keyboard.press('Enter');
+      ok(await alex.waitForFunction((id) => location.hash === `#/meetings/${id}`, { timeout: 4000 }, meetingId).then(() => true, () => false), 'Enter opens the meeting');
+      ok(await alex.waitForSelector('.bp-item.is-found', { timeout: 4000 }).then(() => true, () => false), 'and marks the point it found');
     }
 
     await alex.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
@@ -577,16 +590,16 @@ try {
     ok(await overflow(alex) <= 0, 'the meeting: nothing past the right edge');
     await shot(alex, `11-meeting-${width}`);
     if (width === 1440) {
-      await clickText(alex, '.bp-files a', /^Balance sheet financials/);
+      await clickText(alex, '.bp-file__main', /Balance sheet financials/);
       ok(await alex.waitForSelector('.fv-host *', { timeout: 6000 }).then(() => true, () => false), 'a file opens in the viewer over the page');
       await alex.keyboard.press('Escape');
       ok(await alex.evaluate(async () => (await fetch('/api/board-admin')).status) === 403, 'the Board area’s API refuses a board member');
     }
 
     for (const [p, re] of [
-      ['financials', /Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash[\s\S]*\$375,000 in Mercury[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Financial statements[\s\S]*Balance sheet financials[\s\S]*2025 990 Tax Return/],
+      ['financials', /The latest statements[\s\S]*Balance sheet financials[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash[\s\S]*\$375,000 in Mercury[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Tax returns and audits[\s\S]*2025/],
       ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
-      ['documents', width === 1440 ? /Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it/ : /Conflict of interest policy[\s\S]*Read it[\s\S]*Signed\s*by Alex Rivera/],
+      ['documents', width === 1440 ? /Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Conflict of interest policy[\s\S]*Read it[\s\S]*Signed\s*by Alex Rivera/],
     ]) {
       await alex.goto(`${SITE}/admin/board/#/${p}`, { waitUntil: 'networkidle0' });
       ok(await waitText(alex, re), `${p} shows what it should`);
@@ -600,7 +613,7 @@ try {
       await clickText(alex, 'button', /^I’ve read it and agree$/);
       ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name');
       await alex.goto(`${SITE}/admin/board/#/reveals`, { waitUntil: 'networkidle0' });
-      ok(await alex.evaluate(() => location.hash) === '#/' && await waitText(alex, /Being built now/), 'the old Reveals link opens Home, where reveals are now');
+      ok(await alex.evaluate(() => location.hash) === '#/' && await waitText(alex, /Makeovers in progress/), 'the old Reveals link opens Home, where reveals are now');
       await alex.goto(`${SITE}/admin/board/#/meetings/${pastId}`, { waitUntil: 'networkidle0' });
       ok(!(await waitText(alex, /Reserves grew/, 2000)), 'a meeting not shared stays off the board page');
     } else {

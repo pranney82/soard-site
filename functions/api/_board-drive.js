@@ -5,21 +5,43 @@
  * in Google Drive: the "Board" folder (Settings → the Drive folder; SOARD's
  * Leadership folder until saved), a "2025 Board" folder for each year, and in
  * it a folder for each meeting named by its date ("7.24.25 Meeting",
- * "8.6.26 Board Meeting"). Every hour, and every minute while there's a
- * backlog, Board reads them:
- *   - each meeting folder is one meeting on its date: the meeting already in
- *     Board within three days (the calendar may have it), else a past record
+ * "8.6.26 Board Meeting"). The older years are kept other ways, and Board
+ * reads those too: minutes and agendas loose in the year folder, named as the
+ * board meeting's ("Board Meeting Minutes 1/21/16", "SOARD Board Mtg Notes -
+ * 20140605.docx", "SOARD Board Meeting- June 13, 2018.docx"), and a folder of
+ * them without a date ("2015 Board Meeting Notes"), or one meeting's folder
+ * without one ("2018 SOARD End of Year Board Meeting"). Every hour, and every
+ * minute while there's a backlog, Board reads them:
+ *   - each meeting folder (or a day's loose minutes and agenda) is one meeting
+ *     on its date: the meeting already in Board within three days (the
+ *     calendar may have it), else a past record
  *   - its files go on that meeting for the board (Google Docs, Sheets and
  *     Slides as PDFs): minutes, the agenda, financial statements, the rest as
- *     packet files. Pictures, Pages files, resumes, anything over 15 MB and
- *     the loose files beside the meeting folders (expectations, nominees,
- *     birthdays) are left alone
+ *     packet files, one copy of each ("Minutes.docx", "Minutes.docx.pdf" and
+ *     "Copy of Minutes.docx" are the same minutes). Pictures, Pages files,
+ *     resumes, anything over 15 MB and the other loose files beside the
+ *     meeting folders (expectations, nominees, birthdays, committee meetings)
+ *     are left alone
  *   - the minutes fill in who was there (when nobody marked it), the
  *     meeting's sections and notes (when its agenda is still a draft), and
  *     mark the minutes approved once a later meeting exists
  *   - a past meeting nobody here worked on goes on the board page
  *   - a file is brought in once; one changed in Drive replaces its copy
  * Meetings ahead are left alone: their agendas are written in Board.
+ *
+ * Board → Documents gets SOARD's own papers the same way, hourly once the
+ * meetings are read: everything in the newest "2026 Board Manual" folder (the
+ * signed bylaws, the board manual with its policies; never the members' signed
+ * copies in the folders inside it), and, wherever the shared drive keeps them
+ * when that folder doesn't, the Articles of Incorporation, the Articles of
+ * Amendment, the IRS 501(c)(3) determination letter, the EIN letter, the W-9,
+ * the state's Charitable Organization Permit and the D&O insurance policy, one
+ * copy of each (the newest, for the ones renewed). Only those, by name, and
+ * only in the shared drive: the folders they sit in hold other people's
+ * papers, and a person's own Drive holds other companies' and their own. A
+ * newer copy in Drive replaces the file; a document taken out in Board stays
+ * out.
+ *
  * It never writes, moves, shares or deletes anything in Drive.
  *
  * Reads as one of Board's admins through the site's service account (domain-
@@ -29,9 +51,9 @@
 
 import { accessToken } from './_google-calendar.js';
 import { boardAdmins, peopleRows, readSettings, readState, writeState } from './_board-roles.js';
-import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster } from './_board.js';
+import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster, saveDoc, cleanDoc } from './_board.js';
 import { fileText, attendanceIn } from './_board-mail.js';
-import { parseAgendaText, cleanMeeting, agendaIsDraft, todayEastern, isDate } from '../../public/admin/board-shared.js';
+import { parseAgendaText, cleanMeeting, agendaIsDraft, todayEastern, isDate, docHtmlText, readAgain, AGENDA_READER } from '../../public/admin/board-shared.js';
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
@@ -40,7 +62,8 @@ export const DEFAULT_DRIVE_FOLDER = '18UkzUWI1x_NZiGKt5CAeWYINCaRYVGgZ';
 export const DRIVE_BY = 'Google Drive';
 const KEY = 'drive';
 const DONE = 'drive-done';
-const VERSION = 1;
+// 2: the older years' loose minutes and undated meeting folders, one copy of each document
+const VERSION = 2;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const BUDGET_MS = 8000;
@@ -60,10 +83,15 @@ const RECENT_MS = 400 * DAY;
 const RESUME = /\b(resume|résumé|curriculum vitae|cv)\b/i;
 const IMAGE = /\.(jpe?g|png|gif|heic|heif|webp|tiff?|bmp|svg)$/i;
 const APPLE = /\.(pages|numbers|key)$/i;
+// A folder without a date that holds board meetings, or is one: "2015 Board Meeting Notes", "2016 Board Meetings", "2018 SOARD End of Year Board Meeting"
+const MEETINGS_FOLDER = /\bboard (meeting|mtg)|\bmeeting notes\b|\bminutes\b/i;
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS board_drive (drive_id TEXT PRIMARY KEY, meeting_id TEXT, board_file_id TEXT, modified TEXT, name TEXT, folder_id TEXT, at TEXT)`,
   'CREATE INDEX IF NOT EXISTS idx_board_drive_meeting ON board_drive(meeting_id)',
+  // Documents' papers from Drive: one row a document ("articles", "manual:signed amended bylaws")
+  'CREATE TABLE IF NOT EXISTS board_drive_docs (slot TEXT PRIMARY KEY, doc_id TEXT, drive_id TEXT, board_file_id TEXT, modified TEXT, name TEXT, at TEXT)',
 ];
 const _ready = new WeakSet();
 async function ensureDrive(DB) {
@@ -106,6 +134,48 @@ export function folderDate(name, year = 0) {
   return date;
 }
 
+/**
+ * A document's name without its copies' marks: "Copy of …", "(1)", and its
+ * extensions ("Minutes.docx (1).pdf" → "minutes"), so the copies of one
+ * document match
+ */
+export function stemOf(name) {
+  let s = String(name || '').trim().replace(/^copy of\s+/i, '');
+  for (let was = ''; was !== s;) {
+    was = s;
+    s = s.replace(/\s*\(\d+\)\s*$/, '').replace(/\.(docx?|pdf|xlsx?|pptx?|rtf|txt|csv)\s*$/i, '').trim();
+  }
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * The meeting date a file's name gives: what a folder's can ("1.27.16", "1/21/16"),
+ * and the older files' ways: "December 17, 2018", "Oct. 15, 2015", "20140605",
+ * "012121" (month, day, year), and with the year folder's year, "June 2 8am"
+ * and "2_26". → 'YYYY-MM-DD' or ''
+ */
+export function fileDate(name, year = 0) {
+  const s = String(name || '').trim().replace(/^copy of\s+/i, '').replace(/(\s*\(\d+\)|\.(docx?|pdf|xlsx?|pptx?|rtf|txt|csv))+\s*$/i, '').trim();
+  const day = (y, mo, d) => {
+    const date = `${y}-${pad(mo)}-${pad(d)}`;
+    if (!isDate(date) || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) return '';
+    return year && Math.abs(Number(y) - year) > 1 ? '' : date;
+  };
+  const dated = folderDate(s, year);
+  if (dated) return dated;
+  let m = s.match(/(?:^|\D)(20\d{2})(\d{2})(\d{2})(?!\d)/);
+  if (m) return day(m[1], m[2], m[3]);
+  m = s.match(/(?:^|\D)(\d{2})(\d{2})(\d{2})(?!\d)/);
+  if (m) return day(`20${m[3]}`, m[1], m[2]);
+  m = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(20\d{2})\b)?/i);
+  if (m) return m[3] || year ? day(m[3] || year, MONTHS.indexOf(m[1].toLowerCase()) + 1, m[2]) : '';
+  m = year ? s.match(/(?:^|[^\d./_-])(\d{1,2})[._/-](\d{1,2})$/) : null;
+  return m ? day(year, m[1], m[2]) : '';
+}
+
+/** A loose file named as a board meeting's own: its minutes, notes or agenda ("Board Meeting Minutes 1/21/16"), never a committee's */
+export const meetingDoc = (name) => /\bboard\b/i.test(name) && /(meeting|mtg|minutes|agenda|notes)\b/i.test(name) && !/committee/i.test(name);
+
 /** What a file is, by its name: minutes, agenda, financials, or a packet file */
 export function driveKind(name) {
   const n = String(name || '');
@@ -141,34 +211,61 @@ async function drive(token, path, fetchImpl, { bytes = false, text = false } = {
   return res.json();
 }
 
-/** Everything in a folder (not in the trash), every page */
-async function children(token, id, fetchImpl) {
+/** The files a search finds, every page (`where`: which drive, for a search beyond one folder) */
+async function listFiles(token, query, fetchImpl, where = '') {
   const out = [];
   let page = '';
   do {
-    const q = encodeURIComponent(`'${id}' in parents and trashed = false`);
-    const r = await drive(token, `/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,size)')}&pageSize=1000&${ALL}${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`, fetchImpl);
+    const q = encodeURIComponent(query);
+    const r = await drive(token, `/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,createdTime,size)')}&pageSize=1000&${ALL}${where ? `&${where}` : ''}${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`, fetchImpl);
     out.push(...(r.files || []));
     page = r.nextPageToken || '';
   } while (page && out.length < 5000);
   return out;
 }
 
-/** The meeting folders: under each "2025 Board" folder, and any sitting right in the root. → [{ id, name, date }], newest first */
+/** Everything in a folder (not in the trash), every page */
+const children = (token, id, fetchImpl) => listFiles(token, `'${id}' in parents and trashed = false`, fetchImpl);
+
+/**
+ * The meetings: the meeting folders under each "2025 Board" folder (and any
+ * right in the root), and in a year folder the older ways, a day's loose
+ * minutes and agenda (`files`, an id of the folder and the day) and an
+ * undated folder of meetings. → [{ id, name, date, files?, older? }], newest first
+ */
 async function meetingFolders(token, root, fetchImpl) {
   const top = await children(token, root, fetchImpl);
   const found = [];
+  // A folder's loose minutes and agendas, a meeting a day
+  const loose = (parent, files, year) => {
+    const days = new Map();
+    for (const f of files.filter((x) => x.mimeType !== FOLDER && meetingDoc(x.name))) {
+      const date = fileDate(f.name, year);
+      if (date) days.set(date, [...(days.get(date) || []), f]);
+    }
+    for (const [date, fs] of days) found.push({ id: `${parent.id}:${date}`, name: `${parent.name}: ${fs[0].name}${fs.length > 1 ? ` and ${fs.length - 1} more` : ''}`, date, files: fs, older: true });
+  };
   for (const f of top.filter((x) => x.mimeType === FOLDER)) {
     const y = f.name.trim().match(/^(\d{4}) Board$/);
-    if (y) {
-      for (const c of (await children(token, f.id, fetchImpl)).filter((x) => x.mimeType === FOLDER)) {
-        const date = folderDate(c.name, Number(y[1]));
-        if (date) found.push({ id: c.id, name: c.name, date });
-      }
-    } else {
+    if (!y) {
       const date = folderDate(f.name);
       if (date) found.push({ id: f.id, name: f.name, date });
+      continue;
     }
+    const year = Number(y[1]);
+    const inYear = await children(token, f.id, fetchImpl);
+    for (const c of inYear.filter((x) => x.mimeType === FOLDER)) {
+      const date = folderDate(c.name, year);
+      if (date) { found.push({ id: c.id, name: c.name, date }); continue; }
+      if (!MEETINGS_FOLDER.test(c.name)) continue;
+      // Undated: one meeting's folder when its minutes and agenda all name one day, else a folder of meetings
+      const inside = await children(token, c.id, fetchImpl);
+      const subs = inside.filter((x) => x.mimeType === FOLDER).map((x) => ({ id: x.id, name: x.name, date: folderDate(x.name, year) })).filter((x) => x.date);
+      const days = new Set(inside.filter((x) => x.mimeType !== FOLDER && meetingDoc(x.name)).map((x) => fileDate(x.name, year)).filter(Boolean));
+      if (!subs.length && days.size === 1) found.push({ id: c.id, name: c.name, date: [...days][0], older: true });
+      else { found.push(...subs); loose(c, inside, year); }
+    }
+    loose(f, inYear, year);
   }
   return found.sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -186,8 +283,10 @@ async function fetchFile(env, token, f, fetchImpl, { wantText }) {
   if (GOOGLE[f.mimeType]) {
     // (export takes no shared-drive flag: a file's ID is enough)
     const bytes = await drive(token, `/files/${encodeURIComponent(f.id)}/export?mimeType=${encodeURIComponent('application/pdf')}`, fetchImpl, { bytes: true });
-    const text = wantText && f.mimeType === DOC ? await drive(token, `/files/${encodeURIComponent(f.id)}/export?mimeType=${encodeURIComponent('text/plain')}`, fetchImpl, { text: true }).catch(() => '') : '';
-    const name = /\.pdf$/i.test(f.name) ? f.name : `${f.name}.pdf`;
+    // A Doc's text from its HTML, which keeps each list's levels (its plain text writes every level as "1."); the plain text if that fails
+    const exported = (type) => drive(token, `/files/${encodeURIComponent(f.id)}/export?mimeType=${encodeURIComponent(type)}`, fetchImpl, { text: true }).catch(() => '');
+    const text = wantText && f.mimeType === DOC ? docHtmlText(await exported('text/html')) || await exported('text/plain') : '';
+    const name = keptName(f);
     return { name, bytes, type: 'application/pdf', text: text || (wantText ? await fileText(env, { name, bytes }) : '') };
   }
   const bytes = await drive(token, `/files/${encodeURIComponent(f.id)}?alt=media&${ALL.split('&')[0]}`, fetchImpl, { bytes: true });
@@ -198,6 +297,30 @@ async function fetchFile(env, token, f, fetchImpl, { wantText }) {
 // ─── One meeting folder ─────────────────────────────────────────────
 
 const untouched = (m) => ['the calendar', 'board email', DRIVE_BY, ''].includes(m.updatedBy || '');
+/** The name Board keeps a Drive file under (Google's own as a PDF) */
+const keptName = (f) => (!GOOGLE[f.mimeType] || /\.pdf$/i.test(f.name) ? f.name : `${f.name}.pdf`);
+/** This file filled its meeting's agenda by an older reader, nobody has changed it since, and it's to be read again once */
+const readsAgainFrom = (m, name) => m?.agendaFrom?.kind === 'drive' && readAgain(m) && stemOf(m.agendaFrom.name) === stemOf(name);
+
+/**
+ * What Board keeps of some Drive files: one copy of each document, the
+ * original over a "Copy of", a PDF (or Google's own, as one) over a Word file,
+ * then the newest. → { kept, skipped: [names with why] }
+ */
+function oneOfEach(files) {
+  const skipped = [];
+  const best = new Map();
+  const rank = (f) => (/^copy of /i.test(f.name) ? 2 : 0) + (f.mimeType === 'application/pdf' || /\.pdf$/i.test(f.name) || GOOGLE[f.mimeType] ? 0 : 1);
+  for (const f of files) {
+    const why = driveSkip(f);
+    if (why) { skipped.push(`${f.name} (${why})`); continue; }
+    const key = stemOf(f.name);
+    const b = best.get(key);
+    if (!b || rank(f) < rank(b) || (rank(f) === rank(b) && (f.modifiedTime || '') > (b.modifiedTime || ''))) best.set(key, f);
+  }
+  for (const f of files) if (!driveSkip(f) && best.get(stemOf(f.name)) !== f) skipped.push(`${f.name} (a copy of ${best.get(stemOf(f.name)).name})`);
+  return { kept: [...best.values()], skipped };
+}
 const ORDER = { minutes: 0, agenda: 1, financials: 2, packet: 3 };
 
 /**
@@ -207,17 +330,14 @@ const ORDER = { minutes: 0, agenda: 1, financials: 2, packet: 3 };
 async function bringFolder(env, { token, folder, fetchImpl, people, now }) {
   const today = todayEastern(now);
   let meetings = await listMeetings(env.DB);
-  const near = meetings.filter((m) => m.date && Math.abs(Date.parse(`${m.date}T12:00:00Z`) - Date.parse(`${folder.date}T12:00:00Z`)) <= 3 * DAY)
+  const near = meetings.filter((m) => m.date && !m.notBoard && Math.abs(Date.parse(`${m.date}T12:00:00Z`) - Date.parse(`${folder.date}T12:00:00Z`)) <= 3 * DAY)
     .sort((a, b) => Math.abs(Date.parse(a.date) - Date.parse(folder.date)) - Math.abs(Date.parse(b.date) - Date.parse(folder.date)));
   let m = near[0] || null;
-  const files = await folderFiles(token, folder.id, fetchImpl);
-  const skipped = [];
-  const wanted = [];
-  for (const f of files) {
-    const why = driveSkip(f);
-    if (why) { skipped.push(`${f.name} (${why})`); continue; }
-    wanted.push({ ...f, kind: driveKind(f.name) });
-  }
+  const files = folder.files || await folderFiles(token, folder.id, fetchImpl);
+  const { kept, skipped } = oneOfEach(files);
+  // The older years named their minutes for the meeting alone ("SOARD Board Meeting- June 13, 2018.docx")
+  const kindOf = (name) => { const k = driveKind(name); return folder.older && k === 'packet' && meetingDoc(name) ? 'minutes' : k; };
+  const wanted = kept.map((f) => ({ ...f, kind: kindOf(f.name) }));
   // A folder with nothing to bring (empty, or only photos) doesn't make a meeting of its own
   if (!m && !wanted.length) return { meetingId: null, made: false, files: 0, skipped };
   let made = false;
@@ -230,25 +350,30 @@ async function bringFolder(env, { token, folder, fetchImpl, people, now }) {
   let brought = 0;
   for (const f of wanted) {
     const row = await env.DB.prepare('SELECT * FROM board_drive WHERE drive_id = ?').bind(f.id).first();
-    if (row && row.modified === (f.modifiedTime || '') && row.meeting_id === m.id) continue;
-    const got = await fetchFile(env, token, f, fetchImpl, { wantText: f.kind === 'minutes' || f.kind === 'agenda' });
+    const textual = f.kind === 'minutes' || f.kind === 'agenda';
+    const unchanged = row && row.modified === (f.modifiedTime || '') && row.meeting_id === m.id;
+    // A file already here is read again only for the agenda an older reader filled from it (its copy stays as it is)
+    if (unchanged && !(textual && readsAgainFrom(await getMeeting(env.DB, m.id), keptName(f)))) continue;
+    const got = await fetchFile(env, token, f, fetchImpl, { wantText: textual });
     if (!got) { skipped.push(`${f.name} (over 15 MB)`); continue; }
-    const current = await getMeeting(env.DB, m.id);
-    // Changed in Drive: the old copy goes. The same file already here (board email brought it): kept, not doubled
-    if (row?.board_file_id) await deleteFile(env, row.board_file_id);
-    const same = current.files.find((x) => x.name === got.name && x.size === got.bytes.byteLength && x.id !== row?.board_file_id);
-    let fileId = same?.id || '';
-    if (!same) {
-      try {
-        fileId = (await putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([got.bytes], got.name, { type: got.type }), kind: f.kind, staffOnly: false, by: DRIVE_BY })).id;
-      } catch (err) {
-        if (err.status === 415 || err.status === 413) { skipped.push(`${f.name} (${err.status === 415 ? 'not a kind of file Board keeps' : 'too big'})`); continue; }
-        throw err;
+    if (!unchanged) {
+      const current = await getMeeting(env.DB, m.id);
+      // Changed in Drive: the old copy goes. The same document already here (board email or another copy in Drive brought it): kept, not doubled
+      if (row?.board_file_id) await deleteFile(env, row.board_file_id);
+      const same = current.files.find((x) => stemOf(x.name) === stemOf(got.name) && x.id !== row?.board_file_id);
+      let fileId = same?.id || '';
+      if (!same) {
+        try {
+          fileId = (await putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([got.bytes], got.name, { type: got.type }), kind: f.kind, staffOnly: false, by: DRIVE_BY })).id;
+        } catch (err) {
+          if (err.status === 415 || err.status === 413) { skipped.push(`${f.name} (${err.status === 415 ? 'not a kind of file Board keeps' : 'too big'})`); continue; }
+          throw err;
+        }
       }
+      await env.DB.prepare('INSERT OR REPLACE INTO board_drive (drive_id, meeting_id, board_file_id, modified, name, folder_id, at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(f.id, m.id, fileId, f.modifiedTime || '', got.name, folder.id, new Date(now).toISOString()).run();
+      brought += 1;
     }
-    await env.DB.prepare('INSERT OR REPLACE INTO board_drive (drive_id, meeting_id, board_file_id, modified, name, folder_id, at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(f.id, m.id, fileId, f.modifiedTime || '', got.name, folder.id, new Date(now).toISOString()).run();
-    brought += 1;
     // What the minutes (or the agenda) say: who was there, the sections and notes, approved once a later meeting exists
     if ((f.kind === 'minutes' || f.kind === 'agenda') && got.text) {
       const parsed = parseAgendaText(got.text, people);
@@ -258,15 +383,140 @@ async function bringFolder(env, { token, folder, fetchImpl, people, now }) {
       await patchMeeting(env.DB, m.id, (cur) => {
         const next = { ...cur };
         if (who.length && !cur.attendance.some((p) => p.status)) next.attendance = who;
-        if (enough && agendaIsDraft(cur)) Object.assign(next, { sections: parsed.sections, agendaFrom: { kind: 'drive', name: got.name, at: new Date(now).toISOString() } });
+        // An empty or drafted agenda, or one an older reader filled from this file (read again once, kept as it was if it reads no better)
+        const again = readsAgainFrom(cur, got.name);
+        if (enough && (agendaIsDraft(cur) || again)) Object.assign(next, { sections: parsed.sections, agendaFrom: { kind: 'drive', name: got.name, at: new Date(now).toISOString(), v: AGENDA_READER } });
+        else if (again) next.agendaFrom = { ...cur.agendaFrom, v: AGENDA_READER };
         if (f.kind === 'minutes' && later && untouched(cur) && cur.minutes !== 'approved') Object.assign(next, { minutes: 'approved', approvedOn: later.date <= today ? later.date : today });
         return next;
       });
     }
   }
+  // An agenda an older reader filled from this folder that wasn't read again (its file is gone or renamed): kept, not tried again
+  // (and one this folder filled before that it now goes past, so it's never waited on)
+  const filled = ((await env.DB.prepare('SELECT DISTINCT meeting_id FROM board_drive WHERE folder_id = ?').bind(folder.id).all()).results || []).map((r) => r.meeting_id);
+  for (const id of new Set([m.id, ...filled])) {
+    const x = await getMeeting(env.DB, id);
+    if (x?.agendaFrom?.kind === 'drive' && readAgain(x)) await patchMeeting(env.DB, id, (cur) => (readAgain(cur) ? { ...cur, agendaFrom: { ...cur.agendaFrom, v: AGENDA_READER } } : cur));
+  }
   // The board's own packet and minutes: a past meeting nobody here worked on goes on the board page
   if (brought || made) await patchMeeting(env.DB, m.id, (cur) => (untouched(cur) && cur.date < today && !cur.shared ? { ...cur, shared: true } : cur));
   return { meetingId: m.id, made, files: brought, skipped };
+}
+
+// ─── Bylaws and SOARD's papers, for Documents ───────────────────────
+
+/**
+ * SOARD's own papers, wherever the shared drive keeps them, by what each one's
+ * name says (`terms` find it in Drive). The founding papers don't change: the
+ * cleanest copy, the one filed. The rest are renewed (`newest`). An EIN or a
+ * W-9 must name SOARD: Drive holds vendors' and other companies' too
+ */
+export const PAPERS = [
+  { slot: 'articles', title: 'Articles of Incorporation', re: /articles of incorporation/i, terms: ['Articles of Incorporation'] },
+  { slot: 'amendment', title: 'Articles of Amendment', re: /articles of amendment/i, terms: ['Articles of Amendment'] },
+  { slot: 'irs-letter', title: 'IRS 501(c)(3) determination letter', re: /letter of determination|determination letter/i, terms: ['Letter of Determination', 'Determination Letter'] },
+  { slot: 'ein', title: 'EIN letter', re: /\bEIN\b/, not: /401\s*\(?k/i, soard: true, newest: true, terms: ['EIN'] },
+  { slot: 'w9', title: 'W-9', re: /\bW-?9\b/i, soard: true, newest: true, terms: ['W9', 'W-9'] },
+  { slot: 'charity-permit', title: 'Charitable Organization Permit', re: /charitable organization (permit|registration)/i, newest: true, terms: ['Charitable Organization'] },
+  { slot: 'dno', title: 'D&O insurance', re: /\bD\s?&\s?O\b|directors (and|&) officers/i, newest: true, terms: ['D&O', 'Insurance', 'Directors'] },
+];
+const SOARD_NAME = /soard|sunshine/i;
+const paperOf = (name) => PAPERS.find((p) => p.re.test(name) && !p.not?.test(name) && (!p.soard || SOARD_NAME.test(name))) || null;
+// Never a draft or a markup of one
+const NOT_FINAL = /^copy of\b|redline|\bdraft\b/i;
+/** The latest year a paper's name gives ("2026 W9", "24-25 D&O"), else 0 */
+export function nameYear(name) {
+  const s = String(name || '');
+  const years = [...s.matchAll(/\b((?:19|20)\d{2})\b/g)].map((m) => Number(m[1]));
+  const span = s.match(/\b(\d{2})\s*[-–]\s*(\d{2})\b/);
+  if (span && Number(span[2]) === Number(span[1]) + 1) years.push(2000 + Number(span[2]));
+  return years.length ? Math.max(...years) : 0;
+}
+
+/** Which Documents entry a Drive file fills: one of SOARD's papers, else the board manual's own by its name (years aside) */
+export function docSlot(name) {
+  const p = paperOf(name);
+  if (p) return p.slot;
+  return `manual:${stemOf(name).replace(/\b(19|20)\d{2}\b/g, '').replace(/\s+/g, ' ').trim()}`;
+}
+/** A document's title from its file name: "SunShine on a Ranney Day, Inc._Board Manual with Policies .pdf" → "SunShine on a Ranney Day, Inc. Board Manual with Policies" */
+export const docTitle = (name) => String(name || '').replace(/(\s*\(\d+\)|\.(docx?|pdf|xlsx?|pptx?|rtf|txt|csv))+\s*$/i, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+export const docKind = (name) => (/bylaw|by-law|articles|determination|incorporat|charter/i.test(name) ? 'governance' : /polic|manual|handbook|conflict|whistle|retention|code of/i.test(name) ? 'policy' : 'other');
+
+/**
+ * The papers Documents gets from Drive → [{ slot, title, kind, year, file }]:
+ * the newest "2026 Board Manual" folder's own files, then SOARD's papers it
+ * doesn't hold, one copy of each from the shared drive
+ */
+async function papers(token, root, fetchImpl) {
+  const { driveId } = await drive(token, `/files/${encodeURIComponent(root)}?fields=driveId&${ALL.split('&')[0]}`, fetchImpl);
+  const where = driveId ? `corpora=drive&driveId=${encodeURIComponent(driveId)}` : 'corpora=user';
+  const manuals = (await listFiles(token, `name contains 'Board Manual' and mimeType = '${FOLDER}' and trashed = false`, fetchImpl, where))
+    .map((f) => ({ ...f, year: Number((f.name.trim().match(/^(\d{4}) board manual$/i) || [])[1] || 0) })).filter((f) => f.year)
+    .sort((a, b) => b.year - a.year || String(b.modifiedTime || '').localeCompare(String(a.modifiedTime || '')));
+  const manual = manuals[0] || null;
+  const out = new Map();
+  if (manual) {
+    const { kept } = oneOfEach((await children(token, manual.id, fetchImpl)).filter((f) => f.mimeType !== FOLDER && !NOT_FINAL.test(f.name)));
+    for (const f of kept) {
+      const slot = docSlot(f.name);
+      const paper = paperOf(f.name);
+      if (!out.has(slot)) out.set(slot, { slot, title: paper ? paper.title : docTitle(f.name), kind: paper ? 'governance' : docKind(f.name), year: paper ? null : manual.year, file: f });
+    }
+  }
+  const missing = PAPERS.filter((p) => !out.has(p.slot));
+  if (missing.length) {
+    const terms = [...new Set(missing.flatMap((p) => p.terms))].map((t) => `name contains '${t.replace(/'/g, "\\'")}'`).join(' or ');
+    const found = (await listFiles(token, `(${terms}) and mimeType != '${FOLDER}' and trashed = false`, fetchImpl, where)).filter((f) => !NOT_FINAL.test(f.name) && !driveSkip(f));
+    // The cleanest copy: no "(2)", no "3-" from a grant's attachments, a PDF
+    const rank = (f) => (/\(\d+\)/.test(f.name) ? 2 : 0) + (/^\s*\d+\s*[-.]/.test(f.name) ? 2 : 0) + (/\.pdf$/i.test(f.name) || f.mimeType === 'application/pdf' ? 0 : 1);
+    const at = (f) => String(f.modifiedTime || '');
+    // Newest: the latest year its name or its last change gives, a dated name over an undated one, then the cleanest
+    const when = (f) => Math.max(nameYear(f.name), Number(at(f).slice(0, 4)) || 0);
+    const newest = (a, b) => when(b) - when(a) || Number(!!nameYear(b.name)) - Number(!!nameYear(a.name)) || rank(a) - rank(b) || at(b).localeCompare(at(a));
+    // The one filed: the cleanest, then the oldest
+    const filed = (a, b) => rank(a) - rank(b) || String(a.createdTime || a.modifiedTime || '').localeCompare(String(b.createdTime || b.modifiedTime || '')) || a.name.localeCompare(b.name);
+    for (const p of missing) {
+      const best = found.filter((f) => paperOf(f.name) === p).sort(p.newest ? newest : filed)[0];
+      if (best) out.set(p.slot, { slot: p.slot, title: p.title, kind: 'governance', year: null, file: best });
+    }
+  }
+  return { manual: manual?.name || '', list: [...out.values()] };
+}
+
+/** One paper onto its Documents entry (made the first time; a newer copy replaces the file) → 1 when a file came in */
+async function bringPaper(env, { token, paper, fetchImpl, now }) {
+  const { slot, title, kind, year, file } = paper;
+  const row = await env.DB.prepare('SELECT * FROM board_drive_docs WHERE slot = ?').bind(slot).first();
+  if (row && row.drive_id === file.id && row.modified === (file.modifiedTime || '')) return 0;
+  const doc = row?.doc_id ? await env.DB.prepare('SELECT data FROM board_docs WHERE id = ?').bind(row.doc_id).first() : null;
+  // Taken out in Board: it stays out
+  if (row?.doc_id && !doc) return 0;
+  const got = await fetchFile(env, token, file, fetchImpl, { wantText: false });
+  if (!got) return 0;
+  let docId = row?.doc_id;
+  if (doc) {
+    // A newer year's copy: the document is that year's now (its title, sharing and signing are Board's)
+    const cur = cleanDoc(JSON.parse(doc.data));
+    if (year && cur.year !== year) await saveDoc(env.DB, { ...cur, year });
+  } else {
+    docId = (await saveDoc(env.DB, { title, kind, year, shared: true })).id;
+  }
+  const put = await putFile(env, { ownerType: 'doc', ownerId: docId, file: new File([got.bytes], got.name, { type: got.type }), by: DRIVE_BY });
+  if (row?.board_file_id) await deleteFile(env, row.board_file_id).catch(() => {});
+  await env.DB.prepare('INSERT OR REPLACE INTO board_drive_docs (slot, doc_id, drive_id, board_file_id, modified, name, at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(slot, docId, file.id, put.id, file.modifiedTime || '', got.name, new Date(now).toISOString()).run();
+  return 1;
+}
+
+/** The papers onto Documents → { checkedAt, manual (the folder read), count (documents from Drive), brought, missing: [titles not found] } */
+async function readPapers(env, { token, root, fetchImpl, now }) {
+  const { manual, list } = await papers(token, root, fetchImpl);
+  let brought = 0;
+  for (const paper of list) brought += await bringPaper(env, { token, paper, fetchImpl, now });
+  const ids = ((await env.DB.prepare("SELECT d.id FROM board_drive_docs x JOIN board_docs d ON d.id = x.doc_id").all()).results || []).length;
+  return { checkedAt: new Date(now).toISOString(), manual, count: ids, brought, missing: PAPERS.filter((p) => !list.some((x) => x.slot === p.slot)).map((p) => p.title) };
 }
 
 // ─── A look ─────────────────────────────────────────────────────────
@@ -316,7 +566,7 @@ export async function readBoardDrive(env, { fetchImpl = fetch, now = Date.now(),
         errors.push(`${a.split('@')[0]} can’t open the Drive folder: ${String(err.message).slice(0, 160)}`);
       }
     }
-    const base = { version: VERSION, configured: true, root, checkedAt: new Date(now).toISOString(), read: 0 };
+    const base = { version: VERSION, reader: AGENDA_READER, configured: true, root, checkedAt: new Date(now).toISOString(), read: 0 };
     if (!token) {
       return await writeState(env.DB, KEY, { ...base, ok: false, needsScope: needsScope && !apiOff, apiOff, folders: last.folders || 0, backlog: 0, ...(await totals(env.DB)), errors: errors.slice(0, 10) });
     }
@@ -324,12 +574,15 @@ export async function readBoardDrive(env, { fetchImpl = fetch, now = Date.now(),
     const done = await readState(env.DB, DONE);
     const fresh = done.version === VERSION && done.root === root && done.walkedAt && now - Date.parse(done.walkedAt) < HOUR;
     const folders = fresh ? done.folders : await meetingFolders(token, root, fetchImpl);
-    const seen = done.version === VERSION && done.root === root ? { ...(done.seen || {}) } : {};
+    // (an upgrade walks again for meetings it missed, but doesn't read again the folders it read)
+    const seen = done.root === root ? { ...(done.seen || {}) } : {};
     const today = todayEastern(now);
     const past = folders.filter((f) => f.date < today);
     // First the folders never read; then, hourly, the recent ones again (minutes come in after the meeting)
     const todo = past.filter((f) => !seen[f.id]);
-    const again = past.filter((f) => seen[f.id] && now - Date.parse(`${f.date}T12:00:00Z`) < RECENT_MS && now - Date.parse(seen[f.id]) >= HOUR);
+    // (and, once, those whose meeting's agenda an older reader filled: board-shared.js readAgain)
+    const stale = await staleFolders(env.DB);
+    const again = past.filter((f) => seen[f.id] && (stale.has(f.id) || (now - Date.parse(`${f.date}T12:00:00Z`) < RECENT_MS && now - Date.parse(seen[f.id]) >= HOUR)));
     const people = (await peopleRows(env.DB)).filter((p) => p.group === 'board').map((p) => ({ slug: p.slug, name: p.name, org: p.organization || '', kind: 'board' }))
       .concat((await roster(env.DB)).staff.map((p) => ({ slug: p.slug, name: p.name, org: 'SOARD', kind: 'staff' })));
     let read = 0;
@@ -348,8 +601,14 @@ export async function readBoardDrive(env, { fetchImpl = fetch, now = Date.now(),
     }
     await writeState(env.DB, DONE, { version: VERSION, root, admin, walkedAt: fresh ? done.walkedAt : new Date(now).toISOString(), folders, seen });
     const backlog = past.filter((f) => !seen[f.id]).length;
+    // Documents' papers: hourly, once the meetings are read (and after an upgrade)
+    let docs = last.docs || null;
+    if (!backlog && (last.version !== VERSION || !docs?.checkedAt || now - Date.parse(docs.checkedAt) >= HOUR)) {
+      try { docs = await readPapers(env, { token, root, fetchImpl, now }); } catch (err) { errors.push(`Documents: ${String(err.message).slice(0, 200)}`); }
+    }
+    const staleLeft = [...(await staleFolders(env.DB))].filter((id) => past.some((f) => f.id === id)).length;
     return await writeState(env.DB, KEY, {
-      ...base, ok: !errors.length, needsScope: false, apiOff: false, folders: folders.length, read, brought: filesNow, backlog,
+      ...base, ok: !errors.length, needsScope: false, apiOff: false, folders: folders.length, read, brought: filesNow, backlog, stale: staleLeft, docs,
       ...(await totals(env.DB)), errors: errors.slice(0, 10),
     });
   } finally {
@@ -358,6 +617,14 @@ export async function readBoardDrive(env, { fetchImpl = fetch, now = Date.now(),
 }
 
 export const driveStatus = (DB) => readState(DB, KEY);
+
+/** The folders whose meeting has an agenda an older reader filled from Drive, nobody's changed since (each read again once) */
+async function staleFolders(DB) {
+  const ids = new Set((await listMeetings(DB)).filter((m) => m.agendaFrom?.kind === 'drive' && readAgain(m)).map((m) => m.id));
+  if (!ids.size) return new Set();
+  const rows = (await DB.prepare('SELECT DISTINCT folder_id, meeting_id FROM board_drive').all()).results || [];
+  return new Set(rows.filter((r) => ids.has(r.meeting_id)).map((r) => r.folder_id));
+}
 
 /**
  * On the heartbeat: every minute while meeting folders are still to read,
@@ -370,10 +637,11 @@ export async function maybeReadBoardDrive(env, { fetchImpl = fetch, now = Date.n
     if (!env.DB || !env.GOOGLE_CALENDAR_KEY) return { busy: false };
     await ensureDrive(env.DB);
     const st = await readState(env.DB, KEY);
-    const due = st.version !== VERSION || st.backlog > 0 || !st.checkedAt || now - Date.parse(st.checkedAt) >= minAgeMs;
+    // (and every minute while agendas an older reader filled are still to read again)
+    const due = st.version !== VERSION || st.backlog > 0 || st.stale > 0 || st.reader !== AGENDA_READER || !st.checkedAt || now - Date.parse(st.checkedAt) >= minAgeMs;
     if (!due) return { busy: false };
     const r = await readBoardDrive(env, { fetchImpl, now });
-    return { busy: (r?.read || 0) > 0 && ((r?.brought || 0) > 0 || (r?.backlog || 0) > 0) };
+    return { busy: (r?.read || 0) > 0 && ((r?.brought || 0) > 0 || (r?.backlog || 0) > 0 || (r?.stale || 0) > 0) };
   } catch (err) {
     console.error('[board-drive]', err.message);
     return { busy: false };

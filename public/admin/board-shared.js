@@ -209,6 +209,9 @@ export function cleanMeeting(raw = {}) {
     address: one(raw.address, 300),
     video: httpUrl(raw.video),
     shared: bool(raw.shared),
+    // The calendar brought it in, but it isn't a board meeting (a coffee, a reminder, another organization's
+    // board): off the board page until someone shares it (functions/api/_board-calendar.js)
+    notBoard: bool(raw.notBoard),
     minutes: raw.minutes === 'approved' ? 'approved' : 'draft',
     approvedOn: raw.minutes === 'approved' ? date(raw.approvedOn) : '',
     attendance,
@@ -247,7 +250,7 @@ export function cleanMeeting(raw = {}) {
       replies: cleanReplies(raw.invite.replies),
     } : null,
     agendaFrom: raw.agendaFrom && typeof raw.agendaFrom === 'object' && AGENDA_FROM.includes(raw.agendaFrom.kind)
-      ? { kind: raw.agendaFrom.kind, name: one(raw.agendaFrom.name, 200), at: one(raw.agendaFrom.at, 40) } : null,
+      ? { kind: raw.agendaFrom.kind, name: one(raw.agendaFrom.name, 200), at: one(raw.agendaFrom.at, 40), ...(Number(raw.agendaFrom.v) > 0 ? { v: Math.round(Number(raw.agendaFrom.v)) } : {}) } : null,
     // Who Google Meet saw join (functions/api/_board-attendance.js): server-set
     fromMeet: raw.fromMeet && typeof raw.fromMeet === 'object' && one(raw.fromMeet.at, 40) ? {
       at: one(raw.fromMeet.at, 40), status: ['ok', 'none', 'needs-setup', 'error'].includes(raw.fromMeet.status) ? raw.fromMeet.status : 'error', error: one(raw.fromMeet.error, 300),
@@ -262,6 +265,14 @@ export function cleanMeeting(raw = {}) {
 }
 /** Where an agenda can come from (cleanMeeting's agendaFrom) */
 export const AGENDA_FROM = ['template', 'last-meeting', 'email', 'drive', 'typed'];
+/**
+ * Which agenda reader filled an agenda from a file (agendaFrom.v; none is 1).
+ * 2: indents and bullets, Google Docs read from their HTML (nested points no
+ * longer come out as dozens of items). An older reading of Drive or email is
+ * read again once, while nobody has changed it.
+ */
+export const AGENDA_READER = 2;
+export const readAgain = (m) => ['drive', 'email'].includes(m?.agendaFrom?.kind) && (m.agendaFrom.v || 1) < AGENDA_READER;
 /** Sections that are the usual outline, untouched: its section and item names, no presenters or notes */
 const isOutline = (sections, template = DEFAULT_TEMPLATE) => sections.length === template.length && sections.every((s, i) => s.title === template[i].title
   && s.items.length === (template[i].items || []).length
@@ -455,10 +466,19 @@ function headerTime(text) {
  * `people` ([{ slug, name, org, kind }]) by name; a presenter in brackets
  * after an item ("Governance (Paul/Travis/Scott)") is kept when the names
  * are people's first names.
+ * When the text keeps its indents (a Google Doc, a Word file: every list
+ * level can come out as "1."), the indent decides instead: the first numbered
+ * line under a section sets where items sit, anything further in is a point,
+ * and "-", "*", "•" bullets count as points too.
  * → { date, start, end, location, attendance, sections, unmatched: [lines] }
  */
 export function parseAgendaText(text, people = []) {
-  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\u00a0/g, ' ').trim());
+  const raw = String(text || '').replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\u00a0/g, ' ').replace(/\t/g, '    '));
+  // (a printed page's footer can run onto the end of a line: "OPEN FORUM | Page")
+  const lines = raw.map((l) => l.trim().replace(/\s*\|\s*P\s*a\s*g\s*e(\s*\d+)?$/i, ''));
+  const indents = raw.map((l) => l.length - l.trimStart().length);
+  // Indents mean something only when some numbered or bulleted line has one
+  const indented = lines.some((l, i) => indents[i] > 0 && (LIST_MARK.test(l) || BULLET.test(l)));
   const all = lines.join('\n');
   const out = { date: headerDate((all.match(/DATE[^\n]*/i) || [all])[0]) || headerDate(all), ...headerTime(all), location: '', attendance: [], sections: [], unmatched: [] };
   const loc = all.match(/LOCATION\s+(.+?)(?:\s{2,}|\s+TIME\b|\n|$)/i);
@@ -479,8 +499,10 @@ export function parseAgendaText(text, people = []) {
   let section = null;
   let item = null;
   let itemNo = 0;
-  let levels = []; // the points open under the item, outermost first: [kind ('a' | 'i' | '1'), value]
+  let levels = []; // the points open under the item, outermost first: [kind ('a' | 'i' | '1' | '-'), value]
   let inHeader = true;
+  let base = null; // with indents: how far in this section's items sit
+  let deeper = []; // with indents: the indents of the points open under the item, outermost first
   const newItem = (title) => {
     item = { id: uid('i_'), title: title.trim(), presenter: '', notes: '', staffNote: '', confidential: false, live: '' };
     const who = item.title.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
@@ -488,24 +510,28 @@ export function parseAgendaText(text, people = []) {
     if (!section) { section = { id: uid('s_'), title: '', items: [] }; out.sections.push(section); }
     section.items.push(item);
     levels = [];
+    deeper = [];
+  };
+  const note = (depth, body) => {
+    if (!item) newItem('');
+    item.notes += `${item.notes ? '\n' : ''}${'  '.repeat(depth - 1)}- ${body.trim()}`;
   };
   const point = (kind, value, body) => {
     const at = levels.findIndex((l) => l[0] === kind);
     if (at >= 0) levels = levels.slice(0, at);
     else if (kind === 'a') levels = [];
     levels.push([kind, value]);
-    if (!item) newItem('');
-    item.notes += `${item.notes ? '\n' : ''}${'  '.repeat(levels.length - 1)}- ${body.trim()}`;
+    note(levels.length, body);
   };
-  for (const line of lines) {
-    if (!line || /^\d+\s*\|\s*P\s*a\s*g\s*e$/i.test(line) || /^page \d+( of \d+)?$/i.test(line)) continue;
+  for (const [i, line] of lines.entries()) {
+    if (!line || isFooter(line)) continue;
     // A section: "1. CALL TO ORDER"
     const sec = line.match(/^(\d{1,2})\.\s*(.+)$/);
     if (sec && sec[2] === sec[2].toUpperCase() && /[A-Z]{3}/.test(sec[2])) {
       inHeader = false;
       section = { id: uid('s_'), title: sentenceCase(sec[2].trim()), items: [] };
       out.sections.push(section);
-      item = null; itemNo = 0; levels = [];
+      item = null; itemNo = 0; levels = []; base = null; deeper = [];
       continue;
     }
     if (inHeader) {
@@ -516,8 +542,28 @@ export function parseAgendaText(text, people = []) {
       for (const seg of parts.slice(1)) attend(seg.trim(), true);
       continue;
     }
-    const m = line.match(/^(\d{1,2}|[a-z]{1,4})\.\s*(.+)$/i);
+    const m = line.match(LIST_MARK);
     const mark = m && (/^\d+$/.test(m[1]) || m[1].length === 1 || ROMAN.test(m[1])) ? m[1] : null;
+    const bullet = !mark && (line.match(BULLET) || (indented && indents[i] > 0 && line.match(/^(o)\s+(.+)$/)));
+    if (indented && (mark || bullet)) {
+      // By the indent: as far in as this section's first item (or less) is an item, further in is a point
+      const at = indents[i];
+      const body = (mark ? m : bullet)[2];
+      if (base === null || at <= base || !item) {
+        if (base === null || at < base) base = at;
+        newItem(body);
+        continue;
+      }
+      while (deeper.length && deeper.at(-1) > at) deeper.pop();
+      if (deeper.at(-1) !== at) deeper.push(at);
+      note(deeper.length, body);
+      continue;
+    }
+    if (bullet) {
+      // A bullet with no indents to go by: a point under the item, one level down from a lettered one
+      if (item) point('-', 0, bullet[2]); else newItem(bullet[2]);
+      continue;
+    }
     if (!mark) {
       // A line that carries on from the one before it
       if (item?.notes) item.notes += ` ${line}`;
@@ -545,9 +591,85 @@ export function parseAgendaText(text, people = []) {
     }
     point(kind, kind === 'i' ? romanValue(mark) : letterValue(mark), body);
   }
-  out.sections = out.sections.map((s) => ({ ...s, items: s.items.filter((it) => it.title || it.notes) })).filter((s) => s.title || s.items.length);
+  // A page footer run into the line before it ("Open forum | Page")
+  const unfoot = (s) => s.replace(/\s*\|\s*P\s*a\s*g\s*e(\s*\d+)?\s*$/i, '').trim();
+  out.sections = out.sections.map((s) => ({ ...s, title: unfoot(s.title), items: s.items.map((it) => ({ ...it, title: unfoot(it.title), notes: unfoot(it.notes) })).filter((it) => it.title || it.notes) }))
+    .filter((s) => s.title || s.items.length);
+  // Nobody marked there (an agenda printed before the meeting): who came isn't recorded, not "everyone was away"
+  if (out.attendance.length && out.attendance.every((a) => a.status === 'absent')) out.attendance = [];
   return out;
 }
+
+// "1. Item", "a. Point", "iv. Point"; bullets "- ", "* ", "• " and the like
+const LIST_MARK = /^(\d{1,2}|[a-z]{1,4})\.\s*(.+)$/i;
+const BULLET = /^([-*•◦▪●○■□–➢►])\s+(.+)$/;
+// "3 | Page", "| Page", "Page | 3", "Page 3", "Page 3 of 9": a printed page's footer
+const isFooter = (line) => /^(\d+\s*)?\|\s*P\s*a\s*g\s*e(\s*\d+)?$/i.test(line) || /^P\s*a\s*g\s*e\s*\|\s*\d*$/i.test(line) || /^page \d+( of \d+)?$/i.test(line);
+
+/**
+ * A Google Doc as Drive exports it (text/html) as the lines an agenda reads
+ * from, the way docxText reads a Word file: a table row on one line (its
+ * cells in order), each paragraph, and each list item with its number,
+ * three spaces in for each level of its list (Docs names a list's level in
+ * its class: "lst-kix_list_34-2" is level 2). Docs' own plain text loses
+ * the levels, so a minutes outline would come out flat.
+ */
+export function docHtmlText(html) {
+  const s = String(html || '');
+  // Comments and footnotes: their markers ("[a]", "[1]") and their text at the end aren't the agenda
+  const body = ((s.match(/<body\b[^>]*>([\s\S]*)<\/body>/i) || [])[1] ?? s)
+    .replace(/<sup\b[^>]*>\s*<a\b[^>]*href="#(cmnt|ftnt)\d+"[^>]*>[\s\S]*?<\/a>\s*<\/sup>/gi, '')
+    .replace(/<div\b[^>]*>\s*<p\b[^>]*>\s*<a\b[^>]*id="(cmnt|ftnt)\d+"[\s\S]*?<\/div>/gi, '');
+  const lines = [];
+  const counters = {}; // list id → the number at each level
+  let row = null; // the open table row's cells
+  let cell = null; // the open cell's paragraphs
+  let text = null; // the open paragraph or list item
+  let list = null; // { id, level, bullet }
+  const done = (t) => { if (!t) return; if (cell) cell.push(t); else lines.push(t); };
+  for (const [, close, tag, attrs, chunk] of body.matchAll(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>|([^<]+)/g)) {
+    if (chunk !== undefined) { if (text !== null) text += htmlEntities(chunk); continue; }
+    const t = tag.toLowerCase();
+    if (t === 'br') { if (text !== null) text += ' '; continue; }
+    if (t === 'style' || t === 'script') continue;
+    if (t === 'tr') { if (close) { const line = (row || []).filter(Boolean).join(' '); if (line) lines.push(line); row = null; } else row = []; continue; }
+    if (t === 'td' || t === 'th') { if (close) { if (row) row.push((cell || []).join(' ')); cell = null; } else cell = []; continue; }
+    if (t === 'ol' || t === 'ul') {
+      if (close) { list = null; continue; }
+      const kix = attrs.match(/lst-kix_([\w-]+?)-(\d+)\b/);
+      list = { id: kix ? kix[1] : `l${lines.length}`, level: kix ? Number(kix[2]) : 0, bullet: t === 'ul' };
+      const c = (counters[list.id] ||= []);
+      const start = attrs.match(/\bstart="(\d+)"/);
+      if (start && /\bstart\b/.test((attrs.match(/class="([^"]*)"/) || [])[1] || '')) c[list.level] = Number(start[1]) - 1;
+      continue;
+    }
+    if (t === 'li') {
+      if (!close) { text = ''; continue; }
+      const words = (text || '').replace(/\s+/g, ' ').trim();
+      text = null;
+      if (!words) continue;
+      const lv = list?.level || 0;
+      const c = list ? (counters[list.id] ||= []) : [];
+      c[lv] = (c[lv] || 0) + 1;
+      c.length = lv + 1;
+      const line = `${'   '.repeat(lv)}${list?.bullet ? '-' : `${c[lv]}.`} ${words}`;
+      // A list item in a table cell (a section's shaded bar) is its own line
+      if (cell) lines.push(line.trim()); else lines.push(line);
+      continue;
+    }
+    if (/^(p|h[1-6])$/.test(t)) {
+      if (!close) { if (text === null) text = ''; continue; }
+      if (list) continue; // a paragraph inside a list item
+      done((text || '').replace(/\s+/g, ' ').trim());
+      text = null;
+    }
+  }
+  return lines.join('\n');
+}
+const NAMED_ENTITIES = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: '’', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', ndash: '–', mdash: '—', hellip: '…', bull: '•' };
+const htmlEntities = (s) => s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e) => (e[0] === '#'
+  ? String.fromCodePoint(e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1)))
+  : NAMED_ENTITIES[e.toLowerCase()] ?? all));
 
 // ─── What a live item says ──────────────────────────────────────────
 
@@ -762,7 +884,8 @@ export async function docxText(bytes) {
     if (!text) continue;
     const numId = (block.match(/<w:numId w:val="(\d+)"/) || [])[1];
     const ilvl = Number((block.match(/<w:ilvl w:val="(\d+)"/) || [])[1] || 0);
-    lines.push(numId && numId !== '0' ? `${marker(numId, ilvl)} ${text}` : text);
+    // Each list level three spaces further in, so the agenda rules can tell an item from a point under it
+    lines.push(numId && numId !== '0' ? `${'   '.repeat(ilvl)}${marker(numId, ilvl)} ${text}` : text);
   }
   return lines.join('\n');
 }

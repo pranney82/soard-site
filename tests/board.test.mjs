@@ -21,7 +21,7 @@ import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes } from '
 import * as rsvpPage from '../functions/api/board-rsvp.js';
 import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft } from '../public/admin/board-shared.js';
+import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
 const TEAM = 'soard';
@@ -616,6 +616,53 @@ test('the calendar makes the meetings: added, moved, linked to one added by hand
   assert.equal(google.writes, 0, 'never writes to a calendar');
 });
 
+test('coffees, reminders and other organizations’ boards aren’t board meetings', () => {
+  const board = ['a@example.com', 'b@example.com', 'c@example.com'];
+  for (const t of ['SOARD Board Meeting', 'Q2 SOARD Board Meeting', 'Q4 SOARD Board Meeting', 'SOARD Staff end of Board Meeting', 'Q3 SOARD Board Meeting (Reschedule)', 'Annual Board Meeting', 'Sunshine on a Ranney Day Board Meeting']) {
+    assert.equal(isBoardMeetingEvent({ summary: t }), true, t);
+  }
+  for (const t of ['Pat Sample- Coffee (Potential SOARD Board)', 'Coffee- SOARD with Kim Example (Example Windows) TBD on board members', 'get Sam all docs for board meeting', 'Send board packet',
+    'Example Rotary Full Board Meeting', 'Example, Inc. - Board Meeting', 'Example School Board meeting', 'Board Wine Night', 'Q1 SOARD Board Meeting Prep']) {
+    assert.equal(isBoardMeetingEvent({ summary: t }), false, t);
+  }
+  const invited = { attendees: board.map((email) => ({ email: email.toUpperCase() })) };
+  assert.equal(isBoardMeetingEvent({ summary: 'Example Rotary Board Meeting', ...invited }, board), true, 'another name, but SOARD’s board is invited');
+  assert.equal(isBoardMeetingEvent({ summary: 'Board coffee', ...invited }, board), false, 'a coffee stays a coffee');
+});
+
+test('meetings older rules brought in from coffees and reminders come off the board page, their files onto the meeting they were near; sharing one again keeps it', async () => {
+  const { putFile } = await import('../functions/api/_board.js');
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  const pdf = new TextEncoder().encode('%PDF-1.4\n%fake\n');
+  // What older rules brought in: a coffee three days from the Q4 meeting (shared: its email went to the board), and a reminder far from any
+  const coffee = await saveMeeting(env.DB, cleanMeeting({ date: day(63), title: 'Pat Sample- Coffee (Potential SOARD Board)', shared: true, calendar: { uid: 'coffee@google.com', title: 'Pat Sample- Coffee (Potential SOARD Board)', from: FOUNDER } }), { by: 'the calendar' });
+  await putFile(env, { ownerType: 'meeting', ownerId: coffee.id, file: new File([pdf], '2026 Operational Budget.pdf', { type: 'application/pdf' }), kind: 'financials', by: 'board email' });
+  const todo = await saveMeeting(env.DB, cleanMeeting({ date: day(120), shared: true, calendar: { uid: 'todo@google.com', title: 'get Sam all docs for board meeting', from: FOUNDER } }), { by: 'the calendar' });
+  const cal = { [FOUNDER]: [
+    ev('q4', 'Q4 SOARD Board Meeting', `${day(60)}T13:00:00Z`, `${day(60)}T15:00:00Z`),
+    ev('coffee', 'Pat Sample- Coffee (Potential SOARD Board)', `${day(63)}T13:00:00Z`, `${day(63)}T14:00:00Z`),
+    ev('todo', 'get Sam all docs for board meeting', `${day(120)}T13:00:00Z`, `${day(120)}T13:30:00Z`),
+    ev('other', 'Example Rotary Full Board Meeting', `${day(30)}T22:00:00Z`, `${day(30)}T23:00:00Z`),
+  ] };
+  const google = fakeGoogle(cal);
+  const r = await syncBoardCalendar(env);
+  assert.deepEqual([r.ok, r.notBoard, r.added], [true, 2, 1], 'only the Q4 meeting is added; the two older ones are marked');
+  const all = await listMeetings(env.DB);
+  const q4 = all.find((m) => m.calendar?.uid === 'q4@google.com');
+  const was = all.find((m) => m.id === coffee.id);
+  assert.deepEqual([was.notBoard, was.shared, was.files.length], [true, false, 0], 'kept, marked and unshared, never deleted');
+  assert.deepEqual(q4.files.map((f) => f.name), ['2026 Operational Budget.pdf'], 'its file moved to the board meeting three days away');
+  assert.deepEqual([all.find((m) => m.id === todo.id).notBoard, all.find((m) => m.id === todo.id).shared], [true, false]);
+  assert.equal(all.some((m) => /Rotary/.test(m.calendar?.title || '')), false, 'another organization’s board never comes in');
+  assert.equal((await portalApi(MEMBER)).body.meetings.some((m) => m.id === coffee.id || m.id === todo.id), false);
+  // Someone shares it again: theirs to keep, never marked again
+  await saveMeeting(env.DB, { ...all.find((m) => m.id === todo.id), shared: true }, { by: FOUNDER });
+  const again = await syncBoardCalendar(env);
+  assert.equal(again.notBoard, 0);
+  assert.equal((await listMeetings(env.DB)).find((m) => m.id === todo.id).shared, true);
+  assert.equal(google.writes, 0);
+});
+
 test('a meeting added by hand on the same day is linked, not doubled; a calendar that can’t be read is reported and nothing is marked gone', async () => {
   const day = new Date(Date.now() + 40 * 86400000).toISOString().slice(0, 10);
   const hand = (await adminApi(FOUNDER, { action: 'new-meeting', date: day })).body.meeting;
@@ -1194,9 +1241,9 @@ test('a Word agenda reads the way it prints: its list numbers back, table rows a
   const text = await docxText(agendaDocx());
   assert.deepEqual(text.split('\n'), [
     'MEETING Example Board – Agenda DATE 04/30/2026', 'LOCATION Example Hall TIME 8:00a - 10:00a', 'x Alex Rivera Rivera Builders', 'Kim Park Park Media',
-    '1. CALL TO ORDER', '1. Roll Call', '2. Welcome (Jane)', 'a. Video for new members',
-    '2. COMMITTEE REPORTS', '1. Financial (Sam/Alex)', 'a. 2026 Financials', 'i. Cash is healthy', '1. Expenses are down', 'ii. Budget approved', '3. OPEN FORUM',
-  ]);
+    '1. CALL TO ORDER', '   1. Roll Call', '   2. Welcome (Jane)', '      a. Video for new members',
+    '2. COMMITTEE REPORTS', '   1. Financial (Sam/Alex)', '      a. 2026 Financials', '         i. Cash is healthy', '            1. Expenses are down', '         ii. Budget approved', '3. OPEN FORUM',
+  ], 'each list level three spaces further in');
   const people = [{ slug: 'alex-rivera', name: 'Alex Rivera', kind: 'board' }, { slug: 'kim-park', name: 'Kim Park', kind: 'board' }, { slug: 'sam-ortiz', name: 'Sam Ortiz', kind: 'board' }, { slug: 'jane-doe', name: 'Jane Doe', kind: 'staff' }];
   const parsed = parseAgendaText(text, people);
   assert.deepEqual([parsed.date, parsed.start, parsed.location], ['2026-04-30', '08:00', 'Example Hall']);
@@ -1409,4 +1456,236 @@ test('an old agenda reads into a meeting: header, who was there, sections, items
   assert.equal(reports.items[0].notes, '- 2026 Financials\n  - Cash is healthy\n    - Expenses are down\n  - Budget approved\n    - Surplus planned\n- Vehicle');
   assert.match(reports.items[1].notes, /- Lounge\n- Valet$/, 'i. after h. is a letter');
   assert.equal(cleanMeeting(r).sections.length, 3);
+});
+
+// ─── Minutes kept as a Google Doc ───────────────────────────────────
+
+/** A Google Doc's HTML the way Drive exports minutes: a header table, an attendee table, each section a one-row shaded table, its items lists with levels */
+function minutesDocHtml() {
+  const cell = (t) => `<td class="c9" colspan="1" rowspan="1"><p class="c1"><span class="c3">${t}</span></p></td>`;
+  const bar = (t, n) => `<table class="c20"><tr class="c10">${`<td class="c9"><ol class="c7 lst-kix_list_1-0${n === 1 ? ' start" start="1' : ''}"><li class="c4 li-bullet-0"><span class="c8">${t}</span></li></ol></td>`}</tr></table>`;
+  const list = (id, level, items, start = false) => `<ol class="c5 lst-kix_${id}-${level}${start ? ' start' : ''}"${start ? ' start="1"' : ''}>${items.map((t) => `<li class="c2 li-bullet-0"><span class="c0">${t}</span></li>`).join('')}</ol>`;
+  return `<html><head><style type="text/css">.lst-kix_list_34-1>li:before{content:"" counter(lst-ctn-kix_list_34-1,lower-latin) ". "}</style></head><body class="c11 doc-content">
+    <div><p class="c6"><span class="c3">| Page</span></p></div>
+    <table class="c13"><tr class="c10">${cell('MEETING')}${cell('Example Q3 Board Meeting')}${cell('DATE')}${cell('8/6/2026')}</tr>
+      <tr class="c10">${cell('LOCATION')}${cell('Example Hall')}${cell('TIME')}${cell('8:00a - 10:00a')}</tr></table>
+    <table class="c13"><tr>${cell('')}${cell('ATTENDEE')}${cell('COMPANY')}${cell('')}${cell('ATTENDEE')}${cell('COMPANY')}</tr>
+      <tr>${cell('x')}${cell('Alex Rivera')}${cell('Rivera Builders')}${cell('x')}${cell('Jane Doe')}${cell('SOARD')}</tr>
+      <tr>${cell('')}${cell('Kim Park')}${cell('Park Media')}${cell('')}${cell('')}${cell('')}</tr></table>
+    ${bar('CALL TO ORDER', 1)}${list('list_32', 0, ['Roll Call', 'Personal Best/Business Best (What happened since we met)'], true)}
+    ${bar('APPROVE MEETING MINUTES', 2)}${list('list_33', 0, ['Q2 Board Meeting'], true)}${list('list_33', 1, ['Minutes approved'], true)}
+    ${bar('COMMITTEE REPORTS', 3)}${list('list_34', 0, ['Governance (Sam)'], true)}${list('list_34', 1, ['Legal'], true)}${list('list_34', 2, ['Everyone has signed&nbsp;Docusign', 'All legal docs updated'], true)}
+    ${list('list_34', 0, ['Financial (Alex)'])}${list('list_34', 1, ['Money market fund recommended', 'Store income &amp; golf on track<sup><a href="#cmnt1" id="cmnt_ref1">[a]</a></sup>'], true)}${list('list_34', 2, ['Grants are dollars only'], true)}${list('list_34', 1, ['Need to replace the van'])}
+    ${bar('OPEN FORUM/ANNOUNCEMENTS', 4)}
+    <p class="c6"><span class="c3"></span></p>
+    <div class="c15"><p class="c4"><a href="#cmnt_ref1" id="cmnt1">[a]</a><span class="c3">Check this number</span></p></div>
+  </body></html>`;
+}
+
+test('minutes kept as a Google Doc read with their outline: items, points under them, presenters, who was there', () => {
+  const text = docHtmlText(minutesDocHtml());
+  assert.deepEqual(text.split('\n'), [
+    '| Page', 'MEETING Example Q3 Board Meeting DATE 8/6/2026', 'LOCATION Example Hall TIME 8:00a - 10:00a',
+    'ATTENDEE COMPANY ATTENDEE COMPANY', 'x Alex Rivera Rivera Builders x Jane Doe SOARD', 'Kim Park Park Media',
+    '1. CALL TO ORDER', '1. Roll Call', '2. Personal Best/Business Best (What happened since we met)',
+    '2. APPROVE MEETING MINUTES', '1. Q2 Board Meeting', '   1. Minutes approved',
+    '3. COMMITTEE REPORTS', '1. Governance (Sam)', '   1. Legal', '      1. Everyone has signed Docusign', '      2. All legal docs updated',
+    '2. Financial (Alex)', '   1. Money market fund recommended', '   2. Store income & golf on track', '      1. Grants are dollars only', '   3. Need to replace the van',
+    '4. OPEN FORUM/ANNOUNCEMENTS',
+  ], 'the levels as indents; comments and their markers left out');
+  const people = [{ slug: 'alex-rivera', name: 'Alex Rivera', kind: 'board' }, { slug: 'kim-park', name: 'Kim Park', kind: 'board' }, { slug: 'sam-ortiz', name: 'Sam Ortiz', kind: 'board' }, { slug: 'jane-doe', name: 'Jane Doe', kind: 'staff' }];
+  const r = parseAgendaText(text, people);
+  assert.deepEqual([r.date, r.start, r.end, r.location], ['2026-08-06', '08:00', '10:00', 'Example Hall']);
+  assert.deepEqual(r.attendance.map((a) => `${a.slug}:${a.status}`), ['alex-rivera:present', 'jane-doe:present', 'kim-park:absent']);
+  assert.deepEqual(r.sections.map((s) => [s.title, s.items.map((i) => i.title)]), [
+    ['Call to order', ['Roll Call', 'Personal Best/Business Best (What happened since we met)']],
+    ['Approve meeting minutes', ['Q2 Board Meeting']],
+    ['Committee reports', ['Governance', 'Financial']],
+    ['Open forum/announcements', []],
+  ], 'four items under three sections, not one item a line');
+  const [gov, fin] = r.sections[2].items;
+  assert.deepEqual([gov.presenter, fin.presenter], ['Sam', 'Alex']);
+  assert.equal(gov.notes, '- Legal\n  - Everyone has signed Docusign\n  - All legal docs updated');
+  assert.equal(fin.notes, '- Money market fund recommended\n- Store income & golf on track\n  - Grants are dollars only\n- Need to replace the van');
+  assert.equal(r.sections[1].items[0].notes, '- Minutes approved');
+});
+
+test('the same minutes as indented plain text ("1." at every level), and bullets', () => {
+  const plain = ['1. CALL TO ORDER', '1. Roll Call', '3. COMMITTEE REPORTS', '1. Governance', '   1. Legal', '      1. Everyone has signed', '      2. All legal docs updated', '2. Financial', '   1. Money market fund', '4. OPEN FORUM/ANNOUNCEMENTS | Page'].join('\n');
+  const r = parseAgendaText(plain);
+  assert.deepEqual(r.sections.map((s) => [s.title, s.items.map((i) => i.title)]), [['Call to order', ['Roll Call']], ['Committee reports', ['Governance', 'Financial']], ['Open forum/announcements', []]], 'a footer run into a title comes off');
+  assert.equal(r.sections[1].items[0].notes, '- Legal\n  - Everyone has signed\n  - All legal docs updated');
+  // Items one level in under their section's number, bullets under them
+  const bullets = parseAgendaText(['1. NEW BUSINESS', '\ta. Advisory committee', '\t\t• First meeting in the fall', '\t\t• Families at the first meeting', '\t\t\to Child too', '\tb. Golf beneficiary', '\t\t- Raised so far'].join('\n'));
+  assert.deepEqual(bullets.sections[0].items.map((i) => [i.title, i.notes]), [
+    ['Advisory committee', '- First meeting in the fall\n- Families at the first meeting\n  - Child too'],
+    ['Golf beneficiary', '- Raised so far'],
+  ]);
+  // No indents anywhere: a bullet is a point under the item it follows
+  const flat = parseAgendaText(['1. REPORTS', '1. Finance', '- Cash is fine', '2. Events'].join('\n'));
+  assert.deepEqual(flat.sections[0].items.map((i) => [i.title, i.notes]), [['Finance', '- Cash is fine'], ['Events', '']]);
+});
+
+test('an agenda read by an older reader is read again once, only from Drive or email', () => {
+  assert.equal(AGENDA_READER, 2);
+  assert.equal(readAgain({ agendaFrom: { kind: 'drive', name: 'Minutes.pdf', at: '2026-10-28T00:00:00Z' } }), true);
+  assert.equal(readAgain({ agendaFrom: { kind: 'email', name: 'Agenda.docx', at: '' } }), true);
+  assert.equal(readAgain({ agendaFrom: { kind: 'drive', name: 'Minutes.pdf', at: '', v: AGENDA_READER } }), false);
+  for (const kind of ['typed', 'template', 'last-meeting']) assert.equal(readAgain({ agendaFrom: { kind, name: '', at: '' } }), false, kind);
+  assert.equal(readAgain({}), false);
+  assert.deepEqual(cleanMeeting({ date: '2026-08-06', agendaFrom: { kind: 'drive', name: 'M.pdf', at: 'x', v: 2 } }).agendaFrom, { kind: 'drive', name: 'M.pdf', at: 'x', v: 2 });
+  assert.deepEqual(cleanMeeting({ date: '2026-08-06', agendaFrom: { kind: 'drive', name: 'M.pdf', at: 'x' } }).agendaFrom, { kind: 'drive', name: 'M.pdf', at: 'x' }, 'no v added to older records');
+  assert.equal(cleanMeeting({ date: '2026-08-06', notBoard: true }).notBoard, true);
+});
+
+// ─── The next meeting before it's shared, and photos ────────────────
+
+test('the next meeting the board already has on its calendars shows its day, time and place before it’s shared; members can answer', async () => {
+  const { boardIcs } = await import('../functions/api/_board.js');
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const invited = (slugs) => ({ uid: 'next@google.com', title: 'SOARD Board Meeting', from: FOUNDER, replies: Object.fromEntries(slugs.map(([s, a]) => [s, a])) });
+  let m = await saveMeeting(env.DB, cleanMeeting({ date: day(20), start: '08:00', end: '10:00', location: 'Example Hall', address: '100 Example St', title: 'SOARD Board Meeting',
+    sections: [{ title: 'Secret draft heading', items: [{ title: 'Draft item', notes: 'draft notes' }] }],
+    calendar: invited([['alex-rivera', 'accepted'], ['sam-ortiz', 'invited']]) }), { by: 'the calendar' });
+  let page = (await portalApi(MEMBER)).body;
+  assert.equal(page.nextPending, null, 'two of the board invited: not theirs yet');
+  assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: m.id, answer: 'yes' })).status, 404);
+  assert.equal(await boardIcs(env.DB, m.id), null);
+
+  m = await saveMeeting(env.DB, { ...m, calendar: invited([['alex-rivera', 'accepted'], ['sam-ortiz', 'invited'], ['kim-park', 'declined']]) }, { by: 'the calendar' });
+  page = (await portalApi(MEMBER)).body;
+  assert.deepEqual(page.nextPending, {
+    id: m.id, date: day(20), start: '08:00', end: '10:00', title: 'SOARD Board Meeting', name: 'SOARD Board Meeting', location: 'Example Hall', address: '100 Example St', video: '',
+    onCalendar: true, myInvite: 'accepted', myRsvp: '',
+  });
+  assert.equal(page.next, null);
+  assert.equal(page.meetings.some((x) => x.id === m.id), false, 'not a shared meeting: no agenda, notes or files');
+  assert.doesNotMatch(JSON.stringify(page), /Secret draft heading|draft notes/);
+  assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: m.id, answer: 'yes' })).status, 200, 'they’re invited, so they can answer here');
+  assert.equal((await portalApi(MEMBER)).body.nextPending.myRsvp, 'yes');
+  const ics = await boardIcs(env.DB, m.id);
+  assert.match(ics, /DTSTART:/);
+  assert.doesNotMatch(ics, /Secret draft heading/, 'its calendar file carries no agenda');
+
+  // Board's own invite went out: theirs too, whoever the calendar invited
+  m = await saveMeeting(env.DB, { ...m, calendar: invited([]) }, { by: 'the calendar' });
+  await patchMeeting(env.DB, m.id, (cur) => ({ ...cur, invite: { eventId: 'board-invite', organizer: FOUNDER, sentAt: new Date().toISOString(), meet: 'https://meet.google.com/abc-defg-hij' } }));
+  page = (await portalApi(MEMBER)).body;
+  assert.deepEqual([page.nextPending?.id, page.nextPending?.video, page.nextPending?.onCalendar], [m.id, 'https://meet.google.com/abc-defg-hij', false]);
+
+  // A shared meeting comes first: that's the next one
+  const earlier = await saveMeeting(env.DB, cleanMeeting({ date: day(10), shared: true }), { by: FOUNDER });
+  page = (await portalApi(MEMBER)).body;
+  assert.deepEqual([page.next, page.nextPending], [earlier.id, null]);
+  // Not a board meeting, or off the calendar: never
+  await saveMeeting(env.DB, { ...earlier, shared: false }, { by: FOUNDER });
+  await patchMeeting(env.DB, m.id, (cur) => ({ ...cur, notBoard: true }));
+  assert.equal((await portalApi(MEMBER)).body.nextPending, null);
+});
+
+test('the board page’s makeovers and reveals carry their published page’s photo; an unnamed one never does', async () => {
+  const { projectsNow } = await import('../functions/api/_board.js');
+  await env.DB.exec('CREATE TABLE kids (slug TEXT PRIMARY KEY, name TEXT, year INTEGER, data TEXT)');
+  await env.DB.exec('CREATE TABLE community (slug TEXT PRIMARY KEY, name TEXT, data TEXT)');
+  const img = (s) => `https://imagedelivery.net/abc123/kids/${s}/photo-1/public`;
+  for (const [slug, d] of [
+    ['max', { name: 'Max', jobtreadJobId: 'j1', heroImage: img('max') }],
+    ['quinn', { name: 'Quinn', jobtreadJobId: 'j2', heroImage: img('quinn'), publishStatus: 'draft' }],
+    ['odd', { name: 'Odd', jobtreadJobId: 'j4', heroImage: 'https://elsewhere.example/odd.jpg' }],
+  ]) await env.DB.prepare('INSERT INTO kids (slug, name, data) VALUES (?, ?, ?)').bind(slug, d.name, JSON.stringify(d)).run();
+  await env.DB.prepare('INSERT INTO community (slug, name, data) VALUES (?, ?, ?)').bind('example-house', 'Example House', JSON.stringify({ name: 'Example House', jobtreadJobId: 'j3', heroImage: img('house'), publishStatus: 'draft' })).run();
+  env.JOBTREAD_GRANT_KEY = 'grant';
+  const job = (id, name, status) => ({ id, name, customFieldValues: { nodes: [{ value: status, customField: { id: '22P52qfFub9b' } }] } });
+  const fetchImpl = async () => Response.json({ organization: { jobs: { nodes: [job('j1', 'Max Example', 'Build'), job('j2', 'Quinn Example', 'Design'), job('j3', 'Example House', 'Approval'), job('j4', 'Odd Example', 'Build')], nextPage: null } } });
+  const p = await projectsNow(env, { fetchImpl, fresh: true });
+  assert.deepEqual(p.building.map((b) => [b.name, b.photo ?? null]), [['Max', img('max')], [null, null], [null, null], ['Odd', null]], 'a draft page’s kid or project has neither; a picture from anywhere but Cloudflare Images stays out');
+  const ahead = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+  await env.DB.prepare('INSERT INTO site_config (key, data) VALUES (?, ?)').bind('reveals', JSON.stringify({ reveals: [], upcoming: [{ slug: 'max', name: 'Max', confirmed: true, date: ahead }, { slug: 'zoe', name: 'Zoe', confirmed: true, date: ahead, image: 'https://imagedelivery.net/abc123/kids/zoe/photo-2/w=400' }], past: [] })).run();
+  const n = await liveNumbers(env);
+  assert.deepEqual(n.reveals.map((r) => [r.name, r.photo]), [['Max', img('max')], ['Zoe', 'https://imagedelivery.net/abc123/kids/zoe/photo-2/w=400']]);
+});
+
+test('minutes an older reader flattened are read again once from Drive, from the Doc’s HTML; the file isn’t brought in twice; a person’s agenda is never touched', async () => {
+  const { readBoardDrive, DEFAULT_DRIVE_FOLDER } = await import('../functions/api/_board-drive.js');
+  const { writeState } = await import('../functions/api/_board-roles.js');
+  const ROOT = DEFAULT_DRIVE_FOLDER;
+  const FOLDER = 'application/vnd.google-apps.folder';
+  const DOC = 'application/vnd.google-apps.document';
+  const d = new Date(Date.now() - 80 * 86400000);
+  const date = d.toISOString().slice(0, 10);
+  const files = {
+    [ROOT]: { id: ROOT, name: 'Board', mimeType: FOLDER, parent: '' },
+    year1234567890: { id: 'year1234567890', name: `${d.getUTCFullYear()} Board`, mimeType: FOLDER, parent: ROOT },
+    meet1234567890: { id: 'meet1234567890', name: `${d.getUTCMonth() + 1}.${d.getUTCDate()}.${String(d.getUTCFullYear()).slice(2)} Board Meeting`, mimeType: FOLDER, parent: 'year1234567890' },
+    mins1234567890: { id: 'mins1234567890', name: 'Example Q3 Board Meeting Minutes', mimeType: DOC, parent: 'meet1234567890', modifiedTime: '2026-08-07T00:00:00Z' },
+  };
+  const exports = [];
+  answer = async (url) => {
+    if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'g-token', expires_in: 3600 });
+    const u = new URL(url);
+    if (u.pathname === '/drive/v3/files') {
+      const parent = (u.searchParams.get('q') || '').match(/'([^']+)' in parents/)?.[1];
+      return Response.json({ files: Object.values(files).filter((f) => parent && f.parent === parent).map(({ parent: p, ...f }) => f) });
+    }
+    const m = u.pathname.match(/^\/drive\/v3\/files\/([^/]+)(\/export)?$/);
+    const f = m && files[decodeURIComponent(m[1])];
+    if (!f) return Response.json({ error: { code: 404, message: 'File not found' } }, { status: 404 });
+    if (m[2]) {
+      const type = u.searchParams.get('mimeType');
+      exports.push(type);
+      if (type === 'text/html') return new Response(minutesDocHtml());
+      if (type === 'text/plain') return new Response('1. COMMITTEE REPORTS\n1. Governance\n1. Legal');
+      return new Response(new TextEncoder().encode('%PDF-1.4 minutes'));
+    }
+    return Response.json({ id: f.id, name: f.name, driveId: 'shared-1' });
+  };
+  env.GOOGLE_CALENDAR_KEY = SERVICE_ACCOUNT;
+  clearTokenCache();
+  // As the first reader left it: every line an item, from this Doc, its folder read
+  const flat = ['Governance', 'Legal', 'Everyone has signed Docusign', 'All legal docs updated', 'Financial'].map((title) => ({ title }));
+  const m = await saveMeeting(env.DB, cleanMeeting({ date, shared: true, sections: [{ title: 'Call to order', items: [{ title: 'Roll Call' }] }, { title: 'Committee reports', items: flat }], agendaFrom: { kind: 'drive', name: 'Example Q3 Board Meeting Minutes.pdf', at: '2026-10-28T19:12:04Z' } }), { by: 'Google Drive' });
+  const typed = await saveMeeting(env.DB, cleanMeeting({ date: '2020-01-01', sections: [{ title: 'Mine', items: [{ title: 'Kept' }] }], agendaFrom: { kind: 'typed', name: '', at: '' } }), { by: FOUNDER });
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS board_drive (drive_id TEXT PRIMARY KEY, meeting_id TEXT, board_file_id TEXT, modified TEXT, name TEXT, folder_id TEXT, at TEXT)').run();
+  await env.DB.prepare('INSERT INTO board_drive (drive_id, meeting_id, board_file_id, modified, name, folder_id, at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind('mins1234567890', m.id, 'f_kept', '2026-08-07T00:00:00Z', 'Example Q3 Board Meeting Minutes.pdf', 'meet1234567890', new Date().toISOString()).run();
+  await writeState(env.DB, 'drive-done', { version: 2, root: ROOT, walkedAt: '2026-01-01T00:00:00Z', folders: [], seen: { meet1234567890: new Date().toISOString() } });
+  assert.equal(readAgain(await getMeeting(env.DB, m.id)), true);
+
+  const st = await readBoardDrive(env, { budgetMs: 60000 });
+  assert.equal(st.ok, true, JSON.stringify(st.errors));
+  const after = await getMeeting(env.DB, m.id);
+  assert.deepEqual(after.sections.map((s) => [s.title, s.items.map((i) => i.title)]), [
+    ['Call to order', ['Roll Call', 'Personal Best/Business Best (What happened since we met)']],
+    ['Approve meeting minutes', ['Q2 Board Meeting']],
+    ['Committee reports', ['Governance', 'Financial']],
+    ['Open forum/announcements', []],
+  ]);
+  assert.equal(after.sections[2].items[0].notes, '- Legal\n  - Everyone has signed Docusign\n  - All legal docs updated');
+  assert.deepEqual([after.agendaFrom.kind, after.agendaFrom.v, after.shared], ['drive', AGENDA_READER, true]);
+  assert.ok(exports.includes('text/html') && !exports.includes('text/plain'), 'read from its HTML');
+  assert.equal(env.FILES.map.size, 0, 'its copy stays as it is: nothing stored again');
+  assert.equal(st.stale, 0);
+  assert.deepEqual((await getMeeting(env.DB, typed.id)).sections.map((s) => s.title), ['Mine']);
+  // Once: the next look reads nothing again
+  exports.length = 0;
+  await readBoardDrive(env, { budgetMs: 60000 });
+  assert.equal(exports.length, 0);
+});
+
+test('an emailed agenda an older reader filled is read again once from the copy Board keeps, and the next meeting’s draft follows it', async () => {
+  const { putFile, maybeRereadEmailAgendas, maybeDraftAgendas } = await import('../functions/api/_board.js');
+  const { draftName } = await import('../public/admin/board-shared.js');
+  const past = await saveMeeting(env.DB, cleanMeeting({ date: '2026-04-30', sections: [{ title: 'Call to order', items: ['Roll Call', 'Welcome', 'Video for new members'].map((title) => ({ title })) }], agendaFrom: { kind: 'email', name: 'Board Agenda.docx', at: '2026-05-01T00:00:00Z' } }), { by: 'board email' });
+  await putFile(env, { ownerType: 'meeting', ownerId: past.id, file: new File([agendaDocx()], 'Board Agenda.docx'), kind: 'agenda', by: 'board email' });
+  const ahead = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+  const draft = await saveMeeting(env.DB, cleanMeeting({ date: ahead, sections: [{ title: 'Call to order', items: [{ title: 'Video for new members' }] }], agendaFrom: { kind: 'last-meeting', name: draftName(past), at: '2026-05-02T00:00:00Z' } }), { by: 'the calendar' });
+  assert.deepEqual(await maybeRereadEmailAgendas(env), [past.id]);
+  const read = await getMeeting(env.DB, past.id);
+  assert.deepEqual(read.sections.map((s) => [s.title, s.items.map((i) => i.title)]), [['Call to order', ['Roll Call', 'Welcome']], ['Committee reports', ['Financial']], ['Open forum', []]]);
+  assert.equal(read.sections[0].items[1].presenter, 'Jane');
+  assert.equal(read.agendaFrom.v, AGENDA_READER);
+  assert.deepEqual(await maybeRereadEmailAgendas(env), [], 'once');
+  assert.deepEqual(await maybeDraftAgendas(env), [draft.id], 'the draft follows the agenda read again');
+  assert.deepEqual((await getMeeting(env.DB, draft.id)).sections.map((s) => s.title), ['Call to order', 'Committee reports', 'Open forum']);
+  assert.deepEqual(await maybeDraftAgendas(env, { now: Date.now() + 11 * 60 * 1000 }), [], 'and only once');
 });

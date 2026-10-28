@@ -12,7 +12,7 @@
  * An admin looking can't answer or sign for anyone: they have no board seat.
  */
 
-import { portalData, setRsvp, setActionDone, signDoc, ensureSchema, getMeeting, meetingIcs, ID } from './_board.js';
+import { portalData, setRsvp, setActionDone, signDoc, ensureSchema, boardIcs, ID } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
 
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
@@ -29,12 +29,13 @@ export async function onRequestGet(context) {
   try {
     const w = await who(context);
     if (!w) return fail('The board page is for SOARD’s board members', 403);
-    // ?ics=<meeting>: that meeting as a calendar file (for someone not on its invite)
-    const ics = new URL(context.request.url).searchParams.get('ics');
-    if (ics) {
-      const m = ID.test(ics) ? await getMeeting(context.env.DB, ics) : null;
-      if (!m?.shared || !m.date) return fail('That meeting isn’t on the board page', 404);
-      return new Response(meetingIcs(m), { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="soard-board-meeting.ics"', 'Cache-Control': 'private, no-store' } });
+    // ?ics=<meeting>: that meeting as a calendar file (for someone not on its invite); one whose agenda isn't
+    // posted yet comes without it
+    const id = new URL(context.request.url).searchParams.get('ics');
+    if (id) {
+      const ics = await boardIcs(context.env.DB, id);
+      if (!ics) return fail('That meeting isn’t on the board page', 404);
+      return new Response(ics, { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="soard-board-meeting.ics"', 'Cache-Control': 'private, no-store' } });
     }
     return Response.json({ ok: true, ...(await portalData(context.env, w)) }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err) {

@@ -186,7 +186,7 @@ test('dated material with no meeting near it brings the meeting in; undated minu
 });
 
 test('a date a day off finds its meeting (within ten days), and never makes a second one', async () => {
-  g.calendars[FOUNDER] = [ev('c1', 'Example Board Meeting', '2025-07-24')];
+  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', '2025-07-24')];
   await syncBoardCalendar(env);
   g.texts['Minutes 2025.07.23.pdf'] = MINUTES('July 23, 2025');
   g.answers['Minutes 2025.07.23.pdf'] = { kind: 'minutes', meetingDate: '2025-07-23', reason: 'minutes' };
@@ -199,7 +199,7 @@ test('a date a day off finds its meeting (within ten days), and never makes a se
 
 test('who sees it: an email to a few people is for Peter and Holly only; to the board or its group, for the board', async () => {
   const past = day(-30);
-  g.calendars[FOUNDER] = [ev('c1', 'Example Board Meeting', past)];
+  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', past)];
   await syncBoardCalendar(env);
   g.answers = { 'Financials draft.pdf': { kind: 'financials', meetingDate: past, reason: 'board financials' }, 'Agenda final.pdf': { kind: 'agenda', meetingDate: past, reason: 'agenda' } };
   g.inboxes[FOUNDER] = [msg('w1', 'Financials for the board meeting', `${day(-32)}T12:00:00Z`, [{ name: 'Financials draft.pdf' }], { to: 'jane@soardcharity.com, sam.board@example.org' })];
@@ -222,7 +222,7 @@ test('who sees it: an email to a few people is for Peter and Holly only; to the 
   assert.deepEqual(m.files.filter((f) => /minutes/i.test(f.name)).map((f) => [f.name, f.staffOnly]).sort(), [['Group minutes.pdf', false], ['Newsletter minutes.pdf', true]]);
   // A meeting a person has worked on (or one ahead) is theirs to share
   const ahead = day(20);
-  g.calendars[FOUNDER].push(ev('c2', 'Example Board Meeting', ahead));
+  g.calendars[FOUNDER].push(ev('c2', 'SOARD Board Meeting', ahead));
   await syncBoardCalendar(env);
   g.answers['Ahead agenda.pdf'] = { kind: 'agenda', meetingDate: ahead, reason: 'agenda' };
   g.inboxes[FOUNDER].push(msg('w3', 'Agenda', `${day(-1)}T12:00:00Z`, [{ name: 'Ahead agenda.pdf' }]));
@@ -280,7 +280,7 @@ test('who was there, from minutes written every which way', () => {
 
 test('a backlog is read newest first, a little each look and every minute, until it’s done; then hourly', async () => {
   g.pageSize = 2;
-  g.calendars[FOUNDER] = [ev('c1', 'Example Board Meeting', '2025-05-01')];
+  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', '2025-05-01')];
   await syncBoardCalendar(env);
   for (let i = 0; i < 5; i++) {
     g.answers[`Agenda ${i}.pdf`] = { kind: 'agenda', meetingDate: '2025-05-01', reason: 'agenda' };
@@ -299,7 +299,7 @@ test('a backlog is read newest first, a little each look and every minute, until
 
 test('an email a look was cut off in the middle of is sorted by the rules next time, so it always finishes', async () => {
   const past = day(-15);
-  g.calendars[FOUNDER] = [ev('c1', 'Example Board Meeting', past)];
+  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', past)];
   await syncBoardCalendar(env);
   g.inboxes[FOUNDER] = [msg('slow', 'Board agenda', `${day(-17)}T12:00:00Z`, [{ name: `Board Agenda ${past}.pdf` }])];
   await readBoardMail(env, { budgetMs: -1 }); // reads the state, makes the table
@@ -335,7 +335,7 @@ test('version 1’s mis-filed copies come off once, and everything is read again
 
 test('the same email in both inboxes is read once, and Gmail errors are reported without losing the email', async () => {
   const past = day(-20);
-  g.calendars[FOUNDER] = [ev('c1', 'Example Board Meeting', past)];
+  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', past)];
   await syncBoardCalendar(env);
   await env.DB.prepare("INSERT OR REPLACE INTO board_state (key, data) VALUES ('settings', ?)").bind(JSON.stringify({ admins: [FOUNDER, 'pat@soardcharity.com'] })).run();
   g.answers['Agenda.pdf'] = { kind: 'agenda', meetingDate: past, reason: 'agenda' };

@@ -38,7 +38,7 @@
 import { accessToken, GMAIL_READ_SCOPE, parseServiceAccount } from './_google-calendar.js';
 import { boardAdmins, readState, writeState, peopleRows, activeBoard, normEmail } from './_board-roles.js';
 import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, createMeeting, putFile, deleteFile, roster } from './_board.js';
-import { parseAgendaText, isDate, todayEastern, meetingName, docxText, unzip, cleanMeeting, agendaIsDraft, shortDate } from '../../public/admin/board-shared.js';
+import { parseAgendaText, isDate, todayEastern, meetingName, docxText, unzip, cleanMeeting, agendaIsDraft, shortDate, AGENDA_READER } from '../../public/admin/board-shared.js';
 
 export { docxText, unzip };
 
@@ -375,7 +375,8 @@ async function bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, 
   const made = [];
   const waiting = [];
   for (const f of sorted) {
-    let { meeting: m, create } = meetingFor(meetings, { kind: f.kind, date: f.date, sent });
+    // (never onto one the calendar brought in that isn't a board meeting)
+    let { meeting: m, create } = meetingFor(meetings.filter((x) => !x.notBoard), { kind: f.kind, date: f.date, sent });
     // A dated agenda or minutes with no meeting near it brings the meeting in (never far ahead)
     if (!m && create && f.firm && ['agenda', 'minutes'].includes(f.kind) && create <= new Date(now + 120 * DAY).toISOString().slice(0, 10)) {
       m = create < today ? await saveMeeting(env.DB, cleanMeeting({ date: create }), { by: MAIL_BY }) : await createMeeting(env, { date: create, by: MAIL_BY });
@@ -393,7 +394,7 @@ async function bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, 
       if (parsed.sections.some((s) => s.items.length)) {
         const marked = m.attendance.some((p) => p.status);
         m = await patchMeeting(env.DB, m.id, (cur) => (agendaIsDraft(cur) ? {
-          ...cur, sections: parsed.sections, agendaFrom: { kind: 'email', name: f.name, at: new Date(now).toISOString() },
+          ...cur, sections: parsed.sections, agendaFrom: { kind: 'email', name: f.name, at: new Date(now).toISOString(), v: AGENDA_READER },
           attendance: past && !marked && parsed.attendance.length ? parsed.attendance : cur.attendance,
           location: cur.location || parsed.location, start: cur.start || parsed.start || '', end: cur.end || parsed.end || '',
         } : cur));

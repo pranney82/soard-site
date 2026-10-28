@@ -29,7 +29,7 @@
 import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, emailOutline, parseAgendaText,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf,
-  agendaIsDraft, draftAgenda, draftSource, draftName, callName,
+  agendaIsDraft, draftAgenda, draftSource, draftName, callName, readAgain, AGENDA_READER,
 } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
@@ -290,9 +290,27 @@ export async function setRsvp(DB, meetingId, slug, answer) {
   await ensureSchema(DB);
   if (!RSVP.some((r) => r.id === answer)) throw Object.assign(new Error('Pick an answer'), { status: 400 });
   const m = await getMeeting(DB, meetingId);
-  if (!m?.shared) throw Object.assign(new Error('That meeting isn’t on the board page'), { status: 404 });
+  if (!onBoardPage(m)) throw Object.assign(new Error('That meeting isn’t on the board page'), { status: 404 });
   await DB.prepare('INSERT OR REPLACE INTO board_rsvps (meeting_id, slug, answer, at) VALUES (?, ?, ?, ?)').bind(meetingId, slug, answer, nowIso()).run();
   return { meetingId, answer };
+}
+
+/**
+ * The board already has it on their calendars: Board's own invite went out, or
+ * the organizer's event invites three or more of the board
+ */
+export const boardHasIt = (m) => !!m?.invite?.sentAt || Object.keys(repliesOf(m) || {}).length >= 3;
+/**
+ * A meeting a board member can see something of: a shared one, or one ahead
+ * that's on their calendars already but isn't shared yet (its day, time and
+ * place only: see portalData's nextPending)
+ */
+export const onBoardPage = (m, today = todayEastern()) => !!m && (m.shared || (!m.notBoard && !m.calendar?.gone && isDate(m.date) && m.date >= today && boardHasIt(m)));
+/** A meeting's calendar file for the board page, or null when it isn't theirs to see (one not shared yet carries no agenda) */
+export async function boardIcs(DB, id) {
+  const m = ID.test(String(id || '')) ? await getMeeting(DB, id) : null;
+  if (!m?.date || !onBoardPage(m)) return null;
+  return meetingIcs(m.shared ? m : { ...m, sections: [] });
 }
 
 // ─── Documents ──────────────────────────────────────────────────────
@@ -493,12 +511,12 @@ export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fr
         const hit = matchProject(job.name, [...kids, ...projects], job.id);
         if (isProject(hit)) {
           // An organization's room: named once its project is published, never by the job's own name
-          building.push({ name: hit.published ? hit.name : null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null });
+          building.push({ name: hit.published ? hit.name : null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null, ...photoField(hit.published && hit.heroImage) });
           continue;
         }
         const kid = hit;
-        // By name only with a published kid page: a job's own name in JobTread is internal ("Not Published Yet")
-        building.push({ name: kid?.name || null, slug: kid?.slug || null, status });
+        // By name only with a published kid page: a job's own name in JobTread is internal ("Not Published Yet"). Its photo likewise
+        building.push({ name: kid?.name || null, slug: kid?.slug || null, status, ...photoField(kid?.name && kid.heroImage) });
       }
     }
     const value = { byStatus, building };
@@ -536,7 +554,11 @@ async function eventsList(DB, today = todayEastern()) {
   };
 }
 
-const revealRow = (r) => ({ slug: r.slug, name: r.name, confirmed: r.confirmed !== false, date: r.date || '', time: r.time || '', window: r.window || null, kidUrl: r.kidUrl || `/kids/${r.slug}/` });
+const revealRow = (r, photos = {}) => ({ slug: r.slug, name: r.name, confirmed: r.confirmed !== false, date: r.date || '', time: r.time || '', window: r.window || null, kidUrl: r.kidUrl || `/kids/${r.slug}/`, ...photoField(r.name && (photos[r.slug] || r.image)) });
+/** A published page's photo, from Cloudflare Images only (the board page's pictures come from nowhere else) */
+const photoOf = (url) => (/^(https:\/\/imagedelivery\.net\/|\/cdn-cgi\/imagedelivery\/)[\w/=,.-]+$/.test(String(url || '')) ? String(url) : null);
+/** { photo } when there's one to show, else nothing */
+const photoField = (url) => (photoOf(url) ? { photo: photoOf(url) } : {});
 
 // ─── Finance summaries from Job Costs ───────────────────────────────
 // The money in and out (12 months by makeovers, store and operating, the year
@@ -565,7 +587,7 @@ export async function boardFinanceNow(env, { now = Date.now(), fresh = false } =
 /** Everything an agenda's live items show, as of now */
 export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const today = todayEastern(now);
-  const [cash, projects, reveals, events, meetings, kids, finance] = await Promise.all([
+  const [cash, projects, reveals, events, meetings, kids, finance, pages] = await Promise.all([
     cachedCash(env, { fetchImpl, now }),
     projectsNow(env, { fetchImpl, now }),
     cachedReveals(env, now).catch(() => ({ upcoming: [], past: [] })),
@@ -573,7 +595,10 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     listMeetings(env.DB),
     impact(env.DB),
     boardFinanceNow(env, { now }),
+    loadKids(env.DB).catch(() => []),
   ]);
+  // Each reveal's kid by their published page's photo (a draft page's kid has none)
+  const photos = Object.fromEntries(pages.map((k) => [k.slug, photoOf(k.heroImage)]).filter(([, p]) => p));
   // SOARD's money is at Chase; Mercury is new (Oct 2026). Its balance shows only once there's money in it,
   // and never as "the bank": an empty Mercury says so instead of reading as $0 cash
   const funded = !!cash && cash.total > 0;
@@ -583,8 +608,8 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     mercury: cash ? { empty: !funded, at: cash.at } : null,
     finance,
     projects,
-    reveals: (reveals.upcoming || []).map(revealRow),
-    pastReveals: (reveals.past || []).map((r) => revealRow({ ...r, confirmed: true })),
+    reveals: (reveals.upcoming || []).map((r) => revealRow(r, photos)),
+    pastReveals: (reveals.past || []).map((r) => revealRow({ ...r, confirmed: true }, photos)),
     events: events.upcoming,
     recentEvents: events.recent,
     meetings: meetings.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date)).map((m) => ({ id: m.id, name: meetingName(m), date: m.date, start: m.start, shared: m.shared })),
@@ -948,9 +973,20 @@ export async function portalData(env, { member = null, admin = false, now = Date
   const nameOf = (e) => people.staff.find((p) => e.startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))?.name || e.split('@')[0];
   const admins = settings.admins.map((e) => ({ email: e, name: nameOf(e) }));
   const contact = admins.find((a) => a.email === settings.invitesFrom) || admins[0] || null;
+  // The next meeting ahead the board already has on its calendars, before it's shared here: when and where only,
+  // never its agenda, notes, files or numbers. None once a shared meeting comes first (or the same day)
+  const sharedNext = nextMeeting(shared, today);
+  const ahead = meetings.filter((m) => !m.shared && onBoardPage(m, today)).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+  const pending = ahead && !(sharedNext && sharedNext.date <= ahead.date) ? ahead : null;
+  const pendingInvite = pending && mine ? repliesOf(pending)[mine] || '' : '';
   return {
     contact,
     admins: admins.map((a) => a.name),
+    nextPending: pending ? {
+      id: pending.id, date: pending.date, start: pending.start, end: pending.end, title: pending.title, name: meetingName(pending),
+      location: pending.location, address: pending.address, video: pending.video || pending.invite?.meet || '',
+      onCalendar: !!pendingInvite, myInvite: pendingInvite, myRsvp: answers[pending.id] || '',
+    } : null,
     me: member ? { name: member.name, slug: member.slug, title: member.title, email: member.email, admin } : { name: null, slug: null, admin },
     today,
     // Their own answer here, else how they answered the calendar invite (which also means it's on their calendar)
@@ -1000,9 +1036,12 @@ export async function maybeDraftAgendas(env, { now = Date.now() } = {}) {
     const [meetings, settings] = await Promise.all([listMeetings(env.DB), getSettings(env.DB)]);
     const today = todayEastern(now);
     const drafted = [];
-    for (const m of meetings.filter((x) => x.date >= today && agendaIsDraft(x, settings.template))) {
-      const prev = draftSource(m, meetings, settings.template);
-      if (!prev || (m.agendaFrom?.kind === 'last-meeting' && m.agendaFrom.name === draftName(prev))) continue;
+    const real = meetings.filter((x) => !x.notBoard);
+    for (const m of real.filter((x) => x.date >= today && agendaIsDraft(x, settings.template))) {
+      const prev = draftSource(m, real, settings.template);
+      // Already drafted from it, unless that agenda was read again (from Drive or email) since
+      const since = prev?.agendaFrom?.at && m.agendaFrom?.at && prev.agendaFrom.at > m.agendaFrom.at;
+      if (!prev || (m.agendaFrom?.kind === 'last-meeting' && m.agendaFrom.name === draftName(prev) && !since)) continue;
       const done = await patchMeeting(env.DB, m.id, (cur) => (agendaIsDraft(cur, settings.template)
         ? { ...cur, sections: draftAgenda(prev, { template: settings.template }), agendaFrom: { kind: 'last-meeting', name: draftName(prev), at: new Date(now).toISOString() } }
         : cur));
@@ -1016,11 +1055,37 @@ export async function maybeDraftAgendas(env, { now = Date.now() } = {}) {
 }
 
 /**
+ * Once for each newer agenda reader (board-shared.js AGENDA_READER): an agenda
+ * an older reader filled from an emailed file, nobody has changed since, read
+ * again from the copy Board keeps. Kept as it was when it reads no better.
+ * Google Drive's are read again from Drive (./_board-drive.js). → ids read again
+ */
+export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
+  const done = [];
+  try {
+    for (const m of (await listMeetings(env.DB)).filter((x) => x.agendaFrom?.kind === 'email' && readAgain(x))) {
+      const f = m.files.find((x) => x.name === m.agendaFrom.name);
+      let parsed = null;
+      if (f) { try { parsed = await readFileAsAgenda(env, f.id); } catch (err) { console.error('[board] reading again', f.name, err.message); } }
+      const better = !!parsed?.sections.some((s) => s.items.length);
+      await patchMeeting(env.DB, m.id, (cur) => (cur.agendaFrom?.kind === 'email' && readAgain(cur)
+        ? { ...cur, ...(better ? { sections: parsed.sections } : {}), agendaFrom: { ...cur.agendaFrom, ...(better ? { at: new Date(now).toISOString() } : {}), v: AGENDA_READER } }
+        : cur));
+      if (better) done.push(m.id);
+    }
+  } catch (err) {
+    console.error('[board] email agendas', err.message);
+  }
+  return done;
+}
+
+/**
  * The heartbeat, in order:
  *   - every 5 minutes at most, Access's board list kept in step with People → Board (./_board-access.js)
  *   - hourly, the board meetings on Peter and Holly's calendars (./_board-calendar.js)
  *   - each minute, a new place onto an invite that's out once it has settled; hourly until it
  *     passes, the check that Calendar, Meet, transcripts and attendance work (./_board-invite.js)
+ *   - once a newer agenda reader ships, emailed agendas it reads better (maybeRereadEmailAgendas); then
  *   - every ten minutes, agendas nobody wrote drafted from the last one (maybeDraftAgendas), and
  *     who joined a Google Meet that ended (./_board-attendance.js)
  *   - last, past meetings from the Board folder in Google Drive (./_board-drive.js), then board mail
@@ -1037,6 +1102,7 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     const invites = await import('./_board-invite.js');
     await invites.maybeRefreshInvites(env, { fetchImpl, now });
     await invites.maybeCheckInvites(env, { fetchImpl, now });
+    await maybeRereadEmailAgendas(env, { now });
     await maybeDraftAgendas(env, { now });
     await (await import('./_board-attendance.js')).maybeFillAttendance(env, { fetchImpl, now });
     // Last: past meetings' minutes and packets from Google Drive, then board mail (each reads for seconds while it has

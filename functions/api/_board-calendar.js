@@ -39,20 +39,42 @@ const KEY = 'calendar';
 const EVERY_MS = 60 * 60 * 1000;
 const AHEAD_DAYS = 400;
 const PAST_DAYS = 4 * 366;
-// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites; 4: where its call link is; 5: past meetings)
-const VERSION = 5;
+// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites; 4: where its call link is; 5: past meetings; 6: coffees, reminders and other boards aren't meetings)
+const VERSION = 6;
 export const CALENDAR_BY = 'the calendar';
 
 const NAMED = /\b(meeting|mtg)\b|\bQ[1-4]\b/i;
 const NEVER = /\b(advisory|reveal|demo)\b/i;
+// Time with someone about the board, not the board meeting: a coffee with a prospective member, a social night, the prep beforehand
+const NOT_A_MEETING = /\b(coffee|lunch|breakfast|dinner|drinks|happy hour|wine|social|party|celebration|game night|call with|1:1|1-on-1|one[- ]on[- ]one|prospect\w*|potential|candidate|interview|prep|pre[- ]?meeting|debrief|reminder|to[- ]?do)\b/i;
+// A reminder to do something for the meeting: "get Paul all docs for board meeting", "Send board packet"
+const TODO = /^\s*(get|send|print|email|e-mail|prepare|finish|review|update|book|order|call|follow up|schedule|reserve|pick up|drop off|bring|remind|make|draft|copy|upload|share|ask)\b/i;
+// The words a SOARD board meeting's own name is made of: what's before "board" in any other name is someone else's board
+const OURS = new Set(['soard', 'sunshine', 'on', 'a', 'ranney', 'day', 'q1', 'q2', 'q3', 'q4', 'quarterly', 'annual', 'full', 'regular', 'special', 'the', 'of', 'staff', 'end', 'year', 'end-of-year', 'and', 'our', 'fall', 'spring', 'summer', 'winter', 'virtual', 'zoom', 'teams']);
 
-/** An event that's a board meeting: "board" in its name, never an advisory, reveal or demo day event */
+/**
+ * An event that's a board meeting: "board" in its name and either named as a
+ * meeting ("Q4", "meeting", "mtg") or with three or more of SOARD's board
+ * invited. Never an Advisory Board, reveal or demo day event, a coffee or a
+ * social night, a reminder to do something, or another organization's board
+ * ("REDT Full Board Meeting", "Cottage School Board meeting") unless three or
+ * more of SOARD's board are invited to it.
+ */
 export function isBoardMeetingEvent(ev, boardEmails = []) {
   const title = String(ev?.summary || '');
   if (ev?.status === 'cancelled' || !/\bboard\b/i.test(title) || NEVER.test(title)) return false;
-  if (NAMED.test(title)) return true;
+  if (NOT_A_MEETING.test(title) || TODO.test(title)) return false;
   const invited = new Set((ev.attendees || []).map((a) => String(a.email || '').toLowerCase()));
-  return boardEmails.filter((e) => invited.has(e)).length >= 3;
+  const boardInvited = boardEmails.filter((e) => invited.has(String(e).toLowerCase())).length >= 3;
+  if (!ownBoard(title) && !boardInvited) return false;
+  return NAMED.test(title) || boardInvited;
+}
+
+/** Whether a name is SOARD's board's own ("Q4 SOARD Board Meeting", "Board Meeting": SOARD numbers its meetings by quarter), not another organization's */
+function ownBoard(title) {
+  const before = title.replace(/\([^)]*\)/g, ' ').split(/\bboard\b/i)[0];
+  if (/\b(soard|sunshine on a ranney day|q[1-4])\b/i.test(before)) return true;
+  return before.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean).every((w) => OURS.has(w) || /^\d{4}$/.test(w));
 }
 
 /** The event's day and times in Atlanta: { date, start, end } (no times for an all-day event) */
@@ -175,14 +197,15 @@ async function look(env, { fetchImpl, now }) {
   const timeMin = new Date(now - PAST_DAYS * 86_400_000).toISOString();
   const timeMax = new Date(now + AHEAD_DAYS * 86_400_000).toISOString();
   const found = new Map(); // iCalUID → { ev, from }
+  const rejected = new Set(); // iCalUIDs of events with "board" in them that aren't board meetings
   const errors = [];
   let read = 0;
   for (const email of admins) {
     try {
       const token = await accessToken(env, email, { fetchImpl, now });
       for (const ev of await eventsBetween(token, email, { timeMin, timeMax, q: 'board', fetchImpl })) {
-        if (!isBoardMeetingEvent(ev, boardEmails)) continue;
         const uid = ev.iCalUID || ev.id;
+        if (!isBoardMeetingEvent(ev, boardEmails)) { if (uid) rejected.add(uid); continue; }
         if (uid && !found.has(uid)) found.set(uid, { ev, from: email });
       }
       read += 1;
@@ -217,7 +240,7 @@ async function look(env, { fetchImpl, now }) {
     if (!days.has(when.date)) days.set(when.date, []);
     days.get(when.date).push({ uid, ev, from, when, place: eventPlace(ev) });
   }
-  const counts = { added: 0, moved: 0, linked: 0, gone: 0, merged: 0, past: 0 };
+  const counts = { added: 0, moved: 0, linked: 0, gone: 0, merged: 0, past: 0, notBoard: 0 };
   const onCalendar = new Set();
   for (const [date, copies] of days) {
     const isPast = date < today;
@@ -278,11 +301,26 @@ async function look(env, { fetchImpl, now }) {
     const replies = repliesIn(events);
     if (JSON.stringify(replies) !== JSON.stringify(m.invite.replies || {})) await patchMeeting(env.DB, id, (cur) => ({ ...cur, invite: cur.invite ? { ...cur.invite, replies } : cur.invite }));
   }
+  // A meeting brought in from an event that isn't a board meeting (older rules let in coffees, reminders and other
+  // organizations' boards): off the board page and marked, never deleted, while nobody here has worked on it.
+  // Its files go to the board meeting they were near, if there is one. Sharing it again keeps it
+  meetings = await listMeetings(env.DB);
+  for (const m of meetings) {
+    if (!m.calendar?.uid || m.notBoard || !untouched(m)) continue;
+    const uids = [m.calendar.uid, ...(m.calendar.others || [])];
+    if (!uids.some((u) => rejected.has(u)) || uids.some((u) => onCalendar.has(u))) continue;
+    const done = await patchMeeting(env.DB, m.id, (cur) => (untouched(cur) ? { ...cur, notBoard: true, shared: false } : cur));
+    if (!done?.notBoard) continue;
+    counts.notBoard += 1;
+    const home = meetings.filter((x) => x.id !== m.id && !x.notBoard && !rejectedMeeting(x, rejected) && Math.abs(daysApart(x.date, m.date)) <= 10)
+      .sort((a, b) => Math.abs(daysApart(a.date, m.date)) - Math.abs(daysApart(b.date, m.date)))[0];
+    if (home && m.files.length) await env.DB.prepare("UPDATE board_files SET owner_id = ? WHERE owner_type = 'meeting' AND owner_id = ?").bind(home.id, m.id).run();
+  }
   // A meeting from today on whose event is on no calendar any more: kept, marked gone (only when every calendar was read)
   if (!errors.length) {
     meetings = await listMeetings(env.DB);
     for (const m of meetings) {
-      if (!m.calendar?.uid || m.calendar.gone || m.date < today) continue;
+      if (!m.calendar?.uid || m.calendar.gone || m.notBoard || m.date < today) continue;
       if ([m.calendar.uid, ...(m.calendar.others || [])].some((u) => onCalendar.has(u))) continue;
       await saveMeeting(env.DB, { ...m, calendar: { ...m.calendar, gone: true } }, { by: CALENDAR_BY });
       counts.gone += 1;
@@ -295,6 +333,11 @@ async function look(env, { fetchImpl, now }) {
 }
 
 export const calendarStatus = (DB) => readState(DB, KEY);
+
+// Nobody here has worked on it: only the calendar, board email or Google Drive has saved it
+const untouched = (m) => [CALENDAR_BY, 'board email', 'Google Drive', ''].includes(m.updatedBy || '');
+const daysApart = (a, b) => Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86_400_000);
+const rejectedMeeting = (m, rejected) => !!m.calendar?.uid && [m.calendar.uid, ...(m.calendar.others || [])].some((u) => rejected.has(u));
 
 /** Every hour (or sooner: minAgeMs) at most. Never throws. */
 export async function maybeSyncBoardCalendar(env, { fetchImpl = fetch, now = Date.now(), minAgeMs = EVERY_MS } = {}) {

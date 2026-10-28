@@ -4,7 +4,9 @@
  * as PDFs), the minutes read for who was there and the approval, what isn't
  * meeting material left alone, nothing twice, a change in Drive replacing its
  * copy, and the backlog read a little each look. Made-up people and file
- * names only (the repo is public).
+ * names only (the repo is public). The older years' ways are read too: loose
+ * minutes in the year folder, undated folders of meetings, one copy of each.
+ * And Documents gets the board manual's papers and the founding papers.
  * Run: node --test tests/board-drive.test.mjs
  */
 import { test, beforeEach, afterEach } from 'node:test';
@@ -12,9 +14,9 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import {
-  readBoardDrive, maybeReadBoardDrive, driveStatus, folderDate, folderIdOf, driveKind, driveSkip, DRIVE_BY, DEFAULT_DRIVE_FOLDER, DRIVE_SCOPE,
+  readBoardDrive, maybeReadBoardDrive, driveStatus, folderDate, fileDate, stemOf, meetingDoc, docSlot, docTitle, docKind, nameYear, folderIdOf, driveKind, driveSkip, DRIVE_BY, DEFAULT_DRIVE_FOLDER, DRIVE_SCOPE,
 } from '../functions/api/_board-drive.js';
-import { listMeetings, getMeeting, saveMeeting } from '../functions/api/_board.js';
+import { listMeetings, getMeeting, saveMeeting, listDocs, deleteDoc } from '../functions/api/_board.js';
 import { writeState } from '../functions/api/_board-roles.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 import { cleanMeeting, todayEastern } from '../public/admin/board-shared.js';
@@ -42,6 +44,7 @@ const ROOT = DEFAULT_DRIVE_FOLDER;
 const FOLDER = 'application/vnd.google-apps.folder';
 const DOC = 'application/vnd.google-apps.document';
 const SHEET = 'application/vnd.google-apps.spreadsheet';
+const WORD = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const pdfOf = (t) => new TextEncoder().encode(`%PDF-1.4 ${t}`);
 const MINUTES = (when) => `Example Board of Directors – Meeting Minutes\n${when}\nPresent: Alex Rivera, Sam Ortiz, Jane Doe\nAbsent – Kim Park\n1. CALL TO ORDER\n1. Roll Call\n- Called to order at 8:02 a.m.\n2. COMMITTEE REPORTS\n1. Financial (Sam)\n- Reserves grew\nThe meeting adjourned at 9:45 a.m.`;
 
@@ -81,8 +84,18 @@ beforeEach(async () => {
     if (!u.pathname.endsWith('/export')) assert.equal(u.searchParams.get('supportsAllDrives'), 'true', 'shared drives are always included');
     if (u.pathname === '/drive/v3/files') {
       assert.equal(u.searchParams.get('includeItemsFromAllDrives'), 'true');
-      const parent = u.searchParams.get('q').match(/'([^']+)' in parents/)[1];
-      const all = Object.values(g.files).filter((f) => f.parent === parent);
+      const q = u.searchParams.get('q');
+      const parent = q.match(/'([^']+)' in parents/)?.[1];
+      let all;
+      if (parent) all = Object.values(g.files).filter((f) => f.parent === parent);
+      else {
+        // A search of the Board folder's shared drive by name
+        assert.deepEqual([u.searchParams.get('corpora'), u.searchParams.get('driveId')], ['drive', 'shared-1']);
+        const names = [...q.matchAll(/name contains '([^']+)'/g)].map((x) => x[1].toLowerCase());
+        const folders = q.includes(`mimeType = '${FOLDER}'`);
+        const noFolders = q.includes(`mimeType != '${FOLDER}'`);
+        all = Object.values(g.files).filter((f) => f.id !== ROOT && names.some((x) => f.name.toLowerCase().includes(x)) && (!folders || f.mimeType === FOLDER) && (!noFolders || f.mimeType !== FOLDER));
+      }
       const from = Number(u.searchParams.get('pageToken') || 0);
       const page = all.slice(from, from + g.pageSize).map(({ bytes, text, parent: p, ...f }) => ({ ...f, size: f.mimeType.startsWith('application/vnd.google-apps') ? undefined : String(f.size) }));
       return Response.json({ files: page, ...(from + g.pageSize < all.length ? { nextPageToken: String(from + g.pageSize) } : {}) });
@@ -95,7 +108,7 @@ beforeEach(async () => {
       return type === 'text/plain' ? new Response(f.text) : new Response(pdfOf(`${f.name} as a PDF ${f.text.length}`));
     }
     if (u.searchParams.get('alt') === 'media') return new Response(f.bytes);
-    return Response.json({ id: f.id, name: f.name });
+    return Response.json({ id: f.id, name: f.name, driveId: 'shared-1' });
   };
   // A PDF's text through Workers AI's converter: the minutes' words for the files that have them
   env.AI = { toMarkdown: async (doc) => ({ name: doc.name, format: 'text', data: Object.values(g.files).find((f) => f.name === doc.name)?.text || '' }) };
@@ -287,4 +300,215 @@ test('a backlog is read a folder or more each look, newest first; caught up, it 
   await readBoardDrive(env, { now: Date.now() + 2 * 60 * 60 * 1000, budgetMs: 60000 });
   assert.equal(by(await listMeetings(env.DB), '2025-12-11').files.length, 5);
   assert.equal(todayEastern() > '2025-12-11', true);
+});
+
+test('the older files’ dates, which loose files are a board meeting’s, and the copies of one document', () => {
+  assert.equal(fileDate('Board Meeting Minutes 1/21/16', 2016), '2016-01-21');
+  assert.equal(fileDate('Example Board Meeting Notes 1.27.16 .pdf', 2016), '2016-01-27');
+  assert.equal(fileDate('Example Board Mtg Notes - 20140605.docx', 2014), '2014-06-05');
+  assert.equal(fileDate('Example Board Meeting_Minutes 012121.docx', 2021), '2021-01-21');
+  assert.equal(fileDate('Example Board Meeting_Notes 042221 (1).docx', 2021), '2021-04-22');
+  assert.equal(fileDate('Example Board Meeting- December 17, 2018.docx (1).pdf', 2018), '2018-12-17');
+  assert.equal(fileDate('Copy of Example Board Meeting- March 27, 2018.docx', 2018), '2018-03-27');
+  assert.equal(fileDate('Board Meeting Agenda Jan. 27, 2016.docx', 2016), '2016-01-27');
+  assert.equal(fileDate('Example Board Meeting- June 15 2016.docx', 2016), '2016-06-15');
+  assert.equal(fileDate('Example Board Meeting- June 2 8am.docx', 2015), '2015-06-02', 'no year: the year folder’s');
+  assert.equal(fileDate('Example Board Meeting 2_26.docx', 2015), '2015-02-26');
+  assert.equal(fileDate('Example Board Meeting 2_26.docx'), '', 'no year anywhere');
+  assert.equal(fileDate('Example Board Meeting- December 17, 2018.docx', 2024), '', 'a date far from its year folder');
+  assert.equal(fileDate('Example Board Meeting- February 30, 2018.docx', 2018), '');
+  assert.equal(fileDate('Updated Example Board Agenda 2026.pages', 2026), '');
+  assert.deepEqual(['Board Meeting Minutes 1/21/16', 'Example Board Mtg Notes - 20140605.docx', 'Example Board Meeting_Minutes 012121.docx', 'Board Meeting Agenda 12/21/16',
+    'Board Expectations Updated 01_14_25.pdf', 'Example Board Nominee 2020.pdf', '02/04/2021 - Governance Committee Meeting', 'Example Board Committee Meeting Notes 3.1.21', 'Partner Meeting Agenda 2.11.19', 'Board Members 2015.docx'].map(meetingDoc),
+  [true, true, true, true, false, false, false, false, false, false]);
+  const one = stemOf('Example Board Meeting- December 17, 2018.docx');
+  assert.deepEqual(['Example Board Meeting- December 17, 2018.docx (1).pdf', 'Copy of Example Board Meeting- December 17, 2018.docx', 'Example Board Meeting- December 17, 2018.docx.pdf', 'example board meeting december 17 2018'].map(stemOf), [one, one, one, one]);
+  assert.notEqual(stemOf('2026 budget & actual (January 2026).pdf'), stemOf('2026 budget & actual.pdf'), 'only a copy’s number comes off');
+});
+
+test('the older years: loose minutes on the meeting of their day, undated folders of meetings, an undated meeting’s folder, one copy of each, and nothing else loose', async () => {
+  // 2014: a meeting folder, and loose notes named by the day
+  const y14 = add(ROOT, '2014 Board', { mimeType: FOLDER });
+  add(add(y14, '10.13.2014', { mimeType: FOLDER }), 'Minutes.pdf', { text: MINUTES('October 13, 2014') });
+  const notes14 = add(y14, 'Example Board Mtg Notes - 20140605.docx', { mimeType: WORD });
+  const plan14 = add(y14, 'Example 2014 Plan.pptx');
+  // 2015: a folder of the year's meetings' notes, without a date; loose files that aren't a meeting's
+  const y15 = add(ROOT, '2015 Board', { mimeType: FOLDER });
+  const notes15 = add(y15, '2015 Board Meeting Notes', { mimeType: FOLDER });
+  add(notes15, 'Example Board Meeting 2_26.docx', { mimeType: WORD });
+  add(notes15, 'Example Board Meeting- Oct. 15, 2015.docx', { mimeType: WORD });
+  const members15 = add(y15, 'Example Board Members 2015.docx', { mimeType: WORD });
+  const report15 = add(y15, '10.15.2015 Finance Report.xlsx');
+  // 2016: a folder of meetings with an agenda in two formats, and loose minutes as Google Docs
+  const y16 = add(ROOT, '2016 Board', { mimeType: FOLDER });
+  const m16 = add(y16, '2016 Board Meetings', { mimeType: FOLDER });
+  add(m16, 'Board Meeting Agenda Jan. 27, 2016.docx', { mimeType: WORD });
+  const agendaPdf = add(m16, 'Board Meeting Agenda Jan. 27, 2016.pdf');
+  add(m16, 'Example Board Meeting Notes 1.27.16 .pdf', { text: MINUTES('January 27, 2016') });
+  add(y16, 'Board Meeting Minutes 12/21/16', { mimeType: DOC, text: MINUTES('December 21, 2016') });
+  add(y16, 'Board Meeting Agenda 12/21/16', { mimeType: DOC });
+  const sheet16 = add(y16, 'Balance sheet.pdf');
+  // 2018: loose minutes, their PDF and a copy; and the end of year meeting's undated folder with its statements
+  const y18 = add(ROOT, '2018 Board', { mimeType: FOLDER });
+  const dec = add(y18, 'Example Board Meeting- December 17, 2018.docx', { mimeType: WORD });
+  const decPdf = add(y18, 'Example Board Meeting- December 17, 2018.docx (1).pdf', { text: MINUTES('December 17, 2018') });
+  const decCopy = add(y18, 'Copy of Example Board Meeting- December 17, 2018.docx', { mimeType: WORD });
+  const eoy = add(y18, '2018 Example End of Year Board Meeting', { mimeType: FOLDER });
+  add(eoy, 'Example 2018 - Profit and Loss.pdf');
+  const eoyMin = add(eoy, 'Example Board Meeting- December 17, 2018.docx.pdf');
+  add(y18, 'Example Board Meeting- June 13, 2018.docx', { mimeType: WORD });
+  // 2025: a shared folder of the board's reference files, undated: never read
+  const y25 = add(ROOT, '2025 Board', { mimeType: FOLDER });
+  const shared = add(y25, 'Board Shared Folder- Example', { mimeType: FOLDER });
+  const payroll = add(shared, 'Example Payroll.pdf');
+  const committee = add(y25, '02/04/2025 - Governance Committee Meeting', { mimeType: DOC });
+
+  const st = await readBoardDrive(env, { budgetMs: 60000 });
+  assert.equal(st.ok, true, JSON.stringify(st.errors));
+  const meetings = await listMeetings(env.DB);
+  assert.deepEqual(meetings.map((m) => m.date).sort(), ['2014-06-05', '2014-10-13', '2015-02-26', '2015-10-15', '2016-01-27', '2016-12-21', '2018-06-13', '2018-12-17']);
+  assert.equal(st.backlog, 0);
+  const names = (date) => by(meetings, date).files.map((f) => f.name).sort();
+  assert.deepEqual(names('2014-06-05'), ['Example Board Mtg Notes - 20140605.docx']);
+  assert.deepEqual(names('2016-01-27'), ['Board Meeting Agenda Jan. 27, 2016.pdf', 'Example Board Meeting Notes 1.27.16 .pdf'], 'the agenda once, as its PDF');
+  assert.deepEqual(names('2016-12-21'), ['Board Meeting Agenda 12/21/16.pdf', 'Board Meeting Minutes 12/21/16.pdf']);
+  assert.deepEqual(by(meetings, '2016-12-21').files.map((f) => f.kind).sort(), ['agenda', 'minutes']);
+  assert.deepEqual(names('2018-12-17'), ['Example 2018 - Profit and Loss.pdf', 'Example Board Meeting- December 17, 2018.docx.pdf'], 'the loose minutes and the end of year folder are one meeting, its minutes once');
+  assert.equal(by(meetings, '2018-12-17').files.find((f) => f.kind === 'financials')?.name, 'Example 2018 - Profit and Loss.pdf');
+  assert.ok(fetched(eoyMin) && fetched(notes14) && fetched(agendaPdf));
+  for (const id of [dec, decCopy, plan14, members15, report15, sheet16, payroll, committee]) assert.ok(!fetched(id), `${g.files[id].name} isn’t read`);
+  assert.ok(!g.calls.some((c) => c.includes(`'${shared}'`)), 'a folder that isn’t a meeting’s isn’t opened');
+  assert.ok(fetched(decPdf), 'the loose PDF read for its words, then kept as the copy already there');
+  assert.equal(by(meetings, '2018-12-17').attendance.find((p) => p.slug === 'alex-rivera')?.status, 'present');
+  assert.deepEqual(Object.fromEntries(by(meetings, '2016-12-21').attendance.map((p) => [p.slug, p.status]))['kim-park'], 'absent', 'loose minutes are read for who was there');
+  assert.equal(by(meetings, '2016-12-21').minutes, 'approved', 'a later meeting exists');
+
+  // Read again: nothing twice
+  await readBoardDrive(env, { now: Date.now() + 2 * 60 * 60 * 1000, budgetMs: 60000 });
+  assert.equal((await listMeetings(env.DB)).reduce((x, m) => x + m.files.length, 0), meetings.reduce((x, m) => x + m.files.length, 0));
+});
+
+test('an upgrade walks the folder again for what it missed but doesn’t read again what it read', async () => {
+  const y = add(ROOT, '2018 Board', { mimeType: FOLDER });
+  const read = add(y, '3.27.18 Board Meeting', { mimeType: FOLDER });
+  add(read, 'Minutes.pdf', { text: MINUTES('March 27, 2018') });
+  add(y, 'Example Board Meeting- June 13, 2018.docx', { mimeType: WORD });
+  // What the last version walked and read
+  await writeState(env.DB, 'drive-done', { version: 1, root: ROOT, walkedAt: new Date().toISOString(), folders: [{ id: read, name: '3.27.18 Board Meeting', date: '2018-03-27' }], seen: { [read]: new Date().toISOString() } });
+  await writeState(env.DB, 'drive', { version: 1, ok: true, checkedAt: new Date().toISOString(), backlog: 0 });
+  const r = await maybeReadBoardDrive(env);
+  assert.equal(r.busy, true, 'due at once after an upgrade');
+  assert.deepEqual((await listMeetings(env.DB)).map((m) => m.date), ['2018-06-13']);
+  assert.ok(!g.calls.some((c) => c.includes(`'${read}'`)), 'the folder read before isn’t listed again');
+  assert.deepEqual([(await driveStatus(env.DB)).folders, (await driveStatus(env.DB)).backlog], [2, 0]);
+});
+
+test('which Documents entry a paper fills, its title and its kind', () => {
+  assert.deepEqual(['Articles of Incorporation-State (1).pdf', 'Articles of Amendment.doc.pdf', '3-501(c)(3) Letter of Determination (6).pdf', 'Signed Amended Bylaws.pdf', 'Signed Amended Bylaws 2027.pdf'].map(docSlot),
+    ['articles', 'amendment', 'irs-letter', 'manual:signed amended bylaws', 'manual:signed amended bylaws']);
+  assert.deepEqual(['SOARD EIN number.pdf', '2026 W9 SOARD.pdf', '2022 Charitable Organization Permit.pdf', '24-25 D&O Insurance Policy.pdf'].map(docSlot), ['ein', 'w9', 'charity-permit', 'dno']);
+  assert.ok(['SOARD 401k EIN.pdf', 'Example Holdings EIN.pdf', 'Example Vendor W-9.pdf', 'Example Org Incorporated.pdf'].every((n) => docSlot(n).startsWith('manual:')), 'another plan’s EIN, another company’s, a vendor’s W-9 and an order form are none of SOARD’s papers');
+  assert.deepEqual(['2026 W9 SOARD.pdf', '24-25 D&O Insurance Policy.pdf', 'SOARD W9.pdf'].map(nameYear), [2026, 2025, 0]);
+  assert.equal(docTitle('Example Org, Inc._Board Manual with Policies .pdf'), 'Example Org, Inc. Board Manual with Policies');
+  assert.equal(docTitle('Articles of Amendment.doc.pdf'), 'Articles of Amendment');
+  assert.deepEqual(['Signed Amended Bylaws.pdf', 'Example Org_Board Manual with Policies', 'Conflict of Interest Policy.pdf', 'Org chart.pdf'].map(docKind), ['governance', 'policy', 'policy', 'other']);
+});
+
+test('Documents gets the newest board manual’s papers and SOARD’s own papers, one copy each (the newest, for the renewed ones), never the members’ signed copies, look-alikes or anything else beside them', async () => {
+  add(add(add(ROOT, '2025 Board', { mimeType: FOLDER }), '1.23.25 Meeting', { mimeType: FOLDER }), 'Minutes.pdf', { text: MINUTES('January 23, 2025') });
+  const legal = add('', '2025/2026 Legal Checkup', { mimeType: FOLDER });
+  const old = add(add('', 'Old legal', { mimeType: FOLDER }), '2025 Board Manual', { mimeType: FOLDER });
+  const oldBylaws = add(old, 'Bylaws 2025.pdf');
+  const manual = add(legal, '2026 Board Manual', { mimeType: FOLDER });
+  const bylaws = add(manual, 'Signed Amended Bylaws.pdf');
+  add(manual, 'Example Org_Board Manual with Policies', { mimeType: DOC, text: 'policies' });
+  const manualPdf = add(manual, 'Example Org_Board Manual with Policies .pdf');
+  const pages = add(manual, 'Example Org_Board Manual with Policies (2).pages', { mimeType: 'application/x-iwork-pages-sffpages' });
+  const stateArticles = add(manual, 'Articles of Incorporation-State (1).pdf');
+  const signedDir = add(manual, 'Board Signed Documents', { mimeType: FOLDER });
+  const signedCopy = add(signedDir, 'Example Org_Board Manual with Policies - Pat Example.pdf');
+  // Where the founding papers are kept, beside papers that are nobody else's business
+  const biz = add('', 'Business licenses and docs', { mimeType: FOLDER });
+  const irs = add(biz, '501(c)(3) Letter of Determination.pdf', { modifiedTime: '2014-01-01T00:00:00Z' });
+  const grantCopy = add(add('', 'Grants', { mimeType: FOLDER }), '3-501(c)(3) Letter of Determination (6).pdf');
+  const amendment = add(biz, 'Articles of Amendment.doc.pdf');
+  const redline = add(biz, 'Redline - Articles of Amendment.pdf');
+  const otherArticles = add(biz, 'Articles of Incorporation Example.pdf');
+  const license = add(biz, 'Example Drivers License.pdf');
+  // Renewed papers: the newest copy; and look-alikes that are someone else's
+  const ein = add(biz, 'SOARD EIN number.pdf', { modifiedTime: '2017-06-14T00:00:00Z' });
+  const plan401k = add(biz, 'SOARD 401k EIN.pdf');
+  const otherEin = add(biz, 'Example Holdings EIN.pdf');
+  const oldW9 = add(biz, 'SOARD W9.pdf', { modifiedTime: '2018-06-25T00:00:00Z' });
+  const w9 = add('', '2026 W9 SOARD.pdf', { modifiedTime: '2026-01-05T00:00:00Z' });
+  const vendorW9 = add(biz, 'Example Vendor W-9.pdf', { modifiedTime: '2026-09-01T00:00:00Z' });
+  const oldPermit = add(biz, 'SOARD - Charitable Organization Permit.pdf', { modifiedTime: '2016-12-20T00:00:00Z' });
+  const permit = add(biz, '2022 Charitable Organization Permit.pdf', { modifiedTime: '2022-03-01T00:00:00Z' });
+  const oldDno = add(ROOT, '2017 Board D&O Insurance.pdf', { modifiedTime: '2016-12-15T00:00:00Z' });
+  const dno = add(add(ROOT, '2025 Board', { mimeType: FOLDER }), '24-25 D&O Insurance Policy.pdf', { modifiedTime: '2025-01-23T00:00:00Z' });
+  const order = add('', 'Example Org Incorporated.pdf');
+
+  const st = await readBoardDrive(env, { budgetMs: 60000 });
+  assert.equal(st.ok, true, JSON.stringify(st.errors));
+  assert.deepEqual([st.docs.count, st.docs.manual, st.docs.missing], [9, '2026 Board Manual', []]);
+  let docs = await listDocs(env.DB);
+  assert.deepEqual(docs.map((d) => [d.title, d.kind, d.year, d.shared, d.sign]).sort(), [
+    ['Articles of Amendment', 'governance', null, true, false],
+    ['Articles of Incorporation', 'governance', null, true, false],
+    ['Charitable Organization Permit', 'governance', null, true, false],
+    ['D&O insurance', 'governance', null, true, false],
+    ['EIN letter', 'governance', null, true, false],
+    ['Example Org Board Manual with Policies', 'policy', 2026, true, false],
+    ['IRS 501(c)(3) determination letter', 'governance', null, true, false],
+    ['Signed Amended Bylaws', 'governance', 2026, true, false],
+    ['W-9', 'governance', null, true, false],
+  ]);
+  const fileOf = (title) => docs.find((d) => d.title === title).file.name;
+  assert.deepEqual(['EIN letter', 'W-9', 'Charitable Organization Permit', 'D&O insurance'].map(fileOf),
+    ['SOARD EIN number.pdf', '2026 W9 SOARD.pdf', '2022 Charitable Organization Permit.pdf', '24-25 D&O Insurance Policy.pdf'], 'the newest copy of each');
+  for (const id of [ein, w9, permit, dno]) assert.ok(fetched(id), `${g.files[id].name} is read`);
+  for (const id of [plan401k, otherEin, oldW9, vendorW9, oldPermit, oldDno, order]) assert.ok(!fetched(id), `${g.files[id].name} isn’t read`);
+  assert.ok(docs.every((d) => d.file), 'each with its file');
+  assert.equal(docs.find((d) => d.title === 'Articles of Incorporation').file.name, 'Articles of Incorporation-State (1).pdf', 'the manual’s own copy');
+  for (const id of [bylaws, stateArticles, irs, amendment]) assert.ok(fetched(id), `${g.files[id].name} is read`);
+  for (const id of [oldBylaws, pages, signedCopy, grantCopy, redline, otherArticles, license]) assert.ok(!fetched(id), `${g.files[id].name} isn’t read`);
+  assert.ok(!g.calls.some((c) => c.includes(`'${signedDir}'`) || c.includes(`'${biz}'`)), 'the folders beside them aren’t opened');
+  assert.equal(fetched(manualPdf) ? 1 : 0, 0, 'the Doc and its PDF are one document (the Doc, as a PDF)');
+
+  // Within the hour: not again. An hour later, nothing changed: nothing brought
+  g.calls = [];
+  await readBoardDrive(env, { now: Date.now() + 30 * 60 * 1000 });
+  assert.ok(!g.calls.some((c) => c.includes('corpora=drive')));
+  await readBoardDrive(env, { now: Date.now() + 2 * 60 * 60 * 1000 });
+  assert.equal((await driveStatus(env.DB)).docs.brought, 0);
+
+  // Taken out in Board: it stays out. The bylaws changed in Drive: the new file replaces the old
+  await deleteDoc(env, docs.find((d) => d.title === 'Articles of Amendment').id);
+  const before = docs.find((d) => d.title === 'Signed Amended Bylaws').file;
+  g.files[bylaws].modifiedTime = '2026-09-01T00:00:00Z';
+  await readBoardDrive(env, { now: Date.now() + 4 * 60 * 60 * 1000 });
+  docs = await listDocs(env.DB);
+  assert.equal(docs.length, 8);
+  const after = docs.find((d) => d.title === 'Signed Amended Bylaws').file;
+  assert.notEqual(after.id, before.id);
+  assert.equal(await env.DB.prepare('SELECT count(*) AS n FROM board_files WHERE owner_type = ?').bind('doc').first().then((r) => r.n), 8, 'the old copy is gone');
+
+  // Next year's manual: its bylaws fill the same document, which is that year's now
+  const next = add(legal, '2027 Board Manual', { mimeType: FOLDER });
+  add(next, 'Signed Amended Bylaws 2027.pdf');
+  await readBoardDrive(env, { now: Date.now() + 6 * 60 * 60 * 1000 });
+  docs = await listDocs(env.DB);
+  const b = docs.find((d) => d.title === 'Signed Amended Bylaws');
+  assert.deepEqual([b.year, b.file.name, docs.length], [2027, 'Signed Amended Bylaws 2027.pdf', 8]);
+  assert.equal((await driveStatus(env.DB)).docs.manual, '2027 Board Manual');
+});
+
+test('Documents waits for the past meetings to be read', async () => {
+  const y = add(ROOT, '2025 Board', { mimeType: FOLDER });
+  for (const md of ['1.16.25', '4.17.25']) add(add(y, `${md} Meeting`, { mimeType: FOLDER }), 'Minutes.pdf', { text: MINUTES(md) });
+  add(add('', '2026 Board Manual', { mimeType: FOLDER }), 'Signed Amended Bylaws.pdf');
+  let st = await readBoardDrive(env, { budgetMs: 0 });
+  assert.deepEqual([st.backlog, st.docs], [1, null]);
+  st = await readBoardDrive(env, { budgetMs: 0 });
+  assert.deepEqual([st.backlog, st.docs?.count], [0, 1]);
 });
