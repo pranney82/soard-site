@@ -142,7 +142,7 @@ function GoogleSetup({ data }) {
   // Set up, and Google still says no: its words, since no setting here fixes it
   const broken = check && !check.ok && !meetNeeds && check.error;
   if (broken && !mailNeeds) {
-    return html`<div class="notice notice--warn"><div class="notice__body"><strong>${check.calendar === 'error' ? 'Board can’t write to the calendar for invites.' : check.meet === 'error' ? 'Google Calendar won’t add Google Meet to invites.' : 'Invites go out with Google Meet, but Google won’t turn transcripts on.'}</strong> Google said: ${check.error} Board checks again every hour.</div></div>`;
+    return html`<div class="notice notice--warn"><div class="notice__body"><strong>${check.calendar === 'error' ? 'Board can’t write to the calendar for invites.' : check.meet === 'error' ? 'Google Calendar won’t add Google Meet to invites.' : 'Invites go out with Google Meet, but without transcripts.'}</strong> ${check.transcript === 'error' ? check.error : `Google said: ${check.error}`} Once that’s changed, Board checks again whenever it’s opened (at most every ten minutes), and by itself each day.</div></div>`;
   }
   if (!mailNeeds && !meetNeeds) return null;
   const scopes = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/meetings.space.settings'].join(',');

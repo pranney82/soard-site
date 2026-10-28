@@ -34,7 +34,7 @@ import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
 import { accessStatus, syncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
-import { sendInvite, noteInviteChange, projectOf, inviteCheck } from './_board-invite.js';
+import { sendInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
@@ -69,6 +69,8 @@ export async function onRequestGet(context) {
     await Promise.race([looking, new Promise((r) => setTimeout(r, 6000))]);
     // Board mail is slower (files to read): it runs after the answer, and shows on the next open
     context.waitUntil?.(maybeReadBoardMail(env, { minAgeMs: 10 * 60 * 1000 }));
+    // The invite check, when it hasn't passed: a change made in Google shows on the next open
+    context.waitUntil?.(maybeCheckInvites(env, { retryMs: 10 * 60 * 1000 }));
     const [settings, meetings, docs, members, people, access, numbers, recipients, calendar] = await Promise.all([
       getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB), memberStatus(env.DB), roster(env.DB),
       accessStatus(env), liveNumbers(env), packetList(env.DB), calendarStatus(env.DB),

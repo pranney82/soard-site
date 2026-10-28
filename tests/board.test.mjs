@@ -630,6 +630,7 @@ function fakeGoogleWriter({ meetScope = true, meetApi = true, keeps = true, pend
     if (meet && !g.meetApi) return Response.json({ error: { message: 'Google Meet REST API has not been used in project example-project before or it is disabled.' } }, { status: 403 });
     const config = (code) => ({ artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: g.transcript[code] || 'OFF' } } });
     if (meet && method === 'GET') return Response.json({ name: `spaces/${meet[1].replace(/-space$/, '')}-space`, meetingCode: meet[1], config: config(meet[1]) });
+    if (meet && method === 'PATCH' && g.notAvailable) return Response.json({ error: { code: 403, message: 'updateAutoTranscriptionGeneration is not available to the user.', status: 'PERMISSION_DENIED' } }, { status: 403 });
     if (meet && method === 'PATCH') { if (g.keeps) g.transcript[meet[1]] = body.config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration; return Response.json({ name: `spaces/${meet[1]}`, config: config(meet[1]) }); }
     const m = url.match(/^https:\/\/www\.googleapis\.com\/calendar\/v3\/calendars\/([^/?]+)\/events(?:\/([^?]+))?(?:\?.*)?$/);
     if (!m) throw new Error(`unexpected Google call ${method} ${url}`);
@@ -858,12 +859,23 @@ test('a Workspace plan without transcripts: the check says so in plain words, an
   const st = await maybeCheckInvites(env);
   assert.deepEqual([st.ok, st.meet, st.transcript], [false, 'ok', 'error']);
   assert.match(st.error, /left transcripts off.*plan may not include them/);
+  // What production answered (Oct 28 2026): the account can't have them, in words Peter can act on
+  g.notAvailable = true;
   // No setting fixes that: looked at again a day later, not every hour
   g.calls = [];
   await maybeCheckInvites(env, { now: Date.now() + 3 * 60 * 60 * 1000 });
   assert.equal(g.calls.length, 0, 'not hourly');
+  let later = await maybeCheckInvites(env, { now: Date.now() + 25 * 60 * 60 * 1000 });
+  assert.deepEqual([later.ok, later.transcript], [false, 'error']);
+  assert.match(later.error, /transcripts aren’t available on the organizer’s account.*Business Standard.*Meet video settings/);
+  // Opening Board tries again sooner (at most every ten minutes), so a change in Google shows on the next open
+  g.notAvailable = false;
   g.keeps = true;
-  assert.equal((await maybeCheckInvites(env, { now: Date.now() + 25 * 60 * 60 * 1000 })).ok, true, 'a day later, and a new plan shows');
+  g.calls = [];
+  assert.equal((await maybeCheckInvites(env, { now: Date.now() + 25 * 60 * 60 * 1000 + 5 * 60 * 1000, retryMs: 10 * 60 * 1000 })).ok, false, 'not within ten minutes');
+  assert.equal(g.calls.length, 0);
+  later = await maybeCheckInvites(env, { now: Date.now() + 25 * 60 * 60 * 1000 + 11 * 60 * 1000, retryMs: 10 * 60 * 1000 });
+  assert.equal(later.ok, true, 'a new plan shows when Board is opened');
   g.keeps = false;
   g.transcript = {}; // the fake gives every event the same Meet
   const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(22) })).body.meeting;

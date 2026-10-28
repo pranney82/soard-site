@@ -97,6 +97,8 @@ async function transcriptOn(env, organizer, meetCode, fetchImpl, now) {
     return { transcript: 'on', error: '' };
   } catch (err) {
     const setup = err.status === 403 && /has not been used|is disabled|insufficient|permission/i.test(err.message);
+    // What production answered on Oct 28 2026, with every scope and API in place: the account can't have transcripts
+    if (/not available to the user/i.test(err.message)) return { transcript: 'error', error: 'Google says transcripts aren’t available on the organizer’s account. SOARD’s Google Workspace plan may not include them (Business Standard and up do), or they’re turned off in Google Admin → Apps → Google Workspace → Google Meet → Meet video settings.' };
     return { transcript: setup ? 'needs-setup' : 'error', error: String(err.message).slice(0, 300) };
   }
 }
@@ -283,18 +285,21 @@ export async function checkInvites(env, { fetchImpl = fetch, now = Date.now() } 
 
 /**
  * The heartbeat: the check above until it passes (hourly while a Google
- * setting is missing; daily when Google says no for a reason no setting
- * fixes, like a plan without transcripts), then hourly, transcripts turned on
+ * setting is missing; daily when Google says no for another reason, like a
+ * plan without transcripts; and when Board is opened, at most every ten
+ * minutes, while it hasn't passed), then hourly, transcripts turned on
  * for any upcoming invite that went out before Google allowed them, so a fix
  * in Google Admin reaches every invite by itself. → the check's state. Never throws.
  */
-export async function maybeCheckInvites(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+export async function maybeCheckInvites(env, { fetchImpl = fetch, now = Date.now(), retryMs = 0 } = {}) {
   try {
     if (!env.DB || !env.GOOGLE_CALENDAR_KEY) return null;
     const st = await readState(env.DB, CHECK);
     const fresh = st.version === CHECK_VERSION;
     const fixable = st.ok || st.transcript === 'needs-setup' || st.calendar === 'error' || st.leftover;
-    if (fresh && now - Date.parse(st.at || 0) < (fixable ? HOUR : DAY)) return st;
+    // Board opened (retryMs): a check that didn't pass is tried again sooner, so a change in Google shows on the next open
+    const wait = fixable ? HOUR : DAY;
+    if (fresh && now - Date.parse(st.at || 0) < (retryMs && !st.ok ? Math.min(retryMs, wait) : wait)) return st;
     const at = new Date(now).toISOString();
     const today = todayEastern(now);
     const behind = (await listMeetings(env.DB)).filter((m) => m.date >= today && m.invite?.meet && m.invite.transcript !== 'on');

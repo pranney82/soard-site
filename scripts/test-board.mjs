@@ -384,7 +384,8 @@ try {
   ok(/From Jane’s calendar to every board member and you, with Google Meet and transcripts on/.test(await text(jane)), 'Getting ready says who the invite comes from and who it goes to');
   await clickText(jane, 'button', /^Send the invite$/);
   ok(await waitText(jane, /Invite sent from Jane’s calendar/), 'Send the invite sends it');
-  const post = google.find((c) => c.method === 'POST');
+  // The invite's write (opening Board also runs the invite check, whose event has no guests)
+  const post = google.find((c) => c.method === 'POST' && c.body?.attendees);
   ok(post && post.url.includes(`/calendars/${encodeURIComponent(FOUNDER)}/events?conferenceDataVersion=1&sendUpdates=all`), 'from the president’s own calendar, and Google emails the guests');
   ok(post && post.body.attendees.map((a) => a.email).sort().join() === [MEMBER, OTHER].sort().join(), 'to every board member with an email');
   ok(post?.body.conferenceData?.createRequest?.conferenceSolutionKey?.type === 'hangoutsMeet' && google.some((c) => c.method === 'PATCH' && /meet\.googleapis\.com/.test(c.url) && c.body.config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration === 'ON'), 'with Google Meet, its transcripts turned on');
@@ -476,7 +477,8 @@ try {
   const calDay = day(35);
   calendar[FOUNDER].push({ id: 'q1', iCalUID: 'q1@google.com', summary: 'SOARD Q4 Board Meeting', status: 'confirmed', start: { dateTime: `${calDay}T13:00:00Z` }, end: { dateTime: `${calDay}T15:00:00Z` }, location: 'Example Design Group, 100 Example St, Roswell, GA', organizer: { email: FOUNDER, self: true }, attendees: [{ email: MEMBER, responseStatus: 'accepted' }, { email: OTHER }], htmlLink: 'https://www.google.com/calendar/event?eid=q1' });
   // Alex said yes to Board's invite in their calendar
-  calendar[FOUNDER][0].attendees = calendar[FOUNDER][0].attendees.map((a) => (a.email === MEMBER ? { ...a, responseStatus: 'accepted' } : a));
+  const boards = calendar[FOUNDER].find((e) => /^board[0-9a-f]/.test(e.id) && e.attendees);
+  boards.attendees = boards.attendees.map((a) => (a.email === MEMBER ? { ...a, responseStatus: 'accepted' } : a));
   await DB.exec("DELETE FROM board_state WHERE key = 'calendar'");
   // The heartbeat's check of Calendar, Meet and transcripts (an event with no guests, deleted again)
   const checked = await maybeCheckInvites(env);
