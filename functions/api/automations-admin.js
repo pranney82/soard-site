@@ -87,6 +87,7 @@ export function envFacts(env) {
     slackBot: has(env.SLACK_BOT_TOKEN),
     companycam: has(env.COMPANYCAM_TOKEN),
     companycamCustomerStage: String(env.COMPANYCAM_CUSTOMER_STAGE || '').trim().toLowerCase() === 'on',
+    mercury: has(env.MERCURY_API_TOKEN),
   };
 }
 
@@ -208,6 +209,34 @@ export function zeffyFacts(cfg, failing = null) {
     rejectedAt: d.lastRejected?.at || null,
     failing: failing?.n ?? 0,
     failingWhy: failing?.n ? failing.why || null : null,
+  };
+}
+
+/** Job costs (spend_state "job-costs" and "mercury-webhook", _spend.js). Times and counts only, never the secret */
+export async function jobCostFacts(DB) {
+  const read = async (key) => JSON.parse((await DB.prepare('SELECT data FROM spend_state WHERE key = ?').bind(key).first('data').catch(() => null)) || '{}');
+  const count = (sql) => DB.prepare(sql).first('n').catch(() => null);
+  const [cfg, hook, agent, unsorted, billRuns, billPay, closeouts, waitingBills, odd, fin, ven] = await Promise.all([
+    read('job-costs'), read('mercury-webhook'), read('agent'),
+    count("SELECT count(*) AS n FROM spend_charges WHERE bucket IS NULL AND bill_id IS NULL AND cents > 0 AND status IN ('pending', 'sent')"),
+    read('bill-pay-runs'), read('bill-pay'), read('closeouts'),
+    count("SELECT count(*) AS n FROM bill_approvals WHERE state IN ('waiting', 'second')"),
+    count('SELECT count(*) AS n FROM spend_odd WHERE cleared_at IS NULL'),
+    read('finance'), read('vendors'),
+  ]);
+  return {
+    webhook: !!hook.id, lastEventAt: hook.lastEventAt || null, webhookError: cfg.webhookError || null,
+    lastRunAt: cfg.lastRun?.at || null, lastCatchUpAt: cfg.lastCatchUp?.at || null,
+    catchUpError: cfg.lastCatchUpError && !(Date.parse(cfg.lastCatchUp?.at || 0) > Date.parse(cfg.lastCatchUpError.at)) ? cfg.lastCatchUpError.error : null,
+    billsError: cfg.lastRun?.billsError || null,
+    writeError: cfg.lastWriteError && !(Date.parse(cfg.lastWriteOkAt || 0) > Date.parse(cfg.lastWriteError.at)) ? cfg.lastWriteError.error : null,
+    lastRebuildAt: cfg.lastRebuildAt || null, agentUsedAt: agent.lastUsedAt || null,
+    unsorted: unsorted ?? 0, caps: cfg.caps === 'on',
+    billPay: { at: billRuns.lastAt || null, error: billRuns.error || null, last: billRuns.last || null, mode: billPay.payMode || 'off', approvers: (billPay.approvers || []).length, waiting: waitingBills ?? 0 },
+    receipts: cfg.lastRun?.receipts || null,
+    odd: odd ?? 0, closeouts: { at: closeouts.lastAt || null, error: closeouts.error || null, historyLeft: closeouts.historyLeft ?? null, closed: closeouts.closed ?? null },
+    finance: { at: fin.lastRunAt || null, backfill: fin.backfill || null, forecast: fin.lastForecast || null, cashLow: !!fin.cashLowOpen, cpaError: fin.cpaError || null, balancesError: fin.balancesError || null },
+    vendors: { at: ven.lastRunAt || null, error: ven.lastError || null, autoW9: !!ven.settings?.autoW9, autoCoi: !!ven.settings?.autoCoi },
   };
 }
 
@@ -359,6 +388,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     companycamJobs: await settle(() => jobsFacts(env)),
     // Mercury through the relay: account names and kinds only (_mercury.js)
     mercury: await settle(() => mercuryFacts(env, fetchImpl)),
+    jobCosts: await settle(() => jobCostFacts(DB)),
     // Access's board list and the monthly bank balance: counts, times and on/off only (_board.js)
     board: await settle(() => boardFacts(env)),
   };

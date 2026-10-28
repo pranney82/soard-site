@@ -31,6 +31,9 @@ import { maybeRunCompanyCam } from './_companycam-sync.js';
 import { maybeCheckJobs } from './_companycam-jobs.js';
 import { maybeCapSelfTest } from './_application-cap.js';
 import { maybeTrackEmails } from './_email-log.js';
+import { maybeRunSpend } from './_spend.js';
+import { maybeRunFinance } from './_finance.js';
+import { maybeRunVendors } from './_vendors.js';
 import { alertAdmins } from './_broadcast-notify.js';
 import { maybeRunBoard } from './_board.js';
 
@@ -89,6 +92,11 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeCapSelfTest(env));
     // Every 30 minutes: Resend reports on each email the site sent (it registers its own webhook), and any missed report is caught up (see _email-log.js)
     context.waitUntil(maybeTrackEmails(env, { alert: async (e, card) => alertAdmins(e, await readConfig(e.DB), card) }));
+    // Job costs every 2 minutes: Mercury charges the webhook missed, new JobTread bills paired with their charges,
+    // notes back to Mercury; every job's ledger every 15 minutes; the weekday morning receipts card (see _spend.js)
+    context.waitUntil(maybeRunSpend(env));
+    context.waitUntil(maybeRunFinance(env));
+    context.waitUntil(maybeRunVendors(env));
     // The board: Access's sign-in list kept to People → Board (every 5 minutes when it changed), and the month's bank balance once a day (see _board.js)
     context.waitUntil(maybeRunBoard(env));
     // The hub passes `reason` to every open page and keeps `work` in its status, so both go

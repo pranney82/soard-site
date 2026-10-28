@@ -185,7 +185,7 @@ test('the health check names the workspace, the bot and the channel, and spots e
   slack.token = 'xoxb-rotated';
   assert.equal((await notify.slackStatus(env)).error, 'invalid_auth');
 
-  assert.deepEqual(await notify.slackStatus({ DB: env.DB, SLACK_WEBHOOK_URL: HOOK }), { mode: 'webhook', webhook: true, ok: true, error: null, errorFor: null, team: null, bot: null, channel: { id: 'G0PRIVATE', name: 'board', private: false }, attention: null, applications: null });
+  assert.deepEqual(await notify.slackStatus({ DB: env.DB, SLACK_WEBHOOK_URL: HOOK }), { mode: 'webhook', webhook: true, ok: true, error: null, errorFor: null, team: null, bot: null, channel: { id: 'G0PRIVATE', name: 'board', private: false }, attention: null, applications: null, finance: null });
 });
 
 test('the channel list pages through Slack and comes back sorted', async () => {

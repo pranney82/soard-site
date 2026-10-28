@@ -1,0 +1,201 @@
+---
+/**
+ * /vendor-documents/#t=<token> — where a company that works on SOARD's
+ * makeovers sends its certificate of insurance (with the date the policy
+ * ends and the insurer) and, if asked, its W-9. The link comes by email from
+ * Admin → Vendors (automatic once switched on, or sent by hand). The token
+ * stays in the fragment so it never reaches a server log or a referrer.
+ * Files are private (R2 vendors/); no tax ID is ever typed here. Not
+ * indexed. API: functions/api/vendor-docs.js.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { cfUrl } from '../utils/cf-image';
+---
+
+<BaseLayout title="Your insurance certificate for SOARD" description="Send Sunshine on a Ranney Day your certificate of insurance." noindex>
+  <section class="vd-hero">
+    <div class="vd-hero__inner">
+      <div class="vd-hero__text">
+        <p class="vd-eyebrow">For our trade partners</p>
+        <h1 id="vd-title">Your certificate of <em>insurance</em></h1>
+        <p class="vd-lead" id="vd-lead">Every company on a makeover site keeps a current certificate on file with us. Upload yours here: it takes a minute.</p>
+      </div>
+      <div class="vd-frame" aria-hidden="true">
+        <div class="vd-accent"></div>
+        <div class="vd-badge">
+          <img src={cfUrl('brand-logo-circle-display', { w: 256 })} alt="" width="256" height="256" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="vd-body">
+    <div class="vd-card">
+      <p class="vd-status" id="vd-status" role="status" aria-live="polite">Loading…</p>
+
+      <form id="vd-form" hidden novalidate>
+        <fieldset class="vd-group">
+          <legend>Certificate of insurance</legend>
+          <p class="vd-help" id="vd-coi-now" hidden></p>
+          <div class="vd-field">
+            <label for="vd-coi">The certificate <span class="vd-optional">PDF or a photo</span></label>
+            <p class="vd-help" id="vd-coi-help">General liability, with Sunshine on a Ranney Day named as certificate holder.</p>
+            <input id="vd-coi" name="coi" type="file" accept="application/pdf,image/*" aria-describedby="vd-coi-help" />
+          </div>
+          <div class="vd-row">
+            <div class="vd-field">
+              <label for="vd-expires">Date the policy ends</label>
+              <input id="vd-expires" name="coiExpires" type="date" />
+            </div>
+            <div class="vd-field">
+              <label for="vd-insurer">Insurance company <span class="vd-optional">optional</span></label>
+              <input id="vd-insurer" name="coiInsurer" type="text" maxlength="120" autocomplete="organization" />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="vd-group" id="vd-w9-group" hidden>
+          <legend>W-9 <span class="vd-optional">if we asked for one</span></legend>
+          <div class="vd-field">
+            <label for="vd-w9">Your completed W-9 <span class="vd-optional">PDF or a photo</span></label>
+            <p class="vd-help" id="vd-w9-help">We use it to send your 1099 in January. If you already sent it through Mercury, skip this.</p>
+            <input id="vd-w9" name="w9" type="file" accept="application/pdf,image/*" aria-describedby="vd-w9-help" />
+          </div>
+        </fieldset>
+
+        <!-- Left empty by people; bots fill it in -->
+        <div class="vd-hp" aria-hidden="true">
+          <label for="vd-website">Website</label>
+          <input id="vd-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+        </div>
+
+        <p class="vd-error" id="vd-error" role="alert" hidden></p>
+        <button class="btn btn-primary btn-lg vd-submit" id="vd-submit" type="submit">Send to SOARD</button>
+        <p class="vd-help vd-small">Files stay private with Sunshine on a Ranney Day. Up to 15 MB each.</p>
+      </form>
+
+      <div class="vd-done" id="vd-done" hidden tabindex="-1">
+        <h2>Thank you.</h2>
+        <p>We have it. If anything changes before the policy ends, use the same link again within the month.</p>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .vd-hero { background: var(--c-cream); padding: clamp(56px, 8vw, 110px) 0 clamp(40px, 6vw, 72px); overflow: hidden; }
+  .vd-hero__inner { max-width: 960px; margin: 0 auto; padding: 0 var(--space-xl); display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(32px, 5vw, 72px); align-items: center; }
+  .vd-eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); }
+  .vd-eyebrow::before { content: ''; width: 28px; height: 2px; background: currentColor; }
+  .vd-hero h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); line-height: 1.08; letter-spacing: -0.03em; margin-bottom: 18px; }
+  .vd-hero h1 em { font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%); padding: 0 0.05em; }
+  .vd-lead { font-size: clamp(16px, 1.6vw, 18px); line-height: 1.65; color: var(--c-text-muted); max-width: 460px; }
+  .vd-frame { position: relative; max-width: 260px; margin-left: auto; width: 100%; }
+  .vd-accent { position: absolute; right: -14px; bottom: -14px; width: 65%; height: 50%; background: var(--c-yellow); border-radius: 22px; opacity: 0.35; }
+  .vd-badge { position: relative; aspect-ratio: 1; border-radius: 50%; overflow: hidden; background: var(--c-warm-gray); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.1); display: grid; place-items: center; }
+  .vd-badge img { width: 60%; height: auto; opacity: 0.6; }
+
+  .vd-body { padding: 0 var(--space-xl) clamp(56px, 8vw, 96px); background: var(--c-cream); }
+  .vd-card { max-width: 720px; margin: 0 auto; background: #fff; border: 1px solid var(--c-border); border-radius: 20px; padding: clamp(24px, 4vw, 40px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.05); }
+  .vd-status { color: var(--c-text-muted); }
+  .vd-status:empty { display: none; }
+  .vd-group { border: 0; padding: 0; margin: 0 0 32px; min-width: 0; }
+  .vd-group legend { font-family: var(--font-display); font-size: 1.35rem; margin-bottom: 14px; padding: 0; }
+  .vd-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .vd-field { margin-bottom: 20px; min-width: 0; }
+  .vd-field label { display: block; font-weight: 700; font-size: 1.02rem; margin-bottom: 4px; color: var(--c-text); }
+  .vd-optional { font-weight: 400; font-size: 0.86rem; color: var(--c-text-muted); margin-left: 6px; font-family: var(--font-body, inherit); }
+  .vd-help { font-size: 0.92rem; color: var(--c-text-muted); margin-bottom: 10px; line-height: 1.5; }
+  .vd-small { margin: 12px 0 0; text-align: center; font-size: 0.84rem; }
+  .vd-field input[type="text"], .vd-field input[type="date"] {
+    width: 100%; font: inherit; font-size: 16px; color: var(--c-text); min-height: 48px;
+    padding: 10px 14px; border: 1px solid #D4D2CB; border-radius: 12px; background: #fff;
+  }
+  .vd-field input[type="file"] { font-size: 16px; max-width: 100%; }
+  .vd-field input:focus { outline: none; border-color: var(--c-text); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
+  .vd-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .vd-error { margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: #FFF3BF; color: #5C4500; font-weight: 600; }
+  .vd-submit { width: 100%; justify-content: center; min-height: 52px; }
+  .vd-done h2 { font-family: var(--font-display); font-size: clamp(1.6rem, 4vw, 2.2rem); margin-bottom: 12px; }
+  .vd-done p { color: var(--c-text-muted); line-height: 1.7; }
+  .vd-done:focus { outline: none; }
+
+  @media (max-width: 760px) {
+    .vd-hero__inner { grid-template-columns: 1fr; text-align: center; gap: 28px; }
+    .vd-eyebrow { justify-content: center; }
+    .vd-lead { margin-inline: auto; }
+    .vd-frame { order: -1; max-width: 160px; margin: 0 auto; }
+    .vd-body { padding-inline: 16px; }
+    .vd-row { grid-template-columns: 1fr; gap: 0; }
+  }
+</style>
+
+<script>
+  const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+  const token = new URLSearchParams(location.hash.slice(1)).get('t') || '';
+  const status = $('vd-status');
+  const form = $<HTMLFormElement>('vd-form');
+  const coi = $<HTMLInputElement>('vd-coi');
+  const w9 = $<HTMLInputElement>('vd-w9');
+  const expires = $<HTMLInputElement>('vd-expires');
+  const error = $('vd-error');
+  const submit = $<HTMLButtonElement>('vd-submit');
+  const today = new Date().toLocaleDateString('en-CA');
+  expires.min = today;
+
+  const long = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  async function load() {
+    if (!token) { status.textContent = 'This link is missing its code. Open it again from the email Sunshine on a Ranney Day sent you.'; return; }
+    try {
+      const res = await fetch(`/api/vendor-docs?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) { status.textContent = d.error || 'This link didn’t work. Ask Sunshine on a Ranney Day for a new one.'; return; }
+      const v = d.vendor;
+      $('vd-title').innerHTML = 'Your certificate of <em>insurance</em>';
+      $('vd-lead').textContent = `For ${v.name}. Every company on a makeover site keeps a current certificate on file with us. Upload yours here: it takes a minute.`;
+      document.title = `${v.name}: certificate of insurance for SOARD`;
+      if (v.coi?.expires) {
+        const now = $('vd-coi-now');
+        now.textContent = v.coi.expires < today
+          ? `The certificate we have ended on ${long(v.coi.expires)}. Please send the renewed one.`
+          : `The certificate we have ends on ${long(v.coi.expires)}${v.coi.insurer ? ` (${v.coi.insurer})` : ''}. Send the renewed one when you have it.`;
+        now.hidden = false;
+      }
+      if (v.needsW9) $('vd-w9-group').hidden = false;
+      status.textContent = '';
+      form.hidden = false;
+    } catch {
+      status.textContent = 'We couldn’t load this page. Check your connection and refresh.';
+    }
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    error.hidden = true;
+    const say = (msg: string, focus?: HTMLElement) => { error.textContent = msg; error.hidden = false; focus?.focus(); };
+    if (!coi.files?.length && !w9.files?.length) return say('Add the certificate or the W-9.', coi);
+    if (coi.files?.length && !expires.value) return say('Add the date the policy ends.', expires);
+    if (expires.value && expires.value < today) return say('That date has passed. Send the current certificate.', expires);
+    for (const f of [...(coi.files || []), ...(w9.files || [])]) if (f.size > 15 * 1024 * 1024) return say(`${f.name} is over 15 MB. Try a smaller copy or a PDF.`);
+    const body = new FormData(form);
+    body.set('token', token);
+    submit.disabled = true;
+    submit.textContent = 'Sending…';
+    try {
+      const res = await fetch('/api/vendor-docs', { method: 'POST', body });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) throw new Error(d.error || 'That didn’t send. Please try again.');
+      form.hidden = true;
+      const done = $('vd-done');
+      done.hidden = false;
+      done.focus();
+    } catch (err) {
+      say((err as Error).message);
+      submit.disabled = false;
+      submit.textContent = 'Send to SOARD';
+    }
+  });
+
+  load();
+</script>

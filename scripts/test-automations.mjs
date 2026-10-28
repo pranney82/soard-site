@@ -178,7 +178,8 @@ try {
   // the application limit's notices, Resend's own reports on each email, and the board packet
   const RESEND = ['Invite problem alerts', 'Save and finish later', 'Tell me when applications open', 'Applications-open email', 'Staff heads-up', 'Application sweep',
     'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Resend', 'Gift alerts in Slack', 'Kid and project status follow JobTread', 'Text delivery reports',
-    'Application limit', 'Email delivery reports', 'Advisory Board application', 'A family replied → staff alert', 'The packet email'];
+    'Application limit', 'Email delivery reports', 'Advisory Board application', 'A family replied → staff alert', 'The packet email',
+    'Receipts both ways', 'Month-end close', 'W-9s, insurance, 1099s'];
   ok(await panelTitle(page) === 'If Resend stops working' && sameSet(resendTitles, RESEND), `"Depends on" lists everything that uses Resend (${resendTitles.length})${setDiff(resendTitles, RESEND)}`);
   await page.screenshot({ path: join(OUT, 'desktop-depends.png'), fullPage: false });
 

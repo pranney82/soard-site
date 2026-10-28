@@ -134,6 +134,12 @@ export function resolvedCard({ title, lead, footer }) {
  */
 export function helloCard({ role, who, shared = false, adminUrl }) {
   const common = { buttons: [{ label: 'Open the admin', url: adminUrl }], footer: 'To change it, pick another channel in Reveals → Settings → Alerts.' };
+  if (role === 'finance') {
+    return slackCard({
+      icon: '💵', title: 'Money alerts will post here', ...common,
+      lead: `${who} picked this channel in the admin for SOARD's money: makeover budgets passing 80% and 100%, odd charges, bills waiting for approval, vendors missing a W-9 or insurance certificate, the cash forecast running low, and the month-end close. Keep it private: only the people who handle money.`,
+    });
+  }
   if (role === 'applications') {
     return slackCard({
       icon: '🏡', title: 'Makeover applications will post here', ...common,

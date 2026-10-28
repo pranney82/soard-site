@@ -962,7 +962,7 @@ const MAP = { t: 'SOARD', children: [
       ]},
     ]},
 
-  { t: 'Giving & embeds', sub: 'Gift alerts, and outside services shown on the site', color: 'give', side: 'l',
+  { t: 'Giving & money', sub: 'Gift alerts, job costs, and outside services shown on the site', color: 'give', side: 'l',
     children: [
       { t: 'When a gift comes in', children: [
         { t: 'Gift alerts in Slack', s: 'off', k: 'event',
@@ -986,6 +986,136 @@ const MAP = { t: 'SOARD', children: [
             if (stale(z.lastSweepAt, HOUR)) return ATTN(`The catch-up check hasn’t run since ${stamp(z.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, z.lastPostAt);
             if (z.missed && !stale(z.missedAt, 7 * 24 * HOUR)) return ATTN(`Zeffy’s webhook missed ${plural(z.missed, 'gift')} on ${stamp(z.missedAt)}, and the catch-up check posted ${z.missed === 1 ? 'it' : 'them'}. Check the webhook in Zeffy → Settings → Integrations.`, z.lastPostAt);
             return ON(z.lastPostAt ? `Connected. Last gift posted ${stamp(z.lastPostAt)}.` : 'Connected. Waiting for the first gift.', z.lastPostAt);
+          } },
+      ]},
+      { t: 'Job costs (Mercury)', children: [
+        { t: 'Charges onto jobs, live', s: 'live', k: 'event',
+          when: 'A Mercury card is swiped or a bill is paid (Mercury’s webhook, right away), plus a catch-up read of Mercury every 2 minutes on the live hub’s heartbeat.',
+          does: 'Sorts each charge into a makeover, the Sunny & Ranney store or operating (the store’s card or account, vendor rules, else the cardholder’s one active job or the one job in Build), and shows it on that job’s costs in Admin → Job Costs within seconds, coded by vendor rule when there is one.',
+          touches: ['Mercury', 'JobTread', 'D1'], where: 'functions/api/_spend.js, _spend-match.js (mercury-webhook.js, broadcast-hooks.js)',
+          info: 'Replaced Ramp (October 2026), which put every bill on one “Makeover COGS” line under 01 DESIGN & ENGINEERING. The site registers Mercury’s webhook itself and keeps its signing secret in D1. It never moves money.',
+          live: (f) => {
+            const j = f.jobCosts;
+            if (!j || !env(f) || j.error) return null;
+            if (!f.env.mercury) return ATTN('Not connected yet. Add SOARD’s Mercury API token in Cloudflare as MERCURY_API_TOKEN; the webhook sets itself up from there.');
+            if (j.webhookError) return ATTN(`Mercury’s webhook couldn’t be set up: ${j.webhookError}. Charges still arrive every 2 minutes.`, j.lastEventAt);
+            if (j.catchUpError) return ATTN(`Mercury can’t be read: ${j.catchUpError}.`, j.lastEventAt);
+            if (!j.lastCatchUpAt) return ATTN('Hasn’t read Mercury yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(j.lastCatchUpAt, HOUR)) return ATTN(`Hasn’t read Mercury since ${stamp(j.lastCatchUpAt)}. Check the Heartbeat entry.`, j.lastEventAt);
+            return ON(`${j.webhook ? 'Webhook registered' : 'Reading Mercury every 2 minutes'}. ${j.unsorted ? `${plural(j.unsorted, 'charge')} to sort in Job Costs.` : 'Every charge sorted.'}`, j.lastEventAt);
+          } },
+        { t: 'Receipts → JobTread bills', s: 'live', k: 'event',
+          when: 'A receipt is forwarded to ap@soardcharity.com (to the DataX Receipt Processor).',
+          does: 'DataX reads the receipt and makes the JobTread vendor bill, one line per cost code, matched to the job’s budget, receipt attached, paid. It asks the site for the vendor rules and the job the charge was put on. Every 2 minutes the site pairs new bills with their Mercury charges: “waiting for receipt” becomes billed, and the charge’s note in Mercury gets the job and bill.',
+          touches: ['DataX', 'JobTread', 'Mercury', 'D1'], where: 'DataX Receipt Processor · functions/api/spend-rules.js, spend-hint.js, _spend.js (syncBills, pairAll, writeNotes)',
+          live: (f) => {
+            const j = f.jobCosts;
+            if (!j || !env(f) || j.error) return null;
+            if (j.billsError) return ATTN(`JobTread bills can’t be read: ${j.billsError}.`, j.agentUsedAt);
+            if (j.writeError) return ATTN(`Notes aren’t reaching Mercury: ${j.writeError}`, j.agentUsedAt);
+            if (!j.agentUsedAt) return ATTN('The Receipt Processor hasn’t asked the site for rules yet. Check it’s live in DataX with the job-cost instructions.');
+            return ON(`The Receipt Processor last asked ${stamp(j.agentUsedAt)}.`, j.agentUsedAt);
+          } },
+        { t: 'Budget alerts', s: 'live', k: 'schedule',
+          when: 'Each job’s costs are rebuilt when a charge or bill lands, and every job every 15 minutes; weekdays at 8 AM for the receipts card.',
+          does: 'Posts once in Slack (threaded per job) when a job’s forecast reaches 80% and 100% of its budget, and when a cost code goes over its own line. Weekday mornings, one card lists charges with no receipt after 2 days and charges nobody has sorted.',
+          touches: ['Slack', 'JobTread', 'D1'], where: 'functions/api/_job-ledger.js (thresholds), _spend.js (morningCard)',
+          live: (f) => {
+            const j = f.jobCosts;
+            if (!j || !env(f) || j.error) return null;
+            if (!f.env.slackBot) return ATTN('SLACK_BOT_TOKEN is missing, so budget alerts can’t post.');
+            if (!j.lastRebuildAt) return ATTN('Job costs haven’t been built yet.');
+            if (stale(j.lastRebuildAt, HOUR)) return ATTN(`Job costs last rebuilt ${stamp(j.lastRebuildAt)}. Check the Heartbeat entry.`, j.lastRebuildAt);
+            return ON(`Every job rebuilt ${stamp(j.lastRebuildAt)}.${j.caps ? ' Card limits follow budgets.' : ''}`, j.lastRebuildAt);
+          } },
+        { t: 'Bill approvals and pay', s: 'live', k: 'event',
+          when: 'A sub’s bill lands in JobTread unpaid. The DataX Bill Approver reads the bills waiting from the site and emails the approver; her reply comes back the same way. Every 5 minutes on the heartbeat, approved bills are paid and Mercury’s payments recorded.',
+          does: 'Only a listed approver’s answer counts, and a bill over the second-approval amount needs two. An approved bill is paid from Mercury the way Job Costs → Bills → Settings says: by hand, held in Mercury until an approver taps Approve, or sent at once, never more than the bill’s balance or the day’s cap. Every Mercury payment out (and every card charge with a bill) is recorded on its JobTread bill, so the bill shows paid.',
+          touches: ['DataX', 'Mercury', 'JobTread', 'Slack', 'D1'], where: 'functions/api/_bill-pay.js, bill-approvals.js · DataX Bill Approver',
+          info: 'The only part of the site that can move money, and only when Setup says to. Mercury’s idempotency key is the bill’s id, so a bill can’t be paid twice.',
+          live: (f) => {
+            const b = f.jobCosts?.billPay;
+            if (!b || !env(f)) return null;
+            if (b.error) return ATTN(`Stopped: ${b.error}`, b.at);
+            if (!b.approvers) return ATTN('No approvers yet (Job Costs → Bills → Settings), so no answer counts.');
+            const mode = { off: 'paid by hand', request: 'held in Mercury for approval', send: 'paid right away' }[b.mode] || b.mode;
+            return ON(`Approved bills are ${mode}. ${b.waiting ? `${plural(b.waiting, 'bill')} waiting for an answer.` : 'No bill is waiting.'}${b.last?.recorded ? ` ${plural(b.last.recorded, 'payment')} recorded in JobTread last run.` : ''}`, b.at);
+          } },
+        { t: 'Receipts both ways', s: 'live', k: 'schedule',
+          when: 'Every 2 minutes on the heartbeat.',
+          does: 'A receipt photo added in Mercury’s app, on a makeover charge with no bill yet, is emailed to the receipt inbox (ap@) for the Receipt Processor, with the job and charge in the subject. A card charge paired with a JobTread bill but no receipt in Mercury gets the bill’s file uploaded, so Mercury Books sees a receipt on every charge.',
+          touches: ['Mercury', 'Resend', 'JobTread', 'D1'], where: 'functions/api/_spend-receipts.js',
+          live: (f) => {
+            const r = f.jobCosts?.receipts;
+            if (!r || !env(f)) return null;
+            const errs = [r.toAp?.error, r.toMercury?.error].filter(Boolean);
+            if (errs.length) return ATTN(errs.join(' · '));
+            return ON(`Last run: ${plural(r.toAp?.sent || 0, 'photo')} sent to ap@, ${plural(r.toMercury?.uploaded || 0, 'receipt')} added in Mercury.`);
+          } },
+        { t: 'Odd charges', s: 'live', k: 'schedule',
+          when: 'Every 15 minutes, before the job costs rebuild.',
+          does: 'Posts once in the Finance channel: the same charge twice in a day, far more than a vendor usually charges, a vendor that started charging monthly, a bar or gambling merchant. A refund nobody placed goes back on the job its charge was on.',
+          touches: ['Slack', 'D1'], where: 'functions/api/_spend-odd.js',
+          live: (f) => {
+            const j = f.jobCosts;
+            if (!j || !env(f)) return null;
+            return j.odd ? ATTN(`${plural(j.odd, 'charge')} to look at in Job Costs → Charges → Odd.`) : ON('Nothing odd waiting.');
+          } },
+        { t: 'Close-outs', s: 'live', k: 'schedule',
+          when: 'Hourly: jobs closed in JobTread since January 2025.',
+          does: 'Keeps each finished makeover’s final numbers by cost code, cost per room (from the family’s profile) and what ran over. A job closed in the last 2 weeks posts once in the Finance channel and gets a “Close-out report” field in JobTread. The budget builder on each open job suggests a budget from these, and adds lines to JobTread only when a person presses Add.',
+          touches: ['JobTread', 'Slack', 'D1'], where: 'functions/api/_job-closeout.js',
+          live: (f) => {
+            const c = f.jobCosts?.closeouts;
+            if (!c || !env(f)) return null;
+            if (c.error) return ATTN(`JobTread couldn’t be read: ${c.error}`, c.at);
+            if (!c.at) return ATTN('Hasn’t looked yet. It rides on the heartbeat.');
+            return ON(`${plural(c.closed || 0, 'closed job')} read${c.historyLeft ? `, ${c.historyLeft} still to read` : ''}.`, c.at);
+          } },
+      ]},
+      { t: 'Finance (Mercury)', children: [
+        { t: 'P&L', s: 'live', k: 'schedule',
+          when: 'Once: every Mercury transaction since January last year, a page at a time on the heartbeat. Then every transaction as Mercury sends it.',
+          does: 'Keeps Mercury’s own record of money in and out, so Admin → Finance shows each month’s P&L in three columns (makeovers, the Sunny & Ranney store, operating) against last year.',
+          touches: ['Mercury', 'D1'], where: 'functions/api/_finance.js, _mercury-txns.js',
+          live: (f) => {
+            const x = f.jobCosts?.finance;
+            if (!x || !env(f)) return null;
+            if (x.backfill?.error) return ATTN(`History stopped: ${x.backfill.error}`, x.at);
+            if (!x.backfill) return ATTN('Hasn’t read Mercury’s history yet.');
+            return ON(x.backfill.doneAt ? `History read (${x.backfill.read} transactions).` : `Reading history: ${x.backfill.read} so far.`, x.at);
+          } },
+        { t: 'Cash forecast', s: 'live', k: 'schedule',
+          when: 'Hourly.',
+          does: '13 weeks ahead from today’s balances, the makeovers under way and coming, running costs, and gifts by season. When the cautious line dips under the cash floor, the Finance channel hears once, and again when it recovers.',
+          touches: ['Mercury', 'JobTread', 'Slack'], where: 'functions/api/_finance.js (forecast, cashAlert)',
+          live: (f) => {
+            const x = f.jobCosts?.finance;
+            if (!x || !env(f)) return null;
+            if (x.balancesError) return ATTN(`Balances can’t be read: ${x.balancesError.error}`, x.balancesError.at);
+            if (!x.forecast) return ATTN('No forecast yet.');
+            return x.cashLow ? ATTN('The cautious forecast dips under the cash floor. See Finance → Cash.', x.forecast.at) : ON('Above the cash floor all 13 weeks.', x.forecast.at);
+          } },
+        { t: 'Month-end close', s: 'live', k: 'schedule',
+          when: 'Daily, for last month and any month still open.',
+          does: 'Checks every charge is sorted, every makeover charge has a receipt or bill, every transaction has a category, Mercury Books has synced them and the statement is out. When all pass, the Finance channel hears the month is ready and the CPA gets the close packet.',
+          touches: ['Mercury', 'Slack', 'Resend', 'D1'], where: 'functions/api/_finance.js (closeCheck, announceReady)',
+          live: (f) => {
+            const x = f.jobCosts?.finance;
+            if (!x || !env(f)) return null;
+            return x.cpaError ? ATTN(`The close packet didn’t reach the CPA: ${x.cpaError.error}`, x.cpaError.at) : ON('See Finance → Close for each month.');
+          } },
+        { t: 'W-9s, insurance, 1099s', s: 'live', k: 'schedule',
+          when: 'Every 15 minutes on the heartbeat; Mercury’s recipients hourly, JobTread’s vendors every 4 hours; the 1099 card on January 5.',
+          does: 'Joins everyone SOARD pays. A sub with no W-9 gets a Mercury invite that collects it (and their bank details); a sub on a job with no current insurance certificate gets an email with their own upload link. Each asks again after a week, three times at most, and the Finance channel hears once per gap. In January, the Finance channel hears who was paid $600 or more by ACH, check or wire (never card) and whose W-9 is missing; Vendors → 1099 has the CSV for the CPA.',
+          touches: ['Mercury', 'JobTread', 'Resend', 'R2', 'Slack'], where: 'functions/api/_vendors.js, vendor-docs.js, src/pages/vendor-documents.astro',
+          info: 'Both requests are off until switched on in Vendors → Settings. No tax ID is ever stored by the site.',
+          live: (f) => {
+            const v = f.jobCosts?.vendors;
+            if (!v || !env(f)) return null;
+            if (v.error) return ATTN(v.error.error || String(v.error), v.at);
+            if (!v.at) return ATTN('Hasn’t run yet.');
+            return ON(`W-9 requests ${v.autoW9 ? 'on' : 'off'}, insurance requests ${v.autoCoi ? 'on' : 'off'}.`, v.at);
           } },
       ]},
       { t: 'The bank', children: [

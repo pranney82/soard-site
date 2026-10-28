@@ -114,6 +114,11 @@ const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos', '/api/broa
 // nothing goes live until someone in the admin uses it
 PUBLIC_ROUTES.push('/api/profile-request');
 
+// A vendor sending their insurance certificate or W-9 (/vendor-documents/):
+// the same kind of link token, checked inside (_vendors.js), rate limited below;
+// files go to R2 under vendors/, which the public /files/ route never serves
+PUBLIC_ROUTES.push('/api/vendor-docs');
+
 // The buttons in a family-status summary email (Move back / Don't email /
 // Send now): each carries a one-time 128-bit token for one status change,
 // checked inside the handler; GET only shows a confirmation page
@@ -143,6 +148,17 @@ PUBLIC_ROUTES.push('/api/twilio-status');
 // is one; it only records delivered, bounced and the like (see _email-log.js)
 PUBLIC_ROUTES.push('/api/resend-webhook');
 
+// Mercury's transaction events (job costs, see _spend.js): Mercury-Signature is
+// checked inside the handler against the secret Mercury gave the site when it
+// registered the webhook; nothing is done until there is one
+PUBLIC_ROUTES.push('/api/mercury-webhook');
+
+// What the DataX agents read and send (vendor rules, which job a charge was
+// placed on, Ramp-bill splits, bills waiting for approval and the approver's
+// answer): each checks the agent key inside (_spend-agent.js) and is rate
+// limited there. A decision only counts from a listed approver (_bill-pay.js)
+PUBLIC_ROUTES.push('/api/spend-rules', '/api/spend-hint', '/api/spend-recode', '/api/bill-approvals');
+
 // The Advisory Board application (/advisory-board/apply/): GET says whether
 // Turnstile is on; POST stores an application. Checked inside the handler
 // (honeypot, too-fast, Turnstile, a per-day limit in D1) and rate limited below
@@ -156,7 +172,7 @@ PUBLIC_ROUTES.push('/api/advisory-apply');
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
-const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply']);
+const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply', '/api/vendor-docs']);
 // Public GET routes that fan out to paid upstreams / build large responses.
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
 // The application form autosaves every step and uploads photos one by one, so
@@ -164,7 +180,7 @@ const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
 // Per minute per address. A watch party or a gala table shares one Wi-Fi, so the
 // beacons and the signup forms get room for a crowd; the handlers add their own
 // per-person limits behind these.
-const ROUTE_LIMITS = { '/api/broadcast-event': 120, '/api/live-click': 120, '/api/newsletter': 20, '/api/reminders': 20, '/api/profile-request': 10 };
+const ROUTE_LIMITS = { '/api/broadcast-event': 120, '/api/live-click': 120, '/api/newsletter': 20, '/api/reminders': 20, '/api/profile-request': 10, '/api/vendor-docs': 10 };
 const APPLY_ROUTE = '/api/apply';
 const APPLY_RATE_LIMIT_MAX = 60;
 const _rateLimitMap = new Map(); // "<route>:<ip>" → { count, resetAt }
