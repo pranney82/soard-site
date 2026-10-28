@@ -231,12 +231,21 @@ try {
   await sleep(400);
   await shot('08-apply-band-desktop', desk);
   await desk.goto(`${SITE}/community/`, { waitUntil: 'networkidle0' });
-  ok(await desk.$eval('.np-cta a', (a) => a.getAttribute('href') === '/apply/community-project/' && /Apply for a community project/.test(a.textContent)).catch(() => false), 'the Community page links to the application, not an email');
+  ok(await desk.$eval('.hero-ctas a[href="/apply/community-project/"]', (a) => /Apply for Your Organization/.test(a.textContent) && a.getBoundingClientRect().top < innerHeight).catch(() => false), 'the Community page hero has the apply button, above the fold');
+  ok(await desk.$eval('#apply a[href="/apply/community-project/"]', (a) => /Apply for Your Organization/.test(a.textContent)).catch(() => false), 'and its own apply section under the projects');
+  ok(await desk.$$eval('#apply .apply-steps li', (els) => els.length).catch(() => 0) === 3, 'which says what happens, in three steps');
+  ok(await desk.$eval('.np-cta a', (a) => a.getAttribute('href') === '/apply/community-project/' && /Apply for a community project/.test(a.textContent)).catch(() => false), 'and the partners list links to the application, not an email');
   await page.goto(`${SITE}/apply/`, { waitUntil: 'networkidle0' });
   await page.$eval('#organizations', (e) => e.scrollIntoView({ block: 'start', behavior: 'instant' }));
   await sleep(400);
   await shot('09-apply-band-phone');
   await noSideScroll('Apply page on a phone');
+  await page.goto(`${SITE}/community/`, { waitUntil: 'networkidle0' });
+  ok(await page.$eval('.hero-ctas a[href="/apply/community-project/"]', (a) => a.getBoundingClientRect().height > 0).catch(() => false), 'the Community page hero shows the apply button on a phone');
+  await page.$eval('#apply', (e) => e.scrollIntoView({ block: 'start', behavior: 'instant' }));
+  await sleep(400);
+  await shot('10-community-apply-phone');
+  await noSideScroll('Community page on a phone');
 
   ok(!consoleErrors.length, `no console errors (${consoleErrors.join(' | ').slice(0, 400)})`);
 } catch (e) {

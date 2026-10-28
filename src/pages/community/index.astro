@@ -96,6 +96,7 @@ const breadcrumbs = [
         <p class="hero-lead">When one room isn't enough, we think bigger. We partner with schools, camps, and nonprofits to transform entire facilities: classrooms, therapy rooms, and gathering spaces that serve thousands of children every year.</p>
         <div class="hero-ctas">
           <a href="#projects" class="btn btn-primary">See Our Projects <span aria-hidden="true">&darr;</span></a>
+          <a href="/apply/community-project/" class="btn btn-outline-dark" data-astro-reload>Apply for Your Organization</a>
         </div>
       </div>
       <div class="hero-frame">
@@ -191,6 +192,41 @@ const breadcrumbs = [
           );
         })}
       </div>
+    </div>
+  </section>
+
+  <!-- ══════ APPLY — the community project application (/apply/community-project/) ══════ -->
+  <section class="apply-band" id="apply" aria-labelledby="apply-heading">
+    <div class="apply-band-inner">
+      <div class="apply-band-text" data-reveal>
+        <div class="section-label">For Schools, Clinics &amp; Nonprofits</div>
+        <h2 id="apply-heading">Apply for a <em class="highlight">community project</em>.</h2>
+        <p class="apply-band-lead">Does your organization serve children with special needs? Tell us about the space you'd like transformed: a sensory room, a therapy room, a classroom and more.</p>
+        <a href="/apply/community-project/" class="btn btn-primary" data-astro-reload>Apply for Your Organization &rarr;</a>
+      </div>
+      <ol class="apply-steps" role="list" data-reveal data-delay="1">
+        <li>
+          <span class="apply-steps__num" aria-hidden="true">1</span>
+          <div>
+            <h3>Tell us about your organization</h3>
+            <p>Who you serve, where you are and who signs off on the work.</p>
+          </div>
+        </li>
+        <li>
+          <span class="apply-steps__num" aria-hidden="true">2</span>
+          <div>
+            <h3>Show us the space</h3>
+            <p>What the room is used for today, with a few photos.</p>
+          </div>
+        </li>
+        <li>
+          <span class="apply-steps__num" aria-hidden="true">3</span>
+          <div>
+            <h3>Hear from our team</h3>
+            <p>We review every application and email you at each step.</p>
+          </div>
+        </li>
+      </ol>
     </div>
   </section>
 
@@ -835,6 +871,98 @@ const breadcrumbs = [
     :global(.project-card__img),
     .project-card__color { transition: none; }
     .project-card:hover :global(.project-card__img) { transform: none; filter: none; }
+  }
+
+  /* ══════════════════════════════════════════
+     APPLY — the way in for organizations
+     ══════════════════════════════════════════ */
+  .apply-band {
+    background: #fff;
+    padding-block: clamp(72px, 9vw, 120px);
+    scroll-margin-top: var(--header-height);
+  }
+
+  .apply-band-inner {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--space-xl);
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: clamp(40px, 6vw, 80px);
+    align-items: center;
+  }
+
+  .apply-band-text .section-label { margin-bottom: var(--space-md); }
+
+  .apply-band-text h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: var(--space-md);
+  }
+
+  .apply-band-text h2 em { font-style: normal; }
+
+  .apply-band-lead {
+    font-size: 1.05rem;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-xl);
+    max-width: 520px;
+  }
+
+  .apply-steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .apply-steps li {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+    padding: 18px 20px;
+    background: var(--c-cream);
+    border-radius: var(--border-radius-lg);
+  }
+
+  .apply-steps__num {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.1rem;
+    display: grid;
+    place-items: center;
+  }
+
+  .apply-steps h3 {
+    font-size: 1.05rem;
+    line-height: 1.3;
+    margin: 2px 0 4px;
+  }
+
+  .apply-steps p {
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: var(--c-text-muted);
+    margin: 0;
+  }
+
+  @media (max-width: 768px) {
+    .apply-band { padding-block: var(--space-2xl); }
+    .apply-band-inner { grid-template-columns: 1fr; gap: var(--space-xl); padding-inline: var(--space-lg); }
+    .apply-band-lead { font-size: 0.95rem; }
+    .apply-band-text .btn { width: 100%; }
+    .apply-steps li { grid-template-columns: 36px minmax(0, 1fr); gap: 14px; padding: 14px 16px; }
+    .apply-steps__num { width: 36px; height: 36px; font-size: 1rem; }
   }
 
   /* ══════════════════════════════════════════
