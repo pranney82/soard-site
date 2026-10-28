@@ -341,3 +341,56 @@ test('linked to a partner who has no logo yet: it waits, and says so', () => {
   const out = findLogo({ company: 'acme', name: 'Acme', people: [] }, index);
   assert.deepEqual(out, { logo: null, hint: 'Linked to Sherwin-Williams Store, who has no logo in Partners yet' });
 });
+
+test('two checks started at once (the heartbeat and the reveals feed): one runs, one email, one publish', async (t) => {
+  const sent = outside(t);
+  const DB = await world({ kids: [{ slug: 'ava', name: 'Ava', year: 2026, partnerLogos: [] }], partners: PARTNERS });
+  const env = { DB, JOBTREAD_GRANT_KEY: 'k', RESEND_API_KEY: 'r', CF_PAGES_DEPLOY_HOOK: 'https://hook.example/deploy' };
+  const jobs = [job('j', 'Ava Lee (2026)', [member('Vendor', { account: 'Randall Brothers' }), member('Sponsor', { account: 'Kind Neighbors' })])];
+  const slow = (f) => async (url, init) => { await new Promise((r) => setTimeout(r, 30)); return f(url, init); };
+  const [a, b] = await Promise.all([syncKidPartners(env, { fetchImpl: slow(jtFetch(jobs)) }), syncKidPartners(env, { fetchImpl: slow(jtFetch(jobs)) })]);
+  assert.equal([a, b].filter((o) => o.length).length, 1, 'the second found the first running and left it');
+  assert.equal(sent.emails.length, 1, 'one email');
+  assert.equal(sent.hooks.length, 1, 'one publish');
+  assert.equal((await kidOf(DB, 'ava')).partnerLogos.length, 1);
+  assert.equal(await DB.prepare("SELECT count(*) AS n FROM kid_partner_lock").first('n'), 0, 'the lock is let go');
+});
+
+test('the same words in another order are the same name (“Helen & Jimmy Carlos” is “Jimmy & Helen Carlos”)', async (t) => {
+  outside(t);
+  const carlos = { slug: 'jimmy-helen-carlos', name: 'Jimmy & Helen Carlos', logo: img('partners/jimmy-helen-carlos/1') };
+  const DB = await world({ kids: [{ slug: 'remi', name: 'Remi', year: 2026, partnerLogos: [] }], partners: [carlos] });
+  const out = await syncKidPartners({ DB, JOBTREAD_GRANT_KEY: 'k' }, { fetchImpl: jtFetch([job('j', 'Remi Powell (2026)', [member('Vendor', { account: 'Helen & Jimmy Carlos' })])]) });
+  assert.deepEqual(out, [{ record: 'remi', name: 'Remi', added: ['Jimmy & Helen Carlos'], waiting: [] }]);
+});
+
+test('the hint names a partner whose whole name starts the company’s, never two-letter initials', () => {
+  const ps = [{ slug: 'pella', name: 'Pella', logo: img('partners/pella/1') }, { slug: 'bc-homes-inc', name: 'Bc Homes Inc', logo: img('partners/bc/1') }, { slug: 'wyp', name: 'WYP Construction', logo: img('partners/wyp/1') }];
+  const index = logoIndex(ps, []);
+  const c = (name) => ({ company: name.toLowerCase().replace(/[^a-z0-9]/g, ''), name, people: [] });
+  assert.equal(findLogo(c('Pella Windows and Doors of Georgia'), index).hint, 'Partners has Pella: the same company?');
+  assert.equal(findLogo(c('Blythe Creative Co.'), index).hint, null, '“BC” is too short to be anybody’s initials');
+  assert.equal(findLogo(c('Walk Your Plans'), index).hint, 'Partners has WYP Construction: the same company?');
+});
+
+test('one company on several pages: one block in the email, and “No logo needed” sets it aside on all of them', async (t) => {
+  const sent = outside(t);
+  const DB = await world({ kids: ['ava', 'bo', 'cy'].map((slug) => ({ slug, name: slug[0].toUpperCase() + slug.slice(1), year: 2026, partnerLogos: [] })) });
+  const env = { DB, JOBTREAD_GRANT_KEY: 'k', RESEND_API_KEY: 'r' };
+  const blythe = () => member('Vendor', { account: 'Blythe Creative Co.', name: 'Bea Blythe', email: 'bea@blythe.example' });
+  const jobs = [job('ja', 'Ava Lee (2026)', [blythe()]), job('jb', 'Bo Park (2026)', [blythe()]), job('jc', 'Cy Diaz (2026)', [blythe(), member('Sponsor', { account: 'Kind Neighbors', name: 'Kim', email: 'kim@kind.example' })])];
+  await syncKidPartners(env, { fetchImpl: jtFetch(jobs) });
+  const mail = sent.emails[0];
+  assert.equal(mail.subject, '[SOARD] 2 logos needed for kid pages', 'two companies, not four rows');
+  assert.equal((mail.text.match(/Company: Blythe Creative Co\./g) || []).length, 1, 'Blythe once');
+  assert.match(mail.text, /Pages: Ava \(2026\) .*\/admin\/#kids\/ava \(job: https:\/\/app\.jobtread\.com\/jobs\/ja\)/);
+  assert.match(mail.text, /\n {7}Cy \(2026\) /, 'each page on its own line');
+  assert.equal((mail.text.match(/Name: Bea Blythe/g) || []).length, 1, 'the person once');
+  const one = missingLogoEmail([{ rec: { slug: 'ava', name: 'Ava', data: {} }, jobId: 'ja', c: { company: 'b', name: 'Blythe', people: [] } }, { rec: { slug: 'bo', name: 'Bo', data: {} }, jobId: 'jb', c: { company: 'b', name: 'Blythe', people: [] } }]);
+  assert.equal(one.subject, '[SOARD] Logo needed: Blythe, for 2 pages');
+  assert.equal(await setAside(DB, { company: 'blythecreative', dismiss: true }, 'linzi@example.org'), 'dismissed');
+  const view = await adminView(DB);
+  assert.deepEqual([view.waiting.map((r) => r.name), view.dismissed.length], [['Kind Neighbors'], 3], 'set aside on all three pages');
+  const auto = await (await import('../functions/api/automations-admin.js')).kidLogoFacts({ lastRun: { at: 'x', added: 0 } }, 1);
+  assert.equal(auto.waiting, 1);
+});

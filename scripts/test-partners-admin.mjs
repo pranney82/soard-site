@@ -96,6 +96,10 @@ function makeApi() {
       since, updatedAt: since, emailedAt: since },
     { record: 'isla', company: 'bellcabinets', name: 'Bell Cabinets', jobId: 'jt-isla', hint: 'Partners has Bell Cabinetry: the same company?',
       people: [{ name: 'Ben Bell', email: 'ben@bellcabinets.example', role: 'Vendor' }], page: { slug: 'isla', name: 'Isla', year: 2026, kind: 'kid', draft: false },
+      since, updatedAt: since, emailedAt: since },
+    // The same company on a second job: one row for it, with both pages
+    { record: 'georgia', company: 'bellcabinets', name: 'Bell Cabinets', jobId: 'jt-georgia', hint: null,
+      people: [{ name: 'Ben Bell', email: 'ben@bellcabinets.example', role: 'Vendor' }], page: { slug: 'georgia', name: 'Georgia', year: 2025, kind: 'kid', draft: false },
       since, updatedAt: since, emailedAt: since }],
     links: [],
     dismissed: [], added: [{ record: 'isla', company: 'bellcabinetry', name: 'Bell Cabinetry', people: [], page: { slug: 'isla', name: 'Isla', year: 2026, kind: 'kid', draft: false }, updatedAt: since }],
@@ -229,18 +233,18 @@ function makeApi() {
       const one = b.dismiss || b.undismiss;
       if (one) {
         const [from, to] = b.dismiss ? ['waiting', 'dismissed'] : ['dismissed', 'waiting'];
-        const r = st.logos[from].find((x) => x.record === one.record && x.company === one.company);
-        if (!r) return json({ success: false, error: 'That one isn’t waiting any more' }, 404);
-        st.logos[from] = st.logos[from].filter((x) => x !== r);
-        st.logos[to].push({ ...r, by: 'admin@example.com' });
+        const moving = st.logos[from].filter((x) => x.company === one.company && (!one.record || x.record === one.record));
+        if (!moving.length) return json({ success: false, error: 'That one isn’t waiting any more' }, 404);
+        st.logos[from] = st.logos[from].filter((x) => !moving.includes(x));
+        st.logos[to].push(...moving.map((r) => ({ ...r, by: 'admin@example.com' })));
         return json({ success: true, state: to, view: st.logos });
       }
       if (b.link) {
-        const r = st.logos.waiting.find((x) => x.company === b.link.company);
-        st.logos.waiting = st.logos.waiting.filter((x) => x !== r);
-        st.logos.links.push({ company: b.link.company, partner: b.link.partner, name: r?.name || b.link.company });
-        if (r) st.logos.added.unshift({ ...r, updatedAt: new Date().toISOString() });
-        return json({ success: true, added: r ? [{ record: r.record, name: r.page.name, added: [st.partners[b.link.partner]?.name] }] : [], view: st.logos });
+        const rows = st.logos.waiting.filter((x) => x.company === b.link.company);
+        st.logos.waiting = st.logos.waiting.filter((x) => !rows.includes(x));
+        st.logos.links.push({ company: b.link.company, partner: b.link.partner, name: rows[0]?.name || b.link.company });
+        st.logos.added.unshift(...rows.map((r) => ({ ...r, updatedAt: new Date().toISOString() })));
+        return json({ success: true, added: rows.map((r) => ({ record: r.record, name: r.page.name, added: [st.partners[b.link.partner]?.name] })), view: st.logos });
       }
       if (b.unlink) { st.logos.links = st.logos.links.filter((l) => l.company !== b.unlink.company); return json({ success: true, added: [], view: st.logos }); }
       if (b.settings) {
@@ -627,8 +631,11 @@ try {
     // JobTread calls Bell Cabinetry “Bell Cabinets”: “Same as” links them, for this job and every one after
     const bellActs = await page.evaluate(() => [...document.querySelectorAll('.pt-wait .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === 'Bell Cabinets')?.querySelector('.pt-loose__acts')?.textContent.replace(/\s+/g, ' ').trim() || '');
     ok(/^Add to Partners\s*Same as Bell Cabinetry\?/.test(bellActs), `a word in common offers “Same as Bell Cabinetry?” after Add to Partners (${bellActs.slice(0, 80)})`);
+    const bellText = await page.evaluate(() => [...document.querySelectorAll('.pt-wait .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === 'Bell Cabinets')?.querySelector('.pt-loose__text')?.textContent.replace(/\s+/g, ' ') || '');
+    ok(/Vendor on 2 pages/.test(bellText) && /Isla \(job\), Georgia \(job\)/.test(bellText), `a company on two jobs is one row, with both pages and their jobs (${bellText.slice(0, 120)})`);
+    ok((await page.$$eval('.pt-wait .pt-loose__item strong', (els) => els.filter((e) => e.textContent === 'Bell Cabinets').length)) === 1, 'and only one row');
     await clickText(page, '.pt-wait .pt-same-as', 'Same as Bell Cabinetry');
-    ok(await waitToast(page, /Bell Cabinets is Bell Cabinetry: their logo is on 1 page now/), 'linked: the toast says their logo is on Isla’s page now');
+    ok(await waitToast(page, /Bell Cabinets is Bell Cabinetry: their logo is on 2 pages now/), 'linked: the toast says their logo is on both pages now');
     const linkCall = lastCall(api, '/api/kid-partners-admin');
     ok(linkCall?.body?.link?.company === 'bellcabinets' && linkCall.body.link.partner === 'bell', 'the link names the company and the partner');
     ok(!(await page.evaluate(() => [...document.querySelectorAll('.pt-wait .pt-loose__item strong')].some((e) => e.textContent === 'Bell Cabinets'))), 'and it leaves the waiting list');

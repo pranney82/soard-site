@@ -609,7 +609,7 @@ const MAP = { t: 'Everything we send', children: [
           live: (f) => (!f.staff ? null : ON(sentLine(f.staff.kidHidden), f.staff.kidHidden?.last)) },
         { t: 'A vendor or sponsor has no logo', s: 'live', k: 'email', by: 'auto', preview: 'staff-partner-logo',
           who: 'The list in Partners → JobTread, no logo (Linzi to start with).',
-          when: 'Someone is on a kid’s or community project’s job in JobTread as a Vendor or Sponsor, and the site has no logo for their company: not in Partners, not on any page. Once per company per page; several found at once share one email.',
+          when: 'Someone is on a kid’s or community project’s job in JobTread as a Vendor or Sponsor, and the site has no logo for their company: not in Partners, not on any page. Once per company per page. Everything found at once is one email, with one block per company listing every page it’s on.',
           subject: '[SOARD] Logo needed: {company} on {kid}’s page',
           does: 'The company, the person’s name and email, their role, the page, and a link to the job. Once the logo is in Partners, the site puts it on the page and publishes it by itself.',
           touches: ['Resend', 'JobTread'], where: 'functions/api/_kid-partners.js (missingLogoEmail)',

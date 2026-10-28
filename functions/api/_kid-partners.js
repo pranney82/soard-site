@@ -29,7 +29,7 @@
 import { JT_URL, SOARD_ORG_ID, isProject } from './_reveals.js';
 import { loadAllKids, loadAllProjects, linkJobs, keyOf, saveRecord, requestDeploy, SYNC_USER } from './_kid-status.js';
 import { sendEmails, emailConfigured } from './_broadcast-notify.js';
-import { cfId, kidUsage, nameKey, domainOf, similarPartners } from '../../public/admin/partners-shared.js';
+import { cfId, kidUsage, nameKey, wordsKey, domainOf, nearPartners } from '../../public/admin/partners-shared.js';
 
 /** JobTread roles whose company's logo belongs on the page */
 export const LOGO_ROLES = ['Vendor', 'Sponsor'];
@@ -53,11 +53,32 @@ const SCHEMA = [
     first_seen TEXT, updated_at TEXT, emailed_at TEXT, by TEXT,
     PRIMARY KEY (record, company))`,
   'CREATE TABLE IF NOT EXISTS kid_partner_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+  // One check at a time: the heartbeat and the reveals feed can start one in the same second
+  'CREATE TABLE IF NOT EXISTS kid_partner_lock (name TEXT PRIMARY KEY, until INTEGER NOT NULL)',
 ];
 export async function ensureSchema(DB) {
   for (const sql of SCHEMA) await DB.prepare(sql).run();
 }
 const parse = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
+
+// A check that crashed frees the lock after this; a re-check after a save waits up to LOCK_TRIES × LOCK_RETRY_MS
+const LOCK_MS = 2 * 60 * 1000;
+const LOCK_TRIES = 10;
+const LOCK_RETRY_MS = 1500;
+async function lock(DB, wait) {
+  for (let i = 0; i < (wait ? LOCK_TRIES : 1); i++) {
+    if (i) await new Promise((r) => setTimeout(r, LOCK_RETRY_MS));
+    const t = Date.now();
+    const ins = await DB.prepare("INSERT OR IGNORE INTO kid_partner_lock (name, until) VALUES ('sync', ?)").bind(t + LOCK_MS).run();
+    if (ins?.meta?.changes > 0) return true;
+    const upd = await DB.prepare("UPDATE kid_partner_lock SET until = ? WHERE name = 'sync' AND until < ?").bind(t + LOCK_MS, t).run();
+    if (upd?.meta?.changes > 0) return true;
+  }
+  return false;
+}
+const unlock = (DB) => DB.prepare("DELETE FROM kid_partner_lock WHERE name = 'sync'").run().catch(() => {});
+/** The same company name: "Randall Brothers, Inc." for Randall Brothers, "Helen & Jimmy Carlos" for "Jimmy & Helen Carlos" */
+const sameName = (a, b) => (nameKey(a) && nameKey(a) === nameKey(b)) || (!!wordsKey(a) && wordsKey(a) === wordsKey(b));
 
 async function readState(DB) {
   const row = await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'state'").first();
@@ -186,7 +207,7 @@ export function logoIndex(partners, records, links = {}) {
   const named = new Map();
   for (const r of records) {
     for (const l of r.data?.partnerLogos || []) {
-      const key = nameKey(l?.name);
+      const key = wordsKey(l?.name);
       if (!key || !l.url || /^blob:/.test(l.url)) continue;
       const byUrl = named.get(key) || new Map();
       const hit = byUrl.get(cfId(l.url)) || { url: l.url, name: String(l.name).trim(), n: 0 };
@@ -209,23 +230,23 @@ export function findLogo(c, index) {
   // Linked by hand in the admin: wins over any guess
   const linked = links[c.company] && partners.find((p) => p.slug === links[c.company]);
   if (linked) return linked.logo ? { logo: { url: linked.logo, name: linked.name, partner: linked.slug, how: 'linked' } } : { logo: null, hint: `Linked to ${linked.name}, who has no logo in Partners yet` };
-  const byName = partners.filter((p) => nameKey(p.name) === c.company || nameKey(p.slug) === c.company);
+  const byName = partners.filter((p) => nameKey(p.slug) === c.company || sameName(p.name, c.name));
   const named = withLogo(byName);
   if (named.length) return { logo: { url: named[0].logo, name: named[0].name, partner: named[0].slug, how: 'name' } };
   const domains = [...new Set(c.people.map((p) => domainOfEmail(p.email)).filter((d) => d && !FREE_MAIL.has(d)))];
   const bySite = withLogo(partners.filter((p) => p.website && domains.some((d) => sameSite(d, domainOf(p.website)))));
   if (bySite.length === 1) return { logo: { url: bySite[0].logo, name: bySite[0].name, partner: bySite[0].slug, how: 'website' } };
-  const onPages = pages.get(c.company);
+  const onPages = pages.get(wordsKey(c.name));
   if (onPages) return { logo: { url: onPages.url, name: onPages.name, partner: null, how: 'page' } };
   if (byName.length) return { logo: null, hint: `${byName[0].name} is in Partners without a logo` };
-  const near = similarPartners(c.name, partners, { min: 0.7, max: 1 })[0];
+  const near = nearPartners(c.name, partners, { min: 0.6, max: 1 })[0];
   return { logo: null, hint: near ? `Partners has ${near.partner.name}${near.partner.logo ? '' : ' (no logo yet)'}: the same company?` : null };
 }
 
 /** Whether a page already shows a company's logo: the same image, a logo uploaded for that partner, or one under its name */
 export function pageHas(record, c, logo, partners) {
   const logos = record.partnerLogos || [];
-  if (logos.some((l) => nameKey(l?.name) === c.company)) return true;
+  if (logos.some((l) => nameKey(l?.name) === c.company || sameName(l?.name, c.name))) return true;
   if (!logo) return false;
   if (logos.some((l) => l?.url && cfId(l.url) === cfId(logo.url))) return true;
   if (logo.partner) return !!kidUsage([{ ...record, slug: '_', publishStatus: 'published' }], partners).byPartner.get(logo.partner)?.length;
@@ -239,32 +260,46 @@ const editorOf = (rec) => `${SITE}/admin/#kids/${isProject(rec) ? 'community/' :
 const listOf = (words) => (words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`);
 
 /**
- * The email for logos nobody has yet. items: [{ rec, c, jobId, hint }].
- * Each company with its role, the person's name and email, and the page.
+ * The email for logos nobody has yet. items: [{ rec, c, jobId, hint }], one
+ * per company per page; the email has one block per company (one logo
+ * covers every page it's on), with its role, the people's names and emails,
+ * and each page with its job.
  */
 export function missingLogoEmail(items) {
-  const one = items.length === 1 ? items[0] : null;
-  const subject = one ? `[SOARD] Logo needed: ${one.c.name} on ${pageOf(one.rec)}` : `[SOARD] ${items.length} logos needed for ${items.every((i) => !isProject(i.rec)) ? 'kid pages' : 'pages'}`;
-  const lead = one
-    ? `${one.c.name} is on ${one.rec.name}’s job in JobTread as a ${listOf([...new Set(one.c.people.map((p) => p.role))]).toLowerCase()}, and the site has no logo for them yet.`
-    : `These companies are on jobs in JobTread as vendors or sponsors, and the site has no logo for them yet.`;
+  const groups = new Map();
+  for (const it of items) {
+    const g = groups.get(it.c.company) || { c: { ...it.c, people: [] }, pages: [], hint: it.hint || null };
+    for (const p of it.c.people) if (!g.c.people.some((x) => x.email === p.email && x.name === p.name && x.role === p.role)) g.c.people.push(p);
+    if (!g.pages.some((x) => x.rec.slug === it.rec.slug && isProject(x.rec) === isProject(it.rec))) g.pages.push({ rec: it.rec, jobId: it.jobId });
+    g.hint ||= it.hint || null;
+    groups.set(it.c.company, g);
+  }
+  const list = [...groups.values()];
+  const one = list.length === 1 ? list[0] : null;
+  const roles = (g) => listOf([...new Set(g.c.people.map((p) => p.role))]).toLowerCase();
+  const subject = !one ? `[SOARD] ${list.length} logos needed for ${items.every((i) => !isProject(i.rec)) ? 'kid pages' : 'pages'}`
+    : one.pages.length === 1 ? `[SOARD] Logo needed: ${one.c.name} on ${pageOf(one.pages[0].rec)}` : `[SOARD] Logo needed: ${one.c.name}, for ${one.pages.length} pages`;
+  const lead = !one ? `These companies are on jobs in JobTread as vendors or sponsors, and the site has no logo for them yet. One logo covers every page each one is on.`
+    : one.pages.length === 1 ? `${one.c.name} is on ${one.pages[0].rec.name}’s job in JobTread as a ${roles(one)}, and the site has no logo for them yet.`
+    : `${one.c.name} is on ${one.pages.length} jobs in JobTread as a ${roles(one)}, and the site has no logo for them yet. One logo covers every page.`;
   const fix = 'Get their logo and add it in Admin → Partners. The site then puts it on the page and publishes it by itself, and on any page they work on after this. If they’re in Partners under another name, or don’t need a logo, open the list below and choose “Same as” or “No logo needed”.';
-  const blocks = items.map(({ rec, c, jobId, hint }) => {
+  const titleOf = (rec) => `${rec.name}${rec.data?.year ? ` (${rec.data.year})` : ''}`;
+  const jobUrl = (id) => `https://app.jobtread.com/jobs/${encodeURIComponent(id || '')}`;
+  const blocks = list.map(({ c, pages, hint }) => {
+    const label = pages.length === 1 ? 'Page' : 'Pages';
     const rows = [
       ['Company', esc(c.name)],
       ...c.people.flatMap((p) => [['Name', esc(p.name || 'No name in JobTread')], ['Email', p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : 'No email in JobTread'], ['Role', esc(p.role)]]),
-      ['Page', `<a href="${editorOf(rec)}">${esc(rec.name)}${rec.data?.year ? ` (${esc(rec.data.year)})` : ''}</a>`],
+      [label, pages.map(({ rec, jobId }) => `<a href="${editorOf(rec)}">${esc(titleOf(rec))}</a> (<a href="${jobUrl(jobId)}">job</a>)`).join('<br>')],
       ...(hint ? [['Note', esc(hint)]] : []),
     ];
     const text = [
       `Company: ${c.name}`,
       ...c.people.flatMap((p) => [`Name: ${p.name || 'No name in JobTread'}`, `Email: ${p.email || 'No email in JobTread'}`, `Role: ${p.role}`]),
-      `Page: ${rec.name}${rec.data?.year ? ` (${rec.data.year})` : ''} ${editorOf(rec)}`,
+      ...pages.map(({ rec, jobId }, i) => `${i ? ' '.repeat(label.length + 1) : `${label}:`} ${titleOf(rec)} ${editorOf(rec)} (job: ${jobUrl(jobId)})`),
       ...(hint ? [`Note: ${hint}`] : []),
-      `JobTread: https://app.jobtread.com/jobs/${jobId}`,
     ].join('\n');
-    const html = `<table cellpadding="4" cellspacing="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map(([k, v]) => `<tr><td style="color:#666;padding-right:12px;vertical-align:top">${k}</td><td>${v}</td></tr>`).join('')}`
-      + `<tr><td></td><td><a href="https://app.jobtread.com/jobs/${esc(jobId)}">Open the job in JobTread</a></td></tr></table>`;
+    const html = `<table cellpadding="4" cellspacing="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map(([k, v]) => `<tr><td style="color:#666;padding-right:12px;vertical-align:top">${k}</td><td>${v}</td></tr>`).join('')}</table>`;
     return { html, text };
   });
   return {
@@ -295,9 +330,13 @@ async function putRow(DB, r) {
  */
 export async function syncKidPartners(env, { fetchImpl = fetch, now = Date.now(), fromJobTread = true } = {}) {
   const iso = new Date(now).toISOString();
+  let locked = false;
   try {
     if (!env.DB || (fromJobTread && !env.JOBTREAD_GRANT_KEY)) return [];
     await ensureSchema(env.DB);
+    // Another check is running: the sweep leaves it to that one; a re-check after a save waits its turn
+    if (!(await lock(env.DB, !fromJobTread))) return [];
+    locked = true;
     const [jobs, kids, projects, partnerRows, rows, links] = await Promise.all([
       fromJobTread ? fetchOpenJobs(env.JOBTREAD_GRANT_KEY, fetchImpl) : null,
       loadAllKids(env.DB), loadAllProjects(env.DB),
@@ -382,7 +421,7 @@ export async function syncKidPartners(env, { fetchImpl = fetch, now = Date.now()
     }
 
     // One email for every logo nobody has yet; a failed send is tried again next time
-    const patch = { lastRun: { at: iso, scope: fromJobTread ? 'all' : 'waiting', added: out.reduce((n, o) => n + o.added.length, 0), waiting: [...(await readRows(env.DB)).values()].filter((r) => r.state === 'waiting').length } };
+    const patch = { lastRun: { at: iso, scope: fromJobTread ? 'all' : 'waiting', added: out.reduce((n, o) => n + o.added.length, 0), waiting: new Set([...(await readRows(env.DB)).values()].filter((r) => r.state === 'waiting').map((r) => r.company)).size } };
     if (toEmail.length) {
       const { emails } = await readSettings(env.DB);
       if (emails.length && emailConfigured(env)) {
@@ -404,6 +443,8 @@ export async function syncKidPartners(env, { fetchImpl = fetch, now = Date.now()
     // Kept so Site → Automations can say the last check failed
     try { await writeState(env.DB, { lastError: { at: iso, scope: fromJobTread ? 'all' : 'waiting', error: String(err.message || err).slice(0, 200) } }); } catch { /* nothing more to do */ }
     return [];
+  } finally {
+    if (locked) await unlock(env.DB);
   }
 }
 
@@ -461,17 +502,21 @@ export async function adminView(DB) {
   };
 }
 
-/** "No logo needed" (dismiss true) or back to waiting (false). Returns the row's new state, or null if it's not there. */
-export async function setAside(DB, { record, company, dismiss }, by = null, now = Date.now()) {
+/**
+ * "No logo needed" (dismiss true) or back to waiting (false), for one page
+ * (record) or, without one, every page the company is on. Returns the new
+ * state, or null when nothing was in the state to move from.
+ */
+export async function setAside(DB, { record = null, company, dismiss }, by = null, now = Date.now()) {
   await ensureSchema(DB);
-  const r = await DB.prepare('SELECT state FROM kid_partner_logos WHERE record = ? AND company = ?').bind(record, company).first();
-  if (!r) return null;
   const from = dismiss ? 'waiting' : 'dismissed';
-  if (r.state !== from) return r.state;
   const to = dismiss ? 'dismissed' : 'waiting';
-  await DB.prepare('UPDATE kid_partner_logos SET state = ?, by = ?, updated_at = ? WHERE record = ? AND company = ? AND state = ?')
-    .bind(to, by, new Date(now).toISOString(), record, company, from).run();
-  return to;
+  const where = record ? 'record = ? AND company = ?' : 'company = ?';
+  const keys = record ? [record, company] : [company];
+  const r = await DB.prepare(`UPDATE kid_partner_logos SET state = ?, by = ?, updated_at = ? WHERE ${where} AND state = ?`).bind(to, by, new Date(now).toISOString(), ...keys, from).run();
+  if (r?.meta?.changes > 0) return to;
+  const there = await DB.prepare(`SELECT state FROM kid_partner_logos WHERE ${where} LIMIT 1`).bind(...keys).first();
+  return there ? there.state : null;
 }
 
 export { SYNC_USER };

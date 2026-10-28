@@ -360,7 +360,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
   // The tables appear with the first partner logo sweep; until then these settle to an error
   const [logoState, logoWaiting] = await Promise.all([
     settle(async () => JSON.parse((await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'state'").first('value')) || '{}')),
-    settle(() => DB.prepare("SELECT count(*) AS n FROM kid_partner_logos WHERE state = 'waiting'").first('n')),
+    settle(() => DB.prepare("SELECT count(DISTINCT company) AS n FROM kid_partner_logos WHERE state = 'waiting'").first('n')),
   ]);
   // What the last staff alert text did, and each number's delivery report (counts and Twilio's words only)
   const alertTexts = await readAlertTexts(DB).catch(() => null);

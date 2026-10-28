@@ -435,6 +435,31 @@ export function similarPartners(name, partners, { min = 0.5, max = 3, except = n
   return out.sort((x, y) => y.score - x.score || String(x.partner.name).localeCompare(String(y.partner.name))).slice(0, max);
 }
 
+/** A name's words in any order ("Helen & Jimmy Carlos" is "Jimmy & Helen Carlos"); '' when it has none */
+export const wordsKey = (name) => [...new Set(nameTokens(name))].sort().join(' ');
+
+/**
+ * Partners a company from somewhere else (JobTread) probably is, best first:
+ * similarPartners, plus a partner whose whole name starts the company's
+ * ("Pella Windows and Doors of Georgia" for Pella), minus two-letter
+ * initials, which are too often someone else (Bc Homes for Blythe Creative
+ * Co.). For staff to confirm, never used on its own.
+ */
+export function nearPartners(name, partners, { min = 0.5, max = 3 } = {}) {
+  const words = nameTokens(name);
+  const out = new Map();
+  for (const p of partners || []) {
+    const pw = nameTokens(p.name);
+    if (pw.length && pw.length < words.length && pw.join('').length >= 4 && pw.every((w, i) => words[i] === w)) out.set(p.slug, { partner: p, score: 0.8, why: 'Their name starts it' });
+  }
+  for (const c of similarPartners(name, partners, { min, max: max + 3 })) {
+    if (c.why === 'Initials' && Math.min(...[nameTokens(name)[0], nameTokens(c.partner.name)[0]].map((t) => (t || '').length)) < 3) continue;
+    if (!out.has(c.partner.slug)) out.set(c.partner.slug, c);
+  }
+  return [...out.values()].filter((c) => c.score >= min)
+    .sort((x, y) => y.score - x.score || String(x.partner.name).localeCompare(String(y.partner.name))).slice(0, max);
+}
+
 // ── Possible duplicates ──────────────────────────────────────────────
 /** Map(slug → [other slugs]) for partners with the same name or the same website (social pages aside) */
 export function duplicatesOf(partners) {

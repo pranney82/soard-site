@@ -4,8 +4,8 @@
  * Behind Cloudflare Access (not in the middleware's public list).
  *
  * GET                                       → { waiting, dismissed, added, settings, lastSweepAt, lastRun, lastError }
- * POST { dismiss: { record, company } }     → "No logo needed": it stops waiting
- * POST { undismiss: { record, company } }   → waiting again (no second email)
+ * POST { dismiss: { record?, company } }    → "No logo needed": it stops waiting (on every page, without record)
+ * POST { undismiss: { record?, company } }  → waiting again (no second email)
  * POST { link: { company, partner } }       → "Same as": the company is that partner, now and for every job
  *                                              after; what's waiting for it gets the partner's logo straight away
  * POST { unlink: { company } }              → not that partner after all (logos already on pages stay)
@@ -37,12 +37,12 @@ export async function onRequestPost(context) {
 
   const one = body?.dismiss || body?.undismiss;
   if (one) {
-    if (!RECORD_RE.test(one.record || '') || !COMPANY_RE.test(one.company || '')) return fail('Bad row');
+    if ((one.record != null && !RECORD_RE.test(one.record)) || !COMPANY_RE.test(one.company || '')) return fail('Bad row');
     const dismiss = !!body.dismiss;
-    const state = await setAside(env.DB, { record: one.record, company: one.company, dismiss }, by);
+    const state = await setAside(env.DB, { record: one.record ?? null, company: one.company, dismiss }, by);
     if (!state) return fail('That one isn’t waiting any more', 404);
     if (state === (dismiss ? 'dismissed' : 'waiting')) {
-      await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'partner-logos', entitySlug: one.record, entityName: dismiss ? 'No logo needed' : 'Waiting for a logo again', changes: { company: one.company } });
+      await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'partner-logos', entitySlug: one.record || one.company, entityName: dismiss ? 'No logo needed' : 'Waiting for a logo again', changes: { company: one.company } });
     }
     return ok({ state, view: await adminView(env.DB) });
   }
