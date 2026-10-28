@@ -69,6 +69,24 @@ test('one reveal per kid, the soonest', () => {
   assert.deepEqual(reveals.map((r) => r.jobId), ['soon']);
 });
 
+test('an organization’s job belongs to its community project: its link, status and reveal, apart from the kids', () => {
+  const projects = [
+    { kind: 'community', slug: 'perfect-harmony-health', name: 'Perfect Harmony Health', year: '2026', status: 'in-progress' },
+    { kind: 'community', slug: 'the-lionheart-school', name: 'The Lionheart School', year: '2026', status: 'in-progress', jobtreadJobId: 'j-lion' },
+  ];
+  const v = buildAdminView([
+    job('j-max', 'Max Sample (2026)', '2026-10-27T20:00:00.000Z', 'Yes'),
+    job('j-office', 'Perfect Harmony Health (2026)', '2026-10-28T20:00:00.000Z', null),
+    job('j-lion', 'The Lionheart School', '2026-11-12T05:00:00.000Z', null),
+    job('j-who', 'Somebody Else (2026)', '2026-11-02T20:00:00.000Z', null),
+  ], KIDS, NOW, projects);
+  assert.deepEqual(v.reveals.map((r) => r.slug), ['max'], 'kids only');
+  assert.deepEqual(v.projectReveals.map((r) => [r.slug, r.date, r.confirmed]), [['perfect-harmony-health', '2026-10-28', false], ['the-lionheart-school', '2026-11-12', false]]);
+  assert.deepEqual(v.projectJobs, { 'perfect-harmony-health': 'j-office', 'the-lionheart-school': 'j-lion' });
+  assert.deepEqual(Object.keys(v.jobs), ['max'], 'no project in the kids’ links');
+  assert.equal(v.unmatched, 1, 'only the job nobody matches');
+});
+
 test('reads every page of jobs, open and closed', async () => {
   const calls = [];
   const pages = [

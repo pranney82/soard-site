@@ -16,6 +16,14 @@
  * carries hiddenBy: 'jobtread', so it comes back once the job moves on; a
  * profile staff hid stays hidden.
  *
+ * Community projects (an organization's room: a school, a clinic) follow
+ * their job too, matched the same way or linked by jobtreadJobId when an
+ * approval made the project (./_applicant-approved.js). They have two
+ * statuses: In progress while the job is Awaiting Funding or being built,
+ * Completed once it's done. Only Denied takes a project off the site:
+ * organizations' jobs often sit at On Site all through the work, and a
+ * closed job only ever confirms Completed.
+ *
  * Each change is saved the way an admin save is (D1, the GitHub copy, the
  * audit log and History) as "JobTread (automatic)", and the site redeploys
  * by itself (at most every 10 minutes) so nobody has to press Publish.
@@ -23,7 +31,7 @@
  * a task finished) for one job at a time, and swept every hour from the
  * live hub heartbeat and /api/reveals as a safety net.
  */
-import { JT_URL, SOARD_ORG_ID, matchKid, BUILDING_STATUSES as BUILDING } from './_reveals.js';
+import { JT_URL, SOARD_ORG_ID, matchProject, isProject, BUILDING_STATUSES as BUILDING } from './_reveals.js';
 import { EXTRACTORS, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit, diffJson } from './_audit.js';
@@ -88,6 +96,31 @@ export function planKid(kid, facts) {
   return changed ? { next, hide: want.hide } : null;
 }
 
+/**
+ * The record a community project should have given its job, or null. Its
+ * statuses are 'in-progress' and 'completed'; only Denied hides it (On Site
+ * is where organizations' jobs often stay). Only the job a project is linked
+ * to (jobtreadJobId) moves it back from Completed, and never once closed: a
+ * project matched by name only ever moves on, so an old job left open can't
+ * reopen a finished project.
+ */
+export function planProject(project, facts) {
+  const want = siteStatusFor(facts);
+  const hide = want.hide === 'denied' ? 'denied' : null;
+  const next = { ...project };
+  if (hide) {
+    if (project.publishStatus !== 'draft') { next.publishStatus = 'draft'; next.hiddenBy = 'jobtread'; }
+  } else {
+    if (project.hiddenBy === 'jobtread') { next.publishStatus = 'published'; delete next.hiddenBy; }
+    const now = project.status || 'completed';
+    const status = want.status === 'completed' ? 'completed'
+      : want.status && (now !== 'completed' || (project.jobtreadJobId && !facts.closed)) ? 'in-progress' : null;
+    if (status && now !== status) next.status = status;
+  }
+  const changed = next.status !== project.status || next.publishStatus !== project.publishStatus || next.hiddenBy !== project.hiddenBy;
+  return changed ? { next, hide } : null;
+}
+
 // JobTread refuses (413) a query whose worst case (page size times each
 // nested list) is too big, so each job brings only its Status and Reveal task
 const JOB_FIELDS = {
@@ -135,14 +168,32 @@ export async function loadAllKids(DB) {
   });
 }
 
-/** Kid slug → the job it belongs to (the open one when an old closed job matches too) */
-export function linkJobs(jobs, kids) {
+/** Every community project, drafts included, in the shape matchProject needs (kind 'community') */
+export async function loadAllProjects(DB) {
+  let rows = [];
+  try { rows = (await DB.prepare('SELECT slug, name, data FROM community').all()).results || []; } catch { return []; }
+  return rows.map((row) => {
+    let data = {};
+    try { data = JSON.parse(row.data || '{}'); } catch { /* use the columns */ }
+    return { kind: 'community', slug: row.slug, name: data.name || row.name, year: data.year ?? null, status: data.status || 'completed', data };
+  });
+}
+
+/** A record's key in linkJobs: a kid's slug, or "community/<slug>" (the two can share a slug) */
+export const keyOf = (r) => (isProject(r) ? `community/${r.slug}` : r.slug);
+
+/**
+ * Kid slug (or "community/<slug>" for a project) → the job it belongs to,
+ * the open one when an old closed job matches too. `records` holds kids,
+ * and community projects when they're to be linked as well.
+ */
+export function linkJobs(jobs, records) {
   const links = new Map();
   for (const job of jobs) {
     // Office test jobs ("TEST Colin Lindsay (2026)") would match the real kid
     if (/^\s*test\b/i.test(job.name || '')) continue;
-    const kid = matchKid(job.name, kids, job.id);
-    if (kid && (!links.has(kid.slug) || !job.closedOn)) links.set(kid.slug, job);
+    const hit = matchProject(job.name, records, job.id);
+    if (hit && (!links.has(keyOf(hit)) || !job.closedOn)) links.set(keyOf(hit), job);
   }
   return links;
 }
@@ -162,53 +213,61 @@ async function writeState(DB, patch) {
   return next;
 }
 
-/** Saved the way an admin save is: D1, the GitHub copy, the audit log, History */
-async function saveKid(env, slug, before, after, message, now) {
+/** Saved the way an admin save is: D1, the GitHub copy, the audit log, History. collection: 'kids' | 'community' */
+async function saveRecord(env, collection, slug, before, after, message, now) {
   const { DB } = env;
   const json = JSON.stringify(after);
-  const [cols, vals] = EXTRACTORS.kids(after);
+  const [cols, vals] = EXTRACTORS[collection](after);
   const all = ['"slug"', '"data"', '"updated_at"', ...cols];
-  await DB.prepare(`INSERT OR REPLACE INTO kids (${all.join(', ')}) VALUES (${all.map(() => '?').join(', ')})`).bind(slug, json, now, ...vals).run();
-  const path = `src/content/kids/${slug}.json`;
+  await DB.prepare(`INSERT OR REPLACE INTO ${collection} (${all.join(', ')}) VALUES (${all.map(() => '?').join(', ')})`).bind(slug, json, now, ...vals).run();
+  const path = `src/content/${collection}/${slug}.json`;
   let gitStatus = 'ok';
   try { await commitFile(env, path, JSON.stringify(after, null, 2) + '\n', message); } catch { gitStatus = 'failed'; }
-  await logAudit(DB, { userEmail: SYNC_USER, action: after.publishStatus === 'draft' ? 'drafted' : 'updated', entityType: 'kids', entitySlug: slug, entityName: after.name, changes: diffJson(before, after), path, gitStatus });
-  try { await recordVersion(DB, { collection: 'kids', slug, data: after, previous: before, userEmail: SYNC_USER, now }); } catch { /* history is a nicety */ }
+  await logAudit(DB, { userEmail: SYNC_USER, action: after.publishStatus === 'draft' ? 'drafted' : 'updated', entityType: collection, entitySlug: slug, entityName: after.name, changes: diffJson(before, after), path, gitStatus });
+  try { await recordVersion(DB, { collection, slug, data: after, previous: before, userEmail: SYNC_USER, now }); } catch { /* history is a nicety */ }
   return generateSha(json);
 }
 
 const STATUS_WORDS = { 'needs-funding': 'awaiting funding', 'in-progress': 'in build', completed: 'completed' };
-function describe(before, after, facts) {
+const PROJECT_WORDS = { 'in-progress': 'in progress', completed: 'completed' };
+function describe(before, after, facts, words = STATUS_WORDS) {
   if (after.publishStatus === 'draft' && before.publishStatus !== 'draft') return `hidden (JobTread status ${facts.status})`;
   const parts = [];
   if (before.publishStatus === 'draft' && after.publishStatus !== 'draft') parts.push('shown again');
-  if (after.status !== before.status) parts.push(`${STATUS_WORDS[before.status] || before.status || 'no status'} → ${STATUS_WORDS[after.status]}`);
+  if (after.status !== before.status) parts.push(`${words[before.status] || before.status || 'no status'} → ${words[after.status]}`);
   return `${parts.join(', ')} (JobTread ${facts.revealDone && after.status === 'completed' ? 'Reveal task done' : `status ${facts.status}`})`;
 }
 
-/** What staff are told when JobTread's Denied hides a kid: the words for Slack, and the email */
-export function deniedAlert({ kid, jobId }) {
-  const title = `${kid.name}’s profile is hidden`;
-  const detail = `JobTread marks ${kid.name}’s job Denied, so the site took their profile off Meet the Kids. Everything is kept in the admin.`;
-  const fix = 'If that’s a mistake, change the job’s Status in JobTread and the profile comes back by itself.';
-  const admin = `${SITE}/admin/#kids-hub`;
+/**
+ * What staff are told when JobTread's Denied hides a kid (or, with
+ * project: true, a community project): the words for Slack, and the email
+ */
+export function deniedAlert({ kid, jobId, project = false }) {
+  const what = project ? 'page' : 'profile';
+  const title = `${kid.name}’s ${what} is hidden`;
+  const detail = project
+    ? `JobTread marks ${kid.name}’s job Denied, so the site took the project off the Community page. Everything is kept in the admin.`
+    : `JobTread marks ${kid.name}’s job Denied, so the site took their profile off Meet the Kids. Everything is kept in the admin.`;
+  const fix = `If that’s a mistake, change the job’s Status in JobTread and the ${what} comes back by itself.`;
+  const admin = `${SITE}/admin/#${project ? 'kids/community' : 'kids-hub'}`;
+  const where = project ? 'Community Projects' : 'Kids';
   const job = `https://app.jobtread.com/jobs/${jobId}`;
   return {
-    title, detail, fix, admin, job,
+    title, detail, fix, admin, job, where,
     subject: `[SOARD] ${title}`,
-    html: `<p><strong>${title}</strong></p><p>${detail}</p><p>${fix}</p><p><a href="${job}">Open the job in JobTread</a> · <a href="${admin}">Open Kids in the admin</a></p>`,
+    html: `<p><strong>${title}</strong></p><p>${detail}</p><p>${fix}</p><p><a href="${job}">Open the job in JobTread</a> · <a href="${admin}">Open ${where} in the admin</a></p>`,
     text: `${title}\n\n${detail}\n\n${fix}\n\nJobTread: ${job}\nAdmin: ${admin}`,
   };
 }
 
-/** A kid JobTread marks Denied is hidden; staff hear it once */
-async function alertDenied(env, { kid, jobId }) {
+/** A kid (or project) JobTread marks Denied is hidden; staff hear it once */
+async function alertDenied(env, { kid, jobId, project = false }) {
   const to = [...new Set([...DEFAULT_ALERT_EMAILS, ...String(env.ALERT_EMAILS || '').split(',').map((s) => s.trim())].filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '')))];
-  const { title, detail, fix, admin, job, subject, html, text } = deniedAlert({ kid, jobId });
+  const { title, detail, fix, admin, job, where, subject, html, text } = deniedAlert({ kid, jobId, project });
   await Promise.allSettled([
     slackPost(env, slackCard({
       icon: '⚠️', title, lead: detail, fix,
-      buttons: [{ label: 'Open the job in JobTread', url: job }, { label: 'Open Kids', url: admin }],
+      buttons: [{ label: 'Open the job in JobTread', url: job }, { label: `Open ${where}`, url: admin }],
     })),
     emailConfigured(env) && to.length ? sendEmails(env, {
       to, subject, html, text,
@@ -234,31 +293,34 @@ async function deploy(env, state, now) {
 }
 
 /**
- * Bring kids in line with JobTread: one job (a workflow wake-up) or all of
- * them (the sweep). Returns [{ slug, name, change }]. Never throws.
+ * Bring kids and community projects in line with JobTread: one job (a
+ * workflow wake-up) or all of them (the sweep). Returns
+ * [{ slug, name, change, kind? }] (kind 'community' for a project). Never throws.
  */
 export async function syncKidStatuses(env, { jobId = null, fetchImpl = fetch, now = Date.now() } = {}) {
   try {
     if (!env.DB || !env.JOBTREAD_GRANT_KEY) return [];
-    const [jobs, kids] = await Promise.all([fetchJobs(env.JOBTREAD_GRANT_KEY, { jobId, fetchImpl }), loadAllKids(env.DB)]);
+    const [jobs, kids, projects] = await Promise.all([fetchJobs(env.JOBTREAD_GRANT_KEY, { jobId, fetchImpl }), loadAllKids(env.DB), loadAllProjects(env.DB)]);
+    const records = [...kids, ...projects];
     const state = await readState(env.DB);
     const alerted = { ...(state.alerted || {}) };
     const out = [];
     const iso = new Date(now).toISOString();
-    const links = linkJobs(jobs, kids);
-    for (const [slug, job] of links) {
-      const kid = kids.find((k) => k.slug === slug);
+    const links = linkJobs(jobs, records);
+    for (const [key, job] of links) {
+      const rec = records.find((r) => keyOf(r) === key);
+      const project = isProject(rec);
       const facts = jobFacts(job);
-      if (facts.status !== 'Denied') delete alerted[slug];
-      const plan = planKid(kid.data, facts);
+      if (facts.status !== 'Denied') delete alerted[key];
+      const plan = project ? planProject(rec.data, facts) : planKid(rec.data, facts);
       if (!plan) continue;
-      const change = describe(kid.data, plan.next, facts);
-      await saveKid(env, slug, kid.data, plan.next, `Kid status from JobTread: ${kid.name} ${change}`, iso);
-      out.push({ slug, name: kid.name, change });
-      if (plan.hide === 'denied' && !alerted[slug]) { await alertDenied(env, { kid, jobId: job.id }); alerted[slug] = iso; }
+      const change = describe(rec.data, plan.next, facts, project ? PROJECT_WORDS : STATUS_WORDS);
+      await saveRecord(env, project ? 'community' : 'kids', rec.slug, rec.data, plan.next, `${project ? 'Community project' : 'Kid'} status from JobTread: ${rec.name} ${change}`, iso);
+      out.push({ slug: rec.slug, name: rec.name, change, ...(project ? { kind: 'community' } : {}) });
+      if (plan.hide === 'denied' && !alerted[key]) { await alertDenied(env, { kid: rec, jobId: job.id, project }); alerted[key] = iso; }
     }
-    // Each job's cover shows the kid's Main photo (./_job-covers.js)
-    const covers = await syncJobCovers(env, links, kids, { fetchImpl, now });
+    // Each job's cover shows the kid's (or project's) Main photo (./_job-covers.js)
+    const covers = await syncJobCovers(env, links, records.map((r) => ({ ...r, slug: keyOf(r) })), { fetchImpl, now });
     const patch = { alerted, lastRun: { at: iso, scope: jobId ? 'job' : 'all', changed: out.length, covers: covers.length } };
     if (!jobId) patch.lastSweepAt = iso;
     if (out.length || state.deployPending) {
@@ -277,19 +339,22 @@ export async function syncKidStatuses(env, { jobId = null, fetchImpl = fetch, no
 }
 
 /**
- * One kid's job cover right after an admin save, so new family photos reach
- * JobTread now rather than at the hourly sweep (./_job-covers.js). Never throws.
+ * One kid's (or, with collection 'community', one project's) job cover right
+ * after an admin save, so new photos reach JobTread now rather than at the
+ * hourly sweep (./_job-covers.js). Never throws.
  */
-export async function syncCoverForKid(env, slug, { fetchImpl = fetch, now = Date.now() } = {}) {
+export async function syncCoverForKid(env, slug, { fetchImpl = fetch, now = Date.now(), collection = 'kids' } = {}) {
   try {
     if (!env.DB || !env.JOBTREAD_GRANT_KEY) return [];
-    const kids = await loadAllKids(env.DB);
-    const kid = kids.find((k) => k.slug === slug);
-    if (!kid) return [];
-    // A profile that names its job needs only that job; otherwise match it like the sweep does
-    const jobs = await fetchJobs(env.JOBTREAD_GRANT_KEY, { jobId: kid.data?.jobtreadJobId || null, fetchImpl });
-    const job = linkJobs(jobs, kids).get(slug);
-    return job ? await syncJobCovers(env, new Map([[slug, job]]), kids, { fetchImpl, now }) : [];
+    const [kids, projects] = await Promise.all([loadAllKids(env.DB), loadAllProjects(env.DB)]);
+    const records = [...kids, ...projects];
+    const rec = (collection === 'community' ? projects : kids).find((r) => r.slug === slug);
+    if (!rec) return [];
+    // A record that names its job needs only that job; otherwise match it like the sweep does
+    const jobs = await fetchJobs(env.JOBTREAD_GRANT_KEY, { jobId: rec.data?.jobtreadJobId || null, fetchImpl });
+    const key = keyOf(rec);
+    const job = linkJobs(jobs, records).get(key);
+    return job ? await syncJobCovers(env, new Map([[key, job]]), [{ ...rec, slug: key }], { fetchImpl, now }) : [];
   } catch (err) {
     console.error('[kid-status] cover', err.message);
     return [];

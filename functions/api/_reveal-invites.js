@@ -57,7 +57,7 @@
  * "reveal-invites"). While off, each wake-up records what it would have done.
  */
 
-import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, easternParts, matchKid, parseJobName, loadKids } from './_reveals.js';
+import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, easternParts, matchProject, isProject, parseJobName, loadKidsAndProjects } from './_reveals.js';
 import { accessToken, eventIdFor, upsertEvent, cancelEvent, getEvent } from './_google-calendar.js';
 import { sendEmails, slackPost, slackIssue, slackResolved, emailConfigured } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
@@ -432,12 +432,19 @@ function longDate(date) {
   return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 }
 
-/** First name for the title: the matched kid's site name, else the job name's first word */
+/**
+ * The name for the title: the matched kid's site name, an organization's
+ * community project name ("The Lionheart School"), else the job name's first
+ * word. slug: the kid's (their live page); url: their public page, if any.
+ * `kids` may hold community projects too (loadKidsAndProjects).
+ */
 export function displayName(job, kids) {
-  const kid = matchKid(job.name, kids, job.id);
-  if (kid) return { name: kid.name, slug: kid.slug };
+  const hit = matchProject(job.name, kids, job.id);
+  if (isProject(hit)) return { name: hit.name, slug: null, url: hit.page || null };
+  if (hit) return { name: hit.name, slug: hit.slug, url: `/kids/${hit.slug}/` };
   const base = String(job.name || '').replace(/\(\d{4}\)\s*$/, '').trim();
-  return { name: base.split(/\s+/)[0] || 'The', slug: null };
+  // A kid's job starts with their first name; "The …" is an organization's whole name
+  return { name: (/^the\s/i.test(base) ? base : base.split(/\s+/)[0]) || 'The', slug: null, url: null };
 }
 
 /**
@@ -497,7 +504,7 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
   // and Outlook (HTML descriptions arrive as raw tags in some). The kid's live
   // page; before the kid is on the site, /live/ (it follows the current reveal).
   lines.push('');
-  if (who.slug) lines.push(`Meet ${who.name}: ${SITE}/kids/${who.slug}/`);
+  if (who.url) lines.push(`Meet ${who.name}: ${SITE}${who.url}`);
   lines.push(`Watch live from anywhere: ${SITE}/live/${who.slug ? `${who.slug}/` : ''}`);
   // Who to ask, by name when the organizer is on the staff list, and who it's from
   const host = (staff || []).find((s) => s.email === organizer)?.name;
@@ -711,7 +718,7 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   const [job, staff, kids, board] = await Promise.all([
     fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
     preloaded?.staff || fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-    preloaded?.kids || loadKids(DB).catch(() => []),
+    preloaded?.kids || loadKidsAndProjects(DB).catch(() => []),
     preloaded?.board || fetchBoard(env, fetchImpl),
   ]);
   const failed = async (row, err) => {
@@ -926,7 +933,7 @@ export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), d
       organization: { $: { id: SOARD_ORG_ID }, jobs: { $: { size: 100, where: ['closedOn', '=', null] }, nodes: { id: {} } } },
     }, fetchImpl),
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-    loadKids(env.DB).catch(() => []),
+    loadKidsAndProjects(env.DB).catch(() => []),
     fetchBoard(env, fetchImpl),
   ]);
   const results = [];
@@ -991,7 +998,7 @@ export async function maybeCheckGuests(env, { fetchImpl = fetch, now = Date.now(
     if (!results?.length) return [];
     const [staff, kids, board] = await Promise.all([
       fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-      loadKids(DB).catch(() => []),
+      loadKidsAndProjects(DB).catch(() => []),
       fetchBoard(env, fetchImpl),
     ]);
     const out = [];
@@ -1024,7 +1031,7 @@ export async function sendTestInvite(env, jobId, testEmail, { date, time, stage 
   const [job, staff, kids] = await Promise.all([
     fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-    loadKids(DB).catch(() => []),
+    loadKidsAndProjects(DB).catch(() => []),
   ]);
   if (job && (date || time !== undefined)) {
     for (const t of job.tasks?.nodes || []) {
@@ -1097,7 +1104,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
   const [jobs, staff, kids, rowsRes, board] = await Promise.all([
     openJobs(),
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-    loadKids(DB).catch(() => []),
+    loadKidsAndProjects(DB).catch(() => []),
     DB.prepare('SELECT * FROM reveal_invites').all(),
     fetchBoard(env, fetchImpl),
   ]);
@@ -1156,7 +1163,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       slug: who.slug,
       space: values[FIELD_MAKEOVER_TYPE] || null,
       ...(isTestJob(job) ? { test: true } : {}),
-      kidUrl: who.slug ? `/kids/${who.slug}/` : null,
+      kidUrl: who.url,
       jobUrl: `https://app.jobtread.com/jobs/${job.id}`,
       scheduleUrl: scheduleUrl(job.id, reveal.id),
       date: reveal.startDate,

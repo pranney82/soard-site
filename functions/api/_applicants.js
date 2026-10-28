@@ -28,7 +28,7 @@
  * /api/applicant-sync call, so a status change in JobTread shows up at once.
  */
 
-import { pave, SOARD_ORG_ID, matchKid, normalizeName } from './_reveals.js';
+import { pave, SOARD_ORG_ID, matchProject, isProject, loadProjects, normalizeName } from './_reveals.js';
 import { bestPhotoOf, photoUrl } from './_job-covers.js';
 import {
   readApplicant, statusMessagePreview, postAccountComment, SITE_GRANT_ID, STATUS_RANK,
@@ -645,7 +645,8 @@ function applicantFromRow(r) {
  * Once the family photos are on the kid's page, its best photo (the Main
  * photo, centered on its focal point) is the family's avatar here too. The
  * page is the one the family's job links to (jobtreadJobId, else the name
- * and year, like the reveal dates and job covers).
+ * and year, like the reveal dates and job covers). An organization's is its
+ * community project's (a.kid.kind 'community', photoFrom 'project').
  */
 async function pagePhotos(DB, list) {
   const linked = list.filter(a => a.jobId && !/^\s*test\b/i.test(a.jobName || a.name || ''));
@@ -654,6 +655,7 @@ async function pagePhotos(DB, list) {
   const years = [...new Set(linked.map(a => Number((String(a.jobName || '').match(/\((\d{4})\)\s*$/) || [])[1])).filter(Boolean))];
   const jobIds = [...new Set(linked.map(a => a.jobId))].slice(0, 80);
   let kids = [];
+  const projects = await loadProjects(DB, { drafts: true, withData: true });
   try {
     const { results } = await DB.prepare(`SELECT slug, name, year, data FROM kids WHERE year IN (${years.map(() => '?').join(', ') || 'NULL'})
       OR json_extract(data, '$.jobtreadJobId') IN (${jobIds.map(() => '?').join(', ')})`).bind(...years, ...jobIds).all();
@@ -661,15 +663,16 @@ async function pagePhotos(DB, list) {
       const data = parse(row.data, {}) || {};
       return { slug: row.slug, name: data.name || row.name, year: row.year ?? data.year, data };
     });
-  } catch { return; /* no kids table (tests) */ }
-  if (!kids.length) return;
+  } catch { /* no kids table (tests) */ }
+  if (!kids.length && !projects.length) return;
   // Office test jobs ("TEST <name> (2026)") would match the real kid, so they were left out above
   for (const a of linked) {
-    const kid = matchKid(a.jobName, kids, a.jobId);
-    if (!kid) continue;
-    a.kid = { slug: kid.slug, name: kid.name, draft: kid.data?.publishStatus === 'draft' };
-    const best = bestPhotoOf(kid.data);
-    if (best) { a.photo = photoUrl(best, 'w=128,h=128,fit=cover', 'q=80'); a.photoFrom = 'page'; }
+    const hit = matchProject(a.jobName, [...kids, ...projects], a.jobId);
+    if (!hit) continue;
+    const project = isProject(hit);
+    a.kid = { slug: hit.slug, name: hit.name, draft: project ? !hit.published : hit.data?.publishStatus === 'draft', ...(project ? { kind: 'community' } : {}) };
+    const best = bestPhotoOf(hit.data);
+    if (best) { a.photo = photoUrl(best, 'w=128,h=128,fit=cover', 'q=80'); a.photoFrom = project ? 'project' : 'page'; }
   }
 }
 

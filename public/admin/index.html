@@ -6771,7 +6771,7 @@
                   </details>` : null}
                   <div class="rt-links">
                     <a href=${r.jobUrl} target="_blank" rel="noopener">Job in JobTread ↗</a>
-                    ${r.kidUrl ? html`<a href=${r.kidUrl} target="_blank" rel="noopener">Kid page ↗</a>` : null}
+                    ${r.kidUrl ? html`<a href=${r.kidUrl} target="_blank" rel="noopener">${r.kidUrl.startsWith('/community/') ? 'Project page' : 'Kid page'} ↗</a>` : null}
                     ${r.reminderSignups ? html`<span>${rtPeople(r.reminderSignups)} asked for reminders</span>` : null}
                   </div>
                 </div>` : null}
@@ -7830,7 +7830,7 @@
       if (!force && _revealsAdmin && Date.now() - _revealsAdmin.at < 60000) return _revealsAdmin.promise;
       const promise = fetch('/api/reveals-admin', { cache: 'no-store' })
         .then((r) => r.json())
-        .then((d) => (d?.success ? { reveals: d.reveals || [], jobs: d.jobs || {}, statuses: d.statuses || {}, full: true } : Promise.reject(new Error(d?.error || 'reveals-admin failed'))))
+        .then((d) => (d?.success ? { reveals: d.reveals || [], jobs: d.jobs || {}, statuses: d.statuses || {}, projectReveals: d.projectReveals || [], projectJobs: d.projectJobs || {}, projectStatuses: d.projectStatuses || {}, full: true } : Promise.reject(new Error(d?.error || 'reveals-admin failed'))))
         .catch(() => fetch('/api/reveals', { cache: 'no-store' })
           .then((r) => r.json())
           .then((d) => ({ reveals: (d?.reveals || []).map((r) => ({ ...r, confirmed: true })), jobs: {}, statuses: {}, full: false }))
@@ -8864,6 +8864,16 @@
       useEffect(() => {
         let on = true;
         loadRevealsAdmin().then((r) => { if (on) setD({ reveals: r?.reveals || [], jobs: r?.jobs || {}, statuses: r?.statuses || {} }); }).catch(() => {});
+        return () => { on = false; };
+      }, []);
+      return d;
+    }
+    // The same for community projects (an organization's job): their status follows it too (functions/api/_kid-status.js)
+    function useProjectJobs() {
+      const [d, setD] = useState({ reveals: [], jobs: {}, statuses: {} });
+      useEffect(() => {
+        let on = true;
+        loadRevealsAdmin().then((r) => { if (on) setD({ reveals: r?.projectReveals || [], jobs: r?.projectJobs || {}, statuses: r?.projectStatuses || {} }); }).catch(() => {});
         return () => { on = false; };
       }, []);
       return d;
@@ -17693,6 +17703,7 @@ ${sections || '<p>No one yet.</p>'}
         setBusy(null);
       };
       const togglePin = (slug) => setFavs([...toggleFavorite('community', slug)]);
+      const { jobs: jtJobs, statuses: jtStatuses, reveals: jtReveals } = useProjectJobs();
 
       // ── Totals ──
       const listed = projects.filter(CS.isListed);
@@ -17722,6 +17733,10 @@ ${sections || '<p>No one yet.</p>'}
         const first = CS.heroStats(p)[0];
         const sub = [p.year, cmStatLine(first), (p.photos || []).length ? kdPlural(p.photos.length, 'photo') : null, (p.partnerLogos || []).length ? kdPlural(p.partnerLogos.length, 'partner') : null].filter(Boolean).join(' · ');
         const draft = !CS.isListed(p);
+        // A project with an organization's JobTread job takes its status from there (no Mark as…)
+        const jobId = jtJobs[p.slug] || null;
+        const jtStatus = jobId ? jtStatuses[p.slug] || null : null;
+        const reveal = p.status === 'in-progress' ? kdRevealOf(jtReveals, p.slug) : null;
         return html`<li key=${p.slug} data-slug=${p.slug} ref=${drag.itemRef(p.slug)}
           class=${`kd-row cm-row${isLifted ? ' is-lifted' : ''}${busy === p.slug ? ' is-busy' : ''}${draft ? ' is-draft' : ''}`}
           onClick=${(e) => { if (!e.target.closest('button, a, input') && !drag.justDragged()) onEdit(p.slug); }}>
@@ -17739,6 +17754,8 @@ ${sections || '<p>No one yet.</p>'}
             <div class="kd-row__sub">${sub || html`<span class="text-muted">No details yet</span>`}</div>
           </div>
           <div class="kd-row__side">
+            ${reveal ? html`<span class=${`kd-reveal${reveal.confirmed ? '' : ' is-tentative'}`}>${kdIcon.calendar} ${kdRevealLabel(reveal)}</span>` : null}
+            ${jtStatus && p.status === 'in-progress' ? html`<span class="kd-jt" title="The site’s status follows this job’s Status in JobTread">JobTread: ${jtStatus}</span>` : null}
             <ul class="kd-row__issues" aria-label="Missing">
               ${r.issues.filter((i) => i.tone === 'warn').map((i) => html`<li key=${i.id} class="kd-chip kd-chip--warn" title=${i.tip}>${kdIcon.alert}${i.label}</li>`)}
               ${r.issues.filter((i) => i.tone === 'quiet' && !CM_BULK_ISSUES.includes(i.id) && i.id !== 'no-page').slice(0, 1).map((i) => html`<li key=${i.id} class="kd-chip kd-chip--quiet" title=${i.tip}>${i.label}</li>`)}
@@ -17747,9 +17764,11 @@ ${sections || '<p>No one yet.</p>'}
           <${PplMenu} label=${`Actions for ${p.name}`} items=${[
             { label: 'Edit', onSelect: () => onEdit(p.slug) },
             CS.isListed(p) && CS.hasPage(p) ? { label: 'View on the site', hint: `/community/${p.slug}/`, onSelect: () => window.open(`/community/${p.slug}/`, '_blank', 'noopener') } : null,
+            jobId ? { label: 'Open in JobTread', onSelect: () => window.open(JT_JOB_URL(jobId), '_blank', 'noopener') } : null,
             { label: pinned ? 'Unpin from the Dashboard' : 'Pin to the Dashboard', onSelect: () => togglePin(p.slug) },
             { divider: true },
-            p.status === 'in-progress' ? { label: 'Mark as completed', onSelect: () => quickSave(p, { status: 'completed' }, 'Completed') }
+            jtStatus ? { label: 'Change status in JobTread', hint: `Now: ${jtStatus}`, onSelect: () => window.open(JT_JOB_URL(jobId), '_blank', 'noopener') }
+              : p.status === 'in-progress' ? { label: 'Mark as completed', onSelect: () => quickSave(p, { status: 'completed' }, 'Completed') }
               : { label: 'Mark as in progress', onSelect: () => quickSave(p, { status: 'in-progress' }, 'In progress') },
             draft ? { label: 'Show on the Community page', onSelect: () => quickSave(p, { publishStatus: 'published' }, 'Shown') }
               : { label: 'Hide from the site', onSelect: () => quickSave(p, { publishStatus: 'draft' }, 'Hidden') },
@@ -17913,6 +17932,7 @@ ${sections || '<p>No one yet.</p>'}
       const narrow = useMatchMedia('(max-width: 768px)');
       const [storyOpen, setStoryOpen] = useState(false);
       const history = useContentHistory('community', slug, CM_HISTORY);
+      const jt = useProjectJobs();
       const [historyOpen, setHistoryOpen] = useState(undefined); // undefined: closed; null: latest; a version id
       const restoreVersion = (verData, v) => {
         const prev = dataRef.current;
@@ -18321,6 +18341,10 @@ ${sections || '<p>No one yet.</p>'}
       const checksDone = checks.filter((c) => c.done).length;
       const listed = CS.isListed(data);
       const page = CS.hasPage(record);
+      // An organization's job in JobTread sets the status (functions/api/_kid-status.js); only Denied hides the project
+      const jobId = slug ? jt.jobs[slug] || null : null;
+      const jtStatus = jobId ? jt.statuses[slug] || null : null;
+      const jtHides = data.hiddenBy === 'jobtread' && jtStatus === 'Denied';
       // Where the project sits on the Community page, as saved
       const onPage = CS.listOrder(projects);
       const place = slug ? onPage.findIndex((p) => p.slug === slug) : -1;
@@ -18468,14 +18492,19 @@ ${sections || '<p>No one yet.</p>'}
         <aside class="kd-rail" aria-label="Project at a glance">
           <section class="kd-card kd-card--status" aria-labelledby="cm-status-h">
             <h3 id="cm-status-h">Status</h3>
-            <${KdStatusPicker} value=${data.status} onChange=${(v) => set({ status: v })} statuses=${CS.STATUSES} />
+            ${jtStatus ? html`<div class="kd-jt-status">
+                <span class=${`kd-status kd-status--${data.status}`}>${CS.statusOf(data.status).label}</span>
+                <p>Follows JobTread, where the job is at <strong>${jtStatus}</strong>.</p>
+                <a class="btn btn-ghost btn-sm" href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Change it in JobTread ${kdIcon.external}</a>
+              </div>`
+              : html`<${KdStatusPicker} value=${data.status} onChange=${(v) => set({ status: v })} statuses=${CS.STATUSES} />`}
             <label class="bc-switch ppl-switch kd-visible">
-              <input type="checkbox" role="switch" checked=${listed} aria-checked=${listed}
-                onChange=${(e) => set({ publishStatus: e.target.checked ? 'published' : 'draft' })} />
+              <input type="checkbox" role="switch" checked=${listed} aria-checked=${listed} disabled=${jtHides}
+                onChange=${(e) => set({ publishStatus: e.target.checked ? 'published' : 'draft', hiddenBy: undefined })} />
               <span class="bc-switch-track" aria-hidden="true"></span>
               Show on the Community page
             </label>
-            <p class="kd-card__note">${placeNote}</p>
+            <p class="kd-card__note">${jtHides ? 'Hidden because JobTread says Denied. It comes back by itself when the job moves on.' : placeNote}</p>
           </section>
           <section class="kd-card kd-card--health" aria-labelledby="cm-health-h">
             <h3 id="cm-health-h">Project health <span class="kd-card__count">${checksDone} of ${checks.length}</span></h3>

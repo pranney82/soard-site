@@ -17,7 +17,9 @@
  *                                   once the replay is saved and its Reel is finished
  *
  * Only published kids are planned: the countdown names the kid, and the public
- * reveal feed (./_reveals.js) has the same rule. Confirmed reveals that can't be
+ * reveal feed (./_reveals.js) has the same rule. An organization's job that
+ * belongs to its Community project has no kid page and no countdown, so it's
+ * left out altogether rather than listed as a problem. Confirmed reveals that can't be
  * planned yet (no time, no kid page matches the job name, the kid page isn't
  * published) are listed for the admin on Reveals → Now, with the kid page filed
  * under the neighboring year when that's the likely mix-up (jobs carry the
@@ -45,7 +47,7 @@
  * Last result: D1 site_config "broadcast-schedule".
  */
 
-import { FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, easternParts, todayEastern, matchKid, parseJobName, fetchJobs, longDay, clockTime } from './_reveals.js';
+import { FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, easternParts, todayEastern, matchKid, matchProject, isProject, parseJobName, fetchJobs, longDay, clockTime, loadProjects } from './_reveals.js';
 import { SANDBOX_JOB_ID, isTestJob } from './_reveal-invites.js';
 import { adminAction, readState, readConfig, ensureSchema, SITE_ORIGIN } from './_broadcast.js';
 import { alertAdmins, slackResolved } from './_broadcast-notify.js';
@@ -86,8 +88,9 @@ async function allKids(DB) {
  * Confirmed reveals from today on, soonest first:
  * { jobId, jobName, slug, name, startsAt, date, time, problem }
  * problem: null (can be planned) | 'no-time' | 'no-kid' | 'draft'
+ * `projects` (community projects, kind 'community'): their jobs are left out.
  */
-export function confirmedReveals(jobs, kids, now = Date.now()) {
+export function confirmedReveals(jobs, kids, now = Date.now(), projects = []) {
   const today = todayEastern(now);
   const published = kids.filter((k) => !k.draft);
   const drafts = kids.filter((k) => k.draft);
@@ -99,6 +102,7 @@ export function confirmedReveals(jobs, kids, now = Date.now()) {
     if (!String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes')) continue;
     const parts = values[FIELD_REVEAL_DATE] ? easternParts(values[FIELD_REVEAL_DATE]) : null;
     if (!parts || parts.date < today) continue;
+    if (projects.length && isProject(matchProject(job.name, [...kids, ...projects], job.id))) continue;
     const kid = matchKid(job.name, published, job.id);
     const draft = kid ? null : matchKid(job.name, drafts, job.id);
     // No kid that year: is there exactly one under the year before or after? (suggested, never used)
@@ -314,13 +318,14 @@ export async function syncBroadcastSchedule(env, { fetchImpl = fetch, now = Date
     locked = true;
     prev = await readRecord(DB);
     await ensureSchema(DB);
-    const [jobs, kids, state, recent] = await Promise.all([
+    const [jobs, kids, projects, state, recent] = await Promise.all([
       fetchJobs(env.JOBTREAD_GRANT_KEY, fetchImpl),
       allKids(DB),
+      loadProjects(DB, { drafts: true }),
       readState(DB),
       DB.prepare('SELECT kid_slug, live_at FROM broadcasts WHERE live_at IS NOT NULL AND live_at >= ?').bind(new Date(now - 2 * 86400e3).toISOString()).all(),
     ]);
-    const reveals = confirmedReveals(jobs, kids, now);
+    const reveals = confirmedReveals(jobs, kids, now, projects);
     const happened = (recent.results || []).map((r) => ({ kidSlug: r.kid_slug, liveAt: r.live_at }));
     const plan = planBroadcast(state, reveals, { now, happened });
 

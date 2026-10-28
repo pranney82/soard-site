@@ -33,7 +33,7 @@ import {
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
 import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeState, readSettings, normEmail, BOARD_PAGE } from './_board-roles.js';
-import { cachedReveals, fetchJobs, loadKids, matchKid, isRehearsalJob, FIELD_JOB_STATUS, BUILDING_STATUSES } from './_reveals.js';
+import { cachedReveals, fetchJobs, loadKids, loadProjects, matchProject, isProject, isRehearsalJob, FIELD_JOB_STATUS, BUILDING_STATUSES } from './_reveals.js';
 import { sendEmails, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
 import { emailShell, button, esc, facts } from './_email-shell.js';
 import { sniffType } from './upload-file.js';
@@ -431,13 +431,18 @@ export async function cashHistory(DB) {
   return ((await DB.prepare('SELECT month, total, at FROM board_cash WHERE total > 0 ORDER BY month DESC LIMIT 24').all()).results || []).map((r) => ({ month: r.month, total: r.total, at: r.at }));
 }
 
-/** Open makeovers by JobTread status, the building ones with their kid → { byStatus, building: [{ name, slug, status }] } (15-minute copy) */
+/**
+ * Open makeovers by JobTread status, the building ones with their kid or
+ * community project → { byStatus, building: [{ name, slug, status, url?, kind? }] }
+ * (15-minute copy). A project carries kind 'community', and its url only
+ * once its page is public.
+ */
 export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fresh = false } = {}) {
   const cached = await readState(env.DB, 'projects');
   if (!fresh && cached.at && now - Date.parse(cached.at) < 15 * 60 * 1000) return cached.value;
   if (!env.JOBTREAD_GRANT_KEY) return cached.value || null;
   try {
-    const [jobs, kids] = await Promise.all([fetchJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), loadKids(env.DB).catch(() => [])]);
+    const [jobs, kids, projects] = await Promise.all([fetchJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), loadKids(env.DB).catch(() => []), loadProjects(env.DB, { drafts: true }).catch(() => [])]);
     const byStatus = {};
     const building = [];
     for (const job of jobs) {
@@ -446,7 +451,13 @@ export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fr
       if (!status) continue;
       byStatus[status] = (byStatus[status] || 0) + 1;
       if (BUILDING_STATUSES.has(status)) {
-        const kid = matchKid(job.name, kids, job.id);
+        const hit = matchProject(job.name, [...kids, ...projects], job.id);
+        if (isProject(hit)) {
+          // An organization's room: named once its project is published, never by the job's own name
+          building.push({ name: hit.published ? hit.name : null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null });
+          continue;
+        }
+        const kid = hit;
         // By name only with a published kid page: a job's own name in JobTread is internal ("Not Published Yet")
         building.push({ name: kid?.name || null, slug: kid?.slug || null, status });
       }

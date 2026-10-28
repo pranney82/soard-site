@@ -134,8 +134,8 @@ try {
     ['Simulcast to Facebook', 'Live'], ['Simulcast to YouTube', 'Needs attention'], ['Live hub', 'Needs attention'],
     ['Slack posts', 'Off'], ['Facebook replay rescue', 'Needs attention'], ['Invite engine', 'Live'],
     ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],
-    ['Reveal checks for PMs', 'Off'], ['Kid status follows JobTread', 'Live'], ['Gift alerts in Slack', 'Live'],
-    ['Status → family message', 'Live'], ['Quo texts and calls → JobTread', 'Live'], ['/text → Quo text', 'Live'], ['Zillow lookup', 'Live'], ['Approved → job and kid page', 'Live'], ['Kid photo as the job’s cover', 'Live'],
+    ['Reveal checks for PMs', 'Off'], ['Kid and project status follow JobTread', 'Live'], ['Gift alerts in Slack', 'Live'],
+    ['Status → family message', 'Live'], ['Quo texts and calls → JobTread', 'Live'], ['/text → Quo text', 'Live'], ['Zillow lookup', 'Live'], ['Approved → job and its page', 'Live'], ['Kid photo as the job’s cover', 'Live'],
     ['Jotform copy', 'Live'], ['Advisory Board application', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
   const zapier = await page.evaluate(() => [...document.querySelectorAll('.am-inv-branch li b, #am-svc option')].map((e) => e.textContent).filter((x) => /zapier/i.test(x)));
@@ -177,7 +177,7 @@ try {
   // go / no-go, alerts, reminders, the connection itself, gift alert problems, a Denied kid, a staff text that didn't arrive,
   // the application limit's notices, Resend's own reports on each email, and the board packet
   const RESEND = ['Invite problem alerts', 'Save and finish later', 'Tell me when applications open', 'Applications-open email', 'Staff heads-up', 'Application sweep',
-    'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Resend', 'Gift alerts in Slack', 'Kid status follows JobTread', 'Text delivery reports',
+    'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Resend', 'Gift alerts in Slack', 'Kid and project status follow JobTread', 'Text delivery reports',
     'Application limit', 'Email delivery reports', 'Advisory Board application', 'A family replied → staff alert', 'The packet email'];
   ok(await panelTitle(page) === 'If Resend stops working' && sameSet(resendTitles, RESEND), `"Depends on" lists everything that uses Resend (${resendTitles.length})${setDiff(resendTitles, RESEND)}`);
   await page.screenshot({ path: join(OUT, 'desktop-depends.png'), fullPage: false });
@@ -289,9 +289,9 @@ try {
   const ap = await open(browser, base, { width: 1440, height: 1000 });
   await ap.page.type('#am-search', 'approved');
   await pause(500);
-  await clickNode(ap.page, 'Approved → job and kid page');
+  await clickNode(ap.page, 'Approved → job and its page');
   await pause(300);
-  ok(await panelTitle(ap.page) === 'Approved → job and kid page', 'search finds the approved-family entry');
+  ok(await panelTitle(ap.page) === 'Approved → job and its page', 'search finds the approved-family entry');
   const apPanel = await ap.page.$eval('.am-panel', (e) => e.textContent);
   ok(apPanel.includes('Last set up Ava Stone'), 'it says which family it set up last');
   await ap.page.screenshot({ path: join(OUT, 'desktop-approved.png'), fullPage: false });

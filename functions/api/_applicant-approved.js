@@ -28,11 +28,19 @@
  * job (./_kid-status.js). Its GitHub copy is public, so nothing private goes
  * in: no last name, diagnosis, address or photos. Staff add the story and
  * photos and switch on "Show on Meet the Kids". A kid already in Kids for that
- * job (same name and year) is linked, never rewritten. An organization (no
- * birthday or diagnosis, e.g. a school) gets the job only. An office test (an
+ * job (same name and year) is linked, never rewritten. An office test (an
  * account named "TEST …") gets its job, which everything else ignores, and a
  * dry-run profile: worked out and logged, never saved; its Slack posts say
  * it's a test.
+ *
+ * An organization (no birthday or diagnosis, e.g. a school or a clinic) gets
+ * a Community project instead: a hidden draft in Admin → Kids → Community
+ * Projects under the organization's name, In progress, first in the page's
+ * order, linked by jobtreadJobId so its status follows the job too. A project
+ * already there for that job (linked, or the same name and year) is linked,
+ * never rewritten. Organizations approved before projects were made this way
+ * (Oct 2026: The Lionheart School got its job only) get theirs on the next
+ * run, a few at a time.
  *
  * Once per family (claimed in applicant_approvals first), retried with
  * backoff. What was made goes to Slack (good news) and the family's history
@@ -44,12 +52,12 @@
  * Woken by the application sweep (./_applications.js, every 2 minutes).
  */
 
-import { pave, SOARD_ORG_ID, matchKid, parseJobName, todayEastern } from './_reveals.js';
+import { pave, SOARD_ORG_ID, matchKid, matchProject, parseJobName, todayEastern } from './_reveals.js';
 import { FIELD_STATUS, FIELD_DIAGNOSIS, qcGrant, madeByForm } from './_applicant-comms.js';
 import { ensureNotifySchema, pauseState } from './_applicant-notify.js';
 import { getLiveForm } from './_application-forms.js';
 import { notifySettings } from './_application-form.js';
-import { FIELD_STATUS as JOB_FIELD_STATUS, SYNC_USER, loadAllKids } from './_kid-status.js';
+import { FIELD_STATUS as JOB_FIELD_STATUS, SYNC_USER, loadAllKids, loadAllProjects } from './_kid-status.js';
 import { EXTRACTORS } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit } from './_audit.js';
@@ -57,6 +65,7 @@ import { recordVersion } from './_content-history.js';
 import { slackPost, slackIssue, slackResolved, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { kidRecord, buildFields, buildsOf } from '../../public/admin/kids-shared.js';
+import { projectRecord, blankProject } from '../../public/admin/community-shared.js';
 import { applicationPhotoFile, coverFromFile, rememberCover } from './_job-covers.js';
 import { familyProjectId } from './_companycam-link.js';
 
@@ -75,6 +84,9 @@ const RETRY_MS = [5, 15, 30, 60].map(m => m * 60 * 1000); // then hourly
 const ALERT_AFTER = 3;                  // JobTread errors before Slack hears of it
 const SITE = SITE_ORIGIN;
 const KIDS_ADMIN = `${SITE}/admin/#kids-hub`;
+const COMMUNITY_ADMIN = (slug) => `${SITE}/admin/#kids/community${slug ? `/${encodeURIComponent(slug)}` : ''}`;
+// What approveFamily left on an organization's row before it made projects
+const ORG_NO_PROFILE = 'organization: no profile';
 const APPLICANTS_ADMIN = `${SITE}/admin/#applications`;
 const jobUrl = (id) => `https://app.jobtread.com/jobs/${id}`;
 const accountUrl = (id) => `https://app.jobtread.com/customers/${id}`;
@@ -193,6 +205,23 @@ export function newKidRecord({ name, slug, year, age = null, types = [], jobId }
   return kidRecord({ ...base, ...buildFields(buildsOf(base), base) });
 }
 
+/**
+ * An organization's name as its Community project shows it: the account
+ * name without a "(2026)", keeping what organizations' names use (digits,
+ * "&", commas) and nothing that isn't text. "Boys & Girls Club of Metro
+ * Atlanta (2026)" → "Boys & Girls Club of Metro Atlanta".
+ */
+export function orgNameOf(accountName) {
+  const raw = String(accountName ?? '').replace(/\s*\(\d{4}\)\s*$/, '');
+  const clean = raw.normalize('NFC').replace(/[^\p{L}\p{M}\p{N}\s'’.,&-]/gu, ' ').replace(/\s+/g, ' ').trim();
+  return [...clean].slice(0, 80).join('').replace(/[\s,&-]+$/, '');
+}
+
+/** The new community project, exactly as the admin's Save writes one (a hidden draft, In progress) */
+export function newProjectRecord({ name, slug, year, jobId, order = 0 }) {
+  return projectRecord({ ...blankProject(), name, slug, year: String(year), status: 'in-progress', publishStatus: 'draft', order, jobtreadJobId: jobId });
+}
+
 // ─── D1 ─────────────────────────────────────────────────────────────
 
 const SCHEMA = [
@@ -207,6 +236,8 @@ const _ready = new WeakSet();
 export async function ensureApprovalSchema(DB) {
   if (_ready.has(DB)) return;
   await DB.batch(SCHEMA.map(sql => DB.prepare(sql)));
+  // An organization's community project (added Oct 27 2026)
+  try { await DB.prepare('ALTER TABLE applicant_approvals ADD COLUMN project_slug TEXT').run(); } catch { /* already there */ }
   _ready.add(DB);
 }
 
@@ -225,7 +256,7 @@ async function launchAt(DB, now) {
   return (await getState(DB, 'launch')) || iso(now);
 }
 
-const COLS = ['account_id', 'name', 'approved_at', 'state', 'job_id', 'job_name', 'job_made', 'kid_slug', 'kid_made', 'problem', 'detail', 'attempts', 'next_try_at', 'claimed_at', 'alerted', 'done_at', 'updated_at'];
+const COLS = ['account_id', 'name', 'approved_at', 'state', 'job_id', 'job_name', 'job_made', 'kid_slug', 'kid_made', 'project_slug', 'problem', 'detail', 'attempts', 'next_try_at', 'claimed_at', 'alerted', 'done_at', 'updated_at'];
 async function getRow(DB, id) {
   return DB.prepare('SELECT * FROM applicant_approvals WHERE account_id = ?').bind(id).first();
 }
@@ -380,6 +411,51 @@ async function profileFor(env, acct, job, year, now, { dryRun = false } = {}) {
   throw new Error('Couldn’t find a free web address for the profile');
 }
 
+/** A brand-new community project, saved the way the admin's Save writes one */
+async function createProject(env, record, now) {
+  const { DB } = env;
+  const [cols, vals] = EXTRACTORS.community(record);
+  const all = ['"slug"', '"data"', '"updated_at"', ...cols];
+  await DB.prepare(`INSERT INTO community (${all.join(', ')}) VALUES (${all.map(() => '?').join(', ')})`).bind(record.slug, JSON.stringify(record), iso(now), ...vals).run();
+  const path = `src/content/community/${record.slug}.json`;
+  let gitStatus = 'ok';
+  try { await commitFile(env, path, JSON.stringify(record, null, 2) + '\n', `Add community project: ${record.name} (approved in JobTread)`); } catch { gitStatus = 'failed'; }
+  await logAudit(DB, { userEmail: SYNC_USER, action: 'created', entityType: 'community', entitySlug: record.slug, entityName: record.name, changes: null, path, gitStatus });
+  try { await recordVersion(DB, { collection: 'community', slug: record.slug, data: record, userEmail: SYNC_USER, now: iso(now) }); } catch { /* history is a nicety */ }
+}
+
+/**
+ * The organization's community project: the one already linked or named for
+ * this job, else a new hidden draft → { slug, name, made }. A dry run (a TEST
+ * account) works it out and saves nothing → { slug, name, made: false, test: true }.
+ */
+export async function projectFor(env, acct, job, year, now, { dryRun = false } = {}) {
+  const { DB } = env;
+  const projects = await loadAllProjects(DB);
+  const linked = projects.find(p => p.data?.jobtreadJobId === job.id);
+  if (linked) return { slug: linked.slug, name: linked.name, made: false };
+  // One staff made for this organization (same name and year), not already another job's
+  const named = matchProject(job.name, projects.filter(p => !p.data?.jobtreadJobId));
+  if (named) return { slug: named.slug, name: named.name, made: false };
+  const name = orgNameOf(acct.name) || orgNameOf(job.name);
+  if (!name) throw new Error('The account has no name to give the project');
+  const taken = new Set(projects.map(p => p.slug));
+  // First on the Community page, like the newest projects are
+  const order = projects.length ? Math.min(...projects.map(p => Number(p.data?.order) || 0)) - 1 : 0;
+  for (let i = 0; i < 5; i++) {
+    const slug = freeSlug(name, year, taken);
+    if (dryRun) return { slug, name, made: false, test: true };
+    try {
+      await createProject(env, newProjectRecord({ name, slug, year, jobId: job.id, order }), now);
+      return { slug, name, made: true };
+    } catch (e) {
+      if (!/unique|constraint/i.test(e.message)) throw e;
+      taken.add(slug); // someone saved that slug a moment ago: take the next
+    }
+  }
+  throw new Error('Couldn’t find a free web address for the project');
+}
+
 /** The application's child photo as the job's cover, once, unless the job already shows a kid's photo. Never throws. */
 async function applicationCover(env, accountId, job, fetchImpl, now) {
   try {
@@ -477,49 +553,67 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
   // The job's cover: the child's photo from their application (./_job-covers.js; the profile's Main photo takes over later)
   await applicationCover(env, accountId, job, fetchImpl, now);
 
-  // The profile: kids only (a school or clinic gets the job alone)
+  // The page: a kid's profile, or an organization's (a school, a clinic) community project
   const child = !!acct.birthday || acct.hasDiagnosis || await madeByForm(DB, accountId);
   let kid = null;
-  if (child) {
-    try {
-      kid = await profileFor(env, acct, job, acct.year, now, { dryRun: isTestFamily(acct.name) });
-    } catch (e) {
-      return wait(env, { ...(await getRow(DB, accountId)) }, acct, 'error', e.message, now);
-    }
+  let project = null;
+  try {
+    if (child) kid = await profileFor(env, acct, job, acct.year, now, { dryRun: isTestFamily(acct.name) });
+    else project = await projectFor(env, acct, job, acct.year, now, { dryRun: isTestFamily(acct.name) });
+  } catch (e) {
+    return wait(env, { ...(await getRow(DB, accountId)) }, acct, 'error', e.message, now);
   }
 
+  const page = kid || project;
   const done = {
     ...(await getRow(DB, accountId)), state: 'done', job_id: job.id, job_name: job.name, job_made: jobMade ? 1 : 0,
-    kid_slug: kid?.test ? null : kid?.slug || null, kid_made: kid?.made ? 1 : 0, problem: null, detail: kid?.test ? `test: profile not saved (/kids/${kid.slug}/)` : child ? null : 'organization: no profile', next_try_at: null, claimed_at: null, done_at: iso(now),
+    kid_slug: kid?.test ? null : kid?.slug || null, kid_made: kid?.made ? 1 : 0, project_slug: project?.test ? null : project?.slug || null,
+    problem: null, detail: page?.test ? `test: ${kid ? `profile not saved (/kids/${kid.slug}/)` : `project not saved (/community/${project.slug}/)`}` : null, next_try_at: null, claimed_at: null, done_at: iso(now),
   };
   await putRow(DB, done, now);
   if (!jobMade) await logActivity(DB, accountId, { title: `Makeover job: ${job.name}`, body: 'The family already had this job in JobTread, so the site used it.', data: { jobId: job.id } }, now);
   if (kid?.test) await logActivity(DB, accountId, { title: 'Test family: profile not saved', body: `A real family would get /kids/${kid.slug}/ (${kid.name}, ${acct.year}) as a hidden draft in Admin → Kids.`, data: { slug: kid.slug, jobId: job.id, test: true } }, now);
   else if (kid?.made) await logActivity(DB, accountId, { title: `Website profile made: ${kid.name}`, body: `/kids/${kid.slug}/ in Admin → Kids. It stays off Meet the Kids until someone adds the story and photos and switches on “Show on Meet the Kids”.`, data: { slug: kid.slug, jobId: job.id } }, now);
   else if (kid) await logActivity(DB, accountId, { title: `Website profile: ${kid.name}`, body: `Already in Admin → Kids (/kids/${kid.slug}/), so the site linked it to the job.`, data: { slug: kid.slug, jobId: job.id } }, now);
-  else await logActivity(DB, accountId, { title: 'No website profile', body: 'This account has no birthday or diagnosis, so it looks like an organization. Add a Community project in the admin if it should have a page.', data: { jobId: job.id } }, now);
+  else if (project) await logActivity(DB, accountId, projectActivity(project, acct.year, job.id), now);
   if (row?.alerted) {
-    await slackResolved(env, `approved:${accountId}`, slackCard({ icon: '✅', title: `${acct.name}: makeover job made`, lead: `${job.name} is in JobTread${kid?.made ? ` and ${kid.name}’s profile is in Admin → Kids` : ''}.`, buttons: [{ label: 'Open the job in JobTread', url: jobUrl(job.id) }] }), { summary: 'The job is made' }).catch(() => null);
+    const made = kid?.made ? ` and ${kid.name}’s profile is in Admin → Kids` : project?.made ? ` and ${project.name}’s community project is in the admin` : '';
+    await slackResolved(env, `approved:${accountId}`, slackCard({ icon: '✅', title: `${acct.name}: makeover job made`, lead: `${job.name} is in JobTread${made}.`, buttons: [{ label: 'Open the job in JobTread', url: jobUrl(job.id) }] }), { summary: 'The job is made' }).catch(() => null);
   }
-  return { id: accountId, name: acct.name, job: { id: job.id, name: job.name, made: jobMade }, kid };
+  return { id: accountId, name: acct.name, job: { id: job.id, name: job.name, made: jobMade }, kid, project };
+}
+
+/** The family history line for an organization's community project */
+function projectActivity(project, year, jobId) {
+  if (project.test) return { title: 'Test organization: project not saved', body: `A real organization would get /community/${project.slug}/ (${project.name}, ${year}) as a hidden draft in Admin → Community Projects.`, data: { slug: project.slug, jobId, test: true } };
+  if (project.made) return { title: `Community project made: ${project.name}`, body: `/community/${project.slug}/ in Admin → Kids → Community Projects. It stays off the Community page until someone adds the story and photos and switches on “Show on the Community page”.`, data: { slug: project.slug, jobId, kind: 'community' } };
+  return { title: `Community project: ${project.name}`, body: `Already in Admin → Community Projects (/community/${project.slug}/), so the site linked it to the job.`, data: { slug: project.slug, jobId, kind: 'community' } };
 }
 
 // ─── Slack: what each run made ──────────────────────────────────────
+
+/** "/community/x/, hidden until the story and photos are in" and the like, for a kid profile or a community project */
+function pageWords(m, sep = ', ') {
+  if (m.kid) return `/kids/${m.kid.slug}/${sep}${m.kid.test ? 'a test: not saved' : m.kid.made ? 'hidden until the story and photos are in' : 'already in Kids'}`;
+  if (m.project) return `/community/${m.project.slug}/${sep}${m.project.test ? 'a test: not saved' : m.project.made ? 'hidden until the story and photos are in' : 'already in Community Projects'}`;
+  return 'none';
+}
 
 export function madeCard(made, { test = false } = {}) {
   const testWords = test ? 'Test family · the profile isn’t saved' : null;
   const line = (m) => [
     m.job.made ? `JobTread job ${m.job.name}` : `JobTread job ${m.job.name} (already there)`,
-    m.kid ? (m.kid.test ? `profile /kids/${m.kid.slug}/ (a test: not saved)` : m.kid.made ? `profile /kids/${m.kid.slug}/ (hidden until it’s ready)` : `profile /kids/${m.kid.slug}/ (already in Kids)`) : 'no profile (an organization)',
+    m.kid || m.project ? `${m.project ? 'community project' : 'profile'} ${pageWords(m, ' (')})` : 'no profile',
   ].join(', ');
   if (made.length === 1) {
     const m = made[0];
-    const who = m.kid?.name || m.name;
+    const who = m.kid?.name || m.project?.name || m.name;
+    const newPage = m.kid?.made ? ' and a website profile' : m.project?.made ? ' and a community project page' : '';
     return slackCard({
       test: testWords, icon: '🛠', title: `${who}’s makeover is set up`,
-      lead: `${m.name} was approved, so the site ${m.job.made ? 'made the JobTread job' : 'found the JobTread job'}${m.kid?.made ? ' and a website profile' : ''}.`,
-      facts: [['JobTread job', m.job.made ? m.job.name : `${m.job.name} (already there)`], ['Website profile', m.kid ? `/kids/${m.kid.slug}/${m.kid.test ? ', a test: not saved' : m.kid.made ? ', hidden until the story and photos are in' : ', already in Kids'}` : 'none (an organization)']],
-      buttons: [{ label: 'Open the job in JobTread', url: jobUrl(m.job.id) }, ...(m.kid ? [{ label: 'Open Kids', url: KIDS_ADMIN }] : [])],
+      lead: `${m.name} was approved, so the site ${m.job.made ? 'made the JobTread job' : 'found the JobTread job'}${newPage}.`,
+      facts: [['JobTread job', m.job.made ? m.job.name : `${m.job.name} (already there)`], [m.project ? 'Community project' : 'Website profile', pageWords(m)]],
+      buttons: [{ label: 'Open the job in JobTread', url: jobUrl(m.job.id) }, ...(m.kid ? [{ label: 'Open Kids', url: KIDS_ADMIN }] : m.project ? [{ label: 'Open the project', url: COMMUNITY_ADMIN(m.project.test ? null : m.project.slug) }] : [])],
       footer: 'Approved in JobTread',
     });
   }
@@ -545,6 +639,41 @@ async function dropUnapproved(env, now) {
     await env.DB.prepare('DELETE FROM applicant_approvals WHERE account_id = ?').bind(r.account_id).run();
     if (r.alerted) await slackResolved(env, `approved:${r.account_id}`, slackCard({ icon: '✅', title: `${r.name} is no longer approved`, lead: `Their status is now ${r.status || 'blank'}, so no job is needed.` }), { summary: 'No longer approved' }).catch(() => null);
   }
+}
+
+/**
+ * Organizations this approved before it made community projects ("organization:
+ * no profile" on their row): each gets its project now, linked to the job it
+ * already has, a few per run. TEST accounts are left as they were. Returns
+ * what approveFamily would have, for the same Slack card. Never throws.
+ */
+export async function catchUpOrganizations(env, { fetchImpl = fetch, now = Date.now(), limit = 3 } = {}) {
+  const { DB } = env;
+  const out = [];
+  let rows = [];
+  try {
+    rows = (await DB.prepare(`SELECT * FROM applicant_approvals WHERE state = 'done' AND detail = ? AND job_id IS NOT NULL
+      AND kid_slug IS NULL AND project_slug IS NULL AND NOT (lower(trim(name)) = 'test' OR lower(trim(name)) LIKE 'test %')
+      ORDER BY done_at LIMIT ?`).bind(ORG_NO_PROFILE, limit).all()).results || [];
+  } catch (e) {
+    console.error('[applicant-approved] catch-up', e.message);
+    return out;
+  }
+  for (const row of rows) {
+    try {
+      // JobTread down: try again next run, so the project gets the account's *Makeover Year
+      const acct = await readAccount(env, row.account_id, fetchImpl);
+      const job = { id: row.job_id, name: row.job_name || '' };
+      const year = acct?.year || parseJobName(job.name).year || Number(todayEastern(now).slice(0, 4));
+      const project = await projectFor(env, { id: row.account_id, name: acct?.name || row.name }, job, year, now);
+      await putRow(DB, { ...row, project_slug: project.slug, detail: null }, now);
+      await logActivity(DB, row.account_id, projectActivity(project, year, job.id), now);
+      out.push({ id: row.account_id, name: row.name, job: { id: job.id, name: job.name, made: false }, kid: null, project });
+    } catch (e) {
+      console.error('[applicant-approved] catch-up', row.account_id, e.message); // its turn comes round again
+    }
+  }
+  return out;
 }
 
 /**
@@ -579,7 +708,9 @@ export async function runApprovals(env, { fetchImpl = fetch, now = Date.now(), l
       if (r.job) out.made.push(r); else if (r.waiting) out.waiting.push(r); else out.other.push(r);
     }
     // Good news when something new exists; finding what was already there (a past family's status bounced) is no news
-    const news = out.made.filter(m => m.job.made || m.kid?.made || m.kid?.test);
+    // Organizations approved before they got community projects get theirs now
+    out.made.push(...await catchUpOrganizations(env, { fetchImpl, now }));
+    const news = out.made.filter(m => m.job.made || m.kid?.made || m.kid?.test || m.project?.made || m.project?.test);
     const real = news.filter(m => !isTestFamily(m.name));
     const tests = news.filter(m => isTestFamily(m.name));
     if (real.length) await slackPost(env, madeCard(real), { kind: 'news', area: 'applications' }).catch(() => null);
@@ -598,7 +729,7 @@ export async function approvalsStatus(DB) {
     await ensureApprovalSchema(DB);
     const [lastRun, lastError, launch, recent, waiting] = await Promise.all([
       getState(DB, 'lastRun'), getState(DB, 'lastError'), getState(DB, 'launch'),
-      DB.prepare("SELECT account_id, name, job_id, job_name, job_made, kid_slug, kid_made, done_at FROM applicant_approvals WHERE state = 'done' ORDER BY done_at DESC LIMIT 5").all(),
+      DB.prepare("SELECT account_id, name, job_id, job_name, job_made, kid_slug, kid_made, project_slug, done_at FROM applicant_approvals WHERE state = 'done' ORDER BY done_at DESC LIMIT 5").all(),
       DB.prepare("SELECT account_id, name, problem, attempts, next_try_at FROM applicant_approvals WHERE state = 'waiting' ORDER BY approved_at").all(),
     ]);
     return { lastRun, lastError, launch, recent: recent.results || [], waiting: waiting.results || [] };

@@ -89,6 +89,23 @@ test('confirmed with a time becomes a timed, confirmed event in Eastern time', (
   assert.equal(allDay.event.location, '100 Example Way, Atlanta, GA 30301, USA');
 });
 
+test('an organization’s invite says its whole name, and links its project page once there is one', () => {
+  const org = (name, id = '22POrgJob0009') => ({ ...job(), id, name });
+  const projects = [
+    { kind: 'community', slug: 'perfect-harmony-health', name: 'Perfect Harmony Health', year: '2026', status: 'in-progress', page: '/community/perfect-harmony-health/' },
+    { kind: 'community', slug: 'the-lionheart-school', name: 'The Lionheart School', year: '2026', status: 'in-progress', jobtreadJobId: '22POrgJob0001', page: null },
+  ];
+  const php = planInvite(org('Perfect Harmony Health (2026)'), STAFF, { kids: [...KIDS, ...projects], now: NOW });
+  assert.equal(php.event.summary, "Perfect Harmony Health's Reveal Day (tentative)", 'not “Perfect’s”');
+  assert.match(php.event.description, /^Meet Perfect Harmony Health: https:\/\/sunshineonaranneyday\.com\/community\/perfect-harmony-health\/$/m);
+  const lion = planInvite(org('The Lionheart School', '22POrgJob0001'), STAFF, { kids: [...KIDS, ...projects], now: NOW });
+  assert.equal(lion.event.summary, "The Lionheart School's Reveal Day (tentative)", 'linked by its job, not “The’s”');
+  assert.doesNotMatch(lion.event.description, /^Meet /m, 'its project is still a hidden draft: no link');
+  const none = planInvite(org('The Bright School'), STAFF, { kids: KIDS, now: NOW });
+  assert.equal(none.event.summary, "The Bright School's Reveal Day (tentative)", 'no project yet: “The …” is a whole name');
+  assert.equal(planInvite(job(), STAFF, { kids: [...KIDS, ...projects], now: NOW }).event.summary, "Max's Reveal Day (tentative)", 'kids read as before');
+});
+
 test('only a job that says it is SOARD\'s gets an invite (another org, or no org at all, never)', () => {
   assert.equal(planInvite(job(), STAFF, { now: NOW }).action, 'upsert');
   for (const organization of [{ id: 'other' }, null, undefined, {}]) {

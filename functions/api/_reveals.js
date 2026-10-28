@@ -17,7 +17,9 @@
  * Jobs are matched to kid pages by year and name: "Max Sample (2026)" matches
  * the 2026 kid "Max", "Remi & Nico Powell (2026)" matches "Remi & Nico".
  * Job names carry family surnames, so nothing from JobTread except the date
- * is ever returned; names and slugs come from the kids table.
+ * is ever returned; names and slugs come from the kids table. An
+ * organization's job ("Perfect Harmony Health (2026)") belongs to its
+ * Community project the same way (matchProject, loadProjects).
  *
  * Needs JOBTREAD_GRANT_KEY (Cloudflare env). Without it, or when JobTread is
  * down, the last good result in D1 (site_config "reveals") is served.
@@ -41,11 +43,16 @@ const SANDBOX_JOB_ID = '22P3HTX9cXn4';
 /** A rehearsal job ("TEST Max Example (2026)") or the office sandbox: never public (same rule as ./_reveal-invites.js) */
 export const isRehearsalJob = (job) => job?.id === SANDBOX_JOB_ID || /^\s*TEST\b/.test(String(job?.name || ''));
 
-/** Lowercase, strip accents and punctuation: "Josué" → "josue", "Declan “Dex” Noel" → "declan dex noel" */
+/**
+ * Lowercase, strip accents and punctuation: "Josué" → "josue", "Declan “Dex”
+ * Noel" → "declan dex noel". Apostrophes close up, so "Children’s" and
+ * "Childrens" are the same word ("O'Neil" → "oneil").
+ */
 export function normalizeName(s) {
   return String(s || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase()
+    .replace(/['’‘`]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
@@ -65,26 +72,77 @@ function kidTokens(kidName) {
 /** The job a profile names as its own (jobtreadJobId, set when approval made it) */
 const pinnedJob = (k) => k?.jobtreadJobId || k?.data?.jobtreadJobId || null;
 
+/** The years a record is filed under: 2026, "2026", or a community project's "2025 - 2026" */
+export function yearsOf(record) {
+  const y = record?.year;
+  if (typeof y === 'number') return [y];
+  const found = String(y ?? '').match(/\b(20\d\d|19\d\d)\b/g) || [];
+  const nums = found.map(Number);
+  if (nums.length === 2 && nums[1] > nums[0] && nums[1] - nums[0] <= 3) {
+    return Array.from({ length: nums[1] - nums[0] + 1 }, (_, i) => nums[0] + i);
+  }
+  return nums;
+}
+
 /**
  * The kid a job belongs to, or null when there's no match or more than one
  * (a wrong date on the wrong kid's page is worse than no date). With the
  * job's id, a profile linked to that job wins, and one linked to another job
- * never matches by name.
+ * never matches by name. Community projects match the same way.
  */
 export function matchKid(jobName, kids, jobId = null) {
   if (jobId) {
     const pinned = kids.filter(k => pinnedJob(k) === jobId);
     if (pinned.length === 1) return pinned[0];
   }
-  const { year, tokens } = parseJobName(jobName);
-  if (!year || tokens.size === 0) return null;
-  const hits = kids.filter(k => {
-    if (jobId && pinnedJob(k) && pinnedJob(k) !== jobId) return false;
-    if (Number(k.year) !== year) return false;
-    const kt = kidTokens(k.name);
-    return kt.length > 0 && kt.every(t => tokens.has(t));
-  });
+  const hits = nameHits(jobName, kids, jobId);
   return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * Records whose whole name is in the job's name, filed under the job's year
+ * (not linked to another job). A job named by hand with no year ("The
+ * Lionheart School") can only be an organization's, and only by its exact name.
+ */
+function nameHits(jobName, records, jobId) {
+  const { year, tokens } = parseJobName(jobName);
+  if (tokens.size === 0) return [];
+  return records.filter(k => {
+    if (jobId && pinnedJob(k) && pinnedJob(k) !== jobId) return false;
+    const kt = kidTokens(k.name);
+    if (!kt.length) return false;
+    // A finished project isn't a new job's: a partner coming back gets a new project
+    if (!year) return isProject(k) && k.status !== 'completed' && kt.length === tokens.size && kt.every(t => tokens.has(t));
+    return yearsOf(k).includes(year) && kt.every(t => tokens.has(t));
+  });
+}
+
+/** A community project (loadProjects), as opposed to a kid */
+export const isProject = (r) => r?.kind === 'community';
+
+/**
+ * The kid or community project a job belongs to, from one list holding both
+ * (community projects carry kind: 'community' and their status), or null. Linked by job id
+ * first; by name, a single hit wins. When a kid and an organization both fit
+ * ("Grace" and "Grace Academy" for "Grace Academy (2026)"), the longer name
+ * is the job's; a tie is no match.
+ */
+export function matchProject(jobName, records, jobId = null) {
+  if (jobId) {
+    const pinned = records.filter(r => pinnedJob(r) === jobId);
+    if (pinned.length === 1) return pinned[0];
+  }
+  const hits = nameHits(jobName, records, jobId);
+  if (hits.length <= 1) return hits[0] || null;
+  const kids = hits.filter(r => !isProject(r));
+  const orgs = hits.filter(isProject);
+  if (kids.length && orgs.length) {
+    const size = (r) => kidTokens(r.name).length;
+    const best = Math.max(...hits.map(size));
+    const top = hits.filter(r => size(r) === best);
+    if (top.length === 1) return top[0];
+  }
+  return null;
 }
 
 /** UTC instant → { date: 'YYYY-MM-DD', time: 'HH:MM' | null } in Eastern time */
@@ -209,6 +267,37 @@ export async function loadKids(DB) {
     });
   }
   return kids;
+}
+
+/**
+ * Community projects from D1 in the same shape, kind 'community': published
+ * ones, or every one with { drafts: true }. `page` is the project's public
+ * page, when it has one (published, with a story); { withData: true } adds
+ * the whole record as `data`.
+ */
+export async function loadProjects(DB, { drafts = false, withData = false } = {}) {
+  let rows = [];
+  try { rows = (await DB.prepare('SELECT slug, name, data FROM community').all()).results || []; } catch { return []; }
+  const out = [];
+  for (const row of rows) {
+    let data = {};
+    try { data = JSON.parse(row.data || '{}'); } catch { /* bad row, use columns */ }
+    const published = data.publishStatus !== 'draft';
+    if (!published && !drafts) continue;
+    out.push({
+      kind: 'community', slug: row.slug, name: data.name || row.name, year: data.year ?? null, status: data.status || 'completed',
+      heroImage: data.heroImage || data.photos?.[0]?.url || null, jobtreadJobId: data.jobtreadJobId || null,
+      published, page: published && data.story ? `/community/${row.slug}/` : null,
+      ...(withData ? { data } : {}),
+    });
+  }
+  return out;
+}
+
+/** Published kids and every community project, for naming a job (matchProject): the invites' list */
+export async function loadKidsAndProjects(DB) {
+  const [kids, projects] = await Promise.all([loadKids(DB), loadProjects(DB, { drafts: true })]);
+  return [...kids, ...projects];
 }
 
 /** Open SOARD jobs with their custom field values (follows pagination) */

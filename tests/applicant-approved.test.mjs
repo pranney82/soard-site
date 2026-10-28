@@ -374,13 +374,81 @@ test('no *Makeover Year ("**ADD YEAR**"): waits for one', async () => {
   assert.equal(jt.state.jobCalls[0].input.name, 'Jade Wu (2027)');
 });
 
-test('an organization (no birthday or diagnosis) gets the job only', async () => {
-  const a = family('Lionheart School', 'In Review', { fields: { [BIRTHDAY]: null, [DIAGNOSIS]: null } });
+const projects = async () => ((await env.DB.prepare('SELECT slug, data FROM community').all()).results || []).map(r => ({ slug: r.slug, ...JSON.parse(r.data) }));
+const ORG_FIELDS = { [BIRTHDAY]: null, [DIAGNOSIS]: null };
+async function addProject(p) {
+  await env.DB.prepare('INSERT INTO community (slug, data, updated_at, name, order_num) VALUES (?, ?, ?, ?, ?)').bind(p.slug, JSON.stringify(p), iso(T0), p.name, p.order ?? 0).run();
+}
+
+test('an organization (no birthday or diagnosis) gets its job and a hidden community project linked to it', async () => {
+  await addProject({ slug: 'camp-twin-lakes', name: 'Camp Twin Lakes', year: '2018', status: 'completed', order: 1 });
+  const a = family('Lionheart School', 'In Review', { fields: ORG_FIELDS });
   await change(a, 'Approved', T0);
   await sweep(...minutes(30, 40));
   assert.equal(jt.state.jobCalls.length, 1);
-  assert.equal((await kids()).length, 0);
-  assert.match((await activity(a.id)).map(r => r.title).join('\n'), /No website profile/);
+  assert.equal((await kids()).length, 0, 'no kid profile for a school');
+  const p = (await projects()).find(x => x.slug === 'lionheart-school');
+  assert.ok(p, 'the project is in Community Projects');
+  assert.deepEqual([p.name, p.year, p.status, p.publishStatus, p.jobtreadJobId, p.order], ['Lionheart School', '2027', 'in-progress', 'draft', a.jobs[0].id, 0],
+    'hidden, In progress, linked to its job, first in the page’s order');
+  assert.equal(p.story, '', 'no story: staff write it');
+  assert.match((await activity(a.id)).map(r => r.title).join('\n'), /Community project made: Lionheart School/);
+  const [card] = news();
+  assert.match(card.text, /Lionheart School’s makeover is set up/);
+  assert.match(JSON.stringify(card.blocks), /\/community\/lionheart-school\/, hidden until the story and photos are in/);
+  assert.match(JSON.stringify(card.blocks), /#kids\/community\/lionheart-school/, 'the button opens the project');
+  const row = await env.DB.prepare('SELECT project_slug, kid_slug, detail FROM applicant_approvals WHERE account_id = ?').bind(a.id).first();
+  assert.deepEqual([row.project_slug, row.kid_slug, row.detail], ['lionheart-school', null, null]);
+  const audit = await env.DB.prepare("SELECT user_email, action, entity_type FROM audit_log WHERE entity_type = 'community'").all();
+  assert.deepEqual(audit.results.map(r => [r.user_email, r.action]), [['JobTread (automatic)', 'created']], 'saved like an admin save');
+});
+
+test('an organization’s project staff already made (same name and year) is linked, never rewritten; a TEST one is a dry run', async () => {
+  await addProject({ slug: 'perfect-harmony-health', name: 'Perfect Harmony Health', year: '2027', status: 'in-progress', story: '<p>Ours</p>', order: 1 });
+  const a = family('Perfect Harmony Health', 'In Review', { fields: ORG_FIELDS });
+  const t = family('TEST Org Check', 'In Review', { fields: ORG_FIELDS });
+  await change(a, 'Approved', T0);
+  await change(t, 'Approved', T0);
+  await sweep(...minutes(30, 40));
+  const list = await projects();
+  assert.deepEqual(list.map(p => p.slug), ['perfect-harmony-health'], 'nothing new: the test made nothing either');
+  assert.equal(list[0].story, '<p>Ours</p>');
+  assert.equal(list[0].jobtreadJobId, undefined, 'linked by its name and year, not rewritten');
+  assert.match((await activity(a.id)).map(r => r.title).join('\n'), /Community project: Perfect Harmony Health/);
+  assert.match((await activity(t.id)).map(r => r.title).join('\n'), /Test organization: project not saved/);
+});
+
+test('organizations approved before projects were made get theirs on the next run, once; TEST ones are left alone', async () => {
+  await addProject({ slug: 'the-cottage-school', name: 'The Cottage School', year: '2021', status: 'completed', order: 2 });
+  // As it was on Oct 21: the school's job (named by hand, no year) and nothing else
+  const a = family('The Lionheart School', 'Approved', { fields: { ...ORG_FIELDS, [YEAR]: '2026' }, jobs: [{ id: 'jobLION0001', name: 'The Lionheart School', closedOn: null }] });
+  const put = (id, name, jobId, jobName) => env.DB.prepare(`INSERT INTO applicant_approvals (account_id, name, approved_at, state, job_id, job_name, job_made, kid_made, detail, attempts, done_at, updated_at)
+    VALUES (?, ?, ?, 'done', ?, ?, 0, 0, 'organization: no profile', 0, ?, ?)`).bind(id, name, iso(T0), jobId, jobName, iso(T0), iso(T0)).run();
+  await put(a.id, 'The Lionheart School', 'jobLION0001', 'The Lionheart School');
+  await put('acctTEST0001', 'TEST CompanyCam Approved', 'jobTEST0001', 'TEST (2) (2027)');
+  await runApprovals(env, { fetchImpl, now: T0 + 5 * MIN });
+  const p = (await projects()).find(x => x.slug === 'the-lionheart-school');
+  assert.ok(p, 'made');
+  assert.deepEqual([p.year, p.status, p.publishStatus, p.jobtreadJobId, p.order], ['2026', 'in-progress', 'draft', 'jobLION0001', 1], 'the account’s *Makeover Year; ahead of the others');
+  assert.equal(jt.state.jobCalls.length, 0, 'its job was already there');
+  const rows = (await env.DB.prepare('SELECT name, project_slug, detail FROM applicant_approvals ORDER BY name').all()).results;
+  assert.deepEqual(rows.map(r => [r.name, r.project_slug, r.detail]), [['TEST CompanyCam Approved', null, 'organization: no profile'], ['The Lionheart School', 'the-lionheart-school', null]]);
+  assert.match((await activity(a.id)).map(r => r.title).join('\n'), /Community project made: The Lionheart School/);
+  assert.equal(news().length, 1, 'Slack hears it as good news');
+  await runApprovals(env, { fetchImpl, now: T0 + 10 * MIN });
+  assert.equal((await projects()).length, 2, 'once');
+  assert.equal(news().length, 1);
+});
+
+test('a JobTread hiccup in the catch-up leaves the organization for the next run', async () => {
+  const a = family('Brightway Academy', 'Approved', { fields: { ...ORG_FIELDS, [YEAR]: '2026' }, jobs: [{ id: 'jobBRIGHT001', name: 'Brightway Academy (2026)', closedOn: null }] });
+  await env.DB.prepare(`INSERT INTO applicant_approvals (account_id, name, approved_at, state, job_id, job_name, job_made, kid_made, detail, attempts, done_at, updated_at)
+    VALUES (?, 'Brightway Academy', ?, 'done', 'jobBRIGHT001', 'Brightway Academy (2026)', 0, 0, 'organization: no profile', 0, ?, ?)`).bind(a.id, iso(T0), iso(T0), iso(T0)).run();
+  const down = async (url, init) => (JSON.parse(init?.body || '{}').query?.account ? new Response('busy', { status: 503 }) : fetchImpl(url, init));
+  await runApprovals(env, { fetchImpl: down, now: T0 + 5 * MIN });
+  assert.equal((await projects()).length, 0);
+  await runApprovals(env, { fetchImpl, now: T0 + 10 * MIN });
+  assert.deepEqual((await projects()).map(p => [p.slug, p.year]), [['brightway-academy', '2026']]);
 });
 
 test('a grant JobTread refuses falls back to the site’s; a busy JobTread is retried', async () => {

@@ -15,6 +15,9 @@
  *     focal point, and the hourly sync catches anything missed. The first run
  *     does this for every job already linked to a profile.
  *
+ *   - An organization's job shows its Community project's Main photo the same
+ *     way (job_covers.slug is "community/<slug>" for those).
+ *
  * A cover is only set when the photo behind it changes (job_covers remembers
  * which one each job has), so a cover someone picks by hand in JobTread stays
  * until the profile's Main photo changes. Rides the kid status sync

@@ -605,9 +605,9 @@ const FEED_PATHS = {
 const FEED_KIND = { textIn: 'text', textOut: 'text', unarchived: 'archived', renamed: 'fields' };
 const feedIcon = (kind) => html`<svg class="apl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML=${{ __html: FEED_PATHS[FEED_KIND[kind] || kind] || FEED_PATHS.dot }}></svg>`;
 
-const PHOTO_FROM = { page: 'Photo from their kid page', application: 'Photo from their application' };
-/** Where the avatar comes from, and why it isn't the kid page's yet */
-const photoTitle = (a) => [a.photo ? PHOTO_FROM[a.photoFrom] : null, a.kid && a.photoFrom !== 'page' ? 'their kid page has no photos yet' : null].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase());
+const PHOTO_FROM = { page: 'Photo from their kid page', project: 'Photo from their community project', application: 'Photo from their application' };
+/** Where the avatar comes from, and why it isn't the kid page's (or an organization's project's) yet */
+const photoTitle = (a) => [a.photo ? PHOTO_FROM[a.photoFrom] : null, a.kid && a.photoFrom !== 'page' && a.photoFrom !== 'project' ? `their ${a.kid.kind === 'community' ? 'community project' : 'kid page'} has no photos yet` : null].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase());
 /** The child's photo (their kid page's once it has one, else the application's), or their initials */
 function Avatar({ a, size = null }) {
   const c = STATUS_COLOR[a.status || ''];

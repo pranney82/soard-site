@@ -9,6 +9,9 @@
  *   - the order on the Community page by keyboard and by dragging: one
  *     /api/reorder-content request with every project, Undo
  *   - the row menu: Mark as in progress, Hide from the site (and Undo)
+ *   - a project linked to an organization's JobTread job: its JobTread status
+ *     and reveal on the row, Change status in JobTread instead of Mark as…,
+ *     and the editor's status following JobTread
  *   - the editor: an older plain-text story keeps its paragraphs without
  *     reading as unsaved, impact numbers and the one counted toward "children
  *     reached", the photo dialog (alt text, main photo, focal point), the saved
@@ -66,6 +69,13 @@ const PARTNERS = readDir('partners');
 const KIDS = readDir('kids');
 const PROJECTS0 = readDir('community');
 for (const [slug, d] of Object.entries(PROJECTS0)) d.slug ||= slug;
+// The checks were written against the projects before the Oct 20 2026 tidy, and the
+// local copy now follows D1, so put back what the tidy fixed: Perfect Harmony counting
+// its first stat (hours), two search descriptions, and the photos' alt text (2 of 299
+// had it then, so the tidy tool is still running when Stop is pressed)
+for (const s of PROJECTS0['perfect-harmony-health']?.stats || []) delete s.reached;
+for (const slug of ['murphy-harpst', 'childrens-healthcare-of-atlanta']) if (PROJECTS0[slug]) PROJECTS0[slug].metaDescription = '';
+for (const d of Object.values(PROJECTS0)) for (const ph of d.photos || []) ph.alt = '';
 const PNG = join(OUT, 'pixel.png');
 writeFileSync(PNG, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64'));
 
@@ -151,6 +161,12 @@ function makeApi() {
     if (p.startsWith('/api/audit-log')) return json({ success: true, entries: [], total: 0 });
     if (p.startsWith('/api/deployments')) return json({ success: true, deploys: [], source: 'cloudflare' });
     if (p.startsWith('/api/live-ws')) { req.abort(); return true; }
+    // Perfect Harmony Health's job in JobTread (functions/api/reveals-admin.js)
+    if (p === '/api/reveals-admin') {
+      return json({ success: true, reveals: [], jobs: {}, statuses: {}, unmatched: 0,
+        projectJobs: { 'perfect-harmony-health': 'jobPHH0001' }, projectStatuses: { 'perfect-harmony-health': 'Build' },
+        projectReveals: [{ slug: 'perfect-harmony-health', name: 'Perfect Harmony Health', startsAt: '2099-11-12T05:00:00.000Z', date: '2099-11-12', time: null, confirmed: false, jobId: 'jobPHH0001' }] });
+    }
     return json({ success: true, ok: true, reveals: [], jobs: {} });
   };
   return { st, respond };
@@ -321,6 +337,19 @@ try {
     await sleep(700);
     ok(saved(api, slug).publishStatus === 'draft' && await page.evaluate((s) => /Draft/.test(document.querySelector(`.cm-row[data-slug="${s}"]`)?.textContent || ''), slug), 'Hide from the site makes it a draft, tagged in the list');
     ok(await page.evaluate(() => [...document.querySelectorAll('.kd-filter')].some((f) => /Drafts/.test(f.textContent))), 'a Drafts filter appears');
+
+    // Linked to an organization's job: JobTread sets the status
+    const php = '.cm-row[data-slug="perfect-harmony-health"]';
+    ok(await page.evaluate((sel) => /JobTread: Build/.test(document.querySelector(sel)?.querySelector('.kd-jt')?.textContent || ''), php), 'a project linked to its job shows its JobTread status');
+    ok(await page.evaluate((sel) => !!document.querySelector(sel)?.querySelector('.kd-reveal.is-tentative'), php), 'and its tentative reveal');
+    await page.evaluate((sel) => document.querySelector(`${sel} .ppl-menu__btn`).click(), php);
+    await sleep(150);
+    const items = await page.evaluate(() => [...document.querySelectorAll('.ppl-menu__item, [role="menuitem"]')].map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+    ok(items.some((t) => /Change status in JobTread/.test(t)) && !items.some((t) => /^Mark as/.test(t)), `its menu sends status changes to JobTread, no Mark as… (${items.join(' | ').slice(0, 200)})`);
+    ok(items.some((t) => /^Open in JobTread/.test(t)), 'and opens the job');
+    await page.keyboard.press('Escape');
+    await sleep(150);
+    ok(!(await page.evaluate(() => !!document.querySelector('.cm-row[data-slug="camp-twin-lakes"] .kd-jt'))), 'a project with no job has no JobTread tag');
     ok(!errors.length, `no console errors (${errors.join(' | ').slice(0, 300)})`);
     await page.close();
   }
@@ -469,6 +498,8 @@ try {
     await clickText(page, '.breadcrumb button', 'Community Projects');
     await page.waitForSelector('.cm-row');
     await openProject(page, 'perfect-harmony-health');
+    ok(await page.evaluate(() => { const b = document.querySelector('.kd-card--status .kd-jt-status'); return !!b && /Follows JobTread, where the job is at Build/.test(b.textContent) && /jobPHH0001/.test(b.querySelector('a')?.href || ''); }), 'the editor’s status follows JobTread, with the job a click away');
+    ok(!(await page.evaluate(() => !!document.querySelector('.kd-card--status .kd-status-picker, .kd-card--status [role="radiogroup"]'))), 'and there’s no status picker to fight it');
     ok(await page.evaluate(() => /doesn’t read as people/.test(document.querySelector('.cm-stats .form-hint[role="status"]')?.textContent || '')), 'the editor says when the counted number isn’t people');
     await page.evaluate(() => document.querySelectorAll('.cm-stat .cm-stat__count input')[2].click());
     await sleep(200);

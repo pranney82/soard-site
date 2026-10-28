@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { siteStatusFor, planKid, jobFacts, syncKidStatuses, maybeSyncKidStatuses, FIELD_STATUS, REVEAL_TASK_TYPE, SYNC_USER } from '../functions/api/_kid-status.js';
+import { siteStatusFor, planKid, planProject, jobFacts, syncKidStatuses, maybeSyncKidStatuses, deniedAlert, FIELD_STATUS, REVEAL_TASK_TYPE, SYNC_USER } from '../functions/api/_kid-status.js';
 import { buildAdminView } from '../functions/api/reveals-admin.js';
 
 const SOARD = '22NJw42j5GLg';
@@ -111,6 +111,76 @@ test('a sweep brings kids in line, saved like an admin save, then publishes', as
   const k = await row(DB, 'kendall');
   assert.deepEqual([k.publishStatus, 'hiddenBy' in k, k.status], ['published', false, 'needs-funding']);
   assert.equal((await state()).alerted.kendall, undefined);
+});
+
+test('a community project follows its job: In progress, then Completed; only Denied hides it', () => {
+  const p = { name: 'Perfect Harmony Health', status: 'in-progress', publishStatus: 'published' };
+  assert.equal(planProject(p, { status: 'Build' }), null, 'already in progress');
+  assert.equal(planProject(p, { status: 'Awaiting Funding' }), null, 'a project has no Awaiting funding: still in progress');
+  assert.equal(planProject(p, { status: 'On Site' }), null, 'organizations’ jobs often sit at On Site: the page stays');
+  assert.deepEqual(planProject(p, { status: 'Closed Done' }).next, { ...p, status: 'completed' });
+  assert.deepEqual(planProject(p, { status: 'Build', revealDone: true }).next, { ...p, status: 'completed' }, 'Reveal task done');
+  const hidden = planProject(p, { status: 'Denied' });
+  assert.deepEqual([hidden.next.publishStatus, hidden.next.hiddenBy, hidden.hide], ['draft', 'jobtread', 'denied']);
+  assert.deepEqual(planProject(hidden.next, { status: 'Build' }).next, p, 'back once the job moves on');
+  const staffDraft = { ...p, publishStatus: 'draft' };
+  assert.deepEqual(planProject(staffDraft, { status: 'Closed Done' }).next, { ...staffDraft, status: 'completed' }, 'a staff draft stays a draft');
+  // Going back from Completed: only the job the project is linked to, and only while it's open
+  const done = { name: 'Camp Twin Lakes', status: 'completed', publishStatus: 'published' };
+  assert.equal(planProject(done, { status: 'Build' }), null, 'matched by name: an old job left open never reopens a finished project');
+  const linked = { ...done, jobtreadJobId: 'J9' };
+  assert.deepEqual(planProject(linked, { status: 'Build' }).next, { ...linked, status: 'in-progress' }, 'its own job reopened');
+  assert.equal(planProject(linked, { status: 'Build', closed: true }), null, 'a closed job only confirms Completed');
+  assert.equal(planProject({ name: 'Old', publishStatus: 'published' }, { status: 'Closed Done' }), null, 'no status is Completed already');
+  const words = deniedAlert({ kid: { name: 'Perfect Harmony Health' }, jobId: 'J1', project: true });
+  assert.match(words.title, /Perfect Harmony Health’s page is hidden/);
+  assert.match(words.detail, /off the Community page/);
+  assert.match(words.admin, /#kids\/community$/);
+  assert.match(deniedAlert({ kid: { name: 'Max' }, jobId: 'J1' }).title, /Max’s profile is hidden/, 'kids read as before');
+});
+
+test('a sweep brings community projects in line too, next to the kids, and their jobs get the project’s photo', async (t) => {
+  const hooks = [];
+  t.mock.method(globalThis, 'fetch', async (url) => { hooks.push(String(url)); return new Response('ok'); });
+  const DB = await world([{ slug: 'grace', name: 'Grace', year: 2026, status: 'in-progress', publishStatus: 'published' }]);
+  const add = (p) => DB.prepare('INSERT INTO community (slug, name, order_num, data) VALUES (?, ?, 0, ?)').bind(p.slug, p.name, JSON.stringify(p)).run();
+  await add({ slug: 'perfect-harmony-health', name: 'Perfect Harmony Health', year: '2026', status: 'in-progress', publishStatus: 'published',
+    heroImage: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/php/1.jpg/public', photos: [{ url: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/php/1.jpg/public', alt: '' }] });
+  await add({ slug: 'the-lionheart-school', name: 'The Lionheart School', year: '2026', status: 'in-progress', publishStatus: 'draft', jobtreadJobId: 'jLion' });
+  await add({ slug: 'childrens-development-academy', name: 'Children’s Development Academy', year: '2025 - 2026', status: 'in-progress', publishStatus: 'published' });
+  await add({ slug: 'grace-academy', name: 'Grace Academy', year: '2026', status: 'in-progress', publishStatus: 'published' });
+  await add({ slug: 'camp-twin-lakes', name: 'Camp Twin Lakes', year: '2018', status: 'completed', publishStatus: 'published' });
+  const jobs = [
+    job('jPHH', 'Perfect Harmony Health (2026)', 'Closed Done'),
+    job('jLion', 'The Lionheart School', 'On Site'),
+    job('jCDA', 'Childrens Development Academy (2025)', 'Build', { revealDone: true }),
+    job('jGA', 'Grace Academy (2026)', 'Closed Done'),
+    job('jCamp', 'Camp Twin Lakes (2018)', 'Build'),
+  ];
+  const covers = [];
+  const jt = async (url, init) => {
+    const q = JSON.parse(init.body).query;
+    if (q.updateJob || q.createUploadRequest) { covers.push(q); return Response.json(q.createUploadRequest ? { createUploadRequest: { createdUploadRequest: { id: 'up1' } } } : { updateJob: {} }); }
+    return jtFetch(jobs)(url, init);
+  };
+  const env = { DB, JOBTREAD_GRANT_KEY: 'k', CF_PAGES_DEPLOY_HOOK: 'https://hook.example/deploy' };
+  const out = await syncKidStatuses(env, { fetchImpl: jt, now: Date.parse('2026-10-20T15:00:00Z') });
+  assert.deepEqual(out.map((o) => [o.slug, o.kind]).sort(), [['childrens-development-academy', 'community'], ['grace-academy', 'community'], ['perfect-harmony-health', 'community']]);
+  const proj = async (slug) => JSON.parse((await DB.prepare('SELECT data FROM community WHERE slug = ?').bind(slug).first()).data);
+  assert.equal((await proj('perfect-harmony-health')).status, 'completed', 'its job is Closed Done');
+  assert.equal((await proj('childrens-development-academy')).status, 'completed', 'a "2025 - 2026" project matches its 2025 job');
+  assert.equal((await proj('grace-academy')).status, 'completed', '"Grace Academy (2026)" is the academy’s, not the kid Grace’s');
+  assert.equal((await row(DB, 'grace')).status, 'in-progress', 'the kid Grace is left alone');
+  assert.deepEqual([(await proj('the-lionheart-school')).publishStatus, (await proj('the-lionheart-school')).status], ['draft', 'in-progress'], 'On Site leaves the draft as it is');
+  assert.equal((await proj('camp-twin-lakes')).status, 'completed', 'an old job left open doesn’t reopen it');
+  const audit = (await DB.prepare("SELECT user_email, entity_type, entity_slug FROM audit_log WHERE entity_type = 'community'").all()).results;
+  assert.equal(audit.length, 3, 'saved like an admin save');
+  assert.ok(audit.every((a) => a.user_email === SYNC_USER));
+  const versions = (await DB.prepare("SELECT slug FROM content_versions WHERE collection = 'community' AND user_email IS NOT NULL").all()).results;
+  assert.equal(versions.length, 3, 'History keeps each change');
+  assert.deepEqual(hooks, ['https://hook.example/deploy'], 'and the site publishes');
+  const cover = await DB.prepare("SELECT slug, source FROM job_covers WHERE job_id = 'jPHH'").first();
+  assert.equal(cover?.slug, 'community/perfect-harmony-health', 'the project’s Main photo is its job’s cover');
 });
 
 test('the sweep runs hourly; nothing to do, no deploy', async (t) => {

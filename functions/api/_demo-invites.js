@@ -50,7 +50,7 @@
  * read from Google, including on an invite someone sent by hand.
  */
 
-import { SOARD_ORG_ID, todayEastern, easternParts, loadKids } from './_reveals.js';
+import { SOARD_ORG_ID, todayEastern, easternParts, loadKidsAndProjects } from './_reveals.js';
 import {
   readConfig as readInviteConfig, ensureSchema as ensureInviteSchema, fetchStaff, guestGroups, renderTemplate,
   JOB_ACCESS, FIELD_STATUS, FIELD_MAKEOVER_TYPE, DEFAULT_ORGANIZER, DEFAULT_TEST_GUESTS, SANDBOX_JOB_ID, BY_HAND,
@@ -259,7 +259,7 @@ export function planDemo(job, staff, { kids = [], people = { always: [] }, organ
   const fill = (text) => renderTemplate(text, { name: who.name, space: values[FIELD_MAKEOVER_TYPE], date, time: start });
   // Labeled links as plain text (HTML descriptions arrive as raw tags in some calendars)
   const lines = [fill(t.message).trim(), ''];
-  if (who.slug) lines.push(`Meet ${who.name}: ${SITE}/kids/${who.slug}/`, '');
+  if (who.url) lines.push(`Meet ${who.name}: ${SITE}${who.url}`, '');
   const host = (staff || []).find((s) => s.email === organizer)?.name;
   lines.push(`Questions? Email ${host ? `${host} at ` : ''}${organizer}.`, 'Sunshine on a Ranney Day');
 
@@ -373,7 +373,7 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   const [job, staff, kids, people] = await Promise.all([
     fetchDemoJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
     preloaded?.staff || fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-    preloaded?.kids || loadKids(DB).catch(() => []),
+    preloaded?.kids || loadKidsAndProjects(DB).catch(() => []),
     preloaded?.people || listPeople(DB),
   ]);
   const sandbox = jobId === SANDBOX_JOB_ID || isTestJob(job);
@@ -621,7 +621,7 @@ export async function checkAll(env, { fetchImpl = fetch, now = Date.now(), verif
   if (!ids.length) return [];
   const [staff, kids, people] = await Promise.all([
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-    loadKids(env.DB).catch(() => []),
+    loadKidsAndProjects(env.DB).catch(() => []),
     listPeople(env.DB),
   ]);
   const out = [];
@@ -660,7 +660,7 @@ export async function sendTestDemo(env, jobId, testEmail, { cancel = false, samp
   const [job, staff, kids, people] = await Promise.all([
     sample || fetchDemoJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-    loadKids(DB).catch(() => []),
+    loadKidsAndProjects(DB).catch(() => []),
     listPeople(DB),
   ]);
   // As it will go out, even before Set Start Date is checked off
@@ -689,7 +689,7 @@ export async function listDemos(env, { fetchImpl = fetch, now = Date.now() } = {
     readConfig(DB), readInviteConfig(DB),
     openJobs(grantKey, fetchImpl),
     fetchStaff(grantKey, fetchImpl),
-    loadKids(DB).catch(() => []),
+    loadKidsAndProjects(DB).catch(() => []),
     listPeople(DB),
     DB.prepare('SELECT * FROM demo_invites').all(),
   ]);

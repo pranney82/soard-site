@@ -160,8 +160,10 @@ export async function onRequestPost(context) {
 
     // Joining or leaving the board changes who confirmed reveal invites reach: follow it now
     if (parsed.table === 'team' && getsRevealInvites(oldData) !== getsRevealInvites(data)) context.waitUntil(refreshForBoardChange(context.env));
-    // A kid's best photo is their JobTread job's cover: new family photos go up now, not at the hourly sync
-    if (parsed.table === 'kids' && coverOf(data) && coverOf(oldData)?.source !== coverOf(data).source) context.waitUntil(syncCoverForKid(context.env, parsed.slug));
+    // A kid's (or community project's) best photo is their JobTread job's cover: new photos go up now, not at the hourly sync
+    if ((parsed.table === 'kids' || parsed.table === 'community') && coverOf(data) && coverOf(oldData)?.source !== coverOf(data).source) {
+      context.waitUntil(syncCoverForKid(context.env, parsed.slug, { collection: parsed.table }));
+    }
 
     return Response.json({
       success: true,

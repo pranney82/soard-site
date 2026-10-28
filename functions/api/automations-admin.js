@@ -375,14 +375,14 @@ export async function eventRecapFacts(DB) {
   };
 }
 
-/** Approved → job and kid page (_applicant-approved.js): last run, the last family set up, who's waiting and why */
+/** Approved → job and its page (_applicant-approved.js): last run, the last family set up, who's waiting and why */
 export function approvalFacts(s) {
   if (!s || s.error) return null;
   const last = s.recent?.[0];
   return {
     lastRunAt: s.lastRun?.at || null,
     lastErrorAt: s.lastError?.at || null,
-    last: last ? { name: last.name, at: last.done_at, slug: last.kid_slug || null } : null,
+    last: last ? { name: last.name, at: last.done_at, slug: last.kid_slug || null, project: last.project_slug || null } : null,
     waiting: (s.waiting || []).map((w) => ({ name: w.name, problem: w.problem })),
   };
 }

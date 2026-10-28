@@ -396,3 +396,19 @@ test("the avatar: the application's photo from JobTread, then the kid page's Mai
   await refreshApplicants(env, [a.id], opts());
   assert.equal((await getApplicantRow(env.DB, a.id)).photoFrom, 'application');
 });
+
+test('an organization’s avatar is its community project’s Main photo once it has one', async () => {
+  const a = addAccount({ name: 'The Lionheart School', fields: { [F.status]: 'Approved', [F.year]: '2026' }, jobs: [{ id: 'job-lion', name: 'The Lionheart School' }] });
+  await syncAllApplicants(env, opts());
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS community (slug TEXT PRIMARY KEY, name TEXT NOT NULL, order_num INTEGER, data TEXT NOT NULL)');
+  const put = (data) => env.DB.prepare('INSERT OR REPLACE INTO community (slug, name, order_num, data) VALUES (?, ?, 0, ?)').bind(data.slug, data.name, JSON.stringify(data)).run();
+  await put({ slug: 'the-lionheart-school', name: 'The Lionheart School', year: '2026', status: 'in-progress', publishStatus: 'draft', jobtreadJobId: 'job-lion', photos: [] });
+  let row = await getApplicantRow(env.DB, a.id);
+  assert.deepEqual(row.kid, { slug: 'the-lionheart-school', name: 'The Lionheart School', draft: true, kind: 'community' }, 'its project is known before it has photos');
+  assert.equal(row.photo, undefined);
+  const main = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-lionheart-school/1/public';
+  await put({ slug: 'the-lionheart-school', name: 'The Lionheart School', year: '2026', status: 'in-progress', publishStatus: 'draft', jobtreadJobId: 'job-lion', heroImage: main, photos: [{ url: main, focus: { x: 0.5, y: 0.3 } }] });
+  row = await getApplicantRow(env.DB, a.id);
+  assert.equal(row.photoFrom, 'project');
+  assert.equal(row.photo, 'https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/community/the-lionheart-school/1/w=128,h=128,fit=cover,gravity=0.5x0.3,q=80', 'centered on its focal point');
+});

@@ -228,11 +228,11 @@ const MAP = { t: 'SOARD', children: [
             if (c.waiting) return ATTN(`${plural(c.waiting, 'confirmed reveal')} can’t have a countdown yet (no time, or no published kid page). See Reveals → Now.`, c.checkedAt);
             return ON(c.next ? `Following ${c.next}.` : 'Nothing is confirmed with a time yet.', c.checkedAt);
           } },
-        { t: 'Kid status follows JobTread', s: 'live', k: 'event',
+        { t: 'Kid and project status follow JobTread', s: 'live', k: 'event',
           when: 'A JobTread workflow reports a job’s status, closed date or task change (right away), and an hourly sweep on the live hub’s heartbeat. Visits to the reveals feed are the backup.',
-          does: 'Sets each kid page’s status from its job: Awaiting Funding shows “Needs funding”, Design through Build shows “In progress”, and the Reveal task done, Closed Done or Warranty shows “Completed”. On Site and Denied take the profile off the site (Denied tells staff once by email and Slack), and it comes back by itself when the job moves on. Each change is saved like an admin save, with History, then the site publishes, at most every 10 minutes.',
+          does: 'Sets each kid page’s status from its job: Awaiting Funding shows “Needs funding”, Design through Build shows “In progress”, and the Reveal task done, Closed Done or Warranty shows “Completed”. On Site and Denied take the profile off the site (Denied tells staff once by email and Slack), and it comes back by itself when the job moves on. Community projects follow an organization’s job the same way: “In progress” while it’s funded or built, “Completed” once it’s done, and only Denied takes one off the site. Each change is saved like an admin save, with History, then the site publishes, at most every 10 minutes.',
           touches: ['JobTread', 'D1', 'GitHub', 'Cloudflare Pages', 'Resend', 'Slack'], where: 'functions/api/_kid-status.js (from reveal-invites.js, broadcast-hooks.js, reveals.js)',
-          info: 'Staff can’t change a linked kid’s status in the admin: Kids shows the JobTread status with a link to the job. Kids with no job in JobTread (older years) stay under the admin’s control, a profile staff hid themselves stays hidden, and jobs named TEST are ignored.',
+          info: 'Staff can’t change a linked kid’s or project’s status in the admin: Kids and Community Projects show the JobTread status with a link to the job. A job belongs to a kid or project by the link an approval made, else by name and year (“Perfect Harmony Health (2026)”); a project matched by name only ever moves on to Completed, so an old job left open can’t reopen it. Kids and projects with no job in JobTread (older years) stay under the admin’s control, a page staff hid themselves stays hidden, and jobs named TEST are ignored.',
           live: (f) => {
             const k = f.kidStatus;
             if (!k) return null;
@@ -242,11 +242,11 @@ const MAP = { t: 'SOARD', children: [
             if (stale(k.lastSweepAt, 3 * HOUR)) return ATTN(`Hasn’t checked JobTread since ${stamp(k.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, k.lastRunAt);
             if (env(f) && !f.env.deployHook) return ATTN('No deploy hook is set in Cloudflare, so changes are saved but wait for the next Publish.', k.lastRunAt);
             const hidden = k.hidden ? ` ${plural(k.hidden, 'profile is', 'profiles are')} hidden because of JobTread.` : '';
-            return ON(`${k.changed ? `The last check changed ${plural(k.changed, 'kid')}.` : 'Every linked kid matches JobTread.'}${hidden}`, k.lastRunAt);
+            return ON(`${k.changed ? `The last check changed ${plural(k.changed, 'page')}.` : 'Every linked kid and project matches JobTread.'}${hidden}`, k.lastRunAt);
           } },
         { t: 'Kid photo as the job’s cover', s: 'live', k: 'schedule',
           when: 'As soon as a kid’s profile is saved with a new best photo, and with the kid status sync (JobTread’s workflows for one job, the hourly sweep for all of them) as the safety net.',
-          does: 'Puts each kid’s best photo on their JobTread job as its cover: the profile’s Main photo, else the gallery’s first, cropped around the face or the focal point. A job made when a family is approved starts with the child’s photo from their application, and the family photos replace it once they’re on the profile, usually after the job exists.',
+          does: 'Puts each kid’s best photo on their JobTread job as its cover: the profile’s Main photo, else the gallery’s first, cropped around the face or the focal point. A job made when a family is approved starts with the child’s photo from their application, and the family photos replace it once they’re on the profile, usually after the job exists. An organization’s job shows its community project’s Main photo the same way.',
           touches: ['JobTread'], where: 'functions/api/_job-covers.js (from save-content.js, _kid-status.js and _applicant-approved.js)',
           info: 'Replaces the Google Street View picture of the house that DataX used to add (Peter turned that off in DataX on Oct 20, 2026). A cover only changes when the kid’s photo does, so one picked by hand in JobTread stays until then. A few jobs per run.',
           live: (f) => {
@@ -403,11 +403,11 @@ const MAP = { t: 'SOARD', children: [
             const zap = Object.values(f.jobtread?.webhooks || {}).some((h) => /zapier\.com/i.test(h.where || ''));
             return zap ? ATTN('A Zapier webhook is back in JobTread, so families could get a status message twice. Turn the Zap off in Zapier.') : wf('22PgaEgWTBRH')(f);
           } },
-        { t: 'Approved → job and kid page', s: 'live', k: 'schedule',
+        { t: 'Approved → job and its page', s: 'live', k: 'schedule',
           when: 'A family’s Approved status has settled: their decision email is out (or staff chose not to email) and 30 minutes have passed. Checked by the application sweep every 2 minutes; nothing happens while family emails are paused.',
-          does: 'Makes the makeover’s JobTread job the way the old Zap did (“Name (Year)”, Status On Site, Makeover Type, at the family’s home, as the Qualification Committee), or uses the job they already have, with the child’s photo from the application as its cover. Then makes a hidden profile in Kids (first name, age, year, rooms, Awaiting funding), linked to that job so its status follows JobTread. Posts the good news to Slack and notes both in the family’s history.',
+          does: 'Makes the makeover’s JobTread job the way the old Zap did (“Name (Year)”, Status On Site, Makeover Type, at the family’s home, as the Qualification Committee), or uses the job they already have, with the child’s photo from the application as its cover. Then makes a hidden profile in Kids (first name, age, year, rooms, Awaiting funding), linked to that job so its status follows JobTread. An organization (no birthday or diagnosis: a school, a clinic) gets a hidden community project instead, under its name, In progress and first on the Community page, linked the same way. Posts the good news to Slack and notes it in the family’s history.',
           touches: ['JobTread', 'D1', 'GitHub', 'Slack'], where: 'functions/api/_applicant-approved.js (from _applications.js maybeSweepApplications)',
-          info: 'Nothing private goes in the profile, because its GitHub copy is public: no last name, diagnosis, address or photos. It stays off Meet the Kids until staff add the story and photos and switch on “Show on Meet the Kids”. A profile staff already made for the family is linked, never rewritten. An organization (no birthday or diagnosis) gets the job only. Families approved before this started are never touched, and nothing is deleted if a family is moved back later. A family missing a home address or *Makeover Year is one Slack problem that turns ✅ once it’s done. Replaces the Zapier “account updated” Zap.',
+          info: 'Nothing private goes in the profile, because its GitHub copy is public: no last name, diagnosis, address or photos. It stays off Meet the Kids until staff add the story and photos and switch on “Show on Meet the Kids”. A profile or project staff already made is linked, never rewritten. Organizations approved before projects were made this way (The Lionheart School, Oct 21 2026) get theirs on the next run. Families approved before this started are never touched, and nothing is deleted if a family is moved back later. A family missing a home address or *Makeover Year is one Slack problem that turns ✅ once it’s done. Replaces the Zapier “account updated” Zap.',
           live: (f) => {
             const a = f.approvals;
             if (!a) return null;
@@ -417,7 +417,7 @@ const MAP = { t: 'SOARD', children: [
             if (stale(a.lastRunAt, 30 * MIN)) return ATTN(`Hasn’t run since ${stamp(a.lastRunAt)}. It rides on the application sweep, so check the Heartbeat entry.`, a.lastRunAt);
             const WHY = { 'no-home': 'needs a home address in JobTread', 'no-year': 'needs a *Makeover Year in JobTread', error: 'JobTread refused, trying again' };
             if (a.waiting.length) return ATTN(a.waiting.map((x) => `${x.name} ${WHY[x.problem] || 'is waiting'}.`).join(' '), a.lastRunAt);
-            return ON(a.last ? `Last set up ${a.last.name} (${stamp(a.last.at)}).` : 'No family has been approved since it started.', a.lastRunAt);
+            return ON(a.last ? `Last set up ${a.last.name}${a.last.project ? ' (a community project)' : ''} (${stamp(a.last.at)}).` : 'No family has been approved since it started.', a.lastRunAt);
           } },
         { t: 'A family replied → staff alert', s: 'live', k: 'event',
           when: 'A family answers a JobTread message, by replying to its email or in JobTread. The Applicants sync reads JobTread about every minute, and each reply alerts once.',

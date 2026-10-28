@@ -9,19 +9,22 @@
  * → { success, reveals: [{ slug, name, startsAt, date, time, confirmed, jobId }],
  *     jobs: { [slug]: jobId },   every kid matched to a JobTread job, open or closed
  *     statuses: { [slug]: status },  that job's JobTread Status (the site's kid status follows it, ./_kid-status.js)
- *     unmatched,                 upcoming reveal dates on jobs no kid page matches
+ *     projectJobs, projectStatuses,  the same for community projects (an organization's job)
+ *     projectReveals: [{ slug, name, startsAt, date, time, confirmed, jobId }],  their reveal dates
+ *     unmatched,                 upcoming reveal dates on jobs no kid page or project matches
  *     updatedAt }
  *
  * Rules: a reveal date before today (Eastern) is dropped; midnight Eastern
- * means no time yet; kids are matched to jobs exactly like the public feed
- * (name + year, ambiguous = no match), see ./_reveals.js.
+ * means no time yet; kids and community projects are matched to jobs exactly
+ * like the public feed and the status sync (name + year, or the job a
+ * project is linked to; ambiguous = no match), see ./_reveals.js.
  */
 
 import {
   JT_URL, SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED,
-  matchKid, easternParts, todayEastern,
+  matchProject, isProject, easternParts, todayEastern,
 } from './_reveals.js';
-import { FIELD_STATUS, loadAllKids } from './_kid-status.js';
+import { FIELD_STATUS, loadAllKids, loadAllProjects } from './_kid-status.js';
 
 const MAX_PAGES = 8;
 const MEMO_MS = 60 * 1000;
@@ -60,28 +63,29 @@ export async function fetchAllJobs(grantKey, fetchImpl = fetch) {
   return jobs;
 }
 
-/** Upcoming reveals (confirmed and tentative) plus a kid → job map */
-export function buildAdminView(jobs, kids, now = Date.now()) {
+/** Upcoming reveals (confirmed and tentative) plus a kid → job map, and the same for community projects */
+export function buildAdminView(jobs, kids, now = Date.now(), projects = []) {
   const today = todayEastern(now);
-  const links = {};
-  const statuses = {};
-  const reveals = [];
+  const records = [...kids, ...projects];
+  const kidSide = { jobs: {}, statuses: {}, reveals: [] };
+  const projectSide = { jobs: {}, statuses: {}, reveals: [] };
   let unmatched = 0;
   for (const job of jobs) {
-    const kid = matchKid(job.name, kids, job.id);
+    const hit = matchProject(job.name, records, job.id);
+    const side = isProject(hit) ? projectSide : kidSide;
     // A kid can only match a job from their own year; prefer the open one if there are two
     const values = {};
     for (const v of job.customFieldValues?.nodes || []) values[v.customField?.id] = v.value;
-    if (kid && (!links[kid.slug] || !job.closedOn)) { links[kid.slug] = job.id; statuses[kid.slug] = values[FIELD_STATUS] || null; }
+    if (hit && (!side.jobs[hit.slug] || !job.closedOn)) { side.jobs[hit.slug] = job.id; side.statuses[hit.slug] = values[FIELD_STATUS] || null; }
     if (job.closedOn) continue;
 
     const startsAt = values[FIELD_REVEAL_DATE];
     const parts = startsAt ? easternParts(startsAt) : null;
     if (!parts || parts.date < today) continue;
-    if (!kid) { unmatched++; continue; }
-    reveals.push({
-      slug: kid.slug,
-      name: kid.name,
+    if (!hit) { unmatched++; continue; }
+    side.reveals.push({
+      slug: hit.slug,
+      name: hit.name,
       startsAt: new Date(startsAt).toISOString(),
       date: parts.date,
       time: parts.time,
@@ -89,9 +93,15 @@ export function buildAdminView(jobs, kids, now = Date.now()) {
       jobId: job.id,
     });
   }
-  reveals.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  const seen = new Set();
-  return { reveals: reveals.filter((r) => (seen.has(r.slug) ? false : seen.add(r.slug))), jobs: links, statuses, unmatched };
+  const soonest = (list) => {
+    const seen = new Set();
+    return list.sort((a, b) => a.startsAt.localeCompare(b.startsAt)).filter((r) => (seen.has(r.slug) ? false : seen.add(r.slug)));
+  };
+  return {
+    reveals: soonest(kidSide.reveals), jobs: kidSide.jobs, statuses: kidSide.statuses,
+    projectReveals: soonest(projectSide.reveals), projectJobs: projectSide.jobs, projectStatuses: projectSide.statuses,
+    unmatched,
+  };
 }
 
 export async function onRequestGet(context) {
@@ -104,8 +114,8 @@ export async function onRequestGet(context) {
     const now = Date.now();
     if (!memo || now - memo.at > MEMO_MS) {
       // Hidden profiles too: a kid JobTread keeps off the site still links to its job here
-      const [jobs, kids] = await Promise.all([fetchAllJobs(env.JOBTREAD_GRANT_KEY), loadAllKids(env.DB)]);
-      memo = { at: now, value: { ...buildAdminView(jobs, kids, now), updatedAt: new Date(now).toISOString() } };
+      const [jobs, kids, projects] = await Promise.all([fetchAllJobs(env.JOBTREAD_GRANT_KEY), loadAllKids(env.DB), loadAllProjects(env.DB)]);
+      memo = { at: now, value: { ...buildAdminView(jobs, kids, now, projects), updatedAt: new Date(now).toISOString() } };
     }
     return Response.json({ success: true, ...memo.value }, { headers });
   } catch (err) {

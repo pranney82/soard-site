@@ -53,6 +53,16 @@ test('confirmed reveals: matched to published kids, with the reason when one can
   assert.equal(list[0].time, null, 'midnight Eastern means no time yet');
 });
 
+test('confirmed reveals: an organization’s job that belongs to its community project is left out, not a problem', () => {
+  const projects = [{ kind: 'community', slug: 'perfect-harmony-health', name: 'Perfect Harmony Health', year: '2026', status: 'in-progress' }];
+  const list = confirmedReveals([
+    job('jobMax0001', 'Max Sample (2026)', { startsAt: at(5) }),
+    job('jobXyz0001', 'Perfect Harmony Health (2026)', { startsAt: at(8) }),
+    job('jobAbc0001', 'Somebody Else (2026)', { startsAt: at(9) }),
+  ], KIDS, Date.now(), projects);
+  assert.deepEqual(list.map((r) => [r.jobId, r.problem]), [['jobMax0001', null], ['jobAbc0001', 'no-kid']], 'no countdown alert for the clinic; a job nobody matches still is one');
+});
+
 // ─── What to do ─────────────────────────────────────────────────────
 
 test('plan: nothing planned → schedule the next confirmed reveal with a time and a published kid', () => {
