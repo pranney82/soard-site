@@ -58,6 +58,44 @@ export function eventWhen(ev) {
 }
 
 const URL_RE = /https:\/\/[^\s<>"]+/i;
+const TBD = /^(tbd|tba|to be (determined|announced|confirmed))\.?$/i;
+/** "TBD", "To be determined": no place yet */
+export const isTbd = (s) => TBD.test(String(s || '').trim());
+
+/** An invite's notes (often Outlook's HTML) as plain lines */
+export function plainText(s) {
+  return String(s || '')
+    .replace(/<\s*br\s*\/?>/gi, '\n').replace(/<\/\s*(p|div|li|tr|h\d)\s*>/gi, '\n').replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&#39;|&rsquo;/gi, '’').replace(/&quot;/gi, '"')
+    .split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+}
+
+const STREET = '(?:St|Street|Rd|Road|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Pkwy|Parkway|Hwy|Highway|Ct|Court|Pl|Place|Cir|Circle|Trl|Trail|Ter|Terrace|Sq|Square|Pike|Row|Crossing|Xing|Point|Pt|Ridge|Loop|Bend|Walk|Commons)';
+const ADDRESS = new RegExp(`\\b(\\d{1,6}\\s+(?:[A-Za-z0-9.'’-]+\\s){0,5}${STREET}\\.?(?:,?\\s*(?:Suite|Ste\\.?|Unit|Bldg|Building|#)\\s*[\\w-]+)?(?:,?\\s+[A-Za-z .'’-]+?){1,3},?\\s+(?:[A-Z]{2}|Georgia)\\s+\\d{5}(?:-\\d{4})?)\\b`);
+/** A street address in an invite's notes, and the place name before it (on its line or the line above): { location, address } or null */
+export function addressIn(notes) {
+  const lines = plainText(notes).split('\n');
+  const label = /^(location|where|address|place)\s*[:\-–]?\s*/i;
+  const looksLikePlace = (t) => !!t && t.length < 70 && !/https?:|teams|zoom|meeting id|passcode|join|dial|please|agenda/i.test(t)
+    && !/\b(at|in|on|to|is|are|be|will|meet|held|located|address)\s*[:\-–]?$/i.test(t);
+  for (let i = 0; i < lines.length; i++) {
+    // On one line, or a street on this line with its city, state and ZIP on the next
+    let m = lines[i].match(ADDRESS);
+    let line = lines[i];
+    if (!m && lines[i + 1]) {
+      const both = `${lines[i]}, ${lines[i + 1]}`;
+      const joined = both.match(ADDRESS);
+      if (joined && joined.index < lines[i].length) { m = joined; line = both; }
+    }
+    if (!m) continue;
+    const before = line.slice(0, m.index).replace(label, '').replace(/[:\-–,\s]+$/, '').trim();
+    const above = i > 0 ? lines[i - 1].replace(label, '').replace(/[:\s]+$/, '').trim() : '';
+    const location = looksLikePlace(before) ? before : !before && looksLikePlace(above) ? above : '';
+    return { location, address: m[1].replace(/\s+/g, ' ').trim() };
+  }
+  return null;
+}
+
 /** Where: { location, address, video } from the event's location, its Meet link or a meeting link in its notes */
 export function eventPlace(ev) {
   const raw = String(ev?.location || '').trim();
@@ -73,8 +111,13 @@ export function eventPlace(ev) {
   const comma = location.indexOf(',');
   if (comma > 0 && /\d/.test(location.slice(comma))) { address = location.slice(comma + 1).trim(); location = location.slice(0, comma).trim(); }
   else if (/^\d/.test(location)) { address = location; location = ''; }
-  if (/^(tbd|tba|to be (determined|announced|confirmed))\.?$/i.test(location)) location = '';
-  return { location, address, video: video.replace(/[).,]+$/, '') };
+  if (isTbd(location)) location = '';
+  // No place on the invite ("TBD"): an address written in its notes
+  if (!location && !address) {
+    const found = addressIn(ev?.description);
+    if (found) ({ location, address } = found);
+  }
+  return { location, address, video: video.replace(/[).,]+$/, ''), said: raw.slice(0, 200) };
 }
 
 /**
@@ -139,6 +182,15 @@ async function look(env, { fetchImpl, now }) {
     const place = hasPlace(lead) ? lead.place : (copies.find(hasPlace)?.place || lead.place);
     const video = lead.place.video || copies.find((c) => c.place.video)?.place.video || '';
     const { when, ev, from } = lead;
+    // Who's invited and how they answered the invite (the organizer's copy knows), by board member
+    const bySlug = Object.fromEntries(board.filter((p) => p.email).map((p) => [p.email, p.slug]));
+    const replies = {};
+    for (const c of [lead, ...copies.filter((x) => x !== lead)]) {
+      for (const a of c.ev.attendees || []) {
+        const slug = bySlug[String(a.email || '').toLowerCase()];
+        if (slug && !replies[slug]) replies[slug] = ['accepted', 'declined', 'tentative'].includes(a.responseStatus) ? a.responseStatus : 'invited';
+      }
+    }
     // Its meeting: one a person has worked on, else the oldest. An untouched extra copy goes (one per calendar, before)
     const linked = meetings.filter((x) => x.calendar && [x.calendar.uid, ...(x.calendar.others || [])].some((u) => uids.includes(u)))
       .sort((a, b) => (Number(b.updatedBy !== CALENDAR_BY) - Number(a.updatedBy !== CALENDAR_BY)) || String(a.createdAt).localeCompare(String(b.createdAt)));
@@ -152,6 +204,8 @@ async function look(env, { fetchImpl, now }) {
     const link = {
       uid: lead.uid, others: uids.slice(1), title: String(ev.summary || '').slice(0, 200), from,
       link: /^https:\/\//.test(ev.htmlLink || '') ? ev.htmlLink : '', gone: false, place: !!(place.location || place.address), call: !!video,
+      said: copies.map((c) => c.place.said).find(Boolean) || '',
+      replies,
     };
     if (!m) {
       m = await createMeeting(env, { date, by: CALENDAR_BY });
@@ -160,7 +214,7 @@ async function look(env, { fetchImpl, now }) {
     const next = {
       ...m, date, start: when.start, end: when.end,
       title: !m.title || m.title === m.calendar?.title ? link.title : m.title,
-      location: place.location || m.location,
+      location: place.location || (isTbd(m.location) ? '' : m.location),
       address: place.address || (place.location && place.location !== m.location ? '' : m.address),
       video: video || m.video,
       calendar: link,

@@ -51,7 +51,7 @@ import { errorAlert } from './stream-webhook.js';
 import { medicalNote, fallbackMedicalNote } from './_applicant-comms.js';
 import { activity, comingUp, deliverability, deliveryFacts, emailDetail, invitesOut } from './_messages-activity.js';
 import { applicantEmail as advisoryThanks, staffEmail as advisoryStaff } from './_advisory-applications.js';
-import { packetEmail } from './_board.js';
+import { packetEmail, welcomeEmail } from './_board.js';
 import { newMeeting } from '../../public/admin/board-shared.js';
 import { checkAnswers as advisoryAnswers } from './_advisory-form.js';
 import { planDemo, demoAlert, sendTestDemo, readConfig as readDemoConfig, listPeople as demoPeople } from './_demo-invites.js';
@@ -563,6 +563,11 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
         note: 'Peter or Holly sends it from Board, after sharing the meeting. Send it to me sends a [Preview] copy first.',
       });
     }
+    case 'board-welcome':
+      return email(welcomeEmail({ name: 'Alex Rivera', email: 'alex@example.com' }), {
+        from: EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board '), to: 'Each active board member with an email on People → Board, on their own',
+        note: 'Peter or Holly sends it from Board → Members once board sign-in is set up. Send it to me sends a [Preview] copy first.',
+      });
     case 'advisory-thanks':
     case 'advisory-staff': {
       // A made-up applicant, through the form's own rules

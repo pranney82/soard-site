@@ -12,6 +12,8 @@
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+// Board reads board mail (agendas, minutes, financials) with this one, added next to the calendar scope (_board-mail.js)
+export const GMAIL_READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 
 const _tokens = new Map(); // subject → { token, expiresAt }
 
@@ -70,31 +72,33 @@ async function signingKey(pem) {
   return crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
 }
 
-/** Signed JWT for the token exchange, impersonating `subject` */
-export async function serviceAccountJwt(key, subject, now = Date.now()) {
+/** Signed JWT for the token exchange, impersonating `subject` (the calendar scope unless another is named) */
+export async function serviceAccountJwt(key, subject, now = Date.now(), scope = CALENDAR_SCOPE) {
   const iat = Math.floor(now / 1000);
   const header = b64urlText(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const claims = b64urlText(JSON.stringify({ iss: key.client_email, sub: subject, scope: CALENDAR_SCOPE, aud: TOKEN_URL, iat, exp: iat + 3600 }));
+  const claims = b64urlText(JSON.stringify({ iss: key.client_email, sub: subject, scope, aud: TOKEN_URL, iat, exp: iat + 3600 }));
   const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', await signingKey(key.private_key), new TextEncoder().encode(`${header}.${claims}`));
   return `${header}.${claims}.${b64url(sig)}`;
 }
 
-export async function accessToken(env, subject, { fetchImpl = fetch, now = Date.now() } = {}) {
-  const cached = _tokens.get(subject);
+/** A token acting as `subject`; `scope` for another Google API the delegation grants (Board reads Gmail with GMAIL_READ_SCOPE) */
+export async function accessToken(env, subject, { fetchImpl = fetch, now = Date.now(), scope = CALENDAR_SCOPE } = {}) {
+  const cacheKey = scope === CALENDAR_SCOPE ? subject : `${subject} ${scope}`;
+  const cached = _tokens.get(cacheKey);
   if (cached && cached.expiresAt - 60_000 > now) return cached.token;
   if (!env.GOOGLE_CALENDAR_KEY) throw new Error('GOOGLE_CALENDAR_KEY is not set');
   const key = parseServiceAccount(env.GOOGLE_CALENDAR_KEY);
   const res = await fetchImpl(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: await serviceAccountJwt(key, subject, now) }),
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: await serviceAccountJwt(key, subject, now, scope) }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !body.access_token) {
     // unauthorized_client here almost always means domain-wide delegation isn't granted yet
     throw new Error(`Google sign-in failed (${res.status}): ${body.error || ''} ${body.error_description || ''}`.trim());
   }
-  _tokens.set(subject, { token: body.access_token, expiresAt: now + (body.expires_in || 3600) * 1000 });
+  _tokens.set(cacheKey, { token: body.access_token, expiresAt: now + (body.expires_in || 3600) * 1000 });
   return body.access_token;
 }
 

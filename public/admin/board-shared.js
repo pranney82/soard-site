@@ -19,7 +19,8 @@
  *   snapshot     the numbers locked in for the packet (see _board.js takeSnapshot)
  *   calendar     the calendar event it follows (functions/api/_board-calendar.js):
  *                { uid, others (the same meeting on another admin's calendar), title,
- *                from, link, gone, place, call }, or null
+ *                from, link, gone, place, call, said (its place as written),
+ *                replies: { slug: accepted | declined | tentative | invited } }, or null
  *   packetSentAt, packetSentTo
  * Notes are plain text: a line starting with "- " is a point, two spaces
  * deeper for each level under it.
@@ -32,10 +33,20 @@ export const ATTEND = [
   { id: 'excused', label: 'Excused' },
 ];
 export const RSVP = [
-  { id: 'yes', label: 'I’ll be there' },
-  { id: 'remote', label: 'Joining by video' },
-  { id: 'no', label: 'Can’t make it' },
+  { id: 'yes', label: 'Coming', ask: 'I’ll be there' },
+  { id: 'remote', label: 'By video', ask: 'I’ll join by video' },
+  { id: 'no', label: 'Can’t come', ask: 'I can’t make it' },
 ];
+/** A member's answer in words: their own here, else how they answered the calendar invite */
+export function answerOf(rsvp, invite) {
+  if (rsvp) return RSVP.find((r) => r.id === rsvp)?.label || '';
+  return { accepted: 'Coming', declined: 'Can’t come', tentative: 'Maybe' }[invite] || '';
+}
+/** "Balance-sheet_financials v2.pdf" → "Balance sheet financials v2" (the file keeps its own name for saving) */
+export function fileTitle(name) {
+  const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return base ? base[0].toUpperCase() + base.slice(1) : 'File';
+}
 export const RESULTS = [
   { id: 'passed', label: 'Passed' },
   { id: 'failed', label: 'Did not pass' },
@@ -44,8 +55,9 @@ export const RESULTS = [
 export const FILE_KINDS = [
   { id: 'financials', label: 'Financial statements' },
   { id: 'packet', label: 'Packet' },
-  { id: 'agenda', label: 'Original agenda' },
-  { id: 'minutes', label: 'Signed minutes' },
+  { id: 'agenda', label: 'Agenda' },
+  { id: 'minutes', label: 'Minutes' },
+  { id: 'signed', label: 'Signed minutes' },
   { id: 'other', label: 'Other' },
 ];
 export const DOC_KINDS = [
@@ -60,7 +72,7 @@ export const LIVE = [
   { id: 'projects', label: 'Makeovers in progress (JobTread)' },
   { id: 'reveals', label: 'Upcoming reveals (JobTread)' },
   { id: 'events', label: 'Upcoming events' },
-  { id: 'cash', label: 'Cash in the bank (Mercury)' },
+  { id: 'cash', label: 'Money: Mercury and the finance summary' },
   { id: 'meetings', label: 'Next board meetings' },
 ];
 export const LIMITS = { title: 200, text: 300, notes: 20000, items: 80, sections: 20, people: 80, rows: 100 };
@@ -142,6 +154,7 @@ function cleanItem(raw) {
     staffNote: str(raw?.staffNote, LIMITS.notes),
     confidential: bool(raw?.confidential),
     live,
+    about: ID.test(String(raw?.about || '')) ? raw.about : '',
   };
 }
 function cleanPerson(raw) {
@@ -198,10 +211,13 @@ export function cleanMeeting(raw = {}) {
       uid: one(raw.calendar.uid, 400), title: one(raw.calendar.title, 200), from: one(raw.calendar.from, 200),
       others: (Array.isArray(raw.calendar.others) ? raw.calendar.others : []).map((u) => one(u, 400)).filter(Boolean).slice(0, 5),
       link: /^https:\/\//.test(String(raw.calendar.link || '')) ? one(raw.calendar.link, 1000) : '',
-      gone: bool(raw.calendar.gone), place: bool(raw.calendar.place), call: bool(raw.calendar.call),
+      gone: bool(raw.calendar.gone), place: bool(raw.calendar.place), call: bool(raw.calendar.call), said: one(raw.calendar.said, 200),
+      replies: Object.fromEntries(Object.entries(raw.calendar.replies && typeof raw.calendar.replies === 'object' ? raw.calendar.replies : {})
+        .filter(([k, v]) => /^[a-z0-9-]{1,80}$/.test(k) && ['accepted', 'declined', 'tentative', 'invited'].includes(v)).slice(0, LIMITS.people)),
     } : null,
     packetSentAt: one(raw.packetSentAt, 40),
     packetSentTo: Number(raw.packetSentTo) > 0 ? Math.round(raw.packetSentTo) : 0,
+    minutesSentAt: one(raw.minutesSentAt, 40),
     createdAt: one(raw.createdAt, 40),
     updatedAt: one(raw.updatedAt, 40),
     updatedBy: one(raw.updatedBy, 200),
@@ -227,7 +243,7 @@ export function forBoard(m) {
 export function emailOutline(m) {
   return m.sections.filter((s) => s.title).map((s) => ({
     title: s.title,
-    items: s.items.filter((it) => it.title).map((it) => (it.confidential ? 'A confidential item (on the board page)' : it.title)),
+    items: s.items.filter((it) => it.title).map((it) => (it.confidential ? 'A board-only item (on the board page)' : it.title)),
   }));
 }
 
@@ -274,7 +290,7 @@ export function newMeeting({ date: d = '', template = DEFAULT_TEMPLATE, board = 
   const sections = (template?.length ? template : DEFAULT_TEMPLATE).map((s) => ({
     id: uid('s_'), title: s.title,
     items: (s.items || []).map((it) => ({
-      ...cleanItem({ title: it.live === 'minutes' && prev ? `Minutes of the ${meetingName(prev)} (${shortDate(prev.date)})` : it.title, presenter: it.presenter, live: it.live }),
+      ...cleanItem({ title: it.live === 'minutes' && prev ? `Minutes of the ${meetingName(prev)} (${shortDate(prev.date)})` : it.title, presenter: it.presenter, live: it.live, about: it.live === 'minutes' && prev ? prev.id : '' }),
       id: uid('i_'),
     })),
   }));
@@ -466,7 +482,7 @@ export function liveLines(kind, n, { meetingId = null } = {}) {
     const out = [];
     if (n.cash) {
       const parts = (n.cash.accounts || []).length > 1 ? ` (${n.cash.accounts.map((a) => `${a.name} ${money(a.balance)}`).join(', ')})` : '';
-      out.push(`${money(n.cash.total)} in the bank${parts}`);
+      out.push(`${money(n.cash.total)} in Mercury${parts}`);
     }
     const f = n.finance;
     if (f?.ytd) {
@@ -486,7 +502,8 @@ export function liveLines(kind, n, { meetingId = null } = {}) {
     const out = [`${plural(total, 'makeover')} in progress${counts.length ? `: ${counts.join(', ')}` : ''}`];
     for (const s of STATUS_ORDER) {
       const names = building.filter((b) => b.status === s).map((b) => b.name).filter(Boolean);
-      if (names.length) out.push(`${s}: ${names.join(', ')}`);
+      const more = building.filter((b) => b.status === s && !b.name).length;
+      if (names.length || more) out.push(`${s}: ${[names.join(', '), more ? `${names.length ? `${more} more` : `${more} ${more === 1 ? 'family' : 'families'}`}` : ''].filter(Boolean).join(' and ')}`);
     }
     return out;
   }
@@ -498,4 +515,73 @@ export function liveLines(kind, n, { meetingId = null } = {}) {
   if (kind === 'events') return (n.events || []).slice(0, 6).map((e) => `${e.title}: ${dayOf(e.date)}${e.location ? `, ${e.location}` : ''}`);
   if (kind === 'meetings') return (n.meetings || []).filter((m) => m.id !== meetingId).slice(0, 4).map((m) => `${m.name}: ${dayOf(m.date)}${m.start ? `, ${clock(m.start)}` : ''}`);
   return [];
+}
+
+// ─── Two people editing at once ─────────────────────────────────────
+
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/** One value, three ways: what both had, mine and theirs → { value, clash } */
+function pick3(base, mine, theirs) {
+  if (same(mine, base)) return { value: theirs };
+  if (same(theirs, base) || same(mine, theirs)) return { value: mine };
+  return { value: mine, clash: true };
+}
+/** A list of records by id: each record merged field by field, additions from both kept, removals honored */
+function mergeList(base = [], mine = [], theirs = [], key = (x) => x.id, label = (x) => '', skip = []) {
+  const b = new Map(base.map((x) => [key(x), x]));
+  const t = new Map(theirs.map((x) => [key(x), x]));
+  const out = [];
+  const clashes = [];
+  const seen = new Set();
+  for (const x of mine) {
+    const k = key(x); seen.add(k);
+    const was = b.get(k); const th = t.get(k);
+    if (!th) { if (!was || !same(x, was)) out.push(x); continue; } // they removed it: gone, unless I changed it
+    if (!was) { out.push(x); continue; }
+    const rec = { ...x };
+    for (const f of new Set([...Object.keys(x), ...Object.keys(th)])) {
+      if (skip.includes(f)) { rec[f] = x[f]; continue; }
+      const r = pick3(was[f], x[f], th[f]);
+      rec[f] = r.value;
+      if (r.clash) clashes.push(label(x) || f);
+    }
+    out.push(rec);
+  }
+  for (const th of theirs) if (!seen.has(key(th)) && !b.has(key(th))) out.push(th); // theirs is new
+  return { value: out, clashes };
+}
+
+/**
+ * Merge my unsaved meeting with one saved meanwhile (by Holly, the calendar,
+ * board mail), against the version I started from. Separate items, people,
+ * motions and action items merge on their own; only the same thing changed
+ * both ways is a clash. → { merged, clashes: [what clashed, in words] }
+ */
+export function mergeMeeting(base, mine, theirs) {
+  const merged = { ...theirs };
+  const clashes = [];
+  for (const f of ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn']) {
+    const r = pick3(base[f], mine[f], theirs[f]);
+    merged[f] = r.value;
+    if (r.clash) clashes.push({ date: 'the date', start: 'the time', end: 'the time', title: 'the name', location: 'the place', address: 'the address', video: 'the video link', shared: 'sharing', minutes: 'the minutes status', approvedOn: 'the minutes status' }[f]);
+  }
+  // The agenda: sections in my order, each section's items merged one by one
+  const secs = mergeList(base.sections, mine.sections, theirs.sections, (s) => s.id, (s) => `the section “${s.title}”`, ['items']);
+  merged.sections = secs.value.map((s) => {
+    const was = base.sections.find((x) => x.id === s.id); const th = theirs.sections.find((x) => x.id === s.id); const mi = mine.sections.find((x) => x.id === s.id);
+    if (!was || !th || !mi) return s;
+    const items = mergeList(was.items, mi.items, th.items, (it) => it.id, (it) => `“${it.title || 'an item'}”`);
+    clashes.push(...items.clashes);
+    return { ...s, items: items.value };
+  });
+  clashes.push(...secs.clashes);
+  const people = mergeList(base.attendance, mine.attendance, theirs.attendance, (p) => p.key, (p) => `${p.name}’s attendance`);
+  merged.attendance = people.value;
+  clashes.push(...people.clashes);
+  for (const f of ['motions', 'actions']) {
+    const r = mergeList(base[f], mine[f], theirs[f], (x) => x.id, (x) => `“${String(x.text || '').slice(0, 40)}”`);
+    merged[f] = r.value;
+    clashes.push(...r.clashes);
+  }
+  return { merged, clashes: [...new Set(clashes.filter(Boolean))] };
 }

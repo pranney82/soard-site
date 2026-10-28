@@ -28,11 +28,12 @@
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
   setActionDone, listDocs, saveDoc, deleteDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
-  memberStatus, roster, packetList, ID,
+  memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, approveMinutes, remindRsvp, sendMinutesNotice,
 } from './_board.js';
-import { isBoardAdmin, isStaffEmail } from './_board-roles.js';
+import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
 import { accessStatus, syncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
+import { maybeReadBoardMail, mailStatus, mailLog } from './_board-mail.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
@@ -65,12 +66,15 @@ export async function onRequestGet(context) {
     const looking = maybeSyncBoardCalendar(env, { minAgeMs: 10 * 60 * 1000 });
     context.waitUntil?.(looking);
     await Promise.race([looking, new Promise((r) => setTimeout(r, 6000))]);
+    // Board mail is slower (files to read): it runs after the answer, and shows on the next open
+    context.waitUntil?.(maybeReadBoardMail(env, { minAgeMs: 10 * 60 * 1000 }));
     const [settings, meetings, docs, members, people, access, numbers, recipients, calendar] = await Promise.all([
       getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB), memberStatus(env.DB), roster(env.DB),
       accessStatus(env), liveNumbers(env), packetList(env.DB), calendarStatus(env.DB),
     ]);
+    const [mail, mailRecent, welcome] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome')]);
     return Response.json({
-      ok: true, me, settings, meetings, docs, members, access, numbers, calendar,
+      ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome,
       people: { board: people.board, staff: people.staff },
       // Mercury answers only through SOARD's relay (_mercury.js), so the balance needs both keys
       setup: { calendar: Boolean(env.GOOGLE_CALENDAR_KEY), mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY) },
@@ -158,6 +162,35 @@ export async function onRequestPost(context) {
         const s = await saveSettings(env.DB, body.settings || {}, me);
         await audit(env, me, 'updated', 'Board settings saved');
         return Response.json({ ok: true, settings: s });
+      }
+      case 'read-file': {
+        // The minutes (or an old agenda) uploaded to a meeting, read for the admin to look over before it fills the meeting
+        needId();
+        const parsed = await readFileAsAgenda(env, id);
+        return parsed ? Response.json({ ok: true, parsed }) : fail('Couldn’t read an agenda in that file. Is it the minutes, as a PDF or Word file?', 422);
+      }
+      case 'approve-minutes': {
+        needId();
+        const m = await approveMinutes(env, id, { on: body.on, by: me });
+        await audit(env, me, 'updated', `Board minutes approved: ${meetingName(m)}`);
+        return Response.json({ ok: true, meeting: m });
+      }
+      case 'remind-rsvp': {
+        needId();
+        const r = await remindRsvp(env, id, { to: body.test ? [me] : null, replyTo: (await getSettings(env.DB)).admins });
+        return Response.json({ ok: r.failed === 0, ...r, ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
+      }
+      case 'send-minutes': {
+        needId();
+        const r = await sendMinutesNotice(env, id, { to: body.test ? [me] : null, replyTo: (await getSettings(env.DB)).admins });
+        if (!body.test && r.sent) await audit(env, me, 'updated', `Board told the minutes are up (${r.sent})`);
+        return Response.json({ ok: r.failed === 0, ...r, meeting: await getMeeting(env.DB, id), ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
+      }
+      case 'send-welcome': {
+        const admins = (await getSettings(env.DB)).admins;
+        const r = await sendWelcome(env, { to: body.test ? [me] : null, replyTo: admins });
+        if (!body.test && r.sent) await audit(env, me, 'updated', `Board page sign-in email sent to ${r.sent} board members`);
+        return Response.json({ ok: r.failed === 0, ...r, ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
       }
       case 'sync-access':
         return Response.json({ ok: true, access: { ...(await syncBoardAccess(env)), ...(await accessStatus(env)) } });

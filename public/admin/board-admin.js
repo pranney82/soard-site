@@ -194,6 +194,27 @@ const statusTags = (m) => {
   if (m.calendar) out.push(m.calendar.gone ? html`<span class="tag tag--warn">Off the calendar</span>` : html`<span class="tag">From the calendar</span>`);
   return out;
 };
+/** What Board reads from Peter and Holly's email, the one setting it may need, and what came in */
+function MailCard({ data }) {
+  const m = data.mail || {};
+  const recent = data.mailRecent || [];
+  const [open, setOpen] = useState(false);
+  if (!data.setup.calendar) return null;
+  return html`<div class="card" style="padding:0">
+    <div class="sec-head"><h3>From email <span class="count">${recent.length}</span></h3><span class="sec-head__hint">${m.checkedAt ? `Looked ${ago(m.checkedAt)}` : 'Not looked yet'}</span>
+      <p class="sec-head__desc">Agendas and minutes of past meetings, and QuickBooks’ reports, come in from your and Holly’s email by themselves and land on their meeting. Board only reads; it never sends, deletes or marks anything.</p></div>
+    ${m.needsScope ? html`<div class="notice notice--warn" style="margin:1rem 1.25rem"><div class="notice__body">
+      <strong>One setting in Google Admin, once.</strong> Open <strong>admin.google.com → Security → Access and data control → API controls → Manage domain-wide delegation</strong>, choose the site’s service account${m.clientId ? html` (client ID <span class="bd-code">${m.clientId}</span>)` : ''}, choose Edit, and add <span class="bd-code">https://www.googleapis.com/auth/gmail.readonly</span> next to the calendar scope that’s there. Board starts reading within the hour.
+    </div></div>` : m.errors?.length ? html`<div class="notice notice--warn" style="margin:1rem 1.25rem"><div class="notice__body"><strong>Couldn’t read every inbox.</strong> ${m.errors.join(' · ')}</div></div>` : null}
+    ${recent.length ? html`<ul class="bd-row-list">${(open ? recent : recent.slice(0, 4)).map((r) => html`<li class="bd-row">
+      <div class="bd-row__main"><div class="bd-row__title">${r.subject || '(no subject)'}</div>
+        <div class="bd-row__meta">${[shortDate(String(r.sentAt).slice(0, 10)), r.sender.replace(/<.*>/, '').trim(), r.result].filter(Boolean).join(' · ')}</div></div>
+      ${r.meetingId ? html`<a class="btn btn-ghost btn-sm" href=${hashFor({ meetingId: r.meetingId })}>${r.meeting || 'The meeting'}</a>` : null}
+    </li>`)}</ul>
+    ${recent.length > 4 ? html`<div style="padding:0.5rem 1.25rem 1rem"><button class="btn btn-ghost btn-sm" onClick=${() => setOpen(!open)}>${open ? 'Show fewer' : `Show all ${recent.length}`}</button></div>` : null}`
+      : !m.needsScope ? html`<div class="empty empty--inline"><p class="empty__text">${m.checkedAt ? 'Nothing has come by email yet.' : 'The first look is on its way.'}</p></div>` : null}
+  </div>`;
+}
 const firstOf = (email) => { const f = String(email || '').split('@')[0]; return f ? f[0].toUpperCase() + f.slice(1) : 'the'; };
 /** Where meetings come from: the admins' calendars, when they were last read, and anything that went wrong */
 function CalendarLine({ data }) {
@@ -218,7 +239,7 @@ function LiveBox({ kind, numbers, meetingId, locked }) {
   if (kind === 'minutes') return null;
   return html`<div class="bd-live">
     <div class="bd-live__label">${label}${locked ? ` · locked ${shortDate(String(numbers?.at || '').slice(0, 10))}` : ' · today'}</div>
-    ${lines.length ? html`<ul>${lines.map((l) => html`<li>${l}</li>`)}</ul>` : html`<div class="bd-muted">${kind === 'cash' ? 'Mercury isn’t connected, so there’s no balance yet.' : 'Nothing to show right now.'}</div>`}
+    ${lines.length ? html`<ul>${lines.map((l) => html`<li>${l}</li>`)}</ul>` : html`<div class="bd-muted">${kind === 'cash' ? (numbers?.mercury?.empty ? 'SOARD’s money isn’t in Mercury yet, so there’s no balance here; the financial statements have it.' : 'No balance from Mercury.') : 'Nothing to show right now.'}</div>`}
   </div>`;
 }
 
@@ -347,6 +368,7 @@ function MeetingsTab({ ctx }) {
       <${CalendarLine} data=${data} />
     </div>
     ${importing ? html`<${ImportPanel} ctx=${ctx} onDone=${(m) => { setImporting(false); if (m) go({ meetingId: m.id }); }} />` : null}
+    <${MailCard} data=${data} />
 
     <div class="card" style="padding:0">
       <div class="sec-head"><h3>Every meeting <span class="count">${data.meetings.length}</span></h3><span class="sec-head__hint">Newest first</span></div>
@@ -557,7 +579,7 @@ function MeetingEditor({ meeting, ctx }) {
     <div class="card">
       <div class="bd-card-head"><h3>When and where</h3>${cal ? html`<p>${cal.gone
         ? html`This meeting is no longer on ${firstOf(cal.from)}’s calendar. If it’s off, delete it here.`
-        : html`From ${firstOf(cal.from)}’s calendar (“${cal.title}”). Change the day, time${cal.place ? ' or place' : ''} there, and it follows here within the hour.${cal.link ? html` <a class="link" href=${cal.link} target="_blank" rel="noopener">Open the event</a>` : null}`}</p>` : null}</div>
+        : html`From ${firstOf(cal.from)}’s calendar (“${cal.title}”). Change the day, time${cal.place ? ' or place' : ''} there, and it follows here within the hour.${cal.place ? '' : ` The invite has no address yet${cal.said ? ` (its place says “${cal.said}”, and its notes have none)` : ''}: add it to the invite, or type it here.`}${cal.link ? html` <a class="link" href=${cal.link} target="_blank" rel="noopener">Open the event</a>` : null}`}</p>` : null}</div>
       ${cal?.gone ? html`<div class="notice notice--warn"><div class="notice__body"><strong>Off the calendar.</strong> The event “${cal.title}” is gone from every calendar Board reads.</div></div>` : null}
       <div class="bd-grid3">
         <div class="form-group"><label class="form-label" for="bd-date">Date</label><input id="bd-date" class="form-input" type="date" value=${m.date} disabled=${fromCal} onInput=${(e) => set({ date: e.target.value })} /></div>
@@ -637,7 +659,7 @@ function MeetingEditor({ meeting, ctx }) {
         <div class="status-head">
           <div class="status-head__main"><span class=${`dot ${m.snapshot ? 'dot--on' : ''}`} aria-hidden="true"></span><div>
             <h3>${m.snapshot ? `Numbers locked ${shortDate(m.snapshot.at.slice(0, 10))}` : 'Numbers are today’s'}</h3>
-            <p class="status-head__text">${liveLines('cash', numbers)[0] || (data.setup.mercury ? 'No bank balance yet' : 'Mercury isn’t connected (MERCURY_API_TOKEN and MERCURY_RELAY_KEY), so there’s no balance')}${liveLines('projects', numbers)[0] ? ` · ${liveLines('projects', numbers)[0]}` : ''}</p>
+            <p class="status-head__text">${liveLines('cash', numbers)[0] || (numbers?.mercury?.empty ? 'Mercury is empty so far, so no balance' : data.setup.mercury ? 'No balance from Mercury' : 'Mercury isn’t connected (MERCURY_API_TOKEN and MERCURY_RELAY_KEY), so no balance')}${liveLines('projects', numbers)[0] ? ` · ${liveLines('projects', numbers)[0]}` : ''}</p>
           </div></div>
           <div class="status-head__actions"><button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => act('snapshot', { action: 'snapshot', id: m.id }, 'Today’s numbers are locked in')}>${working === 'snapshot' ? 'Locking…' : m.snapshot ? 'Update to today’s numbers' : 'Lock in today’s numbers'}</button></div>
         </div>

@@ -168,7 +168,7 @@ function HomePage({ ctx }) {
             <div class="bp-stat"><div class="bp-stat__value">${n.impact.kids.toLocaleString()}</div><div class="bp-stat__label">children served since 2012</div></div>
             <div class="bp-stat"><div class="bp-stat__value">${n.impact.rooms.toLocaleString()}</div><div class="bp-stat__label">rooms built</div></div>
             ${n.projects ? html`<div class="bp-stat"><div class="bp-stat__value">${(n.projects.building || []).length}</div><div class="bp-stat__label">makeovers in progress</div></div>` : null}
-            ${n.cash ? html`<div class="bp-stat"><div class="bp-stat__value">${money(n.cash.total)}</div><div class="bp-stat__label">in the bank ${n.cash.at ? `(${shortDate(n.cash.at.slice(0, 10))})` : ''}</div></div>` : null}
+            ${n.cash ? html`<div class="bp-stat"><div class="bp-stat__value">${money(n.cash.total)}</div><div class="bp-stat__label">in Mercury ${n.cash.at ? `(${shortDate(n.cash.at.slice(0, 10))})` : ''}</div></div>` : null}
           </div>
         </div>
         <div class="bp-card">
@@ -223,7 +223,7 @@ function Rsvp({ m, ctx }) {
   };
   return html`<div class="bp-rsvp">
     <p>${m.myRsvp ? 'Your answer' : 'Will you be there?'}</p>
-    <div class="bp-chips" role="group" aria-label="Will you be there?">${RSVP.map((r) => html`<button class="bp-btn" aria-pressed=${m.myRsvp === r.id} disabled=${busy} onClick=${() => answer(r.id)}>${r.label}</button>`)}</div>
+    <div class="bp-chips" role="group" aria-label="Will you be there?">${RSVP.map((r) => html`<button class="bp-btn" aria-pressed=${m.myRsvp === r.id} disabled=${busy} onClick=${() => answer(r.id)}>${r.ask}</button>`)}</div>
   </div>`;
 }
 
@@ -319,7 +319,7 @@ function MeetingPage({ id, ctx }) {
       </div>
       <div class="bp-stack">
         ${upcoming && m.id === data.next ? html`<div class="bp-card bp-noprint"><${Rsvp} m=${m} ctx=${ctx} /></div>` : null}
-        ${m.files.length ? html`<div class="bp-card"><h2 class="bp-h2">Files</h2><ul class="bp-list">${m.files.map((f, i) => html`<li><div class="bp-list__main"><a class="bp-list__title" ...${viewerLink(vf, i)}>${f.name}</a><div class="bp-list__meta">${[{ financials: 'Financial statements', packet: 'Packet', agenda: 'Original agenda', minutes: 'Signed minutes' }[f.kind], sizeText(f.size)].filter(Boolean).join(' · ')}</div></div></li>`)}</ul></div>` : null}
+        ${m.files.length ? html`<div class="bp-card"><h2 class="bp-h2">Files</h2><ul class="bp-list">${m.files.map((f, i) => html`<li><div class="bp-list__main"><a class="bp-list__title" ...${viewerLink(vf, i)}>${f.name}</a><div class="bp-list__meta">${[{ financials: 'Financial statements', packet: 'Packet', agenda: 'Agenda', minutes: 'Minutes', signed: 'Signed minutes' }[f.kind], sizeText(f.size)].filter(Boolean).join(' · ')}</div></div></li>`)}</ul></div>` : null}
         ${m.attendance.length && !upcoming ? html`<div class="bp-card"><h2 class="bp-h2">Who was there</h2>
           <p class="bp-people-line">${here.map((p) => `${p.name}${p.status === 'remote' ? ' (by video)' : ''}`).join(', ') || 'Not recorded'}</p>
           ${away.length ? html`<p class="bp-muted">Not there: ${away.map((p) => p.name).join(', ')}</p>` : null}
@@ -350,8 +350,9 @@ function FinancialsPage({ ctx }) {
     <div class="bp-grid">
       <div class="bp-stack">
         <div class="bp-card">
-          <h2 class="bp-h2">Cash in the bank</h2>
-          ${cash ? html`<p class="bp-when" style="margin:0">${money(cash.total)}</p><p class="bp-muted">${cash.accounts.length > 1 ? `${cash.accounts.map((a) => `${a.name} ${money(a.balance)}`).join(' · ')} · ` : ''}from Mercury, ${shortDate(cash.at.slice(0, 10))}</p>` : html`<p class="bp-muted">The balance shows here once the bank is connected.</p>`}
+          <h2 class="bp-h2">Cash</h2>
+          ${cash ? html`<p class="bp-when" style="margin:0">${money(cash.total)} <span class="bp-muted">in Mercury</span></p><p class="bp-muted">${cash.accounts.length > 1 ? `${cash.accounts.map((a) => `${a.name} ${money(a.balance)}`).join(' · ')} · ` : ''}${shortDate(cash.at.slice(0, 10))}</p>`
+            : html`<p class="bp-muted">${data.numbers.mercury?.empty ? 'SOARD’s money isn’t in Mercury yet, so there’s no live balance here. Each meeting’s financial statements, below, have the bank balance.' : 'The bank balance is in each meeting’s financial statements, below.'}</p>`}
           ${f?.cash ? html`<div class="bp-live" style="margin-top:0.9rem">
             <div class="bp-live__label">The next 13 weeks</div>
             <ul>
@@ -421,7 +422,11 @@ function RevealsPage({ ctx }) {
       <div class="bp-stack">
         <div class="bp-card">
           <h2 class="bp-h2">Being built now</h2>
-          ${building.length ? order.filter((st) => building.some((b) => b.status === st)).map((st) => html`<p class="bp-year" style="margin-top:0.75rem">${st}</p><p style="margin:0">${building.filter((b) => b.status === st).map((b, i) => html`${i ? ', ' : ''}${b.slug ? html`<a href=${`/kids/${b.slug}/`} target="_blank" rel="noopener">${b.name}</a>` : b.name}`)}</p>`)
+          ${building.length ? order.filter((st) => building.some((b) => b.status === st)).map((st) => {
+            const named = building.filter((b) => b.status === st && b.name);
+            const more = building.filter((b) => b.status === st && !b.name).length;
+            return html`<p class="bp-year" style="margin-top:0.75rem">${st}</p><p style="margin:0">${named.map((b, i) => html`${i ? ', ' : ''}<a href=${`/kids/${b.slug}/`} target="_blank" rel="noopener">${b.name}</a>`)}${more ? `${named.length ? ' and ' : ''}${more} ${named.length ? 'more' : more === 1 ? 'family' : 'families'}` : ''}</p>`;
+          })
             : html`<p class="bp-muted">${n.projects ? 'No makeovers in progress right now.' : 'The list from JobTread isn’t available right now.'}</p>`}
         </div>
         ${n.events.length ? html`<div class="bp-card"><h2 class="bp-h2">Events</h2><ul class="bp-list">${n.events.map((e) => html`<li key=${e.slug}><div class="bp-list__main"><a class="bp-list__title" href=${e.url} target="_blank" rel="noopener">${e.title}</a><div class="bp-list__meta">${[dayOf(e.date), e.time, e.location].filter(Boolean).join(' · ')}</div></div></li>`)}</ul></div>` : null}

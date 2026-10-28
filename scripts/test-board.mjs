@@ -264,9 +264,9 @@ try {
   const t1 = await text(jane);
   ok(/Minutes of the .* Board Meeting/.test(t1.replace(/\n/g, ' ')) || await jane.evaluate(() => [...document.querySelectorAll('input[aria-label="Item"]')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
   ok(await jane.evaluate(() => document.querySelectorAll('.bd-person').length) === 4, 'the board (3) and the founder are on the list');
-  ok(/\$375,000 in the bank/.test(t1), 'the Financial item shows today’s cash from Mercury');
+  ok(/\$375,000 in Mercury/.test(t1), 'the Financial item shows today’s cash in Mercury');
   ok(/2026 so far \(through \w+\): \$900,000 in, \$850,000 out, net \$50,000/.test(t1), 'and the year so far from Job Costs’ finance summary');
-  ok(/3 makeovers in progress: 2 in Design, 1 in Build/.test(t1) && /Design: Leo, Not Published Yet/.test(t1), 'the projects item shows JobTread’s makeovers, by kid');
+  ok(/3 makeovers in progress: 2 in Design, 1 in Build/.test(t1) && /Design: Leo and 1 more/.test(t1) && !/Not Published Yet/.test(t1), 'the projects item shows JobTread’s makeovers, by published kid only');
 
   // Notes, a private note, confidential, an action, a motion
   const firstNotes = 'textarea[aria-label^="Notes for Governance"]';
@@ -304,7 +304,7 @@ try {
   await clickText(jane, 'button', /^Send it to me$/);
   await waitText(jane, /Sent to/);
   ok(mail.length === 1 && mail[0].to[0] === FOUNDER, 'Send it to me goes only to the founder');
-  ok(!/Insurance renewal|ask counsel|Governance/.test(mail[0].html) && /A confidential item/.test(mail[0].html), 'the email has no notes and hides the confidential item');
+  ok(!/Insurance renewal|ask counsel|Governance/.test(mail[0].html) && /A board-only item/.test(mail[0].html), 'the email has no notes and hides the confidential item');
   await clickText(jane, 'button', /^Email the board$/);
   ok(await waitText(jane, /Emailed to 2 board members/), 'Email the board reaches the two members with emails');
   ok(mail.slice(1).map((m) => m.to[0]).sort().join() === [MEMBER, 'sam.board@example.org'].sort().join(), 'each board member got their own copy');
@@ -385,9 +385,9 @@ try {
     ok(await overflow(alex) <= 0, 'Home: nothing past the right edge');
     await shot(alex, `10-home-${width}`);
     if (width === 1440) {
-      await clickText(alex, 'button', /^Joining by video$/);
+      await clickText(alex, 'button', /^I’ll join by video$/);
       await alex.waitForFunction(() => [...document.querySelectorAll('button[aria-pressed="true"]')].some((b) => b.textContent === 'Joining by video'), { timeout: 5000 }).catch(() => {});
-      ok(await alex.evaluate(() => [...document.querySelectorAll('button[aria-pressed="true"]')].some((b) => b.textContent === 'Joining by video')), 'they answer whether they’re coming');
+      ok(await alex.evaluate(() => [...document.querySelectorAll('button[aria-pressed="true"]')].some((b) => b.textContent === 'I’ll join by video')), 'they answer whether they’re coming');
       await alex.evaluate(() => document.querySelector('.bp-todo input').click());
       await sleep(1200);
     }
@@ -409,7 +409,7 @@ try {
       ok(res === 403, 'the Board area’s API refuses a board member');
     }
 
-    for (const [p, re] of [['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Lowest point: \$210,000[\s\S]*Money in and out[\s\S]*\$900,000[\s\S]*−\$20,000[\s\S]*September’s books are ready to close[\s\S]*Financial statements[\s\S]*Balance-sheet/], ['reveals', /Coming up[\s\S]*Maya[\s\S]*Each reveal comes to alex\.board@example\.com as a calendar invite[\s\S]*Being built now/], ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/], ['documents', /Conflict of interest policy/]]) {
+    for (const [p, re] of [['financials', /Cash[\s\S]*\$375,000 in Mercury[\s\S]*Lowest point: \$210,000[\s\S]*Money in and out[\s\S]*\$900,000[\s\S]*−\$20,000[\s\S]*September’s books are ready to close[\s\S]*Financial statements[\s\S]*Balance-sheet/], ['reveals', /Coming up[\s\S]*Maya[\s\S]*Each reveal comes to alex\.board@example\.com as a calendar invite[\s\S]*Being built now/], ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/], ['documents', /Conflict of interest policy/]]) {
       await alex.goto(`${SITE}/admin/board/#/${p}`, { waitUntil: 'networkidle0' });
       ok(await waitText(alex, re), `${p} shows what it should`);
       ok(await overflow(alex) <= 0, `${p}: nothing past the right edge`);

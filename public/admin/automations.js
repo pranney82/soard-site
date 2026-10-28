@@ -699,6 +699,20 @@ const MAP = { t: 'SOARD', children: [
             if (stale(c.checkedAt, 3 * HOUR)) return ATTN(`Hasn’t looked since ${stamp(c.checkedAt)}. Check the Heartbeat entry.`, c.checkedAt);
             return ON(`${plural(c.found, 'board meeting')} ahead on the calendars.`, c.checkedAt);
           } },
+        { t: 'Board mail → past agendas and QuickBooks reports', s: 'off', k: 'schedule',
+          when: 'Every hour on the live hub’s heartbeat (every 5 minutes while there’s a backlog), and when Board is opened.',
+          does: 'Searches Peter and Holly’s Gmail for board agendas and minutes with attachments, and for QuickBooks’ report emails. A past agenda (PDF or Word) becomes its meeting with its notes and who was there; one for a meeting nobody has written in fills its agenda; every attachment is kept on its meeting (reports as financials). A meeting someone wrote in is never overwritten. The same email in both inboxes is read once. It never sends, deletes, labels or marks anything read.',
+          touches: ['Gmail', 'Workers AI', 'D1', 'R2'], where: 'functions/api/_board-mail.js (via _board.js maybeRunBoard, board-admin.js)',
+          note: 'Needs Google Admin → Security → API controls → Domain-wide delegation: add https://www.googleapis.com/auth/gmail.readonly to the site’s service account. Board → Meetings names the client ID.',
+          live: (f) => {
+            const m = f.board?.mail;
+            if (!m) return null;
+            if (!m.configured) return ATTN('GOOGLE_CALENDAR_KEY is missing.');
+            if (m.needsScope) return ATTN('Google Admin hasn’t allowed Gmail reading yet. Board → Meetings has the client ID and the scope to add.', m.checkedAt);
+            if (m.failing) return ATTN('The last look couldn’t read every inbox. Board → Meetings says why.', m.checkedAt);
+            if (!m.checkedAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            return ON(m.waiting ? `${plural(m.waiting, 'email')} still to read.` : 'Up to date.', m.checkedAt);
+          } },
         { t: 'The packet email', s: 'live', k: 'admin',
           when: 'Peter or Holly presses Email the board on a shared meeting in Board (Send it to me first sends them a preview).',
           does: 'Emails each active board member on their own: when and where, the agenda’s headings and a button to the meeting on the board page. Never notes, numbers or files; a confidential item shows only as “a confidential item”.',
@@ -709,14 +723,15 @@ const MAP = { t: 'SOARD', children: [
             if (!f.env.resend) return ATTN('RESEND_API_KEY is missing, so the packet can’t be emailed.');
             return ON(b?.lastPacketAt ? `Last packet emailed ${stamp(b.lastPacketAt)}.` : 'No packet emailed yet.', b?.lastPacketAt || null);
           } },
-        { t: 'Cash in the bank, month by month', s: 'off', k: 'schedule',
+        { t: 'Cash in Mercury, month by month', s: 'off', k: 'schedule',
           when: 'Once a day on the live hub’s heartbeat.',
-          does: 'Reads Mercury’s checking and savings balances (never moves money) for the board page’s Financials: the latest balance, and one row a month for the history. Locking a meeting’s numbers keeps that day’s balance with its packet.',
+          does: 'Reads Mercury’s checking and savings balances (never moves money) for the board page’s Financials: the latest balance, and one row a month for the history, both only once Mercury holds money. SOARD’s money was at Chase when Mercury was opened (October 2026), so an empty Mercury shows nothing rather than $0. Locking a meeting’s numbers keeps that day’s balance with its packet.',
           touches: ['Mercury', 'D1'], where: 'functions/api/_board.js (cashNow, maybeRunBoard) · _mercury.js (through the relay)',
           live: (f) => {
             const b = f.board;
             if (!b || b.error) return null;
             if (!b.cash.mercury) return ATTN('Not connected yet: the board page needs MERCURY_API_TOKEN and MERCURY_RELAY_KEY (Mercury answers only through SOARD’s relay) in Cloudflare.');
+            if (b.cash.empty && b.cash.readAt) return ON('Read through the relay. Mercury’s accounts are empty so far, so the board page shows no balance yet.', b.cash.readAt);
             if (!b.cash.lastAt) return ATTN('Hasn’t read Mercury yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
             if (stale(b.cash.lastAt, 30 * HOUR)) return ATTN(`Hasn’t read Mercury since ${stamp(b.cash.lastAt)}. Check the Heartbeat entry.`, b.cash.lastAt);
             return ON(`${plural(b.cash.months, 'month')} of history.`, b.cash.lastAt);

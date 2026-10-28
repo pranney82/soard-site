@@ -27,7 +27,7 @@
  */
 
 import {
-  cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, emailOutline,
+  cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, emailOutline, parseAgendaText,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS,
 } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
@@ -39,6 +39,7 @@ import { emailShell, button, esc, facts } from './_email-shell.js';
 import { sniffType } from './upload-file.js';
 import { maybeSyncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
+import { maybeReadBoardMail, mailStatus } from './_board-mail.js';
 import { mercury } from './_mercury.js';
 
 export const SITE = 'https://sunshineonaranneyday.com';
@@ -195,6 +196,7 @@ export async function saveMeeting(DB, raw, { by, base = null } = {}) {
     snapshot: current?.snapshot || null,
     packetSentAt: current?.packetSentAt || '',
     packetSentTo: current?.packetSentTo || 0,
+    minutesSentAt: current?.minutesSentAt || '',
     approvedOn: m.minutes === 'approved' ? (m.approvedOn || current?.approvedOn || todayEastern()) : '',
     createdAt: current?.createdAt || nowIso(),
     updatedAt: nowIso(),
@@ -377,6 +379,28 @@ export async function deleteFile(env, id) {
   return true;
 }
 
+/**
+ * A stored file read with the agenda rules (minutes uploaded after the
+ * meeting, an old agenda): Word read here, a PDF through Workers AI.
+ * → { sections, attendance, date, start, end, location, unmatched } or null when it can't be read
+ */
+export async function readFileAsAgenda(env, id) {
+  const row = await env.DB.prepare('SELECT * FROM board_files WHERE id = ?').bind(id).first();
+  if (!row) throw Object.assign(new Error('That file is gone'), { status: 404 });
+  const obj = await boardFiles(env)?.get(row.r2_key);
+  if (!obj) throw Object.assign(new Error('That file is gone'), { status: 404 });
+  const bytes = new Uint8Array(await new Response(obj.body).arrayBuffer());
+  const { fileText } = await import('./_board-mail.js');
+  const text = await fileText(env, { name: row.name, bytes });
+  if (!text) return null;
+  const people = await roster(env.DB);
+  const parsed = parseAgendaText(text, [
+    ...people.board.map((p) => ({ slug: p.slug, name: p.name, org: p.organization, kind: 'board' })),
+    ...people.staff.map((p) => ({ slug: p.slug, name: p.name, org: 'SOARD', kind: 'staff' })),
+  ]);
+  return parsed.sections.some((s) => s.items.length) ? parsed : null;
+}
+
 /** The file's row if this person may open it: admins any; a member only a shared meeting's or document's, never staff-only */
 export async function fileFor(DB, id, { admin = false } = {}) {
   await ensureSchema(DB);
@@ -404,7 +428,7 @@ export async function cashNow(env, { fetchImpl = fetch } = {}) {
 /** The balance at the end of each month the heartbeat saw (last 24), newest first */
 export async function cashHistory(DB) {
   await ensureSchema(DB);
-  return ((await DB.prepare('SELECT month, total, at FROM board_cash ORDER BY month DESC LIMIT 24').all()).results || []).map((r) => ({ month: r.month, total: r.total, at: r.at }));
+  return ((await DB.prepare('SELECT month, total, at FROM board_cash WHERE total > 0 ORDER BY month DESC LIMIT 24').all()).results || []).map((r) => ({ month: r.month, total: r.total, at: r.at }));
 }
 
 /** Open makeovers by JobTread status, the building ones with their kid → { byStatus, building: [{ name, slug, status }] } (15-minute copy) */
@@ -423,8 +447,8 @@ export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fr
       byStatus[status] = (byStatus[status] || 0) + 1;
       if (BUILDING_STATUSES.has(status)) {
         const kid = matchKid(job.name, kids, job.id);
-        // JobTread names a job "Maya (2026)"; a job no kid page matches shows by that first name
-        building.push({ name: kid?.name || String(job.name || '').replace(/\s*\(\d{4}\)\s*$/, '').replace(/\s+[-–].*$/, '').trim(), slug: kid?.slug || null, status });
+        // By name only with a published kid page: a job's own name in JobTread is internal ("Not Published Yet")
+        building.push({ name: kid?.name || null, slug: kid?.slug || null, status });
       }
     }
     const value = { byStatus, building };
@@ -500,9 +524,13 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     impact(env.DB),
     boardFinanceNow(env, { now }),
   ]);
+  // SOARD's money is at Chase; Mercury is new (Oct 2026). Its balance shows only once there's money in it,
+  // and never as "the bank": an empty Mercury says so instead of reading as $0 cash
+  const funded = !!cash && cash.total > 0;
   return {
     at: new Date(now).toISOString(),
-    cash,
+    cash: funded ? cash : null,
+    mercury: cash ? { empty: !funded, at: cash.at } : null,
     finance,
     projects,
     reveals: (reveals.upcoming || []).map(revealRow),
@@ -583,6 +611,108 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
   return { sent: r.sent, failed: r.failed, errors: r.errors, to: test ? list : undefined };
 }
 
+/** The board approved a meeting's minutes (at a later meeting, on its date) */
+export async function approveMinutes(env, id, { on, by }) {
+  const m = await getMeeting(env.DB, id);
+  if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
+  return saveMeeting(env.DB, { ...m, minutes: 'approved', approvedOn: isDate(on) ? on : todayEastern() }, { by });
+}
+
+/** Board members who haven't said whether they'll come, here or on the calendar invite */
+export async function notAnswered(env, m) {
+  const list = await packetList(env.DB);
+  return list.filter((p) => {
+    const here = m.attendance.find((a) => a.slug === p.slug);
+    const invite = m.calendar?.replies?.[p.slug];
+    return !(here?.rsvp) && !['accepted', 'declined', 'tentative'].includes(invite);
+  });
+}
+
+const boardMail = (env, { to, subject, heading, intro, button: [label, url], note = '', test = false, kind, replyTo }) => sendEmails(env, {
+  to, subject: `${test ? '[Preview] ' : ''}${subject}`,
+  html: emailShell({ eyebrow: 'SOARD Board', preheader: intro, heading, intro: esc(intro), bodyHtml: `<div style="margin:6px 0 14px;">${button(label, url)}</div>${note ? `<p class="muted" style="margin:0;font-size:13px;color:#5A5B61;">${esc(note)}</p>` : ''}`, footerHtml: 'You’re getting this as a member of the Sunshine on a Ranney Day Board of Directors.' }),
+  text: `${heading}\n${intro}\n${label}: ${url}`,
+  from: EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board '), tags: [{ name: 'kind', value: test ? `${kind}-preview` : kind }], replyTo,
+});
+
+/** Ask the board members who haven't answered whether they'll come (test: only `to`) */
+export async function remindRsvp(env, id, { to = null, replyTo = [] } = {}) {
+  const m = await getMeeting(env.DB, id);
+  if (!m?.shared) throw Object.assign(new Error('Share the meeting with the board first, so the button has something to open'), { status: 409 });
+  const who = Array.isArray(to) ? to : (await notAnswered(env, m)).map((p) => p.email);
+  if (!who.length) throw Object.assign(new Error('Everyone has answered'), { status: 409 });
+  const when = [longDate(m.date), timeRange(m.start, m.end)].filter(Boolean).join(', ');
+  const r = await boardMail(env, { to: who, subject: `Will you be at the ${meetingName(m)}?`, heading: `Will you be at the ${meetingName(m)}?`, intro: `${when}${m.location ? ` · ${m.location}` : ''}`, button: ['Answer on the board page', `${SITE}${BOARD_PAGE}#/meetings/${m.id}`], note: 'One tap: coming, by video, or can’t make it. Sign in with this email address.', test: Array.isArray(to), kind: 'board-reminder', replyTo });
+  return { sent: r.sent, failed: r.failed, errors: r.errors, to: Array.isArray(to) ? to : undefined };
+}
+
+/** Tell the board the minutes are on the board page (test: only `to`) */
+export async function sendMinutesNotice(env, id, { to = null, replyTo = [] } = {}) {
+  const m = await getMeeting(env.DB, id);
+  if (!m?.shared) throw Object.assign(new Error('Share the minutes with the board first'), { status: 409 });
+  const list = Array.isArray(to) ? to : (await packetList(env.DB)).map((p) => p.email);
+  if (!list.length) throw Object.assign(new Error('No board member has an email on file (People → Board)'), { status: 409 });
+  const approved = m.minutes === 'approved';
+  const r = await boardMail(env, { to: list, subject: `${approved ? 'Minutes' : 'Draft minutes'}: ${meetingName(m)}`, heading: `The ${approved ? '' : 'draft '}minutes of the ${meetingName(m)} are up`, intro: approved ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}.` : 'The board votes on them at the next meeting. Reply if anything needs correcting.', button: ['Read the minutes', `${SITE}${BOARD_PAGE}#/meetings/${m.id}`], note: 'Sign in with this email address. Notes and files stay on the board page; they are never emailed.', test: Array.isArray(to), kind: 'board-minutes', replyTo });
+  if (!Array.isArray(to) && r.sent) await writeMeeting(env.DB, { ...m, minutesSentAt: nowIso(), updatedAt: m.updatedAt, updatedBy: m.updatedBy });
+  return { sent: r.sent, failed: r.failed, errors: r.errors, to: Array.isArray(to) ? to : undefined };
+}
+
+/** A meeting as a calendar file, for a board member who isn't on its invite */
+export function meetingIcs(m) {
+  const stamp = (d, t) => {
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'shortOffset' }).formatToParts(new Date(`${d}T${t}:00Z`)).find((x) => x.type === 'timeZoneName')?.value || 'GMT-5';
+    const [, sign, hh] = p.match(/GMT([+-])(\d{1,2})/) || [null, '-', '5'];
+    return new Date(Date.parse(`${d}T${t}:00Z`) - (sign === '-' ? -1 : 1) * Number(hh) * 3_600_000).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  };
+  const start = m.start || '08:00';
+  const end = m.end || `${String(Math.min(23, Number(start.slice(0, 2)) + 2)).padStart(2, '0')}${start.slice(2)}`;
+  const esc2 = (s) => String(s).replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\n/g, '\\n');
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Sunshine on a Ranney Day//Board//EN', 'METHOD:PUBLISH', 'BEGIN:VEVENT', `UID:board-${m.id}@sunshineonaranneyday.com`,
+    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}`, `DTSTART:${stamp(m.date, start)}`, `DTEND:${stamp(m.date, end)}`,
+    `SUMMARY:${esc2(`SOARD ${meetingName(m)}`)}`, ...(m.location || m.address ? [`LOCATION:${esc2([m.location, m.address].filter(Boolean).join(', '))}`] : []),
+    `DESCRIPTION:${esc2(`The agenda and packet: ${SITE}${BOARD_PAGE}#/meetings/${m.id}${m.video ? `\nVideo: ${m.video}` : ''}`)}`, `URL:${SITE}${BOARD_PAGE}#/meetings/${m.id}`,
+    'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+}
+
+/** The email that tells a board member their page is ready, and how to sign in */
+export function welcomeEmail({ name = '', email = '', test = false } = {}) {
+  const url = `${SITE}/board`;
+  const first = String(name).split(/\s+/)[0];
+  return {
+    subject: `${test ? '[Preview] ' : ''}Your SOARD board page is ready`,
+    html: emailShell({
+      eyebrow: 'SOARD Board',
+      preheader: 'Meetings, minutes, financials and reveals in one place. Sign in with this email address.',
+      heading: first ? `${first}, your board page is ready` : 'Your board page is ready',
+      intro: 'Everything for the board, in one place: the next meeting and its agenda, past minutes, the financials, upcoming reveals, and the documents to sign.',
+      bodyHtml: `<div style="margin:4px 0 16px;">${button('Open the board page', url)}</div>`
+        + `<p class="ink" style="margin:0 0 10px;font-weight:700;">Signing in takes a minute</p>`
+        + `<ol class="ink" style="margin:0 0 14px 18px;padding:0;"><li style="margin:0 0 6px;">Open <a href="${esc(url)}" style="color:#2B6CB0;">sunshineonaranneyday.com/board</a>.</li>`
+        + `<li style="margin:0 0 6px;">Type ${email ? `<strong>${esc(email)}</strong>` : 'this email address'} and choose Send code.</li>`
+        + '<li style="margin:0 0 6px;">Copy the six-digit code from the email that arrives, and paste it in.</li></ol>'
+        + '<p class="muted" style="margin:0;font-size:13px;color:#5A5B61;">You stay signed in on that device for a week. Bookmark the page, or save it to your phone’s home screen.</p>',
+      footerHtml: 'You’re getting this as a member of the Sunshine on a Ranney Day Board of Directors.',
+    }),
+    text: `Your SOARD board page is ready: ${url}\nSign in with ${email || 'this email address'}: choose Send code, then paste the six-digit code from the email that arrives.`,
+  };
+}
+
+/** Email each active board member (on their own) how to sign in; test: only `to` */
+export async function sendWelcome(env, { to = null, replyTo = [] } = {}) {
+  if (!emailConfigured(env)) throw Object.assign(new Error('Email isn’t set up (RESEND_API_KEY)'), { status: 503 });
+  const people = Array.isArray(to) ? to.map((email) => ({ email, name: '' })) : await packetList(env.DB);
+  if (!people.length) throw Object.assign(new Error('No board member has an email on file (People → Board)'), { status: 409 });
+  let sent = 0; let failed = 0; const errors = [];
+  for (const p of people) {
+    const mail = welcomeEmail({ name: p.name, email: p.email, test: Array.isArray(to) });
+    const r = await sendEmails(env, { to: [p.email], ...mail, from: EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board '), tags: [{ name: 'kind', value: Array.isArray(to) ? 'board-welcome-preview' : 'board-welcome' }], replyTo });
+    sent += r.sent; failed += r.failed; errors.push(...r.errors);
+  }
+  if (!Array.isArray(to) && sent) await writeState(env.DB, 'welcome', { sentAt: nowIso(), sent });
+  return { sent, failed, errors, to: Array.isArray(to) ? to : undefined };
+}
+
 // ─── The board page ─────────────────────────────────────────────────
 
 async function siteDoc(DB, key) {
@@ -605,17 +735,27 @@ export async function portalData(env, { member = null, admin = false, now = Date
   const mine = member?.slug || null;
   // A member's own answers, whether or not they're on that meeting's list yet
   const answers = mine ? Object.fromEntries(((await env.DB.prepare('SELECT meeting_id, answer FROM board_rsvps WHERE slug = ?').bind(mine).all()).results || []).map((r) => [r.meeting_id, r.answer])) : {};
+  // Who to ask: the first of the Board area's admins, by their name on People
+  const contactEmail = settings.admins[0] || '';
+  const contactPerson = people.staff.find((p) => contactEmail.startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`));
   return {
+    contact: contactEmail ? { email: contactEmail, name: contactPerson?.name || contactEmail.split('@')[0] } : null,
     me: member ? { name: member.name, slug: member.slug, title: member.title, email: member.email, admin } : { name: null, slug: null, admin },
     today,
-    meetings: shared.map((m) => ({ ...m, myRsvp: answers[m.id] || '' })),
+    // Their own answer here, else how they answered the calendar invite (which also means it's on their calendar)
+    meetings: shared.map((m) => {
+      const invite = mine ? meetings.find((x) => x.id === m.id)?.calendar?.replies?.[mine] || '' : '';
+      return { ...m, myRsvp: answers[m.id] || '', myInvite: invite, onCalendar: !!invite };
+    }),
     next: nextMeeting(shared, today)?.id || null,
     quorum: settings.quorum,
     actions: openActions(shared).map((a) => ({ ...a, mine: !!mine && a.owner === mine })),
     docs: docs.filter((d) => d.shared).map((d) => ({ ...d, file: d.file && !d.file.staffOnly ? d.file : null, signedByMe: mine ? d.signed[mine] || null : null, signedCount: Object.keys(d.signed).length })),
     numbers,
     cashHistory: history,
-    filings: (filings?.documents || []).map((d) => ({ title: d.title, year: d.year, type: d.type, url: d.url })).filter((d) => /^https:\/\//.test(String(d.url || ''))),
+    // The public copies, through the site's own /files/ route so the page's viewer can open them
+    filings: (filings?.documents || []).map((d) => ({ title: d.title, year: d.year, type: d.type, url: String(d.url || '').replace(/^https:\/\/files\.sunshineonaranneyday\.com\/financials\//, '/files/financials/') }))
+      .filter((d) => /^(https:\/\/|\/files\/financials\/)/.test(d.url)),
     snapshot: snapshot || null,
     people: {
       board: people.board.map(({ email, ...p }) => ({ ...p, email: email || null })),
@@ -637,8 +777,8 @@ export async function memberStatus(DB) {
 /**
  * Every 5 minutes at most: keep Access's board list in step with People → Board
  * (./_board-access.js); every hour, the board meetings on Peter and Holly's
- * calendars (./_board-calendar.js); once a day, the month's bank balance for
- * the board page's history. Never throws.
+ * calendars (./_board-calendar.js) and their board mail (./_board-mail.js);
+ * once a day, the month's bank balance for the board page's history. Never throws.
  */
 export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   try {
@@ -646,6 +786,7 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await ensureSchema(env.DB);
     await maybeSyncBoardAccess(env, { fetchImpl, now });
     await maybeSyncBoardCalendar(env, { fetchImpl, now });
+    await maybeReadBoardMail(env, { fetchImpl, now });
     if (!String(env.MERCURY_API_TOKEN || '').trim()) return;
     const runs = await readState(env.DB, 'runs');
     if (runs.cashAt && now - Date.parse(runs.cashAt) < 20 * 60 * 60 * 1000) return;
@@ -653,6 +794,8 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     const cash = await cashNow(env, { fetchImpl });
     if (!cash) return;
     await writeState(env.DB, 'cash', { at: new Date(now).toISOString(), value: cash });
+    // Months with nothing in Mercury aren't history (its accounts were opened before the money moved)
+    if (!(cash.total > 0)) { await env.DB.prepare('DELETE FROM board_cash WHERE total <= 0').run(); return; }
     await env.DB.prepare('INSERT OR REPLACE INTO board_cash (month, total, accounts, at) VALUES (?, ?, ?, ?)')
       .bind(todayEastern(now).slice(0, 7), cash.total, JSON.stringify(cash.accounts), new Date(now).toISOString()).run();
   } catch (err) {
@@ -666,16 +809,18 @@ export { LIMITS };
 export async function boardFacts(env) {
   const { accessStatus } = await import('./_board-access.js');
   await ensureSchema(env.DB);
-  const [a, cash, packet, cal] = await Promise.all([
+  const [a, cash, packet, cal, mail] = await Promise.all([
     accessStatus(env),
-    env.DB.prepare('SELECT count(*) AS n, max(at) AS last FROM board_cash').first(),
+    env.DB.prepare('SELECT count(*) AS n, max(at) AS last FROM board_cash WHERE total > 0').first(),
     env.DB.prepare('SELECT data FROM board_meetings').all().then((r) => (r.results || []).map((x) => parse(x.data).packetSentAt).filter(Boolean).sort().at(-1) || null),
     calendarStatus(env.DB),
+    mailStatus(env.DB),
   ]);
   return {
     access: { configured: a.configured, ok: !!a.ok, attached: !!a.attached, current: !!a.current, emails: a.emails, missing: (a.missing || []).length, syncedAt: a.syncedAt || null, error: a.error ? String(a.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null },
-    cash: { mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), months: cash?.n || 0, lastAt: cash?.last || null },
+    cash: { mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), months: cash?.n || 0, lastAt: cash?.last || null, empty: !((await readState(env.DB, 'cash')).value?.total > 0), readAt: (await readState(env.DB, 'cash')).at || null },
     lastPacketAt: packet,
     calendar: { configured: Boolean(env.GOOGLE_CALENDAR_KEY), ok: !!cal.ok, checkedAt: cal.checkedAt || null, found: cal.found || 0, failing: (cal.errors || []).length },
+    mail: { configured: Boolean(env.GOOGLE_CALENDAR_KEY), ok: !!mail.ok, needsScope: !!mail.needsScope, checkedAt: mail.checkedAt || null, waiting: mail.waiting || 0, failing: (mail.errors || []).length },
   };
 }

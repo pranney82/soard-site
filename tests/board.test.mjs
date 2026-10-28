@@ -282,7 +282,7 @@ test('the packet email has the agenda’s headings only: no notes, no confidenti
   const { meeting } = await sharedMeetingWithFiles();
   const mail = packetEmail(await getMeeting(env.DB, meeting.id));
   assert.doesNotMatch(mail.html, /Insurance is looking|Ask counsel|Legal update/);
-  assert.match(mail.html, /A confidential item \(on the board page\)/);
+  assert.match(mail.html, /A board-only item \(on the board page\)/);
   assert.match(mail.html, new RegExp(`/admin/board/#/meetings/${meeting.id}`));
 
   const test = await adminApi(FOUNDER, { action: 'send-packet', id: meeting.id, test: true });
@@ -461,8 +461,11 @@ test('which calendar events are board meetings, and their day, time and place in
   assert.deepEqual(eventWhen({ start: { dateTime: '2026-11-19T13:00:00Z' }, end: { dateTime: '2026-11-19T15:00:00Z' } }), { date: '2026-11-19', start: '08:00', end: '10:00' }, 'November is Eastern standard time');
   assert.deepEqual(eventWhen({ start: { dateTime: '2026-08-06T08:00:00-04:00' }, end: { dateTime: '2026-08-06T10:00:00-04:00' } }), { date: '2026-08-06', start: '08:00', end: '10:00' });
   assert.deepEqual(eventWhen({ start: { date: '2026-11-19' }, end: { date: '2026-11-20' } }), { date: '2026-11-19', start: '', end: '' });
-  assert.deepEqual(eventPlace({ location: 'Example Design Group, 100 Example St, Roswell, GA 30075' }), { location: 'Example Design Group', address: '100 Example St, Roswell, GA 30075', video: '' });
-  assert.deepEqual(eventPlace({ location: '100 Example St, Roswell, GA' }), { location: '', address: '100 Example St, Roswell, GA', video: '' });
+  const where = (ev) => { const { said, ...p } = eventPlace(ev); return p; };
+  assert.deepEqual(where({ location: 'Example Design Group, 100 Example St, Roswell, GA 30075' }), { location: 'Example Design Group', address: '100 Example St, Roswell, GA 30075', video: '' });
+  assert.deepEqual(where({ location: '100 Example St, Roswell, GA' }), { location: '', address: '100 Example St, Roswell, GA', video: '' });
+  assert.deepEqual(where({ location: 'TBD', description: '<p>Please join us at</p><p>Example Hall</p><p>4001 Example Dr. Marietta, GA 30068</p><p>Microsoft Teams</p>' }), { location: 'Example Hall', address: '4001 Example Dr. Marietta, GA 30068', video: '' }, 'TBD: the address in the invite’s notes');
+  assert.equal(eventPlace({ location: 'TBD' }).said, 'TBD', 'what the invite says is kept for the admins');
   assert.equal(eventPlace({ location: 'https://zoom.us/j/123' }).video, 'https://zoom.us/j/123');
   assert.equal(eventPlace({ hangoutLink: 'https://meet.google.com/abc-defg-hij' }).video, 'https://meet.google.com/abc-defg-hij');
   assert.equal(eventPlace({ description: 'Join: https://teams.microsoft.com/l/meetup-join/xyz.' }).video, 'https://teams.microsoft.com/l/meetup-join/xyz');
@@ -590,6 +593,178 @@ test('two looks at once add a new event once', async () => {
   assert.equal((await calendarStatus(env.DB)).added, 1);
 });
 
+// ─── Board mail: past agendas, minutes and QuickBooks reports ───────
+
+const { unzip, docxText, dateIn, fileKind, attachmentsOf, readBoardMail, mailLog, MAIL_QUERIES } = await import('../functions/api/_board-mail.js');
+const { deflateRawSync } = await import('node:zlib');
+
+/** A real ZIP (a .docx is one) of { name: text } */
+function zip(files) {
+  const enc = new TextEncoder();
+  const locals = []; const central = []; let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const nameB = enc.encode(name); const raw = enc.encode(text); const data = deflateRawSync(raw);
+    const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(8, 8);
+    lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(raw.length, 22); lh.writeUInt16LE(nameB.length, 26);
+    locals.push(lh, nameB, data);
+    const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(8, 10);
+    ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(raw.length, 24); ch.writeUInt16LE(nameB.length, 28); ch.writeUInt32LE(offset, 42);
+    central.push(ch, nameB);
+    offset += 30 + nameB.length + data.length;
+  }
+  const cd = Buffer.concat(central);
+  const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(Object.keys(files).length, 8); end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+  return new Uint8Array(Buffer.concat([...locals, cd, end]));
+}
+const wp = (text, numId = null, ilvl = 0) => `<w:p>${numId ? `<w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr></w:pPr>` : ''}<w:r><w:t>${text}</w:t></w:r></w:p>`;
+const cell = (t) => `<w:tc><w:p><w:r><w:t>${t}</w:t></w:r></w:p></w:tc>`;
+/** An agenda the way Holly's Word file holds it: Word numbers the lists itself, so no "1." is in the text */
+function agendaDocx(date = '04/30/2026') {
+  const lvls = ['decimal', 'decimal', 'lowerLetter', 'lowerRoman', 'decimal'].map((f, i) => `<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="${f}"/></w:lvl>`).join('');
+  const numbering = `<w:numbering><w:abstractNum w:abstractNumId="0">${lvls}</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
+  const body = [
+    `<w:tbl><w:tr>${cell('MEETING')}${cell('Example Board – Agenda')}${cell('DATE')}${cell(date)}</w:tr><w:tr>${cell('LOCATION')}${cell('Example Hall')}${cell('TIME')}${cell('8:00a - 10:00a')}</w:tr></w:tbl>`,
+    `<w:tbl><w:tr>${cell('x')}${cell('Alex Rivera')}${cell('Rivera Builders')}</w:tr><w:tr>${cell('')}${cell('Kim Park')}${cell('Park Media')}</w:tr></w:tbl>`,
+    wp('CALL TO ORDER', 1, 0), wp('Roll Call', 1, 1), wp('Welcome (Jane)', 1, 1), wp('Video for new members', 1, 2),
+    wp('COMMITTEE REPORTS', 1, 0), wp('Financial (Sam/Alex)', 1, 1), wp('2026 Financials', 1, 2), wp('Cash is healthy', 1, 3), wp('Expenses are down', 1, 4), wp('Budget approved', 1, 3),
+    wp('OPEN FORUM', 1, 0),
+  ].join('');
+  return zip({ 'word/document.xml': `<w:document><w:body>${body}</w:body></w:document>`, 'word/numbering.xml': numbering, '[Content_Types].xml': '<Types/>' });
+}
+
+test('a Word agenda reads the way it prints: its list numbers back, table rows as lines, then the agenda rules', async () => {
+  const text = await docxText(agendaDocx());
+  assert.deepEqual(text.split('\n'), [
+    'MEETING Example Board – Agenda DATE 04/30/2026', 'LOCATION Example Hall TIME 8:00a - 10:00a', 'x Alex Rivera Rivera Builders', 'Kim Park Park Media',
+    '1. CALL TO ORDER', '1. Roll Call', '2. Welcome (Jane)', 'a. Video for new members',
+    '2. COMMITTEE REPORTS', '1. Financial (Sam/Alex)', 'a. 2026 Financials', 'i. Cash is healthy', '1. Expenses are down', 'ii. Budget approved', '3. OPEN FORUM',
+  ]);
+  const people = [{ slug: 'alex-rivera', name: 'Alex Rivera', kind: 'board' }, { slug: 'kim-park', name: 'Kim Park', kind: 'board' }, { slug: 'sam-ortiz', name: 'Sam Ortiz', kind: 'board' }, { slug: 'jane-doe', name: 'Jane Doe', kind: 'staff' }];
+  const parsed = parseAgendaText(text, people);
+  assert.deepEqual([parsed.date, parsed.start, parsed.location], ['2026-04-30', '08:00', 'Example Hall']);
+  assert.deepEqual(parsed.attendance.map((a) => `${a.slug}:${a.status}`), ['alex-rivera:present', 'kim-park:absent']);
+  assert.equal(parsed.sections[1].items[0].notes, '- 2026 Financials\n  - Cash is healthy\n    - Expenses are down\n  - Budget approved');
+  assert.deepEqual(Object.keys(await unzip(agendaDocx(), ['word/numbering.xml'])), ['word/numbering.xml']);
+});
+
+test('dates in subjects and file names, and what each attachment is', () => {
+  for (const [t, want] of [['Board Agenda 4.30.26.docx', '2026-04-30'], ['SOARD Board – 04/30/2026', '2026-04-30'], ['Minutes April 30, 2026', '2026-04-30'], ['Agenda Nov 5', '2026-11-05'], ['2026-08-06 minutes.pdf', '2026-08-06'], ['Q4 financials v2.3.pdf', '']]) {
+    assert.equal(dateIn(t, 2026), want, t);
+  }
+  assert.equal(fileKind('Board Agenda 4.30.26.docx'), 'agenda');
+  assert.equal(fileKind('Q3 Minutes.pdf'), 'agenda');
+  assert.equal(fileKind('Profit and Loss.pdf'), 'financials');
+  assert.equal(fileKind('Balance Sheet Sept.xlsx'), 'financials');
+  assert.equal(fileKind('Gala deck.pptx'), 'other');
+  assert.equal(fileKind('notes.pdf', 'Board agenda for Thursday'), 'agenda', 'the subject names a lone document');
+  const parts = { parts: [
+    { filename: 'image001.png', mimeType: 'image/png', body: { attachmentId: 'i1', size: 900 }, headers: [{ name: 'Content-Disposition', value: 'inline' }] },
+    { filename: 'Agenda.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: { attachmentId: 'a1', size: 9000 } },
+    { mimeType: 'multipart/alternative', parts: [{ filename: 'Logo.pdf', mimeType: 'application/pdf', body: { attachmentId: 'l1', size: 5 }, headers: [{ name: 'Content-Disposition', value: 'inline; filename=Logo.pdf' }] }] },
+  ] };
+  assert.deepEqual(attachmentsOf(parts).map((a) => a.name), ['Agenda.docx'], 'pictures and inline files in a signature stay out');
+});
+
+/** Gmail holding messages per inbox: { [admin]: [{ id, msgid, subject, from, date, files: [{ name, type, bytes }] }] } */
+function fakeGmail(inboxes, { scope = true, pdfText = '' } = {}) {
+  const calls = { lists: [], gets: 0, writes: 0 };
+  const b64url = (bytes) => Buffer.from(bytes).toString('base64url');
+  const byToken = {};
+  answer = async (url, init) => {
+    if (url === 'https://oauth2.googleapis.com/token') {
+      const assertion = new URLSearchParams(String(init.body)).get('assertion');
+      const claims = JSON.parse(Buffer.from(assertion.split('.')[1], 'base64url').toString());
+      if (claims.scope.includes('gmail') && !scope) return Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens using this method' }, { status: 401 });
+      const token = `tok-${claims.sub}-${claims.scope.includes('gmail') ? 'mail' : 'cal'}`;
+      byToken[token] = claims.sub;
+      return Response.json({ access_token: token, expires_in: 3600 });
+    }
+    const who = byToken[String(init.headers?.Authorization || '').replace('Bearer ', '')];
+    const box = inboxes[who] || [];
+    const u = new URL(url);
+    if ((init.method || 'GET') !== 'GET') { calls.writes += 1; throw new Error(`unexpected ${init.method} ${url}`); }
+    if (u.pathname === '/gmail/v1/users/me/messages') { calls.lists.push({ who, q: u.searchParams.get('q') }); return Response.json({ messages: box.filter((m) => (m.quickbooks ? /quickbooks/.test(u.searchParams.get('q')) : /board/.test(u.searchParams.get('q')))).map((m) => ({ id: m.id })) }); }
+    const att = u.pathname.match(/\/messages\/([^/]+)\/attachments\/(.+)$/);
+    if (att) { const m = box.find((x) => x.id === att[1]); return Response.json({ data: b64url(m.files[Number(att[2])].bytes) }); }
+    const get = u.pathname.match(/\/messages\/([^/]+)$/);
+    if (get) {
+      calls.gets += 1;
+      const m = box.find((x) => x.id === get[1]);
+      return Response.json({ id: m.id, internalDate: String(Date.parse(m.date)), payload: { headers: [{ name: 'Subject', value: m.subject }, { name: 'From', value: m.from }, { name: 'Message-ID', value: m.msgid }],
+        parts: m.files.map((f, i) => ({ filename: f.name, mimeType: f.type, body: { attachmentId: String(i), size: f.bytes.length } })) } });
+    }
+    if (url.startsWith('https://www.googleapis.com/calendar/')) return Response.json({ items: [] });
+    throw new Error(`unexpected Google call ${url}`);
+  };
+  env.GOOGLE_CALENDAR_KEY = JSON.stringify({ ...JSON.parse(SERVICE_ACCOUNT), client_id: '1234567890' });
+  env.AI = { toMarkdown: async (doc) => ({ name: doc.name, format: 'text', data: pdfText }) };
+  clearTokenCache();
+  return calls;
+}
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+test('board mail, before Google Admin allows it: Board names the client ID and the scope to add', async () => {
+  fakeGmail({}, { scope: false });
+  const r = await readBoardMail(env);
+  assert.deepEqual([r.ok, r.needsScope, r.clientId], [false, true, '1234567890']);
+  assert.match((await adminApi(FOUNDER)).body.mail.clientId, /^1234567890$/);
+});
+
+test('board mail: a past agenda becomes its meeting; an upcoming one fills the agenda nobody has written; never twice, never over notes', async () => {
+  const soon = new Date(Date.now() + 9 * 86400000).toISOString().slice(0, 10);
+  const upcoming = (await adminApi(FOUNDER, { action: 'new-meeting', date: soon })).body.meeting;
+  const [m, d, y] = [soon.slice(5, 7), soon.slice(8, 10), soon.slice(0, 4)];
+  const inboxes = {
+    [FOUNDER]: [
+      { id: 'g1', msgid: '<a1@mail>', subject: 'SOARD Board agenda and minutes', from: 'Holly <holly@example.org>', date: '2026-05-01T12:00:00Z', files: [{ name: 'Board Agenda 4.30.26.docx', type: DOCX, bytes: agendaDocx() }] },
+      { id: 'g2', msgid: '<a2@mail>', subject: `Board agenda for ${m}/${d}/${y}`, from: 'Holly <holly@example.org>', date: new Date().toISOString(), files: [{ name: 'Agenda.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 fake') }, { name: 'Balance Sheet.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 numbers') }] },
+    ],
+  };
+  const calls = fakeGmail(inboxes, { pdfText: OLD_AGENDA.replace('DATE 02/12/2026', `DATE ${m}/${d}/${y}`) });
+  const r = await readBoardMail(env);
+  assert.equal(r.ok, true);
+  assert.deepEqual(MAIL_QUERIES.map((q) => calls.lists.some((l) => l.q === q)), [true, true], 'both searches run');
+  const all = await listMeetings(env.DB);
+  const past = all.find((x) => x.date === '2026-04-30');
+  assert.ok(past, 'the April agenda became its meeting');
+  assert.equal(past.minutes, 'approved');
+  assert.deepEqual(past.files.map((f) => [f.name, f.kind]), [['Board Agenda 4.30.26.docx', 'agenda']]);
+  const next = all.find((x) => x.id === upcoming.id);
+  assert.deepEqual(next.sections.map((s) => s.title), ['Call to order', 'Committee reports', 'Open forum'], 'the template agenda is replaced by the real one');
+  assert.deepEqual(next.files.map((f) => f.kind).sort(), ['agenda', 'financials']);
+  assert.equal(calls.writes, 0, 'never sends, deletes or labels');
+  // Nothing new: nothing read again
+  const gets = calls.gets;
+  await readBoardMail(env);
+  assert.equal(calls.gets, gets);
+  // The same email in Holly's inbox: read once
+  await adminApi(FOUNDER, { action: 'save-settings', settings: { admins: [FOUNDER, STAFF] } });
+  inboxes[STAFF] = [{ ...inboxes[FOUNDER][1], id: 'h9' }];
+  await readBoardMail(env);
+  assert.equal((await listMeetings(env.DB)).find((x) => x.id === upcoming.id).files.length, 2, 'no copies');
+  // A newer agenda for a meeting someone has written in: kept as a file, the notes left alone
+  const written = await saveMeeting(env.DB, { ...next, sections: next.sections.map((s, i) => (i ? s : { ...s, items: s.items.map((it, j) => (j ? it : { ...it, notes: '- typed in the meeting' })) })) }, { by: FOUNDER });
+  inboxes[FOUNDER].push({ id: 'g3', msgid: '<a3@mail>', subject: `Board agenda v2 ${m}/${d}/${y}`, from: 'Holly', date: new Date().toISOString(), files: [{ name: 'Agenda v2.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 v2') }] });
+  await readBoardMail(env);
+  const after = (await listMeetings(env.DB)).find((x) => x.id === upcoming.id);
+  assert.equal(after.sections[0].items[0].notes, '- typed in the meeting');
+  assert.ok(after.files.some((f) => f.name === 'Agenda v2.pdf'));
+  assert.ok((await mailLog(env.DB)).some((r2) => /already written/.test(r2.result)));
+  assert.ok(written);
+});
+
+test('board mail: a QuickBooks report waits for its meeting, then is filed on it as financials', async () => {
+  const inboxes = { [FOUNDER]: [{ id: 'q1', msgid: '<qb@intuit>', quickbooks: true, subject: 'Report: Profit and Loss', from: 'QuickBooks <quickbooks@notification.intuit.com>', date: new Date().toISOString(), files: [{ name: 'Profit and Loss.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 p&l') }] }] };
+  fakeGmail(inboxes);
+  await readBoardMail(env);
+  assert.match((await mailLog(env.DB))[0].result, /^waiting for a meeting/);
+  const soon = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+  const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: soon })).body.meeting;
+  await readBoardMail(env, { now: Date.now() + 25 * 3600 * 1000 });
+  assert.deepEqual((await getMeeting(env.DB, m.id)).files.map((f) => [f.name, f.kind]), [['Profit and Loss.pdf', 'financials']]);
+});
+
 // ─── The rules ──────────────────────────────────────────────────────
 
 test('a meeting is cleaned to its rules; forBoard drops staff notes; the email outline masks confidential items', () => {
@@ -608,7 +783,7 @@ test('a meeting is cleaned to its rules; forBoard drops staff notes; the email o
   assert.equal(b.sections[0].items[0].staffNote, undefined);
   assert.deepEqual(b.files.map((f) => f.id), ['f_def']);
   assert.equal(forBoard({ ...m, shared: false }), null);
-  assert.deepEqual(emailOutline(m), [{ title: 'Committee reports', items: ['A confidential item (on the board page)', 'Golf'] }]);
+  assert.deepEqual(emailOutline(m), [{ title: 'Committee reports', items: ['A board-only item (on the board page)', 'Golf'] }]);
   assert.deepEqual(noteBlocks('- One\n  - One a\n- Two\nA line'), [
     { text: 'One', children: [{ text: 'One a', children: [] }] }, { text: 'Two', children: [] }, { text: 'A line', para: true, children: [] },
   ]);

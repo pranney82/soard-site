@@ -113,6 +113,8 @@ const BY_TAG = {
   'advisory-application-staff': 'advisory-staff',
   'board-packet': 'board-packet',
   'board-packet-preview': 'preview',
+  'board-welcome': 'board-welcome',
+  'board-welcome-preview': 'preview',
   'admin-preview': 'preview',
   'email-self-test': 'preview',
   'email-test': 'preview',

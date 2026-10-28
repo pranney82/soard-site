@@ -675,6 +675,13 @@ const MAP = { t: 'Everything we send', children: [
           live: needs('resend', NO_RESEND) },
       ]},
       { t: 'From the site', children: [
+        { t: 'Your board page is ready', s: 'live', k: 'email', by: 'staff', preview: 'board-welcome', change: CHANGE.boardArea,
+          who: 'Each active board member with an email on People → Board, on their own.',
+          when: 'Peter or Holly presses Email the board how to sign in, in Board → Members, once board sign-in is set up.',
+          subject: 'Your SOARD board page is ready',
+          does: 'What the board page has, a button to it, and the three steps to sign in with the emailed code.',
+          touches: ['Resend'], where: 'functions/api/_board.js (welcomeEmail, sendWelcome)',
+          live: needs('resend', NO_RESEND) },
         { t: 'Board packet', s: 'live', k: 'email', by: 'staff', preview: 'board-packet', change: CHANGE.boardArea,
           who: 'Each active board member with an email on People → Board, on their own.',
           when: 'Peter or Holly presses Email the board on a shared meeting in Board. Send it to me sends them a preview first.',
