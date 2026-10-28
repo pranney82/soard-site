@@ -17,7 +17,7 @@ import { syncBoardAccess, accessStatus, maybeSyncBoardAccess, GROUP_NAME, POLICY
 import { packetEmail, cashNow, getMeeting, listMeetings, maybeRunBoard, cashHistory, provideBoardFinance, liveNumbers, saveMeeting } from '../functions/api/_board.js';
 import { isBoardMeetingEvent, eventWhen, eventPlace, syncBoardCalendar, calendarStatus } from '../functions/api/_board-calendar.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
-import { maybeRefreshInvites } from '../functions/api/_board-invite.js';
+import { maybeRefreshInvites, maybeCheckInvites, inviteCheck } from '../functions/api/_board-invite.js';
 import { generateKeyPairSync } from 'node:crypto';
 import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines } from '../public/admin/board-shared.js';
 
@@ -468,7 +468,7 @@ test('which calendar events are board meetings, and their day, time and place in
   assert.deepEqual(eventWhen({ start: { dateTime: '2026-11-19T13:00:00Z' }, end: { dateTime: '2026-11-19T15:00:00Z' } }), { date: '2026-11-19', start: '08:00', end: '10:00' }, 'November is Eastern standard time');
   assert.deepEqual(eventWhen({ start: { dateTime: '2026-08-06T08:00:00-04:00' }, end: { dateTime: '2026-08-06T10:00:00-04:00' } }), { date: '2026-08-06', start: '08:00', end: '10:00' });
   assert.deepEqual(eventWhen({ start: { date: '2026-11-19' }, end: { date: '2026-11-20' } }), { date: '2026-11-19', start: '', end: '' });
-  const where = (ev) => { const { said, ...p } = eventPlace(ev); return p; };
+  const where = (ev) => { const { said, callFrom, ...p } = eventPlace(ev); return p; };
   assert.deepEqual(where({ location: 'Example Design Group, 100 Example St, Roswell, GA 30075' }), { location: 'Example Design Group', address: '100 Example St, Roswell, GA 30075', video: '' });
   assert.deepEqual(where({ location: '100 Example St, Roswell, GA' }), { location: '', address: '100 Example St, Roswell, GA', video: '' });
   assert.deepEqual(where({ location: 'TBD', description: '<p>Please join us at</p><p>Example Hall</p><p>4001 Example Dr. Marietta, GA 30068</p><p>Microsoft Teams</p>' }), { location: 'Example Hall', address: '4001 Example Dr. Marietta, GA 30068', video: '' }, 'TBD: the address in the invite’s notes');
@@ -477,6 +477,14 @@ test('which calendar events are board meetings, and their day, time and place in
   assert.equal(eventPlace({ hangoutLink: 'https://meet.google.com/abc-defg-hij' }).video, 'https://meet.google.com/abc-defg-hij');
   assert.equal(eventPlace({ description: 'Join: https://teams.microsoft.com/l/meetup-join/xyz.' }).video, 'https://teams.microsoft.com/l/meetup-join/xyz');
   assert.equal(eventPlace({ description: 'Agenda: https://example.com/doc' }).video, '', 'a link that isn’t a call stays out');
+  // Where the call is, so Board knows what switching to Google Meet changes
+  assert.deepEqual([
+    { hangoutLink: 'https://meet.google.com/abc-defg-hij' },
+    { conferenceData: { entryPoints: [{ entryPointType: 'video', uri: 'https://teams.microsoft.com/l/meetup-join/xyz' }] } },
+    { location: 'https://zoom.us/j/123' },
+    { description: 'Join: https://teams.microsoft.com/meet/123?p=abc' },
+    { location: 'Example Hall' },
+  ].map((e) => eventPlace(e).callFrom), ['meet', 'conference', 'place', 'notes', '']);
 });
 
 test('the calendar makes the meetings: added, moved, linked to one added by hand, and marked when gone; never written to', async () => {
@@ -602,27 +610,42 @@ test('two looks at once add a new event once', async () => {
 
 // ─── The invite: from the president's calendar, with Google Meet ────
 
-/** Google Calendar and Meet that keep what Board writes (events on each calendar, by id); `meetScope: false` is Google Admin not allowing transcripts yet */
-function fakeGoogleWriter({ meetScope = true, events = {} } = {}) {
-  const g = { events, calls: [], transcript: {} };
+/**
+ * Google Calendar and Meet that keep what Board writes (events on each calendar, by id), and refuse what Google refuses.
+ * `meetScope: false` is Google Admin not allowing transcripts yet, `meetApi: false` the Meet REST API turned off,
+ * `keeps: false` a Workspace plan that takes the setting and leaves transcripts off, `pending` a Meet Google is still making.
+ */
+function fakeGoogleWriter({ meetScope = true, meetApi = true, keeps = true, pending = false, events = {} } = {}) {
+  const g = { events, calls: [], transcript: {}, meetScope, meetApi, keeps, pending };
   answer = async (url, init) => {
     const method = init.method || 'GET';
     if (url === 'https://oauth2.googleapis.com/token') {
       const claims = JSON.parse(Buffer.from(new URLSearchParams(String(init.body)).get('assertion').split('.')[1], 'base64url').toString());
-      if (/meetings\.space/.test(claims.scope) && !meetScope) return Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens using this method' }, { status: 401 });
+      if (/meetings\.space/.test(claims.scope) && !g.meetScope) return Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens using this method' }, { status: 401 });
       return Response.json({ access_token: `t-${claims.sub}`, expires_in: 3600 });
     }
     const body = init.body ? JSON.parse(init.body) : null;
     g.calls.push({ method, url, body });
     const meet = url.match(/^https:\/\/meet\.googleapis\.com\/v2\/spaces\/([^?]+)/);
-    if (meet && method === 'GET') return Response.json({ name: `spaces/${meet[1]}-space`, meetingCode: meet[1] });
-    if (meet && method === 'PATCH') { g.transcript[meet[1]] = body.config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration; return Response.json({}); }
+    if (meet && !g.meetApi) return Response.json({ error: { message: 'Google Meet REST API has not been used in project example-project before or it is disabled.' } }, { status: 403 });
+    const config = (code) => ({ artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: g.transcript[code] || 'OFF' } } });
+    if (meet && method === 'GET') return Response.json({ name: `spaces/${meet[1].replace(/-space$/, '')}-space`, meetingCode: meet[1], config: config(meet[1]) });
+    if (meet && method === 'PATCH') { if (g.keeps) g.transcript[meet[1]] = body.config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration; return Response.json({ name: `spaces/${meet[1]}`, config: config(meet[1]) }); }
     const m = url.match(/^https:\/\/www\.googleapis\.com\/calendar\/v3\/calendars\/([^/?]+)\/events(?:\/([^?]+))?(?:\?.*)?$/);
     if (!m) throw new Error(`unexpected Google call ${method} ${url}`);
     const list = (g.events[decodeURIComponent(m[1])] ||= []);
     const id = m[2] && decodeURIComponent(m[2]);
-    const withMeet = (e) => (body?.conferenceData?.createRequest && !e.hangoutLink ? { ...e, hangoutLink: 'https://meet.google.com/abc-defg-hij', conferenceData: { conferenceId: 'abc-defg-hij' } } : e);
+    const made = { hangoutLink: 'https://meet.google.com/abc-defg-hij', conferenceData: { conferenceId: 'abc-defg-hij' } };
+    const withMeet = (e) => (body?.conferenceData?.createRequest && !e.hangoutLink ? { ...e, ...made } : e);
+    // Google refuses an event that ends when (or before) it starts: an all-day one ends the next day
+    const span = body && (body.start || body.end) ? [body.start?.date || body.start?.dateTime, body.end?.date || body.end?.dateTime] : null;
+    if (span && (method === 'POST' || method === 'PATCH') && !(String(span[1]) > String(span[0]))) return Response.json({ error: { message: 'The specified time range is empty.' } }, { status: 400 });
     if (!id && method === 'GET') return Response.json({ items: list });
+    if (!id && method === 'POST' && g.pending && body.conferenceData?.createRequest) {
+      const e = { status: 'confirmed', organizer: { email: decodeURIComponent(m[1]), self: true }, ...body, conferenceData: { createRequest: { status: { statusCode: 'pending' } } } };
+      list.push({ ...e, ...made });
+      return Response.json(e);
+    }
     if (!id && method === 'POST') { const e = withMeet({ status: 'confirmed', iCalUID: `${body.id}@google.com`, organizer: { email: decodeURIComponent(m[1]), self: true }, ...body }); list.push(e); return Response.json(e); }
     const i = list.findIndex((e) => e.id === id);
     if (i < 0) return Response.json({ error: { message: 'Not Found' } }, { status: 404 });
@@ -766,6 +789,124 @@ test('transcripts need Google Admin’s say-so: the invite still goes with Meet,
   delete env.GOOGLE_CALENDAR_KEY;
   const none = await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
   assert.deepEqual([none.status, none.body.error], [500, 'Google Calendar isn’t set up (GOOGLE_CALENDAR_KEY)']);
+});
+
+test('the check proves Calendar, Meet and transcripts without inviting anyone, then stays quiet', async () => {
+  const g = fakeGoogleWriter();
+  const st = await maybeCheckInvites(env);
+  assert.deepEqual([st.ok, st.calendar, st.meet, st.transcript, st.error, st.leftover], [true, 'ok', 'ok', 'on', '', '']);
+  const writes = calWrites(g);
+  assert.deepEqual(writes.map((c) => c.method), ['POST', 'DELETE'], 'made, then deleted');
+  const [post, del] = writes;
+  assert.ok(post.url.startsWith(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(FOUNDER)}/events?`), 'on the organizer’s calendar');
+  assert.match(post.url, /sendUpdates=none$/, 'Google emails nobody');
+  assert.match(del.url, /sendUpdates=none$/);
+  assert.equal(post.body.attendees, undefined, 'no guests');
+  assert.deepEqual([post.body.visibility, post.body.transparency, post.body.reminders], ['private', 'transparent', { useDefault: false, overrides: [] }]);
+  assert.equal(post.body.conferenceData.createRequest.conferenceSolutionKey.type, 'hangoutsMeet');
+  assert.deepEqual(g.transcript, { 'abc-defg-hij-space': 'ON' }, 'transcripts turned on for its Meet, and read back');
+  assert.equal(g.events[FOUNDER].find((e) => e.id === post.body.id).status, 'cancelled', 'gone from the calendar');
+  // Passed: never again, an hour later or a day later
+  g.calls = [];
+  await maybeCheckInvites(env, { now: Date.now() + 2 * 60 * 60 * 1000 });
+  await maybeCheckInvites(env, { now: Date.now() + 26 * 60 * 60 * 1000 });
+  assert.equal(g.calls.length, 0);
+  // What the admin and Site → Automations see: no email address
+  const shown = (await adminApi(FOUNDER)).body.google.check;
+  assert.deepEqual([shown.ok, shown.transcript, shown.organizer, shown.leftover], [true, 'on', undefined, false]);
+  assert.ok(!JSON.stringify(await inviteCheck(env.DB)).includes('@'));
+  // An invite from now on: the board page link in its notes, its Meet's transcripts on
+  const m0 = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(20) })).body.meeting;
+  const m = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...m0, start: '', end: '' }, base: m0.updatedAt })).body.meeting;
+  const r = await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
+  assert.deepEqual([r.status, r.body.meeting.invite.transcript], [200, 'on']);
+  const allDay = calWrites(g).find((c) => c.method === 'POST' && c.body.attendees);
+  assert.deepEqual([allDay.body.start, allDay.body.end], [{ date: inDays(20) }, { date: inDays(21) }], 'an all-day meeting ends the next day, as Google needs');
+});
+
+test('Google Admin allows transcripts after invites went out: the check passes within the hour and turns them on, with no email', async () => {
+  const g = fakeGoogleWriter({ meetScope: false });
+  const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(25) })).body.meeting;
+  assert.equal((await adminApi(FOUNDER, { action: 'send-invite', id: m.id })).body.meeting.invite.transcript, 'needs-setup');
+  g.calls = [];
+  let st = await maybeCheckInvites(env);
+  assert.deepEqual([st.ok, st.calendar, st.meet, st.transcript], [false, 'ok', 'ok', 'needs-setup']);
+  assert.match(st.error, /meetings\.space\.settings/);
+  assert.deepEqual(calWrites(g).map((c) => c.method), ['POST', 'DELETE'], 'the check’s event is deleted even when it fails');
+  const card = (await adminApi(FOUNDER)).body.google.check;
+  assert.deepEqual([card.ok, card.transcript], [false, 'needs-setup'], 'so Board → Meetings shows the steps');
+  // Peter allows it in Google Admin. Not looked at again within the hour; then it passes and the invite already out gets its transcript
+  g.meetScope = true;
+  clearTokenCache();
+  g.calls = [];
+  await maybeCheckInvites(env, { now: Date.now() + 30 * 60 * 1000 });
+  assert.equal(g.calls.length, 0, 'at most hourly');
+  st = await maybeCheckInvites(env, { now: Date.now() + 61 * 60 * 1000 });
+  assert.deepEqual([st.ok, st.transcript], [true, 'on']);
+  assert.equal((await getMeeting(env.DB, m.id)).invite.transcript, 'on');
+  assert.ok(!g.calls.some((c) => c.url.includes('/calendar/v3/') && c.url.includes('sendUpdates=all')), 'the board gets no email for it');
+  // The Meet REST API turned off: needs setup too, in Google's words
+  fakeGoogleWriter({ meetApi: false });
+  await env.DB.prepare('DELETE FROM board_state WHERE key = ?').bind('invite-check').run();
+  st = await maybeCheckInvites(env);
+  assert.deepEqual([st.ok, st.transcript], [false, 'needs-setup']);
+  assert.match(st.error, /Meet REST API has not been used/);
+});
+
+test('a Workspace plan without transcripts: the check says so in plain words, and invites still go with Meet', async () => {
+  const g = fakeGoogleWriter({ keeps: false });
+  const st = await maybeCheckInvites(env);
+  assert.deepEqual([st.ok, st.meet, st.transcript], [false, 'ok', 'error']);
+  assert.match(st.error, /left transcripts off.*plan may not include them/);
+  // No setting fixes that: looked at again a day later, not every hour
+  g.calls = [];
+  await maybeCheckInvites(env, { now: Date.now() + 3 * 60 * 60 * 1000 });
+  assert.equal(g.calls.length, 0, 'not hourly');
+  g.keeps = true;
+  assert.equal((await maybeCheckInvites(env, { now: Date.now() + 25 * 60 * 60 * 1000 })).ok, true, 'a day later, and a new plan shows');
+  g.keeps = false;
+  g.transcript = {}; // the fake gives every event the same Meet
+  const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(22) })).body.meeting;
+  const r = await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
+  assert.deepEqual([r.body.meeting.invite.meet, r.body.meeting.invite.transcript], ['https://meet.google.com/abc-defg-hij', 'error']);
+});
+
+test('a Meet Google is still making: Board asks again for its link before turning transcripts on', async () => {
+  const g = fakeGoogleWriter({ pending: true });
+  const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(23) })).body.meeting;
+  const r = await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
+  assert.deepEqual([r.body.meeting.invite.meet, r.body.meeting.invite.transcript], ['https://meet.google.com/abc-defg-hij', 'on']);
+  assert.ok(g.calls.some((c) => c.method === 'GET' && /\/events\/board[0-9a-f]+$/.test(c.url)), 'asked again');
+});
+
+test('Holly’s invite with a Teams link as its place: Google Meet becomes the call, and the place is the place', async () => {
+  const day = inDays(55);
+  const theirs = ev('hol3', 'Board Meeting', `${day}T22:00:00Z`, `${day}T23:30:00Z`, {
+    location: 'https://teams.microsoft.com/l/meetup-join/xyz', organizer: { email: FOUNDER, self: true }, attendees: [{ email: MEMBER }],
+  });
+  const g = fakeGoogleWriter({ events: { [FOUNDER]: [theirs] } });
+  await syncBoardCalendar(env);
+  let [m] = await listMeetings(env.DB);
+  assert.deepEqual([m.video, m.calendar.callFrom], ['https://teams.microsoft.com/l/meetup-join/xyz', 'place']);
+  g.calls = [];
+  let r = await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
+  let [patch] = calWrites(g);
+  assert.equal(patch.body.location, '', 'no place yet: the Teams link comes off the place');
+  assert.ok(patch.body.conferenceData.createRequest);
+  assert.equal(r.body.meeting.video, 'https://meet.google.com/abc-defg-hij');
+  // With a place typed in, on an event that still has Teams as its place (sent before this fix): the place goes on
+  g.events[FOUNDER][0] = { ...g.events[FOUNDER][0], location: 'https://zoom.us/j/1', hangoutLink: undefined, conferenceData: undefined };
+  m = await saveMeeting(env.DB, { ...r.body.meeting, location: 'Example Hall' }, { by: FOUNDER });
+  g.calls = [];
+  r = await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
+  [patch] = calWrites(g);
+  assert.equal(patch.body.location, 'Example Hall');
+  // A map link as the place is a place, not a call: it stays
+  g.events[FOUNDER][0] = { ...g.events[FOUNDER][0], location: 'https://maps.app.goo.gl/example', hangoutLink: undefined, conferenceData: undefined };
+  g.calls = [];
+  await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
+  [patch] = calWrites(g);
+  assert.equal(patch.body.location, undefined);
 });
 
 // ─── Board mail: past agendas, minutes and QuickBooks reports ───────

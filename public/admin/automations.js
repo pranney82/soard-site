@@ -714,17 +714,19 @@ const MAP = { t: 'SOARD', children: [
             return ON(m.waiting ? `${plural(m.waiting, 'email')} still to read.` : 'Up to date.', m.checkedAt);
           } },
         { t: 'The meeting invite, with Google Meet', s: 'live', k: 'admin',
-          when: 'Peter or Holly presses Send the invite in a meeting’s Getting ready. After that, each minute on the live hub’s heartbeat, once a new place (or, for Board’s own invite, a new day or time) has stood two minutes.',
+          when: 'Peter or Holly presses Send the invite in a meeting’s Getting ready. After that, each minute on the live hub’s heartbeat, once a new place (or, for Board’s own invite, a new day or time) has stood two minutes. The check runs on the heartbeat hourly until it passes.',
           does: 'Puts the meeting on the calendar of Board → Settings → Invites come from (Holly’s, as president, until saved) and Google emails the invitations: every active board member with an email, and the Board area’s admins. Google Meet is the video call, with transcripts turned on; the place goes on when there is one. A meeting already on that calendar gets that same event updated (the missing board members added, Meet and a TBD place filled in), never a second invite.',
           touches: ['Google Calendar', 'Google Meet', 'D1'], where: 'functions/api/_board-invite.js (board-admin.js; _board.js maybeRunBoard)',
-          note: 'Transcripts need https://www.googleapis.com/auth/meetings.space.settings on the service account’s domain-wide delegation and the Google Meet REST API turned on in its Google Cloud project. Board → Meetings shows both steps until they work; the invite and its Meet go out either way.',
+          note: 'Transcripts need https://www.googleapis.com/auth/meetings.space.settings on the service account’s domain-wide delegation and the Google Meet REST API turned on in its Google Cloud project. Board → Meetings shows both steps until they work; the invite and its Meet go out either way. The check proves all of it without inviting anyone: a private event with Meet on the organizer’s calendar (no guests, no emails), transcripts turned on and read back, the event deleted. Once it passes, invites that went out before get their transcripts turned on.',
           live: (f) => {
             const i = f.board?.invite;
             if (!i) return null;
             if (!f.board.calendar?.configured) return ATTN('GOOGLE_CALENDAR_KEY is missing, so invites can’t be sent from Board.');
+            if (i.check && !i.check.ok) return ATTN(i.check.transcript === 'needs-setup' ? 'The check: Google Admin hasn’t allowed transcripts yet. Board → Meetings has the steps.' : `The check didn’t pass: ${i.check.error || 'no answer from Google'}`, i.check.checkedAt);
             if (i.needsSetup) return ATTN(`${plural(i.needsSetup, 'invite')} went out with Google Meet but no transcript yet: Google Admin hasn’t allowed it. Board → Meetings has the steps.`, i.lastAt);
             if (i.failing) return ATTN(`Transcripts couldn’t be turned on for ${plural(i.failing, 'meeting')}. Update the invite in Board to try again.`, i.lastAt);
-            return ON(i.ahead ? `${plural(i.ahead, 'invite')} out for meetings ahead${i.waiting ? `, ${plural(i.waiting, 'change')} going on in a moment` : ''}.` : 'No invites out for meetings ahead.', i.lastAt);
+            const checked = i.check?.ok ? ' Calendar, Meet and transcripts checked.' : '';
+            return ON(`${i.ahead ? `${plural(i.ahead, 'invite')} out for meetings ahead${i.waiting ? `, ${plural(i.waiting, 'change')} going on in a moment` : ''}.` : 'No invites out for meetings ahead.'}${checked}`, i.lastAt || i.check?.checkedAt);
           } },
         { t: 'The packet email', s: 'live', k: 'admin',
           when: 'Peter or Holly presses Email the documents on a shared meeting in Board (Send it to me first sends them a preview). The minutes and the “who’s coming?” reminder go the same way.',

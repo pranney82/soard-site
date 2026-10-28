@@ -23,8 +23,8 @@
 
 import { accessToken, eventIdFor, parseServiceAccount } from './_google-calendar.js';
 import { boardAdmins, activeBoard, peopleRows, readSettings, readState, writeState, normEmail } from './_board-roles.js';
-import { getMeeting, patchMeeting, SITE } from './_board.js';
-import { meetingName, timeRange, longDate } from '../../public/admin/board-shared.js';
+import { getMeeting, listMeetings, patchMeeting, SITE } from './_board.js';
+import { meetingName, timeRange, longDate, todayEastern } from '../../public/admin/board-shared.js';
 
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
 const MEET_API = 'https://meet.googleapis.com/v2';
@@ -64,8 +64,12 @@ const placeOf = (m) => [m.location, m.address].filter(Boolean).join(', ');
 const whenOf = (m) => `${m.date} ${m.start || ''}-${m.end || ''}`;
 const isTbd = (s) => /^(tbd|tba|to be (determined|announced|confirmed))?\.?$/i.test(String(s || '').trim());
 
+const CALL_LINK = /^https:\/\/\S*(zoom\.us|teams\.microsoft|teams\.live|webex)\S*$/i;
+const dayAfter = (date) => new Date(Date.parse(`${date}T12:00:00Z`) + 86400000).toISOString().slice(0, 10);
+
 function times(m) {
-  if (!m.start) return { start: { date: m.date }, end: { date: m.date } };
+  // An all-day event ends the day after (Google refuses one that ends the day it starts)
+  if (!m.start) return { start: { date: m.date }, end: { date: dayAfter(m.date) } };
   const end = m.end || `${String(Math.min(23, Number(m.start.slice(0, 2)) + 2)).padStart(2, '0')}${m.start.slice(2)}`;
   return { start: { dateTime: `${m.date}T${m.start}:00`, timeZone: TZ }, end: { dateTime: `${m.date}T${end}:00`, timeZone: TZ } };
 }
@@ -86,12 +90,26 @@ async function transcriptOn(env, organizer, meetCode, fetchImpl, now) {
   };
   try {
     const space = await call('GET', `/spaces/${encodeURIComponent(meetCode)}`);
-    await call('PATCH', `/${space.name}?updateMask=config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration`, { config: { artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: 'ON' } } } });
+    const done = await call('PATCH', `/${space.name}?updateMask=config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration`, { config: { artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: 'ON' } } } });
+    // What Google kept, read back: an edition without transcripts may take the setting and leave it off
+    const kept = (done?.config ? done : await call('GET', `/${space.name}`))?.config?.artifactConfig?.transcriptionConfig?.autoTranscriptionGeneration;
+    if (kept !== 'ON') return { transcript: 'error', error: `Google Meet left transcripts ${kept ? String(kept).toLowerCase() : 'off'} (SOARD’s Google Workspace plan may not include them)` };
     return { transcript: 'on', error: '' };
   } catch (err) {
     const setup = err.status === 403 && /has not been used|is disabled|insufficient|permission/i.test(err.message);
     return { transcript: setup ? 'needs-setup' : 'error', error: String(err.message).slice(0, 300) };
   }
+}
+
+const meetCodeOf = (ev) => ev?.conferenceData?.conferenceId || (String(ev?.hangoutLink || '').match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/) || [])[1] || '';
+
+/** Google sometimes answers a new Meet as still being made: asked again (three times, a second apart) until it has its link */
+async function meetReady(token, path, ev, fetchImpl) {
+  for (let i = 0; i < 3 && !ev?.hangoutLink && ev?.conferenceData?.createRequest?.status?.statusCode === 'pending'; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    ev = await gcal(token, 'GET', path, null, fetchImpl);
+  }
+  return ev;
 }
 
 /**
@@ -131,20 +149,22 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   const attendees = [...(existing?.attendees || []), ...guests.filter((e) => !have.has(e) && e !== organizer).map((email) => ({ email }))];
   const place = placeOf(m);
   const title = /soard/i.test(meetingName(m)) ? meetingName(m) : `SOARD ${meetingName(m)}`;
+  // A Teams or Zoom link written as the place: Google Meet is the call now, so the place is the place (or nothing)
+  const callAsPlace = !existing?.hangoutLink && CALL_LINK.test(String(existing?.location || '').trim());
   const body = {
     attendees,
-    ...(place && (ours || isTbd(existing?.location)) ? { location: place } : {}),
+    ...(place && (ours || isTbd(existing?.location) || callAsPlace) ? { location: place } : callAsPlace ? { location: '' } : {}),
     ...(existing?.hangoutLink ? {} : { conferenceData: { createRequest: { requestId: `board-${m.id}-${now}`, conferenceSolutionKey: { type: 'hangoutsMeet' } } } }),
     ...(ours ? { summary: title, ...times(m) } : {}),
     ...(!existing?.description ? { description: describe(m) } : {}),
     guestsCanSeeOtherGuests: true,
   };
   // A deleted event keeps its id at Google (as cancelled): it's brought back, never made again
-  const ev = existing
+  const ev = await meetReady(token, `${cal}/${encodeURIComponent(eventId)}`, existing
     ? await gcal(token, 'PATCH', `${cal}/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=all`, existing.status === 'cancelled' ? { status: 'confirmed', ...times(m), summary: title, ...body } : body, fetchImpl)
-    : await gcal(token, 'POST', `${cal}?conferenceDataVersion=1&sendUpdates=all`, { id: eventId, ...times(m), summary: title, ...body }, fetchImpl);
+    : await gcal(token, 'POST', `${cal}?conferenceDataVersion=1&sendUpdates=all`, { id: eventId, ...times(m), summary: title, ...body }, fetchImpl), fetchImpl);
   const meet = ev.hangoutLink || '';
-  const code = ev.conferenceData?.conferenceId || (meet.match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/) || [])[1] || '';
+  const code = meetCodeOf(ev);
   const t = meet && !(prior?.transcript === 'on' && prior.meet === meet) ? await transcriptOn(env, organizer, code, fetchImpl, now) : { transcript: prior?.transcript || '', error: prior?.error || '' };
   const at = new Date(now).toISOString();
   const invite = {
@@ -210,6 +230,108 @@ export async function maybeRefreshInvites(env, { fetchImpl = fetch, now = Date.n
     console.error('[board-invite] refresh', err.message);
     return [];
   }
+}
+
+const CHECK = 'invite-check';
+const CHECK_VERSION = 1;
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+/**
+ * The invite's Google parts, proved without inviting anyone: a private event
+ * on the organizer's calendar with Google Meet (no guests, no emails, no
+ * reminders), transcripts turned on for its Meet and read back, then the
+ * event deleted. → { ok, calendar, meet, transcript ('on' | 'needs-setup' | 'error'), error, leftover }
+ */
+export async function checkInvites(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const organizer = await organizerFor(env.DB);
+  const out = { ok: false, organizer, calendar: '', meet: '', transcript: '', error: '', leftover: '' };
+  if (!organizer) return { ...out, error: 'No one to send invites from: Board → Settings' };
+  let token;
+  try { token = await accessToken(env, organizer, { fetchImpl, now }); } catch (err) { return { ...out, calendar: 'error', error: String(err.message).slice(0, 300) }; }
+  const cal = `/calendars/${encodeURIComponent(organizer)}/events`;
+  const id = eventIdFor('boardcheck', now);
+  const day = todayEastern(now + 86400000);
+  let made = false;
+  try {
+    const ev = await meetReady(token, `${cal}/${id}`, await gcal(token, 'POST', `${cal}?conferenceDataVersion=1&sendUpdates=none`, {
+      id, summary: 'Board invite check (Board deletes this in a moment)',
+      description: 'Board checks it can send board meeting invites with Google Meet and transcripts. Nobody was invited, and Board deletes this event by itself.',
+      start: { dateTime: `${day}T03:00:00`, timeZone: TZ }, end: { dateTime: `${day}T03:15:00`, timeZone: TZ },
+      transparency: 'transparent', visibility: 'private', reminders: { useDefault: false, overrides: [] },
+      conferenceData: { createRequest: { requestId: `board-check-${now}`, conferenceSolutionKey: { type: 'hangoutsMeet' } } },
+    }, fetchImpl), fetchImpl);
+    made = true;
+    out.calendar = 'ok';
+    const code = meetCodeOf(ev);
+    if (!code) return { ...out, meet: 'error', error: 'Google Calendar made the event without a Google Meet' };
+    out.meet = 'ok';
+    const t = await transcriptOn(env, organizer, code, fetchImpl, now);
+    Object.assign(out, { ok: t.transcript === 'on', transcript: t.transcript, error: t.error });
+  } catch (err) {
+    out.calendar ||= 'error';
+    out.error = String(err.message).slice(0, 300);
+  } finally {
+    if (made) {
+      try { await gcal(token, 'DELETE', `${cal}/${id}?sendUpdates=none`, null, fetchImpl); } catch (err) {
+        if (err.status !== 404 && err.status !== 410) out.leftover = id;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The heartbeat: the check above until it passes (hourly while a Google
+ * setting is missing; daily when Google says no for a reason no setting
+ * fixes, like a plan without transcripts), then hourly, transcripts turned on
+ * for any upcoming invite that went out before Google allowed them, so a fix
+ * in Google Admin reaches every invite by itself. → the check's state. Never throws.
+ */
+export async function maybeCheckInvites(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  try {
+    if (!env.DB || !env.GOOGLE_CALENDAR_KEY) return null;
+    const st = await readState(env.DB, CHECK);
+    const fresh = st.version === CHECK_VERSION;
+    const fixable = st.ok || st.transcript === 'needs-setup' || st.calendar === 'error' || st.leftover;
+    if (fresh && now - Date.parse(st.at || 0) < (fixable ? HOUR : DAY)) return st;
+    const at = new Date(now).toISOString();
+    const today = todayEastern(now);
+    const behind = (await listMeetings(env.DB)).filter((m) => m.date >= today && m.invite?.meet && m.invite.transcript !== 'on');
+    let next = { ...st, version: CHECK_VERSION, at };
+    // A check event Google wouldn't delete last time goes first
+    if (st.leftover && st.organizer) {
+      try {
+        const token = await accessToken(env, st.organizer, { fetchImpl, now });
+        await gcal(token, 'DELETE', `/calendars/${encodeURIComponent(st.organizer)}/events/${st.leftover}?sendUpdates=none`, null, fetchImpl);
+        next.leftover = '';
+      } catch (err) { if (err.status === 404 || err.status === 410) next.leftover = ''; }
+    }
+    if (!fresh || !st.ok) {
+      const c = await checkInvites(env, { fetchImpl, now });
+      // A leftover from before stays with its organizer until it's gone
+      next = next.leftover ? { ...next, ...c, organizer: next.organizer, leftover: next.leftover, checkedAt: at } : { ...next, ...c, checkedAt: at };
+    }
+    if (next.ok) {
+      for (const m of behind) {
+        const t = await transcriptOn(env, m.invite.organizer, meetCodeOf({ hangoutLink: m.invite.meet }), fetchImpl, now);
+        await patchMeeting(env.DB, m.id, (cur) => (cur.invite?.meet === m.invite.meet ? { ...cur, invite: { ...cur.invite, ...t } } : cur));
+        // Google stopped allowing it since the check: the check again on the next hour, to say what's missing
+        if (t.transcript === 'needs-setup') next = { ...next, ok: false, transcript: 'needs-setup', error: t.error };
+      }
+    }
+    await writeState(env.DB, CHECK, next);
+    return next;
+  } catch (err) {
+    console.error('[board-invite] check', err.message);
+    return null;
+  }
+}
+
+/** The check, for Board's setup card and Site → Automations (no email addresses) */
+export async function inviteCheck(DB) {
+  const { organizer, leftover, ...st } = await readState(DB, CHECK);
+  return st.version ? { ...st, leftover: !!leftover } : null;
 }
 
 /** Who's on the invite but not the board any more, and who's on the board but not the invite */

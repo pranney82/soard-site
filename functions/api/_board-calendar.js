@@ -34,8 +34,8 @@ import { todayEastern, cleanMeeting } from '../../public/admin/board-shared.js';
 const KEY = 'calendar';
 const EVERY_MS = 60 * 60 * 1000;
 const AHEAD_DAYS = 400;
-// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites)
-const VERSION = 3;
+// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites; 4: where its call link is)
+const VERSION = 4;
 export const CALENDAR_BY = 'the calendar';
 
 const NAMED = /\b(meeting|mtg)\b|\bQ[1-4]\b/i;
@@ -98,16 +98,17 @@ export function addressIn(notes) {
   return null;
 }
 
-/** Where: { location, address, video } from the event's location, its Meet link or a meeting link in its notes */
+/** Where: { location, address, video, callFrom } from the event's location, its Meet link or a meeting link in its notes (callFrom: meet | conference | place | notes) */
 export function eventPlace(ev) {
   const raw = String(ev?.location || '').trim();
   const entry = (ev?.conferenceData?.entryPoints || []).find((p) => p.entryPointType === 'video' && /^https:\/\//.test(p.uri || ''));
   const inText = (s) => (String(s || '').match(URL_RE) || [])[0] || '';
   const looksLikeCall = (u) => /zoom\.us|teams\.microsoft|teams\.live|meet\.google|webex/i.test(u);
   let video = ev?.hangoutLink || entry?.uri || '';
+  let callFrom = ev?.hangoutLink ? 'meet' : video ? 'conference' : '';
   let location = raw;
-  if (URL_RE.test(raw) && raw.match(URL_RE)[0] === raw) { video ||= raw; location = ''; }
-  if (!video) { const u = inText(ev?.description); if (looksLikeCall(u)) video = u; }
+  if (URL_RE.test(raw) && raw.match(URL_RE)[0] === raw) { if (!video) { video = raw; callFrom = 'place'; } location = ''; }
+  if (!video) { const u = inText(ev?.description); if (looksLikeCall(u)) { video = u; callFrom = 'notes'; } }
   // "Crosby Design Group, 123 Main St, Roswell, GA" → the place, then its address
   let address = '';
   const comma = location.indexOf(',');
@@ -119,7 +120,7 @@ export function eventPlace(ev) {
     const found = addressIn(ev?.description);
     if (found) ({ location, address } = found);
   }
-  return { location, address, video: video.replace(/[).,]+$/, ''), said: raw.slice(0, 200) };
+  return { location, address, video: video.replace(/[).,]+$/, ''), callFrom, said: raw.slice(0, 200) };
 }
 
 /**
@@ -219,6 +220,8 @@ async function look(env, { fetchImpl, now }) {
       replies,
       // The organizer's own event, so Board can add guests, the place and Google Meet to it (./_board-invite.js)
       eventId: String(ev.id || ''), organizer: String(ev.organizer?.email || '').toLowerCase(),
+      // Where the organizer's event has its call: a Teams link as its place or in its notes stays there when Board adds Meet
+      callFrom: lead.place.callFrom,
     };
     if (!m) {
       m = await createMeeting(env, { date, by: CALENDAR_BY });

@@ -126,7 +126,8 @@ function CalendarLine({ data }) {
   const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}’s calendars` : `${names[0] || 'your'}’s calendar`;
   if (!data.setup.calendar) return html`<p class="bd-muted" style="margin-top:0.85rem">Add meetings with New meeting. (Board can take them from the calendar once GOOGLE_CALENDAR_KEY is in Cloudflare.)</p>`;
   if (c.errors?.length) return html`<div class="notice notice--warn" style="margin:0.85rem 0 0"><div class="notice__body"><strong>Couldn’t read every calendar.</strong> ${c.errors.join(' · ')}</div></div>`;
-  return html`<p class="bd-muted" style="margin-top:0.85rem">Meetings come from ${who} by themselves: any event named like “Board Meeting”, with its day, time and place. ${c.checkedAt ? `Last looked ${ago(c.checkedAt)}.` : 'Looking for the first time.'}</p>`;
+  const check = data.google?.check;
+  return html`<p class="bd-muted" style="margin-top:0.85rem">Meetings come from ${who} by themselves: any event named like “Board Meeting”, with its day, time and place. ${c.checkedAt ? `Last looked ${ago(c.checkedAt)}.` : 'Looking for the first time.'}${check?.ok ? ` Invites with Google Meet and transcripts work (checked ${ago(check.checkedAt)}).` : ''}</p>`;
 }
 
 /** The one-time Google setup Board needs for email and Meet transcripts, until both work */
@@ -136,7 +137,13 @@ function GoogleSetup({ data }) {
   if (!g) return null;
   const mail = data.mail || {};
   const mailNeeds = mail.needsScope || (mail.errors || []).some((e) => /has not been used|disabled|403/i.test(e));
-  const meetNeeds = data.meetings.some((m) => m.invite?.transcript === 'needs-setup');
+  const check = g.check;
+  const meetNeeds = check?.transcript === 'needs-setup' || data.meetings.some((m) => m.invite?.transcript === 'needs-setup');
+  // Set up, and Google still says no: its words, since no setting here fixes it
+  const broken = check && !check.ok && !meetNeeds && check.error;
+  if (broken && !mailNeeds) {
+    return html`<div class="notice notice--warn"><div class="notice__body"><strong>${check.calendar === 'error' ? 'Board can’t write to the calendar for invites.' : check.meet === 'error' ? 'Google Calendar won’t add Google Meet to invites.' : 'Invites go out with Google Meet, but Google won’t turn transcripts on.'}</strong> Google said: ${check.error} Board checks again every hour.</div></div>`;
+  }
   if (!mailNeeds && !meetNeeds) return null;
   const scopes = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/meetings.space.settings'].join(',');
   const api = (id) => `https://console.cloud.google.com/apis/library/${id}${g.project ? `?project=${encodeURIComponent(g.project)}` : ''}`;
@@ -150,7 +157,7 @@ function GoogleSetup({ data }) {
       <li>In <a class="link" href="https://admin.google.com/ac/owl/domainwidedelegation" target="_blank" rel="noopener">Google Admin → Security → API controls → Domain-wide delegation</a>, find client ID <span class="bd-code">${g.clientId || 'the site’s service account'}</span> (it’s there with the calendar scope). Choose Edit, make its OAuth scopes this line (keep anything else already there, separated by commas), and choose Authorize:
         <div class="bd-inline" style="margin-top:0.4rem"><span class="bd-code">${scopes}</span><button class="btn btn-ghost btn-sm" onClick=${copy}>${copied ? 'Copied' : 'Copy'}</button></div></li>
       <li>In Google Cloud${g.project ? html` (project <span class="bd-code">${g.project}</span>)` : ''}, turn on two APIs: open <a class="link" href=${api('gmail.googleapis.com')} target="_blank" rel="noopener">Gmail API</a> and <a class="link" href=${api('meet.googleapis.com')} target="_blank" rel="noopener">Google Meet REST API</a>, and choose Enable on each.</li>
-      <li>That’s it. Board starts reading email within the hour, and the next “Update the invite” turns transcripts on.</li>
+      <li>That’s it. Within the hour Board starts reading email, checks Google Meet by itself, and turns transcripts on for any invite already out.</li>
     </ol>
   </div>`;
 }

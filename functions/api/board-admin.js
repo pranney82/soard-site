@@ -34,7 +34,7 @@ import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
 import { accessStatus, syncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
-import { sendInvite, noteInviteChange, projectOf } from './_board-invite.js';
+import { sendInvite, noteInviteChange, projectOf, inviteCheck } from './_board-invite.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
@@ -73,11 +73,12 @@ export async function onRequestGet(context) {
       getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB), memberStatus(env.DB), roster(env.DB),
       accessStatus(env), liveNumbers(env), packetList(env.DB), calendarStatus(env.DB),
     ]);
-    const [mail, mailRecent, welcome] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome')]);
+    const [mail, mailRecent, welcome, check] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB)]);
     return Response.json({
       ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome,
-      // For the one-time Google setup: the service account's client ID and its Cloud project (neither is secret)
-      google: env.GOOGLE_CALENDAR_KEY ? { clientId: clientIdOf(env), project: projectOf(env) } : null,
+      // For the one-time Google setup: the service account's client ID and its Cloud project (neither is secret),
+      // and the heartbeat's check that the invite's Calendar, Meet and transcripts work
+      google: env.GOOGLE_CALENDAR_KEY ? { clientId: clientIdOf(env), project: projectOf(env), check } : null,
       people: { board: people.board, staff: people.staff },
       // Mercury answers only through SOARD's relay (_mercury.js), so the balance needs both keys
       setup: { calendar: Boolean(env.GOOGLE_CALENDAR_KEY), mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY) },

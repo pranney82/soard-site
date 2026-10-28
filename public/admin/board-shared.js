@@ -20,7 +20,8 @@
  *   calendar     the calendar event it follows (functions/api/_board-calendar.js):
  *                { uid, others (the same meeting on another admin's calendar), title,
  *                from, link, gone, place, call, said (its place as written),
- *                replies: { slug: accepted | declined | tentative | invited }, eventId, organizer }, or null
+ *                replies: { slug: accepted | declined | tentative | invited }, eventId, organizer,
+ *                callFrom (where its video link is: meet | conference | place | notes) }, or null
  *   invite       the calendar invite Board sent or took over (functions/api/_board-invite.js):
  *                { eventId, organizer, sentAt, updatedAt, meet, guests, transcript, error,
  *                place, when, emails, replies (to Board's own invite, like calendar's) }, or null
@@ -224,6 +225,7 @@ export function cleanMeeting(raw = {}) {
       gone: bool(raw.calendar.gone), place: bool(raw.calendar.place), call: bool(raw.calendar.call), said: one(raw.calendar.said, 200),
       replies: cleanReplies(raw.calendar.replies),
       eventId: /^[\w-]{1,1024}$/.test(String(raw.calendar.eventId || '')) ? raw.calendar.eventId : '', organizer: one(raw.calendar.organizer, 200),
+      callFrom: ['meet', 'conference', 'place', 'notes'].includes(raw.calendar.callFrom) ? raw.calendar.callFrom : '',
     } : null,
     packetSentAt: one(raw.packetSentAt, 40),
     packetSentTo: Number(raw.packetSentTo) > 0 ? Math.round(raw.packetSentTo) : 0,

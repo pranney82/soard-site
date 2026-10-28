@@ -863,7 +863,8 @@ export async function memberStatus(DB) {
  * (./_board-access.js); every hour, the board meetings on Peter and Holly's
  * calendars (./_board-calendar.js) and their board mail (./_board-mail.js);
  * each minute, a new place onto an invite that's out, once it has settled
- * (./_board-invite.js); once a day, the month's bank balance for the board
+ * (./_board-invite.js), and hourly until it passes, the check that Google
+ * Calendar, Meet and transcripts all work for the invite; once a day, the month's bank balance for the board
  * page's history. Never throws.
  */
 export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() } = {}) {
@@ -873,7 +874,9 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await maybeSyncBoardAccess(env, { fetchImpl, now });
     await maybeSyncBoardCalendar(env, { fetchImpl, now });
     await maybeReadBoardMail(env, { fetchImpl, now });
-    await (await import('./_board-invite.js')).maybeRefreshInvites(env, { fetchImpl, now });
+    const invites = await import('./_board-invite.js');
+    await invites.maybeRefreshInvites(env, { fetchImpl, now });
+    await invites.maybeCheckInvites(env, { fetchImpl, now });
     if (!String(env.MERCURY_API_TOKEN || '').trim()) return;
     const runs = await readState(env.DB, 'runs');
     if (runs.cashAt && now - Date.parse(runs.cashAt) < 20 * 60 * 60 * 1000) return;
@@ -896,13 +899,15 @@ export { LIMITS };
 export async function boardFacts(env) {
   const { accessStatus } = await import('./_board-access.js');
   await ensureSchema(env.DB);
-  const [a, cash, stored, cal, mail, pending] = await Promise.all([
+  const { inviteCheck } = await import('./_board-invite.js');
+  const [a, cash, stored, cal, mail, pending, check] = await Promise.all([
     accessStatus(env),
     env.DB.prepare('SELECT count(*) AS n, max(at) AS last FROM board_cash WHERE total > 0').first(),
     env.DB.prepare('SELECT data FROM board_meetings').all().then((r) => (r.results || []).map((x) => parse(x.data))),
     calendarStatus(env.DB),
     mailStatus(env.DB),
     readState(env.DB, 'invite-pending'),
+    inviteCheck(env.DB),
   ]);
   const packet = stored.map((m) => m.packetSentAt).filter(Boolean).sort().at(-1) || null;
   const today = todayEastern();
@@ -914,6 +919,7 @@ export async function boardFacts(env) {
     invite: {
       ahead: invites.length, needsSetup: invites.filter((m) => m.invite.transcript === 'needs-setup').length, failing: invites.filter((m) => m.invite.transcript === 'error').length,
       waiting: Object.keys(pending || {}).length, lastAt: stored.map((m) => m.invite?.updatedAt).filter(Boolean).sort().at(-1) || null,
+      check: check ? { ok: !!check.ok, transcript: check.transcript || '', checkedAt: check.checkedAt || null, error: check.error ? String(check.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null } : null,
     },
     calendar: { configured: Boolean(env.GOOGLE_CALENDAR_KEY), ok: !!cal.ok, checkedAt: cal.checkedAt || null, found: cal.found || 0, failing: (cal.errors || []).length },
     mail: { configured: Boolean(env.GOOGLE_CALENDAR_KEY), ok: !!mail.ok, needsScope: !!mail.needsScope, checkedAt: mail.checkedAt || null, waiting: mail.waiting || 0, failing: (mail.errors || []).length },

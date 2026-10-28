@@ -43,7 +43,7 @@ import * as boardAdmin from '../functions/api/board-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
 import { provideBoardFinance } from '../functions/api/_board.js';
-import { maybeRefreshInvites } from '../functions/api/_board-invite.js';
+import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
 import { generateKeyPairSync } from 'node:crypto';
 
@@ -179,7 +179,9 @@ globalThis.fetch = async (input, init = {}) => {
   const meet = url.match(/^https:\/\/meet\.googleapis\.com\/v2\/spaces\/([^?]+)/);
   if (meet) {
     google.push({ method, url, body: init.body ? JSON.parse(init.body) : null });
-    return Response.json(method === 'GET' ? { name: `spaces/${meet[1]}-space` } : {});
+    const on = google.some((c) => c.method === 'PATCH' && c.url.includes(`/spaces/${meet[1]}?`));
+    const config = { artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: method === 'PATCH' || on ? 'ON' : 'OFF' } } };
+    return Response.json(method === 'GET' ? { name: `spaces/${meet[1]}-space`, config } : { name: `spaces/${meet[1]}`, config });
   }
   const gcal = url.match(/^https:\/\/www\.googleapis\.com\/calendar\/v3\/calendars\/([^/?]+)\/events(?:\/([^?]+))?(?:\?.*)?$/);
   if (gcal) {
@@ -194,6 +196,7 @@ globalThis.fetch = async (input, init = {}) => {
     if (i < 0) return Response.json({ error: { message: 'Not Found' } }, { status: 404 });
     if (method === 'GET') return Response.json(list[i]);
     if (method === 'PATCH') { list[i] = withMeet({ ...list[i], ...body }); return Response.json(list[i]); }
+    if (method === 'DELETE') { list[i] = { ...list[i], status: 'cancelled' }; return new Response(null, { status: 204 }); }
     return Response.json({ error: { message: `unexpected ${method}` } }, { status: 400 });
   }
   if (url === 'https://api.jobtread.com/pave') {
@@ -475,9 +478,13 @@ try {
   // Alex said yes to Board's invite in their calendar
   calendar[FOUNDER][0].attendees = calendar[FOUNDER][0].attendees.map((a) => (a.email === MEMBER ? { ...a, responseStatus: 'accepted' } : a));
   await DB.exec("DELETE FROM board_state WHERE key = 'calendar'");
+  // The heartbeat's check of Calendar, Meet and transcripts (an event with no guests, deleted again)
+  const checked = await maybeCheckInvites(env);
+  ok(checked?.ok && calendar[FOUNDER].some((e) => /^boardcheck/.test(e.id) && e.status === 'cancelled'), 'the invite check passes and deletes its event');
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
   ok(await waitText(jane, /Meetings come from Jane’s calendar by themselves/), 'Meetings says where meetings come from');
+  ok(/Invites with Google Meet and transcripts work \(checked/.test(await text(jane)), 'and that invites with Meet and transcripts work');
   const all = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings);
   ok(all.length === 3, `the event on the calendar is a meeting, and Board’s own invite isn’t a second one (${all.length})`);
   ok(all.find((m) => m.id === meetingId)?.invite?.replies?.['alex-rivera'] === 'accepted', 'the reply to Board’s invite comes back onto its meeting');

@@ -344,6 +344,8 @@ function Packet({ m, set, ctx, act, save, numbers }) {
   const transcript = !inv ? '' : inv.transcript === 'on' ? 'transcript on' : inv.transcript === 'needs-setup' ? 'transcript needs one Google setting (see Meetings)' : inv.transcript === 'error' ? `transcript not set (${inv.error})` : '';
   const placeNow = [m.location, m.address].filter(Boolean).join(', ');
   const where = !inv ? '' : placeNow && placeNow !== inv.place ? 'the new place goes on it a couple of minutes after you stop typing' : inv.place ? `at ${inv.place}` : 'the place goes on it when you add one';
+  // The organizer's event has another call (Teams, Zoom): Google Meet takes its place
+  const otherCall = !inv && m.calendar?.eventId && m.video && !/meet\.google\.com/.test(m.video) ? (/teams\.(microsoft|live)/.test(m.video) ? 'Microsoft Teams' : /zoom\.us/.test(m.video) ? 'Zoom' : /webex/.test(m.video) ? 'Webex' : 'video') : '';
   const docs = m.files.filter((f) => !f.staffOnly);
   const size = docs.reduce((n, f) => n + (f.size || 0), 0);
   return html`<div class="card">
@@ -351,10 +353,11 @@ function Packet({ m, set, ctx, act, save, numbers }) {
     <ol class="bm-steplist">
       <${StepRow} n="1" done=${!!inv && !missing.length} title=${inv ? `Invite sent from ${firstOf(inv.organizer)}’s calendar` : m.calendar?.eventId ? `Finish ${firstOf(from)}’s invite` : 'Send the invite'}
         sub=${inv ? [plural(inv.guests, 'guest'), inv.meet ? 'Google Meet' : '', transcript, where, missing.length ? `${missing.length} not on it yet` : ''].filter(Boolean).join(' · ')
+          : otherCall ? `It’s on ${firstOf(from)}’s calendar with a ${otherCall} call. Board adds every board member, ${youAnd(data.settings.admins, data.me)} and the place, and makes Google Meet the call instead, with transcripts on.${m.calendar.callFrom === 'notes' ? ` The ${otherCall} link in its notes stays until it’s taken out there.` : ''}`
           : m.calendar?.eventId ? `It’s on ${firstOf(from)}’s calendar. Board adds every board member, ${youAnd(data.settings.admins, data.me)}, Google Meet with transcripts on, and the place.`
           : `From ${firstOf(from)}’s calendar to every board member and ${youAnd(data.settings.admins, data.me)}, with Google Meet and transcripts on${m.location ? `, at ${m.location}` : '. Add the place any time: the invite updates'}.`}>
         <button class=${`btn btn-sm ${inv && !missing.length ? 'btn-ghost' : 'btn-primary'}`} disabled=${!!working || !data.setup.calendar || !m.date} onClick=${() => run('invite', { action: 'send-invite', id: m.id }, (j) => `${j.meeting.invite?.guests ? plural(j.meeting.invite.guests, 'guest') : 'The invite'} on ${firstOf(j.meeting.invite?.organizer)}’s calendar`)}>
-          ${working === 'invite' ? 'Sending…' : !inv ? (m.calendar?.eventId ? 'Add everyone and Meet' : 'Send the invite') : missing.length ? `Add the ${missing.length === 1 ? 'one' : missing.length} missing` : 'Update the invite'}</button>
+          ${working === 'invite' ? 'Sending…' : !inv ? (otherCall ? 'Add everyone, switch to Meet' : m.calendar?.eventId ? 'Add everyone and Meet' : 'Send the invite') : missing.length ? `Add the ${missing.length === 1 ? 'one' : missing.length} missing` : 'Update the invite'}</button>
       </${StepRow}>
       <${StepRow} n="2" done=${!!m.snapshot} title=${m.snapshot ? `Numbers locked ${shortDate(m.snapshot.at.slice(0, 10))}` : 'Lock today’s numbers'} sub=${facts || (numbers?.mercury?.empty ? 'Makeovers, reveals and events (Mercury is empty so far)' : 'Makeovers, reveals and events, as of today')}>
         <button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => run('snapshot', { action: 'snapshot', id: m.id }, 'Today’s numbers are locked in')}>${working === 'snapshot' ? 'Locking…' : m.snapshot ? 'Update to today’s' : 'Lock them'}</button>
