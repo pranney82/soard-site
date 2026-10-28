@@ -235,7 +235,7 @@ export async function jobCostFacts(DB) {
     billPay: { at: billRuns.lastAt || null, error: billRuns.error || null, last: billRuns.last || null, mode: billPay.payMode || 'off', approvers: (billPay.approvers || []).length, waiting: waitingBills ?? 0 },
     receipts: cfg.lastRun?.receipts || null,
     odd: odd ?? 0, closeouts: { at: closeouts.lastAt || null, error: closeouts.error || null, historyLeft: closeouts.historyLeft ?? null, closed: closeouts.closed ?? null },
-    finance: { at: fin.lastRunAt || null, backfill: fin.backfill || null, forecast: fin.lastForecast || null, cashLow: !!fin.cashLowOpen, cpaError: fin.cpaError || null, balancesError: fin.balancesError || null },
+    finance: { at: fin.lastRunAt || null, backfill: fin.backfill || null, forecast: fin.lastForecast || null, cashLow: !!fin.cashLowOpen, balancesError: fin.balancesError || null },
     vendors: { at: ven.lastRunAt || null, error: ven.lastError || null, autoW9: !!ven.settings?.autoW9, autoCoi: !!ven.settings?.autoCoi },
   };
 }

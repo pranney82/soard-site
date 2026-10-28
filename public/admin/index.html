@@ -4788,7 +4788,7 @@
       { role: 'news', label: 'Good news', save: 'Post good news here', what: 'Gifts, new applications, a countdown going up, reveals going live, replays and Reels. The channel everyone celebrates in.' },
       { role: 'attention', label: 'Needs attention', save: 'Post alerts here', what: 'Problems during a live reveal (with @here once alerts have a channel of their own, so phones buzz), the go/no-go checks, stuck applications, reveal invites and countdowns. Updates on a problem reply under its first post and show in the channel too, and the first post turns ✅ when it’s fixed.' },
       { role: 'applications', label: 'Makeover applications', save: 'Post applications here', what: 'For the makeover team: new applications, families replying to a message (with Reply, which answers in the same conversation), approvals that make a JobTread job, application problems, the application limit and the waitlist. Without one, these go with good news and alerts above.' },
-      { role: 'finance', label: 'Finance', save: 'Post money alerts here', what: 'Keep this one private, for the people who handle money: budgets passing 80% and 100%, odd charges, bills waiting for approval, vendors missing a W-9 or insurance certificate, a low cash forecast and the month-end close. Money never posts in the channels above: without a Finance channel these stay in Job Costs and Finance.' },
+      { role: 'finance', label: 'Finance', save: 'Post money alerts here', what: 'Keep this one private, for the people who handle money: budgets passing 80% and 100%, odd charges, bills waiting for approval, vendors missing a W-9 or insurance certificate, and a low cash forecast. Money never posts in the channels above: without a Finance channel these stay in Job Costs.' },
     ];
     function BcSlack({ mode, addToast }) {
       const [st, setSt] = useState(null); // slackStatus result; null while checking
@@ -4938,21 +4938,6 @@
       useEffect(load, []);
       if (err) return html`<${LoadErrorCard} error=${`Could not load job costs: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
       return mod ? html`<${mod.JobCosts} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
-    }
-
-    // Finance: the monthly P&L (makeovers, the store, operating), a 13-week cash
-    // forecast and the month-end close, from Mercury; kept in ./finance.js.
-    let financeModule = null;
-    function FinanceLazy(props) {
-      const [mod, setMod] = useState(() => lazyNow(financeModule));
-      const [err, setErr] = useState(null);
-      const load = () => {
-        financeModule ||= lazyKeep(import('./finance.js'));
-        financeModule.then((m) => setMod(m)).catch((e) => { financeModule = null; setErr(e.message); });
-      };
-      useEffect(load, []);
-      if (err) return html`<${LoadErrorCard} error=${`Could not load finance: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
-      return mod ? html`<${mod.Finance} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
     // Vendors: everyone SOARD pays, with W-9s (collected by Mercury), insurance
@@ -21603,7 +21588,6 @@ ${sections || '<p>No one yet.</p>'}
         { id: 'demo-day', label: 'Demo Day', icon: 'demoDay', hash: '#demo-day', meta: 'Calendar invites for the first day of construction' },
         { id: 'broadcast', label: 'Reveals', icon: 'goLive', hash: '#broadcast', meta: 'Live broadcast and invites' },
         { id: 'job-costs', label: 'Job Costs', icon: 'jobCosts', hash: '#job-costs', meta: 'Spending against budgets, bills, close-outs and the budget builder' },
-        { id: 'finance', label: 'Finance', icon: 'finance', hash: '#finance', meta: 'P&L, cash forecast and month-end close, from Mercury' },
         { id: 'vendors', label: 'Vendors', icon: 'vendors', hash: '#vendors', meta: 'W-9s, insurance certificates and 1099s for everyone SOARD pays' },
         // Only the Board area's admins see it (boardAdminGate); its API refuses everyone else
         { id: 'board', label: 'Board', icon: 'board', hash: '#board', meta: 'Meetings, minutes and documents for the board', gate: 'board' },
@@ -21671,7 +21655,6 @@ ${sections || '<p>No one yet.</p>'}
       messages: [() => messagesModule, (p) => { messagesModule = p; }, './messages.js'],
       automations: [() => automationsModule, (p) => { automationsModule = p; }, './automations.js'],
       'job-costs': [() => jobCostsModule, (p) => { jobCostsModule = p; }, './job-costs.js'],
-      finance: [() => financeModule, (p) => { financeModule = p; }, './finance.js'],
       vendors: [() => vendorsModule, (p) => { vendorsModule = p; }, './vendors.js'],
       board: [() => boardModule, (p) => { boardModule = p; }, './board-admin.js'],
     };
@@ -22634,8 +22617,6 @@ ${sections || '<p>No one yet.</p>'}
 
           case 'job-costs':
             return html`<${JobCostsLazy} addToast=${addToast} />`;
-          case 'finance':
-            return html`<${FinanceLazy} addToast=${addToast} />`;
           case 'vendors':
             return html`<${VendorsLazy} addToast=${addToast} />`;
 

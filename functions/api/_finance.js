@@ -1,42 +1,39 @@
 /**
- * Finance: the monthly P&L, a 13-week cash forecast and the month-end close
+ * The board's live money numbers: a monthly P&L and a 13-week cash forecast
  * ===========================================================================
- * Everything here is read from Mercury's own record of the money
+ * Mercury Books is SOARD's source of truth for the books (P&L, close, the
+ * CPA), and Mercury's API can't read Books. So the admin has no Finance
+ * screen; this runs on the heartbeat and only feeds the board portal
+ * (boardFinance), worked out from Mercury's own record of the money
  * (mercury_txns, ./_mercury-txns.js) plus where Job Costs sorted each charge
- * (spend_charges: a makeover, the Sunny & Ranney store, or operating). Nobody
- * has to type numbers in: the admin (Admin → Finance) and the board portal
- * (boardFinance) read the same functions.
+ * (spend_charges: a makeover, the Sunny & Ranney store, or operating).
+ * Nobody types numbers in.
  *
  *   P&L         income and spending per month, in three columns: Makeovers,
  *               Sunny & Ranney store, Operating. Gifts aren't tied to one
  *               makeover, so donations sit under Operating; the Makeovers
  *               column is what the makeovers cost. Spending nobody has
- *               sorted yet is its own line, never hidden.
+ *               sorted yet counts under Operating, never hidden.
  *   Cash        13 weeks ahead from today's Mercury balances. A nonprofit's
- *               cash is lumpy (year-end giving, the gala), so it shows a
+ *               cash is lumpy (year-end giving, the gala), so it keeps a
  *               likely line between a low and a high one, and the low line
- *               is what's checked against the cash floor.
- *   Close       the month that just ended: every charge sorted, receipts in,
- *               categories set, Mercury Books synced, statement out. When it
- *               all passes the Finance channel hears once and the CPA gets
- *               the month's P&L (when an address is saved in Finance → Setup).
+ *               is what's checked against the cash floor (the Finance
+ *               channel hears when it dips under).
  *
- * State: spend_state "finance" (settings, the history backfill, what was
- * already posted) and D1 finance_closes (a closed month's P&L, frozen).
+ * State: spend_state "finance" (the history backfill, the last forecast,
+ * what was already posted).
  */
 
 import { readState, writeState, mercury, mercuryConfigured, listTransactions } from './_mercury.js';
 import { mirrorTransaction, readTxns, ensureTxnSchema } from './_mercury-txns.js';
 import { readConfig, ensureSpendSchema } from './_spend.js';
 import { readLedgers } from './_job-ledger.js';
-import { slackIssue, slackResolved, slackPost, SITE_ORIGIN, EMAIL_FROM, emailConfigured, isEmail } from './_broadcast-notify.js';
+import { slackIssue, slackResolved, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
-import { logSent } from './_email-log.js';
-import { emailShell, esc as escHtml } from './_email-shell.js';
 import { TZ } from './_reveals.js';
 
 export const STATE_KEY = 'finance';
-export const ADMIN_URL = `${SITE_ORIGIN}/admin/#finance`;
+export const BOARD_URL = `${SITE_ORIGIN}/admin/#board`;
 export const COLUMNS = ['job', 'store', 'operating'];
 export const COLUMN_NAMES = { job: 'Makeovers', store: 'Sunny & Ranney store', operating: 'Operating' };
 export const INCOME_KINDS = ['donations', 'store', 'other', 'interest'];
@@ -49,15 +46,6 @@ const BALANCE_EVERY_MS = 60 * MIN;
 const BACKFILL_PAGES_PER_RUN = 4;      // 2,000 transactions a wake-up, so one run stays short
 const DEFAULT_FLOOR_CENTS = 2500000;   // $25,000 until someone sets one
 const FORECAST_WEEKS = 13;
-
-const CLOSES_SCHEMA = `CREATE TABLE IF NOT EXISTS finance_closes (
-  month TEXT PRIMARY KEY, closed_at TEXT NOT NULL, closed_by TEXT, snapshot TEXT NOT NULL)`;
-const _ready = new WeakSet();
-async function ensureFinanceSchema(DB) {
-  if (_ready.has(DB)) return;
-  await DB.prepare(CLOSES_SCHEMA).run();
-  _ready.add(DB);
-}
 
 export const readFinance = (DB) => readState(DB, STATE_KEY);
 export const writeFinance = (DB, patch) => writeState(DB, STATE_KEY, patch);
@@ -265,107 +253,6 @@ async function finishedMakeovers(env, rows, charges, ledgers, names, { year }) {
   }
   const list = [...perJob].filter(([, c]) => c > 0).map(([jobId, cents]) => ({ jobId, name: names[jobId] || 'A makeover', cents }));
   return { from: 'mercury', list };
-}
-
-/**
- * The P&L screen: one month, the same month last year, year to date and
- * last year to the same month. → { month, label, months: [...], periods: {...}, jobs, perMakeover, sources, closed }
- */
-export async function monthReport(env, month, { now = Date.now() } = {}) {
-  const thisYear = Number(month.slice(0, 4));
-  const lastYearMonth = `${thisYear - 1}${month.slice(4)}`;
-  const { to } = monthRange(month);
-  const inputs = await ledgerInputs(env, { from: `${thisYear - 1}-01-01`, to });
-  const { rows, charges, accountBuckets, incomeMap, fin } = inputs;
-  const { names, ledgers } = await jobNames(env, fin);
-  const opts = { charges, accountBuckets, incomeMap };
-  const slice = (from, until) => rows.filter((r) => inRange(r, from, until));
-  const ly = monthRange(lastYearMonth);
-  const periods = {
-    month: pnl(slice(`${month}-01`, to), opts),
-    lastYearMonth: pnl(slice(ly.from, ly.to), opts),
-    ytd: pnl(slice(`${thisYear}-01-01`, to), opts),
-    lastYtd: pnl(slice(`${thisYear - 1}-01-01`, ly.to), opts),
-  };
-  const finished = await finishedMakeovers(env, rows, charges, ledgers, names, { year: thisYear });
-  const perMakeover = finished.list.length
-    ? { count: finished.list.length, averageCents: Math.round(finished.list.reduce((t, j) => t + j.cents, 0) / finished.list.length), from: finished.from, jobs: finished.list.sort((a, b) => b.cents - a.cents) }
-    : null;
-  await ensureFinanceSchema(env.DB);
-  const closedRow = await env.DB.prepare('SELECT month, closed_at, closed_by, snapshot FROM finance_closes WHERE month = ?').bind(month).first();
-  let closed = null;
-  if (closedRow) {
-    try { closed = { at: closedRow.closed_at, by: closedRow.closed_by, snapshot: JSON.parse(closedRow.snapshot) }; } catch { closed = { at: closedRow.closed_at, by: closedRow.closed_by, snapshot: null }; }
-  }
-  // Who sent money in, for the income map (top sources in the last 12 months)
-  const sources = new Map();
-  for (const r of slice(`${addMonths(month, -11)}-01`, to)) {
-    const c = classify(r, { charge: charges.get(r.id) || null, accountBuckets, incomeMap });
-    if (c.type !== 'income' || c.kind === 'interest') continue;
-    const key = sourceKey(r.counterparty);
-    if (!key) continue;
-    const s = sources.get(key) || { key, name: r.counterparty, kind: c.kind, picked: !!incomeMap[key], cents: 0, count: 0 };
-    s.cents += c.cents;
-    s.count++;
-    sources.set(key, s);
-  }
-  return {
-    month,
-    label: monthLabel(month),
-    lastYearMonth,
-    periods,
-    jobNames: Object.fromEntries(periods.month.jobs.concat(periods.ytd.jobs).filter((j) => j.jobId).map((j) => [j.jobId, names[j.jobId] || 'A makeover'])),
-    perMakeover,
-    sources: [...sources.values()].sort((a, b) => b.cents - a.cents).slice(0, 40),
-    closed,
-    history: historyState(fin),
-    now: new Date(now).toISOString(),
-  };
-}
-
-function historyState(fin) {
-  const b = fin.backfill || {};
-  return { since: b.since || null, doneAt: b.doneAt || null, reachedTo: b.reachedTo || null, read: b.read || 0, error: b.error || null };
-}
-
-/** The months a P&L can be shown for: from the history's start to this month, newest first */
-export function monthsAvailable(fin, now) {
-  const last = monthOf(now);
-  const first = (fin.backfill?.since || `${Number(last.slice(0, 4)) - 1}-01-01`).slice(0, 7);
-  const out = [];
-  for (let m = last; m >= first && out.length < 36; m = addMonths(m, -1)) out.push(m);
-  return out;
-}
-
-// ─── CSV for the CPA ────────────────────────────────────────────────
-
-const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-const csvMoney = (cents) => (Number(cents || 0) / 100).toFixed(2);
-
-/** A month's P&L as CSV: the summary by column, then every transaction under it */
-export async function monthCsv(env, month) {
-  const { from, to } = monthRange(month);
-  const { rows, charges, accountBuckets, incomeMap, fin } = await ledgerInputs(env, { from, to });
-  const { names } = await jobNames(env, fin);
-  const p = pnl(rows, { charges, accountBuckets, incomeMap });
-  const lines = [[`SOARD P&L, ${monthLabel(month)}`], [], ['Line', 'Makeovers', 'Sunny & Ranney store', 'Operating', 'Total']];
-  const row = (label, c) => lines.push([label, csvMoney(c.job), csvMoney(c.store), csvMoney(c.operating), csvMoney(c.total)]);
-  lines.push(['INCOME']);
-  p.income.forEach((l) => row(l.label, l.cents));
-  row('Total income', p.incomeTotal);
-  lines.push(['SPENDING']);
-  p.expenses.forEach((l) => row(l.category, l.cents));
-  if (p.unsorted.cents) lines.push([`Not sorted yet (${p.unsorted.count})`, '', '', '', csvMoney(p.unsorted.cents)]);
-  row('Total spending', p.expenseTotal);
-  row('Net', p.net);
-  lines.push([], ['TRANSACTIONS'], ['Date', 'Who', 'Kind', 'Column', 'Job', 'Category', 'Amount', 'Mercury Books', 'Mercury link']);
-  for (const r of rows) {
-    const c = classify(r, { charge: charges.get(r.id) || null, accountBuckets, incomeMap });
-    if (c.type === 'skip') continue;
-    const column = c.type === 'income' ? INCOME_NAMES[c.kind] : c.column ? COLUMN_NAMES[c.column] : 'Not sorted yet';
-    lines.push([whenOf(r), r.counterparty || '', r.kind || '', column, c.jobId ? names[c.jobId] || c.jobId : '', c.type === 'expense' ? c.category : '', csvMoney(r.cents), r.accounting_status || '', r.link || '']);
-  }
-  return lines.map((l) => l.map(csvCell).join(',')).join('\n') + '\n';
 }
 
 // ─── Cash: 13 weeks ahead ───────────────────────────────────────────
@@ -578,7 +465,7 @@ export async function cashAlert(env, f, { now = Date.now() } = {}) {
       icon: '📉', title: 'Cash could dip below the floor',
       lead: `On the cautious line, SOARD's cash reaches ${usd(f.belowFloor.cents)} the week of ${weekName(f.belowFloor.week)}, under the ${usd(f.floorCents)} floor. The likely line's lowest is ${usd(f.lowest.likely.cents)} the week of ${weekName(f.lowest.likely.week)}.`,
       facts: [['Cash today', usd(f.startCents)], ['Owed on the card', usd(f.owedCents)], ['Makeover spending still to come', usd(f.sources.makeoversCents)]],
-      buttons: [{ label: 'Open the forecast', url: `${ADMIN_URL}/cash` }],
+      buttons: [{ label: 'Open the board page', url: BOARD_URL }],
       footer: 'It says so here again once the forecast is back above the floor.',
     });
     const r = await slackIssue(env, 'finance:cash-low', card, { title: 'Cash forecast', kind: 'attention', area: 'finance' }).catch((e) => ({ ok: false, error: e.message }));
@@ -589,202 +476,12 @@ export async function cashAlert(env, f, { now = Date.now() } = {}) {
     await slackResolved(env, 'finance:cash-low', slackCard({
       icon: '✅', title: 'Cash forecast is back above the floor',
       lead: `The cautious line's lowest is now ${usd(f.lowest.low.cents)} (floor ${usd(f.floorCents)}).`,
-      buttons: [{ label: 'Open the forecast', url: `${ADMIN_URL}/cash` }],
+      buttons: [{ label: 'Open the board page', url: BOARD_URL }],
     }), { summary: 'Back above the cash floor' }).catch(() => null);
     await writeFinance(env.DB, { cashLowOpen: null });
     return { resolved: true };
   }
   return null;
-}
-
-// ─── The month-end close ────────────────────────────────────────────
-
-const BOOKS_DONE = new Set(['synced', 'reviewed', 'excluded']);
-
-/** The statement for each Mercury account covering a month → { ok, missing: [names], error } */
-async function statementsFor(env, month) {
-  if (!mercuryConfigured(env)) return { na: true };
-  const { from, to } = monthRange(month);
-  try {
-    const accounts = ((await mercury(env, '/accounts'))?.accounts || []).filter((a) => a.type !== 'external' && a.status !== 'deleted' && a.status !== 'archived');
-    const missing = [];
-    for (const a of accounts) {
-      const r = await mercury(env, `/account/${encodeURIComponent(a.id)}/statements`, { query: { start: from, end: to } });
-      const list = r?.statements || r?.accountStatements || [];
-      const covers = list.some((s) => String(s.endDate || s.end || s.periodEnd || '').slice(0, 7) === month || String(s.startDate || s.start || '').slice(0, 7) === month);
-      if (!covers) missing.push(a.nickname || a.name || 'An account');
-    }
-    return { ok: !missing.length, missing };
-  } catch (e) {
-    return { error: e.message };
-  }
-}
-
-/**
- * The checklist for one month → { month, label, checks: [{ key, label, state, count, detail, link }], ready, closed }
- * state: 'ok' | 'todo' | 'na' (doesn't apply yet) | 'unknown' (couldn't check)
- */
-export async function closeCheck(env, month, { now = Date.now(), statements = true } = {}) {
-  await ensureSpendSchema(env.DB);
-  await ensureFinanceSchema(env.DB);
-  const { from, to } = monthRange(month);
-  const { rows, charges, accountBuckets, incomeMap } = await ledgerInputs(env, { from, to });
-  const live = (c) => c.cents > 0 && !DEAD.has(c.status);
-  const monthCharges = [...charges.values()].filter((c) => { const d = Date.parse(c.created_at || ''); return Number.isFinite(d) && dayOf(d) >= from && dayOf(d) < to && live(c); });
-  const unsorted = monthCharges.filter((c) => !c.bucket && !c.bill_id);
-  const noReceipt = monthCharges.filter((c) => c.bucket === 'job' && !c.has_receipt && !c.bill_id);
-  const counted = rows.filter((r) => classify(r, { charge: charges.get(r.id) || null, accountBuckets, incomeMap }).type !== 'skip');
-  const uncategorized = counted.filter((r) => r.cents < 0 && !r.category_id && !(r.gl && r.gl.length));
-  const withBooks = counted.filter((r) => r.accounting_status);
-  const booksOpen = withBooks.filter((r) => !BOOKS_DONE.has(r.accounting_status));
-  const booksErr = withBooks.filter((r) => r.accounting_status === 'errored');
-  const unpairedBills = ((await env.DB.prepare('SELECT id FROM spend_bills WHERE charge_id IS NULL AND date >= ? AND date < ?').bind(from, to).all().catch(() => ({ results: [] }))).results || []);
-  const st = statements ? await statementsFor(env, month) : { na: true };
-  const jc = `${SITE_ORIGIN}/admin/#job-costs`;
-  const checks = [
-    { key: 'sorted', label: 'Every charge sorted into a makeover, the store or operating', state: unsorted.length ? 'todo' : 'ok', count: unsorted.length, detail: unsorted.length ? `${unsorted.length} charge${unsorted.length === 1 ? '' : 's'} still to sort` : `${monthCharges.length} charges, all sorted`, link: `${jc}/charges` },
-    { key: 'receipts', label: 'Every makeover charge has its receipt or JobTread bill', state: noReceipt.length ? 'todo' : 'ok', count: noReceipt.length, detail: noReceipt.length ? `${noReceipt.length} without a receipt yet` : 'All in', link: `${jc}/charges` },
-    { key: 'categories', label: 'Every payment has a Mercury category', state: !counted.length ? 'na' : uncategorized.length ? 'todo' : 'ok', count: uncategorized.length, detail: uncategorized.length ? `${uncategorized.length} without a category` : counted.length ? 'All categorized' : 'Nothing this month', link: `${ADMIN_URL}/close` },
-    {
-      key: 'books', label: 'Mercury Books has every transaction synced',
-      state: !withBooks.length ? 'na' : booksOpen.length ? 'todo' : 'ok', count: booksOpen.length,
-      detail: !withBooks.length ? 'Mercury Books isn’t connected to the API yet, so this is checked in Mercury' : booksErr.length ? `${booksErr.length} errored in Books, ${booksOpen.length - booksErr.length} still to review` : booksOpen.length ? `${booksOpen.length} still to review in Books` : 'All synced',
-      link: 'https://app.mercury.com/accounting',
-    },
-    { key: 'bills', label: 'Every JobTread bill matched to its Mercury payment', state: unpairedBills.length ? 'todo' : 'ok', count: unpairedBills.length, detail: unpairedBills.length ? `${unpairedBills.length} bill${unpairedBills.length === 1 ? '' : 's'} with no Mercury payment found` : 'All matched', link: jc },
-    {
-      key: 'statement', label: 'Mercury’s statement for the month is out',
-      state: st.na ? 'na' : st.error ? 'unknown' : st.ok ? 'ok' : 'todo', count: st.missing?.length || 0,
-      detail: st.na ? 'Mercury isn’t connected yet' : st.error ? `Couldn’t ask Mercury: ${st.error}` : st.ok ? 'Ready in Mercury' : `Not out yet for ${st.missing.join(', ')}`,
-      link: 'https://app.mercury.com/statements',
-    },
-  ];
-  const closedRow = await env.DB.prepare('SELECT closed_at, closed_by FROM finance_closes WHERE month = ?').bind(month).first();
-  const ended = now >= Date.parse(`${to}T05:00:00Z`);
-  return {
-    month,
-    label: monthLabel(month),
-    ended,
-    checks,
-    ready: ended && checks.every((c) => c.state === 'ok' || c.state === 'na'),
-    closed: closedRow ? { at: closedRow.closed_at, by: closedRow.closed_by } : null,
-  };
-}
-
-/** Last month and up to two earlier months nobody has closed → [closeCheck] */
-export async function openMonths(env, { now = Date.now(), statements = true } = {}) {
-  await ensureFinanceSchema(env.DB);
-  const fin = await readFinance(env.DB);
-  const last = addMonths(monthOf(now), -1);
-  const first = fin.closeFrom || last;
-  const closed = new Set(((await env.DB.prepare('SELECT month FROM finance_closes').all()).results || []).map((r) => r.month));
-  const out = [];
-  for (let m = last; m >= first && out.length < 3; m = addMonths(m, -1)) {
-    if (closed.has(m) && m !== last) continue;
-    out.push(await closeCheck(env, m, { now, statements }));
-  }
-  return out;
-}
-
-/** A person closes a month: its P&L is frozen as it is now */
-export async function closeMonth(env, month, { by = null, now = Date.now() } = {}) {
-  if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('Pick a month');
-  if (month >= monthOf(now)) throw new Error('A month can be closed once it has ended');
-  await ensureFinanceSchema(env.DB);
-  const { from, to } = monthRange(month);
-  const { rows, charges, accountBuckets, incomeMap } = await ledgerInputs(env, { from, to });
-  const snapshot = pnl(rows, { charges, accountBuckets, incomeMap });
-  await env.DB.prepare('INSERT OR REPLACE INTO finance_closes (month, closed_at, closed_by, snapshot) VALUES (?, ?, ?, ?)')
-    .bind(month, new Date(now).toISOString(), by, JSON.stringify(snapshot)).run();
-  return snapshot;
-}
-
-export async function reopenMonth(env, month) {
-  await ensureFinanceSchema(env.DB);
-  await env.DB.prepare('DELETE FROM finance_closes WHERE month = ?').bind(month).run();
-}
-
-/** The close packet: the month's P&L in the email, the CSV attached */
-export async function closeEmail(env, month, { to, preview = false, by = null }) {
-  if (!isEmail(to)) throw new Error('That isn’t an email address');
-  if (!emailConfigured(env)) throw new Error('Email isn’t set up (RESEND_API_KEY)');
-  const { from, to: until } = monthRange(month);
-  const { rows, charges, accountBuckets, incomeMap } = await ledgerInputs(env, { from, to: until });
-  const p = pnl(rows, { charges, accountBuckets, incomeMap });
-  const csv = await monthCsv(env, month);
-  const money = (c) => `$${(c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const cell = 'padding:6px 8px;border-bottom:1px solid #E4E4E0;text-align:right;font-variant-numeric:tabular-nums;';
-  const head = (label) => `<tr><td colspan="5" style="padding:14px 8px 4px;font-weight:700;">${escHtml(label)}</td></tr>`;
-  const line = (label, c, bold = false) => `<tr${bold ? ' style="font-weight:700"' : ''}><td style="${cell}text-align:left;">${escHtml(label)}</td><td style="${cell}">${money(c.job)}</td><td style="${cell}">${money(c.store)}</td><td style="${cell}">${money(c.operating)}</td><td style="${cell}">${money(c.total)}</td></tr>`;
-  const table = `<table role="presentation" width="100%" style="font-size:13px;border-collapse:collapse;" class="ink">
-    <tr><td></td><td style="${cell}font-weight:600;">Makeovers</td><td style="${cell}font-weight:600;">Store</td><td style="${cell}font-weight:600;">Operating</td><td style="${cell}font-weight:600;">Total</td></tr>
-    ${head('Income')}${p.income.map((l) => line(l.label, l.cents)).join('')}${line('Total income', p.incomeTotal, true)}
-    ${head('Spending')}${p.expenses.map((l) => line(l.category, l.cents)).join('')}
-    ${p.unsorted.cents ? line(`Not sorted yet (${p.unsorted.count})`, { job: 0, store: 0, operating: 0, total: p.unsorted.cents }) : ''}
-    ${line('Total spending', p.expenseTotal, true)}${line('Net', p.net, true)}
-  </table>`;
-  const label = monthLabel(month);
-  const subject = `${preview ? 'Preview: ' : ''}SOARD's books for ${label} are ready`;
-  const htmlBody = emailShell({
-    preheader: `${label}: income ${money(p.incomeTotal.total)}, spending ${money(p.expenseTotal.total)}.`,
-    heading: `${label} is ready to close`,
-    intro: `Every charge is sorted, receipts are in and Mercury's statement is out. The P&L is below, and the attached CSV lists each transaction with its column, job and category.`,
-    bodyHtml: table,
-    footerHtml: preview ? 'This is a preview sent only to you. The CPA gets the same email once the month passes every check.' : 'Sent by the SOARD website when the month passed every close check.',
-  });
-  const text = `${label} is ready to close.\n\nIncome ${money(p.incomeTotal.total)}\nSpending ${money(p.expenseTotal.total)}\nNet ${money(p.net.total)}\n\nThe attached CSV has the P&L and every transaction.`;
-  const bytes = new TextEncoder().encode(csv);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  const fin = await readFinance(env.DB);
-  const replyTo = [fin.replyTo, by].find((e) => isEmail(e)) || null;
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: EMAIL_FROM, to: [to], subject, html: htmlBody, text,
-      ...(replyTo ? { reply_to: replyTo } : {}),
-      tags: [{ name: 'type', value: preview ? 'preview' : 'finance-close' }],
-      attachments: [{ filename: `SOARD-PL-${month}.csv`, content: btoa(bin) }],
-    }),
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const d = await res.json().catch(() => ({}));
-  await logSent(env, [{ id: d.id, to, subject }], { tags: [{ name: 'type', value: preview ? 'preview' : 'finance-close' }] });
-  return { sent: true, id: d.id || null };
-}
-
-/** Once per month: the Finance channel hears it's ready, and the CPA gets the packet */
-export async function announceReady(env, check, { now = Date.now() } = {}) {
-  if (!check.ready || check.closed) return null;
-  const fin = await readFinance(env.DB);
-  const posted = { ...(fin.readyPosted || {}) };
-  const sent = { ...(fin.cpaSent || {}) };
-  const out = {};
-  if (!posted[check.month]) {
-    const r = await slackPost(env, slackCard({
-      icon: '📗', title: `${check.label} is ready to close`,
-      lead: 'Every charge is sorted, receipts are in, and Mercury’s statement is out.',
-      facts: check.checks.filter((c) => c.state === 'na').map((c) => [c.label, c.detail]),
-      buttons: [{ label: 'Open the close', url: `${ADMIN_URL}/close` }],
-      footer: isEmail(fin.cpaEmail) ? `The P&L went to ${fin.cpaEmail}.` : 'Add the CPA’s email in Finance → Setup and the P&L goes to them automatically.',
-    }), { kind: 'news', area: 'finance' }).catch((e) => ({ ok: false, error: e.message }));
-    posted[check.month] = new Date(now).toISOString();
-    out.posted = !!r?.ok;
-  }
-  if (isEmail(fin.cpaEmail) && !sent[check.month]) {
-    try {
-      await closeEmail(env, check.month, { to: fin.cpaEmail });
-      sent[check.month] = new Date(now).toISOString();
-      out.emailed = true;
-    } catch (e) {
-      out.emailError = e.message;
-      await writeFinance(env.DB, { cpaError: { at: new Date(now).toISOString(), month: check.month, error: e.message } });
-    }
-  }
-  await writeFinance(env.DB, { readyPosted: posted, cpaSent: sent, ...(out.emailed ? { cpaError: null } : {}) });
-  return out;
 }
 
 // ─── History: read Mercury back to January last year, once ─────────
@@ -810,12 +507,11 @@ export async function backfillStep(env, { now = Date.now(), pages = BACKFILL_PAG
   const done = txns.length < pages * 500 || newest === start;
   await writeFinance(env.DB, {
     backfill: { since, cursor: newest, reachedTo: newest, read: (b.read || 0) + txns.length, doneAt: done ? new Date(now).toISOString() : null, error: null },
-    ...(fin.closeFrom ? {} : { closeFrom: addMonths(monthOf(now), -1) }),
   });
   return { done, read: txns.length };
 }
 
-/** The heartbeat's wake-up: history, balances and forecast, the close. Never throws. */
+/** The heartbeat's wake-up: history, balances and forecast. Never throws. */
 export async function maybeRunFinance(env, { now = Date.now() } = {}) {
   try {
     if (!env.DB) return null;
@@ -830,12 +526,6 @@ export async function maybeRunFinance(env, { now = Date.now() } = {}) {
         await writeFinance(env.DB, { lastForecast: { at: new Date(now).toISOString(), lowest: f.lowest, end: f.end, startCents: f.startCents, belowFloor: f.belowFloor, floorCents: f.floorCents } });
         report.cash = await cashAlert(env, f, { now });
       } catch (e) { report.cashError = e.message; }
-    }
-    // The close: from the 2nd of the month, hourly is plenty
-    if (now - Date.parse(fin.lastCloseAt || 0) > 60 * MIN) {
-      await writeFinance(env.DB, { lastCloseAt: new Date(now).toISOString() });
-      const months = await openMonths(env, { now }).catch(() => []);
-      for (const m of months) if (m.ready) report.ready = await announceReady(env, m, { now }).catch((e) => ({ error: e.message }));
     }
     await writeFinance(env.DB, { lastRun: report });
     return report;
@@ -859,7 +549,6 @@ export async function maybeRunFinance(env, { now = Date.now() } = {}) {
  *   lastYtd: { year: number, through: string, income: number, makeovers: number, store: number, operating: number, net: number },
  *   cash: null | { today: number, lowest: { dollars: number, week: string }, cautiousLowest: { dollars: number, week: string },
  *                  in13Weeks: number, floor: number, belowFloor: boolean },
- *   close: { month: string, label: string, state: 'closed' | 'ready' | 'open', closedAt: string | null },
  *   perMakeover: null | { count: number, average: number },
  * }>}  null when there's no Mercury history yet
  */
@@ -892,14 +581,10 @@ export async function boardFinance(env, { now = Date.now() } = {}) {
       in13Weeks: d(lf.end.likely), floor: d(lf.floorCents), belowFloor: !!lf.belowFloor,
     };
   }
-  const last = addMonths(thisMonth, -1);
-  await ensureFinanceSchema(env.DB);
-  const closedRow = await env.DB.prepare('SELECT closed_at FROM finance_closes WHERE month = ?').bind(last).first();
-  const close = { month: last, label: monthLabel(last), state: closedRow ? 'closed' : fin.readyPosted?.[last] ? 'ready' : 'open', closedAt: closedRow?.closed_at || null };
   const { names, ledgers } = await jobNames(env, fin);
   const finished = await finishedMakeovers(env, rows, charges, ledgers, names, { year });
   const perMakeover = finished.list.length ? { count: finished.list.length, average: d(finished.list.reduce((t, j) => t + j.cents, 0) / finished.list.length) } : null;
-  return { at: new Date(now).toISOString(), months, ytd, lastYtd, cash, close, perMakeover };
+  return { at: new Date(now).toISOString(), months, ytd, lastYtd, cash, perMakeover };
 }
 
 // The board portal reads boardFinance through a hook (Board never imports this file)

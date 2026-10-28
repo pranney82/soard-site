@@ -11,8 +11,8 @@ import { mirrorTransaction, txnRow } from '../functions/api/_mercury-txns.js';
 import { ensureSpendSchema, writeConfig } from '../functions/api/_spend.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import {
-  classify, pnl, forecast, incomeKind, weekStart, monthReport, monthCsv, closeCheck, closeMonth, reopenMonth, maybeRunFinance,
-  boardFinance, readFinance, writeFinance, cashForecast, addMonths, monthsAvailable,
+  classify, pnl, forecast, incomeKind, weekStart, maybeRunFinance,
+  boardFinance, readFinance, writeFinance, cashForecast, addMonths,
 } from '../functions/api/_finance.js';
 
 const RELAY_KEY = 'relay-key:test';
@@ -149,64 +149,6 @@ async function seedOctober() {
   return list;
 }
 
-test('October’s P&L: Eastern days, last year beside it, and the CSV a CPA can open', async () => {
-  await seedOctober();
-  const r = await monthReport(env, '2026-10', { now: NOW });
-  const m = r.periods.month;
-  assert.equal(m.incomeTotal.total, 500000);
-  assert.equal(m.expenseTotal.job, 46710);
-  assert.equal(m.expenseTotal.store, 2000, 'Oct 31 at 10 PM Eastern counts in October');
-  assert.deepEqual(m.unsorted, { cents: 1500, count: 1 });
-  assert.equal(r.periods.lastYearMonth.incomeTotal.total, 200000);
-  assert.equal(r.jobNames.J1, 'Max Daniel (2026)');
-  assert.equal(r.sources[0].kind, 'donations');
-  const csv = await monthCsv(env, '2026-10');
-  assert.match(csv, /^"SOARD P&L, October 2026"/);
-  assert.match(csv, /Not sorted yet \(1\),,,,15\.00/);
-  assert.match(csv, /Max Daniel \(2026\)/);
-  assert.doesNotMatch(csv, /internalTransfer/);
-});
-
-test('the close: what’s left to do, then ready once, with the CPA’s packet', async () => {
-  await seedOctober();
-  await writeSlackConfig(env.DB, { channel: { id: 'CNEWS', name: 'news' }, finance: { id: 'CFIN', name: 'finance' } });
-  let c = await closeCheck(env, '2026-10', { now: NOW });
-  const state = Object.fromEntries(c.checks.map((x) => [x.key, x.state]));
-  assert.equal(state.sorted, 'todo');
-  assert.equal(state.categories, 'todo'); // Canva has no category
-  assert.equal(state.books, 'todo');      // Canva is still pending in Books
-  assert.equal(state.statement, 'todo');
-  assert.equal(c.ready, false);
-  // Everything fixed
-  await env.DB.prepare("UPDATE spend_charges SET bucket = 'operating' WHERE id = 'c2'").run();
-  await mirrorTransaction(env.DB, { id: 'c2', kind: 'creditCardTransaction', status: 'sent', amount: -15, counterpartyName: 'CANVA', accountId: 'chk', createdAt: '2026-10-12T14:00:00Z', postedAt: '2026-10-12T14:00:00Z', accountingStatus: { status: 'synced' }, categoryData: { id: 'cat-o', name: 'Software' } }, { now: NOW });
-  world.statements = [{ id: 's1', startDate: '2026-10-01', endDate: '2026-10-31' }];
-  await writeFinance(env.DB, { cpaEmail: 'cpa@example.com', closeFrom: '2026-10' });
-  c = await closeCheck(env, '2026-10', { now: NOW });
-  assert.equal(c.ready, true, JSON.stringify(c.checks));
-  await maybeRunFinance(env, { now: NOW });
-  assert.equal(world.slack.filter((s) => /ready to close/.test(JSON.stringify(s))).length, 1);
-  assert.equal(world.slack.find((s) => /ready to close/.test(JSON.stringify(s))).channel, 'CFIN');
-  const mail = world.emails.find((e) => e.to[0] === 'cpa@example.com');
-  assert.ok(mail);
-  assert.equal(mail.attachments[0].filename, 'SOARD-PL-2026-10.csv');
-  assert.match(Buffer.from(mail.attachments[0].content, 'base64').toString(), /Makeover materials/);
-  // Only once
-  await writeFinance(env.DB, { lastRunAt: null, lastCloseAt: null });
-  await maybeRunFinance(env, { now: NOW + 3600e3 });
-  assert.equal(world.emails.filter((e) => e.to[0] === 'cpa@example.com').length, 1);
-  assert.equal(world.slack.filter((s) => /ready to close/.test(JSON.stringify(s))).length, 1);
-  // Closing freezes the numbers; reopening lets them move again
-  await closeMonth(env, '2026-10', { by: 'peter@soardcharity.com', now: NOW });
-  await mirrorTransaction(env.DB, { id: 'late', kind: 'externalTransfer', status: 'sent', amount: 100, counterpartyName: 'ZEFFY', accountId: 'chk', createdAt: '2026-10-15T14:00:00Z', postedAt: '2026-10-15T14:00:00Z' }, { now: NOW });
-  const r = await monthReport(env, '2026-10', { now: NOW });
-  assert.equal(r.closed.snapshot.incomeTotal.total, 500000);
-  assert.equal(r.periods.month.incomeTotal.total, 510000);
-  await reopenMonth(env, '2026-10');
-  assert.equal((await monthReport(env, '2026-10', { now: NOW })).closed, null);
-  await assert.rejects(closeMonth(env, '2026-11', { now: NOW }), /once it has ended/);
-});
-
 test('history is read back to January last year, a step at a time, then stops', async () => {
   world.history = [{ id: 'h1', kind: 'externalTransfer', status: 'sent', amount: 10, counterpartyName: 'ZEFFY', accountId: 'chk', createdAt: '2025-03-01T00:00:00Z', postedAt: '2025-03-01T00:00:00Z' }];
   await maybeRunFinance(env, { now: NOW });
@@ -217,19 +159,19 @@ test('history is read back to January last year, a step at a time, then stops', 
   await writeFinance(env.DB, { lastRunAt: null });
   await maybeRunFinance(env, { now: NOW + 1800e3 });
   assert.equal(world.listed.length, 1, 'no second read once the history is in');
-  assert.deepEqual(monthsAvailable(await readFinance(env.DB), NOW).slice(0, 2), ['2026-11', '2026-10']);
   assert.equal(addMonths('2026-01', -1), '2025-12');
 });
 
 test('cash under the floor posts once to the Finance channel, and clears when it recovers', async () => {
   await seedOctober();
   await writeSlackConfig(env.DB, { channel: { id: 'CNEWS', name: 'news' }, finance: { id: 'CFIN', name: 'finance' } });
-  await writeFinance(env.DB, { backfill: { doneAt: 'x', since: '2025-01-01' }, floorCents: 5000000, closeFrom: '2026-12' });
+  await writeFinance(env.DB, { backfill: { doneAt: 'x', since: '2025-01-01' }, floorCents: 5000000 });
   world.balance = 20000; // $20,000 with a $50,000 floor
   await maybeRunFinance(env, { now: NOW });
   const posts = () => world.slack.filter((s) => /below the floor/.test(JSON.stringify(s)));
   assert.equal(posts().length, 1);
   assert.equal(posts()[0].channel, 'CFIN');
+  assert.match(JSON.stringify(posts()[0]), /admin\/#board/, 'the button opens the board page, not an admin Finance tab');
   const f = await cashForecast(env, { now: NOW });
   assert.equal(f.owedCents, 120000);
   assert.equal(f.startCents, 2000000, 'external accounts aren’t SOARD’s cash');
@@ -245,7 +187,7 @@ test('cash under the floor posts once to the Finance channel, and clears when it
 test('money alerts never post anywhere without a Finance channel', async () => {
   await seedOctober();
   await writeSlackConfig(env.DB, { channel: { id: 'CNEWS', name: 'news' }, attention: { id: 'CALERT', name: 'alerts' } });
-  await writeFinance(env.DB, { backfill: { doneAt: 'x' }, floorCents: 5000000, closeFrom: '2026-12' });
+  await writeFinance(env.DB, { backfill: { doneAt: 'x' }, floorCents: 5000000 });
   world.balance = 100;
   await maybeRunFinance(env, { now: NOW });
   assert.equal(world.slack.length, 0);
@@ -260,7 +202,7 @@ test('the board gets totals only: no vendors, people or jobs', async () => {
   assert.deepEqual(oct, { month: '2026-10', income: 5000, makeovers: 467, store: 20, operating: 15, net: 4498, storeSales: 0 });
   assert.equal(b.cash.today, 40000);
   assert.equal(b.cash.belowFloor, true);
-  assert.equal(b.close.month, '2026-10');
+  assert.ok(!('close' in b), 'no month-end close: Mercury Books closes the books');
   const text = JSON.stringify(b);
   for (const secret of ['HOME DEPOT', 'CANVA', 'Max Daniel', 'J1', 'peter@']) assert.ok(!text.includes(secret), secret);
 });

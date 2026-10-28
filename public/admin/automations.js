@@ -1073,10 +1073,10 @@ const MAP = { t: 'SOARD', children: [
             return ON(`${plural(c.closed || 0, 'closed job')} read${c.historyLeft ? `, ${c.historyLeft} still to read` : ''}.`, c.at);
           } },
       ]},
-      { t: 'Finance (Mercury)', children: [
+      { t: 'Board numbers', children: [
         { t: 'P&L', s: 'live', k: 'schedule',
           when: 'Once: every Mercury transaction since January last year, a page at a time on the heartbeat. Then every transaction as Mercury sends it.',
-          does: 'Keeps Mercury’s own record of money in and out, so Admin → Finance shows each month’s P&L in three columns (makeovers, the Sunny & Ranney store, operating) against last year.',
+          does: 'Keeps Mercury’s own record of money in and out, so the board page shows each month in three columns (makeovers, the Sunny & Ranney store, operating) against last year. Mercury Books stays the official books.',
           touches: ['Mercury', 'D1'], where: 'functions/api/_finance.js, _mercury-txns.js',
           live: (f) => {
             const x = f.jobCosts?.finance;
@@ -1094,16 +1094,7 @@ const MAP = { t: 'SOARD', children: [
             if (!x || !env(f)) return null;
             if (x.balancesError) return ATTN(`Balances can’t be read: ${x.balancesError.error}`, x.balancesError.at);
             if (!x.forecast) return ATTN('No forecast yet.');
-            return x.cashLow ? ATTN('The cautious forecast dips under the cash floor. See Finance → Cash.', x.forecast.at) : ON('Above the cash floor all 13 weeks.', x.forecast.at);
-          } },
-        { t: 'Month-end close', s: 'live', k: 'schedule',
-          when: 'Daily, for last month and any month still open.',
-          does: 'Checks every charge is sorted, every makeover charge has a receipt or bill, every transaction has a category, Mercury Books has synced them and the statement is out. When all pass, the Finance channel hears the month is ready and the CPA gets the close packet.',
-          touches: ['Mercury', 'Slack', 'Resend', 'D1'], where: 'functions/api/_finance.js (closeCheck, announceReady)',
-          live: (f) => {
-            const x = f.jobCosts?.finance;
-            if (!x || !env(f)) return null;
-            return x.cpaError ? ATTN(`The close packet didn’t reach the CPA: ${x.cpaError.error}`, x.cpaError.at) : ON('See Finance → Close for each month.');
+            return x.cashLow ? ATTN('The cautious forecast dips under the cash floor. See the board page.', x.forecast.at) : ON('Above the cash floor all 13 weeks.', x.forecast.at);
           } },
         { t: 'W-9s, insurance, 1099s', s: 'live', k: 'schedule',
           when: 'Every 15 minutes on the heartbeat; Mercury’s recipients hourly, JobTread’s vendors every 4 hours; the 1099 card on January 5.',
