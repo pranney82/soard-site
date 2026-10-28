@@ -495,7 +495,7 @@ function FinancialsPage({ ctx }) {
             <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${f.ytd.year} so far</th>${f.lastYtd ? html`<th scope="col" class="num">${f.lastYtd.year}, same days</th>` : null}</tr></thead>
             <tbody>${ytdRows.map(([label, val, kind]) => html`<tr class=${`bp-row--${kind}`}><th scope="row">${label}</th><td class="num">${val(f.ytd)}</td>${f.lastYtd ? html`<td class="num">${val(f.lastYtd)}</td>` : null}</tr>`)}</tbody>
           </table>
-          <p class="bp-muted bp-after">Through ${monthName(f.ytd.through)} ${Number(String(f.ytd.through).slice(8, 10)) || ''}, from Mercury’s record.${f.close?.label ? ` ${f.close.label}’s books are ${{ closed: 'closed', ready: 'ready to close', open: 'still open' }[f.close.state] || f.close.state}.` : ''}${f.perMakeover ? ` ${plural(f.perMakeover.count, 'makeover')} finished this year, ${money(f.perMakeover.average)} each on average.` : ''}</p>
+          <p class="bp-muted bp-after">Through ${monthName(f.ytd.through)} ${Number(String(f.ytd.through).slice(8, 10)) || ''}, live from Mercury’s record. The official books are in Mercury Books.${f.perMakeover ? ` ${plural(f.perMakeover.count, 'makeover')} finished this year, ${money(f.perMakeover.average)} each on average.` : ''}</p>
           ${f.months?.length ? html`<details class="bp-more"><summary>Month by month</summary>
             <table class="bp-table">
               <thead><tr><th scope="col">Month</th><th scope="col" class="num">In</th><th scope="col" class="num">Out</th><th scope="col" class="num">Net</th></tr></thead>

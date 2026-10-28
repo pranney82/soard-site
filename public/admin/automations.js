@@ -669,7 +669,7 @@ const MAP = { t: 'SOARD', children: [
     ]},
 
   // ─── Left side ──────────────────────────
-  { t: 'The board', sub: 'Meetings, minutes and the board’s own page', color: 'board', side: 'r',
+  { t: 'The board', sub: 'Meetings, minutes and the board’s own page', color: 'board', side: 'l',
     children: [
       { t: 'Signing in', children: [
         { t: 'Board sign-in list', s: 'off', k: 'schedule',
@@ -692,7 +692,7 @@ const MAP = { t: 'SOARD', children: [
       { t: 'Meetings', children: [
         { t: 'Board meetings from the calendar', s: 'off', k: 'schedule',
           when: 'Every hour on the live hub’s heartbeat, and whenever Peter or Holly opens Board (if the last look is over 10 minutes old).',
-          does: 'Reads the Board area’s admins’ Google calendars for events named like a board meeting (“SOARD Q4 Board Meeting”, “Board Meeting”, or “board” in the name with three or more board members invited), from today on, and makes each one a meeting in Board with its day, time, place and video link. A moved event moves the meeting; a meeting added by hand on the same day is linked, not doubled. Advisory Board, reveal and demo day events never count.',
+          does: 'Reads the Board area’s admins’ Google calendars for events named like a board meeting (“SOARD Q4 Board Meeting”, “Board Meeting”, or “board” in the name with three or more board members invited), four years back and ahead, and makes each one a meeting in Board with its day, time, place and video link. A past one comes in as a record for its agenda and minutes (from email, below); a moved event moves the meeting; a meeting added by hand on the same day is linked, not doubled. Advisory Board, reveal and demo day events never count.',
           touches: ['Google Calendar', 'D1'], where: 'functions/api/_board-calendar.js (broadcast-hooks.js via _board.js maybeRunBoard, board-admin.js)',
           info: 'It only reads; the meeting invite (below) is the one thing Board writes to a calendar. New meetings aren’t shared with the board until Peter or Holly shares them. Board’s own invites aren’t brought in again: only the board’s replies come back from them.',
           live: (f) => {
@@ -702,11 +702,24 @@ const MAP = { t: 'SOARD', children: [
             if (c.failing) return ATTN(`Couldn’t read ${plural(c.failing, 'calendar')} on the last look. Board → Meetings says why.`, c.checkedAt);
             if (!c.checkedAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
             if (stale(c.checkedAt, 3 * HOUR)) return ATTN(`Hasn’t looked since ${stamp(c.checkedAt)}. Check the Heartbeat entry.`, c.checkedAt);
-            return ON(`${plural(c.found, 'board meeting')} ahead on the calendars.`, c.checkedAt);
+            return ON(`${plural(c.found, 'board meeting')} ahead on the calendars${f.board.calendarPast ? `, ${f.board.calendarPast} past` : ''}.`, c.checkedAt);
           } },
-        { t: 'Board mail → past agendas and QuickBooks reports', s: 'off', k: 'schedule',
-          when: 'Every hour on the live hub’s heartbeat (every 5 minutes while there’s a backlog), and when Board is opened.',
-          does: 'Searches Peter and Holly’s Gmail for board agendas and minutes with attachments, and for QuickBooks’ report emails. A past agenda (PDF or Word) becomes its meeting with its notes and who was there; one for a meeting nobody has written in fills its agenda; every attachment is kept on its meeting (reports as financials). A meeting someone wrote in is never overwritten. The same email in both inboxes is read once. It never sends, deletes, labels or marks anything read.',
+        { t: 'Google Drive → past minutes and packets', s: 'live', k: 'schedule',
+          when: 'Every minute on the live hub’s heartbeat while there’s a backlog (newest meetings first, about 8 seconds a look), then hourly, and when Board is opened.',
+          does: 'Reads the Board folder in Google Drive (Board → Settings; the Sunshine - Leadership one until set): in each year’s folder (“2025 Board”), each meeting’s folder (“7.24.25 Meeting”). That meeting comes into Board, or the calendar’s meeting that week gets it, with every file in the folder: the minutes (who was there read from them, and the agenda when it reads cleanly), the financial statements, the reports and the packet. Google Docs, Sheets and Slides come across as PDFs. The meeting goes on the board page. Loose files in a year’s folder, photos and Pages files stay in Drive. It never changes anything in Drive.',
+          touches: ['Google Drive', 'Workers AI', 'D1', 'R2'], where: 'functions/api/_board-drive.js (via _board.js maybeRunBoard, board-admin.js)',
+          note: 'Needs https://www.googleapis.com/auth/drive.readonly on the service account’s domain-wide delegation and the Google Drive API turned on in its Google Cloud project. Board → Meetings shows both steps until they work.',
+          live: (f) => {
+            const d = f.board?.drive;
+            if (!d) return null;
+            if (d.needsScope || d.apiOff) return ATTN('Google Drive isn’t allowed yet. Board → Meetings has the step.', d.checkedAt);
+            if (d.failing) return ATTN('The last look couldn’t read the Board folder. Board → Settings says why.', d.checkedAt);
+            if (!d.checkedAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            return ON(d.backlog ? `${plural(d.backlog, 'meeting folder')} still to read.` : `${plural(d.meetings || 0, 'meeting')} with ${plural(d.files || 0, 'file')} from Drive.`, d.checkedAt);
+          } },
+        { t: 'Board mail → agendas, minutes and financials', s: 'live', k: 'schedule',
+          when: 'Every minute on the live hub’s heartbeat while there’s a backlog (newest email first, about 12 seconds a look), then hourly, and when Board is opened.',
+          does: 'Searches Peter and Holly’s Gmail (five years) for board meeting email with attachments. Workers AI reads each file and says what it is (agenda, minutes, financials, a packet, or not board material); resumes, weekly QuickBooks reports and files over 15 MB are left out unread. Each file lands on its meeting by the date it names: an agenda fills a meeting’s agenda while it’s still a draft, minutes fill in who was there, and a dated agenda or minutes with no meeting brings that meeting in. A file emailed to the board (three or more of them, or SOARD’s Google Group) is the board’s, and its past meeting goes on the board page; anything else is staff only. The same email in both inboxes is read once. It never sends, deletes, labels or marks anything read.',
           touches: ['Gmail', 'Workers AI', 'D1', 'R2'], where: 'functions/api/_board-mail.js (via _board.js maybeRunBoard, board-admin.js)',
           note: 'Needs Google Admin → Security → API controls → Domain-wide delegation: add https://www.googleapis.com/auth/gmail.readonly to the site’s service account, and the Gmail API turned on in its Google Cloud project. Board → Meetings shows both steps until they work.',
           live: (f) => {
@@ -716,27 +729,50 @@ const MAP = { t: 'SOARD', children: [
             if (m.needsScope) return ATTN('Google Admin hasn’t allowed Gmail reading yet. Board → Meetings has the client ID and the scope to add.', m.checkedAt);
             if (m.failing) return ATTN('The last look couldn’t read every inbox. Board → Meetings says why.', m.checkedAt);
             if (!m.checkedAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
-            return ON(m.waiting ? `${plural(m.waiting, 'email')} still to read.` : 'Up to date.', m.checkedAt);
+            return ON(m.waiting ? `${plural(m.waiting, 'email')} still to read.` : `Up to date: ${plural(m.meetings, 'meeting')} with ${plural(m.files, 'file')} from email${m.skipped ? `, ${m.skipped} left out` : ''}.`, m.checkedAt);
+          } },
+        { t: 'The next agenda, drafted from the last', s: 'live', k: 'schedule',
+          when: 'Every ten minutes on the live hub’s heartbeat.',
+          does: 'Each meeting ahead whose agenda nobody has written (SOARD’s usual outline, or a draft) gets the last written or emailed agenda as a draft: its sections and items in order, who presents, the live numbers, the last minutes up for approval; new business starts empty and nothing written under an item comes along. A newer agenda redrafts it; an agenda emailed for the meeting replaces it; Use this agenda, or any change, makes it the meeting’s own.',
+          touches: ['D1'], where: 'functions/api/_board.js (maybeDraftAgendas) · board-shared.js (draftAgenda)',
+          live: (f) => {
+            const d = f.board?.drafts;
+            if (!d) return null;
+            return ON(d.ahead ? `${plural(d.ahead, 'meeting')} ahead with a drafted agenda.` : 'No drafted agendas ahead.', d.lastAt);
+          } },
+        { t: 'Attendance from Google Meet', s: 'live', k: 'schedule',
+          when: 'From half an hour after a meeting on Google Meet ends, hourly for two days (every ten minutes at most).',
+          does: 'Reads who joined the meeting’s Google Meet (the Meet REST API, as the organizer), matches each name to the board and staff on the meeting (first and last name, or a first name only one person has), and marks them Video where nobody marked them. A mark someone made is never changed. The names stay on the meeting for Board, never on the board page.',
+          touches: ['Google Meet', 'D1'], where: 'functions/api/_board-attendance.js (via _board.js maybeRunBoard)',
+          note: 'Needs https://www.googleapis.com/auth/meetings.space.readonly on the service account’s domain-wide delegation. The invite check finds out before a meeting needs it, and Board → Meetings shows the step.',
+          live: (f) => {
+            const a = f.board?.attendance;
+            const check = f.board?.invite?.check;
+            if (!a) return null;
+            if (check?.attendance === 'needs-setup' || a.needsSetup) return ATTN('Google Admin hasn’t allowed meetings.space.readonly yet. Board → Meetings has the step.', check?.checkedAt || a.lastAt);
+            if (a.failing) return ATTN(`Google Meet didn’t say who joined ${plural(a.failing, 'meeting')}. The meeting’s After step says why.`, a.lastAt);
+            return ON(a.read ? `Who joined is in for ${plural(a.read, 'meeting')}.` : 'Ready for the first meeting on Google Meet.', a.lastAt || check?.checkedAt);
           } },
         { t: 'The meeting invite, with Google Meet', s: 'live', k: 'admin',
-          when: 'Peter or Holly presses Send the invite in a meeting’s Getting ready. After that, each minute on the live hub’s heartbeat, once a new place (or, for Board’s own invite, a new day or time) has stood two minutes. The check runs on the heartbeat hourly until it passes.',
-          does: 'Puts the meeting on the calendar of Board → Settings → Invites come from (Holly’s, as president, until saved) and Google emails the invitations: every active board member with an email, and the Board area’s admins. Google Meet is the video call, with transcripts turned on; the place goes on when there is one. A meeting already on that calendar gets that same event updated (the missing board members added, Meet and a TBD place filled in), never a second invite.',
+          when: 'Peter or Holly presses Send the invite in a meeting’s Getting ready. After that, each minute on the live hub’s heartbeat, once a new place, a new agenda (or, for Board’s own invite, a new day or time) has stood two minutes. The check runs on the heartbeat hourly until it passes.',
+          does: 'Puts the meeting on the calendar of Board → Settings → Invites come from (Holly’s, as president, until saved) and Google emails the invitations: every active board member with an email, and the Board area’s admins. Google Meet is the video call, with transcripts turned on; the place goes on when there is one. Its notes (plain text) link to the meeting on the board page and list the agenda’s headings; an agenda change updates them without Google emailing anyone, while a new place, day or time sends Google’s update. A meeting already on that calendar gets that same event updated (the missing board members added, Meet, a TBD place and Board’s notes after the organizer’s own), never a second invite.',
           touches: ['Google Calendar', 'Google Meet', 'D1'], where: 'functions/api/_board-invite.js (board-admin.js; _board.js maybeRunBoard)',
           note: 'Transcripts need https://www.googleapis.com/auth/meetings.space.settings on the service account’s domain-wide delegation and the Google Meet REST API turned on in its Google Cloud project. Board → Meetings shows both steps until they work; the invite and its Meet go out either way. The check proves all of it without inviting anyone: a private event with Meet on the organizer’s calendar (no guests, no emails), transcripts turned on and read back, the event deleted. Once it passes, invites that went out before get their transcripts turned on.',
           live: (f) => {
             const i = f.board?.invite;
             if (!i) return null;
             if (!f.board.calendar?.configured) return ATTN('GOOGLE_CALENDAR_KEY is missing, so invites can’t be sent from Board.');
-            if (i.check && !i.check.ok) return ATTN(i.check.transcript === 'needs-setup' ? 'The check: Google Admin hasn’t allowed transcripts yet. Board → Meetings has the steps.' : `The check didn’t pass: ${i.check.error || 'no answer from Google'}`, i.check.checkedAt);
+            if (i.check && i.check.transcript === 'needs-setup') return ATTN('The check: Google Admin hasn’t allowed transcripts yet. Board → Meetings has the steps.', i.check.checkedAt);
+            if (i.check && i.check.error && i.check.transcript !== 'error' && !i.check.ok && i.check.attendance !== 'needs-setup') return ATTN(`The check didn’t pass: ${i.check.error}`, i.check.checkedAt);
             if (i.needsSetup) return ATTN(`${plural(i.needsSetup, 'invite')} went out with Google Meet but no transcript yet: Google Admin hasn’t allowed it. Board → Meetings has the steps.`, i.lastAt);
             if (i.failing) return ATTN(`Transcripts couldn’t be turned on for ${plural(i.failing, 'meeting')}. Update the invite in Board to try again.`, i.lastAt);
-            const checked = i.check?.ok ? ' Calendar, Meet and transcripts checked.' : '';
+            const checked = !i.check ? '' : i.check.transcript === 'on' ? ' Calendar, Meet and transcripts checked.' : i.check.transcript === 'error' ? ' Calendar and Meet checked; SOARD’s Google plan has no transcripts.' : '';
             return ON(`${i.ahead ? `${plural(i.ahead, 'invite')} out for meetings ahead${i.waiting ? `, ${plural(i.waiting, 'change')} going on in a moment` : ''}.` : 'No invites out for meetings ahead.'}${checked}`, i.lastAt || i.check?.checkedAt);
           } },
         { t: 'The packet email', s: 'live', k: 'admin',
-          when: 'Peter or Holly presses Email the documents on a shared meeting in Board (Send it to me first sends them a preview). The minutes and the “who’s coming?” reminder go the same way.',
-          does: 'Emails each active board member on their own: when and where, the agenda’s headings, a button to the meeting on the board page, and the meeting’s files attached (up to 30 MB in all; staff-only files never). Never notes or numbers; a board-only item shows only as “A board-only item (on the board page)”.',
-          touches: ['Resend', 'D1'], where: 'functions/api/_board.js (sendPacket, packetEmail) · board-admin.js',
+          when: 'Peter or Holly presses Email the documents on a shared meeting in Board (Send it to me first sends them a preview). The minutes and the “Will you be there?” reminder go the same way.',
+          does: 'Emails each active board member on their own: when, where and the video call, the meeting’s files attached (up to 30 MB in all; staff-only files never), a button to the meeting on the board page, and the agenda’s headings. Whoever hasn’t answered gets their own one-tap “Will you be there?” buttons (no sign-in; opening the link only asks, pressing the button answers, so a mail scanner can’t). Never notes or numbers; a board-only item shows only as “A board-only item (on the board page)”.',
+          touches: ['Resend', 'D1'], where: 'functions/api/_board.js (sendPacket, packetEmail, remindRsvp) · board-rsvp.js · _board-rsvp.js',
           live: (f) => {
             const b = f.board;
             if (!env(f)) return null;

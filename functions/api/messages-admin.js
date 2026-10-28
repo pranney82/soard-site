@@ -51,8 +51,9 @@ import { errorAlert } from './stream-webhook.js';
 import { medicalNote, fallbackMedicalNote } from './_applicant-comms.js';
 import { activity, comingUp, deliverability, deliveryFacts, emailDetail, invitesOut } from './_messages-activity.js';
 import { applicantEmail as advisoryThanks, staffEmail as advisoryStaff } from './_advisory-applications.js';
-import { packetEmail, welcomeEmail } from './_board.js';
-import { newMeeting } from '../../public/admin/board-shared.js';
+import { packetEmail, welcomeEmail, reminderEmail, minutesEmail, inviteNotes } from './_board.js';
+import { organizerFor } from './_board-invite.js';
+import { newMeeting, meetingName } from '../../public/admin/board-shared.js';
 import { checkAnswers as advisoryAnswers } from './_advisory-form.js';
 import { planDemo, demoAlert, sendTestDemo, readConfig as readDemoConfig, listPeople as demoPeople } from './_demo-invites.js';
 
@@ -302,6 +303,15 @@ function sampleApplication(year, now) {
     jt_state: { area: { status: 'inside', edgeMiles: 4 } },
     files: { photo1: { key: 'sample' }, photo2: { key: 'sample' }, video: { key: 'sample' } },
   };
+}
+
+const BOARD_FROM = EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board ');
+/** A made-up board meeting from the usual agenda, with one item marked board-only and a presenter */
+function sampleBoardMeeting() {
+  const m = newMeeting({ date: '2026-11-19', defaults: { start: '08:00', end: '10:00', location: 'Example Design Group', address: '100 Example St, Roswell, GA' } });
+  m.sections[2].items[0] = { ...m.sections[2].items[0], confidential: true };
+  m.sections[2].items[1] = { ...m.sections[2].items[1], presenter: 'Sam Ortiz' };
+  return { ...m, id: 'm_sample', shared: true, video: 'https://meet.google.com/abc-defg-hij' };
 }
 
 async function invitePreview(env, stage, now) {
@@ -561,18 +571,35 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return email(notify.alertEmail({ title: 'An email didn’t reach jordan@exmaple.com', detail: '“Your SOARD application: pick up where you left off”. The address doesn’t exist (the mail server said no such mailbox).', fix: 'The family typed this address on the application. Their answers are saved; reach them another way for a working address.', links: [{ label: 'What went out', url: `${SITE_ORIGIN}/admin/#messages/sent` }] }), {
         to: STAFF_ALERTS_TO, note: 'A staff address that bounces says which list to fix instead. A reveal-reminder address that bounces or reports spam is simply unsubscribed, with no email. Once a week per address at most.',
       });
-    case 'board-packet': {
-      // A made-up meeting from the usual agenda, with one item marked confidential
-      const m = newMeeting({ date: '2026-11-19', defaults: { start: '08:00', end: '10:00', location: 'Example Design Group', address: '100 Example St, Roswell, GA' } });
-      m.sections[2].items[0] = { ...m.sections[2].items[0], confidential: true };
-      return email(packetEmail({ ...m, id: 'm_sample', shared: true }), {
-        from: EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board '), to: 'Each active board member with an email on People → Board, on their own',
-        note: 'Peter or Holly sends it from Board, after sharing the meeting. Send it to me sends a [Preview] copy first.',
+    case 'board-packet':
+      return email(packetEmail(sampleBoardMeeting(), { name: 'Alex Rivera', files: ['Q3 financials.pdf'] }), {
+        from: BOARD_FROM, to: 'Each active board member with an email on People → Board, on their own',
+        note: 'Peter or Holly sends it from Board, after sharing the meeting. The “Will you be there?” buttons are each member’s own one-tap answers, and only for those who haven’t answered (here they open the board page). Send it to me sends a [Preview] copy first.',
       });
+    case 'board-reminder':
+      return email(reminderEmail(sampleBoardMeeting(), { name: 'Alex Rivera' }), {
+        from: BOARD_FROM, to: 'Each board member who hasn’t answered on the board page or the calendar invite, on their own',
+        note: 'Peter or Holly sends it from a meeting’s Who’s coming card. Each button answers for that member with one tap and no sign-in; opening the link only asks, so a mail scanner can’t answer (here they open the board page).',
+      });
+    case 'board-minutes':
+      return email(minutesEmail({ ...sampleBoardMeeting(), minutes: 'draft' }, { next: { date: '2026-12-03', start: '08:00', end: '10:00' } }), {
+        from: BOARD_FROM, to: 'Each active board member with an email on People → Board',
+        note: 'Peter or Holly sends it from a meeting’s After step once the minutes are shared. Once the board approves them, it says “Minutes” and when they were approved.',
+      });
+    case 'board-meeting-invite': {
+      const m = sampleBoardMeeting();
+      const organizer = await organizerFor(env.DB).catch(() => '') || 'The organizer in Board → Settings';
+      return {
+        channel: 'invite', from: `${organizer}'s Google Calendar`, to: 'Every active board member with an email on People → Board, plus Peter and Holly',
+        subject: `Invitation: ${meetingName(m)}`,
+        invite: { title: meetingName(m), status: 'confirmed', start: { dateTime: `${m.date}T08:00:00-05:00` }, end: { dateTime: `${m.date}T10:00:00-05:00` }, location: `${m.location}, ${m.address}`, description: inviteNotes(m), organizer, busy: true },
+        note: 'A sample meeting from the usual agenda, one item board-only. Google Meet is the call. A new place, day or time sends Google’s update email; an agenda change updates these notes without emailing anyone.',
+        send: null,
+      };
     }
     case 'board-welcome':
       return email(welcomeEmail({ name: 'Alex Rivera', email: 'alex@example.com' }), {
-        from: EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board '), to: 'Each active board member with an email on People → Board, on their own',
+        from: BOARD_FROM, to: 'Each active board member with an email on People → Board, on their own',
         note: 'Peter or Holly sends it from Board → Members once board sign-in is set up. Send it to me sends a [Preview] copy first.',
       });
     case 'advisory-thanks':

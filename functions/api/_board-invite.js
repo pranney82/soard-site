@@ -12,9 +12,13 @@
  *   - the place and address when the meeting has them; added later, or
  *     changed, the invite updates two minutes after the typing stops
  *     (one email from Google to every guest, not one per word)
+ *   - notes (plain text) with the way to the meeting's page and the agenda's
+ *     headings (inviteNotes in ./_board.js); when only the agenda changes,
+ *     they update the same way but without Google emailing anyone
  * A meeting that came from the organizer's calendar (Holly already sent its
  * invite) gets that same event updated, never a second invite: the board
- * members missing from it are added, and so are Meet and the place.
+ * members missing from it are added, and so are Meet, the place and Board's
+ * notes (after the organizer's own, which stay).
  * The calendar stays where the day and time change (./_board-calendar.js).
  *
  * Writes only to the organizer's own calendar, through the site's service
@@ -23,7 +27,7 @@
 
 import { accessToken, eventIdFor, parseServiceAccount } from './_google-calendar.js';
 import { boardAdmins, activeBoard, peopleRows, readSettings, readState, writeState, normEmail } from './_board-roles.js';
-import { getMeeting, listMeetings, patchMeeting, SITE } from './_board.js';
+import { getMeeting, listMeetings, patchMeeting, inviteNotes, NOTES_START } from './_board.js';
 import { meetingName, timeRange, longDate, todayEastern } from '../../public/admin/board-shared.js';
 
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
@@ -73,7 +77,27 @@ function times(m) {
   const end = m.end || `${String(Math.min(23, Number(m.start.slice(0, 2)) + 2)).padStart(2, '0')}${m.start.slice(2)}`;
   return { start: { dateTime: `${m.date}T${m.start}:00`, timeZone: TZ }, end: { dateTime: `${m.date}T${end}:00`, timeZone: TZ } };
 }
-const describe = (m) => `The agenda, the packet and the minutes are on the board page: ${SITE}/board (sign in with the email this invite came to).`;
+
+/**
+ * An invite's notes with Board's part brought up to date: Board's own invite
+ * is all Board's; on the organizer's own event, what they wrote stays, and
+ * Board's part (from NOTES_START on) follows it. Google keeps notes edited in
+ * Calendar as HTML, so Board's part goes in the same way there.
+ */
+export function withNotes(existing, notes) {
+  const was = String(existing || '');
+  const html = /<\/?(br|p|div|span|b|i|u|ul|ol|li|a)\b/i.test(was);
+  const at = was.indexOf(NOTES_START);
+  const before = (at >= 0 ? was.slice(0, at) : was).replace(/(\s|&nbsp;|<br\s*\/?>|<(p|div|span)[^>]*>)+$/i, '');
+  const ours = html ? notes.split('\n').map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('<br>') : notes;
+  return before ? `${before}${html ? '<br><br>' : '\n\n'}${ours}` : ours;
+}
+/** A short fingerprint of what Board's notes say, to see when the agenda has changed since */
+const notesKey = (m) => {
+  let h = 0x811c9dc5;
+  for (const c of inviteNotes(m)) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0;
+  return h.toString(36);
+};
 
 /** Turn on transcripts for the event's Meet (Meet REST API). → 'on' | 'needs-setup' | 'error' */
 async function transcriptOn(env, organizer, meetCode, fetchImpl, now) {
@@ -119,7 +143,7 @@ async function meetReady(token, path, ev, fetchImpl) {
  * organizer's own from the calendar) up to date: guests, Meet, the place,
  * and for Board's own invite the day and time. → the meeting
  */
-export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(), by = '' } = {}) {
+export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(), by = '', quiet = false } = {}) {
   if (!env.GOOGLE_CALENDAR_KEY) throw Object.assign(new Error('Google Calendar isn’t set up (GOOGLE_CALENDAR_KEY)'), { status: 503 });
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
@@ -148,7 +172,11 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   try { existing = await gcal(token, 'GET', `${cal}/${encodeURIComponent(eventId)}`, null, fetchImpl); } catch (err) { if (err.status !== 404 && err.status !== 410) throw err; }
   const ours = !theirs; // Board's own invite: Board sets its day and time too
   const have = new Set((existing?.attendees || []).map((a) => normEmail(a.email)));
-  const attendees = [...(existing?.attendees || []), ...guests.filter((e) => !have.has(e) && e !== organizer).map((email) => ({ email }))];
+  const added = guests.filter((e) => !have.has(e) && e !== organizer);
+  const attendees = [...(existing?.attendees || []), ...added.map((email) => ({ email }))];
+  // Only the agenda changed and nobody's new: the invite's notes change without Google emailing the board
+  const send = quiet && existing && !added.length ? 'none' : 'all';
+  const notes = ours ? inviteNotes(m) : withNotes(existing?.description, inviteNotes(m));
   const place = placeOf(m);
   const title = /soard/i.test(meetingName(m)) ? meetingName(m) : `SOARD ${meetingName(m)}`;
   // A Teams or Zoom link written as the place: Google Meet is the call now, so the place is the place (or nothing)
@@ -158,12 +186,12 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
     ...(place && (ours || isTbd(existing?.location) || callAsPlace) ? { location: place } : callAsPlace ? { location: '' } : {}),
     ...(existing?.hangoutLink ? {} : { conferenceData: { createRequest: { requestId: `board-${m.id}-${now}`, conferenceSolutionKey: { type: 'hangoutsMeet' } } } }),
     ...(ours ? { summary: title, ...times(m) } : {}),
-    ...(!existing?.description ? { description: describe(m) } : {}),
+    ...(notes !== (existing?.description || '') ? { description: notes } : {}),
     guestsCanSeeOtherGuests: true,
   };
   // A deleted event keeps its id at Google (as cancelled): it's brought back, never made again
   const ev = await meetReady(token, `${cal}/${encodeURIComponent(eventId)}`, existing
-    ? await gcal(token, 'PATCH', `${cal}/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=all`, existing.status === 'cancelled' ? { status: 'confirmed', ...times(m), summary: title, ...body } : body, fetchImpl)
+    ? await gcal(token, 'PATCH', `${cal}/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=${send}`, existing.status === 'cancelled' ? { status: 'confirmed', ...times(m), summary: title, ...body } : body, fetchImpl)
     : await gcal(token, 'POST', `${cal}?conferenceDataVersion=1&sendUpdates=all`, { id: eventId, ...times(m), summary: title, ...body }, fetchImpl), fetchImpl);
   const meet = ev.hangoutLink || '';
   const code = meetCodeOf(ev);
@@ -171,7 +199,7 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   const at = new Date(now).toISOString();
   const invite = {
     eventId: ev.id || eventId, organizer, sentAt: prior?.sentAt || at, updatedAt: at, meet, guests: (ev.attendees || attendees).length,
-    emails: (ev.attendees || attendees).map((a) => normEmail(a.email)), place: ev.location || place, when: whenOf(m), ...t,
+    emails: (ev.attendees || attendees).map((a) => normEmail(a.email)), place: ev.location || place, when: whenOf(m), notes: notesKey(m), ...t,
     replies: prior?.replies || {},
   };
   // Google Meet is the meeting's video call from now on (onto the meeting as it is now: a save made meanwhile stays)
@@ -180,9 +208,15 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
 
 const SETTLE_MS = 2 * 60 * 1000;
 const PENDING = 'invite-pending';
-/** What changed since the invite went out: its place, or (Board's own invite) its day or time; '' when nothing */
+/** What changed since the invite went out: its place, (Board's own invite) its day or time, or the agenda in its notes; '' when nothing */
 const changeOf = (m) => {
   if (!m?.invite?.eventId) return '';
+  const loud = loudChange(m);
+  const notes = notesKey(m) !== m.invite.notes ? notesKey(m) : '';
+  return loud || notes ? `${loud}|${notes}` : '';
+};
+/** A change the board is emailed about (the place, the day or time); the agenda alone isn't one */
+const loudChange = (m) => {
   const place = placeOf(m) && placeOf(m) !== m.invite.place ? placeOf(m) : '';
   const when = !m.calendar && whenOf(m) !== m.invite.when ? whenOf(m) : '';
   return place || when ? `${place}|${when}` : '';
@@ -218,7 +252,8 @@ export async function maybeRefreshInvites(env, { fetchImpl = fetch, now = Date.n
     const sent = [];
     for (const [id] of due) {
       try {
-        if (changeOf(await getMeeting(env.DB, id))) { await sendInvite(env, id, { fetchImpl, now }); sent.push(id); }
+        const m = await getMeeting(env.DB, id);
+        if (changeOf(m)) { await sendInvite(env, id, { fetchImpl, now, quiet: !loudChange(m) }); sent.push(id); }
       } catch (err) {
         console.error('[board-invite]', id, err.message);
       }
@@ -235,19 +270,21 @@ export async function maybeRefreshInvites(env, { fetchImpl = fetch, now = Date.n
 }
 
 const CHECK = 'invite-check';
-const CHECK_VERSION = 1;
+// 2: who joined by Meet (the attendance) is checked too
+const CHECK_VERSION = 2;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
 /**
  * The invite's Google parts, proved without inviting anyone: a private event
  * on the organizer's calendar with Google Meet (no guests, no emails, no
- * reminders), transcripts turned on for its Meet and read back, then the
- * event deleted. → { ok, calendar, meet, transcript ('on' | 'needs-setup' | 'error'), error, leftover }
+ * reminders), transcripts turned on for its Meet and read back, its
+ * attendance readable (./_board-attendance.js), then the event deleted.
+ * → { ok (all of it), calendar, meet, transcript ('on' | 'needs-setup' | 'error'), attendance ('ok' | 'needs-setup' | 'error'), error, attendanceError, leftover }
  */
 export async function checkInvites(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const organizer = await organizerFor(env.DB);
-  const out = { ok: false, organizer, calendar: '', meet: '', transcript: '', error: '', leftover: '' };
+  const out = { ok: false, organizer, calendar: '', meet: '', transcript: '', attendance: '', error: '', attendanceError: '', leftover: '' };
   if (!organizer) return { ...out, error: 'No one to send invites from: Board → Settings' };
   let token;
   try { token = await accessToken(env, organizer, { fetchImpl, now }); } catch (err) { return { ...out, calendar: 'error', error: String(err.message).slice(0, 300) }; }
@@ -269,7 +306,10 @@ export async function checkInvites(env, { fetchImpl = fetch, now = Date.now() } 
     if (!code) return { ...out, meet: 'error', error: 'Google Calendar made the event without a Google Meet' };
     out.meet = 'ok';
     const t = await transcriptOn(env, organizer, code, fetchImpl, now);
-    Object.assign(out, { ok: t.transcript === 'on', transcript: t.transcript, error: t.error });
+    const { whoJoined } = await import('./_board-attendance.js');
+    const a = await whoJoined(env, { organizer, code }, { fetchImpl, now });
+    const attendance = a.status === 'needs-setup' ? 'needs-setup' : a.status === 'error' ? 'error' : 'ok';
+    Object.assign(out, { ok: t.transcript === 'on' && attendance === 'ok', transcript: t.transcript, error: t.error, attendance, attendanceError: a.error });
   } catch (err) {
     out.calendar ||= 'error';
     out.error = String(err.message).slice(0, 300);
@@ -296,7 +336,7 @@ export async function maybeCheckInvites(env, { fetchImpl = fetch, now = Date.now
     if (!env.DB || !env.GOOGLE_CALENDAR_KEY) return null;
     const st = await readState(env.DB, CHECK);
     const fresh = st.version === CHECK_VERSION;
-    const fixable = st.ok || st.transcript === 'needs-setup' || st.calendar === 'error' || st.leftover;
+    const fixable = st.ok || st.transcript === 'needs-setup' || st.attendance === 'needs-setup' || st.calendar === 'error' || st.leftover;
     // Board opened (retryMs): a check that didn't pass is tried again sooner, so a change in Google shows on the next open
     const wait = fixable ? HOUR : DAY;
     if (fresh && now - Date.parse(st.at || 0) < (retryMs && !st.ok ? Math.min(retryMs, wait) : wait)) return st;
@@ -317,7 +357,7 @@ export async function maybeCheckInvites(env, { fetchImpl = fetch, now = Date.now
       // A leftover from before stays with its organizer until it's gone
       next = next.leftover ? { ...next, ...c, organizer: next.organizer, leftover: next.leftover, checkedAt: at } : { ...next, ...c, checkedAt: at };
     }
-    if (next.ok) {
+    if (next.transcript === 'on') {
       for (const m of behind) {
         const t = await transcriptOn(env, m.invite.organizer, meetCodeOf({ hangoutLink: m.invite.meet }), fetchImpl, now);
         await patchMeeting(env.DB, m.id, (cur) => (cur.invite?.meet === m.invite.meet ? { ...cur, invite: { ...cur.invite, ...t } } : cur));

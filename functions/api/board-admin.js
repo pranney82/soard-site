@@ -28,13 +28,14 @@
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
   setActionDone, listDocs, saveDoc, deleteDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
-  memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, approveMinutes, remindRsvp, sendMinutesNotice,
+  memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
 } from './_board.js';
 import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
 import { accessStatus, syncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
 import { sendInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
+import { maybeReadBoardDrive, driveStatus, DEFAULT_DRIVE_FOLDER } from './_board-drive.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
@@ -71,13 +72,17 @@ export async function onRequestGet(context) {
     context.waitUntil?.(maybeReadBoardMail(env, { minAgeMs: 10 * 60 * 1000 }));
     // The invite check, when it hasn't passed: a change made in Google shows on the next open
     context.waitUntil?.(maybeCheckInvites(env, { retryMs: 10 * 60 * 1000 }));
+    // Past meetings from the Board folder in Google Drive, when the last look is over 10 minutes old
+    context.waitUntil?.(maybeReadBoardDrive(env, { minAgeMs: 10 * 60 * 1000 }));
     const [settings, meetings, docs, members, people, access, numbers, recipients, calendar] = await Promise.all([
       getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB), memberStatus(env.DB), roster(env.DB),
       accessStatus(env), liveNumbers(env), packetList(env.DB), calendarStatus(env.DB),
     ]);
-    const [mail, mailRecent, welcome, check] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB)]);
+    const [mail, mailRecent, welcome, check, drive] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB), driveStatus(env.DB)]);
     return Response.json({
       ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome,
+      // The Board folder in Google Drive Board reads, and how its last look went
+      drive: env.GOOGLE_CALENDAR_KEY ? { ...drive, folder: settings.driveFolder || DEFAULT_DRIVE_FOLDER } : null,
       // For the one-time Google setup: the service account's client ID and its Cloud project (neither is secret),
       // and the heartbeat's check that the invite's Calendar, Meet and transcripts work
       google: env.GOOGLE_CALENDAR_KEY ? { clientId: clientIdOf(env), project: projectOf(env), check } : null,
@@ -121,7 +126,9 @@ export async function onRequestPost(context) {
         return Response.json({ ok: true, meeting: m });
       }
       case 'save-meeting': {
-        const m = await saveMeeting(env.DB, body.meeting || {}, { by: me, base: typeof body.base === 'string' ? body.base : null });
+        // What only the server sets never comes from the editor (where the agenda came from, who joined by Meet)
+        const { agendaFrom, fromMeet, ...mine } = body.meeting || {};
+        const m = await saveMeeting(env.DB, mine, { by: me, base: typeof body.base === 'string' ? body.base : null });
         await audit(env, me, 'updated', `Board meeting saved: ${meetingName(m)}`);
         // An invite already out follows a new place, once it has settled (./_board-invite.js)
         if (m.invite) await noteInviteChange(env, m);
@@ -133,6 +140,13 @@ export async function onRequestPost(context) {
         await deleteMeeting(env, id);
         await audit(env, me, 'deleted', `Board meeting deleted: ${m ? meetingName(m) : id}`);
         return Response.json({ ok: true });
+      }
+      case 'keep-agenda': {
+        // The draft agenda, as it is, becomes the meeting's (an emailed agenda no longer replaces it)
+        needId();
+        const m = await patchMeeting(env.DB, id, (cur) => ({ ...cur, agendaFrom: { kind: 'typed', name: '', at: new Date().toISOString() } }));
+        if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
+        return Response.json({ ok: true, meeting: m });
       }
       case 'snapshot': {
         needId();

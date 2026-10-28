@@ -164,6 +164,11 @@ PUBLIC_ROUTES.push('/api/spend-rules', '/api/spend-hint', '/api/spend-recode', '
 // (honeypot, too-fast, Turnstile, a per-day limit in D1) and rate limited below
 PUBLIC_ROUTES.push('/api/advisory-apply');
 
+// A board member's "Will you be there?" answer from a board email: each link
+// carries that member's own 128-bit token for one meeting, checked inside
+// (_board-rsvp.js); GET only shows the answer to confirm, rate limited below
+PUBLIC_ROUTES.push('/api/board-rsvp');
+
 // ─── Rate Limiting ──────────────────────────────────────────────────
 // Each limited route allows 5 calls per address (clientIp: IPv6 by its /64)
 // per 60 seconds. The in-memory count is a cheap first filter that only sees
@@ -172,7 +177,7 @@ PUBLIC_ROUTES.push('/api/advisory-apply');
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
-const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply', '/api/vendor-docs']);
+const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply', '/api/vendor-docs', '/api/board-rsvp']);
 // Public GET routes that fan out to paid upstreams / build large responses.
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
 // The application form autosaves every step and uploads photos one by one, so
@@ -180,7 +185,7 @@ const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
 // Per minute per address. A watch party or a gala table shares one Wi-Fi, so the
 // beacons and the signup forms get room for a crowd; the handlers add their own
 // per-person limits behind these.
-const ROUTE_LIMITS = { '/api/broadcast-event': 120, '/api/live-click': 120, '/api/newsletter': 20, '/api/reminders': 20, '/api/profile-request': 10, '/api/vendor-docs': 10 };
+const ROUTE_LIMITS = { '/api/broadcast-event': 120, '/api/live-click': 120, '/api/newsletter': 20, '/api/reminders': 20, '/api/profile-request': 10, '/api/vendor-docs': 10, '/api/board-rsvp': 10 };
 const APPLY_ROUTE = '/api/apply';
 const APPLY_RATE_LIMIT_MAX = 60;
 const _rateLimitMap = new Map(); // "<route>:<ip>" → { count, resetAt }

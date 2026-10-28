@@ -17,6 +17,10 @@
  * of doubled, and so is each admin's own copy of the same meeting: one meeting
  * per day, named and timed by the copy that organized it. A meeting whose event is gone stays, marked gone for the admins.
  * New meetings start from Settings' agenda, not shared, like any new meeting.
+ * Past board meetings (back four years) come in too, as a record only: their
+ * day, time, place and name, with no agenda, attendance list or invite, so
+ * the agendas and minutes Board finds in email (./_board-mail.js) have a
+ * meeting to land on. A past meeting is never invited, reminded or marked gone.
  * An invite Board sent itself (./_board-invite.js) isn't a meeting to bring
  * in: Board already has it, so only the board's replies come back from it.
  *
@@ -25,7 +29,7 @@
  * writes to anyone's calendar.
  */
 
-import { accessToken, listEvents } from './_google-calendar.js';
+import { accessToken } from './_google-calendar.js';
 import { easternParts } from './_reveals.js';
 import { boardAdmins, activeBoard, readState, writeState } from './_board-roles.js';
 import { listMeetings, getMeeting, saveMeeting, patchMeeting, createMeeting, deleteMeeting, ensureSchema } from './_board.js';
@@ -34,8 +38,9 @@ import { todayEastern, cleanMeeting } from '../../public/admin/board-shared.js';
 const KEY = 'calendar';
 const EVERY_MS = 60 * 60 * 1000;
 const AHEAD_DAYS = 400;
-// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites; 4: where its call link is)
-const VERSION = 4;
+const PAST_DAYS = 4 * 366;
+// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites; 4: where its call link is; 5: past meetings)
+const VERSION = 5;
 export const CALENDAR_BY = 'the calendar';
 
 const NAMED = /\b(meeting|mtg)\b|\bQ[1-4]\b/i;
@@ -109,7 +114,7 @@ export function eventPlace(ev) {
   let location = raw;
   if (URL_RE.test(raw) && raw.match(URL_RE)[0] === raw) { if (!video) { video = raw; callFrom = 'place'; } location = ''; }
   if (!video) { const u = inText(ev?.description); if (looksLikeCall(u)) { video = u; callFrom = 'notes'; } }
-  // "Crosby Design Group, 123 Main St, Roswell, GA" → the place, then its address
+  // "Example Design Group, 123 Main St, Roswell, GA" → the place, then its address
   let address = '';
   const comma = location.indexOf(',');
   if (comma > 0 && /\d/.test(location.slice(comma))) { address = location.slice(comma + 1).trim(); location = location.slice(0, comma).trim(); }
@@ -124,8 +129,28 @@ export function eventPlace(ev) {
 }
 
 /**
+ * The events matching `q` between two instants, every page of them (four
+ * years of a calendar is more than one page). Repeating events come back as
+ * their single days; cancelled ones are left out.
+ */
+async function eventsBetween(token, calendarId, { timeMin, timeMax, q, fetchImpl }) {
+  const out = [];
+  let pageToken = '';
+  for (let page = 0; page < 10; page++) {
+    const params = new URLSearchParams({ singleEvents: 'true', maxResults: '250', timeMin, timeMax, q, ...(pageToken ? { pageToken } : {}) });
+    const res = await fetchImpl(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20000) });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(`Google Calendar read failed (${res.status}): ${data?.error?.message || ''}`.trim());
+    out.push(...(data?.items || []).filter((e) => e.status !== 'cancelled'));
+    pageToken = data?.nextPageToken || '';
+    if (!pageToken) break;
+  }
+  return out;
+}
+
+/**
  * Look at the admins' calendars and bring Board's meetings up to them.
- * → the saved state: { ok, checkedAt, found, added, moved, linked, gone, calendars, errors }
+ * → the saved state: { ok, checkedAt, found (from today on), past, added, moved, linked, gone, calendars, errors }
  */
 export async function syncBoardCalendar(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   await ensureSchema(env.DB);
@@ -147,7 +172,7 @@ async function look(env, { fetchImpl, now }) {
   const today = todayEastern(now);
   const [admins, board] = await Promise.all([boardAdmins(env.DB), activeBoard(env.DB)]);
   const boardEmails = board.map((p) => p.email).filter(Boolean);
-  const timeMin = new Date(now - 86_400_000).toISOString();
+  const timeMin = new Date(now - PAST_DAYS * 86_400_000).toISOString();
   const timeMax = new Date(now + AHEAD_DAYS * 86_400_000).toISOString();
   const found = new Map(); // iCalUID → { ev, from }
   const errors = [];
@@ -155,7 +180,7 @@ async function look(env, { fetchImpl, now }) {
   for (const email of admins) {
     try {
       const token = await accessToken(env, email, { fetchImpl, now });
-      for (const ev of await listEvents(token, email, { timeMin, timeMax, q: 'board', fetchImpl })) {
+      for (const ev of await eventsBetween(token, email, { timeMin, timeMax, q: 'board', fetchImpl })) {
         if (!isBoardMeetingEvent(ev, boardEmails)) continue;
         const uid = ev.iCalUID || ev.id;
         if (uid && !found.has(uid)) found.set(uid, { ev, from: email });
@@ -188,13 +213,15 @@ async function look(env, { fetchImpl, now }) {
     const mine = ownInvite.get(ev.id);
     if (mine) { own.set(mine.id, [...(own.get(mine.id) || []), ev].sort((a, b) => Number(!!b.organizer?.self) - Number(!!a.organizer?.self))); continue; }
     const when = eventWhen(ev);
-    if (!when.date || when.date < today) continue;
+    if (!when.date) continue;
     if (!days.has(when.date)) days.set(when.date, []);
     days.get(when.date).push({ uid, ev, from, when, place: eventPlace(ev) });
   }
-  const counts = { added: 0, moved: 0, linked: 0, gone: 0, merged: 0 };
+  const counts = { added: 0, moved: 0, linked: 0, gone: 0, merged: 0, past: 0 };
   const onCalendar = new Set();
   for (const [date, copies] of days) {
+    const isPast = date < today;
+    if (isPast) counts.past += 1;
     const lead = copies.find((c) => c.ev.organizer?.self) || copies[0];
     const uids = [lead.uid, ...copies.filter((c) => c !== lead).map((c) => c.uid)];
     uids.forEach((u) => onCalendar.add(u));
@@ -224,7 +251,8 @@ async function look(env, { fetchImpl, now }) {
       callFrom: lead.place.callFrom,
     };
     if (!m) {
-      m = await createMeeting(env, { date, by: CALENDAR_BY });
+      // A past meeting is a record of when and where it was: its agenda and minutes come from email, not the template
+      m = isPast ? await saveMeeting(env.DB, cleanMeeting({ date, start: when.start, end: when.end }), { by: CALENDAR_BY }) : await createMeeting(env, { date, by: CALENDAR_BY });
       counts.added += 1;
     } else if (!m.calendar?.uid) counts.linked += 1;
     const next = {
@@ -262,7 +290,7 @@ async function look(env, { fetchImpl, now }) {
   }
   return writeState(env.DB, KEY, {
     version: VERSION, ok: !errors.length, configured: true, checkedAt: new Date(now).toISOString(),
-    found: days.size, ...counts, calendars: read, errors,
+    found: days.size - counts.past, ...counts, calendars: read, errors,
   });
 }
 

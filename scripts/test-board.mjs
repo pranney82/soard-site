@@ -176,6 +176,10 @@ globalThis.fetch = async (input, init = {}) => {
   if (url === 'https://mercury-relay.sunshineonaranneyday.com/api/v1/accounts') return Response.json({ accounts: [{ name: 'Operating', kind: 'checking', type: 'mercury', status: 'active', currentBalance: 312500 }, { nickname: 'Reserve', kind: 'savings', type: 'mercury', status: 'active', currentBalance: 62500 }] });
   if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'g-test', expires_in: 3600 });
   if (url.startsWith('https://gmail.googleapis.com/')) return Response.json({ messages: [], resultSizeEstimate: 0 });
+  // The Board folder in Google Drive: an empty one here (tests/board-drive.test.mjs covers what's in it)
+  if (url.startsWith('https://www.googleapis.com/drive/v3/')) return Response.json({ files: [], id: 'root', name: 'Board', mimeType: 'application/vnd.google-apps.folder' });
+  // Who joined a Meet (the invite check reads a space's records): none here
+  if (url.startsWith('https://meet.googleapis.com/v2/conferenceRecords')) { google.push({ method, url, body: null }); return Response.json({ conferenceRecords: [], participants: [] }); }
   const meet = url.match(/^https:\/\/meet\.googleapis\.com\/v2\/spaces\/([^?]+)/);
   if (meet) {
     google.push({ method, url, body: init.body ? JSON.parse(init.body) : null });
@@ -203,6 +207,7 @@ globalThis.fetch = async (input, init = {}) => {
     const job = (id, name, status) => ({ id, name, customFieldValues: { nodes: [{ value: status, customField: { id: FIELD_JOB_STATUS } }] } });
     return Response.json({ organization: { jobs: { nodes: [job('j1', 'Maya (2026)', 'Build'), job('j2', 'Leo (2026)', 'Design'), job('j3', 'Someone Else (2026)', 'Awaiting Funding'), job('j4', 'Not Published Yet (2026)', 'Design')], nextPage: null } } });
   }
+  if (!/^https?:\/\/(localhost|127\.0\.0\.1)/.test(url)) throw new Error(`test-board: unexpected outside call ${url}`);
   return realFetch(input, init);
 };
 _resetKeyCacheForTests();
@@ -213,7 +218,6 @@ provideBoardFinance(async () => ({
   ytd: { year: 2026, through: day(0), income: 900000, makeovers: 500000, store: 150000, operating: 200000, net: 50000 },
   lastYtd: { year: 2025, through: day(-365), income: 800000, makeovers: 480000, store: 140000, operating: 200000, net: -20000 },
   cash: { today: 375000, lowest: { dollars: 210000, week: day(40) }, cautiousLowest: { dollars: 180000, week: day(47) }, in13Weeks: 260000, floor: 150000, belowFloor: false },
-  close: { month: '2026-09', label: 'September', state: 'ready', closedAt: null },
   perMakeover: { count: 12, average: 21000 },
 }));
 
@@ -309,7 +313,7 @@ async function itemMenu(page, item, choice) {
   await sleep(150);
   return found && clickText(page, '.bd-menu[open] .bd-menu__item', choice);
 }
-const step = (page, name) => clickText(page, '.bm-step-tab', new RegExp(`^\\d?${name}`));
+const step = (page, name) => clickText(page, '.bm-stage', new RegExp(`^\\d?${name}`));
 
 try {
   // ─── A founder: the Board area ───
@@ -323,7 +327,7 @@ try {
   await shot(jane, '01-meetings-empty');
 
   // An old agenda, pasted in
-  await clickText(jane, 'button', /^Bring in an old agenda$/);
+  await clickText(jane, 'button', /^Add a past meeting from a file$/);
   await jane.waitForSelector('#bd-import-text');
   await jane.evaluate((t) => { const el = document.querySelector('#bd-import-text'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(el, t); el.dispatchEvent(new Event('input', { bubbles: true })); }, OLD_AGENDA);
   ok(await waitText(jane, /3 people there, 1 absent/), 'the preview: who was there and who wasn’t');
@@ -337,7 +341,7 @@ try {
   // Its minutes, written elsewhere: a Word file read in; then the signed copy
   const docx = join(OUT, 'Board-minutes.docx');
   writeFileSync(docx, minutesDocx());
-  const minutesInput = await jane.evaluateHandle(() => [...document.querySelectorAll('.bm-steprow input[type="file"]')].find((i) => /minutes/i.test(i.closest('label').textContent)));
+  const minutesInput = await jane.evaluateHandle(() => [...document.querySelectorAll('.bm-task input[type="file"]')].find((i) => /minutes/i.test(i.closest('label').textContent)));
   await minutesInput.asElement().uploadFile(docx);
   ok(await waitText(jane, /Board minutes reads as 3 sections, 3 items/), 'uploaded minutes (Word) are read and shown before they’re used');
   await clickText(jane, 'button', /^Use these as the minutes$/);
@@ -347,7 +351,7 @@ try {
   ok(pastNow.sections.some((s) => s.items.some((it) => /Reserves grew this quarter/.test(it.notes))) && pastNow.files.some((f) => f.kind === 'minutes'), 'the meeting now holds what the minutes say, and keeps the file');
   const pdf = join(OUT, 'Balance-sheet-financials.pdf');
   writeFileSync(pdf, '%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF');
-  const signedInput = await jane.evaluateHandle(() => [...document.querySelectorAll('.bm-steprow input[type="file"]')].find((i) => /Upload it|Replace it/.test(i.closest('label').textContent)));
+  const signedInput = await jane.evaluateHandle(() => [...document.querySelectorAll('.bm-task input[type="file"]')].find((i) => /Upload it|Replace it/.test(i.closest('label').textContent)));
   await signedInput.asElement().uploadFile(pdf);
   ok(await waitText(jane, /Signed copy kept/), 'the signed copy uploads');
   await shot(jane, '02b-after');
@@ -363,13 +367,12 @@ try {
   const t1 = await text(jane);
   ok(await jane.evaluate(() => [...document.querySelectorAll('input[aria-label="Item"]')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
   ok(/\$375,000 in Mercury/.test(t1), 'the Financial item shows today’s cash in Mercury');
-  ok(/2026 so far \(through \w+\): \$900,000 in, \$850,000 out, net \$50,000/.test(t1), 'and the year so far from Job Costs’ finance summary');
-  ok(/3 makeovers in progress: 2 in Design, 1 in Build/.test(t1) && /Design: Leo and 1 more/.test(t1) && !/Not Published Yet/.test(t1), 'the projects item shows JobTread’s makeovers, by published kid only');
+  ok(/Money: Mercury and the finance summary/.test(t1) && /Makeovers in progress \(JobTread\)/.test(t1), 'the agenda marks the items that show live numbers');
 
   // Board only, and a private note, from an item's ⋯ menu
   ok(await itemMenu(jane, 'Governance', /^Board only/), 'an item’s menu marks it board only');
   ok(await waitText(jane, /Board only/), 'and it shows as board only');
-  ok(await itemMenu(jane, 'Governance', /^Add a private note$/), 'an item’s menu adds a private note');
+  ok(await itemMenu(jane, 'Governance', /^A private note/), 'an item’s menu adds a private note');
   await jane.waitForSelector('textarea[aria-label="Your private note"]');
   await jane.click('textarea[aria-label="Your private note"]');
   await sleep(100);
@@ -377,7 +380,7 @@ try {
   // A file
   await (await jane.$('.bd-drop input[type="file"]')).uploadFile(pdf);
   ok(await waitText(jane, /Balance sheet financials/), 'a PDF uploads to the meeting, by its readable name');
-  ok(await jane.evaluate(() => document.querySelector('.bd-line--file select').value) === 'financials', 'a file named like financials is filed as one');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.bf-group')].some((g) => /Financial statements/i.test(g.querySelector('.bm-group').textContent) && /Balance sheet financials/.test(g.textContent))), 'a file named like financials is filed as one');
   ok(await saved(jane), 'it all saves by itself');
 
   // Getting ready 1: the invite, from the president's calendar, with Google Meet and transcripts on
@@ -392,6 +395,8 @@ try {
   ok(/2 guests · Google Meet · transcript on · the place goes on it when you add one/.test(await text(jane)), 'the step says what went out');
   // The place, added after: one update once it has settled
   const before = google.length;
+  await clickText(jane, 'button', /^Add the place$/);
+  await jane.waitForSelector('#bd-loc');
   await type(jane, '#bd-loc', 'Example Hall');
   await type(jane, '#bd-addr', '100 Example St, Roswell, GA');
   ok(await saved(jane), 'the place saves');
@@ -419,10 +424,13 @@ try {
 
   // ─── During: attendance, notes, a motion, an action item ───
   await step(jane, 'During');
-  ok(await waitText(jane, /Tap who’s here as the meeting starts/), 'During opens with attendance');
+  ok(await waitText(jane, /Tap each person as the meeting starts/), 'During opens with attendance');
+  const t2 = await text(jane);
+  ok(/2026 so far \(through \w+\): \$900,000 in, \$850,000 out, net \$50,000/.test(t2), 'the Financial item shows the year so far from Job Costs’ finance summary');
+  ok(/3 makeovers in progress: 2 in Design, 1 in Build/.test(t2) && /Design: Leo and 1 more/.test(t2) && !/Not Published Yet/.test(t2), 'the projects item shows JobTread’s makeovers, by published kid only');
   ok(await jane.evaluate(() => document.querySelectorAll('.bm-person').length) === 4, 'the board (3) and the founder are on the list');
   await jane.evaluate(() => { const row = [...document.querySelectorAll('.bm-person')].find((r) => /Alex Rivera/.test(r.textContent)); [...row.querySelectorAll('.bm-choice')].find((b) => b.textContent.trim() === 'Here').click(); });
-  ok(await waitText(jane, /1 of 3 board members here/), 'a tap marks someone here, and the count follows');
+  ok(await waitText(jane, /1 of 3\s+board members here/), 'a tap marks someone here, and the count follows');
   await jane.click('textarea[aria-label^="Notes for Governance"]');
   await sleep(100);
   await jane.keyboard.type('Insurance renewal is on track');
@@ -486,17 +494,21 @@ try {
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
   ok(await waitText(jane, /Meetings come from Jane’s calendar by themselves/), 'Meetings says where meetings come from');
-  ok(/Invites with Google Meet and transcripts work \(checked/.test(await text(jane)), 'and that invites with Meet and transcripts work');
+  ok(await waitText(jane, /Ready\. The documents went out/), 'the next meeting: everything done says Ready');
+  ok(/Also coming up/i.test(await text(jane)) && /SOARD Q4 Board Meeting/.test(await text(jane)), 'the meeting after it is listed as also coming up');
   const all = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings);
   ok(all.length === 3, `the event on the calendar is a meeting, and Board’s own invite isn’t a second one (${all.length})`);
   ok(all.find((m) => m.id === meetingId)?.invite?.replies?.['alex-rivera'] === 'accepted', 'the reply to Board’s invite comes back onto its meeting');
-  ok(/Next: send the invite|Next: add everyone and Google Meet/.test(await text(jane)), 'each meeting ahead says what to do next');
   await shot(jane, '08-meetings');
+  await jane.goto(`${SITE}/admin/#board/settings`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' });
+  ok(await waitText(jane, /Invites with Google Meet\s+Board can put meetings on the calendar with a Meet/) && /Meet transcripts\s+Turned on for every invite/.test(await text(jane)) && /Attendance from Google Meet\s+After a meeting, who joined is marked/.test(await text(jane)), 'Settings: the invite check says Calendar, Meet, transcripts and attendance all work');
   const calId = all.find((m) => m.calendar)?.id;
   await jane.goto(`${SITE}/admin/#board/meeting/${calId}/before`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /From Jane’s calendar \(“SOARD Q4 Board Meeting”\)/), 'its editor says it follows the calendar');
-  ok(await jane.$eval('.bm-head h2', (e) => e.textContent) === 'SOARD Q4 Board Meeting', 'and goes by the event’s own name');
+  ok(await jane.$eval('.bm-title h2', (e) => e.textContent) === 'SOARD Q4 Board Meeting', 'its editor goes by the event’s own name');
+  await clickText(jane, 'button', /^Change when and where$/);
+  ok(await waitText(jane, /From Jane’s calendar \(“SOARD Q4 Board Meeting”\)/), 'and says it follows the calendar');
   ok(await jane.evaluate(() => document.querySelector('#bd-date').disabled && document.querySelector('#bd-start').value === '08:00' && document.querySelector('#bd-loc').disabled && document.querySelector('#bd-loc').value === 'Example Design Group'), 'its day, time and place come from the event, and are changed there');
   ok(await waitText(jane, /Add everyone and Meet/), 'its invite is the calendar’s own: Board offers to add everyone and Meet to it');
   await shot(jane, '09-calendar-meeting');
@@ -572,7 +584,7 @@ try {
     }
 
     for (const [p, re] of [
-      ['financials', /Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*September’s books are ready to close[\s\S]*Cash[\s\S]*\$375,000 in Mercury[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Financial statements[\s\S]*Balance sheet financials[\s\S]*2025 990 Tax Return/],
+      ['financials', /Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash[\s\S]*\$375,000 in Mercury[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Financial statements[\s\S]*Balance sheet financials[\s\S]*2025 990 Tax Return/],
       ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
       ['documents', width === 1440 ? /Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it/ : /Conflict of interest policy[\s\S]*Read it[\s\S]*Signed\s*by Alex Rivera/],
     ]) {
@@ -603,7 +615,7 @@ try {
   console.log('Back to the founder');
   await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}/before`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /By video: Alex Rivera/), 'the founder sees Alex’s answer');
+  ok(await waitText(jane, /By video\s+1\s+Alex Rivera/), 'the founder sees Alex’s answer');
   await step(jane, 'During');
   await waitText(jane, /Attendance/);
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bd-line--action')].some((l) => l.classList.contains('is-done'))), 'and that Alex ticked off the action item');

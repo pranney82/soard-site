@@ -14,12 +14,14 @@ import * as admin from '../functions/api/board-admin.js';
 import * as portal from '../functions/api/board-portal.js';
 import * as fileRoute from '../functions/api/board-file.js';
 import { syncBoardAccess, accessStatus, maybeSyncBoardAccess, GROUP_NAME, POLICY_NAME, NOBODY } from '../functions/api/_board-access.js';
-import { packetEmail, cashNow, getMeeting, listMeetings, maybeRunBoard, cashHistory, provideBoardFinance, liveNumbers, saveMeeting } from '../functions/api/_board.js';
+import { packetEmail, meetingIcs, cashNow, getMeeting, listMeetings, maybeRunBoard, cashHistory, provideBoardFinance, liveNumbers, saveMeeting, patchMeeting } from '../functions/api/_board.js';
 import { isBoardMeetingEvent, eventWhen, eventPlace, syncBoardCalendar, calendarStatus } from '../functions/api/_board-calendar.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
-import { maybeRefreshInvites, maybeCheckInvites, inviteCheck } from '../functions/api/_board-invite.js';
+import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes } from '../functions/api/_board-invite.js';
+import * as rsvpPage from '../functions/api/board-rsvp.js';
+import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines } from '../public/admin/board-shared.js';
+import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
 const TEAM = 'soard';
@@ -305,6 +307,87 @@ test('the packet email has the agenda’s headings only: no notes, no confidenti
   assert.equal(real.body.meeting.packetSentTo, 2);
 });
 
+test('one-tap answers: each board member who hasn’t answered gets their own links; opening one only asks, pressing it answers', async () => {
+  const { meeting } = await sharedMeetingWithFiles();
+  // Sam already said on the board page; Alex hasn't
+  assert.equal((await portalApi(OTHER_MEMBER, { action: 'rsvp', meetingId: meeting.id, answer: 'no' })).status, 200);
+  const sends = () => outside.filter((c) => c.url === 'https://api.resend.com/emails');
+  const r = await adminApi(FOUNDER, { action: 'send-packet', id: meeting.id });
+  assert.equal(r.body.sent, 2);
+  const to = (addr) => sends().find((c) => c.body.to[0] === addr).body;
+  const alex = to(MEMBER);
+  assert.match(alex.html, /Alex, the agenda is below and the documents are attached/);
+  const links = [...alex.html.matchAll(/\/api\/board-rsvp\?t=([0-9a-f]{32})&amp;a=(yes|remote|no)/g)];
+  assert.deepEqual(links.map((x) => x[2]), ['yes', 'remote', 'no']);
+  assert.equal(new Set(links.map((x) => x[1])).size, 1, 'one token, Alex’s own');
+  assert.match(alex.text, /I’ll be there: https:\/\/sunshineonaranneyday\.com\/api\/board-rsvp\?t=/);
+  assert.doesNotMatch(to(OTHER_MEMBER).html, /board-rsvp|Will you be there/, 'Sam already answered: not asked again');
+  assert.match(to(OTHER_MEMBER).html, /Sam, the agenda/);
+  const tok = links[0][1];
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM board_rsvp_links WHERE hash = ?').bind(tok).first()).n, 0, 'D1 keeps only the hash');
+
+  // Opening the link (a mail scanner does) changes nothing
+  const opened = await rsvpPage.onRequestGet({ request: new Request(`https://sunshineonaranneyday.com/api/board-rsvp?t=${tok}&a=remote`), env });
+  const page = await opened.text();
+  assert.equal(opened.status, 200);
+  assert.match(page, /Alex, will you be at the /);
+  assert.match(page, /<button type="submit" name="a" value="remote" class="primary">I’ll join by video<\/button>/, 'the one tapped is the yellow one');
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM board_rsvps WHERE slug = ?').bind('alex-rivera').first()).n, 0);
+  // Pressing it answers, the same as on the board page
+  const press = (t, a) => rsvpPage.onRequestPost({ request: new Request('https://sunshineonaranneyday.com/api/board-rsvp', { method: 'POST', body: new URLSearchParams({ t, a }) }), env });
+  const done = await press(tok, 'remote');
+  assert.equal(done.status, 200);
+  assert.match(await done.text(), /Thanks, Alex.*joining the .* by video/s);
+  assert.equal((await getMeeting(env.DB, meeting.id)).attendance.find((p) => p.slug === 'alex-rivera').rsvp, 'remote');
+  // Changed their mind from the same link
+  await press(tok, 'yes');
+  assert.equal((await getMeeting(env.DB, meeting.id)).attendance.find((p) => p.slug === 'alex-rivera').rsvp, 'yes');
+  assert.match(await (await rsvpPage.onRequestGet({ request: new Request(`https://x/api/board-rsvp?t=${tok}`), env })).text(), /You said: Coming\./);
+
+  // A made-up token, a bad answer, or a meeting off the board page: nothing recorded
+  assert.equal((await press('0'.repeat(32), 'yes')).status, 404);
+  assert.equal((await press(tok, 'maybe')).status, 404);
+  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, meeting.id)), shared: false }, { by: FOUNDER });
+  assert.equal((await press(tok, 'no')).status, 404);
+  assert.equal((await getMeeting(env.DB, meeting.id)).attendance.find((p) => p.slug === 'alex-rivera').rsvp, 'yes');
+  // Two days after the meeting, the link has run out
+  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, meeting.id)), shared: true }, { by: FOUNDER });
+  assert.equal((await answerLink(env, tok)).member.slug, 'alex-rivera');
+  assert.deepEqual(await answerLink(env, tok, { now: Date.parse('2026-11-21T17:00:00Z') }), { expired: true });
+
+  // The reminder: only who hasn't answered, each by name with their own links; a preview's buttons open the board page
+  outside = [];
+  await env.DB.prepare('DELETE FROM board_rsvps').run();
+  const remind = await adminApi(FOUNDER, { action: 'remind-rsvp', id: meeting.id });
+  assert.equal(remind.body.sent, 2);
+  const batch = outside.find((c) => c.url === 'https://api.resend.com/emails/batch').body;
+  assert.deepEqual(batch.map((e) => e.to[0]).sort(), [MEMBER, OTHER_MEMBER].sort());
+  const toAlex = batch.find((e) => e.to[0] === MEMBER);
+  assert.match(toAlex.subject, /^Will you be at the .*\? Nov 19, 2026$/);
+  assert.match(toAlex.html, /Alex, will you be at the/);
+  assert.equal([...toAlex.html.matchAll(/board-rsvp\?t=/g)].length, 3);
+  outside = [];
+  await adminApi(FOUNDER, { action: 'remind-rsvp', id: meeting.id, test: true });
+  const preview = outside.find((c) => c.url.startsWith('https://api.resend.com/')).body;
+  const one = Array.isArray(preview) ? preview[0] : preview;
+  assert.equal(one.to[0], FOUNDER);
+  assert.doesNotMatch(one.html, /board-rsvp/, 'a preview has no one’s answer links');
+  assert.match(one.html, new RegExp(`/admin/board/#/meetings/${meeting.id}`));
+});
+
+test('the minutes notice says which meeting and when the board votes on them', async () => {
+  const { meeting } = await sharedMeetingWithFiles();
+  await adminApi(FOUNDER, { action: 'new-meeting', date: '2027-01-14' });
+  outside = [];
+  const r = await adminApi(FOUNDER, { action: 'send-minutes', id: meeting.id });
+  assert.equal(r.body.sent, 2);
+  const mail = outside.find((c) => c.url.startsWith('https://api.resend.com/')).body[0];
+  assert.match(mail.subject, /^Draft minutes: .*, Nov 19, 2026$/);
+  assert.match(mail.html, /The board votes on them at the next meeting\./);
+  assert.match(mail.html, /Next meeting<\/td>\s*<td[^>]*>Thursday, January 14, 2027/);
+  assert.doesNotMatch(mail.html, /Insurance is looking|Call the venue/, 'the minutes themselves stay on the board page');
+});
+
 // ─── Access's board list ────────────────────────────────────────────
 
 function fakeCloudflare({ attached = false } = {}) {
@@ -403,7 +486,6 @@ const FINANCE = {
   ytd: { year: 2026, through: '2026-10-27', income: 900000, makeovers: 500000, store: 150000, operating: 200000, net: 50000 },
   lastYtd: { year: 2025, through: '2025-10-27', income: 800000, makeovers: 480000, store: 140000, operating: 200000, net: -20000 },
   cash: { today: 375000, lowest: { dollars: 210000, week: '2027-01-04' }, cautiousLowest: { dollars: 180000, week: '2027-01-11' }, in13Weeks: 260000, floor: 150000, belowFloor: false },
-  close: { month: '2026-09', label: 'September', state: 'ready', closedAt: null },
   perMakeover: { count: 12, average: 21000 },
 };
 
@@ -420,7 +502,6 @@ test('finance from Job Costs: nothing until its module registers, then on the bo
   const lines = liveLines('cash', page.numbers);
   assert.ok(lines.some((l) => l === '2026 so far (through October): $900,000 in, $850,000 out, net $50,000; 2025 to the same day: net −$20,000'), lines.join(' | '));
   assert.ok(lines.some((l) => /^Cash forecast: lowest \$210,000 the week of Jan 4, \$260,000 in 13 weeks$/.test(l)));
-  assert.ok(lines.includes('September’s books: ready to close'));
   // Locking the packet keeps the finance lines with it
   const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: '2026-11-19' })).body.meeting;
   const locked = (await adminApi(FOUNDER, { action: 'snapshot', id: m.id })).body.meeting;
@@ -496,9 +577,11 @@ test('the calendar makes the meetings: added, moved, linked to one added by hand
   const cal = { [FOUNDER]: [q4, past, advisory] };
   const google = fakeGoogle(cal);
   const first = await syncBoardCalendar(env);
-  assert.deepEqual([first.ok, first.found, first.added], [true, 1, 1]);
+  assert.deepEqual([first.ok, first.found, first.past, first.added], [true, 1, 1, 2]);
   assert.deepEqual(google.reads, [{ cal: FOUNDER, q: 'board' }], 'reads the Board area’s admins’ calendars, searching for "board"');
-  let [m] = await listMeetings(env.DB);
+  let [m, before] = await listMeetings(env.DB);
+  // A past meeting is a record of when it was: no agenda, attendance list or invite until its email brings them
+  assert.deepEqual([before.date, before.start, before.title, before.sections.length, before.attendance.length, before.actions.length, before.shared], ['2026-01-08', '08:00', 'SOARD Q3 Board Meeting', 0, 0, 0, false]);
   assert.deepEqual([m.date, m.start, m.end, m.location, m.address, m.video, m.shared], [day, '08:00', '10:00', 'Example Design Group', '100 Example St, Roswell, GA', 'https://meet.google.com/abc-defg-hij', false]);
   assert.equal(m.calendar.title, 'SOARD Q4 Board Meeting');
   assert.equal(meetingName(m), 'SOARD Q4 Board Meeting', 'the event’s own name, not a quarter worked out from the date');
@@ -520,16 +603,16 @@ test('the calendar makes the meetings: added, moved, linked to one added by hand
   await syncBoardCalendar(env);
   m = (await listMeetings(env.DB))[0];
   assert.equal(m.title, 'Fall board meeting');
-  assert.equal((await listMeetings(env.DB)).length, 1, 'never doubled');
+  assert.equal((await listMeetings(env.DB)).length, 2, 'never doubled');
   // Nothing changed: nothing saved
-  const before = m.updatedAt;
+  const was = (await listMeetings(env.DB)).map((x) => x.updatedAt);
   await syncBoardCalendar(env);
-  assert.equal((await listMeetings(env.DB))[0].updatedAt, before);
+  assert.deepEqual((await listMeetings(env.DB)).map((x) => x.updatedAt), was);
 
-  // Gone from the calendar: kept, marked gone
+  // Gone from the calendar: kept, marked gone (a past meeting never is)
   cal[FOUNDER] = [];
   assert.equal((await syncBoardCalendar(env)).gone, 1);
-  assert.equal((await listMeetings(env.DB))[0].calendar.gone, true);
+  assert.deepEqual((await listMeetings(env.DB)).map((x) => x.calendar.gone), [true, false]);
   assert.equal(google.writes, 0, 'never writes to a calendar');
 });
 
@@ -613,19 +696,28 @@ test('two looks at once add a new event once', async () => {
 /**
  * Google Calendar and Meet that keep what Board writes (events on each calendar, by id), and refuse what Google refuses.
  * `meetScope: false` is Google Admin not allowing transcripts yet, `meetApi: false` the Meet REST API turned off,
- * `keeps: false` a Workspace plan that takes the setting and leaves transcripts off, `pending` a Meet Google is still making.
+ * `keeps: false` a Workspace plan that takes the setting and leaves transcripts off, `pending` a Meet Google is still making,
+ * `readScope: false` Google Admin not allowing attendance yet; `records` the conference records of each space, with their participants.
  */
-function fakeGoogleWriter({ meetScope = true, meetApi = true, keeps = true, pending = false, events = {} } = {}) {
-  const g = { events, calls: [], transcript: {}, meetScope, meetApi, keeps, pending };
+function fakeGoogleWriter({ meetScope = true, meetApi = true, keeps = true, pending = false, readScope = true, events = {}, records = {} } = {}) {
+  const g = { events, calls: [], transcript: {}, meetScope, meetApi, keeps, pending, readScope, records };
   answer = async (url, init) => {
     const method = init.method || 'GET';
     if (url === 'https://oauth2.googleapis.com/token') {
       const claims = JSON.parse(Buffer.from(new URLSearchParams(String(init.body)).get('assertion').split('.')[1], 'base64url').toString());
-      if (/meetings\.space/.test(claims.scope) && !g.meetScope) return Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens using this method' }, { status: 401 });
+      if (/meetings\.space\.readonly/.test(claims.scope) && !g.readScope) return Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens using this method' }, { status: 401 });
+      if (/meetings\.space\.settings/.test(claims.scope) && !g.meetScope) return Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens using this method' }, { status: 401 });
       return Response.json({ access_token: `t-${claims.sub}`, expires_in: 3600 });
     }
     const body = init.body ? JSON.parse(init.body) : null;
     g.calls.push({ method, url, body });
+    const recs = url.match(/^https:\/\/meet\.googleapis\.com\/v2\/conferenceRecords\?filter=([^&]+)/);
+    if (recs) {
+      const space = decodeURIComponent(recs[1]).match(/space\.name="([^"]+)"/)[1];
+      return Response.json({ conferenceRecords: (g.records[space] || []).map(({ participants, ...r }) => r) });
+    }
+    const parts = url.match(/^https:\/\/meet\.googleapis\.com\/v2\/(conferenceRecords\/[^/]+)\/participants/);
+    if (parts) return Response.json({ participants: Object.values(g.records).flat().find((r) => r.name === parts[1])?.participants || [] });
     const meet = url.match(/^https:\/\/meet\.googleapis\.com\/v2\/spaces\/([^?]+)/);
     if (meet && !g.meetApi) return Response.json({ error: { message: 'Google Meet REST API has not been used in project example-project before or it is disabled.' } }, { status: 403 });
     const config = (code) => ({ artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: g.transcript[code] || 'OFF' } } });
@@ -677,7 +769,9 @@ test('Send the invite: from the president’s calendar to every board member, wi
   assert.equal(post.body.conferenceData.createRequest.conferenceSolutionKey.type, 'hangoutsMeet');
   assert.deepEqual(post.body.start, { dateTime: `${day}T18:00:00`, timeZone: 'America/New_York' });
   assert.equal(post.body.location, undefined, 'no place yet, none on the invite');
-  assert.match(post.body.description, /sunshineonaranneyday\.com\/board/);
+  assert.ok(post.body.description.startsWith(`The agenda and the packet are on the board page: https://sunshineonaranneyday.com/admin/board/#/meetings/${m.id}\n`), 'the way to this meeting’s page');
+  assert.match(post.body.description, /\nAGENDA \(the board page always has the latest\)\n1\. Call to order\n   - Roll call\n/);
+  assert.doesNotMatch(post.body.description, /<[a-z]/i, 'plain text: Apple Calendar and Outlook would show HTML as tags');
   assert.deepEqual(g.transcript, { 'abc-defg-hij-space': 'ON' }, 'transcripts on for its Meet');
   m = r.body.meeting;
   assert.deepEqual([m.invite.organizer, m.invite.meet, m.video, m.invite.transcript, m.invite.guests], [FOUNDER, 'https://meet.google.com/abc-defg-hij', 'https://meet.google.com/abc-defg-hij', 'on', 2]);
@@ -743,7 +837,7 @@ test('a meeting from the organizer’s calendar: that invite gets the missing bo
   assert.equal(body.location, 'Example Hall, 100 Example St, Roswell, GA', 'a TBD place is filled in');
   assert.ok(body.conferenceData.createRequest);
   assert.equal(body.summary, undefined); assert.equal(body.start, undefined, 'the calendar keeps its own name, day and time');
-  assert.equal(body.description, undefined, 'and its own notes');
+  assert.ok(body.description.startsWith(`Dinner provided\n\nThe agenda and the packet are on the board page: https://sunshineonaranneyday.com/admin/board/#/meetings/${m.id}\n`), 'its own notes stay, Board’s follow them');
   // Looked at again: still the calendar's meeting, followed as before, never marked gone
   await syncBoardCalendar(env);
   [m] = await listMeetings(env.DB);
@@ -757,6 +851,39 @@ test('a meeting from the organizer’s calendar: that invite gets the missing bo
   const no = await adminApi(FOUNDER, { action: 'send-invite', id: theirsOnly.id });
   assert.equal(no.status, 409);
   assert.match(no.body.error, /someone@example\.com/);
+});
+
+test('the invite’s notes follow the agenda without Google emailing anyone; a new place still emails; the organizer’s own notes stay', async () => {
+  const g = fakeGoogleWriter();
+  let m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(35) })).body.meeting;
+  m = (await adminApi(FOUNDER, { action: 'send-invite', id: m.id })).body.meeting;
+  const sections = [...m.sections, { title: 'Strategic plan', items: [{ title: 'Draft goals', presenter: 'Alex Rivera' }, { title: 'Legal', confidential: true }] }];
+  g.calls = [];
+  m = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...m, sections }, base: m.updatedAt })).body.meeting;
+  assert.deepEqual(await maybeRefreshInvites(env), [], 'not while it’s being typed');
+  assert.deepEqual(await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 }), [m.id]);
+  const [patch, ...more] = calWrites(g);
+  assert.equal(more.length, 0);
+  assert.match(patch.url, /sendUpdates=none$/, 'the agenda alone: nobody is emailed');
+  assert.match(patch.body.description, /\d\. Strategic plan\n   - Draft goals \(Alex Rivera\)\n   - A board-only item \(on the board page\)/);
+  assert.doesNotMatch(patch.body.description, /Legal/, 'never a board-only item’s title');
+  assert.equal(patch.body.attendees.length, 2);
+  g.calls = [];
+  assert.deepEqual(await maybeRefreshInvites(env, { now: Date.now() + 10 * 60 * 1000 }), [], 'then nothing more');
+  // The agenda and the place at once: Google emails the update
+  const now = await getMeeting(env.DB, m.id);
+  await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...now, location: 'Example Hall', sections: now.sections.slice(0, -1) }, base: now.updatedAt });
+  await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 });
+  assert.match(calWrites(g)[0].url, /sendUpdates=all$/);
+  assert.doesNotMatch(calWrites(g)[0].body.description, /Strategic plan/);
+  // A calendar file for a member who isn't on the invite says the same
+  assert.match(meetingIcs(await getMeeting(env.DB, m.id)), /DESCRIPTION:The agenda and the packet are on the board page: .*\\nAGENDA/);
+
+  // The organizer's own words stay in front; Board's part is replaced, never doubled, in HTML when Google keeps it so
+  assert.equal(withNotes('Dinner provided\n\nThe agenda and the packet are on the board page: old\nAGENDA', 'The agenda and the packet are on the board page: new'), 'Dinner provided\n\nThe agenda and the packet are on the board page: new');
+  assert.equal(withNotes('', 'N'), 'N');
+  assert.equal(withNotes('<b>Dinner</b> provided<br><br>The agenda and the packet are on the board page: old<br>x', 'The agenda and the packet are on the board page: new\nA & B'),
+    '<b>Dinner</b> provided<br><br>The agenda and the packet are on the board page: new<br>A &amp; B');
 });
 
 test('Board’s invite, then the meeting turns up on the organizer’s own calendar: one invite, theirs', async () => {
@@ -921,7 +1048,109 @@ test('Holly’s invite with a Teams link as its place: Google Meet becomes the c
   assert.equal(patch.body.location, undefined);
 });
 
-// ─── Board mail: past agendas, minutes and QuickBooks reports ───────
+// ─── Attendance from Google Meet ────────────────────────────────────
+
+/** A meeting yesterday, 8 to 10, on Google Meet from the founder's calendar */
+async function meetMeetingYesterday() {
+  const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(-1) })).body.meeting;
+  return patchMeeting(env.DB, m.id, (cur) => ({ ...cur, start: '08:00', end: '10:00', video: 'https://meet.google.com/abc-defg-hij', invite: { eventId: 'board1', organizer: FOUNDER, meet: 'https://meet.google.com/abc-defg-hij', guests: 3 } }));
+}
+const joinedAt = (day, from, to) => ({ earliestStartTime: `${day}T${from}:00Z`, latestEndTime: `${day}T${to}:00Z` });
+
+test('after a Google Meet meeting, who joined is matched to the board and marked By video; a mark someone made stays', async () => {
+  const day = inDays(-1);
+  const g = fakeGoogleWriter({ records: { 'spaces/abc-defg-hij-space': [
+    { name: 'conferenceRecords/r1', startTime: `${day}T13:00:00Z`, endTime: `${day}T15:00:00Z`, participants: [
+      { signedinUser: { user: 'users/1', displayName: 'Alex Rivera' }, ...joinedAt(day, '13:02', '14:58') },
+      { anonymousUser: { displayName: 'Sam' }, ...joinedAt(day, '13:05', '14:50') },
+      { signedinUser: { user: 'users/3', displayName: 'Kim Park' }, ...joinedAt(day, '13:10', '13:10') },
+      { phoneUser: { displayName: 'Caller (404) ***-**12' }, ...joinedAt(day, '13:00', '14:00') },
+    ] },
+  ] } });
+  let m = await meetMeetingYesterday();
+  // Someone marked Sam before Google answered: their mark stays
+  m = await saveMeeting(env.DB, { ...m, attendance: m.attendance.map((p) => (p.slug === 'sam-ortiz' ? { ...p, status: 'excused' } : p)) }, { by: FOUNDER });
+  const { maybeFillAttendance, matchName } = await import('../functions/api/_board-attendance.js');
+  assert.deepEqual(await maybeFillAttendance(env), [m.id]);
+  m = await getMeeting(env.DB, m.id);
+  const status = Object.fromEntries(m.attendance.map((p) => [p.slug || p.key, p.status]));
+  assert.deepEqual([status['alex-rivera'], status['sam-ortiz'], status['kim-park']], ['remote', 'excused', ''], 'Alex joined; Sam’s mark stays; a moment in the call isn’t attending');
+  assert.equal(m.fromMeet.status, 'ok');
+  assert.deepEqual(m.fromMeet.joined.map((j) => [j.name, j.slug, j.minutes]).sort(), [['Alex Rivera', 'alex-rivera', 116], ['Caller (404) ***-**12', '', 60], ['Kim Park', 'kim-park', 0], ['Sam', 'sam-ortiz', 105]].sort());
+  // Looked at again within the hour: Google isn't asked; after two days, never again
+  g.calls = [];
+  await maybeFillAttendance(env, { now: Date.now() + 11 * 60 * 1000 });
+  assert.equal(g.calls.length, 0);
+  await maybeFillAttendance(env, { now: Date.now() + 4 * 24 * 60 * 60 * 1000 });
+  assert.equal(g.calls.length, 0);
+  // The board page never sees the names Meet had
+  assert.equal(forBoard({ ...m, shared: true }).fromMeet, undefined);
+  // Names: a nickname with the last name, a first name only one person has; never a guess between two
+  const people = [{ key: 'a', name: 'Jennifer Example' }, { key: 'b', name: 'Travis Sample' }, { key: 'c', name: 'Travis Other' }];
+  assert.deepEqual(['Jen Example', 'jennifer example (she/her)', 'Travis', 'Travis Sample', 'iPhone'].map((n) => matchName(n, people)?.key || null), ['a', 'a', null, 'b', null]);
+});
+
+test('attendance waits until half an hour after the meeting ends, and says so when Google Admin hasn’t allowed it', async () => {
+  fakeGoogleWriter({ readScope: false });
+  const m = await meetMeetingYesterday();
+  const { maybeFillAttendance } = await import('../functions/api/_board-attendance.js');
+  // During the meeting: nothing yet
+  const during = Date.parse(`${m.date}T14:00:00Z`);
+  assert.deepEqual(await maybeFillAttendance(env, { now: during }), []);
+  assert.deepEqual(await maybeFillAttendance(env), [m.id]);
+  const after = await getMeeting(env.DB, m.id);
+  assert.deepEqual([after.fromMeet.status, after.attendance.filter((p) => p.status).length], ['needs-setup', 0]);
+  assert.match(after.fromMeet.error, /meetings\.space\.readonly/);
+  // The invite check finds it too, before any meeting needs it, so Board → Meetings asks for it
+  await env.DB.prepare('DELETE FROM board_state WHERE key = ?').bind('invite-check').run();
+  const st = await maybeCheckInvites(env);
+  assert.deepEqual([st.calendar, st.meet, st.transcript, st.attendance, st.ok], ['ok', 'ok', 'on', 'needs-setup', false]);
+});
+
+// ─── The next agenda, drafted from the last one ─────────────────────
+
+test('an agenda nobody wrote follows the last one someone wrote or emailed, and stops once someone changes it', async () => {
+  const { maybeDraftAgendas } = await import('../functions/api/_board.js');
+  const past = (await adminApi(FOUNDER, { action: 'import-meeting', meeting: {
+    date: inDays(-60), sections: [
+      { title: 'Call to order', items: [{ title: 'Roll call', presenter: 'Alex' }] },
+      { title: 'Approval of minutes', items: [{ title: 'Minutes of the last meeting' }] },
+      { title: 'Committee reports', items: [{ title: 'Financial', presenter: 'Sam', notes: '- Reserves grew' }, { title: 'Events and Marketing' }] },
+      { title: 'New business', items: [{ title: 'Buy a trailer' }] },
+    ],
+  } })).body.meeting;
+  let next = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(20) })).body.meeting;
+  assert.equal(next.agendaFrom.kind, 'template', 'a new meeting starts from the usual outline');
+  assert.deepEqual(await maybeDraftAgendas(env), [next.id]);
+  next = await getMeeting(env.DB, next.id);
+  assert.deepEqual(next.sections.map((s) => [s.title, s.items.map((it) => [it.title, it.presenter, it.live, it.notes])]), [
+    ['Call to order', [['Roll call', 'Alex', '', '']]],
+    ['Approval of minutes', [[`Minutes of the ${meetingName(past)} (${shortDate(past.date)})`, '', 'minutes', '']]],
+    ['Committee reports', [['Financial', 'Sam', 'cash', ''], ['Events and Marketing', '', '', '']]],
+    ['New business', []],
+  ], 'its sections and items, who presents, the live numbers; new business and notes start empty');
+  assert.equal(next.sections[1].items[0].about, past.id, 'the last minutes are up for approval');
+  assert.deepEqual([next.agendaFrom.kind, next.agendaFrom.name], ['last-meeting', `${meetingName(past)} (${shortDate(past.date)})`]);
+  // Not again from the same meeting
+  assert.deepEqual(await maybeDraftAgendas(env, { now: Date.now() + 11 * 60 * 1000 }), []);
+  // Someone changes it: theirs from now on, even when a newer agenda comes in
+  const edited = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...next, sections: [...next.sections, { title: 'Closing', items: [{ title: 'Adjourn' }] }] }, base: next.updatedAt })).body.meeting;
+  assert.equal(edited.agendaFrom.kind, 'typed');
+  await adminApi(FOUNDER, { action: 'import-meeting', meeting: { date: inDays(-5), sections: [{ title: 'Opening', items: [{ title: 'Welcome' }] }] } });
+  assert.deepEqual(await maybeDraftAgendas(env, { now: Date.now() + 22 * 60 * 1000 }), []);
+  assert.equal((await getMeeting(env.DB, next.id)).sections.at(-1).title, 'Closing');
+  // A meeting from before agendaFrom with the untouched outline is a draft too: it follows the closest agenda
+  // someone wrote before it (here the one just changed), with that meeting's minutes up for approval
+  let later = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(40) })).body.meeting;
+  later = await saveMeeting(env.DB, { ...later, agendaFrom: null }, { by: 'the calendar' });
+  assert.ok(agendaIsDraft(later));
+  await maybeDraftAgendas(env, { now: Date.now() + 33 * 60 * 1000 });
+  later = await getMeeting(env.DB, later.id);
+  assert.deepEqual(later.sections.map((s) => s.title), ['Call to order', 'Approval of minutes', 'Committee reports', 'New business', 'Closing']);
+  assert.equal(later.sections[1].items[0].about, next.id);
+});
+
+// ─── Board mail: past agendas, minutes and financials (more in board-mail.test.mjs) ───
 
 const { unzip, docxText, dateIn, fileKind, attachmentsOf, readBoardMail, mailLog, MAIL_QUERIES } = await import('../functions/api/_board-mail.js');
 const { deflateRawSync } = await import('node:zlib');
@@ -980,12 +1209,14 @@ test('dates in subjects and file names, and what each attachment is', () => {
   for (const [t, want] of [['Board Agenda 4.30.26.docx', '2026-04-30'], ['SOARD Board – 04/30/2026', '2026-04-30'], ['Minutes April 30, 2026', '2026-04-30'], ['Agenda Nov 5', '2026-11-05'], ['2026-08-06 minutes.pdf', '2026-08-06'], ['Q4 financials v2.3.pdf', '']]) {
     assert.equal(dateIn(t, 2026), want, t);
   }
+  assert.equal(dateIn('Example Q3 Board Meeting Minutes 2025.07.24.pdf', 2026), '2025-07-24');
   assert.equal(fileKind('Board Agenda 4.30.26.docx'), 'agenda');
-  assert.equal(fileKind('Q3 Minutes.pdf'), 'agenda');
+  assert.equal(fileKind('Q3 Minutes.pdf'), 'minutes');
   assert.equal(fileKind('Profit and Loss.pdf'), 'financials');
   assert.equal(fileKind('Balance Sheet Sept.xlsx'), 'financials');
   assert.equal(fileKind('Gala deck.pptx'), 'other');
   assert.equal(fileKind('notes.pdf', 'Board agenda for Thursday'), 'agenda', 'the subject names a lone document');
+  assert.equal(fileKind('notes.pdf', 'Minutes of the board meeting'), 'minutes');
   const parts = { parts: [
     { filename: 'image001.png', mimeType: 'image/png', body: { attachmentId: 'i1', size: 900 }, headers: [{ name: 'Content-Disposition', value: 'inline' }] },
     { filename: 'Agenda.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: { attachmentId: 'a1', size: 9000 } },
@@ -1039,58 +1270,68 @@ test('board mail, before Google Admin allows it: Board names the client ID and t
   assert.match((await adminApi(FOUNDER)).body.mail.clientId, /^1234567890$/);
 });
 
-test('board mail: a past agenda becomes its meeting; an upcoming one fills the agenda nobody has written; never twice, never over notes', async () => {
+test('board mail: a dated agenda brings its past meeting in; an upcoming one is only kept as a file (its agenda is written in Board); never twice', async () => {
   const soon = new Date(Date.now() + 9 * 86400000).toISOString().slice(0, 10);
-  const upcoming = (await adminApi(FOUNDER, { action: 'new-meeting', date: soon })).body.meeting;
+  let upcoming = (await adminApi(FOUNDER, { action: 'new-meeting', date: soon })).body.meeting;
+  upcoming = await saveMeeting(env.DB, { ...upcoming, agendaFrom: { kind: 'template', name: '', at: '' } }, { by: 'the calendar' });
   const [m, d, y] = [soon.slice(5, 7), soon.slice(8, 10), soon.slice(0, 4)];
   const inboxes = {
     [FOUNDER]: [
-      { id: 'g1', msgid: '<a1@mail>', subject: 'SOARD Board agenda and minutes', from: 'Holly <holly@example.org>', date: '2026-05-01T12:00:00Z', files: [{ name: 'Board Agenda 4.30.26.docx', type: DOCX, bytes: agendaDocx() }] },
-      { id: 'g2', msgid: '<a2@mail>', subject: `Board agenda for ${m}/${d}/${y}`, from: 'Holly <holly@example.org>', date: new Date().toISOString(), files: [{ name: 'Agenda.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 fake') }, { name: 'Balance Sheet.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 numbers') }] },
+      { id: 'g1', msgid: '<a1@mail>', subject: 'Example Board agenda and minutes', from: 'Jane <jane@example.org>', date: '2026-05-01T12:00:00Z', files: [{ name: 'Board Agenda 4.30.26.docx', type: DOCX, bytes: agendaDocx() }] },
+      { id: 'g2', msgid: '<a2@mail>', subject: `Board agenda for ${m}/${d}/${y}`, from: 'Jane <jane@example.org>', date: new Date().toISOString(), files: [{ name: 'Agenda.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 fake') }, { name: 'Balance Sheet.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 numbers') }] },
     ],
   };
   const calls = fakeGmail(inboxes, { pdfText: OLD_AGENDA.replace('DATE 02/12/2026', `DATE ${m}/${d}/${y}`) });
   const r = await readBoardMail(env);
-  assert.equal(r.ok, true);
-  assert.deepEqual(MAIL_QUERIES.map((q) => calls.lists.some((l) => l.q === q)), [true, true], 'both searches run');
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.deepEqual(MAIL_QUERIES.map((q) => calls.lists.some((l) => l.q === q)), [true], 'one search, QuickBooks left out');
+  assert.match(MAIL_QUERIES[0], /-from:quickbooks/);
   const all = await listMeetings(env.DB);
   const past = all.find((x) => x.date === '2026-04-30');
-  assert.ok(past, 'the April agenda became its meeting');
-  assert.equal(past.minutes, 'approved');
-  assert.deepEqual(past.files.map((f) => [f.name, f.kind]), [['Board Agenda 4.30.26.docx', 'agenda']]);
+  assert.ok(past, 'the April agenda brought its meeting in');
+  assert.deepEqual(past.sections.map((x) => x.title), ['Call to order', 'Committee reports', 'Open forum']);
+  assert.deepEqual([past.agendaFrom?.kind, past.agendaFrom?.name, past.updatedBy], ['email', 'Board Agenda 4.30.26.docx', 'board email']);
+  assert.deepEqual(past.files.map((f) => [f.name, f.kind, f.staffOnly]), [['Board Agenda 4.30.26.docx', 'agenda', true]], 'sent to one person, not the board: for Peter and Holly only');
+  assert.equal(past.shared, false);
   const next = all.find((x) => x.id === upcoming.id);
-  assert.deepEqual(next.sections.map((s) => s.title), ['Call to order', 'Committee reports', 'Open forum'], 'the template agenda is replaced by the real one');
+  assert.deepEqual([next.sections.map((x) => x.title), next.agendaFrom.kind], [upcoming.sections.map((x) => x.title), 'template'], 'an agenda ahead is written in Board: the emailed one doesn’t replace it');
   assert.deepEqual(next.files.map((f) => f.kind).sort(), ['agenda', 'financials']);
+  assert.equal(next.shared, false, 'an upcoming meeting is shared by a person, never by email');
   assert.equal(calls.writes, 0, 'never sends, deletes or labels');
   // Nothing new: nothing read again
   const gets = calls.gets;
   await readBoardMail(env);
   assert.equal(calls.gets, gets);
-  // The same email in Holly's inbox: read once
+  // The same email in another admin's inbox: read once
   await adminApi(FOUNDER, { action: 'save-settings', settings: { admins: [FOUNDER, STAFF] } });
   inboxes[STAFF] = [{ ...inboxes[FOUNDER][1], id: 'h9' }];
   await readBoardMail(env);
   assert.equal((await listMeetings(env.DB)).find((x) => x.id === upcoming.id).files.length, 2, 'no copies');
-  // A newer agenda for a meeting someone has written in: kept as a file, the notes left alone
-  const written = await saveMeeting(env.DB, { ...next, sections: next.sections.map((s, i) => (i ? s : { ...s, items: s.items.map((it, j) => (j ? it : { ...it, notes: '- typed in the meeting' })) })) }, { by: FOUNDER });
-  inboxes[FOUNDER].push({ id: 'g3', msgid: '<a3@mail>', subject: `Board agenda v2 ${m}/${d}/${y}`, from: 'Holly', date: new Date().toISOString(), files: [{ name: 'Agenda v2.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 v2') }] });
+  assert.ok((await mailLog(env.DB, 12, { outcome: 'filed' })).every((x) => x.outcome === 'filed'));
+  // A newer agenda for a meeting whose agenda isn't a draft any more: kept as a file, the agenda and notes left alone
+  const typed = await saveMeeting(env.DB, { ...next, sections: next.sections.map((x, i) => (i ? x : { ...x, items: x.items.map((it, j) => (j ? it : { ...it, notes: '- typed in the meeting' })) })) }, { by: FOUNDER });
+  inboxes[FOUNDER].push({ id: 'g3', msgid: '<a3@mail>', subject: `Board agenda v2 ${m}/${d}/${y}`, from: 'Jane', date: new Date().toISOString(), files: [{ name: 'Agenda v2.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 v2') }] });
   await readBoardMail(env);
   const after = (await listMeetings(env.DB)).find((x) => x.id === upcoming.id);
   assert.equal(after.sections[0].items[0].notes, '- typed in the meeting');
   assert.ok(after.files.some((f) => f.name === 'Agenda v2.pdf'));
-  assert.ok((await mailLog(env.DB)).some((r2) => /already written/.test(r2.result)));
-  assert.ok(written);
+  assert.match((await mailLog(env.DB))[0].result, /^filed on .*: the agenda$/);
+  assert.ok(typed);
 });
 
-test('board mail: a QuickBooks report waits for its meeting, then is filed on it as financials', async () => {
-  const inboxes = { [FOUNDER]: [{ id: 'q1', msgid: '<qb@intuit>', quickbooks: true, subject: 'Report: Profit and Loss', from: 'QuickBooks <quickbooks@notification.intuit.com>', date: new Date().toISOString(), files: [{ name: 'Profit and Loss.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4 p&l') }] }] };
-  fakeGmail(inboxes);
-  await readBoardMail(env);
-  assert.match((await mailLog(env.DB))[0].result, /^waiting for a meeting/);
-  const soon = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+test('board mail: QuickBooks’ automatic reports and weekly reports are never filed, even with a meeting near them', async () => {
+  const soon = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
   const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: soon })).body.meeting;
-  await readBoardMail(env, { now: Date.now() + 25 * 3600 * 1000 });
-  assert.deepEqual((await getMeeting(env.DB, m.id)).files.map((f) => [f.name, f.kind]), [['Profit and Loss.pdf', 'financials']]);
+  const pdf = (t) => new TextEncoder().encode(`%PDF-1.4 ${t}`);
+  fakeGmail({ [FOUNDER]: [
+    { id: 'q1', msgid: '<qb@intuit>', quickbooks: true, subject: 'Board report: Profit and Loss', from: 'Example Org <quickbooks@notification.intuit.com>', date: new Date().toISOString(), files: [{ name: 'Profit and Loss.pdf', type: 'application/pdf', bytes: pdf('p&l') }] },
+    { id: 'q2', msgid: '<wk@mail>', subject: 'P&L by Program - Weekly Report (board)', from: 'Jane <jane@example.org>', date: new Date().toISOString(), files: [{ name: 'Profit_and_Loss_by_Program.pdf', type: 'application/pdf', bytes: pdf('weekly') }] },
+  ] });
+  await readBoardMail(env);
+  assert.deepEqual((await getMeeting(env.DB, m.id)).files, []);
+  const log = await mailLog(env.DB);
+  assert.deepEqual(log.map((x) => x.outcome), ['not-board', 'not-board']);
+  assert.ok(log.some((x) => /automatic QuickBooks report/.test(x.result)) && log.some((x) => /weekly report/.test(x.result)));
 });
 
 // ─── The rules ──────────────────────────────────────────────────────

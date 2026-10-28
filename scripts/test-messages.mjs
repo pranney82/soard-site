@@ -307,7 +307,7 @@ try {
   // Sent by is a menu beside Depends on (one sender at a time)
   await page.select('.am-filters--pick select', 's:google');
   await pause(400);
-  ok((await page.$eval('.am-hits', (e) => e.textContent)) === '7 matches', 'Sent by Google Calendar finds the seven invite messages (five for reveals, two for demo day)');
+  ok((await page.$eval('.am-hits', (e) => e.textContent)) === '8 matches', 'Sent by Google Calendar finds the eight invite messages (five for reveals, two for demo day, one for board meetings)');
   await clickButton(page, '.am-tools', 'Reset');
   await page.select('.am-filters--pick select', 's:kit');
   await pause(400);

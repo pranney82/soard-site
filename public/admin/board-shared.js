@@ -24,7 +24,15 @@
  *                callFrom (where its video link is: meet | conference | place | notes) }, or null
  *   invite       the calendar invite Board sent or took over (functions/api/_board-invite.js):
  *                { eventId, organizer, sentAt, updatedAt, meet, guests, transcript, error,
- *                place, when, emails, replies (to Board's own invite, like calendar's) }, or null
+ *                place, when, notes (a fingerprint of the agenda it carries), emails,
+ *                replies (to Board's own invite, like calendar's) }, or null
+ *   agendaFrom   where the agenda came from: { kind: template (SOARD's usual outline) |
+ *                last-meeting (drafted from the last agenda) | email (a past meeting's emailed
+ *                agenda, name: its file) | drive (read from a past meeting's minutes in Google
+ *                Drive) | typed (written here), name, at }, or null (as typed). Agendas for
+ *                meetings ahead are written in Board
+ *   fromMeet     who Google Meet saw join, after the meeting (functions/api/_board-attendance.js):
+ *                { at, status: ok | none | needs-setup | error, error, joined: [{ name, slug, minutes }] }, or null
  *   packetSentAt, packetSentTo, minutesSentAt
  * Notes are plain text: a line starting with "- " is a point, two spaces
  * deeper for each level under it.
@@ -235,14 +243,67 @@ export function cleanMeeting(raw = {}) {
       eventId: one(raw.invite.eventId, 1024), organizer: one(raw.invite.organizer, 200), sentAt: one(raw.invite.sentAt, 40), updatedAt: one(raw.invite.updatedAt, 40),
       meet: /^https:\/\/meet\.google\.com\//.test(String(raw.invite.meet || '')) ? one(raw.invite.meet, 300) : '', guests: Number(raw.invite.guests) > 0 ? Math.round(raw.invite.guests) : 0,
       transcript: ['on', 'needs-setup', 'error', ''].includes(raw.invite.transcript) ? raw.invite.transcript : '', error: one(raw.invite.error, 300),
-      place: one(raw.invite.place, 400), when: one(raw.invite.when, 60), emails: (Array.isArray(raw.invite.emails) ? raw.invite.emails : []).map((e) => one(e, 200)).filter(Boolean).slice(0, 100),
+      place: one(raw.invite.place, 400), when: one(raw.invite.when, 60), notes: one(raw.invite.notes, 20), emails: (Array.isArray(raw.invite.emails) ? raw.invite.emails : []).map((e) => one(e, 200)).filter(Boolean).slice(0, 100),
       replies: cleanReplies(raw.invite.replies),
+    } : null,
+    agendaFrom: raw.agendaFrom && typeof raw.agendaFrom === 'object' && AGENDA_FROM.includes(raw.agendaFrom.kind)
+      ? { kind: raw.agendaFrom.kind, name: one(raw.agendaFrom.name, 200), at: one(raw.agendaFrom.at, 40) } : null,
+    // Who Google Meet saw join (functions/api/_board-attendance.js): server-set
+    fromMeet: raw.fromMeet && typeof raw.fromMeet === 'object' && one(raw.fromMeet.at, 40) ? {
+      at: one(raw.fromMeet.at, 40), status: ['ok', 'none', 'needs-setup', 'error'].includes(raw.fromMeet.status) ? raw.fromMeet.status : 'error', error: one(raw.fromMeet.error, 300),
+      joined: (Array.isArray(raw.fromMeet.joined) ? raw.fromMeet.joined : []).slice(0, LIMITS.people).map((j) => ({
+        name: one(j?.name, 120), slug: /^[a-z0-9-]{1,80}$/.test(String(j?.slug || '')) ? j.slug : '', minutes: Number(j?.minutes) > 0 ? Math.round(j.minutes) : 0,
+      })).filter((j) => j.name),
     } : null,
     createdAt: one(raw.createdAt, 40),
     updatedAt: one(raw.updatedAt, 40),
     updatedBy: one(raw.updatedBy, 200),
   };
 }
+/** Where an agenda can come from (cleanMeeting's agendaFrom) */
+export const AGENDA_FROM = ['template', 'last-meeting', 'email', 'drive', 'typed'];
+/** Sections that are the usual outline, untouched: its section and item names, no presenters or notes */
+const isOutline = (sections, template = DEFAULT_TEMPLATE) => sections.length === template.length && sections.every((s, i) => s.title === template[i].title
+  && s.items.length === (template[i].items || []).length
+  && s.items.every((it, j) => (it.live === 'minutes' || it.title === template[i].items[j].title) && !it.presenter && !it.notes && !it.staffNote));
+/**
+ * An agenda nobody has written: SOARD's usual outline or one drafted from
+ * the last meeting (the drafts follow a newer last meeting until someone
+ * writes in it or uses it). A meeting from before agendaFrom counts by its look.
+ */
+export const agendaIsDraft = (m, template = DEFAULT_TEMPLATE) => !m?.sections?.some((s) => s.items.length)
+  || ['template', 'last-meeting'].includes(m?.agendaFrom?.kind)
+  || (!m?.agendaFrom && (isOutline(m.sections, template) || isOutline(m.sections)));
+/** "Minutes of the Q3 Board Meeting (Aug 6)": the item that asks the board to approve the last minutes */
+const minutesItemTitle = (prev) => `Minutes of the ${meetingName(prev)} (${shortDate(prev.date)})`;
+/**
+ * The next agenda, drafted from the last one: its sections and items in
+ * order, who presents each, the live numbers where the usual outline has
+ * them, its minutes up for approval. New business starts empty and nothing
+ * anyone wrote under an item comes along.
+ */
+export function draftAgenda(prev, { template = DEFAULT_TEMPLATE } = {}) {
+  const liveOf = new Map([...DEFAULT_TEMPLATE, ...template].flatMap((s) => (s.items || []).filter((it) => it.live && it.live !== 'minutes').map((it) => [it.title.toLowerCase(), it.live])));
+  return prev.sections.map((s) => ({
+    id: uid('s_'), title: s.title,
+    items: /\bnew business\b/i.test(s.title) ? [] : s.items.map((it) => {
+      const minutes = it.live === 'minutes' || (/minutes/i.test(it.title) && /minutes|approv|consent/i.test(`${s.title} ${it.title}`));
+      return {
+        ...cleanItem({
+          title: minutes ? minutesItemTitle(prev) : it.title, presenter: it.presenter, confidential: it.confidential,
+          live: minutes ? 'minutes' : it.live || liveOf.get(it.title.toLowerCase()) || '', about: minutes ? prev.id : '',
+        }),
+        id: uid('i_'),
+      };
+    }),
+  }));
+}
+/** The last meeting before this one with an agenda someone wrote or emailed: the one the next draft follows */
+export const draftSource = (m, meetings, template = DEFAULT_TEMPLATE) => [...(meetings || [])]
+  .filter((x) => x.id !== m.id && isDate(x.date) && x.date < m.date && x.sections.some((s) => s.items.length) && !agendaIsDraft(x, template))
+  .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+/** What a draft from that meeting is called (agendaFrom.name), so a newer source is noticed */
+export const draftName = (prev) => `${meetingName(prev)} (${shortDate(prev.date)})`;
 
 /**
  * What a board member sees: only shared meetings, never Peter and Holly's
@@ -256,6 +317,8 @@ export function forBoard(m) {
     files: m.files.filter((f) => !f.staffOnly),
     calendar: undefined,
     invite: m.invite ? { meet: m.invite.meet } : null,
+    agendaFrom: undefined,
+    fromMeet: undefined,
     updatedBy: undefined,
   };
 }
@@ -264,9 +327,12 @@ export function forBoard(m) {
 export function emailOutline(m) {
   return m.sections.filter((s) => s.title).map((s) => ({
     title: s.title,
-    items: s.items.filter((it) => it.title).map((it) => (it.confidential ? 'A board-only item (on the board page)' : it.title)),
+    items: s.items.filter((it) => it.title).map((it) => (it.confidential ? 'A board-only item (on the board page)' : `${it.title}${it.presenter ? ` (${it.presenter})` : ''}`)),
   }));
 }
+
+/** A video call's service by its link: "Google Meet" */
+export const callName = (url) => (/meet\.google\.com/.test(url) ? 'Google Meet' : /teams\.(microsoft|live)/.test(url) ? 'Microsoft Teams' : /zoom\.us/.test(url) ? 'Zoom' : /webex/.test(url) ? 'Webex' : 'Video call');
 
 /**
  * Open action items across meetings, each once (an item carried onto later
@@ -328,6 +394,7 @@ export function newMeeting({ date: d = '', template = DEFAULT_TEMPLATE, board = 
     ],
     sections,
     actions: openActions(meetings).map((a) => ({ ...a, id: a.id })),
+    agendaFrom: { kind: 'template', name: '', at: '' },
   });
 }
 
@@ -443,7 +510,7 @@ export function parseAgendaText(text, people = []) {
     }
     if (inHeader) {
       if (/^(MEETING|LOCATION|DATE|TIME|ATTENDEE)\b/i.test(line) || /^\d{1,2}:\d{2}\s*[ap]/i.test(line)) continue;
-      // The attendee table: "x Jennifer Crosby Crosby Design Group x Holly Ranney" (two columns, x = there)
+      // The attendee table: "x Jane Example Example Design Group x Pat Sample" (two columns, x = there)
       const parts = (` ${line}`).split(/\s+x\s+/i);
       if (parts[0].trim()) attend(parts[0].trim(), false);
       for (const seg of parts.slice(1)) attend(seg.trim(), true);
@@ -511,7 +578,6 @@ export function liveLines(kind, n, { meetingId = null } = {}) {
       out.push(`${f.ytd.year} so far (through ${monthName(f.ytd.through)}): ${money(f.ytd.income)} in, ${money(spent(f.ytd))} out, ${netText(f.ytd.net)}${f.lastYtd ? `; ${f.lastYtd.year} to the same day: ${netText(f.lastYtd.net)}` : ''}`);
     }
     if (f?.cash?.lowest) out.push(`Cash forecast: lowest ${money(f.cash.lowest.dollars)}${f.cash.lowest.week ? ` the week of ${shortDay(f.cash.lowest.week)}` : ''}, ${money(f.cash.in13Weeks)} in 13 weeks${f.cash.belowFloor ? `, under the ${money(f.cash.floor)} floor` : ''}`);
-    if (f?.close?.label) out.push(`${f.close.label}’s books: ${{ closed: 'closed', ready: 'ready to close', open: 'still open' }[f.close.state] || f.close.state}`);
     return out;
   }
   if (kind === 'projects') {
