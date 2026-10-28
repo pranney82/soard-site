@@ -182,7 +182,7 @@ async function record(label, page, errors, status) {
 
 const PAGES = [
   '/', '/kids/', '/kids/ethan/', '/kids/adrian-2025/', '/partners/', '/how-it-works/', '/live/', '/live/slate/', '/live/ethan/slate/',
-  '/apply/', '/apply/form/', '/donate/', '/events/', '/events/2026-evening-of-sunshine/', '/about/financials/', '/publicity/', '/faq/',
+  '/apply/', '/apply/form/', '/apply/community-project/', '/donate/', '/events/', '/events/2026-evening-of-sunshine/', '/about/financials/', '/publicity/', '/faq/',
   '/this-page-does-not-exist/', '/admin/', '/admin/kid-template/full/',
 ];
 

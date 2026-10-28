@@ -183,9 +183,27 @@ export const UI = {
   },
 };
 
-/** A page word in a language, with blanks filled */
-export function t(lang, key, vars = {}) {
-  const s = (UI[lang] || UI.en)[key] ?? UI.en[key] ?? key;
+/**
+ * The organization application's own words (/apply/community-project/, English only):
+ * the ones above that speak of a child, a family or a home.
+ */
+export const UI_ORG = {
+  doneStep2: 'A conversation with our team', doneStep2Text: 'Organizations that move forward hear from us to talk through the project.',
+  doneStep3: 'A visit to see the space', doneStep3Text: 'We come see the space together and talk about what the children need.',
+  doneLink: 'See the community projects we have built',
+  addContact2: 'Add another contact at your organization',
+  heroEyebrow: 'For Schools, Clinics & Nonprofits · {year}', heroTitleHtml: 'Tell us about your <em>organization</em>.',
+  heroLeadHtml: 'Apply for a community project for the children you serve. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.',
+  heroStatHtml: 'children reached<br/>through partnerships', heroPhotoAlt: 'A space at a partner organization that SOARD transformed',
+  heroNotify: 'Get in touch with us',
+  closedTitle: 'Community project applications are closed right now.',
+  closedLead: "Email us about your organization, and we'll let you know when applications open again.",
+  areaMapHome: ' The address you entered is marked on it.', areaHome: 'Your address', areaLegendHome: 'The address you entered', areaAway: 'Your address, {miles} mi away',
+};
+
+/** A page word in a language, with blanks filled (kind 'organization': the organization application's words) */
+export function t(lang, key, vars = {}, kind = 'family') {
+  const s = (kind === 'organization' ? UI_ORG[key] : null) ?? (UI[lang] || UI.en)[key] ?? UI.en[key] ?? key;
   return String(s).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m));
 }
 
@@ -240,16 +258,17 @@ function guidelines(f) {
 }
 
 /** The service-area map's words in a language (the map is drawn by ./area-map.js) */
-export function mapWords(lang, home = false) {
+export function mapWords(lang, home = false, kind = 'family') {
+  const w = (k) => t(lang, k, {}, kind);
   return {
-    label: t(lang, 'areaMapLabel') + (home ? t(lang, 'areaMapHome') : ''), homeLabel: t(lang, 'areaHome'),
-    legendArea: t(lang, 'areaLegend'), legendHome: t(lang, 'areaLegendHome'), away: t(lang, 'areaAway'),
+    label: w('areaMapLabel') + (home ? w('areaMapHome') : ''), homeLabel: w('areaHome'),
+    legendArea: w('areaLegend'), legendHome: w('areaLegendHome'), away: w('areaAway'),
   };
 }
 
 /** One question (or text block) as HTML, in `lang` for the page's own words; `area` = the form's service area */
-export function renderField(f, lang = 'en', area = null) {
-  const T = (k, v) => t(lang, k, v);
+export function renderField(f, lang = 'en', area = null, kind = 'family') {
+  const T = (k, v) => t(lang, k, v, kind);
   const id = `af-${f.id}`;
   const errId = `${id}-error`;
   const hintId = `${id}-hint`;
@@ -265,13 +284,14 @@ export function renderField(f, lang = 'en', area = null) {
   if (f.type === 'area') {
     return `<div class="af-field af-field--area" data-field="${esc(f.id)}" data-type="area"${f.required ? ' data-required="1"' : ''}>
 <div class="af-area" data-area="empty">
-<div class="af-map" data-area-map>${areaMapHtml(area, null, mapWords(lang))}</div>
+<div class="af-map" data-area-map>${areaMapHtml(area, null, mapWords(lang, false, kind))}</div>
 <div class="af-area-result" data-area-result role="status" aria-live="polite"><p class="af-area-prompt">${esc(T('areaPrompt'))}</p></div>
 <fieldset class="af-area-ask" data-area-ask hidden ${described}><legend class="af-label">${esc(f.label)}</legend>${help}${choices(f, id, { plain: true })}</fieldset>
 </div><p class="af-error" id="${errId}"></p></div>`;
   }
 
-  const ownName = f.id === 'parentName';
+  // The person filling it in: the parent, or the organization's main contact
+  const ownName = f.id === 'parentName' || f.id === 'contactName';
   const homeAddress = f.id === 'address';
   const isGroup = ['radio', 'checkbox', 'ack', 'name', 'address'].includes(f.type);
   let inner;
@@ -307,8 +327,8 @@ export function renderField(f, lang = 'en', area = null) {
       case 'text': control = `<input type="text" id="${id}" maxlength="${f.rules?.maxLength || TEXT_MAX}" ${desc}>`; break;
       case 'number': control = `<input type="text" inputmode="decimal" id="${id}" maxlength="20" ${desc}>`; break;
       // A likely typo in the address ("gmial.com") gets a one-tap fix under it (the script fills this in)
-      case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" ${desc}><p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>`; break;
-      case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" ${desc}>`; break;
+      case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' || f.id === 'contactEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" ${desc}><p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>`; break;
+      case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' || f.id === 'contactPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" ${desc}>`; break;
       case 'date': control = `<input type="date" id="${id}" max="${new Date().toISOString().slice(0, 10)}" min="1990-01-01" ${desc}>`; break;
       case 'textarea': control = `<textarea id="${id}" rows="${Number(f.rows) || 5}" maxlength="${f.rules?.maxLength || TEXTAREA_MAX}" ${desc}></textarea>`; break;
       case 'signature': control = `<input type="text" id="${id}" class="af-signature" maxlength="120" autocomplete="name" placeholder="${esc(T('signature'))}" ${desc}>`; break;
@@ -351,10 +371,12 @@ export function renderField(f, lang = 'en', area = null) {
 export const TUCKED = [
   { key: 'parentAddress', ids: ['parentAddress'], word: 'addParentAddress' },
   { key: 'parent2', ids: ['parent2Name', 'parent2Email', 'parent2Phone', 'parent2Relation'], word: 'addParent2' },
+  // The organization application's second contact
+  { key: 'contact2', ids: ['contact2Name', 'contact2Title', 'contact2Email', 'contact2Phone'], word: 'addContact2' },
 ];
 const PLUS = '<svg class="af-more-plus" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>';
 
-function pageHtml(p, lang, area) {
+function pageHtml(p, lang, area, kind = 'family') {
   const out = [];
   for (let i = 0; i < p.fields.length; i++) {
     const g = TUCKED.find(x => x.ids[0] === p.fields[i].id);
@@ -362,18 +384,18 @@ function pageHtml(p, lang, area) {
     if (g && run.length === g.ids.length && run.every((f, k) => f.id === g.ids[k] && !f.required && !f.showIf)) {
       const body = `af-more-${g.key}`;
       out.push(`<div class="af-more" data-more="${g.key}">
-<button type="button" class="af-more-btn" data-more-open aria-expanded="false" aria-controls="${body}">${PLUS}<span>${esc(t(lang, g.word))}</span></button>
-<div class="af-more-body" id="${body}" hidden>${run.map(f => renderField(f, lang, area)).join('')}
+<button type="button" class="af-more-btn" data-more-open aria-expanded="false" aria-controls="${body}">${PLUS}<span>${esc(t(lang, g.word, {}, kind))}</span></button>
+<div class="af-more-body" id="${body}" hidden>${run.map(f => renderField(f, lang, area, kind)).join('')}
 <button type="button" class="af-btn af-btn--link af-more-remove" data-more-close>${esc(t(lang, 'remove'))}</button></div></div>`);
       i += g.ids.length - 1;
       continue;
     }
-    out.push(renderField(p.fields[i], lang, area));
+    out.push(renderField(p.fields[i], lang, area, kind));
   }
   return out.join('');
 }
 
 /** Every page (hidden until the script shows the current one) */
 export function renderPages(form, lang = 'en') {
-  return form.pages.map(p => `<div class="af-page" data-page="${esc(p.id)}" hidden>${pageHtml(p, lang, form.serviceArea)}</div>`).join('');
+  return form.pages.map(p => `<div class="af-page" data-page="${esc(p.id)}" hidden>${pageHtml(p, lang, form.serviceArea, form.kind)}</div>`).join('');
 }

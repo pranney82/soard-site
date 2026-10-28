@@ -53,7 +53,7 @@
  */
 
 import { pave, SOARD_ORG_ID, matchKid, matchProject, parseJobName, todayEastern } from './_reveals.js';
-import { FIELD_STATUS, FIELD_DIAGNOSIS, qcGrant, madeByForm } from './_applicant-comms.js';
+import { FIELD_STATUS, FIELD_DIAGNOSIS, qcGrant, accountKindFor, formKindOf } from './_applicant-comms.js';
 import { ensureNotifySchema, pauseState } from './_applicant-notify.js';
 import { getLiveForm } from './_application-forms.js';
 import { notifySettings } from './_application-form.js';
@@ -143,11 +143,16 @@ export function siteNameOf(accountName, first = null) {
 export const childCountOf = (siteName) => Math.max(1, namesIn(siteName).length);
 
 /** "Remi & Nico Powell (2026)", shortened to JobTread's 30 characters if it must be */
-export function jobNameFor(accountName, year) {
+export function jobNameFor(accountName, year, { organization = false } = {}) {
   const suffix = ` (${year})`;
   const room = JOB_NAME_MAX - suffix.length;
   let base = String(accountName || '').replace(/\s*\(\d{4}\)\s*$/, '').replace(/\s+/g, ' ').trim() || 'Makeover';
-  if (base.length > room) {
+  if (base.length > room && organization) {
+    // An organization's name keeps its start: "Boys & Girls Club of Metro Atlanta" → "Boys & Girls Club"
+    const words = base.split(' ');
+    while (words.length > 1 && (words.join(' ').length > room || /^(of|the|and|&|for|at|in|on|a|an)$/i.test(words.at(-1)))) words.pop();
+    base = words.join(' ');
+  } else if (base.length > room) {
     // Middle names go first: "Oakley Faye Xiu Ping Roberson" → "Oakley Roberson"
     const words = base.split(' ');
     if (words.length > 2) base = `${words[0]} ${words.at(-1)}`;
@@ -535,6 +540,10 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
   }
   if (!acct.year) return wait(env, row, acct, 'no-year', acct.yearText, now);
 
+  // A family's (the site's family form, or a child on the account) or an organization's (the organization form,
+  // or made by hand with nothing a child's and an organization's name): ./_applicant-comms.js accountKindFor
+  const child = accountKindFor({ formKind: await formKindOf(DB, accountId), birthday: acct.birthday, diagnosis: acct.hasDiagnosis ? 'yes' : '', name: acct.name }) === 'family';
+
   // The job: the one saved last time, one the family already has, or a new one
   let job = (row?.job_id && acct.jobs.find(j => j.id === row.job_id)) || existingJob(acct.jobs, acct.year);
   let jobMade = !!(job && row?.job_made && row.job_id === job.id);
@@ -542,7 +551,7 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
     if (!acct.locationId) return wait(env, row, acct, 'no-home', null, now);
     try {
       const companycamId = await familyProjectId(DB, accountId);
-      job = await createJob(env, { locationId: acct.locationId, name: jobNameFor(acct.name, acct.year), types: acct.types, companycamId }, fetchImpl);
+      job = await createJob(env, { locationId: acct.locationId, name: jobNameFor(acct.name, acct.year, { organization: !child }), types: acct.types, companycamId }, fetchImpl);
     } catch (e) {
       return wait(env, row, acct, 'error', e.message, now);
     }
@@ -554,7 +563,6 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
   await applicationCover(env, accountId, job, fetchImpl, now);
 
   // The page: a kid's profile, or an organization's (a school, a clinic) community project
-  const child = !!acct.birthday || acct.hasDiagnosis || await madeByForm(DB, accountId);
   let kid = null;
   let project = null;
   try {

@@ -40,7 +40,7 @@ import { pave, SOARD_ORG_ID, easternParts, easternToUtcIso } from './_reveals.js
 import {
   readApplicant, sendStatusMessage, sentKinds, madeByForm, postAccountComment, handleApplicantEvent, applicationLang,
   familyMessage, cleanStatus, COMMENT_NAMES, COMMENT_NAMES_ES,
-  SITE_GRANT_ID, STATUS_RANK, INTAKE_SINCE, FIELD_STATUS, familyRecipients, greetingNames,
+  SITE_GRANT_ID, STATUS_RANK, INTAKE_SINCE, FIELD_STATUS, familyRecipients, greetingNames, looksLikeOrganization,
 } from './_applicant-comms.js';
 
 /** "Jordan Stone (jordan@…) and Sam Stone (sam@…)" for the history */
@@ -437,7 +437,7 @@ async function familyPreview(env, row, fetchImpl) {
     if (!applicant) return null;
     const lang = (await applicationLang(env.DB, row.account_id)) || applicant.lang || 'en';
     const to = familyRecipients(applicant);
-    const text = await familyMessage(env, row.kind, { parent: greetingNames(to, { lang }), child: applicant.name, lang });
+    const text = await familyMessage(env, row.kind, { parent: greetingNames(to, { lang }), child: applicant.name, lang, formKind: applicant.kind });
     const snippet = previewSnippet(text);
     const titles = lang === 'es' ? COMMENT_NAMES_ES : COMMENT_NAMES;
     return { to: greetingNames(to, { fallback: null }), many: to.length > 1, title: titles[row.kind] || COMMENT_NAMES[row.kind], snippet, lang };
@@ -519,7 +519,8 @@ export function summaryEmail(rows, { now = Date.now(), staff = false, previews =
   const cards = sorted.map(r => {
     const p = previews[r.account_id] || null;
     const when = whenText(r.due_at, now);
-    const firstName = String(r.name || '').split(/\s+/)[0] || 'this family';
+    // A family by the child's first name; an organization by its whole name ("Open The" read wrong)
+    const firstName = (looksLikeOrganization(r.name) ? String(r.name || '').trim() : String(r.name || '').split(/\s+/)[0]) || 'this family';
     const change = r.previous && known(r.previous)
       ? `${pill(r.previous)}<span class="muted" style="padding:0 6px;color:${MUTED};">&rarr;</span>${pill(r.status)}`
       : pill(r.status);
@@ -726,6 +727,14 @@ export const WHERE_IT_STANDS = {
     Approved: 'Su solicitud fue aprobada y la remodelación de su hijo o hija está en nuestra lista de espera. Nos comunicaremos con usted para los siguientes pasos.',
     Denied: 'Pronto nos comunicaremos con usted con una actualización sobre su solicitud.',
   },
+  // An organization's application (a community project)
+  organization: {
+    '': 'We will be in touch soon with an update on your application.',
+    Applied: 'Your application is still being reviewed, and we will be in touch.',
+    'In Review': 'Your application is moving forward to a visit to see the space, and we will contact you to schedule it.',
+    Approved: 'Your application has been approved, and your project is on our list of upcoming community projects. We will be in touch with next steps.',
+    Denied: 'We will be in touch soon with an update on your application.',
+  },
 };
 
 /** Was this family emailed a status that isn't where things stand now (and no email will fix it)? */
@@ -739,13 +748,14 @@ export async function correctionDraft(env, accountId, { fetchImpl = fetch } = {}
   const applicant = await readApplicant(env, accountId, fetchImpl);
   if (!applicant) throw new Error('That account isn’t a SOARD customer in JobTread');
   const lang = (await applicationLang(env.DB, accountId)) || applicant.lang || 'en';
-  const live = await getLiveForm(env.DB);
+  const live = await getLiveForm(env.DB, { kind: applicant.kind });
   const template = resolveForm(live.definition, { lang }).messages?.correction || DEFAULT_MESSAGES.correction;
+  const stands = applicant.kind === 'organization' ? WHERE_IT_STANDS.organization : WHERE_IT_STANDS[lang];
   return {
     lang,
     to: familyRecipients(applicant).length ? familyRecipients(applicant) : null,
     subject: lang === 'es' ? 'Una actualización sobre su solicitud' : 'An update on your application',
-    message: renderMessage(template, { parent: greetingNames(familyRecipients(applicant), { lang }), child: applicant.name, status: WHERE_IT_STANDS[lang]?.[applicant.status || ''] || WHERE_IT_STANDS.en[''] }),
+    message: renderMessage(template, { parent: greetingNames(familyRecipients(applicant), { lang }), child: applicant.name, status: stands?.[applicant.status || ''] || WHERE_IT_STANDS.en[''] }),
   };
 }
 

@@ -19,7 +19,8 @@
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FAQSection from '../components/ui/FAQSection.astro';
-import { getPublishedKids } from '../utils/collections';
+import { getPublishedKids, getPublishedCommunity } from '../utils/collections';
+import { mainPhotoOf } from '../utils/community';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfSrcset, cfLqip, cfId } from '../utils/cf-image';
 import { getFAQSchema } from '../utils/schema';
@@ -27,6 +28,11 @@ import siteSettings from '../content/site/settings.json';
 
 const stats = await getSiteStats();
 const allKids = await getPublishedKids();
+// For organizations: a finished community project beside the way to apply (/apply/community-project/)
+const orgProject = (await getPublishedCommunity()).map((p) => p.data)
+  .filter((p: any) => p.status === 'completed' && mainPhotoOf(p))
+  .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))[0] || null;
+const orgPhoto = orgProject ? mainPhotoOf(orgProject) : null;
 
 /* ── Application status ── */
 const app = siteSettings.application;
@@ -437,6 +443,34 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
           <span class="criteria-stat-sub">every makeover is 100% free</span>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ══════ FOR ORGANIZATIONS — the community project application (/apply/community-project/) ══════ -->
+  <section class="orgs section" id="organizations">
+    <div class="orgs-inner">
+      <div class="orgs-text" data-reveal>
+        <div class="section-label">For Schools, Clinics &amp; Nonprofits</div>
+        <h2>Serve children with special needs? Apply for a <em class="highlight">community project</em>.</h2>
+        <p class="orgs-lead">Alongside our makeovers for families, we transform the spaces where children learn, heal and play: sensory rooms, therapy rooms, classrooms and more, at organizations across greater Atlanta.</p>
+        <div class="orgs-ctas">
+          <a href="/apply/community-project/" class="btn btn-primary" data-astro-reload>Apply for your organization &rarr;</a>
+          <a href="/community/" class="btn btn-outline-dark">See our community projects</a>
+        </div>
+      </div>
+      {orgPhoto && (
+        <figure class="orgs-photo" data-reveal data-delay="1">
+          <img
+            src={cfRaw(orgPhoto, 'w=720,h=540,fit=cover,q=70')}
+            srcset={cfSrcset(orgPhoto, [400, 560, 720], { fit: 'cover', aspectRatio: 0.75 })}
+            sizes="(max-width:960px) 92vw, 480px"
+            alt={`${orgProject.name}, a community project by Sunshine on a Ranney Day`}
+            width="720" height="540" loading="lazy" decoding="async"
+            style={`background-image:url('${cfLqip(orgPhoto)}')`}
+          />
+          <figcaption>{orgProject.name}</figcaption>
+        </figure>
+      )}
     </div>
   </section>
 
@@ -1318,6 +1352,43 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
      CRITERIA
      ══════════════════════════════════════════ */
   .criteria { background: var(--c-cream); }
+
+  /* For organizations: text and a finished project, side by side */
+  .orgs-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: center;
+  }
+  .orgs-text h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+  .orgs-lead {
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    margin-bottom: 28px;
+    max-width: 560px;
+  }
+  .orgs-ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+  .orgs-photo { margin: 0; }
+  .orgs-photo img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: var(--radius-lg, 16px);
+    background-size: cover;
+    background-position: center;
+  }
+  .orgs-photo figcaption { margin-top: 10px; font-size: 14px; color: var(--c-text-muted); }
   .criteria-inner {
     max-width: var(--max-width);
     margin: 0 auto;
@@ -1480,6 +1551,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
      RESPONSIVE
      ══════════════════════════════════════════ */
   @media (max-width: 960px) {
+    .orgs-inner { grid-template-columns: 1fr; gap: 32px; }
     .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
     .hero-lead { margin-inline: auto; }
     .hero-ctas { justify-content: center; }

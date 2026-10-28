@@ -43,6 +43,10 @@
 
 import { DEFAULT_ES } from './_application-form-es.js';
 import { areaRules, NEAR_MILES } from '../../public/admin/area-shared.js';
+import { YES_NO, COUNTIES, AREA_VALUES } from './_application-constants.js';
+import { ORG_LOCKED_FIELDS, ORG_DEFAULT_MESSAGES, ORG_DEFAULT_REMINDERS, ORG_DEFAULT_DEFINITION, ORG_SPACE_TYPES } from './_application-form-org.js';
+
+export { YES_NO, COUNTIES, AREA_VALUES, ORG_LOCKED_FIELDS, ORG_DEFAULT_DEFINITION, ORG_SPACE_TYPES };
 
 // The old static map picture (the form draws a live map now; kept for older stop screens)
 export const SERVICE_MAP_IMAGE = 'd993cd7c-7863-4a1b-ea5e-50602623cb00';
@@ -51,9 +55,7 @@ export const TEXT_MAX = 300;
 export const TEXTAREA_MAX = 6000;
 export const HTML_MAX = 20000;
 
-export const YES_NO = ['Yes', 'No'];
 export const MAKEOVER_TYPES = ['Accessible Bathroom', 'Dream Bedroom', 'In-Home Therapy Room', 'Ramp'];
-export const COUNTIES = ['Cherokee', 'Cobb', 'DeKalb', 'Forsyth', 'Fulton', 'Gwinnett'];
 /** The Primary Language choices JobTread has (a choice must be one of these to reach JobTread) */
 export const LANGUAGES = ['English', 'Spanish', 'French', 'Vietnamese', 'Chinese', 'Korean'];
 
@@ -81,16 +83,7 @@ export const FIELD_TYPES = {
 };
 export const CHOICE_TYPES = ['select', 'radio', 'checkbox', 'ack', 'area'];
 
-/**
- * The service-area answers, by band. Stored as these values (the Jotform
- * wording, so every application ever made reads the same way); the family
- * sees each choice's label and description.
- */
-export const AREA_VALUES = {
-  inside: 'Yes, it is within the boundary.',
-  near: 'No, but it is close to the boundary.',
-  far: 'No, it is not within the boundary nor is it close.',
-};
+// The service-area answers (AREA_VALUES, ./_application-constants.js), back to their band
 export const AREA_BANDS = Object.fromEntries(Object.entries(AREA_VALUES).map(([k, v]) => [v, k]));
 
 /**
@@ -436,6 +429,42 @@ export const DEFAULT_DEFINITION = {
 /** The stop screens of the built-in form (kept for callers that predate versions) */
 export const STOPS = DEFAULT_DEFINITION.stops;
 
+// ─── Kinds: a family's application, or an organization's ───────────
+
+/**
+ * Two applications run through the same pipeline: a family's for their child
+ * (this file) and an organization's for a community project
+ * (./_application-form-org.js). Everything without a kind is a family's.
+ */
+export const FORM_KINDS = ['family', 'organization'];
+export const kindOf = (v) => (v === 'organization' || v?.kind === 'organization' ? 'organization' : 'family');
+export const isOrganizationKind = (v) => kindOf(v) === 'organization';
+export const lockedFieldsFor = (kind) => (isOrganizationKind(kind) ? ORG_LOCKED_FIELDS : LOCKED_FIELDS);
+export const defaultDefinitionFor = (kind) => (isOrganizationKind(kind) ? ORG_DEFAULT_DEFINITION : DEFAULT_DEFINITION);
+export const defaultMessagesFor = (kind) => (isOrganizationKind(kind) ? ORG_DEFAULT_MESSAGES : DEFAULT_MESSAGES);
+export const defaultRemindersFor = (kind) => (isOrganizationKind(kind) ? ORG_DEFAULT_REMINDERS : DEFAULT_REMINDERS);
+/** The token every status message must have: the child's name, or the organization's */
+export const nameTokenFor = (kind) => (isOrganizationKind(kind) ? '{organization}' : '{child}');
+
+/**
+ * Which question plays each part, so the pipeline reads an application the
+ * same way whoever applied: who it's for (the JobTread account's name), the
+ * main and second contacts, where, the kinds of space, the photos.
+ */
+export const FORM_ROLES = {
+  family: {
+    name: 'childName', nameType: 'name', contactName: 'parentName', email: 'parentEmail', phone: 'parentPhone', title: 'parentRelation',
+    contact2: { name: 'parent2Name', email: 'parent2Email', phone: 'parent2Phone', title: 'parent2Relation' },
+    types: 'makeoverTypes', photos: ['photoChild', 'photoFamily', 'photoSpace1', 'photoSpace2'],
+  },
+  organization: {
+    name: 'orgName', nameType: 'text', contactName: 'contactName', email: 'contactEmail', phone: 'contactPhone', title: 'contactTitle',
+    contact2: { name: 'contact2Name', email: 'contact2Email', phone: 'contact2Phone', title: 'contact2Title' },
+    types: 'spaceTypes', photos: ['photoSpace1', 'photoSpace2', 'photoSpace3'],
+  },
+};
+export const rolesFor = (kind) => FORM_ROLES[kindOf(kind)];
+
 // ─── Translations ──────────────────────────────────────────────────
 
 /** Languages the application can be shown in (English is always there) */
@@ -466,9 +495,9 @@ export function englishStrings(def) {
     }
   }
   for (const [k, s] of Object.entries(def.stops || {})) { put(`stop:${k}:title`, s.title); put(`stop:${k}:body`, s.body); }
-  const msgs = { ...DEFAULT_MESSAGES, ...(def.messages || {}) };
+  const msgs = { ...defaultMessagesFor(def), ...(def.messages || {}) };
   for (const k of MESSAGE_KEYS) put(`message:${k}`, msgs[k]);
-  const rem = { ...DEFAULT_REMINDERS, ...(def.reminders || {}) };
+  const rem = { ...defaultRemindersFor(def), ...(def.reminders || {}) };
   put('reminder:subject', rem.subject);
   put('reminder:body', rem.body);
   return out;
@@ -519,6 +548,7 @@ export function choice(o) {
  */
 export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', version = 0, lang = 'en' } = {}) {
   const def = clone(definition || DEFAULT_DEFINITION);
+  const kind = kindOf(def);
   const y = String(year);
   const languages = ['en', ...Object.keys(def.i18n || {}).filter(l => LANGS[l] && Object.keys(def.i18n[l]?.strings || {}).length)];
   const useLang = languages.includes(lang) ? lang : 'en';
@@ -552,11 +582,12 @@ export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', ve
     }),
   }));
   const stops = Object.fromEntries(Object.entries(def.stops || {}).map(([k, s]) => [k, { ...s, title: t(`stop:${k}:title`, s.title), body: t(`stop:${k}:body`, s.body) }]));
-  const baseMessages = { ...DEFAULT_MESSAGES, ...(def.messages || {}) };
+  const baseMessages = { ...defaultMessagesFor(kind), ...(def.messages || {}) };
   const messages = Object.fromEntries(MESSAGE_KEYS.map(k => [k, tr[`message:${k}`] || baseMessages[k]]));
-  const rem = { ...DEFAULT_REMINDERS, ...(def.reminders || {}) };
+  const rem = { ...defaultRemindersFor(kind), ...(def.reminders || {}) };
   return {
-    title: t('title', def.title || DEFAULT_DEFINITION.title),
+    kind,
+    title: t('title', def.title || defaultDefinitionFor(kind).title),
     year: y,
     version,
     lang: useLang,
@@ -589,12 +620,15 @@ export function applicationForm({ year = '2027', definition = null, version = 0,
   return resolveForm(definition || DEFAULT_DEFINITION, { year, version, lang });
 }
 
-/** A family message with its blanks filled */
+/**
+ * A family message with its blanks filled. An organization's messages say
+ * {contact} and {organization} for the same two blanks.
+ */
 export function renderMessage(template, { parent = 'Hello', child = '', copyNote = '', percent = '', year = '', status = '' } = {}) {
   return String(template || '')
     .replace(/\{status\}/g, status)
-    .replace(/\{parent\}/g, parent)
-    .replace(/\{child\}/g, child)
+    .replace(/\{parent\}|\{contact\}/g, parent)
+    .replace(/\{child\}|\{organization\}/g, child)
     .replace(/\{percent\}/g, percent)
     .replace(/\{year\}/g, year)
     .replace(/\{copyNote\}/g, copyNote ? `\n\n${copyNote}` : '')
@@ -694,6 +728,7 @@ function normalizeRule(r, depth = 0) {
 /** A definition reduced to known keys, trimmed, HTML cleaned (doesn't judge it; see validateDefinition) */
 export function normalizeDefinition(input) {
   const d = input && typeof input === 'object' ? input : {};
+  const kind = kindOf(d);
   const pages = (Array.isArray(d.pages) ? d.pages : []).slice(0, 40).map(p => {
     const page = { id: str(p?.id, 40), title: str(p?.title, 160), fields: (Array.isArray(p?.fields) ? p.fields : []).slice(0, 80).map(normalizeField) };
     const rule = normalizeRule(p?.showIf);
@@ -705,9 +740,9 @@ export function normalizeDefinition(input) {
     stops[str(k, 30)] = { title: str(s?.title, 240), body: sanitizeHtml(s?.body), ...(s?.image ? { image: str(s.image, 200) } : {}) };
   }
   const messages = {};
-  for (const k of MESSAGE_KEYS) messages[k] = str(d.messages?.[k] ?? DEFAULT_MESSAGES[k], k === 'copyNote' ? 400 : MESSAGE_MAX);
+  for (const k of MESSAGE_KEYS) messages[k] = str(d.messages?.[k] ?? defaultMessagesFor(kind)[k], k === 'copyNote' ? 400 : MESSAGE_MAX);
   const staffEmails = (Array.isArray(d.staffEmails) ? d.staffEmails : []).map(e => str(e, 160)).filter(Boolean).slice(0, 10);
-  const r = { ...DEFAULT_REMINDERS, ...(d.reminders && typeof d.reminders === 'object' ? d.reminders : {}) };
+  const r = { ...defaultRemindersFor(kind), ...(d.reminders && typeof d.reminders === 'object' ? d.reminders : {}) };
   const reminders = {
     enabled: r.enabled !== false,
     days: (Array.isArray(r.days) ? r.days : []).map(n => Math.floor(Number(n))).filter(n => n >= 1 && n <= 60).slice(0, 6),
@@ -733,7 +768,7 @@ export function normalizeDefinition(input) {
     for (const [path, text] of Object.entries(tr?.sources || {}).slice(0, 2000)) if (strings[path]) sources[str(path, 400)] = String(text ?? '').slice(0, HTML_MAX);
     i18n[lang] = { strings, sources };
   }
-  return { schema: 2, title: str(d.title || DEFAULT_DEFINITION.title, 200), pages, stops, messages, staffEmails, reminders, notify: notifySettings(d.notify), serviceArea, i18n };
+  return { schema: 2, ...(kind === 'organization' ? { kind } : {}), title: str(d.title || defaultDefinitionFor(kind).title, 200), pages, stops, messages, staffEmails, reminders, notify: notifySettings(d.notify), serviceArea, i18n };
 }
 
 const JT_TYPES_FOR = {
@@ -806,6 +841,8 @@ function normalizeField(f) {
 export function validateDefinition(def) {
   const errors = [];
   const err = (where, message) => errors.push({ where, message });
+  const LOCKED = lockedFieldsFor(def);
+  const organization = isOrganizationKind(def);
   if (!def || !Array.isArray(def.pages) || !def.pages.length) { err('', 'The form needs at least one page.'); return errors; }
   const pageIds = new Set();
   const seen = new Map(); // field id → field (in order)
@@ -836,7 +873,7 @@ export function validateDefinition(def) {
     if (!p.fields.length) err(p.id, 'This page has no questions or text.');
     // A page's rule can only look at questions on earlier pages
     if (p.showIf) checkRule(p.showIf, p.id, (fid) => pageOf.get(fid) !== p.id);
-    if (p.showIf && p.fields.some(f => LOCKED_FIELDS[f.id]?.required)) err(p.id, 'This page has questions the site needs, so it must always show.');
+    if (p.showIf && p.fields.some(f => LOCKED[f.id]?.required)) err(p.id, 'This page has questions the site needs, so it must always show.');
     for (const f of p.fields) {
       const where = `${p.id}/${f.id}`;
       if (!/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(f.id || '')) { err(where, 'A question has an invalid id.'); continue; }
@@ -864,7 +901,7 @@ export function validateDefinition(def) {
       if (r.min != null && r.max != null && r.min > r.max) err(where, 'The smallest number allowed is bigger than the largest.');
       if (r.minAge != null && r.maxAge != null && r.minAge > r.maxAge) err(where, 'The youngest age allowed is older than the oldest.');
       if (r.maxLength != null && r.maxLength < 1) err(where, 'The longest answer allowed must be at least 1 character.');
-      const lock = LOCKED_FIELDS[f.id];
+      const lock = LOCKED[f.id];
       if (lock) {
         if (!lock.types.includes(f.type)) err(where, `This question feeds ${lock.role.replace(/^JobTread: /, 'JobTread ')} and must stay a ${lock.types.map(t => FIELD_TYPES[t]).join(' or ')} question.`);
         if (lock.required && !f.required) err(where, 'This question must stay required.');
@@ -892,13 +929,13 @@ export function validateDefinition(def) {
       if (f.type === 'area') {
         if ([...seen.values()].some(x => x.type === 'area')) err(where, 'A form has one service-area check.');
         // It reads the home address, so the map and its answer sit just under it
-        if (pageOf.get('address') !== p.id) err(where, 'The service-area check reads the home address: keep it on the same page, below "Child’s Permanent Address".');
+        if (pageOf.get('address') !== p.id) err(where, organization ? 'The service-area check reads the address: keep it on the same page, below the address question.' : 'The service-area check reads the home address: keep it on the same page, below "Child’s Permanent Address".');
       }
       seen.set(f.id, f);
       pageOf.set(f.id, p.id);
     }
   }
-  for (const id of Object.keys(LOCKED_FIELDS)) if (!seen.has(id)) err(id, `The question "${id}" feeds ${LOCKED_FIELDS[id].role.replace(/^JobTread: /, 'JobTread ')}; it can be reworded or moved, not removed.`);
+  for (const id of Object.keys(LOCKED)) if (!seen.has(id)) err(id, `The question "${id}" feeds ${LOCKED[id].role.replace(/^JobTread: /, 'JobTread ')}; it can be reworded or moved, not removed.`);
   if ([...seen.values()].some(f => f.type === 'area') && !def.stops?.outside) err('stops/outside', 'Keep the "outside" stop screen: the service-area check shows it when Settings say to stop families far outside the area.');
   for (const [k, s] of Object.entries(def.stops || {})) {
     if (!/^[a-z0-9-]{1,30}$/.test(k)) err(`stops/${k}`, 'A stop screen has an invalid id.');
@@ -907,7 +944,7 @@ export function validateDefinition(def) {
   for (const k of ['welcome', 'inReview', 'approved', 'denied', 'correction']) {
     const m = def.messages?.[k];
     if (!m) err(`messages/${k}`, 'This message is empty.');
-    else if (!m.includes('{child}')) err(`messages/${k}`, 'This message should name the child with {child}.');
+    else if (!m.includes(nameTokenFor(def))) err(`messages/${k}`, organization ? 'This message should name the organization with {organization}.' : 'This message should name the child with {child}.');
   }
   if (def.messages?.correction && !def.messages.correction.includes('{status}')) err('messages/correction', 'The correction should say where the application stands with {status}.');
   for (const e of def.staffEmails || []) if (!isEmailAddress(e)) err('staffEmails', `"${e}" isn't an email address.`);
@@ -1004,12 +1041,12 @@ export function diffDefinitions(before, after) {
   for (const k of Object.keys(sa)) if (!sb[k]) add('removed', 'Stop screens', `Removed stop screen "${short(sa[k].title)}"`);
   for (const k of Object.keys(sb)) if (sa[k] && JSON.stringify(sa[k]) !== JSON.stringify(sb[k])) add('changed', 'Stop screens', `Stop screen "${short(sb[k].title)}" changed`);
 
-  const ma = { ...DEFAULT_MESSAGES, ...(a.messages || {}) };
-  const mb = { ...DEFAULT_MESSAGES, ...(b.messages || {}) };
+  const ma = { ...defaultMessagesFor(a), ...(a.messages || {}) };
+  const mb = { ...defaultMessagesFor(b), ...(b.messages || {}) };
   const MSG_NAMES = { welcome: 'Application Status', copyNote: 'the "copy attached" line', inReview: 'Application In Review', approved: 'Application Decision: approved', denied: 'Application Decision: denied', correction: 'Correction' };
   for (const k of MESSAGE_KEYS) if (ma[k] !== mb[k]) add('changed', 'Messages', `${MSG_NAMES[k]} message reworded`);
-  const ra = { ...DEFAULT_REMINDERS, ...(a.reminders || {}) };
-  const rb = { ...DEFAULT_REMINDERS, ...(b.reminders || {}) };
+  const ra = { ...defaultRemindersFor(a), ...(a.reminders || {}) };
+  const rb = { ...defaultRemindersFor(b), ...(b.reminders || {}) };
   if (ra.enabled !== rb.enabled) add('changed', 'Reminders', `Reminder emails turned ${rb.enabled ? 'on' : 'off'}`);
   if (JSON.stringify(ra.days) !== JSON.stringify(rb.days)) add('changed', 'Reminders', `Reminders now go ${(rb.days || []).join(', ')} days after a family stops`);
   if (ra.subject !== rb.subject || ra.body !== rb.body) add('changed', 'Reminders', 'Reminder email reworded');

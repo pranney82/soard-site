@@ -78,11 +78,12 @@ export async function rememberCover(DB, jobId, { source, slug = null, error = nu
     .bind(jobId, error ? null : source, slug, error ? null : iso(now), error, iso(now)).run();
 }
 
-/** The child's photo from the site's application for this account: its JobTread file id, or null */
+/** The child's photo (an organization's: the space's first) from the site's application for this account: its JobTread file id, or null */
 export async function applicationPhotoFile(DB, accountId) {
   try {
     const row = await DB.prepare('SELECT jt_state FROM applications WHERE jt_account_id = ?').bind(accountId).first();
-    return JSON.parse(row?.jt_state || '{}')?.files?.photoChild?.id || null;
+    const files = JSON.parse(row?.jt_state || '{}')?.files || {};
+    return files.photoChild?.id || files.photoSpace1?.id || null;
   } catch {
     return null; // no applications table, or a family who didn't apply on the site
   }

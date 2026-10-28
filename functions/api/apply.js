@@ -38,7 +38,7 @@ import {
   submitDraft, processApplication, enforceApplicationCap, stopReminders, testRunStatus, DRAFT_TTL_DAYS, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, MAX_VIDEO_BYTES,
   areaCheck, placedArea, areaFieldOf, applicantFiles,
 } from './_applications.js';
-import { allFields, resolveForm, AREA_VALUES } from './_application-form.js';
+import { allFields, resolveForm, AREA_VALUES, kindOf, isOrganizationKind, rolesFor } from './_application-form.js';
 import { formFor, getDraftForm, getLiveForm } from './_application-forms.js';
 import { suggestAddresses } from './_address.js';
 import { addressKey } from './_geo.js';
@@ -86,8 +86,13 @@ const maskEmail = (e) => String(e).replace(/^(.)[^@]*(@.*)$/, (m, a, b) => `${a}
 
 /** What the page needs to draw the form: no messages or staff addresses */
 export function publicForm(form) {
-  return { title: form.title, year: form.year, version: form.version, lang: form.lang, languages: form.languages, pages: form.pages, stops: form.stops, serviceArea: form.serviceArea };
+  return { kind: form.kind || 'family', title: form.title, year: form.year, version: form.version, lang: form.lang, languages: form.languages, pages: form.pages, stops: form.stops, serviceArea: form.serviceArea };
 }
+
+/** Is this form taking applications? The family form follows the season; the organization one its own switch */
+export const formOpen = (settings, kind) => (isOrganizationKind(kind) ? settings?.orgOpen !== false : settings?.open === true);
+/** The page each form lives on (resume links go back to it) */
+export const formPath = (kind) => (isOrganizationKind(kind) ? '/apply/community-project/' : '/apply/form/');
 
 /**
  * The stored definition, trimmed to what families see: the page resolves it
@@ -103,7 +108,7 @@ export function publicDefinition(def) {
   }
   const sa = def?.serviceArea;
   return {
-    schema: def?.schema || 2, title: def?.title, pages: def?.pages || [], stops: def?.stops || {}, i18n,
+    schema: def?.schema || 2, ...(isOrganizationKind(def) ? { kind: 'organization' } : {}), title: def?.title, pages: def?.pages || [], stops: def?.stops || {}, i18n,
     ...(sa ? { serviceArea: { polygon: sa.polygon, nearMiles: sa.nearMiles, beyond: sa.beyond } } : {}),
   };
 }
@@ -137,7 +142,7 @@ async function handleArea(context, draft, body) {
   const addr = body.address && typeof body.address === 'object' ? body.address : null;
   if (!addr) return fail('address required');
   const address = Object.fromEntries(['line1', 'line2', 'city', 'state', 'zip'].map(k => [k, String(addr[k] ?? '').slice(0, k === 'line1' ? 160 : 80)]));
-  const form = await formFor(env.DB, { year: draft?.year || cleanYear((await applicationSettings(env.DB)).year) });
+  const form = await formFor(env.DB, { kind: draft?.kind || kindOf(body.kind), year: draft?.year || cleanYear((await applicationSettings(env.DB)).year) });
   if (!areaFieldOf(form)) return json({ ok: true, area: null });
   // A repeat of the address already checked costs nothing; a new one counts against the allowance
   const known = draft ? placedArea(draft.area, address, form.serviceArea) : null;
@@ -157,16 +162,18 @@ export async function onRequestGet(context) {
   }
   const settings = await applicationSettings(env.DB);
   const year = cleanYear(settings.year);
-  let live = await getLiveForm(env.DB);
+  const kind = kindOf(url.searchParams.get('kind'));
+  let live = await getLiveForm(env.DB, { kind });
   let preview = false;
   if (url.searchParams.get('preview') === 'draft' && await isAuthenticated(request, env)) {
-    const draft = await getDraftForm(env.DB);
+    const draft = await getDraftForm(env.DB, { kind });
     if (draft) { live = { version: draft.version, definition: draft.definition }; preview = true; }
   }
   const form = resolveForm(live.definition, { year, version: live.version });
   return json({
     ok: true,
-    open: settings.open === true,
+    kind,
+    open: formOpen(settings, kind),
     year,
     preview,
     turnstileSiteKey: turnstileOn(env) ? turnstileSiteKey(env) : null,
@@ -207,11 +214,11 @@ export async function onRequestPost(context) {
     // The last area check, placed against today's area, so the map shows the home again
     let area = null;
     if (draft.area) {
-      const form = await formFor(env.DB, { year: draft.year });
+      const form = await formFor(env.DB, { kind: draft.kind, year: draft.year });
       area = placedArea(draft.area, draft.answers?.address, form.serviceArea)
         || (draft.area.reason === 'no-match' && draft.area.key === addressKey(draft.answers?.address) ? draft.area : null);
     }
-    return json({ ok: true, year: draft.year, lang: draft.lang || 'en', answers: draft.answers, files: publicFiles(draft.files), page: draft.page || null, maxPage: draft.max_page_id || null, submitted: !!draft.submitted_id, remindersOff: body.reminders === 'off' || !!draft.reminders_off, area: publicArea(area), test: draft.test_by ? { by: draft.test_by } : null });
+    return json({ ok: true, kind: kindOf(draft.kind), year: draft.year, lang: draft.lang || 'en', answers: draft.answers, files: publicFiles(draft.files), page: draft.page || null, maxPage: draft.max_page_id || null, submitted: !!draft.submitted_id, remindersOff: body.reminders === 'off' || !!draft.reminders_off, area: publicArea(area), test: draft.test_by ? { by: draft.test_by } : null });
   }
   if (action === 'test-status') {
     const st = await testRunStatus(env, draft, { nudge: (p) => context.waitUntil(p) });
@@ -253,16 +260,17 @@ async function handleStart(context, body) {
   // Honeypot: people never see this field. Answer as if it worked.
   if (String(body.website || '').trim()) return json({ ok: true, token: '0'.repeat(32) });
   const settings = await applicationSettings(env.DB);
-  const es = body.lang === 'es';
+  const kind = kindOf(body.kind);
+  const es = body.lang === 'es' && kind === 'family';
   // A staff test run: open or closed, no quick check or limit; every email goes to them
   if (body.test) {
     const by = await staffEmail(request, env);
     if (!by) return fail('Test runs are for signed-in SOARD staff. Sign in to the admin, then start the test run again.', 403, { code: 'staff-only' });
-    const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), testBy: by, lang: es ? 'es' : 'en' });
+    const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), testBy: by, lang: es ? 'es' : 'en', kind });
     return json({ ok: true, token, ttlDays: DRAFT_TTL_DAYS, test: { by } });
   }
   const admin = await isAuthenticated(request, env);
-  if (settings.open !== true && !admin) return fail(es ? 'Las solicitudes están cerradas en este momento.' : 'Applications are closed right now.', 403, { code: 'closed' });
+  if (!formOpen(settings, kind) && !admin) return fail(es ? 'Las solicitudes están cerradas en este momento.' : 'Applications are closed right now.', 403, { code: 'closed' });
   const ip = request.headers.get('CF-Connecting-IP') || '';
   const ipHash = await hashIp(ip, env.APPLY_IP_PEPPER || env.LIVE_IP_PEPPER);
   if (!admin && await draftsToday(env.DB, ipHash) >= MAX_DRAFTS_PER_IP_DAY) return fail(es ? 'Hoy se comenzaron demasiadas solicitudes desde esta conexión. Intente de nuevo mañana.' : 'Too many new applications from this connection today. Please try again tomorrow.', 429, { code: 'limit' });
@@ -271,7 +279,7 @@ async function handleStart(context, body) {
     verified = admin || await verifyTurnstile(env, body.turnstileToken, ip);
     if (!verified) return fail(es ? 'Complete la verificación rápida arriba del botón Siguiente.' : 'Please complete the quick check above the Next button.', 403, { code: 'turnstile' });
   }
-  const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), ipHash, verified, lang: body.lang === 'es' ? 'es' : 'en' });
+  const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), ipHash, verified, lang: es ? 'es' : 'en', kind });
   return json({ ok: true, token, ttlDays: DRAFT_TTL_DAYS });
 }
 
@@ -279,18 +287,19 @@ async function handleEmailLink(context, draft, body) {
   const { env, request } = context;
   const es = (body.lang || draft.lang) === 'es';
   // A test run's link goes to the staff member running it, whatever is typed
-  const to = draft.test_by || String(body.email || draft.answers?.parentEmail || draft.email || '').trim();
+  const emailId = rolesFor(draft.kind).email;
+  const to = draft.test_by || String(body.email || draft.answers?.[emailId] || draft.email || '').trim();
   if (!isEmail(to)) return fail(es ? 'Escriba un correo electrónico válido.' : 'Please enter a valid email address.');
   // Once a link has gone to an address, it goes only there (or to the email the family answered),
   // so a draft can't be used to send our email to anyone a stranger types in
   const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
-  if (!draft.test_by && draft.email && !same(to, draft.email) && !same(to, draft.answers?.parentEmail)) {
+  if (!draft.test_by && draft.email && !same(to, draft.email) && !same(to, draft.answers?.[emailId])) {
     return fail(es ? `Por su privacidad, solo podemos enviar este enlace a ${maskEmail(draft.email)}, el correo que usó antes.` : `For your privacy, we can only send this link to ${maskEmail(draft.email)}, the address you used before.`, 403, { code: 'email-locked' });
   }
   if ((draft.link_sends || 0) >= MAX_LINK_SENDS) return fail(es ? 'Ya le enviamos este enlace varias veces. Revise su bandeja de entrada y la carpeta de correo no deseado.' : 'We have already emailed this link several times. Please check your inbox and spam folder.', 429);
   const origin = new URL(request.url).origin;
-  const link = `${origin}/apply/form/?resume=${draft.id}`;
-  const msg = resumeLinkEmail({ year: draft.year, first: greetingName(draft.answers?.parentName?.first), link, lang: es ? 'es' : 'en' });
+  const link = `${origin}${formPath(draft.kind)}?resume=${draft.id}`;
+  const msg = resumeLinkEmail({ year: draft.year, first: greetingName(draft.answers?.[rolesFor(draft.kind).contactName]?.first), link, lang: es ? 'es' : 'en' });
   if (draft.test_by) msg.subject = `[Test run] ${msg.subject}`;
   const r = await sendEmails(env, {
     to: [to],
@@ -343,7 +352,7 @@ async function handlePhoto(context) {
   if (draft.submitted_id) return fail('This application has already been submitted.', 409, { code: 'submitted' });
   if (!draft.verified) return fail('Please start the application again.', 403);
   const fieldId = String(form.get('field') || '');
-  const field = allFields(await formFor(env.DB, { year: draft.year })).find(f => f.id === fieldId && f.type === 'photo');
+  const field = allFields(await formFor(env.DB, { kind: draft.kind, year: draft.year })).find(f => f.id === fieldId && f.type === 'photo');
   if (!field) return fail('Unknown photo');
   const file = form.get('file');
   if (!file || typeof file === 'string') return fail('No photo attached');

@@ -1412,6 +1412,61 @@ try {
     await page.evaluate(() => window.scrollTo(0, 0));
   });
 
+  await section('Community projects: their own form, emails and switch', async () => {
+    await clickText(page, '.hub-tab', /^Form/);
+    await page.waitForSelector('.afe-kind', { timeout: 8000 });
+    ok(JSON.stringify(await page.$$eval('.afe-kind button', (els) => els.map((b) => b.textContent.trim()))) === '["Makeovers","Community projects"]', 'Form has a Makeovers | Community projects switch');
+    ok(await page.$eval('.afe-kind [data-kind="family"]', (b) => b.getAttribute('aria-pressed')) === 'true', 'on Makeovers to start');
+    await page.click('.afe-kind [data-kind="organization"]');
+    await page.waitForFunction(() => /apply\/community-project/.test(document.querySelector('.afe-head .page-sub')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+    ok(/\/apply\/community-project\//.test(await text(page, '.afe-head .page-sub')), 'the header names the organization form');
+    ok(/#applications\/form\/organization$/.test(await page.evaluate(() => location.hash)), 'and the address says which');
+    await page.waitForFunction(() => document.querySelectorAll('.afe-panel[aria-label^="Page"]').length === 6, { timeout: 8000 }).catch(() => {});
+    ok((await page.$$('.afe-panel[aria-label^="Page"]')).length === 6, `its own six pages (${(await page.$$('.afe-panel[aria-label^="Page"]')).length})`);
+    ok(/Organization name/.test(await text(page, '.afe-col')) && !/Child’s Name/.test(await text(page, '.afe-col')), 'its own questions');
+    ok(JSON.stringify(await page.$$eval('.afe-subnav button', (els) => els.map((e) => e.dataset.view))) === '["questions","versions"]', 'no Spanish view: it is in English');
+    const run = await page.$$eval('.afe-head a.afe-sample-btn', (els) => els.map((a) => ({ text: a.textContent.trim(), href: a.getAttribute('href') })));
+    ok(run.some((r) => /Go through it as an organization/.test(r.text) && r.href === '/apply/community-project/?test=1'), 'the test run goes to the organization form');
+    ok(/See what an organization receives/.test(await text(page, '.afe-head')), 'and the sample is an organization’s');
+    ok(/Organizations see the built-in form/.test(await text(page, '.afe-bar')), 'the draft bar says what organizations see');
+    ok(!(await page.$('.afe-preview [aria-label="Preview language"]')), 'the phone preview has no Spanish: it is in English');
+    ok(!(await getDraftForm(DB, { kind: 'organization' })) && !!(await getDraftForm(DB)), 'switching saved nothing into the organization form; the family draft is still there');
+    await shot(page, '30-org-form.png');
+
+    await clickText(page, '.hub-tab', /^Emails/);
+    await page.waitForSelector('.afe-email-rail', { timeout: 8000 });
+    ok(await page.$eval('.afe-kind [data-kind="organization"]', (b) => b.getAttribute('aria-pressed')) === 'true', 'Emails follows the switch');
+    await page.click('.afe-email-rail [data-email="approved"]');
+    await page.waitForSelector('#afe-m-approved');
+    const chips = await page.$$eval('.afe-email-ed .afe-chips button', (els) => els.map((b) => b.textContent.trim()));
+    ok(chips.includes('{organization}') && chips.includes('{contact}') && !chips.includes('{child}'), `its blanks are the organization’s (${chips.join(' ')})`);
+    ok(!(await page.$('.afe-email-top [aria-label="Language"]')) && !(await page.$('.afe-email-rail .afe-tr-dot')), 'no Spanish for an organization’s emails');
+    ok(/Sunnyside Academy/.test(await text(page, '.afe-email-prev')) && /has been approved/.test(await text(page, '.afe-email-prev')), 'the preview reads as an organization gets it');
+    await shot(page, '31-org-emails.png');
+
+    await clickText(page, '.hub-tab', /^Settings/);
+    await page.waitForSelector('#afe-org-open', { timeout: 8000 });
+    ok(await page.$eval('#afe-org-open', (e) => e.checked), 'Settings: organizations are taking applications');
+    await page.click('#afe-org-open');
+    await sleep(150);
+    await clickText(page, '.afe-savebar button', /^Save$/);
+    await page.waitForFunction(() => !document.querySelector('.afe-savebar'), { timeout: 8000 }).catch(() => {});
+    ok((await storedSettings()).application?.orgOpen === false, 'switching it off saves closed (false, not a blank that reads as open)');
+    await page.click('#afe-org-open');
+    await sleep(150);
+    await clickText(page, '.afe-savebar button', /^Save$/);
+    await page.waitForFunction(() => !document.querySelector('.afe-savebar'), { timeout: 8000 }).catch(() => {});
+    ok((await storedSettings()).application?.orgOpen === true, 'and on again');
+    await shot(page, '32-org-settings.png');
+
+    // Back to the family form, for everything after this
+    await clickText(page, '.hub-tab', /^Form/);
+    await page.waitForSelector('.afe-kind', { timeout: 8000 });
+    await page.click('.afe-kind [data-kind="family"]');
+    await page.waitForFunction(() => /apply\/form\//.test(document.querySelector('.afe-head .page-sub')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+    ok((await page.$$('.afe-panel[aria-label^="Page"]')).length === 9 && /#applications\/form$/.test(await page.evaluate(() => location.hash)), 'Makeovers again: its nine pages');
+  });
+
   await section('Dark (on the admin tokens)', async () => {
     await setTheme(page, true);
     await clickText(page, '.hub-tab', /^Form/);

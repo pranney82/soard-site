@@ -55,8 +55,8 @@ import {
 } from './_applications.js';
 import { capFacts } from './_application-cap.js';
 import {
-  answerSections, LOCKED_FIELDS, FIELD_TYPES, DEFAULT_DEFINITION, DEFAULT_SERVICE_AREA, validateDefinition, normalizeDefinition,
-  translationStatus, englishStrings,
+  answerSections, FIELD_TYPES, DEFAULT_SERVICE_AREA, validateDefinition, normalizeDefinition,
+  translationStatus, englishStrings, kindOf, lockedFieldsFor, defaultDefinitionFor,
 } from './_application-form.js';
 import {
   formFor, getLiveForm, getDraftForm, getFormVersion, saveDraftForm, putDraftLive, discardDraftForm,
@@ -91,11 +91,14 @@ async function areaContext(DB) {
   return { points, history: await areaHistory(DB).catch(() => []) };
 }
 
-/** The settings as the site uses them now, and who last saved them */
-async function rulesNow(DB) {
-  const [live, saved] = await Promise.all([formFor(DB, { year: '2027' }), getFormRules(DB).catch(() => null)]);
-  return { values: pickRules(live), updatedAt: saved?.updatedAt || null, updatedBy: saved?.updatedBy || null, defaults: { serviceArea: DEFAULT_SERVICE_AREA } };
+/** The settings as the site uses them now, and who last saved them (an organization form's own ones with kind) */
+async function rulesNow(DB, kind = 'family') {
+  const [live, saved] = await Promise.all([formFor(DB, { year: '2027', kind }), getFormRules(DB, { kind }).catch(() => null)]);
+  return { values: pickRules(live, kind), updatedAt: saved?.updatedAt || null, updatedBy: saved?.updatedBy || null, defaults: { serviceArea: DEFAULT_SERVICE_AREA } };
 }
+
+/** Which form a request is about: ?formKind= on a GET, kind in a POST body; the family form when neither says */
+const FORM_NAMES = { family: 'Application form', organization: 'Organization application form' };
 
 export async function onRequestGet(context) {
   const { env, request } = context;
@@ -141,15 +144,15 @@ export async function onRequestGet(context) {
     return new Response(`\uFEFF${csv}`, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store' } });
   }
   if (url.searchParams.get('settings')) {
-    const [stored, history, rules, area] = await Promise.all([applicationSettings(env.DB), applicationSettingsHistory(env.DB), rulesNow(env.DB), areaContext(env.DB)]);
-    return Response.json({ success: true, settings: pickApplication(stored), since: sinceOf(stored), cap: await capNow(env.DB, stored), history, rules, area, now: new Date().toISOString() });
+    const [stored, history, rules, orgRules, area] = await Promise.all([applicationSettings(env.DB), applicationSettingsHistory(env.DB), rulesNow(env.DB), rulesNow(env.DB, 'organization'), areaContext(env.DB)]);
+    return Response.json({ success: true, settings: pickApplication(stored), since: sinceOf(stored), cap: await capNow(env.DB, stored), history, rules, orgRules, area, now: new Date().toISOString() });
   }
   if (url.searchParams.get('insights')) {
     const settings = await applicationSettings(env.DB);
-    return Response.json({ success: true, insights: await insights(env.DB, { year: url.searchParams.get('year') || cleanYear(settings.year) }) });
+    return Response.json({ success: true, insights: await insights(env.DB, { year: url.searchParams.get('year') || cleanYear(settings.year), kind: kindOf(url.searchParams.get('formKind')) }) });
   }
   if (url.searchParams.has('form-diff')) {
-    return Response.json({ success: true, changes: await diffForm(env.DB, url.searchParams.get('form-diff')) });
+    return Response.json({ success: true, changes: await diffForm(env.DB, url.searchParams.get('form-diff'), { kind: kindOf(url.searchParams.get('formKind')) }) });
   }
   if (url.searchParams.get('jobtread-fields')) {
     try {
@@ -160,26 +163,29 @@ export async function onRequestGet(context) {
   }
 
   if (url.searchParams.get('form')) {
-    const [live, draft, versions] = await Promise.all([getLiveForm(env.DB, { fresh: true }), getDraftForm(env.DB), listFormVersions(env.DB)]);
+    const kind = kindOf(url.searchParams.get('formKind'));
+    const [live, draft, versions] = await Promise.all([getLiveForm(env.DB, { fresh: true, kind }), getDraftForm(env.DB, { kind }), listFormVersions(env.DB, { kind })]);
     const settings = await applicationSettings(env.DB);
     return Response.json({
       success: true,
+      kind,
       year: cleanYear(settings.year),
       live: { version: live.version, definition: live.definition, liveAt: live.liveAt || null, liveBy: live.liveBy || null, builtIn: !!live.builtIn },
       draft: draft ? { version: draft.version, definition: draft.definition, updatedAt: draft.updatedAt, updatedBy: draft.updatedBy, note: draft.note } : null,
-      problems: draft ? validateDefinition(normalizeDefinition(draft.definition)) : [],
+      problems: draft ? validateDefinition(normalizeDefinition({ ...draft.definition, kind })) : [],
       translation: translationStatus(normalizeDefinition((draft || live).definition), 'es'),
       // Built-in values the editor shows as placeholders
       defaults: { serviceArea: DEFAULT_SERVICE_AREA },
       me: context.data?.userEmail || null,
       versions,
-      locked: LOCKED_FIELDS,
+      locked: lockedFieldsFor(kind),
       types: FIELD_TYPES,
     });
   }
   if (url.searchParams.has('form-version')) {
-    const v = await getFormVersion(env.DB, url.searchParams.get('form-version'));
-    return Response.json({ success: true, version: v.version, definition: v.definition || DEFAULT_DEFINITION });
+    const kind = kindOf(url.searchParams.get('formKind'));
+    const v = await getFormVersion(env.DB, url.searchParams.get('form-version'), { kind });
+    return Response.json({ success: true, version: v.version, definition: v.definition || defaultDefinitionFor(kind) });
   }
 
   const id = url.searchParams.get('id');
@@ -187,11 +193,11 @@ export async function onRequestGet(context) {
     const app = isApplicationId(id) ? await getApplication(env.DB, id) : null;
     if (!app) return Response.json({ success: false, error: 'Not found' }, { status: 404 });
     // Staff read in English; a Spanish application shows the family's wording beside it
-    const form = await formFor(env.DB, { year: app.year, version: app.form_version || 0, lang: app.lang || 'en' });
+    const form = await formFor(env.DB, { kind: app.kind, year: app.year, version: app.form_version || 0, lang: app.lang || 'en' });
     return Response.json({
       success: true,
       application: {
-        id: app.id, year: app.year, child: app.child_name, parent: app.parent_name, email: app.parent_email,
+        id: app.id, year: app.year, kind: kindOf(app.kind), child: app.child_name, parent: app.parent_name, email: app.parent_email,
         isTest: !!app.is_test, status: app.status, attempts: app.attempts, lastError: app.last_error,
         submittedAt: app.submitted_at, accountId: app.jt_account_id, formVersion: app.form_version || 0,
         jobtreadUrl: app.jt_account_id ? jobtreadAccountUrl(app.jt_account_id) : null,
@@ -211,6 +217,7 @@ export async function onRequestGet(context) {
     q: url.searchParams.get('q') || '',
     show: url.searchParams.get('show') || 'all',
     year: url.searchParams.get('year') || '',
+    kind: url.searchParams.get('formKind') || '',
     offset: Math.max(0, Number(url.searchParams.get('offset')) || 0),
     limit: Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 50)),
   });
@@ -219,6 +226,7 @@ export async function onRequestGet(context) {
     success: true,
     ...list,
     open: settings.open === true,
+    orgOpen: pickApplication(settings).orgOpen,
     year: cleanYear(settings.year),
     events: await recentEvents(env.DB, 25),
     oldForm: await unfinishedOldForm(env.DB),
@@ -234,6 +242,7 @@ export async function onRequestPost(context) {
   let body = {};
   try { body = await request.json(); } catch { /* empty */ }
   const user = context.data?.userEmail || 'admin';
+  const kind = kindOf(body.kind);
 
   if (body.retry) {
     if (!isApplicationId(body.retry)) return Response.json({ success: false, error: 'Bad id' }, { status: 400 });
@@ -246,7 +255,7 @@ export async function onRequestPost(context) {
   if (body.test) {
     const settings = await applicationSettings(env.DB);
     const email = /@/.test(user) ? user : 'peter@soardcharity.com';
-    const made = await createTestApplication(env, { email, year: cleanYear(settings.year) });
+    const made = await createTestApplication(env, { email, year: cleanYear(settings.year), kind });
     if (!made.ok) return Response.json({ success: false, error: 'Test answers did not validate', errors: made.errors }, { status: 500 });
     const result = await processApplication(env, made.id);
     await logAudit(env.DB, { userEmail: user, action: 'test', entityType: 'application', entitySlug: made.id, changes: { result: result.status } });
@@ -271,19 +280,19 @@ export async function onRequestPost(context) {
   }
 
   if (body.rules) {
-    const out = await saveFormRules(env.DB, body.rules, { user, base: body.base ?? null, force: !!body.force });
+    const out = await saveFormRules(env.DB, body.rules, { user, base: body.base ?? null, force: !!body.force, kind });
     if (out.conflict) return Response.json({ success: false, conflict: out.conflict, error: `${out.conflict.updatedBy} changed these settings while you had them open.` }, { status: 409 });
     if (out.errors) return Response.json({ success: false, errors: out.errors, error: out.errors[0].message }, { status: 422 });
     if (out.changes.length) {
-      await logAudit(env.DB, { userEmail: user, action: 'updated', entityType: 'application-settings', entitySlug: 'rules', entityName: 'Applications settings', changes: out.changes });
+      await logAudit(env.DB, { userEmail: user, action: 'updated', entityType: 'application-settings', entitySlug: kind === 'family' ? 'rules' : `rules-${kind}`, entityName: kind === 'family' ? 'Applications settings' : 'Organization applications settings', changes: out.changes });
       // A new boundary: every applicant on the map is placed against it again
       if (out.changes.some(c => c.field === 'application.serviceArea')) await replaceBoundary(env.DB, out.rules.serviceArea.polygon).catch(() => 0);
     }
-    return Response.json({ success: true, changes: out.changes, rules: await rulesNow(env.DB), history: await applicationSettingsHistory(env.DB), area: await areaContext(env.DB) });
+    return Response.json({ success: true, changes: out.changes, rules: await rulesNow(env.DB), orgRules: await rulesNow(env.DB, 'organization'), history: await applicationSettingsHistory(env.DB), area: await areaContext(env.DB) });
   }
 
   if (body.formSave) {
-    const out = await saveDraftForm(env.DB, body.formSave, { user, base: body.base ?? null, force: !!body.force });
+    const out = await saveDraftForm(env.DB, body.formSave, { user, base: body.base ?? null, force: !!body.force, kind });
     if (out.conflict) return Response.json({ success: false, conflict: out.conflict, error: `${out.conflict.updatedBy} changed the draft at the same time.` }, { status: 409 });
     return Response.json({ success: true, version: out.version, problems: out.errors, definition: out.definition, updatedAt: out.updatedAt });
   }
@@ -311,20 +320,20 @@ export async function onRequestPost(context) {
     return Response.json({ success: true, accountUrl: out.accountId ? jobtreadAccountUrl(out.accountId) : null });
   }
   if (body.formPutLive) {
-    const out = await putDraftLive(env.DB, { user });
+    const out = await putDraftLive(env.DB, { user, kind });
     if (!out.ok) return Response.json({ success: false, error: out.error, problems: out.errors || [] }, { status: 422 });
-    // The boundary may have moved: re-place every applicant on the map
+    // The boundary may have moved: re-place every applicant on the map (the family form holds it)
     const live = await getLiveForm(env.DB, { fresh: true });
-    if (live.definition?.serviceArea?.polygon?.length >= 3) await replaceBoundary(env.DB, live.definition.serviceArea.polygon).catch(() => 0);
-    await logAudit(env.DB, { userEmail: user, action: 'published', entityType: 'application-form', entitySlug: `version-${out.version}`, entityName: `Application form version ${out.version}` });
+    if (kind === 'family' && live.definition?.serviceArea?.polygon?.length >= 3) await replaceBoundary(env.DB, live.definition.serviceArea.polygon).catch(() => 0);
+    await logAudit(env.DB, { userEmail: user, action: 'published', entityType: 'application-form', entitySlug: `version-${out.version}`, entityName: `${FORM_NAMES[kind]} version ${out.version}` });
     return Response.json({ success: true, version: out.version });
   }
   if (body.formDiscard) {
-    await discardDraftForm(env.DB);
+    await discardDraftForm(env.DB, { kind });
     return Response.json({ success: true });
   }
   if (body.formRestore != null) {
-    const out = await restoreFormVersion(env.DB, body.formRestore, { user });
+    const out = await restoreFormVersion(env.DB, body.formRestore, { user, kind });
     if (!out.ok) return Response.json({ success: false, error: out.error }, { status: 404 });
     return Response.json({ success: true, version: out.version, problems: out.errors });
   }

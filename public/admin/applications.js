@@ -55,6 +55,8 @@ const ANSWERED = (t) => !['content', 'image', 'guidelines'].includes(t);
 const UPLOADS = ['photo', 'video'];
 const ADDABLE = ['text', 'textarea', 'radio', 'checkbox', 'select', 'number', 'date', 'email', 'phone', 'name', 'address', 'ack', 'photo', 'content', 'image'];
 const SAMPLE = { parent: 'Jordan Stone', child: 'Avery Stone', percent: '60' };
+// The organization application's sample (an organization's messages say {contact} and {organization})
+const SAMPLE_ORG = { parent: 'Jordan Stone', child: 'Sunnyside Academy', percent: '60' };
 /** Short type names for the outline rows (the inspector uses the full names from the server) */
 const ROW_TYPE = { text: 'Short text', textarea: 'Long text', email: 'Email', phone: 'Phone', number: 'Number', date: 'Date', select: 'Dropdown', radio: 'One choice', checkbox: 'Choices', name: 'Name', address: 'Address', ack: 'Agree box', signature: 'Signature', photo: 'Photo', video: 'Video', content: 'Text', image: 'Image', guidelines: 'Guidelines' };
 const first = (s) => String(s || '').trim().split(/\s+/)[0] || '';
@@ -693,6 +695,9 @@ const CSS = `
 .afe-subnav .afe-tab-count { margin-left: 0; }
 .afe-form-foot { margin: .15rem .2rem 0; }
 @media (max-width: 768px) { .afe-bar.has-lead .afe-bar-text { padding-left: 0; border-left: 0; flex-basis: 100%; } .afe-bar-lead { width: 100%; } .afe-subnav { width: 100%; } .afe-subnav > button { flex: 1; justify-content: center; } }
+/* Makeovers | Community projects, above the Form, Emails and Insights tabs */
+.afe-kind { margin: 0 0 1rem; }
+@media (max-width: 768px) { .afe-kind { display: flex; width: 100%; } .afe-kind > button { flex: 1; justify-content: center; } }
 
 /* Applications that haven't reached JobTread, above the Applicants views */
 .afe-intake { align-items: center; }
@@ -982,6 +987,21 @@ function SortList({ tag = 'div', class: cls = '', listKey = '', group = null, ha
 const TABS = [['applicants', 'Applicants'], ['insights', 'Insights'], ['form', 'Form'], ['emails', 'Emails'], ['settings', 'Settings']];
 const TAB_KEYS = new Set(TABS.map(t => t[0]));
 const DRAFT_TABS = new Set(['form', 'emails']);
+
+// Two applications run through here: a family's (/apply/form/) and an organization's for a
+// community project (/apply/community-project/). Form, Emails and Insights show one at a time;
+// formKindNow is the one showing, so every request those tabs make says which.
+const KINDS = [['family', 'Makeovers'], ['organization', 'Community projects']];
+const KIND_TABS = new Set(['form', 'emails', 'insights']);
+const formKindNow = { v: 'family' };
+const isOrgForm = () => formKindNow.v === 'organization';
+/** "&formKind=organization" (or nothing) for a GET; { kind } for a POST body */
+const kq = () => (isOrgForm() ? '&formKind=organization' : '');
+const kb = () => (isOrgForm() ? { kind: 'organization' } : {});
+const formPath = () => (isOrgForm() ? '/apply/community-project/' : '/apply/form/');
+const sampleNow = () => (isOrgForm() ? SAMPLE_ORG : SAMPLE);
+const KIND_STORE = 'soard-applications-form-kind';
+const storedKind = () => { try { return localStorage.getItem(KIND_STORE) === 'organization' ? 'organization' : 'family'; } catch { return 'family'; } };
 const FORM_VIEWS = [['questions', 'Questions'], ['spanish', 'Spanish'], ['versions', 'Versions']];
 const FORM_VIEW_KEYS = new Set(FORM_VIEWS.map(v => v[0]));
 const APP_ID = /^app-[0-9a-z]+-[0-9a-f]+$/i;
@@ -1000,15 +1020,27 @@ function readHash(hash = location.hash) {
   if (!a) return { tab: 'applicants' };
   if (a === 'applicants') return { tab: 'applicants', account: b || null };
   if (a === 'submissions' || a === 'list') return { tab: 'applicants', view: 'submissions', open: APP_ID.test(b) ? b : null };
-  if (a === 'insights' || a === 'settings') return { tab: a };
-  if (a === 'form') return { tab: 'form', formView: FORM_VIEW_KEYS.has(b) ? b : 'questions' };
+  // #applications/<form | emails | insights>/organization shows the organization application's
+  const kindOf = (x) => (x === 'organization' ? { formKind: 'organization' } : {});
+  if (a === 'insights') return { tab: a, ...kindOf(b) };
+  if (a === 'settings') return { tab: a };
+  if (a === 'form') return { tab: 'form', formView: FORM_VIEW_KEYS.has(b) ? b : 'questions', ...kindOf(b) };
   if (a === 'spanish') return { tab: 'form', formView: 'spanish' };
   if (a === 'history' || a === 'versions') return { tab: 'form', formView: 'versions' };
-  if (a === 'emails' || a === 'messages') return { tab: 'emails' };
+  if (a === 'emails' || a === 'messages') return { tab: 'emails', ...kindOf(b) };
   return { tab: 'applicants', application: a };
 }
 const hashFor = (t, o = {}) => (t === 'applicants' ? (o.view === 'submissions' ? '#applications/submissions' : '#applications/applicants')
-  : t === 'form' ? `#applications/form${o.formView && o.formView !== 'questions' ? `/${o.formView}` : ''}` : `#applications/${t}`);
+  : t === 'form' ? `#applications/form${o.formView && o.formView !== 'questions' ? `/${o.formView}` : o.formKind === 'organization' ? '/organization' : ''}`
+  : KIND_TABS.has(t) && o.formKind === 'organization' ? `#applications/${t}/organization` : `#applications/${t}`);
+
+/** Makeovers | Community projects: which application the Form, Emails and Insights tabs show */
+function KindSwitch({ kind, onKind }) {
+  return html`
+    <div class="seg afe-seg-text afe-kind" role="group" aria-label="Which application">
+      ${KINDS.map(([k, label]) => html`<button aria-pressed=${kind === k} data-kind=${k} onClick=${() => onKind(k)}>${label}</button>`)}
+    </div>`;
+}
 
 /** A tab's title, one line on what it's for, and its actions (the admin's own page header) */
 const Head = ({ title, sub, children }) => html`
@@ -1025,9 +1057,11 @@ const Head = ({ title, sub, children }) => html`
 function SampleButton({ d, addToast }) {
   const [ask, setAsk] = useState(false);
   const [busy, setBusy] = useState(false);
+  const org = isOrgForm();
+  const who = org ? 'an organization' : 'a family';
   const send = async () => {
     setBusy(true);
-    const j = await call(API, { test: true });
+    const j = await call(API, { test: true, ...kb() });
     setBusy(false);
     if (!j.success) { addToast(j.error || 'The sample didn’t go through. Try again in a minute.', 'error'); return; }
     setAsk(false);
@@ -1035,12 +1069,14 @@ function SampleButton({ d, addToast }) {
     else addToast(`Sample sent. The welcome email and the staff heads-up reach ${j.email || 'you'} in about a minute.`, 'success');
   };
   return html`
-    <button class="btn btn-ghost afe-sample-btn" onClick=${() => setAsk(true)}><${Icon} name="send" size=${15} /> See what a family receives</button>
-    ${ask && html`<${Dialog} title="See what a family receives?" onClose=${() => !busy && setAsk(false)} footer=${html`
+    <button class="btn btn-ghost afe-sample-btn" onClick=${() => setAsk(true)}><${Icon} name="send" size=${15} /> See what ${who} receives</button>
+    ${ask && html`<${Dialog} title=${`See what ${who} receives?`} onClose=${() => !busy && setAsk(false)} footer=${html`
       <button class="btn btn-ghost" onClick=${() => setAsk(false)} disabled=${busy}>Cancel</button>
       <button class="btn btn-primary" data-autofocus onClick=${send} disabled=${busy}>${busy ? 'Sending…' : 'Send me a sample'}</button>`}>
-      <p>Sends a sample application through the real intake with you as the parent. You get the family's welcome email with the PDF, and the staff heads-up. The sample archives itself in JobTread.</p>
-      ${d?.hasDraft && html`<div class="afe-note is-warn" style="margin-bottom: .85rem;"><${Icon} name="warn" /><span>It uses what families get today. Your changes that aren’t live yet won’t be in it, so put them live first to see them.</span></div>`}
+      <p>${org
+        ? 'Sends a sample organization application through the real intake with you as the main contact. You get the welcome email with the PDF, and the staff heads-up. The sample archives itself in JobTread.'
+        : "Sends a sample application through the real intake with you as the parent. You get the family's welcome email with the PDF, and the staff heads-up. The sample archives itself in JobTread."}</p>
+      ${d?.hasDraft && html`<div class="afe-note is-warn" style="margin-bottom: .85rem;"><${Icon} name="warn" /><span>It uses what ${org ? 'organizations' : 'families'} get today. Your changes that aren’t live yet won’t be in it, so put them live first to see them.</span></div>`}
       <p class="afe-hint" style="margin: 0;">It also shows in Submissions and in Slack, marked as a test.</p>
     <//>`}`;
 }
@@ -1053,9 +1089,9 @@ function SampleButton({ d, addToast }) {
  */
 function TestRunButton({ d }) {
   const tip = d?.hasDraft
-    ? 'Opens the real form in a new tab, as families see it today (put your changes live first to try them). Every email comes to you.'
-    : 'Opens the real form in a new tab. Every email comes to you, and nothing reaches the team or a real family.';
-  return html`<a class="btn btn-primary afe-sample-btn" href="/apply/form/?test=1" target="_blank" rel="noopener" title=${tip}><${Icon} name="play" size=${15} /> Go through it as a family</a>`;
+    ? `Opens the real form in a new tab, as ${isOrgForm() ? 'organizations' : 'families'} see it today (put your changes live first to try them). Every email comes to you.`
+    : `Opens the real form in a new tab. Every email comes to you, and nothing reaches the team or a real ${isOrgForm() ? 'organization' : 'family'}.`;
+  return html`<a class="btn btn-primary afe-sample-btn" href=${`${formPath()}?test=1`} target="_blank" rel="noopener" title=${tip}><${Icon} name="play" size=${15} /> Go through it as ${isOrgForm() ? 'an organization' : 'a family'}</a>`;
 }
 
 export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, initialTab = null, setGlobalDirty = null }) {
@@ -1064,7 +1100,9 @@ export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, i
   const [tab, setTab] = useState(initialTab && TAB_KEYS.has(initialTab) ? initialTab : start.tab);
   const [route, setRoute] = useState(() => ({ ...start, n: 1 })); // what the address asked the Applicants tab for
   const [formView, setFormView] = useState(start.formView || 'questions');
-  const d = useFormDraft(addToast, DRAFT_TABS.has(tab));
+  const [formKind, setFormKindState] = useState(() => start.formKind || storedKind());
+  formKindNow.v = formKind;
+  const d = useFormDraft(addToast, DRAFT_TABS.has(tab), formKind);
   const settings = useAppSettings(addToast, tab === 'settings');
   const [formSel, setFormSel] = useState(null);
   // One unsaved-changes guard for the whole area
@@ -1078,15 +1116,27 @@ export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, i
     if (t === 'form') setFormView(opts.formView || 'questions');
     if (t === 'applicants') setRoute(r => ({ tab: t, view: opts.view || null, show: opts.show || null, editBoundary: !!opts.editBoundary, n: r.n + 1 }));
     setFormSel(opts.formSel || null);
-    history.replaceState(null, '', hashFor(t, { ...opts, formView: t === 'form' ? opts.formView || 'questions' : null }));
+    history.replaceState(null, '', hashFor(t, { ...opts, formKind, formView: t === 'form' ? opts.formView || 'questions' : null }));
   };
-  const goFormView = (v) => { setFormView(v); history.replaceState(null, '', hashFor('form', { formView: v })); };
+  const goFormView = (v) => { setFormView(v); history.replaceState(null, '', hashFor('form', { formView: v, formKind })); };
+  // Makeovers | Community projects: saves what's waiting on this form first, then shows the other
+  const setFormKind = async (k) => {
+    if (k === formKind) return;
+    if (DRAFT_TABS.has(tab) && !(await d.flush())) return;
+    const view = k === 'organization' && formView === 'spanish' ? 'questions' : formView;
+    setFormView(view);
+    try { localStorage.setItem(KIND_STORE, k); } catch { /* private mode */ }
+    formKindNow.v = k;
+    setFormKindState(k);
+    history.replaceState(null, '', hashFor(tab, { formView: view, formKind: k }));
+  };
   useEffect(() => {
     const onHash = () => {
       const r = readHash();
       if (!r) return;
       setTab(r.tab);
       if (r.tab === 'form') setFormView(r.formView || 'questions');
+      if (r.formKind) { formKindNow.v = r.formKind; setFormKindState(r.formKind); }
       if (r.tab === 'applicants') setRoute(x => ({ ...r, n: x.n + 1 }));
     };
     window.addEventListener('hashchange', onHash);
@@ -1122,9 +1172,10 @@ export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, i
           </button>`)}
       </div>
       <div role="tabpanel" aria-label=${TABS.find(t => t[0] === tab)?.[1]}>
+        ${KIND_TABS.has(tab) && html`<${KindSwitch} kind=${formKind} onKind=${setFormKind} />`}
         ${tab === 'applicants' && html`<${ApplicantsTab} addToast=${addToast} route=${route} go=${go} />`}
-        ${tab === 'insights' && html`<${InsightsTab} seasonYear=${d.meta?.year} go=${go} />`}
-        ${tab === 'form' && html`<${FormArea} d=${d} view=${formView} onView=${goFormView} spanishLeft=${spanishLeft} RichTextEditor=${RichTextEditor} addToast=${addToast} initialSel=${formSel} go=${go} />`}
+        ${tab === 'insights' && html`<${InsightsTab} key=${formKind} seasonYear=${d.meta?.year} go=${go} />`}
+        ${tab === 'form' && html`<${FormArea} d=${d} view=${formView} onView=${goFormView} spanishLeft=${formKind === 'organization' ? 0 : spanishLeft} RichTextEditor=${RichTextEditor} addToast=${addToast} initialSel=${formSel} go=${go} />`}
         ${tab === 'emails' && html`<${EmailsTab} d=${d} RichTextEditor=${RichTextEditor} go=${go} addToast=${addToast} />`}
         ${tab === 'settings' && html`<${SettingsTab} addToast=${addToast} s=${settings} go=${go} />`}
       </div>
@@ -1209,6 +1260,7 @@ function FlagBadges({ a, picked = null }) {
   const cm = countyMismatch(f, picked);
   return html`
     ${a.isTest && html`<span class="badge badge-blue">Test</span>`}
+    ${a.kind === 'organization' && html`<span class="badge badge-gray" title="A community project application, from /apply/community-project/">Community project</span>`}
     ${a.deletedAt && html`<span class="badge badge-gray" title=${`Deleted ${dayText(a.deletedAt)}${a.deletedBy ? ` by ${a.deletedBy}` : ''}`}>Deleted</span>`}
     ${(f.lang || a.lang) === 'es' && html`<span class="badge badge-gray" title="Answered in Spanish">Spanish</span>`}
     ${f.area?.status === 'outside' && html`<span class="badge badge-yellow" title=${f.area.text || ''}>${f.area.miles != null ? `${f.area.miles} mi outside` : 'Outside area'}</span>`}
@@ -1335,7 +1387,7 @@ function SubmissionsView({ addToast, openFirst, initialShow, attention = 0, onCh
         <div class="afe-sub-main">
           <div class="afe-sub-who">
             ${a.accountId && !a.deletedAt
-              ? html`<button class="afe-sub-name" onClick=${() => family(a.accountId)} title="Open this family">${a.child || 'Applicant'}</button>`
+              ? html`<button class="afe-sub-name" onClick=${() => family(a.accountId)} title=${a.kind === 'organization' ? 'Open this organization' : 'Open this family'}>${a.child || 'Applicant'}</button>`
               : html`<strong class="afe-sub-name">${a.child || 'Applicant'}</strong>`}
             <${FlagBadges} a=${a} picked=${open ? pickedCounty(detail) : null} />
           </div>
@@ -1540,7 +1592,7 @@ function InsightsTab({ seasonYear, go }) {
     if (!year) return undefined;
     let live = true;
     setLoading(true);
-    call(`${API}?insights=1&year=${encodeURIComponent(year)}`).then(j => {
+    call(`${API}?insights=1&year=${encodeURIComponent(year)}${kq()}`).then(j => {
       if (!live) return;
       setLoading(false);
       if (j.success) { setData(j.insights); setError(null); } else setError(j.error || 'Could not load');
@@ -1793,7 +1845,7 @@ const HISTORY_MAX = 200;
  * The definition being edited, its autosave, undo/redo and the two-editor
  * guard. `active` (a draft tab is showing) turns the undo keys on.
  */
-function useFormDraft(addToast, active) {
+function useFormDraft(addToast, active, kind = 'family') {
   const [meta, setMeta] = useState(null);       // GET ?form=1: { live, draft, versions, locked, types, year, me, defaults }
   const [work, setWork] = useState(null);       // the definition being edited
   const [problems, setProblems] = useState([]);
@@ -1819,7 +1871,7 @@ function useFormDraft(addToast, active) {
   metaRef.current = meta;
 
   const load = async ({ keepHistory = false, from = null } = {}) => {
-    const j = from || await call(`${API}?form=1`);
+    const j = from || await call(`${API}?form=1${kq()}`);
     if (!j.success) { toastRef.current(j.error || 'Could not load the form', 'error'); return null; }
     setMeta(j);
     const def = clone(j.draft?.definition || j.live.definition);
@@ -1834,6 +1886,17 @@ function useFormDraft(addToast, active) {
     return j;
   };
   useEffect(() => { load(); }, []);
+  // The other application (Makeovers | Community projects): its own draft, from the top
+  const firstKind = useRef(kind);
+  useEffect(() => {
+    if (kind === firstKind.current) return;
+    firstKind.current = kind;
+    clearTimeout(timer.current);
+    pending.current = null;
+    conflictRef.current = null;
+    setConflict(null);
+    load();
+  }, [kind]);
 
   const save = async ({ force = false } = {}) => {
     clearTimeout(timer.current);
@@ -1844,7 +1907,7 @@ function useFormDraft(addToast, active) {
     pending.current = null;
     setStatus('saving');
     const run = (async () => {
-      const j = await call(API, { formSave: def, base: base.current, ...(force ? { force: true } : {}) });
+      const j = await call(API, { formSave: def, base: base.current, ...kb(), ...(force ? { force: true } : {}) });
       if (j.conflict) {
         pending.current = pending.current || def;
         conflictRef.current = j.conflict;
@@ -1945,7 +2008,7 @@ function useFormDraft(addToast, active) {
    */
   const refresh = async () => {
     if (document.visibilityState === 'hidden' || !metaRef.current || pending.current || inflight.current || conflictRef.current) return;
-    const j = await call(`${API}?form=1`);
+    const j = await call(`${API}?form=1${kq()}`);
     if (!j.success || pending.current || inflight.current || conflictRef.current) return;
     const theirs = j.draft;
     const moved = (theirs?.updatedAt || '') !== base.current || j.live?.version !== metaRef.current?.live?.version;
@@ -1964,7 +2027,7 @@ function useFormDraft(addToast, active) {
   useEffect(() => {
     const out = () => {
       if (!pending.current || conflictRef.current) return;
-      const body = JSON.stringify({ formSave: pending.current, base: base.current });
+      const body = JSON.stringify({ formSave: pending.current, base: base.current, ...kb() });
       navigator.sendBeacon?.(API, new Blob([body], { type: 'application/json' }));
     };
     window.addEventListener('pagehide', out);
@@ -1992,9 +2055,9 @@ function useFormDraft(addToast, active) {
 
   const putLive = async () => {
     if (!(await flush())) return false;
-    const j = await call(API, { formPutLive: true });
+    const j = await call(API, { formPutLive: true, ...kb() });
     if (!j.success) { toastRef.current(j.error || 'Could not put it live', 'error'); if (j.problems) setProblems(j.problems); return false; }
-    toastRef.current(`Version ${j.version} is live. Families see it now.`, 'success');
+    toastRef.current(`Version ${j.version} is live. ${isOrgForm() ? 'Organizations' : 'Families'} see it now.`, 'success');
     await load();
     return true;
   };
@@ -2005,14 +2068,14 @@ function useFormDraft(addToast, active) {
     pending.current = null;
     conflictRef.current = null;
     setConflict(null);
-    await call(API, { formDiscard: true });
+    await call(API, { formDiscard: true, ...kb() });
     toastRef.current('Changes discarded.', 'success');
     await load({ keepHistory: true });
   };
   const restore = async (v) => {
     await flush();
     if (meta?.draft && !(await ask({ title: 'Replace your changes with this version?', text: 'The changes you haven’t put live are replaced by this earlier version.', yes: 'Use this version', danger: true }))) return;
-    const j = await call(API, { formRestore: v });
+    const j = await call(API, { formRestore: v, ...kb() });
     if (!j.success) { toastRef.current(j.error || 'Could not restore it', 'error'); return; }
     toastRef.current(`${v ? `Version ${v}` : 'The built-in form'} is now your draft. Look it over, then put it live.`, 'success');
     await load({ keepHistory: true });
@@ -2053,7 +2116,7 @@ function DraftBar({ d, onPreview, previewOn, lead = null, emails = false }) {
   const openPutLive = async () => {
     if (!(await d.flush())) return;
     setDiff({ loading: true });
-    const j = await call(`${API}?form-diff=draft`);
+    const j = await call(`${API}?form-diff=draft${kq()}`);
     setDiff(j.success ? { changes: j.changes || [] } : { error: j.error || 'Could not load the changes' });
   };
   const confirmLive = async () => {
@@ -2061,6 +2124,7 @@ function DraftBar({ d, onPreview, previewOn, lead = null, emails = false }) {
     const ok = await d.putLive();
     if (ok) setDiff(null); else setDiff(x => ({ ...x, busy: false }));
   };
+  const who = isOrgForm() ? 'Organizations' : 'Families';
   return html`
     ${d.conflict && html`<${ConflictBanner} d=${d} />`}
     <div class="afe-bar ${lead ? 'has-lead' : ''}" data-status=${status}>
@@ -2068,9 +2132,9 @@ function DraftBar({ d, onPreview, previewOn, lead = null, emails = false }) {
       <div class="afe-bar-text">
         ${hasDraft
           ? html`<strong><span class="afe-dot is-draft"></span>You have changes that aren't live yet</strong>
-              <span class="text-sm text-muted">${sub} · families still see ${liveText}</span>`
-          : html`<strong><span class="afe-dot"></span>${!emails ? `Families see ${liveText}` : meta.live.builtIn ? 'Families get the built-in emails' : `Families get the emails from version ${meta.live.version}`}</strong>
-              <span class="text-sm text-muted">${meta.live.liveAt ? `Put live ${when(meta.live.liveAt)}${meta.live.liveBy ? ` by ${personName(meta.live.liveBy)}` : ''}` : emails ? 'The wording the site started with' : 'Matches the application families filled in before the website form'}. Changes save as a draft until you put them live.</span>`}
+              <span class="text-sm text-muted">${sub} · ${isOrgForm() ? 'organizations' : 'families'} still see ${liveText}</span>`
+          : html`<strong><span class="afe-dot"></span>${!emails ? `${who} see ${liveText}` : meta.live.builtIn ? `${who} get the built-in emails` : `${who} get the emails from version ${meta.live.version}`}</strong>
+              <span class="text-sm text-muted">${meta.live.liveAt ? `Put live ${when(meta.live.liveAt)}${meta.live.liveBy ? ` by ${personName(meta.live.liveBy)}` : ''}` : emails ? 'The wording the site started with' : isOrgForm() ? 'The organization application the site started with' : 'Matches the application families filled in before the website form'}. Changes save as a draft until you put them live.</span>`}
       </div>
       <div class="afe-bar-actions">
         <span class="afe-seg" role="group" aria-label="Undo and redo">
@@ -2139,13 +2203,18 @@ function ChangesList({ changes, empty }) {
 
 // ─── Form: the questions, their Spanish, and the versions that went live ──
 function FormArea({ d, view, onView, spanishLeft, RichTextEditor, addToast, initialSel, go }) {
+  const org = isOrgForm();
+  // The organization application is in English
+  const views = org ? FORM_VIEWS.filter(([k]) => k !== 'spanish') : FORM_VIEWS;
   const nav = html`
     <div class="seg afe-seg-text afe-subnav" role="group" aria-label="Form">
-      ${FORM_VIEWS.map(([k, label]) => html`<button aria-pressed=${view === k} data-view=${k} onClick=${() => onView(k)}>${label}${k === 'spanish' && spanishLeft > 0 && html`<span class="count afe-tab-count" title=${`${spanishLeft} missing or out of date`}>${spanishLeft}</span>`}</button>`)}
+      ${views.map(([k, label]) => html`<button aria-pressed=${view === k} data-view=${k} onClick=${() => onView(k)}>${label}${k === 'spanish' && spanishLeft > 0 && html`<span class="count afe-tab-count" title=${`${spanishLeft} missing or out of date`}>${spanishLeft}</span>`}</button>`)}
     </div>`;
   return html`
     <div>
-      <${Head} title="Form" sub=${html`The application families fill in at <a href="/apply/form/" target="_blank" rel="noopener">/apply/form/</a>. Every edit saves as a draft, and Put live makes it what families see. Questions that feed JobTread can be reworded and moved, never removed.`}>
+      <${Head} title="Form" sub=${org
+        ? html`The application schools, clinics and nonprofits fill in at <a href="/apply/community-project/" target="_blank" rel="noopener">/apply/community-project/</a> for a community project. Every edit saves as a draft, and Put live makes it what organizations see. Questions that feed JobTread can be reworded and moved, never removed.`
+        : html`The application families fill in at <a href="/apply/form/" target="_blank" rel="noopener">/apply/form/</a>. Every edit saves as a draft, and Put live makes it what families see. Questions that feed JobTread can be reworded and moved, never removed.`}>
         <${TestRunButton} d=${d} />
         <${SampleButton} d=${d} addToast=${addToast} />
       <//>
@@ -2458,17 +2527,17 @@ function PreviewPane({ d, focus, onClose }) {
     if (mode !== 'live') return;
     setTimeout(() => { if (!ready.current) setMode('saved'); }, 3500);
   };
-  const src = mode === 'live' ? '/apply/form/?preview=live' : `/apply/form/?preview=${d.hasDraft ? 'draft' : '1'}${lang === 'es' ? '&lang=es' : ''}&k=${d.previewKey}`;
+  const src = mode === 'live' ? `${formPath()}?preview=live` : `${formPath()}?preview=${d.hasDraft ? 'draft' : '1'}${lang === 'es' ? '&lang=es' : ''}&k=${d.previewKey}`;
   return html`
     <div class="afe-preview" data-mode=${mode} data-ready=${isReady ? 'true' : 'false'}>
       <div class="afe-preview-head">
         <strong>Phone preview</strong>
         <span class="afe-row-actions" style="gap: .35rem;">
-          <span class="seg afe-seg-text" role="group" aria-label="Preview language">
+          ${!isOrgForm() && html`<span class="seg afe-seg-text" role="group" aria-label="Preview language">
             <button aria-pressed=${lang === 'en'} onClick=${() => setLang('en')}>EN</button>
             <button aria-pressed=${lang === 'es'} onClick=${() => setLang('es')}>ES</button>
-          </span>
-          <a class="afe-icon-btn" href=${`/apply/form/?preview=${d.hasDraft ? 'draft' : '1'}`} target="_blank" rel="noopener" aria-label="Open the preview in a new tab" title="Open in a new tab" onClick=${() => d.flush()}><${Icon} name="ext" /></a>
+          </span>`}
+          <a class="afe-icon-btn" href=${`${formPath()}?preview=${d.hasDraft ? 'draft' : '1'}`} target="_blank" rel="noopener" aria-label="Open the preview in a new tab" title="Open in a new tab" onClick=${() => d.flush()}><${Icon} name="ext" /></a>
           <button class="afe-icon-btn" aria-label="Close the preview" title="Close" onClick=${onClose}><${Icon} name="close" /></button>
         </span>
       </div>
@@ -3235,7 +3304,9 @@ const EMAILS = [
   { key: 'reminders', name: 'Reminders', tokens: ['{parent}', '{child}', '{percent}', '{year}'],
     when: (n, rem) => (rem.enabled === false ? 'Off: nobody gets these.' : rem.days?.length ? `To families who start and stop: ${rem.days.map(x => plural(x, 'day')).join(', then ')} after their last change.` : 'On, but no days are set yet.') },
 ];
-const TOKEN_TIP = { '{parent}': "The main parent's name", '{child}': "The child's name", '{copyNote}': 'Where the "copy attached" line goes', '{status}': 'Where the application stands now', '{percent}': 'How far along they are', '{year}': 'The season year' };
+const TOKEN_TIP = { '{parent}': "The main parent's name", '{child}': "The child's name", '{contact}': "The organization's main contact", '{organization}': "The organization's name", '{copyNote}': 'Where the "copy attached" line goes', '{status}': 'Where the application stands now', '{percent}': 'How far along they are', '{year}': 'The season year' };
+/** An organization's messages say {contact} and {organization} where a family's say {parent} and {child} */
+const tokensNow = (list) => (isOrgForm() ? list.map((t) => (t === '{parent}' ? '{contact}' : t === '{child}' ? '{organization}' : t)) : list);
 const escHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 /** JobTread's light formatting (*bold*, _italic_, line breaks) as safe HTML */
 const jtRich = (s) => escHtml(s).replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>').replace(/(^|\s)_([^_\n]+)_(?=\s|$|[.,!?])/g, '$1<em>$2</em>').replace(/\n/g, '<br>');
@@ -3254,6 +3325,8 @@ function EmailsTab({ d, go, addToast = () => {} }) {
   const { work } = d;
   const [sel, setSel] = useState(() => store.get('afe-email') || 'welcome');
   const [lang, setLang] = useState('en');
+  // An organization's emails are in English
+  useEffect(() => { if (isOrgForm() && lang !== 'en') setLang('en'); });
   const pick = (k) => { setSel(k); store.set('afe-email', k); };
   // Where the list scrolls sideways (phones), keep the open email in view
   useEffect(() => {
@@ -3291,7 +3364,7 @@ function EmailsTab({ d, go, addToast = () => {} }) {
               <span class="afe-email-n" aria-hidden="true">${i + 1}</span>
               <b>${e.name}${bad && html`<span class="afe-email-bad" title="Something to fix before Put live">!</span>`}</b>
               <small>${e.key === 'welcome' ? 'Right away' : e.key === 'correction' ? 'When staff send it' : e.key === 'reminders' ? (rem.enabled === false ? 'Off' : `${(rem.days || []).join(', ')} days after they stop`) : `After ${n.waits[e.key === 'inReview' ? 'inReview' : 'decision']} min`}</small>
-              <span class=${`afe-tr-dot ${TR_DOT[st][0]}`} title=${TR_DOT[st][1]}><span class="sr-only">${TR_DOT[st][1]}</span></span>
+              ${!isOrgForm() && html`<span class=${`afe-tr-dot ${TR_DOT[st][0]}`} title=${TR_DOT[st][1]}><span class="sr-only">${TR_DOT[st][1]}</span></span>`}
             </button>`;
           })}
         </nav>
@@ -3301,10 +3374,10 @@ function EmailsTab({ d, go, addToast = () => {} }) {
               <h3>${cur.name}</h3>
               <p class="afe-hint">${cur.when(n, rem)} ${['welcome', 'inReview', 'approved', 'denied'].includes(cur.key) && html`<button class="afe-link" onClick=${() => go('settings')}>Timing is in Settings</button>`}</p>
             </div>
-            <div class="seg afe-seg-text" role="group" aria-label="Language">
+            ${!isOrgForm() && html`<div class="seg afe-seg-text" role="group" aria-label="Language">
               <button aria-pressed=${lang === 'en'} onClick=${() => setLang('en')}>English</button>
               <button aria-pressed=${lang === 'es'} onClick=${() => setLang('es')}>Spanish${trState(cur.key) !== 'done' && html`<span class=${`afe-tr-dot ${TR_DOT[trState(cur.key)][0]}`} title=${TR_DOT[trState(cur.key)][1]}></span>`}</button>
-            </div>
+            </div>`}
           </div>
           ${problemsFor(cur.key).length > 0 && html`<div class="afe-problems" role="alert"><ul>${problemsFor(cur.key).map(p => html`<li>${p.message}</li>`)}</ul></div>`}
           ${cur.key === 'reminders'
@@ -3357,7 +3430,7 @@ function MessageEditor({ d, k, spec, lang, status }) {
   const st = status[`message:${k}`] || 'done';
   const enText = msg.en;
   const fillFor = (text, copy) => String(text || '')
-    .replace(/\{parent\}/g, SAMPLE.parent).replace(/\{child\}/g, SAMPLE.child)
+    .replace(/\{parent\}|\{contact\}/g, sampleNow().parent).replace(/\{child\}|\{organization\}/g, sampleNow().child)
     .replace(/\{copyNote\}/g, copy ? `\n\n${copy}` : '')
     .replace(/\{status\}/g, SAMPLE_STATUS_LINE[lang]);
   const shown = lang === 'es' ? (msg.es || enText) : enText;
@@ -3368,7 +3441,7 @@ function MessageEditor({ d, k, spec, lang, status }) {
         ${lang === 'es' && html`<div class="afe-tr-en" lang="en"><span class="afe-sec-title">English</span>${marked(enText)}</div>`}
         <div class="afe-chips">
           <span class="afe-hint">Insert:</span>
-          ${spec.tokens.map(t => html`<button title=${TOKEN_TIP[t]} onClick=${() => insertAt(box.current, msg.value, t, msg.set)}>${t}</button>`)}
+          ${tokensNow(spec.tokens).map(t => html`<button title=${TOKEN_TIP[t]} onClick=${() => insertAt(box.current, msg.value, t, msg.set)}>${t}</button>`)}
         </div>
         <label class="sr-only" for=${`afe-m-${k}`}>${spec.name} ${lang === 'es' ? '(Spanish)' : ''}</label>
         <textarea id=${`afe-m-${k}`} ref=${box} class="form-input afe-email-text" lang=${lang} placeholder=${lang === 'es' ? 'Spanish' : ''} value=${msg.value} onInput=${(e) => msg.set(e.target.value)}></textarea>
@@ -3382,10 +3455,10 @@ function MessageEditor({ d, k, spec, lang, status }) {
           </div>`}
       </section>
       <aside class="afe-email-prev">
-        <span class="afe-sec-title">How it reads for ${SAMPLE.parent}${lang === 'es' ? ', in Spanish' : ''}</span>
+        <span class="afe-sec-title">How it reads for ${sampleNow().parent}${lang === 'es' ? ', in Spanish' : ''}</span>
         <div class="afe-email" aria-label="Sample email">
           <div class="afe-email-head">
-            <span class="afe-hint">From the Qualification Committee, through JobTread · To ${SAMPLE.parent}</span>
+            <span class="afe-hint">From the Qualification Committee, through JobTread · To ${sampleNow().parent}</span>
             <b>${spec.subject[lang === 'es' ? 1 : 0]}</b>
           </div>
           <div class="afe-email-body is-rich" dangerouslySetInnerHTML=${{ __html: jtRich(fillFor(shown, shownNote)) || '<span class="text-muted">No message yet.</span>' }}></div>
@@ -3413,8 +3486,8 @@ function RemindersEditor({ d, lang = 'en' }) {
     set({ days: [...days, n].sort((a, b) => a - b) });
     setDay('');
   };
-  const vars = { parent: first(SAMPLE.parent), child: first(SAMPLE.child), percent: SAMPLE.percent, year: d.year };
-  const fillVars = (s) => String(s || '').replace(/\{(parent|child|percent|year)\}/g, (m, k) => vars[k]);
+  const vars = { parent: first(sampleNow().parent), child: isOrgForm() ? sampleNow().child : first(sampleNow().child), percent: SAMPLE.percent, year: d.year };
+  const fillVars = (s) => String(s || '').replace(/\{(parent|child|contact|organization|percent|year)\}/g, (m, k) => vars[{ contact: 'parent', organization: 'child' }[k] || k]);
   const insert = (token) => {
     const s = lastBox.current === 'subject' ? subj : body;
     insertAt(lastBox.current === 'subject' ? subjRef.current : bodyRef.current, s.value, token, s.set);
@@ -3440,7 +3513,7 @@ function RemindersEditor({ d, lang = 'en' }) {
           </div>`}
         <div class="afe-chips">
           <span class="afe-hint">Insert:</span>
-          ${['{parent}', '{child}', '{percent}', '{year}'].map(t => html`<button title=${TOKEN_TIP[t]} onClick=${() => insert(t)}>${t}</button>`)}
+          ${tokensNow(['{parent}', '{child}', '{percent}', '{year}']).map(t => html`<button title=${TOKEN_TIP[t]} onClick=${() => insert(t)}>${t}</button>`)}
         </div>
         <${Field} label=${lang === 'es' ? 'Subject (Spanish)' : 'Subject'} id="afe-rem-subject">
           ${lang === 'es' && html`<span class="afe-hint" lang="en">English: ${subj.en}</span>`}
@@ -3454,9 +3527,9 @@ function RemindersEditor({ d, lang = 'en' }) {
         <//>
       </section>
       <aside class="afe-email-prev">
-        <span class="afe-sec-title">How it reads for ${SAMPLE.parent}${lang === 'es' ? ', in Spanish' : ''}</span>
+        <span class="afe-sec-title">How it reads for ${sampleNow().parent}${lang === 'es' ? ', in Spanish' : ''}</span>
         <div class="afe-email" aria-label="Sample reminder email">
-          <div class="afe-email-head"><span class="afe-hint">From Sunshine on a Ranney Day · To ${SAMPLE.parent}</span><b>${fillVars(showSubj) || 'No subject'}</b></div>
+          <div class="afe-email-head"><span class="afe-hint">From Sunshine on a Ranney Day · To ${sampleNow().parent}</span><b>${fillVars(showSubj) || 'No subject'}</b></div>
           <div class="afe-email-body">${fillVars(showBody) || html`<span class="text-muted">No message yet.</span>`}
             <div style="white-space: normal; margin-top: .9rem;">
               <span class="afe-hint">${vars.percent}% ${lang === 'es' ? 'completado' : 'done'}</span>
@@ -3481,7 +3554,7 @@ function VersionsView({ d, lead = null }) {
   const compare = async (v, title) => {
     await d.flush();
     setCmp({ title, loading: true });
-    const j = await call(`${API}?form-diff=${encodeURIComponent(v)}`);
+    const j = await call(`${API}?form-diff=${encodeURIComponent(v)}${kq()}`);
     setCmp({ title, ...(j.success ? { changes: j.changes || [] } : { error: j.error || 'Could not compare' }) });
   };
   const liveRows = rows.filter(v => v.state !== 'draft');
@@ -3533,7 +3606,7 @@ function VersionsView({ d, lead = null }) {
 //    status emails go out: the form's settings (saveFormRules in
 //    functions/api/_application-forms.js), laid over every version of the form.
 // One save bar covers both; ⌘S saves.
-const SETTINGS_FIELDS = ['year', 'closedMessage', 'formUrl', 'opensAt', 'closesAt', 'maxApplications', 'warnAt', 'fullMessage'];
+const SETTINGS_FIELDS = ['year', 'closedMessage', 'formUrl', 'opensAt', 'closesAt', 'maxApplications', 'warnAt', 'fullMessage', 'orgOpen', 'orgClosedMessage'];
 const RULE_FIELDS = ['staffEmails', 'serviceArea', 'notify'];
 const RULE_NAME = { staffEmails: 'the new-application email', serviceArea: 'the service area', notify: 'email timing' };
 const HTTPS_LINK = /^https:\/\/[^\s/]+\.[^\s]+$/i;
@@ -3619,6 +3692,8 @@ function historyLines(h) {
     if (f === 'opensAt' && !c.to && h.by === 'schedule' && !fields.has('open')) return 'Didn’t open on schedule: the limit was already reached';
     if (f === 'year') return `Season ${c.from || '?'} → ${c.to}`;
     if (f === 'closedMessage') return c.to ? 'Changed the closed message' : 'Went back to the standard closed message';
+    if (f === 'orgOpen') return c.to === false ? 'Closed the organization application' : 'Opened the organization application';
+    if (f === 'orgClosedMessage') return c.to ? 'Changed the organizations’ closed message' : 'Went back to the standard closed message for organizations';
     if (f === 'formUrl') return c.to ? 'Sent the Apply button to an outside form' : 'Went back to the site’s own form';
     if (f === 'opensAt') return c.to ? `Set to open ${longWhen(c.to)}` : fields.has('open') ? null : 'Took off the scheduled opening';
     if (f === 'closesAt') return c.to ? `Set to close ${longWhen(c.to)}` : fields.has('open') ? null : 'Took off the scheduled close';
@@ -3735,7 +3810,8 @@ function useAppSettings(addToast, active) {
     if (invalid) { addToast(Object.values(problems)[0], 'error'); return false; }
     setBusy('save');
     let ok = true;
-    if (appFields.length) ok = !!(await post(Object.fromEntries(SETTINGS_FIELDS.map(k => [k, edit[k] || ''])), 'save')) && ok;
+    // Switches stay true or false (orgOpen: false is closed; a blank would read as open)
+    if (appFields.length) ok = !!(await post(Object.fromEntries(SETTINGS_FIELDS.map(k => [k, typeof edit[k] === 'boolean' ? edit[k] : edit[k] || ''])), 'save')) && ok;
     setBusy('save');
     if (changedRules.length) ok = (await saveRules()) && ok;
     setBusy(null);
@@ -3783,6 +3859,7 @@ function SettingsTab({ s, go, addToast = () => {} }) {
       <div class="afe-set">
         <div class="afe-set-main">
           <${AvailabilityCard} s=${s} onAsk=${setAsk} />
+          <${OrgApplicationsCard} s=${s} />
 
           ${s.rulesEdit && html`
             <${StaffEmailCard} s=${s} />
@@ -4062,6 +4139,30 @@ function EmailListInput({ id, value, onChange, invalid = false }) {
         onKeyDown=${(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); add(text); } else if (ev.key === 'Backspace' && !text && value.length) onChange(value.slice(0, -1)); }}
         onBlur=${() => add(text)} />
     </div>`;
+}
+
+/**
+ * Organizations: the community project application (/apply/community-project/) runs all year,
+ * outside the season's dates and limit, open unless switched off here. Saved with the rest.
+ */
+const DEFAULT_ORG_CLOSED = 'Community project applications are closed right now.';
+function OrgApplicationsCard({ s }) {
+  const e = s.edit;
+  const on = e.orgOpen !== false;
+  return html`
+    <section class="card afe-settings" aria-labelledby="afe-set-org">
+      <h3 id="afe-set-org">Community projects</h3>
+      <p class="afe-lede">Schools, therapy clinics and nonprofits apply for a community project at <a href="/apply/community-project/" target="_blank" rel="noopener">/apply/community-project/</a>. It runs all year, outside the makeover season's dates and limit. Its questions and emails are under Form and Emails, set to Community projects.</p>
+      <div class="afe-field afe-set-fields">
+        <label class="afe-switch"><input type="checkbox" role="switch" id="afe-org-open" checked=${on} onChange=${(ev) => s.set({ orgOpen: ev.target.checked })} />${on ? 'Taking applications' : 'Closed'}</label>
+        <span class="afe-hint">${on ? 'Organizations can apply now.' : 'The page says applications are closed and gives our email address.'}</span>
+      </div>
+      <div class="afe-field afe-set-fields">
+        <label for="afe-org-closed">While closed</label>
+        <input id="afe-org-closed" class="form-input" maxlength="200" value=${e.orgClosedMessage || ''} placeholder=${DEFAULT_ORG_CLOSED} onInput=${(ev) => s.set({ orgClosedMessage: ev.target.value })} />
+        <span class="afe-hint">Blank shows “${DEFAULT_ORG_CLOSED}”</span>
+      </div>
+    </section>`;
 }
 
 function StaffEmailCard({ s }) {

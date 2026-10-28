@@ -752,6 +752,37 @@ for (const width of [390, 768, 820, 1025, 1100, 1180, 1280, 1440]) {
   await p.close();
 }
 
+// Last, so no count above moves: one applicant becomes an organization's account (a school made by
+// hand in JobTread: no birthday, no diagnosis, an organization's name)
+console.log('An organization');
+{
+  const a = acct('Noah Pence');
+  a.name = 'Sunnyside Academy';
+  for (const k of ['diagnosis', 'birthday', 'gender', 'language', 'verbal', 'mobile']) delete a.fields[F[k]];
+  const row = await DB.prepare('SELECT fields FROM applicants WHERE account_id = ?').bind(a.id).first();
+  const fields = JSON.parse(row.fields || '{}');
+  for (const k of ['diagnosis', 'birthday', 'gender', 'language', 'verbal', 'mobile']) delete fields[k];
+  await DB.prepare('UPDATE applicants SET name = ?, fields = ? WHERE account_id = ?').bind('Sunnyside Academy', JSON.stringify(fields), a.id).run();
+  const p = await open(1440, 1000);
+  // The board (earlier steps leave another view remembered)
+  await p.evaluate(() => localStorage.removeItem('apl-view'));
+  await p.reload({ waitUntil: 'domcontentloaded' });
+  await p.waitForSelector('.apl-card', { timeout: 20000 }).catch(() => {});
+  await sleep(400);
+  const sub = await p.evaluate(() => [...document.querySelectorAll('.apl-card')].find((c) => /Sunnyside Academy/.test(c.textContent))?.querySelector('.apl-card-sub')?.textContent || '');
+  ok(/^Community project/.test(sub), `its card says Community project, not an age (${sub})`);
+  await clickText(p, '.apl-card', /Sunnyside Academy/);
+  await p.waitForSelector('.apl-drawer .apl-dtitle h2', { timeout: 8000 }).catch(() => {});
+  ok(/A community project application/.test(await text(p, '.apl-dtitle p')), 'the drawer says what it is');
+  const labels = await p.$$eval('.apl-side .apl-kv dt', (els) => els.map((e) => e.textContent.trim())).catch(() => []);
+  ok(labels.length > 0 && !labels.some((l) => /Birthday|Diagnosis|Gender|Verbal|walks/i.test(l)), `its details have nothing of a child’s (${labels.join(', ')})`);
+  ok(await p.evaluate(() => [...document.querySelectorAll('.apl-side .apl-panel h3')].some((h) => h.textContent.trim() === 'Contacts')), 'its people are Contacts, not Family');
+  ok(/^Address/.test(await p.evaluate(() => [...document.querySelectorAll('.apl-side .apl-panel h3')].map((h) => h.textContent.trim()).find((t) => /^(Home|Address)/.test(t)) || '')), 'where it is: its Address, not a Home');
+  ok(/Message the organization/.test(await text(p, '.apl-composer-head b')), 'and the message box writes to the organization');
+  await shot(p, 'organization-drawer');
+  await p.close();
+}
+
 ok(consoleErrors.length === 0, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 3).join(' | ')}` : ''}`);
 await browser.close();
 server.close();

@@ -30,9 +30,12 @@ beforeEach(async () => {
 const stored = async () => JSON.parse((await DB.prepare("SELECT data FROM site_config WHERE key = 'settings'").first()).data);
 
 test('pickApplication fills every field and keeps the season in range', () => {
-  assert.deepEqual(pickApplication({ open: true, year: '2027' }, NOW), { open: true, year: '2027', closedMessage: '', formUrl: '', opensAt: '', closesAt: '', maxApplications: 0, warnAt: 0, fullMessage: '' });
+  assert.deepEqual(pickApplication({ open: true, year: '2027' }, NOW), { open: true, year: '2027', closedMessage: '', formUrl: '', opensAt: '', closesAt: '', maxApplications: 0, warnAt: 0, fullMessage: '', orgOpen: true, orgClosedMessage: '' });
   assert.equal(pickApplication({ year: '1999' }, NOW).year, '2027', 'out of range → next year');
   assert.equal(pickApplication({ open: 'true' }, NOW).open, false, 'only true opens');
+  // The organization application runs all year: open unless switched off
+  assert.equal(pickApplication({}, NOW).orgOpen, true);
+  assert.equal(pickApplication({ orgOpen: false }, NOW).orgOpen, false);
 });
 
 test('cleaning: links, times, and what a time means in each state', () => {

@@ -440,6 +440,28 @@ test('organizations approved before projects were made get theirs on the next ru
   assert.equal(news().length, 1);
 });
 
+test('the application form decides: an organization’s gets its project, a family’s gets a kid page whatever its name', async () => {
+  const { ensureSchema } = await import('../functions/api/_applications.js');
+  await ensureSchema(env.DB);
+  const made = (accountId, kind) => env.DB.prepare(`INSERT INTO applications (id, draft_id, year, child_name, status, submitted_at, updated_at, jt_account_id, kind)
+    VALUES (?, ?, '2027', 'x', 'done', ?, ?, ?, ?)`).bind(`app-${accountId}`, `d-${accountId}`, iso(T0), iso(T0), accountId, kind).run();
+  const org = family('Sunnyside Academy', 'In Review', { fields: ORG_FIELDS });
+  const kidNamedLikeASchool = family('Academy Rivers', 'In Review', { fields: ORG_FIELDS });
+  await made(org.id, 'organization');
+  await made(kidNamedLikeASchool.id, 'family');
+  await change(org, 'Approved', T0);
+  await change(kidNamedLikeASchool, 'Approved', T0);
+  await sweep(...minutes(30, 40));
+  assert.deepEqual((await projects()).map(p => p.slug), ['sunnyside-academy']);
+  assert.deepEqual((await kids()).map(k => k.slug), ['academy'], 'the family form made it: a kid page');
+  assert.equal(org.jobs[0].name, 'Sunnyside Academy (2027)');
+});
+
+test('an organization’s long name keeps its start in the job name', () => {
+  assert.equal(jobNameFor('Boys & Girls Club of Metro Atlanta', 2027, { organization: true }), 'Boys & Girls Club (2027)');
+  assert.equal(jobNameFor('Oakley Faye Xiu Ping Roberson', 2027), 'Oakley Roberson (2027)', 'a child keeps first and last');
+});
+
 test('a JobTread hiccup in the catch-up leaves the organization for the next run', async () => {
   const a = family('Brightway Academy', 'Approved', { fields: { ...ORG_FIELDS, [YEAR]: '2026' }, jobs: [{ id: 'jobBRIGHT001', name: 'Brightway Academy (2026)', closedOn: null }] });
   await env.DB.prepare(`INSERT INTO applicant_approvals (account_id, name, approved_at, state, job_id, job_name, job_made, kid_made, detail, attempts, done_at, updated_at)

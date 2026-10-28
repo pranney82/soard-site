@@ -286,6 +286,9 @@ export async function gatherFacts(env, { now = Date.now() } = {}) {
 // send: 'email' (Send it to me works), 'invite' (a TEST invite to you), or null.
 
 const STATUS_KINDS = { 'app-welcome': 'welcome', 'app-in-review': 'inReview', 'app-approved': 'approved', 'app-denied': 'denied' };
+// The same emails to an organization (the community project application), in its own wording
+const ORG_STATUS_KINDS = { 'org-welcome': 'welcome', 'org-in-review': 'inReview', 'org-approved': 'approved', 'org-denied': 'denied' };
+const ORG_SAMPLE = { parent: 'Jordan Lee', child: 'Sunnyside Academy' };
 const REMINDER_KINDS = { 'rem-scheduled': 'scheduled', 'rem-moved': 'moved', 'rem-day': 'day', 'rem-hour': 'hour', 'rem-live': 'live', 'rem-replay': 'replay' };
 const sampleApplicationUrl = `${SITE_ORIGIN}/apply/form/?resume=sample`;
 
@@ -358,13 +361,16 @@ async function demoPreview(env, now) {
   };
 }
 
-async function jobtreadPreview(env, kind, lang) {
-  const message = await familyMessage(env, kind, { parent: SAMPLE.parent, child: SAMPLE.child, withCopy: kind === 'welcome', lang });
+async function jobtreadPreview(env, kind, lang, { formKind = 'family' } = {}) {
+  const org = formKind === 'organization';
+  const who = org ? ORG_SAMPLE : SAMPLE;
+  const message = await familyMessage(env, kind, { parent: who.parent, child: who.child, withCopy: kind === 'welcome', lang: org ? 'en' : lang, formKind });
+  const whose = org ? 'the organization’s' : 'the family’s';
   return {
-    channel: 'jobtread', from: JT_FROM, to: `${SAMPLE.parent} and everyone else on the family's account`,
-    subject: (lang === 'es' && COMMENT_NAMES_ES[kind]) || COMMENT_NAMES[kind],
+    channel: 'jobtread', from: JT_FROM, to: `${who.parent} and everyone else on ${org ? "the organization's" : "the family's"} account`,
+    subject: (!org && lang === 'es' && COMMENT_NAMES_ES[kind]) || COMMENT_NAMES[kind],
     text: message,
-    note: kind === 'welcome' ? 'The family’s application PDF is attached. JobTread adds its own header and a reply button; replies land on the family’s page in Applicants.' : 'JobTread adds its own header and a reply button; replies land on the family’s page in Applicants.',
+    note: kind === 'welcome' ? `${whose.replace(/^t/, 'T')} application PDF is attached. JobTread adds its own header and a reply button; replies land on ${whose} page in Applicants.` : `JobTread adds its own header and a reply button; replies land on ${whose} page in Applicants.`,
     send: null,
   };
 }
@@ -430,6 +436,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
   const live = `${SITE_ORIGIN}/live/`;
   const email = (m, extra = {}) => ({ channel: 'email', from: EMAIL_FROM, subject: m.subject, html: m.html, text: m.text, send: 'email', ...extra });
   if (STATUS_KINDS[id]) return jobtreadPreview(env, STATUS_KINDS[id], lang);
+  if (ORG_STATUS_KINDS[id]) return jobtreadPreview(env, ORG_STATUS_KINDS[id], 'en', { formKind: 'organization' });
   if (REMINDER_KINDS[id]) {
     const kind = REMINDER_KINDS[id];
     const args = { kind, kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, replayUrl: live, unsubscribeUrl: '#', tz: TZ };

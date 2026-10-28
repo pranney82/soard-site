@@ -274,8 +274,8 @@ const MAP = { t: 'SOARD', children: [
       ]},
     ]},
 
-  { t: 'Applications', sub: 'Families apply on the site → JobTread', color: 'apply', side: 'r',
-    about: 'The makeover application lives on the site (it replaced Jotform and the Zapier Zaps in October 2026). Each submission becomes a JobTread customer account with nothing done by hand; staff review in JobTread.',
+  { t: 'Applications', sub: 'Families and community projects apply on the site → JobTread', color: 'apply', side: 'r',
+    about: 'The makeover application lives on the site (it replaced Jotform and the Zapier Zaps in October 2026), and so does the community project application for schools, clinics and nonprofits (October 28 2026). Each submission becomes a JobTread customer account with nothing done by hand; staff review in JobTread.',
     children: [
       { t: 'The form', children: [
         { t: 'Makeover application', s: 'live', k: 'visitor',
@@ -284,6 +284,11 @@ const MAP = { t: 'SOARD', children: [
           touches: ['D1', 'R2', 'Cloudflare Stream'], where: 'src/pages/apply/form.astro · functions/api/apply.js · _application-form.js',
           info: 'The form is data, edited in Admin → Applications → Form; each application keeps the version it was answered on. The page gets the live version embedded by functions/apply/form/[[path]].js.',
           live: (f) => (!env(f) ? null : !f.env.stream ? ATTN('Video uploads need CF_ACCOUNT_ID and CF_STREAM_TOKEN in Cloudflare.') : ON()) },
+        { t: 'Community project application', s: 'live', k: 'visitor',
+          when: 'A school, therapy clinic or nonprofit fills in /apply/community-project/ (all year, unless switched off in Applications → Settings → Organizations). The Apply page and the Community page link to it.',
+          does: 'The same pages, saving, address check, photos and review as the family form, with the organization’s own questions and no video. It submits into the same intake: a JobTread account named for the organization, its contacts, address, space photos and a PDF copy, worded for an organization.',
+          touches: ['D1', 'R2', 'JobTread'], where: 'src/pages/apply/community-project.astro · src/components/apply/ApplicationPage.astro · functions/api/_application-form-org.js',
+          info: 'Its own versions, emails and settings in Admin → Applications (Makeovers | Community projects). In English. Outside the family season’s limit. Once approved, it gets its job and a hidden Community project draft.' },
         { t: 'Service-area check', s: 'live', k: 'visitor',
           when: 'A family types the child’s home address on /apply/form/ (about a second after they stop typing, or at once when they pick a suggestion), again on submit, and once more at intake if the form couldn’t place the home.',
           does: 'Asks the U.S. Census geocoder where the address is and places it against the service area in Settings → Service area: inside, close (within the “close” miles) or farther out. That answers the form’s service-area question, and the form shows the home on a map. If the Census can’t find the address, the family answers the question themselves. Families farther out are told and can still apply, or are stopped, per Settings.',
@@ -355,8 +360,8 @@ const MAP = { t: 'SOARD', children: [
       ]},
       { t: 'Into JobTread', children: [
         { t: 'Application → JobTread', s: 'live', k: 'event',
-          when: 'A family submits.',
-          does: 'Creates the customer account (Status Applied, Diagnosis, Birthday, Gender, Language, Referred By, Verbal, Mobile, Makeover Year and Type, Application URL), the parents as contacts and the home as a location, and attaches the application PDF and four photos. The video follows once Stream has processed it.',
+          when: 'A family (or an organization) submits.',
+          does: 'Creates the customer account (Status Applied, Diagnosis, Birthday, Gender, Language, Referred By, Verbal, Mobile, Makeover Year and Type, Application URL), the parents as contacts and the home as a location, and attaches the application PDF and four photos. The video follows once Stream has processed it. An organization’s account has its name, its contacts and address, the spaces JobTread’s Makeover Type knows, and nothing of a child’s.',
           touches: ['JobTread', 'R2', 'Cloudflare Stream'], where: 'functions/api/_applications.js',
           info: 'Each step is done once and remembered, so a retry never makes a second account. DataX fills the Zillow data when the location appears.',
           live: needsKey('jobtread', 'JOBTREAD_GRANT_KEY is missing.') },

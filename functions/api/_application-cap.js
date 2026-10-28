@@ -76,25 +76,35 @@ export function capOf(a = {}) {
 export const defaultFullMessage = (year) => `We’ve received all the applications we can take for ${year}.`;
 export const fullMessageOf = (a) => String(a?.fullMessage || '').trim() || defaultFullMessage(a?.year);
 
-/** Applications in for the season (not tests, not deleted), optionally only those since an ISO time */
+/**
+ * Families' applications in for the season (not tests, not deleted), optionally only
+ * those since an ISO time. Organizations' applications run outside the limit.
+ */
 export async function countReceived(DB, year, { since = null } = {}) {
-  try {
-    const sql = `SELECT COUNT(*) AS n FROM applications WHERE year = ? AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL${since ? ' AND submitted_at >= ?' : ''}`;
+  const count = async (families) => {
+    const sql = `SELECT COUNT(*) AS n FROM applications WHERE year = ? AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL${families ? " AND COALESCE(kind, 'family') = 'family'" : ''}${since ? ' AND submitted_at >= ?' : ''}`;
     const row = await DB.prepare(sql).bind(...[String(year), ...(since ? [since] : [])]).first();
     return Number(row?.n) || 0;
+  };
+  try {
+    return await count(true);
   } catch {
-    return 0;
+    // Before the kind column exists, every application is a family's
+    try { return await count(false); } catch { return 0; }
   }
 }
 
 /** Families partway through the form for the season: not sent, not stopped, touched in the last 14 days */
 export async function countFilling(DB, year, now = Date.now()) {
-  try {
+  const count = async (families) => {
     const row = await DB.prepare(`SELECT COUNT(*) AS n FROM application_drafts WHERE year = ? AND submitted_id IS NULL AND cleared_at IS NULL
-      AND stop_key IS NULL AND updated_at >= ? AND COALESCE(ip_hash, '') != 'admin'`).bind(String(year), iso(now - FILLING_DAYS * DAY_MS)).first();
+      AND stop_key IS NULL AND updated_at >= ? AND COALESCE(ip_hash, '') != 'admin'${families ? " AND COALESCE(kind, 'family') = 'family'" : ''}`).bind(String(year), iso(now - FILLING_DAYS * DAY_MS)).first();
     return Number(row?.n) || 0;
+  };
+  try {
+    return await count(true);
   } catch {
-    return 0;
+    try { return await count(false); } catch { return 0; }
   }
 }
 

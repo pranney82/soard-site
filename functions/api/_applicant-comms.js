@@ -35,11 +35,12 @@
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
-import { DEFAULT_MESSAGES, renderMessage, resolveForm } from './_application-form.js';
+import { DEFAULT_MESSAGES, renderMessage, resolveForm, kindOf } from './_application-form.js';
 import { getLiveForm } from './_application-forms.js';
 
 export const FIELD_STATUS = '22P46wDp3NLd';      // customer: Applied / In Review / Approved / Denied
 export const FIELD_DIAGNOSIS = '22P46st8HNPY';   // customer: text
+export const FIELD_BIRTHDAY = '22P46syd4j6E';    // customer: Birthday
 export const FIELD_CONTACT_EMAIL = '22NJw43QvHeJ';
 export const FIELD_CONTACT_PHONE = '22NJw43UauSc';
 export const QC_USER_ID = '22P5r2x8FPiK';        // "Qualification Committee"
@@ -74,8 +75,9 @@ export const FIELD_LANGUAGE = '22P46u8a49hk'; // customer: Primary Language
  * Messages); the built-in wording is the Zaps' (stray typos fixed). This
  * renders one for an account.
  */
-export async function familyMessage(env, kind, { parent, child, withCopy = false, lang = 'en' } = {}) {
-  const live = await getLiveForm(env.DB);
+export async function familyMessage(env, kind, { parent, child, withCopy = false, lang = 'en', formKind = 'family' } = {}) {
+  // An organization's account gets the organization form's wording
+  const live = await getLiveForm(env.DB, { kind: formKind });
   const messages = resolveForm(live.definition, { lang }).messages || DEFAULT_MESSAGES;
   return renderMessage(messages[kind], { parent, child, copyNote: withCopy ? messages.copyNote : '' });
 }
@@ -87,8 +89,36 @@ const ALREADY_SENT = {
   medical: (c) => named('medical', c),
   inReview: (c) => named('inReview', c),
   approved: (c) => named('approved', c) && /has been approved|fue aprobada/i.test(c.message || ''),
-  denied: (c) => named('denied', c) && /unable to move forward|no podemos seguir adelante/i.test(c.message || ''),
+  denied: (c) => named('denied', c) && /unable to move forward|unable to take on|no podemos seguir adelante/i.test(c.message || ''),
 };
+
+// ─── A family's account, or an organization's ───────────────────────
+
+/** Words in an organization's name that a child's never has ("The Lionheart School", "Perfect Harmony Health") */
+const ORG_NAME_RE = /\b(school|academy|preschool|center|centre|clinic|health|hospital|healthcare|therapy|therapies|foundation|church|ministr(y|ies)|camp|club|program|programs|institute|association|society|services|house|home|homes|charity|nonprofit|inc|llc|org|organization|coalition|alliance|network|united|league|council|district|county|library|museum|ymca|ywca|scouts|daycare|learning|education|kids|children'?s|childrens)\b/i;
+export const looksLikeOrganization = (name) => ORG_NAME_RE.test(String(name || '').replace(/[’]/g, "'"));
+
+/**
+ * Whose account this is: the kind of the site's application that made it,
+ * else (made by hand in JobTread) an organization only when nothing on it is
+ * a child's (no Birthday, no Diagnosis) and its name reads like one. A family
+ * reading an organization's wording would be worse than the other way round,
+ * so a hand-made account needs all of that to count.
+ */
+export function accountKindFor({ formKind = null, birthday = null, diagnosis = null, name = '' } = {}) {
+  if (formKind) return kindOf(formKind);
+  return !birthday && !String(diagnosis || '').trim() && looksLikeOrganization(name) ? 'organization' : 'family';
+}
+
+/** The kind of the site's application that made this account, or null when staff made it in JobTread */
+export async function formKindOf(DB, accountId) {
+  try {
+    const row = await DB.prepare('SELECT kind FROM applications WHERE jt_account_id = ?').bind(accountId).first();
+    return row ? kindOf(row.kind) : null;
+  } catch {
+    return null;
+  }
+}
 
 export const KIND_FOR_STATUS = { 'In Review': 'inReview', Approved: 'approved', Denied: 'denied' };
 
@@ -161,7 +191,7 @@ export async function readApplicant(env, accountId, fetchImpl = fetch) {
       $: { id: accountId },
       id: {}, name: {}, type: {}, createdAt: {},
       organization: { id: {} },
-      customFieldValues: { $: { where: [['customField', 'id'], 'in', [FIELD_STATUS, FIELD_DIAGNOSIS, FIELD_LANGUAGE]] }, nodes: { value: {}, customField: { id: {} } } },
+      customFieldValues: { $: { where: [['customField', 'id'], 'in', [FIELD_STATUS, FIELD_DIAGNOSIS, FIELD_LANGUAGE, FIELD_BIRTHDAY]] }, nodes: { value: {}, customField: { id: {} } } },
       primaryContact: contactQuery,
       contacts: { $: { size: 10 }, nodes: contactQuery },
       comments: {
@@ -175,12 +205,17 @@ export async function readApplicant(env, accountId, fetchImpl = fetch) {
   const contact = (c) => c && { id: c.id, name: c.name, email: fieldValue(c, FIELD_CONTACT_EMAIL), phone: fieldValue(c, FIELD_CONTACT_PHONE) };
   const contacts = (a.contacts?.nodes || []).map(contact);
   const primary = contact(a.primaryContact) || contacts[0] || null;
+  const diagnosis = fieldValue(a, FIELD_DIAGNOSIS) || '';
+  const birthday = fieldValue(a, FIELD_BIRTHDAY) || null;
   return {
     id: a.id,
     name: a.name,
     createdAt: a.createdAt,
     status: fieldValue(a, FIELD_STATUS) || '',
-    diagnosis: fieldValue(a, FIELD_DIAGNOSIS) || '',
+    diagnosis,
+    birthday,
+    // A family's account or an organization's: which messages it gets
+    kind: accountKindFor({ formKind: await formKindOf(env.DB, a.id), birthday, diagnosis, name: a.name }),
     // Families whose main language is Spanish get their messages in Spanish
     lang: fieldValue(a, FIELD_LANGUAGE) === 'Spanish' ? 'es' : 'en',
     primary,
@@ -385,7 +420,7 @@ export async function sendIntake(env, applicant, { uploadRequestIds = [], fetchI
   const language = lang || applicant.lang || 'en';
   const parent = greetingNames(familyRecipients(applicant), { lang: language });
   const welcome = await sendOnce(env, applicant, 'welcome',
-    () => familyMessage(env, 'welcome', { parent, child: applicant.name, withCopy: uploadRequestIds.length > 0, lang: language }),
+    () => familyMessage(env, 'welcome', { parent, child: applicant.name, withCopy: uploadRequestIds.length > 0, lang: language, formKind: applicant.kind }),
     { assign: true, uploadRequestIds, fetchImpl, now, lang: language });
   const medical = applicant.diagnosis
     ? await sendMedical(env, applicant, { fetchImpl, now, fallback: medicalFallback })
@@ -422,7 +457,7 @@ export async function sendStatusMessage(env, applicant, kind, { fetchImpl = fetc
   await ensureCommsSchema(env.DB);
   const lang = (await applicationLang(env.DB, applicant.id)) || applicant.lang || 'en';
   const parent = greetingNames(familyRecipients(applicant), { lang });
-  return sendOnce(env, applicant, kind, () => familyMessage(env, kind, { parent, child: applicant.name, lang }), { assign: true, fetchImpl, now, lang });
+  return sendOnce(env, applicant, kind, () => familyMessage(env, kind, { parent, child: applicant.name, lang, formKind: applicant.kind }), { assign: true, fetchImpl, now, lang });
 }
 
 /** Which family messages this account has had (its comments, and the run-once record) */
@@ -446,7 +481,7 @@ export async function statusMessagePreview(env, applicant, status) {
     title: (lang === 'es' && COMMENT_NAMES_ES[kind]) || COMMENT_NAMES[kind],
     // Everyone it goes to, or null when no one on the account has an email address
     to: familyRecipients(applicant).length ? familyRecipients(applicant) : null,
-    message: await familyMessage(env, kind, { parent: greetingNames(familyRecipients(applicant), { lang }), child: applicant.name, lang }),
+    message: await familyMessage(env, kind, { parent: greetingNames(familyRecipients(applicant), { lang }), child: applicant.name, lang, formKind: applicant.kind }),
   };
 }
 

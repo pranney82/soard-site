@@ -89,14 +89,14 @@ function previewMode() {
   return p === 'live' || p === 'draft' ? p : 'open';
 }
 
-/** The page's config: embedded by the page's Function, else asked for */
-async function loadConfig(mode) {
+/** The page's config: embedded by the page's Function, else asked for (kind: which application) */
+async function loadConfig(mode, kind = 'family') {
   const embedded = document.getElementById('af-config');
   if (embedded && mode !== 'draft') {
     try { return JSON.parse(embedded.textContent); } catch { /* fall through to the API */ }
   }
   try {
-    const res = await fetch(`${API}?config${mode === 'draft' ? '&preview=draft' : ''}`, { cache: 'no-store' });
+    const res = await fetch(`${API}?config${kind === 'organization' ? '&kind=organization' : ''}${mode === 'draft' ? '&preview=draft' : ''}`, { cache: 'no-store' });
     return await res.json();
   } catch {
     return null;
@@ -117,7 +117,7 @@ function startLang() {
 async function boot(root) {
   root.dataset.ready = '1';
   const mode = previewMode();
-  init(root, (await loadConfig(mode)) || {}, mode);
+  init(root, (await loadConfig(mode, root.dataset.kind)) || {}, mode);
 }
 
 function init(root, cfg, mode) {
@@ -130,8 +130,14 @@ function init(root, cfg, mode) {
   const previewing = live || !!cfg.preview;
   // A staff test run: { by: their email } once signed in, { signIn: true } before (the page's Function decides)
   let testRun = !previewing && cfg.testRun ? cfg.testRun : null;
+  // A family's application (/apply/form/) or an organization's (/apply/community-project/), each with its own saved draft
+  const kind = root.dataset.kind === 'organization' || cfg.kind === 'organization' ? 'organization' : 'family';
+  const org = kind === 'organization';
+  const keyed = (k) => (org ? `${k}-organization` : k);
   // Its draft is kept apart, so this browser's own application (if any) is never mixed up with it
-  let store = local(testRun ? TEST_STORE_KEY : STORE_KEY);
+  let store = local(keyed(testRun ? TEST_STORE_KEY : STORE_KEY));
+  // Where messages go: the parent's email, or the organization's main contact's
+  const emailId = org ? 'contactEmail' : 'parentEmail';
   const year = String(cfg.year || root.dataset.year || '');
   const version = cfg.version || 0;
   // The raw definition (resolved here per language); an older server only sends the English form
@@ -177,7 +183,8 @@ function init(root, cfg, mode) {
   };
 
   // ── State ────────────────────────────────────────────────────────
-  let lang = startLang();
+  // The organization application is in English
+  let lang = org ? 'en' : startLang();
   let form = null;
   let fields = [];
   let byId = {};
@@ -206,7 +213,7 @@ function init(root, cfg, mode) {
   let laterEmail = '';
   let areaNow = null;        // the last service-area check of the home address: { key, band, answer, lat, lng, miles, county, matched, reason }
 
-  const T = (k, v = {}) => word(lang, k, { year, ...v });
+  const T = (k, v = {}) => word(lang, k, { year, ...v }, kind);
   /** A message spec: 'key', ['key', vars] or { raw: 'text' } → words in the current language */
   const say = (m) => (!m ? '' : typeof m === 'string' ? T(m) : Array.isArray(m) ? T(m[0], m[1]) : String(m.raw || ''));
   const fieldEl = (id) => ui.pages.querySelector(`[data-field="${CSS.escape(id)}"]`);
@@ -673,7 +680,7 @@ function init(root, cfg, mode) {
     if (testRun?.signIn) { navNote({ raw: TEST.signInNote }); return false; }
     if (turnstileSiteKey && !turnstileToken && !testRun) { navNote('turnstile'); return false; }
     let r;
-    try { r = await api({ action: 'start', year, lang, turnstileToken, website: ui.honeypot?.value || '', ...(testRun ? { test: true } : {}) }); } catch { r = { ok: false }; }
+    try { r = await api({ action: 'start', kind, year, lang, turnstileToken, website: ui.honeypot?.value || '', ...(testRun ? { test: true } : {}) }); } catch { r = { ok: false }; }
     if (r.code === 'staff-only') { testRun = { signIn: true }; paintTestBar(); }
     if (!r.ok) {
       // The quick check's own words here (the server's are English and name a different button)
@@ -738,7 +745,7 @@ function init(root, cfg, mode) {
     ui.stopTitle.textContent = s.title || '';
     ui.stopBody.innerHTML = s.body || '';
     const placed = stopFromArea() ? areaPlaced() : null;
-    if (placed) ui.stopMap.innerHTML = `<div class="af-map af-map--stop">${areaMapHtml(form.serviceArea, { ...placed }, mapWords(lang, true))}</div>`;
+    if (placed) ui.stopMap.innerHTML = `<div class="af-map af-map--stop">${areaMapHtml(form.serviceArea, { ...placed }, mapWords(lang, true, kind))}</div>`;
     // An older stop screen with a picture: its words come from the image question showing the same picture
     else if (s.image) ui.stopMap.innerHTML = imageHtml(s.image, fields.find(f => f.type === 'image' && f.image === s.image)?.alt || '');
     else ui.stopMap.innerHTML = '';
@@ -875,7 +882,7 @@ function init(root, cfg, mode) {
   function finished(already = false) {
     store.clear();
     closeRecorder();
-    doneShown = { already, email: testRun?.by || readAnswers().parentEmail || answers.parentEmail || '' };
+    doneShown = { already, email: testRun?.by || readAnswers()[emailId] || answers[emailId] || '' };
     notice(null);
     ui.form.hidden = true;
     ui.stop.hidden = true;
@@ -1363,7 +1370,7 @@ function init(root, cfg, mode) {
     area.showTimer = setTimeout(() => { if (area.want === key) paintArea('checking'); }, 180);
     area.pending = (async () => {
       let r;
-      try { r = await api({ action: 'area', ...(token && !previewing ? { token } : {}), address: addr }); } catch { r = { ok: false }; }
+      try { r = await api({ action: 'area', kind, ...(token && !previewing ? { token } : {}), address: addr }); } catch { r = { ok: false }; }
       if (area.want !== key) return; // a newer address is being checked
       clearTimeout(area.showTimer);
       area.want = null;
@@ -1431,7 +1438,7 @@ function init(root, cfg, mode) {
       const mapEl = box.querySelector('[data-area-map]');
       const sig = JSON.stringify([home?.lat, home?.lng, lang, form.serviceArea?.polygon]);
       if (mapEl.dataset.sig !== sig) {
-        mapEl.innerHTML = areaMapHtml(form.serviceArea, home, mapWords(lang, !!home));
+        mapEl.innerHTML = areaMapHtml(form.serviceArea, home, mapWords(lang, !!home, kind));
         mapEl.dataset.sig = sig;
         requestAnimationFrame(() => declutter(mapEl));
       }
@@ -1502,6 +1509,15 @@ function init(root, cfg, mode) {
       makeoverWhy: 'The bathroom. A roll-in shower would make bath time safe for her and for us.',
       positiveImpact: 'She could get ready on her own more often, and we could stop lifting her over the tub.',
     };
+    // An organization's test run: a school, with its own answers
+    const knownOrg = {
+      orgName: 'TEST Sunnyside Academy', contactName: sampleParent, contactTitle: 'Director', website: 'https://example.org',
+      mission: 'We teach children with autism and other developmental differences, ages 3 to 12.', childrenServed: '120', agesServed: '3 to 12',
+      needsServed: 'Most of our students have autism; some have Down syndrome or cerebral palsy.', childrenUsing: '40',
+      spaceToday: 'An empty classroom with fluorescent lights and worn carpet. It is too loud and bright for most of our students.',
+      spaceDream: 'A calm sensory room would give students a place to regulate, so they can get back to learning.',
+    };
+    if (org && f.id in knownOrg) return knownOrg[f.id];
     if (f.id in known) return known[f.id];
     const choose = (want) => f.options.find(o => o === want) ?? null;
     switch (f.type) {
@@ -1650,10 +1666,11 @@ function init(root, cfg, mode) {
   const TRACE = [
     { key: 'saved', title: 'Saved on the site', done: () => true },
     { key: 'account', title: (st) => `JobTread account: ${st.name || 'TEST'}`, done: (st) => st.steps.account },
-    { key: 'people', title: 'Parents and home, in JobTread', done: (st) => st.steps.contacts && st.steps.home },
+    { key: 'people', title: org ? 'Contacts and address, in JobTread' : 'Parents and home, in JobTread', done: (st) => st.steps.contacts && st.steps.home },
     { key: 'files', title: 'Application PDF and photos, in JobTread', done: (st) => st.steps.pdf && st.steps.photos },
-    { key: 'welcome', title: (st) => `The family's welcome email with the PDF copy, to ${st.to}`, done: (st) => st.steps.familyMessage === true },
-    { key: 'medical', title: 'Medical note for the team', done: (st) => st.steps.medicalNote === true || /^skipped/.test(String(st.steps.medicalNote)) },
+    { key: 'welcome', title: (st) => `${org ? 'The welcome email' : "The family's welcome email"} with the PDF copy, to ${st.to}`, done: (st) => st.steps.familyMessage === true },
+    // An organization has no diagnosis, so no medical note
+    ...(org ? [] : [{ key: 'medical', title: 'Medical note for the team', done: (st) => st.steps.medicalNote === true || /^skipped/.test(String(st.steps.medicalNote)) }]),
     { key: 'staff', title: (st) => `Staff heads-up, to ${st.to}${st.steps.staffSlack === true ? ' and in Slack' : ''}`, done: (st) => st.steps.staffEmail },
     { key: 'video', title: 'Video, in JobTread', done: (st) => st.steps.video === true || st.steps.video === 'none', wait: (st) => st.steps.video === 'waiting' && 'Waiting for the video to finish processing' },
     { key: 'archived', title: 'Archived in JobTread (the test cleans itself up)', done: (st) => st.steps.archived },
@@ -1863,7 +1880,7 @@ function init(root, cfg, mode) {
   const dlg = ui.dialog;
   const openLater = () => {
     if (previewing) { notice('previewNoSave', 'info'); return; }
-    const email = testRun?.by || readAnswers().parentEmail;
+    const email = testRun?.by || readAnswers()[emailId];
     const input = dlg.querySelector('input[type=email]');
     if (email && (!input.value || testRun?.by)) input.value = email;
     input.readOnly = !!testRun?.by; // a test run's link only ever goes to the person running it
@@ -2058,7 +2075,7 @@ function init(root, cfg, mode) {
     if (r.test?.by && !testRun?.by) {
       testRun = r.test;
       if (!fromLink) store.clear();
-      store = local(TEST_STORE_KEY);
+      store = local(keyed(TEST_STORE_KEY));
       paintTestBar();
     }
     showApp(true); // a saved application can always be finished, even after we close

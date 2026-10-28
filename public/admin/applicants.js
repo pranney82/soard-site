@@ -1170,7 +1170,7 @@ function Board({ list, onOpen, onMove }) {
           return html`<button class=${`apl-card ${a.waiting ? 'is-waiting' : ''}`} key=${a.id} data-id=${a.id} onClick=${() => { if (Date.now() - lastDragEnd > 350) onOpen(a.id); }} aria-label=${`${a.name}, ${s}. Open`}>
             <div class="apl-card-top"><${Avatar} a=${a} />
               <div style="min-width:0"><div class="apl-card-name">${a.name}</div>
-              <div class="apl-card-sub">${[age != null ? `${age} yrs` : null, a.city || a.county, oneYear ? null : a.year].filter(Boolean).join(' · ')}</div></div>
+              <div class="apl-card-sub">${[a.kind === 'organization' ? 'Community project' : age != null ? `${age} yrs` : null, a.city || a.county, oneYear ? null : a.year].filter(Boolean).join(' · ')}</div></div>
             </div>
             <${Flags} a=${a} />
             ${a.waiting && html`<div class="apl-tags"><span class="tag tag--brand apl-mail is-reply" title=${`${a.waiting.by || 'The family'} replied ${fullDate(a.waiting.at)}: “${a.waiting.snippet}”`}>${feedIcon('comment')}${a.waiting.by ? a.waiting.by.split(' ')[0] : 'They'} replied ${ago(a.waiting.at)}</span></div>`}
@@ -1574,7 +1574,9 @@ function Drawer({ id, replyLink = null, fields, boundary, summary, onClose, onPr
         <${Avatar} a=${a} />
         <div class="apl-dtitle">
           <h2>${a.name}</h2>
-          <p>${[ageOf(a.fields?.birthday) != null ? `${ageOf(a.fields.birthday)} years old` : null, a.fields?.diagnosis ? a.fields.diagnosis.slice(0, 70) + (a.fields.diagnosis.length > 70 ? '…' : '') : null, a.year ? `${a.year} season` : null].filter(Boolean).join(' · ')}</p>
+          <p>${(a.kind === 'organization'
+            ? ['A community project application', a.year ? `${a.year} season` : null]
+            : [ageOf(a.fields?.birthday) != null ? `${ageOf(a.fields.birthday)} years old` : null, a.fields?.diagnosis ? a.fields.diagnosis.slice(0, 70) + (a.fields.diagnosis.length > 70 ? '…' : '') : null, a.year ? `${a.year} season` : null]).filter(Boolean).join(' · ')}</p>
           <${Flags} a=${a} compact=${true} />
         </div>
         <div class="apl-dactions">
@@ -1727,6 +1729,7 @@ function namesOf(people, fallback = 'the family') {
 
 function Conversation({ d, onSent, addToast, replyLink = null }) {
   const a = d.applicant;
+  const org = a?.kind === 'organization';
   const items = useMemo(() => timelineOf(d), [d]);
   // Where an answer goes: a JobTread conversation ({ id, title }), or null for a new message.
   // It starts on the alert's thread, else the one the family wrote in last (if they wrote last).
@@ -1801,10 +1804,10 @@ function Conversation({ d, onSent, addToast, replyLink = null }) {
         return html`${sep}${it.type === 'msg' ? html`<${Message} it=${it} key=${it.c.id} onReply=${emailable.length ? reply : null} />` : html`<${EventLine} r=${it.r} key=${it.r.id} />`}`;
       })}
     </div>
-    ${!emailable.length ? html`<div class="apl-composer" aria-label="Message the family">
-      <div class="apl-callout is-warn">No one on this family has an email address in JobTread, so there's no one to message yet. Add an email address for ${namesOf(a.contacts || [], 'a contact')} in JobTread and they'll show here.</div>
-    </div>` : html`<div class=${`apl-composer ${headOpen ? 'is-head-open' : ''}`} aria-label="Message the family">
-      <div class="apl-composer-head"><b>Message the family</b><span>Sent through JobTread, which emails it. Replies come back here.</span></div>
+    ${!emailable.length ? html`<div class="apl-composer" aria-label=${`Message ${org ? 'the organization' : 'the family'}`}>
+      <div class="apl-callout is-warn">No one on this ${org ? 'account' : 'family'} has an email address in JobTread, so there's no one to message yet. Add an email address for ${namesOf(a.contacts || [], 'a contact')} in JobTread and they'll show here.</div>
+    </div>` : html`<div class=${`apl-composer ${headOpen ? 'is-head-open' : ''}`} aria-label=${`Message ${org ? 'the organization' : 'the family'}`}>
+      <div class="apl-composer-head"><b>Message ${org ? 'the organization' : 'the family'}</b><span>Sent through JobTread, which emails it. Replies come back here.</span></div>
       ${!headOpen && html`<button class="apl-email-sum" onClick=${() => setHeadOpen(true)} aria-label=${thread ? 'See who it goes to, or start a new message' : 'See who it goes to, or change the subject'}><span>To <b>${namesOf(recipients, 'no one yet')}</b> · ${thread ? `Replying in “${thread.title || 'their conversation'}”` : subject}</span><em>Edit</em></button>`}
       ${html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">
         <div class="apl-to" aria-label="To">To ${recipients.length ? recipients.map(c => html`<span class="apl-to-chip" title=${c.email}>${c.name || c.email}</span>`) : html`<span>no one in the family</span>`}</div>
@@ -1815,7 +1818,7 @@ function Conversation({ d, onSent, addToast, replyLink = null }) {
       ${thread && recipients.length > 0 && left.length > 0 && html`<div class="apl-callout apl-thread-note">${namesOf(left)} ${left.length === 1 ? 'isn’t' : 'aren’t'} on this conversation, so the reply won’t reach them. <button class="apl-more" onClick=${() => setPicked(null)}>New message</button> reaches everyone.</div>`}
       ${correcting && html`<div class="apl-callout">Writing a correction. When it's sent, the site counts ${namesOf(emailable)} as knowing where things stand now. <button class="apl-more" onClick=${() => { setCorrecting(false); setSubject(DEFAULT_SUBJECT); setText(''); }}>Cancel</button></div>`}
       <textarea ref=${box} class="form-input" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
-        placeholder=${thread ? 'Write your reply. It goes back in the same JobTread conversation.' : 'Write to the family. JobTread emails it from the Qualification Committee to everyone listed, and their replies land here.'}
+        placeholder=${thread ? 'Write your reply. It goes back in the same JobTread conversation.' : `Write to the ${org ? 'organization' : 'family'}. JobTread emails it from the Qualification Committee to everyone listed, and their replies land here.`}
         aria-label=${thread ? 'Reply' : 'Message'} maxlength="4000"></textarea>
       <div class="apl-composer-foot">
         <span class="apl-kbd-hint">⌘/Ctrl + Enter to send</span>
@@ -1899,6 +1902,8 @@ function FileThumb({ f }) {
 }
 
 const SIDE_FIELDS = ['year', 'types', 'birthday', 'gender', 'diagnosis', 'language', 'verbal', 'mobile', 'qualified', 'referredBy', 'denialReason'];
+// An organization (a community project application) has no child: none of a child's details
+const CHILD_FIELDS = new Set(['birthday', 'gender', 'diagnosis', 'language', 'verbal', 'mobile']);
 
 function FieldRow({ k, meta, value, onSave }) {
   const [editing, setEditing] = useState(false);
@@ -1971,7 +1976,7 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   const photos = files.filter(f => kindOf(f) === 'image').sort((x, y) => rank(x) - rank(y) || String(x.at || '').localeCompare(String(y.at || '')));
   const docs = files.filter(f => kindOf(f) !== 'image' && f !== appPdf && f !== appVideo);
   const shown = [appPdf, appVideo, ...photos, ...docs].filter(Boolean); // one set in the viewer, in the order it's shown here
-  const visible = SIDE_FIELDS.filter(k => fields[k] && (k !== 'denialReason' || a.status === 'Denied' || a.fields?.denialReason));
+  const visible = SIDE_FIELDS.filter(k => fields[k] && (k !== 'denialReason' || a.status === 'Denied' || a.fields?.denialReason) && !(a.kind === 'organization' && CHILD_FIELDS.has(k)));
   return html`<section class="apl-side" aria-label="Details">
     <div class="apl-panel">
       <h3>Details <span class="apl-card-sub" style="text-transform:none;letter-spacing:0">Saved to JobTread as you edit</span></h3>
@@ -1979,7 +1984,7 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
     </div>
 
     <div class="apl-panel">
-      <h3>Family</h3>
+      <h3>${a.kind === 'organization' ? 'Contacts' : 'Family'}</h3>
       ${a.contacts?.length ? a.contacts.map(c => html`<div class="apl-contact">
         <strong>${c.name}${c.title ? html` <span class="apl-card-sub" style="display:inline">· ${c.title}</span>` : ''}</strong>
         ${c.email && html`<a href=${`mailto:${c.email}`}>${c.email}</a>`}
@@ -1988,7 +1993,7 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
     </div>
 
     <div class="apl-panel">
-      <h3>Home <span class="apl-home-links">
+      <h3>${a.kind === 'organization' ? 'Address' : 'Home'} <span class="apl-home-links">
         ${a.address && html`<a class="apl-more" href=${`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(a.address)}`} target="_blank" rel="noopener">Directions</a>`}
         ${a.lat != null && html`<button class="apl-more" onClick=${() => onShowOnMap(a)}>Show on map</button>`}
       </span></h3>
