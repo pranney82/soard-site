@@ -131,21 +131,23 @@ try {
 
   for (const [title, want] of [
     ['Instagram Reel', 'Off'], ['Reminder emails', 'Off'], ['Browser push reminders', 'Off'], ['Alert texts', 'Off'],
-    ['Simulcast to Facebook', 'Live'], ['Simulcast to YouTube', 'Needs attention'], ['Live hub', 'Needs attention'],
+    ['Simulcast to Facebook', 'Live'], ['Simulcast to YouTube', 'Off'], ['Live hub', 'Needs attention'],
     ['Slack posts', 'Off'], ['Facebook replay rescue', 'Needs attention'], ['Invite engine', 'Live'],
-    ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],
+    ['Reveal date sync', 'Live'],
     ['Reveal checks for PMs', 'Off'], ['Kid and project status follow JobTread', 'Live'], ['Gift alerts in Slack', 'Live'],
     ['Status → family message', 'Live'], ['Quo texts and calls → JobTread', 'Live'], ['/text → Quo text', 'Live'], ['Zillow lookup', 'Live'], ['Approved → job and its page', 'Live'], ['Kid photo as the job’s cover', 'Live'],
-    ['Jotform copy', 'Live'], ['Advisory Board application', 'Live'],
+    ['Advisory Board application', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
   const zapier = await page.evaluate(() => [...document.querySelectorAll('.am-inv-branch li b, #am-svc option')].map((e) => e.textContent).filter((x) => /zapier/i.test(x)));
   ok(zapier.length === 0, `Zapier is retired: no entry or service for it${zapier.length ? ` (found ${zapier.join(', ')})` : ''}`);
+  const jotform = await page.evaluate(() => [...document.querySelectorAll('.am-inv-branch li b, #am-svc option')].map((e) => e.textContent).filter((x) => /jotform/i.test(x)));
+  ok(jotform.length === 0, `Jotform is retired: no entry or service for it${jotform.length ? ` (found ${jotform.join(', ')})` : ''}`);
 
   const attnItems = await page.$$eval('.am-panel .am-mini li', (l) => l.length);
   ok((await page.$eval('.am-panel', (e) => e.textContent)).includes('Needs attention') && attnItems >= 5, `the side panel lists what needs attention and what's parked (${attnItems} entries)`);
-  // Each one is a real problem in these facts: no YouTube key, the hub on old code, a replay with no kid page
+  // Each one is a real problem in these facts: the hub on old code, a replay with no kid page (YouTube never set up is Off)
   const attnTitles = await page.$$eval('.am-inv-branch li', (l) => l.filter((x) => x.querySelector('.am-meta')?.textContent.startsWith('Needs attention')).map((x) => x.querySelector('b').textContent));
-  ok(sameSet(attnTitles, ['Simulcast to YouTube', 'Live hub', 'Facebook replay rescue']), `exactly the entries with a real problem need attention${setDiff(attnTitles, ['Simulcast to YouTube', 'Live hub', 'Facebook replay rescue'])}`);
+  ok(sameSet(attnTitles, ['Live hub', 'Facebook replay rescue']), `exactly the entries with a real problem need attention${setDiff(attnTitles, ['Live hub', 'Facebook replay rescue'])}`);
   const lede = await page.$eval('.am-lede .am-warnstat b', (e) => e.textContent);
   ok(lede === String(attnTitles.length), `the lede counts the ${attnTitles.length} needing attention (shows ${lede})`);
   await page.screenshot({ path: join(OUT, 'desktop.png'), fullPage: false });
@@ -211,7 +213,8 @@ try {
   ok((await page.$eval('.am-canvas', (e) => e.getBoundingClientRect().height)) < 800, 'Reset brings the canvas back');
   await clickButton(page, '.am-filters', 'Needs a look');
   await pause(400);
-  ok(/\d+ match/.test(await page.$eval('.am-hits', (e) => e.textContent)), 'the Needs a look filter reports matches');
+  const lookHits = (await page.$eval('.am-hits', (e) => e.textContent)).match(/(\d+) match/)?.[1];
+  ok(lookHits === String(attnTitles.length), `Needs a look shows only the ${attnTitles.length} amber entries, not what's switched off (shows ${lookHits})`);
   ok((await page.$$('.am-node.dim')).length > 0 && (await page.$$('.am-node.hit-on')).length > 0, 'the filter highlights matches and dims the rest');
 
   await clickButton(page, '.am-tools', 'Reset');
@@ -279,6 +282,78 @@ try {
   ok(await statusOf(zap.page, 'Status → family message') === 'Needs attention', 'a Zapier webhook back in JobTread puts the family messages in Needs attention');
   ok(zap.errors.length === 0, `no console errors${zap.errors.length ? ': ' + zap.errors.slice(0, 3).join(' | ') : ''}`);
   await zap.page.close();
+
+  console.log('Desktop, JobTread’s old In Review workflow back on');
+  const qc = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, jobtread: { ...FACTS.jobtread, workflows: { ...FACTS.jobtread.workflows, '22PRvF7pG9VM': { name: 'Qualification Committee Comments', active: true } } } } });
+  ok(await statusOf(qc.page, 'Status → family message') === 'Needs attention', 'the old In Review workflow switched on puts the family messages in Needs attention');
+  ok(qc.errors.length === 0, `no console errors${qc.errors.length ? ': ' + qc.errors.slice(0, 3).join(' | ') : ''}`);
+  await qc.page.close();
+
+  console.log('Desktop, a gift the webhook missed');
+  const missedFacts = (lastWebhookAt) => ({ ...FACTS, zeffy: { ...FACTS.zeffy, missed: 1, missedAt: iso(5 * 86400e3), lastWebhookAt, lastPostAt: lastWebhookAt } });
+  const missedOnly = await open(browser, base, { width: 1440, height: 1000 }, { facts: missedFacts(iso(6 * 86400e3)) });
+  ok(await statusOf(missedOnly.page, 'Gift alerts in Slack') === 'Needs attention', 'a miss with no delivery since needs attention');
+  await missedOnly.page.close();
+  const missedThen = await open(browser, base, { width: 1440, height: 1000 }, { facts: missedFacts(iso(2 * 86400e3)) });
+  ok(await statusOf(missedThen.page, 'Gift alerts in Slack') === 'Live', 'a miss the webhook has delivered since is Live');
+  await missedThen.page.type('#am-search', 'gift alerts');
+  await pause(500);
+  await clickNode(missedThen.page, 'Gift alerts in Slack');
+  await pause(300);
+  ok((await missedThen.page.$eval('.am-panel', (e) => e.textContent)).includes('the webhook has delivered since'), 'and still says the catch-up check caught one');
+  ok(missedThen.errors.length === 0, `no console errors${missedThen.errors.length ? ': ' + missedThen.errors.slice(0, 3).join(' | ') : ''}`);
+  await missedThen.page.close();
+
+  console.log('Desktop, money before the move to Mercury');
+  const jobCosts = {
+    webhook: true, lastEventAt: null, webhookError: null, lastRunAt: iso(60e3), lastCatchUpAt: null, catchUpError: 'JobTread returned 413: Request Entity Too Large',
+    billsError: null, writeError: null, lastRebuildAt: iso(5 * 60e3), agentUsedAt: null, unsorted: 0, caps: false,
+    billPay: { at: iso(60e3), error: null, last: { paid: 0, recorded: 0 }, mode: 'off', approvers: 0, waiting: 0, startsOn: null },
+    receipts: { toAp: { sent: 0 }, toMercury: { uploaded: 0 } }, odd: 0, closeouts: { at: iso(60e3), error: null, historyLeft: 0, closed: 15 },
+    finance: { at: iso(60e3), backfill: { read: 1, doneAt: iso(3600e3) }, forecast: null, mercuryEmpty: true, cashLow: false, balancesError: null },
+    vendors: { at: iso(60e3), error: null, autoW9: false, autoCoi: false },
+  };
+  const money = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, env: { ...FACTS.env, mercury: true }, jobCosts } });
+  ok(await statusOf(money.page, 'Cash forecast') === 'Off', 'an empty Mercury has no forecast: Off, not a low-cash warning');
+  ok(await statusOf(money.page, 'Bill approvals and pay') === 'Off', 'no start day for paying from Mercury: Off, not missing approvers');
+  ok(await statusOf(money.page, 'Charges onto jobs, live') === 'Needs attention', 'a catch-up that can’t read JobTread needs attention');
+  await money.page.type('#am-search', 'charges onto');
+  await pause(500);
+  await clickNode(money.page, 'Charges onto jobs, live');
+  await pause(300);
+  ok((await money.page.$eval('.am-panel', (e) => e.textContent)).includes('JobTread’s open jobs couldn’t be read'), 'and names JobTread, not Mercury');
+  await money.page.close();
+  const later = { ...jobCosts, billPay: { ...jobCosts.billPay, startsOn: '2099-01-02' } };
+  const soon = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, env: { ...FACTS.env, mercury: true }, jobCosts: later } });
+  await soon.page.type('#am-search', 'bill approvals');
+  await pause(500);
+  await clickNode(soon.page, 'Bill approvals and pay');
+  await pause(300);
+  const soonPanel = await soon.page.$eval('.am-panel', (e) => e.textContent);
+  ok(await statusOf(soon.page, 'Bill approvals and pay') === 'Off' && soonPanel.includes('Starts Jan 2') && soonPanel.includes('Pick who approves'), 'a start day ahead: Off, with the day and the approvers still to pick');
+  ok(soon.errors.length === 0, `no console errors${soon.errors.length ? ': ' + soon.errors.slice(0, 3).join(' | ') : ''}`);
+  await soon.page.close();
+
+  console.log('Desktop, staff sign-in from Google');
+  const staffWaiting = { key: true, signOut: true, ok: false, read: false, syncedAt: null, failedAt: iso(60e3), error: 'Google sign-in failed (401): unauthorized_client', needs: 'scope', clientId: '1234567890', project: 'soard-site', active: 0, off: 0, out: [] };
+  const notYet = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, staff: staffWaiting } });
+  await notYet.page.type('#am-search', 'staff sign-in');
+  await pause(500);
+  await clickNode(notYet.page, 'Staff sign-in follows Google');
+  await pause(300);
+  const notYetPanel = await notYet.page.$eval('.am-panel', (e) => e.textContent);
+  ok(await statusOf(notYet.page, 'Staff sign-in follows Google') === 'Needs attention' && notYetPanel.includes('1234567890') && notYetPanel.includes('admin.directory.user.readonly'), 'staff sign-in before Google allows the read: needs attention, with the client ID and the scope to add');
+  await notYet.page.close();
+  const staffOn = { ...staffWaiting, ok: true, read: true, syncedAt: iso(60e3), failedAt: null, error: null, needs: null, active: 6, off: 1, out: [{ name: 'Sam Smith', why: 'suspended', at: iso(3600e3), signedOut: true, error: null }] };
+  const staffLive = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, staff: staffOn } });
+  await staffLive.page.type('#am-search', 'staff sign-in');
+  await pause(500);
+  await clickNode(staffLive.page, 'Staff sign-in follows Google');
+  await pause(300);
+  const staffPanel = await staffLive.page.$eval('.am-panel', (e) => e.textContent);
+  ok(await statusOf(staffLive.page, 'Staff sign-in follows Google') === 'Live' && staffPanel.includes('6 active Google accounts can sign in; 1 suspended or deleted one can’t') && staffPanel.includes('Sam Smith (suspended in Google)'), 'reading Google: live, with the counts and who was last signed out');
+  ok(staffLive.errors.length === 0, `no console errors${staffLive.errors.length ? ': ' + staffLive.errors.slice(0, 3).join(' | ') : ''}`);
+  await staffLive.page.close();
 
   console.log('Desktop, Quo gone quiet');
   const quiet = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, quo: { lastAt: iso(31 * 24 * 3600e3), last30: 0 } } });

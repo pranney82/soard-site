@@ -28,7 +28,7 @@ import { MindMap, prepareMap, Ago, STATUS, MIN, HOUR, ms, ago, stamp, stale, plu
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 27, 2026';
+const WRITTEN_ON = 'October 28, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -321,21 +321,6 @@ const MAP = { t: 'SOARD', children: [
           touches: ['Cloudflare Turnstile'], where: 'functions/api/apply.js',
           live: (f) => (!env(f) ? null : f.env.turnstile && f.env.turnstileSite ? ON('Turnstile is checked on every new application.') : OFF('Needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY in Cloudflare; the honeypot and limits work without them.')) },
       ]},
-      { t: 'Moving off Jotform', children: [
-        { t: 'Jotform copy', s: 'live', k: 'schedule',
-          when: 'Every 2 minutes on the application sweep, a few at a time, until every Jotform submission is copied (once, October 2026).',
-          does: 'Copies every submission of the 2025 and 2026 makeover forms and the Advisory Board form: the answers into the database, the photos and Jotform’s PDF into private storage, and, for each family it can match in JobTread, whatever their account is missing (“<Child>.jpg”, Family, Space 1 and 2, the application PDF). It never makes a JobTread account.',
-          touches: ['Jotform', 'JobTread', 'D1', 'R2'], where: 'functions/api/_jotform-backfill.js (on the sweep in _applications.js)',
-          info: 'A family is matched by JobTread’s Application URL, else by the child’s name when exactly one family has it. Needs JOTFORM_API_KEY in Cloudflare. Once it’s done, nothing on the site uses Jotform, and the forms there can be switched off. Then, once (October 24 2026): the families it couldn’t place are matched against every JobTread account (its Application URL, else exactly the child’s name) and get their files from the site’s own copies, and every Application URL that still pointed at Jotform points at the family’s page in the admin.',
-          live: (f) => {
-            const j = f.jotform;
-            if (!j || j.error) return null;
-            if (j.blockedAt) return ATTN(`Stopped ${stamp(j.blockedAt)}: Jotform handed over no files.`);
-            if (j.doneAt) return OFF(`Done ${stamp(j.doneAt)}: ${j.copied} of ${j.total} copied, ${plural(j.files, 'file')} added to ${plural(j.families, 'family', 'families')} in JobTread.`, j.doneAt);
-            if (!j.total) return ON('Starting: the first run lists every submission.');
-            return ON(`${j.copied} of ${j.total} copied so far, a few every 2 minutes.`);
-          } },
-      ]},
       { t: 'Waitlist', children: [
         { t: 'Tell me when applications open', s: 'live', k: 'visitor',
           when: 'While applications are closed, a family leaves their email on the Apply page or the closed application form, in English or Spanish.',
@@ -406,7 +391,10 @@ const MAP = { t: 'SOARD', children: [
           info: 'Switched on Oct 20, 2026, the day the Zapier Zaps were retired. If a Zapier webhook ever shows up in JobTread again, this turns Needs attention, because families could get a message twice.',
           live: (f) => {
             const zap = Object.values(f.jobtread?.webhooks || {}).some((h) => /zapier\.com/i.test(h.where || ''));
-            return zap ? ATTN('A Zapier webhook is back in JobTread, so families could get a status message twice. Turn the Zap off in Zapier.') : wf('22PgaEgWTBRH')(f);
+            if (zap) return ATTN('A Zapier webhook is back in JobTread, so families could get a status message twice. Turn the Zap off in Zapier.');
+            // JobTread's old “Qualification Committee Comments” workflow posts its own In Review note
+            if (f.jobtread?.workflows?.['22PRvF7pG9VM']?.active) return ATTN('JobTread’s old “Qualification Committee Comments” workflow is switched on, so families in review get two messages. Switch it off in JobTread → Workflows.');
+            return wf('22PgaEgWTBRH')(f);
           } },
         { t: 'Approved → job and its page', s: 'live', k: 'schedule',
           when: 'A family’s Approved status has settled: their decision email is out (or staff chose not to email) and 30 minutes have passed. Checked by the application sweep every 2 minutes; nothing happens while family emails are paused.',
@@ -497,7 +485,8 @@ const MAP = { t: 'SOARD', children: [
           live: (f) => {
             const o = f.broadcast?.outputs;
             if (!o) return null;
-            if (o.youtube === null) return ATTN(`No YouTube output is set up, so reveals don’t reach YouTube. Paste the stream key from YouTube Studio (Go live → Stream key, with Auto-start and Auto-stop on) in ${SETTINGS}.`);
+            // Never set up is a choice, not a fault: it waits under Off with the one step that turns it on
+            if (o.youtube === null) return OFF(`Not set up, so reveals don’t reach YouTube. To add it, paste the stream key from YouTube Studio (Go live → Stream key, with Auto-start and Auto-stop on) in ${SETTINGS}.`);
             if (!o.youtube) return OFF(`The YouTube output is switched off in ${SETTINGS}.`);
             return ON();
           } },
@@ -890,6 +879,28 @@ const MAP = { t: 'SOARD', children: [
           does: 'Guards the admin and every private API; each request’s sign-in is checked.',
           touches: ['Cloudflare Access'], where: 'functions/api/_middleware.js',
           live: needsKey('access', 'The Access team and audience settings are missing.') },
+        { t: 'Staff sign-in follows Google', s: 'live', k: 'schedule',
+          when: 'Every 5 minutes on the live hub’s heartbeat, and on any staff sign-in Google’s last read didn’t include.',
+          does: 'Reads SOARD’s Google Workspace accounts. A soardcharity.com sign-in opens the admin only while its Google account is active: suspend, archive or delete someone in Google Admin and within 5 minutes the admin refuses them and Cloudflare Access signs them out everywhere. A new hire signs in as soon as Google has their account. Nobody keeps a list.',
+          touches: ['Google Workspace', 'Cloudflare Access', 'D1'], where: 'functions/api/_staff-access.js (_middleware.js, broadcast-hooks.js)',
+          note: 'Needs admin.directory.user.readonly on the Google service account’s domain-wide delegation and the Admin SDK API turned on in its Google Cloud project.',
+          info: 'It never locks staff out by failing: until Google’s accounts have been read once, or when Google can’t answer, a soardcharity.com sign-in counts the way it always has. A Google group’s address isn’t an account, so it can’t open the admin.',
+          live: (f) => {
+            const s = f.staff;
+            if (!s || !('key' in s)) return null;
+            if (!s.key) return OFF('Needs GOOGLE_CALENDAR_KEY in Cloudflare. Until then any soardcharity.com sign-in opens the admin.');
+            const fix = {
+              scope: `In Google Admin → Security → API controls → Domain-wide delegation, edit client ID ${s.clientId || 'of the site’s service account'}, add https://www.googleapis.com/auth/admin.directory.user.readonly to its scopes (keep the ones already there) and choose Authorize.`,
+              api: `In Google Cloud${s.project ? ` (project ${s.project})` : ''}, turn on the Admin SDK API: APIs & Services → Library → Admin SDK API → Enable.`,
+              admin: 'Google says no founder on People → Team is a Workspace admin. A founder needs the Super Admin role in Google Admin.',
+            }[s.needs];
+            if (!s.read) return s.error ? ATTN(`Not connected yet, so any soardcharity.com sign-in opens the admin. ${fix || `Google said: ${s.error}`}`, s.failedAt) : { why: 'The first read of Google’s accounts runs within 5 minutes.' };
+            if (s.error) return ATTN(`The last read failed, so sign-ins go by the read from ${stamp(s.syncedAt)}. ${fix || s.error}`, s.syncedAt);
+            const last = s.out?.[0];
+            if (last && !last.signedOut) return ATTN(`${last.name} is refused by the admin, but their open sign-in wasn’t ended. ${last.error}`, last.at);
+            const signedOut = last ? ` Last signed out: ${last.name} (${last.why === 'gone' ? 'deleted' : last.why} in Google) ${stamp(last.at)}.` : '';
+            return ON(`${plural(s.active, 'active Google account')} can sign in${s.off ? `; ${plural(s.off, 'suspended or deleted one', 'suspended or deleted ones')} can’t` : ''}.${signedOut}`, s.syncedAt);
+          } },
         { t: 'Audit log', s: 'live', k: 'event',
           when: 'Any admin save and any automatic action.',
           does: 'Records who or what changed what, viewable under Site → Audit Log.',
@@ -901,10 +912,6 @@ const MAP = { t: 'SOARD', children: [
           touches: ['Constant Contact'], where: 'Cloudflare Pages → Variables',
           note: 'Still stored in Cloudflare. Safe to delete once nobody needs Constant Contact.',
           live: (f) => (!env(f) ? null : f.env.constantContact ? OFF('Still stored in Cloudflare. Safe to delete once nobody needs Constant Contact.') : OFF('Removed from Cloudflare.')) },
-        { t: 'Turnstile key', s: 'off', k: 'link',
-          does: 'A Turnstile secret stored in Cloudflare. No form checks it.',
-          touches: ['Cloudflare Turnstile'], where: 'Cloudflare Pages → Variables',
-          live: (f) => (!env(f) ? null : f.env.turnstile ? OFF('Still stored in Cloudflare; no form uses it.') : OFF('Removed from Cloudflare.')) },
       ]},
     ]},
 
@@ -968,12 +975,6 @@ const MAP = { t: 'SOARD', children: [
           when: 'A new customer account is created.',
           does: 'Pins a staff-only “Comms Thread” comment explaining how to text the family with /text.',
           touches: ['JobTread'], where: 'JobTread workflow “t.customerCreated {Create Comment}”', live: wf('22PJxRLV9Y3i') },
-        { t: 'Application In Review comment', s: 'off', k: 'event',
-          when: 'Fires when an application is marked Applied.',
-          does: 'Posts an “Application In Review” note to the family about the on-site visit.',
-          touches: ['JobTread'], where: 'JobTread workflow “Qualification Committee Comments”',
-          info: 'Its message still has a placeholder (“primary con primary contact name”); fix it before switching it on.',
-          live: wf('22PRvF7pG9VM') },
         { t: 'Comments → DataX', s: 'off', k: 'event',
           when: 'Fires on every new comment or daily log.',
           does: 'Sends each new comment’s text to a DataX agent, most likely the Grammar Checker (which is also in test mode).',
@@ -1025,8 +1026,11 @@ const MAP = { t: 'SOARD', children: [
             if (!e.zeffyApi) return ON('Posting from Zeffy’s webhook. Add ZEFFY_API_KEY in Cloudflare so a gift the webhook misses is still caught.', z.lastPostAt);
             if (!z.lastSweepAt) return ATTN('The catch-up check hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.', z.lastPostAt);
             if (stale(z.lastSweepAt, HOUR)) return ATTN(`The catch-up check hasn’t run since ${stamp(z.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, z.lastPostAt);
-            if (z.missed && !stale(z.missedAt, 7 * 24 * HOUR)) return ATTN(`Zeffy’s webhook missed ${plural(z.missed, 'gift')} on ${stamp(z.missedAt)}, and the catch-up check posted ${z.missed === 1 ? 'it' : 'them'}. Check the webhook in Zeffy → Settings → Integrations.`, z.lastPostAt);
-            return ON(z.lastPostAt ? `Connected. Last gift posted ${stamp(z.lastPostAt)}.` : 'Connected. Waiting for the first gift.', z.lastPostAt);
+            const caught = z.missed && !stale(z.missedAt, 7 * 24 * HOUR);
+            // A miss counts until the webhook delivers again; after that it was one slow or lost delivery the check covered
+            if (caught && !(ms(z.lastWebhookAt) > ms(z.missedAt))) return ATTN(`Zeffy’s webhook missed ${plural(z.missed, 'gift')} on ${stamp(z.missedAt)}, and the catch-up check posted ${z.missed === 1 ? 'it' : 'them'}. Check the webhook in Zeffy → Settings → Integrations.`, z.lastPostAt);
+            const note = caught ? ` The catch-up check caught ${plural(z.missed, 'gift')} the webhook missed on ${stamp(z.missedAt)}; the webhook has delivered since.` : '';
+            return ON(z.lastPostAt ? `Connected. Last gift posted ${stamp(z.lastPostAt)}.${note}` : `Connected. Waiting for the first gift.${note}`, z.lastPostAt);
           } },
       ]},
       { t: 'Job costs (Mercury)', children: [
@@ -1040,7 +1044,7 @@ const MAP = { t: 'SOARD', children: [
             if (!j || !env(f) || j.error) return null;
             if (!f.env.mercury) return ATTN('Not connected yet. Add SOARD’s Mercury API token in Cloudflare as MERCURY_API_TOKEN; the webhook sets itself up from there.');
             if (j.webhookError) return ATTN(`Mercury’s webhook couldn’t be set up: ${j.webhookError}. Charges still arrive every 2 minutes.`, j.lastEventAt);
-            if (j.catchUpError) return ATTN(`Mercury can’t be read: ${j.catchUpError}.`, j.lastEventAt);
+            if (j.catchUpError) return ATTN(`${/^JobTread/.test(j.catchUpError) ? 'JobTread’s open jobs' : 'Mercury'} couldn’t be read: ${j.catchUpError}.`, j.lastEventAt);
             if (!j.lastCatchUpAt) return ATTN('Hasn’t read Mercury yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
             if (stale(j.lastCatchUpAt, HOUR)) return ATTN(`Hasn’t read Mercury since ${stamp(j.lastCatchUpAt)}. Check the Heartbeat entry.`, j.lastEventAt);
             return ON(`${j.webhook ? 'Webhook registered' : 'Reading Mercury every 2 minutes'}. ${j.unsorted ? `${plural(j.unsorted, 'charge')} to sort in Job Costs.` : 'Every charge sorted.'}`, j.lastEventAt);
@@ -1078,6 +1082,10 @@ const MAP = { t: 'SOARD', children: [
             const b = f.jobCosts?.billPay;
             if (!b || !env(f)) return null;
             if (b.error) return ATTN(`Stopped: ${b.error}`, b.at);
+            // Nothing is paid from Mercury before the switch day (both paying would pay a sub twice)
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            if (!b.startsOn) return OFF('Waiting for the move to Mercury: bills are paid the way they are today until a start day is set in Job Costs → Bills → Settings.', b.at);
+            if (b.startsOn > today) return OFF(`Starts ${new Date(`${b.startsOn}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}, the day bills start paying from Mercury.${b.approvers ? '' : ' Pick who approves before then (Job Costs → Bills → Settings).'}`, b.at);
             if (!b.approvers) return ATTN('No approvers yet (Job Costs → Bills → Settings), so no answer counts.');
             const mode = { off: 'paid by hand', request: 'held in Mercury for approval', send: 'paid right away' }[b.mode] || b.mode;
             return ON(`Approved bills are ${mode}. ${b.waiting ? `${plural(b.waiting, 'bill')} waiting for an answer.` : 'No bill is waiting.'}${b.last?.recorded ? ` ${plural(b.last.recorded, 'payment')} recorded in JobTread last run.` : ''}`, b.at);
@@ -1134,6 +1142,7 @@ const MAP = { t: 'SOARD', children: [
             const x = f.jobCosts?.finance;
             if (!x || !env(f)) return null;
             if (x.balancesError) return ATTN(`Balances can’t be read: ${x.balancesError.error}`, x.balancesError.at);
+            if (x.mercuryEmpty) return OFF('Starts once SOARD’s money is in Mercury. Until then there’s no forecast, no low-cash alert and nothing about it on the board page.', x.at);
             if (!x.forecast) return ATTN('No forecast yet.');
             return x.cashLow ? ATTN('The cautious forecast dips under the cash floor. See the board page.', x.forecast.at) : ON('Above the cash floor all 13 weeks.', x.forecast.at);
           } },

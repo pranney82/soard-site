@@ -484,6 +484,18 @@ export async function cashAlert(env, f, { now = Date.now() } = {}) {
   return null;
 }
 
+/** No forecast (Mercury holds nothing yet): a low-cash alert still open is closed, saying why */
+export async function quietCashAlert(env, { now = Date.now() } = {}) {
+  const fin = await readFinance(env.DB);
+  if (!fin.cashLowOpen) return null;
+  await slackResolved(env, 'finance:cash-low', slackCard({
+    icon: '✅', title: 'No cash forecast yet',
+    lead: 'Mercury holds no money yet, so there’s nothing to forecast. The forecast starts once SOARD’s money is in Mercury.',
+  }), { summary: 'No forecast until Mercury holds money' }).catch(() => null);
+  await writeFinance(env.DB, { cashLowOpen: null });
+  return { resolved: true, at: new Date(now).toISOString() };
+}
+
 // ─── History: read Mercury back to January last year, once ─────────
 
 /** One step of the backfill (resumable). → { done, read } */
@@ -523,8 +535,15 @@ export async function maybeRunFinance(env, { now = Date.now() } = {}) {
     if (mercuryConfigured(env)) {
       try {
         const f = await cashForecast(env, { now });
-        await writeFinance(env.DB, { lastForecast: { at: new Date(now).toISOString(), lowest: f.lowest, end: f.end, startCents: f.startCents, belowFloor: f.belowFloor, floorCents: f.floorCents } });
-        report.cash = await cashAlert(env, f, { now });
+        if (f.balances && f.balances.cashCents > 0) {
+          await writeFinance(env.DB, { mercuryEmpty: false, lastForecast: { at: new Date(now).toISOString(), lowest: f.lowest, end: f.end, startCents: f.startCents, belowFloor: f.belowFloor, floorCents: f.floorCents } });
+          report.cash = await cashAlert(env, f, { now });
+        } else {
+          // SOARD banks at Chase until the move: an empty Mercury (or no balances at all) has no forecast,
+          // so nothing reaches the board page and no low-cash alert goes out
+          await writeFinance(env.DB, { mercuryEmpty: !!f.balances, lastForecast: null });
+          report.cash = await quietCashAlert(env, { now });
+        }
       } catch (e) { report.cashError = e.message; }
     }
     await writeFinance(env.DB, { lastRun: report });

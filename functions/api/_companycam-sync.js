@@ -1544,6 +1544,10 @@ async function finishRehearsal(env, st, { fetchImpl, now }) {
       await DB.prepare('DELETE FROM companycam_files WHERE account_id = ?').bind(id).run();
     }
   });
+  // B's approval row too: it was claimed here, not by the sweep, so nothing else would ever clear it
+  await tidy('approval', async () => {
+    for (const id of ids) await DB.prepare('DELETE FROM applicant_approvals WHERE account_id = ?').bind(id).run();
+  });
   for (const r of rows.filter(Boolean)) {
     if (r.job_id) await tidy('job', () => jt(env, { updateJob: { $: { id: r.job_id, closedOn: todayEastern(now) } } }, fetchImpl));
     if (r.how === 'made' && r.project_id) await tidy('project', () => archiveProject(env, r.project_id, { fetchImpl }));

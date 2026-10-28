@@ -346,7 +346,7 @@ const smooth = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? '
  *  - factsUrl:   GET → { success, checkedAt, … } handed to each entry's live(); onFacts(body|null) too
  *  - written:    the date the tree was written ("Map written …")
  *  - filters:    [[key, label]], or groups [{ label, items: [[key, label]] }] shown side by side
- *                ('Sent by: …'): 'all' clears, 'attn' is everything not live, any other key asks filterMatch(n, key)
+ *                ('Sent by: …'): 'all' clears, 'attn' is the amber entries, any other key asks filterMatch(n, key)
  *  - lede({ stat, attn, parked, home, show }): the counts line, as <li>s; show(key) applies a filter
  *  - tags(n):    [{ label, color }] small labels drawn after an entry's name
  *  - entry(sel): the panel for a picked entry, under its title
@@ -383,7 +383,8 @@ export function MindMap({
 
   const matches = (n, f) => {
     if (n.children) return false;
-    if (f.kind === 'attn' && n.es === 'live') return false;
+    // "Needs a look" is the amber entries only: something switched off on purpose doesn't need one
+    if (f.kind === 'attn' && n.es !== 'attn') return false;
     if (f.kind && f.kind !== 'attn' && !filterMatch(n, f.kind)) return false;
     if (f.svc && !(n.touches || []).includes(f.svc)) return false;
     if (f.q) {

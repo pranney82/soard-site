@@ -80,6 +80,7 @@ const JOB_NAME_MAX = 30;                // JobTread's limit for a job name
 const BUILD_FOR_TYPE = { Bedroom: 'Dream Bedroom', Bathroom: 'Accessible Bathroom', 'Therapy Room': 'Therapy Room', Ramp: 'Wheelchair Ramp' };
 
 const CLAIM_STALE_MS = 10 * 60 * 1000;
+const STUCK_MS = 60 * 60 * 1000;        // a retry this overdue isn't coming from the status table
 const RETRY_MS = [5, 15, 30, 60].map(m => m * 60 * 1000); // then hourly
 const ALERT_AFTER = 3;                  // JobTread errors before Slack hears of it
 const SITE = SITE_ORIGIN;
@@ -290,7 +291,14 @@ async function dueFamilies(DB, { launch, settledBy, now, limit }) {
         OR (a.state = 'waiting' AND COALESCE(a.next_try_at, 0) <= ?)
         OR (a.state = 'working' AND COALESCE(a.claimed_at, 0) < ?))
     ORDER BY n.since LIMIT ?`).bind(launch, iso(settledBy), now, now - CLAIM_STALE_MS, limit).all();
-  return results || [];
+  const due = results || [];
+  if (due.length >= limit) return due;
+  // A waiting family the status table no longer leads here (archived, or a test run's own row) is retried an
+  // hour late anyway: approveFamily reads JobTread fresh, so it's skipped, forgotten or made
+  const stuck = await DB.prepare(`SELECT account_id, name, approved_at AS since FROM applicant_approvals
+    WHERE state = 'waiting' AND COALESCE(next_try_at, 0) <= ? ORDER BY next_try_at LIMIT ?`).bind(now - STUCK_MS, limit).all();
+  const seen = new Set(due.map(f => f.account_id));
+  return [...due, ...(stuck.results || []).filter(f => !seen.has(f.account_id))].slice(0, limit);
 }
 
 /** In the family's history (Admin → Applicants), like ./_applicants.js writes it */
@@ -530,6 +538,7 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
   const acct = await readAccount(env, accountId, fetchImpl);
   if (!acct || acct.archivedAt) {
     await putRow(DB, { ...row, state: 'skipped', problem: null, detail: acct ? 'archived' : 'not a SOARD customer', claimed_at: null, done_at: iso(now) }, now);
+    if (row?.alerted) await slackResolved(env, `approved:${accountId}`, slackCard({ icon: '✅', title: `${row.name || 'The family'} needs no job`, lead: acct ? 'Their account is archived in JobTread.' : 'They’re no longer a SOARD customer in JobTread.' }), { summary: 'No job needed' }).catch(() => null);
     return { id: accountId, skipped: acct ? 'archived' : 'not a SOARD customer' };
   }
   // Moved on before its turn: nothing to make (a later approval starts over)

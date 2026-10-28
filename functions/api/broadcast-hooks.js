@@ -36,6 +36,7 @@ import { maybeRunFinance } from './_finance.js';
 import { maybeRunVendors } from './_vendors.js';
 import { alertAdmins } from './_broadcast-notify.js';
 import { maybeRunBoard } from './_board.js';
+import { maybeSyncStaff } from './_staff-access.js';
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
 const HUB_ANSWER_MS = 10 * 1000;
@@ -99,6 +100,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunVendors(env));
     // The board: Access's sign-in list kept to People → Board (every 5 minutes when it changed), and the month's bank balance once a day (see _board.js)
     context.waitUntil(maybeRunBoard(env));
+    // Staff sign-in follows SOARD's Google accounts: read every 5 minutes, a suspended or deleted one signed out (_staff-access.js)
+    context.waitUntil(maybeSyncStaff(env));
     // The hub passes `reason` to every open page and keeps `work` in its status, so both go
     // as kinds only ('email', 'kid', 'auto-start'), never kid slugs or send counts
     if (!r) return Response.json({ ok: true, state: (await publicPayload(env)).state, reason: 'tick', work: [], changed: false, cached: false, busy: true });

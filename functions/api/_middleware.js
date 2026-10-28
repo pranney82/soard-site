@@ -19,6 +19,7 @@ import { crossSiteChange, isLocalHost } from './_origin-guard.js';
 import { limit } from './_rate-limit.js';
 import { clientIp } from './_secure.js';
 import { isStaffEmail, boardMemberFor, BOARD_ROUTES, BOARD_PAGE } from './_board-roles.js';
+import { staffStanding, refusedText } from './_staff-access.js';
 
 // Cache JWKS keys in module scope (persists across requests within same isolate)
 let _cachedKeys = null;
@@ -352,6 +353,12 @@ async function handle(context) {
       );
     }
     context.data.boardMember = member;
+  } else {
+    // A soardcharity.com sign-in opens the admin only while its Google account is active (_staff-access.js)
+    const standing = await staffStanding(context.env, context.data.userEmail);
+    if (!standing.staff) {
+      return Response.json({ success: false, error: refusedText(standing) }, { status: 403, headers: cors });
+    }
   }
 
   // Call downstream handler, then inject CORS headers into its response.
@@ -520,9 +527,9 @@ export async function isAuthenticated(request, env) {
   const jwt = request.headers.get('CF-Access-JWT-Assertion') || getCookieValue(request, 'CF_Authorization');
   if (!jwt) return false;
   try {
-    // A board member's sign-in passes Access too; only staff count here
+    // A board member's sign-in passes Access too; only staff count here, with an active Google account
     const payload = await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
-    return isStaffEmail(payload?.email);
+    return isStaffEmail(payload?.email) && (await staffStanding(env, payload.email)).staff;
   } catch {
     return false;
   }

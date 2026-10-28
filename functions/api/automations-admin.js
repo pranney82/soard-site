@@ -17,6 +17,7 @@
  *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
  *  - mercury:   Mercury through SOARD's relay (both keys present, and the accounts it answers with: names and kinds only)
  *  - board:     Access's board sign-in list (synced, the policy on the app, members without an email), bank history months, the last packet
+ *  - staff:     staff sign-in from SOARD's Google accounts (last read, active and off counts, the fix a failed read needs, who was signed out)
  *  - emailTracking: Resend's delivery reports (on, waiting, send-only key, or the last error)
  *  - slack:     how alerts reach Slack (app or webhook), the channel's name, and Slack's own error if any
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
@@ -51,6 +52,7 @@ import { trackingState } from './_email-log.js';
 import { demoFacts } from './_demo-invites.js';
 import { listAccounts } from './_mercury.js';
 import { boardFacts } from './_board.js';
+import { staffStatus } from './_staff-access.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -232,10 +234,10 @@ export async function jobCostFacts(DB) {
     writeError: cfg.lastWriteError && !(Date.parse(cfg.lastWriteOkAt || 0) > Date.parse(cfg.lastWriteError.at)) ? cfg.lastWriteError.error : null,
     lastRebuildAt: cfg.lastRebuildAt || null, agentUsedAt: agent.lastUsedAt || null,
     unsorted: unsorted ?? 0, caps: cfg.caps === 'on',
-    billPay: { at: billRuns.lastAt || null, error: billRuns.error || null, last: billRuns.last || null, mode: billPay.payMode || 'off', approvers: (billPay.approvers || []).length, waiting: waitingBills ?? 0 },
+    billPay: { at: billRuns.lastAt || null, error: billRuns.error || null, last: billRuns.last || null, mode: billPay.payMode || 'off', approvers: (billPay.approvers || []).length, waiting: waitingBills ?? 0, startsOn: billPay.startsOn || null },
     receipts: cfg.lastRun?.receipts || null,
     odd: odd ?? 0, closeouts: { at: closeouts.lastAt || null, error: closeouts.error || null, historyLeft: closeouts.historyLeft ?? null, closed: closeouts.closed ?? null },
-    finance: { at: fin.lastRunAt || null, backfill: fin.backfill || null, forecast: fin.lastForecast || null, cashLow: !!fin.cashLowOpen, balancesError: fin.balancesError || null },
+    finance: { at: fin.lastRunAt || null, backfill: fin.backfill || null, forecast: fin.lastForecast || null, mercuryEmpty: !!fin.mercuryEmpty, cashLow: !!fin.cashLowOpen, balancesError: fin.balancesError || null },
     vendors: { at: ven.lastRunAt || null, error: ven.lastError || null, autoW9: !!ven.settings?.autoW9, autoCoi: !!ven.settings?.autoCoi },
   };
 }
@@ -391,6 +393,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     jobCosts: await settle(() => jobCostFacts(DB)),
     // Access's board list and the monthly bank balance: counts, times and on/off only (_board.js)
     board: await settle(() => boardFacts(env)),
+    // Staff sign-in from SOARD's Google accounts: counts, times, on/off, and who was signed out (_staff-access.js)
+    staff: await settle(() => staffStatus(env)),
   };
 }
 

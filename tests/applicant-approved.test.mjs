@@ -374,6 +374,34 @@ test('no *Makeover Year ("**ADD YEAR**"): waits for one', async () => {
   assert.equal(jt.state.jobCalls[0].input.name, 'Jade Wu (2027)');
 });
 
+// The CompanyCam rehearsal claims its TEST family itself, so the status table never leads the sweep back to it
+async function claimedOutsideTheSweep(a) {
+  await env.DB.prepare(`INSERT INTO applicant_approvals (account_id, name, approved_at, state, problem, detail, attempts, next_try_at, updated_at)
+    VALUES (?, ?, ?, 'waiting', 'error', 'JobTread returned 500', 1, ?, ?)`).bind(a.id, a.name, iso(T0), T0 + 5 * MIN, iso(T0)).run();
+}
+
+test('a waiting family the status table no longer leads to is retried an hour late: archived, it’s cleared', async () => {
+  const a = family('TEST CompanyCam Approved', 'Approved');
+  await claimedOutsideTheSweep(a);
+  a.archivedAt = iso(T0 + MIN);
+  await sweep(T0 + 10 * MIN);
+  assert.equal((await approvalsStatus(env.DB)).waiting.length, 1, 'not yet: the usual retry may still come');
+  await sweep(T0 + 70 * MIN);
+  assert.equal((await approvalsStatus(env.DB)).waiting.length, 0);
+  assert.equal(jt.state.jobCalls.length, 0);
+  const row = await env.DB.prepare('SELECT state, detail FROM applicant_approvals WHERE account_id = ?').bind(a.id).first();
+  assert.deepEqual({ ...row }, { state: 'skipped', detail: 'archived' });
+});
+
+test('a waiting family the status table no longer leads to is retried an hour late: still approved, it gets its job', async () => {
+  const a = family('Rosa Lane', 'Approved');
+  await claimedOutsideTheSweep(a);
+  await sweep(T0 + 70 * MIN);
+  assert.equal(jt.state.jobCalls.length, 1);
+  assert.equal(jt.state.jobCalls[0].input.name, 'Rosa Lane (2027)');
+  assert.equal((await approvalsStatus(env.DB)).waiting.length, 0);
+});
+
 const projects = async () => ((await env.DB.prepare('SELECT slug, data FROM community').all()).results || []).map(r => ({ slug: r.slug, ...JSON.parse(r.data) }));
 const ORG_FIELDS = { [BIRTHDAY]: null, [DIAGNOSIS]: null };
 async function addProject(p) {

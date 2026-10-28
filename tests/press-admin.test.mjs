@@ -355,7 +355,7 @@ describe('press monitor: finding and filing', () => {
     assert.equal((await rows(env.DB, "SELECT * FROM press_mentions WHERE state = 'duplicate'")).length, 1);
   });
 
-  test('a passing mention waits for a person; Add files it; a copy on MSN and a listing never file themselves', async () => {
+  test('a passing mention is left out by itself and Add anyway files it; a copy on MSN and a listing never file themselves', async () => {
     const env = await newEnv({ press: [], medialogos: [{ slug: 'ajc', name: 'Atlanta Journal-Constitution', logo: 'x', order: 0, domains: ['ajc.com'] }], kids: [], partners: [] });
     await quietState(env);
     world.ai = () => ({ about: 'mentions', summary: 'A list of local charities.', category: 'print', kids: [], partners: [] });
@@ -370,13 +370,13 @@ describe('press monitor: finding and filing', () => {
     world.ai = (p) => (/MSN/.test(p) ? { about: 'about', summary: 'x', category: 'print', kids: [], partners: [] } : { about: 'mentions', summary: 'A list of local charities.', category: 'print', kids: [], partners: [] });
     await beats(env, { max: 10 });
     const st = Object.fromEntries((await rows(env.DB, 'SELECT id, state, reason FROM press_mentions')).map((r) => [r.id, r]));
-    assert.equal(st['b:1'].state, 'review');
+    assert.equal(st['b:1'].state, 'dismissed', 'SOARD isn’t in the headline and Workers AI reads it as a passing mention');
     assert.match(st['b:1'].reason, /in passing/);
     assert.equal(st['b:2'].state, 'review');
     assert.match(st['b:2'].reason, /copy on MSN/);
     assert.equal(st['b:3'].state, 'unrelated');
     assert.equal((await rows(env.DB, 'SELECT slug FROM press')).length, 0);
-    assert.equal(world.slack.filter((t) => /Needs a look/.test(t)).length, 2, 'one Slack post per article that needs a look');
+    assert.equal(world.slack.filter((t) => /Needs a look/.test(t)).length, 1, 'one Slack post per article that needs a look');
     const r = await E.addMention(env, 'b:1', 'peter@example.com');
     assert.ok(r.success, r.error);
     const s = await story(env.DB, r.slug);
@@ -390,6 +390,36 @@ describe('press monitor: finding and filing', () => {
     assert.equal((await env.DB.prepare("SELECT state FROM press_mentions WHERE id = 'b:2'").first()).state, 'dismissed');
     assert.ok((await E.decideMention(env, 'b:2', 'restore', 'peter@example.com')).success);
     assert.equal((await env.DB.prepare("SELECT state FROM press_mentions WHERE id = 'b:2'").first()).state, 'review');
+  });
+
+  test('a passing mention with SOARD in the headline still waits for a person', async () => {
+    const env = await newEnv({ press: [], medialogos: [], kids: [], partners: [] });
+    await quietState(env);
+    const url = 'https://www.ajc.com/life/soard-and-friends/x';
+    await env.DB.prepare("INSERT INTO press_mentions (id, key, provider, url, link, title, source, state, stage, found_at) VALUES ('b:t', ?, 'bing', ?, ?, 'SOARD and friends', 'AJC', 'new', 'match', ?)").bind(P.urlKey(url), url, url, new Date(NOW).toISOString()).run();
+    world.pages[url] = article({ title: 'SOARD and friends', site: 'The Atlanta Journal-Constitution', date: '2026-10-10', text: 'A roundup of local groups, Sunshine on a Ranney Day among them.' });
+    world.ai = () => ({ about: 'mentions', summary: 'A roundup.', category: 'print', kids: [], partners: [] });
+    await beats(env, { max: 10 });
+    const m = await env.DB.prepare("SELECT state, reason FROM press_mentions WHERE id = 'b:t'").first();
+    assert.equal(m.state, 'review');
+    assert.match(m.reason, /in passing/);
+  });
+
+  test('passing mentions already waiting are left out once; one a person puts back stays', async () => {
+    const env = await newEnv({ press: [], medialogos: [], kids: [], partners: [] });
+    await quietState(env);
+    const add = (id, data, reason = 'SOARD only comes up in passing') => env.DB.prepare("INSERT INTO press_mentions (id, key, provider, url, link, title, source, state, stage, reason, data, found_at) VALUES (?, ?, 'google', ?, ?, 'A story', 'Outlet', 'review', 'judge', ?, ?, ?)")
+      .bind(id, id, `https://example.com/${id}`, `https://example.com/${id}`, reason, JSON.stringify(data), new Date(NOW).toISOString()).run();
+    await add('g:read', { read: 'ok', judge: { rel: { inTitle: false } } });
+    await add('g:title', { read: 'ok', judge: { rel: { inTitle: true } } });
+    await add('g:blocked', { read: 'blocked', judge: { rel: { inTitle: false } } });
+    await add('g:new', { read: 'ok', judge: { rel: { inTitle: false } } }, 'A new outlet: added by itself only when the story names SOARD clearly and Workers AI agrees');
+    const states = async () => Object.fromEntries((await rows(env.DB, 'SELECT id, state FROM press_mentions')).map((r) => [r.id, r.state]));
+    await beats(env, { max: 1 });
+    assert.deepEqual(await states(), { 'g:read': 'dismissed', 'g:title': 'review', 'g:blocked': 'review', 'g:new': 'review' });
+    assert.ok((await E.decideMention(env, 'g:read', 'restore', 'peter@example.com')).success);
+    await beats(env, { max: 2, now: NOW + 3600e3 });
+    assert.equal((await states())['g:read'], 'review', 'a person’s Restore stands');
   });
 
   test('a TV station’s YouTube upload naming SOARD is filed with its video', async () => {

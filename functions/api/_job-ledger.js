@@ -150,12 +150,13 @@ export async function costCodes(env, { fetchImpl = fetch, now = Date.now() } = {
 export async function activeJobs(env, { fetchImpl = fetch } = {}) {
   const out = [];
   let page = null;
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 40; i++) {
     const data = await pave(env.JOBTREAD_GRANT_KEY, {
       organization: {
         $: { id: SOARD_ORG_ID },
         jobs: {
-          $: { size: 25, where: ['closedOn', '=', null], ...(page ? { page } : {}) },
+          // 10 a page: JobTread sizes the worst case, and 25 jobs × 20 people each is refused (413)
+          $: { size: 10, where: ['closedOn', '=', null], ...(page ? { page } : {}) },
           nextPage: {},
           nodes: {
             id: {}, name: {}, number: {}, createdAt: {},

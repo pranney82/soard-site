@@ -41,6 +41,7 @@ import { readPage, checkLink, archiveLookup, archiveSave, archiveRaw, saveImage,
 import { browserGet, hasBrowser } from './_press-browser.js';
 
 export const PRESS_USER = 'Press monitor (automatic)';
+const PASSING = 'SOARD only comes up in passing';
 export const SETTINGS_KEY = 'press-monitor';
 export const STATE_KEY = 'press-monitor-state';
 const SITE = 'https://sunshineonaranneyday.com';
@@ -514,7 +515,10 @@ export async function stepMention(env, m, { fetchImpl = fetch, ctx = null, force
     let fields;
     if (force || (clear && !syndicated && !unknownVideo && date)) fields = { stage: 'picture' };
     else if (about === 'unrelated' && !rel.strong) fields = { state: 'unrelated', reason: ai ? 'Workers AI says it’s about someone else' : 'SOARD isn’t named in it' };
-    else fields = { state: 'review', reason: !date && about === 'about' ? 'No date on it: add it with its date' : syndicated ? `A copy on ${m.source || P.hostOf(m.url)}: the original outlet’s own link is better` : unknownVideo ? `A video from ${m.source || 'a YouTube channel'}, not a news outlet` : data.read !== 'ok' ? 'The outlet wouldn’t show the article, so nobody could check it' : about === 'mentions' ? 'SOARD only comes up in passing' : newOutlet && about === 'about' ? 'A new outlet: added by itself only when the story names SOARD clearly and Workers AI agrees' : 'Not clearly about SOARD' };
+    // A passing mention in an article it could read, SOARD not in the headline: not coverage. Left out by
+    // itself; Press → Skipped and left out keeps it, with Add anyway. A headline naming SOARD waits for a person
+    else if (about === 'mentions' && !rel.inTitle && data.read === 'ok' && !syndicated && !unknownVideo) fields = { state: 'dismissed', reason: PASSING, decided_at: iso(), decided_by: PRESS_USER };
+    else fields = { state: 'review', reason: !date && about === 'about' ? 'No date on it: add it with its date' : syndicated ? `A copy on ${m.source || P.hostOf(m.url)}: the original outlet’s own link is better` : unknownVideo ? `A video from ${m.source || 'a YouTube channel'}, not a news outlet` : data.read !== 'ok' ? 'The outlet wouldn’t show the article, so nobody could check it' : about === 'mentions' ? PASSING : newOutlet && about === 'about' ? 'A new outlet: added by itself only when the story names SOARD clearly and Workers AI agrees' : 'Not clearly about SOARD' };
     await setMention(DB, m.id, { ...fields, data: JSON.stringify(data) });
     return fields.state ? { done: true, review: fields.state === 'review' } : { next: 'picture' };
   }
@@ -1001,6 +1005,14 @@ export async function maybeRunPress(env, { now = Date.now(), fetchImpl = fetch, 
     await ensurePressTables(DB);
     const state = await readState(DB);
     if (state.busyUntil && Date.parse(state.busyUntil) > now) return null;
+    // Once: readable passing mentions judged before the monitor left them out by itself (a person's Restore
+    // afterwards is never undone, because this doesn't run again)
+    if (!state.passingSettled) {
+      await DB.prepare(`UPDATE press_mentions SET state = 'dismissed', decided_at = ?, decided_by = ? WHERE state = 'review' AND reason = ? AND decided_at IS NULL
+        AND json_extract(data, '$.read') = 'ok' AND COALESCE(json_extract(data, '$.judge.rel.inTitle'), 0) = 0`).bind(iso(now), PRESS_USER, PASSING).run();
+      state.passingSettled = iso(now);
+      await writeState(DB, state);
+    }
     const started = Date.now();
     const log = [];
     const pendingNew = await DB.prepare(`SELECT COUNT(*) AS n FROM press_mentions WHERE state = 'new' AND ${READY}`).bind(iso(now)).first('n');

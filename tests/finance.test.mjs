@@ -184,6 +184,33 @@ test('cash under the floor posts once to the Finance channel, and clears when it
   assert.ok(world.slack.some((s) => /back above the floor/i.test(JSON.stringify(s))));
 });
 
+test('an empty Mercury (the money still at Chase) has no forecast: nothing on the board page, no alert, an open one closed', async () => {
+  await seedOctober();
+  await writeSlackConfig(env.DB, { channel: { id: 'CNEWS', name: 'news' }, finance: { id: 'CFIN', name: 'finance' } });
+  await writeFinance(env.DB, { backfill: { doneAt: 'x', since: '2025-01-01' }, floorCents: 2500000 });
+  world.balance = 0;
+  await maybeRunFinance(env, { now: NOW });
+  assert.equal(world.slack.length, 0, 'no “below the floor” post for an account with nothing in it yet');
+  let fin = await readFinance(env.DB);
+  assert.equal(fin.lastForecast, null);
+  assert.equal(fin.mercuryEmpty, true);
+  assert.equal((await boardFinance(env, { now: NOW })).cash, null, 'the board page shows no forecast');
+
+  // An alert opened before this (production on Oct 28 2026) is closed, saying why
+  await writeFinance(env.DB, { lastRunAt: null, cashLowOpen: { at: 'x', posted: true } });
+  await maybeRunFinance(env, { now: NOW + 1800e3 });
+  assert.equal((await readFinance(env.DB)).cashLowOpen, null);
+
+  // The money arrives: the forecast starts
+  world.balance = 900000;
+  await writeFinance(env.DB, { lastRunAt: null, balances: null });
+  await maybeRunFinance(env, { now: NOW + 3600e3 });
+  fin = await readFinance(env.DB);
+  assert.equal(fin.mercuryEmpty, false);
+  assert.ok(fin.lastForecast?.lowest);
+  assert.ok((await boardFinance(env, { now: NOW + 3600e3 })).cash);
+});
+
 test('money alerts never post anywhere without a Finance channel', async () => {
   await seedOctober();
   await writeSlackConfig(env.DB, { channel: { id: 'CNEWS', name: 'news' }, attention: { id: 'CALERT', name: 'alerts' } });
