@@ -3,20 +3,29 @@
  * ============================================================================
  * Serves public/ (with the admin's real CSP from public/_headers) and answers
  * /api/board-* with the real handlers behind the real sign-in middleware, on
- * an in-memory D1 (sql.js) and R2. Each browser tab is signed in as someone
- * (an RS256 Access token made here): a founder, another staff member, or a
- * board member. Made-up people only (the repo is public). Checks, at 1440px
- * and 390px:
+ * an in-memory D1 (sql.js) and R2, with Google Calendar and Meet, Gmail,
+ * Resend, Mercury and JobTread faked. Each browser tab is signed in as
+ * someone (an RS256 Access token made here): a founder, another staff
+ * member, or a board member. Made-up people only (the repo is public).
+ * Checks, at 1440px and 390px:
  *   - Board shows in the menu and ⌘K for its admins only; other staff are refused
- *   - bringing in an old agenda (pasted text): the preview, then the meeting
- *   - the editor: notes, a private note, confidential, attendance, a motion,
- *     an action item, a file (PDF), Shared, Save, a save someone else made meanwhile
- *   - the packet: numbers locked in, Send it to me, Email the board
- *   - Documents (one asking for a signature), Members (Cloudflare's steps), Settings
- *   - a board member opening /admin/ lands on /admin/board/; Home, the meeting
- *     (never the private note or a staff-only file), the file viewer, answering
- *     whether they'll come, ticking off their action, signing, Financials,
- *     Reveals, People, Documents; the founders see it as the board does
+ *   - bringing in an old agenda (pasted text): the preview, then the meeting;
+ *     its minutes uploaded as a Word file and read in, and the signed copy
+ *   - a meeting's three steps. Before: the agenda, a board-only item, a
+ *     private note, a file, then Getting ready: the invite from the
+ *     president's calendar with Google Meet and transcripts on, the place
+ *     added after (one update, once it settles), numbers locked, shared, the
+ *     documents emailed with the file attached. During: attendance as a
+ *     check-off with the quorum, notes as points, a motion, an action item.
+ *     A save someone else made meanwhile merges.
+ *   - Documents (one asking for a signature), Members (Cloudflare's steps,
+ *     the sign-in email), Settings (who invites come from)
+ *   - a board member opening /admin/ lands on /admin/board/; Home (the next
+ *     meeting with its place, Google Meet, already on their calendar, coming
+ *     up and being built), answering whether they'll come, ticking off their
+ *     action, the meeting (never the private note or a staff-only file), the
+ *     file viewer, Financials, People, Documents (signing), the phone's tab
+ *     bar; the founders see it as the board does
  *   - nothing past the page's right edge on a phone, no console errors
  * Screenshots land in test-results/board/. Exits non-zero on any failure.
  *
@@ -24,8 +33,9 @@
  */
 import puppeteer from 'puppeteer';
 import http from 'node:http';
-import { mkdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
+import { deflateRawSync } from 'node:zlib';
 import { createD1 } from '../tests/lib/d1-shim.mjs';
 import { answerAsks } from './lib/ask.mjs';
 import { onRequest as middleware, _resetKeyCacheForTests } from '../functions/api/_middleware.js';
@@ -33,6 +43,7 @@ import * as boardAdmin from '../functions/api/board-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
 import { provideBoardFinance } from '../functions/api/_board.js';
+import { maybeRefreshInvites } from '../functions/api/_board-invite.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
 import { generateKeyPairSync } from 'node:crypto';
 
@@ -48,6 +59,7 @@ const day = (n) => new Date(Date.now() + n * 86400000).toLocaleDateString('en-CA
 const FOUNDER = 'jane@soardcharity.com';
 const STAFF = 'pat@soardcharity.com';
 const MEMBER = 'alex.board@example.com';
+const OTHER = 'sam.board@example.org';
 const PEOPLE = {
   'jane-doe': { name: 'Jane Doe', group: 'team', title: 'Co-Founder/President', order: 1 },
   'pat-lee': { name: 'Pat Lee', group: 'team', title: 'Program Director', order: 2 },
@@ -78,6 +90,33 @@ a. Golf
 b. Gala
 3. OPEN FORUM`;
 
+/** A real ZIP (a .docx is one) of { name: text } */
+function zip(files) {
+  const enc = new TextEncoder();
+  const locals = []; const central = []; let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const nameB = enc.encode(name); const raw = enc.encode(text); const data = deflateRawSync(raw);
+    const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(8, 8);
+    lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(raw.length, 22); lh.writeUInt16LE(nameB.length, 26);
+    locals.push(lh, nameB, data);
+    const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(8, 10);
+    ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(raw.length, 24); ch.writeUInt16LE(nameB.length, 28); ch.writeUInt32LE(offset, 42);
+    central.push(ch, nameB);
+    offset += 30 + nameB.length + data.length;
+  }
+  const cd = Buffer.concat(central);
+  const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(Object.keys(files).length, 8); end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, end]);
+}
+/** Minutes the way a Word file holds them: Word numbers the lists itself */
+function minutesDocx() {
+  const wp = (text, ilvl) => `<w:p><w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
+  const lvls = ['decimal', 'decimal', 'lowerLetter', 'lowerRoman'].map((f, i) => `<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="${f}"/></w:lvl>`).join('');
+  const body = [wp('CALL TO ORDER', 0), wp('Roll Call', 1), wp('COMMITTEE REPORTS', 0), wp('Financial (Sam)', 1), wp('Reserves grew this quarter', 2), wp('OPEN FORUM', 0), wp('Questions from the board', 1)].join('');
+  return zip({ 'word/document.xml': `<w:document><w:body>${body}</w:body></w:document>`, 'word/numbering.xml': `<w:numbering><w:abstractNum w:abstractNumId="0">${lvls}</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`, '[Content_Types].xml': '<Types/>' });
+}
+
 const certsKey = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
 const jwk = { ...(await crypto.subtle.exportKey('jwk', certsKey.publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' };
 const b64u = (bytes) => Buffer.from(bytes).toString('base64url');
@@ -106,7 +145,7 @@ for (const sql of [
   'CREATE TABLE audit_log (id INTEGER PRIMARY KEY, user_email TEXT, action TEXT, entity_type TEXT, entity_slug TEXT, entity_name TEXT, changes TEXT, path TEXT, git_status TEXT, created_at TEXT)',
 ]) await DB.exec(sql);
 for (const [slug, d] of Object.entries(PEOPLE)) await DB.prepare('INSERT INTO team (slug, name, "group", data) VALUES (?, ?, ?, ?)').bind(slug, d.name, d.group, JSON.stringify(d)).run();
-for (const [slug, email] of [['alex-rivera', MEMBER], ['sam-ortiz', 'sam.board@example.org']]) await DB.prepare('INSERT INTO reveal_board_emails (slug, email) VALUES (?, ?)').bind(slug, email).run();
+for (const [slug, email] of [['alex-rivera', MEMBER], ['sam-ortiz', OTHER]]) await DB.prepare('INSERT INTO reveal_board_emails (slug, email) VALUES (?, ?)').bind(slug, email).run();
 for (const [slug, d] of Object.entries(KIDS)) await DB.prepare('INSERT INTO kids (slug, name, year, data) VALUES (?, ?, ?, ?)').bind(slug, d.name, d.year, JSON.stringify(d)).run();
 await DB.prepare('INSERT INTO events (slug, data) VALUES (?, ?)').bind('golf', JSON.stringify({ title: 'Sunshine Golf Classic', date: day(20), time: '8:00 AM', location: 'Example Country Club' })).run();
 const site = {
@@ -116,20 +155,47 @@ const site = {
 };
 for (const [key, data] of Object.entries(site)) await DB.prepare('INSERT INTO site_config (key, data) VALUES (?, ?)').bind(key, JSON.stringify(data)).run();
 
-// Google Calendar: a real service-account key (made here) and the founder's calendar, empty until the calendar check
+// Google: a real service-account key (made here), and Calendar and Meet that keep what Board writes
 const { privateKey: saPem } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
 const calendar = { [FOUNDER]: [] };
-const env = { GOOGLE_CALENDAR_KEY: JSON.stringify({ type: 'service_account', client_email: 'reader@example.iam.gserviceaccount.com', private_key: saPem }), DB, FILES: new FakeR2(), CF_ACCESS_TEAM_DOMAIN: 'soard', CF_ACCESS_AUD: 'aud-tag', RESEND_API_KEY: 're_test', MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test', JOBTREAD_GRANT_KEY: 'jt-test' };
+const google = []; // Calendar writes and Meet calls: { method, url, body }
+const env = { GOOGLE_CALENDAR_KEY: JSON.stringify({ type: 'service_account', client_email: 'reader@example.iam.gserviceaccount.com', client_id: '1234567890', project_id: 'example-project', private_key: saPem }), DB, FILES: new FakeR2(), CF_ACCESS_TEAM_DOMAIN: 'soard', CF_ACCESS_AUD: 'aud-tag', RESEND_API_KEY: 're_test', MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test', JOBTREAD_GRANT_KEY: 'jt-test' };
 const mail = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
   const url = String(input);
+  const method = init.method || 'GET';
   if (url === 'https://soard.cloudflareaccess.com/cdn-cgi/access/certs') return Response.json({ keys: [jwk] });
-  if (url.startsWith('https://api.resend.com/')) { const list = JSON.parse(init.body); mail.push(...list); return Response.json({ data: list.map((_, i) => ({ id: `em_${mail.length}_${i}` })) }); }
+  if (url.startsWith('https://api.resend.com/')) {
+    // A batch (no attachments) or one email at a time (with them)
+    const b = JSON.parse(init.body);
+    const list = Array.isArray(b) ? b : [b];
+    mail.push(...list);
+    return Response.json(Array.isArray(b) ? { data: list.map((_, i) => ({ id: `em_${mail.length}_${i}` })) } : { id: `em_${mail.length}` });
+  }
   if (url === 'https://mercury-relay.sunshineonaranneyday.com/api/v1/accounts') return Response.json({ accounts: [{ name: 'Operating', kind: 'checking', type: 'mercury', status: 'active', currentBalance: 312500 }, { nickname: 'Reserve', kind: 'savings', type: 'mercury', status: 'active', currentBalance: 62500 }] });
   if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'g-test', expires_in: 3600 });
-  const gcal = url.match(/^https:\/\/www\.googleapis\.com\/calendar\/v3\/calendars\/([^/]+)\/events\?/);
-  if (gcal && (init.method || 'GET') === 'GET') return Response.json({ items: calendar[decodeURIComponent(gcal[1])] || [] });
+  if (url.startsWith('https://gmail.googleapis.com/')) return Response.json({ messages: [], resultSizeEstimate: 0 });
+  const meet = url.match(/^https:\/\/meet\.googleapis\.com\/v2\/spaces\/([^?]+)/);
+  if (meet) {
+    google.push({ method, url, body: init.body ? JSON.parse(init.body) : null });
+    return Response.json(method === 'GET' ? { name: `spaces/${meet[1]}-space` } : {});
+  }
+  const gcal = url.match(/^https:\/\/www\.googleapis\.com\/calendar\/v3\/calendars\/([^/?]+)\/events(?:\/([^?]+))?(?:\?.*)?$/);
+  if (gcal) {
+    const list = (calendar[decodeURIComponent(gcal[1])] ||= []);
+    const id = gcal[2] && decodeURIComponent(gcal[2]);
+    const body = init.body ? JSON.parse(init.body) : null;
+    if (method !== 'GET') google.push({ method, url, body });
+    const withMeet = (e) => (body?.conferenceData?.createRequest && !e.hangoutLink ? { ...e, hangoutLink: 'https://meet.google.com/abc-defg-hij', conferenceData: { conferenceId: 'abc-defg-hij' } } : e);
+    if (!id && method === 'GET') return Response.json({ items: list });
+    if (!id && method === 'POST') { const e = withMeet({ status: 'confirmed', iCalUID: `${body.id}@google.com`, organizer: { email: decodeURIComponent(gcal[1]), self: true }, ...body }); list.push(e); return Response.json(e); }
+    const i = list.findIndex((e) => e.id === id);
+    if (i < 0) return Response.json({ error: { message: 'Not Found' } }, { status: 404 });
+    if (method === 'GET') return Response.json(list[i]);
+    if (method === 'PATCH') { list[i] = withMeet({ ...list[i], ...body }); return Response.json(list[i]); }
+    return Response.json({ error: { message: `unexpected ${method}` } }, { status: 400 });
+  }
   if (url === 'https://api.jobtread.com/pave') {
     const job = (id, name, status) => ({ id, name, customFieldValues: { nodes: [{ value: status, customField: { id: FIELD_JOB_STATUS } }] } });
     return Response.json({ organization: { jobs: { nodes: [job('j1', 'Maya (2026)', 'Build'), job('j2', 'Leo (2026)', 'Design'), job('j3', 'Someone Else (2026)', 'Awaiting Funding'), job('j4', 'Not Published Yet (2026)', 'Design')], nextPage: null } } });
@@ -157,7 +223,6 @@ const csp = (() => {
 })();
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon' };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC', 'base64');
-const apiCalls = [];
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -171,7 +236,6 @@ const server = http.createServer(async (req, res) => {
       for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string' && !['host', 'connection', 'content-length'].includes(k)) headers.set(k, v);
       if (who) headers.set('CF-Access-JWT-Assertion', await tokenFor(who));
       const request = new Request(url, { method: req.method, headers, body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks), duplex: 'half' });
-      apiCalls.push({ who, method: req.method, path: url.pathname + url.search });
       const ctx = { request, env, data: {}, waitUntil: () => {} };
       ctx.next = async () => {
         const mod = ROUTES[url.pathname];
@@ -230,6 +294,19 @@ async function shot(page, name) {
   await page.setViewport(vp);
 }
 async function type(page, selector, value) { await page.click(selector, { clickCount: 3 }); await page.keyboard.type(value); }
+const saved = (page) => page.waitForFunction(() => /^Saved/.test(document.querySelector('.bm-saved')?.textContent.trim() || ''), { timeout: 10000 }).then(() => true, () => false);
+const meetingNow = (page, id) => page.evaluate(async (x) => (await (await fetch('/api/board-admin')).json()).meetings.find((m) => m.id === x), id);
+/** The ⋯ menu of the agenda item whose notes box is labelled `item`, then one of its choices */
+async function itemMenu(page, item, choice) {
+  const found = await page.evaluate((name) => {
+    const s = [...document.querySelectorAll('.bd-menu > summary')].find((x) => x.getAttribute('aria-label').startsWith(`More for ${name}`));
+    if (s) s.click();
+    return !!s;
+  }, item);
+  await sleep(150);
+  return found && clickText(page, '.bd-menu[open] .bd-menu__item', choice);
+}
+const step = (page, name) => clickText(page, '.bm-step-tab', new RegExp(`^\\d?${name}`));
 
 try {
   // ─── A founder: the Board area ───
@@ -242,113 +319,177 @@ try {
   ok(await waitText(jane, /No meeting coming up/), 'no meeting yet: says so, with the way to add one');
   await shot(jane, '01-meetings-empty');
 
+  // An old agenda, pasted in
   await clickText(jane, 'button', /^Bring in an old agenda$/);
   await jane.waitForSelector('#bd-import-text');
-  await jane.click('#bd-import-text');
   await jane.evaluate((t) => { const el = document.querySelector('#bd-import-text'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(el, t); el.dispatchEvent(new Event('input', { bubbles: true })); }, OLD_AGENDA);
   ok(await waitText(jane, /3 people there, 1 absent/), 'the preview: who was there and who wasn’t');
   ok(/Financial\s*Sam, Alex/.test(await text(jane)), 'the preview: presenters from the brackets');
   await shot(jane, '02-import-preview');
   await clickText(jane, 'button', /^Add this meeting$/);
-  ok(await waitText(jane, /When and where/), 'the meeting opens after it’s added');
-  ok(/approved minutes|Minutes approved/i.test(await text(jane)), 'a past agenda comes in as approved minutes');
-  const pastId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/').pop());
+  ok(await waitText(jane, /The minutes/), 'a past meeting opens on After: its minutes');
+  ok(/Approved/.test(await text(jane)), 'a past agenda comes in as approved minutes');
+  const pastId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/')[2]);
 
-  // A new meeting ahead
+  // Its minutes, written elsewhere: a Word file read in; then the signed copy
+  const docx = join(OUT, 'Board-minutes.docx');
+  writeFileSync(docx, minutesDocx());
+  const minutesInput = await jane.evaluateHandle(() => [...document.querySelectorAll('.bm-steprow input[type="file"]')].find((i) => /minutes/i.test(i.closest('label').textContent)));
+  await minutesInput.asElement().uploadFile(docx);
+  ok(await waitText(jane, /Board minutes reads as 3 sections, 3 items/), 'uploaded minutes (Word) are read and shown before they’re used');
+  await clickText(jane, 'button', /^Use these as the minutes$/);
+  ok(await waitText(jane, /The minutes are in the meeting/), 'Use these as the minutes');
+  await saved(jane);
+  const pastNow = await meetingNow(jane, pastId);
+  ok(pastNow.sections.some((s) => s.items.some((it) => /Reserves grew this quarter/.test(it.notes))) && pastNow.files.some((f) => f.kind === 'minutes'), 'the meeting now holds what the minutes say, and keeps the file');
+  const pdf = join(OUT, 'Balance-sheet-financials.pdf');
+  writeFileSync(pdf, '%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF');
+  const signedInput = await jane.evaluateHandle(() => [...document.querySelectorAll('.bm-steprow input[type="file"]')].find((i) => /Upload it|Replace it/.test(i.closest('label').textContent)));
+  await signedInput.asElement().uploadFile(pdf);
+  ok(await waitText(jane, /Signed copy kept/), 'the signed copy uploads');
+  await shot(jane, '02b-after');
+
+  // ─── A new meeting ahead: Before ───
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await clickText(jane, 'button', /^New meeting$/);
   await jane.waitForSelector('input[aria-label="Meeting date"]');
   await jane.evaluate((d) => { const el = document.querySelector('input[aria-label="Meeting date"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, d); el.dispatchEvent(new Event('input', { bubbles: true })); }, day(14));
   await clickText(jane, 'button', /^Add$/);
-  ok(await waitText(jane, /Agenda and notes/), 'a new meeting opens in the editor');
+  ok(await waitText(jane, /Getting ready/), 'a new meeting opens on Before, with Getting ready');
+  const meetingId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/')[2]);
   const t1 = await text(jane);
-  ok(/Minutes of the .* Board Meeting/.test(t1.replace(/\n/g, ' ')) || await jane.evaluate(() => [...document.querySelectorAll('input[aria-label="Item"]')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
-  ok(await jane.evaluate(() => document.querySelectorAll('.bd-person').length) === 4, 'the board (3) and the founder are on the list');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('input[aria-label="Item"]')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
   ok(/\$375,000 in Mercury/.test(t1), 'the Financial item shows today’s cash in Mercury');
   ok(/2026 so far \(through \w+\): \$900,000 in, \$850,000 out, net \$50,000/.test(t1), 'and the year so far from Job Costs’ finance summary');
   ok(/3 makeovers in progress: 2 in Design, 1 in Build/.test(t1) && /Design: Leo and 1 more/.test(t1) && !/Not Published Yet/.test(t1), 'the projects item shows JobTread’s makeovers, by published kid only');
 
-  // Notes, a private note, confidential, an action, a motion
-  const firstNotes = 'textarea[aria-label^="Notes for Governance"]';
-  ok(await jane.$(firstNotes) !== null, 'each item has its notes box');
-  await jane.type(firstNotes, '- Insurance renewal is on track\n  - Broker sends the quote Friday');
-  await clickText(jane, '.bd-item:has(textarea[aria-label^="Notes for Governance"]) button', /^Add your own note$/);
-  await jane.waitForSelector('textarea[aria-label="Your own note"]');
-  await jane.type('textarea[aria-label="Your own note"]', 'PRIVATE: ask counsel first');
-  await jane.evaluate(() => { const item = document.querySelector('textarea[aria-label^="Notes for Governance"]').closest('.bd-item'); item.querySelector('.bd-check input').click(); });
-  await clickText(jane, 'button', /^Add an action item$/);
-  await jane.type('.bd-line--action input[aria-label="Action item"]', 'Send the venue contract');
-  await jane.select('.bd-line--action select[aria-label="Whose it is"]', 'alex-rivera');
-  await clickText(jane, 'button', /^Add a motion$/);
-  await jane.type('.bd-line--motion input[aria-label="Motion"]', 'Approve the 2027 budget');
-  await jane.evaluate(() => { const b = [...document.querySelectorAll('.seg button')].find((x) => x.textContent === 'Present'); b?.click(); });
-  ok(/Unsaved changes/.test(await text(jane)), 'the save bar says there are unsaved changes');
-  await clickText(jane, 'button', /^Save$/);
-  ok(await waitText(jane, /Saved (just now|\d+ min ago)/), 'Save saves');
-
+  // Board only, and a private note, from an item's ⋯ menu
+  ok(await itemMenu(jane, 'Governance', /^Board only/), 'an item’s menu marks it board only');
+  ok(await waitText(jane, /Board only/), 'and it shows as board only');
+  ok(await itemMenu(jane, 'Governance', /^Add a private note$/), 'an item’s menu adds a private note');
+  await jane.waitForSelector('textarea[aria-label="Your private note"]');
+  await jane.click('textarea[aria-label="Your private note"]');
+  await sleep(100);
+  await jane.keyboard.type('PRIVATE: ask counsel first');
   // A file
-  const input = await jane.$('.bd-drop input[type="file"]');
-  const pdf = join(OUT, 'Balance-sheet-financials.pdf');
-  (await import('node:fs')).writeFileSync(pdf, '%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF');
-  await input.uploadFile(pdf);
-  ok(await waitText(jane, /Balance-sheet-financials\.pdf/), 'a PDF uploads to the meeting');
+  await (await jane.$('.bd-drop input[type="file"]')).uploadFile(pdf);
+  ok(await waitText(jane, /Balance sheet financials/), 'a PDF uploads to the meeting, by its readable name');
   ok(await jane.evaluate(() => document.querySelector('.bd-line--file select').value) === 'financials', 'a file named like financials is filed as one');
-  ok(!/Unsaved changes/.test(await text(jane)), 'an upload isn’t an unsaved change');
+  ok(await saved(jane), 'it all saves by itself');
 
-  // Share, lock the numbers, Send it to me, Email the board
-  await jane.evaluate(() => document.querySelector('.bc-switch input').click());
-  await clickText(jane, 'button', /^Save$/);
-  await waitText(jane, /On the board page/);
-  await clickText(jane, 'button', /^Lock in today’s numbers$/);
-  ok(await waitText(jane, /Numbers locked/), 'today’s numbers lock into the packet');
-  await clickText(jane, 'button', /^Send it to me$/);
-  await waitText(jane, /Sent to/);
-  ok(mail.length === 1 && mail[0].to[0] === FOUNDER, 'Send it to me goes only to the founder');
-  ok(!/Insurance renewal|ask counsel|Governance/.test(mail[0].html) && /A board-only item/.test(mail[0].html), 'the email has no notes and hides the confidential item');
-  await clickText(jane, 'button', /^Email the board$/);
-  ok(await waitText(jane, /Emailed to 2 board members/), 'Email the board reaches the two members with emails');
-  ok(mail.slice(1).map((m) => m.to[0]).sort().join() === [MEMBER, 'sam.board@example.org'].sort().join(), 'each board member got their own copy');
-  await shot(jane, '03-meeting-editor');
-  const meetingId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/').pop());
-
-  // Someone else saved meanwhile
-  const stale = await jane.evaluate(async (id) => { const r = await fetch('/api/board-admin').then((x) => x.json()); return r.meetings.find((m) => m.id === id); }, meetingId);
-  await jane.evaluate(async (m) => { await fetch('/api/board-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-meeting', meeting: { ...m, location: 'Changed by Holly' }, base: m.updatedAt }) }); }, stale);
+  // Getting ready 1: the invite, from the president's calendar, with Google Meet and transcripts on
+  ok(/From Jane’s calendar to every board member and you, with Google Meet and transcripts on/.test(await text(jane)), 'Getting ready says who the invite comes from and who it goes to');
+  await clickText(jane, 'button', /^Send the invite$/);
+  ok(await waitText(jane, /Invite sent from Jane’s calendar/), 'Send the invite sends it');
+  const post = google.find((c) => c.method === 'POST');
+  ok(post && post.url.includes(`/calendars/${encodeURIComponent(FOUNDER)}/events?conferenceDataVersion=1&sendUpdates=all`), 'from the president’s own calendar, and Google emails the guests');
+  ok(post && post.body.attendees.map((a) => a.email).sort().join() === [MEMBER, OTHER].sort().join(), 'to every board member with an email');
+  ok(post?.body.conferenceData?.createRequest?.conferenceSolutionKey?.type === 'hangoutsMeet' && google.some((c) => c.method === 'PATCH' && /meet\.googleapis\.com/.test(c.url) && c.body.config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration === 'ON'), 'with Google Meet, its transcripts turned on');
+  ok(/2 guests · Google Meet · transcript on · the place goes on it when you add one/.test(await text(jane)), 'the step says what went out');
+  // The place, added after: one update once it has settled
+  const before = google.length;
   await type(jane, '#bd-loc', 'Example Hall');
-  await clickText(jane, 'button', /^Save$/);
-  ok(await waitText(jane, /Changed by Holly/), 'a save made meanwhile: the editor asks, and loads theirs');
+  await type(jane, '#bd-addr', '100 Example St, Roswell, GA');
+  ok(await saved(jane), 'the place saves');
+  ok(await waitText(jane, /the new place goes on it a couple of minutes after you stop typing/), 'the step says the new place is on its way to the invite');
+  ok(google.length === before, 'nothing goes to Google while it’s being typed');
+  await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 });
+  const updates = google.slice(before).filter((c) => c.url.includes('/calendar/v3/'));
+  ok(updates.length === 1 && updates[0].method === 'PATCH' && updates[0].body.location === 'Example Hall, 100 Example St, Roswell, GA', 'then one update to the invite with the place');
+
+  // Getting ready 2-4: numbers, the board page, the documents by email
+  await clickText(jane, 'button', /^Lock them$/);
+  ok(await waitText(jane, /Numbers locked/), 'today’s numbers lock into the packet');
+  await clickText(jane, 'button', /^Share with the board$/);
+  ok(await waitText(jane, /Board members see the agenda, notes, votes and files/), 'Share with the board puts it on the board page');
+  mail.length = 0;
+  await clickText(jane, 'button', /^Send it to me$/);
+  await waitText(jane, /Sent to jane@soardcharity\.com with 1 file/);
+  ok(mail.length === 1 && mail[0].to[0] === FOUNDER, 'Send it to me goes only to the founder');
+  ok(mail[0]?.attachments?.map((a) => a.filename).join() === 'Balance-sheet-financials.pdf', 'with the meeting’s file attached');
+  ok(!/ask counsel|Governance/.test(mail[0]?.html || '') && /A board-only item/.test(mail[0]?.html || ''), 'the email has no private note and hides the board-only item');
+  await clickText(jane, 'button', /^Email the documents$/);
+  ok(await waitText(jane, /Emailed 2 board members/), 'Email the documents reaches the two members with emails');
+  ok(mail.slice(1).map((m) => m.to[0]).sort().join() === [MEMBER, OTHER].sort().join() && mail.slice(1).every((m) => m.attachments?.length === 1), 'each board member got their own copy, with the file');
+  await shot(jane, '03-before');
+
+  // ─── During: attendance, notes, a motion, an action item ───
+  await step(jane, 'During');
+  ok(await waitText(jane, /Tap who’s here as the meeting starts/), 'During opens with attendance');
+  ok(await jane.evaluate(() => document.querySelectorAll('.bm-person').length) === 4, 'the board (3) and the founder are on the list');
+  await jane.evaluate(() => { const row = [...document.querySelectorAll('.bm-person')].find((r) => /Alex Rivera/.test(r.textContent)); [...row.querySelectorAll('.bm-choice')].find((b) => b.textContent.trim() === 'Here').click(); });
+  ok(await waitText(jane, /1 of 3 board members here/), 'a tap marks someone here, and the count follows');
+  await jane.click('textarea[aria-label^="Notes for Governance"]');
+  await sleep(100);
+  await jane.keyboard.type('Insurance renewal is on track');
+  await jane.keyboard.press('Enter');
+  await jane.keyboard.press('Tab');
+  await jane.keyboard.type('Broker sends the quote Friday');
+  const notes = await jane.$eval('textarea[aria-label^="Notes for Governance"]', (e) => e.value);
+  ok(notes === '- Insurance renewal is on track\n  - Broker sends the quote Friday', `notes write as points: Enter makes the next one, Tab moves it in${notes.startsWith('- Insurance renewal is on track\n  - Broker') ? '' : ` (${JSON.stringify(notes)})`}`);
+  await clickText(jane, 'button', /^Add a motion$/);
+  await jane.type('.bd-line--motion input[aria-label="The motion"]', 'Approve the 2027 budget');
+  await jane.select('.bd-line--motion select[aria-label="Moved by"]', 'Alex Rivera');
+  await clickText(jane, 'button', /^Add an action item$/);
+  await jane.type('.bd-line--action input[aria-label="What needs doing"]', 'Send the venue contract');
+  await jane.select('.bd-line--action select[aria-label="Whose it is"]', 'alex-rivera');
+  ok(await saved(jane), 'During saves by itself');
+  await shot(jane, '04-during');
+
+  // Someone else saved meanwhile: both changes are kept, item by item
+  const stale = await meetingNow(jane, meetingId);
+  await jane.evaluate(async (m) => { await fetch('/api/board-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-meeting', meeting: { ...m, title: 'Fall board meeting' }, base: m.updatedAt }) }); }, stale);
+  await jane.click('textarea[aria-label^="Notes for Governance"]');
+  await jane.keyboard.press('End');
+  await jane.keyboard.type(' (or Monday)');
+  ok(await saved(jane), `a save made meanwhile doesn’t stop this one (${await jane.$eval('.bm-saved', (e) => e.textContent.trim())})`);
+  const merged = await meetingNow(jane, meetingId);
+  ok(merged.title === 'Fall board meeting' && merged.sections.some((s) => s.items.some((it) => /or Monday/.test(it.notes))), 'both the other save and this one are kept');
 
   // Documents, Members, Settings
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
   await clickText(jane, 'button', /^Add a document$/);
   await jane.type('#bd-doc-title', 'Conflict of interest policy');
   await jane.select('#bd-doc-kind', 'policy');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.bd-check input')].at(-1).disabled), 'signing can’t be asked for before there’s a file to read');
+  await (await jane.$('#bd-doc-file')).uploadFile(pdf);
   await jane.evaluate(() => [...document.querySelectorAll('.bd-check input')].at(-1).click());
   await clickText(jane, 'button', /^Save$/);
   ok(await waitText(jane, /0 of 3 signed/), 'a document asking for signatures counts them');
-  await shot(jane, '04-documents');
+  await shot(jane, '05-documents');
   await jane.goto(`${SITE}/admin/#board/members`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Board members can’t sign in yet/), 'Members: says plainly that board members can’t sign in yet');
   ok(/CF_ACCESS_API_TOKEN/.test(await text(jane)) && /No email on file for Kim Park/.test(await text(jane)), 'Members: the steps, and who has no email on file');
-  await shot(jane, '05-members');
+  mail.length = 0;
+  await clickText(jane, 'button', /^Send it to me$/);
+  ok(await waitText(jane, /Sent to jane@soardcharity\.com/) && mail.length === 1 && /board page/i.test(mail[0].subject), 'Members: the sign-in email, sent to the founder first');
+  await shot(jane, '06-members');
   await jane.goto(`${SITE}/admin/#board/settings`, { waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /jane@soardcharity\.com/), 'Settings: the founder can open it until it’s saved');
-  await shot(jane, '06-settings');
+  ok(await waitText(jane, /Who can open the Board area/), 'Settings opens');
+  ok(await jane.$eval('#bd-from', (e) => e.value) === FOUNDER, 'Settings: invites come from the president until another is chosen');
+  await shot(jane, '07-settings');
 
-  // A board meeting on the founder's calendar becomes a meeting in Board, its day, time and place kept to the calendar
+  // A board meeting on the founder's calendar becomes a meeting in Board; Board's own invite isn't brought in again
   const calDay = day(35);
-  calendar[FOUNDER].push({ id: 'q1', iCalUID: 'q1@google.com', summary: 'SOARD Q4 Board Meeting', status: 'confirmed', start: { dateTime: `${calDay}T13:00:00Z` }, end: { dateTime: `${calDay}T15:00:00Z` }, location: 'Example Design Group, 100 Example St, Roswell, GA', hangoutLink: 'https://meet.google.com/abc-defg-hij', htmlLink: 'https://www.google.com/calendar/event?eid=q1' });
+  calendar[FOUNDER].push({ id: 'q1', iCalUID: 'q1@google.com', summary: 'SOARD Q4 Board Meeting', status: 'confirmed', start: { dateTime: `${calDay}T13:00:00Z` }, end: { dateTime: `${calDay}T15:00:00Z` }, location: 'Example Design Group, 100 Example St, Roswell, GA', organizer: { email: FOUNDER, self: true }, attendees: [{ email: MEMBER, responseStatus: 'accepted' }, { email: OTHER }], htmlLink: 'https://www.google.com/calendar/event?eid=q1' });
+  // Alex said yes to Board's invite in their calendar
+  calendar[FOUNDER][0].attendees = calendar[FOUNDER][0].attendees.map((a) => (a.email === MEMBER ? { ...a, responseStatus: 'accepted' } : a));
   await DB.exec("DELETE FROM board_state WHERE key = 'calendar'");
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
-  ok(await waitText(jane, /Meetings come from Jane’s calendar: any event named like “Board Meeting”/), 'Meetings says where meetings come from');
-  ok(await waitText(jane, /From the calendar/), 'the event on the founder’s calendar is a meeting in Board');
-  const calId = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings.find((m) => m.calendar)?.id);
-  await jane.goto(`${SITE}/admin/#board/meeting/${calId}`, { waitUntil: 'networkidle0' });
+  ok(await waitText(jane, /Meetings come from Jane’s calendar by themselves/), 'Meetings says where meetings come from');
+  const all = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings);
+  ok(all.length === 3, `the event on the calendar is a meeting, and Board’s own invite isn’t a second one (${all.length})`);
+  ok(all.find((m) => m.id === meetingId)?.invite?.replies?.['alex-rivera'] === 'accepted', 'the reply to Board’s invite comes back onto its meeting');
+  ok(/Next: send the invite|Next: add everyone and Google Meet/.test(await text(jane)), 'each meeting ahead says what to do next');
+  await shot(jane, '08-meetings');
+  const calId = all.find((m) => m.calendar)?.id;
+  await jane.goto(`${SITE}/admin/#board/meeting/${calId}/before`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
   ok(await waitText(jane, /From Jane’s calendar \(“SOARD Q4 Board Meeting”\)/), 'its editor says it follows the calendar');
-  ok(await jane.$eval('.bd-head h2', (e) => e.textContent) === 'SOARD Q4 Board Meeting', 'and goes by the event’s own name');
-  ok(await jane.evaluate(() => document.querySelector('#bd-date').disabled && document.querySelector('#bd-start').value === '08:00' && document.querySelector('#bd-loc').disabled && document.querySelector('#bd-loc').value === 'Example Design Group' && document.querySelector('#bd-video').value === 'https://meet.google.com/abc-defg-hij'), 'its day, time, place and video link come from the event, and are changed there');
+  ok(await jane.$eval('.bm-head h2', (e) => e.textContent) === 'SOARD Q4 Board Meeting', 'and goes by the event’s own name');
+  ok(await jane.evaluate(() => document.querySelector('#bd-date').disabled && document.querySelector('#bd-start').value === '08:00' && document.querySelector('#bd-loc').disabled && document.querySelector('#bd-loc').value === 'Example Design Group'), 'its day, time and place come from the event, and are changed there');
+  ok(await waitText(jane, /Add everyone and Meet/), 'its invite is the calendar’s own: Board offers to add everyone and Meet to it');
   await shot(jane, '09-calendar-meeting');
 
   // ⌘K
@@ -378,76 +519,104 @@ try {
     ok(new URL(alex.url()).pathname === '/admin/board/', 'opening /admin/ takes a board member to their page');
     ok(await waitText(alex, /Good (morning|afternoon|evening), Alex/), 'Home greets them by name');
     const home = await text(alex);
-    ok(/Next meeting/i.test(home) && /See the agenda/.test(home), 'Home: the next meeting');
+    ok(/Next board meeting/i.test(home) && /See the agenda and 1 file/.test(home), 'Home: the next meeting, and its packet');
+    ok(/Example Hall/.test(home) && await alex.$('.bp-next a[href^="https://www.google.com/maps/search/"]') !== null, 'Home: its place, the address opening in Maps');
+    ok(await alex.$('.bp-next a[href="https://meet.google.com/abc-defg-hij"]') !== null && /Join with Google Meet/.test(home), 'Home: Join with Google Meet');
+    ok(/It’s on your calendar: the invite went to alex\.board@example\.com/.test(home), 'Home: it’s already on their calendar, so no file to add');
+    ok(width === 1440 ? /You answered the calendar invite: Coming/.test(home) : /You said “I’ll join by video\.” You can change it any time\./.test(home), width === 1440 ? 'Home: their reply to the invite shows' : 'Home: the answer they gave here shows');
     ok(width === 1440 ? /Send the venue contract/.test(home) : !/Send the venue contract/.test(home), width === 1440 ? 'Home: their own action item' : 'Home: the action item they ticked off is gone');
-    ok(/\$375,000/.test(home) && /children served/.test(home), 'Home: at a glance');
-    ok(/Maya’s reveal/.test(home) && /Sunshine Golf Classic/.test(home), 'Home: reveals and events coming up');
+    ok(/\$375,000/.test(home) && /children served/.test(home), 'Home: SOARD at a glance');
+    ok(/Coming up[\s\S]*Maya’s reveal[\s\S]*Sunshine Golf Classic[\s\S]*Leo’s reveal/.test(home) && /Date not set yet/.test(home), 'Home: reveals and events coming up, in date order, a tentative one marked');
+    ok(/Being built now[\s\S]*build[\s\S]*Maya[\s\S]*design[\s\S]*Leo and 1 more/i.test(home), 'Home: being built now, published kids by name only');
     ok(await overflow(alex) <= 0, 'Home: nothing past the right edge');
+    if (width === 390) {
+      const bar = await alex.evaluate(() => { const n = getComputedStyle(document.querySelector('.bp-nav')); return { pos: n.position, bottom: n.bottom, top: getComputedStyle(document.querySelector('.bp-top')).position, tabs: document.querySelectorAll('.bp-nav a').length }; });
+      ok(bar.pos === 'fixed' && bar.bottom === '0px' && bar.top === 'static' && bar.tabs === 5, 'on a phone: the five pages are a bar along the bottom, and the header scrolls away');
+    }
     await shot(alex, `10-home-${width}`);
     if (width === 1440) {
-      await clickText(alex, 'button', /^I’ll join by video$/);
-      await alex.waitForFunction(() => [...document.querySelectorAll('button[aria-pressed="true"]')].some((b) => b.textContent === 'Joining by video'), { timeout: 5000 }).catch(() => {});
-      ok(await alex.evaluate(() => [...document.querySelectorAll('button[aria-pressed="true"]')].some((b) => b.textContent === 'I’ll join by video')), 'they answer whether they’re coming');
+      await clickText(alex, '.bp-choice', /^I’ll join by video$/);
+      ok(await waitText(alex, /Thanks\. Jane can see your answer\./), 'they answer whether they’re coming, and it says who sees it');
+      ok(await alex.evaluate(() => document.querySelector('.bp-choice[aria-pressed="true"]')?.textContent.trim() === 'I’ll join by video'), 'their answer stays picked');
       await alex.evaluate(() => document.querySelector('.bp-todo input').click());
-      await sleep(1200);
+      await sleep(1500);
     }
 
     await alex.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
     ok(await waitText(alex, /Insurance renewal is on track/), 'the meeting: the notes, as points');
     const page = await text(alex);
     ok(!/ask counsel/.test(page) && !/ask counsel/.test(await alex.content()), 'the meeting: never the private note, not even in the page source');
-    ok(/Confidential/.test(page), 'the meeting: the confidential item is marked');
+    ok(/Board only · please don’t share/.test(page), 'the meeting: the board-only item is marked');
     ok(/Approve the 2027 budget/.test(page), 'the meeting: the motion');
-    ok(/As of/i.test(page), 'the meeting: the locked numbers say when they’re from');
+    ok(/Numbers from/i.test(page), 'the meeting: the locked numbers say when they’re from');
+    ok(/The packet[\s\S]*Balance sheet financials/.test(page), 'the meeting: the packet, by readable name');
+    if (width === 390) {
+      ok(await alex.evaluate(() => document.querySelector('.bp-meeting__top').getBoundingClientRect().top < document.querySelector('.bp-agenda').getBoundingClientRect().top), 'on a phone: their answer and the packet come before the agenda');
+    }
     ok(await overflow(alex) <= 0, 'the meeting: nothing past the right edge');
     await shot(alex, `11-meeting-${width}`);
     if (width === 1440) {
-      await clickText(alex, 'a', /^Balance-sheet-financials\.pdf$/);
+      await clickText(alex, '.bp-files a', /^Balance sheet financials/);
       ok(await alex.waitForSelector('.fv-host *', { timeout: 6000 }).then(() => true, () => false), 'a file opens in the viewer over the page');
       await alex.keyboard.press('Escape');
-      const res = await alex.evaluate(async () => (await fetch('/api/board-admin')).status);
-      ok(res === 403, 'the Board area’s API refuses a board member');
+      ok(await alex.evaluate(async () => (await fetch('/api/board-admin')).status) === 403, 'the Board area’s API refuses a board member');
     }
 
-    for (const [p, re] of [['financials', /Cash[\s\S]*\$375,000 in Mercury[\s\S]*Lowest point: \$210,000[\s\S]*Money in and out[\s\S]*\$900,000[\s\S]*−\$20,000[\s\S]*September’s books are ready to close[\s\S]*Financial statements[\s\S]*Balance-sheet/], ['reveals', /Coming up[\s\S]*Maya[\s\S]*Each reveal comes to alex\.board@example\.com as a calendar invite[\s\S]*Being built now/], ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/], ['documents', /Conflict of interest policy/]]) {
+    for (const [p, re] of [
+      ['financials', /Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*September’s books are ready to close[\s\S]*Cash[\s\S]*\$375,000 in Mercury[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Financial statements[\s\S]*Balance sheet financials[\s\S]*2025 990 Tax Return/],
+      ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
+      ['documents', width === 1440 ? /Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it/ : /Conflict of interest policy[\s\S]*Read it[\s\S]*Signed\s*by Alex Rivera/],
+    ]) {
       await alex.goto(`${SITE}/admin/board/#/${p}`, { waitUntil: 'networkidle0' });
       ok(await waitText(alex, re), `${p} shows what it should`);
       ok(await overflow(alex) <= 0, `${p}: nothing past the right edge`);
       await shot(alex, `12-${p}-${width}`);
     }
     if (width === 1440) {
+      await clickText(alex, 'button', /^I’ve read it and agree$/);
+      ok(await waitText(alex, /Type your full name, the way you sign it/), 'signing with no name says what to do');
       await alex.type('.bp-sign input', 'Alex Rivera');
       await clickText(alex, 'button', /^I’ve read it and agree$/);
       ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name');
+      await alex.goto(`${SITE}/admin/board/#/reveals`, { waitUntil: 'networkidle0' });
+      ok(await alex.evaluate(() => location.hash) === '#/' && await waitText(alex, /Being built now/), 'the old Reveals link opens Home, where reveals are now');
       await alex.goto(`${SITE}/admin/board/#/meetings/${pastId}`, { waitUntil: 'networkidle0' });
-      ok(!(await waitText(alex, /Expenses are down/, 2000)), 'a meeting not shared stays off the board page');
+      ok(!(await waitText(alex, /Reserves grew/, 2000)), 'a meeting not shared stays off the board page');
+    } else {
+      await alex.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
+      await clickText(alex, '.bp-nav a', /^Meetings$/);
+      ok(await waitText(alex, /Every agenda, with the notes/), 'the tab bar opens Meetings');
     }
     await alex.close();
   }
 
   // ─── The founder sees what the board did, and sees the board page as they do ───
   console.log('Back to the founder');
-  await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}`, { waitUntil: 'networkidle0' });
+  await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}/before`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /Said by video/), 'the founder sees Alex’s answer');
+  ok(await waitText(jane, /By video: Alex Rivera/), 'the founder sees Alex’s answer');
+  await step(jane, 'During');
+  await waitText(jane, /Attendance/);
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bd-line--action')].some((l) => l.classList.contains('is-done'))), 'and that Alex ticked off the action item');
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Signed by Alex Rivera/), 'and who signed the policy');
   await jane.goto(`${SITE}/admin/board/`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /seeing the board page the way board members do/), 'the founder sees the board page as the board does');
-  ok(!(await jane.$('.bp-rsvp')), 'with no answers to give for anyone');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.bp-choice')].every((b) => b.disabled)) && /Board members answer here/.test(await text(jane)), 'with no answers to give for anyone');
 
   // The editor on a phone
   const phone = await tab(FOUNDER, 390);
-  await phone.goto(`${SITE}/admin/#board/meeting/${meetingId}`, { waitUntil: 'networkidle0' });
-  await phone.reload({ waitUntil: 'networkidle0' });
-  await waitText(phone, /Agenda and notes/);
-  ok(await overflow(phone) <= 0, 'the meeting editor fits a phone');
-  await shot(phone, '07-editor-390');
+  for (const s of ['before', 'during', 'after']) {
+    await phone.goto(`${SITE}/admin/#board/meeting/${meetingId}/${s}`, { waitUntil: 'networkidle0' });
+    await phone.reload({ waitUntil: 'networkidle0' });
+    await waitText(phone, /All meetings/);
+    ok(await overflow(phone) <= 0, `the meeting editor’s ${s} step fits a phone`);
+    await shot(phone, `13-editor-${s}-390`);
+  }
   await phone.goto(`${SITE}/admin/#board/members`, { waitUntil: 'networkidle0' });
   await waitText(phone, /The board/);
   ok(await overflow(phone) <= 0, 'Members fits a phone');
-  await shot(phone, '08-members-390');
+  await shot(phone, '14-members-390');
 
   ok(!consoleErrors.length, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 5).join(' | ')}` : ''}`);
 } catch (err) {

@@ -33,7 +33,8 @@ import {
 import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
 import { accessStatus, syncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
-import { maybeReadBoardMail, mailStatus, mailLog } from './_board-mail.js';
+import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
+import { sendInvite, noteInviteChange, projectOf } from './_board-invite.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
@@ -75,6 +76,8 @@ export async function onRequestGet(context) {
     const [mail, mailRecent, welcome] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome')]);
     return Response.json({
       ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome,
+      // For the one-time Google setup: the service account's client ID and its Cloud project (neither is secret)
+      google: env.GOOGLE_CALENDAR_KEY ? { clientId: clientIdOf(env), project: projectOf(env) } : null,
       people: { board: people.board, staff: people.staff },
       // Mercury answers only through SOARD's relay (_mercury.js), so the balance needs both keys
       setup: { calendar: Boolean(env.GOOGLE_CALENDAR_KEY), mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY) },
@@ -117,6 +120,8 @@ export async function onRequestPost(context) {
       case 'save-meeting': {
         const m = await saveMeeting(env.DB, body.meeting || {}, { by: me, base: typeof body.base === 'string' ? body.base : null });
         await audit(env, me, 'updated', `Board meeting saved: ${meetingName(m)}`);
+        // An invite already out follows a new place, once it has settled (./_board-invite.js)
+        if (m.invite) await noteInviteChange(env, m);
         return Response.json({ ok: true, meeting: m });
       }
       case 'delete-meeting': {
@@ -169,6 +174,12 @@ export async function onRequestPost(context) {
         const parsed = await readFileAsAgenda(env, id);
         return parsed ? Response.json({ ok: true, parsed }) : fail('Couldn’t read an agenda in that file. Is it the minutes, as a PDF or Word file?', 422);
       }
+      case 'send-invite': {
+        needId();
+        const m = await sendInvite(env, id, { by: me });
+        await audit(env, me, 'updated', `Board meeting invite sent or updated: ${meetingName(m)}`);
+        return Response.json({ ok: true, meeting: m });
+      }
       case 'approve-minutes': {
         needId();
         const m = await approveMinutes(env, id, { on: body.on, by: me });
@@ -188,7 +199,7 @@ export async function onRequestPost(context) {
       }
       case 'send-welcome': {
         const admins = (await getSettings(env.DB)).admins;
-        const r = await sendWelcome(env, { to: body.test ? [me] : null, replyTo: admins });
+        const r = await sendWelcome(env, { to: body.test ? [me] : null, slugs: Array.isArray(body.slugs) ? body.slugs.map(String) : null, replyTo: admins });
         if (!body.test && r.sent) await audit(env, me, 'updated', `Board page sign-in email sent to ${r.sent} board members`);
         return Response.json({ ok: r.failed === 0, ...r, ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
       }

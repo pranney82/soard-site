@@ -20,8 +20,11 @@
  *   calendar     the calendar event it follows (functions/api/_board-calendar.js):
  *                { uid, others (the same meeting on another admin's calendar), title,
  *                from, link, gone, place, call, said (its place as written),
- *                replies: { slug: accepted | declined | tentative | invited } }, or null
- *   packetSentAt, packetSentTo
+ *                replies: { slug: accepted | declined | tentative | invited }, eventId, organizer }, or null
+ *   invite       the calendar invite Board sent or took over (functions/api/_board-invite.js):
+ *                { eventId, organizer, sentAt, updatedAt, meet, guests, transcript, error,
+ *                place, when, emails, replies (to Board's own invite, like calendar's) }, or null
+ *   packetSentAt, packetSentTo, minutesSentAt
  * Notes are plain text: a line starting with "- " is a point, two spaces
  * deeper for each level under it.
  */
@@ -42,6 +45,13 @@ export function answerOf(rsvp, invite) {
   if (rsvp) return RSVP.find((r) => r.id === rsvp)?.label || '';
   return { accepted: 'Coming', declined: 'Can’t come', tentative: 'Maybe' }[invite] || '';
 }
+const REPLIES = ['accepted', 'declined', 'tentative', 'invited'];
+function cleanReplies(raw) {
+  return Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? raw : {})
+    .filter(([k, v]) => /^[a-z0-9-]{1,80}$/.test(k) && REPLIES.includes(v)).slice(0, LIMITS.people));
+}
+/** Each board member's reply to the meeting's calendar invite, by slug: the organizer's own event's, else Board's */
+export const repliesOf = (m) => ({ ...(m?.invite?.replies || {}), ...(m?.calendar?.replies || {}) });
 /** "Balance-sheet_financials v2.pdf" → "Balance sheet financials v2" (the file keeps its own name for saving) */
 export function fileTitle(name) {
   const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -212,12 +222,20 @@ export function cleanMeeting(raw = {}) {
       others: (Array.isArray(raw.calendar.others) ? raw.calendar.others : []).map((u) => one(u, 400)).filter(Boolean).slice(0, 5),
       link: /^https:\/\//.test(String(raw.calendar.link || '')) ? one(raw.calendar.link, 1000) : '',
       gone: bool(raw.calendar.gone), place: bool(raw.calendar.place), call: bool(raw.calendar.call), said: one(raw.calendar.said, 200),
-      replies: Object.fromEntries(Object.entries(raw.calendar.replies && typeof raw.calendar.replies === 'object' ? raw.calendar.replies : {})
-        .filter(([k, v]) => /^[a-z0-9-]{1,80}$/.test(k) && ['accepted', 'declined', 'tentative', 'invited'].includes(v)).slice(0, LIMITS.people)),
+      replies: cleanReplies(raw.calendar.replies),
+      eventId: /^[\w-]{1,1024}$/.test(String(raw.calendar.eventId || '')) ? raw.calendar.eventId : '', organizer: one(raw.calendar.organizer, 200),
     } : null,
     packetSentAt: one(raw.packetSentAt, 40),
     packetSentTo: Number(raw.packetSentTo) > 0 ? Math.round(raw.packetSentTo) : 0,
     minutesSentAt: one(raw.minutesSentAt, 40),
+    // The calendar invite Board sent or took over (functions/api/_board-invite.js): server-set
+    invite: raw.invite && typeof raw.invite === 'object' && one(raw.invite.eventId, 1024) ? {
+      eventId: one(raw.invite.eventId, 1024), organizer: one(raw.invite.organizer, 200), sentAt: one(raw.invite.sentAt, 40), updatedAt: one(raw.invite.updatedAt, 40),
+      meet: /^https:\/\/meet\.google\.com\//.test(String(raw.invite.meet || '')) ? one(raw.invite.meet, 300) : '', guests: Number(raw.invite.guests) > 0 ? Math.round(raw.invite.guests) : 0,
+      transcript: ['on', 'needs-setup', 'error', ''].includes(raw.invite.transcript) ? raw.invite.transcript : '', error: one(raw.invite.error, 300),
+      place: one(raw.invite.place, 400), when: one(raw.invite.when, 60), emails: (Array.isArray(raw.invite.emails) ? raw.invite.emails : []).map((e) => one(e, 200)).filter(Boolean).slice(0, 100),
+      replies: cleanReplies(raw.invite.replies),
+    } : null,
     createdAt: one(raw.createdAt, 40),
     updatedAt: one(raw.updatedAt, 40),
     updatedBy: one(raw.updatedBy, 200),
@@ -235,6 +253,7 @@ export function forBoard(m) {
     sections: m.sections.map((s) => ({ ...s, items: s.items.map(({ staffNote, ...it }) => it) })),
     files: m.files.filter((f) => !f.staffOnly),
     calendar: undefined,
+    invite: m.invite ? { meet: m.invite.meet } : null,
     updatedBy: undefined,
   };
 }
@@ -520,14 +539,14 @@ export function liveLines(kind, n, { meetingId = null } = {}) {
 // ─── Two people editing at once ─────────────────────────────────────
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-/** One value, three ways: what both had, mine and theirs → { value, clash } */
-function pick3(base, mine, theirs) {
+/** One value, three ways: what both had, mine and theirs → { value, clash } (a clash takes `prefer`'s) */
+function pick3(base, mine, theirs, prefer = 'mine') {
   if (same(mine, base)) return { value: theirs };
   if (same(theirs, base) || same(mine, theirs)) return { value: mine };
-  return { value: mine, clash: true };
+  return { value: prefer === 'theirs' ? theirs : mine, clash: true };
 }
 /** A list of records by id: each record merged field by field, additions from both kept, removals honored */
-function mergeList(base = [], mine = [], theirs = [], key = (x) => x.id, label = (x) => '', skip = []) {
+function mergeList(base = [], mine = [], theirs = [], key = (x) => x.id, label = (x) => '', skip = [], prefer = 'mine') {
   const b = new Map(base.map((x) => [key(x), x]));
   const t = new Map(theirs.map((x) => [key(x), x]));
   const out = [];
@@ -541,7 +560,7 @@ function mergeList(base = [], mine = [], theirs = [], key = (x) => x.id, label =
     const rec = { ...x };
     for (const f of new Set([...Object.keys(x), ...Object.keys(th)])) {
       if (skip.includes(f)) { rec[f] = x[f]; continue; }
-      const r = pick3(was[f], x[f], th[f]);
+      const r = pick3(was[f], x[f], th[f], prefer);
       rec[f] = r.value;
       if (r.clash) clashes.push(label(x) || f);
     }
@@ -557,31 +576,126 @@ function mergeList(base = [], mine = [], theirs = [], key = (x) => x.id, label =
  * motions and action items merge on their own; only the same thing changed
  * both ways is a clash. → { merged, clashes: [what clashed, in words] }
  */
-export function mergeMeeting(base, mine, theirs) {
+export function mergeMeeting(base, mine, theirs, { prefer = 'mine' } = {}) {
   const merged = { ...theirs };
   const clashes = [];
   for (const f of ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn']) {
-    const r = pick3(base[f], mine[f], theirs[f]);
+    const r = pick3(base[f], mine[f], theirs[f], prefer);
     merged[f] = r.value;
     if (r.clash) clashes.push({ date: 'the date', start: 'the time', end: 'the time', title: 'the name', location: 'the place', address: 'the address', video: 'the video link', shared: 'sharing', minutes: 'the minutes status', approvedOn: 'the minutes status' }[f]);
   }
   // The agenda: sections in my order, each section's items merged one by one
-  const secs = mergeList(base.sections, mine.sections, theirs.sections, (s) => s.id, (s) => `the section “${s.title}”`, ['items']);
+  const secs = mergeList(base.sections, mine.sections, theirs.sections, (s) => s.id, (s) => `the section “${s.title}”`, ['items'], prefer);
   merged.sections = secs.value.map((s) => {
     const was = base.sections.find((x) => x.id === s.id); const th = theirs.sections.find((x) => x.id === s.id); const mi = mine.sections.find((x) => x.id === s.id);
     if (!was || !th || !mi) return s;
-    const items = mergeList(was.items, mi.items, th.items, (it) => it.id, (it) => `“${it.title || 'an item'}”`);
+    const items = mergeList(was.items, mi.items, th.items, (it) => it.id, (it) => `“${it.title || 'an item'}”`, [], prefer);
     clashes.push(...items.clashes);
     return { ...s, items: items.value };
   });
   clashes.push(...secs.clashes);
-  const people = mergeList(base.attendance, mine.attendance, theirs.attendance, (p) => p.key, (p) => `${p.name}’s attendance`);
+  const people = mergeList(base.attendance, mine.attendance, theirs.attendance, (p) => p.key, (p) => `${p.name}’s attendance`, [], prefer);
   merged.attendance = people.value;
   clashes.push(...people.clashes);
   for (const f of ['motions', 'actions']) {
-    const r = mergeList(base[f], mine[f], theirs[f], (x) => x.id, (x) => `“${String(x.text || '').slice(0, 40)}”`);
+    const r = mergeList(base[f], mine[f], theirs[f], (x) => x.id, (x) => `“${String(x.text || '').slice(0, 40)}”`, [], prefer);
     merged[f] = r.value;
     clashes.push(...r.clashes);
   }
   return { merged, clashes: [...new Set(clashes.filter(Boolean))] };
 }
+
+// ─── Reading a Word file (the admin's Bring in an old agenda, and board mail) ───
+
+async function inflate(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+/** The files inside a ZIP (a .docx is one): { name: bytes } for the names wanted */
+export async function unzip(bytes, want) {
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) if (v.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('not a ZIP file');
+  const count = v.getUint16(eocd + 10, true);
+  let at = v.getUint32(eocd + 16, true);
+  const out = {};
+  const dec = new TextDecoder();
+  for (let n = 0; n < count; n++) {
+    if (v.getUint32(at, true) !== 0x02014b50) break;
+    const method = v.getUint16(at + 10, true);
+    const size = v.getUint32(at + 20, true);
+    const nameLen = v.getUint16(at + 28, true);
+    const extraLen = v.getUint16(at + 30, true);
+    const commentLen = v.getUint16(at + 32, true);
+    const local = v.getUint32(at + 42, true);
+    const name = dec.decode(bytes.subarray(at + 46, at + 46 + nameLen));
+    if (want.includes(name)) {
+      const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+      const raw = bytes.subarray(start, start + size);
+      out[name] = method === 8 ? await inflate(raw) : raw;
+    }
+    at += 46 + nameLen + extraLen + commentLen;
+  }
+  return out;
+}
+
+const xmlText = (s) => s.replace(/<w:tab\/>/g, ' ').replace(/<w:br\/>/g, ' ').replace(/<[^>]+>/g, '')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+const roman = (n) => [['m', 1000], ['cm', 900], ['d', 500], ['cd', 400], ['c', 100], ['xc', 90], ['l', 50], ['xl', 40], ['x', 10], ['ix', 9], ['v', 5], ['iv', 4], ['i', 1]]
+  .reduce((acc, [r, v]) => { while (n >= v) { acc += r; n -= v; } return acc; }, '');
+const letter = (n) => { let s = ''; for (; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(97 + ((n - 1) % 26)) + s; return s; };
+
+/**
+ * A Word document's text the way it prints: Word numbers its own lists, so
+ * each numbered paragraph gets its "1." / "a." / "i." back from numbering.xml,
+ * and each table row is one line. Ready for parseAgendaText.
+ */
+export async function docxText(bytes) {
+  const files = await unzip(bytes, ['word/document.xml', 'word/numbering.xml']);
+  const dec = new TextDecoder();
+  const doc = files['word/document.xml'] ? dec.decode(files['word/document.xml']) : '';
+  if (!doc) throw new Error('no document in that Word file');
+  const numbering = files['word/numbering.xml'] ? dec.decode(files['word/numbering.xml']) : '';
+  const abstract = {};
+  for (const [, id, body] of numbering.matchAll(/<w:abstractNum\b[^>]*w:abstractNumId="(\d+)"[^>]*>([\s\S]*?)<\/w:abstractNum>/g)) {
+    abstract[id] = {};
+    for (const [, lvl, inner] of body.matchAll(/<w:lvl\b[^>]*w:ilvl="(\d+)"[^>]*>([\s\S]*?)<\/w:lvl>/g)) {
+      abstract[id][lvl] = { fmt: (inner.match(/<w:numFmt w:val="(\w+)"/) || [])[1] || 'decimal', start: Number((inner.match(/<w:start w:val="(\d+)"/) || [])[1] || 1) };
+    }
+  }
+  const nums = {};
+  for (const [, numId, abs] of numbering.matchAll(/<w:num\b[^>]*w:numId="(\d+)"[^>]*>[\s\S]*?<w:abstractNumId w:val="(\d+)"/g)) nums[numId] = abstract[abs] || {};
+  const counters = {};
+  const marker = (numId, ilvl) => {
+    const lv = nums[numId]?.[ilvl] || { fmt: 'decimal', start: 1 };
+    const c = (counters[numId] ||= []);
+    c[ilvl] = (c[ilvl] ?? lv.start - 1) + 1;
+    c.length = ilvl + 1;
+    const n = c[ilvl];
+    if (lv.fmt === 'bullet' || lv.fmt === 'none') return '-';
+    if (/lowerLetter/.test(lv.fmt)) return `${letter(n)}.`;
+    if (/upperLetter/.test(lv.fmt)) return `${letter(n).toUpperCase()}.`;
+    if (/lowerRoman/.test(lv.fmt)) return `${roman(n)}.`;
+    if (/upperRoman/.test(lv.fmt)) return `${roman(n).toUpperCase()}.`;
+    return `${n}.`;
+  };
+  const body = (doc.match(/<w:body>([\s\S]*)<\/w:body>/) || [])[1] || doc;
+  const lines = [];
+  for (const [block] of body.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>|<w:p\b[\s\S]*?<\/w:p>/g)) {
+    if (block.startsWith('<w:tbl>')) {
+      for (const [row] of block.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)) {
+        const cells = [...row.matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map(([c]) => xmlText(c).replace(/\s+/g, ' ').trim()).filter(Boolean);
+        if (cells.length) lines.push(cells.join(' '));
+      }
+      continue;
+    }
+    const text = xmlText(block.replace(/<w:pPr>[\s\S]*?<\/w:pPr>/, '')).replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    const numId = (block.match(/<w:numId w:val="(\d+)"/) || [])[1];
+    const ilvl = Number((block.match(/<w:ilvl w:val="(\d+)"/) || [])[1] || 0);
+    lines.push(numId && numId !== '0' ? `${marker(numId, ilvl)} ${text}` : text);
+  }
+  return lines.join('\n');
+}
+

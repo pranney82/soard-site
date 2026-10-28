@@ -27,7 +27,9 @@
 import { accessToken, GMAIL_READ_SCOPE, parseServiceAccount } from './_google-calendar.js';
 import { boardAdmins, readState, writeState } from './_board-roles.js';
 import { ensureSchema, listMeetings, saveMeeting, importMeeting, putFile, roster } from './_board.js';
-import { parseAgendaText, isDate, todayEastern, meetingName } from '../../public/admin/board-shared.js';
+import { parseAgendaText, isDate, todayEastern, meetingName, docxText, unzip } from '../../public/admin/board-shared.js';
+
+export { docxText, unzip };
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 // Board agendas, minutes and financials; and QuickBooks' report emails, which never say "board"
@@ -102,100 +104,6 @@ export function dateIn(text, fallbackYear = Number(todayEastern().slice(0, 4))) 
   m = s.match(new RegExp(`\\b(${MONTHS.join('|')}|${MONTHS.map((x) => x.slice(0, 3)).join('|')})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(20\\d{2}))?\\b`, 'i'));
   if (m) return ok(m[3] || fallbackYear, MONTHS.findIndex((x) => x.startsWith(m[1].toLowerCase().slice(0, 3))) + 1, m[2]);
   return '';
-}
-
-// ─── Reading a Word file ────────────────────────────────────────────
-
-async function inflate(bytes) {
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-/** The files inside a ZIP (a .docx is one): { name: bytes } for the names wanted */
-export async function unzip(bytes, want) {
-  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let eocd = -1;
-  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) if (v.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-  if (eocd < 0) throw new Error('not a ZIP file');
-  const count = v.getUint16(eocd + 10, true);
-  let at = v.getUint32(eocd + 16, true);
-  const out = {};
-  const dec = new TextDecoder();
-  for (let n = 0; n < count; n++) {
-    if (v.getUint32(at, true) !== 0x02014b50) break;
-    const method = v.getUint16(at + 10, true);
-    const size = v.getUint32(at + 20, true);
-    const nameLen = v.getUint16(at + 28, true);
-    const extraLen = v.getUint16(at + 30, true);
-    const commentLen = v.getUint16(at + 32, true);
-    const local = v.getUint32(at + 42, true);
-    const name = dec.decode(bytes.subarray(at + 46, at + 46 + nameLen));
-    if (want.includes(name)) {
-      const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
-      const raw = bytes.subarray(start, start + size);
-      out[name] = method === 8 ? await inflate(raw) : raw;
-    }
-    at += 46 + nameLen + extraLen + commentLen;
-  }
-  return out;
-}
-
-const xmlText = (s) => s.replace(/<w:tab\/>/g, ' ').replace(/<w:br\/>/g, ' ').replace(/<[^>]+>/g, '')
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
-const roman = (n) => [['m', 1000], ['cm', 900], ['d', 500], ['cd', 400], ['c', 100], ['xc', 90], ['l', 50], ['xl', 40], ['x', 10], ['ix', 9], ['v', 5], ['iv', 4], ['i', 1]]
-  .reduce((acc, [r, v]) => { while (n >= v) { acc += r; n -= v; } return acc; }, '');
-const letter = (n) => { let s = ''; for (; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(97 + ((n - 1) % 26)) + s; return s; };
-
-/**
- * A Word document's text the way it prints: Word numbers its own lists, so
- * each numbered paragraph gets its "1." / "a." / "i." back from numbering.xml,
- * and each table row is one line. Ready for parseAgendaText.
- */
-export async function docxText(bytes) {
-  const files = await unzip(bytes, ['word/document.xml', 'word/numbering.xml']);
-  const dec = new TextDecoder();
-  const doc = files['word/document.xml'] ? dec.decode(files['word/document.xml']) : '';
-  if (!doc) throw new Error('no document in that Word file');
-  const numbering = files['word/numbering.xml'] ? dec.decode(files['word/numbering.xml']) : '';
-  const abstract = {};
-  for (const [, id, body] of numbering.matchAll(/<w:abstractNum\b[^>]*w:abstractNumId="(\d+)"[^>]*>([\s\S]*?)<\/w:abstractNum>/g)) {
-    abstract[id] = {};
-    for (const [, lvl, inner] of body.matchAll(/<w:lvl\b[^>]*w:ilvl="(\d+)"[^>]*>([\s\S]*?)<\/w:lvl>/g)) {
-      abstract[id][lvl] = { fmt: (inner.match(/<w:numFmt w:val="(\w+)"/) || [])[1] || 'decimal', start: Number((inner.match(/<w:start w:val="(\d+)"/) || [])[1] || 1) };
-    }
-  }
-  const nums = {};
-  for (const [, numId, abs] of numbering.matchAll(/<w:num\b[^>]*w:numId="(\d+)"[^>]*>[\s\S]*?<w:abstractNumId w:val="(\d+)"/g)) nums[numId] = abstract[abs] || {};
-  const counters = {};
-  const marker = (numId, ilvl) => {
-    const lv = nums[numId]?.[ilvl] || { fmt: 'decimal', start: 1 };
-    const c = (counters[numId] ||= []);
-    c[ilvl] = (c[ilvl] ?? lv.start - 1) + 1;
-    c.length = ilvl + 1;
-    const n = c[ilvl];
-    if (lv.fmt === 'bullet' || lv.fmt === 'none') return '-';
-    if (/lowerLetter/.test(lv.fmt)) return `${letter(n)}.`;
-    if (/upperLetter/.test(lv.fmt)) return `${letter(n).toUpperCase()}.`;
-    if (/lowerRoman/.test(lv.fmt)) return `${roman(n)}.`;
-    if (/upperRoman/.test(lv.fmt)) return `${roman(n).toUpperCase()}.`;
-    return `${n}.`;
-  };
-  const body = (doc.match(/<w:body>([\s\S]*)<\/w:body>/) || [])[1] || doc;
-  const lines = [];
-  for (const [block] of body.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>|<w:p\b[\s\S]*?<\/w:p>/g)) {
-    if (block.startsWith('<w:tbl>')) {
-      for (const [row] of block.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)) {
-        const cells = [...row.matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map(([c]) => xmlText(c).replace(/\s+/g, ' ').trim()).filter(Boolean);
-        if (cells.length) lines.push(cells.join(' '));
-      }
-      continue;
-    }
-    const text = xmlText(block.replace(/<w:pPr>[\s\S]*?<\/w:pPr>/, '')).replace(/\s+/g, ' ').trim();
-    if (!text) continue;
-    const numId = (block.match(/<w:numId w:val="(\d+)"/) || [])[1];
-    const ilvl = Number((block.match(/<w:ilvl w:val="(\d+)"/) || [])[1] || 0);
-    lines.push(numId && numId !== '0' ? `${marker(numId, ilvl)} ${text}` : text);
-  }
-  return lines.join('\n');
 }
 
 /** A file's text for parseAgendaText: Word read here, a PDF through Workers AI's converter; '' when it can't be read */

@@ -689,7 +689,7 @@ const MAP = { t: 'SOARD', children: [
           when: 'Every hour on the live hub’s heartbeat, and whenever Peter or Holly opens Board (if the last look is over 10 minutes old).',
           does: 'Reads the Board area’s admins’ Google calendars for events named like a board meeting (“SOARD Q4 Board Meeting”, “Board Meeting”, or “board” in the name with three or more board members invited), from today on, and makes each one a meeting in Board with its day, time, place and video link. A moved event moves the meeting; a meeting added by hand on the same day is linked, not doubled. Advisory Board, reveal and demo day events never count.',
           touches: ['Google Calendar', 'D1'], where: 'functions/api/_board-calendar.js (broadcast-hooks.js via _board.js maybeRunBoard, board-admin.js)',
-          info: 'Read-only: it never changes anyone’s calendar. New meetings aren’t shared with the board until Peter or Holly shares them.',
+          info: 'It only reads; the meeting invite (below) is the one thing Board writes to a calendar. New meetings aren’t shared with the board until Peter or Holly shares them. Board’s own invites aren’t brought in again: only the board’s replies come back from them.',
           live: (f) => {
             const c = f.board?.calendar;
             if (!c) return null;
@@ -703,7 +703,7 @@ const MAP = { t: 'SOARD', children: [
           when: 'Every hour on the live hub’s heartbeat (every 5 minutes while there’s a backlog), and when Board is opened.',
           does: 'Searches Peter and Holly’s Gmail for board agendas and minutes with attachments, and for QuickBooks’ report emails. A past agenda (PDF or Word) becomes its meeting with its notes and who was there; one for a meeting nobody has written in fills its agenda; every attachment is kept on its meeting (reports as financials). A meeting someone wrote in is never overwritten. The same email in both inboxes is read once. It never sends, deletes, labels or marks anything read.',
           touches: ['Gmail', 'Workers AI', 'D1', 'R2'], where: 'functions/api/_board-mail.js (via _board.js maybeRunBoard, board-admin.js)',
-          note: 'Needs Google Admin → Security → API controls → Domain-wide delegation: add https://www.googleapis.com/auth/gmail.readonly to the site’s service account. Board → Meetings names the client ID.',
+          note: 'Needs Google Admin → Security → API controls → Domain-wide delegation: add https://www.googleapis.com/auth/gmail.readonly to the site’s service account, and the Gmail API turned on in its Google Cloud project. Board → Meetings shows both steps until they work.',
           live: (f) => {
             const m = f.board?.mail;
             if (!m) return null;
@@ -713,9 +713,22 @@ const MAP = { t: 'SOARD', children: [
             if (!m.checkedAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
             return ON(m.waiting ? `${plural(m.waiting, 'email')} still to read.` : 'Up to date.', m.checkedAt);
           } },
+        { t: 'The meeting invite, with Google Meet', s: 'live', k: 'admin',
+          when: 'Peter or Holly presses Send the invite in a meeting’s Getting ready. After that, each minute on the live hub’s heartbeat, once a new place (or, for Board’s own invite, a new day or time) has stood two minutes.',
+          does: 'Puts the meeting on the calendar of Board → Settings → Invites come from (Holly’s, as president, until saved) and Google emails the invitations: every active board member with an email, and the Board area’s admins. Google Meet is the video call, with transcripts turned on; the place goes on when there is one. A meeting already on that calendar gets that same event updated (the missing board members added, Meet and a TBD place filled in), never a second invite.',
+          touches: ['Google Calendar', 'Google Meet', 'D1'], where: 'functions/api/_board-invite.js (board-admin.js; _board.js maybeRunBoard)',
+          note: 'Transcripts need https://www.googleapis.com/auth/meetings.space.settings on the service account’s domain-wide delegation and the Google Meet REST API turned on in its Google Cloud project. Board → Meetings shows both steps until they work; the invite and its Meet go out either way.',
+          live: (f) => {
+            const i = f.board?.invite;
+            if (!i) return null;
+            if (!f.board.calendar?.configured) return ATTN('GOOGLE_CALENDAR_KEY is missing, so invites can’t be sent from Board.');
+            if (i.needsSetup) return ATTN(`${plural(i.needsSetup, 'invite')} went out with Google Meet but no transcript yet: Google Admin hasn’t allowed it. Board → Meetings has the steps.`, i.lastAt);
+            if (i.failing) return ATTN(`Transcripts couldn’t be turned on for ${plural(i.failing, 'meeting')}. Update the invite in Board to try again.`, i.lastAt);
+            return ON(i.ahead ? `${plural(i.ahead, 'invite')} out for meetings ahead${i.waiting ? `, ${plural(i.waiting, 'change')} going on in a moment` : ''}.` : 'No invites out for meetings ahead.', i.lastAt);
+          } },
         { t: 'The packet email', s: 'live', k: 'admin',
-          when: 'Peter or Holly presses Email the board on a shared meeting in Board (Send it to me first sends them a preview).',
-          does: 'Emails each active board member on their own: when and where, the agenda’s headings and a button to the meeting on the board page. Never notes, numbers or files; a confidential item shows only as “a confidential item”.',
+          when: 'Peter or Holly presses Email the documents on a shared meeting in Board (Send it to me first sends them a preview). The minutes and the “who’s coming?” reminder go the same way.',
+          does: 'Emails each active board member on their own: when and where, the agenda’s headings, a button to the meeting on the board page, and the meeting’s files attached (up to 30 MB in all; staff-only files never). Never notes or numbers; a board-only item shows only as “A board-only item (on the board page)”.',
           touches: ['Resend', 'D1'], where: 'functions/api/_board.js (sendPacket, packetEmail) · board-admin.js',
           live: (f) => {
             const b = f.board;

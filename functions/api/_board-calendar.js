@@ -17,6 +17,8 @@
  * of doubled, and so is each admin's own copy of the same meeting: one meeting
  * per day, named and timed by the copy that organized it. A meeting whose event is gone stays, marked gone for the admins.
  * New meetings start from Settings' agenda, not shared, like any new meeting.
+ * An invite Board sent itself (./_board-invite.js) isn't a meeting to bring
+ * in: Board already has it, so only the board's replies come back from it.
  *
  * It reads through the site's Google service account (GOOGLE_CALENDAR_KEY,
  * domain-wide delegation, the same one reveal invites go out with) and never
@@ -26,14 +28,14 @@
 import { accessToken, listEvents } from './_google-calendar.js';
 import { easternParts } from './_reveals.js';
 import { boardAdmins, activeBoard, readState, writeState } from './_board-roles.js';
-import { listMeetings, saveMeeting, createMeeting, deleteMeeting, ensureSchema } from './_board.js';
+import { listMeetings, getMeeting, saveMeeting, patchMeeting, createMeeting, deleteMeeting, ensureSchema } from './_board.js';
 import { todayEastern, cleanMeeting } from '../../public/admin/board-shared.js';
 
 const KEY = 'calendar';
 const EVERY_MS = 60 * 60 * 1000;
 const AHEAD_DAYS = 400;
-// A look by older code is redone at once (2: one meeting per day across calendars)
-const VERSION = 2;
+// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites)
+const VERSION = 3;
 export const CALENDAR_BY = 'the calendar';
 
 const NAMED = /\b(meeting|mtg)\b|\bQ[1-4]\b/i;
@@ -162,10 +164,28 @@ async function look(env, { fetchImpl, now }) {
       errors.push(`${email.split('@')[0]}’s calendar: ${String(err.message).slice(0, 200)}`);
     }
   }
+  let meetings = await listMeetings(env.DB);
+  const bySlug = Object.fromEntries(board.filter((p) => p.email).map((p) => [p.email, p.slug]));
+  // Who's invited and how they answered, by board member (the organizer's copy knows best, so it goes first)
+  const repliesIn = (events) => {
+    const replies = {};
+    for (const ev of events) {
+      for (const a of ev.attendees || []) {
+        const slug = bySlug[String(a.email || '').toLowerCase()];
+        if (slug && !replies[slug]) replies[slug] = ['accepted', 'declined', 'tentative'].includes(a.responseStatus) ? a.responseStatus : 'invited';
+      }
+    }
+    return replies;
+  };
+  // Board's own invites (not the organizer's event Board added the board to): their meeting is already here, so only the replies come back
+  const ownInvite = new Map(meetings.filter((m) => m.invite?.eventId && m.invite.eventId !== m.calendar?.eventId).map((m) => [m.invite.eventId, m]));
+  const own = new Map(); // meeting id → [ev]
   // One meeting per day. Peter's and Holly's copies of the same meeting are one meeting: the copy that
   // organized it names it and sets its times, and a video link or a real place comes from whichever copy has one
   const days = new Map(); // date → [{ uid, ev, from, when, place }]
   for (const [uid, { ev, from }] of found) {
+    const mine = ownInvite.get(ev.id);
+    if (mine) { own.set(mine.id, [...(own.get(mine.id) || []), ev].sort((a, b) => Number(!!b.organizer?.self) - Number(!!a.organizer?.self))); continue; }
     const when = eventWhen(ev);
     if (!when.date || when.date < today) continue;
     if (!days.has(when.date)) days.set(when.date, []);
@@ -173,7 +193,6 @@ async function look(env, { fetchImpl, now }) {
   }
   const counts = { added: 0, moved: 0, linked: 0, gone: 0, merged: 0 };
   const onCalendar = new Set();
-  let meetings = await listMeetings(env.DB);
   for (const [date, copies] of days) {
     const lead = copies.find((c) => c.ev.organizer?.self) || copies[0];
     const uids = [lead.uid, ...copies.filter((c) => c !== lead).map((c) => c.uid)];
@@ -182,15 +201,7 @@ async function look(env, { fetchImpl, now }) {
     const place = hasPlace(lead) ? lead.place : (copies.find(hasPlace)?.place || lead.place);
     const video = lead.place.video || copies.find((c) => c.place.video)?.place.video || '';
     const { when, ev, from } = lead;
-    // Who's invited and how they answered the invite (the organizer's copy knows), by board member
-    const bySlug = Object.fromEntries(board.filter((p) => p.email).map((p) => [p.email, p.slug]));
-    const replies = {};
-    for (const c of [lead, ...copies.filter((x) => x !== lead)]) {
-      for (const a of c.ev.attendees || []) {
-        const slug = bySlug[String(a.email || '').toLowerCase()];
-        if (slug && !replies[slug]) replies[slug] = ['accepted', 'declined', 'tentative'].includes(a.responseStatus) ? a.responseStatus : 'invited';
-      }
-    }
+    const replies = repliesIn([lead, ...copies.filter((x) => x !== lead)].map((c) => c.ev));
     // Its meeting: one a person has worked on, else the oldest. An untouched extra copy goes (one per calendar, before)
     const linked = meetings.filter((x) => x.calendar && [x.calendar.uid, ...(x.calendar.others || [])].some((u) => uids.includes(u)))
       .sort((a, b) => (Number(b.updatedBy !== CALENDAR_BY) - Number(a.updatedBy !== CALENDAR_BY)) || String(a.createdAt).localeCompare(String(b.createdAt)));
@@ -206,6 +217,8 @@ async function look(env, { fetchImpl, now }) {
       link: /^https:\/\//.test(ev.htmlLink || '') ? ev.htmlLink : '', gone: false, place: !!(place.location || place.address), call: !!video,
       said: copies.map((c) => c.place.said).find(Boolean) || '',
       replies,
+      // The organizer's own event, so Board can add guests, the place and Google Meet to it (./_board-invite.js)
+      eventId: String(ev.id || ''), organizer: String(ev.organizer?.email || '').toLowerCase(),
     };
     if (!m) {
       m = await createMeeting(env, { date, by: CALENDAR_BY });
@@ -226,6 +239,13 @@ async function look(env, { fetchImpl, now }) {
       if (m.calendar?.uid && (m.date !== next.date || m.start !== next.start)) counts.moved += 1;
       await saveMeeting(env.DB, next, { by: CALENDAR_BY });
     }
+  }
+  // The replies to Board's own invites
+  for (const [id, events] of own) {
+    const m = await getMeeting(env.DB, id);
+    if (!m?.invite) continue;
+    const replies = repliesIn(events);
+    if (JSON.stringify(replies) !== JSON.stringify(m.invite.replies || {})) await patchMeeting(env.DB, id, (cur) => ({ ...cur, invite: cur.invite ? { ...cur.invite, replies } : cur.invite }));
   }
   // A meeting from today on whose event is on no calendar any more: kept, marked gone (only when every calendar was read)
   if (!errors.length) {
