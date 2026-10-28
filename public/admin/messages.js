@@ -216,8 +216,8 @@ const MAP = { t: 'Everything we send', children: [
           touches: ['JobTread', 'D1'], where: 'functions/api/_applicants.js (messageFamily)',
           live: first(needs('jobtread', NO_JT), (f) => (!f.family ? null : ON(sentLine(f.family.message), f.family.message?.last))) },
       ]},
-      { t: 'Community project status emails', children: [
-        { t: 'Application received (community project)', s: 'live', k: 'jobtread', by: 'auto', preview: 'org-welcome', change: CHANGE.appEmails,
+      { t: 'Community projects', children: [
+        { t: 'Received (community project)', s: 'live', k: 'jobtread', by: 'auto', preview: 'org-welcome', change: CHANGE.appEmails,
           who: 'Everyone on the organization’s account in JobTread with an email address: its main contact and anyone else listed.',
           when: 'Right away when a school, clinic or nonprofit applies at /apply/community-project/, with its application PDF attached. An organization staff add by hand gets it once Applied has settled.',
           subject: ['Application Status'],
