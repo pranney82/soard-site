@@ -4206,6 +4206,44 @@
     .pt-loose__dismissed ul { display: grid; gap: 0.35rem; margin-top: 0.5rem; list-style: none; }
     .pt-loose__dismissed li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
     .pt-loose__dismissed small { color: var(--color-text-muted); }
+    .pt-loose__dismissed + .pt-loose__dismissed { margin-top: 0.75rem; }
+    /* Waiting for a logo: Vendors and Sponsors on JobTread jobs */
+    .pt-ready { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    /* Too narrow for five in a row: the three checks, then the two lists to go through */
+    @media (max-width: 1400px) {
+      .pt-ready { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+      .pt-ready > .ppl-ready__tile { grid-column: span 2; }
+      .pt-ready > .ppl-ready__tile--review { grid-column: span 3; }
+    }
+    .pt-wait__logo { flex-shrink: 0; }
+    .pt-wait__who { font-size: var(--fs-xs); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+    .pt-wait .pt-loose__text small a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+    /* Phones: the words get the width, and the choices stack full width under them */
+    @media (max-width: 768px) {
+      .pt-wait .pt-wait__logo { display: none; }
+      .pt-wait .pt-loose__text { width: 100%; }
+      .pt-wait .pt-loose__acts { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
+      .pt-wait .pt-loose__acts .btn { margin-left: 0; justify-content: center; }
+      .pt-wait .pt-loose__other .btn { flex-shrink: 0; }
+      .pt-wait .pt-loose__other { display: flex; width: 100%; }
+      .pt-wait .pt-loose__select { flex: 1; min-width: 0; }
+    }
+    .pt-wait__who a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+    .pt-wait__hint { font-size: var(--fs-xs); color: var(--tone-warn-fg); }
+    .pt-wait__none { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.75rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+    .pt-wait__none svg { width: 16px; height: 16px; color: var(--color-success); }
+    .pt-wait__error { margin-bottom: 0.75rem; }
+    .pt-wait__emails { display: grid; gap: 0.35rem; margin-top: 1rem; padding-top: 0.85rem; border-top: 1px solid var(--color-border); }
+    .pt-wait__emails-row { display: flex; gap: 0.5rem; }
+    .pt-wait__emails-row .form-input { flex: 1; min-width: 0; }
+    .kd-logowait { margin-bottom: 0.85rem; padding: 0.7rem 0.85rem; border: 1px solid #EBCB4D; border-radius: 12px; background: var(--tone-warn-surface); }
+    .kd-logowait__lead { margin: 0 0 0.45rem; font-size: var(--fs-sm); color: var(--tone-warn-fg); }
+    .kd-logowait ul { display: grid; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
+    .kd-logowait li { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+    .kd-logowait__who { display: flex; flex-direction: column; min-width: 0; font-size: var(--fs-sm); }
+    .kd-logowait__who small { font-size: var(--fs-xs); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+    .kd-logowait__who a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+    .kd-logowait .btn { display: inline-flex; align-items: center; gap: 0.3rem; }
 
     /* Deleting a media logo stories use */
     .pt-move { display: grid; gap: 0.5rem; margin: 0 0 0.75rem; padding: 0; border: none; }
@@ -4225,6 +4263,8 @@
       .pt-row > .ppl-menu { grid-area: menu; align-self: start; }
       .pt-row .ppl-row__sub { white-space: normal; }
       .pt-ready { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .pt-ready > .ppl-ready__tile { grid-column: auto; }
+      .pt-ready > .pt-ready__waiting { grid-column: span 2; }
     }
     @media (max-width: 1024px) {
       .pt-selectbar { top: calc(var(--top-h) + 0.5rem); }
@@ -4270,7 +4310,7 @@
     }
     @media (pointer: coarse) {
       .pt-same__acts .btn, .pt-loose__acts .btn, .pt-margins .btn, .pt-kids__all, .pt-crop-btn, .pt-cropnote .ppl-link, .pt-loose__dismissed .btn, .pt-loose__dismissed .ppl-link, .form-select.pt-loose__select, .form-select.pt-move__select { min-height: 44px; }
-      .pt-selectbar .btn, .pt-catpick__btn, .pt-cat, .pt-cats.is-compact .pt-cat, .pt-kid, .pt-loose__item .btn, .pt-merge__opt, .pt-places a, .pt-create__logo-btns .btn, .pt-logo-stage .btn { min-height: 44px; }
+      .kd-logowait .btn, .pt-selectbar .btn, .pt-catpick__btn, .pt-cat, .pt-cats.is-compact .pt-cat, .pt-kid, .pt-loose__item .btn, .pt-merge__opt, .pt-places a, .pt-create__logo-btns .btn, .pt-logo-stage .btn { min-height: 44px; }
       .pt-tile__check, .pt-tile .pt-tile__grip { opacity: 1; }
       .pt-row > .pt-check { margin-top: 0; }
     }
@@ -10635,6 +10675,7 @@
       const photoInput = useRef(null);
       const planInput = useRef(null);
       const logoInput = useRef(null);
+      const logoFor = useRef(null); // the JobTread company an upload is for (named after them, so the site knows it's theirs)
       const videoInput = useRef(null);
 
       const record = useMemo(() => kdSaveRecord(data), [data]);
@@ -10910,14 +10951,14 @@
         setPartnerQuery('');
         setPartnerOpen(false);
       };
-      const addLogo = async (files) => {
+      const addLogo = async (files, named = null) => {
         const f = [...files].find((x) => /^image\//.test(x.type));
         if (!f) return;
         const key = kdNewKey();
         let file = f;
         if (/svg/.test(f.type)) { try { file = await svgToPng(f); } catch {} }
         const local = URL.createObjectURL(file);
-        set((d) => ({ partnerLogos: [...d.partnerLogos, { url: local, name: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), _key: key, _tempId: key }] }));
+        set((d) => ({ partnerLogos: [...d.partnerLogos, { url: local, name: named || f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), _key: key, _tempId: key }] }));
         setUploads((u) => ({ ...u, [key]: true }));
         const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
         await kdUploadAll([{ file, key }], {
@@ -10927,7 +10968,7 @@
         });
         URL.revokeObjectURL(local);
         setUploads((u) => { const n = { ...u }; delete n[key]; return n; });
-        addToast('Logo added. Check the name: screen readers read it.', 'success');
+        addToast(named ? `${named}’s logo added. Save to put it on the page.` : 'Logo added. Check the name: screen readers read it.', 'success');
       };
       const removeLogo = (key) => {
         const prev = dataRef.current.partnerLogos;
@@ -11561,9 +11602,10 @@
 
         ${sec('partners', 'Partners', data.partnerLogos.length ? 'Logos in the Partners chapter, in this order. Drag to reorder.' : 'Companies that made the room happen, with their logos.',
           html`${fixableLogos.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => fixLogos(fixableLogos)}>Use current ${fixableLogos.length === 1 ? 'logo' : `logos (${fixableLogos.length})`}</button>` : null}
-            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => logoInput.current?.click()}>${kdIcon.upload} Upload a logo</button>
-            <input type="file" accept="image/*" hidden ref=${logoInput} onChange=${(e) => { addLogo([...e.target.files]); e.target.value = ''; }} />`,
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => { logoFor.current = null; logoInput.current?.click(); }}>${kdIcon.upload} Upload a logo</button>
+            <input type="file" accept="image/*" hidden ref=${logoInput} onChange=${(e) => { addLogo([...e.target.files], logoFor.current); logoFor.current = null; e.target.value = ''; }} />`,
           html`
+          <${KdLogoWaiting} record=${slug} logos=${data.partnerLogos} onUpload=${(name) => { logoFor.current = name; logoInput.current?.click(); }} />
           <div class="kd-combobox ppl-combobox">
             <label class="sr-only" for="kd-partner-q">Add a partner from the directory</label>
             <div class="search-bar">
@@ -12058,6 +12100,17 @@
       // Logos on kid pages marked as not a partner (a donor wall, a one-off photo)
       const [dismissed, setDismissed] = useState([]);
       useEffect(() => { ptReadDismissed().then((d) => setDismissed(d.keys)).catch(() => {}); }, []);
+      // Vendors and Sponsors on JobTread jobs with no logo yet; #partners?waiting (the staff email's link) opens them
+      const [waiting, setWaiting] = useState(null);
+      const readWaiting = () => ptWaitingRead().then((r) => { if (!r.success || !Array.isArray(r.waiting)) throw new Error(r.error || 'Couldn’t load'); setWaiting(r); })
+        .catch((e) => setWaiting((w) => (w && !w.failed ? w : { failed: e.message || 'Couldn’t load', waiting: [], dismissed: [], added: [] })));
+      useEffect(() => {
+        readWaiting();
+        const open = () => { if (ptWaitingAsked) { ptWaitingAsked = false; setDialog({ kind: 'waiting' }); readWaiting(); } };
+        open();
+        window.addEventListener('soard-partners-waiting', open);
+        return () => window.removeEventListener('soard-partners-waiting', open);
+      }, []);
       const dupes = useMemo(() => PS.duplicatesOf(partners), [partners]);
       const names = useMemo(() => new Map(partners.map((p) => [p.slug, p.name])), [partners]);
       const logoState = usePtLogoState(partners.map((p) => p.logo));
@@ -12323,6 +12376,12 @@
             <span class="ppl-ready__value">${loose.length}</span>
             <span class="ppl-ready__sub">${loose.length ? `${loose[0].name} is on ${kdPlural(loose[0].kids.length, 'kid page')}` : 'Every partner logo on a kid page is listed'}</span>
           </button>
+          <button type="button" class=${`ppl-ready__tile ppl-ready__tile--review pt-ready__waiting${waiting?.waiting?.length ? ' is-waiting' : ''}`}
+            onClick=${() => { setDialog({ kind: 'waiting' }); readWaiting(); }} title="Vendors and Sponsors on JobTread jobs whose company has no logo yet">
+            <span class="ppl-ready__label">JobTread, no logo</span>
+            <span class="ppl-ready__value">${waiting?.failed ? '?' : waiting ? waiting.waiting.length : html`<span class="spinner spinner-14" />`}</span>
+            <span class="ppl-ready__sub">${!waiting ? 'Checking' : waiting.failed ? 'Couldn’t check' : waiting.waiting.length ? `${waiting.waiting[0].name}, for ${ptPageOf(waiting.waiting[0])}` : 'Every Vendor and Sponsor has a logo'}</span>
+          </button>
         </div>
         <div class="ppl-toolbar pt-toolbar">
           <div class="search-bar ppl-search">
@@ -12383,9 +12442,11 @@
           <button class="btn btn-ghost btn-sm" onClick=${() => { setSearch(''); setFilter('all'); }}>Show everyone</button></div>` : null}
         `}
         ${dialog?.kind === 'create' ? html`<${PartnerCreateDialog} partners=${partners} prefill=${dialog.prefill} addToast=${addToast}
-          onClose=${() => { setDialog(dialog.from === 'missing' ? { kind: 'missing' } : null); onCreateClose?.(); }}
+          onClose=${() => { setDialog(dialog.from ? { kind: dialog.from } : null); onCreateClose?.(); }}
           onCreated=${(slug, name) => {
-            setDialog(dialog.from === 'missing' ? { kind: 'missing' } : null);
+            setDialog(dialog.from ? { kind: dialog.from } : null);
+            // The save puts a waiting logo on its page in the background: look again once it has
+            if (dialog.from === 'waiting') { setTimeout(readWaiting, 2500); setTimeout(readWaiting, 8000); }
             onCreateClose?.();
             setSearch(''); setFilter('all');
             setFlash(slug);
@@ -12395,6 +12456,10 @@
         ${dialog?.kind === 'missing' ? html`<${PtMissingDialog} loose=${loose} dismissed=${looseDismissed} partners=${partners} onClose=${() => setDialog(null)}
           onLink=${linkLoose} onSwap=${swapLoose} onDismiss=${(g) => setAside(g, true)} onUndismiss=${(g) => setAside(g, false)}
           onAdd=${(g) => setDialog({ kind: 'create', from: 'missing', prefill: { name: g.name, logo: g.url, kids: g.kids.length } })} />` : null}
+        ${dialog?.kind === 'waiting' ? html`<${PtWaitingDialog} view=${waiting} partners=${partners} onEdit=${onEdit} addToast=${addToast} onClose=${() => setDialog(null)}
+          onChange=${(v) => { if (Array.isArray(v?.waiting)) setWaiting(v); else readWaiting(); }}
+          onAdd=${(r) => setDialog({ kind: 'create', from: 'waiting', prefill: { name: r.name, website: ptSiteOf(r.people),
+            note: `${r.name} is a ${ptRolesOf(r.people).toLowerCase()} on ${ptPageOf(r)}. Add their logo here and it goes on that page by itself, and on any page they work on after this.` } })} />` : null}
         ${dialog?.kind === 'crop' ? html`<${PtCropTool} list=${all.filter((x) => x.margins >= PS.MARGIN_NOTE && x.p.logo).sort((a, b) => b.margins - a.margins)} checking=${measured.left} addToast=${addToast}
           onClose=${() => setDialog(null)} onDone=${() => { setDialog(null); onReload?.(); }} />` : null}
         ${dialog?.kind === 'deleted' ? html`<${PtDeletedDialog} collection="partners" taken=${new Set(partners.map((p) => p.slug))} noun="partner"
@@ -12593,6 +12658,187 @@
       <//>`;
     }
 
+    // ── Vendors and Sponsors on JobTread jobs (functions/api/_kid-partners.js) ──
+    const PT_WAITING_API = '/api/kid-partners-admin';
+    // The staff email's link (#partners?waiting) opens Waiting for a logo. The router tidies the
+    // address before Partners has loaded, so the ask is noted here, as the page starts or the link is followed
+    const PT_WAITING_HASH = /^#partners\?waiting\b/;
+    let ptWaitingAsked = PT_WAITING_HASH.test(location.hash);
+    window.addEventListener('hashchange', () => {
+      if (!PT_WAITING_HASH.test(location.hash)) return;
+      ptWaitingAsked = true;
+      // Back to #partners, so the same link followed again is a change the page hears
+      history.replaceState(null, '', `${location.pathname}${location.search}#partners`);
+      window.dispatchEvent(new Event('soard-partners-waiting'));
+    });
+    const ptWaitingRead = () => fetch(PT_WAITING_API, { cache: 'no-store' }).then((r) => apiJson(r, PT_WAITING_API));
+    // An email domain that's the company's own, for the new partner's website ("ron@randallbrothers.com")
+    const PT_FREE_MAIL = /^(gmail|googlemail|yahoo|ymail|hotmail|outlook|live|msn|icloud|me|mac|aol|comcast|att|bellsouth|verizon|sbcglobal|charter|cox|earthlink|protonmail|proton|soardcharity)\./;
+    const ptSiteOf = (people) => {
+      const d = (people || []).map((p) => String(p.email || '').split('@')[1] || '').find((x) => x && !PT_FREE_MAIL.test(x));
+      return d ? `https://${d}` : '';
+    };
+    const ptRolesOf = (people) => [...new Set((people || []).map((p) => p.role))].join(' and ');
+    const ptPageOf = (r) => (r.page ? `${r.page.kind === 'community' ? `the ${r.page.name} page` : `${r.page.name}’s page`}` : 'a page');
+    const ptEditorOf = (r) => (r.page ? `#kids/${r.page.kind === 'community' ? 'community/' : ''}${encodeURIComponent(r.page.slug)}` : '#kids');
+
+    /**
+     * On a kid's (or community project's) Partners section: the Vendors and
+     * Sponsors on its JobTread job still without a logo, each with an upload
+     * named after the company, so the site knows the logo is theirs
+     */
+    function KdLogoWaiting({ record, logos = [], onUpload }) {
+      const [rows, setRows] = useState([]);
+      useEffect(() => {
+        if (!record) return undefined;
+        let live = true;
+        ptWaitingRead().then((r) => { if (live && r.success && Array.isArray(r.waiting)) setRows(r.waiting.filter((x) => x.record === record)); }).catch(() => {});
+        return () => { live = false; };
+      }, [record]);
+      // One uploaded here (named for them) counts as soon as it's on the page
+      const left = rows.filter((r) => !logos.some((l) => PS.nameKey(l.name) === r.company));
+      if (!left.length) return null;
+      return html`<div class="kd-logowait" role="group" aria-labelledby="kd-logowait-h">
+        <p id="kd-logowait-h" class="kd-logowait__lead"><strong>${kdPlural(left.length, 'logo')} still needed</strong> for the ${left.length === 1 ? 'company' : 'companies'} on this job in JobTread</p>
+        <ul>${left.map((r) => html`<li key=${r.company}>
+          <span class="kd-logowait__who"><strong>${r.name}</strong>
+            <small>${ptRolesOf(r.people)}${r.people[0]?.name ? ` · ${r.people[0].name}` : ''}${r.people[0]?.email ? html` · <a href=${`mailto:${r.people[0].email}`}>${r.people[0].email}</a>` : ''}</small></span>
+          <button type="button" class="btn btn-ghost btn-sm" onClick=${() => onUpload(r.name)}>${kdIcon.upload} Upload their logo</button>
+        </li>`)}</ul>
+      </div>`;
+    }
+
+    /**
+     * Partners → Waiting for a logo: Vendors and Sponsors on a JobTread job
+     * whose company has no logo anywhere yet. Adding the logo in Partners (or
+     * on the page) puts it on the page by itself; "No logo needed" sets one
+     * aside. Also who's emailed, and what went on lately.
+     */
+    function PtWaitingDialog({ view, partners = [], onAdd, onEdit, onChange, onClose, addToast }) {
+      const [busy, setBusy] = useState(null);
+      const [showDismissed, setShowDismissed] = useState(false);
+      const [showAdded, setShowAdded] = useState(false);
+      const [showLinks, setShowLinks] = useState(false);
+      const [other, setOther] = useState({}); // row key → slug picked in "Same as a partner…"
+      const sorted = useMemo(() => [...partners].sort((a, b) => String(a.name).localeCompare(String(b.name))), [partners]);
+      const nameOfPartner = (slug) => partners.find((p) => p.slug === slug)?.name || slug;
+      const [emails, setEmails] = useState(() => (view?.settings?.emails || []).join(', '));
+      useEffect(() => { setEmails((view?.settings?.emails || []).join(', ')); }, [view?.settings?.updatedAt]);
+      const act = async (key, body, done) => {
+        setBusy(key);
+        try {
+          const r = await ptPost(PT_WAITING_API, body);
+          if (!r.success) throw new Error(r.error);
+          onChange(r.view || null);
+          done?.(r);
+        } catch (e) { addToast(`Couldn’t save that: ${e.message}`, 'error'); }
+        setBusy(null);
+      };
+      const setAside = (r, on) => act(`${on ? 'd' : 'u'}-${r.record}-${r.company}`, { [on ? 'dismiss' : 'undismiss']: { record: r.record, company: r.company } },
+        () => addToast(on ? `${r.name}: no logo needed` : `${r.name} is waiting for a logo again`, 'info', on ? { label: 'Undo', fn: () => setAside(r, false) } : null));
+      // JobTread calls them something else: link once, and their logo goes on now and on every job after
+      const sameAs = (r, partner) => act(`l-${r.record}-${r.company}`, { link: { company: r.company, partner: partner.slug } }, (res) => {
+        const n = (res.added || []).reduce((k, o) => k + o.added.length, 0);
+        addToast(`${r.name} is ${partner.name}${n ? `: their logo is on ${kdPlural(n, 'page')} now, and goes live with the next publish` : partner.logo ? '' : '. Add their logo in Partners and it goes on the page by itself'}`, 'success');
+      });
+      const unlink = (l) => act(`ul-${l.company}`, { unlink: { company: l.company } }, () => addToast(`${l.name} isn’t linked to ${nameOfPartner(l.partner)} any more`, 'info'));
+      const saveEmails = () => {
+        const list = emails.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
+        act('emails', { settings: { emails: list } }, (r) => {
+          setEmails(r.settings.emails.join(', '));
+          addToast(r.settings.emails.length ? `Missing logos go to ${r.settings.emails.join(', ')}` : 'Nobody is emailed about missing logos now', 'success');
+        });
+      };
+      const savedEmails = (view?.settings?.emails || []).join(', ');
+      const dirty = emails.split(/[\s,;]+/).filter(Boolean).join(', ') !== savedEmails;
+      if (!view) return html`<${KdDialog} title="Waiting for a logo" size="lg" onClose=${onClose}><p class="text-muted"><span class="spinner spinner-14" /> Loading…</p><//>`;
+      if (view.failed) return html`<${KdDialog} title="Waiting for a logo" size="lg" onClose=${onClose}>
+        <p class="kd-bad pt-wait__error">Couldn’t load the list: ${view.failed}</p>
+        <button type="button" class="btn btn-sm" onClick=${() => onChange(null)} data-autofocus>Try again</button><//>`;
+      const { waiting = [], dismissed = [], added = [], links = [] } = view;
+      const who = (view.settings?.emails || []).map(kdWho);
+      return html`<${KdDialog} title="Waiting for a logo"
+        sub=${`Vendors and Sponsors on a JobTread job get their logo on the kid’s page by itself. These have no logo anywhere yet. Add it in Partners, or on the page, and it goes on within a few minutes and is published.`}
+        size="lg" onClose=${onClose} busy=${!!busy}>
+        ${view.lastError ? html`<p class="kd-bad pt-wait__error">The last JobTread check failed ${kdWhen(view.lastError.at)}: ${view.lastError.error}. It tries again every 10 minutes.</p>` : null}
+        ${view.lastEmailError ? html`<p class="kd-bad pt-wait__error">The email about missing logos didn’t go ${kdWhen(view.lastEmailError.at)}: ${view.lastEmailError.error}. It tries again at the next check.</p>` : null}
+        ${waiting.length ? html`<ul class="pt-loose pt-wait">
+          ${waiting.map((r, i) => html`<li key=${`${r.record}-${r.company}`} class="pt-loose__item">
+            <${PtLogo} name=${r.name} logo="" w=${72} h=${40} className="pt-wait__logo" />
+            <span class="pt-loose__text">
+              <strong>${r.name}</strong>
+              <small>${ptRolesOf(r.people)} on <a href=${ptEditorOf(r)} onClick=${onClose}>${ptPageOf(r)}</a>${r.page?.year ? ` (${r.page.year})` : ''}${r.page?.draft ? ', hidden for now' : ''}${' · '}<a href=${`https://app.jobtread.com/jobs/${encodeURIComponent(r.jobId || '')}`} target="_blank" rel="noopener">the job in JobTread</a>${` · first seen ${kdWhen(r.since)}${r.emailedAt ? ` · emailed ${kdWhen(r.emailedAt)}` : ''}`}</small>
+              ${r.people.map((p, j) => html`<span key=${j} class="pt-wait__who">${p.name || 'No name in JobTread'}${p.email ? html` · <a href=${`mailto:${p.email}`}>${p.email}</a>` : ' · no email in JobTread'}</span>`)}
+              ${r.hint && !/same company\?$/.test(r.hint) ? html`<span class="pt-wait__hint">${r.hint}</span>` : null}
+              <span class="pt-loose__acts">
+                ${(() => {
+                  const key = `${r.record}-${r.company}`;
+                  // Already in Partners (by name, or linked) but without a logo: that partner needs one, nothing to link
+                  const linkedTo = links.find((l) => l.company === r.company)?.partner;
+                  const listed = partners.find((p) => p.slug === linkedTo) || partners.find((p) => PS.nameKey(p.name) === r.company || PS.nameKey(p.slug) === r.company);
+                  if (listed) return html`
+                    <button type="button" class="btn btn-primary btn-sm" disabled=${!!busy} data-autofocus=${i === 0 ? '' : null}
+                      onClick=${() => { onClose(); onEdit(listed.slug); }}>${pplIcon.plus} Add a logo to ${listed.name}</button>`;
+                  // A close name leads ("Therapy Gym" for Therapy Gyms); a word in common is only offered, after Add
+                  const cands = PS.similarPartners(r.name, partners, { min: 0.3, max: 2 });
+                  const strong = cands.filter((c) => c.score >= 0.7);
+                  const weak = cands.filter((c) => c.score < 0.7);
+                  const same = (c, primary) => html`<button type="button" key=${c.partner.slug} class=${`btn btn-sm ${primary ? 'btn-primary' : 'btn-ghost'} pt-same-as`} disabled=${!!busy}
+                      title=${c.why} onClick=${() => sameAs(r, c.partner)} data-autofocus=${primary && i === 0 ? '' : null}>
+                    ${busy === `l-${key}` ? html`<span class="spinner spinner-14" />` : null}Same as ${c.partner.name}${primary ? '' : '?'}</button>`;
+                  return html`
+                    ${strong.map((c, j) => same(c, j === 0))}
+                    <button type="button" class=${`btn btn-sm ${strong.length ? 'btn-ghost' : 'btn-primary'}`} disabled=${!!busy} data-autofocus=${i === 0 && !strong.length ? '' : null}
+                      onClick=${() => onAdd(r)}>${pplIcon.plus} Add to Partners</button>
+                    ${weak.map((c) => same(c, false))}
+                    <span class="pt-loose__other">
+                      <label class="sr-only" for=${`pt-wait-other-${key}`}>Same as another partner</label>
+                      <select id=${`pt-wait-other-${key}`} class="form-select pt-loose__select" value=${other[key] || ''} onChange=${(e) => setOther((o) => ({ ...o, [key]: e.target.value }))}>
+                        <option value="">${cands.length ? 'Another partner…' : 'Same as a partner…'}</option>
+                        ${sorted.map((p) => html`<option key=${p.slug} value=${p.slug}>${p.name}</option>`)}
+                      </select>
+                      ${other[key] ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => sameAs(r, partners.find((p) => p.slug === other[key]))}>Link</button>` : null}
+                    </span>`;
+                })()}
+                <button type="button" class="btn btn-ghost btn-sm pt-loose__not" disabled=${!!busy} onClick=${() => setAside(r, true)}>
+                  ${busy === `d-${r.record}-${r.company}` ? html`<span class="spinner spinner-14" />` : null}No logo needed</button>
+              </span>
+            </span>
+          </li>`)}
+        </ul>` : html`<p class="pt-wait__none">${pplIcon.check} Every Vendor and Sponsor on an open job has a logo on their page${dismissed.length ? ', or doesn’t need one' : ''}.</p>`}
+        ${dismissed.length ? html`<div class="pt-loose__dismissed">
+          <button type="button" class="ppl-link" aria-expanded=${showDismissed} onClick=${() => setShowDismissed((v) => !v)}>
+            ${kdPlural(dismissed.length, 'company', 'companies')} marked no logo needed</button>
+          ${showDismissed ? html`<ul>${dismissed.map((r) => html`<li key=${`${r.record}-${r.company}`}><span>${r.name} <small>${ptRolesOf(r.people)} on ${ptPageOf(r)}${r.by ? ` · ${kdWho(r.by)}` : ''}</small></span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setAside(r, false)}>Undo</button></li>`)}</ul>` : null}
+        </div>` : null}
+        ${links.length ? html`<div class="pt-loose__dismissed">
+          <button type="button" class="ppl-link" aria-expanded=${showLinks} onClick=${() => setShowLinks((v) => !v)}>
+            ${kdPlural(links.length, 'company', 'companies')} JobTread names differently, linked to a partner</button>
+          ${showLinks ? html`<ul>${links.map((l) => html`<li key=${l.company}><span>${l.name} <small>is ${nameOfPartner(l.partner)}</small></span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => unlink(l)}>Unlink</button></li>`)}</ul>` : null}
+        </div>` : null}
+        ${added.length ? html`<div class="pt-loose__dismissed">
+          <button type="button" class="ppl-link" aria-expanded=${showAdded} onClick=${() => setShowAdded((v) => !v)}>
+            ${kdPlural(added.length, 'logo')} put on pages from JobTread lately</button>
+          ${showAdded ? html`<ul>${added.map((r) => html`<li key=${`${r.record}-${r.company}`}><span>${r.name} <small>on ${ptPageOf(r)} · ${kdWhen(r.updatedAt)}</small></span>
+            <a class="btn btn-ghost btn-sm" href=${ptEditorOf(r)} onClick=${onClose}>Open</a></li>`)}</ul>` : null}
+        </div>` : null}
+        <form class="pt-wait__emails" onSubmit=${(e) => { e.preventDefault(); if (dirty) saveEmails(); }}>
+          <label class="form-label" for="pt-wait-emails">Who’s emailed when a logo is missing</label>
+          <div class="pt-wait__emails-row">
+            <input id="pt-wait-emails" class="form-input" type="text" inputmode="email" autocomplete="off" spellcheck=${false}
+              value=${emails} placeholder="name@soardcharity.com" aria-describedby="pt-wait-emails-help"
+              onInput=${(e) => setEmails(e.target.value)} />
+            <button type="submit" class="btn btn-sm" disabled=${!dirty || !!busy}>${busy === 'emails' ? html`<span class="spinner spinner-14" /> Saving` : 'Save'}</button>
+          </div>
+          <small id="pt-wait-emails-help" class="form-hint">${who.length
+            ? `${who.join(' and ')} ${who.length === 1 ? 'gets' : 'get'} one email per company per page, with the company, the person’s name and email, their role and the kid. Separate addresses with commas.`
+            : 'Nobody is emailed now; this list still shows them.'}</small>
+        </form>
+      <//>`;
+    }
+
     /** Records deleted lately (history keeps them), to bring back */
     function PtDeletedDialog({ collection, taken, noun, path, onClose, onRestored, addToast }) {
       const [list, setList] = useState(null);
@@ -12708,7 +12954,7 @@
 
     // ─── Adding a partner: the essentials in one step ───
     function PartnerCreateDialog({ partners, prefill, onClose, onCreated, addToast }) {
-      const [f, setF] = useState(() => ({ name: prefill?.name || '', website: '', level: 'friend', category: ['build'], logo: prefill?.logo || '' }));
+      const [f, setF] = useState(() => ({ name: prefill?.name || '', website: prefill?.website || '', level: 'friend', category: ['build'], logo: prefill?.logo || '' }));
       const [uploading, setUploading] = useState(false);
       const [preview, setPreview] = useState(null);
       const [saving, setSaving] = useState(false);
@@ -12763,7 +13009,7 @@
         <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${saving}>Cancel</button>
         <button type="button" class="btn btn-primary" onClick=${create} disabled=${saving || uploading}>${saving ? html`<span class="spinner spinner-14" /> Adding…` : 'Add partner'}</button>`;
       return html`<${KdDialog} title=${prefill ? `Add ${prefill.name || 'this partner'} to the directory` : 'Add a partner'}
-        sub=${prefill?.kids ? `Their logo is already on ${kdPlural(prefill.kids, 'kid page')}. Check the name, then choose where they belong.` : 'They appear on the Partners page after you publish. Everything here can be changed later.'}
+        sub=${prefill?.note || (prefill?.kids ? `Their logo is already on ${kdPlural(prefill.kids, 'kid page')}. Check the name, then choose where they belong.` : 'They appear on the Partners page after you publish. Everything here can be changed later.')}
         size="md" onClose=${onClose} busy=${saving} footer=${footer}>
         <form class="pt-create" onSubmit=${(e) => { e.preventDefault(); create(); }}>
           <div class="pt-create__logo">
@@ -17978,6 +18224,7 @@ ${sections || '<p>No one yet.</p>'}
       const barRef = useRef(null);
       const photoInput = useRef(null);
       const logoInput = useRef(null);
+      const logoFor = useRef(null); // the JobTread company an upload is for (named after them, so the site knows it's theirs)
       const videoInput = useRef(null);
 
       const record = useMemo(() => cmSaveRecord(data), [data]);
@@ -18187,14 +18434,14 @@ ${sections || '<p>No one yet.</p>'}
         setPartnerQuery('');
         setPartnerOpen(false);
       };
-      const addLogo = async (files) => {
+      const addLogo = async (files, named = null) => {
         const f = [...files].find((x) => /^image\//.test(x.type));
         if (!f) return;
         const key = kdNewKey();
         let file = f;
         if (/svg/.test(f.type)) { try { file = await svgToPng(f); } catch {} }
         const local = URL.createObjectURL(file);
-        set((d) => ({ partnerLogos: [...d.partnerLogos, { url: local, name: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), _key: key, _tempId: key }] }));
+        set((d) => ({ partnerLogos: [...d.partnerLogos, { url: local, name: named || f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), _key: key, _tempId: key }] }));
         setUploads((u) => ({ ...u, [key]: true }));
         const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
         await kdUploadAll([{ file, key }], {
@@ -18204,7 +18451,7 @@ ${sections || '<p>No one yet.</p>'}
         });
         URL.revokeObjectURL(local);
         setUploads((u) => { const n = { ...u }; delete n[key]; return n; });
-        addToast('Logo added. Check the name: screen readers read it.', 'success');
+        addToast(named ? `${named}’s logo added. Save to put it on the page.` : 'Logo added. Check the name: screen readers read it.', 'success');
       };
       const removeLogo = (key) => {
         const prev = dataRef.current.partnerLogos;
@@ -18775,9 +19022,10 @@ ${sections || '<p>No one yet.</p>'}
 
         ${sec('partners', 'Partners', data.partnerLogos.length ? 'Logos under “Partners who made it possible”, in this order. Drag to reorder.' : 'Companies that made the project happen, with their logos.',
           html`${fixableLogos.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => fixLogos(fixableLogos)}>Use current ${fixableLogos.length === 1 ? 'logo' : `logos (${fixableLogos.length})`}</button>` : null}
-            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => logoInput.current?.click()}>${kdIcon.upload} Upload a logo</button>
-            <input type="file" accept="image/*" hidden ref=${logoInput} onChange=${(e) => { addLogo([...e.target.files]); e.target.value = ''; }} />`,
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => { logoFor.current = null; logoInput.current?.click(); }}>${kdIcon.upload} Upload a logo</button>
+            <input type="file" accept="image/*" hidden ref=${logoInput} onChange=${(e) => { addLogo([...e.target.files], logoFor.current); logoFor.current = null; e.target.value = ''; }} />`,
           html`
+          <${KdLogoWaiting} record=${slug ? `community/${slug}` : null} logos=${data.partnerLogos} onUpload=${(name) => { logoFor.current = name; logoInput.current?.click(); }} />
           <div class="kd-combobox ppl-combobox">
             <label class="sr-only" for="cm-partner-q">Add a partner from the directory</label>
             <div class="search-bar">

@@ -42,6 +42,7 @@ import {
 } from './_reveal-invites.js';
 import { SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED } from './_reveals.js';
 import { deniedAlert } from './_kid-status.js';
+import { missingLogoEmail, readSettings as readLogoSettings } from './_kid-partners.js';
 import { zeffyAlertEmail } from './_zeffy.js';
 import { alertHelloEmail } from './broadcast-admin.js';
 import { readConfig } from './_broadcast.js';
@@ -143,11 +144,16 @@ async function staffFacts(DB, now) {
   const hidden = Object.values(kids.alerted || {}).filter(Boolean).sort();
   const zeffy = (await siteConfig(DB, 'zeffy-alerts').catch(() => null))?.data || {};
   const gifts = Object.values(zeffy.alerted || {}).filter(Boolean).sort();
+  // One email can cover several companies: each send time is one email
+  const logos = await DB.prepare(`SELECT max(emailed_at) AS last, count(DISTINCT CASE WHEN emailed_at >= ? THEN emailed_at END) AS n30, count(DISTINCT emailed_at) AS total
+    FROM kid_partner_logos`).bind(since).first().catch(() => null);
+  const logoTo = await readLogoSettings(DB).then((s) => s.emails.length).catch(() => null);
   return {
     newApplication: app ? tally(app.last, app.n30, app.total) : null,
     stuck: app ? Number(app.stuck) || 0 : null,
     kidHidden: tally(hidden[hidden.length - 1], hidden.filter((t) => t >= since).length, hidden.length),
     giftProblems: tally(gifts[gifts.length - 1], gifts.filter((t) => t >= since).length, gifts.length),
+    partnerLogo: logoTo === null ? null : { ...tally(logos?.last || null, Number(logos?.n30) || 0, Number(logos?.total) || 0), to: logoTo },
   };
 }
 
@@ -630,6 +636,9 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return email(demoAlert('waiting', { jobId: 'sample', name: SAMPLE.childFirst, reason: 'the Demo task has no date', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });
     case 'staff-kid-hidden':
       return email(deniedAlert({ kid: { name: SAMPLE.childFirst }, jobId: 'sample' }), { to: 'peter@soardcharity.com' });
+    case 'staff-partner-logo':
+      return email(missingLogoEmail([{ rec: { slug: 'sample', name: SAMPLE.childFirst, data: { year: new Date().getFullYear() } }, jobId: 'sample', hint: null,
+        c: { company: 'kindneighborsfund', name: 'Kind Neighbors Fund', people: [{ name: 'Jordan Lee', email: 'jordan@example.org', role: 'Sponsor' }] } }]), { to: 'The list in Partners → JobTread, no logo' });
     case 'staff-gift-problem':
       return email(zeffyAlertEmail({
         title: 'Gifts aren’t reaching Slack',

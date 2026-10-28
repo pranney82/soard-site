@@ -25,6 +25,7 @@ import { getsRevealInvites } from './_team.js';
 import { HISTORY_TABLES, SITE_COLLECTION, recordVersion as recordContentVersion } from './_content-history.js';
 import { coverOf } from './_job-covers.js';
 import { syncCoverForKid } from './_kid-status.js';
+import { recheckWaiting } from './_kid-partners.js';
 
 export async function onRequestPost(context) {
   try {
@@ -164,6 +165,9 @@ export async function onRequestPost(context) {
     if ((parsed.table === 'kids' || parsed.table === 'community') && coverOf(data) && coverOf(oldData)?.source !== coverOf(data).source) {
       context.waitUntil(syncCoverForKid(context.env, parsed.slug, { collection: parsed.table }));
     }
+    // A logo added in Partners (or on a page) reaches the pages waiting for it now, not at the next 10-minute check
+    const logoFacts = (d) => (parsed.table === 'partners' ? [d?.logo, d?.name, d?.website] : d?.partnerLogos || []);
+    if (['partners', 'kids', 'community'].includes(parsed.table) && JSON.stringify(logoFacts(data)) !== JSON.stringify(logoFacts(oldData))) context.waitUntil(recheckWaiting(context.env));
 
     return Response.json({
       success: true,

@@ -244,6 +244,23 @@ const MAP = { t: 'SOARD', children: [
             const hidden = k.hidden ? ` ${plural(k.hidden, 'profile is', 'profiles are')} hidden because of JobTread.` : '';
             return ON(`${k.changed ? `The last check changed ${plural(k.changed, 'page')}.` : 'Every linked kid and project matches JobTread.'}${hidden}`, k.lastRunAt);
           } },
+        { t: 'Vendor and sponsor logos on kid pages', s: 'live', k: 'schedule',
+          when: 'Every 10 minutes on the live hub’s heartbeat (JobTread has no webhook for someone given access to a job), with visits to the reveals feed as the backup. A save in Partners or on a page re-checks what’s waiting right away.',
+          does: 'Reads who has access to each open job. A Vendor or Sponsor’s company gets its logo on the kid’s page (or the community project’s): the Partners directory’s logo by the same name or by a website on their email’s domain, else the logo already on another page under that name. When there’s no logo anywhere, staff get one email per company per page with the company, the person’s name and email, their role and the kid, and it waits under Partners → JobTread, no logo. Each change is saved like an admin save, with History, then the site publishes, at most every 10 minutes.',
+          touches: ['JobTread', 'D1', 'GitHub', 'Cloudflare Pages', 'Resend'], where: 'functions/api/_kid-partners.js (from broadcast-hooks.js, reveals.js and save-content.js)',
+          info: 'The company is the JobTread login’s account, else the person’s name. A logo the page already shows is left as it is, and one staff take off never goes back on. Linzi gets the emails to start with; Partners → JobTread, no logo changes who. “Same as” links a company JobTread names differently (“Randall Bros” for Randall Brothers) once, for every job after; “No logo needed” sets one aside. A kid’s Partners section lists the logos still needed, with an upload named for the company. Jobs named TEST are ignored.',
+          live: (f) => {
+            const l = f.kidLogos;
+            if (!l) return null;
+            if (env(f) && !f.env.jobtread) return ATTN('JOBTREAD_GRANT_KEY is missing, so logos can’t follow JobTread.');
+            if (!l.lastSweepAt) return ATTN('It hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (l.lastErrorAt && (!l.lastRunAt || l.lastErrorAt > l.lastRunAt)) return ATTN(`The last check of JobTread failed (${stamp(l.lastErrorAt)}). It tries again in 10 minutes.`, l.lastRunAt);
+            if (stale(l.lastSweepAt, HOUR)) return ATTN(`Hasn’t checked JobTread since ${stamp(l.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, l.lastRunAt);
+            if (l.lastEmailErrorAt && (!l.lastRunAt || l.lastEmailErrorAt >= l.lastRunAt)) return ATTN('The email about missing logos didn’t go. It tries again at the next check; see Emails & invites → What went out.', l.lastRunAt);
+            if (env(f) && !f.env.deployHook) return ATTN('No deploy hook is set in Cloudflare, so logos are saved but wait for the next Publish.', l.lastRunAt);
+            const waiting = l.waiting ? ` ${plural(l.waiting, 'company is', 'companies are')} waiting for a logo (Partners → JobTread, no logo).` : '';
+            return ON(`${l.added ? `The last check put ${plural(l.added, 'logo')} on pages.` : 'Every Vendor and Sponsor with a logo has it on their page.'}${waiting}`, l.lastRunAt);
+          } },
         { t: 'Kid photo as the job’s cover', s: 'live', k: 'schedule',
           when: 'As soon as a kid’s profile is saved with a new best photo, and with the kid status sync (JobTread’s workflows for one job, the hourly sweep for all of them) as the safety net.',
           does: 'Puts each kid’s best photo on their JobTread job as its cover: the profile’s Main photo, else the gallery’s first, cropped around the face or the focal point. A job made when a family is approved starts with the child’s photo from their application, and the family photos replace it once they’re on the profile, usually after the job exists. An organization’s job shows its community project’s Main photo the same way.',

@@ -214,7 +214,7 @@ async function writeState(DB, patch) {
 }
 
 /** Saved the way an admin save is: D1, the GitHub copy, the audit log, History. collection: 'kids' | 'community' */
-async function saveRecord(env, collection, slug, before, after, message, now) {
+export async function saveRecord(env, collection, slug, before, after, message, now) {
   const { DB } = env;
   const json = JSON.stringify(after);
   const [cols, vals] = EXTRACTORS[collection](after);
@@ -277,7 +277,7 @@ async function alertDenied(env, { kid, jobId, project = false }) {
 }
 
 /** Fires the deploy hook the admin's Publish uses, at most every 10 minutes */
-async function deploy(env, state, now) {
+async function deploy(env, state, now, label = 'Kid status from JobTread') {
   const hook = HOOK_ENV_VARS.map((k) => env[k]).find(Boolean);
   if (!hook) return { deployed: false, pending: false };
   const last = state.lastAutoDeployAt ? Date.parse(state.lastAutoDeployAt) : 0;
@@ -288,8 +288,20 @@ async function deploy(env, state, now) {
   } catch {
     return { deployed: false, pending: true };
   }
-  await logAudit(env.DB, { userEmail: SYNC_USER, action: 'deployed', entityType: 'site', entityName: 'Kid status from JobTread' });
+  await logAudit(env.DB, { userEmail: SYNC_USER, action: 'deployed', entityType: 'site', entityName: label });
   return { deployed: true, pending: false };
+}
+
+/**
+ * Publish another JobTread sync's saves (partner logos, ./_kid-partners.js)
+ * under the same 10-minute cooldown, so the two never deploy twice in a row.
+ * One held back is published by the next kid status check after the cooldown.
+ */
+export async function requestDeploy(env, now, label) {
+  const state = await readState(env.DB);
+  const d = await deploy(env, state, now, label);
+  await writeState(env.DB, { ...(d.deployed ? { lastAutoDeployAt: new Date(now).toISOString() } : {}), deployPending: d.pending });
+  return d;
 }
 
 /**

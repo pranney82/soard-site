@@ -17,6 +17,7 @@ import { maybeSweep, maybeCheckGuests } from './_reveal-invites.js';
 import { maybeNudge } from './_reveal-nudges.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
+import { maybeSyncKidPartners } from './_kid-partners.js';
 
 const EDGE_TTL = 180;
 const BROWSER_TTL = 60;
@@ -43,6 +44,8 @@ export async function onRequestGet(context) {
   // The live countdown follows JobTread's next confirmed reveal (backup for the hub's heartbeat)
   context.waitUntil(syncBroadcastSchedule(env));
   context.waitUntil(maybeSyncKidStatuses(env));
+  // Vendor and Sponsor logos on kid pages (backup for the hub's heartbeat)
+  context.waitUntil(maybeSyncKidPartners(env));
   // Only a fresh read is worth holding for the full TTL; a fallback gets a short one
   const ttl = body.source === 'jobtread' ? EDGE_TTL : 30;
   const res = Response.json(body, {

@@ -34,7 +34,7 @@ import { SentView } from './messages-sent.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 22, 2026';
+const WRITTEN_ON = 'October 28, 2026';
 const API = '/api/messages-admin';
 
 // ─── Live check helpers ───────────────────
@@ -607,6 +607,15 @@ const MAP = { t: 'Everything we send', children: [
           does: 'Why it’s hidden, and that changing the Status back brings it back.',
           touches: ['Resend', 'Slack'], where: 'functions/api/_kid-status.js (deniedAlert)',
           live: (f) => (!f.staff ? null : ON(sentLine(f.staff.kidHidden), f.staff.kidHidden?.last)) },
+        { t: 'A vendor or sponsor has no logo', s: 'live', k: 'email', by: 'auto', preview: 'staff-partner-logo',
+          who: 'The list in Partners → JobTread, no logo (Linzi to start with).',
+          when: 'Someone is on a kid’s or community project’s job in JobTread as a Vendor or Sponsor, and the site has no logo for their company: not in Partners, not on any page. Once per company per page; several found at once share one email.',
+          subject: '[SOARD] Logo needed: {company} on {kid}’s page',
+          does: 'The company, the person’s name and email, their role, the page, and a link to the job. Once the logo is in Partners, the site puts it on the page and publishes it by itself.',
+          touches: ['Resend', 'JobTread'], where: 'functions/api/_kid-partners.js (missingLogoEmail)',
+          live: first(needs('resend', NO_RESEND), (f) => (!f.staff?.partnerLogo ? null
+            : !f.staff.partnerLogo.to ? ATTN('Nobody is on the list, so missing logos only show in Partners → JobTread, no logo.')
+            : ON(`Goes to ${plural(f.staff.partnerLogo.to, 'address', 'addresses')}. ${sentLine(f.staff.partnerLogo)}`, f.staff.partnerLogo.last))) },
       ]},
       { t: 'Gifts', children: [
         { t: 'Gift alert problems', s: 'live', k: 'email', by: 'auto', preview: 'staff-gift-problem',

@@ -101,6 +101,7 @@ const BY_TAG = {
   'alert-hello': 'staff-alert-hello',
   'live-alert': 'staff-live-alert',
   'kid-status': 'staff-kid-hidden',
+  'partner-logo': 'staff-partner-logo',
   'zeffy-alerts': 'staff-gift-problem',
   'reminder-confirm': 'rem-confirm',
   'reveal-scheduled': 'rem-scheduled',

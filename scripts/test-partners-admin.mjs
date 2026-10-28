@@ -88,6 +88,19 @@ const DIR = { partners: 'partners', kids: 'kids', communityPartners: 'communityP
 const TABLE = { partners: 'partners', kids: 'kids', communityPartners: 'community_partners', medialogos: 'medialogos', press: 'press', site: 'site' };
 function makeApi() {
   const st = { calls: [], n: 0, shas: {}, versions: {}, deleted: [], waiting: new Set(), deletedImages: [], conflictOnce: null, uploads: [] };
+  // Waiting for a logo (functions/api/kid-partners-admin.js): a Sponsor on a JobTread job whose company has no logo anywhere
+  const since = new Date(Date.now() - 3 * 3600e3).toISOString();
+  st.logos = {
+    waiting: [{ record: 'isla', company: 'kindneighborsfund', name: 'Kind Neighbors Fund', jobId: 'jt-isla', hint: null,
+      people: [{ name: 'Nia Nguyen', email: 'nia@kindneighbors.example', role: 'Sponsor' }], page: { slug: 'isla', name: 'Isla', year: 2026, kind: 'kid', draft: false },
+      since, updatedAt: since, emailedAt: since },
+    { record: 'isla', company: 'bellcabinets', name: 'Bell Cabinets', jobId: 'jt-isla', hint: 'Partners has Bell Cabinetry: the same company?',
+      people: [{ name: 'Ben Bell', email: 'ben@bellcabinets.example', role: 'Vendor' }], page: { slug: 'isla', name: 'Isla', year: 2026, kind: 'kid', draft: false },
+      since, updatedAt: since, emailedAt: since }],
+    links: [],
+    dismissed: [], added: [{ record: 'isla', company: 'bellcabinetry', name: 'Bell Cabinetry', people: [], page: { slug: 'isla', name: 'Isla', year: 2026, kind: 'kid', draft: false }, updatedAt: since }],
+    settings: { emails: ['linzi@example.org'], updatedAt: null }, lastError: null,
+  };
   for (const k of Object.keys(DIR)) st[k] = structuredClone(FX[k] || {});
   for (const k of Object.keys(DIR)) for (const [slug, d] of Object.entries(st[k])) d.slug ||= slug;
   const key = (dir, slug) => `${dir}/${slug}`;
@@ -210,6 +223,33 @@ function makeApi() {
     }
     if (p.startsWith('/api/deployments')) return json({ success: true, deploys: [], source: 'cloudflare' });
     if (p.startsWith('/api/live-ws')) { req.abort(); return true; }
+    if (p === '/api/kid-partners-admin') {
+      if (req.method() !== 'POST') return json({ success: true, ...st.logos });
+      const b = body();
+      const one = b.dismiss || b.undismiss;
+      if (one) {
+        const [from, to] = b.dismiss ? ['waiting', 'dismissed'] : ['dismissed', 'waiting'];
+        const r = st.logos[from].find((x) => x.record === one.record && x.company === one.company);
+        if (!r) return json({ success: false, error: 'That one isn’t waiting any more' }, 404);
+        st.logos[from] = st.logos[from].filter((x) => x !== r);
+        st.logos[to].push({ ...r, by: 'admin@example.com' });
+        return json({ success: true, state: to, view: st.logos });
+      }
+      if (b.link) {
+        const r = st.logos.waiting.find((x) => x.company === b.link.company);
+        st.logos.waiting = st.logos.waiting.filter((x) => x !== r);
+        st.logos.links.push({ company: b.link.company, partner: b.link.partner, name: r?.name || b.link.company });
+        if (r) st.logos.added.unshift({ ...r, updatedAt: new Date().toISOString() });
+        return json({ success: true, added: r ? [{ record: r.record, name: r.page.name, added: [st.partners[b.link.partner]?.name] }] : [], view: st.logos });
+      }
+      if (b.unlink) { st.logos.links = st.logos.links.filter((l) => l.company !== b.unlink.company); return json({ success: true, added: [], view: st.logos }); }
+      if (b.settings) {
+        const bad = b.settings.emails.find((e) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+        if (bad) return json({ success: false, error: `${bad} doesn’t look like an email address` }, 400);
+        st.logos.settings = { emails: b.settings.emails.map((e) => e.toLowerCase()), updatedAt: new Date().toISOString() };
+        return json({ success: true, settings: st.logos.settings });
+      }
+    }
     return json({ success: true, ok: true });
   };
   return { st, respond };
@@ -250,7 +290,7 @@ function cfRespond(req) {
   return false; // the real logos load from Cloudflare, so screenshots look like the admin
 }
 
-async function open(browser, { width, height, mobile }) {
+async function open(browser, { width, height, mobile, hash = '' }) {
   const page = await browser.newPage();
   await page.setViewport({ width, height, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 1 });
   const errors = [];
@@ -266,7 +306,7 @@ async function open(browser, { width, height, mobile }) {
     if (cfRespond(req) !== false) return;
     req.continue();
   });
-  await page.goto(`${SITE}/admin/index.html`, { waitUntil: 'networkidle2' });
+  await page.goto(`${SITE}/admin/index.html${hash}`, { waitUntil: 'networkidle2' });
   await page.waitForSelector('.nav-item, .sidebar', { timeout: 20000 });
   return { page, api, errors };
 }
@@ -567,6 +607,55 @@ try {
     const crSub = await page.evaluate(() => [...document.querySelectorAll('.pt-row')].find((r) => r.querySelector('.ppl-row__name')?.textContent.trim() === 'Construction Resources')?.querySelector('.ppl-row__sub')?.textContent);
     const crCount = new Set([...(fxUsage.byPartner.get('construction-resources') || []), ...fxUsage.unmatched[0].kids].map((k) => k.slug)).size;
     ok(new RegExp(`On ${crCount} kid pages`).test(crSub || ''), `Construction Resources now counts their old CR Construction pages (${crSub})`);
+
+    // From JobTread, no logo yet: who the company is, who to ask, which page; add them, or no logo needed
+    const tile4 = (await $text(page, '.ppl-ready__tile'))[4] || '';
+    ok(/JobTread, no logo\s*2\s*Kind Neighbors Fund, for Isla’s page/.test(tile4), `the JobTread tile counts what’s waiting and names the first (${tile4})`);
+    const tileBox = await page.$$eval('.ppl-ready__tile', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    ok(new Set(tileBox).size === 1, `five tiles in one row at 1440 (${tileBox.join(', ')})`);
+    await clickText(page, '.ppl-ready__tile', 'JobTread, no logo');
+    await page.waitForSelector('.pt-wait .pt-loose__item', { timeout: 5000 }).catch(() => {});
+    ok(await page.evaluate(dialogTitle) === 'Waiting for a logo', 'the tile opens Waiting for a logo');
+    const waitText = await page.$eval('.pt-wait .pt-loose__item', (e) => e.textContent.replace(/\s+/g, ' ')).catch(() => '');
+    ok(/Kind Neighbors Fund/.test(waitText) && /Sponsor on Isla’s page \(2026\) · the job in JobTread · first seen/.test(waitText) && /Nia Nguyen · nia@kindneighbors\.example/.test(waitText), `each row: the company, their role and page, the person and their email (${waitText.slice(0, 160)})`);
+    ok(await page.$eval('.pt-wait a[href^="mailto:"]', (a) => a.getAttribute('href')).catch(() => '') === 'mailto:nia@kindneighbors.example', 'the email address is a mail link');
+    ok(await page.$eval('.pt-wait .pt-loose__text small a[href^="#kids/"]', (a) => a.getAttribute('href')).catch(() => '') === '#kids/isla', '“Isla’s page” goes to her editor');
+    ok(await page.$eval('.pt-wait .pt-loose__text small a[href*="app.jobtread.com/jobs/"]', (a) => a.getAttribute('href')).catch(() => '') === 'https://app.jobtread.com/jobs/jt-isla', 'and the job opens in JobTread');
+    ok(await page.$eval('#pt-wait-emails', (i) => i.value).catch(() => '') === 'linzi@example.org', 'who’s emailed, from the saved list');
+    await shot(page, 'desk-waiting', { grow: false });
+    await axeCheck(page, 'waiting for a logo');
+    // JobTread calls Bell Cabinetry “Bell Cabinets”: “Same as” links them, for this job and every one after
+    const bellActs = await page.evaluate(() => [...document.querySelectorAll('.pt-wait .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === 'Bell Cabinets')?.querySelector('.pt-loose__acts')?.textContent.replace(/\s+/g, ' ').trim() || '');
+    ok(/^Add to Partners\s*Same as Bell Cabinetry\?/.test(bellActs), `a word in common offers “Same as Bell Cabinetry?” after Add to Partners (${bellActs.slice(0, 80)})`);
+    await clickText(page, '.pt-wait .pt-same-as', 'Same as Bell Cabinetry');
+    ok(await waitToast(page, /Bell Cabinets is Bell Cabinetry: their logo is on 1 page now/), 'linked: the toast says their logo is on Isla’s page now');
+    const linkCall = lastCall(api, '/api/kid-partners-admin');
+    ok(linkCall?.body?.link?.company === 'bellcabinets' && linkCall.body.link.partner === 'bell', 'the link names the company and the partner');
+    ok(!(await page.evaluate(() => [...document.querySelectorAll('.pt-wait .pt-loose__item strong')].some((e) => e.textContent === 'Bell Cabinets'))), 'and it leaves the waiting list');
+    ok(/1 company JobTread names differently, linked to a partner/.test(await page.$eval('.kd-dialog', (d) => d.textContent).catch(() => '')), 'the dialog lists the link, to undo');
+    await clickText(page, '.pt-wait .btn', 'Add to Partners');
+    await page.waitForSelector('#pt-new-name');
+    ok((await page.$eval('#pt-new-name', (i) => i.value)) === 'Kind Neighbors Fund' && (await page.$eval('#pt-new-web', (i) => i.value)) === 'https://kindneighbors.example',
+      'Add to Partners starts with their name, and their email’s domain as the website');
+    ok(/Sponsor on Isla’s page\. Add their logo here and it goes on that page by itself/i.test(await page.$eval('.kd-dialog', (d) => d.textContent).catch(() => '')), 'and says the logo goes on Isla’s page by itself');
+    await clickText(page, '.kd-dialog__foot .btn', 'Cancel');
+    await page.waitForSelector('.pt-wait', { timeout: 3000 }).catch(() => {});
+    ok(await page.evaluate(dialogTitle) === 'Waiting for a logo', 'Cancel goes back to the waiting list');
+    await clickText(page, '.pt-wait .btn', 'No logo needed');
+    await page.waitForSelector('.pt-wait__none', { timeout: 5000 }).catch(() => {});
+    ok(lastCall(api, '/api/kid-partners-admin')?.body?.dismiss?.company === 'kindneighborsfund', '“No logo needed” sets it aside');
+    ok(/doesn’t need one/.test(await page.$eval('.pt-wait__none', (e) => e.textContent).catch(() => '')), 'the list says nothing is waiting');
+    ok(await clickToastAction(page, /no logo needed/), 'with an Undo');
+    await page.waitForSelector('.pt-wait .pt-loose__item', { timeout: 5000 }).catch(() => {});
+    ok(api.st.logos.waiting.length === 1 && lastCall(api, '/api/kid-partners-admin')?.body?.undismiss, 'Undo puts it back on the list');
+    await typeInto(page, '#pt-wait-emails', 'linzi@example.org, nope');
+    await clickText(page, '.pt-wait__emails .btn', 'Save');
+    ok(await waitToast(page, /nope doesn’t look like an email address/), 'a bad address is refused');
+    await typeInto(page, '#pt-wait-emails', 'Linzi@example.org, pm@example.org');
+    await clickText(page, '.pt-wait__emails .btn', 'Save');
+    ok(await waitToast(page, /Missing logos go to linzi@example\.org, pm@example\.org/), 'saved: both are emailed now');
+    await page.keyboard.press('Escape');
+    await sleep(300);
 
     // Add a partner: duplicate warning, web address tidied, Champion goes last
     await clickText(page, '.ppl-head__actions .btn', 'Add a partner');
@@ -885,6 +974,99 @@ try {
     await sleep(200);
     ok(!(await page.$('#pt-new-name')), 'Escape closes it');
     ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+
+  // ════════ The staff email's link: #partners?waiting opens Waiting for a logo ════════
+  console.log('The missing-logo email’s link');
+  {
+    const { page, api, errors } = await open(browser, { width: 1280, height: 900, mobile: false, hash: '#partners?waiting' });
+    await page.waitForSelector('.pt-wait .pt-loose__item', { timeout: 15000 }).catch(() => {});
+    ok(await page.evaluate(dialogTitle) === 'Waiting for a logo', 'opening the admin from the email’s link shows Waiting for a logo');
+    ok(await page.evaluate(() => location.hash) === '#partners', `and the address is tidied to Partners (${await page.evaluate(() => location.hash)})`);
+    await page.keyboard.press('Escape');
+    await sleep(300);
+    const labelRows = await page.$$eval('.ppl-ready__label', (els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+    ok(new Set(labelRows).size === 1, `at 1280 every tile label keeps to one line (${labelRows.join(', ')})`);
+    const rows1280 = await page.$$eval('.ppl-ready__tile', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    ok(rows1280.slice(0, 3).every((t) => t === rows1280[0]) && rows1280[3] === rows1280[4] && rows1280[3] > rows1280[0], `at 1280: the three checks, then the two lists (${rows1280.join(', ')})`);
+    await shot(page, 'desk1280-tiles', { grow: false });
+    await page.evaluate(() => { location.hash = '#partners?waiting'; });
+    await page.waitForSelector('.pt-wait', { timeout: 5000 }).catch(() => {});
+    ok(await page.evaluate(dialogTitle) === 'Waiting for a logo', 'following the link with the admin already open does too');
+    ok(await page.evaluate(() => location.hash) === '#partners', 'and tidies the address, so the next click on it works too');
+    const tileTops = await page.$$eval('.ppl-ready__tile', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    ok(tileTops.length === 5, `five readiness tiles (${tileTops.length})`);
+    // A company already in Partners without a logo: the button opens that partner, there's nothing to link
+    api.st.logos.waiting.push({ ...api.st.logos.waiting[0], company: 'carlossandyramirez', name: 'Carlos & Sandy Ramirez', hint: 'Carlos & Sandy Ramirez is in Partners without a logo' });
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    await page.evaluate(() => { location.hash = '#partners?waiting'; });
+    await page.waitForFunction(() => [...document.querySelectorAll('.pt-wait strong')].some((e) => e.textContent === 'Carlos & Sandy Ramirez'), { timeout: 5000 }).catch(() => {});
+    ok(await page.evaluate(() => [...document.querySelectorAll('.pt-wait strong')].some((e) => e.textContent === 'Carlos & Sandy Ramirez')), 'following the link reads the list again (one added since the admin opened shows)');
+    const noLogoActs = await page.evaluate(() => [...document.querySelectorAll('.pt-wait .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === 'Carlos & Sandy Ramirez')?.querySelector('.pt-loose__acts')?.textContent.replace(/\s+/g, ' ').trim() || '');
+    ok(/^Add a logo to Carlos & Sandy Ramirez/.test(noLogoActs) && !/Same as|Add to Partners/.test(noLogoActs), `listed without a logo: “Add a logo to …”, no duplicate offered (${noLogoActs.slice(0, 70)})`);
+    await clickText(page, '.pt-wait .btn', 'Add a logo to Carlos');
+    await page.waitForSelector('.pt-ed-head', { timeout: 5000 }).catch(() => {});
+    ok(/Carlos & Sandy Ramirez/.test(await page.$eval('.pt-ed-head', (e) => e.textContent).catch(() => '')), 'and opens that partner to add it');
+    await page.evaluate(() => { location.hash = '#partners'; });
+    await sleep(400);
+    await page.keyboard.press('Escape');
+    await sleep(200);
+
+    // Isla's page in the admin: what's still needed from JobTread, and an upload named for the company
+    await page.evaluate(() => { location.hash = '#kids/isla'; });
+    await page.waitForSelector('.kd-logowait', { timeout: 15000 }).catch(() => {});
+    const strip = await page.$eval('.kd-logowait', (e) => e.textContent.replace(/\s+/g, ' ')).catch(() => '');
+    ok(/3 logos still needed/.test(strip) && /Kind Neighbors Fund/.test(strip) && /Sponsor · Nia Nguyen · nia@kindneighbors\.example/.test(strip), `Isla’s Partners section lists the logos still needed, with who to ask (${strip.slice(0, 120)})`);
+    await page.$eval('.kd-logowait', (e) => e.scrollIntoView({ block: 'center' })).catch(() => {});
+    await shot(page, 'kid-logowait', { grow: false });
+    const logoFile = join(OUT, 'jobtread-logo.png');
+    writeFileSync(logoFile, PNG_LOGO);
+    const [chooser] = await Promise.all([page.waitForFileChooser({ timeout: 5000 }), clickText(page, '.kd-logowait li .btn', 'Upload their logo')]);
+    await chooser.accept([logoFile]);
+    await page.waitForFunction(() => [...document.querySelectorAll('.kd-logos input[aria-label^="Company name"]')].some((i) => i.value === 'Kind Neighbors Fund'), { timeout: 8000 }).catch(() => {});
+    const names = await page.$$eval('.kd-logos input[aria-label^="Company name"]', (els) => els.map((i) => i.value));
+    ok(names.at(-1) === 'Kind Neighbors Fund', `the upload is named for the company, so the site knows it’s theirs (${names.at(-1)})`);
+    ok(!/Kind Neighbors Fund/.test(await page.$eval('.kd-logowait', (e) => e.textContent).catch(() => '')), 'and it leaves the strip');
+    ok(errors.length === 0, `no console errors from the link${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+
+  // ════════ The email's link on a phone: the list, then the kid's page ════════
+  console.log('Phone 390: the missing-logo email’s link');
+  {
+    const { page, errors } = await open(browser, { width: 390, height: 844, mobile: true, hash: '#partners?waiting' });
+    await page.waitForSelector('.pt-wait .pt-loose__item', { timeout: 15000 }).catch(() => {});
+    ok(await page.evaluate(dialogTitle) === 'Waiting for a logo', 'phone: the email’s link opens the list');
+    const fit = await page.evaluate(() => {
+      const d = document.querySelector('.kd-dialog');
+      const r = d?.getBoundingClientRect();
+      const wide = [...(d?.querySelectorAll('*') || [])].filter((el) => { const b = el.getBoundingClientRect(); return b.width && (b.left < -0.5 || b.right > innerWidth + 0.5); }).map((el) => `${el.tagName}.${String(el.className).slice(0, 30)}`);
+      return { ok: !!r && r.left >= 0 && r.right <= innerWidth, wide: wide.slice(0, 4) };
+    });
+    ok(fit.ok && !fit.wide.length, `phone: the list fits the screen${fit.wide.length ? ` (${fit.wide.join(', ')})` : ''}`);
+    const smallTargets = await page.evaluate(() => [...document.querySelectorAll('.pt-wait .btn, .pt-wait select, .pt-wait__emails .btn, .pt-wait__emails input')]
+      .filter((el) => el.getBoundingClientRect().height < 44).map((el) => (el.textContent || el.tagName).trim().slice(0, 24)).slice(0, 4));
+    ok(!smallTargets.length, `phone: every button in the list is a 44px target${smallTargets.length ? ` (${smallTargets.join(', ')})` : ''}`);
+    const emailFont = await page.$eval('#pt-wait-emails', (i) => parseFloat(getComputedStyle(i).fontSize)).catch(() => 0);
+    ok(emailFont >= 16, `phone: the email field is 16px, so iPhone doesn’t zoom into it (${emailFont}px)`);
+    await shot(page, 'phone-waiting', { grow: false });
+    await axeCheck(page, 'phone waiting for a logo');
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    await page.evaluate(() => { location.hash = '#kids/isla'; });
+    await page.waitForSelector('.kd-logowait', { timeout: 15000 }).catch(() => {});
+    await page.$eval('.kd-logowait', (e) => e.scrollIntoView({ block: 'center' })).catch(() => {});
+    const strip = await page.evaluate(() => {
+      const w = document.querySelector('.kd-logowait');
+      const r = w?.getBoundingClientRect();
+      const btns = [...(w?.querySelectorAll('.btn') || [])].map((b) => b.getBoundingClientRect());
+      return { ok: !!r && r.left >= 0 && r.right <= innerWidth, small: btns.filter((b) => b.height < 44).length, n: btns.length };
+    });
+    ok(strip.ok && strip.n === 2 && !strip.small, `phone: Isla’s “logos still needed” fits, with 44px upload buttons (${strip.n} buttons, ${strip.small} small)`);
+    await shot(page, 'phone-kid-logowait', { grow: false });
+    ok(errors.length === 0, `no console errors on the phone link${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
   }
 
