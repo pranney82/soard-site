@@ -1460,7 +1460,9 @@ function init(root, cfg, mode) {
   // ── A staff test run (?test=1) ──────────────────────────────────
   // Staff words (the admin is English); the form itself stays in the family's language
   const TEST = {
-    lead: (to) => `You're going through the real form as a family. Every email comes to you at ${to}. Nothing reaches the team or a real family: no Slack post, and the JobTread account it makes is marked TEST and archives itself.`,
+    lead: (to) => (org
+      ? `You're going through the real form as an organization. Every email comes to you at ${to}. Nothing reaches the team or a real organization: no Slack post, and the JobTread account it makes is marked TEST and archives itself.`
+      : `You're going through the real form as a family. Every email comes to you at ${to}. Nothing reaches the team or a real family: no Slack post, and the JobTread account it makes is marked TEST and archives itself.`),
     signIn: 'Test runs are for SOARD staff. Sign in to the admin, then start the test run from Applications → Form.',
     signInNote: 'Sign in to the admin to start a test run.',
     fill: 'Fill this page with sample answers', filling: 'Filling in…',
@@ -1672,7 +1674,8 @@ function init(root, cfg, mode) {
     // An organization has no diagnosis, so no medical note
     ...(org ? [] : [{ key: 'medical', title: 'Medical note for the team', done: (st) => st.steps.medicalNote === true || /^skipped/.test(String(st.steps.medicalNote)) }]),
     { key: 'staff', title: (st) => `Staff heads-up, to ${st.to}${st.steps.staffSlack === true ? ' and in Slack' : ''}`, done: (st) => st.steps.staffEmail },
-    { key: 'video', title: 'Video, in JobTread', done: (st) => st.steps.video === true || st.steps.video === 'none', wait: (st) => st.steps.video === 'waiting' && 'Waiting for the video to finish processing' },
+    // An organization's application has no video
+    ...(org ? [] : [{ key: 'video', title: 'Video, in JobTread', done: (st) => st.steps.video === true || st.steps.video === 'none', wait: (st) => st.steps.video === 'waiting' && 'Waiting for the video to finish processing' }]),
     { key: 'archived', title: 'Archived in JobTread (the test cleans itself up)', done: (st) => st.steps.archived },
   ];
   const ICON = {

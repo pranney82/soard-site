@@ -18,6 +18,10 @@
  *
  *   SITE=http://127.0.0.1:8795 PAGES_DIR=<dir with the local wrangler.toml> node scripts/test-organization-application.mjs
  *
+ * After a deploy, the same run on the live site is the self-test: a "TEST …" organization (its
+ * JobTread account archives itself), at SOARD's office address, every email to ORG_EMAIL:
+ *   SITE=https://sunshineonaranneyday.com ORG_EMAIL=<a plus-address of yours> OFFICE=1 node scripts/test-organization-application.mjs
+ *
  * Local server: the same as scripts/test-application-form.mjs (a scratch dir with dist/,
  * functions/, a wrangler.toml without the AI, Browser and LIVE_HUB bindings, and site_config
  * "settings" in local D1). The organization form is open unless application.orgOpen is false.
@@ -41,7 +45,11 @@ const LOCAL = !/sunshineonaranneyday\.com/.test(SITE);
 const PHOTO = join(OUT, 'photo.jpg');
 writeFileSync(PHOTO, await sharp({ create: { width: 2400, height: 1800, channels: 3, background: { r: 120, g: 170, b: 210 } } }).jpeg({ quality: 85 }).toBuffer());
 // The address lookup is answered here (the real one asks Photon, slow from a laptop); the map check asks the real Census
-const SUGGESTION = { line1: '3167 Main St', city: 'Duluth', state: 'GA', zip: '30096', county: 'Gwinnett', label: '3167 Main St, Duluth, GA 30096' };
+const SUGGESTION = process.env.OFFICE
+  ? { line1: '250 Hembree Park Drive', city: 'Roswell', state: 'GA', zip: '30076', county: 'Fulton', label: '250 Hembree Park Drive, Roswell, GA 30076' }
+  : { line1: '3167 Main St', city: 'Duluth', state: 'GA', zip: '30096', county: 'Gwinnett', label: '3167 Main St, Duluth, GA 30096' };
+const CONTACT_EMAIL = process.env.ORG_EMAIL || 'jordan+org@example.com';
+const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const browser = await puppeteer.launch({ headless: true, args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] });
 const consoleErrors = [];
@@ -111,14 +119,14 @@ try {
   console.log('Location');
   ok(/Address of the space/.test(await page.$eval('[data-field="address"] .af-label, [data-field="address"] legend', (e) => e.textContent)), 'the address of the space, not a home');
   await page.focus('#af-address-line1');
-  await page.type('#af-address-line1', '3167 Main');
+  await page.type('#af-address-line1', SUGGESTION.line1.slice(0, 9));
   await page.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => ['inside', 'near', 'far', 'unknown', 'error'].includes(document.querySelector('[data-area]')?.dataset.area), { timeout: 20000 }).catch(() => {});
   const area = await page.$eval('[data-area]', (e) => e.dataset.area).catch(() => '');
   ok(area === 'inside', `the address is placed on the map: ${area}`);
-  ok(await page.$eval('#af-county', (e) => e.value) === 'Gwinnett', 'and the county is filled in');
+  ok(await page.$eval('#af-county', (e) => e.value) === SUGGESTION.county, 'and the county is filled in');
   const legend = await page.$eval('[data-area-map]', (e) => e.textContent).catch(() => '');
   ok(/The address you entered/.test(legend) && !/The home you entered/.test(legend), 'the map speaks of an address, not a home');
   await shot('02-location-phone');
@@ -149,7 +157,7 @@ try {
   await type('#af-contactName-last', 'Lee');
   ok(await page.$eval('#af-contactName-first', (e) => e.autocomplete) === 'given-name', 'the contact’s own name autofills');
   await type('#af-contactTitle', 'Executive Director');
-  await type('#af-contactEmail', 'jordan+org@example.com');
+  await type('#af-contactEmail', CONTACT_EMAIL);
   ok(await page.$eval('#af-contactEmail', (e) => e.autocomplete) === 'email', 'and the email');
   await type('#af-contactPhone', '(404) 555-0123');
   await page.click('[data-more="contact2"] [data-more-open]');
@@ -192,7 +200,7 @@ try {
   ok(/Everything is here/.test(await page.$eval('[data-review-summary]', (e) => e.textContent)), '"Everything is here"');
   await next();
   await page.waitForSelector('[data-done]:not([hidden])', { timeout: 20000 });
-  ok(/jordan\+org@example\.com/.test(await page.$eval('[data-done-email]', (e) => e.textContent)), 'the thank-you names the email that gets the copy');
+  ok(new RegExp(reEsc(CONTACT_EMAIL)).test(await page.$eval('[data-done-email]', (e) => e.textContent)), 'the thank-you names the email that gets the copy');
   ok(await page.$eval('[data-done] a[href="/community/"]', (a) => /community projects/i.test(a.textContent)).catch(() => false), 'and links to the community projects');
   const done = await page.$eval('[data-done]', (e) => e.innerText);
   ok(/A visit to see the space/.test(done) && !/your child|your home/i.test(done), 'what happens next, for an organization');
@@ -200,7 +208,7 @@ try {
 
   if (PAGES_DIR) {
     const [row] = d1("SELECT kind, child_name, parent_name, parent_email, is_test FROM applications ORDER BY submitted_at DESC LIMIT 1");
-    ok(row?.kind === 'organization' && row.child_name === 'TEST Sunnyside Academy' && row.parent_email === 'jordan+org@example.com', `the application is the organization’s (${JSON.stringify(row)})`);
+    ok(row?.kind === 'organization' && row.child_name === 'TEST Sunnyside Academy' && row.parent_email === CONTACT_EMAIL, `the application is the organization’s (${JSON.stringify(row)})`);
     ok(row?.is_test === 1, 'a TEST name makes it a rehearsal');
   }
 
