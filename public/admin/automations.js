@@ -890,7 +890,8 @@ const MAP = { t: 'SOARD', children: [
             if (!s || !('key' in s)) return null;
             if (!s.key) return OFF('Needs GOOGLE_CALENDAR_KEY in Cloudflare. Until then any soardcharity.com sign-in opens the admin.');
             const fix = {
-              scope: `In Google Admin → Security → API controls → Domain-wide delegation, edit client ID ${s.clientId || 'of the site’s service account'}, add https://www.googleapis.com/auth/admin.directory.user.readonly to its scopes (keep the ones already there) and choose Authorize.`,
+              // Both steps at once: the API is the next thing Google would ask for
+              scope: `In Google Admin → Security → API controls → Domain-wide delegation, edit client ID ${s.clientId || 'of the site’s service account'}, add https://www.googleapis.com/auth/admin.directory.user.readonly to its scopes (keep the ones already there) and choose Authorize. Then in Google Cloud${s.project ? ` (project ${s.project})` : ''}, turn on the Admin SDK API: APIs & Services → Library → Admin SDK API → Enable.`,
               api: `In Google Cloud${s.project ? ` (project ${s.project})` : ''}, turn on the Admin SDK API: APIs & Services → Library → Admin SDK API → Enable.`,
               admin: 'Google says no founder on People → Team is a Workspace admin. A founder needs the Super Admin role in Google Admin.',
             }[s.needs];

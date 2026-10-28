@@ -342,7 +342,7 @@ try {
   await clickNode(notYet.page, 'Staff sign-in follows Google');
   await pause(300);
   const notYetPanel = await notYet.page.$eval('.am-panel', (e) => e.textContent);
-  ok(await statusOf(notYet.page, 'Staff sign-in follows Google') === 'Needs attention' && notYetPanel.includes('1234567890') && notYetPanel.includes('admin.directory.user.readonly'), 'staff sign-in before Google allows the read: needs attention, with the client ID and the scope to add');
+  ok(await statusOf(notYet.page, 'Staff sign-in follows Google') === 'Needs attention' && notYetPanel.includes('1234567890') && notYetPanel.includes('admin.directory.user.readonly') && notYetPanel.includes('(project soard-site), turn on the Admin SDK API'), 'staff sign-in before Google allows the read: needs attention, with the client ID, the scope to add and the project to turn the API on in');
   await notYet.page.close();
   const staffOn = { ...staffWaiting, ok: true, read: true, syncedAt: iso(60e3), failedAt: null, error: null, needs: null, active: 6, off: 1, out: [{ name: 'Sam Smith', why: 'suspended', at: iso(3600e3), signedOut: true, error: null }] };
   const staffLive = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, staff: staffOn } });
