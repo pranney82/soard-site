@@ -212,12 +212,18 @@ export function cleanMeeting(raw = {}) {
     // The calendar brought it in, but it isn't a board meeting (a coffee, a reminder, another organization's
     // board): off the board page until someone shares it (functions/api/_board-calendar.js)
     notBoard: bool(raw.notBoard),
+    // A practice meeting the admins run alone (simulated members): its own table, never the board's (functions/api/_board.js)
+    practice: bool(raw.practice),
+    // The meeting as it's held, from the chair's screen: started, ended, the item being discussed, the vote that's open
+    live: cleanLive(raw.live),
     minutes: raw.minutes === 'approved' ? 'approved' : 'draft',
     approvedOn: raw.minutes === 'approved' ? date(raw.approvedOn) : '',
     attendance,
     sections,
     motions: (Array.isArray(raw.motions) ? raw.motions : []).slice(0, LIMITS.rows).map((x) => ({
       id: idOr(x?.id, 'v_'), text: str(x?.text, 1000), by: one(x?.by, 120), second: one(x?.second, 120), result: pick(x?.result, RESULTS, 'passed'),
+      // The board page's vote, as the chair closed it (null for a motion voted by voice)
+      tally: cleanTally(x?.tally),
     })).filter((x) => x.text),
     actions: (Array.isArray(raw.actions) ? raw.actions : []).slice(0, LIMITS.rows).map((x) => ({
       id: idOr(x?.id, 'a_'), text: str(x?.text, 1000),
@@ -262,6 +268,31 @@ export function cleanMeeting(raw = {}) {
     updatedAt: one(raw.updatedAt, 40),
     updatedBy: one(raw.updatedBy, 200),
   };
+}
+const isoAt = (v) => (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(String(v || '')) ? String(v) : '');
+const count = (v) => (Number(v) >= 0 ? Math.min(999, Math.round(Number(v))) : 0);
+/** { startedAt, endedAt, itemId, vote: null | { motionId, openedAt } }: empty strings until the chair starts it */
+export function cleanLive(raw) {
+  const l = raw && typeof raw === 'object' ? raw : {};
+  const vote = l.vote && typeof l.vote === 'object' && ID.test(String(l.vote.motionId || '')) ? { motionId: String(l.vote.motionId), openedAt: isoAt(l.vote.openedAt) } : null;
+  return { startedAt: isoAt(l.startedAt), endedAt: isoAt(l.endedAt), itemId: ID.test(String(l.itemId || '')) ? String(l.itemId) : '', vote };
+}
+function cleanTally(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return { for: count(raw.for), against: count(raw.against), abstain: count(raw.abstain), of: count(raw.of), at: isoAt(raw.at) };
+}
+/** Started from the chair's screen and not ended: the meeting is being held now */
+export const isLive = (m) => !!m?.live?.startedAt && !m.live.endedAt;
+/** The agenda's items in order, numbered the way the board page and the chair's screen show them: [{ id, title, label: '3.2', section, si, ii }] */
+export function agendaItems(m) {
+  return (m?.sections || []).flatMap((s, si) => s.items.map((it, ii) => ({ id: it.id, title: it.title || s.title || 'Item', presenter: it.presenter, label: `${si + 1}.${ii + 1}`, section: s.title, si, ii })));
+}
+/** A closed vote in words: "Passed 8–1, 1 abstained" ('' when it wasn't voted on the board page) */
+export function tallyText(motion) {
+  const t = motion?.tally;
+  if (!t) return '';
+  const said = RESULTS.find((r) => r.id === motion.result)?.label || 'Recorded';
+  return `${said} ${t.for}–${t.against}${t.abstain ? `, ${t.abstain} abstained` : ''}`;
 }
 /** Where an agenda can come from (cleanMeeting's agendaFrom) */
 export const AGENDA_FROM = ['template', 'last-meeting', 'email', 'drive', 'typed'];
@@ -792,6 +823,8 @@ export function mergeMeeting(base, mine, theirs, { prefer = 'mine' } = {}) {
     merged[f] = r.value;
     clashes.push(...r.clashes);
   }
+  // The meeting as it's held is the chair's: whoever moved it last wins, never a question in the middle of a meeting
+  merged.live = JSON.stringify(cleanLive(mine.live)) !== JSON.stringify(cleanLive(base.live)) ? cleanLive(mine.live) : cleanLive(theirs.live);
   return { merged, clashes: [...new Set(clashes.filter(Boolean))] };
 }
 

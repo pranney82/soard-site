@@ -7,6 +7,7 @@
  * GET                       → { settings, meetings, docs, members, staff, access, numbers, mercury, email }
  * GET ?me=1                 → { admin } for any staff sign-in (the menu shows Board only to admins)
  * GET ?numbers=1            → the live numbers (cash, makeovers, reveals, events) right now
+ * GET ?live=<id>            → { checkins, votes } for the chair's screen while a meeting is held (_board.js chairLive)
  * POST { action, ... } (JSON):
  *   new-meeting { date }                      a meeting from the template, saved, not shared
  *   import-meeting { meeting }                an old agenda read by parseAgendaText, saved
@@ -19,6 +20,8 @@
  *   update-file { id, kind, staffOnly, name }, delete-file { id }
  *   save-settings { settings }
  *   sync-access                               try the sign-in list again (offered only when it failed)
+ *   practice                                  today's practice meeting (made the first time): only the admins see it
+ *   practice-reset { id }                     start the practice over (a new one; its check-ins and votes go)
  * POST multipart (?upload=1): file, ownerType (meeting|doc), ownerId, kind, staffOnly → the stored file
  *
  * The audit log gets what changed by name only: its readers are every staff
@@ -29,6 +32,7 @@ import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
   setActionDone, listDocs, saveDoc, deleteDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
   memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
+  chairLive, createPractice, resetPractice,
 } from './_board.js';
 import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
 import { accessStatus, syncBoardAccess } from './_board-access.js';
@@ -64,6 +68,7 @@ export async function onRequestGet(context) {
     const { me, refused } = await gate(context);
     if (refused) return refused;
     if (q.has('numbers')) return Response.json({ ok: true, numbers: await liveNumbers(env) });
+    if (q.has('live')) return Response.json({ ok: true, ...(await chairLive(env, q.get('live'))) }, { headers: { 'Cache-Control': 'no-store' } });
     // A look at the calendars when the last one is over 10 minutes old (at most 6 seconds; the rest finishes after)
     const looking = maybeSyncBoardCalendar(env, { minAgeMs: 10 * 60 * 1000 });
     context.waitUntil?.(looking);
@@ -129,6 +134,8 @@ export async function onRequestPost(context) {
         // What only the server sets never comes from the editor (where the agenda came from, who joined by Meet)
         const { agendaFrom, fromMeet, ...mine } = body.meeting || {};
         const m = await saveMeeting(env.DB, mine, { by: me, base: typeof body.base === 'string' ? body.base : null });
+        // A practice meeting is the admins' alone: nothing for the audit log
+        if (m.practice) return Response.json({ ok: true, meeting: m });
         await audit(env, me, 'updated', `Board meeting saved: ${meetingName(m)}`);
         // An invite already out follows a new place, once it has settled (./_board-invite.js)
         if (m.invite) await noteInviteChange(env, m);
@@ -220,6 +227,11 @@ export async function onRequestPost(context) {
         if (!body.test && r.sent) await audit(env, me, 'updated', `Board page sign-in email sent to ${r.sent} board members`);
         return Response.json({ ok: r.failed === 0, ...r, ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
       }
+      case 'practice':
+        return Response.json({ ok: true, meeting: await createPractice(env, { by: me }) });
+      case 'practice-reset':
+        needId();
+        return Response.json({ ok: true, meeting: await resetPractice(env, id, { by: me }) });
       case 'sync-access':
         return Response.json({ ok: true, access: { ...(await syncBoardAccess(env)), ...(await accessStatus(env)) } });
       default:

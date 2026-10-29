@@ -29,7 +29,7 @@
 import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, emailOutline, parseAgendaText,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf,
-  agendaIsDraft, draftAgenda, draftSource, draftName, callName, readAgain, AGENDA_READER,
+  agendaIsDraft, draftAgenda, draftSource, draftName, callName, readAgain, AGENDA_READER, isLive, cleanLive,
 } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
@@ -44,6 +44,7 @@ import { maybeSyncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus } from './_board-mail.js';
 import { mercury } from './_mercury.js';
+import { limit } from './_rate-limit.js';
 
 export const SITE = 'https://sunshineonaranneyday.com';
 export const boardFiles = (env) => env?.BOARD_FILES || env?.FILES || null;
@@ -62,6 +63,12 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS board_signatures (doc_id TEXT NOT NULL, slug TEXT NOT NULL, year INTEGER NOT NULL, name TEXT, at TEXT, PRIMARY KEY (doc_id, slug, year))',
   'CREATE TABLE IF NOT EXISTS board_seen (slug TEXT PRIMARY KEY, at TEXT)',
   'CREATE TABLE IF NOT EXISTS board_cash (month TEXT PRIMARY KEY, total REAL, accounts TEXT, at TEXT)',
+  // The admins' practice meetings (simulated members): a table of their own, so nothing that reads board_meetings
+  // (the board page, the calendar, invites, emails, Drive, mail, Meet attendance, drafts) can ever reach one
+  'CREATE TABLE IF NOT EXISTS board_practice (id TEXT PRIMARY KEY, date TEXT, data TEXT NOT NULL, updated_at TEXT, updated_by TEXT)',
+  // A meeting as it's held: who checked in from the board page, and how each one voted on an open motion
+  "CREATE TABLE IF NOT EXISTS board_checkins (meeting_id TEXT NOT NULL, slug TEXT NOT NULL, name TEXT, how TEXT NOT NULL, at TEXT, PRIMARY KEY (meeting_id, slug))",
+  "CREATE TABLE IF NOT EXISTS board_votes (meeting_id TEXT NOT NULL, motion_id TEXT NOT NULL, slug TEXT NOT NULL, name TEXT, vote TEXT NOT NULL, at TEXT, PRIMARY KEY (meeting_id, motion_id, slug))",
 ];
 const _ready = new WeakSet();
 export async function ensureSchema(DB) {
@@ -167,11 +174,12 @@ async function withState(DB, meetings) {
   });
 }
 
-/** Every meeting, newest first, with its files, done states and answers */
-export async function listMeetings(DB) {
+/** Every meeting, newest first, with its files, done states and answers. Practice meetings only when asked ({ practice: true }) */
+export async function listMeetings(DB, { practice = false } = {}) {
   await ensureSchema(DB);
   const rows = (await DB.prepare('SELECT data FROM board_meetings ORDER BY date DESC').all()).results || [];
-  return withState(DB, rows.map((r) => cleanMeeting(parse(r.data))));
+  const more = practice ? (await DB.prepare('SELECT data FROM board_practice ORDER BY date DESC').all()).results || [] : [];
+  return withState(DB, [...rows, ...more].map((r) => cleanMeeting(parse(r.data))));
 }
 
 export async function getMeeting(DB, id) {
@@ -189,8 +197,22 @@ const stored = (m) => {
   return JSON.stringify({ ...rest, actions: rest.actions.map(({ done, doneOn, ...a }) => a), attendance: rest.attendance.map(({ rsvp, ...p }) => p) });
 };
 async function writeMeeting(DB, m) {
-  await DB.prepare('INSERT OR REPLACE INTO board_meetings (id, date, data, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)')
+  // Practice meetings live in their own table (see SCHEMA): getMeeting, and every action built on it, never finds one
+  await DB.prepare(`INSERT OR REPLACE INTO ${m.practice ? 'board_practice' : 'board_meetings'} (id, date, data, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)`)
     .bind(m.id, m.date || '', stored(m), m.updatedAt, m.updatedBy || '').run();
+}
+
+/** A practice meeting by id (null for a board meeting: those are getMeeting's) */
+export async function getPractice(DB, id) {
+  await ensureSchema(DB);
+  const row = await DB.prepare('SELECT data FROM board_practice WHERE id = ?').bind(id).first();
+  return row ? (await withState(DB, [cleanMeeting({ ...parse(row.data), practice: true })]))[0] : null;
+}
+/** Today's practice meeting, if one's been started */
+export async function todayPractice(DB, now = Date.now()) {
+  await ensureSchema(DB);
+  const row = await DB.prepare('SELECT id FROM board_practice WHERE date = ? ORDER BY updated_at DESC LIMIT 1').bind(todayEastern(now)).first();
+  return row ? getPractice(DB, row.id) : null;
 }
 
 /**
@@ -218,7 +240,12 @@ export async function patchMeeting(DB, id, fn) {
  */
 export async function saveMeeting(DB, raw, { by, base = null } = {}) {
   await ensureSchema(DB);
-  const m = cleanMeeting(raw);
+  // Practice is the server's to set: a meeting is one only if it was made as one (createPractice)
+  const practice = await getPractice(DB, cleanMeeting(raw).id);
+  if (practice) return savePractice(DB, practice, raw, { by, base });
+  // A practice meeting started over (or cleared after a week) while an editor still had it open: never a new board meeting
+  if (raw?.practice === true && !(await getMeeting(DB, cleanMeeting(raw).id))) throw Object.assign(new Error('That practice meeting is gone. Open Practice again for a new one.'), { status: 404 });
+  const m = { ...cleanMeeting(raw), practice: false };
   const at = nowIso();
   if (!m.date) throw Object.assign(new Error('A meeting needs a date'), { status: 400 });
   const current = await getMeeting(DB, m.id);
@@ -243,6 +270,21 @@ export async function saveMeeting(DB, raw, { by, base = null } = {}) {
   };
   await writeMeeting(DB, next);
   return getMeeting(DB, m.id);
+}
+
+/** A practice meeting saved from the chair's screen: what a person edits, never shared, never an invite or a packet */
+async function savePractice(DB, current, raw, { by, base = null } = {}) {
+  if (base !== null && current.updatedAt && current.updatedAt !== base) {
+    throw Object.assign(new Error(`${current.updatedBy || 'Someone'} saved this meeting since you opened it`), { status: 409, current });
+  }
+  const m = cleanMeeting(raw);
+  const next = {
+    ...m, id: current.id, date: current.date, practice: true, shared: false, notBoard: false, calendar: null, invite: null, snapshot: null,
+    packetSentAt: '', packetSentTo: 0, minutesSentAt: '', fromMeet: null, agendaFrom: current.agendaFrom,
+    createdAt: current.createdAt, updatedAt: nowIso(), updatedBy: by || '',
+  };
+  await writeMeeting(DB, next);
+  return getPractice(DB, current.id);
 }
 
 /** A new meeting from Settings' template, saved (not shared yet) */
@@ -277,7 +319,7 @@ export async function deleteMeeting(env, id) {
 export async function setActionDone(DB, actionId, done, { by, slug = null } = {}) {
   await ensureSchema(DB);
   if (!ID.test(String(actionId || ''))) throw Object.assign(new Error('Which action item?'), { status: 400 });
-  const meetings = await listMeetings(DB);
+  const meetings = await listMeetings(DB, { practice: !slug });
   const action = meetings.flatMap((m) => m.actions).find((a) => a.id === actionId);
   if (!action) throw Object.assign(new Error('That action item is gone'), { status: 404 });
   if (slug && action.owner !== slug) throw Object.assign(new Error('Only the person it’s assigned to can tick it off'), { status: 403 });
@@ -979,7 +1021,10 @@ export async function portalData(env, { member = null, admin = false, now = Date
   const ahead = meetings.filter((m) => !m.shared && onBoardPage(m, today)).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
   const pending = ahead && !(sharedNext && sharedNext.date <= ahead.date) ? ahead : null;
   const pendingInvite = pending && mine ? repliesOf(pending)[mine] || '' : '';
+  // An admin looking at the board page: today's practice meeting, if they've started one (members never see it)
+  const practice = admin && !member ? await todayPractice(env.DB, now) : null;
   return {
+    ...(admin && !member ? { practice: practice ? { id: practice.id, title: meetingName(practice), date: practice.date, live: practice.live } : null } : {}),
     contact,
     admins: admins.map((a) => a.name),
     nextPending: pending ? {
@@ -1010,6 +1055,231 @@ export async function portalData(env, { member = null, admin = false, now = Date
       advisory: people.advisory.map(({ email, ...p }) => p),
     },
   };
+}
+
+// ─── A meeting as it's held ─────────────────────────────────────────
+//
+// The chair runs the meeting from the Board area (public/admin/board-meeting.js, During): starts it, moves item by
+// item, opens and closes votes. Board members follow it on the board page (GET /api/board-portal?live=<id>, every
+// few seconds): the item being discussed, who's here, the vote that's open. They check in and vote there; the chair's
+// screen sees both (GET /api/board-admin?live=<id>). A practice meeting runs the same way with simulated members.
+
+const fnv = (s) => { let h = 0x811c9dc5; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return h; };
+const isoOf = (ms) => new Date(ms).toISOString();
+const HOW = ['present', 'remote'];
+const VOTE_CHOICES = ['for', 'against', 'abstain'];
+const err = (message, status) => Object.assign(new Error(message), { status });
+
+/**
+ * A practice meeting's simulated board members, worked out from the clock (never stored, the same on every
+ * screen): each checks in 3 to 40 seconds after the chair starts, most in the room, some by video, one or two
+ * never. → [{ slug, name, how, at, simulated }]
+ */
+export function simulatedCheckins(m, now = Date.now()) {
+  const t0 = Date.parse(m?.live?.startedAt || '');
+  if (!m?.practice || !Number.isFinite(t0)) return [];
+  const hashed = m.attendance.filter((p) => p.kind === 'board' && p.slug).map((p) => ({ p, h: fnv(`${m.id}:${p.slug}`) }));
+  const never = hashed.length > 3 ? hashed.reduce((a, b) => (b.h < a.h ? b : a)).p.slug : '';
+  return hashed.flatMap(({ p, h }) => {
+    const r = h % 100;
+    if (p.slug === never || r < 7) return [];
+    const t = t0 + (3 + ((h >>> 8) % 38)) * 1000;
+    return t <= now ? [{ slug: p.slug, name: p.name, how: r < 27 ? 'remote' : 'present', at: isoOf(t), simulated: true }] : [];
+  });
+}
+/** …and each simulated member who's here votes 2 to 14 seconds after the vote opens (or after arriving), mostly for */
+export function simulatedVotes(m, vote, checkins, now = Date.now()) {
+  const t1 = Date.parse(vote?.openedAt || '');
+  if (!m?.practice || !Number.isFinite(t1)) return [];
+  return checkins.filter((c) => c.simulated).flatMap((c) => {
+    const h = fnv(`${m.id}:${vote.motionId}:${c.slug}`);
+    const t = Math.max(t1, Date.parse(c.at)) + (2 + (h % 13)) * 1000;
+    if (t > now) return [];
+    const r = (h >>> 8) % 20;
+    return [{ slug: c.slug, name: c.name, vote: r === 0 ? 'against' : r === 1 ? 'abstain' : 'for', at: isoOf(t), simulated: true }];
+  });
+}
+
+/** An admin practising, as one more member: { slug: 'admin:peter', name: their name on People } */
+async function adminVoter(DB, email) {
+  const e = String(email || '').toLowerCase();
+  const local = e.split('@')[0].replace(/[^a-z0-9.-]/g, '') || 'you';
+  const people = await roster(DB);
+  const name = people.staff.find((p) => e.startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))?.name || local[0].toUpperCase() + local.slice(1);
+  return { slug: `admin:${local}`, name };
+}
+
+/** The meeting someone follows live: a member, a shared one (acting); an admin, a shared one (looking) or a practice one (acting) */
+async function liveMeeting(DB, id, { member = null, admin = false } = {}) {
+  if (!ID.test(String(id || ''))) throw err('Which meeting?', 400);
+  const m = await getMeeting(DB, id);
+  if (m) {
+    if (!m.shared) throw err('That meeting isn’t on the board page', 404);
+    return { m, canAct: !!member };
+  }
+  const p = admin && !member ? await getPractice(DB, id) : null;
+  if (!p) throw err('That meeting isn’t on the board page', 404);
+  return { m: p, canAct: true };
+}
+
+/** Check-ins (real, and a practice meeting's simulated ones), who's here, and the votes by motion */
+async function liveRows(DB, m, now) {
+  const [ci, vs] = await Promise.all([
+    DB.prepare('SELECT slug, name, how, at FROM board_checkins WHERE meeting_id = ?').bind(m.id).all().then((r) => r.results || []),
+    DB.prepare('SELECT motion_id, slug, name, vote, at FROM board_votes WHERE meeting_id = ?').bind(m.id).all().then((r) => r.results || []),
+  ]);
+  const real = new Map(ci.map((c) => [c.slug, { slug: c.slug, name: c.name || '', how: c.how, at: c.at || '' }]));
+  const checkins = [...simulatedCheckins(m, now).filter((c) => !real.has(c.slug)), ...real.values()].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  // Here: board members the chair marked there, then anyone who checked in (practising, the admin is one more)
+  const board = m.attendance.filter((p) => p.kind === 'board');
+  const here = new Map();
+  for (const p of board) if (p.status === 'present' || p.status === 'remote') here.set(p.slug || p.key, p.status);
+  for (const c of checkins) {
+    if (here.has(c.slug)) continue;
+    if (board.some((p) => p.slug === c.slug) || (m.practice && c.slug.startsWith('admin:'))) here.set(c.slug, c.how);
+  }
+  // Votes by motion: an open vote counts only what came in since it opened (a vote taken again starts over)
+  const vote = isLive(m) && m.live.vote && m.motions.some((x) => x.id === m.live.vote.motionId) ? m.live.vote : null;
+  const votes = {};
+  for (const v of vs) {
+    if (vote && v.motion_id === vote.motionId && vote.openedAt && String(v.at) < vote.openedAt) continue;
+    (votes[v.motion_id] ||= []).push({ slug: v.slug, name: v.name || '', vote: v.vote, at: v.at || '' });
+  }
+  if (vote) {
+    const cast = new Set((votes[vote.motionId] || []).map((v) => v.slug));
+    votes[vote.motionId] = [...(votes[vote.motionId] || []), ...simulatedVotes(m, vote, checkins, now).filter((v) => !cast.has(v.slug))]
+      .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  }
+  return { checkins, here, votes, vote, board };
+}
+
+/**
+ * GET /api/board-portal?live=<id>: the meeting as it's held, for the board page (cheap: no JobTread or Mercury).
+ * Never a private note. `here.met` is null when no quorum is set.
+ */
+export async function liveView(env, id, { member = null, admin = false, adminEmail = '', now = Date.now() } = {}) {
+  await ensureSchema(env.DB);
+  const { m, canAct } = await liveMeeting(env.DB, id, { member, admin });
+  const [settings, rows] = await Promise.all([getSettings(env.DB), liveRows(env.DB, m, now)]);
+  const { here, votes, vote, board, checkins } = rows;
+  const me = member ? { slug: member.slug, name: member.name } : canAct ? await adminVoter(env.DB, adminEmail) : null;
+  const sections = (m.practice ? m.sections : forBoard(m).sections).map((sec) => ({
+    id: sec.id, title: sec.title, items: sec.items.map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, notes: it.notes, confidential: it.confidential })),
+  }));
+  const motion = vote ? m.motions.find((x) => x.id === vote.motionId) : null;
+  const cast = motion ? votes[motion.id] || [] : [];
+  const n = (v) => cast.filter((x) => x.vote === v).length;
+  const marked = me ? m.attendance.find((p) => p.slug === me.slug && HOW.includes(p.status))?.status : '';
+  return {
+    id: m.id, practice: !!m.practice, updatedAt: m.updatedAt, title: meetingName(m), date: m.date,
+    live: { startedAt: m.live.startedAt, endedAt: m.live.endedAt, itemId: m.live.itemId },
+    sections,
+    here: { board: here.size, of: board.length + (m.practice ? 1 : 0), quorum: settings.quorum, met: settings.quorum ? here.size >= settings.quorum : null, remote: [...here.values()].filter((h) => h === 'remote').length },
+    me: { how: (me && (checkins.find((c) => c.slug === me.slug)?.how || marked)) || '', canAct: !!(canAct && me), name: me?.name || '' },
+    vote: motion ? {
+      motionId: motion.id, text: motion.text, by: motion.by, second: motion.second, openedAt: vote.openedAt,
+      counts: { for: n('for'), against: n('against'), abstain: n('abstain'), voted: cast.length, of: here.size },
+      mine: (me && cast.find((x) => x.slug === me.slug)?.vote) || '',
+    } : null,
+    motions: m.motions.map((x) => ({ id: x.id, text: x.text, by: x.by, second: x.second, result: x.result, tally: x.tally })),
+    actions: m.actions.map((a) => ({ id: a.id, text: a.text, ownerName: a.ownerName, owner: a.owner, due: a.due, done: a.done })),
+  };
+}
+
+async function liveActor(env, m, canAct, { member, adminEmail, now }) {
+  if (!canAct) throw err('Board members answer for themselves.', 403);
+  const who = member ? { slug: member.slug, name: member.name } : await adminVoter(env.DB, adminEmail);
+  const rl = await limit(env.DB, `board-live:${m.id}:${who.slug}`, 40, 60, { now });
+  if (!rl.ok) throw err('That’s a lot of taps. Wait a few seconds and try again.', 429);
+  return who;
+}
+
+/** POST { action: 'checkin', meetingId, how }: here in the room, or on video (a member on the meeting's day; an admin practising) */
+export async function liveCheckIn(env, id, { member = null, admin = false, adminEmail = '', how, now = Date.now() } = {}) {
+  await ensureSchema(env.DB);
+  if (!HOW.includes(how)) throw err('In the room, or on video?', 400);
+  const { m, canAct } = await liveMeeting(env.DB, id, { member, admin });
+  if (!m.practice && !isLive(m) && m.date !== todayEastern(now)) throw err('Checking in opens on the meeting’s day', 409);
+  const who = await liveActor(env, m, canAct, { member, adminEmail, now });
+  await env.DB.prepare('INSERT OR REPLACE INTO board_checkins (meeting_id, slug, name, how, at) VALUES (?, ?, ?, ?, ?)').bind(m.id, who.slug, who.name, how, isoOf(now)).run();
+  return liveView(env, id, { member, admin, adminEmail, now });
+}
+
+/** POST { action: 'vote', meetingId, motionId, vote }: for, against or abstain, while the chair has that vote open (a change of mind counts) */
+export async function liveVote(env, id, motionId, choice, { member = null, admin = false, adminEmail = '', now = Date.now() } = {}) {
+  await ensureSchema(env.DB);
+  if (!VOTE_CHOICES.includes(choice)) throw err('For, against, or abstain?', 400);
+  const { m, canAct } = await liveMeeting(env.DB, id, { member, admin });
+  if (!isLive(m) || m.live.vote?.motionId !== motionId) throw err('That vote isn’t open', 409);
+  const who = await liveActor(env, m, canAct, { member, adminEmail, now });
+  const { here } = await liveRows(env.DB, m, now);
+  if (!here.has(who.slug)) throw err('Check in first (in the room or on video), then vote', 409);
+  await env.DB.prepare('INSERT OR REPLACE INTO board_votes (meeting_id, motion_id, slug, name, vote, at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(m.id, motionId, who.slug, who.name, choice, isoOf(now)).run();
+  return liveView(env, id, { member, admin, adminEmail, now });
+}
+
+/** GET /api/board-admin?live=<id>: the chair's screen, every few seconds: who checked in, and every vote by motion */
+export async function chairLive(env, id, { now = Date.now() } = {}) {
+  await ensureSchema(env.DB);
+  if (!ID.test(String(id || ''))) throw err('Which meeting?', 400);
+  const m = (await getMeeting(env.DB, id)) || (await getPractice(env.DB, id));
+  if (!m) throw err('That meeting is gone', 404);
+  const { checkins, votes } = await liveRows(env.DB, m, now);
+  return {
+    checkins: checkins.map(({ slug, name, how, at }) => ({ slug, name, how, at })),
+    votes: Object.fromEntries(Object.entries(votes).map(([k, list]) => [k, list.map(({ slug, name, vote, at }) => ({ slug, name, vote, at }))])),
+  };
+}
+
+const easternHm = (ms) => new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/New_York' }).format(new Date(ms));
+async function clearPractice(DB, id, { remove = false } = {}) {
+  await DB.prepare('DELETE FROM board_checkins WHERE meeting_id = ?').bind(id).run();
+  await DB.prepare('DELETE FROM board_votes WHERE meeting_id = ?').bind(id).run();
+  if (remove) await DB.prepare('DELETE FROM board_practice WHERE id = ?').bind(id).run();
+}
+
+/**
+ * POST /api/board-admin { action: 'practice' }: today's practice meeting, made the first time. Only the admins see
+ * it: the next meeting's agenda (else one drafted from the last, else Settings' outline), the real board as its
+ * members (simulated once it starts), a motion to vote on. A week later it's cleared away. → the meeting
+ */
+export async function createPractice(env, { by = '', now = Date.now(), fresh = false } = {}) {
+  await ensureSchema(env.DB);
+  const today = todayEastern(now);
+  if (!fresh) { const cur = await todayPractice(env.DB, now); if (cur) return cur; }
+  const weekAgo = todayEastern(now - 7 * 86_400_000);
+  for (const r of (await env.DB.prepare('SELECT id FROM board_practice WHERE date < ?').bind(weekAgo).all()).results || []) await clearPractice(env.DB, r.id, { remove: true });
+  const [meetings, settings, people] = await Promise.all([listMeetings(env.DB), getSettings(env.DB), roster(env.DB)]);
+  const withAgenda = meetings.filter((x) => isDate(x.date) && x.sections.some((sec) => sec.items.length));
+  const ahead = withAgenda.filter((x) => x.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const last = withAgenda.filter((x) => x.date < today)[0];
+  const base = newMeeting({
+    date: today, template: settings.template, meetings: [], defaults: settings.defaults,
+    board: people.board.map((p) => ({ slug: p.slug, name: p.name, org: p.organization })),
+    staff: people.staff.filter((p) => /founder/i.test(p.title)).map((p) => ({ slug: p.slug, name: p.name })),
+  });
+  // Its own ids, and no link back to a real meeting (its minutes item can't approve anything)
+  const own = (sections) => sections.map((sec) => ({ ...sec, id: uid('s_'), items: sec.items.map((it) => ({ ...it, id: uid('i_'), about: '' })) }));
+  const sections = own(ahead ? ahead.sections : last ? draftAgenda(last, { template: settings.template }) : base.sections);
+  const startMin = Math.floor(((([h, mm]) => h * 60 + mm)(easternHm(now).split(':').map(Number))) / 5) * 5;
+  const hm = (min) => `${String(Math.floor(Math.min(min, 1439) / 60)).padStart(2, '0')}:${String(Math.min(min, 1439) % 60).padStart(2, '0')}`;
+  const m = cleanMeeting({
+    ...base, id: uid('m_'), date: today, start: hm(startMin), end: hm(startMin + 60), title: 'Practice meeting', location: '', address: '', video: '',
+    practice: true, shared: false, sections, actions: [],
+    motions: [{ id: uid('v_'), text: last ? `Approve the minutes of the ${meetingName(last)}` : 'Approve the agenda as written', by: '', second: '', result: 'passed' }],
+    agendaFrom: { kind: 'typed', name: '', at: isoOf(now) }, createdAt: isoOf(now), updatedAt: isoOf(now), updatedBy: by,
+  });
+  await writeMeeting(env.DB, m);
+  return getPractice(env.DB, m.id);
+}
+
+/** POST { action: 'practice-reset', id }: start over (a new practice meeting; the old one's taps and votes go) */
+export async function resetPractice(env, id, { by = '', now = Date.now() } = {}) {
+  await ensureSchema(env.DB);
+  if (!(await getPractice(env.DB, id))) throw err('That practice meeting is gone', 404);
+  await clearPractice(env.DB, id, { remove: true });
+  return createPractice(env, { by, now, fresh: true });
 }
 
 /** For the admin's Members tab: each active board member, their email on file, last visit and this year's signatures */

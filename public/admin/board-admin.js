@@ -20,7 +20,7 @@
 import { useState, useEffect, useRef, useMemo } from './vendor.js';
 import { ask, askToLeave } from './ask.js';
 import { viewerLink, sizeText } from './file-viewer.js';
-import { html, call, upload, ago, firstOf, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords } from './board-ui.js';
+import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords } from './board-ui.js';
 import { MeetingEditor, agendaSource } from './board-meeting.js';
 import {
   DOC_KINDS, LIVE, DEFAULT_TEMPLATE, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
@@ -56,7 +56,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
   }, [route]);
-  const go = (r) => { const next = { tab: 'meetings', meetingId: null, step: null, ...r }; if (hashFor(next) !== location.hash) location.hash = hashFor(next); else setRoute(next); };
+  const go = (r) => { const next = { tab: 'meetings', meetingId: null, step: null, practice: false, ...r }; if (hashFor(next) !== location.hash) location.hash = hashFor(next); else setRoute(next); };
   const markDirty = (d) => { dirty.current = d; setGlobalDirty?.(d, d ? 'board meeting' : ''); };
   const putMeeting = (m) => setData((d) => ({ ...d, meetings: [m, ...d.meetings.filter((x) => x.id !== m.id)].sort((a, b) => String(b.date).localeCompare(String(a.date))) }));
   const setStep = (step) => setRoute((r) => ({ ...r, step }));
@@ -67,7 +67,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
   const meeting = route.meetingId ? data.meetings.find((m) => m.id === route.meetingId) : null;
 
   return html`<div class="bd">
-    ${route.meetingId ? null : html`
+    ${route.meetingId || route.practice ? null : html`
       <div class="hub-tabs" role="tablist" aria-label="Board">
         ${TABS.map(([id, label]) => html`<button type="button" role="tab" aria-selected=${route.tab === id} class=${`hub-tab ${route.tab === id ? 'active' : ''}`} onClick=${() => go({ tab: id })}>${label}</button>`)}
       </div>
@@ -83,13 +83,33 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
         </div>
         <a class="btn btn-ghost btn-sm" href=${PAGE} target="_blank" rel="noopener">Open the board page</a>
       </div>`}
-    ${route.meetingId
+    ${route.practice ? html`<${PracticeMeeting} ctx=${ctx} />`
+      : route.meetingId
       ? (meeting ? html`<${MeetingEditor} key=${meeting.id} meeting=${meeting} step=${route.step} ctx=${ctx} />` : html`<div class="card empty"><p class="empty__title">That meeting isn’t here</p><div class="empty__actions"><button class="btn btn-ghost btn-sm" onClick=${() => go({})}>All meetings</button></div></div>`)
       : route.tab === 'documents' ? html`<${DocumentsTab} ctx=${ctx} />`
       : route.tab === 'members' ? html`<${MembersTab} ctx=${ctx} />`
       : route.tab === 'settings' ? html`<${SettingsTab} ctx=${ctx} />`
       : html`<${MeetingsTab} ctx=${ctx} />`}
   </div>`;
+}
+
+/**
+ * #board/practice: today's practice meeting, the admins' alone, open on During. Its board members are simulated
+ * (functions/api/_board.js), so the live meeting can be tried end to end before a real one. Start over makes a new one.
+ */
+function PracticeMeeting({ ctx }) {
+  const [m, setM] = useState(null);
+  const [error, setError] = useState('');
+  const open = async (body) => {
+    const j = await call(body);
+    if (j.ok) { setError(''); setM(j.meeting); } else setError(j.error || 'The practice meeting didn’t open');
+  };
+  useEffect(() => { open({ action: 'practice' }); }, []);
+  if (error) return html`<div class="card empty" role="alert"><p class="empty__title">The practice meeting didn’t open</p><p class="empty__text">${error}</p><div class="empty__actions"><button class="btn btn-ghost btn-sm" onClick=${() => open({ action: 'practice' })}>Try again</button></div></div>`;
+  if (!m) return html`<div class="area-loading"><span class="spinner" /></div>`;
+  // Never into the Board area's list of meetings: the editor keeps its own copy
+  const pctx = { ...ctx, putMeeting: () => {}, startOver: () => open({ action: 'practice-reset', id: m.id }) };
+  return html`<${MeetingEditor} key=${m.id} meeting=${m} step="during" ctx=${pctx} />`;
 }
 
 // ─── Where a meeting stands ─────────────────────────────────────────
@@ -299,6 +319,7 @@ function MeetingsTab({ ctx }) {
     <${GoogleSetup} data=${data} />
     ${next ? html`<${NextCard} m=${next} ctx=${ctx} /><${AgendaPreview} m=${next} ctx=${ctx} />`
       : html`<div class="card empty"><p class="empty__title">No meeting coming up</p><p class="empty__text">A board meeting on your or Holly’s calendar shows up here by itself. Or add it: its agenda is drafted from the last one, with open action items carried over.</p><div class="empty__actions">${adder}</div></div>`}
+    <p class="bd-quiet"><a class="link" href="#board/practice">Practice running a meeting</a> <span>· only ${youAnd(data.settings.admins, data.me)} see it, with simulated board members</span></p>
     ${ahead.length ? html`<div class="card" style="padding:0">
       <div class="sec-head"><h3>Also coming up <span class="count">${ahead.length}</span></h3></div>
       <ul class="bd-row-list">${ahead.map((m) => html`<${MeetingRow} m=${m} go=${go} />`)}</ul>

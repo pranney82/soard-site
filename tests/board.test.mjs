@@ -1689,3 +1689,180 @@ test('an emailed agenda an older reader filled is read again once from the copy 
   assert.deepEqual((await getMeeting(env.DB, draft.id)).sections.map((s) => s.title), ['Call to order', 'Committee reports', 'Open forum']);
   assert.deepEqual(await maybeDraftAgendas(env, { now: Date.now() + 11 * 60 * 1000 }), [], 'and only once');
 });
+
+// ─── A meeting as it's held, and the admins' practice meeting ───────
+
+const { createPractice, getPractice, todayPractice, simulatedCheckins, simulatedVotes, liveView } = await import('../functions/api/_board.js');
+const { isLive, tallyText, mergeMeeting, todayEastern: todayET, cleanLive } = await import('../public/admin/board-shared.js');
+const liveGet = (email, id, who = 'portal') => call(email, `/api/board-${who === 'portal' ? 'portal' : 'admin'}?live=${id}`, { handler: who === 'portal' ? portal.onRequestGet : admin.onRequestGet });
+
+/** A meeting today, shared, with an agenda (one private note), a motion and the board on its list */
+async function heldToday({ shared = true } = {}) {
+  const made = (await adminApi(FOUNDER, { action: 'new-meeting', date: todayET() })).body.meeting;
+  const m = { ...made, shared, title: 'Fall board meeting',
+    sections: [{ id: 's_one', title: 'Reports', items: [{ id: 'i_fin', title: 'Finance', notes: '- On budget', staffNote: 'PRIVATE: ask counsel' }, { id: 'i_prog', title: 'Programs' }] }],
+    motions: [{ id: 'v_budget', text: 'Approve the 2027 budget', by: 'Alex Rivera', second: 'Sam Ortiz', result: 'passed' }] };
+  return (await adminApi(FOUNDER, { action: 'save-meeting', meeting: m, base: made.updatedAt })).body.meeting;
+}
+const chairSets = async (m, live, more = {}) => (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...m, ...more, live: { ...cleanLive(m.live), ...live } }, base: m.updatedAt })).body.meeting;
+
+test('a meeting is held live: the chair starts it and moves item by item; members follow, check in, and vote while a vote is open', async () => {
+  let m = await heldToday();
+  assert.deepEqual(m.live, { startedAt: '', endedAt: '', itemId: '', vote: null }, 'every meeting has an empty live until the chair starts it');
+  let v = (await liveGet(MEMBER, m.id)).body;
+  assert.equal(v.ok, true);
+  assert.equal(v.live.startedAt, '', 'not started');
+  assert.equal(v.me.canAct, true);
+  assert.ok(!JSON.stringify(v).includes('ask counsel'), 'never a private note');
+  assert.deepEqual(v.sections[0].items.map((it) => it.id), ['i_fin', 'i_prog']);
+
+  const started = new Date().toISOString();
+  m = await chairSets(m, { startedAt: started, itemId: 'i_fin' });
+  assert.equal(isLive(m), true);
+  v = (await liveGet(MEMBER, m.id)).body;
+  assert.equal(v.live.itemId, 'i_fin', 'the item being discussed');
+  assert.deepEqual({ board: v.here.board, of: v.here.of }, { board: 0, of: 3 });
+
+  // Voting needs an open vote, and being here
+  assert.equal((await portalApi(MEMBER, { action: 'vote', meetingId: m.id, motionId: 'v_budget', vote: 'for' })).status, 409, 'no vote is open');
+  m = await chairSets(m, { vote: { motionId: 'v_budget', openedAt: new Date().toISOString() } });
+  const notHere = await portalApi(MEMBER, { action: 'vote', meetingId: m.id, motionId: 'v_budget', vote: 'for' });
+  assert.equal(notHere.status, 409);
+  assert.match(notHere.body.error, /Check in first/);
+  assert.equal((await portalApi(MEMBER, { action: 'checkin', meetingId: m.id, how: 'nowhere' })).status, 400);
+  v = (await portalApi(MEMBER, { action: 'checkin', meetingId: m.id, how: 'remote' })).body;
+  assert.deepEqual([v.me.how, v.here.board, v.here.remote], ['remote', 1, 1]);
+  v = (await portalApi(MEMBER, { action: 'vote', meetingId: m.id, motionId: 'v_budget', vote: 'for' })).body;
+  assert.deepEqual([v.vote.counts.for, v.vote.counts.voted, v.vote.counts.of, v.vote.mine], [1, 1, 1, 'for']);
+  v = (await portalApi(MEMBER, { action: 'vote', meetingId: m.id, motionId: 'v_budget', vote: 'against' })).body;
+  assert.deepEqual([v.vote.counts.for, v.vote.counts.against, v.vote.mine], [0, 1, 'against'], 'a change of mind replaces the vote');
+  assert.equal((await portalApi(MEMBER, { action: 'vote', meetingId: m.id, motionId: 'v_budget', vote: 'maybe' })).status, 400);
+  // Someone the chair marked here votes without checking in
+  m = await chairSets(m, {}, { attendance: m.attendance.map((p) => (p.slug === 'sam-ortiz' ? { ...p, status: 'present' } : p)) });
+  v = (await portalApi(OTHER_MEMBER, { action: 'vote', meetingId: m.id, motionId: 'v_budget', vote: 'for' })).body;
+  assert.deepEqual([v.here.board, v.vote.counts.voted, v.me.how], [2, 2, 'present']);
+
+  // The chair's screen sees every check-in and vote
+  const chair = (await liveGet(FOUNDER, m.id, 'admin')).body;
+  assert.deepEqual(chair.checkins.map((c) => [c.slug, c.how]), [['alex-rivera', 'remote']]);
+  assert.deepEqual(chair.votes.v_budget.map((x) => [x.slug, x.vote]).sort(), [['alex-rivera', 'against'], ['sam-ortiz', 'for']]);
+
+  // Closed with a tally, then taken again: only votes since it reopened count
+  m = await chairSets(m, { vote: null }, { motions: m.motions.map((x) => ({ ...x, result: 'failed', tally: { for: 1, against: 1, abstain: 0, of: 2, at: new Date().toISOString() } })) });
+  assert.equal(tallyText(m.motions[0]), 'Did not pass 1–1');
+  assert.equal((await portalApi(MEMBER, { action: 'vote', meetingId: m.id, motionId: 'v_budget', vote: 'for' })).status, 409, 'closed');
+  await new Promise((r) => setTimeout(r, 5));
+  m = await chairSets(m, { vote: { motionId: 'v_budget', openedAt: new Date().toISOString() } });
+  v = (await liveGet(MEMBER, m.id)).body;
+  assert.equal(v.vote.counts.voted, 0, 'a vote taken again starts over');
+  assert.equal(v.motions[0].tally.for, 1, 'the last tally stays until the chair closes this one');
+
+  // An admin looking can't act for anyone; nobody follows a meeting that isn't shared
+  const looking = (await liveGet(FOUNDER, m.id)).body;
+  assert.equal(looking.me.canAct, false);
+  assert.equal((await portalApi(FOUNDER, { action: 'checkin', meetingId: m.id, how: 'present' })).status, 403);
+  const hidden = await heldToday({ shared: false });
+  assert.equal((await liveGet(MEMBER, hidden.id)).status, 404);
+  assert.equal((await liveGet(FOUNDER, hidden.id)).status, 404);
+  // Ended: no more votes
+  m = await chairSets(m, { endedAt: new Date().toISOString() });
+  assert.equal(isLive(m), false);
+  assert.equal((await portalApi(MEMBER, { action: 'vote', meetingId: m.id, motionId: 'v_budget', vote: 'for' })).status, 409);
+});
+
+test('checking in opens on the meeting’s day (or while it’s held); the chair’s live state merges without a question', async () => {
+  const made = (await adminApi(FOUNDER, { action: 'new-meeting', date: '2099-01-01' })).body.meeting;
+  const m = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...made, shared: true }, base: made.updatedAt })).body.meeting;
+  assert.equal((await portalApi(MEMBER, { action: 'checkin', meetingId: m.id, how: 'present' })).status, 409);
+  const base = cleanMeeting(m);
+  const mine = { ...base, live: { ...base.live, startedAt: '2099-01-01T13:00:00.000Z', itemId: 'i_x' } };
+  const theirs = { ...base, title: 'Renamed' };
+  const { merged, clashes } = mergeMeeting(base, mine, theirs);
+  assert.deepEqual(clashes, []);
+  assert.equal(merged.live.itemId, 'i_x');
+  assert.equal(merged.title, 'Renamed');
+});
+
+test('a practice meeting is the admins’ alone: its own table, never the board page, the lists, invites, emails or answers', async () => {
+  const p = (await adminApi(FOUNDER, { action: 'practice' })).body.meeting;
+  assert.equal(p.practice, true);
+  assert.equal(p.shared, false);
+  assert.equal(p.title, 'Practice meeting');
+  assert.equal(p.date, todayET());
+  assert.deepEqual(p.attendance.filter((x) => x.kind === 'board').map((x) => x.slug).sort(), ['alex-rivera', 'kim-park', 'sam-ortiz']);
+  assert.ok(p.motions.length >= 1, 'a motion to vote on');
+  assert.equal((await adminApi(FOUNDER, { action: 'practice' })).body.meeting.id, p.id, 'the same one all day');
+  assert.equal((await todayPractice(env.DB)).id, p.id);
+
+  // Nothing that reads the board's meetings finds it
+  assert.equal(await getMeeting(env.DB, p.id), null);
+  assert.ok(!(await listMeetings(env.DB)).some((x) => x.id === p.id));
+  assert.ok((await listMeetings(env.DB, { practice: true })).some((x) => x.id === p.id), 'only when asked');
+  assert.ok(!(await adminApi(FOUNDER)).body.meetings.some((x) => x.id === p.id), 'not in the Board area’s list');
+  const page = (await portalApi(MEMBER)).body;
+  assert.ok(!page.meetings.some((x) => x.id === p.id));
+  assert.equal('practice' in page, false, 'members never hear of it');
+  assert.equal((await portalApi(FOUNDER)).body.practice.id, p.id, 'an admin on the board page sees today’s practice');
+  assert.equal((await liveGet(MEMBER, p.id)).status, 404);
+  assert.equal((await portalApi(MEMBER, { action: 'checkin', meetingId: p.id, how: 'present' })).status, 404);
+  assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: p.id, answer: 'yes' })).status, 404);
+  for (const action of ['send-invite', 'send-packet', 'snapshot', 'remind-rsvp', 'send-minutes', 'keep-agenda']) {
+    assert.notEqual((await adminApi(FOUNDER, { action, id: p.id, test: true })).body.ok, true, `${action} can’t reach a practice meeting`);
+  }
+  assert.ok(!outside.some((o) => /resend|googleapis/.test(o.url)), 'no email, no calendar');
+
+  // Saving keeps it practice and unshared; a board meeting can't be made one
+  const saved = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...p, shared: true, practice: false, title: 'Still practice' }, base: p.updatedAt })).body.meeting;
+  assert.deepEqual([saved.practice, saved.shared, saved.title], [true, false, 'Still practice']);
+  const real = (await adminApi(FOUNDER, { action: 'new-meeting', date: '2099-02-02' })).body.meeting;
+  const sneaky = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...real, practice: true }, base: real.updatedAt })).body.meeting;
+  assert.equal(sneaky.practice, false);
+  assert.ok(!JSON.stringify(saved.sections).includes('"about":"m_'), 'its minutes item approves nothing real');
+});
+
+test('a practice meeting’s simulated members check in and vote by the clock, the same on every read; the admin acts as one more member', async () => {
+  let p = (await adminApi(FOUNDER, { action: 'practice' })).body.meeting;
+  assert.deepEqual(simulatedCheckins(p, Date.now()), [], 'nobody before it starts');
+  const t0 = Date.now();
+  p = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...p, live: { ...p.live, startedAt: new Date(t0).toISOString() } }, base: p.updatedAt })).body.meeting;
+  p = await getPractice(env.DB, p.id);
+  assert.deepEqual(simulatedCheckins(p, t0 + 2000), [], 'the first arrives after 3 seconds');
+  const late = simulatedCheckins(p, t0 + 60_000);
+  assert.deepEqual(late, simulatedCheckins(p, t0 + 60_000), 'the same on every read');
+  for (const c of late) {
+    const at = Date.parse(c.at) - t0;
+    assert.ok(at >= 3000 && at <= 40_000, `${c.slug} arrives within 40 seconds`);
+    assert.ok(['present', 'remote'].includes(c.how));
+  }
+  const vote = { motionId: p.motions[0].id, openedAt: new Date(t0 + 60_000).toISOString() };
+  const votes = simulatedVotes(p, vote, late, t0 + 120_000);
+  assert.equal(votes.length, late.length, 'each one here votes');
+  for (const x of votes) {
+    const after = Date.parse(x.at) - (t0 + 60_000);
+    assert.ok(after >= 2000 && after <= 14_000);
+    assert.ok(['for', 'against', 'abstain'].includes(x.vote));
+  }
+  assert.deepEqual(simulatedVotes(p, vote, late, t0 + 61_000), [], 'nobody votes in the first two seconds');
+
+  // The admin, practising: checks in and votes as themselves
+  const view = await liveView(env, p.id, { admin: true, adminEmail: FOUNDER, now: t0 + 60_000 });
+  assert.deepEqual([view.practice, view.me.canAct, view.me.name, view.here.of], [true, true, 'Jane Doe', 4]);
+  assert.equal(view.here.board, late.length);
+  p = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...p, live: { ...p.live, vote: { motionId: p.motions[0].id, openedAt: new Date().toISOString() } } }, base: p.updatedAt })).body.meeting;
+  assert.equal((await portalApi(FOUNDER, { action: 'checkin', meetingId: p.id, how: 'present' })).body.me.how, 'present');
+  const voted = (await portalApi(FOUNDER, { action: 'vote', meetingId: p.id, motionId: p.motions[0].id, vote: 'abstain' })).body;
+  assert.equal(voted.vote.mine, 'abstain');
+  const chair = (await liveGet(FOUNDER, p.id, 'admin')).body;
+  assert.ok(chair.checkins.some((c) => c.slug === 'admin:jane' && c.name === 'Jane Doe'));
+  assert.ok(chair.votes[p.motions[0].id].some((x) => x.slug === 'admin:jane' && x.vote === 'abstain'));
+
+  // Start over: a new one, nothing carried
+  const again = (await adminApi(FOUNDER, { action: 'practice-reset', id: p.id })).body.meeting;
+  assert.notEqual(again.id, p.id);
+  const stale = await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...p, title: 'Saved late' }, base: p.updatedAt });
+  assert.equal(stale.status, 404, 'an editor left open on the old one can’t save it as a board meeting');
+  assert.ok(!(await listMeetings(env.DB)).some((x) => x.title === 'Saved late'));
+  assert.equal(again.live.startedAt, '');
+  assert.equal(await getPractice(env.DB, p.id), null);
+  assert.deepEqual((await liveGet(FOUNDER, again.id, 'admin')).body.checkins, []);
+});

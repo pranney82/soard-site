@@ -8,8 +8,12 @@
  *            or it's emailed in) and the files; beside them the invite, the
  *            agenda, the numbers, the board page, the documents email, and
  *            who's coming
- *   During   attendance as a check-off with the quorum, notes under each
- *            item, motions and votes, action items
+ *   During   the meeting as it's held: Start, the item being discussed (Next,
+ *            Previous, ← →), End; attendance as a check-off with the quorum
+ *            (check-ins from the board page fill it in), notes under each
+ *            item, motions with a vote the board takes on the board page,
+ *            action items. A practice meeting (#board/practice) is this step
+ *            alone, with simulated board members.
  *   After    the minutes as the board will read them, and the files; beside
  *            them written, attendance (Google Meet fills in who joined),
  *            shared, emailed, approved, the signed copy
@@ -28,10 +32,11 @@ import {
 import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, quarterOf, longDate, shortDate, timeRange, plural, uid,
   todayEastern, attendanceCounts, liveLines, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
+  isLive, agendaItems, tallyText, cleanLive,
 } from './board-shared.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
-const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions'];
+const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
 const editable = (m) => {
   const c = cleanMeeting(m);
   return JSON.stringify(EDITABLE.map((f) => (f === 'actions' ? c.actions.map(({ done, doneOn, ...a }) => a) : f === 'attendance' ? c.attendance.map(({ rsvp, ...p }) => p) : c[f])));
@@ -53,9 +58,13 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   const busy = useRef(null);
   const again = useRef(false);
   const timer = useRef(0);
-  const step = asked || stepFor(meeting);
-  const setStep = (s) => { history.replaceState(null, '', hashFor({ meetingId: m.id, step: s })); ctx.setStep(s); window.scrollTo({ top: 0 }); };
+  const practice = !!meeting.practice;
+  const step = practice ? 'during' : asked || stepFor(meeting);
+  const setStep = (s) => { if (practice) return; history.replaceState(null, '', hashFor({ meetingId: m.id, step: s })); ctx.setStep(s); window.scrollTo({ top: 0 }); };
   const set = (patch) => setM((x) => ({ ...x, ...(typeof patch === 'function' ? patch(x) : patch) }));
+  // What the board page follows (the item, a vote opening or closing) saves at once, not a moment later
+  const right = useRef(false);
+  const setNow = (patch) => { right.current = true; set(patch); };
   const dirty = editable(m) !== editable(saved.current);
 
   // ── Saving by itself ──
@@ -107,7 +116,8 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
     if (editable(mRef.current) === editable(saved.current)) return undefined;
     setSt((x) => (x.s === 'saving' ? x : { ...x, s: 'unsaved' }));
     clearTimeout(timer.current);
-    timer.current = setTimeout(save, 1200);
+    timer.current = setTimeout(save, right.current ? 0 : 1200);
+    right.current = false;
     return undefined;
   }, [key]);
   useEffect(() => { markDirty(dirty || st.s === 'error'); }, [dirty, st.s]);
@@ -152,7 +162,21 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   ], [data.people]);
   const numbers = m.snapshot || data.numbers;
   const c = attendanceCounts(m);
-  const p = { m, set, ctx, act, save, numbers, people, keepSaved, saved, setStep, openWhere: () => setEditWhere(true) };
+  // While it's held (and all day on its date): who checked in on the board page, and the votes, every few seconds
+  const following = step === 'during' && (practice || isLive(m) || m.date === todayEastern());
+  const live = useLivePoll(m.id, following);
+  // A check-in fills in someone the chair hasn't marked; never over a mark the chair made (each check-in once)
+  const applied = useRef(new Set());
+  useEffect(() => {
+    const fresh = live.checkins.filter((x) => !applied.current.has(`${x.slug}|${x.at}`));
+    if (!fresh.length) return;
+    fresh.forEach((x) => applied.current.add(`${x.slug}|${x.at}`));
+    const how = new Map(fresh.map((x) => [x.slug, x.how]));
+    if (mRef.current.attendance.some((x) => x.slug && how.has(x.slug) && !x.status)) {
+      set((y) => ({ attendance: y.attendance.map((x) => (x.slug && how.has(x.slug) && !x.status ? { ...x, status: how.get(x.slug) } : x)) }));
+    }
+  }, [live.checkins]);
+  const p = { m, set, setNow, ctx, act, save, numbers, people, keepSaved, saved, setStep, live, practice, openWhere: () => setEditWhere(true) };
 
   const subs = {
     before: m.packetSentAt ? `Documents emailed ${shortDate(m.packetSentAt.slice(0, 10))}` : m.shared ? 'On the board page' : 'Agenda, invite, documents',
@@ -170,8 +194,8 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
           <span class=${`bm-saved ${st.s === 'error' ? 'is-error' : ''}`} role="status" aria-live="polite">
             ${st.s === 'saving' ? 'Saving…' : st.s === 'unsaved' ? 'Saving in a moment' : st.s === 'error' ? html`Not saved: ${st.why} <button class="btn btn-ghost btn-sm" onClick=${save}>Try again</button>` : `Saved ${st.at ? savedAt(st.at) : ''}`}
           </span>
-          <a class="btn btn-ghost btn-sm" href=${`${PAGE}#/meetings/${m.id}`} target="_blank" rel="noopener">See it as the board does</a>
-          <${Menu} label="More for this meeting" items=${[{ label: 'Delete this meeting', danger: true, run: remove }]} />
+          <a class="btn btn-ghost btn-sm" href=${`${PAGE}#/meetings/${m.id}`} target="_blank" rel="noopener">${practice ? 'See it as a board member' : 'See it as the board does'}</a>
+          ${practice ? null : html`<${Menu} label="More for this meeting" items=${[{ label: 'Delete this meeting', danger: true, run: remove }]} />`}
         </div>
       </div>
       <div class="bm-title">
@@ -184,12 +208,15 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
           <button type="button" class="bm-link" aria-expanded=${editWhere} onClick=${() => setEditWhere(!editWhere)}>${editWhere ? 'Done' : 'Change when and where'}</button>
         </p>
       </div>
-      <div class="bm-stages" role="tablist" aria-label="This meeting">
-        ${STAGES.map(([id, t, s], i) => html`<button type="button" role="tab" aria-selected=${step === id} class=${`bm-stage ${done[id] ? 'is-done' : ''}`} onClick=${() => setStep(id)}>
+      ${practice ? html`<div class="bm-practice" role="note">
+        <div><strong>Practice meeting.</strong> Only ${youAnd(data.settings.admins, data.me)} see it. Its board members are simulated: once you start, they check in over the first minute, and they vote a few seconds after you open a vote. Nothing here reaches the board, the calendar or anyone’s email.</div>
+        <button type="button" class="btn btn-ghost btn-sm" onClick=${async () => { if (await ask({ title: 'Start the practice over?', text: 'A fresh practice meeting: the agenda again, nobody checked in, no votes.', yes: 'Start over' })) { clearTimeout(timer.current); saved.current = cleanMeeting(mRef.current); markDirty(false); ctx.startOver?.(); } }}>Start over</button>
+      </div>` : html`<div class="bm-stages" role="tablist" aria-label="This meeting">
+        ${STAGES.map(([id, t, sub], i) => html`<button type="button" role="tab" aria-selected=${step === id} class=${`bm-stage ${done[id] ? 'is-done' : ''}`} onClick=${() => setStep(id)}>
           <span class="bm-stage__n" aria-hidden="true">${done[id] ? CHECK : i + 1}</span>
-          <span style="min-width:0"><span class="bm-stage__t">${t}<span class="bm-stage__what"> · ${s}</span></span><span class="bm-stage__s">${subs[id]}</span></span>
+          <span style="min-width:0"><span class="bm-stage__t">${t}<span class="bm-stage__what"> · ${sub}</span></span><span class="bm-stage__s">${subs[id]}</span></span>
         </button>`)}
-      </div>
+      </div>`}
     </div>
     ${editWhere ? html`<${WhenWhere} ...${p} />` : null}
     <div class="bm-layout" role="tabpanel">
@@ -197,7 +224,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
         <div class="bm-main"><${AgendaEditor} ...${p} /><${FilesCard} ...${p} title="Files for the board" sub="The financial statements, the budget, a deck: PDFs, pictures, Word, Excel or PowerPoint, up to 50 MB. They go with the documents email." /></div>
         <aside class="bm-aside"><${GettingReady} ...${p} /><${Coming} ...${p} /></aside>`
       : step === 'during' ? html`
-        <div class="bm-main"><${Attendance} ...${p} /><${RunNotes} ...${p} /><${Motions} ...${p} /><${Actions} ...${p} /></div>
+        <div class="bm-main"><${RunBar} ...${p} /><${Attendance} ...${p} /><${RunNotes} ...${p} /><${Motions} ...${p} /><${Actions} ...${p} /></div>
         <aside class="bm-aside"><${Quorum} ...${p} /></aside>`
       : html`
         <div class="bm-main"><${MinutesDoc} ...${p} /><${FilesCard} ...${p} title="Every file" sub="All of this meeting’s files. A staff-only file never reaches the board page." /></div>
@@ -444,6 +471,99 @@ function Coming({ m, ctx, act }) {
 
 // ─── During ─────────────────────────────────────────────────────────
 
+/** Who checked in on the board page and how each one voted: { checkins, votes: { motionId: [...] } }, every 3 seconds while on */
+function useLivePoll(id, on) {
+  const [live, setLive] = useState({ checkins: [], votes: {} });
+  useEffect(() => {
+    if (!on) return undefined;
+    let stop = false;
+    let t = 0;
+    const look = async () => {
+      const j = await call(null, { query: `?live=${encodeURIComponent(id)}` });
+      if (stop) return;
+      if (j.ok) setLive({ checkins: j.checkins || [], votes: j.votes || {} });
+      t = setTimeout(look, document.hidden ? 15000 : 3000);
+    };
+    look();
+    return () => { stop = true; clearTimeout(t); };
+  }, [id, on]);
+  return live;
+}
+const typingIn = (el) => !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+const clockOf = (ms) => { const sec = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(sec / 3600); const mm = String(Math.floor((sec % 3600) / 60)).padStart(h ? 2 : 1, '0'); return `${h ? `${h}:` : ''}${mm}:${String(sec % 60).padStart(2, '0')}`; };
+/** A vote's counts from the poll, for the motion that's open */
+const countsOf = (list = []) => ({ for: list.filter((x) => x.vote === 'for').length, against: list.filter((x) => x.vote === 'against').length, abstain: list.filter((x) => x.vote === 'abstain').length, voted: list.length });
+/** Board members here (practising, the admin who checked in is one more), for "6 of 9 here have voted" */
+const hereCount = (m, live, practice) => attendanceCounts(m).boardHere + (practice && live.checkins.some((x) => x.slug.startsWith('admin:')) ? 1 : 0);
+/** Close the open vote: its tally onto the motion (passed when more for than against; the chair can still change it) */
+function closeVote(x, live, practice) {
+  const v = x.live.vote;
+  if (!v) return {};
+  const n = countsOf(live.votes[v.motionId]);
+  const at = new Date().toISOString();
+  return {
+    live: { ...cleanLive(x.live), vote: null },
+    motions: x.motions.map((y) => (y.id === v.motionId ? { ...y, result: n.for > n.against ? 'passed' : 'failed', tally: { for: n.for, against: n.against, abstain: n.abstain, of: hereCount(x, live, practice), at } } : y)),
+  };
+}
+
+/**
+ * The meeting as it's held, at the top of During: Start; then a live clock, the item being discussed with
+ * Previous and Next (or ← → and J K), and End. The board page follows each move within seconds.
+ */
+function RunBar({ m, setNow, live, practice }) {
+  const items = agendaItems(m);
+  const at = items.findIndex((it) => it.id === m.live.itemId);
+  const now = items[at] || null;
+  const running = isLive(m);
+  const [, tick] = useState(0);
+  useEffect(() => { if (!running) return undefined; const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [running]);
+  const goTo = (i) => { const it = items[Math.max(0, Math.min(items.length - 1, i))]; if (it && it.id !== m.live.itemId) setNow((x) => ({ live: { ...cleanLive(x.live), itemId: it.id } })); };
+  useEffect(() => {
+    if (!running) return undefined;
+    const keys = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || typingIn(e.target) || document.querySelector('.modal-overlay, .ask-overlay')) return;
+      if (e.key === 'ArrowRight' || e.key === 'j') { e.preventDefault(); goTo(at + 1); }
+      if (e.key === 'ArrowLeft' || e.key === 'k') { e.preventDefault(); goTo(at < 0 ? 0 : at - 1); }
+    };
+    window.addEventListener('keydown', keys);
+    return () => window.removeEventListener('keydown', keys);
+  }, [running, at, items.length]);
+  const start = () => setNow((x) => ({ live: { ...cleanLive(x.live), startedAt: new Date().toISOString(), endedAt: '', itemId: x.live.itemId || agendaItems(x)[0]?.id || '' } }));
+  const end = async () => {
+    const open = m.live.vote ? m.motions.find((y) => y.id === m.live.vote.motionId) : null;
+    if (!(await ask({ title: 'End the meeting?', text: `The board page stops showing it as live.${open ? ` The open vote on “${open.text.slice(0, 60)}” closes with the votes in so far.` : ''} Notes, attendance and votes stay for the minutes.`, yes: 'End the meeting' }))) return;
+    setNow((x) => { const closed = closeVote(x, live, practice); return { ...closed, live: { ...cleanLive(closed.live || x.live), vote: null, endedAt: new Date().toISOString() } }; });
+  };
+  if (!m.live.startedAt) {
+    return html`<div class="card bm-run is-ready">
+      <div class="bm-run__lead"><span class="bm-run__state">Not started</span><p>Starting puts the meeting live on the board page: members check in, follow along item by item, and vote when you open a vote.</p></div>
+      <button type="button" class="btn btn-primary" onClick=${start}>Start the meeting</button>
+    </div>`;
+  }
+  if (!running) {
+    const took = Date.parse(m.live.endedAt) - Date.parse(m.live.startedAt);
+    return html`<div class="card bm-run is-ended">
+      <div class="bm-run__lead"><span class="bm-run__state">Ended</span><p>${new Date(m.live.endedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, after ${clockOf(took)}. The notes, attendance and votes are ready for the minutes in After.</p></div>
+      <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setNow((x) => ({ live: { ...cleanLive(x.live), endedAt: '' } }))}>Resume</button>
+    </div>`;
+  }
+  return html`<div class="card bm-run is-live" role="region" aria-label="The meeting, live">
+    <div class="bm-run__clock"><span class="bm-live-dot" aria-hidden="true"></span><span class="bm-run__state">Live</span><span class="bm-run__time" aria-label="Time since it started">${clockOf(Date.now() - Date.parse(m.live.startedAt))}</span></div>
+    <div class="bm-run__now" aria-live="polite">
+      <span class="bm-run__label">${now ? `Now · ${now.label}` : 'Now'}</span>
+      <span class="bm-run__title">${now ? now.title : 'Nothing yet: Next starts the agenda'}</span>
+      ${now?.section ? html`<span class="bm-run__sec">${now.section}${now.presenter ? ` · ${now.presenter}` : ''}</span>` : null}
+    </div>
+    <div class="bm-run__do">
+      <button type="button" class="btn btn-ghost btn-sm" disabled=${at <= 0} onClick=${() => goTo(at - 1)} aria-keyshortcuts="ArrowLeft K">← Previous</button>
+      <button type="button" class="btn btn-primary btn-sm" disabled=${at >= items.length - 1} onClick=${() => goTo(at + 1)} aria-keyshortcuts="ArrowRight J">${at < 0 ? 'Start the agenda' : 'Next →'}</button>
+      <button type="button" class="btn btn-ghost btn-sm" onClick=${end}>End the meeting</button>
+    </div>
+    <p class="bm-run__hint">${items.length ? html`<span class="kbd">←</span> <span class="kbd">→</span> move between items when you’re not typing. ` : null}The board page follows within seconds${practice ? ', and so do the simulated members' : ''}.</p>
+  </div>`;
+}
+
 const ORDER = { Coming: 0, 'By video': 1, Maybe: 2, '': 3, 'Can’t come': 4 };
 const CHOICES = [['present', 'Here'], ['remote', 'Video'], ['absent', 'Absent'], ['excused', 'Excused']];
 
@@ -464,11 +584,12 @@ function Quorum({ m, set, ctx }) {
   </div>`;
 }
 
-function Attendance({ m, set, people }) {
+function Attendance({ m, set, people, live }) {
   const answer = (x) => answerOf(x.rsvp, repliesOf(m)[x.slug]);
   const mark = (key, v) => set((x) => ({ attendance: x.attendance.map((y) => (y.key === key ? { ...y, status: y.status === v ? '' : v } : y)) }));
-  const row = (x) => html`<li class="bm-person" key=${x.key}>
-    <div class="bm-person__who"><div class="bm-person__name">${x.name}</div><div class="bm-person__meta">${[x.kind === 'board' ? x.org : x.kind === 'staff' ? 'SOARD' : `Guest${x.org ? `, ${x.org}` : ''}`, answer(x) ? `said ${answer(x).toLowerCase()}` : ''].filter(Boolean).join(' · ')}</div></div>
+  const checked = new Map(live.checkins.map((x) => [x.slug, x.how]));
+  const row = (x) => html`<li class=${`bm-person ${checked.has(x.slug) ? 'is-checked' : ''}`} key=${x.key}>
+    <div class="bm-person__who"><div class="bm-person__name">${x.name}</div><div class="bm-person__meta">${[checked.has(x.slug) ? `checked in${checked.get(x.slug) === 'remote' ? ' on video' : ''}` : '', x.kind === 'board' ? x.org : x.kind === 'staff' ? 'SOARD' : `Guest${x.org ? `, ${x.org}` : ''}`, answer(x) && !checked.has(x.slug) ? `said ${answer(x).toLowerCase()}` : ''].filter(Boolean).join(' · ')}</div></div>
     <div class="bm-choices" role="group" aria-label=${`${x.name} is`}>
       ${CHOICES.map(([v, l]) => html`<button type="button" class=${`bm-choice is-${v}`} aria-pressed=${x.status === v} onClick=${() => mark(x.key, v)}>${l}</button>`)}
     </div>
@@ -476,7 +597,7 @@ function Attendance({ m, set, people }) {
   const board = m.attendance.filter((x) => x.kind === 'board').sort((a, b) => (ORDER[answer(a)] ?? 3) - (ORDER[answer(b)] ?? 3));
   const rest = m.attendance.filter((x) => x.kind !== 'board');
   return html`<div class="card">
-    <div class="bd-card-head"><h3>Attendance</h3><p>Tap each person as the meeting starts: here, on video, absent or excused. Every tap saves.</p></div>
+    <div class="bd-card-head"><h3>Attendance</h3><p>Tap each person as the meeting starts: here, on video, absent or excused. Every tap saves. Anyone who checks in on the board page is marked for you.</p></div>
     <ul class="bm-people">${board.map(row)}</ul>
     ${rest.length ? html`<p class="bm-group">Staff and guests</p><ul class="bm-people">${rest.map(row)}</ul>` : null}
     <${AddPerson} people=${people} present=${m.attendance} onAdd=${(x) => set((y) => ({ attendance: [...y.attendance, x] }))} />
@@ -500,8 +621,16 @@ function AddPerson({ people, present, onAdd }) {
 }
 
 /** Notes under each agenda item, as the meeting goes */
-function RunNotes({ m, set, ctx, numbers }) {
+function RunNotes({ m, set, setNow, ctx, numbers, practice }) {
   const { data } = ctx;
+  const running = isLive(m);
+  // The item being discussed comes into view as the chair moves on
+  const was = useRef(m.live.itemId);
+  useEffect(() => {
+    if (!m.live.itemId || m.live.itemId === was.current) return;
+    was.current = m.live.itemId;
+    document.getElementById(`run-${m.live.itemId}`)?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, [m.live.itemId]);
   const setItem = (si, ii, patch) => set((x) => ({ sections: x.sections.map((s, i) => (i === si ? { ...s, items: s.items.map((it, j) => (j === ii ? { ...it, ...patch } : it)) } : s)) }));
   const others = youAnd(data.settings.admins, data.me);
   const prevName = (id) => { const x = data.meetings.find((y) => y.id === id); return x ? meetingName(x) : 'the last meeting'; };
@@ -519,14 +648,15 @@ function RunNotes({ m, set, ctx, numbers }) {
     <div class="ag ag--run">
       ${m.sections.map((s, si) => html`<section class="ag-sec" key=${s.id}>
         <div class="ag-sec__head"><span class="ag-num" aria-hidden="true">${si + 1}</span><h4 class="ag-sec__label">${s.title || 'Section'}</h4></div>
-        ${s.items.length ? html`<ul class="ag-items">${s.items.map((it, ii) => html`<li class="ag-item" key=${it.id}>
-          <div class="ag-item__name">${it.title || html`<em>No title</em>`}${it.presenter ? html`<span class="ag-item__who">${it.presenter}</span>` : null}
+        ${s.items.length ? html`<ul class="ag-items">${s.items.map((it, ii) => html`<li class=${`ag-item ${running && m.live.itemId === it.id ? 'is-now' : ''}`} id=${`run-${it.id}`} key=${it.id}>
+          <div class="ag-item__name">${running && m.live.itemId === it.id ? html`<span class="bm-now"><span class="bm-live-dot" aria-hidden="true"></span>Now</span>` : null}${it.title || html`<em>No title</em>`}${it.presenter ? html`<span class="ag-item__who">${it.presenter}</span>` : null}
             ${it.confidential ? html`<span class="tag tag--warn">Board only</span>` : null}
+            ${running && m.live.itemId !== it.id ? html`<button type="button" class="bm-link bm-discuss" onClick=${() => setNow((x) => ({ live: { ...cleanLive(x.live), itemId: it.id } }))}>Discuss now</button>` : null}
             <button type="button" class="bm-link" onClick=${() => setItem(si, ii, it.staffNote || it.showStaff ? { staffNote: '', showStaff: false } : { showStaff: true })}>${it.staffNote || it.showStaff ? 'Remove private note' : 'Private note'}</button></div>
           <${NotesBox} label=${`Notes for ${it.title || 'this item'}`} value=${it.notes} placeholder="Notes" onChange=${(v) => setItem(si, ii, { notes: v })} />
           ${it.staffNote || it.showStaff ? html`<${NotesBox} tone="is-private" label="Your private note" value=${it.staffNote} placeholder=${`Only ${others} see this`} onChange=${(v) => setItem(si, ii, { staffNote: v })} />` : null}
           <${LiveBox} kind=${it.live} numbers=${numbers} meetingId=${m.id} locked=${!!m.snapshot} />
-          ${it.live === 'minutes' && it.about ? html`<div class="bd-actions" style="margin-top:0.5rem">${data.meetings.find((y) => y.id === it.about)?.minutes === 'approved'
+          ${it.live === 'minutes' && it.about && !practice ? html`<div class="bd-actions" style="margin-top:0.5rem">${data.meetings.find((y) => y.id === it.about)?.minutes === 'approved'
             ? html`<span class="tag tag--success">Approved</span>` : html`<button class="btn btn-primary btn-sm" onClick=${() => approve(it)}>The board approved them</button>`}<span class="bd-muted">${prevName(it.about)}</span></div>` : null}
         </li>`)}</ul>` : html`<p class="bd-muted ag-empty">Nothing on the agenda here.</p>`}
       </section>`)}
@@ -534,7 +664,14 @@ function RunNotes({ m, set, ctx, numbers }) {
   </div>`;
 }
 
-function Motions({ m, set }) {
+function Motions({ m, set, setNow, live, practice, saved }) {
+  const running = isLive(m);
+  const open = running ? m.live.vote?.motionId || '' : '';
+  const savedIds = new Set(saved.current.motions.map((x) => x.id));
+  const openVote = async (x) => {
+    if (x.tally && !(await ask({ title: 'Take the vote again?', text: `The last result (${tallyText(x)}) stays until you close this one. Everyone votes again.`, yes: 'Take it again' }))) return;
+    setNow((y) => ({ live: { ...cleanLive(y.live), vote: { motionId: x.id, openedAt: new Date().toISOString() } } }));
+  };
   const here = m.attendance.filter((x) => x.status === 'present' || x.status === 'remote').map((x) => x.name);
   const names = here.length ? here : m.attendance.filter((x) => x.kind === 'board').map((x) => x.name);
   const upd = (i, patch) => set((x) => ({ motions: x.motions.map((y, j) => (j === i ? { ...y, ...patch } : y)) }));
@@ -542,14 +679,35 @@ function Motions({ m, set }) {
     <option value="">${label}</option>${[...new Set([...names, x[f]].filter(Boolean))].map((n) => html`<option value=${n}>${n}</option>`)}
   </select>`;
   return html`<div class="card">
-    <div class="bd-card-head"><h3>Motions and votes</h3><p>What the board voted on, for the minutes.</p></div>
-    ${m.motions.length ? html`<div class="bd-lines">${m.motions.map((x, i) => html`<div class="bd-line bd-line--motion" key=${x.id}>
-      <input class="form-input" aria-label="The motion" value=${x.text} placeholder="Approve the 2027 budget" onInput=${(e) => upd(i, { text: e.target.value })} />
-      ${who(x, i, 'by', 'Moved by')}${who(x, i, 'second', 'Seconded by')}
-      <select class="form-select" aria-label="Result" value=${x.result} onChange=${(e) => upd(i, { result: e.target.value })}>${RESULTS.map((r) => html`<option value=${r.id}>${r.label}</option>`)}</select>
-      <button class="bd-icon-btn" aria-label="Delete the motion" onClick=${() => set((y) => ({ motions: y.motions.filter((_, j) => j !== i) }))}>✕</button>
+    <div class="bd-card-head"><h3>Motions and votes</h3><p>${running ? 'Open the vote and the board votes on the board page, in the room or on video. Close it to record the result.' : 'What the board voted on, for the minutes. Once the meeting is started, the board can vote on the board page.'}</p></div>
+    ${m.motions.length ? html`<div class="bd-lines">${m.motions.map((x, i) => html`<div class=${`bm-motion ${open === x.id ? 'is-voting' : ''}`} key=${x.id}>
+      <div class="bd-line bd-line--motion">
+        <input class="form-input" aria-label="The motion" value=${x.text} placeholder="Approve the 2027 budget" onInput=${(e) => upd(i, { text: e.target.value })} />
+        ${who(x, i, 'by', 'Moved by')}${who(x, i, 'second', 'Seconded by')}
+        <select class="form-select" aria-label="Result" value=${x.result} onChange=${(e) => upd(i, { result: e.target.value })}>${RESULTS.map((r) => html`<option value=${r.id}>${r.label}</option>`)}</select>
+        <button class="bd-icon-btn" aria-label="Delete the motion" disabled=${open === x.id} onClick=${() => set((y) => ({ motions: y.motions.filter((_, j) => j !== i) }))}>✕</button>
+      </div>
+      ${open === x.id ? html`<${VotePanel} m=${m} x=${x} live=${live} practice=${practice} setNow=${setNow} />`
+        : x.tally || running ? html`<div class="bm-vote-line">
+          ${x.tally ? html`<span class=${`tag ${x.result === 'passed' ? 'tag--success' : ''}`}>${tallyText(x)}</span><span class="bd-muted">on the board page${x.tally.of ? `, ${x.tally.of} here` : ''}</span>` : null}
+          ${running ? html`<button type="button" class=${`btn btn-sm ${x.tally ? 'btn-ghost' : 'btn-primary'}`} disabled=${!!open || !x.text.trim() || !savedIds.has(x.id)} title=${open ? 'Close the open vote first' : !savedIds.has(x.id) ? 'Saving…' : ''} onClick=${() => openVote(x)}>${x.tally ? 'Vote again' : 'Open the vote'}</button>` : null}
+        </div>` : null}
     </div>`)}</div>` : null}
     <button class="btn btn-ghost btn-sm" style=${m.motions.length ? 'margin-top:0.75rem' : ''} onClick=${() => set((x) => ({ motions: [...x.motions, { id: uid('v_'), text: '', by: '', second: '', result: 'passed' }] }))}>Add a motion</button>
+  </div>`;
+}
+
+/** An open vote, live: the counts as they come in, who has voted, and Close */
+function VotePanel({ m, x, live, practice, setNow }) {
+  const list = live.votes[x.id] || [];
+  const n = countsOf(list);
+  const of = hereCount(m, live, practice);
+  const bar = (k, label) => html`<div class=${`bm-vote__n is-${k}`}><span class="bm-vote__num">${n[k]}</span><span class="bm-vote__lab">${label}</span><span class="bm-vote__bar" aria-hidden="true"><i style=${`--w:${of ? Math.min(100, (n[k] / of) * 100) : 0}%`}></i></span></div>`;
+  return html`<div class="bm-vote" role="region" aria-label="The vote, live">
+    <div class="bm-vote__head"><span class="bm-live-dot" aria-hidden="true"></span><strong>Voting now</strong><span class="bd-muted" aria-live="polite">${n.voted} of ${of} here ${n.voted === 1 ? 'has' : 'have'} voted</span></div>
+    <div class="bm-vote__counts">${bar('for', 'For')}${bar('against', 'Against')}${bar('abstain', 'Abstain')}</div>
+    ${list.length ? html`<ul class="bm-vote__who">${list.map((v) => html`<li class=${`is-${v.vote}`} key=${v.slug}>${v.name || v.slug}<span>${{ for: 'for', against: 'against', abstain: 'abstains' }[v.vote]}</span></li>`)}</ul>` : html`<p class="bd-muted">Votes show here as the board taps them on the board page.</p>`}
+    <div class="bd-actions"><button type="button" class="btn btn-primary btn-sm" onClick=${() => setNow((y) => closeVote(y, live, practice))}>Close the vote</button><span class="bd-muted">${n.for > n.against ? 'It passes as it stands.' : n.voted ? 'It doesn’t pass as it stands.' : ''}</span></div>
   </div>`;
 }
 

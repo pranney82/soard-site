@@ -635,8 +635,73 @@ try {
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Signed by Alex Rivera/), 'and who signed the policy');
   await jane.goto(`${SITE}/admin/board/`, { waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /seeing the board page the way board members do/), 'the founder sees the board page as the board does');
-  ok(await jane.evaluate(() => [...document.querySelectorAll('.bp-choice')].every((b) => b.disabled)) && /Board members answer here/.test(await text(jane)), 'with no answers to give for anyone');
+  ok(await waitText(jane, /Makeovers in progress/) && !/the way board members do/.test(await text(jane)), 'the founder sees the board page as the board does, with no banner saying so');
+  ok(await jane.evaluate(() => !document.querySelector('.bp-choice') && !document.querySelector('.bp-sign')), 'with nothing to answer or sign for anyone');
+  await jane.click('.bp-me__btn');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.bp-menu a')].some((a) => a.getAttribute('href') === '/admin/#board' && /Back to the Board area/.test(a.textContent))), 'the account menu has the way back to the Board area');
+
+  // ─── The chair runs a meeting live (board-meeting.js During), in the practice meeting with simulated members ───
+  console.log('The chair, running a practice meeting live');
+  await jane.goto(`${SITE}/admin/#board/practice`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' });
+  ok(await waitText(jane, /Practice meeting\.[\s\S]*Only you/), 'Practice opens a meeting only the admins see, its members simulated');
+  ok(await jane.evaluate(() => !document.querySelector('.bm-stages') && !!document.querySelector('.bm-run.is-ready')), 'just the meeting as it’s held, ready to start');
+  const practiceId = await jane.$eval('a[href*="/admin/board/#/meetings/"]', (a) => a.getAttribute('href').split('/').pop());
+  await clickText(jane, 'button', /^Start the meeting$/);
+  ok(await jane.waitForSelector('.bm-run.is-live', { timeout: 5000 }).then(() => true, () => false), 'Start puts it live, with a clock');
+  ok(await saved(jane), 'and saves at once');
+  const firstItem = await jane.$eval('.bm-run__title', (e) => e.textContent);
+  await jane.evaluate(() => document.activeElement?.blur());
+  await jane.keyboard.press('ArrowRight');
+  ok(await jane.waitForFunction((t) => document.querySelector('.bm-run__title')?.textContent !== t, { timeout: 4000 }, firstItem).then(() => true, () => false), '→ moves to the next item');
+  ok(await jane.evaluate(() => /Now/.test(document.querySelector('.ag-item.is-now')?.textContent || '')), 'the item being discussed is marked Now in the notes');
+  ok(await saved(jane), 'each move saves at once');
+  let follow = await jane.evaluate(async (id) => (await fetch(`/api/board-portal?live=${id}`)).json(), practiceId);
+  ok(follow.practice && follow.me.canAct && follow.live.itemId && follow.live.startedAt, 'the board page follows it: live, on the same item; the founder acts as one more member there');
+  ok(await jane.waitForFunction(() => document.querySelectorAll('.bm-person.is-checked').length > 0, { timeout: 45000 }).then(() => true, () => false), 'the simulated members check in, and attendance fills itself in');
+  await clickText(jane, 'button', /^Open the vote$/);
+  ok(await jane.waitForSelector('.bm-vote', { timeout: 5000 }).then(() => true, () => false), 'Open the vote shows it live');
+  follow = await jane.evaluate(async (id) => (await fetch(`/api/board-portal?live=${id}`)).json(), practiceId);
+  ok(!!follow.vote?.motionId, 'and the board page has the vote open');
+  // ─── The same meeting on the board page (portal.js): the live room, checking in and voting ───
+  console.log('The board page, following the practice meeting');
+  const room = await tab(FOUNDER, 1440);
+  await room.goto(`${SITE}/admin/board/#/meetings/${practiceId}`, { waitUntil: 'networkidle0' });
+  ok(await room.waitForSelector('.bp-livehead', { timeout: 8000 }).then(() => true, () => false), 'the board page opens the meeting live');
+  ok(await room.evaluate(() => /Live/.test(document.querySelector('.bp-livechip.is-live')?.textContent || '') && /Practice/.test(document.querySelector('.bp-livehead').textContent)), 'marked Live, and Practice');
+  ok(await room.evaluate(() => !!document.querySelector('.bp-now .bp-now__title')?.textContent.trim() && !!document.querySelector('.bp-liveag__item.is-now') && !!document.querySelector('.bp-liveag__item.is-done')), 'Now discussing: the chair’s item, the one before it done');
+  ok(await room.evaluate(() => !!document.querySelector('.bp-vote') && [...document.querySelectorAll('.bp-vote__choice')].every((b) => b.disabled)), 'the vote is up; voting waits for checking in');
+  await clickText(room, '.bp-checkin button', /^I’m in the room$/);
+  ok(await room.waitForSelector('.bp-here', { timeout: 5000 }).then(() => true, () => false) && !(await room.$('.bp-checkin')), 'one tap checks in');
+  await clickText(room, '.bp-vote__choice', /^For$/);
+  ok(await room.waitForFunction(() => document.querySelector('.bp-vote__choice[aria-pressed="true"]')?.textContent.trim() === 'For', { timeout: 5000 }).then(() => true, () => false), 'one tap votes, and stays picked');
+  ok(/You voted for\. You can change it until the chair closes the vote\./.test(await text(room)), 'and says it can change until the vote closes');
+  ok(await room.waitForFunction(() => /[1-9]\d* of \d+ here ha(s|ve) voted/.test(document.querySelector('.bp-vote__of')?.textContent || ''), { timeout: 30000 }).then(() => true, () => false), 'the count fills in as the board votes');
+  ok(await overflow(room) <= 0, 'the live room: nothing past the right edge');
+  await shot(room, '17-board-page-live-1440');
+  const roomPhone = await tab(FOUNDER, 390);
+  await roomPhone.goto(`${SITE}/admin/board/#/meetings/${practiceId}`, { waitUntil: 'networkidle0' });
+  ok(await roomPhone.waitForSelector('.bp-vote', { timeout: 8000 }).then(() => true, () => false) && await overflow(roomPhone) <= 0, 'on a phone: the vote first, nothing past the edge');
+  await shot(roomPhone, '17-board-page-live-390');
+  await roomPhone.close();
+  ok(await jane.waitForFunction(() => document.querySelectorAll('.bm-vote__who li').length > 0, { timeout: 30000 }).then(() => true, () => false), 'votes arrive as the members tap them');
+  await shot(jane, '15-practice-voting');
+  await clickText(jane, 'button', /^Close the vote$/);
+  ok(await waitText(jane, /(Passed|Did not pass) \d+–\d+/), 'Close records the result with its tally');
+  ok(await saved(jane), 'and saves it');
+  await clickText(jane, 'button', /^End the meeting$/);
+  ok(await jane.waitForSelector('.bm-run.is-ended', { timeout: 5000 }).then(() => true, () => false), 'End closes the meeting');
+  await shot(jane, '16-practice-ended');
+  // The board tab was behind the chair's (a hidden tab asks every 15s, a shown one every 3s): look at it, as a person would
+  await room.bringToFront();
+  ok(await room.waitForSelector('.bp-livehead.is-ended', { timeout: 20000 }).then(() => true, () => false) && /The meeting is over/i.test(await text(room)) && /(Passed|Did not pass) \d+–\d+/.test(await text(room)), 'the board page follows the end: over, with the decision and its tally');
+  await shot(room, '18-board-page-ended-1440');
+  await room.close();
+  await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' });
+  await waitText(jane, /Past meetings/);
+  ok(!(await jane.evaluate(() => [...document.querySelectorAll('.bd-row-list a, .bh-next a')].some((a) => /Practice meeting/.test(a.textContent)))), 'the practice meeting is never in the Board area’s list');
+  ok(await jane.$('a[href="#board/practice"]') !== null, 'one quiet link leads to it');
 
   // The editor on a phone
   const phone = await tab(FOUNDER, 390);

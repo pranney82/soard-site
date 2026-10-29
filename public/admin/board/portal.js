@@ -29,6 +29,7 @@ import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
+  isLive, agendaItems, tallyText,
 } from '../board-shared.js';
 
 const html = htm.bind(h);
@@ -360,7 +361,6 @@ function App() {
     : html`<${HomePage} ctx=${ctx} />`;
   return html`
     <a class="bp-skip" href="#main" onClick=${(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to the page</a>
-    ${data.me.admin ? html`<p class="bp-banner"><span>You’re seeing the board page the way board members do. Their answers, ticks and signatures are theirs to give.</span> <a href="/admin/#board">Back to the Board area</a></p>` : null}
     <header class="bp-top">
       <div class="bp-bar">
         <a class="bp-brand" href="#/" aria-label="SOARD Board, Home"><img src=${LOGO} alt="" width="44" height="44" /><span class="bp-brand__words"><strong>Sunshine on a Ranney Day</strong><small>Board of Directors</small></span></a>
@@ -412,7 +412,16 @@ function Nav({ page }) {
 /** Who's signed in, and the way out */
 function Account({ data, d }) {
   const [open, setOpen] = useState(false);
+  const [who, setWho] = useState(null);
   const ref = useRef(null);
+  useEffect(() => {
+    if (!data.me.admin) return;
+    fetch('/cdn-cgi/access/get-identity').then((r) => (r.ok ? r.json() : null)).then((j) => {
+      const email = String(j?.email || '');
+      const first = (String(j?.name || '').trim().split(/\s+/)[0] || email.split('@')[0].split(/[._-]/)[0] || '');
+      if (email) setWho({ email, name: first ? first[0].toUpperCase() + first.slice(1) : email });
+    }).catch(() => {});
+  }, []);
   useEffect(() => {
     if (!open) return undefined;
     const away = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
@@ -421,14 +430,15 @@ function Account({ data, d }) {
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
   }, [open]);
-  const name = data.me.name || 'Viewing as the board';
+  const name = data.me.name || who?.name || 'Admin';
+  const email = data.me.email || who?.email || '';
   return html`<div class="bp-me" ref=${ref}>
     <button type="button" class="bp-me__btn" aria-expanded=${open} aria-haspopup="true" aria-label=${`Your account: ${name}`} onClick=${() => setOpen(!open)}>
-      ${d.me ? html`<${Avatar} p=${d.me} size=${36} />` : html`<span class="bp-avatar bp-avatar--initials" style="--s:36px;--hue:42" aria-hidden="true">${data.me.name ? initialsOf(data.me.name) : 'B'}</span>`}
-      <span class="bp-me__name">${data.me.name ? firstName(data.me.name) : 'Board view'}</span>
+      ${d.me ? html`<${Avatar} p=${d.me} size=${36} />` : html`<span class="bp-avatar bp-avatar--initials" style="--s:36px;--hue:42" aria-hidden="true">${initialsOf(name)}</span>`}
+      <span class="bp-me__name">${firstName(name)}</span>
     </button>
     <div class=${`bp-menu ${open ? 'is-open' : ''}`} role="menu" hidden=${!open}>
-      <div class="bp-menu__who"><strong>${name}</strong>${data.me.email ? html`<span>${data.me.email}</span>` : data.me.title ? html`<span>${data.me.title}</span>` : null}</div>
+      <div class="bp-menu__who"><strong>${name}</strong>${email ? html`<span>${email}</span>` : data.me.title ? html`<span>${data.me.title}</span>` : null}</div>
       ${data.me.admin ? html`<a role="menuitem" href="/admin/#board"><${Icon} name="back" size=${18} />Back to the Board area</a>` : null}
       <a role="menuitem" href="/cdn-cgi/access/logout"><${Icon} name="logout" size=${18} />Sign out</a>
     </div>
@@ -570,7 +580,11 @@ function NextMeeting({ m, ctx, compact = false }) {
   const today = m.date === data.today;
   const [, setNow] = useState(0);
   useEffect(() => { if (!today) return undefined; const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, [today]);
-  const phase = today ? phaseOf(m) : null;
+  // On the day: whether the chair has started, and where the board is on the agenda
+  const [lv] = useLive(m.id, today && !m.pending, 20000);
+  const running = !!lv?.live.startedAt && !lv.live.endedAt;
+  const nowAt = running ? agendaItems(lv).find((it) => it.id === lv.live.itemId) : null;
+  const phase = running ? 'now' : lv?.live.endedAt ? 'after' : today ? phaseOf(m) : null;
   const video = videoOf(m);
   const fileCount = fileRows(m.files || []).reduce((s, g) => s + g.rows.length, 0);
   const status = today ? (phase === 'now' ? 'Happening now' : phase === 'after' ? 'Earlier today' : m.start ? `Today at ${clock(m.start)}` : 'Today') : inWords(m.date, data.today);
@@ -586,10 +600,12 @@ function NextMeeting({ m, ctx, compact = false }) {
           ? html`${m.location}${m.location && m.address ? html`<br />` : null}${m.address ? html`<a href=${mapsHref(m.address)} target="_blank" rel="noopener">${m.address}</a>` : null}`
           : 'Place to come. Your invite updates when it’s set.'}</span></li>
         ${video && !(today && phase !== 'after') ? html`<li><${Icon} name="video" /><span><a href=${video} target="_blank" rel="noopener">${joinLabel(video)}</a>${today ? '' : ' if you can’t be there in person'}</span></li>` : null}
+        ${nowAt ? html`<li class="bp-facts__now"><span class="bp-live-dot" aria-hidden="true"></span><span>Now: ${nowAt.label} ${nowAt.title}</span></li>` : null}
       </ul>
       <div class="bp-btns">
         ${today && video && phase !== 'after' ? html`<a class="bp-btn bp-btn--primary" href=${video} target="_blank" rel="noopener"><${Icon} name="video" />${joinLabel(video)}</a>` : null}
         ${m.pending ? html`<p class="bp-pending"><${Icon} name="documents" size=${18} />The agenda and packet post here before the meeting.</p>`
+          : running ? html`<a class=${`bp-btn ${video ? '' : 'bp-btn--primary'}`} href=${`#/meetings/${m.id}`} onClick=${claimMorph}><span class="bp-live-dot" aria-hidden="true"></span>Follow the meeting<${Icon} name="arrow" size=${18} cls="bp-go" /></a>`
           : html`<a class=${`bp-btn ${today && video && phase !== 'after' ? '' : 'bp-btn--primary'}`} href=${`#/meetings/${m.id}`} onClick=${claimMorph}>See the agenda${fileCount ? ` and ${plural(fileCount, 'file')}` : ''}<${Icon} name="arrow" size=${18} cls="bp-go" /></a>`}
       </div>
       <${OnCalendar} m=${m} data=${data} />
@@ -612,7 +628,7 @@ function Rsvp({ m, ctx }) {
   const { data, setData, say } = ctx;
   const [busy, setBusy] = useState('');
   const [thanks, setThanks] = useState(false);
-  if (m.date < data.today) return null;
+  if (m.date < data.today || !data.me.slug) return null;
   const team = theTeam(data);
   const chosen = RSVP.find((r) => r.id === m.myRsvp);
   const onInvite = !chosen && m.myInvite && m.myInvite !== 'invited' ? answerOf('', m.myInvite) : '';
@@ -633,11 +649,10 @@ function Rsvp({ m, ctx }) {
     <p class="bp-rsvp__q" id=${qid}>Will you be there?</p>
     <div class="bp-seg" style=${`--at:${Math.max(0, at)}`} data-on=${at >= 0 ? 'yes' : null}>
       <span class="bp-seg__thumb" aria-hidden="true"></span>
-      ${RSVP.map((r) => html`<button type="button" class="bp-choice" aria-pressed=${m.myRsvp === r.id} disabled=${!!busy || !data.me.slug} onClick=${() => answer(r.id)} key=${r.id}>
+      ${RSVP.map((r) => html`<button type="button" class="bp-choice" aria-pressed=${m.myRsvp === r.id} disabled=${!!busy} onClick=${() => answer(r.id)} key=${r.id}>
         ${m.myRsvp === r.id ? html`<${Icon} name="check" size=${16} cls="bp-choice__check" />` : null}${busy === r.id ? 'Saving…' : r.label}</button>`)}
     </div>
-    <p class="bp-rsvp__said">${!data.me.slug ? 'Board members answer here.'
-      : chosen ? (thanks ? `Thanks. ${team} can see your answer.` : `You said “${chosen.ask}.” You can change it any time.`)
+    <p class="bp-rsvp__said">${chosen ? (thanks ? `Thanks. ${team} can see your answer.` : `You said “${chosen.ask}.” You can change it any time.`)
       : onInvite ? `You answered the calendar invite: ${onInvite}. Tap one to tell ${team} here too.`
       : `Tap one. ${team} see your answer.`}</p>
   </div>`;
@@ -887,14 +902,190 @@ function Outline({ sections }) {
   </nav>`;
 }
 
+const NotFound = () => html`<a class="bp-back" href="#/meetings"><${Icon} name="back" size=${18} />All meetings</a>
+  <div class="bp-card bp-empty"><h1 class="bp-h2">That meeting isn’t on the board page</h1><p class="bp-muted">It may not be shared yet.</p></div>`;
+
+/** A meeting: live on its day (and the founders' practice meeting), its record otherwise */
 function MeetingPage({ id, ctx }) {
   const { data, d } = ctx;
   const m = data.meetings.find((x) => x.id === id) || (d.featured?.pending && d.featured.id === id ? d.featured : null);
+  const practice = !m && data.practice?.id === id;
   useFocusTarget();
-  if (!m) {
-    return html`<a class="bp-back" href="#/meetings"><${Icon} name="back" size=${18} />All meetings</a>
-      <div class="bp-card bp-empty"><h1 class="bp-h2">That meeting isn’t on the board page</h1><p class="bp-muted">It may not be shared yet.</p></div>`;
+  if (practice || (m && !m.pending && (isLive(m) || m.date === data.today))) return html`<${LiveMeeting} id=${id} m=${m} ctx=${ctx} />`;
+  if (!m) return html`<${NotFound} />`;
+  return html`<${MeetingDetail} m=${m} ctx=${ctx} />`;
+}
+
+// ─── A meeting as it happens ────────────────────────────────────────
+// The page asks /api/board-portal?live=<id> every 3 seconds (15 in a tab nobody's looking at): where the chair
+// is on the agenda, who's here, a vote that's open, the decisions and action items so far
+async function getLive(id) {
+  try {
+    const r = await fetch(`${API}?live=${encodeURIComponent(id)}`, { cache: 'no-store' });
+    return { ...(await r.json()), status: r.status };
+  } catch {
+    return null;
   }
+}
+function useLive(id, on, every = 3000) {
+  const [v, setV] = useState(null);
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    if (!on) return undefined;
+    let stop = false;
+    let t = 0;
+    const tick = async () => {
+      clearTimeout(t);
+      const j = await getLive(id);
+      if (stop) return;
+      if (j?.ok) setV(j);
+      else if (j?.status === 404 || j?.status === 403) setGone(true);
+      t = setTimeout(tick, document.visibilityState === 'visible' ? every : 15000);
+    };
+    tick();
+    const back = () => { if (document.visibilityState === 'visible') tick(); };
+    document.addEventListener('visibilitychange', back);
+    return () => { stop = true; clearTimeout(t); document.removeEventListener('visibilitychange', back); };
+  }, [id, on]);
+  return [v, setV, gone];
+}
+const clockAt = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+/** "47 min", "1 h 45 min" */
+function lasted(from, to) {
+  const mins = Math.max(0, Math.round(((to ? Date.parse(to) : Date.now()) - Date.parse(from)) / 60000));
+  if (mins < 1) return to ? 'under a minute' : 'just now';
+  return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ''}`;
+}
+
+function LiveMeeting({ id, m, ctx }) {
+  const [v, setV, gone] = useLive(id, true);
+  const [, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick(Date.now()), 30000); return () => clearInterval(t); }, []);
+  if (v?.live.startedAt) return html`<${LiveRoom} v=${v} setV=${setV} m=${m} ctx=${ctx} />`;
+  // On the day, before the chair starts: the meeting as usual, and it turns live by itself
+  if (m) return html`<${MeetingDetail} m=${m} ctx=${ctx} waiting=${!!v} />`;
+  if (gone) return html`<${NotFound} />`;
+  if (!v) return html`<div class="bp-boot bp-boot--inline"><p>Opening the meeting…</p></div>`;
+  return html`<${LiveRoom} v=${v} setV=${setV} m=${null} ctx=${ctx} />`;
+}
+
+const VOTES = [['for', 'For'], ['against', 'Against'], ['abstain', 'Abstain']];
+function LiveRoom({ v, setV, m, ctx }) {
+  const { say } = ctx;
+  const [busy, setBusy] = useState('');
+  const items = agendaItems(v);
+  const at = items.findIndex((it) => it.id === v.live.itemId);
+  const now = at >= 0 ? items[at] : null;
+  const nowItem = now ? v.sections[now.si]?.items[now.ii] : null;
+  const started = !!v.live.startedAt;
+  const ended = !!v.live.endedAt;
+  const video = m ? videoOf(m) : '';
+  const done = ended ? items.length : Math.max(0, at);
+  const act = async (body, thanks) => {
+    setBusy(body.vote || body.how || 'x');
+    const j = await call({ ...body, meetingId: v.id });
+    setBusy('');
+    if (!j.ok) { say(j.error, 'warn'); return; }
+    setV(j);
+    if (thanks) say(thanks);
+  };
+  const state = (it) => {
+    const i = items.findIndex((x) => x.id === it.id);
+    return ended || (at >= 0 && i < at) ? 'done' : i === at ? 'now' : 'next';
+  };
+  const decided = v.motions.filter((x) => x.text);
+  return html`
+    <a class="bp-back bp-noprint" href=${m ? '#/meetings' : '#/'}><${Icon} name="back" size=${18} />${m ? 'All meetings' : 'Home'}</a>
+    <section class=${`bp-livehead ${ended ? 'is-ended' : ''}`} aria-labelledby="live-h">
+      <div class="bp-livehead__top">
+        <span class=${`bp-livechip ${ended ? 'is-ended' : started ? 'is-live' : ''}`}>${started && !ended ? html`<span class="bp-live-dot" aria-hidden="true"></span>` : null}${ended ? 'Ended' : started ? 'Live' : 'Not started'}</span>
+        ${v.practice ? html`<span class="bp-livechip is-practice">Practice</span>` : null}
+        <span class="bp-livehead__when" role="timer">${!started ? 'Waiting for the chair to start' : ended ? `${clockAt(v.live.startedAt)} to ${clockAt(v.live.endedAt)} · ${lasted(v.live.startedAt, v.live.endedAt)}` : `Started ${clockAt(v.live.startedAt)} · ${lasted(v.live.startedAt)}`}</span>
+      </div>
+      <h1 class="bp-livehead__title" id="live-h">${v.title}</h1>
+      <div class="bp-livehead__row">
+        <p class="bp-livehead__here" aria-live="polite"><strong>${v.here.board} of ${v.here.of}</strong> board members here${v.here.remote ? `, ${v.here.remote} on video` : ''}
+          ${v.here.met === true ? html`<span class="bp-livechip is-met"><${Icon} name="check" size=${14} />Quorum</span>` : v.here.met === false ? html`<span class="bp-livechip">${v.here.quorum - v.here.board} more for a quorum</span>` : null}</p>
+        ${video && !ended ? html`<a class="bp-btn bp-btn--primary bp-btn--sm" href=${video} target="_blank" rel="noopener"><${Icon} name="video" size=${18} />${joinLabel(video)}</a>` : null}
+      </div>
+      ${items.length && started ? html`<div class="bp-livehead__bar" role="progressbar" aria-label="Through the agenda" aria-valuemin="0" aria-valuemax=${items.length} aria-valuenow=${done}><span style=${`--p:${(done / items.length) * 100}%`}></span></div>` : null}
+    </section>
+    <div class="bp-room">
+      <div class="bp-room__main bp-stack">
+        ${v.vote && !ended ? html`<${VoteCard} v=${v} busy=${busy} act=${act} />` : null}
+        ${v.me.canAct && !v.me.how && !ended ? html`<section class="bp-checkin" aria-labelledby="ci-h">
+          <div><h2 class="bp-h2" id="ci-h">Are you here?</h2><p class="bp-muted">One tap counts you toward the quorum${v.vote ? ', and lets you vote' : ''}.</p></div>
+          <div class="bp-checkin__choices">
+            <button type="button" class="bp-btn bp-btn--primary" disabled=${!!busy} onClick=${() => act({ action: 'checkin', how: 'present' }, 'You’re checked in.')}>${busy === 'present' ? 'Saving…' : 'I’m in the room'}</button>
+            <button type="button" class="bp-btn" disabled=${!!busy} onClick=${() => act({ action: 'checkin', how: 'remote' }, 'You’re checked in on video.')}><${Icon} name="video" size=${18} />${busy === 'remote' ? 'Saving…' : 'I’m on video'}</button>
+          </div>
+        </section>` : null}
+        ${ended ? html`<section class="bp-now bp-now--ended" aria-labelledby="now-h">
+          <p class="bp-eyebrow">The meeting is over</p>
+          <h2 class="bp-now__title" id="now-h">${[decided.length ? plural(decided.length, 'decision') : '', v.actions.length ? plural(v.actions.length, 'action item') : ''].filter(Boolean).join(' and ') || 'Thank you for being here'}</h2>
+          <p class="bp-muted">The minutes come here once they’re written, and the board approves them at the next meeting.</p>
+        </section>`
+        : nowItem ? html`<section class="bp-now" aria-labelledby="now-h" aria-live="polite" key=${now.id}>
+          <p class="bp-eyebrow">Now discussing<span class="bp-soon">${now.label} · ${at + 1} of ${items.length}</span></p>
+          <h2 class="bp-now__title" id="now-h">${nowItem.title || now.section}</h2>
+          <p class="bp-now__meta">${[now.section !== nowItem.title ? now.section : '', nowItem.presenter].filter(Boolean).join(' · ')}${nowItem.confidential ? html` <span class="bp-chip bp-chip--warn">Board only · please don’t share</span>` : null}</p>
+          <${Notes} text=${nowItem.notes} />
+        </section>`
+        : started ? html`<section class="bp-now bp-now--quiet" aria-labelledby="now-h"><p class="bp-eyebrow">The meeting has started</p><h2 class="bp-now__title" id="now-h">${items[0] ? `First: ${items[0].title}` : 'The chair is opening the meeting'}</h2></section>`
+        : html`<section class="bp-now bp-now--quiet" aria-labelledby="now-h"><p class="bp-eyebrow">Not started yet</p><h2 class="bp-now__title" id="now-h">This page follows the meeting once the chair starts it</h2><p class="bp-muted">Check in now and you’ll be counted from the start.</p></section>`}
+        <section class="bp-card" aria-labelledby="ag-h">
+          <h2 class="bp-h2" id="ag-h">The agenda${items.length ? html`<span class="bp-count">${done} of ${items.length} done</span>` : null}</h2>
+          <ol class="bp-liveag">${v.sections.map((s, si) => html`<li class="bp-liveag__sec" key=${s.id}>
+            <p class="bp-liveag__head"><span>${String(si + 1).padStart(2, '0')}</span>${s.title || 'Agenda'}</p>
+            <ol>${s.items.map((it, ii) => { const st = state(it); return html`<li class=${`bp-liveag__item is-${st}`} key=${it.id} aria-current=${st === 'now' ? 'step' : null}>
+              <span class="bp-liveag__mark" aria-hidden="true">${st === 'done' ? html`<${Icon} name="check" size=${14} />` : st === 'now' ? html`<span class="bp-live-dot"></span>` : `${si + 1}.${ii + 1}`}</span>
+              <span class="bp-liveag__title">${it.title}${it.presenter ? html` <span class="bp-liveag__who">${it.presenter}</span>` : null}</span>
+              ${st === 'now' ? html`<span class="sr-only">now</span>` : null}
+            </li>`; })}</ol>
+          </li>`)}</ol>
+        </section>
+      </div>
+      <aside class="bp-room__side bp-stack">
+        ${v.me.canAct && v.me.how ? html`<div class="bp-here"><${Icon} name="check" size=${18} /><span>You’re here, ${v.me.how === 'remote' ? 'on video' : 'in the room'}.</span>${!ended ? html`<button type="button" class="bp-mini" disabled=${!!busy} onClick=${() => act({ action: 'checkin', how: v.me.how === 'remote' ? 'present' : 'remote' }, v.me.how === 'remote' ? 'Now in the room.' : 'Now on video.')}>${v.me.how === 'remote' ? 'I’m in the room now' : 'I’m on video now'}</button>` : null}</div>` : null}
+        <section class="bp-card" aria-labelledby="dec-h">
+          <h2 class="bp-h2" id="dec-h">Decisions${decided.length ? html`<span class="bp-count">${decided.length}</span>` : null}</h2>
+          ${decided.length ? html`<ul class="bp-motions">${decided.map((x) => { const open = v.vote?.motionId === x.id && !ended; return html`<li class=${`bp-motion ${open ? 'is-open' : ''}`} key=${x.id}>
+            <span class="bp-motion__icon" aria-hidden="true"><${Icon} name="gavel" size=${18} /></span>
+            <div class="bp-motion__text"><p class="bp-motion__what">${x.text}</p><p class="bp-muted">${open ? 'Voting now' : tallyText(x) || ({ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || '')}</p></div>
+          </li>`; })}</ul>` : html`<p class="bp-muted">Motions show here as the board makes them.</p>`}
+        </section>
+        ${v.actions.length ? html`<section class="bp-card" aria-labelledby="la-h"><h2 class="bp-h2" id="la-h">Action items</h2>
+          <ul class="bp-actions">${v.actions.map((a) => html`<li key=${a.id} class=${a.done ? 'is-done' : ''}>
+            <span class="bp-actions__box" aria-hidden="true">${a.done ? html`<${Icon} name="check" size=${14} />` : null}</span>
+            <div><p class="bp-actions__what">${a.text}</p><p class="bp-muted">${[a.ownerName, a.due ? `due ${shortDate(a.due)}` : ''].filter(Boolean).join(' · ')}</p></div>
+          </li>`)}</ul></section>` : null}
+        ${m?.files?.length ? html`<section class="bp-card" aria-labelledby="lf-h"><h2 class="bp-h2" id="lf-h">The packet</h2><${FileList} files=${m.files.filter((f) => f.kind !== 'signed')} order=${AHEAD_ORDER} /></section>` : null}
+      </aside>
+    </div>`;
+}
+
+/** A vote the chair opened: your three choices, and the board's count filling in */
+function VoteCard({ v, busy, act }) {
+  const x = v.vote;
+  const c = x.counts;
+  const of = Math.max(1, c.of, c.voted);
+  const said = VOTES.find(([id]) => id === x.mine)?.[1];
+  return html`<section class="bp-vote" aria-labelledby="vote-h">
+    <p class="bp-eyebrow">The board is voting</p>
+    <h2 class="bp-vote__what" id="vote-h">${x.text || 'A motion'}</h2>
+    ${x.by || x.second ? html`<p class="bp-muted">${[x.by && `Moved by ${x.by}`, x.second && `seconded by ${x.second}`].filter(Boolean).join(', ')}</p>` : null}
+    ${v.me.canAct ? html`<div class="bp-vote__choices" role="group" aria-label="Your vote">${VOTES.map(([id, label]) => html`<button type="button" class=${`bp-vote__choice is-${id}`} aria-pressed=${x.mine === id} disabled=${!!busy || !v.me.how} onClick=${() => act({ action: 'vote', motionId: x.motionId, vote: id }, `You voted ${label.toLowerCase()}.`)} key=${id}>
+      ${x.mine === id ? html`<${Icon} name="check" size=${18} cls="bp-choice__check" />` : null}${busy === id ? 'Saving…' : label}</button>`)}</div>` : null}
+    <div class="bp-vote__tally" aria-live="polite">
+      <div class="bp-vote__bar" role="img" aria-label=${`For ${c.for}, against ${c.against}, abstain ${c.abstain}`}>${VOTES.map(([id]) => html`<span class=${`is-${id}`} style=${`--p:${(c[id] / of) * 100}%`} key=${id}></span>`)}</div>
+      <p class="bp-vote__counts">${VOTES.map(([id, label]) => html`<span key=${id}><i class=${`is-${id}`} aria-hidden="true"></i>${label} <strong>${c[id]}</strong></span>`)}<span class="bp-vote__of">${c.voted} of ${c.of} here ${c.voted === 1 ? 'has' : 'have'} voted</span></p>
+    </div>
+    ${v.me.canAct ? html`<p class="bp-note">${!v.me.how ? 'Check in first (below), then vote.' : said ? `You voted ${said.toLowerCase()}. You can change it until the chair closes the vote.` : 'Tap one. The chair closes the vote once everyone has voted.'}</p>` : null}
+  </section>`;
+}
+
+function MeetingDetail({ m, ctx, waiting = false }) {
+  const { data, d } = ctx;
   const upcoming = m.date >= data.today;
   // A past meeting shows only the numbers locked into its packet; one ahead shows today's until then
   const numbers = m.snapshot || (upcoming ? data.numbers : null);
@@ -916,6 +1107,7 @@ function MeetingPage({ id, ctx }) {
   const motionChip = (r) => html`<span class=${`bp-chip ${r === 'passed' ? 'bp-chip--ok' : r === 'failed' ? 'bp-chip--warn' : ''}`}>${r === 'passed' ? html`<${Icon} name="check" size=${14} />` : null}${{ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[r] || 'Recorded'}</span>`;
   return html`
     <a class="bp-back bp-noprint" href="#/meetings"><${Icon} name="back" size=${18} />All meetings</a>
+    ${waiting ? html`<p class="bp-waiting" role="status"><span class="bp-live-dot" aria-hidden="true"></span>Today’s meeting. This page follows it live once the chair starts: where the board is on the agenda, who’s here, and votes.</p>` : null}
     <header class="bp-mhead">
       <${DateTile} d=${m.date} big head />
       <div class="bp-mhead__text">
@@ -1173,7 +1365,7 @@ function SignForm({ d: doc, ctx }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   if (doc.signedByMe) return html`<p class="bp-signed"><span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Signed</span> by ${doc.signedByMe.name}, ${shortDate(doc.signedByMe.at.slice(0, 10))}</p>`;
-  if (!data.me.slug) return html`<p class="bp-note">Each board member signs it here once a year.</p>`;
+  if (!data.me.slug) return null;
   const id = `sign-${doc.id}`;
   const sign = async (e) => {
     e.preventDefault();
