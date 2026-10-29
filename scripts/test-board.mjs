@@ -545,13 +545,12 @@ try {
     const home = await text(alex);
     ok(/Next board meeting/i.test(home) && /See the agenda and 1 file/.test(home), 'Home: the next meeting, and its packet');
     ok(/Example Hall/.test(home) && await alex.$('.bp-next a[href^="https://www.google.com/maps/search/"]') !== null, 'Home: its place, the address opening in Maps');
-    ok(await alex.$('.bp-next a[href="https://meet.google.com/abc-defg-hij"]') !== null && /Join with Google Meet/.test(home), 'Home: Join with Google Meet');
-    ok(/It’s on your calendar: the invite went to alex\.board@example\.com/.test(home), 'Home: it’s already on their calendar, so no file to add');
-    ok(width === 1440 ? /You answered the calendar invite: Coming/.test(home) : /You said “I’ll join by video\.” You can change it any time\./.test(home), width === 1440 ? 'Home: their reply to the invite shows' : 'Home: the answer they gave here shows');
+    ok(await alex.$('.bp-next a[href="https://meet.google.com/abc-defg-hij"]') !== null && /Google Meet/.test(home), 'Home: the Google Meet link, in the meeting’s one line');
+    ok(width === 1440 ? /Calendar invite: Coming\./.test(home) : /You said “By video\.”/.test(home), width === 1440 ? 'Home: their reply to the invite shows' : 'Home: the answer they gave here shows');
     ok(width === 1440 ? /Send the venue contract/.test(home) : !/Send the venue contract/.test(home), width === 1440 ? 'Home: their own action item' : 'Home: the action item they ticked off is gone');
     const figs = await alex.evaluate(() => Object.fromEntries([...document.querySelectorAll('.bp-fig')].map((f) => [f.querySelector('.bp-fig__label').textContent, f.querySelector('.bp-fig__value').textContent])));
-    ok(/^\w{3} \d{1,2}$/.test(figs['Next meeting'] || '') && figs['Makeovers'] === '3' && /^\d/.test(figs['Children served'] || '') && figs['Cash in the bank'] === '$375K' && /\$375,000/.test(home), `Home: the figures first (next meeting, Mercury's cash, makeovers, children served), the money panel below (${JSON.stringify(figs)})`);
-    ok(/The agenda[\s\S]*01/.test(await alex.$eval('.bp-next', (e) => e.textContent)) && !!(await alex.$('.bp-peek')), 'Home: the next meeting’s agenda, right there');
+    ok(Object.keys(figs).length === 4 && figs['Makeovers'] === '3' && figs['Cash in the bank'] === '$375K' && !/Recently|The money/.test(home), `Home: four figures (Mercury's cash, the makeovers), nothing repeated below (${JSON.stringify(figs)})`);
+    ok(await alex.$$eval('.bp-next .bp-peek li', (l) => l.length) > 0, 'Home: the next meeting’s agenda headings, right there');
     ok(/Coming up[\s\S]*Maya’s reveal[\s\S]*Sunshine Golf Classic[\s\S]*Leo’s reveal/.test(home) && /Day not set yet/.test(home), 'Home: reveals and events coming up, in date order, a tentative one marked');
     ok(/Makeovers in progress[\s\S]*Design[\s\S]*Leo[\s\S]*\+1 more family[\s\S]*Build[\s\S]*Maya/i.test(home) && !/Not Published Yet/.test(home) && await alex.$$eval('.bp-kcol', (c) => c.length) >= 4, 'Home: the makeovers as a kanban, Design to Build, published kids by name only');
     ok(await overflow(alex) <= 0, 'Home: nothing past the right edge');
@@ -580,6 +579,7 @@ try {
 
     await alex.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
     ok(await waitText(alex, /Insurance renewal is on track/), 'the meeting: the notes, as points');
+    ok(/It’s on your calendar: the invite went to alex\.board@example\.com/.test(await text(alex)), 'the meeting: it’s already on their calendar, so no file to add');
     const page = await text(alex);
     ok(!/ask counsel/.test(page) && !/ask counsel/.test(await alex.content()), 'the meeting: never the private note, not even in the page source');
     ok(/Board only · please don’t share/.test(page), 'the meeting: the board-only item is marked');

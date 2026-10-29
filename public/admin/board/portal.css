@@ -207,8 +207,8 @@ a.bp-row:hover { background: var(--warm); }
 
 /* ─── Home ─── */
 /* The board brief: a line of greeting, then the figures and one photo, then the meeting and the money */
-.bp-brief { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0 0 0.9rem; }
-.bp-brief .bp-eyebrow { margin-bottom: 0.3rem; }
+.bp-brief { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0.25rem 0 1.1rem; }
+.bp-brief__date { margin: 0; color: var(--muted); font-size: 0.92rem; }
 .bp-brief__h { margin: 0; font-family: var(--display); font-weight: 700; font-size: clamp(1.5rem, 3vw, 1.95rem); line-height: 1.15; letter-spacing: -0.02em; }
 .bp-cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem 1rem; flex-wrap: wrap; margin-bottom: 0.65rem; }
 .bp-cardhead .bp-h2 { margin: 0; }
@@ -216,36 +216,17 @@ a.bp-row:hover { background: var(--warm); }
 .bp-cardhead__go { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.88rem; font-weight: 650; color: var(--ink-2); text-decoration: none; }
 .bp-cardhead__go:hover { color: var(--ink); }
 .bp-mini-h { margin: 0.95rem 0 0.4rem; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.11em; text-transform: uppercase; color: var(--faint); }
-/* The money */
-.bp-money__cash { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
-.bp-money__big { font-family: var(--display); font-size: clamp(1.8rem, 3.4vw, 2.3rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.bp-money__what { color: var(--muted); font-size: 0.88rem; line-height: 1.35; }
-.bp-money__sub { margin: 1rem 0 0.45rem; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.11em; text-transform: uppercase; color: var(--faint); }
-.bp-mbars { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
-.bp-mbar { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) 2.6rem; grid-template-areas: "label n pct" "track track track"; align-items: baseline; gap: 0.2rem 0.6rem; font-size: 0.9rem; }
-.bp-mbar__label { grid-area: label; font-weight: 650; }
-.bp-mbar__n { grid-area: n; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
-.bp-mbar__n strong { color: var(--ink); font-weight: 650; }
-.bp-mbar__pct { grid-area: pct; text-align: right; font-weight: 750; font-variant-numeric: tabular-nums; }
-.bp-mbar__track { grid-area: track; height: 8px; border-radius: 999px; background: var(--warm); overflow: hidden; }
-.bp-mbar__track span { display: block; height: 100%; width: var(--p); border-radius: inherit; background: var(--yellow); }
-.is-entering .bp-mbar__track span { animation: bp-grow 0.9s 0.3s var(--ease) both; transform-origin: left; }
-.bp-money__year { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin: 1rem 0 0; padding-top: 0.85rem; border-top: 1px solid var(--line); }
-.bp-money__year dt { font-size: 0.74rem; color: var(--muted); }
-.bp-money__year dd { margin: 0.1rem 0 0; font-family: var(--display); font-weight: 700; font-size: 1.08rem; font-variant-numeric: tabular-nums; }
-@media (max-width: 480px) { .bp-money__year { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* The agenda on Home */
-.bp-peekwrap { margin-top: 1rem; padding-top: 0.25rem; border-top: 1px solid var(--line); }
-.bp-peek { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.45rem; }
-.bp-peek li { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); gap: 0.5rem; font-size: 0.92rem; line-height: 1.4; }
-.bp-peek__n { font-weight: 750; color: var(--gold); font-variant-numeric: tabular-nums; font-size: 0.8rem; padding-top: 0.1rem; }
-.bp-peek__t strong { font-weight: 650; }
-.bp-peek__items { display: block; color: var(--muted); font-size: 0.86rem; }
+.bp-oneline { margin: 0; color: var(--ink-2); font-size: 0.97rem; line-height: 1.5; }
+.bp-oneline a { color: var(--info); text-underline-offset: 3px; }
+.bp-oneline__dot { margin: 0 0.45rem; color: var(--quiet); }
+.bp-peekwrap { margin-top: 1rem; padding-top: 0.15rem; border-top: 1px solid var(--line); }
+.bp-peek { margin: 0; padding-left: 1.35rem; display: grid; gap: 0.2rem; font-size: 0.95rem; color: var(--ink-2); }
+.bp-peek li::marker { color: var(--gold); font-weight: 700; font-size: 0.85rem; }
 /* Last meeting, in facts */
 .bp-since__what { display: flex; align-items: center; gap: 0.75rem; margin: 0; flex-wrap: wrap; }
 .bp-since__what > span:nth-child(2) { display: grid; flex: 1 1 12rem; min-width: 0; }
 .bp-since__what .bp-muted { font-size: 0.86rem; }
-.bp-since__topics { margin: 0; color: var(--ink-2); font-size: 0.9rem; line-height: 1.55; }
 .bp-facts-list { list-style: none; margin: 0; padding: 0; }
 .bp-facts-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; padding: 0.4rem 0; border-top: 1px solid var(--line); font-size: 0.92rem; }
 .bp-facts-list li:first-child { border-top: none; }
@@ -270,17 +251,17 @@ a.bp-kcard:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
 @media (max-width: 520px) { .bp-kanban__cols { grid-template-columns: 1fr; } .bp-kcol.is-empty { display: none; } }
 
 /* The figures: what a board member wants first, each a door to the rest */
-.bp-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.6rem; }
-.bp-fig { position: relative; display: grid; align-content: start; gap: 0.05rem; height: 100%; padding: 0.8rem 0.95rem 0.85rem; border-radius: var(--r); background: #fff; border: 1px solid rgba(45, 47, 44, 0.08); box-shadow: var(--shadow-1); text-decoration: none; transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), border-color 0.2s; }
+.bp-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+.bp-fig { position: relative; display: grid; align-content: start; gap: 0.1rem; height: 100%; padding: 1rem 1.15rem 1.05rem; border-radius: var(--r); background: #fff; border: 1px solid rgba(45, 47, 44, 0.08); box-shadow: var(--shadow-1); text-decoration: none; transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), border-color 0.2s; }
 a.bp-fig:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); border-color: rgba(45, 47, 44, 0.14); }
 a.bp-fig:active { transform: translateY(0) scale(0.99); }
 .bp-fig__label { font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
-.bp-fig__value { font-family: var(--display); font-size: clamp(1.4rem, 2.3vw, 1.7rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; color: var(--ink); margin-top: 0.15rem; }
+.bp-fig__value { font-family: var(--display); font-size: clamp(1.6rem, 3vw, 2.15rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; color: var(--ink); margin-top: 0.15rem; }
 .bp-fig.is-quiet .bp-fig__value { font-family: var(--body); font-size: 1.05rem; font-weight: 650; padding: 0.35rem 0 0.2rem; }
 .bp-fig__sub { color: var(--muted); font-size: 0.82rem; line-height: 1.35; }
 .bp-fig__sub.is-up { color: var(--ok); }
 .bp-fig__sub.is-down { color: var(--warn); }
-@media (max-width: 1180px) { .bp-figs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .bp-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .bp-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; } .bp-fig { padding: 0.8rem 0.85rem; } }
 .bp-split--top { margin: 1rem 0; }
 .bp-forme .bp-todos { grid-template-columns: 1fr; gap: 0.55rem; }

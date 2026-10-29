@@ -664,23 +664,24 @@ function useBudget(data) {
 const pctOf = (x) => (x?.budget ? Math.round((x.actual / x.budget) * 100) : null);
 
 // ─── Home ───────────────────────────────────────────────────────────
-/** The numbers a board member wants first, each a door to the rest */
-function Figures({ data, d }) {
+/** Four numbers a board member wants first: the money against its budget, and the makeovers */
+function Figures({ data }) {
   const cash = useCashNow(data);
   const budget = useBudget(data);
   const n = data.numbers;
-  const m = d.featured;
   const building = n.projects?.building || [];
   const inBuild = building.filter((b) => b.status === 'Build').length;
   const next = [...n.reveals].sort((a, b) => String(a.confirmed && a.date ? a.date : windowStart(a.window) || '9').localeCompare(String(b.confirmed && b.date ? b.date : windowStart(b.window) || '9')))[0];
   const rev = budget?.revenue;
+  const exp = budget?.expenses;
+  const yr = budget?.year || '';
   const tiles = [
-    { key: 'meeting', label: 'Next meeting', value: m ? `${partsOf(m.date).mon} ${partsOf(m.date).day}` : 'Not set', sub: m ? (m.date === data.today ? 'Today' : inWords(m.date, data.today)) : 'The invite comes by email', href: m ? `#/meetings/${m.id}` : '#/meetings' },
-    { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', sub: cash ? `${shortAsOf(cash.asOf)}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}` : 'From the balance sheet', href: '#/financials', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '' },
-    { key: 'rev', label: `${budget?.year || 'Year'} revenue`, value: rev ? compact(rev.actual) : budget === null ? '–' : '…', sub: rev ? `${pctOf(rev)}% of ${compact(rev.budget)} budget, to date` : 'From the budget sheet', href: '#/financials' },
+    { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', sub: cash ? `${shortAsOf(cash.asOf)}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}` : 'From the balance sheet', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '', href: '#/financials' },
+    rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: compact(rev.actual), sub: `${pctOf(rev)}% of the ${compact(rev.budget)} budget`, href: '#/financials' }
+      : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#coming-up' },
+    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), sub: `${pctOf(exp)}% of the ${compact(exp.budget)} budget`, href: '#/financials' }
+      : { key: 'kids', label: 'Children served', value: n.impact.kids.toLocaleString(), sub: `${n.impact.rooms.toLocaleString()} rooms since 2012` },
     { key: 'build', label: 'Makeovers', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', href: '#makeovers' },
-    { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#coming-up' },
-    { key: 'kids', label: 'Children served', value: n.impact.kids.toLocaleString(), sub: `${n.impact.rooms.toLocaleString()} rooms since 2012` },
   ];
   const go = (e, t) => {
     if (!t.href || !t.href.startsWith('#') || t.href.startsWith('#/')) return;
@@ -693,39 +694,11 @@ function Figures({ data, d }) {
   </li>`)}</ul>`;
 }
 
-/** The money in one panel: cash, the year against its budget, last year from the tax return */
-function Money({ data }) {
-  const cash = useCashNow(data);
-  const budget = useBudget(data);
-  const s = data.snapshot;
-  const bar = (label, x) => (x ? html`<li class="bp-mbar">
-    <span class="bp-mbar__label">${label}</span>
-    <span class="bp-mbar__n"><strong>${money(x.actual)}</strong> of ${money(x.budget)}</span>
-    <span class="bp-mbar__track" role="img" aria-label=${`${pctOf(x)}% of budget`}><span style=${`--p:${Math.min(100, pctOf(x))}%`}></span></span>
-    <span class="bp-mbar__pct">${pctOf(x)}%</span>
-  </li>` : null);
-  if (!cash && !budget && !s) return null;
-  return html`<section class="bp-card bp-money" aria-labelledby="money-h">
-    <div class="bp-cardhead"><h2 class="bp-h2" id="money-h">The money</h2><a class="bp-cardhead__go" href="#/financials">Financials<${Icon} name="arrow" size=${16} cls="bp-go" /></a></div>
-    ${cash ? html`<div class="bp-money__cash">
-      <span class="bp-money__big">${money(cash.total)}</span>
-      <span class="bp-money__what">cash ${cash.where || 'in the bank'}, ${shortAsOf(cash.asOf)}${cash.prior != null ? html`<br /><span class=${cash.total >= cash.prior ? 'bp-up' : 'bp-down'}>${cash.total >= cash.prior ? '▲' : '▼'} ${money(Math.abs(cash.total - cash.prior))}</span> on a year` : ''}</span>
-    </div>` : null}
-    ${budget ? html`<p class="bp-money__sub">${budget.year || 'This year'} against budget${budget.asOf ? `, through ${budget.asOf.replace(/, \d{4}$/, '')}` : ''}</p>
-    <ul class="bp-mbars">${bar('Revenue', budget.revenue)}${bar('Expenses', budget.expenses)}${bar('Programs', budget.programs)}</ul>` : null}
-    ${s ? html`<dl class="bp-money__year"><div><dt>${s.year} revenue</dt><dd>${compact(s.totalRevenue)}</dd></div><div><dt>Expenses</dt><dd>${compact(s.totalExpenses)}</dd></div>${s.programPct ? html`<div><dt>To programs</dt><dd>${s.programPct}%</dd></div>` : null}${typeof s.netAssets === 'number' ? html`<div><dt>Net assets</dt><dd>${compact(s.netAssets)}</dd></div>` : null}</dl>` : null}
-    ${(budget || cash)?.meeting ? html`<p class="bp-note">From the ${meetingName((budget || cash).meeting)} packet${s ? ` and the ${s.year} tax return` : ''}.</p>` : null}
-  </section>`;
-}
-
-/** The next meeting's agenda, headings and items, on Home */
+/** The next meeting's agenda on Home: its headings, in order */
 function AgendaPeek({ m }) {
-  const sections = (m.sections || []).filter((x) => x.title || x.items.length);
+  const sections = (m.sections || []).filter((x) => x.title);
   if (!sections.length) return null;
-  return html`<ol class="bp-peek">${sections.map((x, i) => html`<li key=${x.id}>
-    <span class="bp-peek__n">${String(i + 1).padStart(2, '0')}</span>
-    <span class="bp-peek__t"><strong>${x.title || 'Agenda'}</strong>${x.items.length ? html`<span class="bp-peek__items">${x.items.map((it) => `${it.title}${it.presenter ? ` (${it.presenter})` : ''}`).join(' · ')}</span>` : null}</span>
-  </li>`)}</ol>`;
+  return html`<ol class="bp-peek">${sections.map((x) => html`<li key=${x.id}>${x.title}</li>`)}</ol>`;
 }
 
 /** Since the last meeting: what it decided, what's open, who was there, what it covered */
@@ -734,9 +707,7 @@ function SinceLast({ ctx }) {
   const m = d.last;
   if (!m) return null;
   const c = attendanceCounts(m);
-  const open = data.actions;
   const decided = m.motions.filter((x) => x.text);
-  const topics = m.sections.flatMap((x) => (x.items.length ? x.items.map((it) => it.title) : [x.title])).filter((t) => t && !/^(roll call|call to order|adjourn|minutes approved)/i.test(t)).slice(0, 10);
   return html`<section class="bp-card bp-since" aria-labelledby="since-h">
     <div class="bp-cardhead">
       <h2 class="bp-h2" id="since-h">Last meeting</h2>
@@ -744,8 +715,6 @@ function SinceLast({ ctx }) {
     </div>
     <p class="bp-since__what"><${DateTile} d=${m.date} mid=${m.id} /><span><strong>${meetingName(m)}</strong><span class="bp-muted">${[longDate(m.date), c.boardHere ? `${c.boardHere} of ${c.board} board members${c.boardHere >= quorumFor(m, data.quorum) ? ', a quorum' : ', short of a quorum'}` : ''].filter(Boolean).join(' · ')}</span></span><${MinutesChip} m=${m} /></p>
     ${decided.length ? html`<h3 class="bp-mini-h">Decided</h3><ul class="bp-facts-list">${decided.map((x) => html`<li key=${x.id || x.text}><span>${x.text}</span><strong>${tallyText(x) || ({ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || '')}</strong></li>`)}</ul>` : null}
-    ${open.length ? html`<h3 class="bp-mini-h">Open action items</h3><ul class="bp-facts-list">${open.map((a) => html`<li key=${a.id} class=${a.mine ? 'is-mine' : ''}><span>${a.text}</span><strong>${[a.mine ? 'You' : a.ownerName, a.due ? shortDate(a.due).replace(/, \d{4}$/, '') : ''].filter(Boolean).join(' · ')}</strong></li>`)}</ul>` : null}
-    ${topics.length ? html`<h3 class="bp-mini-h">Covered</h3><p class="bp-since__topics">${topics.join(' · ')}</p>` : null}
   </section>`;
 }
 
@@ -790,43 +759,32 @@ function HomePage({ ctx }) {
   const mine = data.actions.filter((a) => a.mine);
   const toSign = data.docs.filter((x) => x.sign && x.file && !x.signedByMe);
   const today = new Date(noon(data.today)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const who = useAdminWho(data);
+  const name = data.me.name || who?.name || '';
+  const m = d.featured;
   const todos = mine.length || toSign.length ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
       <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h">For you<span class="bp-count">${mine.length + toSign.length}</span></h2></div>
       <ul class="bp-todos">
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href="#/documents" onClick=${() => { focusNext = `doc-${x.id}`; }}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
-          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">Once a year</span></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span></span>
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
       </ul>
     </section>` : null;
-  const m = d.featured;
-  const who = useAdminWho(data);
-  const name = data.me.name || who?.name || '';
   return html`
     <header class="bp-brief bp-rise" style=${rise(0)}>
-      <div class="bp-brief__text">
-        <p class="bp-eyebrow">Board brief · ${today}</p>
-        <h1 class="bp-brief__h">${name ? `${greeting()}, ${firstName(name)}.` : 'The board page'}</h1>
-      </div>
+      <h1 class="bp-brief__h">${name ? `${greeting()}, ${firstName(name)}.` : 'The board page'}</h1>
+      <p class="bp-brief__date">${today}</p>
     </header>
-    <div class="bp-rise" style=${rise(1)}><${Figures} data=${data} d=${d} /></div>
+    <div class="bp-rise" style=${rise(1)}><${Figures} data=${data} /></div>
     <div class="bp-split bp-split--top">
-      <div class="bp-stack bp-rise" style=${rise(2)}>
-        ${m ? html`<${NextMeeting} m=${m} ctx=${ctx} peek=${true} />` : html`<${NoMeeting} ctx=${ctx} />`}
-        <${SinceLast} ctx=${ctx} />
-      </div>
-      <div class="bp-stack bp-rise" style=${rise(3)}>
-        ${todos}
-        <${Money} data=${data} />
-      </div>
+      <div class="bp-stack bp-rise" style=${rise(2)}>${m ? html`<${NextMeeting} m=${m} ctx=${ctx} peek=${true} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
+      <div class="bp-stack bp-rise" style=${rise(3)}>${todos}<${SinceLast} ctx=${ctx} /></div>
     </div>
     <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} /></div>
-    <div class="bp-split">
-      <div class="bp-stack bp-rise" style=${rise(5)}><${ComingUp} data=${data} d=${d} /></div>
-      <div class="bp-stack bp-rise" style=${rise(6)}><${Recent} n=${data.numbers} /></div>
-    </div>`;
+    <div class="bp-rise" style=${rise(5)}><${ComingUp} data=${data} d=${d} limit=${5} /></div>`;
 }
 
 function NoMeeting({ ctx }) {
@@ -857,7 +815,12 @@ function NextMeeting({ m, ctx, compact = false, peek = false }) {
     <div class="bp-ticket__body">
       <p class="bp-eyebrow">${today ? 'Today’s board meeting' : 'Next board meeting'}<span class=${`bp-soon ${phase === 'now' ? 'is-live' : ''}`}>${phase === 'now' ? html`<span class="bp-live-dot" aria-hidden="true"></span>` : null}${status}</span></p>
       <h2 class="bp-when" id=${`next-h-${m.id}`}>${compact ? meetingName(m) : dayOf(m.date)}</h2>
-      <ul class="bp-facts">
+      ${peek ? html`<p class="bp-oneline">${[
+        m.start ? timeRange(m.start, m.end) : 'Time to come',
+        m.location || m.address ? (m.address ? html`<a href=${mapsHref(m.address)} target="_blank" rel="noopener">${m.location || m.address}</a>` : m.location) : 'Place to come',
+        video && !(today && phase !== 'after') ? html`<a href=${video} target="_blank" rel="noopener">${joinLabel(video).replace(/^Join with /, '')}</a>` : null,
+      ].filter(Boolean).map((x, i) => html`${i ? html`<span class="bp-oneline__dot" aria-hidden="true">·</span>` : null}${x}`)}${nowAt ? html`<br /><strong>Now: ${nowAt.label} ${nowAt.title}</strong>` : null}</p>` : null}
+      ${peek ? null : html`<ul class="bp-facts">
         ${compact ? html`<li><${Icon} name="meetings" /><span>${dayOf(m.date)}</span></li>` : null}
         <li><${Icon} name="clock" /><span>${m.start ? timeRange(m.start, m.end) : 'Time to come'}</span></li>
         <li><${Icon} name="pin" /><span>${m.location || m.address
@@ -865,16 +828,16 @@ function NextMeeting({ m, ctx, compact = false, peek = false }) {
           : 'Place to come. Your invite updates when it’s set.'}</span></li>
         ${video && !(today && phase !== 'after') ? html`<li><${Icon} name="video" /><span><a href=${video} target="_blank" rel="noopener">${joinLabel(video)}</a>${today ? '' : ' if you can’t be there in person'}</span></li>` : null}
         ${nowAt ? html`<li class="bp-facts__now"><span class="bp-live-dot" aria-hidden="true"></span><span>Now: ${nowAt.label} ${nowAt.title}</span></li>` : null}
-      </ul>
+      </ul>`}
       <div class="bp-btns">
         ${today && video && phase !== 'after' ? html`<a class="bp-btn bp-btn--primary" href=${video} target="_blank" rel="noopener"><${Icon} name="video" />${joinLabel(video)}</a>` : null}
         ${m.pending ? html`<p class="bp-pending"><${Icon} name="documents" size=${18} />The agenda and packet post here before the meeting.</p>`
           : running ? html`<a class=${`bp-btn ${video ? '' : 'bp-btn--primary'}`} href=${`#/meetings/${m.id}`} onClick=${claimMorph}><span class="bp-live-dot" aria-hidden="true"></span>Follow the meeting<${Icon} name="arrow" size=${18} cls="bp-go" /></a>`
           : html`<a class=${`bp-btn ${today && video && phase !== 'after' ? '' : 'bp-btn--primary'}`} href=${`#/meetings/${m.id}`} onClick=${claimMorph}>See the agenda${fileCount ? ` and ${plural(fileCount, 'file')}` : ''}<${Icon} name="arrow" size=${18} cls="bp-go" /></a>`}
       </div>
-      <${OnCalendar} m=${m} data=${data} />
-      <${Rsvp} m=${m} ctx=${ctx} />
-      ${peek && !m.pending && (m.sections || []).some((x) => x.items.length) ? html`<div class="bp-peekwrap"><h3 class="bp-mini-h">The agenda</h3><${AgendaPeek} m=${m} /></div>` : null}
+      ${peek ? null : html`<${OnCalendar} m=${m} data=${data} />`}
+      <${Rsvp} m=${m} ctx=${ctx} quiet=${peek} />
+      ${peek && !m.pending && (m.sections || []).some((x) => x.title) ? html`<div class="bp-peekwrap"><h3 class="bp-mini-h">Agenda</h3><${AgendaPeek} m=${m} /></div>` : null}
     </div>
   </section>`;
 }
@@ -889,7 +852,7 @@ function OnCalendar({ m, data }) {
   </p>`;
 }
 
-function Rsvp({ m, ctx }) {
+function Rsvp({ m, ctx, quiet = false }) {
   const { data, setData, say } = ctx;
   const [busy, setBusy] = useState('');
   const [thanks, setThanks] = useState(false);
@@ -917,9 +880,9 @@ function Rsvp({ m, ctx }) {
       ${RSVP.map((r) => html`<button type="button" class="bp-choice" aria-pressed=${m.myRsvp === r.id} disabled=${!!busy} onClick=${() => answer(r.id)} key=${r.id}>
         ${m.myRsvp === r.id ? html`<${Icon} name="check" size=${16} cls="bp-choice__check" />` : null}${busy === r.id ? 'Saving…' : r.label}</button>`)}
     </div>
-    <p class="bp-rsvp__said">${chosen ? (thanks ? `Thanks. ${team} can see your answer.` : `You said “${chosen.ask}.” You can change it any time.`)
+    ${quiet ? (chosen || onInvite ? html`<p class="bp-rsvp__said">${chosen ? `You said “${chosen.label}.”` : `Calendar invite: ${onInvite}.`}</p>` : null) : html`<p class="bp-rsvp__said">${chosen ? (thanks ? `Thanks. ${team} can see your answer.` : `You said “${chosen.ask}.” You can change it any time.`)
       : onInvite ? `You answered the calendar invite: ${onInvite}. Tap one to tell ${team} here too.`
-      : `Tap one. ${team} see your answer.`}</p>
+      : `Tap one. ${team} see your answer.`}</p>`}
   </div>`;
 }
 
@@ -939,12 +902,12 @@ function MyAction({ a, ctx }) {
   };
   return html`<li class=${`bp-todo-card ${leaving ? 'is-leaving' : ''}`}><label class=${`bp-todo ${done ? 'is-done' : ''}`}>
     <input type="checkbox" class="bp-check" checked=${done} onChange=${(e) => tickIt(e.target.checked)} />
-    <span class="bp-todo__text"><span class="bp-todo__title">${a.text}</span><span class="bp-todo__meta">${[a.due ? `Due ${shortDate(a.due)}` : '', `From the ${a.meetingName}`].filter(Boolean).join(' · ')}</span></span>
+    <span class="bp-todo__text"><span class="bp-todo__title">${a.text}</span>${a.due ? html`<span class="bp-todo__meta">Due ${shortDate(a.due).replace(/, \d{4}$/, '')}</span>` : null}</span>
   </label></li>`;
 }
 
 /** Reveals, events and board meetings from today on, by month */
-function ComingUp({ data, d }) {
+function ComingUp({ data, d, limit = 7 }) {
   const n = data.numbers;
   const [all, setAll] = useState(false);
   const rows = [
@@ -952,11 +915,11 @@ function ComingUp({ data, d }) {
     ...n.events.map((e) => ({ key: `e-${e.slug}`, sort: e.date, date: e.date, kind: 'Event', title: e.title, href: e.url, ext: true, when: [dayOf(e.date), e.time, e.location].filter(Boolean).join(' · ') })),
     ...data.meetings.filter((m) => m.date >= data.today && m.id !== d.featured?.id).map((m) => ({ key: `m-${m.id}`, sort: m.date, date: m.date, kind: 'Board', title: meetingName(m), href: `#/meetings/${m.id}`, mid: m.id, when: [dayOf(m.date), m.start ? clock(m.start) : ''].filter(Boolean).join(' · ') })),
   ].sort((a, b) => String(a.sort).localeCompare(String(b.sort)));
-  const shown = all ? rows : rows.slice(0, 7);
+  const shown = all ? rows : rows.slice(0, limit);
   const months = [...new Set(shown.map((r) => String(r.sort).slice(0, 7)))];
   const year = data.today.slice(0, 4);
   return html`<section class="bp-card" aria-labelledby="coming-h" id="coming-up">
-    <${SecHead} id="coming-h" title="Coming up" sub="Reveals, events and meetings ahead" />
+    <div class="bp-cardhead"><h2 class="bp-h2" id="coming-h">Coming up</h2></div>
     ${rows.length ? months.map((ym) => html`<div class="bp-month" key=${ym}>
       <h3 class="bp-month__label">${/^\d{4}-\d{2}$/.test(ym) ? (ym.startsWith(year) ? monthName(ym) : monthOf(ym)) : 'Later'}</h3>
       <ul class="bp-rows">${shown.filter((r) => String(r.sort).slice(0, 7) === ym).map((r) => html`<li key=${r.key}>
@@ -967,24 +930,7 @@ function ComingUp({ data, d }) {
         </a>
       </li>`)}</ul>
     </div>`) : html`<p class="bp-muted">Nothing on the calendar yet.</p>`}
-    ${rows.length > 7 ? html`<button type="button" class="bp-more-btn" onClick=${() => setAll(!all)} aria-expanded=${all}>${all ? 'Show fewer' : `Show all ${rows.length}`}</button>` : null}
-    ${n.reveals.length ? html`<p class="bp-note">${data.me.email ? html`Each reveal comes to <strong>${data.me.email}</strong> as a calendar invite with the address, and moves there if the day changes.` : 'Each board member gets a calendar invite with the address for every reveal.'}</p>` : null}
-  </section>`;
-}
-
-function Recent({ n }) {
-  const rows = [
-    ...n.pastReveals.map((r) => ({ key: `r-${r.slug}`, date: r.date, title: `${r.name}’s reveal`, href: r.kidUrl, photo: r.photo })),
-    ...(n.recentEvents || []).map((e) => ({ key: `e-${e.slug}`, date: e.date, title: e.title, href: e.url })),
-  ].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 4);
-  if (!rows.length) return null;
-  return html`<section class="bp-card" aria-labelledby="recent-h">
-    <h2 class="bp-h2" id="recent-h">Recently</h2>
-    <ul class="bp-rows">${rows.map((r) => html`<li key=${r.key}><a class="bp-row" href=${r.href} target="_blank" rel="noopener">
-      <${DateTile} d=${r.date} />
-      <span class="bp-row__main"><span class="bp-row__title">${r.title}</span><span class="bp-row__meta">${dayOf(r.date)}</span></span>
-      ${r.photo ? html`<${Avatar} p=${{ name: r.title, photo: sized(r.photo, 'w=80,h=80,fit=cover,gravity=auto') }} size=${36} />` : html`<${Icon} name="external" size=${18} cls="bp-go" />`}
-    </a></li>`)}</ul>
+    ${rows.length > limit ? html`<button type="button" class="bp-more-btn" onClick=${() => setAll(!all)} aria-expanded=${all}>${all ? 'Show fewer' : `Show all ${rows.length}`}</button>` : null}
   </section>`;
 }
 
