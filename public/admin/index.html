@@ -2041,17 +2041,7 @@
     .dash-head-actions .btn svg { opacity: 0.6; }
     .dnew { position: relative; }
     .dnew-btn svg:last-child { margin-left: -0.15rem; opacity: 0.7; }
-    .dnew-menu {
-      position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 210px;
-      padding: 0.35rem; background: var(--color-bg-card); border: 1px solid var(--color-border);
-      border-radius: 12px; box-shadow: var(--shadow-lg); animation: modalIn 0.16s var(--ease-out);
-    }
-    .dnew-item {
-      display: block; width: 100%; text-align: left; padding: 0.55rem 0.75rem; border: 0; background: none;
-      border-radius: 8px; font-size: var(--fs-sm); font-weight: 500; color: var(--color-text);
-    }
-    .dnew-item:hover, .dnew-item:focus-visible { background: var(--color-bg-hover); box-shadow: none; outline: none; }
-    .dnew-item:focus-visible { box-shadow: inset 0 0 0 2px var(--color-text); }
+    .dnew > .ppl-menu { display: flex; }
 
     .dpins { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: -0.5rem 0 1.25rem; }
     .dpins-label { font-size: var(--fs-2xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); margin-right: 0.25rem; }
@@ -2397,7 +2387,6 @@
       .dyear-kids { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .dbars-table td, .dbars-table th { padding: 0.4rem 0.25rem; }
       .dbars-table th { letter-spacing: 0; text-transform: none; font-size: var(--fs-2xs); }
-      .dnew-menu { left: 0; right: 0; }
     }
 
     /* ─── Toolbar (search + filter rows) ─ */
@@ -3554,7 +3543,9 @@
     .ppl-chip--quiet { background: var(--tone-neutral-bg); color: #64656B; }
     .ppl-menu__btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: none; border-radius: 8px; background: none; color: var(--color-text-secondary); }
     .ppl-menu__btn:hover, .ppl-menu__btn[aria-expanded="true"] { background: rgba(45,46,51,0.07); color: var(--color-text); }
-    .ppl-menu__pop { position: fixed; z-index: 1010; /* above toasts (1000): it's what you're using */ padding: 0.35rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-card); box-shadow: var(--shadow-lg); animation: modalIn 0.14s var(--ease-out); }
+    /* Placed and lifted to the top layer by float() (./float.js) */
+    .ppl-menu__pop { overflow-y: auto; overscroll-behavior: contain; padding: 0.35rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-lg); transform-origin: top right; animation: modalIn 0.14s var(--ease-out); }
+    .ppl-menu__pop[data-side="top"] { transform-origin: bottom right; }
     .ppl-menu__pop [role="menuitem"] { display: block; width: 100%; padding: 0.55rem 0.7rem; border: none; border-radius: 8px; background: none; font-size: var(--fs-sm); font-weight: 500; color: var(--color-text); text-align: left; }
     .ppl-menu__pop [role="menuitem"] small { display: block; margin-top: 0.1rem; font-size: var(--fs-2xs); font-weight: 400; color: var(--color-text-muted); }
     .ppl-menu__pop [role="menuitem"]:hover, .ppl-menu__pop [role="menuitem"]:focus-visible { outline: none; box-shadow: none; background: var(--color-bg-hover); }
@@ -4408,6 +4399,7 @@
     } from './team-shared.js';
     // Kid profile rules (gallery split, hero intro, plan crop, what's missing), shared with the kid page Preview
     import * as KS from './kids-shared.js';
+    import { float, floatRef, hiddenAnchor } from './float.js';
     // Partner rules (levels, categories, what Save writes, which kid pages show a logo), shared with the unit tests
     import * as PS from './partners-shared.js';
     import * as PRS from './press-shared.js';
@@ -8095,8 +8087,6 @@
     }
 
     function DashNewMenu({ onNavigate }) {
-      const [open, setOpen] = useState(false);
-      const ref = useRef();
       const items = [
         ['Kid', () => onNavigate('kids-hub', '', 'kids')],
         ['Community project', () => onNavigate('kids-hub', '', 'community')],
@@ -8107,31 +8097,8 @@
         ['Team member', () => onNavigate('people-hub', '', 'team')],
         ['Advisory board member', () => onNavigate('people-hub', '', 'advisory')],
       ];
-      useEffect(() => {
-        if (!open) return undefined;
-        const first = ref.current?.querySelector('[role="menuitem"]');
-        first?.focus();
-        const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
-        const onKey = (e) => {
-          const list = [...(ref.current?.querySelectorAll('[role="menuitem"]') || [])];
-          const i = list.indexOf(document.activeElement);
-          if (e.key === 'Escape') { setOpen(false); ref.current?.querySelector('.dnew-btn')?.focus(); }
-          else if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length]?.focus(); }
-          else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length]?.focus(); }
-          else if (e.key === 'Tab') setOpen(false);
-        };
-        document.addEventListener('pointerdown', onDown);
-        document.addEventListener('keydown', onKey);
-        return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
-      }, [open]);
-      return html`<div class="dnew" ref=${ref}>
-        <button type="button" class="btn btn-primary dnew-btn" aria-haspopup="menu" aria-expanded=${open} onClick=${() => setOpen((o) => !o)}>
-          ${DI.plus} New ${DI.down}
-        </button>
-        ${open ? html`<div class="dnew-menu" role="menu" aria-label="Create new">
-          ${items.map(([label, go]) => html`<button type="button" role="menuitem" class="dnew-item" onClick=${() => { setOpen(false); go(); }}>${label}</button>`)}
-        </div>` : null}
-      </div>`;
+      return html`<div class="dnew"><${PplMenu} label="Create new" btnClass="btn btn-primary dnew-btn" width=${230}
+        button=${html`${DI.plus} New ${DI.down}`} items=${items.map(([label, go]) => ({ label, onSelect: go }))} /></div>`;
     }
 
     // Children per year (siblings count individually, like the website's stats).
@@ -10955,6 +10922,7 @@
       const [aiBusy, setAiBusy] = useState(null); // 'summary' | 'seo'
       const [partnerQuery, setPartnerQuery] = useState('');
       const [partnerOpen, setPartnerOpen] = useState(false);
+      const partnerListRef = useMemo(() => floatRef({ align: 'stretch' }), []); // drawn over everything, see ./float.js
       const [partnerActive, setPartnerActive] = useState(0);
       const [active, setActive] = useState('basics');
       const [compact, setCompact] = useState(false);
@@ -11985,7 +11953,7 @@
                   if (e.key === 'Escape') { setPartnerOpen(false); }
                 }} />
             </div>
-            ${partnerOpen && partnerQuery.trim() ? html`<ul class="ppl-listbox kd-listbox" id="kd-partner-list" role="listbox">
+            ${partnerOpen && partnerQuery.trim() ? html`<ul class="ppl-listbox kd-listbox" id="kd-partner-list" role="listbox" ref=${partnerListRef}>
               ${partnerMatches.length ? partnerMatches.map((p, i) => html`<li key=${p.slug} id=${`kd-partner-opt-${i}`} role="option" aria-selected=${i === partnerActive} aria-disabled=${linked.has(p.logo)}
                   class=${linked.has(p.logo) ? 'is-linked' : ''} onMouseDown=${(e) => { e.preventDefault(); addPartner(p); }} onMouseEnter=${() => setPartnerActive(i)}>
                 <span class="kd-logo-mini"><img src=${kdImg(p.logo, 'w=80,q=80')} alt="" /></span>
@@ -15397,55 +15365,87 @@ ${sections || '<p>No one yet.</p>'}
       </div>`;
     }
 
-    // ─── Row menu: a popover pinned to its button (cards clip overflow) ───
+    // ─── Row menu: a popover pinned to its button ───
+    // float() (./float.js) opens it in the top layer, so nothing can cover it:
+    // below the button, or above when there's more room there, following the
+    // button as the page scrolls. It stays beside the button in the page, so
+    // Tab carries on from there.
+    let pplMenuSeq = 0;
     function PplMenu({ label, items, button, btnClass = 'ppl-menu__btn', width = 220, disabled }) {
-      const [open, setOpen] = useState(false);
-      const [pos, setPos] = useState(null);
+      const [open, setOpen] = useState(null); // null, or the item that takes focus: 'first' | 'last'
       const btn = useRef(null);
       const pop = useRef(null);
-      const place = () => {
-        const r = btn.current?.getBoundingClientRect();
-        if (!r) return;
-        const w = Math.min(width, innerWidth - 16);
-        const tall = items.filter(Boolean).reduce((h, it) => h + (it.divider ? 9 : it.hint ? 58 : 44), 12);
-        setPos({ top: Math.max(8, Math.min(r.bottom + 4, innerHeight - 12 - tall)), left: Math.max(8, Math.min(r.right - w, innerWidth - w - 8)), width: w });
+      const latest = useRef({});
+      latest.current = { width, open };
+      const typed = useRef({ text: '', at: 0 });
+      const id = useMemo(() => `ppl-menu-${++pplMenuSeq}`, []);
+      const menuItems = () => [...(pop.current?.querySelectorAll('[role="menuitem"]:not([disabled])') || [])];
+      const onKey = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(null); btn.current?.focus(); return; }
+        if (e.key === 'Tab') { setOpen(null); return; } // items are tabindex -1, so focus moves on past the button
+        const els = menuItems();
+        if (!els.length) return;
+        const at = els.indexOf(document.activeElement);
+        // Keys the menu uses stop here, so page shortcuts don't also act on them
+        const go = (i) => { e.preventDefault(); e.stopPropagation(); els[(i + els.length) % els.length].focus(); };
+        if (e.key === 'ArrowDown') go(at + 1);
+        else if (e.key === 'ArrowUp') go(at < 0 ? -1 : at - 1);
+        else if (e.key === 'Home' || e.key === 'PageUp') go(0);
+        else if (e.key === 'End' || e.key === 'PageDown') go(-1);
+        else if (e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          // Type the first letters of an item to jump to it
+          e.stopPropagation();
+          const t = typed.current;
+          t.text = (e.timeStamp - t.at < 700 ? t.text : '') + e.key.toLowerCase();
+          t.at = e.timeStamp;
+          const after = [...els.slice(at + 1), ...els.slice(0, at + 1)];
+          const here = at < 0 ? after : [...els.slice(at), ...els.slice(0, at)];
+          const name = (m) => (m.firstChild?.textContent || '').trim().toLowerCase();
+          // "s" again and again steps through the items starting with s
+          const next = (t.text.length > 1 ? here : after).find((m) => name(m).startsWith(t.text))
+            || (new Set(t.text).size === 1 && after.find((m) => name(m).startsWith(t.text[0])));
+          if (next) { e.preventDefault(); next.focus(); }
+        }
       };
-      useEffect(() => {
-        if (!open) return;
-        place();
-        const close = (e) => { if (!pop.current?.contains(e.target) && !btn.current?.contains(e.target)) setOpen(false); };
-        const onKey = (e) => {
-          if (e.key === 'Escape') { setOpen(false); btn.current?.focus(); return; }
-          const els = [...(pop.current?.querySelectorAll('[role="menuitem"]:not([disabled])') || [])];
-          const at = els.indexOf(document.activeElement);
-          if (e.key === 'ArrowDown') { e.preventDefault(); els[(at + 1) % els.length]?.focus(); }
-          if (e.key === 'ArrowUp') { e.preventDefault(); els[(at - 1 + els.length) % els.length]?.focus(); }
-          if (e.key === 'Tab') setOpen(false);
+      // Everything starts as the menu is attached, before it paints, and stops
+      // with it: no moment where a key or click goes unheard
+      const popRef = useMemo(() => {
+        let stop = null;
+        return (el) => {
+          stop?.();
+          stop = null;
+          pop.current = el;
+          if (!el) return;
+          // Opened from a button that's off screen or under a bar (the keyboard, a
+          // script): bring it to the middle first, clear of every bar
+          if (btn.current && hiddenAnchor(btn.current)) btn.current.scrollIntoView({ block: 'center' });
+          const unfloat = float(el, { anchor: () => btn.current, align: 'end', width: latest.current.width, onHide: () => setOpen(null) });
+          const outside = (e) => { if (!pop.current?.contains(e.target) && !btn.current?.contains(e.target)) setOpen(null); };
+          const keys = (e) => latest.current.onKey(e);
+          document.addEventListener('pointerdown', outside, true);
+          document.addEventListener('keydown', keys, true);
+          stop = () => {
+            unfloat();
+            document.removeEventListener('pointerdown', outside, true);
+            document.removeEventListener('keydown', keys, true);
+          };
+          const els = menuItems();
+          (latest.current.open === 'last' ? els[els.length - 1] : els[0])?.focus({ preventScroll: true });
         };
-        const shut = () => setOpen(false);
-        document.addEventListener('pointerdown', close, true);
-        document.addEventListener('keydown', onKey);
-        window.addEventListener('scroll', shut, true);
-        window.addEventListener('resize', shut);
-        return () => {
-          document.removeEventListener('pointerdown', close, true);
-          document.removeEventListener('keydown', onKey);
-          window.removeEventListener('scroll', shut, true);
-          window.removeEventListener('resize', shut);
-        };
-      }, [open]);
-      // Focus the first item once the popover is on screen
-      useEffect(() => { if (open && pos) pop.current?.querySelector('[role="menuitem"]:not([disabled])')?.focus(); }, [open, !!pos]);
+      }, []);
+      latest.current.onKey = onKey;
       return html`<span class="ppl-menu">
-        <button type="button" class=${btnClass} ref=${btn} aria-label=${button ? undefined : label} aria-haspopup="menu" aria-expanded=${open} disabled=${disabled}
-          onClick=${(e) => { e.stopPropagation(); setOpen((v) => !v); }}>${button || pplIcon.more}</button>
-        ${open && pos ? html`<div class="ppl-menu__pop" role="menu" ref=${pop} aria-label=${label}
-            style=${`top:${pos.top}px;left:${pos.left}px;width:${pos.width}px`} onClick=${(e) => e.stopPropagation()}>
+        <button type="button" class=${btnClass} ref=${btn} aria-label=${button ? undefined : label} aria-haspopup="menu" aria-expanded=${!!open}
+          aria-controls=${open ? id : null} disabled=${disabled}
+          onClick=${(e) => { e.stopPropagation(); setOpen((v) => (v ? null : 'first')); }}
+          onKeyDown=${(e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setOpen(e.key === 'ArrowUp' ? 'last' : 'first'); } }}>${button || pplIcon.more}</button>
+        ${open ? html`<div class="ppl-menu__pop" id=${id} role="menu" ref=${popRef} aria-label=${label} onClick=${(e) => e.stopPropagation()}>
           ${items.filter(Boolean).map((it) => it.divider
             ? html`<div class="ppl-menu__sep" role="separator"></div>`
-            : html`<button type="button" role="menuitem" class=${it.danger ? 'is-danger' : ''} disabled=${it.disabled}
+            : html`<button type="button" role="menuitem" tabindex="-1" class=${it.danger ? 'is-danger' : ''} disabled=${it.disabled}
+                onPointerMove=${(e) => { if (e.pointerType === 'mouse' && document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }); }}
                 onClick=${() => {
-                  setOpen(false);
+                  setOpen(null);
                   it.onSelect();
                   requestAnimationFrame(() => { if (btn.current?.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.current.focus(); });
                 }}>${it.label}${it.hint ? html`<small>${it.hint}</small>` : null}</button>`)}
@@ -16548,6 +16548,9 @@ ${sections || '<p>No one yet.</p>'}
         .filter((p) => p.name.length >= 4 && new RegExp(`(^|[^a-z])${p.name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`).test(org))
         .sort((a, b) => b.name.length - a.name.length)[0] : null;
       const pick = (p) => { onChange(p.slug); setText(''); setOpen(false); };
+      // Drawn over everything (./float.js); one ref each, as either may show
+      const listRef = useMemo(() => floatRef({ align: 'stretch' }), []);
+      const emptyRef = useMemo(() => floatRef({ align: 'stretch' }), []);
       if (selected) {
         return html`<div class="ppl-partner is-set">
           <span class="ppl-partner__logo" aria-hidden="true">${selected.logo
@@ -16570,10 +16573,10 @@ ${sections || '<p>No one yet.</p>'}
               else if (e.key === 'Enter' && matches[hi]) { e.preventDefault(); pick(matches[hi]); }
               else if (e.key === 'Escape') setOpen(false);
             }} />
-          ${open && matches.length ? html`<ul class="ppl-listbox" id=${listId} role="listbox">
+          ${open && matches.length ? html`<ul class="ppl-listbox" id=${listId} role="listbox" ref=${listRef}>
             ${matches.map((p, i) => html`<li key=${p.slug} id=${`ppl-partner-opt-${p.slug}`} role="option" aria-selected=${i === hi}
               onPointerDown=${(e) => { e.preventDefault(); pick(p); }} onPointerEnter=${() => setHi(i)}>${p.name}</li>`)}
-          </ul>` : open && q ? html`<div class="ppl-listbox ppl-listbox--empty">No partner named “${text.trim()}”</div>` : null}
+          </ul>` : open && q ? html`<div class="ppl-listbox ppl-listbox--empty" ref=${emptyRef}>No partner named “${text.trim()}”</div>` : null}
         </div>
         ${suggestion ? html`<button type="button" class="ppl-suggest" onClick=${() => pick(suggestion)}>${pplIcon.link} Link to ${suggestion.name}</button>` : null}
       </div>`;
@@ -18801,6 +18804,7 @@ ${sections || '<p>No one yet.</p>'}
       const [aiBusy, setAiBusy] = useState(null); // 'summary' | 'seo'
       const [partnerQuery, setPartnerQuery] = useState('');
       const [partnerOpen, setPartnerOpen] = useState(false);
+      const partnerListRef = useMemo(() => floatRef({ align: 'stretch' }), []); // drawn over everything, see ./float.js
       const [partnerActive, setPartnerActive] = useState(0);
       const [active, setActive] = useState('basics');
       const [compact, setCompact] = useState(false);
@@ -19643,7 +19647,7 @@ ${sections || '<p>No one yet.</p>'}
                   if (e.key === 'Escape') { setPartnerOpen(false); }
                 }} />
             </div>
-            ${partnerOpen && partnerQuery.trim() ? html`<ul class="ppl-listbox kd-listbox" id="cm-partner-list" role="listbox">
+            ${partnerOpen && partnerQuery.trim() ? html`<ul class="ppl-listbox kd-listbox" id="cm-partner-list" role="listbox" ref=${partnerListRef}>
               ${partnerMatches.length ? partnerMatches.map((p, i) => html`<li key=${p.slug} id=${`cm-partner-opt-${i}`} role="option" aria-selected=${i === partnerActive} aria-disabled=${linked.has(p.logo)}
                   class=${linked.has(p.logo) ? 'is-linked' : ''} onMouseDown=${(e) => { e.preventDefault(); addPartner(p); }} onMouseEnter=${() => setPartnerActive(i)}>
                 <span class="kd-logo-mini"><img src=${kdImg(p.logo, 'w=80,q=80')} alt="" /></span>

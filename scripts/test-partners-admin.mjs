@@ -873,6 +873,31 @@ try {
     await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
     await page.waitForSelector('.pt-row');
 
+    // A row menu near the bottom of the screen opens above its button, then follows it as the page scrolls
+    const flip = await page.evaluate(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const btns = [...document.querySelectorAll('.pt-row .ppl-menu__btn')];
+      const b = btns[Math.floor(btns.length / 2)];
+      scrollBy(0, b.getBoundingClientRect().bottom - (innerHeight - 24));
+      await wait(300);
+      b.click();
+      await wait(300);
+      const pop = document.querySelector('.ppl-menu__pop');
+      if (!pop) return null;
+      const p0 = pop.getBoundingClientRect(), b0 = b.getBoundingClientRect();
+      const covered = [...pop.querySelectorAll('[role="menuitem"]')].filter((m) => { const r = m.getBoundingClientRect(); return !m.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }).length;
+      scrollBy(0, 60);
+      await wait(300);
+      const p1 = document.querySelector('.ppl-menu__pop')?.getBoundingClientRect(), b1 = b.getBoundingClientRect();
+      const out = { side: pop.dataset.side, gap0: Math.round(b0.top - p0.bottom), onScreen: p0.top >= 0 && p0.bottom <= innerHeight, covered, moved: Math.round(b0.top - b1.top), gap1: p1 ? Math.round(b1.top - p1.bottom) : null };
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(100);
+      return out;
+    });
+    ok(flip?.side === 'top' && flip.gap0 === 4 && flip.onScreen && !flip.covered, `a row menu with no room below opens above its button, all on screen (${JSON.stringify(flip)})`);
+    ok(flip?.moved === 60 && flip.gap1 === 4, 'and stays with its button while the page scrolls');
+    await page.evaluate(() => scrollTo(0, 0));
+
     // ── The editor ──
     await page.evaluate(() => [...document.querySelectorAll('.ppl-row__name')].find((e) => e.textContent.trim() === 'Bell Cabinetry')?.click());
     await page.waitForSelector('.pt-ed-head', { timeout: 8000 });
@@ -884,6 +909,50 @@ try {
     ok(health.includes('Write a tagline'), `health asks for a Signature tagline (${health.join(', ')})`);
     await shot(page, 'desk-editor');
     await axeCheck(page, 'editor');
+
+    // The "…" menu hangs over the sticky section bar and must draw on top of it
+    await page.evaluate(() => { scrollTo(0, 0); document.querySelector('.main')?.scrollTo(0, 0); });
+    await sleep(200);
+    await page.$eval('.pt-ed-head .ppl-menu__btn', (b) => b.click());
+    await page.waitForSelector('.ppl-menu__pop', { timeout: 3000 }).catch(() => {});
+    const menuOnTop = await page.evaluate(() => {
+      const bar = document.querySelector('.kd-bar').getBoundingClientRect();
+      const items = [...document.querySelectorAll('.ppl-menu__pop [role="menuitem"]')].map((m) => {
+        const r = m.getBoundingClientRect();
+        return { over: r.bottom > bar.top && r.top < bar.bottom, hit: m.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
+      });
+      return { n: items.length, over: items.some((i) => i.over), hidden: items.filter((i) => !i.hit).length };
+    });
+    ok(menuOnTop.n >= 3 && menuOnTop.over && !menuOnTop.hidden, `the editor's actions menu draws over the section bar (${menuOnTop.hidden} of ${menuOnTop.n} items covered)`);
+    // ...and works from the keyboard the way a menu should
+    const inMenu = () => page.evaluate(() => {
+      const a = document.activeElement;
+      return a?.closest('.ppl-menu__pop') ? a.firstChild?.textContent.trim() : a?.matches('.ppl-menu__btn') ? 'the … button' : a?.matches('.kd-bar__chip') ? `chip ${a.textContent.trim()}` : a?.tagName;
+    });
+    const keys = [await inMenu()];
+    await page.keyboard.press('End'); keys.push(await inMenu());
+    await page.keyboard.press('Home'); keys.push(await inMenu());
+    await page.keyboard.type('h'); keys.push(await inMenu());
+    await sleep(800); // a fresh search, not "hs"
+    await page.keyboard.type('s'); keys.push(await inMenu());
+    ok(keys.join(' → ') === 'Visit their website → Delete partner… → Visit their website → History → See the Partners page',
+      `focus starts on the first item; End, Home and typing a letter move it (${keys.join(' → ')})`);
+    await page.keyboard.press('Tab');
+    await sleep(100);
+    ok(!(await page.$('.ppl-menu__pop')) && /^chip Partner/.test(await inMenu()), `Tab closes the menu and carries on to the next control (${await inMenu()})`);
+    await page.$eval('.pt-ed-head .ppl-menu__btn', (b) => b.focus());
+    await page.keyboard.press('ArrowUp');
+    await page.waitForSelector('.ppl-menu__pop', { timeout: 3000 }).catch(() => {});
+    ok(await inMenu() === 'Delete partner…', `ArrowUp on the button opens the menu at its last item (${await inMenu()})`);
+    await page.keyboard.press('Escape');
+    await sleep(100);
+    const escaped = { menu: !!(await page.$('.ppl-menu__pop')), focus: await inMenu(), editor: !!(await page.$('.pt-ed-head')) };
+    ok(!escaped.menu && escaped.focus === 'the … button' && escaped.editor, `Escape closes just the menu, back on its button (${JSON.stringify(escaped)})`);
+    await page.$eval('.pt-ed-head .ppl-menu__btn', (b) => b.click());
+    await page.waitForSelector('.ppl-menu__pop', { timeout: 3000 }).catch(() => {});
+    await shot(page, 'desk-editor-menu', { grow: false });
+    await page.keyboard.press('Escape');
+    await sleep(100);
 
     // Level → Champion: the card and the fields follow; Save puts them last
     await clickText(page, '.pt-level-opt', 'Champion');

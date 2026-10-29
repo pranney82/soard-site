@@ -326,6 +326,18 @@ try {
     const need = await page.evaluate(() => [...document.querySelectorAll('.dneed-title')].find((e) => /reveal invites/.test(e.textContent))?.textContent.trim());
     ok(/^12 board members won’t get reveal invites/.test(need || ''), `the Dashboard says who misses reveal invites (${need})`);
     await shot(page, 'desk-dashboard');
+    // New: the shared row menu, on top of everything, focus on its first item
+    await page.$eval('.dnew-btn', (b) => b.click());
+    await page.waitForSelector('.ppl-menu__pop', { timeout: 3000 }).catch(() => {});
+    const dnew = await page.evaluate(() => {
+      const items = [...document.querySelectorAll('.ppl-menu__pop [role="menuitem"]')];
+      const onTop = items.every((m) => { const r = m.getBoundingClientRect(); return m.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); });
+      return { labels: items.map((m) => m.textContent.trim()), onTop, focus: document.activeElement?.textContent.trim() };
+    });
+    ok(dnew.labels.length === 8 && dnew.labels[0] === 'Kid' && dnew.onTop && dnew.focus === 'Kid', `the Dashboard’s New menu lists 8 things to make, on top, focus on Kid (${dnew.labels.join(', ')})`);
+    await page.keyboard.press('Escape');
+    await sleep(100);
+    ok(!(await page.$('.ppl-menu__pop')) && await page.evaluate(() => document.activeElement?.classList.contains('dnew-btn')), 'Escape closes it, back on New');
     await page.evaluate(() => [...document.querySelectorAll('.dneed')].find((li) => /reveal invites/.test(li.textContent))?.querySelector('.dneed-act')?.click());
     await page.waitForSelector('.ppl-row', { timeout: 10000 });
     await sleep(500);

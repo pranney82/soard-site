@@ -25,6 +25,7 @@
 
 import { h, htm, render, Component, useState, useEffect, useRef, useMemo, Sortable, DOMPurify } from './vendor.js';
 import * as S from './site-config-shared.js';
+import { floatRef } from './float.js';
 
 const html = htm.bind(h);
 const CF = `/cdn-cgi/imagedelivery/${S.CF_HASH}`;
@@ -577,6 +578,8 @@ const kidThumb = (k, size = 80) => imgUrl(k?.heroImage || (k?.slug ? `kids/${k.s
 function KidPicker({ label, value, onChange, kids = [], filter = null, blankLabel = null, hint = null, describe = null, problem = null }) {
   const id = useId('sc-kid');
   const [open, setOpen] = useState(false);
+  // Drawn over everything and pinned to its button (./float.js); a bottom sheet on phones
+  const popRef = useMemo(() => floatRef({ align: 'stretch', sheet: '(max-width: 640px)', onHide: () => setOpen(false) }), []);
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
   const wrap = useRef(null);
@@ -612,7 +615,7 @@ function KidPicker({ label, value, onChange, kids = [], filter = null, blankLabe
           <${Icon} name="chevron" />
         </button>
         ${open && html`
-          <div class="sc-pop" role="dialog" aria-label=${label || 'Pick a kid'}>
+          <div class="sc-pop" role="dialog" aria-label=${label || 'Pick a kid'} ref=${popRef}>
             <label class="sc-search"><${Icon} name="search" />
               <input value=${q} placeholder="Search kids" aria-label="Search kids" aria-controls=${`${id}-list`} aria-activedescendant=${options[active] ? `${id}-o${active}` : null}
                 ref=${(el) => el && !el.dataset.f && (el.dataset.f = '1', requestAnimationFrame(() => el.focus()))} onInput=${(e) => setQ(e.target.value)} onKeyDown=${onKey} />

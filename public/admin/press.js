@@ -23,6 +23,7 @@
 import { h, htm, useState, useEffect, useRef, useMemo, Sortable } from './vendor.js';
 import * as PS from './press-shared.js';
 import { askToLeave } from './ask.js';
+import { floatRef } from './float.js';
 
 const html = htm.bind(h);
 const CF = `/cdn-cgi/imagedelivery/${PS.CF_HASH}`;
@@ -921,6 +922,7 @@ function PictureCard({ c, rec, outlet, link, set, setRec, pulling, onPull, onBro
 /** Pick an outlet, or add a new one by name */
 function OutletPicker({ c, value, name, url, invalid, onPick }) {
   const id = useId('pr-op');
+  const listRef = useMemo(() => floatRef({ align: 'stretch' }), []); // drawn over everything (./float.js)
   const current = c.outletBySlug.get(value);
   const [q, setQ] = useState(null);
   const [open, setOpen] = useState(false);
@@ -969,7 +971,7 @@ function OutletPicker({ c, value, name, url, invalid, onPick }) {
       ${adding ? html`<span class="spinner spinner-14" />` : null}
     </div>
     ${!current && name ? html`<p class="form-hint">“${name}” isn’t linked to an outlet. Pick it from the list, or add it.</p>` : null}
-    ${open ? html`<ul class="pr-combo__list" role="listbox" id=${`${id}-list`}>
+    ${open ? html`<ul class="pr-combo__list" role="listbox" id=${`${id}-list`} ref=${listRef}>
       ${options.map((opt, i) => html`<li key=${opt.o?.slug || 'add'} id=${`${id}-${i}`} role="option" aria-selected=${i === hi} class=${`pr-combo__opt${i === hi ? ' is-hi' : ''}`}
           onMouseDown=${(e) => e.preventDefault()} onClick=${() => choose(opt)} onPointerEnter=${() => setHi(i)}>
         ${opt.o ? html`<${OutletMark} outlet=${opt.o} size=${24} /><span class="pr-combo__name">${opt.o.name}</span><span class="pr-combo__n">${plural(counts.get(opt.o.slug) || 0, 'story', 'stories')}</span>`
@@ -983,6 +985,7 @@ function OutletPicker({ c, value, name, url, invalid, onPick }) {
 /** Kids or partners: chips, and a search to add more */
 function PeoplePicker({ label, items, value, onChange, sub = () => '', face = false }) {
   const id = useId('pr-pp');
+  const listRef = useMemo(() => floatRef({ align: 'stretch' }), []); // drawn over everything (./float.js)
   const [q, setQ] = useState('');
   const [hi, setHi] = useState(0);
   const bySlug = new Map(items.map((x) => [x.slug, x]));
@@ -998,7 +1001,7 @@ function PeoplePicker({ label, items, value, onChange, sub = () => '', face = fa
         aria-activedescendant=${matches[hi] ? `${id}-${hi}` : null} autocomplete="off"
         onInput=${(e) => { setQ(e.target.value); setHi(0); }}
         onKeyDown=${(e) => { if (e.key === 'ArrowDown') { e.preventDefault(); setHi((x) => Math.min(matches.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((x) => Math.max(0, x - 1)); } else if (e.key === 'Enter' && matches.length) { e.preventDefault(); add(matches[hi]); } else if (e.key === 'Escape') setQ(''); }} />
-      ${matches.length ? html`<ul class="pr-combo__list" role="listbox" id=${`${id}-list`}>${matches.map((x, i) => html`<li key=${x.slug} id=${`${id}-${i}`} role="option" aria-selected=${i === hi} class=${`pr-combo__opt${i === hi ? ' is-hi' : ''}`}
+      ${matches.length ? html`<ul class="pr-combo__list" role="listbox" id=${`${id}-list`} ref=${listRef}>${matches.map((x, i) => html`<li key=${x.slug} id=${`${id}-${i}`} role="option" aria-selected=${i === hi} class=${`pr-combo__opt${i === hi ? ' is-hi' : ''}`}
         onMouseDown=${(e) => e.preventDefault()} onClick=${() => add(x)} onPointerEnter=${() => setHi(i)}><span class="pr-combo__name">${x.name}</span><span class="pr-combo__n">${sub(x)}</span></li>`)}</ul>` : null}
     </div>
   </div>`;
