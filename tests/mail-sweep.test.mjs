@@ -285,6 +285,18 @@ test('after the watch: receipts go to the receipt inbox, family emails become hi
   assert.equal(of('resend').length + of('comment').length, 0);
 });
 
+test('a reply carrying the conversation’s files again doesn’t add them twice', async () => {
+  const photo = { name: 'room.jpg', type: 'image/jpeg', data: 'jpegbytes', size: 200000 };
+  mail({ box: PAT, at: T0 - 9 * DAY, from: 'Ana Rivera <parent@example.com>', to: PAT, subject: 'Brand kit', text: 'Here you go', msgid: '<kit@mail.example>', files: [photo] });
+  mail({ box: PAT, at: T0 - 8 * DAY, from: `Pat <${PAT}>`, to: 'parent@example.com', subject: 'Re: Brand kit', text: 'Thanks!', refs: '<kit@mail.example>', labels: ['SENT'], files: [photo] });
+  mail({ box: PAT, at: T0 - 7 * DAY, from: 'Ana Rivera <parent@example.com>', to: PAT, subject: 'Re: Brand kit', text: 'One more', refs: '<kit@mail.example>', files: [photo, { name: 'logo-final.png', type: 'image/png', data: 'png', size: 90000 }] });
+  await maybeSweepMail(env, { now: T0, force: true });
+  assert.deepEqual((await rows()).map((r) => r.detail), ['would add to Rivera Family with a file', 'would add to Rivera Family', 'would add to Rivera Family with a file']);
+  await maybeSweepMail(env, { now: T0 + WATCH_MS + MIN, force: true });
+  assert.deepEqual(of('comment').map((c) => (c.input.files || []).length), [1, 0, 1]);
+  assert.match(of('comment')[2].input.message, /Files: logo-final\.png$/);
+});
+
 test('an email queued under older rules is sorted again before anything is done with it', async () => {
   const chatter = mail({ box: PAT, at: T0 - 40 * DAY, from: 'A Board Member <board@example.net>', to: `${PAT}, parent@example.com`, subject: 'Re: Invitation: TENTATIVE: Max’s Reveal!', text: 'Can’t wait!' });
   await maybeSweepMail(env, { now: T0, force: true });

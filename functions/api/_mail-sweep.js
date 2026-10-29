@@ -80,9 +80,13 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS mail_sweep_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
 ];
 const _ready = new WeakSet();
+// Added after the first deploy: the files a family email brought (name:size), so a reply carrying them again doesn't add them twice
+const COLUMNS = ['file_keys TEXT'];
 async function ensure(DB) {
   if (_ready.has(DB)) return;
   for (const s of SCHEMA) await DB.prepare(s).run();
+  const have = new Set(((await DB.prepare('PRAGMA table_info(mail_sweep)').all()).results || []).map((c) => c.name));
+  for (const c of COLUMNS) if (!have.has(c.split(' ')[0])) await DB.prepare(`ALTER TABLE mail_sweep ADD COLUMN ${c}`).run();
   _ready.add(DB);
 }
 async function readState(DB) {
@@ -334,7 +338,14 @@ async function handleFamily(env, ctx, row, msg) {
   if (!accounts.length) return { state: 'skipped', detail: 'the family isn’t in JobTread any more' };
   const familyNames = accounts.map((id) => ctx.names.get(id)).join(' and ');
   const subject = header(h, 'Subject');
-  const files = filesWorth(msg.payload);
+  // The conversation so far: its first email on each account (replies go under it), and the files already added
+  const earlier = row.conv ? ((await env.DB.prepare("SELECT state, comment_ids, file_keys FROM mail_sweep WHERE conv = ? AND kind = 'family' AND state IN ('posted', 'would') ORDER BY at LIMIT 100").bind(row.conv).all()).results || []) : [];
+  const json = (s, empty) => { try { return JSON.parse(s) || empty; } catch { return empty; } };
+  const roots = Object.assign({}, ...earlier.filter((r) => r.state === 'posted' && r.comment_ids).map((r) => json(r.comment_ids, {})).reverse());
+  const added = new Set(earlier.flatMap((r) => json(r.file_keys, [])));
+  const keyOf = (f) => `${f.name}:${f.size}`;
+  const files = filesWorth(msg.payload).filter((f) => !added.has(keyOf(f)));
+  const fileKeys = files.map(keyOf);
   const sentAt = Number(msg.internalDate) || ctx.now;
   const message = [
     `Email, ${when(sentAt)} (from ${ctx.ownerName}’s inbox)`,
@@ -343,12 +354,9 @@ async function handleFamily(env, ctx, row, msg) {
     '', withoutQuoted(textOf(msg.payload)) || '(no words, only files)',
     ...(files.length ? ['', `Files: ${files.map((f) => f.name).join(', ')}`] : []),
   ].join('\n').slice(0, 4096);
-  if (ctx.watching) return { state: 'would', detail: `would add to ${familyNames}${files.length ? ` with ${files.length === 1 ? 'a file' : `${files.length} files`}` : ''}` };
+  if (ctx.watching) return { state: 'would', detail: `would add to ${familyNames}${files.length ? ` with ${files.length === 1 ? 'a file' : `${files.length} files`}` : ''}`, fileKeys };
   if (!env.JOBTREAD_GRANT_KEY) throw new Error('JOBTREAD_GRANT_KEY isn’t set');
 
-  // The conversation's first email on each account, if one is there already: replies go under it
-  const earlier = row.conv ? await env.DB.prepare("SELECT comment_ids FROM mail_sweep WHERE conv = ? AND kind = 'family' AND state = 'posted' AND comment_ids IS NOT NULL ORDER BY at LIMIT 20").bind(row.conv).all() : { results: [] };
-  const roots = Object.assign({}, ...(earlier.results || []).map((r) => { try { return JSON.parse(r.comment_ids); } catch { return {}; } }).reverse());
   const bytes = [];
   for (const f of files) bytes.push({ name: f.name, type: f.type, bytes: await fileBytes(ctx.token, msg, f, ctx.fetchImpl) });
   const ids = {};
@@ -364,11 +372,11 @@ async function handleFamily(env, ctx, row, msg) {
     if (!id) throw new Error('JobTread didn’t make the comment');
     ids[accountId] = parent || id;
   }
-  return { state: 'posted', detail: `added to ${familyNames}${files.length ? ` with ${files.length === 1 ? 'a file' : `${files.length} files`}` : ''}`, commentIds: ids };
+  return { state: 'posted', detail: `added to ${familyNames}${files.length ? ` with ${files.length === 1 ? 'a file' : `${files.length} files`}` : ''}`, commentIds: ids, fileKeys };
 }
 
-const finish = (DB, row, { state, detail = null, commentIds = null }, now) => DB.prepare('UPDATE mail_sweep SET state = ?, detail = ?, comment_ids = COALESCE(?, comment_ids), updated_at = ? WHERE mailbox = ? AND id = ?')
-  .bind(state, detail ? String(detail).slice(0, 300) : null, commentIds ? JSON.stringify(commentIds) : null, new Date(now).toISOString(), row.mailbox, row.id).run();
+const finish = (DB, row, { state, detail = null, commentIds = null, fileKeys = null }, now) => DB.prepare('UPDATE mail_sweep SET state = ?, detail = ?, comment_ids = COALESCE(?, comment_ids), file_keys = ?, updated_at = ? WHERE mailbox = ? AND id = ?')
+  .bind(state, detail ? String(detail).slice(0, 300) : null, commentIds ? JSON.stringify(commentIds) : null, fileKeys ? JSON.stringify(fileKeys) : null, new Date(now).toISOString(), row.mailbox, row.id).run();
 
 async function handle(env, ctx, row) {
   // Claimed first, so two heartbeats can't both send it
