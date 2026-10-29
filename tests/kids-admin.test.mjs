@@ -226,7 +226,14 @@ test('health checklist: what a finished profile has, by status', () => {
   const ids = (k) => KS.kidChecks(k).map((c) => `${c.done ? '✓' : '·'}${c.id}`);
   assert.deepEqual(ids(kid()), ['✓hero', '✓story', '·summary', '✓photos', '✓alt', '✓video']);
   // In build: a photo is enough, the fundraising link counts, the video doesn't yet
-  assert.deepEqual(ids(kid({ status: 'in-progress', photos: [{ url: img('a'), alt: '' }], fundraisingUrl: '' })), ['✓hero', '✓story', '·summary', '✓photos', '·alt', '·fund']);
+  assert.deepEqual(ids(kid({ status: 'in-progress', photos: [{ url: img('a'), alt: '' }], fundraisingUrl: '' })), ['·sponsor', '✓hero', '✓story', '·summary', '✓photos', '·alt', '·fund']);
+  // The monetary sponsor leads for active kids, and is an essential while awaiting funding
+  const sponsor = (k) => KS.kidChecks(kid(k)).find((c) => c.id === 'sponsor');
+  assert.equal(sponsor({ status: 'needs-funding' }).key, true);
+  assert.equal(sponsor({ status: 'needs-funding', sponsors: ['acme'] }).done, true);
+  assert.equal(sponsor({ status: 'in-progress' }).key, false);
+  assert.equal(sponsor({ status: 'completed' }), undefined);
+  assert.deepEqual(KS.kidIssues(kid({ status: 'needs-funding', fundraisingUrl: 'https://z' })).filter((i) => i.id === 'no-sponsor').map((i) => [i.tone, i.section]), [['warn', 'sponsor']]);
   const funding = KS.kidChecks(kid({ status: 'needs-funding', fundraisingUrl: '' })).find((c) => c.id === 'fund');
   assert.equal(funding.key, true, 'awaiting funding without a link is an essential');
   const cut = KS.kidChecks(kid({ heroSummary: 'One. Two. Three.' })).find((c) => c.id === 'summary');
@@ -235,7 +242,8 @@ test('health checklist: what a finished profile has, by status', () => {
   assert.deepEqual(ids(kid({ partnerLogos: [{ url: img('p'), name: '' }], plans: [{ url: img('q'), label: 'CompanyCam 1' }] })).slice(-2), ['·partners', '·plans']);
   assert.ok(KS.kidChecks(kid()).every((c) => KD_SECTIONS_IDS.includes(c.section)), 'each check points at a section the editor has');
 });
-const KD_SECTIONS_IDS = ['basics', 'story', 'photos', 'plans', 'transform', 'video', 'partners', 'giving', 'search'];
+// 'sponsor' is the side panel's Monetary sponsor card (id kd-sec-sponsor)
+const KD_SECTIONS_IDS = ['sponsor', 'basics', 'story', 'photos', 'plans', 'transform', 'video', 'partners', 'giving', 'search'];
 
 test('history: what a save changed, in words', () => {
   const a = kid({ status: 'completed', bio: '<p>One two three.</p>', roomTypes: ['Dream Bedroom'], partnerLogos: [{ url: img('p1'), name: 'A' }, { url: img('p2'), name: '' }],
@@ -252,6 +260,11 @@ test('history: what a save changed, in words', () => {
     'Partners: new order, 1 name changed',
   ]);
   assert.deepEqual(KS.describeChanges(a, { ...a, sortOrder: 9 }), [], 'a list position isn’t an edit');
+  const names = { partnerName: (s) => ({ acme: 'Acme Foundation', bright: 'Bright Fund' })[s] };
+  assert.deepEqual(KS.describeChanges(a, { ...a, sponsors: ['acme'] }, names).map((c) => `${c.label}: ${c.detail}`), ['Monetary sponsor: Set to Acme Foundation']);
+  assert.deepEqual(KS.describeChanges({ ...a, sponsors: ['acme'] }, { ...a, sponsors: ['acme', 'bright'] }, names).map((c) => c.detail), ['Acme Foundation → Acme Foundation & Bright Fund']);
+  assert.deepEqual(KS.describeChanges({ ...a, sponsors: ['acme'] }, a).map((c) => c.detail), ['Removed']);
+  assert.deepEqual(KS.kidRecord({ ...a, sponsors: ['acme', 'acme', '', null] }).sponsors, ['acme']);
   assert.deepEqual(KS.changedLabels(['bedroomCount', 'roomTypes', 'videoUrl', 'streamVideoId', 'bio', 'mysteryField']), ['What was built', 'Video', 'Story', 'Mystery Field']);
 });
 

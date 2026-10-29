@@ -52,6 +52,8 @@ const kids = defineCollection({
       url: link(),
       name: z.string().nullable().optional(),
     })).default([]),
+    // Monetary sponsors, as Partners slugs (Admin → Kids). JobTread's Monetary Sponsor field follows them
+    sponsors: z.array(z.string()).default([]),
     heroSummary: z.string().nullable().optional(),
     shortDescription: z.string().nullable().optional(),
     metaDescription: z.string().nullable().optional(),

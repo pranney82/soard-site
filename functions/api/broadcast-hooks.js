@@ -23,6 +23,7 @@ import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 import { maybeSweepApplications } from './_applications.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
 import { maybeSyncKidPartners } from './_kid-partners.js';
+import { maybeSyncSponsors } from './_sponsors.js';
 import { maybeSweepZeffy } from './_zeffy.js';
 import { maybeRunWaitlist } from './_application-waitlist.js';
 import { maybeRunPress } from './_press.js';
@@ -79,8 +80,10 @@ export async function onRequestPost(context) {
     context.waitUntil(syncBroadcastSchedule(env));
     context.waitUntil(maybeSweepApplications(env));
     context.waitUntil(maybeSyncKidStatuses(env));
-    // Every 10 minutes: Vendors and Sponsors on a job get their logo on the kid's page; no logo, staff are emailed (see _kid-partners.js)
-    context.waitUntil(maybeSyncKidPartners(env));
+    // Every 10 minutes: Vendors and Sponsors on a job get their logo on the kid's page; no logo, staff are emailed (see _kid-partners.js).
+    // Then monetary sponsors: job access follows the website, the Monetary Sponsor field mirrors it, and a
+    // Sponsor added in JobTread comes in (see _sponsors.js). In turn, so the two never write a kid at once
+    context.waitUntil(maybeSyncKidPartners(env).then(() => maybeSyncSponsors(env)));
     context.waitUntil(maybeSweepZeffy(env));
     context.waitUntil(maybeRunWaitlist(env));
     context.waitUntil(maybeRunPress(env));

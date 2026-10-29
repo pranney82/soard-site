@@ -239,6 +239,8 @@ export function kidIssues(kid) {
   const add = (id, tone, label, section, tip) => out.push({ id, tone, label, section, tip });
   if (!kid.heroImage) add('no-hero', 'warn', 'No main photo', 'photos', 'The grid card and the top of the page have no photo');
   if (!plain(kid.bio)) add('no-story', 'warn', 'No story', 'story', 'The page has no story section');
+  // Awaiting funding is about finding who pays for the room (Peter, Oct 28 2026)
+  if (kid.status === 'needs-funding' && !(kid.sponsors || []).length) add('no-sponsor', 'warn', 'No monetary sponsor yet', 'sponsor', 'Pick who pays for the room; JobTread follows');
   if (kid.status === 'needs-funding' && !kid.fundraisingUrl) add('no-fund-link', 'warn', 'No fundraising link', 'giving', 'Visitors have no way to give toward this room');
   if (kid.status === 'completed' && photos.length < 3) add('few-photos', 'warn', photos.length ? `Only ${photos.length} photo${photos.length === 1 ? '' : 's'}` : 'No photos', 'photos', 'Completed rooms read best with a full gallery');
   const intro = heroIntro(kid);
@@ -247,6 +249,7 @@ export function kidIssues(kid) {
   if (unnamed) add('partner-names', 'quiet', `${unnamed} partner logo${unnamed === 1 ? '' : 's'} unnamed`, 'partners', 'Screen readers hear “Project partner” for these');
   const noAlt = photos.slice(0, GALLERY_MAX).filter(needsAlt).length;
   if (noAlt) add('alt', 'quiet', `${noAlt} photo${noAlt === 1 ? '' : 's'} need${noAlt === 1 ? 's' : ''} alt text`, 'photos', 'Screen readers and image search rely on it');
+  if (kid.status === 'in-progress' && !(kid.sponsors || []).length) add('no-sponsor', 'quiet', 'No monetary sponsor', 'sponsor', 'Who paid for the room isn’t recorded');
   if (kid.status === 'in-progress' && !kid.fundraisingUrl) add('no-fund-link', 'quiet', 'No fundraising link', 'giving', 'Their page could ask visitors to help fund the room');
   if (kid.status === 'completed' && !kid.streamVideoId && !kid.videoUrl) add('no-video', 'quiet', 'No reveal video', 'video', 'The page has no Reveal chapter');
   const q = quoteState(kid);
@@ -269,6 +272,7 @@ export function kidChecks(kid) {
   const active = isActive(kid);
   const shown = photos.slice(0, GALLERY_MAX);
   const list = [
+    active ? { id: 'sponsor', label: 'Monetary sponsor', done: !!(kid.sponsors || []).length, section: 'sponsor', key: kid.status === 'needs-funding' } : null,
     { id: 'hero', label: 'Main photo', done: !!kid.heroImage, section: 'photos', key: true },
     { id: 'story', label: 'Story', done: !!plain(kid.bio), section: 'story', key: true },
     { id: 'summary', label: 'Hero summary that fits', done: !!kid.heroSummary && !intro.cut, section: 'story', key: !!kid.heroSummary && intro.cut },
@@ -284,7 +288,7 @@ export function kidChecks(kid) {
 
 // ── History: what a save changed, in words ───────────────────────────
 const HISTORY_FIELDS = [
-  ['name', 'Name'], ['status', 'Status'], ['publishStatus', 'Shown on the site'], ['year', 'Year'], ['age', 'Age'],
+  ['name', 'Name'], ['status', 'Status'], ['publishStatus', 'Shown on the site'], ['sponsors', 'Monetary sponsor'], ['year', 'Year'], ['age', 'Age'],
   ['childCount', 'Kids in the profile'], ['diagnosis', 'Diagnosis'], ['rooms', 'What was built'],
   ['heroSummary', 'Hero summary'], ['bio', 'Story'], ['quote', 'Pull quote'],
   ['heroImage', 'Main photo'], ['accentImage', 'Accent photo'], ['photos', 'Photos'], ['photographer', 'Photographer'],
@@ -325,8 +329,10 @@ export function changedLabels(fields) {
  * What changed between two versions of a kid, field by field, for History:
  * [{ field, label, detail }] in the editor's order.
  */
-export function describeChanges(rawBefore, rawAfter) {
+export function describeChanges(rawBefore, rawAfter, { partnerName = null } = {}) {
   if (!rawBefore || !rawAfter) return [];
+  // Sponsors are partner slugs; the editor passes the directory's names
+  const nameOf = (slug) => partnerName?.(slug) || slug;
   // Both as Save writes them, so an older record's missing defaults (a count
   // of 1, empty links) don't read as edits
   const norm = (d) => kidRecord({ ...d, ...buildFields(buildsOf(d), d) });
@@ -374,6 +380,7 @@ export function describeChanges(rawBefore, rawAfter) {
         return [cap && `${plural(cap, 'caption')} changed`];
       });
       else if (field === 'beforeAfterPhotos') detail = listChange(b || [], a || [], (x) => `${x.before}|${x.after}`);
+      else if (field === 'sponsors') detail = !(a || []).length ? 'Removed' : !(b || []).length ? `Set to ${(a || []).map(nameOf).join(' & ')}` : `${(b || []).map(nameOf).join(' & ')} → ${(a || []).map(nameOf).join(' & ')}`;
       else if (typeof a === 'number' || typeof b === 'number') detail = `${b ?? 'none'} → ${a ?? 'none'}`;
       else if (!plain(b)) detail = `Added: “${clip(a)}”`;
       else if (!plain(a)) detail = 'Removed';
@@ -401,6 +408,8 @@ export function kidRecord(data) {
     videoUrl: String(d.videoUrl || '').trim() || null,
     fundraisingUrl: String(d.fundraisingUrl || '').trim() || null,
     revealVideoUrl: String(d.revealVideoUrl || '').trim() || null,
+    // Monetary sponsors: Partners slugs, the first is who JobTread names first (functions/api/_sponsors.js)
+    sponsors: [...new Set((Array.isArray(d.sponsors) ? d.sponsors : []).filter((x) => typeof x === 'string' && x))],
     heroSummary: String(d.heroSummary || '').trim() || null,
     photos: clean(d.photos).filter((p) => p.url && !/^blob:/.test(p.url)),
     partnerLogos: clean(d.partnerLogos).filter((p) => p.url && !/^blob:/.test(p.url)),

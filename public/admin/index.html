@@ -3143,6 +3143,51 @@
     .kd-card--health { order: 1; }
     .kd-main { order: 2; min-width: 0; }
     .kd-card--site { order: 3; }
+    /* Monetary sponsor: right after Status, above the editor on narrow screens too */
+    .kd-card--sponsor { order: 0; }
+    .pt-sponsored { margin: 0 0 0.75rem; font-size: var(--fs-sm); }
+    .pt-contacts { margin-bottom: 0.75rem; font-size: var(--fs-sm); }
+    .kd-card--sponsor.is-needed { border-color: var(--tone-warn-line-strong); box-shadow: inset 3px 0 0 var(--tone-warn-dot), var(--shadow-xs); }
+    .kd-sponsor__ask { margin: 0 0 0.75rem; font-size: var(--fs-xs); line-height: 1.5; color: var(--color-text-secondary); }
+    .kd-sponsors { display: grid; gap: 0.75rem; margin: 0 0 0.75rem; list-style: none; }
+    .kd-sponsor { display: grid; gap: 0.45rem; padding: 0.7rem 0.75rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-secondary); }
+    .kd-sponsor__head { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+    .kd-sponsor__head .pt-logo { flex-shrink: 0; background: #fff; }
+    .kd-sponsor__name { flex: 1; min-width: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+    .kd-sponsor__head .kd-x { margin: -0.3rem -0.4rem -0.3rem 0; }
+    .kd-sponsor__people { display: grid; gap: 0.4rem; list-style: none; font-size: var(--fs-xs); }
+    .kd-sponsor__people li { display: flex; flex-direction: column; min-width: 0; }
+    .kd-sponsor__people span { font-weight: 600; }
+    .kd-sponsor__people a, .kd-sponsor__jt a, .kd-sponsor__jtline a { color: var(--color-text-secondary); overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; }
+    .kd-sponsor .kd-card__note { margin: 0; }
+    .kd-sponsor__contacts, .kd-sponsor__new { justify-self: start; display: inline-flex; align-items: center; gap: 0.3rem; }
+    .kd-sponsor__new { margin-top: 0.5rem; }
+    .kd-sponsor__jt { display: grid; gap: 0.4rem; padding-top: 0.55rem; border-top: 1px solid var(--color-border); list-style: none; font-size: var(--fs-xs); line-height: 1.45; color: var(--color-text-secondary); }
+    .kd-sponsor__jt li { display: flex; gap: 0.45rem; align-items: flex-start; }
+    .kd-sponsor__mark { display: inline-grid; place-items: center; flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%; vertical-align: -4px; }
+    .kd-sponsor__mark svg { width: 11px; height: 11px; }
+    .kd-sponsor__mark.is-ok { background: var(--color-success); color: #fff; }
+    .kd-sponsor__mark.is-warn { background: var(--tone-warn-bg); color: var(--tone-warn-fg); }
+    /* In the panel's scroll box a floating list would be cut off, so it opens in place */
+    .kd-sponsor-pick .ppl-listbox { position: static; margin-top: 4px; box-shadow: var(--shadow-sm); }
+    .kd-listbox__add .kd-logo-mini { color: var(--color-text-secondary); }
+    .kd-sponsor__suggest { display: grid; gap: 0.6rem; margin-top: 0.75rem; list-style: none; }
+    .kd-sponsor__suggest li { display: grid; gap: 0.5rem; justify-items: start; padding: 0.65rem 0.75rem; border: 1px solid var(--tone-warn-line-strong); border-radius: 10px; background: var(--tone-warn-surface); font-size: var(--fs-xs); line-height: 1.45; color: var(--tone-warn-fg); }
+    .kd-sponsor__suggest p { margin: 0; }
+    .kd-sponsor__suggest li.kd-sponsor__suggest-note { padding: 0; border: none; background: none; color: var(--color-text-secondary); }
+    .kd-sponsor__jtline .kd-sponsor__mark { margin-right: 0.3rem; }
+    .kd-sponsor__jtline a { display: inline-flex; align-items: center; gap: 0.2rem; margin-left: 0.2rem; white-space: nowrap; }
+    .kd-people { display: grid; gap: 0.75rem; }
+    .kd-people__row { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; padding-right: 2.6rem; }
+    .pt-create__people .kd-people__row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kd-people__row .form-group { margin: 0; }
+    .kd-people__remove { position: absolute; right: 0; top: 1.55rem; }
+    .kd-people__add { justify-self: start; display: inline-flex; align-items: center; gap: 0.3rem; }
+    @media (max-width: 640px) { .kd-people__row, .pt-create__people .kd-people__row { grid-template-columns: minmax(0, 1fr); } }
+    @media (pointer: coarse) {
+      .kd-sponsor__contacts, .kd-sponsor__new, .kd-sponsor__suggest .btn, .kd-people__add { min-height: 44px; }
+      .kd-sponsor .kd-x, .kd-people__remove { width: 44px; height: 44px; }
+    }
     .kd-card { padding: 1.1rem 1.15rem 1.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-bg-card); box-shadow: var(--shadow-xs); }
     .kd-card h3 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.8rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }
     .kd-card__count { font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
@@ -9684,6 +9729,7 @@
       const repairs = useLogoRepairs(kids, partners);
       const logoDebt = useMemo(() => (repairs ? kids.reduce((n, k) => n + (k.partnerLogos || []).filter((l) => repairs.has(l.url)).length, 0) : 0), [kids, repairs]);
       const firstBuilding = KS.nowBuilding(kids);
+      const partnerName = new Map(partners.map((p) => [p.slug, p.name]));
 
       const row = (r, drag, section) => {
         const k = r.k;
@@ -9712,7 +9758,8 @@
               : change === 'publishing' ? html`<span class="kd-tag kd-tag--publishing">Publishing</span>` : null}
             ${pinned ? html`<span class="kd-tag kd-tag--pin" title="Pinned to the Dashboard">${kdIcon.star} Pinned</span>` : null}
             ${firstBuilding?.slug === k.slug && section === 'in-progress' ? html`<span class="kd-tag kd-tag--home" title="The home page’s Now Building feature, unless Site Settings picks someone">Home page</span>` : null}
-            <div class="kd-row__sub">${sub || html`<span class="text-muted">No details yet</span>`}${rooms ? html`<span class="kd-row__rooms"> · ${rooms}</span>` : null}</div>
+            <div class="kd-row__sub">${sub || html`<span class="text-muted">No details yet</span>`}${rooms ? html`<span class="kd-row__rooms"> · ${rooms}</span>` : null}${KS.isActive(k) && (k.sponsors || []).length
+              ? html`<span class="kd-row__sponsor"> · Sponsor: ${k.sponsors.map((x) => partnerName.get(x) || x).join(' & ')}</span>` : null}</div>
           </div>
           <div class="kd-row__side">
             ${reveal ? html`<span class=${`kd-reveal${reveal.confirmed ? '' : ' is-tentative'}`}>${kdIcon.calendar} ${kdRevealLabel(reveal)}</span>` : null}
@@ -10184,7 +10231,7 @@
      * (so only what shows on the page), else from the server's field list.
      *   rules  { describe(before, after), labels(fields) } for the collection
      */
-    const KD_KID_HISTORY = { describe: (a, b) => KS.describeChanges(a, b), labels: (f) => KS.changedLabels(f) };
+    const KD_KID_HISTORY = { describe: (a, b) => KS.describeChanges(a, b, { partnerName: (x) => kdPartnerNames.get(x) }), labels: (f) => KS.changedLabels(f) };
     const useKidHistory = (slug) => useContentHistory('kids', slug, KD_KID_HISTORY);
     function useContentHistory(collection, slug, rules) {
       const [versions, setVersions] = useState(null);
@@ -10619,6 +10666,278 @@
       </li>`;
     }
 
+    // ═══ Monetary sponsor (Peter, Oct 28 2026) ═══
+    // The website is the source of truth for who pays for a kid's room. It is
+    // picked here from Partners, or added with its logo and contact, and on
+    // save JobTread follows: the job's Monetary Sponsor field, and each contact
+    // on the job with the Sponsor role, without an email from JobTread
+    // (functions/api/_sponsors.js). Contacts are private: D1 only, never on the
+    // partner record.
+    const KD_SPONSOR_API = '/api/sponsors-admin';
+    const kdSponsorGet = (q) => fetch(`${KD_SPONSOR_API}?${q}`, { cache: 'no-store' }).then((r) => apiJson(r, KD_SPONSOR_API)).catch((e) => ({ success: false, error: e.message }));
+    const kdSponsorPost = (body) => fetch(KD_SPONSOR_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then((r) => apiJson(r, KD_SPONSOR_API)).catch((e) => ({ success: false, error: e.message }));
+    // Partner names for History ("Set to Acme Foundation"), from the last directory an editor had
+    const kdPartnerNames = new Map();
+    const kdEmailOk = (e) => !String(e || '').trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e).trim());
+    const kdNames = (list) => (list.length > 2 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list.join(' and '));
+    /** Sponsor logos first in the Partners chapter, in the sponsors' order; a logo already there moves up instead of doubling */
+    function kdSponsorLogosFirst(logos, sponsors) {
+      const lead = [];
+      for (const p of sponsors) {
+        const there = logos.find((l) => !lead.includes(l) && (l.url === p.logo || (PS.nameKey(l.name) && PS.nameKey(l.name) === PS.nameKey(p.name))));
+        if (there) lead.push(there);
+        else if (p.logo) lead.push({ url: p.logo, name: p.name, _key: p.logo });
+      }
+      return [...lead, ...logos.filter((l) => !lead.includes(l))];
+    }
+
+    /** The kid's sponsors against JobTread (as last saved), contacts by sponsor, and the sync after a save */
+    function useKidSponsor(slug, jobId, chosen) {
+      const [view, setView] = useState(null); // { sponsors, jobtread, jobtreadError }
+      const [error, setError] = useState(null);
+      const [contacts, setContacts] = useState({}); // partner slug → people
+      const [syncing, setSyncing] = useState(false);
+      const load = useCallback(async () => {
+        if (!slug) return;
+        const r = await kdSponsorGet(`kid=${encodeURIComponent(slug)}${jobId ? `&job=${encodeURIComponent(jobId)}` : ''}`);
+        if (!r.success) { setError(r.error); return; }
+        setError(null);
+        setView(r);
+        setContacts((c) => ({ ...c, ...Object.fromEntries((r.sponsors || []).map((s) => [s.slug, s.contacts || []])) }));
+      }, [slug, jobId]);
+      useEffect(() => { load(); }, [load]);
+      // A sponsor picked but not saved yet: its contacts, for the card
+      const want = chosen.filter((s) => !(s in contacts)).join(',');
+      useEffect(() => {
+        if (!want) return;
+        kdSponsorGet(`partners=${want.split(',').map(encodeURIComponent).join(',')}`).then((r) => {
+          if (r.success) setContacts((c) => ({ ...c, ...Object.fromEntries(want.split(',').map((s) => [s, r.contacts?.[s] || []])) }));
+        });
+      }, [want]);
+      const sync = async (previous) => {
+        setSyncing(true);
+        const r = await kdSponsorPost({ sync: { kid: slug, job: jobId, previous } });
+        setSyncing(false);
+        if (r.success) {
+          setView(r);
+          setContacts((c) => ({ ...c, ...Object.fromEntries((r.sponsors || []).map((s) => [s.slug, s.contacts || []])) }));
+        }
+        return r;
+      };
+      return { view, error, contacts, setContacts, syncing, sync, reload: load };
+    }
+    /** What a sync did, in one line for a toast */
+    function kdSponsorSyncSaid(r) {
+      const parts = [];
+      const added = (r.granted || []).filter((g) => !g.kept);
+      if (added.length) parts.push(`${kdNames(added.map((g) => g.name))} added to the job as ${added.length === 1 ? 'a Sponsor' : 'Sponsors'}`);
+      for (const g of (r.granted || []).filter((x) => x.kept)) parts.push(`${g.name} added, keeping their ${g.role || 'staff'} role`);
+      if (r.removed?.length) parts.push(`${kdNames(r.removed.map((x) => x.name))} taken off the job`);
+      for (const f of r.filled || []) parts.push(`${f.name}’s contact taken from JobTread`);
+      if (r.wrote) parts.push(r.wrote.to ? `Monetary Sponsor now says “${r.wrote.to}”` : 'Monetary Sponsor cleared');
+      return parts.length ? `JobTread: ${parts.join('; ')}.` : '';
+    }
+
+    /** Name, email and phone rows for the people at a sponsor */
+    function KdPeopleFields({ people, onChange, idPrefix, touched = false }) {
+      const rows = people.length ? people : [{ name: '', email: '', phone: '' }];
+      const setRow = (i, patch) => onChange(rows.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+      return html`<div class="kd-people">
+        ${rows.map((p, i) => {
+          const bad = touched && !kdEmailOk(p.email);
+          return html`<div class="kd-people__row" key=${i}>
+            <div class="form-group">
+              <label class="form-label" for=${`${idPrefix}-name-${i}`}>Name</label>
+              <input id=${`${idPrefix}-name-${i}`} class="form-input" value=${p.name || ''} autocomplete="off" placeholder="Who to reach there" onInput=${(e) => setRow(i, { name: e.target.value })} />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for=${`${idPrefix}-email-${i}`}>Email</label>
+              <input id=${`${idPrefix}-email-${i}`} class=${`form-input${bad ? ' is-invalid' : ''}`} type="email" inputmode="email" autocomplete="off" value=${p.email || ''}
+                placeholder="name@company.org" onInput=${(e) => setRow(i, { email: e.target.value })} aria-describedby=${bad ? `${idPrefix}-email-${i}-bad` : null} />
+              ${bad ? html`<div class="form-hint kd-bad" id=${`${idPrefix}-email-${i}-bad`}>That isn’t an email address</div>` : null}
+            </div>
+            <div class="form-group">
+              <label class="form-label" for=${`${idPrefix}-phone-${i}`}>Phone <span class="form-optional">optional</span></label>
+              <input id=${`${idPrefix}-phone-${i}`} class="form-input" type="tel" inputmode="tel" autocomplete="off" value=${p.phone || ''} onInput=${(e) => setRow(i, { phone: e.target.value })} />
+            </div>
+            ${rows.length > 1 ? html`<button type="button" class="kd-x kd-people__remove" aria-label=${`Remove ${p.name || 'this person'}`}
+              onClick=${() => onChange(rows.filter((_, j) => j !== i))}>${kdIcon.x}</button>` : null}
+          </div>`;
+        })}
+        ${rows.length < 5 ? html`<button type="button" class="btn btn-ghost btn-sm kd-people__add" onClick=${() => onChange([...rows, { name: '', email: '', phone: '' }])}>${kdIcon.plus} Add another person</button>` : null}
+      </div>`;
+    }
+    const kdPeopleToSave = (people) => people.map((p) => ({ name: String(p.name || '').trim(), email: String(p.email || '').trim(), phone: String(p.phone || '').trim(), title: p.title || '' }))
+      .filter((p) => p.name || p.email);
+
+    /** A sponsor's people: private to staff; on save they're added to the open jobs this sponsor pays for */
+    function KdSponsorContactsDialog({ partner, people, onClose, onSaved, addToast }) {
+      const [rows, setRows] = useState(() => (people?.length ? people.map((p) => ({ ...p })) : [{ name: '', email: '', phone: '' }]));
+      const [touched, setTouched] = useState(false);
+      const [saving, setSaving] = useState(false);
+      const save = async () => {
+        setTouched(true);
+        if (rows.some((p) => !kdEmailOk(p.email))) return;
+        setSaving(true);
+        const r = await kdSponsorPost({ contacts: { partner: partner.slug, people: kdPeopleToSave(rows) } });
+        setSaving(false);
+        if (!r.success) { addToast(`Couldn’t save: ${r.error}`, 'error'); return; }
+        const added = r.granted || [];
+        addToast(added.length ? `Saved. ${kdNames([...new Set(added.map((g) => g.name))])} added in JobTread as a Sponsor on ${kdNames([...new Set(added.map((g) => g.kid))])}’s job.` : 'Contacts saved.', 'success');
+        if (r.problems?.length) addToast(r.problems.join(' '), 'error');
+        onSaved(r.contacts);
+      };
+      const footer = html`
+        <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${saving}>Cancel</button>
+        <button type="button" class="btn btn-primary" onClick=${save} disabled=${saving}>${saving ? html`<span class="spinner spinner-14" /> Saving…` : 'Save'}</button>`;
+      return html`<${KdDialog} title=${`Who to reach at ${partner.name}`} sub="Only staff see these. Anyone with an email is added to the open jobs this sponsor pays for in JobTread, as a Sponsor, so they get the Demo Day and reveal invites. JobTread doesn’t email them."
+        size="md" onClose=${onClose} busy=${saving} footer=${footer}>
+        <form onSubmit=${(e) => { e.preventDefault(); save(); }}>
+          <${KdPeopleFields} people=${rows} onChange=${setRows} idPrefix="kd-sp-contact" touched=${touched} />
+          <button type="submit" hidden></button>
+        </form>
+      <//>`;
+    }
+
+    /**
+     * First in the side panel: who pays for the room. Awaiting funding, it's
+     * the thing to settle, so it says so. Shows what JobTread has once the
+     * profile is saved, and offers what JobTread names when nothing is picked.
+     */
+    // used: partner slug → how many other kids it sponsors (those come first)
+    function KdSponsorCard({ name, status, chosen, saved, partners, used = new Map(), contacts, view, viewError, slug, jobId, syncing, onPick, onRemove, onAddNew, onContacts }) {
+      const [q, setQ] = useState('');
+      const [open, setOpen] = useState(false);
+      const [act, setAct] = useState(0);
+      const bySlug = useMemo(() => new Map(partners.map((p) => [p.slug, p])), [partners]);
+      const list = chosen.map((s) => bySlug.get(s) || { slug: s, name: s, gone: true });
+      const funding = (p) => PS.categoriesOf(p).includes('funding');
+      const matches = useMemo(() => {
+        const k = q.trim().toLowerCase();
+        const pool = partners.filter((p) => !chosen.includes(p.slug) && (k ? p.name.toLowerCase().includes(k) : funding(p) || used.has(p.slug)));
+        const starts = (p) => (k && p.name.toLowerCase().startsWith(k) ? 0 : 1);
+        const rank = (p) => PS.LEVELS.findIndex((l) => l.id === p.level);
+        return pool.sort((a, b) => starts(a) - starts(b) || (used.get(b.slug) || 0) - (used.get(a.slug) || 0) || funding(b) - funding(a) || rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 8);
+      }, [q, partners, used, chosen.join(',')]);
+      const typed = q.trim();
+      const exact = typed && partners.some((p) => PS.nameKey(p.name) === PS.nameKey(typed));
+      const options = [...matches.map((p) => ({ p })), ...(typed && !exact ? [{ add: typed }] : [])];
+      const choose = (o) => {
+        if (!o) return;
+        if (o.add) onAddNew({ name: o.add });
+        else onPick(o.p);
+        setQ('');
+        setOpen(false);
+      };
+      const jt = view?.jobtread;
+      const pending = chosen.join(',') !== saved.join(',');
+      const added = list.filter((p) => !saved.includes(p.slug));
+      const gone = saved.filter((x) => !chosen.includes(x)).map((x) => bySlug.get(x) || { slug: x, name: x });
+      const first = String(name || '').trim().split(/\s+/)[0] || 'this kid';
+      const awaiting = status === 'needs-funding';
+      // What JobTread names, for a kid with no sponsor picked: the field, then Sponsor users by company
+      const find = (label) => partners.find((p) => PS.nameKey(p.name) === PS.nameKey(label)) || PS.similarPartners(label, partners, { min: 0.7, max: 1 })[0]?.partner || null;
+      const suggestions = !list.length && jt ? [
+        ...(jt.field ? [{ key: 'field', label: jt.field, why: html`JobTread’s Monetary Sponsor says <strong>${jt.field}</strong>.`, partner: find(jt.field), people: [] }] : []),
+        ...Object.values((jt.others || []).reduce((m, x) => {
+          const label = x.company || x.name || x.email;
+          (m[label] ||= { key: `u-${label}`, label, people: [], match: x.partner && partners.find((p) => p.slug === x.partner.slug) }).people.push(x);
+          return m;
+        }, {})).map((g) => ({ ...g, partner: g.match || find(g.label), why: html`<strong>${kdNames(g.people.map((x) => x.name || x.email))}</strong>${g.label !== (g.people[0].name || g.people[0].email) ? ` (${g.label})` : ''} ${g.people.length === 1 ? 'is' : 'are'} on the job as a Sponsor.` })),
+      ].filter((s, i, all) => !s.partner || all.findIndex((x) => x.partner?.slug === s.partner.slug) === i) : [];
+      const icon = (ok) => html`<span class=${`kd-sponsor__mark${ok ? ' is-ok' : ' is-warn'}`} aria-hidden="true">${ok ? kdIcon.check : kdIcon.alert}</span>`;
+
+      return html`<section class=${`kd-card kd-card--sponsor${awaiting && !list.length ? ' is-needed' : ''}`} id="kd-sec-sponsor" aria-labelledby="kd-sponsor-h">
+        <h3 id="kd-sponsor-h" tabindex="-1">Monetary sponsor ${syncing ? html`<span class="kd-card__count"><span class="spinner spinner-14" /> JobTread…</span>` : null}</h3>
+        ${!list.length ? html`<p class=${`kd-sponsor__ask${awaiting ? ' kd-warn-text' : ''}`}>${awaiting
+          ? `Who’s paying for ${first}’s room? Pick them and save: their contact is added to the job in JobTread as a Sponsor, and Monetary Sponsor follows.`
+          : 'Who paid for the room. Pick them from Partners, or add a new sponsor.'}</p>` : null}
+        ${list.length ? html`<ul class="kd-sponsors">
+          ${list.map((p) => {
+            const people = contacts[p.slug] || [];
+            const v = !pending && jt ? view.sponsors?.find((x) => x.slug === p.slug) : null;
+            const reach = people.filter((c) => c.email);
+            return html`<li key=${p.slug} class="kd-sponsor">
+              <div class="kd-sponsor__head">
+                <${PtLogo} name=${p.name} logo=${p.logo} w=${64} h=${32} />
+                <strong class="kd-sponsor__name">${p.name}${p.gone ? html` <span class="kd-bad">(not in Partners)</span>` : null}</strong>
+                <button type="button" class="kd-x" aria-label=${`Remove ${p.name} as the sponsor`} onClick=${() => onRemove(p)}>${kdIcon.x}</button>
+              </div>
+              ${people.length ? html`<ul class="kd-sponsor__people" aria-label=${`Contacts at ${p.name}`}>
+                ${people.map((c, i) => html`<li key=${i}>
+                  <span>${c.name || c.email}</span>
+                  ${c.email ? html`<a href=${`mailto:${c.email}`}>${c.email}</a>` : null}
+                  ${c.phone ? html`<a href=${`tel:${c.phone.replace(/[^\d+]/g, '')}`}>${c.phone}</a>` : null}
+                </li>`)}
+              </ul>` : html`<p class="kd-card__note">No contact on file.</p>`}
+              <button type="button" class="btn btn-ghost btn-sm kd-sponsor__contacts" onClick=${() => onContacts(p)} disabled=${p.gone}>${people.length ? kdIcon.edit : kdIcon.plus} ${people.length ? 'Edit contacts' : 'Add a contact'}</button>
+              ${v ? html`<ul class="kd-sponsor__jt" aria-label=${`${p.name} in JobTread`}>
+                ${v.onJob.length ? html`<li>${icon(true)}<span><strong>${kdNames(v.onJob.map((x) => x.name || x.email))}</strong> ${v.onJob.length === 1 ? 'is' : 'are'} on the job as a Sponsor, so Demo Day and reveal invites reach them.</span></li>` : null}
+                ${v.otherRole.map((x) => html`<li key=${x.email}>${icon(false)}<span><strong>${x.name || x.email}</strong> is on the job as ${x.role ? `a ${x.role}` : 'staff'}, so gets ${x.role ? `${x.role.toLowerCase()}` : 'staff'} invites, not the sponsor’s. <a href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Change it in JobTread</a></span></li>`)}
+                ${v.missing.length && jt.open ? html`<li>${icon(false)}<span><strong>${kdNames(v.missing.map((x) => x.name || x.email))}</strong> ${v.missing.length === 1 ? 'isn’t' : 'aren’t'} on the job yet. Saving adds them as a Sponsor.</span></li>` : null}
+                ${!v.onJob.length && !v.otherRole.length && !reach.length && jt.open ? html`<li>${icon(false)}<span>Nobody from ${p.name} is on the job. Add a contact with an email and save: they’re added as a Sponsor.</span></li>` : null}
+              </ul>` : null}
+            </li>`;
+          })}
+        </ul>` : null}
+
+        <div class="kd-combobox ppl-combobox kd-sponsor-pick">
+          <label class="sr-only" for="kd-sponsor-q">${list.length ? 'Add another sponsor' : 'Find the sponsor in Partners'}</label>
+          <div class="search-bar">
+            <span class="search-icon">${icons.search}</span>
+            <input id="kd-sponsor-q" type="search" role="combobox" aria-expanded=${open && options.length > 0} aria-controls="kd-sponsor-list" aria-autocomplete="list"
+              aria-activedescendant=${open && options[act] ? `kd-sponsor-opt-${act}` : null} autocomplete="off"
+              placeholder=${list.length ? 'Add another sponsor' : 'Search Partners'} value=${q}
+              onInput=${(e) => { setQ(e.target.value); setOpen(true); setAct(0); }}
+              onFocus=${() => setOpen(true)} onBlur=${() => setTimeout(() => setOpen(false), 150)}
+              onKeyDown=${(e) => {
+                if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setAct((a) => Math.min(options.length - 1, a + 1)); }
+                if (e.key === 'ArrowUp') { e.preventDefault(); setAct((a) => Math.max(0, a - 1)); }
+                if (e.key === 'Enter') { e.preventDefault(); choose(options[act]); }
+                if (e.key === 'Escape') setOpen(false);
+              }} />
+          </div>
+          ${open && options.length ? html`<ul class="ppl-listbox kd-listbox" id="kd-sponsor-list" role="listbox" aria-label="Sponsors">
+            ${options.map((o, i) => html`<li key=${o.p?.slug || 'add'} id=${`kd-sponsor-opt-${i}`} role="option" aria-selected=${i === act} class=${o.add ? 'kd-listbox__add' : ''}
+                onMouseDown=${(e) => { e.preventDefault(); choose(o); }} onMouseEnter=${() => setAct(i)}>
+              ${o.add ? html`<span class="kd-logo-mini">${kdIcon.plus}</span><span class="kd-listbox__name">Add “${o.add}” as a new sponsor</span>`
+                : html`<span class="kd-logo-mini">${o.p.logo ? html`<img src=${kdImg(o.p.logo, 'w=80,q=80')} alt="" />` : null}</span>
+                  <span class="kd-listbox__name">${o.p.name}</span>
+                  <span class="kd-listbox__meta">${funding(o.p) ? 'Funding' : PS.levelOf(o.p.level).label}</span>`}
+            </li>`)}
+          </ul>` : null}
+        </div>
+        ${!typed && !list.length ? html`<button type="button" class="btn btn-ghost btn-sm kd-sponsor__new" onClick=${() => onAddNew({})}>${kdIcon.plus} Add a new sponsor</button>` : null}
+
+        ${suggestions.length ? html`<ul class="kd-sponsor__suggest" aria-label="From JobTread">
+          ${suggestions.some((x) => x.partner) ? html`<li class="kd-sponsor__suggest-note">A sponsor JobTread names that’s in Partners comes in by itself within 10 minutes.</li>` : null}
+          ${suggestions.map((s) => html`<li key=${s.key}>
+            <p>${s.why}</p>
+            ${s.partner ? html`<button type="button" class="btn btn-primary btn-sm" onClick=${() => onPick(s.partner)}>Use ${s.partner.name}</button>`
+              : html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onAddNew({ name: s.label, people: s.people.map((x) => ({ name: x.name || '', email: x.email, phone: '' })) })}>Add ${s.label} as a sponsor</button>`}
+          </li>`)}
+        </ul>` : null}
+
+        <p class="kd-card__note kd-sponsor__jtline">${
+          !slug ? 'After the first save, the sponsor goes to JobTread too.'
+          : !jobId ? 'No JobTread job matches this kid yet, so the sponsor stays on the website for now.'
+          : viewError ? html`<span class="kd-bad">Couldn’t read JobTread: ${viewError}</span>`
+          : view?.jobtreadError ? view.jobtreadError
+          : !jt ? html`<span class="spinner spinner-14" /> Checking JobTread…`
+          : pending ? [
+              added.length ? `Saving gives ${kdNames(added.map((p) => p.name))} access to the job in JobTread as a Sponsor` : '',
+              gone.length ? `${added.length ? ', and takes' : 'Saving takes'} ${kdNames(gone.map((p) => p.name))} off it` : '',
+              '. JobTread’s Monetary Sponsor then shows who has that access.',
+            ].join('')
+          : list.length && jt.mirror && jt.fieldOk ? html`${icon(true)} JobTread’s Monetary Sponsor says “${jt.mirror}”, from who has Sponsor access.`
+          : list.length && jt.mirror ? html`${icon(false)} JobTread’s Monetary Sponsor says ${jt.field ? `“${jt.field}”` : 'nothing'}. Saving sets it to “${jt.mirror}”.`
+          : list.length ? html`${icon(false)} JobTread’s Monetary Sponsor stays blank until someone from ${kdNames(list.map((p) => p.name))} has Sponsor access on the job.`
+          : null
+        }${jobId ? html` <a href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Open the job ${kdIcon.external}</a>` : null}</p>
+      </section>`;
+    }
+
     function KidEditor({ slug, kids = [], partners = [], press = [], onBack, onSaved, addToast }) {
       const existingSlugs = useMemo(() => kids.filter((k) => k.slug !== slug).map((k) => k.slug), [kids, slug]);
       const ix = useMemo(() => kdPartnerIndex(partners), [partners]);
@@ -10775,6 +11094,33 @@
       const jtHides = data.hiddenBy === 'jobtread' && /^(On Site|Denied)$/.test(jtStatus || '');
       const pinned = slug && favs.includes(`kid:${slug}`);
       const savedRooms = Number(JSON.parse(base || '{}').roomCount) || null;
+
+      // ── Monetary sponsor ──
+      const [addedPartners, setAddedPartners] = useState([]); // added from here, before the directory reloads
+      const [sponsorDialog, setSponsorDialog] = useState(null); // { create: prefill } | { contacts: partner }
+      const allPartners = useMemo(() => [...new Map([...partners, ...addedPartners].map((p) => [p.slug, p])).values()], [partners, addedPartners]);
+      useEffect(() => { allPartners.forEach((p) => kdPartnerNames.set(p.slug, p.name)); }, [allPartners]);
+      const savedSponsors = useMemo(() => JSON.parse(base || '{}').sponsors || [], [base]);
+      const sponsorUse = useMemo(() => {
+        const m = new Map();
+        kids.forEach((k) => { if (k.slug !== slug) (k.sponsors || []).forEach((x) => m.set(x, (m.get(x) || 0) + 1)); });
+        return m;
+      }, [kids, slug]);
+      const sponsor = useKidSponsor(slug, jobId, record.sponsors);
+      const pickSponsor = (p) => {
+        set((d) => {
+          const sponsors = [...new Set([...(d.sponsors || []), p.slug])];
+          const list = sponsors.map((x) => (x === p.slug ? p : allPartners.find((y) => y.slug === x))).filter(Boolean);
+          return { sponsors, partnerLogos: kdSponsorLogosFirst(d.partnerLogos, list) };
+        });
+        // The card says what Save does; the logo moving is the part it doesn't show
+        if (p.logo) addToast(`${p.name}’s logo now leads Partners.`, 'info');
+      };
+      const removeSponsor = (p) => {
+        const prev = dataRef.current.sponsors || [];
+        set((d) => ({ sponsors: (d.sponsors || []).filter((x) => x !== p.slug) }));
+        addToast(`${p.name} taken off. Saving takes them off the job in JobTread; their logo stays in Partners.`, 'info', { label: 'Undo', fn: () => set({ sponsors: prev }) });
+      };
 
       // ── Photos ──
       const keys = data.photos.map((p) => p._key);
@@ -11038,10 +11384,23 @@
           } else addToast(`Couldn’t save: ${res.error}`, 'error');
           return;
         }
+        const sponsorsBefore = JSON.parse(base || '{}').sponsors || [];
         setSha(res.sha);
         setBase(JSON.stringify(out));
         set({ slug: slugToSave });
         history.reload();
+        // JobTread follows the website: the Monetary Sponsor field and each contact's Sponsor access
+        const sv = sponsor.view;
+        const behind = !sv?.jobtread || !sv.jobtread.fieldOk || (sv.sponsors || []).some((x) => x.missing?.length);
+        if (!wasNew && jobId && (out.sponsors.join(',') !== sponsorsBefore.join(',') || (out.sponsors.length && behind))) {
+          sponsor.sync(sponsorsBefore).then((r) => {
+            if (!r.success) { addToast(`Saved, but JobTread wasn’t updated: ${r.error}`, 'error'); return; }
+            const said = kdSponsorSyncSaid(r);
+            // JobTread changes straight away, so no "when you publish" here
+            if (said) addToast(said, 'success', { label: 'Open the job', fn: () => window.open(JT_JOB_URL(jobId), '_blank', 'noopener') });
+            if (r.problems?.length) addToast(r.problems.join(' '), 'error');
+          });
+        }
         try { localStorage.removeItem(draftKey); } catch {}
         setDraft(null);
         addToast(out.publishStatus === 'draft' ? `${out.name} saved. Hidden from the site until you switch on “Show on Meet the Kids”.` : `${out.name} saved. The site shows it after you publish.`, 'success');
@@ -11221,6 +11580,17 @@
           onHero=${(url) => set({ heroImage: url || '' })} onAccent=${(url) => set({ accentImage: url })}
           onMove=${movePhoto} onRemove=${(key) => removePhotos([key])}
           onFocus=${(key, focus) => set((d) => ({ photos: d.photos.map((x) => { if (x._key !== key) return x; const { focus: _f, ...rest } = x; return focus ? { ...rest, focus } : rest; }) }))} />` : null}
+        ${sponsorDialog?.create ? html`<${PartnerCreateDialog} sponsor=${true} partners=${allPartners} prefill=${sponsorDialog.create.name || sponsorDialog.create.people ? sponsorDialog.create : null}
+          addToast=${addToast} onClose=${() => setSponsorDialog(null)}
+          onCreated=${(newSlug, newName, rec, people) => {
+            setAddedPartners((l) => [...l, rec]);
+            sponsor.setContacts((c) => ({ ...c, [newSlug]: people || [] }));
+            setSponsorDialog(null);
+            pickSponsor(rec);
+          }} />` : null}
+        ${sponsorDialog?.contacts ? html`<${KdSponsorContactsDialog} partner=${sponsorDialog.contacts} people=${sponsor.contacts[sponsorDialog.contacts.slug] || []}
+          addToast=${addToast} onClose=${() => setSponsorDialog(null)}
+          onSaved=${(people) => { sponsor.setContacts((c) => ({ ...c, [sponsorDialog.contacts.slug]: people })); setSponsorDialog(null); sponsor.reload(); }} />` : null}
         ${historyOpen !== undefined ? html`<${KdHistoryDialog} name=${data.name} history=${history} current=${record} dirty=${dirty}
           startId=${historyOpen} onRestore=${restoreVersion} onClose=${() => setHistoryOpen(undefined)} />` : null}
         ${picker ? html`<${KidPhotoPicker} title=${picker.title} photos=${photos} current=${picker.current}
@@ -11310,6 +11680,10 @@
             </label>
             <p class="kd-card__note">${jtHides ? `Hidden because JobTread says ${jtStatus}. It comes back by itself when the job moves on.` : placeNote}</p>
           </section>
+          <${KdSponsorCard} name=${data.name} status=${data.status} chosen=${record.sponsors} saved=${savedSponsors} partners=${allPartners} used=${sponsorUse}
+            contacts=${sponsor.contacts} view=${sponsor.view} viewError=${sponsor.error} slug=${slug} jobId=${jobId} syncing=${sponsor.syncing}
+            onPick=${pickSponsor} onRemove=${removeSponsor} onAddNew=${(prefill) => setSponsorDialog({ create: prefill })}
+            onContacts=${(p) => setSponsorDialog({ contacts: p })} />
           <section class="kd-card kd-card--health" aria-labelledby="kd-health-h">
             <h3 id="kd-health-h">Profile health <span class="kd-card__count">${checksDone} of ${checks.length}</span></h3>
             <div class="kd-meter" aria-hidden="true"><span style=${`width:${checks.length ? Math.round((checksDone / checks.length) * 100) : 0}%`}></span></div>
@@ -12973,8 +13347,10 @@
     }
 
     // ─── Adding a partner: the essentials in one step ───
-    function PartnerCreateDialog({ partners, prefill, onClose, onCreated, addToast }) {
-      const [f, setF] = useState(() => ({ name: prefill?.name || '', website: prefill?.website || '', level: 'friend', category: ['build'], logo: prefill?.logo || '' }));
+    // sponsor: added as a kid's monetary sponsor (Admin → Kids), filed under Funding, with the people to reach there (private, D1 only)
+    function PartnerCreateDialog({ partners, prefill, onClose, onCreated, addToast, sponsor = false }) {
+      const [f, setF] = useState(() => ({ name: prefill?.name || '', website: prefill?.website || '', level: 'friend', category: [sponsor ? 'funding' : 'build'], logo: prefill?.logo || '' }));
+      const [people, setPeople] = useState(() => prefill?.people || []);
       const [uploading, setUploading] = useState(false);
       const [preview, setPreview] = useState(null);
       const [saving, setSaving] = useState(false);
@@ -13012,7 +13388,7 @@
       };
       const create = async () => {
         setTouched(true);
-        if (!f.name.trim() || uploading || !web.ok) return;
+        if (!f.name.trim() || uploading || !web.ok || people.some((x) => !kdEmailOk(x.email))) return;
         setSaving(true);
         const slug = slugFor(f.name);
         const level = f.level;
@@ -13022,14 +13398,21 @@
         setSaving(false);
         if (!res.success) { addToast(`Couldn’t add ${record.name}: ${res.error}`, 'error'); return; }
         logActivity('created', 'partner', record.name);
-        onCreated(slug, record.name);
+        let saved = [];
+        const contacts = kdPeopleToSave(people);
+        if (sponsor && contacts.length) {
+          const c = await kdSponsorPost({ contacts: { partner: slug, people: contacts } });
+          if (c.success) saved = c.contacts;
+          else addToast(`${record.name} was added, but their contact wasn’t saved: ${c.error}`, 'error');
+        }
+        onCreated(slug, record.name, record, saved);
       };
       const shown = preview || f.logo;
       const footer = html`
         <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${saving}>Cancel</button>
-        <button type="button" class="btn btn-primary" onClick=${create} disabled=${saving || uploading}>${saving ? html`<span class="spinner spinner-14" /> Adding…` : 'Add partner'}</button>`;
-      return html`<${KdDialog} title=${prefill ? `Add ${prefill.name || 'this partner'} to the directory` : 'Add a partner'}
-        sub=${prefill?.note || (prefill?.kids ? `Their logo is already on ${kdPlural(prefill.kids, 'kid page')}. Check the name, then choose where they belong.` : 'They appear on the Partners page after you publish. Everything here can be changed later.')}
+        <button type="button" class="btn btn-primary" onClick=${create} disabled=${saving || uploading}>${saving ? html`<span class="spinner spinner-14" /> Adding…` : sponsor ? 'Add sponsor' : 'Add partner'}</button>`;
+      return html`<${KdDialog} title=${sponsor ? `Add ${prefill?.name || 'a sponsor'}` : prefill ? `Add ${prefill.name || 'this partner'} to the directory` : 'Add a partner'}
+        sub=${sponsor ? 'They join Partners under Funding, with their logo. Only staff see their contact.' : prefill?.note || (prefill?.kids ? `Their logo is already on ${kdPlural(prefill.kids, 'kid page')}. Check the name, then choose where they belong.` : 'They appear on the Partners page after you publish. Everything here can be changed later.')}
         size="md" onClose=${onClose} busy=${saving} footer=${footer}>
         <form class="pt-create" onSubmit=${(e) => { e.preventDefault(); create(); }}>
           <div class="pt-create__logo">
@@ -13059,6 +13442,11 @@
                 placeholder="example.com" onInput=${(e) => set({ website: e.target.value })} onBlur=${() => { if (web.ok && web.url) set({ website: web.url }); }} />
               <div class=${`form-hint${!web.ok ? ' kd-bad' : ''}`}>${!web.ok ? 'That isn’t a web address. Try their site, like example.com.' : 'Their card on the site links here.'}</div>
             </div>
+            ${sponsor ? html`<fieldset class="form-group pt-create__people">
+              <legend class="form-label">Who to reach there <span class="form-optional">only staff see this</span></legend>
+              <${KdPeopleFields} people=${people} onChange=${setPeople} idPrefix="pt-new-person" touched=${touched} />
+              <div class="form-hint">With an email, they’re added to the kid’s job in JobTread as a Sponsor when you save the profile, so they get the Demo Day and reveal invites.</div>
+            </fieldset>` : null}
             ${same.length ? html`<div class="pt-same" role="status">
               ${pplIcon.alert}
               <span>${same.some((p) => PS.nameKey(p.name) === key) ? 'Already in the directory' : 'Looks like'}: ${same.slice(0, 3).map((p, i) => html`${i ? ', ' : ''}<strong>${p.name}</strong>`)}${same.length > 3 ? ` and ${same.length - 3} more` : ''}. Check it isn’t the same partner.</span>
@@ -13363,10 +13751,41 @@
     // ═══════════════════════════════════════════
     const PT_SECTIONS = [
       { id: 'partner', label: 'Partner' },
+      { id: 'contact', label: 'Contact' },
       { id: 'logo', label: 'Logo' },
       { id: 'page', label: 'On the page' },
       { id: 'kids', label: 'Kid pages' },
     ];
+    /**
+     * Who to reach at a partner, and the kids it's the monetary sponsor for.
+     * Private (D1 partner_contacts via /api/sponsors-admin, never the partner
+     * record), saved on its own: a sponsor's people go to its kids' open jobs
+     * in JobTread as Sponsors (functions/api/_sponsors.js).
+     */
+    function PtContacts({ slug, name, kids = [], onOpenKid, addToast }) {
+      const [people, setPeople] = useState(null);
+      const [error, setError] = useState(null);
+      const [editing, setEditing] = useState(false);
+      useEffect(() => {
+        if (!slug) return;
+        kdSponsorGet(`partners=${encodeURIComponent(slug)}`).then((r) => { if (r.success) setPeople(r.contacts?.[slug] || []); else setError(r.error); });
+      }, [slug]);
+      const sponsored = kids.filter((k) => (k.sponsors || []).includes(slug)).sort((a, b) => (b.year || 0) - (a.year || 0));
+      return html`
+        ${sponsored.length ? html`<p class="pt-sponsored">Monetary sponsor for ${sponsored.map((k, i) => html`${i ? (i === sponsored.length - 1 ? ' and ' : ', ') : ''}<button type="button" class="ppl-link" onClick=${() => onOpenKid?.(k.slug)}>${k.name}${k.year ? ` (${k.year})` : ''}</button>`)}.</p>` : null}
+        ${!slug ? html`<p class="kd-empty-line">Save the partner first, then add who to reach there.</p>`
+          : error ? html`<p class="kd-empty-line kd-bad">Couldn’t load their contacts: ${error}</p>`
+          : people === null ? html`<p class="kd-empty-line"><span class="spinner spinner-14" /> Loading…</p>`
+          : people.length ? html`<ul class="kd-sponsor__people pt-contacts">
+              ${people.map((c, i) => html`<li key=${i}><span>${c.name || c.email}</span>
+                ${c.email ? html`<a href=${`mailto:${c.email}`}>${c.email}</a>` : null}
+                ${c.phone ? html`<a href=${`tel:${c.phone.replace(/[^\d+]/g, '')}`}>${c.phone}</a>` : null}</li>`)}
+            </ul>`
+          : html`<p class="kd-empty-line">No one on file yet.</p>`}
+        ${slug && people !== null ? html`<button type="button" class="btn btn-ghost btn-sm kd-sponsor__contacts" onClick=${() => setEditing(true)}>${people.length ? kdIcon.edit : kdIcon.plus} ${people.length ? 'Edit contacts' : 'Add a contact'}</button>` : null}
+        ${editing ? html`<${KdSponsorContactsDialog} partner=${{ slug, name }} people=${people || []} addToast=${addToast}
+          onClose=${() => setEditing(false)} onSaved=${(saved) => { setPeople(saved); setEditing(false); }} />` : null}`;
+    }
     const PT_MERGE_KEYS = ['name', 'website', 'level', 'category', 'featured', 'tagline', 'logo'];
     const PT_FIELD_NAMES = { name: 'Name', website: 'Website', level: 'Level', category: 'Categories', featured: 'Highlight', tagline: 'Tagline', logo: 'Logo' };
     const ptFieldValue = (k, v) => (k === 'level' ? PS.levelOf(v).label : k === 'category' ? PS.categoriesOf({ category: v }).map(PS.categoryLabel).join(', ')
@@ -13731,6 +14150,9 @@
               <span class="pt-same__acts">${dupNames.map((p) => html`<button type="button" key=${p.slug} class="btn btn-ghost btn-sm" disabled=${dirty}
                 title=${dirty ? 'Save or discard your changes first' : null} onClick=${() => setMergeInto(p)}>Merge into ${p.name}</button>`)}</span>
             </div>` : null}
+          `)}
+          ${sec('contact', 'Contact', 'Who to reach there. Only staff see this; it’s never on the site, and it saves on its own.', html`
+            <${PtContacts} slug=${slug} name=${base?.name || data.name} kids=${kids} onOpenKid=${onOpenKid} addToast=${addToast} />
           `)}
           ${sec('logo', 'Logo', 'Shown on a white card, fit inside its box and never cropped. A PNG or SVG with a clear background looks best.', html`
             <${PtLogoStage} name=${name} logo=${data.logo} local=${localLogo} uploading=${uploading} broken=${!!broken?.has(data.logo)} blank=${blank} size=${size} quality=${quality}
