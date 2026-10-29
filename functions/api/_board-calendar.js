@@ -33,14 +33,14 @@ import { accessToken } from './_google-calendar.js';
 import { easternParts } from './_reveals.js';
 import { boardAdmins, activeBoard, readState, writeState } from './_board-roles.js';
 import { listMeetings, getMeeting, saveMeeting, patchMeeting, createMeeting, deleteMeeting, ensureSchema } from './_board.js';
-import { todayEastern, cleanMeeting } from '../../public/admin/board-shared.js';
+import { todayEastern, cleanMeeting, meetingName } from '../../public/admin/board-shared.js';
 
 const KEY = 'calendar';
 const EVERY_MS = 60 * 60 * 1000;
 const AHEAD_DAYS = 400;
 const PAST_DAYS = 4 * 366;
-// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites; 4: where its call link is; 5: past meetings; 6: coffees, reminders and other boards aren't meetings)
-const VERSION = 6;
+// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites; 4: where its call link is; 5: past meetings; 6: coffees, reminders and other boards aren't meetings; 7: their files find a board meeting up to 60 days off)
+const VERSION = 7;
 export const CALENDAR_BY = 'the calendar';
 
 const NAMED = /\b(meeting|mtg)\b|\bQ[1-4]\b/i;
@@ -240,7 +240,7 @@ async function look(env, { fetchImpl, now }) {
     if (!days.has(when.date)) days.set(when.date, []);
     days.get(when.date).push({ uid, ev, from, when, place: eventPlace(ev) });
   }
-  const counts = { added: 0, moved: 0, linked: 0, gone: 0, merged: 0, past: 0, notBoard: 0 };
+  const counts = { added: 0, moved: 0, linked: 0, gone: 0, merged: 0, past: 0, notBoard: 0, rehomed: 0 };
   const onCalendar = new Set();
   for (const [date, copies] of days) {
     const isPast = date < today;
@@ -303,19 +303,16 @@ async function look(env, { fetchImpl, now }) {
   }
   // A meeting brought in from an event that isn't a board meeting (older rules let in coffees, reminders and other
   // organizations' boards): off the board page and marked, never deleted, while nobody here has worked on it.
-  // Its files go to the board meeting they were near, if there is one. Sharing it again keeps it
+  // Sharing it again keeps it. Its files find a board meeting next (rehomeStranded)
   meetings = await listMeetings(env.DB);
   for (const m of meetings) {
     if (!m.calendar?.uid || m.notBoard || !untouched(m)) continue;
     const uids = [m.calendar.uid, ...(m.calendar.others || [])];
     if (!uids.some((u) => rejected.has(u)) || uids.some((u) => onCalendar.has(u))) continue;
     const done = await patchMeeting(env.DB, m.id, (cur) => (untouched(cur) ? { ...cur, notBoard: true, shared: false } : cur));
-    if (!done?.notBoard) continue;
-    counts.notBoard += 1;
-    const home = meetings.filter((x) => x.id !== m.id && !x.notBoard && !rejectedMeeting(x, rejected) && Math.abs(daysApart(x.date, m.date)) <= 10)
-      .sort((a, b) => Math.abs(daysApart(a.date, m.date)) - Math.abs(daysApart(b.date, m.date)))[0];
-    if (home && m.files.length) await env.DB.prepare("UPDATE board_files SET owner_id = ? WHERE owner_type = 'meeting' AND owner_id = ?").bind(home.id, m.id).run();
+    if (done?.notBoard) counts.notBoard += 1;
   }
+  counts.rehomed = (await rehomeStranded(env, { now, rejected })).moved;
   // A meeting from today on whose event is on no calendar any more: kept, marked gone (only when every calendar was read)
   if (!errors.length) {
     meetings = await listMeetings(env.DB);
@@ -333,6 +330,75 @@ async function look(env, { fetchImpl, now }) {
 }
 
 export const calendarStatus = (DB) => readState(DB, KEY);
+
+// ─── Files on a meeting that isn't one ──────────────────────────────
+
+const REHOME = 'rehome';
+const REHOME_DAYS = 60;
+// Papers that go with the meeting ahead of them: a budget, the financials, an agenda, a packet
+const PACKET_KINDS = ['financials', 'packet', 'agenda'];
+const PACKET_WORDS = /budget|financ|statement|balance sheet|\bfs\b|agenda|packet/i;
+const titleKey = (name) => String(name || '').toLowerCase().replace(/\.[a-z0-9]{2,5}$/, '').replace(/\(\d+\)/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** The board meeting a file on a meeting dated `date` belongs with (within 60 days), or null */
+export function homeFor(real, date, file) {
+  const near = real.filter((x) => Math.abs(daysApart(x.date, date)) <= REHOME_DAYS);
+  if (!near.length) return null;
+  if (PACKET_KINDS.includes(file.kind) || PACKET_WORDS.test(file.name || '')) {
+    const next = near.filter((x) => x.date >= date).sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (next) return next;
+  }
+  // The nearest; on a tie, the one after
+  return near.sort((a, b) => Math.abs(daysApart(a.date, date)) - Math.abs(daysApart(b.date, date)) || b.date.localeCompare(a.date))[0];
+}
+
+/**
+ * Files on meetings that aren't board meetings (older rules filed SOARD papers onto coffees and other
+ * organizations' boards, and those are off the board page now): each moves to the board meeting it belongs
+ * with, up to 60 days off, the next one after for packet papers (homeFor). A copy of a file that meeting has
+ * already stays put. With no board meeting that near, the file stays where it is and the email that brought it
+ * waits for a meeting again: Board → Meetings lists it as waiting, and board mail reads it once a meeting is
+ * added. Never deletes a file or a row; keeps staff-only as it was. Each meeting once, and again only when a
+ * meeting has been added since (board_state 'rehome'). → { moved, waiting, same }
+ */
+export async function rehomeStranded(env, { now = Date.now(), rejected = new Set() } = {}) {
+  const meetings = await listMeetings(env.DB);
+  const real = meetings.filter((x) => !x.notBoard && !x.practice && /^\d{4}-\d{2}-\d{2}$/.test(x.date || '') && !rejectedMeeting(x, rejected));
+  const newest = meetings.reduce((a, x) => (String(x.createdAt || '') > a ? String(x.createdAt) : a), '');
+  const state = await readState(env.DB, REHOME);
+  const done = { ...(state.meetings || {}) };
+  const out = { moved: 0, waiting: 0, same: 0 };
+  const at = new Date(now).toISOString();
+  for (const m of meetings.filter((x) => x.notBoard && x.files.length)) {
+    const rec = done[m.id] || null;
+    const again = !rec || String(rec.at) < newest;
+    const same = [...(rec?.same || [])];
+    const waiting = [];
+    const newlyWaiting = [];
+    for (const f of m.files) {
+      if (same.includes(f.id)) continue;
+      if (rec?.waiting?.includes(f.id) && !again) { waiting.push(f.id); continue; }
+      const home = homeFor(real, m.date, f);
+      if (!home) { waiting.push(f.id); if (!rec?.waiting?.includes(f.id)) newlyWaiting.push(f.name); continue; }
+      if (home.files.some((x) => x.kind === f.kind && titleKey(x.name) === titleKey(f.name))) { same.push(f.id); out.same += 1; continue; }
+      await env.DB.prepare("UPDATE board_files SET owner_id = ? WHERE id = ? AND owner_type = 'meeting' AND owner_id = ?").bind(home.id, f.id, m.id).run();
+      home.files.push(f);
+      out.moved += 1;
+    }
+    // The emails that brought them wait for a meeting again (the table is board mail's: absent when it never ran)
+    if (newlyWaiting.length) {
+      const said = `waiting for a board meeting near it: ${newlyWaiting.join(', ')} (it had gone onto ${meetingName(m)}, which isn’t a SOARD board meeting)`;
+      try {
+        await env.DB.prepare("UPDATE board_mail SET outcome = 'waiting', result = ?, at = ? WHERE meeting_id = ? AND COALESCE(outcome, '') NOT IN ('waiting', 'started', 'duplicate')")
+          .bind(said.slice(0, 1000), at, m.id).run();
+      } catch { /* board mail never ran here */ }
+    }
+    out.waiting += waiting.length;
+    done[m.id] = { at, waiting, same };
+  }
+  await writeState(env.DB, REHOME, { at, meetings: done });
+  return out;
+}
 
 // Nobody here has worked on it: only the calendar, board email or Google Drive has saved it
 const untouched = (m) => [CALENDAR_BY, 'board email', 'Google Drive', ''].includes(m.updatedBy || '');

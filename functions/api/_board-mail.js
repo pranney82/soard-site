@@ -297,6 +297,8 @@ const titleKey = (name) => String(name || '').toLowerCase().replace(/\.[a-z0-9]{
 const daysApart = (a, b) => Math.round((dayMs(a) - dayMs(b)) / DAY);
 const untouched = (m) => [CALENDAR_BY, MAIL_BY, 'Google Drive', ''].includes(m.updatedBy || ''); // Google Drive: ./_board-drive.js
 const KIND_FILE = { agenda: 'agenda', minutes: 'minutes', financials: 'financials', packet: 'packet' };
+/** Board meetings only: not one the calendar brought in that isn't (notBoard), nor a practice meeting */
+export const boardOnly = (meetings) => meetings.filter((x) => !x.notBoard && !x.practice);
 const WORD = { agenda: 'the agenda', minutes: 'the minutes', financials: 'the financials', packet: 'a packet file' };
 
 /** The meeting a file belongs to, by the rules in the header. → { meeting, create: date } */
@@ -375,8 +377,8 @@ async function bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, 
   const made = [];
   const waiting = [];
   for (const f of sorted) {
-    // (never onto one the calendar brought in that isn't a board meeting)
-    let { meeting: m, create } = meetingFor(meetings.filter((x) => !x.notBoard), { kind: f.kind, date: f.date, sent });
+    // (never onto one the calendar brought in that isn't a board meeting, nor the admins' practice meeting)
+    let { meeting: m, create } = meetingFor(boardOnly(meetings), { kind: f.kind, date: f.date, sent });
     // A dated agenda or minutes with no meeting near it brings the meeting in (never far ahead)
     if (!m && create && f.firm && ['agenda', 'minutes'].includes(f.kind) && create <= new Date(now + 120 * DAY).toISOString().slice(0, 10)) {
       m = create < today ? await saveMeeting(env.DB, cleanMeeting({ date: create }), { by: MAIL_BY }) : await createMeeting(env, { date: create, by: MAIL_BY });
@@ -403,7 +405,7 @@ async function bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, 
     }
     // Minutes: who was there (a past meeting nobody marked), and approved once a later meeting exists
     if (f.kind === 'minutes' && past) {
-      const later = meetings.filter((x) => x.date > m.date).sort((a, b) => a.date.localeCompare(b.date))[0];
+      const later = boardOnly(meetings).filter((x) => x.date > m.date).sort((a, b) => a.date.localeCompare(b.date))[0];
       const parsed = parseAgendaText(f.text, people);
       const who = parsed.attendance.length ? parsed.attendance : attendanceIn(f.text, people);
       m = await patchMeeting(env.DB, m.id, (cur) => {

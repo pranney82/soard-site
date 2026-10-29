@@ -663,6 +663,60 @@ test('meetings older rules brought in from coffees and reminders come off the bo
   assert.equal(google.writes, 0);
 });
 
+test('files on meetings that aren’t board meetings go to the board meeting within 60 days (the next one for packet papers); else their email waits; once, and again when a meeting is added', async () => {
+  const { putFile } = await import('../functions/api/_board.js');
+  const { rehomeStranded, homeFor } = await import('../functions/api/_board-calendar.js');
+  const { boardOnly, mailLog } = await import('../functions/api/_board-mail.js');
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  const pdf = new TextEncoder().encode('%PDF-1.4\n%fake\n');
+  const put = (m, name, kind, staffOnly = false) => putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([pdf], name, { type: 'application/pdf' }), kind, staffOnly, by: 'board email' });
+  const meet = (date, extra = {}) => saveMeeting(env.DB, cleanMeeting({ date, ...extra }), { by: 'the calendar' });
+  const earlier = await meet(day(80), { title: 'Q2 SOARD Board Meeting' });
+  const later = await meet(day(40), { title: 'Q3 SOARD Board Meeting' });
+  await put(earlier, 'Minutes.pdf', 'minutes');
+  // Another organization's board, ten days after one board meeting and thirty before the next
+  const redt = await meet(day(70), { title: 'Example Rotary Full Board Meeting', notBoard: true });
+  await put(redt, 'SOARD 2025 Budget.pdf', 'financials', true);
+  await put(redt, 'Gala Attendees.pdf', 'other');
+  // A coffee whose file is a copy of one the board meeting already has
+  const coffee = await meet(day(82), { title: 'Pat Sample- Coffee (Potential SOARD Board)', notBoard: true });
+  await put(coffee, 'Minutes (1).pdf', 'minutes');
+  // Far from any board meeting: its email waits again
+  const far = await meet(day(300), { title: 'Example, Inc. - Board Meeting', notBoard: true });
+  await put(far, 'Committee Agenda.pdf', 'agenda');
+  await mailLog(env.DB); // (board mail's table)
+  await env.DB.prepare("INSERT INTO board_mail (id, admin, subject, meeting_id, result, outcome, at, sent_at) VALUES ('a:m1', 'a', 'Committee agenda', ?, 'filed on it', 'filed', ?, ?)").bind(far.id, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z').run();
+
+  const r = await rehomeStranded(env);
+  assert.deepEqual([r.moved, r.waiting, r.same], [2, 1, 1]);
+  const by = async (id) => (await listMeetings(env.DB)).find((m) => m.id === id);
+  assert.deepEqual((await by(later.id)).files.map((f) => [f.name, f.staffOnly]), [['SOARD 2025 Budget.pdf', true]], 'the budget goes with the next meeting, staff-only as it was');
+  assert.deepEqual((await by(earlier.id)).files.map((f) => f.name).sort(), ['Gala Attendees.pdf', 'Minutes.pdf'], 'anything else, the nearest meeting');
+  assert.deepEqual((await by(coffee.id)).files.map((f) => f.name), ['Minutes (1).pdf'], 'a copy of a file it has already stays put, never deleted');
+  assert.deepEqual((await by(far.id)).files.map((f) => f.name), ['Committee Agenda.pdf'], 'nothing that near: the file stays');
+  const waited = (await mailLog(env.DB, 5, { outcome: 'waiting' }))[0];
+  assert.match(waited?.result || '', /waiting for a board meeting near it: Committee Agenda\.pdf .*isn’t a SOARD board meeting/, 'and its email waits for a meeting again');
+
+  // Once: nothing moves twice, the email isn't touched again
+  const at = (await env.DB.prepare("SELECT at FROM board_mail WHERE id = 'a:m1'").first()).at;
+  assert.deepEqual(await rehomeStranded(env), { moved: 0, waiting: 1, same: 0 });
+  assert.equal((await env.DB.prepare("SELECT at FROM board_mail WHERE id = 'a:m1'").first()).at, at);
+  // A board meeting added near it since: then it goes there
+  await new Promise((res) => setTimeout(res, 5));
+  const added = await meet(day(290), { title: 'Q1 SOARD Board Meeting' });
+  assert.equal((await rehomeStranded(env)).moved, 1);
+  assert.deepEqual((await by(added.id)).files.map((f) => f.name), ['Committee Agenda.pdf']);
+
+  // Board mail never files onto one (nor onto a practice meeting)
+  assert.deepEqual(boardOnly([{ id: 'a' }, { id: 'b', notBoard: true }, { id: 'c', practice: true }]).map((m) => m.id), ['a']);
+  // The rule on its own: 60 days at most; packet papers to the next; a tie to the later one
+  const real = [{ id: 'x', date: '2026-01-10', files: [] }, { id: 'y', date: '2026-02-09', files: [] }];
+  assert.equal(homeFor(real, '2026-01-25', { name: 'notes.pdf', kind: 'other' })?.id, 'y', 'a tie: the one after');
+  assert.equal(homeFor(real, '2026-01-12', { name: 'Budget.pdf', kind: 'other' })?.id, 'y', 'a budget: the next meeting, though one is nearer');
+  assert.equal(homeFor(real, '2026-01-12', { name: 'notes.pdf', kind: 'other' })?.id, 'x');
+  assert.equal(homeFor(real, '2026-06-01', { name: 'notes.pdf', kind: 'other' }), null, 'over 60 days: none');
+});
+
 test('a meeting added by hand on the same day is linked, not doubled; a calendar that can’t be read is reported and nothing is marked gone', async () => {
   const day = new Date(Date.now() + 40 * 86400000).toISOString().slice(0, 10);
   const hand = (await adminApi(FOUNDER, { action: 'new-meeting', date: day })).body.meeting;
