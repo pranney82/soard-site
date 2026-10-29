@@ -152,6 +152,10 @@ test('triage: receipts, shipping, ads, staff mail, money tools, calendar replies
   assert.deepEqual(t({ from: 'Dan <dad@example.com>', subject: 'Question about the room' }), { kind: 'family', accounts: ['acctRivera1'] });
   assert.deepEqual(t({ from: `Pat <${PAT}>`, to: 'kim@example.com', subject: 'Paint colors', labels: ['SENT'] }), { kind: 'family', accounts: ['acctKim0002'] });
   assert.equal(t({ from: 'Case Worker <cw@example.org>', subject: 'Checking in' }), null, 'an address on two families points at neither');
+  const invite = 'Re: Invitation: TENTATIVE: Max’s Reveal! @ Fri Sep 25, 2026';
+  assert.equal(t({ from: 'A Board Member <board@example.net>', to: `${PAT}, parent@example.com, kim@example.com`, subject: invite }), null, 'another guest replying all on a reveal invite');
+  assert.deepEqual(t({ from: 'Ana Rivera <parent@example.com>', to: PAT, subject: invite }), { kind: 'family', accounts: ['acctRivera1'] }, 'the family’s own reply counts');
+  assert.deepEqual(t({ from: `Pat <${PAT}>`, to: 'parent@example.com, board@example.net', subject: `Re: ${invite}`, labels: ['SENT'] }), { kind: 'family', accounts: ['acctRivera1'] }, 'and so does staff’s');
   assert.equal(t({ from: 'JobTread <notifications@jobtread.com>', to: 'parent@example.com', subject: 'New message' }), null, 'JobTread already has it');
 });
 
@@ -250,6 +254,10 @@ test('after the watch: receipts go to the receipt inbox, family emails become hi
   assert.equal(of('upload')[0].input.type, 'image/jpeg');
 
   assert.equal((await byId(m.r1.id))[0].state, 'sent');
+  const logged = await env.DB.prepare('SELECT type, to_addr, status FROM email_log').all();
+  assert.deepEqual(logged.results, [{ type: 'receipt-from-inbox', to_addr: 'ap@soardcharity.com', status: 'sent' }], 'Resend’s reports on it can land');
+  await env.DB.prepare("UPDATE email_log SET status = 'bounced', detail = 'The group only takes mail from members', status_at = ?").bind(new Date(T0 + WATCH_MS + 2 * MIN).toISOString()).run();
+  assert.deepEqual((await mailSweepStatus(env)).lastSent, { to: 'ap@soardcharity.com', status: 'bounced', at: new Date(T0 + WATCH_MS + 2 * MIN).toISOString(), detail: 'The group only takes mail from members' });
   assert.equal((await byId(m.f1.id))[0].state, 'posted');
   assert.equal((await byId(m.f2.id))[0].state, 'posted');
 
@@ -257,6 +265,16 @@ test('after the watch: receipts go to the receipt inbox, family emails become hi
   calls.length = 0;
   await maybeSweepMail(env, { now: T0 + WATCH_MS + 5 * MIN, force: true });
   assert.equal(of('resend').length + of('comment').length, 0);
+});
+
+test('an email queued under older rules is sorted again before anything is done with it', async () => {
+  const chatter = mail({ box: PAT, at: T0 - 40 * DAY, from: 'A Board Member <board@example.net>', to: `${PAT}, parent@example.com`, subject: 'Re: Invitation: TENTATIVE: Max’s Reveal!', text: 'Can’t wait!' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  await env.DB.prepare(`INSERT INTO mail_sweep (mailbox, id, at, kind, state, accounts, source, updated_at) VALUES (?, ?, ?, 'family', 'queued', '["acctRivera1"]', 'backfill', ?)`)
+    .bind(PAT, chatter.id, new Date(T0 - 40 * DAY).toISOString(), new Date(T0).toISOString()).run();
+  await maybeSweepMail(env, { now: T0 + WATCH_MS + MIN, force: true });
+  assert.deepEqual((await byId(chatter.id)).map((r) => [r.state, r.detail]), [['skipped', 'not a family email after all']]);
+  assert.ok(!of('comment').some((c) => /Can’t wait/.test(c.input.message)));
 });
 
 test('new mail after the start is picked up; a failed send is tried again later', async () => {

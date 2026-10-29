@@ -69,6 +69,8 @@ const sweepLive = (kind) => (f) => {
   const noun = kind === 'receipt' ? 'receipt' : 'family email';
   const failed = (m.recent || []).find((r) => r.kind === kind && r.state === 'failed');
   if (failed) return ATTN(`Couldn’t ${kind === 'receipt' ? 'send a receipt on' : 'add a family email'}: ${failed.detail}. It tries again.`, m.lastSweptAt);
+  const ls = kind === 'receipt' ? m.lastSent : null;
+  if (ls && ['bounced', 'failed', 'complained'].includes(ls.status)) return ATTN(`${ls.to} turned the last receipt away (${stamp(ls.at)})${ls.detail ? `: ${ls.detail}` : ''}. In Google Admin, the group needs to accept email from outside SOARD.`, m.lastSweptAt);
   if (m.watchUntil && Date.parse(m.watchUntil) > Date.now()) return ON(`Only watching until ${stamp(m.watchUntil)}, then it does what it found: ${plural(c.would || 0, noun)} so far.`, m.lastSweptAt);
   if (kind === 'family' && !m.backfillDone) return ON('Bringing in the last year’s family emails, oldest first.', m.lastSweptAt);
   const done = (kind === 'receipt' ? c.sent : c.posted) || 0;

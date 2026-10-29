@@ -32,6 +32,7 @@ import { mailboxes, gmail, header, textOf, filesOf, partsOf, bytesOf } from './_
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { postAccountComment } from './_applicant-comms.js';
 import { EMAIL_FROM, emailConfigured } from './_broadcast-notify.js';
+import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
 
@@ -54,12 +55,15 @@ const AT_ONCE = 6;
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const AI_TIMEOUT_MS = 8000;
 const LIST_HEADERS = ['From', 'To', 'Cc', 'Reply-To', 'Subject', 'Message-ID', 'References', 'In-Reply-To'];
+const SENT_TAG = 'receipt-from-inbox';
 
 // The money tools' and JobTread's own mail: already where it belongs
 const OWN_TOOLS = /@([\w-]+\.)*(ramp\.com|mercury\.com|jobtread\.com|zeffy\.com|intuit\.com|quickbooks\.com|plaid\.com|companycam\.com)$/i;
 const RECEIPTISH = /\b(receipts?|invoices?|bills?|order (confirmation|confirmed|received|placed|summary|details|#|no\.?|number)|your (order|purchase|payment)|payment (received|confirmation|confirmed|successful|processed)|purchase (confirmation|confirmed)|thanks? (you )?for (your )?(order|purchase|payment|shopping)|(we('ve| have)|has been) received|charged|paid)\b/i;
 const NOT_RECEIPT = /\b(shipped|ships|on (its|the) way|out for delivery|delivered|arriving|arrives|has arrived|track(ing)?\b|in your (cart|bag)|cart misses|left (something|in)|wish ?list|\d+% off|sale\b|deals?\b|coupons?|price drop|back in stock|review (your|us)|rate (your|us)|survey|refund(ed)?|returns?\b|statement)\b/i;
 const CALENDAR = /^(accepted|declined|tentatively accepted|tentative|invitation|updated invitation|cancell?ed (event|invitation)|new event|proposed new time)\b/i;
+// A reply on an invite's thread (a reveal's): every guest is on it, so only the family's and staff's own count
+const INVITE_REPLY = /^((re|fwd?):\s*)+(updated )?invitation\b/i;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS mail_sweep (
@@ -134,7 +138,8 @@ export function triage(msg, { byEmail }) {
   const people = [...new Set([...from, ...addresses(header(h, 'To')), ...addresses(header(h, 'Cc')), ...addresses(header(h, 'Reply-To'))])];
   if (CALENDAR.test(subject.trim())) return null;
   const tools = people.some((e) => OWN_TOOLS.test(e));
-  const accounts = tools ? [] : accountsOf(people, byEmail);
+  const guestChatter = INVITE_REPLY.test(subject.trim()) && !from.every(isStaffEmail) && !accountsOf(from, byEmail).length;
+  const accounts = tools || guestChatter ? [] : accountsOf(people, byEmail);
   if (accounts.length && accounts.length <= 3) return { kind: 'family', accounts };
   if (!from.length || from.every(isStaffEmail) || from.some((e) => OWN_TOOLS.test(e))) return null;
   if ((msg.labelIds || []).includes('SENT') || NOT_RECEIPT.test(subject)) return null;
@@ -290,16 +295,18 @@ async function handleReceipt(env, ctx, row, msg) {
     `Original email from ${from}, ${when(sentAt)}: “${subject}”`,
     '', text.slice(0, 8000),
   ].join('\n');
+  const sendSubject = `${v.type === 'bill' ? 'Bill' : 'Receipt'}: ${what} on ${day} (from ${firstName(ctx.ownerName, row.mailbox)}’s email)`.slice(0, 200);
+  const tags = [{ name: 'kind', value: SENT_TAG }];
   const res = await ctx.fetchImpl('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: EMAIL_FROM, to: [inbox], subject: `${v.type === 'bill' ? 'Bill' : 'Receipt'}: ${what} on ${day} (from ${firstName(ctx.ownerName, row.mailbox)}’s email)`.slice(0, 200),
-      text: body, attachments, tags: [{ name: 'kind', value: 'receipt-from-inbox' }],
-    }),
+    body: JSON.stringify({ from: EMAIL_FROM, to: [inbox], subject: sendSubject, text: body, attachments, tags }),
     signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 120)}`);
+  // Resend's reports on it (delivered, or turned away and why) land in the email log, which Automations reads
+  const sentId = (await res.json().catch(() => null))?.id;
+  if (sentId) await logSent(env, [{ id: sentId, to: inbox, subject: sendSubject }], { tags, now: ctx.now });
   return { state: 'sent', detail: `sent ${what} to ${inbox}${attachments.length ? ` with ${attachments.length === 1 ? 'its file' : `${attachments.length} files`}` : ''}` };
 }
 
@@ -355,8 +362,11 @@ async function handle(env, ctx, row) {
     if (twin) return await finish(env.DB, row, { state: 'duplicate', detail: `the same email as in ${twin.mailbox.split('@')[0]}’s inbox` }, ctx.now);
     const box = await ctx.open(row.mailbox);
     const msg = await gmail(box.token, `/messages/${row.id}?format=full`, ctx.fetchImpl);
+    // Sorted again with today's rules and families, so a rule made better reaches what was already waiting
+    const t = triage(msg, ctx.families);
+    if (t?.kind !== row.kind) return await finish(env.DB, row, { state: 'skipped', detail: `not a ${row.kind === 'family' ? 'family email' : 'receipt'} after all` }, ctx.now);
     const c = { ...ctx, ...box };
-    const out = row.kind === 'receipt' ? await handleReceipt(env, c, row, msg) : await handleFamily(env, c, row, msg);
+    const out = row.kind === 'receipt' ? await handleReceipt(env, c, row, msg) : await handleFamily(env, c, { ...row, accounts: JSON.stringify(t.accounts) }, msg);
     await finish(env.DB, row, out, ctx.now);
   } catch (err) {
     console.error('[mail-sweep]', row.kind, err.message);
@@ -548,7 +558,14 @@ export async function mailSweepStatus(env) {
   const recent = ((await env.DB.prepare("SELECT kind, state, detail, mailbox, updated_at FROM mail_sweep WHERE state IN ('sent', 'posted', 'would', 'failed') ORDER BY updated_at DESC LIMIT 12").all()).results || [])
     .map((r) => ({ kind: r.kind, state: r.state, detail: r.detail, inbox: String(r.mailbox).split('@')[0], at: r.updated_at }));
   const queued = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
+  // Did the receipt inbox take the last one? (Resend's report, through the email log)
+  let lastSent = null;
+  try {
+    const r = await env.DB.prepare('SELECT to_addr, status, status_at, detail FROM email_log WHERE type = ? ORDER BY sent_at DESC LIMIT 1').bind(SENT_TAG).first();
+    if (r) lastSent = { to: r.to_addr, status: r.status, at: r.status_at, detail: r.detail || null };
+  } catch { /* nothing sent yet */ }
   return {
+    lastSent,
     key: Boolean(env.GOOGLE_CALENDAR_KEY), ai: Boolean(env.AI?.run), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY),
     ...Object.fromEntries(['startedAt', 'watchUntil', 'lastSweptAt'].map((k) => [k, st[k] ? new Date(st[k]).toISOString() : null])), error: st.error || null,
     inboxes: Object.values(st.boxes || {}).filter((b) => !b.noMail).length, backfillDone: Boolean(st.backfillDone), queued: queued?.n || 0, counts, recent,
