@@ -16,7 +16,7 @@ import {
   getLiveForm, saveDraftForm, putDraftLive, discardDraftForm, restoreFormVersion, listFormVersions, formFor, clearFormCache, getDraftForm,
   saveFormRules, getFormRules, diffForm, addTranslations,
 } from '../functions/api/_application-forms.js';
-import { spanishToDo, catchUpSpanish, readModelJson } from '../functions/api/_translate.js';
+import { spanishToDo, catchUpSpanish, readModelJson, translateStrings } from '../functions/api/_translate.js';
 import { familyMessage } from '../functions/api/_applicant-comms.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { renderSlack, slackButtons } from './lib/slack-render.mjs';
@@ -430,6 +430,43 @@ test('the Spanish: a reply with raw line breaks inside its strings is still read
   assert.deepEqual(await catchUpSpanish(env, version), { filled: 1, failed: [] });
   assert.equal(calls, 1, 'one call, no second try');
   assert.equal((await getDraftForm(env.DB)).definition.i18n.es.strings['message:approved'], 'ES Hi {parent},\n\nCongratulations!\n\n1. A Zoom call.\n\n2. A survey for {child}.');
+});
+
+test('the Spanish: the child named once less is fine; the child left out, or bold lost, is not (what the model did on Oct 29 2026)', async () => {
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = {
+    ...v.messages,
+    inReview: 'Hi, {parent}\n\nWe’d love to meet {child}. We’ll talk about how the space can support {child}.\n\n{child} does not have to be there.',
+    approved: 'Hi {parent}! *{child}* is approved, and {child} is on the list.',
+    denied: 'Hi {parent}, we can’t move forward with {child}’s *application*.',
+  };
+  await saveDraftForm(env.DB, v);
+  const { version } = await getDraftForm(env.DB);
+  env.AI.run = async (model, { messages }) => {
+    const said = {
+      // {child} twice where the English has it three times: kept
+      'message:inReview': 'Hola, {parent}\n\nNos encantaría conocer a {child}. Hablaremos de cómo el espacio puede apoyar a {child}.\n\nNo es necesario que esté presente.',
+      // "su hijo o hija" in place of every {child}: refused, the family would lose their child's name
+      'message:approved': '¡Hola, {parent}! La solicitud de *su hijo o hija* fue aprobada.',
+      // the bold dropped: refused
+      'message:denied': 'Hola, {parent}, no podemos seguir adelante con la solicitud de {child}.',
+    };
+    if (messages[0].content.includes('Reply with JSON')) return { response: JSON.stringify(Object.fromEntries(Object.keys(JSON.parse(messages.at(-1).content)).map(p => [p, said[p]]))) };
+    return { response: Object.entries(said).find(([p]) => v.messages[p.split(':')[1]] === messages.at(-1).content)?.[1] || '' };
+  };
+  const out = await catchUpSpanish(env, version);
+  assert.deepEqual([out.filled, [...out.failed].sort()], [1, ['message:approved', 'message:denied']]);
+  const es = (await getDraftForm(env.DB)).definition.i18n.es.strings;
+  assert.match(es['message:inReview'], /conocer a \{child\}/);
+});
+
+test('the Spanish prompt says {child} is a name to keep, and "su hijo o hija" is only for the words "your child"', async () => {
+  let system = '';
+  env.AI.run = async (model, { messages }) => { system = messages[0].content; return { response: '{}' }; };
+  await translateStrings(env, { 'message:welcome': 'Hi {parent}, we got {child}’s application.' });
+  assert.match(system, /\{parent\} and \{child\} are filled in with real names/);
+  assert.match(system, /never write "su hijo o hija" in place of \{child\}/);
+  assert.match(system, /Where the English says the words "your child", write "su hijo o hija"/);
 });
 
 // ── The public endpoint ─────────────────────────────────────────────

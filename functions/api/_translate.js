@@ -23,7 +23,8 @@ const BATCH_CHARS = 1000;
 const AT_ONCE = 8;
 
 const BRIEF = `You translate a children's charity's makeover application from English into Spanish for families in the United States (many from Mexico and Central America).
-Write warm, plain, respectful Spanish using "usted". Say "su hijo o hija" for "your child" and "el niño o la niña" for "the child".
+Write warm, plain, respectful Spanish using "usted". Where the English says the words "your child", write "su hijo o hija"; where it says "the child", "el niño o la niña".
+{parent} and {child} are filled in with real names. Keep every one of them, as a name, where the English has it (for example "conocer a {child}", "el proyecto de {child}"); never write "su hijo o hija" in place of {child}.
 Keep these exactly as they are: anything in curly braces like {year} {parent} {child} {copyNote} {percent} {status}; HTML tags and their attributes; *asterisks* used for bold; line breaks; the names "Sunshine on a Ranney Day", "SOARD", "JobTread", county and city names.`;
 const PROMPT = `${BRIEF}
 Reply with JSON only: an object with the same keys as the input and the Spanish as each value.`;
@@ -31,7 +32,11 @@ Reply with JSON only: an object with the same keys as the input and the Spanish 
 const ONE_PROMPT = `${BRIEF}
 Reply with the Spanish only: no quotes, no notes, nothing before or after it.`;
 
-const tokens = (s) => [...String(s).matchAll(/\{[a-zA-Z]+\}|<\/?[a-z0-9]+[^>]*>|\*/g)].map(m => m[0].replace(/\s+/g, ' ')).sort().join('|');
+// What a translation must keep: every placeholder the English has (as the admin checks it, not how
+// many times: Spanish may name the child once less), and exactly its HTML tags and *bold* markers
+const placeholders = (s) => [...new Set(String(s).match(/\{[a-zA-Z]+\}/g) || [])].sort().join('|');
+const markup = (s) => [...String(s).matchAll(/<\/?[a-z0-9]+[^>]*>|\*/g)].map(m => m[0].replace(/\s+/g, ' ')).sort().join('|');
+const keeps = (es, en) => placeholders(es) === placeholders(en) && markup(es) === markup(en);
 
 /** The entries in batches of at most BATCH strings and about BATCH_CHARS of English (a longer string goes alone) */
 function batches(entries) {
@@ -113,7 +118,7 @@ export async function translateStrings(env, strings, { lang = 'es', into = {} } 
     for (let b = queue.shift(); b; b = queue.shift()) {
       const batch = Object.fromEntries(b);
       const parsed = await translateBatch(env, batch);
-      const good = (es, en) => typeof es === 'string' && es.trim() && tokens(es) === tokens(en);
+      const good = (es, en) => typeof es === 'string' && es.trim() && keeps(es, en);
       await Promise.all(b.map(async ([path, en]) => {
         let es = parsed?.[path];
         if (!good(es, en)) es = await translateOne(env, en);
