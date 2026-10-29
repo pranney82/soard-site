@@ -18,8 +18,9 @@
  *   - its files go on that meeting for the board (Google Docs, Sheets and
  *     Slides as PDFs): minutes, the agenda, financial statements, the rest as
  *     packet files, one copy of each ("Minutes.docx", "Minutes.docx.pdf" and
- *     "Copy of Minutes.docx" are the same minutes). Pictures, Pages files,
- *     resumes, anything over 15 MB and the other loose files beside the
+ *     "Copy of Minutes.docx" are the same minutes). A meeting's screenshots
+ *     of its numbers come in; photos, Pages files,
+ *     resumes, anything over 50 MB and the other loose files beside the
  *     meeting folders (expectations, nominees, birthdays, committee meetings)
  *     are left alone
  *   - the minutes fill in who was there (when nobody marked it), the
@@ -27,6 +28,8 @@
  *     mark the minutes approved once a later meeting exists
  *   - a past meeting nobody here worked on goes on the board page
  *   - a file is brought in once; one changed in Drive replaces its copy
+ *   - a file added later comes in too: a meeting folder is looked in again
+ *     hourly for the meetings of the last year, weekly for older ones
  * Meetings ahead are left alone: their agendas are written in Board.
  *
  * Board → Documents gets SOARD's own papers the same way, hourly once the
@@ -51,7 +54,7 @@
 
 import { accessToken } from './_google-calendar.js';
 import { boardAdmins, peopleRows, readSettings, readState, writeState } from './_board-roles.js';
-import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster, saveDoc, cleanDoc } from './_board.js';
+import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster, saveDoc, cleanDoc, MAX_FILE } from './_board.js';
 import { fileText, attendanceIn } from './_board-mail.js';
 import { parseAgendaText, cleanMeeting, agendaIsDraft, todayEastern, isDate, docHtmlText, readAgain, AGENDA_READER } from '../../public/admin/board-shared.js';
 
@@ -63,11 +66,14 @@ export const DRIVE_BY = 'Google Drive';
 const KEY = 'drive';
 const DONE = 'drive-done';
 // 2: the older years' loose minutes and undated meeting folders, one copy of each document
-const VERSION = 2;
+// 3: a meeting's screenshots of its numbers and files up to 50 MB, every folder read once more for them
+const VERSION = 3;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const BUDGET_MS = 8000;
-const MAX_BYTES = 15 * 1024 * 1024;
+// As big as Board keeps; the words are read from those up to 15 MB
+const MAX_BYTES = MAX_FILE;
+const TEXT_MAX = 15 * 1024 * 1024;
 const ALL = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
 const FOLDER = 'application/vnd.google-apps.folder';
 // Google's own files, as PDFs (a Doc's text is read too)
@@ -77,11 +83,14 @@ const GOOGLE = {
   'application/vnd.google-apps.presentation': 'Slides',
 };
 const DOC = 'application/vnd.google-apps.document';
-// A meeting folder checked again each hour while it's this recent (older minutes don't change)
+// A meeting folder checked again each hour while it's this recent, and each week after (a file added to an old meeting)
 const RECENT_MS = 400 * DAY;
+const WEEK = 7 * DAY;
 // Never the meetings' own: the year folders' loose files never come through here, these are what a meeting folder can hold that isn't
 const RESUME = /\b(resume|résumé|curriculum vitae|cv)\b/i;
 const IMAGE = /\.(jpe?g|png|gif|heic|heif|webp|tiff?|bmp|svg)$/i;
+// A picture from a camera or a phone, or of someone (a meeting's screenshots of its numbers come in): "IMG_0514.HEIC", "image007.jpg"
+const PHOTO = /^(img|dsc|pxl|image|photo)\b|^(img|dsc|pxl|image)[\s_-]?\d+|headshot|\.(heic|heif)$/i;
 const APPLE = /\.(pages|numbers|key)$/i;
 // A folder without a date that holds board meetings, or is one: "2015 Board Meeting Notes", "2016 Board Meetings", "2018 SOARD End of Year Board Meeting"
 const MEETINGS_FOLDER = /\bboard (meeting|mtg)|\bmeeting notes\b|\bminutes\b/i;
@@ -181,7 +190,7 @@ export function driveKind(name) {
   const n = String(name || '');
   if (/minutes|\bnotes\b/i.test(n)) return 'minutes';
   if (/agenda/i.test(n)) return 'agenda';
-  if (/statement of|financial|budget|balance sheet|profit|p\s*&\s*l\b|\bp&l\b|income/i.test(n)) return 'financials';
+  if (/statement of|financial|budget|balance sheet|profit|p\s*&\s*l\b|\bp&l\b|income|\bsales\b|\bytd\b|\btotals?\b/i.test(n)) return 'financials';
   return 'packet';
 }
 
@@ -189,12 +198,12 @@ export function driveKind(name) {
 export function driveSkip(f) {
   const name = String(f.name || '');
   if (f.mimeType === FOLDER) return 'a folder';
-  if (/^image\//.test(f.mimeType || '') || IMAGE.test(name)) return 'a picture';
+  if ((/^image\//.test(f.mimeType || '') || IMAGE.test(name)) && (PHOTO.test(name) || /heic|heif/i.test(f.mimeType || ''))) return 'a photo';
   if (/^(video|audio)\//.test(f.mimeType || '')) return 'a video or recording';
   if (APPLE.test(name) || /iwork|apple\.(pages|numbers|keynote)/i.test(f.mimeType || '')) return 'an Apple Pages, Numbers or Keynote file';
   if (RESUME.test(name)) return 'a resume';
   if (/^application\/vnd\.google-apps\./.test(f.mimeType || '') && !GOOGLE[f.mimeType]) return 'a Google file that can’t be a document';
-  if (!GOOGLE[f.mimeType] && Number(f.size) > MAX_BYTES) return 'over 15 MB';
+  if (!GOOGLE[f.mimeType] && Number(f.size) > MAX_BYTES) return 'over 50 MB';
   return '';
 }
 
@@ -291,7 +300,7 @@ async function fetchFile(env, token, f, fetchImpl, { wantText }) {
   }
   const bytes = await drive(token, `/files/${encodeURIComponent(f.id)}?alt=media&${ALL.split('&')[0]}`, fetchImpl, { bytes: true });
   if (bytes.byteLength > MAX_BYTES) return null;
-  return { name: f.name, bytes, type: f.mimeType || 'application/octet-stream', text: wantText ? await fileText(env, { name: f.name, bytes }) : '' };
+  return { name: f.name, bytes, type: f.mimeType || 'application/octet-stream', text: wantText && bytes.byteLength <= TEXT_MAX ? await fileText(env, { name: f.name, bytes }) : '' };
 }
 
 // ─── One meeting folder ─────────────────────────────────────────────
@@ -355,7 +364,7 @@ async function bringFolder(env, { token, folder, fetchImpl, people, now }) {
     // A file already here is read again only for the agenda an older reader filled from it (its copy stays as it is)
     if (unchanged && !(textual && readsAgainFrom(await getMeeting(env.DB, m.id), keptName(f)))) continue;
     const got = await fetchFile(env, token, f, fetchImpl, { wantText: textual });
-    if (!got) { skipped.push(`${f.name} (over 15 MB)`); continue; }
+    if (!got) { skipped.push(`${f.name} (over 50 MB)`); continue; }
     if (!unchanged) {
       const current = await getMeeting(env.DB, m.id);
       // Changed in Drive: the old copy goes. The same document already here (board email or another copy in Drive brought it): kept, not doubled
@@ -574,15 +583,17 @@ export async function readBoardDrive(env, { fetchImpl = fetch, now = Date.now(),
     const done = await readState(env.DB, DONE);
     const fresh = done.version === VERSION && done.root === root && done.walkedAt && now - Date.parse(done.walkedAt) < HOUR;
     const folders = fresh ? done.folders : await meetingFolders(token, root, fetchImpl);
-    // (an upgrade walks again for meetings it missed, but doesn't read again the folders it read)
-    const seen = done.root === root ? { ...(done.seen || {}) } : {};
+    // (an upgrade walks again for meetings it missed, but doesn't read again the folders it read; the one to 3 does, for the pictures and big files)
+    const seen = done.root === root && done.version >= 3 ? { ...(done.seen || {}) } : {};
     const today = todayEastern(now);
     const past = folders.filter((f) => f.date < today);
-    // First the folders never read; then, hourly, the recent ones again (minutes come in after the meeting)
+    // First the folders never read; then the read ones again for files added since: hourly for the last year's
+    // meetings (minutes come in after the meeting), weekly for older ones
     const todo = past.filter((f) => !seen[f.id]);
     // (and, once, those whose meeting's agenda an older reader filled: board-shared.js readAgain)
     const stale = await staleFolders(env.DB);
-    const again = past.filter((f) => seen[f.id] && (stale.has(f.id) || (now - Date.parse(`${f.date}T12:00:00Z`) < RECENT_MS && now - Date.parse(seen[f.id]) >= HOUR)));
+    const every = (f) => (now - Date.parse(`${f.date}T12:00:00Z`) < RECENT_MS ? HOUR : WEEK);
+    const again = past.filter((f) => seen[f.id] && (stale.has(f.id) || now - Date.parse(seen[f.id]) >= every(f)));
     const people = (await peopleRows(env.DB)).filter((p) => p.group === 'board').map((p) => ({ slug: p.slug, name: p.name, org: p.organization || '', kind: 'board' }))
       .concat((await roster(env.DB)).staff.map((p) => ({ slug: p.slug, name: p.name, org: 'SOARD', kind: 'staff' })));
     let read = 0;

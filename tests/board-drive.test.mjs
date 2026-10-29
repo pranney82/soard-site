@@ -118,6 +118,8 @@ afterEach(() => { globalThis.fetch = realFetch; });
 
 const by = (meetings, date) => meetings.find((m) => m.date === date);
 const fetched = (id) => g.calls.some((c) => c.includes(`/files/${id}`) && (c.includes('alt=media') || c.includes('/export')));
+// (the URL's query has its quotes encoded)
+const listed = (id) => g.calls.some((c) => decodeURIComponent(c).includes(`'${id}' in parents`));
 
 test('dates in folder names, the folder in a link, what a file is, and what stays out', () => {
   assert.equal(folderDate('1.23.25 Meeting', 2025), '2025-01-23');
@@ -138,9 +140,14 @@ test('dates in folder names, the folder in a link, what a file is, and what stay
     ['minutes', 'minutes', 'agenda', 'financials', 'financials', 'financials', 'packet']);
   assert.deepEqual([
     { name: 'Photo.jpg', mimeType: 'image/jpeg' }, { name: 'Agenda.pages', mimeType: 'application/octet-stream' }, { name: 'Pat Example Resume.pdf', mimeType: 'application/pdf' },
-    { name: 'Big deck.pdf', mimeType: 'application/pdf', size: 20 * 1024 * 1024 }, { name: 'Sign-up', mimeType: 'application/vnd.google-apps.form' },
+    { name: 'Big deck.pdf', mimeType: 'application/pdf', size: 60 * 1024 * 1024 }, { name: 'Sign-up', mimeType: 'application/vnd.google-apps.form' },
     { name: 'Link', mimeType: 'application/vnd.google-apps.shortcut' }, { name: 'Report.pdf', mimeType: 'application/pdf', size: 1000 }, { name: 'Minutes', mimeType: DOC },
   ].map((f) => Boolean(driveSkip(f))), [true, true, true, true, true, true, false, false]);
+  assert.deepEqual([
+    { name: 'Q1 store sales.png', mimeType: 'image/png' }, { name: 'IMG_0514.HEIC', mimeType: 'image/heic' }, { name: 'image007.jpg', mimeType: 'image/jpeg' },
+    { name: '2024 Headshot.jpg', mimeType: 'image/jpeg' }, { name: 'Example 2021 Returns.pdf', mimeType: 'application/pdf', size: 17 * 1024 * 1024 },
+  ].map((f) => Boolean(driveSkip(f))), [false, true, true, true, false], 'a screenshot of the numbers and a 17 MB return come in; photos don’t');
+  assert.deepEqual(['Q1 store sales.png', 'Stores TY YTD.png', 'Q3 Totals.png'].map(driveKind), ['financials', 'financials', 'financials']);
 });
 
 test('the year folders’ meeting folders become past meetings with their files; loose files, other folders and meetings ahead stay out', async () => {
@@ -210,8 +217,15 @@ test('the year folders’ meeting folders become past meetings with their files;
   const again = await readBoardDrive(env, { now: Date.now() + 2 * 60 * 60 * 1000 });
   assert.equal((await listMeetings(env.DB)).length, 3);
   assert.equal(by(await listMeetings(env.DB), '2026-02-12').files.length, 4);
-  assert.ok(!g.calls.some((c) => c.includes(`'${q1}'`)), 'a folder over a year old isn’t listed again');
+  assert.ok(!listed(q1), 'a folder over a year old isn’t listed again within the week');
   assert.equal(again.backlog, 0);
+  // A file added to an old meeting later: in at the week's look, and nothing else twice
+  add(q1, 'Example Q1 treasurer report.pdf');
+  g.calls = [];
+  await readBoardDrive(env, { now: Date.now() + 8 * 86400000, budgetMs: 60000 });
+  assert.ok(listed(q1), 'looked in again after a week');
+  assert.deepEqual(by(await listMeetings(env.DB), '2025-01-23').files.map((f) => f.name).sort(), ['Example Q1 Board Meeting Minutes 2025.01.23.pdf', 'Example Q1 treasurer report.pdf']);
+  assert.equal(by(await listMeetings(env.DB), '2026-02-12').files.length, 4);
 });
 
 test('a meeting already in Board within three days is the one filled, never twice; a file changed in Drive replaces its copy; a meeting someone worked on is theirs to share', async () => {
@@ -377,7 +391,7 @@ test('the older years: loose minutes on the meeting of their day, undated folder
   assert.equal(by(meetings, '2018-12-17').files.find((f) => f.kind === 'financials')?.name, 'Example 2018 - Profit and Loss.pdf');
   assert.ok(fetched(eoyMin) && fetched(notes14) && fetched(agendaPdf));
   for (const id of [dec, decCopy, plan14, members15, report15, sheet16, payroll, committee]) assert.ok(!fetched(id), `${g.files[id].name} isn’t read`);
-  assert.ok(!g.calls.some((c) => c.includes(`'${shared}'`)), 'a folder that isn’t a meeting’s isn’t opened');
+  assert.ok(!listed(shared), 'a folder that isn’t a meeting’s isn’t opened');
   assert.ok(fetched(decPdf), 'the loose PDF read for its words, then kept as the copy already there');
   assert.equal(by(meetings, '2018-12-17').attendance.find((p) => p.slug === 'alex-rivera')?.status, 'present');
   assert.deepEqual(Object.fromEntries(by(meetings, '2016-12-21').attendance.map((p) => [p.slug, p.status]))['kim-park'], 'absent', 'loose minutes are read for who was there');
@@ -388,19 +402,27 @@ test('the older years: loose minutes on the meeting of their day, undated folder
   assert.equal((await listMeetings(env.DB)).reduce((x, m) => x + m.files.length, 0), meetings.reduce((x, m) => x + m.files.length, 0));
 });
 
-test('an upgrade walks the folder again for what it missed but doesn’t read again what it read', async () => {
+test('the upgrade to 3 walks for the meetings it missed and reads every folder once more, for the screenshots and big files it left out, nothing twice', async () => {
   const y = add(ROOT, '2018 Board', { mimeType: FOLDER });
   const read = add(y, '3.27.18 Board Meeting', { mimeType: FOLDER });
   add(read, 'Minutes.pdf', { text: MINUTES('March 27, 2018') });
+  await readBoardDrive(env, { budgetMs: 60000 });
+  // As version 2 left it: the minutes in; then the screenshot, the big return and a missed meeting it didn't take
+  const shot = add(read, 'Q1 store sales.png', { mimeType: 'image/png' });
+  const big = add(read, 'Example 2017 Returns.pdf', { size: 17 * 1024 * 1024 });
+  const photo = add(read, 'IMG_0514.HEIC', { mimeType: 'image/heic' });
   add(y, 'Example Board Meeting- June 13, 2018.docx', { mimeType: WORD });
-  // What the last version walked and read
-  await writeState(env.DB, 'drive-done', { version: 1, root: ROOT, walkedAt: new Date().toISOString(), folders: [{ id: read, name: '3.27.18 Board Meeting', date: '2018-03-27' }], seen: { [read]: new Date().toISOString() } });
-  await writeState(env.DB, 'drive', { version: 1, ok: true, checkedAt: new Date().toISOString(), backlog: 0 });
-  const r = await maybeReadBoardDrive(env);
-  assert.equal(r.busy, true, 'due at once after an upgrade');
-  assert.deepEqual((await listMeetings(env.DB)).map((m) => m.date), ['2018-06-13']);
-  assert.ok(!g.calls.some((c) => c.includes(`'${read}'`)), 'the folder read before isn’t listed again');
-  assert.deepEqual([(await driveStatus(env.DB)).folders, (await driveStatus(env.DB)).backlog], [2, 0]);
+  const done = JSON.parse((await env.DB.prepare("SELECT data FROM board_state WHERE key = 'drive-done'").first()).data);
+  await writeState(env.DB, 'drive-done', { ...done, version: 2 });
+  const st = JSON.parse((await env.DB.prepare("SELECT data FROM board_state WHERE key = 'drive'").first()).data);
+  await writeState(env.DB, 'drive', { ...st, version: 2 });
+  g.calls = [];
+  for (let i = 0; i < 3; i++) await maybeReadBoardDrive(env, { now: Date.now() + i * 60000 });
+  const meetings = await listMeetings(env.DB);
+  assert.deepEqual(meetings.map((m) => m.date).sort(), ['2018-03-27', '2018-06-13'], 'the missed meeting found');
+  assert.deepEqual(by(meetings, '2018-03-27').files.map((f) => [f.name, f.kind]).sort(), [['Example 2017 Returns.pdf', 'packet'], ['Minutes.pdf', 'minutes'], ['Q1 store sales.png', 'financials']], 'the screenshot and the big return in, the minutes once');
+  assert.ok(listed(read) && fetched(shot) && fetched(big) && !fetched(photo));
+  assert.deepEqual([(await driveStatus(env.DB)).version, (await driveStatus(env.DB)).backlog], [3, 0]);
 });
 
 test('which Documents entry a paper fills, its title and its kind', () => {
@@ -472,7 +494,7 @@ test('Documents gets the newest board manual’s papers and SOARD’s own papers
   assert.equal(docs.find((d) => d.title === 'Articles of Incorporation').file.name, 'Articles of Incorporation-State (1).pdf', 'the manual’s own copy');
   for (const id of [bylaws, stateArticles, irs, amendment]) assert.ok(fetched(id), `${g.files[id].name} is read`);
   for (const id of [oldBylaws, pages, signedCopy, grantCopy, redline, otherArticles, license]) assert.ok(!fetched(id), `${g.files[id].name} isn’t read`);
-  assert.ok(!g.calls.some((c) => c.includes(`'${signedDir}'`) || c.includes(`'${biz}'`)), 'the folders beside them aren’t opened');
+  assert.ok(!listed(signedDir) && !listed(biz), 'the folders beside them aren’t opened');
   assert.equal(fetched(manualPdf) ? 1 : 0, 0, 'the Doc and its PDF are one document (the Doc, as a PDF)');
 
   // Within the hour: not again. An hour later, nothing changed: nothing brought
