@@ -6,6 +6,7 @@
  */
 
 import { h, htm } from './vendor.js';
+import { float } from './float.js';
 import { LIVE, liveLines, shortDate, todayEastern, isDate, noteBlocks, callName } from './board-shared.js';
 
 export const html = htm.bind(h);
@@ -144,7 +145,11 @@ export function Menu({ label, items }) {
   const close = (el) => el.closest('details')?.removeAttribute('open');
   return html`<details class="bd-menu" onToggle=${(e) => {
     const d = e.currentTarget;
+    d.unfloat?.();
+    d.unfloat = null;
     if (!d.open) return;
+    // Drawn over everything, toasts and sticky bars included (./float.js)
+    d.unfloat = float(d.querySelector('.bd-menu__list'), { anchor: d.querySelector('summary'), align: 'end', onHide: () => d.removeAttribute('open') });
     const away = (ev) => { if (!d.contains(ev.target)) { d.removeAttribute('open'); document.removeEventListener('pointerdown', away, true); } };
     document.addEventListener('pointerdown', away, true);
   }}>

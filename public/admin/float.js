@@ -101,7 +101,7 @@ export function float(el, { anchor, align = 'stretch', width, gap = 4, sheet, on
   const follow = (e) => {
     if (e?.target instanceof Node && el.contains(e.target)) return; // its own list scrolling
     cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => place(e?.type === 'scroll'));
+    frame = requestAnimationFrame(() => (el.isConnected ? place(e?.type === 'scroll') : stop()));
   };
   // Content that grows or shrinks (a list filtering as you type) is placed again
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => follow()) : null;
@@ -109,13 +109,15 @@ export function float(el, { anchor, align = 'stretch', width, gap = 4, sheet, on
   addEventListener('scroll', follow, true);
   addEventListener('resize', follow);
   place();
-  return () => {
+  // Also runs on its own if the pop-up leaves the page while open
+  function stop() {
     cancelAnimationFrame(frame);
     ro?.disconnect();
     removeEventListener('scroll', follow, true);
     removeEventListener('resize', follow);
     try { el.hidePopover?.(); } catch { /* already gone */ }
-  };
+  }
+  return stop;
 }
 
 /** A ref callback for preact: float() while the element is in the page */
