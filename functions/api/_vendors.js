@@ -47,7 +47,7 @@ import { emailShell, paragraphs, button, panel, esc } from './_email-shell.js';
 import { readState, writeState, mercuryConfigured, uploadRecipientAttachment } from './_mercury.js';
 import { vendorKey, dollars } from './_spend-match.js';
 import { FIELD_CONTACT_EMAIL } from './_reveal-invites.js';
-import { readDocument, mergeCoi, judgeCoi, judgeW9, documentType, requirementLines, longDate } from './_vendor-read.js';
+import { readDocument, judgeCoiReads, judgeW9, documentType, requirementLines, longDate } from './_vendor-read.js';
 import { releaseVendorHolds, cachedRecipients, recipientFor } from './_bill-pay.js';
 import { maybeRunRamp, rampConfigured } from './_ramp.js';
 
@@ -64,7 +64,7 @@ const READS_PER_RUN = 12;
 export const LINK_DAYS = 30;
 export const REMIND_AFTER_DAYS = [3, 7];   // then every 7 days
 export const MAX_ASKS = 5;
-export const LIMITS = { fileBytes: 15 * 1024 * 1024, files: 3, uploads: 30 };
+export const LIMITS = { fileBytes: 15 * 1024 * 1024, files: 3, uploads: 30, pages: 3, pageBytes: 4 * 1024 * 1024 };
 export const DEFAULTS = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000, renewDays: 30 };
 
 export const FIELDS = {
@@ -460,25 +460,36 @@ async function resolveAll(env, jtId, summary, now = Date.now()) {
 
 // ─── A file from the vendor's page ──────────────────────────────────
 
-const EXT = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic', 'image/webp': 'webp' };
+const EXT = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 /**
  * Check what a vendor uploaded and, when it's good (or nobody could read
  * it, or they send it anyway for a person), file it in JobTread.
- * doc 'w9' | 'coi'; files: File/Blob list; anyway: send it in despite the check.
+ * doc 'w9' | 'coi'; files: File/Blob list; pages: per file, its first pages as pictures the
+ * vendor's browser drew (PDFs only; read, never filed); anyway: send it in despite the check.
  * → { accepted, look, problems, lines, needs (still wanted), done } ; throws Error with .status
  */
-export async function fileUpload(env, link, { doc, files, anyway = false }, { now = Date.now(), fetchImpl = fetch } = {}) {
+export async function fileUpload(env, link, { doc, files, pages = [], anyway = false }, { now = Date.now(), fetchImpl = fetch } = {}) {
   if (!['w9', 'coi'].includes(doc)) throw Object.assign(new Error('Pick the W-9 or the certificate.'), { status: 400 });
-  const list = (files || []).filter((f) => f && typeof f === 'object' && f.size > 0).slice(0, doc === 'w9' ? 1 : LIMITS.files);
+  const isBlob = (f) => f && typeof f === 'object' && f.size > 0;
+  const list = (files || []).map((f, i) => ({ f, pics: pages[i] || [] })).filter(({ f }) => isBlob(f)).slice(0, doc === 'w9' ? 1 : LIMITS.files);
   if (!list.length) throw Object.assign(new Error('Choose the file first.'), { status: 400 });
   const parts = [];
-  for (const f of list) {
+  for (const { f, pics } of list) {
     if (f.size > LIMITS.fileBytes) throw Object.assign(new Error(`${f.name || 'That file'} is over 15 MB. Try a smaller copy or a PDF.`), { status: 413 });
     const bytes = new Uint8Array(await f.arrayBuffer());
     const type = documentType(bytes.slice(0, 16));
-    if (!type) throw Object.assign(new Error('The file should be a PDF or a photo (JPG, PNG or HEIC).'), { status: 400 });
-    parts.push({ bytes, type, name: String(f.name || '').slice(0, 120) });
+    // The page turns HEIC into a JPG where the browser can; one that still comes would only land on a person
+    if (type === 'image/heic') throw Object.assign(new Error(`${f.name || 'That photo'} is an iPhone photo (HEIC), which we can’t read. Send a PDF or a JPG instead. A screenshot of the photo works too.`), { status: 400 });
+    if (!type) throw Object.assign(new Error('The file should be a PDF or a photo (JPG or PNG).'), { status: 400 });
+    // A picture that isn't one, or is too big, is left out: the PDF's own text is read instead
+    const drawn = [];
+    for (const p of type === 'application/pdf' ? pics.filter(isBlob).slice(0, LIMITS.pages) : []) {
+      if (p.size > LIMITS.pageBytes) continue;
+      const b = new Uint8Array(await p.arrayBuffer());
+      if (documentType(b.slice(0, 16)) === 'image/jpeg') drawn.push({ bytes: b, type: 'image/jpeg' });
+    }
+    parts.push({ bytes, type, name: String(f.name || '').slice(0, 120), pages: drawn });
   }
   const v = await readJtVendor(env, link.vendor_id, { fetchImpl });
   if (!v || v.archived) throw Object.assign(new Error('This link is for a company we no longer have on file. Reply to our email and we’ll sort it out.'), { status: 410 });
@@ -488,7 +499,7 @@ export async function fileUpload(env, link, { doc, files, anyway = false }, { no
   if (anyway) verdict = { accepted: false, anyway: true, lines: [], problems: [] };
   else {
     const reads = await Promise.all(parts.map((p) => readDocument(env, doc, p)));
-    verdict = doc === 'w9' ? judgeW9(reads[0], { vendorName: v.name }) : judgeCoi(mergeCoi(reads), req, { vendorName: v.name, now });
+    verdict = doc === 'w9' ? judgeW9(reads[0].pictures, { vendorName: v.name }) : judgeCoiReads(reads, req, { vendorName: v.name, now });
   }
   await env.DB.prepare('UPDATE vendor_links SET uploads = uploads + 1, last_upload_at = ? WHERE token_hash = ?').bind(new Date(now).toISOString(), link.token_hash).run();
   // A readable file that falls short goes back to the vendor, not into JobTread
@@ -524,13 +535,13 @@ export async function fileUpload(env, link, { doc, files, anyway = false }, { no
   }
   await writeFields(env, ids, v.id, patch, fetchImpl);
   await vendorNote(env, v.id, `${LABEL[doc]} from ${v.name}`, look
-    ? `${LABEL[doc]} received through SOARD’s page on ${longDate(day)}. ${verdict.anyway ? 'The vendor sent it anyway after the check didn’t pass' : 'It couldn’t be read automatically'}, so a person needs to open it (folder ${FOLDER}) and fill in ${doc === 'w9' ? 'W-9' : 'Liability Expires and Workers’ Comp Expires'} on this vendor.`
+    ? `${LABEL[doc]} received through SOARD’s page on ${longDate(day)}. ${verdict.anyway ? 'The vendor sent it anyway after the check didn’t pass' : verdict.unsure ? `The automatic check read it two ways that didn’t agree (${verdict.unsure})` : 'It couldn’t be read automatically'}, so a person needs to open it (folder ${FOLDER}) and fill in ${doc === 'w9' ? 'W-9' : 'Liability Expires and Workers’ Comp Expires'} on this vendor.`
     : `${LABEL[doc]} received through SOARD’s page on ${longDate(day)} and checked: ${verdict.lines.join(' ')}${verdict.notes?.length ? ` Worth a look: ${verdict.notes.join(' ')}` : ''}`, fetchImpl);
 
   if (look) {
     await postOnce(env, v.id, 'look', slackCard({
       icon: '🔎', title: `Check ${v.name}’s ${LABEL[doc].toLowerCase()}`,
-      lead: verdict.anyway ? 'The automatic check didn’t pass, and they sent it anyway for a person to decide.' : 'It came in through their page but couldn’t be read automatically.',
+      lead: verdict.anyway ? 'The automatic check didn’t pass, and they sent it anyway for a person to decide.' : verdict.unsure ? `It came in through their page, and the automatic check read it two ways that didn’t agree: ${verdict.unsure}` : 'It came in through their page but couldn’t be read automatically.',
       facts: [['What to do', doc === 'w9' ? 'Open it in JobTread and tick W-9 if it’s right.' : 'Open it in JobTread and fill in Liability Expires and Workers’ Comp Expires.']],
       buttons: [{ label: 'Open in JobTread', url: `${jtVendorUrl(v.id)}/files` }],
     }), `${v.name}: ${LABEL[doc]}`, now);

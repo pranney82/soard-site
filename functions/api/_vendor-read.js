@@ -2,15 +2,29 @@
  * Reading a W-9 or a certificate of insurance, and judging it
  * ===========================================================================
  * What a vendor uploads on /vendor-documents/ (./_vendors.js files it) is
- * read here by Workers AI: a PDF's text through the converter, a photo by a
- * vision model. The model only reports what the page says (names, dates,
+ * read here by Workers AI. A photo, and a PDF's pages as pictures (the
+ * vendor's browser draws them; a scan's own page photos when it couldn't),
+ * go to a vision model; a PDF's text goes to a text model too. The model
+ * only reports what the page says (names, dates,
  * limits, whether a tax ID and a signature are there, never the tax ID
  * itself). Judging that against SOARD's minimums is plain code below, so a
  * misread can't argue its way to a pass.
  *
- * A file that can't be read (a scanned PDF with no text, a HEIC photo, the
- * model not answering) comes back unreadable, and ./_vendors.js files it in
- * JobTread for a person to look at.
+ * The pictures are trusted to be the PDF's: a hand-made request could send
+ * other ones, but it could as easily send a doctored photo, which is filed as
+ * it is. What's filed is always what the vendor sent, for a person to open.
+ *
+ * A W-9 is read from its pictures alone: its signature and the boxes typed
+ * into the IRS form aren't in its text (checked on live: the text read said
+ * "not signed, no tax ID" of a good W-9 that the pictures read right). A
+ * certificate is read both ways, and each number can be misread by one of
+ * them (each took a neighbouring line for the aggregate once), so it passes
+ * only when it passes at the less generous of the two readings, see judgeCoiReads.
+ *
+ * A file that can't be read (no pictures and no text, the model not
+ * answering) comes back unreadable, and ./_vendors.js files it in JobTread
+ * for a person to look at. A HEIC photo never gets here: the page sends it
+ * as a JPG, and ./_vendors.js turns away one that comes as HEIC.
  */
 
 import { vendorLikeness } from './_spend-match.js';
@@ -148,38 +162,98 @@ async function askModel(env, model, messages, schema) {
   return null;
 }
 
-const toBase64 = (bytes) => {
+const latin1 = (bytes) => {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(s);
+  return s;
 };
+const toBase64 = (bytes) => btoa(latin1(bytes));
 
 /**
- * What one file says. doc 'w9' | 'coi'; file { bytes, type, name }.
- * → the model's answer (COI_SCHEMA / W9_SCHEMA), or null when it can't be read
+ * A scanned PDF's pages as photos: scanners and phone scan apps wrap each page
+ * as a JPEG, which is cut out as it is (nothing to render). Page-sized images
+ * only (a logo is skipped), in page order, at most `max`.
+ * → [{ bytes, type: 'image/jpeg' }]; [] when the scan isn't JPEG (JBIG2, fax, JPEG 2000)
  */
-export async function readDocument(env, doc, file) {
-  if (!env.AI?.run) return null;
+export function scannedPages(bytes, { max = 3, minSide = 500, maxBytes = 4 * 1024 * 1024 } = {}) {
+  const s = latin1(bytes);
+  const pages = [];
+  const find = /\/DCTDecode/g;
+  for (let m; (m = find.exec(s)) && pages.length < max;) {
+    // The image's own dictionary: from its "obj" to its "stream"
+    const start = s.lastIndexOf(' obj', m.index);
+    const streamAt = s.indexOf('stream', m.index);
+    if (start < 0 || streamAt < 0) break;
+    const dict = s.slice(start, streamAt);
+    find.lastIndex = streamAt;
+    if (!/\/Subtype\s*\/Image/.test(dict) || /\/(?:Flate|LZW|ASCII85|ASCIIHex|RunLength)Decode/.test(dict)) continue;
+    const w = Number(dict.match(/\/Width\s+(\d+)/)?.[1] || 0);
+    const h = Number(dict.match(/\/Height\s+(\d+)/)?.[1] || 0);
+    if (Math.min(w, h) < minSide) continue;
+    const from = streamAt + 6 + (s[streamAt + 6] === '\r' ? 2 : 1);
+    const end = s.indexOf('endstream', from);
+    const last = end < 0 ? -1 : s.lastIndexOf('\xff\xd9', end);
+    if (last < from || s.slice(from, from + 3) !== '\xff\xd8\xff') continue;
+    if (last + 2 - from > maxBytes) continue;
+    pages.push({ bytes: bytes.slice(from, last + 2), type: 'image/jpeg' });
+  }
+  return pages;
+}
+
+const askVision = (env, prompt, schema, image) => askModel(env, VISION_MODEL, [
+  { role: 'system', content: prompt },
+  { role: 'user', content: [
+    { type: 'text', text: 'Read this document.' },
+    { type: 'image_url', image_url: { url: `data:${image.type};base64,${toBase64(image.bytes)}` } },
+  ] },
+], schema);
+
+/** Pages as pictures → one reading: a certificate's pages together, a W-9's first page that is one */
+async function readPictures(env, doc, pages) {
   const prompt = doc === 'w9' ? W9_PROMPT : COI_PROMPT;
   const schema = doc === 'w9' ? W9_SCHEMA : COI_SCHEMA;
-  if (file.type === 'application/pdf') {
-    const text = await pdfText(env, file);
-    if (text.trim().length < MIN_TEXT) return null;
-    return askModel(env, TEXT_MODEL, [
-      { role: 'system', content: prompt },
+  if (doc === 'coi') return pages.length ? mergeCoi(await Promise.all(pages.map((p) => askVision(env, prompt, schema, p)))) : null;
+  let first = null;
+  for (const p of pages) {
+    const a = await askVision(env, prompt, schema, p);
+    if (a?.isW9) return a;
+    first ||= a;
+  }
+  return first; // no page is a W-9: the first answer, so judgeW9 says what it is instead
+}
+
+/**
+ * What one file says, read each way it can be. doc 'w9' | 'coi';
+ * file { bytes, type, name, pages? } (pages: a PDF's first pages as JPEGs, drawn by the vendor's browser).
+ * → { text, pictures }: each the model's answer (COI_SCHEMA / W9_SCHEMA), or null when not read that way
+ */
+export async function readDocument(env, doc, file) {
+  if (!env.AI?.run) return { text: null, pictures: null };
+  if (VISION_TYPES.has(file.type)) return { text: null, pictures: await readPictures(env, doc, [file]) };
+  if (file.type !== 'application/pdf') return { text: null, pictures: null };
+  const drawn = file.pages?.length ? readPictures(env, doc, file.pages) : null;
+  // A W-9's text never answers (see the top), so it isn't asked
+  const text = doc === 'coi' ? await pdfText(env, file) : '';
+  const hasText = text.trim().length >= MIN_TEXT;
+  const [fromText, pictures] = await Promise.all([
+    hasText ? askModel(env, TEXT_MODEL, [
+      { role: 'system', content: COI_PROMPT },
       { role: 'user', content: `The document's text:\n\n${text.slice(0, 14000)}` },
-    ], schema);
-  }
-  if (VISION_TYPES.has(file.type)) {
-    return askModel(env, VISION_MODEL, [
-      { role: 'system', content: prompt },
-      { role: 'user', content: [
-        { type: 'text', text: 'Read this document.' },
-        { type: 'image_url', image_url: { url: `data:${file.type};base64,${toBase64(file.bytes)}` } },
-      ] },
-    ], schema);
-  }
-  return null;
+    ], COI_SCHEMA) : null,
+    // No pictures from the browser: a scan's own page photos, which are cut out as they are
+    drawn || (doc === 'w9' || !hasText ? readPictures(env, doc, scannedPages(file.bytes)) : null),
+  ]);
+  return { text: fromText, pictures };
+}
+
+/** A date as YYYY-MM-DD: the model is asked for that, and sometimes writes the form's 03/01/2027 */
+export function isoDate(s) {
+  const t = String(s || '').trim();
+  if (isDate(t)) return t;
+  const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (!m) return t;
+  const y = m[3].length === 2 ? `20${m[3]}` : m[3];
+  return `${y}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
 }
 
 /** Several certificate files (liability and workers' comp often come apart) as one reading */
@@ -191,7 +265,7 @@ export function mergeCoi(reads) {
     readable: got.some((r) => r.readable !== false),
     insured: got.map((r) => r.insured).find((s) => String(s || '').trim()) || '',
     certificateHolder: got.map((r) => r.certificateHolder).find((s) => String(s || '').trim()) || '',
-    policies: got.flatMap((r) => (r.isCertificate ? r.policies || [] : [])),
+    policies: got.flatMap((r) => (r.isCertificate ? r.policies || [] : [])).map((p) => ({ ...p, expires: isoDate(p.expires) })),
   };
 }
 
@@ -261,6 +335,46 @@ export function judgeCoi(x, req, { vendorName = '', now = Date.now() } = {}) {
   return { accepted: !problems.length, problems, lines, gl, wc, notes, summary };
 }
 
+/**
+ * A certificate read two ways (each file's { text, pictures } from readDocument) against the minimums.
+ * Each file's policies are judged at their least and their most generous reading: limits lowest/highest
+ * and end dates earliest/latest where its two readings disagree; a policy only one of them found counts
+ * (readers miss far more than they invent), and one seen without a usable date still counts for its limits.
+ * Across files, the policy that runs longest stands, as in judgeCoi.
+ * Passes at the least generous → accepted, with the earlier dates.
+ * Fails even at the most generous → only the problems that hold either way go back to the vendor.
+ * Otherwise one misread number decides it, so a person does: { unreadable, unsure: what one reading found }.
+ */
+export function judgeCoiReads(reads, req, opts = {}) {
+  const files = reads.map((r) => [mergeCoi([r?.text || r?.pictures]), mergeCoi([r?.pictures || r?.text])]).filter(([a]) => a);
+  if (!files.length) return { unreadable: true };
+  const pick = (a, b, kind, worse) => {
+    const p = latest(a.policies, kind);
+    const q = latest(b.policies, kind);
+    if (!p && !q) return null;
+    const loose = [p ? null : a, q ? null : b].filter(Boolean).flatMap((r) => (r.policies || []).filter((x) => x.kind === kind && !isDate(x.expires)));
+    const seen = [p, q, ...loose].filter(Boolean);
+    const lim = (k) => {
+      const v = seen.map((x) => num(x[k])).filter(Boolean);
+      return v.length ? (worse ? Math.min(...v) : Math.max(...v)) : undefined;
+    };
+    const expires = !p || !q ? (p || q).expires : (p.expires < q.expires) === worse ? p.expires : q.expires;
+    return { ...(p || q), insurer: p?.insurer || q?.insurer, expires, eachOccurrence: lim('eachOccurrence'), aggregate: lim('aggregate'), employersLiabilityEachAccident: lim('employersLiabilityEachAccident') };
+  };
+  const both = (worse) => ({
+    isCertificate: files.some(([a, b]) => a.isCertificate || b.isCertificate),
+    readable: files.some(([a, b]) => a.readable !== false || b.readable !== false),
+    insured: files.map(([a, b]) => a.insured || b.insured).find(Boolean) || '',
+    certificateHolder: files.map(([a, b]) => a.certificateHolder || b.certificateHolder).find(Boolean) || '',
+    policies: files.flatMap(([a, b]) => [pick(a, b, 'general liability', worse), pick(a, b, 'workers compensation', worse)]).filter(Boolean),
+  });
+  const low = judgeCoi(both(true), req, opts);
+  if (low.unreadable || low.accepted) return low;
+  const high = judgeCoi(both(false), req, opts);
+  if (!high.accepted) return high;
+  return { unreadable: true, unsure: low.problems.join(' ') };
+}
+
 /** A W-9 → { unreadable } | { accepted, problems, lines, notes } */
 export function judgeW9(x, { vendorName = '' } = {}) {
   if (!x || x.readable === false) return { unreadable: true };
@@ -271,6 +385,8 @@ export function judgeW9(x, { vendorName = '' } = {}) {
   const notes = [];
   const names = [x.name, x.businessName].filter((s) => String(s || '').trim());
   if (vendorName && names.length && !names.some((n) => vendorLikeness(vendorName, n) >= 0.5)) notes.push(`The W-9 is for ${names.join(' / ')}.`);
-  const lines = [`W-9 for ${names.join(', ') || 'your company'}${isDate(x.signedDate) ? `, signed ${longDate(x.signedDate)}` : ''}.`];
+  // An unsigned form's date box is often read as a placeholder (1901-01-01 once): only a signed one's is said
+  const signedOn = x.signed !== false && isDate(x.signedDate) && x.signedDate >= '2000-01-01' ? `, signed ${longDate(x.signedDate)}` : '';
+  const lines = [`W-9 for ${names.join(', ') || 'your company'}${signedOn}.`];
   return { accepted: !problems.length, problems, lines, notes };
 }

@@ -224,29 +224,137 @@ import { cfUrl } from '../utils/cf-image';
     }
   }
 
+  // An iPhone photo (HEIC), by its first bytes as well as its name
+  async function isHeic(f: File) {
+    if (/^image\/hei[cf]/.test(f.type) || /\.hei[cf]$/i.test(f.name)) return true;
+    const s = String.fromCharCode(...new Uint8Array(await f.slice(0, 12).arrayBuffer()));
+    return s.slice(4, 8) === 'ftyp' && /^(heic|heix|hevc|mif1|msf1|heif)$/.test(s.slice(8, 12));
+  }
+
+  // A photo as a JPEG no bigger than the reader needs (an iPhone photo is 4032 px across).
+  // One already small enough goes as it is unless `always`; null when this browser can't draw it.
+  const MAX_SIDE = 2400;
+  async function toJpeg(f: Blob, name: string, always = false): Promise<File | null> {
+    const url = URL.createObjectURL(f);
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      if (!img.naturalWidth) return null;
+      const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+      if (scale === 1 && !always && f.size < 4 * 1024 * 1024 && f instanceof File) return f;
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * scale);
+      c.height = Math.round(img.naturalHeight * scale);
+      const ctx = c.getContext('2d');
+      if (!ctx) return null;
+      // White under it: a JPEG has no see-through, and a transparent PNG would come out black
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/jpeg', 0.88));
+      return blob ? new File([blob], `${name.replace(/\.[^.]+$/, '') || 'photo'}.jpg`, { type: 'image/jpeg' }) : null;
+    } catch {
+      return null;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  // What goes up: a PDF as it is, a photo as a JPEG. The reader can't open HEIC: Safari draws
+  // one itself, and any other browser fetches libheif (src/utils/heic-to.js, 3 MB) the first time it's needed.
+  // Read into memory here, so a file that moves or changes after it's picked fails now, in words.
+  async function prepare(f: File): Promise<File | null> {
+    if (await isHeic(f)) {
+      const own = await toJpeg(f, f.name, true);
+      if (own) return own;
+      try {
+        const { heicTo } = await import('../utils/heic-to.js');
+        return toJpeg(await heicTo({ blob: f, type: 'image/jpeg', quality: 0.92 }), f.name, true);
+      } catch {
+        return null;
+      }
+    }
+    if (!f.type.startsWith('image/')) return new File([await f.arrayBuffer()], f.name, { type: f.type });
+    return (await toJpeg(f, f.name)) || new File([await f.arrayBuffer()], f.name, { type: f.type });
+  }
+
+  // A PDF's first pages as pictures, drawn by pdf.js (public/vendor-documents/pdf/, fetched the first
+  // time a PDF is added): a W-9's signature and what's typed into a form's boxes aren't in a PDF's text.
+  // [] when this browser can't draw it, and the server reads the PDF's text instead.
+  const PDF_BASE = '/vendor-documents/pdf/';
+  const PAGE_SIDE = 2000;
+  let pdfjs: Promise<any> | null = null;
+  async function pagePictures(f: File, max: number): Promise<Blob[]> {
+    try {
+      pdfjs ||= import(/* @vite-ignore */ `${PDF_BASE}pdf.js`).then((m) => {
+        m.GlobalWorkerOptions.workerSrc = `${PDF_BASE}pdf.worker.js`;
+        return m;
+      });
+      const lib = await pdfjs;
+      const task = lib.getDocument({ data: new Uint8Array(await f.arrayBuffer()), standardFontDataUrl: `${PDF_BASE}standard_fonts/`, wasmUrl: `${PDF_BASE}wasm/`, useWasm: false, enableXfa: false });
+      const out: Blob[] = [];
+      try {
+        const doc = await task.promise;
+        for (let n = 1; n <= Math.min(max, doc.numPages); n++) {
+          const page = await doc.getPage(n);
+          const one = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: PAGE_SIDE / Math.max(one.width, one.height) });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(viewport.width);
+          canvas.height = Math.round(viewport.height);
+          // Print mode: form boxes drawn with what was typed into them
+          await page.render({ canvas, viewport, background: 'white', annotationMode: lib.AnnotationMode.ENABLE_STORAGE }).promise;
+          const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+          if (blob) out.push(blob);
+        }
+      } finally {
+        task.destroy();
+      }
+      return out;
+    } catch {
+      pdfjs = null;
+      return [];
+    }
+  }
+
   async function send(doc: string, files: File[], anyway = false) {
     const p = part(doc);
     const what = doc === 'w9' ? 'W-9' : files.length > 1 ? 'certificates' : 'certificate';
-    for (const f of files) {
-      if (f.size > 15 * 1024 * 1024) { show(p, 'fix', `<p>${esc(f.name)} is over 15 MB. Try a smaller copy or a PDF.</p>`); return; }
-    }
-    const body = new FormData();
-    body.set('token', token);
-    body.set('doc', doc);
-    body.set('website', ($('vd-website') as HTMLInputElement).value);
-    for (const f of files) body.append('file', f);
-    if (anyway) body.set('anyway', '1');
     p.ask.setAttribute('aria-busy', 'true');
     p.box.querySelector('.vd-pick')?.setAttribute('aria-disabled', 'true');
     show(p, '', `<p>${anyway ? 'Sending it to our team…' : `Checking your ${what}…`}</p>${anyway ? '' : '<span>This takes about half a minute.</span>'}`);
     try {
-      const res = await fetch('/api/vendor-docs', { method: 'POST', body });
+      const ready: { file: File; pages: Blob[] }[] = [];
+      for (const f of files) {
+        // Too big before it's read into memory (a photo is shrunk first, so only a PDF or anything else stops here)
+        const shrinks = f.type.startsWith('image/') || /\.(hei[cf]|jpe?g|png|webp)$/i.test(f.name);
+        if (!shrinks && f.size > 15 * 1024 * 1024) throw new Error(`${f.name} is over 15 MB. Try a smaller copy or a PDF.`);
+        const file = await prepare(f).catch(() => { throw new Error(`${f.name} wouldn’t open. Save it again, then add it here.`); });
+        if (!file) throw new Error(`${f.name} is an iPhone photo (HEIC) that wouldn’t open. Send a PDF or a JPG instead. A screenshot of the photo works too.`);
+        if (file.size > 15 * 1024 * 1024) throw new Error(`${f.name} is over 15 MB. Try a smaller copy or a PDF.`);
+        const pdf = !anyway && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
+        ready.push({ file, pages: pdf ? await pagePictures(file, doc === 'w9' ? 2 : 3) : [] });
+      }
+      files = ready.map((r) => r.file);
+      const body = new FormData();
+      body.set('token', token);
+      body.set('doc', doc);
+      body.set('website', ($('vd-website') as HTMLInputElement).value);
+      ready.forEach(({ file, pages }, i) => {
+        body.append('file', file);
+        pages.forEach((b, n) => body.append(`pages${i}`, b, `page-${n + 1}.jpg`));
+      });
+      if (anyway) body.set('anyway', '1');
+      const res = await fetch('/api/vendor-docs', { method: 'POST', body }).catch(() => {
+        throw new Error('That didn’t go through. Check your connection and try again.');
+      });
       const d = await res.json().catch(() => ({}));
       if (!res.ok || !d.ok) throw new Error(d.error || 'That didn’t go through. Please try again.');
       if (d.accepted) {
         show(p, 'good', `<p>Got it, and it checks out.</p>${list(d.lines || [])}`);
       } else if (d.look) {
-        show(p, 'good', `<p>Thank you. ${anyway ? 'Our team will look at it' : 'We couldn’t read it automatically, so our team will check it'} and be in touch if anything else is needed.</p>`);
+        show(p, 'good', `<p>Thank you. ${anyway ? 'Our team will look at it' : 'Our team will check this one by hand'} and be in touch if anything else is needed.</p>`);
       } else {
         show(p, 'fix', `<p>This one won’t work yet:</p>${list(d.problems || [])}<p>Add a different file above, or ask your insurance agent for an updated one.</p>`
           + `<button type="button" class="vd-anyway">Think it’s right? Send it to our team to check</button>`);

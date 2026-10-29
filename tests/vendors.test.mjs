@@ -12,9 +12,9 @@ import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureBillPaySchema } from '../functions/api/_bill-pay.js';
 import {
   docsState, labelFor, requestEmail, jtSetup, readJtVendor, createLink, findLink, fileUpload, pageView, askDue, sweep,
-  refreshCache, ensureVendorSchema, sendPreview, readAsk, saveDocSettings, readDocSettings, DEFAULTS, FOLDER, PREVIEW_ID,
+  refreshCache, ensureVendorSchema, sendPreview, readAsk, saveDocSettings, readDocSettings, DEFAULTS, FOLDER, PREVIEW_ID, LIMITS,
 } from '../functions/api/_vendors.js';
-import { judgeCoi, judgeW9, mergeCoi, documentType, answerOf } from '../functions/api/_vendor-read.js';
+import { judgeCoi, judgeCoiReads, judgeW9, mergeCoi, documentType, answerOf, scannedPages } from '../functions/api/_vendor-read.js';
 import { onRequestGet as pageGet, onRequestPost as pagePost } from '../functions/api/vendor-docs.js';
 
 const NOW = Date.parse('2026-10-28T15:00:00Z');
@@ -24,6 +24,23 @@ const VENDOR = 'ACC-TKO';
 const PDF = new TextEncoder().encode('%PDF-1.7 a certificate');
 const JPG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 const pdfFile = (name = 'coi.pdf') => new File([PDF], name, { type: 'application/pdf' });
+// A PDF's page as the vendor's browser draws it
+const pagePic = (n = 1) => new File([JPG], `page-${n}.jpg`, { type: 'image/jpeg' });
+const isVision = (c) => /scout/.test(c.model);
+// A scan as a phone app or scanner makes it: each page a JPEG inside, no text (a logo besides)
+const jpeg = (fill) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new Array(40).fill(fill), 0xff, 0xd9]);
+const image = (n, w, h, body, filter = '/DCTDecode') => [
+  new TextEncoder().encode(`${n} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter ${filter} /Length ${body.length} >>\nstream\n`),
+  body, new TextEncoder().encode('\nendstream\nendobj\n'),
+];
+const SCAN = new Uint8Array([
+  ...new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n'),
+  ...image(4, 120, 40, jpeg(1)).flatMap((p) => [...p]),
+  ...image(5, 1700, 2200, jpeg(2)).flatMap((p) => [...p]),
+  ...image(6, 1700, 2200, jpeg(3), '[/FlateDecode /DCTDecode]').flatMap((p) => [...p]),
+  ...image(7, 1700, 2200, jpeg(4)).flatMap((p) => [...p]),
+  ...new TextEncoder().encode('trailer\n<< /Root 1 0 R >>\n%%EOF\n'),
+]);
 
 const goodCoi = (o = {}) => ({
   isCertificate: true, readable: true, insured: 'TKO Plumbing LLC', certificateHolder: 'Sunshine on a Ranney Day',
@@ -114,8 +131,9 @@ beforeEach(async () => {
   env = {
     DB, JOBTREAD_GRANT_KEY: 'jt', RESEND_API_KEY: 're_test', SLACK_BOT_TOKEN: 'xoxb-test', MERCURY_API_TOKEN: 'secret-token:test', MERCURY_RELAY_KEY: RELAY_KEY,
     AI: {
-      toMarkdown: async () => ({ format: 'text', data: world.pdfText }),
-      run: async (model, input) => { world.aiCalls.push({ model, input }); return { response: world.ai }; },
+      toMarkdown: async () => { world.textReads = (world.textReads || 0) + 1; return { format: 'text', data: world.pdfText }; },
+      // world.ai: one answer for every model, or (model) => the answer, to read text and pictures differently
+      run: async (model, input) => { world.aiCalls.push({ model, input }); return { response: typeof world.ai === 'function' ? world.ai(model) : world.ai }; },
     },
   };
   await ensureSpendSchema(DB);
@@ -313,17 +331,184 @@ test('a scan nobody can read goes into JobTread as Needs a look', async () => {
   assert.equal(world.vendors[VENDOR].values[fieldId('Documents')], 'Needs a look');
 });
 
+test('an iPhone photo (HEIC) is turned away with what to send instead, never filed for a person', async () => {
+  await setFields({ w9: true });
+  const link = await createLink(env.DB, VENDOR, { now: NOW });
+  const heic = new File([new Uint8Array([0, 0, 0, 0x24, ...new TextEncoder().encode('ftypheicmif1')])], 'IMG_0412.jpg', { type: 'image/jpeg' });
+  const { link: found } = await findLink(env.DB, link.token, NOW);
+  await assert.rejects(() => fileUpload(env, found, { doc: 'coi', files: [heic] }, { now: NOW }),
+    (e) => e.status === 400 && /^IMG_0412\.jpg is an iPhone photo \(HEIC\), which we can’t read\. Send a PDF or a JPG instead\./.test(e.message));
+  assert.equal(world.aiCalls.length, 0);
+  assert.equal(world.files.length, 0, 'nothing in JobTread');
+  assert.equal(world.vendors[VENDOR].values[fieldId('Documents')], undefined, 'not Needs a look');
+});
+
+test('a scanned PDF’s pages are cut out as photos: page-sized JPEGs only, in order', () => {
+  const pages = scannedPages(SCAN);
+  assert.equal(pages.length, 2, 'the logo and the compressed one are skipped');
+  assert.deepEqual([...pages[0].bytes], [...jpeg(2)]);
+  assert.deepEqual([...pages[1].bytes], [...jpeg(4)]);
+  assert.equal(scannedPages(SCAN, { max: 1 }).length, 1);
+  assert.deepEqual(scannedPages(PDF), [], 'a PDF with no photos in it');
+});
+
+test('a scanned certificate is read from its page photos, not left for a person', async () => {
+  await setFields({ w9: true });
+  world.pdfText = '';
+  world.ai = goodCoi();
+  const link = await createLink(env.DB, VENDOR, { now: NOW });
+  const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'coi', files: [new File([SCAN], 'scan.pdf', { type: 'application/pdf' })] }, { now: NOW });
+  assert.equal(r.accepted, true);
+  assert.equal(r.look, false);
+  assert.equal(world.aiCalls.length, 2, 'each page read');
+  assert.ok(world.aiCalls.every((c) => /vision|scout/.test(c.model) && c.input.messages[1].content[1].image_url.url.startsWith('data:image/jpeg;base64,/9j/')));
+  assert.equal(world.files.length, 1, 'the PDF itself goes into JobTread');
+  assert.match(world.files[0].name, /\.pdf$/);
+  assert.equal(world.vendors[VENDOR].values[fieldId('Liability Expires')], '2027-03-01');
+});
+
+test('a scanned W-9: the first page that is a W-9 answers', async () => {
+  await setFields({});
+  world.pdfText = '';
+  world.ai = { isW9: true, readable: true, name: 'TKO Plumbing LLC', hasTaxId: true, signed: true, signedDate: '2026-10-27' };
+  const link = await createLink(env.DB, VENDOR, { now: NOW });
+  const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'w9', files: [new File([SCAN], 'w9-scan.pdf')] }, { now: NOW });
+  assert.equal(r.accepted, true);
+  assert.equal(world.aiCalls.length, 1, 'page one was the W-9, so page two isn’t read');
+});
+
 test('a good W-9 ticks the box in JobTread and goes onto the Mercury recipient', async () => {
   await setFields({ gl: '2027-06-01', wc: '2027-06-01' });
   world.recipients = [{ id: 'rec-tko', name: 'TKO Plumbing', status: 'active', attachments: [] }];
   const link = await createLink(env.DB, VENDOR, { now: NOW });
   world.ai = { isW9: true, readable: true, name: 'TKO Plumbing LLC', hasTaxId: true, signed: true, signedDate: '2026-10-27' };
-  const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'w9', files: [new File([PDF], 'w9.pdf')] }, { now: NOW });
+  const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'w9', files: [new File([PDF], 'w9.pdf')], pages: [[pagePic(1), pagePic(2)]] }, { now: NOW });
   assert.equal(r.accepted, true);
+  assert.equal(world.aiCalls.length, 1, 'page one was the W-9');
+  assert.ok(isVision(world.aiCalls[0]), 'read from its picture');
+  assert.equal(world.textReads, undefined, 'a W-9’s text is never asked: its signature and typed-in boxes aren’t in it');
   assert.equal(world.vendors[VENDOR].values['F-W9'], true);
+  assert.equal(world.files.length, 1, 'the PDF is filed, not its pictures');
+  assert.match(world.files[0].name, /\.pdf$/);
   assert.deepEqual(world.files[0].fileTagIds, ['T-W-9']);
   assert.deepEqual(world.mercuryUploads, ['rec-tko']);
   assert.doesNotMatch(JSON.stringify(world.comments), /\d{3}-\d{2}-\d{4}|\d{2}-\d{7}/, 'no tax ID anywhere');
+});
+
+test('a W-9 PDF the browser couldn’t draw goes to a person, never refused on its text', async () => {
+  await setFields({});
+  world.ai = { isW9: true, readable: true, name: 'TKO Plumbing LLC', hasTaxId: false, signed: false };
+  const link = await createLink(env.DB, VENDOR, { now: NOW });
+  const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'w9', files: [new File([PDF], 'w9.pdf')] }, { now: NOW });
+  assert.equal(r.look, true);
+  assert.equal(world.aiCalls.length, 0);
+  assert.equal(world.vendors[VENDOR].values[fieldId('Documents')], 'Needs a look');
+});
+
+test('pictures that aren’t JPEGs, are too big, or come with a photo are left out', async () => {
+  await setFields({ w9: true });
+  world.ai = goodCoi();
+  const link = await createLink(env.DB, VENDOR, { now: NOW });
+  const big = new File([new Uint8Array(LIMITS.pageBytes + 1).fill(0xff)], 'page-2.jpg');
+  const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])], 'page-3.jpg');
+  const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'coi', files: [pdfFile(), new File([JPG], 'wc.jpg')], pages: [[pagePic(1), big, png], [pagePic(1)]] }, { now: NOW });
+  assert.equal(r.accepted, true);
+  // The PDF: its text and its one good picture; the photo: itself
+  assert.equal(world.aiCalls.filter(isVision).length, 2);
+  assert.equal(world.aiCalls.filter((c) => !isVision(c)).length, 1);
+});
+
+test('a certificate read two ways: the browser’s pictures and the text both go through the form post', async () => {
+  await setFields({ w9: true });
+  const link = await createLink(env.DB, VENDOR, { now: NOW });
+  // The text took PRODUCTS-COMP/OP AGG for the aggregate; the picture read GENERAL AGGREGATE right
+  world.ai = (model) => goodCoi({ policies: [{ ...goodCoi().policies[0], aggregate: /scout/.test(model) ? 1000000 : 2000000 }, goodCoi().policies[1]] });
+  const body = new FormData();
+  body.set('token', link.token); body.set('doc', 'coi'); body.append('file', pdfFile()); body.append('pages0', pagePic(1));
+  const d = await (await pagePost({ env, request: new Request('https://x.example/api/vendor-docs', { method: 'POST', body }) })).json();
+  assert.equal(d.ok, true);
+  assert.equal(d.accepted, false, 'one reading short of the minimum is never a pass');
+  assert.equal(d.look, true, 'a person decides');
+  assert.equal(world.files.length, 1);
+  assert.equal(world.vendors[VENDOR].values[fieldId('Liability Expires')], undefined, 'no dates written for a person to check');
+  assert.match(world.comments.at(-1).message, /read it two ways that didn’t agree \(General liability’s aggregate is \$1,000,000; we need at least \$2,000,000\.\)/);
+});
+
+test('two readings of a certificate: a pass needs both, and only problems that hold either way go back', () => {
+  const req = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000 };
+  const opts = { vendorName: 'TKO Plumbing', now: NOW };
+  const gl = (o) => ({ ...goodCoi().policies[0], ...o });
+  const wc = (o) => ({ ...goodCoi().policies[1], ...o });
+  const reading = (...policies) => goodCoi({ policies });
+  // Agreed and good: accepted, with the earlier of two end dates kept
+  const ok = judgeCoiReads([{ text: reading(gl({ expires: '2027-03-01' }), wc()), pictures: reading(gl({ expires: '2027-03-31' }), wc()) }], req, opts);
+  assert.equal(ok.accepted, true);
+  assert.equal(ok.gl.expires, '2027-03-01');
+  // Live, Oct 29: no workers' comp, and the picture took PERSONAL & ADV INJURY ($1M) for the aggregate
+  const noWc = judgeCoiReads([{ text: reading(gl()), pictures: reading(gl({ aggregate: 1000000 })) }], req, opts);
+  assert.equal(noWc.accepted, false);
+  assert.deepEqual(noWc.problems, ['Workers’ compensation isn’t on this certificate. If it’s on a certificate of its own, add that one too.']);
+  // Live, Oct 29: $500,000/$1,000,000, and the text took PRODUCTS-COMP/OP AGG ($2M) for the aggregate
+  const low = judgeCoiReads([{ text: reading(gl({ eachOccurrence: 500000 }), wc()), pictures: reading(gl({ eachOccurrence: 500000, aggregate: 1000000 }), wc()) }], req, opts);
+  assert.deepEqual(low.problems, ['General liability is $500,000 each occurrence; we need at least $1,000,000.']);
+  // A policy only one reading found counts: a fillable form's typed boxes aren't in its text
+  const fillable = judgeCoiReads([{ text: reading(gl()), pictures: reading(gl(), wc()) }], req, opts);
+  assert.equal(fillable.accepted, true);
+  // One reading passes and the other doesn't: a person
+  const split = judgeCoiReads([{ text: reading(gl(), wc()), pictures: reading(gl({ expires: '2026-09-30' }), wc()) }], req, opts);
+  assert.equal(split.unreadable, true);
+  assert.match(split.unsure, /General liability ended September 30, 2026/);
+  // A photo is one reading; a file nobody could read is none
+  assert.equal(judgeCoiReads([{ text: null, pictures: reading(gl(), wc()) }], req, opts).accepted, true);
+  assert.deepEqual(judgeCoiReads([{ text: null, pictures: null }], req, opts), { unreadable: true });
+});
+
+test('something else in the W-9 slot is still called something else, not left for a person', async () => {
+  await setFields({});
+  world.ai = goodCoi({ isW9: false });
+  const link = await createLink(env.DB, VENDOR, { now: NOW });
+  const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'w9', files: [new File([PDF], 'w9.pdf')], pages: [[pagePic(1), pagePic(2)]] }, { now: NOW });
+  assert.equal(r.accepted, false);
+  assert.equal(r.look, false);
+  assert.match(r.problems[0], /^This doesn’t look like a W-9\./);
+  assert.equal(world.aiCalls.length, 2, 'both pages looked at for a W-9');
+  assert.equal(world.files.length, 0);
+});
+
+test('a reading with a date written the form’s way, or none, still counts for its limits', () => {
+  const req = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000 };
+  const gl = (o) => ({ ...goodCoi().policies[0], ...o });
+  const wc = goodCoi().policies[1];
+  const pictures = goodCoi({ policies: [gl(), wc] });
+  // The text read $500,000 and wrote 03/01/2027: the two readings disagree, so never a pass
+  const slash = judgeCoiReads([{ text: goodCoi({ policies: [gl({ eachOccurrence: 500000, expires: '03/01/2027' }), wc] }), pictures }], req, { now: NOW });
+  assert.equal(slash.accepted, undefined);
+  assert.equal(slash.unreadable, true);
+  assert.match(slash.unsure, /\$500,000 each occurrence/);
+  // …and with no usable date at all
+  const none = judgeCoiReads([{ text: goodCoi({ policies: [gl({ eachOccurrence: 500000, expires: 'see attached' }), wc] }), pictures }], req, { now: NOW });
+  assert.equal(none.unreadable, true);
+  // A date written 03/01/2027 by both is still a date
+  assert.equal(judgeCoiReads([{ text: null, pictures: goodCoi({ policies: [gl({ expires: '03/01/2027' }), { ...wc, expires: '3/1/27' }] }) }], req, { now: NOW }).accepted, true);
+});
+
+test('certificates on separate files are paired file by file', () => {
+  const req = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000 };
+  const [gl, wc] = goodCoi().policies;
+  const old = { ...wc, expires: '2026-01-01' };
+  // File 1: liability and last year's workers' comp; file 2: this year's workers' comp, which only its picture showed
+  const r = judgeCoiReads([
+    { text: goodCoi({ policies: [gl, old] }), pictures: goodCoi({ policies: [gl, old] }) },
+    { text: goodCoi({ policies: [] }), pictures: goodCoi({ policies: [wc] }) },
+  ], req, { now: NOW });
+  assert.equal(r.accepted, true);
+  assert.equal(r.wc.expires, '2027-03-01');
+});
+
+test('an unsigned W-9 never says when it was signed (its empty date box once read as 1901)', () => {
+  const r = judgeW9({ isW9: true, readable: true, name: 'Rivera Example Roofing LLC', hasTaxId: true, signed: false, signedDate: '1901-01-01' });
+  assert.deepEqual(r.lines, ['W-9 for Rivera Example Roofing LLC.']);
+  assert.match(judgeW9({ isW9: true, name: 'X', hasTaxId: true, signed: true, signedDate: '2026-10-27' }).lines[0], /signed October 27, 2026/);
 });
 
 test('links: unknown, expired and the old Vendors area’s links open nothing', async () => {

@@ -201,5 +201,5 @@ test('<script define:vars> in src/ fails the build', () => {
 test('the repo: public/_headers has a strict line per route that matches its enforced line', () => {
   const r = renderHeaders(readFileSync(join(ROOT, 'public/_headers'), 'utf8'), () => []);
   assert.deepEqual(r.errors, []);
-  assert.deepEqual(r.policies.map((p) => p.pattern), ['/*', '/apply/form/*', '/admin/*']);
+  assert.deepEqual(r.policies.map((p) => p.pattern), ['/*', '/vendor-documents/*', '/apply/form/*', '/admin/*']);
 });

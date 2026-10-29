@@ -4,7 +4,9 @@
  * GET  /api/vendor-docs?token=…   → { ok, vendor: { name, needs, items, have, requirements, w9Only, notNeeded } }
  *                                    or 404 (unknown) / 410 (expired or replaced)
  * POST /api/vendor-docs           multipart: token, doc ('w9' | 'coi'), file (up to 3 for a
- *                                    certificate), anyway ('1': send it in for a person despite the check)
+ *                                    certificate), pages<i> (file i's first pages as JPEGs, when it's
+ *                                    a PDF the browser could draw), anyway ('1': send it in for a
+ *                                    person despite the check)
  *                                    → { ok, accepted, look, problems, lines, needs, done }
  *
  * Public: listed in the middleware's PUBLIC_ROUTES and rate limited per IP.
@@ -51,7 +53,9 @@ export async function onRequestPost(context) {
     if (stop) return stop;
     if (link.uploads >= LIMITS.uploads) return fail('This link has been used too many times. Reply to our email and we’ll send a new one.', 429);
     try {
-      const r = await fileUpload(env, link, { doc: String(form.get('doc') || ''), files: form.getAll('file'), anyway: form.get('anyway') === '1' });
+      const files = form.getAll('file');
+      const pages = files.map((_, i) => form.getAll(`pages${i}`));
+      const r = await fileUpload(env, link, { doc: String(form.get('doc') || ''), files, pages, anyway: form.get('anyway') === '1' });
       return Response.json({ ok: true, ...r }, { headers: NO_STORE });
     } catch (e) {
       if (e.status && e.status < 500) return fail(e.message, e.status);
