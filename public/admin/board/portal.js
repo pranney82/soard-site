@@ -29,7 +29,7 @@ import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
-  isLive, agendaItems, tallyText,
+  isLive, agendaItems, tallyText, unzip,
 } from '../board-shared.js';
 
 const html = htm.bind(h);
@@ -482,20 +482,80 @@ function SecHead({ title, sub = '', count = null, id, children }) {
 }
 const rise = (i) => `--i:${i}`;
 
+
+// ─── Cash, from the newest balance sheet ────────────────────────────
+// SOARD's money is at Chase and nothing here reads Chase, so the board's cash figure is the bank-account total on
+// the newest Statement of Financial Position in a meeting's packet (QuickBooks' Excel copy), read in the browser
+const compact = (n) => (Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2).replace(/\.?0+$/, '')}M` : Math.abs(n) >= 1e4 ? `$${Math.round(n / 1e3)}K` : money(n));
+function balanceSheet(data) {
+  return data.meetings.flatMap((m) => m.files.filter((f) => f.kind === 'financials' && formatOf(f) === 'Excel' && /financial position|balance sheet/i.test(f.name)).map((f) => ({ f, m })))
+    .sort((a, b) => b.m.date.localeCompare(a.m.date) || String(b.f.at || '').localeCompare(String(a.f.at || '')))[0] || null;
+}
+/** An .xlsx's first sheet as rows of cells (strings and numbers, by column) */
+async function sheetRows(bytes) {
+  const z = await unzip(bytes, ['xl/sharedStrings.xml', 'xl/worksheets/sheet1.xml']);
+  const dec = new TextDecoder();
+  const unxml = (t) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  const strings = [...dec.decode(z['xl/sharedStrings.xml'] || new Uint8Array()).matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => unxml([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join('')));
+  const sheet = dec.decode(z['xl/worksheets/sheet1.xml'] || new Uint8Array());
+  return [...sheet.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)].map((r) => [...r[1].matchAll(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)].map((c) => {
+    const raw = (c[3] || '').match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? (c[3] || '').match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] ?? '';
+    return /t="s"/.test(c[2]) ? strings[Number(raw)] ?? '' : /t="(inlineStr|str)"/.test(c[2]) ? unxml(raw) : raw === '' ? '' : Number(raw);
+  }).filter((x) => x !== ''));
+}
+/** "1001 SR4_Long Reserve (8861)" → "Long Reserve": no ledger number, no account's last digits */
+const accountName = (s) => String(s).replace(/^\d+\s+/, '').replace(/^SR\d+_/i, '').replace(/\s*\(\d{3,}\)\s*$/, '').replace(/_/g, ' ').trim();
+let cashOnce = null;
+function readCash(data) {
+  const src = balanceSheet(data);
+  if (!src) return Promise.resolve(null);
+  cashOnce ||= (async () => {
+    const r = await fetch(fileUrl(src.f));
+    if (!r.ok) return null;
+    const rows = await sheetRows(new Uint8Array(await r.arrayBuffer()));
+    const asOf = rows.flat().filter((x) => typeof x === 'string').map((x) => x.match(/^As of (.+?)(?: \(PY\))?$/)?.[1]).filter(Boolean);
+    const head = rows.findIndex((r2) => /^bank accounts$/i.test(String(r2[0])));
+    const totalAt = rows.findIndex((r2) => /^total (for )?(bank accounts|cash( and cash equivalents)?)$/i.test(String(r2[0])));
+    if (totalAt < 0 || typeof rows[totalAt][1] !== 'number') return null;
+    const accounts = head >= 0 ? rows.slice(head + 1, totalAt).filter((r2) => typeof r2[1] === 'number').map((r2) => ({ name: accountName(r2[0]), balance: r2[1], prior: typeof r2[2] === 'number' ? r2[2] : null })) : [];
+    return { total: rows[totalAt][1], prior: typeof rows[totalAt][2] === 'number' ? rows[totalAt][2] : null, asOf: asOf[0] || '', priorAsOf: asOf.find((x, i) => i > 0 && x !== asOf[0]) || '', accounts, meeting: src.m, file: src.f };
+  })().catch(() => null);
+  return cashOnce;
+}
+function useCash(data) {
+  const [cash, setCash] = useState(undefined);
+  useEffect(() => { let on = true; readCash(data).then((c) => { if (on) setCash(c); }); return () => { on = false; }; }, []);
+  return cash;
+}
+const shortAsOf = (s) => String(s || '').replace(/, \d{4}$/, '');
+
 // ─── Home ───────────────────────────────────────────────────────────
-function summary(data, d) {
+/** The numbers a board member wants first, each a door to the rest */
+function Figures({ data, d }) {
+  const cash = useCash(data);
+  const n = data.numbers;
   const m = d.featured;
-  const bits = [];
-  const phase = m?.date === data.today ? phaseOf(m) : null;
-  if (m) bits.push(phase === 'now' ? 'The board is meeting now.' : m.date === data.today ? `The board meets today${m.start ? ` at ${clock(m.start)}` : ''}.` : `The next board meeting is ${dayOf(m.date)}${m.start ? ` at ${clock(m.start)}` : ''}.`);
-  const b = (data.numbers.projects?.building || []).length;
-  const r = data.numbers.reveals.length;
-  const builds = `${countWord(b)} ${b === 1 ? 'makeover is' : 'makeovers are'} underway`;
-  const reveals = `${r === 1 ? 'one reveal is' : `${countWord(r).toLowerCase()} reveals are`} coming up`;
-  if (b && r) bits.push(`${builds}, and ${reveals}.`);
-  else if (b) bits.push(`${builds}.`);
-  else if (r) bits.push(`${reveals[0].toUpperCase()}${reveals.slice(1)}.`);
-  return bits.join(' ') || 'Everything for SOARD’s board in one place: meetings, money, people and documents.';
+  const building = n.projects?.building || [];
+  const inBuild = building.filter((b) => b.status === 'Build').length;
+  const next = [...n.reveals].sort((a, b) => String(a.confirmed && a.date ? a.date : windowStart(a.window) || '9').localeCompare(String(b.confirmed && b.date ? b.date : windowStart(b.window) || '9')))[0];
+  const s = data.snapshot;
+  const tiles = [
+    { key: 'meeting', label: 'Next board meeting', value: m ? partsOf(m.date).mon + ' ' + partsOf(m.date).day : 'Not set', sub: m ? (m.date === data.today ? 'Today' : inWords(m.date, data.today)) : 'The invite will come by email', href: m ? `#/meetings/${m.id}` : '#/meetings' },
+    { key: 'cash', label: 'Cash in the bank', value: cash ? money(cash.total) : cash === null ? 'See statements' : '…', sub: cash ? `${shortAsOf(cash.asOf)}${cash.prior != null ? ` · ${cash.total >= cash.prior ? 'up' : 'down'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}` : cash === null ? 'From each meeting’s packet' : 'Reading the balance sheet', href: '#/financials', quiet: cash === null },
+    { key: 'build', label: 'Makeovers underway', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', href: '#makeovers' },
+    { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#coming-up' },
+    { key: 'kids', label: 'Children served', value: n.impact.kids.toLocaleString(), sub: `Since 2012 · ${n.impact.rooms.toLocaleString()} rooms` },
+    s?.totalRevenue ? { key: 'rev', label: `${s.year} revenue`, value: compact(s.totalRevenue), sub: s.programPct ? `${s.programPct}% to programs` : `From the ${s.year} tax return`, href: '#/financials' } : null,
+  ].filter(Boolean);
+  const go = (e, t) => {
+    if (!t.href.startsWith('#') || t.href.startsWith('#/')) return;
+    e.preventDefault();
+    document.getElementById(t.href.slice(1))?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+  };
+  const inner = (t) => html`<span class="bp-fig__label">${t.label}</span><span class="bp-fig__value">${t.value}</span><span class="bp-fig__sub">${t.sub}</span>`;
+  return html`<ul class="bp-figs" aria-label="SOARD at a glance">${tiles.map((t) => html`<li key=${t.key}>
+    ${t.href ? html`<a class=${`bp-fig ${t.quiet ? 'is-quiet' : ''}`} href=${t.href} onClick=${(e) => go(e, t)}>${inner(t)}<${Icon} name="arrow" size=${16} cls="bp-go bp-fig__go" /></a>` : html`<div class="bp-fig">${inner(t)}</div>`}
+  </li>`)}</ul>`;
 }
 
 function HomePage({ ctx }) {
@@ -503,18 +563,8 @@ function HomePage({ ctx }) {
   const mine = data.actions.filter((a) => a.mine);
   const toSign = data.docs.filter((x) => x.sign && x.file && !x.signedByMe);
   const today = new Date(noon(data.today)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-  return html`
-    <section class="bp-hero">
-      <div class="bp-hero__text">
-        <p class="bp-eyebrow bp-rise" style=${rise(0)}>${today}</p>
-        <h1 class="bp-display bp-rise" style=${rise(1)}>${data.me.name ? html`${greeting()}, <span class="bp-nowrap">${firstName(data.me.name)}.</span>` : 'The board page'}</h1>
-        <p class="bp-hero__lede bp-rise" style=${rise(2)}>${summary(data, d)}</p>
-        <div class="bp-rise" style=${rise(3)}>${d.featured ? html`<${NextMeeting} m=${d.featured} ctx=${ctx} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
-      </div>
-      <${HeroPhotos} n=${data.numbers} today=${data.today} />
-    </section>
-    ${mine.length || toSign.length ? html`<section class="bp-band bp-rise" style=${rise(4)} aria-labelledby="todo-h">
-      <${SecHead} id="todo-h" title="For you" count=${mine.length + toSign.length} sub="Ticked off here, they’re off everyone’s list." />
+  const todos = mine.length || toSign.length ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
+      <${SecHead} id="todo-h" title="For you" count=${mine.length + toSign.length} />
       <ul class="bp-todos">
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href="#/documents" onClick=${() => { focusNext = `doc-${x.id}`; }}>
@@ -523,12 +573,27 @@ function HomePage({ ctx }) {
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
       </ul>
-    </section>` : null}
-    <div class="bp-rise" style=${rise(5)}><${Makeovers} n=${data.numbers} /></div>
+    </section>` : null;
+  return html`
+    <section class="bp-hero">
+      <div class="bp-hero__text">
+        <p class="bp-eyebrow bp-rise" style=${rise(0)}>${today}</p>
+        <h1 class="bp-display bp-rise" style=${rise(1)}>${data.me.name ? html`${greeting()}, <span class="bp-nowrap">${firstName(data.me.name)}.</span>` : 'The board page'}</h1>
+        <div class="bp-rise" style=${rise(2)}><${Figures} data=${data} d=${d} /></div>
+      </div>
+      <${HeroPhotos} n=${data.numbers} today=${data.today} />
+    </section>
+    <div class="bp-split bp-split--top">
+      <div class="bp-stack bp-rise" style=${rise(3)}>${d.featured ? html`<${NextMeeting} m=${d.featured} ctx=${ctx} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
+      <div class="bp-stack bp-rise" style=${rise(4)}>
+        ${todos}
+        ${d.last ? html`<${LastMeeting} m=${d.last} ctx=${ctx} />` : null}
+      </div>
+    </div>
+    <div class="bp-rise" style=${rise(5)} id="makeovers"><${Makeovers} n=${data.numbers} /></div>
     <div class="bp-split">
       <div class="bp-stack bp-rise" style=${rise(6)}><${ComingUp} data=${data} d=${d} /></div>
       <div class="bp-stack bp-rise" style=${rise(7)}>
-        ${d.last ? html`<${LastMeeting} m=${d.last} ctx=${ctx} />` : null}
         <${Glance} n=${data.numbers} />
         <${Recent} n=${data.numbers} />
       </div>
@@ -560,7 +625,6 @@ function HeroPhotos({ n, today }) {
     ${second ? html`<a class="bp-hero__small" href=${href(second)} target="_blank" rel="noopener" aria-label=${second.name}>
       <img src=${sized(second.photo, 'w=320,h=320,fit=cover,gravity=auto')} alt="" width="150" height="150" decoding="async" />
     </a>` : null}
-    <div class="bp-hero__badge"><strong>${stats.kids.toLocaleString()}</strong><span>children served since 2012</span></div>
     <figcaption class="bp-hero__cap"><span class="bp-dot" aria-hidden="true"></span>${lead.name} · ${lead.status === 'Build' ? 'being built now' : `in ${lead.status.toLowerCase()}`}</figcaption>
   </figure>`;
 }
@@ -760,14 +824,13 @@ function LastMeeting({ m, ctx }) {
 /** SOARD's own numbers, set flat: no counting up */
 function Glance({ n }) {
   const stats = [
-    [n.impact.kids.toLocaleString(), 'children served since 2012'],
     [n.impact.rooms.toLocaleString(), 'rooms built'],
     n.impact.communityProjects ? [n.impact.communityProjects.toLocaleString(), 'community projects'] : null,
     n.impact.reached ? [n.impact.reached.toLocaleString(), 'children impacted through community projects'] : null,
     n.cash ? [money(n.cash.total), `in Mercury${n.cash.at ? `, ${shortDate(n.cash.at.slice(0, 10))}` : ''}`] : null,
   ].filter(Boolean);
   return html`<section class="bp-card bp-glance" aria-labelledby="glance-h">
-    <h2 class="bp-h2" id="glance-h">SOARD at a glance</h2>
+    <h2 class="bp-h2" id="glance-h">Since 2012</h2>
     <dl class="bp-glance__grid">${stats.map(([v, label]) => html`<div key=${label}><dd>${v}</dd><dt>${label}</dt></div>`)}</dl>
   </section>`;
 }
@@ -938,7 +1001,8 @@ function useLive(id, on, every = 3000) {
       clearTimeout(t);
       const j = await getLive(id);
       if (stop) return;
-      if (j?.ok) setV(j);
+      // Only an answer that is a live meeting (an older server, or a page in between, says something else)
+      if (j?.ok && j.live && Array.isArray(j.sections)) setV(j);
       else if (j?.status === 404 || j?.status === 403) setGone(true);
       t = setTimeout(tick, document.visibilityState === 'visible' ? every : 15000);
     };
@@ -986,7 +1050,7 @@ function LiveRoom({ v, setV, m, ctx }) {
     const j = await call({ ...body, meetingId: v.id });
     setBusy('');
     if (!j.ok) { say(j.error, 'warn'); return; }
-    setV(j);
+    if (j.live && Array.isArray(j.sections)) setV(j);
     if (thanks) say(thanks);
   };
   const state = (it) => {
@@ -1214,6 +1278,31 @@ function Bars({ s }) {
   </div>`;
 }
 
+/** The cash in the bank, from the newest balance sheet: the total, a year earlier, and each account */
+function CashCard({ data }) {
+  const cash = useCash(data);
+  if (!cash) return null;
+  const change = cash.prior != null ? cash.total - cash.prior : null;
+  const top = Math.max(...cash.accounts.map((a) => a.balance), 1);
+  const shown = cash.accounts.filter((a) => a.balance);
+  const vf = asViewer([cash.file]);
+  return html`<section class="bp-card bp-cash bp-rise" style=${rise(1)} aria-labelledby="cash-h">
+    <div class="bp-cash__head">
+      <div>
+        <h2 class="bp-h2" id="cash-h">Cash in the bank</h2>
+        <p class="bp-cash__total">${money(cash.total)}</p>
+        <p class="bp-muted">${cash.asOf ? `As of ${cash.asOf}` : ''}${change != null ? html` · <span class=${change >= 0 ? 'bp-up' : 'bp-down'}>${change >= 0 ? 'up' : 'down'} ${money(Math.abs(change))}</span> from ${cash.priorAsOf || 'a year earlier'}` : ''}</p>
+      </div>
+      <p class="bp-cash__src">From the <a class="bp-link" ...${viewerLink(vf, 0)}>statement of financial position</a> in the <a class="bp-link" href=${`#/meetings/${cash.meeting.id}`} onClick=${claimMorph}>${meetingName(cash.meeting)}</a> packet</p>
+    </div>
+    ${shown.length > 1 ? html`<ul class="bp-accounts">${shown.map((a) => html`<li key=${a.name}>
+      <span class="bp-accounts__name">${a.name}</span>
+      <span class="bp-accounts__bar" aria-hidden="true"><span style=${`--p:${(a.balance / top) * 100}%`}></span></span>
+      <span class="bp-accounts__n">${money(a.balance)}</span>
+    </li>`)}</ul>` : null}
+  </section>`;
+}
+
 function FinancialsPage({ ctx }) {
   const { data } = ctx;
   const [allYears, setAllYears] = useState(false);
@@ -1249,6 +1338,7 @@ function FinancialsPage({ ctx }) {
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
       <div><h1 class="bp-h1">Financials</h1><p class="bp-lede">The statements from each meeting, the year in numbers, and every tax return and audit.</p></div>
     </header>
+    <${CashCard} data=${data} />
     ${latest ? html`<section class="bp-card bp-latest bp-rise" style=${rise(1)} aria-labelledby="st-h">
       <${SecHead} id="st-h" title="The latest statements" sub=${html`From the <a class="bp-link" href=${`#/meetings/${latest.id}`} onClick=${claimMorph}>${meetingName(latest)}</a>, ${longDate(latest.date)}`} />
       <${FileList} files=${latest.files.filter((x) => x.kind === 'financials')} labels=${false} />
@@ -1390,9 +1480,8 @@ function SignForm({ d: doc, ctx }) {
 }
 
 /** Every file from every meeting, by kind, newest meeting first */
-function Library({ data }) {
+function Library({ data, q = '' }) {
   const [kind, setKind] = useState('all');
-  const [q, setQ] = useState('');
   const terms = termsOf(q);
   const meetings = [...data.meetings].filter((m) => m.files.length).sort((a, b) => b.date.localeCompare(a.date));
   const kinds = FILE_KINDS.filter((k) => meetings.some((m) => m.files.some((f) => f.kind === k.id)));
@@ -1400,9 +1489,7 @@ function Library({ data }) {
   const shown = meetings.map((m) => ({ m, files: pick(m) })).filter((x) => x.files.length);
   if (!meetings.length) return null;
   return html`<section class="bp-card bp-library" aria-labelledby="lib-h">
-    <${SecHead} id="lib-h" title="Every meeting’s files" sub="Minutes, packets and statements, newest first">
-      <label class="bp-filter bp-filter--sm"><${Icon} name="search" size=${16} /><span class="sr-only">Find a file</span><input type="search" placeholder="Find a file" value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
-    </${SecHead}>
+    <${SecHead} id="lib-h" title="Every meeting’s files" sub="Minutes, packets and statements, newest first" />
     <div class="bp-chips bp-chips--filter" role="group" aria-label="Show">
       ${[{ id: 'all', label: 'All' }, ...kinds].map((k) => html`<button type="button" class="bp-pill" aria-pressed=${kind === k.id} onClick=${() => setKind(k.id)} key=${k.id}>${k.label}</button>`)}
     </div>
@@ -1413,40 +1500,89 @@ function Library({ data }) {
   </section>`;
 }
 
+/**
+ * SOARD's papers on shelves, as covers: governing documents, tax-exempt status, registrations and insurance
+ * (by what each one is), then plans and anything else. Covers are drawn in CSS: no pictures, no gradients.
+ */
+const SHELVES = [
+  { id: 'governing', label: 'Governing documents', sub: 'How SOARD is set up and run', test: /bylaw|article|incorporat|amend|manual|polic|conflict|whistle|charter|code of/i },
+  { id: 'status', label: 'Tax-exempt status', sub: 'For donors, grants and vendors who ask', test: /501|determination|\bein\b|w-?9|exempt|\birs\b/i },
+  { id: 'standing', label: 'Registrations and insurance', sub: 'Renewed each year', test: /permit|registration|insurance|d&o|licen|good standing|annual report/i },
+];
+const shelfOf = (x) => SHELVES.find((sh) => sh.test.test(x.title))?.id || (x.kind === 'plan' ? 'plan' : x.kind === 'financial' ? 'money' : x.kind === 'policy' ? 'governing' : 'other');
+const MORE_SHELVES = [{ id: 'plan', label: 'Plans and reports', sub: '' }, { id: 'money', label: 'Budgets and audits', sub: '' }, { id: 'other', label: 'More', sub: '' }];
+/** What a cover says it is, in a word or two */
+function coverWord(title) {
+  const t = String(title);
+  for (const [re, w] of [[/bylaw/i, 'Bylaws'], [/articles of incorporation|certificate of incorporation/i, 'Articles of Incorporation'], [/amend/i, 'Amendment'], [/manual/i, 'Board Manual'], [/conflict/i, 'Conflict of Interest'], [/whistle/i, 'Whistleblower'], [/501|determination/i, 'IRS Letter'], [/\bein\b/i, 'EIN'], [/w-?9/i, 'W-9'], [/permit/i, 'Charitable Permit'], [/d&o|directors.*officers/i, 'D&O Insurance'], [/insurance/i, 'Insurance'], [/strateg/i, 'Strategic Plan'], [/budget/i, 'Budget'], [/audit/i, 'Audit']]) if (re.test(t)) return w;
+  return t.length > 28 ? `${t.slice(0, 26).trim()}…` : t;
+}
+const yearOf = (x) => x.year || (String(x.title).match(/\b(19|20)\d{2}\b/) || [])[0] || '';
+function Cover({ x, shelf }) {
+  return html`<span class=${`bp-cover bp-cover--${shelf}`} aria-hidden="true">
+    <span class="bp-cover__org">Sunshine on a Ranney Day</span>
+    <span class="bp-cover__word">${coverWord(x.title)}</span>
+    <span class="bp-cover__rule"></span>
+    ${yearOf(x) ? html`<span class="bp-cover__year">${yearOf(x)}</span>` : null}
+    ${x.file ? html`<span class="bp-cover__fmt">${{ PDF: 'PDF', Excel: 'XLS', Word: 'DOC' }[formatOf(x.file)] || ''}</span>` : null}
+  </span>`;
+}
+
 function DocumentsPage({ ctx }) {
   const { data } = ctx;
   const { docs } = data;
+  const [q, setQ] = useState('');
+  const terms = termsOf(q);
   const year = todayEastern().slice(0, 4);
   useFocusTarget();
   const toSign = docs.filter((x) => x.sign && x.file);
   const done = toSign.filter((x) => x.signedByMe).length;
+  const found = (x) => !terms.length || hits(`${x.title} ${x.note} ${coverWord(x.title)}`, terms);
+  const onShelves = docs.filter((x) => !(x.sign && x.file) && found(x));
+  const shelves = [...SHELVES, ...MORE_SHELVES].map((sh) => ({ ...sh, list: onShelves.filter((x) => shelfOf(x) === sh.id) })).filter((sh) => sh.list.length);
+  const withFile = docs.filter((x) => x.file);
+  const vf = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
+  const open = (x) => (x.file ? viewerLink(vf, withFile.indexOf(x)) : { href: null });
   return html`
-    <header class="bp-pagehead bp-rise" style=${rise(0)}><div><h1 class="bp-h1">Documents</h1><p class="bp-lede">The bylaws, policies and plans, and every file from every meeting. A few documents ask each board member to read and sign them once a year.</p></div></header>
-    ${toSign.length && data.me.slug ? html`<div class="bp-progress bp-rise" style=${rise(1)}>
-      <div class="bp-progress__text"><strong>${done === toSign.length ? `All signed for ${year}. Thank you.` : `${done} of ${toSign.length} signed for ${year}`}</strong></div>
-      <div class="bp-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax=${toSign.length} aria-valuenow=${done} aria-label="Signed this year"><span style=${`--p:${(done / toSign.length) * 100}%`}></span></div>
-    </div>` : null}
-    ${docs.length ? DOC_KINDS.filter((k) => docs.some((x) => x.kind === k.id)).map((k, ki) => {
-      const list = docs.filter((x) => x.kind === k.id);
-      const withFile = list.filter((x) => x.file);
-      const vf = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
-      return html`<section class="bp-card bp-gap bp-rise" style=${rise(2 + ki)} aria-labelledby=${`dk-${k.id}`} key=${k.id}><h2 class="bp-h2" id=${`dk-${k.id}`}>${k.label}</h2><ul class="bp-docs">${list.map((x) => html`<li key=${x.id} class="bp-doc" id=${`doc-${x.id}`}>
-        <div class="bp-doc__head">
-          ${x.file ? html`<${FileBadge} f=${x.file} />` : html`<span class="bp-badge" data-format="File" aria-hidden="true">…</span>`}
-          <div class="bp-doc__text">
-            <p class="bp-doc__title">${x.title}</p>
-            <p class="bp-doc__meta">${[x.note, x.file ? sizeText(x.file.size) : 'The file is on its way', x.sign ? 'Sign once a year' : ''].filter(Boolean).join(' · ')}</p>
-          </div>
-          ${x.file ? html`<a class="bp-btn bp-btn--sm" ...${viewerLink(vf, withFile.indexOf(x))}>${x.sign ? 'Read it' : 'Open it'}</a>` : null}
+    <header class="bp-pagehead bp-rise" style=${rise(0)}>
+      <div><h1 class="bp-h1">Documents</h1><p class="bp-lede">SOARD’s governing documents, its tax-exempt status, registrations and insurance, and every file from every meeting.</p></div>
+      <label class="bp-filter">
+        <${Icon} name="search" size=${18} /><span class="sr-only">Find a document</span>
+        <input type="search" placeholder="Find a document or a file" value=${q} onInput=${(e) => setQ(e.target.value)} />
+      </label>
+    </header>
+    ${toSign.length && data.me.slug && toSign.some(found) ? html`<section class="bp-card bp-gap bp-tosign bp-rise" style=${rise(1)} aria-labelledby="sign-h">
+      <div class="bp-tosign__head">
+        <${SecHead} id="sign-h" title="To read and sign" sub=${`Every board member, once a year. ${done === toSign.length ? `All signed for ${year}. Thank you.` : `${done} of ${toSign.length} signed for ${year}.`}`} />
+        <div class="bp-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax=${toSign.length} aria-valuenow=${done} aria-label=${`Signed for ${year}`}><span style=${`--p:${(done / toSign.length) * 100}%`}></span></div>
+      </div>
+      <ul class="bp-signlist">${toSign.filter(found).map((x) => html`<li key=${x.id} class="bp-doc" id=${`doc-${x.id}`}>
+        <a class="bp-signlist__cover" ...${open(x)} aria-label=${`Read ${x.title}`}><${Cover} x=${x} shelf=${shelfOf(x)} /></a>
+        <div class="bp-signlist__body">
+          <p class="bp-doc__title">${x.title}</p>
+          <p class="bp-doc__meta">${[x.note, sizeText(x.file.size), plural(x.signedCount, 'board member') + ' signed'].filter(Boolean).join(' · ')}</p>
+          <p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p>
+          <${SignForm} d=${x} ctx=${ctx} />
         </div>
-        ${x.sign && x.file ? html`<${SignForm} d=${x} ctx=${ctx} />` : null}
-      </li>`)}</ul></section>`;
-    }) : html`<div class="bp-card bp-empty bp-empty--row bp-gap bp-rise" style=${rise(1)}>
+      </li>`)}</ul>
+    </section>` : null}
+    ${shelves.length ? shelves.map((sh, i) => html`<section class="bp-shelfsec bp-rise" style=${rise(2 + i)} aria-labelledby=${`sh-${sh.id}`} key=${sh.id}>
+      <${SecHead} id=${`sh-${sh.id}`} title=${sh.label} count=${sh.list.length} sub=${sh.sub} />
+      <ul class="bp-shelf">${sh.list.map((x) => html`<li key=${x.id} id=${`doc-${x.id}`} class="bp-doc">
+        <a class="bp-docc" ...${open(x)}>
+          <${Cover} x=${x} shelf=${sh.id} />
+          <span class="bp-docc__title">${x.title}</span>
+          <span class="bp-docc__meta">${[x.note, x.file ? sizeText(x.file.size) : 'On its way'].filter(Boolean).join(' · ')}</span>
+        </a>
+      </li>`)}</ul>
+    </section>`)
+    : docs.length && terms.length ? null
+    : html`<div class="bp-card bp-empty bp-empty--row bp-gap bp-rise" style=${rise(1)}>
       <span class="bp-empty__icon"><${Icon} name="documents" size=${24} /></span>
       <div><h2 class="bp-h2">Bylaws and policies show here</h2>
       <p class="bp-muted">${data.contact ? `Once ${firstName(data.contact.name)} adds them, they’re here to read.` : 'They’re here to read once they’re added.'} Anything to read and sign shows on Home too.</p></div>
     </div>`}
-    <div class="bp-rise" style=${rise(6)}><${Library} data=${data} /></div>`;
+    <div class="bp-rise" style=${rise(6)}><${Library} data=${data} q=${q} /></div>`;
 }
 
 // ─── Search ─────────────────────────────────────────────────────────

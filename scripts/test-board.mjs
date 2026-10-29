@@ -549,7 +549,8 @@ try {
     ok(/It’s on your calendar: the invite went to alex\.board@example\.com/.test(home), 'Home: it’s already on their calendar, so no file to add');
     ok(width === 1440 ? /You answered the calendar invite: Coming/.test(home) : /You said “I’ll join by video\.” You can change it any time\./.test(home), width === 1440 ? 'Home: their reply to the invite shows' : 'Home: the answer they gave here shows');
     ok(width === 1440 ? /Send the venue contract/.test(home) : !/Send the venue contract/.test(home), width === 1440 ? 'Home: their own action item' : 'Home: the action item they ticked off is gone');
-    ok(/\$375,000/.test(home) && /children served/.test(home), 'Home: SOARD at a glance');
+    const figs = await alex.evaluate(() => Object.fromEntries([...document.querySelectorAll('.bp-fig')].map((f) => [f.querySelector('.bp-fig__label').textContent, f.querySelector('.bp-fig__value').textContent])));
+    ok(/^\w{3} \d{1,2}$/.test(figs['Next board meeting'] || '') && figs['Makeovers underway'] === '3' && /^\d/.test(figs['Children served'] || '') && /\$375,000/.test(home), `Home: the figures first (next meeting, makeovers, children served), the cash in Mercury below (${JSON.stringify(figs)})`);
     ok(/Coming up[\s\S]*Maya’s reveal[\s\S]*Sunshine Golf Classic[\s\S]*Leo’s reveal/.test(home) && /Day not set yet/.test(home), 'Home: reveals and events coming up, in date order, a tentative one marked');
     ok(/Makeovers in progress[\s\S]*Design[\s\S]*Leo[\s\S]*1 more family[\s\S]*Build[\s\S]*Maya/i.test(home) && !/Not Published Yet/.test(home), 'Home: the makeovers by stage, published kids by name only');
     ok(await overflow(alex) <= 0, 'Home: nothing past the right edge');
