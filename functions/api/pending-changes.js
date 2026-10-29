@@ -40,7 +40,9 @@ export const RUNTIME_TYPES = ['live-status', 'email-broadcast', 'newsletter', 'i
   // Admin → Partners → Waiting for a logo: "No logo needed" and who's emailed (D1 only)
   'partner-logos',
   // Partners contacts, and what the website set in JobTread: sponsors, vendors on jobs, vendor accounts (D1 and JobTread only)
-  'partner-contacts', 'jobtread-sponsor', 'jobtread-access', 'jobtread-vendor'];
+  'partner-contacts', 'jobtread-sponsor', 'jobtread-access', 'jobtread-vendor',
+  // A founder reading a staff mailbox (_mailbox.js): logged, nothing changed
+  'mailbox'];
 
 /** Normalize a timestamp to SQLite datetime format (YYYY-MM-DD HH:MM:SS) to compare with audit_log.created_at */
 export function toSqliteTimestamp(dateStr) {
