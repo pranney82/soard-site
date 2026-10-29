@@ -388,6 +388,28 @@ test('the Spanish: still behind after four tries, Slack hears once, and the post
   assert.equal(w.world.slack.filter(p => /Spanish application/.test(p.text)).length, 2, 'and nothing more');
 });
 
+test('the Spanish: a try that got some done goes again on the next sweep, not 15 minutes later', async () => {
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = { ...v.messages, approved: `Hi {parent}! ${'Long news. '.repeat(150)}*{child}* is approved.` };
+  field(v, 'interests').label = 'What does your child love?';
+  await saveDraftForm(env.DB, v);
+  assert.equal((await putDraftLive(env.DB)).ok, true);
+  // The long email takes too long the first time; the short label lands
+  let slow = true;
+  env.AI.run = async (model, { messages }) => {
+    const batch = messages[0].content.includes('Reply with JSON') ? JSON.parse(messages.at(-1).content) : null;
+    if (slow && (batch ? batch['message:approved'] : /Long news/.test(messages.at(-1).content))) throw new Error('timed out');
+    return { response: batch ? Object.fromEntries(Object.entries(batch).map(([p, x]) => [p, `ES ${x}`])) : `ES ${messages.at(-1).content}` };
+  };
+  const T0 = Date.parse('2026-10-29T16:00:00Z');
+  const first = await maybeSweepApplications(env, { force: true, now: T0 });
+  assert.deepEqual([first.spanish.filled, first.spanish.failed], [1, ['message:approved']]);
+  slow = false;
+  const next = await maybeSweepApplications(env, { force: true, now: T0 + 2 * 60000 });
+  assert.deepEqual([next.spanish.filled, next.spanish.failed], [1, []], 'two minutes later, not fifteen');
+  assert.match(await familyMessage(env, 'approved', { parent: 'Ana', child: 'Sofía', lang: 'es' }), /^ES Hi Ana! Long news\./);
+});
+
 // ── The public endpoint ─────────────────────────────────────────────
 
 test('the page config carries the live form and nothing internal; drafts are for signed-in staff only', async () => {

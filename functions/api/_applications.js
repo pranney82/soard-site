@@ -1537,9 +1537,10 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
 /**
  * The live family form's Spanish, caught up with its English (./_translate.js).
  * Put live does this as a version goes live; this catches what the AI
- * couldn't do then, trying each version again at most every SPANISH_RETRY_MS.
- * Still behind after SPANISH_ALERT_TRIES tries, it says so in Slack once; the
- * post turns ✅ when the Spanish catches up.
+ * couldn't do then. A try that got some done tries again on the next sweep;
+ * one that got nothing waits SPANISH_RETRY_MS. After SPANISH_ALERT_TRIES
+ * tries in a row with nothing done, it says so in Slack once; the post turns
+ * ✅ when the Spanish catches up.
  */
 async function catchUpLiveSpanish(env, { now = Date.now() } = {}) {
   const { DB } = env;
@@ -1555,17 +1556,21 @@ async function catchUpLiveSpanish(env, { now = Date.now() } = {}) {
     }
     return null;
   }
-  if (last.version === live.version && now - last.at < SPANISH_RETRY_MS) return null;
-  const tries = last.version === live.version ? (last.tries || 0) + 1 : 1;
-  await save({ version: live.version, at: now, tries, alerted: !!last.alerted });
+  const same = last.version === live.version;
+  if (same && now < (last.next || 0)) return null;
+  // Claimed before the AI runs, so a sweep that overlaps this one doesn't start it again
+  await save({ version: live.version, next: now + SPANISH_RETRY_MS, tries: same ? last.tries || 0 : 0, alerted: !!last.alerted });
   const out = await catchUpSpanish(env, live.version);
-  if (out.failed.length && tries >= SPANISH_ALERT_TRIES && !last.alerted) {
+  const tries = out.filled ? 0 : (same ? last.tries || 0 : 0) + 1;
+  let alerted = !!last.alerted;
+  if (out.failed.length && tries >= SPANISH_ALERT_TRIES && !alerted) {
     await slackIssue(env, SPANISH_ISSUE, spanishBehindCard(out.failed, tries), { title: 'The Spanish application was behind the English', area: 'applications' }).catch(() => null);
-    await save({ version: live.version, at: now, tries, alerted: true });
-  } else if (!out.failed.length && last.alerted) {
+    alerted = true;
+  } else if (!out.failed.length && alerted) {
     await spanishCaughtUp(env);
-    await save({ version: live.version, at: now, tries, alerted: false });
+    alerted = false;
   }
+  await save({ version: live.version, next: out.filled ? now : now + SPANISH_RETRY_MS, tries, alerted });
   return { version: live.version, tries, ...out };
 }
 const spanishCaughtUp = (env) => slackResolved(env, SPANISH_ISSUE, slackCard({ icon: '✅', title: 'The Spanish application caught up', lead: 'Spanish-speaking families get the current wording again. Nothing to do.' })).catch(() => null);

@@ -17,9 +17,10 @@ import { getFormVersion, addTranslations, reopenTranslations } from './_applicat
 
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const BATCH = 12;
-// A batch's English, in characters: the emails are long, and a full batch of them would run past max_tokens
-const BATCH_CHARS = 3000;
-const AT_ONCE = 4;
+// A batch's English, in characters. Small, so a long email goes alone and every batch is back
+// within catchUpSpanish's budget: in production on Oct 29 2026, 3,000-character batches weren't
+const BATCH_CHARS = 1000;
+const AT_ONCE = 8;
 
 const BRIEF = `You translate a children's charity's makeover application from English into Spanish for families in the United States (many from Mexico and Central America).
 Write warm, plain, respectful Spanish using "usted". Say "su hijo o hija" for "your child" and "el niño o la niña" for "the child".
