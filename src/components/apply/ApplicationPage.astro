@@ -1139,7 +1139,9 @@ const breadcrumbs = [
   html.af-focus .af-save-row { display: none; }
   @media (max-width: 640px) {
     .af-nav-later { display: none; }
-    html.af-focus .af-nav-later { display: inline-flex; flex: 0 1 auto; max-width: 40%; min-height: 44px; padding: 0 4px; font-size: 14px; line-height: 1.25; text-align: center; }
+    html.af-focus .af-nav-later { display: inline-flex; flex: 0 1 auto; min-width: 0; max-width: 40%; min-height: 44px; padding: 0 2px; font-size: 14px; line-height: 1.2; text-align: center; }
+    html.af-focus .af-nav-later.is-squeezed { display: none; }
+    html.af-focus .af-nav-row [data-next] { flex: 1 0 auto; white-space: nowrap; }
     html.af-focus .af-nav-row .af-btn--back { width: 52px; min-width: 52px; padding: 0; justify-content: center; flex: none; }
     html.af-focus .af-nav-row .af-btn--back span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   }

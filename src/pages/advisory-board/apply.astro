@@ -139,8 +139,10 @@ const logo = 'brand-logo-light-bg-display';
           ))}
           <!-- Review: a row per step with its answers in a line, opened for the details -->
           <section class="adv-page adv-page--review" data-step={total} data-step-id="review" hidden aria-label="Review and send">
-            <p class="adv-intro">Look over your answers. Change anything you like, then send.</p>
-            <div class="adv-review-bar"><button type="button" class="adv-linkbtn" id="adv-review-all" aria-expanded="false">Show all answers</button></div>
+            <div class="adv-review-top">
+              <p class="adv-intro">Look over your answers. Change anything you like, then send.</p>
+              <button type="button" class="adv-linkbtn" id="adv-review-all" aria-expanded="false">Show all answers</button>
+            </div>
             <div class="adv-review" id="adv-review"></div>
             <div class="adv-turnstile" id="adv-turnstile" hidden><div class="cf-turnstile"></div></div>
           </section>
@@ -350,17 +352,19 @@ const logo = 'brand-logo-light-bg-display';
   .adv-check input { width: 22px; height: 22px; margin-top: 1px; accent-color: var(--c-dark); flex: none; }
   .adv-check a { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; white-space: nowrap; }
   .adv-date { font-size: 14px; color: var(--c-text-muted); margin: -8px 0 20px; }
-  .adv-turnstile { margin: 20px 0 0; min-height: 65px; }
+  .adv-turnstile { margin: 14px 0 0; min-height: 65px; }
   .adv-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
   /* Review: a row per step (the answers in a line), opened for the details */
-  .adv-review-bar { display: flex; justify-content: flex-end; margin: -8px 0 8px; }
+  /* The words and "Show all answers" share a line, so the rows and the quick check fit above Send */
+  .adv-review-top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 16px; margin: 8px 0 16px; }
+  .adv-review-top .adv-intro { flex: 1 1 260px; margin: 0; }
   .adv-review { display: grid; gap: 8px; }
   .adv-review-section { border: 1px solid var(--c-border); border-radius: 18px; background: #fff; overflow: clip; }
   .adv-review-section[data-missing] { border-color: #E6C400; }
-  .adv-review-head { display: flex; align-items: center; gap: 4px; padding: 6px 10px 6px 6px; }
+  .adv-review-head { display: flex; align-items: center; gap: 4px; padding: 3px 8px 3px 4px; }
   .adv-review-h { flex: 1; min-width: 0; margin: 0; font-family: var(--font-body); font-size: inherit; letter-spacing: 0; }
-  .adv-review-toggle { width: 100%; min-width: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr) 16px; gap: 12px; align-items: center; min-height: 56px; padding: 6px 8px; font: inherit; text-align: left; color: var(--c-dark); background: none; border: 0; border-radius: 12px; cursor: pointer; }
+  .adv-review-toggle { width: 100%; min-width: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr) 16px; gap: 12px; align-items: center; min-height: 52px; padding: 5px 8px; font: inherit; text-align: left; color: var(--c-dark); background: none; border: 0; border-radius: 12px; cursor: pointer; }
   .adv-review-toggle:hover { background: var(--c-cream); }
   .adv-review-toggle:focus-visible { outline: 3px solid var(--c-dark); outline-offset: -2px; }
   .adv-review-name { display: grid; gap: 2px; min-width: 0; }

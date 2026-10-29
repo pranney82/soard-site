@@ -764,6 +764,19 @@ function init(root, cfg, mode) {
     ui.next.disabled = busy || !!blockedBy;
     ui.next.setAttribute('aria-busy', String(busy));
     if (ui.turnstile) ui.turnstile.hidden = !(turnstileSiteKey && !token && !previewing && at === 0 && screenNo === 0);
+    fitNavLater();
+  }
+  /**
+   * A phone's bar: Save and finish later between Back and Continue while it fits beside them (three
+   * short lines at most, the buttons' height). A long Continue ("Revisar mis respuestas") keeps its
+   * one line, and the link steps aside for that screen (Save and exit, at the top, saves too).
+   */
+  function fitNavLater() {
+    const later = ui.form.querySelector('.af-nav-later');
+    if (!later) return;
+    later.classList.remove('is-squeezed');
+    if (!focused || getComputedStyle(later).display === 'none') return;
+    if (later.offsetHeight > 52 || later.scrollWidth > later.clientWidth + 2) later.classList.add('is-squeezed');
   }
 
   // ── A page a screen at a time ────────────────────────────────────
@@ -2888,6 +2901,8 @@ function init(root, cfg, mode) {
   let declutterTimer = 0;
   const redeclutter = () => { clearTimeout(declutterTimer); declutterTimer = setTimeout(() => { declutter(ui.pages); declutter(ui.stopMap); }, 120); };
   window.addEventListener('resize', redeclutter, { signal });
+  window.addEventListener('resize', fitNavLater, { signal });
+  document.fonts?.ready.then(fitNavLater); // measured again in the site's own type
   window.addEventListener('beforeunload', (e) => {
     if (uploads.size || recorder?.rec) { e.preventDefault(); e.returnValue = ''; }
   }, { signal });
