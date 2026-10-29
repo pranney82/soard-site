@@ -530,9 +530,12 @@ export async function cashHistory(DB) {
   return ((await DB.prepare('SELECT month, total, at FROM board_cash WHERE total > 0 ORDER BY month DESC LIMIT 24').all()).results || []).map((r) => ({ month: r.month, total: r.total, at: r.at }));
 }
 
+/** JobTread's Status for a family approved and waiting on the money to start */
+export const AWAITING_FUNDING = 'Awaiting Funding';
+
 /**
  * Open makeovers by JobTread status, the building ones with their kid or
- * community project → { byStatus, building: [{ name, slug, status, url?, kind? }] }
+ * community project → { byStatus, building: [{ name, slug, status, url?, kind? }], waiting: [same, Awaiting Funding] }
  * (15-minute copy). A project carries kind 'community', and its url only
  * once its page is public.
  */
@@ -544,26 +547,27 @@ export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fr
     const [jobs, kids, projects] = await Promise.all([fetchJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), loadKids(env.DB).catch(() => []), loadProjects(env.DB, { drafts: true }).catch(() => [])]);
     const byStatus = {};
     const building = [];
+    // Families approved and waiting on the money to start: the board's first column
+    const waiting = [];
     for (const job of jobs) {
       if (isRehearsalJob(job)) continue;
       const status = String((job.customFieldValues?.nodes || []).find((v) => v.customField?.id === FIELD_JOB_STATUS)?.value || '').trim();
       if (!status) continue;
       byStatus[status] = (byStatus[status] || 0) + 1;
-      if (BUILDING_STATUSES.has(status)) {
-        const hit = matchProject(job.name, [...kids, ...projects], job.id);
-        if (isProject(hit)) {
-          // An organization's room: named once its project is published, never by the job's own name
-          // An organization, by its name on Community even before it's published (the board is SOARD's own;
-          // a child's name waits for their page). Linked and pictured once its page is public
-          building.push({ name: hit.name || null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null, ...photoField(hit.published && hit.heroImage) });
-          continue;
-        }
-        const kid = hit;
-        // By name only with a published kid page: a job's own name in JobTread is internal ("Not Published Yet"). Its photo likewise
-        building.push({ name: kid?.name || null, slug: kid?.slug || null, status, ...photoField(kid?.name && kid.heroImage) });
+      const list = BUILDING_STATUSES.has(status) ? building : status === AWAITING_FUNDING ? waiting : null;
+      if (!list) continue;
+      const hit = matchProject(job.name, [...kids, ...projects], job.id);
+      if (isProject(hit)) {
+        // An organization, by its name on Community even before it's published (the board is SOARD's own;
+        // a child's name waits for their page). Linked and pictured once its page is public
+        list.push({ name: hit.name || null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null, ...photoField(hit.published && hit.heroImage) });
+        continue;
       }
+      const kid = hit;
+      // By name only with a published kid page: a job's own name in JobTread is internal ("Not Published Yet"). Its photo likewise
+      list.push({ name: kid?.name || null, slug: kid?.slug || null, status, ...photoField(kid?.name && kid.heroImage) });
     }
-    const value = { byStatus, building };
+    const value = { byStatus, building, waiting };
     await writeState(env.DB, 'projects', { at: new Date(now).toISOString(), value });
     return value;
   } catch (err) {

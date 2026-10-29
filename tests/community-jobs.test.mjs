@@ -107,5 +107,6 @@ test('the board’s makeovers in progress: an organization by its name on Commun
     { name: 'Grace Academy', slug: null, status: 'Build', kind: 'community', url: null },
     { name: null, slug: null, status: 'Build' },
   ], 'the Lionheart draft goes by its name, with no link; Grace Academy is public with no page yet, so no link either');
-  assert.ok(!JSON.stringify(v).includes('Not Published Yet'), 'a job’s own name never reaches the board');
+  assert.deepEqual(v.waiting, [{ name: null, slug: null, status: 'Awaiting Funding' }], 'a family awaiting funding: in its own list, by name only once their page is up');
+  assert.ok(!JSON.stringify(v).includes('Not Published Yet') && !JSON.stringify(v).includes('Somebody Waiting'), 'a job’s own name never reaches the board');
 });

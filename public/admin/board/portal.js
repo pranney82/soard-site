@@ -720,51 +720,53 @@ function SinceLast({ ctx }) {
 
 /** Where a makeover's link goes: a kid's page, or a community project's page once it's public */
 const projectHref = (b) => (b.kind === 'community' ? b.url || '' : b.url || (b.slug ? `/kids/${b.slug}/` : ''));
-/** The makeovers as a board: a column per stage, Design to Build, each one a card with its reveal */
+/**
+ * The makeovers as a board: a column per stage, Design to Build. Each card leads with the kid's photo, then their
+ * name and the reveal: the day and time once it's set, else the part of the month. A kid with no photo yet, or an
+ * organization's room, has a flat block with initials in its place.
+ */
 const BUILD_ORDER = ['Build', 'Mobilization', 'Approval', 'Finalization', 'Design'];
 const STAGE_FLOW = ['Design', 'Finalization', 'Approval', 'Mobilization', 'Build'];
-function Builds({ n, data, d }) {
-  const [all, setAll] = useState(false);
+function Builds({ n }) {
   const building = n.projects?.building || [];
-  const ahead = aheadRows(data, d);
-  const aheadShown = all ? ahead : ahead.slice(0, 6);
-  const stages = [...STAGE_FLOW.filter((st) => st !== 'Finalization' || building.some((b) => b.status === st)), ...new Set(building.map((b) => b.status).filter((st) => !STAGE_FLOW.includes(st)))];
+  const waiting = n.projects?.waiting || [];
+  const all = [...waiting, ...building];
+  // Awaiting funding first (approved, waiting on the money), then the stages of the build
+  const stages = ['Awaiting Funding', ...STAGE_FLOW.filter((st) => st !== 'Finalization' || building.some((b) => b.status === st)), ...new Set(building.map((b) => b.status).filter((st) => !STAGE_FLOW.includes(st)))];
   const revealOf = (b) => (b.slug ? n.reveals.find((r) => r.slug === b.slug) : null);
-  const when = (r) => (!r ? '' : r.confirmed && r.date ? `Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}` : r.window?.label ? `Reveal ${r.window.label}` : '');
+  const reveal = (b) => {
+    if (b.kind === 'community') return html`<span class="bp-kcard__reveal is-quiet">Community project</span>`;
+    const r = revealOf(b);
+    if (r?.confirmed && r.date) return html`<span class="bp-kcard__reveal is-set"><${Icon} name="calendar" size=${15} />Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}${r.time ? ` · ${clock(r.time).replace(':00', '')}` : ''}</span>`;
+    if (r?.window?.label) return html`<span class="bp-kcard__reveal"><${Icon} name="calendar" size=${15} />Reveal ${r.window.label}</span>`;
+    // Awaiting funding: the column says why there's no date yet
+    return b.status === 'Awaiting Funding' ? null : html`<span class="bp-kcard__reveal is-quiet">Reveal date to come</span>`;
+  };
   const card = (b) => {
     const href = projectHref(b);
-    const inner = html`<${Avatar} p=${{ name: b.name, photo: b.photo ? sized(b.photo, 'w=72,h=72,fit=cover,gravity=auto') : '' }} size=${30} />
-      <span class="bp-kcard__text"><span class="bp-kcard__name">${b.name}</span><span class="bp-kcard__meta">${b.kind === 'community' ? 'Community project' : when(revealOf(b)) || 'Reveal date to come'}</span></span>`;
-    return html`<li key=${b.slug || b.name}>${href ? html`<a class="bp-kcard" href=${href} target="_blank" rel="noopener">${inner}</a>` : html`<span class="bp-kcard">${inner}</span>`}</li>`;
+    const inner = html`<span class="bp-kcard__photo">${b.photo
+      ? html`<img src=${sized(b.photo, 'w=560,h=380,fit=cover,gravity=face')} alt="" loading="lazy" decoding="async" width="280" height="190" />`
+      : html`<span class="bp-kcard__initials" style=${`--hue:${hueOf(b.name)}`} aria-hidden="true">${initialsOf(b.name)}</span>`}</span>
+      <span class="bp-kcard__body"><span class="bp-kcard__name">${b.name}</span>${reveal(b)}</span>`;
+    return html`<li key=${b.slug || b.name}>${href ? html`<a class="bp-kcard bp-kcard--kid" href=${href} target="_blank" rel="noopener">${inner}</a>` : html`<div class="bp-kcard bp-kcard--kid">${inner}</div>`}</li>`;
   };
-  const aheadCol = html`<div class="bp-kcol bp-kcol--ahead" key="ahead" id="coming-up">
-    <p class="bp-kcol__head"><span>Coming up</span><span class="bp-kcol__n">${ahead.length}</span></p>
-    <ul class="bp-kcol__cards">
-      ${aheadShown.map((r) => html`<li key=${r.key}><a class="bp-kcard bp-kcard--date" href=${r.href} target=${r.ext ? '_blank' : null} rel=${r.ext ? 'noopener' : null} onClick=${r.mid ? claimMorph : null}>
-        ${r.date ? html`<${DateTile} d=${r.date} mid=${r.mid || null} />` : html`<${WindowTile} w=${r.window} />`}
-        <span class="bp-kcard__text"><span class="bp-kcard__name">${r.title}</span><span class="bp-kcard__meta">${r.when}</span></span>
-      </a></li>`)}
-      ${ahead.length > 6 ? html`<li><button type="button" class="bp-kcol__more" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? 'Fewer' : `${ahead.length - 6} more`}</button></li>` : null}
-      ${ahead.length ? null : html`<li class="bp-kcol__none">Nothing on the calendar yet</li>`}
-    </ul>
-  </div>`;
   return html`<section class="bp-card bp-kanban" aria-labelledby="builds-h" id="makeovers">
-    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers and coming up</h2><span class="bp-muted">${building.length ? `${plural(building.length, 'makeover')} in progress, from JobTread` : ''}</span></div>
-    ${!n.projects ? html`<p class="bp-muted">The list from JobTread isn’t available right now.</p><div class="bp-kanban__cols" style="--n:1">${aheadCol}</div>` : html`<div class="bp-kanban__cols" style=${`--n:${stages.length + 1}`}>${stages.map((st) => {
-      const list = building.filter((b) => b.status === st);
+    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers</h2><span class="bp-muted">${[building.length ? `${building.length} in progress` : '', waiting.length ? `${waiting.length} awaiting funding` : ''].filter(Boolean).join(' · ')}${building.length || waiting.length ? ', from JobTread' : ''}</span></div>
+    ${!n.projects ? html`<p class="bp-muted">The list from JobTread isn’t available right now.</p>` : html`<div class="bp-kanban__cols">${stages.map((st) => {
+      const list = all.filter((b) => b.status === st);
       const named = list.filter((b) => b.name);
       const unnamed = list.filter((b) => !b.name && b.kind !== 'community').length;
       const orgs = list.filter((b) => !b.name && b.kind === 'community').length;
       return html`<div class=${`bp-kcol ${list.length ? '' : 'is-empty'}`} key=${st}>
-        <p class="bp-kcol__head"><span>${st}</span><span class="bp-kcol__n">${list.length}</span></p>
+        <p class="bp-kcol__head"><span>${st === 'Awaiting Funding' ? 'Awaiting funding' : st}</span><span class="bp-kcol__n">${list.length}</span></p>
         <ul class="bp-kcol__cards">
           ${named.map(card)}
-          ${unnamed ? html`<li><span class="bp-kcard is-quiet"><span class="bp-kcard__text"><span class="bp-kcard__name">${named.length ? `+${unnamed} more ${unnamed === 1 ? 'family' : 'families'}` : plural(unnamed, 'family', 'families')}</span><span class="bp-kcard__meta">Named once their page is up</span></span></span></li>` : null}
-          ${orgs ? html`<li><span class="bp-kcard is-quiet"><span class="bp-kcard__text"><span class="bp-kcard__name">${plural(orgs, 'community project')}</span><span class="bp-kcard__meta">Not on Community yet</span></span></span></li>` : null}
+          ${unnamed ? html`<li><span class="bp-kcard is-quiet"><span class="bp-kcard__body"><span class="bp-kcard__name">${named.length ? `+${unnamed} more ${unnamed === 1 ? 'family' : 'families'}` : plural(unnamed, 'family', 'families')}</span><span class="bp-kcard__reveal is-quiet">Named once their page is up</span></span></span></li>` : null}
+          ${orgs ? html`<li><span class="bp-kcard is-quiet"><span class="bp-kcard__body"><span class="bp-kcard__name">${plural(orgs, 'community project')}</span><span class="bp-kcard__reveal is-quiet">Not on Community yet</span></span></span></li>` : null}
           ${list.length ? null : html`<li class="bp-kcol__none">None now</li>`}
         </ul>
       </div>`;
-    })}${aheadCol}</div>`}
+    })}</div>`}
   </section>`;
 }
 
@@ -797,7 +799,7 @@ function HomePage({ ctx }) {
       <div class="bp-stack bp-rise" style=${rise(2)}>${m ? html`<${NextMeeting} m=${m} ctx=${ctx} peek=${true} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
       <div class="bp-stack bp-rise" style=${rise(3)}>${todos}<${SinceLast} ctx=${ctx} /></div>
     </div>
-    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} data=${data} d=${d} /></div>`;
+    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} /></div>`;
 }
 
 function NoMeeting({ ctx }) {
@@ -919,15 +921,6 @@ function MyAction({ a, ctx }) {
   </label></li>`;
 }
 
-/** Reveals, events and other board meetings from today on, soonest first */
-function aheadRows(data, d) {
-  const n = data.numbers;
-  return [
-    ...n.reveals.map((r) => ({ key: `r-${r.slug}`, sort: r.confirmed && r.date ? r.date : (windowStart(r.window) || r.date || '9999'), date: r.confirmed ? r.date : '', window: r.confirmed ? null : r.window, title: `${r.name}’s reveal`, href: r.kidUrl, ext: true, when: r.confirmed ? [partsOf(r.date).wk, r.time ? clock(r.time) : ''].filter(Boolean).join(' · ') : 'Day not set yet' })),
-    ...n.events.map((e) => ({ key: `e-${e.slug}`, sort: e.date, date: e.date, title: e.title, href: e.url, ext: true, when: [partsOf(e.date).wk, e.time].filter(Boolean).join(' · ') })),
-    ...data.meetings.filter((m) => m.date >= data.today && m.id !== d.featured?.id).map((m) => ({ key: `m-${m.id}`, sort: m.date, date: m.date, title: meetingName(m), href: `#/meetings/${m.id}`, mid: m.id, when: [partsOf(m.date).wk, m.start ? clock(m.start) : ''].filter(Boolean).join(' · ') })),
-  ].sort((a, b) => String(a.sort).localeCompare(String(b.sort)));
-}
 
 // ─── Meetings ───────────────────────────────────────────────────────
 /** Everything a meeting says, for finding it: [{ where, text }] */

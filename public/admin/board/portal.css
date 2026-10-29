@@ -228,32 +228,34 @@ a.bp-row:hover { background: var(--warm); }
 .bp-facts-list strong { flex-shrink: 0; font-weight: 650; font-size: 0.86rem; color: var(--ink-2); }
 .bp-facts-list li.is-mine strong { color: var(--gold); }
 /* Makeovers as a kanban: a column per stage, the cards down each column */
-.bp-kanban__cols { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 0.6rem; }
-.bp-kcol { display: flex; flex-direction: column; min-width: 0; padding: 0.55rem; border-radius: var(--r); background: var(--warm); }
-.bp-kcol__head { display: flex; align-items: center; justify-content: space-between; margin: 0.1rem 0.25rem 0.5rem; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); }
-.bp-kcol__n { display: grid; place-items: center; min-width: 1.4rem; height: 1.4rem; padding: 0 0.35rem; border-radius: 999px; background: #fff; font-size: 0.74rem; letter-spacing: 0; color: var(--ink); }
+/* One row of stages; when they don't fit, it swipes sideways (the next column peeking) instead of wrapping */
+.bp-kanban__cols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(10.5rem, 1fr); gap: 0.6rem; margin-inline: -1.3rem; padding: 0 1.3rem 0.35rem; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: 1.3rem; scrollbar-width: thin; }
+.bp-kcol { scroll-snap-align: start; display: flex; flex-direction: column; min-width: 0; padding: 0.55rem; border-radius: var(--r); background: var(--warm); }
+.bp-kcol__head { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; margin: 0.1rem 0.25rem 0.5rem; font-size: 0.82rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.bp-kcol__head > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bp-kcol__n { flex: none; display: grid; place-items: center; min-width: 1.4rem; height: 1.4rem; padding: 0 0.35rem; border-radius: 999px; background: #fff; font-size: 0.74rem; letter-spacing: 0; color: var(--ink); }
 .bp-kcol.is-empty .bp-kcol__head { color: var(--faint); }
 .bp-kcol__cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
 .bp-kcol__none { padding: 0.5rem 0.4rem; color: var(--faint); font-size: 0.84rem; }
 .bp-kcard { display: flex; align-items: center; gap: 0.55rem; padding: 0.5rem 0.55rem; border-radius: 12px; background: #fff; border: 1px solid rgba(45, 47, 44, 0.07); box-shadow: var(--shadow-1); text-decoration: none; color: var(--ink); min-width: 0; transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease); }
 a.bp-kcard:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
-.bp-kcard__text { display: grid; min-width: 0; }
-.bp-kcard__name { font-weight: 650; font-size: 0.9rem; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
-.bp-kcard__meta { color: var(--muted); font-size: 0.78rem; line-height: 1.3; }
+.bp-kcard__name { font-weight: 650; font-size: 1rem; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .bp-kcard.is-quiet { background: transparent; border-style: dashed; box-shadow: none; }
-/* The last column, what's coming up: a date on each card */
-.bp-kcol--ahead { background: var(--yellow-wash); box-shadow: inset 0 0 0 1px rgba(245, 204, 0, 0.3); }
-.bp-kcard--date { padding: 0.4rem 0.55rem 0.4rem 0.4rem; }
-.bp-kcard--date .bp-date { width: 2.45rem; height: 2.6rem; border-radius: 9px; }
-.bp-kcard--date .bp-date__mon { font-size: 0.6rem; }
-.bp-kcard--date .bp-date__day { font-size: 1.05rem; }
-.bp-kcard--date .bp-date__day--word { font-size: 0.72rem; }
-.bp-kcol__more { width: 100%; min-height: 36px; border: none; background: none; color: var(--info); font-weight: 650; font-size: 0.86rem; cursor: pointer; border-radius: 10px; }
-.bp-kcol__more:hover { background: rgba(255, 255, 255, 0.6); }
-.bp-kcard.is-quiet .bp-kcard__name { font-weight: 600; color: var(--ink-2); white-space: normal; }
-@media (max-width: 1100px) { .bp-kanban__cols { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .bp-kanban__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 520px) { .bp-kanban__cols { grid-template-columns: 1fr; } .bp-kcol.is-empty { display: none; } }
+/* A kid's card: their photo first, then the name and the reveal */
+.bp-kcard--kid { display: block; padding: 0; overflow: hidden; }
+.bp-kcard__photo { display: block; aspect-ratio: 3 / 2; background: var(--warm-2); overflow: hidden; }
+.bp-kcard__photo img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform 0.8s var(--ease); }
+a.bp-kcard--kid:hover .bp-kcard__photo img { transform: scale(1.04); }
+.bp-kcard__photo:has(.bp-kcard__initials) { aspect-ratio: 3 / 1.15; }
+.bp-kcard__initials { display: grid; place-items: center; width: 100%; height: 100%; background: hsl(var(--hue, 42) 40% 90%); color: hsl(var(--hue, 42) 35% 30%); font-family: var(--display); font-weight: 700; font-size: 1.9rem; letter-spacing: 0.02em; }
+.bp-kcard__body { display: grid; gap: 0.35rem; padding: 0.6rem 0.7rem 0.7rem; min-width: 0; }
+.bp-kcard__reveal { display: inline-flex; align-items: flex-start; gap: 0.35rem; justify-self: start; max-width: 100%; padding: 0.25rem 0.55rem 0.25rem 0.45rem; border-radius: 8px; background: var(--warm); color: var(--ink-2); font-size: 0.8rem; font-weight: 650; line-height: 1.3; }
+.bp-kcard__reveal svg { flex: none; margin-top: 0.05rem; }
+.bp-kcard__reveal.is-set { background: var(--yellow); color: #1E1F1C; }
+.bp-kcard__reveal.is-quiet { padding: 0; background: none; color: var(--muted); font-weight: 500; }
+.bp-kcard.is-quiet { display: block; padding: 0; }
+.bp-kcard.is-quiet .bp-kcard__name { color: var(--ink-2); font-weight: 600; }
+@media (max-width: 640px) { .bp-kanban__cols { grid-auto-columns: 80%; margin-inline: -1.1rem; padding-inline: 1.1rem; scroll-padding-inline: 1.1rem; scroll-snap-type: x mandatory; align-items: start; } .bp-kcol.is-empty { display: none; } }
 
 /* The figures: what a board member wants first, each a door to the rest */
 .bp-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }

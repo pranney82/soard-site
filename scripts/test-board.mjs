@@ -551,9 +551,10 @@ try {
     const figs = await alex.evaluate(() => Object.fromEntries([...document.querySelectorAll('.bp-fig')].map((f) => [f.querySelector('.bp-fig__label').textContent, f.querySelector('.bp-fig__value').textContent])));
     ok(Object.keys(figs).length === 4 && figs['Makeovers'] === '3' && figs['Cash in the bank'] === '$375K' && !/Recently|The money/.test(home), `Home: four figures (Mercury's cash, the makeovers), nothing repeated below (${JSON.stringify(figs)})`);
     ok(await alex.$$eval('.bp-next .bp-peek li', (l) => l.length) > 0, 'Home: the next meeting’s agenda headings, right there');
-    const ahead = await alex.$eval('.bp-kcol--ahead', (e) => e.textContent);
-    ok(/Coming up[\s\S]*Maya’s reveal[\s\S]*Sunshine Golf Classic[\s\S]*Leo’s reveal/.test(ahead) && /Day not set yet/.test(ahead), 'Home: reveals and events coming up, in date order, a tentative one marked, as the kanban’s last column');
-    ok(/Makeovers and coming up[\s\S]*Design[\s\S]*Leo[\s\S]*\+1 more family[\s\S]*Build[\s\S]*Maya/i.test(home) && !/Not Published Yet/.test(home) && await alex.$$eval('.bp-kcol', (c) => c.length) >= 4, 'Home: the makeovers as a kanban, Design to Build, then what’s coming up; published kids by name only');
+    const cols = await alex.$$eval('.bp-kcol', (c) => c.map((e) => e.textContent));
+    ok(/^Awaiting funding1[\s\S]*1 family/.test(cols[0]) && /^Design2[\s\S]*Leo[\s\S]*\+1 more family/.test(cols[1]) && /^Build1[\s\S]*Maya/.test(cols.at(-1)) && !/Not Published Yet|Someone Else|Coming up/.test(home), `Home: the makeovers as a kanban, Awaiting funding first, then Design to Build; published kids by name only (${JSON.stringify(cols)})`);
+    const kids = await alex.$$eval('.bp-kcard--kid', (c) => c.map((e) => ({ text: e.querySelector('.bp-kcard__body').textContent, img: !!e.querySelector('.bp-kcard__photo img, .bp-kcard__initials') })));
+    ok(kids.length === 2 && kids.every((k) => k.img) && kids.some((k) => /^Maya\s*Reveal \w{3} \d+ · 10 AM$/.test(k.text)) && kids.some((k) => /^Leo\s*Reveal mid December$/.test(k.text)), `Home: each kid’s card leads with their photo and carries their reveal, a set day or the part of the month (${JSON.stringify(kids)})`);
     ok(await overflow(alex) <= 0, 'Home: nothing past the right edge');
     if (width === 390) {
       const bar = await alex.evaluate(() => { const n = getComputedStyle(document.querySelector('.bp-nav')); return { pos: n.position, bottom: n.bottom, top: getComputedStyle(document.querySelector('.bp-top')).position, tabs: document.querySelectorAll('.bp-nav a').length }; });
@@ -616,7 +617,7 @@ try {
       await clickText(alex, 'button', /^I’ve read it and agree$/);
       ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name');
       await alex.goto(`${SITE}/admin/board/#/reveals`, { waitUntil: 'networkidle0' });
-      ok(await alex.evaluate(() => location.hash) === '#/' && await waitText(alex, /Makeovers and coming up/), 'the old Reveals link opens Home, where reveals are now');
+      ok(await alex.evaluate(() => location.hash) === '#/' && await waitText(alex, /awaiting funding, from JobTread/), 'the old Reveals link opens Home, where reveals are now');
       await alex.goto(`${SITE}/admin/board/#/meetings/${pastId}`, { waitUntil: 'networkidle0' });
       ok(!(await waitText(alex, /Reserves grew/, 2000)), 'a meeting not shared stays off the board page');
     } else {
@@ -638,7 +639,7 @@ try {
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Signed by Alex Rivera/), 'and who signed the policy');
   await jane.goto(`${SITE}/admin/board/`, { waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /Makeovers and coming up/) && !/the way board members do/.test(await text(jane)), 'the founder sees the board page as the board does, with no banner saying so');
+  ok(await waitText(jane, /awaiting funding, from JobTread/) && !/the way board members do/.test(await text(jane)), 'the founder sees the board page as the board does, with no banner saying so');
   ok(await jane.evaluate(() => !document.querySelector('.bp-choice') && !document.querySelector('.bp-sign')), 'with nothing to answer or sign for anyone');
   await jane.click('.bp-me__btn');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bp-menu a')].some((a) => a.getAttribute('href') === '/admin/#board' && /Back to the Board area/.test(a.textContent))), 'the account menu has the way back to the Board area');
