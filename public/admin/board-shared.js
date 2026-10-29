@@ -399,6 +399,13 @@ export function nextMeeting(meetings, today = todayEastern()) {
   return [...(meetings || [])].filter((m) => isDate(m.date) && m.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
 }
 
+/** A majority of the board: 13 → 7, 12 → 7 */
+export const majority = (n) => (n > 0 ? Math.floor(n / 2) + 1 : 0);
+/**
+ * A meeting's quorum: a majority of the board members on its list, unless Settings names a number (bylaws
+ * that say otherwise). Board members present or on video count toward it.
+ */
+export const quorumFor = (m, set = 0) => (Number(set) > 0 ? Number(set) : majority(attendanceCounts(m).board));
 /** { present, remote, absent, excused, board } counts; board members present or by video count toward a quorum */
 export function attendanceCounts(m) {
   const out = { present: 0, remote: 0, absent: 0, excused: 0, board: 0, boardHere: 0 };

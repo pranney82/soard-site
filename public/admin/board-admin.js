@@ -24,7 +24,7 @@ import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE
 import { MeetingEditor, agendaSource } from './board-meeting.js';
 import {
   DOC_KINDS, LIVE, DEFAULT_TEMPLATE, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
-  attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft,
+  attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority,
 } from './board-shared.js';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -647,7 +647,7 @@ function SettingsTab({ ctx }) {
       <div class="bd-card-head"><h3>Meetings</h3></div>
       <div class="bd-grid3">
         <div class="form-group"><label class="form-label" for="bd-from">Invites come from</label><select id="bd-from" class="form-select" value=${s.invitesFrom} onChange=${(e) => setS({ ...s, invitesFrom: e.target.value })}>${s.admins.map((e) => html`<option value=${e}>${firstOf(e)}’s calendar (${e})</option>`)}</select><p class="form-hint">Every board member, ${s.admins.map(firstOf).join(' and ')} are invited.</p></div>
-        <div class="form-group"><label class="form-label" for="bd-q">Quorum (board members)</label><input id="bd-q" class="form-input" type="number" min="0" max="50" value=${s.quorum || ''} placeholder="Not set" onInput=${(e) => setS({ ...s, quorum: Number(e.target.value) || 0 })} /><p class="form-hint">From the bylaws. Attendance says whether there is one.</p></div>
+        <div class="form-group"><label class="form-label" for="bd-q">Quorum (board members)</label><input id="bd-q" class="form-input" type="number" min="0" max="50" value=${s.quorum || ''} placeholder=${`A majority${data.members?.length ? `: ${majority(data.members.length)}` : ''}`} onInput=${(e) => setS({ ...s, quorum: Number(e.target.value) || 0 })} /><p class="form-hint">Empty is a majority of the board on each meeting’s list${data.members?.length ? ` (${majority(data.members.length)} of ${data.members.length} today)` : ''}. A number here only if the bylaws say otherwise.</p></div>
         <div class="form-group"><label class="form-label" for="bd-ds">Usually starts</label><input id="bd-ds" class="form-input" type="time" value=${s.defaults.start} onInput=${(e) => setDef({ start: e.target.value })} /></div>
         <div class="form-group"><label class="form-label" for="bd-de">Usually ends</label><input id="bd-de" class="form-input" type="time" value=${s.defaults.end} onInput=${(e) => setDef({ end: e.target.value })} /></div>
         <div class="form-group"><label class="form-label" for="bd-dl">Usual place</label><input id="bd-dl" class="form-input" value=${s.defaults.location} onInput=${(e) => setDef({ location: e.target.value })} /></div>

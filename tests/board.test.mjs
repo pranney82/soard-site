@@ -1637,7 +1637,7 @@ test('the next meeting the board already has on its calendars shows its day, tim
   assert.equal((await portalApi(MEMBER)).body.nextPending, null);
 });
 
-test('the board page’s makeovers and reveals carry their published page’s photo; an unnamed one never does', async () => {
+test('the board page’s makeovers and reveals carry their published page’s photo; an unnamed one never does (a draft project is named, never pictured)', async () => {
   const { projectsNow } = await import('../functions/api/_board.js');
   await env.DB.exec('CREATE TABLE kids (slug TEXT PRIMARY KEY, name TEXT, year INTEGER, data TEXT)');
   await env.DB.exec('CREATE TABLE community (slug TEXT PRIMARY KEY, name TEXT, data TEXT)');
@@ -1652,7 +1652,7 @@ test('the board page’s makeovers and reveals carry their published page’s ph
   const job = (id, name, status) => ({ id, name, customFieldValues: { nodes: [{ value: status, customField: { id: '22P52qfFub9b' } }] } });
   const fetchImpl = async () => Response.json({ organization: { jobs: { nodes: [job('j1', 'Max Example', 'Build'), job('j2', 'Quinn Example', 'Design'), job('j3', 'Example House', 'Approval'), job('j4', 'Odd Example', 'Build')], nextPage: null } } });
   const p = await projectsNow(env, { fetchImpl, fresh: true });
-  assert.deepEqual(p.building.map((b) => [b.name, b.photo ?? null]), [['Max', img('max')], [null, null], [null, null], ['Odd', null]], 'a draft page’s kid or project has neither; a picture from anywhere but Cloudflare Images stays out');
+  assert.deepEqual(p.building.map((b) => [b.name, b.photo ?? null]), [['Max', img('max')], [null, null], ['Example House', null], ['Odd', null]], 'a draft kid page has neither; a draft project goes by its name for the board, with no picture; a picture from anywhere but Cloudflare Images stays out');
   const ahead = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
   await env.DB.prepare('INSERT INTO site_config (key, data) VALUES (?, ?)').bind('reveals', JSON.stringify({ reveals: [], upcoming: [{ slug: 'max', name: 'Max', confirmed: true, date: ahead }, { slug: 'zoe', name: 'Zoe', confirmed: true, date: ahead, image: 'https://imagedelivery.net/abc123/kids/zoe/photo-2/w=400' }], past: [] })).run();
   const n = await liveNumbers(env);
@@ -1920,3 +1920,17 @@ test('a practice meeting’s simulated members check in and vote by the clock, t
   assert.equal(await getPractice(env.DB, p.id), null);
   assert.deepEqual((await liveGet(FOUNDER, again.id, 'admin')).body.checkins, []);
 });
+
+test('the quorum is a majority of the board on the meeting’s list, unless Settings names a number', async () => {
+  const { majority, quorumFor } = await import('../public/admin/board-shared.js');
+  assert.equal(majority(13), 7);
+  assert.equal(majority(12), 7);
+  assert.equal(majority(1), 1);
+  assert.equal(majority(0), 0);
+  const list = (n, extra = []) => ({ attendance: [...Array.from({ length: n }, (_, i) => ({ key: `b${i}`, slug: `b${i}`, name: `B${i}`, kind: 'board', status: '' })), ...extra] });
+  assert.equal(quorumFor(list(13)), 7, 'a majority of 13');
+  assert.equal(quorumFor(list(12, [{ key: 's', slug: 's', name: 'S', kind: 'staff', status: 'present' }])), 7, 'staff never count toward the board');
+  assert.equal(quorumFor(list(13), 5), 5, 'a number in Settings wins');
+  assert.equal(quorumFor(list(0)), 0, 'no board on the list, no quorum to meet');
+});
+

@@ -86,7 +86,7 @@ test('loading projects: published ones, drafts on request, and the public page o
   assert.deepEqual(await loadProjects({ prepare: () => ({ all: async () => { throw new Error('no such table'); } }) }), [], 'no table: none');
 });
 
-test('the board’s makeovers in progress: a project by name once it’s public, never the job’s own name', async () => {
+test('the board’s makeovers in progress: an organization by its name on Community (linked once public), never the job’s own name', async () => {
   const DB = await world();
   const job = (id, name, status) => ({ id, name, customFieldValues: { nodes: [{ value: status, customField: { id: FIELD_JOB_STATUS } }] } });
   const jobs = [
@@ -103,9 +103,9 @@ test('the board’s makeovers in progress: a project by name once it’s public,
   assert.deepEqual(v.building, [
     { name: 'Max', slug: 'max', status: 'Build' },
     { name: 'Perfect Harmony Health', slug: 'perfect-harmony-health', status: 'Design', kind: 'community', url: '/community/perfect-harmony-health/' },
-    { name: null, slug: null, status: 'Build', kind: 'community', url: null },
+    { name: 'The Lionheart School', slug: null, status: 'Build', kind: 'community', url: null },
     { name: 'Grace Academy', slug: null, status: 'Build', kind: 'community', url: null },
     { name: null, slug: null, status: 'Build' },
-  ], 'the hidden Lionheart draft goes unnamed; Grace Academy is public with no page yet, so no link');
+  ], 'the Lionheart draft goes by its name, with no link; Grace Academy is public with no page yet, so no link either');
   assert.ok(!JSON.stringify(v).includes('Not Published Yet'), 'a job’s own name never reaches the board');
 });

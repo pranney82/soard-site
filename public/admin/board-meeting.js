@@ -31,7 +31,7 @@ import {
 } from './board-ui.js';
 import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, quarterOf, longDate, shortDate, timeRange, plural, uid,
-  todayEastern, attendanceCounts, liveLines, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
+  todayEastern, attendanceCounts, quorumFor, liveLines, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, tallyText, cleanLive,
 } from './board-shared.js';
 
@@ -569,7 +569,8 @@ const CHOICES = [['present', 'Here'], ['remote', 'Video'], ['absent', 'Absent'],
 
 /** The quorum, beside the meeting as it runs */
 function Quorum({ m, set, ctx }) {
-  const quorum = ctx.data.settings.quorum;
+  const fixed = ctx.data.settings.quorum;
+  const quorum = quorumFor(m, fixed);
   const c = attendanceCounts(m);
   const answer = (x) => answerOf(x.rsvp, repliesOf(m)[x.slug]);
   const yes = m.attendance.filter((x) => ['Coming', 'By video'].includes(answer(x)) && !x.status);
@@ -578,7 +579,7 @@ function Quorum({ m, set, ctx }) {
   return html`<div class=${`card bm-quorum ${quorum ? (c.boardHere >= quorum ? 'is-met' : 'is-short') : ''}`} role="status">
     <div class="bm-quorum__n"><b>${c.boardHere}</b> of ${c.board}</div>
     <div class="bm-quorum__t">board members here${c.remote ? ` (${c.remote} by video)` : ''}</div>
-    <p class="bm-quorum__q">${quorum ? (c.boardHere >= quorum ? `Quorum met: ${quorum} needed.` : `Quorum is ${quorum}: ${quorum - c.boardHere} more needed.`) : html`No quorum set. <a class="link" href="#board/settings">Set it</a>`}</p>
+    <p class="bm-quorum__q">${quorum ? (c.boardHere >= quorum ? `Quorum met: ${quorum} needed${fixed ? '' : ', a majority'}.` : `Quorum is ${quorum}${fixed ? '' : ', a majority'}: ${quorum - c.boardHere} more needed.`) : 'No board members on the list yet.'}</p>
     ${yes.length ? html`<button class="btn btn-primary btn-sm" onClick=${markYes}>Mark the ${yes.length === 1 ? 'one' : yes.length} who said yes as here</button>` : null}
     ${onMeet ? html`<p class="bd-muted" style="margin-top:0.75rem">On Google Meet: after the meeting Board marks who joined by video, by itself. Mark the people in the room.</p>` : null}
   </div>`;

@@ -29,7 +29,7 @@
 import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, emailOutline, parseAgendaText,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf,
-  agendaIsDraft, draftAgenda, draftSource, draftName, callName, readAgain, AGENDA_READER, isLive, cleanLive,
+  agendaIsDraft, draftAgenda, draftSource, draftName, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority,
 } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
@@ -553,7 +553,9 @@ export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fr
         const hit = matchProject(job.name, [...kids, ...projects], job.id);
         if (isProject(hit)) {
           // An organization's room: named once its project is published, never by the job's own name
-          building.push({ name: hit.published ? hit.name : null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null, ...photoField(hit.published && hit.heroImage) });
+          // An organization, by its name on Community even before it's published (the board is SOARD's own;
+          // a child's name waits for their page). Linked and pictured once its page is public
+          building.push({ name: hit.name || null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null, ...photoField(hit.published && hit.heroImage) });
           continue;
         }
         const kid = hit;
@@ -1155,7 +1157,8 @@ async function liveRows(DB, m, now) {
 
 /**
  * GET /api/board-portal?live=<id>: the meeting as it's held, for the board page (cheap: no JobTread or Mercury).
- * Never a private note. `here.met` is null when no quorum is set.
+ * Never a private note. The quorum is Settings' number when set, else a majority of the board on the list.
+ * `here.met` is null only when the meeting has no board members on its list.
  */
 export async function liveView(env, id, { member = null, admin = false, adminEmail = '', now = Date.now() } = {}) {
   await ensureSchema(env.DB);
@@ -1170,11 +1173,12 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const cast = motion ? votes[motion.id] || [] : [];
   const n = (v) => cast.filter((x) => x.vote === v).length;
   const marked = me ? m.attendance.find((p) => p.slug === me.slug && HOW.includes(p.status))?.status : '';
+  const q = settings.quorum || majority(board.length + (m.practice ? 1 : 0));
   return {
     id: m.id, practice: !!m.practice, updatedAt: m.updatedAt, title: meetingName(m), date: m.date,
     live: { startedAt: m.live.startedAt, endedAt: m.live.endedAt, itemId: m.live.itemId },
     sections,
-    here: { board: here.size, of: board.length + (m.practice ? 1 : 0), quorum: settings.quorum, met: settings.quorum ? here.size >= settings.quorum : null, remote: [...here.values()].filter((h) => h === 'remote').length },
+    here: { board: here.size, of: board.length + (m.practice ? 1 : 0), quorum: q, met: q ? here.size >= q : null, remote: [...here.values()].filter((h) => h === 'remote').length },
     me: { how: (me && (checkins.find((c) => c.slug === me.slug)?.how || marked)) || '', canAct: !!(canAct && me), name: me?.name || '' },
     vote: motion ? {
       motionId: motion.id, text: motion.text, by: motion.by, second: motion.second, openedAt: vote.openedAt,

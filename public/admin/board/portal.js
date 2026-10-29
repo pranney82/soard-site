@@ -29,7 +29,7 @@ import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
-  isLive, agendaItems, tallyText, unzip,
+  isLive, agendaItems, tallyText, unzip, quorumFor,
 } from '../board-shared.js';
 
 const html = htm.bind(h);
@@ -675,10 +675,10 @@ function Figures({ data, d }) {
   const next = [...n.reveals].sort((a, b) => String(a.confirmed && a.date ? a.date : windowStart(a.window) || '9').localeCompare(String(b.confirmed && b.date ? b.date : windowStart(b.window) || '9')))[0];
   const rev = budget?.revenue;
   const tiles = [
-    { key: 'meeting', label: 'Next board meeting', value: m ? `${partsOf(m.date).mon} ${partsOf(m.date).day}` : 'Not set', sub: m ? (m.date === data.today ? 'Today' : inWords(m.date, data.today)) : 'The invite comes by email', href: m ? `#/meetings/${m.id}` : '#/meetings' },
+    { key: 'meeting', label: 'Next meeting', value: m ? `${partsOf(m.date).mon} ${partsOf(m.date).day}` : 'Not set', sub: m ? (m.date === data.today ? 'Today' : inWords(m.date, data.today)) : 'The invite comes by email', href: m ? `#/meetings/${m.id}` : '#/meetings' },
     { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', sub: cash ? `${shortAsOf(cash.asOf)}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}` : 'From the balance sheet', href: '#/financials', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '' },
-    { key: 'rev', label: `${budget?.year || ''} revenue to date`.trim(), value: rev ? compact(rev.actual) : budget === null ? '–' : '…', sub: rev ? `${pctOf(rev)}% of ${compact(rev.budget)} budget` : 'From the budget sheet', href: '#/financials' },
-    { key: 'build', label: 'Makeovers underway', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', href: '#makeovers' },
+    { key: 'rev', label: `${budget?.year || 'Year'} revenue`, value: rev ? compact(rev.actual) : budget === null ? '–' : '…', sub: rev ? `${pctOf(rev)}% of ${compact(rev.budget)} budget, to date` : 'From the budget sheet', href: '#/financials' },
+    { key: 'build', label: 'Makeovers', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', href: '#makeovers' },
     { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#coming-up' },
     { key: 'kids', label: 'Children served', value: n.impact.kids.toLocaleString(), sub: `${n.impact.rooms.toLocaleString()} rooms since 2012` },
   ];
@@ -742,7 +742,7 @@ function SinceLast({ ctx }) {
       <h2 class="bp-h2" id="since-h">Last meeting</h2>
       <a class="bp-cardhead__go" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>${m.minutes === 'approved' ? 'The minutes' : 'The meeting'}<${Icon} name="arrow" size=${16} cls="bp-go" /></a>
     </div>
-    <p class="bp-since__what"><${DateTile} d=${m.date} mid=${m.id} /><span><strong>${meetingName(m)}</strong><span class="bp-muted">${[longDate(m.date), c.boardHere ? `${c.boardHere} of ${c.board} board members` : ''].filter(Boolean).join(' · ')}</span></span><${MinutesChip} m=${m} /></p>
+    <p class="bp-since__what"><${DateTile} d=${m.date} mid=${m.id} /><span><strong>${meetingName(m)}</strong><span class="bp-muted">${[longDate(m.date), c.boardHere ? `${c.boardHere} of ${c.board} board members${c.boardHere >= quorumFor(m, data.quorum) ? ', a quorum' : ', short of a quorum'}` : ''].filter(Boolean).join(' · ')}</span></span><${MinutesChip} m=${m} /></p>
     ${decided.length ? html`<h3 class="bp-mini-h">Decided</h3><ul class="bp-facts-list">${decided.map((x) => html`<li key=${x.id || x.text}><span>${x.text}</span><strong>${tallyText(x) || ({ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || '')}</strong></li>`)}</ul>` : null}
     ${open.length ? html`<h3 class="bp-mini-h">Open action items</h3><ul class="bp-facts-list">${open.map((a) => html`<li key=${a.id} class=${a.mine ? 'is-mine' : ''}><span>${a.text}</span><strong>${[a.mine ? 'You' : a.ownerName, a.due ? shortDate(a.due).replace(/, \d{4}$/, '') : ''].filter(Boolean).join(' · ')}</strong></li>`)}</ul>` : null}
     ${topics.length ? html`<h3 class="bp-mini-h">Covered</h3><p class="bp-since__topics">${topics.join(' · ')}</p>` : null}
@@ -751,27 +751,37 @@ function SinceLast({ ctx }) {
 
 /** Where a makeover's link goes: a kid's page, or a community project's page once it's public */
 const projectHref = (b) => (b.kind === 'community' ? b.url || '' : b.url || (b.slug ? `/kids/${b.slug}/` : ''));
-/** The makeovers, nearest the reveal first: one row per stage */
+/** The makeovers as a board: a column per stage, Design to Build, each one a card with its reveal */
 const BUILD_ORDER = ['Build', 'Mobilization', 'Approval', 'Finalization', 'Design'];
+const STAGE_FLOW = ['Design', 'Finalization', 'Approval', 'Mobilization', 'Build'];
 function Builds({ n }) {
   const building = n.projects?.building || [];
-  const stages = [...BUILD_ORDER, ...new Set(building.map((b) => b.status).filter((st) => !BUILD_ORDER.includes(st)))].filter((st) => building.some((b) => b.status === st));
+  const stages = [...STAGE_FLOW.filter((st) => st !== 'Finalization' || building.some((b) => b.status === st)), ...new Set(building.map((b) => b.status).filter((st) => !STAGE_FLOW.includes(st)))];
   const revealOf = (b) => (b.slug ? n.reveals.find((r) => r.slug === b.slug) : null);
-  const when = (r) => (!r ? '' : r.confirmed && r.date ? shortDate(r.date).replace(/, \d{4}$/, '') : r.window?.label ? r.window.label.replace(/^(early|mid|late) (\w{3})\w*/i, '$1 $2') : '');
-  return html`<section class="bp-card bp-builds" aria-labelledby="builds-h" id="makeovers">
-    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers in progress<span class="bp-count">${building.length}</span></h2><span class="bp-muted">From JobTread, nearest the reveal first</span></div>
-    ${!n.projects ? html`<p class="bp-muted">The list from JobTread isn’t available right now.</p>` : !building.length ? html`<p class="bp-muted">None right now.</p>` : html`<table class="bp-btable"><tbody>${stages.map((st) => {
+  const when = (r) => (!r ? '' : r.confirmed && r.date ? `Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}` : r.window?.label ? `Reveal ${r.window.label}` : '');
+  const card = (b) => {
+    const href = projectHref(b);
+    const inner = html`<${Avatar} p=${{ name: b.name, photo: b.photo ? sized(b.photo, 'w=72,h=72,fit=cover,gravity=auto') : '' }} size=${30} />
+      <span class="bp-kcard__text"><span class="bp-kcard__name">${b.name}</span><span class="bp-kcard__meta">${b.kind === 'community' ? 'Community project' : when(revealOf(b)) || 'Reveal date to come'}</span></span>`;
+    return html`<li key=${b.slug || b.name}>${href ? html`<a class="bp-kcard" href=${href} target="_blank" rel="noopener">${inner}</a>` : html`<span class="bp-kcard">${inner}</span>`}</li>`;
+  };
+  return html`<section class="bp-card bp-kanban" aria-labelledby="builds-h" id="makeovers">
+    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers in progress<span class="bp-count">${building.length}</span></h2><span class="bp-muted">From JobTread</span></div>
+    ${!n.projects ? html`<p class="bp-muted">The list from JobTread isn’t available right now.</p>` : html`<div class="bp-kanban__cols" style=${`--n:${stages.length}`}>${stages.map((st) => {
       const list = building.filter((b) => b.status === st);
       const named = list.filter((b) => b.name);
-      const kids = list.filter((b) => !b.name && b.kind !== 'community').length;
+      const unnamed = list.filter((b) => !b.name && b.kind !== 'community').length;
       const orgs = list.filter((b) => !b.name && b.kind === 'community').length;
-      return html`<tr key=${st}><th scope="row"><span class="bp-btable__stage">${st}</span><span class="bp-btable__n">${list.length}</span></th><td><ul class="bp-btable__list">
-        ${named.map((b) => { const href = projectHref(b); const r = revealOf(b); const inner = html`<${Avatar} p=${{ name: b.name, photo: b.photo ? sized(b.photo, 'w=64,h=64,fit=cover,gravity=auto') : '' }} size=${26} /><span>${b.name}</span>${when(r) ? html`<em>${when(r)}</em>` : null}`;
-          return html`<li key=${b.slug || b.name}>${href ? html`<a class="bp-bchip" href=${href} target="_blank" rel="noopener">${inner}</a>` : html`<span class="bp-bchip">${inner}</span>`}</li>`; })}
-        ${kids ? html`<li><span class="bp-bchip is-quiet">${named.length ? `+${kids} more` : plural(kids, 'family', 'families')}</span></li>` : null}
-        ${orgs ? html`<li><span class="bp-bchip is-quiet">${plural(orgs, 'community project')}</span></li>` : null}
-      </ul></td></tr>`;
-    })}</tbody></table>`}
+      return html`<div class=${`bp-kcol ${list.length ? '' : 'is-empty'}`} key=${st}>
+        <p class="bp-kcol__head"><span>${st}</span><span class="bp-kcol__n">${list.length}</span></p>
+        <ul class="bp-kcol__cards">
+          ${named.map(card)}
+          ${unnamed ? html`<li><span class="bp-kcard is-quiet"><span class="bp-kcard__text"><span class="bp-kcard__name">${named.length ? `+${unnamed} more ${unnamed === 1 ? 'family' : 'families'}` : plural(unnamed, 'family', 'families')}</span><span class="bp-kcard__meta">Named once their page is up</span></span></span></li>` : null}
+          ${orgs ? html`<li><span class="bp-kcard is-quiet"><span class="bp-kcard__text"><span class="bp-kcard__name">${plural(orgs, 'community project')}</span><span class="bp-kcard__meta">Not on Community yet</span></span></span></li>` : null}
+          ${list.length ? null : html`<li class="bp-kcol__none">None now</li>`}
+        </ul>
+      </div>`;
+    })}</div>`}
   </section>`;
 }
 
@@ -801,10 +811,7 @@ function HomePage({ ctx }) {
         <h1 class="bp-brief__h">${name ? `${greeting()}, ${firstName(name)}.` : 'The board page'}</h1>
       </div>
     </header>
-    <div class="bp-top3 bp-rise" style=${rise(1)}>
-      <${Figures} data=${data} d=${d} />
-      <${HeroPhotos} n=${data.numbers} today=${data.today} />
-    </div>
+    <div class="bp-rise" style=${rise(1)}><${Figures} data=${data} d=${d} /></div>
     <div class="bp-split bp-split--top">
       <div class="bp-stack bp-rise" style=${rise(2)}>
         ${m ? html`<${NextMeeting} m=${m} ctx=${ctx} peek=${true} />` : html`<${NoMeeting} ctx=${ctx} />`}
@@ -820,18 +827,6 @@ function HomePage({ ctx }) {
       <div class="bp-stack bp-rise" style=${rise(5)}><${ComingUp} data=${data} d=${d} /></div>
       <div class="bp-stack bp-rise" style=${rise(6)}><${Recent} n=${data.numbers} /></div>
     </div>`;
-}
-
-/** A family being built for right now, in their own photo (kids only; a different one leads each day) */
-function HeroPhotos({ n, today }) {
-  const withPhoto = (n.projects?.building || []).filter((b) => b.photo && b.name && b.kind !== 'community');
-  if (!withPhoto.length) return null;
-  const ranked = [...withPhoto].sort((a, b) => BUILD_ORDER.indexOf(a.status) - BUILD_ORDER.indexOf(b.status));
-  const lead = ranked[Math.floor(noon(today) / 86400000) % ranked.length];
-  return html`<a class="bp-kidpic" href=${lead.url || `/kids/${lead.slug}/`} target="_blank" rel="noopener">
-    <img src=${sized(lead.photo, 'w=480,h=600,fit=cover,gravity=auto')} alt=${`${lead.name}, whose makeover is in ${lead.status.toLowerCase()}`} width="240" height="300" decoding="async" fetchpriority="high" />
-    <span class="bp-kidpic__cap"><span class="bp-dot" aria-hidden="true"></span>${lead.name} · ${lead.status === 'Build' ? 'being built now' : lead.status.toLowerCase()}</span>
-  </a>`;
 }
 
 function NoMeeting({ ctx }) {
@@ -1309,7 +1304,8 @@ function MeetingDetail({ m, ctx, waiting = false }) {
   const i = d.byDate.findIndex((x) => x.id === m.id);
   const before = i > 0 ? d.byDate[i - 1] : null;
   const after = i >= 0 && i < d.byDate.length - 1 ? d.byDate[i + 1] : null;
-  const quorum = data.quorum ? c.boardHere >= data.quorum : null;
+  const need = quorumFor(m, data.quorum);
+  const quorum = need && c.boardHere ? c.boardHere >= need : null;
   const motionChip = (r) => html`<span class=${`bp-chip ${r === 'passed' ? 'bp-chip--ok' : r === 'failed' ? 'bp-chip--warn' : ''}`}>${r === 'passed' ? html`<${Icon} name="check" size=${14} />` : null}${{ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[r] || 'Recorded'}</span>`;
   return html`
     <a class="bp-back bp-noprint" href="#/meetings"><${Icon} name="back" size=${18} />All meetings</a>
@@ -1342,7 +1338,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
           <${FileList} files=${files} order=${upcoming ? AHEAD_ORDER : PAST_ORDER} />
         </section>` : null}
         ${!upcoming && c.boardHere ? html`<section class="bp-card bp-who" aria-labelledby="who-h"><h2 class="bp-h2" id="who-h">Who was there</h2>
-          <p class="bp-who__count"><strong>${c.boardHere} of ${c.board}</strong> board members${quorum === true ? html` <span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />A quorum</span>` : ''}</p>
+          <p class="bp-who__count"><strong>${c.boardHere} of ${c.board}</strong> board members${quorum === true ? html` <span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />A quorum</span>` : quorum === false ? html` <span class="bp-chip bp-chip--warn">Short of a quorum (${need})</span>` : ''}</p>
           <ul class="bp-who__list">${here.map((p) => html`<li key=${p.slug || p.name}><${Avatar} p=${person(p)} size=${32} /><span>${p.name}${p.status === 'remote' ? html` <small>by video</small>` : null}</span></li>`)}</ul>
           ${away.length ? html`<p class="bp-muted bp-who__away">Not there: ${away.map((p) => `${p.name}${p.status === 'excused' ? ' (excused)' : ''}`).join(', ')}</p>` : null}
         </section>` : null}
