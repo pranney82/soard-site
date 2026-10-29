@@ -152,6 +152,9 @@ test('triage: receipts, shipping, ads, staff mail, money tools, calendar replies
   assert.deepEqual(t({ from: 'Dan <dad@example.com>', subject: 'Question about the room' }), { kind: 'family', accounts: ['acctRivera1'] });
   assert.deepEqual(t({ from: `Pat <${PAT}>`, to: 'kim@example.com', subject: 'Paint colors', labels: ['SENT'] }), { kind: 'family', accounts: ['acctKim0002'] });
   assert.equal(t({ from: 'Case Worker <cw@example.org>', subject: 'Checking in' }), null, 'an address on two families points at neither');
+  const listed = (extra) => { const m = mail({ box: PAT, at: T0, from: 'Ana <parent@example.com>', to: PAT, subject: 'Black Friday Presale', text: '' }); m.payload.headers.push(...extra); return triage(m, fam); };
+  assert.equal(listed([{ name: 'List-Unsubscribe', value: '<https://shop.example/unsub>' }]), null, 'a family’s business newsletter');
+  assert.deepEqual(listed([{ name: 'List-Id', value: '<info.soardcharity.com>' }, { name: 'List-Unsubscribe', value: '<mailto:googlegroups-manage+1+unsubscribe@soardcharity.com>' }]), { kind: 'family', accounts: ['acctRivera1'] }, 'a family writing to info@ (SOARD’s own group)');
   const invite = 'Re: Invitation: TENTATIVE: Max’s Reveal! @ Fri Sep 25, 2026';
   assert.equal(t({ from: 'A Board Member <board@example.net>', to: `${PAT}, parent@example.com, kim@example.com`, subject: invite }), null, 'another guest replying all on a reveal invite');
   assert.deepEqual(t({ from: 'Ana Rivera <parent@example.com>', to: PAT, subject: invite }), { kind: 'family', accounts: ['acctRivera1'] }, 'the family’s own reply counts');

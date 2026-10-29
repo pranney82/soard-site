@@ -55,7 +55,7 @@ const Q_MAX = 1200;
 const AT_ONCE = 6;
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const AI_TIMEOUT_MS = 8000;
-const LIST_HEADERS = ['From', 'To', 'Cc', 'Reply-To', 'Subject', 'Message-ID', 'References', 'In-Reply-To', 'Auto-Submitted'];
+const LIST_HEADERS = ['From', 'To', 'Cc', 'Reply-To', 'Subject', 'Message-ID', 'References', 'In-Reply-To', 'Auto-Submitted', 'List-Id', 'List-Unsubscribe', 'Precedence'];
 const SENT_TAG = 'receipt-from-inbox';
 
 // The money tools' and JobTread's own mail: already where it belongs
@@ -154,7 +154,10 @@ export function triage(msg, { byEmail }) {
   if (CALENDAR.test(subject.trim()) || AUTO_REPLY.test(subject) || /auto-replied/i.test(header(h, 'Auto-Submitted'))) return null;
   const tools = people.some((e) => OWN_TOOLS.test(e));
   const guestChatter = INVITE_REPLY.test(subject.trim()) && !from.every(isStaffEmail) && !accountsOf(from, byEmail).length;
-  const accounts = tools || guestChatter ? [] : accountsOf(people, byEmail);
+  // A mailing list's email (a family's business newsletter); SOARD's own groups (info@) mark theirs too, and those count
+  const list = `${header(h, 'List-Id')} ${header(h, 'List-Unsubscribe')}`;
+  const mailing = (list.trim() || /bulk|list|junk/i.test(header(h, 'Precedence'))) && !/soardcharity\.com/i.test(list);
+  const accounts = tools || guestChatter || mailing ? [] : accountsOf(people, byEmail);
   if (accounts.length && accounts.length <= 3) return { kind: 'family', accounts };
   if (!from.length || from.every(isStaffEmail) || from.some((e) => OWN_TOOLS.test(e))) return null;
   if ((msg.labelIds || []).includes('SENT') || NOT_RECEIPT.test(subject)) return null;
