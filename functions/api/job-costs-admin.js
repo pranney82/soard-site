@@ -20,6 +20,9 @@
  * POST { action: 'bill-settings', approvers?, bigApprovers?, bigBillCents?, dailyCapCents?, payMode?, payFromAccountId?, startsOn? }
  * POST { action: 'bill-link', billId, recipientId }   the Mercury recipient a bill's vendor is paid as
  * POST { action: 'bill-retry', billId }             only after a payment failed
+ * POST { action: 'docs-settings', glOccurrence?, glAggregate?, workersComp?, elEachAccident?, renewDays? }
+ *        the minimums a vendor's certificate is held to (./_vendors.js)
+ * POST { action: 'docs-preview' }                    "Send it to me": the request a vendor gets, to the signed-in person
  * POST { action: 'odd-clear', key }                  a person looked: it's fine
  */
 
@@ -35,6 +38,7 @@ import { BUCKETS } from './_spend-match.js';
 import { readCloseouts, budgetFor, addBudgetLines, codeHistory } from './_job-closeout.js';
 import { billQueue, readBillPayConfig, saveBillPayConfig, decideBill, payBill, cachedRecipients, ensureBillPaySchema } from './_bill-pay.js';
 import { readOdd, clearOdd } from './_spend-odd.js';
+import { readDocSettings, saveDocSettings, sendPreview } from './_vendors.js';
 import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
 
 const ok = (body = {}) => Response.json({ success: true, ...body });
@@ -67,11 +71,12 @@ async function everything(env, { setup = false } = {}) {
   // The agents' key exists from the first visit, so it can go in their instructions
   await agentKey(env.DB);
   await ensureBillPaySchema(env.DB);
-  const [closeouts, bills, billPay, odd] = await Promise.all([
+  const [closeouts, bills, billPay, odd, vendorDocs] = await Promise.all([
     readCloseouts(env.DB),
     billQueue(env).catch(() => []),
     readBillPayConfig(env.DB),
     readOdd(env.DB),
+    readDocSettings(env.DB),
   ]);
   const [ledgers, charges, rules, codes, jobs, recode, cfg, h] = await Promise.all([
     readLedgers(env.DB),
@@ -93,6 +98,7 @@ async function everything(env, { setup = false } = {}) {
     history: codeHistory(closeouts),
     bills,
     billPay,
+    vendorDocs,
     odd,
   };
   if (setup && mercuryConfigured(env)) {
@@ -211,6 +217,14 @@ export async function onRequestPost(context) {
         const r = await payBill(env, billId);
         if (!r.ok) return fail(r.error);
         break;
+      }
+      case 'docs-settings':
+        await saveDocSettings(env.DB, b);
+        break;
+      case 'docs-preview': {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(by || '')) return fail('Sign in with your SOARD email to get the preview');
+        const r = await sendPreview(env, by);
+        return ok({ sent: by, url: r.url });
       }
       case 'odd-clear':
         await clearOdd(env, String(b.key || ''), { by });

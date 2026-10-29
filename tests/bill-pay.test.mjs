@@ -16,6 +16,7 @@ import { closeoutOf, codeHistory, suggestBudget, addBudgetLines } from '../funct
 import { findOdd, refundTarget, checkOdd } from '../functions/api/_spend-odd.js';
 import { forwardMercuryReceipts, receiptSubject } from '../functions/api/_spend-receipts.js';
 import { RAMP_CODE_ID } from '../functions/api/_jobtread-bills.js';
+import { releaseVendorHolds } from '../functions/api/_bill-pay.js';
 
 const RELAY_KEY = 'relay-key:test';
 const NOW = Date.parse('2026-10-27T16:00:00Z');
@@ -26,7 +27,14 @@ let world;
 const fresh = () => ({
   bills: [], recipients: [], requests: [], sent: [], payments: [], applied: [], costItems: [], budget: [], emails: [], slack: [],
   txns: {}, balances: {}, statuses: {}, updated: [],
+  // The vendor in JobTread: W-9 and insurance current unless a test says otherwise
+  vendor: { 'F-W9': true, 'F-GL': '2027-06-01', 'F-WC': '2027-06-01' }, vendorEmail: 'office@tko.example', comments: [], commentUpdates: [], fieldWrites: [],
 });
+const JT_FIELDS = [
+  { id: 'F-W9', name: 'W-9', type: 'boolean' }, { id: 'F-GL', name: 'Liability Expires', type: 'date' }, { id: 'F-WC', name: 'Workers\' Comp Expires', type: 'date' },
+  { id: 'F-DOCS', name: 'Documents', type: 'option', options: ['Current', 'Expiring soon', 'Requested', 'Expired', 'Missing', 'Needs a look', 'W-9 only', 'Not needed'] },
+  { id: 'F-CHECK', name: 'Insurance Check', type: 'text' },
+];
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
@@ -47,6 +55,14 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.host === 'api.jobtread.com') {
     const { query } = JSON.parse(init.body);
     if (query.organization?.documents) return Response.json({ organization: { documents: { nextPage: null, nodes: world.bills } } });
+    if (query.organization?.customFields) return Response.json({ organization: { customFields: { nodes: JT_FIELDS }, fileTags: { nodes: [{ id: 'T-W9', name: 'W-9' }, { id: 'T-COI', name: 'COI' }] } } });
+    if (query.account) {
+      const email = { nodes: [{ value: world.vendorEmail }] };
+      return Response.json({ account: { id: query.account.$.id, name: 'TKO Plumbing', archivedAt: null, customFieldValues: { nodes: Object.entries(world.vendor).map(([id, value]) => ({ value, customField: { id } })) }, primaryContact: { customFieldValues: email }, contacts: { nodes: [] } } });
+    }
+    if (query.updateAccount) { world.fieldWrites.push(query.updateAccount.$.customFieldValues); Object.assign(world.vendor, query.updateAccount.$.customFieldValues); return Response.json({}); }
+    if (query.createComment) { world.comments.push(query.createComment.$); return Response.json({ createComment: { createdComment: { id: `NOTE${world.comments.length}` } } }); }
+    if (query.updateComment) { world.commentUpdates.push(query.updateComment.$); return Response.json({}); }
     if (query.organization?.costCodes) return Response.json({ organization: { costCodes: { nodes: [{ id: 'PLUMB', name: '19 PLUMBING' }, { id: 'ELEC', name: '20 ELECTRICAL' }, { id: 'PAINT', name: '23 PAINTING' }] } } });
     if (query.document) return Response.json({ document: { status: world.statuses[query.document.$.id] || 'pending', balance: (world.balances[query.document.$.id] ?? 0) / 100, amountPaid: 0, account: { id: 'ACC-TKO' } } });
     if (query.updateDocument) { world.updated.push(query.updateDocument.$); return Response.json({ updateDocument: {} }); }
@@ -283,6 +299,64 @@ test('a payment Mercury held finds its bill by recipient, even with a same-size 
   const r = await recordPayments(env, { now: NOW + DAY });
   assert.equal(r.recorded, 1);
   assert.equal(world.applied[0].documentId, 'BILL2');
+});
+
+test('an approved bill whose vendor’s insurance ended waits, says so in JobTread, emails them, and pays itself once it’s in', async () => {
+  world.bills = [tkoBill()];
+  world.balances.BILL1 = 185000;
+  world.vendor['F-GL'] = '2026-09-30';
+  await sendSetup();
+  const r = await decideBill(env, 'BILL1', { decision: 'approved', from: APPROVER, now: NOW });
+  assert.equal(r.state, 'approved');
+  assert.equal(r.held, true, 'the agent can tell the approver');
+  assert.match(r.reason, /Not paid until TKO Plumbing sends general liability insurance ended September 30, 2026/);
+  assert.equal(world.sent.length, 0, 'nothing paid');
+  assert.deepEqual(world.updated, [{ id: 'BILL1', status: 'approved' }], 'still approved in JobTread');
+  // A pinned note on the bill, for staff only
+  const note = world.comments.find((c) => c.targetType === 'document');
+  assert.equal(note.targetId, 'BILL1');
+  assert.equal(note.isPinned, true);
+  assert.equal(note.isVisibleToVendorRoles, false);
+  assert.match(note.message, /Approved by approver@example\.org on Oct 27, and not paid yet: TKO Plumbing needs to send general liability insurance ended September 30, 2026/);
+  // The vendor's email, about their payment
+  assert.equal(world.emails.length, 1);
+  const mail = world.emails[0][0] || world.emails[0];
+  assert.match(JSON.stringify(mail), /Your payment from Sunshine on a Ranney Day is waiting on your certificate of insurance/);
+  assert.match(JSON.stringify(mail), /invoice #7 for \$1,850\.00 is approved/);
+  assert.match(JSON.stringify(mail), /vendor-documents\/#t=/);
+  assert.ok(world.fieldWrites.some((w) => w['F-DOCS'] === 'Requested'), 'JobTread says Requested');
+  const [b] = await billQueue(env, { now: NOW });
+  assert.equal(b.approval.payState, 'held');
+  assert.ok(b.approval.hold.askedAt);
+  // Asked again a minute later: no second email, no second note
+  await payApproved(env, { now: NOW + 3 * 3600e3 });
+  assert.equal(world.emails.length, 1);
+  assert.equal(world.comments.filter((c) => c.targetType === 'document').length, 1);
+
+  // The renewed certificate checks out (filled in JobTread): the bill goes
+  world.vendor['F-GL'] = '2027-09-30';
+  assert.equal(await releaseVendorHolds(env, 'ACC-TKO', { now: NOW + DAY }), 1);
+  assert.equal(world.sent.length, 1);
+  assert.equal(world.sent[0].amount, 1850);
+  assert.deepEqual(world.commentUpdates, [{ id: 'NOTE1', isPinned: false }], 'the note comes off the top');
+  assert.match(world.comments.at(-1).message, /checked out on Oct 28, so this bill is cleared to pay/);
+  const [paid] = await billQueue(env, { now: NOW + DAY });
+  assert.equal(paid.approval.payState, 'sent');
+  assert.equal(paid.approval.hold, null);
+});
+
+test('paid by hand while held: recorded, and the note comes off the bill', async () => {
+  world.bills = [tkoBill()];
+  world.balances.BILL1 = 185000;
+  world.vendor['F-W9'] = false;
+  await sendSetup({ payMode: 'off' });
+  await decideBill(env, 'BILL1', { decision: 'approved', from: APPROVER, now: NOW });
+  assert.equal((await billQueue(env, { now: NOW }))[0].approval.payState, 'held', 'held even when someone pays by hand: the note says don’t');
+  await keepTransaction(env, { id: 'out-h', kind: 'outgoingPayment', status: 'sent', amount: -1850, counterpartyName: 'TKO Plumbing', counterpartyId: 'rec-tko', accountId: 'acc-checking', createdAt: iso(NOW + DAY), postedAt: iso(NOW + DAY), attachments: [] }, { jobs: [], cards: new Map(), now: NOW + DAY });
+  assert.equal((await recordPayments(env, { now: NOW + DAY })).recorded, 1);
+  assert.deepEqual(world.commentUpdates, [{ id: 'NOTE1', isPinned: false }]);
+  const [b] = await billQueue(env, { now: NOW + DAY });
+  assert.equal(b.approval.payState, 'paid');
 });
 
 test('payroll and rent never crowd out a bill payment', async () => {

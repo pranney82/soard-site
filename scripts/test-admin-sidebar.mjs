@@ -109,7 +109,7 @@ try {
   console.log('Desktop 1440×900');
   let page = await open(1440, 900);
   const groups = await page.$$eval('.side-nav .nav-group', (gs) => gs.map((g) => `${g.querySelector('.nav-section')?.textContent || '·'}: ${[...g.querySelectorAll('.nav-label')].map((l) => l.textContent).join(', ')}`));
-  ok(groups.join(' | ') === '·: Dashboard, Applications, Kids, Demo Day, Reveals | Website: People, Partners, Press, Events, Articles, Site Config | System: Emails & invites, Automations, Audit log, Publish history', `groups and order (${groups.join(' | ')})`);
+  ok(groups.join(' | ') === '·: Dashboard, Applications, Kids, Demo Day, Reveals, Job Costs | Website: People, Partners, Press, Events, Articles, Site Config | System: Emails & invites, Automations, Audit log, Publish history', `groups and order (${groups.join(' | ')})`);
   ok(await active(page) === 'Dashboard', 'Dashboard is current on load');
   const badges = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.side-nav .nav-item')].map((a) => [a.querySelector('.nav-label').textContent, (a.querySelector('.nav-count')?.textContent || '') + (a.querySelector('.nav-live') ? 'LIVE' : '')]).filter(([, v]) => v)));
   ok(JSON.stringify(badges) === JSON.stringify({ Applications: '4', Reveals: 'LIVE', People: '2', Press: '3' }), `counts and LIVE (${JSON.stringify(badges)})`);

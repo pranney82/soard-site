@@ -117,7 +117,7 @@ PUBLIC_ROUTES.push('/api/profile-request');
 
 // A vendor sending their insurance certificate or W-9 (/vendor-documents/):
 // the same kind of link token, checked inside (_vendors.js), rate limited below;
-// files go to R2 under vendors/, which the public /files/ route never serves
+// files go straight onto the vendor's account in JobTread, never kept here
 PUBLIC_ROUTES.push('/api/vendor-docs');
 
 // The buttons in a family-status summary email (Move back / Don't email /

@@ -107,6 +107,7 @@ export async function onRequestPost(context) {
     // notes back to Mercury; every job's ledger every 15 minutes; the weekday morning receipts card (see _spend.js)
     context.waitUntil(maybeRunSpend(env));
     context.waitUntil(maybeRunFinance(env));
+    // Vendors' W-9s and insurance, kept in JobTread: asked for, checked, and held bills let go (see _vendors.js)
     context.waitUntil(maybeRunVendors(env));
     // The board: Access's sign-in list kept to People → Board (every 5 minutes when it changed), and the month's bank balance once a day (see _board.js)
     context.waitUntil(maybeRunBoard(env));

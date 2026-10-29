@@ -6,10 +6,14 @@
  * GET  → { ok, approvers, bills: [...] } the bills to email about now: never
  *        asked, or asked 3+ days ago with no answer. Each has vendor, number,
  *        amount owed, job, where the job and the bill's codes stand against
- *        budget, whether a second approval is needed, and the JobTread link.
+ *        budget, whether a second approval is needed, the JobTread link, and
+ *        documents: whether the vendor's W-9 and insurance are current in
+ *        JobTread ({ ok, missing }), as last read; null when not read yet.
  * POST { action: 'asked', billId, ref? }       the email went (ref: its message id)
  * POST { action: 'decide', billId, decision: 'approved'|'rejected', from, note? }
  *        `from` is the reply's sender; only a listed approver counts.
+ *        → { ok, state, held?, reason? }: held when it's approved but waits for
+ *        the vendor's documents (they're emailed; it pays itself once they're in)
  */
 
 import { agentGate } from './_spend-agent.js';
@@ -33,6 +37,7 @@ export async function onRequestGet({ env, request }) {
         codes: b.codes.map((c) => ({ name: c.name, budget: c.budget / 100, forecast: c.forecast / 100 })),
         needsSecondApproval: b.big, alreadyApprovedBy: (b.approval.approvals || []).filter((a) => a.decision === 'approved').map((a) => a.by),
         timesAsked: b.approval.askedCount || 0, link: b.link,
+        documents: b.documents ? { ok: !!b.documents.ok, missing: b.documents.ok ? null : b.documents.staff || null } : null,
       })),
     });
   } catch (e) {
@@ -54,7 +59,7 @@ export async function onRequestPost({ env, request }) {
     }
     if (b.action === 'decide') {
       const r = await decideBill(env, billId, { decision: b.decision, from: b.from, note: b.note || null, via: 'email' });
-      return r.ok ? Response.json({ ok: true, state: r.state }) : fail(r.error, 403);
+      return r.ok ? Response.json({ ok: true, state: r.state, ...(r.held ? { held: true, reason: r.reason } : {}) }) : fail(r.error, 403);
     }
     return fail('Unknown action');
   } catch (e) {

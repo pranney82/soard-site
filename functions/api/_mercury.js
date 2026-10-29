@@ -224,69 +224,11 @@ export async function webhookSecret(env) {
   return (await readState(env.DB, WEBHOOK_KEY)).secret || null;
 }
 
-// ─── Vendors: recipients, their tax forms, and invites (./_vendors.js) ─
-// None of these move money. An invite asks a vendor, through Mercury's own
-// email, for their bank details and tax form (a W-9); a recipient attachment
-// is that form. Paying anyone stays a person's job in Mercury.
+// ─── Vendors: the W-9 for the 1099s (./_vendors.js) ────────────────
+// A W-9 that checked out in JobTread goes onto the vendor's Mercury
+// recipient too, so Mercury can file their 1099. It never moves money.
 
-/** Every recipient (paged by Mercury's cursor) */
-export async function listRecipients(env, { maxPages = 10, ...o } = {}) {
-  const out = [];
-  let after = null;
-  for (let i = 0; i < maxPages; i++) {
-    const r = await mercury(env, '/recipients', { ...o, query: { limit: 1000, order: 'asc', start_after: after } });
-    out.push(...(r?.recipients || []));
-    after = r?.page?.nextPage || null;
-    if (!after) break;
-  }
-  return out;
-}
-
-export const getRecipient = (env, id, o = {}) => mercury(env, `/recipient/${encodeURIComponent(id)}`, o);
-
-/** Every recipient's tax forms: [{ id, recipientId, fileName, url (12 h), uploadedAt, formType }] */
-export async function listRecipientAttachments(env, { maxPages = 10, ...o } = {}) {
-  const out = [];
-  let after = null;
-  for (let i = 0; i < maxPages; i++) {
-    const r = await mercury(env, '/recipients/attachments', { ...o, query: { limit: 1000, order: 'asc', start_after: after } });
-    out.push(...(r?.attachments || []));
-    after = r?.page?.nextPage || null;
-    if (!after) break;
-  }
-  return out;
-}
-
-/** Every invite: [{ id, onboardingUrl, status: created|completed|expired|declined, name, contactEmail, recipientId, createdAt, expiresAt }] */
-export async function listRecipientInvites(env, { maxPages = 10, ...o } = {}) {
-  const out = [];
-  let after = null;
-  for (let i = 0; i < maxPages; i++) {
-    const r = await mercury(env, '/recipients/invites', { ...o, query: { limit: 1000, order: 'asc', start_after: after } });
-    out.push(...(r?.invites || []));
-    after = r?.page?.nextPage || null;
-    if (!after) break;
-  }
-  return out;
-}
-
-/**
- * Ask a vendor for their bank details and tax form. Mercury emails them
- * (sendEmail) a page of its own; the W-9 they upload lands on the recipient.
- */
-export function createRecipientInvite(env, { contactEmail, name = null, recipientId = null, notes = null, sendEmail = true, requireTaxDocument = true }, o = {}) {
-  return mercury(env, '/recipients/invites', {
-    ...o,
-    method: 'POST',
-    body: {
-      contactEmail, ...(recipientId ? { recipientId } : { name }),
-      paymentMethods: ['ach'], requireTaxDocument, sendEmail,
-      notes, organizationNameOnRequest: 'Sunshine on a Ranney Day',
-    },
-  });
-}
-
-/** A tax form a vendor sent us another way, onto their Mercury recipient (multipart "file") */
+/** A vendor's W-9 onto their Mercury recipient (multipart "file") */
 export async function uploadRecipientAttachment(env, recipientId, { bytes, fileName, type = 'application/pdf' }, { fetchImpl = fetch } = {}) {
   const token = String(env.MERCURY_API_TOKEN || '').trim();
   const relayKey = String(env.MERCURY_RELAY_KEY || '').trim();

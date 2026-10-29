@@ -53,6 +53,7 @@ const usd = (c) => (Math.round(Number(c || 0) / 100)).toLocaleString('en-US', { 
 const usdCents = (c) => (Number(c || 0) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const dash = (c) => (c ? usd(c) : '–');
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '');
+const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 function ago(iso) {
   if (!iso) return 'never';
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
@@ -554,7 +555,10 @@ function Ramp({ data, act, busy }) {
 const BILL_STATE = {
   waiting: ['Waiting for approval', 'tag--warn'], second: ['Needs a second approval', 'tag--warn'], approved: ['Approved', 'tag--success'], rejected: ['Not approved', ''],
 };
-const PAY_STATE = { requested: ['Waiting in Mercury for an approver', 'tag--info'], sent: ['Payment sent', 'tag--info'], paid: ['Paid · recorded in JobTread', 'tag--success'], failed: ['Not paid', 'tag--danger'] };
+const PAY_STATE = {
+  requested: ['Waiting in Mercury for an approver', 'tag--info'], sent: ['Payment sent', 'tag--info'], paid: ['Paid · recorded in JobTread', 'tag--success'], failed: ['Not paid', 'tag--danger'],
+  held: ['Approved · not paid: documents', 'tag--warn'],
+};
 const PAY_MODES = [
   ['off', 'Pay by hand', 'Approval is recorded. Someone pays in Mercury, and the payment is still recorded on the bill in JobTread by itself.'],
   ['request', 'Mercury holds it for approval', 'An approved bill becomes a payment waiting in Mercury. Nothing leaves until an approver taps Approve in Mercury.'],
@@ -617,6 +621,9 @@ function BillRow({ b, data, act, busy }) {
         <span class="tag ${stateTone}">${stateLabel}</span>
         ${b.jobName ? html`<span class="tag">${b.jobName}</span>` : ''}
         ${b.big ? html`<span>Over the second-approval amount</span>` : ''}
+        ${b.documents && !b.documents.ok && a.payState !== 'held' && a.state !== 'rejected' ? html`<span class="tag tag--warn">${cap(b.documents.staff || 'W-9 or insurance missing')}</span>` : ''}
+        ${a.payState === 'held' && a.hold?.askedAt ? html`<span>Vendor emailed ${ago(a.hold.askedAt)}</span>` : ''}
+        ${b.vendorLink && (a.payState === 'held' || (b.documents && !b.documents.ok)) ? html`<a href=${b.vendorLink} target="_blank" rel="noopener">Vendor in JobTread</a>` : ''}
         ${b.job ? html`<span class=${over ? 'tag tag--warn' : ''}>Job forecast ${usd(b.job.forecast)} of ${usd(b.job.budget)}</span>` : ''}
         ${b.codes.map((c) => html`<span>${c.name}${c.budget ? ` · ${usd(c.forecast)} of ${usd(c.budget)}` : ''}</span>`)}
         ${(a.approvals || []).map((x) => html`<span>${x.decision === 'approved' ? 'Yes' : 'No'} from ${person(x.by)} ${ago(x.at)}${x.via === 'email' ? ' by email' : ''}</span>`)}
@@ -672,6 +679,7 @@ function BillSettings({ data, act, busy }) {
         <span class="sec-head__hint">Until then Ramp pays them. Bills approved before this day are paid that morning.</span></label>
     </div>
     <div class="jc-body" style="border-top: 1px solid var(--color-border);"><div class="jc-row"><button class="btn btn-primary" disabled=${!!busy} onClick=${() => save()}>${busy === 'bill-settings' ? 'Saving…' : 'Save'}</button></div></div>
+    <${VendorDocSettings} data=${data} act=${act} busy=${busy} />
     <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>When a bill is approved</h3>${!cfg.payFromAccountId ? html`<p class="sec-head__desc">Pick and save the account bills are paid from to choose how they’re paid.</p>` : ''}</div>
     <div class="jc-body" style="display: grid; gap: .5rem;">
       ${PAY_MODES.map(([k, label, text]) => html`<label class="jc-row" style="align-items: flex-start;" key=${k}>
@@ -680,6 +688,31 @@ function BillSettings({ data, act, busy }) {
       </label>`)}
     </div>
   </section>`;
+}
+
+function VendorDocSettings({ data, act, busy }) {
+  const d = data.vendorDocs || {};
+  const [occ, setOcc] = useState(String(d.glOccurrence ?? 1000000));
+  const [agg, setAgg] = useState(String(d.glAggregate ?? 2000000));
+  const [wc, setWc] = useState(d.workersComp !== false);
+  const [el, setEl] = useState(String(d.elEachAccident ?? 100000));
+  const [renew, setRenew] = useState(String(d.renewDays ?? 30));
+  const save = () => act({ action: 'docs-settings', glOccurrence: Number(occ), glAggregate: Number(agg), workersComp: wc, elEachAccident: Number(el), renewDays: Number(renew) }, 'Saved');
+  return html`
+    <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>W-9 and insurance</h3>
+      <p class="sec-head__desc">A bill is paid only when the vendor’s W-9 and certificate of insurance are current in JobTread (the W-9, Liability Expires and Workers’ Comp Expires fields on the vendor). If they aren’t, the bill waits and the vendor gets an email with their own upload link; each file is checked against these minimums the moment it’s added. Set a vendor’s Documents field to “W-9 only” or “Not needed” in JobTread to skip a check.</p></div>
+    <div class="jc-body jc-grid2">
+      <label class="jc-field"><span>General liability, each occurrence ($)</span><input class="form-input" type="number" min="0" step="100000" value=${occ} onInput=${(e) => setOcc(e.target.value)} /></label>
+      <label class="jc-field"><span>General liability, aggregate ($)</span><input class="form-input" type="number" min="0" step="100000" value=${agg} onInput=${(e) => setAgg(e.target.value)} /></label>
+      <label class="jc-field"><span>Employer’s liability, each accident ($)</span><input class="form-input" type="number" min="0" step="50000" value=${el} onInput=${(e) => setEl(e.target.value)} disabled=${!wc} /></label>
+      <label class="jc-field"><span>Ask for the renewal this many days ahead</span><input class="form-input" type="number" min="7" max="90" value=${renew} onInput=${(e) => setRenew(e.target.value)} /></label>
+      <label class="jc-row"><input type="checkbox" checked=${wc} onChange=${(e) => setWc(e.target.checked)} /><span>Workers’ compensation is required</span></label>
+    </div>
+    <div class="jc-body" style="border-top: 1px solid var(--color-border);"><div class="jc-row">
+      <button class="btn btn-primary" disabled=${!!busy} onClick=${save}>${busy === 'docs-settings' ? 'Saving…' : 'Save'}</button>
+      <button class="btn btn-ghost" disabled=${!!busy} onClick=${() => act({ action: 'docs-preview' }, (j) => `Sent to ${j.sent}`)}>${busy === 'docs-preview' ? 'Sending…' : 'Send me the vendor email'}</button>
+      <span class="sec-head__hint">Its link opens the vendor’s page for a sample company: try a real certificate there; nothing is kept.</span>
+    </div></div>`;
 }
 
 // ─── Close-outs and the budget builder ──────────────────────────────

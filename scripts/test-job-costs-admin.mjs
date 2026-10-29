@@ -71,11 +71,17 @@ function freshData() {
     bills: [
       { id: 'B1', jobId: 'J1', vendor: 'TKO Plumbing', cents: 185000, owed: 185000, date: '2026-10-20', number: '7', status: 'pending', lines: [], jobName: 'Max Daniel (2026)', job: { budget: 650000, forecast: 518300 },
         codes: [{ id: 'C19', name: '19 PLUMBING', budget: 500000, forecast: 326400 }], big: false, link: 'https://app.jobtread.com/documents/B1',
+        documents: { ok: false, label: 'Missing', staff: 'no W-9', needs: ['w9'] }, vendorLink: 'https://app.jobtread.com/vendors/V1',
         approval: { state: 'waiting', askedAt: iso(DAY), askedCount: 1, approvals: [] } },
+      { id: 'B3', jobId: 'J1', vendor: 'Bright Paint Co', cents: 64000, owed: 64000, date: '2026-10-18', number: '12', status: 'approved', lines: [], jobName: 'Max Daniel (2026)', job: null, codes: [], big: false, link: 'https://app.jobtread.com/documents/B3',
+        documents: { ok: false, label: 'Expired', staff: 'general liability insurance ended September 30, 2026', needs: ['coi'] }, vendorLink: 'https://app.jobtread.com/vendors/V3',
+        approval: { state: 'approved', approvals: [{ by: 'approver@example.org', decision: 'approved', at: iso(DAY), via: 'email' }], payState: 'held',
+          payError: 'Not paid until Bright Paint Co sends general liability insurance ended September 30, 2026.', hold: { askedAt: iso(2 * 3600e3), since: iso(DAY) } } },
       { id: 'B2', jobId: 'J2', vendor: 'Power Up Electrical', cents: 92000, owed: 92000, date: '2026-10-10', number: '3', status: 'pending', lines: [], jobName: 'Colin Lindsay (2026)', job: null, codes: [], big: false, link: 'https://app.jobtread.com/documents/B2',
         approval: { state: 'approved', approvals: [{ by: 'approver@example.org', decision: 'approved', at: iso(2 * DAY), via: 'email' }], payState: 'paid' } },
     ],
     billPay: { approvers: ['approver@example.org'], bigApprovers: [], bigBillCents: 1000000, dailyCapCents: 2500000, payMode: 'off', payFromAccountId: null },
+    vendorDocs: { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000, renewDays: 30 },
     closeouts: [
       { jobId: 'J0', name: 'Ava Brooks (2026)', closedOn: '2026-09-30', budget: 1200000, actual: 1312000, rooms: 2, codedShare: 0.95,
         rows: [{ codeId: 'C19', budget: 500000, actual: 610000 }, { codeId: 'C20', budget: 300000, actual: 280000 }, { codeId: 'C24', budget: 400000, actual: 422000 }],
@@ -136,6 +142,8 @@ async function open(browser, base, viewport, hash = '#job-costs') {
         }
         if (b.action === 'bill-decide') data.bills = data.bills.map((x) => (x.id === b.billId ? { ...x, approval: { ...x.approval, state: b.decision, approvals: [{ by: 'peter@example.org', decision: b.decision, at: new Date().toISOString(), via: 'admin' }] } } : x));
         if (b.action === 'odd-clear') data.odd = [];
+        if (b.action === 'docs-settings') data.vendorDocs = { ...data.vendorDocs, ...b };
+        if (b.action === 'docs-preview') return json({ success: true, sent: 'peter@example.org', url: 'x' });
         if (b.action === 'budget-add') return json({ success: true, added: b.lines.length, skipped: 0 });
         if (b.action === 'setup') data.config = { ...data.config, cardBuckets: b.cardBuckets, accountBuckets: b.accountBuckets, categories: b.categories };
         return json({ ...data, ...(b.action === 'setup' ? SETUP : {}) });
@@ -234,16 +242,38 @@ try {
   const active = await page.$$eval('.seg [role="tab"][aria-selected="true"]', (t) => t.map((x) => x.textContent.trim()));
   ok(active.length === 1 && active[0].startsWith('Bills'), `only Bills is the active tab (${active.join(', ')})`);
   ok(await page.evaluate(() => document.body.textContent.includes('Asked 1 days ago') || document.body.textContent.includes('Asked 24 h ago') || document.body.textContent.includes('Asked 1 day')), 'a bill says when the approver was asked');
+  ok(await page.evaluate(() => [...document.querySelectorAll('.jc-charge .tag--warn')].some((e) => e.textContent === 'No W-9') && [...document.querySelectorAll('.jc-charge a')].some((a) => a.textContent === 'Vendor in JobTread')), 'a waiting bill says its vendor’s W-9 is missing, with the vendor in JobTread');
   await page.screenshot({ path: `${OUT}bills.png` });
   await axe(page, 'Bills');
   await clickText(page, '.jc-sort button', 'Approve');
   await page.waitForFunction(() => !document.body.textContent.includes('TKO Plumbing · #7'));
   ok(posts.some((p) => p.action === 'bill-decide' && p.billId === 'B1' && p.decision === 'approved'), 'Approve sends the decision after the dialog');
+  await clickText(page, '.pill', 'Approved');
+  await page.waitForFunction(() => document.body.textContent.includes('Bright Paint Co · #12'));
+  const held = await page.evaluate(() => [...document.querySelectorAll('.jc-charge')].find((r) => r.textContent.includes('Bright Paint Co')).textContent);
+  ok(held.includes('Approved · not paid: documents') && held.includes('Not paid until Bright Paint Co sends general liability insurance ended September 30, 2026') && held.includes('Vendor emailed'),
+    'a held bill says it’s approved, not paid, why, and that the vendor was emailed');
+  await page.screenshot({ path: `${OUT}bills-held.png` });
+  await axe(page, 'Approved bills');
   await clickText(page, '.pill', 'Paid');
   ok(await page.evaluate(() => document.body.textContent.includes('Paid · recorded in JobTread')), 'a paid bill says it was recorded in JobTread');
   await clickText(page, '.jc button', 'Settings');
   await page.waitForFunction(() => document.body.textContent.includes('When a bill is approved'));
   ok(await page.evaluate(() => [...document.querySelectorAll('input[name="pay-mode"]')].filter((r) => r.disabled).length === 2), 'paying from Mercury waits for a pay-from account');
+  ok(await page.evaluate(() => document.body.textContent.includes('W-9 and insurance') && document.body.textContent.includes('General liability, each occurrence')), 'Settings has the W-9 and insurance minimums');
+  await page.evaluate(() => {
+    const input = [...document.querySelectorAll('.jc-field')].find((l) => l.textContent.includes('each occurrence')).querySelector('input');
+    input.value = '2000000';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.evaluate(() => [...document.querySelectorAll('.jc button')].filter((b) => b.textContent.trim() === 'Save')[1].click());
+  await wait(300);
+  const ds = posts.find((p) => p.action === 'docs-settings');
+  ok(ds?.glOccurrence === 2000000 && ds.workersComp === true && ds.renewDays === 30, `the minimums save (${JSON.stringify(ds)})`);
+  await clickText(page, '.jc button', 'Send me the vendor email');
+  await wait(300);
+  ok(posts.some((p) => p.action === 'docs-preview'), '“Send me the vendor email” asks for the preview');
+  await page.screenshot({ path: `${OUT}bill-settings.png`, fullPage: false });
   await axe(page, 'Bill settings');
 
   await clickText(page, '.seg [role="tab"]', 'Close-outs');

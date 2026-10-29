@@ -243,13 +243,15 @@ export function zeffyFacts(cfg, failing = null) {
 export async function jobCostFacts(DB) {
   const read = async (key) => JSON.parse((await DB.prepare('SELECT data FROM spend_state WHERE key = ?').bind(key).first('data').catch(() => null)) || '{}');
   const count = (sql) => DB.prepare(sql).first('n').catch(() => null);
-  const [cfg, hook, agent, unsorted, billRuns, billPay, closeouts, waitingBills, odd, fin, ven] = await Promise.all([
+  const [cfg, hook, agent, unsorted, billRuns, billPay, closeouts, waitingBills, odd, fin, ven, held, asking] = await Promise.all([
     read('job-costs'), read('mercury-webhook'), read('agent'),
     count("SELECT count(*) AS n FROM spend_charges WHERE bucket IS NULL AND bill_id IS NULL AND cents > 0 AND status IN ('pending', 'sent')"),
     read('bill-pay-runs'), read('bill-pay'), read('closeouts'),
     count("SELECT count(*) AS n FROM bill_approvals WHERE state IN ('waiting', 'second')"),
     count('SELECT count(*) AS n FROM spend_odd WHERE cleared_at IS NULL'),
     read('finance'), read('vendors'),
+    count("SELECT count(*) AS n FROM bill_approvals WHERE pay_state = 'held'"),
+    count('SELECT count(*) AS n FROM vendor_asks WHERE open = 1'),
   ]);
   return {
     webhook: !!hook.id, lastEventAt: hook.lastEventAt || null, webhookError: cfg.webhookError || null,
@@ -263,7 +265,7 @@ export async function jobCostFacts(DB) {
     receipts: cfg.lastRun?.receipts || null,
     odd: odd ?? 0, closeouts: { at: closeouts.lastAt || null, error: closeouts.error || null, historyLeft: closeouts.historyLeft ?? null, closed: closeouts.closed ?? null },
     finance: { at: fin.lastRunAt || null, backfill: fin.backfill || null, forecast: fin.lastForecast || null, mercuryEmpty: !!fin.mercuryEmpty, cashLow: !!fin.cashLowOpen, balancesError: fin.balancesError || null },
-    vendors: { at: ven.lastRunAt || null, error: ven.lastError || null, autoW9: !!ven.settings?.autoW9, autoCoi: !!ven.settings?.autoCoi },
+    vendors: { at: ven.lastRunAt || null, error: ven.lastError || null, setupError: ven.setupError || null, ready: !!ven.jt?.fields, held: held ?? 0, asking: asking ?? 0 },
   };
 }
 

@@ -1185,17 +1185,19 @@ const MAP = { t: 'SOARD', children: [
             if (!x.forecast) return ATTN('No forecast yet.');
             return x.cashLow ? ATTN('The cautious forecast dips under the cash floor. See the board page.', x.forecast.at) : ON('Above the cash floor all 13 weeks.', x.forecast.at);
           } },
-        { t: 'W-9s, insurance, 1099s', s: 'live', k: 'schedule',
-          when: 'Every 15 minutes on the heartbeat; Mercury’s recipients hourly, JobTread’s vendors every 4 hours; the 1099 card on January 5.',
-          does: 'Joins everyone SOARD pays. A sub with no W-9 gets a Mercury invite that collects it (and their bank details); a sub on a job with no current insurance certificate gets an email with their own upload link. Each asks again after a week, three times at most, and the Finance channel hears once per gap. In January, the Finance channel hears who was paid $600 or more by ACH, check or wire (never card) and whose W-9 is missing; Vendors → 1099 has the CSV for the CPA.',
-          touches: ['Mercury', 'JobTread', 'Resend', 'R2', 'Slack'], where: 'functions/api/_vendors.js, vendor-docs.js, src/pages/vendor-documents.astro',
-          info: 'Both requests are off until switched on in Vendors → Settings. No tax ID is ever stored by the site.',
+        { t: 'W-9s and insurance', s: 'live', k: 'schedule',
+          when: 'Every 15 minutes on the heartbeat (held bills every time, other vendors every 6 hours); JobTread’s vendors and the open jobs they’re on every 4 hours; W-9s to Mercury daily.',
+          does: 'JobTread is the one record: each vendor’s W-9, Liability Expires, Workers’ Comp Expires and Documents fields, and the files in their “W-9 & Insurance” folder. A vendor with a bill waiting or approved, or on a purchase order for an open job, whose W-9 or insurance is missing or out of date gets an email from SOARD with their own upload link (reminders after 3 and 7 days), and so does anyone whose insurance ends within 30 days. On that page each file is read by Workers AI and held to the minimums in Job Costs → Bills → Settings at once; a good one goes into JobTread and fills the fields, and a W-9 also goes onto their Mercury recipient for the 1099s. An approved bill is paid only once both are current: until then it’s held, with a pinned note on the bill in JobTread.',
+          touches: ['JobTread', 'Workers AI', 'Resend', 'Mercury', 'Slack'], where: 'functions/api/_vendors.js, _vendor-read.js, vendor-docs.js, src/pages/vendor-documents.astro · the hold: _bill-pay.js',
+          info: 'The Finance channel hears only what needs a person: a file nobody could read (fill the dates in JobTread), a vendor with no email, or one who hasn’t answered three emails while a bill waits. Set Documents to “W-9 only” or “Not needed” in JobTread to skip a vendor. No tax ID is ever kept by the site.',
           live: (f) => {
             const v = f.jobCosts?.vendors;
             if (!v || !env(f)) return null;
+            if (v.setupError) return ATTN(`Couldn’t set up the JobTread vendor fields: ${v.setupError.error}`, v.setupError.at);
             if (v.error) return ATTN(v.error.error || String(v.error), v.at);
-            if (!v.at) return ATTN('Hasn’t run yet.');
-            return ON(`W-9 requests ${v.autoW9 ? 'on' : 'off'}, insurance requests ${v.autoCoi ? 'on' : 'off'}.`, v.at);
+            if (!v.at) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            const bits = [v.held ? `${plural(v.held, 'bill')} held for documents` : null, v.asking ? `${plural(v.asking, 'vendor')} asked` : null].filter(Boolean);
+            return ON(bits.length ? `${bits.join(', ')}.` : 'Every vendor with a bill has a current W-9 and insurance.', v.at);
           } },
       ]},
       { t: 'The bank', children: [

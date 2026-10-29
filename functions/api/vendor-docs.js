@@ -1,70 +1,65 @@
 /**
- * The public side of a vendor's documents link (/vendor-documents/#t=<token>).
+ * The public side of a vendor's link (/vendor-documents/#t=<token>).
  *
- * GET  /api/vendor-docs?token=…  → { vendor: { name, coi: { expires, insurer } | null, needsW9 } }
- *                                   or 404 (unknown) / 410 (expired or replaced)
- * POST /api/vendor-docs          multipart: token, coi (file), coiExpires (YYYY-MM-DD), coiInsurer, w9 (file)
- *                                   → { ok: true }
+ * GET  /api/vendor-docs?token=…   → { ok, vendor: { name, needs, items, have, requirements, w9Only, notNeeded } }
+ *                                    or 404 (unknown) / 410 (expired or replaced)
+ * POST /api/vendor-docs           multipart: token, doc ('w9' | 'coi'), file (up to 3 for a
+ *                                    certificate), anyway ('1': send it in for a person despite the check)
+ *                                    → { ok, accepted, look, problems, lines, needs, done }
  *
  * Public: listed in the middleware's PUBLIC_ROUTES and rate limited per IP.
  * The token is the only key (only its SHA-256 is stored, see _vendors.js).
- * Files go to R2 under vendors/, which nothing public serves. A W-9 sent
- * here also goes onto the vendor's Mercury recipient when there is one. No
- * tax ID is ever asked for or kept: only the form itself.
+ * Everything is read from and written to the vendor's account in JobTread;
+ * the site keeps no copy of the files. No tax ID is asked for or kept.
  */
-import { findUploadLink, saveDocuments, LIMITS } from './_vendors.js';
+import { findLink, pageView, fileUpload, LIMITS } from './_vendors.js';
 
 const GONE = {
-  expired: 'This link has expired. Ask Sunshine on a Ranney Day for a new one.',
+  expired: 'This link has expired. Reply to our last email and we’ll send a new one.',
   closed: 'This link has been replaced by a newer one. Use the link in the latest email from Sunshine on a Ranney Day.',
 };
 const NO_STORE = { 'Cache-Control': 'no-store' };
+const fail = (error, status) => Response.json({ ok: false, error }, { status, headers: NO_STORE });
+
+async function linkFor(env, token) {
+  const { link, problem } = await findLink(env.DB, token);
+  if (problem === 'unknown') return { stop: fail('This link isn’t right. Check that you copied all of it.', 404) };
+  if (problem) return { stop: fail(GONE[problem], 410) };
+  return { link };
+}
 
 export async function onRequestGet(context) {
-  const token = new URL(context.request.url).searchParams.get('token');
-  const { vendor, problem } = await findUploadLink(context.env.DB, token);
-  if (problem === 'unknown') return Response.json({ ok: false, error: 'This link isn’t right. Check that you copied all of it.' }, { status: 404, headers: NO_STORE });
-  if (problem) return Response.json({ ok: false, error: GONE[problem] }, { status: 410, headers: NO_STORE });
-  return Response.json({
-    ok: true,
-    vendor: {
-      name: vendor.name,
-      coi: vendor.coi?.expires ? { expires: vendor.coi.expires, insurer: vendor.coi.insurer || '' } : null,
-      needsW9: !vendor.w9,
-    },
-  }, { headers: NO_STORE });
+  try {
+    const { link, stop } = await linkFor(context.env, new URL(context.request.url).searchParams.get('token'));
+    if (stop) return stop;
+    const vendor = await pageView(context.env, link);
+    if (!vendor) return fail('This link is for a company we no longer have on file. Reply to our email and we’ll sort it out.', 410);
+    return Response.json({ ok: true, vendor }, { headers: NO_STORE });
+  } catch (err) {
+    console.error('[vendor-docs] get', err.message);
+    return fail('We couldn’t load your page just now. Please try again in a minute.', 500);
+  }
 }
 
 export async function onRequestPost(context) {
   try {
     const { env } = context;
     let form;
-    try { form = await context.request.formData(); } catch { return Response.json({ ok: false, error: 'Send the form again' }, { status: 400 }); }
-    if (form.get('website')) return Response.json({ ok: true }); // a bot filled the hidden field
-    const { link, vendor, problem } = await findUploadLink(env.DB, form.get('token'));
-    if (problem === 'unknown') return Response.json({ ok: false, error: 'This link isn’t right. Check that you copied all of it.' }, { status: 404 });
-    if (problem) return Response.json({ ok: false, error: GONE[problem] }, { status: 410 });
-    if (link.uploads >= LIMITS.uploads) return Response.json({ ok: false, error: 'This link has been used too many times. Ask Sunshine on a Ranney Day for a new one.' }, { status: 429 });
-
-    const file = (name) => { const f = form.get(name); return f && typeof f === 'object' && f.size > 0 ? f : null; };
-    const coiFile = file('coi');
-    const w9File = file('w9');
-    const coiExpires = String(form.get('coiExpires') || '').trim();
-    if (!coiFile && !w9File) return Response.json({ ok: false, error: 'Add the certificate or the W-9.' }, { status: 400 });
-    if (coiFile && !coiExpires) return Response.json({ ok: false, error: 'Add the date the policy ends.' }, { status: 400 });
-
+    try { form = await context.request.formData(); } catch { return fail('Send the file again', 400); }
+    if (form.get('website')) return Response.json({ ok: true, accepted: false, problems: [] }); // a bot filled the hidden field
+    const { link, stop } = await linkFor(env, form.get('token'));
+    if (stop) return stop;
+    if (link.uploads >= LIMITS.uploads) return fail('This link has been used too many times. Reply to our email and we’ll send a new one.', 429);
     try {
-      await saveDocuments(env, vendor, {
-        coiFile, coiExpires: coiFile ? coiExpires : null, coiInsurer: String(form.get('coiInsurer') || ''), w9File, by: 'vendor',
-      });
+      const r = await fileUpload(env, link, { doc: String(form.get('doc') || ''), files: form.getAll('file'), anyway: form.get('anyway') === '1' });
+      return Response.json({ ok: true, ...r }, { headers: NO_STORE });
     } catch (e) {
-      return Response.json({ ok: false, error: e.status && e.status < 500 ? e.message : 'The file didn’t upload. Please try again.' }, { status: e.status || 500 });
+      if (e.status && e.status < 500) return fail(e.message, e.status);
+      console.error('[vendor-docs] post', e.message);
+      return fail('The file didn’t go through. Please try again in a minute.', 500);
     }
-    await env.DB.prepare('UPDATE vendor_links SET uploads = uploads + 1, last_upload_at = ? WHERE token_hash = ?')
-      .bind(new Date().toISOString(), link.token_hash).run();
-    return Response.json({ ok: true });
   } catch (err) {
     console.error('[vendor-docs]', err);
-    return Response.json({ ok: false, error: 'Something went wrong. Please try again in a minute.' }, { status: 500 });
+    return fail('Something went wrong. Please try again in a minute.', 500);
   }
 }

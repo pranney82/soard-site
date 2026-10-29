@@ -24,6 +24,10 @@
  *
  * Guards on paying: the decision must come from a listed approver; a bill at
  * or over the second-approval amount needs a second listed approver; the
+ * vendor's W-9 and insurance must be current in JobTread (./_vendors.js),
+ * or the bill is held: approved, not paid, said so on the bill in JobTread
+ * (a pinned note), in Job Costs → Bills and in the Finance channel, and the
+ * vendor is emailed; it pays itself once their documents check out; the
  * amount paid is the bill's balance, never more; a day's payments stop at
  * the daily cap; one payment per bill (Mercury's idempotency key is the
  * bill's id); the vendor's Mercury recipient must be the only one matching
@@ -40,6 +44,7 @@ import { mercury, mercuryConfigured, readState, writeState } from './_mercury.js
 import { readTxns } from './_mercury-txns.js';
 import { vendorLikeness, dollars } from './_spend-match.js';
 import { readLedgers, costCodes } from './_job-ledger.js';
+import { billDocs, askForBill } from './_vendors.js';
 
 export const KEY = 'bill-pay';
 export const PAY_MODES = ['off', 'request', 'send'];
@@ -65,7 +70,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS bill_approvals (
     bill_id TEXT PRIMARY KEY, state TEXT NOT NULL, asked_at TEXT, asked_count INTEGER DEFAULT 0, asked_ref TEXT,
     approvals TEXT, decided_by TEXT, decided_at TEXT, note TEXT, recipient_id TEXT,
-    pay_state TEXT, pay_ref TEXT, pay_cents INTEGER, pay_error TEXT, paid_at TEXT, updated_at TEXT, pay_started_at TEXT)`,
+    pay_state TEXT, pay_ref TEXT, pay_cents INTEGER, pay_error TEXT, paid_at TEXT, updated_at TEXT, pay_started_at TEXT, hold TEXT)`,
   `CREATE TABLE IF NOT EXISTS spend_payments (
     txn_id TEXT PRIMARY KEY, bill_id TEXT, cents INTEGER, jt_payment_id TEXT, how TEXT, error TEXT, at TEXT)`,
   'CREATE INDEX IF NOT EXISTS spend_payments_bill ON spend_payments (bill_id)',
@@ -74,6 +79,7 @@ const _ready = new WeakSet();
 export async function ensureBillPaySchema(DB) {
   if (_ready.has(DB)) return;
   await DB.batch(SCHEMA.map((s) => DB.prepare(s)));
+  try { await DB.prepare('ALTER TABLE bill_approvals ADD COLUMN hold TEXT').run(); } catch { /* already there */ }
   _ready.add(DB);
 }
 
@@ -174,6 +180,7 @@ const approvalRow = (r) => r && ({
   billId: r.bill_id, state: r.state, askedAt: r.asked_at, askedCount: r.asked_count || 0, approvals: parse(r.approvals, []),
   decidedBy: r.decided_by, decidedAt: r.decided_at, note: r.note, recipientId: r.recipient_id,
   payState: r.pay_state, payRef: r.pay_ref, payCents: r.pay_cents, payError: r.pay_error, paidAt: r.paid_at, payStartedAt: r.pay_started_at,
+  hold: parse(r.hold, null),
 });
 
 async function readBills(DB, { sinceIso = null } = {}) {
@@ -189,9 +196,10 @@ async function upsertApproval(DB, billId, patch) {
   const before = (await readApproval(DB, billId)) || { billId, state: 'waiting', askedCount: 0, approvals: [] };
   const a = { ...before, ...patch };
   await DB.prepare(`INSERT OR REPLACE INTO bill_approvals (bill_id, state, asked_at, asked_count, asked_ref, approvals, decided_by, decided_at, note, recipient_id,
-      pay_state, pay_ref, pay_cents, pay_error, paid_at, updated_at, pay_started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      pay_state, pay_ref, pay_cents, pay_error, paid_at, updated_at, pay_started_at, hold) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(billId, a.state, a.askedAt || null, a.askedCount || 0, a.askedRef || null, JSON.stringify(a.approvals || []), a.decidedBy || null, a.decidedAt || null,
-      a.note || null, a.recipientId || null, a.payState || null, a.payRef || null, a.payCents ?? null, a.payError || null, a.paidAt || null, new Date().toISOString(), a.payStartedAt || null).run();
+      a.note || null, a.recipientId || null, a.payState || null, a.payRef || null, a.payCents ?? null, a.payError || null, a.paidAt || null, new Date().toISOString(), a.payStartedAt || null,
+      a.hold ? JSON.stringify(a.hold) : null).run();
   return a;
 }
 
@@ -225,6 +233,9 @@ export async function billQueue(env, { now = Date.now() } = {}) {
     readBillPayConfig(env.DB),
   ]);
   const byBill = new Map(approvals.map((a) => [a.billId, a]));
+  // Where each vendor's W-9 and insurance stood when last read from JobTread (./_vendors.js)
+  const docs = new Map(await env.DB.prepare('SELECT jt_id, state, asked_at FROM vendor_asks').all()
+    .then((r) => (r.results || []).map((x) => [x.jt_id, { ...parse(x.state, {}), askedAt: x.asked_at }]), () => []));
   const codeName = (id) => codes.find((c) => c.id === id)?.name || 'Uncoded';
   const out = [];
   for (const b of bills) {
@@ -242,6 +253,8 @@ export async function billQueue(env, { now = Date.now() } = {}) {
         return { id, name: codeName(id), budget: r?.budget || 0, forecast: r?.forecast || 0 };
       }),
       big: cfg.bigBillCents > 0 && b.cents >= cfg.bigBillCents,
+      documents: (b.accountId && docs.get(b.accountId)) || null,
+      vendorLink: b.accountId ? `https://app.jobtread.com/vendors/${b.accountId}` : null,
       approval: a || { state: 'waiting', askedCount: 0, approvals: [] },
       link: `https://app.jobtread.com/documents/${b.id}`,
     });
@@ -284,7 +297,8 @@ export async function decideBill(env, billId, { decision, from, note = null, via
   if (state === 'approved') {
     // JobTread shows the bill approved too, so nobody asks about it again there
     await pave(env.JOBTREAD_GRANT_KEY, { updateDocument: { $: { id: billId, status: 'approved' } } }).catch(() => null);
-    await payBill(env, billId, { now }).catch(() => null);
+    const pay = await payBill(env, billId, { now }).catch(() => null);
+    if (pay?.state === 'held') return { ok: true, state, held: true, reason: pay.reason };
   }
   return { ok: true, state };
 }
@@ -308,9 +322,17 @@ export async function billsToAsk(env, { now = Date.now() } = {}) {
 export async function payBill(env, billId, { now = Date.now() } = {}) {
   await ensureBillPaySchema(env.DB);
   const cfg = await readBillPayConfig(env.DB);
-  const a = await readApproval(env.DB, billId);
+  let a = await readApproval(env.DB, billId);
   if (!a || a.state !== 'approved') return { ok: false, error: 'not approved' };
   if (['requested', 'sent', 'paid'].includes(a.payState)) return { ok: true, state: a.payState };
+  // The vendor's W-9 and insurance, fresh from JobTread, whatever the paying mode: a held bill tells
+  // whoever pays by hand not to, too
+  const raw = await env.DB.prepare('SELECT * FROM spend_bills WHERE id = ?').bind(billId).first();
+  if (raw?.account_id) {
+    const docs = await billDocs(env, raw.account_id, { now }).catch((e) => ({ ok: false, error: e.message }));
+    if (!docs.ok) return holdBill(env, billRow(raw), a, docs, { now });
+    if (a.payState === 'held') a = await releaseHold(env, billRow(raw), a, { now });
+  }
   if (cfg.payMode === 'off') return { ok: true, state: 'by-hand' };
   if (!payingStarted(cfg, now)) return { ok: true, state: 'not-yet' };   // paid once the switch day comes (payApproved)
   const fail = async (error) => {
@@ -323,7 +345,7 @@ export async function payBill(env, billId, { now = Date.now() } = {}) {
   };
   if (!mercuryConfigured(env)) return fail('Mercury isn’t connected');
   if (!cfg.payFromAccountId) return fail('Pick the account bills are paid from (Job Costs → Bills → Settings)');
-  const bill = billRow(await env.DB.prepare('SELECT * FROM spend_bills WHERE id = ?').bind(billId).first());
+  const bill = billRow(raw);
   // What JobTread says is owed right now, never the copy (someone may have paid part of it by hand)
   const fresh = await billBalance(env, billId).catch(() => null);
   if (!fresh) return fail('JobTread didn’t answer, so the bill’s balance couldn’t be checked. It tries again within the hour.');
@@ -378,6 +400,80 @@ export async function payBill(env, billId, { now = Date.now() } = {}) {
     }
     return fail(`Mercury said: ${String(e.message).slice(0, 200)}`);
   }
+}
+
+// ─── Held for the vendor's documents ────────────────────────────────
+
+const shortDay = (ms) => new Date(ms).toLocaleDateString('en-US', { timeZone: TZ, month: 'short', day: 'numeric' });
+
+/** A note on the bill in JobTread, for staff only → its id */
+async function billNote(env, billId, { name, message, pinned = false }) {
+  const d = await pave(env.JOBTREAD_GRANT_KEY, {
+    createComment: {
+      $: { targetType: 'document', targetId: billId, name, message, isPinned: pinned, isVisibleToAll: false, isVisibleToInternalRoles: true, isVisibleToVendorRoles: false, isVisibleToCustomerRoles: false },
+      createdComment: { id: {} },
+    },
+  });
+  return d?.createComment?.createdComment?.id || null;
+}
+
+/**
+ * An approved bill whose vendor's W-9 or insurance isn't current: not paid,
+ * and said so in JobTread (a pinned note, once), Job Costs and the Finance
+ * channel; the vendor is emailed (./_vendors.js). → { ok: false, state: 'held', reason }
+ */
+async function holdBill(env, bill, a, docs, { now = Date.now() } = {}) {
+  const iso = new Date(now).toISOString();
+  const first = a.payState !== 'held';
+  const hold = { ...(a.hold || {}), since: a.hold?.since || iso };
+  let reason;
+  if (docs.error) {
+    reason = `JobTread didn’t answer, so ${bill.vendor}’s W-9 and insurance couldn’t be checked. It checks again within 15 minutes.`;
+  } else {
+    reason = `Not paid until ${bill.vendor} sends ${docs.state.staff || 'a current W-9 and insurance certificate'}.`;
+    const asked = await askForBill(env, docs.vendor, docs.state, { number: bill.number, cents: bill.balance ?? (bill.cents - (bill.paid || 0)) }, { now })
+      .catch((e) => ({ ok: false, error: e.message }));
+    if (asked.ok && !asked.skipped) hold.askedAt = iso;
+    hold.noEmail = !!asked.noEmail;
+  }
+  if (first && !docs.error) {
+    hold.noteId = await billNote(env, bill.id, {
+      name: 'Approved, not paid yet', pinned: true,
+      message: `Approved by ${a.decidedBy || 'an approver'} on ${shortDay(Date.parse(a.decidedAt || iso))}, and not paid yet: ${bill.vendor} needs to send ${docs.state.staff}. `
+        + (hold.noEmail ? 'There’s no email for them in JobTread, so add one to their contact and they’re asked within 15 minutes. ' : 'They were emailed for it with their own upload link. ')
+        + 'This bill pays itself once their documents check out. (SOARD website, Job Costs → Bills)',
+    }).catch(() => null);
+  }
+  await upsertApproval(env.DB, bill.id, { payState: 'held', payError: reason, hold: { ...hold, reason } });
+  if (first) {
+    await slackIssue(env, `bill:${bill.id}`, slackCard({
+      icon: '⏸️', title: `${bill.vendor} bill approved, not paid yet`,
+      lead: `${reason}${hold.askedAt ? ' They were emailed for it; it pays itself once it checks out.' : hold.noEmail ? ' There’s no email for them in JobTread, so nobody could ask: add one to their contact.' : ''}`,
+      facts: [['Amount', dollars(bill.balance ?? bill.cents)]],
+      buttons: [{ label: 'Open bills', url: ADMIN }, { label: 'Vendor in JobTread', url: `https://app.jobtread.com/vendors/${bill.accountId}` }],
+    }), { title: `${bill.vendor} bill`, kind: 'attention', area: 'finance' }).catch(() => null);
+  }
+  return { ok: false, state: 'held', reason };
+}
+
+/** The documents came in: the note comes off the top of the bill and it's free to pay → the approval */
+async function releaseHold(env, bill, a, { now = Date.now() } = {}) {
+  if (a.hold?.noteId) await pave(env.JOBTREAD_GRANT_KEY, { updateComment: { $: { id: a.hold.noteId, isPinned: false } } }).catch(() => null);
+  await billNote(env, bill.id, { name: 'Documents in', message: `${bill.vendor}’s W-9 and insurance checked out on ${shortDay(now)}, so this bill is cleared to pay.` }).catch(() => null);
+  await slackResolved(env, `bill:${bill.id}`, slackCard({ icon: '✅', title: `${bill.vendor}: documents in` }), { summary: 'Their W-9 and insurance are current, so the bill is cleared to pay.' }).catch(() => null);
+  return upsertApproval(env.DB, bill.id, { payState: null, payError: null, hold: null });
+}
+
+/** A vendor's documents checked out: each of their held bills goes on to be paid → how many */
+export async function releaseVendorHolds(env, accountId, { now = Date.now() } = {}) {
+  await ensureBillPaySchema(env.DB);
+  const rows = (await env.DB.prepare("SELECT a.bill_id FROM bill_approvals a JOIN spend_bills b ON b.id = a.bill_id WHERE a.pay_state = 'held' AND b.account_id = ?").bind(accountId).all()).results || [];
+  let n = 0;
+  for (const r of rows) {
+    const p = await payBill(env, r.bill_id, { now }).catch(() => null);
+    if (p && p.state !== 'held') n++;
+  }
+  return n;
 }
 
 /** Pay approved bills that haven't gone yet (payment turned on later, a failed day, tomorrow's cap) */
@@ -470,7 +566,9 @@ export async function recordPayments(env, { now = Date.now(), fetchImpl = fetch 
         await env.DB.prepare('UPDATE spend_bills SET charge_id = COALESCE(charge_id, ?) WHERE id = ?').bind(t.id, bill.id).run();
       }
       const a = await readApproval(env.DB, bill.id);
-      if (a) await upsertApproval(env.DB, bill.id, { payState: 'paid', paidAt: iso, payError: null });
+      if (a) await upsertApproval(env.DB, bill.id, { payState: 'paid', paidAt: iso, payError: null, hold: null });
+      // Paid by hand while it was held: the note comes off the top of the bill
+      if (a?.hold?.noteId) await pave(env.JOBTREAD_GRANT_KEY, { updateComment: { $: { id: a.hold.noteId, isPinned: false } } }, fetchImpl).catch(() => null);
       if (a && ['requested', 'sent'].includes(a.payState)) {
         await slackResolved(env, `bill:${bill.id}`, slackCard({ icon: '✅', title: `${bill.vendor} paid ${dollars(Math.abs(t.cents))}`, lead: 'Recorded on the bill in JobTread.' }), { summary: 'Paid and recorded in JobTread' }).catch(() => null);
       }

@@ -210,7 +210,7 @@
     .side-head, .side-foot { position: relative; z-index: 1; transition: box-shadow 0.15s; }
     .sidebar[data-over] .side-head { box-shadow: 0 1px 0 rgba(255,255,255,0.06), 0 8px 12px -8px rgba(0,0,0,0.7); }
     .sidebar[data-more] .side-foot { box-shadow: 0 -8px 12px -8px rgba(0,0,0,0.7); }
-    .nav-group + .nav-group { margin-top: 0.85rem; }
+    .nav-group + .nav-group { margin-top: 0.6rem; }
     .nav-section {
       font-size: var(--fs-2xs);
       font-weight: 600;
@@ -222,7 +222,7 @@
     .nav-item {
       position: relative;
       display: flex; align-items: center; gap: 0.7rem;
-      width: 100%; min-height: 32px;
+      width: 100%; min-height: 31px;
       margin: 1px 0;
       padding: 0.35rem 0.65rem;
       font-size: var(--fs-sm);
@@ -5027,21 +5027,6 @@
       useEffect(load, []);
       if (err) return html`<${LoadErrorCard} error=${`Could not load job costs: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
       return mod ? html`<${mod.JobCosts} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
-    }
-
-    // Vendors: everyone SOARD pays, with W-9s (collected by Mercury), insurance
-    // certificates (the vendor's own upload link) and 1099s; kept in ./vendors.js.
-    let vendorsModule = null;
-    function VendorsLazy(props) {
-      const [mod, setMod] = useState(() => lazyNow(vendorsModule));
-      const [err, setErr] = useState(null);
-      const load = () => {
-        vendorsModule ||= lazyKeep(import('./vendors.js'));
-        vendorsModule.then((m) => setMod(m)).catch((e) => { vendorsModule = null; setErr(e.message); });
-      };
-      useEffect(load, []);
-      if (err) return html`<${LoadErrorCard} error=${`Could not load vendors: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
-      return mod ? html`<${mod.Vendors} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
     // Board: the board's meetings, minutes, files and documents (its admins only),
@@ -22452,7 +22437,6 @@ ${sections || '<p>No one yet.</p>'}
         { id: 'demo-day', label: 'Demo Day', icon: 'demoDay', hash: '#demo-day', meta: 'Calendar invites for the first day of construction' },
         { id: 'broadcast', label: 'Reveals', icon: 'goLive', hash: '#broadcast', meta: 'Live broadcast and invites' },
         { id: 'job-costs', label: 'Job Costs', icon: 'jobCosts', hash: '#job-costs', meta: 'Spending against budgets, bills, close-outs and the budget builder' },
-        { id: 'vendors', label: 'Vendors', icon: 'vendors', hash: '#vendors', meta: 'W-9s, insurance certificates and 1099s for everyone SOARD pays' },
         // Only the Board area's admins see it (boardAdminGate); its API refuses everyone else
         { id: 'board', label: 'Board', icon: 'board', hash: '#board', meta: 'Meetings, minutes and documents for the board', gate: 'board' },
       ] },
@@ -22519,7 +22503,6 @@ ${sections || '<p>No one yet.</p>'}
       messages: [() => messagesModule, (p) => { messagesModule = p; }, './messages.js'],
       automations: [() => automationsModule, (p) => { automationsModule = p; }, './automations.js'],
       'job-costs': [() => jobCostsModule, (p) => { jobCostsModule = p; }, './job-costs.js'],
-      vendors: [() => vendorsModule, (p) => { vendorsModule = p; }, './vendors.js'],
       board: [() => boardModule, (p) => { boardModule = p; }, './board-admin.js'],
     };
     /** Start loading an area's code (hover, focus, or a quiet moment after the admin opens) */
@@ -23481,8 +23464,6 @@ ${sections || '<p>No one yet.</p>'}
 
           case 'job-costs':
             return html`<${JobCostsLazy} addToast=${addToast} />`;
-          case 'vendors':
-            return html`<${VendorsLazy} addToast=${addToast} />`;
 
           // ─── Board: ./board-admin.js (#board, #board/meeting/<id>, #board/documents…) ───
           case 'board':
