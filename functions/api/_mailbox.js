@@ -68,7 +68,7 @@ export async function resolveMailbox(env, address) {
   return { email: a.email, name: a.name || '', ...(a.email !== e ? { alias: e } : {}) };
 }
 
-async function gmail(token, path, fetchImpl) {
+export async function gmail(token, path, fetchImpl) {
   const res = await fetchImpl(`${GMAIL}${path}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20000) });
   const body = await res.json().catch(() => null);
   if (!res.ok) throw fail(res.status === 404 ? 404 : 500, `Gmail answered ${res.status}: ${body?.error?.message || ''}`.trim());
@@ -94,9 +94,9 @@ async function inBatches(items, fn) {
 
 // ─── Reading a message ──────────────────────────────────────────────
 
-const header = (headers, name) => (headers || []).find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+export const header = (headers, name) => (headers || []).find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
 
-const bytesOf = (data) => Uint8Array.from(atob(String(data || '').replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+export const bytesOf = (data) => Uint8Array.from(atob(String(data || '').replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 
 function decode(data, contentType = '') {
   const bytes = bytesOf(data);
@@ -126,17 +126,17 @@ export function htmlText(html) {
     .trim();
 }
 
-function partsOf(payload) {
+export function partsOf(payload) {
   const out = [];
   const walk = (p) => { if (!p) return; out.push(p); for (const c of p.parts || []) walk(c); };
   walk(payload);
   return out;
 }
 
-const isFile = (p) => Boolean(p.filename) && Boolean(p.body?.attachmentId || p.body?.data);
+export const isFile = (p) => Boolean(p.filename) && Boolean(p.body?.attachmentId || p.body?.data);
 
 /** The email's words: its plain-text part, else its HTML as text */
-function textOf(payload) {
+export function textOf(payload) {
   const parts = partsOf(payload).filter((p) => !isFile(p) && p.body?.data);
   const plain = parts.find((p) => p.mimeType === 'text/plain');
   const html = parts.find((p) => p.mimeType === 'text/html');
@@ -146,7 +146,7 @@ function textOf(payload) {
 }
 
 /** Attached files: [{ part, name, type, size, inline }] (part is the stable id a download asks for) */
-function filesOf(payload) {
+export function filesOf(payload) {
   return partsOf(payload).filter(isFile).map((p) => ({
     part: p.partId,
     name: p.filename,

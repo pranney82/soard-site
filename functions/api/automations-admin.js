@@ -20,6 +20,7 @@
  *  - mercury:   Mercury through SOARD's relay (both keys present, and the accounts it answers with: names and kinds only)
  *  - board:     Access's board sign-in list (synced, the policy on the app, members without an email), bank history months, the last packet
  *  - staff:     staff sign-in from SOARD's Google accounts (last read, active and off counts, the fix a failed read needs, who was signed out)
+ *  - mailSweep: the staff inboxes sweep (the watch, last look, the backlog, the week's counts; family and vendor names only)
  *  - emailTracking: Resend's delivery reports (on, waiting, send-only key, or the last error)
  *  - slack:     how alerts reach Slack (app or webhook), the channel's name, and Slack's own error if any
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
@@ -55,6 +56,7 @@ import { demoFacts } from './_demo-invites.js';
 import { listAccounts } from './_mercury.js';
 import { boardFacts } from './_board.js';
 import { staffStatus } from './_staff-access.js';
+import { mailSweepStatus } from './_mail-sweep.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -435,6 +437,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     board: await settle(() => boardFacts(env)),
     // Staff sign-in from SOARD's Google accounts: counts, times, on/off, and who was signed out (_staff-access.js)
     staff: await settle(() => staffStatus(env)),
+    // Staff inboxes swept: receipts to the receipt inbox, family emails onto JobTread (_mail-sweep.js)
+    mailSweep: await settle(() => mailSweepStatus(env)),
   };
 }
 

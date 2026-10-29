@@ -55,6 +55,25 @@ const slackLive = (f) => {
   if (f.env.slack) return ON('Through the old incoming webhook, which can’t say which channel it posts to. Add the Slack app to name and check the channel.');
   return OFF(SLACK_OFF);
 };
+// Staff inboxes swept (_mail-sweep.js): one look at every inbox serves both of its entries
+const sweepLive = (kind) => (f) => {
+  const m = f.mailSweep;
+  if (!m || !('key' in m)) return null;
+  if (!m.key) return OFF('Needs GOOGLE_CALENDAR_KEY in Cloudflare.');
+  if (kind === 'receipt' && !m.email) return ATTN('RESEND_API_KEY is missing, so receipts can’t be sent on.');
+  if (kind === 'family' && !m.jobtread) return ATTN('JOBTREAD_GRANT_KEY is missing, so family emails can’t be added.');
+  if (!m.lastSweptAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+  if (stale(m.lastSweptAt, HOUR)) return ATTN(`Hasn’t looked since ${stamp(m.lastSweptAt)}. Check the Heartbeat entry.`, m.lastSweptAt);
+  if (m.error) return ATTN(m.error, m.lastSweptAt);
+  const c = m.counts?.[kind] || {};
+  const noun = kind === 'receipt' ? 'receipt' : 'family email';
+  const failed = (m.recent || []).find((r) => r.kind === kind && r.state === 'failed');
+  if (failed) return ATTN(`Couldn’t ${kind === 'receipt' ? 'send a receipt on' : 'add a family email'}: ${failed.detail}. It tries again.`, m.lastSweptAt);
+  if (m.watchUntil && Date.parse(m.watchUntil) > Date.now()) return ON(`Only watching until ${stamp(m.watchUntil)}, then it does what it found: ${plural(c.would || 0, noun)} so far.`, m.lastSweptAt);
+  if (kind === 'family' && !m.backfillDone) return ON('Bringing in the last year’s family emails, oldest first.', m.lastSweptAt);
+  const done = (kind === 'receipt' ? c.sent : c.posted) || 0;
+  return ON(`Reading ${plural(m.inboxes, 'inbox', 'inboxes')}. ${plural(done, noun)} ${kind === 'receipt' ? 'sent to the receipt inbox' : 'added in JobTread'} this week.`, m.lastSweptAt);
+};
 // A JobTread workflow, by id
 const wf = (id) => (f) => {
   const jt = f.jobtread;
@@ -462,6 +481,12 @@ const MAP = { t: 'SOARD', children: [
             if (/^not/.test(r.last.slack || '') || /^not/.test(r.last.email || '')) return ATTN(`The last alert (${stamp(r.last.at)}): Slack ${r.last.slack || 'unknown'}, email ${r.last.email || 'unknown'}.`, r.last.at);
             return ON(`Last alert ${stamp(r.last.at)}, in Slack and by email.`, r.last.at);
           } },
+        { t: 'Family emails → JobTread', s: 'live', k: 'schedule',
+          when: 'Every 3 minutes on the heartbeat, for every active SOARD Google account.',
+          does: 'An email to or from a family (an address on their JobTread account) that went through someone’s own inbox becomes a comment on the family’s account, so JobTread has the whole conversation: who wrote to whom and when, the words without the quoted history, and the photos and files. The family can’t see it and nobody is assigned, so JobTread emails no one. Replies go under the first email of their conversation. The last year of these emails is brought in once, oldest first.',
+          touches: ['Gmail', 'JobTread', 'D1'], where: 'functions/api/_mail-sweep.js (broadcast-hooks.js; reads with _mailbox.js)',
+          info: 'Calendar replies, JobTread’s own emails and mailings to more than three families are left out. An address on two families’ accounts (a caseworker) points at neither. The same email in two inboxes is added once. Its first day only watches, then adds what it found.',
+          live: sweepLive('family') },
         { t: 'CompanyCam for families in review', s: 'off', k: 'event',
           when: 'Would run when a family moves to In Review (the home visit). Off since Oct 21, 2026: the home visit happens at the job, where JobTread’s own CompanyCam sync (and the check below) has it.',
           does: 'Makes one CompanyCam project for the family at their home, with their contact, a “Vetting” label and their application photos of the space, copies every home-visit photo to the family in JobTread (Files → Home visit, .BeforePics), and links the job to that project when it’s made.',
@@ -1143,6 +1168,12 @@ const MAP = { t: 'SOARD', children: [
             if (errs.length) return ATTN(errs.join(' · '));
             return ON(`Last run: ${plural(r.toAp?.sent || 0, 'photo')} sent to ap@, ${plural(r.toMercury?.uploaded || 0, 'receipt')} added in Mercury.`);
           } },
+        { t: 'Receipts from inboxes', s: 'live', k: 'schedule',
+          when: 'Every 3 minutes on the heartbeat (every minute while there’s a backlog), for every active SOARD Google account.',
+          does: 'Reads each staff inbox’s new mail. A receipt, paid order or bill for something bought is emailed to the receipt inbox (ap@) with its files, for the Receipt Processor, so nobody forwards receipts by hand. Workers AI reads each one first: shipping and delivery notices, ads, carts, refunds, statements, gifts to SOARD and personal purchases stay out, and so does anything the receipt inbox already has (on the email or in its conversation) or that came from Ramp, Mercury or JobTread.',
+          touches: ['Gmail', 'Workers AI', 'Resend', 'D1'], where: 'functions/api/_mail-sweep.js (broadcast-hooks.js; reads with _mailbox.js)',
+          info: 'Read-only in Gmail: nothing is moved, labelled or marked read. Receipts from before it was turned on are left alone, since staff forwarded those by hand. The same email in two inboxes is sent once. Its first day only watches, listing here what it would send, then sends it.',
+          live: sweepLive('receipt') },
         { t: 'Odd charges', s: 'live', k: 'schedule',
           when: 'Every 15 minutes, before the job costs rebuild.',
           does: 'Posts once in the Finance channel: the same charge twice in a day, far more than a vendor usually charges, a vendor that started charging monthly, a bar or gambling merchant. A refund nobody placed goes back on the job its charge was on.',
