@@ -91,7 +91,7 @@ export const LIVE = [
   { id: 'projects', label: 'Makeovers in progress (JobTread)' },
   { id: 'reveals', label: 'Upcoming reveals (JobTread)' },
   { id: 'events', label: 'Upcoming events' },
-  { id: 'cash', label: 'Money: Mercury and the finance summary' },
+  { id: 'cash', label: 'Money: the bank balances and the finance summary' },
   { id: 'meetings', label: 'Next board meetings' },
 ];
 export const LIMITS = { title: 200, text: 300, notes: 20000, items: 80, sections: 20, people: 80, rows: 100 };
@@ -730,7 +730,9 @@ export function liveLines(kind, n, { meetingId = null } = {}) {
     const out = [];
     if (n.cash) {
       const parts = (n.cash.accounts || []).length > 1 ? ` (${n.cash.accounts.map((a) => `${a.name} ${money(a.balance)}`).join(', ')})` : '';
-      out.push(`${money(n.cash.total)} in Mercury${parts}`);
+      out.push(`${money(n.cash.total)} in the bank${parts}`);
+      const owed = (n.cash.owed || []).filter((c) => c.balance > 0);
+      if (owed.length) out.push(`Owed on the card${owed.length > 1 ? 's' : ''}: ${owed.map((c) => `${c.name} ${money(c.balance)}`).join(', ')}`);
     }
     const f = n.finance;
     if (f?.ytd) {

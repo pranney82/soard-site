@@ -564,9 +564,10 @@ function SecHead({ title, sub = '', count = null, id, children }) {
 const rise = (i) => `--i:${i}`;
 
 
-// ─── Cash, from the newest balance sheet ────────────────────────────
-// SOARD's money is at Chase and nothing here reads Chase, so the board's cash figure is the bank-account total on
-// the newest Statement of Financial Position in a meeting's packet (QuickBooks' Excel copy), read in the browser
+// ─── Cash: live from the banks, else the newest balance sheet ───────
+// Once a bank is connected (Chase through Plaid in Board → Settings, Mercury once it holds the money), the cash is
+// theirs (numbers.cash). Until then it's the bank-account total on the newest Statement of Financial Position in a
+// meeting's packet (QuickBooks' Excel copy), read in the browser
 const compact = (n) => (Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2).replace(/\.?0+$/, '')}M` : Math.abs(n) >= 1e4 ? `$${Math.round(n / 1e3)}K` : money(n));
 function balanceSheet(data) {
   return data.meetings.flatMap((m) => m.files.filter((f) => f.kind === 'financials' && formatOf(f) === 'Excel' && /financial position|balance sheet/i.test(f.name)).map((f) => ({ f, m })))
@@ -615,11 +616,25 @@ function useCash(data) {
   useEffect(() => { let on = true; readCash(data).then((c) => { if (on) setCash(c); }); return () => { on = false; }; }, []);
   return cash;
 }
-/** Home's cash figure: Mercury's live balance once Mercury holds SOARD's money, else the newest balance sheet's */
+const andText = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0] || '');
+/** The banks' own numbers (numbers.cash) in the balance sheet's shape, with the month a year back from the history */
+function liveCash(data) {
+  const c = data.numbers.cash;
+  if (!(c?.total > 0)) return null;
+  // As of the oldest read among them: Plaid's refresh of Chase can be hours older than Mercury's live answer
+  const at = String(c.banksAt && c.banksAt < c.at ? c.banksAt : c.at || '');
+  const day = at ? todayEastern(Date.parse(at)) : '';
+  const ym = day.slice(0, 7);
+  const then = ym ? (data.cashHistory || []).find((r) => r.month === `${Number(ym.slice(0, 4)) - 1}${ym.slice(4)}`) : null;
+  return {
+    live: true, total: c.total, asOf: day ? shortDate(day) : '', today: day === todayEastern(), at, prior: then ? then.total : null, priorAsOf: then ? monthOf(then.month) : '',
+    accounts: c.accounts || [], owed: (c.owed || []).filter((o) => o.balance > 0), banks: [...new Set((c.accounts || []).map((a) => a.bank || 'Mercury'))], stale: c.stale || [],
+  };
+}
+/** Home's cash figure: the banks' live balances once one holds SOARD's money, else the newest balance sheet's */
 function useCashNow(data) {
   const sheet = useCash(data);
-  const live = data.numbers.cash;
-  return live?.total > 0 ? { total: live.total, asOf: shortDate(String(live.at || '').slice(0, 10)), prior: null, where: 'in Mercury' } : sheet;
+  return liveCash(data) || sheet;
 }
 const shortAsOf = (s) => String(s || '').replace(/, \d{4}$/, '');
 
@@ -1350,14 +1365,14 @@ function Bars({ s }) {
   </div>`;
 }
 
-/** The cash in the bank, from the newest balance sheet: the total, a year earlier, and each account */
+/** The cash in the bank (live from the banks, else the newest balance sheet): the total, a year earlier, each account, and the cards */
 function CashCard({ data }) {
-  const cash = useCash(data);
+  const cash = useCashNow(data);
   if (!cash) return null;
   const change = cash.prior != null ? cash.total - cash.prior : null;
   const top = Math.max(...cash.accounts.map((a) => a.balance), 1);
   const shown = cash.accounts.filter((a) => a.balance);
-  const vf = asViewer([cash.file]);
+  const vf = cash.live ? null : asViewer([cash.file]);
   return html`<section class="bp-card bp-cash bp-rise" style=${rise(1)} aria-labelledby="cash-h">
     <div class="bp-cash__head">
       <div>
@@ -1365,12 +1380,19 @@ function CashCard({ data }) {
         <p class="bp-cash__total">${money(cash.total)}</p>
         <p class="bp-muted">${cash.asOf ? `As of ${cash.asOf}` : ''}${change != null ? html` · <span class=${change >= 0 ? 'bp-up' : 'bp-down'}>${change >= 0 ? 'up' : 'down'} ${money(Math.abs(change))}</span> from ${cash.priorAsOf || 'a year earlier'}` : ''}</p>
       </div>
-      <p class="bp-cash__src">From the <a class="bp-link" ...${viewerLink(vf, 0)}>statement of financial position</a> in the <a class="bp-link" href=${`#/meetings/${cash.meeting.id}`} onClick=${claimMorph}>${meetingName(cash.meeting)}</a> packet</p>
+      ${cash.live
+        ? html`<p class="bp-cash__src">Straight from ${andText(cash.banks)}, read ${cash.today ? `today at ${clockAt(cash.at)}` : cash.asOf}${cash.stale.length ? html`<br />${andText(cash.stale)} hasn’t answered since then` : null}</p>`
+        : html`<p class="bp-cash__src">From the <a class="bp-link" ...${viewerLink(vf, 0)}>statement of financial position</a> in the <a class="bp-link" href=${`#/meetings/${cash.meeting.id}`} onClick=${claimMorph}>${meetingName(cash.meeting)}</a> packet</p>`}
     </div>
     ${shown.length > 1 ? html`<ul class="bp-accounts">${shown.map((a) => html`<li key=${a.name}>
       <span class="bp-accounts__name">${a.name}</span>
       <span class="bp-accounts__bar" aria-hidden="true"><span style=${`--p:${(a.balance / top) * 100}%`}></span></span>
       <span class="bp-accounts__n">${money(a.balance)}</span>
+    </li>`)}</ul>` : null}
+    ${cash.owed?.length ? html`<ul class="bp-accounts bp-accounts--owed" aria-label="Owed on the cards">${cash.owed.map((o) => html`<li key=${o.name}>
+      <span class="bp-accounts__name">${o.name}</span>
+      <span class="bp-accounts__note">${o.limit ? `Owed, of a ${money(o.limit)} limit` : 'Owed'}</span>
+      <span class="bp-accounts__n">${money(o.balance)}</span>
     </li>`)}</ul>` : null}
   </section>`;
 }
@@ -1381,7 +1403,6 @@ function FinancialsPage({ ctx }) {
   // SOARD's money is at Chase until it moves to Mercury: Mercury's own record speaks for SOARD only once it holds the money
   const funded = !!data.numbers.mercury && !data.numbers.mercury.empty;
   const f = funded ? data.numbers.finance : null;
-  const cash = data.numbers.cash;
   const history = data.cashHistory;
   const s = data.snapshot;
   const withStatements = [...data.meetings].filter((m) => m.files.some((x) => x.kind === 'financials')).sort((a, b) => b.date.localeCompare(a.date));
@@ -1435,9 +1456,8 @@ function FinancialsPage({ ctx }) {
             </table>
           </details>` : null}
         </section>` : null}
-        ${cash || f?.cash ? html`<section class="bp-card" aria-labelledby="cash-h">
-          <h2 class="bp-h2" id="cash-h">Cash</h2>
-          ${cash ? html`<p class="bp-big">${money(cash.total)} <span class="bp-muted">in Mercury</span></p><p class="bp-muted">${cash.accounts.length > 1 ? `${cash.accounts.map((a) => `${a.name} ${money(a.balance)}`).join(' · ')} · ` : ''}${shortDate(cash.at.slice(0, 10))}</p>` : null}
+        ${f?.cash || history.length > 1 ? html`<section class="bp-card" aria-labelledby="cashtime-h">
+          <h2 class="bp-h2" id="cashtime-h">Cash over time</h2>
           ${f?.cash ? html`<div class="bp-live">
             <div class="bp-live__label">The next 13 weeks</div>
             <ul>

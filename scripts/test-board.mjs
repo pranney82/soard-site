@@ -41,6 +41,7 @@ import { createD1 } from '../tests/lib/d1-shim.mjs';
 import { answerAsks } from './lib/ask.mjs';
 import { onRequest as middleware, _resetKeyCacheForTests } from '../functions/api/_middleware.js';
 import * as boardAdmin from '../functions/api/board-admin.js';
+import * as bankAdmin from '../functions/api/bank-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
 import { provideBoardFinance } from '../functions/api/_board.js';
@@ -223,7 +224,7 @@ provideBoardFinance(async () => ({
 }));
 
 // ── The server ──
-const ROUTES = { '/api/board-admin': boardAdmin, '/api/board-portal': boardPortal, '/api/board-file': boardFile };
+const ROUTES = { '/api/board-admin': boardAdmin, '/api/board-portal': boardPortal, '/api/board-file': boardFile, '/api/bank-admin': bankAdmin };
 const csp = (() => {
   const lines = readFileSync(join(ROOT, 'public/_headers'), 'utf8').split('\n');
   const at = lines.findIndex((l) => l.trim() === '/admin/*');
@@ -369,8 +370,8 @@ try {
   const meetingId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/')[2]);
   const t1 = await text(jane);
   ok(await jane.evaluate(() => [...document.querySelectorAll('input[aria-label="Item"]')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
-  ok(/\$375,000 in Mercury/.test(t1), 'the Financial item shows today’s cash in Mercury');
-  ok(/Money: Mercury and the finance summary/.test(t1) && /Makeovers in progress \(JobTread\)/.test(t1), 'the agenda marks the items that show live numbers');
+  ok(/\$375,000 in the bank/.test(t1), 'the Financial item shows today’s cash in the bank');
+  ok(/Money: the bank balances and the finance summary/.test(t1) && /Makeovers in progress \(JobTread\)/.test(t1), 'the agenda marks the items that show live numbers');
 
   // Board only, and a private note, from an item's ⋯ menu
   ok(await itemMenu(jane, 'Governance', /^Board only/), 'an item’s menu marks it board only');
@@ -482,6 +483,9 @@ try {
   await jane.goto(`${SITE}/admin/#board/settings`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Who can open the Board area/), 'Settings opens');
   ok(await jane.$eval('#bd-from', (e) => e.value) === FOUNDER, 'Settings: invites come from the president until another is chosen');
+  ok(await waitText(jane, /Read through SOARD’s relay/), 'Settings: Bank balances, Mercury read through the relay');
+  const banks = await jane.$eval('.bk-banks', (e) => e.textContent);
+  ok(/Chase[\s\S]*PLAID_CLIENT_ID[\s\S]*PLAID_SECRET/.test(banks) && !/\$/.test(banks) && !(await jane.$('.bk-banks .btn-primary')), 'Settings: Chase waits for Plaid’s two keys, with no button until they’re in, and no amounts');
   await shot(jane, '07-settings');
 
   // A board meeting on the founder's calendar becomes a meeting in Board; Board's own invite isn't brought in again
@@ -601,7 +605,7 @@ try {
     }
 
     for (const [p, re] of [
-      ['financials', /The latest statements[\s\S]*Balance sheet financials[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash[\s\S]*\$375,000 in Mercury[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Tax returns and audits[\s\S]*2025/],
+      ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Tax returns and audits[\s\S]*2025/],
       ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
       ['documents', width === 1440 ? /Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Conflict of interest policy[\s\S]*Read it[\s\S]*Signed\s*by Alex Rivera/],
     ]) {

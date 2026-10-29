@@ -806,18 +806,21 @@ const MAP = { t: 'SOARD', children: [
             if (!f.env.resend) return ATTN('RESEND_API_KEY is missing, so the packet can’t be emailed.');
             return ON(b?.lastPacketAt ? `Last packet emailed ${stamp(b.lastPacketAt)}.` : 'No packet emailed yet.', b?.lastPacketAt || null);
           } },
-        { t: 'Cash in Mercury, month by month', s: 'off', k: 'schedule',
-          when: 'Once a day on the live hub’s heartbeat.',
-          does: 'Reads Mercury’s checking and savings balances (never moves money) for the board page’s Financials: the latest balance, and one row a month for the history, both only once Mercury holds money. SOARD’s money was at Chase when Mercury was opened (October 2026), so an empty Mercury shows nothing rather than $0. Locking a meeting’s numbers keeps that day’s balance with its packet.',
-          touches: ['Mercury', 'D1'], where: 'functions/api/_board.js (cashNow, maybeRunBoard) · _mercury.js (through the relay)',
+        { t: 'Cash in the bank, month by month', s: 'off', k: 'schedule',
+          when: 'On the live hub’s heartbeat: the banks connected through Plaid every six hours, the day’s balance once a day.',
+          does: 'Reads the balances (never moves money) for the board page’s cash: Chase’s checking and CD through Plaid (connected once by a Board admin in Board → Settings → Bank balances; Plaid refreshes them about daily), and Mercury’s checking and savings through the relay once Mercury holds money. Credit cards show as owed, never taken off the cash. One row a month for the history. A bank that needs signing in again keeps its last balances with their date, and Slack says so once. Locking a meeting’s numbers keeps that day’s balance with its packet.',
+          touches: ['Plaid', 'Mercury', 'D1', 'Slack'], where: 'functions/api/_board.js (cashNow, maybeRunBoard) · _plaid.js · bank-admin.js · public/admin/board-banks.js · _mercury.js (through the relay)',
           live: (f) => {
             const b = f.board;
             if (!b || b.error) return null;
-            if (!b.cash.mercury) return ATTN('Not connected yet: the board page needs MERCURY_API_TOKEN and MERCURY_RELAY_KEY (Mercury answers only through SOARD’s relay) in Cloudflare.');
-            if (b.cash.empty && b.cash.readAt) return ON('Read through the relay. Mercury’s accounts are empty so far, so the board page shows no balance yet.', b.cash.readAt);
-            if (!b.cash.lastAt) return ATTN('Hasn’t read Mercury yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
-            if (stale(b.cash.lastAt, 30 * HOUR)) return ATTN(`Hasn’t read Mercury since ${stamp(b.cash.lastAt)}. Check the Heartbeat entry.`, b.cash.lastAt);
-            return ON(`${plural(b.cash.months, 'month')} of history.`, b.cash.lastAt);
+            const k = b.cash.banks || {};
+            const both = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]);
+            if (k.needsSignIn?.length) return ATTN(`${both(k.needsSignIn)} needs signing in again: Board → Settings → Bank balances. The board page shows its last balances until then.`, k.readAt);
+            if (k.failing?.length) return ATTN(`${both(k.failing)} isn’t answering Plaid. It tries again every six hours.`, k.readAt);
+            if (!k.banks?.length && !b.cash.mercury) return ATTN(k.configured ? 'No bank connected yet: Board → Settings → Bank balances → Connect Chase.' : 'No bank connected yet: Chase needs Plaid’s keys (PLAID_CLIENT_ID and PLAID_SECRET) in Cloudflare, then Board → Settings → Bank balances.');
+            if (!b.cash.lastAt) return b.cash.readAt ? ON(`Read ${both([...(k.banks || []), ...(b.cash.mercury ? ['Mercury'] : [])])}. The history starts with the first month that has money in the bank.`, b.cash.readAt) : ATTN('Hasn’t read the banks yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(b.cash.lastAt, 30 * HOUR)) return ATTN(`Hasn’t read the banks since ${stamp(b.cash.lastAt)}. Check the Heartbeat entry.`, b.cash.lastAt);
+            return ON(`${both([...(k.banks || []), ...(b.cash.mercury ? ['Mercury'] : [])])}. ${plural(b.cash.months, 'month')} of history.`, b.cash.lastAt);
           } },
       ]},
     ]},
@@ -1187,8 +1190,8 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'W-9s and insurance', s: 'live', k: 'schedule',
           when: 'Every 15 minutes on the heartbeat (held bills every time, other vendors every 6 hours); JobTread’s vendors and the open jobs they’re on every 4 hours; W-9s to Mercury daily.',
-          does: 'JobTread is the one record: each vendor’s W-9, Liability Expires, Workers’ Comp Expires and Documents fields, and the files in their “W-9 & Insurance” folder. A vendor with a bill waiting or approved, or on a purchase order for an open job, whose W-9 or insurance is missing or out of date gets an email from SOARD with their own upload link (reminders after 3 and 7 days), and so does anyone whose insurance ends within 30 days. On that page each file is read by Workers AI and held to the minimums in Job Costs → Bills → Settings at once; a good one goes into JobTread and fills the fields, and a W-9 also goes onto their Mercury recipient for the 1099s. An approved bill is paid only once both are current: until then it’s held, with a pinned note on the bill in JobTread.',
-          touches: ['JobTread', 'Workers AI', 'Resend', 'Mercury', 'Slack'], where: 'functions/api/_vendors.js, _vendor-read.js, vendor-docs.js, src/pages/vendor-documents.astro · the hold: _bill-pay.js',
+          does: 'JobTread is the one record: each vendor’s W-9, Liability Expires, Workers’ Comp Expires and Documents fields, and the files in their “W-9 & Insurance” folder. A vendor with a bill waiting or approved, or on a purchase order for an open job, whose W-9 or insurance is missing or out of date gets an email from SOARD with their own upload link (reminders after 3 and 7 days), and so does anyone whose insurance ends within 30 days. On that page each file is read by Workers AI and held to the minimums in Job Costs → Bills → Settings at once; a good one goes into JobTread and fills the fields, and a W-9 also goes onto their Mercury recipient for the 1099s. An approved bill is paid only once both are current: until then it’s held, with a pinned note on the bill in JobTread. While Ramp still pays bills, a Ramp bill for such a vendor is put on hold in Ramp the same way, and the site takes the hold off once theirs check out (for its first day connected it only lists what it would hold, in Slack).',
+          touches: ['JobTread', 'Workers AI', 'Resend', 'Mercury', 'Ramp', 'Slack'], where: 'functions/api/_vendors.js, _vendor-read.js, vendor-docs.js, src/pages/vendor-documents.astro · the hold: _bill-pay.js, and in Ramp _ramp.js',
           info: 'The Finance channel hears only what needs a person: a file nobody could read (fill the dates in JobTread), a vendor with no email, or one who hasn’t answered three emails while a bill waits. Set Documents to “W-9 only” or “Not needed” in JobTread to skip a vendor. No tax ID is ever kept by the site.',
           live: (f) => {
             const v = f.jobCosts?.vendors;
@@ -1196,8 +1199,12 @@ const MAP = { t: 'SOARD', children: [
             if (v.setupError) return ATTN(`Couldn’t set up the JobTread vendor fields: ${v.setupError.error}`, v.setupError.at);
             if (v.error) return ATTN(v.error.error || String(v.error), v.at);
             if (!v.at) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
-            const bits = [v.held ? `${plural(v.held, 'bill')} held for documents` : null, v.asking ? `${plural(v.asking, 'vendor')} asked` : null].filter(Boolean);
-            return ON(bits.length ? `${bits.join(', ')}.` : 'Every vendor with a bill has a current W-9 and insurance.', v.at);
+            const r = v.ramp;
+            if (r?.error) return ATTN(r.error.error, r.error.at);
+            const bits = [v.held ? `${plural(v.held, 'bill')} held for documents` : null, r?.held ? `${plural(r.held, 'Ramp bill')} on hold in Ramp` : null,
+              r?.watch ? `${plural(r.watch, 'Ramp bill')} to hold once holds start` : null, v.asking ? `${plural(v.asking, 'vendor')} asked` : null].filter(Boolean);
+            const ramp = !f.env.ramp ? ' Ramp isn’t connected, so Ramp’s bills aren’t held: add RAMP_CLIENT_ID and RAMP_CLIENT_SECRET in Cloudflare.' : '';
+            return ON(`${bits.length ? `${bits.join(', ')}.` : 'Every vendor with a bill has a current W-9 and insurance.'}${ramp}`, v.at);
           } },
       ]},
       { t: 'The bank', children: [

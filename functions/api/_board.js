@@ -44,6 +44,7 @@ import { maybeSyncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus } from './_board-mail.js';
 import { mercury } from './_mercury.js';
+import { bankBalances, plaidConfigured, bankFacts } from './_plaid.js';
 import { limit } from './_rate-limit.js';
 
 export const SITE = 'https://sunshineonaranneyday.com';
@@ -515,13 +516,26 @@ export async function fileFor(DB, id, { admin = false } = {}) {
 
 // ─── The numbers (the packet's, and the board page's) ───────────────
 
-/** Mercury's checking and savings balances right now → { total, accounts: [{ name, kind, balance }], at } or null without a key */
+/**
+ * The money in the bank right now: Mercury's checking and savings (live), and each bank connected through Plaid
+ * in Board → Settings → Bank balances (Chase's checking and CD, as Plaid last read them) →
+ * { total, mercuryTotal (null without Mercury), accounts: [{ bank, name, kind, balance }], owed: [credit cards: { bank, name, balance, limit }],
+ *   banksAt, stale: [banks not read in a day and a half], at } or null with neither
+ */
 export async function cashNow(env, { fetchImpl = fetch } = {}) {
-  if (!String(env.MERCURY_API_TOKEN || '').trim()) return null;
-  const accounts = ((await mercury(env, '/accounts', { fetchImpl }))?.accounts || [])
+  const mercuryOn = !!String(env.MERCURY_API_TOKEN || '').trim();
+  const [m, banks] = await Promise.all([
+    mercuryOn ? mercury(env, '/accounts', { fetchImpl }).then((r) => r?.accounts || []) : null,
+    bankBalances(env.DB).catch((err) => { console.error('[board] banks', err.message); return null; }),
+  ]);
+  if (!m && !banks) return null;
+  // Mercury's own accounts only: a bank linked in Mercury for transfers isn't SOARD's Mercury money (Plaid counts it)
+  const merc = (m || [])
     .filter((a) => !['deleted', 'archived', 'closed'].includes(String(a.status || '').toLowerCase()) && !/external/i.test(`${a.kind} ${a.type}`) && typeof a.currentBalance === 'number')
-    .map((a) => ({ name: a.nickname || a.name || 'Account', kind: a.kind || '', balance: Math.round(a.currentBalance * 100) / 100 }));
-  return { total: Math.round(accounts.reduce((s, a) => s + a.balance, 0) * 100) / 100, accounts, at: nowIso() };
+    .map((a) => ({ bank: 'Mercury', name: a.nickname || a.name || 'Account', kind: a.kind || '', balance: Math.round(a.currentBalance * 100) / 100 }));
+  const sum = (l) => Math.round(l.reduce((s, a) => s + a.balance, 0) * 100) / 100;
+  const accounts = [...(banks?.accounts || []).map(({ at, ...a }) => a), ...merc];
+  return { total: sum(accounts), mercuryTotal: m ? sum(merc) : null, accounts, owed: (banks?.owed || []).map(({ at, ...a }) => a), banksAt: banks?.at || null, stale: banks?.stale || [], at: nowIso() };
 }
 
 /** The balance at the end of each month the heartbeat saw (last 24), newest first */
@@ -647,13 +661,14 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
   ]);
   // Each reveal's kid by their published page's photo (a draft page's kid has none)
   const photos = Object.fromEntries(pages.map((k) => [k.slug, photoOf(k.heroImage)]).filter(([, p]) => p));
-  // SOARD's money is at Chase; Mercury is new (Oct 2026). Its balance shows only once there's money in it,
-  // and never as "the bank": an empty Mercury says so instead of reading as $0 cash
+  // The cash shows once a bank holds money: Chase through Plaid, Mercury once SOARD's money moves there (Oct 2026
+  // on). Mercury's own record (the finance summary) speaks for SOARD only once Mercury itself holds money
   const funded = !!cash && cash.total > 0;
+  const inMercury = cash ? cash.mercuryTotal ?? cash.total : null;
   return {
     at: new Date(now).toISOString(),
     cash: funded ? cash : null,
-    mercury: cash ? { empty: !funded, at: cash.at } : null,
+    mercury: cash && inMercury !== null ? { empty: !(inMercury > 0), at: cash.at } : null,
     finance,
     projects,
     reveals: (reveals.upcoming || []).map((r) => revealRow(r, photos)),
@@ -1387,14 +1402,16 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     // a backlog; mail waits out a minute Drive was busy, so one heartbeat stays within its time)
     const drive = await (await import('./_board-drive.js')).maybeReadBoardDrive(env, { fetchImpl, now });
     if (!drive?.busy) await maybeReadBoardMail(env, { fetchImpl, now });
-    if (!String(env.MERCURY_API_TOKEN || '').trim()) return;
+    // The banks connected through Plaid every six hours (they keep their own times), then the day's cash
+    await (await import('./_plaid.js')).maybeReadBanks(env, { fetchImpl, now });
+    if (!String(env.MERCURY_API_TOKEN || '').trim() && !plaidConfigured(env)) return;
     const runs = await readState(env.DB, 'runs');
     if (runs.cashAt && now - Date.parse(runs.cashAt) < 20 * 60 * 60 * 1000) return;
     await writeState(env.DB, 'runs', { ...runs, cashAt: new Date(now).toISOString() });
     const cash = await cashNow(env, { fetchImpl });
     if (!cash) return;
     await writeState(env.DB, 'cash', { at: new Date(now).toISOString(), value: cash });
-    // Months with nothing in Mercury aren't history (its accounts were opened before the money moved)
+    // Months with nothing in the bank aren't history (Mercury's accounts were opened before the money moved)
     if (!(cash.total > 0)) { await env.DB.prepare('DELETE FROM board_cash WHERE total <= 0').run(); return; }
     await env.DB.prepare('INSERT OR REPLACE INTO board_cash (month, total, accounts, at) VALUES (?, ?, ?, ?)')
       .bind(todayEastern(now).slice(0, 7), cash.total, JSON.stringify(cash.accounts), new Date(now).toISOString()).run();
@@ -1410,7 +1427,7 @@ export async function boardFacts(env) {
   const { accessStatus } = await import('./_board-access.js');
   await ensureSchema(env.DB);
   const { inviteCheck } = await import('./_board-invite.js');
-  const [a, cash, stored, cal, mail, pending, check] = await Promise.all([
+  const [a, cash, stored, cal, mail, pending, check, banks] = await Promise.all([
     accessStatus(env),
     env.DB.prepare('SELECT count(*) AS n, max(at) AS last FROM board_cash WHERE total > 0').first(),
     env.DB.prepare('SELECT data FROM board_meetings').all().then((r) => (r.results || []).map((x) => parse(x.data))),
@@ -1418,13 +1435,14 @@ export async function boardFacts(env) {
     mailStatus(env.DB),
     readState(env.DB, 'invite-pending'),
     inviteCheck(env.DB),
+    bankFacts(env),
   ]);
   const packet = stored.map((m) => m.packetSentAt).filter(Boolean).sort().at(-1) || null;
   const today = todayEastern();
   const invites = stored.filter((m) => m.invite?.eventId && m.date >= today);
   return {
     access: { configured: a.configured, ok: !!a.ok, attached: !!a.attached, current: !!a.current, emails: a.emails, missing: (a.missing || []).length, syncedAt: a.syncedAt || null, error: a.error ? String(a.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null },
-    cash: { mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), months: cash?.n || 0, lastAt: cash?.last || null, empty: !((await readState(env.DB, 'cash')).value?.total > 0), readAt: (await readState(env.DB, 'cash')).at || null },
+    cash: { mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), months: cash?.n || 0, lastAt: cash?.last || null, empty: !((await readState(env.DB, 'cash')).value?.total > 0), readAt: (await readState(env.DB, 'cash')).at || null, banks },
     lastPacketAt: packet,
     invite: {
       ahead: invites.length, needsSetup: invites.filter((m) => m.invite.transcript === 'needs-setup').length, failing: invites.filter((m) => m.invite.transcript === 'error').length,
