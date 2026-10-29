@@ -481,18 +481,28 @@ function Nav({ page }) {
 }
 
 /** Who's signed in, and the way out */
-function Account({ data, d }) {
-  const [open, setOpen] = useState(false);
+// The founders have no seat on People → Board: their name comes from the sign-in, asked once
+let whoOnce = null;
+function useAdminWho(data) {
   const [who, setWho] = useState(null);
-  const ref = useRef(null);
   useEffect(() => {
-    if (!data.me.admin) return;
-    fetch('/cdn-cgi/access/get-identity').then((r) => (r.ok ? r.json() : null)).then((j) => {
+    if (!data.me.admin) return undefined;
+    let on = true;
+    whoOnce ||= fetch('/cdn-cgi/access/get-identity').then((r) => (r.ok ? r.json() : null)).then((j) => {
       const email = String(j?.email || '');
       const first = (String(j?.name || '').trim().split(/\s+/)[0] || email.split('@')[0].split(/[._-]/)[0] || '');
-      if (email) setWho({ email, name: first ? first[0].toUpperCase() + first.slice(1) : email });
-    }).catch(() => {});
+      return email ? { email, name: first ? first[0].toUpperCase() + first.slice(1) : email } : null;
+    }).catch(() => null);
+    whoOnce.then((w) => { if (on) setWho(w); });
+    return () => { on = false; };
   }, []);
+  return who;
+}
+
+function Account({ data, d }) {
+  const [open, setOpen] = useState(false);
+  const who = useAdminWho(data);
+  const ref = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
     const away = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
@@ -782,11 +792,13 @@ function HomePage({ ctx }) {
       </ul>
     </section>` : null;
   const m = d.featured;
+  const who = useAdminWho(data);
+  const name = data.me.name || who?.name || '';
   return html`
     <header class="bp-brief bp-rise" style=${rise(0)}>
       <div class="bp-brief__text">
         <p class="bp-eyebrow">Board brief · ${today}</p>
-        <h1 class="bp-brief__h">${data.me.name ? `${greeting()}, ${firstName(data.me.name)}.` : 'The board page'}</h1>
+        <h1 class="bp-brief__h">${name ? `${greeting()}, ${firstName(name)}.` : 'The board page'}</h1>
       </div>
     </header>
     <div class="bp-top3 bp-rise" style=${rise(1)}>
