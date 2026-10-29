@@ -97,7 +97,7 @@ export function areaMapHtml(area, home, words = {}) {
   }
 
   const legend = `<span class="af-map-key"><span class="af-map-key-area" aria-hidden="true"></span>${esc(words.legendArea || 'Our service area')}</span>${hasHome && v.homeInView ? `<span class="af-map-key"><span class="af-map-key-pin" aria-hidden="true"></span>${esc(words.legendHome || 'The home you entered')}</span>` : ''}`;
-  return `<div class="af-map-frame" style="aspect-ratio:${W} / ${v.h}" role="img" aria-label="${esc(words.label || '')}">${svg}<div class="af-map-labels" aria-hidden="true">${counts}${towns}${pin}</div></div><p class="af-map-legend" aria-hidden="true">${legend}</p>`;
+  return `<div class="af-map-frame" style="aspect-ratio:${W} / ${v.h};--r:${(W / v.h).toFixed(3)}" role="img" aria-label="${esc(words.label || '')}">${svg}<div class="af-map-labels" aria-hidden="true">${counts}${towns}${pin}</div></div><p class="af-map-legend" aria-hidden="true">${legend}</p>`;
 }
 
 /**

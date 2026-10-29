@@ -3,9 +3,14 @@
  * ===============================================================================
  * Drives /apply/form/ against the real Pages Functions (wrangler pages dev with
  * local D1 + R2), at phone size (390px), then on a computer (1280px):
- *   - English / Español switch: everything redraws, answers and page kept;
+ *   - the overview on the page (every step and its minutes, Start in sight), then
+ *     the application on its own screen: the site's header, footer and hero step
+ *     aside, a bar across the top (save state, language, Save and exit), a segment
+ *     per step, and each step a screen at a time (the questions that fit; Continue
+ *     shows the next part); the tab's title says the step
+ *   - English / Español switch: everything redraws, answers and screen kept;
  *     the browser's language picks Spanish first; a resumed draft's language wins
- *   - page 1 checks (both boxes), then a draft starts on Next
+ *   - page 1 checks (both boxes), then a draft starts on Continue
  *   - the service area: the map drawn from the live outline, the address
  *     placed on it as it's typed (the real Census, through the server), what
  *     the check found and the county it fills in; a home far out meets the
@@ -29,7 +34,10 @@
  *     complete; submit; the thank-you
  *   - reminder opt-out links; page rules skipping pages (in the live preview);
  *     the admin editor's ?preview=live messages
- *   - directional motion runs, and doesn't under reduced motion
+ *   - directional motion runs (a view transition, back the other way), and doesn't
+ *     under reduced motion; the browser's Back goes a screen back, and from the
+ *     first screen out to the overview, without the page reloading
+ *   - Save and exit: back to the overview, with what's done and Continue
  *   - the camera recorder on a computer (when the Permissions-Policy allows it)
  *   - nothing wider than the screen at 360px; 44px tap targets; no console errors
  *   - screenshots: phone and desktop, light and dark, English and Spanish
@@ -142,18 +150,41 @@ const visible = (sel, p = page) => p.$eval(sel, (el) => !!el && !el.closest('[hi
 const stepTitle = (p = page) => p.$eval('[data-step-title]', (el) => el.textContent.trim());
 const stepText = (p = page) => p.$eval('[data-step-text]', (el) => el.textContent.trim());
 const next = async (p = page) => { await p.click('[data-next]'); await sleep(450); };
-const pick = (field, value, p = page) => p.evaluate((f, v) => {
-  const input = [...document.querySelectorAll(`[data-field="${f}"] input`)].find((i) => i.value === v);
-  input.click();
-}, field, value);
-/** Click after centering it: a button can sit in the viewport but under the sticky header */
-const tap = async (sel, p = page) => { await p.$eval(sel, (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' })); await p.click(sel); };
-// Centered first, like tap(): a box near the top can sit under the sticky header, and the click would miss it
-const center = (sel, p) => p.$eval(sel, (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+const partText = (p = page) => p.$eval('[data-part-text]', (el) => el.textContent.trim());
+/**
+ * A step shows its questions a screen at a time: Continue until the screen with this one
+ * is showing (as a family would; it stops if Continue is held up by a problem)
+ */
+const reach = async (sel, p = page) => {
+  for (let i = 0; i < 8; i++) {
+    const where = await p.evaluate((s) => { const el = document.querySelector(s); return !el ? 'none' : el.closest('[data-off]') ? 'later' : 'here'; }, sel);
+    if (where !== 'later') return;
+    const was = `${await stepTitle(p)}|${await partText(p)}`;
+    await next(p);
+    if (`${await stepTitle(p)}|${await partText(p)}` === was) throw new Error(`Continue was held up on the way to ${sel}`);
+  }
+};
+/** Continue until the step with this name is on screen */
+const onTo = async (title, p = page) => {
+  for (let i = 0; i < 8 && (await stepTitle(p)) !== title; i++) await next(p);
+};
+/** Start (or carry on): the hero's button puts the application on its own screen */
+const begin = async (p = page) => { await p.click('[data-hero-cta]'); await sleep(400); };
+const pick = async (field, value, p = page) => {
+  await reach(`[data-field="${field}"]`, p);
+  await p.evaluate((f, v) => {
+    const input = [...document.querySelectorAll(`[data-field="${f}"] input`)].find((i) => i.value === v);
+    input.click();
+  }, field, value);
+};
+/** Click after centering it: a button can sit in the viewport but under the sticky bars */
+const tap = async (sel, p = page) => { await reach(sel, p); await p.$eval(sel, (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' })); await p.click(sel); };
+// Centered first, like tap(): a box near the top can sit under the sticky bar, and the click would miss it
+const center = async (sel, p) => { await reach(sel, p); await p.$eval(sel, (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' })); };
 const type = async (sel, text, p = page) => { await center(sel, p); await p.click(sel, { clickCount: 3 }); await p.type(sel, text); };
 const clear = async (sel, p = page) => { await center(sel, p); await p.click(sel, { clickCount: 3 }); await p.keyboard.press('Backspace'); };
-const setDate = (field, v, p = page) => p.$eval(`#af-${field}`, (el, val) => { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
-const selectOpt = (field, v, p = page) => p.select(`#af-${field}`, v);
+const setDate = async (field, v, p = page) => { await reach(`#af-${field}`, p); await p.$eval(`#af-${field}`, (el, val) => { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }, v); };
+const selectOpt = async (field, v, p = page) => { await reach(`#af-${field}`, p); await p.select(`#af-${field}`, v); };
 const errorText = (field, p = page) => p.$eval(`[data-field="${field}"] .af-error`, (e) => e.textContent.trim());
 const noSideScroll = async (label, p = page) => {
   const wide = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -201,15 +232,42 @@ try {
   await page.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'networkidle0' });
-  ok(await visible('[data-form]'), 'the form shows (applications are open in local D1)');
+  ok(await visible('[data-hub]'), 'the overview of the application shows (applications are open in local D1)');
   ok(!(await visible('[data-closed]')), 'the closed card is hidden');
-  ok((await stepTitle()) === 'Before You Begin', 'starts on Before You Begin');
-  ok(await visible('[data-lang-switch]'), 'the English / Español switch shows');
   ok(await page.$eval('[data-hero-cta]', (a) => a.getAttribute('href')) === '#application', "the hero's button follows the live open switch");
+  const hub = await page.evaluate(() => {
+    document.querySelector('#application').scrollIntoView();
+    const go = document.querySelector('[data-hub-go]').getBoundingClientRect();
+    return {
+      rows: [...document.querySelectorAll('[data-hub-list] .af-hub-row')].map((b) => ({ name: b.querySelector('strong').textContent, meta: b.querySelector('.af-hub-meta').textContent, disabled: b.disabled })),
+      goInView: go.top >= 0 && go.bottom <= innerHeight,
+      title: document.querySelector('[data-hub-title]').textContent,
+    };
+  });
+  ok(hub.rows.length === 10 && hub.rows[0].name === 'Before You Begin' && hub.rows.slice(0, 9).every((r) => /\d+ min/.test(r.meta)), `it lists all ten steps with their minutes (${hub.rows.map((r) => r.meta).join(', ')})`);
+  ok(!hub.rows[0].disabled && hub.rows.slice(1).every((r) => r.disabled), 'only the first is open before starting');
+  ok(hub.goInView && /everything we'll ask/.test(hub.title), 'and "Start the application" is in sight without scrolling past the list');
   // The season as the live settings have it, wherever the page names it (not the year it was built with)
   const season = await page.$eval('[data-application]', (e) => e.dataset.year);
   const named = await page.evaluate(() => [document.title, ...['og:title', 'twitter:title'].map((k) => document.querySelector(`meta[property="${k}"], meta[name="${k}"]`)?.content || '')]);
   ok(named.every((t) => t.startsWith(`${season} Makeover Application`)), `the title and link previews say ${season} (${named[0]})`);
+  await shot('00-overview-phone');
+  await begin();
+  const focus = await page.evaluate(() => ({
+    on: document.documentElement.classList.contains('af-focus'),
+    header: !!document.querySelector('#site-header')?.getClientRects().length,
+    footer: !!document.querySelector('.site-footer')?.getClientRects().length,
+    hero: !!document.querySelector('.hero')?.getClientRects().length,
+    top: document.querySelector('[data-top]').getBoundingClientRect().top,
+    segs: document.querySelectorAll('[data-segs] .af-seg').length,
+    tab: document.title,
+  }));
+  ok(focus.on && !focus.header && !focus.footer && !focus.hero, "Start: the application has the screen to itself (the site's header, footer and hero step aside)");
+  ok(focus.top === 0 && focus.segs === 10, `a bar across the top with a segment per step (${focus.segs})`);
+  ok(/^Step 1 of 10: Before You Begin · /.test(focus.tab), `the tab says the step (${focus.tab})`);
+  ok((await stepTitle()) === 'Before You Begin', 'starts on Before You Begin');
+  ok(/^Part 1 of \d$/.test(await partText()), `a long step comes a screen at a time (${await partText()})`);
+  ok(await visible('[data-lang-switch]'), 'the English / Español switch shows');
   const AREA = 'Service Area';
   await page.$eval('#application', (el) => el.scrollIntoView());
   await noSideScroll('welcome');
@@ -218,31 +276,33 @@ try {
   await tap('[data-lang-switch] [data-lang="es"]');
   await sleep(250);
   ok((await stepTitle()) === 'Antes de comenzar', 'Español: the page title is Spanish');
-  ok(/Siguiente/.test(await page.$eval('[data-next]', (e) => e.textContent)) && /Paso 1 de/.test(await stepText()), 'and the buttons and step count');
+  ok(/Continuar/.test(await page.$eval('[data-next]', (e) => e.textContent)) && /Paso 1 de/.test(await stepText()), 'and the buttons and step count');
   ok(/su hijo o hija/.test(await page.$eval('.hero-headline', (e) => e.textContent)), 'and the hero above the form');
   ok(await page.$eval('#application', (e) => e.getAttribute('lang')) === 'es', 'the form is marked lang="es"');
   ok(await page.$eval('[data-lang-switch] [data-lang="es"]', (e) => e.getAttribute('aria-pressed')) === 'true', 'the switch shows Español pressed');
   ok(await page.evaluate(() => JSON.parse(localStorage.getItem('soard-application-lang'))) === 'es', 'the choice is remembered');
-  await page.click('[data-field="ackParameters"] .af-choice');
+  await tap('[data-field="ackParameters"] .af-choice');
+  const esPart = await partText();
   await tap('[data-lang-switch] [data-lang="en"]');
   await sleep(250);
   ok((await stepTitle()) === 'Before You Begin', 'back to English');
   ok(await page.$eval('[data-field="ackParameters"] input', (i) => i.checked), 'a ticked box stays ticked through both switches');
-  await page.click('[data-field="ackParameters"] .af-choice');
+  ok(/\d/.test(esPart) && (await partText()).replace(/\D/g, '') === esPart.replace(/\D/g, ''), `and the screen stays the same one (${esPart} → ${await partText()})`);
+  await tap('[data-field="ackParameters"] .af-choice');
 
   console.log('Page 1 checks');
   await next();
-  const ackErrors = await page.$$eval('[data-field^="ack"] .af-error', (els) => els.map((e) => e.textContent));
-  ok(ackErrors.length === 2 && ackErrors.every((t) => /check the box/.test(t)), 'both acknowledgments are required');
+  const ackErrors = await page.$$eval('[data-field^="ack"] .af-error', (els) => els.map((e) => e.textContent).filter(Boolean));
+  ok(ackErrors.length >= 1 && ackErrors.every((t) => /check the box/.test(t)), `the acknowledgments are required (${ackErrors.length} on this screen)`);
   ok(await page.evaluate(() => document.activeElement?.closest('[data-field]')?.dataset.field === 'ackParameters'), 'focus moves to the first problem');
   const errLook = await page.$eval('[data-field="ackParameters"] .af-error', (e) => { const s = getComputedStyle(e); return { color: s.color, bg: s.backgroundColor }; });
   const border = await page.$eval('[data-field="ackParameters"] .af-choice', (e) => getComputedStyle(e).borderColor);
   ok(notRed(errLook.color) && notRed(errLook.bg) && notRed(border), `problems are never red (ink ${errLook.color}, background ${errLook.bg}, border ${border})`);
   ok(await page.$eval('[data-field="ackParameters"] input', (i) => i.getAttribute('aria-invalid')) === 'true', 'the box is marked aria-invalid');
   await shot('02-errors-phone');
-  await page.click('[data-field="ackParameters"] .af-choice');
+  await tap('[data-field="ackParameters"] .af-choice');
   ok(await errorText('ackParameters') === '', 'ticking it clears its note straight away');
-  await page.click('[data-field="ackSeason"] .af-choice');
+  await tap('[data-field="ackSeason"] .af-choice');
   await next();
   ok((await stepTitle()) === AREA, 'on to the service area');
   const token = await draftToken();
@@ -262,7 +322,7 @@ try {
   ok(await page.$eval('#af-address-line1', (e) => e.getAttribute('aria-expanded')) === 'true', 'the combobox says it is expanded');
   ok(addressAsks >= 1 && addressAsks <= 3, `asked after a pause, not on every key (${addressAsks} lookups for 9 keys)`);
   const listOnTop = await page.evaluate(() => getComputedStyle(document.querySelector('#af-address-suggest')).zIndex);
-  ok(Number(listOnTop) >= 1100, `the list sits above the sticky header (z-index ${listOnTop})`);
+  ok(Number(listOnTop) >= 1100, `the list sits above the bar across the top (z-index ${listOnTop})`);
   await shot('04-address-suggest-phone');
   await page.keyboard.press('ArrowDown');
   ok(await page.$eval('#af-address-line1', (e) => e.getAttribute('aria-activedescendant')) === 'af-address-suggest-0', 'ArrowDown highlights the first');
@@ -300,9 +360,8 @@ try {
   ok(await areaState() === 'far', 'Macon is placed far outside');
   ok(/Outside our service area/.test(await page.$eval('[data-area-result]', (e) => e.textContent)) && /only for homes inside/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'it says so, in the stop screen’s words');
   ok(await visible('[data-field="boundary"] .af-map-away'), 'the map points to a home off its edge, with the distance');
-  await pick('resides50', 'Yes');
   await next();
-  ok(await visible('[data-stop]'), 'Next: the stop screen');
+  ok(await visible('[data-stop]'), 'Continue: the stop screen');
   ok(await visible('[data-stop-map] .af-map-frame'), 'with the map and where the home is');
   ok(/Change the address/.test(await page.$eval('[data-stop-back]', (e) => e.textContent)), 'and a way back to the address');
   await shot('05-stop-outside');
@@ -323,7 +382,7 @@ try {
   ok(await visible('[data-area-ask]'), 'not found: now the family is asked');
   ok(/couldn't find this address/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'and told why');
   await next();
-  ok(/enter the home address above so we can check it, or choose an answer/.test(await errorText('boundary')), 'Next without an answer says what to do');
+  ok(/enter the home address above so we can check it, or choose an answer/.test(await errorText('boundary')), 'Continue without an answer says what to do');
 
   // Back to a home inside
   await clear('#af-address-line1');
@@ -339,21 +398,27 @@ try {
   ok(/5-digit ZIP/.test(await errorText('address')), 'a short ZIP is caught');
   const firstProblem = await page.evaluate(() => {
     const el = document.querySelector('[data-field="address"]');
-    const header = document.querySelector('header');
-    return { top: el.getBoundingClientRect().top, header: header ? header.getBoundingClientRect().bottom : 0, focused: !!el.contains(document.activeElement) };
+    const bar = document.querySelector('[data-top]');
+    return { top: el.getBoundingClientRect().top, header: bar ? bar.getBoundingClientRect().bottom : 0, focused: !!el.contains(document.activeElement) };
   });
-  ok(firstProblem.focused && firstProblem.top >= firstProblem.header - 2, `Next scrolls to the problem below the header and focuses it (${Math.round(firstProblem.top)}px vs header ${Math.round(firstProblem.header)}px)`);
+  ok(firstProblem.focused && firstProblem.top >= firstProblem.header - 2, `Continue scrolls to the problem below the bar and focuses it (${Math.round(firstProblem.top)}px vs bar ${Math.round(firstProblem.header)}px)`);
   await type('#af-address-zip', '30096');
   await waitArea('inside');
-  await selectOpt('county', 'Cobb');
-  ok(!(await visible('[data-field="address"] .af-county-note')), 'changing the county takes the note away');
   await noSideScroll('service area');
+  await selectOpt('county', 'Cobb');
+  ok(await page.$eval('[data-field="address"] .af-county-note', (e) => e.hidden), 'changing the county takes the note away');
+  await pick('resides50', 'Yes');
   await next();
 
   console.log('Basic Information: checks when a question is left');
   ok((await stepTitle()) === 'Basic Information', 'Basic Information');
+  await type('#af-childName-first', 'Avery');
+  await type('#af-childName-last', 'Test');
+  await setDate('birthdate', '2017-04-02');
+  await pick('gender', 'Female');
+  await reach('#af-diagnosis');
   await page.focus('#af-diagnosis');
-  await page.focus('#af-birthdate');
+  await page.evaluate(() => document.activeElement?.blur());
   ok(await errorText('diagnosis') === '', 'leaving an untouched question says nothing');
   await type('#af-diagnosis', 'x');
   await clear('#af-diagnosis');
@@ -364,10 +429,6 @@ try {
   await page.focus('#af-diagnosis');
   await page.type('#af-diagnosis', 'Cerebral palsy');
   ok(await errorText('diagnosis') === '', 'and it goes as soon as it is answered');
-  await type('#af-childName-first', 'Avery');
-  await type('#af-childName-last', 'Test');
-  await setDate('birthdate', '2017-04-02');
-  await pick('gender', 'Female');
   await pick('previouslyApplied', 'No');
   await type('#af-referredBy', 'Our therapist');
 
@@ -386,7 +447,7 @@ try {
   await tap('[data-steps-list] [data-goto="basic"]');
   await sleep(300);
   ok((await stepTitle()) === 'Basic Information', 'and back to where we were');
-  await next();
+  await onTo("Parents' Information");
   await shot('06-parents-phone');
 
   console.log('Parents, and resume after a reload');
@@ -395,8 +456,6 @@ try {
   await type('#af-parentName-last', 'Test');
   await type('#af-parentEmail', 'jordan@example');
   await type('#af-parentPhone', '404555012');
-  await type('#af-parentRelation', 'Mother');
-  await pick('ownership', 'Yes, at least one person living in the home is the owner.');
   await next();
   const pErr = await page.$$eval('[data-field^="parent"] .af-error', (els) => els.map((e) => e.textContent).filter(Boolean));
   ok(pErr.some((t) => /valid email/.test(t)) && pErr.some((t) => /10-digit/.test(t)), 'email and phone formats are checked');
@@ -410,7 +469,11 @@ try {
   ok(await visible('[data-field="parentEmail"] [data-mailfix-use]') && /Did you mean/.test(await page.$eval('[data-field="parentEmail"] [data-mailfix]', (e) => e.textContent)), '"gmial.com" gets "Did you mean …@gmail.com?"');
   await tap('[data-field="parentEmail"] [data-mailfix-use]');
   ok(await page.$eval('#af-parentEmail', (e) => e.value) === 'jordan+apply@gmail.com' && !(await visible('[data-field="parentEmail"] [data-mailfix]')), 'a tap on it fixes the address, and the note goes');
+  await type('#af-parentEmail', 'jordan+apply@example.com');
+  await type('#af-parentPhone', '(404) 555-0123');
+  await type('#af-parentRelation', 'Mother');
   // A second parent waits behind a button until wanted
+  await reach('[data-more="parent2"]');
   ok(!(await visible('#af-parent2Email')) && await visible('[data-more="parent2"] [data-more-open]'), 'the second parent is tucked behind "Add another parent or guardian"');
   await tap('[data-more="parent2"] [data-more-open]');
   await sleep(150);
@@ -418,12 +481,12 @@ try {
   await page.type('#af-parent2Name-first', 'Sam');
   await tap('[data-more="parent2"] [data-more-close]');
   ok(!(await visible('#af-parent2Email')) && await page.$eval('#af-parent2Name-first', (e) => e.value) === '', 'Remove clears it and tucks it away again');
-  // Down the page, the step follows along at the top
-  await page.$eval('[data-field="ownership"]', (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
-  await sleep(250);
-  ok(await page.$eval('[data-mini]', (e) => e.classList.contains('is-on') && /4\/10/.test(e.textContent) && /Parents/.test(e.textContent)), 'scrolled down, a bar at the top keeps the step in sight');
-  await type('#af-parentEmail', 'jordan+apply@example.com');
-  await type('#af-parentPhone', '(404) 555-0123');
+  // Scrolled down, the bar across the top stays (and Continue at the bottom)
+  await reach('[data-field="ownership"]');
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await sleep(150);
+  const bars = await page.evaluate(() => ({ top: document.querySelector('[data-top]').getBoundingClientRect().top, next: document.querySelector('[data-next]').getBoundingClientRect().bottom, h: innerHeight }));
+  ok(bars.top === 0 && bars.next <= bars.h, `scrolled down, the bar stays at the top and Continue at the bottom (${bars.top}, ${Math.round(bars.next)}/${bars.h})`);
   await pick('ownership', 'No, the property is rented.');
   await next();
   ok(await visible('[data-stop]') && /must own their home/.test(await page.$eval('[data-stop]', (e) => e.textContent)), 'renters get the "must own the home" screen');
@@ -463,9 +526,10 @@ try {
   console.log("Child's Info and photos");
   ok((await stepTitle()) === "Child's Info", "Child's Info");
   await type('#af-interests', 'Dinosaurs 🦖 and music');
-  await type('#af-otherChildren', 'No');
+  await reach('[data-field="photoChild"]');
   await next();
-  ok((await stepTitle()) === "Child's Info", 'photos are required before moving on');
+  ok((await stepTitle()) === "Child's Info" && /add a photo/.test(await errorText('photoChild')), 'photos are required before moving on');
+  ok(await page.evaluate(() => document.querySelector('[data-field="photoChild"]').parentElement.matches('.af-pair--photos') && document.querySelector('[data-field="photoFamily"]').parentElement.matches('.af-pair--photos')), 'the two photos sit side by side');
   // A slow connection, so the ring can be seen filling
   const cdp = await page.createCDPSession();
   await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 50, downloadThroughput: 4e6, uploadThroughput: 120 * 1024 });
@@ -487,6 +551,7 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-field="photoFamily"] .af-upload')?.dataset.state === 'done', { timeout: 20000 });
   ok(/dropped/.test(await page.$eval('[data-field="photoFamily"] .af-upload-status', (e) => e.textContent)), 'a dropped photo uploads like a chosen one');
   await shot('07-photos-phone');
+  await type('#af-otherChildren', 'No');
   await next();
 
   console.log('Home and Space');
@@ -502,6 +567,7 @@ try {
   await type('#af-makeoverWhy', 'The bathroom, so she can bathe safely.');
   await type('#af-positiveImpact', 'It would change our days.');
   for (const f of ['photoSpace1', 'photoSpace2']) {
+    await reach(`#af-${f}`);
     await (await page.$(`#af-${f}`)).uploadFile(PHOTO);
     await page.waitForFunction((id) => document.querySelector(`[data-field="${id}"] .af-upload`)?.dataset.state === 'done', { timeout: 20000 }, f);
   }
@@ -515,6 +581,7 @@ try {
 
   console.log('Video');
   ok((await stepTitle()) === 'Video', 'Video');
+  await reach('[data-field="video"]');
   ok(!(await visible('[data-field="video"] [data-act="record"]')), 'phones use their own picker (no record button)');
   await next();
   ok(/upload your video/.test(await errorText('video')), 'the video is required');
@@ -527,7 +594,7 @@ try {
 
   console.log('Save and finish later');
   ok((await stepTitle()) === 'Certification', 'Certification');
-  await page.click('[data-save-later]');
+  await tap('.af-save-row [data-save-later]');
   await sleep(300);
   ok(await page.$eval('[data-later-dialog]', (d) => d.open), 'the dialog opens');
   ok(await page.$eval('#af-later-email', (e) => e.value) === 'jordan+apply@example.com', 'with the parent email filled in');
@@ -543,10 +610,16 @@ try {
   await type('#af-signature', 'Jordan Test');
   await next();
   ok((await stepTitle()) === 'Review and submit', 'review page');
+  const rows = await page.$$eval('[data-review] .af-review-section', (els) => els.map((e) => ({ open: e.hasAttribute('data-open'), sum: e.querySelector('.af-review-sum').textContent })));
+  ok(rows.length >= 8 && rows.every((r) => !r.open), `each step is one row, closed (${rows.length})`);
+  ok(rows.some((r) => /Avery Test/.test(r.sum)) && rows.some((r) => /Video uploaded/.test(r.sum)), `with its answers in a line (${rows.map((r) => r.sum).slice(2, 4).join(' | ')})`);
+  await tap('[data-review-all]');
+  ok(await page.$$eval('[data-review] .af-review-section', (els) => els.every((e) => e.hasAttribute('data-open'))), '"Show all answers" opens every step');
   const reviewText = await page.$eval('[data-review]', (e) => e.innerText);
   ok(/Avery Test/.test(reviewText) && /\(404\) 555-0123/.test(reviewText) && /Video uploaded/.test(reviewText) && /April 2, 2017/.test(reviewText), 'review lists the answers');
   ok(/Everything is here/.test(await page.$eval('[data-review-summary]', (e) => e.textContent)), '"Everything is here"');
   ok(!(await page.$eval('[data-next]', (b) => b.disabled)), 'Submit is ready');
+  ok(await page.$$eval('[data-review] .af-review-change', (els) => els.length) >= 20, 'every answer has a Change beside it');
   await shot('11-review-phone');
   // The same review on a computer-sized screen (touch kept, so the page doesn't reload)
   await page.setViewport({ width: 1280, height: 1000, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
@@ -609,13 +682,19 @@ try {
   await page.evaluate(() => localStorage.clear());
   await page.setViewport({ width: 360, height: 780, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   await page.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
-  await page.$eval('[data-steps]', (d) => { d.open = true; });
-  await sleep(150);
-  const small = await page.$$eval('[data-application] button:not([hidden]), [data-application] .af-choice, [data-application] summary', (els) => els
+  const tooSmall = () => page.$$eval('[data-application] button:not([hidden]), [data-application] .af-choice, [data-application] summary', (els) => els
     .filter((e) => e.getClientRects().length && !e.closest('[hidden]') && !e.closest('dialog:not([open])'))
     .map((e) => [e.textContent.trim().slice(0, 30), Math.round(e.getBoundingClientRect().height)])
     .filter(([, h]) => h < 44));
+  let small = await tooSmall();
+  ok(small.length === 0, `the overview's buttons are at least 44px tall${small.length ? ` (${JSON.stringify(small)})` : ''}`);
+  await noSideScroll('360px, the overview');
+  await begin();
+  await page.$eval('[data-steps]', (d) => { d.open = true; });
+  await sleep(150);
+  small = await tooSmall();
   ok(small.length === 0, `buttons and choices are at least 44px tall${small.length ? ` (${JSON.stringify(small)})` : ''}`);
+  await page.$eval('[data-steps]', (d) => { d.open = false; });
   await noSideScroll('360px, welcome');
   await tap('[data-lang-switch] [data-lang="es"]');
   await sleep(200);
@@ -631,7 +710,10 @@ try {
     Object.defineProperty(navigator, 'languages', { get: () => ['es-MX', 'es'] });
   });
   await es.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
-  ok((await stepTitle(es)) === 'Antes de comenzar', 'a Spanish browser starts in Spanish');
+  ok(/Esto es todo lo que le preguntaremos/.test(await es.$eval('[data-hub-title]', (e) => e.textContent)), 'a Spanish browser starts in Spanish (the overview too)');
+  await begin(es);
+  ok((await stepTitle(es)) === 'Antes de comenzar', 'and the application');
+  await reach('[data-field="ackParameters"]', es);
   await es.click('[data-next]');
   await sleep(300);
   ok(/Marque la casilla/.test(await errorText('ackParameters', es)), 'its notes are Spanish too');
@@ -640,40 +722,91 @@ try {
   console.log('Motion');
   const mCtx = await browser.createBrowserContext();
   for (const reduced of [false, true]) {
-    const m = await newTab({ context: mCtx, reduced });
+    const m = await newTab({ context: mCtx, reduced, phone: false });
     await m.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
-    await m.evaluate(() => localStorage.clear());
+    await m.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await m.reload({ waitUntil: 'networkidle0' });
-    await m.click('[data-field="ackParameters"] .af-choice');
-    await m.click('[data-field="ackSeason"] .af-choice');
+    await begin(m);
+    // Watch <html>: af-vt while a screen change runs, af-vt-back going back
+    await m.evaluate(() => {
+      window.__vt = [];
+      new MutationObserver(() => { const c = document.documentElement.classList; if (c.contains('af-vt')) window.__vt.push(c.contains('af-vt-back') ? 'back' : 'next'); })
+        .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    });
+    const part = await partText(m);
     await m.click('[data-next]');
-    const anims = await m.waitForFunction(() => {
-      const el = document.querySelector('[data-page="service-area"]');
-      if (el.hidden) return false;
-      return { page: el.getAnimations().map((a) => a.effect?.getKeyframes?.()[0]?.transform || ''), title: document.querySelector('[data-step-title]').getAnimations().length };
-    }, { polling: 'raf', timeout: 10000 }).then((h) => h.jsonValue());
-    if (!reduced) ok(anims.page.length === 1 && /translate\(28px/.test(anims.page[0]) && anims.title === 1, `Next slides the new page in from the right (${anims.page[0]})`);
-    else ok(anims.page.length === 0 && anims.title === 0, 'reduced motion: no slide');
-    await sleep(400);
+    await sleep(600);
+    const after = await partText(m);
+    const runs = await m.evaluate(() => window.__vt.splice(0));
+    if (!reduced) ok(runs.includes('next') && after !== part, `Continue: the next screen slides in (a view transition, ${part} → ${after})`);
+    else ok(runs.length === 0 && after !== part, 'reduced motion: the next screen, with no slide');
+    ok(await m.evaluate(() => !document.documentElement.classList.contains('af-vt')), 'and nothing is left mid-transition');
     await m.click('[data-back]');
-    const backAnim = await m.waitForFunction(() => {
-      const el = document.querySelector('[data-page="welcome"]');
-      return el.hidden ? false : el.getAnimations().map((a) => a.effect?.getKeyframes?.()[0]?.transform || '');
-    }, { polling: 'raf', timeout: 5000 }).then((h) => h.jsonValue());
+    await sleep(600);
+    const backRuns = await m.evaluate(() => window.__vt.splice(0));
     if (!reduced) {
-      ok(backAnim.length === 1 && /translate\(-28px/.test(backAnim[0]), 'Back slides in from the left');
-      await sleep(400);
-      ok(await m.evaluate(() => document.activeElement?.matches('[data-step-title]')), 'focus lands on the page heading after the slide');
+      ok(backRuns.includes('back') && (await partText(m)) === part, 'Back slides the other way');
+      ok(await m.evaluate(() => document.activeElement?.matches('[data-step-title]')), 'focus lands on the step heading after the slide');
       const press = await m.$eval('.af-choice', (e) => getComputedStyle(e).transitionProperty);
       ok(/transform/.test(press), 'choices have a press');
+      // The browser's Back: a screen back on the same page, then out to the overview (no reload)
+      await m.evaluate(() => { window.__same = true; document.addEventListener('astro:before-preparation', () => { window.__same = false; }); });
+      await m.click('[data-next]');
+      await sleep(600);
+      await m.mouse.click(5, 400);
+      await m.goBack({ waitUntil: 'networkidle0', timeout: 3000 }).catch(() => {});
+      await sleep(600);
+      ok((await partText(m)) === part && await m.evaluate(() => window.__same === true && document.documentElement.classList.contains('af-focus')), "the browser's Back goes a screen back, on the same page");
+      await m.mouse.click(5, 400);
+      await m.goBack({ waitUntil: 'networkidle0', timeout: 3000 }).catch(() => {});
+      await sleep(600);
+      ok(await m.evaluate(() => window.__same === true && !document.documentElement.classList.contains('af-focus') && !!document.querySelector('[data-hub]').offsetParent), 'and from the first screen, out to the overview');
     } else {
-      ok(backAnim.length === 0, 'reduced motion: Back does not slide either');
+      ok(backRuns.length === 0 && (await partText(m)) === part, 'reduced motion: Back does not slide either');
       const press = await m.evaluate(() => { const e = document.querySelector('.af-choice'); return getComputedStyle(e).transitionDuration; });
       ok(press.split(',').every((d) => parseFloat(d) < 0.001), `reduced motion: choices change instantly (${press})`);
     }
     await m.close();
   }
   await mCtx.close();
+
+  console.log('Save and exit');
+  const xCtx = await browser.createBrowserContext();
+  const x = await newTab({ context: xCtx });
+  await x.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
+  await x.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await x.reload({ waitUntil: 'networkidle0' });
+  await begin(x);
+  await tap('[data-field="ackParameters"] .af-choice', x);
+  await tap('[data-field="ackSeason"] .af-choice', x);
+  await x.click('[data-next]');
+  await sleep(700);
+  ok((await stepTitle(x)) === AREA, 'on to the second step');
+  await x.evaluate(() => { window.__same = true; document.addEventListener('astro:before-preparation', () => { window.__same = false; }); });
+  await x.click('[data-exit]');
+  await sleep(500);
+  ok(await x.evaluate(() => window.__same === true), 'Save and exit keeps the page (the site router does not load it again)');
+  const out = await x.evaluate(() => ({
+    focus: document.documentElement.classList.contains('af-focus'),
+    header: !!document.querySelector('#site-header')?.getClientRects().length,
+    title: document.querySelector('[data-hub-title]').textContent,
+    lead: document.querySelector('[data-hub-lead]').textContent,
+    go: document.querySelector('[data-hub-go]').textContent.trim(),
+    first: document.querySelector('[data-hub-list] .af-hub-row')?.dataset.state,
+    now: document.querySelector('[data-hub-list] .af-hub-row[data-state="now"] strong')?.textContent,
+    notice: document.querySelector('[data-notice]:not([hidden])')?.textContent || '',
+    cta: document.querySelector('[data-hero-cta]').textContent,
+    tab: document.title,
+  }));
+  ok(!out.focus && out.header, 'Save and exit: back to the page, the site header with it');
+  ok(/saved/i.test(out.title) && /1 of 9 steps done/.test(out.lead) && /Continue where you left off/.test(out.go), `the overview says what's done and offers to carry on ("${out.lead}")`);
+  ok(out.first === 'done' && out.now === AREA, 'the first step is checked and the one they were on is marked');
+  ok(/Saved/.test(out.notice) && /Continue my application/.test(out.cta) && !/^Step /.test(out.tab), `with a "Saved" note, and the hero button says Continue (${JSON.stringify({ notice: out.notice, cta: out.cta, tab: out.tab })})`);
+  await shot('15-overview-saved-phone', x);
+  await x.click('[data-hub-go]');
+  await sleep(500);
+  ok((await stepTitle(x)) === AREA && await x.evaluate(() => document.documentElement.classList.contains('af-focus')), 'Continue where you left off goes straight back in');
+  await xCtx.close();
 
   console.log('Live preview for the form editor (page rules too)');
   const pv = await newTab({ phone: false });
@@ -702,7 +835,8 @@ try {
   const frame = pv.frames().find((f) => /preview=live/.test(f.url()));
   const post = (data) => pv.evaluate((d, site) => document.getElementById('pv').contentWindow.postMessage(d, site), data, SITE);
   ok(/Live preview/.test(await frame.$eval('[data-notice]', (e) => e.textContent)), 'the preview notice shows');
-  await frame.click('[data-field="ackParameters"] .af-choice');
+  ok(await frame.evaluate(() => document.documentElement.classList.contains('af-focus')), 'it shows the application on its own screen, as families see it');
+  await tap('[data-field="ackParameters"] .af-choice', frame);
   await post({ type: 'afe-preview', definition: DEF });
   await sleep(300);
   ok((await stepTitle(frame)) === 'First page', 'a posted definition redraws the form');
@@ -725,7 +859,7 @@ try {
   await type('#af-rampNote', 'Kept through edits', frame);
   await post({ type: 'afe-preview', definition: DEF, focus: 'later' });
   await sleep(500);
-  ok((await stepTitle(frame)) === 'Last page', 'focus on a question goes to its page');
+  ok((await stepTitle(frame)) === 'Last page' && await frame.$eval('[data-field="later"]', (e) => !e.closest('[data-off]')), 'focus on a question goes to its page, and the screen it is on');
   ok(await frame.$eval('[data-field="later"]', (e) => e.classList.contains('af-flash')), 'and outlines it for a moment');
   ok(await frame.$eval('#af-rampNote', (e) => e.value) === 'Kept through edits', 'answers typed so far survive a redraw');
   await post({ type: 'afe-preview', definition: DEF, lang: 'es', focus: 'one' });
@@ -750,6 +884,14 @@ try {
   await desk.evaluate(() => localStorage.clear());
   await desk.reload({ waitUntil: 'networkidle0' });
   ok(await desk.$eval('[data-field="ackParameters"] .af-choice', (e) => getComputedStyle(e).minHeight) !== '', 'desktop loads');
+  await begin(desk);
+  // A computer: each screen fits between the bar across the top and Continue (the reading screens aside)
+  const fits = [];
+  for (let i = 0; i < 3; i++) {
+    fits.push(await desk.evaluate(() => ({ part: document.querySelector('[data-part-text]').textContent, over: document.documentElement.scrollHeight - innerHeight, reading: !document.querySelector('[data-page]:not([hidden]) > :not([data-off]) :is(input, select, textarea)') })));
+    if (i < 2) { await desk.click('[data-next]'); await sleep(500); }
+  }
+  ok(fits.filter((f) => !f.reading).every((f) => f.over <= 0), `screens with questions fit with no scrolling (${fits.map((f) => `${f.part}: ${f.over}px`).join(', ')})`);
   await desk.click('[data-field="ackParameters"] .af-choice');
   await desk.click('[data-field="ackSeason"] .af-choice');
   await desk.click('[data-next]');
@@ -757,7 +899,7 @@ try {
   const deskToken = await draftToken(desk);
   // Straight to the video page: the draft's furthest page lets the steps list jump there
   await desk.evaluate((tk) => localStorage.setItem('soard-application-draft', JSON.stringify({ token: tk, year: '2027', furthest: 'video' })), deskToken);
-  await desk.evaluate(async (tk) => { await fetch('/api/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', token: tk, answers: {}, page: 'video' }) }); }, deskToken);
+  await desk.evaluate(async (tk) => { await fetch('/api/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', token: tk, answers: { ackParameters: "Yes, I have read and understand SOARD's makeover parameters.", ackSeason: 'Yes, I have read and understand the above statement.' }, page: 'video' }) }); }, deskToken);
   await desk.reload({ waitUntil: 'networkidle0' });
   await sleep(400);
   ok((await stepTitle(desk)) === 'Video', 'resumes on the video page');
@@ -768,11 +910,13 @@ try {
     now: document.querySelector('[data-rail-list] [aria-current="step"]')?.textContent || '',
     open: [...document.querySelectorAll('[data-rail-list] .af-step')].filter((b) => !b.disabled).length,
     left: document.querySelector('[data-time-left]').textContent,
-    mini: getComputedStyle(document.querySelector('[data-mini]')).display,
+    sub: document.querySelector('[data-rail-list] [data-goto="welcome"] .af-step-sub')?.textContent || '',
   }));
-  ok(rail.shown && !rail.dropdown && rail.mini === 'none', 'on a computer the steps sit beside the card (no "All steps", no phone bar)');
+  ok(rail.shown && !rail.dropdown, 'on a computer the steps sit beside the step (no "All steps")');
+  ok(rail.sub === 'Agreed', `a done step shows its answers in a line ("${rail.sub}")`);
   ok(/Video/.test(rail.now) && rail.open >= 8, `the rail marks this step and opens the ones reached (${rail.open})`);
   ok(/minutes? left/.test(rail.left), `and says about how long is left ("${rail.left}")`);
+  await reach('[data-field="video"]', desk);
   ok(await visible('[data-field="video"] .af-drag-hint', desk), 'computers are told they can drag a file in');
   const canRecord = await visible('[data-field="video"] [data-act="record"]', desk);
   if (!canRecord) {
@@ -825,29 +969,32 @@ try {
         await shot(`20-hero-${tag}`, s);
         await s.$eval('#application', (el) => el.scrollIntoView());
         await sleep(200);
+        await shot(`21-overview-${tag}`, s);
+        await s.setViewport({ ...(phone ? { width: 390, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { width: 1280, deviceScaleFactor: 1 }), height: phone ? 844 : 860 });
+        await begin(s);
         await shot(`21-welcome-${tag}`, s);
-        await s.click('[data-field="ackParameters"] .af-choice');
-        await s.click('[data-field="ackSeason"] .af-choice');
+        await tap('[data-field="ackParameters"] .af-choice', s);
+        await tap('[data-field="ackSeason"] .af-choice', s);
         await s.click('[data-next]');
         await sleep(400);
         await s.focus('#af-address-line1');
         await s.type('#af-address-line1', '3167 Main');
-        await s.waitForSelector('#af-address-suggest:not([hidden])', { timeout: 4000 }).catch(() => {});
-        await s.keyboard.press('Enter');
+        const listed = await s.waitForSelector('#af-address-suggest:not([hidden])', { timeout: 8000 }).then(() => true).catch(() => false);
+        if (listed) { await s.keyboard.press('ArrowDown'); await s.keyboard.press('Enter'); }
+        else { await s.keyboard.press('Escape'); await type('#af-address-line1', '3167 Main St', s); await type('#af-address-city', 'Duluth', s); await type('#af-address-zip', '30096', s); }
         await s.waitForFunction(() => document.querySelector('[data-area]')?.dataset.area === 'inside', { timeout: 15000 }).catch(() => {});
         await sleep(700);
-        await s.$eval('[data-field="address"]', (el) => el.scrollIntoView({ block: 'start' }));
-        await s.evaluate(() => window.scrollBy(0, -100));
+        await s.evaluate(() => window.scrollTo(0, 0));
         await sleep(150);
         await shot(`22-area-${tag}`, s);
-        await s.click('[data-field="resides50"] .af-choice');
+        await tap('[data-field="resides50"] .af-choice', s);
         await s.click('[data-next]');
         await sleep(400);
         await s.click('[data-next]');
         await sleep(300);
         await shot(`23-basic-errors-${tag}`, s);
-        await s.$eval('[data-steps]', (d) => { d.open = true; d.scrollIntoView({ block: 'start', behavior: 'instant' }); });
-        await s.evaluate(() => window.scrollBy(0, -200));
+        await s.$eval('[data-steps]', (d) => { d.open = true; });
+        await s.evaluate(() => window.scrollTo(0, 0));
         await sleep(200);
         await shot(`24-steps-${tag}`, s);
         await ctx.close();

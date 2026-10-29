@@ -24,14 +24,14 @@ export const imageUrl = (id, transforms) => `${CF_BASE}/${String(id).split('/').
  */
 export const UI = {
   en: {
-    step: 'Step {n} of {total}', next: 'Next', back: 'Back', reviewBtn: 'Review my answers', toReview: 'Back to review',
+    step: 'Step {n} of {total}', part: 'Part {n} of {total}', next: 'Continue', back: 'Back', reviewBtn: 'Review my answers', toReview: 'Back to review',
     submit: 'Submit application', submitting: 'Submitting…',
-    saveLater: 'Save and finish later', saving: 'Saving…', saved: 'All changes saved', unsaved: 'Unsaved changes', paused: 'Saving paused for a moment',
+    saveLater: 'Save and finish later', saving: 'Saving…', saved: 'All changes saved', savedShort: 'All changes saved', unsaved: 'Unsaved changes', paused: 'Saving paused for a moment',
     notSaved: 'Not saved yet. We will try again.', offline: 'Offline. Your answers will save when you reconnect.',
     reviewTitle: 'Review and submit', reviewIntro: 'Please look over your answers. Use Edit to change anything, then submit.',
     reviewMissing: '{n} required answers still need you', reviewMissingOne: '1 required answer still needs you', reviewReady: 'Everything is here. You can submit.',
     submitNeeds: 'Submit opens once every required answer is in.',
-    edit: 'Edit', editSection: 'Edit {name}', fix: 'Answer it', photoAdded: 'Photo added', videoUploaded: 'Video uploaded', notAnswered: 'Not answered yet',
+    edit: 'Edit', editSection: 'Edit {name}', change: 'Change', fix: 'Answer it', photoAdded: 'Photo added', videoUploaded: 'Video uploaded', notAnswered: 'Not answered yet',
     attentionOne: '1 answer on this page needs attention.', attentionMany: '{n} answers on this page need attention.',
     doneTitle: 'Thank you. Your application is in!', doneEmail: 'We just sent a message to {email} from our Qualification Committee with a copy of your application.',
     doneNext: 'What happens next',
@@ -49,7 +49,7 @@ export const UI = {
     remindersOff: "You won't get any more reminder emails. Your answers are still saved here.",
     expired: 'This saved application has expired. Please start a new one; we are sorry for the trouble.',
     linkExpired: 'That link has expired or is not valid. Please start a new application.',
-    startFail: 'We could not start your application. Please try again.', turnstile: 'Please complete the quick check above the Next button.',
+    startFail: 'We could not start your application. Please try again.', turnstile: 'Please complete the quick check above the Continue button.',
     waitUploads: 'Please wait for your uploads to finish, then submit.', attention: 'A few answers need attention before you submit.',
     offlineSubmit: 'You seem to be offline. Your answers are saved; please try again when you are connected.',
     submitFail: 'We could not submit just now. Please try again in a minute.',
@@ -79,6 +79,14 @@ export const UI = {
     areaHome: 'Home', areaLegend: 'Our service area', areaLegendHome: 'The home you entered', areaAway: 'Home, {miles} mi away',
     stopEditAddress: 'Change the address',
     steps: 'All steps', stepDone: 'Done', stepNow: 'You are here', stepLocked: 'Not reached yet',
+    // The application on its own screen (a bar across the top, the steps beside it on a computer), and the overview on the page
+    appTitle: '{year} Makeover Application', saveExit: 'Save and exit', exitSaved: 'Saved. Your answers are here whenever you come back.',
+    hubTitle: "Here's everything we'll ask", hubLead: '{n} steps, about 15 minutes. Your answers save as you go.',
+    hubTitleBack: 'Your application is saved', hubLeadBack: '{done} of {n} steps done. About {m} minutes left.', hubLeadBackOne: '{done} of {n} steps done. About a minute left.',
+    hubLeadReady: 'Every step is done. Look it over and submit.',
+    hubStart: 'Start the application', hubContinue: 'Continue where you left off', hubReview: 'Review and submit', minutes: '{n} min',
+    reviewOpenAll: 'Show all answers', reviewCloseAll: 'Hide the answers', reviewSection: '{n} answers', reviewSectionOne: '1 answer', reviewNeeds: 'Needs an answer',
+    agreed: 'Agreed', photosAdded: '{n} photos',
     // The steps beside the form on a computer, and the bar that follows a phone down the page
     railLabel: 'Your progress', railTitle: 'Your application', leftMany: 'About {n} minutes left', leftOne: 'About a minute left', leftReview: 'Last step: look it over and submit',
     railHelp: 'Questions? We are happy to help.', miniUp: 'Back to the top of this step',
@@ -90,7 +98,7 @@ export const UI = {
     // The hero above the form
     heroEyebrow: 'For Families · {year} Application', heroTitleHtml: 'Tell us about your <em>child</em>.',
     heroLeadHtml: "This is where your family's story starts. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.",
-    heroStart: 'Start the application ↓', heroNotify: 'Get notified when we open', heroFaq: 'Questions? Read the FAQ',
+    heroStart: 'Start the application', heroContinue: 'Continue my application', heroNotify: 'Get notified when we open', heroFaq: 'Questions? Read the FAQ',
     heroStatHtml: 'children served<br/>since 2012', heroPhotoAlt: 'A child enjoying their new room',
     // While closed: "tell me when applications open"
     closedTitle: 'The {year} application period is currently closed.',
@@ -106,14 +114,14 @@ export const UI = {
     notifyFail: 'Something went wrong. Please try again.', notifyBusy: 'Too many tries. Please wait a minute and try again.', notifyBad: 'Please enter a valid email address.',
   },
   es: {
-    step: 'Paso {n} de {total}', next: 'Siguiente', back: 'Atrás', reviewBtn: 'Revisar mis respuestas', toReview: 'Volver a la revisión',
+    step: 'Paso {n} de {total}', part: 'Parte {n} de {total}', next: 'Continuar', back: 'Atrás', reviewBtn: 'Revisar mis respuestas', toReview: 'Volver a la revisión',
     submit: 'Enviar solicitud', submitting: 'Enviando…',
-    saveLater: 'Guardar y terminar después', saving: 'Guardando…', saved: 'Todos los cambios están guardados', unsaved: 'Cambios sin guardar', paused: 'El guardado está en pausa por un momento',
+    saveLater: 'Guardar y terminar después', saving: 'Guardando…', saved: 'Todos los cambios están guardados', savedShort: 'Cambios guardados', unsaved: 'Cambios sin guardar', paused: 'El guardado está en pausa por un momento',
     notSaved: 'Todavía no se guardó. Lo intentaremos de nuevo.', offline: 'Sin conexión. Sus respuestas se guardarán cuando se vuelva a conectar.',
     reviewTitle: 'Revisar y enviar', reviewIntro: 'Revise sus respuestas. Use Editar para cambiar algo y después envíe la solicitud.',
     reviewMissing: 'Faltan {n} respuestas obligatorias', reviewMissingOne: 'Falta 1 respuesta obligatoria', reviewReady: 'Todo está completo. Ya puede enviarla.',
     submitNeeds: 'Podrá enviar la solicitud cuando estén todas las respuestas obligatorias.',
-    edit: 'Editar', editSection: 'Editar {name}', fix: 'Responder', photoAdded: 'Foto agregada', videoUploaded: 'Video subido', notAnswered: 'Sin responder todavía',
+    edit: 'Editar', editSection: 'Editar {name}', change: 'Cambiar', fix: 'Responder', photoAdded: 'Foto agregada', videoUploaded: 'Video subido', notAnswered: 'Sin responder todavía',
     attentionOne: '1 respuesta en esta página necesita atención.', attentionMany: '{n} respuestas en esta página necesitan atención.',
     doneTitle: '¡Gracias! Recibimos su solicitud.', doneEmail: 'Le acabamos de enviar un mensaje a {email} de nuestro Comité de Calificación con una copia de su solicitud.',
     doneNext: 'Qué sigue',
@@ -131,7 +139,7 @@ export const UI = {
     remindersOff: 'Ya no recibirá más correos de recordatorio. Sus respuestas siguen guardadas aquí.',
     expired: 'Esta solicitud guardada venció. Comience una nueva; lamentamos la molestia.',
     linkExpired: 'Ese enlace venció o no es válido. Comience una nueva solicitud.',
-    startFail: 'No pudimos comenzar su solicitud. Intente de nuevo.', turnstile: 'Complete la verificación rápida arriba del botón Siguiente.',
+    startFail: 'No pudimos comenzar su solicitud. Intente de nuevo.', turnstile: 'Complete la verificación rápida arriba del botón Continuar.',
     waitUploads: 'Espere a que terminen de subir sus archivos y después envíe la solicitud.', attention: 'Algunas respuestas necesitan atención antes de enviar.',
     offlineSubmit: 'Parece que no tiene conexión. Sus respuestas están guardadas; intente de nuevo cuando tenga conexión.',
     submitFail: 'No pudimos enviar la solicitud en este momento. Intente de nuevo en un minuto.',
@@ -160,6 +168,13 @@ export const UI = {
     areaHome: 'Casa', areaLegend: 'Nuestra área de servicio', areaLegendHome: 'La casa que escribió', areaAway: 'Casa, a {miles} mi',
     stopEditAddress: 'Cambiar la dirección',
     steps: 'Todos los pasos', stepDone: 'Listo', stepNow: 'Usted está aquí', stepLocked: 'Todavía no llega',
+    appTitle: 'Solicitud {year}', saveExit: 'Guardar y salir', exitSaved: 'Guardado. Sus respuestas estarán aquí cuando regrese.',
+    hubTitle: 'Esto es todo lo que le preguntaremos', hubLead: '{n} pasos, unos 15 minutos. Sus respuestas se guardan mientras avanza.',
+    hubTitleBack: 'Su solicitud está guardada', hubLeadBack: '{done} de {n} pasos listos. Quedan unos {m} minutos.', hubLeadBackOne: '{done} de {n} pasos listos. Queda más o menos un minuto.',
+    hubLeadReady: 'Todos los pasos están listos. Revise y envíe la solicitud.',
+    hubStart: 'Comenzar la solicitud', hubContinue: 'Continuar donde se quedó', hubReview: 'Revisar y enviar', minutes: '{n} min',
+    reviewOpenAll: 'Mostrar todas las respuestas', reviewCloseAll: 'Ocultar las respuestas', reviewSection: '{n} respuestas', reviewSectionOne: '1 respuesta', reviewNeeds: 'Falta una respuesta',
+    agreed: 'De acuerdo', photosAdded: '{n} fotos',
     railLabel: 'Su progreso', railTitle: 'Su solicitud', leftMany: 'Quedan unos {n} minutos', leftOne: 'Queda más o menos un minuto', leftReview: 'Último paso: revisar y enviar',
     railHelp: '¿Preguntas? Con gusto le ayudamos.', miniUp: 'Volver al principio de este paso',
     addParent2: 'Agregar otro padre, madre o tutor', addParentAddress: 'Agregar la dirección del padre, la madre o el tutor, si es diferente a la del niño',
@@ -168,7 +183,7 @@ export const UI = {
     first: 'Nombre', last: 'Apellido', street: 'Dirección', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
     heroEyebrow: 'Para familias · Solicitud {year}', heroTitleHtml: 'Cuéntenos sobre <em>su hijo o hija</em>.',
     heroLeadHtml: 'Aquí comienza la historia de su familia. La solicitud toma unos 15 minutos y <strong>se guarda mientras avanza</strong>, así que puede detenerse y volver cuando quiera.',
-    heroStart: 'Comenzar la solicitud ↓', heroNotify: 'Avísenme cuando abran', heroFaq: '¿Preguntas? Lea las respuestas',
+    heroStart: 'Comenzar la solicitud', heroContinue: 'Continuar mi solicitud', heroNotify: 'Avísenme cuando abran', heroFaq: '¿Preguntas? Lea las respuestas',
     heroStatHtml: 'niños atendidos<br/>desde 2012', heroPhotoAlt: 'Un niño disfrutando de su nuevo cuarto',
     closedTitle: 'El período de solicitudes de {year} está cerrado por ahora.',
     fullTitle: 'Ya recibimos todas las solicitudes que podemos aceptar para {year}.',
@@ -197,6 +212,7 @@ export const UI_ORG = {
   heroLeadHtml: 'Apply for a community project for the children you serve. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.',
   heroStatHtml: 'children reached<br/>through partnerships', heroPhotoAlt: 'A space at a partner organization that SOARD transformed',
   heroNotify: 'Get in touch with us',
+  appTitle: '{year} Community Project Application',
   closedTitle: 'Community project applications are closed right now.',
   closedLead: "Email us about your organization, and we'll let you know when applications open again.",
   areaMapHome: ' The address you entered is marked on it.', areaHome: 'Your address', areaLegendHome: 'The address you entered', areaAway: 'Your address, {miles} mi away',
@@ -228,7 +244,9 @@ function sideBySide(f, plain) {
 
 function choices(f, id, { plain = false } = {}) {
   const type = f.type === 'radio' || f.type === 'area' ? 'radio' : 'checkbox';
-  return `<div class="af-choices${sideBySide(f, plain) ? ' af-choices--row' : ''}">${f.options.map((v, i) => {
+  // Choices that each explain themselves sit as tiles (two to a row where there's room)
+  const tiles = !plain && f.options.length >= 3 && f.options.every(v => f.descriptions?.[v]);
+  return `<div class="af-choices${sideBySide(f, plain) ? ' af-choices--row' : ''}${tiles ? ' af-choices--tiles' : ''}">${f.options.map((v, i) => {
     const label = f.optionLabels?.[v] ?? v;
     const desc = plain ? '' : f.descriptions?.[v];
     const text = desc ? `<strong class="af-choice-title">${esc(label)}</strong><span class="af-choice-desc">${esc(desc)}</span>` : esc(label);
@@ -299,10 +317,13 @@ export function renderField(f, lang = 'en', area = null, kind = 'family') {
   if (isGroup) {
     let body = '';
     if (['radio', 'checkbox', 'ack'].includes(f.type)) body += choices(f, id);
+    // The parts' names sit inside their boxes and rise to the top edge once there's an answer
+    // (placeholder=" " is what lets the styles tell an empty box from a filled one)
+    const part = (name, input) => `<label class="af-sub af-float">${input}<span class="af-float-label">${name}</span></label>`;
     if (f.type === 'name') {
       body += `<div class="af-row af-row--2">
-<label class="af-sub"><span>${T('first')}</span><input type="text" id="${id}-first" data-part="first" maxlength="80" autocomplete="${ownName ? 'given-name' : 'off'}" autocapitalize="words"></label>
-<label class="af-sub"><span>${T('last')}</span><input type="text" id="${id}-last" data-part="last" maxlength="80" autocomplete="${ownName ? 'family-name' : 'off'}" autocapitalize="words"></label>
+${part(T('first'), `<input type="text" id="${id}-first" data-part="first" maxlength="80" autocomplete="${ownName ? 'given-name' : 'off'}" autocapitalize="words" enterkeyhint="next" placeholder=" ">`)}
+${part(T('last'), `<input type="text" id="${id}-last" data-part="last" maxlength="80" autocomplete="${ownName ? 'family-name' : 'off'}" autocapitalize="words" enterkeyhint="next" placeholder=" ">`)}
 </div>`;
     }
     if (f.type === 'address') {
@@ -310,13 +331,13 @@ export function renderField(f, lang = 'en', area = null, kind = 'family') {
       const list = `${id}-suggest`;
       // The suggestion list sits beside the label, not in it: a click on a suggestion mustn't count as a click on the label
       body += `<div class="af-address">
-<div class="af-suggest-wrap"><label class="af-sub"><span>${T('street')}</span><input type="text" id="${id}-line1" data-part="line1" maxlength="160" autocomplete="${ac('address-line1')}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${list}"></label>
+<div class="af-suggest-wrap">${part(T('street'), `<input type="text" id="${id}-line1" data-part="line1" maxlength="160" autocomplete="${ac('address-line1')}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${list}" enterkeyhint="next" placeholder=" ">`)}
 <ul class="af-suggest" id="${list}" role="listbox" aria-label="${esc(T('suggestions'))}" hidden></ul></div>
-<label class="af-sub"><span>${T('apt')} <span class="af-optional">${T('optional')}</span></span><input type="text" id="${id}-line2" data-part="line2" maxlength="80" autocomplete="${ac('address-line2')}"></label>
+${part(`${T('apt')} <span class="af-optional">${T('optional')}</span>`, `<input type="text" id="${id}-line2" data-part="line2" maxlength="80" autocomplete="${ac('address-line2')}" enterkeyhint="next" placeholder=" ">`)}
 <div class="af-row af-row--3">
-<label class="af-sub"><span>${T('city')}</span><input type="text" id="${id}-city" data-part="city" maxlength="80" autocomplete="${ac('address-level2')}"></label>
-<label class="af-sub"><span>${T('state')}</span><select id="${id}-state" data-part="state" autocomplete="${ac('address-level1')}"><option value="">${T('choose')}</option>${US_STATES.map(s => `<option value="${s}"${homeAddress && s === 'GA' ? ' selected' : ''}>${s}</option>`).join('')}</select></label>
-<label class="af-sub"><span>${T('zip')}</span><input type="text" id="${id}-zip" data-part="zip" inputmode="numeric" maxlength="10" autocomplete="${ac('postal-code')}"></label>
+${part(T('city'), `<input type="text" id="${id}-city" data-part="city" maxlength="80" autocomplete="${ac('address-level2')}" enterkeyhint="next" placeholder=" ">`)}
+<label class="af-sub af-float af-float--select"><select id="${id}-state" data-part="state" autocomplete="${ac('address-level1')}"><option value="">${T('choose')}</option>${US_STATES.map(s => `<option value="${s}"${homeAddress && s === 'GA' ? ' selected' : ''}>${s}</option>`).join('')}</select><span class="af-float-label">${T('state')}</span></label>
+${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="numeric" maxlength="10" autocomplete="${ac('postal-code')}" enterkeyhint="next" placeholder=" ">`)}
 </div>
 <p class="af-county-note" aria-live="polite" hidden></p></div>`;
     }
@@ -325,14 +346,14 @@ export function renderField(f, lang = 'en', area = null, kind = 'family') {
     const desc = described;
     let control = '';
     switch (f.type) {
-      case 'text': control = `<input type="text" id="${id}" maxlength="${f.rules?.maxLength || TEXT_MAX}" ${desc}>`; break;
-      case 'number': control = `<input type="text" inputmode="decimal" id="${id}" maxlength="20" ${desc}>`; break;
+      case 'text': control = `<input type="text" id="${id}" maxlength="${f.rules?.maxLength || TEXT_MAX}" enterkeyhint="next" ${desc}>`; break;
+      case 'number': control = `<input type="text" inputmode="decimal" id="${id}" maxlength="20" enterkeyhint="next" ${desc}>`; break;
       // A likely typo in the address ("gmial.com") gets a one-tap fix under it (the script fills this in)
-      case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' || f.id === 'contactEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" ${desc}><p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>`; break;
-      case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' || f.id === 'contactPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" ${desc}>`; break;
+      case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' || f.id === 'contactEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" enterkeyhint="next" ${desc}><p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>`; break;
+      case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' || f.id === 'contactPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" enterkeyhint="next" ${desc}>`; break;
       case 'date': control = `<input type="date" id="${id}" max="${new Date().toISOString().slice(0, 10)}" min="1990-01-01" ${desc}>`; break;
       case 'textarea': control = `<textarea id="${id}" rows="${Number(f.rows) || 5}" maxlength="${f.rules?.maxLength || TEXTAREA_MAX}" ${desc}></textarea>`; break;
-      case 'signature': control = `<input type="text" id="${id}" class="af-signature" maxlength="120" autocomplete="name" placeholder="${esc(T('signature'))}" ${desc}>`; break;
+      case 'signature': control = `<input type="text" id="${id}" class="af-signature" maxlength="120" autocomplete="name" placeholder="${esc(T('signature'))}" enterkeyhint="done" ${desc}>`; break;
       case 'select': control = `<select id="${id}" ${desc}><option value="">${T('chooseOne')}</option>${f.options.map(v => `<option value="${esc(v)}">${esc(f.optionLabels?.[v] ?? v)}</option>`).join('')}</select>`; break;
       case 'photo':
         control = `<div class="af-upload af-upload--photo" data-state="empty" data-drop>
@@ -377,22 +398,58 @@ export const TUCKED = [
 ];
 const PLUS = '<svg class="af-more-plus" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>';
 
-function pageHtml(p, lang, area, kind = 'family') {
+/**
+ * Two short questions to a row on a wider screen (the styles stack them on a phone): email beside
+ * phone, a date beside a Yes / No. Never a question with help under it, a long one, one that shows or
+ * hides another, or one that can stop the application, since those need the whole width to read.
+ */
+const PAIR_TYPES = new Set(['email', 'phone', 'date', 'number', 'select', 'text']);
+const pairable = (f, leads) => !!f && !f.showIf && !f.stops && !f.help && !leads.has(f.id)
+  && (PAIR_TYPES.has(f.type) || (sideBySide(f) && f.options.length === 2))
+  && String(f.label || '').length <= 64;
+
+/** A run of questions: pairs where they fit, photos side by side */
+function fieldsHtml(fields, lang, area, kind, leads) {
   const out = [];
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
+    const n = fields[i + 1];
+    // The home address beside the map that places it (the map under it on a phone)
+    if (n && f.type === 'address' && n.type === 'area' && !f.showIf && !n.showIf) {
+      out.push(`<div class="af-place">${renderField(f, lang, area, kind)}${renderField(n, lang, area, kind)}</div>`);
+      i++;
+    } else if (n && f.type === 'photo' && n.type === 'photo' && !f.showIf && !n.showIf) {
+      out.push(`<div class="af-pair af-pair--photos">${renderField(f, lang, area, kind)}${renderField(n, lang, area, kind)}</div>`);
+      i++;
+    } else if (pairable(f, leads) && pairable(n, leads)) {
+      out.push(`<div class="af-pair">${renderField(f, lang, area, kind)}${renderField(n, lang, area, kind)}</div>`);
+      i++;
+    } else out.push(renderField(f, lang, area, kind));
+  }
+  return out.join('');
+}
+
+function pageHtml(p, lang, area, kind = 'family') {
+  const leads = new Set(p.fields.map(f => f.showIf?.field).filter(Boolean));
+  const out = [];
+  let run = [];
+  const flush = () => { if (run.length) out.push(fieldsHtml(run, lang, area, kind, leads)); run = []; };
   for (let i = 0; i < p.fields.length; i++) {
     const g = TUCKED.find(x => x.ids[0] === p.fields[i].id);
-    const run = g ? p.fields.slice(i, i + g.ids.length) : [];
-    if (g && run.length === g.ids.length && run.every((f, k) => f.id === g.ids[k] && !f.required && !f.showIf)) {
+    const group = g ? p.fields.slice(i, i + g.ids.length) : [];
+    if (g && group.length === g.ids.length && group.every((f, k) => f.id === g.ids[k] && !f.required && !f.showIf)) {
+      flush();
       const body = `af-more-${g.key}`;
       out.push(`<div class="af-more" data-more="${g.key}">
 <button type="button" class="af-more-btn" data-more-open aria-expanded="false" aria-controls="${body}">${PLUS}<span>${esc(t(lang, g.word, {}, kind))}</span></button>
-<div class="af-more-body" id="${body}" hidden>${run.map(f => renderField(f, lang, area, kind)).join('')}
+<div class="af-more-body" id="${body}" hidden>${fieldsHtml(group, lang, area, kind, leads)}
 <button type="button" class="af-btn af-btn--link af-more-remove" data-more-close>${esc(t(lang, 'remove'))}</button></div></div>`);
       i += g.ids.length - 1;
       continue;
     }
-    out.push(renderField(p.fields[i], lang, area, kind));
+    run.push(p.fields[i]);
   }
+  flush();
   return out.join('');
 }
 

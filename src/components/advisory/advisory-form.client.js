@@ -1,14 +1,26 @@
 /**
  * The Advisory Board application's page script (/advisory-board/apply/).
  * Five steps, checked with the same rules the server uses
- * (functions/api/_advisory-form.js). Answers save on this device as people
- * type, so a closed tab or a lost connection costs nothing; sending clears
- * them. Turnstile shows on the last step once the site has it set up.
+ * (functions/api/_advisory-form.js), then a review before sending. Answers save
+ * on this device as people type, so a closed tab or a lost connection costs
+ * nothing; sending clears them. Turnstile shows on the review once the site has
+ * it set up.
+ *
+ * Like the makeover application: an overview on the page (every step, how long
+ * it takes, what's done), then the application on its own screen (html.adv-focus)
+ * with a bar across the top, a segment per step, a screen of questions at a time
+ * (as many as fit), Back and Continue held at the bottom, and Back from the phone
+ * or browser going a screen back.
  */
 import { ADVISORY_STEPS, ADVISORY_FIELDS, checkAnswers, isShown } from '../../../functions/api/_advisory-form.js';
 
 const STORE = 'soard-advisory-application';
+const FOCUS = 'soard-advisory-focus';
 const API = '/api/advisory-apply';
+const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3L12.5 5" /></svg>';
+const CHEV = '<svg class="adv-review-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>';
+// About 20 minutes in all (what the hero says), shared out by what each step asks
+const SECONDS = { text: 20, email: 15, tel: 15, url: 20, textarea: 120, choice: 10, check: 10 };
 
 function read() {
   try { return JSON.parse(localStorage.getItem(STORE) || 'null'); } catch { return null; }
@@ -16,29 +28,46 @@ function read() {
 function write(v) {
   try { if (v) localStorage.setItem(STORE, JSON.stringify(v)); else localStorage.removeItem(STORE); } catch { /* private mode: no saving */ }
 }
+const session = {
+  get() { try { return sessionStorage.getItem(FOCUS) === '1'; } catch { return false; } },
+  set(on) { try { if (on) sessionStorage.setItem(FOCUS, '1'); else sessionStorage.removeItem(FOCUS); } catch { /* private mode */ } },
+};
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function initAdvisoryForm() {
   const form = document.getElementById('adv-form');
-  if (!form) return;
+  const root = document.querySelector('[data-adv]');
+  if (!form || !root) return;
   const $ = (id) => document.getElementById(id);
-  const pages = [...form.querySelectorAll('.adv-page')];
-  const dots = [...form.querySelectorAll('[data-step-dot]')];
-  const back = $('adv-back');
-  const next = $('adv-next');
-  const saved = $('adv-saved');
-  const sendError = $('adv-send-error');
-  const turnstileBox = $('adv-turnstile');
-  const total = pages.length;
+  const pages = [...form.querySelectorAll('.adv-page')]; // the five steps, then the review
+  const total = ADVISORY_STEPS.length;
+  const REVIEW = total;
+  const ui = {
+    back: $('adv-back'), next: $('adv-next'), saved: $('adv-saved'), sendError: $('adv-send-error'), turnstile: $('adv-turnstile'),
+    stage: $('adv-stage'), stepText: $('adv-step-text'), part: $('adv-part'), title: $('adv-title'),
+    top: root.querySelector('[data-adv-top]'), segs: [...root.querySelectorAll('.adv-seg')], exit: $('adv-exit'),
+    hub: $('adv-hub'), hubTitle: $('adv-hub-title'), hubLead: $('adv-hub-lead'), go: $('adv-go'), goLabel: $('adv-go-label'),
+    startOver: $('adv-start-over'), hubRows: [...root.querySelectorAll('.adv-hub-row')],
+    review: $('adv-review'), reviewAll: $('adv-review-all'), done: $('adv-done'),
+  };
+  const titles = [...ADVISORY_STEPS.map((s) => s.title), 'Review and send'];
+  const baseTitle = document.title;
 
   const stored = read();
   let step = 0;
+  let furthest = 0;
+  let screenNo = 0;
+  let packs = {};
+  let focused = false;
+  let moving = false;
+  let fromReview = false;
   let startedAt = stored?.startedAt || Date.now();
   let turnstileKey = null;
   let turnstileToken = null;
   let sending = false;
+  let restored = false;
 
-  const today = new Date();
-  $('adv-today').textContent = today.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  $('adv-today').textContent = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
 
   // ── Answers in and out of the page ──
   const fieldEl = (id) => form.querySelector(`[data-field="${id}"]`);
@@ -60,7 +89,6 @@ export function initAdvisoryForm() {
       else if (form.elements[f.id]) form.elements[f.id].value = String(v);
     }
   }
-
   /** Follow-ups show after the answer that asks for them */
   function follow() {
     const a = collect();
@@ -70,6 +98,83 @@ export function initAdvisoryForm() {
       if (el) el.hidden = !isShown(f, a);
     }
   }
+  const problemsOn = (i, a = collect()) => (i >= total ? {} : checkAnswers(a, { step: ADVISORY_STEPS[i].id }).problems);
+  const stepDone = (i, a) => i < total && i < furthest && !Object.keys(problemsOn(i, a)).length;
+
+  // ── A step a screen at a time ──
+  /**
+   * Which of a step's questions share a screen: as many as fit between the bar across the top and
+   * Back / Continue, measured as drawn now, spread evenly. A follow-up stays with the question it
+   * follows, the step's intro with what comes after it; anything taller than the screen gets one to
+   * itself (and scrolls). The problem summary is always on the screen.
+   */
+  const pieces = (i) => [...(pages[i]?.children || [])].filter((el) => !el.matches('[data-summary]'));
+  const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : [...el.querySelectorAll('[data-field]')].map((x) => x.dataset.field));
+  function room(el) {
+    const top = ui.top?.offsetHeight || 0;
+    const nav = form.querySelector('.adv-nav')?.offsetHeight || 0;
+    const head = el.getBoundingClientRect().top - ui.stage.getBoundingClientRect().top;
+    return Math.max(260, innerHeight - top - nav - head - (parseFloat(getComputedStyle(ui.stage).paddingBottom) || 0));
+  }
+  function pack(i) {
+    const el = pages[i];
+    const kids = pieces(i);
+    if (!focused || !el || i >= total) return null;
+    kids.forEach((k) => k.removeAttribute('data-off'));
+    if (el.offsetParent === null) return null;
+    const fit = room(el);
+    const h = kids.map((k) => k.getBoundingClientRect().height + (parseFloat(getComputedStyle(k).marginBottom) || 0));
+    const blocks = [];
+    kids.forEach((k, j) => {
+      const prev = blocks[blocks.length - 1];
+      const f = k.matches('[data-field]') ? ADVISORY_FIELDS.find((x) => x.id === k.dataset.field) : null;
+      const follows = prev && (!h[j] || k.matches('.adv-date') || (f?.showIf && Object.keys(f.showIf).some((x) => prev.ids.has(x))));
+      if (prev && (follows || prev.carry)) {
+        prev.kids.push(k); prev.h += h[j];
+        idsOf(k).forEach((x) => prev.ids.add(x));
+        prev.carry = prev.carry && !h[j];
+        return;
+      }
+      blocks.push({ kids: [k], h: h[j], ids: new Set(idsOf(k)), carry: k.matches('.adv-intro') && h[j] < fit * 0.5 });
+    });
+    let n = 0;
+    let acc = -1;
+    for (const b of blocks) { if (acc < 0 || acc + b.h > fit) { n++; acc = b.h; } else acc += b.h; }
+    if (n <= 1) return [kids];
+    // The most even split into that many screens (none over the room unless one piece is)
+    const B = blocks.length;
+    const cost = (x, y) => blocks.slice(x, y).reduce((t, b) => t + b.h, 0);
+    const cap = Math.max(fit, ...blocks.map((b) => b.h));
+    const best = Array.from({ length: n + 1 }, () => Array(B + 1).fill(Infinity));
+    const cut = Array.from({ length: n + 1 }, () => Array(B + 1).fill(0));
+    best[0][0] = 0;
+    for (let k = 1; k <= n; k++) {
+      for (let y = k; y <= B; y++) {
+        for (let x = k - 1; x < y; x++) {
+          const c = cost(x, y);
+          if (c > cap && y - x > 1) continue;
+          const v = best[k - 1][x] + c * c;
+          if (v < best[k][y]) { best[k][y] = v; cut[k][y] = x; }
+        }
+      }
+    }
+    if (!Number.isFinite(best[n][B])) return [kids];
+    const screens = [];
+    for (let k = n, y = B; k > 0; k--) { const x = cut[k][y]; screens.unshift(blocks.slice(x, y).flatMap((b) => b.kids)); y = x; }
+    return screens;
+  }
+  const screensIn = (i) => packs[i]?.length || 1;
+  function paintScreen() {
+    const list = packs[step];
+    const on = new Set(list ? list[screenNo] || [] : pieces(step));
+    for (const k of pieces(step)) k.toggleAttribute('data-off', !on.has(k));
+  }
+  const screenIds = () => new Set((packs[step] ? packs[step][screenNo] || [] : pieces(step)).flatMap(idsOf));
+  const screenOf = (i, id) => {
+    const el = fieldEl(id);
+    const at = el && packs[i] ? packs[i].findIndex((kids) => kids.some((k) => k === el || k.contains(el))) : 0;
+    return Math.max(0, at);
+  };
 
   // ── Problems: under each answer, and a summary that links to them ──
   function showProblems(problems, { focus = true } = {}) {
@@ -88,10 +193,11 @@ export function initAdvisoryForm() {
     }
     const mine = ids.filter((id) => problems[id]);
     const summary = page.querySelector('[data-summary]');
-    if (!mine.length) { summary.hidden = true; summary.textContent = ''; return; }
+    if (!summary) return;
+    if (mine.length < 2) { summary.hidden = true; summary.textContent = ''; if (focus && mine.length) focusField(mine[0]); return; }
     summary.innerHTML = '';
     const head = document.createElement('p');
-    head.textContent = mine.length === 1 ? 'One answer needs a look:' : `${mine.length} answers need a look:`;
+    head.textContent = `${mine.length} answers need a look:`;
     head.style.margin = '0';
     const list = document.createElement('ul');
     for (const id of mine) {
@@ -110,51 +216,274 @@ export function initAdvisoryForm() {
   }
   function focusField(id) {
     const el = fieldEl(id);
-    const input = el?.querySelector('input:not([type="hidden"]), textarea');
-    el?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    if (!el) return;
+    if (packs[step] && el.closest('[data-off]')) { screenNo = screenOf(step, id); paintScreen(); paint(); }
+    const input = el.querySelector('input:not([type="hidden"]), textarea');
+    el.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' });
     input?.focus({ preventScroll: true });
   }
   /** Once someone fixes an answer, its message goes as they type */
   function recheck(id) {
     const el = fieldEl(id);
-    if (!el?.classList.contains('is-invalid')) return;
-    const { problems } = checkAnswers(collect(), { step: ADVISORY_STEPS[step].id });
-    const msg = problems[id];
-    if (!msg) {
-      el.classList.remove('is-invalid');
-      el.querySelector('.adv-error').hidden = true;
-      for (const input of el.querySelectorAll('input, textarea')) input.removeAttribute('aria-invalid');
-      const left = [...pages[step].querySelectorAll('.adv-field.is-invalid')].length;
-      if (!left) pages[step].querySelector('[data-summary]').hidden = true;
-    }
+    if (!el?.classList.contains('is-invalid') || step >= total) return;
+    const msg = problemsOn(step)[id];
+    if (msg) return;
+    el.classList.remove('is-invalid');
+    el.querySelector('.adv-error').hidden = true;
+    for (const input of el.querySelectorAll('input, textarea')) input.removeAttribute('aria-invalid');
+    if (![...pages[step].querySelectorAll('.adv-field.is-invalid')].length) pages[step].querySelector('[data-summary]').hidden = true;
   }
 
-  // ── Steps ──
+  // ── What's on screen ──
+  const secondsOf = (i) => (ADVISORY_STEPS[i]?.fields || []).filter((f) => !f.showIf).reduce((t, f) => t + (SECONDS[f.type] || 15) * (f.required ? 1 : 0.5), 0);
+  const minutesOf = (i) => Math.max(1, Math.round((secondsOf(i) / ADVISORY_STEPS.reduce((t, _, j) => t + secondsOf(j), 0)) * 20));
+  /** A done step's answers in a line: "Taylor Brooks · taylor@example.org" */
+  function summaryOf(i, a = collect()) {
+    const parts = [];
+    for (const f of ADVISORY_STEPS[i]?.fields || []) {
+      if (!isShown(f, a) || f.type === 'check') continue;
+      const v = String(a[f.id] || '').split('\n')[0].trim();
+      if (v && parts.length < 2) parts.push(v.length > 40 ? `${v.slice(0, 38).trimEnd()}…` : v);
+    }
+    return parts.join(' · ');
+  }
   function paint({ focusHeading = false } = {}) {
+    const a = collect();
     pages.forEach((p, i) => { p.hidden = i !== step; });
-    dots.forEach((d, i) => { d.classList.toggle('is-done', i < step); d.classList.toggle('is-now', i === step); });
-    $('adv-bar-fill').style.width = `${((step + 1) / total) * 100}%`;
-    back.hidden = step === 0;
-    next.textContent = step === total - 1 ? 'Send my application' : `Continue to ${ADVISORY_STEPS[step + 1].title.toLowerCase()}`;
-    turnstileBox.hidden = !(turnstileKey && step === total - 1);
-    if (turnstileKey && step === total - 1) loadTurnstile();
-    follow();
-    if (focusHeading) {
-      const h = pages[step].querySelector('h2');
-      document.getElementById('application')?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-      h?.focus({ preventScroll: true });
-    }
+    ui.stepText.textContent = `Step ${step + 1} of ${total + 1}`;
+    const n = screensIn(step);
+    ui.part.textContent = n > 1 ? `Part ${screenNo + 1} of ${n}` : '';
+    if (ui.title.textContent !== titles[step]) ui.title.textContent = titles[step];
+    ui.segs.forEach((li, i) => {
+      const now = i === step;
+      const done = !now && (stepDone(i, a) || (i === REVIEW && sent));
+      li.dataset.state = done ? 'done' : now ? 'now' : '';
+      li.firstChild.style.transform = `scaleX(${(done ? 1 : now ? (screenNo + 1) / (n + 1) : 0).toFixed(3)})`;
+    });
+    ui.back.hidden = step === 0 && screenNo === 0;
+    const last = screenNo >= n - 1;
+    ui.next.textContent = step === REVIEW ? 'Send my application'
+      : fromReview ? 'Back to review'
+        : !last ? 'Continue'
+          : step === total - 1 ? 'Review my answers' : `Continue to ${titles[step + 1].toLowerCase()}`;
+    ui.turnstile.hidden = !(turnstileKey && step === REVIEW);
+    if (turnstileKey && step === REVIEW) loadTurnstile();
+    document.title = focused ? `Step ${step + 1} of ${total + 1}: ${titles[step]} · ${baseTitle}` : baseTitle;
+    paintHub(a);
+    if (focusHeading) ui.title.focus({ preventScroll: true });
+  }
+  /** The overview: every step with its minutes, done ones with their answers, the way in */
+  function paintHub(a = collect()) {
+    if (focused) return;
+    const started = restored || furthest > 0;
+    const doneCount = ADVISORY_STEPS.filter((_, i) => stepDone(i, a)).length;
+    ui.hubTitle.textContent = started ? 'Your application is saved on this device' : 'Five steps, about 20 minutes';
+    ui.hubLead.textContent = started
+      ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total} steps done. Pick up where you left off.`)
+      : 'Have a reference in mind. Your answers save on this device as you go.';
+    ui.goLabel.textContent = !started ? 'Start the application' : doneCount === total ? 'Review and send' : 'Continue where you left off';
+    ui.startOver.hidden = !started;
+    ui.hubRows.forEach((b, i) => {
+      const done = stepDone(i, a);
+      const now = started && i === step;
+      const open = i <= furthest;
+      b.dataset.state = done ? 'done' : now ? 'now' : open ? 'open' : 'locked';
+      b.disabled = !open;
+      const mark = b.querySelector('.adv-mark');
+      if (done) mark.innerHTML = CHECK; else mark.textContent = String(i + 1);
+      b.querySelector('.adv-hub-sub').textContent = done ? summaryOf(i, a) : now ? 'You are here' : '';
+      b.querySelector('.adv-hub-meta').textContent = done ? 'Edit' : i < total ? `${minutesOf(i)} min` : '';
+    });
   }
 
+  /**
+   * Change what's on screen with the motion of going forward or back (Plaid's timing, the
+   * makeover application's: the old screen out in 120ms, the new one in over 260ms); a step's
+   * name holds still between its own screens. Resolves once the new screen is in the page.
+   */
+  function swap(update, dir, same) {
+    const html = document.documentElement;
+    if (!dir || !focused) { update(); return Promise.resolve(); }
+    if (reducedMotion() || !document.startViewTransition || document.visibilityState === 'hidden') {
+      update();
+      if (!reducedMotion()) ui.stage.animate?.([{ opacity: 0, transform: `translateX(${dir * 16}px)` }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.05,.7,.1,1)' });
+      return Promise.resolve();
+    }
+    html.classList.add('adv-vt');
+    html.classList.toggle('adv-vt-back', dir < 0);
+    html.classList.toggle('adv-vt-same', same);
+    moving = true;
+    let vt;
+    try { vt = document.startViewTransition(() => { try { update(); } catch (err) { console.warn('Could not change the screen', err); } }); } catch {
+      html.classList.remove('adv-vt', 'adv-vt-back', 'adv-vt-same'); moving = false; update(); return Promise.resolve();
+    }
+    vt.ready.catch(() => {});
+    vt.finished.catch(() => {}).finally(() => { if (!moving) html.classList.remove('adv-vt', 'adv-vt-back', 'adv-vt-same'); });
+    return vt.updateCallbackDone.catch(() => {}).finally(() => { moving = false; });
+  }
+  /** Put a step on screen, a screen of it (a number, 'last', or the one holding `at`) */
+  function go(i, { dir = 0, screen = 0, at = null, focus = true } = {}) {
+    const changed = i !== step;
+    return swap(() => {
+      step = i;
+      furthest = Math.max(furthest, i);
+      if (i === REVIEW) { fromReview = false; buildReview(); }
+      pages.forEach((p, j) => { p.hidden = j !== step; });
+      if (i < total && (changed || !packs[i])) { ui.title.textContent = titles[i]; packs[i] = pack(i); }
+      const n = screensIn(i);
+      screenNo = Math.max(0, Math.min(n - 1, at ? screenOf(i, at) : screen === 'last' ? n - 1 : Number(screen) || 0));
+      paintScreen();
+      ui.sendError.hidden = true;
+      paint();
+      if (focused) window.scrollTo({ top: 0, behavior: 'auto' });
+    }, dir, !changed).then(() => {
+      if (at) focusField(at);
+      else if (focus) ui.title.focus({ preventScroll: true });
+    });
+  }
+
+  // ── On its own screen ──
+  let trapped = false;
+  let swallow = false;
+  function armTrap() {
+    if (trapped || !focused) return;
+    try { history.pushState({ ...(history.state || {}), advFocus: 1 }, ''); trapped = true; } catch { /* no history */ }
+  }
+  function begin(i = null) {
+    if (!focused) {
+      focused = true;
+      root.classList.add('is-focus');
+      document.documentElement.classList.add('adv-focus');
+      session.set(true);
+      trapped = trapped || !!history.state?.advFocus;
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      if (!reducedMotion()) {
+        ui.top?.animate?.([{ transform: 'translateY(-100%)' }, { transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
+        ui.stage.animate?.([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.23,1.2,.32,1)' });
+      }
+    }
+    armTrap();
+    packs = {};
+    const target = i != null && i <= furthest ? i : step;
+    step = -1; // a step put on screen afresh
+    go(target, { screen: 0 });
+  }
+  function exitFocus({ fromPop = false } = {}) {
+    if (!focused) return;
+    saveNow();
+    focused = false;
+    root.classList.remove('is-focus');
+    document.documentElement.classList.remove('adv-focus', 'adv-vt', 'adv-vt-back', 'adv-vt-same');
+    session.set(false);
+    if (trapped && !fromPop) { swallow = true; history.back(); }
+    trapped = false;
+    restored = restored || furthest > 0;
+    paint();
+    requestAnimationFrame(() => {
+      const app = document.getElementById('application');
+      const top = Math.max(0, (app?.getBoundingClientRect().top || 0) + window.scrollY - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 84) - 16);
+      window.scrollTo({ top, behavior: 'auto' });
+      (sent ? ui.done : ui.hubTitle).focus({ preventScroll: true });
+    });
+  }
+  /** A screen back; false at the very start */
+  function back() {
+    if (moving) return true;
+    if (screenNo > 0 && step < total) { go(step, { dir: -1, screen: screenNo - 1 }).then(save); return true; }
+    if (step === 0) return false;
+    go(step - 1, { dir: -1, screen: 'last' }).then(save);
+    return true;
+  }
+  // The page's inline gate asks this first, ahead of the site's router (true = handled here)
+  window.__advPop = () => {
+    if (swallow) { swallow = false; return true; }
+    if (!focused) return false;
+    trapped = false;
+    if (sent || !back()) exitFocus({ fromPop: true });
+    return true;
+  };
+  document.addEventListener('astro:before-swap', () => { window.__advPop = null; document.documentElement.classList.remove('adv-focus', 'adv-vt', 'adv-vt-back', 'adv-vt-same'); }, { once: true });
+  const rearm = () => { if (focused && !trapped) armTrap(); };
+  document.addEventListener('pointerdown', rearm, { capture: true });
+  document.addEventListener('keydown', rearm, { capture: true });
+
+  // ── Review: a row per step with its answers in a line, opened to every answer ──
+  let reviewAll = false;
+  const opened = new Set();
+  function setOpen(sec, open) {
+    sec.toggleAttribute('data-open', open);
+    sec.querySelector('.adv-review-toggle').setAttribute('aria-expanded', String(open));
+    sec.querySelector('.adv-review-body').hidden = !open;
+    if (open) opened.add(sec.dataset.step); else opened.delete(sec.dataset.step);
+  }
+  function buildReview() {
+    const a = collect();
+    const all = checkAnswers(a).problems;
+    const secs = ADVISORY_STEPS.map((s, i) => {
+      const sec = document.createElement('section');
+      sec.className = 'adv-review-section';
+      sec.dataset.step = String(i);
+      const missing = s.fields.some((f) => all[f.id]);
+      if (missing) sec.dataset.missing = '1';
+      sec.innerHTML = `<div class="adv-review-head"><h3 class="adv-review-h"><button type="button" class="adv-review-toggle" aria-controls="adv-rv-${s.id}"><span class="adv-mark" aria-hidden="true">${missing ? '!' : CHECK}</span><span class="adv-review-name"><span class="adv-review-title"></span><span class="adv-review-sum"></span></span>${CHEV}</button></h3><button type="button" class="adv-linkbtn adv-review-edit" data-edit="${i}">Edit</button></div><div class="adv-review-body" id="adv-rv-${s.id}"><dl></dl></div>`;
+      sec.querySelector('.adv-review-title').textContent = s.title;
+      sec.querySelector('.adv-review-sum').textContent = missing ? 'Needs an answer' : summaryOf(i, a);
+      sec.querySelector('.adv-review-edit').setAttribute('aria-label', `Edit ${s.title}`);
+      const dl = sec.querySelector('dl');
+      for (const f of s.fields) {
+        if (!isShown(f, a)) continue;
+        const v = f.type === 'check' ? (a[f.id] ? 'Yes, I’ve read it' : '') : String(a[f.id] || '').trim();
+        if (!v && !all[f.id]) continue;
+        const row = document.createElement('div');
+        row.className = `adv-review-item${all[f.id] ? ' is-missing' : ''}`;
+        const dt = document.createElement('dt');
+        dt.textContent = f.label;
+        const dd = document.createElement('dd');
+        dd.textContent = all[f.id] ? all[f.id] : v;
+        const change = document.createElement('button');
+        change.type = 'button';
+        change.className = 'adv-linkbtn';
+        change.dataset.edit = String(i);
+        change.dataset.answer = f.id;
+        change.textContent = all[f.id] ? 'Answer it' : 'Change';
+        change.setAttribute('aria-label', `${change.textContent}: ${f.label}`);
+        row.append(dt, dd, change);
+        dl.append(row);
+      }
+      setOpen(sec, missing || reviewAll || opened.has(String(i)));
+      return sec;
+    });
+    ui.review.replaceChildren(...secs);
+    ui.reviewAll.textContent = reviewAll ? 'Hide the answers' : 'Show all answers';
+    ui.reviewAll.setAttribute('aria-expanded', String(reviewAll));
+  }
+  ui.review.addEventListener('click', (e) => {
+    const tg = e.target.closest('.adv-review-toggle');
+    if (tg) { const sec = tg.closest('.adv-review-section'); setOpen(sec, !sec.hasAttribute('data-open')); return; }
+    const edit = e.target.closest('[data-edit]');
+    if (edit) {
+      fromReview = true;
+      const id = edit.dataset.answer || null;
+      go(Number(edit.dataset.edit), { dir: -1, at: id || null });
+    }
+  });
+  ui.reviewAll.addEventListener('click', () => {
+    reviewAll = !reviewAll;
+    ui.review.querySelectorAll('.adv-review-section').forEach((sec) => setOpen(sec, reviewAll || sec.hasAttribute('data-missing')));
+    ui.reviewAll.textContent = reviewAll ? 'Hide the answers' : 'Show all answers';
+    ui.reviewAll.setAttribute('aria-expanded', String(reviewAll));
+  });
+
+  // ── Saving on this device ──
   let saveTimer = null;
   let sent = false;
-  const saveNow = () => {
+  function saveNow() {
     clearTimeout(saveTimer);
     saveTimer = null;
     if (sent) return;
-    write({ answers: collect(), step, startedAt, savedAt: Date.now() });
-    saved.textContent = 'Saved on this device';
-  };
+    write({ answers: collect(), step: Math.min(step, REVIEW), furthest, startedAt, savedAt: Date.now() });
+    ui.saved.textContent = 'Saved on this device';
+  }
   function save() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 400);
@@ -175,41 +504,51 @@ export function initAdvisoryForm() {
     if (id) recheck(id);
     save();
   });
-
-  back.addEventListener('click', () => {
-    if (step === 0) return;
-    step -= 1;
-    sendError.hidden = true;
-    paint({ focusHeading: true });
-    save();
+  // Enter (the keyboard's "next") goes to the next box on the screen; on the last one it's Continue
+  form.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing || e.shiftKey || !(e.target instanceof HTMLInputElement) || ['radio', 'checkbox', 'submit', 'button'].includes(e.target.type)) return;
+    const boxes = [...pages[step].querySelectorAll('input:not([type=hidden]), textarea')].filter((x) => x.getClientRects().length && !x.closest('[hidden], [data-off]'))
+      .filter((x, k, all) => x.type !== 'radio' || all.findIndex((y) => y.type === 'radio' && y.name === x.name) === k);
+    const after = boxes[boxes.indexOf(e.target) + 1];
+    if (after) { e.preventDefault(); after.focus(); }
   });
+
+  ui.back.addEventListener('click', () => { back(); });
+  ui.go.addEventListener('click', () => begin());
+  ui.hubRows.forEach((b) => b.addEventListener('click', () => { if (!b.disabled) begin(Number(b.dataset.goto)); }));
+  ui.exit.addEventListener('click', () => exitFocus());
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (sending) return;
-    sendError.hidden = true;
-    const { problems } = checkAnswers(collect(), { step: ADVISORY_STEPS[step].id });
+    if (sending || moving) return;
+    ui.sendError.hidden = true;
+    if (step === REVIEW) { await send(); return; }
+    const here = screenIds();
+    const problems = Object.fromEntries(Object.entries(problemsOn(step)).filter(([id]) => here.has(id)));
     if (Object.keys(problems).length) { showProblems(problems); return; }
     showProblems({}, { focus: false });
-    if (step < total - 1) {
-      step += 1;
-      paint({ focusHeading: true });
-      save();
-      return;
-    }
-    await send();
+    if (fromReview) await go(REVIEW, { dir: 1 });
+    else if (screenNo < screensIn(step) - 1) await go(step, { dir: 1, screen: screenNo + 1 });
+    else await go(step + 1, { dir: 1 });
+    save();
   });
 
   async function send() {
     const all = checkAnswers(collect());
-    // Anything left on an earlier step (it shouldn't be): go there
+    // Anything left on an earlier step: go there
     const firstBad = ADVISORY_STEPS.findIndex((s) => s.fields.some((f) => all.problems[f.id]));
-    if (firstBad !== -1) { step = firstBad; paint({ focusHeading: true }); showProblems(all.problems); return; }
-    if (turnstileKey && !turnstileToken) { sendError.textContent = 'Please confirm you’re not a robot, just above.'; sendError.hidden = false; return; }
+    if (firstBad !== -1) {
+      const id = ADVISORY_STEPS[firstBad].fields.find((f) => all.problems[f.id]).id;
+      fromReview = true;
+      await go(firstBad, { dir: -1, at: id });
+      showProblems(all.problems);
+      return;
+    }
+    if (turnstileKey && !turnstileToken) { ui.sendError.textContent = 'Please confirm you’re not a robot, just above.'; ui.sendError.hidden = false; return; }
     sending = true;
-    next.disabled = true;
-    back.disabled = true;
-    next.textContent = 'Sending…';
+    ui.next.disabled = true;
+    ui.back.disabled = true;
+    ui.next.textContent = 'Sending…';
     try {
       const res = await fetch(API, {
         method: 'POST',
@@ -219,7 +558,7 @@ export function initAdvisoryForm() {
       const d = await res.json().catch(() => ({}));
       if (res.status === 422 && d.problems) {
         const at = ADVISORY_STEPS.findIndex((s) => s.fields.some((f) => d.problems[f.id]));
-        if (at !== -1) { step = at; paint({ focusHeading: true }); showProblems(d.problems); }
+        if (at !== -1) { fromReview = true; await go(at, { dir: -1 }); showProblems(d.problems); }
         throw new Error(d.error || 'A few answers need a look.');
       }
       if (!res.ok || !d.ok) {
@@ -229,18 +568,20 @@ export function initAdvisoryForm() {
       sent = true;
       clearTimeout(saveTimer);
       write(null);
+      session.set(false);
       form.hidden = true;
-      $('adv-restored').hidden = true;
       $('adv-done-name').textContent = d.first ? `, ${d.first}` : '';
-      const done = $('adv-done');
-      done.hidden = false;
-      document.getElementById('application')?.scrollIntoView({ block: 'start' });
-      done.focus({ preventScroll: true });
+      ui.exit.querySelector('span').textContent = 'Close';
+      ui.done.hidden = false;
+      ui.hub.hidden = true;
+      paint();
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      ui.done.focus({ preventScroll: true });
     } catch (err) {
-      sendError.textContent = err.message || 'That didn’t send. Your answers are still here; please try again.';
-      sendError.hidden = false;
-      next.disabled = false;
-      back.disabled = false;
+      ui.sendError.textContent = err.message || 'That didn’t send. Your answers are still here; please try again.';
+      ui.sendError.hidden = false;
+      ui.next.disabled = false;
+      ui.back.disabled = false;
       paint();
     } finally {
       sending = false;
@@ -253,9 +594,9 @@ export function initAdvisoryForm() {
     if (turnstileLoading || !turnstileKey) return;
     turnstileLoading = true;
     window.onAdvisoryTurnstile = () => {
-      window.turnstile.render(turnstileBox.querySelector('.cf-turnstile'), {
+      window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
         sitekey: turnstileKey,
-        callback: (t) => { turnstileToken = t; if (/robot/.test(sendError.textContent)) sendError.hidden = true; },
+        callback: (t) => { turnstileToken = t; if (/robot/.test(ui.sendError.textContent)) ui.sendError.hidden = true; },
         'expired-callback': () => { turnstileToken = null; },
       });
     };
@@ -266,26 +607,34 @@ export function initAdvisoryForm() {
   }
   function resetTurnstile() {
     turnstileToken = null;
-    try { window.turnstile?.reset(turnstileBox.querySelector('.cf-turnstile')); } catch { /* not loaded */ }
+    try { window.turnstile?.reset(ui.turnstile.querySelector('.cf-turnstile')); } catch { /* not loaded */ }
   }
   fetch(API, { cache: 'no-store' }).then((r) => r.json()).then((d) => { turnstileKey = d?.turnstileSiteKey || null; paint(); }).catch(() => {});
 
   // ── Picking up where they left off ──
   if (stored?.answers && Object.values(stored.answers).some((v) => v && v !== '')) {
     fill(stored.answers);
-    step = Math.min(Math.max(0, Number(stored.step) || 0), total - 1);
-    $('adv-restored').hidden = false;
+    step = Math.min(Math.max(0, Number(stored.step) || 0), REVIEW);
+    furthest = Math.min(Math.max(step, Number(stored.furthest) || 0), REVIEW);
+    restored = true;
   }
-  $('adv-start-over').addEventListener('click', () => {
+  ui.startOver.addEventListener('click', () => {
     write(null);
     form.reset();
     step = 0;
+    furthest = 0;
+    screenNo = 0;
+    restored = false;
     startedAt = Date.now();
-    $('adv-restored').hidden = true;
     for (const el of form.querySelectorAll('.adv-field.is-invalid')) el.classList.remove('is-invalid');
     for (const el of form.querySelectorAll('.adv-error, [data-summary]')) el.hidden = true;
-    saved.textContent = '';
-    paint({ focusHeading: true });
+    ui.saved.textContent = '';
+    follow();
+    paint();
+    ui.hubTitle.focus({ preventScroll: true });
   });
+  follow();
   paint();
+  // A reload mid-application goes straight back to it
+  if (restored && session.get()) begin(step);
 }

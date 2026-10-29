@@ -13,8 +13,9 @@
  *     and an axe scan
  * With DIST=<an astro build folder> (npx astro build --outDir <dir>, then
  * node scripts/csp-hash.mjs <dir>) it also drives /advisory-board/apply/ on the
- * REAL public handler: every step, follow-ups, saving on the device, sending,
- * and the Advisory Board page's Apply buttons.
+ * REAL public handler: the overview, the application on its own screen a screen
+ * at a time, follow-ups, saving on the device, the review and Edit, sending, and
+ * the Advisory Board page's Apply buttons.
  *
  *   node scripts/test-advisory-application.mjs
  *   DIST=/tmp/soard-build node scripts/test-advisory-application.mjs
@@ -265,44 +266,79 @@ if (DIST) {
   for (const width of [1440, 390]) {
     console.log(`The Apply page, ${width}`);
     const p = await open(width, '/advisory-board/apply/');
-    await p.evaluate(() => localStorage.clear());
+    await p.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await p.reload({ waitUntil: 'networkidle0' });
-    const type = async (id, v) => { await p.click(`#adv-${id}`, { clickCount: 3 }); await p.type(`#adv-${id}`, v); };
-    const choose = (name, v) => p.evaluate((n, val) => document.querySelector(`input[name="${n}"][value="${val}"]`).click(), name, v);
-    const next = async () => { await p.click('#adv-next'); await sleep(400); };
+    const next = async () => { await p.click('#adv-next'); await sleep(450); };
+    /** A step comes a screen at a time: Continue until the one with this question shows (as people do) */
+    const reach = async (sel) => {
+      for (let i = 0; i < 8; i++) {
+        const where = await p.evaluate((x) => { const el = document.querySelector(x); return !el ? 'none' : el.closest('[data-off]') ? 'later' : 'here'; }, sel);
+        if (where !== 'later') return;
+        const was = `${await text(p, '#adv-title')}|${await text(p, '#adv-part')}`;
+        await next();
+        if (`${await text(p, '#adv-title')}|${await text(p, '#adv-part')}` === was) throw new Error(`Continue was held up on the way to ${sel}`);
+      }
+    };
+    const onTo = async (title) => { for (let i = 0; i < 8 && (await text(p, '#adv-title')) !== title; i++) await next(); };
+    const type = async (id, v) => { await reach(`#adv-${id}`); await p.click(`#adv-${id}`, { clickCount: 3 }); await p.type(`#adv-${id}`, v); };
+    const choose = async (name, v) => { await reach(`[data-field="${name}"]`); await p.evaluate((n, val) => document.querySelector(`input[name="${n}"][value="${val}"]`).click(), name, v); };
     ok(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)), 'nothing scrolls sideways');
-    ok((await p.$$eval('.adv-step-name', (els) => els.map((e) => e.textContent))).join() === 'About you,Interest,Strengths,Commitment,Reference', 'the five steps, by short name');
+    const hub = await p.$$eval('.adv-hub-row', (els) => els.map((b) => ({ name: b.querySelector('strong').textContent, meta: b.querySelector('.adv-hub-meta').textContent, disabled: b.disabled })));
+    ok(hub.map((r) => r.name).join() === 'About you,Your interest,What you’d bring,Commitment,Reference and signature,Review and send', `the overview: the five steps and the review (${hub.map((r) => r.name).join(', ')})`);
+    ok(hub.slice(0, 5).every((r) => /^\d+ min$/.test(r.meta)) && !hub[0].disabled && hub.slice(1).every((r) => r.disabled), 'each with its minutes, only the first open before starting');
     const a0 = await axeScan(p, '#application');
-    ok(!a0.length, `axe: the first step has no WCAG 2.1 AA problems${a0.length ? ` (${axeText(a0)})` : ''}`);
-    await next();
-    ok((await p.$$eval('.adv-page[data-step="0"] .adv-field.is-invalid', (els) => els.map((e) => e.dataset.field))).join() === 'fullName,email,phone', 'an empty step marks what’s needed');
+    ok(!a0.length, `axe: the overview has no WCAG 2.1 AA problems${a0.length ? ` (${axeText(a0)})` : ''}`);
+    await p.click('#adv-go');
+    await sleep(400);
+    const focus = await p.evaluate(() => ({ on: document.documentElement.classList.contains('adv-focus'), header: !!document.querySelector('#site-header')?.getClientRects().length, segs: document.querySelectorAll('.adv-seg').length, tab: document.title }));
+    ok(focus.on && !focus.header && focus.segs === 6, 'Start: the application has the screen to itself, a segment per step');
+    ok(/^Step 1 of 6: About you · /.test(focus.tab), `the tab says the step (${focus.tab})`);
     const a1 = await axeScan(p, '#application');
-    ok(!a1.length, `axe: with its problems showing too${a1.length ? ` (${axeText(a1)})` : ''}`);
-    ok(await p.evaluate(() => document.activeElement?.id) === 'adv-fullName', 'focus on the first');
-    await type('fullName', 'Taylor Brooks'); await type('email', `taylor${width}@example.org`); await type('phone', '404 555 0199'); await type('company', 'Brooks Law');
+    ok(!a1.length, `axe: the first step has no WCAG 2.1 AA problems${a1.length ? ` (${axeText(a1)})` : ''}`);
     await next();
+    const bad = await p.$$eval('.adv-page[data-step="0"] .adv-field.is-invalid', (els) => els.map((e) => e.dataset.field));
+    ok(bad[0] === 'fullName' && bad.every((f) => ['fullName', 'email', 'phone'].includes(f)), `an empty screen marks what’s needed (${bad.join(', ')})`);
+    const a2 = await axeScan(p, '#application');
+    ok(!a2.length, `axe: with its problems showing too${a2.length ? ` (${axeText(a2)})` : ''}`);
+    ok(await p.evaluate(() => document.activeElement?.id) === 'adv-fullName', 'focus on the first');
+    await type('fullName', 'Taylor Brooks'); await type('email', `taylor${width}@example.org`); await type('phone', '404 555 0199');
+    ok(await p.evaluate(() => document.querySelector('[data-field="email"]').parentElement.matches('.adv-pair')), 'email and phone share a row where there is room');
+    await type('company', 'Brooks Law');
+    await onTo('Your interest');
     ok(await p.evaluate(() => document.activeElement?.tagName) === 'H2', 'each step starts at its heading');
+    await type('heardFrom', 'LinkedIn'); await type('why', 'To help.'); await type('connection', 'Neighbors.');
     ok(!(await visible(p, '[data-field="involvedHow"]')), 'a follow-up waits');
     await choose('involved', 'Yes'); await sleep(80);
-    ok(await visible(p, '[data-field="involvedHow"]'), 'and shows after a Yes');
-    await type('heardFrom', 'LinkedIn'); await type('why', 'To help.'); await type('connection', 'Neighbors.'); await type('involvedHow', 'Golf tournament.');
+    ok(await visible(p, '[data-field="involvedHow"]'), 'and shows after a Yes, on the same screen');
+    await type('involvedHow', 'Golf tournament.');
     await sleep(500);
     await p.reload({ waitUntil: 'networkidle0' });
-    ok(await visible(p, '#adv-restored') && await p.$eval('#adv-why', (el) => el.value) === 'To help.', 'coming back keeps the answers, on the same step');
-    await next();
+    await sleep(300);
+    ok(await p.evaluate(() => document.documentElement.classList.contains('adv-focus')) && (await text(p, '#adv-title')) === 'Your interest' && await p.$eval('#adv-why', (el) => el.value) === 'To help.', 'a reload comes back to the same step, answers kept');
+    await onTo('What you’d bring');
     await type('strengths', 'Law.'); await type('fundraising', 'A table at the gala.'); await choose('introductions', 'Yes'); await choose('networks', 'No'); await choose('conflict', 'No');
-    await next();
+    await onTo('Commitment');
     await choose('hostEvent', 'Yes'); await choose('meetings', 'Yes'); await choose('ambassador', 'Yes');
-    await next();
-    ok(/Send my application/.test(await text(p, '#adv-next')), 'the last step sends');
-    const a4 = await axeScan(p, '#application');
-    ok(!a4.length, `axe: the last step (choices, the checkbox) has no problems${a4.length ? ` (${axeText(a4)})` : ''}`);
+    await onTo('Reference and signature');
     await type('refName', 'Pat Kim'); await type('refRelationship', 'Colleague'); await type('refEmail', 'pat@example.org');
-    await p.click('#adv-acknowledge'); await type('signature', 'Taylor Brooks');
+    await reach('#adv-acknowledge'); await p.click('#adv-acknowledge'); await type('signature', 'Taylor Brooks');
+    ok(/Review my answers/.test(await text(p, '#adv-next')), 'the last step goes to a review');
+    await next();
+    ok((await text(p, '#adv-title')) === 'Review and send' && /Send my application/.test(await text(p, '#adv-next')), 'the review sends');
+    const rows = await p.$$eval('.adv-review-section', (els) => els.map((e) => ({ open: e.hasAttribute('data-open'), sum: e.querySelector('.adv-review-sum').textContent })));
+    ok(rows.length === 5 && rows.every((r) => !r.open) && /Taylor Brooks/.test(rows[0].sum), `a row per step with its answers in a line (${rows[0]?.sum})`);
+    const a4 = await axeScan(p, '#application');
+    ok(!a4.length, `axe: the review has no problems${a4.length ? ` (${axeText(a4)})` : ''}`);
+    await p.click('.adv-review-section[data-step="1"] .adv-linkbtn[data-edit]');
+    await sleep(450);
+    ok((await text(p, '#adv-title')) === 'Your interest' && /Back to review/.test(await text(p, '#adv-next')), 'Edit goes to the step, and Continue comes back to review');
+    await next();
+    ok((await text(p, '#adv-title')) === 'Review and send', 'back to review');
     await sleep(500);
     // A test fills it in seconds: say they took their time (the server drops anything faster than a person)
     await p.evaluate(() => { const k = 'soard-advisory-application'; const s = JSON.parse(localStorage.getItem(k)); s.startedAt = Date.now() - 900000; localStorage.setItem(k, JSON.stringify(s)); });
     await p.reload({ waitUntil: 'networkidle0' });
+    await sleep(300);
     await p.click('#adv-next');
     await p.waitForSelector('#adv-done:not([hidden])', { timeout: 8000 }).catch(() => null);
     ok(/Thank you, Taylor\./.test(await text(p, '#adv-done h2')), 'sent: thanks by name');

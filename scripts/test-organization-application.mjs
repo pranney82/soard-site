@@ -5,7 +5,9 @@
  * D1 + R2), at phone size (390px), then checks it on a computer (1280px):
  *   - the hero and closed card speak to an organization (no child, no family, no "notify me"),
  *     English only (no language switch)
- *   - page 1 checks, a draft starts on Next, kept apart from a family's draft in this browser
+ *   - the overview of the steps, then the application on its own screen (Start); each step a
+ *     screen at a time
+ *   - page 1 checks, a draft starts on Continue, kept apart from a family's draft in this browser
  *   - the address placed on the service-area map (the real Census, through the server), the
  *     county filled in
  *   - the organization's questions, a follow-up ("Something else"), the second contact tucked
@@ -81,11 +83,26 @@ const shot = async (name, p = page) => { await p.screenshot({ path: join(OUT, `$
 const visible = (sel, p = page) => p.$eval(sel, (el) => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0).catch(() => false);
 const stepTitle = (p = page) => p.$eval('[data-step-title]', (el) => el.textContent.trim());
 const next = async (p = page) => { await p.$eval('[data-next]', (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' })); await p.click('[data-next]'); await sleep(450); };
-const pick = (field, value, p = page) => p.evaluate((f, v) => {
-  const input = [...document.querySelectorAll(`[data-field="${f}"] input`)].find((i) => i.value === v);
-  input.click();
-}, field, value);
-const center = (sel, p) => p.$eval(sel, (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+const partText = (p = page) => p.$eval('[data-part-text]', (el) => el.textContent.trim());
+/** A step shows its questions a screen at a time: Continue until the one with this question shows */
+const reach = async (sel, p = page) => {
+  for (let i = 0; i < 8; i++) {
+    const where = await p.evaluate((s) => { const el = document.querySelector(s); return !el ? 'none' : el.closest('[data-off]') ? 'later' : 'here'; }, sel);
+    if (where !== 'later') return;
+    const was = `${await stepTitle(p)}|${await partText(p)}`;
+    await next(p);
+    if (`${await stepTitle(p)}|${await partText(p)}` === was) throw new Error(`Continue was held up on the way to ${sel}`);
+  }
+};
+const onTo = async (title, p = page) => { for (let i = 0; i < 8 && (await stepTitle(p)) !== title; i++) await next(p); };
+const pick = async (field, value, p = page) => {
+  await reach(`[data-field="${field}"]`, p);
+  await p.evaluate((f, v) => {
+    const input = [...document.querySelectorAll(`[data-field="${f}"] input`)].find((i) => i.value === v);
+    input.click();
+  }, field, value);
+};
+const center = async (sel, p) => { await reach(sel, p); await p.$eval(sel, (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' })); };
 const type = async (sel, text, p = page) => { await center(sel, p); await p.click(sel, { clickCount: 3 }); await p.type(sel, text); };
 const noSideScroll = async (label, p = page) => {
   const wide = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -115,7 +132,12 @@ try {
   await noSideScroll('open');
 
   console.log('Before You Begin');
+  ok(await visible('[data-hub]') && /Your Organization/.test(await page.$eval('[data-hub-list]', (e) => e.textContent)), "the overview lists the organization's steps");
+  await page.click('[data-hero-cta]');
+  await sleep(400);
+  ok(await page.evaluate(() => document.documentElement.classList.contains('af-focus')), 'Start: the application has the screen to itself');
   ok(await stepTitle() === 'Before You Begin', 'page 1');
+  ok(/^2\d{3} Community Project Application$/.test(await page.$eval('[data-top] .af-top-title', (e) => e.textContent)), 'the bar across the top names the community project application');
   await pick('ackParameters', 'Yes, I understand.');
   await pick('ackSeason', 'Yes, I have read and understand the above statement.');
   await next();
@@ -138,7 +160,7 @@ try {
   const legend = await page.$eval('[data-area-map]', (e) => e.textContent).catch(() => '');
   ok(/The address you entered/.test(legend) && !/The home you entered/.test(legend), 'the map speaks of an address, not a home');
   await shot('02-location-phone');
-  await next();
+  await onTo('Your Organization');
 
   console.log('Your Organization');
   ok(await stepTitle() === 'Your Organization', 'Your Organization');
@@ -155,12 +177,10 @@ try {
   await pick('previouslyApplied', 'No');
   await shot('03-organization-phone');
   await noSideScroll('organization');
-  await next();
+  await onTo('Contact');
 
   console.log('Contact');
   ok(await stepTitle() === 'Contact', 'Contact');
-  ok(await visible('[data-more="contact2"] [data-more-open]') && !(await visible('#af-contact2Name-first')), 'the second contact waits behind a button');
-  ok(/Add another contact at your organization/.test(await page.$eval('[data-more="contact2"] [data-more-open]', (e) => e.textContent)), 'that says what it adds');
   await type('#af-contactName-first', 'Jordan');
   await type('#af-contactName-last', 'Lee');
   ok(await page.$eval('#af-contactName-first', (e) => e.autocomplete) === 'given-name', 'the contact’s own name autofills');
@@ -168,6 +188,9 @@ try {
   await type('#af-contactEmail', CONTACT_EMAIL);
   ok(await page.$eval('#af-contactEmail', (e) => e.autocomplete) === 'email', 'and the email');
   await type('#af-contactPhone', '(404) 555-0123');
+  await reach('[data-more="contact2"]');
+  ok(await visible('[data-more="contact2"] [data-more-open]') && !(await visible('#af-contact2Name-first')), 'the second contact waits behind a button');
+  ok(/Add another contact at your organization/.test(await page.$eval('[data-more="contact2"] [data-more-open]', (e) => e.textContent)), 'that says what it adds');
   await page.click('[data-more="contact2"] [data-more-open]');
   await sleep(200);
   ok(await visible('#af-contact2Name-first'), 'the button opens the second contact');
@@ -178,7 +201,7 @@ try {
   await pick('ownerApproval', 'Yes');
   await pick('approver', 'Yes, I can approve it');
   await shot('04-contact-phone');
-  await next();
+  await onTo('The Space');
 
   console.log('The Space');
   ok(await stepTitle() === 'The Space', 'The Space');
@@ -190,24 +213,30 @@ try {
   await type('#af-spaceDream', 'A calm place to regulate, so students can get back to learning.');
   await type('#af-childrenUsing', '40');
   for (const f of ['photoSpace1', 'photoSpace2']) {
+    await reach(`#af-${f}`);
     await (await page.$(`#af-${f}`)).uploadFile(PHOTO);
     await page.waitForFunction((id) => document.querySelector(`[data-field="${id}"] .af-upload`)?.dataset.state === 'done', { timeout: 30000 }, f).catch(() => {});
     ok(await page.$eval(`[data-field="${f}"] .af-upload`, (e) => e.dataset.state) === 'done', `${f} uploads`);
   }
   await shot('05-space-phone');
   await noSideScroll('space');
-  await next();
+  await onTo('Certification');
 
   console.log('Review and submit');
   ok(await stepTitle() === 'Certification', 'Certification');
   await type('#af-signature', 'Jordan Lee');
   await next();
   ok(await stepTitle() === 'Review and submit', 'review page');
+  await page.click('[data-review-all]');
+  await sleep(150);
   const review = await page.$eval('[data-review]', (e) => e.innerText);
   ok(/TEST Sunnyside Academy/.test(review) && /Executive Director/.test(review) && /Sensory room/.test(review), 'review lists the answers');
   ok(/Everything is here/.test(await page.$eval('[data-review-summary]', (e) => e.textContent)), '"Everything is here"');
   await next();
-  await page.waitForSelector('[data-done]:not([hidden])', { timeout: 20000 });
+  await page.waitForSelector('[data-done]:not([hidden])', { timeout: 20000 }).catch(async (e) => {
+    const why = await page.evaluate(() => ({ note: document.querySelector('[data-nav-note]')?.textContent, notice: document.querySelector('[data-notice]:not([hidden])')?.textContent, title: document.querySelector('[data-step-title]')?.textContent, busy: document.querySelector('[data-next]')?.getAttribute('aria-busy') }));
+    throw new Error(`no thank-you after Submit (${JSON.stringify(why)})`);
+  });
   ok(new RegExp(reEsc(CONTACT_EMAIL)).test(await page.$eval('[data-done-email]', (e) => e.textContent)), 'the thank-you names the email that gets the copy');
   ok(await page.$eval('[data-done] a[href="/community/"]', (a) => /community projects/i.test(a.textContent)).catch(() => false), 'and links to the community projects');
   const done = await page.$eval('[data-done]', (e) => e.innerText);
@@ -226,6 +255,8 @@ try {
   await desk.goto(`${SITE}/apply/community-project/`, { waitUntil: 'networkidle0' });
   await desk.evaluate(() => localStorage.removeItem('soard-application-draft-organization'));
   await desk.reload({ waitUntil: 'networkidle0' });
+  await desk.click('[data-hero-cta]');
+  await sleep(400);
   ok(await visible('.af-rail', desk) || await visible('[data-rail-list]', desk), 'the steps sit beside the form');
   const rail = await desk.$$eval('[data-rail-list] li', (els) => els.map((e) => e.textContent.trim())).catch(() => []);
   ok(rail.some((t) => /Your Organization/.test(t)) && rail.some((t) => /The Space/.test(t)), `and name the organization’s pages (${rail.length})`);

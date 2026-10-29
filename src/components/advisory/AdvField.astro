@@ -1,0 +1,44 @@
+---
+/**
+ * One question of the Advisory Board application (src/pages/advisory-board/apply.astro),
+ * from functions/api/_advisory-form.js. The page's script reads and writes it by its
+ * data-field and its input's name.
+ */
+import { OVERVIEW_PDF } from '../../../functions/api/_advisory-form.js';
+
+interface Props { f: any }
+const { f } = Astro.props;
+const fid = (id: string) => `adv-${id}`;
+const described = [f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boolean).join(' ');
+---
+<div class={`adv-field adv-field--${f.type}`} data-field={f.id} data-show-if={f.showIf ? JSON.stringify(f.showIf) : undefined} hidden={!!f.showIf}>
+  {f.type === 'choice' ? (
+    <fieldset aria-describedby={described}>
+      <legend class="adv-label">{f.label}{!f.required && <span class="adv-optional">optional</span>}</legend>
+      {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
+      <div class="adv-choices">
+        {f.options.map((o: string) => (
+          <label class="adv-choice"><input type="radio" name={f.id} value={o} /><span class="adv-choice-box" aria-hidden="true"></span><span class="adv-choice-text">{o}</span></label>
+        ))}
+      </div>
+    </fieldset>
+  ) : f.type === 'check' ? (
+    <label class="adv-check">
+      <input type="checkbox" name={f.id} id={fid(f.id)} aria-describedby={`${fid(f.id)}-err`} />
+      <span>{f.label} <a href={OVERVIEW_PDF} target="_blank" rel="noopener noreferrer">Open the overview (PDF)</a></span>
+    </label>
+  ) : (
+    <>
+      <label class="adv-label" for={fid(f.id)}>{f.label}{!f.required && <span class="adv-optional">optional</span>}</label>
+      {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
+      {f.type === 'textarea' ? (
+        <textarea id={fid(f.id)} name={f.id} rows={f.rows || 4} maxlength={f.max} autocomplete={f.autocomplete || 'off'} aria-describedby={described}></textarea>
+      ) : (
+        <input id={fid(f.id)} name={f.id} type={f.type} maxlength={f.max} autocomplete={f.autocomplete || 'off'} enterkeyhint="next"
+          inputmode={f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : undefined}
+          aria-describedby={described} />
+      )}
+    </>
+  )}
+  <p class="adv-error" id={`${fid(f.id)}-err`} hidden></p>
+</div>

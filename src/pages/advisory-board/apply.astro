@@ -11,6 +11,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import siteSettings from '../../content/site/settings.json';
 import { cfRaw, cfLqip } from '../../utils/cf-image';
 import { ADVISORY_STEPS, OVERVIEW_PDF } from '../../../functions/api/_advisory-form.js';
+import AdvField from '../../components/advisory/AdvField.astro';
 
 const SITE_URL = 'https://sunshineonaranneyday.com';
 const email = siteSettings.email;
@@ -22,7 +23,19 @@ const breadcrumbs = [
   { name: 'Apply', url: `${SITE_URL}/advisory-board/apply/` },
 ];
 const total = ADVISORY_STEPS.length;
-const fid = (id: string) => `adv-${id}`;
+// Two short questions to a row where there's room (email beside phone); never one with a hint, a
+// follow-up, or one that another question follows
+const PAIRS = new Set(['text', 'email', 'tel', 'url']);
+const pairable = (f: any, led: Set<string>) => f && PAIRS.has(f.type) && !f.hint && !f.showIf && !led.has(f.id) && f.label.length <= 40;
+const unitsOf = (fields: any[]) => {
+  const led = new Set(fields.flatMap((f: any) => Object.keys(f.showIf || {})));
+  const out: any[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    if (pairable(fields[i], led) && pairable(fields[i + 1], led)) { out.push({ pair: [fields[i], fields[i + 1]] }); i++; } else out.push({ field: fields[i] });
+  }
+  return out;
+};
+const logo = 'brand-logo-light-bg-display';
 ---
 
 <BaseLayout
@@ -62,90 +75,93 @@ const fid = (id: string) => `adv-${id}`;
 
   <!-- ══════ THE APPLICATION ══════ -->
   <section class="adv" id="application" aria-label="Advisory Board application">
-    <div class="adv-card">
+    <div class="adv-app" data-adv data-total={total}>
       <noscript><p class="adv-note">The application needs JavaScript. If you can’t turn it on, email <a href={`mailto:${email}`}>{email}</a> and we’ll send it another way.</p></noscript>
 
-      <div class="adv-restored" id="adv-restored" hidden role="status">
-        <span>We kept what you started on this device.</span>
-        <button type="button" class="adv-linkbtn" id="adv-start-over">Start over</button>
-      </div>
-
-      <form id="adv-form" novalidate data-total={total}>
-        <div class="adv-progress" aria-hidden="true">
-          <ol class="adv-steps">
-            {ADVISORY_STEPS.map((s, i) => (
-              <li class="adv-step-dot" data-step-dot={i}><span class="adv-step-num">{i + 1}</span><span class="adv-step-name">{s.short || s.title}</span></li>
-            ))}
-          </ol>
-          <div class="adv-bar"><span id="adv-bar-fill"></span></div>
+      <!-- Once started, the application has the screen to itself (html.adv-focus), like the makeover
+           application: this bar, a segment per step, a screen of questions at a time, Back and
+           Continue held at the bottom. -->
+      <header class="adv-top" data-adv-top>
+        <div class="adv-top-inner">
+          <span class="adv-top-brand">
+            <img class="adv-top-logo" src={cfRaw(logo, 'w=160,q=85')} srcset={`${cfRaw(logo, 'w=112,q=85')} 1x, ${cfRaw(logo, 'w=224,q=85')} 2x`} alt="Sunshine on a Ranney Day" width="56" height="56" loading="lazy" decoding="async" />
+            <span class="adv-top-text">
+              <span class="adv-top-title">Advisory Board Application</span>
+              <span class="adv-top-save" id="adv-saved" aria-live="polite"></span>
+            </span>
+          </span>
+          <button type="button" class="adv-top-exit" id="adv-exit">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+            <span>Save and exit</span>
+          </button>
         </div>
+        <ol class="adv-segs" aria-hidden="true">
+          {[...ADVISORY_STEPS, { id: 'review' }].map(() => <li class="adv-seg"><span></span></li>)}
+        </ol>
+      </header>
 
-        {ADVISORY_STEPS.map((s, i) => (
-          <section class="adv-page" data-step={i} data-step-id={s.id} hidden={i !== 0} aria-labelledby={`adv-h-${s.id}`}>
-            <p class="adv-kicker">Step {i + 1} of {total}</p>
-            <h2 id={`adv-h-${s.id}`} tabindex="-1">{s.title}</h2>
-            <p class="adv-intro">{s.intro}</p>
-            <div class="adv-summary" data-summary role="alert" hidden></div>
+      <!-- On the page: every step and how long it takes, what's kept on this device, the way in -->
+      <section class="adv-card adv-hub" id="adv-hub" aria-labelledby="adv-hub-title">
+        <p class="adv-hub-eyebrow">Your application</p>
+        <h2 class="adv-hub-title" id="adv-hub-title" tabindex="-1">Five steps, about 20 minutes</h2>
+        <p class="adv-hub-lead" id="adv-hub-lead">Have a reference in mind. Your answers save on this device as you go.</p>
+        <div class="adv-hub-go-row">
+          <button type="button" class="btn btn-primary adv-hub-go" id="adv-go"><span id="adv-go-label">Start the application</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg></button>
+          <button type="button" class="adv-linkbtn" id="adv-start-over" hidden>Start over</button>
+        </div>
+        <ol class="adv-hub-list" id="adv-hub-list">
+          {[...ADVISORY_STEPS.map((s) => s.title), 'Review and send'].map((t, i) => (
+            <li><button type="button" class="adv-hub-row" data-goto={i} disabled={i > 0}>
+              <span class="adv-mark" aria-hidden="true">{i + 1}</span>
+              <span class="adv-hub-name"><strong>{t}</strong><span class="adv-hub-sub"></span></span>
+              <span class="adv-hub-meta"></span>
+            </button></li>
+          ))}
+        </ol>
+        <p class="adv-hub-help">Questions? Write to <a href={`mailto:${email}`}>{email}</a>.</p>
+      </section>
 
-            {s.fields.map((f) => (
-              <div class={`adv-field adv-field--${f.type}`} data-field={f.id} data-show-if={f.showIf ? JSON.stringify(f.showIf) : undefined} hidden={!!f.showIf}>
-                {f.type === 'choice' ? (
-                  <fieldset aria-describedby={[f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boolean).join(' ')}>
-                    <legend class="adv-label">{f.label}{!f.required && <span class="adv-optional">optional</span>}</legend>
-                    {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
-                    <div class="adv-choices">
-                      {f.options.map((o) => (
-                        <label class="adv-choice"><input type="radio" name={f.id} value={o} /><span>{o}</span></label>
-                      ))}
-                    </div>
-                  </fieldset>
-                ) : f.type === 'check' ? (
-                  <label class="adv-check">
-                    <input type="checkbox" name={f.id} id={fid(f.id)} aria-describedby={`${fid(f.id)}-err`} />
-                    <span>{f.label} <a href={OVERVIEW_PDF} target="_blank" rel="noopener noreferrer">Open the overview (PDF)</a></span>
-                  </label>
-                ) : (
-                  <>
-                    <label class="adv-label" for={fid(f.id)}>{f.label}{!f.required && <span class="adv-optional">optional</span>}</label>
-                    {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
-                    {f.type === 'textarea' ? (
-                      <textarea id={fid(f.id)} name={f.id} rows={f.rows || 5} maxlength={f.max} autocomplete={f.autocomplete || 'off'}
-                        aria-describedby={[f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boolean).join(' ')}></textarea>
-                    ) : (
-                      <input id={fid(f.id)} name={f.id} type={f.type} maxlength={f.max} autocomplete={f.autocomplete || 'off'}
-                        inputmode={f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : undefined}
-                        aria-describedby={[f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boolean).join(' ')} />
-                    )}
-                  </>
-                )}
-                <p class="adv-error" id={`${fid(f.id)}-err`} hidden></p>
-              </div>
-            ))}
-
-            {i === total - 1 && (
-              <>
-                <p class="adv-date">Signed today, <span id="adv-today"></span></p>
-                <div class="adv-turnstile" id="adv-turnstile" hidden><div class="cf-turnstile"></div></div>
-              </>
-            )}
+      <form id="adv-form" class="adv-card adv-form" novalidate data-total={total}>
+        <div class="adv-stage" id="adv-stage">
+          <div class="adv-head">
+            <p class="adv-kicker"><span id="adv-step-text">Step 1 of {total + 1}</span><span class="adv-part" id="adv-part"></span></p>
+            <h2 id="adv-title" tabindex="-1">{ADVISORY_STEPS[0].title}</h2>
+          </div>
+          {ADVISORY_STEPS.map((s, i) => (
+            <section class="adv-page" data-step={i} data-step-id={s.id} hidden={i !== 0} aria-label={s.title}>
+              <p class="adv-intro">{s.intro}</p>
+              <div class="adv-summary" data-summary role="alert" hidden></div>
+              {unitsOf(s.fields).map((u) => u.pair
+                ? <div class="adv-pair">{u.pair.map((f: any) => <AdvField f={f} />)}</div>
+                : <AdvField f={u.field} />)}
+              {i === total - 1 && <p class="adv-date">Signed today, <span id="adv-today"></span></p>}
+            </section>
+          ))}
+          <!-- Review: a row per step with its answers in a line, opened for the details -->
+          <section class="adv-page adv-page--review" data-step={total} data-step-id="review" hidden aria-label="Review and send">
+            <p class="adv-intro">Look over your answers. Change anything you like, then send.</p>
+            <div class="adv-review-bar"><button type="button" class="adv-linkbtn" id="adv-review-all" aria-expanded="false">Show all answers</button></div>
+            <div class="adv-review" id="adv-review"></div>
+            <div class="adv-turnstile" id="adv-turnstile" hidden><div class="cf-turnstile"></div></div>
           </section>
-        ))}
 
-        <!-- Left empty by people; bots fill it in -->
-        <div class="adv-hp" aria-hidden="true">
-          <label for="adv-website">Website</label>
-          <input id="adv-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+          <!-- Left empty by people; bots fill it in -->
+          <div class="adv-hp" aria-hidden="true">
+            <label for="adv-website">Website</label>
+            <input id="adv-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
         </div>
 
-        <p class="adv-send-error" id="adv-send-error" role="alert" hidden></p>
-        <div class="adv-nav">
-          <button type="button" class="btn btn-outline-dark" id="adv-back" hidden>Back</button>
-          <button type="submit" class="btn btn-primary" id="adv-next">Continue</button>
-        </div>
-        <p class="adv-saved" id="adv-saved" aria-live="polite"></p>
+        <footer class="adv-nav">
+          <p class="adv-send-error" id="adv-send-error" role="alert" hidden></p>
+          <div class="adv-nav-row">
+            <button type="button" class="btn btn-outline-dark adv-back" id="adv-back" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>Back</button>
+            <button type="submit" class="btn btn-primary adv-next" id="adv-next">Continue</button>
+          </div>
+        </footer>
       </form>
 
-      <div class="adv-done" id="adv-done" hidden tabindex="-1">
+      <div class="adv-card adv-done" id="adv-done" hidden tabindex="-1">
         <div class="adv-done-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
         <h2>Thank you<span id="adv-done-name"></span>.</h2>
         <p>We have your application, and a copy is on its way to your inbox. We review applications on a rolling basis and will be in touch soon.</p>
@@ -160,7 +176,8 @@ const fid = (id: string) => `adv-${id}`;
 </BaseLayout>
 
 <style>
-  :is(h1, h2) em { font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%); padding: 0 0.05em; }
+  /* The highlighter under an emphasised word: a thick flat underline drawn behind the letters */
+  :is(h1, h2) em { font-style: italic; padding: 0 0.05em; text-decoration: underline; text-decoration-color: var(--c-yellow-soft); text-decoration-thickness: .42em; text-underline-offset: -.3em; text-decoration-skip-ink: none; }
 
   /* ── Buttons (the Advisory Board page's) ── */
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--font-body); font-weight: 600; font-size: 16px; padding: 14px 32px; border: none; border-radius: 100px; cursor: pointer; text-decoration: none; min-height: 52px; transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s cubic-bezier(0.16,1,0.3,1), background 0.25s ease, color 0.25s ease; }
@@ -189,75 +206,198 @@ const fid = (id: string) => `adv-${id}`;
   .hero-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .hero-accent { position: absolute; z-index: -1; bottom: -16px; right: -16px; width: 55%; height: 55%; border-radius: 20px; background: var(--c-yellow); opacity: 0.35; }
 
-  /* ── The application card ── */
-  .adv { background: var(--c-cream); padding: 0 var(--page-padding) clamp(64px, 9vw, 120px); scroll-margin-top: calc(var(--header-height, 84px) + 16px); }
-  .adv-card { max-width: 780px; margin: 0 auto; background: #fff; border: 1px solid var(--c-border); border-radius: 24px; padding: clamp(22px, 4.5vw, 48px); box-shadow: 0 12px 40px rgba(0,0,0,0.05); }
-  .adv-note, .adv-restored { padding: 12px 16px; border-radius: 12px; background: var(--c-warm-gray); font-size: 15px; margin-bottom: 20px; }
-  .adv-restored { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-  .adv-restored[hidden] { display: none; }
-  .adv-linkbtn { background: none; border: 0; padding: 6px 0; font: inherit; font-weight: 600; color: var(--c-dark); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: 44px; }
+  @media (max-width: 768px) {
+    .hero-inner { grid-template-columns: 1fr; gap: 28px; }
+    .hero-photo-wrap { order: -1; max-width: 200px; justify-self: start; }
+    .hero-frame { aspect-ratio: 1; border-radius: 20px; }
+    .hero-accent { bottom: -10px; right: -10px; }
+    .hero-headline { font-size: clamp(34px, 9vw, 48px); }
+  }
+  @media (pointer: coarse) { .btn:hover { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .btn { transition: none; } .btn:hover { transform: none; } }
+</style>
 
-  /* Progress: the five steps by name, and a bar */
-  .adv-progress { margin-bottom: 32px; }
-  .adv-steps { list-style: none; padding: 0; margin: 0 0 12px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-  .adv-step-dot { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--c-text-muted); }
-  .adv-step-num { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--c-warm-gray); color: var(--c-text-muted); transition: background 0.25s ease, color 0.25s ease; }
-  .adv-step-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .adv-step-dot.is-done .adv-step-num { background: var(--c-dark); color: var(--c-yellow); }
-  .adv-step-dot.is-now { color: var(--c-dark); font-weight: 700; }
-  .adv-step-dot.is-now .adv-step-num { background: var(--c-yellow); color: var(--c-dark); }
-  .adv-bar { height: 6px; border-radius: 99px; background: var(--c-warm-gray); overflow: hidden; }
-  .adv-bar span { display: block; height: 100%; width: 20%; background: var(--c-yellow); border-radius: inherit; transition: width 0.45s cubic-bezier(0.16,1,0.3,1); }
+<style is:global>
+  /* ── The application ── */
+  .adv { --adv-ease: cubic-bezier(.2, .8, .2, 1); --adv-line: #D6D4CC; background: var(--c-cream); padding: 0 var(--page-padding) clamp(64px, 9vw, 120px); scroll-margin-top: calc(var(--header-height, 84px) + 16px); }
+  .adv-app { max-width: 780px; margin: 0 auto; }
+  .adv-app [hidden] { display: none !important; }
+  .adv-card { background: #fff; border: 1px solid var(--c-border); border-radius: 24px; padding: clamp(22px, 4.5vw, 48px); box-shadow: 0 12px 40px rgba(0,0,0,0.05); }
+  .adv-note { padding: 12px 16px; border-radius: 12px; background: var(--c-warm-gray); font-size: 15px; margin-bottom: 20px; }
+  .adv-linkbtn { background: none; border: 0; padding: 6px 2px; font: inherit; font-weight: 600; color: var(--c-dark); text-decoration: underline; text-decoration-color: rgba(55,58,54,.35); text-underline-offset: 4px; cursor: pointer; min-height: 44px; }
+  .adv-linkbtn:hover { text-decoration-color: var(--c-dark); }
 
-  .adv-kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 8px; }
-  .adv-page h2 { font-size: clamp(26px, 3.4vw, 34px); line-height: 1.2; margin-bottom: 8px; }
-  .adv-page h2:focus { outline: none; }
-  .adv-intro { color: var(--c-text-muted); font-size: 16px; line-height: 1.6; margin-bottom: 28px; }
-  .adv-summary { padding: 14px 16px; border-radius: 12px; background: #FFF3BF; color: #5C4500; font-weight: 600; margin-bottom: 24px; }
+  /* Before starting (and after Save and exit): the overview; the form waits */
+  .adv-app:not(.is-focus) .adv-form, .adv-top { display: none; }
+  .adv-hub-eyebrow { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--c-text-muted); }
+  .adv-hub-title { margin: 0 0 8px; font-size: clamp(24px, 3vw, 32px); line-height: 1.2; outline: none; text-wrap: balance; }
+  .adv-hub-lead { margin: 0 0 22px; font-size: 16px; line-height: 1.6; color: var(--c-text); }
+  .adv-hub-go-row { display: flex; align-items: center; gap: 10px 20px; flex-wrap: wrap; margin-bottom: 26px; }
+  .adv-hub-go { min-width: 240px; }
+  .adv-hub-go svg, .adv-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .adv-hub-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .adv-hub-row {
+    width: 100%; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 58px; padding: 10px 16px 10px 12px;
+    font: inherit; text-align: left; color: var(--c-dark); background: #fff; border: 1px solid var(--c-border); border-radius: 16px; cursor: pointer;
+    transition: border-color .15s var(--adv-ease), background-color .15s var(--adv-ease);
+  }
+  .adv-hub-row:hover:not(:disabled) { border-color: #A9A79F; background: #FDFCF8; }
+  .adv-hub-row:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
+  .adv-hub-row:disabled { cursor: default; }
+  .adv-hub-row:disabled strong { color: #6E6F74; font-weight: 600; }
+  .adv-hub-row[data-state="now"] { border-color: var(--c-dark); box-shadow: inset 0 0 0 .5px var(--c-dark); }
+  .adv-hub-name { display: grid; gap: 2px; min-width: 0; }
+  .adv-hub-name strong { font-size: 16px; line-height: 1.35; }
+  .adv-hub-sub { font-size: 14px; line-height: 1.4; color: var(--c-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .adv-hub-sub:empty { display: none; }
+  .adv-hub-meta { font-size: 13.5px; font-weight: 600; color: var(--c-text-muted); white-space: nowrap; }
+  .adv-hub-help { margin: 18px 0 0; font-size: 14px; color: var(--c-text-muted); }
+  .adv-hub-help a { color: var(--c-dark); font-weight: 600; }
+  /* A step's mark: its number, a check once done, yellow while it's on */
+  .adv-mark { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; border: 1.5px solid var(--adv-line); background: #fff; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+  .adv-mark svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  [data-state="done"] > .adv-mark, .adv-review-section:not([data-missing]) .adv-mark { background: var(--c-dark); border-color: var(--c-dark); color: var(--c-yellow); }
+  [data-state="now"] > .adv-mark { background: var(--c-yellow); border-color: var(--c-dark); color: var(--c-dark); }
+  .adv-review-section[data-missing] .adv-mark { background: #FFF6D6; border-color: #8A7200; color: #5C4A00; }
+
+  /* ── On its own screen (html.adv-focus): the site's header, footer and hero step aside ── */
+  html.adv-focus, html.adv-focus body { background: #fff; }
+  html.adv-focus body { padding-bottom: 0; }
+  html.adv-focus { scroll-padding-top: 92px; scroll-padding-bottom: 104px; }
+  html.adv-focus body > :not(main):not(dialog) { display: none !important; }
+  html.adv-focus main > :not(#application) { display: none !important; }
+  html.adv-focus .adv { padding: 0; background: #fff; }
+  html.adv-focus .adv-app { max-width: none; display: flex; flex-direction: column; min-height: 100dvh; }
+  html.adv-focus .adv-hub { display: none; }
+  .adv-top { position: sticky; top: 0; z-index: 1000; background: rgba(255,255,255,.97); }
+  html.adv-focus .adv-top { display: block; }
+  @supports (backdrop-filter: blur(1px)) { .adv-top { background: rgba(255,255,255,.88); backdrop-filter: saturate(1.4) blur(14px); } }
+  .adv-top-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 68px; padding: 0 20px 0 16px; }
+  .adv-top-brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .adv-top-logo { width: 56px; height: 56px; flex-shrink: 0; object-fit: contain; }
+  .adv-top-text { display: grid; gap: 1px; min-width: 0; }
+  .adv-top-title { font-size: 15px; font-weight: 700; line-height: 1.3; color: var(--c-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .adv-top-save { min-height: 17px; font-size: 12.5px; line-height: 17px; color: var(--c-text-muted); }
+  .adv-top-exit {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px 0 13px; border-radius: 999px; cursor: pointer; flex-shrink: 0;
+    font: inherit; font-size: 14.5px; font-weight: 600; color: var(--c-dark); background: #fff; border: 1.5px solid var(--adv-line);
+  }
+  .adv-top-exit:hover { border-color: var(--c-dark); }
+  .adv-top-exit:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
+  .adv-top-exit svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .adv-segs { display: flex; gap: 3px; height: 4px; margin: 0; padding: 0; list-style: none; }
+  .adv-seg { flex: 1; position: relative; overflow: hidden; background: #E9E5DA; }
+  .adv-seg span { position: absolute; inset: 0; background: var(--c-yellow); transform-origin: left; transform: scaleX(0); transition: transform .4s var(--adv-ease); }
+  .adv-seg[data-state="done"] span { background: #F2C200; }
+  html.adv-focus .adv-form { flex: 1 0 auto; display: flex; flex-direction: column; border: 0; border-radius: 0; box-shadow: none; padding: 0; background: none; }
+  html.adv-focus .adv-done { width: calc(100% - 32px); max-width: 720px; margin: clamp(20px, 5vh, 48px) auto 48px; }
+  .adv-stage { flex: 1 0 auto; width: 100%; max-width: 720px; margin: 0 auto; padding: clamp(20px, 4.5vh, 48px) 24px 24px; container-type: inline-size; }
+  html:not(.adv-focus) .adv-stage { padding: 0; }
+  .adv-head { margin-bottom: 8px; }
+  .adv-kicker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+  .adv-part { display: inline-flex; align-items: center; gap: 10px; }
+  .adv-part:empty { display: none; }
+  .adv-part::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: #A9A79F; }
+  .adv-head h2 { font-size: clamp(26px, 3.2vw, 34px); line-height: 1.16; letter-spacing: -0.018em; margin: 0; }
+  .adv-head h2:focus { outline: none; }
+  .adv-intro { color: var(--c-text-muted); font-size: 16px; line-height: 1.6; margin: 8px 0 24px; }
+  /* A step's later screens wait their turn; its intro shows on the first */
+  .adv-page > [data-off] { display: none !important; }
+  .adv-summary { padding: 14px 16px; border-radius: 12px; background: #FFF6D6; color: #5C4A00; font-weight: 600; margin-bottom: 24px; }
   .adv-summary ul { margin: 6px 0 0 18px; font-weight: 500; }
   .adv-summary a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
   .adv-summary li { margin-top: 4px; }
 
-  .adv-field { margin-bottom: 26px; }
-  .adv-field[hidden] { display: none; }
+  /* Back / Continue: held at the bottom of the screen */
+  .adv-nav { position: sticky; bottom: 0; z-index: 20; margin-top: auto; padding: 12px 24px calc(12px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.97); border-top: 1px solid #ECE9E1; }
+  @supports (backdrop-filter: blur(1px)) { .adv-nav { background: rgba(255,255,255,.9); backdrop-filter: saturate(1.4) blur(14px); } }
+  .adv-nav-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; max-width: 672px; margin: 0 auto; }
+  .adv-nav-row .adv-next { margin-left: auto; min-width: 220px; }
+  .adv-send-error { max-width: 672px; margin: 0 auto 12px; padding: 12px 16px; border-radius: 12px; background: #FFF6D6; color: #5C4A00; font-weight: 600; }
+  .adv-back { gap: 6px; padding-inline: 22px 26px; }
+
+  .adv-field { margin-bottom: 24px; }
   .adv-field fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   .adv-label { display: block; font-weight: 700; font-size: 16px; line-height: 1.45; color: var(--c-dark); margin-bottom: 8px; padding: 0; }
   .adv-optional { font-weight: 400; font-size: 14px; color: var(--c-text-muted); margin-left: 8px; }
   .adv-hint { font-size: 14px; color: var(--c-text-muted); line-height: 1.5; margin: -2px 0 10px; }
   .adv-field input:not([type="radio"]):not([type="checkbox"]), .adv-field textarea {
     width: 100%; font: inherit; font-size: 16px; line-height: 1.55; color: var(--c-text);
-    padding: 12px 14px; border: 1.5px solid #D4D2CB; border-radius: 12px; background: #fff; min-height: 50px;
+    padding: 13px 16px; border: 1.5px solid var(--adv-line); border-radius: 14px; background: #fff; min-height: 54px;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
-  .adv-field textarea { resize: vertical; min-height: 120px; }
+  .adv-field textarea { resize: vertical; min-height: 116px; field-sizing: content; max-height: 50vh; }
   .adv-field input:focus, .adv-field textarea:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 4px var(--c-yellow-soft); }
-  .adv-field.is-invalid input:not([type="radio"]):not([type="checkbox"]), .adv-field.is-invalid textarea { border-color: #B26B00; }
-  .adv-error { margin-top: 8px; font-size: 14px; font-weight: 600; color: #8A5200; }
-  .adv-error::before { content: '⚠ '; }
+  .adv-field.is-invalid input:not([type="radio"]):not([type="checkbox"]), .adv-field.is-invalid textarea { border-color: #8A7200; background: #FFFDF3; }
+  .adv-error { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; padding: 10px 14px; border-radius: 12px; background: #FFF6D6; color: #5C4A00; font-size: 14.5px; font-weight: 600; line-height: 1.45; animation: advIn .2s ease-out both; }
+  .adv-error::before { content: ''; flex: 0 0 18px; height: 18px; margin-top: 1px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A7200' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='8.2'/%3E%3Cpath d='M10 5.8v5.2M10 14v.1'/%3E%3C/svg%3E"); }
+  /* Two short questions to a row where there's room */
+  .adv-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 20px; align-items: end; }
+  @container (min-width: 520px) { .adv-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 
-  /* Choices: pills, big enough to tap */
-  .adv-choices { display: flex; flex-wrap: wrap; gap: 10px; }
-  .adv-choice { position: relative; display: inline-flex; }
-  .adv-choice input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
-  .adv-choice span { display: inline-flex; align-items: center; min-height: 48px; min-width: 88px; justify-content: center; padding: 10px 22px; border: 1.5px solid #D4D2CB; border-radius: 99px; font-weight: 600; font-size: 15px; color: var(--c-dark); background: #fff; transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
-  .adv-choice:hover span { border-color: var(--c-dark); }
-  .adv-choice input:checked + span { background: var(--c-dark); border-color: var(--c-dark); color: #fff; }
-  .adv-choice input:focus-visible + span { box-shadow: 0 0 0 4px var(--c-yellow-soft); border-color: var(--c-dark); }
+  /* Choices: a card each, a circle that fills (the makeover application's look) */
+  .adv-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 10px; }
+  .adv-choice { position: relative; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 12px 16px; border: 1.5px solid var(--adv-line); border-radius: 16px; background: #fff; cursor: pointer; font-size: 16px; font-weight: 600; color: var(--c-dark); -webkit-tap-highlight-color: transparent; transition: border-color .15s var(--adv-ease), background-color .15s var(--adv-ease), transform .14s var(--adv-ease); }
+  @media (hover: hover) { .adv-choice:hover { border-color: #A9A79F; background: var(--c-cream); } }
+  .adv-choice:active { transform: scale(.985); }
+  .adv-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+  .adv-choice-box { flex: 0 0 22px; height: 22px; border-radius: 50%; border: 2px solid #A9A79F; background: #fff; transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease; }
+  .adv-choice:has(input:checked) { border-color: var(--c-dark); background: #FFFBEA; box-shadow: inset 0 0 0 .5px var(--c-dark); }
+  .adv-choice input:checked + .adv-choice-box { border-color: var(--c-dark); background: var(--c-yellow); box-shadow: inset 0 0 0 4px #fff; animation: advPick .3s cubic-bezier(.34,1.56,.64,1); }
+  .adv-choice:has(input:focus-visible) { outline: 3px solid var(--c-dark); outline-offset: 2px; }
 
   .adv-check { display: flex; gap: 12px; align-items: flex-start; font-size: 16px; line-height: 1.5; cursor: pointer; padding: 14px 16px; border-radius: 14px; background: var(--c-cream); }
   .adv-check input { width: 22px; height: 22px; margin-top: 1px; accent-color: var(--c-dark); flex: none; }
   .adv-check a { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; white-space: nowrap; }
   .adv-date { font-size: 14px; color: var(--c-text-muted); margin: -8px 0 20px; }
-  .adv-turnstile { margin: 4px 0 20px; min-height: 65px; }
-  .adv-turnstile[hidden] { display: none; }
-
+  .adv-turnstile { margin: 20px 0 0; min-height: 65px; }
   .adv-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-  .adv-send-error { margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; background: #FFF3BF; color: #5C4500; font-weight: 600; }
-  .adv-nav { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--c-border); margin-top: 8px; padding-top: 24px; }
-  .adv-nav #adv-next { margin-left: auto; min-width: 200px; }
-  .adv-saved { margin: 12px 0 0; min-height: 1.4em; font-size: 13px; color: var(--c-text-muted); text-align: right; }
 
-  .adv-done { text-align: center; padding: 12px 0; }
+  /* Review: a row per step (the answers in a line), opened for the details */
+  .adv-review-bar { display: flex; justify-content: flex-end; margin: -8px 0 8px; }
+  .adv-review { display: grid; gap: 8px; }
+  .adv-review-section { border: 1px solid var(--c-border); border-radius: 18px; background: #fff; overflow: clip; }
+  .adv-review-section[data-missing] { border-color: #E6C400; }
+  .adv-review-head { display: flex; align-items: center; gap: 4px; padding: 6px 10px 6px 6px; }
+  .adv-review-h { flex: 1; min-width: 0; margin: 0; font-family: var(--font-body); font-size: inherit; letter-spacing: 0; }
+  .adv-review-toggle { width: 100%; min-width: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr) 16px; gap: 12px; align-items: center; min-height: 56px; padding: 6px 8px; font: inherit; text-align: left; color: var(--c-dark); background: none; border: 0; border-radius: 12px; cursor: pointer; }
+  .adv-review-toggle:hover { background: var(--c-cream); }
+  .adv-review-toggle:focus-visible { outline: 3px solid var(--c-dark); outline-offset: -2px; }
+  .adv-review-name { display: grid; gap: 2px; min-width: 0; }
+  .adv-review-title { font-size: 16.5px; font-weight: 700; line-height: 1.35; }
+  .adv-review-sum { font-size: 14px; line-height: 1.4; color: var(--c-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .adv-review-section[data-missing] .adv-review-sum { color: #5C4A00; font-weight: 600; }
+  .adv-review-chev { width: 16px; height: 16px; fill: none; stroke: var(--c-text-muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .25s var(--adv-ease); }
+  .adv-review-section[data-open] .adv-review-chev { transform: rotate(180deg); }
+  .adv-review-edit { min-height: 44px; padding: 6px 10px; }
+  .adv-review-body { padding: 0 22px 10px 64px; }
+  .adv-review-section[data-open] .adv-review-body { animation: advIn .22s var(--adv-ease) both; }
+  .adv-review dl { margin: 0; }
+  .adv-review-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; padding: 12px 0; border-top: 1px solid #F0EEE8; }
+  .adv-review-item:first-child { border-top: 0; }
+  .adv-review-item dt { grid-column: 1; font-size: 13.5px; font-weight: 600; color: var(--c-text-muted); line-height: 1.45; }
+  .adv-review-item dd { grid-column: 1; margin: 0; font-size: 15.5px; line-height: 1.55; color: var(--c-dark); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .adv-review-item .adv-linkbtn { grid-column: 2; grid-row: 1 / span 2; align-self: center; min-height: 36px; font-size: 14px; }
+  .adv-review-item.is-missing dd { color: #5C4A00; font-weight: 600; }
+
+  /* Moving between screens: Plaid's timing (the makeover application's) */
+  .adv-vt .adv-stage { view-transition-name: adv-stage; }
+  .adv-vt.adv-vt-same .adv-head { view-transition-name: adv-head; }
+  .adv-vt::view-transition-group(root), .adv-vt::view-transition-old(root), .adv-vt::view-transition-new(root), .adv-vt::view-transition-group(adv-stage),
+  .adv-vt::view-transition-group(adv-head), .adv-vt::view-transition-new(adv-head) { animation: none; }
+  .adv-vt::view-transition-old(adv-head) { animation: none; opacity: 0; }
+  .adv-vt::view-transition-old(adv-stage) { animation: advOutNext 120ms cubic-bezier(.4,0,1,1) both; }
+  .adv-vt::view-transition-new(adv-stage) { animation: advInNext 260ms cubic-bezier(.05,.7,.1,1) 110ms both; }
+  .adv-vt.adv-vt-back::view-transition-old(adv-stage) { animation-name: advOutBack; }
+  .adv-vt.adv-vt-back::view-transition-new(adv-stage) { animation-name: advInBack; }
+  @keyframes advOutNext { to { opacity: 0; transform: translateX(-12px); } }
+  @keyframes advInNext { from { opacity: 0; transform: translateX(16px); } }
+  @keyframes advOutBack { to { opacity: 0; transform: translateX(12px); } }
+  @keyframes advInBack { from { opacity: 0; transform: translateX(-16px); } }
+  @keyframes advIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  @keyframes advPick { from { transform: scale(.8); } to { transform: scale(1); } }
+
+  .adv-done { text-align: center; }
   .adv-done:focus { outline: none; }
   .adv-done-mark { width: 64px; height: 64px; margin: 0 auto 20px; border-radius: 50%; background: var(--c-yellow); color: var(--c-dark); display: grid; place-items: center; }
   .adv-done-mark svg { width: 30px; height: 30px; }
@@ -267,33 +407,36 @@ const fid = (id: string) => `adv-${id}`;
   .adv-done-note { font-size: 14px; color: var(--c-text-muted); margin-bottom: 0; }
   .adv-done-note a { color: var(--c-dark); font-weight: 600; }
 
-  @media (max-width: 860px) {
-    .adv-step-name { display: none; }
-    .adv-step-dot.is-now .adv-step-name { display: block; }
-    .adv-steps { grid-template-columns: repeat(5, auto); justify-content: space-between; }
+  @media (max-width: 640px) {
+    .adv-top-inner { height: 56px; padding: 0 10px 0 6px; gap: 8px; }
+    .adv-top-logo { width: 46px; height: 46px; }
+    .adv-top-title { font-size: 14px; }
+    .adv-top-exit { width: 44px; padding: 0; justify-content: center; }
+    .adv-top-exit span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .adv-stage { padding: 16px 18px 20px; }
+    .adv-head h2 { font-size: 25px; }
+    .adv-nav { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
+    .adv-nav-row .adv-next { flex: 1; min-width: 0; }
+    .adv-hub-row { grid-template-columns: 32px minmax(0, 1fr); }
+    .adv-hub-meta { display: none; }
+    .adv-hub-go { width: 100%; min-width: 0; }
+    .adv-review-body { padding: 0 16px 8px; }
   }
   @media (max-width: 768px) {
-    .hero-inner { grid-template-columns: 1fr; gap: 28px; }
-    .hero-photo-wrap { order: -1; max-width: 200px; justify-self: start; }
-    .hero-frame { aspect-ratio: 1; border-radius: 20px; }
-    .hero-accent { bottom: -10px; right: -10px; }
-    .hero-headline { font-size: clamp(34px, 9vw, 48px); }
     .adv { padding-inline: 12px; }
     .adv-card { border-radius: 20px; }
-    .adv-nav { flex-direction: column-reverse; align-items: stretch; }
-    .adv-nav .btn, .adv-nav #adv-next { width: 100%; min-width: 0; margin-left: 0; }
-    .adv-saved { text-align: center; }
     .adv-done-links { flex-direction: column; }
   }
-  @media (max-width: 460px) {
-    .adv-step-dot.is-now .adv-step-name { display: none; }
-    .adv-choice { flex: 1 1 0; }
-    .adv-choice span { width: 100%; min-width: 0; padding: 10px 12px; }
+  @media (prefers-reduced-motion: reduce) {
+    .adv-seg span, .adv-choice, .adv-review-chev { transition: none; }
+    .adv-choice:active { transform: none; }
+    .adv-error, .adv-choice input:checked + .adv-choice-box, .adv-review-section[data-open] .adv-review-body { animation: none; }
   }
-  @media (pointer: coarse) { .btn:hover { transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .btn, .adv-bar span, .adv-step-num { transition: none; } .btn:hover { transform: none; } }
 </style>
 
+<!-- Back while the application has the screen goes a step back (advisory-form.client.js sets
+     window.__advPop); this gate runs ahead of the site's page router, which would load the page again -->
+<script is:inline>if(!window.__advGate){window.__advGate=1;addEventListener('popstate',function(e){var f=window.__advPop;if(f&&f(e))e.stopImmediatePropagation()},true)}</script>
 <script>
   import { initAdvisoryForm } from '../../components/advisory/advisory-form.client.js';
   initAdvisoryForm();

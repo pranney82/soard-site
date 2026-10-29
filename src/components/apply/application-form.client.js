@@ -124,7 +124,12 @@ function init(root, cfg, mode) {
   // Listeners on document/window end when the page is swapped out
   const life = new AbortController();
   const { signal } = life;
-  document.addEventListener('astro:before-swap', () => { closeRecorder(); life.abort(); }, { once: true });
+  document.addEventListener('astro:before-swap', () => {
+    closeRecorder();
+    life.abort();
+    window.__afPop = null;
+    document.documentElement.classList.remove('af-focus', 'af-vt', 'af-vt-back', 'af-vt-same'); // the next page has the screen back
+  }, { once: true });
 
   const live = mode === 'live';
   const previewing = live || !!cfg.preview;
@@ -152,8 +157,9 @@ function init(root, cfg, mode) {
     reviewList: $('[data-review]'),
     reviewSummary: $('[data-review-summary]'),
     stepText: $('[data-step-text]'),
+    partText: $('[data-part-text]'),
     stepTitle: $('[data-step-title]'),
-    bar: $('[data-progress-bar]'),
+    stage: $('[data-stage]'),
     steps: $('[data-steps]'),
     stepsList: $('[data-steps-list]'),
     back: $('[data-back]'),
@@ -165,13 +171,20 @@ function init(root, cfg, mode) {
     rail: $('[data-rail]'),
     railList: $('[data-rail-list]'),
     timeLeft: $('[data-time-left]'),
-    mini: $('[data-mini]'),
-    miniStep: $('[data-mini-step]'),
-    miniTitle: $('[data-mini-title]'),
-    miniBar: $('[data-mini-bar]'),
+    top: $('[data-top]'),
+    segs: $('[data-segs]'),
+    exit: $('[data-exit]'),
+    hub: $('[data-hub]'),
+    hubTitle: $('[data-hub-title]'),
+    hubLead: $('[data-hub-lead]'),
+    hubList: $('[data-hub-list]'),
+    hubGo: $('[data-hub-go]'),
+    hubGoLabel: $('[data-hub-go-label]'),
+    hubLater: $('[data-hub-later]'),
+    reviewAll: $('[data-review-all]'),
     live: $('[data-live]'),
     notice: $('[data-notice]'),
-    langSwitch: $('[data-lang-switch]'),
+    langSwitches: [...root.querySelectorAll('[data-lang-switch]')], // in the bar across the top, and on the overview
     stop: $('[data-stop]'),
     stopTitle: $('[data-stop-title]'),
     stopBody: $('[data-stop-body]'),
@@ -196,6 +209,10 @@ function init(root, cfg, mode) {
   const touched = new Set(); // questions the family has worked on (they get checked when left)
   const shown = new Set();   // questions showing a problem
   let currentId = null;      // page id, or 'review'
+  let screenNo = 0;          // which of the page's screens is showing
+  let packs = {};            // page id → its screens: the page's top-level pieces, a screen's worth at a time
+  let focused = false;       // the application has the screen to itself (html.af-focus)
+  let moving = false;        // a screen change is under way (Continue pressed twice counts once)
   let furthestId = null;     // the furthest page reached
   let fromReview = false;    // came from the review page to change something
   let token = null;
@@ -278,6 +295,7 @@ function init(root, cfg, mode) {
     byId = indexById(form);
     ui.pages.innerHTML = renderPages(form, lang);
     ui.pages.removeAttribute('aria-busy');
+    packs = {}; // new pieces, new sizes: each page's screens are worked out again when it shows
     pageEls = Object.fromEntries([...ui.pages.querySelectorAll('[data-page]')].map(el => [el.dataset.page, el]));
     for (const f of fields) if (isInput(f)) writeField(f, answers[f.id]);
     for (const f of fields) if (isUpload(f)) paintUpload(f.id);
@@ -301,11 +319,13 @@ function init(root, cfg, mode) {
     const later = ui.dialog.querySelector('[data-later-email]');
     if (later) later.textContent = laterEmail;
     const langs = form.languages || ['en'];
-    ui.langSwitch.hidden = langs.length < 2;
-    ui.langSwitch.querySelectorAll('[data-lang]').forEach(b => {
-      b.hidden = !langs.includes(b.dataset.lang);
-      b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
-    });
+    for (const sw of ui.langSwitches) {
+      sw.hidden = langs.length < 2;
+      sw.querySelectorAll('[data-lang]').forEach(b => {
+        b.hidden = !langs.includes(b.dataset.lang);
+        b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
+      });
+    }
     paintNotice();
     paintSaveState();
     paintNavNote();
@@ -338,9 +358,9 @@ function init(root, cfg, mode) {
 
   // ── Motion ───────────────────────────────────────────────────────
   /** Slide/fade something in: transform + opacity only; nothing under reduced motion */
-  function enter(el, x, y = 0, duration = SLIDE_MS) {
+  function enter(el, x, y = 0, duration = SLIDE_MS, easing = EASE) {
     if (!el || reducedMotion() || !el.animate) return null;
-    return el.animate([{ opacity: 0, transform: `translate(${x}px, ${y}px)` }, { opacity: 1, transform: 'none' }], { duration, easing: EASE });
+    return el.animate([{ opacity: 0, transform: `translate(${x}px, ${y}px)` }, { opacity: 1, transform: 'none' }], { duration, easing });
   }
   /** The question being edited in the admin, outlined for a moment */
   function flash(el) {
@@ -351,15 +371,124 @@ function init(root, cfg, mode) {
     el._flash = setTimeout(() => el.classList.remove('af-flash'), 1900);
   }
   function headerOffset() {
+    if (focused) return (ui.top?.offsetHeight || 72) + 16;
     return parseInt(getComputedStyle(document.documentElement).scrollPaddingTop, 10) || 100;
   }
-  /** Bring the top of the form back into view if the family has scrolled past it (a test run: its bar, where Fill is) */
+  /** Back to the top of the step (or, on the page, of the application) if they've scrolled past it (a test run: its bar, where Fill is) */
   function scrollToForm(force = false) {
+    if (focused) { if (force || window.scrollY > 0) window.scrollTo({ top: 0, behavior: 'auto' }); return; }
     const bar = testRun?.by ? root.querySelector('[data-testbar]:not([hidden])') : null;
-    const top = (bar || ui.form).getBoundingClientRect().top;
+    const top = (bar || root).getBoundingClientRect().top;
     const offset = headerOffset();
     if (!force && top >= offset - 8) return;
     window.scrollTo({ top: Math.max(0, window.scrollY + top - offset), behavior: reducedMotion() ? 'auto' : 'smooth' });
+  }
+  /**
+   * Change what's on screen (`update` does it) with the motion of going forward or back: the old
+   * screen slips out the way they're heading and the new one slides in from the other side, Plaid's
+   * timing (150ms out, 260ms in, overlapping). View Transitions where the browser has them, a plain
+   * slide in where it hasn't, a quick fade under reduced motion. Resolves once the new screen is in
+   * the page (the animation may still be finishing).
+   */
+  function swap(update, dir, samePage = false) {
+    const html = document.documentElement;
+    if (!dir || !focused) { update(); return Promise.resolve(); }
+    if (reducedMotion()) {
+      update();
+      ui.stage.animate?.([{ opacity: 0.35 }, { opacity: 1 }], { duration: 120, easing: 'linear' });
+      return Promise.resolve();
+    }
+    if (!document.startViewTransition || document.visibilityState === 'hidden') {
+      update();
+      enter(ui.stage, dir * 16, 0, 260, 'cubic-bezier(.05,.7,.1,1)');
+      return Promise.resolve();
+    }
+    html.classList.add('af-vt');
+    html.classList.toggle('af-vt-back', dir < 0);
+    html.classList.toggle('af-vt-same', samePage);
+    moving = true;
+    let vt;
+    try {
+      vt = document.startViewTransition(() => { try { update(); } catch (err) { console.warn('Could not change the screen', err); } });
+    } catch {
+      html.classList.remove('af-vt', 'af-vt-back', 'af-vt-same');
+      moving = false;
+      update();
+      return Promise.resolve();
+    }
+    vt.ready.catch(() => {}); // skipped (another change came first, or the tab went to the background): the screen still changes
+    vt.finished.catch(() => {}).finally(() => { if (!moving) html.classList.remove('af-vt', 'af-vt-back', 'af-vt-same'); });
+    return vt.updateCallbackDone.catch(() => {}).finally(() => { moving = false; });
+  }
+
+  // ── The application on its own screen ────────────────────────────
+  // Once they start, the site's header, footer and the hero step aside (html.af-focus) and the
+  // application fills the screen: Plaid's and Airbnb's way. "Save and exit" (or Back from the
+  // first screen) returns to the page, with the overview of every step in the form's place.
+  const FOCUS_KEY = keyed('soard-application-focus');
+  const session = {
+    get() { try { return sessionStorage.getItem(FOCUS_KEY) === '1'; } catch { return false; } },
+    set(on) { try { if (on) sessionStorage.setItem(FOCUS_KEY, '1'); else sessionStorage.removeItem(FOCUS_KEY); } catch { /* private mode */ } },
+  };
+  function enterFocus() {
+    if (focused || root.hidden) return false;
+    focused = true;
+    root.classList.add('is-focus');
+    document.documentElement.classList.add('af-focus');
+    if (!live) session.set(true);
+    trapped = trapped || !!history.state?.afFocus;
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    // In: the bar drops into place, the step rises (a touch of overshoot, like Plaid Link's sheet)
+    if (!reducedMotion()) {
+      ui.top?.animate?.([{ transform: 'translateY(-100%)' }, { transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      enter(ui.stage, 0, 18, 380, 'cubic-bezier(.23,1.2,.32,1)');
+      if (railShown()) enter(ui.rail, -14, 0, 380);
+    }
+    return true;
+  }
+  /** Start, or carry on: the application takes the screen, at `id` if given (a step already reached), else where they were */
+  function begin(id = null) {
+    if (root.hidden) return;
+    const was = focused;
+    enterFocus();
+    armTrap();
+    const go = id && (reached(id) || previewing) ? id : currentId;
+    if (was && go === currentId) return;
+    if (go !== currentId) currentId = null; // a new page: worked out afresh
+    show(go, { screen: 'open', scroll: true });
+  }
+  function exitFocus({ fromPop = false } = {}) {
+    if (!focused) return;
+    if (token) save();
+    closeRecorder();
+    closeSuggest();
+    if (ui.dialog.open) ui.dialog.close();
+    focused = false;
+    root.classList.remove('is-focus');
+    document.documentElement.classList.remove('af-focus', 'af-vt', 'af-vt-back', 'af-vt-same');
+    session.set(false);
+    if (trapped && !fromPop) { swallow = true; history.back(); }
+    trapped = false;
+    if (token && !doneShown && !previewing) notice('exitSaved', 'success');
+    paintHeader();
+    requestAnimationFrame(() => {
+      const app = document.getElementById('application');
+      const top = Math.max(0, (app?.getBoundingClientRect().top || 0) + window.scrollY - headerOffset());
+      window.scrollTo({ top, behavior: 'auto' });
+      (doneShown ? ui.done.querySelector('[data-done-title]') : ui.hubTitle)?.focus({ preventScroll: true });
+    });
+  }
+
+  // The phone's Back gesture (and the browser's Back): a screen back, not off the page. One extra
+  // history entry holds the place while the application has the screen; Back lands on the entry
+  // under it, which goes back a screen (or, from the first, to the page) instead of the site's
+  // router loading the page again. The entry is put back on their next tap, since a browser skips
+  // entries a page adds without one.
+  let trapped = false;
+  let swallow = false;
+  function armTrap() {
+    if (trapped || !focused || live || window.parent !== window) return;
+    try { history.pushState({ ...(history.state || {}), afFocus: 1 }, ''); trapped = true; } catch { /* history unavailable */ }
   }
 
   // ── Steps ────────────────────────────────────────────────────────
@@ -375,25 +504,64 @@ function init(root, cfg, mode) {
   function remember() {
     if (token && !previewing) store.set({ token, year, furthest: furthestId });
   }
+  const titleOf = (id) => (id === 'review' ? T('reviewTitle') : form.pages.find(p => p.id === id)?.title || '');
+  /** Pages with a required answer still missing or wrong */
+  const needsSet = (a = readAnswers()) => new Set(Object.keys(formErrors(form, a, files, null, lang)).map(pageOf));
+  /** Done: reached, passed, and nothing on it needs them */
+  const stepDone = (id, needs) => id !== 'review' && reached(id) && order(id) < order(furthestId) && !needs.has(id);
+  const screensIn = (id) => (id === 'review' ? 1 : packs[id]?.length || 1);
+
+  // The browser tab says where they are while the application has the screen
+  const baseTitle = document.title.replace(/^Test run · /, '');
+  function paintTitle(ids = stepIds()) {
+    let title = baseTitle;
+    if (focused && currentId && !stopShown && !doneShown) {
+      const i = Math.max(0, ids.indexOf(currentId));
+      title = `${T('step', { n: i + 1, total: ids.length })}: ${titleOf(currentId)} · ${baseTitle}`;
+    }
+    title = (testRun?.by ? 'Test run · ' : '') + title;
+    if (document.title !== title) document.title = title;
+  }
 
   function paintHeader() {
     const ids = stepIds();
     const i = Math.max(0, ids.indexOf(currentId));
     ui.stepText.textContent = T('step', { n: i + 1, total: ids.length });
-    const title = currentId === 'review' ? T('reviewTitle') : (form.pages.find(p => p.id === currentId)?.title || '');
+    const n = screensIn(currentId);
+    ui.partText.textContent = n > 1 ? T('part', { n: screenNo + 1, total: n }) : '';
+    const title = titleOf(currentId);
     if (ui.stepTitle.textContent !== title) ui.stepTitle.textContent = title;
-    const done = (i + 1) / ids.length;
-    ui.bar.style.transform = `translateX(${done * 100 - 100}%)`;
-    // The bar that follows a phone down the page says the same
-    if (ui.mini) {
-      ui.miniStep.textContent = `${i + 1}/${ids.length}`;
-      ui.miniTitle.textContent = title;
-      ui.miniBar.style.transform = `scaleX(${done})`;
-      ui.mini.setAttribute('title', T('miniUp'));
-    }
+    const needs = needsSet();
+    paintSegs(ids, needs);
     paintTimeLeft(ids);
-    paintStepList(ids);
+    paintStepList(ids, needs);
     paintNav(ids);
+    paintTitle(ids);
+    paintHub(ids, needs);
+  }
+
+  /** The segments along the top: done steps full, the one on screen filling a part at a time */
+  function paintSegs(ids, needs) {
+    if (!ui.segs || !focused) return;
+    if (ui.segs.children.length !== ids.length) {
+      ui.segs.replaceChildren(...ids.map(() => {
+        const li = document.createElement('li');
+        li.className = 'af-seg';
+        const fill = document.createElement('span');
+        fill.className = 'af-seg-fill';
+        li.append(fill);
+        return li;
+      }));
+    }
+    ids.forEach((id, k) => {
+      const li = ui.segs.children[k];
+      const now = id === currentId;
+      const done = !!doneShown || (!now && stepDone(id, needs));
+      const fill = done ? 1 : now ? (screenNo + 1) / (screensIn(id) + 1) : 0;
+      li.dataset.state = done ? 'done' : now ? 'now' : '';
+      const v = `scaleX(${fill.toFixed(3)})`;
+      if (li.firstChild.style.transform !== v) li.firstChild.style.transform = v;
+    });
   }
 
   /**
@@ -420,30 +588,60 @@ function init(root, cfg, mode) {
     }
     return s;
   }
+  function minutesLeft(ids = stepIds(), a = readAnswers()) {
+    const all = secondsLeft(ids, a, ids[0], true) || 1;
+    return Math.max(1, Math.ceil((secondsLeft(ids, a, currentId === 'review' ? 'review' : currentId || ids[0]) / all) * 15));
+  }
+  /** A step's share of the 15 minutes, for the overview */
+  function minutesOf(id) {
+    const ids = stepIds();
+    const all = secondsLeft(ids, {}, ids[0], true) || 1;
+    return Math.max(1, Math.round((secondsLeft([id], {}, id, true) / all) * 15));
+  }
   function paintTimeLeft(ids) {
     if (!ui.timeLeft || !railShown()) return;
     if (currentId === 'review') { ui.timeLeft.textContent = T('leftReview'); return; }
-    const a = readAnswers();
-    const all = secondsLeft(ids, a, ids[0], true) || 1;
-    const mins = Math.max(1, Math.ceil((secondsLeft(ids, a, currentId) / all) * 15));
+    const mins = minutesLeft(ids);
     ui.timeLeft.textContent = mins <= 1 ? T('leftOne') : T('leftMany', { n: mins });
   }
 
+  /** A done step's answers in a line: "Maya Rivera · Apr 12, 2017", "2 photos", "Agreed" */
+  function summaryOf(pid, a = readAnswers()) {
+    const sec = answerSections(form, a, files).find(s => s.id === pid);
+    if (!sec) return '';
+    const parts = [];
+    let photos = 0;
+    let video = false;
+    let acks = 0;
+    for (const it of sec.items) {
+      const f = byId[it.id];
+      if (!f) continue;
+      if (it.upload) { if (f.type === 'video') video = true; else photos++; continue; }
+      if (f.type === 'ack') { acks++; continue; }
+      if (f.type === 'area') continue;
+      const text = String((f.type === 'date' ? dateText(a[f.id], lang) : it.text) || '').split('\n')[0].trim();
+      if (text && parts.length < 2) parts.push(text.length > 44 ? `${text.slice(0, 42).trimEnd()}…` : text);
+    }
+    if (photos) parts.push(photos === 1 ? T('photoAdded') : T('photosAdded', { n: photos }));
+    if (video) parts.push(T('videoUploaded'));
+    if (!parts.length && acks) parts.push(T('agreed'));
+    return parts.join(' · ');
+  }
+
   /**
-   * The step lists ("All steps" in the card, and the rail beside it on a computer): done ones
-   * checked, this one marked, later ones not open yet. Each is painted only while it shows.
-   * Updated in place: an answer saved as someone presses a step (a blur's change event)
-   * must not swap the button out from under the press.
+   * The step lists ("All steps" on a phone, the panel beside the step on a computer): done ones
+   * checked with their answers in a line, this one marked, later ones not open yet. Each is
+   * painted only while it shows. Updated in place: an answer saved as someone presses a step
+   * (a blur's change event) must not swap the button out from under the press.
    */
   const railShown = () => !!ui.rail && ui.rail.offsetParent !== null;
-  function paintStepList(ids = stepIds()) {
+  function paintStepList(ids = stepIds(), needs = needsSet()) {
     const lists = [ui.steps.open && ui.stepsList, railShown() && ui.railList].filter(Boolean);
     if (!lists.length) return;
-    const errs = formErrors(form, readAnswers(), files, null, lang);
-    const needs = new Set(Object.keys(errs).map(pageOf));
-    for (const list of lists) paintList(list, ids, needs);
+    const a = readAnswers();
+    for (const list of lists) paintList(list, ids, needs, a);
   }
-  function paintList(list, ids, needs) {
+  function paintList(list, ids, needs, a) {
     const items = [...list.children];
     if (items.map(li => li.firstChild?.dataset.goto).join('|') !== ids.join('|')) {
       list.replaceChildren(...ids.map((id) => {
@@ -455,9 +653,14 @@ function init(root, cfg, mode) {
         const mark = document.createElement('span');
         mark.className = 'af-step-mark';
         mark.setAttribute('aria-hidden', 'true');
+        const body = document.createElement('span');
+        body.className = 'af-step-body';
         const name = document.createElement('span');
         name.className = 'af-step-name';
-        b.append(mark, name, document.createElement('span'));
+        const sub = document.createElement('span');
+        sub.className = 'af-step-sub';
+        body.append(name, sub);
+        b.append(mark, body, document.createElement('span'));
         li.append(b);
         return li;
       }));
@@ -465,30 +668,90 @@ function init(root, cfg, mode) {
     ids.forEach((id, i) => {
       const li = list.children[i];
       const b = li.firstChild;
-      const [mark, name, state] = b.children;
-      li.toggleAttribute('data-line', i + 1 < ids.length && reached(ids[i + 1])); // the rail's joining line, dark once the next is reached
+      const [mark, body, state] = b.children;
+      const [name, sub] = body.children;
+      li.toggleAttribute('data-line', i + 1 < ids.length && reached(ids[i + 1])); // the joining line, dark once the next is reached
       const now = id === currentId;
       const open = reached(id);
-      const done = !now && open && id !== 'review' && !needs.has(id) && order(id) < order(furthestId);
+      const done = !now && stepDone(id, needs);
       b.dataset.state = now ? 'now' : done ? 'done' : open ? 'open' : 'locked';
       b.disabled = !open;
       b.toggleAttribute('aria-current', now);
       if (now) b.setAttribute('aria-current', 'step');
       const markHtml = done ? CHECK_SVG : String(i + 1);
       if (mark.dataset.v !== markHtml) { mark.dataset.v = markHtml; if (done) mark.innerHTML = CHECK_SVG; else mark.textContent = String(i + 1); }
-      const title = id === 'review' ? T('reviewTitle') : form.pages.find(p => p.id === id)?.title || '';
+      const title = titleOf(id);
       if (name.textContent !== title) name.textContent = title;
+      const n = screensIn(id);
+      const line = done ? summaryOf(id, a) : now ? (n > 1 ? T('part', { n: screenNo + 1, total: n }) : '') : open || id === 'review' ? '' : T('minutes', { n: minutesOf(id) });
+      if (sub.textContent !== line) sub.textContent = line;
       state.className = now ? 'af-step-now' : 'af-sr';
       const said = now ? T('stepNow') : done ? T('stepDone') : open ? '' : T('stepLocked');
       if (state.textContent !== said) state.textContent = said;
     });
   }
 
+  /**
+   * The overview on the page (before they start, and after Save and exit): every step with its
+   * minutes, done ones with their answers in a line, and the way in. Like Plaid's onboarding list.
+   */
+  function paintHub(ids = stepIds(), needs = needsSet()) {
+    if (!ui.hub || focused) return;
+    const a = readAnswers();
+    const steps = ids.filter(id => id !== 'review');
+    const started = !!token || (previewing && order(furthestId) > 0 && !live);
+    const doneCount = steps.filter(id => stepDone(id, needs)).length;
+    const ready = started && !needs.size && order(furthestId) >= order('review');
+    const mins = minutesLeft(ids, a);
+    ui.hubTitle.textContent = T(started ? 'hubTitleBack' : 'hubTitle');
+    ui.hubLead.textContent = !started ? T('hubLead', { n: ids.length })
+      : ready ? T('hubLeadReady')
+        : T(mins <= 1 ? 'hubLeadBackOne' : 'hubLeadBack', { done: doneCount, n: steps.length, m: mins });
+    ui.hubGoLabel.textContent = T(!started ? 'hubStart' : ready || currentId === 'review' ? 'hubReview' : 'hubContinue');
+    if (ui.hubLater) ui.hubLater.hidden = !started || previewing;
+    // The hero's button says the same: start, or carry on
+    const cta = document.querySelector('[data-hero-cta]');
+    if (cta && !root.hidden && /^hero(Start|Continue)$/.test(cta.dataset.afT || '')) {
+      cta.dataset.afT = token ? 'heroContinue' : 'heroStart';
+      if (cta.textContent !== T(cta.dataset.afT)) cta.textContent = T(cta.dataset.afT);
+    }
+    const list = ui.hubList;
+    if ([...list.children].map(li => li.firstChild?.dataset.goto).join('|') !== ids.join('|')) {
+      list.replaceChildren(...ids.map((id) => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'af-hub-row';
+        b.dataset.goto = id;
+        b.innerHTML = '<span class="af-step-mark" aria-hidden="true"></span><span class="af-hub-name"><strong></strong><span class="af-hub-sub"></span></span><span class="af-hub-meta"></span>';
+        li.append(b);
+        return li;
+      }));
+    }
+    ids.forEach((id, i) => {
+      const b = list.children[i].firstChild;
+      const now = started && id === currentId;
+      const open = started ? reached(id) : i === 0;
+      const done = started && stepDone(id, needs);
+      b.dataset.state = done ? 'done' : now ? 'now' : open ? 'open' : 'locked';
+      b.disabled = !open && !previewing;
+      const [mark, name, meta] = b.children;
+      const markHtml = done ? CHECK_SVG : String(i + 1);
+      if (mark.dataset.v !== markHtml) { mark.dataset.v = markHtml; if (done) mark.innerHTML = CHECK_SVG; else mark.textContent = String(i + 1); }
+      name.firstChild.textContent = titleOf(id);
+      name.lastChild.textContent = done ? summaryOf(id, a) : now ? T('stepNow') : '';
+      const metaHtml = done ? `${PENCIL_SVG}<span>${esc(T('edit'))}</span>` : id === 'review' ? '' : esc(T('minutes', { n: minutesOf(id) }));
+      if (meta.dataset.v !== metaHtml) { meta.dataset.v = metaHtml; meta.innerHTML = metaHtml; }
+      b.setAttribute('aria-label', [`${T('step', { n: i + 1, total: ids.length })}: ${titleOf(id)}`, done ? T('stepDone') : now ? T('stepNow') : open ? '' : T('stepLocked'), name.lastChild.textContent].filter(Boolean).join('. '));
+    });
+  }
+
   function paintNav(ids = stepIds()) {
     const review = currentId === 'review';
     const at = ids.indexOf(currentId);
-    ui.back.hidden = at <= 0;
-    const label = review ? (busy ? 'submitting' : 'submit') : fromReview ? 'toReview' : ids[at + 1] === 'review' ? 'reviewBtn' : 'next';
+    const lastScreen = screenNo >= screensIn(currentId) - 1;
+    ui.back.hidden = at <= 0 && screenNo === 0;
+    const label = review ? (busy ? 'submitting' : 'submit') : fromReview ? 'toReview' : ids[at + 1] === 'review' && lastScreen ? 'reviewBtn' : 'next';
     ui.nextLabel.textContent = T(label);
     ui.next.classList.toggle('af-btn--submit', review);
     let blockedBy = null;
@@ -500,48 +763,170 @@ function init(root, cfg, mode) {
     } else if (lastNav?.reason) navNote(null);
     ui.next.disabled = busy || !!blockedBy;
     ui.next.setAttribute('aria-busy', String(busy));
-    if (ui.turnstile) ui.turnstile.hidden = !(turnstileSiteKey && !token && !previewing && at === 0);
+    if (ui.turnstile) ui.turnstile.hidden = !(turnstileSiteKey && !token && !previewing && at === 0 && screenNo === 0);
   }
 
-  /** Put a page on screen: slides in from the right going forward, from the left going back */
-  function show(id, { dir = 0, focus = true, focusField = null, scroll = true } = {}) {
+  // ── A page a screen at a time ────────────────────────────────────
+  /**
+   * Which of a page's questions share a screen: as many as fit between the bar across the top and
+   * Back / Continue, measured as they're drawn now (this width, this language), then spread evenly
+   * so no screen is left with one lonely question. A follow-up stays with the question it follows,
+   * a short note stays with the question after it, and anything taller than the screen gets one to
+   * itself (and scrolls). Only while the application has the screen; before that there's nothing to
+   * measure. Staff can change the form freely: this works it out for whatever the pages hold.
+   */
+  const pieces = (pid) => [...(pageEl(pid)?.children || [])];
+  const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : [...el.querySelectorAll('[data-field]')].map(x => x.dataset.field));
+  const isNote = (el) => ['content', 'guidelines', 'image'].includes(el.dataset.type);
+  let packSize = '';
+  function room(el) {
+    const top = ui.top?.offsetHeight || 0;
+    const nav = ui.form.querySelector('[data-nav]')?.offsetHeight || 0;
+    const head = el.getBoundingClientRect().top - ui.stage.getBoundingClientRect().top; // the stage's padding and the step's header
+    const saveRow = ui.stage.querySelector('.af-save-row');
+    const shown = saveRow && saveRow.offsetParent !== null;
+    const tail = (shown ? saveRow.offsetHeight + parseFloat(getComputedStyle(saveRow).marginTop || 0) : 0) + parseFloat(getComputedStyle(ui.stage).paddingBottom || 0);
+    return Math.max(260, innerHeight - top - nav - head - tail);
+  }
+  function pack(pid) {
+    const el = pageEl(pid);
+    const kids = pieces(pid);
+    if (!focused || !el || el.hidden || !kids.length || ui.form.hidden) return null;
+    kids.forEach(k => k.removeAttribute('data-off'));
+    if (el.offsetParent === null) return null;
+    packSize = `${innerWidth}x${innerHeight}`;
+    const fit = room(el);
+    const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
+    const h = kids.map(k => k.getBoundingClientRect().height);
+    const blocks = [];
+    kids.forEach((k, i) => {
+      const prev = blocks[blocks.length - 1];
+      const f = k.matches('[data-field]') ? byId[k.dataset.field] : null;
+      const follows = prev && (!h[i] || (f?.showIf && prev.ids.has(f.showIf.field)));
+      if (prev && (follows || prev.carry)) {
+        prev.kids.push(k);
+        if (h[i]) prev.h += gap + h[i];
+        idsOf(k).forEach(x => prev.ids.add(x));
+        prev.carry = prev.carry && !h[i];
+        return;
+      }
+      blocks.push({ kids: [k], h: h[i], ids: new Set(idsOf(k)), carry: isNote(k) && h[i] > 0 && h[i] < fit * 0.5 });
+    });
+    // The fewest screens that fit…
+    let n = 0;
+    let acc = -1;
+    for (const b of blocks) {
+      if (acc < 0 || acc + gap + b.h > fit) { n++; acc = b.h; } else acc += gap + b.h;
+    }
+    if (n <= 1) return [kids];
+    // …then the most even split into that many: no screen over the room (unless one piece is),
+    // and the screens as close to each other in height as they can be
+    const B = blocks.length;
+    const cost = (i, j) => blocks.slice(i, j).reduce((s, b, k) => s + b.h + (k ? gap : 0), 0);
+    const cap = Math.max(fit, ...blocks.map(b => b.h));
+    const best = Array.from({ length: n + 1 }, () => Array(B + 1).fill(Infinity));
+    const cut = Array.from({ length: n + 1 }, () => Array(B + 1).fill(0));
+    best[0][0] = 0;
+    for (let k = 1; k <= n; k++) {
+      for (let j = k; j <= B; j++) {
+        for (let i = k - 1; i < j; i++) {
+          const c = cost(i, j);
+          if (c > cap && j - i > 1) continue;
+          const v = best[k - 1][i] + c * c;
+          if (v < best[k][j]) { best[k][j] = v; cut[k][j] = i; }
+        }
+      }
+    }
+    if (!Number.isFinite(best[n][B])) return [kids];
+    const screens = [];
+    for (let k = n, j = B; k > 0; k--) {
+      const i = cut[k][j];
+      screens.unshift(blocks.slice(i, j).flatMap(b => b.kids));
+      j = i;
+    }
+    return screens;
+  }
+  /** Show the current screen's pieces, the others waiting */
+  function paintScreen() {
+    const list = packs[currentId];
+    const on = new Set(list ? list[screenNo] || [] : pieces(currentId));
+    for (const k of pieces(currentId)) k.toggleAttribute('data-off', !on.has(k));
+  }
+  /** The questions on a screen of a page (the whole page before it's been worked out) */
+  const screenFieldIds = (pid = currentId, n = screenNo) => new Set((packs[pid] ? packs[pid][n] || [] : pieces(pid)).flatMap(idsOf));
+  function screenOf(pid, fid) {
+    const el = fieldEl(fid);
+    const i = el && packs[pid] ? packs[pid].findIndex(kids => kids.some(k => k === el || k.contains(el))) : 0;
+    return Math.max(0, i);
+  }
+  /**
+   * Where to pick up on a page: the first screen with a required answer still missing, from the
+   * reading that leads into it (screens with only words on them, like Before You Begin's)
+   */
+  function openScreen(pid) {
+    const list = packs[pid];
+    if (!list) return 0;
+    const a = readAnswers();
+    const asks = (kids) => kids.flatMap(idsOf).some(id => isInput(byId[id] || {}) || isUpload(byId[id] || {}));
+    let i = list.findIndex(kids => kids.flatMap(idsOf).some(id => {
+      const f = byId[id];
+      return f && f.required && (isInput(f) || isUpload(f)) && isVisible(f, a, byId) && !!fieldError(f, isUpload(f) ? files[id] : a[id], lang);
+    }));
+    if (i < 0) return 0;
+    while (i > 0 && !asks(list[i - 1])) i--;
+    return i;
+  }
+
+  /**
+   * Put a page on screen, a screen of it: `screen` is a number, 'last', or 'open' (the first with a
+   * required answer missing); `at` or `focusField` picks the screen holding that question. Going
+   * forward it slides in from the right, going back from the left. Resolves once it's in the page.
+   */
+  function show(id, { dir = 0, screen = 0, at = null, focus = true, focusField = null, scroll = true } = {}) {
     if (!pageEl(id)) id = stepIds()[0];
-    const changed = id !== currentId;
-    currentId = id;
-    reach(id);
-    if (id === 'review') fromReview = false;
-    for (const [pid, el] of Object.entries(pageEls)) el.hidden = pid !== id;
-    ui.review.hidden = id !== 'review';
-    if (pageEl(id)?.querySelector('.af-map-frame')) requestAnimationFrame(() => declutter(pageEl(id)));
-    if (id === 'review') buildReview();
-    if (changed) {
-      ui.steps.open = false;
-      if (!lastNav?.reason) navNote(null);
-      if (lastNotice?.kind === 'success') notice(null); // "Welcome back" has done its job once they move on
-    }
-    paintHeader();
-    const moving = changed && dir && !reducedMotion();
-    if (moving) {
-      enter(pageEl(id), dir * 28);
-      enter(ui.stepTitle, dir * 14);
-    }
-    if (testRun) {
-      paintTestBar();
-      const note = changed && root.querySelector('[data-test-note]'); // "Filled in …" was about the last page
-      if (note) note.textContent = '';
-    }
-    if (scroll && !focusField) scrollToForm();
-    growPage(id);
-    requestAnimationFrame(paintMini);
-    const after = () => {
+    const pageChanged = id !== currentId;
+    const update = () => {
+      currentId = id;
+      reach(id);
+      if (id === 'review') fromReview = false;
+      for (const [pid, el] of Object.entries(pageEls)) el.hidden = pid !== id;
+      ui.review.hidden = id !== 'review';
+      if (id === 'review') {
+        screenNo = 0;
+        buildReview();
+      } else {
+        if (pageChanged || !packs[id]) {
+          ui.stepTitle.textContent = titleOf(id); // measured with this step's own name above it
+          packs[id] = pack(id);
+        }
+        const n = screensIn(id);
+        const want = at || focusField ? screenOf(id, at || focusField) : screen === 'last' ? n - 1 : screen === 'open' ? openScreen(id) : screen;
+        screenNo = Math.max(0, Math.min(n - 1, Number(want) || 0));
+        paintScreen();
+      }
+      if (pageEl(id)?.querySelector('.af-map-frame')) requestAnimationFrame(() => declutter(pageEl(id)));
+      if (pageChanged || dir) {
+        ui.steps.open = false;
+        if (!lastNav?.reason) navNote(null);
+        if (lastNotice?.kind === 'success') notice(null); // "Welcome back" has done its job once they move on
+      }
+      paintHeader();
+      if (testRun) {
+        paintTestBar();
+        const note = (pageChanged || dir) && root.querySelector('[data-test-note]'); // "Filled in …" was about the last page
+        if (note) note.textContent = '';
+      }
+      if (scroll && !focusField) scrollToForm(!!dir);
+      growPage(id);
+    };
+    return swap(update, dir, !pageChanged).then(() => {
       if (focusField) focusOn(focusField);
       else if (focus) ui.stepTitle.focus({ preventScroll: true });
-    };
-    if (moving) setTimeout(after, SLIDE_MS); else after();
+    });
   }
 
   async function next() {
-    if (busy) return;
+    if (busy || moving) return;
     navNote(null);
     if (currentId === 'review') { submit(); return; }
     // An address check still on its way decides this page's answer: wait for it (briefly),
@@ -552,30 +937,39 @@ function init(root, cfg, mode) {
       try { await Promise.race([flushArea(), wait(9000)]); } finally { setBusy(false); }
     }
     const a = readAnswers();
-    const errors = formErrors(form, a, files, [currentId], lang);
+    // Only this screen's questions: the ones still to come get their own turn
+    const here = screenFieldIds();
+    const errors = Object.fromEntries(Object.entries(formErrors(form, a, files, [currentId], lang)).filter(([id]) => here.has(id)));
     if (Object.keys(errors).length) { showPageErrors(errors); return; }
+    const last = screenNo >= screensIn(currentId) - 1;
     const stop = stopFor(form, a);
-    if (stop && stop.page === currentId) { showStop(stop); return; }
+    if (stop && stop.page === currentId && (here.has(stop.field) || last)) { showStop(stop); return; }
     setBusy(true);
     try {
       if (!(await start())) return;
-      const ids = stepIds(a);
-      const target = fromReview ? 'review' : ids[ids.indexOf(currentId) + 1] || 'review';
-      show(target, { dir: 1 });
+      if (fromReview) await show('review', { dir: 1 });
+      else if (!last) await show(currentId, { dir: 1, screen: screenNo + 1 });
+      else {
+        const ids = stepIds(a);
+        await show(ids[ids.indexOf(currentId) + 1] || 'review', { dir: 1 });
+      }
       save();
     } finally {
       setBusy(false);
     }
   }
+  /** A screen back (from a page's first, the last screen of the page before); false at the very start */
   function back() {
+    if (moving) return true;
     navNote(null);
+    if (screenNo > 0 && currentId !== 'review') { show(currentId, { dir: -1, screen: screenNo - 1 }).then(save); return true; }
     const ids = stepIds();
     const at = ids.indexOf(currentId);
-    if (at <= 0) return;
-    show(ids[at - 1], { dir: -1 });
-    save();
+    if (at <= 0) return false;
+    show(ids[at - 1], { dir: -1, screen: 'last' }).then(save);
+    return true;
   }
-  /** Jump to a page already reached (the steps list, Edit, Answer it) */
+  /** Jump to a page already reached (the steps list, Edit, Answer it, Change) */
   function jump(id, { focusField = null } = {}) {
     if (!reached(id) && !previewing) return;
     if (id === currentId && !focusField) return;
@@ -585,8 +979,7 @@ function init(root, cfg, mode) {
       if (stop && order(stop.page) < order(id)) { showStop(stop); return; }
     }
     if (currentId === 'review' && id !== 'review') fromReview = true;
-    show(id, { dir, focusField });
-    save();
+    show(id, { dir, focusField, screen: 'open' }).then(save);
   }
   function setBusy(on) {
     busy = on;
@@ -625,6 +1018,7 @@ function init(root, cfg, mode) {
     if (!el || el.hidden) return;
     // The service-area answer comes from the address until the family is asked: send them to the address
     if (byId[id]?.type === 'area' && el.querySelector('[data-area-ask]')?.hidden && homeAddressId()) { focusOn(homeAddressId()); return; }
+    if (packs[currentId] && el.closest('[data-off]')) { screenNo = screenOf(currentId, id); paintScreen(); paintHeader(); }
     openTucked(el, { animate: false });
     el.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
     const target = el.querySelector('input:not([type=file]):not([type=radio]):not([type=checkbox]):not([disabled]), textarea, select')
@@ -669,8 +1063,10 @@ function init(root, cfg, mode) {
   }
   function paintSaveState() {
     for (const el of ui.saveStates) {
-      el.textContent = lastSave ? T(lastSave) : '';
-      el.dataset.kind = lastSave || '';
+      const top = !!el.closest('[data-top]');
+      const quiet = lastSave === 'unsaved' && top; // it saves on its own a moment later
+      el.textContent = lastSave && !quiet ? T(top && lastSave === 'saved' ? 'savedShort' : lastSave) : '';
+      el.dataset.kind = quiet ? '' : lastSave || '';
     }
   }
 
@@ -733,8 +1129,13 @@ function init(root, cfg, mode) {
     paintStop();
     ui.form.hidden = true;
     ui.stop.hidden = false;
-    const top = ui.stop.getBoundingClientRect().top;
-    if (top < headerOffset()) window.scrollTo({ top: window.scrollY + top - headerOffset(), behavior: reducedMotion() ? 'auto' : 'smooth' });
+    if (focused) window.scrollTo({ top: 0, behavior: 'auto' });
+    else {
+      const top = ui.stop.getBoundingClientRect().top;
+      if (top < headerOffset()) window.scrollTo({ top: window.scrollY + top - headerOffset(), behavior: reducedMotion() ? 'auto' : 'smooth' });
+    }
+    enter(ui.stop, 0, 14, 320);
+    paintTitle();
     ui.stopTitle.focus({ preventScroll: true });
     save();
   }
@@ -760,7 +1161,7 @@ function init(root, cfg, mode) {
     stopShown = null;
     ui.stop.hidden = true;
     ui.form.hidden = false;
-    show(currentId, { focusField: field && fieldEl(field) ? field : null });
+    show(currentId, { focusField: field && fieldEl(field) ? field : null, at: field && fieldEl(field) ? field : null });
   });
 
   // ── Review ───────────────────────────────────────────────────────
@@ -774,6 +1175,27 @@ function init(root, cfg, mode) {
     const v = a[f.id];
     if (f.type === 'address') return !v || !['line1', 'city', 'zip'].some(k => String(v[k] || '').trim());
     return blank(v);
+  }
+  /**
+   * Review: a row per step with its answers in a line (Plaid's list), opened to every answer with a
+   * Change beside each. A step with something missing opens by itself, with Answer it.
+   */
+  const reviewOpen = new Set(); // steps opened by hand (kept through redraws)
+  let reviewAll = false;
+  const CHEV_SVG = '<svg class="af-review-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>';
+  function setReviewOpen(sec, open) {
+    if (!sec) return;
+    sec.toggleAttribute('data-open', open);
+    sec.querySelector('[data-review-toggle]')?.setAttribute('aria-expanded', String(open));
+    const body = sec.querySelector('.af-review-body');
+    if (body) body.hidden = !open;
+    if (open) reviewOpen.add(sec.dataset.page); else reviewOpen.delete(sec.dataset.page);
+  }
+  function paintReviewAll() {
+    if (!ui.reviewAll) return;
+    ui.reviewAll.dataset.afT = reviewAll ? 'reviewCloseAll' : 'reviewOpenAll';
+    ui.reviewAll.textContent = T(ui.reviewAll.dataset.afT);
+    ui.reviewAll.setAttribute('aria-expanded', String(reviewAll));
   }
   function buildReview() {
     const a = readAnswers();
@@ -796,6 +1218,7 @@ function init(root, cfg, mode) {
         const dt = document.createElement('dt');
         dt.textContent = f.label || '';
         const dd = document.createElement('dd');
+        let change = null;
         if (errors[f.id]) {
           needs = true;
           row.classList.add('af-review-missing');
@@ -817,18 +1240,36 @@ function init(root, cfg, mode) {
             if (thumb) { const img = document.createElement('img'); img.src = thumb; img.alt = ''; dd.append(img); }
             dd.append(document.createTextNode(f.type === 'video' ? T('videoUploaded') : T('photoAdded')));
           } else dd.textContent = reviewText(f, item, a);
+          change = document.createElement('button');
+          change.type = 'button';
+          change.className = 'af-btn af-btn--link af-review-change';
+          change.dataset.edit = f.id;
+          change.dataset.page = p.id;
+          change.textContent = T('change');
+          change.setAttribute('aria-label', `${T('change')}: ${f.label || ''}`);
         } else continue;
         row.append(dt, dd);
+        if (change) row.append(change);
         rows.push(row);
       }
       if (!rows.length) continue;
       const sec = document.createElement('section');
       sec.className = 'af-review-section';
+      sec.dataset.page = p.id;
       if (needs) sec.dataset.missing = '1';
       const head = document.createElement('div');
       head.className = 'af-review-head';
       const h = document.createElement('h3');
-      h.textContent = p.title;
+      h.className = 'af-review-h';
+      const tg = document.createElement('button');
+      tg.type = 'button';
+      tg.className = 'af-review-toggle';
+      tg.dataset.reviewToggle = p.id;
+      tg.setAttribute('aria-controls', `af-rv-${p.id}`);
+      tg.innerHTML = `<span class="af-step-mark" aria-hidden="true">${needs ? '!' : CHECK_SVG}</span><span class="af-review-name"><span class="af-review-title"></span><span class="af-review-sum"></span></span>${CHEV_SVG}`;
+      tg.querySelector('.af-review-title').textContent = p.title;
+      tg.querySelector('.af-review-sum').textContent = needs ? T('reviewNeeds') : summaryOf(p.id, a) || T(rows.length === 1 ? 'reviewSectionOne' : 'reviewSection', { n: rows.length });
+      h.append(tg);
       const edit = document.createElement('button');
       edit.type = 'button';
       edit.className = 'af-btn af-btn--link af-review-edit';
@@ -838,12 +1279,18 @@ function init(root, cfg, mode) {
       edit.querySelector('span').textContent = T('edit');
       edit.setAttribute('aria-label', T('editSection', { name: p.title }));
       head.append(h, edit);
+      const body = document.createElement('div');
+      body.className = 'af-review-body';
+      body.id = `af-rv-${p.id}`;
       const dl = document.createElement('dl');
       dl.append(...rows);
-      sec.append(head, dl);
+      body.append(dl);
+      sec.append(head, body);
+      setReviewOpen(sec, needs || reviewAll || reviewOpen.has(p.id));
       sections.push(sec);
     }
     ui.reviewList.replaceChildren(...sections);
+    paintReviewAll();
   }
   /** The first question on a page (where Edit puts the cursor) */
   const firstQuestion = (pid) => fields.find(f => f.page === pid && (isInput(f) || isUpload(f)) && !fieldEl(f.id)?.hidden)?.id || null;
@@ -888,18 +1335,22 @@ function init(root, cfg, mode) {
     ui.stop.hidden = true;
     ui.done.hidden = false;
     root.classList.add('is-done'); // the steps beside the form have done their job
-    paintMini();
     paintDone();
+    paintSegs(stepIds(), new Set());
+    paintTitle();
     if (testRun?.by) startTrace();
     // The sun rises once (the styles keep it still under reduced motion)
     ui.done.classList.remove('is-in');
     void ui.done.offsetWidth;
     ui.done.classList.add('is-in');
-    const top = ui.done.getBoundingClientRect().top + window.scrollY - headerOffset();
+    const top = focused ? 0 : ui.done.getBoundingClientRect().top + window.scrollY - headerOffset();
     window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
     ui.done.querySelector('[data-done-title]').focus({ preventScroll: true });
   }
   function paintDone() {
+    // Nothing left to save: the way out of the bar just closes it
+    const out = ui.exit?.querySelector('[data-af-t]');
+    if (out) { out.dataset.afT = 'close'; out.textContent = T('close'); }
     const line = ui.done.querySelector('[data-done-email]');
     line.textContent = doneShown.already ? T('doneAgain') : doneShown.email ? T('doneEmail', { email: doneShown.email }) : '';
   }
@@ -1489,12 +1940,12 @@ function init(root, cfg, mode) {
     if (!testRun) return;
     ui2.bar.dataset.state = testRun.by ? 'on' : 'sign-in';
     // After the first page it's one slim row (the badge, Fill, End): the words were read once
-    ui2.bar.classList.toggle('is-compact', !!testRun.by && !!currentId && currentId !== stepIds()[0]);
+    ui2.bar.classList.toggle('is-compact', !!testRun.by && !!currentId && (currentId !== stepIds()[0] || screenNo > 0));
     ui2.barText.textContent = testRun.by ? TEST.lead(testRun.by) : TEST.signIn;
     ui2.fill.hidden = !testRun.by;
     ui2.signIn.hidden = !!testRun.by;
     if (ui2.end) ui2.end.hidden = !testRun.by;
-    if (testRun.by && !/^Test run · /.test(document.title)) document.title = `Test run · ${document.title}`;
+    paintTitle();
   }
   ui2.end?.addEventListener('click', () => store.clear()); // the link goes back to the admin
 
@@ -1865,20 +2316,6 @@ function init(root, cfg, mode) {
     p.append(before || '', b, after || '');
   }
 
-  // ── The bar that follows a phone down the page ───────────────────
-  let miniFrame = 0;
-  function paintMini() {
-    miniFrame = 0;
-    if (!ui.mini) return;
-    // On as the step's own progress line goes under the site header; off near the end of the card
-    const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 72;
-    const line = ui.bar.parentElement.getBoundingClientRect();
-    const card = ui.form.getBoundingClientRect();
-    const on = !root.hidden && !ui.form.hidden && line.bottom < top + 2 && card.bottom > top + 160;
-    if (ui.mini.classList.contains('is-on') !== on) ui.mini.classList.toggle('is-on', on);
-  }
-  const onScroll = () => { if (!miniFrame) miniFrame = requestAnimationFrame(paintMini); };
-
   // ── Save and finish later ────────────────────────────────────────
   const dlg = ui.dialog;
   const openLater = () => {
@@ -1923,18 +2360,19 @@ function init(root, cfg, mode) {
   // ── Language ─────────────────────────────────────────────────────
   function setLang(l, { remember: keep = true, persist = true } = {}) {
     if (l === lang || !(form.languages || []).includes(l)) return;
+    const anchor = currentId !== 'review' ? [...screenFieldIds()][0] : null;
     lang = l;
     if (keep) langPref.set(l);
     draw();
     applyWords();
-    show(currentId, { focus: false, scroll: false });
+    show(currentId, { focus: false, scroll: false, at: anchor && fieldEl(anchor) ? anchor : null });
     if (!reducedMotion()) [ui.form, ui.stop, ui.done].forEach(el => !el.hidden && el.animate?.([{ opacity: 0.4 }, { opacity: 1 }], { duration: 220, easing: EASE }));
     if (persist) save();
   }
-  ui.langSwitch.addEventListener('click', (e) => {
+  ui.langSwitches.forEach(sw => sw.addEventListener('click', (e) => {
     const b = e.target.closest('[data-lang]');
     if (b) setLang(b.dataset.lang);
-  });
+  }));
 
   // ── Open/closed + Turnstile, from the live settings ──────────────
   const closedCard = document.querySelector('[data-closed]');
@@ -1946,7 +2384,7 @@ function init(root, cfg, mode) {
     if (cta) {
       // Closed, it goes to the "tell me when we open" box just below
       cta.setAttribute('href', '#application');
-      cta.dataset.afT = open ? 'heroStart' : 'heroNotify';
+      cta.dataset.afT = open ? (token ? 'heroContinue' : 'heroStart') : 'heroNotify';
       cta.classList.toggle('btn-glow', open);
       cta.textContent = T(cta.dataset.afT);
     }
@@ -2034,7 +2472,8 @@ function init(root, cfg, mode) {
     if (testRun?.signIn) paintTestBar();
     if (previewing) {
       notice(live ? 'previewLive' : 'preview', 'info');
-      document.getElementById('application')?.scrollIntoView({ block: 'start' }); // straight to the form, past the hero
+      if (live) begin();
+      else document.getElementById('application')?.scrollIntoView({ block: 'start' }); // straight to the overview, past the hero
     }
     if (!cfg.turnstileSiteKey || token || previewing || testRun) return;
     turnstileSiteKey = cfg.turnstileSiteKey;
@@ -2106,10 +2545,11 @@ function init(root, cfg, mode) {
     const ids = stepIds(answers);
     const at = ids.includes(r.page) ? r.page : ids[0];
     currentId = null;
-    show(at, { focus: false, scroll: false });
+    show(at, { focus: false, scroll: false, screen: 'open' });
     remember();
+    showApp(true); // the hero's button says "Continue"
     notice(remindersOff ? 'remindersOff' : 'welcomeBack', 'success');
-    if (fromLink) document.getElementById('application')?.scrollIntoView({ block: 'start' });
+    if (fromLink || session.get()) begin();
   }
 
   // ── Live preview for the form editor (?preview=live) ─────────────
@@ -2126,8 +2566,9 @@ function init(root, cfg, mode) {
       if (focusPage && stopShown) { stopShown = null; ui.stop.hidden = true; ui.form.hidden = false; }
       if (focusPage && doneShown) { doneShown = null; ui.done.hidden = true; ui.form.hidden = false; root.classList.remove('is-done'); }
       const target = focusPage || (pageEl(currentId) ? currentId : stepIds()[0]);
-      if (target !== currentId) currentId = null;
-      show(target, { focus: false, scroll: false });
+      const anchor = d.focus && byId[d.focus] ? d.focus : (target === currentId && currentId !== 'review' ? [...screenFieldIds()][0] : null);
+      currentId = null;
+      show(target, { focus: false, scroll: false, at: anchor && fieldEl(anchor) ? anchor : null });
       const el = d.focus && byId[d.focus] ? fieldEl(d.focus) : null;
       if (el) openTucked(el, { animate: false });
       if (el && !el.hidden) {
@@ -2148,9 +2589,61 @@ function init(root, cfg, mode) {
     if (go) jump(go.dataset.goto);
   });
   // The rail appears or goes as the window crosses its width: paint it when it shows up
-  matchMedia('(min-width: 1080px)').addEventListener?.('change', () => { paintHeader(); paintMini(); }, { signal });
-  ui.mini?.addEventListener('click', () => scrollToForm(true));
-  window.addEventListener('scroll', onScroll, { passive: true, signal });
+  matchMedia('(min-width: 1080px)').addEventListener?.('change', () => paintHeader(), { signal });
+
+  // In and out of the application's own screen: the hero's button, the overview, Save and exit
+  const heroCta = document.querySelector('[data-hero-cta]');
+  heroCta?.addEventListener('click', (e) => {
+    if (root.hidden || testRun?.signIn) return; // closed: it goes to the "tell me when we open" box
+    e.preventDefault();
+    begin();
+  }, { signal });
+  ui.hubGo?.addEventListener('click', () => begin());
+  ui.hubList?.addEventListener('click', (e) => {
+    const go = e.target.closest('[data-goto]');
+    if (go && !go.disabled) begin(go.dataset.goto);
+  });
+  ui.exit?.addEventListener('click', () => exitFocus());
+  // Escape closes "All steps" (and a press anywhere else does)
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ui.steps.open) { ui.steps.open = false; ui.steps.querySelector('summary')?.focus(); } }, { signal });
+  document.addEventListener('pointerdown', (e) => { if (ui.steps.open && !ui.steps.contains(e.target)) ui.steps.open = false; }, { signal });
+  // Back from the phone or the browser: a screen back (see armTrap). The page's inline gate
+  // (ApplicationPage.astro) asks this first, ahead of the site's router; true = handled here.
+  window.__afPop = () => {
+    if (swallow) { swallow = false; return true; }
+    if (!focused) return false;
+    trapped = false;
+    if (ui.dialog.open) { ui.dialog.close(); return true; }
+    if (stopShown || doneShown || !back()) exitFocus({ fromPop: true });
+    return true;
+  };
+  const rearm = () => { if (focused && !trapped) armTrap(); };
+  document.addEventListener('pointerdown', rearm, { capture: true, signal });
+  document.addEventListener('keydown', rearm, { capture: true, signal });
+  // A real change of window size (not a phone's address bar sliding away) works the screens out again, keeping their place
+  let packTimer = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(packTimer);
+    packTimer = setTimeout(() => {
+      if (!focused || !packSize || !currentId || currentId === 'review' || ui.form.hidden) return;
+      const [w0, h0] = packSize.split('x').map(Number);
+      if (Math.abs(innerWidth - w0) < 40 && Math.abs(innerHeight - h0) < 120) return;
+      const anchor = [...screenFieldIds()][0];
+      delete packs[currentId];
+      show(currentId, { at: anchor, focus: false, scroll: false });
+    }, 180);
+  }, { passive: true, signal });
+
+  // Review: a step opens to its answers; "Show all answers" opens every one
+  ui.review.addEventListener('click', (e) => {
+    const tg = e.target.closest('[data-review-toggle]');
+    if (tg) { setReviewOpen(tg.closest('.af-review-section'), tg.getAttribute('aria-expanded') !== 'true'); return; }
+  });
+  ui.reviewAll?.addEventListener('click', () => {
+    reviewAll = !reviewAll;
+    ui.review.querySelectorAll('.af-review-section').forEach(sec => setReviewOpen(sec, reviewAll || sec.hasAttribute('data-missing')));
+    paintReviewAll();
+  });
 
   ui.form.addEventListener('click', (e) => {
     const more = e.target.closest('[data-more-open], [data-more-close]');
@@ -2286,6 +2779,22 @@ function init(root, cfg, mode) {
     else if (e.key === 'Enter') { e.preventDefault(); if (sug.active >= 0) pickSuggestion(sug.active); else closeSuggest(); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSuggest(); }
     else if (e.key === 'Tab') closeSuggest();
+  });
+  // Enter (the keyboard's "next") goes to the next box on the screen; on the last one it's Continue
+  ui.form.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing || e.shiftKey) return;
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement) || ['radio', 'checkbox', 'file', 'submit', 'button'].includes(t.type) || t.closest('.af-hp')) return;
+    const boxes = [...(pageEl(currentId)?.querySelectorAll('input:not([type=hidden]):not([type=file]):not([disabled]), select, textarea') || [])]
+      .filter(x => x.getClientRects().length && !x.closest('[hidden], [data-off]'))
+      .filter((x, i, all) => x.type !== 'radio' || all.findIndex(y => y.type === 'radio' && y.name === x.name) === i); // a choice group once
+    const after = boxes[boxes.indexOf(t) + 1];
+    if (boxes.includes(t) && after) {
+      e.preventDefault();
+      // A choice group: the picked choice, else its first
+      const to = after.type === 'radio' ? pageEl(currentId).querySelector(`input[type=radio][name="${CSS.escape(after.name)}"]:checked`) || after : after;
+      to.focus();
+    }
   });
 
   // Drag and drop onto a photo or video box (computers); a file dropped anywhere else is ignored, not opened
