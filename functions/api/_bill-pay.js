@@ -45,6 +45,7 @@ import { readTxns } from './_mercury-txns.js';
 import { vendorLikeness, dollars } from './_spend-match.js';
 import { readLedgers, costCodes } from './_job-ledger.js';
 import { billDocs, askForBill } from './_vendors.js';
+import { releaseRampHolds } from './_ramp.js';
 
 export const KEY = 'bill-pay';
 export const PAY_MODES = ['off', 'request', 'send'];
@@ -430,7 +431,7 @@ async function holdBill(env, bill, a, docs, { now = Date.now() } = {}) {
   if (docs.error) {
     reason = `JobTread didn’t answer, so ${bill.vendor}’s W-9 and insurance couldn’t be checked. It checks again within 15 minutes.`;
   } else {
-    reason = `Not paid until ${bill.vendor} sends ${docs.state.staff || 'a current W-9 and insurance certificate'}.`;
+    reason = `Not paid until ${bill.vendor} sends ${docs.state.send || 'a W-9 and a current certificate of insurance'}${docs.state.detail ? ` (${docs.state.detail})` : ''}.`;
     const asked = await askForBill(env, docs.vendor, docs.state, { number: bill.number, cents: bill.balance ?? (bill.cents - (bill.paid || 0)) }, { now })
       .catch((e) => ({ ok: false, error: e.message }));
     if (asked.ok && !asked.skipped) hold.askedAt = iso;
@@ -439,7 +440,7 @@ async function holdBill(env, bill, a, docs, { now = Date.now() } = {}) {
   if (first && !docs.error) {
     hold.noteId = await billNote(env, bill.id, {
       name: 'Approved, not paid yet', pinned: true,
-      message: `Approved by ${a.decidedBy || 'an approver'} on ${shortDay(Date.parse(a.decidedAt || iso))}, and not paid yet: ${bill.vendor} needs to send ${docs.state.staff}. `
+      message: `Approved by ${a.decidedBy || 'an approver'} on ${shortDay(Date.parse(a.decidedAt || iso))}, and not paid yet: ${bill.vendor} needs to send ${docs.state.send}${docs.state.detail ? ` (${docs.state.detail})` : ''}. `
         + (hold.noEmail ? 'There’s no email for them in JobTread, so add one to their contact and they’re asked within 15 minutes. ' : 'They were emailed for it with their own upload link. ')
         + 'This bill pays itself once their documents check out. (SOARD website, Job Costs → Bills)',
     }).catch(() => null);
@@ -464,7 +465,7 @@ async function releaseHold(env, bill, a, { now = Date.now() } = {}) {
   return upsertApproval(env.DB, bill.id, { payState: null, payError: null, hold: null });
 }
 
-/** A vendor's documents checked out: each of their held bills goes on to be paid → how many */
+/** A vendor's documents checked out: each of their held bills goes on to be paid, here and in Ramp → how many */
 export async function releaseVendorHolds(env, accountId, { now = Date.now() } = {}) {
   await ensureBillPaySchema(env.DB);
   const rows = (await env.DB.prepare("SELECT a.bill_id FROM bill_approvals a JOIN spend_bills b ON b.id = a.bill_id WHERE a.pay_state = 'held' AND b.account_id = ?").bind(accountId).all()).results || [];
@@ -473,7 +474,7 @@ export async function releaseVendorHolds(env, accountId, { now = Date.now() } = 
     const p = await payBill(env, r.bill_id, { now }).catch(() => null);
     if (p && p.state !== 'held') n++;
   }
-  return n;
+  return n + await releaseRampHolds(env, accountId, { now }).catch(() => 0);
 }
 
 /** Pay approved bills that haven't gone yet (payment turned on later, a failed day, tomorrow's cap) */

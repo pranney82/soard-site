@@ -32,6 +32,7 @@
  * The stop is in ./_bill-pay.js: an approved bill for a vendor whose W-9 or
  * insurance isn't current is held, says so on the bill in JobTread, and
  * pays itself once the documents check out (releaseVendorHolds, from here).
+ * While Ramp still pays bills, ./_ramp.js holds them in Ramp the same way.
  *
  * The site keeps no copy of the documents. D1 holds only the work: links
  * (vendor_links, SHA-256 of each token), who was asked when (vendor_asks),
@@ -48,6 +49,7 @@ import { vendorKey, dollars } from './_spend-match.js';
 import { FIELD_CONTACT_EMAIL } from './_reveal-invites.js';
 import { readDocument, mergeCoi, judgeCoi, judgeW9, documentType, requirementLines, longDate } from './_vendor-read.js';
 import { releaseVendorHolds, cachedRecipients, recipientFor } from './_bill-pay.js';
+import { maybeRunRamp, rampConfigured } from './_ramp.js';
 
 export const STATE_KEY = 'vendors';
 export const UPLOAD_PAGE = `${SITE_ORIGIN}/vendor-documents/`;
@@ -292,8 +294,12 @@ async function uploadToJt(env, { bytes, type }, fetchImpl = fetch) {
 /**
  * Where a vendor stands against the minimums. v: readJtVendor's answer.
  * → { ok, expiring, w9, gl, wc ('current'|'expiring'|'expired'|'missing'|'not-needed'),
- *     items: [{ doc, text (to the vendor), staff (to SOARD) }], needs: ['w9'|'coi'], label, staff }
+ *     items: [{ doc, text (to the vendor), staff (to SOARD) }], needs: ['w9'|'coi'], label,
+ *     staff ("no W-9, liability ended Sep 30"), send ("a W-9 and a current certificate of insurance"),
+ *     detail ("liability ended Sep 30") }
  */
+const sendOf = (docs) => [docs.includes('w9') ? 'a W-9' : null, docs.includes('coi') ? 'a current certificate of insurance' : null].filter(Boolean).join(' and ');
+
 export function docsState(v, req = DEFAULTS, { now = Date.now() } = {}) {
   const today = isoDay(now);
   const soon = isoDay(now + (req.renewDays || 30) * DAY);
@@ -321,6 +327,9 @@ export function docsState(v, req = DEFAULTS, { now = Date.now() } = {}) {
     needs: [...new Set(items.map((i) => i.doc))],
     label,
     staff: items.filter((i) => !i.soon || ok).map((i) => i.staff).join(', '),
+    send: sendOf(items.filter((i) => !i.soon || ok).map((i) => i.doc)),
+    // What "send" leaves out: which insurance, and when it ended
+    detail: items.filter((i) => i.doc === 'coi' && (!i.soon || ok)).map((i) => i.staff).join(', '),
   };
 }
 
@@ -748,6 +757,9 @@ export async function vendorsThatNeedDocs(DB, { now = Date.now() } = {}) {
     const forApproval = b.status === 'pending' ? !ramp.has(b.id) : !!b.state;
     if (forApproval && owed > 0 && b.status !== 'denied' && b.state !== 'rejected' && !['requested', 'sent', 'paid'].includes(b.pay_state)) put(b.account_id, 'bill', { id: b.id, number: b.number, cents: owed });
   }
+  // Bills on hold in Ramp (./_ramp.js): reminded and let go like the ones held here
+  const rampHeld = await DB.prepare("SELECT account_id, jt_bill_id, invoice, cents FROM ramp_holds WHERE state = 'held' AND account_id IS NOT NULL").all().then((r) => r.results || [], () => []);
+  for (const h of rampHeld) put(h.account_id, 'held', { id: h.jt_bill_id, number: h.invoice, cents: h.cents, ramp: true });
   const onJobs = await DB.prepare('SELECT jt_id, facts FROM vendors WHERE jt_id IS NOT NULL').all().then((r) => r.results || [], () => []);
   for (const r of onJobs) if ((parseJson(r.facts).jobs || []).some((j) => j.order)) put(r.jt_id, 'job');
   // Insurance the site is tracking: the renewal is asked for ahead of time
@@ -800,7 +812,7 @@ export async function sweep(env, { now = Date.now(), fetchImpl = fetch } = {}) {
       if ((ask?.asks || 0) >= 3) {
         await postOnce(env, v.id, 'ignored', slackCard({
           icon: '⏳', title: `${v.name} hasn’t sent their documents`,
-          lead: `An approved bill is waiting on ${state.staff}. They’ve been emailed ${ask.asks} times; a call may do it.`,
+          lead: `${w.bill?.ramp ? 'A bill on hold in Ramp' : 'An approved bill'} is waiting on ${state.send || 'their documents'}${state.detail ? ` (${state.detail})` : ''}. They’ve been emailed ${ask.asks} times; a call may do it.`,
           facts: [['Waiting', w.bill ? dollars(w.bill.cents) : 'An approved bill'], ['Email', v.email || 'None in JobTread']],
           buttons: [{ label: 'Open in JobTread', url: jtVendorUrl(v.id) }],
         }), `${v.name}: documents`, now);
@@ -835,6 +847,8 @@ export async function maybeRunVendors(env, { now = Date.now(), fetchImpl = fetch
       } catch (e) { errors.push(`JobTread vendors: ${e.message}`); }
     }
     try { Object.assign(report, await sweep(env, { now, fetchImpl })); } catch (e) { errors.push(e.message); }
+    // While Ramp still pays bills: held there until the vendor's papers are in (./_ramp.js keeps its own errors)
+    if (rampConfigured(env)) report.ramp = await maybeRunRamp(env, { now, fetchImpl });
     if (mercuryConfigured(env) && (force || now - Date.parse(st.mercuryAt || 0) > DAY)) {
       try {
         report.toMercury = await w9sToMercury(env, { now, fetchImpl });

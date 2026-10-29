@@ -147,6 +147,8 @@ test('what a vendor needs: W-9, liability and workers’ comp, current, ending s
   s = docsState({ ...base, w9: false, glExpires: '2026-09-30', wcExpires: null }, DEFAULTS, { now: NOW });
   assert.equal(s.ok, false);
   assert.deepEqual(s.needs, ['w9', 'coi']);
+  assert.equal(s.send, 'a W-9 and a current certificate of insurance', 'what to send, said as a thing to send');
+  assert.equal(s.detail, 'general liability insurance ended September 30, 2026, no workers’ compensation insurance', 'which insurance, without repeating the W-9');
   assert.equal(s.label, 'Missing');
   assert.match(s.staff, /no W-9, general liability insurance ended September 30, 2026, no workers’ compensation insurance/);
   assert.match(s.items.map((i) => i.text).join(' '), /the one we have ended September 30, 2026/);

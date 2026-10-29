@@ -309,7 +309,7 @@ test('an approved bill whose vendor’s insurance ended waits, says so in JobTre
   const r = await decideBill(env, 'BILL1', { decision: 'approved', from: APPROVER, now: NOW });
   assert.equal(r.state, 'approved');
   assert.equal(r.held, true, 'the agent can tell the approver');
-  assert.match(r.reason, /Not paid until TKO Plumbing sends general liability insurance ended September 30, 2026/);
+  assert.match(r.reason, /Not paid until TKO Plumbing sends a current certificate of insurance \(general liability insurance ended September 30, 2026\)\./);
   assert.equal(world.sent.length, 0, 'nothing paid');
   assert.deepEqual(world.updated, [{ id: 'BILL1', status: 'approved' }], 'still approved in JobTread');
   // A pinned note on the bill, for staff only
@@ -317,7 +317,7 @@ test('an approved bill whose vendor’s insurance ended waits, says so in JobTre
   assert.equal(note.targetId, 'BILL1');
   assert.equal(note.isPinned, true);
   assert.equal(note.isVisibleToVendorRoles, false);
-  assert.match(note.message, /Approved by approver@example\.org on Oct 27, and not paid yet: TKO Plumbing needs to send general liability insurance ended September 30, 2026/);
+  assert.match(note.message, /Approved by approver@example\.org on Oct 27, and not paid yet: TKO Plumbing needs to send a current certificate of insurance \(general liability insurance ended September 30, 2026\)/);
   // The vendor's email, about their payment
   assert.equal(world.emails.length, 1);
   const mail = world.emails[0][0] || world.emails[0];

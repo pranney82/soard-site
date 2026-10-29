@@ -39,6 +39,7 @@ import { readCloseouts, budgetFor, addBudgetLines, codeHistory } from './_job-cl
 import { billQueue, readBillPayConfig, saveBillPayConfig, decideBill, payBill, cachedRecipients, ensureBillPaySchema } from './_bill-pay.js';
 import { readOdd, clearOdd } from './_spend-odd.js';
 import { readDocSettings, saveDocSettings, sendPreview } from './_vendors.js';
+import { rampView } from './_ramp.js';
 import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
 
 const ok = (body = {}) => Response.json({ success: true, ...body });
@@ -71,12 +72,13 @@ async function everything(env, { setup = false } = {}) {
   // The agents' key exists from the first visit, so it can go in their instructions
   await agentKey(env.DB);
   await ensureBillPaySchema(env.DB);
-  const [closeouts, bills, billPay, odd, vendorDocs] = await Promise.all([
+  const [closeouts, bills, billPay, odd, vendorDocs, ramp] = await Promise.all([
     readCloseouts(env.DB),
     billQueue(env).catch(() => []),
     readBillPayConfig(env.DB),
     readOdd(env.DB),
     readDocSettings(env.DB),
+    rampView(env).catch((e) => ({ connected: true, error: { error: e.message } })),
   ]);
   const [ledgers, charges, rules, codes, jobs, recode, cfg, h] = await Promise.all([
     readLedgers(env.DB),
@@ -99,6 +101,7 @@ async function everything(env, { setup = false } = {}) {
     bills,
     billPay,
     vendorDocs,
+    ramp,
     odd,
   };
   if (setup && mercuryConfigured(env)) {

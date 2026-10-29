@@ -76,12 +76,15 @@ function freshData() {
       { id: 'B3', jobId: 'J1', vendor: 'Bright Paint Co', cents: 64000, owed: 64000, date: '2026-10-18', number: '12', status: 'approved', lines: [], jobName: 'Max Daniel (2026)', job: null, codes: [], big: false, link: 'https://app.jobtread.com/documents/B3',
         documents: { ok: false, label: 'Expired', staff: 'general liability insurance ended September 30, 2026', needs: ['coi'] }, vendorLink: 'https://app.jobtread.com/vendors/V3',
         approval: { state: 'approved', approvals: [{ by: 'approver@example.org', decision: 'approved', at: iso(DAY), via: 'email' }], payState: 'held',
-          payError: 'Not paid until Bright Paint Co sends general liability insurance ended September 30, 2026.', hold: { askedAt: iso(2 * 3600e3), since: iso(DAY) } } },
+          payError: 'Not paid until Bright Paint Co sends a current certificate of insurance (general liability insurance ended September 30, 2026).', hold: { askedAt: iso(2 * 3600e3), since: iso(DAY) } } },
       { id: 'B2', jobId: 'J2', vendor: 'Power Up Electrical', cents: 92000, owed: 92000, date: '2026-10-10', number: '3', status: 'pending', lines: [], jobName: 'Colin Lindsay (2026)', job: null, codes: [], big: false, link: 'https://app.jobtread.com/documents/B2',
         approval: { state: 'approved', approvals: [{ by: 'approver@example.org', decision: 'approved', at: iso(2 * DAY), via: 'email' }], payState: 'paid' } },
     ],
     billPay: { approvers: ['approver@example.org'], bigApprovers: [], bigBillCents: 1000000, dailyCapCents: 2500000, payMode: 'off', payFromAccountId: null },
     vendorDocs: { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000, renewDays: 30 },
+    ramp: { connected: true, at: iso(5 * 60e3), error: null, startsAt: iso(2 * DAY),
+      held: [{ rampId: 'RB1', accountId: 'V4', jtBillId: 'B9', vendor: 'Rivera Roofing', cents: 412500, invoice: 'INV-2207', state: 'held', reason: 'Waiting on Rivera Roofing for a W-9', heldAt: iso(DAY), askedAt: iso(DAY) }],
+      watch: [], unmatched: [{ rampId: 'RB2', vendor: 'Mystery Movers', cents: 7700, state: 'unmatched' }] },
     closeouts: [
       { jobId: 'J0', name: 'Ava Brooks (2026)', closedOn: '2026-09-30', budget: 1200000, actual: 1312000, rooms: 2, codedShare: 0.95,
         rows: [{ codeId: 'C19', budget: 500000, actual: 610000 }, { codeId: 'C20', budget: 300000, actual: 280000 }, { codeId: 'C24', budget: 400000, actual: 422000 }],
@@ -243,6 +246,10 @@ try {
   ok(active.length === 1 && active[0].startsWith('Bills'), `only Bills is the active tab (${active.join(', ')})`);
   ok(await page.evaluate(() => document.body.textContent.includes('Asked 1 days ago') || document.body.textContent.includes('Asked 24 h ago') || document.body.textContent.includes('Asked 1 day')), 'a bill says when the approver was asked');
   ok(await page.evaluate(() => [...document.querySelectorAll('.jc-charge .tag--warn')].some((e) => e.textContent === 'No W-9') && [...document.querySelectorAll('.jc-charge a')].some((a) => a.textContent === 'Vendor in JobTread')), 'a waiting bill says its vendor’s W-9 is missing, with the vendor in JobTread');
+  const rampCard = await page.evaluate(() => [...document.querySelectorAll('.card')].find((c) => c.querySelector('h3')?.textContent.startsWith('Held in Ramp'))?.textContent || '');
+  ok(rampCard.includes('Rivera Roofing · #INV-2207') && rampCard.includes('On hold in Ramp') && rampCard.includes('Waiting on Rivera Roofing for a W-9') && rampCard.includes('Vendor emailed')
+    && rampCard.includes('$4,125.00') && rampCard.includes('JobTread has no vendor by that name: Mystery Movers') && !rampCard.includes('Holds start'),
+    'Bills shows what’s on hold in Ramp, why, that the vendor was emailed, and the Ramp vendors JobTread doesn’t have');
   await page.screenshot({ path: `${OUT}bills.png` });
   await axe(page, 'Bills');
   await clickText(page, '.jc-sort button', 'Approve');
@@ -251,7 +258,7 @@ try {
   await clickText(page, '.pill', 'Approved');
   await page.waitForFunction(() => document.body.textContent.includes('Bright Paint Co · #12'));
   const held = await page.evaluate(() => [...document.querySelectorAll('.jc-charge')].find((r) => r.textContent.includes('Bright Paint Co')).textContent);
-  ok(held.includes('Approved · not paid: documents') && held.includes('Not paid until Bright Paint Co sends general liability insurance ended September 30, 2026') && held.includes('Vendor emailed'),
+  ok(held.includes('Approved · not paid: documents') && held.includes('Not paid until Bright Paint Co sends a current certificate of insurance (general liability insurance ended September 30, 2026)') && held.includes('Vendor emailed'),
     'a held bill says it’s approved, not paid, why, and that the vendor was emailed');
   await page.screenshot({ path: `${OUT}bills-held.png` });
   await axe(page, 'Approved bills');

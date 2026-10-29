@@ -588,6 +588,7 @@ function Bills({ data, act, busy }) {
       <button class="btn btn-ghost btn-sm" aria-expanded=${settings} onClick=${() => setSettings(!settings)}>Settings</button>
     </div>
     ${settings && html`<${BillSettings} data=${data} act=${act} busy=${busy} />`}
+    <${RampHolds} ramp=${data.ramp} />
     <section class="card" style="padding: 0;">
       <div class="sec-head"><h3>${labels.find(([k]) => k === show)[1]} <span class="count">${rows.length}</span></h3>
         <p class="sec-head__desc">${show === 'waiting'
@@ -596,6 +597,38 @@ function Bills({ data, act, busy }) {
       ${rows.length ? rows.map((b) => html`<${BillRow} key=${b.id} b=${b} data=${data} act=${act} busy=${busy} />`)
         : html`<div class="jc-body"><p class="sec-head__hint" style="margin: 0;">${show === 'waiting' ? 'No bills waiting. Every sub’s bill has an answer.' : 'None here.'}</p></div>`}
     </section>`;
+}
+
+/** While Ramp pays bills: the ones held there for the vendor's W-9 or insurance (functions/api/_ramp.js) */
+function RampHolds({ ramp }) {
+  if (!ramp?.connected) return null;
+  const held = ramp.held || [];
+  const watch = ramp.watch || [];
+  const unmatched = ramp.unmatched || [];
+  if (!ramp.error && !held.length && !watch.length && !unmatched.length) return null;
+  const starts = ramp.startsAt && Date.parse(ramp.startsAt) > Date.now()
+    ? new Date(ramp.startsAt).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+  const names = [...new Set(unmatched.map((r) => r.vendor))];
+  return html`<section class="card" style="padding: 0;">
+    <div class="sec-head"><h3>Held in Ramp <span class="count">${held.length}</span></h3>
+      <p class="sec-head__desc">Ramp pays bills until the switch to Mercury. A Ramp bill whose vendor’s W-9 or insurance isn’t current in JobTread is put on hold in Ramp and the vendor is emailed; the hold comes off by itself once theirs check out.${starts ? ` Holds start ${starts}. Until then these are only noted, so set a store’s Documents field to “Not needed” in JobTread first.` : ''}</p></div>
+    ${ramp.error && html`<div class="jc-body"><p class="sec-head__hint" style="margin: 0;">${ramp.error.error}</p></div>`}
+    ${[...held, ...watch].map((r) => html`<div class="jc-charge" key=${r.rampId}>
+      <span class="jc-charge__date">${day(r.heldAt)}</span>
+      <div class="jc-charge__what">
+        <strong>${r.vendor}${r.invoice ? ` · #${r.invoice}` : ''}</strong>
+        <div class="jc-charge__meta">
+          <span class="tag tag--warn">${r.state === 'held' ? 'On hold in Ramp' : starts ? 'Goes on hold when holds start' : 'Goes on hold at the next check'}</span>
+          ${r.reason ? html`<span>${r.reason}</span>` : ''}
+          ${r.askedAt ? html`<span>Vendor emailed ${ago(r.askedAt)}</span>` : ''}
+          ${r.accountId ? html`<a href=${`https://app.jobtread.com/vendors/${r.accountId}`} target="_blank" rel="noopener">Vendor in JobTread</a>` : ''}
+          ${r.jtBillId ? html`<a href=${`https://app.jobtread.com/documents/${r.jtBillId}`} target="_blank" rel="noopener">JobTread</a>` : ''}
+        </div>
+      </div>
+      <span class="jc-charge__amt">${usdCents(r.cents)}</span>
+    </div>`)}
+    ${names.length ? html`<div class="jc-body"><p class="sec-head__hint" style="margin: 0;">Not checked, because JobTread has no vendor by that name: ${names.join(', ')}. Add them as vendors in JobTread (or fix the name) and they’re checked within the hour.</p></div>` : ''}
+  </section>`;
 }
 
 function BillRow({ b, data, act, busy }) {

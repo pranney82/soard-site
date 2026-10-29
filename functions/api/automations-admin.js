@@ -92,6 +92,7 @@ export function envFacts(env) {
     companycam: has(env.COMPANYCAM_TOKEN),
     companycamCustomerStage: String(env.COMPANYCAM_CUSTOMER_STAGE || '').trim().toLowerCase() === 'on',
     mercury: has(env.MERCURY_API_TOKEN),
+    ramp: has(env.RAMP_CLIENT_ID) && has(env.RAMP_CLIENT_SECRET),
   };
 }
 
@@ -243,7 +244,7 @@ export function zeffyFacts(cfg, failing = null) {
 export async function jobCostFacts(DB) {
   const read = async (key) => JSON.parse((await DB.prepare('SELECT data FROM spend_state WHERE key = ?').bind(key).first('data').catch(() => null)) || '{}');
   const count = (sql) => DB.prepare(sql).first('n').catch(() => null);
-  const [cfg, hook, agent, unsorted, billRuns, billPay, closeouts, waitingBills, odd, fin, ven, held, asking] = await Promise.all([
+  const [cfg, hook, agent, unsorted, billRuns, billPay, closeouts, waitingBills, odd, fin, ven, held, asking, ramp, rampHeld, rampWatch] = await Promise.all([
     read('job-costs'), read('mercury-webhook'), read('agent'),
     count("SELECT count(*) AS n FROM spend_charges WHERE bucket IS NULL AND bill_id IS NULL AND cents > 0 AND status IN ('pending', 'sent')"),
     read('bill-pay-runs'), read('bill-pay'), read('closeouts'),
@@ -252,6 +253,9 @@ export async function jobCostFacts(DB) {
     read('finance'), read('vendors'),
     count("SELECT count(*) AS n FROM bill_approvals WHERE pay_state = 'held'"),
     count('SELECT count(*) AS n FROM vendor_asks WHERE open = 1'),
+    read('ramp'),
+    count("SELECT count(*) AS n FROM ramp_holds WHERE state = 'held'"),
+    count("SELECT count(*) AS n FROM ramp_holds WHERE state = 'watch'"),
   ]);
   return {
     webhook: !!hook.id, lastEventAt: hook.lastEventAt || null, webhookError: cfg.webhookError || null,
@@ -265,7 +269,8 @@ export async function jobCostFacts(DB) {
     receipts: cfg.lastRun?.receipts || null,
     odd: odd ?? 0, closeouts: { at: closeouts.lastAt || null, error: closeouts.error || null, historyLeft: closeouts.historyLeft ?? null, closed: closeouts.closed ?? null },
     finance: { at: fin.lastRunAt || null, backfill: fin.backfill || null, forecast: fin.lastForecast || null, mercuryEmpty: !!fin.mercuryEmpty, cashLow: !!fin.cashLowOpen, balancesError: fin.balancesError || null },
-    vendors: { at: ven.lastRunAt || null, error: ven.lastError || null, setupError: ven.setupError || null, ready: !!ven.jt?.fields, held: held ?? 0, asking: asking ?? 0 },
+    vendors: { at: ven.lastRunAt || null, error: ven.lastError || null, setupError: ven.setupError || null, ready: !!ven.jt?.fields, held: held ?? 0, asking: asking ?? 0,
+      ramp: ramp.lastRunAt || ramp.error ? { at: ramp.lastRunAt || null, error: ramp.error || null, held: rampHeld ?? 0, watch: rampWatch ?? 0 } : null },
   };
 }
 
