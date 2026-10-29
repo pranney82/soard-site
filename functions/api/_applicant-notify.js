@@ -192,6 +192,9 @@ async function setState(DB, key, value, now) {
 // ─── A status changed ───────────────────────────────────────────────
 
 const LABEL = { welcome: 'Application Status (welcome)', inReview: 'In Review', approved: 'Approved', denied: 'Denied' };
+/** Who an applicant's emails go to, as a timeline line says it */
+const whoOf = (applicant) => (applicant?.kind === 'organization' ? 'the organization' : 'the family');
+const upper = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * Record that `applicant` (fresh from JobTread) is now at its status, and
@@ -244,7 +247,7 @@ export async function noteStatus(env, applicant, { previous = null, at = null, b
   let cancelled = null;
   if (row?.kind && row.kind !== kind) {
     cancelled = row.kind;
-    await log(DB, applicant.id, { title: `Not emailed: ${LABEL[row.kind]}`, body: `The status changed to ${status || 'blank'} before it went out, so the family wasn't emailed.`, by: who, source }, now);
+    await log(DB, applicant.id, { title: `Not emailed: ${LABEL[row.kind]}`, body: `The status changed to ${status || 'blank'} before it went out, so ${whoOf(applicant)} wasn't emailed.`, by: who, source }, now);
   }
   // Sent straight away from the status sheet: the history says it was emailed, not when it would have gone
   if (kind && !(sendingNow && !next.hold)) {
@@ -358,12 +361,12 @@ async function sendRow(env, row, { fetchImpl, now }) {
   const result = await sendStatusMessage(env, applicant, row.kind, { fetchImpl, now });
   if (result === 'sent' || result === 'already') {
     await putRow(DB, { ...row, told: row.status, told_at: result === 'sent' ? iso(now) : row.told_at, kind: null, due_at: null, hold: null, token: null }, now);
-    await log(DB, row.account_id, { title: result === 'sent' ? `Emailed the family: ${LABEL[row.kind]}` : `Not emailed again: ${LABEL[row.kind]}`, body: result === 'sent' ? `To ${toWhom(familyRecipients(applicant))}, from the Qualification Committee.` : 'The family already had this message.', source: 'website' }, now);
+    await log(DB, row.account_id, { title: result === 'sent' ? `Emailed ${whoOf(applicant)}: ${LABEL[row.kind]}` : `Not emailed again: ${LABEL[row.kind]}`, body: result === 'sent' ? `To ${toWhom(familyRecipients(applicant))}, from the Qualification Committee.` : `${upper(whoOf(applicant))} already had this message.`, source: 'website' }, now);
     return result;
   }
   if (String(result).startsWith('skipped')) {
     await putRow(DB, { ...row, kind: null, due_at: null, token: null }, now);
-    await log(DB, row.account_id, { title: `Couldn't email the family: ${LABEL[row.kind]}`, body: 'No one on the family’s account in JobTread has an email address. Add one there, then send it from the family’s page.', source: 'website' }, now);
+    await log(DB, row.account_id, { title: `Couldn't email ${whoOf(applicant)}: ${LABEL[row.kind]}`, body: `No one on ${whoOf(applicant)}’s account in JobTread has an email address. Add one there, then send it from their page in Applicants.`, source: 'website' }, now);
     return result;
   }
   await putRow(DB, { ...row, due_at: now + RETRY_MS }, now); // busy or failed: try again shortly
@@ -566,7 +569,7 @@ export async function sendNow(env, accountId, { user = null, fetchImpl = fetch, 
   const { DB } = env;
   await ensureNotifySchema(DB);
   const row = await getRow(DB, accountId);
-  if (!row?.kind) return { ok: false, error: 'Nothing is waiting to send for this family.' };
+  if (!row?.kind) return { ok: false, error: 'Nothing is waiting to send here.' };
   await log(DB, accountId, { title: `Send now: ${LABEL[row.kind]}`, by: user, source: 'website' }, now);
   const result = await sendRow(env, { ...row, hold: null, due_at: now, summary_at: row.summary_at ?? now }, { fetchImpl, now });
   return { ok: result === 'sent' || result === 'already', result };
@@ -577,9 +580,9 @@ export async function dontSend(env, accountId, { user = null, now = Date.now() }
   const { DB } = env;
   await ensureNotifySchema(DB);
   const row = await getRow(DB, accountId);
-  if (!row?.kind) return { ok: false, error: 'Nothing is waiting to send for this family.' };
+  if (!row?.kind) return { ok: false, error: 'Nothing is waiting to send here.' };
   await putRow(DB, { ...row, told: row.status, kind: null, due_at: null, hold: null, token: null }, now);
-  await log(DB, accountId, { title: `Not emailed: ${LABEL[row.kind]}`, body: `${user || 'Staff'} chose not to email the family about this.`, by: user, source: 'website' }, now);
+  await log(DB, accountId, { title: `Not emailed: ${LABEL[row.kind]}`, body: `${user || 'Staff'} chose not to send this email.`, by: user, source: 'website' }, now);
   return { ok: true };
 }
 
@@ -592,7 +595,7 @@ export async function moveBack(env, accountId, { user = null, fetchImpl = fetch,
   await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: accountId, customFieldValues: { [FIELD_STATUS]: row.previous } } } }, fetchImpl);
   const applicant = await readApplicant(env, accountId, fetchImpl);
   const out = applicant ? await noteStatus(env, applicant, { at: iso(now), by: { name: user }, via: 'website', fetchImpl, now }) : {};
-  await log(DB, accountId, { title: `Moved back to ${row.previous}`, body: 'From the status summary email. Nothing was sent to the family.', by: user, source: 'website' }, now);
+  await log(DB, accountId, { title: `Moved back to ${row.previous}`, body: `From the status summary email. Nothing was sent to ${whoOf(applicant)}.`, by: user, source: 'website' }, now);
   return { ok: true, status: row.previous, ...out };
 }
 
@@ -775,7 +778,7 @@ export async function sendCorrection(env, accountId, { subject, message, user = 
   }, fetchImpl);
   const row = await getRow(DB, accountId);
   await putRow(DB, { ...(row || { account_id: accountId, name: applicant.name, since: iso(now) }), status: applicant.status || '', told: applicant.status || '', told_at: iso(now), kind: null, due_at: null, hold: null, token: null, note_due: null }, now);
-  await log(DB, accountId, { title: 'Correction sent to the family', body: text.slice(0, 2000), by: user, source: 'website', data: { commentId, to: to.map(p => p.email) } }, now);
+  await log(DB, accountId, { title: `Correction sent to ${whoOf(applicant)}`, body: text.slice(0, 2000), by: user, source: 'website', data: { commentId, to: to.map(p => p.email) } }, now);
   return { commentId, to };
 }
 

@@ -31,7 +31,7 @@ import { capEmail } from './_application-cap.js';
 import * as notify from './_broadcast-notify.js';
 import { COMMENT_NAMES, COMMENT_NAMES_ES, familyMessage } from './_applicant-comms.js';
 import { summaryEmail, pauseEndedEmail, pauseState, previewSnippet, WHERE_IT_STANDS } from './_applicant-notify.js';
-import { staffEmail, reminderEmail as applicationReminder, stuckEmail } from './_applications.js';
+import { staffEmail, reminderEmail as applicationReminder, stuckEmail, testOrgAnswers } from './_applications.js';
 import { getLiveForm, formFor } from './_application-forms.js';
 import { resolveForm, renderMessage, DEFAULT_MESSAGES } from './_application-form.js';
 import { openingEmail, confirmationEmail, previewOpening, staffNoticeEmail, readAppSettings } from './_application-waitlist.js';
@@ -311,6 +311,22 @@ function sampleApplication(year, now) {
   };
 }
 
+/** A made-up community project application (an organization's answers, photos of the space) */
+function sampleOrgApplication(year, now) {
+  return {
+    ...sampleApplication(year, now),
+    id: 'app-sample-0001', kind: 'organization',
+    answers: {
+      ...testOrgAnswers('jordan@example.com', year),
+      orgName: ORG_SAMPLE.child, contactName: { first: 'Jordan', last: 'Lee' }, contactTitle: 'Executive Director',
+      mission: 'A school for children with autism and other developmental differences.', needsServed: 'Most have autism; some have Down syndrome.',
+      spaceToday: 'A storage room off the main hall.', spaceDream: 'A calm place to regulate, so students can get back to learning.', referredBy: 'Children’s Healthcare of Atlanta',
+      signature: 'Jordan Lee',
+    },
+    files: { photoSpace1: { key: 'sample' }, photoSpace2: { key: 'sample' } },
+  };
+}
+
 const BOARD_FROM = EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board ');
 /** A made-up board meeting from the usual agenda, with one item marked board-only and a presenter */
 function sampleBoardMeeting() {
@@ -508,6 +524,10 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     case 'staff-new-app': {
       const year = (await readAppSettings(env.DB, now)).year;
       return email(staffEmail(sampleApplication(year, now), 'sample'), { to: 'The staff list in Applications → Settings' });
+    }
+    case 'staff-new-org': {
+      const year = (await readAppSettings(env.DB, now)).year;
+      return email(staffEmail(sampleOrgApplication(year, now), 'sample'), { to: 'The community project list in Applications → Settings (the makeovers’ list until it has its own)' });
     }
     case 'staff-stuck':
       return email(stuckEmail(sampleApplication('2027', now), { attempts: 4, error: 'JobTread returned 503' }), { to: 'peter@soardcharity.com' });

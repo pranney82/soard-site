@@ -256,6 +256,14 @@ try {
   await page.screenshot({ path: join(OUT, 'sheet-email.png') });
   await closeSheet(page);
 
+  await preview(page, 'New community project');
+  ok((await page.$eval('.mm-env-subject', (e) => e.textContent)) === 'New community project application: Sunnyside Academy', 'a community project’s staff email has its own subject');
+  ok(/a sample organization \(Sunnyside Academy\)/.test(await page.$eval('.mm-sheet-head p', (e) => e.textContent)), 'the sheet says it’s filled in for a sample organization');
+  const orgFrame = await frameText(page);
+  ok(/Sunnyside Academy/.test(orgFrame) && /Sensory room/i.test(orgFrame) && !/diagnosis|Avery/i.test(orgFrame), 'and reads as the organization’s, nothing of a child’s');
+  await page.screenshot({ path: join(OUT, 'sheet-org-email.png') });
+  await closeSheet(page);
+
   await preview(page, 'Applications are open');
   await clickButton(page, '.mm-sheet', 'Phone');
   await pause(700);

@@ -589,6 +589,7 @@ const CSS = `
 .afe-set h4 { margin: 0; font-size: var(--fs-base); }
 .afe-set-fields { display: grid; gap: .1rem; margin-top: 1.1rem; max-width: 40rem; }
 .afe-set-fields select { max-width: 12rem; }
+.afe-set-fields > .afe-link { justify-self: start; margin-top: .3rem; }
 .afe-opt { margin-left: .3rem; font-weight: 500; color: var(--color-text-muted); font-size: var(--fs-2xs); }
 .afe-label { font-weight: 600; font-size: var(--fs-xs); }
 .afe-when { display: flex; gap: .5rem; align-items: center; }
@@ -1603,7 +1604,7 @@ function InsightsTab({ seasonYear, go }) {
   const stoppedTotal = ins ? (ins.stopped?.outside || 0) + (ins.stopped?.rental || 0) + (ins.stopped?.other || 0) : 0;
   return html`
     <div class="afe-ins" aria-busy=${loading}>
-      <${Head} title="Insights" sub="How families move through the application: who finishes, where people stop, and how they heard about us. Tests are left out.">
+      <${Head} title="Insights" sub=${`How ${isOrgForm() ? 'organizations' : 'families'} move through the application: who finishes, where people stop, and how they heard about us. Tests are left out.`}>
         <label class="afe-row-actions text-sm" style="font-weight: 600;">Season
           <select class="form-input" style="width: auto;" value=${year || ''} onChange=${(e) => setYear(e.target.value)} aria-label="Season">
             ${years.map(y => html`<option value=${y}>${y}</option>`)}
@@ -1615,7 +1616,7 @@ function InsightsTab({ seasonYear, go }) {
       ${ins && !ins.started && html`
         <div class="card" style="text-align: center; padding: 2.5rem 1.5rem;">
           <h4 style="margin: 0 0 .35rem;">No one has started a ${ins.year} application yet</h4>
-          <p class="afe-lede" style="margin: 0 auto;">This fills in as families open the application: who finishes, where people stop, and how they heard about us.</p>
+          <p class="afe-lede" style="margin: 0 auto;">This fills in as ${isOrgForm() ? 'organizations' : 'families'} open the application: who finishes, where people stop, and how they heard about us.</p>
         </div>`}
       ${ins && ins.started > 0 && html`
         <div class="afe-ins" style="opacity: ${loading ? 0.6 : 1}; transition: opacity .15s;">
@@ -3292,7 +3293,9 @@ const hour12 = (h) => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
 const quietText = (n) => (n.quiet.start !== n.quiet.end ? `, never between ${hour12(n.quiet.start)} and ${hour12(n.quiet.end)} Eastern` : '');
 const EMAILS = [
   { key: 'welcome', name: 'Application received', subject: ['Application Status', 'Estado de la solicitud'], tokens: ['{parent}', '{child}', '{copyNote}'],
-    when: () => 'Right away, when a family applies on the website. Families staff add in JobTread get it once their status settles.' },
+    when: () => (isOrgForm()
+      ? 'Right away, when an organization applies on the website. Organizations staff add in JobTread get it once their status settles.'
+      : 'Right away, when a family applies on the website. Families staff add in JobTread get it once their status settles.') },
   { key: 'inReview', name: 'In review', subject: ['Application In Review', 'Solicitud en revisión'], tokens: ['{parent}', '{child}'],
     when: (n) => `Once Status has stayed In Review for ${plural(n.waits.inReview, 'minute')}${quietText(n)}.` },
   { key: 'approved', name: 'Approved', subject: ['Application Decision', 'Decisión sobre la solicitud'], tokens: ['{parent}', '{child}'],
@@ -3300,9 +3303,9 @@ const EMAILS = [
   { key: 'denied', name: 'Denied', subject: ['Application Decision', 'Decisión sobre la solicitud'], tokens: ['{parent}', '{child}'],
     when: (n) => `Once Status has stayed Denied for ${plural(n.waits.decision, 'minute')}${quietText(n)}.` },
   { key: 'correction', name: 'Correction', subject: ['An update on your application', 'Una actualización sobre su solicitud'], tokens: ['{parent}', '{child}', '{status}'],
-    when: () => 'Only when staff send it from a family’s page, after a status email went out by mistake. They can edit it first. {status} becomes a line about where the application really stands.' },
+    when: () => `Only when staff send it from ${isOrgForm() ? 'an organization’s' : 'a family’s'} page, after a status email went out by mistake. They can edit it first. {status} becomes a line about where the application really stands.` },
   { key: 'reminders', name: 'Reminders', tokens: ['{parent}', '{child}', '{percent}', '{year}'],
-    when: (n, rem) => (rem.enabled === false ? 'Off: nobody gets these.' : rem.days?.length ? `To families who start and stop: ${rem.days.map(x => plural(x, 'day')).join(', then ')} after their last change.` : 'On, but no days are set yet.') },
+    when: (n, rem) => (rem.enabled === false ? 'Off: nobody gets these.' : rem.days?.length ? `To ${isOrgForm() ? 'organizations' : 'families'} who start and stop: ${rem.days.map(x => plural(x, 'day')).join(', then ')} after their last change.` : 'On, but no days are set yet.') },
 ];
 const TOKEN_TIP = { '{parent}': "The main parent's name", '{child}': "The child's name", '{contact}': "The organization's main contact", '{organization}': "The organization's name", '{copyNote}': 'Where the "copy attached" line goes', '{status}': 'Where the application stands now', '{percent}': 'How far along they are', '{year}': 'The season year' };
 /** An organization's messages say {contact} and {organization} where a family's say {parent} and {child} */
@@ -3350,7 +3353,9 @@ function EmailsTab({ d, go, addToast = () => {} }) {
   const problemsFor = (k) => d.problems.filter(p => (k === 'reminders' ? p.where === 'reminders' : p.where === `messages/${k}`));
   return html`
     <div>
-      <${Head} title="Emails" sub="Every email a family gets from us, in the order they get it. Status emails post on the family's JobTread account as the Qualification Committee, and JobTread emails them; their replies come back to the family's page. Wording changes go live with Put live.">
+      <${Head} title="Emails" sub=${isOrgForm()
+        ? "Every email an organization gets from us, in the order they get it. Status emails post on the organization's JobTread account as the Qualification Committee, and JobTread emails them; their replies come back to its page in Applicants. Wording changes go live with Put live."
+        : "Every email a family gets from us, in the order they get it. Status emails post on the family's JobTread account as the Qualification Committee, and JobTread emails them; their replies come back to the family's page. Wording changes go live with Put live."}>
         <${TestRunButton} d=${d} />
         <${SampleButton} d=${d} addToast=${addToast} />
       <//>
@@ -3445,12 +3450,12 @@ function MessageEditor({ d, k, spec, lang, status }) {
         </div>
         <label class="sr-only" for=${`afe-m-${k}`}>${spec.name} ${lang === 'es' ? '(Spanish)' : ''}</label>
         <textarea id=${`afe-m-${k}`} ref=${box} class="form-input afe-email-text" lang=${lang} placeholder=${lang === 'es' ? 'Spanish' : ''} value=${msg.value} onInput=${(e) => msg.set(e.target.value)}></textarea>
-        ${lang === 'es' ? html`<${SpanishNotes} st=${st} s=${msg} en=${enText} />` : html`<span class="afe-hint">*Stars* make bold text in JobTread. Each family gets this once.</span>`}
+        ${lang === 'es' ? html`<${SpanishNotes} st=${st} s=${msg} en=${enText} />` : html`<span class="afe-hint">*Stars* make bold text in JobTread. Each ${isOrgForm() ? 'organization' : 'family'} gets this once.</span>`}
         ${k === 'welcome' && html`
           <div class="afe-field" style="margin-top: .5rem;">
             <label for="afe-m-copyNote">The "copy attached" line</label>
             <input id="afe-m-copyNote" class="form-input" lang=${lang} value=${note.value} placeholder=${lang === 'es' ? note.en : ''} onInput=${(e) => note.set(e.target.value)} />
-            <span class="afe-hint">Goes where {copyNote} is, only when the family applied on the website (their PDF is attached).</span>
+            <span class="afe-hint">Goes where {copyNote} is, only when ${isOrgForm() ? 'the organization applied on the website (its' : 'the family applied on the website (their'} PDF is attached).</span>
             ${lang === 'es' && html`<${SpanishNotes} st=${status['message:copyNote'] || 'done'} s=${note} en=${note.en} />`}
           </div>`}
       </section>
@@ -3509,7 +3514,7 @@ function RemindersEditor({ d, lang = 'en' }) {
                 <input class="form-input" type="number" min="1" max="60" inputmode="numeric" style="width: 5.5rem;" placeholder="Days" aria-label="Add a reminder after this many days" value=${day} onInput=${(e) => setDay(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Enter') { e.preventDefault(); addDay(); } }} />
                 <button class="btn btn-ghost btn-sm" onClick=${addDay} disabled=${!day}>Add</button>`}
             </div>
-            <span class="afe-hint">Up to 6 reminders, 1 to 60 days. Families who finish, or tap "Stop these reminders", get no more.</span>
+            <span class="afe-hint">Up to 6 reminders, 1 to 60 days. ${isOrgForm() ? 'Organizations that finish' : 'Families who finish'}, or tap "Stop these reminders", get no more.</span>
           </div>`}
         <div class="afe-chips">
           <span class="afe-hint">Insert:</span>
@@ -3579,11 +3584,11 @@ function VersionsView({ d, lead = null }) {
               </div>
             </div>`)}
           <div>
-            <div><strong>Built-in form</strong> ${meta.live.builtIn ? label('live') : label('old')}<div class="text-sm text-muted">The application as families filled it in before the website form.</div></div>
+            <div><strong>Built-in form</strong> ${meta.live.builtIn ? label('live') : label('old')}<div class="text-sm text-muted">${isOrgForm() ? 'The organization application the site started with.' : 'The application as families filled it in before the website form.'}</div></div>
             ${!meta.live.builtIn && html`<button class="btn btn-ghost btn-sm" onClick=${() => d.restore(0)}>Restore as draft</button>`}
           </div>
         </div>
-        ${shown.length === 0 && html`<p class="afe-hint" style="margin: .85rem 0 0;">Nothing has been put live yet, so families get the built-in form. Your first Put live shows here as version 1.</p>`}
+        ${shown.length === 0 && html`<p class="afe-hint" style="margin: .85rem 0 0;">Nothing has been put live yet, so ${isOrgForm() ? 'organizations' : 'families'} get the built-in form. Your first Put live shows here as version 1.</p>`}
       </div>
       ${cmp && html`
         <${Dialog} wide title=${cmp.title} onClose=${() => setCmp(null)} footer=${html`<button class="btn btn-primary" onClick=${() => setCmp(null)}>Done</button>`}>
@@ -3692,12 +3697,13 @@ function historyLines(h) {
     if (f === 'opensAt' && !c.to && h.by === 'schedule' && !fields.has('open')) return 'Didn’t open on schedule: the limit was already reached';
     if (f === 'year') return `Season ${c.from || '?'} → ${c.to}`;
     if (f === 'closedMessage') return c.to ? 'Changed the closed message' : 'Went back to the standard closed message';
-    if (f === 'orgOpen') return c.to === false ? 'Closed the organization application' : 'Opened the organization application';
-    if (f === 'orgClosedMessage') return c.to ? 'Changed the organizations’ closed message' : 'Went back to the standard closed message for organizations';
+    if (f === 'orgOpen') return c.to === false ? 'Closed the community project application' : 'Opened the community project application';
+    if (f === 'orgClosedMessage') return c.to ? 'Changed the community projects’ closed message' : 'Went back to the standard closed message for community projects';
     if (f === 'formUrl') return c.to ? 'Sent the Apply button to an outside form' : 'Went back to the site’s own form';
     if (f === 'opensAt') return c.to ? `Set to open ${longWhen(c.to)}` : fields.has('open') ? null : 'Took off the scheduled opening';
     if (f === 'closesAt') return c.to ? `Set to close ${longWhen(c.to)}` : fields.has('open') ? null : 'Took off the scheduled close';
-    if (f === 'staffEmails') return `New-application email goes to ${c.to || 'nobody'}`;
+    if (f === 'staffEmails') return fields.has('staffEmails.family') ? null : `${h.kind === 'organization' ? 'Community project email' : 'New-application email'} goes to ${c.to || 'nobody'}`;
+    if (f === 'staffEmails.family') return 'Community project email goes to the makeovers list again';
     if (f === 'serviceArea') return `Reshaped the service area (${plural(c.to, 'corner')})`;
     if (f === 'serviceArea.nearMiles') return c.to > 0 ? `“Close to the area” is now within ${plural(c.to, 'mile')}` : 'Turned “close to the area” off';
     if (f === 'serviceArea.beyond') return c.to === 'stop' ? 'Families far outside the area are now stopped' : 'Families far outside the area can now apply';
@@ -3719,6 +3725,10 @@ function useAppSettings(addToast, active) {
   const [edit, setEdit] = useState(null);
   const [rules, setRules] = useState(null);         // { values, updatedAt, updatedBy, defaults }
   const [rulesEdit, setRulesEdit] = useState(null);
+  // The community project application's own new-application list: { values, sameAsMakeovers, updatedAt, updatedBy },
+  // and as edited (null: the same people as makeovers)
+  const [orgRules, setOrgRules] = useState(null);
+  const [orgEmails, setOrgEmails] = useState(null);
   const [since, setSince] = useState(null);
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
@@ -3729,6 +3739,8 @@ function useAppSettings(addToast, active) {
   const [area, setArea] = useState(null);           // { points, history }: homes on the Applicants map, past outlines
   const [cap, setCap] = useState(null);             // where the season stands against its limit (applications-admin capNow)
   const [ways, setWays] = useState({});             // ways to open or close switched on by hand, kept open while blank until Save or Discard
+  const orgListOf = (r) => (!r || r.sameAsMakeovers ? null : clone(r.values.staffEmails || []));
+  const takeOrg = (r) => { if (r) { setOrgRules(r); setOrgEmails(orgListOf(r)); } };
   const take = (j) => { if (j.since !== undefined) setSince(j.since); if (j.history) setHistory(j.history); if (j.area) setArea(j.area); if (j.cap !== undefined) setCap(j.cap); };
   const load = async () => {
     setError(null);
@@ -3738,6 +3750,7 @@ function useAppSettings(addToast, active) {
     setEdit(j.settings);
     setWays({});
     if (j.rules) { setRules(j.rules); setRulesEdit(clone(j.rules.values)); }
+    takeOrg(j.orgRules);
     take(j);
     setConflict(false);
     setRulesConflict(null);
@@ -3747,8 +3760,10 @@ function useAppSettings(addToast, active) {
 
   const appFields = saved && edit ? SETTINGS_FIELDS.filter(k => (saved[k] || '') !== (edit[k] || '')) : [];
   const changedRules = rules && rulesEdit ? RULE_FIELDS.filter(k => !sameRule(rules.values[k], rulesEdit[k])) : [];
-  const dirty = appFields.length > 0 || changedRules.length > 0;
-  const problems = { ...settingsProblems(edit, saved, Date.now(), cap), ...rulesProblems(rulesEdit), ...serverErrors };
+  const changedOrg = !!orgRules && !sameRule(orgEmails, orgListOf(orgRules));
+  const dirty = appFields.length > 0 || changedRules.length > 0 || changedOrg;
+  const orgProblem = orgEmails ? rulesProblems({ staffEmails: orgEmails }).staffEmails : null;
+  const problems = { ...settingsProblems(edit, saved, Date.now(), cap), ...rulesProblems(rulesEdit), ...(orgProblem ? { orgStaffEmails: orgProblem } : {}), ...serverErrors };
   const invalid = Object.keys(problems).length > 0;
   // Back on the tab with nothing waiting: show what's saved now (the map may have moved the boundary)
   const dirtyRef = useRef(dirty);
@@ -3799,9 +3814,30 @@ function useAppSettings(addToast, active) {
     }
     setRules(j.rules);
     setRulesEdit(clone(j.rules.values));
+    // A community project list that follows makeovers changed with it
+    if (j.orgRules) setOrgRules(j.orgRules);
     if (j.area) setArea(j.area);
     setRulesConflict(null);
     setServerErrors(x => Object.fromEntries(Object.entries(x).filter(([k]) => !RULE_FIELDS.includes(k))));
+    if (j.history) setHistory(j.history);
+    return true;
+  };
+  // The community project list on its own: null puts it back to the makeovers' list
+  const saveOrg = async () => {
+    const j = await call(API, { rules: { staffEmails: orgEmails }, base: orgRules.updatedAt, kind: 'organization' });
+    if (j.status === 409 && j.conflict) {
+      const theirs = { values: j.conflict.rules, updatedAt: j.conflict.updatedAt, updatedBy: j.conflict.updatedBy };
+      setOrgRules(r => ({ ...r, ...theirs }));
+      setRulesConflict(theirs);
+      return false;
+    }
+    if (!j.success) {
+      if (j.errors) setServerErrors(x => ({ ...x, orgStaffEmails: j.errors[0].message }));
+      addToast(`Couldn't save: ${j.error || `HTTP ${j.status}`}`, 'error');
+      return false;
+    }
+    takeOrg(j.orgRules);
+    setRulesConflict(null);
     if (j.history) setHistory(j.history);
     return true;
   };
@@ -3814,6 +3850,7 @@ function useAppSettings(addToast, active) {
     if (appFields.length) ok = !!(await post(Object.fromEntries(SETTINGS_FIELDS.map(k => [k, typeof edit[k] === 'boolean' ? edit[k] : edit[k] || ''])), 'save')) && ok;
     setBusy('save');
     if (changedRules.length) ok = (await saveRules()) && ok;
+    if (changedOrg) ok = (await saveOrg()) && ok;
     setBusy(null);
     if (ok) addToast('Settings saved. They’re in use now.', 'success');
     return ok;
@@ -3834,11 +3871,12 @@ function useAppSettings(addToast, active) {
   }, [active]);
 
   return {
-    saved, edit, rules, rulesEdit, since, history, area, cap, ways, error, busy, dirty, appFields, changedRules, problems, invalid, conflict, rulesConflict, save, setOpen, reload: load,
+    saved, edit, rules, rulesEdit, orgRules, orgEmails, since, history, area, cap, ways, error, busy, dirty, appFields, changedRules, changedOrg, problems, invalid, conflict, rulesConflict, save, setOpen, reload: load,
+    setOrgEmails: (v) => { setOrgEmails(v); setServerErrors(x => { const y = { ...x }; delete y.orgStaffEmails; return y; }); },
     setWay: (k, v) => setWays(w => (!!w[k] === v ? w : { ...w, [k]: v })),
     set: (patch) => { setEdit(e => ({ ...e, ...patch })); setServerErrors(x => { const y = { ...x }; Object.keys(patch).forEach(k => delete y[k]); return y; }); },
     setRules: (patch) => { setRulesEdit(r => ({ ...r, ...patch })); setServerErrors(x => { const y = { ...x }; Object.keys(patch).forEach(k => delete y[k]); return y; }); },
-    discard: () => { setEdit(saved); setWays({}); if (rules) setRulesEdit(clone(rules.values)); setConflict(false); setRulesConflict(null); setServerErrors({}); },
+    discard: () => { setEdit(saved); setWays({}); if (rules) setRulesEdit(clone(rules.values)); setOrgEmails(orgListOf(orgRules)); setConflict(false); setRulesConflict(null); setServerErrors({}); },
   };
 }
 
@@ -4100,7 +4138,9 @@ function SaveBar({ s }) {
     touched(['opensAt', 'closesAt']) && 'the open and close times',
     touched(['maxApplications', 'warnAt']) && 'the application limit',
     touched(['closedMessage', 'fullMessage', 'formUrl']) && 'what families read',
+    touched(['orgOpen', 'orgClosedMessage']) && 'community projects',
     ...s.changedRules.map(k => RULE_NAME[k]),
+    s.changedOrg && 'the community project email',
   ].filter(Boolean);
   const closing = closesOnSave(s);
   const who = s.rulesConflict?.updatedBy || null;
@@ -4149,6 +4189,7 @@ const DEFAULT_ORG_CLOSED = 'Community project applications are closed right now.
 function OrgApplicationsCard({ s }) {
   const e = s.edit;
   const on = e.orgOpen !== false;
+  const same = s.orgEmails == null;
   return html`
     <section class="card afe-settings" aria-labelledby="afe-set-org">
       <h3 id="afe-set-org">Community projects</h3>
@@ -4162,6 +4203,22 @@ function OrgApplicationsCard({ s }) {
         <input id="afe-org-closed" class="form-input" maxlength="200" value=${e.orgClosedMessage || ''} placeholder=${DEFAULT_ORG_CLOSED} onInput=${(ev) => s.set({ orgClosedMessage: ev.target.value })} />
         <span class="afe-hint">Blank shows “${DEFAULT_ORG_CLOSED}”</span>
       </div>
+      ${s.orgRules && (same
+        ? html`
+          <div class="afe-field afe-set-fields" data-org-staff="same">
+            <span class="afe-label">Who gets the new-application email</span>
+            <span class="afe-hint">The same people as makeovers: ${listText(s.rules?.values?.staffEmails || [])}. It also posts in Slack.</span>
+            <button type="button" class="afe-link" onClick=${() => s.setOrgEmails(clone(s.rules?.values?.staffEmails || []))}>Use a different list</button>
+          </div>`
+        : html`
+          <div class="afe-field afe-set-fields" data-org-staff="own">
+            <label for="afe-org-staff">Who gets the new-application email</label>
+            <${EmailListInput} id="afe-org-staff" value=${s.orgEmails} invalid=${!!s.problems.orgStaffEmails} onChange=${(v) => s.setOrgEmails(v)} />
+            ${s.problems.orgStaffEmails
+              ? html`<span class="afe-bad">${s.problems.orgStaffEmails}</span>`
+              : html`<span class="afe-hint">Its own list, apart from makeovers. It also posts in Slack.</span>`}
+            <button type="button" class="afe-link" onClick=${() => s.setOrgEmails(null)}>Use the makeovers list</button>
+          </div>`)}
     </section>`;
 }
 
@@ -4170,7 +4227,7 @@ function StaffEmailCard({ s }) {
   return html`
     <section class="card afe-settings" aria-labelledby="afe-set-staff">
       <h3 id="afe-set-staff">New applications</h3>
-      <p class="afe-lede">Who's told when a family applies on the website. Each new application emails them the child's first name, the makeover type and a link to the family, and posts in Slack.</p>
+      <p class="afe-lede">Who's told when a family applies on the website. Each new application emails them the child's first name, the makeover type and a link to the family, and posts in Slack. Community projects have their own list, in their card.</p>
       <div class="afe-field afe-set-fields">
         <label for="afe-staff">Who gets the new-application email</label>
         <${EmailListInput} id="afe-staff" value=${list} invalid=${!!s.problems.staffEmails} onChange=${(v) => s.setRules({ staffEmails: v })} />
@@ -4378,7 +4435,7 @@ function TimingCard({ s }) {
   return html`
     <section class="card afe-settings" id="afe-timing" aria-labelledby="afe-set-timing">
       <h3 id="afe-set-timing">When status emails go out</h3>
-      <p class="afe-lede">A family is emailed once their status has stayed put for the wait below, so a change made by mistake and put back never reaches them. If someone flips a status back and forth, the family gets one email for where it lands, or none. The wording is in <a href="#applications/emails">Emails</a>.</p>
+      <p class="afe-lede">A family is emailed once their status has stayed put for the wait below, so a change made by mistake and put back never reaches them. If someone flips a status back and forth, the family gets one email for where it lands, or none. Community projects follow the same timing. The wording is in <a href="#applications/emails">Emails</a>.</p>
       <div class="afe-grid2" style="margin-top: 1rem;">
         <div>
           ${mins('inReview', 'In Review', 'Most mistakes are fixed within a few minutes.')}

@@ -15,7 +15,7 @@ import {
   kindOf, rolesFor, formErrors, applicationForm,
 } from '../functions/api/_application-form.js';
 import {
-  getLiveForm, getDraftForm, saveDraftForm, putDraftLive, listFormVersions, restoreFormVersion, saveFormRules, formFor, clearFormCache,
+  getLiveForm, getDraftForm, saveDraftForm, putDraftLive, listFormVersions, restoreFormVersion, saveFormRules, getFormRules, formFor, clearFormCache,
 } from '../functions/api/_application-forms.js';
 import {
   createDraft, getDraft, saveDraft, setDraftFile, submitDraft, processApplication, getApplication, listApplications, insights,
@@ -110,6 +110,40 @@ test('each form has its own versions; organizations share the family form’s se
   assert.deepEqual(orgForm.serviceArea.polygon, polygon, 'the family form’s outline');
   assert.deepEqual(orgForm.staffEmails, ['community@soardcharity.com']);
   assert.deepEqual((await formFor(env.DB, { year: YEAR })).staffEmails, ['selection@soardcharity.com'], 'the family list is untouched');
+});
+
+test('community projects run on the makeovers’ email timing, and their list until they get their own', async () => {
+  clearFormCache();
+  const peter = { user: 'peter@soardcharity.com' };
+  // Makeovers' settings as staff set them: who hears, and how long status emails wait
+  await saveFormRules(env.DB, { staffEmails: ['selection@soardcharity.com', 'jen@soardcharity.com'], notify: { waits: { inReview: 15, decision: 45 } } }, peter);
+  clearFormCache();
+  let org = await formFor(env.DB, { year: YEAR, kind: 'organization' });
+  assert.deepEqual(org.staffEmails, ['selection@soardcharity.com', 'jen@soardcharity.com'], 'never set: the makeovers’ list, not a built-in one');
+  assert.equal(org.notify.waits.inReview, 15);
+  assert.equal(org.notify.waits.decision, 45, 'the same waits as makeovers');
+  // The timing can't be set apart: an organization save only takes its list
+  const own = await saveFormRules(env.DB, { staffEmails: ['holly@soardcharity.com'], notify: { waits: { decision: 5 } } }, { ...peter, kind: 'organization' });
+  assert.deepEqual(own.changes, [{ field: 'application.staffEmails', from: 'selection@soardcharity.com, jen@soardcharity.com', to: 'holly@soardcharity.com' }]);
+  assert.deepEqual((await getFormRules(env.DB, { kind: 'organization' })).rules, { staffEmails: ['holly@soardcharity.com'] });
+  clearFormCache();
+  org = await formFor(env.DB, { year: YEAR, kind: 'organization' });
+  assert.deepEqual(org.staffEmails, ['holly@soardcharity.com']);
+  assert.equal(org.notify.waits.decision, 45);
+  // Makeovers' timing changes: community projects follow; their own list stays
+  await saveFormRules(env.DB, { notify: { waits: { decision: 60 } }, staffEmails: ['selection@soardcharity.com'] }, peter);
+  org = await formFor(env.DB, { year: YEAR, kind: 'organization' });
+  assert.equal(org.notify.waits.decision, 60);
+  assert.deepEqual(org.staffEmails, ['holly@soardcharity.com']);
+  // Back to the makeovers' list (null), and it follows that list again
+  const back = await saveFormRules(env.DB, { staffEmails: null }, { ...peter, kind: 'organization', base: own.updatedAt });
+  assert.deepEqual(back.changes.map((c) => c.field), ['application.staffEmails', 'application.staffEmails.family']);
+  assert.deepEqual((await getFormRules(env.DB, { kind: 'organization' })).rules, {}, 'nothing of its own is kept');
+  await saveFormRules(env.DB, { staffEmails: ['intake@soardcharity.com'] }, peter);
+  org = await formFor(env.DB, { year: YEAR, kind: 'organization' });
+  assert.deepEqual(org.staffEmails, ['intake@soardcharity.com']);
+  // Already following: a second "back" saves nothing
+  assert.deepEqual((await saveFormRules(env.DB, { staffEmails: null }, { ...peter, kind: 'organization' })).changes, []);
 });
 
 test('JobTread gets an organization’s account: its name, its contacts, the spaces JobTread knows, nothing of a child’s', () => {

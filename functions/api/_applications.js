@@ -333,10 +333,12 @@ export async function saveApplicationSettings(env, input, { user = 'admin', base
 /** Recent changes to these fields, newest first, from the audit log */
 export async function applicationSettingsHistory(DB, limit = 12) {
   try {
-    const { results } = await DB.prepare(`SELECT user_email, changes, created_at FROM audit_log
+    const { results } = await DB.prepare(`SELECT user_email, entity_slug, changes, created_at FROM audit_log
       WHERE entity_type IN ('application-settings', 'settings') AND changes LIKE '%"application.%' ORDER BY id DESC LIMIT ?`).bind(limit).all();
     return (results || []).map(r => ({
       by: r.user_email,
+      // The community project application's own settings (saved as rules-organization)
+      kind: r.entity_slug === 'rules-organization' ? 'organization' : 'family',
       at: /Z$|[+-]\d\d:?\d\d$/.test(r.created_at) ? r.created_at : `${String(r.created_at).replace(' ', 'T')}Z`,
       changes: (parse(r.changes, []) || []).filter(c => String(c.field).startsWith('application.')),
     }));

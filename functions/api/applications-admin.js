@@ -91,10 +91,16 @@ async function areaContext(DB) {
   return { points, history: await areaHistory(DB).catch(() => []) };
 }
 
-/** The settings as the site uses them now, and who last saved them (an organization form's own ones with kind) */
+/**
+ * The settings as the site uses them now, and who last saved them (an organization form's own
+ * ones with kind; sameAsMakeovers when its new-application list is still the family form's)
+ */
 async function rulesNow(DB, kind = 'family') {
   const [live, saved] = await Promise.all([formFor(DB, { year: '2027', kind }), getFormRules(DB, { kind }).catch(() => null)]);
-  return { values: pickRules(live, kind), updatedAt: saved?.updatedAt || null, updatedBy: saved?.updatedBy || null, defaults: { serviceArea: DEFAULT_SERVICE_AREA } };
+  return {
+    values: pickRules(live, kind), updatedAt: saved?.updatedAt || null, updatedBy: saved?.updatedBy || null, defaults: { serviceArea: DEFAULT_SERVICE_AREA },
+    ...(kindOf(kind) === 'family' ? {} : { sameAsMakeovers: !saved?.rules?.staffEmails?.length }),
+  };
 }
 
 /** Which form a request is about: ?formKind= on a GET, kind in a POST body; the family form when neither says */
@@ -284,7 +290,7 @@ export async function onRequestPost(context) {
     if (out.conflict) return Response.json({ success: false, conflict: out.conflict, error: `${out.conflict.updatedBy} changed these settings while you had them open.` }, { status: 409 });
     if (out.errors) return Response.json({ success: false, errors: out.errors, error: out.errors[0].message }, { status: 422 });
     if (out.changes.length) {
-      await logAudit(env.DB, { userEmail: user, action: 'updated', entityType: 'application-settings', entitySlug: kind === 'family' ? 'rules' : `rules-${kind}`, entityName: kind === 'family' ? 'Applications settings' : 'Organization applications settings', changes: out.changes });
+      await logAudit(env.DB, { userEmail: user, action: 'updated', entityType: 'application-settings', entitySlug: kind === 'family' ? 'rules' : `rules-${kind}`, entityName: kind === 'family' ? 'Applications settings' : 'Community project application settings', changes: out.changes });
       // A new boundary: every applicant on the map is placed against it again
       if (out.changes.some(c => c.field === 'application.serviceArea')) await replaceBoundary(env.DB, out.rules.serviceArea.polygon).catch(() => 0);
     }

@@ -421,6 +421,14 @@ const MAP = { t: 'Everything we send', children: [
           touches: ['Resend', 'Slack', 'D1'], where: 'functions/api/_applications.js (staffEmail)',
           info: 'It holds the family’s diagnosis and contact details, so it says to keep it inside SOARD.',
           live: first(needs('resend', NO_RESEND), (f) => (!f.form ? null : ON(`Goes to ${plural(f.form.staffEmails, 'address', 'addresses')}. ${sentLine(f.staff?.newApplication)}`, f.staff?.newApplication?.last))) },
+        { t: 'New community project', s: 'live', k: 'email', by: 'auto', preview: 'staff-new-org', change: CHANGE.appSettings,
+          who: 'The community project list in Applications → Settings → Community projects: the makeovers’ list until it gets its own.',
+          when: 'A school, clinic or nonprofit applies at /apply/community-project/ and it’s in JobTread.',
+          subject: 'New community project application: {organization}',
+          does: 'The space, the organization, the children it serves, county, service area, repeat check, photos of the space and its main contact, with buttons to Applicants and JobTread.',
+          touches: ['Resend', 'Slack', 'D1'], where: 'functions/api/_applications.js (orgStaffEmail)',
+          info: 'The same Slack post goes up, worded for the organization.',
+          live: needs('resend', NO_RESEND) },
         { t: 'A family replied', s: 'live', k: 'email', by: 'auto', key: 'staff-family-reply', change: CHANGE.appSettings,
           who: 'The staff list in Applications → Settings. A card goes to Slack too.',
           when: 'A family answers a JobTread message, by replying to its email or in JobTread. Once per reply, about a minute after it lands.',
@@ -1071,7 +1079,7 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
       <div class="mm-sheet-head">
         <div>
           <h3 id="mm-sheet-title">${entry.t}</h3>
-          <p>As it goes out, filled in for a sample family (the Stones). Nothing is sent from here unless you press ${p?.send === 'text' ? 'Text it to me' : 'Send it to me'}.</p>
+          <p>As it goes out, filled in for ${/^org-|^staff-new-org$/.test(entry.preview || '') ? 'a sample organization (Sunnyside Academy)' : 'a sample family (the Stones)'}. Nothing is sent from here unless you press ${p?.send === 'text' ? 'Text it to me' : 'Send it to me'}.</p>
         </div>
         <button type="button" class="am-close" ref=${closeRef} aria-label="Close" onClick=${onClose}>×</button>
       </div>

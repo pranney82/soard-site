@@ -46,6 +46,8 @@ interface NavChild {
   external?: boolean;
   desc?: string;
   icon?: string;
+  /** A full page load, never a soft visit (the application pages send their own security headers) */
+  reload?: boolean;
 }
 interface NavGroup {
   label: string;
@@ -92,6 +94,7 @@ const nav: NavGroup[] = [
       { label: 'Watch Reveals', href: '/reveals/', desc: 'Live and recorded reveals', icon: 'sparkles' },
       { label: 'Community Projects', href: '/community/', desc: 'Beyond bedrooms', icon: 'buildings' },
       { label: 'Apply for Makeover', href: '/apply/', desc: 'Apply for a room', icon: 'clipboard' },
+      { label: 'Apply for Your Organization', href: '/apply/community-project/', desc: 'For a community project', icon: 'clipboard', reload: true },
       { label: 'Design Resources', href: '/resources/', desc: 'Accessible design guides', icon: 'palette' },
     ],
   },
@@ -157,6 +160,7 @@ function isGroupActive(group: NavGroup) {
                         class:list={['dd-link', { active: isActive(child.href) }]}
                         tabindex="-1" data-child-index={ci} style={`--di:${ci}`}
                         {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                        {...(child.reload ? { 'data-astro-reload': true } : {})}
                       >
                         <span class="dd-icon" aria-hidden="true" set:html={icons[child.icon || '']} />
                         <span class="dd-body">
@@ -240,7 +244,8 @@ function isGroupActive(group: NavGroup) {
             <div class="mnav-links">
               {item.children.map((child) => (
                 <a href={child.href} class:list={['mnav-link', { active: isActive(child.href) }]}
-                  {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+                  {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                  {...(child.reload ? { 'data-astro-reload': true } : {})}>
                   <span class="mnav-link-icon" aria-hidden="true" set:html={icons[child.icon || '']} />
                   <span class="mnav-link-inner">
                     <span class="mnav-link-label">{child.label}</span>

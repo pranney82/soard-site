@@ -124,6 +124,10 @@ test('which message an email is, even where two share a tag', () => {
     ['application-limit', '[TEST] 98 of 120 applications are in for 2027', 'preview'],
     ['application-resume', '[Test run] Your SOARD application: pick up where you left off', 'preview'],
     [null, 'Application for Avery Stone is stuck', 'staff-stuck'],
+    ['application', 'New makeover application: Avery', 'staff-new-app'],
+    ['application', 'New community project application: Sunnyside Academy', 'staff-new-org'],
+    [null, 'New community project application: Sunnyside Academy', 'staff-new-org'],
+    ['application', '[TEST] New community project application: TEST Organization', 'preview'],
     ['reveal-day-test', 'TEST · Tomorrow: Avery', 'preview'],
     ['kind-we-never-made', 'Something else', null],
     // What production's first catch-up found (Oct 22 2026): rehearsals, and summaries sent before the tag existed

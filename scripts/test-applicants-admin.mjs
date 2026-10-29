@@ -776,6 +776,7 @@ console.log('An organization');
   ok(/A community project application/.test(await text(p, '.apl-dtitle p')), 'the drawer says what it is');
   const labels = await p.$$eval('.apl-side .apl-kv dt', (els) => els.map((e) => e.textContent.trim())).catch(() => []);
   ok(labels.length > 0 && !labels.some((l) => /Birthday|Diagnosis|Gender|Verbal|walks/i.test(l)), `its details have nothing of a child’s (${labels.join(', ')})`);
+  ok(labels.includes('Project year') && labels.includes('Type of space') && !labels.some((l) => /Makeover/.test(l)), 'its project year and type of space, not a makeover’s');
   ok(await p.evaluate(() => [...document.querySelectorAll('.apl-side .apl-panel h3')].some((h) => h.textContent.trim() === 'Contacts')), 'its people are Contacts, not Family');
   ok(/^Address/.test(await p.evaluate(() => [...document.querySelectorAll('.apl-side .apl-panel h3')].map((h) => h.textContent.trim()).find((t) => /^(Home|Address)/.test(t)) || '')), 'where it is: its Address, not a Home');
   ok(/Message the organization/.test(await text(p, '.apl-composer-head b')), 'and the message box writes to the organization');

@@ -140,12 +140,14 @@ export function entryFor(type, subject = '') {
   if (type === 'live-alert' || /^\[SOARD Live\] /.test(s)) return alertEntry(s.replace(/^\[SOARD Live\] /, ''));
   if (type === 'application-waitlist' && /^(Applications are open|The applications-open email|Waitlist|Kit)/i.test(s)) return 'staff-waitlist';
   if (type === 'application' && /is stuck$/i.test(s)) return 'staff-stuck';
+  if (type === 'application' && /^New community project application/i.test(s)) return 'staff-new-org';
   if (type && /^reveal-[a-z]+-test$/.test(type)) return 'preview';
   if (type && BY_TAG[type]) return BY_TAG[type];
   // Sent before the tag existed, or seen only in Resend's list: the subject is all there is
   if (/^Your SOARD application: pick up|^Su solicitud de SOARD: contin/i.test(s)) return 'app-resume';
   if (/^Your SOARD application is waiting|le está esperando/i.test(s)) return 'app-reminder';
   if (/^New makeover application/i.test(s)) return 'staff-new-app';
+  if (/^New community project application/i.test(s)) return 'staff-new-org';
   if (/^You’re on the list|^You're on the list|^Ya está en la lista/i.test(s)) return 'waitlist-confirm';
   if (/^Application for .+ is stuck$/i.test(s)) return 'staff-stuck';
   // A status change summary about a TEST family is a test; any other is the real thing
@@ -298,6 +300,7 @@ export async function markCanceled(env, id, { now = Date.now() } = {}) {
 
 const LIST_FIX = {
   'staff-new-app': 'Check the staff list in Applications → Settings.',
+  'staff-new-org': 'Check the community project list in Applications → Settings → Community projects.',
   'staff-family-reply': 'Check the staff list in Applications → Settings.',
   'staff-summary': 'Check that person’s address in JobTread, or the staff list in Applications → Settings.',
   'staff-waitlist': 'Check the staff list in Applications → Settings.',

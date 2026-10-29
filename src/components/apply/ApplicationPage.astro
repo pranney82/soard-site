@@ -45,7 +45,8 @@ const form = applicationForm({ year, definition: org ? ORG_DEFAULT_DEFINITION : 
 const steps = form.pages.length + 1;
 
 // The Apply page only has a FAQ section when FAQs were written for it; else the site's FAQ page
-const faqHref = ((siteSettings as any).applyFaqs || []).length ? '/apply/#faq' : '/faq/';
+// An organization sees the community projects instead (the FAQ is about family makeovers)
+const faqHref = org ? '/community/#projects' : ((siteSettings as any).applyFaqs || []).length ? '/apply/#faq' : '/faq/';
 
 const ap = (siteSettings as any).applyPhotos || {};
 // An organization's page shows a finished community project (the first on the Community page with a photo)
@@ -61,7 +62,7 @@ const path = org ? '/apply/community-project/' : '/apply/form/';
 const breadcrumbs = [
   { name: 'Home', url: `${site}/` },
   { name: 'Apply', url: `${site}/apply/` },
-  { name: org ? 'Organization application' : 'Application', url: `${site}${path}` },
+  { name: org ? 'Community project application' : 'Application', url: `${site}${path}` },
 ];
 ---
 
@@ -71,6 +72,7 @@ const breadcrumbs = [
     ? 'Schools, therapy clinics and nonprofits that serve children with special needs in the greater Atlanta area can apply for a community project. Saves as you go.'
     : 'Apply for a free dream bedroom, accessible bathroom, therapy room or ramp for a child with special needs in the greater Atlanta area. Saves as you go.'}
   breadcrumbs={breadcrumbs}
+  ogImage={org ? '/og/community-project.png' : '/og/apply.png'}
 >
   <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
 

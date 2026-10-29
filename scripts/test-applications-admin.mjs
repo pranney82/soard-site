@@ -1413,6 +1413,27 @@ try {
   });
 
   await section('Community projects: their own form, emails and switch', async () => {
+    // What staff read on a tab, outside the organization's own form and emails: nothing about a
+    // family, a child or a parent ("children" is how organizations are described, so it's fine)
+    const familyWords = () => page.evaluate(() => {
+      const root = document.querySelector('[role="tabpanel"]');
+      const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const out = new Set();
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const el = n.parentElement;
+        if (!el || !el.getClientRects().length || el.closest('.afe-preview, .afe-email-prev, .afe-col, textarea')) continue;
+        const s = n.textContent.replace(/\s+/g, ' ').trim();
+        if (/\b(famil(?:y|ies)|child|parents?|kids?)\b/i.test(s)) out.add(s.slice(0, 140));
+      }
+      for (const el of root.querySelectorAll('[title], [aria-label], [placeholder]')) {
+        if (el.closest('.afe-preview, .afe-email-prev, .afe-col')) continue;
+        for (const a of ['title', 'aria-label', 'placeholder']) {
+          const s = el.getAttribute(a) || '';
+          if (/\b(famil(?:y|ies)|child|parents?|kids?)\b/i.test(s)) out.add(`${a}: ${s.slice(0, 120)}`);
+        }
+      }
+      return [...out];
+    });
     await clickText(page, '.hub-tab', /^Form/);
     await page.waitForSelector('.afe-appkind', { timeout: 8000 });
     ok(JSON.stringify(await page.$$eval('.afe-appkind button', (els) => els.map((b) => b.textContent.trim()))) === '["Makeovers","Community projects"]', 'Form has a Makeovers | Community projects switch');
@@ -1431,6 +1452,14 @@ try {
     ok(/Organizations see the built-in form/.test(await text(page, '.afe-bar')), 'the draft bar says what organizations see');
     ok(!(await page.$('.afe-preview [aria-label="Preview language"]')), 'the phone preview has no Spanish: it is in English');
     ok(!(await getDraftForm(DB, { kind: 'organization' })) && !!(await getDraftForm(DB)), 'switching saved nothing into the organization form; the family draft is still there');
+    let said = await familyWords();
+    ok(!said.length, `the Form tab never speaks of a family (${said.join(' | ')})`);
+    await page.click('.afe-subnav [data-view="versions"]');
+    await sleep(400);
+    said = await familyWords();
+    ok(!said.length, `nor its Versions (${said.join(' | ')})`);
+    await page.click('.afe-subnav [data-view="questions"]');
+    await sleep(300);
     await shot(page, '30-org-form.png');
 
     await clickText(page, '.hub-tab', /^Emails/);
@@ -1442,7 +1471,24 @@ try {
     ok(chips.includes('{organization}') && chips.includes('{contact}') && !chips.includes('{child}'), `its blanks are the organization’s (${chips.join(' ')})`);
     ok(!(await page.$('.afe-email-top [aria-label="Language"]')) && !(await page.$('.afe-email-rail .afe-tr-dot')), 'no Spanish for an organization’s emails');
     ok(/Sunnyside Academy/.test(await text(page, '.afe-email-prev')) && /has been approved/.test(await text(page, '.afe-email-prev')), 'the preview reads as an organization gets it');
+    const emailWords = new Set();
+    for (const id of await page.$$eval('.afe-email-rail [data-email]', (els) => els.map((e) => e.dataset.email))) {
+      await page.click(`.afe-email-rail [data-email="${id}"]`);
+      await sleep(250);
+      (await familyWords()).forEach((s) => emailWords.add(`${id}: ${s}`));
+    }
+    ok(!emailWords.size, `no email in the Emails tab speaks of a family (${[...emailWords].join(' | ')})`);
+    await page.click('.afe-email-rail [data-email="approved"]');
+    await sleep(250);
     await shot(page, '31-org-emails.png');
+
+    await clickText(page, '.hub-tab', /^Insights/);
+    await page.waitForFunction(() => !!document.querySelector('.afe-ins'), { timeout: 8000 }).catch(() => {});
+    await sleep(600);
+    ok(await page.$eval('.afe-appkind [data-kind="organization"]', (b) => b.getAttribute('aria-pressed')).catch(() => null) === 'true', 'Insights follows the switch');
+    said = await familyWords();
+    ok(!said.length, `and never speaks of a family (${said.join(' | ')})`);
+    await shot(page, '31b-org-insights.png');
 
     await clickText(page, '.hub-tab', /^Settings/);
     await page.waitForSelector('#afe-org-open', { timeout: 8000 });
@@ -1457,6 +1503,34 @@ try {
     await clickText(page, '.afe-savebar button', /^Save$/);
     await page.waitForFunction(() => !document.querySelector('.afe-savebar'), { timeout: 8000 }).catch(() => {});
     ok((await storedSettings()).application?.orgOpen === true, 'and on again');
+
+    // Who hears about a new community project: the makeovers' list until it gets its own
+    const chipsOf = (id) => page.$eval(`#${id}`, (el) => [...el.closest('.afe-chipfield').querySelectorAll('.afe-addr')].map((c) => c.textContent.trim()));
+    const famList = await chipsOf('afe-staff');
+    ok(!!(await page.$('[data-org-staff="same"]')) && !(await page.$('#afe-org-staff')), 'the community project email starts as the same people as makeovers, not a second list to edit');
+    const sameText = await text(page, '[data-org-staff="same"]');
+    ok(famList.length > 0 && famList.every((x) => sameText.includes(x)), `and names them (${famList.join(', ')})`);
+    await clickText(page, '[data-org-staff="same"] button', /Use a different list/);
+    await page.waitForSelector('#afe-org-staff', { timeout: 4000 }).catch(() => {});
+    ok(JSON.stringify(await chipsOf('afe-org-staff')) === JSON.stringify(famList), 'Use a different list starts from theirs');
+    await page.type('#afe-org-staff', 'holly@soardcharity.com,');
+    await sleep(150);
+    ok(/the community project email/.test(await text(page, '.afe-savebar')), 'the save bar names it');
+    await clickText(page, '.afe-savebar button', /^Save$/);
+    await page.waitForFunction(() => !document.querySelector('.afe-savebar'), { timeout: 8000 }).catch(() => {});
+    const orgSaved = (await getFormRules(DB, { kind: 'organization' }))?.rules?.staffEmails || [];
+    ok(orgSaved.includes('holly@soardcharity.com') && !!(await page.$('[data-org-staff="own"]')), `saved as its own list (${orgSaved.join(', ')})`);
+    const famAfter = await chipsOf('afe-staff');
+    ok(JSON.stringify(famAfter) === JSON.stringify(famList), `the makeovers list is untouched (${famAfter.join(', ')})`);
+    ok(/Community project email goes to/.test(await text(page, '.afe-log-card')), 'history says whose list changed');
+    await clickText(page, '[data-org-staff="own"] > button', /Use the makeovers list/);
+    await sleep(150);
+    await clickText(page, '.afe-savebar button', /^Save$/);
+    await page.waitForFunction(() => !document.querySelector('.afe-savebar'), { timeout: 8000 }).catch(() => {});
+    ok(!(await getFormRules(DB, { kind: 'organization' }))?.rules?.staffEmails && !!(await page.$('[data-org-staff="same"]')), 'and back to the makeovers list');
+    const log = await page.$$eval('.afe-log-card li', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+    ok(/Community project email goes to the makeovers list again/.test(log[0] || '') && !/goes to selection/.test(log[0] || ''), `which history says in one line (${(log[0] || '').slice(0, 90)})`);
+    await page.$eval('[data-org-staff]', (e) => e.scrollIntoView({ block: 'center' }));
     await shot(page, '32-org-settings.png');
 
     // Back to the family form, for everything after this

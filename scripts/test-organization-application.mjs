@@ -104,6 +104,13 @@ try {
   ok(await page.$eval('[data-application]', (e) => e.dataset.kind) === 'organization', 'the form knows it is an organization’s');
   const heroText = await page.$eval('.hero', (e) => e.innerText);
   ok(!/your child|your family/i.test(heroText), 'nothing about a child or a family in the hero');
+  ok(await page.$eval('.hero-ctas a[data-af-t="heroFaq"]', (a) => a.getAttribute('href') === '/community/#projects' && /See our community projects/.test(a.textContent)).catch(() => false), 'its second button shows the community projects, not the makeover FAQ');
+  // The season as the live settings have it, everywhere the page names it (not the year it was built with)
+  const season = await page.$eval('[data-application]', (e) => e.dataset.year);
+  const named = await page.evaluate(() => [document.title, ...['og:title', 'twitter:title', 'og:image:alt', 'twitter:image:alt'].map((k) => document.querySelector(`meta[property="${k}"], meta[name="${k}"]`)?.content || ''), document.querySelector('.hero-eyebrow').textContent]);
+  ok(named.every((t) => t.includes(season) && !(t.match(/\b20\d\d\b/g) || []).some((y) => y !== season)), `the title, link previews and eyebrow all say ${season} (${named[0]})`);
+  const ld = await page.$$eval('script[type="application/ld+json"]', (els) => els.map((e) => e.textContent).join(''));
+  ok(ld.includes(`"${season} Community Project Application`) && ld.includes('"Community project application"'), 'and so does the search data, with the page named as a community project application');
   await shot('01-open-phone');
   await noSideScroll('open');
 
@@ -118,6 +125,7 @@ try {
 
   console.log('Location');
   ok(/Address of the space/.test(await page.$eval('[data-field="address"] .af-label, [data-field="address"] legend', (e) => e.textContent)), 'the address of the space, not a home');
+  ok(/Suite, building or room/.test(await page.$eval('#af-address-line2', (e) => e.closest('label').textContent).catch(() => '')), 'its second line asks for a suite, building or room (not an apartment)');
   await page.focus('#af-address-line1');
   await page.type('#af-address-line1', SUGGESTION.line1.slice(0, 9));
   await page.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
@@ -226,7 +234,7 @@ try {
 
   console.log('The ways in');
   await desk.goto(`${SITE}/apply/`, { waitUntil: 'networkidle0' });
-  ok(await desk.$eval('#organizations a[href="/apply/community-project/"]', (a) => /Apply for your organization/.test(a.textContent)).catch(() => false), 'the Apply page has a way in for organizations');
+  ok(await desk.$eval('#organizations a[href="/apply/community-project/"]', (a) => /Apply for Your Organization/.test(a.textContent)).catch(() => false), 'the Apply page has a way in for organizations');
   await desk.$eval('#organizations', (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
   await sleep(400);
   await shot('08-apply-band-desktop', desk);

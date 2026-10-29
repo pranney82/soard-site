@@ -176,6 +176,18 @@ test('status from the site: JobTread first; the family is emailed once it settle
   assert.equal((await getApplicantRow(env.DB, a.id)).status, 'In Review');
 });
 
+test('an organization’s status email is worded for it, and its timeline says the organization was emailed', async () => {
+  const a = addAccount({ name: 'Sunnyside Academy', fields: { [F.status]: 'Applied', [F.year]: '2027' }, contact: { name: 'Jordan Lee', email: 'jordan@example.com' } });
+  await syncAllApplicants(env, opts());
+  const preview = await previewStatus(env, a.id, 'In Review', opts());
+  assert.match(preview.message.message, /the application for \*Sunnyside Academy\* has moved to the next stage/, 'an organization’s words');
+  await setApplicantStatus(env, a.id, 'In Review', { user: 'linzi@soardcharity.com', ...opts(), now: T0 });
+  await tick(T0 + 10 * MIN);
+  const titles = (await activityFor(env.DB, a.id)).filter(r => r.kind === 'notify').map(r => r.title);
+  assert.ok(titles.includes('Emailed the organization: In Review'), `(${titles.join(' | ')})`);
+  assert.ok(!titles.some(t => /family/.test(t)));
+});
+
 test('"Move and email now" skips the wait; "don\'t email" holds even when JobTread moves it later', async () => {
   const a = addAccount({ name: 'Avery Stone', fields: { [F.status]: 'In Review' }, contact: { name: 'Jordan', email: 'jordan@example.com' } });
   const b = addAccount({ name: 'Blake Ray', fields: { [F.status]: 'In Review' }, contact: { name: 'Sam', email: 'sam@example.com' } });

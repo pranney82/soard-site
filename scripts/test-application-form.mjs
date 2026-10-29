@@ -206,6 +206,10 @@ try {
   ok((await stepTitle()) === 'Before You Begin', 'starts on Before You Begin');
   ok(await visible('[data-lang-switch]'), 'the English / Español switch shows');
   ok(await page.$eval('[data-hero-cta]', (a) => a.getAttribute('href')) === '#application', "the hero's button follows the live open switch");
+  // The season as the live settings have it, wherever the page names it (not the year it was built with)
+  const season = await page.$eval('[data-application]', (e) => e.dataset.year);
+  const named = await page.evaluate(() => [document.title, ...['og:title', 'twitter:title'].map((k) => document.querySelector(`meta[property="${k}"], meta[name="${k}"]`)?.content || '')]);
+  ok(named.every((t) => t.startsWith(`${season} Makeover Application`)), `the title and link previews say ${season} (${named[0]})`);
   const AREA = 'Service Area';
   await page.$eval('#application', (el) => el.scrollIntoView());
   await noSideScroll('welcome');

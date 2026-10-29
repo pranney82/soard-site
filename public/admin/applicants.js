@@ -1902,6 +1902,8 @@ function FileThumb({ f }) {
 }
 
 const SIDE_FIELDS = ['year', 'types', 'birthday', 'gender', 'diagnosis', 'language', 'verbal', 'mobile', 'qualified', 'referredBy', 'denialReason'];
+// An organization's project: the same JobTread fields, named for a community project
+const ORG_FIELD_LABEL = { year: 'Project year', types: 'Type of space' };
 // An organization (a community project application) has no child: none of a child's details
 const CHILD_FIELDS = new Set(['birthday', 'gender', 'diagnosis', 'language', 'verbal', 'mobile']);
 
@@ -1945,6 +1947,7 @@ function FieldRow({ k, meta, value, onSave }) {
 
 function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   const a = d.applicant;
+  const org = a.kind === 'organization';
   const [archBusy, setArchBusy] = useState(false);
   const save = async (k, value) => {
     const j = await call(API, { fields: { id: a.id, changes: { [k]: value } } });
@@ -1980,7 +1983,7 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   return html`<section class="apl-side" aria-label="Details">
     <div class="apl-panel">
       <h3>Details <span class="apl-card-sub" style="text-transform:none;letter-spacing:0">Saved to JobTread as you edit</span></h3>
-      <dl class="apl-kv">${visible.map(k => html`<dt>${fields[k].label}</dt><dd><${FieldRow} k=${k} meta=${fields[k]} value=${a.fields?.[k] ?? (k === 'types' ? [] : '')} onSave=${save} /></dd>`)}</dl>
+      <dl class="apl-kv">${visible.map(k => { const meta = org && ORG_FIELD_LABEL[k] ? { ...fields[k], label: ORG_FIELD_LABEL[k] } : fields[k]; return html`<dt>${meta.label}</dt><dd><${FieldRow} k=${k} meta=${meta} value=${a.fields?.[k] ?? (k === 'types' ? [] : '')} onSave=${save} /></dd>`; })}</dl>
     </div>
 
     <div class="apl-panel">

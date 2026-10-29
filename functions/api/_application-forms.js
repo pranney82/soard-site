@@ -54,8 +54,12 @@ const SCHEMA = [
 
 /** The definition keys that are settings (saved at once) rather than form wording */
 export const RULE_KEYS = ['staffEmails', 'serviceArea', 'notify'];
-/** An organization form's own settings (its service area is the family form's) */
-const KIND_RULE_KEYS = { family: RULE_KEYS, organization: ['staffEmails', 'notify'] };
+/**
+ * An organization form's own settings: only who gets its new-application email. Its service
+ * area and email timing are the family form's, and so is that list until staff give it its own.
+ */
+const KIND_RULE_KEYS = { family: RULE_KEYS, organization: ['staffEmails'] };
+const FROM_FAMILY = ['serviceArea', 'notify', 'staffEmails'];
 const _ready = new WeakSet();
 export async function ensureFormSchema(DB) {
   if (_ready.has(DB)) return;
@@ -98,13 +102,13 @@ export async function getFormRules(DB, { kind = 'family' } = {}) {
   const rules = r ? parse(r.rules) : null;
   return rules ? { rules, updatedAt: r.updated_at, updatedBy: r.updated_by || null } : null;
 }
-/** The settings a form runs with: its own, and for an organization form the family form's service area */
+/** The settings a form runs with: its own, laid over (for an organization form) the family form's as it runs them */
 const rulesOrNull = async (DB, kind = 'family') => {
   try {
     const own = (await getFormRules(DB, { kind }))?.rules || null;
     if (kindOf(kind) === 'family') return own;
-    const family = (await getFormRules(DB))?.rules || null;
-    const merged = { ...(family?.serviceArea ? { serviceArea: family.serviceArea } : {}), ...pickRules(own || {}, kind) };
+    const family = (await getLiveForm(DB)).definition || {};
+    const merged = { ...Object.fromEntries(FROM_FAMILY.filter(k => family[k] !== undefined).map(k => [k, family[k]])), ...pickRules(own || {}, kind) };
     return Object.keys(merged).length ? merged : null;
   } catch { return null; }
 };
@@ -264,6 +268,9 @@ export async function saveFormRules(DB, patch, { user = 'admin', base = null, fo
     return { conflict: { rules: current, updatedAt: saved.updatedAt, updatedBy: saved.updatedBy } };
   }
   const p = pickRules(patch && typeof patch === 'object' ? patch : {}, k);
+  // An organization form's list set back to null: it goes back to the family form's
+  const backToFamily = k !== 'family' && p.staffEmails === null;
+  if (backToFamily) p.staffEmails = (await getLiveForm(DB, { fresh: true })).definition?.staffEmails;
   // Part of the service area (just the outline, say) keeps the rest as it is
   if (p.serviceArea && typeof p.serviceArea === 'object') p.serviceArea = { ...current.serviceArea, ...p.serviceArea };
   // A part of the timing (just the waits, say) keeps the rest as it is
@@ -277,6 +284,7 @@ export async function saveFormRules(DB, patch, { user = 'admin', base = null, fo
   if (!next.staffEmails.length) errors.push({ where: 'staffEmails', message: 'Add at least one email address.' });
   if (errors.length) return { errors };
   const changes = ruleChanges(current, next);
+  if (backToFamily && saved?.rules?.staffEmails) changes.push({ field: 'application.staffEmails.family', from: false, to: true });
   if (!changes.length) return { rules: current, updatedAt: saved?.updatedAt || null, updatedBy: saved?.updatedBy || null, changes };
   const at = iso(now);
   if (k === 'family') {
@@ -286,7 +294,7 @@ export async function saveFormRules(DB, patch, { user = 'admin', base = null, fo
   } else {
     await DB.prepare(`INSERT INTO application_form_rules_kinds (kind, rules, updated_at, updated_by) VALUES (?, ?, ?, ?)
       ON CONFLICT(kind) DO UPDATE SET rules = excluded.rules, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
-      .bind(k, JSON.stringify(next), at, user).run();
+      .bind(k, JSON.stringify(backToFamily ? {} : next), at, user).run();
   }
   if (changes.some(c => c.field === 'application.serviceArea')) await keepOutline(DB, current.serviceArea.polygon, next.serviceArea.polygon, { user, at, since: saved?.updatedAt || null });
   clearFormCache();

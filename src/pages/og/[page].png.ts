@@ -45,6 +45,8 @@ const getPages = async () => {
   { slug: 'community', title: 'Community Projects', subtitle: 'Large-scale projects serving thousands of children with special needs.', heroImage: communityHero },
   { slug: 'partners', title: 'Our Partners', subtitle: 'The companies and organizations that make our work possible.', heroImage: partnerPhoto },
   { slug: 'apply', title: 'Apply for a Makeover', subtitle: 'Families of children with special needs can apply for a no-cost home renovation.', heroImage: applyHero },
+  // /apply/community-project/ (the makeover form, /apply/form/, uses the Apply card)
+  { slug: 'community-project', title: 'Apply for a Community Project', subtitle: 'Schools, clinics and nonprofits serving children with special needs can apply online.', heroImage: communityHero },
   { slug: 'advisory-board', title: 'Advisory Board', subtitle: 'Lend your time and expertise to help transform children\'s lives.', heroImage: foundersPhoto },
   { slug: 'faq', title: 'Frequently Asked Questions', subtitle: 'Everything you need to know about donating, volunteering, and applying.', heroImage: homeHero },
   { slug: 'resources', title: 'Resources', subtitle: 'Guides, tools, and information for families of children with special needs.', heroImage: homeHero },

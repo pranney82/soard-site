@@ -25,6 +25,23 @@ import { t } from '../../src/components/apply/application-render.js';
 
 const PATHS = { family: /^\/apply\/form\/?$/, organization: /^\/apply\/community-project\/?$/ };
 
+// The season year as the page was built ("2026 Community Project Application", "2026 Makeover
+// Application"): in the title, link previews and search data it follows the live settings too
+const SEASON_TITLE = /\b20\d\d(?= (?:Community Project|Makeover) Application\b)/g;
+// A text node arrives in chunks that can split anywhere: gather it, then rewrite it whole. The
+// text is still the page's own markup (entities and all), so it goes back as is.
+const wholeText = (fn) => {
+  let buf = '';
+  return {
+    text(chunk) {
+      buf += chunk.text;
+      if (!chunk.lastInTextNode) { chunk.remove(); return; }
+      chunk.replace(fn(buf), { html: true });
+      buf = '';
+    },
+  };
+};
+
 export async function embedForm(context, kind = 'family') {
   const { request, env, next } = context;
   const url = new URL(request.url);
@@ -57,7 +74,15 @@ export async function embedForm(context, kind = 'family') {
     if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
     // JSON in a <script> can't contain "</script>": escape every "<"
     const json = JSON.stringify(config).replace(/</g, '\\u003c');
+    const seasonYear = (s) => s.replace(SEASON_TITLE, year);
     const out = new HTMLRewriter()
+      .on('title', wholeText(seasonYear))
+      .on('meta[property="og:title"], meta[name="twitter:title"], meta[property="og:image:alt"], meta[name="twitter:image:alt"]', {
+        element(el) { el.setAttribute('content', seasonYear(el.getAttribute('content') || '')); },
+      })
+      .on('script[type="application/ld+json"]', wholeText(seasonYear))
+      // The hero's eyebrow names the season (the browser redraws it in the family's language)
+      .on('[data-af-t="heroEyebrow"]', { element(el) { el.setInnerContent(t('en', 'heroEyebrow', { year }, kind)); } })
       .on('[data-application]', {
         element(el) {
           el.setAttribute('data-year', year);
