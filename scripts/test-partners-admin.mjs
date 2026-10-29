@@ -105,6 +105,19 @@ function makeApi() {
     dismissed: [], added: [{ record: 'isla', company: 'bellcabinetry', name: 'Bell Cabinetry', people: [], page: { slug: 'isla', name: 'Isla', year: 2026, kind: 'kid', draft: false }, updatedAt: since }],
     settings: { emails: ['linzi@example.org'], updatedAt: null }, lastError: null,
   };
+  // JobTread access (functions/api/vendor-access-admin.js): vendors the site couldn't put on their job yet
+  const isla = { record: 'isla', jobId: 'jt-isla', page: 'Isla’s page' };
+  const georgia = { record: 'georgia', jobId: 'jt-georgia', page: 'Georgia’s page' };
+  st.access = {
+    waiting: [
+      { company: 'tkoplumbingservices', name: 'TKO Plumbing Services', partner: 'tko-plumbing-services', account: null, reason: 'no-email', error: null, jobs: [{ ...isla, why: 'page' }, { ...georgia, why: 'page bill' }] },
+      { company: 'aceelectric', name: 'Ace Electric', partner: null, account: 'acctace01', reason: 'no-email', error: null, jobs: [{ ...isla, why: 'bill' }] },
+      { company: 'craftedlighting', name: 'Crafted Lighting', partner: null, account: null, reason: 'no-email', error: null, jobs: [{ ...georgia, why: 'page' }] },
+    ],
+    near: [{ partner: 'crosby-design-group', name: 'Crosby Design Group', near: [{ id: 'acctcdg01', name: 'CDG Interiors', why: 'Initials' }] }],
+    added: [{ company: 'randallbrothers', name: 'Randall Brothers', page: 'Isla’s page', record: 'isla', jobId: 'jt-isla', why: 'page', person: 'Ron Randall', role: 'Vendor', kept: false, at: since }],
+    setAside: [], paired: 12, lastRunAt: since, lastRun: { at: since, added: 1 }, lastError: null,
+  };
   for (const k of Object.keys(DIR)) st[k] = structuredClone(FX[k] || {});
   for (const k of Object.keys(DIR)) for (const [slug, d] of Object.entries(st[k])) d.slug ||= slug;
   const key = (dir, slug) => `${dir}/${slug}`;
@@ -227,6 +240,28 @@ function makeApi() {
     }
     if (p.startsWith('/api/deployments')) return json({ success: true, deploys: [], source: 'cloudflare' });
     if (p.startsWith('/api/live-ws')) { req.abort(); return true; }
+    if (p === '/api/vendor-access-admin') {
+      const a = st.access;
+      if (req.method() !== 'POST') return json({ success: true, ...a });
+      const b = body();
+      const report = (added = []) => ({ added, made: [], contacts: [], waiting: a.waiting.length, problems: [] });
+      if (b.setAside) {
+        const w = a.waiting.find((x) => x.company === b.setAside.company) || a.setAside.find((x) => x.company === b.setAside.company);
+        if (b.setAside.undo) { a.setAside = a.setAside.filter((x) => x.company !== w.company); a.waiting.push(w); }
+        else { a.waiting = a.waiting.filter((x) => x !== w); a.setAside.push({ ...w, by: 'admin@example.com', at: new Date().toISOString() }); }
+        return json({ success: true, view: a });
+      }
+      if (b.settle) { a.near = a.near.filter((n) => n.partner !== b.settle.partner); return json({ success: true, report: report(), view: a }); }
+      if (b.contacts) {
+        const w = a.waiting.find((x) => x.partner === b.contacts.partner);
+        a.waiting = a.waiting.filter((x) => x !== w);
+        const person = b.contacts.people.find((x) => x.email)?.name;
+        const added = w.jobs.map((j) => ({ job: j.jobId, page: j.page, name: w.name, person, role: 'Vendor', kept: false }));
+        a.added.unshift(...added.map((x) => ({ company: w.company, name: w.name, page: x.page, jobId: x.job, why: 'page', person, role: 'Vendor', kept: false, at: new Date().toISOString() })));
+        return json({ success: true, report: report(added), view: a });
+      }
+      return json({ success: false, error: 'Nothing to do' }, 400);
+    }
     if (p === '/api/kid-partners-admin') {
       if (req.method() !== 'POST') return json({ success: true, ...st.logos });
       const b = body();
@@ -616,7 +651,7 @@ try {
     const tile4 = (await $text(page, '.ppl-ready__tile'))[4] || '';
     ok(/JobTread, no logo\s*2\s*Kind Neighbors Fund, for Isla’s page/.test(tile4), `the JobTread tile counts what’s waiting and names the first (${tile4})`);
     const tileBox = await page.$$eval('.ppl-ready__tile', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    ok(new Set(tileBox).size === 1, `five tiles in one row at 1440 (${tileBox.join(', ')})`);
+    ok(new Set(tileBox).size === 1, `six tiles in one row at 1440 (${tileBox.join(', ')})`);
     await clickText(page, '.ppl-ready__tile', 'JobTread, no logo');
     await page.waitForSelector('.pt-wait .pt-loose__item', { timeout: 5000 }).catch(() => {});
     ok(await page.evaluate(dialogTitle) === 'Waiting for a logo', 'the tile opens Waiting for a logo');
@@ -661,6 +696,67 @@ try {
     await typeInto(page, '#pt-wait-emails', 'Linzi@example.org, pm@example.org');
     await clickText(page, '.pt-wait__emails .btn', 'Save');
     ok(await waitToast(page, /Missing logos go to linzi@example\.org, pm@example\.org/), 'saved: both are emailed now');
+    await page.keyboard.press('Escape');
+    await sleep(300);
+
+    // JobTread access: each job's vendors on it in JobTread; who couldn't be put on yet, and what fixes each.
+    // (A success toast within 4 seconds of a site save offers Publish: let the emails save above pass first)
+    await sleep(4000);
+    const tile5 = (await $text(page, '.ppl-ready__tile'))[5] || '';
+    ok(/JobTread access\s*4\s*Crosby Design Group: CDG Interiors in JobTread\?/.test(tile5), `the access tile counts what needs a look and names the first (${tile5})`);
+    await clickText(page, '.ppl-ready__tile', 'JobTread access');
+    await page.waitForSelector('.pt-access .pt-loose__item', { timeout: 5000 }).catch(() => {});
+    ok(await page.evaluate(dialogTitle) === 'JobTread access', 'the tile opens JobTread access');
+    const accessRow = (name) => page.evaluate((name) => [...document.querySelectorAll('.pt-access .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === name)?.textContent.replace(/\s+/g, ' ').trim() || '', name);
+    const tko = await accessRow('TKO Plumbing Services');
+    ok(/Logo on Isla’s page \(job\) · Logo and a bill on Georgia’s page \(job\)/.test(tko) && /Nobody there has an email in Partners or JobTread/.test(tko) && /Add who to reach/.test(tko), `a partner with nobody to reach: each page and why, and Add who to reach (${tko.slice(0, 160)})`);
+    const ace = await accessRow('Ace Electric');
+    ok(/Bill or order on Isla’s page/.test(ace) && /vendor account has no contact with an email/.test(ace) && !/Add (who|to Partners)/.test(ace), `a JobTread vendor with no email: fixed in JobTread, so no button for it here (${ace.slice(0, 160)})`);
+    ok(/Add to Partners/.test(await accessRow('Crafted Lighting')), 'a logo that’s in neither: Add to Partners');
+    ok(await page.$eval('.pt-access .pt-access__why a[href^="#kids/"]', (a) => a.getAttribute('href')).catch(() => '') === '#kids/isla' && await page.$eval('.pt-access .pt-access__why a[href*="app.jobtread.com/jobs/"]', (a) => a.getAttribute('href')).catch(() => '') === 'https://app.jobtread.com/jobs/jt-isla', 'the page opens its editor, the job opens in JobTread');
+    ok(/12 partners matched to a JobTread vendor account/.test(await page.$eval('.pt-access__foot', (e) => e.textContent).catch(() => '')), 'the foot says how many partners are matched in JobTread');
+    await shot(page, 'desk-access', { grow: false });
+    await axeCheck(page, 'jobtread access');
+    // JobTread names Crosby Design Group nearly the same: staff settle it
+    ok(/Isn’t a vendor in JobTread by that name\. JobTread has “CDG Interiors”\./.test(await accessRow('Crosby Design Group')), 'a near name says what JobTread has');
+    await clickText(page, '.pt-access .btn', 'Same as CDG Interiors');
+    ok(await waitToast(page, /Crosby Design Group is CDG Interiors in JobTread now/), '“Same as” says so');
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ settle: { partner: 'crosby-design-group', account: 'acctcdg01' } }), 'and names the partner and JobTread’s account');
+    ok(!(await accessRow('Crosby Design Group')), 'and it leaves the list');
+    // Who to reach at TKO: saved, they're on both jobs
+    await clickText(page, '.pt-access .btn', 'Add who to reach');
+    await page.waitForSelector('#pt-vendor-contact-email-0', { timeout: 5000 }).catch(() => {});
+    ok(await page.evaluate(dialogTitle) === 'Who to reach at TKO Plumbing Services', 'Add who to reach asks for the person');
+    await typeInto(page, '#pt-vendor-contact-name-0', 'Tia Ko');
+    await typeInto(page, '#pt-vendor-contact-email-0', 'not an email');
+    await clickText(page, '.kd-dialog__foot .btn', 'Save');
+    ok(/That isn’t an email address/.test(await page.$eval('.kd-dialog', (d) => d.textContent).catch(() => '')), 'a bad email is caught before saving');
+    await typeInto(page, '#pt-vendor-contact-email-0', 'tia@tkoplumbing.example');
+    await clickText(page, '.kd-dialog__foot .btn', 'Save');
+    ok(await waitToast(page, /Tia Ko is on the job for Isla’s page and the job for Georgia’s page in JobTread now, as a Vendor\./), `saved: the toast says which jobs they’re on now (${(await $text(page, '.toast')).filter((t) => /^Tia/.test(t)).join(' | ').slice(0, 300)})`);
+    ok(!(await $text(page, '.toast')).some((t) => /^Tia Ko/.test(t) && /publish/i.test(t)), `and nothing about publishing: JobTread has it already (${(await $text(page, '.toast')).filter((t) => /^Tia/.test(t)).join(' | ')})`);
+    const saveCall = lastCall(api, '/api/vendor-access-admin')?.body?.contacts;
+    ok(saveCall?.partner === 'tko-plumbing-services' && saveCall.people[0].email === 'tia@tkoplumbing.example', 'the contact is saved for that partner');
+    await page.waitForSelector('.pt-access', { timeout: 3000 }).catch(() => {});
+    ok(await page.evaluate(dialogTitle) === 'JobTread access' && !(await accessRow('TKO Plumbing Services')), 'back on the list, without them');
+    // Not needed: set aside, with an Undo
+    await page.evaluate(() => [...document.querySelectorAll('.pt-access .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === 'Ace Electric')?.querySelector('.pt-loose__not')?.click());
+    ok(await waitToast(page, /Ace Electric won’t be put on jobs/), '“Not needed on jobs” sets it aside');
+    ok(/1 company marked not needed on jobs/.test(await page.$eval('.kd-dialog', (d) => d.textContent).catch(() => '')), 'and lists it, to undo');
+    ok(await clickToastAction(page, /won’t be put on jobs/), 'with an Undo');
+    await page.waitForFunction(() => /Ace Electric/.test(document.querySelector('.pt-access')?.textContent || ''), { timeout: 5000 }).catch(() => {});
+    ok(lastCall(api, '/api/vendor-access-admin')?.body?.setAside?.undo === true && !!(await accessRow('Ace Electric')), 'Undo puts it back');
+    await page.evaluate(() => [...document.querySelectorAll('.kd-dialog .ppl-link')].find((b) => /put on jobs lately/.test(b.textContent))?.click());
+    const lately = await page.$eval('.kd-dialog', (d) => d.textContent.replace(/\s+/g, ' ')).catch(() => '');
+    ok(/Ron Randall for Randall Brothers on the job for Isla’s page · as a Vendor/.test(lately), `who went on lately, for which company and job (${lately.slice(lately.indexOf('put on jobs lately'), lately.indexOf('put on jobs lately') + 260)})`);
+    // Not in Partners: Add starts with their name, and Cancel comes back
+    await page.evaluate(() => [...document.querySelectorAll('.pt-access .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === 'Crafted Lighting')?.querySelector('.btn-primary')?.click());
+    await page.waitForSelector('#pt-new-name', { timeout: 5000 }).catch(() => {});
+    ok((await page.$eval('#pt-new-name', (i) => i.value).catch(() => '')) === 'Crafted Lighting', 'Add to Partners starts with their name');
+    ok(/put on that job in JobTread/.test(await page.$eval('.kd-dialog', (d) => d.textContent).catch(() => '')), 'and says they’ll go on the job once added with a contact');
+    await clickText(page, '.kd-dialog__foot .btn', 'Cancel');
+    await page.waitForSelector('.pt-access', { timeout: 3000 }).catch(() => {});
+    ok(await page.evaluate(dialogTitle) === 'JobTread access', 'Cancel goes back to JobTread access');
     await page.keyboard.press('Escape');
     await sleep(300);
 
@@ -996,14 +1092,14 @@ try {
     const labelRows = await page.$$eval('.ppl-ready__label', (els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
     ok(new Set(labelRows).size === 1, `at 1280 every tile label keeps to one line (${labelRows.join(', ')})`);
     const rows1280 = await page.$$eval('.ppl-ready__tile', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    ok(rows1280.slice(0, 3).every((t) => t === rows1280[0]) && rows1280[3] === rows1280[4] && rows1280[3] > rows1280[0], `at 1280: the three checks, then the two lists (${rows1280.join(', ')})`);
+    ok(rows1280.slice(0, 3).every((t) => t === rows1280[0]) && rows1280.slice(3).every((t) => t === rows1280[3]) && rows1280[3] > rows1280[0], `at 1280: the three checks, then the three lists (${rows1280.join(', ')})`);
     await shot(page, 'desk1280-tiles', { grow: false });
     await page.evaluate(() => { location.hash = '#partners?waiting'; });
     await page.waitForSelector('.pt-wait', { timeout: 5000 }).catch(() => {});
     ok(await page.evaluate(dialogTitle) === 'Waiting for a logo', 'following the link with the admin already open does too');
     ok(await page.evaluate(() => location.hash) === '#partners', 'and tidies the address, so the next click on it works too');
     const tileTops = await page.$$eval('.ppl-ready__tile', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    ok(tileTops.length === 5, `five readiness tiles (${tileTops.length})`);
+    ok(tileTops.length === 6, `six readiness tiles (${tileTops.length})`);
     // A company already in Partners without a logo: the button opens that partner, there's nothing to link
     api.st.logos.waiting.push({ ...api.st.logos.waiting[0], company: 'carlossandyramirez', name: 'Carlos & Sandy Ramirez', hint: 'Carlos & Sandy Ramirez is in Partners without a logo' });
     await page.keyboard.press('Escape');
@@ -1060,6 +1156,22 @@ try {
     ok(emailFont >= 16, `phone: the email field is 16px, so iPhone doesn’t zoom into it (${emailFont}px)`);
     await shot(page, 'phone-waiting', { grow: false });
     await axeCheck(page, 'phone waiting for a logo');
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    // JobTread access on a phone: the list fits, and every choice is a 44px target
+    await clickText(page, '.ppl-ready__tile', 'JobTread access');
+    await page.waitForSelector('.pt-access .pt-loose__item', { timeout: 5000 }).catch(() => {});
+    const accessFit = await page.evaluate(() => {
+      const d = document.querySelector('.kd-dialog');
+      const r = d?.getBoundingClientRect();
+      const wide = [...(d?.querySelectorAll('*') || [])].filter((el) => { const b = el.getBoundingClientRect(); return b.width && (b.left < -0.5 || b.right > innerWidth + 0.5); }).map((el) => `${el.tagName}.${String(el.className).slice(0, 30)}`);
+      const small = [...document.querySelectorAll('.pt-access .btn')].filter((el) => el.getBoundingClientRect().height < 44).map((el) => el.textContent.trim().slice(0, 24));
+      return { ok: !!r && r.left >= 0 && r.right <= innerWidth, wide: wide.slice(0, 4), small: small.slice(0, 4) };
+    });
+    ok(accessFit.ok && !accessFit.wide.length, `phone: JobTread access fits the screen${accessFit.wide.length ? ` (${accessFit.wide.join(', ')})` : ''}`);
+    ok(!accessFit.small.length, `phone: every button in JobTread access is a 44px target${accessFit.small.length ? ` (${accessFit.small.join(', ')})` : ''}`);
+    await shot(page, 'phone-access', { grow: false });
+    await axeCheck(page, 'phone jobtread access');
     await page.keyboard.press('Escape');
     await sleep(200);
     await page.evaluate(() => { location.hash = '#kids/isla'; });

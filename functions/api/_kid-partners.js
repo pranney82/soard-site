@@ -39,7 +39,7 @@ const MAX_PAGES = 8;
 const SITE = 'https://sunshineonaranneyday.com';
 const WAITING_URL = `${SITE}/admin/#partners?waiting`;
 // A website on one of these isn't the company's own
-const FREE_MAIL = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'ymail.com', 'hotmail.com', 'outlook.com', 'live.com', 'msn.com', 'icloud.com', 'me.com',
+export const FREE_MAIL = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'ymail.com', 'hotmail.com', 'outlook.com', 'live.com', 'msn.com', 'icloud.com', 'me.com',
   'mac.com', 'aol.com', 'comcast.net', 'att.net', 'bellsouth.net', 'verizon.net', 'sbcglobal.net', 'charter.net', 'cox.net', 'earthlink.net', 'protonmail.com', 'proton.me',
   'soardcharity.com']);
 const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');
@@ -61,22 +61,25 @@ export async function ensureSchema(DB) {
 }
 const parse = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
 
-// A check that crashed frees the lock after this; a re-check after a save waits up to LOCK_TRIES × LOCK_RETRY_MS
+// A check that crashed frees the lock after this; a re-check after a save waits up to LOCK_TRIES × LOCK_RETRY_MS.
+// 'sync' guards kid-record writes (this sweep and ./_sponsors.js adoption); ./_vendor-access.js has its own name.
 const LOCK_MS = 2 * 60 * 1000;
 const LOCK_TRIES = 10;
 const LOCK_RETRY_MS = 1500;
-async function lock(DB, wait) {
+export async function takeLock(DB, wait = false, name = 'sync') {
   for (let i = 0; i < (wait ? LOCK_TRIES : 1); i++) {
     if (i) await new Promise((r) => setTimeout(r, LOCK_RETRY_MS));
     const t = Date.now();
-    const ins = await DB.prepare("INSERT OR IGNORE INTO kid_partner_lock (name, until) VALUES ('sync', ?)").bind(t + LOCK_MS).run();
+    const ins = await DB.prepare('INSERT OR IGNORE INTO kid_partner_lock (name, until) VALUES (?, ?)').bind(name, t + LOCK_MS).run();
     if (ins?.meta?.changes > 0) return true;
-    const upd = await DB.prepare("UPDATE kid_partner_lock SET until = ? WHERE name = 'sync' AND until < ?").bind(t + LOCK_MS, t).run();
+    const upd = await DB.prepare('UPDATE kid_partner_lock SET until = ? WHERE name = ? AND until < ?').bind(t + LOCK_MS, name, t).run();
     if (upd?.meta?.changes > 0) return true;
   }
   return false;
 }
-const unlock = (DB) => DB.prepare("DELETE FROM kid_partner_lock WHERE name = 'sync'").run().catch(() => {});
+export const freeLock = (DB, name = 'sync') => DB.prepare('DELETE FROM kid_partner_lock WHERE name = ?').bind(name).run().catch(() => {});
+const lock = (DB, wait) => takeLock(DB, wait);
+const unlock = (DB) => freeLock(DB);
 /** The same company name: "Randall Brothers, Inc." for Randall Brothers, "Helen & Jimmy Carlos" for "Jimmy & Helen Carlos" */
 const sameName = (a, b) => (nameKey(a) && nameKey(a) === nameKey(b)) || (!!wordsKey(a) && wordsKey(a) === wordsKey(b));
 
@@ -177,21 +180,47 @@ export async function fetchAccess(grantKey, ids, fetchImpl = fetch) {
  * The companies a job's Vendor and Sponsor logins belong to:
  * [{ company (its name key), name, people: [{ name, email, role }] }]
  */
-export function jobCompanies(job) {
+export function jobCompanies(job, who = new Map()) {
   const out = new Map();
   for (const a of job?.aces?.nodes || []) {
     const m = a?.membership;
     const role = m?.role?.name;
     if (!m || m.isInternal || !LOGO_ROLES.includes(role)) continue;
-    const name = String(m.account?.name || m.user?.name || '').trim();
+    const email = String(m.user?.emailAddress || '').trim().toLowerCase();
+    // A login with no account (added by email) is a known contact's company when there is one
+    const known = !m.account?.name ? who.get(email) : null;
+    const name = String(m.account?.name || known?.name || m.user?.name || '').trim();
     const company = nameKey(name);
     if (!company) continue;
-    const c = out.get(company) || { company, name, people: [] };
-    const email = String(m.user?.emailAddress || '').trim().toLowerCase();
+    const c = out.get(company) || { company, name, people: [], ...(known?.partner ? { partner: known.partner } : {}) };
     if (!c.people.some((p) => p.email === email && p.role === role)) c.people.push({ name: String(m.user?.name || '').trim() || null, email: isEmail(email) ? email : null, role });
     out.set(company, c);
   }
   return [...out.values()];
+}
+
+/**
+ * The people the site knows the company of: email → { name, partner }, from
+ * Partners contacts (./_sponsors.js) and the vendors ./_vendor-access.js put
+ * on jobs. quiet: "job email" for someone put on a job for a bill alone,
+ * whose logo doesn't go on the page by that.
+ */
+export async function knownPeople(DB, partners) {
+  const who = new Map();
+  const quiet = new Set();
+  const names = new Map(partners.map((p) => [p.slug, p.name]));
+  const all = async (sql) => { try { return (await DB.prepare(sql).all()).results || []; } catch { return []; } }; // no table until that feature's first run
+  for (const r of await all('SELECT partner, people FROM partner_contacts')) {
+    if (!names.has(r.partner)) continue;
+    for (const p of parse(r.people, []) || []) if (isEmail(p?.email)) who.set(p.email, { name: names.get(r.partner), partner: r.partner });
+  }
+  for (const r of await all("SELECT job_id, name, partner, why, person FROM vendor_access WHERE state = 'added'")) {
+    const email = parse(r.person, {})?.email;
+    if (!isEmail(email)) continue;
+    if (!who.has(email)) who.set(email, { name: (r.partner && names.get(r.partner)) || r.name, partner: r.partner && names.has(r.partner) ? r.partner : null });
+    if (r.why === 'bill') quiet.add(`${r.job_id} ${email}`);
+  }
+  return { who, quiet };
 }
 
 // ── Finding a company's logo ─────────────────────────────────────────
@@ -227,8 +256,9 @@ export function logoIndex(partners, records, links = {}) {
 export function findLogo(c, index) {
   const { partners, pages, links = {} } = index;
   const withLogo = (list) => list.filter((p) => p.logo).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  // Linked by hand in the admin: wins over any guess
-  const linked = links[c.company] && partners.find((p) => p.slug === links[c.company]);
+  // Linked by hand in the admin wins over any guess; then the partner whose contact this is
+  const slug = links[c.company] || c.partner;
+  const linked = slug && partners.find((p) => p.slug === slug);
   if (linked) return linked.logo ? { logo: { url: linked.logo, name: linked.name, partner: linked.slug, how: 'linked' } } : { logo: null, hint: `Linked to ${linked.name}, who has no logo in Partners yet` };
   const byName = partners.filter((p) => nameKey(p.slug) === c.company || sameName(p.name, c.name));
   const named = withLogo(byName);
@@ -347,13 +377,18 @@ export async function syncKidPartners(env, { fetchImpl = fetch, now = Date.now()
     const byKey = new Map(records.map((r) => [keyOf(r), r]));
     const partners = partnerRows.map((r) => ({ slug: r.slug, ...(parse(r.data || '{}', {}) || {}) }));
     const index = logoIndex(partners, records, links);
+    const { who, quiet } = fromJobTread ? await knownPeople(env.DB, partners) : { who: new Map(), quiet: new Set() };
 
     // What each page's job says now, or (re-checking) what was waiting
     const work = new Map(); // record key → { rec, jobId, companies }
     if (fromJobTread) {
       const links = [...linkJobs(jobs, records)].filter(([key]) => byKey.has(key));
       const access = await fetchAccess(env.JOBTREAD_GRANT_KEY, [...new Set(links.map(([, job]) => job.id))], fetchImpl);
-      for (const [key, job] of links) work.set(key, { rec: byKey.get(key), jobId: job.id, companies: jobCompanies({ aces: access.get(job.id) }), seen: true });
+      for (const [key, job] of links) {
+        // Someone on the job for a bill alone (./_vendor-access.js) doesn't bring a logo with them
+        const companies = jobCompanies({ aces: access.get(job.id) }, who).filter((c) => !c.people.every((p) => p.email && quiet.has(`${job.id} ${p.email}`)));
+        work.set(key, { rec: byKey.get(key), jobId: job.id, companies, seen: true });
+      }
     } else {
       for (const r of rows.values()) {
         if (r.state !== 'waiting' || !byKey.has(r.record)) continue;

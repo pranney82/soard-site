@@ -15,6 +15,7 @@
  *  - liveSchedule: the live countdown's last JobTread check (what it follows, what's waiting)
  *  - kidStatus: kid statuses following JobTread (last sweep, last run, profiles it hid)
  *  - kidLogos:  Vendor and Sponsor logos on kid pages from JobTread (last sweep, logos added, companies waiting; counts only)
+ *  - vendorAccess: vendors on their JobTread jobs (last run, people added, accounts made, contacts synced, companies waiting; counts only)
  *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
  *  - mercury:   Mercury through SOARD's relay (both keys present, and the accounts it answers with: names and kinds only)
  *  - board:     Access's board sign-in list (synced, the policy on the app, members without an email), bank history months, the last packet
@@ -211,6 +212,16 @@ export function kidLogoFacts(state, waiting = null) {
   };
 }
 
+/** Vendors on their JobTread jobs (vendor_access_state, _vendor-access.js). Times and counts only */
+export function vendorAccessFacts(state) {
+  const d = state || {};
+  const r = d.lastRun || {};
+  return {
+    lastRunAt: r.at || null, claimedAt: d.claimedAt || null, lastErrorAt: d.lastError?.at || null,
+    added: r.added ?? null, made: r.made ?? null, contacts: r.contacts ?? null, waiting: r.waiting ?? null, near: r.near ?? null, more: !!r.more,
+  };
+}
+
 /** Gift alerts in Slack (site_config "zeffy-alerts", _zeffy.js); failing: posts Slack hasn't taken yet. Times and counts only */
 export function zeffyFacts(cfg, failing = null) {
   const d = cfg?.data || {};
@@ -358,9 +369,10 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
   ]);
   const ok = (v) => (v && !v.error ? v : null);
   // The tables appear with the first partner logo sweep; until then these settle to an error
-  const [logoState, logoWaiting] = await Promise.all([
+  const [logoState, logoWaiting, vendorState] = await Promise.all([
     settle(async () => JSON.parse((await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'state'").first('value')) || '{}')),
     settle(() => DB.prepare("SELECT count(DISTINCT company) AS n FROM kid_partner_logos WHERE state = 'waiting'").first('n')),
+    settle(async () => JSON.parse((await DB.prepare("SELECT value FROM vendor_access_state WHERE key = 'state'").first('value')) || '{}')),
   ]);
   // What the last staff alert text did, and each number's delivery report (counts and Twilio's words only)
   const alertTexts = await readAlertTexts(DB).catch(() => null);
@@ -384,6 +396,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     liveSchedule: liveScheduleFacts(ok(liveSchedule)),
     kidStatus: kidStatusFacts(ok(kidState), typeof kidsHidden === 'number' ? kidsHidden : null),
     kidLogos: kidLogoFacts(ok(logoState), typeof logoWaiting === 'number' ? logoWaiting : null),
+    vendorAccess: vendorAccessFacts(ok(vendorState)),
     zeffy: zeffyFacts(ok(zeffyCfg), ok(zeffyFailing)),
     // Resend's delivery reports: registered, waiting, or the key can only send (never the secret)
     emailTracking: ok(await settle(() => trackingState(env))),

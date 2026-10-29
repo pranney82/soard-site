@@ -261,6 +261,22 @@ const MAP = { t: 'SOARD', children: [
             const waiting = l.waiting ? ` ${plural(l.waiting, 'company is', 'companies are')} waiting for a logo (Partners → JobTread, no logo).` : '';
             return ON(`${l.added ? `The last check put ${plural(l.added, 'logo')} on pages.` : 'Every Vendor and Sponsor with a logo has it on their page.'}${waiting}`, l.lastRunAt);
           } },
+        { t: 'Vendors on their JobTread jobs', s: 'live', k: 'schedule',
+          when: 'Every 15 minutes on the live hub’s heartbeat. Adding an email or settling a name in Partners → JobTread access runs that company straight away.',
+          does: 'Each open kid or community job lists its vendors in JobTread’s job access: every company whose logo is on the page (the kid’s monetary sponsor aside), and every JobTread vendor with a bill or purchase order on the job. One with nobody on the job yet gets its first contact with an email added as a Vendor, with no email from JobTread. A company on a page with no JobTread vendor account gets one under its Partners name, with its contacts. Contacts are kept the same both ways between Partners and the vendor account, the newer change winning.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_vendor-access.js · _jt-access.js (from broadcast-hooks.js and vendor-access-admin.js)',
+          info: 'A company counts as on the job when anyone from it has access, in any role: a login under its JobTread account, one of its contacts’ emails, or an email on its website. Nobody with an email: it waits in Partners → JobTread access. JobTread naming a vendor nearly the same (“WYP Construction” for Walk Your Plans) isn’t guessed at; staff say Same company or Make a new one. Bills and orders come from JobTread, read every 4 hours. Someone added for a bill alone doesn’t put a logo on the page. Contacts stay private (D1 and JobTread), and History shows names only. JobTread accounts have no logo, so logos stay in Partners. Jobs named TEST are ignored.',
+          live: (f) => {
+            const v = f.vendorAccess;
+            if (!v) return null;
+            if (env(f) && !f.env.jobtread) return ATTN('JOBTREAD_GRANT_KEY is missing, so vendors can’t be put on their jobs.');
+            if (!v.claimedAt) return ATTN('It hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (v.lastErrorAt && (!v.lastRunAt || v.lastErrorAt >= v.lastRunAt)) return ATTN(`The last run hit a problem (${stamp(v.lastErrorAt)}). Partners → JobTread access says which; it tries again in 15 minutes.`, v.lastRunAt);
+            if (stale(v.claimedAt, HOUR)) return ATTN(`Hasn’t run since ${stamp(v.claimedAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, v.lastRunAt);
+            const did = [v.added && `added ${plural(v.added, 'vendor')} to jobs`, v.made && `made ${plural(v.made, 'JobTread vendor account')}`, v.contacts && `kept ${plural(v.contacts, 'vendor’s contacts', 'vendors’ contacts')} in step`].filter(Boolean);
+            const waiting = (v.waiting || v.near) ? ` ${plural((v.waiting || 0) + (v.near || 0), 'company is', 'companies are')} waiting in Partners → JobTread access.` : '';
+            return ON(`${did.length ? `The last run ${did.join(', ')}${v.more ? ', with more next run' : ''}.` : 'Every vendor is on their jobs.'}${waiting}`, v.lastRunAt);
+          } },
         { t: 'Monetary sponsor ↔ JobTread', s: 'live', k: 'schedule',
           when: 'A kid’s profile is saved with a sponsor picked, changed or taken off (or while JobTread doesn’t match yet), a sponsor’s contacts are saved, and every 10 minutes on the live hub’s heartbeat, right after the logo check.',
           does: 'The website is the source of truth for who pays for a room (Admin → Kids → Monetary sponsor, picked from Partners or added with their logo and contact). Job access comes first: each contact with an email is given the kid’s open job with the Sponsor role, with no email from JobTread, so the Demo Day and reveal invites reach them; a sponsor taken off the kid loses that access. Then the job’s Monetary Sponsor field mirrors who has the Sponsor role, blank until someone does. Every 10 minutes it also takes in what was done in JobTread: someone given the Sponsor role there, or a Monetary Sponsor naming a Partner, becomes the kid’s sponsor, with that person as a contact and their logo first on the page.',

@@ -23,6 +23,7 @@ import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 import { maybeSweepApplications } from './_applications.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
 import { maybeSyncKidPartners } from './_kid-partners.js';
+import { maybeSyncVendorAccess } from './_vendor-access.js';
 import { maybeSyncSponsors } from './_sponsors.js';
 import { maybeSweepZeffy } from './_zeffy.js';
 import { maybeRunWaitlist } from './_application-waitlist.js';
@@ -84,6 +85,9 @@ export async function onRequestPost(context) {
     // Then monetary sponsors: job access follows the website, the Monetary Sponsor field mirrors it, and a
     // Sponsor added in JobTread comes in (see _sponsors.js). In turn, so the two never write a kid at once
     context.waitUntil(maybeSyncKidPartners(env).then(() => maybeSyncSponsors(env)));
+    // Every 15 minutes: each job's vendors (logos on the page, bills and orders) on its JobTread job access, quietly,
+    // and vendor contacts kept in step both ways (see _vendor-access.js)
+    context.waitUntil(maybeSyncVendorAccess(env));
     context.waitUntil(maybeSweepZeffy(env));
     context.waitUntil(maybeRunWaitlist(env));
     context.waitUntil(maybeRunPress(env));

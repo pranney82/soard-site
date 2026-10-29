@@ -4253,12 +4253,10 @@
     .pt-loose__dismissed small { color: var(--color-text-muted); }
     .pt-loose__dismissed + .pt-loose__dismissed { margin-top: 0.75rem; }
     /* Waiting for a logo: Vendors and Sponsors on JobTread jobs */
-    .pt-ready { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-    /* Too narrow for five in a row: the three checks, then the two lists to go through */
+    .pt-ready { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    /* Too narrow for six in a row: the three checks, then the three lists to go through */
     @media (max-width: 1400px) {
-      .pt-ready { grid-template-columns: repeat(6, minmax(0, 1fr)); }
       .pt-ready > .ppl-ready__tile { grid-column: span 2; }
-      .pt-ready > .ppl-ready__tile--review { grid-column: span 3; }
     }
     .pt-wait__logo { flex-shrink: 0; }
     .pt-wait__who { font-size: var(--fs-xs); color: var(--color-text-secondary); overflow-wrap: anywhere; }
@@ -4282,6 +4280,12 @@
     .pt-wait__emails { display: grid; gap: 0.35rem; margin-top: 1rem; padding-top: 0.85rem; border-top: 1px solid var(--color-border); }
     .pt-wait__emails-row { display: flex; gap: 0.5rem; }
     .pt-wait__emails-row .form-input { flex: 1; min-width: 0; }
+    /* JobTread access: vendors on their jobs */
+    .pt-access__why { font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.6; }
+    .pt-access__why a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+    .modal .pt-access__foot { margin: 1rem 0 0; padding-top: 0.85rem; border-top: 1px solid var(--color-border); font-size: var(--fs-xs); color: var(--color-text-secondary); }
+    .pt-access h3 { margin: 0 0 0.5rem; font-size: var(--fs-sm); font-weight: 600; }
+    .pt-access + .pt-access { margin-top: 1rem; }
     .kd-logowait { margin-bottom: 0.85rem; padding: 0.7rem 0.85rem; border: 1px solid #EBCB4D; border-radius: 12px; background: var(--tone-warn-surface); }
     .kd-logowait__lead { margin: 0 0 0.45rem; font-size: var(--fs-sm); color: var(--tone-warn-fg); }
     .kd-logowait ul { display: grid; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
@@ -4310,7 +4314,6 @@
       .pt-row .ppl-row__sub { white-space: normal; }
       .pt-ready { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .pt-ready > .ppl-ready__tile { grid-column: auto; }
-      .pt-ready > .pt-ready__waiting { grid-column: span 2; }
     }
     @media (max-width: 1024px) {
       .pt-selectbar { top: calc(var(--top-h) + 0.5rem); }
@@ -12486,6 +12489,11 @@
         window.addEventListener('soard-partners-waiting', open);
         return () => window.removeEventListener('soard-partners-waiting', open);
       }, []);
+      // Vendors on their JobTread jobs: who couldn't be put on one yet
+      const [access, setAccess] = useState(null);
+      const readAccess = () => ptAccessRead().then((r) => { if (!r.success || !Array.isArray(r.waiting)) throw new Error(r.error || 'Couldn’t load'); setAccess(r); })
+        .catch((e) => setAccess((a) => (a && !a.failed ? a : { failed: e.message || 'Couldn’t load', waiting: [], near: [], added: [], setAside: [] })));
+      useEffect(() => { readAccess(); }, []);
       const dupes = useMemo(() => PS.duplicatesOf(partners), [partners]);
       const names = useMemo(() => new Map(partners.map((p) => [p.slug, p.name])), [partners]);
       const logoState = usePtLogoState(partners.map((p) => p.logo));
@@ -12757,6 +12765,16 @@
             <span class="ppl-ready__value">${waiting?.failed ? '?' : waiting ? ptByCompany(waiting.waiting).length : html`<span class="spinner spinner-14" />`}</span>
             <span class="ppl-ready__sub">${!waiting ? 'Checking' : waiting.failed ? 'Couldn’t check' : waiting.waiting.length ? (() => { const g = ptByCompany(waiting.waiting)[0]; return `${g.name}, for ${ptPagesOf(g)}`; })() : 'Every Vendor and Sponsor has a logo'}</span>
           </button>
+          ${(() => {
+            const n = access && !access.failed ? access.waiting.length + access.near.length : 0;
+            return html`<button type="button" class=${`ppl-ready__tile ppl-ready__tile--review pt-ready__access${n ? ' is-waiting' : ''}`}
+              onClick=${() => { setDialog({ kind: 'access' }); readAccess(); }} title="Each open job’s vendors on its JobTread job access, and their contacts kept the same in Partners and JobTread">
+              <span class="ppl-ready__label">JobTread access</span>
+              <span class="ppl-ready__value">${access?.failed ? '?' : access ? n : html`<span class="spinner spinner-14" />`}</span>
+              <span class="ppl-ready__sub">${!access ? 'Checking' : access.failed ? 'Couldn’t check' : access.near.length ? `${access.near[0].name}: ${access.near[0].near[0]?.name || 'a near name'} in JobTread?`
+                : access.waiting.length ? `${access.waiting[0].name}: ${access.waiting[0].reason === 'error' ? 'JobTread refused' : 'no email'}` : 'Every vendor is on their jobs'}</span>
+            </button>`;
+          })()}
         </div>
         <div class="ppl-toolbar pt-toolbar">
           <div class="search-bar ppl-search">
@@ -12822,6 +12840,7 @@
             setDialog(dialog.from ? { kind: dialog.from } : null);
             // The save puts a waiting logo on its page in the background: look again once it has
             if (dialog.from === 'waiting') { setTimeout(readWaiting, 2500); setTimeout(readWaiting, 8000); }
+            if (dialog.from === 'access') readAccess();
             onCreateClose?.();
             setSearch(''); setFilter('all');
             setFlash(slug);
@@ -12835,6 +12854,13 @@
           onChange=${(v) => { if (Array.isArray(v?.waiting)) setWaiting(v); else readWaiting(); }}
           onAdd=${(r) => setDialog({ kind: 'create', from: 'waiting', prefill: { name: r.name, website: ptSiteOf(r.people),
             note: `${r.name} is a ${ptRolesOf(r.people).toLowerCase()} on ${ptPagesOf(r)}. Add their logo here and it goes on ${r.rows.length === 1 ? 'that page' : 'those pages'} by itself, and on any page they work on after this.` } })} />` : null}
+        ${dialog?.kind === 'access' ? html`<${PtAccessDialog} view=${access} addToast=${addToast} onClose=${() => setDialog(null)}
+          onChange=${(v) => { if (Array.isArray(v?.waiting)) setAccess(v); else readAccess(); }}
+          onContacts=${(partner) => setDialog({ kind: 'vendor-contacts', partner })}
+          onAdd=${(w) => setDialog({ kind: 'create', from: 'access', prefill: { name: w.name,
+            note: `${w.name} has a logo on ${ptAccessPagesOf(w)} and isn’t in Partners. Add them with who to reach there, and they’re put on ${w.jobs.length === 1 ? 'that job' : 'those jobs'} in JobTread.` } })} />` : null}
+        ${dialog?.kind === 'vendor-contacts' ? html`<${PtVendorContactsDialog} partner=${dialog.partner} addToast=${addToast} onClose=${() => setDialog({ kind: 'access' })}
+          onSaved=${(r) => { if (Array.isArray(r.view?.waiting)) setAccess(r.view); else readAccess(); setDialog({ kind: 'access' }); }} />` : null}
         ${dialog?.kind === 'crop' ? html`<${PtCropTool} list=${all.filter((x) => x.margins >= PS.MARGIN_NOTE && x.p.logo).sort((a, b) => b.margins - a.margins)} checking=${measured.left} addToast=${addToast}
           onClose=${() => setDialog(null)} onDone=${() => { setDialog(null); onReload?.(); }} />` : null}
         ${dialog?.kind === 'deleted' ? html`<${PtDeletedDialog} collection="partners" taken=${new Set(partners.map((p) => p.slug))} noun="partner"
@@ -13230,6 +13256,154 @@
             ? `${who.join(' and ')} ${who.length === 1 ? 'gets' : 'get'} one email per company per page, with the company, the person’s name and email, their role and the kid. Separate addresses with commas.`
             : 'Nobody is emailed now; this list still shows them.'}</small>
         </form>
+      <//>`;
+    }
+
+    // ── JobTread access: each open job's vendors on it in JobTread (functions/api/_vendor-access.js) ──
+    const PT_ACCESS_API = '/api/vendor-access-admin';
+    const ptAccessRead = () => fetch(PT_ACCESS_API, { cache: 'no-store' }).then((r) => apiJson(r, PT_ACCESS_API));
+    // Not ptPost: these change JobTread and private contacts, nothing to publish
+    const ptAccessPost = (body) => fetch(PT_ACCESS_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => apiJson(r, PT_ACCESS_API));
+    const ptJobUrl = (id) => `https://app.jobtread.com/jobs/${encodeURIComponent(id || '')}`;
+    const ptRecordHash = (record) => `#kids/${String(record || '').split('/').map(encodeURIComponent).join('/')}`;
+    const ptAccessPagesOf = (w) => (w.jobs.length === 1 ? w.jobs[0].page : kdPlural(w.jobs.length, 'page'));
+    /** Why a company belongs on a job: its logo on the page, a bill or order there, or both */
+    const ptWhyOf = (why) => (why === 'page' ? 'Logo on' : why === 'bill' ? 'Bill or order on' : 'Logo and a bill on');
+    /** What a run did, said once */
+    function ptAccessToast(addToast, report, fallback = null) {
+      const added = report?.added || [];
+      const made = report?.made || [];
+      const bits = [];
+      const people = [...new Set(added.map((a) => a.person))];
+      if (added.length) bits.push(`${kdNames(people)} ${people.length === 1 ? 'is' : 'are'} on ${kdNames([...new Set(added.map((a) => `the job for ${a.page}`))])} in JobTread now${added.some((a) => a.kept) ? '' : ', as a Vendor'}.`);
+      if (made.length) bits.push(`${kdNames(made.map((m) => m.name))} ${made.length === 1 ? 'is a vendor' : 'are vendors'} in JobTread now.`);
+      if (bits.length || fallback) addToast(bits.join(' ') || fallback, 'success');
+      if (report?.problems?.length) addToast(report.problems.join(' '), 'error');
+    }
+
+    /**
+     * Partners → JobTread access: the open jobs' vendors (logos on the page,
+     * bills and orders) the site couldn't put on the job in JobTread yet,
+     * with what fixes each: who to reach there, the same company JobTread
+     * names nearly the same, or not needed. Also who went on lately.
+     */
+    function PtAccessDialog({ view, onAdd, onContacts, onChange, onClose, addToast }) {
+      const [busy, setBusy] = useState(null);
+      const [showAside, setShowAside] = useState(false);
+      const [showAdded, setShowAdded] = useState(false);
+      const act = async (key, body, done) => {
+        setBusy(key);
+        try {
+          const r = await ptAccessPost(body);
+          if (!r.success) throw new Error(r.error);
+          onChange(r.view || null);
+          done?.(r);
+        } catch (e) { addToast(`Couldn’t save that: ${e.message}`, 'error'); }
+        setBusy(null);
+      };
+      const setAside = (w, on) => act(`${on ? 'a' : 'u'}-${w.company}`, { setAside: { company: w.company, name: w.name, undo: !on } },
+        () => addToast(on ? `${w.name} won’t be put on jobs` : `${w.name} goes on their jobs again at the next check`, 'info', on ? { label: 'Undo', fn: () => setAside(w, false) } : null));
+      const settle = (n, account) => act(`s-${n.partner}`, { settle: account ? { partner: n.partner, account: account.id } : { partner: n.partner, makeNew: true } },
+        (r) => ptAccessToast(addToast, r.report, account ? `${n.name} is ${account.name} in JobTread now` : null));
+      const title = 'JobTread access';
+      if (!view) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}><p class="text-muted"><span class="spinner spinner-14" /> Loading…</p><//>`;
+      if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
+        <p class="kd-bad pt-wait__error">Couldn’t load the list: ${view.failed}</p>
+        <button type="button" class="btn btn-sm" onClick=${() => onChange(null)} data-autofocus>Try again</button><//>`;
+      const { waiting = [], near = [], added = [], setAside: aside = [] } = view;
+      return html`<${KdDialog} title=${title}
+        sub="Each open job lists its vendors in JobTread: the companies with a logo on the page, and the vendors with a bill or purchase order on the job. The site adds them as Vendors, without JobTread’s email, and keeps their contacts the same in Partners and JobTread."
+        size="lg" onClose=${onClose} busy=${!!busy}>
+        ${view.lastError ? html`<p class="kd-bad pt-wait__error">The last check ${kdWhen(view.lastError.at)} hit a problem: ${view.lastError.error}. It tries again every 15 minutes.</p>` : null}
+        ${near.length ? html`<section class="pt-access" aria-labelledby="pt-access-near">
+          <h3 id="pt-access-near">The same company?</h3>
+          <ul class="pt-loose pt-wait">${near.map((n, i) => html`<li key=${n.partner} class="pt-loose__item">
+            <span class="pt-loose__text">
+              <strong>${n.name}</strong>
+              <small>Isn’t a vendor in JobTread by that name. JobTread has ${kdNames(n.near.map((x) => `“${x.name}”`))}.</small>
+              <span class="pt-loose__acts">
+                ${n.near.map((x, j) => html`<button type="button" key=${x.id} class=${`btn btn-sm ${j ? 'btn-ghost' : 'btn-primary'}`} disabled=${!!busy}
+                  data-autofocus=${i === 0 && j === 0 ? '' : null} onClick=${() => settle(n, x)}>
+                  ${busy === `s-${n.partner}` ? html`<span class="spinner spinner-14" />` : null}Same as ${x.name}</button>`)}
+                <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => settle(n, null)}>${pplIcon.plus} Make ${n.name} a new vendor</button>
+              </span>
+            </span>
+          </li>`)}</ul>
+        </section>` : null}
+        ${waiting.length ? html`<section class="pt-access" aria-labelledby="pt-access-waiting">
+          <h3 id="pt-access-waiting">Nobody to add yet</h3>
+          <ul class="pt-loose pt-wait">${waiting.map((w, i) => html`<li key=${w.company} class="pt-loose__item">
+            <${PtLogo} name=${w.name} logo="" w=${72} h=${40} className="pt-wait__logo" />
+            <span class="pt-loose__text">
+              <strong>${w.name}</strong>
+              <span class="pt-access__why">${w.jobs.map((j, k) => html`${k ? ' · ' : ''}${ptWhyOf(j.why)} <a href=${ptRecordHash(j.record)} onClick=${onClose}>${j.page}</a> (<a href=${ptJobUrl(j.jobId)} target="_blank" rel="noopener" aria-label=${`The job for ${j.page} in JobTread`}>job</a>)`)}</span>
+              <small>${w.reason === 'error' ? `JobTread refused: ${w.error || 'no reason given'}. It tries again every 15 minutes.`
+                : w.partner ? 'Nobody there has an email in Partners or JobTread.'
+                : w.account ? 'Their JobTread vendor account has no contact with an email. Add one there and they’re put on the job within 15 minutes.'
+                : 'Not in Partners, or a vendor in JobTread, yet.'}</small>
+              <span class="pt-loose__acts">
+                ${w.partner ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${!!busy} data-autofocus=${i === 0 && !near.length ? '' : null}
+                    onClick=${() => onContacts({ slug: w.partner, name: w.name })}>${pplIcon.plus} Add who to reach</button>`
+                  : !w.account ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${!!busy} data-autofocus=${i === 0 && !near.length ? '' : null}
+                    onClick=${() => onAdd(w)}>${pplIcon.plus} Add to Partners</button>` : null}
+                <button type="button" class="btn btn-ghost btn-sm pt-loose__not" disabled=${!!busy} onClick=${() => setAside(w, true)}>
+                  ${busy === `a-${w.company}` ? html`<span class="spinner spinner-14" />` : null}Not needed on jobs</button>
+              </span>
+            </span>
+          </li>`)}</ul>
+        </section>` : null}
+        ${!near.length && !waiting.length ? html`<p class="pt-wait__none">${pplIcon.check} Every vendor on an open job is on it in JobTread${aside.length ? ', or isn’t needed there' : ''}.</p>` : null}
+        ${aside.length ? html`<div class="pt-loose__dismissed">
+          <button type="button" class="ppl-link" aria-expanded=${showAside} onClick=${() => setShowAside((v) => !v)}>
+            ${kdPlural(aside.length, 'company', 'companies')} marked not needed on jobs</button>
+          ${showAside ? html`<ul>${aside.map((w) => html`<li key=${w.company}><span>${w.name} <small>${w.by ? `${kdWho(w.by)} · ` : ''}${kdWhen(w.at)}</small></span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setAside(w, false)}>Undo</button></li>`)}</ul>` : null}
+        </div>` : null}
+        ${added.length ? html`<div class="pt-loose__dismissed">
+          <button type="button" class="ppl-link" aria-expanded=${showAdded} onClick=${() => setShowAdded((v) => !v)}>
+            ${kdPlural(added.length, 'person', 'people')} put on jobs lately</button>
+          ${showAdded ? html`<ul>${added.map((a) => html`<li key=${`${a.jobId}-${a.company}`}><span>${a.person || a.name}${a.person && a.person !== a.name ? ` for ${a.name}` : ''} <small>on the job for ${a.page} · ${a.kept && a.role ? `kept their ${a.role} role` : 'as a Vendor'} · ${kdWhen(a.at)}</small></span>
+            <a class="btn btn-ghost btn-sm" href=${ptJobUrl(a.jobId)} target="_blank" rel="noopener">Open the job</a></li>`)}</ul>` : null}
+        </div>` : null}
+        <p class="pt-access__foot">${view.paired ? `${kdPlural(view.paired, 'partner')} matched to a JobTread vendor account, with contacts kept the same both ways (the newer change wins). ` : ''}${view.lastRunAt ? `Checked ${kdWhen(view.lastRunAt)}; again every 15 minutes.` : 'The first check runs within 15 minutes.'}</p>
+      <//>`;
+    }
+
+    /** Who to reach at a vendor: private to staff; saved, they go on its JobTread account and its jobs */
+    function PtVendorContactsDialog({ partner, onClose, onSaved, addToast }) {
+      const [rows, setRows] = useState(null);
+      const [error, setError] = useState(null);
+      const [touched, setTouched] = useState(false);
+      const [saving, setSaving] = useState(false);
+      useEffect(() => {
+        kdSponsorGet(`partners=${encodeURIComponent(partner.slug)}`).then((r) => {
+          if (r.success) setRows((r.contacts?.[partner.slug] || []).map((p) => ({ ...p })));
+          else setError(r.error || 'Couldn’t load them');
+        });
+      }, [partner.slug]);
+      const save = async () => {
+        setTouched(true);
+        if (rows.some((p) => !kdEmailOk(p.email))) return;
+        const people = kdPeopleToSave(rows);
+        if (!people.some((p) => p.email)) { addToast('Add an email for someone there, so they can go on the job', 'error'); return; }
+        setSaving(true);
+        const r = await ptAccessPost({ contacts: { partner: partner.slug, people } }).catch((e) => ({ success: false, error: e.message }));
+        setSaving(false);
+        if (!r.success) { addToast(`Couldn’t save: ${r.error}`, 'error'); return; }
+        ptAccessToast(addToast, r.report, 'Contacts saved.');
+        onSaved(r);
+      };
+      const footer = html`
+        <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${saving}>Cancel</button>
+        <button type="button" class="btn btn-primary" onClick=${save} disabled=${saving || rows === null}>${saving ? html`<span class="spinner spinner-14" /> Saving…` : 'Save'}</button>`;
+      return html`<${KdDialog} title=${`Who to reach at ${partner.name}`} sub=${`Only staff see these. They go on ${partner.name}’s JobTread vendor account too, and the first with an email is added to their jobs as a Vendor. JobTread doesn’t email them.`}
+        size="md" onClose=${onClose} busy=${saving} footer=${footer}>
+        ${error ? html`<p class="kd-bad">Couldn’t load who’s on file: ${error}</p>`
+          : rows === null ? html`<p class="text-muted"><span class="spinner spinner-14" /> Loading…</p>`
+          : html`<form onSubmit=${(e) => { e.preventDefault(); save(); }}>
+            <${KdPeopleFields} people=${rows} onChange=${setRows} idPrefix="pt-vendor-contact" touched=${touched} />
+            <button type="submit" hidden></button>
+          </form>`}
       <//>`;
     }
 
