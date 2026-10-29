@@ -159,6 +159,21 @@ test('triage: receipts, shipping, ads, staff mail, money tools, calendar replies
   assert.equal(t({ from: 'JobTread <notifications@jobtread.com>', to: 'parent@example.com', subject: 'New message' }), null, 'JobTread already has it');
 });
 
+test('on a family’s account only the family counts; on an organization’s, everyone on it', async () => {
+  const add = (id, name, main, contacts) => env.DB.prepare('INSERT INTO applicants (account_id, name, contact_email, contacts) VALUES (?, ?, ?, ?)').bind(id, name, main, JSON.stringify(contacts)).run();
+  await add('acctYork001', 'Isla Sample', 'coord@wish.example.org', [
+    { name: 'Emily', title: 'Senior Wish Coordinator', email: 'coord@wish.example.org' }, { name: 'Erin', title: 'Mothe', email: 'erin@gmail.com' },
+    { name: 'Jay', title: '', email: 'jay@gmail.com' }, { name: 'Abby', title: 'Designer', email: 'abby@studio.example' }, { name: 'Lee', title: '', email: 'lee@work.example' }]);
+  await add('acctSchool1', 'The Sample School', 'dev@school.example.org', [{ name: 'Dana', title: 'Development Officer', email: 'dev@school.example.org' }]);
+  const fam = await familyAddresses(env.DB);
+  assert.deepEqual(['coord@wish.example.org', 'erin@gmail.com', 'jay@gmail.com', 'abby@studio.example', 'lee@work.example'].map((e) => fam.byEmail.has(e)), [false, true, true, false, false]);
+  assert.deepEqual(fam.byEmail.get('dev@school.example.org'), ['acctSchool1']);
+  const t = (o) => triage(mail({ box: PAT, at: T0, to: PAT, text: '', ...o }), fam);
+  assert.equal(t({ from: 'Emily <coord@wish.example.org>', subject: 'Isla In-kind!' }), null, 'the wish coordinator’s threads aren’t the family’s');
+  assert.equal(t({ from: 'Erin <erin@gmail.com>', subject: '*Out of Office* Re: Paint colors' }), null, 'auto-replies never count');
+  assert.deepEqual(t({ from: 'Erin <erin@gmail.com>', subject: 'Re: Paint colors' }), { kind: 'family', accounts: ['acctYork001'] });
+});
+
 test('a TEST account’s addresses never count as a family', async () => {
   await env.DB.prepare('INSERT INTO applicants (account_id, name, contact_email, contacts) VALUES (?, ?, ?, ?)').bind('acctTest001', 'TEST Family (Pat)', 'pat.home@example.net', '[]').run();
   const fam = await familyAddresses(env.DB);

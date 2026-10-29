@@ -35,6 +35,7 @@ import { EMAIL_FROM, emailConfigured } from './_broadcast-notify.js';
 import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
+import { FREE_MAIL } from './_kid-partners.js';
 
 const EVERY_MS = 3 * 60 * 1000;
 const BUSY_MS = 60 * 1000;          // while there's a backlog
@@ -54,7 +55,7 @@ const Q_MAX = 1200;
 const AT_ONCE = 6;
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const AI_TIMEOUT_MS = 8000;
-const LIST_HEADERS = ['From', 'To', 'Cc', 'Reply-To', 'Subject', 'Message-ID', 'References', 'In-Reply-To'];
+const LIST_HEADERS = ['From', 'To', 'Cc', 'Reply-To', 'Subject', 'Message-ID', 'References', 'In-Reply-To', 'Auto-Submitted'];
 const SENT_TAG = 'receipt-from-inbox';
 
 // The money tools' and JobTread's own mail: already where it belongs
@@ -63,6 +64,9 @@ const RECEIPTISH = /\b(receipts?|invoices?|bills?|order (confirmation|confirmed|
 const NOT_RECEIPT = /\b(shipped|ships|on (its|the) way|out for delivery|delivered|arriving|arrives|has arrived|track(ing)?\b|in your (cart|bag)|cart misses|left (something|in)|wish ?list|\d+% off|sale\b|deals?\b|coupons?|price drop|back in stock|review (your|us)|rate (your|us)|survey|refund(ed)?|returns?\b|statement)\b/i;
 const CALENDAR = /^(accepted|declined|tentatively accepted|tentative|invitation|updated invitation|cancell?ed (event|invitation)|new event|proposed new time)\b/i;
 // A reply on an invite's thread (a reveal's): every guest is on it, so only the family's and staff's own count
+const AUTO_REPLY = /^\W*(out of (the )?office|automatic reply|auto(matic)?[- ]?(reply|response)|autoreply|away from)/i;
+// A contact who's family (JobTread's title): "Mom", "Stepfather", "Secondary parent", "Dylan grandparent"
+const FAMILY_TITLE = /(^|\W)(mom|moth|mama|dad|fath|papa|parent|guardian|grand|aunt|uncle|step|caregiver|foster|sister|brother|husband|wife|spouse|family)/i;
 const INVITE_REPLY = /^((re|fwd?):\s*)+(updated )?invitation\b/i;
 
 const SCHEMA = [
@@ -95,9 +99,13 @@ const when = (ms) => new Date(ms).toLocaleString('en-US', { timeZone: 'America/N
 // ─── Who's a family ─────────────────────────────────────────────────
 
 /**
- * Every address on an applicant's account (the site's copy of JobTread,
- * _applicants.js) → { byEmail: Map(email → [account ids]), names: Map(id → name) }.
- * Staff and JobTread addresses never count.
+ * The family's addresses on each applicant's account (the site's copy of
+ * JobTread, _applicants.js) → { byEmail: Map(email → [account ids]), names }.
+ * On a family's account (a contact titled Mom, Dad, parent…) only the family
+ * counts: a wish coordinator, caseworker or designer on it doesn't, and an
+ * untitled contact counts on a personal address (Gmail and the like). On an
+ * organization's account (a school's director) everyone on it is the
+ * applicant. Staff and JobTread addresses never count.
  */
 export async function familyAddresses(DB) {
   const byEmail = new Map();
@@ -108,7 +116,14 @@ export async function familyAddresses(DB) {
     // A staff test run's account carries a staff member's own address
     if (/\btest\b/i.test(r.name || '')) continue;
     names.set(r.account_id, r.name);
-    for (const e of new Set(addresses(`${r.contact_email || ''} ${r.contacts || ''}`))) {
+    let contacts = [];
+    try { contacts = (JSON.parse(r.contacts || '[]') || []).filter((c) => c && typeof c === 'object'); } catch { /* none */ }
+    const isFamily = contacts.some((c) => FAMILY_TITLE.test(c.title || ''));
+    const counts = (c) => !isFamily || FAMILY_TITLE.test(c.title || '') || (!String(c.title || '').trim() && addresses(c.email).every((e) => FREE_MAIL.has(e.split('@')[1])));
+    const theirs = contacts.flatMap((c) => addresses(c.email).map((e) => [e, counts(c)]));
+    const left = new Set(theirs.filter(([, ok]) => !ok).map(([e]) => e));
+    const kept = [...theirs.filter(([, ok]) => ok).map(([e]) => e), ...addresses(r.contact_email).filter((e) => !left.has(e))];
+    for (const e of new Set(kept)) {
       if (isStaffEmail(e) || OWN_TOOLS.test(e)) continue;
       byEmail.set(e, [...new Set([...(byEmail.get(e) || []), r.account_id])]);
     }
@@ -136,7 +151,7 @@ export function triage(msg, { byEmail }) {
   const subject = header(h, 'Subject');
   const from = addresses(header(h, 'From'));
   const people = [...new Set([...from, ...addresses(header(h, 'To')), ...addresses(header(h, 'Cc')), ...addresses(header(h, 'Reply-To'))])];
-  if (CALENDAR.test(subject.trim())) return null;
+  if (CALENDAR.test(subject.trim()) || AUTO_REPLY.test(subject) || /auto-replied/i.test(header(h, 'Auto-Submitted'))) return null;
   const tools = people.some((e) => OWN_TOOLS.test(e));
   const guestChatter = INVITE_REPLY.test(subject.trim()) && !from.every(isStaffEmail) && !accountsOf(from, byEmail).length;
   const accounts = tools || guestChatter ? [] : accountsOf(people, byEmail);
