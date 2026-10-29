@@ -47,21 +47,41 @@ function batches(entries) {
   return out;
 }
 
-async function translateBatch(env, batch) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await env.AI.run(MODEL, {
-        messages: [{ role: 'system', content: PROMPT }, { role: 'user', content: JSON.stringify(batch) }],
-        max_tokens: 4000,
-        temperature: 0.2,
-      });
-      const r = typeof res === 'string' ? res : (res?.response ?? res);
-      if (r && typeof r === 'object') return r;
-      const m = String(r).match(/\{[\s\S]*\}/);
-      if (m) return JSON.parse(m[0]);
-    } catch { /* try again */ }
+/**
+ * The JSON in the model's reply. It sometimes leaves the line breaks of a
+ * many-paragraph email raw inside its strings, which JSON doesn't allow;
+ * those are escaped and it's read again.
+ */
+export function readModelJson(text) {
+  const m = String(text ?? '').match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch { /* raw line breaks, below */ }
+  let fixed = '';
+  let inString = false;
+  let escaped = false;
+  for (const ch of m[0]) {
+    if (inString && !escaped && (ch === '\n' || ch === '\r' || ch === '\t')) { fixed += ch === '\n' ? '\\n' : ch === '\t' ? '\\t' : ''; continue; }
+    if (inString && !escaped && ch === '"') inString = false;
+    else if (!inString && ch === '"') inString = true;
+    escaped = inString && !escaped && ch === '\\';
+    fixed += ch;
   }
-  return null;
+  try { return JSON.parse(fixed); } catch { return null; }
+}
+
+// One try: what it doesn't bring back goes one string at a time (translateOne), which is quicker than asking again
+async function translateBatch(env, batch) {
+  try {
+    const res = await env.AI.run(MODEL, {
+      messages: [{ role: 'system', content: PROMPT }, { role: 'user', content: JSON.stringify(batch) }],
+      max_tokens: 4000,
+      temperature: 0.2,
+    });
+    const r = typeof res === 'string' ? res : (res?.response ?? res);
+    return r && typeof r === 'object' ? r : readModelJson(r);
+  } catch {
+    return null;
+  }
 }
 
 async function translateOne(env, en) {
@@ -93,12 +113,13 @@ export async function translateStrings(env, strings, { lang = 'es', into = {} } 
     for (let b = queue.shift(); b; b = queue.shift()) {
       const batch = Object.fromEntries(b);
       const parsed = await translateBatch(env, batch);
-      for (const [path, en] of b) {
+      const good = (es, en) => typeof es === 'string' && es.trim() && tokens(es) === tokens(en);
+      await Promise.all(b.map(async ([path, en]) => {
         let es = parsed?.[path];
-        if (!(typeof es === 'string' && es.trim() && tokens(es) === tokens(en))) es = await translateOne(env, en);
-        if (typeof es === 'string' && es.trim() && tokens(es) === tokens(en)) out[path] = es.trim();
+        if (!good(es, en)) es = await translateOne(env, en);
+        if (good(es, en)) out[path] = es.trim();
         else failed.push(path);
-      }
+      }));
     }
   };
   await Promise.all(Array.from({ length: Math.min(AT_ONCE, queue.length) }, worker));

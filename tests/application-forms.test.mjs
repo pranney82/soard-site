@@ -16,7 +16,7 @@ import {
   getLiveForm, saveDraftForm, putDraftLive, discardDraftForm, restoreFormVersion, listFormVersions, formFor, clearFormCache, getDraftForm,
   saveFormRules, getFormRules, diffForm, addTranslations,
 } from '../functions/api/_application-forms.js';
-import { spanishToDo, catchUpSpanish } from '../functions/api/_translate.js';
+import { spanishToDo, catchUpSpanish, readModelJson } from '../functions/api/_translate.js';
 import { familyMessage } from '../functions/api/_applicant-comms.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { renderSlack, slackButtons } from './lib/slack-render.mjs';
@@ -353,7 +353,7 @@ test('the Spanish: a batch that comes back broken is translated one string at a 
     return { response: `  ES ${text}\n` };
   };
   assert.deepEqual(await catchUpSpanish(env, version), { filled: 2, failed: [] });
-  assert.deepEqual(asked, ['batch', 'batch', 'one', 'one']);
+  assert.deepEqual(asked, ['batch', 'one', 'one'], 'one try at the batch, then each string');
   const es = (await getDraftForm(env.DB)).definition.i18n.es.strings;
   assert.equal(es['message:inReview'], 'ES Hi, {parent}\n\nNext is a visit.\n\n"{child}" does not have to be there.');
   assert.equal(es['field:interests:label'], 'ES What does your child love?');
@@ -408,6 +408,28 @@ test('the Spanish: a try that got some done goes again on the next sweep, not 15
   const next = await maybeSweepApplications(env, { force: true, now: T0 + 2 * 60000 });
   assert.deepEqual([next.spanish.filled, next.spanish.failed], [1, []], 'two minutes later, not fifteen');
   assert.match(await familyMessage(env, 'approved', { parent: 'Ana', child: 'Sofía', lang: 'es' }), /^ES Hi Ana! Long news\./);
+});
+
+test('the Spanish: a reply with raw line breaks inside its strings is still read (many-paragraph emails)', async () => {
+  // What a long email came back as: real line breaks inside the JSON string, an escaped quote, a code fence
+  const reply = '```json\n{"message:approved": "Hola, {parent}:\n\n1. Le enviaremos un \\"enlace\\" pronto.\r\n\n\tGracias, {child}"}\n```';
+  assert.deepEqual(readModelJson(reply), { 'message:approved': 'Hola, {parent}:\n\n1. Le enviaremos un "enlace" pronto.\n\n\tGracias, {child}' });
+  assert.deepEqual(readModelJson('{"a": "x", "b": "back\\\\slash"}'), { a: 'x', b: 'back\\slash' });
+  assert.equal(readModelJson('no JSON here'), null);
+
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = { ...v.messages, approved: 'Hi {parent},\n\nCongratulations!\n\n1. A Zoom call.\n\n2. A survey for {child}.' };
+  await saveDraftForm(env.DB, v);
+  const { version } = await getDraftForm(env.DB);
+  let calls = 0;
+  env.AI.run = async (model, { messages }) => {
+    calls++;
+    const [[path, en]] = Object.entries(JSON.parse(messages.at(-1).content));
+    return { response: `{"${path}": "ES ${en}"}` };
+  };
+  assert.deepEqual(await catchUpSpanish(env, version), { filled: 1, failed: [] });
+  assert.equal(calls, 1, 'one call, no second try');
+  assert.equal((await getDraftForm(env.DB)).definition.i18n.es.strings['message:approved'], 'ES Hi {parent},\n\nCongratulations!\n\n1. A Zoom call.\n\n2. A survey for {child}.');
 });
 
 // ── The public endpoint ─────────────────────────────────────────────
