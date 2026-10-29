@@ -9,7 +9,7 @@
  *
  * Signed in with the same emailed code as staff; the server answers only
  * board members (People → Board, by their private email) and the Board
- * area's admins (who see it as the board does and can't answer for anyone).
+ * area's admins (who read it all and have nothing to answer or sign).
  *
  *   #/             Home: the next meeting, your to-dos, the makeovers, what's coming up
  *   #/meetings     Meetings          #/meetings/<id>   one meeting
@@ -1535,7 +1535,7 @@ function FinancialsPage({ ctx }) {
 
 // ─── People ─────────────────────────────────────────────────────────
 const OFFICERS = ['chair', 'vice-chair', 'treasurer', 'secretary'];
-function Person({ p, size = 64, email = false, ctx }) {
+function Person({ p, size = 52, email = false, ctx }) {
   const copy = async () => {
     try { await navigator.clipboard.writeText(p.email); ctx.say(`Copied ${p.email}`); } catch { ctx.say('Couldn’t copy. Press and hold the address instead.', 'warn'); }
   };
@@ -1564,7 +1564,7 @@ function PeoplePage({ ctx }) {
     <header class="bp-pagehead bp-rise" style=${rise(0)}><div><h1 class="bp-h1">People</h1><p class="bp-lede">The board, the team and the Advisory Board. Tap Email to write to a board member.</p></div></header>
     <section class="bp-gap bp-rise" style=${rise(1)} aria-labelledby="bd-h">
       <${SecHead} id="bd-h" title="Board of Directors" count=${people.board.length} />
-      ${officers.length ? html`<ul class="bp-people bp-people--officers">${officers.map((p) => html`<${Person} p=${p} size=${88} email ctx=${ctx} key=${p.slug} />`)}</ul>` : null}
+      ${officers.length ? html`<ul class="bp-people bp-people--officers">${officers.map((p) => html`<${Person} p=${p} size=${72} email ctx=${ctx} key=${p.slug} />`)}</ul>` : null}
       <ul class="bp-people">${members.map((p) => html`<${Person} p=${p} email ctx=${ctx} key=${p.slug} />`)}</ul>
     </section>
     ${committees.length ? html`<section class="bp-card bp-gap bp-rise" style=${rise(2)} aria-labelledby="cm-h"><h2 class="bp-h2" id="cm-h">Committees</h2><ul class="bp-rows">${committees.map((c) => html`<li key=${c}><div class="bp-row bp-row--static"><span class="bp-row__main"><span class="bp-row__title">${c}</span><span class="bp-row__meta">${people.board.filter((p) => (p.committees || []).includes(c)).map((p) => p.name).join(', ')}</span></span></div></li>`)}</ul></section>` : null}

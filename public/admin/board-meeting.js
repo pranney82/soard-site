@@ -194,7 +194,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
           <span class=${`bm-saved ${st.s === 'error' ? 'is-error' : ''}`} role="status" aria-live="polite">
             ${st.s === 'saving' ? 'Saving…' : st.s === 'unsaved' ? 'Saving in a moment' : st.s === 'error' ? html`Not saved: ${st.why} <button class="btn btn-ghost btn-sm" onClick=${save}>Try again</button>` : `Saved ${st.at ? savedAt(st.at) : ''}`}
           </span>
-          <a class="btn btn-ghost btn-sm" href=${`${PAGE}#/meetings/${m.id}`} target="_blank" rel="noopener">${practice ? 'See it as a board member' : 'See it as the board does'}</a>
+          <a class="btn btn-ghost btn-sm" href=${`${PAGE}#/meetings/${m.id}`} target="_blank" rel="noopener">Open on the board page</a>
           ${practice ? null : html`<${Menu} label="More for this meeting" items=${[{ label: 'Delete this meeting', danger: true, run: remove }]} />`}
         </div>
       </div>
