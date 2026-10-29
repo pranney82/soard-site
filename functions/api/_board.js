@@ -27,16 +27,15 @@
  */
 
 import {
-  cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, emailOutline, parseAgendaText,
+  cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf,
-  agendaIsDraft, draftAgenda, draftSource, draftName, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority,
+  agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority,
 } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
 import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeState, readSettings, normEmail, BOARD_PAGE } from './_board-roles.js';
 import { cachedReveals, fetchJobs, loadKids, loadProjects, matchProject, isProject, isRehearsalJob, FIELD_JOB_STATUS, BUILDING_STATUSES } from './_reveals.js';
 import { sendEmails, sendEmailItems, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
-import { logSent } from './_email-log.js';
 import { emailShell, button, esc, facts, link } from './_email-shell.js';
 import { answerLinks } from './_board-rsvp.js';
 import { sniffType } from './upload-file.js';
@@ -189,8 +188,8 @@ export async function getMeeting(DB, id) {
   return row ? (await withState(DB, [cleanMeeting(parse(row.data))]))[0] : null;
 }
 
-/** The agenda as a person writes it (sections, items, who presents, notes, board-only marks), to tell when someone changed it */
-const agendaSkeleton = (m) => JSON.stringify((m.sections || []).map((s) => [s.title, s.items.map((it) => [it.title, it.presenter, it.notes, it.staffNote, it.confidential])]));
+/** The agenda as a person writes it (sections, items, who presents, notes, board-only marks, its documents), to tell when someone changed it */
+const agendaSkeleton = (m) => JSON.stringify((m.sections || []).map((s) => [s.title, s.minutes || 0, s.items.map((it) => [it.title, it.presenter, it.who, it.notes, it.staffNote, it.confidential, it.docs])]));
 
 const stored = (m) => {
   // Files, done states and answers live in their own tables
@@ -263,6 +262,8 @@ export async function saveMeeting(DB, raw, { by, base = null } = {}) {
     // Who joined by Meet is the server's (./_board-attendance.js). Where the agenda came from is named by
     // server code that fills it (board mail, the drafts); a person changing the agenda or its notes makes it theirs
     fromMeet: 'fromMeet' in raw ? m.fromMeet : current?.fromMeet || null,
+    // Which minutes filled the meeting in is the minutes reader's (./_board-minutes.js)
+    minutesFrom: 'minutesFrom' in raw ? m.minutesFrom : current?.minutesFrom || null,
     agendaFrom: 'agendaFrom' in raw ? m.agendaFrom : !current ? null : agendaSkeleton(m) !== agendaSkeleton(current) ? { kind: 'typed', name: '', at } : current.agendaFrom,
     approvedOn: m.minutes === 'approved' ? (m.approvedOn || current?.approvedOn || todayEastern()) : '',
     createdAt: current?.createdAt || at,
@@ -720,7 +721,6 @@ const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 const bareLink = (url) => String(url).replace(/^https?:\/\//, '').replace(/[?#].*$/, '');
 const SIGN_IN = 'Sign in with this email address. You’ll get a one-time code by email.';
 const small = (html) => `<p class="muted" style="margin:6px 0 0;font-size:13px;line-height:1.5;color:#5A5B61;">${html}</p>`;
-const label = (text) => `<p class="eyebrow" style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#8A7200;">${esc(text)}</p>`;
 const ruled = (html) => `<div class="rule" style="margin:24px 0 0;padding:20px 0 0;border-top:1px solid #E5E4E0;">${html}</div>`;
 
 /** When, where and the video call as an email's fact rows (`more`: [label, html] rows after them) */
@@ -734,15 +734,6 @@ function meetingFacts(m, more = []) {
 }
 const factsText = (m) => [`When: ${whenOf(m)}`, placeOf(m) && `Where: ${placeOf(m)}`, m.video && `Video (${callName(m.video)}): ${m.video}`].filter(Boolean).join('\n');
 
-/** The agenda's headings and items, numbered (never notes; a board-only item by that name only) */
-function agendaHtml(m) {
-  const outline = emailOutline(m);
-  if (!outline.length) return '';
-  return label('Agenda') + outline.map((s, i) => `<p class="ink" style="margin:12px 0 4px;font-weight:700;">${i + 1}.&nbsp; ${esc(s.title)}</p>`
-    + (s.items.length ? `<ul style="margin:0 0 0 22px;padding:0;">${s.items.map((t) => `<li class="ink" style="margin:0 0 3px;">${esc(t)}</li>`).join('')}</ul>` : '')).join('');
-}
-const agendaText = (m) => emailOutline(m).map((s, i) => [`${i + 1}. ${s.title}`, ...s.items.map((t) => `   - ${t}`)].join('\n')).join('\n');
-
 /**
  * "Will you be there?" as three buttons: a member's own one-tap answers
  * (./_board-rsvp.js). A preview's open the meeting on the board page.
@@ -753,87 +744,50 @@ function answerButtons(m, links, { lead = false } = {}) {
 const answerText = (m, links) => RSVP.map((r) => `${r.ask}: ${links?.[r.id] || meetingUrl(m)}`).join('\n');
 
 /**
- * The packet email, for one board member: when, where and the call; the
- * documents attached; their one-tap answer when they haven't given one
- * (`links`); the agenda's headings (never its notes, never a board-only
- * item's title)
+ * The documents email, for one board member: everything stays on the board page (nothing is attached; the board
+ * reads it there, the meeting presents it from there, and Print it all is there for paper). When, where and the
+ * call; what the documents are (never one on a board-only item, by name); their one-tap answer when they haven't
+ * given one (`links`). `files`: the documents' names.
  */
-export function packetEmail(m, { test = false, files = [], skipped = [], name: who = '', links = null, ask = true } = {}) {
+export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', links = null, ask = true } = {}) {
   const name = meetingName(m);
   const first = firstName(who);
-  const lead = `${first ? `${first}, the` : 'The'} agenda is below${files.length ? ' and the documents are attached' : ''}. The financials and past minutes are on the board page.`;
+  const titles = files.map((n) => fileTitle(n));
+  const count = titles.length + hidden;
+  const lead = `${first ? `${first}, the` : 'The'} agenda${count ? ` and ${plural(count, 'document')}` : ''} for the ${name} ${count ? 'are' : 'is'} on the board page. Read ${count ? 'them' : 'it'} there, or print it all from there if you’d like paper.`;
   const answer = ask ? ruled(`<p class="ink" style="margin:0 0 12px;font-weight:700;">Will you be there?</p>${answerButtons(m, links)}${small('One tap answers. No sign-in needed.')}`) : '';
+  const docsHtml = [...titles.map((t) => esc(t)), hidden ? `${plural(hidden, 'board-only document')}` : ''].filter(Boolean).join('<br>');
   return {
-    subject: `${test ? '[Preview] ' : ''}Board packet: ${name}, ${shortDate(m.date)}`,
+    subject: `${test ? '[Preview] ' : ''}The agenda and documents: ${name}, ${shortDate(m.date)}`,
     html: emailShell({
       eyebrow: 'SOARD Board',
-      preheader: `${whenOf(m)}. The agenda is inside${files.length ? ' and the documents are attached' : ''}.`,
-      heading: `The packet for the ${name} is ready`,
+      preheader: `${whenOf(m)}. The agenda${count ? ' and documents are' : ' is'} on the board page.`,
+      heading: `The agenda and documents for the ${name}`,
       intro: esc(lead),
-      bodyHtml: meetingFacts(m, [
-        ['Attached', files.map((n) => esc(n)).join('<br>')],
-        ['Too big to attach', skipped.length ? `${skipped.map((n) => esc(n)).join('<br>')}<br><span class="muted" style="color:#5A5B61;font-size:13px;">On the board page</span>` : ''],
-      ])
-        + `<div style="margin:18px 0 0;">${button('Open the packet', meetingUrl(m))}</div>`
+      bodyHtml: meetingFacts(m, [['Documents', docsHtml]])
+        + `<div style="margin:18px 0 0;">${button('Open the agenda and documents', meetingUrl(m))}</div>`
         + small(SIGN_IN)
-        + answer
-        + (emailOutline(m).length ? ruled(agendaHtml(m)) : ''),
-      footerHtml: `${FOOTER} Notes and board-only items stay on the board page and are never emailed.`,
+        + answer,
+      footerHtml: FOOTER,
     }),
-    text: [`The packet for the ${name} is ready.`, lead, factsText(m),
-      files.length ? `Attached: ${files.join(', ')}` : '', skipped.length ? `Too big to attach (on the board page): ${skipped.join(', ')}` : '',
-      `Open the packet: ${meetingUrl(m)}\n${SIGN_IN}`,
-      ask ? `Will you be there? One tap answers, no sign-in needed.\n${answerText(m, links)}` : '',
-      emailOutline(m).length ? `AGENDA\n${agendaText(m)}` : ''].filter(Boolean).join('\n\n'),
+    text: [`The agenda and documents for the ${name}.`, lead, factsText(m),
+      count ? `Documents: ${[...titles, hidden ? plural(hidden, 'board-only document') : ''].filter(Boolean).join(', ')}` : '',
+      `Open the agenda and documents: ${meetingUrl(m)}\n${SIGN_IN}`,
+      ask ? `Will you be there? One tap answers, no sign-in needed.\n${answerText(m, links)}` : ''].filter(Boolean).join('\n\n'),
   };
 }
 
-/** Resend takes up to 40 MB an email; the packet stays well under that, and anything bigger is on the board page */
-export const ATTACH_MAX = 30 * 1024 * 1024;
-
-/** The meeting's files for the board, as email attachments (never staff-only), up to ATTACH_MAX → { attachments, names, skipped } */
-export async function packetFiles(env, m) {
-  const out = { attachments: [], names: [], skipped: [] };
-  let total = 0;
-  for (const f of m.files.filter((x) => !x.staffOnly)) {
-    const row = await env.DB.prepare('SELECT r2_key FROM board_files WHERE id = ?').bind(f.id).first();
-    if (!row || total + (f.size || 0) > ATTACH_MAX) { out.skipped.push(f.name); continue; }
-    const obj = await boardFiles(env)?.get(row.r2_key);
-    if (!obj) { out.skipped.push(f.name); continue; }
-    const bytes = new Uint8Array(await new Response(obj.body).arrayBuffer());
-    let bin = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    out.attachments.push({ filename: f.name, content: btoa(bin) });
-    out.names.push(f.name);
-    total += bytes.length;
-  }
-  return out;
+/** The documents an email may name: the board's files, never one that goes with a board-only item → { names, hidden } */
+export function packetDocs(m) {
+  const secret = new Set(m.sections.flatMap((s) => s.items.filter((it) => it.confidential).flatMap((it) => it.docs || [])));
+  const docs = m.files.filter((f) => !f.staffOnly && f.kind !== 'signed' && f.kind !== 'minutes');
+  return { names: docs.filter((f) => !secret.has(f.id)).map((f) => f.name), hidden: docs.filter((f) => secret.has(f.id)).length };
 }
 
-/** Each email on its own (each member's has their own answer links), with the attachments when there are any */
-async function sendEach(env, items, { tags, replyTo, attachments = [] }) {
-  const from = fromBoard();
-  if (!attachments.length) return sendEmailItems(env, items, { from, tags, replyTo });
-  // Resend's batch sends don't carry files: one POST each
-  const r = { sent: 0, failed: 0, errors: [] };
-  const reply = (Array.isArray(replyTo) ? replyTo : [replyTo]).filter(Boolean);
-  const logged = [];
-  for (const it of items) {
-    try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST', headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to: [it.to], subject: it.subject, html: it.html, text: it.text, tags, attachments, ...(reply.length ? { reply_to: reply.length === 1 ? reply[0] : reply } : {}) }),
-        signal: AbortSignal.timeout(60000),
-      });
-      if (res.ok) { r.sent += 1; logged.push({ id: (await res.json().catch(() => ({}))).id, to: it.to, subject: it.subject }); }
-      else { r.failed += 1; r.errors.push(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`); }
-    } catch (err) { r.failed += 1; r.errors.push(err.message); }
-  }
-  await logSent(env, logged, { tags });
-  return r;
-}
+/** Each email on its own: each member's has their own answer links */
+const sendEach = (env, items, { tags, replyTo }) => sendEmailItems(env, items, { from: fromBoard(), tags, replyTo });
 
-/** Email the board the packet: the agenda's headings, the documents attached, the button, one-tap answers (test: only `to`) */
+/** Email the board the link to the agenda and documents, what the documents are, and one-tap answers (test: only `to`) */
 export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) {
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
@@ -842,15 +796,15 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
   if (!test && !m.shared) throw Object.assign(new Error('Share the meeting with the board first, so the button has something to open'), { status: 409 });
   const people = test ? to.map((email) => ({ email, name: '' })) : await packetList(env.DB);
   if (!people.length) throw Object.assign(new Error('No board member has an email on file (People → Board)'), { status: 409 });
-  const docs = await packetFiles(env, m);
+  const docs = packetDocs(m);
   // Only someone who hasn't said whether they'll come is asked, with their own links
   const open = test ? [] : (await notAnswered(env, m)).map((p) => p.slug);
   const links = await answerLinks(env.DB, m, open);
-  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, skipped: docs.skipped, name: p.name, links: links[p.slug], ask: test || open.includes(p.slug) }) }));
+  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, links: links[p.slug], ask: test || open.includes(p.slug) }) }));
   const tags = [{ name: 'kind', value: test ? 'board-packet-preview' : 'board-packet' }];
-  const r = await sendEach(env, items, { tags, replyTo, attachments: docs.attachments });
+  const r = await sendEach(env, items, { tags, replyTo });
   if (!test && r.sent) await writeMeeting(env.DB, { ...m, packetSentAt: nowIso(), packetSentTo: r.sent, updatedAt: m.updatedAt, updatedBy: m.updatedBy });
-  return { sent: r.sent, failed: r.failed, errors: r.errors, to: test ? to : undefined, attached: docs.names.length };
+  return { sent: r.sent, failed: r.failed, errors: r.errors, to: test ? to : undefined, documents: docs.names.length + docs.hidden };
 }
 
 /** The board approved a meeting's minutes (at a later meeting, on its date) */
@@ -884,10 +838,10 @@ export function reminderEmail(m, { test = false, name: who = '', links = null } 
       intro: esc('One tap answers. You don’t need to sign in.'),
       bodyHtml: `<div style="margin:4px 0 14px;">${answerButtons(m, links, { lead: true })}</div>`
         + meetingFacts(m)
-        + `<div style="margin:10px 0 0;">${small(`The agenda and the packet: ${link('the board page', meetingUrl(m))}. ${SIGN_IN}`)}</div>`,
+        + `<div style="margin:10px 0 0;">${small(`The agenda and documents: ${link('the board page', meetingUrl(m))}. ${SIGN_IN}`)}</div>`,
       footerHtml: FOOTER,
     }),
-    text: [heading, `One tap answers. You don't need to sign in.\n${answerText(m, links)}`, factsText(m), `The agenda and the packet: ${meetingUrl(m)}`].join('\n\n'),
+    text: [heading, `One tap answers. You don't need to sign in.\n${answerText(m, links)}`, factsText(m), `The agenda and documents: ${meetingUrl(m)}`].join('\n\n'),
   };
 }
 
@@ -942,14 +896,18 @@ export async function sendMinutesNotice(env, id, { to = null, replyTo = [] } = {
 
 // Plain text: Google copies an invite's notes into its .ics as they are, and
 // Apple Calendar and Outlook would show HTML as tags
-export const NOTES_START = 'The agenda and the packet are on the board page:';
-/** What a meeting's calendar invite says: the way to its page, the agenda's headings, and that replies count */
+/** Where Board's part of an invite's notes starts (the organizer's own notes stay above it) */
+export const NOTES_START = 'The agenda and documents:';
+/** What Board's part started with before, still found and replaced (Oct 2026) */
+export const OLD_NOTES_STARTS = ['The agenda and the packet are on the board page:'];
+/**
+ * What a meeting's calendar invite says: the way to its page (the agenda and every document are there, to read,
+ * present or print) and that replies count. Nothing else, so the agenda changing never touches the invite.
+ */
 export function inviteNotes(m) {
-  const agenda = agendaText(m);
   return [
     `${NOTES_START} ${meetingUrl(m)}`,
     'Sign in with the email address this invite came to; you’ll get a one-time code.',
-    ...(agenda ? ['', 'AGENDA (the board page always has the latest)', agenda] : []),
     '',
     'Your reply to this invite shows on the board page.',
   ].join('\n');
@@ -1185,18 +1143,31 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const [settings, rows] = await Promise.all([getSettings(env.DB), liveRows(env.DB, m, now)]);
   const { here, votes, vote, board, checkins } = rows;
   const me = member ? { slug: member.slug, name: member.name } : canAct ? await adminVoter(env.DB, adminEmail) : null;
-  const sections = (m.practice ? m.sections : forBoard(m).sections).map((sec) => ({
-    id: sec.id, title: sec.title, items: sec.items.map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, notes: it.notes, confidential: it.confidential })),
+  const seen = m.practice ? m : forBoard(m);
+  const sections = seen.sections.map((sec) => ({
+    id: sec.id, title: sec.title, minutes: sec.minutes || 0,
+    items: sec.items.map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, about: it.about, docs: it.docs })),
   }));
+  // The last meeting's minutes, for an item that asks the board to approve them (only from a meeting the board can see)
+  const prior = [];
+  for (const id of new Set(seen.sections.flatMap((sec) => sec.items.filter((it) => it.live === 'minutes' && it.about).map((it) => it.about)))) {
+    const prev = await getMeeting(env.DB, id);
+    const f = prev?.shared ? minutesFileOf(prev) : null;
+    if (f) prior.push({ id: prev.id, files: [f] });
+  }
   const motion = vote ? m.motions.find((x) => x.id === vote.motionId) : null;
   const cast = motion ? votes[motion.id] || [] : [];
   const n = (v) => cast.filter((x) => x.vote === v).length;
   const marked = me ? m.attendance.find((p) => p.slug === me.slug && HOW.includes(p.status))?.status : '';
   const q = settings.quorum || majority(board.length + (m.practice ? 1 : 0));
   return {
-    id: m.id, practice: !!m.practice, updatedAt: m.updatedAt, title: meetingName(m), date: m.date,
-    live: { startedAt: m.live.startedAt, endedAt: m.live.endedAt, itemId: m.live.itemId },
+    id: m.id, practice: !!m.practice, updatedAt: m.updatedAt, title: meetingName(m), date: m.date, start: m.start, end: m.end,
+    live: { startedAt: m.live.startedAt, endedAt: m.live.endedAt, itemId: m.live.itemId, fileId: m.live.fileId, page: m.live.page, screen: m.live.screen, sectionAt: m.live.sectionAt, floor: m.live.floor },
     sections,
+    // What the screen shows: the board's files (never a staff-only one), the last meeting's minutes, the locked numbers
+    files: seen.files.map((f) => ({ id: f.id, name: f.name, type: f.type, size: f.size, kind: f.kind, at: f.at })),
+    prior,
+    snapshot: m.snapshot || null,
     here: { board: here.size, of: board.length + (m.practice ? 1 : 0), quorum: q, met: q ? here.size >= q : null, remote: [...here.values()].filter((h) => h === 'remote').length },
     me: { how: (me && (checkins.find((c) => c.slug === me.slug)?.how || marked)) || '', canAct: !!(canAct && me), name: me?.name || '' },
     vote: motion ? {
@@ -1321,6 +1292,30 @@ export async function memberStatus(DB) {
  * emailed for the meeting itself replaces the draft (./_board-mail.js); a
  * person's change makes it theirs. Every ten minutes at most. → ids drafted
  */
+/** A fresh draft keeps the documents already put with its items (by item name), so drafting again never strands a file */
+function keepDocs(was, draft) {
+  const docsOf = new Map(was.flatMap((s) => s.items).filter((it) => it.docs?.length).map((it) => [it.title.toLowerCase(), it.docs]));
+  return draft.map((s) => ({ ...s, items: s.items.map((it) => (docsOf.has(it.title.toLowerCase()) ? { ...it, docs: docsOf.get(it.title.toLowerCase()) } : it)) }));
+}
+
+/**
+ * On a meeting's day, its numbers are locked by themselves (the makeovers, reveals, events and money as they stand
+ * that morning), so the minutes keep what the board saw. Once; the chair's Start locks them too if this hasn't yet
+ */
+export async function maybeLockNumbers(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const today = todayEastern(now);
+  const locked = [];
+  try {
+    for (const m of (await listMeetings(env.DB)).filter((x) => x.date === today && !x.snapshot && !x.notBoard && x.sections.some((s) => s.items.length))) {
+      await takeSnapshot(env, m.id, { by: 'Board', fetchImpl, now });
+      locked.push(m.id);
+    }
+  } catch (err) {
+    console.error('[board] locking numbers', err.message);
+  }
+  return locked;
+}
+
 export async function maybeDraftAgendas(env, { now = Date.now() } = {}) {
   try {
     const runs = await readState(env.DB, 'runs');
@@ -1334,9 +1329,11 @@ export async function maybeDraftAgendas(env, { now = Date.now() } = {}) {
       const prev = draftSource(m, real, settings.template);
       // Already drafted from it, unless that agenda was read again (from Drive or email) since
       const since = prev?.agendaFrom?.at && m.agendaFrom?.at && prev.agendaFrom.at > m.agendaFrom.at;
-      if (!prev || (m.agendaFrom?.kind === 'last-meeting' && m.agendaFrom.name === draftName(prev) && !since)) continue;
+      // A draft an older drafter made is drafted again (DRAFTER: the minutes item and the live facts are found better now)
+      const current = m.agendaFrom?.kind === 'last-meeting' && m.agendaFrom.name === draftName(prev) && (m.agendaFrom.v || 1) >= DRAFTER;
+      if (!prev || (current && !since)) continue;
       const done = await patchMeeting(env.DB, m.id, (cur) => (agendaIsDraft(cur, settings.template)
-        ? { ...cur, sections: draftAgenda(prev, { template: settings.template }), agendaFrom: { kind: 'last-meeting', name: draftName(prev), at: new Date(now).toISOString() } }
+        ? { ...cur, sections: keepDocs(cur.sections, draftAgenda(prev, { template: settings.template })), agendaFrom: { kind: 'last-meeting', name: draftName(prev), at: new Date(now).toISOString(), v: DRAFTER } }
         : cur));
       if (done) drafted.push(m.id);
     }
@@ -1379,7 +1376,8 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *   - each minute, a new place onto an invite that's out once it has settled; hourly until it
  *     passes, the check that Calendar, Meet, transcripts and attendance work (./_board-invite.js)
  *   - once a newer agenda reader ships, emailed agendas it reads better (maybeRereadEmailAgendas); then
- *   - every ten minutes, agendas nobody wrote drafted from the last one (maybeDraftAgendas), and
+ *   - every ten minutes, agendas nobody wrote drafted from the last one (maybeDraftAgendas), a meeting's
+ *     numbers locked on its day (maybeLockNumbers), and
  *     who joined a Google Meet that ended (./_board-attendance.js)
  *   - last, past meetings from the Board folder in Google Drive (./_board-drive.js), then board mail
  *     (./_board-mail.js): every minute while there's a backlog, hourly after
@@ -1397,6 +1395,7 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await invites.maybeCheckInvites(env, { fetchImpl, now });
     await maybeRereadEmailAgendas(env, { now });
     await maybeDraftAgendas(env, { now });
+    await maybeLockNumbers(env, { fetchImpl, now });
     await (await import('./_board-attendance.js')).maybeFillAttendance(env, { fetchImpl, now });
     // Last: past meetings' minutes and packets from Google Drive, then board mail (each reads for seconds while it has
     // a backlog; mail waits out a minute Drive was busy, so one heartbeat stays within its time)

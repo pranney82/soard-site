@@ -108,5 +108,5 @@ export async function onRequestPost({ request, env }) {
   const call = a === 'remote' && m.video ? `<p>The video link: <a href="${esc(m.video)}" target="_blank" rel="noopener">${esc(callName(m.video))}</a>. It’s on your calendar invite too.</p>` : '';
   return page('Thanks', `<h1>Thanks${name ? `, ${esc(name)}` : ''}</h1><p>${esc(DONE[a](meetingName(m), longDate(m.date)))}</p>${call}`
     + `<div class="then"><p>Changed your mind?</p>${answers(tok, '', RSVP.filter((r) => r.id !== a))}</div>`
-    + `<div class="then"><p>The agenda and the packet are on the board page.</p><div class="actions">${boardPage()}</div></div>`);
+    + `<div class="then"><p>The agenda and documents are on the board page.</p><div class="actions">${boardPage()}</div></div>`);
 }

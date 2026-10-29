@@ -12,9 +12,9 @@
  *   - the place and address when the meeting has them; added later, or
  *     changed, the invite updates two minutes after the typing stops
  *     (one email from Google to every guest, not one per word)
- *   - notes (plain text) with the way to the meeting's page and the agenda's
- *     headings (inviteNotes in ./_board.js); when only the agenda changes,
- *     they update the same way but without Google emailing anyone
+ *   - notes (plain text): the way to the meeting's page, where the agenda
+ *     and every document are (inviteNotes in ./_board.js); when only the
+ *     notes change, they update without Google emailing anyone
  * A meeting that came from the organizer's calendar (Holly already sent its
  * invite) gets that same event updated, never a second invite: the board
  * members missing from it are added, and so are Meet, the place and Board's
@@ -27,7 +27,7 @@
 
 import { accessToken, eventIdFor, parseServiceAccount } from './_google-calendar.js';
 import { boardAdmins, activeBoard, peopleRows, readSettings, readState, writeState, normEmail } from './_board-roles.js';
-import { getMeeting, listMeetings, patchMeeting, inviteNotes, NOTES_START } from './_board.js';
+import { getMeeting, listMeetings, patchMeeting, inviteNotes, NOTES_START, OLD_NOTES_STARTS } from './_board.js';
 import { meetingName, timeRange, longDate, todayEastern } from '../../public/admin/board-shared.js';
 
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
@@ -87,7 +87,8 @@ function times(m) {
 export function withNotes(existing, notes) {
   const was = String(existing || '');
   const html = /<\/?(br|p|div|span|b|i|u|ul|ol|li|a)\b/i.test(was);
-  const at = was.indexOf(NOTES_START);
+  // Board's part as it reads now, or as it read before (replaced the same way, never added twice)
+  const at = [NOTES_START, ...OLD_NOTES_STARTS].map((k) => was.indexOf(k)).filter((i) => i >= 0).sort((a, b) => a - b)[0] ?? -1;
   const before = (at >= 0 ? was.slice(0, at) : was).replace(/(\s|&nbsp;|<br\s*\/?>|<(p|div|span)[^>]*>)+$/i, '');
   const ours = html ? notes.split('\n').map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('<br>') : notes;
   return before ? `${before}${html ? '<br><br>' : '\n\n'}${ours}` : ours;

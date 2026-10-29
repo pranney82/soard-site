@@ -21,7 +21,7 @@ import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes } from '
 import * as rsvpPage from '../functions/api/board-rsvp.js';
 import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER } from '../public/admin/board-shared.js';
+import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
 const TEAM = 'soard';
@@ -281,42 +281,110 @@ test('a member answers for themselves: whether they’ll come, their own action 
 
 // ─── The packet email ───────────────────────────────────────────────
 
-test('the packet email has the agenda’s headings only: no notes, no confidential titles; Send it to me goes only to you', async () => {
+test('the documents email is the link: the documents by name, nothing attached, no notes or board-only titles; Send it to me goes only to you', async () => {
   const { meeting } = await sharedMeetingWithFiles();
-  const mail = packetEmail(await getMeeting(env.DB, meeting.id));
+  const mail = packetEmail(await getMeeting(env.DB, meeting.id), { files: ['Balance sheet.pdf'] });
   assert.doesNotMatch(mail.html, /Insurance is looking|Ask counsel|Legal update/);
-  assert.match(mail.html, /A board-only item \(on the board page\)/);
   assert.match(mail.html, new RegExp(`/admin/board/#/meetings/${meeting.id}`));
+  assert.match(mail.html, /Open the agenda and documents/);
 
-  // With files, one email each (a batch send can't carry them), the board's files attached and never a staff-only one
-  const sends = () => outside.filter((c) => c.url === 'https://api.resend.com/emails');
+  // One batch, each member's own email; the board's documents named, never a staff-only one, and nothing attached
+  const sends = () => outside.filter((c) => c.url === 'https://api.resend.com/emails/batch').flatMap((c) => c.body);
   const test = await adminApi(FOUNDER, { action: 'send-packet', id: meeting.id, test: true });
   assert.equal(test.status, 200);
   assert.equal(test.body.sent, 1);
-  assert.deepEqual(sends().map((c) => c.body.to[0]), [FOUNDER]);
-  assert.deepEqual(sends()[0].body.attachments.map((a) => a.filename), ['Balance sheet.pdf']);
-  assert.match(sends()[0].body.html, /Balance sheet/);
+  assert.deepEqual(sends().map((c) => c.to[0]), [FOUNDER]);
+  assert.equal(sends()[0].attachments, undefined, 'nothing attached: it all stays on the board page');
+  assert.match(sends()[0].html, /Balance sheet/);
+  assert.doesNotMatch(sends()[0].html, /Draft numbers/);
   assert.equal(test.body.meeting.packetSentAt, '', 'a preview isn’t the packet going out');
 
   outside = [];
   const real = await adminApi(FOUNDER, { action: 'send-packet', id: meeting.id });
   assert.equal(real.body.sent, 2);
-  assert.deepEqual(sends().map((c) => c.body.to[0]).sort(), [MEMBER, OTHER_MEMBER]);
-  assert.ok(sends().every((c) => c.body.attachments.length === 1 && !JSON.stringify(c.body).includes('Draft numbers')));
+  assert.deepEqual(sends().map((c) => c.to[0]).sort(), [MEMBER, OTHER_MEMBER]);
+  assert.ok(sends().every((c) => !c.attachments && !JSON.stringify(c).includes('Draft numbers')));
   assert.ok(real.body.meeting.packetSentAt);
   assert.equal(real.body.meeting.packetSentTo, 2);
+});
+
+test('documents go with agenda items: the board sees only theirs, on the page and on the screen; a draft agenda doesn’t carry them', async () => {
+  const { meeting, shown, hidden } = await sharedMeetingWithFiles();
+  const m = await getMeeting(env.DB, meeting.id);
+  const fin = m.sections.flatMap((s) => s.items).find((it) => it.live === 'cash');
+  const sections = m.sections.map((s) => ({ ...s, items: s.items.map((it) => (it.id === fin.id ? { ...it, docs: [shown.id, hidden.id, 'f_gone1'], who: ['sam-ortiz', 'sam-ortiz', 'Not A Slug!'] } : it)) }));
+  const saved = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...m, sections }, base: m.updatedAt })).body.meeting;
+  const item = saved.sections.flatMap((s) => s.items).find((it) => it.id === fin.id);
+  assert.deepEqual(item.docs, [shown.id, hidden.id, 'f_gone1'], 'kept as written (a file deleted later just drops off)');
+  assert.deepEqual(item.who, ['sam-ortiz'], 'People slugs, each once');
+  assert.deepEqual(itemFiles(saved, item).map((f) => f.id), [shown.id, hidden.id], 'only files the meeting has');
+
+  // The board page: the item's documents are the board's only
+  const page = (await portalApi(MEMBER)).body.meetings.find((x) => x.id === meeting.id);
+  assert.deepEqual(page.sections.flatMap((s) => s.items).find((it) => it.id === fin.id).docs, [shown.id]);
+  // The screen (the live view): the same, with the board's files and never a staff-only one
+  const live = await call(MEMBER, `/api/board-portal?live=${meeting.id}`, { handler: portal.onRequestGet });
+  assert.equal(live.status, 200);
+  assert.deepEqual(live.body.sections.flatMap((s) => s.items).find((it) => it.id === fin.id).docs, [shown.id]);
+  assert.deepEqual(live.body.files.map((f) => f.id), [shown.id]);
+  assert.doesNotMatch(JSON.stringify(live.body), /Draft numbers|Ask counsel/);
+  assert.deepEqual(live.body.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, screen: '', sectionAt: '', floor: '' });
+
+  // The next agenda drafted from this one keeps who presents, never this meeting's files
+  const draft = draftAgenda(saved).flatMap((s) => s.items).find((it) => it.title === fin.title);
+  assert.deepEqual(draft.who, ['sam-ortiz']);
+  assert.deepEqual(draft.docs, []);
+});
+
+test('the screen’s stops: the cover, each item then every page of its documents, the files on no item, the close', () => {
+  const m = cleanMeeting({
+    id: 'm_deck0001', date: '2026-11-05',
+    sections: [
+      { id: 's_one1', title: 'Approve meeting minutes', items: [{ id: 'i_min1', title: 'Minutes of the last meeting', live: 'minutes', about: 'm_prev0001' }] },
+      { id: 's_two2', title: 'Committee reports', items: [{ id: 'i_fin1', title: 'Financial', live: 'cash', docs: ['f_sfp1', 'f_bud1'] }, { id: 'i_gov1', title: 'Governance' }] },
+    ],
+    files: [
+      { id: 'f_sfp1', name: 'Statement of Financial Position.xlsx', kind: 'financials' }, { id: 'f_bud1', name: 'Budget vs Actual.pdf', kind: 'financials' },
+      { id: 'f_rep1', name: 'Executive report.pdf', kind: 'packet' }, { id: 'f_sig1', name: 'Signed.pdf', kind: 'signed' },
+    ],
+  });
+  const prev = { id: 'm_prev0001', files: [{ id: 'f_old1', name: 'Q3 minutes.docx', kind: 'minutes' }, { id: 'f_old2', name: 'Q3 minutes.pdf', type: 'application/pdf', kind: 'minutes' }] };
+  const deck = deckOf(m, { pages: { f_bud1: 3 }, meetings: [prev] });
+  assert.deepEqual(deck.map((s) => s.key), [
+    'cover', 'i_min1', 'i_min1:f_old2:0', 'i_fin1', 'i_fin1:f_sfp1:0', 'i_fin1:f_bud1:0', 'i_fin1:f_bud1:1', 'i_fin1:f_bud1:2', 'i_gov1', 'i_more', 'i_more:f_rep1:0', 'end',
+  ], 'the last meeting’s minutes as the PDF; the signed copy never');
+  assert.deepEqual(looseFiles(m).map((f) => f.id), ['f_rep1']);
+  // Where the chair is, from the live state, and back
+  assert.equal(stopIndex(deck, {}), 0);
+  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 2 }), 7);
+  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_sfp1', page: 4 }), 4, 'a page past what’s known: that document’s last known page');
+  assert.equal(stopIndex(deck, { screen: 'end' }), deck.length - 1);
+  assert.deepEqual(liveOfStop(deck[6]), { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, screen: '' });
+  assert.deepEqual(cleanMeeting({ live: { itemId: 'i_fin1', fileId: 'f_bud1', page: 1.7, screen: 'end' } }).live, { startedAt: '', endedAt: '', itemId: 'i_fin1', fileId: 'f_bud1', page: 1, screen: 'end', vote: null, sectionAt: '', floor: '' });
+  assert.deepEqual(cleanMeeting({ live: { fileId: 'f_bud1', page: 3 } }).live.fileId, '', 'a document is on the screen only with its item');
+
+  // A new file's item: the money item for statements, "approve the minutes" for minutes before the meeting, else a shared word
+  assert.equal(guessItem(m, { name: 'Q3 Balance Sheet.xlsx' }, '2026-10-01'), 'i_fin1');
+  assert.equal(guessItem(m, { name: 'Q3 minutes.pdf' }, '2026-10-01'), 'i_min1');
+  assert.equal(guessItem(m, { name: 'Governance memo.pdf' }, '2026-10-01'), 'i_gov1');
+  assert.equal(guessItem(m, { name: 'Photos.png' }, '2026-10-01'), '');
+
+  // Who presents: the people picked, else the names as written matched where only one person fits
+  const people = [{ slug: 'tom-a', name: 'Thomas Able' }, { slug: 'holly-r', name: 'Holly Ranney' }, { slug: 'holly-b', name: 'Holly Baker' }];
+  assert.deepEqual(presentersOf({ presenter: 'Thomas & Holly' }, people), [people[0], { name: 'Holly' }]);
+  assert.deepEqual(presentersOf({ presenter: 'old text', who: ['holly-b'] }, people), [people[2]]);
 });
 
 test('one-tap answers: each board member who hasn’t answered gets their own links; opening one only asks, pressing it answers', async () => {
   const { meeting } = await sharedMeetingWithFiles();
   // Sam already said on the board page; Alex hasn't
   assert.equal((await portalApi(OTHER_MEMBER, { action: 'rsvp', meetingId: meeting.id, answer: 'no' })).status, 200);
-  const sends = () => outside.filter((c) => c.url === 'https://api.resend.com/emails');
+  const sends = () => outside.filter((c) => c.url === 'https://api.resend.com/emails/batch').flatMap((c) => c.body);
   const r = await adminApi(FOUNDER, { action: 'send-packet', id: meeting.id });
   assert.equal(r.body.sent, 2);
-  const to = (addr) => sends().find((c) => c.body.to[0] === addr).body;
+  const to = (addr) => sends().find((c) => c.to[0] === addr);
   const alex = to(MEMBER);
-  assert.match(alex.html, /Alex, the agenda is below and the documents are attached/);
+  assert.match(alex.html, /Alex, the agenda and 1 document for the .+ are on the board page/);
   const links = [...alex.html.matchAll(/\/api\/board-rsvp\?t=([0-9a-f]{32})&amp;a=(yes|remote|no)/g)];
   assert.deepEqual(links.map((x) => x[2]), ['yes', 'remote', 'no']);
   assert.equal(new Set(links.map((x) => x[1])).size, 1, 'one token, Alex’s own');
@@ -870,8 +938,8 @@ test('Send the invite: from the president’s calendar to every board member, wi
   assert.equal(post.body.conferenceData.createRequest.conferenceSolutionKey.type, 'hangoutsMeet');
   assert.deepEqual(post.body.start, { dateTime: `${day}T18:00:00`, timeZone: 'America/New_York' });
   assert.equal(post.body.location, undefined, 'no place yet, none on the invite');
-  assert.ok(post.body.description.startsWith(`The agenda and the packet are on the board page: https://sunshineonaranneyday.com/admin/board/#/meetings/${m.id}\n`), 'the way to this meeting’s page');
-  assert.match(post.body.description, /\nAGENDA \(the board page always has the latest\)\n1\. Call to order\n   - Roll call\n/);
+  assert.ok(post.body.description.startsWith(`The agenda and documents: https://sunshineonaranneyday.com/admin/board/#/meetings/${m.id}\n`), 'the way to this meeting’s page');
+  assert.doesNotMatch(post.body.description, /AGENDA|Roll call/, 'the link, not the agenda: the board page has it');
   assert.doesNotMatch(post.body.description, /<[a-z]/i, 'plain text: Apple Calendar and Outlook would show HTML as tags');
   assert.deepEqual(g.transcript, { 'abc-defg-hij-space': 'ON' }, 'transcripts on for its Meet');
   m = r.body.meeting;
@@ -938,7 +1006,7 @@ test('a meeting from the organizer’s calendar: that invite gets the missing bo
   assert.equal(body.location, 'Example Hall, 100 Example St, Roswell, GA', 'a TBD place is filled in');
   assert.ok(body.conferenceData.createRequest);
   assert.equal(body.summary, undefined); assert.equal(body.start, undefined, 'the calendar keeps its own name, day and time');
-  assert.ok(body.description.startsWith(`Dinner provided\n\nThe agenda and the packet are on the board page: https://sunshineonaranneyday.com/admin/board/#/meetings/${m.id}\n`), 'its own notes stay, Board’s follow them');
+  assert.ok(body.description.startsWith(`Dinner provided\n\nThe agenda and documents: https://sunshineonaranneyday.com/admin/board/#/meetings/${m.id}\n`), 'its own notes stay, Board’s follow them');
   // Looked at again: still the calendar's meeting, followed as before, never marked gone
   await syncBoardCalendar(env);
   [m] = await listMeetings(env.DB);
@@ -954,37 +1022,32 @@ test('a meeting from the organizer’s calendar: that invite gets the missing bo
   assert.match(no.body.error, /someone@example\.com/);
 });
 
-test('the invite’s notes follow the agenda without Google emailing anyone; a new place still emails; the organizer’s own notes stay', async () => {
+test('the invite’s notes are the link to the board page: the agenda changing never touches the invite; a new place still emails; the organizer’s own notes stay', async () => {
   const g = fakeGoogleWriter();
   let m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(35) })).body.meeting;
   m = (await adminApi(FOUNDER, { action: 'send-invite', id: m.id })).body.meeting;
   const sections = [...m.sections, { title: 'Strategic plan', items: [{ title: 'Draft goals', presenter: 'Alex Rivera' }, { title: 'Legal', confidential: true }] }];
   g.calls = [];
   m = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...m, sections }, base: m.updatedAt })).body.meeting;
-  assert.deepEqual(await maybeRefreshInvites(env), [], 'not while it’s being typed');
-  assert.deepEqual(await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 }), [m.id]);
-  const [patch, ...more] = calWrites(g);
-  assert.equal(more.length, 0);
-  assert.match(patch.url, /sendUpdates=none$/, 'the agenda alone: nobody is emailed');
-  assert.match(patch.body.description, /\d\. Strategic plan\n   - Draft goals \(Alex Rivera\)\n   - A board-only item \(on the board page\)/);
-  assert.doesNotMatch(patch.body.description, /Legal/, 'never a board-only item’s title');
-  assert.equal(patch.body.attendees.length, 2);
-  g.calls = [];
-  assert.deepEqual(await maybeRefreshInvites(env, { now: Date.now() + 10 * 60 * 1000 }), [], 'then nothing more');
-  // The agenda and the place at once: Google emails the update
+  assert.deepEqual(await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 }), [], 'the agenda isn’t in the invite: nothing to update');
+  assert.equal(calWrites(g).length, 0);
+  // A new place: Google emails the update, and the notes are still only the way to the page
   const now = await getMeeting(env.DB, m.id);
-  await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...now, location: 'Example Hall', sections: now.sections.slice(0, -1) }, base: now.updatedAt });
+  await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...now, location: 'Example Hall' }, base: now.updatedAt });
   await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 });
   assert.match(calWrites(g)[0].url, /sendUpdates=all$/);
-  assert.doesNotMatch(calWrites(g)[0].body.description, /Strategic plan/);
+  assert.doesNotMatch(JSON.stringify(calWrites(g)[0].body), /Strategic plan|Legal/);
   // A calendar file for a member who isn't on the invite says the same
-  assert.match(meetingIcs(await getMeeting(env.DB, m.id)), /DESCRIPTION:The agenda and the packet are on the board page: .*\\nAGENDA/);
+  const ics = meetingIcs(await getMeeting(env.DB, m.id));
+  assert.match(ics, /DESCRIPTION:The agenda and documents: https:\/\/sunshineonaranneyday\.com\/admin\/board\/#\/meetings\//);
+  assert.doesNotMatch(ics, /AGENDA|Strategic plan/);
 
-  // The organizer's own words stay in front; Board's part is replaced, never doubled, in HTML when Google keeps it so
-  assert.equal(withNotes('Dinner provided\n\nThe agenda and the packet are on the board page: old\nAGENDA', 'The agenda and the packet are on the board page: new'), 'Dinner provided\n\nThe agenda and the packet are on the board page: new');
+  // The organizer's own words stay in front; Board's part is replaced, never doubled (its older wording too), in HTML when Google keeps it so
+  assert.equal(withNotes('Dinner provided\n\nThe agenda and the packet are on the board page: old\nAGENDA', 'The agenda and documents: new'), 'Dinner provided\n\nThe agenda and documents: new');
+  assert.equal(withNotes('Dinner provided\n\nThe agenda and documents: old', 'The agenda and documents: new'), 'Dinner provided\n\nThe agenda and documents: new');
   assert.equal(withNotes('', 'N'), 'N');
-  assert.equal(withNotes('<b>Dinner</b> provided<br><br>The agenda and the packet are on the board page: old<br>x', 'The agenda and the packet are on the board page: new\nA & B'),
-    '<b>Dinner</b> provided<br><br>The agenda and the packet are on the board page: new<br>A &amp; B');
+  assert.equal(withNotes('<b>Dinner</b> provided<br><br>The agenda and documents: old<br>x', 'The agenda and documents: new\nA & B'),
+    '<b>Dinner</b> provided<br><br>The agenda and documents: new<br>A &amp; B');
 });
 
 test('Board’s invite, then the meeting turns up on the organizer’s own calendar: one invite, theirs', async () => {
@@ -1762,7 +1825,7 @@ const chairSets = async (m, live, more = {}) => (await adminApi(FOUNDER, { actio
 
 test('a meeting is held live: the chair starts it and moves item by item; members follow, check in, and vote while a vote is open', async () => {
   let m = await heldToday();
-  assert.deepEqual(m.live, { startedAt: '', endedAt: '', itemId: '', vote: null }, 'every meeting has an empty live until the chair starts it');
+  assert.deepEqual(m.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, screen: '', vote: null, sectionAt: '', floor: '' }, 'every meeting has an empty live until the chair starts it');
   let v = (await liveGet(MEMBER, m.id)).body;
   assert.equal(v.ok, true);
   assert.equal(v.live.startedAt, '', 'not started');
@@ -1934,3 +1997,59 @@ test('the quorum is a majority of the board on the meeting’s list, unless Sett
   assert.equal(quorumFor(list(0)), 0, 'no board on the list, no quorum to meet');
 });
 
+
+test('a draft puts the last minutes up for approval whatever their item was called, and finds the makeovers and the money by name', () => {
+  const prev = cleanMeeting({ id: 'm_prev1', date: '2026-08-06', title: 'Q3 2026 Board Meeting', sections: [
+    { title: 'Call to order', items: [{ title: 'Roll Call' }] },
+    { title: 'Approve meeting minutes', items: [{ title: 'Q2 Board Meeting', notes: 'Minutes approved' }] },
+    { title: 'Committee reports', items: [{ title: 'Financial', presenter: 'Sam' }, { title: 'Projects updates and upcoming reveals', presenter: 'Pat' }, { title: 'Store update' }] },
+    { title: 'New business / issues', items: [{ title: 'A thing decided last time' }] },
+    { title: 'Upcoming events', items: [{ title: 'Events' }, { title: '2026 Board Meetings' }] },
+  ] });
+  const draft = draftAgenda(prev);
+  const items = draft.flatMap((s) => s.items);
+  const minutes = items.filter((it) => it.live === 'minutes');
+  assert.equal(minutes.length, 1);
+  assert.equal(minutes[0].title, 'Minutes of the Q3 2026 Board Meeting (Aug 6, 2026)');
+  assert.equal(minutes[0].about, 'm_prev1');
+  assert.equal(items.find((it) => /^Projects/.test(it.title)).live, 'projects');
+  assert.equal(items.find((it) => it.title === 'Financial').live, 'cash');
+  assert.equal(items.find((it) => it.title === '2026 Board Meetings').live, 'meetings');
+  assert.equal(items.find((it) => it.title === 'Store update').live, '');
+  assert.equal(draft.find((s) => /new business/i.test(s.title)).items.length, 0, 'new business starts empty');
+  assert.ok(!items.some((it) => it.notes), 'nothing written last time comes along');
+  assert.equal(liveOfTitle('Events and Marketing Committee', 'Committee reports'), '', 'a committee named for events is not the events list');
+  assert.equal(liveOfTitle('Treasurer’s report'), 'cash');
+});
+
+test('the meeting’s time is shared out among its parts, a part given its own minutes keeping them', () => {
+  const m = cleanMeeting({ id: 'm_plan1', date: '2026-11-05', start: '08:00', end: '10:00', sections: [
+    { id: 's_one1', title: 'Call to order', items: [{ title: 'Roll call' }, { title: 'Welcome' }] },
+    { id: 's_two1', title: 'Committee reports', items: [{ title: 'Financial', live: 'cash' }, { title: 'Projects', live: 'projects' }, { title: 'Store' }] },
+    { id: 's_thr1', title: 'Open forum', items: [] },
+  ] });
+  const plan = sectionPlan(m);
+  const sum = [...plan.values()].reduce((n, p) => n + p.minutes, 0);
+  assert.equal(sum, 120, 'the parts add up to the meeting');
+  assert.ok(plan.get('s_two1').minutes > plan.get('s_one1').minutes && plan.get('s_thr1').minutes >= 5, 'the busier part gets more; an empty one still gets some');
+  assert.equal(plan.get('s_one1').start, '08:00');
+  assert.equal(plan.get('s_two1').start, plan.get('s_one1').end, 'each starts when the one before it ends');
+  const fixed = sectionPlan({ ...m, sections: m.sections.map((s) => (s.id === 's_one1' ? { ...s, minutes: 10 } : s)) });
+  assert.equal(fixed.get('s_one1').minutes, 10);
+  assert.equal(fixed.get('s_one1').auto, false);
+  assert.equal([...fixed.values()].reduce((n, p) => n + p.minutes, 0), 120, 'the rest share what’s left');
+  assert.equal(cleanMeeting({ ...m, sections: [{ title: 'x', minutes: 9999, items: [] }] }).sections[0].minutes, 600);
+  assert.equal(sectionOf(m, m.sections[1].items[0].id), 's_two1');
+  // The part's timer, and whose floor it is
+  const at = new Date(Date.now() - 125 * 1000).toISOString();
+  const t = sectionClock(plan, 's_one1', at);
+  assert.ok(t.left > 0 && !t.over && t.of === plan.get('s_one1').minutes * 60);
+  const over = sectionClock(plan, 's_thr1', new Date(Date.now() - 3600 * 1000).toISOString());
+  assert.ok(over.over && over.left < 0);
+  assert.equal(clockText(-95), '1:35');
+  assert.equal(sectionClock(plan, 's_one1', ''), null, 'no timer before the part has begun');
+  const live = cleanLive({ startedAt: new Date().toISOString(), itemId: 'i_abc1', sectionAt: at, floor: 'sam-ortiz' });
+  assert.equal(live.sectionAt, at);
+  assert.equal(live.floor, 'sam-ortiz');
+  assert.deepEqual([cleanLive({ sectionAt: at, floor: 'sam-ortiz' }).sectionAt, cleanLive({ itemId: 'i_abc1', floor: '../x' }).floor], ['', ''], 'only with an item on, and only a person’s slug');
+});

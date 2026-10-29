@@ -5,9 +5,9 @@
  * these add only what the board screens need.
  */
 
-import { h, htm } from './vendor.js';
+import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { float } from './float.js';
-import { LIVE, liveLines, shortDate, todayEastern, isDate, noteBlocks, callName } from './board-shared.js';
+import { LIVE, liveLines, shortDate, todayEastern, isDate, noteBlocks, callName, fileTitle } from './board-shared.js';
 
 export const html = htm.bind(h);
 export const API = '/api/board-admin';
@@ -158,6 +158,152 @@ export function Menu({ label, items }) {
       ${items.filter(Boolean).map((it) => html`<button type="button" role="menuitem" class=${`bd-menu__item ${it.danger ? 'is-danger' : ''}`} disabled=${it.disabled} onClick=${(e) => { close(e.currentTarget); it.run(); }}>${it.label}</button>`)}
     </div>
   </details>`;
+}
+
+// ─── Pickers: who presents, and which item a document goes with ─────
+
+const initialsOf = (name) => { const w = String(name || '').split(/\s+/).filter(Boolean); return ((w[0]?.[0] || '') + (w.length > 1 ? w.at(-1)[0] : '')).toUpperCase() || '?'; };
+/** A person's face: their photo over their initials (the initials stay if the photo doesn't load) */
+export function Face({ p, size = 24 }) {
+  return html`<span class="avatar bd-face" style=${`--av:${size}px`} aria-hidden="true">${initialsOf(p?.name)}${p?.photo ? html`<img src=${p.photo} alt="" loading="lazy" decoding="async" onError=${(e) => e.currentTarget.remove()} />` : null}</span>`;
+}
+/** Board members, then staff, as the pickers list them: [{ slug, name, photo, meta, group }] */
+export const pickable = (people) => [
+  ...(people?.board || []).map((p) => ({ slug: p.slug, name: p.name, photo: p.photo, meta: [p.title && p.title !== 'Board Member' ? p.title : '', (p.committees || []).join(', ')].filter(Boolean).join(' · '), group: 'Board' })),
+  ...(people?.staff || []).map((p) => ({ slug: p.slug, name: p.name, photo: p.photo, meta: p.title || 'SOARD', group: 'Staff' })),
+];
+
+/**
+ * A popover beside its button: opens on a click, closes on Escape (focus back on the button), a click outside, or
+ * `close()`. `children(close)` draws what's inside.
+ */
+function Pop({ button, label, cls = '', startOpen = false, onClosed = () => {}, children }) {
+  const [open, setOpen] = useState(startOpen);
+  const ref = useRef(null);
+  const close = (focus = true) => { setOpen(false); onClosed(); if (focus) ref.current?.querySelector('.bd-pop__btn')?.focus(); };
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (!ref.current?.contains(e.target)) close(false); };
+    const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    document.addEventListener('pointerdown', away, true);
+    ref.current?.addEventListener('keydown', esc);
+    const el = ref.current;
+    return () => { document.removeEventListener('pointerdown', away, true); el?.removeEventListener('keydown', esc); };
+  }, [open]);
+  return html`<div class=${`bd-pop ${cls} ${open ? 'is-open' : ''}`} ref=${ref}>
+    <button type="button" class="bd-pop__btn" aria-haspopup="dialog" aria-expanded=${open} aria-label=${label} onClick=${() => (open ? close() : setOpen(true))}>${button}</button>
+    ${open ? html`<div class="bd-pop__panel" role="dialog" aria-label=${label}>${[].concat(children).find((c) => typeof c === 'function')?.(close)}</div>` : null}
+  </div>`;
+}
+
+/** Arrow keys through a list of choices, Enter takes the highlighted one: [active, onKeyDown] */
+function useListKeys(count, take) {
+  const [active, setActive] = useState(0);
+  useEffect(() => { if (active >= count) setActive(Math.max(0, count - 1)); }, [count]);
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => (a + 1) % Math.max(1, count)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => (a - 1 + Math.max(1, count)) % Math.max(1, count)); }
+    else if (e.key === 'Enter' && count) { e.preventDefault(); take(active); }
+  };
+  return [active, setActive, onKeyDown];
+}
+const matches = (q, ...texts) => { const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean); const hay = texts.join(' ').toLowerCase().split(/[\s,·&/()-]+/); return words.every((w) => hay.some((x) => x.startsWith(w))); };
+
+/**
+ * Who presents an item: faces and names on the agenda, and a list of the board and staff to pick from (photo,
+ * name, their seat and committees), up to three, or a guest's name typed in. `value`: [{ slug?, name, photo? }].
+ */
+export function PersonPicker({ people, value, onChange, label = 'Who presents', empty = 'Who presents', max = 3, startOpen = false, onClosed }) {
+  const chosen = new Set(value.map((p) => p.slug).filter(Boolean));
+  const shown = value.length ? html`<span class="bd-who__faces">${value.map((p) => html`<${Face} p=${p} size=${22} key=${p.slug || p.name} />`)}</span><span class="bd-who__names">${value.map((p) => p.name).join(' & ')}</span>`
+    : html`<span class="bd-who__empty">+ ${empty}</span>`;
+  return html`<${Pop} cls=${`bd-who ${value.length ? 'has-who' : ''}`} label=${label} button=${shown} startOpen=${startOpen} onClosed=${onClosed}>
+    ${(close) => html`<${PeopleList} people=${people} value=${value} chosen=${chosen} max=${max} onChange=${onChange} close=${close} />`}
+  </${Pop}>`;
+}
+/**
+ * A list's search box, ready to type in the moment it opens: focused as it's put on the page (autofocus does nothing
+ * for a box added after the page loads, and an effect comes a frame late, after a fast first key)
+ */
+function useFocusFirst() {
+  const done = useRef(false);
+  const ref = useRef((el) => { if (el && !done.current) { done.current = true; el.focus(); } });
+  return ref.current;
+}
+function PeopleList({ people, value, chosen, max, onChange, close }) {
+  const [q, setQ] = useState('');
+  const find = useFocusFirst();
+  const list = people.filter((p) => !q.trim() || matches(q, p.name, p.meta));
+  const typed = q.trim().replace(/\s+/g, ' ');
+  const guest = typed && !people.some((p) => p.name.toLowerCase() === typed.toLowerCase()) && !value.some((p) => p.name.toLowerCase() === typed.toLowerCase());
+  const options = [...list.map((p) => ({ p })), ...(guest ? [{ guest: typed }] : [])];
+  const toggle = (p) => {
+    const on = chosen.has(p.slug);
+    const next = on ? value.filter((x) => x.slug !== p.slug) : [...value, p].slice(-max);
+    onChange(next);
+    setQ('');
+  };
+  const take = (i) => { const o = options[i]; if (!o) return; if (o.guest) { onChange([...value, { name: o.guest }].slice(-max)); setQ(''); } else toggle(o.p); };
+  const [active, setActive, onKeyDown] = useListKeys(options.length, take);
+  let group = '';
+  return html`<div class="bd-picker">
+    <input class="bd-picker__find" type="search" ref=${find} value=${q} placeholder="Find someone, or type a guest’s name" aria-label="Find someone"
+      onInput=${(e) => { setQ(e.target.value); setActive(0); }} onKeyDown=${onKeyDown} />
+    ${value.length ? html`<div class="bd-picker__chosen">${value.map((p) => html`<span class="bd-chip" key=${p.slug || p.name}><${Face} p=${p} size=${18} />${p.name}<button type="button" aria-label=${`Take ${p.name} off`} onClick=${() => onChange(value.filter((x) => x !== p))}>✕</button></span>`)}</div>` : null}
+    <ul class="bd-picker__list" role="listbox" aria-multiselectable="true" aria-label="People">
+      ${options.map((o, i) => {
+        const head = o.p && o.p.group !== group ? (group = o.p.group) : '';
+        return html`${head ? html`<li class="bd-picker__group" role="presentation">${head}</li>` : null}
+          ${o.p ? html`<li role="option" aria-selected=${chosen.has(o.p.slug)} class=${`bd-picker__opt ${i === active ? 'is-active' : ''}`} key=${o.p.slug} onPointerEnter=${() => setActive(i)} onClick=${() => toggle(o.p)}>
+            <${Face} p=${o.p} size=${30} /><span class="bd-picker__text"><span class="bd-picker__name">${o.p.name}</span>${o.p.meta ? html`<span class="bd-picker__meta">${o.p.meta}</span>` : null}</span>
+            <span class="bd-picker__check" aria-hidden="true">${chosen.has(o.p.slug) ? CHECK : null}</span>
+          </li>`
+          : html`<li role="option" aria-selected="false" class=${`bd-picker__opt bd-picker__opt--guest ${i === active ? 'is-active' : ''}`} key="guest" onPointerEnter=${() => setActive(i)} onClick=${() => take(i)}>
+            <span class="avatar bd-face" style="--av:30px" aria-hidden="true">+</span><span class="bd-picker__text"><span class="bd-picker__name">Add “${o.guest}”</span><span class="bd-picker__meta">Someone who isn’t on People, as a guest</span></span>
+          </li>`}`;
+      })}
+      ${options.length ? null : html`<li class="bd-picker__none">Nobody by that name</li>`}
+    </ul>
+    <div class="bd-picker__foot"><span class="bd-muted">${value.length ? `${value.length} of up to ${max}` : `Up to ${max}`}</span>
+      <span class="bd-actions">${value.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onChange([])}>Clear</button>` : null}<button type="button" class="btn btn-primary btn-sm" onClick=${() => close()}>Done</button></span></div>
+  </div>`;
+}
+
+/**
+ * Which agenda item a document goes with: the agenda, numbered as it reads, to pick from (or none).
+ * `items`: agendaItems(m); `value`: an item id or ''.
+ */
+export function ItemChooser({ items, value, onChange, label = 'Goes with' }) {
+  const at = items.find((it) => it.id === value);
+  return html`<${Pop} cls="bd-goes" label=${label} button=${html`<span class=${`bd-goes__now ${at ? '' : 'is-none'}`}>${at ? html`<b>${at.label}</b> ${at.title}` : 'Not on an item'}</span><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`}>
+    ${(close) => html`<${ItemList} items=${items} value=${value} onPick=${(id) => { onChange(id); close(); }} />`}
+  </${Pop}>`;
+}
+function ItemList({ items, value, onPick }) {
+  const [q, setQ] = useState('');
+  const find = useFocusFirst();
+  const list = [...items.filter((it) => !q.trim() || matches(q, it.title, it.section, it.label)), ...(q.trim() ? [] : [{ id: '', title: 'Not on an item', label: '' }])];
+  const [active, setActive, onKeyDown] = useListKeys(list.length, (i) => list[i] && onPick(list[i].id));
+  let sec = null;
+  return html`<div class="bd-picker">
+    <input class="bd-picker__find" type="search" ref=${find} value=${q} placeholder="Find an agenda item" aria-label="Find an agenda item" onInput=${(e) => { setQ(e.target.value); setActive(0); }} onKeyDown=${onKeyDown} />
+    <ul class="bd-picker__list" role="listbox" aria-label="Agenda items">
+      ${list.map((it, i) => {
+        const head = it.id && it.section !== sec ? (sec = it.section) || 'Agenda' : '';
+        return html`${head ? html`<li class="bd-picker__group" role="presentation">${head}</li>` : null}
+          <li role="option" aria-selected=${it.id === value} class=${`bd-picker__opt bd-picker__opt--item ${i === active ? 'is-active' : ''} ${it.id ? '' : 'is-none'}`} key=${it.id || 'none'} onPointerEnter=${() => setActive(i)} onClick=${() => onPick(it.id)}>
+            ${it.label ? html`<span class="bd-picker__num">${it.label}</span>` : null}<span class="bd-picker__text"><span class="bd-picker__name">${it.title}</span></span>
+            <span class="bd-picker__check" aria-hidden="true">${it.id === value ? CHECK : null}</span>
+          </li>`;
+      })}
+    </ul>
+  </div>`;
+}
+
+/** A document on an agenda item: its name (opening it), and ✕ to take it off the item */
+export function DocChip({ f, link, onRemove, note = '' }) {
+  const fmt = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name) ? 'PDF' : /sheet|excel/i.test(f.type) || /\.xlsx?$/i.test(f.name) ? 'XLS' : /word/i.test(f.type) || /\.docx?$/i.test(f.name) ? 'DOC' : /presentation/i.test(f.type) || /\.pptx?$/i.test(f.name) ? 'PPT' : /^image\//.test(f.type) ? 'IMG' : 'FILE';
+  return html`<span class="bd-doc"><a class="bd-doc__a" ...${link}><span class="bd-doc__fmt" data-fmt=${fmt}>${fmt}</span><span class="bd-doc__name">${fileTitle(f.name)}</span>${note ? html`<span class="bd-doc__note">${note}</span>` : null}</a>${onRemove ? html`<button type="button" class="bd-doc__x" aria-label=${`Take ${fileTitle(f.name)} off this item`} title="Take it off this item" onClick=${onRemove}>✕</button>` : null}</span>`;
 }
 
 // ─── Styles ─────────────────────────────────────────────────────────
@@ -419,6 +565,7 @@ export const STYLES = `
   .bd-lines { display: grid; gap: 0.5rem; }
   .bd-line { display: grid; gap: 0.5rem; align-items: center; padding: 0.55rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
   .bd-line--motion { grid-template-columns: minmax(0, 1fr) 11rem 11rem 9rem auto; }
+  .bd-line--vote { grid-template-columns: minmax(0, 1fr) auto; }
   .bd-line--action { grid-template-columns: auto minmax(0, 1fr) 13rem 10rem auto; }
   .bd-line.is-done { opacity: 0.65; }
   .bd-line.is-done .bd-line__text { text-decoration: line-through; }
@@ -504,6 +651,135 @@ export const STYLES = `
   @keyframes bm-in { from { opacity: 0; transform: translateY(4px) scale(0.96); } }
   @media (max-width: 560px) { .bm-vote__counts { grid-template-columns: minmax(0, 1fr); } }
   @media (prefers-reduced-motion: reduce) { .bm-live-dot::after, .bm-vote__who li { animation: none; } .bm-vote__bar i, .ag--run .ag-item { transition: none; } }
+
+  /* Pickers: who presents, which item a document goes with */
+  .bd-face { --av-bg: var(--seg-bg); --av-fg: var(--color-text-secondary); box-shadow: 0 0 0 2px var(--color-bg-card); }
+  .bd-pop { position: relative; display: inline-flex; min-width: 0; }
+  .bd-pop__btn { display: inline-flex; align-items: center; gap: 0.45rem; min-width: 0; max-width: 100%; height: 32px; padding: 0 0.55rem; border: 1px solid transparent; border-radius: 999px; background: none; font: inherit; font-size: var(--fs-sm); color: var(--color-text-secondary); cursor: pointer; }
+  .bd-pop__btn:hover, .bd-pop.is-open .bd-pop__btn { background: var(--seg-bg); color: var(--color-text); }
+  .bd-pop__btn:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+  .bd-pop__panel { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: min(23rem, calc(100vw - 2rem)); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); box-shadow: 0 18px 44px -12px rgba(26,27,31,0.28); animation: bd-pop-in 0.16s cubic-bezier(0.22,1,0.36,1) both; }
+  @keyframes bd-pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+  .bd-who { flex: 0 1 auto; max-width: 17rem; }
+  .bd-who__faces { display: inline-flex; flex: none; }
+  .bd-who__faces .bd-face + .bd-face { margin-left: -6px; }
+  .bd-who__names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); font-weight: 550; }
+  .bd-who__empty { white-space: nowrap; color: var(--color-text-muted); font-weight: 600; }
+  @media (hover: hover) { .ag-item__row .bd-who:not(.has-who):not(.is-open) { opacity: 0; transition: opacity 0.12s; } .ag-item__row:hover .bd-who, .ag-item__row:focus-within .bd-who { opacity: 1; } }
+  .bd-picker { display: grid; }
+  .bd-picker__find { margin: 0.6rem 0.6rem 0.35rem; height: 38px; padding: 0 0.7rem; border: 1px solid var(--color-border-strong); border-radius: 8px; font: inherit; font-size: var(--fs-sm); background: var(--color-bg-card); color: var(--color-text); }
+  .bd-picker__find:focus { outline: none; border-color: var(--color-text); box-shadow: 0 0 0 3px rgba(26,27,31,0.08); }
+  .bd-picker__chosen { display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.15rem 0.6rem 0.4rem; }
+  .bd-chip { display: inline-flex; align-items: center; gap: 0.35rem; height: 28px; padding: 0 0.25rem 0 0.3rem; border-radius: 999px; background: var(--seg-bg); font-size: var(--fs-xs); font-weight: 650; }
+  .bd-chip button { border: none; background: none; width: 22px; height: 22px; border-radius: 50%; color: var(--color-text-muted); cursor: pointer; font-size: 11px; }
+  .bd-chip button:hover { background: var(--color-bg-card); color: var(--color-text); }
+  .bd-picker__list { list-style: none; margin: 0; padding: 0.15rem 0.35rem 0.35rem; max-height: min(22rem, 52vh); overflow-y: auto; overscroll-behavior: contain; }
+  .bd-picker__group { padding: 0.55rem 0.5rem 0.25rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); }
+  .bd-picker__opt { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border-radius: 8px; cursor: pointer; }
+  .bd-picker__opt.is-active { background: var(--seg-bg); }
+  .bd-picker__opt[aria-selected="true"] .bd-picker__name { font-weight: 700; }
+  .bd-picker__text { display: grid; min-width: 0; flex: 1; }
+  .bd-picker__name { font-size: var(--fs-sm); font-weight: 600; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bd-picker__meta { font-size: var(--fs-xs); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bd-picker__check { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: var(--color-text); }
+  .bd-picker__opt[aria-selected="true"] .bd-picker__check { background: var(--color-primary); }
+  .bd-picker__check svg { width: 13px; height: 13px; }
+  .bd-picker__num { flex: none; min-width: 2.2rem; font-variant-numeric: tabular-nums; font-size: var(--fs-xs); font-weight: 700; color: var(--color-text-muted); }
+  .bd-picker__opt.is-none .bd-picker__name { color: var(--color-text-secondary); font-weight: 500; }
+  .bd-picker__none { padding: 0.75rem 0.5rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+  .bd-picker__foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.6rem; border-top: 1px solid var(--color-border); }
+  .bd-goes .bd-pop__btn { border-color: var(--color-border); max-width: 16rem; }
+  .bd-goes__now { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
+  .bd-goes__now b { font-variant-numeric: tabular-nums; color: var(--color-text-secondary); margin-right: 0.2rem; }
+  .bd-goes__now.is-none { color: var(--color-text-muted); }
+
+  /* The documents that go with an agenda item */
+  .ag-docs { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.15rem 0 0.4rem 1.25rem; }
+  .bd-doc { display: inline-flex; align-items: center; max-width: 100%; height: 30px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-card); }
+  .bd-doc__a { display: inline-flex; align-items: center; gap: 0.45rem; min-width: 0; height: 100%; padding: 0 0.55rem 0 0.35rem; color: var(--color-text); text-decoration: none; font-size: var(--fs-xs); font-weight: 600; }
+  .bd-doc__a:hover .bd-doc__name { text-decoration: underline; text-underline-offset: 3px; }
+  .bd-doc__fmt { flex: none; padding: 0.1rem 0.3rem; border-radius: 4px; background: var(--seg-bg); font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em; color: var(--color-text-secondary); }
+  .bd-doc__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 22rem; }
+  .bd-doc__note { color: var(--color-text-muted); font-weight: 500; white-space: nowrap; }
+  .bd-doc__x { flex: none; width: 26px; height: 26px; margin-right: 2px; border: none; border-radius: 6px; background: none; color: var(--color-text-muted); cursor: pointer; font-size: 11px; }
+  .bd-doc__x:hover { background: var(--seg-bg); color: var(--color-text); }
+  .ag-item.is-over { background: var(--tone-info-surface); box-shadow: 0 0 0 1px var(--tone-info-line-strong); border-radius: var(--radius-md); }
+  .ag-add-doc { border: 1px dashed var(--color-border-strong); background: none; height: 30px; padding: 0 0.6rem; border-radius: 8px; font: inherit; font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
+  .ag-add-doc:hover { color: var(--color-text); border-color: var(--color-text-muted); }
+  .bd-docpick__up { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; border-top: 1px solid var(--color-border); }
+  .bf-file .bd-goes { flex: none; }
+  @media (max-width: 600px) { .ag-docs { margin-left: 0.5rem; } .bd-who { max-width: 100%; } .bf-file .bd-goes { order: 3; } }
+  @media (prefers-reduced-motion: reduce) { .bd-pop__panel { animation: none; } }
+
+  /* Presenting: what's on the screen, beside Previous and Next */
+  .bm-run__screen { display: flex; align-items: center; gap: 0.85rem; min-width: 0; }
+  .bm-thumb { flex: none; width: 74px; height: 56px; display: grid; place-items: center; overflow: hidden; border-radius: 6px; background: #2C2D28; color: var(--color-primary); font-size: var(--fs-xs); font-weight: 800; letter-spacing: 0.04em; box-shadow: 0 0 0 1px rgba(246,244,236,0.18); }
+  .bm-thumb.is-doc { background: #fff; align-items: start; }
+  .bm-thumb.is-doc > * { width: 74px !important; }
+  .bm-run.is-ready .bm-thumb, .bm-run__rehearse .bm-thumb { box-shadow: 0 0 0 1px var(--color-border); background: var(--color-text); }
+  .bm-run__next { font-size: var(--fs-xs); color: rgba(246,244,236,0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bm-run__side { display: grid; gap: 0.4rem; justify-items: end; }
+  /* The part's timer and who has the floor, under what's on the screen */
+  .bm-run__meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1.5rem; padding: 0.7rem 0 0; border-top: 1px solid rgba(246,244,236,0.14); }
+  .bm-run__rehearse .bm-run__meta { flex-basis: 100%; border-top-color: var(--color-border); }
+  .bm-timer { display: flex; align-items: baseline; gap: 0.6rem; min-width: 0; }
+  .bm-timer__t { font-size: var(--fs-xl, 1.4rem); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .bm-timer__s { font-size: var(--fs-xs); opacity: 0.75; }
+  .bm-timer.is-over .bm-timer__t { padding: 0 0.55rem; border-radius: 8px; background: var(--color-primary); color: #1F201C; animation: bm-over 1.6s ease-in-out infinite; }
+  @keyframes bm-over { 50% { opacity: 0.72; } }
+  .bm-floor { display: flex; align-items: center; gap: 0.55rem; min-width: 0; }
+  .bm-floor__faces { display: inline-flex; }
+  .bm-floor__faces .bd-face + .bd-face { margin-left: -8px; }
+  .bm-floor__t { font-size: var(--fs-sm); }
+  .bm-run.is-live .bm-floor .bd-menu > summary { color: #F6F4EC; }
+  @media (prefers-reduced-motion: reduce) { .bm-timer.is-over .bm-timer__t { animation: none; } }
+  .bm-run__rehearse { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; padding-top: 0.85rem; border-top: 1px solid var(--color-border); }
+  .bm-run__rehearse .bm-run__hint { color: var(--color-text-secondary); flex-basis: 100%; }
+  .bm-run__rehearse .bm-run__label { color: var(--tone-info-fg); }
+  .bm-run__rehearse .bm-run__sec, .bm-run__rehearse .bm-run__next { color: var(--color-text-secondary); }
+  .bm-run.is-rehearsing { border-color: var(--tone-info-line-strong); }
+  /* A part's time, beside its name in the agenda editor */
+  .ag-mins { display: inline-flex; align-items: center; gap: 0.35rem; flex: none; height: 32px; padding: 0 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-secondary); font-size: var(--fs-xs); cursor: text; }
+  .ag-mins:focus-within { border-color: var(--color-text); }
+  .ag-mins input { width: 2.6rem; border: none; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--color-text); text-align: right; -moz-appearance: textfield; }
+  .ag-mins input::-webkit-outer-spin-button, .ag-mins input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .ag-mins input:focus { outline: none; }
+  .ag-mins input::placeholder { color: var(--color-text-secondary); font-weight: 600; }
+  .ag-mins__at { font-variant-numeric: tabular-nums; padding-right: 0.35rem; border-right: 1px solid var(--color-border); }
+  .bm-order__head small { margin-left: auto; color: var(--color-text-secondary); font-weight: 600; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+  /* During: the agenda in order, each item and document a tap from the screen */
+  .bm-order, .bm-order ol { list-style: none; margin: 0; padding: 0; }
+  .bm-order { display: grid; gap: 0.9rem; }
+  .bm-order__head { display: flex; gap: 0.6rem; align-items: baseline; margin: 0 0 0.3rem; font-size: var(--fs-sm); font-weight: 750; color: var(--color-text); }
+  .bm-order__head span { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; font-size: var(--fs-xs); }
+  .bm-order__sec > ol { display: grid; gap: 0.15rem; }
+  .bm-order__item { padding: 0.15rem 0; border-radius: var(--radius-md); scroll-margin: calc(var(--top-h, 0px) + 9rem); }
+  .bm-order__item .bm-showdocs { margin: 0.1rem 0 0.35rem 2.6rem; }
+  .bm-order__go { display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 40px; padding: 0.35rem 0.6rem; border: 1px solid transparent; border-radius: var(--radius-md); background: none; font: inherit; color: var(--color-text); text-align: left; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+  .bm-order__go:hover { background: var(--color-bg-subtle, rgba(0,0,0,0.035)); }
+  .bm-order__n { flex: none; display: inline-grid; place-items: center; min-width: 2.1rem; height: 1.6rem; padding: 0 0.35rem; border-radius: 999px; background: var(--seg-bg, rgba(0,0,0,0.05)); font-size: var(--fs-2xs); font-weight: 750; font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+  .bm-order__t { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.6rem; font-weight: 600; }
+  .bm-order__t small { color: var(--color-text-secondary); font-weight: 500; font-size: var(--fs-xs); }
+  .bm-order__item.is-now .bm-order__go { background: var(--color-primary-bg); border-color: var(--color-primary); }
+  .bm-order__item.is-now .bm-order__n { background: #1F201C; }
+  .bm-order__approve { margin: 0.2rem 0 0.35rem 2.6rem; }
+  /* After: one place to drop the minutes */
+  .bm-minutes-drop { display: flex; align-items: center; gap: 1rem; padding: 1.15rem 1.25rem; margin: 0; border: 1.5px dashed var(--color-border-strong); border-radius: var(--radius-lg, 14px); background: var(--color-bg-card); cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+  .bm-minutes-drop:hover, .bm-minutes-drop.is-over { border-color: var(--color-text); background: var(--color-primary-bg); }
+  .bm-minutes-drop:focus-within { outline: 2px solid var(--color-text); outline-offset: 2px; }
+  .bm-minutes-drop.is-done { border-style: solid; border-color: var(--tone-success-line, var(--color-border)); background: var(--tone-success-surface, var(--color-bg-card)); }
+  .bm-minutes-drop.is-busy { cursor: progress; }
+  .bm-minutes-drop__icon { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--color-primary); color: #1F201C; }
+  .bm-minutes-drop.is-done .bm-minutes-drop__icon { background: var(--tone-success-bg); color: var(--tone-success-fg); }
+  .bm-minutes-drop__text { flex: 1 1 auto; min-width: 0; display: grid; gap: 0.15rem; }
+  .bm-minutes-drop__text strong { font-size: var(--fs-md, 1rem); }
+  .bm-minutes-drop__text span { color: var(--color-text-secondary); font-size: var(--fs-xs); line-height: 1.4; }
+  .bm-showdocs { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.4rem 0 0; }
+  .bm-showdoc { height: 30px; padding: 0 0.7rem; border: 1px solid var(--color-border-strong); border-radius: 999px; background: var(--color-bg-card); font: inherit; font-size: var(--fs-xs); font-weight: 650; color: var(--color-text); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bm-showdoc:hover:not(:disabled) { border-color: var(--color-text); }
+  .bm-showdoc:disabled { color: var(--color-text-muted); cursor: default; }
+  .bm-showdoc.is-on { background: #1F201C; border-color: #1F201C; color: var(--color-primary); }
+  @media (max-width: 760px) { .bm-run__side { justify-items: start; } }
 `;
 let stylesIn = false;
 export function injectStyles() {

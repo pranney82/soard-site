@@ -22,6 +22,9 @@
  *   sync-access                               try the sign-in list again (offered only when it failed)
  *   practice                                  today's practice meeting (made the first time): only the admins see it
  *   practice-reset { id }                     start the practice over (a new one; its check-ins and votes go)
+ *   read-minutes { id, fileId }               that file read as the meeting's minutes and put on it (_board-minutes.js):
+ *                                             → { meeting, approvedPrev, read: { attendance: { here, of }, notes, motions, actions, ai } }
+ *                                             dry: true reads it without saving → { dry, read, would }
  * POST multipart (?upload=1): file, ownerType (meeting|doc), ownerId, kind, staffOnly → the stored file
  *
  * The audit log gets what changed by name only: its readers are every staff
@@ -41,6 +44,7 @@ import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-ma
 import { sendInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
 import { maybeReadBoardDrive, driveStatus, DEFAULT_DRIVE_FOLDER } from './_board-drive.js';
 import { meetingName } from '../../public/admin/board-shared.js';
+import { readMinutesInto } from './_board-minutes.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
 
@@ -163,7 +167,7 @@ export async function onRequestPost(context) {
         needId();
         const admins = (await getSettings(env.DB)).admins;
         const r = await sendPacket(env, id, { by: me, to: body.test ? [me] : null, replyTo: admins });
-        if (!body.test && r.sent) await audit(env, me, 'updated', `Board packet emailed to ${r.sent} board members`);
+        if (!body.test && r.sent) await audit(env, me, 'updated', `Board emailed the link to the agenda and documents (${r.sent} board members)`);
         return Response.json({ ok: r.failed === 0, ...r, meeting: await getMeeting(env.DB, id), ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
       }
       case 'action-done':
@@ -197,6 +201,14 @@ export async function onRequestPost(context) {
         needId();
         const parsed = await readFileAsAgenda(env, id);
         return parsed ? Response.json({ ok: true, parsed }) : fail('Couldn’t read an agenda in that file. Is it the minutes, as a PDF or Word file?', 422);
+      }
+      case 'read-minutes': {
+        // The minutes, uploaded after the meeting: who was there, the notes under each item, the motions and the
+        // action items read in by themselves (./_board-minutes.js), the last meeting's minutes approved when they say so
+        needId();
+        const r = await readMinutesInto(env, id, String(body.fileId || ''), { by: me, dry: body.dry === true });
+        if (!r.dry) await audit(env, me, 'updated', `Board minutes read in: ${meetingName(r.meeting)}`);
+        return Response.json({ ok: true, ...r });
       }
       case 'send-invite': {
         needId();

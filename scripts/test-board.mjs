@@ -10,14 +10,17 @@
  * Checks, at 1440px and 390px:
  *   - Board shows in the menu and ⌘K for its admins only; other staff are refused
  *   - bringing in an old agenda (pasted text): the preview, then the meeting;
- *     its minutes uploaded as a Word file and read in, and the signed copy
- *   - a meeting's three steps. Before: the agenda, a board-only item, a
- *     private note, a file, then Getting ready: the invite from the
- *     president's calendar with Google Meet and transcripts on, the place
- *     added after (one update, once it settles), numbers locked, shared, the
- *     documents emailed with the file attached. During: attendance as a
- *     check-off with the quorum, notes as points, a motion, an action item.
- *     A save someone else made meanwhile merges.
+ *     its minutes dropped in as a Word file and read into the meeting by
+ *     themselves (the notes; the motions and action items from Workers AI,
+ *     faked here), and the signed copy
+ *   - a meeting's three steps. Before: the agenda ready as drafted, a
+ *     board-only item, its background as points, a private note, a file
+ *     that goes with its item by itself, then Getting ready: the invite from
+ *     the president's calendar with Google Meet and transcripts on, the place
+ *     added after (one update, once it settles), shared, the documents
+ *     emailed with nothing attached; the numbers lock themselves on the day.
+ *     A save someone else made meanwhile merges. During: the agenda in
+ *     order, a vote.
  *   - Documents (one asking for a signature), Members (Cloudflare's steps,
  *     the sign-in email), Settings (who invites come from)
  *   - a board member opening /admin/ lands on /admin/board/; Home (the next
@@ -44,10 +47,11 @@ import * as boardAdmin from '../functions/api/board-admin.js';
 import * as bankAdmin from '../functions/api/bank-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
-import { provideBoardFinance } from '../functions/api/_board.js';
+import { provideBoardFinance, maybeLockNumbers } from '../functions/api/_board.js';
 import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
 import { generateKeyPairSync } from 'node:crypto';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/board/');
@@ -162,6 +166,8 @@ const { privateKey: saPem } = generateKeyPairSync('rsa', { modulusLength: 2048, 
 const calendar = { [FOUNDER]: [] };
 const google = []; // Calendar writes and Meet calls: { method, url, body }
 const env = { GOOGLE_CALENDAR_KEY: JSON.stringify({ type: 'service_account', client_email: 'reader@example.iam.gserviceaccount.com', client_id: '1234567890', project_id: 'example-project', private_key: saPem }), DB, FILES: new FakeR2(), CF_ACCESS_TEAM_DOMAIN: 'soard', CF_ACCESS_AUD: 'aud-tag', RESEND_API_KEY: 're_test', MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test', JOBTREAD_GRANT_KEY: 'jt-test' };
+// Workers AI as the minutes reader asks it (./_board-minutes.js): the motions and action items it finds
+env.AI = { run: async () => ({ response: { attendance: [], motions: [{ text: 'Approve the 2027 budget', by: 'Alex Rivera', second: 'Sam Ortiz', result: 'passed' }], actions: [{ text: 'Send the venue contract', owner: 'Alex Rivera', due: '' }], approvedPrev: false } }) };
 const mail = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
@@ -222,6 +228,24 @@ provideBoardFinance(async () => ({
   cash: { today: 375000, lowest: { dollars: 210000, week: day(40) }, cautiousLowest: { dollars: 180000, week: day(47) }, in13Weeks: 260000, floor: 150000, belowFloor: false },
   perMakeover: { count: 12, average: 21000 },
 }));
+
+/** A two-page made-up Statement of Financial Position, for the screen and Print it all to show page by page */
+async function statementPdf() {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  for (const [n, lines] of [[1, [['Bank Accounts', ''], ['  Example Operating', '$250,000.00'], ['  Example Reserve', '$125,000.00'], ['Total for Bank Accounts', '$375,000.00']]], [2, [['Liabilities', ''], ['  Credit card', '($1,200.00)'], ['Total Liabilities', '($1,200.00)']]]]) {
+    const page = doc.addPage([612, 792]);
+    page.drawText('Statement of Financial Position', { x: 72, y: 700, size: 20, font: bold });
+    page.drawText(`Example Organization · page ${n}`, { x: 72, y: 676, size: 11, font });
+    lines.forEach(([label, amount], i) => {
+      const y = 630 - i * 24;
+      page.drawText(label, { x: 72, y, size: 12, font: /^Total/.test(label) ? bold : font });
+      if (amount) page.drawText(amount, { x: 430, y, size: 12, font: /^Total/.test(label) ? bold : font });
+    });
+  }
+  return Buffer.from(await doc.save());
+}
 
 // ── The server ──
 const ROUTES = { '/api/board-admin': boardAdmin, '/api/board-portal': boardPortal, '/api/board-file': boardFile, '/api/bank-admin': bankAdmin };
@@ -342,20 +366,20 @@ try {
   ok(/Approved/.test(await text(jane)), 'a past agenda comes in as approved minutes');
   const pastId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/')[2]);
 
-  // Its minutes, written elsewhere: a Word file read in; then the signed copy
+  // Its minutes, written elsewhere: a Word file dropped in and read into the meeting at once; then the signed copy
   const docx = join(OUT, 'Board-minutes.docx');
   writeFileSync(docx, minutesDocx());
-  const minutesInput = await jane.evaluateHandle(() => [...document.querySelectorAll('.bm-task input[type="file"]')].find((i) => /minutes/i.test(i.closest('label').textContent)));
-  await minutesInput.asElement().uploadFile(docx);
-  ok(await waitText(jane, /Board minutes reads as 3 sections, 3 items/), 'uploaded minutes (Word) are read and shown before they’re used');
-  await clickText(jane, 'button', /^Use these as the minutes$/);
-  ok(await waitText(jane, /The minutes are in the meeting/), 'Use these as the minutes');
-  await saved(jane);
+  await (await jane.$('.bm-minutes-drop input[type="file"]')).uploadFile(docx);
+  ok(await waitText(jane, /Read from the minutes: [^\n]*notes under/), 'dropped minutes (Word) are read into the meeting by themselves, and it says what they gave');
+  ok(await waitText(jane, /Undo/), 'with a way to undo it');
   const pastNow = await meetingNow(jane, pastId);
-  ok(pastNow.sections.some((s) => s.items.some((it) => /Reserves grew this quarter/.test(it.notes))) && pastNow.files.some((f) => f.kind === 'minutes'), 'the meeting now holds what the minutes say, and keeps the file');
+  ok(pastNow.sections.some((s) => s.items.some((it) => /Reserves grew this quarter/.test(it.notes))) && pastNow.files.some((f) => f.kind === 'minutes') && pastNow.minutesFrom?.name === 'Board-minutes.docx', 'the meeting now holds what the minutes say, and keeps the file');
+  ok(pastNow.motions.some((x) => x.text === 'Approve the 2027 budget' && x.by === 'Alex Rivera') && pastNow.actions.some((a) => a.text === 'Send the venue contract' && a.owner === 'alex-rivera'), 'the motions and action items the minutes name are in it, people matched to the board');
+  ok(/Approve the 2027 budget/.test(await text(jane)), 'the minutes on the page show the decision');
   const pdf = join(OUT, 'Balance-sheet-financials.pdf');
-  writeFileSync(pdf, '%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF');
+  writeFileSync(pdf, await statementPdf());
   const signedInput = await jane.evaluateHandle(() => [...document.querySelectorAll('.bm-task input[type="file"]')].find((i) => /Upload it|Replace it/.test(i.closest('label').textContent)));
+  ok(!(await jane.$('.bm-choice')) && !/Mark them in During/.test(await text(jane)), 'nobody is asked to take attendance');
   await signedInput.asElement().uploadFile(pdf);
   ok(await waitText(jane, /Signed copy kept/), 'the signed copy uploads');
   await shot(jane, '02b-after');
@@ -367,10 +391,10 @@ try {
   await jane.evaluate((d) => { const el = document.querySelector('input[aria-label="Meeting date"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, d); el.dispatchEvent(new Event('input', { bubbles: true })); }, day(14));
   await clickText(jane, 'button', /^Add$/);
   ok(await waitText(jane, /Getting ready/), 'a new meeting opens on Before, with Getting ready');
+  ok(!/Use this agenda|Write the agenda|Lock them/.test(await text(jane)), 'the agenda is ready as drafted: nothing to approve, write or lock');
   const meetingId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/')[2]);
   const t1 = await text(jane);
   ok(await jane.evaluate(() => [...document.querySelectorAll('input[aria-label="Item"]')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
-  ok(/\$375,000 in the bank/.test(t1), 'the Financial item shows today’s cash in the bank');
   ok(/Money: the bank balances and the finance summary/.test(t1) && /Makeovers in progress \(JobTread\)/.test(t1), 'the agenda marks the items that show live numbers');
 
   // Board only, and a private note, from an item's ⋯ menu
@@ -385,10 +409,45 @@ try {
   await (await jane.$('.bd-drop input[type="file"]')).uploadFile(pdf);
   ok(await waitText(jane, /Balance sheet financials/), 'a PDF uploads to the meeting, by its readable name');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bf-group')].some((g) => /Financial statements/i.test(g.querySelector('.bm-group').textContent) && /Balance sheet financials/.test(g.textContent))), 'a file named like financials is filed as one');
+  ok(await waitText(jane, /Balance sheet financials goes with Financial/), 'and goes with the Financial item by itself');
+  const finRow = () => jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('input[aria-label="Item"]')?.value === 'Financial')?.textContent || '');
+  ok(/Balance sheet financials/.test(await finRow()), 'it shows under that item on the agenda');
+  ok(await jane.evaluate(() => /Financial/.test([...document.querySelectorAll('.bf-file')].find((li) => /Balance sheet financials/.test(li.textContent))?.querySelector('.bd-goes')?.textContent || '')), 'the file says which item it goes with');
+  // Who presents: People, with their faces, searched by name
+  await jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('input[aria-label="Item"]')?.value === 'Financial').querySelector('.bd-who .bd-pop__btn').click());
+  ok(await jane.waitForSelector('.bd-pop__panel .bd-picker__find', { timeout: 3000 }).then(() => true, () => false), 'Who presents opens a list of the board and staff');
+  ok(await jane.evaluate(() => document.activeElement?.classList.contains('bd-picker__find')), 'ready to type a name at once');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.bd-picker__group')].map((g) => g.textContent).join() === 'Board,Staff' && [...document.querySelectorAll('.bd-picker__opt')].some((o) => /Sam Ortiz/.test(o.textContent) && /Board Treasurer/.test(o.textContent))), 'board first, then staff, each with their seat');
+  await jane.keyboard.type('sam');
+  await jane.keyboard.press('Enter');
+  await jane.keyboard.press('Escape');
+  ok(/Sam Ortiz/.test(await finRow()) && await jane.evaluate(() => !document.querySelector('.bd-pop__panel')), 'typing a name and Enter picks them; Escape closes the list');
+  ok(await saved(jane) && (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items).find((it) => it.title === 'Financial').who.join() === 'sam-ortiz', 'saved as the person, not just a name');
+  // Background for the board under an item, written as points
+  ok(await itemMenu(jane, 'Governance', /^Add background for the board$/), 'an item’s menu adds background for the board');
+  await jane.waitForSelector('textarea[aria-label^="Background for Governance"]');
+  await jane.click('textarea[aria-label^="Background for Governance"]');
+  await sleep(100);
+  await jane.keyboard.type('Insurance renewal is on track');
+  await jane.keyboard.press('Enter');
+  await jane.keyboard.press('Tab');
+  await jane.keyboard.type('Broker sends the quote Friday');
+  const notes = await jane.$eval('textarea[aria-label^="Background for Governance"]', (e) => e.value);
+  ok(notes === '- Insurance renewal is on track\n  - Broker sends the quote Friday', `background writes as points: Enter makes the next one, Tab moves it in${notes.startsWith('- Insurance renewal is on track\n  - Broker') ? '' : ` (${JSON.stringify(notes)})`}`);
   ok(await saved(jane), 'it all saves by itself');
+  // Someone else saved meanwhile: both changes are kept, item by item
+  const stale = await meetingNow(jane, meetingId);
+  await jane.evaluate(async (m) => { await fetch('/api/board-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-meeting', meeting: { ...m, title: 'Fall board meeting' }, base: m.updatedAt }) }); }, stale);
+  await jane.click('textarea[aria-label^="Background for Governance"]');
+  await jane.keyboard.press('End');
+  await jane.keyboard.type(' (or Monday)');
+  ok(await saved(jane), `a save made meanwhile doesn’t stop this one (${await jane.$eval('.bm-saved', (e) => e.textContent.trim())})`);
+  const merged = await meetingNow(jane, meetingId);
+  ok(merged.title === 'Fall board meeting' && merged.sections.some((s) => s.items.some((it) => /or Monday/.test(it.notes))), 'both the other save and this one are kept');
+  ok(merged.actions.some((a) => a.text === 'Send the venue contract' && a.owner === 'alex-rivera'), 'the last meeting’s open action item carries over');
 
   // Getting ready 1: the invite, from the president's calendar, with Google Meet and transcripts on
-  ok(/From Jane’s calendar to every board member and you, with Google Meet and transcripts on/.test(await text(jane)), 'Getting ready says who the invite comes from and who it goes to');
+  ok(/From Jane’s calendar to the board and you: Google Meet with transcripts on/.test(await text(jane)), 'Getting ready says who the invite comes from and who it goes to');
   await clickText(jane, 'button', /^Send the invite$/);
   ok(await waitText(jane, /Invite sent from Jane’s calendar/), 'Send the invite sends it');
   // The invite's write (opening Board also runs the invite check, whose event has no guests)
@@ -410,57 +469,34 @@ try {
   const updates = google.slice(before).filter((c) => c.url.includes('/calendar/v3/'));
   ok(updates.length === 1 && updates[0].method === 'PATCH' && updates[0].body.location === 'Example Hall, 100 Example St, Roswell, GA', 'then one update to the invite with the place');
 
-  // Getting ready 2-4: numbers, the board page, the documents by email
-  await clickText(jane, 'button', /^Lock them$/);
-  ok(await waitText(jane, /Numbers locked/), 'today’s numbers lock into the packet');
+  // Getting ready 2-3: the board page, the documents by email
   await clickText(jane, 'button', /^Share with the board$/);
-  ok(await waitText(jane, /Board members see the agenda, notes, votes and files/), 'Share with the board puts it on the board page');
+  ok(await waitText(jane, /Board members see the agenda and files/), 'Share with the board puts it on the board page');
   mail.length = 0;
   await clickText(jane, 'button', /^Send it to me$/);
-  await waitText(jane, /Sent to jane@soardcharity\.com with 1 file/);
+  await waitText(jane, /Sent to jane@soardcharity\.com/);
   ok(mail.length === 1 && mail[0].to[0] === FOUNDER, 'Send it to me goes only to the founder');
-  ok(mail[0]?.attachments?.map((a) => a.filename).join() === 'Balance-sheet-financials.pdf', 'with the meeting’s file attached');
-  ok(!/ask counsel|Governance/.test(mail[0]?.html || '') && /A board-only item/.test(mail[0]?.html || ''), 'the email has no private note and hides the board-only item');
-  await clickText(jane, 'button', /^Email the documents$/);
-  ok(await waitText(jane, /Emailed 2 board members/), 'Email the documents reaches the two members with emails');
-  ok(mail.slice(1).map((m) => m.to[0]).sort().join() === [MEMBER, OTHER].sort().join() && mail.slice(1).every((m) => m.attachments?.length === 1), 'each board member got their own copy, with the file');
+  ok(!mail[0]?.attachments && /Balance sheet financials/.test(mail[0]?.html || '') && /Open the agenda and documents/.test(mail[0]?.html || ''), 'the link to the agenda and documents, the documents by name, nothing attached');
+  ok(!/ask counsel|Governance/.test(mail[0]?.html || ''), 'the email has no private note and no board-only item');
+  await clickText(jane, 'button', /^Email the board$/);
+  ok(await waitText(jane, /Emailed 2 board members/), 'Email the board reaches the two members with emails');
+  ok(mail.slice(1).map((m) => m.to[0]).sort().join() === [MEMBER, OTHER].sort().join() && mail.slice(1).every((m) => !m.attachments), 'each board member got their own, with nothing attached');
   await shot(jane, '03-before');
 
-  // ─── During: attendance, notes, a motion, an action item ───
+  // The numbers lock themselves on the meeting's day (the heartbeat), so the minutes keep what the board saw
+  ok((await maybeLockNumbers(env, { now: Date.parse(`${day(14)}T15:00:00Z`) })).includes(meetingId) && !!(await meetingNow(jane, meetingId)).snapshot, 'on the meeting’s day its numbers lock by themselves');
+  ok((await maybeLockNumbers(env, { now: Date.parse(`${day(14)}T16:00:00Z`) })).length === 0, 'once');
+
+  // ─── During: presenting, the agenda in order, a vote ───
+  await jane.reload({ waitUntil: 'networkidle0' });
   await step(jane, 'During');
-  ok(await waitText(jane, /Tap each person as the meeting starts/), 'During opens with attendance');
-  const t2 = await text(jane);
-  ok(/2026 so far \(through \w+\): \$900,000 in, \$850,000 out, net \$50,000/.test(t2), 'the Financial item shows the year so far from Job Costs’ finance summary');
-  ok(/3 makeovers in progress: 2 in Design, 1 in Build/.test(t2) && /Design: Leo and 1 more/.test(t2) && !/Not Published Yet/.test(t2), 'the projects item shows JobTread’s makeovers, by published kid only');
-  ok(await jane.evaluate(() => document.querySelectorAll('.bm-person').length) === 4, 'the board (3) and the founder are on the list');
-  await jane.evaluate(() => { const row = [...document.querySelectorAll('.bm-person')].find((r) => /Alex Rivera/.test(r.textContent)); [...row.querySelectorAll('.bm-choice')].find((b) => b.textContent.trim() === 'Here').click(); });
-  ok(await waitText(jane, /1 of 3\s+board members here/), 'a tap marks someone here, and the count follows');
-  await jane.click('textarea[aria-label^="Notes for Governance"]');
-  await sleep(100);
-  await jane.keyboard.type('Insurance renewal is on track');
-  await jane.keyboard.press('Enter');
-  await jane.keyboard.press('Tab');
-  await jane.keyboard.type('Broker sends the quote Friday');
-  const notes = await jane.$eval('textarea[aria-label^="Notes for Governance"]', (e) => e.value);
-  ok(notes === '- Insurance renewal is on track\n  - Broker sends the quote Friday', `notes write as points: Enter makes the next one, Tab moves it in${notes.startsWith('- Insurance renewal is on track\n  - Broker') ? '' : ` (${JSON.stringify(notes)})`}`);
-  await clickText(jane, 'button', /^Add a motion$/);
-  await jane.type('.bd-line--motion input[aria-label="The motion"]', 'Approve the 2027 budget');
-  await jane.select('.bd-line--motion select[aria-label="Moved by"]', 'Alex Rivera');
-  await clickText(jane, 'button', /^Add an action item$/);
-  await jane.type('.bd-line--action input[aria-label="What needs doing"]', 'Send the venue contract');
-  await jane.select('.bd-line--action select[aria-label="Whose it is"]', 'alex-rivera');
+  ok(await waitText(jane, /The agenda, in order/), 'During opens on presenting: the agenda in order');
+  ok(!(await jane.$('.bm-choice')) && !(await jane.$('textarea[aria-label^="Notes for"]')) && !(await jane.$('.bd-line--action')), 'no roll to take, no notes or action items to type');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.bm-order__item')].some((li) => /Financial/.test(li.textContent) && /The money/.test(li.textContent) && /Balance sheet financials/.test(li.textContent)) && [...document.querySelectorAll('.bm-order__item')].some((li) => /Project updates/.test(li.textContent) && /Makeovers board/.test(li.textContent))), 'each item with what it shows: the money, the makeovers board, its documents');
+  await clickText(jane, 'button', /^Put a motion to a vote$/);
+  await jane.type('.bd-line--vote input[aria-label="The motion"]', 'Renew the insurance policy');
   ok(await saved(jane), 'During saves by itself');
   await shot(jane, '04-during');
-
-  // Someone else saved meanwhile: both changes are kept, item by item
-  const stale = await meetingNow(jane, meetingId);
-  await jane.evaluate(async (m) => { await fetch('/api/board-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-meeting', meeting: { ...m, title: 'Fall board meeting' }, base: m.updatedAt }) }); }, stale);
-  await jane.click('textarea[aria-label^="Notes for Governance"]');
-  await jane.keyboard.press('End');
-  await jane.keyboard.type(' (or Monday)');
-  ok(await saved(jane), `a save made meanwhile doesn’t stop this one (${await jane.$eval('.bm-saved', (e) => e.textContent.trim())})`);
-  const merged = await meetingNow(jane, meetingId);
-  ok(merged.title === 'Fall board meeting' && merged.sections.some((s) => s.items.some((it) => /or Monday/.test(it.notes))), 'both the other save and this one are kept');
 
   // Documents, Members, Settings
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
@@ -501,7 +537,7 @@ try {
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
   ok(await waitText(jane, /Meetings come from Jane’s calendar by themselves/), 'Meetings says where meetings come from');
-  ok(await waitText(jane, /Ready\. The documents went out/), 'the next meeting: everything done says Ready');
+  ok(await waitText(jane, /Ready\. The board was emailed the link/), 'the next meeting: everything done says Ready');
   ok(/Also coming up/i.test(await text(jane)) && /SOARD Q4 Board Meeting/.test(await text(jane)), 'the meeting after it is listed as also coming up');
   const all = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings);
   ok(all.length === 3, `the event on the calendar is a meeting, and Board’s own invite isn’t a second one (${all.length})`);
@@ -555,9 +591,9 @@ try {
     const figs = await alex.evaluate(() => Object.fromEntries([...document.querySelectorAll('.bp-fig')].map((f) => [f.querySelector('.bp-fig__label').textContent, f.querySelector('.bp-fig__value').textContent])));
     ok(Object.keys(figs).length === 4 && figs['Makeovers'] === '3' && figs['Cash in the bank'] === '$375K' && !/Recently|The money/.test(home), `Home: four figures (Mercury's cash, the makeovers), nothing repeated below (${JSON.stringify(figs)})`);
     ok(await alex.$$eval('.bp-next .bp-peek li', (l) => l.length) > 0, 'Home: the next meeting’s agenda headings, right there');
-    const cols = await alex.$$eval('.bp-kcol', (c) => c.map((e) => e.textContent));
+    const cols = await alex.$$eval('#makeovers .bk-col', (c) => c.map((e) => e.textContent));
     ok(/^Awaiting funding1[\s\S]*1 family/.test(cols[0]) && /^Design2[\s\S]*Leo[\s\S]*\+1 more family/.test(cols[1]) && /^Build1[\s\S]*Maya/.test(cols.at(-1)) && !/Not Published Yet|Someone Else|Coming up/.test(home), `Home: the makeovers as a kanban, Awaiting funding first, then Design to Build; published kids by name only (${JSON.stringify(cols)})`);
-    const kids = await alex.$$eval('.bp-kcard--kid', (c) => c.map((e) => ({ text: e.querySelector('.bp-kcard__body').textContent, img: !!e.querySelector('.bp-kcard__photo img, .bp-kcard__initials') })));
+    const kids = await alex.$$eval('#makeovers .bk-card:not(.is-quiet)', (c) => c.map((e) => ({ text: e.querySelector('.bk-card__body').textContent, img: !!e.querySelector('.bk-card__photo img, .bk-card__initials') })));
     ok(kids.length === 2 && kids.every((k) => k.img) && kids.some((k) => /^Maya\s*Reveal \w{3} \d+ · 10 AM$/.test(k.text)) && kids.some((k) => /^Leo\s*Reveal mid December$/.test(k.text)), `Home: each kid’s card leads with their photo and carries their reveal, a set day or the part of the month (${JSON.stringify(kids)})`);
     ok(await overflow(alex) <= 0, 'Home: nothing past the right edge');
     if (width === 390) {
@@ -589,16 +625,19 @@ try {
     const page = await text(alex);
     ok(!/ask counsel/.test(page) && !/ask counsel/.test(await alex.content()), 'the meeting: never the private note, not even in the page source');
     ok(/Board only · please don’t share/.test(page), 'the meeting: the board-only item is marked');
-    ok(/Approve the 2027 budget/.test(page), 'the meeting: the motion');
-    ok(/Numbers from/i.test(page), 'the meeting: the locked numbers say when they’re from');
-    ok(/The packet[\s\S]*Balance sheet financials/.test(page), 'the meeting: the packet, by readable name');
+    ok(/locked for this meeting/i.test(page), 'the meeting: the locked numbers say when they’re from');
+    ok(await alex.evaluate(() => { const it = [...document.querySelectorAll('.bp-agitem')].find((x) => /Project updates/.test(x.textContent)); return !!it && it.querySelectorAll('.bk-col').length >= 3 && /Leo/.test(it.textContent) && /Maya/.test(it.textContent); }), 'the meeting: its makeovers item is the kanban, kids by stage');
+    ok(await alex.evaluate(() => { const it = [...document.querySelectorAll('.bp-agitem')].find((x) => /^Financial/.test(x.querySelector('.bp-agitem__title')?.textContent || '')); return !!it && /Cash in the bank\s*\$375,000/.test(it.textContent) && /2026 so far/.test(it.textContent); }), 'the meeting: the Financial item shows the money as figures');
+    ok(await alex.evaluate(() => [...document.querySelectorAll('.bp-agsec__n')].map((n) => n.textContent).slice(0, 3).join() === '01,02,03'), 'the meeting: its parts as numbered chapters');
+    ok(await alex.evaluate(() => /^8:00 AM · \d+ min$/.test(document.querySelector('.bp-agsec__time')?.textContent.trim() || '')), 'the meeting: each part’s time, the run of show');
+    ok(/Financial[\s\S]*Balance sheet financials/.test(page), 'the meeting: the statement under its Financial item, by readable name');
     if (width === 390) {
-      ok(await alex.evaluate(() => document.querySelector('.bp-meeting__top').getBoundingClientRect().top < document.querySelector('.bp-agenda').getBoundingClientRect().top), 'on a phone: their answer and the packet come before the agenda');
+      ok(await alex.evaluate(() => document.querySelector('.bp-aghero .bp-rsvp').getBoundingClientRect().top < document.querySelector('.bp-ag__body').getBoundingClientRect().top), 'on a phone: their answer comes before the agenda');
     }
     ok(await overflow(alex) <= 0, 'the meeting: nothing past the right edge');
     await shot(alex, `11-meeting-${width}`);
     if (width === 1440) {
-      await clickText(alex, '.bp-file__main', /Balance sheet financials/);
+      await clickText(alex, '.bp-doctile', /Balance sheet financials/);
       ok(await alex.waitForSelector('.fv-host *', { timeout: 6000 }).then(() => true, () => false), 'a file opens in the viewer over the page');
       await alex.keyboard.press('Escape');
       ok(await alex.evaluate(async () => (await fetch('/api/board-admin')).status) === 403, 'the Board area’s API refuses a board member');
@@ -637,9 +676,7 @@ try {
   await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}/before`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
   ok(await waitText(jane, /By video\s+1\s+Alex Rivera/), 'the founder sees Alex’s answer');
-  await step(jane, 'During');
-  await waitText(jane, /Attendance/);
-  ok(await jane.evaluate(() => [...document.querySelectorAll('.bd-line--action')].some((l) => l.classList.contains('is-done'))), 'and that Alex ticked off the action item');
+  ok((await meetingNow(jane, meetingId)).actions.some((a) => a.text === 'Send the venue contract' && a.done), 'and that Alex ticked off the action item');
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Signed by Alex Rivera/), 'and who signed the policy');
   await jane.goto(`${SITE}/admin/board/`, { waitUntil: 'networkidle0' });
@@ -661,15 +698,23 @@ try {
   const firstItem = await jane.$eval('.bm-run__title', (e) => e.textContent);
   await jane.evaluate(() => document.activeElement?.blur());
   await jane.keyboard.press('ArrowRight');
+  ok(firstItem === 'The cover', 'Start puts the cover on the screen: the meeting and its agenda');
   ok(await jane.waitForFunction((t) => document.querySelector('.bm-run__title')?.textContent !== t, { timeout: 4000 }, firstItem).then(() => true, () => false), '→ moves to the next item');
-  ok(await jane.evaluate(() => /Now/.test(document.querySelector('.ag-item.is-now')?.textContent || '')), 'the item being discussed is marked Now in the notes');
+  const secondItem = await jane.$eval('.bm-run__title', (e) => e.textContent);
+  await jane.keyboard.press('ArrowRight');
+  await jane.waitForFunction((t) => document.querySelector('.bm-run__title')?.textContent !== t, { timeout: 4000 }, secondItem).catch(() => {});
+  ok(await jane.evaluate(() => !!document.querySelector('.bm-order__item.is-now .bm-live-dot')), 'the item being discussed is marked in the agenda, in order');
   ok(await saved(jane), 'each move saves at once');
   let follow = await jane.evaluate(async (id) => (await fetch(`/api/board-portal?live=${id}`)).json(), practiceId);
   ok(follow.practice && follow.me.canAct && follow.live.itemId && follow.live.startedAt, 'the board page follows it: live, on the same item; the founder acts as one more member there');
-  ok(await jane.waitForFunction(() => document.querySelectorAll('.bm-person.is-checked').length > 0, { timeout: 45000 }).then(() => true, () => false), 'the simulated members check in, and attendance fills itself in');
+  ok(await jane.waitForFunction(() => Number(document.querySelector('.bm-quorum__n b')?.textContent || 0) > 0, { timeout: 45000 }).then(() => true, () => false), 'the simulated members check in, and the count toward the quorum fills itself in');
   await clickText(jane, 'button', /^Open the vote$/);
   ok(await jane.waitForSelector('.bm-vote', { timeout: 5000 }).then(() => true, () => false), 'Open the vote shows it live');
-  follow = await jane.evaluate(async (id) => (await fetch(`/api/board-portal?live=${id}`)).json(), practiceId);
+  await saved(jane);
+  follow = await jane.evaluate(async (id) => {
+    for (let n = 0; n < 20; n++) { const j = await (await fetch(`/api/board-portal?live=${id}`)).json(); if (j.vote?.motionId) return j; await new Promise((r) => setTimeout(r, 250)); }
+    return (await fetch(`/api/board-portal?live=${id}`)).json();
+  }, practiceId);
   ok(!!follow.vote?.motionId, 'and the board page has the vote open');
   // ─── The same meeting on the board page (portal.js): the live room, checking in and voting ───
   console.log('The board page, following the practice meeting');
@@ -710,6 +755,92 @@ try {
   await waitText(jane, /Past meetings/);
   ok(!(await jane.evaluate(() => [...document.querySelectorAll('.bd-row-list a, .bh-next a')].some((a) => /Practice meeting/.test(a.textContent)))), 'the practice meeting is never in the Board area’s list');
   ok(await jane.$('a[href="#board/practice"]') !== null, 'one quiet link leads to it');
+
+  // ─── Presenting the meeting (board-present.js, board/screen.js): rehearse, start, a document page by page ───
+  console.log('Presenting the meeting on the screen');
+  await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}/during`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' });
+  ok(await jane.waitForSelector('.bm-run.is-ready', { timeout: 8000 }).then(() => true, () => false), 'During: ready to start');
+  const scr = await tab(FOUNDER, 1280);
+  await scr.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
+  await scr.goto(`${SITE}/admin/board/#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
+  ok(await scr.waitForSelector('.bs-cover', { timeout: 8000 }).then(() => true, () => false), 'the screen opens on the cover');
+  ok(await scr.evaluate(() => !document.querySelector('.bp-top') && /Committee reports/.test(document.querySelector('.bs-outline')?.textContent || '')), 'full window, no board page header; the agenda’s sections on the cover');
+  await shot(scr, '20-screen-cover');
+  await jane.bringToFront();
+  ok(await jane.waitForSelector('.bm-run.is-rehearsing', { timeout: 6000 }).then(() => true, () => false), 'the chair’s During knows the screen is open, to rehearse on');
+  const screenFoot = () => scr.evaluate(() => document.querySelector('.bs-foot__what')?.textContent || '');
+  let hops = 0;
+  while (hops < 25 && !/Balance sheet financials/.test(await screenFoot())) { await jane.keyboard.press('ArrowRight'); await sleep(250); hops += 1; }
+  ok(await scr.waitForFunction(() => /Financial.*Balance sheet financials.*Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), '→ steps the screen through the items to the Financial item’s statement, page 1 of 2');
+  ok(await scr.waitForFunction(() => document.querySelector('.bs-page__sheet canvas')?.width > 0, { timeout: 8000 }).then(() => true, () => false), 'the page is drawn, as big as the screen allows');
+  ok(await scr.evaluate(() => /Sam Ortiz/.test(document.querySelector('.bs-foot__who')?.textContent || '')), 'with who presents it');
+  await shot(scr, '21-screen-document');
+  await jane.keyboard.press('ArrowRight');
+  ok(await scr.waitForFunction(() => /Page 2 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'the next press is page 2');
+  await scr.bringToFront();
+  await scr.keyboard.press('ArrowLeft');
+  ok(await scr.waitForFunction(() => /Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'a key pressed on the screen (a clicker) moves it too');
+  await scr.keyboard.press('ArrowLeft');
+  ok(await scr.waitForSelector('.bs-item', { timeout: 3000 }).then(() => true, () => false) && await scr.evaluate(() => /Financial/.test(document.querySelector('.bs-item__title')?.textContent || '') && /Sam Ortiz/.test(document.querySelector('.bs-who')?.textContent || '') && /Balance sheet financials/.test(document.querySelector('.bs-coming')?.textContent || '')), 'the item’s card: its title, who presents with their face, its documents');
+  await shot(scr, '22-screen-item');
+  // The makeovers item on the screen: the kanban, every card in view
+  while (hops < 60 && !(await scr.$('.bk--screen'))) { await jane.bringToFront(); await jane.keyboard.press('ArrowRight'); await sleep(200); hops += 1; }
+  ok(await scr.waitForSelector('.bk--screen .bk-col', { timeout: 4000 }).then(() => true, () => false) && await scr.evaluate(() => { const b = document.querySelector('.bk--screen').getBoundingClientRect(); return b.bottom <= innerHeight && b.right <= innerWidth && /Maya/.test(document.querySelector('.bk--screen').textContent); }), 'the makeovers item on the screen is the kanban, all of it in view');
+  await shot(scr, '22b-screen-makeovers');
+  ok((await meetingNow(jane, meetingId)).live.startedAt === '', 'rehearsing never puts the meeting live');
+  await jane.bringToFront();
+  await clickText(jane, 'button', /^Start the meeting$/);
+  ok(await jane.waitForSelector('.bm-run.is-live', { timeout: 5000 }).then(() => true, () => false), 'Start puts it live');
+  ok(await scr.waitForSelector('.bs-cover', { timeout: 4000 }).then(() => true, () => false), 'and the screen opens on the cover');
+  ok(await saved(jane), 'saved');
+  await clickText(jane, '.bm-showdoc', /^Balance sheet financials$/);
+  ok(await scr.waitForFunction(() => /Balance sheet financials.*Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'a document tapped in the agenda goes straight on the screen');
+  ok(await scr.evaluate(() => !!document.querySelector('.bs-rail li.is-on') && /Next: Page 2/i.test(document.querySelector('.bs-rail__next')?.textContent || '')), 'the rail along the bottom: where the meeting is, and what the next press shows');
+  ok(await scr.waitForFunction(() => /\d+:\d\d left/.test(document.querySelector('.bs-timer')?.textContent || '') && /Sam Ortiz has the floor/.test(document.querySelector('.bs-floor')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'the screen: the part’s time left, and who has the floor (whoever presents the item)');
+  ok(await jane.evaluate(() => /left/.test(document.querySelector('.bm-timer')?.textContent || '') && /Sam Ortiz has the floor/.test(document.querySelector('.bm-floor')?.textContent || '')), 'the chair sees the same: the time left and who has the floor');
+  await jane.evaluate(() => document.querySelector('.bm-floor .bd-menu > summary').click());
+  await sleep(150);
+  ok(await clickText(jane, '.bd-menu[open] .bd-menu__item', /^Alex Rivera$/), 'the chair can give the floor to someone else');
+  ok(await scr.waitForFunction(() => /Alex Rivera has the floor/.test(document.querySelector('.bs-floor')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'and the screen follows');
+  ok(await saved(jane), 'and saves where the screen is');
+  // The save that follows Show may start a moment after the last one's "Saved": ask until it's there
+  const liveNow = await jane.evaluate(async (id) => {
+    for (let n = 0; n < 20; n++) { const j = await (await fetch(`/api/board-portal?live=${id}`)).json(); if (j.live?.fileId) return j; await new Promise((r) => setTimeout(r, 250)); }
+    return (await fetch(`/api/board-portal?live=${id}`)).json();
+  }, meetingId);
+  ok(liveNow.live.fileId && liveNow.live.page === 0 && liveNow.files.length >= 1 && !JSON.stringify(liveNow).includes('PRIVATE'), 'the board page’s live view has the document on the screen, never a private note');
+  await shot(jane, '23-chair-presenting');
+  // A board member following on their own screen
+  const alexLive = await tab(MEMBER, 1440);
+  await alexLive.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
+  ok(await alexLive.waitForSelector('.bp-peek', { timeout: 8000 }).then(() => true, () => false) && /On the screen: Balance sheet financials, page 1/.test(await text(alexLive)), 'a member’s live room shows the page on the screen, with Follow the screen');
+  ok(await alexLive.waitForFunction(() => document.querySelector('.bp-peek__page canvas')?.width > 0, { timeout: 8000 }).then(() => true, () => false), 'drawn small on their page');
+  await shot(alexLive, '24-member-follows');
+  await clickText(alexLive, '.bp-peek a', /^Follow the screen$/);
+  ok(await alexLive.waitForFunction(() => /Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), 'Follow the screen: the same page, full size, following the chair');
+  await alexLive.close();
+  await jane.bringToFront();
+  await clickText(jane, 'button', /^End the meeting$/);
+  ok(await scr.waitForSelector('.bs-end', { timeout: 5000 }).then(() => true, () => false), 'End: the screen says thank you');
+  await shot(scr, '25-screen-end');
+  await scr.close();
+
+  // ─── Print it all (board/print.js), on the board page ───
+  console.log('Print it all');
+  const alexPrint = await tab(MEMBER, 1440);
+  await alexPrint.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
+  ok(await waitText(alexPrint, /Balance sheet financials/) && await alexPrint.evaluate(() => [...document.querySelectorAll('.bp-item')].some((x) => /Financial/.test(x.querySelector('.bp-item__title')?.textContent || '') && /Balance sheet financials/.test(x.querySelector('.bp-item__docs')?.textContent || ''))), 'on the board page the statement is under the Financial item');
+  await alexPrint.evaluate(() => { window.print = () => { window.__printing = true; }; });
+  await clickText(alexPrint, 'button', /Print it all/);
+  ok(await alexPrint.waitForFunction(() => window.__printing, { timeout: 15000 }).then(() => true, () => false), 'Print it all gets every page ready, then opens the print window');
+  const printed = await alexPrint.evaluate(() => ({ pages: document.querySelectorAll('.bpp-page').length, imgs: document.querySelectorAll('.bpp-page img').length, agenda: document.querySelector('.bpp-agenda')?.innerText || '' }));
+  ok(printed.pages === 2 && printed.imgs === 2, `the statement’s 2 pages, drawn (${printed.pages} pages, ${printed.imgs} pictures)`);
+  ok(/Financial/.test(printed.agenda) && /Sam Ortiz/.test(printed.agenda) && /With it: Balance sheet financials/.test(printed.agenda) && !/PRIVATE/.test(printed.agenda), 'the agenda first: who presents, what goes with each item, never a private note');
+  await alexPrint.pdf({ path: join(OUT, '26-print-it-all.pdf'), format: 'letter', printBackground: true });
+  await alexPrint.evaluate(() => dispatchEvent(new Event('afterprint')));
+  ok(await alexPrint.waitForFunction(() => !document.querySelector('.bpp') && !document.querySelector('.bp-printing'), { timeout: 5000 }).then(() => true, () => false), 'afterwards it’s all taken away again');
+  await alexPrint.close();
 
   // The editor on a phone
   const phone = await tab(FOUNDER, 390);

@@ -23,9 +23,10 @@
  *     resumes, anything over 50 MB and the other loose files beside the
  *     meeting folders (expectations, nominees, birthdays, committee meetings)
  *     are left alone
- *   - the minutes fill in who was there (when nobody marked it), the
- *     meeting's sections and notes (when its agenda is still a draft), and
- *     mark the minutes approved once a later meeting exists
+ *   - the minutes are read in (./_board-minutes.js): who was there (when
+ *     nobody marked it), each agenda item's notes (the minutes' own outline
+ *     when its agenda is still a draft), the motions and action items; and
+ *     the minutes are marked approved once a later meeting exists
  *   - a past meeting nobody here worked on goes on the board page
  *   - a file is brought in once; one changed in Drive replaces its copy
  *   - a file added later comes in too: a meeting folder is looked in again
@@ -55,7 +56,8 @@
 import { accessToken } from './_google-calendar.js';
 import { boardAdmins, peopleRows, readSettings, readState, writeState } from './_board-roles.js';
 import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster, saveDoc, cleanDoc, MAX_FILE } from './_board.js';
-import { fileText, attendanceIn } from './_board-mail.js';
+import { fileText } from './_board-mail.js';
+import { readMinutes, applyMinutes, minutesNewer } from './_board-minutes.js';
 import { parseAgendaText, cleanMeeting, agendaIsDraft, todayEastern, isDate, docHtmlText, readAgain, AGENDA_READER } from '../../public/admin/board-shared.js';
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
@@ -383,20 +385,35 @@ async function bringFolder(env, { token, folder, fetchImpl, people, now }) {
         .bind(f.id, m.id, fileId, f.modifiedTime || '', got.name, folder.id, new Date(now).toISOString()).run();
       brought += 1;
     }
-    // What the minutes (or the agenda) say: who was there, the sections and notes, approved once a later meeting exists
-    if ((f.kind === 'minutes' || f.kind === 'agenda') && got.text) {
+    // What the agenda says: its sections, when the meeting's own is empty or a draft
+    if (f.kind === 'agenda' && got.text) {
       const parsed = parseAgendaText(got.text, people);
-      const who = f.kind === 'minutes' ? (parsed.attendance.length ? parsed.attendance : attendanceIn(got.text, people)) : [];
       const enough = parsed.sections.filter((s) => s.items.length).length >= 2;
-      const later = meetings.filter((x) => x.date > folder.date).sort((a, b) => a.date.localeCompare(b.date))[0];
       await patchMeeting(env.DB, m.id, (cur) => {
         const next = { ...cur };
-        if (who.length && !cur.attendance.some((p) => p.status)) next.attendance = who;
         // An empty or drafted agenda, or one an older reader filled from this file (read again once, kept as it was if it reads no better)
         const again = readsAgainFrom(cur, got.name);
         if (enough && (agendaIsDraft(cur) || again)) Object.assign(next, { sections: parsed.sections, agendaFrom: { kind: 'drive', name: got.name, at: new Date(now).toISOString(), v: AGENDA_READER } });
         else if (again) next.agendaFrom = { ...cur.agendaFrom, v: AGENDA_READER };
-        if (f.kind === 'minutes' && later && untouched(cur) && cur.minutes !== 'approved') Object.assign(next, { minutes: 'approved', approvedOn: later.date <= today ? later.date : today });
+        return next;
+      });
+    }
+    // The minutes, read in (./_board-minutes.js): who was there (when nobody marked it), each item's notes, the
+    // motions and action items; approved once a later meeting exists. Each version of the file once (an unchanged
+    // file is passed over above), and never over minutes someone read in by hand from another file since
+    if (f.kind === 'minutes' && got.text) {
+      const here = await getMeeting(env.DB, m.id);
+      const prev = meetings.filter((x) => x.id !== m.id && !x.notBoard && x.date && x.date < (here.date || folder.date)).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+      const read = await readMinutes(env, { name: got.name, text: got.text, meeting: here, people, prev, quick: true });
+      const later = meetings.filter((x) => x.date > folder.date).sort((a, b) => a.date.localeCompare(b.date))[0];
+      await patchMeeting(env.DB, m.id, (cur) => {
+        const again = readsAgainFrom(cur, got.name);
+        let next = { ...cur };
+        if (minutesNewer(cur, { name: got.name, at: f.modifiedTime || '' })) {
+          next = applyMinutes(cur, read, { fileName: got.name, now, keepMarked: true, whole: again, minSections: 2, agendaFrom: { kind: 'drive', name: got.name, at: new Date(now).toISOString(), v: AGENDA_READER } });
+        }
+        if (again && next.agendaFrom === cur.agendaFrom) next.agendaFrom = { ...cur.agendaFrom, v: AGENDA_READER };
+        if (later && untouched(cur) && cur.minutes !== 'approved') Object.assign(next, { minutes: 'approved', approvedOn: later.date <= today ? later.date : today });
         return next;
       });
     }

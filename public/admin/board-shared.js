@@ -10,9 +10,12 @@
  *   shared       the board can see it on their page
  *   minutes      'draft' | 'approved', approvedOn (YYYY-MM-DD)
  *   attendance   [{ key, slug?, name, org, kind: board|staff|guest, status, rsvp }]
- *   sections     [{ id, title, items: [{ id, title, presenter, notes,
- *                  staffNote (Peter and Holly only), confidential (never
- *                  emailed), live: '' | projects | reveals | events | cash | meetings }] }]
+ *   sections     [{ id, title, items: [{ id, title, presenter (who presents, as
+ *                  written: "Traci Lee & Holly Ranney"), who (their People slugs,
+ *                  up to 3, so their faces show), notes, staffNote (Peter and
+ *                  Holly only), confidential (never emailed), docs (this
+ *                  meeting's file ids that go with the item, in order),
+ *                  live: '' | projects | reveals | events | cash | meetings }] }]
  *   motions      [{ id, text, by, second, result: passed|failed|tabled }]
  *   actions      [{ id, text, owner (a People slug), ownerName, due, done, doneOn }]
  *   files        [{ id, name, type, size, kind, staffOnly, at }]
@@ -169,11 +172,13 @@ function cleanItem(raw) {
     id: idOr(raw?.id, 'i_'),
     title: one(raw?.title, LIMITS.title),
     presenter: one(raw?.presenter),
+    who: [...new Set((Array.isArray(raw?.who) ? raw.who : []).filter((s) => /^[a-z0-9-]{1,80}$/.test(String(s))))].slice(0, 3),
     notes: str(raw?.notes, LIMITS.notes),
     staffNote: str(raw?.staffNote, LIMITS.notes),
     confidential: bool(raw?.confidential),
     live,
     about: ID.test(String(raw?.about || '')) ? raw.about : '',
+    docs: [...new Set((Array.isArray(raw?.docs) ? raw.docs : []).filter((id) => ID.test(String(id))))].slice(0, 20),
   };
 }
 function cleanPerson(raw) {
@@ -194,6 +199,8 @@ export function cleanMeeting(raw = {}) {
   const sections = (Array.isArray(raw.sections) ? raw.sections : []).slice(0, LIMITS.sections).map((s) => ({
     id: idOr(s?.id, 's_'),
     title: one(s?.title, LIMITS.title),
+    // The time it's given, in minutes; 0 shares out the meeting's time by itself (sectionPlan)
+    minutes: Number(s?.minutes) > 0 ? Math.min(600, Math.round(Number(s.minutes))) : 0,
     items: (Array.isArray(s?.items) ? s.items : []).slice(0, LIMITS.items).map(cleanItem),
   }));
   const seen = new Set();
@@ -257,6 +264,8 @@ export function cleanMeeting(raw = {}) {
     } : null,
     agendaFrom: raw.agendaFrom && typeof raw.agendaFrom === 'object' && AGENDA_FROM.includes(raw.agendaFrom.kind)
       ? { kind: raw.agendaFrom.kind, name: one(raw.agendaFrom.name, 200), at: one(raw.agendaFrom.at, 40), ...(Number(raw.agendaFrom.v) > 0 ? { v: Math.round(Number(raw.agendaFrom.v)) } : {}) } : null,
+    // The minutes file that filled in who was there, the notes, the motions and the action items (functions/api/_board-minutes.js)
+    minutesFrom: raw.minutesFrom && typeof raw.minutesFrom === 'object' && one(raw.minutesFrom.name, 200) ? { name: one(raw.minutesFrom.name, 200), at: one(raw.minutesFrom.at, 40) } : null,
     // Who Google Meet saw join (functions/api/_board-attendance.js): server-set
     fromMeet: raw.fromMeet && typeof raw.fromMeet === 'object' && one(raw.fromMeet.at, 40) ? {
       at: one(raw.fromMeet.at, 40), status: ['ok', 'none', 'needs-setup', 'error'].includes(raw.fromMeet.status) ? raw.fromMeet.status : 'error', error: one(raw.fromMeet.error, 300),
@@ -271,11 +280,25 @@ export function cleanMeeting(raw = {}) {
 }
 const isoAt = (v) => (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(String(v || '')) ? String(v) : '');
 const count = (v) => (Number(v) >= 0 ? Math.min(999, Math.round(Number(v))) : 0);
-/** { startedAt, endedAt, itemId, vote: null | { motionId, openedAt } }: empty strings until the chair starts it */
+/**
+ * { startedAt, endedAt, itemId, fileId, page, screen, vote: null | { motionId, openedAt } }: empty strings until the
+ * chair starts it. fileId and page are the document on the screen (page from 0) while the item is discussed;
+ * screen 'end' is the closing slide after the last item.
+ */
 export function cleanLive(raw) {
   const l = raw && typeof raw === 'object' ? raw : {};
   const vote = l.vote && typeof l.vote === 'object' && ID.test(String(l.vote.motionId || '')) ? { motionId: String(l.vote.motionId), openedAt: isoAt(l.vote.openedAt) } : null;
-  return { startedAt: isoAt(l.startedAt), endedAt: isoAt(l.endedAt), itemId: ID.test(String(l.itemId || '')) ? String(l.itemId) : '', vote };
+  const itemId = ID.test(String(l.itemId || '')) ? String(l.itemId) : '';
+  const fileId = itemId && ID.test(String(l.fileId || '')) ? String(l.fileId) : '';
+  return {
+    startedAt: isoAt(l.startedAt), endedAt: isoAt(l.endedAt), itemId, fileId,
+    page: fileId && Number(l.page) > 0 ? Math.min(999, Math.floor(Number(l.page))) : 0,
+    screen: l.screen === 'end' ? 'end' : '',
+    vote,
+    // When the part of the agenda on now began (its timer), and who has the floor when it isn't the item's presenter
+    sectionAt: itemId ? isoAt(l.sectionAt) : '',
+    floor: itemId && /^[a-z0-9-]{1,80}$/.test(String(l.floor || '')) ? String(l.floor) : '',
+  };
 }
 function cleanTally(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -287,6 +310,53 @@ export const isLive = (m) => !!m?.live?.startedAt && !m.live.endedAt;
 export function agendaItems(m) {
   return (m?.sections || []).flatMap((s, si) => s.items.map((it, ii) => ({ id: it.id, title: it.title || s.title || 'Item', presenter: it.presenter, label: `${si + 1}.${ii + 1}`, section: s.title, si, ii })));
 }
+/** "08:00" → 480; null when it isn't a time */
+const dayMinutes = (t) => (TIME.test(String(t || '')) ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3)) : null);
+const asTime = (n) => `${String(Math.floor(n / 60) % 24).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+/**
+ * The meeting's time shared out among its parts, the way a run of show reads: a part given its minutes keeps them,
+ * the rest of the meeting (its start to its end, two hours when it has no end) is shared by how much is in each
+ * (a part with live facts counts one more; one with no items, like open forum, half), in fives.
+ * → Map(section id → { minutes, start: 'HH:MM' | '', end, auto })
+ */
+export function sectionPlan(m) {
+  const sections = m?.sections || [];
+  const s0 = dayMinutes(m?.start);
+  const e0 = dayMinutes(m?.end);
+  const total = s0 != null && e0 != null && e0 > s0 ? e0 - s0 : 120;
+  const weight = (sec) => (sec.items.length ? sec.items.length + (sec.items.some((it) => it.live && it.live !== 'minutes') ? 1 : 0) : 0.5);
+  const fixed = sections.reduce((n, sec) => n + (sec.minutes || 0), 0);
+  const auto = sections.filter((sec) => !sec.minutes);
+  const sum = auto.reduce((n, sec) => n + weight(sec), 0) || 1;
+  const left = Math.max(auto.length * 5, total - fixed);
+  const mins = new Map(sections.map((sec) => [sec.id, sec.minutes || Math.max(5, Math.round((left * weight(sec)) / sum / 5) * 5)]));
+  // Rounding in fives can leave the parts a few minutes off the meeting's length: the biggest shared part takes it up
+  const off = total - [...mins.values()].reduce((a, b) => a + b, 0);
+  const big = auto.slice().sort((a, b) => mins.get(b.id) - mins.get(a.id))[0];
+  if (big && off && Math.abs(off) <= 20 && mins.get(big.id) + off >= 5) mins.set(big.id, mins.get(big.id) + off);
+  const out = new Map();
+  let at = s0;
+  for (const sec of sections) {
+    const n = mins.get(sec.id);
+    out.set(sec.id, { minutes: n, start: at != null ? asTime(at) : '', end: at != null ? asTime(at + n) : '', auto: !sec.minutes });
+    if (at != null) at += n;
+  }
+  return out;
+}
+/** The part of the agenda an item is in (its id), or '' */
+export const sectionOf = (m, itemId) => (m?.sections || []).find((sec) => sec.items.some((it) => it.id === itemId))?.id || '';
+/** A part's timer: { left: seconds (negative once it's over), over: boolean, of: seconds } from when it began, or null */
+export function sectionClock(plan, sectionId, sectionAt, now = Date.now()) {
+  const p = plan?.get(sectionId);
+  const t = Date.parse(sectionAt || '');
+  if (!p || !Number.isFinite(t)) return null;
+  const of = p.minutes * 60;
+  const left = Math.round(of - (now - t) / 1000);
+  return { left, over: left < 0, of };
+}
+/** 754 → "12:34"; −95 → "1:35" */
+export const clockText = (sec) => { const a = Math.abs(sec); return `${Math.floor(a / 60)}:${String(a % 60).padStart(2, '0')}`; };
+
 /** A closed vote in words: "Passed 8–1, 1 abstained" ('' when it wasn't voted on the board page) */
 export function tallyText(motion) {
   const t = motion?.tally;
@@ -307,7 +377,7 @@ export const readAgain = (m) => ['drive', 'email'].includes(m?.agendaFrom?.kind)
 /** Sections that are the usual outline, untouched: its section and item names, no presenters or notes */
 const isOutline = (sections, template = DEFAULT_TEMPLATE) => sections.length === template.length && sections.every((s, i) => s.title === template[i].title
   && s.items.length === (template[i].items || []).length
-  && s.items.every((it, j) => (it.live === 'minutes' || it.title === template[i].items[j].title) && !it.presenter && !it.notes && !it.staffNote));
+  && s.items.every((it, j) => (it.live === 'minutes' || it.title === template[i].items[j].title) && !it.presenter && !it.notes && !it.staffNote && !it.docs?.length));
 /**
  * An agenda nobody has written: SOARD's usual outline or one drafted from
  * the last meeting (the drafts follow a newer last meeting until someone
@@ -319,26 +389,50 @@ export const agendaIsDraft = (m, template = DEFAULT_TEMPLATE) => !m?.sections?.s
 /** "Minutes of the Q3 Board Meeting (Aug 6)": the item that asks the board to approve the last minutes */
 const minutesItemTitle = (prev) => `Minutes of the ${meetingName(prev)} (${shortDate(prev.date)})`;
 /**
+ * Which live facts an item shows, by what it's called, when nothing says: the makeovers ("Project updates and
+ * upcoming reveals", "Projects update", "Makeovers"), the money ("Financial", "Treasurer's report"), events,
+ * the next board meetings, the reveals. '' for anything else
+ */
+export function liveOfTitle(title, section = '') {
+  const t = String(title || '').toLowerCase();
+  if (/\b(projects?|makeovers?|builds?)\b/.test(t)) return 'projects';
+  if (/\b(financ\w*|treasur\w*|cash|budget)\b/.test(t) && !/committee report/.test(t)) return 'cash';
+  if (/\b(board meetings?|meeting dates|next meetings?)\b/.test(t)) return 'meetings';
+  if (/\breveals?\b/.test(t)) return 'reveals';
+  if (/^events?$|\bupcoming events?\b/.test(t) || (/^events?\b/.test(t) && /upcoming/i.test(section))) return 'events';
+  return '';
+}
+/** The draft reader's version (agendaFrom.v on a last-meeting draft): a draft an older one made is drafted again */
+export const DRAFTER = 2;
+/**
  * The next agenda, drafted from the last one: its sections and items in
  * order, who presents each, the live numbers where the usual outline has
- * them, its minutes up for approval. New business starts empty and nothing
- * anyone wrote under an item comes along.
+ * them (or the item's name says, see liveOfTitle), its minutes up for
+ * approval: the item in an "approve the minutes" section, whatever it was
+ * called last time. New business starts empty and nothing anyone wrote
+ * under an item comes along.
  */
 export function draftAgenda(prev, { template = DEFAULT_TEMPLATE } = {}) {
   const liveOf = new Map([...DEFAULT_TEMPLATE, ...template].flatMap((s) => (s.items || []).filter((it) => it.live && it.live !== 'minutes').map((it) => [it.title.toLowerCase(), it.live])));
-  return prev.sections.map((s) => ({
-    id: uid('s_'), title: s.title,
-    items: /\bnew business\b/i.test(s.title) ? [] : s.items.map((it) => {
-      const minutes = it.live === 'minutes' || (/minutes/i.test(it.title) && /minutes|approv|consent/i.test(`${s.title} ${it.title}`));
-      return {
-        ...cleanItem({
-          title: minutes ? minutesItemTitle(prev) : it.title, presenter: it.presenter, confidential: it.confidential,
-          live: minutes ? 'minutes' : it.live || liveOf.get(it.title.toLowerCase()) || '', about: minutes ? prev.id : '',
-        }),
-        id: uid('i_'),
-      };
-    }),
-  }));
+  return prev.sections.map((s) => {
+    const approving = /minutes/i.test(s.title) && /approv|consent|minutes/i.test(s.title);
+    let minutesDone = false;
+    return {
+      id: uid('s_'), title: s.title,
+      items: /\bnew business\b/i.test(s.title) ? [] : s.items.map((it) => {
+        // One item asks to approve the last minutes: the one called that, else the first in a minutes section
+        const minutes = !minutesDone && (it.live === 'minutes' || (/minutes/i.test(it.title) && /minutes|approv|consent/i.test(`${s.title} ${it.title}`)) || (approving && !it.docs?.length));
+        if (minutes) minutesDone = true;
+        return {
+          ...cleanItem({
+            title: minutes ? minutesItemTitle(prev) : it.title, presenter: minutes ? '' : it.presenter, who: minutes ? [] : it.who, confidential: it.confidential,
+            live: minutes ? 'minutes' : (it.live && it.live !== 'minutes' ? it.live : '') || liveOf.get(it.title.toLowerCase()) || liveOfTitle(it.title, s.title), about: minutes ? prev.id : '',
+          }),
+          id: uid('i_'),
+        };
+      }).filter((it, i, all) => !(it.live === 'minutes' && all.findIndex((x) => x.live === 'minutes') !== i)),
+    };
+  });
 }
 /** The last meeting before this one with an agenda someone wrote or emailed: the one the next draft follows */
 export const draftSource = (m, meetings, template = DEFAULT_TEMPLATE) => [...(meetings || [])]
@@ -353,9 +447,10 @@ export const draftName = (prev) => `${meetingName(prev)} (${shortDate(prev.date)
  */
 export function forBoard(m) {
   if (!m?.shared) return null;
+  const seen = new Set(m.files.filter((f) => !f.staffOnly).map((f) => f.id));
   return {
     ...m,
-    sections: m.sections.map((s) => ({ ...s, items: s.items.map(({ staffNote, ...it }) => it) })),
+    sections: m.sections.map((s) => ({ ...s, items: s.items.map(({ staffNote, ...it }) => ({ ...it, docs: (it.docs || []).filter((id) => seen.has(id)) })) })),
     files: m.files.filter((f) => !f.staffOnly),
     calendar: undefined,
     invite: m.invite ? { meet: m.invite.meet } : null,
@@ -373,8 +468,114 @@ export function emailOutline(m) {
   }));
 }
 
+// ─── Who presents, and the documents that go with each item ────────
+
+/** One name as written ("Thomas", "Holly Ranney") → that person, when only one person fits */
+function personNamed(name, people) {
+  const k = String(name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!k) return null;
+  const full = people.filter((p) => String(p.name || '').toLowerCase() === k);
+  if (full.length === 1) return full[0];
+  const first = people.filter((p) => String(p.name || '').toLowerCase().split(' ')[0] === k);
+  return first.length === 1 ? first[0] : null;
+}
+/**
+ * Who presents an item, as people: those picked (who), else the names as written ("Traci & Holly") matched to
+ * People where only one person fits. → [{ slug?, name, photo?, title? }]
+ */
+export function presentersOf(it, people = []) {
+  const picked = (it?.who || []).map((s) => people.find((p) => p.slug === s)).filter(Boolean);
+  if (picked.length) return picked;
+  return String(it?.presenter || '').split(/\s*(?:&|\+|,|\/|\band\b)\s*/i).map((n) => n.trim()).filter(Boolean)
+    .map((n) => personNamed(n, people) || { name: n });
+}
+/** "Traci Lee & Holly Ranney", "Ann, Bo & Cy" */
+export const namesText = (names) => (names.length > 2 ? `${names.slice(0, -1).join(', ')} & ${names.at(-1)}` : names.join(' & '));
+
+/** The meeting whose minutes an item asks the board to approve, and its minutes (the PDF before the Word copy) */
+export function minutesFileOf(prev) {
+  const list = (prev?.files || []).filter((f) => f.kind === 'minutes' && !f.staffOnly);
+  return list.find((f) => /pdf/i.test(f.type) || /\.pdf$/i.test(f.name)) || list[0] || null;
+}
+/** An item's files, in order: its documents, and for "approve the minutes" the last meeting's minutes (from `meetings`) */
+export function itemFiles(m, it, meetings = []) {
+  const out = (it?.docs || []).map((id) => m.files.find((f) => f.id === id)).filter(Boolean);
+  if (it?.live === 'minutes' && it.about) {
+    const f = minutesFileOf(meetings.find((x) => x.id === it.about));
+    if (f && !out.some((x) => x.id === f.id)) out.unshift(f);
+  }
+  return out;
+}
+/** The meeting's files on no item (never the signed copy or its own minutes): "Also for this meeting" */
+export function looseFiles(m) {
+  const placed = new Set(m.sections.flatMap((s) => s.items.flatMap((it) => it.docs || [])));
+  return m.files.filter((f) => !placed.has(f.id) && f.kind !== 'signed' && f.kind !== 'minutes');
+}
+/** The made-up item the loose files are shown under, after the agenda */
+export const MORE = { id: 'i_more', title: 'Also for this meeting' };
+
+const FINANCE_FILE = /financ|balance|activit|budget|p&l|profit|loss|statement|cash|treasur|990|audit/i;
+const FINANCE_ITEM = /financ|treasur|budget|money/i;
+const QUIET = new Set(['soard', 'sunshine', 'ranney', 'board', 'meeting', 'report', 'update', 'final', 'draft', 'copy', 'with', 'from', 'committee', 'the', 'and']);
+const wordsOf = (s) => String(s || '').toLowerCase().split(/[^a-z0-9&]+/).filter((w) => w.length > 3 && !QUIET.has(w) && !/^\d+$/.test(w));
+/**
+ * The item a new file most likely goes with, or '': financial statements with the money item, the last
+ * meeting's minutes (uploaded before this one) with "approve the minutes", else the one item whose name it shares
+ */
+export function guessItem(m, f, today = todayEastern()) {
+  const items = m.sections.flatMap((s) => s.items.map((it) => ({ it, s })));
+  const name = String(f?.name || '');
+  const pick = (list) => (list.length ? list[0].it.id : '');
+  if (f?.kind === 'financials' || FINANCE_FILE.test(name)) {
+    const hit = pick(items.filter(({ it }) => it.live === 'cash')) || pick(items.filter(({ it, s }) => FINANCE_ITEM.test(it.title) || (FINANCE_ITEM.test(s.title) && !it.title)));
+    if (hit) return hit;
+  }
+  if (/minutes/i.test(name) && (!m.date || m.date >= today)) {
+    const hit = pick(items.filter(({ it }) => it.live === 'minutes' || /minutes/i.test(it.title)));
+    if (hit) return hit;
+  }
+  const words = new Set(wordsOf(name.replace(/\.[a-z0-9]{2,5}$/i, '')));
+  const scored = items.map(({ it }) => ({ it, n: wordsOf(it.title).filter((w) => words.has(w)).length })).filter((x) => x.n).sort((a, b) => b.n - a.n);
+  return scored.length && (scored.length === 1 || scored[0].n > scored[1].n) ? scored[0].it.id : '';
+}
+
+/**
+ * The meeting as the screen shows it, one stop at a time: the cover, each item (its card, then every page of each
+ * of its files), the files on no item, then the close. `pages`: { fileId: page count } as far as known (1 until
+ * then); `meetings` finds the last meeting's minutes. → [{ key, kind: cover | item | doc | end, itemId, fileId, page, n }]
+ * where n is the item's place in agendaItems (-1 for the cover, the loose files and the close).
+ */
+export function deckOf(m, { pages = {}, meetings = [] } = {}) {
+  const out = [{ key: 'cover', kind: 'cover', itemId: '', fileId: '', page: 0, n: -1 }];
+  const add = (it, files, n) => {
+    out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n });
+    for (const f of files) {
+      const count = Math.max(1, Math.round(Number(pages[f.id]) || 1));
+      for (let p = 0; p < count; p++) out.push({ key: `${it.id}:${f.id}:${p}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, n });
+    }
+  };
+  let n = 0;
+  for (const s of m.sections) for (const it of s.items) add(it, itemFiles(m, it, meetings), n++);
+  const loose = looseFiles(m);
+  if (loose.length) add(MORE, loose, -1);
+  out.push({ key: 'end', kind: 'end', itemId: '', fileId: '', page: 0, n: -1 });
+  return out;
+}
+/** Where the meeting's live state is in a deck: that page, else that file's last known page, else the item, else the cover */
+export function stopIndex(deck, live) {
+  if (live?.screen === 'end') return deck.length - 1;
+  if (!live?.itemId) return 0;
+  const exact = deck.findIndex((s) => s.itemId === live.itemId && s.fileId === (live.fileId || '') && s.page === (live.page || 0));
+  if (exact >= 0) return exact;
+  const pages = deck.map((s, i) => [s, i]).filter(([s]) => s.itemId === live.itemId && s.fileId && s.fileId === live.fileId);
+  if (pages.length) return pages.at(-1)[1];
+  return Math.max(0, deck.findIndex((s) => s.itemId === live.itemId));
+}
+/** A stop as the live state that puts it on the screen */
+export const liveOfStop = (s) => ({ itemId: s?.itemId || '', fileId: s?.fileId || '', page: s?.page || 0, screen: s?.kind === 'end' ? 'end' : '' });
+
 /** A video call's service by its link: "Google Meet" */
-export const callName = (url) => (/meet\.google\.com/.test(url) ? 'Google Meet' : /teams\.(microsoft|live)/.test(url) ? 'Microsoft Teams' : /zoom\.us/.test(url) ? 'Zoom' : /webex/.test(url) ? 'Webex' : 'Video call');
+export const callName =(url) => (/meet\.google\.com/.test(url) ? 'Google Meet' : /teams\.(microsoft|live)/.test(url) ? 'Microsoft Teams' : /zoom\.us/.test(url) ? 'Zoom' : /webex/.test(url) ? 'Webex' : 'Video call');
 
 /**
  * Open action items across meetings, each once (an item carried onto later
@@ -426,7 +627,7 @@ export function newMeeting({ date: d = '', template = DEFAULT_TEMPLATE, board = 
   const sections = (template?.length ? template : DEFAULT_TEMPLATE).map((s) => ({
     id: uid('s_'), title: s.title,
     items: (s.items || []).map((it) => ({
-      ...cleanItem({ title: it.live === 'minutes' && prev ? `Minutes of the ${meetingName(prev)} (${shortDate(prev.date)})` : it.title, presenter: it.presenter, live: it.live, about: it.live === 'minutes' && prev ? prev.id : '' }),
+      ...cleanItem({ title: it.live === 'minutes' && prev ? `Minutes of the ${meetingName(prev)} (${shortDate(prev.date)})` : it.title, presenter: it.presenter, who: it.who, live: it.live, about: it.live === 'minutes' && prev ? prev.id : '' }),
       id: uid('i_'),
     })),
   }));

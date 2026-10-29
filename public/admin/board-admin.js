@@ -4,16 +4,16 @@
  * Loaded on demand by the admin's Board area (#board), which only its admins
  * see (Settings → Who can open it; the founders until saved). Meetings come
  * from Peter and Holly's calendars, their agendas, minutes and financials from
- * their email, and everything else is done here: the invite and the packet
- * before, the attendance and notes during, the minutes after
- * (./board-meeting.js). Board members see what's shared on their own page
+ * their email. The agenda drafts itself and the minutes, dropped in, fill in
+ * the rest; here are the invite and the packet before, presenting it during,
+ * and the minutes after (./board-meeting.js). Board members see what's shared on their own page
  * (/admin/board/, ./board/portal.js), signed in with the same emailed code.
  *
  *   #board                         Meetings: the next one (what to do next, its agenda), past meetings, open action items, from email
  *   #board/meeting/<id>[/<step>]   one meeting (before | during | after)
  *   #board/documents               bylaws, policies, budgets; who has signed this year
  *   #board/members                 who can sign in, their last visit, the sign-in email
- *   #board/settings                who can open this area, who invites come from, quorum, the agenda template
+ *   #board/settings                who can open this area, who invites come from, quorum, the Drive folder, banks
  * Server: /api/board-admin. Rules: ./board-shared.js. Shared bits: ./board-ui.js.
  */
 
@@ -24,7 +24,7 @@ import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE
 import { MeetingEditor, agendaSource } from './board-meeting.js';
 import { BankBalances } from './board-banks.js';
 import {
-  DOC_KINDS, LIVE, DEFAULT_TEMPLATE, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
+  DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
   attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority,
 } from './board-shared.js';
 
@@ -79,7 +79,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
             meetings: 'The next meeting and what’s left to do for it, then every past meeting with its agenda and minutes. The board sees a meeting once it’s shared.',
             documents: 'Bylaws, policies, budgets and plans, on the board page for every member. Ask for a signature where the board signs each year.',
             members: 'Board members sign in at sunshineonaranneyday.com/board with the email on People → Board, the way you do.',
-            settings: 'Who can open this area, who invites come from, the quorum, what a new meeting starts with, and the banks the board page’s cash counts.',
+            settings: 'Who can open this area, who invites come from, the quorum, where past minutes come from, and the banks the board page’s cash counts.',
           }[route.tab]}</p>
         </div>
         <a class="btn btn-ghost btn-sm" href=${PAGE} target="_blank" rel="noopener">Open the board page</a>
@@ -114,14 +114,13 @@ function PracticeMeeting({ ctx }) {
 }
 
 // ─── Where a meeting stands ─────────────────────────────────────────
-/** Before a meeting, its five things to do (the same as the meeting's Getting ready): { id, label, next, done } */
+/** Before a meeting, what's left (the same as the meeting's Getting ready; the agenda and the numbers take care of themselves): { id, label, next, done } */
 function prepOf(m) {
   return [
     { id: 'invite', label: 'Invite', next: m.calendar?.eventId ? `add everyone and Google Meet to ${firstOf(m.calendar.organizer)}’s invite` : 'send the invite', done: !!m.invite },
-    { id: 'agenda', label: 'Agenda', next: m.agendaFrom?.kind === 'last-meeting' ? `write the agenda (a draft from the ${m.agendaFrom.name} agenda is ready)` : 'write the agenda (SOARD’s usual outline is ready to start from)', done: !agendaIsDraft(m) },
-    { id: 'numbers', label: 'Numbers', next: 'lock today’s numbers for the packet', done: !!m.snapshot },
+    { id: 'agenda', label: 'Agenda', next: '', done: true },
     { id: 'shared', label: 'Board page', next: 'put the meeting on the board page', done: m.shared },
-    { id: 'packet', label: 'Documents', next: 'email the board the documents', done: !!m.packetSentAt },
+    { id: 'packet', label: 'Email', next: 'email the board the link to the agenda and documents', done: !!m.packetSentAt },
   ];
 }
 /** Where a past meeting's minutes stand, as a tag */
@@ -244,9 +243,9 @@ function NextCard({ m, ctx }) {
       </div>
       <button class="btn btn-primary" onClick=${() => go({ meetingId: m.id, step: stage })}>${today ? 'Open for the meeting' : 'Open the meeting'}</button>
     </div>
-    ${today ? html`<p class="bh-nextline"><strong>Today.</strong> Open it to take attendance and notes as the meeting goes.</p>` : html`
+    ${today ? html`<p class="bh-nextline"><strong>Today.</strong> Open it to present the agenda and its documents on the screen.</p>` : html`
       <ol class="bh-prep" aria-label="Getting ready">${prep.map((x) => html`<li class=${x.done ? 'is-done' : x === up ? 'is-next' : ''}><span class="bh-prep__mark" aria-hidden="true">${x.done ? CHECK : null}</span>${x.label}</li>`)}</ol>
-      <p class="bh-nextline">${up ? html`<strong>Next:</strong> ${up.next}.` : html`<strong>Ready.</strong> The documents went out ${ago(m.packetSentAt)}.`}</p>`}
+      <p class="bh-nextline">${up ? html`<strong>Next:</strong> ${up.next}.` : html`<strong>Ready.</strong> The board was emailed the link ${ago(m.packetSentAt)}.`}</p>`}
     <p class="bh-rsvp"><strong>Who’s coming:</strong> ${[yes && `${yes} coming`, no && `${no} can’t`, quiet && `${quiet} haven’t answered`].filter(Boolean).join(' · ') || 'nobody has answered yet'}</p>
   </div>`;
 }
@@ -256,8 +255,8 @@ function AgendaPreview({ m, ctx }) {
   const src = agendaSource(m);
   return html`<div class="card">
     <div class="bd-card-head--row">
-      <div class="bd-card-head" style="margin:0"><h3>Agenda for ${shortDate(m.date)} <span class=${`tag ${src.draft ? 'tag--warn' : src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
-      <button class="btn btn-ghost btn-sm" onClick=${() => ctx.go({ meetingId: m.id, step: 'before' })}>${src.draft ? 'Write the agenda' : 'Edit the agenda'}</button>
+      <div class="bd-card-head" style="margin:0"><h3>Agenda for ${shortDate(m.date)} <span class=${`tag ${src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
+      <button class="btn btn-ghost btn-sm" onClick=${() => ctx.go({ meetingId: m.id, step: 'before' })}>Change the agenda</button>
     </div>
     <ol class="bh-agenda">${m.sections.map((s) => html`<li key=${s.id}>
       <span class="bh-agenda__sec">${s.title || 'Section'}</span>
@@ -632,7 +631,6 @@ function SettingsTab({ ctx }) {
     if (!s.admins.includes(e)) setS({ ...s, admins: [...s.admins, e] });
     setNewAdmin('');
   };
-  const tSet = (si, patch) => setS({ ...s, template: s.template.map((x, i) => (i === si ? { ...x, ...patch } : x)) });
   return html`
     <div class="card">
       <div class="bd-card-head"><h3>Who can open the Board area</h3><p>The agenda, notes, minutes and files here are for these people only. Other staff don’t see Board in the menu, and its pages refuse them. Meetings come from their calendars, and past agendas from their email.</p></div>
@@ -653,28 +651,6 @@ function SettingsTab({ ctx }) {
         <div class="form-group"><label class="form-label" for="bd-de">Usually ends</label><input id="bd-de" class="form-input" type="time" value=${s.defaults.end} onInput=${(e) => setDef({ end: e.target.value })} /></div>
         <div class="form-group"><label class="form-label" for="bd-dl">Usual place</label><input id="bd-dl" class="form-input" value=${s.defaults.location} onInput=${(e) => setDef({ location: e.target.value })} /></div>
         <div class="form-group"><label class="form-label" for="bd-da">Its address</label><input id="bd-da" class="form-input" value=${s.defaults.address} onInput=${(e) => setDef({ address: e.target.value })} /></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="bd-card-head"><h3>The agenda a new meeting starts with</h3><p>Sections and their items. An item can show live numbers from Mercury, JobTread and Events, filled in by themselves.</p></div>
-      ${s.template.map((sec, si) => html`<div class="bd-section" key=${si}>
-        <div class="bd-section__head"><span class="bd-section__num">${si + 1}.</span>
-          <input class="form-input bd-section__title" aria-label=${`Section ${si + 1}`} value=${sec.title} onInput=${(e) => tSet(si, { title: e.target.value })} />
-          <button class="bd-icon-btn" aria-label="Delete the section" onClick=${() => setS({ ...s, template: s.template.filter((_, i) => i !== si) })}>✕</button>
-        </div>
-        <div class="bd-items">${(sec.items || []).map((it, ii) => html`<div class="bd-item__top" style="padding-top:0.5rem" key=${ii}>
-          <input class="form-input" aria-label="Item" value=${it.title} onInput=${(e) => tSet(si, { items: sec.items.map((x, j) => (j === ii ? { ...x, title: e.target.value } : x)) })} />
-          <select class="form-select" aria-label="Live numbers" value=${it.live || ''} onChange=${(e) => tSet(si, { items: sec.items.map((x, j) => (j === ii ? { ...x, live: e.target.value } : x)) })}>
-            <option value="">No live numbers</option>${[...LIVE, { id: 'minutes', label: 'The last meeting’s minutes' }].map((l) => html`<option value=${l.id}>${l.label}</option>`)}
-          </select>
-          <button class="bd-icon-btn" aria-label="Delete the item" onClick=${() => tSet(si, { items: sec.items.filter((_, j) => j !== ii) })}>✕</button>
-        </div>`)}
-          <button class="btn btn-ghost btn-sm" style="margin-top:0.5rem" onClick=${() => tSet(si, { items: [...(sec.items || []), { title: '' }] })}>Add an item</button>
-        </div>
-      </div>`)}
-      <div class="bd-actions" style="margin-top:0.85rem">
-        <button class="btn btn-ghost btn-sm" onClick=${() => setS({ ...s, template: [...s.template, { title: '', items: [] }] })}>Add a section</button>
-        <button class="btn btn-ghost btn-sm" onClick=${() => setS({ ...s, template: DEFAULT_TEMPLATE })}>Start over from SOARD’s usual agenda</button>
       </div>
     </div>
     <div class="card">

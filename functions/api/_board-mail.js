@@ -19,9 +19,10 @@
  *     meeting is added.
  *   - An agenda fills the meeting's agenda while it's still a draft
  *     (agendaIsDraft: the usual outline, or none), never one a person wrote.
- *     Minutes fill a past meeting's attendance when nobody marked it, and a
- *     meeting with a later one is marked approved. Every file is kept on the
- *     meeting once (by name and size).
+ *     Minutes are read into a past meeting (./_board-minutes.js): its
+ *     attendance when nobody marked it, each item's notes, the motions and
+ *     action items; a meeting with a later one is marked approved. Every file
+ *     is kept on the meeting once (by name and size).
  *   - The board sees what the board was sent: a file from an email that went
  *     to the board (three or more board members, or a group address) is
  *     board-visible, and a past meeting nobody here worked on is shared once
@@ -38,6 +39,7 @@
 import { accessToken, GMAIL_READ_SCOPE, parseServiceAccount } from './_google-calendar.js';
 import { boardAdmins, readState, writeState, peopleRows, activeBoard, normEmail } from './_board-roles.js';
 import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, createMeeting, putFile, deleteFile, roster } from './_board.js';
+import { readMinutes, applyMinutes, minutesNewer } from './_board-minutes.js';
 import { parseAgendaText, isDate, todayEastern, meetingName, docxText, unzip, cleanMeeting, agendaIsDraft, shortDate, AGENDA_READER } from '../../public/admin/board-shared.js';
 
 export { docxText, unzip };
@@ -403,14 +405,17 @@ async function bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, 
         agendaFilled = true;
       }
     }
-    // Minutes: who was there (a past meeting nobody marked), and approved once a later meeting exists
+    // Minutes, read in (./_board-minutes.js): who was there (a past meeting nobody marked), each item's notes, the
+    // motions and action items, never over minutes someone read in by hand since; approved once a later meeting exists
     if (f.kind === 'minutes' && past) {
       const later = boardOnly(meetings).filter((x) => x.date > m.date).sort((a, b) => a.date.localeCompare(b.date))[0];
-      const parsed = parseAgendaText(f.text, people);
-      const who = parsed.attendance.length ? parsed.attendance : attendanceIn(f.text, people);
+      const prev = boardOnly(meetings).filter((x) => x.id !== m.id && x.date && x.date < m.date).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+      const read = f.text ? await readMinutes(env, { name: f.name, text: f.text, meeting: m, people, prev, quick: true }) : null;
       m = await patchMeeting(env.DB, m.id, (cur) => {
-        const next = { ...cur };
-        if (who.length && !cur.attendance.some((p) => p.status)) next.attendance = who;
+        let next = { ...cur };
+        if (read && minutesNewer(cur, { name: f.name, at: sentAt })) {
+          next = applyMinutes(cur, read, { fileName: f.name, now, keepMarked: true, minSections: 2, agendaFrom: { kind: 'email', name: f.name, at: new Date(now).toISOString(), v: AGENDA_READER } });
+        }
         if (untouched(cur) && later && cur.minutes !== 'approved') Object.assign(next, { minutes: 'approved', approvedOn: later.date <= today ? later.date : today });
         return next;
       });
