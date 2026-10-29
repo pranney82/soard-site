@@ -4,8 +4,10 @@
  * Behind Cloudflare Access (not in the middleware's public list). Every
  * change goes to JobTread first; see ./_applicants.js.
  *
- * GET ?list=1[&archived=1]   → { applicants, sync, statuses, fields, boundary, season }
+ * GET ?list=1[&archived=1]   → { applicants (each with its score), sync, statuses, fields, boundary, season, capacity }
  * GET ?id=<account>          → { applicant, comments, files, activity } (live from JobTread)
+ * GET ?scores=<account>      → { cards, summary, rubric, visited }: every evaluator's scorecard, the family's score
+ *                               (ranked once everyone scoring the season has), the rubric version and whether the home visit has happened
  * GET ?activity=1[&before=]  → recent activity across every family
  * GET ?preview=<status>&id=  → what moving to that status would send the family
  * GET ?cdn=<JobTread file URL> → that file, passed through (Range too) for the file viewer
@@ -25,6 +27,12 @@
  * POST { correction: { id, subject, message } }           → send it; the family now knows the current status
  * POST { boundary: [[lat, lng], …], base? }               → the service area, live at once (a
  *                                                           setting, like Applications → Settings)
+ *
+ * Makeover scores (./_applicant-scores.js; the rubric is public/admin/scoring-shared.js):
+ * POST { score: { id, scores: { key: 1-5 | null }, notes? } } → the signed-in person's own scorecard
+ * POST { score: { id, clear: true } }                     → start their scorecard over
+ * POST { capacity: { year, count } }                      → how many makeovers that season can take
+ * POST { scoreImport: { year, evaluator, name, rows, dryRun } } → one evaluator's spreadsheet tab, by name
  */
 
 import {
@@ -37,6 +45,7 @@ import { getLiveForm, getFormRules, saveFormRules } from './_application-forms.j
 import { DEFAULT_SERVICE_AREA } from './_application-form.js';
 import { logAudit } from './_audit.js';
 import { JT_URL } from './_reveals.js';
+import { familyScores, scoreSummaries, saveScorecard, clearScorecard, capacities, setCapacity, importScores } from './_applicant-scores.js';
 import {
   sendNow, dontSend, moveBack, pauseEmails, resumeEmails, pauseState, resolveHeld, correctionDraft, sendCorrection,
   runNotifications, overdueCount,
@@ -83,12 +92,15 @@ export async function onRequestGet(context) {
       await maybeSyncApplicants(env, { force: true });
       state = await syncState(env.DB);
     }
-    const [applicants, settings, live, rules] = await Promise.all([
+    const [applicants, settings, live, rules, scores, capacity] = await Promise.all([
       listApplicants(env.DB, { archived: url.searchParams.get('archived') === '1' }),
       applicationSettings(env.DB),
       getLiveForm(env.DB),
       getFormRules(env.DB).catch(() => null),
+      scoreSummaries(env.DB).catch(() => new Map()),
+      capacities(env.DB).catch(() => ({})),
     ]);
+    for (const a of applicants) if (scores.has(a.id)) a.score = scores.get(a.id);
     // The sweep sends due emails every 2 minutes; if it ever stalls, opening the admin does it
     const overdue = await overdueCount(env.DB);
     if (overdue) context.waitUntil?.(runNotifications(env));
@@ -104,12 +116,19 @@ export async function onRequestGet(context) {
         updatedAt: rules?.updatedAt || null,
       },
       season: cleanYear(settings.year),
+      capacity,
       me: context.data?.userEmail || null,
     });
   }
 
   if (url.searchParams.get('activity')) {
     return ok({ activity: await recentActivity(env.DB, { before: url.searchParams.get('before') || null }) });
+  }
+
+  if (url.searchParams.has('scores')) {
+    const sid = url.searchParams.get('scores');
+    if (!isAccountId(sid)) return fail('Bad id');
+    return ok({ ...(await familyScores(env.DB, sid)), me: context.data?.userEmail || null });
   }
 
   const id = url.searchParams.get('id');
@@ -196,6 +215,29 @@ export async function onRequestPost(context) {
       if (replyTo && !/^[A-Za-z0-9_-]{4,64}$/.test(replyTo)) throw Object.assign(new Error('Which message?'), { status: 400 });
       const out = await messageFamily(env, id, { subject: body.message.subject, message: body.message.message, replyTo, user });
       await audit('message', id, { to: out.to.map(p => p.email).join(', '), subject: body.message.subject || null });
+      return ok(out);
+    }
+    if (body.score) {
+      const id = target(body.score);
+      if (body.score.clear) {
+        const out = await clearScorecard(env.DB, id, { evaluator: user });
+        await audit('score-cleared', id, {});
+        return ok(out);
+      }
+      const out = await saveScorecard(env.DB, id, { evaluator: user, name: adminNameOf(user), scores: body.score.scores || {}, notes: body.score.notes });
+      // Recent changes hears about a finished scorecard, not every pick along the way
+      if (out.finished) await audit('scored', id, { total: out.card.total });
+      return ok(out);
+    }
+    if (body.capacity) {
+      const out = await setCapacity(env.DB, body.capacity.year, body.capacity.count, { user });
+      await logAudit(env.DB, { userEmail: user, action: 'updated', entityType: 'application-settings', entitySlug: 'rules', entityName: 'Applications settings', changes: [{ field: `scoring.capacity.${out.year}`, to: out.count }] }).catch(() => {});
+      return ok({ capacity: await capacities(env.DB) });
+    }
+    if (body.scoreImport) {
+      const b = body.scoreImport;
+      const out = await importScores(env.DB, { year: b.year, evaluator: b.evaluator, name: b.name || null, rows: b.rows, dryRun: !!b.dryRun });
+      if (!b.dryRun && out.written) await audit('scores-imported', 'scores', { year: String(b.year), evaluator: b.evaluator, written: out.written });
       return ok(out);
     }
     if (body.handled) {

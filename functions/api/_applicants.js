@@ -672,7 +672,8 @@ async function pagePhotos(DB, list) {
     const hit = matchProject(a.jobName, [...kids, ...projects], a.jobId);
     if (!hit) continue;
     const project = isProject(hit);
-    a.kid = { slug: hit.slug, name: hit.name, draft: project ? !hit.published : hit.data?.publishStatus === 'draft', ...(project ? { kind: 'community' } : {}) };
+    // A kid page's status says whether the makeover is funded yet (Awaiting funding, In build, Completed)
+    a.kid = { slug: hit.slug, name: hit.name, draft: project ? !hit.published : hit.data?.publishStatus === 'draft', ...(project ? { kind: 'community' } : hit.data?.status ? { status: hit.data.status } : {}) };
     const best = bestPhotoOf(hit.data);
     if (best) { a.photo = photoUrl(best, 'w=128,h=128,fit=cover', 'q=80'); a.photoFrom = project ? 'project' : 'page'; }
   }

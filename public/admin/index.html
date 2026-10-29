@@ -21543,7 +21543,7 @@ ${sections || '<p>No one yet.</p>'}
       // Leaving the board: the sidebar's count catches up with the families just moved on
       useEffect(() => () => { applicantsNew.refresh(); }, []);
       if (err) return html`<${LoadErrorCard} error=${`Could not load Applications: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
-      return mod ? html`<${mod.ApplicationsArea} addToast=${addToast} RichTextEditor=${RichTextEditor} setGlobalDirty=${setGlobalDirty} />` : html`<div class="area-loading"><span class="spinner" /></div>`;
+      return mod ? html`<${mod.ApplicationsArea} addToast=${addToast} RichTextEditor=${RichTextEditor} setGlobalDirty=${setGlobalDirty} whoOf=${whoOf} />` : html`<div class="area-loading"><span class="spinner" /></div>`;
     }
 
     // People → Applications: Advisory Board applications from /advisory-board/apply/.

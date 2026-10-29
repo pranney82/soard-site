@@ -34,6 +34,11 @@
  *     columns while they fit, else one status at a time under a switcher
  *   - Avatars: the child's photo from the application (JobTread's file), the
  *     kid page's Main photo once it has one, initials when a photo won't load
+ *   - Scores: a family's score and tier on its card, the List's Score column and
+ *     filter, the Scores view (the snapshot, the ranking with each criterion and
+ *     what to talk about, the season's makeovers and who's not funded yet, How
+ *     scoring works), and the Score tab: your own scorecard first (mouse, then
+ *     1 to 5 on the keyboard), saved as you go, then Everyone side by side
  * Screenshots in test-results/applicants-admin/. Exits non-zero on failure.
  *
  *   node scripts/test-applicants-admin.mjs
@@ -49,6 +54,9 @@ import * as formsApi from '../functions/api/applications-admin.js';
 import { FIELDS } from '../functions/api/_applicants.js';
 import { clearFormCache, getDraftForm, getLiveForm } from '../functions/api/_application-forms.js';
 import { axeScan, axeText } from './lib/axe.mjs';
+import { saveScorecard, familyScores, capacities } from '../functions/api/_applicant-scores.js';
+import { ensureCompanyCamSchema } from '../functions/api/_companycam-sync.js';
+import { CRITERION_KEYS } from '../public/admin/scoring-shared.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/applicants-admin/');
@@ -194,7 +202,7 @@ async function open(width, height, harnessPage = '__applicants.html') {
   page.on('console', (m) => { if (m.type() === 'error' && !/tile|cartocdn|favicon|Failed to load resource/.test(m.text())) consoleErrors.push(m.text()); });
   page.on('pageerror', (e) => consoleErrors.push(e.message));
   await page.goto(`${SITE}/admin/${harnessPage}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.apl-board, .apl-table, .apl-map, .apl-feed', { timeout: 20000 });
+  await page.waitForSelector('.apl-board, .apl-table, .apl-map, .apl-feed, .apl-scores', { timeout: 20000 });
   return page;
 }
 const shot = (page, name) => page.screenshot({ path: join(OUT, `${name}.png`) });
@@ -419,7 +427,7 @@ await page.keyboard.press('Escape');
 await sleep(300);
 
 // List
-await page.click('.apl-views button:nth-child(2)');
+await page.click('.apl-views [data-view="list"]');
 await page.waitForSelector('.apl-table');
 await page.keyboard.press('/');
 ok(await page.evaluate(() => document.activeElement?.type === 'search'), '"/" jumps to search');
@@ -482,7 +490,7 @@ ok(!(await page.$$eval('.apl-active button', els => els.some(e => /Outside the b
 await shot(page, 'desktop-list');
 
 // Map
-await page.click('.apl-views button:nth-child(3)');
+await page.click('.apl-views [data-view="map"]');
 await page.waitForSelector('.leaflet-container', { timeout: 15000 });
 await sleep(1500);
 ok(await page.$$eval('.apl-pin', els => els.length) >= 9, 'every family with a home has a pin');
@@ -517,15 +525,15 @@ ok(after?.length >= 3 && JSON.stringify(after) !== before, 'Save boundary puts t
 ok(!(await getDraftForm(DB)), 'with no form draft and no Put live');
 ok(await page.evaluate(() => window.__toasts.some(t => /new boundary is in use/.test(t.msg))), 'and says so');
 // Accessibility: each view and the family drawer, WCAG 2.1 AA
-for (const [i, name] of [[1, 'board'], [2, 'list'], [3, 'map'], [4, 'activity']]) {
-  await page.click(`.apl-views button:nth-child(${i})`);
-  await sleep(i === 3 ? 1200 : 500);
+for (const name of ['board', 'list', 'scores', 'map', 'activity']) {
+  await page.click(`.apl-views [data-view="${name}"]`);
+  await sleep(name === 'map' ? 1200 : 500);
   const v = await axeScan(page, '.apl');
   ok(!v.length, `axe: the ${name} has no WCAG 2.1 AA problems${v.length ? ` (${axeText(v)})` : ''}`);
 }
 
 // Activity
-await page.click('.apl-views button:nth-child(4)');
+await page.click('.apl-views [data-view="activity"]');
 await page.waitForSelector('.apl-feed-row', { timeout: 8000 });
 ok(await page.$$eval('.apl-feed-row', els => els.length) >= 5, 'Activity lists what happened across families');
 await shot(page, 'desktop-activity');
@@ -549,7 +557,7 @@ ok(await clickText(page, '.apl-head-actions button', /Check JobTread now/), 'wit
   await DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, body, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind('evt-mateo-reply', mateo.id, new Date().toISOString(), 'reply', 'Lucía García', 'family', null, '¡Gracias! Nos vemos el jueves.', JSON.stringify({ commentId: 'mateo-r1', parentCommentId: null })).run();
   const wp = await open(1440, 1000);
-  await wp.click('.apl-views button:nth-child(1)'); // the board (the page remembers the last view)
+  await wp.click('.apl-views [data-view="board"]'); // the board (the page remembers the last view)
   await wp.waitForSelector('.apl-waiting', { timeout: 10000 }).catch(() => null);
   await wp.waitForSelector('.apl-card', { timeout: 10000 }).catch(() => null);
   ok(/A family replied and is waiting for an answer/.test(await text(wp, '.apl-waiting')) && /Mateo García/.test(await text(wp, '.apl-waiting')), 'Applicants says a family replied and is waiting, and who');
@@ -572,7 +580,7 @@ await page.waitForFunction(() => !/Check JobTread now/.test(document.querySelect
 ok(/In sync with JobTread/.test(await text(page, '.apl-sync')), 'once JobTread answers, the problem clears');
 
 // Pause family emails: the sheet, a held move, then choosing family by family
-await page.click('.apl-views button:nth-child(1)');
+await page.click('.apl-views [data-view="board"]');
 await page.waitForSelector('.apl-board');
 await page.click('.apl-more-btn');
 await page.waitForSelector('.apl-menu [role="menuitem"]');
@@ -611,7 +619,7 @@ await page.waitForFunction(() => !document.querySelector('.apl-held-list'), { ti
 ok(acct('Noah Pence').comments.filter(c => c.name === 'Application Decision').length === 1, 'Send emails that family, once');
 ok(!(await page.$('.apl-banner')), 'and the banner goes');
 ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'desktop: nothing wider than the window');
-await page.click('.apl-views button:nth-child(1)');
+await page.click('.apl-views [data-view="board"]');
 await sleep(400);
 await page.click('.apl-card');
 await page.waitForSelector('.apl-drawer .apl-thread', { timeout: 8000 }).catch(() => null);
@@ -660,7 +668,7 @@ await phone.click('.apl-email-sum');
 ok(await phone.$eval('.apl-email-row', el => !!el.offsetParent).catch(() => false), 'and open when tapped');
 ok(/^Subject/.test(await phone.$eval('.apl-subject', el => el.textContent.trim()).catch(() => '')) && !!(await phone.$('.apl-subject input[aria-label="Subject"]')), 'the box beside who it goes to says it’s the subject');
 await shot(phone, 'phone-family');
-await phone.click('.apl-dtabs button:nth-child(2)');
+await phone.click('.apl-dtabs [data-tab="details"]');
 await sleep(200);
 ok(await phone.evaluate(() => !!document.querySelector('.apl-side')?.offsetParent && !document.querySelector('.apl-convo')?.offsetParent), 'phone: Details shows the details instead');
 // The home map was hidden behind Conversation when it was made: shown, it's framed on the home
@@ -679,7 +687,7 @@ const linkH = await phone.$$eval('.apl-home-links > *', els => els.map(e => `${e
 ok(linkH.length === 2 && linkH.every(t => +t.split(' ').pop() >= 44), `phone: Directions and Show on map are big enough to tap (${linkH.join(', ')}px)`);
 await shot(phone, 'phone-family-details');
 await phone.keyboard.press('Escape');
-await phone.click('.apl-views button:nth-child(3)');
+await phone.click('.apl-views [data-view="map"]');
 await phone.waitForSelector('.leaflet-container', { timeout: 15000 });
 await sleep(1200);
 await shot(phone, 'phone-map');
@@ -725,11 +733,210 @@ for (const width of [768, 820, 1025, 1100, 1180, 1280]) {
   await pg.close();
 }
 
+// Scores: SOARD's rubric in the family's Score tab, and the Scores view (ranked, the tiers, the season's makeovers)
+console.log('Scores');
+{
+  const all = (n) => Object.fromEntries(CRITERION_KEYS.map(k => [k, n]));
+  const owenA = acct('Owen Lindgren');
+  const eliza = acct('Eliza Franklin');
+  const noah = acct('Noah Pence');
+  const isla = acct('Isla Example');
+  // Clareece and Christian are scoring 2027. Both scored Owen, far apart on family readiness, and Eliza;
+  // Clareece scored Isla (her home visit photos are in CompanyCam); Christian is partway through Noah (approved earlier)
+  await ensureCompanyCamSchema(DB);
+  await DB.prepare("INSERT INTO companycam_files (cc_id, kind, project_id, account_id, origin, state, created_at, updated_at) VALUES ('photo:91', 'photo', 'p91', ?, 'companycam', 'copied', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')").bind(isla.id).run();
+  await saveScorecard(DB, owenA.id, { evaluator: 'clareece@soardcharity.com', scores: { ...all(5), readiness: 1 } }); // 46
+  await saveScorecard(DB, owenA.id, { evaluator: 'christian@soardcharity.com', scores: { ...all(4), readiness: 5 } }); // 41
+  await saveScorecard(DB, eliza.id, { evaluator: 'clareece@soardcharity.com', scores: all(3) }); // 30
+  await saveScorecard(DB, eliza.id, { evaluator: 'christian@soardcharity.com', scores: all(3) }); // 30
+  await saveScorecard(DB, isla.id, { evaluator: 'clareece@soardcharity.com', scores: all(4) }); // 40, waiting on Christian
+  await saveScorecard(DB, noah.id, { evaluator: 'christian@soardcharity.com', scores: { mobility: 4, safety: 4 } });
+  // Owen's kid page is waiting on funding
+  await DB.prepare("UPDATE kids SET data = json_set(data, '$.status', 'needs-funding') WHERE slug = 'owen'").run();
+  const sp = await open(1440, 1000);
+  await sp.evaluate(() => localStorage.removeItem('apl-view'));
+  await sp.reload({ waitUntil: 'domcontentloaded' });
+  await sp.waitForSelector('.apl-card', { timeout: 20000 });
+  await sleep(300);
+  // Board: the family's score and tier on the card (the average of 46 and 41)
+  const tagOf = (id) => sp.$eval(`.apl-card[data-id="${id}"] .apl-score-tag`, el => ({ n: el.querySelector('b')?.textContent || null, text: el.textContent, cls: el.className })).catch(() => null);
+  const owenTag = await tagOf(owenA.id);
+  ok(owenTag?.n === '43.5' && /High Priority/.test(owenTag.text) && /tag--success/.test(owenTag.cls), `a scored family's card shows its score, the average of the totals, and tier (${JSON.stringify(owenTag)})`);
+  ok(/Strong Candidate/.test((await tagOf(eliza.id))?.text || '') && /tag--info/.test((await tagOf(eliza.id))?.cls || ''), 'Strong Candidate is the info blue');
+  const islaTag = await tagOf(isla.id);
+  ok(islaTag && islaTag.n === null && /^1 of 2 scored$/.test(islaTag.text.trim()) && /is-held/.test(islaTag.cls) && !/tag--/.test(islaTag.cls), `a family only some of the season's scorers have scored shows how many, not a score (${JSON.stringify(islaTag)})`);
+  ok(!(await tagOf(noah.id)), 'a scorecard partway done doesn’t give a family a score');
+  ok(await sp.$eval('.apl-card[data-id] .apl-score-tag', el => !/danger/.test(el.className) && getComputedStyle(el).backgroundColor !== 'rgb(255, 0, 0)'), 'no tier is red');
+  // List: a Score column, highest first
+  await sp.click('.apl-views [data-view="list"]');
+  await sp.waitForSelector('.apl-table', { timeout: 5000 });
+  await clickText(sp, '.apl-table th button', /^Score/);
+  await sleep(200);
+  ok((await sp.$$eval('.apl-table tbody tr strong', els => els.map(e => e.textContent))).slice(0, 3).join() === 'Owen Lindgren,Eliza Franklin,Isla Example', 'List: sorting by Score puts the highest first, then families still being scored');
+  // Filters: a tier, and "Not ranked yet"
+  await sp.click('.apl-fbtn');
+  await sp.select('select[aria-label="Score"]', 'high');
+  await sleep(200);
+  ok((await sp.$$eval('.apl-table tbody tr strong', els => els.map(e => e.textContent))).join() === 'Owen Lindgren', 'the Score filter shows one tier');
+  ok(await sp.$$eval('.apl-active button', els => els.some(b => /High Priority/.test(b.textContent))), 'and shows as a chip');
+  await sp.select('select[aria-label="Score"]', 'none');
+  await sleep(200);
+  const none = await sp.$$eval('.apl-table tbody tr strong', els => els.map(e => e.textContent));
+  ok(!none.includes('Owen Lindgren') && !none.includes('Eliza Franklin') && none.includes('Noah Pence') && none.includes('Isla Example'), `"Not ranked yet" leaves out the ranked families (${none.join(', ')})`);
+  await sp.select('select[aria-label="Score"]', '');
+  await sp.keyboard.press('Escape');
+  await sleep(150);
+
+  // The Scores view
+  await sp.click('.apl-views [data-view="scores"]');
+  await sp.waitForSelector('.apl-scores', { timeout: 5000 });
+  const tiles = await sp.$$eval('.apl-score-tile', els => els.map(e => [e.querySelector('span').textContent.trim(), e.querySelector('b').textContent.trim()]));
+  ok(JSON.stringify(tiles) === JSON.stringify([['Ranked', '2'], ['High Priority', '1'], ['Strong Candidate', '1'], ['Lower Priority', '0'], ['Do Not Proceed', '0'], ['Average score', '36.8']]), `the snapshot: ranked, each tier, the average (${JSON.stringify(tiles)})`);
+  ok((await sp.$$eval('.apl-rank tbody tr strong', els => els.map(e => e.textContent))).join() === 'Owen Lindgren,Eliza Franklin', 'families ranked by score, only those everyone scoring 2027 has scored');
+  ok(/Clareece and Christian are scoring 2027\. A family is ranked once both have scored them/.test(await text(sp, '.apl-scores-head')), 'it says who is scoring the season');
+  ok((await sp.$$eval('.apl-rank thead .apl-rank-crit-row span', els => els.map(e => e.textContent))).at(-1) === 'Finances', 'the 2027 rubric’s criteria head the columns, Financial need last');
+  const owenRow = await sp.$eval('.apl-rank tbody tr', tr => ({ cells: [...tr.querySelectorAll('.apl-rank-crits .apl-heat')].map(c => c.textContent), talk: [...tr.querySelectorAll('.apl-heat.is-talk')].length, tag: tr.querySelector('.apl-talk-tag')?.textContent || '', by: tr.querySelectorAll('.apl-rank-by .avatar').length }));
+  ok(owenRow.cells.join('|') === '4.5|4.5|4.5|4.5|4.5|4.5|4.5|4.5|3|4.5' && owenRow.talk === 1 && /Talk about 1/.test(owenRow.tag) && owenRow.by === 2, `each criterion's average, family readiness marked to talk about, who scored (${JSON.stringify(owenRow)})`);
+  const waitList = await sp.$$eval('.apl-unscored li', els => els.map(e => e.textContent));
+  ok(/Not ranked yet/.test(await text(sp, '.apl-unscored h3')) && /Isla Example/.test(waitList[0] || '') && /1 of 2 scored · waiting on Christian/.test(waitList[0] || ''), `Not ranked yet: a family partway first, with who they wait on (${waitList[0]})`);
+  ok(waitList.some(t => /Noah Pence/.test(t) && /Christian started/.test(t)) && waitList.some(t => /Avery Stone/.test(t)) && !waitList.some(t => /Evan Burkett/.test(t)), 'then who started, and no one already turned down');
+  // How many makeovers the season can take
+  ok(/How many makeovers can SOARD do in 2027/.test(await text(sp, '.apl-cap')), 'the season’s makeovers start unset, with a question');
+  await clickText(sp, '.apl-cap button', /Set how many/);
+  await sp.waitForSelector('.apl-cap-form input', { timeout: 3000 });
+  await sp.type('.apl-cap-form input', '3');
+  await sp.click('.apl-cap-form .btn-primary');
+  await sp.waitForSelector('.apl-slot', { timeout: 5000 });
+  const slots = await sp.$$eval('.apl-slot', els => els.map(e => e.className.replace('apl-slot ', '')));
+  ok(slots.join() === 'is-high,is-strong,is-open', `3 makeovers, filled in rank order by tier (${slots.join()})`);
+  ok(/1 High Priority family fills 1 of the 3 makeovers, leaving 2 for the next in line \(1 Strong Candidate ranked\)/.test(await text(sp, '.apl-cap-text')), 'and says how the ranking fills the season');
+  ok((await capacities(DB))['2027']?.count === 3, 'the number is saved for the 2027 season');
+  const capStats = await sp.$$eval('.apl-cap-stats div', els => els.map(e => e.textContent.trim()));
+  ok(/^1\s*High Priority not yet funded/.test(capStats[2] || ''), `High Priority not yet funded comes from the kid page (${capStats.join(' | ')})`);
+  await shot(sp, 'desktop-scores');
+  // How scoring works: the spreadsheet's first two tabs
+  await clickText(sp, '.apl-scores-head button', /How scoring works/);
+  await sp.waitForSelector('.apl-how', { timeout: 3000 });
+  await sleep(400); // its opening animation (axe reads contrast mid-fade otherwise)
+  ok(await sp.$$eval('.apl-how-tiers > div', els => els.length) === 4 && await sp.$$eval('.apl-how-crit', els => els.length) === 10, 'How scoring works: the four tiers and what every score means');
+  ok(/Financial need/.test(await text(sp, '.apl-how')) && !/Mission & story/.test(await text(sp, '.apl-how')) && /Family readiness is scored after the home visit/.test(await text(sp, '.apl-how')), 'the 2027 rubric: Financial need, and readiness after the home visit');
+  const hv = await axeScan(sp, '.apl-how');
+  ok(!hv.length, `axe: How scoring works has no WCAG 2.1 AA problems${hv.length ? ` (${axeText(hv)})` : ''}`);
+  await sp.keyboard.press('Escape');
+  await sleep(200);
+  ok(!(await sp.$('.apl-how')), 'Escape closes it');
+  const sv = await axeScan(sp, '.apl');
+  ok(!sv.length, `axe: the Scores view with families scored has no WCAG 2.1 AA problems${sv.length ? ` (${axeText(sv)})` : ''}`);
+
+  // A family from the ranking opens on their Score tab, your own scorecard first
+  await sp.click('.apl-rank tbody tr');
+  await sp.waitForSelector('.apl-score .apl-crits', { timeout: 10000 });
+  ok(await sp.$eval('.apl-dtabs [data-tab="score"]', el => el.getAttribute('aria-selected') === 'true' && /43\.5/.test(el.textContent)), 'opened from Scores, the drawer is on Score, with the family’s score on the tab');
+  ok(await sp.$eval('.apl-dtabs', el => getComputedStyle(el).display !== 'none') && !(await sp.$eval('.apl-dtabs [data-tab="details"]', el => !!el.offsetParent)), 'on a laptop the tabs are Conversation and Score (Details sits beside them)');
+  ok(/Clareece and Christian have scored Owen Lindgren\. Score on your own first/.test(await text(sp, '.apl-score .apl-callout')), 'it says who has scored, without their numbers');
+  ok(!(await sp.$('.apl-score-table')), 'and doesn’t show their scores until asked');
+  ok(await sp.$eval('.apl-crit.is-open', el => el.dataset.crit === 'mobility' && el.querySelectorAll('.apl-level').length === 5), 'the first criterion is open, with its five levels');
+  ok(/Non-ambulatory or fully dependent/.test(await text(sp, '.apl-crit.is-open .apl-level:last-child')), 'in the rubric’s own words');
+  // Score with the mouse once, then the keys: each pick saves and opens the next
+  await sp.click('.apl-crit.is-open .apl-level:nth-child(5)');
+  await sp.waitForFunction(() => document.querySelector('.apl-crit.is-open')?.dataset.crit === 'safety', { timeout: 3000 }).catch(() => null);
+  ok(await sp.$eval('.apl-crit.is-open', el => el.dataset.crit === 'safety'), 'picking a score moves on to the next criterion');
+  await sleep(400);
+  await shot(sp, 'desktop-family-scorecard');
+  for (const k of '55555552') { await sp.keyboard.press(k); await sleep(60); }
+  await sleep(150);
+  ok(await sp.$eval('.apl-crit.is-open', el => el.dataset.crit === 'financial').catch(() => false) && await sp.$eval('[data-crit="readiness"] .apl-crit-v', el => el.textContent.trim() === 'Scored 22'), 'pressing 1 to 5 scores the open criterion and moves on');
+  await sp.keyboard.press('5');
+  await sp.waitForFunction(() => /Saved/.test(document.querySelector('.apl-score-saved')?.textContent || ''), { timeout: 5000 }).catch(() => null);
+  await sleep(400);
+  const mine = (await familyScores(DB, owenA.id)).cards.find(c => c.evaluator === 'linzi@soardcharity.com');
+  ok(mine?.complete && mine.total === 47 && mine.scores.financial === 5 && mine.scores.readiness === 2 && mine.rubric === 2, `the scorecard saved as it went, as Linzi's own, on the 2027 rubric (${mine?.total})`);
+  ok(await sp.evaluate(() => window.__toasts.some(t => /Your score for Owen Lindgren: 47 of 50, High Priority/.test(t.msg))), 'finishing it says your score');
+  ok(/47/.test(await text(sp, '.apl-score-big')) && /High Priority/.test(await text(sp, '.apl-score-what')), 'and the card shows your total and tier');
+  // Notes save on their own too
+  await sp.type('.apl-score-notes textarea', 'Ramp is the urgent part');
+  await sleep(1300);
+  ok((await familyScores(DB, owenA.id)).cards.find(c => c.evaluator === 'linzi@soardcharity.com')?.notes === 'Ramp is the urgent part', 'notes save as you type');
+  const mv = await axeScan(sp, '.apl-drawer');
+  ok(!mv.length, `axe: your scorecard has no WCAG 2.1 AA problems${mv.length ? ` (${axeText(mv)})` : ''}`);
+  // Everyone: each scorecard beside the family's score
+  await clickText(sp, '.apl-score-seg button', /Everyone/);
+  await sp.waitForSelector('.apl-score-table', { timeout: 3000 });
+  const tbl = await sp.$eval('.apl-score-table', t => ({ heads: [...t.querySelectorAll('thead th')].map(th => (th.querySelector('.apl-score-th > span:last-child') || th).textContent.trim()), foot: [...t.querySelectorAll('tfoot td')].map(td => td.textContent.trim()), talk: [...t.querySelectorAll('tr.is-talk th .is-long')].map(th => th.textContent.trim()) }));
+  ok(tbl.heads.join('|') === 'Criterion|Clareece|Christian|You|Family' && tbl.foot.join('|') === '46|41|47|44.7', `Everyone: each person's scores and total beside the family's (${JSON.stringify(tbl)})`);
+  ok(/The average of the 3 totals, 46, 41 and 47\./.test(await text(sp, '.apl-score-how')), 'and says how the family’s score is worked out');
+  ok(tbl.talk.join() === 'Family readiness', 'the criterion they disagree on stands out');
+  ok(/Worth talking about: Family readiness \(1 to 5\)/.test(await text(sp, '.apl-talk')), 'with the spread');
+  ok(/You[\s\S]*Ramp is the urgent part/.test(await text(sp, '.apl-score-notes-list')), 'and everyone’s notes');
+  const ev = await axeScan(sp, '.apl-drawer');
+  ok(!ev.length, `axe: Everyone has no WCAG 2.1 AA problems${ev.length ? ` (${axeText(ev)})` : ''}`);
+  await shot(sp, 'desktop-family-score');
+  // The status sheet shows the score when it's a decision
+  await sp.select('.apl-status-select select', 'Denied');
+  await sp.waitForSelector('.apl-sheet', { timeout: 5000 });
+  ok(/44\.7[\s\S]*High Priority[\s\S]*44\.7 of 50, the average of 3 scorecards/.test(await text(sp, '.apl-sheet-score')), 'deciding on a family, the status sheet shows their score');
+  await clickText(sp, '.apl-sheet-foot button', /Cancel/);
+  await sleep(200);
+  // Back on the ranking, the new score is already there
+  await sp.keyboard.press('Escape');
+  await sp.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => null);
+  ok(await sp.$eval('.apl-rank tbody tr .apl-rank-by .apl-card-sub', el => el.textContent.trim() === '3'), 'closing it, the ranking already counts the new scorecard');
+  // Linzi is scoring 2027 now too, so Eliza waits for her
+  await sp.waitForFunction(() => [...document.querySelectorAll('.apl-unscored li')].some(li => /Eliza Franklin/.test(li.textContent)), { timeout: 5000 }).catch(() => null);
+  ok((await sp.$$eval('.apl-rank tbody tr strong', els => els.map(e => e.textContent))).join() === 'Owen Lindgren' && /Eliza Franklin[\s\S]*2 of 3 scored · waiting on Linzi/.test(await text(sp, '.apl-unscored')), 'a new scorer for the season: the families they haven’t scored leave the ranking until they have');
+  // Family readiness waits for the home visit (Mateo has applied, and has no visit photos yet)
+  const mateo = acct('Mateo García');
+  await clickText(sp, '.apl-unscored li button', /Mateo García/);
+  await sp.waitForSelector('.apl-score .apl-crits', { timeout: 10000 });
+  ok(await sp.$eval('[data-crit="readiness"]', el => el.classList.contains('is-later') && /After the home visit/.test(el.textContent)), 'before the home visit, Family readiness says it waits for it');
+  for (const k of '444444444') { await sp.keyboard.press(k); await sleep(60); }
+  await sp.waitForFunction(() => /Saved/.test(document.querySelector('.apl-score-saved')?.textContent || ''), { timeout: 5000 }).catch(() => null);
+  await sleep(300);
+  ok(/9 of 10 scored/.test(await text(sp, '.apl-score-what')) && /Family readiness is scored after the home visit\. Your scorecard counts once it has a score/.test(await text(sp, '.apl-score-what')), 'the keys skip it: 9 of 10, and it says why the card isn’t done');
+  await clickText(sp, '[data-crit="readiness"] .apl-crit-head', /Family readiness/);
+  await sleep(150);
+  ok(/It opens once photos from the visit are in CompanyCam/.test(await text(sp, '[data-crit="readiness"]')) && !(await sp.$('[data-crit="readiness"] .apl-level')), 'opened, it says when it opens, with no scores to pick');
+  await sp.keyboard.press('3');
+  await sleep(400);
+  const mateoCard = (await familyScores(DB, mateo.id)).cards.find(c => c.evaluator === 'linzi@soardcharity.com');
+  ok(mateoCard?.done === 9 && mateoCard.scores.readiness == null, `nothing scores it, keys included (${mateoCard?.done})`);
+  const early = await sp.evaluate(async (id) => (await fetch('/api/applicants-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score: { id, scores: { readiness: 3 } } }) })).json(), mateo.id);
+  ok(early.success !== true && /after the home visit/.test(early.error || ''), `and the server refuses it too (${early.error})`);
+  const lv = await axeScan(sp, '.apl-drawer');
+  ok(!lv.length, `axe: a scorecard waiting on the home visit has no WCAG 2.1 AA problems${lv.length ? ` (${axeText(lv)})` : ''}`);
+  await sp.close();
+
+  // Phone: Conversation, Score and Details as tabs; the scorecard fits
+  const ps = await open(390, 844);
+  await ps.click('.apl-views [data-view="scores"]');
+  await ps.waitForSelector('.apl-rank tbody tr', { timeout: 5000 });
+  await ps.click('.apl-rank tbody tr');
+  await ps.waitForSelector('.apl-score', { timeout: 10000 });
+  await sleep(300);
+  const pm = await ps.evaluate(() => ({
+    tabs: [...document.querySelectorAll('.apl-dtabs button')].filter(b => b.offsetParent).map(b => b.dataset.tab),
+    wide: document.documentElement.scrollWidth > innerWidth,
+    past: [...document.querySelectorAll('.apl-drawer *')].filter(el => el.getBoundingClientRect().width && el.getBoundingClientRect().right > innerWidth + 1 && !el.closest('.apl-score-table-wrap')).slice(0, 3).map(el => `${el.tagName}.${el.className}`),
+    tableScrolls: (() => { const t = document.querySelector('.apl-score-table-wrap'); return t ? t.scrollWidth > t.clientWidth + 1 : null; })(),
+    side: !!document.querySelector('.apl-side')?.offsetParent,
+  }));
+  ok(pm.tabs.join() === 'convo,score,details' && !pm.side, `phone: Conversation, Score and Details are tabs, one at a time (${pm.tabs.join()})`);
+  ok(!pm.wide && !pm.past.length, `phone: the Score tab fits the screen${pm.past.length ? ` (${pm.past.join(', ')})` : ''}`);
+  ok(pm.tableScrolls === false, 'phone: everyone’s scores fit side by side, no sideways scroll');
+  await shot(ps, 'phone-family-score');
+  await clickText(ps, '.apl-score-seg button', /Your scorecard/);
+  await sleep(300);
+  const pc = await ps.evaluate(() => [...document.querySelectorAll('.apl-drawer *')].filter(el => el.getBoundingClientRect().width && el.getBoundingClientRect().right > innerWidth + 1).length);
+  ok(pc === 0, 'phone: your scorecard fits too');
+  await shot(ps, 'phone-family-scorecard');
+  await ps.close();
+}
+
 // In the real admin shell (the sidebar takes 240px): no view ever scrolls sideways, at any width
 console.log('Every view, every width, in the admin shell');
 for (const width of [390, 768, 820, 1025, 1100, 1180, 1280, 1440]) {
   const p = await open(width, 900, '__shell.html');
-  for (const view of ['board', 'list', 'map', 'activity']) {
+  for (const view of ['board', 'list', 'scores', 'map', 'activity']) {
     await p.click(`.apl-views button[data-view="${view}"]`);
     await sleep(view === 'map' ? 700 : 250);
     const m = await p.evaluate(() => {
@@ -780,6 +987,7 @@ console.log('An organization');
   ok(await p.evaluate(() => [...document.querySelectorAll('.apl-side .apl-panel h3')].some((h) => h.textContent.trim() === 'Contacts')), 'its people are Contacts, not Family');
   ok(/^Address/.test(await p.evaluate(() => [...document.querySelectorAll('.apl-side .apl-panel h3')].map((h) => h.textContent.trim()).find((t) => /^(Home|Address)/.test(t)) || '')), 'where it is: its Address, not a Home');
   ok(/Message the organization/.test(await text(p, '.apl-composer-head b')), 'and the message box writes to the organization');
+  ok(!(await p.$('.apl-dtabs [data-tab="score"]')), 'a community project has no Score tab (the rubric is for makeovers)');
   await shot(p, 'organization-drawer');
   await p.close();
 }

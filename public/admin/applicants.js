@@ -15,6 +15,10 @@
  *    status. The boundary can be reshaped here; it's a setting, so it's
  *    used for everyone the moment it's saved.
  *  - Activity: what happened across every family, newest first.
+ *  - Scores: the season's families ranked by their makeover score (SOARD's
+ *    rubric, ./scoring-shared.js), the priority tiers against how many
+ *    makeovers the season can take, and who isn't scored yet. Each family's
+ *    drawer has a Score tab: the person's own scorecard, then everyone's.
  *  - More views from ./applications.js (`extraViews`): Submissions, the
  *    website form's intake log, sits beside these.
  *  - A family (drawer): the whole conversation (emails, replies, texts,
@@ -41,6 +45,7 @@ import { h, htm, useState, useEffect, useRef, useMemo, useCallback, Sortable } f
 import { nearRing, bandChanges } from './area-shared.js';
 import { openViewer, viewerLink, warmFiles, kindOf, kindIcon, sizeText, extOf } from './file-viewer.js';
 import { ask } from './ask.js';
+import { RUBRIC_VERSION, SHEET_RUBRIC, TIERS, TOTAL_MAX, criteriaOf, keysOf, rubricOfSeason, fmtScore, tierById, tierOf, totalOf, scoredCount } from './scoring-shared.js';
 
 const html = htm.bind(h);
 const API = '/api/applicants-admin';
@@ -563,11 +568,205 @@ a.apl-file-chip:hover { border-color: var(--color-text-muted); background: var(-
   .apl-more { min-height: 36px; display: inline-flex; align-items: center; }
 }
 `;
+// ─── Scores: the drawer's Score tab and the Scores view ─────────────
+const SCORE_CSS = `
+/* The drawer's tabs on a laptop: Conversation and Score switch the main column (Details sits beside them) */
+.apl-dtabs.has-score { display: inline-flex; grid-column: 1 / -1; justify-self: start; gap: 2px; padding: 3px; margin: .15rem 0 -.2rem; border-radius: 10px; background: var(--seg-bg); }
+.apl-dtabs.has-score button { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-height: 32px; padding: 0 .9rem; border: 0; border-radius: 8px; background: none; font: inherit; font-size: var(--fs-sm); font-weight: 650; color: var(--color-text-secondary); cursor: pointer; }
+.apl-dtabs.has-score button[aria-selected="true"] { background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-sm); }
+.apl-dtabs.has-score button:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
+.apl-dtabs.has-score [data-tab="details"] { display: none; }
+.apl-dtab-n { min-width: 1.6rem; padding: 0 .4rem; border-radius: 999px; font-size: var(--fs-2xs); font-weight: 700; line-height: 1.35rem; text-align: center; font-variant-numeric: tabular-nums; background: var(--tone-neutral-bg); color: var(--tone-neutral-fg); }
+.apl-dtab-n.is-high { background: var(--tone-success-bg); color: var(--tone-success-fg); }
+.apl-dtab-n.is-strong { background: var(--tone-info-bg); color: var(--tone-info-fg); }
+.apl-dtab-n.is-lower { background: var(--tone-warn-bg); color: var(--tone-warn-fg); }
+.apl-dbody[data-pane="score"] .apl-convo { display: none; }
+@media (max-width: 860px) {
+  .apl-dtabs.has-score { display: flex; justify-self: stretch; margin: .35rem 0 0; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
+  .apl-dtabs.has-score button { flex: 1; min-height: 40px; padding: 0 .4rem; }
+  .apl-dtabs.has-score [data-tab="details"] { display: inline-flex; }
+  .apl-dbody[data-pane="score"] .apl-side, .apl-dbody[data-pane="details"] .apl-score { display: none; }
+}
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.apl-score-tag { gap: .35rem; }
+.apl-score-tag b { font-variant-numeric: tabular-nums; font-weight: 800; }
+.apl-score-tag.is-held { background: var(--tone-neutral-bg); color: var(--tone-neutral-fg); font-variant-numeric: tabular-nums; }
+.apl-tier { white-space: nowrap; }
+.apl-tier.is-stop, .apl-score-tag.is-stop { background: var(--tone-neutral-bg); color: var(--tone-neutral-fg); }
+.apl-sheet-score { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: -.35rem; }
+.apl-who { flex: none; }
+
+/* A score from 1 to 5 as a flat cell: one charcoal, darker for higher */
+.apl-heat { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; font-size: var(--fs-xs); font-weight: 750; font-variant-numeric: tabular-nums; flex: none; color: #1A1B1F; background: #F1F0EC; }
+.apl-heat.is-2 { background: #DEDDD7; }
+.apl-heat.is-3 { background: #B9B8B1; }
+.apl-heat.is-4 { background: #6F7076; color: #fff; }
+.apl-heat.is-5 { background: #2D2E33; color: #fff; }
+.apl-heat.is-none { background: none; border: 1.5px dashed var(--color-border-strong); }
+.apl-heat.is-talk { box-shadow: 0 0 0 2px var(--color-bg-card), 0 0 0 4px var(--tone-warn-dot); }
+
+/* The Score tab */
+.apl-score { overflow-y: auto; overscroll-behavior: contain; padding: 1rem 1.1rem 2rem; border-right: 1px solid var(--color-border); display: grid; gap: .9rem; align-content: start; min-height: 0; }
+.apl-score-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+.apl-score-seg button { display: inline-flex; align-items: center; gap: .4rem; }
+.apl-score-body { display: grid; gap: .85rem; }
+.apl-score-sum { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; padding: .85rem .95rem; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.apl-score-big { display: flex; align-items: baseline; gap: .3rem; }
+.apl-score-big b { font-size: var(--fs-3xl); line-height: 1; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.apl-score-big span { font-size: var(--fs-sm); color: var(--color-text-muted); font-weight: 600; }
+.apl-score-what { display: grid; gap: .3rem; justify-items: start; min-width: 0; flex: 1 1 200px; font-size: var(--fs-sm); }
+.apl-score-what .apl-card-sub { white-space: normal; font-size: var(--fs-xs); }
+.apl-score-saved { margin-left: auto; font-size: var(--fs-2xs); color: var(--color-text-muted); }
+.apl-score-saved.is-error { color: var(--tone-warn-fg); font-weight: 600; }
+.apl-score-how { margin: -.3rem 0 0; font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.5; }
+.apl-crits { list-style: none; margin: 0; padding: 0; display: grid; gap: .45rem; }
+.apl-crit { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; scroll-margin: .75rem; }
+.apl-crit.is-open { border-color: var(--color-border-strong); box-shadow: var(--shadow-sm); }
+.apl-crit-head { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .7rem; align-items: center; padding: .65rem .8rem; cursor: pointer; }
+.apl-crit-head:hover { background: var(--color-bg-hover); }
+.apl-crit-head:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; border-radius: 12px; }
+.apl-crit-i { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--color-bg-secondary); border: 1px solid var(--color-border); font-size: var(--fs-2xs); font-weight: 700; color: var(--color-text-secondary); flex: none; }
+.apl-crit.is-set .apl-crit-i { background: var(--color-text); border-color: var(--color-text); color: #fff; }
+.apl-crit-name { display: grid; gap: .1rem; min-width: 0; }
+.apl-crit-name b { font-size: var(--fs-sm); font-weight: 650; }
+.apl-crit-name small { font-size: var(--fs-xs); color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apl-crit-v { width: 30px; height: 30px; font-size: var(--fs-sm); }
+.apl-crit-body { padding: 0 .8rem .8rem; display: grid; gap: .55rem; }
+.apl-crit-ask { margin: 0; font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.45; }
+.apl-crit-ask span { display: block; margin-top: .2rem; color: var(--color-text); font-weight: 600; }
+.apl-levels { display: grid; gap: .3rem; }
+.apl-level { all: unset; box-sizing: border-box; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .65rem; align-items: center; padding: .5rem .6rem; border: 1px solid var(--color-border); border-radius: 10px; cursor: pointer; font-size: var(--fs-sm); line-height: 1.4; color: var(--color-text); transition: border-color .12s, background .12s; }
+.apl-level:hover { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
+.apl-level:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+.apl-level[aria-checked="true"] { border-color: var(--color-text); background: var(--color-bg-secondary); box-shadow: inset 0 0 0 1px var(--color-text); }
+.apl-crit.is-later .apl-crit-name small { font-style: italic; }
+.apl-crit-later { margin: 0; white-space: normal; line-height: 1.45; }
+.apl-crit-foot { display: flex; justify-content: space-between; align-items: center; gap: .5rem; min-height: 22px; }
+.apl-score-notes { display: grid; gap: .35rem; font-size: var(--fs-sm); }
+.apl-score-notes textarea { min-height: 76px; resize: vertical; }
+.apl-score-foot { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.apl-talk { line-height: 1.5; }
+.apl-score-table-wrap { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); overflow-x: auto; }
+.apl-score-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.apl-score-table th, .apl-score-table td { padding: .4rem .55rem; border-bottom: 1px solid var(--color-border); text-align: center; }
+.apl-score-table th[scope="row"] { text-align: left; font-weight: 600; font-size: var(--fs-xs); color: var(--color-text); text-transform: none; letter-spacing: 0; }
+.apl-score-table .is-short { display: none; }
+.apl-score-table thead th { font-size: var(--fs-2xs); font-weight: 650; color: var(--color-text-secondary); background: var(--color-bg-secondary); vertical-align: bottom; }
+.apl-score-table thead th:first-child { text-align: left; }
+.apl-score-th { display: inline-grid; justify-items: center; gap: .2rem; }
+.apl-score-table tfoot th, .apl-score-table tfoot td { border-bottom: 0; font-variant-numeric: tabular-nums; }
+.apl-score-table .apl-avg { background: var(--color-bg-secondary); font-variant-numeric: tabular-nums; }
+.apl-score-table tr.is-talk th[scope="row"] { box-shadow: inset 3px 0 0 var(--tone-warn-dot); }
+.apl-score-table tr.is-talk td { background: var(--tone-warn-surface); }
+.apl-score-table tr.is-talk td.apl-avg { background: var(--tone-warn-bg); }
+.apl-score-notes-list { display: grid; gap: .6rem; }
+.apl-score-note { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .6rem; align-items: start; font-size: var(--fs-sm); }
+.apl-score-note p { margin: .15rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-text-secondary); }
+.apl-score-partial { white-space: normal; margin: 0; }
+
+/* How scoring works */
+.apl-how { width: min(720px, 100%); }
+.apl-how p { margin: 0; font-size: var(--fs-sm); line-height: 1.55; }
+.apl-how h3 { margin: .3rem 0 0; font-size: var(--fs-sm); }
+.apl-how-head { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.apl-how-tiers { display: grid; gap: .4rem; }
+.apl-how-tiers > div { display: grid; grid-template-columns: 9.5rem 7rem minmax(0, 1fr); gap: .6rem; align-items: center; font-size: var(--fs-xs); }
+.apl-how-tiers .tag { justify-self: start; }
+.apl-how-crit { border-top: 1px solid var(--color-border); padding-top: .45rem; }
+.apl-how-crit summary { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: .55rem; align-items: center; cursor: pointer; min-height: 34px; font-size: var(--fs-sm); }
+.apl-how-crit summary .apl-card-sub { white-space: normal; }
+.apl-how-crit ol { list-style: none; margin: .45rem 0 .55rem; padding: 0; display: grid; gap: .35rem; }
+.apl-how-crit li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .6rem; align-items: center; font-size: var(--fs-xs); line-height: 1.45; }
+
+/* The Scores view */
+.apl-scores { display: grid; grid-template-columns: minmax(0, 1fr); gap: .9rem; min-width: 0; }
+.apl-scores > * { min-width: 0; }
+.apl-scores-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.apl-scores-head p { margin: 0; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+.apl-score-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .6rem; }
+.apl-score-tile { display: grid; gap: .15rem; padding: .7rem .85rem; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); min-width: 0; }
+.apl-score-tile > span { display: inline-flex; align-items: center; gap: .4rem; font-size: var(--fs-2xs); font-weight: 650; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.apl-score-tile b { font-size: var(--fs-2xl); line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums; }
+.apl-score-tile small { font-size: var(--fs-2xs); color: var(--color-text-muted); }
+.apl-tier-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--tone-neutral-dot); }
+.apl-score-tile.is-high .apl-tier-dot, .apl-slot.is-high { background: var(--tone-success-dot); }
+.apl-score-tile.is-strong .apl-tier-dot, .apl-slot.is-strong { background: var(--tone-info-dot); }
+.apl-score-tile.is-lower .apl-tier-dot, .apl-slot.is-lower { background: var(--tone-warn-dot); }
+.apl-slot.is-stop { background: var(--tone-neutral-dot); }
+.apl-cap { grid-template-columns: minmax(0, 1fr); }
+.apl-cap h3 .apl-more { text-transform: none; letter-spacing: 0; font-size: var(--fs-xs); }
+.apl-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(22px, 1fr)); gap: 4px; }
+.apl-slot { height: 22px; border-radius: 5px; }
+.apl-slot.is-open { background: none; border: 1.5px dashed var(--color-border-strong); }
+.apl-cap-text { margin: 0; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+.apl-cap-form { display: flex; align-items: flex-end; gap: .5rem; flex-wrap: wrap; }
+.apl-cap-form label { display: grid; gap: .3rem; font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); }
+.apl-cap-form input { width: 7rem; }
+.apl-cap-stats { display: flex; gap: .5rem 1.75rem; flex-wrap: wrap; padding-top: .55rem; border-top: 1px solid var(--color-border); }
+.apl-cap-stats div { display: flex; align-items: baseline; gap: .4rem; font-size: var(--fs-xs); color: var(--color-text-secondary); }
+.apl-cap-stats b { font-size: var(--fs-lg); color: var(--color-text); font-variant-numeric: tabular-nums; }
+.apl-rank-wrap { container: apl-rank / inline-size; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); }
+.apl-rank { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.apl-rank th { text-align: left; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-secondary); padding: .55rem .7rem; background: var(--color-bg-secondary); border-bottom: 1px solid var(--color-border); white-space: nowrap; }
+.apl-rank th:first-child { border-top-left-radius: var(--radius-md); }
+.apl-rank th:last-child { border-top-right-radius: var(--radius-md); }
+.apl-rank td { padding: .55rem .7rem; border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+.apl-rank tbody tr:last-child td { border-bottom: 0; }
+.apl-rank tbody tr { cursor: pointer; transition: background .1s; }
+.apl-rank tbody tr:hover { background: var(--color-bg-hover); }
+.apl-rank tbody tr:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
+.apl-rank-n { width: 2rem; text-align: right; color: var(--color-text-muted); font-variant-numeric: tabular-nums; font-weight: 650; }
+.apl-rank-who { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .55rem; align-items: center; min-width: 12rem; }
+.apl-rank-who strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apl-rank-score { display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
+.apl-rank-score b { font-size: var(--fs-lg); font-weight: 800; font-variant-numeric: tabular-nums; min-width: 2.4rem; }
+.apl-rank-crit-row { display: grid; grid-template-columns: repeat(10, 46px); gap: 4px; justify-items: center; }
+.apl-rank-crit-row .apl-heat { width: 34px; }
+.apl-rank th .apl-rank-crit-row span { width: 100%; font-size: 10px; font-weight: 600; letter-spacing: 0; text-transform: none; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+.apl-rank-by { display: inline-flex; align-items: center; gap: 2px; }
+.apl-rank-by .apl-card-sub { margin-left: .3rem; }
+.apl-talk-tag { margin-top: .3rem; }
+@container apl-rank (max-width: 1180px) { .apl-rank .apl-rank-crits { display: none; } }
+@container apl-rank (max-width: 640px) {
+  .apl-rank thead { display: none; }
+  .apl-rank, .apl-rank tbody { display: block; }
+  .apl-rank tbody tr { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) auto; grid-template-areas: "n who score" ". by by"; gap: .35rem .5rem; align-items: center; padding: .65rem .75rem; border-bottom: 1px solid var(--color-border); }
+  .apl-rank tbody tr:last-child { border-bottom: 0; }
+  .apl-rank td { padding: 0; border: 0; min-width: 0; }
+  .apl-rank td:nth-child(1) { grid-area: n; }
+  .apl-rank td:nth-child(2) { grid-area: who; }
+  .apl-rank td:nth-child(3) { grid-area: score; }
+  .apl-rank td:nth-child(5) { grid-area: by; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .apl-rank-who { min-width: 0; grid-template-columns: auto minmax(0, 1fr); }
+  .apl-rank-who .apl-pill { display: none; }
+  .apl-rank-score .tag { display: none; }
+  .apl-talk-tag { margin-top: 0; }
+}
+.apl-unscored ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.apl-unscored li button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: .6rem; align-items: center; padding: .45rem .5rem; border-radius: 8px; cursor: pointer; }
+.apl-unscored li button:hover { background: var(--color-bg-hover); }
+.apl-unscored li button:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
+.apl-unscored-name { display: grid; min-width: 0; font-size: var(--fs-sm); }
+.apl-unscored-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) {
+  .apl-score { padding: .8rem .8rem 2rem; border-right: 0; }
+  .apl-score-table .is-long { display: none; }
+  .apl-score-table .is-short { display: inline; }
+  .apl-score-table th, .apl-score-table td { padding: .4rem .35rem; }
+  .apl-level { min-height: 44px; }
+  .apl-score-notes textarea { font-size: 16px; }
+  .apl-how-tiers > div { grid-template-columns: 1fr; gap: .2rem; }
+  .apl-unscored li button { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .apl-unscored li .apl-pill { display: none; }
+}
+@media (pointer: coarse) { .apl-crit-head { min-height: 48px; } }
+`;
 let _cssDone = false;
 function injectCss() {
   if (_cssDone) return;
   const el = document.createElement('style');
-  el.textContent = CSS;
+  el.textContent = CSS + SCORE_CSS;
   document.head.appendChild(el);
   _cssDone = true;
 }
@@ -641,7 +840,7 @@ function lastLine(a) {
 
 // ─── The area ───────────────────────────────────────────────────────
 
-const BUILT_IN_VIEWS = [['board', 'Board'], ['list', 'List'], ['map', 'Map'], ['activity', 'Activity']];
+const BUILT_IN_VIEWS = [['board', 'Board'], ['list', 'List'], ['scores', 'Scores'], ['map', 'Map'], ['activity', 'Activity']];
 const AREA_LABEL = { inside: 'Inside the boundary', outside: 'Outside the boundary', unknown: 'No map point' };
 
 /**
@@ -650,9 +849,11 @@ const AREA_LABEL = { inside: 'Inside the boundary', outside: 'Outside the bounda
  *  - notice: shown under the toolbar (for example, applications that didn't reach JobTread)
  *  - menuItems: more entries for the ⋯ menu ({ label, hint, onSelect } or '-')
  *  - route: { view, application, editBoundary, n } from the address bar; a new n applies it
+ *  - whoOf: the admin's (email → { name, first, initials, photo }) from People, for who scored
  */
-export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuItems = [], route = null }) {
+export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuItems = [], route = null, whoOf = null }) {
   injectCss();
+  whoNow.fn = whoOf || plainWho;
   const viewKeys = [...BUILT_IN_VIEWS.map(v => v[0]), ...extraViews.map(v => v.key)];
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
@@ -664,10 +865,12 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
   const [year, setYear] = useState(null);
   const [type, setType] = useState('');
   const [area, setArea] = useState('');
+  const [tier, setTier] = useState(''); // a priority tier (ranked families only), or 'none' (not ranked yet)
   const [statusFilter, setStatusFilter] = useState('');
   const [archived, setArchived] = useState(false);
   const [tests, setTests] = useState(false); // test accounts (TEST…) stay off the board unless asked for
   const [openId, setOpenId] = useState(() => (location.hash.match(/^#applications\/applicants\/([A-Za-z0-9]{6,32})(?:\/reply\/[A-Za-z0-9_-]{4,64})?$/) || [])[1] || null);
+  const [openPane, setOpenPane] = useState(null); // the drawer's first tab, when it opens on one (the Scores view's Score)
   // A family-reply alert's Reply link: open the family answering in that JobTread thread
   const [replyLink, setReplyLink] = useState(() => (location.hash.match(/^#applications\/applicants\/[A-Za-z0-9]{6,32}\/reply\/([A-Za-z0-9_-]{4,64})$/) || [])[1] || null);
   const [waitingOnly, setWaitingOnly] = useState(false); // just the families waiting on a reply
@@ -722,7 +925,8 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  const open = (id) => {
+  const open = (id, pane = null) => {
+    setOpenPane(pane);
     setOpenId(id);
     history.replaceState(null, '', id ? `#applications/applicants/${id}` : extraViews.some(x => x.key === view) ? `#applications/${view}` : '#applications/applicants');
   };
@@ -775,6 +979,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
       if (type && !(a.types || []).includes(type)) return false;
       if (county && a.county !== county) return false;
       if (area && a.area !== area) return false;
+      if (tier && (tier === 'none' ? a.score?.ranked || a.kind === 'organization' : !a.score?.ranked || a.score.tier !== tier)) return false;
       if (statusFilter && view !== 'board' && (a.status || '') !== statusFilter) return false;
       if (waitingOnly && !a.waiting) return false;
       if (words.length) {
@@ -783,7 +988,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
       }
       return true;
     });
-  }, [all, q, year, type, county, area, statusFilter, view, waitingOnly]);
+  }, [all, q, year, type, county, area, tier, statusFilter, view, waitingOnly]);
   // Families who replied and are waiting on us, newest reply first
   const waitingList = useMemo(() => all.filter(a => a.waiting).sort((x, y) => y.waiting.at.localeCompare(x.waiting.at)), [all]);
   // The status counts leave the status filter out, so every count stays visible while one is picked
@@ -792,17 +997,25 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     const words = q.trim().toLowerCase();
     for (const a of all) {
       if ((year && a.year !== year) || (type && !(a.types || []).includes(type)) || (county && a.county !== county) || (area && a.area !== area)) continue;
+      if (tier && (tier === 'none' ? a.score?.ranked || a.kind === 'organization' : !a.score?.ranked || a.score.tier !== tier)) continue;
       if (words && !words.split(/\s+/).every(w => [a.name, a.contact?.name, a.contact?.email, a.contact?.phone, a.address, a.city, a.county, a.fields?.diagnosis, a.fields?.referredBy].join(' ').toLowerCase().includes(w))) continue;
       if (m[a.status] != null) m[a.status]++;
     }
     return m;
-  }, [all, q, year, type, county, area]);
+  }, [all, q, year, type, county, area, tier]);
 
   const askStatus = (a, status) => { if (a.status !== status) setSheet({ a, status }); };
   const afterChange = (applicant) => {
     if (!applicant) return load(true);
     setData(d => d && { ...d, applicants: d.applicants.map(x => (x.id === applicant.id ? { ...x, ...applicant } : x)) });
     load(true);
+  };
+  // A scorecard saved in the drawer: the family's new score on the board, list and Scores view at once
+  const onScored = (id, summary) => {
+    const was = data?.applicants.find(x => x.id === id)?.score;
+    setData(d => d && { ...d, applicants: d.applicants.map(x => (x.id === id ? { ...x, score: summary } : x)) });
+    // Someone new scoring the season (or no longer) changes who every family waits on: the whole list catches up
+    if ((was?.of || 0) !== (summary?.of || 0)) load(true);
   };
   // Only offered when the automatic check has a problem
   const checkNow = async () => {
@@ -841,12 +1054,13 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     type && { key: 'type', text: type, clear: () => setType('') },
     county && { key: 'county', text: `${county} County`, clear: () => setCounty('') },
     area && { key: 'area', text: AREA_LABEL[area], clear: () => setArea('') },
+    tier && { key: 'tier', text: tier === 'none' ? 'Not ranked yet' : tierById(tier)?.label, clear: () => setTier('') },
     archived && { key: 'archived', text: 'Including archived', clear: () => setArchived(false) },
     tests && { key: 'tests', text: 'Including test families', clear: () => setTests(false) },
     waitingOnly && { key: 'waiting', text: 'Waiting on a reply', clear: () => setWaitingOnly(false) },
   ].filter(Boolean);
-  const inPanel = [type, county, area, archived, tests].filter(Boolean).length;
-  const clearAll = () => { setYear(season); setType(''); setCounty(''); setArea(''); setArchived(false); setTests(false); setWaitingOnly(false); };
+  const inPanel = [type, county, area, tier, archived, tests].filter(Boolean).length;
+  const clearAll = () => { setYear(season); setType(''); setCounty(''); setArea(''); setTier(''); setArchived(false); setTests(false); setWaitingOnly(false); };
   const emails = data.emails || {};
   const menu = [
     emails.active
@@ -914,6 +1128,13 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
               <option value="unknown">No map point</option>
             </select>
           </label>
+          <label>Score
+            <select class="form-select" value=${tier} onChange=${e => setTier(e.target.value)} aria-label="Score">
+              <option value="">Any score</option>
+              ${TIERS.map(t => html`<option value=${t.id}>${t.label} (${t.range.replace(' points', '')})</option>`)}
+              <option value="none">Not ranked yet</option>
+            </select>
+          </label>
           <span class="apl-check" style="font-size: var(--fs-xs);font-weight:600;color:var(--color-text)"><input type="checkbox" id="apl-archived" checked=${archived} onChange=${e => setArchived(e.target.checked)} /><label for="apl-archived" style="all:unset;cursor:pointer">Include archived families</label></span>
           ${testCount > 0 && html`<span class="apl-check" style="font-size: var(--fs-xs);font-weight:600;color:var(--color-text)"><input type="checkbox" id="apl-tests" checked=${tests} onChange=${e => setTests(e.target.checked)} /><label for="apl-tests" style="all:unset;cursor:pointer">Include test families (${testCount})</label></span>`}
         <//>
@@ -933,7 +1154,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     </div>`}
     <${EmailBanner} emails=${emails} busy=${busy} onPost=${post} onDone=${doneCleanup} onOpen=${open} addToast=${addToast} onChanged=${() => load(true)} />
 
-    ${(view === 'list' || view === 'map') && html`<div class="apl-strip" role="group" aria-label="Show status">
+    ${(view === 'list' || view === 'map' || view === 'scores') && html`<div class="apl-strip" role="group" aria-label="Show status">
       <button class="is-all" aria-pressed=${!statusFilter} onClick=${() => setStatusFilter('')}>All <b>${STATUS_ORDER.reduce((n, s) => n + counts[s], 0)}</b></button>
       ${STATUS_ORDER.map(s => html`
         <button style=${`--c:${STATUS_COLOR[s]}`} aria-pressed=${statusFilter === s} onClick=${() => setStatusFilter(f => (f === s ? '' : s))} title=${STATUS_HINT[s]}>
@@ -943,6 +1164,7 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
 
     ${view === 'board' && html`<${Board} list=${shown} onOpen=${open} onMove=${askStatus} />`}
     ${view === 'list' && html`<${ListView} list=${shown} onOpen=${open} />`}
+    ${view === 'scores' && html`<${ScoresView} list=${shown} year=${year} capacity=${data.capacity || {}} onOpen=${open} addToast=${addToast} onCapacity=${(capacity) => setData(d => d && { ...d, capacity })} />`}
     ${view === 'map' && html`<${MapView} list=${shown} boundary=${data.boundary} focus=${focusPin} startEditing=${editBoundary} onEditDone=${() => setEditBoundary(false)} onOpen=${open} addToast=${addToast} onSaved=${() => load(true)} />`}
     ${view === 'activity' && html`<${ActivityView} onOpen=${open} />`}
     ${extra && extra.render()}
@@ -953,6 +1175,8 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
       fields=${data.fields}
       boundary=${data.boundary}
       summary=${(data.applicants || []).find(a => a.id === openId)}
+      initialPane=${openPane}
+      onScored=${onScored}
       onClose=${() => open(null)}
       onPrev=${idx > 0 ? () => open(shown[idx - 1].id) : null}
       onNext=${idx >= 0 && idx < shown.length - 1 ? () => open(shown[idx + 1].id) : null}
@@ -1173,6 +1397,7 @@ function Board({ list, onOpen, onMove }) {
               <div class="apl-card-sub">${[a.kind === 'organization' ? 'Community project' : age != null ? `${age} yrs` : null, a.city || a.county, oneYear ? null : a.year].filter(Boolean).join(' · ')}</div></div>
             </div>
             <${Flags} a=${a} />
+            ${a.score?.count > 0 && html`<div class="apl-tags"><${ScoreTag} s=${a.score} /></div>`}
             ${a.waiting && html`<div class="apl-tags"><span class="tag tag--brand apl-mail is-reply" title=${`${a.waiting.by || 'The family'} replied ${fullDate(a.waiting.at)}: “${a.waiting.snippet}”`}>${feedIcon('comment')}${a.waiting.by ? a.waiting.by.split(' ')[0] : 'They'} replied ${ago(a.waiting.at)}</span></div>`}
             ${a.notify && html`<div class="apl-tags">${a.notify.kind ? html`<span class=${`tag apl-mail${a.notify.hold ? ' is-held' : ' tag--warn'}`} title=${a.notify.hold ? 'Held: family emails are paused' : `The ${a.notify.label} email goes out at ${clock(a.notify.dueAt)} unless the status changes back`}>${a.notify.hold ? 'Email held' : `Emails ${clock(a.notify.dueAt)}`}</span>` : a.notify.correction ? html`<span class="tag tag--warn apl-mail is-fix" title=${`The family was emailed ${a.notify.told}, but the status is now ${a.status}`}>Needs a correction</span>` : null}</div>`}
             <div class="apl-card-foot"><span>${lastLine(a)}</span>${days != null && html`<span class=${`apl-stage ${long ? 'is-long' : ''}`} title=${`In ${s} for ${plural(days, 'day')}`}>${days}d</span>`}</div>
@@ -1197,6 +1422,8 @@ function Board({ list, onOpen, onMove }) {
 const LIST_COLS = [
   { k: 'name', label: 'Name', get: a => a.name.toLowerCase() },
   { k: 'status', label: 'Status', get: a => STATUS_ORDER.indexOf(a.status) },
+  // Highest score first; then families partway through being scored (most scorecards first), then the rest
+  { k: 'score', label: 'Score', get: a => (a.score?.ranked ? -a.score.total : a.score?.count ? 1 - a.score.count / 100 : 2) },
   { k: 'year', label: 'Year', get: a => a.year || '' },
   { k: 'types', label: 'Makeover', get: a => (a.types || []).join(',') },
   { k: 'county', label: 'County', get: a => a.county || '' },
@@ -1231,13 +1458,14 @@ function ListView({ list, onOpen }) {
       return html`<tr key=${a.id} tabindex="0" onClick=${() => onOpen(a.id)} onKeyDown=${e => { if (e.key === 'Enter') onOpen(a.id); }}>
       <td><div style="display:flex;gap:.55rem;align-items:center"><${Avatar} a=${a} size=${28} /><div style="min-width:0"><strong>${a.name}</strong><div class="apl-card-sub">${a.contact?.name || ''}</div>${a.waiting && html`<span class="tag tag--brand apl-mail is-reply" title=${`“${a.waiting.snippet}”`}>${feedIcon('comment')}Replied ${ago(a.waiting.at)}</span>`}</div></div></td>
       <td><${Pill} status=${a.status} /></td>
+      <td>${a.score?.count ? html`<${ScoreTag} s=${a.score} label=${false} />` : '—'}</td>
       <td>${a.year || '—'}</td>
       <td>${(a.types || []).join(', ') || '—'}</td>
       <td>${a.county || '—'}</td>
       <td>${a.area === 'outside' ? html`<span class="tag tag--warn apl-tag is-out">${a.areaMiles} mi outside</span>` : a.area === 'inside' ? 'Inside' : '—'}</td>
       <td>${days != null ? `${days}d` : '—'}</td>
       <td class="apl-card-sub apl-td-last">${lastLine(a)}</td>
-      <td class="apl-td-meta">${[oneYear ? null : a.year, (a.types || []).join(', '), a.county, days != null ? `${days}d in ${a.status || 'no status'}` : null].filter(Boolean).join(' · ')}${a.area === 'outside' ? html` <span class="tag tag--warn apl-tag is-out">${a.areaMiles} mi outside</span>` : ''}</td>
+      <td class="apl-td-meta">${[a.score?.ranked ? `Score ${fmtScore(a.score.total)}` : a.score?.count ? `${a.score.count} of ${a.score.of} scored` : null, oneYear ? null : a.year, (a.types || []).join(', '), a.county, days != null ? `${days}d in ${a.status || 'no status'}` : null].filter(Boolean).join(' · ')}${a.area === 'outside' ? html` <span class="tag tag--warn apl-tag is-out">${a.areaMiles} mi outside</span>` : ''}</td>
     </tr>`;
     })}</tbody>
   </table></div>
@@ -1522,10 +1750,11 @@ function ActivityView({ onOpen }) {
 
 // ─── One family (drawer) ────────────────────────────────────────────
 
-function Drawer({ id, replyLink = null, fields, boundary, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
+function Drawer({ id, replyLink = null, fields, boundary, summary, initialPane = null, onScored = () => {}, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
-  const [pane, setPane] = useState('convo'); // phones: which half shows
+  // Conversation or Score in the main column (Details too, on phones, where one shows at a time)
+  const [pane, setPane] = useState(initialPane || 'convo');
   const panel = useRef(null);
   const load = useCallback(async () => {
     const j = await call(`${API}?id=${encodeURIComponent(id)}`);
@@ -1566,6 +1795,9 @@ function Drawer({ id, replyLink = null, fields, boundary, summary, onClose, onPr
 
   const a = d?.applicant ? { ...summary, ...d.applicant } : summary;
   const refresh = async (applicant) => { await load(); onChanged(applicant); };
+  // Makeover families are scored; a community project isn't. J and K keep the tab you're on.
+  const scorable = !!a && a.kind !== 'organization';
+  const shownPane = pane === 'score' && !scorable ? 'convo' : pane;
 
   return html`<div>
     <div class="apl-scrim" onClick=${onClose}></div>
@@ -1594,16 +1826,18 @@ function Drawer({ id, replyLink = null, fields, boundary, summary, onClose, onPr
           <button class="apl-icon-btn" onClick=${onNext} disabled=${!onNext} aria-label="Next family (J)" title="Next (J)">${Icon.down()}</button>
           <button class="apl-icon-btn" onClick=${onClose} aria-label="Close (Esc)" title="Close (Esc)">${Icon.close()}</button>
         </div>
-        <div class="apl-dtabs" role="tablist" aria-label="Show">
-          <button role="tab" aria-selected=${pane === 'convo'} onClick=${() => setPane('convo')}>Conversation</button>
-          <button role="tab" aria-selected=${pane === 'details'} onClick=${() => setPane('details')}>Details</button>
+        <div class=${`apl-dtabs${scorable ? ' has-score' : ''}`} role="tablist" aria-label="Show">
+          <button role="tab" data-tab="convo" aria-selected=${shownPane === 'convo'} onClick=${() => setPane('convo')}>Conversation</button>
+          ${scorable && html`<button role="tab" data-tab="score" aria-selected=${shownPane === 'score'} onClick=${() => setPane('score')}>Score${a.score?.ranked ? html`<span class=${`apl-dtab-n is-${a.score.tier}`}>${fmtScore(a.score.total)}</span>` : null}</button>`}
+          <button role="tab" data-tab="details" aria-selected=${shownPane === 'details'} onClick=${() => setPane('details')}>Details</button>
         </div>
       </header>`}
       ${err && html`<div class="apl-callout is-warn" style="margin:1rem">${err} <button class="apl-more" onClick=${load}>Try again</button></div>`}
       ${!d && !err && html`<div class="apl-skel">Reading ${summary?.name || 'this family'} from JobTread…</div>`}
       ${d && !a && html`<div class="apl-skel">This family isn't in JobTread any more. <button class="apl-more" onClick=${onClose}>Close</button></div>`}
-      ${d && a && html`<div class="apl-dbody" data-pane=${pane}>
+      ${d && a && html`<div class="apl-dbody" data-pane=${shownPane}>
         <${Conversation} d=${{ ...d, applicant: a }} onSent=${refresh} addToast=${addToast} replyLink=${replyLink} />
+        ${scorable && shownPane === 'score' && html`<${ScorePane} key=${a.id} a=${a} onScored=${(sum) => onScored(a.id, sum)} addToast=${addToast} />`}
         <${SidePanel} d=${{ ...d, applicant: a }} fields=${fields} boundary=${boundary} onSaved=${refresh} onShowOnMap=${onShowOnMap} addToast=${addToast} />
       </div>`}
     </aside>
@@ -2082,6 +2316,402 @@ function WebsiteAnswers({ id, video = null }) {
   </div>`;
 }
 
+// ─── Scores ─────────────────────────────────────────────────────────
+// SOARD's makeover rubric (./scoring-shared.js): each person scores a family
+// on 10 criteria from 1 to 5; the family's score is the average, in a tier.
+
+/** Who scored: People's name and photo through the admin's whoOf, else a name made from the email */
+function plainWho(email) {
+  const e = String(email || '').toLowerCase();
+  const name = e.split('@')[0].split(/[._+-]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ') || 'Someone';
+  return { name, first: name.split(' ')[0], initials: initials(name), photo: null, email: e };
+}
+const whoNow = { fn: plainWho };
+const who = (email) => whoNow.fn(email) || plainWho(email);
+function Who({ email, size = 22 }) {
+  const w = who(email);
+  return html`<span class="avatar apl-who" style=${`--av:${size}px`} title=${w.name} aria-hidden="true">${w.initials}${w.photo ? html`<img src=${w.photo} alt="" loading="lazy" decoding="async" onError=${e => { e.currentTarget.hidden = true; }} />` : null}</span>`;
+}
+const namesOfEmails = (emails) => andList(emails.map(e => who(e).first));
+
+// High Priority green, Strong Candidate blue, Lower Priority amber, Do Not Proceed gray (never red)
+const TIER_TAG = { high: 'tag--success', strong: 'tag--info', lower: 'tag--warn', stop: '' };
+function TierTag({ id }) {
+  const t = tierById(id);
+  return t ? html`<span class=${`tag apl-tier is-${t.id} ${TIER_TAG[t.id]}`} title=${`${t.range}: ${t.hint}`}>${t.label}</span>` : null;
+}
+/**
+ * A family's score and tier, as one tag (label false: just the number, the tier in its color).
+ * Until everyone scoring the season has scored them: how many have ("2 of 3 scored").
+ */
+function ScoreTag({ s, label = true }) {
+  if (!s?.count) return null;
+  if (!s.ranked) {
+    const title = `${s.count} of ${s.of} have scored, waiting on ${namesOfEmails(s.waiting || [])}. Ranked once everyone has.`;
+    return html`<span class="tag apl-score-tag is-held" title=${title}>${label ? `${s.count} of ${s.of} scored` : html`${s.count}/${s.of}<span class="sr-only"> scored</span>`}</span>`;
+  }
+  const t = tierById(s.tier);
+  if (!t) return null;
+  return html`<span class=${`tag apl-score-tag is-${t.id} ${TIER_TAG[t.id]}`} title=${`Score ${fmtScore(s.total)} of ${TOTAL_MAX}, ${t.label}: the average of ${plural(s.count, 'scorecard')}`}><b>${fmtScore(s.total)}</b>${label ? t.label : html`<span class="sr-only">${t.label}</span>`}</span>`;
+}
+
+/** 49, 50 and 41 */
+const andList = (xs) => (xs.length < 3 ? xs.join(' and ') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
+/** The criteria that wait for the home visit while it hasn't happened (from the 2027 rubric: Family readiness) */
+const laterOf = (d) => new Set(d && !d.visited ? criteriaOf(d.rubric).filter(c => c.after === 'visit').map(c => c.key) : []);
+/** The next criterion to open: the first after `from` with no score that isn't waiting */
+const nextOpen = (d, picks, from = null) => {
+  const ks = keysOf(d?.rubric);
+  const later = laterOf(d);
+  const i = from ? ks.indexOf(from) : -1;
+  return [...ks.slice(i + 1), ...ks.slice(0, Math.max(i, 0))].find(k => !picks[k] && !later.has(k)) ?? null;
+};
+
+const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const mergeScoreSave = (a, b) => ({ ...a, ...b, ...(a.scores || b.scores ? { scores: { ...(a.scores || {}), ...(b.scores || {}) } } : {}) });
+
+/**
+ * The family's Score tab: the signed-in person's own scorecard, a criterion at
+ * a time (each opens with its five levels; picking one saves and moves on), and
+ * everyone's, side by side with the family's score. Scoring on your own comes
+ * first: until your card is done, the tab opens on it.
+ */
+function ScorePane({ a, onScored, addToast }) {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState(null);
+  const [mode, setMode] = useState(null); // 'mine' | 'all'
+  const [picks, setPicks] = useState({});
+  const [notes, setNotes] = useState('');
+  const [openK, setOpenK] = useState(null);
+  const [saved, setSaved] = useState({ state: 'idle' });
+  const [how, setHow] = useState(false);
+  const pending = useRef({});
+  const timer = useRef(null);
+  const box = useRef(null);
+  const scoredRef = useRef(onScored);
+  scoredRef.current = onScored;
+  const toastRef = useRef(addToast);
+  toastRef.current = addToast;
+
+  const load = useCallback(async () => {
+    const j = await call(`${API}?scores=${encodeURIComponent(a.id)}`);
+    if (!j.success) { setErr(j.error || 'Couldn’t load the scores'); return; }
+    setErr(null);
+    setD(j);
+    const mine = j.cards.find(c => c.evaluator === String(j.me || '').toLowerCase());
+    setPicks(mine?.scores || {});
+    setNotes(mine?.notes || '');
+    setMode(m => m || (mine?.complete ? 'all' : 'mine'));
+    setOpenK(nextOpen(j, mine?.scores || {}));
+  }, [a.id]);
+  useEffect(() => { load(); }, [load]);
+
+  const flush = useCallback(async () => {
+    clearTimeout(timer.current);
+    const body = pending.current;
+    if (!Object.keys(body).length) return;
+    pending.current = {};
+    setSaved({ state: 'saving' });
+    const j = await call(API, { score: { id: a.id, ...body } });
+    if (!j.success) {
+      pending.current = mergeScoreSave(body, pending.current); // kept for the retry
+      setSaved({ state: 'error', error: j.error || 'Not saved' });
+      return;
+    }
+    setSaved({ state: 'saved' });
+    setD(x => x && { ...x, cards: [...x.cards.filter(c => c.evaluator !== j.card.evaluator), j.card], summary: j.summary });
+    scoredRef.current(j.summary);
+    if (j.finished) toastRef.current(`Your score for ${a.name}: ${j.card.total} of ${TOTAL_MAX}, ${tierOf(j.card.total).label}.`, 'success');
+  }, [a.id]);
+  const queue = (patch, wait) => {
+    pending.current = mergeScoreSave(pending.current, patch);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(flush, wait);
+  };
+  // Leaving the tab or the family: whatever is waiting is saved
+  useEffect(() => () => { flush(); }, [flush]);
+  // The criterion that just opened comes into view; after a pick, the keyboard moves on with it
+  const advanced = useRef(false);
+  useEffect(() => {
+    if (!openK) return;
+    const el = box.current?.querySelector(`[data-crit="${openK}"]`);
+    el?.scrollIntoView({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' });
+    if (advanced.current) el?.querySelector('.apl-level[aria-checked="true"], .apl-level')?.focus({ preventScroll: true });
+    advanced.current = false;
+  }, [openK]);
+
+  const pick = (k, n) => {
+    const next = { ...picks, [k]: n };
+    setPicks(next);
+    queue({ scores: { [k]: n } }, 250);
+    advanced.current = true;
+    setOpenK(nextOpen(d, next, k));
+  };
+  const unpick = (k) => {
+    setPicks(p => { const n = { ...p }; delete n[k]; return n; });
+    queue({ scores: { [k]: null } }, 250);
+  };
+  const startOver = async () => {
+    if (!(await ask({ title: 'Start your scorecard over?', text: `Your scores and notes for ${a.name} are removed. Everyone else’s stay as they are.`, yes: 'Start over', danger: true }))) return;
+    clearTimeout(timer.current);
+    pending.current = {};
+    const j = await call(API, { score: { id: a.id, clear: true } });
+    if (!j.success) { addToast(j.error || 'Not changed', 'error'); return; }
+    setPicks({});
+    setNotes('');
+    setOpenK(nextOpen(d, {}));
+    setD(x => x && { ...x, cards: x.cards.filter(c => c.evaluator !== String(x.me || '').toLowerCase()), summary: j.summary });
+    onScored(j.summary);
+  };
+  // 1 to 5 scores the criterion that's open (wherever focus is, short of typing or a sheet on top)
+  const keys = useRef(null);
+  keys.current = { mode, openK, pick, later: laterOf(d) };
+  useEffect(() => {
+    const onKey = (e) => {
+      const k = keys.current;
+      if (k.mode !== 'mine' || !k.openK || k.later.has(k.openK) || e.metaKey || e.ctrlKey || e.altKey || !/^[1-5]$/.test(e.key)) return;
+      if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable || document.querySelector('.apl-sheet-wrap, .ask-overlay, .kd-dialog')) return;
+      e.preventDefault();
+      k.pick(k.openK, Number(e.key));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  if (err) return html`<section class="apl-score"><div class="apl-callout is-warn">${err} <button class="apl-more" onClick=${load}>Try again</button></div></section>`;
+  if (!d) return html`<section class="apl-score"><div class="apl-skel">Loading the scores…</div></section>`;
+  const me = String(d.me || '').toLowerCase();
+  const crits = criteriaOf(d.rubric);
+  const all = crits.length;
+  const later = laterOf(d);
+  const done = scoredCount(picks, d.rubric);
+  const mine = d.cards.find(c => c.evaluator === me);
+  const finished = d.cards.filter(c => c.complete);
+  const othersDone = finished.filter(c => c.evaluator !== me);
+  const s = d.summary;
+  const myTotal = totalOf(picks, d.rubric);
+  const so = crits.reduce((n, c) => n + (picks[c.key] || 0), 0);
+  // What's left is only what waits for the home visit
+  const waitsLeft = crits.filter(c => later.has(c.key) && !picks[c.key]);
+  const onlyVisitLeft = waitsLeft.length > 0 && done === all - waitsLeft.length;
+  const saveText = saved.state === 'saving' ? 'Saving…' : saved.state === 'saved' ? 'Saved' : '';
+
+  return html`<section class="apl-score" aria-label="Score" ref=${box}>
+    <div class="apl-score-head">
+      <div class="seg apl-score-seg" role="tablist" aria-label="Scorecards">
+        <button role="tab" aria-selected=${mode === 'mine'} onClick=${() => setMode('mine')}>Your scorecard <span class="count">${done === all ? myTotal : `${done}/${all}`}</span></button>
+        <button role="tab" aria-selected=${mode === 'all'} onClick=${() => setMode('all')}>Everyone <span class="count">${finished.length}</span></button>
+      </div>
+      <button class="apl-more" onClick=${() => setHow(true)}>How scoring works</button>
+    </div>
+
+    ${mode === 'mine' && html`<div class="apl-score-body">
+      ${!mine?.done && othersDone.length > 0 && html`<p class="apl-callout">${namesOfEmails(othersDone.map(c => c.evaluator))} ${othersDone.length === 1 ? 'has' : 'have'} scored ${a.name}. Score on your own first, then compare under Everyone.</p>`}
+      <div class="apl-score-sum" aria-live="polite">
+        <div class="apl-score-big"><b>${done === all ? myTotal : done ? so : '–'}</b><span>${done === all ? `of ${TOTAL_MAX}` : 'so far'}</span></div>
+        <div class="apl-score-what">
+          ${done === all
+            ? html`<${TierTag} id=${tierOf(myTotal).id} /><span class="apl-card-sub">Your scorecard is done. It counts in ${a.name}’s score.</span>`
+            : html`<strong>${done} of ${all} scored</strong><span class="apl-card-sub">${onlyVisitLeft
+              ? `${andList(waitsLeft.map(c => c.label))} is scored after the home visit. Your scorecard counts once it has a score.`
+              : done ? `It counts once all ${all} have a score. It saves as you go.` : `Pick a score for each of the ${all}. It saves as you go.`}</span>`}
+        </div>
+        <span class=${`apl-score-saved is-${saved.state}`}>${saved.state === 'error' ? html`${saved.error} <button class="apl-more" onClick=${flush}>Try again</button>` : saveText}</span>
+      </div>
+      <ol class="apl-crits">
+        ${crits.map((c, i) => {
+          const v = picks[c.key];
+          const isOpen = openK === c.key;
+          const wait = later.has(c.key) && !v;
+          return html`<li key=${c.key} class=${`apl-crit${isOpen ? ' is-open' : ''}${v ? ' is-set' : ''}${wait ? ' is-later' : ''}`} data-crit=${c.key}>
+            <button class="apl-crit-head" aria-expanded=${isOpen} onClick=${() => setOpenK(isOpen ? null : c.key)}>
+              <span class="apl-crit-i" aria-hidden="true">${i + 1}</span>
+              <span class="apl-crit-name"><b>${c.label}</b>${!isOpen && html`<small>${wait ? 'After the home visit' : v ? c.levels[v - 1] : c.ask}</small>`}</span>
+              <span class=${`apl-heat apl-crit-v${v ? ` is-${v}` : ' is-none'}`}><span class="sr-only">${v ? `Scored ${v}` : wait ? 'Scored after the home visit' : 'Not scored yet'}</span><span aria-hidden="true">${v || ''}</span></span>
+            </button>
+            ${isOpen && wait && html`<div class="apl-crit-body">
+              <p class="apl-crit-ask">${c.ask}<span>${c.note}</span></p>
+              <p class="apl-card-sub apl-crit-later">It opens once photos from the visit are in CompanyCam, or once ${a.name} is approved or turned down.</p>
+            </div>`}
+            ${isOpen && !wait && html`<div class="apl-crit-body">
+              <p class="apl-crit-ask">${c.ask}${c.note && html`<span>${c.note}</span>`}</p>
+              <div class="apl-levels" role="radiogroup" aria-label=${c.label}>
+                ${c.levels.map((t, j) => html`<button key=${j} role="radio" aria-checked=${v === j + 1} class="apl-level" onClick=${() => pick(c.key, j + 1)}><b class=${`apl-heat is-${j + 1}`}>${j + 1}</b><span>${t}</span></button>`)}
+              </div>
+              <div class="apl-crit-foot"><span class="apl-card-sub apl-kbd-hint">Or press 1 to 5</span>${v && html`<button class="apl-more" onClick=${() => unpick(c.key)}>Clear this score</button>`}</div>
+            </div>`}
+          </li>`;
+        })}
+      </ol>
+      <label class="apl-score-notes"><span><b>Notes and rationale</b> <span class="apl-card-sub">Staff only</span></span>
+        <textarea class="form-input" rows="3" value=${notes} onInput=${e => { setNotes(e.target.value); queue({ notes: e.target.value }, 900); }} onBlur=${flush} placeholder="What stood out, and why you scored it this way"></textarea>
+      </label>
+      ${mine && html`<div class="apl-score-foot"><span class="apl-card-sub">${mine.source === 'sheet' ? 'Brought over from the scoring spreadsheet' : `Started ${fullDate(mine.createdAt)}`}</span><button class="apl-more" onClick=${startOver}>Start over</button></div>`}
+    </div>`}
+
+    ${mode === 'all' && html`<div class="apl-score-body">
+      ${!s.count ? html`<div class="apl-zero"><p><strong>Nobody has finished scoring ${a.name} yet.</strong></p>${s.started.length > 0 ? html`<p>${namesOfEmails(s.started)} ${s.started.length === 1 ? 'has' : 'have'} started.</p>` : html`<p>Each person scores on their own. Once someone finishes, the family's score shows here.</p>`}</div>` : html`
+        <div class="apl-score-sum">
+          <div class="apl-score-big"><b>${fmtScore(s.total)}</b><span>of ${TOTAL_MAX}</span></div>
+          <div class="apl-score-what">${s.ranked
+            ? html`<${TierTag} id=${s.tier} /><span class="apl-card-sub">${tierById(s.tier).hint}</span>`
+            : html`<strong>${s.count} of ${s.of} scored</strong><span class="apl-card-sub">Waiting on ${namesOfEmails(s.waiting)}. ${a.name} is ranked once everyone scoring this season has scored them.</span>`}</div>
+        </div>
+        <p class="apl-score-how">${s.count === 1 ? (s.by[0] === me ? 'Your total.' : `${who(s.by[0]).first}’s total.`) : `The average of the ${s.count} totals, ${andList(s.totals)}.`}</p>
+        ${s.talk.length > 0 && html`<div class="apl-callout is-warn apl-talk"><strong>Worth talking about:</strong> ${s.talk.map((k, i) => html`${i ? ', ' : ''}${crits.find(c => c.key === k).label} (${s.range[k][0]} to ${s.range[k][1]})`)}. Scores this far apart usually mean people saw something different.</div>`}
+        <div class="apl-score-table-wrap"><table class="apl-score-table">
+          <thead><tr><th scope="col">Criterion</th>${finished.map(c => html`<th scope="col" key=${c.evaluator}><span class="apl-score-th"><${Who} email=${c.evaluator} /><span>${c.evaluator === me ? 'You' : who(c.evaluator).first}</span></span></th>`)}<th scope="col" class="apl-avg">Family</th></tr></thead>
+          <tbody>${crits.map(c => html`<tr key=${c.key} class=${s.talk.includes(c.key) ? 'is-talk' : ''}>
+            <th scope="row" title=${c.ask}><span class="is-long">${c.label}</span><span class="is-short">${c.short}</span></th>
+            ${finished.map(x => html`<td key=${x.evaluator}><span class=${`apl-heat is-${x.scores[c.key]}`}>${x.scores[c.key]}</span></td>`)}
+            <td class="apl-avg"><b>${fmtScore(s.criteria[c.key])}</b></td>
+          </tr>`)}</tbody>
+          <tfoot><tr><th scope="row">Total</th>${finished.map(x => html`<td key=${x.evaluator}><b>${x.total}</b></td>`)}<td class="apl-avg"><b>${fmtScore(s.total)}</b></td></tr></tfoot>
+        </table></div>
+        ${finished.some(c => c.notes) && html`<div class="apl-score-notes-list">${finished.filter(c => c.notes).map(c => html`<div class="apl-score-note" key=${c.evaluator}><${Who} email=${c.evaluator} size=${26} /><div><b>${c.evaluator === me ? 'You' : who(c.evaluator).name}</b><p>${c.notes}</p></div></div>`)}</div>`}
+      `}
+      ${d.cards.filter(c => !c.complete && c.done > 0).map(c => html`<p class="apl-card-sub apl-score-partial" key=${c.evaluator}>${c.evaluator === me ? 'You have' : `${who(c.evaluator).first} has`} scored ${c.done} of ${all} so far.</p>`)}
+    </div>`}
+    ${how && html`<${HowScoring} version=${d.rubric} onClose=${() => setHow(false)} />`}
+  </section>`;
+}
+
+/** The rubric in full: why SOARD scores, the tiers, and what each score means (the spreadsheet's first two tabs, as the version has them) */
+function HowScoring({ version = RUBRIC_VERSION, onClose }) {
+  const crits = criteriaOf(version);
+  const shut = useRef(null);
+  useEffect(() => {
+    shut.current?.focus();
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  return html`<div class="apl-sheet-wrap" onClick=${e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div class="apl-sheet apl-how" role="dialog" aria-modal="true" aria-labelledby="apl-how-title">
+      <div class="apl-how-head"><h2 id="apl-how-title">How makeover scoring works</h2><button class="apl-icon-btn" ref=${shut} onClick=${onClose} aria-label="Close">${Icon.close()}</button></div>
+      <p>SOARD gets more requests for home modifications than it can do in a year. To keep choices fair, transparent and true to the mission, each makeover is scored on the same ${crits.length} criteria, 1 to 5 each, for up to ${TOTAL_MAX} points.</p>
+      <p>Each person scores on their own. The family’s score is the average of everyone’s totals, which evens out any one person’s leanings. A family is ranked once everyone scoring that season has scored them, so every family in the ranking was scored by the same people.</p>
+      <p>${version === SHEET_RUBRIC ? 'The 2026 season was scored with the scoring spreadsheet’s criteria.' : 'Family readiness is scored after the home visit, so everyone scores it from the same visit.'}</p>
+      <div class="apl-how-tiers">${TIERS.map(t => html`<div key=${t.id}><${TierTag} id=${t.id} /><b>${t.range}</b><span>${t.hint}</span></div>`)}</div>
+      <p class="apl-card-sub" style="white-space:normal">The score doesn’t replace judgment. It gives a consistent framework for the conversation, and SOARD’s leadership and Board make the final decisions. Exceptional circumstances can still be discussed outside the score.</p>
+      <h3>What each score means</h3>
+      ${crits.map((c, i) => html`<details class="apl-how-crit" key=${c.key}>
+        <summary><span class="apl-crit-i">${i + 1}</span><b>${c.label}</b><span class="apl-card-sub">${c.ask}</span></summary>
+        ${c.note && html`<p class="apl-card-sub" style="white-space:normal">${c.note}</p>`}
+        <ol>${c.levels.map((t, j) => html`<li key=${j}><b class=${`apl-heat is-${j + 1}`}>${j + 1}</b><span>${t}</span></li>`)}</ol>
+      </details>`)}
+    </div>
+  </div>`;
+}
+
+/**
+ * Scores (a view of Applicants): the families showing, ranked by score, with
+ * the spreadsheet's snapshot on top (how many in each tier, the average) and
+ * how the ranking fills the makeovers the season can take. A family is ranked
+ * once everyone scoring the season has scored them; the rest are listed after,
+ * with who they're waiting on. Opening one goes to its Score tab.
+ */
+function ScoresView({ list, year, capacity, onOpen, addToast, onCapacity }) {
+  const [how, setHow] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [capText, setCapText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const fams = list.filter(a => a.kind !== 'organization');
+  const scored = fams.filter(a => a.score?.ranked)
+    .sort((x, y) => y.score.total - x.score.total || y.score.count - x.score.count || x.name.localeCompare(y.name));
+  // Partway (most scorecards first), then started, then nobody yet; families turned down are left out
+  const notYet = fams.filter(a => !a.score?.ranked && a.status !== 'Denied')
+    .sort((x, y) => (y.score?.count || 0) - (x.score?.count || 0) || (y.score?.started?.length || 0) - (x.score?.started?.length || 0) || x.name.localeCompare(y.name));
+  const byTier = Object.fromEntries(TIERS.map(t => [t.id, scored.filter(a => a.score.tier === t.id).length]));
+  const avg = scored.length ? scored.reduce((n, a) => n + a.score.total, 0) / scored.length : null;
+  const cap = year ? capacity[year]?.count ?? null : null;
+  const head = criteriaOf(year ? rubricOfSeason(year) : RUBRIC_VERSION);
+  // Who's scoring the season (TEST families aside)
+  const panel = year ? [...new Set(fams.filter(a => !isTestFamily(a)).flatMap(a => [...(a.score?.by || []), ...(a.score?.waiting || [])]))] : [];
+  // Who's in line for the season: everyone ranked and not turned down, best first
+  const line = scored.filter(a => a.status !== 'Denied');
+  const high = line.filter(a => a.score.tier === 'high');
+  // A kid page awaiting funding, or no kid page yet
+  const unfunded = high.filter(a => !a.kid || a.kid.status === 'needs-funding');
+  const saveCap = async (count) => {
+    setBusy(true);
+    const j = await call(API, { capacity: { year, count } });
+    setBusy(false);
+    if (!j.success) { addToast(j.error || 'Not saved', 'error'); return; }
+    onCapacity(j.capacity);
+    setEditing(false);
+  };
+  const startEdit = () => { setCapText(cap ? String(cap) : ''); setEditing(true); };
+  const stillLine = (a) => (a.score?.count
+    ? `${a.score.count} of ${a.score.of} scored · waiting on ${namesOfEmails(a.score.waiting)}`
+    : a.score?.started?.length ? `${namesOfEmails(a.score.started)} started` : [(a.types || []).join(', '), a.county].filter(Boolean).join(' · '));
+
+  const capCard = year && html`<div class="apl-panel apl-cap">
+    <h3>Makeovers in ${year}
+      ${!editing && html`<button class="apl-more" onClick=${startEdit}>${cap ? 'Change' : 'Set how many'}</button>`}
+    </h3>
+    ${editing && html`<form class="apl-cap-form" onSubmit=${e => { e.preventDefault(); saveCap(capText.trim() ? Number(capText) : null); }}>
+      <label>How many makeovers SOARD can do in ${year} <input class="form-input" type="number" min="1" max="500" step="1" inputmode="numeric" value=${capText} onInput=${e => setCapText(e.target.value)} aria-label=${`Makeovers in ${year}`} autofocus /></label>
+      <button class="btn btn-primary btn-sm" disabled=${busy}>${busy ? 'Saving…' : 'Save'}</button>
+      <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setEditing(false)}>Cancel</button>
+    </form>`}
+    ${!editing && !cap && html`<p class="apl-cap-text">How many makeovers can SOARD do in ${year}? With that number, this shows how the ranking fills the season.</p>`}
+    ${!editing && cap && html`
+      <div class="apl-slots" role="img" aria-label=${`${cap} makeovers: ${TIERS.map(t => `${Math.min(line.filter(a => a.score.tier === t.id).length, cap)} ${t.label}`).join(', ')}`}>
+        ${Array.from({ length: cap }, (_, i) => { const f = line[i]; return html`<span key=${i} class=${`apl-slot ${f ? `is-${f.score.tier}` : 'is-open'}`} title=${f ? `${i + 1}. ${f.name}: ${fmtScore(f.score.total)}, ${tierById(f.score.tier).label}` : `${i + 1}. Not filled by a ranked family yet`}></span>`; })}
+      </div>
+      <p class="apl-cap-text">${high.length >= cap
+        ? `${high.length} High Priority ${high.length === 1 ? 'family' : 'families'} for ${cap} makeovers: more than the season can take.`
+        : `${high.length} High Priority ${high.length === 1 ? 'family fills' : 'families fill'} ${high.length} of the ${cap} makeovers, leaving ${cap - high.length} for the next in line${byTier.strong ? ` (${plural(byTier.strong, 'Strong Candidate')} ranked)` : ''}.`}</p>`}
+    <div class="apl-cap-stats">
+      <div><b>${high.length}</b><span>High Priority</span></div>
+      <div><b>${cap ?? '–'}</b><span>Makeovers this season</span></div>
+      <div title="Their kid page says Awaiting funding, or they don’t have a kid page yet. Families turned down are left out."><b>${unfunded.length}</b><span>High Priority not yet funded</span></div>
+    </div>
+  </div>`;
+
+  return html`<div class="apl-scores">
+    <div class="apl-scores-head">
+      <p>${year ? `The ${year} families, ranked by makeover score.` : 'Every family, ranked by makeover score.'} ${panel.length > 1
+        ? `${namesOfEmails(panel)} are scoring ${year}. A family is ranked once ${panel.length === 2 ? 'both' : `all ${panel.length}`} have scored them; its score is the average of their totals.`
+        : 'Each person scores on their own; a family’s score is the average of their totals.'}</p>
+      <button class="btn btn-ghost btn-sm" onClick=${() => setHow(true)}>How scoring works</button>
+    </div>
+    <div class="apl-score-tiles">
+      <div class="apl-score-tile"><span>Ranked</span><b>${scored.length}</b><small>${fams.length ? `of ${plural(fams.length, 'family', 'families')}` : 'no families'}</small></div>
+      ${TIERS.map(t => html`<div class=${`apl-score-tile is-${t.id}`} key=${t.id} title=${t.hint}><span><i class="apl-tier-dot" aria-hidden="true"></i>${t.label}</span><b>${byTier[t.id]}</b><small>${t.range}</small></div>`)}
+      <div class="apl-score-tile"><span>Average score</span><b>${avg == null ? '–' : avg.toFixed(1)}</b><small>of ${TOTAL_MAX}</small></div>
+    </div>
+    ${capCard}
+    ${scored.length ? html`<div class="apl-rank-wrap"><table class="apl-rank">
+      <thead><tr>
+        <th scope="col" class="apl-rank-n"><span class="sr-only">Rank</span>#</th>
+        <th scope="col">Family</th>
+        <th scope="col">Score</th>
+        <th scope="col" class="apl-rank-crits"><span class="apl-rank-crit-row">${head.map(c => html`<span key=${c.key} title=${c.label}>${c.short}</span>`)}</span></th>
+        <th scope="col">Scored by</th>
+      </tr></thead>
+      <tbody>${scored.map((a, i) => html`<tr key=${a.id} tabindex="0" onClick=${() => onOpen(a.id, 'score')} onKeyDown=${e => { if (e.key === 'Enter') onOpen(a.id, 'score'); }} aria-label=${`${i + 1}. ${a.name}, ${fmtScore(a.score.total)} of ${TOTAL_MAX}, ${tierById(a.score.tier).label}. Open their score`}>
+        <td class="apl-rank-n">${i + 1}</td>
+        <td><div class="apl-rank-who"><${Avatar} a=${a} size=${30} /><div><strong>${a.name}</strong><div class="apl-card-sub">${[(a.types || []).join(', '), a.county].filter(Boolean).join(' · ')}</div></div><${Pill} status=${a.status} /></div></td>
+        <td><div class="apl-rank-score"><b>${fmtScore(a.score.total)}</b><${TierTag} id=${a.score.tier} /></div></td>
+        <td class="apl-rank-crits"><span class="apl-rank-crit-row">${criteriaOf(a.score.rubric).map(c => { const v = a.score.criteria[c.key]; const talk = a.score.talk.includes(c.key); return html`<span key=${c.key} class=${`apl-heat is-${Math.round(v)}${talk ? ' is-talk' : ''}`} title=${`${c.label}: ${fmtScore(v)}${talk ? `; scored ${a.score.range[c.key][0]} to ${a.score.range[c.key][1]}, worth talking about` : ''}`}>${fmtScore(v)}</span>`; })}</span></td>
+        <td><span class="apl-rank-by" title=${namesOfEmails(a.score.by)}>${a.score.by.slice(0, 4).map(e => html`<${Who} key=${e} email=${e} />`)}<span class="apl-card-sub">${a.score.count}</span></span>${a.score.talk.length > 0 && html`<span class="tag tag--warn apl-tag apl-talk-tag" title=${`Worth talking about: ${a.score.talk.map(k => criteriaOf(a.score.rubric).find(c => c.key === k).label).join(', ')}`}>Talk about ${a.score.talk.length}</span>`}</td>
+      </tr>`)}</tbody>
+    </table></div>` : html`<div class="apl-zero"><p><strong>No family ${year ? `in ${year} ` : ''}is ranked yet.</strong></p><p>Open a family and choose Score. Each person scores on their own, and a family is ranked once everyone scoring the season has scored them.</p></div>`}
+    ${notYet.length > 0 && html`<div class="apl-panel apl-unscored">
+      <h3>Not ranked yet <span class="count">${notYet.length}</span></h3>
+      <ul>${notYet.map(a => html`<li key=${a.id}><button onClick=${() => onOpen(a.id, 'score')}>
+        <${Avatar} a=${a} size=${28} />
+        <span class="apl-unscored-name"><strong>${a.name}</strong><span class="apl-card-sub">${stillLine(a)}</span></span>
+        <${Pill} status=${a.status} />
+        <span class="apl-more">Score</span>
+      </button></li>`)}</ul>
+    </div>`}
+    ${how && html`<${HowScoring} version=${year ? rubricOfSeason(year) : RUBRIC_VERSION} onClose=${() => setHow(false)} />`}
+  </div>`;
+}
+
 // ─── Status change sheet ────────────────────────────────────────────
 
 function StatusSheet({ a, status, paused = false, onClose, onDone, addToast }) {
@@ -2121,6 +2751,7 @@ function StatusSheet({ a, status, paused = false, onClose, onDone, addToast }) {
     <div class="apl-sheet" role="dialog" aria-modal="true" aria-labelledby="apl-sheet-title">
       <h2 id="apl-sheet-title">Move ${a.name} to ${status}?</h2>
       <div class="apl-sheet-move"><${Pill} status=${a.status} /> <span aria-hidden="true">→</span> <${Pill} status=${status} /> <span class="apl-card-sub">Saved to JobTread right away</span></div>
+      ${a.score?.ranked && (status === 'Approved' || status === 'Denied') && html`<div class="apl-sheet-score"><${ScoreTag} s=${a.score} /> <span class="apl-card-sub">${fmtScore(a.score.total)} of ${TOTAL_MAX}, the average of ${plural(a.score.count, 'scorecard')}</span></div>`}
       ${err && html`<div class="apl-callout is-warn">${err}</div>`}
       ${!p && !err && html`<div class="apl-skel" style="padding:1rem">Checking what the family would get…</div>`}
       ${p && !p.forward && html`<div class="apl-callout">${p.note}</div>`}

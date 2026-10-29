@@ -1095,7 +1095,7 @@ function TestRunButton({ d }) {
   return html`<a class="btn btn-primary afe-sample-btn" href=${`${formPath()}?test=1`} target="_blank" rel="noopener" title=${tip}><${Icon} name="play" size=${15} /> Go through it as ${isOrgForm() ? 'an organization' : 'a family'}</a>`;
 }
 
-export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, initialTab = null, setGlobalDirty = null }) {
+export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, initialTab = null, setGlobalDirty = null, whoOf = null }) {
   useStyles();
   const start = readHash() || { tab: 'applicants' };
   const [tab, setTab] = useState(initialTab && TAB_KEYS.has(initialTab) ? initialTab : start.tab);
@@ -1174,7 +1174,7 @@ export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, i
       </div>
       <div role="tabpanel" aria-label=${TABS.find(t => t[0] === tab)?.[1]}>
         ${KIND_TABS.has(tab) && html`<${KindSwitch} kind=${formKind} onKind=${setFormKind} />`}
-        ${tab === 'applicants' && html`<${ApplicantsTab} addToast=${addToast} route=${route} go=${go} />`}
+        ${tab === 'applicants' && html`<${ApplicantsTab} addToast=${addToast} route=${route} go=${go} whoOf=${whoOf} />`}
         ${tab === 'insights' && html`<${InsightsTab} key=${formKind} seasonYear=${d.meta?.year} go=${go} />`}
         ${tab === 'form' && html`<${FormArea} d=${d} view=${formView} onView=${goFormView} spanishLeft=${formKind === 'organization' ? 0 : spanishLeft} RichTextEditor=${RichTextEditor} addToast=${addToast} initialSel=${formSel} go=${go} />`}
         ${tab === 'emails' && html`<${EmailsTab} d=${d} RichTextEditor=${RichTextEditor} go=${go} addToast=${addToast} />`}
@@ -1185,7 +1185,7 @@ export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, i
 
 // ─── Applicants (./applicants.js), with Submissions as one of its views ──
 let applicantsModule = null;
-function ApplicantsTab({ addToast, route, go }) {
+function ApplicantsTab({ addToast, route, go, whoOf = null }) {
   const [mod, setMod] = useState(null);
   const [err, setErr] = useState(null);
   const [intake, setIntake] = useState(null); // the applications that haven't fully reached JobTread
@@ -1226,6 +1226,7 @@ function ApplicantsTab({ addToast, route, go }) {
   return html`<${mod.ApplicantsArea}
     addToast=${addToast}
     route=${route}
+    whoOf=${whoOf}
     notice=${notice}
     extraViews=${[{ key: 'submissions', label: 'Submissions', count: n, render: () => html`<${SubmissionsView} key=${`s${route.n}`} addToast=${addToast} openFirst=${route.view === 'submissions' ? route.open : route.application} initialShow=${route.show} attention=${n} onChanged=${loadIntake} />` }]} />`;
 }
