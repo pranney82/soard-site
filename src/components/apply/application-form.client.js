@@ -772,10 +772,14 @@ function init(root, cfg, mode) {
    * Back / Continue, measured as they're drawn now (this width, this language), then spread evenly
    * so no screen is left with one lonely question. A follow-up stays with the question it follows,
    * a short note stays with the question after it, and anything taller than the screen gets one to
-   * itself (and scrolls). Only while the application has the screen; before that there's nothing to
-   * measure. Staff can change the form freely: this works it out for whatever the pages hold.
+   * itself (and scrolls). Measured as it will be once answered, so answering never pushes Continue
+   * over a question: a follow-up as if shown, the service-area check with what it finds. Only while
+   * the application has the screen; before that there's nothing to measure. Staff can change the
+   * form freely: this works it out for whatever the pages hold.
    */
-  const pieces = (pid) => [...(pageEl(pid)?.children || [])];
+  // The home address with its map: two pieces once they're split (data-split), so the address can
+  // have one screen and the map with what the check found the next
+  const pieces = (pid) => [...(pageEl(pid)?.children || [])].flatMap(k => (k.matches('.af-place[data-split]') ? [...k.children] : [k]));
   const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : [...el.querySelectorAll('[data-field]')].map(x => x.dataset.field));
   const isNote = (el) => ['content', 'guidelines', 'image'].includes(el.dataset.type);
   let packSize = '';
@@ -788,16 +792,57 @@ function init(root, cfg, mode) {
     const tail = (shown ? saveRow.offsetHeight + parseFloat(getComputedStyle(saveRow).marginTop || 0) : 0) + parseFloat(getComputedStyle(ui.stage).paddingBottom || 0);
     return Math.max(260, innerHeight - top - nav - head - tail);
   }
+  /**
+   * For measuring: the page as it will look once answered (undone straight after, in the same task).
+   * A follow-up whose question is on this page shows, an upload has its Remove, and the service-area
+   * check shows what it finds for a home inside, with the county it fills in.
+   */
+  function answeredLook(el, pid) {
+    const undo = [];
+    for (const k of el.querySelectorAll('[data-field][hidden]')) {
+      const lead = byId[k.dataset.field]?.showIf?.field;
+      if (lead && pageOf(lead) === pid) { k.hidden = false; undo.push(() => { k.hidden = true; }); }
+    }
+    // An upload's Remove, there once something's added
+    for (const b of el.querySelectorAll('.af-upload [data-act="remove"][hidden]')) { b.hidden = false; undo.push(() => { b.hidden = true; }); }
+    const af = areaField();
+    const res = af && pageOf(af.id) === pid && el.querySelector('[data-area-result]');
+    if (res && !res.querySelector('.af-area-card')) {
+      const was = res.innerHTML;
+      const sample = T('areaFoundCounty', { address: '1234 Sample Street, Sampleville, GA 30000', county: 'Sample' });
+      res.innerHTML = `<div class="af-area-card" data-band="inside">${AREA_ICONS.inside}<div class="af-area-text"><p class="af-area-title">${esc(T('areaInside'))}</p><div class="af-area-desc-wrap"><p class="af-area-desc">${esc(af.descriptions?.[AREA_VALUES.inside] || '')}</p></div><p class="af-area-found">${esc(sample)}</p><button type="button" class="af-btn af-btn--link af-area-fix">${esc(T('areaFix'))}</button></div></div>`;
+      undo.push(() => { res.innerHTML = was; });
+    }
+    const note = res && el.querySelector('.af-county-note[hidden]');
+    if (note) {
+      const was = note.textContent;
+      note.textContent = T('countyFilled', { county: 'Sample' });
+      note.hidden = false;
+      undo.push(() => { note.hidden = true; note.textContent = was; });
+    }
+    return () => undo.reverse().forEach(f => f());
+  }
   function pack(pid) {
     const el = pageEl(pid);
-    const kids = pieces(pid);
-    if (!focused || !el || el.hidden || !kids.length || ui.form.hidden) return null;
-    kids.forEach(k => k.removeAttribute('data-off'));
+    if (!focused || !el || el.hidden || ui.form.hidden) return null;
+    el.querySelectorAll('[data-off]').forEach(k => k.removeAttribute('data-off'));
+    const places = [...el.querySelectorAll(':scope > .af-place')];
+    places.forEach(p => p.removeAttribute('data-split'));
     if (el.offsetParent === null) return null;
     packSize = `${innerWidth}x${innerHeight}`;
     const fit = room(el);
     const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
+    const undo = answeredLook(el, pid);
+    // The address beside its map while both fit (with the note that leads into them), else apart
+    for (const p of places) {
+      const note = p.previousElementSibling;
+      const nh = note && isNote(note) ? note.getBoundingClientRect().height : 0;
+      if ((nh && nh < fit * 0.5 ? nh + gap : 0) + p.getBoundingClientRect().height > fit) p.setAttribute('data-split', '');
+    }
+    const kids = pieces(pid);
     const h = kids.map(k => k.getBoundingClientRect().height);
+    undo();
+    if (!kids.length) return null;
     const blocks = [];
     kids.forEach((k, i) => {
       const prev = blocks[blocks.length - 1];
@@ -882,7 +927,7 @@ function init(root, cfg, mode) {
    * required answer missing); `at` or `focusField` picks the screen holding that question. Going
    * forward it slides in from the right, going back from the left. Resolves once it's in the page.
    */
-  function show(id, { dir = 0, screen = 0, at = null, focus = true, focusField = null, scroll = true } = {}) {
+  function show(id, { dir = 0, screen = 0, step = 0, at = null, focus = true, focusField = null, scroll = true } = {}) {
     if (!pageEl(id)) id = stepIds()[0];
     const pageChanged = id !== currentId;
     const update = () => {
@@ -895,12 +940,21 @@ function init(root, cfg, mode) {
         screenNo = 0;
         buildReview();
       } else {
+        let onto = -1;
         if (pageChanged || !packs[id]) {
           ui.stepTitle.textContent = titleOf(id); // measured with this step's own name above it
           packs[id] = pack(id);
+        } else if (step && packs[id]) {
+          // A screen on or back is worked out again (an answer can grow what's still to come, like the
+          // service-area check's result), landing on the screen with the piece just past this one
+          const order = packs[id].flat();
+          const here = packs[id][screenNo] || [];
+          const anchor = step > 0 ? order[order.indexOf(here[here.length - 1]) + 1] : order[order.indexOf(here[0]) - 1];
+          packs[id] = pack(id);
+          if (anchor && packs[id]) onto = packs[id].findIndex(kids => kids.includes(anchor));
         }
         const n = screensIn(id);
-        const want = at || focusField ? screenOf(id, at || focusField) : screen === 'last' ? n - 1 : screen === 'open' ? openScreen(id) : screen;
+        const want = onto >= 0 ? onto : at || focusField ? screenOf(id, at || focusField) : screen === 'last' ? n - 1 : screen === 'open' ? openScreen(id) : screen;
         screenNo = Math.max(0, Math.min(n - 1, Number(want) || 0));
         paintScreen();
       }
@@ -943,12 +997,14 @@ function init(root, cfg, mode) {
     if (Object.keys(errors).length) { showPageErrors(errors); return; }
     const last = screenNo >= screensIn(currentId) - 1;
     const stop = stopFor(form, a);
-    if (stop && stop.page === currentId && (here.has(stop.field) || last)) { showStop(stop); return; }
+    // The address decides the service-area answer, so its screen stops too (a phone has the map on the next)
+    const decides = stop && byId[stop.field]?.type === 'area' && here.has(homeAddressId());
+    if (stop && stop.page === currentId && (here.has(stop.field) || decides || last)) { showStop(stop); return; }
     setBusy(true);
     try {
       if (!(await start())) return;
       if (fromReview) await show('review', { dir: 1 });
-      else if (!last) await show(currentId, { dir: 1, screen: screenNo + 1 });
+      else if (!last) await show(currentId, { dir: 1, screen: screenNo + 1, step: 1 });
       else {
         const ids = stepIds(a);
         await show(ids[ids.indexOf(currentId) + 1] || 'review', { dir: 1 });
@@ -962,7 +1018,7 @@ function init(root, cfg, mode) {
   function back() {
     if (moving) return true;
     navNote(null);
-    if (screenNo > 0 && currentId !== 'review') { show(currentId, { dir: -1, screen: screenNo - 1 }).then(save); return true; }
+    if (screenNo > 0 && currentId !== 'review') { show(currentId, { dir: -1, screen: screenNo - 1, step: -1 }).then(save); return true; }
     const ids = stepIds();
     const at = ids.indexOf(currentId);
     if (at <= 0) return false;
@@ -1810,7 +1866,9 @@ function init(root, cfg, mode) {
       if (areaNow) { areaNow = null; paintArea(); }
       return;
     }
-    if (areaNow?.key === key || area.want === key) return;
+    // Typed back to the address already checked: its result again (and nothing on its way may replace it)
+    if (areaNow?.key === key) { area.want = null; clearTimeout(area.showTimer); paintArea(); return; }
+    if (area.want === key) return;
     // The old result no longer describes what's typed
     if (areaNow) paintArea('checking');
     area.timer = setTimeout(() => runArea(addr, key), now ? 0 : 650);

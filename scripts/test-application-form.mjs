@@ -308,13 +308,13 @@ try {
   const token = await draftToken();
   ok(/^[0-9a-f]{32}$/.test(token || ''), 'a draft started and its token is kept on this device');
 
-  console.log('Service area: the map and the address check');
+  console.log('Service area: the address, then the map with what the check found');
   const areaState = () => page.$eval('[data-area]', (e) => e.dataset.area);
   const waitArea = (st) => page.waitForFunction((x) => document.querySelector('[data-area]')?.dataset.area === x, { timeout: 15000 }, st).catch(() => {});
-  ok(await visible('[data-field="boundary"] .af-map-frame'), 'the map shows the service area before any address');
-  ok(await page.$$eval('[data-field="boundary"] .af-map-town', (els) => els.length) >= 8, 'with towns families know');
-  ok(/Enter the address above/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'and says what to do');
-  ok(!(await visible('[data-area-ask]')), 'the question itself stays out of the way');
+  const askShown = () => page.$eval('[data-area-ask]', (e) => !e.hidden);
+  ok(await visible('#af-address-line1') && await page.$eval('[data-field="boundary"]', (e) => !!e.closest('[data-off]')), 'a phone has the address on this screen, the map waiting for the next');
+  ok(/Enter the address above/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'the check says what to do until there is an address');
+  ok(!(await askShown()), 'the question itself stays out of the way');
   await page.focus('#af-address-line1');
   await page.type('#af-address-line1', '3167 Main');
   await page.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
@@ -339,9 +339,8 @@ try {
   ok(await areaState() === 'inside', 'the address is placed on the map: inside');
   const card = await page.$eval('[data-area-result]', (e) => e.textContent.replace(/\s+/g, ' '));
   ok(/Inside our service area/.test(card) && /We found 3167 Main St, Duluth, GA 30096, in Gwinnett County/.test(card), `what it found, in plain words (${card.slice(0, 120)})`);
-  ok(await visible('[data-field="boundary"] .af-map-pin'), 'a pin on the home');
+  ok(await page.$('[data-field="boundary"] .af-map-pin') != null, 'a pin on the home, ready on the map');
   ok(await page.$eval('[data-area-result]', (e) => e.getAttribute('aria-live')) === 'polite', 'the result is read out to screen readers');
-  await shot('03-area-inside-phone');
   await clear('#af-address-line1');
   await page.type('#af-address-line1', '3167 Main');
   await page.waitForSelector('#af-address-suggest:not([hidden])', { timeout: 4000 }).catch(() => {});
@@ -359,9 +358,9 @@ try {
   await waitArea('far');
   ok(await areaState() === 'far', 'Macon is placed far outside');
   ok(/Outside our service area/.test(await page.$eval('[data-area-result]', (e) => e.textContent)) && /only for homes inside/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'it says so, in the stop screen’s words');
-  ok(await visible('[data-field="boundary"] .af-map-away'), 'the map points to a home off its edge, with the distance');
+  ok(await page.$('[data-field="boundary"] .af-map-away') != null, 'the map points to a home off its edge, with the distance');
   await next();
-  ok(await visible('[data-stop]'), 'Continue: the stop screen');
+  ok(await visible('[data-stop]'), 'Continue on the address: the stop screen (the address decides it, the map screen is skipped)');
   ok(await visible('[data-stop-map] .af-map-frame'), 'with the map and where the home is');
   ok(/Change the address/.test(await page.$eval('[data-stop-back]', (e) => e.textContent)), 'and a way back to the address');
   await shot('05-stop-outside');
@@ -379,10 +378,15 @@ try {
   await clear('#af-address-zip');
   await page.type('#af-address-zip', '30999');
   await waitArea('unknown');
-  ok(await visible('[data-area-ask]'), 'not found: now the family is asked');
+  ok(await askShown(), 'not found: now the family is asked');
   ok(/couldn't find this address/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'and told why');
   await next();
-  ok(/enter the home address above so we can check it, or choose an answer/.test(await errorText('boundary')), 'Continue without an answer says what to do');
+  ok(await visible('[data-area-ask]') && await stepTitle() === AREA, 'Continue: the map screen, with the question');
+  await next();
+  ok(/enter the home address so we can check it, or choose an answer/.test(await errorText('boundary')), 'Continue without an answer says what to do');
+  await page.click('[data-back]');
+  await sleep(450);
+  ok(await visible('#af-address-line1'), 'Back: the address again');
 
   // Back to a home inside
   await clear('#af-address-line1');
@@ -392,7 +396,7 @@ try {
   await sleep(100);
   ok(await page.$eval('#af-address-line1', (e) => e.value) === '3167 Main St', 'a tap on a suggestion picks it too');
   await waitArea('inside');
-  ok(!(await visible('[data-area-ask]')), 'placed again, the question goes away');
+  ok(!(await askShown()), 'placed again, the question goes away');
   await type('#af-address-zip', '3009');
   await next();
   ok(/5-digit ZIP/.test(await errorText('address')), 'a short ZIP is caught');
@@ -405,6 +409,13 @@ try {
   await type('#af-address-zip', '30096');
   await waitArea('inside');
   await noSideScroll('service area');
+  await next();
+  ok(await visible('[data-field="boundary"] .af-map-frame') && await visible('[data-field="boundary"] .af-map-pin'), 'Continue: the map, with a pin on the home');
+  ok(await page.$$eval('[data-field="boundary"] .af-map-town', (els) => els.length) >= 8, 'with towns families know');
+  const areaCard = await page.$eval('[data-area-result]', (e) => e.textContent.replace(/\s+/g, ' ').trim());
+  ok(await visible('[data-area-result]') && /Inside our service area/.test(areaCard), `and the good news over it (${areaCard.slice(0, 80)})`);
+  ok(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight) <= 1, 'the map screen fits without scrolling');
+  await shot('03-area-inside-phone');
   await selectOpt('county', 'Cobb');
   ok(await page.$eval('[data-field="address"] .af-county-note', (e) => e.hidden), 'changing the county takes the note away');
   await pick('resides50', 'Yes');
@@ -594,7 +605,16 @@ try {
 
   console.log('Save and finish later');
   ok((await stepTitle()) === 'Certification', 'Certification');
-  await tap('.af-save-row [data-save-later]');
+  ok(!(await visible('.af-save-row [data-save-later]')), 'no row of its own under the questions (they get that room)');
+  const navLater = await page.evaluate(() => {
+    const later = document.querySelector('.af-nav-later').getBoundingClientRect();
+    const back = document.querySelector('[data-back]');
+    const b = back.getBoundingClientRect();
+    return { inBar: !!document.querySelector('.af-nav-later').closest('[data-nav]') && later.height >= 44, back: Math.round(b.width), name: back.textContent.trim() };
+  });
+  ok(navLater.inBar, 'it sits in the bar with Back and Continue, at the bottom of every screen');
+  ok(navLater.back <= 52 && navLater.name === 'Back', `Back is its arrow there, still named "Back" (${navLater.back}px)`);
+  await tap('.af-nav-later');
   await sleep(300);
   ok(await page.$eval('[data-later-dialog]', (d) => d.open), 'the dialog opens');
   ok(await page.$eval('#af-later-email', (e) => e.value) === 'jordan+apply@example.com', 'with the parent email filled in');

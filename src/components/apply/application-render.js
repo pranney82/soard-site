@@ -246,7 +246,10 @@ function choices(f, id, { plain = false } = {}) {
   const type = f.type === 'radio' || f.type === 'area' ? 'radio' : 'checkbox';
   // Choices that each explain themselves sit as tiles (two to a row where there's room)
   const tiles = !plain && f.options.length >= 3 && f.options.every(v => f.descriptions?.[v]);
-  return `<div class="af-choices${sideBySide(f, plain) ? ' af-choices--row' : ''}${tiles ? ' af-choices--tiles' : ''}">${f.options.map((v, i) => {
+  // A longer list of short answers: two columns where there's room, read down the first then the second
+  const cols = !plain && !tiles && !sideBySide(f, plain) && f.options.length >= 5
+    && f.options.every(v => !f.descriptions?.[v] && String(f.optionLabels?.[v] ?? v).length <= 36);
+  return `<div class="af-choices${sideBySide(f, plain) ? ' af-choices--row' : ''}${tiles ? ' af-choices--tiles' : ''}${cols ? ' af-choices--cols' : ''}"${cols ? ` style="--rows:${Math.ceil(f.options.length / 2)}"` : ''}>${f.options.map((v, i) => {
     const label = f.optionLabels?.[v] ?? v;
     const desc = plain ? '' : f.descriptions?.[v];
     const text = desc ? `<strong class="af-choice-title">${esc(label)}</strong><span class="af-choice-desc">${esc(desc)}</span>` : esc(label);

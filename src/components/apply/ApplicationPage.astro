@@ -548,7 +548,7 @@ const breadcrumbs = [
   .af-pages { position: relative; }
   .af-page { display: grid; gap: 28px; }
   /* A step's later screens wait their turn (the script decides which questions share a screen) */
-  .af-page > [data-off] { display: none !important; }
+  .af-page > [data-off], .af-place > [data-off] { display: none !important; }
   .af-loading { color: var(--c-text-muted); font-size: 16px; padding: 24px 0; }
   .af-page[hidden] { display: none; }
 
@@ -662,9 +662,16 @@ const breadcrumbs = [
   .af-choice-desc { font-size: 14px; line-height: 1.5; color: var(--c-text-muted); }
   .af-field--ack .af-choice { background: var(--c-cream); }
   .af-field--ack .af-choice:has(input:checked) { background: var(--af-picked); }
-  /* Choices that each explain themselves: tiles, two to a row where there's room */
-  @container (min-width: 560px) { .af-choices--tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  /* Choices that each explain themselves: tiles with the box in the corner, so the words get the
+     whole width; two columns where there's room, each packing its own tiles (a short one leaves no hole) */
   .af-choices--tiles .af-choice { padding: 14px 16px; }
+  .af-choices--tiles .af-choice-box { position: absolute; top: 13px; right: 13px; }
+  .af-choices--tiles .af-choice-title { padding-right: 34px; }
+  @container (min-width: 560px) {
+    .af-choices--tiles { display: block; columns: 2; column-gap: 10px; }
+    .af-choices--tiles .af-choice { break-inside: avoid; margin-bottom: 10px; }
+  }
+  @container (min-width: 560px) { .af-choices--cols { grid-template-rows: repeat(var(--rows), auto); grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); } }
   /* Yes / No and other short answers: side by side */
   .af-choices--row { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
   .af-choices--row .af-choice { align-items: center; }
@@ -1084,7 +1091,7 @@ const breadcrumbs = [
   html.af-focus .af-main { grid-area: main; display: flex; flex-direction: column; min-height: calc(100dvh - var(--af-top-h)); }
   html.af-focus .af-main > :is(.af-testbar, .af-notice) { width: calc(100% - 48px); max-width: calc(var(--af-col) - 48px); margin: 20px auto 0; }
   html.af-focus .af-form { flex: 1 0 auto; display: flex; flex-direction: column; background: none; border-radius: 0; box-shadow: none; padding: 0; }
-  html.af-focus .af-stage { flex: 1 0 auto; width: 100%; max-width: var(--af-col); margin: 0 auto; padding: clamp(20px, 4.5vh, 48px) 24px 24px; }
+  html.af-focus .af-stage { flex: 1 0 auto; width: 100%; max-width: var(--af-col); margin: 0 auto; padding: clamp(20px, 4.5vh, 48px) 24px 6px; }
   html.af-focus .af-head { margin-bottom: 24px; }
   html.af-focus .af-field textarea { min-height: 116px; }
   html.af-focus :is(.af-stop, .af-done) { width: calc(100% - 32px); max-width: var(--af-col); margin: clamp(20px, 5vh, 48px) auto 48px; }
@@ -1127,8 +1134,15 @@ const breadcrumbs = [
   .af-save-row { display: flex; justify-content: flex-start; margin-top: 24px; }
   .af-nav-later { margin-left: auto; }
   .af-nav-later + [data-next] { margin-left: 0; }
-  @media (min-width: 641px) { html.af-focus .af-save-row { display: none; } }
-  @media (max-width: 640px) { .af-nav-later { display: none; } }
+  /* With the screen to itself, the questions get all the room between the top bar and Back / Continue:
+     Save and finish later sits between the buttons (on a phone Back is its arrow), in the rail on a computer */
+  html.af-focus .af-save-row { display: none; }
+  @media (max-width: 640px) {
+    .af-nav-later { display: none; }
+    html.af-focus .af-nav-later { display: inline-flex; flex: 0 1 auto; max-width: 40%; min-height: 44px; padding: 0 4px; font-size: 14px; line-height: 1.25; text-align: center; }
+    html.af-focus .af-nav-row .af-btn--back { width: 52px; min-width: 52px; padding: 0; justify-content: center; flex: none; }
+    html.af-focus .af-nav-row .af-btn--back span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  }
   @media (min-width: 1080px) { .af-nav-later { display: none; } .af-nav-later + [data-next] { margin-left: auto; } }
   /* Continue while it works: the words stay, a small turn replaces the arrow if it takes a moment */
   .af-btn[aria-busy="true"] .af-btn-icon--next { opacity: 0; }
@@ -1147,6 +1161,8 @@ const breadcrumbs = [
       background: var(--c-cream); border-right: 1px solid #ECE7DA;
     }
     html.af-focus .af-steps { display: none; }
+    /* With All steps in the rail, "Step 2 of 10" needs only its own line */
+    html.af-focus .af-head-top { min-height: 0; }
   }
   @media (min-width: 1080px) and (max-height: 820px) {
     html.af-focus .af-rail { gap: 14px; padding-top: 24px; }
@@ -1254,6 +1270,22 @@ const breadcrumbs = [
   .af-map-frame { width: min(100%, calc(var(--af-map-h, 100vh) * var(--r, 1.4))); margin-inline: auto; }
   html.af-focus .af-place { --af-map-h: 26vh; }
   @container (min-width: 600px) { html.af-focus .af-place { --af-map-h: clamp(220px, calc(100dvh - 430px), 46vh); } }
+  /* Apart, when they don't fit a screen together (the script sets data-split): the address on its own,
+     then the map with what the check found on the next screen, side by side where there's room */
+  html.af-focus .af-place[data-split] { grid-template-columns: minmax(0, 1fr); }
+  html.af-focus .af-place[data-split] > .af-field--address { grid-column: auto; grid-row: auto; }
+  html.af-focus .af-place[data-split] > .af-field--area { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
+  /* The map's screen says the county ("…in Gwinnett County"), so the address's screen needn't */
+  html.af-focus .af-place[data-split] .af-county-note { display: none; }
+  @container (min-width: 600px) {
+    html.af-focus .af-place[data-split] > .af-field--area { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 16px 24px; }
+    html.af-focus .af-place[data-split] { --af-map-h: clamp(240px, calc(100dvh - 400px), 50vh); }
+  }
+  /* City, State and ZIP on one row once the application has the screen (a phone's widths allow it) */
+  @container (min-width: 340px) and (max-width: 599.98px) {
+    html.af-focus .af-row--3 { grid-template-columns: minmax(0, 1.3fr) minmax(0, .8fr) minmax(0, 1.05fr); }
+    html.af-focus .af-row--3 > :first-child { grid-column: auto; }
+  }
 
   /* ── A name's or address's parts: the name inside the box, rising as it's filled ── */
   .af-float { position: relative; display: block; }
@@ -1332,17 +1364,20 @@ const breadcrumbs = [
     .af-top-exit { width: 44px; padding: 0; justify-content: center; }
     .af-top-exit span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .af-top-exit svg { width: 16px; height: 16px; }
-    html.af-focus .af-stage { padding: 14px 18px 20px; }
+    html.af-focus .af-stage { padding: 14px 18px 12px; }
+    html.af-focus .af-content { font-size: 16px; line-height: 1.6; }
     html.af-focus .af-head { margin-bottom: 18px; }
-    html.af-focus .af-head-top { margin-bottom: 2px; }
+    /* "All steps" keeps its 44px to tap, but its line takes only what the words beside it need */
+    html.af-focus .af-head-top { margin-bottom: 8px; min-height: 24px; }
+    html.af-focus .af-steps { margin-block: -10px; }
+    html.af-focus .af-field .af-float > :is(input:not([type=radio]):not([type=checkbox]):not([type=file]), select) { min-height: 54px; padding: 23px 15px 5px; }
+    html.af-focus .af-float-label { top: 16px; }
     html.af-focus .af-steps-toggle { padding: 0 10px; font-size: 13.5px; gap: 4px; }
     /* Where they are, on one line beside "All steps" (Spanish runs longer) */
     html.af-focus .af-step-text { flex-wrap: nowrap; white-space: nowrap; font-size: 11.5px; letter-spacing: .07em; gap: 8px; min-width: 0; }
     html.af-focus .af-part { gap: 8px; }
     html.af-focus .af-step-title { font-size: 25px; line-height: 1.18; }
     html.af-focus .af-page { gap: 22px; }
-    html.af-focus .af-save-row { margin-top: 16px; }
-    html.af-focus .af-save-row .af-btn--link { font-size: 14.5px; }
     html.af-focus .af-nav { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
     .af-nav-row [data-next] { flex: 1; min-width: 0; }
     html.af-focus .af-main > :is(.af-testbar, .af-notice) { width: calc(100% - 28px); margin-top: 14px; }
