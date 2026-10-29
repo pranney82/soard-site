@@ -53,6 +53,7 @@ import { join } from 'node:path';
 import { createD1 } from '../tests/lib/d1-shim.mjs';
 import * as adminApi from '../functions/api/applications-admin.js';
 import { getDraftForm, getLiveForm, clearFormCache, saveDraftForm, getFormRules, saveFormRules } from '../functions/api/_application-forms.js';
+import { spanishToDo } from '../functions/api/_translate.js';
 import { resolveForm } from '../functions/api/_application-form.js';
 import { ensureSchema, runApplicationSchedule } from '../functions/api/_applications.js';
 import { ensureApplicantSchema } from '../functions/api/_applicants.js';
@@ -714,10 +715,18 @@ try {
     await page.waitForSelector('#afe-m-approved[lang="es"]');
     ok(/The English changed after this was translated/.test(await text(page, '.afe-email-ed')), 'its Spanish shows as out of date, with the old English');
     ok(/Decisión sobre la solicitud/.test(await text(page, '.afe-email-prev')), 'the Spanish preview has the Spanish subject');
+    // A touch to the old Spanish (a stray keystroke) leaves it out of date
+    await page.click('#afe-m-approved');
+    await page.keyboard.type('x');
+    await page.keyboard.press('Backspace');
+    await waitSaved(page);
+    let es = (await draftDef()).i18n.es;
+    ok(es.sources['message:approved'] !== (await draftDef()).messages.approved && /so Put live translates it again/.test(await text(page, '.afe-email-ed')), 'touching the old Spanish leaves it out of date: Put live still translates it');
+    // Clearing it and writing new Spanish is a translation of today's English
     await typeInto(page, '#afe-m-approved', '{parent}, la solicitud de *{child}* fue aprobada.');
     await waitSaved(page);
-    const es = (await draftDef()).i18n.es;
-    ok(es.strings['message:approved'] === '{parent}, la solicitud de *{child}* fue aprobada.' && es.sources['message:approved'] === (await draftDef()).messages.approved, 'typing the Spanish saves it against the current English');
+    es = (await draftDef()).i18n.es;
+    ok(es.strings['message:approved'] === '{parent}, la solicitud de *{child}* fue aprobada.' && es.sources['message:approved'] === (await draftDef()).messages.approved, 'new Spanish written in the box saves against the current English');
     ok(/Jordan Stone, la solicitud de Avery Stone fue aprobada/.test(await text(page, '.afe-email-prev')), 'and the preview reads it');
     await clickText(page, '.afe-email-top .afe-seg-text button', /^English$/);
     // Reminders
@@ -780,6 +789,7 @@ try {
     await page.evaluate((p) => [...document.querySelectorAll(`.afe-tr[data-path="${p}"] .afe-link`)].find(b => /still right/.test(b.textContent))?.click(), sp);
     await waitSaved(page);
     ok((await draftDef()).i18n.es.sources[sp] === 'Girl', '"Still right" marks it done');
+    ok((await draftDef()).i18n.es.kept?.[sp] === 'Girl' && !spanishToDo(await draftDef())[sp], 'and keeps it: Put live leaves it as written, built-in Spanish or not');
     // Placeholders
     await page.click('.afe-chip[data-filter="all"]');
     await page.type('.afe-toolbar input[type="search"]', 'Application');
@@ -841,6 +851,21 @@ try {
   });
 
   await section('Put the second round live', async () => {
+    // New English for an email that has Spanish (what Linzi did on Oct 29 2026)
+    await page.click('.afe-tabs [data-tab="emails"]');
+    await page.waitForSelector('.afe-email-rail [data-email="denied"]');
+    await page.click('.afe-email-rail [data-email="denied"]');
+    await page.waitForSelector('#afe-m-denied');
+    await page.click('#afe-m-denied');
+    await page.keyboard.press('End');
+    await page.keyboard.type(' We hope you apply again next year.');
+    await waitSaved(page);
+    await clickText(page, '.afe-email-top .afe-seg-text button', /^Spanish/);
+    await page.waitForSelector('#afe-m-denied[lang="es"]');
+    ok(/The English changed after this was translated, so Put live translates it again/.test(await text(page, '.afe-email-ed')), 'its Spanish says Put live translates it again');
+    await clickText(page, '.afe-email-top .afe-seg-text button', /^English$/);
+    await page.click('.afe-tabs [data-tab="form"]');
+    await page.waitForSelector('.afe-subnav [data-view="questions"]');
     await page.click('.afe-subnav [data-view="questions"]');
     await page.waitForSelector('.afe-bar');
     await waitSaved(page);
@@ -850,9 +875,21 @@ try {
     await page.waitForSelector('.afe-dialog .afe-diff', { timeout: 8000 });
     const groups = await page.$$eval('.afe-dialog .afe-diff h4', (els) => els.map(e => e.textContent.replace(/\d+/g, '').trim()));
     ok(groups.includes('Questions') && groups.includes('Spanish') && groups.includes('Reminders'), `grouped by area (${groups.join(', ')})`);
+    // The Spanish follows the English: Put live translates what's missing or out of date first
+    const left = Object.keys(spanishToDo((await getDraftForm(DB)).definition)).length;
+    ok(left > 0 && new RegExp(`with ${left} Spanish translations? brought up to date first`).test(await text(page, '.afe-dialog')), `the dialog says the Spanish comes along (${left})`);
+    env.AI = { async run(model, input) { await sleep(400); return fakeAI.run(model, input); } };
     await clickText(page, '.afe-dialog .btn-primary', /^Put live$/);
+    await page.waitForFunction(() => /Translating the Spanish/.test(document.querySelector('.afe-dialog')?.innerText || ''), { timeout: 3000 }).catch(() => {});
+    ok(/Translating the Spanish…/.test(await text(page, '.afe-dialog .btn-primary')), 'while it works, the button says it is translating');
     await page.waitForFunction(() => /Families see version 2|Families see version \d/.test(document.querySelector('.afe-bar')?.innerText || '') && !/aren't live/.test(document.querySelector('.afe-bar')?.innerText || ''), { timeout: 8000 }).catch(() => {});
     ok(!(await getDraftForm(DB)), 'the draft went live');
+    const toasts = await page.$$eval('.toast-container .toast', (els) => els.map(e => e.innerText));
+    ok(toasts.some(t => /^Version \d+ is live\. Families see it now\. The Spanish is up to date too \(1 translation\)\./.test(t)), `the toast says the Spanish came along (${toasts.join(' | ')})`);
+    ok(!Object.keys(spanishToDo((await getLiveForm(DB, { fresh: true })).definition)).length, 'nothing in the live Spanish is missing or out of date');
+    const deniedEs = (await getLiveForm(DB, { fresh: true })).definition.i18n.es.strings['message:denied'];
+    ok(deniedEs.startsWith('ES ') && deniedEs.includes('We hope you apply again next year.'), 'the new English went live in Spanish too');
+    delete env.AI;
     await page.evaluate(() => { location.hash = '#applications/history'; });
     await page.waitForSelector('.afe-subnav [data-view="versions"][aria-pressed="true"]', { timeout: 5000 }).catch(() => {});
     ok(!!(await page.$('.afe-subnav [data-view="versions"][aria-pressed="true"]')), 'an old History link opens Form → Versions');

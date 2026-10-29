@@ -10,14 +10,18 @@ import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
 import {
   DEFAULT_DEFINITION, LOCKED_FIELDS, resolveForm, normalizeDefinition, validateDefinition, sanitizeHtml,
-  answerText, allFields, renderMessage,
+  answerText, allFields, renderMessage, translationStatus,
 } from '../functions/api/_application-form.js';
 import {
   getLiveForm, saveDraftForm, putDraftLive, discardDraftForm, restoreFormVersion, listFormVersions, formFor, clearFormCache, getDraftForm,
-  saveFormRules, getFormRules, diffForm,
+  saveFormRules, getFormRules, diffForm, addTranslations,
 } from '../functions/api/_application-forms.js';
+import { spanishToDo, catchUpSpanish } from '../functions/api/_translate.js';
+import { familyMessage } from '../functions/api/_applicant-comms.js';
+import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
+import { renderSlack, slackButtons } from './lib/slack-render.mjs';
 import {
-  createDraft, getDraft, saveDraft, setDraftFile, submitDraft, processApplication, getApplication, photoKey, TEST_JPEG, testAnswers, accountFields, JT_FIELDS,
+  createDraft, getDraft, saveDraft, setDraftFile, submitDraft, processApplication, getApplication, photoKey, TEST_JPEG, testAnswers, accountFields, JT_FIELDS, maybeSweepApplications,
 } from '../functions/api/_applications.js';
 import { handleWorkflowCall, runNotifications } from '../functions/api/_applicant-notify.js';
 import * as applyApi from '../functions/api/apply.js';
@@ -225,6 +229,163 @@ test('family messages follow the live form', async () => {
   for (const t of [T0 + 4 * 60000, T0 + 11 * 60000]) await runNotifications(env, { fetchImpl: w.fetchImpl, now: t });
   assert.equal(w.world.accounts[id].comments.at(-1).message, 'Hi Morgan Park! Good news for *Riley Park*: next is the home visit.');
   assert.equal(renderMessage('{parent} {child}{copyNote}', { parent: 'A', child: 'B', copyNote: 'Copy.' }), 'A B\n\nCopy.');
+});
+
+test('the Spanish follows the English: Put live translates what changed, the sweep finishes what the AI could not', async () => {
+  const post = async (body) => (await adminApi.onRequestPost({ env, request: new Request('https://x/api/applications-admin', { method: 'POST', body: JSON.stringify(body) }), data: { userEmail: 'linzi@soardcharity.com' } })).json();
+  const liveDef = async () => (await getLiveForm(env.DB, { fresh: true })).definition;
+  const toSpanish = async (model, { messages }) => {
+    env.AI.prompts.push(messages.at(-1).content);
+    const batch = JSON.parse(messages.at(-1).content);
+    return { response: JSON.stringify(Object.fromEntries(Object.entries(batch).map(([p, t]) => [p, `ES ${t}`]))) };
+  };
+  const down = async () => { env.AI.prompts.push('down'); throw new Error('AI unavailable'); };
+  env.AI.run = toSpanish;
+
+  // New wording in English; one change already has Spanish someone wrote for it
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = { ...v.messages, welcome: 'Hi, {parent}\n\nWe’ve received *{child}*’s application. We’ll be in touch about a Zoom interview.{copyNote}' };
+  field(v, 'interests').label = 'What does your child love?';
+  field(v, 'diagnosis').label = 'What is the diagnosis?';
+  v.i18n.es.strings['field:diagnosis:label'] = '¿Cuál es el diagnóstico?';
+  v.i18n.es.sources['field:diagnosis:label'] = 'What is the diagnosis?';
+  await post({ formSave: v });
+  const live = await post({ formPutLive: true });
+  assert.equal(live.success, true);
+  assert.deepEqual(live.spanish, { filled: 2, failed: [] });
+  const es = resolveForm(await liveDef(), { year: YEAR, lang: 'es' });
+  assert.equal(field(es, 'interests').label, 'ES What does your child love?');
+  assert.equal(field(es, 'diagnosis').label, '¿Cuál es el diagnóstico?', 'Spanish typed for the current English stays');
+  // The email a Spanish-speaking family gets is the new wording
+  assert.equal(await familyMessage(env, 'welcome', { parent: 'Ana', child: 'Sofía', lang: 'es' }), 'ES Hi, Ana\n\nWe’ve received *Sofía*’s application. We’ll be in touch about a Zoom interview.');
+
+  // The AI is down at Put live: the form still goes live, and the old Spanish waits for the sweep
+  env.AI.run = down;
+  const v2 = await liveDef();
+  v2.messages.inReview = 'Hi, {parent}\n\nNext is a Zoom call about *{child}*.';
+  await post({ formSave: v2 });
+  const live2 = await post({ formPutLive: true });
+  assert.equal(live2.success, true);
+  assert.deepEqual(live2.spanish, { filled: 0, failed: ['message:inReview'] });
+  assert.doesNotMatch(await familyMessage(env, 'inReview', { parent: 'Ana', child: 'Sofía', lang: 'es' }), /Zoom/);
+
+  const T0 = Date.parse('2026-10-29T15:00:00Z');
+  await maybeSweepApplications(env, { force: true, now: T0 });
+  env.AI.run = toSpanish;
+  env.AI.prompts.length = 0;
+  await maybeSweepApplications(env, { force: true, now: T0 + 5 * 60000 });
+  assert.equal(env.AI.prompts.length, 0, 'tried this version minutes ago: waits');
+  await maybeSweepApplications(env, { force: true, now: T0 + 16 * 60000 });
+  assert.equal(await familyMessage(env, 'inReview', { parent: 'Ana', child: 'Sofía', lang: 'es' }), 'ES Hi, Ana\n\nNext is a Zoom call about *Sofía*.');
+  assert.deepEqual(spanishToDo(await liveDef()), {});
+  env.AI.prompts.length = 0;
+  await maybeSweepApplications(env, { force: true, now: T0 + 60 * 60000 });
+  assert.equal(env.AI.prompts.length, 0, 'nothing left to translate');
+
+  // A translation made from English that has since changed is dropped
+  const { version } = await getLiveForm(env.DB, { fresh: true });
+  assert.equal(await addTranslations(env.DB, version, { 'message:denied': { text: 'ES old', from: 'Some older English' } }), 0);
+});
+
+test('the Spanish: batches back in time land, a slow one is left for the sweep', async () => {
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = { ...v.messages, approved: `Hi {parent}! ${'Long news. '.repeat(320)}` };
+  field(v, 'interests').label = 'What does your child love?';
+  await saveDraftForm(env.DB, v);
+  const { version } = await getDraftForm(env.DB);
+  env.AI.run = async (model, { messages }) => {
+    const batch = JSON.parse(messages.at(-1).content);
+    if (batch['message:approved']) await new Promise(() => {});
+    return { response: Object.fromEntries(Object.entries(batch).map(([p, t]) => [p, `ES ${t}`])) };
+  };
+  assert.deepEqual(await catchUpSpanish(env, version, { budgetMs: 50 }), { filled: 1, failed: ['message:approved'] });
+  assert.deepEqual(Object.keys(spanishToDo((await getDraftForm(env.DB)).definition)), ['message:approved']);
+});
+
+test('the Spanish: the built-in Spanish under new English is out of date, even when it was marked current (the live Denied email, Oct 2026)', async () => {
+  // What production had: Denied reworded in English, its built-in Spanish marked as made from the new English
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = { ...v.messages, denied: 'Hi {parent},\n\nAfter carefully reviewing {child}’s application, we are unable to move forward.' };
+  v.i18n.es.sources['message:denied'] = v.messages.denied;
+  await saveDraftForm(env.DB, v);
+  await putDraftLive(env.DB);
+  const { version } = await getLiveForm(env.DB, { fresh: true });
+  assert.deepEqual(Object.keys(spanishToDo((await getLiveForm(env.DB, { fresh: true })).definition)), ['message:denied']);
+
+  // The AI is down: it is marked out of date, so the admin shows it too
+  env.AI.run = async () => { throw new Error('AI unavailable'); };
+  assert.deepEqual(await catchUpSpanish(env, version), { filled: 0, failed: ['message:denied'] });
+  const live = (await getLiveForm(env.DB, { fresh: true })).definition;
+  assert.equal(live.i18n.es.sources['message:denied'], DEFAULT_DEFINITION.i18n.es.sources['message:denied']);
+  assert.equal(translationStatus(live)['message:denied'], 'stale');
+
+  env.AI.run = async (model, { messages }) => ({ response: Object.fromEntries(Object.entries(JSON.parse(messages.at(-1).content)).map(([p, t]) => [p, `ES ${t}`])) });
+  assert.deepEqual(await catchUpSpanish(env, version), { filled: 1, failed: [] });
+  assert.equal(await familyMessage(env, 'denied', { parent: 'Ana', child: 'Sofía', lang: 'es' }), 'ES Hi Ana,\n\nAfter carefully reviewing Sofía’s application, we are unable to move forward.');
+  assert.deepEqual(spanishToDo((await getLiveForm(env.DB, { fresh: true })).definition), {});
+
+  // Built-in Spanish under unchanged English stays as it is
+  assert.equal((await getLiveForm(env.DB, { fresh: true })).definition.i18n.es.strings['message:approved'], DEFAULT_DEFINITION.i18n.es.strings['message:approved']);
+
+  // Built-in Spanish someone kept with "The Spanish is still right" stays too
+  const k = clone((await getLiveForm(env.DB, { fresh: true })).definition);
+  k.messages.approved = 'Hi {parent}! *{child}* has been approved.';
+  k.i18n.es.sources['message:approved'] = k.messages.approved;
+  k.i18n.es.kept = { 'message:approved': k.messages.approved };
+  await saveDraftForm(env.DB, k);
+  const kd = (await getDraftForm(env.DB)).definition;
+  assert.equal(kd.i18n.es.kept['message:approved'], k.messages.approved, 'kept survives saving');
+  assert.deepEqual(spanishToDo(kd), {});
+});
+
+test('the Spanish: a batch that comes back broken is translated one string at a time instead', async () => {
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = { ...v.messages, inReview: 'Hi, {parent}\n\nNext is a visit.\n\n"{child}" does not have to be there.' };
+  field(v, 'interests').label = 'What does your child love?';
+  await saveDraftForm(env.DB, v);
+  const { version } = await getDraftForm(env.DB);
+  const asked = [];
+  env.AI.run = async (model, { messages }) => {
+    const text = messages.at(-1).content;
+    asked.push(messages[0].content.includes('Reply with JSON') ? 'batch' : 'one');
+    // The batch: JSON with a raw line break inside a string, which doesn't parse
+    if (messages[0].content.includes('Reply with JSON')) return { response: '{"message:inReview": "Hola, {parent}\n\nSigue una visita."' };
+    return { response: `  ES ${text}\n` };
+  };
+  assert.deepEqual(await catchUpSpanish(env, version), { filled: 2, failed: [] });
+  assert.deepEqual(asked, ['batch', 'batch', 'one', 'one']);
+  const es = (await getDraftForm(env.DB)).definition.i18n.es.strings;
+  assert.equal(es['message:inReview'], 'ES Hi, {parent}\n\nNext is a visit.\n\n"{child}" does not have to be there.');
+  assert.equal(es['field:interests:label'], 'ES What does your child love?');
+});
+
+test('the Spanish: still behind after four tries, Slack hears once, and the post turns ✅ when it catches up', async () => {
+  env.SLACK_BOT_TOKEN = 'xoxb-test';
+  delete env.SLACK_WEBHOOK_URL;
+  await writeSlackConfig(env.DB, { channel: { id: 'C0ALERTS', name: 'website-alerts' } });
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = { ...v.messages, denied: 'Hi {parent}, we are unable to move forward with {child}’s application.' };
+  await saveDraftForm(env.DB, v);
+  env.AI.run = async () => { throw new Error('AI unavailable'); };
+  await putDraftLive(env.DB);
+  let t = Date.parse('2026-10-29T15:00:00Z');
+  for (let i = 0; i < 6; i++) { await maybeSweepApplications(env, { force: true, now: t }); t += 16 * 60000; }
+  const posts = w.world.slack.filter(p => /Spanish application is behind/.test(p.text));
+  assert.equal(posts.length, 1, 'once, on the fourth try');
+  const card = renderSlack(posts[0]);
+  assert.match(card, /^⚠️ The Spanish application is behind the English\nThe website couldn’t translate one change to the application after 4 tries, so Spanish-speaking families still get the older Spanish there\./);
+  assert.match(card, /Where.*Denied email/s);
+  assert.deepEqual(slackButtons(posts[0]).map(b => b.url), ['https://sunshineonaranneyday.com/admin/#applications/form/spanish']);
+  const ts = `${w.world.slack.indexOf(posts[0]) + 1}.0001`;
+
+  env.AI.run = async (model, { messages }) => ({ response: Object.fromEntries(Object.entries(JSON.parse(messages.at(-1).content)).map(([p, x]) => [p, `ES ${x}`])) });
+  await maybeSweepApplications(env, { force: true, now: t });
+  assert.equal(await familyMessage(env, 'denied', { parent: 'Ana', child: 'Sofía', lang: 'es' }), 'ES Hi Ana, we are unable to move forward with Sofía’s application.');
+  const edit = (w.world.slackEdits || []).find(e => e.ts === ts);
+  assert.equal(renderSlack(edit), '✅ Resolved: The Spanish application was behind the English');
+  assert.match(w.world.slack.filter(p => p.thread_ts === ts).at(-1).text, /^✅ The Spanish application caught up/);
+  await maybeSweepApplications(env, { force: true, now: t + 60 * 60000 });
+  assert.equal(w.world.slack.filter(p => /Spanish application/.test(p.text)).length, 2, 'and nothing more');
 });
 
 // ── The public endpoint ─────────────────────────────────────────────

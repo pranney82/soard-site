@@ -2059,7 +2059,9 @@ function useFormDraft(addToast, active, kind = 'family') {
     if (!(await flush())) return false;
     const j = await call(API, { formPutLive: true, ...kb() });
     if (!j.success) { toastRef.current(j.error || 'Could not put it live', 'error'); if (j.problems) setProblems(j.problems); return false; }
-    toastRef.current(`Version ${j.version} is live. ${isOrgForm() ? 'Organizations' : 'Families'} see it now.`, 'success');
+    const sp = j.spanish || {};
+    const spanishNote = sp.failed?.length ? ` ${plural(sp.failed.length, 'Spanish translation')} couldn't be made yet; the site keeps trying.` : sp.filled ? ` The Spanish is up to date too (${plural(sp.filled, 'translation')}).` : '';
+    toastRef.current(`Version ${j.version} is live. ${isOrgForm() ? 'Organizations' : 'Families'} see it now.${spanishNote}`, 'success');
     await load();
     return true;
   };
@@ -2127,6 +2129,8 @@ function DraftBar({ d, onPreview, previewOn, lead = null, emails = false }) {
     if (ok) setDiff(null); else setDiff(x => ({ ...x, busy: false }));
   };
   const who = isOrgForm() ? 'Organizations' : 'Families';
+  // Put live translates these first (functions/api/_translate.js)
+  const spanishLeft = diff && Object.keys(d.work?.i18n?.es?.strings || {}).length ? Object.values(translationStatus(d.work)).filter(st => st !== 'done').length : 0;
   return html`
     ${d.conflict && html`<${ConflictBanner} d=${d} />`}
     <div class="afe-bar ${lead ? 'has-lead' : ''}" data-status=${status}>
@@ -2150,9 +2154,9 @@ function DraftBar({ d, onPreview, previewOn, lead = null, emails = false }) {
     </div>
     ${diff && html`
       <${Dialog} wide title="What's changing" onClose=${() => !diff.busy && setDiff(null)} footer=${html`
-        <span class="afe-hint">Families see this right away. Applications already submitted keep the version they were answered on.</span>
+        <span class="afe-hint">${who} see this right away${spanishLeft ? `, with ${plural(spanishLeft, 'Spanish translation')} brought up to date first` : ''}. Applications already submitted keep the version they were answered on.</span>
         <button class="btn btn-ghost" onClick=${() => setDiff(null)} disabled=${diff.busy}>Cancel</button>
-        <button class="btn btn-primary" data-autofocus onClick=${confirmLive} disabled=${diff.loading || diff.busy || !!diff.error}>${diff.busy ? 'Putting live…' : 'Put live'}</button>`}>
+        <button class="btn btn-primary" data-autofocus onClick=${confirmLive} disabled=${diff.loading || diff.busy || !!diff.error}>${diff.busy ? (spanishLeft ? 'Translating the Spanish…' : 'Putting live…') : 'Put live'}</button>`}>
         ${diff.loading && html`<p class="afe-hint">Comparing with what families see…</p>`}
         ${diff.error && html`<p class="afe-bad">${diff.error}</p>`}
         ${diff.changes && html`<${ChangesList} changes=${diff.changes} empty="Nothing differs from what families see now." />`}
@@ -3155,10 +3159,11 @@ function SpanishTab({ d, RichTextEditor, addToast, lead = null }) {
       const t = w.i18n.es = w.i18n.es || {};
       t.strings = t.strings || {};
       t.sources = t.sources || {};
-      if (strip(v)) { t.strings[path] = v; t.sources[path] = en[path]; } else { delete t.strings[path]; delete t.sources[path]; }
+      // New Spanish counts against today's English; editing out-of-date Spanish leaves it out of date until "still right"
+      if (strip(v)) { t.strings[path] = v; if (t.sources[path] == null) t.sources[path] = en[path]; } else { delete t.strings[path]; delete t.sources[path]; if (t.kept) delete t.kept[path]; }
     });
   };
-  const stillRight = (path) => { pinned.current.add(path); d.update((w) => { w.i18n.es.sources[path] = en[path]; }); };
+  const stillRight = (path) => { pinned.current.add(path); d.update((w) => keepSpanish(w, path, en[path])); };
 
   const fillWithAi = async () => {
     const list = [...todo];
@@ -3208,7 +3213,7 @@ function SpanishTab({ d, RichTextEditor, addToast, lead = null }) {
       <div class="card">
         <div class="afe-card-head">
           <div>
-            <p class="afe-lede">Families can switch the application, and every email they get, to Spanish. Each question, choice, screen and email is here beside its translation. When the English changes, its Spanish shows as out of date until someone checks it. Missing Spanish shows the English.</p>
+            <p class="afe-lede">Families can switch the application, and every email they get, to Spanish. Each question, choice, screen and email is here beside its translation. When the English changes, Put live translates its Spanish again, along with anything missing. To use your own wording, change the Spanish here before you put it live.</p>
           </div>
           <div style="min-width: 220px;">
             <div class="text-sm"><strong>${num(counts.done)}</strong> of ${num(counts.all)} done</div>
@@ -3270,7 +3275,7 @@ function SpanishTab({ d, RichTextEditor, addToast, lead = null }) {
                     ${extra.length > 0 && html`<span class="afe-bad">${extra.join(' and ')} ${extra.length === 1 ? "isn't" : "aren't"} in the English, so ${extra.length === 1 ? 'it' : 'they'} won't be filled in.</span>`}
                     ${st === 'stale' && html`
                       <div class="afe-note">
-                        <span>The English changed after this was translated. It used to say: “${short(sources[path], 160)}” <button class="afe-link" onClick=${() => stillRight(path)}>The Spanish is still right</button></span>
+                        <span>The English changed after this was translated, so Put live translates it again. It used to say: “${short(sources[path], 160)}” <button class="afe-link" onClick=${() => stillRight(path)}>The Spanish is still right</button></span>
                       </div>`}
                   </div>
                 </div>`;
@@ -3394,6 +3399,13 @@ function EmailsTab({ d, go, addToast = () => {} }) {
     </div>`;
 }
 
+/** "The Spanish is still right": current against this English, and kept as written (Put live won't translate it again) */
+function keepSpanish(w, path, en) {
+  const t = w.i18n.es;
+  t.sources[path] = en;
+  t.kept = { ...(t.kept || {}), [path]: en };
+}
+
 /** The text of a family-facing string in a language, and a way to set it (Spanish keeps its source) */
 function useString(d, path, lang, fallbackEn) {
   const w = d.work;
@@ -3411,10 +3423,11 @@ function useString(d, path, lang, fallbackEn) {
       const t = x.i18n.es = x.i18n.es || {};
       t.strings = t.strings || {};
       t.sources = t.sources || {};
-      if (strip(v)) { t.strings[path] = v; t.sources[path] = en; } else { delete t.strings[path]; delete t.sources[path]; }
+      // As in Form → Spanish: editing out-of-date Spanish doesn't make it current
+      if (strip(v)) { t.strings[path] = v; if (t.sources[path] == null) t.sources[path] = en; } else { delete t.strings[path]; delete t.sources[path]; if (t.kept) delete t.kept[path]; }
     });
   };
-  const stillRight = () => d.update((x) => { x.i18n.es.sources[path] = en; });
+  const stillRight = () => d.update((x) => keepSpanish(x, path, en));
   return { en, es, value: lang === 'en' ? en : es, set, stillRight, source: w.i18n?.es?.sources?.[path] };
 }
 
@@ -3424,8 +3437,8 @@ function SpanishNotes({ st, s, en }) {
   const have = placeholders(s.es);
   const missing = s.es ? need.filter(p => !have.includes(p)) : [];
   return html`
-    ${st === 'missing' && html`<span class="afe-hint">No Spanish yet: Spanish-speaking families get the English. Fill it here, or all at once with AI in <a href="#applications/form/spanish">Form → Spanish</a>.</span>`}
-    ${st === 'stale' && html`<div class="afe-note"><span>The English changed after this was translated. It used to say: “${short(s.source, 160)}” <button class="afe-link" onClick=${s.stillRight}>The Spanish is still right</button></span></div>`}
+    ${st === 'missing' && html`<span class="afe-hint">No Spanish yet. Put live translates it, or write your own here.</span>`}
+    ${st === 'stale' && html`<div class="afe-note"><span>The English changed after this was translated, so Put live translates it again. It used to say: “${short(s.source, 160)}” <button class="afe-link" onClick=${s.stillRight}>The Spanish is still right</button></span></div>`}
     ${missing.length > 0 && html`<span class="afe-bad">The Spanish is missing ${missing.join(' and ')}.</span>`}`;
 }
 
@@ -3469,7 +3482,7 @@ function MessageEditor({ d, k, spec, lang, status }) {
           </div>
           <div class="afe-email-body is-rich" dangerouslySetInnerHTML=${{ __html: jtRich(fillFor(shown, shownNote)) || '<span class="text-muted">No message yet.</span>' }}></div>
         </div>
-        ${lang === 'es' && !msg.es && html`<p class="afe-hint">Showing the English: that's what Spanish-speaking families get until there's a translation.</p>`}
+        ${lang === 'es' && !msg.es && html`<p class="afe-hint">Showing the English for now. Put live translates it.</p>`}
       </aside>
     </div>`;
 }

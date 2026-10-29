@@ -525,6 +525,22 @@ export function translationStatus(def, lang = 'es') {
 // The built-in Spanish was written from the built-in English
 DEFAULT_DEFINITION.i18n.es.sources = Object.fromEntries(Object.entries(englishStrings(DEFAULT_DEFINITION)).filter(([p]) => DEFAULT_ES[p]));
 
+/**
+ * Strings still carrying the built-in Spanish under English that has since
+ * changed, whatever their source says: the built-in Spanish was written from
+ * the built-in English. (A keystroke in the Spanish box used to mark old
+ * Spanish as current without changing it; the live Denied email, Oct 2026.)
+ * Spanish someone kept with "The Spanish is still right" for today's English
+ * stays as it is. → { path: the built-in English it was made from }
+ */
+export function builtInSpanishBehind(def) {
+  const es = def?.i18n?.es?.strings || {};
+  const kept = def?.i18n?.es?.kept || {};
+  const from = DEFAULT_DEFINITION.i18n.es.sources;
+  const en = englishStrings(def);
+  return Object.fromEntries(Object.keys(en).filter(p => es[p] && es[p] === DEFAULT_ES[p] && from[p] != null && en[p] !== from[p] && kept[p] !== en[p]).map(p => [p, from[p]]));
+}
+
 // ─── Resolving a stored definition for one season ──────────────────
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -766,7 +782,10 @@ export function normalizeDefinition(input) {
       if (v) strings[str(path, 400)] = v;
     }
     for (const [path, text] of Object.entries(tr?.sources || {}).slice(0, 2000)) if (strings[path]) sources[str(path, 400)] = String(text ?? '').slice(0, HTML_MAX);
-    i18n[lang] = { strings, sources };
+    // "The Spanish is still right": the English it was checked against (see builtInSpanishBehind)
+    const kept = {};
+    for (const [path, text] of Object.entries(tr?.kept || {}).slice(0, 2000)) if (strings[path]) kept[str(path, 400)] = String(text ?? '').slice(0, HTML_MAX);
+    i18n[lang] = { strings, sources, ...(Object.keys(kept).length ? { kept } : {}) };
   }
   return { schema: 2, ...(kind === 'organization' ? { kind } : {}), title: str(d.title || defaultDefinitionFor(kind).title, 200), pages, stops, messages, staffEmails, reminders, notify: notifySettings(d.notify), serviceArea, i18n };
 }

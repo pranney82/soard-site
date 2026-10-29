@@ -38,11 +38,12 @@ import {
   cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, DEFAULT_STAFF_EMAILS,
 } from './_application-form.js';
 import { buildApplicationPdf } from './_application-pdf.js';
-import { sendEmails, escapeHtml, SITE_ORIGIN, slackPost } from './_broadcast-notify.js';
+import { sendEmails, escapeHtml, SITE_ORIGIN, slackPost, slackIssue, slackResolved } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import * as mail from './_email-shell.js';
 import { readApplicant, sendIntake, ensureCommsSchema } from './_applicant-comms.js';
-import { formFor, ensureFormSchema } from './_application-forms.js';
+import { formFor, ensureFormSchema, getLiveForm } from './_application-forms.js';
+import { spanishToDo, catchUpSpanish } from './_translate.js';
 import { isUpload, isInput, answerText, progressPercent, renderMessage, choice, AREA_VALUES, kindOf, isOrganizationKind, rolesFor } from './_application-form.js';
 import { checkServiceArea, areaText, addressKey, checkableAddress, bandOf } from './_geo.js';
 import { placeHome } from '../../public/admin/area-shared.js';
@@ -112,6 +113,7 @@ export function photoFieldsOf(app, form) {
 export const DRAFT_TTL_DAYS = 60;
 const LOCK_MS = 2 * 60 * 1000;
 const SWEEP_EVERY_MS = 2 * 60 * 1000;
+const SPANISH_RETRY_MS = 15 * 60 * 1000;
 const ALERT_AFTER_ATTEMPTS = 4;
 const MEDICAL_TRIES = 4;
 const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000;
@@ -1509,6 +1511,8 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
     }
     // The application limit, should a submit's own check not have run (it rides waitUntil)
     const capped = await enforceApplicationCap(env, { now });
+    // The live form's Spanish, for whatever Put live couldn't translate; before the emails below go out
+    const spanish = await catchUpLiveSpanish(env, { now }).catch(() => null);
     const { results } = await DB.prepare("SELECT id FROM applications WHERE status != 'done' AND (next_try_at IS NULL OR next_try_at <= ?) ORDER BY next_try_at LIMIT 3").bind(now).all();
     const processed = [];
     for (const r of results || []) processed.push({ id: r.id, ...(await processApplication(env, r.id, { fetchImpl, now })) });
@@ -1524,10 +1528,62 @@ export async function maybeSweepApplications(env, { fetchImpl = fetch, now = Dat
     const jotform = await runJotformBackfill(env, { fetchImpl, now });
     // Then, once: the families it couldn't place, and JobTread's Application URLs off Jotform
     const jotformLook = await jotformSecondLook(env, { fetchImpl, now });
-    return { processed, reminded, expired, notified, approved, applicants, capped, jotform, jotformLook };
+    return { processed, reminded, expired, notified, approved, applicants, capped, spanish, jotform, jotformLook };
   } catch {
     return null;
   }
+}
+
+/**
+ * The live family form's Spanish, caught up with its English (./_translate.js).
+ * Put live does this as a version goes live; this catches what the AI
+ * couldn't do then, trying each version again at most every SPANISH_RETRY_MS.
+ * Still behind after SPANISH_ALERT_TRIES tries, it says so in Slack once; the
+ * post turns ✅ when the Spanish catches up.
+ */
+async function catchUpLiveSpanish(env, { now = Date.now() } = {}) {
+  const { DB } = env;
+  const live = await getLiveForm(DB);
+  const behind = live.version ? Object.keys(spanishToDo(live.definition)).length : 0;
+  const last = parse((await DB.prepare("SELECT value FROM application_runtime WHERE key = 'spanish'").first())?.value, null) || {};
+  const save = (o) => DB.prepare("INSERT INTO application_runtime (key, value, updated_at) VALUES ('spanish', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+    .bind(JSON.stringify(o), iso(now)).run();
+  if (!behind) {
+    if (last.alerted) {
+      await spanishCaughtUp(env);
+      await save({ ...last, alerted: false });
+    }
+    return null;
+  }
+  if (last.version === live.version && now - last.at < SPANISH_RETRY_MS) return null;
+  const tries = last.version === live.version ? (last.tries || 0) + 1 : 1;
+  await save({ version: live.version, at: now, tries, alerted: !!last.alerted });
+  const out = await catchUpSpanish(env, live.version);
+  if (out.failed.length && tries >= SPANISH_ALERT_TRIES && !last.alerted) {
+    await slackIssue(env, SPANISH_ISSUE, spanishBehindCard(out.failed, tries), { title: 'The Spanish application was behind the English', area: 'applications' }).catch(() => null);
+    await save({ version: live.version, at: now, tries, alerted: true });
+  } else if (!out.failed.length && last.alerted) {
+    await spanishCaughtUp(env);
+    await save({ version: live.version, at: now, tries, alerted: false });
+  }
+  return { version: live.version, tries, ...out };
+}
+const spanishCaughtUp = (env) => slackResolved(env, SPANISH_ISSUE, slackCard({ icon: '✅', title: 'The Spanish application caught up', lead: 'Spanish-speaking families get the current wording again. Nothing to do.' })).catch(() => null);
+const SPANISH_ISSUE = 'application-spanish';
+const SPANISH_ALERT_TRIES = 4;
+const SPANISH_PLACES = { 'message:welcome': 'Application received email', 'message:copyNote': 'Application received email', 'message:inReview': 'In review email', 'message:approved': 'Approved email', 'message:denied': 'Denied email', 'message:correction': 'Correction email', 'reminder:subject': 'Reminder email', 'reminder:body': 'Reminder email' };
+
+/** The Slack post for Spanish the AI can't translate */
+export function spanishBehindCard(paths, tries) {
+  const places = [...new Set(paths.map(p => SPANISH_PLACES[p] || 'Questions on the form'))];
+  return slackCard({
+    icon: '⚠️',
+    title: 'The Spanish application is behind the English',
+    lead: `The website couldn’t translate ${paths.length === 1 ? 'one change' : `${paths.length} changes`} to the application after ${tries} tries, so Spanish-speaking families still get the older Spanish there.`,
+    facts: [['Where', places.join(', ')]],
+    fix: 'Nothing, usually: it tries again every 15 minutes, and this post turns ✅ when the Spanish catches up. To fix it now, open the Spanish, write it for each one marked Out of date, press “The Spanish is still right”, then Put live.',
+    buttons: [{ label: 'Open the Spanish', url: `${SITE_ORIGIN}/admin/#applications/form/spanish` }],
+  });
 }
 
 /**

@@ -38,7 +38,8 @@
  * GET ?jobtread-fields=1    → JobTread fields a new question can fill
  * POST { formSave: def, base?, force? } → save the draft (always saves; returns problems,
  *                             or { conflict } when someone else saved since `base`)
- * POST { formPutLive: true } → the draft becomes the form families see
+ * POST { formPutLive: true } → the draft becomes the form families see, its Spanish
+ *                             caught up with the English first ({ spanish: { filled, failed } })
  * POST { formDiscard: true } / { formRestore: <n> }
  * POST { translate: { path: english } } → Spanish drafts from Workers AI
  * POST { areaTest: address, polygon?, nearMiles? } → where this address sits against the service area
@@ -63,7 +64,7 @@ import {
   restoreFormVersion, listFormVersions, diffForm, getFormRules, saveFormRules, pickRules, areaHistory,
 } from './_application-forms.js';
 import { checkServiceArea, areaText } from './_geo.js';
-import { translateStrings } from './_translate.js';
+import { translateStrings, catchUpSpanish } from './_translate.js';
 import { jobtreadFields } from './_jobtread-fields.js';
 import { recentEvents } from './_applicant-comms.js';
 import { logAudit } from './_audit.js';
@@ -326,13 +327,16 @@ export async function onRequestPost(context) {
     return Response.json({ success: true, accountUrl: out.accountId ? jobtreadAccountUrl(out.accountId) : null });
   }
   if (body.formPutLive) {
+    // The Spanish follows the English: anything new or changed is translated before it goes live (./_translate.js)
+    const draft = await getDraftForm(env.DB, { kind });
+    const spanish = draft ? await catchUpSpanish(env, draft.version).catch(() => null) : null;
     const out = await putDraftLive(env.DB, { user, kind });
     if (!out.ok) return Response.json({ success: false, error: out.error, problems: out.errors || [] }, { status: 422 });
     // The boundary may have moved: re-place every applicant on the map (the family form holds it)
     const live = await getLiveForm(env.DB, { fresh: true });
     if (kind === 'family' && live.definition?.serviceArea?.polygon?.length >= 3) await replaceBoundary(env.DB, live.definition.serviceArea.polygon).catch(() => 0);
     await logAudit(env.DB, { userEmail: user, action: 'published', entityType: 'application-form', entitySlug: `version-${out.version}`, entityName: `${FORM_NAMES[kind]} version ${out.version}` });
-    return Response.json({ success: true, version: out.version });
+    return Response.json({ success: true, version: out.version, spanish });
   }
   if (body.formDiscard) {
     await discardDraftForm(env.DB, { kind });

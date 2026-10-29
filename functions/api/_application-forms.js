@@ -34,7 +34,7 @@
  * (application_form_rules_kinds).
  */
 
-import { DEFAULT_DEFINITION, normalizeDefinition, validateDefinition, resolveForm, diffDefinitions, kindOf, defaultDefinitionFor } from './_application-form.js';
+import { DEFAULT_DEFINITION, normalizeDefinition, validateDefinition, resolveForm, diffDefinitions, kindOf, defaultDefinitionFor, englishStrings, translationStatus } from './_application-form.js';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS application_form_versions (
@@ -228,6 +228,70 @@ export async function putDraftLive(DB, { user = 'admin', now = Date.now(), kind 
   ]);
   clearFormCache();
   return { ok: true, version: draft.version };
+}
+
+/** Change one stored version's definition in place: `edit(def)` returns how many changes it made */
+async function editVersion(DB, version, edit) {
+  await ensureFormSchema(DB);
+  const r = await DB.prepare('SELECT state, kind, definition FROM application_form_versions WHERE version = ?').bind(version).first();
+  const def = parse(r?.definition);
+  if (!def) return 0;
+  const n = edit(def);
+  if (!n) return 0;
+  const clean = normalizeDefinition({ ...def, kind: kindOf(r.kind) });
+  await DB.prepare('UPDATE application_form_versions SET definition = ? WHERE version = ?').bind(JSON.stringify(clean), version).run();
+  if (r.state === 'live') clearFormCache();
+  return n;
+}
+const translationsOf = (def, lang) => {
+  def.i18n = def.i18n || {};
+  const t = def.i18n[lang] = def.i18n[lang] || {};
+  t.strings = t.strings || {};
+  t.sources = t.sources || {};
+  return t;
+};
+
+/**
+ * Lay machine translations onto one version, nothing else: { path: { text,
+ * from } }, where `from` is the English it was made from. Each lands only
+ * while that is still the string's English and its Spanish is still missing
+ * or out of date, so an edit made meanwhile wins. → how many landed
+ */
+export async function addTranslations(DB, version, made, { lang = 'es' } = {}) {
+  if (!Object.keys(made || {}).length) return 0;
+  return editVersion(DB, version, (def) => {
+    const en = englishStrings(def);
+    const status = translationStatus(def, lang);
+    const t = translationsOf(def, lang);
+    let n = 0;
+    for (const [path, { text, from }] of Object.entries(made)) {
+      if (en[path] !== from || status[path] === 'done') continue;
+      t.strings[path] = text;
+      t.sources[path] = from;
+      n++;
+    }
+    return n;
+  });
+}
+
+/**
+ * Mark Spanish as made from older English: { path: { text, from } }, where
+ * `text` is the Spanish judged and `from` the English it was really made
+ * from. It then reads out of date (in the admin too) until translated again.
+ * Skipped where the Spanish changed meanwhile. → how many were marked
+ */
+export async function reopenTranslations(DB, version, stale, { lang = 'es' } = {}) {
+  if (!Object.keys(stale || {}).length) return 0;
+  return editVersion(DB, version, (def) => {
+    const t = translationsOf(def, lang);
+    let n = 0;
+    for (const [path, { text, from }] of Object.entries(stale)) {
+      if (t.strings[path] !== text || t.sources[path] === from) continue;
+      t.sources[path] = from;
+      n++;
+    }
+    return n;
+  });
 }
 
 /** The settings as the site uses them: cleaned, with the built-in values filled in */
