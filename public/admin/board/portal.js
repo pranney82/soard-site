@@ -177,7 +177,78 @@ function fileRows(files, order = PAST_ORDER) {
   }
   return groups.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
 }
-const FileBadge = ({ f }) => { const fmt = formatOf(f); return html`<span class="bp-badge" data-format=${fmt} aria-hidden="true">${{ PDF: 'PDF', Excel: 'XLS', Word: 'DOC', Slides: 'PPT', Photo: 'IMG' }[fmt] || 'FILE'}</span>`; };
+// ─── First pages ────────────────────────────────────────────────────
+// A PDF's first page, drawn in the browser by pdf.js (the file viewer's own, ../vendor-pdf.js) when its cover or
+// icon scrolls into view, two at a time, and kept on this device so it's there at once next time. No pictures are
+// stored anywhere else; Word and Excel files keep their drawn covers.
+let pdfLib = null;
+let pdfWorker = null;
+const loadPdfLib = () => (pdfLib ||= import('../vendor-pdf.js').catch((e) => { pdfLib = null; throw e; }));
+const pageKey = (f, w) => `bp-page:${f.id}:${f.size || 0}:${w}`;
+const pageKept = (f, w) => { try { return localStorage.getItem(pageKey(f, w)) || ''; } catch { return ''; } };
+const drawing = { now: 0, queue: [] };
+function drawSoon(job) {
+  return new Promise((resolve, reject) => {
+    drawing.queue.push({ job, resolve, reject });
+    const pump = () => {
+      while (drawing.now < 2 && drawing.queue.length) {
+        const next = drawing.queue.shift();
+        drawing.now += 1;
+        next.job().then(next.resolve, next.reject).finally(() => { drawing.now -= 1; pump(); });
+      }
+    };
+    pump();
+  });
+}
+async function firstPage(f, width) {
+  const { pdfjsLib } = await loadPdfLib();
+  pdfWorker ||= new pdfjsLib.PDFWorker();
+  const base = new URL('../pdf/', import.meta.url).href;
+  const task = pdfjsLib.getDocument({ url: fileUrl(f), worker: pdfWorker, disableAutoFetch: true, standardFontDataUrl: `${base}standard_fonts/`, wasmUrl: `${base}wasm/`, useWasm: false, enableXfa: false, isEvalSupported: false });
+  try {
+    const doc = await task.promise;
+    const page = await doc.getPage(1);
+    const one = page.getViewport({ scale: 1 });
+    const v = page.getViewport({ scale: (width * Math.min(2, window.devicePixelRatio || 1)) / one.width });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(v.width);
+    canvas.height = Math.round(v.height);
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: g, viewport: v }).promise;
+    return canvas.toDataURL('image/jpeg', 0.8);
+  } finally {
+    task.destroy();
+  }
+}
+/** [ref, src]: the first page of a PDF (up to 8 MB) once its element has been on screen */
+function useFirstPage(f, width) {
+  const ref = useRef(null);
+  const can = !!f?.id && formatOf(f) === 'PDF' && (f.size || 0) <= 8 * 1048576;
+  const [src, setSrc] = useState(() => (can ? pageKept(f, width) : ''));
+  useEffect(() => {
+    if (!can || src || !ref.current || !('IntersectionObserver' in window)) return undefined;
+    let live = true;
+    const io = new IntersectionObserver((seen) => {
+      if (!seen.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      drawSoon(() => firstPage(f, width)).then((data) => {
+        if (!live) return;
+        try { localStorage.setItem(pageKey(f, width), data); } catch { /* full: drawn again next time */ }
+        setSrc(data);
+      }).catch(() => {});
+    }, { rootMargin: '240px' });
+    io.observe(ref.current);
+    return () => { live = false; io.disconnect(); };
+  }, [f?.id]);
+  return [ref, src];
+}
+function FileBadge({ f }) {
+  const [ref, src] = useFirstPage(f, 48);
+  const fmt = formatOf(f);
+  return html`<span class=${`bp-badge ${src ? 'has-page' : ''}`} data-format=${fmt} ref=${ref} aria-hidden="true">${src ? html`<img src=${src} alt="" />` : ({ PDF: 'PDF', Excel: 'XLS', Word: 'DOC', Slides: 'PPT', Photo: 'IMG' }[fmt] || 'FILE')}</span>`;
+}
 
 /** A set of files, by kind, each opening in the viewer (the PDFs step through with ← →) */
 function FileList({ files, order, labels = true, kinds = false }) {
@@ -491,18 +562,27 @@ function balanceSheet(data) {
   return data.meetings.flatMap((m) => m.files.filter((f) => f.kind === 'financials' && formatOf(f) === 'Excel' && /financial position|balance sheet/i.test(f.name)).map((f) => ({ f, m })))
     .sort((a, b) => b.m.date.localeCompare(a.m.date) || String(b.f.at || '').localeCompare(String(a.f.at || '')))[0] || null;
 }
-/** An .xlsx's first sheet as rows of cells (strings and numbers, by column) */
-async function sheetRows(bytes) {
+/** An .xlsx's first sheet as rows of cells, each at its column (A = 0): strings and numbers */
+async function sheetGrid(bytes) {
   const z = await unzip(bytes, ['xl/sharedStrings.xml', 'xl/worksheets/sheet1.xml']);
   const dec = new TextDecoder();
   const unxml = (t) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
   const strings = [...dec.decode(z['xl/sharedStrings.xml'] || new Uint8Array()).matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => unxml([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join('')));
   const sheet = dec.decode(z['xl/worksheets/sheet1.xml'] || new Uint8Array());
-  return [...sheet.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)].map((r) => [...r[1].matchAll(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)].map((c) => {
-    const raw = (c[3] || '').match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? (c[3] || '').match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] ?? '';
-    return /t="s"/.test(c[2]) ? strings[Number(raw)] ?? '' : /t="(inlineStr|str)"/.test(c[2]) ? unxml(raw) : raw === '' ? '' : Number(raw);
-  }).filter((x) => x !== ''));
+  const colOf = (letters) => [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+  return [...sheet.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)].map((r) => {
+    const row = [];
+    for (const c of r[1].matchAll(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const raw = (c[3] || '').match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? (c[3] || '').match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] ?? '';
+      const v = /t="s"/.test(c[2]) ? strings[Number(raw)] ?? '' : /t="(inlineStr|str)"/.test(c[2]) ? unxml(raw) : raw === '' ? '' : Number(raw);
+      if (v !== '') row[colOf(c[1])] = typeof v === 'string' ? v.trim() : v;
+    }
+    return row;
+  });
 }
+/** The same, each row's cells side by side (no gaps) */
+const sheetRows = async (bytes) => (await sheetGrid(bytes)).map((r) => r.filter((x) => x !== undefined));
+const fetchBytes = async (f) => { const r = await fetch(fileUrl(f)); if (!r.ok) throw new Error(`HTTP ${r.status}`); return new Uint8Array(await r.arrayBuffer()); };
 /** "1001 SR4_Long Reserve (8861)" → "Long Reserve": no ledger number, no account's last digits */
 const accountName = (s) => String(s).replace(/^\d+\s+/, '').replace(/^SR\d+_/i, '').replace(/\s*\(\d{3,}\)\s*$/, '').replace(/_/g, ' ').trim();
 let cashOnce = null;
@@ -510,9 +590,7 @@ function readCash(data) {
   const src = balanceSheet(data);
   if (!src) return Promise.resolve(null);
   cashOnce ||= (async () => {
-    const r = await fetch(fileUrl(src.f));
-    if (!r.ok) return null;
-    const rows = await sheetRows(new Uint8Array(await r.arrayBuffer()));
+    const rows = await sheetRows(await fetchBytes(src.f));
     const asOf = rows.flat().filter((x) => typeof x === 'string').map((x) => x.match(/^As of (.+?)(?: \(PY\))?$/)?.[1]).filter(Boolean);
     const head = rows.findIndex((r2) => /^bank accounts$/i.test(String(r2[0])));
     const totalAt = rows.findIndex((r2) => /^total (for )?(bank accounts|cash( and cash equivalents)?)$/i.test(String(r2[0])));
@@ -527,35 +605,164 @@ function useCash(data) {
   useEffect(() => { let on = true; readCash(data).then((c) => { if (on) setCash(c); }); return () => { on = false; }; }, []);
   return cash;
 }
+/** Home's cash figure: Mercury's live balance once Mercury holds SOARD's money, else the newest balance sheet's */
+function useCashNow(data) {
+  const sheet = useCash(data);
+  const live = data.numbers.cash;
+  return live?.total > 0 ? { total: live.total, asOf: shortDate(String(live.at || '').slice(0, 10)), prior: null, where: 'in Mercury' } : sheet;
+}
 const shortAsOf = (s) => String(s || '').replace(/, \d{4}$/, '');
+
+// The year against its budget: the newest "budget & actual" sheet in a meeting's packet (SOARD's own layout: a
+// heading row naming the Budgeted and Actual columns, then "Revenue Total", "Total Expenses", "Program Total"…)
+let budgetOnce = null;
+function readBudget(data) {
+  const src = data.meetings.flatMap((m) => m.files.filter((f) => formatOf(f) === 'Excel' && /budget/i.test(f.name)).map((f) => ({ f, m })))
+    .sort((a, b) => b.m.date.localeCompare(a.m.date) || String(b.f.at || '').localeCompare(String(a.f.at || '')))[0];
+  if (!src) return Promise.resolve(null);
+  budgetOnce ||= (async () => {
+    const grid = await sheetGrid(await fetchBytes(src.f));
+    // The heading row names Budget and Actual in two different cells (the title above says both in one)
+    const colOf = (r, re) => r.findIndex((c) => re.test(String(c ?? '')));
+    const head = grid.findIndex((r) => { const b = colOf(r, /budget/i); const a = colOf(r, /actual/i); return b >= 0 && a >= 0 && a !== b; });
+    if (head < 0) return null;
+    const bCol = colOf(grid[head], /budget/i);
+    const aCol = colOf(grid[head], /actual/i);
+    // A row's label is its first words (SOARD's sheet starts in column B), its numbers sit under the headings
+    const label = (r) => String(r.find((c) => typeof c === 'string') ?? '');
+    const line = (re) => {
+      const r = grid.find((x) => re.test(label(x)));
+      return r && typeof r[bCol] === 'number' && typeof r[aCol] === 'number' ? { budget: r[bCol], actual: r[aCol] } : null;
+    };
+    const out = {
+      year: (String(grid[head][bCol]).match(/\b20\d{2}\b/) || [])[0] || '',
+      asOf: String(grid[head][aCol]).replace(/^actual\s*(as of\s*)?/i, '').trim(),
+      revenue: line(/^(revenue total|total revenue|total income)\b/i),
+      expenses: line(/^(total expenses|expense total|expenses total)\b/i),
+      programs: line(/^program(s)? total\b/i),
+      meeting: src.m, file: src.f,
+    };
+    return out.revenue || out.expenses ? out : null;
+  })().catch(() => null);
+  return budgetOnce;
+}
+function useBudget(data) {
+  const [b, setB] = useState(undefined);
+  useEffect(() => { let on = true; readBudget(data).then((x) => { if (on) setB(x); }); return () => { on = false; }; }, []);
+  return b;
+}
+const pctOf = (x) => (x?.budget ? Math.round((x.actual / x.budget) * 100) : null);
 
 // ─── Home ───────────────────────────────────────────────────────────
 /** The numbers a board member wants first, each a door to the rest */
 function Figures({ data, d }) {
-  const cash = useCash(data);
+  const cash = useCashNow(data);
+  const budget = useBudget(data);
   const n = data.numbers;
   const m = d.featured;
   const building = n.projects?.building || [];
   const inBuild = building.filter((b) => b.status === 'Build').length;
   const next = [...n.reveals].sort((a, b) => String(a.confirmed && a.date ? a.date : windowStart(a.window) || '9').localeCompare(String(b.confirmed && b.date ? b.date : windowStart(b.window) || '9')))[0];
-  const s = data.snapshot;
+  const rev = budget?.revenue;
   const tiles = [
-    { key: 'meeting', label: 'Next board meeting', value: m ? partsOf(m.date).mon + ' ' + partsOf(m.date).day : 'Not set', sub: m ? (m.date === data.today ? 'Today' : inWords(m.date, data.today)) : 'The invite will come by email', href: m ? `#/meetings/${m.id}` : '#/meetings' },
-    { key: 'cash', label: 'Cash in the bank', value: cash ? money(cash.total) : cash === null ? 'See statements' : '…', sub: cash ? `${shortAsOf(cash.asOf)}${cash.prior != null ? ` · ${cash.total >= cash.prior ? 'up' : 'down'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}` : cash === null ? 'From each meeting’s packet' : 'Reading the balance sheet', href: '#/financials', quiet: cash === null },
+    { key: 'meeting', label: 'Next board meeting', value: m ? `${partsOf(m.date).mon} ${partsOf(m.date).day}` : 'Not set', sub: m ? (m.date === data.today ? 'Today' : inWords(m.date, data.today)) : 'The invite comes by email', href: m ? `#/meetings/${m.id}` : '#/meetings' },
+    { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', sub: cash ? `${shortAsOf(cash.asOf)}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}` : 'From the balance sheet', href: '#/financials', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '' },
+    { key: 'rev', label: `${budget?.year || ''} revenue to date`.trim(), value: rev ? compact(rev.actual) : budget === null ? '–' : '…', sub: rev ? `${pctOf(rev)}% of ${compact(rev.budget)} budget` : 'From the budget sheet', href: '#/financials' },
     { key: 'build', label: 'Makeovers underway', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', href: '#makeovers' },
     { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#coming-up' },
-    { key: 'kids', label: 'Children served', value: n.impact.kids.toLocaleString(), sub: `Since 2012 · ${n.impact.rooms.toLocaleString()} rooms` },
-    s?.totalRevenue ? { key: 'rev', label: `${s.year} revenue`, value: compact(s.totalRevenue), sub: s.programPct ? `${s.programPct}% to programs` : `From the ${s.year} tax return`, href: '#/financials' } : null,
-  ].filter(Boolean);
+    { key: 'kids', label: 'Children served', value: n.impact.kids.toLocaleString(), sub: `${n.impact.rooms.toLocaleString()} rooms since 2012` },
+  ];
   const go = (e, t) => {
-    if (!t.href.startsWith('#') || t.href.startsWith('#/')) return;
+    if (!t.href || !t.href.startsWith('#') || t.href.startsWith('#/')) return;
     e.preventDefault();
     document.getElementById(t.href.slice(1))?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
   };
-  const inner = (t) => html`<span class="bp-fig__label">${t.label}</span><span class="bp-fig__value">${t.value}</span><span class="bp-fig__sub">${t.sub}</span>`;
+  const inner = (t) => html`<span class="bp-fig__label">${t.label}</span><span class="bp-fig__value">${t.value}</span><span class=${`bp-fig__sub ${t.tone ? `is-${t.tone}` : ''}`}>${t.sub}</span>`;
   return html`<ul class="bp-figs" aria-label="SOARD at a glance">${tiles.map((t) => html`<li key=${t.key}>
-    ${t.href ? html`<a class=${`bp-fig ${t.quiet ? 'is-quiet' : ''}`} href=${t.href} onClick=${(e) => go(e, t)}>${inner(t)}<${Icon} name="arrow" size=${16} cls="bp-go bp-fig__go" /></a>` : html`<div class="bp-fig">${inner(t)}</div>`}
+    ${t.href ? html`<a class="bp-fig" href=${t.href} onClick=${(e) => go(e, t)}>${inner(t)}</a>` : html`<div class="bp-fig">${inner(t)}</div>`}
   </li>`)}</ul>`;
+}
+
+/** The money in one panel: cash, the year against its budget, last year from the tax return */
+function Money({ data }) {
+  const cash = useCashNow(data);
+  const budget = useBudget(data);
+  const s = data.snapshot;
+  const bar = (label, x) => (x ? html`<li class="bp-mbar">
+    <span class="bp-mbar__label">${label}</span>
+    <span class="bp-mbar__n"><strong>${money(x.actual)}</strong> of ${money(x.budget)}</span>
+    <span class="bp-mbar__track" role="img" aria-label=${`${pctOf(x)}% of budget`}><span style=${`--p:${Math.min(100, pctOf(x))}%`}></span></span>
+    <span class="bp-mbar__pct">${pctOf(x)}%</span>
+  </li>` : null);
+  if (!cash && !budget && !s) return null;
+  return html`<section class="bp-card bp-money" aria-labelledby="money-h">
+    <div class="bp-cardhead"><h2 class="bp-h2" id="money-h">The money</h2><a class="bp-cardhead__go" href="#/financials">Financials<${Icon} name="arrow" size=${16} cls="bp-go" /></a></div>
+    ${cash ? html`<div class="bp-money__cash">
+      <span class="bp-money__big">${money(cash.total)}</span>
+      <span class="bp-money__what">cash ${cash.where || 'in the bank'}, ${shortAsOf(cash.asOf)}${cash.prior != null ? html`<br /><span class=${cash.total >= cash.prior ? 'bp-up' : 'bp-down'}>${cash.total >= cash.prior ? '▲' : '▼'} ${money(Math.abs(cash.total - cash.prior))}</span> on a year` : ''}</span>
+    </div>` : null}
+    ${budget ? html`<p class="bp-money__sub">${budget.year || 'This year'} against budget${budget.asOf ? `, through ${budget.asOf.replace(/, \d{4}$/, '')}` : ''}</p>
+    <ul class="bp-mbars">${bar('Revenue', budget.revenue)}${bar('Expenses', budget.expenses)}${bar('Programs', budget.programs)}</ul>` : null}
+    ${s ? html`<dl class="bp-money__year"><div><dt>${s.year} revenue</dt><dd>${compact(s.totalRevenue)}</dd></div><div><dt>Expenses</dt><dd>${compact(s.totalExpenses)}</dd></div>${s.programPct ? html`<div><dt>To programs</dt><dd>${s.programPct}%</dd></div>` : null}${typeof s.netAssets === 'number' ? html`<div><dt>Net assets</dt><dd>${compact(s.netAssets)}</dd></div>` : null}</dl>` : null}
+    ${(budget || cash)?.meeting ? html`<p class="bp-note">From the ${meetingName((budget || cash).meeting)} packet${s ? ` and the ${s.year} tax return` : ''}.</p>` : null}
+  </section>`;
+}
+
+/** The next meeting's agenda, headings and items, on Home */
+function AgendaPeek({ m }) {
+  const sections = (m.sections || []).filter((x) => x.title || x.items.length);
+  if (!sections.length) return null;
+  return html`<ol class="bp-peek">${sections.map((x, i) => html`<li key=${x.id}>
+    <span class="bp-peek__n">${String(i + 1).padStart(2, '0')}</span>
+    <span class="bp-peek__t"><strong>${x.title || 'Agenda'}</strong>${x.items.length ? html`<span class="bp-peek__items">${x.items.map((it) => `${it.title}${it.presenter ? ` (${it.presenter})` : ''}`).join(' · ')}</span>` : null}</span>
+  </li>`)}</ol>`;
+}
+
+/** Since the last meeting: what it decided, what's open, who was there, what it covered */
+function SinceLast({ ctx }) {
+  const { data, d } = ctx;
+  const m = d.last;
+  if (!m) return null;
+  const c = attendanceCounts(m);
+  const open = data.actions;
+  const decided = m.motions.filter((x) => x.text);
+  const topics = m.sections.flatMap((x) => (x.items.length ? x.items.map((it) => it.title) : [x.title])).filter((t) => t && !/^(roll call|call to order|adjourn|minutes approved)/i.test(t)).slice(0, 10);
+  return html`<section class="bp-card bp-since" aria-labelledby="since-h">
+    <div class="bp-cardhead">
+      <h2 class="bp-h2" id="since-h">Last meeting</h2>
+      <a class="bp-cardhead__go" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>${m.minutes === 'approved' ? 'The minutes' : 'The meeting'}<${Icon} name="arrow" size=${16} cls="bp-go" /></a>
+    </div>
+    <p class="bp-since__what"><${DateTile} d=${m.date} mid=${m.id} /><span><strong>${meetingName(m)}</strong><span class="bp-muted">${[longDate(m.date), c.boardHere ? `${c.boardHere} of ${c.board} board members` : ''].filter(Boolean).join(' · ')}</span></span><${MinutesChip} m=${m} /></p>
+    ${decided.length ? html`<h3 class="bp-mini-h">Decided</h3><ul class="bp-facts-list">${decided.map((x) => html`<li key=${x.id || x.text}><span>${x.text}</span><strong>${tallyText(x) || ({ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || '')}</strong></li>`)}</ul>` : null}
+    ${open.length ? html`<h3 class="bp-mini-h">Open action items</h3><ul class="bp-facts-list">${open.map((a) => html`<li key=${a.id} class=${a.mine ? 'is-mine' : ''}><span>${a.text}</span><strong>${[a.mine ? 'You' : a.ownerName, a.due ? shortDate(a.due).replace(/, \d{4}$/, '') : ''].filter(Boolean).join(' · ')}</strong></li>`)}</ul>` : null}
+    ${topics.length ? html`<h3 class="bp-mini-h">Covered</h3><p class="bp-since__topics">${topics.join(' · ')}</p>` : null}
+  </section>`;
+}
+
+/** Where a makeover's link goes: a kid's page, or a community project's page once it's public */
+const projectHref = (b) => (b.kind === 'community' ? b.url || '' : b.url || (b.slug ? `/kids/${b.slug}/` : ''));
+/** The makeovers, nearest the reveal first: one row per stage */
+const BUILD_ORDER = ['Build', 'Mobilization', 'Approval', 'Finalization', 'Design'];
+function Builds({ n }) {
+  const building = n.projects?.building || [];
+  const stages = [...BUILD_ORDER, ...new Set(building.map((b) => b.status).filter((st) => !BUILD_ORDER.includes(st)))].filter((st) => building.some((b) => b.status === st));
+  const revealOf = (b) => (b.slug ? n.reveals.find((r) => r.slug === b.slug) : null);
+  const when = (r) => (!r ? '' : r.confirmed && r.date ? shortDate(r.date).replace(/, \d{4}$/, '') : r.window?.label ? r.window.label.replace(/^(early|mid|late) (\w{3})\w*/i, '$1 $2') : '');
+  return html`<section class="bp-card bp-builds" aria-labelledby="builds-h" id="makeovers">
+    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers in progress<span class="bp-count">${building.length}</span></h2><span class="bp-muted">From JobTread, nearest the reveal first</span></div>
+    ${!n.projects ? html`<p class="bp-muted">The list from JobTread isn’t available right now.</p>` : !building.length ? html`<p class="bp-muted">None right now.</p>` : html`<table class="bp-btable"><tbody>${stages.map((st) => {
+      const list = building.filter((b) => b.status === st);
+      const named = list.filter((b) => b.name);
+      const kids = list.filter((b) => !b.name && b.kind !== 'community').length;
+      const orgs = list.filter((b) => !b.name && b.kind === 'community').length;
+      return html`<tr key=${st}><th scope="row"><span class="bp-btable__stage">${st}</span><span class="bp-btable__n">${list.length}</span></th><td><ul class="bp-btable__list">
+        ${named.map((b) => { const href = projectHref(b); const r = revealOf(b); const inner = html`<${Avatar} p=${{ name: b.name, photo: b.photo ? sized(b.photo, 'w=64,h=64,fit=cover,gravity=auto') : '' }} size=${26} /><span>${b.name}</span>${when(r) ? html`<em>${when(r)}</em>` : null}`;
+          return html`<li key=${b.slug || b.name}>${href ? html`<a class="bp-bchip" href=${href} target="_blank" rel="noopener">${inner}</a>` : html`<span class="bp-bchip">${inner}</span>`}</li>`; })}
+        ${kids ? html`<li><span class="bp-bchip is-quiet">${named.length ? `+${kids} more` : plural(kids, 'family', 'families')}</span></li>` : null}
+        ${orgs ? html`<li><span class="bp-bchip is-quiet">${plural(orgs, 'community project')}</span></li>` : null}
+      </ul></td></tr>`;
+    })}</tbody></table>`}
+  </section>`;
 }
 
 function HomePage({ ctx }) {
@@ -564,69 +771,55 @@ function HomePage({ ctx }) {
   const toSign = data.docs.filter((x) => x.sign && x.file && !x.signedByMe);
   const today = new Date(noon(data.today)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
   const todos = mine.length || toSign.length ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
-      <${SecHead} id="todo-h" title="For you" count=${mine.length + toSign.length} />
+      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h">For you<span class="bp-count">${mine.length + toSign.length}</span></h2></div>
       <ul class="bp-todos">
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href="#/documents" onClick=${() => { focusNext = `doc-${x.id}`; }}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
-          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">Every board member signs it once a year</span></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">Once a year</span></span>
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
       </ul>
     </section>` : null;
+  const m = d.featured;
   return html`
-    <section class="bp-hero">
-      <div class="bp-hero__text">
-        <p class="bp-eyebrow bp-rise" style=${rise(0)}>${today}</p>
-        <h1 class="bp-display bp-rise" style=${rise(1)}>${data.me.name ? html`${greeting()}, <span class="bp-nowrap">${firstName(data.me.name)}.</span>` : 'The board page'}</h1>
-        <div class="bp-rise" style=${rise(2)}><${Figures} data=${data} d=${d} /></div>
+    <header class="bp-brief bp-rise" style=${rise(0)}>
+      <div class="bp-brief__text">
+        <p class="bp-eyebrow">Board brief · ${today}</p>
+        <h1 class="bp-brief__h">${data.me.name ? `${greeting()}, ${firstName(data.me.name)}.` : 'The board page'}</h1>
       </div>
+    </header>
+    <div class="bp-top3 bp-rise" style=${rise(1)}>
+      <${Figures} data=${data} d=${d} />
       <${HeroPhotos} n=${data.numbers} today=${data.today} />
-    </section>
+    </div>
     <div class="bp-split bp-split--top">
-      <div class="bp-stack bp-rise" style=${rise(3)}>${d.featured ? html`<${NextMeeting} m=${d.featured} ctx=${ctx} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
-      <div class="bp-stack bp-rise" style=${rise(4)}>
+      <div class="bp-stack bp-rise" style=${rise(2)}>
+        ${m ? html`<${NextMeeting} m=${m} ctx=${ctx} peek=${true} />` : html`<${NoMeeting} ctx=${ctx} />`}
+        <${SinceLast} ctx=${ctx} />
+      </div>
+      <div class="bp-stack bp-rise" style=${rise(3)}>
         ${todos}
-        ${d.last ? html`<${LastMeeting} m=${d.last} ctx=${ctx} />` : null}
+        <${Money} data=${data} />
       </div>
     </div>
-    <div class="bp-rise" style=${rise(5)} id="makeovers"><${Makeovers} n=${data.numbers} /></div>
+    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} /></div>
     <div class="bp-split">
-      <div class="bp-stack bp-rise" style=${rise(6)}><${ComingUp} data=${data} d=${d} /></div>
-      <div class="bp-stack bp-rise" style=${rise(7)}>
-        <${Glance} n=${data.numbers} />
-        <${Recent} n=${data.numbers} />
-      </div>
+      <div class="bp-stack bp-rise" style=${rise(5)}><${ComingUp} data=${data} d=${d} /></div>
+      <div class="bp-stack bp-rise" style=${rise(6)}><${Recent} n=${data.numbers} /></div>
     </div>`;
 }
 
-/** Families being built for right now, in their own photos (a different one leads each day) */
+/** A family being built for right now, in their own photo (kids only; a different one leads each day) */
 function HeroPhotos({ n, today }) {
-  // Kids only: community projects never lead Home (Peter, Oct 28 2026)
   const withPhoto = (n.projects?.building || []).filter((b) => b.photo && b.name && b.kind !== 'community');
-  const stats = n.impact;
-  if (!withPhoto.length) {
-    return html`<aside class="bp-hero__panel bp-rise" style=${rise(2)} aria-label="SOARD at a glance">
-      <p class="bp-hero__big">${stats.kids.toLocaleString()}</p><p>children served since 2012</p>
-      <p class="bp-hero__big">${stats.rooms.toLocaleString()}</p><p>rooms built</p>
-    </aside>`;
-  }
-  const order = ['Build', 'Mobilization', 'Approval', 'Finalization', 'Design'];
-  const ranked = [...withPhoto].sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status));
-  const at = Math.floor(noon(today) / 86400000) % ranked.length;
-  const lead = ranked[at];
-  const second = ranked.length > 1 ? ranked[(at + 1) % ranked.length] : null;
-  const href = (b) => (b.kind === 'community' ? b.url : b.url || `/kids/${b.slug}/`);
-  return html`<figure class="bp-hero__photos bp-rise" style=${rise(2)}>
-    <span class="bp-hero__accent" aria-hidden="true"></span>
-    <a class="bp-hero__main" href=${href(lead)} target="_blank" rel="noopener">
-      <img src=${sized(lead.photo, 'w=720,h=900,fit=cover,gravity=auto')} alt=${`${lead.name}, whose makeover is in ${lead.status.toLowerCase()}`} width="360" height="450" decoding="async" fetchpriority="high" />
-    </a>
-    ${second ? html`<a class="bp-hero__small" href=${href(second)} target="_blank" rel="noopener" aria-label=${second.name}>
-      <img src=${sized(second.photo, 'w=320,h=320,fit=cover,gravity=auto')} alt="" width="150" height="150" decoding="async" />
-    </a>` : null}
-    <figcaption class="bp-hero__cap"><span class="bp-dot" aria-hidden="true"></span>${lead.name} · ${lead.status === 'Build' ? 'being built now' : `in ${lead.status.toLowerCase()}`}</figcaption>
-  </figure>`;
+  if (!withPhoto.length) return null;
+  const ranked = [...withPhoto].sort((a, b) => BUILD_ORDER.indexOf(a.status) - BUILD_ORDER.indexOf(b.status));
+  const lead = ranked[Math.floor(noon(today) / 86400000) % ranked.length];
+  return html`<a class="bp-kidpic" href=${lead.url || `/kids/${lead.slug}/`} target="_blank" rel="noopener">
+    <img src=${sized(lead.photo, 'w=480,h=600,fit=cover,gravity=auto')} alt=${`${lead.name}, whose makeover is in ${lead.status.toLowerCase()}`} width="240" height="300" decoding="async" fetchpriority="high" />
+    <span class="bp-kidpic__cap"><span class="bp-dot" aria-hidden="true"></span>${lead.name} · ${lead.status === 'Build' ? 'being built now' : lead.status.toLowerCase()}</span>
+  </a>`;
 }
 
 function NoMeeting({ ctx }) {
@@ -639,7 +832,7 @@ function NoMeeting({ ctx }) {
   </section>`;
 }
 
-function NextMeeting({ m, ctx, compact = false }) {
+function NextMeeting({ m, ctx, compact = false, peek = false }) {
   const { data } = ctx;
   const today = m.date === data.today;
   const [, setNow] = useState(0);
@@ -674,6 +867,7 @@ function NextMeeting({ m, ctx, compact = false }) {
       </div>
       <${OnCalendar} m=${m} data=${data} />
       <${Rsvp} m=${m} ctx=${ctx} />
+      ${peek && !m.pending && (m.sections || []).some((x) => x.items.length) ? html`<div class="bp-peekwrap"><h3 class="bp-mini-h">The agenda</h3><${AgendaPeek} m=${m} /></div>` : null}
     </div>
   </section>`;
 }
@@ -742,37 +936,6 @@ function MyAction({ a, ctx }) {
   </label></li>`;
 }
 
-/** Where every makeover stands: JobTread's stages, left to right */
-const PIPE = ['Design', 'Finalization', 'Approval', 'Mobilization', 'Build'];
-const projectHref = (b) => (b.kind === 'community' ? b.url || '' : b.url || (b.slug ? `/kids/${b.slug}/` : ''));
-function Makeovers({ n }) {
-  const building = n.projects?.building || [];
-  const stages = [...PIPE.filter((st) => st !== 'Finalization' || building.some((b) => b.status === st)), ...new Set(building.map((b) => b.status).filter((st) => !PIPE.includes(st)))];
-  const revealOf = (b) => (b.slug ? n.reveals.find((r) => r.slug === b.slug) : null);
-  const when = (r) => (!r ? '' : r.confirmed && r.date ? `Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}` : r.window?.label ? `Reveal ${r.window.label}` : 'Reveal date to come');
-  return html`<section class="bp-card bp-pipe" aria-labelledby="pipe-h">
-    <${SecHead} id="pipe-h" title="Makeovers in progress" count=${building.length || null} sub=${n.projects ? 'Where each one stands, from JobTread' : 'The list from JobTread isn’t available right now.'} />
-    ${n.projects ? html`<ol class="bp-pipe__stages" style=${`--n:${stages.length}`}>
-      ${stages.map((st) => {
-        const list = building.filter((b) => b.status === st);
-        const named = list.filter((b) => b.name);
-        const kids = list.filter((b) => !b.name && b.kind !== 'community').length;
-        const orgs = list.filter((b) => !b.name && b.kind === 'community').length;
-        return html`<li class=${`bp-stage ${list.length ? 'is-on' : ''}`} key=${st}>
-          <div class="bp-stage__head"><span class="bp-stage__dot" aria-hidden="true"></span><span class="bp-stage__name">${st}</span>${list.length ? html`<span class="bp-stage__n">${list.length}</span>` : null}</div>
-          <ul class="bp-stage__list">
-            ${named.map((b) => { const href = projectHref(b); const r = revealOf(b); const inner = html`<${Avatar} p=${{ name: b.name, photo: b.photo ? sized(b.photo, 'w=96,h=96,fit=cover,gravity=auto') : '' }} size=${40} /><span class="bp-kid__text"><span class="bp-kid__name">${b.name}</span><span class="bp-kid__meta">${when(r) || (b.kind === 'community' ? 'Community project' : '')}</span></span>`;
-              return html`<li key=${b.slug || b.name}>${href ? html`<a class="bp-kid" href=${href} target="_blank" rel="noopener">${inner}</a>` : html`<span class="bp-kid">${inner}</span>`}</li>`; })}
-            ${kids ? html`<li><span class="bp-kid bp-kid--quiet"><span class="bp-avatar bp-avatar--blank" style="--s:40px" aria-hidden="true"></span><span class="bp-kid__text"><span class="bp-kid__name">${named.length ? `${kids} more ${kids === 1 ? 'family' : 'families'}` : plural(kids, 'family', 'families')}</span><span class="bp-kid__meta">Named once their page is up</span></span></span></li>` : null}
-            ${orgs ? html`<li><span class="bp-kid bp-kid--quiet"><span class="bp-avatar bp-avatar--blank" style="--s:40px" aria-hidden="true"></span><span class="bp-kid__text"><span class="bp-kid__name">${plural(orgs, 'community project')}</span><span class="bp-kid__meta">Named once it’s published</span></span></span></li>` : null}
-            ${list.length ? null : html`<li class="bp-stage__none">None right now</li>`}
-          </ul>
-        </li>`;
-      })}
-    </ol>` : null}
-  </section>`;
-}
-
 /** Reveals, events and board meetings from today on, by month */
 function ComingUp({ data, d }) {
   const n = data.numbers;
@@ -799,39 +962,6 @@ function ComingUp({ data, d }) {
     </div>`) : html`<p class="bp-muted">Nothing on the calendar yet.</p>`}
     ${rows.length > 7 ? html`<button type="button" class="bp-more-btn" onClick=${() => setAll(!all)} aria-expanded=${all}>${all ? 'Show fewer' : `Show all ${rows.length}`}</button>` : null}
     ${n.reveals.length ? html`<p class="bp-note">${data.me.email ? html`Each reveal comes to <strong>${data.me.email}</strong> as a calendar invite with the address, and moves there if the day changes.` : 'Each board member gets a calendar invite with the address for every reveal.'}</p>` : null}
-  </section>`;
-}
-
-function LastMeeting({ m, ctx }) {
-  const { d } = ctx;
-  const c = attendanceCounts(m);
-  const here = m.attendance.filter((p) => p.status === 'present' || p.status === 'remote').map((p) => d.bySlug.get(p.slug) || p);
-  const decided = m.motions.length;
-  return html`<a class="bp-card bp-card--link bp-last" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>
-    <p class="bp-eyebrow">Last meeting</p>
-    <div class="bp-last__row">
-      <${DateTile} d=${m.date} mid=${m.id} />
-      <div class="bp-last__text"><h2 class="bp-last__title">${meetingName(m)}</h2><p class="bp-muted">${longDate(m.date)}</p></div>
-    </div>
-    <div class="bp-last__foot">
-      ${here.length ? html`<${Faces} people=${here} max=${5} size=${30} />` : null}
-      <span class="bp-last__facts">${[c.boardHere ? `${c.boardHere} of ${c.board} board members there` : '', decided ? plural(decided, 'decision') : ''].filter(Boolean).join(' · ')}</span>
-    </div>
-    <div class="bp-last__end"><${MinutesChip} m=${m} /><span class="bp-card__go">${m.minutes === 'approved' ? 'Read the minutes' : 'See the meeting'}<${Icon} name="arrow" size=${18} cls="bp-go" /></span></div>
-  </a>`;
-}
-
-/** SOARD's own numbers, set flat: no counting up */
-function Glance({ n }) {
-  const stats = [
-    [n.impact.rooms.toLocaleString(), 'rooms built'],
-    n.impact.communityProjects ? [n.impact.communityProjects.toLocaleString(), 'community projects'] : null,
-    n.impact.reached ? [n.impact.reached.toLocaleString(), 'children impacted through community projects'] : null,
-    n.cash ? [money(n.cash.total), `in Mercury${n.cash.at ? `, ${shortDate(n.cash.at.slice(0, 10))}` : ''}`] : null,
-  ].filter(Boolean);
-  return html`<section class="bp-card bp-glance" aria-labelledby="glance-h">
-    <h2 class="bp-h2" id="glance-h">Since 2012</h2>
-    <dl class="bp-glance__grid">${stats.map(([v, label]) => html`<div key=${label}><dd>${v}</dd><dt>${label}</dt></div>`)}</dl>
   </section>`;
 }
 
@@ -1519,7 +1649,9 @@ function coverWord(title) {
 }
 const yearOf = (x) => x.year || (String(x.title).match(/\b(19|20)\d{2}\b/) || [])[0] || '';
 function Cover({ x, shelf }) {
-  return html`<span class=${`bp-cover bp-cover--${shelf}`} aria-hidden="true">
+  const [ref, src] = useFirstPage(x.file, 200);
+  return html`<span class=${`bp-cover bp-cover--${shelf} ${src ? 'has-page' : ''}`} ref=${ref} aria-hidden="true">
+    ${src ? html`<img class="bp-cover__page" src=${src} alt="" />` : null}
     <span class="bp-cover__org">Sunshine on a Ranney Day</span>
     <span class="bp-cover__word">${coverWord(x.title)}</span>
     <span class="bp-cover__rule"></span>
