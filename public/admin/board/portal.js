@@ -678,7 +678,7 @@ function Figures({ data }) {
   const tiles = [
     { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', sub: cash ? `${shortAsOf(cash.asOf)}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}` : 'From the balance sheet', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '', href: '#/financials' },
     rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: compact(rev.actual), sub: `${pctOf(rev)}% of the ${compact(rev.budget)} budget`, href: '#/financials' }
-      : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#coming-up' },
+      : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#makeovers' },
     exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), sub: `${pctOf(exp)}% of the ${compact(exp.budget)} budget`, href: '#/financials' }
       : { key: 'kids', label: 'Children served', value: n.impact.kids.toLocaleString(), sub: `${n.impact.rooms.toLocaleString()} rooms since 2012` },
     { key: 'build', label: 'Makeovers', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', href: '#makeovers' },
@@ -723,8 +723,11 @@ const projectHref = (b) => (b.kind === 'community' ? b.url || '' : b.url || (b.s
 /** The makeovers as a board: a column per stage, Design to Build, each one a card with its reveal */
 const BUILD_ORDER = ['Build', 'Mobilization', 'Approval', 'Finalization', 'Design'];
 const STAGE_FLOW = ['Design', 'Finalization', 'Approval', 'Mobilization', 'Build'];
-function Builds({ n }) {
+function Builds({ n, data, d }) {
+  const [all, setAll] = useState(false);
   const building = n.projects?.building || [];
+  const ahead = aheadRows(data, d);
+  const aheadShown = all ? ahead : ahead.slice(0, 6);
   const stages = [...STAGE_FLOW.filter((st) => st !== 'Finalization' || building.some((b) => b.status === st)), ...new Set(building.map((b) => b.status).filter((st) => !STAGE_FLOW.includes(st)))];
   const revealOf = (b) => (b.slug ? n.reveals.find((r) => r.slug === b.slug) : null);
   const when = (r) => (!r ? '' : r.confirmed && r.date ? `Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}` : r.window?.label ? `Reveal ${r.window.label}` : '');
@@ -734,9 +737,20 @@ function Builds({ n }) {
       <span class="bp-kcard__text"><span class="bp-kcard__name">${b.name}</span><span class="bp-kcard__meta">${b.kind === 'community' ? 'Community project' : when(revealOf(b)) || 'Reveal date to come'}</span></span>`;
     return html`<li key=${b.slug || b.name}>${href ? html`<a class="bp-kcard" href=${href} target="_blank" rel="noopener">${inner}</a>` : html`<span class="bp-kcard">${inner}</span>`}</li>`;
   };
+  const aheadCol = html`<div class="bp-kcol bp-kcol--ahead" key="ahead" id="coming-up">
+    <p class="bp-kcol__head"><span>Coming up</span><span class="bp-kcol__n">${ahead.length}</span></p>
+    <ul class="bp-kcol__cards">
+      ${aheadShown.map((r) => html`<li key=${r.key}><a class="bp-kcard bp-kcard--date" href=${r.href} target=${r.ext ? '_blank' : null} rel=${r.ext ? 'noopener' : null} onClick=${r.mid ? claimMorph : null}>
+        ${r.date ? html`<${DateTile} d=${r.date} mid=${r.mid || null} />` : html`<${WindowTile} w=${r.window} />`}
+        <span class="bp-kcard__text"><span class="bp-kcard__name">${r.title}</span><span class="bp-kcard__meta">${r.when}</span></span>
+      </a></li>`)}
+      ${ahead.length > 6 ? html`<li><button type="button" class="bp-kcol__more" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? 'Fewer' : `${ahead.length - 6} more`}</button></li>` : null}
+      ${ahead.length ? null : html`<li class="bp-kcol__none">Nothing on the calendar yet</li>`}
+    </ul>
+  </div>`;
   return html`<section class="bp-card bp-kanban" aria-labelledby="builds-h" id="makeovers">
-    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers in progress<span class="bp-count">${building.length}</span></h2><span class="bp-muted">From JobTread</span></div>
-    ${!n.projects ? html`<p class="bp-muted">The list from JobTread isn’t available right now.</p>` : html`<div class="bp-kanban__cols" style=${`--n:${stages.length}`}>${stages.map((st) => {
+    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers and coming up</h2><span class="bp-muted">${building.length ? `${plural(building.length, 'makeover')} in progress, from JobTread` : ''}</span></div>
+    ${!n.projects ? html`<p class="bp-muted">The list from JobTread isn’t available right now.</p><div class="bp-kanban__cols" style="--n:1">${aheadCol}</div>` : html`<div class="bp-kanban__cols" style=${`--n:${stages.length + 1}`}>${stages.map((st) => {
       const list = building.filter((b) => b.status === st);
       const named = list.filter((b) => b.name);
       const unnamed = list.filter((b) => !b.name && b.kind !== 'community').length;
@@ -750,7 +764,7 @@ function Builds({ n }) {
           ${list.length ? null : html`<li class="bp-kcol__none">None now</li>`}
         </ul>
       </div>`;
-    })}</div>`}
+    })}${aheadCol}</div>`}
   </section>`;
 }
 
@@ -783,8 +797,7 @@ function HomePage({ ctx }) {
       <div class="bp-stack bp-rise" style=${rise(2)}>${m ? html`<${NextMeeting} m=${m} ctx=${ctx} peek=${true} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
       <div class="bp-stack bp-rise" style=${rise(3)}>${todos}<${SinceLast} ctx=${ctx} /></div>
     </div>
-    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} /></div>
-    <div class="bp-rise" style=${rise(5)}><${ComingUp} data=${data} d=${d} limit=${5} /></div>`;
+    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} data=${data} d=${d} /></div>`;
 }
 
 function NoMeeting({ ctx }) {
@@ -906,32 +919,14 @@ function MyAction({ a, ctx }) {
   </label></li>`;
 }
 
-/** Reveals, events and board meetings from today on, by month */
-function ComingUp({ data, d, limit = 7 }) {
+/** Reveals, events and other board meetings from today on, soonest first */
+function aheadRows(data, d) {
   const n = data.numbers;
-  const [all, setAll] = useState(false);
-  const rows = [
-    ...n.reveals.map((r) => ({ key: `r-${r.slug}`, sort: r.confirmed && r.date ? r.date : (windowStart(r.window) || r.date || '9999'), date: r.confirmed ? r.date : '', window: r.confirmed ? null : r.window, kind: 'Reveal', title: `${r.name}’s reveal`, href: r.kidUrl, ext: true, photo: r.photo, when: r.confirmed ? [dayOf(r.date), r.time ? clock(r.time) : ''].filter(Boolean).join(' · ') : 'Day not set yet' })),
-    ...n.events.map((e) => ({ key: `e-${e.slug}`, sort: e.date, date: e.date, kind: 'Event', title: e.title, href: e.url, ext: true, when: [dayOf(e.date), e.time, e.location].filter(Boolean).join(' · ') })),
-    ...data.meetings.filter((m) => m.date >= data.today && m.id !== d.featured?.id).map((m) => ({ key: `m-${m.id}`, sort: m.date, date: m.date, kind: 'Board', title: meetingName(m), href: `#/meetings/${m.id}`, mid: m.id, when: [dayOf(m.date), m.start ? clock(m.start) : ''].filter(Boolean).join(' · ') })),
+  return [
+    ...n.reveals.map((r) => ({ key: `r-${r.slug}`, sort: r.confirmed && r.date ? r.date : (windowStart(r.window) || r.date || '9999'), date: r.confirmed ? r.date : '', window: r.confirmed ? null : r.window, title: `${r.name}’s reveal`, href: r.kidUrl, ext: true, when: r.confirmed ? [partsOf(r.date).wk, r.time ? clock(r.time) : ''].filter(Boolean).join(' · ') : 'Day not set yet' })),
+    ...n.events.map((e) => ({ key: `e-${e.slug}`, sort: e.date, date: e.date, title: e.title, href: e.url, ext: true, when: [partsOf(e.date).wk, e.time].filter(Boolean).join(' · ') })),
+    ...data.meetings.filter((m) => m.date >= data.today && m.id !== d.featured?.id).map((m) => ({ key: `m-${m.id}`, sort: m.date, date: m.date, title: meetingName(m), href: `#/meetings/${m.id}`, mid: m.id, when: [partsOf(m.date).wk, m.start ? clock(m.start) : ''].filter(Boolean).join(' · ') })),
   ].sort((a, b) => String(a.sort).localeCompare(String(b.sort)));
-  const shown = all ? rows : rows.slice(0, limit);
-  const months = [...new Set(shown.map((r) => String(r.sort).slice(0, 7)))];
-  const year = data.today.slice(0, 4);
-  return html`<section class="bp-card" aria-labelledby="coming-h" id="coming-up">
-    <div class="bp-cardhead"><h2 class="bp-h2" id="coming-h">Coming up</h2></div>
-    ${rows.length ? months.map((ym) => html`<div class="bp-month" key=${ym}>
-      <h3 class="bp-month__label">${/^\d{4}-\d{2}$/.test(ym) ? (ym.startsWith(year) ? monthName(ym) : monthOf(ym)) : 'Later'}</h3>
-      <ul class="bp-rows">${shown.filter((r) => String(r.sort).slice(0, 7) === ym).map((r) => html`<li key=${r.key}>
-        <a class="bp-row" href=${r.href} target=${r.ext ? '_blank' : null} rel=${r.ext ? 'noopener' : null} onClick=${r.mid ? claimMorph : null}>
-          ${r.date ? html`<${DateTile} d=${r.date} mid=${r.mid || null} />` : html`<${WindowTile} w=${r.window} />`}
-          <span class="bp-row__main"><span class="bp-row__title">${r.title}</span><span class="bp-row__meta">${r.when}</span></span>
-          ${r.photo ? html`<${Avatar} p=${{ name: r.title, photo: sized(r.photo, 'w=80,h=80,fit=cover,gravity=auto') }} size=${36} />` : html`<span class=${`bp-tag bp-tag--${r.kind.toLowerCase()}`}>${r.kind}</span>`}
-        </a>
-      </li>`)}</ul>
-    </div>`) : html`<p class="bp-muted">Nothing on the calendar yet.</p>`}
-    ${rows.length > limit ? html`<button type="button" class="bp-more-btn" onClick=${() => setAll(!all)} aria-expanded=${all}>${all ? 'Show fewer' : `Show all ${rows.length}`}</button>` : null}
-  </section>`;
 }
 
 // ─── Meetings ───────────────────────────────────────────────────────

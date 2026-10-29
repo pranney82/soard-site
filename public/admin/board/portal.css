@@ -156,9 +156,6 @@ a:hover > .bp-go, a:hover .bp-card__go .bp-go, .bp-btn:hover .bp-go, a:focus-vis
 .bp-chip--warn { background: var(--warn-bg); color: var(--warn); }
 .bp-chip--plain { background: transparent; border: 1px solid var(--line); color: var(--muted); }
 .bp-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.bp-tag { flex-shrink: 0; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.2rem 0.55rem; border-radius: 6px; background: var(--warm); color: var(--muted); }
-.bp-tag--reveal { background: var(--yellow-soft); color: var(--gold); }
-.bp-tag--board { background: var(--ink); color: #F4F2EA; }
 .bp-pill { min-height: 36px; padding: 0.3rem 0.9rem; border-radius: 999px; border: 1px solid var(--line); background: #fff; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--ink-2); transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.15s; }
 .bp-pill:hover { border-color: var(--line-2); color: var(--ink); }
 .bp-pill:active { transform: scale(0.97); }
@@ -202,8 +199,6 @@ a.bp-row:hover { background: var(--warm); }
 .bp-row__main { flex: 1 1 auto; min-width: 0; display: grid; gap: 0.05rem; }
 .bp-row__title { font-weight: 650; line-height: 1.35; }
 .bp-row__meta { color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
-.bp-month + .bp-month { margin-top: 0.6rem; }
-.bp-month__label { margin: 0 0 0.15rem; font-size: 0.76rem; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }
 
 /* ─── Home ─── */
 /* The board brief: a line of greeting, then the figures and one photo, then the meeting and the money */
@@ -243,11 +238,21 @@ a.bp-row:hover { background: var(--warm); }
 .bp-kcard { display: flex; align-items: center; gap: 0.55rem; padding: 0.5rem 0.55rem; border-radius: 12px; background: #fff; border: 1px solid rgba(45, 47, 44, 0.07); box-shadow: var(--shadow-1); text-decoration: none; color: var(--ink); min-width: 0; transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease); }
 a.bp-kcard:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
 .bp-kcard__text { display: grid; min-width: 0; }
-.bp-kcard__name { font-weight: 650; font-size: 0.9rem; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-kcard__name { font-weight: 650; font-size: 0.9rem; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .bp-kcard__meta { color: var(--muted); font-size: 0.78rem; line-height: 1.3; }
 .bp-kcard.is-quiet { background: transparent; border-style: dashed; box-shadow: none; }
+/* The last column, what's coming up: a date on each card */
+.bp-kcol--ahead { background: var(--yellow-wash); box-shadow: inset 0 0 0 1px rgba(245, 204, 0, 0.3); }
+.bp-kcard--date { padding: 0.4rem 0.55rem 0.4rem 0.4rem; }
+.bp-kcard--date .bp-date { width: 2.45rem; height: 2.6rem; border-radius: 9px; }
+.bp-kcard--date .bp-date__mon { font-size: 0.6rem; }
+.bp-kcard--date .bp-date__day { font-size: 1.05rem; }
+.bp-kcard--date .bp-date__day--word { font-size: 0.72rem; }
+.bp-kcol__more { width: 100%; min-height: 36px; border: none; background: none; color: var(--info); font-weight: 650; font-size: 0.86rem; cursor: pointer; border-radius: 10px; }
+.bp-kcol__more:hover { background: rgba(255, 255, 255, 0.6); }
 .bp-kcard.is-quiet .bp-kcard__name { font-weight: 600; color: var(--ink-2); white-space: normal; }
-@media (max-width: 900px) { .bp-kanban__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1100px) { .bp-kanban__cols { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .bp-kanban__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .bp-kanban__cols { grid-template-columns: 1fr; } .bp-kcol.is-empty { display: none; } }
 
 /* The figures: what a board member wants first, each a door to the rest */
