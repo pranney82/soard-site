@@ -601,7 +601,26 @@ async function impact(DB) {
     communityProjects: community.length,
     reached: community.reduce((s, c) => s + reachedCount(c), 0),
     years: Number(todayEastern().slice(0, 4)) - 2012,
+    // Each year's kids served, rooms built and makeovers (a published profile is one), counted as the admin's
+    // Dashboard does; every year from the first through this one, so a quiet year shows as one
+    byYear: byYear(kids),
   };
+}
+function byYear(kids) {
+  const by = new Map();
+  for (const k of kids) {
+    const y = Number(k.year);
+    if (!(y > 2000 && y < 2100)) continue;
+    const r = by.get(y) || { year: y, kids: 0, rooms: 0, makeovers: 0 };
+    r.kids += Number(k.childCount) || 1;
+    r.rooms += Number(k.roomCount) || 1;
+    r.makeovers += 1;
+    by.set(y, r);
+  }
+  if (!by.size) return [];
+  const first = Math.min(...by.keys());
+  const last = Math.max(Number(todayEastern().slice(0, 4)), ...by.keys());
+  return Array.from({ length: last - first + 1 }, (_, i) => by.get(first + i) || { year: first + i, kids: 0, rooms: 0, makeovers: 0 });
 }
 
 /** Events from today on (and the last 120 days), soonest first */
