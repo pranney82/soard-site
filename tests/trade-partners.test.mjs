@@ -18,8 +18,9 @@ import { ensureBillPaySchema } from '../functions/api/_bill-pay.js';
 import { createLink, findLink, ensureVendorSchema, fileUpload, TRADES } from '../functions/api/_vendors.js';
 import {
   partnerView, partnerInvoices, readBank, bankHold, confirmBank, startPartner, matchVendor, invitePartner, partnerNudges,
-  readProfileRow, routingOk, phoneOf, holderOf,
+  readProfileRow, routingOk, phoneOf, holderOf, isTestCompany,
 } from '../functions/api/_trade-partners.js';
+import { onRequestGet as testsGet, onRequestPost as testsPost } from '../functions/api/trade-partners-admin.js';
 import { checkW9, buildW9, tinProblem } from '../functions/api/_w9-form.js';
 import { onRequestPost as post, onRequestGet as get } from '../functions/api/trade-partner.js';
 import { onRequestGet as docsGet } from '../functions/api/vendor-docs.js';
@@ -76,9 +77,19 @@ globalThis.fetch = async (input, init = {}) => {
         files: { nodes: (a.files || []).map((f, i) => ({ id: `FILE${i}`, name: f.name, url: `https://files.jobtread.example/${i}`, createdAt: '2026-10-20T15:00:00Z', fileTags: { nodes: f.tags.map((id) => ({ id })) } })) },
       } });
     }
+    if (query.organization?.accounts) {
+      const like = query.organization.accounts.$.where.and[1][2].replace('%', '');
+      return Response.json({ organization: { accounts: { nodes: Object.entries(world.accounts).filter(([, a]) => a.name.toLowerCase().startsWith(like.toLowerCase())).map(([id, a]) => ({ id, name: a.name, archivedAt: a.archived || null })) } } });
+    }
+    if (query.deleteAccount) {
+      if (world.refuseDelete) return new Response('This account can’t be deleted', { status: 400 });
+      delete world.accounts[query.deleteAccount.$.id];
+      return Response.json({});
+    }
     if (query.updateAccount) {
-      const { id, name, customFieldValues } = query.updateAccount.$;
+      const { id, name, customFieldValues, archive } = query.updateAccount.$;
       const a = world.accounts[id];
+      if (archive) a.archived = '2026-10-30T12:00:00Z';
       if (name) a.name = name;
       Object.assign(a.values, customFieldValues || {});
       return Response.json({});
@@ -133,6 +144,7 @@ globalThis.fetch = async (input, init = {}) => {
     }
     const one = p.match(/^\/recipient\/([^/]+)$/);
     if (one && method === 'GET') return Response.json(world.recipients.find((r) => r.id === one[1]) || {});
+    if (one && method === 'DELETE') { world.recipients = world.recipients.filter((r) => r.id !== one[1]); return new Response(null, { status: 204 }); }
     if (one && method === 'POST') {
       const body = JSON.parse(init.body);
       Object.assign(world.recipients.find((r) => r.id === one[1]), body);
@@ -554,4 +566,39 @@ test('the landing page’s config: the trades and whether Turnstile is on', asyn
   assert.equal(r.ok, true);
   assert.ok(r.trades.includes('Electrical'));
   assert.equal(r.turnstileSiteKey, null);
+});
+
+test('after a live test: only a company named “TEST …” is listed, and removing it takes its Mercury payee, JobTread vendor and rows', async () => {
+  assert.ok(isTestCompany('TEST Direct Deposit Check'));
+  for (const real of ['Testa Tile', 'Test Kitchen LLC', 'TESTED Roofing', 'TKO Plumbing']) assert.equal(isTestCompany(real), false, real);
+  world.accounts['ACC-T1'] = { name: 'TEST Bank Check', values: {}, primary: null, contacts: [] };
+  world.accounts['ACC-T2'] = { name: 'TEST Left Over', values: {}, primary: null, contacts: [] };
+  world.accounts['ACC-REAL'] = { name: 'Testa Tile', values: {}, primary: null, contacts: [] };
+  world.recipients.push({ id: 'rec-t1', name: 'TEST Bank Check', status: 'active' }, { id: 'rec-renamed', name: 'Testa Tile', status: 'active' });
+  await readBank(env.DB, 'ACC-T1');
+  await env.DB.prepare("INSERT INTO vendor_bank (jt_id, mercury_id, last4, kind, status) VALUES ('ACC-T1', 'rec-t1', '4321', 'businessChecking', 'confirmed'), ('ACC-T2', 'rec-renamed', '1111', 'businessChecking', 'confirmed')").run();
+  await env.DB.prepare("INSERT INTO vendor_profiles (jt_id, started_at) VALUES ('ACC-T1', '2026-10-30')").run();
+  await env.DB.prepare("INSERT INTO vendors (id, name, jt_id, created_at, updated_at) VALUES ('jt_ACC-T1', 'TEST Bank Check', 'ACC-T1', '', '')").run();
+  await createLink(env.DB, 'ACC-T1', { now: Date.now() });
+
+  const listed = await (await testsGet({ env })).json();
+  assert.deepEqual(listed.tests.map((t) => [t.jtId, t.payees]), [['ACC-T1', ['rec-t1']], ['ACC-T2', ['rec-renamed']]]);
+
+  const req = (body) => testsPost({ env, request: new Request('https://x.example/api/trade-partners-admin', { method: 'POST', body: JSON.stringify(body) }) }).then((r) => r.json());
+  assert.equal((await req({ action: 'remove-tests' })).success, false);
+  world.refuseDelete = false;
+  const { removed } = await req({ action: 'remove-tests', jtIds: ['ACC-T1', 'ACC-REAL', VENDOR] });
+  assert.deepEqual(removed[0], { jtId: 'ACC-T1', name: 'TEST Bank Check', payees: [{ id: 'rec-t1', gone: true }], jobtread: 'deleted' });
+  assert.deepEqual(removed.slice(1).map((r) => r.problem), ['Not a TEST company in JobTread', 'Not a TEST company in JobTread']);
+  assert.ok(world.accounts['ACC-REAL'] && world.accounts[VENDOR] && !world.accounts['ACC-T1']);
+  assert.deepEqual(world.recipients.map((r) => r.id), ['rec-tko', 'rec-renamed']);
+  for (const t of ['vendors', 'vendor_bank', 'vendor_profiles']) assert.equal((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE jt_id = 'ACC-T1'`).first()).n, 0, t);
+  assert.equal((await env.DB.prepare("SELECT COUNT(*) AS n FROM vendor_links WHERE vendor_id = 'ACC-T1'").first()).n, 0);
+
+  // A payee Mercury knows by a real name stays; a vendor JobTread won't delete is archived
+  world.refuseDelete = true;
+  const [left] = (await req({ action: 'remove-tests', jtIds: ['ACC-T2'] })).removed;
+  assert.match(left.payees[0].problem, /Testa Tile/);
+  assert.equal(left.jobtread, 'archived');
+  assert.ok(world.recipients.some((r) => r.id === 'rec-renamed'));
 });

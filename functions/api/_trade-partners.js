@@ -739,4 +739,53 @@ export async function docArrived(env, jtId, doc, { now = Date.now() } = {}) {
   await stepDone(env.DB, jtId, doc, now);
 }
 
+// ─── After a live test ──────────────────────────────────────────────
+
+/** A company a live test made: "TEST " in capitals first, so a real one ("Testa Tile", "Test Kitchen") never is */
+export const isTestCompany = (name) => /^TEST\s/.test(String(name || ''));
+
+/** The test companies JobTread has, and the Mercury payees each made → [{ jtId, name, archived, payees: [id] }] */
+export async function testPartners(env, { fetchImpl = fetch } = {}) {
+  await ensurePartnerSchema(env.DB);
+  const d = await jt(env, { organization: { $: { id: SOARD_ORG_ID }, accounts: { $: { size: 25, where: { and: [['type', '=', 'vendor'], ['name', 'like', 'TEST %']] } }, nodes: { id: {}, name: {}, archivedAt: {} } } } }, fetchImpl);
+  const recipients = mercuryConfigured(env) ? await cachedRecipients(env, { fresh: true }).catch(() => []) : [];
+  const out = [];
+  for (const a of (d?.organization?.accounts?.nodes || []).filter((x) => isTestCompany(x.name))) {
+    const bank = await readBank(env.DB, a.id);
+    const payees = [bank?.mercuryId, ...recipients.filter((r) => r.status !== 'deleted' && r.name === a.name).map((r) => r.id)].filter(Boolean);
+    out.push({ jtId: a.id, name: a.name, archived: !!a.archivedAt, payees: [...new Set(payees)] });
+  }
+  return out;
+}
+
+/**
+ * Removes test companies: each one's Mercury payee, its JobTread vendor (archived when JobTread won't delete it) and
+ * its rows here. Each is read again first; a vendor or payee not named "TEST …" is left alone
+ * → [{ jtId, name, payees: [{ id, gone } | { id, problem }], jobtread: 'deleted' | 'archived' | problem }]
+ */
+export async function removeTestPartners(env, jtIds, { fetchImpl = fetch } = {}) {
+  const found = new Map((await testPartners(env, { fetchImpl })).map((t) => [t.jtId, t]));
+  const out = [];
+  for (const id of new Set([].concat(jtIds || []).map(String))) {
+    const t = found.get(id);
+    if (!t) { out.push({ jtId: id, problem: 'Not a TEST company in JobTread' }); continue; }
+    const payees = [];
+    for (const pid of t.payees) {
+      const path = `/recipient/${encodeURIComponent(pid)}`;
+      const r = await mercury(env, path, { fetchImpl }).catch(() => null);
+      if (!isTestCompany(r?.name)) { payees.push({ id: pid, problem: r ? `Mercury calls this payee “${r.name}”, so it was left alone` : 'Mercury didn’t say who this payee is' }); continue; }
+      payees.push(await mercury(env, path, { method: 'DELETE', fetchImpl }).then(() => ({ id: pid, gone: true }), (e) => ({ id: pid, problem: e.message })));
+    }
+    let jobtread = await jt(env, { deleteAccount: { $: { id } } }, fetchImpl).then(() => 'deleted', (e) => e.message || 'JobTread didn’t delete it');
+    if (jobtread !== 'deleted') jobtread = await jt(env, { updateAccount: { $: { id, archive: true } } }, fetchImpl).then(() => 'archived', () => jobtread);
+    if (jobtread === 'deleted' || jobtread === 'archived') {
+      await env.DB.batch(['vendors', 'vendor_asks', 'vendor_profiles', 'vendor_bank'].map((table) => env.DB.prepare(`DELETE FROM ${table} WHERE jt_id = ?`).bind(id))
+        .concat(env.DB.prepare('DELETE FROM vendor_links WHERE vendor_id = ?').bind(id)));
+    }
+    out.push({ jtId: id, name: t.name, payees, jobtread });
+  }
+  if (out.some((o) => o.payees?.some((p) => p.gone))) await cachedRecipients(env, { fresh: true }).catch(() => null);
+  return out;
+}
+
 export { dollars, LIMITS };
