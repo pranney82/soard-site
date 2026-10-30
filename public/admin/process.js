@@ -193,6 +193,8 @@ const CSS = `
 .pr-mh__cycle { align-self: flex-start; font-size: var(--fs-2xs); font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 999px; background: var(--tone-info-bg); color: var(--tone-info-fg); }
 .pr-mlane { position: sticky; left: 0; z-index: 2; display: flex; align-items: flex-start; padding: 0.7rem 0.75rem; background: var(--color-bg-card); border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); font-size: var(--fs-xs); font-weight: 650; color: var(--color-text-secondary); }
 .pr-mlane.is-auto { color: var(--color-text); }
+/* A tall lane keeps its name in sight while it scrolls by, under the step headers */
+.pr-mlane > span { position: sticky; top: 6.25rem; }
 .pr-mcell { position: relative; display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.6rem; border-left: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); min-height: 3.25rem; }
 .pr-mcell.is-autolane { background: color-mix(in srgb, var(--color-bg-card) 55%, transparent); }
 .pr-mcard { all: unset; box-sizing: border-box; position: relative; z-index: 2; cursor: pointer; display: flex; flex-direction: column; gap: 0.3rem; padding: 0.5rem 0.6rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-card); box-shadow: var(--shadow-xs); font-size: var(--fs-xs); line-height: 1.4; color: var(--color-text); }
@@ -709,7 +711,7 @@ function ProcessMap({ track, steps, byTitle, placed, cycles, show, stepWarn, onO
           </div>`;
         })}
         ${m.lanes.map((l) => [
-          html`<div key=${`l-${l.id}`} class=${`pr-mlane${l.id === 'auto' ? ' is-auto' : ''}`}>${l.label}</div>`,
+          html`<div key=${`l-${l.id}`} class=${`pr-mlane${l.id === 'auto' ? ' is-auto' : ''}`}><span>${l.label}</span></div>`,
           ...m.columns.map((c) => {
             const st = steps.find((x) => `${x.part}-${x.n}` === c.key);
             if (l.id === 'auto') {
@@ -874,7 +876,8 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
   const money = MONEY_TRACKS.includes(track);
   const doc = data?.docs?.[docKey] || null;
   const sections = data?.docs?.policy?.sections || [];
-  const steps = useMemo(() => pinSteps(track, money ? [] : doc?.steps || []), [track, doc]);
+  // Each track's own Doc (a money track without its Doc yet: its built-in steps)
+  const steps = useMemo(() => pinSteps(track, doc?.steps || []), [track, doc]);
   // A money step whose settings differ from the manual
   const offPolicy = (s) => !!(s.check && data?.checks?.[s.check] && !data.checks[s.check].ok);
   // Who's at which step: each status on the step it means

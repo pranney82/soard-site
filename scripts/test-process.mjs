@@ -513,6 +513,8 @@ try {
   ok(quote.includes('Expenditures') && quote.includes('Required approval: Board Chair'), 'a policy section opens to the manual’s own words');
   ok(await page.evaluate(() => [...document.querySelectorAll('.pr-policy button')].find((b) => b.textContent === 'Segregation of Duties')?.disabled === true), 'a section the manual doesn’t have can’t be opened');
   ok((await chipsOn(page, 'A sub’s bill lands in JobTread and its approver is asked by email'))?.[0]?.t === 'Bill approvals and pay', 'bills show the approval automation');
+  const docOnly = await page.evaluate(() => ({ list: [...document.querySelectorAll('.pr-line > .pr-text')].some((x) => x.textContent === 'Up to $15,000 the President approves; over $15,000 the Board Chair approves too'), map: [...document.querySelectorAll('.pr-mcard__t')].some((x) => x.textContent === 'Up to $15,000 the President approves; over $15,000 the Board Chair approves too'), builtIn: [...document.querySelectorAll('.pr-mcard__t, .pr-line > .pr-text')].some((x) => x.textContent === 'A bill over the second-approval amount needs a second approver') }));
+  ok(docOnly.list && docOnly.map && !docOnly.builtIn, `the steps and the map are the money Doc’s own lines, not the built-in ones (${JSON.stringify(docOnly)})`);
   ok(await tagOf(page, 'Reimbursing staff and volunteers') === 'By hand', 'reimbursements are by hand');
   const moneyRows = await page.$$eval('.pr-now .pr-row', (l) => l.map((r) => r.textContent.replace(/\s+/g, ' ').trim()));
   ok(moneyRows.join(' / ') === 'Bills waiting for an answer3 / Bills held for W-9 or insurance2 / Vendors asked for their papers5 / Charges not sorted onto a job4 / Odd charges to look at0', `Right now is what’s waiting (${moneyRows.join(' / ')})`);
