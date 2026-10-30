@@ -170,6 +170,11 @@ PUBLIC_ROUTES.push('/api/advisory-apply');
 // (_board-rsvp.js); GET only shows the answer to confirm, rate limited below
 PUBLIC_ROUTES.push('/api/board-rsvp');
 
+// Where Intuit sends a Board admin back after "Connect QuickBooks" in Board →
+// Settings: the one-time state Settings made is checked inside (_quickbooks.js),
+// and the code is useless without SOARD's keys; rate limited below
+PUBLIC_GET_ROUTES.push('/api/books-callback');
+
 // ─── Rate Limiting ──────────────────────────────────────────────────
 // Each limited route allows 5 calls per address (clientIp: IPv6 by its /64)
 // per 60 seconds. The in-memory count is a cheap first filter that only sees
@@ -180,7 +185,7 @@ const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
 const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply', '/api/vendor-docs', '/api/board-rsvp']);
 // Public GET routes that fan out to paid upstreams / build large responses.
-const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
+const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos', '/api/books-callback']);
 // The application form autosaves every step and uploads photos one by one, so
 // a family filling it in makes far more than 5 calls a minute; it gets its own bucket.
 // Per minute per address. A watch party or a gala table shares one Wi-Fi, so the

@@ -2,7 +2,9 @@
  * The money as the board page shows it (./portal.js Home and Financials, a meeting's Financial item, and the
  * screen, ./screen.js): the cash, live from the banks once one holds SOARD's money (numbers.cash), else the bank
  * accounts on the newest Statement of Financial Position in a meeting's packet; and the year against its budget,
- * from the newest "budget & actual" sheet. Both read in the browser from QuickBooks' Excel copies.
+ * from the newest "budget & actual" sheet. Both read in the browser from QuickBooks' Excel copies. Once QuickBooks
+ * itself is connected (Board → Settings → QuickBooks, numbers.books), the year's revenue and expenses so far are
+ * its own, read hourly, against the same sheet's budget.
  */
 
 import { useState, useEffect } from '../vendor.js';
@@ -137,10 +139,29 @@ function readBudget(data, upTo = '') {
   })().catch(() => null));
   return budgetOnce.get(src.f.id);
 }
+
+// The year so far from QuickBooks itself (numbers.books, read hourly once it's connected), for today and meetings
+// ahead; a past meeting keeps to its own packet, the way its cash does
+const booksFor = (data, upTo = '') => (!upTo || upTo >= todayEastern() ? data.numbers?.books || null : null);
+/**
+ * QuickBooks' revenue and expenses so far in place of the sheet's actuals. The budget beside them stays the
+ * sheet's, and only for the same year: January's figures are never measured against last year's budget
+ */
+export function withBooks(sheet, books) {
+  if (!books || typeof books.revenue !== 'number') return sheet;
+  const same = !!sheet && (sheet.year || String(sheet.meeting?.date || '').slice(0, 4)) === books.year;
+  const line = (actual, x) => ({ actual, budget: same && x ? x.budget : null });
+  return {
+    year: books.year, asOf: shortDate(books.through), live: true, at: books.at,
+    revenue: line(books.revenue, sheet?.revenue), expenses: line(books.expenses, sheet?.expenses), programs: null,
+    meeting: sheet?.meeting || null, file: sheet?.file || null,
+  };
+}
 export function useBudget(data, upTo = '') {
   const [b, setB] = useState(undefined);
   useEffect(() => { let on = true; readBudget(data, upTo).then((x) => { if (on) setB(x); }); return () => { on = false; }; }, [upTo]);
-  return b;
+  // While the sheet is read, its budget is still to come: the figures wait for it rather than showing twice
+  return b === undefined ? b : withBooks(b, booksFor(data, upTo));
 }
 export const pctOf = (x) => (x?.budget ? Math.round((x.actual / x.budget) * 100) : null);
 
@@ -164,7 +185,7 @@ export function moneyTiles({ cash, budget, n }) {
   }
   const yr = budget?.year || '';
   for (const [k, x, word] of [['rev', budget?.revenue, 'revenue'], ['exp', budget?.expenses, 'expenses']]) {
-    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: `${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}` });
+    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: x.budget ? `${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}` : `The year so far${asOfWords(budget.asOf)}` });
   }
   const f = n?.finance;
   // Mercury's own record (the year so far, the forecast) only once its banks are the cash shown
@@ -179,5 +200,5 @@ export function moneyTiles({ cash, budget, n }) {
 /** The cash and the budget at once, outside a component (Print it all): { cash, budget }, each null when there's none */
 export async function moneyFor(data, upTo = '') {
   const [sheet, budget] = await Promise.all([readCash(data, upTo), readBudget(data, upTo)]);
-  return { cash: cashToShow(!upTo || upTo >= todayEastern() ? liveCash(data) : null, sheet) || null, budget };
+  return { cash: cashToShow(!upTo || upTo >= todayEastern() ? liveCash(data) : null, sheet) || null, budget: withBooks(budget, booksFor(data, upTo)) };
 }

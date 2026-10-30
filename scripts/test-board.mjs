@@ -45,6 +45,7 @@ import { answerAsks } from './lib/ask.mjs';
 import { onRequest as middleware, _resetKeyCacheForTests } from '../functions/api/_middleware.js';
 import * as boardAdmin from '../functions/api/board-admin.js';
 import * as bankAdmin from '../functions/api/bank-admin.js';
+import * as booksAdmin from '../functions/api/books-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
 import { provideBoardFinance, maybeLockNumbers } from '../functions/api/_board.js';
@@ -248,7 +249,7 @@ async function statementPdf() {
 }
 
 // ── The server ──
-const ROUTES = { '/api/board-admin': boardAdmin, '/api/board-portal': boardPortal, '/api/board-file': boardFile, '/api/bank-admin': bankAdmin };
+const ROUTES = { '/api/board-admin': boardAdmin, '/api/board-portal': boardPortal, '/api/board-file': boardFile, '/api/bank-admin': bankAdmin, '/api/books-admin': booksAdmin };
 const csp = (() => {
   const lines = readFileSync(join(ROOT, 'public/_headers'), 'utf8').split('\n');
   const at = lines.findIndex((l) => l.trim() === '/admin/*');
@@ -522,6 +523,9 @@ try {
   ok(await waitText(jane, /Read through SOARD’s relay/), 'Settings: Bank balances, Mercury read through the relay');
   const banks = await jane.$eval('.bk-banks', (e) => e.textContent);
   ok(/Chase[\s\S]*PLAID_CLIENT_ID[\s\S]*PLAID_SECRET/.test(banks) && !/\$/.test(banks) && !(await jane.$('.bk-banks .btn-primary')), 'Settings: Chase waits for Plaid’s two keys, with no button until they’re in, and no amounts');
+  ok(await waitText(jane, /QBO_CLIENT_SECRET/), 'Settings: QuickBooks');
+  const books = await jane.$eval('.bk-books', (e) => e.textContent);
+  ok(/https:\/\/sunshineonaranneyday\.com\/api\/books-callback[\s\S]*QBO_CLIENT_ID/.test(books) && !/\$/.test(books) && !(await jane.$('.bk-books .btn-primary')), 'Settings: QuickBooks waits for its two keys, with the redirect URI to give Intuit, no button until they’re in, and no amounts');
   await shot(jane, '07-settings');
 
   // A board meeting on the founder's calendar becomes a meeting in Board; Board's own invite isn't brought in again

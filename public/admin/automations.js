@@ -880,6 +880,20 @@ const MAP = { t: 'SOARD', children: [
             if (stale(b.cash.lastAt, 30 * HOUR)) return ATTN(`Hasn’t read the banks since ${stamp(b.cash.lastAt)}. Check the Heartbeat entry.`, b.cash.lastAt);
             return ON(`${both([...(k.banks || []), ...(b.cash.mercury ? ['Mercury'] : [])])}. ${plural(b.cash.months, 'month')} of history.`, b.cash.lastAt);
           } },
+        { t: 'Year so far from QuickBooks', s: 'off', k: 'schedule',
+          when: 'On the live hub’s heartbeat, every hour once QuickBooks is connected.',
+          does: 'Reads QuickBooks’ Profit and Loss from the first day of SOARD’s fiscal year to today (read-only; connected once by a Board admin in Board → Settings → QuickBooks). The board page’s revenue and expenses for the year are QuickBooks’ own, against the budget sheet in the newest packet; a past meeting keeps its packet’s figures. When QuickBooks needs connecting again, the last figures stay with their date, and Slack says so once.',
+          touches: ['QuickBooks', 'D1', 'Slack'], where: 'functions/api/_quickbooks.js (maybeReadBooks, booksNow) · books-admin.js · books-callback.js · public/admin/board-books.js · public/admin/board/money.js (withBooks)',
+          live: (f) => {
+            const q = f.board?.books;
+            if (!q) return null;
+            if (!q.configured) return ATTN('Not connected: QuickBooks needs its keys (QBO_CLIENT_ID and QBO_CLIENT_SECRET) in Cloudflare, then Board → Settings → QuickBooks. Until then the year so far is the packet’s budget sheet.');
+            if (!q.company) return ATTN('Not connected yet: Board → Settings → QuickBooks → Connect QuickBooks.');
+            if (q.needsConnect) return ATTN(`${q.company} needs connecting again: Board → Settings → QuickBooks. The board page shows its last figures until then.`, q.readAt);
+            if (q.failing) return ATTN(`${q.company} isn’t answering. It tries again every hour.`, q.readAt);
+            if (!q.readAt || stale(q.readAt, 3 * HOUR)) return ATTN(q.readAt ? `Hasn’t read QuickBooks since ${stamp(q.readAt)}. Check the Heartbeat entry.` : 'Hasn’t read QuickBooks yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.', q.readAt || null);
+            return ON(`${q.company}, read every hour.`, q.readAt);
+          } },
       ]},
     ]},
   { t: 'Website & content', sub: 'sunshineonaranneyday.com on Cloudflare Pages', color: 'site', side: 'l',

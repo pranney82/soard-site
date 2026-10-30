@@ -576,11 +576,13 @@ function Figures({ data }) {
   const rev = budget?.revenue;
   const exp = budget?.expenses;
   const yr = budget?.year || '';
+  // Against the budget once there is one for the year (QuickBooks' figures can come before the year's sheet)
+  const against = (x) => (x.budget ? `${pctOf(x)}% of the ${compact(x.budget)} budget` : `Through ${shortAsOf(budget.asOf)}`);
   const tiles = [
     { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', sub: cash ? `${shortAsOf(cash.asOf)}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}` : 'From the balance sheet', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '', href: '#/financials' },
-    rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: compact(rev.actual), sub: `${pctOf(rev)}% of the ${compact(rev.budget)} budget`, href: '#/financials' }
+    rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: compact(rev.actual), sub: against(rev), href: '#/financials' }
       : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#makeovers' },
-    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), sub: `${pctOf(exp)}% of the ${compact(exp.budget)} budget`, href: '#/financials' }
+    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), sub: against(exp), href: '#/financials' }
       : { key: 'kids', label: 'Children served', value: n.impact.kids.toLocaleString(), sub: `${n.impact.rooms.toLocaleString()} rooms since 2012` },
     { key: 'build', label: 'Makeovers', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', href: '#makeovers' },
   ];

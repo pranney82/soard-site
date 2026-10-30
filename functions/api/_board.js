@@ -44,6 +44,7 @@ import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus } from './_board-mail.js';
 import { mercury } from './_mercury.js';
 import { bankBalances, plaidConfigured, bankFacts } from './_plaid.js';
+import { booksNow, booksFacts } from './_quickbooks.js';
 import { limit } from './_rate-limit.js';
 
 export const SITE = 'https://sunshineonaranneyday.com';
@@ -673,7 +674,7 @@ export async function boardFinanceNow(env, { now = Date.now(), fresh = false } =
 /** Everything an agenda's live items show, as of now */
 export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const today = todayEastern(now);
-  const [cash, projects, reveals, events, meetings, kids, finance, pages] = await Promise.all([
+  const [cash, projects, reveals, events, meetings, kids, finance, pages, books] = await Promise.all([
     cachedCash(env, { fetchImpl, now }),
     projectsNow(env, { fetchImpl, now }),
     cachedReveals(env, now).catch(() => ({ upcoming: [], past: [] })),
@@ -682,6 +683,8 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     impact(env.DB),
     boardFinanceNow(env, { now }),
     loadKids(env.DB).catch(() => []),
+    // The year's revenue and expenses so far, as QuickBooks last answered (Board → Settings → QuickBooks)
+    booksNow(env.DB, { now }).catch(() => null),
   ]);
   // Each reveal's kid by their published page's photo (a draft page's kid has none)
   const photos = Object.fromEntries(pages.map((k) => [k.slug, photoOf(k.heroImage)]).filter(([, p]) => p));
@@ -694,6 +697,7 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     cash: funded ? cash : null,
     mercury: cash && inMercury !== null ? { empty: !(inMercury > 0), at: cash.at } : null,
     finance,
+    books,
     projects,
     reveals: (reveals.upcoming || []).map((r) => revealRow(r, photos)),
     pastReveals: (reveals.past || []).map((r) => revealRow({ ...r, confirmed: true }, photos)),
@@ -722,7 +726,7 @@ export async function takeSnapshot(env, id, { by, fetchImpl = fetch, now = Date.
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
   const n = await liveNumbers(env, { fetchImpl, now });
-  const snapshot = { at: n.at, by: by || '', cash: n.cash, mercury: n.mercury, finance: n.finance, projects: n.projects, reveals: n.reveals, pastReveals: n.pastReveals, events: n.events, recentEvents: n.recentEvents, meetings: n.meetings.filter((x) => x.id !== id), impact: n.impact };
+  const snapshot = { at: n.at, by: by || '', cash: n.cash, mercury: n.mercury, finance: n.finance, books: n.books, projects: n.projects, reveals: n.reveals, pastReveals: n.pastReveals, events: n.events, recentEvents: n.recentEvents, meetings: n.meetings.filter((x) => x.id !== id), impact: n.impact };
   await writeMeeting(env.DB, { ...m, snapshot, updatedAt: nowIso(), updatedBy: by || m.updatedBy });
   return getMeeting(env.DB, id);
 }
@@ -1407,6 +1411,7 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *   - last, past meetings from the Board folder in Google Drive (./_board-drive.js), then board mail
  *     (./_board-mail.js): every minute while there's a backlog, hourly after; then minutes read without
  *     Workers AI read again for their motions and action items (./_board-minutes.js maybeFinishMinutes)
+ *   - hourly, QuickBooks' revenue and expenses for the year so far (./_quickbooks.js)
  *   - once a day, the month's bank balance for the board page's history
  * Never throws.
  */
@@ -1433,6 +1438,8 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     }
     // The banks connected through Plaid every six hours (they keep their own times), then the day's cash
     await (await import('./_plaid.js')).maybeReadBanks(env, { fetchImpl, now });
+    // QuickBooks' year so far, hourly once it's connected
+    await (await import('./_quickbooks.js')).maybeReadBooks(env, { fetchImpl, now });
     if (!String(env.MERCURY_API_TOKEN || '').trim() && !plaidConfigured(env)) return;
     const runs = await readState(env.DB, 'runs');
     if (runs.cashAt && now - Date.parse(runs.cashAt) < 20 * 60 * 60 * 1000) return;
@@ -1456,7 +1463,7 @@ export async function boardFacts(env) {
   const { accessStatus } = await import('./_board-access.js');
   await ensureSchema(env.DB);
   const { inviteCheck } = await import('./_board-invite.js');
-  const [a, cash, stored, cal, mail, pending, check, banks] = await Promise.all([
+  const [a, cash, stored, cal, mail, pending, check, banks, books] = await Promise.all([
     accessStatus(env),
     env.DB.prepare('SELECT count(*) AS n, max(at) AS last FROM board_cash WHERE total > 0').first(),
     env.DB.prepare('SELECT data FROM board_meetings').all().then((r) => (r.results || []).map((x) => parse(x.data))),
@@ -1465,6 +1472,7 @@ export async function boardFacts(env) {
     readState(env.DB, 'invite-pending'),
     inviteCheck(env.DB),
     bankFacts(env),
+    booksFacts(env),
   ]);
   const packet = stored.map((m) => m.packetSentAt).filter(Boolean).sort().at(-1) || null;
   const today = todayEastern();
@@ -1472,6 +1480,8 @@ export async function boardFacts(env) {
   return {
     access: { configured: a.configured, ok: !!a.ok, attached: !!a.attached, current: !!a.current, emails: a.emails, missing: (a.missing || []).length, syncedAt: a.syncedAt || null, error: a.error ? String(a.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null },
     cash: { mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), months: cash?.n || 0, lastAt: cash?.last || null, empty: !((await readState(env.DB, 'cash')).value?.total > 0), readAt: (await readState(env.DB, 'cash')).at || null, banks },
+    // QuickBooks' year so far for the board page (./_quickbooks.js): on/off, the company and times only
+    books,
     lastPacketAt: packet,
     invite: {
       ahead: invites.length, needsSetup: invites.filter((m) => m.invite.transcript === 'needs-setup').length, failing: invites.filter((m) => m.invite.transcript === 'error').length,
