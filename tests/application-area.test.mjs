@@ -243,6 +243,20 @@ test('a Census outage: OpenStreetMap places the home on its street instead, and 
   assert.equal(lost.reason, 'error', 'a place on another street is no answer: the family is asked');
 });
 
+test('a house the Census doesn’t know: OpenStreetMap places it, but only the house itself (never a neighbor)', async () => {
+  // A newer home on Main St in Duluth: not in the Census, mapped on OpenStreetMap
+  w.world.osm = {
+    '2450 main': [{ lat: 34.0024, lng: -84.1456, housenumber: '2450', street: 'Main Street', postcode: '30096', city: 'Duluth', county: 'Gwinnett County' }],
+    '2460 main': [{ lat: 34.0025, lng: -84.1457, housenumber: '2450', street: 'Main Street', postcode: '30096', city: 'Duluth', county: 'Gwinnett County' }],
+  };
+  const draft = await readyDraft(answersAt(addr('2450 Main St', 'Duluth', '30096')));
+  const found = await areaCheck(env, await form(), addr('2450 Main St', 'Duluth', '30096'), { draft });
+  assert.equal(found.band, 'inside', 'placed from the house OpenStreetMap has');
+  assert.equal(found.county, 'Gwinnett');
+  const neighbor = await areaCheck(env, await form(), addr('2460 Main St', 'Duluth', '30096'), { draft: await getDraft(env.DB, draft.id) });
+  assert.equal(neighbor.reason, 'no-match', 'only a neighbor is mapped: the family is asked');
+});
+
 test('a draft gets a limited number of lookups', async () => {
   const draft = await readyDraft(answersAt(HOME_IN));
   await env.DB.prepare('UPDATE application_drafts SET area_checks = ? WHERE id = ?').bind(MAX_AREA_CHECKS, draft.id).run();

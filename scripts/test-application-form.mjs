@@ -157,12 +157,18 @@ const partText = (p = page) => p.$eval('[data-part-text]', (el) => el.textConten
  * is showing (as a family would; it stops if Continue is held up by a problem)
  */
 const reach = async (sel, p = page) => {
-  for (let i = 0; i < 8; i++) {
+  let waited = 0;
+  for (let i = 0; i < 20; i++) {
     const where = await p.evaluate((s) => { const el = document.querySelector(s); return !el ? 'none' : el.closest('[data-off]') ? 'later' : 'here'; }, sel);
     if (where !== 'later') return;
     const was = `${await stepTitle(p)}|${await partText(p)}`;
     await next(p);
-    if (`${await stepTitle(p)}|${await partText(p)}` === was) throw new Error(`Continue was held up on the way to ${sel}`);
+    if (`${await stepTitle(p)}|${await partText(p)}` === was) {
+      // One connection makes every request of this run, so Continue can meet the per-minute limit on
+      // starting or saving (a family never does): wait it out, twice at most
+      if (waited++ < 2) { await sleep(15000); await calm(p); continue; }
+      throw new Error(`Continue was held up on the way to ${sel}`);
+    }
   }
 };
 /** Continue until the step with this name is on screen */
@@ -331,7 +337,7 @@ try {
   ok(await visible('#af-address-search') && await page.$eval('[data-field="boundary"]', (e) => !!e.closest('[data-off]')), 'a phone has the address on this screen, the map waiting for the next');
   ok(!(await visible('#af-address-line1')) && !(await visible('#af-address-city')) && !(await visible('#af-address-zip')) && await visible('#af-address-line2'), 'one line for the address (and one for an apartment): no street, city, state and ZIP boxes');
   ok(/Enter the address yourself/.test(await page.$eval('[data-field="address"] [data-addr-mode="parts"]', (e) => (e.getClientRects().length ? e.textContent : ''))), 'with a way to enter it by hand');
-  ok(/Enter the address above/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'the check says what to do until there is an address');
+  ok(/Enter the address, and we'll show it on the map/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'the check says what to do until there is an address');
   ok(!(await askShown()), 'the question itself stays out of the way');
   await page.focus('#af-address-search');
   await page.type('#af-address-search', '3167 Main');
@@ -413,11 +419,16 @@ try {
   ok(await askShown(), 'not found: now the family is asked');
   ok(/couldn't find this address/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'and told why');
   await next();
-  ok(await visible('[data-area-ask]') && await stepTitle() === AREA, 'Continue: the map screen, with the question');
+  // On a phone, what the check found (and the way to fix the address) first; the question about the map, with the map, next
+  const seenHere = (sel) => page.$eval(sel, (e) => !!e.getClientRects().length && !e.closest('[data-off], [hidden]')).catch(() => false);
+  ok(await seenHere('[data-area-result] .af-area-card') && await seenHere('[data-area-result] [data-act="area-fix"]') && await stepTitle() === AREA, 'Continue: what the check found, with "Change the address"');
+  if (!(await seenHere('[data-area-ask]'))) await next();
+  ok(await seenHere('[data-area-ask]') && await seenHere('[data-field="boundary"] .af-map-frame') && await stepTitle() === AREA, 'and the question with the map it asks about (never one without the other)');
+  ok(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight) <= 1, 'that screen fits');
   await next();
-  ok(/enter the home address so we can check it, or choose an answer/.test(await errorText('boundary')), 'Continue without an answer says what to do');
-  await page.click('[data-back]');
-  await sleep(450);
+  ok(/choose the answer that fits/.test(await errorText('boundary')), `Continue without an answer says what to do (${await errorText('boundary')})`);
+  ok(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight) <= 1, 'with its note, the screen still fits');
+  for (let i = 0; i < 3 && !(await visible('#af-address-line1')); i++) { await page.click('[data-back]'); await sleep(450); }
   ok(await visible('#af-address-line1'), 'Back: the address again, as they were entering it');
 
   // Back to the search, and a home inside
@@ -762,7 +773,10 @@ try {
   await sleep(400);
   ok((await stepTitle()) === 'Diagnosis', 'Edit jumps to that page');
   ok(await page.evaluate(() => document.activeElement?.id) === 'af-diagnosisImpact', 'and puts the cursor in its first question');
-  ok(/Back to review/.test(await page.$eval('[data-next]', (e) => e.textContent)), 'Next now says "Back to review"');
+  // A whole step from the review is walked through: Continue on its first screens, "Back to review" on its last
+  const editPart = (await partText()).match(/(\d+)\D+(\d+)/);
+  const editLast = !editPart || editPart[1] === editPart[2];
+  ok(new RegExp(editLast ? 'Back to review' : '^\\s*Continue').test(await page.$eval('[data-next]', (e) => e.textContent)), `Next says ${editLast ? '"Back to review"' : '"Continue" (the step has more screens)'}`);
   await clear('#af-diagnosisImpact');
   await page.$eval('[data-steps]', (d) => { d.open = true; });
   await sleep(100);
@@ -1096,6 +1110,7 @@ try {
         await s.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: dark ? 'dark' : 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }]);
         await s.evaluateOnNewDocument((lang) => { try { localStorage.setItem('soard-application-lang', JSON.stringify(lang)); } catch {} }, l);
         await s.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
+        await sleep(7000); // eight new applications in a row: spaced, so this run stays under the per-minute limit
         await calm(s);
         const tag = `${phone ? 'phone' : 'desktop'}-${dark ? 'dark' : 'light'}-${l}`;
         await s.setViewport({ ...(phone ? { width: 390, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { width: 1280, deviceScaleFactor: 1 }), height: 1500 });

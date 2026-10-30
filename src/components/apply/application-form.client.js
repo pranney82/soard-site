@@ -214,9 +214,10 @@ function init(root, cfg, mode) {
   let screenNo = 0;          // which of the page's screens is showing
   let packs = {};            // page id → its screens: the page's top-level pieces, a screen's worth at a time
   let focused = false;       // the application has the screen to itself (html.af-focus)
+  let calmUntil = 0;         // till when a new screen is settling (presses before then don't count)
   let moving = false;        // a screen change is under way (Continue pressed twice counts once)
   let furthestId = null;     // the furthest page reached
-  let fromReview = false;    // came from the review page to change something
+  let fromReview = false;    // came from the review page: 'answer' (one, then straight back) or 'step' (a whole step, walked through)
   let token = null;
   let turnstileToken = null;
   let turnstileSiteKey = null;
@@ -292,6 +293,8 @@ function init(root, cfg, mode) {
   // ── Drawing the form (first paint, a language switch, a live-preview edit) ──
   function draw({ merge = true } = {}) {
     if (form && merge) answers = { ...answers, ...readAnswers() };
+    // An address being searched for keeps what's typed in its line, one entered by hand its parts (neither is an answer yet)
+    const addrWas = form ? [...ui.pages.querySelectorAll('[data-field] .af-address')].map(b => ({ id: b.closest('[data-field]').dataset.field, mode: b.dataset.mode, line: b.querySelector('[data-search]').value })) : [];
     closeRecorder();
     closeSuggest();
     form = resolve(lang);
@@ -303,6 +306,12 @@ function init(root, cfg, mode) {
     packs = {}; // new pieces, new sizes: each page's screens are worked out again when it shows
     pageEls = Object.fromEntries([...ui.pages.querySelectorAll('[data-page]')].map(el => [el.dataset.page, el]));
     for (const f of fields) if (isInput(f)) writeField(f, answers[f.id]);
+    for (const was of addrWas) {
+      const b = addrBox(fieldEl(was.id));
+      if (!b) continue;
+      if (was.mode === 'parts') b.dataset.mode = 'parts';
+      else if (!b.dataset.picked && was.line) { b.dataset.mode = 'line'; b.querySelector('[data-search]').value = was.line; }
+    }
     for (const f of fields) if (isUpload(f)) paintUpload(f.id);
     openAnsweredTucked();
     paintArea();
@@ -409,6 +418,7 @@ function init(root, cfg, mode) {
   function swap(update, dir, samePage = false) {
     const html = document.documentElement;
     if (!dir || !focused) { update(); return Promise.resolve(); }
+    calmUntil = performance.now() + 350; // a second press of Continue mid-change (a double tap) counts once
     if (reducedMotion()) {
       update();
       ui.stage.animate?.([{ opacity: 0.35 }, { opacity: 1 }], { duration: 120, easing: 'linear' });
@@ -526,6 +536,10 @@ function init(root, cfg, mode) {
   /** Done: reached, passed, and nothing on it needs them */
   const stepDone = (id, needs) => id !== 'review' && reached(id) && order(id) < order(furthestId) && !needs.has(id);
   const screensIn = (id) => (id === 'review' ? 1 : packs[id]?.length || 1);
+  /** A screen with nothing on it (a follow-up alone there that their answer didn't call for) is passed over */
+  const emptyScreen = (pid, n) => !!packs[pid]?.[n] && packs[pid][n].every(k => k.hidden || !!k.closest('[hidden]'));
+  const screenAhead = () => (packs[currentId] || []).some((_, n) => n > screenNo && !emptyScreen(currentId, n));
+  const screenBefore = () => { for (let n = screenNo - 1; n >= 0; n--) if (!emptyScreen(currentId, n)) return n; return -1; };
 
   // The browser tab says where they are while the application has the screen
   const baseTitle = document.title.replace(/^Test run · /, '');
@@ -724,6 +738,7 @@ function init(root, cfg, mode) {
       : ready ? T('hubLeadReady')
         : T(mins <= 1 ? 'hubLeadBackOne' : 'hubLeadBack', { done: doneCount, n: steps.length, m: mins });
     ui.hubGoLabel.textContent = T(!started ? 'hubStart' : ready || currentId === 'review' ? 'hubReview' : 'hubContinue');
+    ui.hubGo.dataset.go = ready ? 'review' : ''; // "Review and submit" goes there (not to the page they left)
     if (ui.hubLater) ui.hubLater.hidden = !started || previewing;
     // The hero's button says the same: start, or carry on
     const cta = document.querySelector('[data-hero-cta]');
@@ -762,14 +777,17 @@ function init(root, cfg, mode) {
     });
   }
 
+  const setText = (el, v) => { if (el && el.textContent !== v) el.textContent = v; };
   function paintNav(ids = stepIds()) {
     const review = currentId === 'review';
     const at = ids.indexOf(currentId);
-    const lastScreen = screenNo >= screensIn(currentId) - 1;
+    const lastScreen = review || !screenAhead();
     ui.back.hidden = at <= 0 && screenNo === 0;
-    const label = review ? (busy ? 'submitting' : 'submit') : fromReview ? 'toReview' : ids[at + 1] === 'review' && lastScreen ? 'reviewBtn' : 'next';
-    ui.nextLabel.textContent = T(label);
-    if (ui.nextShort) ui.nextShort.textContent = T({ reviewBtn: 'reviewBtnShort', toReview: 'toReviewShort', submit: 'submitShort' }[label] || label);
+    const label = review ? (busy ? 'submitting' : 'submit') : fromReview === 'answer' || (fromReview && lastScreen) ? 'toReview' : ids[at + 1] === 'review' && lastScreen ? 'reviewBtn' : 'next';
+    // Only when the words change: Safari drops a press on Continue whose words are replaced between the
+    // finger going down and coming up (leaving a box on the way to it repaints this)
+    setText(ui.nextLabel, T(label));
+    if (ui.nextShort) setText(ui.nextShort, T({ reviewBtn: 'reviewBtnShort', toReview: 'toReviewShort', submit: 'submitShort' }[label] || label));
     ui.next.classList.toggle('af-btn--submit', review);
     let blockedBy = null;
     if (review) {
@@ -812,8 +830,19 @@ function init(root, cfg, mode) {
   // A pair of questions stacked on a phone is two pieces too (they can take a screen each)
   const stackedPair = (k) => k.matches('.af-pair') && k.children.length === 2
     && k.children[1].getBoundingClientRect().top >= k.children[0].getBoundingClientRect().bottom - 1;
-  const pieces = (pid) => [...(pageEl(pid)?.children || [])].flatMap(k => (k.matches('.af-place[data-split]') || stackedPair(k) ? [...k.children] : [k]));
-  const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : [...el.querySelectorAll('[data-field]')].map(x => x.dataset.field));
+  // The check couldn't place the home (it asks): what it found, then the question with the map, which can
+  // take a screen of their own where all three don't fit (the question is about the map, so they stay together)
+  const asksAboutHome = (k) => k.matches('.af-field--area') && ['unknown', 'error'].includes(k.querySelector('[data-area]')?.dataset.area);
+  const areaPieces = (k) => {
+    const [res, ask, map] = ['[data-area-result]', '[data-area-ask]', '[data-area-map]'].map(q => k.querySelector(q));
+    // In pieces only where they stand one under another (a phone); beside each other they're one
+    const stacked = res && map && map.getBoundingClientRect().top >= res.getBoundingClientRect().bottom - 1;
+    return asksAboutHome(k) && stacked && ask ? [res, ask, map] : [k];
+  };
+  const pieces = (pid) => [...(pageEl(pid)?.children || [])].flatMap(k => (k.matches('.af-place[data-split]') ? [...k.children].flatMap(areaPieces) : stackedPair(k) ? [...k.children] : [k]));
+  // A piece's questions (the check's question stands for the service-area answer it belongs to)
+  const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : el.matches('[data-area-ask]') ? [el.closest('[data-field]').dataset.field]
+    : [...el.querySelectorAll('[data-field]')].map(x => x.dataset.field));
   const isNote = (el) => ['content', 'guidelines', 'image'].includes(el.dataset.type);
   /**
    * Words taller than the room are read a screen at a time: cut between their blocks (paragraphs, a
@@ -829,20 +858,59 @@ function init(root, cfg, mode) {
     if (kids.length < 2 || !stacked) { into.push(el); return; }
     cuts.push(el);
     for (const c of kids) {
-      if (c.getBoundingClientRect().height > fit) readParts(c, fit, into, cuts);
+      // Measured with the headings just before it, which go on its screen with it
+      let top = c.getBoundingClientRect().top;
+      for (let j = into.length - 1; j >= 0 && isLead(into[j]); j--) top = into[j].getBoundingClientRect().top;
+      if (c.getBoundingClientRect().bottom - top > fit) readParts(c, fit, into, cuts);
       else into.push(c);
     }
   }
   const cutsOf = {}; // page → the notes (and parts of them) cut across its screens
+  const packAsked = {}; // page → whether its screens were worked out with the check asking about the home
   let packSize = '';
   function room(el) {
-    const top = ui.top?.offsetHeight || 0;
+    // Down to where the step starts: the bar across the top, and a notice or the test-run bar over the step
+    const top = Math.max(ui.top?.offsetHeight || 0, ui.stage.getBoundingClientRect().top + window.scrollY);
     const nav = ui.form.querySelector('[data-nav]')?.offsetHeight || 0;
     const head = el.getBoundingClientRect().top - ui.stage.getBoundingClientRect().top; // the stage's padding and the step's header
     const saveRow = ui.stage.querySelector('.af-save-row');
     const shown = saveRow && saveRow.offsetParent !== null;
     const tail = (shown ? saveRow.offsetHeight + parseFloat(getComputedStyle(saveRow).marginTop || 0) : 0) + parseFloat(getComputedStyle(ui.stage).paddingBottom || 0);
-    return Math.max(260, innerHeight - top - nav - head - tail);
+    return Math.max(120, innerHeight - top - nav - head - tail);
+  }
+  /**
+   * Something new on the screen (problem notes, a notice, a note by the buttons): if it no longer fits,
+   * its page's screens are worked out again with it, keeping `keep` (else what's on it now) in front
+   */
+  function refitScreen(keep = null, problems = null) {
+    if (!focused || !currentId || currentId === 'review' || !packs[currentId] || ui.form.hidden || moving) return;
+    settle();
+    if (document.documentElement.scrollHeight <= innerHeight) return;
+    // Problem notes: first the questions a little closer together (often room enough, nothing moves)…
+    const pageNode = pageEl(currentId);
+    if (problems) {
+      pageNode?.setAttribute('data-snug', '');
+      settle();
+      if (document.documentElement.scrollHeight <= innerHeight) return;
+    }
+    // …then the screen keeps its questions up to the last one with a problem (none of them moves away
+    // from its note), and only what follows goes on to the next screen
+    const here = packs[currentId][screenNo] || [];
+    const last = problems ? here.reduce((m, k, i) => (idsOf(k).some(id => problems.includes(id)) ? i : m), -1) : -1;
+    if (last >= 0 && last < here.length - 1) {
+      for (const k of here.slice(last + 1)) k.setAttribute('data-off', '');
+      settle();
+      if (document.documentElement.scrollHeight <= innerHeight) {
+        const kept = [...packs[currentId].slice(0, screenNo), here.slice(0, last + 1)];
+        packs[currentId] = pack(currentId, kept) || kept;
+        paintScreen();
+        paintHeader();
+        return;
+      }
+    }
+    const piece = keep || packs[currentId][screenNo]?.find(k => k.getClientRects().length) || null;
+    delete packs[currentId];
+    show(currentId, { piece, focus: false, scroll: false });
   }
   /**
    * For measuring: the page as it will look once answered (undone straight after, in the same task).
@@ -881,10 +949,12 @@ function init(root, cfg, mode) {
     settle(); // taking the screen's own padding mid-change, the first step came out too narrow
     el.querySelectorAll('[data-off]').forEach(k => k.removeAttribute('data-off'));
     unfit(el); // measured with all their words: a fitted screen is fitted again once it's on
+    if (!keep) el.removeAttribute('data-snug'); // the questions closer together while problem notes show: worked out afresh
     const places = [...el.querySelectorAll(':scope > .af-place')];
     places.forEach(p => { p.removeAttribute('data-split'); p.style.removeProperty('--af-map-h'); });
     if (el.offsetParent === null) return null;
     packSize = `${innerWidth}x${innerHeight}`;
+    packAsked[pid] = [...el.querySelectorAll('.af-field--area')].some(asksAboutHome);
     const fit = room(el);
     const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
     const undo = answeredLook(el, pid);
@@ -925,22 +995,23 @@ function init(root, cfg, mode) {
     kids.forEach((k, i) => {
       if (placed(k)) return;
       const f = k.matches('[data-field]') ? byId[k.dataset.field] : null;
-      // A follow-up's question may sit a piece or two back (a pair split on a phone): those pieces join
-      // into one, so the follow-up always shows on its question's screen
+      // A follow-up shows on its question's screen when the two fit one together (its question may sit a
+      // piece or two back, a pair split on a phone: those pieces join); else it's the next screen's
       const lead = f?.showIf ? blocks.findIndex(b => b.ids.has(f.showIf.field)) : -1;
-      if (lead >= 0 && lead < blocks.length - 1) {
+      const together = lead >= 0 && blocks.slice(lead).reduce((t, b, j) => t + b.h + (j ? b.sp : 0), 0) + sp[i] + h[i] <= fit;
+      if (lead >= 0 && lead < blocks.length - 1 && together) {
         const [first, ...rest] = blocks.splice(lead);
         for (const b of rest) { first.kids.push(...b.kids); first.h += b.sp + b.h; b.ids.forEach(x => first.ids.add(x)); }
         first.carry = false;
         blocks.push(first);
       }
       const prev = blocks[blocks.length - 1];
-      const follows = prev && (!h[i] || (f?.showIf && prev.ids.has(f.showIf.field)));
+      const follows = prev && (!h[i] || (f?.showIf && prev.ids.has(f.showIf.field) && together) || k.matches('[data-area-map]'));
       if (prev && (follows || prev.carry)) {
         prev.kids.push(k);
         if (h[i]) prev.h += sp[i] + h[i];
         idsOf(k).forEach(x => prev.ids.add(x));
-        prev.carry = prev.carry && !h[i];
+        prev.carry = (prev.carry && !h[i]) || (h[i] > 0 && isLead(k)); // a heading under a heading leads on too
         return;
       }
       // A short note leads into what follows when both fit a screen; a heading or "…:" always does
@@ -1002,13 +1073,27 @@ function init(root, cfg, mode) {
     const least = innerWidth <= 640 ? 100 : 160;
     place.removeAttribute('data-tight');
     place.removeAttribute('data-nomap');
+    // The family asked whether the home is inside the area "shown on the map": the map stays
+    const asked = ['unknown', 'error'].includes(fe.querySelector('[data-area]')?.dataset.area);
+    const asItWas = () => { place.style.removeProperty('--af-map-h'); place.removeAttribute('data-tight'); place.removeAttribute('data-nomap'); settle(); };
+    let before = Infinity;
     for (let i = 0; i < 6; i++) {
       settle();
       const over = document.documentElement.scrollHeight - innerHeight;
       const h = frame.getBoundingClientRect().height;
       if (over <= 0) return;
-      // Not even its smallest fits beside the card: the card says it all, the map steps aside
-      if (h <= least) { place.setAttribute('data-nomap', ''); settle(); return; }
+      // A smaller map left the screen as tall (it's beside the card, not under it): the map as it was
+      if (over >= before) { asItWas(); return; }
+      before = over;
+      if (h <= least) {
+        // Not even its smallest fits: the card says it all and the map steps aside (unless they're asked
+        // about it, or its going leaves the screen as tall)
+        if (asked) return;
+        place.setAttribute('data-nomap', '');
+        settle();
+        if (document.documentElement.scrollHeight - innerHeight >= over) asItWas();
+        return;
+      }
       // Small enough that its key ("Our service area", "The home you entered") gives way to the map itself
       if (h - over < 150) place.setAttribute('data-tight', '');
       place.style.setProperty('--af-map-h', `${Math.max(least, Math.floor(h - over - 1))}px`);
@@ -1024,14 +1109,14 @@ function init(root, cfg, mode) {
   const onScreen = (el) => el.getClientRects().length && !el.closest('[data-off], [hidden]');
   const overflows = () => document.documentElement.scrollHeight > innerHeight;
   /**
-   * Choices that each explain themselves, on a phone too short for all their words: every tile says
-   * its first lines (as many for each, as many as the screen has room for), the rest under its More
+   * Choices that each explain themselves, on a screen too short for all their words (a phone, a short
+   * laptop with a problem note, a phone on its side): a little snugger first, then every tile says its
+   * first lines (as many for each, as many as the screen has room for), the rest under its More
    */
   function fitTiles() {
     for (const s of pageEl(currentId)?.querySelectorAll('.af-choices--tiles') || []) {
       if (!focused || !onScreen(s)) continue;
       settle();
-      if (getComputedStyle(s).getPropertyValue('--af-narrow').trim() !== '1') continue; // two to a row, every word fits
       if (!overflows()) continue;
       const tiles = [...s.querySelectorAll('.af-tile')].map((tile) => {
         const d = tile.querySelector('.af-choice-desc');
@@ -1044,7 +1129,9 @@ function init(root, cfg, mode) {
         settle();
         return !overflows();
       };
-      for (let n = Math.max(0, ...tiles.map(x => x.lines)) - 1; n >= 0; n--) if (fits(n, false) || fits(n, true)) break;
+      const most = Math.max(0, ...tiles.map(x => x.lines));
+      if (fits(most, true)) continue;
+      for (let n = most - 1; n >= 0; n--) if (fits(n, false) || fits(n, true)) break;
     }
   }
   /** A longer list of short answers too tall for a phone's screen in one column: two */
@@ -1078,9 +1165,11 @@ function init(root, cfg, mode) {
     const all = list ? list.flat() : pieces(currentId);
     const on = new Set(list ? list[screenNo] || [] : all);
     for (const k of all) k.toggleAttribute('data-off', !on.has(k));
-    // A pair, or the address apart from its map, split across screens: off where neither half is on
-    // (an empty box would still take the page's gap). Words cut across screens: the same
-    const holders = [...(pageEl(currentId)?.children || [])].filter(b => !all.includes(b) && all.some(k => b.contains(k)));
+    // A pair, the address apart from its map, the check's pieces, words cut across screens: whatever holds
+    // pieces is off where none of them is on (an empty box would still take its gap)
+    const page = pageEl(currentId);
+    const holders = new Set();
+    for (const k of all) for (let p = k.parentElement; p && p !== page; p = p.parentElement) if (!all.includes(p)) holders.add(p);
     for (const c of [...holders, ...((list && cutsOf[currentId]) || [])]) c.toggleAttribute('data-off', ![...on].some(k => c.contains(k)));
     fitScreen();
   }
@@ -1088,7 +1177,12 @@ function init(root, cfg, mode) {
   const screenFieldIds = (pid = currentId, n = screenNo) => new Set((packs[pid] ? packs[pid][n] || [] : pieces(pid)).flatMap(idsOf));
   function screenOf(pid, fid) {
     const el = fieldEl(fid);
-    const i = el && packs[pid] ? packs[pid].findIndex(kids => kids.some(k => k === el || k.contains(el))) : 0;
+    if (!el || !packs[pid]) return 0;
+    const at = (test) => packs[pid].findIndex(kids => kids.some(test));
+    let i = at(k => k === el || k.contains(el));
+    // A question in pieces across screens (the check that asks): the screen with its answers
+    if (i < 0) i = at(k => el.contains(k) && !!k.querySelector('input, select, textarea'));
+    if (i < 0) i = at(k => el.contains(k));
     return Math.max(0, i);
   }
   /**
@@ -1142,6 +1236,9 @@ function init(root, cfg, mode) {
         const n = screensIn(id);
         const want = onto >= 0 ? onto : at || focusField ? screenOf(id, at || focusField) : screen === 'last' ? n - 1 : screen === 'open' ? openScreen(id) : screen;
         screenNo = Math.max(0, Math.min(n - 1, Number(want) || 0));
+        // Nothing on it (a follow-up their answer didn't call for): the next one on, or back, with something
+        if (step > 0) while (screenNo < n - 1 && emptyScreen(id, screenNo)) screenNo++;
+        if (step < 0 || screen === 'last') while (screenNo > 0 && emptyScreen(id, screenNo)) screenNo--;
         paintScreen();
       }
       if (pageEl(id)?.querySelector('.af-map-frame')) requestAnimationFrame(() => declutter(pageEl(id)));
@@ -1168,7 +1265,7 @@ function init(root, cfg, mode) {
   }
 
   async function next() {
-    if (busy || moving) return;
+    if (busy || moving || performance.now() < calmUntil) return;
     navNote(null);
     if (currentId === 'review') { submit(); return; }
     // An address check still on its way decides this page's answer: wait for it (briefly),
@@ -1182,10 +1279,13 @@ function init(root, cfg, mode) {
     // Only this screen's questions: the ones still to come get their own turn
     const here = screenFieldIds();
     const errors = Object.fromEntries(Object.entries(formErrors(form, a, files, [currentId], lang)).filter(([id]) => here.has(id)));
-    // An address line searched but not chosen from: its own words (choose it, or enter it by hand)
-    for (const id of here) if (byId[id]?.type === 'address') { const m = errorFor(id); if (m) errors[id] = m; }
+    // An address line searched but not chosen from, the check's question about the home: their own words
+    for (const id of here) {
+      const type = byId[id]?.type;
+      if (type === 'address' || (type === 'area' && errors[id])) { const m = errorFor(id); if (m) errors[id] = m; }
+    }
     if (Object.keys(errors).length) { showPageErrors(errors); return; }
-    const last = screenNo >= screensIn(currentId) - 1;
+    const last = !screenAhead();
     const stop = stopFor(form, a);
     // The address decides the service-area answer, so its screen stops too (a phone has the map on the next)
     const decides = stop && byId[stop.field]?.type === 'area' && here.has(homeAddressId());
@@ -1193,7 +1293,7 @@ function init(root, cfg, mode) {
     setBusy(true);
     try {
       if (!(await start())) return;
-      if (fromReview) await show('review', { dir: 1 });
+      if (fromReview === 'answer' || (fromReview && last)) await show('review', { dir: 1 });
       else if (!last) await show(currentId, { dir: 1, screen: screenNo + 1, step: 1 });
       else {
         const ids = stepIds(a);
@@ -1206,9 +1306,10 @@ function init(root, cfg, mode) {
   }
   /** A screen back (from a page's first, the last screen of the page before); false at the very start */
   function back() {
-    if (moving) return true;
+    if (moving || performance.now() < calmUntil) return true;
     navNote(null);
-    if (screenNo > 0 && currentId !== 'review') { show(currentId, { dir: -1, screen: screenNo - 1, step: -1 }).then(save); return true; }
+    const before = currentId === 'review' ? -1 : screenBefore();
+    if (before >= 0) { show(currentId, { dir: -1, screen: before, step: -1 }).then(save); return true; }
     const ids = stepIds();
     const at = ids.indexOf(currentId);
     if (at <= 0) return false;
@@ -1216,15 +1317,15 @@ function init(root, cfg, mode) {
     return true;
   }
   /** Jump to a page already reached (the steps list, Edit, Answer it, Change) */
-  function jump(id, { focusField = null } = {}) {
+  function jump(id, { focusField = null, whole = true } = {}) {
     if (!reached(id) && !previewing) return;
-    if (id === currentId && !focusField) return;
+    if (id === currentId && !focusField) { ui.steps.open = false; return; } // the step they're on: the list closes
     const dir = Math.sign(order(id) - order(currentId));
     if (dir > 0) {
       const stop = stopFor(form, readAnswers());
       if (stop && order(stop.page) < order(id)) { showStop(stop); return; }
     }
-    if (currentId === 'review' && id !== 'review') fromReview = true;
+    if (currentId === 'review' && id !== 'review') fromReview = whole ? 'step' : 'answer';
     show(id, { dir, focusField, screen: 'open' }).then(save);
   }
   function setBusy(on) {
@@ -1239,9 +1340,18 @@ function init(root, cfg, mode) {
     const a = readAnswers();
     if (!isVisible(f, a, byId)) return null;
     // Searched for but not picked (or not searched for yet): the parts are still empty
+    if (f.type === 'area' && !a[id] && !fieldEl(id)?.querySelector('[data-area-ask]')?.hidden) return T('areaChoose');
     const box = f.type === 'address' ? addrBox(fieldEl(id)) : null;
     if (box?.dataset.mode === 'line' && !['line1', 'city', 'state', 'zip'].every(k => String(a[id]?.[k] || '').trim())
       && (f.required || box.querySelector('[data-search]').value.trim())) return T('addressPick');
+    // Entered by hand with a part missing: which one (the generic words made them hunt for it)
+    if (box?.dataset.mode === 'parts') {
+      const missing = ['line1', 'city', 'state', 'zip'].filter(k => !String(a[id]?.[k] || '').trim());
+      if (missing.length && (f.required || missing.length < 4)) {
+        const names = missing.map(k => T(k === 'line1' ? 'street' : k));
+        return T('addressMissing', { parts: names.length < 2 ? names[0] : `${names.slice(0, -1).join(', ')} ${T('and')} ${names[names.length - 1]}` });
+      }
+    }
     return fieldError(f, isUpload(f) ? files[id] : a[id], lang);
   }
   function setFieldError(id, msg) {
@@ -1260,6 +1370,7 @@ function init(root, cfg, mode) {
     const ids = Object.keys(errors);
     ids.forEach(id => touched.add(id));
     announce(ids.length === 1 ? T('attentionOne') : T('attentionMany', { n: ids.length }));
+    refitScreen(fieldEl(ids[0]), ids); // the notes take room: their questions stay, the first one in front
     focusOn(ids[0]);
   }
   /** Scroll a question to just under the header and put the cursor in it */
@@ -1271,7 +1382,10 @@ function init(root, cfg, mode) {
     if (packs[currentId] && el.closest('[data-off]')) { screenNo = screenOf(currentId, id); paintScreen(); paintHeader(); }
     openTucked(el, { animate: false });
     el.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
-    const target = [...el.querySelectorAll('input:not([type=file]):not([type=radio]):not([type=checkbox]):not([disabled]), textarea, select')].find(x => x.getClientRects().length)
+    // An address entered by hand: the first part still empty (not the street they've already typed)
+    const box = addrBox(el);
+    const empty = box?.dataset.mode === 'parts' ? ['line1', 'city', 'zip'].map(k => box.querySelector(`[data-part="${k}"]`)).find(i => i && !i.value.trim()) : null;
+    const target = empty || [...el.querySelectorAll('input:not([type=file]):not([type=radio]):not([type=checkbox]):not([disabled]), textarea, select')].find(x => x.getClientRects().length)
       || el.querySelector('input:checked') || el.querySelector('input[type=radio], input[type=checkbox]')
       || el.querySelector('[data-act="choose"]');
     target?.focus({ preventScroll: true });
@@ -1297,6 +1411,7 @@ function init(root, cfg, mode) {
     ui.notice.textContent = lastNotice ? say(lastNotice.m) : '';
     ui.notice.dataset.kind = lastNotice?.kind || 'info';
     ui.notice.hidden = !lastNotice;
+    if (lastNotice) refitScreen();
   }
   /** A note by the buttons, where the family is looking (reason = why Submit is off) */
   function navNote(m, reason = false) {
@@ -1306,6 +1421,7 @@ function init(root, cfg, mode) {
   function paintNavNote() {
     ui.navNote.textContent = lastNav ? say(lastNav.m) : '';
     ui.navNote.hidden = !lastNav;
+    if (lastNav) refitScreen();
   }
   function saveState(key) {
     lastSave = key;
@@ -1560,7 +1676,7 @@ function init(root, cfg, mode) {
         ids.forEach(id => touched.add(id));
         const page = pageOf(ids[0]);
         if (page) {
-          fromReview = true;
+          fromReview = 'answer';
           show(page, { dir: -1, focusField: ids[0] });
           for (const id of ids) setFieldError(id, r.errors[id]);
         }
@@ -1940,6 +2056,7 @@ function init(root, cfg, mode) {
     if (box?.dataset.picked && input.value !== box.dataset.picked) {
       delete box.dataset.picked;
       for (const k of ['line1', 'city', 'zip']) box.querySelector(`[data-part="${k}"]`).value = '';
+      if (el.dataset.field === homeAddressId()) unfillCounty(); // its county (and the note saying so) with it
     }
     suggestFor(el, input);
   }
@@ -2128,7 +2245,7 @@ function init(root, cfg, mode) {
       || fields.find(x => choiceTypes.includes(x.type) && x.options?.some(o => o.toLowerCase() === name));
     if (!f) return;
     const value = f.type === 'text' ? String(county).trim() : f.options.find(o => o.toLowerCase() === name);
-    if (!value) return; // not a county we serve: leave the question to the family
+    if (!value) { unfillCounty(); return; } // not a county we serve: the question is the family's (one we filled from the last address goes)
     writeField(f, value);
     liveCheck(fieldEl(f.id));
     countyNote = { field: f.id, value, label: f.optionLabels?.[value] || value, address: addressEl.dataset.field };
@@ -2145,6 +2262,13 @@ function init(root, cfg, mode) {
     const note = fieldEl(countyNote.address)?.querySelector('.af-county-note');
     if (note) note.hidden = true;
     countyNote = null;
+  }
+  /** The county we filled in from an address that's no longer there: taken back (one the family chose stays) */
+  function unfillCounty() {
+    if (!countyNote) return;
+    const f = byId[countyNote.field];
+    if (f && readField(f) === countyNote.value) { writeField(f, ''); liveCheck(fieldEl(f.id)); }
+    hideCountyNote();
   }
 
   // ── The service-area check (the home address, placed on the map) ──
@@ -2220,7 +2344,7 @@ function init(root, cfg, mode) {
       if (areaNow.county && homeAddressId()) {
         const county = readAnswers().county;
         if (!county || countyNote) fillCounty(areaNow.county, fieldEl(homeAddressId()));
-      }
+      } else if (r.ok) unfillCounty(); // placed nowhere: the county of an address before this one goes
       paintArea();
       const af = areaField();
       if (af) liveCheck(fieldEl(af.id));
@@ -2251,7 +2375,7 @@ function init(root, cfg, mode) {
     if (st === 'checking') return `<p class="af-area-checking"><span class="af-area-spin" aria-hidden="true"></span>${esc(T('areaChecking'))}</p>`;
     if (st === 'unknown' || st === 'error') {
       // The Postal Service's word helps most here: a number that doesn't exist is often why
-      return `<div class="af-area-card" data-band="ask">${AREA_ICONS.ask}<div class="af-area-text"><p class="af-area-title">${esc(T(st === 'unknown' ? 'areaUnknown' : 'areaError'))}</p><p class="af-area-desc">${esc(T(st === 'unknown' ? 'areaUnknownBody' : 'areaErrorBody'))}</p>${uspsHtml()}</div></div>`;
+      return `<div class="af-area-card" data-band="ask">${AREA_ICONS.ask}<div class="af-area-text"><p class="af-area-title">${esc(T(st === 'unknown' ? 'areaUnknown' : 'areaError'))}</p><p class="af-area-desc">${esc(T(st === 'unknown' ? 'areaUnknownBody' : 'areaErrorBody'))}</p>${uspsHtml()}<button type="button" class="af-btn af-btn--link af-area-fix" data-act="area-fix">${esc(T('areaFix'))}</button></div></div>`;
     }
     const value = AREA_VALUES[st];
     const stopping = st === 'far' && af.stops?.[value] && form.stops?.[af.stops[value]];
@@ -2295,6 +2419,15 @@ function init(root, cfg, mode) {
     if (ask.hidden === asking) {
       ask.hidden = !asking;
       if (asking) enter(ask, 0, -6);
+    }
+    // Asked about the home now (or not any more): this page's screens worked out again where its pieces
+    // changed (what it found, then the question with the map), keeping the screen they're on
+    const pid = pageOf(af.id);
+    if (focused && packs[pid] && packAsked[pid] !== asking && pid === currentId && !moving) {
+      const piece = packs[pid][screenNo]?.find(k => k.getClientRects().length) || null;
+      delete packs[pid];
+      show(pid, { piece: piece && !piece.closest('[data-area]') ? piece : box.querySelector('[data-area-result]'), focus: false, scroll: false });
+      return;
     }
     fitMap(); // the card may have grown or shrunk beside the map
   }
@@ -2947,8 +3080,9 @@ function init(root, cfg, mode) {
     if (!isToken(candidate)) { if (fromLink) notice('linkExpired', 'error'); return; }
     const r = await api({ action: 'resume', token: candidate, ...(remindersOff ? { reminders: 'off' } : {}) }).catch(() => null);
     if (!r?.ok) {
-      if (fromLink) notice('linkExpired', 'error');
-      store.clear();
+      // Gone (or never was): forgotten on this device. Not reached (offline, busy, a hiccup): kept, to open next time
+      if (r && (r.code === 'no-draft' || r.status === 404)) { if (fromLink) notice('linkExpired', 'error'); store.clear(); }
+      else notice('resumeFailed', 'error');
       return;
     }
     token = candidate;
@@ -2977,6 +3111,8 @@ function init(root, cfg, mode) {
     draw({ merge: false });
     applyWords();
     if (r.submitted) { finished(true); return; }
+    // An address without the check's answer for it (it changed just before they left): checked again
+    if (homeAddressId() && !areaPlaced() && checkableAddress(homeAddressNow())) scheduleArea(true);
     // How far they got: the draft's record, this device's, the page they were on, what they filled in
     const mine = saved?.token === candidate ? saved.furthest : null;
     const known = [r.maxPage, r.maxPageId, r.max_page_id, mine, r.page, lastAnsweredPage(answers)].filter(id => order(id) >= 0);
@@ -3037,7 +3173,7 @@ function init(root, cfg, mode) {
     e.preventDefault();
     begin();
   }, { signal });
-  ui.hubGo?.addEventListener('click', () => begin());
+  ui.hubGo?.addEventListener('click', () => begin(ui.hubGo.dataset.go || null));
   ui.hubList?.addEventListener('click', (e) => {
     const go = e.target.closest('[data-goto]');
     if (go && !go.disabled) begin(go.dataset.goto);
@@ -3136,7 +3272,7 @@ function init(root, cfg, mode) {
       const pid = edit.dataset.page;
       const fid = edit.dataset.edit || firstQuestion(pid);
       if (edit.dataset.edit) { touched.add(fid); setFieldError(fid, errorFor(fid)); }
-      jump(pid, { focusField: fid });
+      jump(pid, { focusField: fid, whole: !edit.dataset.edit });
     }
   });
   // Back in an address line they searched but didn't pick from: its suggestions again
@@ -3213,6 +3349,7 @@ function init(root, cfg, mode) {
       sug.closing = setTimeout(() => { if (document.activeElement !== sug.input) closeSuggest(); }, 180);
     }
     if (el.contains(e.relatedTarget)) return;
+    if (e.relatedTarget && !ui.form.contains(e.relatedTarget)) return; // to the bar across the top, the steps, a dialog
     const id = el.dataset.field;
     if (!touched.has(id) || isUpload(byId[id] || {})) return;
     if (pressing) leftWhilePressing.add(id); else checkLeft(id);
@@ -3272,7 +3409,19 @@ function init(root, cfg, mode) {
   window.addEventListener('dragover', (e) => { if (hasFiles(e) && !dropZone(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; } }, { signal });
   window.addEventListener('drop', (e) => { if (hasFiles(e) && !dropZone(e)) e.preventDefault(); }, { signal });
 
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && token) save(); }, { signal });
+  // Leaving (a reload, a closed tab, a phone locking or switching apps): what's not saved yet goes with a
+  // keepalive request, which the browser finishes after the page is gone (Safari drops an ordinary one)
+  function saveOnLeave() {
+    if (!token || previewing || !['unsaved', 'saving'].includes(lastSave)) return;
+    clearTimeout(dirtyTimer);
+    const ids = stepIds();
+    const page = currentId === 'review' ? ids[ids.length - 2] : currentId;
+    try {
+      fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', token, answers: readAnswers(), page, lang }) });
+    } catch { /* the page is going either way */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveOnLeave(); }, { signal });
+  window.addEventListener('pagehide', saveOnLeave, { signal });
   // Map names are spaced for the width they're shown at; a page shown after a hidden one gets its turn too
   let declutterTimer = 0;
   const redeclutter = () => { clearTimeout(declutterTimer); declutterTimer = setTimeout(() => { declutter(ui.pages); declutter(ui.stopMap); }, 120); };

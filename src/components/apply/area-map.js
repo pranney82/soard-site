@@ -94,7 +94,9 @@ export function areaMapHtml(area, home, words = {}) {
     const [l, tp] = pct(at);
     const deg = Math.round((Math.atan2(-dy, dx) * 180) / Math.PI);
     const miles = home.miles != null ? Math.round(home.miles) : null;
-    pin = `<span class="af-map-away" data-rank="0" style="left:${l.toFixed(2)}%;top:${tp.toFixed(2)}%"><svg class="af-map-away-arrow" viewBox="0 0 20 20" style="transform:rotate(${deg}deg)" aria-hidden="true"><path d="M3 10h12M11 5l5 5-5 5"/></svg><span>${esc(words.away ? words.away.replace('{miles}', miles ?? '') : (words.homeLabel || 'Home'))}</span></span>`;
+    // Held by the end on the map's side, so it reads inside the map (centred on the edge, half was cut off)
+    const anchor = l > 60 ? ' data-anchor="end"' : l < 40 ? ' data-anchor="start"' : '';
+    pin = `<span class="af-map-away" data-rank="0"${anchor} style="left:${l.toFixed(2)}%;top:${tp.toFixed(2)}%"><svg class="af-map-away-arrow" viewBox="0 0 20 20" style="transform:rotate(${deg}deg)" aria-hidden="true"><path d="M3 10h12M11 5l5 5-5 5"/></svg><span>${esc(words.away ? words.away.replace('{miles}', miles ?? '') : (words.homeLabel || 'Home'))}</span></span>`;
   }
 
   const legend = `<span class="af-map-key"><span class="af-map-key-area" aria-hidden="true"></span>${esc(words.legendArea || 'Our service area')}</span>${hasHome && v.homeInView ? `<span class="af-map-key"><span class="af-map-key-pin" aria-hidden="true"></span>${esc(words.legendHome || 'The home you entered')}</span>` : ''}`;

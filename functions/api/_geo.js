@@ -31,7 +31,10 @@ export async function geocode(address, fetchImpl = fetch) {
   const q = String(address || '').trim();
   if (!q) return null;
   try {
-    return await censusGeocode(q, fetchImpl);
+    const g = await censusGeocode(q, fetchImpl);
+    if (g) return g;
+    // The Census doesn't know it (a new home, a newer street): OpenStreetMap, but only where it has the house itself
+    return await osmGeocode(q, fetchImpl, { houseOnly: true }).catch(() => null);
   } catch (e) {
     const alt = await osmGeocode(q, fetchImpl).catch(() => null);
     if (alt) return alt;
@@ -60,10 +63,11 @@ const streetKey = (s) => String(s || '').toLowerCase().replace(/[.,#]/g, ' ').sp
 
 /**
  * The same from OpenStreetMap, for a Census outage: the home itself where it's mapped, else a place
- * on the same street in the same ZIP or town (close enough to put it on the service-area map).
+ * on the same street in the same ZIP or town (close enough to put it on the service-area map). With
+ * `houseOnly` (the Census answered, but doesn't know this address) only the home itself.
  * null when nothing on that street turns up. `address` is addressText's "line1[, line2], City, ST 12345".
  */
-async function osmGeocode(address, fetchImpl) {
+async function osmGeocode(address, fetchImpl, { houseOnly = false } = {}) {
   const parts = address.split(',').map(s => s.trim()).filter(Boolean);
   const m = /^(\d+[a-z]?)\s+(.+)$/i.exec(parts[0] || '');
   if (!m || parts.length < 3) return null;
@@ -85,7 +89,7 @@ async function osmGeocode(address, fetchImpl) {
     || [p.city, p.town, p.village, p.district].some(c => c && String(c).toLowerCase() === city.toLowerCase());
   const found = (data.features || []).filter(f => f?.geometry?.coordinates?.length === 2 && (!f.properties?.countrycode || f.properties.countrycode === 'US'));
   const home = found.find(f => onStreet(f.properties) && near(f.properties) && String(f.properties.housenumber || '').toLowerCase() === m[1].toLowerCase());
-  const best = home || found.find(f => onStreet(f.properties) && near(f.properties));
+  const best = home || (houseOnly ? null : found.find(f => onStreet(f.properties) && near(f.properties)));
   if (!best) return null;
   const [lng, lat] = best.geometry.coordinates.map(Number);
   return {

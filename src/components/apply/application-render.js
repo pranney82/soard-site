@@ -51,6 +51,7 @@ export const UI = {
     remindersOff: "You won't get any more reminder emails. Your answers are still saved here.",
     expired: 'This saved application has expired. Please start a new one; we are sorry for the trouble.',
     linkExpired: 'That link has expired or is not valid. Please start a new application.',
+    resumeFailed: "We couldn't open your saved application just now. It's still saved: please reload the page in a moment.",
     startFail: 'We could not start your application. Please try again.', turnstile: 'Please complete the quick check above the Continue button.',
     waitUploads: 'Please wait for your uploads to finish, then submit.', attention: 'A few answers need attention before you submit.',
     offlineSubmit: 'You seem to be offline. Your answers are saved; please try again when you are connected.',
@@ -75,11 +76,11 @@ export const UI = {
     uspsConfirmed: 'Confirmed by the Postal Service.', uspsUnit: "If there's an apartment or unit number, add it to the address.",
     uspsCheck: "The Postal Service doesn't know this address. Check the number and ZIP.",
     // The service-area check under the home address
-    areaPrompt: "Enter the address above, and we'll show it on the map.", areaChecking: 'Checking the address…',
+    areaPrompt: "Enter the address, and we'll show it on the map.", areaChecking: 'Checking the address…',
     areaInside: 'Inside our service area', areaNear: 'Close to our service area', areaFar: 'Outside our service area',
-    areaUnknown: "We couldn't find this address on the map", areaUnknownBody: 'Please check the street, city and ZIP code above. If they look right, just tell us:',
-    areaError: "We couldn't check the address just now", areaErrorBody: 'Please tell us instead:',
-    areaFound: 'We found {address}.', areaFoundCounty: 'We found {address}, in {county} County.', areaFix: 'Not right? Change the address',
+    areaUnknown: "We couldn't find this address on the map", areaUnknownBody: "Please check the address. If it's right, just tell us where the home is.",
+    areaError: "We couldn't check the address just now", areaErrorBody: 'Please tell us where the home is instead.',
+    areaFound: 'We found {address}.', areaFoundCounty: 'We found {address}, in {county} County.', areaFix: 'Not right? Change the address', areaChoose: 'Please choose the answer that fits.',
     areaMapLabel: 'Map of our service area in metro Atlanta, with county lines and nearby towns.', areaMapHome: ' The home you entered is marked on it.',
     areaHome: 'Home', areaLegend: 'Our service area', areaLegendHome: 'The home you entered', areaAway: 'Home, {miles} mi away',
     stopEditAddress: 'Change the address',
@@ -106,6 +107,7 @@ export const UI = {
     // The address: one line that finds it (Google's suggestions), or its parts typed in
     addressLine: 'Address', addressManual: 'Enter the address yourself', addressSearch: 'Search for the address instead',
     addressPick: 'Type the address and choose it from the list, or enter it yourself.', addressNotListed: 'Not in the list? Enter it yourself',
+    addressMissing: 'Please fill in {parts}.', and: 'and',
     // The hero above the form
     heroEyebrow: 'For Families · {year} Application', heroTitleHtml: 'Tell us about your <em>child</em>.',
     heroLeadHtml: "This is where your family's story starts. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.",
@@ -151,6 +153,7 @@ export const UI = {
     remindersOff: 'Ya no recibirá más correos de recordatorio. Sus respuestas siguen guardadas aquí.',
     expired: 'Esta solicitud guardada venció. Comience una nueva; lamentamos la molestia.',
     linkExpired: 'Ese enlace venció o no es válido. Comience una nueva solicitud.',
+    resumeFailed: 'No pudimos abrir su solicitud guardada en este momento. Sigue guardada: vuelva a cargar la página en un momento.',
     startFail: 'No pudimos comenzar su solicitud. Intente de nuevo.', turnstile: 'Complete la verificación rápida arriba del botón Continuar.',
     waitUploads: 'Espere a que terminen de subir sus archivos y después envíe la solicitud.', attention: 'Algunas respuestas necesitan atención antes de enviar.',
     offlineSubmit: 'Parece que no tiene conexión. Sus respuestas están guardadas; intente de nuevo cuando tenga conexión.',
@@ -173,11 +176,11 @@ export const UI = {
     suggestions: 'Direcciones sugeridas', countyFilled: 'Completamos el condado de {county} con su dirección.',
     uspsConfirmed: 'Confirmada por el Servicio Postal.', uspsUnit: 'Si hay un número de apartamento o unidad, agréguelo a la dirección.',
     uspsCheck: 'El Servicio Postal no reconoce esta dirección. Revise el número y el código postal.',
-    areaPrompt: 'Escriba la dirección arriba y la mostraremos en el mapa.', areaChecking: 'Revisando la dirección…',
+    areaPrompt: 'Escriba la dirección y la mostraremos en el mapa.', areaChecking: 'Revisando la dirección…',
     areaInside: 'Dentro de nuestra área de servicio', areaNear: 'Cerca de nuestra área de servicio', areaFar: 'Fuera de nuestra área de servicio',
-    areaUnknown: 'No encontramos esta dirección en el mapa', areaUnknownBody: 'Revise la calle, la ciudad y el código postal. Si están bien, díganos:',
-    areaError: 'No pudimos revisar la dirección en este momento', areaErrorBody: 'Por favor, díganos:',
-    areaFound: 'Encontramos {address}.', areaFoundCounty: 'Encontramos {address}, en el condado de {county}.', areaFix: '¿No es correcta? Cambiar la dirección',
+    areaUnknown: 'No encontramos esta dirección en el mapa', areaUnknownBody: 'Revise la dirección. Si está bien, solo díganos dónde está la casa.',
+    areaError: 'No pudimos revisar la dirección en este momento', areaErrorBody: 'Por favor, díganos dónde está la casa.',
+    areaFound: 'Encontramos {address}.', areaFoundCounty: 'Encontramos {address}, en el condado de {county}.', areaFix: '¿No es correcta? Cambiar la dirección', areaChoose: 'Elija la respuesta que corresponda.',
     areaMapLabel: 'Mapa de nuestra área de servicio en el área metropolitana de Atlanta, con los límites de los condados y las ciudades cercanas.', areaMapHome: ' La casa que escribió está marcada.',
     areaHome: 'Casa', areaLegend: 'Nuestra área de servicio', areaLegendHome: 'La casa que escribió', areaAway: 'Casa, a {miles} mi',
     stopEditAddress: 'Cambiar la dirección',
@@ -199,6 +202,7 @@ export const UI = {
     first: 'Nombre', last: 'Apellido', street: 'Calle y número', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
     addressLine: 'Dirección', addressManual: 'Escribir la dirección a mano', addressSearch: 'Buscar la dirección',
     addressPick: 'Escriba la dirección y elíjala de la lista, o escríbala a mano.', addressNotListed: '¿No aparece? Escríbala a mano',
+    addressMissing: 'Falta completar: {parts}.', and: 'y',
     heroEyebrow: 'Para familias · Solicitud {year}', heroTitleHtml: 'Cuéntenos sobre <em>su hijo o hija</em>.',
     heroLeadHtml: 'Aquí comienza la historia de su familia. La solicitud toma unos 15 minutos y <strong>se guarda mientras avanza</strong>, así que puede detenerse y volver cuando quiera.',
     heroStart: 'Comenzar la solicitud', heroContinue: 'Continuar mi solicitud', heroNotify: 'Avísenme cuando abran', heroFaq: '¿Preguntas? Lea las respuestas',
@@ -343,7 +347,8 @@ export function renderField(f, lang = 'en', area = null, kind = 'family') {
   const id = `af-${f.id}`;
   const errId = `${id}-error`;
   const hintId = `${id}-hint`;
-  const optional = !f.required ? `<span class="af-optional"> ${T('optional')}</span>` : '';
+  // "(optional)" once: a question that already says so gets no second one
+  const optional = !f.required && !/\((optional|opcional)\)\s*$/i.test(String(f.label || '')) ? `<span class="af-optional"> ${T('optional')}</span>` : '';
   // "Choose up to 2.", unless the question already says so ("…up to two (2)…", "…hasta dos…")
   const saysMax = f.type === 'checkbox' && f.max && new RegExp(`\\b(?:up to|hasta)\\s+(?:${f.max}|${NUMBER_WORDS[f.max] || f.max})\\b`, 'i').test(f.label || '');
   const hints = [f.help, f.type === 'checkbox' && f.max && !saysMax ? T('upTo', { n: f.max }) : ''].filter(Boolean);

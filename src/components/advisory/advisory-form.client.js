@@ -60,7 +60,9 @@ export function initAdvisoryForm() {
   let packs = {};
   let focused = false;
   let moving = false;
-  let fromReview = false;
+  let fromReview = false; // came from the review: 'answer' (one, then straight back) or 'step' (a whole step, walked through)
+  let calmUntil = 0; // till when a new screen is settling (presses before then don't count)
+  let resumeAt = null; // the screen of the step they left, for coming back to it
   let startedAt = stored?.startedAt || Date.now();
   let turnstileKey = null;
   let turnstileToken = null;
@@ -119,13 +121,48 @@ export function initAdvisoryForm() {
     const top = ui.top?.offsetHeight || 0;
     const nav = form.querySelector('.adv-nav')?.offsetHeight || 0;
     const head = el.getBoundingClientRect().top - ui.stage.getBoundingClientRect().top;
-    return Math.max(260, innerHeight - top - nav - head - (parseFloat(getComputedStyle(ui.stage).paddingBottom) || 0));
+    // The summary of problems over the questions ("3 answers need a look") takes its room too
+    const summary = el.querySelector('[data-summary]:not([hidden])');
+    const lead = summary ? summary.getBoundingClientRect().height + (parseFloat(getComputedStyle(el).rowGap) || 0) : 0;
+    return Math.max(120, innerHeight - top - nav - head - lead - (parseFloat(getComputedStyle(ui.stage).paddingBottom) || 0));
+  }
+  /**
+   * Something new on the screen (problem notes, the summary, a resized window): if it no longer fits,
+   * this step's screens are worked out again with it, keeping `keep` (else the screen's first piece) in front
+   */
+  function refit(keep = null, problems = null) {
+    if (!focused || step < 0 || step >= total || !packs[step] || moving) return;
+    settle();
+    const fits = () => { settle(); return document.documentElement.scrollHeight <= innerHeight; };
+    if (fits()) return;
+    // Problem notes: first the questions a little closer together (often room enough, nothing moves)…
+    if (problems) { pages[step].setAttribute('data-snug', ''); if (fits()) return; }
+    // …then the screen keeps its questions up to the last one with a problem (none moves away from its
+    // note), and what follows it goes on to a screen of its own
+    const here = packs[step][screenNo] || [];
+    const last = problems ? here.reduce((m, k, j) => (idsOf(k).some((id) => problems.includes(id)) ? j : m), -1) : -1;
+    if (last >= 0 && last < here.length - 1) {
+      for (const k of here.slice(last + 1)) k.setAttribute('data-off', '');
+      if (fits()) {
+        packs[step] = [...packs[step].slice(0, screenNo), here.slice(0, last + 1), here.slice(last + 1), ...packs[step].slice(screenNo + 1)];
+        paintScreen();
+        paint();
+        return;
+      }
+    }
+    const was = keep || packs[step][screenNo]?.[0] || null;
+    packs[step] = pack(step);
+    const at = was ? packs[step].findIndex((kids) => kids.some((k) => k === was || k.contains(was) || was.contains(k))) : 0;
+    screenNo = Math.max(0, at);
+    paintScreen();
+    paint();
   }
   function pack(i) {
     const el = pages[i];
     if (!focused || !el || i >= total) return null;
     settle();
     el.querySelectorAll('[data-off]').forEach((k) => k.removeAttribute('data-off'));
+    el.removeAttribute('data-snug'); // the questions closer together while problem notes show: worked out afresh
     if (el.offsetParent === null) return null;
     const fit = room(el);
     // Measured as answered: a follow-up as if its question had been answered to show it
@@ -140,16 +177,18 @@ export function initAdvisoryForm() {
     const blocks = [];
     kids.forEach((k, j) => {
       const f = k.matches('[data-field]') ? ADVISORY_FIELDS.find((x) => x.id === k.dataset.field) : null;
-      // A follow-up's question may sit a piece back (a pair split on a phone): they join, so it shows on its question's screen
+      // A follow-up shows on its question's screen when the two fit one together (its question may sit a
+      // piece back, a pair split on a phone: they join); else it's the next screen's
       const lead = f?.showIf ? blocks.findIndex((b) => Object.keys(f.showIf).some((x) => b.ids.has(x))) : -1;
-      if (lead >= 0 && lead < blocks.length - 1) {
+      const together = lead >= 0 && join(blocks.slice(lead).reduce((t, b) => join(t, b.h), 0), h[j]) <= fit;
+      if (lead >= 0 && lead < blocks.length - 1 && together) {
         const [first, ...rest] = blocks.splice(lead);
         for (const b of rest) { first.kids.push(...b.kids); first.h = join(first.h, b.h); b.ids.forEach((x) => first.ids.add(x)); }
         first.carry = false;
         blocks.push(first);
       }
       const prev = blocks[blocks.length - 1];
-      const follows = prev && (!h[j] || k.matches('.adv-date') || (f?.showIf && Object.keys(f.showIf).some((x) => prev.ids.has(x))));
+      const follows = prev && (!h[j] || k.matches('.adv-date') || (f?.showIf && together && Object.keys(f.showIf).some((x) => prev.ids.has(x))));
       if (prev && (follows || prev.carry)) {
         prev.kids.push(k); prev.h = join(prev.h, h[j]);
         idsOf(k).forEach((x) => prev.ids.add(x));
@@ -185,6 +224,10 @@ export function initAdvisoryForm() {
     return screens;
   }
   const screensIn = (i) => packs[i]?.length || 1;
+  // A screen holding only a follow-up that isn't asked (its answer wasn't the one) is passed by
+  const emptyScreen = (i, n) => !!packs[i]?.[n] && packs[i][n].every((k) => k.hidden || !!k.closest('[hidden]'));
+  const screenAhead = () => step < total && (packs[step] || []).some((_, n) => n > screenNo && !emptyScreen(step, n));
+  const screenBefore = () => { for (let n = screenNo - 1; n >= 0; n--) if (!emptyScreen(step, n)) return n; return -1; };
   function paintScreen() {
     const list = packs[step];
     const all = list ? list.flat() : pieces(step); // the pieces as packed (a pair split on a phone stays split)
@@ -219,7 +262,9 @@ export function initAdvisoryForm() {
     const mine = ids.filter((id) => problems[id]);
     const summary = page.querySelector('[data-summary]');
     if (!summary) return;
-    if (mine.length < 2) { summary.hidden = true; summary.textContent = ''; if (focus && mine.length) focusField(mine[0]); return; }
+    // The summary only when some are out of sight (another screen): beside each question its own note says it
+    const elsewhere = mine.some((id) => fieldEl(id)?.closest('[data-off]'));
+    if (mine.length < 2 || !elsewhere) { summary.hidden = true; summary.textContent = ''; if (mine.length) refit(fieldEl(mine[0]), mine); if (focus && mine.length) focusField(mine[0]); return; }
     summary.innerHTML = '';
     const head = document.createElement('p');
     head.textContent = `${mine.length} answers need a look:`;
@@ -237,6 +282,7 @@ export function initAdvisoryForm() {
     }
     summary.append(head, list);
     summary.hidden = false;
+    refit(fieldEl(mine[0]), mine); // the notes and the summary take room: the first problem stays in front
     if (focus) focusField(mine[0]);
   }
   function focusField(id) {
@@ -286,11 +332,15 @@ export function initAdvisoryForm() {
       li.firstChild.style.transform = `scaleX(${(done ? 1 : now ? (screenNo + 1) / (n + 1) : 0).toFixed(3)})`;
     });
     ui.back.hidden = step === 0 && screenNo === 0;
-    const last = screenNo >= n - 1;
-    ui.next.textContent = step === REVIEW ? 'Send my application'
-      : fromReview ? 'Back to review'
+    const last = !screenAhead();
+    // Only when the words change: Safari drops a press on Continue whose words are replaced mid-press
+    // On a phone "Continue to reference and signature" doesn't fit the button: "Continue" (the step's name is over the questions)
+    const narrow = innerWidth <= 640;
+    const label = step === REVIEW ? 'Send my application'
+      : fromReview === 'answer' || (fromReview && last) ? 'Back to review'
         : !last ? 'Continue'
-          : step === total - 1 ? 'Review my answers' : `Continue to ${titles[step + 1].toLowerCase()}`;
+          : step === total - 1 ? 'Review my answers' : narrow ? 'Continue' : `Continue to ${titles[step + 1].toLowerCase()}`;
+    if (ui.next.textContent !== label) ui.next.textContent = label;
     ui.turnstile.hidden = !(turnstileKey && step === REVIEW);
     if (turnstileKey && step === REVIEW) loadTurnstile();
     document.title = focused ? `Step ${step + 1} of ${total + 1}: ${titles[step]} · ${baseTitle}` : baseTitle;
@@ -349,6 +399,7 @@ export function initAdvisoryForm() {
   /** Put a step on screen, a screen of it (a number, 'last', or the one holding `at`) */
   function go(i, { dir = 0, screen = 0, at = null, focus = true } = {}) {
     const changed = i !== step;
+    if (dir) calmUntil = performance.now() + 350; // a second press of Continue mid-change (a double tap) counts once
     return swap(() => {
       step = i;
       furthest = Math.max(furthest, i);
@@ -357,6 +408,8 @@ export function initAdvisoryForm() {
       if (i < total && (changed || !packs[i])) { ui.title.textContent = titles[i]; packs[i] = pack(i); }
       const n = screensIn(i);
       screenNo = Math.max(0, Math.min(n - 1, at ? screenOf(i, at) : screen === 'last' ? n - 1 : Number(screen) || 0));
+      if (!at && dir > 0) while (screenNo < n - 1 && emptyScreen(i, screenNo)) screenNo++;
+      if (!at && (dir < 0 || screen === 'last')) while (screenNo > 0 && emptyScreen(i, screenNo)) screenNo--;
       paintScreen();
       ui.sendError.hidden = true;
       paint();
@@ -390,8 +443,11 @@ export function initAdvisoryForm() {
     armTrap();
     packs = {};
     const target = i != null && i <= furthest ? i : step;
+    // Coming back to the step they left: the screen they were on
+    const screen = resumeAt && resumeAt.step === target ? resumeAt.screen : 0;
+    resumeAt = null;
     step = -1; // a step put on screen afresh
-    go(target, { screen: 0 });
+    go(target, { screen });
   }
   function exitFocus({ fromPop = false } = {}) {
     if (!focused) return;
@@ -413,8 +469,9 @@ export function initAdvisoryForm() {
   }
   /** A screen back; false at the very start */
   function back() {
-    if (moving) return true;
-    if (screenNo > 0 && step < total) { go(step, { dir: -1, screen: screenNo - 1 }).then(save); return true; }
+    if (moving || performance.now() < calmUntil) return true;
+    const before = step < total ? screenBefore() : -1;
+    if (before >= 0) { go(step, { dir: -1, screen: before }).then(save); return true; }
     if (step === 0) return false;
     go(step - 1, { dir: -1, screen: 'last' }).then(save);
     return true;
@@ -487,8 +544,8 @@ export function initAdvisoryForm() {
     if (tg) { const sec = tg.closest('.adv-review-section'); setOpen(sec, !sec.hasAttribute('data-open')); return; }
     const edit = e.target.closest('[data-edit]');
     if (edit) {
-      fromReview = true;
       const id = edit.dataset.answer || null;
+      fromReview = id ? 'answer' : 'step';
       go(Number(edit.dataset.edit), { dir: -1, at: id || null });
     }
   });
@@ -506,7 +563,7 @@ export function initAdvisoryForm() {
     clearTimeout(saveTimer);
     saveTimer = null;
     if (sent) return;
-    write({ answers: collect(), step: Math.min(step, REVIEW), furthest, startedAt, savedAt: Date.now() });
+    write({ answers: collect(), step: Math.min(step, REVIEW), screen: screenNo, furthest, startedAt, savedAt: Date.now() });
     ui.saved.textContent = 'Saved on this device';
   }
   function save() {
@@ -537,6 +594,7 @@ export function initAdvisoryForm() {
     const id = e.target.closest('[data-field]')?.dataset.field;
     follow();
     if (id) recheck(id);
+    if (focused && step < total) paint(); // a follow-up asked (or not) on the next screen: Continue says where it goes
     save();
   });
   // ── The home address: suggestions as it's typed (the application's: Google's when SOARD has a key, else
@@ -639,6 +697,26 @@ export function initAdvisoryForm() {
     window.addEventListener('resize', placeSuggest);
   }
 
+  // A real change of window size (a phone turned, a window resized; not a phone's address bar sliding):
+  // the step's screens worked out again, keeping their place, and Continue's words for the width
+  let resizeTimer = 0;
+  let packedSize = `${innerWidth}x${innerHeight}`;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      paint();
+      const [w0, h0] = packedSize.split('x').map(Number);
+      if (Math.abs(innerWidth - w0) < 40 && Math.abs(innerHeight - h0) < 120) return;
+      packedSize = `${innerWidth}x${innerHeight}`;
+      if (!focused || step < 0 || step >= total || !packs[step]) return;
+      const was = packs[step][screenNo]?.[0] || null;
+      packs[step] = pack(step);
+      screenNo = Math.max(0, was ? packs[step].findIndex((kids) => kids.some((k) => k === was || k.contains(was) || was.contains(k))) : 0);
+      paintScreen();
+      paint();
+    }, 180);
+  }, { passive: true });
+
   // Enter (the keyboard's "next") goes to the next box on the screen; on the last one it's Continue
   form.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing || e.shiftKey || !(e.target instanceof HTMLInputElement) || ['radio', 'checkbox', 'submit', 'button'].includes(e.target.type)) return;
@@ -655,15 +733,16 @@ export function initAdvisoryForm() {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (sending || moving) return;
+    if (sending || moving || performance.now() < calmUntil) return;
     ui.sendError.hidden = true;
     if (step === REVIEW) { await send(); return; }
     const here = screenIds();
     const problems = Object.fromEntries(Object.entries(problemsOn(step)).filter(([id]) => here.has(id)));
     if (Object.keys(problems).length) { showProblems(problems); return; }
     showProblems({}, { focus: false });
-    if (fromReview) await go(REVIEW, { dir: 1 });
-    else if (screenNo < screensIn(step) - 1) await go(step, { dir: 1, screen: screenNo + 1 });
+    const lastHere = !screenAhead();
+    if (fromReview === 'answer' || (fromReview && lastHere)) await go(REVIEW, { dir: 1 });
+    else if (!lastHere) await go(step, { dir: 1, screen: screenNo + 1 });
     else await go(step + 1, { dir: 1 });
     save();
   });
@@ -674,7 +753,7 @@ export function initAdvisoryForm() {
     const firstBad = ADVISORY_STEPS.findIndex((s) => s.fields.some((f) => all.problems[f.id]));
     if (firstBad !== -1) {
       const id = ADVISORY_STEPS[firstBad].fields.find((f) => all.problems[f.id]).id;
-      fromReview = true;
+      fromReview = 'answer';
       await go(firstBad, { dir: -1, at: id });
       showProblems(all.problems);
       return;
@@ -693,7 +772,7 @@ export function initAdvisoryForm() {
       const d = await res.json().catch(() => ({}));
       if (res.status === 422 && d.problems) {
         const at = ADVISORY_STEPS.findIndex((s) => s.fields.some((f) => d.problems[f.id]));
-        if (at !== -1) { fromReview = true; await go(at, { dir: -1 }); showProblems(d.problems); }
+        if (at !== -1) { fromReview = 'answer'; await go(at, { dir: -1 }); showProblems(d.problems); }
         throw new Error(d.error || 'A few answers need a look.');
       }
       if (!res.ok || !d.ok) {
@@ -703,6 +782,7 @@ export function initAdvisoryForm() {
       sent = true;
       clearTimeout(saveTimer);
       write(null);
+      ui.saved.textContent = '';
       session.set(false);
       form.hidden = true;
       $('adv-done-name').textContent = d.first ? `, ${d.first}` : '';
@@ -751,9 +831,20 @@ export function initAdvisoryForm() {
     fill(stored.answers);
     step = Math.min(Math.max(0, Number(stored.step) || 0), REVIEW);
     furthest = Math.min(Math.max(step, Number(stored.furthest) || 0), REVIEW);
+    resumeAt = { step, screen: Math.max(0, Number(stored.screen) || 0) };
     restored = true;
   }
+  let startOverArmed = 0;
   ui.startOver.addEventListener('click', () => {
+    // Deleting every answer takes a second tap (it sits by "Continue where you left off": one slip shouldn't do it)
+    if (Date.now() > startOverArmed) {
+      startOverArmed = Date.now() + 5000;
+      ui.startOver.textContent = 'Tap again to delete your answers';
+      setTimeout(() => { if (Date.now() > startOverArmed) ui.startOver.textContent = 'Start over'; }, 5100);
+      return;
+    }
+    startOverArmed = 0;
+    ui.startOver.textContent = 'Start over';
     write(null);
     form.reset();
     step = 0;

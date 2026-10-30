@@ -347,7 +347,10 @@ if (DIST) {
     ok(!a4.length, `axe: the review has no problems${a4.length ? ` (${axeText(a4)})` : ''}`);
     await p.click('.adv-review-section[data-step="1"] .adv-linkbtn[data-edit]');
     await sleep(450);
-    ok((await text(p, '#adv-title')) === 'Your interest' && /Back to review/.test(await text(p, '#adv-next')), 'Edit goes to the step, and Continue comes back to review');
+    ok((await text(p, '#adv-title')) === 'Your interest', 'Edit goes to the step');
+    // A whole step from the review is walked through: Continue on its first screens, "Back to review" on its last
+    for (let i = 0; i < 4 && !/Back to review/.test(await text(p, '#adv-next')); i++) await next();
+    ok((await text(p, '#adv-title')) === 'Your interest' && /Back to review/.test(await text(p, '#adv-next')), 'its last screen says "Back to review"');
     await next();
     ok((await text(p, '#adv-title')) === 'Review and send', 'back to review');
     await sleep(500);

@@ -711,32 +711,39 @@ const breadcrumbs = [
   /* Each column's own gap, the same as the choices': an inherited one isn't recalculated straight away in
      Chrome when the choices' changes, so the fit measured the old one */
   .af-tile-col { display: grid; gap: 10px; align-content: start; }
+  /* Problem notes showing: the questions a little closer, so the notes fit without anything moving */
+  html.af-focus .af-page[data-snug] { gap: 12px; }
+  html.af-focus .af-page[data-snug] .af-error { padding-block: 7px; }
   .af-tile { position: relative; display: grid; }
   @container (min-width: 560px) { .af-choices--tiles { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
   .af-col { display: grid; gap: 10px; align-content: start; }
   @container (min-width: 560px) { .af-choices--cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
-  /* A tile on a phone reads like the other choices: the box first, the name beside it, the words
-     under both. When the screen has room for only part of the words, each tile says its first lines
-     (the script picks how many) and More opens the rest */
+  /* When the screen has room for only part of the tiles' words (a short laptop, a phone, a phone on its
+     side), each tile says its first lines (the script picks how many) and More opens the rest. Two to a
+     row, More sits beside the box */
   .af-tile-more { display: none; }
+  .af-tile[data-clamp] .af-choice-title { padding-right: 100px; }
+  .af-tile[data-clamp] .af-choice-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 2); overflow: hidden; }
+  .af-tile[data-clamp="0"] .af-choice-desc { display: none; }
+  .af-tile[data-clamp] .af-tile-more { display: inline-flex; }
+  /* A little snugger before a line of words goes (each still 44px to tap) */
+  html.af-focus :is(.af-choices--tiles[data-snug], .af-choices--tiles[data-snug] .af-tile-col) { gap: 5px; }
+  html.af-focus .af-choices--tiles[data-snug] .af-choice { padding-block: 8px; min-height: 44px; }
+  .af-choices--tiles[data-snug] .af-choice-box { top: 8px; }
+  .af-choices--tiles[data-snug] .af-tile-more { top: -2px; }
+  /* A tile on a phone reads like the other choices: the box first, the name beside it, the words under both */
   @container (max-width: 559.98px) {
-    .af-choices--tiles { --af-narrow: 1; }
     .af-choices--tiles .af-choice { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 12px; row-gap: 4px; align-items: start; }
     .af-choices--tiles .af-choice-box { position: static; }
     .af-choices--tiles .af-choice-text { display: contents; }
     .af-choices--tiles .af-choice-title { padding-right: 0; align-self: center; }
     .af-choices--tiles .af-choice-desc { grid-column: 1 / -1; }
     .af-tile[data-clamp] .af-choice-title { padding-right: 62px; }
-    .af-tile[data-clamp] .af-choice-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 2); overflow: hidden; }
-    .af-tile[data-clamp="0"] .af-choice-desc { display: none; }
-    .af-tile[data-clamp] .af-tile-more { display: inline-flex; }
-    /* A little snugger before a line of words goes (each still 48px to tap) */
-    html.af-focus :is(.af-choices--tiles[data-snug], .af-choices--tiles[data-snug] .af-tile-col) { gap: 6px; }
-    html.af-focus .af-choices--tiles[data-snug] .af-choice { padding-block: 9px; min-height: 48px; }
+    .af-choices--tiles .af-tile-more { right: 4px; }
     .af-choices--tiles[data-snug] .af-tile-more { top: -1px; }
   }
   .af-tile-more {
-    position: absolute; top: 2px; right: 4px; min-width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0 12px;
+    position: absolute; top: 2px; right: 42px; min-width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0 12px;
     border: 0; border-radius: 12px; background: none; cursor: pointer; font: inherit; font-size: 14.5px; font-weight: 700; color: var(--c-dark);
     text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 4px; -webkit-tap-highlight-color: transparent;
   }
@@ -1124,7 +1131,9 @@ const breadcrumbs = [
   .af-map-pin::before { content: ''; position: absolute; left: -16px; top: -8px; width: 32px; height: 16px; border-radius: 50%; border: 2px solid var(--c-dark); opacity: 0; animation: afPinRing 1.4s var(--af-ease) .35s both; }
   .af-map-pin-label { position: absolute; left: 15px; top: -36px; white-space: nowrap; background: var(--c-dark); color: #fff; font-size: 12px; font-weight: 700; line-height: 1; padding: 6px 9px; border-radius: 99px; animation: afFadeIn .3s var(--af-ease) .25s both; }
   .af-map-pin[data-flip] .af-map-pin-label { left: auto; right: 15px; }
-  .af-map-away { position: absolute; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; background: var(--c-dark); color: #fff; font-size: 12.5px; font-weight: 700; padding: 6px 11px 6px 8px; border-radius: 99px; box-shadow: 0 6px 16px -4px rgba(30,31,37,.35); }
+  .af-map-away { position: absolute; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 6px; width: max-content; max-width: 88%; line-height: 1.25; background: var(--c-dark); color: #fff; font-size: 12.5px; font-weight: 700; padding: 6px 11px 6px 8px; border-radius: 99px; box-shadow: 0 6px 16px -4px rgba(30,31,37,.35); }
+  .af-map-away[data-anchor="end"] { transform: translate(-100%, -50%); }
+  .af-map-away[data-anchor="start"] { transform: translate(0, -50%); }
   .af-map-away-arrow { flex: 0 0 16px; width: 16px; height: 16px; max-width: none; fill: none; stroke: var(--c-yellow); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
   .af-map-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 2px 0; font-size: 13.5px; color: var(--c-text-muted); }
   html.af-focus .af-place[data-tight] .af-map-legend { display: none; }
@@ -1368,6 +1377,9 @@ const breadcrumbs = [
   .af-place .af-area-ask { order: 2; }
   .af-place .af-field--area > .af-error { order: 3; }
   .af-place .af-map { order: 4; }
+  /* Asked about the home: the map leads the question that's about it */
+  .af-place .af-area:is([data-area="unknown"], [data-area="error"]) .af-map { order: 2; }
+  .af-place .af-area:is([data-area="unknown"], [data-area="error"]) .af-area-ask { order: 3; }
   .af-place .af-area-result:empty { display: none; }
   @container (min-width: 600px) {
     .af-place { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px 24px; }
@@ -1394,7 +1406,13 @@ const breadcrumbs = [
     html.af-focus .af-place[data-split] > .af-field--area { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 0 24px; }
     html.af-focus .af-place[data-split] :is(.af-area-ask, .af-field--area > .af-error:not(:empty)) { margin-top: 16px; }
     html.af-focus .af-place[data-split] { --af-map-h: clamp(240px, calc(100dvh - 400px), 50vh); }
+    /* Asked about the home (the check couldn't place it): the card beside the map, the question under both with its answers in a row */
+    html.af-focus .af-place[data-split] .af-area:is([data-area="unknown"], [data-area="error"]) .af-map { grid-row: 1; }
+    html.af-focus .af-place[data-split] .af-area-ask { grid-column: 1 / -1; }
+    html.af-focus .af-place[data-split] .af-area-ask .af-choices { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
   }
+  /* The map stepped aside (not even its smallest fits): the card has the width to itself */
+  html.af-focus .af-place[data-split][data-nomap] > .af-field--area { grid-template-columns: minmax(0, 1fr); }
   /* City, State and ZIP on one row once the application has the screen (a phone's widths allow it) */
   @container (min-width: 340px) and (max-width: 599.98px) {
     html.af-focus .af-row--3 { grid-template-columns: minmax(0, 1.15fr) minmax(0, .74fr) minmax(0, 1.2fr); gap: 10px; }
@@ -1558,6 +1576,49 @@ const breadcrumbs = [
     /* An address entered by hand (street, apartment, city / state / ZIP) still fits beside its question */
     html.af-focus .af-address { gap: 10px; }
     html.af-focus .af-address-switch { margin: -12px 0 -8px; }
+    html.af-focus .af-place[data-split] > .af-field--area { gap: 12px; }
+  }
+
+  /* A phone on its side: the bars and the step's name as small as they go, so the questions keep a
+     screen. The step's name, where they are and All steps share one line; Back / Continue are 44px */
+  @media (max-height: 450px) and (orientation: landscape) {
+    .af-app { --af-top-h: 48px; }
+    .af-top-logo { width: 36px; height: 36px; }
+    html.af-focus .af-stage { padding-top: 8px; }
+    html.af-focus .af-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+    html.af-focus .af-head-top { display: contents; }
+    html.af-focus .af-step-title { order: -1; flex: 0 1 auto; min-width: 0; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    html.af-focus .af-step-text { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; font-size: 11.5px; letter-spacing: .07em; gap: 8px; }
+    html.af-focus .af-steps { margin-block: -8px; } /* still 44px to tap, the line no taller than the name */
+    html.af-focus .af-page { gap: 14px; }
+    html.af-focus .af-label { font-size: 16px; line-height: 1.4; }
+    html.af-focus .af-field textarea { min-height: 64px; }
+    html.af-focus .af-nav { padding: 6px 14px calc(6px + env(safe-area-inset-bottom)); }
+    html.af-focus .af-nav .af-btn { min-height: 44px; padding-block: 8px; }
+    html.af-focus .af-choice { padding: 9px 14px; min-height: 46px; }
+    html.af-focus .af-field .af-float > :is(input:not([type=radio]):not([type=checkbox]):not([type=file]), select) { min-height: 52px; padding: 22px 15px 4px; }
+    html.af-focus .af-float-label { top: 15px; }
+    @container (min-width: 600px) {
+      /* A list of answers three to a row, read across */
+      html.af-focus .af-choices--cols { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      html.af-focus .af-choices--cols .af-col { display: contents; }
+      html.af-focus .af-choices--cols .af-choice-text { hyphens: manual; }
+      /* The address and its apartment side by side */
+      html.af-focus .af-address { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+      html.af-focus .af-address > :is(.af-address-rest, .af-address-switch, .af-county-note) { grid-column: 1 / -1; }
+    }
+    /* What we do and don't: one card under another, so they can be read a screen at a time */
+    html.af-focus .af-content :is(.af-offer-grid, .af-nope-list) { grid-template-columns: minmax(0, 1fr); }
+    html.af-focus .af-content .af-scope-title { font-size: 19px; margin: 0 0 8px; }
+    html.af-focus .af-content .af-offer-card { padding: 10px 14px; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; }
+    /* A photo's box: the picture beside its words and button */
+    html.af-focus .af-pair--photos .af-upload { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; align-items: center; padding: 10px; }
+    html.af-focus .af-pair--photos .af-upload-preview { width: 64px; height: 64px; aspect-ratio: auto; }
+    html.af-focus .af-pair--photos .af-upload-body { gap: 4px; }
+    html.af-focus .af-pair--photos .af-upload-status { text-align: left; }
+  }
+  @media (max-height: 450px) and (orientation: landscape) and (max-width: 640px) {
+    html.af-focus .af-nav-row .af-btn--back { width: 44px; min-width: 44px; }
   }
 
   @media (prefers-reduced-motion: reduce) {

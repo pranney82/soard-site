@@ -40,10 +40,13 @@ export async function suggestAddresses(q, fetchImpl = fetch) {
   const data = await res.json().catch(() => ({}));
   const seen = new Set();
   const out = [];
+  // The house number typed is the house: a near number on the same street is someone else's home
+  const typedNo = (query.match(/^\s*(\d+[A-Za-z]?)\b/) || [])[1]?.toLowerCase();
   for (const f of data.features || []) {
     const p = f.properties || {};
     if (p.countrycode && p.countrycode !== 'US') continue;
     if (!p.housenumber || !p.street) continue;
+    if (typedNo && String(p.housenumber).toLowerCase() !== typedNo) continue;
     const line1 = `${p.housenumber} ${shorten(p.street)}`;
     const state = STATES[p.state] || p.state || '';
     const zip = String(p.postcode || '').slice(0, 5);
