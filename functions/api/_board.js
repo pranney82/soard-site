@@ -29,7 +29,7 @@
 import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf,
-  agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority,
+  agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem,
 } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
@@ -207,7 +207,15 @@ async function writeMeeting(DB, m) {
 export async function getPractice(DB, id) {
   await ensureSchema(DB);
   const row = await DB.prepare('SELECT data FROM board_practice WHERE id = ?').bind(id).first();
-  return row ? (await withState(DB, [cleanMeeting({ ...parse(row.data), practice: true })]))[0] : null;
+  if (!row) return null;
+  const raw = parse(row.data);
+  const [m] = await withState(DB, [cleanMeeting({ ...raw, practice: true })]);
+  // The documents it borrows from board meetings (createPractice), as they are now: one deleted or made staff-only
+  // since drops out. null: made before practice meetings borrowed any (createPractice makes a new one)
+  const borrowed = Array.isArray(raw.borrowed) ? raw.borrowed.filter((x) => ID.test(String(x))) : null;
+  const all = borrowed?.length ? Object.values(await filesOf(DB, 'meeting')).flat() : [];
+  const files = (borrowed || []).map((x) => all.find((f) => f.id === x)).filter((f) => f && !f.staffOnly);
+  return { ...m, files: [...m.files, ...files], borrowed, docsFrom: isDate(raw.docsFrom) ? raw.docsFrom : '' };
 }
 /** Today's practice meeting, if one's been started */
 export async function todayPractice(DB, now = Date.now()) {
@@ -284,6 +292,7 @@ async function savePractice(DB, current, raw, { by, base = null } = {}) {
   const next = {
     ...m, id: current.id, date: current.date, practice: true, shared: false, notBoard: false, calendar: null, invite: null, snapshot: null,
     packetSentAt: '', packetSentTo: 0, minutesSentAt: '', fromMeet: null, agendaFrom: current.agendaFrom,
+    borrowed: current.borrowed || [], docsFrom: current.docsFrom,
     createdAt: current.createdAt, updatedAt: nowIso(), updatedBy: by || '',
   };
   await writeMeeting(DB, next);
@@ -1271,7 +1280,12 @@ async function clearPractice(DB, id, { remove = false } = {}) {
 export async function createPractice(env, { by = '', now = Date.now(), fresh = false } = {}) {
   await ensureSchema(env.DB);
   const today = todayEastern(now);
-  if (!fresh) { const cur = await todayPractice(env.DB, now); if (cur) return cur; }
+  if (!fresh) {
+    const cur = await todayPractice(env.DB, now);
+    if (cur?.borrowed) return cur;
+    // One made before practice meetings had documents: a new one that has them
+    if (cur) await clearPractice(env.DB, cur.id, { remove: true });
+  }
   const weekAgo = todayEastern(now - 7 * 86_400_000);
   for (const r of (await env.DB.prepare('SELECT id FROM board_practice WHERE date < ?').bind(weekAgo).all()).results || []) await clearPractice(env.DB, r.id, { remove: true });
   const [meetings, settings, people] = await Promise.all([listMeetings(env.DB), getSettings(env.DB), roster(env.DB)]);
@@ -1283,8 +1297,17 @@ export async function createPractice(env, { by = '', now = Date.now(), fresh = f
     board: people.board.map((p) => ({ slug: p.slug, name: p.name, org: p.organization })),
     staff: people.staff.filter((p) => /founder/i.test(p.title)).map((p) => ({ slug: p.slug, name: p.name })),
   });
-  // Its own ids, and no link back to a real meeting (its minutes item can't approve anything)
-  const own = (sections) => sections.map((sec) => ({ ...sec, id: uid('s_'), items: sec.items.map((it) => ({ ...it, id: uid('i_'), about: '' })) }));
+  // Its documents are borrowed, never copied: the files stay the real meeting's (getPractice reads them as they are now)
+  const shown = (x) => (x?.files || []).filter((f) => !f.staffOnly && f.kind !== 'signed');
+  const borrowed = shown(ahead).map((f) => f.id);
+  // Its own ids, and no link back to a real meeting (its minutes item can't approve anything). The minutes it would
+  // approve stay on that item, as the screen shows them at the real meeting
+  const own = (sections) => sections.map((sec) => ({ ...sec, id: uid('s_'), items: sec.items.map((it) => {
+    const prev = it.live === 'minutes' && it.about ? meetings.find((x) => x.id === it.about) : null;
+    const f = prev?.shared ? minutesFileOf(prev) : null;
+    if (f && !borrowed.includes(f.id)) borrowed.push(f.id);
+    return { ...it, id: uid('i_'), about: '', docs: f ? [f.id, ...(it.docs || []).filter((d) => d !== f.id)] : it.docs };
+  }) }));
   const sections = own(ahead ? ahead.sections : last ? draftAgenda(last, { template: settings.template }) : base.sections);
   const startMin = Math.floor(((([h, mm]) => h * 60 + mm)(easternHm(now).split(':').map(Number))) / 5) * 5;
   const hm = (min) => `${String(Math.floor(Math.min(min, 1439) / 60)).padStart(2, '0')}:${String(Math.min(min, 1439) % 60).padStart(2, '0')}`;
@@ -1294,7 +1317,19 @@ export async function createPractice(env, { by = '', now = Date.now(), fresh = f
     motions: [{ id: uid('v_'), text: last ? `Approve the minutes of the ${meetingName(last)}` : 'Approve the agenda as written', by: '', second: '', result: 'passed' }],
     agendaFrom: { kind: 'typed', name: '', at: isoOf(now) }, createdAt: isoOf(now), updatedAt: isoOf(now), updatedBy: by,
   });
-  await writeMeeting(env.DB, m);
+  // The next meeting has no documents yet: the last meeting's, each with the item it fits (as an upload is placed)
+  let docsFrom = '';
+  if (!shown(ahead).length) {
+    const prev = meetings.find((x) => isDate(x.date) && x.date < today && !x.notBoard && shown(x).some((f) => f.kind !== 'agenda' && !borrowed.includes(f.id)));
+    // (never its old agenda: the practice has its own)
+    for (const f of shown(prev).filter((x) => x.kind !== 'agenda' && !borrowed.includes(x.id))) {
+      borrowed.push(f.id);
+      const at = guessItem(m, f, today);
+      if (at) m.sections = m.sections.map((sec) => ({ ...sec, items: sec.items.map((it) => (it.id === at ? { ...it, docs: [...it.docs, f.id] } : it)) }));
+    }
+    if (prev) docsFrom = prev.date;
+  }
+  await writeMeeting(env.DB, { ...m, borrowed, docsFrom });
   return getPractice(env.DB, m.id);
 }
 

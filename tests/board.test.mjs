@@ -1989,6 +1989,81 @@ test('a practice meeting’s simulated members check in and vote by the clock, t
   assert.deepEqual((await liveGet(FOUNDER, again.id, 'admin')).body.checkins, []);
 });
 
+test('a practice meeting shows the next meeting’s documents on the same items, borrowed: never a staff-only one, never copied or deleted', async () => {
+  const { putFile, itemFiles } = { ...(await import('../functions/api/_board.js')), ...(await import('../public/admin/board-shared.js')) };
+  const pdf = new TextEncoder().encode('%PDF-1.4\n%fake\n');
+  const put = (m, name, kind, staffOnly = false) => putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([pdf], name, { type: 'application/pdf' }), kind, staffOnly, by: FOUNDER });
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const made = async (date, fn = (m) => m) => {
+    const m = (await adminApi(FOUNDER, { action: 'new-meeting', date })).body.meeting;
+    return (await adminApi(FOUNDER, { action: 'save-meeting', meeting: fn({ ...m, shared: true }), base: m.updatedAt })).body.meeting;
+  };
+  const last = await made(day(-60));
+  const minutes = await put(last, 'August minutes.pdf', 'minutes');
+  let next = await made(day(10));
+  const fin = await put(next, 'September financial statements.pdf', 'financials');
+  const secret = await put(next, 'Salary review.pdf', 'other', true);
+  const loose = await put(next, 'Gala sponsor list.pdf', 'other');
+  const withDocs = { ...next, sections: next.sections.map((s) => ({ ...s, items: s.items.map((it) => (it.live === 'cash' ? { ...it, docs: [fin.id, secret.id] } : it.live === 'minutes' ? { ...it, about: last.id } : it)) })) };
+  next = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: withDocs, base: next.updatedAt })).body.meeting;
+
+  const p = (await adminApi(FOUNDER, { action: 'practice' })).body.meeting;
+  assert.deepEqual(p.files.map((f) => f.id).sort(), [fin.id, loose.id, minutes.id].sort(), 'the board’s documents, never the staff-only one');
+  const items = p.sections.flatMap((s) => s.items);
+  assert.deepEqual(itemFiles(p, items.find((it) => it.live === 'cash')).map((f) => f.name), ['September financial statements.pdf'], 'on the same item');
+  const mins = items.find((it) => it.live === 'minutes');
+  assert.deepEqual([mins.about, itemFiles(p, mins).map((f) => f.id)], ['', [minutes.id]], 'the minutes it would approve, approving nothing');
+  assert.equal(p.docsFrom, '');
+  // The screen (the board page's live view) has them, and the admin opens them
+  assert.deepEqual((await liveView(env, p.id, { admin: true, adminEmail: FOUNDER })).files.map((f) => f.id).sort(), [fin.id, loose.id, minutes.id].sort());
+  assert.equal((await call(FOUNDER, `/api/board-file?id=${fin.id}`, { handler: fileRoute.onRequestGet })).status, 200);
+  // Borrowed as they are now: saving keeps them, and one made staff-only since drops out
+  const saved = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...p, live: { ...p.live, itemId: mins.id } }, base: p.updatedAt })).body.meeting;
+  assert.equal(saved.files.length, 3);
+  await adminApi(FOUNDER, { action: 'update-file', id: loose.id, staffOnly: true });
+  assert.deepEqual((await getPractice(env.DB, p.id)).files.map((f) => f.id).sort(), [fin.id, minutes.id].sort());
+  const row = JSON.parse((await env.DB.prepare('SELECT data FROM board_practice WHERE id = ?').bind(p.id).first()).data);
+  assert.equal('files' in row, false, 'never copied into the practice');
+  // Starting over (and a week's clearing) leaves the real meeting's files where they are
+  const again = (await adminApi(FOUNDER, { action: 'practice-reset', id: p.id })).body.meeting;
+  assert.deepEqual(again.files.map((f) => f.id).sort(), [fin.id, minutes.id].sort());
+  assert.equal((await getMeeting(env.DB, next.id)).files.length, 3);
+  assert.equal((await getMeeting(env.DB, last.id)).files.length, 1);
+});
+
+test('with nothing on the next meeting, a practice meeting borrows the last meeting’s documents, each with the item it fits; one made before documents is made again', async () => {
+  const { putFile, itemFiles } = { ...(await import('../functions/api/_board.js')), ...(await import('../public/admin/board-shared.js')) };
+  const pdf = new TextEncoder().encode('%PDF-1.4\n%fake\n');
+  const put = (m, name, kind, staffOnly = false) => putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([pdf], name, { type: 'application/pdf' }), kind, staffOnly, by: FOUNDER });
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const last = (await adminApi(FOUNDER, { action: 'new-meeting', date: day(-30) })).body.meeting;
+  await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...last, shared: true }, base: last.updatedAt });
+  const fin = await put(last, 'Q3 financial statements.pdf', 'financials');
+  const minutes = await put(last, 'Minutes.pdf', 'minutes');
+  await put(last, 'Board Agenda.pdf', 'agenda');
+  await put(last, 'Counsel memo.pdf', 'other', true);
+  const gala = await put(last, 'Gala plan.pdf', 'other');
+  await adminApi(FOUNDER, { action: 'new-meeting', date: day(10) }); // the next meeting: its agenda, no documents yet
+
+  // One made earlier today, before practice meetings had documents
+  const old = (await adminApi(FOUNDER, { action: 'practice' })).body.meeting;
+  const data = JSON.parse((await env.DB.prepare('SELECT data FROM board_practice WHERE id = ?').bind(old.id).first()).data);
+  delete data.borrowed; delete data.docsFrom;
+  await env.DB.prepare('UPDATE board_practice SET data = ? WHERE id = ?').bind(JSON.stringify(data), old.id).run();
+  assert.equal((await getPractice(env.DB, old.id)).borrowed, null);
+
+  const p = (await adminApi(FOUNDER, { action: 'practice' })).body.meeting;
+  assert.notEqual(p.id, old.id, 'made again, with documents');
+  assert.equal(await getPractice(env.DB, old.id), null);
+  assert.equal(p.docsFrom, last.date, 'it says whose documents they are');
+  assert.deepEqual(p.files.map((f) => f.name).sort(), ['Gala plan.pdf', 'Minutes.pdf', 'Q3 financial statements.pdf'], 'never the old agenda or a staff-only file');
+  const items = p.sections.flatMap((s) => s.items);
+  assert.deepEqual(itemFiles(p, items.find((it) => it.live === 'cash')).map((f) => f.id), [fin.id], 'the statements with the money');
+  assert.deepEqual(itemFiles(p, items.find((it) => it.live === 'minutes')).map((f) => f.id), [minutes.id]);
+  assert.ok(!items.some((it) => it.docs.includes(gala.id)), 'one that fits no item is shown after the agenda');
+  assert.equal((await adminApi(FOUNDER, { action: 'practice' })).body.meeting.id, p.id, 'and kept all day');
+});
+
 test('the quorum is a majority of the board on the meeting’s list, unless Settings names a number', async () => {
   const { majority, quorumFor } = await import('../public/admin/board-shared.js');
   assert.equal(majority(13), 7);

@@ -704,6 +704,7 @@ try {
   await jane.reload({ waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Practice meeting\.[\s\S]*Only you/), 'Practice opens a meeting only the admins see, its members simulated');
   ok(await jane.evaluate(() => !document.querySelector('.bm-stages') && !!document.querySelector('.bm-run.is-ready')), 'just the meeting as it’s held, ready to start');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.bm-order__item')].some((li) => /Financial/.test(li.textContent) && [...li.querySelectorAll('.bm-showdoc')].some((b) => /Balance sheet financials/.test(b.textContent)))), 'with the next meeting’s documents on their items, to put on the screen');
   const practiceId = await jane.$eval('a[href*="/admin/board/#/meetings/"]', (a) => a.getAttribute('href').split('/').pop());
   await clickText(jane, 'button', /^Start the meeting$/);
   ok(await jane.waitForSelector('.bm-run.is-live', { timeout: 5000 }).then(() => true, () => false), 'Start puts it live, with a clock');
@@ -724,6 +725,13 @@ try {
   ok(await saved(jane), 'each move saves at once');
   let follow = await jane.evaluate(async (id) => (await fetch(`/api/board-portal?live=${id}`)).json(), practiceId);
   ok(follow.practice && follow.me.canAct && follow.live.itemId && follow.live.startedAt, 'the board page follows it: live, on the same item; the founder acts as one more member there');
+  await clickText(jane, '.bm-showdoc', /Balance sheet financials/);
+  await saved(jane);
+  follow = await jane.evaluate(async (id) => {
+    for (let n = 0; n < 20; n++) { const j = await (await fetch(`/api/board-portal?live=${id}`)).json(); if (j.live.fileId) return j; await new Promise((r) => setTimeout(r, 250)); }
+    return (await fetch(`/api/board-portal?live=${id}`)).json();
+  }, practiceId);
+  ok(follow.files.some((f) => f.id === follow.live.fileId && /Balance.sheet/.test(f.name)), 'a document tapped goes on the screen, and the board page has it to draw');
   ok(await jane.waitForFunction(() => Number(document.querySelector('.bm-quorum__n b')?.textContent || 0) > 0, { timeout: 45000 }).then(() => true, () => false), 'the simulated members check in, and the count toward the quorum fills itself in');
   await clickText(jane, 'button', /^Open the vote$/);
   ok(await jane.waitForSelector('.bm-vote', { timeout: 5000 }).then(() => true, () => false), 'Open the vote shows it live');
@@ -741,6 +749,7 @@ try {
   ok(await room.evaluate(() => /Live/.test(document.querySelector('.bp-livechip.is-live')?.textContent || '') && /Practice/.test(document.querySelector('.bp-livehead').textContent)), 'marked Live, and Practice');
   ok(await room.evaluate(() => !!document.querySelector('.bp-now .bp-now__title')?.textContent.trim() && !!document.querySelector('.bp-liveag__item.is-now') && !!document.querySelector('.bp-liveag__item.is-done')), 'Now discussing: the chair’s item, the one before it done');
   ok(await room.evaluate(() => !!document.querySelector('.bp-vote') && [...document.querySelectorAll('.bp-vote__choice')].every((b) => b.disabled)), 'the vote is up; voting waits for checking in');
+  ok(await room.waitForFunction(() => /On the screen:\s*Balance sheet financials, page 1/.test(document.querySelector('.bp-peek figcaption')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), 'and shows the page on the screen');
   await clickText(room, '.bp-checkin button', /^I’m in the room$/);
   ok(await room.waitForSelector('.bp-here', { timeout: 5000 }).then(() => true, () => false) && !(await room.$('.bp-checkin')), 'one tap checks in');
   await clickText(room, '.bp-vote__choice', /^For$/);

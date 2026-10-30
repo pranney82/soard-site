@@ -226,7 +226,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
         </p>
       </div>
       ${practice ? html`<div class="bm-practice" role="note">
-        <div><strong>Practice meeting.</strong> Only ${youAnd(data.settings.admins, data.me)} see it. Its board members are simulated: once you start, they check in over the first minute, and they vote a few seconds after you open a vote. Nothing here reaches the board, the calendar or anyone’s email.</div>
+        <div><strong>Practice meeting.</strong> Only ${youAnd(data.settings.admins, data.me)} see it. Its board members are simulated: once you start, they check in over the first minute, and they vote a few seconds after you open a vote.${meeting.docsFrom ? ` Its documents are the ${shortDate(meeting.docsFrom)} meeting’s.` : ''} Nothing here reaches the board, the calendar or anyone’s email.</div>
         <button type="button" class="btn btn-ghost btn-sm" onClick=${async () => { if (await ask({ title: 'Start the practice over?', text: 'A fresh practice meeting: the agenda again, nobody checked in, no votes.', yes: 'Start over' })) { clearTimeout(timer.current); saved.current = cleanMeeting(mRef.current); markDirty(false); ctx.startOver?.(); } }}>Start over</button>
       </div>` : html`<div class="bm-stages" role="tablist" aria-label="This meeting">
         ${STAGES.map(([id, t, sub], i) => html`<button type="button" role="tab" aria-selected=${step === id} class=${`bm-stage ${done[id] ? 'is-done' : ''}`} onClick=${() => setStep(id)}>
