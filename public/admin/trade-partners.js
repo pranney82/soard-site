@@ -340,14 +340,14 @@ function Detail({ id, data, act, busy, onBack }) {
         <section class="tpm-card" aria-labelledby="tpm-docs">
           <div class="tpm-actions" style="justify-content: space-between;"><h3 id="tpm-docs">W-9 and insurance</h3><span class=${`tag ${d.ok ? (d.expiring ? 'tag--warn' : 'tag--success') : 'tag--warn'}`}>${d.docsField || d.label}</span></div>
           <dl class="tpm-kv">
-            <dt>W-9</dt><dd>${d.w9 ? 'On file' : 'Missing'}</dd>
+            <dt>W-9</dt><dd>${!d.w9 ? 'Missing' : p.files.some((f) => f.tag === 'W-9') ? 'On file' : 'Ticked in JobTread, no file tagged W-9'}</dd>
             <dt>Liability</dt><dd>${ends(d.glExpires)}</dd>
             <dt>Workers’ comp</dt><dd>${ends(d.wcExpires)}</dd>
             ${d.check ? html`<dt>Last check</dt><dd>${d.check}</dd>` : null}
             ${p.agent?.email ? html`<dt>Insurance agent</dt><dd>${p.agent.name || ''} ${p.agent.agency ? `(${p.agent.agency})` : ''} <a class="link" href=${`mailto:${p.agent.email}`}>${p.agent.email}</a>${p.agent.askedAt ? html`<br /><span class="tpm-sub">Asked ${day(p.agent.askedAt)}${p.agent.asks > 1 ? `, ${p.agent.asks} times` : ''}</span>` : null}</dd>` : null}
             ${p.ask?.askedAt ? html`<dt>Emailed</dt><dd>${day(p.ask.askedAt)}${p.ask.asks > 1 ? `, ${p.ask.asks} times` : ''}</dd>` : null}
           </dl>
-          ${p.files.length ? html`<ul class="tpm-files">${p.files.map((f) => html`<li key=${f.id}><span class="tag">${f.tag}</span><a class="link" href=${f.url} target="_blank" rel="noopener">${f.name}</a><span class="tpm-sub">${day(f.at)}</span></li>`)}</ul>` : html`<p class="tpm-note">No W-9 or certificate in JobTread yet.</p>`}
+          ${p.files.length ? html`<ul class="tpm-files">${p.files.map((f) => html`<li key=${f.id}><span class="tag">${f.tag}</span><a class="link" href=${f.url} target="_blank" rel="noopener">${f.name}</a><span class="tpm-sub">${day(f.at)}</span></li>`)}</ul>` : html`<p class="tpm-note">No files tagged W-9 or COI on their JobTread account yet.</p>`}
         </section>
         <section class="tpm-card" aria-labelledby="tpm-inv">
           <h3 id="tpm-inv">Invoices</h3>
