@@ -103,6 +103,58 @@ Demo Day
   SOARD team & community partner team attends
 Reveal Day`)).steps;
 
+// The money Docs as written on Oct 29 2026
+const PAYABLES = parseProcessHtml(exportOf(`
+Buying for a makeover
+  Staff buy on their SOARD cards, within the limit set for each card
+  Each charge is sorted onto its makeover, the store or operating
+  A job’s costs show against its budget as they land, with a heads-up at 80% and 100%
+  A charge that looks wrong is flagged: twice in a day, far over the usual, a new monthly charge
+Receipts
+  A receipt in anyone’s inbox goes to the receipt inbox (ap@) on its own
+  Each receipt becomes a paid JobTread bill, one line per cost code
+Vendor papers
+  Every vendor on a job is asked for a current W-9 and insurance, and their papers are checked
+Approving a bill
+  A sub’s bill lands in JobTread and its approver is asked by email
+  Up to $15,000 the President approves; over $15,000 the Board Chair approves too
+Paying
+  Approved bills are paid from Mercury, and each payment is recorded on its bill
+  Card balances are paid before they’re due
+Reimbursing staff and volunteers
+  Expenses are approved in writing first, with receipts
+  Approved expenses are paid back through the payroll system within 30 days
+Closing out a makeover
+  A finished job’s final numbers by cost code, cost per room and what ran over
+Year end
+  Vendors’ W-9s go to Mercury
+  A 1099 for every vendor paid $600 or more`)).steps;
+const RECEIVABLES = parseProcessHtml(exportOf(`
+Gifts online
+  Donors give through Zeffy on the donate page, the live page and the golf page, and during a live reveal
+  The team hears about each gift as it comes in, with major gifts called out
+  Every gift is acknowledged in writing, with the amount
+Events and the auction
+  Gala bids and paddle raises run through Qtego
+Sponsors
+  A sponsor paying for a kid’s room is picked on the kid’s profile: they get the job in JobTread and the invites
+Checks by mail
+  The President opens the mail and each check is recorded
+  Checks not yet deposited stay in the locked drawer
+Into the books
+  Every gift and deposit is in the books; Mercury Books is the books`)).steps;
+const BOOKS = parseProcessHtml(exportOf(`
+Watching the bank
+  Unusual charges are flagged as they happen
+Month end
+  The month is closed in Mercury Books
+Quarterly statements to the board
+  The financials go to the board with each meeting’s packet
+Budget and cash
+  Cash 13 weeks ahead, with a heads-up when it dips under the floor
+Audit or review
+  A CPA firm audits or reviews the year’s statements`)).steps;
+
 // The board's manual, the parts the money steps open (Segregation of Duties left out, to show a missing one)
 const POLICY = policySections(`<body><p>A. Expenditures 9</p><p>B. Credit Cards 8</p><p>C. Accounting and Controls of Checks 10</p>
 <h1>SECTION II: INTERNAL CONTROL</h1>
@@ -131,10 +183,11 @@ const PROCESS = () => ({
   success: true, checkedAt: iso(0),
   docs: {
     makeover: DOC('mk', '2026 Sunshine Makeover Process', MAKEOVER), community: DOC('co', '2026 Sunshine Community Project Process', COMMUNITY),
+    payables: DOC('pay', '2026 Sunshine Accounts Payable Process', PAYABLES), receivables: DOC('rec', '2026 Sunshine Gifts & Deposits Process', RECEIVABLES), books: DOC('bks', '2026 Sunshine Books & Reporting Process', BOOKS),
     // Changed 350 days ago: its yearly review comes up in about two weeks
     policy: { ...DOC('pol', '2025 FINAL- Board Financial Policy Manual with Exhibits', []), sections: POLICY, doc: { id: 'pol', name: '2025 FINAL- Board Financial Policy Manual with Exhibits', url: 'https://docs.google.com/document/d/pol/edit', modifiedTime: iso(350 * 86400e3), modifiedBy: null } },
   },
-  reviews: { makeover: null, community: null, policy: null },
+  reviews: { makeover: null, community: null, payables: null, receivables: null, books: null, policy: null },
   cycles: { makeover: { toReview: { days: 20, n: 31 }, toDecision: { days: 21, n: 28 } }, community: { toReview: { days: 7, n: 2 }, toDecision: { days: 9, n: 2 } } },
   now: NOW,
   checks: { approvals: { ok: false, text: 'The manual: over $15,000, the Board Chair approves. Pat Chair, the Board Chair, isn’t a second approver in Job Costs → Bills → Settings.' } },
@@ -449,8 +502,9 @@ try {
   ok(await page.evaluate(() => location.hash) === '#automations/process/payables', 'accounts payable has its own address');
   const pay = await stepTitles(page);
   ok(pay[0] === 'Buying for a makeover' && pay.includes('Approving a bill') && pay.includes('Year end'), `its steps run from buying to year end (${pay.join(', ')})`);
-  ok((await page.$eval('.pr-src', (e) => e.textContent)).includes('The board policy is “2025 FINAL- Board Financial Policy Manual with Exhibits”') && await page.$eval('.pr-src a', (a) => a.textContent === 'Open the manual'), 'it names the board’s manual and opens it');
-  ok((await page.$eval('.pr-part span', (e) => e.textContent)).includes('no process Doc'), 'and says there’s no process Doc for it');
+  const msrc = await page.$eval('.pr-src', (e) => ({ text: e.textContent, links: [...e.querySelectorAll('a')].map((a) => a.textContent) }));
+  ok(msrc.text.includes('From “2026 Sunshine Accounts Payable Process” in Google Drive') && msrc.text.includes('The rules: “2025 FINAL- Board Financial Policy Manual with Exhibits”') && msrc.links.join(',') === 'Open the Doc,Open the manual', 'it reads its own process Doc, with the board’s manual beside it');
+  ok((await page.$eval('.pr-part span', (e) => e.textContent)).includes('As “2026 Sunshine Accounts Payable Process” has it'), 'its steps are the Doc’s');
   const appr = await page.evaluate(() => { const st = [...document.querySelectorAll('.pr-step')].find((x) => x.querySelector('h4').textContent.endsWith('Approving a bill')); return { tag: st.querySelector('.pr-head .tag').textContent, check: st.querySelector('.pr-check')?.className, text: st.querySelector('.pr-check')?.textContent }; });
   ok(appr.tag === 'Needs attention' && /is-warn/.test(appr.check) && appr.text.includes('Pat Chair, the Board Chair, isn’t a second approver'), 'bill approvals that differ from the manual are called out on their step');
   ok((await page.$eval('.am-lede .am-warnstat', (e) => e.textContent)).replace(/\s+/g, ' ').includes('needs attention'), 'and counted in the lede');
@@ -463,18 +517,19 @@ try {
   const moneyRows = await page.$$eval('.pr-now .pr-row', (l) => l.map((r) => r.textContent.replace(/\s+/g, ' ').trim()));
   ok(moneyRows.join(' / ') === 'Bills waiting for an answer3 / Bills held for W-9 or insurance2 / Vendors asked for their papers5 / Charges not sorted onto a job4 / Odd charges to look at0', `Right now is what’s waiting (${moneyRows.join(' / ')})`);
   ok(await page.$eval('.pr-now a.pr-row', (a) => a.getAttribute('href')) === '#job-costs/bills', 'each opens its place in Job Costs');
-  const card = () => page.evaluate(() => { const c = document.getElementById('pr-review'); return c ? { when: c.querySelector('.pr-review__when').textContent, last: c.querySelector('.pr-review__last').textContent, agenda: [...c.querySelectorAll('.pr-agenda li')].map((l) => l.textContent), button: c.querySelector('.btn')?.textContent || null } : null; });
+  const card = () => page.evaluate(() => { const c = document.querySelector('#pr-review .pr-review__manual'); const top = document.querySelector('#pr-review'); return c ? { when: c.querySelector('.pr-review__when').textContent, agenda: [...c.querySelectorAll('.pr-agenda li')].map((l) => l.textContent), button: c.querySelector('.btn')?.textContent || null, doc: top.querySelector('.pr-review__when').textContent, docAgenda: [...top.querySelectorAll(':scope > .pr-agenda li')].map((l) => l.textContent) } : null; });
   const rc = await card();
-  ok(/^Due \w{3} \d+, in \d+ days\.$/.test(rc?.when) && rc.button === 'Reviewed, no changes', `the manual’s yearly review is coming up, with a way to sign it off (${rc?.when})`);
+  ok(/^Next due /.test(rc?.doc) && rc.docAgenda.some((x) => /\d+ of \d+ tasks are done by hand/.test(x)), `the Doc’s own yearly review is a year off (${rc?.doc})`);
+  ok(/^Due \w{3} \d+, in \d+ days\.$/.test(rc?.when) && rc.button === 'Manual reviewed, no changes', `the manual’s yearly review is coming up, with its own sign-off (${rc?.when})`);
   ok(rc.agenda.some((x) => x.includes('names QuickBooks (Accounting and Controls of Checks); the books are in Mercury Books')), 'the review lists where the manual names a tool SOARD has moved off');
-  ok(rc.agenda.some((x) => x.includes('Bill approvals differ from the manual')) && rc.agenda.some((x) => /\d+ of \d+ tasks are done by hand/.test(x)), 'and what differs from it, and what’s still by hand');
+  ok(rc.agenda.some((x) => x.includes('Bill approvals differ from it')), 'and where settings differ from it');
   ok(/Yearly review in \d+ days/.test(await page.$eval('.am-lede', (e) => e.textContent)), 'the lede says it’s coming up');
   await page.screenshot({ path: join(OUT, 'payables.png') });
-  await clickText(page, '#pr-review button', 'Reviewed, no changes');
-  await page.waitForFunction(() => !document.querySelector('#pr-review .btn'));
+  await clickText(page, '#pr-review button', 'Manual reviewed, no changes');
+  await page.waitForFunction(() => !document.querySelector('#pr-review .pr-review__manual .btn'));
   const after2 = await card();
   ok(posts.at(-1)?.review === 'policy', 'signing it off saves the review for the manual');
-  ok(/^Next due /.test(after2.when) && after2.last.startsWith('Marked reviewed') && after2.last.includes('by Peter'), `then it’s next due in a year, marked by whom (${after2.when} ${after2.last})`);
+  ok(/^Next due /.test(after2.when), `then it’s next due in a year (${after2.when})`);
   await clickTrack(page, 'Gifts & deposits');
   await pause(200);
   ok((await stepTitles(page)).join(', ') === 'Gifts online, Events and the auction, Sponsors, Checks by mail, Into the books', 'gifts and deposits: online, events, sponsors, checks, the books');

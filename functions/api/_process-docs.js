@@ -48,6 +48,8 @@ const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 const ALL = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
 const FILE_FIELDS = 'id,name,mimeType,modifiedTime,webViewLink,trashed,lastModifyingUser(displayName)';
+/** Docs a track can do without (its built-in steps stand in): the money side's, written after Process was */
+const OPTIONAL_DOCS = ['payables', 'receivables', 'books'];
 /** How often Drive is asked whether a Doc changed */
 export const CHECK_MS = 2 * 60 * 1000;
 /** JobTread's job statuses from approved to built, in order (On Site: where an approved family's job starts) */
@@ -152,6 +154,7 @@ async function findDoc(token, track, override, fetchImpl) {
 /** What Process shows of a saved read (the steps or the manual's sections, the Doc, and any problem) */
 const view = (d) => ({
   ...(d.sections ? { sections: d.sections } : {}),
+  ...(d.missing ? { missing: d.missing } : {}),
   doc: d.id ? { id: d.id, name: d.name, url: d.url || `https://docs.google.com/document/d/${d.id}/edit`, modifiedTime: d.modifiedTime || null, modifiedBy: d.modifiedBy || null } : null,
   steps: d.steps || [],
   readAt: d.readAt || null,
@@ -188,6 +191,11 @@ export async function processDocs(env, { user = '', fetchImpl = fetch, now = Dat
         const file = await findDoc(token, track, overrides[track], fetchImpl);
         if (!file || file.trashed) {
           const name = track === 'policy' ? DOC_LIKE.policy : `${new Date(now).getFullYear()} ${DOC_LIKE[track]}`;
+          // A money Doc not written yet isn't a problem: the steps as the site runs them stand in until it is
+          if (OPTIONAL_DOCS.includes(track) && !last.id && !overrides[track]) {
+            lasts[track] = await writeRow(env.DB, `doc:${track}`, { checkedAt: at, missing: name, error: null, errorAt: null }, now);
+            return;
+          }
           lasts[track] = await writeRow(env.DB, `doc:${track}`, { ...failed(null), error: `No Google Doc named like “${name}” is shared with whoever opened Process. Paste the Doc’s link to follow it.` }, now);
           return;
         }
@@ -291,7 +299,7 @@ export async function maybeRefreshProcess(env, { fetchImpl = fetch, now = Date.n
 /** How many days before a review is due its email goes */
 export const NOTICE_DAYS = 14;
 const DAY = 86400000;
-const TRACK_OF_DOC = { makeover: 'makeover', community: 'community', policy: 'payables' };
+const TRACK_OF_DOC = { makeover: 'makeover', community: 'community', payables: 'payables', receivables: 'receivables', books: 'books', policy: 'payables' };
 const fmtDay = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
 
 /** The email for one Doc's review: what it is, when it's due, what to look at */

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
-import { parseProcessHtml, policySections, approvalTiers, retiredMentions, reviewOf, placeNow, mapOf, laneOf, timeOf, pickDoc, docIdOf, pinSteps, lineCounts, ruleTitles, APPLYING, MONEY, MONEY_TRACKS, GOOGLE_DOC } from '../public/admin/process-shared.js';
+import { byName, parseProcessHtml, policySections, approvalTiers, retiredMentions, reviewOf, placeNow, mapOf, laneOf, timeOf, pickDoc, docIdOf, pinSteps, lineCounts, ruleTitles, APPLYING, MONEY, MONEY_TRACKS, GOOGLE_DOC } from '../public/admin/process-shared.js';
 import { processDocs, processFacts, pipelineNow, policyChecks, setOverride, maybeRefreshProcess, readReviews, markReviewed, maybeTellReviews, cycleTimes, reviewEmail, CHECK_MS, REFRESH_MS } from '../functions/api/_process-docs.js';
 import { JT_URL } from '../functions/api/_reveals.js';
 import { entries, applyFacts } from '../public/admin/automations.js';
@@ -112,6 +112,42 @@ const POLICY_HTML = `<html><body class="doc-content">
 <p><span>Exhibit A</span></p><p><span>Investment Authorization Form</span></p>
 </body></html>`;
 
+// The money Docs as written on Oct 29 2026 (enough of each to read its rules)
+const PAYABLES = `
+Buying for a makeover
+  Staff buy on their SOARD cards, within the limit set for each card
+  Each charge is sorted onto its makeover, the store or operating
+  A charge that looks wrong is flagged: twice in a day, far over the usual, a new monthly charge
+Receipts
+  A receipt in anyone’s inbox goes to the receipt inbox (ap@) on its own
+  Charges still without a receipt after 2 days are listed each weekday morning
+Approving a bill
+  A sub’s bill lands in JobTread and its approver is asked by email
+  Up to $15,000 the President approves; over $15,000 the Board Chair approves too
+Paying
+  Approved bills are paid from Mercury, and each payment is recorded on its bill
+  Bills are paid within 30 days of the invoice
+  Card balances are paid before they’re due
+Reimbursing staff and volunteers
+  Expenses are approved in writing first, with receipts
+Year end
+  Vendors’ W-9s go to Mercury
+  A 1099 for every vendor paid $600 or more`;
+const RECEIVABLES = `
+Gifts online
+  Donors give through Zeffy on the donate page, the live page and the golf page, and during a live reveal
+  The team hears about each gift as it comes in, with major gifts called out
+  Every gift is acknowledged in writing, with the amount
+Checks by mail
+  The President opens the mail and each check is recorded
+  Checks not yet deposited stay in the locked drawer`;
+const BOOKS = `
+Budget and cash
+  The year’s budget goes to the board for approval
+  Cash 13 weeks ahead, with a heads-up when it dips under the floor
+Audit or review
+  A CPA firm audits or reviews the year’s statements`;
+
 const flat = (steps) => steps.flatMap((s) => [s, ...(function walk(items) { return items.flatMap((i) => [i, ...walk(i.items)]); })(s.items)]);
 const line = (steps, text) => flat(steps).find((x) => x.t === text);
 
@@ -180,10 +216,14 @@ test('a pasted Doc link gives its id', () => {
 
 // ─── What runs on its own at each step ────
 
-test('every automation the steps name is on the map, once', () => {
+test('every automation the steps name is on the map, once (under its name, or the one it was renamed to)', () => {
   const names = new Map();
   for (const n of entries) names.set(n.t, (names.get(n.t) || 0) + 1);
-  for (const t of ruleTitles()) assert.equal(names.get(t), 1, `“${t}” is on Site → Automations exactly once`);
+  const found = byName(entries);
+  for (const t of ruleTitles()) {
+    assert.ok(found.has(t), `“${t}” is on Site → Automations`);
+    if (names.has(t)) assert.equal(names.get(t), 1, `“${t}” is there once`);
+  }
 });
 
 test('the makeover Doc’s lines get the automations that do them; the rest is by hand', () => {
@@ -275,6 +315,32 @@ test('the map: a column per step, a card per task, decisions where the Doc decid
   assert.equal(pay.columns.find((c) => c.t === 'Approving a bill').decision.q, 'Over $15,000?');
 });
 
+test('a money Doc reads the same way: its lines’ automations and who does them, each step’s policy, the approval decision', () => {
+  const steps = pinSteps('payables', parseProcessHtml(exportOf('2026 Sunshine Accounts Payable Process', PAYABLES)).steps);
+  assert.ok(steps.every((s) => s.part === 'doc'));
+  assert.deepEqual(line(steps, 'Each charge is sorted onto its makeover, the store or operating').autos, ['Charges onto jobs, live']);
+  assert.deepEqual(line(steps, 'A receipt in anyone’s inbox goes to the receipt inbox (ap@) on its own').autos, ['Receipts from inboxes']);
+  assert.deepEqual(line(steps, 'Card balances are paid before they’re due').autos, [], 'by hand');
+  const appr = steps.find((s) => s.t === 'Approving a bill');
+  assert.deepEqual([appr.policy, appr.check, appr.decision.q], [['Expenditures', 'Segregation of Duties'], 'approvals', 'Over $15,000?']);
+  assert.deepEqual(steps.find((s) => s.t === 'Year end').policy, ['IRS Form 1099']);
+  const m = mapOf('payables', steps);
+  const lane = (t) => m.columns.flatMap((c) => c.cards).find((c) => c.t === t)?.lane;
+  assert.equal(lane('Staff buy on their SOARD cards, within the limit set for each card'), 'staff');
+  assert.equal(lane('A sub’s bill lands in JobTread and its approver is asked by email'), 'president');
+  assert.equal(lane('Up to $15,000 the President approves; over $15,000 the Board Chair approves too'), 'chair');
+  assert.equal(lane('Vendors’ W-9s go to Mercury'), 'auto', 'a vendor named as the object isn’t the one doing it');
+  assert.equal(lane('Card balances are paid before they’re due'), 'president');
+  assert.equal(m.columns.find((c) => c.t === 'Approving a bill').decision.q, 'Over $15,000?');
+  const gifts = mapOf('receivables', pinSteps('receivables', parseProcessHtml(exportOf('x', RECEIVABLES)).steps));
+  assert.equal(gifts.columns[0].cards[0].lane, 'outside');
+  assert.equal(gifts.columns.find((c) => c.t === 'Checks by mail').cards[0].lane, 'president');
+  const books = mapOf('books', pinSteps('books', parseProcessHtml(exportOf('x', BOOKS)).steps));
+  assert.deepEqual(books.columns.flatMap((c) => c.cards.map((x) => x.lane)), ['president', 'auto', 'outside']);
+  // No money Doc: the built-in steps stand in
+  assert.equal(pinSteps('payables', [])[0].part, 'money');
+});
+
 test('a community project: the application is the Doc’s own step, and makeover-only automations stay off', () => {
   const steps = pinSteps('community', parseProcessHtml(exportOf('x', COMMUNITY)).steps);
   assert.ok(steps.every((s) => s.part === 'doc'));
@@ -309,7 +375,7 @@ test('the money side: each step’s automations are on the map, its policy secti
     assert.ok(steps.length >= 5 && steps.every((s) => s.part === 'money'), t);
     for (const s of steps) {
       for (const p of s.policy || []) assert.ok(manual.includes(p), `${s.t}: “${p}” is a section of the 2025 manual`);
-      for (const x of flat([s])) for (const a of x.autos || []) assert.ok(titles.has(a), `${a} is on the map`);
+      for (const x of flat([s])) for (const a of x.autos || []) assert.ok(byName(entries).has(a), `${a} is on the map`);
     }
   }
   const pay = pinSteps('payables');
@@ -347,6 +413,9 @@ beforeEach(async () => {
       mk: { id: 'mk', name: '2026 Sunshine Makeover Process', mimeType: GOOGLE_DOC, modifiedTime: '2026-10-28T15:00:00.000Z', webViewLink: 'https://docs.google.com/document/d/mk/edit', lastModifyingUser: { displayName: 'Clareece Cunningham' }, html: exportOf('2026 Sunshine Makeover Process', MAKEOVER) },
       co: { id: 'co', name: '2026 Sunshine Community Project Process', mimeType: GOOGLE_DOC, modifiedTime: '2026-10-28T16:00:00.000Z', html: exportOf('x', COMMUNITY) },
       pdf: { id: 'pdf', name: '2026 Sunshine Makeover Process.pdf', mimeType: 'application/pdf', modifiedTime: '2026-10-29T00:00:00.000Z' },
+      pay: { id: 'pay', name: '2026 Sunshine Accounts Payable Process', mimeType: GOOGLE_DOC, modifiedTime: '2026-10-29T13:00:00.000Z', html: exportOf('2026 Sunshine Accounts Payable Process', PAYABLES) },
+      rec: { id: 'rec', name: '2026 Sunshine Gifts & Deposits Process', mimeType: GOOGLE_DOC, modifiedTime: '2026-10-29T13:00:00.000Z', html: exportOf('x', RECEIVABLES) },
+      bks: { id: 'bks', name: '2026 Sunshine Books & Reporting Process', mimeType: GOOGLE_DOC, modifiedTime: '2026-10-29T13:00:00.000Z', html: exportOf('x', BOOKS) },
       pol: { id: 'pol', name: '2025 FINAL- Board Financial Policy Manual with Exhibits - 4929-5301-3035 6', mimeType: GOOGLE_DOC, modifiedTime: '2025-11-13T15:00:00.000Z', html: POLICY_HTML },
       polOld: { id: 'polOld', name: 'Board Financial Policy Manual with Exhibits PBP Form 10-2020.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', modifiedTime: '2021-02-16T00:00:00.000Z' },
     },
@@ -402,7 +471,9 @@ test('Process reads each Doc as the staff member looking, through Drive', async 
   assert.equal(docs.makeover.steps.length, 10);
   assert.equal(docs.community.steps[1].t, 'Fill out online application');
   assert.equal(docs.community.doc.url, 'https://docs.google.com/document/d/co/edit', 'a link even when Drive sends none');
-  assert.deepEqual(g.exports.sort(), ['co', 'mk', 'pol']);
+  assert.deepEqual(g.exports.sort(), ['bks', 'co', 'mk', 'pay', 'pol', 'rec']);
+  assert.equal(docs.payables.doc.name, '2026 Sunshine Accounts Payable Process');
+  assert.equal(docs.receivables.steps.length, 2);
   assert.equal(docs.policy.doc.name, '2025 FINAL- Board Financial Policy Manual with Exhibits - 4929-5301-3035 6', 'the Google Doc, never the old Word file');
   assert.deepEqual(docs.policy.sections.map((x) => x.t), ['Accounting', 'Contributions', 'Expenditures', 'Accounting and Controls of Checks']);
   assert.equal(docs.makeover.error, null);
@@ -411,21 +482,21 @@ test('Process reads each Doc as the staff member looking, through Drive', async 
 test('Drive is asked again after 2 minutes, and a Doc read again only when it changed', async () => {
   const t0 = Date.parse('2026-10-29T15:00:00Z');
   await processDocs(env, { user: 'peter@soardcharity.com', now: t0 });
-  assert.equal(g.lists, 3);
-  await processDocs(env, { user: 'peter@soardcharity.com', now: t0 + 60e3 });
-  assert.equal(g.lists, 3, 'inside 2 minutes the saved copy answers');
-  await processDocs(env, { user: 'peter@soardcharity.com', now: t0 + CHECK_MS });
   assert.equal(g.lists, 6);
-  assert.equal(g.exports.length, 3, 'unchanged Docs aren’t read again');
+  await processDocs(env, { user: 'peter@soardcharity.com', now: t0 + 60e3 });
+  assert.equal(g.lists, 6, 'inside 2 minutes the saved copy answers');
+  await processDocs(env, { user: 'peter@soardcharity.com', now: t0 + CHECK_MS });
+  assert.equal(g.lists, 12);
+  assert.equal(g.exports.length, 6, 'unchanged Docs aren’t read again');
   g.files.mk.modifiedTime = '2026-10-29T15:01:00.000Z';
   g.files.mk.html = exportOf('x', `${MAKEOVER}\nCelebrate`);
   const docs = await processDocs(env, { user: 'peter@soardcharity.com', now: t0 + 2 * CHECK_MS });
-  assert.equal(g.exports.length, 4);
-  assert.equal(g.exports[3], 'mk', 'the changed Doc, read again');
+  assert.equal(g.exports.length, 7);
+  assert.equal(g.exports[6], 'mk', 'the changed Doc, read again');
   assert.equal(docs.makeover.steps.at(-1).t, 'Celebrate');
   // Asked for fresh, Drive answers now
   await processDocs(env, { user: 'peter@soardcharity.com', now: t0 + 2 * CHECK_MS + 1, fresh: true });
-  assert.equal(g.lists, 12);
+  assert.equal(g.lists, 24);
 });
 
 test('when Drive can’t be read, Process keeps the last copy and says why', async () => {
@@ -469,6 +540,23 @@ test('no Doc by that name: Process says so; a pasted link is followed instead, a
   docs = await processDocs(env, { user: 'peter@soardcharity.com' });
   assert.equal(docs.community.override, false);
   assert.match(docs.community.error, /No Google Doc/);
+});
+
+test('a money Doc not written yet is no problem: its built-in steps stand in, and it’s picked up once it exists', async () => {
+  delete g.files.rec;
+  let docs = await processDocs(env, { user: 'peter@soardcharity.com' });
+  assert.equal(docs.receivables.error, null);
+  assert.match(docs.receivables.missing, /Sunshine Gifts & Deposits Process$/);
+  assert.equal((await processFacts(env.DB)).receivables.error, null, 'nothing amber on the map');
+  g.files.rec = { id: 'rec', name: '2026 Sunshine Gifts & Deposits Process', mimeType: GOOGLE_DOC, modifiedTime: '2026-10-30T13:00:00.000Z', html: exportOf('x', RECEIVABLES) };
+  docs = await processDocs(env, { user: 'peter@soardcharity.com', fresh: true });
+  assert.equal(docs.receivables.missing, undefined);
+  assert.equal(docs.receivables.steps.length, 2);
+  // Once followed, a Doc that disappears is a problem again
+  delete g.files.rec;
+  docs = await processDocs(env, { user: 'peter@soardcharity.com', fresh: true });
+  assert.match(docs.receivables.error, /No Google Doc named like/);
+  assert.equal(docs.receivables.steps.length, 2, 'the last copy stays');
 });
 
 test('a sign-in that isn’t staff reads as Board’s admins instead', async () => {
@@ -534,9 +622,9 @@ test('the heartbeat checks the Docs hourly as Board’s admins, and only once an
   assert.equal(docs.makeover.steps.length, 10);
   assert.deepEqual(g.subs, ['holly@soardcharity.com']);
   assert.equal(await maybeRefreshProcess(env, { now: t0 + 30 * 60e3 }), null, 'inside the hour: nothing');
-  assert.equal(g.lists, 3);
+  assert.equal(g.lists, 6);
   await maybeRefreshProcess(env, { now: t0 + REFRESH_MS });
-  assert.equal(g.lists, 6, 'an hour on, Drive is asked again');
+  assert.equal(g.lists, 12, 'an hour on, Drive is asked again');
   delete env.GOOGLE_CALENDAR_KEY;
   assert.equal(await maybeRefreshProcess(env, { now: t0 + 3 * REFRESH_MS }), null, 'no Google key: nothing, and no throw');
 });
@@ -565,10 +653,10 @@ test('bill approvals against the manual: the second-approval amount and the Boar
 
 test('“Reviewed, no changes” is saved per Doc with who and when, and reaches the map’s facts', async () => {
   await processDocs(env, { user: 'peter@soardcharity.com' });
-  assert.deepEqual(await readReviews(env.DB), { makeover: null, community: null, policy: null });
+  assert.deepEqual(await readReviews(env.DB), { makeover: null, community: null, payables: null, receivables: null, books: null, policy: null });
   await markReviewed(env.DB, 'policy', 'linzi@soardcharity.com', Date.parse('2026-11-10T15:00:00Z'));
   assert.deepEqual((await readReviews(env.DB)).policy, { at: '2026-11-10T15:00:00.000Z', by: 'linzi@soardcharity.com' });
-  await assert.rejects(markReviewed(env.DB, 'payables', 'x'), /Unknown process/);
+  await assert.rejects(markReviewed(env.DB, 'nope', 'x'), /Unknown process/);
   const facts = await processFacts(env.DB);
   assert.equal(facts.policy.reviewedAt, '2026-11-10T15:00:00.000Z');
   assert.equal(facts.policy.modifiedTime, '2025-11-13T15:00:00.000Z');
@@ -633,7 +721,7 @@ test('a review coming due is emailed to the founders once, with what to look at'
   assert.deepEqual(await maybeTellReviews(env, { now: Date.parse('2026-11-20T12:00:00Z'), send }), []);
   // A process Doc named for last year is due on New Year’s
   const jan = await maybeTellReviews(env, { now: Date.parse('2027-01-02T12:00:00Z'), send });
-  assert.deepEqual(jan.map((x) => x.doc).sort(), ['community', 'makeover']);
+  assert.deepEqual(jan.map((x) => x.doc).sort(), ['books', 'community', 'makeover', 'payables', 'receivables'], 'every Doc named for 2026');
   assert.match(sent.at(-1).subject, /is due now: it’s 2027$/);
   const e = reviewEmail('makeover', { name: '2026 Sunshine Makeover Process', modifiedTime: '2026-10-28T15:00:00Z', url: 'https://docs.google.com/document/d/mk/edit' }, { state: 'soon', dueAt: '2027-10-28T15:00:00.000Z' }, { agenda: ['39 of 64 tasks are done by hand.'] });
   assert.match(e.html, /Open it in Process/);

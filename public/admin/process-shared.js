@@ -21,12 +21,14 @@
  * "2026 Application Timeline" handout tells families (Info Sheets/Handouts).
  * The community Doc starts at the application itself.
  *
- * Money has no process Doc. The board's "Financial Policy Manual" (a Google
- * Doc too) sets its rules, and the site, Mercury, JobTread and Zeffy do most
- * of the work, so MONEY below is the money side as it runs, step by step, and
- * each step names the manual's sections that govern it. The manual is read
- * live like the process Docs and its sections are shown with their step, so
- * its words are never copied here either.
+ * The money side has its own process Docs too ("2026 Sunshine Accounts
+ * Payable Process", "… Gifts & Deposits Process", "… Books & Reporting
+ * Process", written Oct 29 2026 from how it runs), read the same way, with
+ * MONEY_RULES pinning automations to their lines. The board's "Financial
+ * Policy Manual" (a Google Doc too) sets the rules: each money step names the
+ * manual's sections that govern it, read live and shown with the step, so its
+ * words are never copied here. MONEY below is the money side as it ran when
+ * those Docs were written: it stands in only when a money Doc can't be read.
  */
 
 /** What Process shows: the two project tracks, then the money side */
@@ -34,22 +36,28 @@ export const TRACKS = ['makeover', 'community', 'payables', 'receivables', 'book
 export const PROJECT_TRACKS = ['makeover', 'community'];
 export const MONEY_TRACKS = ['payables', 'receivables', 'books'];
 export const TRACK_LABEL = { makeover: 'Kids’ makeovers', community: 'Community projects', payables: 'Accounts payable', receivables: 'Gifts & deposits', books: 'Books & reporting' };
-/** The Docs read from Drive: each project track's process, and the board's financial policy */
-export const DOCS = ['makeover', 'community', 'policy'];
+/** The Docs read from Drive: each track's process, and the board's financial policy */
+export const DOCS = ['makeover', 'community', 'payables', 'receivables', 'books', 'policy'];
 /** Each Doc by its name in Drive (the year in front changes) */
 export const DOC_NAME = {
   makeover: /\bsunshine makeover process\b/i,
   community: /\bsunshine community project process\b/i,
+  payables: /\bsunshine accounts payable process\b/i,
+  receivables: /\bsunshine gifts (?:&|and) deposits process\b/i,
+  books: /\bsunshine books (?:&|and) reporting process\b/i,
   policy: /\bfinancial policy manual\b/i,
 };
 /** Drive's search for those names: whole words, then the pattern above */
 export const DOC_SEARCH = {
   makeover: ["name contains 'Makeover'", "name contains 'Process'"],
   community: ["name contains 'Community'", "name contains 'Process'"],
+  payables: ["name contains 'Payable'", "name contains 'Process'"],
+  receivables: ["name contains 'Deposits'", "name contains 'Process'"],
+  books: ["name contains 'Reporting'", "name contains 'Process'"],
   policy: ["name contains 'Financial'", "name contains 'Policy'"],
 };
 /** How each Doc is named when it can't be found */
-export const DOC_LIKE = { makeover: 'Sunshine Makeover Process', community: 'Sunshine Community Project Process', policy: 'Board Financial Policy Manual' };
+export const DOC_LIKE = { makeover: 'Sunshine Makeover Process', community: 'Sunshine Community Project Process', payables: 'Sunshine Accounts Payable Process', receivables: 'Sunshine Gifts & Deposits Process', books: 'Sunshine Books & Reporting Process', policy: 'Board Financial Policy Manual' };
 export const GOOGLE_DOC = 'application/vnd.google-apps.document';
 
 // ─── The Doc ──────────────────────────────
@@ -469,6 +477,67 @@ const MONEY_LANES = {
 for (const steps of Object.values(MONEY)) for (const st of steps) for (const i of st.items) i.lane = MONEY_LANES[i.t] || 'auto';
 MONEY.payables.find((st) => st.t === 'Approving a bill').decision = { q: 'Over $15,000?', yes: 'The Board Chair approves too', no: 'The President’s yes pays it' };
 
+/**
+ * A money Doc's lines → the automations that do them, and who does them.
+ * `lane` is the person when the line names one; a line with automations and
+ * nobody named runs on its own.
+ */
+export const MONEY_RULES = [
+  { re: /\bsoard cards?\b/i, lane: 'staff' },
+  { re: /\bsorted onto its makeover\b|\bcharge is sorted\b/i, autos: ['Charges onto jobs, live'] },
+  { re: /\bagainst its budget\b|\b80%/i, autos: ['Budget alerts'] },
+  { re: /\blooks wrong\b|\bunusual charges\b/i, autos: ['Odd charges'] },
+  { re: /\breceipt inbox\b/i, autos: ['Receipts from inboxes'] },
+  { re: /\bpaid jobtread bill\b/i, autos: ['Receipts → JobTread bills'] },
+  { re: /\bmatched between mercury and jobtread\b/i, autos: ['Receipts both ways'] },
+  { re: /\bwithout a receipt\b/i, autos: ['Budget alerts'] },
+  { re: /\bw-9 and insurance\b/i, autos: ['W-9s and insurance', 'Vendors on their JobTread jobs'] },
+  { re: /\bpapers are current\b/i, autos: ['W-9s and insurance'] },
+  { re: /\bbill lands in jobtread\b|\bapprover is asked\b/i, lane: 'president', autos: ['Bill approvals and pay'] },
+  { re: /\bboard chair approves\b/i, lane: 'chair', autos: ['Bill approvals and pay'] },
+  { re: /\bpaid from mercury\b/i, autos: ['Bill approvals and pay'] },
+  { re: /\bcard balances\b/i, lane: 'president' },
+  { re: /\bfinal numbers by cost code\b/i, autos: ['Close-outs'] },
+  { re: /\bw-9s go to mercury\b/i, autos: ['W-9s and insurance'] },
+  { re: /\bzeffy\b/i, lane: 'outside', autos: ['Zeffy donations', 'Give panel (Zeffy)'] },
+  { re: /\bhears about each gift\b/i, autos: ['Gift alerts in Slack'] },
+  { re: /\bqtego\b/i, lane: 'outside', autos: ['Qtego auction'] },
+  { re: /\bsponsor paying for a kid\b/i, lane: 'staff', autos: ['Monetary sponsor ↔ JobTread'] },
+  { re: /\blogo goes on the kid\b/i, autos: ['Vendor and sponsor logos on kid pages'] },
+  { re: /\bmercury books is the books\b/i, autos: ['Mercury connection', 'P&L'] },
+  { re: /\bbalances from mercury and chase\b/i, autos: ['Mercury connection', 'Cash in the bank, month by month'] },
+  { re: /\bmoney in and out by month\b/i, autos: ['P&L'] },
+  { re: /\bpacket\b/i, lane: 'staff', autos: ['Board mail → agendas, minutes and financials', 'The packet email'] },
+  { re: /\bcash 13 weeks\b|\bunder the floor\b/i, autos: ['Cash forecast'] },
+];
+/** Who a money line names, else null (then: its automations, or staff) */
+const MONEY_WHO = [
+  [/^(the )?president\b|^the year.s budget\b/i, 'president'],
+  [/\bboard chair\b/i, 'chair'],
+  [/^(donors?|a cpa\b|gala bids)/i, 'outside'],
+  [/^(staff|expenses are approved|approved expenses|the month is closed|every gift is acknowledged|a gift over|checks are endorsed|checks not yet deposited)\b/i, 'staff'],
+];
+/** A money Doc's step (by its name) → the manual's sections that govern it, and its check or decision */
+export const MONEY_STEPS = [
+  { re: /buying|receipts/i, policy: ['Credit Cards'] },
+  { re: /vendor papers|year end/i, policy: ['IRS Form 1099'] },
+  { re: /approv/i, policy: ['Expenditures', 'Segregation of Duties'], check: 'approvals', decision: { q: 'Over $15,000?', yes: 'The Board Chair approves too', no: 'The President’s yes pays it' } },
+  { re: /^paying/i, policy: ['Check Preparation and Mailing', 'Wire Transfers'] },
+  { re: /reimburs/i, policy: ['Expense Reimbursements'] },
+  { re: /gifts online|events|auction/i, policy: ['Contributions'] },
+  { re: /checks by mail|deposit/i, policy: ['Accounting and Controls of Checks'] },
+  { re: /into the books|month end|quarterly|audit/i, policy: ['Accounting'] },
+  { re: /\bbank\b/i, policy: ['Bank Statements'] },
+  { re: /budget|cash/i, policy: ['Budget', 'Reserve Fund Policy'] },
+];
+/** A money Doc line's automations and who does it → { autos, lane } */
+export function moneyLine(text) {
+  const hits = MONEY_RULES.filter((r) => r.re.test(text));
+  const autos = [...new Set(hits.flatMap((r) => r.autos || []))];
+  const named = MONEY_WHO.find(([re]) => re.test(text))?.[1] || hits.find((r) => r.lane)?.lane || null;
+  return { autos, lane: named || (autos.length ? 'auto' : 'staff') };
+}
+
 // ─── The process map ──────────────────────
 
 /** The map's lanes, top to bottom: who does the work, then what runs on its own */
@@ -561,17 +630,17 @@ export function mapOf(track, steps) {
     const source = s.part === 'doc' ? null : (s.part === 'money' ? MONEY[track] : APPLYING)[s.n - 1];
     const cards = s.items.map((i, idx) => {
       const given = source?.items[idx];
-      const who = given?.lane ? { lane: given.lane, with: given.with || [] } : laneOf(i.t, s.t);
+      const who = given?.lane ? { lane: given.lane, with: given.with || [] } : money ? { lane: moneyLine(i.t).lane, with: [] } : laneOf(i.t, s.t);
       return { id: `${key}.${idx}`, t: i.t, lane: who.lane, with: who.with, time: timeOf(i.t) || timeOf(i.items.map((x) => x.t).join(' ')), autos: [...new Set([...i.autos, ...deep(i.items)])], details: count(i.items), order: 0 };
     });
     // A step that is itself the task ("Apply for permit", "Fill out online application"): its own card first
-    if (s.part === 'doc' && (!s.items.length || /^(fill out|referred|apply)\b/i.test(s.t.trim()))) {
+    if (s.part === 'doc' && !money && (!s.items.length || /^(fill out|referred|apply)\b/i.test(s.t.trim()))) {
       const who = /^referred|^fill out/i.test(s.t.trim()) ? { lane: 'family', with: [] } : laneOf(s.t, s.t);
       cards.unshift({ id: `${key}.self`, t: s.t, lane: who.lane, with: who.with, time: timeOf(s.t), autos: [...s.autos], details: 0, order: 0, self: true });
     }
     for (const c of cards) c.order = seen++;
-    let decision = source?.decision || null;
-    if (!decision && s.part === 'doc') {
+    let decision = source?.decision || s.decision || null;
+    if (!decision && s.part === 'doc' && !money) {
       for (const r of DECISION_RULES) {
         if (r.track && r.track !== track) continue;
         if (!r.step.test(s.t.trim())) continue;
@@ -589,10 +658,26 @@ export function mapOf(track, steps) {
   return { lanes, columns, handoffs };
 }
 
+/**
+ * A map entry renamed since a rule named it (old name → the names it may have
+ * now): the rule keeps working through a rename made elsewhere
+ */
+export const RENAMED = { 'W-9s and insurance': ['Trade partners'] };
+/** A Map of the map's entries by name, with each renamed entry under its old name too */
+export function byName(entries) {
+  const m = new Map(entries.map((n) => [n.t, n]));
+  for (const [old, now] of Object.entries(RENAMED)) {
+    if (m.has(old)) continue;
+    const n = now.map((t) => m.get(t)).find(Boolean);
+    if (n) m.set(old, n);
+  }
+  return m;
+}
+
 /** Every automation the rules can name (a test checks each is on the map) */
 export function ruleTitles() {
   const all = new Set();
-  for (const r of [...LINE_RULES, ...STEP_RULES]) for (const k of ['autos', 'makeover', 'community']) (r[k] || []).forEach((t) => all.add(t));
+  for (const r of [...LINE_RULES, ...STEP_RULES, ...MONEY_RULES]) for (const k of ['autos', 'makeover', 'community']) (r[k] || []).forEach((t) => all.add(t));
   for (const s of [...APPLYING, ...Object.values(MONEY).flat()]) for (const i of s.items) (i.autos || []).forEach((t) => all.add(t));
   return [...all];
 }
@@ -622,6 +707,14 @@ export function pinSteps(track, docSteps = []) {
     const whole = STEP_RULES.filter((r) => r.re.test(s.t.trim())).flatMap((r) => named(r, track));
     return { part, n: idx + 1, t: s.t, items, autos: uniq([...self, ...whole]).filter((t) => !lined.has(t)) };
   };
+  if (MONEY[track] && docSteps.length) {
+    // The money Doc's own steps: each line's automations by MONEY_RULES, each step's policy by its name
+    const mPin = (items) => (items || []).map((i) => ({ t: i.t, autos: moneyLine(i.t).autos, items: mPin(i.items) }));
+    return docSteps.map((s, idx) => {
+      const r = MONEY_STEPS.find((x) => x.re.test(s.t.trim())) || {};
+      return { part: 'doc', n: idx + 1, t: s.t, items: mPin(s.items), autos: [], ...(r.policy ? { policy: r.policy } : {}), ...(r.check ? { check: r.check } : {}), ...(r.decision ? { decision: r.decision } : {}) };
+    });
+  }
   if (MONEY[track]) return MONEY[track].map((s, idx) => ({ ...pin('money')(s, idx), ...(s.policy ? { policy: s.policy } : {}), ...(s.check ? { check: s.check } : {}) }));
   return [...(track === 'makeover' ? APPLYING.map(pin('applying')) : []), ...docSteps.map(pin('doc'))];
 }

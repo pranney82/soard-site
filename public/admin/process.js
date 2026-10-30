@@ -40,14 +40,14 @@
 
 import { h, htm, render, useState, useEffect, useMemo, useRef } from './vendor.js';
 import { STATUS, ensureCss as ensureMapCss, Ago, ago } from './mindmap.js';
-import { TRACK_LABEL, PROJECT_TRACKS, MONEY_TRACKS, DOC_LIKE, APPLYING_SOURCE, WITH_LABEL, pinSteps, lineCounts, reviewOf, retiredMentions, docYear, placeNow, mapOf } from './process-shared.js';
+import { TRACK_LABEL, PROJECT_TRACKS, MONEY_TRACKS, DOC_LIKE, APPLYING_SOURCE, WITH_LABEL, pinSteps, lineCounts, reviewOf, retiredMentions, docYear, placeNow, mapOf, byName } from './process-shared.js';
 
 const html = htm.bind(h);
 const API = '/api/process-admin';
 // A phone's narrower names for the tracks
 const TRACK_SHORT = { makeover: 'Makeovers', community: 'Community', payables: 'Payables', receivables: 'Gifts', books: 'Books' };
-// The Doc each track reads: its own process, or for money the board's manual
-const docOf = (t) => (MONEY_TRACKS.includes(t) ? 'policy' : t);
+// The Doc each track reads (its own process); money's rules are in the board's manual beside it
+const docOf = (t) => t;
 const JOB_LABEL = { 'On Site': 'On Site', 'Awaiting Funding': 'Awaiting funding', Design: 'Design', Finalization: 'Finalization', Approval: 'Approval', Mobilization: 'Mobilization', Build: 'Build' };
 // "Oct 28", with the year when it isn't this one ("Nov 13, 2025")
 const shortDate = (iso) => {
@@ -273,6 +273,8 @@ const CSS = `
 .pr-review__acts { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; margin-top: 0.85rem; }
 .pr-review__acts a { font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); }
 .pr .am-lede .pr-due span { color: var(--am-warn); font-weight: 600; }
+.pr-review__manual { margin-top: 0.9rem; padding-top: 0.75rem; border-top: 1px dashed var(--color-border); }
+.pr-review__manual h4 { margin-top: 0; }
 .pr-review__err { margin: 0.5rem 0 0; font-size: var(--fs-xs); color: var(--tone-warn-fg); }
 .pr-tools .pill-row__label { margin-left: 0; }
 .pr-tools .pill-row + .pill-row { margin-left: 0.6rem; }
@@ -808,7 +810,7 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
-  const byTitle = useMemo(() => new Map(model.ALL.map((n) => [n.t, n])), [model]);
+  const byTitle = useMemo(() => byName(model.ALL), [model]);
 
   const load = async (fresh = false) => {
     setLoadErr(null);
@@ -1085,11 +1087,13 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
 
   const applying = steps.filter((s) => s.part === 'applying');
   const fromDoc = steps.filter((s) => s.part === 'doc');
-  const docLabel = doc?.doc?.name ? `“${doc.doc.name}”` : { makeover: 'the makeover process Doc', community: 'the community project process Doc', policy: 'the board’s Financial Policy Manual' }[docKey];
+  const docLabel = doc?.doc?.name ? `“${doc.doc.name}”` : `the ${TRACK_LABEL[docKey]?.toLowerCase() || 'process'} process Doc`;
+  const manual = data?.docs?.policy?.doc || null;
 
   const sourceLine = doc?.doc && html`<p class="pr-src">
-    <span>${money ? 'The board policy is' : 'From'} ${docLabel} in Google Drive${doc.doc.modifiedTime ? `, changed ${shortDate(doc.doc.modifiedTime)}${doc.doc.modifiedBy ? ` by ${doc.doc.modifiedBy}` : ''}` : ''}.</span>
-    <a href=${doc.doc.url} target="_blank" rel="noopener">${money ? 'Open the manual' : 'Open the Doc'}</a>
+    <span>From ${docLabel} in Google Drive${doc.doc.modifiedTime ? `, changed ${shortDate(doc.doc.modifiedTime)}${doc.doc.modifiedBy ? ` by ${doc.doc.modifiedBy}` : ''}` : ''}.</span>
+    <a href=${doc.doc.url} target="_blank" rel="noopener">Open the Doc</a>
+    ${money && manual && html`<span>The rules: “${manual.name}”.</span><a href=${manual.url} target="_blank" rel="noopener">Open the manual</a>`}
     ${!linkForm && html`<button type="button" onClick=${() => setLinkForm({ value: '', saving: false, error: null })}>${doc.override ? 'Following a pasted link' : 'Not the right Doc?'}</button>`}
   </p>`;
   const linkEl = linkForm && html`<form class="pr-link" onSubmit=${(e) => { e.preventDefault(); followLink(linkForm.value.trim()); }}>
@@ -1107,8 +1111,39 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
 
   const who = (email) => { const n = String(email || '').split('@')[0]; return n ? n[0].toUpperCase() + n.slice(1) : ''; };
   const days = (iso) => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86400000));
+  // For money, the board's manual has its own yearly review beside the track's Doc
+  const manualRv = money && manual ? reviewOf(manual, { reviewedAt: data?.reviews?.policy?.at }) : null;
+  const markManual = async () => {
+    setReviewing({ busy: true, error: null });
+    try {
+      const res = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ review: 'policy' }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.success) throw new Error(body.error || `Couldn’t save (${res.status})`);
+      setData(body);
+      setReviewing({ busy: false, error: null });
+    } catch (e) {
+      setReviewing({ busy: false, error: e.message });
+    }
+  };
+  const manualEl = () => {
+    if (!manualRv) return null;
+    const when = manualRv.state === 'due' ? `Overdue since ${shortDate(manualRv.dueAt)}.` : manualRv.state === 'soon' ? `Due ${shortDate(manualRv.dueAt)}, in ${plural(days(manualRv.dueAt), 'day')}.` : `Next due ${shortDate(manualRv.dueAt)}.`;
+    const items = [
+      ...retiredMentions(sections).map((m) => html`<li class="is-warn">It names ${m.word} (${m.sections.join(', ')}); ${m.now}.</li>`),
+      steps.some(offPolicy) && html`<li class="is-warn">Bill approvals differ from it (Approving a bill).</li>`,
+    ].filter(Boolean);
+    return html`<div class="pr-review__manual">
+      <h4>The board’s policy manual</h4>
+      <p class="pr-review__when"><span class=${`dot ${manualRv.state === 'due' ? 'dot--warn' : manualRv.state === 'soon' ? 'dot--info' : 'dot--on'}`} aria-hidden="true"></span><span>${when}</span></p>
+      ${items.length > 0 && html`<ul class="pr-agenda">${items}</ul>`}
+      <div class="pr-review__acts">
+        ${manualRv.state !== 'ok' && html`<button type="button" class="btn btn-ghost btn-sm" disabled=${reviewing.busy} onClick=${markManual}>Manual reviewed, no changes</button>`}
+        <a href=${manual.url} target="_blank" rel="noopener">Open the manual</a>
+      </div>
+    </div>`;
+  };
   const reviewEl = () => {
-    if (!rv) return null;
+    if (!rv) return manualRv ? html`<section class="card pr-review" id="pr-review" aria-label="Yearly review"><h3>Yearly review</h3>${manualEl()}</section>` : null;
     const what = money ? 'manual' : 'Doc';
     const when = rv.nextYear ? `Due now: it’s ${rv.nextYear}.`
       : rv.state === 'due' ? `Overdue since ${shortDate(rv.dueAt)}.`
@@ -1122,8 +1157,6 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
       rv.nextYear && html`<li class="is-warn">The Doc is named for ${docYear(doc.doc.name)}. Make the ${rv.nextYear} Doc; Process follows it once it’s in Drive.</li>`,
       byHand > 0 && html`<li>${byHand} of ${counts.lines} tasks are done by hand.</li>`,
       attn.length > 0 && html`<li class="is-warn">${plural(attn.length, 'automation')} here ${attn.length === 1 ? 'needs' : 'need'} attention.</li>`,
-      ...(money ? retiredMentions(sections).map((m) => html`<li class="is-warn">The manual names ${m.word} (${m.sections.join(', ')}); ${m.now}.</li>`) : []),
-      money && steps.some(offPolicy) && html`<li class="is-warn">Bill approvals differ from the manual (Approving a bill).</li>`,
       html`<li>Every step still matches how the work is done today.</li>`,
     ].filter(Boolean);
     return html`<section class="card pr-review" id="pr-review" aria-label="Yearly review">
@@ -1134,8 +1167,9 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
       <ul class="pr-agenda">${agenda}</ul>
       <div class="pr-review__acts">
         ${rv.state !== 'ok' && html`<button type="button" class="btn btn-primary btn-sm" disabled=${reviewing.busy} onClick=${markReviewed}>${reviewing.busy ? 'Saving…' : 'Reviewed, no changes'}</button>`}
-        <a href=${doc.doc.url} target="_blank" rel="noopener">${money ? 'Open the manual' : 'Open the Doc'}</a>
+        <a href=${doc.doc.url} target="_blank" rel="noopener">Open the Doc</a>
       </div>
+      ${manualEl()}
       ${reviewing.error && html`<p class="pr-review__err" role="alert">${reviewing.error}</p>`}
     </section>`;
   };
@@ -1178,7 +1212,7 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
       <li><b>${counts.auto}</b> of ${counts.lines} tasks run on their own</li>
       <li><b>${nodes.length}</b> automations along the way</li>
       ${attn.length + steps.filter(offPolicy).length > 0 && html`<li class="am-warnstat"><button type="button" onClick=${goToFirstAttn}><b>${attn.length + steps.filter(offPolicy).length}</b> <span>need${attn.length + steps.filter(offPolicy).length === 1 ? 's' : ''} attention</span></button></li>`}
-      ${rv && rv.state !== 'ok' && html`<li class=${rv.state === 'due' ? 'pr-due' : ''}><button type="button" onClick=${goToReview}>${rv.state === 'due' ? html`<span>Yearly review due</span>` : html`<span>Yearly review in ${plural(days(rv.dueAt), 'day')}</span>`}</button></li>`}
+      ${[rv, manualRv].filter((x) => x && x.state !== 'ok').slice(0, 1).map((x) => html`<li class=${x.state === 'due' ? 'pr-due' : ''}><button type="button" onClick=${goToReview}>${x.state === 'due' ? html`<span>Yearly review due</span>` : html`<span>Yearly review in ${plural(days(x.dueAt), 'day')}</span>`}</button></li>`)}
     </ul>
     <p class=${`am-check${check.state === 'ok' ? '' : ' is-off'}`} aria-live="polite">
       <i aria-hidden="true"></i>
@@ -1198,7 +1232,7 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
         ${steps.length > 0 && journeyEl()}
         ${show !== 'all' && !steps.some(stepShown) && html`<div class="card pr-empty"><p class="am-empty">${show === 'attn' ? 'Nothing in this process needs attention.' : 'Every task here runs on its own.'}</p></div>`}
         ${money ? html`
-          <div class="pr-part"><h3>${TRACK_LABEL[track]}</h3><span>How it runs today. SOARD has no process Doc for it; each step shows the board policy that governs it.</span></div>
+          <div class="pr-part"><h3>${TRACK_LABEL[track]}</h3><span>${doc?.steps?.length ? `As ${docLabel} has it; each step shows the board policy that governs it` : doc?.missing ? `How it runs today. Process follows “${doc.missing}” once it’s in Drive; each step shows the board policy that governs it` : 'How it runs today, until its process Doc can be read; each step shows the board policy that governs it'}</span></div>
           <ol class="pr-steps">${steps.filter(stepShown).map(stepEl)}</ol>` : html`
           ${applying.some(stepShown) && html`
             <div class="pr-part"><h3>Applying</h3><span>On the website, in the steps of the ${APPLYING_SOURCE} handout</span></div>
