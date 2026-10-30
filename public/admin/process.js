@@ -194,7 +194,7 @@ button.pr-mh__t:hover span { text-decoration: underline; text-underline-offset: 
 .pr-mh__t span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pr-mh__row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; padding-left: 1.8rem; }
 .pr-avs { display: inline-flex; align-items: center; }
-.pr-av { box-sizing: border-box; width: 22px; height: 22px; margin-right: -6px; border-radius: 50%; border: 2px solid var(--color-bg-card); background: var(--color-bg-hover); display: inline-grid; place-items: center; overflow: hidden; font-size: 8.5px; font-weight: 700; color: var(--color-text-secondary); text-decoration: none; }
+.pr-av { box-sizing: border-box; width: 30px; height: 30px; margin-right: -8px; border-radius: 50%; border: 2px solid var(--color-bg-card); background: var(--color-bg-hover); display: inline-grid; place-items: center; overflow: hidden; font-size: 10.5px; font-weight: 700; color: var(--color-text-secondary); text-decoration: none; }
 .pr-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
 a.pr-av:hover { border-color: var(--color-text); z-index: 1; }
 a.pr-av:focus-visible { box-shadow: var(--focus-ring-strong); }
