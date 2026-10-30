@@ -11,7 +11,10 @@
  * asked for. Hourly on the board heartbeat, the Profit and Loss from January 1 to today (SOARD's fiscal year is the
  * calendar year, whatever the company's QuickBooks setting says; Settings flags a different one), on the company's own basis (what its reports show by default). Revenue is Income plus Other Income;
  * expenses are Cost of Goods Sold, Expenses and Other Expenses (what the store sold cost money too). And the
- * cash: each active Bank account's balance on the books, with the Credit Card accounts as owed.
+ * cash: each active Bank account's balance on the books, with the Credit Card accounts as owed. Once a day, the year
+ * in context (readDaily): last year's same days and whole year, the last 12 months' spending (and how much of it was
+ * never cash), cash at each month's end for 13 months, the statements of financial position and activities as of
+ * the books' close beside the same day a year before, and spending by purpose when the books keep it by class.
  *
  * D1 books_link keeps one row: the company, its tokens (never sent to a browser), the year so far as last
  * read, and any trouble (its code, words and Intuit's intuit_tid, which Intuit's support asks for; the same in
@@ -49,10 +52,13 @@ const ID = 'qbo';
 const SLACK_KEY = 'books:qbo';
 
 const SCHEMA = 'CREATE TABLE IF NOT EXISTS books_link (id TEXT PRIMARY KEY, realm_id TEXT NOT NULL, company TEXT, fiscal_start INTEGER, access_token TEXT, access_expires TEXT, refresh_token TEXT NOT NULL, refresh_expires TEXT, ytd TEXT, read_at TEXT, tried_at TEXT, error TEXT, error_at TEXT, error_detail TEXT, told TEXT, linked_at TEXT, linked_by TEXT)';
+// Once a day, the year in context (last year, the last 12 months, cash at each month's end, the statements): its own row
+const DAILY_SCHEMA = 'CREATE TABLE IF NOT EXISTS books_daily (id TEXT PRIMARY KEY, data TEXT, day TEXT, read_at TEXT, tried_at TEXT, error TEXT)';
 const _ready = new WeakSet();
 async function ready(DB) {
   if (_ready.has(DB)) return;
   await DB.prepare(SCHEMA).run();
+  await DB.prepare(DAILY_SCHEMA).run();
   _ready.add(DB);
 }
 const linkRow = (DB) => DB.prepare('SELECT * FROM books_link WHERE id = ?').bind(ID).first();
@@ -203,7 +209,7 @@ export async function finishConnect(env, { code, state, realmId, fetchImpl = fet
   await env.DB.prepare('INSERT OR REPLACE INTO books_link (id, realm_id, company, fiscal_start, access_token, access_expires, refresh_token, refresh_expires, ytd, read_at, tried_at, error, error_at, error_detail, told, linked_at, linked_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)')
     .bind(ID, row.realm_id, company, monthNumber(info.FiscalYearStartMonth), t.access_token, t.access_expires, t.refresh_token, t.refresh_expires,
       same ? old.ytd : null, same ? old.read_at : null, same ? old.error : null, same ? old.error_at : null, same ? old.error_detail : null, same ? old.told : null, iso(now), pending.by || '').run();
-  await readBooks(env, { fetchImpl, now });
+  if ((await readBooks(env, { fetchImpl, now }))?.ok) await readDaily(env, { fetchImpl, now });
   return { company, by: pending.by || '' };
 }
 
@@ -222,6 +228,7 @@ export async function disconnectBooks(env, { fetchImpl = fetch } = {}) {
   if (!row) throw Object.assign(new Error('QuickBooks isn’t connected'), { status: 404 });
   if (booksConfigured(env)) await revoke(env, row.refresh_token, { fetchImpl });
   await env.DB.prepare('DELETE FROM books_link WHERE id = ?').bind(ID).run();
+  await env.DB.prepare('DELETE FROM books_daily WHERE id = ?').bind(ID).run();
   if (row.told) await slackResolved(env, SLACK_KEY, slackCard({ icon: '✅', title: 'QuickBooks disconnected', lead: 'QuickBooks was disconnected in Settings, so the board page goes back to the packet’s budget sheet for the year so far.' }), { summary: 'QuickBooks disconnected' }).catch(() => null);
 }
 
@@ -294,6 +301,188 @@ export function cashOf(list) {
   };
 }
 
+// ─── The year in context, once a day ────────────────────────────────
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const dayOf = (t) => `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`;
+const isDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+/** "2026-10-29" a year before: "2025-10-29" (February 29th's is the 28th) */
+export function yearBefore(day) {
+  const [y, m, d] = day.split('-').map(Number);
+  const t = new Date(Date.UTC(y - 1, m - 1, d));
+  return t.getUTCMonth() === m - 1 ? dayOf(t) : dayOf(new Date(Date.UTC(y - 1, m, 0)));
+}
+/** The last day of the month before `day`'s */
+export const lastMonthEnd = (day) => { const [y, m] = day.split('-').map(Number); return dayOf(new Date(Date.UTC(y, m - 1, 0))); };
+/** The first day of the month `back` months before `day`'s */
+const monthStart = (day, back = 0) => { const [y, m] = day.split('-').map(Number); return dayOf(new Date(Date.UTC(y, m - 1 - back, 1))); };
+/**
+ * The day the statements are as of: the books' close date (QuickBooks → Settings → Advanced → Accounting → Close the
+ * books) when it's the last three months', so a month still being entered never reaches the board; else the last
+ * day of last month
+ */
+export function closeDay(today, bookClose) {
+  const last = lastMonthEnd(today);
+  if (isDay(bookClose) && bookClose <= last && bookClose >= monthStart(last, 2)) return { asOf: bookClose, closed: true };
+  return { asOf: last, closed: false };
+}
+
+const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '')); return Number.isFinite(n) ? n : 0; };
+const cellText = (c) => cleanText(c?.value, 100);
+/** A QuickBooks report's rows as a tree: sections (a heading, their rows, a total), summary lines (Net Income), accounts */
+function treeOf(rows) {
+  return (rows || []).map((r) => {
+    if (r.Header || r.Rows) return { kind: 'section', label: cellText(r.Header?.ColData?.[0]), group: r.group || '', kids: treeOf(r.Rows?.Row), total: num(r.Summary?.ColData?.at(-1)?.value), totalLabel: cellText(r.Summary?.ColData?.[0]) };
+    if (r.Summary) return { kind: 'sum', label: cellText(r.Summary.ColData?.[0]), group: r.group || '', amount: num(r.Summary.ColData?.at(-1)?.value) };
+    return { kind: 'acct', label: cellText(r.ColData?.[0]), amount: num(r.ColData?.at(-1)?.value) };
+  }).filter((n) => n.label || n.kind === 'section');
+}
+const keyOf = (n) => `${n.kind}:${n.group || n.label}`;
+/** This year's tree with the year before's amounts beside it (null when there's no year before); its rows this year lacks come after */
+function mergeTrees(cur, prior) {
+  const left = prior ? [...prior] : null;
+  const take = (n) => { const i = left ? left.findIndex((p) => keyOf(p) === keyOf(n)) : -1; return i < 0 ? null : left.splice(i, 1)[0]; };
+  const pair = (n, p, onlyPrior = false) => (n.kind === 'section'
+    ? { ...n, total: onlyPrior ? 0 : n.total, priorTotal: p ? p.total : left ? 0 : null, kids: mergeTrees(onlyPrior ? [] : n.kids, p ? p.kids : left ? [] : null) }
+    : { ...n, amount: onlyPrior ? 0 : n.amount, prior: p ? p.amount : left ? 0 : null });
+  const both = cur.map((n) => pair(n, take(n)));
+  return [...both, ...(left || []).map((p) => pair(p, p, true))];
+}
+const quiet = (n) => (n.kind === 'section' ? !n.total && !n.priorTotal && n.kids.every(quiet) : !n.amount && !n.prior);
+/** The merged tree as a statement's rows: { k: 'head'|'acct'|'total'|'sum', label, d (depth), a (this year), p (the year before) } */
+function rowsOf(nodes, d = 0, out = []) {
+  for (const n of nodes) {
+    if (quiet(n)) continue;
+    if (n.kind === 'section') {
+      out.push({ k: 'head', label: accountName(n.label), d });
+      rowsOf(n.kids, d + 1, out);
+      out.push({ k: 'total', label: n.totalLabel || `Total ${accountName(n.label)}`, d, a: round2(n.total), p: n.priorTotal == null ? null : round2(n.priorTotal) });
+    } else out.push({ k: n.kind, label: n.kind === 'acct' ? accountName(n.label) : n.label, d, a: round2(n.amount), p: n.prior == null ? null : round2(n.prior) });
+  }
+  return out;
+}
+/** Two of QuickBooks' reports, this year's and the same day a year before, as one statement's rows */
+export const statementRows = (now, then) => rowsOf(mergeTrees(treeOf(now?.Rows?.Row), then ? treeOf(then?.Rows?.Row) : null));
+
+const NON_CASH = /deprecia|amortiz|in[\s-]?kind|donated/i;
+const SPENDING = ['COGS', 'Expenses', 'OtherExpenses'];
+/** The part of a Profit and Loss's spending that was never cash: depreciation, amortization, in-kind and donated goods */
+export function nonCashSpent(report) {
+  const sum = (nodes, hit) => nodes.reduce((t, n) => {
+    const h = hit || NON_CASH.test(n.label);
+    if (n.kind === 'section') return t + (h ? n.total : sum(n.kids, false));
+    return t + (h && n.kind === 'acct' ? n.amount : 0);
+  }, 0);
+  return round2(treeOf(report?.Rows?.Row).filter((n) => SPENDING.includes(n.group)).reduce((t, n) => t + sum(n.kids, false), 0));
+}
+
+/** A month-by-month Balance Sheet → the bank accounts' total at each month's end: [{ month: 'YYYY-MM', end, total }], oldest first */
+export function bankByMonth(report) {
+  const cols = (report?.Columns?.Column || []).slice(1);
+  const ends = cols.map((c) => {
+    if (/^total$/i.test(String(c.ColTitle || '').trim())) return null;
+    const meta = Object.fromEntries((c.MetaData || []).map((m) => [m.Name, m.Value]));
+    if (isDay(meta.EndDate)) return meta.EndDate;
+    const t = new Date(Date.parse(`1 ${c.ColTitle} 12:00 UTC`));
+    return Number.isFinite(t.getTime()) ? dayOf(new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0))) : null;
+  });
+  const find = (rows) => {
+    for (const r of rows || []) {
+      if (r.group === 'BankAccounts' || /^total (for )?bank accounts$/i.test(String(r.Summary?.ColData?.[0]?.value || '').trim())) return r;
+      const x = find(r.Rows?.Row);
+      if (x) return x;
+    }
+    return null;
+  };
+  const vals = (find(report?.Rows?.Row)?.Summary?.ColData || []).slice(1);
+  return ends.map((end, i) => (end && vals[i] ? { month: end.slice(0, 7), end, total: round2(num(vals[i].value)) } : null)).filter(Boolean);
+}
+
+/** Where the year's money came from: Income's own lines (each account or group), then Other Income as one, largest first */
+export function sourcesOf(report) {
+  const tree = treeOf(report?.Rows?.Row);
+  const income = tree.find((n) => n.kind === 'section' && (n.group === 'Income' || /^total (income|revenue)$/i.test(n.totalLabel)));
+  const other = tree.find((n) => n.kind === 'section' && (n.group === 'OtherIncome' || /^total other (income|revenue)$/i.test(n.totalLabel)));
+  const list = (income?.kids || []).map((n) => ({ name: accountName(n.label), amount: round2(n.kind === 'section' ? n.total : n.amount) }));
+  if (other?.total) list.push({ name: accountName(other.label) || 'Other income', amount: round2(other.total) });
+  return list.filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
+}
+
+/**
+ * A Profit and Loss by class → spending by purpose: { list: [{ name, amount }], total }, only when the books keep it
+ * (two or more classes carrying at least half the spending); else null
+ */
+export function functionsOf(report) {
+  const cols = (report?.Columns?.Column || []).map((c) => cleanText(c.ColTitle, 60));
+  const groups = (report?.Rows?.Row || []).filter((r) => SPENDING.includes(r.group));
+  const at = (i) => groups.reduce((t, r) => t + num(r.Summary?.ColData?.[i]?.value), 0);
+  const totalAt = cols.findIndex((t, i) => i > 0 && /^total$/i.test(t));
+  const named = cols.map((t, i) => ({ t, i })).filter(({ t, i }) => i > 0 && i !== totalAt && t && !/^(not specified|no class|unclassified)$/i.test(t));
+  const list = named.map(({ t, i }) => ({ name: t, amount: round2(at(i)) })).filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
+  const total = round2(totalAt > 0 ? at(totalAt) : cols.reduce((t, _, i) => (i > 0 ? t + at(i) : t), 0));
+  if (list.length < 2 || !(total > 0) || list.reduce((t, x) => t + x.amount, 0) < total * 0.5) return null;
+  return { list, total };
+}
+
+const DAILY_RETRY_MS = 60 * 60 * 1000;
+/**
+ * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
+ * last good read stays; the hourly read is the one that tells Slack
+ */
+export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  if (!env.DB || !booksConfigured(env)) return null;
+  await ready(env.DB);
+  const row = await linkRow(env.DB);
+  if (!row) return null;
+  const today = todayEastern(now);
+  const at = iso(now);
+  const get = (path, query) => read(env, row, path, query, { fetchImpl, now });
+  const pl = (from, to, more = {}) => get('/reports/ProfitAndLoss', { start_date: from, end_date: to, ...more });
+  try {
+    const year = Number(today.slice(0, 4));
+    // Last year: the same days, and the whole year (how far along it was by now)
+    const sameDay = yearBefore(today);
+    const lastSame = readProfitAndLoss(await pl(`${year - 1}-01-01`, sameDay));
+    const lastFull = readProfitAndLoss(await pl(`${year - 1}-01-01`, `${year - 1}-12-31`));
+    // The last 12 full months' spending, and how much of it was never cash
+    const tThrough = lastMonthEnd(today);
+    const tFrom = monthStart(tThrough, 11);
+    const trailReport = await pl(tFrom, tThrough);
+    const trail = readProfitAndLoss(trailReport);
+    const nonCash = nonCashSpent(trailReport);
+    // Cash at each month's end, 13 months (this month's as of today)
+    const months = bankByMonth(await get('/reports/BalanceSheet', { start_date: monthStart(today, 12), end_date: today, summarize_column_by: 'Month' }));
+    // The statements, as of the books' close, beside the same day a year before
+    const prefs = (await get('/preferences', {})).Preferences || {};
+    const close = closeDay(today, prefs.AccountingInfoPrefs?.BookCloseDate);
+    const priorAsOf = yearBefore(close.asOf);
+    const jan1 = (d) => `${d.slice(0, 4)}-01-01`;
+    const posNow = await get('/reports/BalanceSheet', { start_date: jan1(close.asOf), end_date: close.asOf });
+    const posThen = await get('/reports/BalanceSheet', { start_date: jan1(priorAsOf), end_date: priorAsOf });
+    const actNow = await pl(jan1(close.asOf), close.asOf);
+    const actThen = await pl(jan1(priorAsOf), priorAsOf);
+    readProfitAndLoss(actNow);
+    const statements = { asOf: close.asOf, closed: close.closed, priorAsOf, position: statementRows(posNow, posThen), activity: statementRows(actNow, actThen) };
+    // Spending by purpose, when the books keep it by class
+    const functions = functionsOf(await pl(`${year}-01-01`, today, { summarize_column_by: 'Classes' }));
+    const data = {
+      day: today,
+      lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net } },
+      trailing: { from: tFrom, through: tThrough, spent: trail.spent, nonCash, cashSpent: round2(trail.spent - nonCash) },
+      months, statements, functions,
+    };
+    await env.DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at, error) VALUES (?, ?, ?, ?, ?, NULL)').bind(ID, JSON.stringify(data), today, at, at).run();
+    return { ok: true, data };
+  } catch (err) {
+    const code = err.code || (err.status ? `HTTP_${err.status}` : 'UNREACHABLE');
+    console.error('[books] daily', code, detailOf(err));
+    const had = await env.DB.prepare('SELECT id FROM books_daily WHERE id = ?').bind(ID).first();
+    if (had) await env.DB.prepare('UPDATE books_daily SET tried_at = ?, error = ? WHERE id = ?').bind(at, code, ID).run();
+    else await env.DB.prepare('INSERT INTO books_daily (id, tried_at, error) VALUES (?, ?, ?)').bind(ID, at, code).run();
+    return { ok: false, code };
+  }
+}
+
 /** The year so far and the cash, now: kept with their date; trouble is kept, and told on Slack once */
 export async function readBooks(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   if (!env.DB || !booksConfigured(env)) return null;
@@ -305,7 +494,8 @@ export async function readBooks(env, { fetchImpl = fetch, now = Date.now() } = {
     // SOARD's fiscal year is January to December (Peter, Oct 29 2026). QuickBooks' own setting has said August, so
     // it's kept only to show in Settings, never followed
     const span = yearSoFar(todayEastern(now), SOARD_YEAR_STARTS);
-    const ytd = { ...span, ...readProfitAndLoss(await read(env, row, '/reports/ProfitAndLoss', { start_date: span.from, end_date: span.through }, { fetchImpl, now })) };
+    const pl = await read(env, row, '/reports/ProfitAndLoss', { start_date: span.from, end_date: span.through }, { fetchImpl, now });
+    const ytd = { ...span, ...readProfitAndLoss(pl), sources: sourcesOf(pl) };
     // The cash on the books: every active account (a few hundred at most), sorted out here
     const q = await read(env, row, '/query', { query: 'select * from Account where Active = true maxresults 1000' }, { fetchImpl, now });
     ytd.cash = cashOf(q.QueryResponse?.Account);
@@ -342,26 +532,46 @@ export async function maybeReadBooks(env, { fetchImpl = fetch, now = Date.now() 
   if (!env.DB || !booksConfigured(env)) return null;
   await ready(env.DB);
   const row = await env.DB.prepare('SELECT tried_at FROM books_link WHERE id = ?').bind(ID).first();
-  if (!row || (row.tried_at && now - Date.parse(row.tried_at) < READ_EVERY_MS)) return null;
-  return readBooks(env, { fetchImpl, now });
+  if (!row) return null;
+  let r = null;
+  if (!(row.tried_at && now - Date.parse(row.tried_at) < READ_EVERY_MS)) {
+    r = await readBooks(env, { fetchImpl, now });
+    if (!r?.ok) return r;
+  }
+  // The year in context once a day (again an hour after one that didn't work)
+  const d = await env.DB.prepare('SELECT day, tried_at FROM books_daily WHERE id = ?').bind(ID).first();
+  if (!(d && (d.day === todayEastern(now) || (d.tried_at && now - Date.parse(d.tried_at) < DAILY_RETRY_MS)))) await readDaily(env, { fetchImpl, now });
+  return r;
 }
 
 // ─── For the board page and Settings ────────────────────────────────
 
 /**
  * The year so far as last read → { company, year, from, through, revenue, expenses, net, basis, at, stale,
- * cash: { total, accounts, owed, at } | null } or null with QuickBooks not connected (or not read yet)
+ * cash: { total, accounts, owed, at } | null, sources, monthsOfCash, qboYearStarts, and from the daily read: lastYear,
+ * trailing, months (cash at each month's end), statements, functions, contextAt } or null with QuickBooks not
+ * connected (or not read yet)
  */
 export async function booksNow(DB, { now = Date.now() } = {}) {
   if (!DB) return null;
   await ready(DB);
-  const row = await DB.prepare('SELECT company, ytd, read_at FROM books_link WHERE id = ?').bind(ID).first();
+  const row = await DB.prepare('SELECT company, ytd, read_at, fiscal_start FROM books_link WHERE id = ?').bind(ID).first();
   if (!row?.ytd || !row.read_at) return null;
   let y;
   try { y = JSON.parse(row.ytd); } catch { return null; }
   if (typeof y?.revenue !== 'number') return null;
   const cash = y.cash && typeof y.cash.total === 'number' ? { total: y.cash.total, accounts: y.cash.accounts || [], owed: y.cash.owed || [], at: row.read_at } : null;
-  return { company: row.company, year: y.year, from: y.from, through: y.through, revenue: y.revenue, expenses: y.spent, net: y.net, basis: y.basis, at: row.read_at, stale: now - Date.parse(row.read_at) > STALE_MS, cash };
+  const daily = await DB.prepare('SELECT data, read_at FROM books_daily WHERE id = ?').bind(ID).first();
+  let d = null;
+  try { d = daily?.data ? JSON.parse(daily.data) : null; } catch { d = null; }
+  // Months of cash: the cash over the last 12 months' spending that was cash, a month's worth
+  const perMonth = d?.trailing?.cashSpent > 0 ? d.trailing.cashSpent / 12 : 0;
+  return {
+    company: row.company, year: y.year, from: y.from, through: y.through, revenue: y.revenue, expenses: y.spent, net: y.net, basis: y.basis, at: row.read_at, stale: now - Date.parse(row.read_at) > STALE_MS, cash,
+    sources: y.sources || [], monthsOfCash: cash && perMonth ? Math.round((cash.total / perMonth) * 10) / 10 : null, perMonth: perMonth ? round2(perMonth) : null,
+    qboYearStarts: row.fiscal_start && row.fiscal_start !== SOARD_YEAR_STARTS ? MONTHS[row.fiscal_start - 1].replace(/^./, (c) => c.toUpperCase()) : null,
+    lastYear: d?.lastYear || null, trailing: d?.trailing || null, months: d?.months || [], statements: d?.statements || null, functions: d?.functions || null, contextAt: daily?.read_at || null,
+  };
 }
 
 /** Board → Settings: the company by name, when it was read and through which day, any trouble (never an amount) */

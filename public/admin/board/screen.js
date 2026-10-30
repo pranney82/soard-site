@@ -234,7 +234,7 @@ function Tile({ d, word = '' }) {
 /** The money as figures: the cash, the year against its budget (./money.js moneyTiles), the first on yellow */
 function CashSlide({ n, data, date }) {
   const upTo = date && date < todayEastern() ? date : '';
-  const tiles = moneyTiles({ cash: useCashNow(data, upTo), budget: useBudget(data, upTo), n });
+  const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n });
   if (!tiles.length) return null;
   return html`<ul class="bs-figs" style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.k}><span class="bs-figs__label">${t.label}</span><span class="bs-figs__value">${t.value}</span>${t.pct != null ? html`<span class="bs-figs__bar" role="img" aria-label=${`${t.pct}% of the budget`}><i style=${`--p:${Math.min(100, t.pct)}%`}></i></span>` : null}${t.sub ? html`<span class="bs-figs__sub">${t.sub}</span>` : null}</li>`)}</ul>`;
 }

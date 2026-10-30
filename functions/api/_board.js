@@ -1050,7 +1050,8 @@ export async function portalData(env, { member = null, admin = false, now = Date
     actions: openActions(shared).map((a) => ({ ...a, mine: !!mine && a.owner === mine })),
     docs: docs.filter((d) => d.shared).map((d) => ({ ...d, file: d.file && !d.file.staffOnly ? d.file : null, signedByMe: mine ? d.signed[mine] || null : null, signedCount: Object.keys(d.signed).length })),
     numbers,
-    cashHistory: history,
+    // Cash at each month's end: QuickBooks' own month-ends once it's connected (13 of them, the books'), else the banks' history
+    cashHistory: numbers.books?.months?.length > 1 ? [...numbers.books.months].reverse().map((r) => ({ month: r.month, total: r.total, at: r.end })) : history,
     // The public copies, through the site's own /files/ route so the page's viewer can open them
     filings: (filings?.documents || []).map((d) => ({ title: d.title, year: d.year, type: d.type, url: String(d.url || '').replace(/^https:\/\/files\.sunshineonaranneyday\.com\/financials\//, '/files/financials/') }))
       .filter((d) => /^(https:\/\/|\/files\/financials\/)/.test(d.url)),

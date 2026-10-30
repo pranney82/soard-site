@@ -78,6 +78,40 @@ function moneyBox(n, money) {
   return box;
 }
 
+const fullDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
+const shortDay = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
+const signed = (n) => (typeof n === 'number' ? `${n < 0 ? '−' : ''}${n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).replace('-', '')}` : '–');
+/** The statements from QuickBooks on paper, every line (numbers.books.statements), beside the same day a year before */
+function statementsBox(s) {
+  if (!s?.position?.length && !s?.activity?.length) return null;
+  const box = el('div', 'bpp-stmts');
+  box.append(el('p', 'bpp-stmts__when', `From QuickBooks, as of ${fullDate(s.asOf)}, beside ${fullDate(s.priorAsOf)}.`));
+  const short = shortDay(s.asOf).replace(/, \d{4}$/, '');
+  for (const [title, rows] of [['Statement of financial position', s.position], [`Statement of activities, January 1 to ${short}`, s.activity]]) {
+    if (!rows?.length) continue;
+    const prior = rows.some((r) => r.p != null);
+    const t = el('table', 'bpp-stmt');
+    t.append(el('caption', '', title));
+    const head = el('tr');
+    head.append(el('th', ''), el('th', 'num', shortDay(s.asOf)));
+    if (prior) head.append(el('th', 'num', shortDay(s.priorAsOf)));
+    const thead = el('thead'); thead.append(head);
+    const tbody = el('tbody');
+    for (const r of rows) {
+      const tr = el('tr', `bpp-stmt__${r.k}`);
+      const th = el('th', '', r.label);
+      th.style.paddingLeft = `${r.d * 0.8}em`;
+      tr.append(th);
+      if (r.k === 'head') th.colSpan = prior ? 3 : 2;
+      else { tr.append(el('td', 'num', signed(r.a))); if (prior) tr.append(el('td', 'num', signed(r.p))); }
+      tbody.append(tr);
+    }
+    t.append(thead, tbody);
+    box.append(t);
+  }
+  return box;
+}
+
 /** Rows of dates: reveals, events, board meetings */
 function datesBox(rows) {
   if (!rows.length) return null;
@@ -90,7 +124,16 @@ function datesBox(rows) {
 function liveBox(kind, n, m, money) {
   if (!n || !kind || kind === 'minutes') return null;
   if (kind === 'projects') return makeoversBox(n);
-  if (kind === 'cash') return moneyBox(n, money);
+  if (kind === 'cash') {
+    // The figures, then the statements the packet holds (QuickBooks', as of the books' close)
+    const figs = moneyBox(n, money);
+    const st = statementsBox(n?.books?.statements);
+    if (!st) return figs;
+    const box = el('div', 'bpp-money');
+    if (figs) box.append(figs);
+    box.append(st);
+    return box;
+  }
   if (kind === 'reveals') return datesBox((n.reveals || []).slice(0, 8).map((r) => ({ when: r.confirmed && r.date ? `${dayWords(r.date)}${r.time ? `, ${clock(r.time)}` : ''}` : r.window?.label || 'To come', what: r.name })));
   if (kind === 'events') return datesBox((n.events || []).slice(0, 6).map((e) => ({ when: dayWords(e.date), what: [e.title, e.location].filter(Boolean).join(' · ') })));
   if (kind === 'meetings') return datesBox((n.meetings || []).filter((x) => x.id !== m.id).slice(0, 4).map((x) => ({ when: `${dayWords(x.date)}${x.start ? `, ${clock(x.start)}` : ''}`, what: x.name })));
@@ -158,7 +201,7 @@ export async function printAll(m, { people = [], numbers = null, meetings = [], 
   const root = el('div', 'bpp');
   root.setAttribute('aria-hidden', 'true');
   // The money the Financial item shows: the balance sheet and budget as of this meeting (a past one keeps its own)
-  const money = data && m.sections.some((sec) => sec.items.some((it) => it.live === 'cash')) ? await moneyFor(data, m.date < data.today ? m.date : '').catch(() => null) : null;
+  const money = data && m.sections.some((sec) => sec.items.some((it) => it.live === 'cash')) ? await moneyFor(data, m.date < data.today ? m.date : '', numbers).catch(() => null) : null;
   root.append(agendaPages(m, { people, numbers, meetings, money }));
   // How many pages, so the progress can say "12 of 40"
   const docs = [];

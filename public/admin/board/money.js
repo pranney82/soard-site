@@ -86,9 +86,11 @@ export function liveCash(data) {
     accounts: c.accounts || [], owed: (c.owed || []).filter((o) => o.balance > 0), banks: [...new Set((c.accounts || []).map((a) => a.bank || 'Mercury'))], stale: c.stale || [],
   };
 }
-/** QuickBooks' bank accounts as last read (numbers.books.cash), in the banks' shape, with the month a year back */
-export function booksCash(data) {
-  const b = data.numbers?.books;
+/**
+ * QuickBooks' bank accounts as last read (numbers.books.cash, or a past meeting's locked books), in the banks' shape,
+ * with the month a year back and the months of cash it holds
+ */
+export function booksCash(data, b) {
   const c = b?.cash;
   if (!c || typeof c.total !== 'number') return null;
   const at = String(c.at || b.at || '');
@@ -98,8 +100,11 @@ export function booksCash(data) {
   return {
     live: true, total: c.total, asOf: day ? shortDate(day) : '', today: day === todayEastern(), at, prior: then ? then.total : null, priorAsOf: then ? monthOf(then.month) : '',
     accounts: c.accounts || [], owed: (c.owed || []).filter((o) => o.balance > 0), banks: ['QuickBooks'], stale: b.stale ? ['QuickBooks'] : [],
+    months: typeof b.monthsOfCash === 'number' ? b.monthsOfCash : null, perMonth: b.perMonth || null,
   };
 }
+/** 16.8 → "17", 8.46 → "8.5": months of cash, to a tenth under ten */
+export const monthsText = (m) => (m >= 10 ? String(Math.round(m)) : String(Math.round(m * 10) / 10));
 /** "From QuickBooks, as of 3:05 PM" (today) or "…, as of Oct 28": where the cash comes from when it's the books' */
 export const fromBooks = (cash) => (cash?.banks?.length === 1 && cash.banks[0] === 'QuickBooks'
   ? `From QuickBooks, as of ${cash.today ? new Date(cash.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) : shortAsOf(cash.asOf)}` : '');
@@ -107,10 +112,10 @@ export const fromBooks = (cash) => (cash?.banks?.length === 1 && cash.banks[0] =
  * Home's cash figure: a bank's live balances once one holds SOARD's money, else QuickBooks', else the newest balance
  * sheet's. `upTo` (a past meeting's date) keeps to the balance sheet that meeting had, never today's
  */
-export function useCashNow(data, upTo = '') {
+export function useCashNow(data, upTo = '', n = null) {
   const sheet = useCash(data, upTo);
   const now = !upTo || upTo >= todayEastern();
-  return cashToShow(now ? liveCash(data) : null, sheet, now ? booksCash(data) : null);
+  return cashToShow(now ? liveCash(data) : null, sheet, booksCash(data, now ? data.numbers?.books : n?.books));
 }
 /**
  * A bank's live balances speak for SOARD only once they hold its money: a bank besides Mercury (Chase through
@@ -164,8 +169,8 @@ function readBudget(data, upTo = '') {
 }
 
 // The year so far from QuickBooks itself (numbers.books, read hourly once it's connected), for today and meetings
-// ahead; a past meeting keeps to its own packet, the way its cash does
-const booksFor = (data, upTo = '') => (!upTo || upTo >= todayEastern() ? data.numbers?.books || null : null);
+// ahead; a past meeting keeps to the books locked into it (n, its snapshot), else its own packet
+const booksFor = (data, upTo = '', n = null) => (!upTo || upTo >= todayEastern() ? data.numbers?.books || null : n?.books || null);
 /**
  * Whether a budget sheet is for QuickBooks' current year: its "Actual as of" day falls in that fiscal year (SOARD's
  * starts in August, so a calendar year in the heading can't say). A sheet without a readable day goes by its year
@@ -187,20 +192,30 @@ function sameYear(sheet, books) {
 export function withBooks(sheet, books) {
   if (!books || typeof books.revenue !== 'number') return sheet;
   const same = sameYear(sheet, books);
-  const line = (actual, x) => ({ actual, budget: same && x ? x.budget : null });
+  // Beside each: last year's same days, and its whole year (how far along last year was by now)
+  const ly = books.lastYear;
+  const line = (actual, x, last, lastFull) => ({ actual, budget: same && x ? x.budget : null, last: typeof last === 'number' ? last : null, lastFull: typeof lastFull === 'number' ? lastFull : null });
   return {
     year: same && sheet.label ? sheet.label : books.year, asOf: shortDate(books.through), live: true, at: books.at,
-    revenue: line(books.revenue, sheet?.revenue), expenses: line(books.expenses, sheet?.expenses), programs: null,
+    revenue: line(books.revenue, sheet?.revenue, ly?.revenue, ly?.full?.revenue), expenses: line(books.expenses, sheet?.expenses, ly?.expenses, ly?.full?.expenses), programs: null,
     meeting: sheet?.meeting || null, file: sheet?.file || null,
   };
 }
-export function useBudget(data, upTo = '') {
+export function useBudget(data, upTo = '', n = null) {
   const [b, setB] = useState(undefined);
   useEffect(() => { let on = true; readBudget(data, upTo).then((x) => { if (on) setB(x); }); return () => { on = false; }; }, [upTo]);
   // While the sheet is read, its budget is still to come: the figures wait for it rather than showing twice
-  return b === undefined ? b : withBooks(b, booksFor(data, upTo));
+  return b === undefined ? b : withBooks(b, booksFor(data, upTo, n));
 }
 export const pctOf = (x) => (x?.budget ? Math.round((x.actual / x.budget) * 100) : null);
+/** "31% by now last year": how much of last year's whole year had come in (or gone out) by this day, beside this year's share of its budget */
+export const paceText = (x) => (x?.budget && x.last != null && x.lastFull > 0 ? `${Math.round((x.last / x.lastFull) * 100)}% by now last year` : '');
+/** "▲ 12% on last year by now": this year's so far against last year's same days, when there's no budget to measure by */
+export const growthText = (x) => {
+  if (!(x?.last > 0)) return '';
+  const g = Math.round(((x.actual - x.last) / x.last) * 100);
+  return g === 0 ? 'Even with last year by now' : `${g > 0 ? '▲' : '▼'} ${Math.abs(g)}% on last year by now`;
+};
 
 /**
  * A meeting's money as figures, for its Financial item and the screen: the cash, the year's revenue and expenses
@@ -220,13 +235,15 @@ export function moneyTiles({ cash, budget, n }) {
       tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '',
     });
   }
+  // How long the cash would last at the last 12 months' cash spending (QuickBooks')
+  if (cash?.months != null) out.push({ k: 'months', label: 'Months of cash', value: monthsText(cash.months), sub: cash.perMonth ? `At ${compact(cash.perMonth)} a month, the last 12 months’ spending` : 'At the last 12 months’ spending' });
   const yr = budget?.year || '';
   for (const [k, x, word] of [['rev', budget?.revenue, 'revenue'], ['exp', budget?.expenses, 'expenses']]) {
-    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: x.budget ? `${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}` : `The year so far${asOfWords(budget.asOf)}` });
+    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}`, paceText(x)].filter(Boolean).join(' · ') : growthText(x) || `The year so far${asOfWords(budget.asOf)}` });
   }
   const f = n?.finance;
   // Mercury's own record (the year so far, the forecast) only once its banks are the cash shown
-  if (cash?.live && !n?.mercury?.empty && f?.ytd) {
+  if (cash?.live && cash.banks?.includes('Mercury') && !n?.mercury?.empty && f?.ytd) {
     const spent = (p) => (p.makeovers || 0) + (p.store || 0) + (p.operating || 0);
     if (!budget?.revenue) out.push({ k: 'ytd', label: `${f.ytd.year} so far`, value: `${f.ytd.net < 0 ? '−' : '+'}${money(Math.abs(f.ytd.net))}`, sub: `${compact(f.ytd.income)} in · ${compact(spent(f.ytd))} out, through ${new Date(`${f.ytd.through}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })}`, tone: f.ytd.net >= 0 ? 'up' : 'down' });
     if (f.cash?.lowest) out.push({ k: 'low', label: 'Lowest ahead', value: money(f.cash.lowest.dollars), sub: `${f.cash.lowest.week ? `Week of ${shortDate(f.cash.lowest.week).replace(/, \d{4}$/, '')}` : 'In the forecast'} · ${compact(f.cash.in13Weeks)} in 13 weeks`, tone: f.cash.belowFloor ? 'down' : '' });
@@ -235,8 +252,8 @@ export function moneyTiles({ cash, budget, n }) {
 }
 
 /** The cash and the budget at once, outside a component (Print it all): { cash, budget }, each null when there's none */
-export async function moneyFor(data, upTo = '') {
+export async function moneyFor(data, upTo = '', n = null) {
   const [sheet, budget] = await Promise.all([readCash(data, upTo), readBudget(data, upTo)]);
   const now = !upTo || upTo >= todayEastern();
-  return { cash: cashToShow(now ? liveCash(data) : null, sheet, now ? booksCash(data) : null) || null, budget: withBooks(budget, booksFor(data, upTo)) };
+  return { cash: cashToShow(now ? liveCash(data) : null, sheet, booksCash(data, now ? data.numbers?.books : n?.books)) || null, budget: withBooks(budget, booksFor(data, upTo, n)) };
 }

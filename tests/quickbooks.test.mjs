@@ -66,6 +66,66 @@ const ACCOUNTS = [
   { Name: 'Accounts Payable', AccountType: 'Accounts Payable', CurrentBalance: 4722.11, Active: true },
 ];
 
+// SOARD's real bank-account totals at each month's end, Oct 2025 to Oct 29 2026 (QuickBooks' balance sheet)
+const BANK_BY_MONTH = [575839.31, 594816.02, 587954.4, 535594.85, 429664.17, 405218.33, 408390.6, 463972.11, 375044.29, 391824.08, 558270.93, 608532.14, 569491.45];
+const money2 = (n) => n.toFixed(2);
+const monthCols = (n, endToday) => Array.from({ length: n }, (_, i) => {
+  const t = new Date(Date.UTC(2025, 9 + i, 1));
+  const y = t.getUTCFullYear(); const m = t.getUTCMonth();
+  const end = i === n - 1 ? endToday : new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10);
+  return { ColTitle: t.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }), ColType: 'Money', MetaData: [{ Name: 'StartDate', Value: `${y}-${String(m + 1).padStart(2, '0')}-01` }, { Name: 'EndDate', Value: end }] };
+});
+/** A Balance Sheet the way QuickBooks' Reports API sends it: ASSETS → Current Assets → Bank Accounts, then liabilities and equity */
+function balanceSheet(cols, bank, { cd = 100000 } = {}) {
+  const v = (n) => n.map((x) => ({ value: money2(x) }));
+  const each = (f) => bank.map(f);
+  const data = (name, xs) => ({ type: 'Data', ColData: [{ value: name, id: name.length.toString() }, ...v(xs)] });
+  const section = (group, label, rows, total, totalLabel = `Total ${label}`) => ({ type: 'Section', group, Header: { ColData: [{ value: label }, ...cols.map(() => ({ value: '' }))] }, Rows: { Row: rows }, Summary: { ColData: [{ value: totalLabel }, ...v(total)] } });
+  const opex = each((b) => b * 0.11); const reserve = each((b) => b * 0.53); const income = each((b, i) => b - opex[i] - reserve[i]);
+  const cds = each(() => cd);
+  const assets = each((b) => b + cd);
+  const liab = each(() => 114214.19);
+  const equity = each((b, i) => assets[i] - liab[i]);
+  return {
+    Header: { ReportName: 'BalanceSheet', ReportBasis: 'Accrual' },
+    Columns: { Column: [{ ColTitle: '', ColType: 'Account' }, ...cols] },
+    Rows: { Row: [
+      section('TotalAssets', 'ASSETS', [
+        section('CurrentAssets', 'Current Assets', [
+          section('BankAccounts', 'Bank Accounts', [data('SR1_Opex (0986)', opex), data('SR4_Long Reserve (8861)', reserve), data('SR5_Income (3552)', income)], bank),
+          section('OtherCurrentAssets', 'Other Current Assets', [data('CD', cds)], cds),
+        ], assets),
+      ], assets, 'TOTAL ASSETS'),
+      section('TotalLiabilitiesAndEquity', 'LIABILITIES AND EQUITY', [
+        section('Liabilities', 'Liabilities', [data('Lease Liabilities - Operating Leases - ST', liab)], liab),
+        section('Equity', 'Equity', [data('Retained Earnings', each((x, i) => equity[i] - 50000)), data('Net Income', each(() => 50000))], equity),
+      ], each((x, i) => assets[i]), 'TOTAL LIABILITIES AND EQUITY'),
+    ] },
+  };
+}
+/** The last 12 months' Profit and Loss, with spending that was never cash (depreciation, in-kind goods) */
+const TRAILING = {
+  Header: { ReportName: 'ProfitAndLoss', ReportBasis: 'Accrual' },
+  Columns: { Column: [{ ColTitle: '', ColType: 'Account' }, { ColTitle: 'Total', ColType: 'Money' }] },
+  Rows: { Row: [
+    { type: 'Section', group: 'Income', Header: { ColData: [{ value: 'Revenue' }, { value: '' }] }, Rows: { Row: [{ type: 'Data', ColData: [{ value: 'Contributions' }, { value: '900000.00' }] }] }, Summary: { ColData: [{ value: 'Total Revenue' }, { value: '900000.00' }] } },
+    { type: 'Section', group: 'Expenses', Header: { ColData: [{ value: 'Expenditures' }, { value: '' }] }, Rows: { Row: [
+      { type: 'Data', ColData: [{ value: 'Makeover Materials' }, { value: '360000.00' }] },
+      { type: 'Data', ColData: [{ value: 'Depreciation Expense' }, { value: '24000.00' }] },
+      { type: 'Section', Header: { ColData: [{ value: 'In-Kind Expenses' }, { value: '' }] }, Rows: { Row: [{ type: 'Data', ColData: [{ value: 'Donated Furniture' }, { value: '36000.00' }] }] }, Summary: { ColData: [{ value: 'Total In-Kind Expenses' }, { value: '36000.00' }] } },
+    ] }, Summary: { ColData: [{ value: 'Total Expenditures' }, { value: '420000.00' }] } },
+    { type: 'Section', group: 'NetIncome', Summary: { ColData: [{ value: 'Net Revenue' }, { value: '480000.00' }] } },
+  ] },
+};
+/** The year's Profit and Loss by class (the books keep programs, management and fundraising as classes) */
+const BY_CLASS = {
+  Columns: { Column: ['', 'Programs', 'Management', 'Fundraising', 'Not Specified', 'Total'].map((t, i) => ({ ColTitle: t, ColType: i ? 'Money' : 'Account' })) },
+  Rows: { Row: [
+    { type: 'Section', group: 'Expenses', Header: { ColData: [{ value: 'Expenses' }] }, Rows: { Row: [] }, Summary: { ColData: ['Total Expenses', '300000', '60000', '30000', '8000.14', '398000.14'].map((v) => ({ value: v })) } },
+    { type: 'Section', group: 'COGS', Header: { ColData: [{ value: 'Cost of Goods Sold' }] }, Rows: { Row: [] }, Summary: { ColData: ['Total Cost of Goods Sold', '40000', '0', '0', '0', '40000'].map((v) => ({ value: v })) } },
+  ] },
+};
+
 let env;
 let world;
 const realFetch = globalThis.fetch;
@@ -75,7 +135,7 @@ beforeEach(async () => {
   await ensureSchema(env.DB);
   await writeState(env.DB, 'settings', { admins: [FOUNDER] });
   await writeSlackConfig(env.DB, { channel: { id: 'CNEWS', name: 'news' }, finance: { id: 'CFIN', name: 'finance' } });
-  world = { tokens: [], reads: [], slack: [], revoked: [], n: 0, refreshError: null, unauthorizedOnce: false, report: PL, accounts: ACCOUNTS, fiscal: 'January', discovery: { ...DISCOVERY }, discoveryReads: 0 };
+  world = { tokens: [], reads: [], slack: [], revoked: [], n: 0, refreshError: null, unauthorizedOnce: false, report: PL, accounts: ACCOUNTS, fiscal: 'January', bookClose: '2026-09-30', byClass: BY_CLASS, discovery: { ...DISCOVERY }, discoveryReads: 0 };
   _resetEndpointsForTests();
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
@@ -97,12 +157,35 @@ beforeEach(async () => {
       if (world.unauthorizedOnce) { world.unauthorizedOnce = false; return Response.json({ fault: { error: [{ message: 'message=AuthenticationFailed', code: '3200' }], type: 'AUTHENTICATION' } }, { status: 401 }); }
       if (url.pathname === `/v3/company/${REALM}/companyinfo/${REALM}`) return Response.json({ CompanyInfo: { CompanyName: 'Sunshine on a Ranney Day', FiscalYearStartMonth: world.fiscal } });
       if (url.pathname === `/v3/company/${REALM}/query`) { assert.match(url.searchParams.get('query'), /^select \* from Account where Active = true/); return Response.json({ QueryResponse: { Account: world.accounts, startPosition: 1, maxResults: world.accounts.length } }); }
-      if (url.pathname === `/v3/company/${REALM}/reports/ProfitAndLoss`) return world.reportReply ? world.reportReply() : Response.json(world.report);
+      if (url.pathname === `/v3/company/${REALM}/preferences`) return Response.json({ Preferences: { AccountingInfoPrefs: { BookCloseDate: world.bookClose } } });
+      if (url.pathname === `/v3/company/${REALM}/reports/BalanceSheet`) {
+        const q = Object.fromEntries(url.searchParams);
+        if (q.summarize_column_by === 'Month') return Response.json(balanceSheet(monthCols(13, q.end_date), BANK_BY_MONTH));
+        // As of a day: this year's, or a year before (less in the bank)
+        const end = q.end_date;
+        return Response.json(balanceSheet([{ ColTitle: 'Total', ColType: 'Money' }], [end < '2026-01-01' ? 591000.5 : 608532.14], { cd: end < '2026-01-01' ? 0 : 100000 }));
+      }
+      if (url.pathname === `/v3/company/${REALM}/reports/ProfitAndLoss`) {
+        const q = Object.fromEntries(url.searchParams);
+        if (world.reportReply) return world.reportReply(q);
+        if (q.summarize_column_by === 'Classes') return Response.json(world.byClass);
+        // The last 12 full months (Nov 1 to Oct 31 of the year before's end)
+        if (q.start_date !== q.end_date.slice(0, 4) + '-01-01') return Response.json(TRAILING);
+        // Last year's (smaller), else this year's
+        if (q.start_date < '2026-01-01') return Response.json(scaled(world.report, q.end_date.endsWith('12-31') ? 1.25 : 0.8));
+        return Response.json(world.report);
+      }
     }
     throw new Error(`unexpected fetch ${url}`);
   };
 });
 afterEach(() => { globalThis.fetch = realFetch; });
+
+/** A Profit and Loss with every amount times k (last year's, smaller or bigger) */
+function scaled(report, k) {
+  const walk = (rows) => rows.map((r) => ({ ...r, ...(r.ColData ? { ColData: r.ColData.map((c, i) => (i ? { value: (Number(c.value) * k).toFixed(2) } : c)) } : {}), ...(r.Summary ? { Summary: { ColData: r.Summary.ColData.map((c, i) => (i ? { value: (Number(c.value) * k).toFixed(2) } : c)) } } : {}), ...(r.Rows ? { Rows: { Row: walk(r.Rows.Row || []) } } : {}) }));
+  return { ...report, Rows: { Row: walk(report.Rows.Row) } };
+}
 
 /** Connect as a Board admin would: Settings' URL, then Intuit sending them back with a code */
 async function connect(now = T0) {
@@ -140,8 +223,9 @@ test('connecting: the code for tokens, the company’s name, and the year so far
   assert.deepEqual(await readState(env.DB, 'books-oauth'), {}, 'used up');
   await assert.rejects(finishConnect(env, { code: 'again', state, realmId: REALM, now: T0 }), (e) => e.code === 'STATE');
   const n = await booksNow(env.DB, { now: T0 });
-  const { cash, ...rest } = n;
-  assert.deepEqual(rest, { company: 'Sunshine on a Ranney Day', year: '2026', from: '2026-01-01', through: '2026-10-29', revenue: 822221.67, expenses: 439100.14, net: 383121.53, basis: 'Accrual', at: new Date(T0).toISOString(), stale: false });
+  const { company, year, from, through, revenue, expenses, net, basis, at, stale, cash } = n;
+  assert.deepEqual({ company, year, from, through, revenue, expenses, net, basis, at, stale }, { company: 'Sunshine on a Ranney Day', year: '2026', from: '2026-01-01', through: '2026-10-29', revenue: 822221.67, expenses: 439100.14, net: 383121.53, basis: 'Accrual', at: new Date(T0).toISOString(), stale: false });
+  assert.equal(n.contextAt, new Date(T0).toISOString(), 'the year in context, read at once too');
   assert.equal(cash.total, 502779.24, 'every active bank account on the books');
   assert.equal(cash.at, new Date(T0).toISOString());
 });
@@ -199,6 +283,62 @@ test('the cash on the books: active Bank accounts by name without ledger digits,
   assert.deepEqual(c.accounts, [{ name: 'Opex', balance: 64748.68 }, { name: 'Long Reserve', balance: 300986.49 }, { name: 'Income', balance: 134504.07 }, { name: 'Mercury Bank', balance: 2500 }, { name: 'Petty Cash', balance: 40 }]);
   assert.deepEqual(c.owed, [{ name: 'Chase C/C 3512', balance: 583.45 }, { name: 'Ramp CC', balance: 2196.28 }]);
   assert.deepEqual(cashOf([]), { total: 0, accounts: [], owed: [] });
+});
+
+test('once a day, the year in context: last year by now and in all, the last 12 months’ cash spending, 13 month-ends, statements as of the books’ close, spending by purpose', async () => {
+  await connect();
+  const n = await booksNow(env.DB, { now: T0 });
+  // Last year: the same days (Jan 1 to Oct 29 2025), and the whole year
+  assert.deepEqual(n.lastYear, { year: '2025', through: '2025-10-29', revenue: 657777.34, expenses: 351280.11, net: 306497.22, full: { revenue: 1027777.09, expenses: 548875.18, net: 478901.91 } });
+  // The last 12 full months (Oct 1 2025 to Sep 30 2026), less what was never cash
+  assert.deepEqual(n.trailing, { from: '2025-10-01', through: '2026-09-30', spent: 420000, nonCash: 60000, cashSpent: 360000 });
+  // $502,779 in the bank over $30,000 a month of cash spending
+  assert.equal(n.perMonth, 30000);
+  assert.equal(n.monthsOfCash, 16.8);
+  // Cash at each month's end: 13 of them, the last as of today
+  assert.equal(n.months.length, 13);
+  assert.deepEqual(n.months[0], { month: '2025-10', end: '2025-10-31', total: 575839.31 });
+  assert.deepEqual(n.months.at(-1), { month: '2026-10', end: '2026-10-29', total: 569491.45 });
+  assert.deepEqual(n.months.map((m) => m.total), BANK_BY_MONTH);
+  // The statements as of the books' close (Sep 30), beside Sep 30 2025
+  const st = n.statements;
+  assert.deepEqual([st.asOf, st.closed, st.priorAsOf], ['2026-09-30', true, '2025-09-30']);
+  const pos = st.position;
+  assert.deepEqual(pos.find((r) => r.k === 'total' && r.label === 'Total Bank Accounts'), { k: 'total', label: 'Total Bank Accounts', d: 2, a: 608532.14, p: 591000.5 });
+  assert.deepEqual(pos.find((r) => r.label === 'Opex'), { k: 'acct', label: 'Opex', d: 3, a: 66938.54, p: 65010.06 }, 'account names without ledger digits');
+  assert.deepEqual(pos.find((r) => r.label === 'CD'), { k: 'acct', label: 'CD', d: 3, a: 100000, p: 0 }, 'new this year: last year 0');
+  assert.equal(pos[0].k, 'head');
+  const act = st.activity;
+  assert.deepEqual(act.find((r) => r.k === 'sum' && r.label === 'Net Income'), { k: 'sum', label: 'Net Income', d: 0, a: 383121.53, p: 306497.22 });
+  // Spending by purpose: the classes the books keep
+  assert.deepEqual(n.functions, { list: [{ name: 'Programs', amount: 340000 }, { name: 'Management', amount: 60000 }, { name: 'Fundraising', amount: 30000 }], total: 438000.14 });
+  // Where the year's money came from
+  assert.deepEqual(n.sources, [{ name: 'Other Income', amount: 9876 }]);
+});
+
+test('the day the statements are as of: the books’ close when it’s the last three months’, else the end of last month', async () => {
+  const { closeDay, yearBefore, lastMonthEnd } = await import('../functions/api/_quickbooks.js');
+  assert.deepEqual(closeDay('2026-10-29', '2026-09-30'), { asOf: '2026-09-30', closed: true });
+  assert.deepEqual(closeDay('2026-10-29', '2026-08-31'), { asOf: '2026-08-31', closed: true });
+  assert.deepEqual(closeDay('2026-10-29', '2025-12-31'), { asOf: '2026-09-30', closed: false }, 'a close date nobody keeps up');
+  assert.deepEqual(closeDay('2026-10-29', '2026-10-15'), { asOf: '2026-09-30', closed: false }, 'this month is never closed yet');
+  assert.deepEqual(closeDay('2026-10-29', null), { asOf: '2026-09-30', closed: false });
+  assert.equal(yearBefore('2028-02-29'), '2027-02-28');
+  assert.equal(lastMonthEnd('2026-03-15'), '2026-02-28');
+});
+
+test('the daily read runs once a day; the hourly read every hour', async () => {
+  await connect();
+  const count = () => world.reads.filter((r) => r.path.endsWith('/preferences')).length;
+  assert.equal(count(), 1, 'at connect');
+  await maybeReadBooks(env, { now: T0 + 2 * HOUR });
+  assert.equal(count(), 1, 'not again the same day');
+  await maybeReadBooks(env, { now: T0 + 24 * HOUR });
+  assert.equal(count(), 2, 'the next day');
+  // A day with no classes in the books: no spending by purpose, never a guess
+  world.byClass = { Columns: { Column: [{ ColTitle: '' }, { ColTitle: 'Not Specified' }, { ColTitle: 'Total' }] }, Rows: { Row: [{ group: 'Expenses', Summary: { ColData: [{ value: 'Total Expenses' }, { value: '398000.14' }, { value: '398000.14' }] } }] } };
+  await maybeReadBooks(env, { now: T0 + 48 * HOUR });
+  assert.equal((await booksNow(env.DB, { now: T0 + 48 * HOUR })).functions, null);
 });
 
 test('the fiscal year: January’s is the calendar year; one starting in July is named for the year it ends', () => {
@@ -300,7 +440,7 @@ const BOOKS = { company: 'Sunshine on a Ranney Day', year: '2026', from: '2026-0
 test('the board page: QuickBooks’ figures against the packet’s budget for the same year, never last year’s', () => {
   assert.equal(withBooks(SHEET, null), SHEET, 'not connected: the sheet as it was');
   const b = withBooks(SHEET, BOOKS);
-  assert.deepEqual([b.revenue, b.expenses, b.year, b.asOf, b.live], [{ actual: 822221.67, budget: 1000000 }, { actual: 439100.14, budget: 600000 }, '2026', 'Oct 29, 2026', true]);
+  assert.deepEqual([b.revenue, b.expenses, b.year, b.asOf, b.live], [{ actual: 822221.67, budget: 1000000, last: null, lastFull: null }, { actual: 439100.14, budget: 600000, last: null, lastFull: null }, '2026', 'Oct 29, 2026', true]);
   const tiles = moneyTiles({ cash: null, budget: b, n: {} });
   assert.deepEqual(tiles.map((t) => [t.k, t.value, t.pct, t.sub]), [
     ['rev', '$822,222', 82, '82% of the $1M budget, as of Oct 29'],
@@ -308,10 +448,10 @@ test('the board page: QuickBooks’ figures against the packet’s budget for th
   ]);
   // January: 2027’s figures before 2027’s budget sheet is in a packet
   const jan = withBooks(SHEET, { ...BOOKS, year: '2027', from: '2027-01-01', through: '2027-01-20', revenue: 5000, expenses: 2000 });
-  assert.deepEqual(jan.revenue, { actual: 5000, budget: null });
+  assert.deepEqual(jan.revenue, { actual: 5000, budget: null, last: null, lastFull: null });
   assert.deepEqual(moneyTiles({ cash: null, budget: jan, n: {} }).map((t) => [t.label, t.pct, t.sub]), [['2027 revenue', null, 'The year so far, as of Jan 20'], ['2027 expenses', null, 'The year so far, as of Jan 20']]);
   // No budget sheet in any packet yet
-  assert.deepEqual(withBooks(null, BOOKS).revenue, { actual: 822221.67, budget: null });
+  assert.deepEqual(withBooks(null, BOOKS).revenue, { actual: 822221.67, budget: null, last: null, lastFull: null });
 });
 
 test('the board page’s cash: QuickBooks’ bank accounts beat the balance sheet and Mercury’s test deposit; a bank read live through Plaid beats QuickBooks; a past meeting keeps its packet', async () => {
@@ -330,8 +470,25 @@ test('the board page’s cash: QuickBooks’ bank accounts beat the balance shee
   assert.deepEqual((await moneyFor(data({ cash: chase, books }))).cash.banks, ['Chase']);
   // A past meeting keeps to its own packet (none here), never today's books
   assert.equal((await moneyFor(data({ books }), '2026-01-15')).cash, null);
-  assert.equal(booksCash(data({ books: { ...books, cash: null } })), null);
+  assert.equal(booksCash(data({}), { ...books, cash: null }), null);
+  // A past meeting with QuickBooks' figures locked into it: those, not today's
+  const locked = { ...books, cash: { ...books.cash, total: 480000.5 }, monthsOfCash: 14.2, perMonth: 33800 };
+  const past = await moneyFor(data({ books }), '2026-01-15', { books: locked });
+  assert.deepEqual([past.cash.total, past.cash.months, past.cash.perMonth], [480000.5, 14.2, 33800]);
   assert.ok(today);
+});
+
+test('the figures say where the year stands: months of cash, the budget beside last year’s pace by now, and against last year when there’s no budget', () => {
+  const ly = { year: '2025', through: '2025-10-29', revenue: 657777.34, expenses: 351280.11, net: 306497.22, full: { revenue: 1027777.09, expenses: 548875.18, net: 478901.91 } };
+  const b = withBooks(SHEET, { ...BOOKS, lastYear: ly });
+  const cash = { live: true, total: 502779.24, banks: ['QuickBooks'], today: true, at: new Date().toISOString(), asOf: 'Oct 29, 2026', accounts: [], owed: [], months: 16.8, perMonth: 30000 };
+  const tiles = moneyTiles({ cash, budget: b, n: {} });
+  assert.deepEqual(tiles.map((t) => [t.k, t.value]), [['bank', '$502,779'], ['months', '17'], ['rev', '$822,222'], ['exp', '$439,100']]);
+  assert.equal(tiles[1].sub, 'At $30K a month, the last 12 months’ spending');
+  assert.equal(tiles[2].sub, '82% of the $1M budget, as of Oct 29 · 64% by now last year');
+  // No budget for the year yet: against last year's same days
+  const nob = withBooks(null, { ...BOOKS, lastYear: ly });
+  assert.equal(moneyTiles({ cash: null, budget: nob, n: {} })[0].sub, '▲ 25% on last year by now');
 });
 
 test('SOARD’s fiscal year starts in August: the budget sheet whose “as of” day falls in QuickBooks’ year is this year’s, by the sheet’s own name for it', () => {

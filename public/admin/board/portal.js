@@ -34,7 +34,7 @@ import {
 } from '../board-shared.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, kanbanLine, sized } from './kanban.js';
-import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks } from './money.js';
+import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -576,10 +576,13 @@ function Figures({ data }) {
   const rev = budget?.revenue;
   const exp = budget?.expenses;
   const yr = budget?.year || '';
-  // Against the budget once there is one for the year (QuickBooks' figures can come before the year's sheet)
-  const against = (x) => (x.budget ? `${pctOf(x)}% of the ${compact(x.budget)} budget` : `Through ${shortAsOf(budget.asOf)}`);
+  // Against the budget once there is one for the year, with last year's pace by now (QuickBooks' figures can come
+  // before the year's sheet: then against last year's same days)
+  const against = (x) => (x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget`, paceText(x)].filter(Boolean).join(', ') : growthText(x) || `Through ${shortAsOf(budget.asOf)}`);
+  // The cash: how many months it lasts (QuickBooks), else its day; and against a year ago
+  const yearAgo = cash && cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : '';
   const tiles = [
-    { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', sub: cash ? `${shortAsOf(cash.asOf)}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}` : 'From the balance sheet', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '', href: '#/financials' },
+    { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', sub: cash ? `${cash.months != null ? `${monthsText(cash.months)} months of spending` : shortAsOf(cash.asOf)}${yearAgo}` : 'From the balance sheet', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '', href: '#/financials' },
     rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: compact(rev.actual), sub: against(rev), href: '#/financials' }
       : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#makeovers' },
     exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), sub: against(exp), href: '#/financials' }
@@ -1242,14 +1245,19 @@ function DocTiles({ files }) {
     ${r.more.length ? html`<span class="bp-doctile__more">${r.more.map((x) => html`<a ...${viewerLink(asViewer([x.file]), 0)}>${x.label}</a>`)}</span>` : null}</li>`)}</ul>`;
 }
 
-/** The money, as figures: the cash, the year against its budget (./money.js moneyTiles); a past meeting keeps to its own packet */
+/**
+ * The money, as figures (./money.js moneyTiles): the cash, months of cash, the year against its budget; then the
+ * statements from QuickBooks. A past meeting keeps to what was locked into it (its books), else its own packet
+ */
 function CashBlock({ n, data, m }) {
   const upTo = m.date < data.today ? m.date : '';
-  const tiles = moneyTiles({ cash: useCashNow(data, upTo), budget: useBudget(data, upTo), n });
-  if (!tiles.length) return null;
-  return html`<ul class="bp-agfigs">${tiles.map((t) => html`<li class="bp-agfig" key=${t.k}>
+  const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n });
+  // The statements the way the figures go: today's for a meeting today or ahead, the locked ones for a past meeting
+  const st = (upTo ? n?.books : data.numbers.books)?.statements;
+  if (!tiles.length && !st) return null;
+  return html`${tiles.length ? html`<ul class="bp-agfigs">${tiles.map((t) => html`<li class="bp-agfig" key=${t.k}>
     <span class="bp-fig__label">${t.label}</span><span class="bp-agfig__value">${t.value}</span>${t.sub ? html`<span class=${`bp-fig__sub ${t.tone ? `is-${t.tone}` : ''}`}>${t.sub}</span>` : null}
-  </li>`)}</ul>`;
+  </li>`)}</ul>` : null}${st ? html`<details class="bp-more bp-stmts-fold"><summary>The statements, as of ${fullDate(st.asOf)}</summary><${Statements} s=${st} books=${upTo ? n?.books : data.numbers.books} idp=${`m${m.id}`} /></details>` : null}`;
 }
 
 /** The reveals ahead, by date, each with the kid's photo when their page has one */
@@ -1494,6 +1502,109 @@ function Bars({ s }) {
   </div>`;
 }
 
+// ─── From QuickBooks: the statements, the year so far, cash over time ───
+
+const signedMoney = (n) => (typeof n === 'number' ? `${n < 0 ? '−' : ''}${money(Math.abs(n))}` : '–');
+const changeMoney = (a, p) => (typeof a === 'number' && typeof p === 'number' ? (a === p ? '–' : `${a > p ? '+' : '−'}${money(Math.abs(a - p))}`) : '');
+const dayMonth = (d) => shortDate(d).replace(/, \d{4}$/, '');
+/** "September 30, 2026" */
+const fullDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
+
+/**
+ * A statement from QuickBooks (./_quickbooks.js statementRows): each line with the same day a year before and the
+ * change. Folded to the main lines and totals until "Every account" opens it
+ */
+function Statement({ id, title, rows, asOf, priorAsOf }) {
+  const [all, setAll] = useState(false);
+  if (!rows?.length) return null;
+  const prior = rows.some((r) => r.p != null);
+  const folded = rows.filter((r) => r.k === 'sum' || r.d <= 1 || (r.k === 'total' && r.d <= 2));
+  const shown = all ? rows : folded;
+  const cols = prior ? 4 : 2;
+  return html`<div class="bp-stmt">
+    <div class="bp-stmt__head">
+      <h3 class="bp-stmt__title" id=${id}>${title}</h3>
+      ${folded.length < rows.length ? html`<button type="button" class="bp-more-btn bp-noprint" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? 'Main lines only' : 'Every account'}</button>` : null}
+    </div>
+    <div class="bp-stmt__scroll">
+      <table class="bp-table bp-stmt__table" aria-labelledby=${id}>
+        <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${shortDate(priorAsOf)}</th><th scope="col" class="num bp-stmt__chg">Change</th>` : null}</tr></thead>
+        <tbody>${shown.map((r, i) => (r.k === 'head'
+          ? html`<tr class="bp-stmt__h" key=${i}><th scope="colgroup" colspan=${cols} style=${`--d:${r.d}`}>${r.label}</th></tr>`
+          : html`<tr class=${`bp-stmt__${r.k}`} key=${i}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num">${signedMoney(r.p)}</td><td class="num bp-stmt__chg">${changeMoney(r.a, r.p)}</td>` : null}</tr>`))}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/** Both statements as of the books' close, as a meeting's packet holds them (`s`: numbers.books.statements) */
+function Statements({ s, books, idp = 'st' }) {
+  if (!s?.position?.length && !s?.activity?.length) return null;
+  return html`<div class="bp-stmts">
+    <p class="bp-stmts__when">From QuickBooks, as of ${fullDate(s.asOf)}${s.closed ? ', the day the books are closed through' : ', the end of the last full month'}, beside the same day a year before.${books?.qboYearStarts ? ` QuickBooks’ settings start its year in ${books.qboYearStarts}, so its Net Income line counts from ${books.qboYearStarts} 1.` : ''}</p>
+    <${Statement} id=${`${idp}-pos`} title="Statement of financial position" rows=${s.position} asOf=${s.asOf} priorAsOf=${s.priorAsOf} />
+    <${Statement} id=${`${idp}-act`} title=${`Statement of activities, January 1 to ${dayMonth(s.asOf)}`} rows=${s.activity} asOf=${s.asOf} priorAsOf=${s.priorAsOf} />
+  </div>`;
+}
+
+/** Parts of a whole as one bar: the first three by name in fixed colors, the rest as "Everything else" in gray */
+function PartsBar({ label, parts, total }) {
+  const named = parts.slice(0, 3);
+  const rest = Math.max(0, total - named.reduce((t, p) => t + p.amount, 0));
+  const list = [...named.map((p, i) => ({ ...p, tone: ['a', 'b', 'd'][i] })), ...(rest >= total * 0.005 ? [{ name: 'Everything else', amount: rest, tone: 'c' }] : [])];
+  if (!(total > 0) || !list.length) return null;
+  return html`<div class="bp-meter">
+    <div class="bp-meter__head"><span>${label}</span><strong>${money(total)}</strong></div>
+    <div class="bp-meter__track" role="img" aria-label=${`${label}: ${list.map((p) => `${p.name} ${money(p.amount)}`).join(', ')}`}>
+      ${list.map((p) => html`<span class=${`bp-meter__seg bp-meter__seg--${p.tone}`} style=${`--p:${(p.amount / total) * 100}%`} key=${p.name}></span>`)}
+    </div>
+    <ul class="bp-legend">${list.map((p) => html`<li key=${p.name}><i class=${`bp-meter__seg--${p.tone}`} aria-hidden="true"></i>${p.name}<strong>${money(p.amount)}</strong><span>${Math.round((p.amount / total) * 100)}%</span></li>`)}</ul>
+  </div>`;
+}
+
+/** The year so far from QuickBooks beside last year's same days; where the money came from; where it went, by purpose */
+function BooksYear({ b }) {
+  const ly = b.lastYear;
+  const rows = [['Revenue', b.revenue, ly?.revenue], ['Expenses', b.expenses, ly?.expenses], ['Net', b.net, ly?.net]];
+  const pct = (a, p) => (typeof p === 'number' && p > 0 ? `${a >= p ? '▲' : '▼'} ${Math.abs(Math.round(((a - p) / p) * 100))}%` : '');
+  return html`<section class="bp-card" aria-labelledby="by-h">
+    <${SecHead} id="by-h" title="The year so far" sub=${`From QuickBooks, January 1 to ${dayMonth(b.through)}`} />
+    <table class="bp-table">
+      <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${b.year} so far</th>${ly ? html`<th scope="col" class="num">${ly.year}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
+      <tbody>${rows.map(([label, a, p]) => html`<tr class=${label === 'Net' ? 'bp-row--net' : 'bp-row--total'} key=${label}><th scope="row">${label}</th><td class="num">${signedMoney(a)}</td>${ly ? html`<td class="num">${signedMoney(p)}</td><td class="num">${label === 'Net' ? changeMoney(a, p) : pct(a, p)}</td>` : null}</tr>`)}</tbody>
+    </table>
+    ${ly?.full?.revenue > 0 ? html`<p class="bp-note">By this day last year, ${Math.round((ly.revenue / ly.full.revenue) * 100)}% of ${ly.year}’s revenue (${compact(ly.full.revenue)}) had come in, and ${ly.full.expenses > 0 ? Math.round((ly.expenses / ly.full.expenses) * 100) : 0}% of its spending had gone out.</p>` : null}
+    <div class="bp-meters">
+      ${b.sources?.length > 1 ? html`<${PartsBar} label="Where the money came from" parts=${b.sources} total=${b.sources.reduce((t, x) => t + x.amount, 0)} />` : null}
+      ${b.functions ? html`<${PartsBar} label="Where it went, by purpose" parts=${b.functions.list} total=${b.functions.total} />` : null}
+    </div>
+  </section>`;
+}
+
+/** Cash at each month's end for 13 months (QuickBooks' month-ends, newest first in `rows`): a bar a month from zero, this month in gold */
+function CashChart({ rows }) {
+  const list = [...rows].reverse().slice(-13);
+  if (list.length < 2) return null;
+  const top = Math.max(...list.map((r) => r.total), 1);
+  const last = list.at(-1);
+  const low = list.reduce((a, b) => (b.total < a.total ? b : a));
+  const mon = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+  return html`<div class="bp-years bp-cashchart">
+    <ol class="bp-years__bars" aria-label=${`Cash at each month’s end, ${monthOf(list[0].month)} to ${monthOf(last.month)}`}>
+      ${list.map((r, i) => {
+        const say = `${r === last ? `${dayMonth(r.at || `${r.month}-28`)} (so far this month)` : monthOf(r.month)}: ${money(r.total)}`;
+        return html`<li key=${r.month} class=${r === last ? 'is-now' : ''} style=${`--h:${(r.total / top) * 100}%;--i:${i}`}>
+          <span class="bp-years__hit" role="img" aria-label=${say} title=${say}>
+            ${r === last || r === low ? html`<span class="bp-years__val">${compact(r.total)}</span>` : null}
+            <span class="bp-years__bar"></span>
+            <span class="bp-years__x">${mon(r.month)}</span>
+          </span>
+        </li>`;
+      })}
+    </ol>
+  </div>`;
+}
+
 /** The cash in the bank (live from the banks, else the newest balance sheet): the total, a year earlier, each account, and the cards */
 function CashCard({ data }) {
   const cash = useCashNow(data);
@@ -1508,6 +1619,7 @@ function CashCard({ data }) {
         <h2 class="bp-h2" id="cash-h">Cash in the bank</h2>
         <p class="bp-cash__total">${money(cash.total)}</p>
         <p class="bp-muted">${cash.asOf ? `As of ${cash.asOf}` : ''}${change != null ? html` · <span class=${change >= 0 ? 'bp-up' : 'bp-down'}>${change >= 0 ? 'up' : 'down'} ${money(Math.abs(change))}</span> from ${cash.priorAsOf || 'a year earlier'}` : ''}</p>
+        ${cash.months != null ? html`<p class="bp-cash__months"><strong>${monthsText(cash.months)} months</strong> of spending${cash.perMonth ? ` at ${money(cash.perMonth)} a month, the last 12 months’ cash spending (depreciation and in-kind gifts aren’t cash, so they’re left out)` : ''}</p>` : null}
       </div>
       ${cash.live
         ? html`<p class="bp-cash__src">${fromBooks(cash) || `Straight from ${andText(cash.banks)}, read ${cash.today ? `today at ${clockAt(cash.at)}` : cash.asOf}`}${cash.stale.length ? html`<br />${andText(cash.stale)} hasn’t answered since then` : null}</p>`
@@ -1529,9 +1641,10 @@ function CashCard({ data }) {
 function FinancialsPage({ ctx }) {
   const { data } = ctx;
   const [allYears, setAllYears] = useState(false);
-  // SOARD's money is at Chase until it moves to Mercury: Mercury's own record speaks for SOARD only once it holds the money
+  // QuickBooks is the books once it's connected. Until then, Mercury's own record speaks for SOARD only once it holds the money
+  const books = data.numbers.books;
   const funded = !!data.numbers.mercury && !data.numbers.mercury.empty;
-  const f = funded ? data.numbers.finance : null;
+  const f = funded && !books ? data.numbers.finance : null;
   const history = data.cashHistory;
   const s = data.snapshot;
   const withStatements = [...data.meetings].filter((m) => m.files.some((x) => x.kind === 'financials')).sort((a, b) => b.date.localeCompare(a.date));
@@ -1561,12 +1674,18 @@ function FinancialsPage({ ctx }) {
       <div><h1 class="bp-h1">Financials</h1><p class="bp-lede">The statements from each meeting, the year in numbers, and every tax return and audit.</p></div>
     </header>
     <${CashCard} data=${data} />
-    ${latest ? html`<section class="bp-card bp-latest bp-rise" style=${rise(1)} aria-labelledby="st-h">
+    ${books?.statements ? html`<section class="bp-card bp-latest bp-rise" style=${rise(1)} aria-labelledby="st-h">
+      <${SecHead} id="st-h" title="The statements" sub="The ones each meeting’s packet holds, locked on its day" />
+      <${Statements} s=${books.statements} books=${books} />
+      ${latest ? html`<details class="bp-more"><summary>From the ${meetingName(latest)} packet, ${longDate(latest.date)}</summary><${FileList} files=${latest.files.filter((x) => x.kind === 'financials')} labels=${false} /></details>` : null}
+    </section>`
+    : latest ? html`<section class="bp-card bp-latest bp-rise" style=${rise(1)} aria-labelledby="st-h">
       <${SecHead} id="st-h" title="The latest statements" sub=${html`From the <a class="bp-link" href=${`#/meetings/${latest.id}`} onClick=${claimMorph}>${meetingName(latest)}</a>, ${longDate(latest.date)}`} />
       <${FileList} files=${latest.files.filter((x) => x.kind === 'financials')} labels=${false} />
     </section>` : html`<section class="bp-card bp-rise" style=${rise(1)}><h2 class="bp-h2">Financial statements</h2><p class="bp-muted">The income statement and balance sheet from each meeting show here.</p></section>`}
     <div class="bp-split bp-split--even">
       <div class="bp-stack bp-rise" style=${rise(2)}>
+        ${books ? html`<${BooksYear} b=${books} />` : null}
         ${s ? html`<section class="bp-card" aria-labelledby="yr-h">
           <${SecHead} id="yr-h" title=${`${s.year} at a glance`} sub=${`From the ${s.year} tax return`} />
           <${Bars} s=${s} />
@@ -1585,8 +1704,11 @@ function FinancialsPage({ ctx }) {
             </table>
           </details>` : null}
         </section>` : null}
+      </div>
+      <div class="bp-stack bp-rise" style=${rise(3)}>
         ${f?.cash || history.length > 1 ? html`<section class="bp-card" aria-labelledby="cashtime-h">
           <h2 class="bp-h2" id="cashtime-h">Cash over time</h2>
+          ${history.length > 1 ? html`<${CashChart} rows=${history} />` : null}
           ${f?.cash ? html`<div class="bp-live">
             <div class="bp-live__label">The next 13 weeks</div>
             <ul>
@@ -1599,8 +1721,6 @@ function FinancialsPage({ ctx }) {
             ${history.map((r, k) => { const prev = history[k + 1]; const dd = prev ? r.total - prev.total : null; return html`<tr key=${r.month}><th scope="row">${monthOf(r.month)}</th><td class="num">${money(r.total)}</td><td class="num">${dd == null ? '' : `${dd >= 0 ? '+' : '−'}${money(Math.abs(dd))}`}</td></tr>`; })}
           </tbody></table></details>` : null}
         </section>` : null}
-      </div>
-      <div class="bp-stack bp-rise" style=${rise(3)}>
         ${years.length ? html`<section class="bp-card" aria-labelledby="tx-h">
           <${SecHead} id="tx-h" title="Tax returns and audits" sub="The public copies, as on the website’s Financials page" />
           <table class="bp-table bp-ftable">

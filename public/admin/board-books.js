@@ -42,7 +42,7 @@ export function QuickBooks({ addToast = () => {} }) {
     if (said) addToast(...said);
   }, []);
 
-  const head = html`<div class="bd-card-head"><h3>QuickBooks</h3><p>The board page’s cash in the bank and the year’s revenue and expenses so far, from QuickBooks, read by themselves every hour. The budget beside them is the one in the newest packet. Amounts show on the board page only.</p></div>`;
+  const head = html`<div class="bd-card-head"><h3>QuickBooks</h3><p>The board page’s money from QuickBooks: the cash in the bank and the year’s revenue and expenses, read every hour; the statements, last year’s figures and each month’s cash, read once a day. Each meeting keeps its statements from its own day. The budget is the one in the newest packet. Amounts show on the board page only.</p></div>`;
   if (!d) return html`<div class="card">${head}<div class="area-loading"><span class="spinner" /></div></div>`;
   if (d.error) return html`<div class="card">${head}<div class="notice notice--warn" role="alert"><div class="notice__body">${d.error}</div><div class="notice__actions"><button class="btn btn-ghost btn-sm" onClick=${() => { setD(null); load(); }}>Try again</button></div></div></div>`;
 
