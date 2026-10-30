@@ -173,7 +173,8 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
   .tpa-tab[aria-selected="true"] { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
   /* ══════ Insurance ══════ */
-  .tpa-needs { margin: 0 0 20px; padding: 14px 18px 14px 36px; border-radius: 14px; background: rgba(255,218,36,0.18); font-size: 15px; line-height: 1.55; }
+  .tpa-needs { margin: 0 0 20px; padding: 14px 18px 14px 36px; border-radius: 14px; background: rgba(255,218,36,0.18); font-size: 15px; line-height: 1.55; list-style: disc; }
+  .tpa-needs li + li { margin-top: 6px; }
   .tpa-reqbox { border: 1.5px solid var(--tpa-line); border-radius: 18px; padding: 18px 20px; margin: 0 0 24px; }
   .tpa-reqs { list-style: none; margin: 10px 0 16px; padding: 0; display: grid; gap: 10px; font-size: 14.5px; line-height: 1.5; }
   .tpa-reqs li { position: relative; padding-left: 30px; }
