@@ -32,7 +32,7 @@ import { reviewOf } from './process-shared.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 29, 2026';
+const WRITTEN_ON = 'October 30, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -1139,7 +1139,7 @@ const MAP = { t: 'SOARD', children: [
           does: 'Posts each gift in #team-everyone: “🎉 New donation - $50.00” with who gave, the campaign and the date. $1,000 and up starts with “🚨 MAJOR GIFT” instead. A missing detail leaves its line out. Never an email address or contact details, never totals. Each payment posts once, however often Zeffy sends it.',
           touches: ['Zeffy', 'Slack', 'D1', 'Resend'], where: 'functions/api/_zeffy.js (zeffy-webhook.js, broadcast-hooks.js); posts as the site’s Slack app',
           note: 'Not connected yet. Add ZEFFY_WEBHOOK_SECRET, ZEFFY_API_KEY and SLACK_BOT_TOKEN in Cloudflare, and point Zeffy’s webhook at https://sunshineonaranneyday.com/api/zeffy-webhook.',
-          info: 'Replaced the DataX donation alert agent (October 2026), which went quiet after September 9. Imported payments, $0 registrations and refunded payments aren’t posted. If Slack refuses a post, the site keeps trying for 3 days. Problems (Slack refusing, Zeffy’s key refused, the webhook missing a gift) email Peter once a day; the gift itself only ever goes to Slack.',
+          info: 'Replaced the DataX donation alert agent (October 2026), which went quiet after September 9. Imported payments, $0 registrations and refunded payments aren’t posted. If Slack refuses a post, the site keeps trying for 3 days. Problems (Slack refusing, Zeffy’s key refused, the webhook missing a gift) email Peter once a day; the gift itself only ever goes to Slack, and from $1,000 to the board page.',
           live: (f) => {
             const z = f.zeffy;
             if (!z || !env(f)) return null;
@@ -1158,6 +1158,20 @@ const MAP = { t: 'SOARD', children: [
             if (caught && !(ms(z.lastWebhookAt) > ms(z.missedAt))) return ATTN(`Zeffy’s webhook missed ${plural(z.missed, 'gift')} on ${stamp(z.missedAt)}, and the catch-up check posted ${z.missed === 1 ? 'it' : 'them'}. Check the webhook in Zeffy → Settings → Integrations.`, z.lastPostAt);
             const note = caught ? ` The catch-up check caught ${plural(z.missed, 'gift')} the webhook missed on ${stamp(z.missedAt)}; the webhook has delivered since.` : '';
             return ON(z.lastPostAt ? `Connected. Last gift posted ${stamp(z.lastPostAt)}.${note}` : `Connected. Waiting for the first gift.${note}`, z.lastPostAt);
+          } },
+        { t: 'Major gifts on the board page', s: 'live', k: 'schedule',
+          when: 'Every 15 minutes on the board’s heartbeat, while ZEFFY_API_KEY is set.',
+          does: 'Reads the year’s payments from Zeffy and shows each gift of $1,000 or more on the board page, newest first: Home has the latest six, Financials the whole year with its total. The amount after any refund, who gave (a company and the person who gave for it), the campaign, the day, and whether it’s monthly or in kind. Never an email, address or phone.',
+          touches: ['Zeffy', 'D1'], where: 'functions/api/_board-gifts.js (on the board heartbeat in _board.js)',
+          info: 'Zeffy stays the record: the board’s copy is the year read again whole and replaced, so a refund or a deleted payment drops out by itself. $1,000 is the same line as the Slack alert’s “Major gift”. A giver who ticked a form’s anonymous question shows as Anonymous, and a campaign named for a child reads “Makeovers”.',
+          live: (f) => {
+            const g = f.boardGifts;
+            if (!env(f)) return null;
+            if (!f.env.zeffyApi) return OFF('Add ZEFFY_API_KEY in Cloudflare, the key the gift alerts’ catch-up check uses.');
+            if (!g) return ATTN('Hasn’t read Zeffy yet. It rides on the board’s heartbeat, so check the Heartbeat entry.');
+            if (g.error) return ATTN(`Zeffy couldn’t be read: ${g.error}.`, g.at);
+            if (stale(g.triedAt, HOUR)) return ATTN(`Hasn’t read Zeffy since ${stamp(g.triedAt)}. Check the Heartbeat entry.`, g.at);
+            return ON(`Read Zeffy ${stamp(g.at)}.`, g.at);
           } },
       ]},
       { t: 'Job costs (Mercury)', children: [

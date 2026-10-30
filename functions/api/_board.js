@@ -45,6 +45,7 @@ import { maybeReadBoardMail, mailStatus } from './_board-mail.js';
 import { mercury } from './_mercury.js';
 import { bankBalances, plaidConfigured, bankFacts } from './_plaid.js';
 import { booksNow, booksFacts } from './_quickbooks.js';
+import { giftsNow } from './_board-gifts.js';
 import { limit } from './_rate-limit.js';
 
 export const SITE = 'https://sunshineonaranneyday.com';
@@ -1014,12 +1015,13 @@ async function siteDoc(DB, key) {
 export async function portalData(env, { member = null, admin = false, now = Date.now() } = {}) {
   await ensureSchema(env.DB);
   const today = todayEastern(now);
-  const [meetings, docs, numbers, history, people, filings, snapshot, settings] = await Promise.all([
+  const [meetings, docs, numbers, history, people, filings, snapshot, settings, gifts] = await Promise.all([
     listMeetings(env.DB), listDocs(env.DB), liveNumbers(env, { now }), cashHistory(env.DB), roster(env.DB, { withEmails: true }),
-    siteDoc(env.DB, 'financials'), siteDoc(env.DB, 'financial-snapshot'), getSettings(env.DB),
+    siteDoc(env.DB, 'financials'), siteDoc(env.DB, 'financial-snapshot'), getSettings(env.DB), giftsNow(env.DB, { now }).catch(() => null),
   ]);
+  let seen = null;
   if (member) {
-    const seen = await env.DB.prepare('SELECT at FROM board_seen WHERE slug = ?').bind(member.slug).first();
+    seen = await env.DB.prepare('SELECT at FROM board_seen WHERE slug = ?').bind(member.slug).first();
     if (!seen || now - Date.parse(seen.at) > 10 * 60 * 1000) await env.DB.prepare('INSERT OR REPLACE INTO board_seen (slug, at) VALUES (?, ?)').bind(member.slug, new Date(now).toISOString()).run();
   }
   const shared = meetings.map(forBoard).filter(Boolean);
@@ -1047,7 +1049,8 @@ export async function portalData(env, { member = null, admin = false, now = Date
       location: pending.location, address: pending.address, video: pending.video || pending.invite?.meet || '',
       onCalendar: !!pendingInvite, myInvite: pendingInvite, myRsvp: answers[pending.id] || '',
     } : null,
-    me: member ? { name: member.name, slug: member.slug, title: member.title, email: member.email, admin } : { name: null, slug: null, admin },
+    // lastSeen: the visit before this one (a visit lasts 10 minutes), for what's new since
+    me: member ? { name: member.name, slug: member.slug, title: member.title, email: member.email, admin, lastSeen: seen?.at || null } : { name: null, slug: null, admin },
     today,
     // Their own answer here, else how they answered the calendar invite (which also means it's on their calendar)
     meetings: shared.map((m) => {
@@ -1065,6 +1068,8 @@ export async function portalData(env, { member = null, admin = false, now = Date
     filings: (filings?.documents || []).map((d) => ({ title: d.title, year: d.year, type: d.type, url: String(d.url || '').replace(/^https:\/\/files\.sunshineonaranneyday\.com\/financials\//, '/files/financials/') }))
       .filter((d) => /^(https:\/\/|\/files\/financials\/)/.test(d.url)),
     snapshot: snapshot || null,
+    // This year's gifts of $1,000 or more, from Zeffy (./_board-gifts.js)
+    gifts,
     people: {
       board: people.board.map(({ email, ...p }) => ({ ...p, email: email || null })),
       staff: people.staff.map(({ email, ...p }) => p),
@@ -1452,6 +1457,7 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *     (./_board-mail.js): every minute while there's a backlog, hourly after; then minutes read without
  *     Workers AI read again for their motions and action items (./_board-minutes.js maybeFinishMinutes)
  *   - hourly, QuickBooks' revenue and expenses for the year so far (./_quickbooks.js)
+ *   - every 15 minutes, the year's major gifts from Zeffy (./_board-gifts.js)
  *   - once a day, the month's bank balance for the board page's history
  * Never throws.
  */
@@ -1480,6 +1486,8 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await (await import('./_plaid.js')).maybeReadBanks(env, { fetchImpl, now });
     // QuickBooks' year so far, hourly once it's connected
     await (await import('./_quickbooks.js')).maybeReadBooks(env, { fetchImpl, now });
+    // The year's gifts of $1,000 or more, from Zeffy every 15 minutes
+    await (await import('./_board-gifts.js')).maybeReadGifts(env, { fetchImpl, now });
     if (!String(env.MERCURY_API_TOKEN || '').trim() && !plaidConfigured(env)) return;
     const runs = await readState(env.DB, 'runs');
     if (runs.cashAt && now - Date.parse(runs.cashAt) < 20 * 60 * 60 * 1000) return;

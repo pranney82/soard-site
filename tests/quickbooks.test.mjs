@@ -342,7 +342,11 @@ test('once a day, the year in context: last year by now and in all, the last 12 
   await connect();
   const n = await booksNow(env.DB, { now: T0 });
   // Last year: the same days (Jan 1 to Oct 29 2025), and the whole year
-  assert.deepEqual(n.lastYear, { year: '2025', through: '2025-10-29', revenue: 657777.34, expenses: 351280.11, net: 306497.22, full: { revenue: 1027777.09, expenses: 548875.18, net: 478901.91 } });
+  assert.deepEqual(n.lastYear, {
+    year: '2025', through: '2025-10-29', revenue: 657777.34, expenses: 351280.11, net: 306497.22, full: { revenue: 1027777.09, expenses: 548875.18, net: 478901.91 },
+    // Its money by category too (this report's sections carry no accounts, so each is one line)
+    sources: [{ key: 'account:income', name: 'Income', amount: 649876.54, accounts: ['Income'] }, { key: 'other', name: 'Other income', amount: 7900.8, accounts: ['Other Income'] }],
+  });
   // The last 12 full months (Oct 1 2025 to Sep 30 2026): what left the bank accounts, from their ledger. Payroll, a
   // vendor and the Ramp card's payment are cash out; the moves to the Long Reserve and the CD aren't
   assert.deepEqual(n.trailing, { from: '2025-10-01', through: '2026-09-30', spent: 420000, cashOut: 100000, payments: 3 });
@@ -368,7 +372,7 @@ test('once a day, the year in context: last year by now and in all, the last 12 
   // Spending by purpose: the classes the books keep
   assert.deepEqual(n.functions, { list: [{ name: 'Programs', amount: 340000 }, { name: 'Management', amount: 60000 }, { name: 'Fundraising', amount: 30000 }], total: 438000.14 });
   // Where the year's money came from
-  assert.deepEqual(n.sources, [{ name: 'Other Income', amount: 9876 }]);
+  assert.deepEqual(n.sources, [{ key: 'account:income', name: 'Income', amount: 812345.67, accounts: ['Income'] }, { key: 'other', name: 'Other income', amount: 9876, accounts: ['Other Income'] }]);
 });
 
 test('cash out reads the ledger whichever way its amounts run, and a ledger it can’t read gives no months of cash, never a guess', async () => {
@@ -631,4 +635,33 @@ test('the callback is reachable without an admin sign-in (Intuit’s redirect); 
   const call = (path) => onRequest({ request: new Request(`https://sunshineonaranneyday.com${path}`, { headers: { 'CF-Connecting-IP': '203.0.113.9' } }), env: {}, data: {}, next: async () => new Response('next') });
   assert.equal(await (await call('/api/books-callback?code=x&state=y')).text(), 'next');
   assert.notEqual(await (await call('/api/books-admin')).text(), 'next');
+});
+
+test('where the money came from: the income accounts by category, the way SOARD’s books keep them', async () => {
+  const { sourcesOf, revenueKind } = await import('../functions/api/_quickbooks.js');
+  const acct = (label, value) => ({ type: 'Data', ColData: [{ value: label }, { value }] });
+  const group = (label, rows, total, group = undefined) => ({ type: 'Section', ...(group ? { group } : {}), Header: { ColData: [{ value: label }, { value: '' }] }, Rows: { Row: rows }, Summary: { ColData: [{ value: `Total ${label}` }, { value: total }] } });
+  // SOARD's chart of accounts (made-up amounts): parent accounts with their own accounts under them, and Other Income
+  const report = { Rows: { Row: [
+    group('Income', [
+      group('4000 Revenue', [acct('4010 Individual/Corporate Revenue', '700000.00'), acct('4020 Grant Revenue', '90000.00'), acct('4030 Makeover Revenue', '45.00')], '790045.00'),
+      group('4200 Fundraising Income', [acct('4210 Store Income', '420000.00'), acct('4220 Gala Income', '400000.00'), acct('4230 Store Discounts', '-5000.00')], '815000.00'),
+      group('4300 Other Contribution', [acct('4310 Rent Income', '16000.00'), acct('4320 In-Kind Contribution', '220000.00')], '236000.00'),
+      acct('4900 Golf Classic Income', '30000.00'),
+    ], '1871045.00', 'Income'),
+    group('Expenses', [acct('Payroll', '500000.00')], '500000.00', 'Expenses'),
+    group('Other Income', [acct('Interest Income', '5000.00')], '5000.00', 'OtherIncome'),
+  ] } };
+  const s = sourcesOf(report);
+  assert.deepEqual(s.map((c) => [c.key, c.name, c.amount]), [
+    ['donations', 'Donations', 700000], ['store', 'Store sales', 415000], ['gala', 'Gala', 400000], ['inkind', 'In kind', 220000],
+    ['grants', 'Grants', 90000], ['account:golf classic', 'Golf Classic', 30000], ['account:rent', 'Rent', 16000], ['account:interest', 'Interest', 5000], ['account:makeover', 'Makeover', 45],
+  ]);
+  assert.equal(s.reduce((t, c) => t + c.amount, 0), 1876045, 'every dollar of revenue (Income and Other Income), the store’s discounts netted');
+  assert.deepEqual(s.find((c) => c.key === 'store').accounts, ['Store Income', 'Store Discounts'], 'each category names its accounts');
+  // In kind is never a cash gift, whatever the account says
+  assert.equal(revenueKind('In-Kind Contribution').key, 'inkind');
+  assert.equal(revenueKind('Donated goods and services').key, 'inkind');
+  assert.equal(revenueKind('Other Contribution').key, 'donations');
+  assert.deepEqual(revenueKind('Other Income'), { key: 'other', name: 'Other income' });
 });

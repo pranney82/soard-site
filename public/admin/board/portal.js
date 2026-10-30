@@ -11,10 +11,10 @@
  * board members (People → Board, by their private email) and the Board
  * area's admins (who read it all and have nothing to answer or sign).
  *
- *   #/             Home: the next meeting, your to-dos, the makeovers, what's coming up
+ *   #/             Home: the next meeting, your to-dos, the major gifts, the makeovers
  *   #/meetings     Meetings          #/meetings/<id>   one meeting (each item with its documents)
  *   #/meetings/<id>/screen   the meeting on the room's TV or shared on Google Meet (./screen.js)
- *   #/financials   Financials        #/people          People
+ *   #/financials   Financials (#/financials/gifts opens at the major gifts)   #/people   People
  *   #/documents    Documents, and every meeting's files
  *   (#/reveals, the old reveals page, is Home now)
  * On a phone the five pages are a bar along the bottom, in thumb's reach.
@@ -566,8 +566,8 @@ const rise = (i) => `--i:${i}`;
 
 // ─── Home ───────────────────────────────────────────────────────────
 /**
- * Home is a board brief, each fact once: SOARD at a glance (the four figures over Impact, one panel), the next
- * meeting beside the last one, then the makeovers. Every figure is a door to the page with the rest of it
+ * Home is a board brief, each fact once: SOARD at a glance (the four figures, where the revenue came from, Impact: one panel), the next
+ * meeting beside the last one, the major gifts, then the makeovers. Every figure is a door to the page with the rest of it
  */
 
 /** A figure against its budget as a bar: filled to this year's share, the tick at last year's by now (the words say both) */
@@ -714,7 +714,7 @@ function Impact({ n }) {
         <span class="bp-spark__x" aria-hidden="true"><span>${years[0].year}</span><span>${years.at(-1).year}</span></span>
       </div>
       <dl class="bp-impact__stats">
-        ${now ? html`<div><dt>${thisYear} so far</dt><dd>${word('kids', now.kids)}${last?.kids ? html`<span class=${now.kids >= last.kids ? 'is-up' : 'is-down'}>${now.kids >= last.kids ? '▲' : '▼'} ${Math.abs(Math.round(((now.kids - last.kids) / last.kids) * 100))}% on all of ${thisYear - 1}</span>` : null}</dd></div>` : null}
+        ${now ? html`<div><dt>${thisYear} so far</dt><dd>${word('kids', now.kids)} · ${word('rooms', now.rooms)}${last?.kids ? html`<span class=${now.kids >= last.kids ? 'is-up' : 'is-down'}>${now.kids >= last.kids ? '▲' : '▼'} ${Math.abs(Math.round(((now.kids - last.kids) / last.kids) * 100))}% ${now.kids >= last.kids ? 'more' : 'fewer'} kids than all of ${thisYear - 1}</span>` : null}</dd></div>` : null}
         <div><dt>Rooms built</dt><dd>${n.impact.rooms.toLocaleString()}</dd></div>
         <div><dt>Makeovers</dt><dd>${years.reduce((t, y) => t + y.makeovers, 0).toLocaleString()}</dd></div>
         ${n.impact.communityProjects ? html`<div><dt>Community projects</dt><dd>${n.impact.communityProjects.toLocaleString()}${n.impact.reached ? html`<span>${n.impact.reached.toLocaleString()} children reached</span>` : null}</dd></div>` : null}
@@ -752,7 +752,7 @@ function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
         <ol class="bp-years__bars" onMouseLeave=${() => setTip(-1)}>${years.map((x, i) => html`<li key=${x.year} class=${`${x.year === thisYear ? 'is-now' : ''} ${i === sel ? 'is-sel' : ''} ${i === tip ? 'is-tip' : ''}`} style=${`--h:${(x[what] / top) * 100}%;--i:${i}`}>
           <button type="button" id=${`bpy-${x.year}`} class="bp-years__hit" aria-pressed=${i === sel} tabindex=${i === sel ? 0 : -1} onClick=${() => setSel(i)}
             onMouseEnter=${() => setTip(i)} onFocus=${() => setTip(i)} onBlur=${() => setTip(-1)}
-            aria-label=${`${x.year}: ${word(what, x[what])}${x.year === thisYear ? ' so far' : ''}, ${x.makeovers} ${x.makeovers === 1 ? 'makeover' : 'makeovers'}`}>
+            aria-label=${yearSays(x, thisYear, word)}>
             <span class="bp-years__bar" aria-hidden="true"></span>
             ${x.year === thisYear || x === best || i === sel ? html`<span class="bp-years__val" aria-hidden="true">${x[what]}</span>` : null}
             <span class="bp-years__x" aria-hidden="true">${i === 0 || x.year === thisYear || i === sel || x.year % 2 === 0 ? `’${String(x.year).slice(2)}` : ''}</span>
@@ -761,7 +761,7 @@ function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
         ${tip >= 0 ? html`<${YearTip} y=${years[tip]} at=${(tip + 0.5) / years.length} h=${(years[tip][what] / top) * 100} thisYear=${thisYear} word=${word} />` : null}
       </div>
       <div class="bp-yearpanel" aria-live="polite" tabindex="0" aria-label=${`${y.year}’s makeovers`}>
-        <p class="bp-yearpanel__head"><strong>${y.year}</strong><span>${word(what, y[what])}${y.year === thisYear ? ' so far' : ''} · ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}</span></p>
+        <p class="bp-yearpanel__head"><strong>${y.year}</strong><span>${word('kids', y.kids)} · ${word('rooms', y.rooms)} · ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}${y.year === thisYear ? ' so far' : ''}</span></p>
         ${kids.length ? html`<ul class="bp-yearpanel__kids">${kids.map((k) => html`<li key=${k.slug || k.name}>
           <a href=${k.slug ? `/kids/${k.slug}/` : null} target="_blank" rel="noopener" class="bp-yk">
             ${k.photo ? html`<img src=${sized(k.photo, 'w=96,h=96,fit=cover,gravity=face')} alt="" loading="lazy" width="40" height="40" />` : html`<span class="bp-avatar bp-avatar--initials" style=${`--s:40px;--hue:${hueOf(k.name)}`} data-i=${initialsOf(k.name)} aria-hidden="true"></span>`}
@@ -774,6 +774,60 @@ function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
 }
 
 /** Home's makeovers: the kanban (./kanban.js), from JobTread. The count is the figure above; each column has its own */
+// ─── Major gifts, from Zeffy (functions/api/_board-gifts.js) ───
+const giftDay = (s) => new Date(s * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+const giftWho = (g) => g.company || g.name || (g.anonymous ? 'Anonymous' : 'No name given');
+// The person who gave for a company, the campaign, monthly (unless the campaign says so), in kind
+const giftAbout = (g) => [g.company && g.name ? g.name : '', g.campaign, g.every && !String(g.campaign || '').toLowerCase().includes(g.every) ? g.every : '', g.inKind ? 'in kind' : ''].filter(Boolean).join(' · ');
+const giftIsNew = (g, since) => !!since && g.at * 1000 > Date.parse(since);
+/** "$212,000 from 14 gifts of $1,000 or more in 2026", and the day Zeffy was last read when that's over a day ago */
+const giftsSay = (g) => `${money(g.total / 100)} from ${plural(g.count, 'gift')} of $1,000 or more in ${g.year}${g.stale ? `, as of ${giftDay(Date.parse(g.at) / 1000)}` : ''}`;
+
+function GiftRow({ g, since }) {
+  const about = giftAbout(g);
+  const fresh = giftIsNew(g, since);
+  return html`<li class=${`bp-gift ${fresh ? 'is-new' : ''}`}>
+    <span class="bp-gift__amt">${money(g.cents / 100)}</span>
+    <span class="bp-gift__who"><strong>${giftWho(g)}</strong>${about ? html`<span>${about}</span>` : null}</span>
+    <span class="bp-gift__when">${fresh ? html`<span class="bp-gift__new">New</span>` : null}${giftDay(g.at)}</span>
+  </li>`;
+}
+
+/**
+ * Home's major gifts: the year's newest six of $1,000 or more, newest first (down the first column, then the second),
+ * those since your last visit marked new. Financials has every one
+ */
+function Gifts({ g, since }) {
+  const list = g.list.slice(0, 6);
+  return html`<section class="bp-card bp-gifts" aria-labelledby="gifts-h">
+    <div class="bp-cardhead">
+      <h2 class="bp-h2" id="gifts-h">Major gifts</h2>
+      ${g.count > list.length ? html`<a class="bp-cardhead__go" href="#/financials/gifts">All ${g.count} this year<${Icon} name="arrow" size=${16} cls="bp-go" /></a>` : null}
+    </div>
+    ${g.count ? html`<p class="bp-gifts__sum">${giftsSay(g)}</p>
+      <ul class="bp-gifts__list" style=${`--rows:${Math.ceil(list.length / 2)}`}>${list.map((x) => html`<${GiftRow} g=${x} since=${since} key=${x.id} />`)}</ul>`
+    : html`<p class="bp-gifts__sum">No gifts of $1,000 or more yet in ${g.year}.</p>`}
+  </section>`;
+}
+
+/** Financials: every major gift this year, newest first, under the year's total */
+function GiftsYear({ g, since }) {
+  const [all, setAll] = useState(false);
+  // Home's "All 14 this year" opens Financials here
+  useEffect(() => {
+    if (!/^#\/financials\/gifts\b/.test(location.hash)) return;
+    requestAnimationFrame(() => document.getElementById('gifts')?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' }));
+  }, []);
+  const shown = all ? g.list : g.list.slice(0, 12);
+  return html`<section class="bp-card bp-gifts bp-gifts--year" aria-labelledby="gifts-y-h" id="gifts">
+    <${SecHead} id="gifts-y-h" title="Major gifts" sub=${`From Zeffy, every gift of $1,000 or more${g.stale ? `, as of ${giftDay(Date.parse(g.at) / 1000)}` : ''}`} />
+    ${g.count ? html`<p class="bp-gifts__total"><strong>${money(g.total / 100)}</strong> from ${plural(g.count, 'gift')} in ${g.year}</p>
+      <ul class="bp-gifts__list">${shown.map((x) => html`<${GiftRow} g=${x} since=${since} key=${x.id} />`)}</ul>
+      ${g.count > 12 ? html`<button type="button" class="bp-more-btn" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? 'Show the newest 12' : `Show all ${g.count}`}</button>` : null}`
+    : html`<p class="bp-muted">No gifts of $1,000 or more yet in ${g.year}.</p>`}
+  </section>`;
+}
+
 function Builds({ n }) {
   return html`<section class="bp-card bp-kanban" aria-labelledby="builds-h" id="makeovers">
     <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers</h2><span class="bp-muted">From JobTread</span></div>
@@ -807,13 +861,15 @@ function HomePage({ ctx }) {
     </header>
     <section class="bp-sum bp-rise" style=${rise(1)} aria-label="SOARD at a glance">
       <${Figures} data=${data} />
+      ${mixOf(data.numbers.books) ? html`<section class="bp-sum__mix" aria-labelledby="mix-h"><h2 class="bp-fig__label" id="mix-h">Where ${data.numbers.books.year}’s revenue came from</h2><${RevenueMix} books=${data.numbers.books} /></section>` : null}
       <${Impact} n=${data.numbers} />
     </section>
     <div class="bp-meets">
       <div class="bp-meets__col bp-rise" style=${rise(2)}>${m ? html`<${NextUp} m=${m} ctx=${ctx} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
       <div class="bp-meets__col bp-rise" style=${rise(3)}>${todos}<${SinceLast} ctx=${ctx} /></div>
     </div>
-    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} /></div>
+    ${data.gifts ? html`<div class="bp-rise" style=${rise(4)}><${Gifts} g=${data.gifts} since=${data.me.lastSeen} /></div>` : null}
+    <div class="bp-rise" style=${rise(5)}><${Builds} n=${data.numbers} /></div>
   </div>`;
 }
 
@@ -1348,9 +1404,10 @@ function CashBlock({ n, data, m }) {
   // The statements the way the figures go: today's for a meeting today or ahead, the locked ones for a past meeting
   const st = (upTo ? n?.books : data.numbers.books)?.statements;
   if (!tiles.length && !st) return null;
+  const books = upTo ? n?.books : data.numbers.books;
   return html`${tiles.length ? html`<ul class="bp-agfigs">${tiles.map((t) => html`<li class="bp-agfig" key=${t.k}>
     <span class="bp-fig__label">${t.label}</span><span class="bp-agfig__value">${t.value}</span>${t.sub ? html`<span class=${`bp-fig__sub ${t.tone ? `is-${t.tone}` : ''}`}>${t.sub}</span>` : null}
-  </li>`)}</ul>` : null}${st ? html`<details class="bp-more bp-stmts-fold"><summary>The statements, as of ${fullDate(st.asOf)}</summary><${Statements} s=${st} books=${upTo ? n?.books : data.numbers.books} idp=${`m${m.id}`} /></details>` : null}`;
+  </li>`)}</ul>` : null}${mixOf(books) ? html`<div class="bp-agmix"><p class="bp-fig__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null}${st ? html`<details class="bp-more bp-stmts-fold"><summary>The statements, as of ${fullDate(st.asOf)}</summary><${Statements} s=${st} books=${upTo ? n?.books : data.numbers.books} idp=${`m${m.id}`} /></details>` : null}`;
 }
 
 /** The reveals ahead, by date, each with the kid's photo when their page has one */
@@ -1640,6 +1697,66 @@ function Statements({ s, books, idp = 'st' }) {
   </div>`;
 }
 
+// ─── Where the revenue came from: QuickBooks' income accounts by category (functions/api/_quickbooks.js sourcesOf) ───
+// Each category keeps its color wherever it shows, checked together for lightness, strength and color-blind separation
+// (two are light on white, so every part also carries its name and amount). An account outside them takes a color
+// left free; whatever is left over is Everything else, in gray
+const MIX_TONE = { donations: 1, store: 2, gala: 3, inkind: 4, grants: 5 };
+/**
+ * The year's revenue as parts, in their colors' order: the categories of 2% or more (five at most), then Everything
+ * else; each with the same days last year when the daily read has them. Null before QuickBooks' categories are in (a
+ * read kept by an older deploy, or a past meeting's locked numbers)
+ */
+function mixOf(books) {
+  const src = books?.sources || [];
+  const total = books?.revenue;
+  if (!src.length || !src.every((x) => x.key) || !(total > 0)) return null;
+  const big = src.filter((x) => x.amount >= total * 0.02);
+  const free = [1, 2, 3, 4, 5].filter((t) => !big.some((x) => MIX_TONE[x.key] === t));
+  const named = big.map((x) => ({ ...x, tone: MIX_TONE[x.key] || free.shift() })).filter((x) => x.tone).sort((a, b) => a.tone - b.tone);
+  const lys = books.lastYear?.sources?.every((x) => x.key) ? books.lastYear.sources : null;
+  const lyOf = (key) => (lys ? lys.find((x) => x.key === key)?.amount || 0 : null);
+  const parts = named.map((x) => ({ ...x, last: lyOf(x.key) }));
+  const rest = Math.max(0, total - named.reduce((t, x) => t + x.amount, 0));
+  if (rest >= total * 0.005) {
+    const left = src.filter((x) => !named.some((n) => n.key === x.key));
+    const lastRest = lys ? Math.max(0, books.lastYear.revenue - named.reduce((t, x) => t + lyOf(x.key), 0)) : null;
+    parts.push({ key: 'rest', name: 'Everything else', amount: rest, tone: 0, accounts: left.map((x) => x.name), last: lastRest });
+  }
+  let at = 0;
+  return { total, year: books.year, lastYear: books.lastYear?.year || '', parts: parts.map((x) => { const w = (x.amount / total) * 100; const mid = at + w / 2; at += w; return { ...x, w, mid }; }) };
+}
+const shareOf = (a, total) => { const p = (a / total) * 100; return p > 0 && p < 1 ? 'under 1%' : `${Math.round(p)}%`; };
+const changeOf = (a, p) => (p > 0 ? `${a >= p ? '▲' : '▼'} ${Math.abs(Math.round(((a - p) / p) * 100))}%` : '');
+
+/**
+ * The revenue as one bar, a part per category, and a key giving each its amount and share; over a part, its exact
+ * amount and the same days last year. `table` (Financials): every category beside last year, with its accounts
+ */
+function RevenueMix({ books, table = false }) {
+  const mix = mixOf(books);
+  const [on, setOn] = useState(-1);
+  if (!mix) return null;
+  const { parts, total } = mix;
+  const tip = parts[on];
+  const said = `${mix.year} revenue by category: ${parts.map((x) => `${x.name} ${money(x.amount)} (${shareOf(x.amount, total)})`).join(', ')}`;
+  return html`<div class="bp-mix" onMouseLeave=${() => setOn(-1)}>
+    <div class="bp-mix__bar" role="img" aria-label=${said}>
+      ${parts.map((x, i) => html`<span class=${`bp-mix__seg bp-tone--${x.tone} ${on >= 0 && i !== on ? 'is-dim' : ''}`} style=${`--p:${x.w}%`} key=${x.key} onMouseEnter=${() => setOn(i)}></span>`)}
+      ${tip ? html`<div class="bp-mix__tip" style=${`--x:${tip.mid}%`} aria-hidden="true"><strong>${tip.name}</strong>${money(tip.amount)} · ${shareOf(tip.amount, total)}${tip.last != null ? html`<span>${mix.lastYear}, same days: ${money(tip.last)}${changeOf(tip.amount, tip.last) ? ` · ${changeOf(tip.amount, tip.last)}` : ''}</span>` : null}</div>` : null}
+    </div>
+    ${table ? html`<table class="bp-table bp-mixtable">
+      <thead><tr><th scope="col">Category</th><th scope="col" class="num">${mix.year} so far</th>${parts.some((x) => x.last != null) ? html`<th scope="col" class="num">${mix.lastYear}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
+      <tbody>${parts.map((x) => html`<tr key=${x.key}>
+        <th scope="row"><span class="bp-mixtable__name"><i class=${`bp-tone--${x.tone}`} aria-hidden="true"></i>${x.name}</span>${x.accounts?.length && !(x.accounts.length === 1 && x.accounts[0] === x.name) ? html`<small>${x.accounts.join(', ')}</small>` : null}</th>
+        <td class="num">${money(x.amount)}<small>${shareOf(x.amount, total)}</small></td>
+        ${x.last != null ? html`<td class="num">${money(x.last)}</td><td class="num">${changeOf(x.amount, x.last) || '–'}</td>` : null}
+      </tr>`)}</tbody>
+    </table>`
+    : html`<ul class="bp-mix__key">${parts.map((x, i) => html`<li key=${x.key} class=${i === on ? 'is-on' : ''} onMouseEnter=${() => setOn(i)}><i class=${`bp-tone--${x.tone}`} aria-hidden="true"></i>${x.name}<strong>${compact(x.amount)}</strong><span>${shareOf(x.amount, total)}</span></li>`)}</ul>`}
+  </div>`;
+}
+
 /** Parts of a whole as one bar: the first three by name in fixed colors, the rest as "Everything else" in gray */
 function PartsBar({ label, parts, total }) {
   const named = parts.slice(0, 3);
@@ -1668,7 +1785,7 @@ function BooksYear({ b }) {
     </table>
     ${ly?.full?.revenue > 0 ? html`<p class="bp-note">By this day last year, ${Math.round((ly.revenue / ly.full.revenue) * 100)}% of ${ly.year}’s revenue (${compact(ly.full.revenue)}) had come in, and ${ly.full.expenses > 0 ? Math.round((ly.expenses / ly.full.expenses) * 100) : 0}% of its spending had gone out.</p>` : null}
     <div class="bp-meters">
-      ${b.sources?.length > 1 ? html`<${PartsBar} label="Where the money came from" parts=${b.sources} total=${b.sources.reduce((t, x) => t + x.amount, 0)} />` : null}
+      ${mixOf(b) ? html`<div class="bp-meter"><div class="bp-meter__head"><span>Where the money came from</span></div><${RevenueMix} books=${b} table=${true} /></div>` : null}
       ${b.functions ? html`<${PartsBar} label="Where it went, by purpose" parts=${b.functions.list} total=${b.functions.total} />` : null}
     </div>
   </section>`;
@@ -1764,7 +1881,7 @@ function FinancialsPage({ ctx }) {
   const cell = (y, t) => { const x = data.filings.find((z) => String(z.year) === y && typeOf(z) === t); return x ? html`<a class="bp-doclink" ...${viewerLink(fv, data.filings.indexOf(x))}><${Icon} name="documents" size=${16} />Open</a>` : html`<span class="bp-muted" aria-label="None">–</span>`; };
   return html`
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
-      <div><h1 class="bp-h1">Financials</h1><p class="bp-lede">The statements from each meeting, the year in numbers, and every tax return and audit.</p></div>
+      <div><h1 class="bp-h1">Financials</h1><p class="bp-lede">The statements from each meeting, the year in numbers, its major gifts, and every tax return and audit.</p></div>
     </header>
     <${CashCard} data=${data} />
     ${books?.statements ? html`<section class="bp-card bp-latest bp-rise" style=${rise(1)} aria-labelledby="st-h">
@@ -1779,6 +1896,7 @@ function FinancialsPage({ ctx }) {
     <div class="bp-split bp-split--even">
       <div class="bp-stack bp-rise" style=${rise(2)}>
         ${books ? html`<${BooksYear} b=${books} />` : null}
+        ${data.gifts ? html`<${GiftsYear} g=${data.gifts} since=${data.me.lastSeen} />` : null}
         ${s ? html`<section class="bp-card" aria-labelledby="yr-h">
           <${SecHead} id="yr-h" title=${`${s.year} at a glance`} sub=${`From the ${s.year} tax return`} />
           <${Bars} s=${s} />

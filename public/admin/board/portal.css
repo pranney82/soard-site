@@ -347,7 +347,7 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 .bp-impact__stats > div { display: grid; gap: 0.1rem; min-width: 0; }
 .bp-impact__stats dt { color: var(--muted); font-size: 0.8rem; }
 .bp-impact__stats dd { margin: 0; display: grid; gap: 0.05rem; font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
-.bp-impact__stats dd span { font-weight: 600; font-size: 0.76rem; color: var(--muted); white-space: nowrap; }
+.bp-impact__stats dd span { font-weight: 600; font-size: 0.76rem; color: var(--muted); text-wrap: pretty; }
 .bp-impact__stats dd .is-up { color: var(--ok); }
 .bp-impact__stats dd .is-down { color: var(--warn); }
 @media (max-width: 1100px) { .bp-impact__band { grid-template-columns: auto minmax(0, 1fr); } .bp-impact__stats { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-top: 0.85rem; border-top: 1px solid var(--line); } }
@@ -427,14 +427,39 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 .bp-forme .bp-todo:hover { box-shadow: none; transform: none; }
 .bp-forme .bp-todo:hover .bp-todo__title { color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
 .bp-forme .bp-todo__title { font-size: 0.97rem; }
+/* Major gifts, Home and Financials: a row a gift, the amount first (right-aligned, so the digits line up). On Home
+   the newest six in two columns, down the first and then the second */
+.bp-home .bp-gifts { margin-bottom: 1.25rem; }
+.bp-gifts__sum { margin: -0.2rem 0 0.55rem; color: var(--muted); }
+.bp-gifts__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0 2.5rem; }
+.bp-gifts:not(.bp-gifts--year) .bp-gifts__list { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 3), auto); grid-auto-flow: column; }
+.bp-gift { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) auto; gap: 0 1rem; align-items: baseline; padding: 0.7rem 0; border-top: 1px solid var(--line); }
+.bp-gift__amt { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.bp-gift__who { min-width: 0; display: grid; gap: 0.1rem; }
+.bp-gift__who strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-gift__who span { color: var(--muted); font-size: 0.84rem; }
+.bp-gift__when { display: inline-flex; align-items: baseline; gap: 0.45rem; color: var(--muted); font-size: 0.84rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bp-gift__new { padding: 0.05rem 0.45rem; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-size: 0.72rem; font-weight: 700; }
+.bp-gifts__total { margin: 0 0 0.6rem; color: var(--muted); }
+.bp-gifts__total strong { margin-right: 0.3rem; font-family: var(--display); font-size: 1.6rem; color: var(--ink); }
+.bp-gifts--year { scroll-margin-top: calc(var(--head) + 1.5rem); }
+@media (max-width: 760px) { .bp-gifts:not(.bp-gifts--year) .bp-gifts__list { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-flow: row; } }
+/* A phone: who on the left (free to wrap), the amount and the day stacked on the right */
+@media (max-width: 560px) {
+  .bp-gift { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'who amt' 'who when'; gap: 0.1rem 1rem; align-items: start; }
+  .bp-gift__who { grid-area: who; }
+  .bp-gift__who strong { white-space: normal; }
+  .bp-gift__amt { grid-area: amt; }
+  .bp-gift__when { grid-area: when; justify-content: flex-end; }
+}
 /* Home's type: five sizes besides the headings (12, 13, 14, 15 and 16px) and three weights, so no two neighbors
    differ by a hair. Scoped to Home: the same pieces keep their sizes on a meeting's page and on the screen */
 .bp-home { --t12: 0.75rem; --t13: 0.8125rem; --t14: 0.875rem; --t15: 0.9375rem; --t16: 1rem; }
-.bp-home .bp-fig__label, .bp-home .bp-mini-h, .bp-home .bp-spark__x, .bp-home .bp-date__mon, .bp-home .bp-date__wk, .bp-home .bp-soon, .bp-home .bp-count, .bp-home .bk-col__n, .bp-home .bp-impact__stats dd span { font-size: var(--t12); }
+.bp-home .bp-fig__label, .bp-home .bp-mini-h, .bp-home .bp-spark__x, .bp-home .bp-date__mon, .bp-home .bp-date__wk, .bp-home .bp-soon, .bp-home .bp-count, .bp-home .bk-col__n, .bp-home .bp-impact__stats dd span, .bp-home .bp-gift__new { font-size: var(--t12); }
 .bp-home .bp-fig__label, .bp-home .bp-mini-h, .bp-home .bp-date__mon { font-weight: 700; }
-.bp-home .bp-fig__note, .bp-home .bp-impact__stats dt, .bp-home .bp-chip, .bp-home .bk-card__reveal, .bp-home .bk-col__head, .bp-home .bp-cardhead > .bp-muted { font-size: var(--t13); }
-.bp-home .bp-fig__sub, .bp-home .bp-cardhead__go, .bp-home .bp-impact__more, .bp-home .bp-todo__meta, .bp-home .bp-since__what > p > span, .bp-home .bp-brief__date, .bp-home .bp-facts-list strong, .bp-home .bp-rsvp__said { font-size: var(--t14); }
-.bp-home .bp-oneline, .bp-home .bp-agpeek, .bp-home .bp-facts-list li, .bp-home .bp-choice, .bp-home .bp-rsvp__q, .bp-home .bp-todo__title, .bp-home .bp-impact__num span { font-size: var(--t15); }
+.bp-home .bp-fig__note, .bp-home .bp-impact__stats dt, .bp-home .bp-chip, .bp-home .bk-card__reveal, .bp-home .bk-col__head, .bp-home .bp-cardhead > .bp-muted, .bp-home .bp-gift__who span, .bp-home .bp-gift__when { font-size: var(--t13); }
+.bp-home .bp-fig__sub, .bp-home .bp-cardhead__go, .bp-home .bp-impact__more, .bp-home .bp-todo__meta, .bp-home .bp-since__what > p > span, .bp-home .bp-brief__date, .bp-home .bp-facts-list strong, .bp-home .bp-rsvp__said, .bp-home .bp-gifts__sum, .bp-home .bp-mix__key li { font-size: var(--t14); }
+.bp-home .bp-oneline, .bp-home .bp-agpeek, .bp-home .bp-facts-list li, .bp-home .bp-choice, .bp-home .bp-rsvp__q, .bp-home .bp-todo__title, .bp-home .bp-impact__num span, .bp-home .bp-gift__amt, .bp-home .bp-gift__who strong { font-size: var(--t15); }
 .bp-home .bp-since__what strong, .bp-home .bk-card__name, .bp-home .bp-impact__stats dd { font-size: var(--t16); }
 .bp-home .bp-chip, .bp-home .bk-card__reveal, .bp-home .bp-cardhead__go, .bp-home .bp-impact__more, .bp-home .bp-choice, .bp-home .bp-rsvp__q, .bp-home .bp-todo__title, .bp-home .bp-facts-list strong, .bp-home .bk-card__name { font-weight: 600; }
 @media (max-width: 640px) { .bp-home .bp-fig__sub { font-size: var(--t13); } .bp-home .bp-fig__note { font-size: var(--t12); } }
@@ -776,7 +801,47 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-accounts__note { color: var(--muted); font-size: 0.86rem; }
 @media (max-width: 640px) { .bp-cash__src { text-align: left; } .bp-accounts li { grid-template-columns: minmax(0, 1fr) auto; } .bp-accounts__bar { grid-column: 1 / -1; order: 3; } }
 .bp-latest { margin-bottom: 1.25rem; }
+/* Where the revenue came from (Home's panel, a meeting's money, Financials): one bar, a part per category. The colors
+   were checked together for lightness, strength and color-blind separation; donations wear SOARD's gold. Every part
+   also says its name and amount, since store's amber and grants' pink are light on white */
+.bp-tone--1 { background: #7A5C00; }
+.bp-tone--2 { background: #DBA500; }
+.bp-tone--3 { background: #4A6BD6; }
+.bp-tone--4 { background: #0A8F72; }
+.bp-tone--5 { background: #D07FBF; }
+.bp-tone--0 { background: #C8C4BA; }
+.bp-sum__mix { padding: 0.95rem 1.35rem 1.05rem; border-top: 1px solid var(--line); }
+.bp-sum__mix > .bp-fig__label, .bp-agmix > .bp-fig__label { margin: 0 0 0.55rem; }
+.bp-agmix { margin-top: 0.9rem; }
+.bp-mix { position: relative; }
+.bp-mix__bar { position: relative; display: flex; gap: 2px; height: 12px; }
+.bp-mix__seg { flex: 0 0 calc(var(--p) - 2px); min-width: 3px; border-radius: 2px; transition: opacity 0.2s; }
+.bp-mix__seg:first-child { border-radius: 4px 2px 2px 4px; }
+.bp-mix__seg:last-of-type { border-radius: 2px 4px 4px 2px; }
+.bp-mix__seg.is-dim { opacity: 0.35; }
+.is-entering .bp-mix__bar { animation: bp-grow 0.9s 0.35s var(--ease) both; transform-origin: left; }
+.bp-mix__tip { position: absolute; z-index: 5; left: var(--x); bottom: calc(100% + 0.5rem); transform: translateX(calc(var(--x) * -1)); display: grid; gap: 0.1rem; padding: 0.4rem 0.65rem; border-radius: 10px; background: var(--ink); color: #fff; font-size: 0.8rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
+.bp-mix__tip strong { color: var(--yellow); font-weight: 700; }
+.bp-mix__tip span { color: rgba(255, 255, 255, 0.78); font-weight: 500; }
+.bp-mix__key { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem 1.4rem; }
+.bp-mix__key li { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--ink-2); font-size: 0.88rem; white-space: nowrap; }
+.bp-mix__key i, .bp-mixtable i { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.bp-mix__key strong { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.bp-mix__key span { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bp-mixtable { margin-top: 0.85rem; }
+.bp-mixtable tbody th, .bp-mixtable td { vertical-align: top; }
+.bp-mixtable__name { display: inline-flex; align-items: center; gap: 0.5rem; }
+.bp-mixtable tbody th small { display: block; margin: 0.1rem 0 0 1.15rem; color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+.bp-mixtable td small { display: block; color: var(--muted); font-size: 0.78rem; }
+/* A phone: the key as a column, the amounts and shares lined up on the right */
+@media (max-width: 640px) {
+  .bp-sum__mix { padding: 0.9rem 0.95rem 1rem; }
+  .bp-mix__key { display: grid; gap: 0.3rem; }
+  .bp-mix__key li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 2.6rem; gap: 0.5rem; }
+  .bp-mix__key strong, .bp-mix__key span { text-align: right; }
+}
 .bp-meters { display: grid; gap: 1.5rem; }
+.bp-note + .bp-meters { margin-top: 1.25rem; }
 .bp-meter__head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.5rem; }
 .bp-meter__head span { font-weight: 650; }
 .bp-meter__head strong { font-family: var(--display); font-size: 1.3rem; font-variant-numeric: tabular-nums; }
@@ -801,6 +866,8 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-table td, .bp-table tbody th { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
 .bp-table td.num, .bp-table th.num { text-align: right; font-variant-numeric: tabular-nums; padding-left: 0.75rem; }
 .bp-table tr:last-child td, .bp-table tr:last-child th { border-bottom: none; }
+/* The smallest phones: a four-column table (the year so far beside last year's) fits without the page scrolling sideways */
+@media (max-width: 340px) { .bp-table { font-size: 0.84rem; } .bp-table td.num, .bp-table th.num { padding-left: 0.45rem; } .bp-table thead th { letter-spacing: 0.03em; } }
 .bp-row--total th, .bp-row--total td, .bp-row--net th, .bp-row--net td { font-weight: 700; }
 .bp-table .bp-row--part th { padding-left: 1.25rem; font-weight: 400; color: var(--ink-2); }
 .bp-table .bp-row--part td { color: var(--ink-2); }

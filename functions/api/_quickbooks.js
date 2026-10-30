@@ -480,14 +480,43 @@ export function bankByMonth(report, also = { ids: new Set(), names: new Set() })
   return ends.map((end, i) => (end && vals[i] ? { month: end.slice(0, 7), end, total: round2(num(vals[i].value) + plus(i)) } : null)).filter(Boolean);
 }
 
-/** Where the year's money came from: Income's own lines (each account or group), then Other Income as one, largest first */
+// The board's revenue categories, read from the income accounts' names (SOARD's own: Individual/Corporate Revenue,
+// Grant Revenue, Store Income, Gala Income, In-Kind Contribution, Rent Income): the first that matches. In kind comes
+// before Donations, so "In-Kind Contribution" is never a cash gift. Any other account is a category of its own
+const REVENUE_KINDS = [
+  ['inkind', 'In kind', /in[\s-]?kind|donated (goods|services)/i],
+  ['store', 'Store sales', /\bstore\b|retail|\bshop\b|merchandise/i],
+  ['grants', 'Grants', /\bgrants?\b/i],
+  ['gala', 'Gala', /\bgala\b/i],
+  ['donations', 'Donations', /individual|corporate|donation|contribution|\bgifts?\b|giving/i],
+];
+/** An income account's category: { key, name } ("Store Income" → store, Store sales; "Golf Income" → Golf) */
+export function revenueKind(label) {
+  const account = accountName(label);
+  const hit = REVENUE_KINDS.find(([, , re]) => re.test(account));
+  if (hit) return { key: hit[0], name: hit[1] };
+  const plain = account.replace(/\s+(revenue|income|sales)$/i, '').trim() || account;
+  return /^other$/i.test(plain) ? { key: 'other', name: 'Other income' } : { key: `account:${plain.toLowerCase()}`, name: plain };
+}
+// A section's accounts, however deep; a section with none is one line of its own (its total)
+const leavesOf = (n) => (n.kind === 'acct' ? [n] : n.kind !== 'section' ? [] : n.kids.some((k) => k.kind !== 'sum') ? n.kids.flatMap(leavesOf) : n.total ? [{ label: n.label, amount: n.total }] : []);
+
+/**
+ * Where the year's money came from, by category: Income's and Other Income's accounts grouped (Donations, Store sales,
+ * Gala, In kind, Grants, then any other account by its name), each with the accounts in it, largest first
+ */
 export function sourcesOf(report) {
   const tree = treeOf(report?.Rows?.Row);
-  const income = tree.find((n) => n.kind === 'section' && (n.group === 'Income' || /^total (income|revenue)$/i.test(n.totalLabel)));
-  const other = tree.find((n) => n.kind === 'section' && (n.group === 'OtherIncome' || /^total other (income|revenue)$/i.test(n.totalLabel)));
-  const list = (income?.kids || []).map((n) => ({ name: accountName(n.label), amount: round2(n.kind === 'section' ? n.total : n.amount) }));
-  if (other?.total) list.push({ name: accountName(other.label) || 'Other income', amount: round2(other.total) });
-  return list.filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
+  const income = tree.filter((n) => n.kind === 'section' && (['Income', 'OtherIncome'].includes(n.group) || /^total (other )?(income|revenue)$/i.test(n.totalLabel)));
+  const by = new Map();
+  for (const leaf of income.flatMap(leavesOf)) {
+    const k = revenueKind(leaf.label);
+    const c = by.get(k.key) || { key: k.key, name: k.name, amount: 0, accounts: [] };
+    c.amount += leaf.amount;
+    if (leaf.amount) c.accounts.push(accountName(leaf.label));
+    by.set(k.key, c);
+  }
+  return [...by.values()].map((c) => ({ ...c, amount: round2(c.amount) })).filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount);
 }
 
 /**
@@ -508,7 +537,7 @@ export function functionsOf(report) {
 
 const DAILY_RETRY_MS = 60 * 60 * 1000;
 // What the daily read keeps: one up whenever it keeps something new, so a deploy's figures show that day, not the next
-const DAILY_SHAPE = 2;
+const DAILY_SHAPE = 3;
 /**
  * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
  * last good read stays; the hourly read is the one that tells Slack
@@ -526,7 +555,8 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     const year = Number(today.slice(0, 4));
     // Last year: the same days, and the whole year (how far along it was by now)
     const sameDay = yearBefore(today);
-    const lastSame = readProfitAndLoss(await pl(`${year - 1}-01-01`, sameDay));
+    const lastSameReport = await pl(`${year - 1}-01-01`, sameDay);
+    const lastSame = readProfitAndLoss(lastSameReport);
     const lastFull = readProfitAndLoss(await pl(`${year - 1}-01-01`, `${year - 1}-12-31`));
     // The last 12 full months: the cash that left the bank accounts (the General Ledger of those accounts), beside the
     // books' expenses (in-kind and depreciation included). Without a clean ledger, no months of cash rather than a guess
@@ -567,7 +597,7 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     const data = {
       shape: DAILY_SHAPE,
       day: today,
-      lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net } },
+      lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net }, sources: sourcesOf(lastSameReport) },
       trailing: { from: tFrom, through: tThrough, spent: trail.spent, cashOut: cashOut ? cashOut.out : null, payments: cashOut ? cashOut.payments : 0 },
       months, statements, functions,
     };

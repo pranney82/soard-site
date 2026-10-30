@@ -43,6 +43,7 @@ const FACTS = {
   fbArchive: { checkedAt: iso(60 * 60e3), archived: 3, needsKid: 1, lastAutoDeployAt: iso(17 * 86400e3) },
   kidStatus: { lastSweepAt: iso(20 * 60e3), lastRunAt: iso(5 * 60e3), changed: 1, lastErrorAt: iso(60 * 60e3), deployPending: false, lastAutoDeployAt: iso(5 * 60e3), hidden: 1 },
   zeffy: { since: iso(3 * 86400e3), lastWebhookAt: iso(2 * 3600e3), lastPostAt: iso(2 * 3600e3), lastSweepAt: iso(10 * 60e3), sweepError: null, missed: 0, missedAt: null, rejectedAt: null, failing: 0, failingWhy: null },
+  boardGifts: { at: iso(12 * 60e3), triedAt: iso(12 * 60e3), error: null },
   reveals: { cachedAt: iso(5 * 60e3) },
   approvals: { lastRunAt: iso(60e3), lastErrorAt: null, last: { name: 'Ava Stone', at: iso(3 * 3600e3), slug: 'ava' }, waiting: [] },
   covers: { covers: 23, last: { slug: 'max', at: iso(2 * 3600e3) }, failing: 0 },
@@ -303,6 +304,16 @@ try {
   ok((await missedThen.page.$eval('.am-panel', (e) => e.textContent)).includes('the webhook has delivered since'), 'and still says the catch-up check caught one');
   ok(missedThen.errors.length === 0, `no console errors${missedThen.errors.length ? ': ' + missedThen.errors.slice(0, 3).join(' | ') : ''}`);
   await missedThen.page.close();
+  // The board page's major gifts: Live while Zeffy is read, Needs attention when it can't be, Off without the key
+  for (const [boardGifts, env, want, says] of [
+    [{ at: iso(2 * 3600e3), triedAt: iso(10 * 60e3), error: 'Zeffy refused ZEFFY_API_KEY' }, FACTS.env, 'Needs attention', 'a refused key'],
+    [{ at: iso(5 * 3600e3), triedAt: iso(5 * 3600e3), error: null }, FACTS.env, 'Needs attention', 'no read for hours'],
+    [null, { ...FACTS.env, zeffyApi: false }, 'Off', 'no ZEFFY_API_KEY'],
+  ]) {
+    const g = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, env, boardGifts } });
+    ok(await statusOf(g.page, 'Major gifts on the board page') === want, `Major gifts on the board page: ${want} with ${says}`);
+    await g.page.close();
+  }
 
   console.log('Desktop, money before the move to Mercury');
   const jobCosts = {

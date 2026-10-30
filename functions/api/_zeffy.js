@@ -27,7 +27,8 @@
  *
  * Problems (Slack refusing posts, the API key refused, the webhook missing
  * gifts or failing its signature) email peter@soardcharity.com and
- * ALERT_EMAILS once a day each. Gifts themselves only ever go to Slack.
+ * ALERT_EMAILS once a day each. Gifts themselves only ever go to Slack, and
+ * from $1,000 to the board page (./_board-gifts.js reads them from Zeffy).
  *
  * Anyone can send a bad signature, so one alone never emails anybody: a
  * refused delivery is noted at most every REJECT_NOTE_EVERY_MS (one D1 read
@@ -152,7 +153,7 @@ function donor(buyer) {
 }
 
 const INTERVALS = [[/month/i, 'monthly'], [/year|annual/i, 'yearly'], [/week/i, 'weekly'], [/quarter/i, 'quarterly']];
-function recurringLabel(p) {
+export function recurringLabel(p) {
   const raw = p?.recurring?.interval || (p?.items || []).map((i) => i?.recurrence_interval).find(Boolean);
   if (!raw) return null;
   const hit = INTERVALS.find(([re]) => re.test(raw));
@@ -326,11 +327,11 @@ async function zeffyGet(env, path, params = {}, fetchImpl = fetch) {
   return body;
 }
 
-/** Zeffy's successful payments made between two Unix times, oldest pages first */
-export async function listPayments(env, { from, to }, fetchImpl = fetch) {
+/** Zeffy's successful payments made between two Unix times, oldest pages first (the board's year reads more pages) */
+export async function listPayments(env, { from, to, pages = SWEEP_MAX_PAGES }, fetchImpl = fetch) {
   const out = [];
   let after = null;
-  for (let page = 0; page < SWEEP_MAX_PAGES; page++) {
+  for (let page = 0; page < pages; page++) {
     const r = await zeffyGet(env, '/payments', { status: 'succeeded', 'created[gte]': from, 'created[lte]': to, limit: 100, starting_after: after }, fetchImpl);
     out.push(...(r?.data || []));
     if (!r?.has_more || !r.next_cursor) break;

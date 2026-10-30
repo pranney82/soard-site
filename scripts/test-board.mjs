@@ -49,6 +49,7 @@ import * as booksAdmin from '../functions/api/books-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
 import { provideBoardFinance, maybeLockNumbers } from '../functions/api/_board.js';
+import { maybeReadGifts } from '../functions/api/_board-gifts.js';
 import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
 import { generateKeyPairSync } from 'node:crypto';
@@ -585,8 +586,20 @@ try {
   ok(await waitText(pat, /This page is for SOARD’s board/), 'the board page refuses other staff, with a way back to the admin');
 
   // ─── A board member ───
+  // This year's major gifts, read from a pretend Zeffy as the heartbeat reads it (made-up givers): one in kind, one for a
+  // company, one named for Maya (the board reads "Makeovers"), and one under $1,000 that stays off the page
+  const zeffyPay = (id, daysAgo, dollars, o = {}) => ({ id, created: Math.floor((Date.now() - daysAgo * 864e5) / 1000), amount: dollars * 100, currency: 'usd', status: 'succeeded', type: 'online', refund_status: 'none', refunds: [], description: 'Evening of Sunshine', buyer: { first_name: 'Dana', last_name: 'Example', email: 'dana@example.com', is_corporate: false }, buyer_questions: [], items: [], recurring: null, ...o });
+  const zeffyYear = [
+    zeffyPay('pay_t0001', 1, 25000, { buyer: { first_name: 'Lee', last_name: 'Sample', is_corporate: true, company_name: 'Sample Family Foundation' } }),
+    zeffyPay('pay_t0002', 2, 5000, { description: 'Help build Maya’s room' }),
+    zeffyPay('pay_t0003', 4, 999),
+    ...Array.from({ length: 6 }, (_, i) => zeffyPay(`pay_t01${i}0`, 10 + i * 7, 1000 + i * 500, { type: i === 2 ? 'manual' : 'online', payment_method: i === 2 ? { type: 'in_kind' } : null })),
+  ];
+  await maybeReadGifts({ DB, ZEFFY_API_KEY: 'zk-test' }, { fetchImpl: async () => Response.json({ object: 'list', data: zeffyYear, has_more: false, next_cursor: null }) });
   for (const width of [1440, 390]) {
     console.log(`A board member at ${width}px`);
+    // Their last visit three days ago: the two gifts since are new
+    await DB.prepare('INSERT OR REPLACE INTO board_seen (slug, at) VALUES (?, ?)').bind('alex-rivera', new Date(Date.now() - 3 * 864e5).toISOString()).run();
     const alex = await tab(MEMBER, width);
     await alex.goto(`${SITE}/admin/`, { waitUntil: 'networkidle0' });
     await alex.waitForFunction(() => location.pathname === '/admin/board/', { timeout: 8000 }).catch(() => {});
@@ -609,6 +622,11 @@ try {
     const kids = await alex.$$eval('#makeovers .bk-card:not(.is-quiet)', (c) => c.map((e) => ({ text: e.querySelector('.bk-card__body').textContent, img: !!e.querySelector('.bk-card__photo img, .bk-card__initials') })));
     ok(kids.length === 2 && kids.every((k) => k.img) && kids.some((k) => /^Maya\s*Reveal \w{3} \d+ · 10 AM$/.test(k.text)) && kids.some((k) => /^Leo\s*Reveal mid December$/.test(k.text)), `Home: each kid’s card leads with their photo and carries their reveal, a set day or the part of the month (${JSON.stringify(kids)})`);
     ok(await alex.evaluate(() => /kids served/.test(document.querySelector('#impact')?.textContent || '') && document.querySelector('#impact').getBoundingClientRect().top < document.querySelector('.bp-next').getBoundingClientRect().top), 'Home: Impact near the top, under the figures');
+    ok(await alex.evaluate(() => { const so = [...document.querySelectorAll('#impact .bp-impact__stats > div')].find((d) => /so far$/.test(d.querySelector('dt')?.textContent || '')); return !so || /^\d+ kids? · \d+ rooms?/.test(so.querySelector('dd').textContent); }), 'Home: this year so far gives its kids and its rooms');
+    const gifts = await alex.evaluate(() => { const c = document.querySelector('.bp-gifts'); return c && { sum: c.querySelector('.bp-gifts__sum')?.textContent, rows: [...c.querySelectorAll('.bp-gift')].map((r) => r.textContent), fresh: c.querySelectorAll('.bp-gift.is-new').length, all: c.querySelector('a[href="#/financials/gifts"]')?.textContent, beforeMakeovers: c.getBoundingClientRect().top < document.querySelector('#makeovers').getBoundingClientRect().top, inside: c.scrollWidth <= c.clientWidth }; });
+    ok(gifts?.rows.length === 6 && /^\$25,000Sample Family FoundationLee Sample · Evening of SunshineNew/.test(gifts.rows[0]) && /^\$5,000Dana ExampleMakeoversNew/.test(gifts.rows[1]) && gifts.fresh === 2, `Home: the year’s newest six major gifts, a company with who gave for it, a gift for a kid as Makeovers, the two since their last visit new (${JSON.stringify(gifts?.rows.slice(0, 2))})`);
+    ok(/^\$43,500 from 8 gifts of \$1,000 or more in \d{4}$/.test(gifts?.sum || '') && !gifts.rows.some((r) => /\$999|example\.com|Maya/.test(r)) && gifts.rows.some((r) => /in kind/.test(r)), `Home: the year’s total; nothing under $1,000, no email, no kid’s name (${gifts?.sum})`);
+    ok(gifts?.beforeMakeovers && gifts.inside && /^All 8 this year/.test(gifts.all || ''), 'Home: Major gifts sits above the makeovers, fits its card, and opens the whole year');
     if (width === 1440) {
       // Each year's bar says its numbers under the pointer, inside the panel even at the ends
       const tips = [];
@@ -620,7 +638,7 @@ try {
       await alex.mouse.move(2, 2);
     }
     await alex.evaluate(() => document.querySelector('#impact .bp-impact__more').click());
-    ok(await alex.waitForFunction(() => { const bars = [...document.querySelectorAll('#impact .bp-years__hit')]; return bars.length >= 1 && bars.every((b) => /^\d{4}: \d+ (kids?|rooms?)( so far)?, \d+ makeovers?$/.test(b.getAttribute('aria-label') || '')) && /\d{4}/.test(document.querySelector('.bp-yearpanel__head')?.textContent || ''); }, { timeout: 3000 }).then(() => true, () => false), 'Home: Explore by year opens a bar a year, each saying its numbers, and the year’s makeovers');
+    ok(await alex.waitForFunction(() => { const bars = [...document.querySelectorAll('#impact .bp-years__hit')]; return bars.length >= 1 && bars.every((b) => /^\d{4}( so far)?: \d+ kids?, \d+ rooms?, \d+ makeovers?$/.test(b.getAttribute('aria-label') || '')) && /\d{4}/.test(document.querySelector('.bp-yearpanel__head')?.textContent || ''); }, { timeout: 3000 }).then(() => true, () => false), 'Home: Explore by year opens a bar a year, each saying its numbers, and the year’s makeovers');
     // A year's bar on Home opens that year below; the bigger bars say their numbers too
     const firstYear = await alex.$eval('#impact .bp-spark__bars > button', (b) => b.getAttribute('aria-label').slice(0, 4));
     await alex.click('#impact .bp-spark__bars > button');
@@ -678,6 +696,9 @@ try {
       ok(await alex.evaluate(async () => (await fetch('/api/board-admin')).status) === 403, 'the Board area’s API refuses a board member');
     }
 
+    // Home's "All 8 this year" opens Financials at the major gifts: every one, under the year's total
+    await alex.goto(`${SITE}/admin/board/#/financials/gifts`, { waitUntil: 'networkidle0' });
+    ok(await alex.waitForFunction(() => { const g = document.getElementById('gifts'); if (!g) return false; const r = g.getBoundingClientRect(); return g.querySelectorAll('.bp-gift').length === 8 && /^\$43,500 from 8 gifts in \d{4}$/.test(g.querySelector('.bp-gifts__total')?.textContent || '') && r.top >= 0 && r.top < innerHeight / 2; }, { timeout: 5000 }).then(() => true, () => false), 'Financials: #/financials/gifts opens at the major gifts, all 8 under the year’s total');
     for (const [p, re] of [
       ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Tax returns and audits[\s\S]*2025/],
       ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
@@ -928,6 +949,46 @@ try {
   await waitText(phone, /The board/);
   ok(await overflow(phone) <= 0, 'Members fits a phone');
   await shot(phone, '14-members-390');
+
+  // ─── Where the revenue came from, once QuickBooks is connected: its year so far as the hourly read keeps it
+  // (_quickbooks.js sourcesOf: the income accounts by category), and last year's same days from the daily read ───
+  console.log('Revenue by category');
+  const yr = Number(day(0).slice(0, 4));
+  const cat = (key, name, amount, accounts) => ({ key, name, amount, accounts });
+  const ytdBooks = { year: String(yr), from: `${yr}-01-01`, through: day(0), revenue: 1876045, spent: 1200000, net: 676045, basis: 'Accrual', sources: [
+    cat('donations', 'Donations', 700000, ['Individual/Corporate Revenue']), cat('store', 'Store sales', 415000, ['Store Income', 'Store Discounts']), cat('gala', 'Gala', 400000, ['Gala Income']),
+    cat('inkind', 'In kind', 220000, ['In-Kind Contribution']), cat('grants', 'Grants', 90000, ['Grant Revenue']), cat('account:golf classic', 'Golf Classic', 30000, ['Golf Classic Income']),
+    cat('account:rent', 'Rent', 16000, ['Rent Income']), cat('account:interest', 'Interest', 5000, ['Interest Income']), cat('account:makeover', 'Makeover', 45, ['Makeover Revenue']),
+  ] };
+  const lastBooks = { year: String(yr - 1), through: `${yr - 1}${day(0).slice(4)}`, revenue: 1500000, expenses: 1100000, net: 400000, full: { revenue: 2000000, expenses: 1500000, net: 500000 },
+    sources: [cat('donations', 'Donations', 400000), cat('store', 'Store sales', 830000), cat('gala', 'Gala', 200000), cat('inkind', 'In kind', 70000)] };
+  await DB.exec('CREATE TABLE IF NOT EXISTS books_link (id TEXT PRIMARY KEY, realm_id TEXT NOT NULL, company TEXT, fiscal_start INTEGER, access_token TEXT, access_expires TEXT, refresh_token TEXT NOT NULL, refresh_expires TEXT, ytd TEXT, read_at TEXT, tried_at TEXT, error TEXT, error_at TEXT, error_detail TEXT, told TEXT, linked_at TEXT, linked_by TEXT)');
+  await DB.exec('CREATE TABLE IF NOT EXISTS books_daily (id TEXT PRIMARY KEY, data TEXT, day TEXT, read_at TEXT, tried_at TEXT, error TEXT)');
+  const readAt = new Date().toISOString();
+  await DB.prepare('INSERT OR REPLACE INTO books_link (id, realm_id, company, refresh_token, ytd, read_at, tried_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind('qbo', '9130350000000001', 'Example Charity', 'refresh-test', JSON.stringify(ytdBooks), readAt, readAt).run();
+  await DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at) VALUES (?, ?, ?, ?, ?)').bind('qbo', JSON.stringify({ shape: 3, day: day(0), lastYear: lastBooks, trailing: null, months: [], statements: null, functions: null }), day(0), readAt, readAt).run();
+  for (const width of [1440, 390]) {
+    const money = await tab(MEMBER, width);
+    await money.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
+    ok(await money.waitForSelector('.bp-sum .bp-sum__mix', { timeout: 6000 }).then(() => true, () => false), `Home at ${width}: where the revenue came from, in the at-a-glance panel`);
+    const key = await money.$$eval('.bp-sum__mix .bp-mix__key li', (l) => l.map((x) => x.textContent));
+    // Five categories by name; Golf Classic at 1.6% folds in with rent, interest and the rest
+    ok(JSON.stringify(key) === JSON.stringify(['Donations$700K37%', 'Store sales$415K22%', 'Gala$400K21%', 'In kind$220K12%', 'Grants$90K5%', 'Everything else$51K3%']), `Home at ${width}: donations, store sales, gala, in kind and grants, each with its amount and share; the small ones as Everything else (${JSON.stringify(key)})`);
+    ok(await overflow(money) <= 0, `Home at ${width}: the categories fit`);
+    if (width === 1440) {
+      await money.hover('.bp-mix__seg:nth-child(2)');
+      ok(await money.waitForFunction(() => /^Store sales\$415,000 · 22%\d{4}, same days: \$830,000 · ▼ 50%$/.test(document.querySelector('.bp-mix__tip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'Home: over a part, its exact amount beside last year’s same days');
+      await money.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
+      ok(await money.waitForSelector('.bp-mixtable', { timeout: 6000 }).then(() => true, () => false), 'Financials: the categories as a table');
+      const rows = await money.$$eval('.bp-mixtable tbody tr', (r) => r.map((x) => x.textContent));
+      ok(rows.length === 6 && rows[1] === 'Store salesStore Income, Store Discounts$415,00022%$830,000▼ 50%' && /^Everything elseGolf Classic, Rent, Interest, Makeover\$51,0453%\$0/.test(rows[5]) && rows[4] === 'GrantsGrant Revenue$90,0005%$0–', `Financials: each category with its accounts, beside last year’s same days (${JSON.stringify(rows)})`);
+      await money.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
+      ok(await money.waitForSelector('.bp-agitem .bp-agmix', { timeout: 6000 }).then(() => true, () => false), 'the meeting: its money item says where the revenue came from');
+      await shot(money, '27-revenue-by-category-meeting');
+    }
+    await money.close();
+  }
+  await DB.exec("DELETE FROM books_link; DELETE FROM books_daily");
 
   ok(!consoleErrors.length, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 5).join(' | ')}` : ''}`);
 } catch (err) {

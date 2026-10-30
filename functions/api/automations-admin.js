@@ -18,6 +18,7 @@
  *  - vendorAccess: vendors on their JobTread jobs (last run, people added, accounts made, contacts synced, companies waiting,
  *               and the roles that follow Partners levels: changed, waiting, people the site can't place; counts only)
  *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
+ *  - boardGifts: major gifts on the board page (when Zeffy was last read, any trouble; never a gift)
  *  - mercury:   Mercury through SOARD's relay (both keys present, and the accounts it answers with: names and kinds only)
  *  - board:     Access's board sign-in list (synced, the policy on the app, members without an email), bank history months, the last packet
  *  - staff:     staff sign-in from SOARD's Google accounts (last read, active and off counts, the fix a failed read needs, who was signed out)
@@ -61,6 +62,7 @@ import { staffStatus } from './_staff-access.js';
 import { mailSweepStatus } from './_mail-sweep.js';
 import { backfillStatus } from './_coi-backfill.js';
 import { processFacts } from './_process-docs.js';
+import { giftsStatus } from './_board-gifts.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -453,6 +455,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     coiBackfill: await settle(() => backfillStatus(env)),
     // The process Docs Process follows: their names, last read and any problem (_process-docs.js)
     processDocs: await settle(() => processFacts(DB)),
+    // The board page's major gifts: when Zeffy was last read, any trouble (_board-gifts.js)
+    boardGifts: await settle(() => giftsStatus(DB)),
   };
 }
 
