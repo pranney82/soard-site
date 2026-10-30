@@ -165,6 +165,7 @@ function init(root, cfg, mode) {
     back: $('[data-back]'),
     next: $('[data-next]'),
     nextLabel: $('[data-next-label]'),
+    nextShort: $('[data-next-short]'),
     navNote: $('[data-nav-note]'),
     saveLaters: [...root.querySelectorAll('[data-save-later]')],   // under the buttons, and in the rail on a computer
     saveStates: [...root.querySelectorAll('[data-save-state]')],
@@ -344,7 +345,7 @@ function init(root, cfg, mode) {
       const show = isVisible(own, a, byId);
       if (el.hidden !== show) continue;
       el.hidden = !show;
-      if (show && animate) enter(el, 0, -6);
+      if (show && animate) openUp(el);
       if (!show) setFieldError(f.id, null);
     }
     for (const f of fields) {
@@ -361,6 +362,17 @@ function init(root, cfg, mode) {
   function enter(el, x, y = 0, duration = SLIDE_MS, easing = EASE) {
     if (!el || reducedMotion() || !el.animate) return null;
     return el.animate([{ opacity: 0, transform: `translate(${x}px, ${y}px)` }, { opacity: 1, transform: 'none' }], { duration, easing });
+  }
+  /** A follow-up opening under its question: its room opens (nothing below jumps), and it fades in as it does */
+  function openUp(el) {
+    if (!el || reducedMotion() || !el.animate) return;
+    const h = el.getBoundingClientRect().height;
+    const gap = parseFloat(getComputedStyle(el.parentElement).rowGap) || 0;
+    el.animate([
+      { height: '0px', marginTop: `${-gap}px`, opacity: 0, transform: 'translateY(-6px)', overflow: 'hidden' },
+      { height: `${h}px`, marginTop: '0px', opacity: 0.4, transform: 'translateY(-2px)', overflow: 'hidden', offset: 0.55 },
+      { height: `${h}px`, marginTop: '0px', opacity: 1, transform: 'none', overflow: 'hidden' },
+    ], { duration: 340, easing: 'cubic-bezier(.2,.8,.2,1)' });
   }
   /** The question being edited in the admin, outlined for a moment */
   function flash(el) {
@@ -753,6 +765,7 @@ function init(root, cfg, mode) {
     ui.back.hidden = at <= 0 && screenNo === 0;
     const label = review ? (busy ? 'submitting' : 'submit') : fromReview ? 'toReview' : ids[at + 1] === 'review' && lastScreen ? 'reviewBtn' : 'next';
     ui.nextLabel.textContent = T(label);
+    if (ui.nextShort) ui.nextShort.textContent = T({ reviewBtn: 'reviewBtnShort', toReview: 'toReviewShort', submit: 'submitShort' }[label] || label);
     ui.next.classList.toggle('af-btn--submit', review);
     let blockedBy = null;
     if (review) {
@@ -795,6 +808,25 @@ function init(root, cfg, mode) {
   const pieces = (pid) => [...(pageEl(pid)?.children || [])].flatMap(k => (k.matches('.af-place[data-split]') ? [...k.children] : [k]));
   const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : [...el.querySelectorAll('[data-field]')].map(x => x.dataset.field));
   const isNote = (el) => ['content', 'guidelines', 'image'].includes(el.dataset.type);
+  /**
+   * Words taller than the room are read a screen at a time: cut between their blocks (paragraphs, a
+   * list's items, the guidelines' "What we do" and "What we don't"), going into a part that's still
+   * too tall while its blocks stand one under another (never through a row of cards). Words that
+   * lead into what follows (a heading, a bold line, a line ending in ":") stay with it.
+   */
+  const isLead = (el) => /^H[1-6]$/.test(el.tagName) || (el.tagName === 'P'
+    && (/:\s*$/.test(el.textContent) || (el.children.length === 1 && el.firstElementChild.tagName === 'STRONG' && el.textContent.trim() === el.firstElementChild.textContent.trim())));
+  function readParts(el, fit, into, cuts) {
+    const kids = [...el.children].filter(c => c.getClientRects().length);
+    const stacked = kids.every((c, i) => !i || c.getBoundingClientRect().top >= kids[i - 1].getBoundingClientRect().bottom - 1);
+    if (kids.length < 2 || !stacked) { into.push(el); return; }
+    cuts.push(el);
+    for (const c of kids) {
+      if (c.getBoundingClientRect().height > fit) readParts(c, fit, into, cuts);
+      else into.push(c);
+    }
+  }
+  const cutsOf = {}; // page → the notes (and parts of them) cut across its screens
   let packSize = '';
   function room(el) {
     const top = ui.top?.offsetHeight || 0;
@@ -835,9 +867,13 @@ function init(root, cfg, mode) {
     }
     return () => undo.reverse().forEach(f => f());
   }
-  function pack(pid) {
+  /** The page's screens; with `keep` (the screens already seen), only the ones after them, worked out again */
+  function pack(pid, keep = null) {
     const el = pageEl(pid);
     if (!focused || !el || el.hidden || ui.form.hidden) return null;
+    // A style still easing to its new value would be measured half-done (with reduced motion every
+    // change still eases for a moment): taking the screen's own padding, the first step came out too narrow
+    for (const a of document.getAnimations()) if (a.transitionProperty) a.finish();
     el.querySelectorAll('[data-off]').forEach(k => k.removeAttribute('data-off'));
     const places = [...el.querySelectorAll(':scope > .af-place')];
     places.forEach(p => p.removeAttribute('data-split'));
@@ -852,36 +888,61 @@ function init(root, cfg, mode) {
       const nh = note && isNote(note) ? note.getBoundingClientRect().height : 0;
       if ((nh && nh < fit * 0.5 ? nh + gap : 0) + p.getBoundingClientRect().height > fit) p.setAttribute('data-split', '');
     }
-    const kids = pieces(pid);
-    const h = kids.map(k => k.getBoundingClientRect().height);
+    const cuts = [];
+    const kids = pieces(pid).flatMap((k) => {
+      // Cut only into two screens at most: longer words are one read that scrolls (ten slides of
+      // text on a phone would be worse)
+      const nh = isNote(k) ? k.getBoundingClientRect().height : 0;
+      if (nh <= fit || nh > fit * 2) return [k];
+      const parts = [];
+      readParts(k, fit, parts, cuts);
+      return parts;
+    });
+    cutsOf[pid] = cuts;
+    // Each piece's height, and the room between it and the piece before as drawn: a paragraph's
+    // spacing inside words, the page's gap between questions
+    const rects = kids.map(k => k.getBoundingClientRect());
+    const h = rects.map(r => r.height);
+    let above = null;
+    const sp = rects.map((r) => {
+      if (!r.height) return 0;
+      const s = above == null ? 0 : Math.max(0, r.top - above);
+      above = r.bottom;
+      return s;
+    });
     undo();
     if (!kids.length) return null;
+    // Pieces already on a screen they've seen stay there
+    const seen = keep ? keep.flat() : [];
+    const placed = (k) => seen.some(d => d === k || d.contains(k) || k.contains(d));
     const blocks = [];
     kids.forEach((k, i) => {
+      if (placed(k)) return;
       const prev = blocks[blocks.length - 1];
       const f = k.matches('[data-field]') ? byId[k.dataset.field] : null;
       const follows = prev && (!h[i] || (f?.showIf && prev.ids.has(f.showIf.field)));
       if (prev && (follows || prev.carry)) {
         prev.kids.push(k);
-        if (h[i]) prev.h += gap + h[i];
+        if (h[i]) prev.h += sp[i] + h[i];
         idsOf(k).forEach(x => prev.ids.add(x));
         prev.carry = prev.carry && !h[i];
         return;
       }
-      blocks.push({ kids: [k], h: h[i], ids: new Set(idsOf(k)), carry: isNote(k) && h[i] > 0 && h[i] < fit * 0.5 });
+      blocks.push({ kids: [k], h: h[i], sp: sp[i], ids: new Set(idsOf(k)), carry: h[i] > 0 && ((isNote(k) && h[i] < fit * 0.5) || isLead(k)) });
     });
     // The fewest screens that fit…
     let n = 0;
     let acc = -1;
     for (const b of blocks) {
-      if (acc < 0 || acc + gap + b.h > fit) { n++; acc = b.h; } else acc += gap + b.h;
+      if (acc < 0 || acc + b.sp + b.h > fit) { n++; acc = b.h; } else acc += b.sp + b.h;
     }
-    if (n <= 1) return [kids];
+    const rest = blocks.flatMap(b => b.kids);
+    if (!rest.length) return keep;
+    if (n <= 1) return keep ? [...keep, rest] : [rest];
     // …then the most even split into that many: no screen over the room (unless one piece is),
     // and the screens as close to each other in height as they can be
     const B = blocks.length;
-    const cost = (i, j) => blocks.slice(i, j).reduce((s, b, k) => s + b.h + (k ? gap : 0), 0);
-    const cap = Math.max(fit, ...blocks.map(b => b.h));
+    const cost = (i, j) => blocks.slice(i, j).reduce((s, b, k) => s + b.h + (k ? b.sp : 0), 0);
     const best = Array.from({ length: n + 1 }, () => Array(B + 1).fill(Infinity));
     const cut = Array.from({ length: n + 1 }, () => Array(B + 1).fill(0));
     best[0][0] = 0;
@@ -889,26 +950,29 @@ function init(root, cfg, mode) {
       for (let j = k; j <= B; j++) {
         for (let i = k - 1; i < j; i++) {
           const c = cost(i, j);
-          if (c > cap && j - i > 1) continue;
+          if (c > fit && j - i > 1) continue; // only a piece taller than the room may have a screen over it
           const v = best[k - 1][i] + c * c;
           if (v < best[k][j]) { best[k][j] = v; cut[k][j] = i; }
         }
       }
     }
-    if (!Number.isFinite(best[n][B])) return [kids];
+    if (!Number.isFinite(best[n][B])) return keep ? [...keep, rest] : [rest];
     const screens = [];
     for (let k = n, j = B; k > 0; k--) {
       const i = cut[k][j];
       screens.unshift(blocks.slice(i, j).flatMap(b => b.kids));
       j = i;
     }
-    return screens;
+    return keep ? [...keep, ...screens] : screens;
   }
   /** Show the current screen's pieces, the others waiting */
   function paintScreen() {
     const list = packs[currentId];
-    const on = new Set(list ? list[screenNo] || [] : pieces(currentId));
-    for (const k of pieces(currentId)) k.toggleAttribute('data-off', !on.has(k));
+    const all = list ? list.flat() : pieces(currentId);
+    const on = new Set(list ? list[screenNo] || [] : all);
+    for (const k of all) k.toggleAttribute('data-off', !on.has(k));
+    // Words cut across screens show only where they have a part on this one
+    for (const c of (list && cutsOf[currentId]) || []) c.toggleAttribute('data-off', ![...on].some(k => c.contains(k)));
   }
   /** The questions on a screen of a page (the whole page before it's been worked out) */
   const screenFieldIds = (pid = currentId, n = screenNo) => new Set((packs[pid] ? packs[pid][n] || [] : pieces(pid)).flatMap(idsOf));
@@ -940,7 +1004,7 @@ function init(root, cfg, mode) {
    * required answer missing); `at` or `focusField` picks the screen holding that question. Going
    * forward it slides in from the right, going back from the left. Resolves once it's in the page.
    */
-  function show(id, { dir = 0, screen = 0, step = 0, at = null, focus = true, focusField = null, scroll = true } = {}) {
+  function show(id, { dir = 0, screen = 0, step = 0, piece = null, at = null, focus = true, focusField = null, scroll = true } = {}) {
     if (!pageEl(id)) id = stepIds()[0];
     const pageChanged = id !== currentId;
     const update = () => {
@@ -957,15 +1021,14 @@ function init(root, cfg, mode) {
         if (pageChanged || !packs[id]) {
           ui.stepTitle.textContent = titleOf(id); // measured with this step's own name above it
           packs[id] = pack(id);
-        } else if (step && packs[id]) {
-          // A screen on or back is worked out again (an answer can grow what's still to come, like the
-          // service-area check's result), landing on the screen with the piece just past this one
-          const order = packs[id].flat();
-          const here = packs[id][screenNo] || [];
-          const anchor = step > 0 ? order[order.indexOf(here[here.length - 1]) + 1] : order[order.indexOf(here[0]) - 1];
-          packs[id] = pack(id);
-          if (anchor && packs[id]) onto = packs[id].findIndex(kids => kids.includes(anchor));
+        } else if (step > 0 && packs[id]) {
+          // On: the screens still to come are worked out again (an answer can grow what follows, like
+          // the service-area check's result), the ones they've seen kept as they were
+          const kept = packs[id].slice(0, screenNo + 1);
+          const fresh = pack(id, kept);
+          if (fresh && fresh.length > kept.length) { packs[id] = fresh; onto = kept.length; }
         }
+        if (piece && packs[id]) onto = packs[id].findIndex(kids => kids.some(k => k === piece || k.contains(piece) || piece.contains(k)));
         const n = screensIn(id);
         const want = onto >= 0 ? onto : at || focusField ? screenOf(id, at || focusField) : screen === 'last' ? n - 1 : screen === 'open' ? openScreen(id) : screen;
         screenNo = Math.max(0, Math.min(n - 1, Number(want) || 0));
@@ -2699,9 +2762,9 @@ function init(root, cfg, mode) {
       if (!focused || !packSize || !currentId || currentId === 'review' || ui.form.hidden) return;
       const [w0, h0] = packSize.split('x').map(Number);
       if (Math.abs(innerWidth - w0) < 40 && Math.abs(innerHeight - h0) < 120) return;
-      const anchor = [...screenFieldIds()][0];
+      const piece = packs[currentId]?.[screenNo]?.[0] || null; // the same words or question after the resize
       delete packs[currentId];
-      show(currentId, { at: anchor, focus: false, scroll: false });
+      show(currentId, { piece, focus: false, scroll: false });
     }, 180);
   }, { passive: true, signal });
 
@@ -2902,7 +2965,14 @@ function init(root, cfg, mode) {
   const redeclutter = () => { clearTimeout(declutterTimer); declutterTimer = setTimeout(() => { declutter(ui.pages); declutter(ui.stopMap); }, 120); };
   window.addEventListener('resize', redeclutter, { signal });
   window.addEventListener('resize', fitNavLater, { signal });
-  document.fonts?.ready.then(fitNavLater); // measured again in the site's own type
+  // Measured again in the site's own type once it has loaded (the first screen can come before it)
+  document.fonts?.ready.then(() => {
+    fitNavLater();
+    if (!focused || !currentId || currentId === 'review' || !packs[currentId]) return;
+    const piece = packs[currentId][screenNo]?.[0] || null;
+    delete packs[currentId];
+    show(currentId, { piece, focus: false, scroll: false });
+  });
   window.addEventListener('beforeunload', (e) => {
     if (uploads.size || recorder?.rec) { e.preventDefault(); e.returnValue = ''; }
   }, { signal });

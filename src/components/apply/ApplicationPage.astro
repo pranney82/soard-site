@@ -278,7 +278,7 @@ const breadcrumbs = [
               </button>
               <button type="button" class="af-btn af-btn--link af-nav-later" data-save-later data-af-t="saveLater">{w('saveLater')}</button>
               <button type="submit" class="af-btn af-btn--primary af-btn--next" data-next>
-                <span data-next-label>{w('next')}</span>
+                <span data-next-label>{w('next')}</span><span class="af-next-short" data-next-short>{w('next')}</span>
                 <svg class="af-btn-icon af-btn-icon--next" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>
               </button>
             </div>
@@ -548,7 +548,9 @@ const breadcrumbs = [
   .af-pages { position: relative; }
   .af-page { display: grid; gap: 28px; }
   /* A step's later screens wait their turn (the script decides which questions share a screen) */
-  .af-page > [data-off], .af-place > [data-off] { display: none !important; }
+  .af-page [data-off] { display: none !important; }
+  /* Words cut across screens: a later screen's first part starts flush under the step's name */
+  .af-content [data-off] + :not([data-off]) { margin-top: 0; }
   .af-loading { color: var(--c-text-muted); font-size: 16px; padding: 24px 0; }
   .af-page[hidden] { display: none; }
 
@@ -578,6 +580,9 @@ const breadcrumbs = [
 
   html.af-focus .af-content .af-scope-title { margin-top: 0; }
   html.af-focus .af-content .af-offer-card { padding: 16px; gap: 12px; grid-template-columns: 44px minmax(0, 1fr); }
+  /* Two columns that each pack their own cards, so a short one leaves no hole (one column on a phone) */
+  html.af-focus .af-content .af-offer-grid { display: block; columns: 2; column-gap: 12px; }
+  html.af-focus .af-content .af-offer-card { break-inside: avoid; margin-bottom: 12px; }
   html.af-focus .af-content .af-offer-icon { width: 44px; height: 44px; border-radius: 13px; }
   html.af-focus .af-content .af-offer-text { font-size: 14px; line-height: 1.5; }
   html.af-focus .af-content .af-offer-text strong { font-size: 15.5px; }
@@ -1027,7 +1032,7 @@ const breadcrumbs = [
   .af-map-town--minor > span { font-size: 11.5px; font-weight: 500; color: #4A4B50; }
   .af-map-county-name { position: absolute; transform: translate(-50%, -50%); font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #8E8778; white-space: nowrap; }
   .af-map-pin { position: absolute; width: 0; height: 0; z-index: 2; }
-  .af-map-pin-head { position: absolute; left: -13px; top: -34px; width: 26px; height: 34px; max-width: none; filter: drop-shadow(0 3px 4px rgba(30,31,37,.28)); animation: afPinDrop .5s var(--af-ease) both; }
+  .af-map-pin-head { position: absolute; left: -13px; top: -34px; width: 26px; height: 34px; max-width: none; filter: drop-shadow(0 3px 4px rgba(30,31,37,.28)); animation: afPinDrop .6s cubic-bezier(.34,1.45,.64,1) both; }
   .af-map-pin::before { content: ''; position: absolute; left: -16px; top: -8px; width: 32px; height: 16px; border-radius: 50%; border: 2px solid var(--c-dark); opacity: 0; animation: afPinRing 1.4s var(--af-ease) .35s both; }
   .af-map-pin-label { position: absolute; left: 15px; top: -36px; white-space: nowrap; background: var(--c-dark); color: #fff; font-size: 12px; font-weight: 700; line-height: 1; padding: 6px 9px; border-radius: 99px; animation: afFadeIn .3s var(--af-ease) .25s both; }
   .af-map-away { position: absolute; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; background: var(--c-dark); color: #fff; font-size: 12.5px; font-weight: 700; padding: 6px 11px 6px 8px; border-radius: 99px; box-shadow: 0 6px 16px -4px rgba(30,31,37,.35); }
@@ -1055,7 +1060,7 @@ const breadcrumbs = [
   .af-map-labels .is-crowded { visibility: hidden; }
   .af-area-ask { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
   .af-stop-map { margin: 8px 0 4px; }
-  @keyframes afPinDrop { from { opacity: 0; transform: translateY(-16px); } 60% { opacity: 1; } to { opacity: 1; transform: none; } }
+  @keyframes afPinDrop { from { opacity: 0; transform: translateY(-30px); } 40% { opacity: 1; } to { opacity: 1; transform: none; } }
   @keyframes afPinRing { 0% { opacity: .55; transform: scale(.4); } 100% { opacity: 0; transform: scale(1.6); } }
   @keyframes afSpin { to { transform: rotate(360deg); } }
   @media (max-width: 560px) {
@@ -1132,6 +1137,7 @@ const breadcrumbs = [
   .af-nav-row [data-next] { margin-left: auto; min-width: 200px; }
   html.af-focus .af-nav-note { max-width: calc(var(--af-col) - 48px); margin: 0 auto 12px; }
   .af-save-row { display: flex; justify-content: flex-start; margin-top: 24px; }
+  .af-next-short { display: none; }
   .af-nav-later { margin-left: auto; }
   .af-nav-later + [data-next] { margin-left: 0; }
   /* With the screen to itself, the questions get all the room between the top bar and Back / Continue:
@@ -1142,6 +1148,8 @@ const breadcrumbs = [
     html.af-focus .af-nav-later { display: inline-flex; flex: 0 1 auto; min-width: 0; max-width: 40%; min-height: 44px; padding: 0 2px; font-size: 14px; line-height: 1.2; text-align: center; }
     html.af-focus .af-nav-later.is-squeezed { display: none; }
     html.af-focus .af-nav-row [data-next] { flex: 1 0 auto; white-space: nowrap; }
+    html.af-focus [data-next] [data-next-label] { display: none; }
+    html.af-focus [data-next] .af-next-short { display: inline; }
     html.af-focus .af-nav-row .af-btn--back { width: 52px; min-width: 52px; padding: 0; justify-content: center; flex: none; }
     html.af-focus .af-nav-row .af-btn--back span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   }
@@ -1278,6 +1286,10 @@ const breadcrumbs = [
   html.af-focus .af-place[data-split] > .af-field--address { grid-column: auto; grid-row: auto; }
   html.af-focus .af-place[data-split] > .af-field--area { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
   /* The map's screen says the county ("…in Gwinnett County"), so the address's screen needn't */
+  /* On its own screen the home drops onto the map once the screen has slid in, not while it moves */
+  html.af-focus .af-place[data-split] .af-map-pin-head { animation-delay: .3s; }
+  html.af-focus .af-place[data-split] .af-map-pin-label { animation-delay: .62s; }
+  html.af-focus .af-place[data-split] .af-map-pin::before { animation-delay: .7s; }
   html.af-focus .af-place[data-split] .af-county-note { display: none; }
   @container (min-width: 600px) {
     html.af-focus .af-place[data-split] > .af-field--area { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 16px 24px; }
@@ -1368,6 +1380,14 @@ const breadcrumbs = [
     .af-top-exit svg { width: 16px; height: 16px; }
     html.af-focus .af-stage { padding: 14px 18px 12px; }
     html.af-focus .af-content { font-size: 16px; line-height: 1.6; }
+    html.af-focus .af-content .af-offer-grid { columns: 1; }
+    /* A phone's cards: the icon beside the name, the words the card's full width under them */
+    html.af-focus .af-content .af-scope-title { font-size: 21px; line-height: 1.25; }
+    html.af-focus .af-content .af-offer-card { grid-template-columns: 36px minmax(0, 1fr); column-gap: 12px; row-gap: 6px; align-items: center; padding: 14px 16px; }
+    html.af-focus .af-content .af-offer-text { display: contents; }
+    html.af-focus .af-content .af-offer-text > span { grid-column: 1 / -1; }
+    html.af-focus .af-content .af-offer-icon { width: 36px; height: 36px; border-radius: 10px; }
+    html.af-focus .af-content .af-offer-icon .af-ic { width: 22px; height: 22px; }
     html.af-focus .af-head { margin-bottom: 18px; }
     /* "All steps" keeps its 44px to tap, but its line takes only what the words beside it need */
     html.af-focus .af-head-top { margin-bottom: 8px; min-height: 24px; }

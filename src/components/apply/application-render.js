@@ -26,6 +26,8 @@ export const UI = {
   en: {
     step: 'Step {n} of {total}', part: 'Part {n} of {total}', next: 'Continue', back: 'Back', reviewBtn: 'Review my answers', toReview: 'Back to review',
     submit: 'Submit application', submitting: 'Submitting…',
+    // A phone's Continue, beside Back and Save and finish later: one short word
+    reviewBtnShort: 'Review', toReviewShort: 'Review', submitShort: 'Submit',
     saveLater: 'Save and finish later', saving: 'Saving…', saved: 'All changes saved', savedShort: 'All changes saved', unsaved: 'Unsaved changes', paused: 'Saving paused for a moment',
     notSaved: 'Not saved yet. We will try again.', offline: 'Offline. Your answers will save when you reconnect.',
     reviewTitle: 'Review and submit', reviewIntro: 'Please look over your answers. Use Edit to change anything, then submit.',
@@ -116,6 +118,7 @@ export const UI = {
   es: {
     step: 'Paso {n} de {total}', part: 'Parte {n} de {total}', next: 'Continuar', back: 'Atrás', reviewBtn: 'Revisar mis respuestas', toReview: 'Volver a la revisión',
     submit: 'Enviar solicitud', submitting: 'Enviando…',
+    reviewBtnShort: 'Revisar', toReviewShort: 'Revisar', submitShort: 'Enviar',
     saveLater: 'Guardar y terminar después', saving: 'Guardando…', saved: 'Todos los cambios están guardados', savedShort: 'Cambios guardados', unsaved: 'Cambios sin guardar', paused: 'El guardado está en pausa por un momento',
     notSaved: 'Todavía no se guardó. Lo intentaremos de nuevo.', offline: 'Sin conexión. Sus respuestas se guardarán cuando se vuelva a conectar.',
     reviewTitle: 'Revisar y enviar', reviewIntro: 'Revise sus respuestas. Use Editar para cambiar algo y después envíe la solicitud.',
