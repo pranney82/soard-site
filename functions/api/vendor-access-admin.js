@@ -11,12 +11,15 @@
  * POST { recheck: { company } }                → that company's jobs again, now
  * POST { unmatch: { partner } }                → "Not the same": not that JobTread vendor after all, and what the match did is taken back
  * POST { rename: { partner, name? } }          → the JobTread vendor takes the partner's name (or name: the old one, to undo)
+ * POST { rolePick: { membership, role?, keep?, name } } → someone the roles sweep can't place: Trade Partner, or leave their role
+ *                                                (neither: undo the pick). See ./_partner-roles.js
  * Each POST but setAside and rename runs that company's part of the sync
  * straight away and answers { report, view }.
  *
  * See ./_vendor-access.js.
  */
 import { adminView, setCompanyAside, settleAccount, syncVendorAccess, unmatchAccount, renameAccount } from './_vendor-access.js';
+import { pickRole } from './_partner-roles.js';
 import { saveContacts, grantForPartner } from './_sponsors.js';
 import { logAudit } from './_audit.js';
 import { nameKey } from '../../public/admin/partners-shared.js';
@@ -102,6 +105,16 @@ export async function onRequestPost(context) {
     try { done = await renameAccount(env, { partner, name }); } catch (e) { return fail(e.message, /JobTread:/.test(e.message) ? 500 : 404); }
     if (done.from !== done.to) await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'jobtread-vendor', entitySlug: partner, entityName: 'Renamed in JobTread', changes: { from: done.from, to: done.to } });
     return ok({ renamed: done, view: await adminView(env.DB) });
+  }
+
+  if (body?.rolePick) {
+    const { membership, role = null, keep = false, name = null } = body.rolePick;
+    if (!ACCOUNT_RE.test(membership || '')) return fail('Bad choice');
+    let pick;
+    try { pick = await pickRole(env.DB, { membership, role: role || null, keep: !!keep, name: typeof name === 'string' ? name.slice(0, 120) : null }, by); } catch (e) { return fail(e.message); }
+    await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'jobtread-roles', entityName: name || 'Someone in JobTread',
+      changes: { pick: pick?.role || (pick?.keep ? 'Leave their role' : 'Undone') } });
+    return ok({ view: await adminView(env.DB) });
   }
 
   if (body?.recheck) {

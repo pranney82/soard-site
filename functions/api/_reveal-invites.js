@@ -64,6 +64,7 @@ import { slackCard } from './_slack-cards.js';
 import { personStatus, personName } from './_team.js';
 import { limit } from './_rate-limit.js';
 import { syncKidStatuses } from './_kid-status.js';
+import { LEVEL_ROLES, TRADE_ROLE } from './_partner-roles.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
 export const FIELD_STATUS = '22P52qfFub9b';
@@ -150,8 +151,12 @@ export async function testGuests(DB) {
 }
 const STAFF_ROLES = new Set(['Admin', 'Designer']);
 const FAMILY_ROLE = 'Makeover Family';
-// People given access to the job who join once the reveal is confirmed, by JobTread role
-const CONFIRMED_ROLES = { Vendor: 'vendor', Sponsor: 'sponsor', Photographer: 'photographer', 'Design Partner': 'design partner' };
+// People given access to the job who join once the reveal is confirmed, by JobTread role: partners
+// by their level (./_partner-roles.js), trade partners, and the roles from before levels
+const CONFIRMED_ROLES = {
+  ...Object.fromEntries(LEVEL_ROLES.map((r) => [r, 'partner'])), [TRADE_ROLE]: 'trade partner',
+  Vendor: 'vendor', 'Monetary Sponsor': 'sponsor', Sponsor: 'sponsor', Photographer: 'photographer', 'Design Partner': 'design partner',
+};
 const BOARD_ROLE = 'Board Member';
 export const BOARD_ROLE_ID = '22PgGdtxTATR';
 // Logins with staff roles that aren't people: the Qualification Committee and the DATAx integration
@@ -310,7 +315,7 @@ export async function fetchJob(grantKey, jobId, fetchImpl = fetch) {
 }
 
 /** Who has been given access to a job in JobTread (family, vendors, sponsors…), for the guest list */
-export const JOB_ACCESS = { $: { size: 50 }, nodes: { membership: { isInternal: {}, role: { name: {} }, user: { name: {}, emailAddress: {} } } } };
+export const JOB_ACCESS = { $: { size: 50 }, nodes: { membership: { isInternal: {}, role: { name: {} }, account: { name: {} }, user: { name: {}, emailAddress: {} } } } };
 
 export const normEmail = (e) => {
   const x = String(e || '').trim().toLowerCase();
@@ -385,7 +390,7 @@ export async function fetchBoard(env, fetchImpl = fetch) {
  */
 export function guestGroups(job, staff = [], board = []) {
   const access = (job?.aces?.nodes || []).map((a) => a.membership).filter((m) => m && !m.isInternal && m.user?.emailAddress);
-  const person = (m, kind) => ({ email: normEmail(m.user.emailAddress), name: m.user.name, kind });
+  const person = (m, kind) => ({ email: normEmail(m.user.emailAddress), name: m.user.name, kind, ...(m.account?.name ? { company: m.account.name } : {}), ...(m.role?.name ? { role: m.role.name } : {}) });
   const partners = access.filter((m) => CONFIRMED_ROLES[m.role?.name]).map((m) => person(m, CONFIRMED_ROLES[m.role.name]));
   const later = new Set(partners.map((p) => p.email));
   const contacts = (job?.location?.account?.contacts?.nodes || [])

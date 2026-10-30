@@ -11,9 +11,11 @@
  *   family   the job's customer contacts with an email, and Makeover Family
  *            users given access to the job
  *   staff    internal Admin and Designer users in JobTread
- *   sponsor  everyone with the Sponsor role given access to the job in
- *            JobTread; the job's Monetary Sponsor field names which sponsor
- *            that is (the admin flags a sponsor with nobody on the job)
+ *   sponsor  the kid's monetary sponsors' people given access to the job
+ *            in JobTread (a partner role: their level, or the old Vendor),
+ *            and anyone JobTread gives the Monetary Sponsor role; the job's
+ *            Monetary Sponsor field names which sponsor that is (the admin
+ *            flags a sponsor with nobody on the job)
  *   always   the admin's "Every demo day" list (social media, …)
  * Nobody else from the job's JobTread access list (Peter, Oct 22 2026: the
  * family, the internal team, the monetary sponsor and social media).
@@ -232,13 +234,25 @@ export function demoHappened(demo, start, now = Date.now()) {
   return start <= (n.time || '00:00');
 }
 
+// Read when a run needs it: ./_sponsors.js reads this module's field ids, so it's loaded on demand
+const sponsorMatch = (DB) => import('./_sponsors.js').then((m) => m.sponsorMatcher(DB)).catch(() => null);
+
+/**
+ * The kid's monetary sponsor on the job: someone with the Monetary Sponsor
+ * role, or with a partner role (their level, or the old Vendor) from one of
+ * the kid's sponsors. isSponsor(person, kid slug): ./_sponsors.js sponsorMatcher.
+ */
+export function sponsorGuests(groups, slug, isSponsor = null) {
+  return groups.confirmed.filter((p) => p.kind === 'sponsor' || (!!isSponsor && !!slug && (p.kind === 'partner' || p.kind === 'vendor') && isSponsor(p, slug)));
+}
+
 /**
  * What the calendar should have for this job's demo day:
  * { action: 'upsert', event, guests, people } | { action: 'hold', reason, waiting? } | { action: 'skip', reason }
  * `sent`: the invite is out, so Set Start Date no longer gates it.
  * 'hold' + waiting: Set Start Date is checked off but there's no Demo date to invite people to.
  */
-export function planDemo(job, staff, { kids = [], people = { always: [] }, organizer = DEFAULT_ORGANIZER, now = Date.now(), config = {}, sent = false, onlyGuests = null } = {}) {
+export function planDemo(job, staff, { kids = [], people = { always: [] }, organizer = DEFAULT_ORGANIZER, now = Date.now(), config = {}, sent = false, onlyGuests = null, isSponsor = null } = {}) {
   if (!job) return { action: 'skip', reason: 'job not found' };
   if (job.organization?.id !== SOARD_ORG_ID) return { action: 'skip', reason: 'not a SOARD job' };
 
@@ -280,8 +294,8 @@ export function planDemo(job, staff, { kids = [], people = { always: [] }, organ
     const g = guestGroups(job, staff, []);
     g.family.forEach((p) => add(p, 'family'));
     g.staff.forEach((p) => add(p, 'staff'));
-    // The monetary sponsor: Sponsor users given access to the job. Vendors, photographers and design partners aren't invited.
-    g.confirmed.filter((p) => p.kind === 'sponsor').forEach((p) => add(p, 'sponsor'));
+    // The monetary sponsor. Other partners, trade partners, photographers and design partners aren't invited.
+    sponsorGuests(g, who.slug, isSponsor).forEach((p) => add(p, 'sponsor'));
     (people.always || []).forEach((p) => add(p, 'always'));
   }
 
@@ -370,16 +384,17 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   const { DB } = env;
   const [config, inviteConfig] = await Promise.all([readConfig(DB), readInviteConfig(DB)]);
   const organizer = inviteConfig.organizer || DEFAULT_ORGANIZER;
-  const [job, staff, kids, people] = await Promise.all([
+  const [job, staff, kids, people, isSponsor] = await Promise.all([
     fetchDemoJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
     preloaded?.staff || fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
     preloaded?.kids || loadKidsAndProjects(DB).catch(() => []),
     preloaded?.people || listPeople(DB),
+    preloaded?.isSponsor || sponsorMatch(DB),
   ]);
   const sandbox = jobId === SANDBOX_JOB_ID || isTestJob(job);
   const row = await readRow(DB, jobId);
   const sent = !!(row?.event_id && row.state === 'sent');
-  const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent, onlyGuests: sandbox ? (inviteConfig.testGuests || DEFAULT_TEST_GUESTS) : null });
+  const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent, isSponsor, onlyGuests: sandbox ? (inviteConfig.testGuests || DEFAULT_TEST_GUESTS) : null });
   if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
   const live = !dryRun && (config.enabled || force || sandbox);
   const name = job ? displayName(job, kids).name : null;
@@ -619,15 +634,16 @@ export async function maybeCheckDemos(env, { fetchImpl = fetch, now = Date.now()
 export async function checkAll(env, { fetchImpl = fetch, now = Date.now(), verify = false, rewrite = false, onlyTest = false } = {}) {
   const ids = await dueJobs(env, { fetchImpl, now, onlyTest });
   if (!ids.length) return [];
-  const [staff, kids, people] = await Promise.all([
+  const [staff, kids, people, isSponsor] = await Promise.all([
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
     loadKidsAndProjects(env.DB).catch(() => []),
     listPeople(env.DB),
+    sponsorMatch(env.DB),
   ]);
   const out = [];
   for (const id of ids) {
     // One job JobTread can't read doesn't hold up the rest
-    out.push(await reconcileDemo(env, id, { fetchImpl, now, verify, rewrite, wait: false, preloaded: { staff, kids, people } })
+    out.push(await reconcileDemo(env, id, { fetchImpl, now, verify, rewrite, wait: false, preloaded: { staff, kids, people, isSponsor } })
       .catch((err) => ({ jobId: id, action: 'error', error: err.message })));
   }
   return out;
@@ -657,14 +673,15 @@ export async function sendTestDemo(env, jobId, testEmail, { cancel = false, samp
     await cancelEvent(token, organizer, eventId, { fetchImpl });
     return { action: 'cancelled', eventId };
   }
-  const [job, staff, kids, people] = await Promise.all([
+  const [job, staff, kids, people, isSponsor] = await Promise.all([
     sample || fetchDemoJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
     loadKidsAndProjects(DB).catch(() => []),
     listPeople(DB),
+    sponsorMatch(DB),
   ]);
   // As it will go out, even before Set Start Date is checked off
-  const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent: true });
+  const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent: true, isSponsor });
   if (plan.action !== 'upsert') return { action: 'skip', reason: plan.reason };
   const event = {
     ...plan.event,
@@ -685,13 +702,14 @@ export async function listDemos(env, { fetchImpl = fetch, now = Date.now() } = {
   const { DB } = env;
   await ensureSchema(DB);
   const grantKey = env.JOBTREAD_GRANT_KEY;
-  const [config, inviteConfig, jobs, staff, kids, people, rowsRes] = await Promise.all([
+  const [config, inviteConfig, jobs, staff, kids, people, rowsRes, isSponsor] = await Promise.all([
     readConfig(DB), readInviteConfig(DB),
     openJobs(grantKey, fetchImpl),
     fetchStaff(grantKey, fetchImpl),
     loadKidsAndProjects(DB).catch(() => []),
     listPeople(DB),
     DB.prepare('SELECT * FROM demo_invites').all(),
+    sponsorMatch(DB),
   ]);
   const organizer = inviteConfig.organizer || DEFAULT_ORGANIZER;
   const rows = Object.fromEntries((rowsRes.results || []).map((r) => [r.job_id, r]));
@@ -725,7 +743,7 @@ export async function listDemos(env, { fetchImpl = fetch, now = Date.now() } = {
     const who = displayName(job, kids);
     const test = job.id === SANDBOX_JOB_ID || isTestJob(job);
     // As it will go out, even before Set Start Date is checked off
-    const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent: true, onlyGuests: test ? (inviteConfig.testGuests || DEFAULT_TEST_GUESTS) : null });
+    const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent: true, isSponsor, onlyGuests: test ? (inviteConfig.testGuests || DEFAULT_TEST_GUESTS) : null });
     const row = rows[job.id];
     const sponsor = String(values[FIELD_MONETARY_SPONSOR] || '').trim() || null;
     const canLook = !!env.GOOGLE_CALENDAR_KEY && plan.action === 'upsert';
@@ -753,8 +771,8 @@ export async function listDemos(env, { fetchImpl = fetch, now = Date.now() } = {
       startSet,
       space: values[FIELD_MAKEOVER_TYPE] || null,
       sponsor,
-      // Who from the sponsor is on the job in JobTread (the Sponsor role), named; [] flags a sponsor with nobody on it
-      sponsorOnJob: guestGroups(job, [], []).confirmed.filter((p) => p.kind === 'sponsor').map((p) => p.name || p.email),
+      // Who from the sponsor is on the job in JobTread, named; [] flags a sponsor with nobody on it
+      sponsorOnJob: sponsorGuests(guestGroups(job, [], []), who.slug, isSponsor).map((p) => p.name || p.email),
       status: values[FIELD_STATUS] || null,
       // On hold in JobTread (closed, denied, awaiting funding); a missing Demo date shows as its own state
       hold: plan.action === 'hold' && !plan.waiting && demo?.startDate ? plan.reason : null,

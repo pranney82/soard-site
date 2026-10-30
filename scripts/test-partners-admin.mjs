@@ -124,6 +124,20 @@ function makeApi() {
       { partner: 'juniper-rugs', name: 'Juniper Rugs', account: 'acctmade01', accountName: 'Juniper Rugs', how: 'made' },
     ],
     setAside: [], paired: 10, lastRunAt: since, lastRun: { at: since, added: 1 }, lastError: null,
+    // Roles that follow levels (functions/api/_partner-roles.js), before it's switched on
+    roles: {
+      on: false, at: since, recent: [], problems: [],
+      pending: [
+        { name: 'Ron Randall', company: 'Randall Brothers', partner: 'randall-brothers', from: 'Vendor', to: 'Champion', why: 'level' },
+        { name: 'Tia Knox', company: 'TKO Plumbing', partner: null, from: 'Vendor', to: 'Trade Partner', why: 'trade' },
+      ],
+      unplaced: [
+        { membership: 'memgus0001', name: 'Gus Hall', company: 'Mystery Co', role: 'Vendor', why: 'unknown' },
+        { membership: 'memcal0001', name: 'Cal Stone', company: 'Stone Works', role: 'Champion', why: 'level' },
+      ],
+    },
+    loose: [{ name: 'Screenshot 2026-08-31 at 15.13.24', record: 'isla', page: 'Isla’s page' }],
+    billedOnly: [{ partner: 'seabrook-design-co', name: 'Seabrook Design Co' }],
   };
   for (const k of Object.keys(DIR)) st[k] = structuredClone(FX[k] || {});
   for (const k of Object.keys(DIR)) for (const [slug, d] of Object.entries(st[k])) d.slug ||= slug;
@@ -278,6 +292,12 @@ function makeApi() {
         const from = m.accountName;
         m.accountName = b.rename.name || m.name;
         return json({ success: true, renamed: { partner: m.partner, name: m.name, account: m.account, from, to: m.accountName }, view: a });
+      }
+      if (b.rolePick) {
+        const u = a.roles.unplaced.find((x) => x.membership === b.rolePick.membership) || st.picked?.[b.rolePick.membership];
+        st.picked = { ...st.picked, [u.membership]: u };
+        a.roles.unplaced = b.rolePick.role || b.rolePick.keep ? a.roles.unplaced.filter((x) => x !== u) : [...a.roles.unplaced.filter((x) => x.membership !== u.membership), u];
+        return json({ success: true, view: a });
       }
       if (b.contacts) {
         const w = a.waiting.find((x) => x.partner === b.contacts.partner);
@@ -730,7 +750,8 @@ try {
     // (A success toast within 4 seconds of a site save offers Publish: let the emails save above pass first)
     await sleep(4000);
     const tile5 = (await $text(page, '.ppl-ready__tile'))[5] || '';
-    ok(/JobTread access\s*4\s*Crosby Design Group: CDG Interiors in JobTread\?/.test(tile5), `the access tile counts what needs a look and names the first (${tile5})`);
+    // 3 waiting, 1 near name, 2 people the roles check can't place
+    ok(/JobTread access\s*6\s*Crosby Design Group: CDG Interiors in JobTread\?/.test(tile5), `the access tile counts what needs a look and names the first (${tile5})`);
     await clickText(page, '.ppl-ready__tile', 'JobTread access');
     await page.waitForSelector('.pt-access .pt-loose__item', { timeout: 5000 }).catch(() => {});
     ok(await page.evaluate(dialogTitle) === 'JobTread access', 'the tile opens JobTread access');
@@ -826,6 +847,30 @@ try {
     await clickText(page, '.pt-access .btn', 'Same as WYP Construction after all');
     ok(await waitToast(page, /Walk Your Plans is WYP Construction in JobTread now/), '“Same as … after all” puts it back');
     ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ settle: { partner: 'walk-your-plans', account: 'acctwyp1' } }) && !(await accessRow('Walk Your Plans')), 'with that JobTread vendor, and it leaves the question');
+
+    // Roles: people the site can't place, what would change, logos nobody goes by, partners only billed
+    const rolesText = await page.$eval('.pt-access__roles', (e) => e.textContent.replace(/\s+/g, ' ')).catch(() => '');
+    ok(/Who are they\?/.test(rolesText) && /Gus Hall/.test(rolesText) && /a Vendor in JobTread, at Mystery Co, which isn’t a partner or a vendor SOARD pays/.test(rolesText), `someone the site can’t place is asked about (${rolesText.slice(0, 160)})`);
+    ok(/a Champion in JobTread, at Stone Works, which isn’t in Partners\. Add the company in Partners as a Champion/.test(rolesText), 'a level set by hand for a company not in Partners says to add it there');
+    await clickText(page, '.pt-access__roles .pt-loose__item .btn', 'Trade Partner');
+    ok(await waitToast(page, /Gus Hall is a Trade Partner in JobTread once roles follow levels/), 'Trade Partner: the toast says when it lands');
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ rolePick: { membership: 'memgus0001', name: 'Gus Hall', role: 'Trade Partner' } }), 'and names the person and the role');
+    ok(!/Gus Hall/.test(await page.$eval('.pt-access__roles', (e) => e.textContent).catch(() => '')), 'they leave the list');
+    ok(await clickToastAction(page, /Gus Hall is a Trade Partner/), 'with an Undo');
+    await sleep(300);
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ rolePick: { membership: 'memgus0001', name: 'Gus Hall' } }) && /Gus Hall/.test(await page.$eval('.pt-access__roles', (e) => e.textContent).catch(() => '')), 'Undo puts them back on the list');
+    await clickText(page, '.pt-access__roles .pt-loose__item .btn', 'Leave as Champion');
+    ok(await waitToast(page, /Cal Stone keeps their Champion role/) && lastCall(api, '/api/vendor-access-admin')?.body?.rolePick?.keep === true, '“Leave as …” keeps their role');
+    const toggles = await page.$$eval('.pt-access__matched > .ppl-link', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+    ok(toggles.includes('2 roles to change in JobTread, once roles follow levels') && toggles.includes('1 logo on pages no partner goes by') && toggles.includes('1 partner only billed on jobs'), `what would change, unnamed logos and billed-only partners each fold away (${toggles.join(' | ')})`);
+    await clickText(page, '.pt-access__matched > .ppl-link', '2 roles to change');
+    await sleep(150);
+    const change = await page.evaluate(() => [...document.querySelectorAll('.pt-access__matched li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()).find((t) => t.startsWith('Ron Randall')) || '');
+    ok(change === 'Ron Randall at Randall Brothers Vendor → Champion · their level', `each change: who, the company, from → to and why (${change})`);
+    await clickText(page, '.pt-access__matched > .ppl-link', '1 logo on pages');
+    await sleep(150);
+    ok(await page.$eval('.pt-access__matched a[href="#kids/isla"]', (a) => /Open the page/.test(a.textContent)).catch(() => false), 'an unnamed logo opens its page');
+    await shot(page, 'access-roles');
     await page.keyboard.press('Escape');
     await sleep(300);
 

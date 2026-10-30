@@ -21,7 +21,8 @@ import { onRequestPost as logoAdminPost } from '../functions/api/kid-partners-ad
 
 const HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 const img = (id) => `https://imagedelivery.net/${HASH}/${id}/public`;
-const ROLES = { Vendor: 'r-vendor', Sponsor: 'r-sponsor', 'Makeover Family': 'r-family' };
+const ROLES = { Vendor: 'r-vendor', 'Monetary Sponsor': 'r-sponsor', 'Makeover Family': 'r-family' };
+const PERMS = { Vendor: ['readJobPlans', 'readJobTasks', 'updateJobToDoProgresses'], 'Monetary Sponsor': ['readDailyLogs', 'readJobTaskGroups'] };
 const T0 = Date.parse('2026-10-28T12:00:00Z');
 const MIN = 60 * 1000;
 
@@ -35,6 +36,7 @@ const ISLA = { slug: 'isla-smith', name: 'Isla Smith', year: 2026, sponsors: ['a
 /** A small JobTread: open jobs and who has access, vendor accounts and their contacts, SOARD's memberships */
 function fakeJT({ jobs, members = [], accounts = [] }) {
   const calls = [];
+  const made = [];
   let n = 0;
   const people = new Map(members.map((m) => [m.email, { id: m.id || `m${++n}`, createdAt: '2025-01-01T00:00:00Z', role: null, account: null, internal: false, ...m }]));
   const asMembership = (m) => ({ id: m.id, createdAt: m.createdAt, isInternal: m.internal, role: m.role ? { id: ROLES[m.role], name: m.role } : null, account: m.account, user: { name: m.name, emailAddress: m.email } });
@@ -51,10 +53,13 @@ function fakeJT({ jobs, members = [], accounts = [] }) {
     if (o?.jobs) return reply({ organization: { jobs: { nextPage: null, nodes: jobs.map(({ id, name }) => ({ id, name, closedOn: null })) } } });
     if (o?.accounts) {
       assert.equal(o.accounts.$.where[2], 'vendor');
-      return reply({ organization: { accounts: { nextPage: null, nodes: accounts.map((a) => ({ id: a.id, name: a.name, archivedAt: a.archived ? '2026-01-01' : null, primaryContact: a.primary ? { id: a.primary } : null, contacts: { nodes: a.contacts.map(asContact) } })) } } });
+      return reply({ organization: { accounts: { nextPage: null, nodes: accounts.map((a) => ({ id: a.id, name: a.name, archivedAt: a.archived ? '2026-01-01' : null, primaryContact: a.primary ? { id: a.primary } : null, contacts: { nodes: a.contacts.map(asContact) },
+        customFieldValues: { nodes: Object.entries(a.fields || {}).map(([name, value]) => ({ value, customField: { name } })) } })) } } });
     }
-    if (o?.roles) return reply({ organization: { roles: { nodes: Object.entries(ROLES).map(([name, id]) => ({ id, name })) } } });
+    if (o?.roles) return reply({ organization: { roles: { nodes: Object.entries(ROLES).map(([name, id]) => ({ id, name, type: name === 'Makeover Family' ? 'customer' : 'vendor', permissions: PERMS[name] || [] })) } } });
+    if (o?.memberships && !o.memberships.$.where) return reply({ organization: { memberships: { nextPage: null, nodes: [...people.values()].map(asMembership) } } });
     if (o?.memberships) { const m = people.get(o.memberships.$.where[2]); return reply({ organization: { memberships: { nodes: m ? [asMembership(m)] : [] } } }); }
+    if (q.createRole) { const { name, type, permissions } = q.createRole.$; ROLES[name] = `r-${name.toLowerCase().replace(/\s+/g, '-')}`; PERMS[name] = permissions; made.push({ name, type, permissions }); return reply({ createRole: { createdRole: { id: ROLES[name], name } } }); }
     if (q.createAce) {
       const { assignee, targetId, notify } = q.createAce.$;
       assert.equal(notify, false, 'JobTread never emails vendors');
@@ -99,7 +104,7 @@ function fakeJT({ jobs, members = [], accounts = [] }) {
     throw new Error(`unexpected query ${JSON.stringify(q).slice(0, 120)}`);
   };
   const kinds = () => calls.map((q) => Object.keys(q).find((k) => k !== '$'));
-  return { fetchImpl, calls, people, jobs, accounts, kinds };
+  return { fetchImpl, calls, people, jobs, accounts, kinds, made };
 }
 
 async function world({ kids = [ISLA], partners = [RANDALL, BLYTHE, WYP, ACME], bills = [] } = {}) {
@@ -108,7 +113,7 @@ async function world({ kids = [ISLA], partners = [RANDALL, BLYTHE, WYP, ACME], b
   for (const p of partners) await DB.prepare('INSERT INTO partners (slug, name, level, category, featured, data) VALUES (?, ?, ?, ?, ?, ?)').bind(p.slug, p.name, 'friend', 'build', 0, JSON.stringify(p)).run();
   // The vendors table's JobTread cache: which JobTread vendors have a bill or order on which job
   await DB.prepare('CREATE TABLE IF NOT EXISTS vendors (id TEXT PRIMARY KEY, name TEXT NOT NULL, jt_id TEXT, facts TEXT)').run();
-  for (const b of bills) await DB.prepare('INSERT INTO vendors (id, name, jt_id, facts) VALUES (?, ?, ?, ?)').bind(`v_${b.jtId}`, b.name, b.jtId, JSON.stringify({ jobs: b.jobs.map((jobId) => ({ jobId, order: false })) })).run();
+  for (const b of bills) await DB.prepare('INSERT INTO vendors (id, name, jt_id, facts) VALUES (?, ?, ?, ?)').bind(`v_${b.jtId}`, b.name, b.jtId, JSON.stringify({ jobs: b.jobs.map((jobId) => ({ jobId, order: !!b.order })) })).run();
   return DB;
 }
 const env = (DB) => ({ DB, JOBTREAD_GRANT_KEY: 'k' });
@@ -182,7 +187,7 @@ test('contacts both ways: put together the first time, then the side that change
 test('a sweep: vendors added quietly as Vendors, a page’s company gets a JobTread account, a near name waits, nobody is emailed', async (t) => {
   _resetRoleCache();
   const sent = noMail(t);
-  const DB = await world({ bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }] });
+  const DB = await world({ bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }, { jtId: 'acct-store', name: 'Corner Store', jobs: ['j1'] }, { jtId: 'acct-tile', name: 'Tile Depot', jobs: ['j1'] }] });
   await saveContacts(DB, 'randall-brothers', [{ name: 'Ron Randall', email: 'ron@randallbrothers.example', phone: '(404) 555-0100' }]);
   await saveContacts(DB, 'acme-foundation', [{ name: 'Ann Acme', email: 'ann@acmefdn.example' }]);
   const jt = fakeJT({
@@ -190,7 +195,12 @@ test('a sweep: vendors added quietly as Vendors, a page’s company gets a JobTr
     members: [{ email: 'mom@example.com', name: 'Mom Smith', role: 'Makeover Family' }],
     accounts: [
       { id: 'acct-r', name: 'Randall Brothers', contacts: [] },
-      { id: 'acct-e', name: 'Ace Electric', primary: 'c-e', contacts: [{ id: 'c-e', name: 'Eve Ace', email: 'eve@aceelectric.example' }] },
+      // A sub (JobTread's Trades field says so); its insurance agent is listed first and never goes on the job
+      { id: 'acct-e', name: 'Ace Electric', primary: 'c-e', fields: { Trades: ['Electrical'], Documents: 'Requested' },
+        contacts: [{ id: 'c-agent', name: 'Al Agent', title: 'Insurance agent', email: 'al@insure.example' }, { id: 'c-e', name: 'Eve Ace', email: 'eve@aceelectric.example' }] },
+      // Bought from by card: no trade, W-9 or Documents. And a materials supplier
+      { id: 'acct-store', name: 'Corner Store', contacts: [{ id: 'c-s', name: 'Store Desk', email: 'desk@cornerstore.example' }] },
+      { id: 'acct-tile', name: 'Tile Depot', fields: { 'Materials only': true, Trades: ['Tile'] }, contacts: [{ id: 'c-t', name: 'Tia Tile', email: 'tia@tiledepot.example' }] },
       { id: 'acctwyp1', name: 'WYP Construction', contacts: [] },
     ],
   });
@@ -198,6 +208,7 @@ test('a sweep: vendors added quietly as Vendors, a page’s company gets a JobTr
   assert.deepEqual(report.problems, []);
   assert.deepEqual(report.added.map((a) => `${a.person} (${a.name})`).sort(), ['Eve Ace (Ace Electric)', 'Ron Randall (Randall Brothers)']);
   for (const email of ['ron@randallbrothers.example', 'eve@aceelectric.example']) assert.equal(jt.people.get(email).role, 'Vendor');
+  for (const email of ['al@insure.example', 'desk@cornerstore.example', 'tia@tiledepot.example']) assert.ok(!jt.jobs[0].access.includes(email), `${email} isn’t put on the job`);
   assert.ok(!jt.jobs[0].access.includes('ann@acmefdn.example'), 'the monetary sponsor is the Sponsor sweep’s');
   assert.deepEqual(jt.jobs[1].access, [], 'a TEST job is left alone');
 

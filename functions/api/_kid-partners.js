@@ -1,9 +1,10 @@
 /**
  * Partner logos on kid pages follow JobTread (Peter, Oct 28 2026)
  * ===============================================================
- * Someone given access to a kid's job with the Vendor or Sponsor role worked
- * on that room, so their company's logo goes on the kid's page (or the
- * community project's page) by itself:
+ * Someone given access to a kid's job with a partner role (a Partners level,
+ * or the old Vendor or Monetary Sponsor; never Trade Partner, a company SOARD
+ * pays) worked on that room, so their company's logo goes on the kid's page
+ * (or the community project's page) by itself:
  *   - the company is the JobTread login's account (the vendor or customer
  *     account the person belongs to), else the person's own name
  *   - its logo is the Partners directory's (same name, or a website on the
@@ -30,9 +31,10 @@ import { JT_URL, SOARD_ORG_ID, isProject } from './_reveals.js';
 import { loadAllKids, loadAllProjects, linkJobs, keyOf, saveRecord, requestDeploy, SYNC_USER } from './_kid-status.js';
 import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { cfId, kidUsage, nameKey, wordsKey, domainOf, nearPartners } from '../../public/admin/partners-shared.js';
+import { isPartnerRole, TRADE_ROLE } from './_partner-roles.js';
 
-/** JobTread roles whose company's logo belongs on the page */
-export const LOGO_ROLES = ['Vendor', 'Sponsor'];
+/** JobTread roles whose company's logo belongs on the page: the partner roles but Trade Partner */
+export const isLogoRole = (role) => isPartnerRole(role) && String(role).trim().toLowerCase() !== TRADE_ROLE.toLowerCase();
 export const DEFAULT_EMAILS = ['linzi@soardcharity.com'];
 const SWEEP_EVERY_MS = 10 * 60 * 1000;
 const MAX_PAGES = 8;
@@ -177,7 +179,7 @@ export async function fetchAccess(grantKey, ids, fetchImpl = fetch) {
 }
 
 /**
- * The companies a job's Vendor and Sponsor logins belong to:
+ * The companies a job's partner-role logins (isLogoRole) belong to:
  * [{ company (its name key), name, people: [{ name, email, role }] }]
  */
 export function jobCompanies(job, who = new Map()) {
@@ -185,7 +187,7 @@ export function jobCompanies(job, who = new Map()) {
   for (const a of job?.aces?.nodes || []) {
     const m = a?.membership;
     const role = m?.role?.name;
-    if (!m || m.isInternal || !LOGO_ROLES.includes(role)) continue;
+    if (!m || m.isInternal || !isLogoRole(role)) continue;
     const email = String(m.user?.emailAddress || '').trim().toLowerCase();
     // A login with no account (added by email) is a known contact's company when there is one
     const known = !m.account?.name ? who.get(email) : null;
@@ -353,7 +355,7 @@ async function putRow(DB, r) {
 }
 
 /**
- * Put Vendor and Sponsor logos on their pages. Reads JobTread's open jobs
+ * Put partners' logos on their pages. Reads JobTread's open jobs
  * (or, with fromJobTread false, only re-checks what's waiting, after a
  * Partners or page save). Returns [{ record, name, added: [names], waiting: [names] }].
  * Never throws.

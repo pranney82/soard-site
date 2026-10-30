@@ -3,15 +3,23 @@
  * ===========================================================================
  * Each open kid or community job lists its vendors in JobTread's job access:
  *   - each company whose logo is on the page (the kid's monetary sponsor
- *     aside: the Sponsor role is ./_sponsors.js's), and
+ *     aside: ./_sponsors.js puts its people on), and
  *   - each JobTread vendor with a bill or a purchase order on the job, from
  *     the vendors table's JobTread cache (jt_id + facts.jobs, every 4 hours)
  * A company is on the job when anyone from it has access, in any role: a
  * login under its JobTread account, one of its contacts' emails, or an email
  * on its website's domain. One that isn't gets its first contact with an
- * email (the account's primary contact first) added as a Vendor, without
- * JobTread's email (notify: false). With no email anywhere it waits in
- * Partners → JobTread access, and goes on once someone adds one.
+ * email (its main contact first, never a trade partner's insurance agent or
+ * billing contact) added without JobTread's email (notify: false), in its
+ * role: the partner's level, or Trade Partner (./_partner-roles.js; Vendor
+ * until roles follow levels). With no email anywhere it waits in Partners →
+ * JobTread access, and goes on once someone adds one.
+ *
+ * A JobTread vendor that isn't a partner goes on a job only when SOARD pays
+ * it for work (isTradeVendor: JobTread's Trades, W-9 and Documents fields, or
+ * a purchase order). A store bought from by card, or a materials supplier,
+ * never does. A logo on a page that no partner or JobTread vendor goes by is
+ * listed for staff instead (loose): nobody to put on the job until it's named.
  *
  * A company on a page with no JobTread vendor account gets one, under its
  * Partners name, with its contacts. When JobTread has a vendor by a near name
@@ -40,9 +48,10 @@ import { pave, grantJobAccess, revokeJobAccess } from './_jt-access.js';
 import { readContacts, saveContacts, isEmail } from './_sponsors.js';
 import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from './_applicant-comms.js';
 import { logAudit } from './_audit.js';
+import { roleMode, reconcileRoles, rolesView, OLD_VENDOR_ROLE } from './_partner-roles.js';
 import { nameKey, wordsKey, domainOf, isSocial, kidUsage, nearPartners } from '../../public/admin/partners-shared.js';
 
-export const VENDOR_ROLE = 'Vendor';
+export const VENDOR_ROLE = OLD_VENDOR_ROLE;
 const RUN_EVERY_MS = 15 * 60 * 1000;
 const WRITE_BUDGET_MS = 20 * 1000;
 const MAX_GRANTS = 12;
@@ -106,7 +115,34 @@ function contactOf(c) {
   return { id: c.id, name: String(c.name || '').trim(), title: String(c.title || '').trim(), email: isEmail(email) ? email : '', phone: String(v(FIELD_CONTACT_PHONE)?.value || '').trim(), at };
 }
 
-/** SOARD's JobTread vendors: [{ id, name, archived, primary, contacts: [{ id, name, title, email, phone, at }] }] */
+/**
+ * What JobTread's own vendor fields say (./_vendors.js makes and keeps
+ * them, by these names): { materials, docs, w9, trades: [] }
+ */
+const truthy = (v) => v === true || /^(true|yes|1)$/i.test(String(v ?? '').trim());
+const listOf = (v) => {
+  if (Array.isArray(v)) return v.map(String);
+  const s = String(v ?? '').trim();
+  if (s.startsWith('[')) return parse(s, []).map(String);
+  return s ? s.split(/\s*[,;]\s*/) : [];
+};
+export function vendorFacts(nodes) {
+  const by = new Map((nodes || []).map((n) => [lower(n.customField?.name), n.value]));
+  return { materials: truthy(by.get('materials only')), docs: String(by.get('documents') ?? '').trim(), w9: truthy(by.get('w-9')), trades: listOf(by.get('trades')).filter(Boolean) };
+}
+/**
+ * A JobTread vendor SOARD pays for work, a sub: never "Materials only" or
+ * Documents "Not needed"; otherwise Trades (other than only "Materials and
+ * supplies"), the W-9, a Documents state, or a purchase order. Card-only
+ * stores (Amazon, a restaurant, a permit office) have none of these.
+ */
+export function isTradeVendor(a, { order = false } = {}) {
+  const f = a?.facts || {};
+  if (f.materials || lower(f.docs) === 'not needed') return false;
+  return !!(order || f.w9 || f.docs || (f.trades || []).some((t) => lower(t) !== 'materials and supplies'));
+}
+
+/** SOARD's JobTread vendors: [{ id, name, archived, primary, contacts: [{ id, name, title, email, phone, at }], facts }] */
 export async function fetchVendorAccounts(grantKey, fetchImpl = fetch) {
   const out = [];
   let page = null;
@@ -117,14 +153,20 @@ export async function fetchVendorAccounts(grantKey, fetchImpl = fetch) {
         accounts: {
           $: { size: ACCOUNTS_PAGE, where: ['type', '=', 'vendor'], ...(page ? { page } : {}) },
           nextPage: {},
-          nodes: { id: {}, name: {}, archivedAt: {}, primaryContact: { id: {} }, contacts: { $: { size: MAX_PEOPLE }, nodes: CONTACT } },
+          nodes: {
+            id: {}, name: {}, archivedAt: {}, primaryContact: { id: {} }, contacts: { $: { size: MAX_PEOPLE }, nodes: CONTACT },
+            customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { name: {} } } },
+          },
         },
       },
     }, fetchImpl);
     const conn = body?.organization?.accounts;
     if (!conn) throw new Error('JobTread sent no vendor accounts');
     for (const a of conn.nodes || []) {
-      out.push({ id: a.id, name: String(a.name || '').trim(), archived: !!a.archivedAt, primary: a.primaryContact?.id || null, contacts: (a.contacts?.nodes || []).map(contactOf) });
+      out.push({
+        id: a.id, name: String(a.name || '').trim(), archived: !!a.archivedAt, primary: a.primaryContact?.id || null,
+        contacts: (a.contacts?.nodes || []).map(contactOf), facts: vendorFacts(a.customFieldValues?.nodes),
+      });
     }
     page = conn.nextPage || null;
     if (!page) break;
@@ -140,7 +182,7 @@ async function createAccount(grantKey, name, fetchImpl) {
   const body = await pave(grantKey, { createAccount: { $: { organizationId: SOARD_ORG_ID, name, type: 'vendor' }, createdAccount: { id: {}, name: {} } } }, fetchImpl);
   const a = body?.createAccount?.createdAccount;
   if (!a?.id) throw new Error('JobTread didn’t say it made the account');
-  return { id: a.id, name: a.name || name, archived: false, primary: null, contacts: [] };
+  return { id: a.id, name: a.name || name, archived: false, primary: null, contacts: [], facts: vendorFacts([]) };
 }
 async function createContact(grantKey, accountId, p, fetchImpl) {
   const $ = { accountId, name: p.name || p.email, ...(p.title ? { title: p.title } : {}) };
@@ -273,8 +315,11 @@ export function pairAccounts(partners, accounts, { saved = {}, links = {}, notSa
 /**
  * A page's vendors: [{ company, name, partner, account, why: Set('page','bill') }].
  * bills: the JobTread vendor account ids with a bill or order on the job.
+ * trade(account): a vendor that isn't a partner belongs on the job only when
+ * SOARD pays it for work. loose: gets the page's logos no partner or
+ * JobTread vendor goes by (nobody to put on the job until one does).
  */
-export function jobVendors(rec, { partners, pairs, accounts, bills = [] }) {
+export function jobVendors(rec, { partners, pairs, accounts, bills = [], trade = () => true, loose = null }) {
   const data = rec.data || {};
   const sponsors = new Set(Array.isArray(data.sponsors) ? data.sponsors : []);
   const bySlug = new Map(partners.map((p) => [p.slug, p]));
@@ -299,7 +344,8 @@ export function jobVendors(rec, { partners, pairs, accounts, bills = [] }) {
     const p = partners.find((x) => sameName(x.name, l.name));
     if (p) { if (!sponsors.has(p.slug)) add({ company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null }, 'page'); continue; }
     const a = accounts.find((x) => !x.archived && sameName(x.name, l.name));
-    add({ company: nameKey(String(l.name).trim()), name: String(l.name).trim(), partner: null, account: a || null }, 'page');
+    if (!a) { loose?.push(String(l.name).trim()); continue; }
+    add({ company: nameKey(String(l.name).trim()), name: String(l.name).trim(), partner: null, account: a }, 'page');
   }
   const byId = new Map(accounts.map((a) => [a.id, a]));
   for (const id of bills) {
@@ -308,6 +354,7 @@ export function jobVendors(rec, { partners, pairs, accounts, bills = [] }) {
     const slug = accountOf.get(id);
     if (slug && sponsors.has(slug)) continue;
     const p = slug ? bySlug.get(slug) : null;
+    if (!p && !trade(a)) continue;
     add(p ? { company: nameKey(p.name), name: p.name, partner: slug, account: a } : { company: nameKey(a.name), name: a.name, partner: null, account: a }, 'bill');
   }
   return [...out.values()].filter((v) => v.company);
@@ -328,10 +375,15 @@ export function onJob(v, aces, { people = [], website = '' } = {}) {
   });
 }
 
-/** Who to add: the account's primary contact with an email, its first with one, then Partners' */
+// A trade partner's insurance agent and billing contact (./_trade-partners.js) are never put on a job or copied into Partners
+const OFF_JOBS = new Set(['insurance agent', 'billing']);
+export const forJobs = (c) => !OFF_JOBS.has(lower(c?.title));
+
+/** Who to add: the account's main contact with an email, its primary, its first with one, then Partners' */
 export function personFor(v, people = []) {
-  const jt = v.account?.contacts || [];
-  const p = jt.find((c) => c.id === v.account?.primary && c.email) || jt.find((c) => c.email) || people.find((c) => isEmail(c.email));
+  const jt = (v.account?.contacts || []).filter(forJobs);
+  const p = jt.find((c) => lower(c.title) === 'main contact' && c.email) || jt.find((c) => c.id === v.account?.primary && c.email) || jt.find((c) => c.email)
+    || people.filter(forJobs).find((c) => isEmail(c.email));
   return p ? { name: p.name || v.name, email: lower(p.email) } : null;
 }
 
@@ -340,20 +392,26 @@ async function readPartners(DB) {
   const rows = (await DB.prepare('SELECT slug, data FROM partners').all()).results || [];
   return rows.map((r) => ({ slug: r.slug, ...(parse(r.data || '{}', {}) || {}) })).map((p) => ({ ...p, name: p.name || p.slug }));
 }
-/** Which JobTread vendors have a bill or order on which job, from the vendors table's JobTread cache (only jt_id and facts.jobs[].jobId are read): Map(job id → [account id]) */
+/**
+ * Which JobTread vendors have a bill or order on which job, from the vendors
+ * table's JobTread cache (only jt_id and facts.jobs are read):
+ * { byJob: Map(job id → [account id]), orders: Set(account id with a purchase order) }
+ */
 async function billsByJob(DB) {
-  const out = new Map();
+  const byJob = new Map();
+  const orders = new Set();
   let rows = [];
-  try { rows = (await DB.prepare('SELECT jt_id, facts FROM vendors WHERE jt_id IS NOT NULL').all()).results || []; } catch { return out; }
+  try { rows = (await DB.prepare('SELECT jt_id, facts FROM vendors WHERE jt_id IS NOT NULL').all()).results || []; } catch { return { byJob, orders }; }
   for (const r of rows) {
     for (const j of parse(r.facts, {})?.jobs || []) {
       if (!j?.jobId) continue;
-      const list = out.get(j.jobId) || [];
+      if (j.order) orders.add(r.jt_id);
+      const list = byJob.get(j.jobId) || [];
       if (!list.includes(r.jt_id)) list.push(r.jt_id);
-      out.set(j.jobId, list);
+      byJob.set(j.jobId, list);
     }
   }
-  return out;
+  return { byJob, orders };
 }
 async function readAccountRows(DB) {
   const rows = (await DB.prepare('SELECT * FROM vendor_accounts').all()).results || [];
@@ -391,10 +449,12 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
   if (!(await takeLock(DB, !!only, LOCK))) return { ...report, busy: true };
   const room = () => Date.now() - started < WRITE_BUDGET_MS;
   try {
-    const [jobs, kids, projects, partners, contactsAll, links, accountRows, rows, bills, accounts, setAside, newOk, notSame] = await Promise.all([
+    const [jobs, kids, projects, partners, contactsAll, links, accountRows, rows, { byJob: bills, orders }, accounts, setAside, newOk, notSame, mode] = await Promise.all([
       fetchOpenJobs(key, fetchImpl), loadAllKids(DB), loadAllProjects(DB), readPartners(DB), readContacts(DB), readLinks(DB),
       readAccountRows(DB), readRows(DB), billsByJob(DB), fetchVendorAccounts(key, fetchImpl), readKey(DB, 'set-aside'), readKey(DB, 'new-ok'), readKey(DB, 'not-same'),
+      roleMode(env, { fetchImpl }),
     ]);
+    const trade = (a) => isTradeVendor(a, { order: orders.has(a?.id) });
     const records = [...kids, ...projects];
     const byKey = new Map(records.map((r) => [keyOf(r), r]));
     const bySlug = new Map(partners.map((p) => [p.slug, p]));
@@ -421,13 +481,16 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
     // Each open job with a page, and the vendors that belong on it
     const linked = [...linkJobs(jobs, records)].filter(([k]) => byKey.has(k));
     const want = [];
+    const loose = []; // logos nobody goes by: [{ name, record, page }]
     for (const [k, job] of linked) {
       const rec = byKey.get(k);
-      for (const v of jobVendors(rec, { partners, pairs, accounts, bills: bills.get(job.id) || [] })) {
+      const names = [];
+      for (const v of jobVendors(rec, { partners, pairs, accounts, bills: bills.get(job.id) || [], trade, loose: names })) {
         if (only && v.company !== only) continue;
         if (setAside[v.company]) continue;
         want.push({ k, rec, job, v });
       }
+      for (const name of new Set(names)) loose.push({ name, record: k, page: pageName(rec) });
     }
 
     // A company on a page with no JobTread vendor account gets one; a near name waits for staff
@@ -496,7 +559,9 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       if (report.added.length >= MAX_GRANTS || !room()) { report.more = true; continue; }
       if (!grants.has(job.id)) grants.set(job.id, (aces?.nodes || []).map(({ membership: m } = {}) => ({ email: lower(m?.user?.emailAddress), role: m?.role?.name || null })).filter((x) => x.email));
       try {
-        const g = await grantJobAccess(env, job.id, person, VENDOR_ROLE, { notify: false, access: grants.get(job.id), fetchImpl, now });
+        // A partner's role is its level (once roles follow levels); a sub that isn't one is a Trade Partner
+        const role = v.partner ? mode.partner(bySlug.get(v.partner)) : mode.trade;
+        const g = await grantJobAccess(env, job.id, person, role, { notify: false, access: grants.get(job.id), fetchImpl, now });
         grants.get(job.id).push({ email: person.email, role: g.role });
         const row = { ...base, state: g.state === 'there' ? 'there' : 'added', reason: null, person: { ...person, role: g.role || null, kept: !!g.kept, at } };
         await putRow(DB, row);
@@ -521,9 +586,11 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       const site = contactsAll[slug] || [];
       const siteAt = siteTimes.get(slug) || null;
       const seen = r?.jt_seen && r?.site_seen ? { site: r.site_seen, jt: r.jt_seen, at: r.synced_at } : null;
-      const plan = contactPlan({ site, siteAt, jt: a.contacts, seen });
+      // A trade partner's insurance agent and billing contact stay in JobTread only
+      const jtPeople = a.contacts.filter(forJobs);
+      const plan = contactPlan({ site, siteAt, jt: jtPeople, seen });
       if (!plan.toSite && !plan.toJt) {
-        if (!seen && (site.length || a.contacts.length)) await putAccountRow(DB, { ...r, jt_seen: a.contacts.map(tidy), site_seen: site.map(tidy), synced_at: at });
+        if (!seen && (site.length || jtPeople.length)) await putAccountRow(DB, { ...r, jt_seen: jtPeople.map(tidy), site_seen: site.map(tidy), synced_at: at });
         continue;
       }
       if (!room()) { report.more = true; continue; }
@@ -544,7 +611,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
           copied[slug] = { account: a.id, site: [...new Set([...c.site, ...newToSite])], jt: [...new Set([...c.jt, ...madeInJt])] };
           copiedChanged = true;
         }
-        await putAccountRow(DB, { ...r, jt_seen: jtAfter.map(tidy), site_seen: siteAfter.map(tidy), synced_at: at });
+        await putAccountRow(DB, { ...r, jt_seen: jtAfter.filter(forJobs).map(tidy), site_seen: siteAfter.map(tidy), synced_at: at });
         contactsAll[slug] = siteAfter;
         const to = [plan.toJt && 'JobTread', plan.toSite && 'Partners'].filter(Boolean).join(' and ');
         report.contacts.push({ partner: slug, name: bySlug.get(slug)?.name || a.name, to, people: (plan.toSite || plan.toJt).map((p) => p.name || 'unnamed') });
@@ -557,13 +624,28 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       await logAudit(DB, { userEmail: SYNC_USER, action: 'updated', entityType: 'partner-contacts', entityName: 'Vendor contacts', changes: { synced: report.contacts.map((c) => `${c.name} → ${c.to}: ${c.people.join(', ')}`) } });
     }
 
+    // Roles: each partner's is its level, a sub's Trade Partner (./_partner-roles.js; only writes down the changes until it's on)
+    if (!only) {
+      const contactPartner = new Map();
+      for (const [slug, list] of Object.entries(contactsAll)) for (const p of list || []) if (isEmail(p.email) && !contactPartner.has(lower(p.email))) contactPartner.set(lower(p.email), slug);
+      try {
+        report.roles = await reconcileRoles(env, {
+          bySlug, accountPartner: new Map([...pairs].map(([slug, a]) => [a.id, slug])), contactPartner, links, freeMail: FREE_MAIL,
+          trade: (id) => trade(byId.get(id)),
+        }, { fetchImpl, now, room });
+        if (report.roles.error) report.problems.push(`Roles: ${report.roles.error}`);
+      } catch (e) { report.problems.push(`Roles: ${e.message}`); }
+    }
+
     // Waiting on a job that's closed now, or for a company that no longer belongs there: nothing to wait for
     if (!only) {
       for (const [rk, r] of rows) if (r.state === 'waiting' && !keep.has(rk)) await DB.prepare('DELETE FROM vendor_access WHERE job_id = ? AND company = ?').bind(r.job_id, r.company).run();
       const waitingNow = (await DB.prepare("SELECT count(DISTINCT company) AS n FROM vendor_access WHERE state = 'waiting'").first())?.n || 0;
+      await writeKey(DB, 'loose', loose);
       await patchKey(DB, 'state', {
         lastRunAt: at, lastError: report.problems.length ? { at, error: report.problems.slice(0, 3).join(' · ').slice(0, 300) } : null,
-        lastRun: { at, added: report.added.length, made: report.made.length, contacts: report.contacts.length, waiting: waitingNow, near: Object.keys(near).length, more: report.more },
+        lastRun: { at, added: report.added.length, made: report.made.length, contacts: report.contacts.length, waiting: waitingNow, near: Object.keys(near).length, more: report.more,
+          ...(report.roles ? { roles: report.roles } : {}) },
       });
     }
     return report;
@@ -596,13 +678,16 @@ export async function maybeSyncVendorAccess(env, { fetchImpl = fetch, now = Date
  * Partners → JobTread access: { waiting: [{ company, name, partner, account,
  * reason, error, jobs: [{ jobId, record, page }] }], near: [{ partner, name,
  * near, was? }], added (newest 30), setAside, matched: [{ partner, name, account,
- * accountName, how }] (named differently first), paired, lastRunAt, lastRun, lastError }
+ * accountName, how }] (named differently first), paired, lastRunAt, lastRun, lastError,
+ * loose: [{ name, record, page }] (logos nobody goes by), billedOnly: [{ partner, name }],
+ * roles (./_partner-roles.js rolesView) }
  */
 export async function adminView(DB) {
   await ensureSchema(DB);
-  const [rows, st, near, setAside, accountRows, partners] = await Promise.all([
+  const [rows, st, near, setAside, accountRows, partners, loose, roles] = await Promise.all([
     DB.prepare('SELECT * FROM vendor_access ORDER BY updated_at DESC').all().then((r) => r.results || []),
-    readKey(DB, 'state'), readKey(DB, 'near'), readKey(DB, 'set-aside'), readAccountRows(DB), readPartners(DB),
+    readKey(DB, 'state'), readKey(DB, 'near'), readKey(DB, 'set-aside'), readAccountRows(DB), readPartners(DB), readKey(DB, 'loose'),
+    rolesView(DB).catch(() => null),
   ]);
   // Names and ids only: the contact snapshots stay here
   const nameOf = new Map(partners.map((p) => [p.slug, p.name]));
@@ -620,12 +705,18 @@ export async function adminView(DB) {
   const added = rows.filter((r) => r.state === 'added').map((r) => ({ ...r, person: parse(r.person, {}) }))
     .sort((a, b) => String(b.person?.at || b.updated_at).localeCompare(String(a.person?.at || a.updated_at))).slice(0, 30)
     .map((r) => ({ company: r.company, name: r.name, page: r.page, record: r.record, jobId: r.job_id, why: r.why, person: r.person?.name || null, role: r.person?.role || null, kept: !!r.person?.kept, at: r.person?.at || r.updated_at }));
+  // In Partners, yet only ever billed on jobs (no logo on any page): maybe a company SOARD pays, not a donor
+  const why = new Map();
+  for (const r of rows) if (r.partner) why.set(r.partner, (why.get(r.partner) || '') + ` ${r.why || ''}`);
+  const billedOnly = [...why].filter(([slug, w]) => nameOf.has(slug) && !/page/.test(w)).map(([slug]) => ({ partner: slug, name: nameOf.get(slug) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   return {
     waiting: [...byCompany.values()].sort((a, b) => b.jobs.length - a.jobs.length || String(a.name).localeCompare(String(b.name))),
     near: Object.entries(near).map(([partner, n]) => ({ partner, ...n })).sort((a, b) => String(a.name).localeCompare(String(b.name))),
     added,
     setAside: Object.entries(setAside).map(([company, s]) => ({ company, ...s })).sort((a, b) => String(a.name).localeCompare(String(b.name))),
     matched, paired: matched.length, lastRunAt: st.lastRunAt || null, lastRun: st.lastRun || null, lastError: st.lastError || null,
+    loose: Array.isArray(loose) ? loose : [], billedOnly, roles,
   };
 }
 

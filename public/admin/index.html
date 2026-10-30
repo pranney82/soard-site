@@ -10649,7 +10649,7 @@
     // The website is the source of truth for who pays for a kid's room. It is
     // picked here from Partners, or added with its logo and contact, and on
     // save JobTread follows: the job's Monetary Sponsor field, and each contact
-    // on the job with the Sponsor role, without an email from JobTread
+    // on the job, in the sponsor's role, without an email from JobTread
     // (functions/api/_sponsors.js). Contacts are private: D1 only, never on the
     // partner record.
     const KD_SPONSOR_API = '/api/sponsors-admin';
@@ -10763,14 +10763,14 @@
         setSaving(false);
         if (!r.success) { addToast(`Couldn’t save: ${r.error}`, 'error'); return; }
         const added = r.granted || [];
-        addToast(added.length ? `Saved. ${kdNames([...new Set(added.map((g) => g.name))])} added in JobTread as a Sponsor on ${kdNames([...new Set(added.map((g) => g.kid))])}’s job.` : 'Contacts saved.', 'success');
+        addToast(added.length ? `Saved. ${kdNames([...new Set(added.map((g) => g.name))])} added to ${kdNames([...new Set(added.map((g) => g.kid))])}’s job in JobTread.` : 'Contacts saved.', 'success');
         if (r.problems?.length) addToast(r.problems.join(' '), 'error');
         onSaved(r.contacts);
       };
       const footer = html`
         <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${saving}>Cancel</button>
         <button type="button" class="btn btn-primary" onClick=${save} disabled=${saving}>${saving ? html`<span class="spinner spinner-14" /> Saving…` : 'Save'}</button>`;
-      return html`<${KdDialog} title=${`Who to reach at ${partner.name}`} sub="Only staff see these. Anyone with an email is added to the open jobs this sponsor pays for in JobTread, as a Sponsor, so they get the Demo Day and reveal invites. JobTread doesn’t email them."
+      return html`<${KdDialog} title=${`Who to reach at ${partner.name}`} sub="Only staff see these. Anyone with an email is added to the open jobs this sponsor pays for in JobTread, so they get the Demo Day and reveal invites. JobTread doesn’t email them."
         size="md" onClose=${onClose} busy=${saving} footer=${footer}>
         <form onSubmit=${(e) => { e.preventDefault(); save(); }}>
           <${KdPeopleFields} people=${rows} onChange=${setRows} idPrefix="kd-sp-contact" touched=${touched} />
@@ -10815,7 +10815,7 @@
       const gone = saved.filter((x) => !chosen.includes(x)).map((x) => bySlug.get(x) || { slug: x, name: x });
       const first = String(name || '').trim().split(/\s+/)[0] || 'this kid';
       const awaiting = status === 'needs-funding';
-      // What JobTread names, for a kid with no sponsor picked: the field, then Sponsor users by company
+      // What JobTread names, for a kid with no sponsor picked: the field, then Monetary Sponsor users by company
       const find = (label) => partners.find((p) => PS.nameKey(p.name) === PS.nameKey(label)) || PS.similarPartners(label, partners, { min: 0.7, max: 1 })[0]?.partner || null;
       const suggestions = !list.length && jt ? [
         ...(jt.field ? [{ key: 'field', label: jt.field, why: html`JobTread’s Monetary Sponsor says <strong>${jt.field}</strong>.`, partner: find(jt.field), people: [] }] : []),
@@ -10823,14 +10823,14 @@
           const label = x.company || x.name || x.email;
           (m[label] ||= { key: `u-${label}`, label, people: [], match: x.partner && partners.find((p) => p.slug === x.partner.slug) }).people.push(x);
           return m;
-        }, {})).map((g) => ({ ...g, partner: g.match || find(g.label), why: html`<strong>${kdNames(g.people.map((x) => x.name || x.email))}</strong>${g.label !== (g.people[0].name || g.people[0].email) ? ` (${g.label})` : ''} ${g.people.length === 1 ? 'is' : 'are'} on the job as a Sponsor.` })),
+        }, {})).map((g) => ({ ...g, partner: g.match || find(g.label), why: html`<strong>${kdNames(g.people.map((x) => x.name || x.email))}</strong>${g.label !== (g.people[0].name || g.people[0].email) ? ` (${g.label})` : ''} ${g.people.length === 1 ? 'is' : 'are'} on the job as a Monetary Sponsor.` })),
       ].filter((s, i, all) => !s.partner || all.findIndex((x) => x.partner?.slug === s.partner.slug) === i) : [];
       const icon = (ok) => html`<span class=${`kd-sponsor__mark${ok ? ' is-ok' : ' is-warn'}`} aria-hidden="true">${ok ? kdIcon.check : kdIcon.alert}</span>`;
 
       return html`<section class=${`kd-card kd-card--sponsor${awaiting && !list.length ? ' is-needed' : ''}`} id="kd-sec-sponsor" aria-labelledby="kd-sponsor-h">
         <h3 id="kd-sponsor-h" tabindex="-1">Monetary sponsor ${syncing ? html`<span class="kd-card__count"><span class="spinner spinner-14" /> JobTread…</span>` : null}</h3>
         ${!list.length ? html`<p class=${`kd-sponsor__ask${awaiting ? ' kd-warn-text' : ''}`}>${awaiting
-          ? `Who’s paying for ${first}’s room? Pick them and save: their contact is added to the job in JobTread as a Sponsor, and Monetary Sponsor follows.`
+          ? `Who’s paying for ${first}’s room? Pick them and save: their contact is added to the job in JobTread, and Monetary Sponsor follows.`
           : 'Who paid for the room. Pick them from Partners, or add a new sponsor.'}</p>` : null}
         ${list.length ? html`<ul class="kd-sponsors">
           ${list.map((p) => {
@@ -10852,10 +10852,10 @@
               </ul>` : html`<p class="kd-card__note">No contact on file.</p>`}
               <button type="button" class="btn btn-ghost btn-sm kd-sponsor__contacts" onClick=${() => onContacts(p)} disabled=${p.gone}>${people.length ? kdIcon.edit : kdIcon.plus} ${people.length ? 'Edit contacts' : 'Add a contact'}</button>
               ${v ? html`<ul class="kd-sponsor__jt" aria-label=${`${p.name} in JobTread`}>
-                ${v.onJob.length ? html`<li>${icon(true)}<span><strong>${kdNames(v.onJob.map((x) => x.name || x.email))}</strong> ${v.onJob.length === 1 ? 'is' : 'are'} on the job as a Sponsor, so Demo Day and reveal invites reach them.</span></li>` : null}
+                ${v.onJob.length ? html`<li>${icon(true)}<span><strong>${kdNames(v.onJob.map((x) => x.name || x.email))}</strong> ${v.onJob.length === 1 ? 'is' : 'are'} on the job, so Demo Day and reveal invites reach them.</span></li>` : null}
                 ${v.otherRole.map((x) => html`<li key=${x.email}>${icon(false)}<span><strong>${x.name || x.email}</strong> is on the job as ${x.role ? `a ${x.role}` : 'staff'}, so gets ${x.role ? `${x.role.toLowerCase()}` : 'staff'} invites, not the sponsor’s. <a href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Change it in JobTread</a></span></li>`)}
-                ${v.missing.length && jt.open ? html`<li>${icon(false)}<span><strong>${kdNames(v.missing.map((x) => x.name || x.email))}</strong> ${v.missing.length === 1 ? 'isn’t' : 'aren’t'} on the job yet. Saving adds them as a Sponsor.</span></li>` : null}
-                ${!v.onJob.length && !v.otherRole.length && !reach.length && jt.open ? html`<li>${icon(false)}<span>Nobody from ${p.name} is on the job. Add a contact with an email and save: they’re added as a Sponsor.</span></li>` : null}
+                ${v.missing.length && jt.open ? html`<li>${icon(false)}<span><strong>${kdNames(v.missing.map((x) => x.name || x.email))}</strong> ${v.missing.length === 1 ? 'isn’t' : 'aren’t'} on the job yet. Saving adds them.</span></li>` : null}
+                ${!v.onJob.length && !v.otherRole.length && !reach.length && jt.open ? html`<li>${icon(false)}<span>Nobody from ${p.name} is on the job. Add a contact with an email and save: they’re added to it.</span></li>` : null}
               </ul>` : null}
             </li>`;
           })}
@@ -10905,7 +10905,7 @@
           : view?.jobtreadError ? view.jobtreadError
           : !jt ? html`<span class="spinner spinner-14" /> Checking JobTread…`
           : pending ? [
-              added.length ? `Saving gives ${kdNames(added.map((p) => p.name))} access to the job in JobTread as a Sponsor` : '',
+              added.length ? `Saving gives ${kdNames(added.map((p) => p.name))} access to the job in JobTread` : '',
               gone.length ? `${added.length ? ', and takes' : 'Saving takes'} ${kdNames(gone.map((p) => p.name))} off it` : '',
               '. JobTread’s Monetary Sponsor then shows who has that access.',
             ].join('')
@@ -12740,16 +12740,18 @@
             onClick=${() => { setDialog({ kind: 'waiting' }); readWaiting(); }} title="Vendors and Sponsors on JobTread jobs whose company has no logo yet">
             <span class="ppl-ready__label">JobTread, no logo</span>
             <span class="ppl-ready__value">${waiting?.failed ? '?' : waiting ? ptByCompany(waiting.waiting).length : html`<span class="spinner spinner-14" />`}</span>
-            <span class="ppl-ready__sub">${!waiting ? 'Checking' : waiting.failed ? 'Couldn’t check' : waiting.waiting.length ? (() => { const g = ptByCompany(waiting.waiting)[0]; return `${g.name}, for ${ptPagesOf(g)}`; })() : 'Every Vendor and Sponsor has a logo'}</span>
+            <span class="ppl-ready__sub">${!waiting ? 'Checking' : waiting.failed ? 'Couldn’t check' : waiting.waiting.length ? (() => { const g = ptByCompany(waiting.waiting)[0]; return `${g.name}, for ${ptPagesOf(g)}`; })() : 'Every partner on a job has a logo'}</span>
           </button>
           ${(() => {
-            const n = access && !access.failed ? access.waiting.length + access.near.length : 0;
+            const unplaced = access?.roles?.unplaced || [];
+            const n = access && !access.failed ? access.waiting.length + access.near.length + unplaced.length : 0;
             return html`<button type="button" class=${`ppl-ready__tile ppl-ready__tile--review pt-ready__access${n ? ' is-waiting' : ''}`}
               onClick=${() => { setDialog({ kind: 'access' }); readAccess(); }} title="Each open job’s vendors on its JobTread job access, and their contacts kept the same in Partners and JobTread">
               <span class="ppl-ready__label">JobTread access</span>
               <span class="ppl-ready__value">${access?.failed ? '?' : access ? n : html`<span class="spinner spinner-14" />`}</span>
               <span class="ppl-ready__sub">${!access ? 'Checking' : access.failed ? 'Couldn’t check' : access.near.length ? `${access.near[0].name}: ${access.near[0].near[0]?.name || 'a near name'} in JobTread?`
-                : access.waiting.length ? `${access.waiting[0].name}: ${access.waiting[0].reason === 'error' ? 'JobTread refused' : 'no email'}` : 'Every vendor is on their jobs'}</span>
+                : access.waiting.length ? `${access.waiting[0].name}: ${access.waiting[0].reason === 'error' ? 'JobTread refused' : 'no email'}`
+                : unplaced.length ? `${unplaced[0].name}: which company?` : 'Every vendor is on their jobs'}</span>
             </button>`;
           })()}
         </div>
@@ -13203,7 +13205,7 @@
               </span>
             </span>
           </li>`)}
-        </ul>` : html`<p class="pt-wait__none">${pplIcon.check} Every Vendor and Sponsor on an open job has a logo on their page${dismissed.length ? ', or doesn’t need one' : ''}.</p>`}
+        </ul>` : html`<p class="pt-wait__none">${pplIcon.check} Every partner on an open job has a logo on their page${dismissed.length ? ', or doesn’t need one' : ''}.</p>`}
         ${dismissed.length ? html`<div class="pt-loose__dismissed">
           <button type="button" class="ppl-link" aria-expanded=${showDismissed} onClick=${() => setShowDismissed((v) => !v)}>
             ${kdPlural(dismissed.length, 'company', 'companies')} marked no logo needed</button>
@@ -13245,6 +13247,8 @@
     const ptJobUrl = (id) => `https://app.jobtread.com/jobs/${encodeURIComponent(id || '')}`;
     const ptVendorUrl = (id) => `https://app.jobtread.com/vendors/${encodeURIComponent(id || '')}`;
     const PT_MATCH_HOW = { name: 'matched by name', linked: 'staff said same company', made: 'made by the site' };
+    /** “a Champion”, “an Ally”: a JobTread role with its article */
+    const ptA = (role) => `${/^[aeiou]/i.test(role) ? 'an' : 'a'} ${role}`;
     const ptRecordHash = (record) => `#kids/${String(record || '').split('/').map(encodeURIComponent).join('/')}`;
     const ptAccessPagesOf = (w) => (w.jobs.length === 1 ? w.jobs[0].page : kdPlural(w.jobs.length, 'page'));
     /** Why a company belongs on a job: its logo on the page, a bill or order there, or both */
@@ -13266,7 +13270,8 @@
       const made = report?.made || [];
       const bits = [];
       const people = [...new Set(added.map((a) => a.person))];
-      if (added.length) bits.push(`${kdNames(people)} ${people.length === 1 ? 'is' : 'are'} on ${kdNames([...new Set(added.map((a) => `the job for ${a.page}`))])} in JobTread now${added.some((a) => a.kept) ? '' : ', as a Vendor'}.`);
+      const roles = [...new Set(added.filter((a) => !a.kept).map((a) => a.role || 'Vendor'))];
+      if (added.length) bits.push(`${kdNames(people)} ${people.length === 1 ? 'is' : 'are'} on ${kdNames([...new Set(added.map((a) => `the job for ${a.page}`))])} in JobTread now${roles.length === 1 && !added.some((a) => a.kept) ? `, as ${ptA(roles[0])}` : ''}.`);
       if (made.length) bits.push(`${kdNames(made.map((m) => m.name))} ${made.length === 1 ? 'is a vendor' : 'are vendors'} in JobTread now.`);
       if (bits.length || fallback) addToast(bits.join(' ') || fallback, 'success');
       if (report?.problems?.length) addToast(report.problems.join(' '), 'error');
@@ -13286,6 +13291,7 @@
       const [showAdded, setShowAdded] = useState(false);
       const [showMatched, setShowMatched] = useState(false);
       const [find, setFind] = useState('');
+      const [showRoles, setShowRoles] = useState(null);
       const act = async (key, body, done) => {
         setBusy(key);
         try {
@@ -13308,18 +13314,25 @@
       const rename = (m, back = null) => act(`r-${m.partner}`, { rename: { partner: m.partner, ...(back ? { name: back } : {}) } }, (r) => addToast(
         back ? `${m.name} is “${r.renamed.to}” in JobTread again` : `“${r.renamed.from}” is called “${r.renamed.to}” in JobTread now`,
         'success', back ? null : { label: 'Undo', fn: () => rename(m, r.renamed.from) }));
+      // Someone the roles sweep can't place: Trade Partner, or leave their role (Undo takes the say back)
+      const pickRole = (u, how, undo = false) => act(`p-${u.membership}`, { rolePick: { membership: u.membership, name: u.name, ...(undo ? {} : how === 'trade' ? { role: 'Trade Partner' } : { keep: true }) } },
+        () => addToast(undo ? `${u.name} is back on the list` : how === 'trade' ? `${u.name} is a Trade Partner in JobTread${view.roles?.on ? ' from the next check' : ' once roles follow levels'}` : `${u.name} keeps their ${u.role} role`,
+          'info', undo ? null : { label: 'Undo', fn: () => pickRole(u, how, true) }));
       const title = 'JobTread access';
       if (!view) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}><p class="text-muted"><span class="spinner spinner-14" /> Loading…</p><//>`;
       if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
         <p class="kd-bad pt-wait__error">Couldn’t load the list: ${view.failed}</p>
         <button type="button" class="btn btn-sm" onClick=${() => onChange(null)} data-autofocus>Try again</button><//>`;
-      const { waiting = [], near = [], added = [], setAside: aside = [], matched = [] } = view;
+      const { waiting = [], near = [], added = [], setAside: aside = [], matched = [], loose = [], billedOnly = [] } = view;
+      const roles = view.roles || { on: false, pending: [], unplaced: [], recent: [] };
+      const toggle = (k) => setShowRoles((v) => (v === k ? null : k));
+      const PT_ROLE_WHY = { level: 'their level', trade: 'SOARD pays them', staff: 'staff said', 'set back': 'set back: changed in JobTread' };
       const named = (m) => m.accountName.trim() !== m.name.trim();
       const renamed = matched.filter(named).length;
       const q = find.trim().toLowerCase();
       const shown = q ? matched.filter((m) => `${m.name} ${m.accountName}`.toLowerCase().includes(q)) : matched;
       return html`<${KdDialog} title=${title}
-        sub="Each open job lists its vendors in JobTread: the companies with a logo on the page, and the vendors with a bill or purchase order on the job. The site adds them as Vendors, without JobTread’s email, and keeps their contacts the same in Partners and JobTread."
+        sub=${`Each open job lists its vendors in JobTread: companies with a logo on the page, and trade partners with a bill or purchase order there (never a card purchase or a materials supplier). They’re added without JobTread’s email, ${view?.roles?.on ? 'with their Partners level as their role (Trade Partner when SOARD pays them)' : 'as Vendors'}, and their contacts kept the same in Partners and JobTread.`}
         size="lg" onClose=${onClose} busy=${!!busy}>
         ${view.lastError ? html`<p class="kd-bad pt-wait__error">The last check ${kdWhen(view.lastError.at)} hit a problem: ${view.lastError.error}. It tries again every 15 minutes.</p>` : null}
         ${near.length ? html`<section class="pt-access" aria-labelledby="pt-access-near">
@@ -13361,6 +13374,23 @@
             </span>
           </li>`)}</ul>
         </section>` : null}
+        ${roles.unplaced.length ? html`<section class="pt-access pt-access__roles" aria-labelledby="pt-access-roles">
+          <h3 id="pt-access-roles">Who are they?</h3>
+          <p class="form-hint">${roles.on ? 'Each partner’s role in JobTread is its level here, and a company SOARD pays is a Trade Partner.' : 'Roles in JobTread are about to follow each partner’s level here, with Trade Partner for a company SOARD pays.'} The site can’t tell these people’s company, so their role stays as it is until you say.</p>
+          <ul class="pt-loose pt-wait">${roles.unplaced.map((u) => html`<li key=${u.membership} class="pt-loose__item">
+            <span class="pt-loose__text">
+              <strong>${u.name}</strong>
+              <small>${u.why === 'level'
+                ? `${ptA(u.role)} in JobTread${u.company ? `, at ${u.company}` : ''}, which isn’t in Partners. Add the company in Partners as ${ptA(u.role)}, or:`
+                : `${ptA(u.role)} in JobTread${u.company ? `, at ${u.company}` : ''}, which isn’t a partner or a vendor SOARD pays.`}</small>
+              <span class="pt-loose__acts">
+                <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => pickRole(u, 'trade')}>
+                  ${busy === `p-${u.membership}` ? html`<span class="spinner spinner-14" />` : null}Trade Partner</button>
+                <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => pickRole(u, 'keep')}>Leave as ${u.role}</button>
+              </span>
+            </span>
+          </li>`)}</ul>
+        </section>` : null}
         ${!near.length && !waiting.length ? html`<p class="pt-wait__none">${pplIcon.check} Every vendor on an open job is on it in JobTread${aside.length ? ', or isn’t needed there' : ''}.</p>` : null}
         ${aside.length ? html`<div class="pt-loose__dismissed">
           <button type="button" class="ppl-link" aria-expanded=${showAside} onClick=${() => setShowAside((v) => !v)}>
@@ -13371,7 +13401,7 @@
         ${added.length ? html`<div class="pt-loose__dismissed">
           <button type="button" class="ppl-link" aria-expanded=${showAdded} onClick=${() => setShowAdded((v) => !v)}>
             ${kdPlural(added.length, 'person', 'people')} put on jobs lately</button>
-          ${showAdded ? html`<ul>${added.map((a) => html`<li key=${`${a.jobId}-${a.company}`}><span>${a.person || a.name}${a.person && a.person !== a.name ? ` for ${a.name}` : ''} <small>on the job for ${a.page} · ${a.kept && a.role ? `kept their ${a.role} role` : 'as a Vendor'} · ${kdWhen(a.at)}</small></span>
+          ${showAdded ? html`<ul>${added.map((a) => html`<li key=${`${a.jobId}-${a.company}`}><span>${a.person || a.name}${a.person && a.person !== a.name ? ` for ${a.name}` : ''} <small>on the job for ${a.page} · ${a.kept && a.role ? `kept their ${a.role} role` : `as ${ptA(a.role || 'Vendor')}`} · ${kdWhen(a.at)}</small></span>
             <a class="btn btn-ghost btn-sm" href=${ptJobUrl(a.jobId)} target="_blank" rel="noopener">Open the job</a></li>`)}</ul>` : null}
         </div>` : null}
         ${matched.length ? html`<div class="pt-loose__dismissed pt-access__matched">
@@ -13395,6 +13425,26 @@
               </span>
             </li>`)}</ul>
             ${!shown.length ? html`<p class="text-muted">No partner matches “${find.trim()}”.</p>` : null}` : null}
+        </div>` : null}
+        ${roles.pending.length || roles.recent.length ? html`<div class="pt-loose__dismissed pt-access__matched">
+          <button type="button" class="ppl-link" aria-expanded=${showRoles === 'roles'} onClick=${() => toggle('roles')}>
+            ${roles.on ? `${roles.recent.length ? `${kdPlural(roles.recent.length, 'role')} changed in JobTread` : ''}${roles.recent.length && roles.pending.length ? ', ' : ''}${roles.pending.length ? `${roles.pending.length} at the next check` : ''}`
+              : `${kdPlural(roles.pending.length, 'role')} to change in JobTread, once roles follow levels`}</button>
+          ${showRoles === 'roles' ? html`<ul>${[...roles.pending.map((c) => ({ ...c, wait: true })), ...roles.recent].map((c, i) => html`<li key=${`${i}-${c.name}`}>
+            <span>${c.name}${c.company ? ` at ${c.company}` : ''} <small>${c.from} → ${c.to} · ${PT_ROLE_WHY[c.why] || c.why}${c.wait ? '' : ` · ${kdWhen(c.at)}`}</small></span></li>`)}</ul>` : null}
+        </div>` : null}
+        ${loose.length ? html`<div class="pt-loose__dismissed pt-access__matched">
+          <button type="button" class="ppl-link" aria-expanded=${showRoles === 'loose'} onClick=${() => toggle('loose')}>
+            ${kdPlural(loose.length, 'logo')} on pages no partner goes by</button>
+          ${showRoles === 'loose' ? html`<p class="form-hint">Nobody can go on the job for these until they’re named: give the logo its partner on the page, or add the company in Partners.</p>
+            <ul>${loose.map((l, i) => html`<li key=${`${i}-${l.record}`}><span>${l.name} <small>on ${l.page}</small></span>
+              <a class="btn btn-ghost btn-sm" href=${ptRecordHash(l.record)}>Open the page</a></li>`)}</ul>` : null}
+        </div>` : null}
+        ${billedOnly.length ? html`<div class="pt-loose__dismissed pt-access__matched">
+          <button type="button" class="ppl-link" aria-expanded=${showRoles === 'billed'} onClick=${() => toggle('billed')}>
+            ${kdPlural(billedOnly.length, 'partner')} only billed on jobs</button>
+          ${showRoles === 'billed' ? html`<p class="form-hint">In Partners, but on today’s jobs only through bills, with no logo on a page. If SOARD only pays them, take them out of Partners and they become Trade Partners.</p>
+            <ul>${billedOnly.map((b) => html`<li key=${b.partner}><span>${b.name}</span></li>`)}</ul>` : null}
         </div>` : null}
         <p class="pt-access__foot">${view.paired ? 'Contacts are kept the same both ways for every matched partner (the newer change wins). ' : ''}${view.lastRunAt ? `Checked ${kdWhen(view.lastRunAt)}; again every 15 minutes.` : 'The first check runs within 15 minutes.'}</p>
       <//>`;
@@ -13427,7 +13477,7 @@
       const footer = html`
         <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${saving}>Cancel</button>
         <button type="button" class="btn btn-primary" onClick=${save} disabled=${saving || rows === null}>${saving ? html`<span class="spinner spinner-14" /> Saving…` : 'Save'}</button>`;
-      return html`<${KdDialog} title=${`Who to reach at ${partner.name}`} sub=${`Only staff see these. They go on ${partner.name}’s JobTread vendor account too, and the first with an email is added to their jobs as a Vendor. JobTread doesn’t email them.`}
+      return html`<${KdDialog} title=${`Who to reach at ${partner.name}`} sub=${`Only staff see these. They go on ${partner.name}’s JobTread vendor account too, and the first with an email is added to their jobs. JobTread doesn’t email them.`}
         size="md" onClose=${onClose} busy=${saving} footer=${footer}>
         ${error ? html`<p class="kd-bad">Couldn’t load who’s on file: ${error}</p>`
           : rows === null ? html`<p class="text-muted"><span class="spinner spinner-14" /> Loading…</p>`
@@ -13650,7 +13700,7 @@
             ${sponsor ? html`<fieldset class="form-group pt-create__people">
               <legend class="form-label">Who to reach there <span class="form-optional">only staff see this</span></legend>
               <${KdPeopleFields} people=${people} onChange=${setPeople} idPrefix="pt-new-person" touched=${touched} />
-              <div class="form-hint">With an email, they’re added to the kid’s job in JobTread as a Sponsor when you save the profile, so they get the Demo Day and reveal invites.</div>
+              <div class="form-hint">With an email, they’re added to the kid’s job in JobTread when you save the profile, so they get the Demo Day and reveal invites.</div>
             </fieldset>` : null}
             ${same.length ? html`<div class="pt-same" role="status">
               ${pplIcon.alert}
@@ -13965,7 +14015,7 @@
      * Who to reach at a partner, and the kids it's the monetary sponsor for.
      * Private (D1 partner_contacts via /api/sponsors-admin, never the partner
      * record), saved on its own: a sponsor's people go to its kids' open jobs
-     * in JobTread as Sponsors (functions/api/_sponsors.js).
+     * in JobTread (functions/api/_sponsors.js).
      */
     function PtContacts({ slug, name, kids = [], onOpenKid, addToast }) {
       const [people, setPeople] = useState(null);

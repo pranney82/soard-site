@@ -1,9 +1,10 @@
 /**
  * Monetary sponsors (functions/api/_sponsors.js, _jt-access.js): the website
- * is the source of truth. Job access comes first (the sponsor's contacts get
- * the Sponsor role on the open job, quietly; a sponsor taken off loses it),
- * then JobTread's Monetary Sponsor field mirrors who has the Sponsor role.
- * The 10-minute sweep takes in Sponsors added in JobTread. Contacts stay in
+ * is the source of truth. Job access comes first (the sponsor's contacts go
+ * on the open job, quietly, as Monetary Sponsor until roles follow levels; a
+ * sponsor taken off loses it), then JobTread's Monetary Sponsor field mirrors
+ * the sponsors with someone on the job. The 10-minute sweep takes in
+ * Monetary Sponsor users added in JobTread. Contacts stay in
  * D1. Run: node --test tests/
  */
 import { test } from 'node:test';
@@ -17,7 +18,7 @@ import { _resetRoleCache } from '../functions/api/_jt-access.js';
 import { FIELD_MONETARY_SPONSOR } from '../functions/api/_demo-invites.js';
 import { onRequestGet, onRequestPost } from '../functions/api/sponsors-admin.js';
 
-const ROLES = { Sponsor: 'r-sponsor', Vendor: 'r-vendor', 'Makeover Family': 'r-family' };
+const ROLES = { 'Monetary Sponsor': 'r-sponsor', Vendor: 'r-vendor', 'Makeover Family': 'r-family' };
 const HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 const img = (id) => `https://imagedelivery.net/${HASH}/${id}/public`;
 
@@ -118,18 +119,21 @@ test('a JobTread person is the sponsor by company, "Same as" link, contact email
   assert.ok(!fromSponsor(p('Other Co', 'x@other.org'), ACME));
 });
 
-test('the field mirrors who has the Sponsor role: the kid\'s sponsors first, then others by Partner or JobTread name; blank with nobody', () => {
+test('the field mirrors the sponsors with someone on the job as a partner, then Monetary Sponsor users by Partner or JobTread name; blank with nobody', () => {
   const person = (name, email, role, company = null) => ({ name, email, role, company });
   const job = (people) => ({ id: 'j1', name: 'Max (2026)', closedOn: null, field: '', people, access: people.map((x) => ({ email: x.email, role: x.role })) });
   const all = [ACME, BRIGHT];
   assert.equal(mirrorText(job([]), [ACME], all), '');
-  assert.equal(mirrorText(job([person('Sam', 'sam@acmefdn.org', 'Vendor')]), [ACME], all), '', 'a Vendor isn’t the sponsor');
-  assert.equal(mirrorText(job([person('Kim', 'kim@x.org', 'Sponsor', 'Bright Fund'), person('Jo', 'jo@acmefdn.org', 'Sponsor')]), [ACME], all), 'Acme Foundation & Bright Fund');
-  assert.equal(mirrorText(job([person('Lu', 'lu@zeta.org', 'Sponsor', 'Zeta Trust')]), [], all), 'Zeta Trust');
-  const v = sponsorView({ ...job([person('Jo', 'jo@acmefdn.org', 'Sponsor', 'Acme Foundation'), person('Sam', 'sam@acmefdn.org', 'Vendor'), person('Kim', 'kim@x.org', 'Sponsor', 'Bright Fund')]), field: 'Acme Foundation & Bright Fund' },
+  assert.equal(mirrorText(job([person('Sam', 'sam@acmefdn.org', 'Vendor')]), [ACME], all), 'Acme Foundation', 'the sponsor’s person, as a Vendor (or its level)');
+  assert.equal(mirrorText(job([person('Sam', 'sam@acmefdn.org', 'Champion')]), [ACME], all), 'Acme Foundation');
+  assert.equal(mirrorText(job([person('Pat', 'pat@acmefdn.org', 'Photographer')]), [ACME], all), '', 'a photographer isn’t the sponsor');
+  assert.equal(mirrorText(job([person('Vic', 'vic@othervendor.example', 'Vendor', 'Other Vendor')]), [ACME], all), '', 'nor is another company’s vendor');
+  assert.equal(mirrorText(job([person('Kim', 'kim@x.org', 'Monetary Sponsor', 'Bright Fund'), person('Jo', 'jo@acmefdn.org', 'Monetary Sponsor')]), [ACME], all), 'Acme Foundation & Bright Fund');
+  assert.equal(mirrorText(job([person('Lu', 'lu@zeta.org', 'Monetary Sponsor', 'Zeta Trust')]), [], all), 'Zeta Trust');
+  const v = sponsorView({ ...job([person('Jo', 'jo@acmefdn.org', 'Monetary Sponsor', 'Acme Foundation'), person('Sam', 'sam@acmefdn.org', 'Vendor'), person('Pat', 'pat@acmefdn.org', 'Photographer'), person('Kim', 'kim@x.org', 'Monetary Sponsor', 'Bright Fund')]), field: 'Acme Foundation & Bright Fund' },
     [ACME], { 'acme-foundation': [{ name: 'Lee', email: 'lee@acmefdn.org' }] }, {}, all);
   assert.equal(v.job.fieldOk, true);
-  assert.deepEqual([v.sponsors[0].onJob.map((x) => x.name), v.sponsors[0].otherRole.map((x) => x.name), v.sponsors[0].missing.map((x) => x.name)], [['Jo'], ['Sam'], ['Lee']]);
+  assert.deepEqual([v.sponsors[0].onJob.map((x) => x.name), v.sponsors[0].otherRole.map((x) => x.name), v.sponsors[0].missing.map((x) => x.name)], [['Jo', 'Sam'], ['Pat'], ['Lee']]);
   assert.deepEqual(v.others.map((x) => [x.name, x.partner?.slug]), [['Kim', 'bright-fund']]);
 });
 
@@ -141,8 +145,8 @@ test('a kid save gives the contact Sponsor access first, then the field mirrors 
   const r = await syncKidSponsor(env(DB), { slug: 'max', jobId: 'job1' }, { by: 'staff@soardcharity.com', fetchImpl: jt.fetchImpl });
   const k = jt.kinds();
   assert.ok(k.indexOf('createAce') < k.indexOf('updateJob'), `access first, then the field (${k.join(', ')})`);
-  assert.deepEqual(r.granted.map((g) => [g.email, g.role]), [['jo@acmefdn.org', 'Sponsor']]);
-  assert.equal(jt.people.get('jo@acmefdn.org').role, 'Sponsor');
+  assert.deepEqual(r.granted.map((g) => [g.email, g.role]), [['jo@acmefdn.org', 'Monetary Sponsor']]);
+  assert.equal(jt.people.get('jo@acmefdn.org').role, 'Monetary Sponsor');
   assert.deepEqual(r.wrote, { from: '', to: 'Acme Foundation' });
   assert.equal(jt.jobs[0].field, 'Acme Foundation');
   assert.deepEqual(r.problems, []);
@@ -164,7 +168,7 @@ test('no access yet: the field stays blank, even if it named the sponsor', async
   assert.equal(r.jobtread.mirror, '');
 });
 
-test('someone already a Vendor is added by membership, keeps the role, and isn\'t in the field', async () => {
+test('someone already a Vendor is added by membership and keeps the role (the roles sweep moves it), and counts as the sponsor’s', async () => {
   _resetRoleCache();
   const DB = await world({ kids: [MAX], partners: [ACME] });
   await saveContacts(DB, 'acme-foundation', [{ name: 'Sam', email: 'sam@acmefdn.org' }]);
@@ -173,8 +177,8 @@ test('someone already a Vendor is added by membership, keeps the role, and isn\'
   assert.deepEqual(r.granted.map((g) => [g.email, g.role, g.kept]), [['sam@acmefdn.org', 'Vendor', true]]);
   assert.equal(jt.calls.find((q) => q.createAce).createAce.$.assignee.membershipId, 'm-sam');
   assert.ok(!jt.calls.some((q) => q.updateMembership));
-  assert.equal(r.wrote, null);
-  assert.deepEqual(r.sponsors[0].otherRole.map((x) => x.email), ['sam@acmefdn.org']);
+  assert.deepEqual(r.wrote, { from: '', to: 'Acme Foundation' });
+  assert.deepEqual(r.sponsors[0].onJob.map((x) => x.email), ['sam@acmefdn.org']);
 });
 
 test('a sponsor with no contacts takes its Sponsor users from the job; a closed job is mirrored but never given access', async () => {
@@ -182,7 +186,7 @@ test('a sponsor with no contacts takes its Sponsor users from the job; a closed 
   const DB = await world({ kids: [{ ...MAX, sponsors: ['acme-foundation', 'bright-fund'] }], partners: [ACME, BRIGHT] });
   await saveContacts(DB, 'bright-fund', [{ name: 'Kim', email: 'kim@bright.org' }]);
   const jt = fakeJT({ jobs: [{ id: 'job1', name: 'Max (2026)', field: 'Acme', closedOn: '2026-05-01', access: ['jo@acmefdn.org'] }],
-    members: [{ email: 'jo@acmefdn.org', name: 'Jo Lee', role: 'Sponsor', account: 'Acme Foundation' }] });
+    members: [{ email: 'jo@acmefdn.org', name: 'Jo Lee', role: 'Monetary Sponsor', account: 'Acme Foundation' }] });
   const r = await syncKidSponsor(env(DB), { slug: 'max', jobId: 'job1' }, { fetchImpl: jt.fetchImpl });
   assert.deepEqual(r.filled, [{ slug: 'acme-foundation', name: 'Acme Foundation', people: 1 }]);
   assert.deepEqual((await readContacts(DB))['acme-foundation'].map((p) => p.email), ['jo@acmefdn.org']);
@@ -197,7 +201,7 @@ test('taking a sponsor off removes their Sponsor access, then clears the field; 
   const jt = fakeJT({ jobs: [
     { id: 'job1', name: 'Max (2026)', field: 'Acme Foundation', access: ['jo@acmefdn.org', 'mom@family.org'] },
     { id: 'job2', name: 'Zoe (2026)', field: 'Somebody typed this', access: [] },
-  ], members: [{ email: 'jo@acmefdn.org', name: 'Jo', role: 'Sponsor' }, { email: 'mom@family.org', name: 'Mom', role: 'Makeover Family' }] });
+  ], members: [{ email: 'jo@acmefdn.org', name: 'Jo', role: 'Monetary Sponsor' }, { email: 'mom@family.org', name: 'Mom', role: 'Makeover Family' }] });
   const r = await syncKidSponsor(env(DB), { slug: 'max', jobId: 'job1', previous: ['acme-foundation'] }, { fetchImpl: jt.fetchImpl });
   assert.deepEqual(r.removed.map((x) => x.email), ['jo@acmefdn.org']);
   assert.deepEqual(jt.jobs[0].access, ['mom@family.org'], 'the family stays');
@@ -234,7 +238,7 @@ test('contacts saved later reach every open job that sponsor pays for, and its f
 test('the sweep takes in a Sponsor added in JobTread: the kid\'s sponsor, their contact, their logo first, the field', async () => {
   _resetRoleCache();
   const DB = await world({ kids: [{ ...MAX, sponsors: [], partnerLogos: [{ url: img('partners/other/1'), name: 'Other' }, { url: img('partners/acme/1'), name: 'Acme Foundation' }] }], partners: [ACME] });
-  const jt = fakeJT({ jobs: [{ id: 'job1', name: 'Max (2026)', field: '', access: ['dana@acmefdn.org'] }], members: [{ email: 'dana@acmefdn.org', name: 'Dana Reed', role: 'Sponsor' }] });
+  const jt = fakeJT({ jobs: [{ id: 'job1', name: 'Max (2026)', field: '', access: ['dana@acmefdn.org'] }], members: [{ email: 'dana@acmefdn.org', name: 'Dana Reed', role: 'Monetary Sponsor' }] });
   const out = await syncSponsors(env(DB), { fetchImpl: jt.fetchImpl });
   assert.deepEqual(out.map((x) => [x.slug, x.adopted.map((a) => a.slug)]), [['max', ['acme-foundation']]]);
   const kid = await kidOf(DB, 'max');
@@ -252,7 +256,7 @@ test('the sweep takes in a field naming a Partner; a sponsor staff took off neve
   const jt = fakeJT({ jobs: [
     { id: 'job1', name: 'Max (2026)', field: 'Bright Fund', access: [] },
     { id: 'job2', name: 'Zoe (2026)', field: '', access: [] },
-  ], members: [{ email: 'jo@acmefdn.org', name: 'Jo', role: 'Sponsor', account: 'Acme Foundation' }] });
+  ], members: [{ email: 'jo@acmefdn.org', name: 'Jo', role: 'Monetary Sponsor', account: 'Acme Foundation' }] });
   // Zoe had Acme, staff took them off (and Jo with them); then someone gives Jo the job again in JobTread
   await syncKidSponsor(env(DB), { slug: 'zoe', jobId: 'job2', previous: ['acme-foundation'] }, { fetchImpl: jt.fetchImpl });
   jt.jobs[1].access.push('jo@acmefdn.org');

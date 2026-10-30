@@ -15,7 +15,8 @@
  *  - liveSchedule: the live countdown's last JobTread check (what it follows, what's waiting)
  *  - kidStatus: kid statuses following JobTread (last sweep, last run, profiles it hid)
  *  - kidLogos:  Vendor and Sponsor logos on kid pages from JobTread (last sweep, logos added, companies waiting; counts only)
- *  - vendorAccess: vendors on their JobTread jobs (last run, people added, accounts made, contacts synced, companies waiting; counts only)
+ *  - vendorAccess: vendors on their JobTread jobs (last run, people added, accounts made, contacts synced, companies waiting,
+ *               and the roles that follow Partners levels: changed, waiting, people the site can't place; counts only)
  *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
  *  - mercury:   Mercury through SOARD's relay (both keys present, and the accounts it answers with: names and kinds only)
  *  - board:     Access's board sign-in list (synced, the policy on the app, members without an email), bank history months, the last packet
@@ -225,6 +226,8 @@ export function vendorAccessFacts(state) {
   return {
     lastRunAt: r.at || null, claimedAt: d.claimedAt || null, lastErrorAt: d.lastError?.at || null,
     added: r.added ?? null, made: r.made ?? null, contacts: r.contacts ?? null, waiting: r.waiting ?? null, near: r.near ?? null, more: !!r.more,
+    // Roles that follow Partners levels (./_partner-roles.js), counts only
+    roles: r.roles ? { changed: r.roles.changed ?? 0, pending: r.roles.pending ?? 0, unplaced: r.roles.unplaced ?? 0, error: r.roles.error || null } : null,
   };
 }
 

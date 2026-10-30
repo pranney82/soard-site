@@ -209,7 +209,7 @@ function DemoRow({ d, enabled, organizer, organizerName, busy, onTest, onSync })
   // The sponsor named on the job with nobody from it on the job: worth fixing before the invite goes
   const sponsorMissing = !!d.sponsor && !onJob.length;
   const sponsorLine = d.sponsor
-    ? (onJob.length ? `Monetary Sponsor: ${d.sponsor} (${onJob.join(', ')}).` : `Monetary Sponsor: ${d.sponsor}. Nobody with the Sponsor role has access to this job in JobTread, so no one from ${d.sponsor} is invited yet.`)
+    ? (onJob.length ? `Monetary Sponsor: ${d.sponsor} (${onJob.join(', ')}).` : `Monetary Sponsor: ${d.sponsor}. Nobody from ${d.sponsor} has access to this job in JobTread, so no one from there is invited yet.`)
     : onJob.length ? `Sponsor on the job: ${onJob.join(', ')}. The Monetary Sponsor field is empty in JobTread.` : 'No Monetary Sponsor in JobTread yet.';
   return html`
     <li class="dd-row">

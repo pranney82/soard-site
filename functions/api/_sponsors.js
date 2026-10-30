@@ -8,21 +8,27 @@
  * builds and the repo is public.
  *
  * JobTread follows, job access first (Peter):
- *   1. each contact with an email is given access to the kid's open job with
- *      the Sponsor role, without an email from JobTread. Demo Day and reveal
- *      invites go to Sponsor users on the job, so that's how the sponsor gets
- *      them. A sponsor taken off the kid loses that access.
- *   2. the job's Monetary Sponsor field then mirrors who has the Sponsor
- *      role: their sponsors' names, blank until someone has access. A name
- *      typed there by hand that the site doesn't know is left alone (the
- *      editor offers it) until someone has the Sponsor role.
+ *   1. each contact with an email is given access to the kid's open job,
+ *      without an email from JobTread, in the sponsor's role: its Partners
+ *      level once roles follow levels (./_partner-roles.js), JobTread's own
+ *      Monetary Sponsor role until then. Demo Day and reveal invites go to
+ *      the sponsor's people on the job, so that's how the sponsor gets them.
+ *      A sponsor taken off the kid loses that access (unless its logo stays
+ *      on the page: then the vendor sweep keeps it on the job).
+ *   2. the job's Monetary Sponsor field then mirrors who's on the job for a
+ *      sponsor: their sponsors' names, blank until someone has access. A
+ *      name typed there by hand that the site doesn't know is left alone
+ *      (the editor offers it) until a sponsor's person is on the job.
+ * (Until Oct 29 2026 this asked JobTread for a "Sponsor" role, which SOARD's
+ * JobTread never had; its sponsor role is Monetary Sponsor.)
  * That runs when a kid is saved, when a sponsor's contacts are saved, and
  * every 10 minutes from the live hub's heartbeat. The sweep also takes in
- * what was done in JobTread: a Sponsor given access there, or a field naming
- * a Partner, becomes the kid's sponsor (the person becomes a contact), unless
- * staff took that sponsor off the kid. Kids only (community projects: not yet).
+ * what was done in JobTread: someone given the Monetary Sponsor role there, or
+ * a field naming a Partner, becomes the kid's sponsor (the person becomes a
+ * contact), unless staff took that sponsor off the kid. Kids only (community
+ * projects: not yet).
  *
- * A JobTread Sponsor user is a sponsor's when their company (the login's
+ * A JobTread login is a sponsor's when their company (the login's
  * account) has its name or is linked to it ("Same as" in Partners →
  * JobTread, no logo), their email is one of its contacts, or their email is
  * on its website's domain.
@@ -34,8 +40,10 @@ import { readLinks, fetchOpenJobs } from './_kid-partners.js';
 import { loadAllKids, linkJobs, saveRecord, requestDeploy, SYNC_USER } from './_kid-status.js';
 import { logAudit } from './_audit.js';
 import { nameKey, domainOf, cfId } from '../../public/admin/partners-shared.js';
+import { isPartnerRole, isSponsorRole, roleMode, OLD_SPONSOR_ROLE } from './_partner-roles.js';
 
-export const SPONSOR_ROLE = 'Sponsor';
+/** JobTread's own sponsor role, given until roles follow levels */
+export const SPONSOR_ROLE = OLD_SPONSOR_ROLE;
 const MAX_PEOPLE = 5;
 const SWEEP_EVERY_MS = 10 * 60 * 1000;
 
@@ -108,7 +116,7 @@ export async function partnerForEmail(DB, email) {
 
 async function readPartners(DB) {
   const rows = (await DB.prepare('SELECT slug, data FROM partners').all()).results || [];
-  return rows.map((r) => { const d = parse(r.data || '{}', {}); return { slug: r.slug, name: d.name || r.slug, website: d.website || '', logo: d.logo || '' }; });
+  return rows.map((r) => { const d = parse(r.data || '{}', {}); return { slug: r.slug, name: d.name || r.slug, website: d.website || '', logo: d.logo || '', level: d.level || 'friend' }; });
 }
 async function readKid(DB, slug) {
   const row = await DB.prepare('SELECT slug, name, year, data FROM kids WHERE slug = ?').bind(slug).first();
@@ -174,19 +182,22 @@ function partnerOf(person, chosen, partners, contacts, links) {
   const is = (p) => fromSponsor(person, p, { contacts: contacts[p.slug] || [], links });
   return chosen.find(is) || partners.find(is) || null;
 }
-const sponsorUsers = (job) => job.people.filter((x) => x.role === SPONSOR_ROLE);
+/** Everyone JobTread itself calls a sponsor (the Monetary Sponsor role) */
+const sponsorUsers = (job) => job.people.filter((x) => isSponsorRole(x.role));
+/** A sponsor's people on the job as a partner (its level, or an old Vendor or Monetary Sponsor role) */
+const theirs = (job, p, contacts, links) => job.people.filter((x) => isPartnerRole(x.role) && fromSponsor(x, p, { contacts: contacts[p.slug] || [], links }));
 
 /**
- * What the Monetary Sponsor field mirrors: everyone with the Sponsor role on
- * the job, as their sponsor's name (the kid's sponsors first, in order), else
- * as JobTread names their company. Blank when nobody has it.
+ * What the Monetary Sponsor field mirrors: the kid's sponsors with someone
+ * on the job (in order), then anyone JobTread gives the Monetary Sponsor
+ * role, as their sponsor's name, else as JobTread names their company.
+ * Blank when nobody is on.
  */
 export function mirrorText(job, chosen, partners, contacts = {}, links = {}) {
   const names = [];
   const add = (n) => { if (n && !names.includes(n)) names.push(n); };
-  const on = sponsorUsers(job).map((x) => ({ x, p: partnerOf(x, chosen, partners, contacts, links) }));
-  for (const c of chosen) if (on.some((o) => o.p?.slug === c.slug)) add(c.name);
-  for (const o of on) add(o.p?.name || o.x.company || o.x.name || o.x.email);
+  for (const c of chosen) if (theirs(job, c, contacts, links).length) add(c.name);
+  for (const x of sponsorUsers(job)) add(partnerOf(x, chosen, partners, contacts, links)?.name || x.company || x.name || x.email);
   return names.join(' & ');
 }
 
@@ -194,10 +205,11 @@ export function mirrorText(job, chosen, partners, contacts = {}, links = {}) {
  * The editor's view of a kid's sponsors against JobTread:
  * { job: { id, name, open, field, mirror, fieldOk }, sponsors: [{ slug, name, contacts,
  *   onJob: [person], otherRole: [person], missing: [contact] }], others: [person + partner] }
- * onJob: their people with the Sponsor role; otherRole: their people on the
- * job under another role (no sponsor invites, and not in the field); missing:
- * contacts with an email who aren't on the job; others: Sponsor users from
- * nobody chosen, with the Partner they match when there is one.
+ * onJob: their people on the job as a partner; otherRole: their people on
+ * the job under another role, such as Photographer (no sponsor invites, and
+ * not in the field); missing: contacts with an email who aren't on the job;
+ * others: Monetary Sponsor users from nobody chosen, with the Partner they
+ * match when there is one.
  */
 export function sponsorView(job, chosen, contacts, links, partners = chosen) {
   const sponsors = chosen.map((p) => {
@@ -205,8 +217,8 @@ export function sponsorView(job, chosen, contacts, links, partners = chosen) {
     const mine = job.people.filter((x) => fromSponsor(x, p, { contacts: cs, links }));
     return {
       slug: p.slug, name: p.name, contacts: cs,
-      onJob: mine.filter((x) => x.role === SPONSOR_ROLE),
-      otherRole: mine.filter((x) => x.role !== SPONSOR_ROLE),
+      onJob: mine.filter((x) => isPartnerRole(x.role)),
+      otherRole: mine.filter((x) => !isPartnerRole(x.role)),
       missing: cs.filter((c) => c.email && !job.access.some((x) => x.email === c.email)),
     };
   });
@@ -224,6 +236,21 @@ export function sponsorView(job, chosen, contacts, links, partners = chosen) {
 }
 
 /**
+ * For Demo Day: (person { email, company }, kid slug) → is this JobTread
+ * login from one of the kid's monetary sponsors? Reads Partners, contacts,
+ * links and the kids' sponsors once.
+ */
+export async function sponsorMatcher(DB) {
+  const [partners, contacts, links, kids] = await Promise.all([
+    readPartners(DB), readContacts(DB), readLinks(DB),
+    DB.prepare('SELECT slug, data FROM kids').all().then((r) => r.results || []),
+  ]);
+  const bySlug = new Map(partners.map((p) => [p.slug, p]));
+  const sponsors = new Map(kids.map((k) => [k.slug, sponsorsOf({ data: parse(k.data || '{}', {}) })]));
+  return (person, slug) => (sponsors.get(slug) || []).some((s) => bySlug.has(s) && fromSponsor(person, bySlug.get(s), { contacts: contacts[s] || [], links }));
+}
+
+/**
  * Bring one kid's job in line, job access first, then the field. With adopt
  * (the sweep), what was done in JobTread comes in first. previous: the kid's
  * sponsors before a save (null when nothing was saved), so one taken off
@@ -238,7 +265,7 @@ async function reconcile(env, { kid, job, chosen, partners, contacts, links, row
   const removedPartners = removedSlugs.map((s) => partners.find((p) => p.slug === s)).filter(Boolean);
   const dismissed = [...new Set([...parse(row?.dismissed || '[]', []), ...removedSlugs])].filter((s) => !chosen.some((p) => p.slug === s));
 
-  // 0. From JobTread: someone given the Sponsor role there, or the field naming a Partner
+  // 0. From JobTread: someone given the Monetary Sponsor role there, or the field naming a Partner
   if (adopt) {
     for (const x of sponsorUsers(job)) {
       const p = partnerOf(x, chosen, partners, contacts, links);
@@ -256,15 +283,15 @@ async function reconcile(env, { kid, job, chosen, partners, contacts, links, row
     }
   }
 
-  // 1. A sponsor's Sponsor users become its contacts: all of them when it has none, new ones when it just came in from JobTread
+  // 1. A sponsor's people on the job become its contacts: all of them when it has none, new ones when it just came in from JobTread
   for (const p of chosen) {
     const have = contacts[p.slug] || [];
     if (have.length && !done.adopted.some((a) => a.slug === p.slug)) continue;
-    const theirs = sponsorUsers(job).filter((x) => fromSponsor(x, p, { contacts: have, links }) && !have.some((c) => c.email === x.email));
-    if (!theirs.length) continue;
+    const fresh = theirs(job, p, contacts, links).filter((x) => !have.some((c) => c.email === x.email));
+    if (!fresh.length) continue;
     try {
-      contacts[p.slug] = await saveContacts(DB, p.slug, [...have, ...theirs.map((x) => ({ name: x.name, email: x.email }))].slice(0, MAX_PEOPLE), { by: SYNC_USER, source: 'jobtread', now });
-      done.filled.push({ slug: p.slug, name: p.name, people: theirs.length });
+      contacts[p.slug] = await saveContacts(DB, p.slug, [...have, ...fresh.map((x) => ({ name: x.name, email: x.email }))].slice(0, MAX_PEOPLE), { by: SYNC_USER, source: 'jobtread', now });
+      done.filled.push({ slug: p.slug, name: p.name, people: fresh.length });
     } catch (e) { done.problems.push(`Couldn’t keep ${p.name}’s contact: ${e.message}`); }
   }
 
@@ -272,8 +299,11 @@ async function reconcile(env, { kid, job, chosen, partners, contacts, links, row
   let touched = false;
   if (!job.closedOn) {
     const keeps = (x) => chosen.some((c) => fromSponsor(x, c, { contacts: contacts[c.slug] || [], links }));
+    const onPage = (p) => (kid?.data?.partnerLogos || []).some((l) => (p.logo && cfId(l.url) === cfId(p.logo)) || (!!nameKey(l.name) && nameKey(l.name) === nameKey(p.name)));
     for (const p of removedPartners) {
-      for (const x of sponsorUsers(job).filter((y) => fromSponsor(y, p, { contacts: contacts[p.slug] || [], links }) && !keeps(y))) {
+      // Its logo still on the page: it stays on the job as a partner (./_vendor-access.js)
+      if (onPage(p)) continue;
+      for (const x of theirs(job, p, contacts, links).filter((y) => !keeps(y))) {
         try {
           await revokeJobAccess(env, x.aceId, { fetchImpl });
           done.removed.push({ slug: p.slug, name: x.name || x.email, email: x.email });
@@ -282,11 +312,13 @@ async function reconcile(env, { kid, job, chosen, partners, contacts, links, row
       }
     }
     const access = job.access.filter((m) => !done.removed.some((r) => r.email === m.email));
+    const mode = chosen.length ? await roleMode(env, { fetchImpl }) : null;
     for (const p of chosen) {
       for (const c of contacts[p.slug] || []) {
         if (!c.email || access.some((m) => m.email === c.email)) continue;
         try {
-          const r = await grantJobAccess(env, job.id, c, SPONSOR_ROLE, { notify: false, access, fetchImpl, now });
+          // The sponsor's level once roles follow levels, JobTread's Monetary Sponsor until then
+          const r = await grantJobAccess(env, job.id, c, mode.sponsor(p), { notify: false, access, fetchImpl, now });
           done.granted.push({ slug: p.slug, name: c.name || c.email, email: c.email, role: r.role, kept: !!r.kept });
           access.push({ email: c.email, role: r.role });
           touched = true;
