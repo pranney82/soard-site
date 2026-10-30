@@ -68,6 +68,7 @@ test('SOARD’s own paperwork is told apart: its name as insured or on a W-9, or
 test('names: DBA names apart, legal endings aside, and a one-word vendor never swallows a longer name', () => {
   assert.deepEqual(namesOf('Sample Hauling LLC DBA Bins To Go'), ['Sample Hauling LLC', 'Bins To Go']);
   assert.deepEqual(namesOf('Jane Doe d/b/a Doe Tile'), ['Jane Doe', 'Doe Tile']);
+  assert.deepEqual(namesOf('R H & A LLC, DBA: Sample Heating & Air'), ['R H & A LLC', 'Sample Heating & Air'], 'a DBA with a colon');
   assert.equal(nameKey('Pulley & Associates, Inc.'), nameKey('Pulley and Associates'));
   assert.equal(nameScore('ServiceWise Electric', 'Service Wise Electric, LLC'), 1);
   assert.equal(nameScore('Doorsmith, inc.', 'Doorsmith, Inc.'), 1);
@@ -461,6 +462,17 @@ test('an untagged file on a JobTread vendor is tagged where it is, never uploade
   assert.equal((await rowsByName())['job photo.jpg'], undefined, 'a photo nothing calls insurance isn’t read');
   assert.equal(world.vendors.VHAUL.primary, null, 'JobTread made the agent primary; the site took it back');
   assert.match(world.notes.find((n) => n.targetId === 'VHAUL').message, /found in this vendor’s JobTread files \(insurance cert\.pdf\), where it wasn’t tagged/);
+});
+
+test('a W-9 on a vendor’s JobTread account naming its owner, not a vendor, is filed there', async () => {
+  world.vendors.VHAUL.files.push({ id: 'FJTW9', name: 'W9.jpg', type: 'image/jpeg', size: 70010, folder: null, tags: [], createdAt: '2025-08-02T12:00:00Z' });
+  world.jtFileBytes.FJTW9 = jpgOf('jt-w9');
+  READS['jt-w9'] = { isW9: true, readable: true, name: 'Pat Example & Lee Example', businessName: '', hasTaxId: true, signed: true, signedDate: '2025-01-10' };
+  await runAll();
+  const row = (await rowsByName())['W9.jpg'];
+  assert.deepEqual([row.state, row.jt_id, row.kind], ['filed', 'VHAUL', 'w9']);
+  assert.ok(world.tagged.some((t) => t.id === 'FJTW9' && t.fileTagIds.includes('T-W9')), 'tagged where it is');
+  assert.equal(world.vendors.VHAUL.values['F-W9'], true);
 });
 
 test('nothing kept holds a tax ID', async () => {

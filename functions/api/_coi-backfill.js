@@ -55,7 +55,7 @@ import { readDocument, readW9Text, pdfText, documentType, judgeW9, mergeCoi, lon
 import { jt, jtSetup, readJtVendor, writeFields, vendorNote, uploadToJt, readDocSettings, docsState, labelFor, readAsk, FOLDER, TAGS, CONTACT_VALUES, contactEmail, contactFields } from './_vendors.js';
 
 export const STATE_KEY = 'coi-backfill';
-const REREAD = 1;            // raised when files already read need reading again
+const REREAD = 2;            // raised when files already read need reading again (2: matching a W-9 to the JobTread account it's on)
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
 const BUSY_MS = MIN;                 // while there's anything to find or read
@@ -218,7 +218,7 @@ export function isOwn(names, policies = []) {
 
 /** A company name and its "DBA" names, apart */
 export function namesOf(s) {
-  return String(s || '').split(/\s+(?:d\s*\/\s*b\s*\/\s*a|dba|t\s*\/\s*a|aka|a\s*\/\s*k\s*\/\s*a)\.?\s+|\n/i).map((x) => clean(x, 120)).filter((x) => x.length > 1);
+  return String(s || '').split(/,?\s+(?:d\s*\/\s*b\s*\/\s*a|dba|t\s*\/\s*a|aka|a\s*\/\s*k\s*\/\s*a)[.:]?\s+|\n/i).map((x) => clean(x, 120)).filter((x) => x.length > 1);
 }
 
 const LEGAL = new Set(['the', 'inc', 'incorporated', 'llc', 'l', 'c', 'co', 'corp', 'corporation', 'company', 'ltd', 'limited', 'pllc', 'lp', 'llp', 'and', 'of', 'a', 'dba']);
@@ -744,6 +744,8 @@ async function readFile(env, ctx, row) {
     const context = [h.from && `Sent by: ${clean(h.from, 120)}`, h.subject && `Email subject: ${h.subject}`, h.vendor && `Ramp's vendor: ${h.vendor}`].filter(Boolean).join('\n');
     match = names.length ? await matchVendor(env, names, ctx.vendors, { context }) : null;
   }
+  // A W-9 on a vendor's JobTread account that names no vendor is still theirs: line 1 is often the owner ("Pat & Lee Example" on Example Builders)
+  if (!match && row.source === 'jt' && found.kind === 'w9' && h.jtId) match = { jtId: h.jtId, name: h.accountName, how: 'account' };
   if (!match) {
     if (found.kind === 'coi') await recordCoverage(env, { insured: insured || 'Unknown', policies: found.reading.policies, exempt: found.reading.isWcExemption, source: row.source, sourceRef: row.id, fileHash: hash, now: ctx.now });
     return { state: 'unmatched', hash, kind: found.kind, insured, detail: names.length ? 'no JobTread vendor by that name' : 'no company name on it' };
@@ -898,9 +900,9 @@ export async function runBackfill(env, st, { now = Date.now(), fetchImpl = fetch
   const iso = new Date(now).toISOString();
   await env.DB.prepare("UPDATE coi_found SET state = 'failed', tries = tries + 1 WHERE state = 'working' AND updated_at < ?").bind(new Date(now - STUCK_MS).toISOString()).run();
   await env.DB.prepare("UPDATE coi_found SET state = 'given-up' WHERE state = 'failed' AND tries >= ?").bind(MAX_TRIES).run();
-  // Read again, once: certificates and W-9s the model gave no name for (before the name was required of it, see ./_vendor-read.js)
+  // Read again, once each time REREAD is raised: what matched no vendor, and certificates and W-9s the model gave no name for
   if ((st.reread || 0) < REREAD) {
-    await env.DB.prepare("UPDATE coi_found SET state = 'queued', tries = 0, updated_at = ? WHERE item = 'file' AND state IN ('unmatched', 'skipped') AND kind IN ('coi', 'w9') AND (insured IS NULL OR insured = '')").bind(iso).run();
+    await env.DB.prepare("UPDATE coi_found SET state = 'queued', tries = 0, updated_at = ? WHERE item = 'file' AND (state = 'unmatched' OR (state = 'skipped' AND kind IN ('coi', 'w9') AND (insured IS NULL OR insured = '')))").bind(iso).run();
     st.reread = REREAD;
   }
   // Emails first (each makes file rows), newest first: the newest certificate names the agent who's theirs now
