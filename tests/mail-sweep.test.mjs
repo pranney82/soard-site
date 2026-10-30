@@ -14,7 +14,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { maybeSweepMail, mailSweepStatus, triage, withoutQuoted, familyAddresses, WATCH_MS } from '../functions/api/_mail-sweep.js';
+import { maybeSweepMail, mailSweepStatus, triage, withoutQuoted, familyAddresses, receiptText, judgeReceipt, WATCH_MS } from '../functions/api/_mail-sweep.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 
 const { privateKey: SA_PEM } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
@@ -142,6 +142,7 @@ test('triage: receipts, shipping, ads, staff mail, money tools, calendar replies
   const t = (o) => triage(mail({ box: PAT, at: T0, to: PAT, text: '', ...o }), fam);
   assert.deepEqual(t({ from: 'Wayfair <orders@wayfair.example>', subject: 'Thanks for your order! #123' }), { kind: 'receipt' });
   assert.deepEqual(t({ from: 'Studio <billing@studio.example>', subject: 'Invoice 4410 from Studio' }), { kind: 'receipt' });
+  assert.deepEqual(t({ from: 'Walmart <help@walmart.example>', subject: 'Thanks for your delivery order, Pat' }), { kind: 'receipt' });
   assert.equal(t({ from: 'Wayfair <orders@wayfair.example>', subject: 'Your order has shipped' }), null);
   assert.equal(t({ from: 'CB2 <hi@cb2.example>', subject: 'DELIVERED: Your order 147790499' }), null);
   assert.equal(t({ from: 'Pottery Barn <hi@pb.example>', subject: 'Your cart misses you (+ 20% off)' }), null);
@@ -183,6 +184,24 @@ test('a TEST account’s addresses never count as a family', async () => {
   assert.equal(fam.byEmail.has('pat.home@example.net'), false);
   assert.equal(fam.names.has('acctTest001'), false);
   assert.equal(fam.byEmail.get('parent@example.com')[0], 'acctRivera1');
+});
+
+test('a receipt’s words: the HTML when the plain text is only a link, and no links for the model', async () => {
+  const part = (mimeType, s) => ({ partId: mimeType, mimeType, headers: [], body: { data: b64u(s), size: s.length } });
+  const payload = (...parts) => ({ partId: '', mimeType: 'multipart/alternative', headers: [], parts });
+  const stub = 'Your order confirmation is 359672268\nView your order ( https://crate.example/o/359672268?key=abc )';
+  const html = '<table><tr><td>Sofa</td><td>$1,299.00</td></tr><tr><td>Order Total</td><td>$1,402.92</td></tr></table>';
+  assert.match(receiptText(payload(part('text/plain', stub), part('text/html', html))), /Order Total +\$1,402\.92/);
+  assert.equal(receiptText(payload(part('text/plain', 'Total: $54.78'), part('text/html', html))), 'Total: $54.78', 'a plain part with the amount is kept');
+  assert.equal(receiptText(payload(part('text/plain', stub), part('text/html', '<p>Thanks!</p>'))), stub, 'neither has an amount: the plain part');
+
+  let seen = '';
+  env.AI.run = async (_model, { messages }) => { seen = messages[1].content; return { response: { type: 'receipt', personal: false, vendor: 'Crate' } }; };
+  const link = `( https://t.crate.example/${'x'.repeat(1500)} )\n`;
+  const padding = '\u034f \u200c \u00ad '.repeat(1000);
+  await judgeReceipt(env, { subject: 'Your order confirmation is 359672268', from: 'Crate <hi@crate.example>', owner: 'Pat Lee', text: `We're getting it ready.${padding}\n${link.repeat(3)}Order Total $1,402.92`, files: [] });
+  assert.doesNotMatch(seen, /https?:|\u034f|\u200c/);
+  assert.match(seen, /Order Total \$1,402\.92/, 'the order isn’t pushed out of the model’s share by tracking links or preview padding');
 });
 
 test('withoutQuoted keeps the email’s own words and cuts the history', () => {

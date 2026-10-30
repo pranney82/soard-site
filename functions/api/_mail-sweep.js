@@ -28,7 +28,7 @@
 
 import { isStaffEmail, normEmail } from './_board-roles.js';
 import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
-import { mailboxes, gmail, header, textOf, filesOf, partsOf, bytesOf } from './_mailbox.js';
+import { mailboxes, gmail, header, textOf, htmlText, filesOf, partsOf, bytesOf } from './_mailbox.js';
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { postAccountComment } from './_applicant-comms.js';
 import { EMAIL_FROM, emailConfigured } from './_broadcast-notify.js';
@@ -60,7 +60,7 @@ const SENT_TAG = 'receipt-from-inbox';
 
 // The money tools' and JobTread's own mail: already where it belongs
 const OWN_TOOLS = /@([\w-]+\.)*(ramp\.com|mercury\.com|jobtread\.com|zeffy\.com|intuit\.com|quickbooks\.com|plaid\.com|companycam\.com)$/i;
-const RECEIPTISH = /\b(receipts?|invoices?|bills?|order (confirmation|confirmed|received|placed|summary|details|#|no\.?|number)|your (order|purchase|payment)|payment (received|confirmation|confirmed|successful|processed)|purchase (confirmation|confirmed)|thanks? (you )?for (your )?(order|purchase|payment|shopping)|(we('ve| have)|has been) received|charged|paid)\b/i;
+const RECEIPTISH = /\b(receipts?|invoices?|bills?|order (confirmation|confirmed|received|placed|summary|details|#|no\.?|number)|your (order|purchase|payment)|payment (received|confirmation|confirmed|successful|processed)|purchase (confirmation|confirmed)|thanks? (you )?for (your )?([\w-]+ )?(order|purchase|payment|shopping)|(we('ve| have)|has been) received|charged|paid)\b/i;
 const NOT_RECEIPT = /\b(shipped|ships|on (its|the) way|out for delivery|delivered|arriving|arrives|has arrived|track(ing)?\b|in your (cart|bag)|cart misses|left (something|in)|wish ?list|\d+% off|sale\b|deals?\b|coupons?|price drop|back in stock|review (your|us)|rate (your|us)|survey|refund(ed)?|returns?\b|statement)\b/i;
 const CALENDAR = /^(accepted|declined|tentatively accepted|tentative|invitation|updated invitation|cancell?ed (event|invitation)|new event|proposed new time)\b/i;
 // A reply on an invite's thread (a reveal's): every guest is on it, so only the family's and staff's own count
@@ -198,10 +198,10 @@ const RECEIPT_PROMPT = `You sort email for Sunshine on a Ranney Day (SOARD), a c
 Given one email from a staff member's inbox, reply with JSON only:
 {"type": "receipt" | "bill" | "not_receipt", "vendor": "<the seller>", "total": "<the amount charged or owed, as written, or empty>", "date": "<YYYY-MM-DD or empty>", "personal": true | false, "reason": "<under 15 words>"}
 
-- receipt: proof a purchase was made and paid: a receipt, an order confirmation with the amount charged, a paid invoice, a payment confirmation.
+- receipt: proof a purchase was made: a receipt, an order confirmation (even when the email doesn't show the amount; many stores leave it out), a paid invoice, a payment confirmation.
 - bill: an invoice from a vendor or contractor asking SOARD to pay for goods or work.
-- not_receipt: shipping, delivery or tracking notices; ads, sales, carts, wish lists; quotes and estimates; refunds and returns; account statements, "your bill is ready" notices and anything paid automatically (utilities, phone, internet, insurance, loans, credit cards); donation receipts or gift notices for money given TO SOARD; newsletters; anything else.
-- personal: true only when it's clearly the staff member's own purchase, not SOARD's (a personal subscription, groceries or clothes for themselves, shipped to their home rather than SOARD or a family).`;
+- not_receipt: shipping, delivery or tracking notices; ads, sales, carts, wish lists; surveys and requests for a review or feedback, even when they thank you for a purchase; free samples; quotes and estimates; refunds and returns; account statements, "your bill is ready" notices and anything paid automatically (utilities, phone, internet, insurance, loans, credit cards); donation receipts or gift notices for money given TO SOARD; newsletters; anything else.
+- personal: true only when the email shows it's the staff member's own purchase, not SOARD's: a personal subscription, or groceries or clothes for themselves shipped to their home. SOARD also buys toys, games, books, photo prints, cakes, food and gifts for the children, families, reveals, volunteers and events, so those are SOARD's. A store membership or rewards program (Wayfair Rewards, Amazon Prime, Costco), and anything ordered with one, is SOARD's too. When unsure, false.`;
 const RECEIPT_SCHEMA = {
   type: 'object',
   properties: {
@@ -221,10 +221,25 @@ function readVerdict(out) {
   };
 }
 
+const AMOUNT = /\$\s?\d/;
+// Soft hyphens, zero-width and other blank characters (a store's preview padding runs to thousands of them)
+const INVISIBLE = /[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180e\u2000-\u200f\u2028-\u202f\u205f-\u206f\u3000\u3164\ufeff\uffa0]/g;
+
+/** A receipt's words. Many stores' plain-text part is only a link ("view your order"), with the order itself in the HTML */
+export function receiptText(payload) {
+  const text = textOf(payload);
+  if (AMOUNT.test(text)) return text;
+  const html = partsOf(payload).find((p) => p.mimeType === 'text/html' && !p.filename && p.body?.data);
+  const fromHtml = html ? htmlText(new TextDecoder().decode(bytesOf(html.body.data))) : '';
+  return AMOUNT.test(fromHtml) ? fromHtml : text;
+}
+
 /** Workers AI's verdict on one email; the rules when it can't answer → { type, vendor, total, date, personal, reason, by } */
 export async function judgeReceipt(env, { subject, from, owner, text, files }) {
   if (env.AI?.run) {
-    const input = [`Inbox of: ${owner}`, `From: ${from}`, `Subject: ${subject}`, `Files: ${files.map((f) => f.name).join(', ') || 'none'}`, `Email:\n${String(text).slice(0, 3500)}`].join('\n');
+    // Links and the invisible padding stores put after the preview line go: either can fill the model's whole share of the email before the order does
+    const words = String(text).replace(/[(<]?\s*https?:\/\/[^\s>)]+\s*[)>]?/g, ' ').replace(INVISIBLE, ' ').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n');
+    const input = [`Inbox of: ${owner}`, `From: ${from}`, `Subject: ${subject}`, `Files: ${files.map((f) => f.name).join(', ') || 'none'}`, `Email:\n${words.slice(0, 3500)}`].join('\n');
     let timer;
     try {
       const out = await Promise.race([
@@ -291,7 +306,7 @@ async function handleReceipt(env, ctx, row, msg) {
   if ((thread.messages || []).some((m) => [...addresses(header(m.payload?.headers, 'To')), ...addresses(header(m.payload?.headers, 'Cc'))].includes(inbox))) {
     return { state: 'skipped', detail: 'its conversation already went to the receipt inbox' };
   }
-  const text = textOf(msg.payload);
+  const text = receiptText(msg.payload);
   const files = filesWorth(msg.payload);
   const v = await judgeReceipt(env, { subject, from, owner: ctx.ownerName, text, files });
   if (v.type === 'not_receipt') return { state: 'skipped', detail: `not a receipt: ${v.reason || 'the model said so'}` };
