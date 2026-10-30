@@ -955,12 +955,13 @@ try {
   console.log('Revenue by category');
   const yr = Number(day(0).slice(0, 4));
   const cat = (key, name, amount, accounts) => ({ key, name, amount, accounts });
-  const ytdBooks = { year: String(yr), from: `${yr}-01-01`, through: day(0), revenue: 1876045, spent: 1200000, net: 676045, basis: 'Accrual', sources: [
+  // $220K of the spending is the in-kind gifts used (_quickbooks.js nonCashOf), which SOARD's budget leaves out of expenses
+  const ytdBooks = { year: String(yr), from: `${yr}-01-01`, through: day(0), revenue: 1876045, spent: 1200000, net: 676045, basis: 'Accrual', nonCash: 220000, sources: [
     cat('donations', 'Donations', 700000, ['Individual/Corporate Revenue']), cat('store', 'Store sales', 415000, ['Store Income', 'Store Discounts']), cat('gala', 'Gala', 400000, ['Gala Income']),
     cat('inkind', 'In kind', 220000, ['In-Kind Contribution']), cat('grants', 'Grants', 90000, ['Grant Revenue']), cat('account:golf classic', 'Golf Classic', 30000, ['Golf Classic Income']),
     cat('account:rent', 'Rent', 16000, ['Rent Income']), cat('account:interest', 'Interest', 5000, ['Interest Income']), cat('account:makeover', 'Makeover', 45, ['Makeover Revenue']),
   ] };
-  const lastBooks = { year: String(yr - 1), through: `${yr - 1}${day(0).slice(4)}`, revenue: 1500000, expenses: 1100000, net: 400000, full: { revenue: 2000000, expenses: 1500000, net: 500000 },
+  const lastBooks = { year: String(yr - 1), through: `${yr - 1}${day(0).slice(4)}`, revenue: 1500000, expenses: 1100000, net: 400000, nonCash: 70000, full: { revenue: 2000000, expenses: 1500000, net: 500000, nonCash: 100000 },
     sources: [cat('donations', 'Donations', 400000), cat('store', 'Store sales', 830000), cat('gala', 'Gala', 200000), cat('inkind', 'In kind', 70000)] };
   await DB.exec('CREATE TABLE IF NOT EXISTS books_link (id TEXT PRIMARY KEY, realm_id TEXT NOT NULL, company TEXT, fiscal_start INTEGER, access_token TEXT, access_expires TEXT, refresh_token TEXT NOT NULL, refresh_expires TEXT, ytd TEXT, read_at TEXT, tried_at TEXT, error TEXT, error_at TEXT, error_detail TEXT, told TEXT, linked_at TEXT, linked_by TEXT)');
   await DB.exec('CREATE TABLE IF NOT EXISTS books_daily (id TEXT PRIMARY KEY, data TEXT, day TEXT, read_at TEXT, tried_at TEXT, error TEXT)');
@@ -975,11 +976,15 @@ try {
     // Five categories by name; Golf Classic at 1.6% folds in with rent, interest and the rest
     ok(JSON.stringify(key) === JSON.stringify(['Donations$700K37%', 'Store sales$415K22%', 'Gala$400K21%', 'In kind$220K12%', 'Grants$90K5%', 'Everything else$51K3%']), `Home at ${width}: donations, store sales, gala, in kind and grants, each with its amount and share; the small ones as Everything else (${JSON.stringify(key)})`);
     ok(await overflow(money) <= 0, `Home at ${width}: the categories fit`);
+    const spent = await money.evaluate(() => [...document.querySelectorAll('.bp-fig')].find((f) => /expenses/i.test(f.querySelector('.bp-fig__label')?.textContent || ''))?.textContent || '');
+    ok(/\$980K/.test(spent) && /Not counting \$220K in kind$/.test(spent), `Home at ${width}: the expenses as the budget counts them, without the in kind, saying so (${spent})`);
     if (width === 1440) {
       await money.hover('.bp-mix__seg:nth-child(2)');
       ok(await money.waitForFunction(() => /^Store sales\$415,000 · 22%\d{4}, same days: \$830,000 · ▼ 50%$/.test(document.querySelector('.bp-mix__tip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'Home: over a part, its exact amount beside last year’s same days');
       await money.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
       ok(await money.waitForSelector('.bp-mixtable', { timeout: 6000 }).then(() => true, () => false), 'Financials: the categories as a table');
+      const year = await money.evaluate(() => [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('tbody tr')].map((r) => r.textContent));
+      ok(year[1] === 'Expenses$980,000$1,030,000▼ 5%' && year[2] === 'In kind (not cash)$220,000$70,000▲ 214%' && /^Net\$676,045/.test(year[3]), `Financials: the year so far splits the in kind from the expenses, the net still QuickBooks’ (${JSON.stringify(year)})`);
       const rows = await money.$$eval('.bp-mixtable tbody tr', (r) => r.map((x) => x.textContent));
       ok(rows.length === 6 && rows[1] === 'Store salesStore Income, Store Discounts$415,00022%$830,000▼ 50%' && /^Everything elseGolf Classic, Rent, Interest, Makeover\$51,0453%\$0/.test(rows[5]) && rows[4] === 'GrantsGrant Revenue$90,0005%$0–', `Financials: each category with its accounts, beside last year’s same days (${JSON.stringify(rows)})`);
       await money.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });

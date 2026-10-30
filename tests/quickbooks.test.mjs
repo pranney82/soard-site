@@ -343,9 +343,10 @@ test('once a day, the year in context: last year by now and in all, the last 12 
   const n = await booksNow(env.DB, { now: T0 });
   // Last year: the same days (Jan 1 to Oct 29 2025), and the whole year
   assert.deepEqual(n.lastYear, {
-    year: '2025', through: '2025-10-29', revenue: 657777.34, expenses: 351280.11, net: 306497.22, full: { revenue: 1027777.09, expenses: 548875.18, net: 478901.91 },
-    // Its money by category too (this report's sections carry no accounts, so each is one line)
+    year: '2025', through: '2025-10-29', revenue: 657777.34, expenses: 351280.11, net: 306497.22, full: { revenue: 1027777.09, expenses: 548875.18, net: 478901.91, nonCash: 0 },
+    // Its money by category too (this report's sections carry no accounts, so each is one line), and no in kind spent
     sources: [{ key: 'account:income', name: 'Income', amount: 649876.54, accounts: ['Income'] }, { key: 'other', name: 'Other income', amount: 7900.8, accounts: ['Other Income'] }],
+    nonCash: 0,
   });
   // The last 12 full months (Oct 1 2025 to Sep 30 2026): what left the bank accounts, from their ledger. Payroll, a
   // vendor and the Ramp card's payment are cash out; the moves to the Long Reserve and the CD aren't
@@ -532,12 +533,20 @@ const BOOKS = { company: 'Sunshine on a Ranney Day', year: '2026', from: '2026-0
 test('the board page: QuickBooks’ figures against the packet’s budget for the same year, never last year’s', () => {
   assert.equal(withBooks(SHEET, null), SHEET, 'not connected: the sheet as it was');
   const b = withBooks(SHEET, BOOKS);
-  assert.deepEqual([b.revenue, b.expenses, b.year, b.asOf, b.live], [{ actual: 822221.67, budget: 1000000, last: null, lastFull: null }, { actual: 439100.14, budget: 600000, last: null, lastFull: null }, '2026', 'Oct 29, 2026', true]);
+  assert.deepEqual([b.revenue, b.expenses, b.year, b.asOf, b.live], [{ actual: 822221.67, budget: 1000000, last: null, lastFull: null }, { actual: 439100.14, budget: 600000, last: null, lastFull: null, inKind: 0 }, '2026', 'Oct 29, 2026', true]);
   const tiles = moneyTiles({ cash: null, budget: b, n: {} });
   assert.deepEqual(tiles.map((t) => [t.k, t.value, t.pct, t.sub]), [
     ['rev', '$822,222', 82, '82% of the $1M budget, as of Oct 29'],
     ['exp', '$439,100', 73, '73% of the $600K budget, as of Oct 29'],
   ]);
+  // In kind the books took in and used: in the revenue (SOARD's budget counts it there), never in the expenses (its
+  // budget leaves it out); last year's pace the same way once the daily read has it, else none rather than mixed
+  const lastYear = { year: '2025', revenue: 700000, expenses: 500000, nonCash: 80000, full: { revenue: 1000000, expenses: 700000, nonCash: 100000 } };
+  const k = withBooks(SHEET, { ...BOOKS, nonCash: 100000, lastYear });
+  assert.deepEqual(k.expenses, { actual: 339100.14, budget: 600000, last: 420000, lastFull: 600000, inKind: 100000 });
+  assert.deepEqual(k.revenue.actual, 822221.67);
+  assert.equal(moneyTiles({ cash: null, budget: k, n: {} })[1].sub, '57% of the $600K budget, as of Oct 29 · 70% by now last year · not counting $100K in kind');
+  assert.deepEqual(withBooks(SHEET, { ...BOOKS, nonCash: 100000, lastYear: { ...lastYear, nonCash: undefined } }).expenses, { actual: 339100.14, budget: 600000, last: null, lastFull: null, inKind: 100000 });
   // January: 2027’s figures before 2027’s budget sheet is in a packet
   const jan = withBooks(SHEET, { ...BOOKS, year: '2027', from: '2027-01-01', through: '2027-01-20', revenue: 5000, expenses: 2000 });
   assert.deepEqual(jan.revenue, { actual: 5000, budget: null, last: null, lastFull: null });
@@ -664,4 +673,28 @@ test('where the money came from: the income accounts by category, the way SOARD�
   assert.equal(revenueKind('Donated goods and services').key, 'inkind');
   assert.equal(revenueKind('Other Contribution').key, 'donations');
   assert.deepEqual(revenueKind('Other Income'), { key: 'other', name: 'Other income' });
+});
+
+test('spending that never left the bank: the in-kind expense the books keep beside the in-kind gift, and depreciation', async () => {
+  const { nonCashOf } = await import('../functions/api/_quickbooks.js');
+  const acct = (label, value) => ({ type: 'Data', ColData: [{ value: label }, { value }] });
+  const group = (label, rows, total, group = undefined) => ({ type: 'Section', ...(group ? { group } : {}), Header: { ColData: [{ value: label }, { value: '' }] }, Rows: { Row: rows }, Summary: { ColData: [{ value: `Total ${label}` }, { value: total }] } });
+  // SOARD's books (made-up amounts): In-Kind Contribution Expense under Cost of Goods Sold, matching the gift
+  const report = { Rows: { Row: [
+    group('Income', [group('4300 Other Contribution', [acct('4320 In-Kind Contribution', '226185.37')], '226185.37')], '226185.37', 'Income'),
+    group('Cost of Goods Sold', [acct('5010 Store COGS', '600000.00'), acct('5090 In-Kind Contribution Expense', '226185.37')], '826185.37', 'COGS'),
+    group('Expenses', [group('6010 Payroll Expense', [acct('6011 Wages', '400000.00')], '400000.00'), acct('6900 Depreciation Expense', '12000.00')], '412000.00', 'Expenses'),
+    group('Other Expenses', [acct('Interest Expense', '500.00')], '500.00', 'OtherExpenses'),
+  ] } };
+  assert.equal(nonCashOf(report), 238185.37, 'the in-kind expense and depreciation; never the in-kind gift itself, wages or interest');
+  assert.equal(nonCashOf({ Rows: { Row: [group('Expenses', [acct('Rent', '100.00')], '100.00', 'Expenses')] } }), 0);
+  // Spending by purpose leaves it out too, each class its own share of it
+  const { functionsOf } = await import('../functions/api/_quickbooks.js');
+  const cols = ['', 'Programs', 'Fundraising', 'Total'];
+  const row = (label, ...v) => ({ type: 'Data', ColData: [label, ...v].map((value) => ({ value })) });
+  const byClass = { Columns: { Column: cols.map((t) => ({ ColTitle: t })) }, Rows: { Row: [
+    { type: 'Section', group: 'COGS', Header: { ColData: [{ value: 'Cost of Goods Sold' }] }, Rows: { Row: [row('5010 Store COGS', '0', '600000', '600000'), row('5090 In-Kind Contribution Expense', '200000', '26185.37', '226185.37')] }, Summary: { ColData: ['Total Cost of Goods Sold', '200000', '626185.37', '826185.37'].map((value) => ({ value })) } },
+    { type: 'Section', group: 'Expenses', Header: { ColData: [{ value: 'Expenses' }] }, Rows: { Row: [row('Wages', '300000', '100000', '400000')] }, Summary: { ColData: ['Total Expenses', '300000', '100000', '400000'].map((value) => ({ value })) } },
+  ] } };
+  assert.deepEqual(functionsOf(byClass), { list: [{ name: 'Fundraising', amount: 700000 }, { name: 'Programs', amount: 300000 }], total: 1000000 });
 });

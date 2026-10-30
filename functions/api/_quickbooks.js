@@ -519,14 +519,29 @@ export function sourcesOf(report) {
   return [...by.values()].map((c) => ({ ...c, amount: round2(c.amount) })).filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount);
 }
 
+// Spending that never left the bank: donated goods and services the books take in and use at the same value (SOARD's
+// "In-Kind Contribution Expense" beside its "In-Kind Contribution"), and depreciation. SOARD's budget leaves these out
+// of its expenses (its revenue counts in-kind gifts; its net is "minus in-kind"), so the board's expenses do too
+const NON_CASH = /in[\s-]?kind|donated|depreciat|amortiz/i;
+/** The Profit and Loss's non-cash spending: its expense accounts (Cost of Goods Sold, Expenses, Other Expenses) named so */
+export function nonCashOf(report) {
+  const spending = treeOf(report?.Rows?.Row).filter((n) => n.kind === 'section' && SPENDING.includes(n.group));
+  return round2(spending.flatMap(leavesOf).filter((leaf) => NON_CASH.test(accountName(leaf.label))).reduce((t, leaf) => t + leaf.amount, 0));
+}
+
 /**
- * A Profit and Loss by class → spending by purpose: { list: [{ name, amount }], total }, only when the books keep it
- * (two or more classes carrying at least half the spending); else null
+ * A Profit and Loss by class → spending by purpose, without the in kind: { list: [{ name, amount }], total }, only when
+ * the books keep it (two or more classes carrying at least half the spending); else null
  */
 export function functionsOf(report) {
   const cols = (report?.Columns?.Column || []).map((c) => cleanText(c.ColTitle, 60));
   const groups = (report?.Rows?.Row || []).filter((r) => SPENDING.includes(r.group));
-  const at = (i) => groups.reduce((t, r) => t + num(r.Summary?.ColData?.[i]?.value), 0);
+  // Without what never left the bank (./nonCashOf), each class's own share of it, as the expenses are shown
+  const nonCashRows = (rows) => (rows || []).flatMap((r) => (r.Header || r.Rows
+    ? (NON_CASH.test(accountName(cellText(r.Header?.ColData?.[0]))) && r.Summary ? [r.Summary] : nonCashRows(r.Rows?.Row))
+    : r.ColData && NON_CASH.test(accountName(cellText(r.ColData[0]))) ? [r] : []));
+  const nc = groups.flatMap((g) => nonCashRows(g.Rows?.Row));
+  const at = (i) => groups.reduce((t, r) => t + num(r.Summary?.ColData?.[i]?.value), 0) - nc.reduce((t, r) => t + num(r.ColData?.[i]?.value), 0);
   const totalAt = cols.findIndex((t, i) => i > 0 && /^total$/i.test(t));
   const named = cols.map((t, i) => ({ t, i })).filter(({ t, i }) => i > 0 && i !== totalAt && t && !/^(not specified|no class|unclassified)$/i.test(t));
   const list = named.map(({ t, i }) => ({ name: t, amount: round2(at(i)) })).filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
@@ -537,7 +552,7 @@ export function functionsOf(report) {
 
 const DAILY_RETRY_MS = 60 * 60 * 1000;
 // What the daily read keeps: one up whenever it keeps something new, so a deploy's figures show that day, not the next
-const DAILY_SHAPE = 3;
+const DAILY_SHAPE = 4;
 /**
  * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
  * last good read stays; the hourly read is the one that tells Slack
@@ -557,7 +572,8 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     const sameDay = yearBefore(today);
     const lastSameReport = await pl(`${year - 1}-01-01`, sameDay);
     const lastSame = readProfitAndLoss(lastSameReport);
-    const lastFull = readProfitAndLoss(await pl(`${year - 1}-01-01`, `${year - 1}-12-31`));
+    const lastFullReport = await pl(`${year - 1}-01-01`, `${year - 1}-12-31`);
+    const lastFull = readProfitAndLoss(lastFullReport);
     // The last 12 full months: the cash that left the bank accounts (the General Ledger of those accounts), beside the
     // books' expenses (in-kind and depreciation included). Without a clean ledger, no months of cash rather than a guess
     const tThrough = lastMonthEnd(today);
@@ -597,7 +613,7 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     const data = {
       shape: DAILY_SHAPE,
       day: today,
-      lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net }, sources: sourcesOf(lastSameReport) },
+      lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net, nonCash: nonCashOf(lastFullReport) }, sources: sourcesOf(lastSameReport), nonCash: nonCashOf(lastSameReport) },
       trailing: { from: tFrom, through: tThrough, spent: trail.spent, cashOut: cashOut ? cashOut.out : null, payments: cashOut ? cashOut.payments : 0 },
       months, statements, functions,
     };
@@ -625,7 +641,7 @@ export async function readBooks(env, { fetchImpl = fetch, now = Date.now() } = {
     // it's kept only to show in Settings, never followed
     const span = yearSoFar(todayEastern(now), SOARD_YEAR_STARTS);
     const pl = await read(env, row, '/reports/ProfitAndLoss', { start_date: span.from, end_date: span.through }, { fetchImpl, now });
-    const ytd = { ...span, ...readProfitAndLoss(pl), sources: sourcesOf(pl) };
+    const ytd = { ...span, ...readProfitAndLoss(pl), sources: sourcesOf(pl), nonCash: nonCashOf(pl) };
     // The cash on the books: the Bank accounts, the CD (an Other Current Asset) and the Credit Card accounts, each asked
     // for by type (the whole chart of accounts can run past one answer's rows, and the cards came after the cut)
     const ofType = async (type) => (await read(env, row, '/query', { query: `select * from Account where AccountType = '${type}' MAXRESULTS 1000` }, { fetchImpl, now })).QueryResponse?.Account || [];
@@ -680,7 +696,8 @@ export async function maybeReadBooks(env, { fetchImpl = fetch, now = Date.now() 
 
 /**
  * The year so far as last read → { company, year, from, through, revenue, expenses, net, basis, at, stale,
- * cash: { total, accounts, owed, at } | null, sources, monthsOfCash, qboYearStarts, and from the daily read: lastYear,
+ * cash: { total, accounts, owed, at } | null, sources, nonCash (the expenses' in-kind and depreciation, null from an older
+ * read), monthsOfCash, qboYearStarts, and from the daily read: lastYear (with its own nonCash),
  * trailing, months (cash at each month's end), statements, functions, contextAt } or null with QuickBooks not
  * connected (or not read yet)
  */
@@ -700,7 +717,7 @@ export async function booksNow(DB, { now = Date.now() } = {}) {
   const perMonth = d?.trailing?.cashOut > 0 ? d.trailing.cashOut / 12 : 0;
   return {
     company: row.company, year: y.year, from: y.from, through: y.through, revenue: y.revenue, expenses: y.spent, net: y.net, basis: y.basis, at: row.read_at, stale: now - Date.parse(row.read_at) > STALE_MS, cash,
-    sources: y.sources || [], monthsOfCash: cash && perMonth ? Math.round((cash.total / perMonth) * 10) / 10 : null, perMonth: perMonth ? round2(perMonth) : null,
+    sources: y.sources || [], nonCash: typeof y.nonCash === 'number' ? y.nonCash : null, monthsOfCash: cash && perMonth ? Math.round((cash.total / perMonth) * 10) / 10 : null, perMonth: perMonth ? round2(perMonth) : null,
     qboYearStarts: row.fiscal_start && row.fiscal_start !== SOARD_YEAR_STARTS ? MONTHS[row.fiscal_start - 1].replace(/^./, (c) => c.toUpperCase()) : null,
     lastYear: d?.lastYear || null, trailing: d?.trailing || null, months: d?.months || [], statements: d?.statements || null, functions: d?.functions || null, contextAt: daily?.read_at || null,
   };

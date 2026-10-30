@@ -187,6 +187,13 @@ function sameYear(sheet, books) {
   }
   return (sheet.year || String(sheet.meeting?.date || '').slice(0, 4)) === books.year;
 }
+const less = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.round((a - b) * 100) / 100 : null);
+/**
+ * The year's expenses the way SOARD's budget counts them: QuickBooks' less what never left the bank (the in-kind gifts
+ * it takes in and uses at the same value, and depreciation: numbers.books.nonCash). A read from before it kept that
+ * (or a meeting's numbers locked then) gives QuickBooks' own
+ */
+export const spentOf = (books) => (typeof books?.nonCash === 'number' ? less(books.expenses, books.nonCash) : books?.expenses);
 /**
  * QuickBooks' revenue and expenses so far in place of the sheet's actuals. The budget beside them stays the
  * sheet's, and only for the same fiscal year: a new year's figures are never measured against last year's budget
@@ -197,9 +204,13 @@ export function withBooks(sheet, books) {
   // Beside each: last year's same days, and its whole year (how far along last year was by now)
   const ly = books.lastYear;
   const line = (actual, x, last, lastFull) => ({ actual, budget: same && x ? x.budget : null, last: typeof last === 'number' ? last : null, lastFull: typeof lastFull === 'number' ? lastFull : null });
+  // Expenses as SOARD's budget counts them, without in kind (last year's the same way, once the daily read has it)
+  const lyCash = typeof books.nonCash !== 'number' ? [ly?.expenses, ly?.full?.expenses]
+    : typeof ly?.nonCash === 'number' && typeof ly?.full?.nonCash === 'number' ? [less(ly.expenses, ly.nonCash), less(ly.full.expenses, ly.full.nonCash)] : [null, null];
   return {
     year: same && sheet.label ? sheet.label : books.year, asOf: shortDate(books.through), live: true, at: books.at,
-    revenue: line(books.revenue, sheet?.revenue, ly?.revenue, ly?.full?.revenue), expenses: line(books.expenses, sheet?.expenses, ly?.expenses, ly?.full?.expenses), programs: null,
+    revenue: line(books.revenue, sheet?.revenue, ly?.revenue, ly?.full?.revenue),
+    expenses: { ...line(spentOf(books), sheet?.expenses, ...lyCash), inKind: books.nonCash > 0 ? books.nonCash : 0 }, programs: null,
     meeting: sheet?.meeting || null, file: sheet?.file || null,
   };
 }
@@ -241,7 +252,7 @@ export function moneyTiles({ cash, budget, n }) {
   if (cash?.months != null) out.push({ k: 'months', label: 'Months of cash', value: monthsText(cash.months), sub: cash.perMonth ? `At ${compact(cash.perMonth)} a month, the last 12 months’ cash out` : 'At the last 12 months’ cash out' });
   const yr = budget?.year || '';
   for (const [k, x, word] of [['rev', budget?.revenue, 'revenue'], ['exp', budget?.expenses, 'expenses']]) {
-    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}`, paceText(x)].filter(Boolean).join(' · ') : growthText(x) || `The year so far${asOfWords(budget.asOf)}` });
+    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: [x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}`, paceText(x)].filter(Boolean).join(' · ') : growthText(x) || `The year so far${asOfWords(budget.asOf)}`, x.inKind ? `not counting ${compact(x.inKind)} in kind` : ''].filter(Boolean).join(' · ') });
   }
   const f = n?.finance;
   // Mercury's own record (the year so far, the forecast) only once its banks are the cash shown

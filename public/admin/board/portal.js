@@ -34,7 +34,7 @@ import {
 } from '../board-shared.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized } from './kanban.js';
-import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix } from './money.js';
+import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix, spentOf } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -594,7 +594,8 @@ function Figures({ data }) {
   const books = budget === undefined && typeof n.books?.revenue === 'number' ? n.books : null;
   const waiting = (actual) => ({ actual, budget: null, waiting: true });
   const rev = budget?.revenue || (books ? waiting(books.revenue) : null);
-  const exp = budget?.expenses || (books && typeof books.expenses === 'number' ? waiting(books.expenses) : null);
+  // Expenses as the budget counts them, without in kind (./money.js spentOf), and saying what's left out
+  const exp = budget?.expenses || (books && typeof books.expenses === 'number' ? { ...waiting(spentOf(books)), inKind: books.nonCash > 0 ? books.nonCash : 0 } : null);
   const yr = budget?.year || books?.year || '';
   // Against the budget once there is one for the year (QuickBooks' figures can come before the year's sheet: then
   // against last year's same days), and last year's pace by now on a line of its own
@@ -607,7 +608,7 @@ function Figures({ data }) {
       note: cash && cash.prior != null ? `${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} from a year ago` : '', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '' },
     rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: compact(rev.actual), meter: rev, sub: against(rev), note: pace(rev), href: '#/financials' }
       : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${nextWhen || 'date to come'}` : 'None scheduled', href: '#makeovers' },
-    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), meter: exp, sub: against(exp), note: pace(exp), href: '#/financials' } : null,
+    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), meter: exp, sub: against(exp), note: pace(exp), aside: exp.inKind ? `Not counting ${compact(exp.inKind)} in kind` : '', href: '#/financials' } : null,
     { key: 'build', label: 'Makeovers', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', note: rev && nextWhen ? `Next reveal ${nextWhen}` : '', href: '#makeovers' },
   ].filter(Boolean);
   const go = (e, t) => {
@@ -622,6 +623,7 @@ function Figures({ data }) {
       ${t.meter ? html`<${Meter} x=${t.meter} />` : null}
       <span class="bp-fig__sub">${t.sub}</span>
       ${t.note ? html`<span class=${`bp-fig__note ${t.tone ? `is-${t.tone}` : ''}`}>${t.note}</span>` : null}
+      ${t.aside ? html`<span class="bp-fig__note">${t.aside}</span>` : null}
     </a>
   </li>`)}</ul>`;
 }
@@ -1715,15 +1717,23 @@ function PartsBar({ label, parts, total }) {
 /** The year so far from QuickBooks beside last year's same days; where the money came from; where it went, by purpose */
 function BooksYear({ b }) {
   const ly = b.lastYear;
-  const rows = [['Revenue', b.revenue, ly?.revenue], ['Expenses', b.expenses, ly?.expenses], ['Net', b.net, ly?.net]];
+  // Expenses as the budget counts them, then the in kind that never left the bank, so the net is still QuickBooks'
+  const nc = b.nonCash > 0;
+  const lyNc = typeof ly?.nonCash === 'number';
+  const rows = [
+    ['Revenue', b.revenue, ly?.revenue, 'total'],
+    ...(nc ? [['Expenses', spentOf(b), lyNc ? ly.expenses - ly.nonCash : null, 'total'], ['In kind (not cash)', b.nonCash, lyNc ? ly.nonCash : null, 'part']] : [['Expenses', b.expenses, ly?.expenses, 'total']]),
+    ['Net', b.net, ly?.net, 'net'],
+  ];
+  const lySpent = nc ? (lyNc && typeof ly?.full?.nonCash === 'number' ? [ly.expenses - ly.nonCash, ly.full.expenses - ly.full.nonCash] : null) : ly ? [ly.expenses, ly.full?.expenses] : null;
   const pct = (a, p) => (typeof p === 'number' && p > 0 ? `${a >= p ? '▲' : '▼'} ${Math.abs(Math.round(((a - p) / p) * 100))}%` : '');
   return html`<section class="bp-card" aria-labelledby="by-h">
     <${SecHead} id="by-h" title="The year so far" sub=${`From QuickBooks, January 1 to ${dayMonth(b.through)}`} />
     <table class="bp-table">
       <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${b.year} so far</th>${ly ? html`<th scope="col" class="num">${ly.year}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
-      <tbody>${rows.map(([label, a, p]) => html`<tr class=${label === 'Net' ? 'bp-row--net' : 'bp-row--total'} key=${label}><th scope="row">${label}</th><td class="num">${signedMoney(a)}</td>${ly ? html`<td class="num">${signedMoney(p)}</td><td class="num">${label === 'Net' ? changeMoney(a, p) : pct(a, p)}</td>` : null}</tr>`)}</tbody>
+      <tbody>${rows.map(([label, a, p, kind]) => html`<tr class=${`bp-row--${kind}`} key=${label}><th scope="row">${label}</th><td class="num">${signedMoney(a)}</td>${ly ? html`<td class="num">${signedMoney(p)}</td><td class="num">${kind === 'net' ? changeMoney(a, p) : pct(a, p)}</td>` : null}</tr>`)}</tbody>
     </table>
-    ${ly?.full?.revenue > 0 ? html`<p class="bp-note">By this day last year, ${Math.round((ly.revenue / ly.full.revenue) * 100)}% of ${ly.year}’s revenue (${compact(ly.full.revenue)}) had come in, and ${ly.full.expenses > 0 ? Math.round((ly.expenses / ly.full.expenses) * 100) : 0}% of its spending had gone out.</p>` : null}
+    ${ly?.full?.revenue > 0 ? html`<p class="bp-note">By this day last year, ${Math.round((ly.revenue / ly.full.revenue) * 100)}% of ${ly.year}’s revenue (${compact(ly.full.revenue)}) had come in${lySpent?.[1] > 0 ? `, and ${Math.round((lySpent[0] / lySpent[1]) * 100)}% of its spending had gone out` : ''}.</p>` : null}
     <div class="bp-meters">
       ${mixOf(b) ? html`<div class="bp-meter"><div class="bp-meter__head"><span>Where the money came from</span></div><${RevenueMix} books=${b} table=${true} /></div>` : null}
       ${b.functions ? html`<${PartsBar} label="Where it went, by purpose" parts=${b.functions.list} total=${b.functions.total} />` : null}
