@@ -1944,7 +1944,15 @@ function init(root, cfg, mode) {
     const line1 = box.querySelector('[data-part="line1"]');
     if (mode === 'parts' && !line1.value.trim() && !box.dataset.picked && search.value.trim()) line1.value = search.value.trim().slice(0, 160);
     box.dataset.mode = mode;
-    if (mode === 'line') syncAddressLine(el);
+    if (mode === 'line') {
+      const line = addressLineOf(readField(byId[el.dataset.field]) || {});
+      if (line) { search.value = line; box.dataset.picked = line; } else {
+        // Begun by hand but not finished: its street goes back in the line to search for, the rest let go
+        if (line1.value.trim()) search.value = line1.value.trim();
+        for (const k of ['line1', 'city', 'zip']) box.querySelector(`[data-part="${k}"]`).value = '';
+        delete box.dataset.picked;
+      }
+    }
     liveCheck(el);
     refresh();
     markDirty();

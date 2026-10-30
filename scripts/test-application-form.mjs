@@ -441,6 +441,19 @@ try {
   await waitArea('inside');
   await byHand('line');
   ok(await addressLine() === '3167 Main St, Duluth, GA 30096' && !(await visible('#af-address-zip')), 'back to the one line, the whole address in it');
+  // Begun by hand but not finished: "Search for the address instead" still goes back to the one line, the street in it, its suggestions open
+  await byHand('parts');
+  await clear('#af-address-zip');
+  await clear('#af-address-city');
+  await type('#af-address-line1', '3167 Main');
+  await byHand('line');
+  ok(await visible('#af-address-search') && !(await visible('#af-address-line1')) && await addressLine() === '3167 Main', `an address begun by hand goes back to the one line, its street in it (${await addressLine()})`);
+  await page.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
+  ok(await visible('#af-address-suggest'), 'with its suggestions open');
+  await page.click('#af-address-suggest-0');
+  await sleep(150);
+  await waitArea('inside');
+  ok(await addressLine() === '3167 Main St, Duluth, GA 30096' && await areaState() === 'inside', 'and a tap finishes it');
   await noSideScroll('service area');
   await next();
   ok(await visible('[data-field="boundary"] .af-map-frame') && await visible('[data-field="boundary"] .af-map-pin'), 'Continue: the map, with a pin on the home');
