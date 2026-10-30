@@ -993,7 +993,9 @@ export async function maybeRunBackfill(env, { now = Date.now(), fetchImpl = fetc
   let st = {};
   try {
     st = await readState(env.DB, STATE_KEY);
-    if (!force && now - (st.lastRunAt || 0) < (st.busy === false ? IDLE_MS : BUSY_MS)) return null;
+    // A new search or read-again (SEARCH, REREAD) starts at the next heartbeat, not hours later
+    const fresh = (st.search || 1) < SEARCH || (st.reread || 0) < REREAD;
+    if (!force && !fresh && now - (st.lastRunAt || 0) < (st.busy === false ? IDLE_MS : BUSY_MS)) return null;
     if (!force && (st.runningUntil || 0) > now) return null;
     await writeState(env.DB, STATE_KEY, { runningUntil: now + LOCK_MS });
     st = await runBackfill(env, st, { now, fetchImpl, draw });

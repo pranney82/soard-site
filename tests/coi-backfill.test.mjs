@@ -599,7 +599,8 @@ test('a new search version looks through every inbox and Ramp again from four ye
   // As the search before this one left it: done, and only new mail looked for after
   await env.DB.prepare("UPDATE spend_state SET data = json_remove(data, '$.search') WHERE key = ?").bind(STATE_KEY).run();
   world.searches = [];
-  for (let i = 0; i < 8 && world.searches.length < 2; i++) await maybeRunBackfill(env, { now: NOW + DAY + i * 60e3, fetchImpl: pretendFetch, force: true, draw: world.draw });
+  // (not hours later: the next heartbeat, a minute on)
+  for (let i = 0; i < 8 && world.searches.length < 2; i++) await maybeRunBackfill(env, { now: NOW + 3600e3 + i * 60e3, fetchImpl: pretendFetch, draw: world.draw });
   const afters = world.searches.map((q) => Number(/after:(\d+)$/.exec(q)[1]) * 1000);
   assert.ok(afters.length >= 2 && afters.every((a) => a < NOW - 3 * 365 * DAY), 'both inboxes, from four years back');
   assert.equal(world.ai.filter((x) => x === 'read').length, reads, 'nothing read twice');
