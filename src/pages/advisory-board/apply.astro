@@ -344,6 +344,16 @@ const logo = 'brand-logo-light-bg-display';
   .adv-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px 20px; align-items: end; }
   @container (min-width: 520px) { .adv-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 
+  /* The home address: suggestions as it's typed (Georgia's; Google's carry its credit), under the box or over it, never off the screen */
+  .adv-suggest-wrap { position: relative; }
+  .adv-suggest { position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 6px); margin: 0; padding: 6px; list-style: none; background: #fff; border: 1px solid #ECE9E1; border-radius: 16px; box-shadow: 0 18px 48px -8px rgba(30,31,37,0.22), 0 2px 6px rgba(30,31,37,0.06); max-height: min(320px, 60vh); overflow: auto; }
+  .adv-suggest.is-up { top: auto; bottom: calc(100% + 6px); }
+  .adv-suggest li { display: grid; gap: 1px; padding: 10px 12px; min-height: 48px; border-radius: 10px; cursor: pointer; font-size: 15px; line-height: 1.35; color: var(--c-dark); }
+  .adv-suggest li[aria-selected="true"], .adv-suggest li:hover { background: #FFFBEA; box-shadow: inset 0 0 0 1.5px var(--c-yellow); }
+  .adv-suggest-main { font-weight: 600; }
+  .adv-suggest-sub { font-size: 13.5px; color: var(--c-text-muted); }
+  .adv-suggest[data-google]::after { content: 'Google Maps'; display: block; text-align: right; padding: 6px 12px 4px; position: sticky; bottom: -6px; background: #fff; font-family: Roboto, var(--font-body), sans-serif; font-weight: 400; font-style: normal; letter-spacing: normal; font-size: 12px; color: #5E5E5E; white-space: nowrap; text-transform: none; }
+
   /* Choices: a card each, a circle that fills (the makeover application's look) */
   .adv-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 10px; }
   /* Yes / Maybe / No: one row on a phone too (two on the narrowest) */

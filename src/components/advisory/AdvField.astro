@@ -33,6 +33,12 @@ const described = [f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boo
       {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
       {f.type === 'textarea' ? (
         <textarea id={fid(f.id)} name={f.id} rows={f.rows || 4} maxlength={f.max} autocomplete={f.autocomplete || 'off'} aria-describedby={described}></textarea>
+      ) : f.type === 'address' ? (
+        <div class="adv-suggest-wrap">
+          <input id={fid(f.id)} name={f.id} type="text" maxlength={f.max} autocomplete={f.autocomplete || 'off'} autocapitalize="words" spellcheck="false" enterkeyhint="next"
+            role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls={`${fid(f.id)}-suggest`} aria-describedby={described} />
+          <ul class="adv-suggest" id={`${fid(f.id)}-suggest`} role="listbox" aria-label="Suggested addresses" hidden></ul>
+        </div>
       ) : (
         <input id={fid(f.id)} name={f.id} type={f.type} maxlength={f.max} autocomplete={f.autocomplete || 'off'} enterkeyhint="next"
           inputmode={f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : undefined}

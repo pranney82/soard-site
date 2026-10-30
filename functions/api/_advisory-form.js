@@ -26,7 +26,8 @@ export const ADVISORY_STEPS = [
       { id: 'preferredName', label: 'Preferred name', hint: 'What you like to be called, if it’s different.', type: 'text', autocomplete: 'nickname', max: 60 },
       { id: 'email', label: 'Email address', type: 'email', required: true, autocomplete: 'email', max: 200 },
       { id: 'phone', label: 'Phone number', type: 'tel', required: true, autocomplete: 'tel', max: 40 },
-      { id: 'address', label: 'Home address', type: 'textarea', rows: 2, autocomplete: 'street-address', max: 300 },
+      // One line that finds the address as it's typed (the application's suggestions); any words typed still count
+      { id: 'address', label: 'Home address', type: 'address', autocomplete: 'street-address', max: 300 },
       { id: 'company', label: 'Employer or company', type: 'text', autocomplete: 'organization', max: 160 },
       { id: 'jobTitle', label: 'Job title', type: 'text', autocomplete: 'organization-title', max: 160 },
       { id: 'link', label: 'LinkedIn profile or website', hint: 'If you have one.', type: 'url', autocomplete: 'url', max: 300 },

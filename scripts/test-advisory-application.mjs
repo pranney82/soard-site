@@ -133,6 +133,9 @@ async function answer(req, ip) {
   if (url.pathname === '/api/advisory-applications-admin') return run(adminApi);
   if (url.pathname === '/api/advisory-apply') return run(publicApi);
   if (url.pathname === '/api/reveal-invites-admin') { revealEmails.push(JSON.parse(req.postData()).boardEmail); return req.respond({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); }
+  // The home address's suggestions (the application's endpoint), as Google would answer
+  if (url.pathname === '/api/apply' && url.searchParams.has('address')) return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, source: 'google', results: /^3167/.test(url.searchParams.get('address')) ? [{ id: 'ChIJ_home_one_0001', line1: '3167 Main St', sub: 'Duluth, GA' }] : [] }) });
+  if (url.pathname === '/api/apply' && url.searchParams.has('place')) return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, address: { line1: '3167 Main St', line2: '', city: 'Duluth', state: 'GA', zip: '30096' } }) });
   if (url.hostname !== '127.0.0.1') return req.respond({ status: 200, contentType: 'image/png', body: PNG });
   return false;
 }
@@ -305,6 +308,18 @@ if (DIST) {
     await type('fullName', 'Taylor Brooks'); await type('email', `taylor${width}@example.org`); await type('phone', '404 555 0199');
     ok(await p.evaluate(() => document.querySelector('[data-field="email"]').parentElement.matches('.adv-pair')), 'email and phone share a row where there is room');
     await type('company', 'Brooks Law');
+    // The home address: one line, suggestions as it's typed; a pick puts the whole address in it
+    await type('address', '3167 Main');
+    await p.waitForSelector('#adv-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
+    const sugg = await p.$$eval('#adv-address-suggest [role="option"]', (els) => els.map((e) => e.textContent));
+    ok(sugg.length === 1 && await p.$eval('#adv-address', (e) => e.getAttribute('aria-expanded')) === 'true', `the home address suggests as it's typed (${sugg.join(' / ')})`);
+    ok(await p.$eval('#adv-address-suggest', (e) => e.hasAttribute('data-google') && getComputedStyle(e, '::after').content.includes('Google Maps')), 'Google’s, with its credit');
+    await p.keyboard.press('ArrowDown');
+    ok(await p.$eval('#adv-address', (e) => e.getAttribute('aria-activedescendant')) === 'adv-address-suggest-0', 'ArrowDown highlights it');
+    await p.keyboard.press('Enter');
+    await sleep(300);
+    ok(await p.$eval('#adv-address', (e) => e.value) === '3167 Main St, Duluth, GA 30096' && await p.$eval('#adv-address-suggest', (e) => e.hidden), `Enter picks it: the whole address in the line (${await p.$eval('#adv-address', (e) => e.value)})`);
+    ok((await text(p, '#adv-title')) === 'About you', 'and stays on the step (Enter picked, it did not move on)');
     await onTo('Your interest');
     ok(await p.evaluate(() => document.activeElement?.tagName) === 'H2', 'each step starts at its heading');
     await type('heardFrom', 'LinkedIn'); await type('why', 'To help.'); await type('connection', 'Neighbors.');

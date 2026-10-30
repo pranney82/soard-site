@@ -20,7 +20,7 @@ const API = '/api/advisory-apply';
 const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3L12.5 5" /></svg>';
 const CHEV = '<svg class="adv-review-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>';
 // About 20 minutes in all (what the hero says), shared out by what each step asks
-const SECONDS = { text: 20, email: 15, tel: 15, url: 20, textarea: 120, choice: 10, check: 10 };
+const SECONDS = { text: 20, email: 15, tel: 15, url: 20, address: 20, textarea: 120, choice: 10, check: 10 };
 
 function read() {
   try { return JSON.parse(localStorage.getItem(STORE) || 'null'); } catch { return null; }
@@ -518,6 +518,7 @@ export function initAdvisoryForm() {
 
   form.addEventListener('input', (e) => {
     const id = e.target.closest('[data-field]')?.dataset.field;
+    if (e.target === sugInput && e.isTrusted) { clearTimeout(sug.timer); sug.timer = setTimeout(suggest, 250); }
     follow();
     if (id) recheck(id);
     save();
@@ -528,9 +529,109 @@ export function initAdvisoryForm() {
     if (id) recheck(id);
     save();
   });
+  // ── The home address: suggestions as it's typed (the application's: Google's when SOARD has a key, else
+  // OpenStreetMap's, Georgia's only). Picking one puts the whole address in the line; any words typed still count
+  const sug = { timer: 0, ctrl: null, items: [], active: -1, closing: 0 };
+  const sugInput = form.querySelector('input[role="combobox"]');
+  const sugList = sugInput && document.getElementById(sugInput.getAttribute('aria-controls'));
+  const oneLine = (a) => [[a.line1, a.line2].filter(Boolean).join(', '), a.city, [a.state, a.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  function closeSuggest() {
+    if (!sugList) return;
+    sugList.hidden = true;
+    sugList.replaceChildren();
+    sugInput.setAttribute('aria-expanded', 'false');
+    sugInput.removeAttribute('aria-activedescendant');
+    Object.assign(sug, { items: [], active: -1 });
+  }
+  /** Under the box, or over it when there's more room there (a phone's keyboard below): never past what can be seen */
+  function placeSuggest() {
+    if (!sugList || sugList.hidden) return;
+    sugList.classList.remove('is-up');
+    sugList.style.maxHeight = '';
+    const vv = window.visualViewport;
+    const seenTop = Math.max(vv ? vv.offsetTop : 0, ui.top?.getBoundingClientRect().bottom || 0);
+    const seenBottom = Math.min(vv ? vv.offsetTop + vv.height : innerHeight, form.querySelector('.adv-nav')?.getBoundingClientRect().top ?? Infinity);
+    const r = sugInput.getBoundingClientRect();
+    const below = seenBottom - r.bottom - 10;
+    const above = r.top - seenTop - 10;
+    if (sugList.scrollHeight > below && above > below) {
+      sugList.classList.add('is-up');
+      sugList.style.maxHeight = `${Math.max(140, Math.floor(above))}px`;
+    } else sugList.style.maxHeight = `${Math.max(140, Math.floor(below))}px`;
+  }
+  async function suggest() {
+    const q = sugInput.value.trim();
+    if (q.length < 4 || !/\d/.test(q)) { closeSuggest(); return; }
+    sug.ctrl?.abort();
+    const ctrl = new AbortController();
+    sug.ctrl = ctrl;
+    let data = null;
+    try { data = await (await fetch(`/api/apply?address=${encodeURIComponent(q)}`, { signal: ctrl.signal })).json(); } catch { return; }
+    if (ctrl.signal.aborted || sugInput.value.trim() !== q || document.activeElement !== sugInput) return;
+    const items = (Array.isArray(data?.results) ? data.results : []).filter((i) => i?.line1).slice(0, 5);
+    if (!items.length) { closeSuggest(); return; }
+    Object.assign(sug, { items, active: -1 });
+    sugList.toggleAttribute('data-google', data.source === 'google');
+    sugList.replaceChildren(...items.map((it, i) => {
+      const li = document.createElement('li');
+      li.id = `${sugList.id}-${i}`;
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      li.dataset.i = String(i);
+      const main = document.createElement('span');
+      main.className = 'adv-suggest-main';
+      main.textContent = it.line1;
+      const sub = document.createElement('span');
+      sub.className = 'adv-suggest-sub';
+      sub.textContent = it.sub || [it.city, [it.state, it.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+      li.append(main, sub);
+      return li;
+    }));
+    sugList.hidden = false;
+    sugInput.setAttribute('aria-expanded', 'true');
+    sugInput.removeAttribute('aria-activedescendant');
+    placeSuggest();
+  }
+  function moveActive(d) {
+    const n = sug.items.length;
+    if (!n) return;
+    sug.active = sug.active < 0 ? (d > 0 ? 0 : n - 1) : (sug.active + d + n) % n;
+    [...sugList.children].forEach((li, i) => li.setAttribute('aria-selected', String(i === sug.active)));
+    sugInput.setAttribute('aria-activedescendant', sugList.children[sug.active].id);
+    sugList.children[sug.active].scrollIntoView({ block: 'nearest' });
+  }
+  /** The whole address in the line: a Google pick's street and town at once, its ZIP a moment later */
+  async function pickSuggestion(i) {
+    const it = sug.items[i];
+    if (!it) return;
+    closeSuggest();
+    sugInput.focus({ preventScroll: true });
+    const put = (v) => { sugInput.value = v; sugInput.dispatchEvent(new Event('input', { bubbles: true })); };
+    if (!it.id) { put(oneLine(it)); return; }
+    put([it.line1, it.sub].filter(Boolean).join(', '));
+    try {
+      const r = await (await fetch(`/api/apply?place=${encodeURIComponent(it.id)}`)).json();
+      if (r?.address && sugInput.value.startsWith(it.line1)) put(oneLine(r.address)); // unless they've typed on since
+    } catch { /* the street and town stay */ }
+  }
+  if (sugInput && sugList) {
+    form.addEventListener('keydown', (e) => {
+      if (e.target !== sugInput || sugList.hidden) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveActive(e.key === 'ArrowDown' ? 1 : -1); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (sug.active >= 0) pickSuggestion(sug.active); else closeSuggest(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSuggest(); }
+      else if (e.key === 'Tab') closeSuggest();
+    }, true); // before Enter's "next box" (and the form's own Enter, Continue)
+    sugList.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box for the click
+    sugList.addEventListener('click', (e) => { const li = e.target.closest('[role="option"]'); if (li) pickSuggestion(Number(li.dataset.i)); });
+    sugInput.addEventListener('blur', () => { clearTimeout(sug.closing); sug.closing = setTimeout(() => { if (document.activeElement !== sugInput) closeSuggest(); }, 180); });
+    window.visualViewport?.addEventListener('resize', placeSuggest);
+    window.addEventListener('resize', placeSuggest);
+  }
+
   // Enter (the keyboard's "next") goes to the next box on the screen; on the last one it's Continue
   form.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' || e.isComposing || e.shiftKey || !(e.target instanceof HTMLInputElement) || ['radio', 'checkbox', 'submit', 'button'].includes(e.target.type)) return;
+    if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing || e.shiftKey || !(e.target instanceof HTMLInputElement) || ['radio', 'checkbox', 'submit', 'button'].includes(e.target.type)) return;
     const boxes = [...pages[step].querySelectorAll('input:not([type=hidden]), textarea')].filter((x) => x.getClientRects().length && !x.closest('[hidden], [data-off]'))
       .filter((x, k, all) => x.type !== 'radio' || all.findIndex((y) => y.type === 'radio' && y.name === x.name) === k);
     const after = boxes[boxes.indexOf(e.target) + 1];
