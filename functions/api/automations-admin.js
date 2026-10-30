@@ -33,6 +33,7 @@
  *  - jotform:   the one-time Jotform copy (submissions copied, left, families and files added; counts only)
  *  - advisory:  Advisory Board applications (how many, New, the last one and who heard; counts only)
  *  - demoInvites: demo day invites (the switch, the last 5-minute check, invites out; counts only)
+ *  - processDocs: the process Docs Site → Automations → Process follows (names, last read, any problem)
  *
  * Not in _middleware's public list, so Access guards it. Never cached.
  * Each section fails on its own: one unreachable service never blanks the rest.
@@ -57,6 +58,7 @@ import { listAccounts } from './_mercury.js';
 import { boardFacts } from './_board.js';
 import { staffStatus } from './_staff-access.js';
 import { mailSweepStatus } from './_mail-sweep.js';
+import { processFacts } from './_process-docs.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -439,6 +441,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     staff: await settle(() => staffStatus(env)),
     // Staff inboxes swept: receipts to the receipt inbox, family emails onto JobTread (_mail-sweep.js)
     mailSweep: await settle(() => mailSweepStatus(env)),
+    // The process Docs Process follows: their names, last read and any problem (_process-docs.js)
+    processDocs: await settle(() => processFacts(DB)),
   };
 }
 

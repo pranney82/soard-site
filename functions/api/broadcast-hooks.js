@@ -37,6 +37,7 @@ import { maybeTrackEmails } from './_email-log.js';
 import { maybeRunSpend } from './_spend.js';
 import { maybeRunFinance } from './_finance.js';
 import { maybeRunVendors } from './_vendors.js';
+import { maybeRefreshProcess } from './_process-docs.js';
 import { alertAdmins } from './_broadcast-notify.js';
 import { maybeRunBoard } from './_board.js';
 import { maybeSyncStaff } from './_staff-access.js';
@@ -116,6 +117,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeSyncStaff(env));
     // Every staff inbox: receipts to the receipt inbox, family emails onto their JobTread account (see _mail-sweep.js)
     context.waitUntil(maybeSweepMail(env));
+    // Hourly: SOARD's process Docs in Drive, so Site → Automations knows if Drive stops answering (see _process-docs.js)
+    context.waitUntil(maybeRefreshProcess(env));
     // The hub passes `reason` to every open page and keeps `work` in its status, so both go
     // as kinds only ('email', 'kid', 'auto-start'), never kid slugs or send counts
     if (!r) return Response.json({ ok: true, state: (await publicPayload(env)).state, reason: 'tick', work: [], changed: false, cached: false, busy: true });

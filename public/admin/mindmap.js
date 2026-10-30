@@ -326,12 +326,21 @@ svg .am-halo { fill: none; stroke: var(--am-warn); stroke-opacity: 0.4; stroke-w
 @media (prefers-reduced-motion: reduce) { .am-node { animation: none; } }
 `;
 let cssDone = false;
-function ensureCss() {
+/** The map's styles (the dots and lines Process uses too), added once */
+export function ensureCss() {
   if (cssDone) return;
   const s = document.createElement('style');
   s.textContent = CSS;
   document.head.appendChild(s);
   cssDone = true;
+}
+
+/** A page's live facts (GET factsUrl) → the body; a sign-in that expired answers with a login page, not data */
+export async function fetchFacts(url) {
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.success || !body.checkedAt) throw new Error(body?.error || (res.ok ? 'the server didn’t send data; try reloading the admin' : `HTTP ${res.status}`));
+  return body;
 }
 
 export const Dot = ({ n, shape }) => html`<span class=${`am-dot-i s-${n.es}${shape === 'square' ? ' k-link' : ''}`} title=${STATUS[n.es]} aria-hidden="true"></span>`;
@@ -344,6 +353,8 @@ const smooth = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? '
  *  - palette:    { colorKey: '#hex' } for the branches
  *  - title, sub: the page header; headerExtra sits on its right
  *  - factsUrl:   GET → { success, checkedAt, … } handed to each entry's live(); onFacts(body|null) too
+ *  - getFacts(fresh): instead of fetching factsUrl itself, the page's own (shared) read of it
+ *  - focus:      an entry's id to open the map on, centered and picked
  *  - written:    the date the tree was written ("Map written …")
  *  - filters:    [[key, label]], or groups [{ label, items: [[key, label]] }] shown side by side
  *                ('Sent by: …'): 'all' clears, 'attn' is the amber entries, any other key asks filterMatch(n, key)
@@ -362,6 +373,7 @@ export function MindMap({
   model, palette = {}, title, sub, headerExtra = null, factsUrl, written, onFacts = () => {},
   filters, filterMatch = () => true, lede, entry, homeNote, depNoun = ['entry', 'entries'],
   hay = () => [], shape = () => 'circle', tags = null, legend = null, list, searchLabel, searchPlaceholder, ariaLabel, children = null,
+  getFacts = null, focus = null,
 }) {
   ensureCss();
   const { MAP, byId, ALL, SERVICES, applyFacts, defaultOpen } = model;
@@ -401,13 +413,10 @@ export function MindMap({
     return () => { live = false; };
   }, []);
 
-  const loadFacts = async () => {
+  const loadFacts = async (fresh = false) => {
     setCheck((c) => ({ ...c, state: 'loading' }));
     try {
-      const res = await fetch(factsUrl, { headers: { Accept: 'application/json' } });
-      const body = await res.json().catch(() => null);
-      // An expired Access sign-in answers with a login page, not data
-      if (!res.ok || !body?.success || !body.checkedAt) throw new Error(body?.error || (res.ok ? 'the server didn’t send data; try reloading the admin' : `HTTP ${res.status}`));
+      const body = await (getFacts ? getFacts(fresh) : fetchFacts(factsUrl));
       applyFacts(body);
       onFacts(body);
       setFacts(body);
@@ -455,9 +464,11 @@ export function MindMap({
     apply();
   };
 
-  // Fit once on arrival, and again when Inter finishes loading (labels change width)
+  // Fit once on arrival, and again when Inter finishes loading (labels change width);
+  // a page that opens the map on one entry centers it instead
   useEffect(() => {
-    fit();
+    const n = focus ? byId.get(focus) : null;
+    if (n && !n.children) reveal(n); else fit();
     if (!ready) setReady(true);
   }, [fontsReady]);
   useEffect(() => {
@@ -757,7 +768,7 @@ export function MindMap({
       ${check.state === 'loading' && 'Checking live status…'}
       ${check.state === 'ok' && html`<span>Statuses checked live <${Ago} iso=${check.at} />. Map written ${written}.</span>`}
       ${check.state === 'error' && html`<span>Couldn’t check live status (${check.error}). Showing the map as written ${written}.</span>`}
-      ${check.state === 'error' && html`<button type="button" onClick=${loadFacts}>Try again</button>`}
+      ${check.state === 'error' && html`<button type="button" onClick=${() => loadFacts(true)}>Try again</button>`}
     </p>
 
     <div class="am-tools">

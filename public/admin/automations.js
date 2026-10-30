@@ -20,15 +20,19 @@
  * visitor | admin | build | link.
  *
  * The map itself (drawing, panning, filters, the side panel) is ./mindmap.js,
- * shared with Site → Emails & invites.
+ * shared with Site → Emails & invites. The page's other view, Process
+ * (#automations/process), is ./process.js: SOARD's process Docs step by step,
+ * with these same entries pinned to the steps they do, statuses and all.
  */
 
-import { h, htm } from './vendor.js';
-import { MindMap, prepareMap, Ago, STATUS, MIN, HOUR, ms, ago, stamp, stale, plural } from './mindmap.js';
+import { h, htm, useState, useEffect } from './vendor.js';
+import { MindMap, prepareMap, fetchFacts, Ago, STATUS, MIN, HOUR, ms, ago, stamp, stale, plural } from './mindmap.js';
+import { ProcessView, hashOfTrack, currentTrack } from './process.js';
+import { reviewOf } from './process-shared.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 28, 2026';
+const WRITTEN_ON = 'October 29, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -513,6 +517,33 @@ const MAP = { t: 'SOARD', children: [
             const doubles = a.doubleCopies ? ` ${plural(a.doubleCopies, 'second copy', 'second copies')} counted${c.dedupe ? '' : ', not removed yet'}.` : '';
             return ON(`${plural(a.withPhotos, 'open job')} with CompanyCam photos${a.missing ? `, ${plural(a.missing, 'photo')} still to copy` : ', every photo in JobTread'}.${doubles}`, c.lastChecked);
           } },
+      ]},
+      { t: 'The process', children: [
+        { t: 'Process from Google Docs', s: 'live', k: 'link',
+          when: 'Someone opens Site → Automations → Process (Drive is asked at most every 2 minutes), and hourly on the heartbeat.',
+          does: 'Reads SOARD’s two process Docs in the shared drive, “2026 Sunshine Makeover Process” and “2026 Sunshine Community Project Process”, as they are, and shows each step with the automations that do its work. The money side (accounts payable, gifts and deposits, books and reporting) has no process Doc: its steps show how it runs, each with the sections of the board’s “Board Financial Policy Manual” that govern it, read the same way, and bill approvals are checked against the manual’s approval tiers. Next year’s Docs are followed on their own once they exist (the latest year in the name wins); a Doc named some other way can be pasted in Process.',
+          touches: ['Google Drive', 'D1'], where: 'functions/api/process-admin.js · _process-docs.js · public/admin/process.js · process-shared.js',
+          info: 'Each Doc is due for a yearly review a year after it last changed or was last marked “Reviewed, no changes” in Process; overdue, this turns Needs attention. Read as whoever opens Process, through the site’s Google service account (drive.readonly, like Board’s minutes), and never written to. If Drive can’t be read, Process shows the last copy it read and says so. Before the Doc’s Onsite step, the makeover track shows how families apply on the website, in the steps of the 2026 Application Timeline handout.',
+          live: (f) => {
+            const p = f.processDocs;
+            if (!p || p.error) return null;
+            const docs = ['makeover', 'community', 'policy'];
+            const docName = (t) => (p[t]?.name ? `“${p[t].name}”` : { makeover: 'The makeover process Doc', community: 'The community project process Doc', policy: 'The board’s Financial Policy Manual' }[t]);
+            const bad = docs.filter((t) => p[t]?.error);
+            if (bad.length) return ATTN(`${docName(bad[0])}: ${p[bad[0]].error}${p[bad[0]].readAt ? ' Process shows the copy it last read.' : ''}`, p[bad[0]].readAt || null);
+            const read = docs.filter((t) => p[t]?.readAt);
+            if (!read.length) return ON('Reads the Docs the first time Process opens.');
+            // Each Doc is looked over once a year: changed, or marked “Reviewed, no changes” in Process
+            const due = read.find((t) => reviewOf(p[t], { reviewedAt: p[t].reviewedAt, yearly: t !== 'policy' })?.state === 'due');
+            if (due) return ATTN(`${docName(due)} is due for its yearly review. Open Process, look it over, and change the Doc or mark it reviewed.`, p[due].checkedAt || p[due].readAt);
+            const last = read.map((t) => p[t].checkedAt || p[t].readAt).sort().pop();
+            return ON(`Following ${read.length > 2 ? `${read.slice(0, -1).map(docName).join(', ')} and ${docName(read.at(-1))}` : read.map(docName).join(' and ')}.`, last);
+          } },
+        { t: 'Makeover scoring', s: 'live', k: 'admin',
+          when: 'Each person on the selection team opens a family’s Score tab in Applications → Applicants.',
+          does: 'Scores the family on the rubric’s 10 criteria, 1 to 5 each, one at a time and saved as they go. The family’s score is the average of everyone’s totals, and the Scores view ranks the season once everyone scoring it has finished. Family readiness waits for the home visit.',
+          touches: ['D1'], where: 'public/admin/applicants.js · scoring-shared.js · functions/api/_applicant-scores.js',
+          info: 'Community projects aren’t scored.' },
       ]},
     ]},
 
@@ -1314,6 +1345,8 @@ const PALETTE = { reveals: '#B08900', live: '#6352C9', email: '#2B6CB0', site: '
 const model = prepareMap(MAP, 'a');
 /** Apply the live facts to every entry. Exported for tests. */
 export const applyFacts = model.applyFacts;
+/** Every entry on the map. Exported for tests: Process pins them to its steps by name */
+export const entries = model.ALL;
 
 const filterMatch = (n, k) => (k === 'own' ? n.k === 'schedule' || n.k === 'event' : n.k === k);
 const shape = (n) => (n.k === 'link' ? 'square' : 'circle');
@@ -1339,9 +1372,48 @@ function Entry(sel, { pickService, Dot }) {
 }
 
 // ─── The page ─────────────────────────────
+// The live facts, read once for the map and Process together (kept a minute)
+let factsRead = null;
+function getFacts(fresh = false) {
+  if (fresh || !factsRead || Date.now() - factsRead.at > MIN) {
+    const p = fetchFacts(FACTS_URL);
+    factsRead = { at: Date.now(), p };
+    p.catch(() => { if (factsRead?.p === p) factsRead = null; });
+  }
+  return factsRead.p;
+}
+
+const viewOfHash = () => (/^#automations\/process\b/.test(location.hash) ? 'process' : 'map');
+const Switcher = ({ view, onPick }) => html`<div class="seg" role="group" aria-label="Show the automations as">
+  ${[['map', 'Map'], ['process', 'Process']].map(([v, label]) => html`<button key=${v} type="button" aria-pressed=${String(view === v)} onClick=${() => onPick(v)}>${label}</button>`)}
+</div>`;
+
 export function AutomationsMap() {
+  const [view, setView] = useState(viewOfHash);
+  // An entry Process asked to see on the map
+  const [focus, setFocus] = useState(null);
+  useEffect(() => {
+    const on = () => { if (/^#automations\b/.test(location.hash)) setView(viewOfHash()); };
+    window.addEventListener('popstate', on);
+    window.addEventListener('hashchange', on);
+    return () => { window.removeEventListener('popstate', on); window.removeEventListener('hashchange', on); };
+  }, []);
+  const pick = (v) => {
+    if (v === view) return;
+    setFocus(null);
+    setView(v);
+    history.replaceState(history.state, '', v === 'process' ? hashOfTrack(currentTrack()) : '#automations');
+  };
+  // A step back from the map returns to Process
+  const showOnMap = (id) => {
+    setFocus(id);
+    setView('map');
+    history.pushState(history.state, '', '#automations');
+  };
+  const switcher = html`<${Switcher} view=${view} onPick=${pick} />`;
+  if (view === 'process') return html`<${ProcessView} model=${model} getFacts=${getFacts} switcher=${switcher} kinds=${KIND} onShowOnMap=${showOnMap} />`;
   return html`<${MindMap}
-    model=${model} palette=${PALETTE} factsUrl=${FACTS_URL} written=${WRITTEN_ON}
+    model=${model} palette=${PALETTE} factsUrl=${FACTS_URL} written=${WRITTEN_ON} getFacts=${getFacts} focus=${focus} headerExtra=${switcher}
     title="Automations"
     sub="Everything that runs on its own or connects SOARD to another service. Pick anything to see what starts it, what it does and where it lives."
     filters=${FILTERS} filterMatch=${filterMatch} shape=${shape}
