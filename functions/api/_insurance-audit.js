@@ -65,6 +65,7 @@ export const POLICIES = {
 export const TERMS_SHOWN = 3;                       // each policy's term now and the two before it
 const CURRENT_EVERY_MS = 20 * 60 * 60 * 1000;       // the current term's payments, read again
 const PAST_EVERY_MS = 7 * DAY;                      // a past term's
+const FAILED_EVERY_MS = 3 * 60 * 60 * 1000;         // a read where JobTread, Ramp or Mercury didn't answer, tried again
 const SAME_PAYMENT_DAYS = 10;                       // a Mercury payment this close to one already counted, same vendor and amount, is that one
 const ASK_AFTER_DAYS = 7;                           // a payment this old with no certificate covering it is asked about
 const RENEWED_ASK_DAYS = 45;                        // a term that just ended is still asked about this long, so its last week isn't missed
@@ -527,7 +528,8 @@ export async function readRun(DB, termId) {
   const r = await DB.prepare('SELECT * FROM insurance_audit_runs WHERE term = ?').bind(String(termId)).first();
   return r ? { term: r.term, builtAt: r.built_at, ...parseJson(r.data, { payments: [], sources: {} }) } : null;
 }
-export const runIsStale = (run, t, now = Date.now()) => !run || now - Date.parse(run.builtAt) > (t.id === termOf(todayEastern(now), t.policy).id ? CURRENT_EVERY_MS : PAST_EVERY_MS);
+export const runIsStale = (run, t, now = Date.now()) => !run || now - Date.parse(run.builtAt) > (Object.values(run.sources || {}).some((x) => x.connected && !x.ok) ? FAILED_EVERY_MS
+  : t.id === termOf(todayEastern(now), t.policy).id ? CURRENT_EVERY_MS : PAST_EVERY_MS);
 
 export async function readCalls(DB) {
   await ensureAuditSchema(DB);

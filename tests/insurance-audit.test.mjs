@@ -11,7 +11,7 @@ import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureVendorSchema } from '../functions/api/_vendors.js';
 import { forgetRampToken } from '../functions/api/_ramp.js';
 import {
-  term, termOf, termsShown, monthsText, isSubcontractor, coverageFor, coverageOn, combinePayments, auditFrom, buildRun, auditFor, readRun,
+  term, termOf, termsShown, monthsText, isSubcontractor, coverageFor, coverageOn, combinePayments, auditFrom, buildRun, auditFor, readRun, runIsStale,
   askForGaps, askEmail, auditCsv, auditPacket, saveCall, maybeRunInsuranceAudit, rampPaymentOf, mercuryPaymentOf, jtBillOf, jtPaymentOf, ensureAuditSchema,
 } from '../functions/api/_insurance-audit.js';
 import { onRequestGet, onRequestPost } from '../functions/api/insurance-audit-admin.js';
@@ -267,6 +267,8 @@ test('the term is read from every source, kept, and shown with the coverage foun
   const again = await buildRun(env, T, { now: NOW });
   assert.equal(again.sources.jobtreadPayments.ok, false);
   assert.match(again.sources.jobtreadPayments.error, /paidAt/);
+  assert.equal(runIsStale(again, T, Date.parse(again.builtAt) + 2 * 3600e3), false);
+  assert.equal(runIsStale(again, T, Date.parse(again.builtAt) + 3 * 3600e3 + 60e3), true, 'a read where a source failed is tried again in 3 hours, not tomorrow');
   assert.deepEqual(again.payments.map((p) => p.key), ['bill:B1', 'bill:B2', 'mercury:T9'], 'B1 dated by its bill when its payment can’t be read');
 });
 
