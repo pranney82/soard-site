@@ -747,6 +747,8 @@ async function postNoEmail(env, v, now) {
  */
 export async function jobtreadVendors(env, { fetchImpl = fetch } = {}) {
   const ids = await jtSetup(env, { fetchImpl }).catch(() => null);
+  // Each contact's Email alone: every value of 10 contacts on 25 vendors was refused as too large (413)
+  const emailOnly = { $: { size: 1, where: [['customField', 'id'], '=', ids?.contact?.email || ''] }, nodes: { value: {}, customField: { id: {}, type: {} } } };
   const out = [];
   let page = null;
   for (let i = 0; i < 40; i++) {
@@ -759,7 +761,7 @@ export async function jobtreadVendors(env, { fetchImpl = fetch } = {}) {
           nodes: {
             id: {}, name: {}, archivedAt: {},
             customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } },
-            contacts: { $: { size: 10 }, nodes: { title: {}, customFieldValues: CONTACT_VALUES } },
+            contacts: { $: { size: 10 }, nodes: { title: {}, customFieldValues: emailOnly } },
           },
         },
       },

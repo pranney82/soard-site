@@ -84,6 +84,7 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.host === 'api.jobtread.com') {
     const { query } = JSON.parse(init.body);
     if (query.organization?.customFields) return Response.json({ organization: { customFields: { nodes: world.fields }, contactFields: { nodes: [{ id: 'VC-EMAIL', name: 'Email', type: 'emailAddress' }, { id: 'VC-PHONE', name: 'Phone', type: 'phoneNumber' }] }, fileTags: { nodes: world.tags } } });
+    if (query.organization?.accounts) world.vendorListQuery = query;
     if (query.organization?.accounts) return Response.json({ organization: { accounts: { nextPage: null, nodes: world.jtVendorList || [] } } });
     if (query.organization?.jobs) return Response.json({ organization: { jobs: { nextPage: null, nodes: (world.openJobs || []).map((j) => ({ ...j, customFieldValues: { nodes: [{ value: j.status }] }, aces: { nodes: [] } })) } } });
     if (query.createCustomField) {
@@ -683,6 +684,10 @@ test('an insurance agent’s contact is never the vendor’s email: not for thei
   const row = await env.DB.prepare('SELECT email, facts FROM vendors WHERE jt_id = ?').bind(VENDOR).first();
   assert.equal(row.email, 'tom@tko.example');
   assert.deepEqual(JSON.parse(row.facts).emails, ['tom@tko.example']);
+  // The list asks for each contact's Email value alone: all of them, 25 vendors at a time, was refused as too large (413)
+  const { accounts } = world.vendorListQuery.organization;
+  assert.equal(accounts.$.size, 25);
+  assert.deepEqual(accounts.nodes.contacts.nodes.customFieldValues.$, { size: 1, where: [['customField', 'id'], '=', 'VC-EMAIL'] });
 });
 
 test('“Not needed” in JobTread: never asked', async () => {
