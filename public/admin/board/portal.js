@@ -34,7 +34,7 @@ import {
 } from '../board-shared.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized } from './kanban.js';
-import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText } from './money.js';
+import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -1694,66 +1694,6 @@ function Statements({ s, books, idp = 'st' }) {
     <p class="bp-stmts__when">From QuickBooks, as of ${fullDate(s.asOf)}${s.closed ? ', the day the books are closed through' : ', the end of the last full month'}, beside the same day a year before.${books?.qboYearStarts ? ` QuickBooks’ settings start its year in ${books.qboYearStarts}, so its Net Income line counts from ${books.qboYearStarts} 1.` : ''}</p>
     <${Statement} id=${`${idp}-pos`} title="Statement of financial position" rows=${s.position} asOf=${s.asOf} priorAsOf=${s.priorAsOf} />
     <${Statement} id=${`${idp}-act`} title=${`Statement of activities, January 1 to ${dayMonth(s.asOf)}`} rows=${s.activity} asOf=${s.asOf} priorAsOf=${s.priorAsOf} />
-  </div>`;
-}
-
-// ─── Where the revenue came from: QuickBooks' income accounts by category (functions/api/_quickbooks.js sourcesOf) ───
-// Each category keeps its color wherever it shows, checked together for lightness, strength and color-blind separation
-// (two are light on white, so every part also carries its name and amount). An account outside them takes a color
-// left free; whatever is left over is Everything else, in gray
-const MIX_TONE = { donations: 1, store: 2, gala: 3, inkind: 4, grants: 5 };
-/**
- * The year's revenue as parts, in their colors' order: the categories of 2% or more (five at most), then Everything
- * else; each with the same days last year when the daily read has them. Null before QuickBooks' categories are in (a
- * read kept by an older deploy, or a past meeting's locked numbers)
- */
-function mixOf(books) {
-  const src = books?.sources || [];
-  const total = books?.revenue;
-  if (!src.length || !src.every((x) => x.key) || !(total > 0)) return null;
-  const big = src.filter((x) => x.amount >= total * 0.02);
-  const free = [1, 2, 3, 4, 5].filter((t) => !big.some((x) => MIX_TONE[x.key] === t));
-  const named = big.map((x) => ({ ...x, tone: MIX_TONE[x.key] || free.shift() })).filter((x) => x.tone).sort((a, b) => a.tone - b.tone);
-  const lys = books.lastYear?.sources?.every((x) => x.key) ? books.lastYear.sources : null;
-  const lyOf = (key) => (lys ? lys.find((x) => x.key === key)?.amount || 0 : null);
-  const parts = named.map((x) => ({ ...x, last: lyOf(x.key) }));
-  const rest = Math.max(0, total - named.reduce((t, x) => t + x.amount, 0));
-  if (rest >= total * 0.005) {
-    const left = src.filter((x) => !named.some((n) => n.key === x.key));
-    const lastRest = lys ? Math.max(0, books.lastYear.revenue - named.reduce((t, x) => t + lyOf(x.key), 0)) : null;
-    parts.push({ key: 'rest', name: 'Everything else', amount: rest, tone: 0, accounts: left.map((x) => x.name), last: lastRest });
-  }
-  let at = 0;
-  return { total, year: books.year, lastYear: books.lastYear?.year || '', parts: parts.map((x) => { const w = (x.amount / total) * 100; const mid = at + w / 2; at += w; return { ...x, w, mid }; }) };
-}
-const shareOf = (a, total) => { const p = (a / total) * 100; return p > 0 && p < 1 ? 'under 1%' : `${Math.round(p)}%`; };
-const changeOf = (a, p) => (p > 0 ? `${a >= p ? '▲' : '▼'} ${Math.abs(Math.round(((a - p) / p) * 100))}%` : '');
-
-/**
- * The revenue as one bar, a part per category, and a key giving each its amount and share; over a part, its exact
- * amount and the same days last year. `table` (Financials): every category beside last year, with its accounts
- */
-function RevenueMix({ books, table = false }) {
-  const mix = mixOf(books);
-  const [on, setOn] = useState(-1);
-  if (!mix) return null;
-  const { parts, total } = mix;
-  const tip = parts[on];
-  const said = `${mix.year} revenue by category: ${parts.map((x) => `${x.name} ${money(x.amount)} (${shareOf(x.amount, total)})`).join(', ')}`;
-  return html`<div class="bp-mix" onMouseLeave=${() => setOn(-1)}>
-    <div class="bp-mix__bar" role="img" aria-label=${said}>
-      ${parts.map((x, i) => html`<span class=${`bp-mix__seg bp-tone--${x.tone} ${on >= 0 && i !== on ? 'is-dim' : ''}`} style=${`--p:${x.w}%`} key=${x.key} onMouseEnter=${() => setOn(i)}></span>`)}
-      ${tip ? html`<div class="bp-mix__tip" style=${`--x:${tip.mid}%`} aria-hidden="true"><strong>${tip.name}</strong>${money(tip.amount)} · ${shareOf(tip.amount, total)}${tip.last != null ? html`<span>${mix.lastYear}, same days: ${money(tip.last)}${changeOf(tip.amount, tip.last) ? ` · ${changeOf(tip.amount, tip.last)}` : ''}</span>` : null}</div>` : null}
-    </div>
-    ${table ? html`<table class="bp-table bp-mixtable">
-      <thead><tr><th scope="col">Category</th><th scope="col" class="num">${mix.year} so far</th>${parts.some((x) => x.last != null) ? html`<th scope="col" class="num">${mix.lastYear}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
-      <tbody>${parts.map((x) => html`<tr key=${x.key}>
-        <th scope="row"><span class="bp-mixtable__name"><i class=${`bp-tone--${x.tone}`} aria-hidden="true"></i>${x.name}</span>${x.accounts?.length && !(x.accounts.length === 1 && x.accounts[0] === x.name) ? html`<small>${x.accounts.join(', ')}</small>` : null}</th>
-        <td class="num">${money(x.amount)}<small>${shareOf(x.amount, total)}</small></td>
-        ${x.last != null ? html`<td class="num">${money(x.last)}</td><td class="num">${changeOf(x.amount, x.last) || '–'}</td>` : null}
-      </tr>`)}</tbody>
-    </table>`
-    : html`<ul class="bp-mix__key">${parts.map((x, i) => html`<li key=${x.key} class=${i === on ? 'is-on' : ''} onMouseEnter=${() => setOn(i)}><i class=${`bp-tone--${x.tone}`} aria-hidden="true"></i>${x.name}<strong>${compact(x.amount)}</strong><span>${shareOf(x.amount, total)}</span></li>`)}</ul>`}
   </div>`;
 }
 

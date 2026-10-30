@@ -17,7 +17,7 @@ import { openDoc } from './docs.js';
 import {
   meetingName, longDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, looseFiles, fileTitle, isDate, clock, sectionPlan, MORE,
 } from '../board-shared.js';
-import { moneyFor, moneyTiles } from './money.js';
+import { moneyFor, moneyTiles, mixOf, shareOf, changeOf } from './money.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
 
@@ -78,6 +78,35 @@ function moneyBox(n, money) {
   return box;
 }
 
+/** Where the year's revenue came from on paper (./money.js mixOf): the bar, then each category beside last year's same days */
+function revenueBox(books) {
+  const mix = mixOf(books);
+  if (!mix) return null;
+  const box = el('div', 'bpp-mix');
+  box.append(el('p', 'bpp-mix__h', `Where ${mix.year}’s revenue came from`));
+  const bar = el('div', 'bpp-mix__bar');
+  for (const x of mix.parts) { const seg = el('span', `bp-tone--${x.tone}`); seg.style.setProperty('--p', `${x.w}%`); bar.append(seg); }
+  box.append(bar);
+  const last = mix.parts.some((x) => x.last != null);
+  const t = el('table', 'bpp-stmt');
+  const head = el('tr');
+  head.append(el('th', ''), el('th', 'num', `${mix.year} so far`), el('th', 'num', 'Share'));
+  if (last) head.append(el('th', 'num', `${mix.lastYear}, same days`), el('th', 'num', 'Change'));
+  const thead = el('thead'); thead.append(head);
+  const tbody = el('tbody');
+  for (const x of mix.parts) {
+    const tr = el('tr');
+    const name = el('th', '');
+    name.append(el('i', `bpp-mix__key bp-tone--${x.tone}`), document.createTextNode(x.name));
+    tr.append(name, el('td', 'num', signed(x.amount)), el('td', 'num', shareOf(x.amount, mix.total)));
+    if (last) tr.append(el('td', 'num', x.last == null ? '–' : signed(x.last)), el('td', 'num', changeOf(x.amount, x.last) || '–'));
+    tbody.append(tr);
+  }
+  t.append(thead, tbody);
+  box.append(t);
+  return box;
+}
+
 const fullDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
 const shortDay = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
 const signed = (n) => (typeof n === 'number' ? `${n < 0 ? '−' : ''}${n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).replace('-', '')}` : '–');
@@ -125,13 +154,11 @@ function liveBox(kind, n, m, money) {
   if (!n || !kind || kind === 'minutes') return null;
   if (kind === 'projects') return makeoversBox(n);
   if (kind === 'cash') {
-    // The figures, then the statements the packet holds (QuickBooks', as of the books' close)
-    const figs = moneyBox(n, money);
-    const st = statementsBox(n?.books?.statements);
-    if (!st) return figs;
+    // The figures, where the revenue came from, then the statements the packet holds (QuickBooks', as of the books' close)
+    const parts = [moneyBox(n, money), revenueBox(n?.books), statementsBox(n?.books?.statements)].filter(Boolean);
+    if (parts.length < 2) return parts[0] || null;
     const box = el('div', 'bpp-money');
-    if (figs) box.append(figs);
-    box.append(st);
+    box.append(...parts);
     return box;
   }
   if (kind === 'reveals') return datesBox((n.reveals || []).slice(0, 8).map((r) => ({ when: r.confirmed && r.date ? `${dayWords(r.date)}${r.time ? `, ${clock(r.time)}` : ''}` : r.window?.label || 'To come', what: r.name })));

@@ -48,7 +48,7 @@ import * as bankAdmin from '../functions/api/bank-admin.js';
 import * as booksAdmin from '../functions/api/books-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
-import { provideBoardFinance, maybeLockNumbers } from '../functions/api/_board.js';
+import { provideBoardFinance, maybeLockNumbers, takeSnapshot } from '../functions/api/_board.js';
 import { maybeReadGifts } from '../functions/api/_board-gifts.js';
 import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
@@ -985,6 +985,17 @@ try {
       await money.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
       ok(await money.waitForSelector('.bp-agitem .bp-agmix', { timeout: 6000 }).then(() => true, () => false), 'the meeting: its money item says where the revenue came from');
       await shot(money, '27-revenue-by-category-meeting');
+      // On paper too: Print it all's money has the bar and every category beside last year. The meeting's numbers
+      // locked on its day, before QuickBooks; locked again (Board → the meeting → Lock today's numbers), they carry it
+      await takeSnapshot(env, meetingId, { by: 'Jane Doe' });
+      await money.reload({ waitUntil: 'networkidle0' });
+      await money.waitForSelector('.bp-agitem .bp-agmix', { timeout: 6000 }).catch(() => {});
+      await money.evaluate(() => { window.print = () => { window.__printing = true; }; });
+      await clickText(money, 'button', /Print it all/);
+      ok(await money.waitForFunction(() => window.__printing, { timeout: 15000 }).then(() => true, () => false), 'Print it all, with QuickBooks connected');
+      const paper = await money.evaluate(() => ({ segs: document.querySelectorAll('.bpp-mix__bar span').length, rows: [...document.querySelectorAll('.bpp-mix tbody tr')].map((r) => r.textContent) }));
+      ok(paper.segs === 6 && paper.rows.length === 6 && paper.rows[1] === 'Store sales$415,00022%$830,000▼ 50%', `Print it all: where the revenue came from, beside last year (${JSON.stringify(paper.rows.slice(0, 2))})`);
+      await money.evaluate(() => dispatchEvent(new Event('afterprint')));
     }
     await money.close();
   }

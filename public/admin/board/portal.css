@@ -845,9 +845,12 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-meter__head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.5rem; }
 .bp-meter__head span { font-weight: 650; }
 .bp-meter__head strong { font-family: var(--display); font-size: 1.3rem; font-variant-numeric: tabular-nums; }
-.bp-meter__track { display: flex; width: var(--w, 100%); height: 18px; border-radius: 999px; overflow: hidden; background: var(--warm); gap: 2px; transform-origin: left; }
+.bp-meter__track { display: flex; width: var(--w, 100%); height: 12px; gap: 2px; transform-origin: left; }
 .is-entering .bp-meter__track { animation: bp-grow 0.9s 0.35s var(--ease) both; }
-.bp-meter__seg { flex: 0 0 var(--p); min-width: 3px; }
+/* The same shape as where the revenue came from: thin parts, a hairline between, rounded ends */
+.bp-meter__seg { flex: 0 0 calc(var(--p) - 2px); min-width: 3px; border-radius: 2px; }
+.bp-meter__seg:first-child { border-radius: 4px 2px 2px 4px; }
+.bp-meter__seg:last-child { border-radius: 2px 4px 4px 2px; }
 .bp-meter__seg--a { background: var(--yellow); }
 .bp-meter__seg--b { background: var(--ink); }
 .bp-meter__seg--c { background: #B9B5AA; }
@@ -1436,6 +1439,25 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bs-decided b { flex: none; padding: 0.2em 0.65em; border-radius: 999px; background: rgba(246, 244, 236, 0.1); font-size: 0.72em; font-weight: 750; white-space: nowrap; }
 .bs-decided b.is-passed { background: var(--yellow); color: #1C1D1A; }
 /* The money: how far through the budget */
+/* The screen's money: the figures, then where the revenue came from. On the dark, the same hues stepped for it
+   (checked against the panel the same way as on white); the gold stays */
+.bs-money { display: grid; gap: clamp(1rem, 3vh, 2.2rem); min-width: 0; }
+.bs-mix { padding: clamp(1rem, 2.6vh, 1.8rem) clamp(1.1rem, 2vw, 2rem); border-radius: 24px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
+.bs-mix > .bs-figs__label { display: block; margin: 0 0 clamp(0.6rem, 1.6vh, 1rem); }
+.bs .bp-mix__bar { height: clamp(14px, 2.4vh, 26px); }
+.bs .bp-mix__key { gap: 0.5em 2em; margin-top: clamp(0.7rem, 1.8vh, 1.2rem); }
+.bs .bp-mix__key li { font-size: clamp(0.95rem, 2.1vh, 1.4rem); color: var(--bs-soft); }
+.bs .bp-mix__key strong { color: var(--bs-ink); }
+.bs .bp-mix__key span { color: var(--bs-faint); }
+.bs .bp-mix__key i { width: 0.75em; height: 0.75em; }
+.bs .bp-tone--2 { background: #BB8D00; }
+.bs .bp-tone--3 { background: #6384EC; }
+.bs .bp-tone--4 { background: #0C9474; }
+.bs .bp-tone--5 { background: #C46CB0; }
+.bs .bp-tone--0 { background: #C2BFB5; }
+.bs .bp-mix__tip { background: var(--bs-ink); color: var(--bs-bg); font-size: clamp(0.85rem, 1.8vh, 1.15rem); }
+.bs .bp-mix__tip span { color: rgba(28, 29, 26, 0.72); }
+.bs .bp-mix__tip strong { color: #765C00; }
 .bs-figs__bar { position: relative; display: block; height: clamp(6px, 1vh, 10px); margin: 0.6rem 0 0.2rem; border-radius: 999px; background: rgba(246, 244, 236, 0.12); overflow: hidden; }
 .bs-figs__bar i { position: absolute; inset: 0 auto 0 0; width: var(--p); border-radius: inherit; background: var(--yellow); animation: bs-grow 0.9s var(--ease) both 0.2s; }
 .bs-figs li:first-child .bs-figs__bar { background: rgba(28, 29, 26, 0.15); }
@@ -1553,6 +1575,12 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
   .bpp-fig__value { font-family: var(--display); font-size: 14pt; font-weight: 700; }
   .bpp-fig__sub { font-size: 8.5pt; color: #4E504C; }
   .bpp-stmts { display: grid; gap: 0.5rem; margin: 0.4rem 0 0; }
+  .bpp-mix { margin: 0.45rem 0 0; }
+  .bpp-mix__h { margin: 0 0 0.2rem; font-size: 7.5pt; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: #5F615A; }
+  .bpp-mix__bar { display: flex; gap: 1.5px; height: 7px; margin: 0 0 0.25rem; }
+  .bpp-mix__bar span { flex: 0 0 calc(var(--p) - 1.5px); min-width: 2px; }
+  .bpp-mix__bar span, .bpp-mix__key { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .bpp-mix__key { display: inline-block; width: 7px; height: 7px; margin-right: 0.35rem; border-radius: 2px; }
   .bpp-stmts__when { margin: 0; font-size: 8.5pt; color: #4E504C; }
   .bpp-stmt { width: 100%; border-collapse: collapse; font-size: 8.5pt; break-inside: auto; }
   .bpp-stmt caption { text-align: left; font-family: var(--display); font-size: 10.5pt; font-weight: 700; padding: 0.3rem 0 0.2rem; }

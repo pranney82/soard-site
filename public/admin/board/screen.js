@@ -27,7 +27,7 @@ import {
   sectionPlan, sectionClock, clockText, facesOf,
 } from '../board-shared.js';
 import { Kanban, kanbanLine, sized } from './kanban.js';
-import { useCashNow, useBudget, moneyTiles } from './money.js';
+import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -172,12 +172,17 @@ function Tile({ d, word = '' }) {
   const p = monDay(d);
   return html`<span class=${`bs-tile ${word ? 'is-soft' : ''}`} aria-hidden="true"><span>${p.mon}</span><strong>${word || p.day}</strong></span>`;
 }
-/** The money as figures: the cash, the year against its budget (./money.js moneyTiles), the first on yellow */
+/**
+ * The money as figures: the cash, the year against its budget (./money.js moneyTiles), the first on yellow; under
+ * them, where the year's revenue came from (the meeting's own numbers for one already held)
+ */
 function CashSlide({ n, data, date }) {
   const upTo = date && date < todayEastern() ? date : '';
   const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n });
+  const books = upTo ? n?.books : data.numbers.books;
   if (!tiles.length) return null;
-  return html`<ul class="bs-figs" style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.k}><span class="bs-figs__label">${t.label}</span><span class="bs-figs__value">${t.value}</span>${t.pct != null ? html`<span class="bs-figs__bar" role="img" aria-label=${`${t.pct}% of the budget`}><i style=${`--p:${Math.min(100, t.pct)}%`}></i></span>` : null}${t.sub ? html`<span class="bs-figs__sub">${t.sub}</span>` : null}</li>`)}</ul>`;
+  const mix = mixOf(books) ? html`<div class="bs-mix"><p class="bs-figs__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null;
+  return html`<div class="bs-money"><ul class="bs-figs" style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.k}><span class="bs-figs__label">${t.label}</span><span class="bs-figs__value">${t.value}</span>${t.pct != null ? html`<span class="bs-figs__bar" role="img" aria-label=${`${t.pct}% of the budget`}><i style=${`--p:${Math.min(100, t.pct)}%`}></i></span>` : null}${t.sub ? html`<span class="bs-figs__sub">${t.sub}</span>` : null}</li>`)}</ul>${mix}</div>`;
 }
 /** Reveals ahead: each kid's photo and the day */
 function RevealsSlide({ n }) {
