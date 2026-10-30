@@ -431,11 +431,11 @@ function App() {
     <a class="bp-skip" href="#main" onClick=${(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to the page</a>
     <header class="bp-top">
       <div class="bp-bar">
-        <a class="bp-brand" href="#/" aria-label="SOARD Board, Home"><img src=${LOGO} alt="" width="44" height="44" /><span class="bp-brand__words"><strong>Sunshine on a Ranney Day</strong><small>Board of Directors</small></span></a>
+        <a class="bp-brand" href="#/"><img src=${LOGO} alt="SOARD board home" width="44" height="44" /><span class="bp-brand__words"><strong>Sunshine on a Ranney Day</strong> <small>Board of Directors</small></span></a>
         <${Nav} page=${route.page} />
         <div class="bp-tools">
-          <button type="button" class="bp-find" onClick=${() => setFinding(true)} aria-label="Search the board page" aria-keyshortcuts="Meta+K Control+K /">
-            <${Icon} name="search" size=${18} /><span class="bp-find__label">Search</span><kbd class="bp-kbd">${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
+          <button type="button" class="bp-find" onClick=${() => setFinding(true)} aria-keyshortcuts="Meta+K Control+K /">
+            <${Icon} name="search" size=${18} /><span class="bp-find__label">Search</span><kbd class="bp-kbd" aria-hidden="true">${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
           </button>
           <${Account} data=${data} d=${d} />
         </div>
@@ -511,8 +511,8 @@ function Account({ data, d }) {
   const name = data.me.name || who?.name || 'Admin';
   const email = data.me.email || who?.email || '';
   return html`<div class="bp-me" ref=${ref}>
-    <button type="button" class="bp-me__btn" aria-expanded=${open} aria-haspopup="true" aria-label=${`Your account: ${name}`} onClick=${() => setOpen(!open)}>
-      ${d.me ? html`<${Avatar} p=${d.me} size=${36} />` : html`<span class="bp-avatar bp-avatar--initials" style="--s:36px;--hue:42" aria-hidden="true">${initialsOf(name)}</span>`}
+    <button type="button" class="bp-me__btn" aria-expanded=${open} aria-haspopup="true" aria-label=${`${firstName(name)}, your account`} onClick=${() => setOpen(!open)}>
+      ${d.me ? html`<${Avatar} p=${d.me} size=${36} />` : html`<span class="bp-avatar bp-avatar--initials" style="--s:36px;--hue:42" data-i=${initialsOf(name)} aria-hidden="true"></span>`}
       <span class="bp-me__name">${firstName(name)}</span>
     </button>
     <div class=${`bp-menu ${open ? 'is-open' : ''}`} role="menu" hidden=${!open}>
@@ -530,7 +530,7 @@ function Avatar({ p, size = 40, ring = false }) {
   const style = `--s:${size}px`;
   return p?.photo && broken !== p.photo
     ? html`<img class=${`bp-avatar ${ring ? 'bp-avatar--ring' : ''}`} src=${p.photo} alt="" loading="lazy" decoding="async" width=${size} height=${size} style=${style} onError=${() => setBroken(p.photo)} />`
-    : html`<span class=${`bp-avatar bp-avatar--initials ${ring ? 'bp-avatar--ring' : ''}`} style=${`${style};--hue:${hueOf(name)}`} aria-hidden="true">${initialsOf(name)}</span>`;
+    : html`<span class=${`bp-avatar bp-avatar--initials ${ring ? 'bp-avatar--ring' : ''}`} style=${`${style};--hue:${hueOf(name)}`} data-i=${initialsOf(name)} aria-hidden="true"></span>`;
 }
 function Faces({ people, max = 6, size = 32 }) {
   const shown = people.slice(0, max);
@@ -944,7 +944,7 @@ function FloorLine({ v, nowItem, si, ctx }) {
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, []);
   const people = ctx.d.people;
   const given = v.live.floor ? ctx.d.bySlug.get(v.live.floor) || null : null;
-  const floor = given ? [given] : presentersOf(nowItem, people).map((p) => ctx.d.bySlug.get(p.slug) || p);
+  const floor = given ? [given] : nowItem ? presentersOf(nowItem, people).map((p) => ctx.d.bySlug.get(p.slug) || p) : [];
   const sec = v.sections[si];
   const timer = sec && !v.live.endedAt ? sectionClock(sectionPlan(v), sec.id, v.live.sectionAt) : null;
   if (!floor.length && !timer) return null;
@@ -959,13 +959,17 @@ function LiveRoom({ v, setV, m, ctx }) {
   const { say } = ctx;
   const [busy, setBusy] = useState('');
   const items = agendaItems(v);
-  const at = items.findIndex((it) => it.id === v.live.itemId);
-  const now = at >= 0 ? items[at] : null;
+  // A part's card on the screen: that part is on now, none of its items begun yet
+  const cardSi = v.live.screen === 'section' ? v.sections.findIndex((x) => x.id === v.live.sectionId) : -1;
+  const cardAt = cardSi >= 0 ? items.findIndex((it) => it.si >= cardSi) : -1;
+  const at = cardSi >= 0 ? (cardAt >= 0 ? cardAt : items.length) - 0.5 : items.findIndex((it) => it.id === v.live.itemId);
+  const now = Number.isInteger(at) && at >= 0 ? items[at] : null;
   const nowItem = now ? v.sections[now.si]?.items[now.ii] : null;
   const started = !!v.live.startedAt;
   const ended = !!v.live.endedAt;
   const video = m ? videoOf(m) : '';
-  const done = ended ? items.length : Math.max(0, at);
+  const done = ended ? items.length : Math.max(0, Math.ceil(at));
+  const plan = sectionPlan(v);
   const act = async (body, thanks) => {
     setBusy(body.vote || body.how || 'x');
     const j = await call({ ...body, meetingId: v.id });
@@ -978,6 +982,7 @@ function LiveRoom({ v, setV, m, ctx }) {
     const i = items.findIndex((x) => x.id === it.id);
     return ended || (at >= 0 && i < at) ? 'done' : i === at ? 'now' : 'next';
   };
+  const cardSec = cardSi >= 0 ? v.sections[cardSi] : null;
   const decided = v.motions.filter((x) => x.text);
   return html`
     <a class="bp-back bp-noprint" href=${m ? '#/meetings' : '#/'}><${Icon} name="back" size=${18} />${m ? 'All meetings' : 'Home'}</a>
@@ -1010,6 +1015,13 @@ function LiveRoom({ v, setV, m, ctx }) {
           <h2 class="bp-now__title" id="now-h">${[decided.length ? plural(decided.length, 'decision') : '', v.actions.length ? plural(v.actions.length, 'action item') : ''].filter(Boolean).join(' and ') || 'Thank you for being here'}</h2>
           <p class="bp-muted">The minutes come here once they’re written, and the board approves them at the next meeting.</p>
         </section>`
+        : cardSec ? html`<section class="bp-now bp-now--part" aria-labelledby="now-h" aria-live="polite" key=${cardSec.id}>
+          <p class="bp-eyebrow">Now<span class="bp-soon">Part ${String(cardSi + 1).padStart(2, '0')}${plan.get(cardSec.id) ? ` · ${plan.get(cardSec.id).minutes} min` : ''}</span></p>
+          <h2 class="bp-now__title" id="now-h">${cardSec.title || 'Agenda'}</h2>
+          <${FloorLine} v=${v} nowItem=${null} si=${cardSi} ctx=${ctx} />
+          ${cardSec.items.length ? html`<ol class="bp-now__items">${cardSec.items.map((it) => html`<li key=${it.id}><span>${items.find((x) => x.id === it.id)?.label}</span>${it.title}${presentersOf(it, ctx.d.people).length ? html`<small>${presentersOf(it, ctx.d.people).map((p) => p.name).join(' & ')}</small>` : null}</li>`)}</ol>` : html`<p class="bp-muted">Open to the floor.</p>`}
+        </section>`
+        : v.live.screen === 'since' && started ? html`<section class="bp-now bp-now--quiet" aria-labelledby="now-h"><p class="bp-eyebrow">On the screen</p><h2 class="bp-now__title" id="now-h">Since we last met</h2><p class="bp-muted">The reveals and events since the last meeting, and the action items still open.</p></section>`
         : nowItem ? html`<section class="bp-now" aria-labelledby="now-h" aria-live="polite" key=${now.id}>
           <p class="bp-eyebrow">Now discussing<span class="bp-soon">${now.label} · ${at + 1} of ${items.length}</span></p>
           <h2 class="bp-now__title" id="now-h">${nowItem.title || now.section}</h2>
@@ -1025,7 +1037,7 @@ function LiveRoom({ v, setV, m, ctx }) {
         <section class="bp-card" aria-labelledby="ag-h">
           <h2 class="bp-h2" id="ag-h">The agenda${items.length ? html`<span class="bp-count">${done} of ${items.length} done</span>` : null}</h2>
           <ol class="bp-liveag">${v.sections.map((s, si) => html`<li class="bp-liveag__sec" key=${s.id}>
-            <p class="bp-liveag__head"><span>${String(si + 1).padStart(2, '0')}</span>${s.title || 'Agenda'}</p>
+            <p class=${`bp-liveag__head ${si === cardSi ? 'is-now' : ''}`}><span>${String(si + 1).padStart(2, '0')}</span>${s.title || 'Agenda'}${plan.get(s.id) ? html`<small>${[plan.get(s.id).start ? clock(plan.get(s.id).start) : '', `${plan.get(s.id).minutes} min`].filter(Boolean).join(' · ')}</small>` : null}</p>
             <ol>${s.items.map((it, ii) => { const st = state(it); return html`<li class=${`bp-liveag__item is-${st}`} key=${it.id} aria-current=${st === 'now' ? 'step' : null}>
               <span class="bp-liveag__mark" aria-hidden="true">${st === 'done' ? html`<${Icon} name="check" size=${14} />` : st === 'now' ? html`<span class="bp-live-dot"></span>` : `${si + 1}.${ii + 1}`}</span>
               <span class="bp-liveag__title">${it.title}${it.presenter ? html` <span class="bp-liveag__who">${it.presenter}</span>` : null}</span>
@@ -1086,7 +1098,7 @@ function PrintAll({ m, ctx }) {
     setStep({ done: 0, of: 0, what: '' });
     try {
       const { printAll } = await import('./print.js');
-      await printAll(m, { people: d.people, numbers: m.snapshot || (m.date >= data.today ? data.numbers : null), meetings: data.meetings, onStep: setStep, signal: stop.current.signal });
+      await printAll(m, { people: d.people, numbers: m.snapshot || (m.date >= data.today ? data.numbers : null), meetings: data.meetings, data, onStep: setStep, signal: stop.current.signal });
     } catch {
       say('The print didn’t come together. Try again, or open each document on its own.', 'warn');
     }
@@ -1157,7 +1169,7 @@ function RevealsBlock({ n }) {
   return html`<ul class="bp-agrev">${list.map((r) => {
     const photo = photoOf(r);
     return html`<li key=${r.slug || r.name}>
-      <span class="bp-agrev__photo">${photo ? html`<img src=${sized(photo, 'w=240,h=240,fit=cover,gravity=face')} alt="" loading="lazy" width="64" height="64" />` : html`<span class="bp-avatar bp-avatar--initials" style=${`--s:64px;--hue:${hueOf(r.name)}`} aria-hidden="true">${initialsOf(r.name)}</span>`}</span>
+      <span class="bp-agrev__photo">${photo ? html`<img src=${sized(photo, 'w=240,h=240,fit=cover,gravity=face')} alt="" loading="lazy" width="64" height="64" />` : html`<span class="bp-avatar bp-avatar--initials" style=${`--s:64px;--hue:${hueOf(r.name)}`} data-i=${initialsOf(r.name)} aria-hidden="true"></span>`}</span>
       <span class="bp-agrev__text"><strong>${r.name}</strong><span>${r.confirmed && r.date ? `${dayOf(r.date)}${r.time ? `, ${clock(r.time)}` : ''}` : `${r.window?.label || 'Date to come'}, not set yet`}</span></span>
       ${r.confirmed && r.date ? html`<${DateTile} d=${r.date} />` : html`<${WindowTile} w=${r.window} />`}
     </li>`;

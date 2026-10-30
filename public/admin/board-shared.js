@@ -265,7 +265,7 @@ export function cleanMeeting(raw = {}) {
     agendaFrom: raw.agendaFrom && typeof raw.agendaFrom === 'object' && AGENDA_FROM.includes(raw.agendaFrom.kind)
       ? { kind: raw.agendaFrom.kind, name: one(raw.agendaFrom.name, 200), at: one(raw.agendaFrom.at, 40), ...(Number(raw.agendaFrom.v) > 0 ? { v: Math.round(Number(raw.agendaFrom.v)) } : {}) } : null,
     // The minutes file that filled in who was there, the notes, the motions and the action items (functions/api/_board-minutes.js)
-    minutesFrom: raw.minutesFrom && typeof raw.minutesFrom === 'object' && one(raw.minutesFrom.name, 200) ? { name: one(raw.minutesFrom.name, 200), at: one(raw.minutesFrom.at, 40) } : null,
+    minutesFrom: raw.minutesFrom && typeof raw.minutesFrom === 'object' && one(raw.minutesFrom.name, 200) ? { name: one(raw.minutesFrom.name, 200), at: one(raw.minutesFrom.at, 40), ai: bool(raw.minutesFrom.ai), tries: Math.min(9, Math.max(0, Math.round(Number(raw.minutesFrom.tries) || 0))) } : null,
     // Who Google Meet saw join (functions/api/_board-attendance.js): server-set
     fromMeet: raw.fromMeet && typeof raw.fromMeet === 'object' && one(raw.fromMeet.at, 40) ? {
       at: one(raw.fromMeet.at, 40), status: ['ok', 'none', 'needs-setup', 'error'].includes(raw.fromMeet.status) ? raw.fromMeet.status : 'error', error: one(raw.fromMeet.error, 300),
@@ -293,10 +293,12 @@ export function cleanLive(raw) {
   return {
     startedAt: isoAt(l.startedAt), endedAt: isoAt(l.endedAt), itemId, fileId,
     page: fileId && Number(l.page) > 0 ? Math.min(999, Math.floor(Number(l.page))) : 0,
-    screen: l.screen === 'end' ? 'end' : '',
+    screen: ['end', 'since', 'section'].includes(l.screen) ? l.screen : '',
+    // The part whose card is on the screen (screen 'section')
+    sectionId: l.screen === 'section' && ID.test(String(l.sectionId || '')) ? String(l.sectionId) : '',
     vote,
     // When the part of the agenda on now began (its timer), and who has the floor when it isn't the item's presenter
-    sectionAt: itemId ? isoAt(l.sectionAt) : '',
+    sectionAt: itemId || l.screen === 'section' ? isoAt(l.sectionAt) : '',
     floor: itemId && /^[a-z0-9-]{1,80}$/.test(String(l.floor || '')) ? String(l.floor) : '',
   };
 }
@@ -540,30 +542,40 @@ export function guessItem(m, f, today = todayEastern()) {
 }
 
 /**
- * The meeting as the screen shows it, one stop at a time: the cover, each item (its card, then every page of each
- * of its files), the files on no item, then the close. `pages`: { fileId: page count } as far as known (1 until
- * then); `meetings` finds the last meeting's minutes. → [{ key, kind: cover | item | doc | end, itemId, fileId, page, n }]
- * where n is the item's place in agendaItems (-1 for the cover, the loose files and the close).
+ * The meeting as the screen shows it, one stop at a time: the cover; "since we last met" when the agenda asks to
+ * approve the last meeting's minutes; then each part of the agenda, opened by its own card when it has no items or
+ * more than one (a part of one item goes straight to it), each item's card and every page of each of its files;
+ * the files on no item; the close. `pages`: { fileId: page count } as far as known (1 until then); `meetings`
+ * finds the last meeting's minutes.
+ * → [{ key, kind: cover | since | section | item | doc | end, itemId, fileId, page, n, sectionId }] where n is the
+ * item's place in agendaItems (-1 for the cover, a part's card, the loose files and the close)
  */
 export function deckOf(m, { pages = {}, meetings = [] } = {}) {
-  const out = [{ key: 'cover', kind: 'cover', itemId: '', fileId: '', page: 0, n: -1 }];
-  const add = (it, files, n) => {
-    out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n });
+  const out = [{ key: 'cover', kind: 'cover', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' }];
+  if (m.sections.some((s) => s.items.some((it) => it.live === 'minutes' && it.about))) out.push({ key: 'since', kind: 'since', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
+  const add = (it, files, n, sectionId) => {
+    out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n, sectionId });
     for (const f of files) {
       const count = Math.max(1, Math.round(Number(pages[f.id]) || 1));
-      for (let p = 0; p < count; p++) out.push({ key: `${it.id}:${f.id}:${p}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, n });
+      for (let p = 0; p < count; p++) out.push({ key: `${it.id}:${f.id}:${p}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, n, sectionId });
     }
   };
   let n = 0;
-  for (const s of m.sections) for (const it of s.items) add(it, itemFiles(m, it, meetings), n++);
+  for (const s of m.sections) {
+    if (!s.title && !s.items.length) continue;
+    if (s.items.length !== 1) out.push({ key: `section:${s.id}`, kind: 'section', itemId: '', fileId: '', page: 0, n: -1, sectionId: s.id });
+    for (const it of s.items) add(it, itemFiles(m, it, meetings), n++, s.id);
+  }
   const loose = looseFiles(m);
-  if (loose.length) add(MORE, loose, -1);
-  out.push({ key: 'end', kind: 'end', itemId: '', fileId: '', page: 0, n: -1 });
+  if (loose.length) add(MORE, loose, -1, '');
+  out.push({ key: 'end', kind: 'end', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
   return out;
 }
-/** Where the meeting's live state is in a deck: that page, else that file's last known page, else the item, else the cover */
+/** Where the meeting's live state is in a deck: that page, else that file's last known page, else the item, else a part's card, else the cover */
 export function stopIndex(deck, live) {
   if (live?.screen === 'end') return deck.length - 1;
+  if (live?.screen === 'since') return Math.max(0, deck.findIndex((s) => s.kind === 'since'));
+  if (live?.screen === 'section' && live.sectionId) { const i = deck.findIndex((s) => s.kind === 'section' && s.sectionId === live.sectionId); if (i >= 0) return i; }
   if (!live?.itemId) return 0;
   const exact = deck.findIndex((s) => s.itemId === live.itemId && s.fileId === (live.fileId || '') && s.page === (live.page || 0));
   if (exact >= 0) return exact;
@@ -572,7 +584,11 @@ export function stopIndex(deck, live) {
   return Math.max(0, deck.findIndex((s) => s.itemId === live.itemId));
 }
 /** A stop as the live state that puts it on the screen */
-export const liveOfStop = (s) => ({ itemId: s?.itemId || '', fileId: s?.fileId || '', page: s?.page || 0, screen: s?.kind === 'end' ? 'end' : '' });
+export const liveOfStop = (s) => ({
+  itemId: s?.itemId || '', fileId: s?.fileId || '', page: s?.page || 0,
+  screen: s?.kind === 'end' ? 'end' : s?.kind === 'since' ? 'since' : s?.kind === 'section' ? 'section' : '',
+  sectionId: s?.kind === 'section' ? s.sectionId : '',
+});
 
 /** A video call's service by its link: "Google Meet" */
 export const callName =(url) => (/meet\.google\.com/.test(url) ? 'Google Meet' : /teams\.(microsoft|live)/.test(url) ? 'Microsoft Teams' : /zoom\.us/.test(url) ? 'Zoom' : /webex/.test(url) ? 'Webex' : 'Video call');

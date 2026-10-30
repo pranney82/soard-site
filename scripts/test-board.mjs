@@ -699,10 +699,14 @@ try {
   await jane.evaluate(() => document.activeElement?.blur());
   await jane.keyboard.press('ArrowRight');
   ok(firstItem === 'The cover', 'Start puts the cover on the screen: the meeting and its agenda');
+  ok(await jane.waitForFunction(() => /Call to order|Since we last met/.test(document.querySelector('.bm-run__title')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'the next press opens the first part with its card');
   ok(await jane.waitForFunction((t) => document.querySelector('.bm-run__title')?.textContent !== t, { timeout: 4000 }, firstItem).then(() => true, () => false), '→ moves to the next item');
-  const secondItem = await jane.$eval('.bm-run__title', (e) => e.textContent);
-  await jane.keyboard.press('ArrowRight');
-  await jane.waitForFunction((t) => document.querySelector('.bm-run__title')?.textContent !== t, { timeout: 4000 }, secondItem).catch(() => {});
+  // Past the part's card and its first item, so one item is done and one is on now
+  for (let k = 0; k < 2; k++) {
+    const was = await jane.$eval('.bm-run__title', (e) => e.textContent);
+    await jane.keyboard.press('ArrowRight');
+    await jane.waitForFunction((t) => document.querySelector('.bm-run__title')?.textContent !== t, { timeout: 4000 }, was).catch(() => {});
+  }
   ok(await jane.evaluate(() => !!document.querySelector('.bm-order__item.is-now .bm-live-dot')), 'the item being discussed is marked in the agenda, in order');
   ok(await saved(jane), 'each move saves at once');
   let follow = await jane.evaluate(async (id) => (await fetch(`/api/board-portal?live=${id}`)).json(), practiceId);

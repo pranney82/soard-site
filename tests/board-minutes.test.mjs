@@ -260,7 +260,7 @@ test('a written agenda keeps every item and its documents; each takes its notes 
   assert.deepEqual(next.motions.map((x) => [x.id, x.tally?.for ?? null]), [['v_live1', 3]]);
   assert.deepEqual(next.actions.map((x) => x.text), ['Send the venue options for the spring gala', 'Book the photographer']);
   assert.deepEqual(next.actions[1].ownerName, 'Pat Visitor');
-  assert.deepEqual(next.minutesFrom, { name: 'Q3 minutes.pdf', at: AT });
+  assert.deepEqual(next.minutesFrom, { name: 'Q3 minutes.pdf', at: AT, ai: false, tries: 1 }, 'read by the rules alone: marked to be read again by the model');
   // The same minutes again: nothing doubled
   const twice = applyMinutes(next, read, { fileName: 'Q3 minutes.pdf', now: Date.parse(AT) });
   assert.deepEqual(twice.sections.map((s) => s.items.length), next.sections.map((s) => s.items.length));
@@ -412,4 +412,29 @@ test('the admin uploads the minutes: the meeting fills itself, the file is filed
   assert.equal((await adminPost({ action: 'read-minutes', id: m.id, fileId: elsewhere.id })).status, 404);
   assert.equal((await adminPost({ action: 'read-minutes', id: 'm_gone1', fileId: file.id })).status, 404);
   assert.equal((await adminPost({ action: 'read-minutes', id: 'x', fileId: file.id })).status, 400);
+});
+
+test('minutes the heartbeat read without the model are read again later for their motions and action items, three tries at most', async () => {
+  const { maybeFinishMinutes } = await import('../functions/api/_board-minutes.js');
+  const { createD1 } = await import('./lib/d1-shim.mjs');
+  const { saveMeeting, getMeeting, ensureSchema, putFile } = await import('../functions/api/_board.js');
+  class R2 { constructor() { this.map = new Map(); } async put(k, b) { this.map.set(k, new Uint8Array(b)); } async get(k) { const b = this.map.get(k); return b ? { body: b, size: b.length } : null; } async delete(k) { this.map.delete(k); } }
+  let answer = null;
+  const env = { DB: await createD1(), FILES: new R2(), AI: { toMarkdown: async (doc) => ({ name: doc.name, format: 'text', data: SOARD_MINUTES }), run: async () => { if (!answer) throw new Error('timeout'); return { response: answer }; } } };
+  await env.DB.exec('CREATE TABLE team (slug TEXT PRIMARY KEY, name TEXT, "group" TEXT, order_num INTEGER, data TEXT NOT NULL, updated_at TEXT)');
+  await ensureSchema(env.DB);
+  const m = await saveMeeting(env.DB, { id: 'm_fin00001', date: '2026-08-06', sections: [{ title: 'Call to order', items: [{ title: 'Roll call' }] }] }, { by: 'test' });
+  const f = await putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n')], 'Q3 minutes.pdf', { type: 'application/pdf' }), kind: 'minutes', by: 'test' });
+  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, m.id)), minutesFrom: { name: f.name, at: '2026-08-07T12:00:00.000Z', ai: false, tries: 1 } }, { by: 'test' });
+  let now = Date.parse('2026-08-08T12:00:00Z');
+  assert.equal(await maybeFinishMinutes(env, { now }), m.id, 'it tries the meeting');
+  assert.equal((await getMeeting(env.DB, m.id)).minutesFrom.tries, 2, 'the model out of time again: one more try counted');
+  assert.equal(await maybeFinishMinutes(env, { now: now + 60 * 1000 }), null, 'not again within two minutes');
+  answer = { motions: [{ text: 'Approve the 2027 budget', by: 'Alex Rivera', second: 'Sam Ortiz', result: 'passed' }], actions: [{ text: 'Send the venue contract', owner: 'Alex Rivera', due: '' }], approvedPrev: false };
+  now += 3 * 60 * 1000;
+  await maybeFinishMinutes(env, { now });
+  const done = await getMeeting(env.DB, m.id);
+  assert.equal(done.minutesFrom.ai, true);
+  assert.ok(done.motions.some((x) => x.text === 'Approve the 2027 budget') && done.actions.some((x) => x.text === 'Send the venue contract'), 'its motions and action items come in');
+  assert.equal(await maybeFinishMinutes(env, { now: now + 3 * 60 * 1000 }), null, 'and it isn’t read again');
 });

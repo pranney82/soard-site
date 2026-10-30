@@ -289,9 +289,25 @@ const kindOfName = (name) => (/financ|balance|income|p&l|profit|loss|budget|stat
 /** One item changed, found by its id (so a change after an upload lands on the right item even if the agenda moved) */
 const withItem = (id, fn) => (x) => ({ sections: x.sections.map((s) => ({ ...s, items: s.items.map((it) => (it.id === id ? { ...it, ...fn(it) } : it)) })) });
 
+/** A change that moves things (an item or a part dragged, moved up or down), as a view transition: each slides to its place */
+function withMotion(fn) {
+  if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) { fn(); return; }
+  const t = document.startViewTransition(async () => { fn(); await new Promise((r) => setTimeout(r, 0)); });
+  t.ready.catch(() => {});
+  setTimeout(() => t.skipTransition?.(), 1200);
+}
+const LIVE_SHORT = { projects: 'Makeovers board', cash: 'The money', reveals: 'Reveals', events: 'Events', meetings: 'Board meetings' };
+const DRAG_ITEM = 'text/x-board-item';
+const DRAG_PART = 'text/x-board-part';
+const dragKind = (e) => { const t = [...(e.dataTransfer?.types || [])]; return t.includes(DRAG_ITEM) ? 'item' : t.includes(DRAG_PART) ? 'part' : t.includes('Files') ? 'files' : ''; };
+
 /**
- * The agenda, as it reads: numbered sections and their items, who presents each (faces, from People), and the
- * documents that go with each, all editable in place. A file dropped on an item is uploaded and goes with it.
+ * The agenda, built the way it reads on the board page: the run of show along the top (each part's share of the
+ * meeting, its time and where it ends), then the parts as numbered chapters with their minutes, and each item as
+ * a card: its number, its name, who presents it (faces, from People), what it shows live, its documents, the
+ * background for the board and a private note. Everything is edited in place and saves as you type. Items and
+ * parts move by dragging their grip (or ⋯ → Move, or Alt ↑ ↓ in an item's name), and slide to their new places.
+ * A file dropped on an item is uploaded and goes with it.
  */
 function AgendaEditor({ m, set, ctx, keepSaved }) {
   const { data, addToast } = ctx;
@@ -302,9 +318,12 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
   const people = useMemo(() => pickable(data.people), [data.people]);
   // Each part's time: its own minutes, else its share of the meeting's
   const plan = useMemo(() => sectionPlan(m), [m.sections, m.start, m.end]);
+  const labels = useMemo(() => new Map(agendaItems(m).map((x) => [x.id, x.label])), [m.sections]);
   const vf = viewerFiles(m.files);
   const [over, setOver] = useState('');
   const [busy, setBusy] = useState('');
+  const [drag, setDrag] = useState(null); // { kind: 'item' | 'part', id }
+  const [hint, setHint] = useState(null); // { id, after } where the dragged one would land
   const attach = async (id, list) => {
     const files = [...(list || [])];
     if (!files.length) return;
@@ -317,58 +336,163 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
     }
     setBusy('');
   };
-  const drop = (id) => ({
-    onDragOver: (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); setOver(id); } },
-    onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(''); },
-    onDrop: (e) => { e.preventDefault(); setOver(''); attach(id, e.dataTransfer.files); },
+  // An item taken out of its place and put before `beforeId` in part `toPart` ('' puts it last)
+  const moveItem = (id, toPart, beforeId) => withMotion(() => set((x) => {
+    let item = null;
+    const lifted = x.sections.map((s) => ({ ...s, items: s.items.filter((it) => (it.id === id ? ((item = it), false) : true)) }));
+    if (!item) return {};
+    return { sections: lifted.map((s) => {
+      if (s.id !== toPart) return s;
+      const items = [...s.items];
+      const at = beforeId ? items.findIndex((it) => it.id === beforeId) : -1;
+      items.splice(at < 0 ? items.length : at, 0, item);
+      return { ...s, items };
+    }) };
+  }));
+  const movePart = (id, beforeId) => withMotion(() => set((x) => {
+    const part = x.sections.find((s) => s.id === id);
+    if (!part) return {};
+    const rest = x.sections.filter((s) => s.id !== id);
+    const at = beforeId ? rest.findIndex((s) => s.id === beforeId) : -1;
+    rest.splice(at < 0 ? rest.length : at, 0, part);
+    return { sections: rest };
+  }));
+  const endDrag = () => { setDrag(null); setHint(null); setOver(''); };
+  /** Where a drag over a row would land it: before or after that row, by which half the pointer is in */
+  const half = (e) => { const r = e.currentTarget.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; };
+  const itemTarget = (s, it) => ({
+    onDragOver: (e) => {
+      const k = dragKind(e);
+      if (k === 'files') { e.preventDefault(); setOver(it.id); return; }
+      if (k !== 'item' || drag?.id === it.id) return;
+      e.preventDefault();
+      const after = half(e);
+      if (hint?.id !== it.id || hint.after !== after) setHint({ id: it.id, after });
+    },
+    onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setOver(''); } },
+    onDrop: (e) => {
+      const k = dragKind(e);
+      e.preventDefault();
+      if (k === 'files') { setOver(''); attach(it.id, e.dataTransfer.files); return; }
+      if (k !== 'item' || !drag) return;
+      const after = half(e);
+      const i = s.items.findIndex((x) => x.id === it.id);
+      const next = after ? s.items.slice(i + 1).find((x) => x.id !== drag.id) : it;
+      moveItem(drag.id, s.id, next?.id || '');
+      endDrag();
+    },
   });
+  // An empty part, or the space under a part's last item, takes an item dropped at its end
+  const partEnd = (s) => ({
+    onDragOver: (e) => { if (dragKind(e) === 'item') { e.preventDefault(); if (hint?.id !== `end:${s.id}`) setHint({ id: `end:${s.id}`, after: false }); } },
+    onDrop: (e) => { if (dragKind(e) !== 'item' || !drag) return; e.preventDefault(); moveItem(drag.id, s.id, ''); endDrag(); },
+  });
+  const partTarget = (s, si) => ({
+    onDragOver: (e) => {
+      if (dragKind(e) !== 'part' || drag?.id === s.id) return;
+      e.preventDefault();
+      const after = half(e);
+      if (hint?.id !== s.id || hint.after !== after) setHint({ id: s.id, after });
+    },
+    onDrop: (e) => {
+      if (dragKind(e) !== 'part' || !drag) return;
+      e.preventDefault();
+      const after = half(e);
+      const next = after ? m.sections.slice(si + 1).find((x) => x.id !== drag.id) : s;
+      movePart(drag.id, next?.id || '');
+      endDrag();
+    },
+  });
+  const grip = (kind, id, label) => html`<button type="button" class="agx-grip" draggable="true" aria-label=${label} title="Drag to move"
+    onDragStart=${(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(kind === 'item' ? DRAG_ITEM : DRAG_PART, id); const row = e.currentTarget.closest(kind === 'item' ? '.agx-item' : '.agx-sec'); if (row) e.dataTransfer.setDragImage(row, 24, 20); setDrag({ kind, id }); }}
+    onDragEnd=${endDrag}><svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><circle cx="2.5" cy="3" r="1.4" /><circle cx="7.5" cy="3" r="1.4" /><circle cx="2.5" cy="8" r="1.4" /><circle cx="7.5" cy="8" r="1.4" /><circle cx="2.5" cy="13" r="1.4" /><circle cx="7.5" cy="13" r="1.4" /></svg></button>`;
   const itemMenu = (s, si, it, ii) => html`<${Menu} label=${`More for ${it.title || 'this item'}`} items=${[
     !it.presenter && !it.who?.length && !it.showWho && { label: 'Add who presents', run: () => setItem(si, ii, { showWho: true }) },
     { label: 'Add a document', run: () => setItem(si, ii, { showDocs: true }) },
-    { label: 'Move up', disabled: ii === 0, run: () => setSection(si, { items: move(s.items, ii, -1) }) },
-    { label: 'Move down', disabled: ii === s.items.length - 1, run: () => setSection(si, { items: move(s.items, ii, 1) }) },
+    { label: 'Move up', disabled: ii === 0 && si === 0, run: () => (ii > 0 ? withMotion(() => setSection(si, { items: move(s.items, ii, -1) })) : moveItem(it.id, m.sections[si - 1].id, '')) },
+    { label: 'Move down', disabled: ii === s.items.length - 1 && si === m.sections.length - 1, run: () => (ii < s.items.length - 1 ? withMotion(() => setSection(si, { items: move(s.items, ii, 1) })) : moveItem(it.id, m.sections[si + 1].id, m.sections[si + 1].items[0]?.id || '')) },
     { label: it.notes || it.showNotes ? 'Remove the background' : 'Add background for the board', run: () => setItem(si, ii, it.notes || it.showNotes ? { notes: '', showNotes: false } : { showNotes: true }) },
     { label: it.confidential ? 'Not board only' : 'Board only (never emailed)', run: () => setItem(si, ii, { confidential: !it.confidential }) },
     { label: it.staffNote || it.showStaff ? 'Remove your private note' : `A private note (only ${others})`, run: () => setItem(si, ii, it.staffNote || it.showStaff ? { staffNote: '', showStaff: false } : { showStaff: true }) },
     ...[{ id: '', label: 'No live numbers' }, ...LIVE].filter((l) => l.id !== it.live && l.id !== 'minutes').map((l) => ({ label: l.id ? `Show ${l.label.toLowerCase()}` : 'Show no live numbers', run: () => setItem(si, ii, { live: l.id }) })),
-    { label: 'Delete the item', danger: true, run: async () => { if (!it.notes || await ask({ title: `Delete “${it.title || 'this item'}”?`, text: 'Its notes go with it. Its documents stay with the meeting.', yes: 'Delete', danger: true })) setSection(si, { items: s.items.filter((_, j) => j !== ii) }); } },
+    { label: 'Delete the item', danger: true, run: async () => { if (!it.notes || await ask({ title: `Delete “${it.title || 'this item'}”?`, text: 'Its notes go with it. Its documents stay with the meeting.', yes: 'Delete', danger: true })) withMotion(() => setSection(si, { items: s.items.filter((_, j) => j !== ii) })); } },
   ]} />`;
-  return html`<div class="card">
-    <div class="bd-card-head"><h3>Agenda <span class=${`tag ${src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
-    <div class="ag">
-      ${m.sections.map((s, si) => html`<section class="ag-sec" key=${s.id}>
-        <div class="ag-sec__head">
-          <span class="ag-num" aria-hidden="true">${si + 1}</span>
-          <input class="ag-input ag-input--sec" aria-label=${`Section ${si + 1}`} value=${s.title} placeholder="Section name" onInput=${(e) => setSection(si, { title: e.target.value })} />
+  // Alt ↑ ↓ in an item's name moves it, across parts too
+  const keys = (s, si, it, ii) => (e) => {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const up = e.key === 'ArrowUp';
+    if (up && ii > 0) withMotion(() => setSection(si, { items: move(s.items, ii, -1) }));
+    else if (!up && ii < s.items.length - 1) withMotion(() => setSection(si, { items: move(s.items, ii, 1) }));
+    else if (up && si > 0) moveItem(it.id, m.sections[si - 1].id, '');
+    else if (!up && si < m.sections.length - 1) moveItem(it.id, m.sections[si + 1].id, m.sections[si + 1].items[0]?.id || '');
+    // Back into its name once it has moved (the move runs inside a view transition)
+    setTimeout(() => document.querySelector(`[data-item="${it.id}"] .agx-item__title`)?.focus(), 120);
+  };
+  // The run of show: the meeting's time and what's planned in it
+  const total = [...plan.values()].reduce((n, p) => n + p.minutes, 0);
+  const s0 = /^\d{2}:\d{2}$/.test(m.start) ? m.start : '';
+  const e0 = /^\d{2}:\d{2}$/.test(m.end) ? m.end : '';
+  const length = s0 && e0 ? (Number(e0.slice(0, 2)) * 60 + Number(e0.slice(3))) - (Number(s0.slice(0, 2)) * 60 + Number(s0.slice(3))) : 120;
+  const overBy = total - length;
+  const lastEnd = [...plan.values()].at(-1)?.end || '';
+  const itemCount = m.sections.reduce((n, s) => n + s.items.length, 0);
+  return html`<div class="card agx">
+    <div class="agx-head">
+      <div class="bd-card-head"><h3>Agenda <span class=${`tag ${src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
+      <a class="btn btn-ghost btn-sm" href=${`${PAGE}#/meetings/${m.id}`} target="_blank" rel="noopener">See it as the board will</a>
+    </div>
+    <nav class="agx-run" aria-label="The run of show">
+      ${m.sections.map((s, si) => html`<a class=${`agx-run__part ${s.minutes ? 'is-own' : ''}`} key=${s.id} href=${`#agx-${s.id}`} style=${`flex:${plan.get(s.id)?.minutes || 5} 1 0`} title=${`${s.title || 'A part'}: ${plan.get(s.id)?.minutes} min`}
+        onClick=${(e) => { e.preventDefault(); document.getElementById(`agx-${s.id}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' }); }}>
+        <b>${String(si + 1).padStart(2, '0')}</b><span>${plan.get(s.id)?.minutes}′</span><span class="sr-only">, ${s.title || 'a part'}, ${plan.get(s.id)?.minutes} minutes</span>
+      </a>`)}
+    </nav>
+    <p class="agx-runmeta">
+      <span>${s0 ? `Starts ${clock(s0)}` : 'Two hours'}</span>
+      <span>${plural(m.sections.length, 'part')} · ${plural(itemCount, 'item')}</span>
+      <span class=${overBy > 0 ? 'is-over' : ''}>${overBy > 0 ? `${overBy} min over the meeting’s ${length}` : lastEnd ? `Ends ${clock(lastEnd)}` : `${total} min`}</span>
+    </p>
+    <ol class="agx-secs">
+      ${m.sections.map((s, si) => {
+        const t = plan.get(s.id);
+        return html`<li class=${`agx-sec ${drag?.id === s.id ? 'is-dragging' : ''} ${hint?.id === s.id ? (hint.after ? 'drop-after' : 'drop-before') : ''}`} key=${s.id} id=${`agx-${s.id}`} style=${`view-transition-name: agx-${s.id}`} ...${partTarget(s, si)}>
+        <div class="ag-sec__head agx-sec__head">
+          ${grip('part', s.id, `Move the part ${s.title || si + 1}`)}
+          <span class="agx-sec__n" aria-hidden="true">${String(si + 1).padStart(2, '0')}</span>
+          <input class="ag-input ag-input--sec agx-sec__title" aria-label=${`Section ${si + 1}`} value=${s.title} placeholder="Name this part" onInput=${(e) => setSection(si, { title: e.target.value })} />
           <label class="ag-mins" title=${s.minutes ? 'The time this part has. Empty shares out the meeting’s time by itself.' : 'Shared out from the meeting’s time by itself. Type minutes to give it its own.'}>
-            ${plan.get(s.id)?.start ? html`<span class="ag-mins__at">${clock(plan.get(s.id).start)}</span>` : null}
-            <input type="number" min="1" max="600" inputmode="numeric" aria-label=${`Minutes for ${s.title || `section ${si + 1}`}`} value=${s.minutes || ''} placeholder=${String(plan.get(s.id)?.minutes || '')} onInput=${(e) => setSection(si, { minutes: Math.max(0, Math.min(600, Math.round(Number(e.target.value) || 0))) })} />
+            ${t?.start ? html`<span class="ag-mins__at">${clock(t.start)}</span>` : null}
+            <input type="number" min="1" max="600" inputmode="numeric" aria-label=${`Minutes for ${s.title || `section ${si + 1}`}`} value=${s.minutes || ''} placeholder=${String(t?.minutes || '')} onInput=${(e) => setSection(si, { minutes: Math.max(0, Math.min(600, Math.round(Number(e.target.value) || 0))) })} />
             <span>min</span>
           </label>
           <${Menu} label=${`More for the section ${s.title}`} items=${[
-            { label: 'Move up', disabled: si === 0, run: () => set((x) => ({ sections: move(x.sections, si, -1) })) },
-            { label: 'Move down', disabled: si === m.sections.length - 1, run: () => set((x) => ({ sections: move(x.sections, si, 1) })) },
-            { label: 'Delete the section', danger: true, run: async () => { if (!s.items.some((it) => it.notes) || await ask({ title: `Delete “${s.title || 'this section'}”?`, text: 'Its items and their notes go with it. Their documents stay with the meeting.', yes: 'Delete', danger: true })) set((x) => ({ sections: x.sections.filter((_, i) => i !== si) })); } },
+            { label: 'Move up', disabled: si === 0, run: () => withMotion(() => set((x) => ({ sections: move(x.sections, si, -1) }))) },
+            { label: 'Move down', disabled: si === m.sections.length - 1, run: () => withMotion(() => set((x) => ({ sections: move(x.sections, si, 1) }))) },
+            { label: 'Delete the section', danger: true, run: async () => { if (!s.items.some((it) => it.notes) || await ask({ title: `Delete “${s.title || 'this section'}”?`, text: 'Its items and their notes go with it. Their documents stay with the meeting.', yes: 'Delete', danger: true })) withMotion(() => set((x) => ({ sections: x.sections.filter((_, i) => i !== si) }))); } },
           ]} />
         </div>
-        <ul class="ag-items">
+        <ul class="ag-items agx-items">
           ${s.items.map((it, ii) => {
             const files = itemFiles(m, it, data.meetings);
             const free = m.files.filter((f) => !(it.docs || []).includes(f.id) && f.kind !== 'signed');
-            return html`<li class=${`ag-item ${over === it.id ? 'is-over' : ''}`} key=${it.id} ...${drop(it.id)}>
-            <div class="ag-item__row">
-              <span class="ag-dot" aria-hidden="true"></span>
-              <input class="ag-input" aria-label="Item" value=${it.title} placeholder="Item" onInput=${(e) => setItem(si, ii, { title: e.target.value })} />
+            const live = it.live && it.live !== 'minutes' ? it.live : '';
+            return html`<li class=${`ag-item agx-item ${over === it.id ? 'is-over' : ''} ${live ? 'has-live' : ''} ${drag?.id === it.id ? 'is-dragging' : ''} ${hint?.id === it.id ? (hint.after ? 'drop-after' : 'drop-before') : ''}`} key=${it.id} data-item=${it.id} style=${`view-transition-name: agx-${it.id}`} ...${itemTarget(s, it)}>
+            <div class="ag-item__row agx-item__row">
+              ${grip('item', it.id, `Move ${it.title || 'this item'}`)}
+              <span class="agx-item__n" aria-hidden="true">${labels.get(it.id)}</span>
+              <input class="ag-input agx-item__title" aria-label="Item" value=${it.title} placeholder="What’s it about?" onInput=${(e) => setItem(si, ii, { title: e.target.value })} onKeyDown=${keys(s, si, it, ii)} />
               <${PersonPicker} people=${people} value=${presentersOf(it, people)} label=${`Who presents ${it.title || 'this item'}`} startOpen=${!!it.showWho}
                 onClosed=${() => { if (it.showWho) setItem(si, ii, { showWho: false }); }}
                 onChange=${(list) => setItem(si, ii, { who: list.filter((x) => x.slug).map((x) => x.slug), presenter: namesText(list.map((x) => x.name)) })} />
               ${itemMenu(s, si, it, ii)}
             </div>
-            ${it.confidential || (it.live && it.live !== 'minutes') ? html`<div class="ag-tags">
+            ${it.confidential || live || it.live === 'minutes' ? html`<div class="ag-tags agx-tags">
+              ${live ? html`<span class=${`agx-live is-${live}`} title=${LIVE.find((l) => l.id === live)?.label}><span class="agx-live__dot" aria-hidden="true"></span>${LIVE_SHORT[live]}<span class="sr-only">: ${LIVE.find((l) => l.id === live)?.label}</span></span>` : null}
+              ${it.live === 'minutes' ? html`<span class="agx-live is-minutes"><span class="agx-live__dot" aria-hidden="true"></span>Up for approval</span>` : null}
               ${it.confidential ? html`<span class="tag tag--warn">Board only</span>` : null}
-              ${it.live && it.live !== 'minutes' ? html`<span class="tag tag--info">${LIVE.find((l) => l.id === it.live)?.label}</span>` : null}
             </div>` : null}
-            ${files.length || it.showDocs || busy === it.id ? html`<div class="ag-docs">
+            ${files.length || it.showDocs || busy === it.id ? html`<div class="ag-docs agx-docs">
               ${files.map((f) => {
                 const mine = m.files.some((x) => x.id === f.id);
                 return html`<${DocChip} key=${f.id} f=${f} link=${mine ? viewerLink(vf, m.files.indexOf(f)) : viewerLink(viewerFiles([f]), 0)} note=${mine ? '' : 'from the last meeting'}
@@ -379,13 +503,15 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
             </div>` : null}
             ${it.notes || it.showNotes ? html`<${NotesBox} label=${`Background for ${it.title || 'this item'}`} value=${it.notes} placeholder="Background for the board" onChange=${(v) => setItem(si, ii, { notes: v })} />` : null}
             ${it.staffNote || it.showStaff ? html`<p class="bd-private-label">Only ${others} see this</p><${NotesBox} tone="is-private" label="Your private note" value=${it.staffNote} placeholder="A private note" onChange=${(v) => setItem(si, ii, { staffNote: v })} />` : null}
+            ${over === it.id ? html`<p class="agx-dropnote" aria-hidden="true">Drop to put it with ${it.title || 'this item'}</p>` : null}
           </li>`;
           })}
-          <li><button type="button" class="ag-add" onClick=${() => setSection(si, { items: [...s.items, blankItem()] })}>+ Add an item</button></li>
+          <li class=${`agx-end ${hint?.id === `end:${s.id}` ? 'drop-before' : ''}`} ...${partEnd(s)}><button type="button" class="ag-add agx-add" onClick=${() => withMotion(() => setSection(si, { items: [...s.items, blankItem()] }))}>+ Add an item</button></li>
         </ul>
-      </section>`)}
-      <button type="button" class="ag-add ag-add--sec" onClick=${() => set((x) => ({ sections: [...x.sections, { id: uid('s_'), title: '', items: [blankItem()] }] }))}>+ Add a section</button>
-    </div>
+      </li>`;
+      })}
+    </ol>
+    <button type="button" class="ag-add ag-add--sec agx-addsec" onClick=${() => withMotion(() => set((x) => ({ sections: [...x.sections, { id: uid('s_'), title: '', minutes: 0, items: [blankItem()] }] })))}>+ Add a part</button>
   </div>`;
 }
 
@@ -604,7 +730,9 @@ const deckFiles = (m, meetings) => {
 /** What a stop is, in words: { label: '3.2' | '', title, sub } */
 function stopWords(stop, m, items, pages, files) {
   if (!stop || stop.kind === 'cover') return { label: '', title: 'The cover', sub: `${meetingName(m)} and the agenda` };
-  if (stop.kind === 'end') return { label: '', title: 'The close', sub: 'Thank you, and the next meeting' };
+  if (stop.kind === 'end') return { label: '', title: 'The close', sub: 'What the board decided, and the next meeting' };
+  if (stop.kind === 'since') return { label: '', title: 'Since we last met', sub: 'The reveals and events since, and the action items' };
+  if (stop.kind === 'section') { const si = m.sections.findIndex((x) => x.id === stop.sectionId); const sec = m.sections[si]; return { label: String(si + 1).padStart(2, '0'), title: sec?.title || 'Agenda', sub: sec?.items.length ? `Opens the part: ${plural(sec.items.length, 'item')}` : 'Open to the floor' }; }
   const it = stop.n >= 0 ? items[stop.n] : { label: '', title: MORE.title };
   if (stop.kind === 'item') return { label: it.label, title: it.title, sub: [it.section !== it.title ? it.section : '', it.presenter].filter(Boolean).join(' · ') };
   const f = files.find((x) => x.id === stop.fileId);
@@ -641,8 +769,8 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     if (!s) return;
     const next = liveOfStop(s);
     // A new part of the agenda starts its timer; a new item gives the floor back to whoever presents it
-    const sec = sectionOf(m, next.itemId);
-    next.sectionAt = !next.itemId ? '' : sec !== sectionOf(m, pos.itemId) || !pos.sectionAt ? new Date().toISOString() : pos.sectionAt;
+    const sec = next.sectionId || sectionOf(m, next.itemId);
+    next.sectionAt = !sec ? '' : sec !== (pos.sectionId || sectionOf(m, pos.itemId)) || !pos.sectionAt ? new Date().toISOString() : pos.sectionAt;
     next.floor = next.itemId && next.itemId === pos.itemId ? pos.floor || '' : '';
     if (running) setNow((x) => ({ live: { ...cleanLive(x.live), ...next } }));
     else setRehearsal((r) => ({ ...r, ...next }));
@@ -696,12 +824,12 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
   const people = useMemo(() => pickable(ctx.data.people), [ctx.data.people]);
   const plan = useMemo(() => sectionPlan(m), [m.sections, m.start, m.end]);
   const curItem = items.find((x) => x.id === pos.itemId);
-  const curSec = curItem ? m.sections[curItem.si] : null;
+  const curSec = curItem ? m.sections[curItem.si] : pos.sectionId ? m.sections.find((x) => x.id === pos.sectionId) || null : null;
   const timer = curSec ? sectionClock(plan, curSec.id, pos.sectionAt) : null;
   const presenting = curItem ? presentersOf(m.sections[curItem.si].items[curItem.ii], people) : [];
   const floorer = pos.floor ? people.find((x) => x.slug === pos.floor) || null : null;
   const floor = floorer ? [floorer] : presenting;
-  const floorMenu = curItem ? [
+  const floorMenu = curItem || curSec ? [
     ...(floorer && presenting.length ? [{ label: `Back to ${namesText(presenting.map((x) => x.name))}`, run: () => giveFloor('') }] : []),
     ...m.attendance.filter((x) => x.slug && x.slug !== pos.floor && !presenting.some((y) => y.slug === x.slug) && people.some((y) => y.slug === x.slug))
       .map((x) => ({ label: x.name, run: () => giveFloor(x.slug) })),
@@ -718,7 +846,7 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     </div>
   </div>` : null;
   const now = html`<div class="bm-run__screen">
-    <${ScreenThumb} stop=${deck[at]} files=${files} text=${words.label || (deck[at]?.kind === 'end' ? 'End' : 'Cover')} />
+    <${ScreenThumb} stop=${deck[at]} files=${files} text=${words.label || ({ end: 'End', since: 'Since' }[deck[at]?.kind] || 'Cover')} />
     <div class="bm-run__now" aria-live="polite">
       <span class="bm-run__label">${running ? 'On the screen' : 'Rehearsing'}${words.label ? ` · ${words.label}` : ''}</span>
       <span class="bm-run__title">${words.title}</span>

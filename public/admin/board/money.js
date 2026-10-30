@@ -149,7 +149,7 @@ export function moneyTiles({ cash, budget, n }) {
   }
   const yr = budget?.year || '';
   for (const [k, x, word] of [['rev', budget?.revenue, 'revenue'], ['exp', budget?.expenses, 'expenses']]) {
-    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), sub: `${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}` });
+    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: `${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}` });
   }
   const f = n?.finance;
   if (!n?.mercury?.empty && f?.ytd) {
@@ -158,4 +158,10 @@ export function moneyTiles({ cash, budget, n }) {
     if (f.cash?.lowest) out.push({ k: 'low', label: 'Lowest ahead', value: money(f.cash.lowest.dollars), sub: `${f.cash.lowest.week ? `Week of ${shortDate(f.cash.lowest.week).replace(/, \d{4}$/, '')}` : 'In the forecast'} · ${compact(f.cash.in13Weeks)} in 13 weeks`, tone: f.cash.belowFloor ? 'down' : '' });
   }
   return out;
+}
+
+/** The cash and the budget at once, outside a component (Print it all): { cash, budget }, each null when there's none */
+export async function moneyFor(data, upTo = '') {
+  const [sheet, budget] = await Promise.all([readCash(data, upTo), readBudget(data, upTo)]);
+  return { cash: (!upTo || upTo >= todayEastern() ? liveCash(data) : null) || sheet, budget };
 }

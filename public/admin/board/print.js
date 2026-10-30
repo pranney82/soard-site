@@ -2,8 +2,9 @@
  * The board page → Print it all
  * ===========================================================================
  * One print of a meeting, for anyone who wants it on paper: the agenda first
- * (who presents each item, its background, its numbers, the documents that
- * go with it), then each document, page by page, in the agenda's order, each
+ * (each part with its time, who presents each item, its background, its
+ * live facts as the page draws them: the makeovers by stage, the money as
+ * figures, the dates; the documents that go with it), then each document, page by page, in the agenda's order, each
  * starting on a new sheet with what it is at the top. The browser's print
  * window then prints it, or saves it as one PDF.
  *
@@ -14,8 +15,9 @@
 
 import { openDoc } from './docs.js';
 import {
-  meetingName, longDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, looseFiles, fileTitle, isDate, MORE,
+  meetingName, longDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, looseFiles, fileTitle, isDate, clock, sectionPlan, MORE,
 } from '../board-shared.js';
+import { moneyFor, moneyTiles } from './money.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
 
@@ -32,8 +34,75 @@ function points(text) {
   return wrap;
 }
 
-/** The agenda as the first pages: the meeting, then each section and item */
-function agendaPages(m, { people, numbers, meetings }) {
+const STAGE_FLOW = ['Awaiting Funding', 'Design', 'Finalization', 'Approval', 'Mobilization', 'Build'];
+const dayWords = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }) : '');
+
+/** The makeovers on paper: a column per stage, each family by name with their reveal */
+function makeoversBox(n) {
+  const p = n?.projects;
+  if (!p) return null;
+  const all = [...(p.waiting || []), ...(p.building || [])];
+  const stages = [...STAGE_FLOW.filter((st) => st !== 'Finalization' || all.some((b) => b.status === st)), ...new Set(all.map((b) => b.status).filter((st) => !STAGE_FLOW.includes(st)))];
+  const box = el('div', 'bpp-board');
+  box.style.setProperty('--cols', String(stages.length));
+  for (const st of stages) {
+    const list = all.filter((b) => b.status === st);
+    const col = el('div', 'bpp-board__col');
+    col.append(el('p', 'bpp-board__head', `${st === 'Awaiting Funding' ? 'Awaiting funding' : st} · ${list.length}`));
+    const named = list.filter((b) => b.name);
+    for (const b of named) {
+      const r = b.slug ? (n.reveals || []).find((x) => x.slug === b.slug) : null;
+      const card = el('p', 'bpp-board__kid');
+      card.append(el('b', '', b.name), el('span', '', b.kind === 'community' ? 'Community project' : r?.confirmed && r.date ? `Reveal ${dayWords(r.date)}` : r?.window?.label ? `Reveal ${r.window.label}` : ''));
+      col.append(card);
+    }
+    const more = list.length - named.length;
+    if (more) col.append(el('p', 'bpp-board__more', `${named.length ? '+' : ''}${more} ${more === 1 ? 'family' : 'families'} not named yet`));
+    if (!list.length) col.append(el('p', 'bpp-board__more', 'None now'));
+    box.append(col);
+  }
+  return box;
+}
+
+/** The money as figures (./money.js moneyTiles) */
+function moneyBox(n, money) {
+  const tiles = moneyTiles({ cash: money?.cash ?? null, budget: money?.budget ?? null, n });
+  if (!tiles.length) return null;
+  const box = el('div', 'bpp-figs');
+  for (const t of tiles) {
+    const f = el('div', 'bpp-fig');
+    f.append(el('span', 'bpp-fig__label', t.label), el('span', 'bpp-fig__value', t.value));
+    if (t.sub) f.append(el('span', 'bpp-fig__sub', t.sub));
+    box.append(f);
+  }
+  return box;
+}
+
+/** Rows of dates: reveals, events, board meetings */
+function datesBox(rows) {
+  if (!rows.length) return null;
+  const ul = el('ul', 'bpp-dates');
+  for (const r of rows) { const li = el('li'); li.append(el('b', '', r.when), el('span', '', r.what)); ul.append(li); }
+  return ul;
+}
+
+/** An item's live facts on paper, drawn for what they are */
+function liveBox(kind, n, m, money) {
+  if (!n || !kind || kind === 'minutes') return null;
+  if (kind === 'projects') return makeoversBox(n);
+  if (kind === 'cash') return moneyBox(n, money);
+  if (kind === 'reveals') return datesBox((n.reveals || []).slice(0, 8).map((r) => ({ when: r.confirmed && r.date ? `${dayWords(r.date)}${r.time ? `, ${clock(r.time)}` : ''}` : r.window?.label || 'To come', what: r.name })));
+  if (kind === 'events') return datesBox((n.events || []).slice(0, 6).map((e) => ({ when: dayWords(e.date), what: [e.title, e.location].filter(Boolean).join(' · ') })));
+  if (kind === 'meetings') return datesBox((n.meetings || []).filter((x) => x.id !== m.id).slice(0, 4).map((x) => ({ when: `${dayWords(x.date)}${x.start ? `, ${clock(x.start)}` : ''}`, what: x.name })));
+  const lines = liveLines(kind, n, { meetingId: m.id });
+  if (!lines.length) return null;
+  const box = el('ul', 'bpp-live');
+  for (const l of lines) box.append(el('li', '', l));
+  return box;
+}
+
+/** The agenda as the first pages: the meeting, then each part with its time, and each item */
+function agendaPages(m, { people, numbers, meetings, money }) {
   const sheet = el('section', 'bpp-agenda');
   const head = el('header', 'bpp-head');
   head.append(el('p', 'bpp-eyebrow', 'Sunshine on a Ranney Day · Board of Directors'), el('h1', 'bpp-title', meetingName(m)));
@@ -43,23 +112,28 @@ function agendaPages(m, { people, numbers, meetings }) {
   if (place) head.append(el('p', 'bpp-muted', place));
   sheet.append(head);
   const items = agendaItems(m);
+  const plan = sectionPlan(m);
   const ol = el('ol', 'bpp-secs');
-  m.sections.filter((s) => s.title || s.items.length).forEach((s) => {
+  m.sections.filter((s) => s.title || s.items.length).forEach((s, si) => {
     const li = el('li', 'bpp-sec');
-    li.append(el('h2', 'bpp-sec__title', s.title || 'Agenda'));
+    const h = el('h2', 'bpp-sec__title');
+    const t = plan.get(s.id);
+    h.append(el('span', 'bpp-sec__n', String(si + 1).padStart(2, '0')), el('span', 'bpp-sec__name', s.title || 'Agenda'));
+    if (t) h.append(el('span', 'bpp-sec__time', [t.start ? clock(t.start) : '', `${t.minutes} min`].filter(Boolean).join(' · ')));
+    li.append(h);
     for (const it of s.items) {
       const row = el('div', 'bpp-item');
-      const t = el('h3', 'bpp-item__title');
+      const tt = el('h3', 'bpp-item__title');
       const n = items.find((x) => x.id === it.id);
-      t.append(el('span', 'bpp-num', n?.label || ''), el('span', '', it.title || 'Item'));
+      tt.append(el('span', 'bpp-num', n?.label || ''), el('span', 'bpp-item__name', it.title || 'Item'));
       const who = presentersOf(it, people).map((p) => p.name);
-      if (who.length) t.append(el('span', 'bpp-who', who.join(' & ')));
-      row.append(t);
+      if (who.length) tt.append(el('span', 'bpp-who', who.join(' & ')));
+      row.append(tt);
       if (it.confidential) row.append(el('p', 'bpp-flag', 'Board only · please don’t share'));
       const notes = points(it.notes);
       if (notes) row.append(notes);
-      const lines = it.live && it.live !== 'minutes' ? liveLines(it.live, numbers, { meetingId: m.id }) : [];
-      if (lines.length) { const box = el('ul', 'bpp-live'); for (const l of lines) box.append(el('li', '', l)); row.append(box); }
+      const facts = liveBox(it.live, numbers, m, money);
+      if (facts) row.append(facts);
       const files = itemFiles(m, it, meetings);
       if (files.length) row.append(el('p', 'bpp-docs', `With it: ${files.map((f) => fileTitle(f.name)).join(', ')}`));
       li.append(row);
@@ -74,7 +148,7 @@ function agendaPages(m, { people, numbers, meetings }) {
  * Print a meeting with every document. `onStep({ done, of, what })` hears how far it has got; `signal` (an
  * AbortSignal) stops it. Resolves once the print window has closed.
  */
-export async function printAll(m, { people = [], numbers = null, meetings = [], onStep = () => {}, signal } = {}) {
+export async function printAll(m, { people = [], numbers = null, meetings = [], data = null, onStep = () => {}, signal } = {}) {
   const items = agendaItems(m);
   const groups = [
     ...m.sections.flatMap((s) => s.items).map((it) => ({ it, label: items.find((x) => x.id === it.id)?.label || '', files: itemFiles(m, it, meetings) })),
@@ -83,7 +157,9 @@ export async function printAll(m, { people = [], numbers = null, meetings = [], 
   const urls = [];
   const root = el('div', 'bpp');
   root.setAttribute('aria-hidden', 'true');
-  root.append(agendaPages(m, { people, numbers, meetings }));
+  // The money the Financial item shows: the balance sheet and budget as of this meeting (a past one keeps its own)
+  const money = data && m.sections.some((sec) => sec.items.some((it) => it.live === 'cash')) ? await moneyFor(data, m.date < data.today ? m.date : '').catch(() => null) : null;
+  root.append(agendaPages(m, { people, numbers, meetings, money }));
   // How many pages, so the progress can say "12 of 40"
   const docs = [];
   for (const g of groups) for (const f of g.files) {

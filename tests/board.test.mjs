@@ -328,7 +328,7 @@ test('documents go with agenda items: the board sees only theirs, on the page an
   assert.deepEqual(live.body.sections.flatMap((s) => s.items).find((it) => it.id === fin.id).docs, [shown.id]);
   assert.deepEqual(live.body.files.map((f) => f.id), [shown.id]);
   assert.doesNotMatch(JSON.stringify(live.body), /Draft numbers|Ask counsel/);
-  assert.deepEqual(live.body.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, screen: '', sectionAt: '', floor: '' });
+  assert.deepEqual(live.body.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, screen: '', sectionId: '', sectionAt: '', floor: '' });
 
   // The next agenda drafted from this one keeps who presents, never this meeting's files
   const draft = draftAgenda(saved).flatMap((s) => s.items).find((it) => it.title === fin.title);
@@ -336,12 +336,13 @@ test('documents go with agenda items: the board sees only theirs, on the page an
   assert.deepEqual(draft.docs, []);
 });
 
-test('the screen’s stops: the cover, each item then every page of its documents, the files on no item, the close', () => {
+test('the screen’s stops: the cover, since we last met, each part’s card, each item then every page of its documents, the files on no item, the close', () => {
   const m = cleanMeeting({
     id: 'm_deck0001', date: '2026-11-05',
     sections: [
       { id: 's_one1', title: 'Approve meeting minutes', items: [{ id: 'i_min1', title: 'Minutes of the last meeting', live: 'minutes', about: 'm_prev0001' }] },
       { id: 's_two2', title: 'Committee reports', items: [{ id: 'i_fin1', title: 'Financial', live: 'cash', docs: ['f_sfp1', 'f_bud1'] }, { id: 'i_gov1', title: 'Governance' }] },
+      { id: 's_thr3', title: 'Open forum', items: [] },
     ],
     files: [
       { id: 'f_sfp1', name: 'Statement of Financial Position.xlsx', kind: 'financials' }, { id: 'f_bud1', name: 'Budget vs Actual.pdf', kind: 'financials' },
@@ -351,16 +352,20 @@ test('the screen’s stops: the cover, each item then every page of its document
   const prev = { id: 'm_prev0001', files: [{ id: 'f_old1', name: 'Q3 minutes.docx', kind: 'minutes' }, { id: 'f_old2', name: 'Q3 minutes.pdf', type: 'application/pdf', kind: 'minutes' }] };
   const deck = deckOf(m, { pages: { f_bud1: 3 }, meetings: [prev] });
   assert.deepEqual(deck.map((s) => s.key), [
-    'cover', 'i_min1', 'i_min1:f_old2:0', 'i_fin1', 'i_fin1:f_sfp1:0', 'i_fin1:f_bud1:0', 'i_fin1:f_bud1:1', 'i_fin1:f_bud1:2', 'i_gov1', 'i_more', 'i_more:f_rep1:0', 'end',
-  ], 'the last meeting’s minutes as the PDF; the signed copy never');
+    'cover', 'since', 'i_min1', 'i_min1:f_old2:0', 'section:s_two2', 'i_fin1', 'i_fin1:f_sfp1:0', 'i_fin1:f_bud1:0', 'i_fin1:f_bud1:1', 'i_fin1:f_bud1:2', 'i_gov1', 'section:s_thr3', 'i_more', 'i_more:f_rep1:0', 'end',
+  ], 'a part of one item goes straight to it, one with none still has its card; the last meeting’s minutes as the PDF; the signed copy never');
+  assert.ok(!deckOf({ ...m, sections: m.sections.slice(1) }).some((s) => s.kind === 'since'), 'since we last met only when the agenda approves the last minutes');
   assert.deepEqual(looseFiles(m).map((f) => f.id), ['f_rep1']);
   // Where the chair is, from the live state, and back
   assert.equal(stopIndex(deck, {}), 0);
-  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 2 }), 7);
-  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_sfp1', page: 4 }), 4, 'a page past what’s known: that document’s last known page');
+  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 2 }), 9);
+  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_sfp1', page: 4 }), 6, 'a page past what’s known: that document’s last known page');
   assert.equal(stopIndex(deck, { screen: 'end' }), deck.length - 1);
-  assert.deepEqual(liveOfStop(deck[6]), { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, screen: '' });
-  assert.deepEqual(cleanMeeting({ live: { itemId: 'i_fin1', fileId: 'f_bud1', page: 1.7, screen: 'end' } }).live, { startedAt: '', endedAt: '', itemId: 'i_fin1', fileId: 'f_bud1', page: 1, screen: 'end', vote: null, sectionAt: '', floor: '' });
+  assert.equal(stopIndex(deck, { screen: 'since' }), 1);
+  assert.equal(stopIndex(deck, cleanLive({ screen: 'section', sectionId: 's_thr3' })), 11);
+  assert.deepEqual(liveOfStop(deck[8]), { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, screen: '', sectionId: '' });
+  assert.deepEqual(liveOfStop(deck[4]), { itemId: '', fileId: '', page: 0, screen: 'section', sectionId: 's_two2' });
+  assert.deepEqual(cleanMeeting({ live: { itemId: 'i_fin1', fileId: 'f_bud1', page: 1.7, screen: 'end' } }).live, { startedAt: '', endedAt: '', itemId: 'i_fin1', fileId: 'f_bud1', page: 1, screen: 'end', sectionId: '', vote: null, sectionAt: '', floor: '' });
   assert.deepEqual(cleanMeeting({ live: { fileId: 'f_bud1', page: 3 } }).live.fileId, '', 'a document is on the screen only with its item');
 
   // A new file's item: the money item for statements, "approve the minutes" for minutes before the meeting, else a shared word
@@ -1825,7 +1830,7 @@ const chairSets = async (m, live, more = {}) => (await adminApi(FOUNDER, { actio
 
 test('a meeting is held live: the chair starts it and moves item by item; members follow, check in, and vote while a vote is open', async () => {
   let m = await heldToday();
-  assert.deepEqual(m.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, screen: '', vote: null, sectionAt: '', floor: '' }, 'every meeting has an empty live until the chair starts it');
+  assert.deepEqual(m.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, screen: '', sectionId: '', vote: null, sectionAt: '', floor: '' }, 'every meeting has an empty live until the chair starts it');
   let v = (await liveGet(MEMBER, m.id)).body;
   assert.equal(v.ok, true);
   assert.equal(v.live.startedAt, '', 'not started');

@@ -699,7 +699,7 @@ export async function takeSnapshot(env, id, { by, fetchImpl = fetch, now = Date.
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
   const n = await liveNumbers(env, { fetchImpl, now });
-  const snapshot = { at: n.at, by: by || '', cash: n.cash, finance: n.finance, projects: n.projects, reveals: n.reveals, events: n.events, meetings: n.meetings.filter((x) => x.id !== id), impact: n.impact };
+  const snapshot = { at: n.at, by: by || '', cash: n.cash, mercury: n.mercury, finance: n.finance, projects: n.projects, reveals: n.reveals, pastReveals: n.pastReveals, events: n.events, recentEvents: n.recentEvents, meetings: n.meetings.filter((x) => x.id !== id), impact: n.impact };
   await writeMeeting(env.DB, { ...m, snapshot, updatedAt: nowIso(), updatedBy: by || m.updatedBy });
   return getMeeting(env.DB, id);
 }
@@ -1152,8 +1152,10 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const prior = [];
   for (const id of new Set(seen.sections.flatMap((sec) => sec.items.filter((it) => it.live === 'minutes' && it.about).map((it) => it.about)))) {
     const prev = await getMeeting(env.DB, id);
-    const f = prev?.shared ? minutesFileOf(prev) : null;
-    if (f) prior.push({ id: prev.id, files: [f] });
+    if (!prev?.shared) continue;
+    const f = minutesFileOf(prev);
+    // Its date and name for the screen's "since we last met"; its minutes for the item that approves them
+    prior.push({ id: prev.id, date: prev.date, name: meetingName(prev), files: f ? [f] : [] });
   }
   const motion = vote ? m.motions.find((x) => x.id === vote.motionId) : null;
   const cast = motion ? votes[motion.id] || [] : [];
@@ -1162,7 +1164,7 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const q = settings.quorum || majority(board.length + (m.practice ? 1 : 0));
   return {
     id: m.id, practice: !!m.practice, updatedAt: m.updatedAt, title: meetingName(m), date: m.date, start: m.start, end: m.end,
-    live: { startedAt: m.live.startedAt, endedAt: m.live.endedAt, itemId: m.live.itemId, fileId: m.live.fileId, page: m.live.page, screen: m.live.screen, sectionAt: m.live.sectionAt, floor: m.live.floor },
+    live: { startedAt: m.live.startedAt, endedAt: m.live.endedAt, itemId: m.live.itemId, fileId: m.live.fileId, page: m.live.page, screen: m.live.screen, sectionId: m.live.sectionId, sectionAt: m.live.sectionAt, floor: m.live.floor },
     sections,
     // What the screen shows: the board's files (never a staff-only one), the last meeting's minutes, the locked numbers
     files: seen.files.map((f) => ({ id: f.id, name: f.name, type: f.type, size: f.size, kind: f.kind, at: f.at })),
@@ -1380,7 +1382,8 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *     numbers locked on its day (maybeLockNumbers), and
  *     who joined a Google Meet that ended (./_board-attendance.js)
  *   - last, past meetings from the Board folder in Google Drive (./_board-drive.js), then board mail
- *     (./_board-mail.js): every minute while there's a backlog, hourly after
+ *     (./_board-mail.js): every minute while there's a backlog, hourly after; then minutes read without
+ *     Workers AI read again for their motions and action items (./_board-minutes.js maybeFinishMinutes)
  *   - once a day, the month's bank balance for the board page's history
  * Never throws.
  */
@@ -1400,7 +1403,11 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     // Last: past meetings' minutes and packets from Google Drive, then board mail (each reads for seconds while it has
     // a backlog; mail waits out a minute Drive was busy, so one heartbeat stays within its time)
     const drive = await (await import('./_board-drive.js')).maybeReadBoardDrive(env, { fetchImpl, now });
-    if (!drive?.busy) await maybeReadBoardMail(env, { fetchImpl, now });
+    if (!drive?.busy) {
+      await maybeReadBoardMail(env, { fetchImpl, now });
+      // Minutes read without Workers AI (it ran out of time): their motions and action items, one meeting at a time
+      await (await import('./_board-minutes.js')).maybeFinishMinutes(env, { now });
+    }
     // The banks connected through Plaid every six hours (they keep their own times), then the day's cash
     await (await import('./_plaid.js')).maybeReadBanks(env, { fetchImpl, now });
     if (!String(env.MERCURY_API_TOKEN || '').trim() && !plaidConfigured(env)) return;

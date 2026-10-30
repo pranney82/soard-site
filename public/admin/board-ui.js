@@ -165,7 +165,8 @@ export function Menu({ label, items }) {
 const initialsOf = (name) => { const w = String(name || '').split(/\s+/).filter(Boolean); return ((w[0]?.[0] || '') + (w.length > 1 ? w.at(-1)[0] : '')).toUpperCase() || '?'; };
 /** A person's face: their photo over their initials (the initials stay if the photo doesn't load) */
 export function Face({ p, size = 24 }) {
-  return html`<span class="avatar bd-face" style=${`--av:${size}px`} aria-hidden="true">${initialsOf(p?.name)}${p?.photo ? html`<img src=${p.photo} alt="" loading="lazy" decoding="async" onError=${(e) => e.currentTarget.remove()} />` : null}</span>`;
+  // The initials are drawn by CSS, so the face adds nothing to the name of the button it's in
+  return html`<span class="avatar bd-face" style=${`--av:${size}px`} data-i=${initialsOf(p?.name)} aria-hidden="true">${p?.photo ? html`<img src=${p.photo} alt="" loading="lazy" decoding="async" onError=${(e) => e.currentTarget.remove()} />` : null}</span>`;
 }
 /** Board members, then staff, as the pickers list them: [{ slug, name, photo, meta, group }] */
 export const pickable = (people) => [
@@ -217,7 +218,9 @@ export function PersonPicker({ people, value, onChange, label = 'Who presents', 
   const chosen = new Set(value.map((p) => p.slug).filter(Boolean));
   const shown = value.length ? html`<span class="bd-who__faces">${value.map((p) => html`<${Face} p=${p} size=${22} key=${p.slug || p.name} />`)}</span><span class="bd-who__names">${value.map((p) => p.name).join(' & ')}</span>`
     : html`<span class="bd-who__empty">+ ${empty}</span>`;
-  return html`<${Pop} cls=${`bd-who ${value.length ? 'has-who' : ''}`} label=${label} button=${shown} startOpen=${startOpen} onClosed=${onClosed}>
+  // Its name starts with what it shows ("Sam Ortiz presents Financial"), so a voice command saying what's there finds it
+  const named = value.length ? `${value.map((p) => p.name).join(' & ')}: ${label.replace(/^Who presents/, 'presents')}` : label;
+  return html`<${Pop} cls=${`bd-who ${value.length ? 'has-who' : ''}`} label=${named} button=${shown} startOpen=${startOpen} onClosed=${onClosed}>
     ${(close) => html`<${PeopleList} people=${people} value=${value} chosen=${chosen} max=${max} onChange=${onChange} close=${close} />`}
   </${Pop}>`;
 }
@@ -275,7 +278,9 @@ function PeopleList({ people, value, chosen, max, onChange, close }) {
  */
 export function ItemChooser({ items, value, onChange, label = 'Goes with' }) {
   const at = items.find((it) => it.id === value);
-  return html`<${Pop} cls="bd-goes" label=${label} button=${html`<span class=${`bd-goes__now ${at ? '' : 'is-none'}`}>${at ? html`<b>${at.label}</b> ${at.title}` : 'Not on an item'}</span><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`}>
+  // Named by what it shows first ("3.2 Financial: which agenda item…")
+  const named = `${at ? `${at.label} ${at.title}` : 'Not on an item'}: ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+  return html`<${Pop} cls="bd-goes" label=${named} button=${html`<span class=${`bd-goes__now ${at ? '' : 'is-none'}`}>${at ? html`<b>${at.label}</b> ${at.title}` : 'Not on an item'}</span><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`}>
     ${(close) => html`<${ItemList} items=${items} value=${value} onPick=${(id) => { onChange(id); close(); }} />`}
   </${Pop}>`;
 }
@@ -502,6 +507,67 @@ export const STYLES = `
     .ag-input--who:placeholder-shown:not(:focus):not(.is-shown) { display: none; }
   }
 
+  /* The agenda editor (board-meeting.js AgendaEditor): the run of show, then the parts as chapters, each item a card */
+  .agx-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.5rem 1rem; }
+  .agx-head .bd-card-head { margin-bottom: 0.9rem; max-width: 40rem; }
+  .agx-run { display: flex; gap: 3px; height: 42px; margin: 0 0 0.45rem; border-radius: 12px; overflow: hidden; }
+  .agx-run__part { position: relative; min-width: 34px; display: flex; align-items: center; justify-content: space-between; gap: 0.3rem; padding: 0 0.55rem; background: #ECEAE3; color: var(--color-text); text-decoration: none; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; transition: background 0.2s, flex-grow 0.5s cubic-bezier(0.22,1,0.36,1); overflow: hidden; white-space: nowrap; }
+  .agx-run__part:nth-child(even) { background: #E2DFD6; }
+  .agx-run__part b { font-weight: 800; }
+  .agx-run__part span { color: var(--color-text-secondary); font-weight: 650; }
+  .agx-run__part.is-own { box-shadow: inset 0 -3px 0 var(--color-text); }
+  .agx-run__part:hover, .agx-run__part:focus-visible { background: var(--color-primary); }
+  .agx-run__part:hover span, .agx-run__part:focus-visible span { color: #1F201C; }
+  .agx-runmeta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; margin: 0 0 1.1rem; font-size: var(--fs-xs); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+  .agx-runmeta .is-over { color: var(--tone-warn-fg); font-weight: 700; }
+  .agx-secs { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.1rem; }
+  .agx-sec { position: relative; padding: 0.85rem 0.85rem 0.6rem; border-radius: 16px; background: #FAF9F6; border: 1px solid var(--color-border); scroll-margin: calc(var(--top-h, 0px) + 6rem); transition: box-shadow 0.25s, opacity 0.25s; }
+  .agx-sec__head { gap: 0.45rem; }
+  .agx-sec__n { flex: none; min-width: 2.2rem; font-size: 1.55rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--color-text); }
+  .agx-sec__title.ag-input { height: 40px; font-size: var(--fs-lg, 1.15rem); font-weight: 750; letter-spacing: -0.01em; }
+  .agx-items.ag-items { padding: 0; margin: 0.65rem 0 0; display: grid; gap: 0.45rem; }
+  .agx-item { position: relative; padding: 0.45rem 0.55rem 0.5rem 0.35rem; border-radius: 12px; background: var(--color-bg-card); border: 1px solid var(--color-border); box-shadow: 0 1px 2px rgba(26,27,31,0.04); transition: box-shadow 0.25s, border-color 0.2s, opacity 0.25s, translate 0.35s cubic-bezier(0.22,1,0.36,1); }
+  @starting-style { .agx-item { opacity: 0; translate: 0 6px; } }
+  .agx-item:hover { border-color: var(--color-border-strong); box-shadow: 0 6px 18px -10px rgba(26,27,31,0.25); }
+  .agx-item:focus-within { border-color: var(--color-text); box-shadow: 0 0 0 3px rgba(26,27,31,0.06); }
+  .agx-item.has-live { border-left: 3px solid var(--color-primary); padding-left: calc(0.35rem - 2px); }
+  .agx-item__row { gap: 0.3rem; }
+  .agx-item__n { flex: none; display: inline-grid; place-items: center; min-width: 2.2rem; height: 1.55rem; padding: 0 0.35rem; border-radius: 999px; background: var(--seg-bg, rgba(0,0,0,0.05)); font-size: var(--fs-2xs); font-weight: 750; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+  .agx-item__title.ag-input { font-weight: 600; }
+  .agx-grip { flex: none; display: grid; place-items: center; width: 22px; height: 32px; border: none; background: none; border-radius: 6px; color: var(--color-text-muted); cursor: grab; opacity: 0.45; transition: opacity 0.15s, background 0.15s; }
+  .agx-grip svg { fill: currentColor; }
+  .agx-item:hover .agx-grip, .agx-sec__head:hover .agx-grip, .agx-grip:focus-visible { opacity: 1; }
+  .agx-grip:hover { background: var(--seg-bg, rgba(0,0,0,0.05)); color: var(--color-text); }
+  .agx-grip:active { cursor: grabbing; }
+  .agx-tags.ag-tags { margin: 0.3rem 0 0.15rem 2.95rem; }
+  .agx-live { display: inline-flex; align-items: center; gap: 0.4rem; height: 24px; padding: 0 0.6rem 0 0.5rem; border-radius: 999px; background: var(--color-primary-bg); border: 1px solid rgba(245,204,0,0.45); font-size: var(--fs-2xs); font-weight: 700; color: var(--color-text); }
+  .agx-live__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 2px rgba(255,213,0,0.25); }
+  .agx-live.is-minutes { background: var(--tone-success-surface); border-color: var(--tone-success-line); }
+  .agx-live.is-minutes .agx-live__dot { background: var(--tone-success-dot); box-shadow: none; }
+  .agx-docs.ag-docs { margin-left: 2.95rem; }
+  .agx-item > .bd-notes, .agx-item > .bd-private-label { margin-left: 2.95rem; width: calc(100% - 2.95rem); }
+  .agx-dropnote { position: absolute; inset: auto 0.6rem 0.4rem auto; margin: 0; font-size: var(--fs-2xs); font-weight: 700; color: var(--tone-info-fg); pointer-events: none; }
+  .agx-end { min-height: 34px; border-radius: 10px; }
+  .agx-add.ag-add { margin-left: 0.15rem; }
+  .agx-addsec.ag-add { margin: 0.9rem 0 0; }
+  /* Dragging: the one moving fades, a bar shows where it would land */
+  .agx-item.is-dragging, .agx-sec.is-dragging { opacity: 0.4; }
+  .agx-item.drop-before::before, .agx-item.drop-after::after, .agx-end.drop-before::before, .agx-sec.drop-before::before, .agx-sec.drop-after::after { content: ''; position: absolute; left: 0.4rem; right: 0.4rem; height: 3px; border-radius: 3px; background: var(--color-text); pointer-events: none; }
+  .agx-item.drop-before::before, .agx-sec.drop-before::before { top: -5px; }
+  .agx-item.drop-after::after, .agx-sec.drop-after::after { bottom: -5px; }
+  .agx-end { position: relative; }
+  .agx-end.drop-before::before { top: 2px; }
+  ::view-transition-group(*) { animation-duration: 0.38s; animation-timing-function: cubic-bezier(0.22,1,0.36,1); }
+  @media (max-width: 640px) {
+    .agx-sec { padding: 0.7rem 0.6rem 0.5rem; }
+    .agx-tags.ag-tags, .agx-docs.ag-docs, .agx-item > .bd-notes, .agx-item > .bd-private-label { margin-left: 0.4rem; width: auto; }
+    .agx-item__row { flex-wrap: wrap; }
+    .agx-item__row > .agx-item__title { flex: 1 1 9rem; }
+    .agx-run__part span { display: none; }
+    .agx-sec__head { flex-wrap: wrap; }
+  }
+  @media (prefers-reduced-motion: reduce) { .agx-item, .agx-run__part { transition: none; } }
+
   /* Files, by what they are */
   .bf-group + .bf-group { margin-top: 0.85rem; }
   .bf-group .bm-group { margin-top: 0; }
@@ -653,6 +719,7 @@ export const STYLES = `
   @media (prefers-reduced-motion: reduce) { .bm-live-dot::after, .bm-vote__who li { animation: none; } .bm-vote__bar i, .ag--run .ag-item { transition: none; } }
 
   /* Pickers: who presents, which item a document goes with */
+  .bd-face::before { content: attr(data-i); }
   .bd-face { --av-bg: var(--seg-bg); --av-fg: var(--color-text-secondary); box-shadow: 0 0 0 2px var(--color-bg-card); }
   .bd-pop { position: relative; display: inline-flex; min-width: 0; }
   .bd-pop__btn { display: inline-flex; align-items: center; gap: 0.45rem; min-width: 0; max-width: 100%; height: 32px; padding: 0 0.55rem; border: 1px solid transparent; border-radius: 999px; background: none; font: inherit; font-size: var(--fs-sm); color: var(--color-text-secondary); cursor: pointer; }

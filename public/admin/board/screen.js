@@ -236,7 +236,7 @@ function CashSlide({ n, data, date }) {
   const upTo = date && date < todayEastern() ? date : '';
   const tiles = moneyTiles({ cash: useCashNow(data, upTo), budget: useBudget(data, upTo), n });
   if (!tiles.length) return null;
-  return html`<ul class="bs-figs" style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.k}><span class="bs-figs__label">${t.label}</span><span class="bs-figs__value">${t.value}</span>${t.sub ? html`<span class="bs-figs__sub">${t.sub}</span>` : null}</li>`)}</ul>`;
+  return html`<ul class="bs-figs" style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.k}><span class="bs-figs__label">${t.label}</span><span class="bs-figs__value">${t.value}</span>${t.pct != null ? html`<span class="bs-figs__bar" role="img" aria-label=${`${t.pct}% of the budget`}><i style=${`--p:${Math.min(100, t.pct)}%`}></i></span>` : null}${t.sub ? html`<span class="bs-figs__sub">${t.sub}</span>` : null}</li>`)}</ul>`;
 }
 /** Reveals ahead: each kid's photo and the day */
 function RevealsSlide({ n }) {
@@ -269,26 +269,61 @@ function liveSlide(kind, n, id, data, date) {
 }
 
 /**
+ * "Since we last met": the kids revealed since the last meeting (their photos and days), the events held, and the
+ * action items still open. A quiet line when it's been a quiet stretch
+ */
+function SinceSlide({ v, n, meeting }) {
+  const prev = (v.prior || []).find((x) => x.date) || null;
+  const from = prev?.date || '';
+  const inRange = (d) => isDate(d) && (!from || d > from) && d <= meeting.date;
+  const reveals = (n?.pastReveals || []).filter((r) => inRange(r.date)).sort((a, b) => a.date.localeCompare(b.date));
+  const events = (n?.recentEvents || []).filter((e) => inRange(e.date)).slice(0, 4);
+  const open = (v.actions || []).filter((a) => !a.done).slice(0, 4);
+  const shown = reveals.slice(0, reveals.length > 4 ? 6 : 4);
+  return html`<div class="bs-since">
+    <div class="bs-since__head">
+      <p class="bs-eyebrow">${prev ? `Since the ${prev.name}, ${shortDate(prev.date)}` : 'Since we last met'}</p>
+      <h1 class="bs-display">Since we last met</h1>
+    </div>
+    ${shown.length ? html`<div class="bs-since__reveals" style=${`--n:${Math.min(shown.length, 6)}`}>
+      <p class="bs-since__count"><strong>${reveals.length}</strong> ${reveals.length === 1 ? 'reveal' : 'reveals'}</p>
+      <ul>${shown.map((r) => html`<li key=${r.slug || r.name}>
+        <span class="bs-since__photo">${r.photo ? html`<img src=${sized(r.photo, 'w=600,h=600,fit=cover,gravity=face')} alt="" />` : html`<${Face} p=${{ name: r.name }} size=${120} />`}</span>
+        <strong>${r.name}</strong><span>${shortDate(r.date).replace(/, \d{4}$/, '')}</span>
+      </li>`)}</ul>
+    </div>` : null}
+    ${events.length || open.length ? html`<div class="bs-since__side">
+      ${events.length ? html`<div><p class="bs-eyebrow">Events held</p><ul class="bs-since__list">${events.map((e) => html`<li key=${e.title + e.date}><b>${shortDate(e.date).replace(/, \d{4}$/, '')}</b>${e.title}</li>`)}</ul></div>` : null}
+      ${open.length ? html`<div><p class="bs-eyebrow">Action items still open</p><ul class="bs-since__list">${open.map((a) => html`<li key=${a.id}><b>${a.ownerName || 'Open'}</b>${a.text}</li>`)}</ul></div>` : null}
+    </div>` : null}
+    ${!shown.length && !events.length && !open.length ? html`<p class="bs-quiet">${prev ? `The ${prev.name}’s minutes are up for approval next.` : 'The agenda is next.'}</p>` : null}
+  </div>`;
+}
+
+/**
  * Along the bottom, where the meeting is: each part of the agenda as a length of rail (as long as it has items),
  * the ones done filled, the one on now filling item by item, and what comes next
  */
 function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
   const stop = deck[at];
-  const n = ended ? items.length : stop?.n >= 0 ? stop.n : stop?.kind === 'cover' ? -1 : items.length;
+  // Where the meeting is, as the index of the item on now (a part's card counts as its first item, not yet begun)
+  const cardAt = stop?.kind === 'section' ? meeting.sections.findIndex((x) => x.id === stop.sectionId) : -1;
+  const n = ended ? items.length : stop?.n >= 0 ? stop.n : stop?.kind === 'cover' || stop?.kind === 'since' ? -1 : cardAt >= 0 ? (items.findIndex((it) => it.si >= cardAt) + 1 || items.length + 1) - 1 : items.length;
   const sections = meeting.sections.map((s, si) => ({ s, si, items: items.filter((it) => it.si === si) })).filter((x) => x.s.title || x.items.length);
   // What the next press shows: the next page, the next document, the next item, or the close
   const next = deck[at + 1];
   const files = meeting.files.concat(prior.flatMap((x) => x.files || []));
   const nextWords = !next || ended ? null
     : next.kind === 'end' ? html`<span>Next: the close</span>`
+    : next.kind === 'section' ? html`<span>Next <b>${String(meeting.sections.findIndex((x) => x.id === next.sectionId) + 1).padStart(2, '0')}</b> ${meeting.sections.find((x) => x.id === next.sectionId)?.title || ''}</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: page ${next.page + 1}</span>`
     : next.kind === 'doc' ? html`<span>Next: ${fileTitle(files.find((f) => f.id === next.fileId)?.name || 'the document')}</span>`
     : next.n >= 0 ? html`<span>Next <b>${items[next.n].label}</b> ${items[next.n].title}</span>` : html`<span>Next: ${MORE.title.toLowerCase()}</span>`;
   return html`<footer class="bs-rail" aria-label="Where the meeting is">
     <ol class="bs-rail__parts">${sections.map(({ s, si, items: its }) => {
-      const on = its.some((it) => items.indexOf(it) === n);
+      const on = cardAt >= 0 ? si === cardAt : its.some((it) => items.indexOf(it) === n);
       // A part with no items (new business, open forum) is passed once anything after it has come up
-      const fill = its.length ? (its.filter((it) => items.indexOf(it) < n).length + (on ? 0.5 : 0)) / its.length : ended || items.some((it) => it.si > si && items.indexOf(it) <= n) ? 1 : 0;
+      const fill = cardAt === si ? 0.04 : its.length ? (its.filter((it) => items.indexOf(it) < n).length + (on ? 0.5 : 0)) / its.length : ended || cardAt > si || items.some((it) => it.si > si && items.indexOf(it) <= n) ? 1 : 0;
       return html`<li key=${s.id} class=${on ? 'is-on' : fill >= 1 ? 'is-done' : ''} style=${`--w:${Math.max(1, its.length)};--fill:${Math.min(1, fill)}`}>
         <span class="bs-rail__bar" aria-hidden="true"><i></i></span>
         <span class="bs-rail__label"><b>${String(si + 1).padStart(2, '0')}</b>${s.title || 'Agenda'}${on && timer ? html`<i class=${`bs-rail__time ${timer.over ? 'is-over' : ''}`}>${clockText(timer.left)}${timer.over ? ' over' : ' left'}</i>` : null}</span>
@@ -371,14 +406,15 @@ export function Screen({ id, data, d }) {
   const stop = deck[at] || deck[0];
   const items = agendaItems(meeting);
   const item = stop.kind === 'item' || stop.kind === 'doc' ? (stop.n >= 0 ? meeting.sections[items[stop.n].si].items[items[stop.n].ii] : { ...MORE, notes: '', docs: [] }) : null;
-  const label = stop.n >= 0 ? items[stop.n].label : '';
+  const cardSi = stop.kind === 'section' ? meeting.sections.findIndex((x) => x.id === stop.sectionId) : -1;
+  const label = stop.n >= 0 ? items[stop.n].label : cardSi >= 0 ? String(cardSi + 1).padStart(2, '0') : '';
   const section = stop.n >= 0 ? items[stop.n].section : '';
   const people = d?.people || [];
   const who = item ? presentersOf(item, people) : [];
   // Who has the floor: the one the chair gave it to, else whoever presents the item
   const given = live.floor ? people.find((p) => p.slug === live.floor) || null : null;
   const floor = given ? [given] : who;
-  const secId = stop.n >= 0 ? meeting.sections[items[stop.n].si]?.id : '';
+  const secId = stop.sectionId || (stop.n >= 0 ? meeting.sections[items[stop.n].si]?.id : '');
   const timer = started && !ended && secId ? sectionClock(plan, secId, live.sectionAt) : null;
   const files = item ? (stop.n >= 0 ? itemFiles(meeting, item, v.prior || []) : meeting.files.filter((f) => deck.some((s) => s.fileId === f.id && s.n === -1))) : [];
   const file = stop.fileId ? [...meeting.files, ...(v.prior || []).flatMap((x) => x.files)].find((f) => f.id === stop.fileId) : null;
@@ -409,11 +445,29 @@ export function Screen({ id, data, d }) {
     </div>`;
   } else if (stop.kind === 'end') {
     const next = data.meetings.filter((x) => isDate(x.date) && x.date > meeting.date).sort((a, b) => a.date.localeCompare(b.date))[0];
-    stage = html`<div class="bs-end">
-      <img class="bs-cover__logo" src=${LOGO} alt="" width="120" height="120" />
-      <h1 class="bs-display">Thank you</h1>
-      ${v.live.endedAt ? html`<p class="bs-cover__when">The meeting ended at ${new Date(v.live.endedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}</p>` : null}
-      ${next ? html`<p class="bs-quiet">Next: ${meetingName(next)}, ${longDate(next.date)}${next.start ? `, ${clock(next.start)}` : ''}</p>` : null}
+    const decided = (v.motions || []).filter((x) => x.text);
+    stage = html`<div class=${`bs-end ${decided.length ? 'has-recap' : ''}`}>
+      <div class="bs-end__lead">
+        <img class="bs-cover__logo" src=${LOGO} alt="" width="120" height="120" />
+        <h1 class="bs-display">Thank you</h1>
+        ${v.live.endedAt ? html`<p class="bs-cover__when">The meeting ended at ${new Date(v.live.endedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}</p>` : null}
+        ${next ? html`<p class="bs-end__next"><${Tile} d=${next.date} /><span><small>Next board meeting</small><strong>${longDate(next.date)}</strong>${next.start ? html`<span>${timeRange(next.start, next.end)}</span>` : null}</span></p>` : null}
+      </div>
+      ${decided.length ? html`<div class="bs-end__recap"><p class="bs-eyebrow">What the board decided today</p><ol class="bs-decided">${decided.slice(0, 6).map((x) => html`<li key=${x.id}><span>${x.text}</span><b class=${`is-${x.result}`}>${x.tally ? `${{ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || 'Recorded'} ${x.tally.for}–${x.tally.against}` : { passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || 'Recorded'}</b></li>`)}</ol></div>` : null}
+    </div>`;
+  } else if (stop.kind === 'since') {
+    stage = html`<${SinceSlide} v=${v} n=${data.numbers} meeting=${meeting} />`;
+  } else if (stop.kind === 'section') {
+    const sec = meeting.sections[cardSi];
+    const t = plan.get(sec?.id);
+    stage = html`<div class="bs-chapter">
+      <span class="bs-chapter__n" aria-hidden="true">${String(cardSi + 1).padStart(2, '0')}</span>
+      <div class="bs-chapter__body">
+        <p class="bs-eyebrow">${t ? [t.start ? `${clock(t.start)} to ${clock(t.end)}` : '', `${t.minutes} minutes`].filter(Boolean).join(' · ') : 'Agenda'}</p>
+        <h1 class="bs-display bs-chapter__title">${sec?.title || 'Agenda'}</h1>
+        ${sec?.items.length ? html`<ol class="bs-chapter__items">${sec.items.map((it) => { const ws = presentersOf(it, people); const lab = items.find((x) => x.id === it.id)?.label; return html`<li key=${it.id}><span class="bs-chapter__label">${lab}</span><span class="bs-chapter__t">${it.title}</span>${ws.length ? html`<span class="bs-chapter__who">${ws.map((p) => html`<${Face} p=${p} size=${36} key=${p.slug || p.name} />`)}<span>${ws.map((p) => p.name).join(' & ')}</span></span>` : null}</li>`; })}</ol>`
+          : html`<p class="bs-chapter__open">Open to the floor</p>`}
+      </div>
     </div>`;
   } else if (stop.kind === 'item') {
     const facts = liveSlide(item.live, numbers, id, data, meeting.date);
@@ -459,7 +513,7 @@ export function Screen({ id, data, d }) {
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${docWords}</span>
       ${who.length ? html`<span class="bs-foot__who">${who.map((p) => html`<${Face} p=${p} size=${28} key=${p.slug || p.name} />`)}<span>${who.map((p) => p.name).join(' & ')}</span></span>` : null}
     </div>` : null}
-    ${stop.kind === 'cover' || stop.kind === 'end' ? null : html`<${Rail} meeting=${meeting} items=${items} at=${at} deck=${deck} ended=${ended} prior=${v.prior || []} timer=${timer} />`}
+    ${stop.kind === 'cover' || stop.kind === 'end' || stop.kind === 'since' ? null : html`<${Rail} meeting=${meeting} items=${items} at=${at} deck=${deck} ended=${ended} prior=${v.prior || []} timer=${timer} />`}
     <button type="button" class="bs-full" onClick=${fullScreen} aria-label="Full screen (F)">${document.fullscreenElement ? 'Exit full screen' : 'Full screen'}<kbd>F</kbd></button>
     ${!started && !told ? html`<p class="bs-wait">The screen follows the meeting once the chair starts it.</p>` : null}
   </div>`;

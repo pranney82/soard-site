@@ -24,11 +24,16 @@
 
 import { fileText, attendanceIn } from './_board-mail.js';
 import { getMeeting, patchMeeting, listMeetings, roster, boardFiles, updateFile, approveMinutes } from './_board.js';
+import { readState, writeState } from './_board-roles.js';
 import { parseAgendaText, agendaIsDraft, meetingName, shortDate, isDate, uid } from '../../public/admin/board-shared.js';
 
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-const AI_TIMEOUT_MS = 20000;
-const QUICK_TIMEOUT_MS = 12000;
+// How long the model may take. Read by hand (the person is waiting, Cloudflare allows 100 seconds): up to 70 seconds
+// in all, most of it for the first try. On the heartbeat (`quick`): one try that fits its 30 seconds; minutes it
+// didn't finish are read again later by maybeFinishMinutes
+const AI_BUDGET_MS = 70000;
+const AI_TRY_MS = 55000;
+const QUICK_TIMEOUT_MS = 24000;
 const MAX_TEXT = 24000; // characters of the minutes the model reads (about 6,000 tokens)
 
 const plain = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -153,13 +158,13 @@ const PERSON = { type: 'object', properties: { name: { type: 'string' }, status:
 const MOTION = { type: 'object', properties: { text: { type: 'string' }, by: { type: 'string' }, second: { type: 'string' }, result: { type: 'string', enum: RESULTS } }, required: ['text', 'by', 'second', 'result'] };
 const ACTION = { type: 'object', properties: { text: { type: 'string' }, owner: { type: 'string' }, due: { type: 'string' } }, required: ['text', 'owner', 'due'] };
 const TOPIC = { type: 'object', properties: { section: { type: 'string' }, title: { type: 'string' }, points: { type: 'array', items: { type: 'string' } } }, required: ['section', 'title', 'points'] };
-const schemaFor = (topics) => ({
+const schemaFor = (topics, attendance = true) => ({
   type: 'object',
   properties: {
-    attendance: { type: 'array', items: PERSON }, motions: { type: 'array', items: MOTION }, actions: { type: 'array', items: ACTION }, approvedPrev: { type: 'boolean' },
+    ...(attendance ? { attendance: { type: 'array', items: PERSON } } : {}), motions: { type: 'array', items: MOTION }, actions: { type: 'array', items: ACTION }, approvedPrev: { type: 'boolean' },
     ...(topics ? { topics: { type: 'array', items: TOPIC } } : {}),
   },
-  required: ['attendance', 'motions', 'actions', 'approvedPrev', ...(topics ? ['topics'] : [])],
+  required: [...(attendance ? ['attendance'] : []), 'motions', 'actions', 'approvedPrev', ...(topics ? ['topics'] : [])],
 });
 
 function withTimeout(p, ms) {
@@ -194,7 +199,7 @@ export function excerpt(text, max = MAX_TEXT) {
 }
 
 /** Workers AI's reading of the minutes, or null (no model, no answer in time, nothing usable) */
-async function askMinutes(env, { text, meeting, prev, people, topics, quick }) {
+async function askMinutes(env, { text, meeting, prev, people, topics, quick, attendance = true }) {
   if (!env?.AI?.run) return null;
   const agenda = (meeting?.sections || []).flatMap((s) => s.items.map((it) => `${s.title ? `${s.title}: ` : ''}${it.title}`)).filter(Boolean);
   const input = [
@@ -204,17 +209,24 @@ async function askMinutes(env, { text, meeting, prev, people, topics, quick }) {
     topics && agenda.length ? `The agenda's items:\n${agenda.slice(0, 60).join('\n')}` : '',
     `The minutes:\n\n${excerpt(text)}`,
   ].filter(Boolean).join('\n\n');
-  const messages = [{ role: 'system', content: `${PROMPT}${topics ? TOPICS_PROMPT : ''}\nAnswer with JSON only.` }, { role: 'user', content: input }];
+  // Attendance the outline already has isn't asked for again: a shorter answer comes back sooner
+  const prompt = attendance ? PROMPT : PROMPT.replace(/^- attendance:.*\n/m, '');
+  const messages = [{ role: 'system', content: `${prompt}${topics ? TOPICS_PROMPT : ''}\nAnswer with JSON only.` }, { role: 'user', content: input }];
+  const until = Date.now() + (quick ? QUICK_TIMEOUT_MS : AI_BUDGET_MS);
   for (const json of quick ? [true] : [true, false]) {
+    const ms = Math.min(quick ? QUICK_TIMEOUT_MS : AI_TRY_MS, until - Date.now());
+    if (ms < 5000) break;
     try {
       const out = await withTimeout(env.AI.run(MODEL, {
-        messages, max_tokens: topics ? 3000 : 1500, temperature: 0,
-        ...(json ? { response_format: { type: 'json_schema', json_schema: schemaFor(topics) } } : {}),
-      }), quick ? QUICK_TIMEOUT_MS : AI_TIMEOUT_MS);
+        messages, max_tokens: topics ? 3000 : attendance ? 1500 : 1000, temperature: 0,
+        ...(json ? { response_format: { type: 'json_schema', json_schema: schemaFor(topics, attendance) } } : {}),
+      }), ms);
       const a = answerOf(out);
       if (a && (Array.isArray(a.motions) || Array.isArray(a.attendance) || Array.isArray(a.actions) || Array.isArray(a.topics))) return a;
     } catch (err) {
       console.error('[board-minutes]', err.message);
+      // Out of time: another try won't fit what's left
+      if (err.message === 'timeout') break;
     }
   }
   return null;
@@ -255,7 +267,7 @@ export async function readMinutes(env, { name = '', bytes = null, text = null, m
   let by = 'rules';
   // The outline read by the rules is kept as it is; the model fills in the outline only when the rules found none
   const topics = !sections.some((s) => s.items.length);
-  const ai = await askMinutes(env, { text: words, meeting, prev, people, topics, quick });
+  const ai = await askMinutes(env, { text: words, meeting, prev, people, topics, quick, attendance: !attendance.length });
   if (ai) {
     by = 'ai';
     if (!attendance.length) attendance = attendanceFrom(ai.attendance, people);
@@ -437,7 +449,8 @@ export function applyMinutes(cur, read, { fileName = '', now = Date.now(), keepM
   const actions = [...(cur.actions || [])];
   for (const x of read.actions) if (!actions.some((y) => similar(y.text, x.text))) actions.push({ id: uid('a_'), text: x.text, owner: x.owner || '', ownerName: x.ownerName || '', due: x.due || '', done: false, doneOn: '' });
   next.actions = actions;
-  next.minutesFrom = { name: one(fileName, 200), at };
+  // Whether the model read them (the motions and action items); minutes read by the rules alone are read again later
+  next.minutesFrom = { name: one(fileName, 200), at, ai: read.said?.by === 'ai', tries: read.said?.by === 'ai' ? 0 : Math.min(9, (cur.minutesFrom?.name === one(fileName, 200) ? cur.minutesFrom.tries || 0 : 0) + 1) };
   return next;
 }
 
@@ -450,6 +463,37 @@ export function minutesNewer(cur, { name = '', at = '' } = {}) {
   if (!had?.name) return true;
   if (plain(had.name.replace(/\.[a-z0-9]{2,5}$/i, '')) === plain(String(name).replace(/\.[a-z0-9]{2,5}$/i, ''))) return true;
   return !!at && !Number.isNaN(Date.parse(at)) && Date.parse(at) > Date.parse(had.at || 0);
+}
+
+/**
+ * Minutes the heartbeat read without the model (it ran out of time): read again, one meeting every two minutes and
+ * three tries each, so their motions and action items still come in. Nothing a person marked is changed. → id | null
+ */
+export async function maybeFinishMinutes(env, { now = Date.now() } = {}) {
+  try {
+    const runs = await readState(env.DB, 'runs');
+    if (runs.minutesAt && now - Date.parse(runs.minutesAt) < 2 * 60 * 1000) return null;
+    const meetings = await listMeetings(env.DB);
+    const m = meetings.filter((x) => x.minutesFrom?.name && !x.minutesFrom.ai && (x.minutesFrom.tries || 0) < 3).sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!m) return null;
+    await writeState(env.DB, 'runs', { ...runs, minutesAt: new Date(now).toISOString() });
+    const f = m.files.find((x) => x.name === m.minutesFrom.name) || m.files.filter((x) => x.kind === 'minutes').at(-1);
+    const row = f && await env.DB.prepare('SELECT r2_key FROM board_files WHERE id = ?').bind(f.id).first();
+    const obj = row && await boardFiles(env)?.get(row.r2_key);
+    const people = await minutesPeople(env.DB);
+    const prev = meetings.filter((x) => x.id !== m.id && !x.notBoard && isDate(x.date) && x.date < m.date).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+    const read = obj ? await readMinutes(env, { name: f.name, bytes: new Uint8Array(await new Response(obj.body).arrayBuffer()), meeting: m, people, prev, quick: true }) : null;
+    await patchMeeting(env.DB, m.id, (cur) => {
+      if (cur.minutesFrom?.name !== m.minutesFrom.name || cur.minutesFrom.ai) return cur;
+      if (!read || read.said.by !== 'ai') return { ...cur, minutesFrom: { ...cur.minutesFrom, tries: (cur.minutesFrom.tries || 0) + 1 } };
+      // Only what the model adds: the motions and action items (the outline and attendance stay as they were read)
+      return applyMinutes(cur, { ...read, attendance: [], sections: [] }, { fileName: cur.minutesFrom.name, now, keepMarked: true });
+    });
+    return m.id;
+  } catch (err) {
+    console.error('[board-minutes] finishing', err.message);
+    return null;
+  }
 }
 
 // ─── The admin's upload ─────────────────────────────────────────────
