@@ -86,6 +86,10 @@ test('the Postal Service: known, a unit number may be missing, or check it; USPS
   assert.equal(await googleVerify(env, home), 'unit');
   google.verify = { result: { uspsData: { dpvConfirmation: 'N' } } };
   assert.equal(await googleVerify(env, home), 'check');
+  google.verify = { result: { verdict: { validationGranularity: 'ROUTE', possibleNextAction: 'CONFIRM' }, uspsData: {} } };
+  assert.equal(await googleVerify(env, { ...home, line1: '9999 Main St' }), 'check', 'only the street matched: no such house');
+  google.verify = { result: { verdict: { validationGranularity: 'PREMISE', possibleNextAction: 'ACCEPT' } } };
+  assert.equal(await googleVerify(env, home), null, 'the building matched but no Postal Service answer: no word');
   google.verify = 503;
   assert.equal(await googleVerify(env, home), null, 'Google down: no word, nothing in the way');
   assert.equal(await googleVerify(env, { ...home, zip: '300' }), null, 'not asked before the ZIP is whole');

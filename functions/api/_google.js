@@ -107,5 +107,9 @@ export async function googleVerify(env, a) {
   if (dpv === 'Y') return 'confirmed';
   if (dpv === 'D' || dpv === 'S' || next === 'CONFIRM_ADD_SUBPREMISES') return 'unit';
   if (dpv === 'N' || next === 'FIX') return 'check';
+  // Matched no further than the street (a house number that doesn't exist): there was nothing for the
+  // Postal Service to confirm, so it doesn't know this address
+  const grain = r?.verdict?.validationGranularity || '';
+  if (r && !dpv && grain && !['PREMISE', 'SUB_PREMISE'].includes(grain)) return 'check';
   return null;
 }
