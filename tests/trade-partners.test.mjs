@@ -27,8 +27,11 @@ import { onRequestGet as docsGet } from '../functions/api/vendor-docs.js';
 const NOW = Date.parse('2026-10-29T15:00:00Z');
 const DAY = 864e5;
 const VENDOR = 'ACC-TKO';
-const EMAIL_F = '22NJw43QvHeJ';
-const PHONE_F = '22NJw43UauSc';
+// JobTread's vendor contact fields: a family's (customerContact) Email is refused on a vendor's contact
+const FAMILY_EMAIL_F = '22NJw43QvHeJ';
+const EMAIL_F = 'VC-EMAIL';
+const PHONE_F = 'VC-PHONE';
+const CONTACT_FIELDS = [{ id: EMAIL_F, name: 'Email', type: 'emailAddress' }, { id: PHONE_F, name: 'Phone', type: 'phoneNumber' }];
 const JPG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 const PDF = new TextEncoder().encode('%PDF-1.7 a certificate');
 const W9 = {
@@ -60,11 +63,11 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.host === 'uploads.jobtread.example') { world.uploads.push(init.body.byteLength); return new Response('', { status: 200 }); }
   if (url.host === 'api.jobtread.com') {
     const { query } = JSON.parse(init.body);
-    if (query.organization?.customFields) return Response.json({ organization: { customFields: { nodes: FIELDS }, fileTags: { nodes: [{ id: 'T-W9', name: 'W-9' }, { id: 'T-COI', name: 'COI' }] } } });
+    if (query.organization?.customFields) return Response.json({ organization: { customFields: { nodes: FIELDS }, contactFields: { nodes: world.contactFields ?? CONTACT_FIELDS }, fileTags: { nodes: [{ id: 'T-W9', name: 'W-9' }, { id: 'T-COI', name: 'COI' }] } } });
     if (query.account) {
       const a = world.accounts[query.account.$.id];
       if (!a) return Response.json({ account: null });
-      const cf = (c) => ({ nodes: c ? [c.email && { value: c.email, customField: { id: EMAIL_F } }, c.phone && { value: c.phone, customField: { id: PHONE_F } }].filter(Boolean) : [] });
+      const cf = (c) => ({ nodes: c ? [c.email && { value: c.email, customField: { id: EMAIL_F, type: 'emailAddress' } }, c.phone && { value: c.phone, customField: { id: PHONE_F, type: 'phoneNumber' } }].filter(Boolean) : [] });
       return Response.json({ account: {
         id: query.account.$.id, name: a.name, type: 'vendor', archivedAt: null,
         customFieldValues: { nodes: Object.entries(a.values).map(([id, value]) => ({ value, customField: { id } })) },
@@ -86,16 +89,23 @@ globalThis.fetch = async (input, init = {}) => {
       world.made.push(query.createAccount.$);
       return Response.json({ createAccount: { createdAccount: { id, name: query.createAccount.$.name } } });
     }
+    const refused = (v) => (v && FAMILY_EMAIL_F in v) || world.refuseContacts;
+    if (query.createContactField || query.createCustomField) {
+      world.fieldsMade = [...(world.fieldsMade || []), query.createCustomField.$];
+      return Response.json({ createCustomField: { createdCustomField: { id: `VC-NEW-${world.fieldsMade.length}` } } });
+    }
     if (query.createContact) {
       const { accountId, name, title, customFieldValues: v } = query.createContact.$;
+      if (refused(v)) return new Response('A customField isn’t valid for this contact', { status: 400 });
       const c = { id: `CON${Math.random().toString(36).slice(2, 7)}`, name, title, email: v?.[EMAIL_F] || null, phone: v?.[PHONE_F] || null };
       world.accounts[accountId].contacts.push(c);
       world.accounts[accountId].primary ||= c.id;
-      world.contactsMade.push({ accountId, ...c });
+      world.contactsMade.push({ accountId, ...c, raw: v });
       return Response.json({ createContact: { createdContact: { id: c.id } } });
     }
     if (query.updateContact) {
       const { id, name, title, customFieldValues: v } = query.updateContact.$;
+      if (refused(v)) return new Response('A customField isn’t valid for this contact', { status: 400 });
       for (const a of Object.values(world.accounts)) {
         const c = a.contacts.find((x) => x.id === id);
         if (c) Object.assign(c, { name: name ?? c.name, title: title ?? c.title, ...(v?.[EMAIL_F] ? { email: v[EMAIL_F] } : {}), ...(v?.[PHONE_F] ? { phone: v[PHONE_F] } : {}) });
@@ -498,6 +508,22 @@ test('“Get started” for a company new to SOARD: made a vendor in JobTread wi
   assert.match(world.comments.at(-1).message, /as a company new to SOARD, so this vendor was made for them/);
   assert.equal((await readProfileRow(env.DB, jtId)).invitedBy, 'signup:new');
   assert.equal(world.slack.length, 0, 'nobody approves anything');
+});
+
+test('a new company whose contact JobTread refuses still gets its link, and signs in by that email after', async () => {
+  world.refuseContacts = true;
+  const who = { company: 'Rivera Example Roofing', name: 'Maria Rivera', email: 'maria@rivera.example', phone: '404-555-0100' };
+  assert.equal((await startPartner(env, who, { now: NOW })).how, 'new');
+  assert.match(world.emails.at(-1).subject, /^Set up your account/);
+  assert.equal((await startPartner(env, who, { now: NOW + 1000 })).how, 'signin');
+  assert.equal(world.made.length, 1, 'never a second vendor');
+});
+
+test('a vendor contact goes in JobTread’s vendor contact Email and Phone (made when JobTread has none), never a family’s', async () => {
+  world.contactFields = [];
+  await startPartner(env, { company: 'Rivera Example Roofing', name: 'Maria Rivera', email: 'maria@rivera.example', phone: '404-555-0100' }, { now: NOW });
+  assert.deepEqual(world.fieldsMade.map((f) => [f.targetType, f.type, f.name, f.minValuesRequired]), [['vendorContact', 'emailAddress', 'Email', 0], ['vendorContact', 'phoneNumber', 'Phone', 0]]);
+  assert.deepEqual(world.contactsMade.at(-1).raw, { 'VC-NEW-1': 'maria@rivera.example', 'VC-NEW-2': '+14045550100' });
 });
 
 test('inviting someone new at a vendor JobTread has: added as a contact, never changing who the main one is', async () => {

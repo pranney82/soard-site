@@ -47,13 +47,12 @@ import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
 import { mailboxes, gmail, header, textOf, filesOf, partsOf, bytesOf } from './_mailbox.js';
 import { isStaffEmail } from './_board-roles.js';
 import { readState, writeState } from './_mercury.js';
-import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from './_applicant-comms.js';
 import { FREE_MAIL } from './_kid-partners.js';
 import { ramp, rampConfigured } from './_ramp.js';
 import { SOARD_ORG_ID, TZ } from './_reveals.js';
 import { SITE_ORIGIN } from './_broadcast-notify.js';
 import { readDocument, readW9Text, pdfText, documentType, judgeW9, mergeCoi, longDate, askModel, scannedPages, money, TEXT_MODEL } from './_vendor-read.js';
-import { jt, jtSetup, readJtVendor, writeFields, vendorNote, uploadToJt, readDocSettings, docsState, labelFor, readAsk, FOLDER, TAGS } from './_vendors.js';
+import { jt, jtSetup, readJtVendor, writeFields, vendorNote, uploadToJt, readDocSettings, docsState, labelFor, readAsk, FOLDER, TAGS, CONTACT_VALUES, contactEmail, contactFields } from './_vendors.js';
 
 export const STATE_KEY = 'coi-backfill';
 const MIN = 60 * 1000;
@@ -487,7 +486,8 @@ async function cachedVendors(DB) {
 
 // ─── Filing in JobTread ─────────────────────────────────────────────
 
-const valueOf = (c, fieldId) => (c?.customFieldValues?.nodes || []).find((n) => n.customField?.id === fieldId)?.value || null;
+// JobTread's phone fields take a number as +1 and 10 digits
+const e164 = (s) => { const d = String(s || '').replace(/\D/g, ''); const t = d.length === 11 && d[0] === '1' ? d.slice(1) : d; return /^[2-9]\d{9}$/.test(t) ? `+1${t}` : null; };
 
 /** A vendor's people and files → { primaryId, contacts: [{ id, name, title, email }], files: [{ id, name, type, size, folder, tags }] } */
 async function accountOf(env, jtId, fetchImpl) {
@@ -495,14 +495,14 @@ async function accountOf(env, jtId, fetchImpl) {
     account: {
       $: { id: jtId },
       id: {}, primaryContact: { id: {} },
-      contacts: { $: { size: 25 }, nodes: { id: {}, name: {}, title: {}, customFieldValues: { $: { where: [['customField', 'id'], 'in', [FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE]] }, nodes: { value: {}, customField: { id: {} } } } } },
+      contacts: { $: { size: 25 }, nodes: { id: {}, name: {}, title: {}, customFieldValues: CONTACT_VALUES } },
       files: { $: { size: 100 }, nodes: { id: {}, name: {}, type: {}, size: {}, folder: {}, fileTags: { $: { size: 10 }, nodes: { id: {} } } } },
     },
   }, fetchImpl);
   const a = d?.account;
   return {
     primaryId: a?.primaryContact?.id || null,
-    contacts: (a?.contacts?.nodes || []).map((c) => ({ id: c.id, name: c.name || '', title: c.title || '', email: String(valueOf(c, FIELD_CONTACT_EMAIL) || '').toLowerCase() || null })),
+    contacts: (a?.contacts?.nodes || []).map((c) => ({ id: c.id, name: c.name || '', title: c.title || '', email: contactEmail(c) })),
     files: (a?.files?.nodes || []).map((f) => ({ id: f.id, name: f.name || '', type: String(f.type || '').toLowerCase(), size: f.size || 0, folder: f.folder || null, tags: (f.fileTags?.nodes || []).map((t) => t.id) })),
   };
 }
@@ -519,7 +519,7 @@ async function sameFile(env, ctx, files, bytes, hash) {
 }
 
 async function createContact(env, jtId, { name, title, email, phone }, fetchImpl) {
-  const fields = { [FIELD_CONTACT_EMAIL]: email, ...(phone ? { [FIELD_CONTACT_PHONE]: clean(phone, 30) } : {}) };
+  const fields = contactFields(await jtSetup(env, { fetchImpl }), { email, phone: e164(phone) });
   const made = await jt(env, { createContact: { $: { accountId: jtId, name: clean(name, 80) || email, title, customFieldValues: fields }, createdContact: { id: {} } } }, fetchImpl);
   return made?.createContact?.createdContact?.id || null;
 }

@@ -27,7 +27,6 @@ import { sendEmails, slackResolved } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { emailShell, paragraphs, button, panel, esc } from './_email-shell.js';
 import { mercury, mercuryConfigured, uploadRecipientAttachment } from './_mercury.js';
-import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from './_applicant-comms.js';
 import { cachedRecipients, recipientFor } from './_bill-pay.js';
 import { vendorKey, vendorLikeness, dollars } from './_spend-match.js';
 import { checkW9, buildW9 } from './_w9-form.js';
@@ -35,6 +34,7 @@ import { requirementLines, longDate } from './_vendor-read.js';
 import {
   jt, jtSetup, readJtVendor, createLink, ensureVendorSchema, docsState, readDocSettings, writeFields, vendorNote, uploadToJt,
   patchAsk, readAsk, labelFor, resolveAll, briefState, OVERRIDES, FOLDER, TAGS, TRADES, PREVIEW_ID, LIMITS,
+  CONTACT_VALUES, contactEmail, contactPhone, contactFields,
 } from './_vendors.js';
 
 const DAY = 864e5;
@@ -128,7 +128,6 @@ async function stepDone(DB, jtId, step, now = Date.now()) {
 
 // ─── JobTread: the company and its people ───────────────────────────
 
-const valueOf = (c, fieldId) => (c?.customFieldValues?.nodes || []).find((n) => n.customField?.id === fieldId)?.value || null;
 const roleOf = (title) => {
   const t = norm(title);
   if (/agent|insurance/.test(t)) return 'agent';
@@ -143,14 +142,13 @@ const tradesValue = (ids, trades) => (ids.fields.trades.multiple === false ? tra
 export async function readCompany(env, jtId, { fetchImpl = fetch } = {}) {
   if (jtId === PREVIEW_ID) return { id: PREVIEW_ID, name: 'Your company (a preview)', trades: [], address: '', license: '', materials: false, contacts: [] };
   const ids = await jtSetup(env, { fetchImpl });
-  const people = { $: { where: [['customField', 'id'], 'in', [FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE]] }, nodes: { value: {}, customField: { id: {} } } };
   const d = await jt(env, {
     account: {
       $: { id: jtId },
       id: {}, name: {}, archivedAt: {},
       customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } },
       primaryContact: { id: {} },
-      contacts: { $: { size: 15 }, nodes: { id: {}, name: {}, title: {}, customFieldValues: people } },
+      contacts: { $: { size: 15 }, nodes: { id: {}, name: {}, title: {}, customFieldValues: CONTACT_VALUES } },
     },
   }, fetchImpl);
   const a = d?.account;
@@ -158,7 +156,7 @@ export async function readCompany(env, jtId, { fetchImpl = fetch } = {}) {
   const val = (k) => (a.customFieldValues?.nodes || []).find((n) => n.customField?.id === ids.fields[k]?.id)?.value ?? null;
   const primary = a.primaryContact?.id;
   const contacts = (a.contacts?.nodes || []).map((c) => ({
-    id: c.id, name: c.name || '', title: c.title || '', email: (valueOf(c, FIELD_CONTACT_EMAIL) || '').toLowerCase() || null, phone: valueOf(c, FIELD_CONTACT_PHONE),
+    id: c.id, name: c.name || '', title: c.title || '', email: contactEmail(c), phone: contactPhone(c, ids),
     role: c.id === primary ? 'main' : roleOf(c.title),
   }));
   if (!contacts.some((c) => c.role === 'main')) {
@@ -176,9 +174,7 @@ export async function readCompany(env, jtId, { fetchImpl = fetch } = {}) {
 
 /** A contact in a role: updated when there is one, made when not */
 async function putContact(env, jtId, company, role, { name, email, phone }, fetchImpl) {
-  const fields = {};
-  if (email) fields[FIELD_CONTACT_EMAIL] = email;
-  if (phone) fields[FIELD_CONTACT_PHONE] = phone;
+  const fields = contactFields(await jtSetup(env, { fetchImpl }), { email, phone });
   const have = company.contacts.find((c) => c.role === role) || (role !== 'main' && email ? company.contacts.find((c) => c.email === email && c.role === role) : null);
   const title = role === 'main' ? (have?.title || ROLES.main) : ROLES[role];
   if (have) {
@@ -660,7 +656,7 @@ export async function invitePartner(env, { jtId = null, company = '', name = '',
     if (!c.contacts.some((x) => x.email === e)) {
       const who = { name: clean(name, 80) || e, email: e, phone: phoneOf(phone) };
       if (!c.contacts.some((x) => x.role === 'main')) await putContact(env, c.id, c, 'main', who, fetchImpl);
-      else await jt(env, { createContact: { $: { accountId: c.id, name: who.name, title: 'Contact', customFieldValues: { [FIELD_CONTACT_EMAIL]: e, ...(who.phone ? { [FIELD_CONTACT_PHONE]: who.phone } : {}) } }, createdContact: { id: {} } } }, fetchImpl);
+      else await jt(env, { createContact: { $: { accountId: c.id, name: who.name, title: 'Contact', customFieldValues: contactFields(await jtSetup(env, { fetchImpl }), who) }, createdContact: { id: {} } } }, fetchImpl);
     }
   } else {
     vendorName = clean(company, 120);
@@ -670,8 +666,10 @@ export async function invitePartner(env, { jtId = null, company = '', name = '',
     if (!jtId) throw new Error('JobTread didn’t make the vendor');
     vendorName = made.createAccount.createdAccount.name || vendorName;
     created = true;
-    const fields = { [FIELD_CONTACT_EMAIL]: e, ...(phoneOf(phone) ? { [FIELD_CONTACT_PHONE]: phoneOf(phone) } : {}) };
-    await jt(env, { createContact: { $: { accountId: jtId, name: clean(name, 80) || e, title: ROLES.main, customFieldValues: fields }, createdContact: { id: {} } } }, fetchImpl);
+    // Their link and sign-in go by the email kept here (rememberVendor), so a contact JobTread refuses doesn't stop them
+    const fields = contactFields(await jtSetup(env, { fetchImpl }), { email: e, phone: phoneOf(phone) });
+    await jt(env, { createContact: { $: { accountId: jtId, name: clean(name, 80) || e, title: ROLES.main, customFieldValues: fields }, createdContact: { id: {} } } }, fetchImpl)
+      .catch((err) => console.error('[trade-partners] main contact', jtId, err.message));
   }
   await rememberVendor(env.DB, { jtId, name: vendorName, emails: [e] });
   const link = await createLink(env.DB, jtId, { by: `invite:${by}`, now });

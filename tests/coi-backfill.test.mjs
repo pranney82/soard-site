@@ -228,7 +228,7 @@ function pretendFetch(url, init = {}) {
   if (u.host === 'api.jobtread.com') {
     const { query } = JSON.parse(init.body);
     world.jt.push(Object.keys(query)[0]);
-    if (query.organization?.customFields) return Response.json({ organization: { customFields: { nodes: world.fields }, fileTags: { nodes: world.tags } } });
+    if (query.organization?.customFields) return Response.json({ organization: { customFields: { nodes: world.fields }, contactFields: { nodes: [{ id: 'VC-EMAIL', name: 'Email', type: 'emailAddress' }, { id: 'VC-PHONE', name: 'Phone', type: 'phoneNumber' }] }, fileTags: { nodes: world.tags } } });
     if (query.organization?.accounts) {
       world.accountPages++;
       return Response.json({ organization: { accounts: { nextPage: null, nodes: Object.entries(world.vendors).map(([id, v]) => ({ id, name: v.name, archivedAt: null, files: { nodes: v.files.map((f) => ({ ...f, fileTags: { nodes: f.tags.map((t) => ({ id: t })) } })) } })) } } });
@@ -238,7 +238,7 @@ function pretendFetch(url, init = {}) {
     if (query.account) {
       const id = query.account.$.id;
       const v = world.vendors[id];
-      const contact = (c) => ({ id: c.id, name: c.name, title: c.title, customFieldValues: { nodes: [{ value: c.email, customField: { id: '22NJw43QvHeJ' } }] } });
+      const contact = (c) => ({ id: c.id, name: c.name, title: c.title, customFieldValues: { nodes: [{ value: c.email, customField: { id: 'VC-EMAIL', type: 'emailAddress' } }] } });
       return Response.json({
         account: {
           id, name: v.name, type: 'vendor', archivedAt: null,
@@ -258,7 +258,9 @@ function pretendFetch(url, init = {}) {
     }
     if (query.createContact) {
       const { accountId, name, title, customFieldValues } = query.createContact.$;
-      const c = { id: `CON${++world.seq}`, name, title, email: customFieldValues['22NJw43QvHeJ'], phone: customFieldValues['22NJw43UauSc'] || null };
+      // JobTread refuses a family's (customerContact) Email on a vendor's contact
+      if ('22NJw43QvHeJ' in customFieldValues) return new Response('A customField isn’t valid for this contact', { status: 400 });
+      const c = { id: `CON${++world.seq}`, name, title, email: customFieldValues['VC-EMAIL'], phone: customFieldValues['VC-PHONE'] || null };
       world.vendors[accountId].contacts.push(c);
       if (world.autoPrimary && !world.vendors[accountId].primary) world.vendors[accountId].primary = c.id;
       world.contacts.push({ accountId, ...c });

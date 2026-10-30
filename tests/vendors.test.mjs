@@ -83,7 +83,7 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.host === 'uploads.jobtread.example') { world.uploads.push({ url: url.href, bytes: init.body.byteLength }); return new Response('', { status: 200 }); }
   if (url.host === 'api.jobtread.com') {
     const { query } = JSON.parse(init.body);
-    if (query.organization?.customFields) return Response.json({ organization: { customFields: { nodes: world.fields }, fileTags: { nodes: world.tags } } });
+    if (query.organization?.customFields) return Response.json({ organization: { customFields: { nodes: world.fields }, contactFields: { nodes: [{ id: 'VC-EMAIL', name: 'Email', type: 'emailAddress' }, { id: 'VC-PHONE', name: 'Phone', type: 'phoneNumber' }] }, fileTags: { nodes: world.tags } } });
     if (query.organization?.accounts) return Response.json({ organization: { accounts: { nextPage: null, nodes: world.jtVendorList || [] } } });
     if (query.organization?.jobs) return Response.json({ organization: { jobs: { nextPage: null, nodes: (world.openJobs || []).map((j) => ({ ...j, customFieldValues: { nodes: [{ value: j.status }] }, aces: { nodes: [] } })) } } });
     if (query.createCustomField) {
@@ -267,6 +267,7 @@ test('JobTread gets its vendor fields and file tags once, reusing what’s there
   const ids = await jtSetup(env);
   assert.equal(ids.fields.w9.id, 'F-W9', 'the W-9 field SOARD already has');
   assert.equal(ids.fields.wc.id, 'F-WC', 'a curly apostrophe is the same field');
+  assert.deepEqual(ids.contact, { email: 'VC-EMAIL', phone: 'VC-PHONE' }, 'a vendor contact’s own Email and Phone, not a family’s');
   assert.deepEqual(world.made.map((m) => m.name).sort(), ['Address', 'Insurance Check', 'Liability Expires', 'License', 'Materials only', 'Trades']);
   assert.ok(world.made.find((m) => m.name === 'Trades').options.includes('Electrical'), 'Trades comes with its choices');
   assert.ok(world.made.every((m) => m.targetType === 'vendor' && m.minValuesRequired === 0));

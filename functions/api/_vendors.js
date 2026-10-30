@@ -49,7 +49,6 @@ import { slackCard } from './_slack-cards.js';
 import { emailShell, paragraphs, button, panel, esc } from './_email-shell.js';
 import { readState, writeState, mercuryConfigured, uploadRecipientAttachment } from './_mercury.js';
 import { vendorKey, dollars } from './_spend-match.js';
-import { FIELD_CONTACT_EMAIL } from './_reveal-invites.js';
 import { readDocument, judgeCoiReads, settleDisputes, judgeW9, documentType, requirementLines, longDate } from './_vendor-read.js';
 import { releaseVendorHolds, cachedRecipients, recipientFor } from './_bill-pay.js';
 import { maybeRunRamp, rampConfigured } from './_ramp.js';
@@ -200,7 +199,7 @@ const optionsOf = (o) => (Array.isArray(o) ? o.map((x) => (typeof x === 'string'
 export async function jtSetup(env, { fetchImpl = fetch, force = false } = {}) {
   const st = await readState(env.DB, STATE_KEY);
   const have = st.jt;
-  if (!force && have?.fields && Object.keys(FIELDS).every((k) => have.fields[k]?.id && (!FIELDS[k].multiple || 'multiple' in have.fields[k])) && have.tags?.w9 && have.tags?.coi) return have;
+  if (!force && have?.fields && Object.keys(FIELDS).every((k) => have.fields[k]?.id && (!FIELDS[k].multiple || 'multiple' in have.fields[k])) && have.tags?.w9 && have.tags?.coi && have.contact) return have;
   // One setup at a time: a page reads the company and the vendor side by side, and two
   // setups at once would each make the same missing field
   if (!settingUp.has(env.DB)) settingUp.set(env.DB, makeSetup(env, fetchImpl).finally(() => settingUp.delete(env.DB)));
@@ -213,6 +212,7 @@ async function makeSetup(env, fetchImpl) {
     organization: {
       $: { id: SOARD_ORG_ID },
       customFields: { $: { size: 100, where: ['targetType', '=', 'vendor'] }, nodes: { id: {}, name: {}, type: {}, options: {}, maxValuesAllowed: {} } },
+      contactFields: { _: 'customFields', $: { size: 50, where: ['targetType', '=', 'vendorContact'] }, nodes: { id: {}, name: {}, type: {} } },
       fileTags: { $: { size: 100 }, nodes: { id: {}, name: {} } },
     },
   }, fetchImpl);
@@ -263,8 +263,18 @@ async function makeSetup(env, fetchImpl) {
     tags[k] = made?.createFileTag?.createdFileTag?.id;
     if (!tags[k]) throw new Error(`JobTread didn’t make the file tag “${name}”`);
   }
+  // A vendor contact's Email and Phone: JobTread's own when it has them, else made (a contact is still saved without them)
+  const cf = d?.organization?.contactFields?.nodes || [];
+  const contact = {};
+  for (const [k, type, name, re] of [['email', 'emailAddress', 'Email', /e-?mail/i], ['phone', 'phoneNumber', 'Phone', /phone|cell|mobile/i]]) {
+    const found = cf.find((x) => x.type === type && re.test(x.name || '')) || cf.find((x) => x.type === type) || cf.find((x) => re.test(x.name || ''));
+    if (found) { contact[k] = found.id; continue; }
+    const made = await jt(env, { createCustomField: { $: { organizationId: SOARD_ORG_ID, targetType: 'vendorContact', type, name, minValuesRequired: 0 }, createdCustomField: { id: {} } } }, fetchImpl)
+      .catch((e) => { console.error('[vendors] contact field', name, e.message); return null; });
+    contact[k] = made?.createCustomField?.createdCustomField?.id || null;
+  }
   const single = Object.entries(FIELDS).filter(([k, f]) => f.multiple && fields[k].multiple === false).map(([, f]) => f.name);
-  const out = { fields, tags, dupes, single, at: new Date().toISOString() };
+  const out = { fields, tags, contact, dupes, single, at: new Date().toISOString() };
   await writeState(env.DB, STATE_KEY, { jt: out, setupError: null });
   return out;
 }
@@ -273,26 +283,41 @@ async function makeSetup(env, fetchImpl) {
 
 const yes = (v) => v === true || /^(true|yes|y|1)$/i.test(String(v ?? '').trim());
 const dateOf = (v) => (/^\d{4}-\d{2}-\d{2}/.test(String(v || '')) ? String(v).slice(0, 10) : null);
-const emailIn = (c) => c?.customFieldValues?.nodes?.[0]?.value;
+// ─── JobTread: a vendor contact's email and phone ───────────────────
+// A vendor's contacts have fields of their own in JobTread (target 'vendorContact'), apart from a
+// family's ('customerContact', ./_applicant-comms.js), which JobTread refuses on a vendor's contact.
+// Reading takes the contact's value that is an email address, whatever field holds it; writing uses
+// the vendor contact's own Email and Phone (jtSetup → contact).
+export const CONTACT_VALUES = { $: { size: 10 }, nodes: { value: {}, customField: { id: {}, type: {} } } };
+const valuesOf = (c) => c?.customFieldValues?.nodes || [];
+export function contactEmail(c) {
+  const n = valuesOf(c);
+  const v = (n.find((x) => x.customField?.type === 'emailAddress' && isEmail(x.value)) || n.find((x) => isEmail(x.value)))?.value;
+  return v ? String(v).trim().toLowerCase() : null;
+}
+export const contactPhone = (c, ids) => valuesOf(c).find((x) => (ids?.contact?.phone && x.customField?.id === ids.contact.phone) || x.customField?.type === 'phoneNumber')?.value || null;
+/** A vendor contact's customFieldValues to write */
+export const contactFields = (ids, { email, phone } = {}) => ({
+  ...(email && ids?.contact?.email ? { [ids.contact.email]: email } : {}), ...(phone && ids?.contact?.phone ? { [ids.contact.phone]: phone } : {}),
+});
 
 /** A vendor's W-9 and insurance as JobTread has them now → { id, name, email, w9, glExpires, wcExpires, docs, check, archived } or null */
 export async function readJtVendor(env, jtId, { fetchImpl = fetch } = {}) {
   if (jtId === PREVIEW_ID) return { ...PREVIEW_VENDOR };
   const ids = await jtSetup(env, { fetchImpl });
-  const emailField = { $: { size: 1, where: [['customField', 'id'], '=', FIELD_CONTACT_EMAIL] }, nodes: { value: {} } };
   const d = await jt(env, {
     account: {
       $: { id: jtId },
       id: {}, name: {}, type: {}, archivedAt: {},
       customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } },
-      primaryContact: { id: {}, title: {}, customFieldValues: emailField },
-      contacts: { $: { size: 8 }, nodes: { id: {}, title: {}, customFieldValues: emailField } },
+      primaryContact: { id: {}, title: {}, customFieldValues: CONTACT_VALUES },
+      contacts: { $: { size: 8 }, nodes: { id: {}, title: {}, customFieldValues: CONTACT_VALUES } },
     },
   }, fetchImpl);
   const a = d?.account;
   if (!a?.id) return null;
   const val = (k) => (a.customFieldValues?.nodes || []).find((n) => n.customField?.id === ids.fields[k].id)?.value ?? null;
-  const email = [a.primaryContact, ...(a.contacts?.nodes || [])].filter(notAgent).map(emailIn).find(isEmail) || null;
+  const email = [a.primaryContact, ...(a.contacts?.nodes || [])].filter(notAgent).map(contactEmail).find(Boolean) || null;
   return {
     id: a.id, name: a.name, archived: !!a.archivedAt, email: email ? email.toLowerCase() : null,
     w9: yes(val('w9')), glExpires: dateOf(val('gl')), wcExpires: dateOf(val('wc')), docs: val('docs') || null, check: val('check') || null,
@@ -734,14 +759,14 @@ export async function jobtreadVendors(env, { fetchImpl = fetch } = {}) {
           nodes: {
             id: {}, name: {}, archivedAt: {},
             customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } },
-            contacts: { $: { size: 10 }, nodes: { title: {}, customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_CONTACT_EMAIL] }, nodes: { value: {} } } } },
+            contacts: { $: { size: 10 }, nodes: { title: {}, customFieldValues: CONTACT_VALUES } },
           },
         },
       },
     }, fetchImpl);
     const conn = data?.organization?.accounts;
     for (const a of conn?.nodes || []) {
-      const emails = [...new Set((a.contacts?.nodes || []).filter(notAgent).map(emailIn).filter(isEmail).map((e) => e.toLowerCase()))];
+      const emails = [...new Set((a.contacts?.nodes || []).filter(notAgent).map(contactEmail).filter(Boolean))];
       const val = (k) => (a.customFieldValues?.nodes || []).find((n) => n.customField?.id === ids?.fields[k]?.id)?.value ?? null;
       const trades = val('trades');
       const fields = ids && {
