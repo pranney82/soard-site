@@ -17,6 +17,7 @@ import { findOdd, refundTarget, checkOdd } from '../functions/api/_spend-odd.js'
 import { forwardMercuryReceipts, receiptSubject } from '../functions/api/_spend-receipts.js';
 import { RAMP_CODE_ID } from '../functions/api/_jobtread-bills.js';
 import { releaseVendorHolds } from '../functions/api/_bill-pay.js';
+import { TRADES } from '../functions/api/_vendors.js';
 
 const RELAY_KEY = 'relay-key:test';
 const NOW = Date.parse('2026-10-27T16:00:00Z');
@@ -34,6 +35,9 @@ const JT_FIELDS = [
   { id: 'F-W9', name: 'W-9', type: 'boolean' }, { id: 'F-GL', name: 'Liability Expires', type: 'date' }, { id: 'F-WC', name: 'Workers\' Comp Expires', type: 'date' },
   { id: 'F-DOCS', name: 'Documents', type: 'option', options: ['Current', 'Expiring soon', 'Requested', 'Expired', 'Missing', 'Needs a look', 'W-9 only', 'Not needed'] },
   { id: 'F-CHECK', name: 'Insurance Check', type: 'text' },
+  // The trade-partner page's fields (./_trade-partners.js)
+  { id: 'F-TRADES', name: 'Trades', type: 'option', options: TRADES }, { id: 'F-ADDR', name: 'Address', type: 'text' },
+  { id: 'F-LIC', name: 'License', type: 'text' }, { id: 'F-MAT', name: 'Materials only', type: 'boolean' },
 ];
 
 const realFetch = globalThis.fetch;
@@ -323,7 +327,7 @@ test('an approved bill whose vendor’s insurance ended waits, says so in JobTre
   const mail = world.emails[0][0] || world.emails[0];
   assert.match(JSON.stringify(mail), /Your payment from Sunshine on a Ranney Day is waiting on your certificate of insurance/);
   assert.match(JSON.stringify(mail), /invoice #7 for \$1,850\.00 is approved/);
-  assert.match(JSON.stringify(mail), /vendor-documents\/#t=/);
+  assert.match(JSON.stringify(mail), /trade-partners\/account\/#t=/);
   assert.ok(world.fieldWrites.some((w) => w['F-DOCS'] === 'Requested'), 'JobTread says Requested');
   const [b] = await billQueue(env, { now: NOW });
   assert.equal(b.approval.payState, 'held');

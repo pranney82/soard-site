@@ -267,19 +267,7 @@ try {
   await clickText(page, '.jc button', 'Settings');
   await page.waitForFunction(() => document.body.textContent.includes('When a bill is approved'));
   ok(await page.evaluate(() => [...document.querySelectorAll('input[name="pay-mode"]')].filter((r) => r.disabled).length === 2), 'paying from Mercury waits for a pay-from account');
-  ok(await page.evaluate(() => document.body.textContent.includes('W-9 and insurance') && document.body.textContent.includes('General liability, each occurrence')), 'Settings has the W-9 and insurance minimums');
-  await page.evaluate(() => {
-    const input = [...document.querySelectorAll('.jc-field')].find((l) => l.textContent.includes('each occurrence')).querySelector('input');
-    input.value = '2000000';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await page.evaluate(() => [...document.querySelectorAll('.jc button')].filter((b) => b.textContent.trim() === 'Save')[1].click());
-  await wait(300);
-  const ds = posts.find((p) => p.action === 'docs-settings');
-  ok(ds?.glOccurrence === 2000000 && ds.workersComp === true && ds.renewDays === 30, `the minimums save (${JSON.stringify(ds)})`);
-  await clickText(page, '.jc button', 'Send me the vendor email');
-  await wait(300);
-  ok(posts.some((p) => p.action === 'docs-preview'), '“Send me the vendor email” asks for the preview');
+  ok(await page.evaluate(() => document.querySelector('.jc a[href="#trade-partners/settings"]')?.textContent.includes('Trade Partners')), 'the W-9 and insurance minimums are a link away, in Trade Partners → Settings');
   await page.screenshot({ path: `${OUT}bill-settings.png`, fullPage: false });
   await axe(page, 'Bill settings');
 

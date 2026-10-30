@@ -1,7 +1,7 @@
 /**
  * Reading a W-9 or a certificate of insurance, and judging it
  * ===========================================================================
- * What a vendor uploads on /vendor-documents/ (./_vendors.js files it) is
+ * What a vendor uploads on their trade-partner page (./_vendors.js files it) is
  * read here by Workers AI. A photo, and a PDF's pages as pictures (the
  * vendor's browser draws them; a scan's own page photos when it couldn't),
  * go to a vision model; a PDF's text goes to a text model too. The model
@@ -373,6 +373,67 @@ export function judgeCoiReads(reads, req, opts = {}) {
   const high = judgeCoi(both(false), req, opts);
   if (!high.accepted) return high;
   return { unreadable: true, unsure: low.problems.join(' ') };
+}
+
+// ─── Settling a disagreement: one focused question ──────────────────
+
+const FIELD_ASK = {
+  expires: { words: 'the POLICY EXP (expiration) date', shape: '"YYYY-MM-DD"' },
+  eachOccurrence: { words: 'the EACH OCCURRENCE limit in dollars', shape: 'a whole number' },
+  aggregate: { words: 'the GENERAL AGGREGATE limit in dollars (not PRODUCTS - COMP/OP AGG, not PERSONAL & ADV INJURY)', shape: 'a whole number' },
+  employersLiabilityEachAccident: { words: 'the E.L. EACH ACCIDENT limit in dollars', shape: 'a whole number' },
+};
+const ROW = { 'general liability': 'COMMERCIAL GENERAL LIABILITY', 'workers compensation': 'WORKERS COMPENSATION AND EMPLOYERS’ LIABILITY' };
+
+/** Where a file's two readings disagree → [{ file, kind, key, text, pictures }] */
+export function disputesOf(reads) {
+  const out = [];
+  reads.forEach((r, file) => {
+    if (!r?.text || !r?.pictures) return;
+    const [a, b] = [mergeCoi([r.text]), mergeCoi([r.pictures])];
+    if (!a || !b) return;
+    for (const kind of ['general liability', 'workers compensation']) {
+      const p = latest(a.policies, kind);
+      const q = latest(b.policies, kind);
+      if (!p || !q) continue;
+      for (const key of ['expires', 'eachOccurrence', 'aggregate', 'employersLiabilityEachAccident']) {
+        const [x, y] = key === 'expires' ? [p.expires, q.expires] : [num(p[key]), num(q[key])];
+        if (x && y && x !== y) out.push({ file, kind, key, text: x, pictures: y });
+      }
+    }
+  });
+  return out;
+}
+
+/**
+ * Two readings that disagree (judgeCoiReads said unsure): each number in dispute is asked once more
+ * of the file's first picture, on its own. An answer that matches one reading settles it for both.
+ * reads: readDocument's per file; pictures: per file, its page pictures (or the photo itself) → new reads
+ */
+export async function settleDisputes(env, reads, pictures, { max = 4 } = {}) {
+  const disputes = disputesOf(reads).slice(0, max);
+  if (!disputes.length || !env.AI?.run) return reads;
+  const out = reads.map((r) => r && { text: r.text && structuredClone(r.text), pictures: r.pictures && structuredClone(r.pictures) });
+  for (const d of disputes) {
+    const image = pictures[d.file]?.[0];
+    if (!image) continue;
+    const ask = FIELD_ASK[d.key];
+    const prompt = `You read one value from a certificate of liability insurance (ACORD 25). In the ${ROW[d.kind]} row, find ${ask.words}. Report it as JSON {"value": ${ask.shape}}, or {"value": null} when that row doesn't show it. Never guess.`;
+    const a = await askModel(env, VISION_MODEL, [
+      { role: 'system', content: prompt },
+      { role: 'user', content: [{ type: 'text', text: 'Read that one value.' }, { type: 'image_url', image_url: { url: `data:${image.type};base64,${toBase64(image.bytes)}` } }] },
+    ], { type: 'object', properties: { value: { type: ['string', 'number', 'null'] } }, required: ['value'] });
+    const got = d.key === 'expires' ? isoDate(a?.value) : num(String(a?.value ?? '').replace(/[$,\s]/g, ''));
+    if (!got || (got !== d.text && got !== d.pictures)) continue;
+    for (const side of ['text', 'pictures']) {
+      for (const p of out[d.file][side]?.policies || []) {
+        if (p.kind !== d.kind) continue;
+        const now = d.key === 'expires' ? isoDate(p.expires) : num(p[d.key]);
+        if (now === d.text || now === d.pictures) p[d.key] = got;
+      }
+    }
+  }
+  return out;
 }
 
 /** A W-9 → { unreadable } | { accepted, problems, lines, notes } */

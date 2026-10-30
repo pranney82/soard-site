@@ -712,7 +712,8 @@ function BillSettings({ data, act, busy }) {
         <span class="sec-head__hint">Until then Ramp pays them. Bills approved before this day are paid that morning.</span></label>
     </div>
     <div class="jc-body" style="border-top: 1px solid var(--color-border);"><div class="jc-row"><button class="btn btn-primary" disabled=${!!busy} onClick=${() => save()}>${busy === 'bill-settings' ? 'Saving…' : 'Save'}</button></div></div>
-    <${VendorDocSettings} data=${data} act=${act} busy=${busy} />
+    <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>W-9 and insurance</h3>
+      <p class="sec-head__desc">A bill is paid only when the vendor’s W-9 and certificate of insurance are current in JobTread. The insurance minimums, and the email a vendor gets, are in <a class="link" href="#trade-partners/settings">Trade Partners → Settings</a>.</p></div>
     <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>When a bill is approved</h3>${!cfg.payFromAccountId ? html`<p class="sec-head__desc">Pick and save the account bills are paid from to choose how they’re paid.</p>` : ''}</div>
     <div class="jc-body" style="display: grid; gap: .5rem;">
       ${PAY_MODES.map(([k, label, text]) => html`<label class="jc-row" style="align-items: flex-start;" key=${k}>
@@ -721,31 +722,6 @@ function BillSettings({ data, act, busy }) {
       </label>`)}
     </div>
   </section>`;
-}
-
-function VendorDocSettings({ data, act, busy }) {
-  const d = data.vendorDocs || {};
-  const [occ, setOcc] = useState(String(d.glOccurrence ?? 1000000));
-  const [agg, setAgg] = useState(String(d.glAggregate ?? 2000000));
-  const [wc, setWc] = useState(d.workersComp !== false);
-  const [el, setEl] = useState(String(d.elEachAccident ?? 100000));
-  const [renew, setRenew] = useState(String(d.renewDays ?? 30));
-  const save = () => act({ action: 'docs-settings', glOccurrence: Number(occ), glAggregate: Number(agg), workersComp: wc, elEachAccident: Number(el), renewDays: Number(renew) }, 'Saved');
-  return html`
-    <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>W-9 and insurance</h3>
-      <p class="sec-head__desc">A bill is paid only when the vendor’s W-9 and certificate of insurance are current in JobTread (the W-9, Liability Expires and Workers’ Comp Expires fields on the vendor). If they aren’t, the bill waits and the vendor gets an email with their own upload link; each file is checked against these minimums the moment it’s added. Set a vendor’s Documents field to “W-9 only” or “Not needed” in JobTread to skip a check.</p></div>
-    <div class="jc-body jc-grid2">
-      <label class="jc-field"><span>General liability, each occurrence ($)</span><input class="form-input" type="number" min="0" step="100000" value=${occ} onInput=${(e) => setOcc(e.target.value)} /></label>
-      <label class="jc-field"><span>General liability, aggregate ($)</span><input class="form-input" type="number" min="0" step="100000" value=${agg} onInput=${(e) => setAgg(e.target.value)} /></label>
-      <label class="jc-field"><span>Employer’s liability, each accident ($)</span><input class="form-input" type="number" min="0" step="50000" value=${el} onInput=${(e) => setEl(e.target.value)} disabled=${!wc} /></label>
-      <label class="jc-field"><span>Ask for the renewal this many days ahead</span><input class="form-input" type="number" min="7" max="90" value=${renew} onInput=${(e) => setRenew(e.target.value)} /></label>
-      <label class="jc-row"><input type="checkbox" checked=${wc} onChange=${(e) => setWc(e.target.checked)} /><span>Workers’ compensation is required</span></label>
-    </div>
-    <div class="jc-body" style="border-top: 1px solid var(--color-border);"><div class="jc-row">
-      <button class="btn btn-primary" disabled=${!!busy} onClick=${save}>${busy === 'docs-settings' ? 'Saving…' : 'Save'}</button>
-      <button class="btn btn-ghost" disabled=${!!busy} onClick=${() => act({ action: 'docs-preview' }, (j) => `Sent to ${j.sent}`)}>${busy === 'docs-preview' ? 'Sending…' : 'Send me the vendor email'}</button>
-      <span class="sec-head__hint">Its link opens the vendor’s page for a sample company: try a real certificate there; nothing is kept.</span>
-    </div></div>`;
 }
 
 // ─── Close-outs and the budget builder ──────────────────────────────

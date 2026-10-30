@@ -1266,11 +1266,11 @@ const MAP = { t: 'SOARD', children: [
             if (!x.forecast) return ATTN('No forecast yet.');
             return x.cashLow ? ATTN('The cautious forecast dips under the cash floor. See the board page.', x.forecast.at) : ON('Above the cash floor all 13 weeks.', x.forecast.at);
           } },
-        { t: 'W-9s and insurance', s: 'live', k: 'schedule',
-          when: 'Every 15 minutes on the heartbeat (held bills every time, other vendors every 6 hours); JobTread’s vendors and the open jobs they’re on every 4 hours; W-9s to Mercury daily.',
-          does: 'JobTread is the one record: each vendor’s W-9, Liability Expires, Workers’ Comp Expires and Documents fields, and the files in their “W-9 & Insurance” folder. A vendor with a bill waiting or approved, or on a purchase order for an open job, whose W-9 or insurance is missing or out of date gets an email from SOARD with their own upload link (reminders after 3 and 7 days), and so does anyone whose insurance ends within 30 days. On that page each file is read by Workers AI and held to the minimums in Job Costs → Bills → Settings at once; a good one goes into JobTread and fills the fields, and a W-9 also goes onto their Mercury recipient for the 1099s. An approved bill is paid only once both are current: until then it’s held, with a pinned note on the bill in JobTread. While Ramp still pays bills, a Ramp bill for such a vendor is put on hold in Ramp the same way, and the site takes the hold off once theirs check out (for its first day connected it only lists what it would hold, in Slack).',
-          touches: ['JobTread', 'Workers AI', 'Resend', 'Mercury', 'Ramp', 'Slack'], where: 'functions/api/_vendors.js, _vendor-read.js, vendor-docs.js, src/pages/vendor-documents.astro · the hold: _bill-pay.js, and in Ramp _ramp.js',
-          info: 'The Finance channel hears only what needs a person: a file nobody could read (fill the dates in JobTread), a vendor with no email, or one who hasn’t answered three emails while a bill waits. Set Documents to “W-9 only” or “Not needed” in JobTread to skip a vendor. No tax ID is ever kept by the site.',
+        { t: 'Trade partners', s: 'live', k: 'schedule',
+          when: 'Every 15 minutes on the heartbeat (held bills every time, other vendors every 6 hours); JobTread’s vendors, their fields and the open jobs they’re on every 4 hours; W-9s to Mercury daily.',
+          does: 'JobTread is the one record: each vendor’s W-9, Liability Expires, Workers’ Comp Expires, Documents, Trades, Address and License fields, their contacts, and the files in their “W-9 & Insurance” folder. Each company has its own page at /trade-partners/ (signing in by email, English or Spanish): their company details, a W-9 filled in and signed right there (the IRS form, made and filed for them), their certificate (read by Workers AI from its text and its page pictures, held to the minimums in Trade Partners → Settings, a disagreement asked once more on its own) or their insurance agent, who is emailed for it and for renewals, and the bank account SOARD pays, which goes straight onto their Mercury recipient. A vendor with a bill waiting or approved, or on a purchase order for an open job, whose W-9 or insurance is missing or out of date gets an email with their link (reminders after 3 and 7 days), and so does anyone whose insurance ends within 30 days. An approved bill is paid only once both are current, and once any new bank account is confirmed by phone: until then it’s held, with a pinned note on the bill in JobTread. While Ramp still pays bills, a Ramp bill for such a vendor is put on hold in Ramp the same way. A company invited and not finished is reminded after 2 and 5 days.',
+          touches: ['JobTread', 'Workers AI', 'Resend', 'Mercury', 'Ramp', 'Slack'], where: 'functions/api/_vendors.js, _vendor-read.js, _trade-partners.js, _w9-form.js, vendor-docs.js, trade-partner.js · pages: src/pages/trade-partners/ · admin: Trade Partners · the hold: _bill-pay.js, and in Ramp _ramp.js',
+          info: 'The Finance channel hears only what needs a person: a "Work with us" request (approved in the admin), a bank account to confirm by phone (confirmed in the admin), a file nobody could read, a vendor with no email, or one who hasn’t answered three emails while a bill waits. Mark a supplier “Materials only”, or a vendor “Not needed”, in Trade Partners. The site keeps no tax ID and no bank account number, only the last four digits.',
           live: (f) => {
             const v = f.jobCosts?.vendors;
             if (!v || !env(f)) return null;
@@ -1282,7 +1282,11 @@ const MAP = { t: 'SOARD', children: [
             const bits = [v.held ? `${plural(v.held, 'bill')} held for documents` : null, r?.held ? `${plural(r.held, 'Ramp bill')} on hold in Ramp` : null,
               r?.watch ? `${plural(r.watch, 'Ramp bill')} to hold once holds start` : null, v.asking ? `${plural(v.asking, 'vendor')} asked` : null].filter(Boolean);
             const ramp = !f.env.ramp ? ' Ramp isn’t connected, so Ramp’s bills aren’t held: add RAMP_CLIENT_ID and RAMP_CLIENT_SECRET in Cloudflare.' : '';
-            return ON(`${bits.length ? `${bits.join(', ')}.` : 'Every vendor with a bill has a current W-9 and insurance.'}${ramp}`, v.at);
+            const p = v.partners || {};
+            const waiting = [p.requests ? `${plural(p.requests, 'request')} to approve` : null, p.bankToConfirm ? `${plural(p.bankToConfirm, 'bank account')} to confirm by phone` : null].filter(Boolean);
+            const setting = p.settingUp ? ` ${plural(p.settingUp, 'company', 'companies')} setting up.` : '';
+            if (waiting.length) return ATTN(`In Trade Partners: ${waiting.join(' and ')}.${setting}`, v.at);
+            return ON(`${bits.length ? `${bits.join(', ')}.` : 'Every vendor with a bill has a current W-9 and insurance.'}${setting}${ramp}`, v.at);
           } },
       ]},
       { t: 'The bank', children: [

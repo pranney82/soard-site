@@ -133,7 +133,7 @@ beforeEach(async () => {
     AI: {
       toMarkdown: async () => { world.textReads = (world.textReads || 0) + 1; return { format: 'text', data: world.pdfText }; },
       // world.ai: one answer for every model, or (model) => the answer, to read text and pictures differently
-      run: async (model, input) => { world.aiCalls.push({ model, input }); return { response: typeof world.ai === 'function' ? world.ai(model) : world.ai }; },
+      run: async (model, input) => { world.aiCalls.push({ model, input }); return { response: typeof world.ai === 'function' ? world.ai(model, input) : world.ai }; },
     },
   };
   await ensureSpendSchema(DB);
@@ -230,7 +230,7 @@ test('a W-9 needs a tax ID and a signature, and the number never comes back', ()
 
 test('the email says what’s missing and why, with the minimums and the link', () => {
   const state = docsState({ w9: false, glExpires: '2026-09-30', wcExpires: '2027-06-01' }, DEFAULTS, { now: NOW });
-  const m = requestEmail({ vendorName: 'TKO Plumbing', url: 'https://x.example/vendor-documents/#t=abc', state, req: DEFAULTS });
+  const m = requestEmail({ vendorName: 'TKO Plumbing', url: 'https://x.example/trade-partners/account/#t=abc', state, req: DEFAULTS });
   assert.equal(m.subject, 'Your W-9 and certificate of insurance for Sunshine on a Ranney Day');
   assert.match(m.text, /A W-9: we don’t have one for you yet/);
   assert.match(m.text, /general liability insurance: the one we have ended September 30, 2026/);
@@ -263,13 +263,14 @@ test('JobTread gets its vendor fields and file tags once, reusing what’s there
   const ids = await jtSetup(env);
   assert.equal(ids.fields.w9.id, 'F-W9', 'the W-9 field SOARD already has');
   assert.equal(ids.fields.wc.id, 'F-WC', 'a curly apostrophe is the same field');
-  assert.deepEqual(world.made.map((m) => m.name).sort(), ['Insurance Check', 'Liability Expires']);
+  assert.deepEqual(world.made.map((m) => m.name).sort(), ['Address', 'Insurance Check', 'Liability Expires', 'License', 'Materials only', 'Trades']);
+  assert.ok(world.made.find((m) => m.name === 'Trades').options.includes('Electrical'), 'Trades comes with its choices');
   assert.ok(world.made.every((m) => m.targetType === 'vendor' && m.minValuesRequired === 0));
   assert.deepEqual(world.updatedFields[0].options.slice(0, 2), ['Current', 'Missing'], 'Documents keeps its options and gains the rest');
   assert.ok(world.updatedFields[0].options.includes('Not needed'));
   assert.deepEqual(world.madeTags.map((t) => t.name), ['W-9', 'COI']);
   await jtSetup(env);
-  assert.equal(world.made.length, 2, 'made once');
+  assert.equal(world.made.length, 6, 'made once');
 });
 
 test('a good certificate goes into JobTread, fills the fields and needs nothing else', async () => {
@@ -297,8 +298,9 @@ test('a good certificate goes into JobTread, fills the fields and needs nothing 
   assert.ok(world.aiCalls[0].input.response_format, 'JSON mode first');
   // The page reads JobTread again: nothing left to send
   const page = await (await pageGet({ env, request: new Request(`https://x.example/api/vendor-docs?token=${link.token}`) })).json();
-  assert.deepEqual(page.vendor.needs, []);
-  assert.equal(page.vendor.have.glExpires, '2027-03-01');
+  assert.deepEqual(page.vendor.docs.needs, []);
+  assert.equal(page.vendor.docs.have.glExpires, '2027-03-01');
+  assert.equal(page.vendor.steps.coi, true, 'the trade-partner page shows the insurance step done');
 });
 
 test('an out-of-date certificate goes back to the vendor, not into JobTread', async () => {
@@ -434,6 +436,35 @@ test('a certificate read two ways: the browser’s pictures and the text both go
   assert.match(world.comments.at(-1).message, /read it two ways that didn’t agree \(General liability’s aggregate is \$1,000,000; we need at least \$2,000,000\.\)/);
 });
 
+test('a split on one number is asked once more, on its own: it settles for or against, or a person decides', async () => {
+  await setFields({ w9: true });
+  const link = await createLink(env.DB, VENDOR, { now: NOW });
+  const reading = (agg) => goodCoi({ policies: [{ ...goodCoi().policies[0], aggregate: agg }, goodCoi().policies[1]] });
+  const run = async (focused) => {
+    world.aiCalls = [];
+    world.files = [];
+    world.ai = (model, input) => {
+      const sys = input?.messages?.[0]?.content || '';
+      if (/You read one value/.test(sys)) return { value: focused };
+      return /scout/.test(model) ? reading(1000000) : reading(2000000);
+    };
+    const { link: l } = await findLink(env.DB, link.token, NOW);
+    return fileUpload(env, l, { doc: 'coi', files: [pdfFile()], pages: [[pagePic(1)]] }, { now: NOW });
+  };
+  // The picture, asked only about GENERAL AGGREGATE, says $2,000,000: the text was right
+  let r = await run(2000000);
+  assert.equal(r.accepted, true);
+  const focused = world.aiCalls.find((c) => /You read one value/.test(c.input.messages[0].content));
+  assert.match(focused.input.messages[0].content, /GENERAL AGGREGATE limit in dollars \(not PRODUCTS - COMP\/OP AGG/);
+  // It says $1,000,000: the picture was right, and the vendor is told
+  r = await run('$1,000,000');
+  assert.equal(r.accepted, false);
+  assert.deepEqual(r.problems, ['General liability’s aggregate is $1,000,000; we need at least $2,000,000.']);
+  // Neither: a person decides
+  r = await run(3000000);
+  assert.equal(r.look, true);
+});
+
 test('two readings of a certificate: a pass needs both, and only problems that hold either way go back', () => {
   const req = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000 };
   const opts = { vendorName: 'TKO Plumbing', now: NOW };
@@ -514,7 +545,8 @@ test('an unsigned W-9 never says when it was signed (its empty date box once rea
 test('links: unknown, expired and the old Vendors area’s links open nothing', async () => {
   const link = await createLink(env.DB, VENDOR, { now: NOW });
   assert.equal((await findLink(env.DB, link.token, NOW)).problem, null);
-  assert.equal((await findLink(env.DB, link.token, NOW + 31 * DAY)).problem, 'expired');
+  assert.equal((await findLink(env.DB, link.token, NOW + 89 * DAY)).problem, null, 'a link lasts 90 days');
+  assert.equal((await findLink(env.DB, link.token, NOW + 91 * DAY)).problem, 'expired');
   assert.equal((await findLink(env.DB, 'not-a-real-token-at-all-xyz', NOW)).problem, 'unknown');
   const res = await pageGet({ env, request: new Request('https://x.example/api/vendor-docs?token=nope') });
   assert.equal(res.status, 404);
@@ -530,7 +562,8 @@ test('a vendor with a bill waiting is asked once, reminded after 3 days, and Job
   assert.equal(world.emails.length, 1);
   assert.equal(world.emails[0].to[0], 'office@tko.example');
   assert.match(world.emails[0].subject, /Your W-9 for Sunshine on a Ranney Day/);
-  assert.match(world.emails[0].text, /vendor-documents\/#t=/);
+  assert.match(world.emails[0].text, /trade-partners\/account\/#t=/);
+  assert.match(world.emails[0].text, /sign in at sunshineonaranneyday\.com\/trade-partners\/ with this email address/);
   assert.equal(world.vendors[VENDOR].values[fieldId('Documents')], 'Requested');
   assert.equal((await readAsk(env.DB, VENDOR)).open, true);
 

@@ -115,10 +115,15 @@ const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos', '/api/broa
 // nothing goes live until someone in the admin uses it
 PUBLIC_ROUTES.push('/api/profile-request');
 
-// A vendor sending their insurance certificate or W-9 (/vendor-documents/):
+// A vendor sending their insurance certificate or W-9 (/trade-partners/account/):
 // the same kind of link token, checked inside (_vendors.js), rate limited below;
 // files go straight onto the vendor's account in JobTread, never kept here
 PUBLIC_ROUTES.push('/api/vendor-docs');
+
+// The trade-partner pages (/trade-partners/): signing in (a link emailed only to an
+// address JobTread has), "Work with us" (Turnstile), and a partner's own steps, each
+// behind the same kind of link token; per-email and per-address limits inside
+PUBLIC_ROUTES.push('/api/trade-partner');
 
 // The buttons in a family-status summary email (Move back / Don't email /
 // Send now): each carries a one-time 128-bit token for one status change,
@@ -183,7 +188,7 @@ PUBLIC_GET_ROUTES.push('/api/books-callback');
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
-const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply', '/api/vendor-docs', '/api/board-rsvp']);
+const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply', '/api/vendor-docs', '/api/trade-partner', '/api/board-rsvp']);
 // Public GET routes that fan out to paid upstreams / build large responses.
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos', '/api/books-callback']);
 // The application form autosaves every step and uploads photos one by one, so
@@ -191,7 +196,7 @@ const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos', '/api/
 // Per minute per address. A watch party or a gala table shares one Wi-Fi, so the
 // beacons and the signup forms get room for a crowd; the handlers add their own
 // per-person limits behind these.
-const ROUTE_LIMITS = { '/api/broadcast-event': 120, '/api/live-click': 120, '/api/newsletter': 20, '/api/reminders': 20, '/api/profile-request': 10, '/api/vendor-docs': 10, '/api/board-rsvp': 10 };
+const ROUTE_LIMITS = { '/api/broadcast-event': 120, '/api/live-click': 120, '/api/newsletter': 20, '/api/reminders': 20, '/api/profile-request': 10, '/api/vendor-docs': 10, '/api/trade-partner': 20, '/api/board-rsvp': 10 };
 const APPLY_ROUTE = '/api/apply';
 const APPLY_RATE_LIMIT_MAX = 60;
 const _rateLimitMap = new Map(); // "<route>:<ip>" → { count, resetAt }

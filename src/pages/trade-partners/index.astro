@@ -1,0 +1,655 @@
+---
+/**
+ * Trade partners: what working with SOARD is like, signing in, and "Work with us"
+ *
+ * DESIGN: Editorial split hero (the standard hero-* naming, as on
+ * home/apply/donate/advisory-board), a sign-in band right under it for
+ * partners who already work with us, numbered sections, the request form,
+ * questions, yellow finale. English and Spanish: the page renders English
+ * and the script swaps every [data-t] for the visitor's language.
+ *
+ * A partner's own page is /trade-partners/account/ (sign-in links land there).
+ * functions/api/trade-partner.js answers signing in and the request form;
+ * the insurance minimums come from Job Costs → Bills → Settings at load.
+ * The hero photo: Admin → Site Config (tradePartnersPhotos.hero).
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import siteSettings from '../../content/site/settings.json';
+import { getSiteStats } from '../../utils/stats';
+import { cfRaw, cfLqip } from '../../utils/cf-image';
+
+const computed = await getSiteStats();
+const SITE_URL = 'https://sunshineonaranneyday.com';
+const orgName = siteSettings.name;
+const email = siteSettings.email;
+const heroPhotoId = (siteSettings as any).tradePartnersPhotos?.hero || 'kids/oakley/photo-15';
+const TRADES = ['General contracting', 'Carpentry and framing', 'Drywall', 'Electrical', 'Plumbing', 'HVAC', 'Painting', 'Flooring', 'Tile', 'Cabinets and countertops',
+  'Windows and doors', 'Roofing', 'Concrete and masonry', 'Accessibility and lifts', 'Landscaping', 'Cleaning', 'Hauling and dumpsters', 'Design', 'Materials and supplies', 'Other'];
+const holder = siteSettings.name;
+
+const breadcrumbs = [
+  { name: 'Home', url: `${SITE_URL}/` },
+  { name: 'Trade partners', url: `${SITE_URL}/trade-partners/` },
+];
+const faqs = [
+  { k: 'q1', q: 'Is my information safe?', a: 'Your W-9 goes straight into our records, and your bank details go straight to our bank. Our website keeps only the last four digits of your account, and every change is noted.' },
+  { k: 'q2', q: 'How do I change my bank account?', a: 'Sign in and open Payments. For your safety, we call the number we already have on file to confirm a new account before a payment goes to it.' },
+  { k: 'q3', q: 'What happens when my insurance renews?', a: 'We email you before it ends, and your agent too if you’ve added one. Add the new certificate on your page and it’s checked right away.' },
+  { k: 'q4', q: 'Why do you need a W-9?', a: 'The IRS asks us to file a 1099 for the companies we pay, and the W-9 has what goes on it.' },
+  { k: 'q5', q: 'Who do I talk to?', a: `Reply to any email from us, or write to ${email}. A person on our team reads every one.` },
+];
+---
+
+<BaseLayout
+  title="Trade Partners: Build With Us"
+  description="Plumbers, electricians, carpenters, suppliers and crews build SOARD’s bedrooms and bathrooms for children with disabilities. How working with us goes, and where trade partners sign in."
+  breadcrumbs={breadcrumbs}
+>
+  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+
+  <!-- ══════ HERO — Editorial Split ══════ -->
+  <section class="hero" id="tp-top">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <div class="hero-top">
+          <p class="hero-eyebrow" data-t="eyebrow">Trade partners</p>
+          <button type="button" class="tp-lang" data-lang-switch lang="es">Español</button>
+        </div>
+        <h1 class="hero-headline" data-t="h1" data-html>Your craft. A child’s <em>room</em>.</h1>
+        <p class="hero-lead" data-t="lead">{orgName} builds bedrooms and bathrooms for children with disabilities across greater Atlanta. Trade partners do the work: plumbers, electricians, carpenters, painters, suppliers and more. Here’s how working with us goes, and where you sign in.</p>
+        <div class="hero-ctas">
+          <a href="#work-with-us" class="btn btn-primary btn-lg" data-t="ctaWork">Work with us</a>
+          <a href="#sign-in" class="btn btn-outline-dark btn-lg" data-t="ctaSignIn" data-focus="#tp-email">Sign in</a>
+        </div>
+        <div class="hero-trust">
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2 10h20" stroke="currentColor" stroke-width="1.5"/></svg><span data-t="trust1">Paid by direct deposit</span></span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-t="trust2">Documents checked in seconds</span></span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span data-t="trust3">Everything on one page</span></span>
+        </div>
+      </div>
+      <div class="hero-photo-wrap">
+        <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
+          <img
+            src={cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')}
+            srcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`}
+            sizes="(max-width:768px) 85vw, 420px"
+            alt="A girl trying out the handheld shower, grab bar and shower seat in her new accessible bathroom"
+            width="800" height="1000" fetchpriority="high" loading="eager" decoding="sync" class="hero-img lqip-img"
+          />
+        </div>
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-stat">
+          <span class="hero-stat-num">{computed.totalRooms}+</span>
+          <span class="hero-stat-label" data-t="stat" data-html>rooms built<br />since 2012</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ SIGN IN ══════ -->
+  <section class="tp-signin" id="sign-in" aria-labelledby="tp-signin-h">
+    <div class="tp-signin-inner">
+      <div class="tp-signin-text">
+        <h2 id="tp-signin-h" data-t="signTitle">Already work with us?</h2>
+        <p data-t="signBody">Type the email address we have for you and we’ll send a link to your page. It keeps you signed in on that device for 90 days.</p>
+      </div>
+      <form class="tp-signin-form" id="tp-signin" novalidate>
+        <label class="tp-field">
+          <span class="tp-label" data-t="emailLabel">Email address</span>
+          <input id="tp-email" name="email" type="email" autocomplete="email" inputmode="email" required />
+        </label>
+        <button type="submit" class="btn btn-dark" data-t="signBtn">Email me a link</button>
+        <p class="tp-note" id="tp-signin-note" role="status" aria-live="polite" hidden></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ══════ 01 · WHAT YOU'LL BUILD ══════ -->
+  <section class="ab-section" id="what-you-build">
+    <div class="ab-container">
+      <div class="ab-sh" data-reveal data-num="01">
+        <div class="ab-sh-text">
+          <h2 data-t="s1Title" data-html>What you’ll <em>build</em></h2>
+          <p data-t="s1Lead">Every project is designed around one child and their family.</p>
+        </div>
+      </div>
+      <div class="ab-roles">
+        <div class="ab-role" data-reveal>
+          <div class="ab-role-inner">
+            <div class="ab-role-badge-wrap" aria-hidden="true"><div class="ab-role-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8"/><path d="M4 10V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/><path d="M12 4v6M2 18h20"/></svg></div></div>
+            <h3 data-t="c1t">Bedrooms</h3>
+            <p data-t="c1b">A room built for one child: the layout, lighting, storage and finishes their family chose with our designers.</p>
+          </div>
+        </div>
+        <div class="ab-role ab-role--featured" data-reveal data-delay="1">
+          <div class="ab-role-inner">
+            <div class="ab-role-badge-wrap" aria-hidden="true"><div class="ab-role-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6 6.5 3.5a1.5 1.5 0 0 0-1-.5C4.68 3 4 3.68 4 4.5V17a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M10 5 8 7M2 12h20M7 19v2M17 19v2"/></svg></div></div>
+            <h3 data-t="c2t">Bathrooms</h3>
+            <p data-t="c2b">Roll-in showers, grab bars, wider doors and the details that let a child bathe safely at home.</p>
+          </div>
+        </div>
+        <div class="ab-role" data-reveal data-delay="2">
+          <div class="ab-role-inner">
+            <div class="ab-role-badge-wrap" aria-hidden="true"><div class="ab-role-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4l-5.2 2.7 1-5.8L3.5 9.2l5.9-.9L12 3z"/></svg></div></div>
+            <h3 data-t="c3t">The reveal</h3>
+            <p data-t="c3b">Every room ends with the child walking in for the first time, often streamed live. Partners on the job are credited on the child’s page on our site.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 02 · HOW A JOB RUNS ══════ -->
+  <section class="ab-section ab-section--alt" id="how-it-runs">
+    <div class="ab-container">
+      <div class="ab-sh" data-reveal data-num="02">
+        <div class="ab-sh-text">
+          <h2 data-t="s2Title" data-html>How a job <em>runs</em></h2>
+          <p data-t="s2Lead">Four steps, the same on every project.</p>
+        </div>
+      </div>
+      <ol class="ab-steps tp-steps">
+        <li class="ab-step" data-reveal><span class="ab-step-num" aria-hidden="true">1</span><h3 data-t="st1t">We bring you in</h3><p data-t="st1b">Our project team shares the scope, the schedule and the site before any work starts.</p></li>
+        <li class="ab-step" data-reveal data-delay="1"><span class="ab-step-num" aria-hidden="true">2</span><h3 data-t="st2t">You do the work</h3><p data-t="st2b">On site with our contractor, from demolition to the finishes.</p></li>
+        <li class="ab-step" data-reveal data-delay="2"><span class="ab-step-num" aria-hidden="true">3</span><h3 data-t="st3t">Invoice as usual</h3><p data-t="st3b">Each invoice shows on your page as it moves: received, approved, paid.</p></li>
+        <li class="ab-step ab-step--featured" data-reveal data-delay="3"><span class="ab-step-num" aria-hidden="true">4</span><h3 data-t="st4t">Paid by direct deposit</h3><p data-t="st4b">Approved invoices go straight to your bank account.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ══════ 03 · WHAT WE KEEP ON FILE ══════ -->
+  <section class="ab-section" id="on-file">
+    <div class="ab-container">
+      <div class="ab-sh" data-reveal data-num="03">
+        <div class="ab-sh-text">
+          <h2 data-t="s3Title" data-html>What we keep <em>on file</em></h2>
+          <p data-t="s3Lead">Three things, each checked the moment you add it, so you know right away if anything’s missing.</p>
+        </div>
+      </div>
+      <div class="tp-files">
+        <div class="tp-file" data-reveal>
+          <span class="tp-file-tag">W-9</span>
+          <h3 data-t="f1t">A W-9</h3>
+          <p data-t="f1b">Fill it in and sign it right on your page. About two minutes, no printer.</p>
+        </div>
+        <div class="tp-file tp-file--wide" data-reveal data-delay="1">
+          <span class="tp-file-tag" data-t="f2tag">Insurance</span>
+          <h3 data-t="f2t">Your insurance certificate</h3>
+          <p data-t="f2b">Upload it, or give us your agent’s email and we’ll ask them for it. It needs to show:</p>
+          <ul class="tp-reqs" id="tp-reqs">
+            <li>General liability: at least $1,000,000 each occurrence and $2,000,000 aggregate</li>
+            <li>Workers’ compensation, with employer’s liability of at least $100,000 each accident</li>
+            <li>Policies in force today, with {holder} as certificate holder</li>
+          </ul>
+        </div>
+        <div class="tp-file" data-reveal data-delay="2">
+          <span class="tp-file-tag" data-t="f3tag">Payments</span>
+          <h3 data-t="f3t">Your bank account</h3>
+          <p data-t="f3b">For direct deposit. It goes straight to our bank, and our website keeps only the last four digits.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 04 · WORK WITH US ══════ -->
+  <section class="ab-section ab-section--alt" id="work-with-us">
+    <div class="ab-container tp-request">
+      <div class="ab-sh" data-reveal data-num="04">
+        <div class="ab-sh-text">
+          <h2 data-t="s4Title" data-html>Work <em>with us</em></h2>
+          <p data-t="s4Lead">Tell us about your company. Our team reviews every request and emails you a link to set up your account.</p>
+        </div>
+      </div>
+      <form class="tp-card" id="tp-request" novalidate data-reveal>
+        <div class="tp-grid">
+          <label class="tp-field tp-span"><span class="tp-label" data-t="company">Company name</span><input name="company" autocomplete="organization" required maxlength="120" /></label>
+          <fieldset class="tp-field tp-span tp-trades">
+            <legend class="tp-label"><span data-t="trades">Your trades</span> <span class="tp-hint" data-t="tradesHint">Pick all that fit.</span></legend>
+            <div class="tp-chips" id="tp-chips">
+              {TRADES.map((t) => <label class="tp-chip"><input type="checkbox" name="trades" value={t} /><span data-trade={t}>{t}</span></label>)}
+            </div>
+          </fieldset>
+          <label class="tp-field"><span class="tp-label" data-t="name">Your name</span><input name="name" autocomplete="name" required maxlength="80" /></label>
+          <label class="tp-field"><span class="tp-label" data-t="emailLabel">Email address</span><input name="email" type="email" autocomplete="email" inputmode="email" required maxlength="120" /></label>
+          <label class="tp-field"><span class="tp-label" data-t="phone">Phone</span><input name="phone" type="tel" autocomplete="tel" inputmode="tel" required maxlength="20" /></label>
+          <label class="tp-field"><span class="tp-label"><span data-t="area">Where you work</span> <span class="tp-hint" data-t="areaHint">Counties or cities</span></span><input name="area" maxlength="120" /></label>
+          <label class="tp-field tp-span"><span class="tp-label" data-t="website">Website (optional)</span><input name="website" type="url" inputmode="url" autocomplete="url" maxlength="160" /></label>
+          <label class="tp-field tp-span"><span class="tp-label" data-t="note">Anything we should know? (optional)</span><textarea name="note" rows="3" maxlength="1200"></textarea></label>
+          <div class="tp-hp" aria-hidden="true"><label>Leave this empty <input name="website2" tabindex="-1" autocomplete="off" /></label></div>
+        </div>
+        <div class="tp-turnstile" id="tp-turnstile"></div>
+        <p class="tp-error" id="tp-request-error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primary btn-lg tp-send" data-t="send">Send my request</button>
+      </form>
+      <div class="tp-card tp-sent" id="tp-request-sent" tabindex="-1" hidden>
+        <span class="tp-sent-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <h3 data-t="sentTitle">Thank you!</h3>
+        <p id="tp-request-sent-body"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ QUESTIONS ══════ -->
+  <section class="ab-section" id="questions">
+    <div class="ab-container tp-faq-wrap">
+      <div class="ab-sh" data-reveal>
+        <div class="ab-sh-text">
+          <h2 data-t="faqTitle" data-html>Common <em>questions</em></h2>
+        </div>
+      </div>
+      <div class="tp-faq" data-reveal>
+        {faqs.map((f) => (
+          <details class="tp-faq-item" name="tp-faq">
+            <summary><span data-t={`${f.k}q`}>{f.q}</span><span class="tp-faq-icon" aria-hidden="true"></span></summary>
+            <p data-t={`${f.k}a`}>{f.a}</p>
+          </details>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ FINALE ══════ -->
+  <section class="ab-finale">
+    <div class="ab-finale-inner">
+      <h2 data-reveal data-t="finale" data-html>Ready to build with <em>us</em>?</h2>
+      <p data-reveal data-delay="1" data-t="finaleBody">The next room is already being planned. Bring your trade.</p>
+      <div class="ab-finale-ctas" data-reveal data-delay="2">
+        <a href="#work-with-us" class="btn btn-dark btn-lg" data-t="ctaWork">Work with us</a>
+        <a href="#sign-in" class="btn btn-outline-dark btn-lg" data-t="ctaSignIn" data-focus="#tp-email">Sign in</a>
+      </div>
+      <p class="ab-finale-note" data-reveal data-delay="3"><span data-t="finaleNote">Questions?</span> <a href={`mailto:${email}`}>{email}</a> · {orgName} <span data-t="nonprofit">is a 501(c)(3) nonprofit</span></p>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { TRADE_ES, requirementLines, startLang, keepLang, type Lang } from '../../components/trade-partners/words';
+
+  const ES: Record<string, string> = {
+    eyebrow: 'Socios comerciales',
+    h1: 'Su oficio. El <em>cuarto</em> de un niño.',
+    lead: 'Sunshine on a Ranney Day construye cuartos y baños para niños con discapacidades en el área de Atlanta. Los socios comerciales hacen el trabajo: plomeros, electricistas, carpinteros, pintores, proveedores y más. Aquí verá cómo es trabajar con nosotros y dónde entrar a su cuenta.',
+    ctaWork: 'Trabaje con nosotros', ctaSignIn: 'Entrar',
+    trust1: 'Pago por depósito directo', trust2: 'Documentos revisados en segundos', trust3: 'Todo en una sola página',
+    stat: 'cuartos construidos<br />desde 2012',
+    signTitle: '¿Ya trabaja con nosotros?',
+    signBody: 'Escriba el correo que tenemos de usted y le enviaremos un enlace a su página. Mantiene su sesión abierta en ese dispositivo por 90 días.',
+    emailLabel: 'Correo electrónico', signBtn: 'Enviarme un enlace',
+    s1Title: 'Lo que va a <em>construir</em>', s1Lead: 'Cada proyecto se diseña alrededor de un niño y su familia.',
+    c1t: 'Cuartos', c1b: 'Un cuarto hecho para un niño: la distribución, la luz, el almacenaje y los acabados que su familia escogió con nuestros diseñadores.',
+    c2t: 'Baños', c2b: 'Duchas sin escalón, barras de apoyo, puertas más anchas y los detalles que le permiten a un niño bañarse seguro en casa.',
+    c3t: 'La gran revelación', c3b: 'Cada proyecto termina cuando el niño entra por primera vez, muchas veces transmitido en vivo. Los socios del proyecto aparecen en la página del niño en nuestro sitio.',
+    s2Title: 'Cómo va un <em>proyecto</em>', s2Lead: 'Cuatro pasos, iguales en cada proyecto.',
+    st1t: 'Lo invitamos', st1b: 'Nuestro equipo le comparte el alcance, el calendario y el lugar antes de empezar.',
+    st2t: 'Usted hace el trabajo', st2b: 'En la obra con nuestro contratista, desde la demolición hasta los acabados.',
+    st3t: 'Facture como siempre', st3b: 'Cada factura aparece en su página mientras avanza: recibida, aprobada, pagada.',
+    st4t: 'Pago por depósito directo', st4b: 'Las facturas aprobadas van directo a su cuenta bancaria.',
+    s3Title: 'Lo que guardamos <em>en archivo</em>', s3Lead: 'Tres cosas, cada una revisada en cuanto la agrega, para que sepa al instante si falta algo.',
+    f1t: 'Un W-9', f1b: 'Llénelo y fírmelo en su página. Unos dos minutos, sin imprimir nada.',
+    f2tag: 'Seguro', f2t: 'Su certificado de seguro', f2b: 'Súbalo, o denos el correo de su agente y se lo pedimos. Debe mostrar:',
+    f3tag: 'Pagos', f3t: 'Su cuenta bancaria', f3b: 'Para el depósito directo. Va directo a nuestro banco, y nuestro sitio solo guarda los últimos cuatro dígitos.',
+    s4Title: 'Trabaje <em>con nosotros</em>', s4Lead: 'Cuéntenos sobre su empresa. Nuestro equipo revisa cada solicitud y le envía un enlace para configurar su cuenta.',
+    company: 'Nombre de la empresa', trades: 'Sus oficios', tradesHint: 'Escoja todos los que apliquen.', name: 'Su nombre', phone: 'Teléfono',
+    area: 'Dónde trabaja', areaHint: 'Condados o ciudades', website: 'Sitio web (opcional)', note: '¿Algo que debamos saber? (opcional)',
+    send: 'Enviar mi solicitud', sentTitle: '¡Gracias!',
+    faqTitle: 'Preguntas <em>frecuentes</em>',
+    q1q: '¿Mi información está segura?', q1a: 'Su W-9 va directo a nuestros registros y sus datos bancarios van directo a nuestro banco. Nuestro sitio solo guarda los últimos cuatro dígitos de su cuenta, y cada cambio queda anotado.',
+    q2q: '¿Cómo cambio mi cuenta bancaria?', q2a: 'Entre a su página y abra Pagos. Por su seguridad, llamamos al número que ya tenemos para confirmar una cuenta nueva antes de enviarle un pago.',
+    q3q: '¿Qué pasa cuando se renueva mi seguro?', q3a: 'Le escribimos antes de que venza, y también a su agente si lo agregó. Agregue el certificado nuevo en su página y se revisa al instante.',
+    q4q: '¿Por qué necesitan un W-9?', q4a: 'El IRS nos pide presentar un formulario 1099 por las empresas a las que les pagamos, y el W-9 tiene lo que va en él.',
+    q5q: '¿Con quién hablo?', q5a: 'Responda a cualquier correo nuestro o escriba a info@soardcharity.com. Una persona de nuestro equipo lee cada uno.',
+    finale: '¿Listo para construir con <em>nosotros</em>?', finaleBody: 'El próximo cuarto ya se está planeando. Traiga su oficio.',
+    finaleNote: '¿Preguntas?', nonprofit: 'es una organización sin fines de lucro 501(c)(3)',
+  };
+  const SAY = {
+    en: {
+      emailBad: 'Type the email address you use with us.',
+      sent: (e: string) => `Check your email. If ${e} is on file with us, your link is on its way. Nothing after a few minutes? Check your spam folder, or email info@soardcharity.com.`,
+      sending: 'Sending…', signBtn: 'Email me a link', send: 'Send my request',
+      thanks: (e: string) => `We have your request. Our team will look it over and email ${e} soon.`,
+      again: 'We already have your request, and we’ll be in touch soon.',
+      failed: 'That didn’t go through. Check your connection and try again.',
+      need: { company: 'Add your company’s name.', trades: 'Pick at least one trade.', name: 'Add your name.', email: 'Add an email address we can reach you at.', phone: 'Add a 10-digit phone number.' } as Record<string, string>,
+    },
+    es: {
+      emailBad: 'Escriba el correo que usa con nosotros.',
+      sent: (e: string) => `Revise su correo. Si ${e} está registrado con nosotros, su enlace va en camino. ¿No llegó en unos minutos? Revise la carpeta de spam o escriba a info@soardcharity.com.`,
+      sending: 'Enviando…', signBtn: 'Enviarme un enlace', send: 'Enviar mi solicitud',
+      thanks: (e: string) => `Recibimos su solicitud. Nuestro equipo la revisará y le escribirá a ${e} pronto.`,
+      again: 'Ya tenemos su solicitud y le escribiremos pronto.',
+      failed: 'No se pudo enviar. Revise su conexión e intente de nuevo.',
+      need: { company: 'Agregue el nombre de su empresa.', trades: 'Escoja al menos un oficio.', name: 'Agregue su nombre.', email: 'Agregue un correo donde podamos escribirle.', phone: 'Agregue un teléfono de 10 dígitos.' } as Record<string, string>,
+    },
+  };
+
+  const EN = new Map<Element, string>();
+  let lang: Lang = 'en';
+  let config: any = null;
+  let turnstileWidget: string | null = null;
+
+  function paint(next: Lang) {
+    lang = next;
+    document.documentElement.lang = next;
+    for (const el of document.querySelectorAll<HTMLElement>('[data-t]')) {
+      if (!EN.has(el)) EN.set(el, el.dataset.html !== undefined ? el.innerHTML : el.textContent || '');
+      const words = next === 'es' ? ES[el.dataset.t!] : EN.get(el);
+      if (words == null) continue;
+      if (el.dataset.html !== undefined) el.innerHTML = words; else el.textContent = words;
+    }
+    for (const el of document.querySelectorAll<HTMLElement>('[data-trade]')) el.textContent = next === 'es' ? TRADE_ES[el.dataset.trade!] || el.dataset.trade! : el.dataset.trade!;
+    const sw = document.querySelector<HTMLButtonElement>('[data-lang-switch]');
+    if (sw) { sw.textContent = next === 'es' ? 'English' : 'Español'; sw.lang = next === 'es' ? 'en' : 'es'; }
+    drawRequirements();
+  }
+
+  function drawRequirements() {
+    const ul = document.getElementById('tp-reqs');
+    if (!ul || !config?.minimums) return;
+    ul.innerHTML = '';
+    for (const line of requirementLines(config.minimums, 'Sunshine on a Ranney Day', lang)) {
+      const li = document.createElement('li');
+      li.textContent = line;
+      ul.append(li);
+    }
+  }
+
+  const post = (body: any) => fetch('/api/trade-partner', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, lang }) })
+    .then(async (r) => ({ status: r.status, ...(await r.json().catch(() => ({}))) }));
+
+  function setup() {
+    EN.clear();
+    paint(startLang());
+    document.querySelector('[data-lang-switch]')?.addEventListener('click', () => { const n = lang === 'es' ? 'en' : 'es'; keepLang(n); paint(n); });
+    for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-focus]')) {
+      a.addEventListener('click', () => setTimeout(() => document.querySelector<HTMLInputElement>(a.dataset.focus!)?.focus({ preventScroll: true }), 450));
+    }
+    fetch('/api/trade-partner?config').then((r) => r.json()).then((c) => { config = c; drawRequirements(); }).catch(() => null);
+
+    // Signing in
+    const signForm = document.getElementById('tp-signin') as HTMLFormElement | null;
+    const note = document.getElementById('tp-signin-note')!;
+    signForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = signForm.querySelector<HTMLInputElement>('input[name=email]')!;
+      const btn = signForm.querySelector<HTMLButtonElement>('button')!;
+      const email = input.value.trim();
+      note.hidden = false;
+      note.dataset.tone = '';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { note.textContent = SAY[lang].emailBad; note.dataset.tone = 'fix'; input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
+      input.removeAttribute('aria-invalid');
+      btn.disabled = true;
+      btn.textContent = SAY[lang].sending;
+      try {
+        const r = await post({ action: 'signin', email });
+        if (!r.ok) { note.textContent = r.error || SAY[lang].failed; note.dataset.tone = 'fix'; return; }
+        note.textContent = SAY[lang].sent(email);
+        note.dataset.tone = 'good';
+      } catch { note.textContent = SAY[lang].failed; note.dataset.tone = 'fix'; } finally {
+        btn.disabled = false;
+        btn.textContent = SAY[lang].signBtn;
+      }
+    });
+
+    // Work with us
+    const form = document.getElementById('tp-request') as HTMLFormElement | null;
+    const err = document.getElementById('tp-request-error')!;
+    const section = document.getElementById('work-with-us');
+    if (section && 'IntersectionObserver' in window) {
+      const io = new IntersectionObserver((entries) => { if (entries.some((x) => x.isIntersecting)) { io.disconnect(); loadTurnstile(); } }, { rootMargin: '400px' });
+      io.observe(section);
+    }
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const body: any = Object.fromEntries([...fd.entries()].filter(([k]) => k !== 'trades'));
+      body.trades = fd.getAll('trades');
+      const missing = ['company', 'trades', 'name', 'email', 'phone'].find((k) => (k === 'trades' ? !body.trades.length : !String(body[k] || '').trim()));
+      if (missing) { showError(SAY[lang].need[missing], missing); return; }
+      const w = (window as any).turnstile;
+      if (turnstileWidget && w) body.turnstileToken = w.getResponse(turnstileWidget);
+      const btn = form.querySelector<HTMLButtonElement>('.tp-send')!;
+      btn.disabled = true;
+      btn.textContent = SAY[lang].sending;
+      err.hidden = true;
+      try {
+        const r = await post({ action: 'request', ...body });
+        if (!r.ok) { showError(r.error || SAY[lang].failed, r.field); if (turnstileWidget && w) w.reset(turnstileWidget); return; }
+        form.hidden = true;
+        const done = document.getElementById('tp-request-sent')!;
+        document.getElementById('tp-request-sent-body')!.textContent = r.again ? SAY[lang].again : SAY[lang].thanks(String(body.email).trim());
+        done.hidden = false;
+        done.focus();
+      } catch { showError(SAY[lang].failed); } finally {
+        btn.disabled = false;
+        btn.textContent = SAY[lang].send;
+      }
+    });
+    function showError(words: string, field?: string | null) {
+      err.textContent = words;
+      err.hidden = false;
+      const el = field && (field === 'trades' ? form!.querySelector<HTMLInputElement>('input[name=trades]') : form!.querySelector<HTMLInputElement>(`[name=${field}]`));
+      for (const x of form!.querySelectorAll('[aria-invalid]')) x.removeAttribute('aria-invalid');
+      if (el) { el.setAttribute('aria-invalid', 'true'); el.focus(); }
+    }
+  }
+
+  function loadTurnstile() {
+    const key = config?.turnstileSiteKey;
+    const box = document.getElementById('tp-turnstile');
+    if (!key || !box || turnstileWidget) return;
+    const draw = () => { turnstileWidget = (window as any).turnstile.render(box, { sitekey: key, theme: 'light', language: lang }); };
+    if ((window as any).turnstile) return draw();
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    s.async = true;
+    s.onload = draw;
+    document.head.append(s);
+  }
+
+  document.addEventListener('astro:page-load', setup);
+</script>
+
+<style>
+  /* ══════ Shared ══════ */
+  /* The highlight under an italic word: a flat fill, drawn as an inset shadow */
+  :is(h1, h2, h3) :global(em) { font-style: italic; box-shadow: inset 0 -0.42em 0 var(--c-yellow-soft); padding: 0 0.04em; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--font-body); font-weight: 600; font-size: 15px; padding: 14px 32px; border: none; border-radius: 100px; cursor: pointer; text-decoration: none; transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s cubic-bezier(0.16,1,0.3,1), background 0.25s ease, color 0.25s ease; min-height: 48px; }
+  .btn:hover { transform: translateY(-3px); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: 0.6; cursor: progress; transform: none; }
+  .btn-lg { font-size: 17px; padding: 18px 44px; }
+  .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
+  .btn-primary:hover { box-shadow: 0 8px 24px var(--c-yellow-glow); }
+  .btn-dark { background: var(--c-dark); color: #fff; }
+  .btn-dark:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+  .btn-outline-dark { background: transparent; color: var(--c-dark); border: 2px solid var(--c-dark); }
+  .btn-outline-dark:hover { background: var(--c-dark); color: var(--c-yellow); }
+
+  /* ══════ HERO — Editorial Split ══════ */
+  .hero { position: relative; background: var(--c-cream); contain: layout style; padding: clamp(40px, 8vh, 100px) 0 40px; overflow: hidden; }
+  .hero-inner { max-width: var(--max-width-wide, 1400px); margin: 0 auto; padding: 0 var(--page-padding); display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(32px, 5vw, 80px); align-items: center; min-height: clamp(480px, 70vh, 720px); }
+  .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+  .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin: 0; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both; }
+  .tp-lang { font: 600 13px/1 var(--font-body); color: var(--c-dark); background: #fff; border: 1px solid var(--c-border); border-radius: 100px; padding: 10px 16px; min-height: 40px; cursor: pointer; }
+  .tp-lang:hover { border-color: var(--c-dark); }
+  .tp-lang:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 2px; }
+  .hero-headline { font-size: clamp(42px, 6.5vw, 88px); line-height: 1.04; letter-spacing: -0.035em; color: var(--c-dark); margin-bottom: 28px; animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 520px; margin-bottom: 36px; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
+  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both; }
+  .hero-trust { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 24px; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both; }
+  .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--c-text-muted); letter-spacing: 0.01em; }
+  .hero-trust-icon { width: 16px; height: 16px; flex-shrink: 0; color: var(--c-text-muted); }
+  .hero-photo-wrap { position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .hero-frame { display: block; position: relative; border-radius: 24px; overflow: hidden; aspect-ratio: 4 / 5; box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06); background-size: cover; background-position: center; }
+  .hero-frame img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1); }
+  .hero-frame:hover img { transform: scale(1.03); }
+  .hero-accent { position: absolute; z-index: -1; bottom: -16px; right: -16px; width: 55%; height: 55%; border-radius: 20px; background: var(--c-yellow); opacity: 0.35; }
+  .hero-stat { position: absolute; bottom: -24px; left: -24px; background: var(--c-dark); color: #fff; border-radius: 16px; padding: 20px 28px; text-align: center; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15); opacity: 0; animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both; }
+  .hero-stat-num { font-family: var(--font-display); font-size: 40px; font-weight: 700; color: var(--c-yellow); line-height: 1; display: block; }
+  .hero-stat-label { display: block; font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.85); margin-top: 4px; line-height: 1.4; }
+  @keyframes heroUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes heroSlide { from { transform: translateY(20px); } to { transform: translateY(0); } }
+  @keyframes heroPhotoIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ══════ SIGN IN ══════ */
+  .tp-signin { background: var(--c-dark); color: #fff; padding: 44px 0; scroll-margin-top: calc(var(--header-height, 84px) + 16px); }
+  .tp-signin-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-xl); display: grid; grid-template-columns: 1fr 1.1fr; gap: 32px; align-items: center; }
+  .tp-signin h2 { color: #fff; font-size: clamp(22px, 2.4vw, 30px); margin: 0 0 8px; }
+  .tp-signin-text p { color: rgba(255,255,255,0.82); font-size: 15px; line-height: 1.6; margin: 0; max-width: 460px; }
+  .tp-signin-form { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
+  .tp-signin .tp-label { color: rgba(255,255,255,0.85); }
+  .tp-signin input { background: #fff; }
+  .tp-signin .btn-dark { background: var(--c-yellow); color: var(--c-dark); }
+  .tp-note { grid-column: 1 / -1; margin: 0; font-size: 14px; line-height: 1.55; padding: 12px 16px; border-radius: 12px; background: rgba(255,255,255,0.08); color: #fff; }
+  .tp-note[data-tone="fix"] { background: rgba(255,218,36,0.16); }
+
+  /* ══════ Fields ══════ */
+  .tp-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 0; padding: 0; margin: 0; }
+  .tp-label { font-size: 14px; font-weight: 600; color: var(--c-dark); }
+  .tp-hint { font-weight: 400; color: var(--c-text-muted); }
+  .tp-field input, .tp-field textarea { font: 400 16px/1.4 var(--font-body); color: var(--c-dark); background: #fff; border: 1.5px solid var(--c-border); border-radius: 12px; padding: 13px 14px; min-height: 50px; width: 100%; box-sizing: border-box; }
+  .tp-field textarea { resize: vertical; min-height: 96px; }
+  .tp-field input:focus-visible, .tp-field textarea:focus-visible { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
+  .tp-field [aria-invalid="true"] { border-color: #8E5B0E; box-shadow: 0 0 0 3px rgba(255,218,36,0.35); }
+
+  /* ══════ SECTIONS (as the Advisory Board page) ══════ */
+  .ab-section { padding: 100px 0; contain: layout style; scroll-margin-top: calc(var(--header-height, 84px) + 24px); }
+  .ab-section--alt { background: var(--c-warm-gray); }
+  .ab-container { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-xl); }
+  .ab-sh { display: flex; align-items: flex-start; gap: 24px; margin-bottom: 56px; position: relative; }
+  .ab-sh[data-num]::before { content: attr(data-num); font-family: var(--font-display); font-size: clamp(56px, 6vw, 80px); font-weight: 700; color: #c8a96e; opacity: 0.38; line-height: 0.85; letter-spacing: -0.04em; flex-shrink: 0; }
+  .ab-sh-text h2 { font-size: clamp(24px, 3vw, 36px); line-height: 1.25; margin-bottom: 6px; }
+  .ab-sh-text p { font-size: 16px; color: var(--c-text); line-height: 1.6; }
+  .ab-roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: stretch; }
+  .ab-role { background: #fff; border-radius: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1); display: flex; flex-direction: column; overflow: hidden; }
+  .ab-role:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(0,0,0,0.08); }
+  .ab-role--featured::before { content: ''; display: block; height: 4px; background: var(--c-yellow); flex-shrink: 0; }
+  .ab-role-inner { padding: 36px 32px 32px; display: flex; flex-direction: column; flex: 1; }
+  .ab-role-badge-wrap { margin-bottom: 20px; }
+  .ab-role-badge { width: 48px; height: 48px; border-radius: 14px; background: rgba(255,218,36,0.1); display: flex; align-items: center; justify-content: center; color: var(--c-yellow-hover); }
+  .ab-role-badge svg { width: 24px; height: 24px; }
+  .ab-role h3 { font-size: 19px; margin-bottom: 10px; }
+  .ab-role p { font-size: 15px; line-height: 1.7; color: var(--c-text); margin-bottom: 0; }
+  .ab-steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; align-items: stretch; }
+  .ab-step { position: relative; background: #fff; border-radius: 20px; padding: 32px 28px 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; }
+  .ab-step--featured { border-top: 4px solid var(--c-yellow); }
+  .ab-step-num { font-family: var(--font-display); font-size: 40px; font-weight: 700; color: #c8a96e; opacity: 0.45; line-height: 1; display: block; margin-bottom: 16px; }
+  .ab-step h3 { font-size: 18px; margin-bottom: 10px; }
+  .ab-step p { font-size: 15px; line-height: 1.65; color: var(--c-text); margin: 0; }
+
+  /* ══════ 03 · ON FILE ══════ */
+  .tp-files { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 20px; align-items: stretch; }
+  .tp-file { background: #fff; border-radius: 20px; padding: 32px 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .tp-file-tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-dark); background: rgba(255,218,36,0.22); border-radius: 100px; padding: 6px 12px; margin-bottom: 16px; }
+  .tp-file h3 { font-size: 19px; margin-bottom: 10px; }
+  .tp-file p { font-size: 15px; line-height: 1.65; color: var(--c-text); margin: 0 0 12px; }
+  .tp-reqs { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 14px; line-height: 1.55; color: var(--c-dark); }
+  .tp-reqs li { position: relative; padding-left: 30px; }
+  .tp-reqs li::before { content: ''; position: absolute; left: 0; top: 1px; width: 20px; height: 20px; border-radius: 50%; background: rgba(255,218,36,0.22); }
+  .tp-reqs li::after { content: ''; position: absolute; left: 7px; top: 5px; width: 5px; height: 9px; border: solid var(--c-dark); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
+  /* ══════ 04 · WORK WITH US ══════ */
+  .tp-request { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 48px; align-items: start; }
+  .tp-request .ab-sh { margin: 0; position: sticky; top: calc(var(--header-height, 84px) + 32px); }
+  .tp-card { background: #fff; border-radius: 24px; padding: 36px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .tp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .tp-span { grid-column: 1 / -1; }
+  .tp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .tp-chip { position: relative; }
+  .tp-chip input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .tp-chip span { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 16px; border-radius: 100px; border: 1.5px solid var(--c-border); background: #fff; font-size: 14px; font-weight: 500; color: var(--c-dark); transition: background 0.15s ease, border-color 0.15s ease; }
+  .tp-chip input:checked + span { background: var(--c-dark); border-color: var(--c-dark); color: #fff; }
+  .tp-chip input:checked + span::before { content: '✓'; margin-right: 6px; color: var(--c-yellow); font-weight: 700; }
+  .tp-chip input:focus-visible + span { outline: 3px solid var(--c-yellow); outline-offset: 2px; }
+  .tp-chip:hover span { border-color: var(--c-dark); }
+  .tp-trades[aria-invalid="true"] .tp-chip span, .tp-chips:has(input[aria-invalid="true"]) .tp-chip span { border-color: #8E5B0E; }
+  .tp-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .tp-turnstile:not(:empty) { margin-top: 20px; min-height: 65px; }
+  .tp-error { margin: 18px 0 0; padding: 12px 16px; border-radius: 12px; background: rgba(255,218,36,0.22); color: var(--c-dark); font-size: 14px; font-weight: 600; }
+  .tp-send { margin-top: 24px; width: 100%; }
+  .tp-sent { text-align: center; padding: 56px 36px; }
+  .tp-sent:focus { outline: none; }
+  .tp-sent-check { width: 56px; height: 56px; border-radius: 50%; background: var(--c-yellow); color: var(--c-dark); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+  .tp-sent-check svg { width: 28px; height: 28px; }
+  .tp-sent h3 { font-size: 24px; margin-bottom: 8px; }
+  .tp-sent p { margin: 0 auto; max-width: 420px; color: var(--c-text); line-height: 1.6; }
+
+  /* ══════ QUESTIONS ══════ */
+  .tp-faq-wrap { max-width: 860px; }
+  .tp-faq { display: grid; gap: 12px; }
+  .tp-faq-item { background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .tp-faq-item summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 24px; min-height: 56px; cursor: pointer; font-size: 17px; font-weight: 600; color: var(--c-dark); }
+  .tp-faq-item summary::-webkit-details-marker { display: none; }
+  .tp-faq-item summary:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 2px; border-radius: 16px; }
+  .tp-faq-icon { width: 14px; height: 14px; position: relative; flex-shrink: 0; }
+  .tp-faq-icon::before, .tp-faq-icon::after { content: ''; position: absolute; left: 0; right: 0; top: 6px; height: 2px; background: var(--c-dark); border-radius: 2px; transition: transform 0.25s ease; }
+  .tp-faq-icon::after { transform: rotate(90deg); }
+  .tp-faq-item[open] .tp-faq-icon::after { transform: rotate(0deg); }
+  .tp-faq-item p { margin: 0; padding: 0 24px 22px; font-size: 15px; line-height: 1.7; color: var(--c-text); }
+
+  /* ══════ FINALE ══════ */
+  .ab-finale { padding: 120px 0; background: var(--c-yellow); text-align: center; position: relative; overflow: hidden; contain: layout style; }
+  .ab-finale-inner { max-width: 640px; margin: 0 auto; padding: 0 var(--space-xl); position: relative; z-index: 2; }
+  .ab-finale h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.25; margin-bottom: 20px; }
+  .ab-finale h2 :global(em) { box-shadow: inset 0 -0.42em 0 rgba(55,58,54,0.15); }
+  .ab-finale-inner > p { font-size: 18px; color: var(--c-dark); line-height: 1.7; margin-bottom: 36px; }
+  .ab-finale-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 24px; }
+  .ab-finale-note { font-size: 13px; color: rgba(45,46,51,0.88); margin-bottom: 0; }
+  .ab-finale-note a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+  /* ══════ SCROLL REVEALS ══════ */
+  [data-reveal] { opacity: 0; visibility: hidden; transform: translateY(28px); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1), visibility 0s 0.7s; }
+  [data-reveal].is-visible { opacity: 1; visibility: visible; transform: translateY(0); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1), visibility 0s 0s; }
+  [data-delay="1"] { transition-delay: 0.12s; }
+  [data-delay="2"] { transition-delay: 0.24s; }
+  [data-delay="3"] { transition-delay: 0.36s; }
+
+  /* ══════ RESPONSIVE ══════ */
+  @media (max-width: 1080px) {
+    .ab-steps { grid-template-columns: repeat(2, 1fr); }
+    .tp-files { grid-template-columns: 1fr 1fr; }
+    .tp-file--wide { grid-column: 1 / -1; order: -1; }
+  }
+  @media (max-width: 960px) {
+    .ab-roles { grid-template-columns: 1fr; }
+    .tp-request { grid-template-columns: 1fr; gap: 0; }
+    .tp-request .ab-sh { position: static; margin-bottom: 32px; }
+    .tp-signin-inner { grid-template-columns: 1fr; gap: 20px; }
+  }
+  @media (max-width: 768px) {
+    .hero { padding: clamp(24px, 4vh, 48px) 0 32px; }
+    .hero-inner { grid-template-columns: 1fr; gap: var(--space-2xl); min-height: auto; }
+    .hero-headline { font-size: clamp(36px, 9vw, 52px); margin-bottom: 20px; }
+    .hero-lead { margin-bottom: 28px; }
+    .hero-ctas { flex-direction: column; }
+    .hero-ctas .btn { width: 100%; }
+    .hero-trust { gap: 12px; }
+    /* The task first on a phone: the photo is a short band, not a whole screen */
+    .hero-frame { aspect-ratio: 16 / 10; }
+    .hero-frame img { object-position: 50% 28%; }
+    .hero-accent { bottom: -12px; right: -12px; }
+    .hero-stat { left: 16px; bottom: -16px; padding: 14px 20px; }
+    .hero-stat-num { font-size: 30px; }
+    .ab-section { padding: 64px 0; }
+    .ab-sh { gap: 16px; margin-bottom: 36px; }
+    .ab-sh[data-num]::before { font-size: 48px; }
+    .ab-steps, .tp-files { grid-template-columns: 1fr; }
+    .tp-signin { padding: 36px 0; }
+    .tp-signin-form { grid-template-columns: 1fr; }
+    .tp-signin-form .btn { width: 100%; }
+    .tp-card { padding: 24px 20px; border-radius: 20px; }
+    .tp-grid { grid-template-columns: 1fr; gap: 18px; }
+    .ab-finale { padding: 80px 0; }
+    .ab-finale-ctas { flex-direction: column; }
+    .ab-finale-ctas .btn { width: 100%; }
+  }
+  @media (pointer: coarse) {
+    .btn:hover, .ab-role:hover { transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-eyebrow, .hero-lead, .hero-ctas, .hero-trust, .hero-photo-wrap, .hero-stat { opacity: 1; transform: none; animation: none; }
+    [data-reveal] { opacity: 1; visibility: visible; transform: none; transition: none; }
+    .btn:hover, .ab-role:hover { transform: none; }
+  }
+</style>

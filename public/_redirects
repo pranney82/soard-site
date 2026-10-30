@@ -294,6 +294,11 @@
 # These use * (splat) to catch entire URL path segments.
 # ═══════════════════════════════════════════════════════════════
 
+# ─── The vendor documents page became the trade-partner page (Oct 2026) ──
+# A link's #t=… code rides along: browsers keep the fragment through a redirect
+/vendor-documents  /trade-partners/account/  301
+/vendor-documents/  /trade-partners/account/  301
+
 # ─── Catch-all: remaining /blog/ URLs (date archives, etc.) ──
 /blog/*  /publicity/  301
 

@@ -1,4 +1,4 @@
-/*! SOARD vendor page file (lazy) — copied by scripts/build-vendor-docs-pdf.mjs
+/*! SOARD trade-partner page file (lazy) — copied by scripts/build-trade-partners-pdf.mjs
  * pdfjs-dist@6.4.299 legacy/build/pdf.worker.min.mjs (Apache-2.0), after two small fallbacks. Do not edit by hand.
  */
 if (!Promise.withResolvers) Promise.withResolvers = function () { let resolve, reject; const promise = new this((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };

@@ -1,19 +1,19 @@
 /**
- * build-vendor-docs-pdf.mjs
- * =========================
- * pdf.js for the vendor page (src/pages/vendor-documents.astro), which draws
+ * build-trade-partners-pdf.mjs
+ * ============================
+ * pdf.js for the trade-partner page (src/components/trade-partners/files.ts), which draws
  * the first pages of a PDF a vendor adds as pictures, so the reader sees a
  * W-9's signature and the boxes typed into a form the way a person does (a
  * PDF's text has neither). The admin's copy (scripts/build-admin-pdf.mjs)
  * sits behind Cloudflare Access, so the public page gets its own:
  *
- *   node scripts/build-vendor-docs-pdf.mjs
+ *   node scripts/build-trade-partners-pdf.mjs
  *
  * Writes (all committed, like the admin's):
- *   public/vendor-documents/pdf/pdf.js            pdf.js, imported the first time a PDF is added
- *   public/vendor-documents/pdf/pdf.worker.js     its worker
- *   public/vendor-documents/pdf/standard_fonts/   the fonts a PDF names without embedding them
- *   public/vendor-documents/pdf/wasm/             the JavaScript decoders for JPEG 2000 and JBIG2 scans
+ *   public/trade-partners/pdf/pdf.js            pdf.js, imported the first time a PDF is added
+ *   public/trade-partners/pdf/pdf.worker.js     its worker
+ *   public/trade-partners/pdf/standard_fonts/   the fonts a PDF names without embedding them
+ *   public/trade-partners/pdf/wasm/             the JavaScript decoders for JPEG 2000 and JBIG2 scans
  *
  * The same pinned version and legacy build as the admin's, for the same reason:
  * older iPhones and Macs. pdfjs-dist is installed into a temporary folder, not package.json.
@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const PDFJS = '6.4.299';
-const outDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public/vendor-documents/pdf');
+const outDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public/trade-partners/pdf');
 
 // What the legacy build still expects from 2024 (Safari 17.4), page and worker
 const POLYFILLS = `if (!Promise.withResolvers) Promise.withResolvers = function () { let resolve, reject; const promise = new this((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
@@ -42,7 +42,7 @@ try {
 
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(join(outDir, 'wasm'), { recursive: true });
-  const head = (file) => `/*! SOARD vendor page file (lazy) — copied by scripts/build-vendor-docs-pdf.mjs
+  const head = (file) => `/*! SOARD trade-partner page file (lazy) — copied by scripts/build-trade-partners-pdf.mjs
  * pdfjs-dist@${version} legacy/build/${file} (Apache-2.0), after two small fallbacks. Do not edit by hand.
  */
 ${POLYFILLS}`;

@@ -1,7 +1,8 @@
 /**
- * The public side of a vendor's link (/vendor-documents/#t=<token>).
+ * The public side of a vendor's link (/trade-partners/account/#t=<token>): their page's read, and files.
  *
- * GET  /api/vendor-docs?token=…   → { ok, vendor: { name, needs, items, have, requirements, w9Only, notNeeded } }
+ * GET  /api/vendor-docs?token=…   → { ok, vendor } (./_trade-partners.js partnerView: the whole page, or
+ *                                    for an insurance agent's link only the certificate part)
  *                                    or 404 (unknown) / 410 (expired or replaced)
  * POST /api/vendor-docs           multipart: token, doc ('w9' | 'coi'), file (up to 3 for a
  *                                    certificate), pages<i> (file i's first pages as JPEGs, when it's
@@ -14,11 +15,12 @@
  * Everything is read from and written to the vendor's account in JobTread;
  * the site keeps no copy of the files. No tax ID is asked for or kept.
  */
-import { findLink, pageView, fileUpload, LIMITS } from './_vendors.js';
+import { findLink, fileUpload, LIMITS } from './_vendors.js';
+import { partnerView } from './_trade-partners.js';
 
 const GONE = {
-  expired: 'This link has expired. Reply to our last email and we’ll send a new one.',
-  closed: 'This link has been replaced by a newer one. Use the link in the latest email from Sunshine on a Ranney Day.',
+  expired: 'This link has expired. Sign in again with your email and we’ll send a new one.',
+  closed: 'This link has been replaced by a newer one. Use the link in your latest email, or sign in again.',
 };
 const NO_STORE = { 'Cache-Control': 'no-store' };
 const fail = (error, status) => Response.json({ ok: false, error }, { status, headers: NO_STORE });
@@ -34,7 +36,7 @@ export async function onRequestGet(context) {
   try {
     const { link, stop } = await linkFor(context.env, new URL(context.request.url).searchParams.get('token'));
     if (stop) return stop;
-    const vendor = await pageView(context.env, link);
+    const vendor = await partnerView(context.env, link);
     if (!vendor) return fail('This link is for a company we no longer have on file. Reply to our email and we’ll sort it out.', 410);
     return Response.json({ ok: true, vendor }, { headers: NO_STORE });
   } catch (err) {

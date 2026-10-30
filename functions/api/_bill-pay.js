@@ -332,6 +332,9 @@ export async function payBill(env, billId, { now = Date.now() } = {}) {
   if (raw?.account_id) {
     const docs = await billDocs(env, raw.account_id, { now }).catch((e) => ({ ok: false, error: e.message }));
     if (!docs.ok) return holdBill(env, billRow(raw), a, docs, { now });
+    // A bank account the vendor just gave or changed waits until someone at SOARD confirms it by phone (./_trade-partners.js)
+    const bank = await import('./_trade-partners.js').then((tp) => tp.bankHold(env.DB, raw.account_id)).catch(() => null);
+    if (bank) return holdForBank(env, billRow(raw), a, bank, { now });
     if (a.payState === 'held') a = await releaseHold(env, billRow(raw), a, { now });
   }
   if (cfg.payMode === 'off') return { ok: true, state: 'by-hand' };
@@ -457,11 +460,27 @@ async function holdBill(env, bill, a, docs, { now = Date.now() } = {}) {
   return { ok: false, state: 'held', reason };
 }
 
-/** The documents came in: the note comes off the top of the bill and it's free to pay → the approval */
+/** An approved bill whose vendor's new bank account isn't confirmed: held, with a note on the bill once → { ok: false, state: 'held', reason } */
+async function holdForBank(env, bill, a, why, { now = Date.now() } = {}) {
+  const reason = `Not paid until someone at SOARD confirms ${bill.vendor}’s bank account: ${why}. Call the number already on file, then confirm it in Admin → Trade partners.`;
+  if (a.payState === 'held' && a.hold?.bank) return { ok: false, state: 'held', reason };
+  if (a.hold?.noteId) await pave(env.JOBTREAD_GRANT_KEY, { updateComment: { $: { id: a.hold.noteId, isPinned: false } } }).catch(() => null);
+  const noteId = await billNote(env, bill.id, {
+    name: 'Approved, not paid yet', pinned: true,
+    message: `Approved by ${a.decidedBy || 'an approver'} on ${shortDay(Date.parse(a.decidedAt || new Date(now).toISOString()))}, and not paid yet: ${why}. Someone at SOARD calls them on the number already on file to confirm it; this bill pays itself once it’s confirmed in the admin (Trade partners → Bank changes).`,
+  }).catch(() => null);
+  await upsertApproval(env.DB, bill.id, { payState: 'held', payError: reason, hold: { since: a.hold?.since || new Date(now).toISOString(), bank: true, noteId, reason } });
+  return { ok: false, state: 'held', reason };
+}
+
+/** The documents came in (or the bank account was confirmed): the note comes off the top of the bill and it's free to pay → the approval */
 async function releaseHold(env, bill, a, { now = Date.now() } = {}) {
   if (a.hold?.noteId) await pave(env.JOBTREAD_GRANT_KEY, { updateComment: { $: { id: a.hold.noteId, isPinned: false } } }).catch(() => null);
-  await billNote(env, bill.id, { name: 'Documents in', message: `${bill.vendor}’s W-9 and insurance checked out on ${shortDay(now)}, so this bill is cleared to pay.` }).catch(() => null);
-  await slackResolved(env, `bill:${bill.id}`, slackCard({ icon: '✅', title: `${bill.vendor}: documents in` }), { summary: 'Their W-9 and insurance are current, so the bill is cleared to pay.' }).catch(() => null);
+  const bank = !!a.hold?.bank;
+  await billNote(env, bill.id, bank
+    ? { name: 'Bank account confirmed', message: `${bill.vendor}’s bank account was confirmed on ${shortDay(now)}, so this bill is cleared to pay.` }
+    : { name: 'Documents in', message: `${bill.vendor}’s W-9 and insurance checked out on ${shortDay(now)}, so this bill is cleared to pay.` }).catch(() => null);
+  await slackResolved(env, `bill:${bill.id}`, slackCard({ icon: '✅', title: `${bill.vendor}: ${bank ? 'bank account confirmed' : 'documents in'}` }), { summary: bank ? 'Their bank account is confirmed, so the bill is cleared to pay.' : 'Their W-9 and insurance are current, so the bill is cleared to pay.' }).catch(() => null);
   return upsertApproval(env.DB, bill.id, { payState: null, payError: null, hold: null });
 }
 

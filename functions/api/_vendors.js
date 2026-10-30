@@ -21,7 +21,8 @@
  * anyone whose insurance the site is tracking. Card-only suppliers never.
  *
  * How: an email from SOARD saying exactly what's missing or out of date,
- * with the vendor's own link to /vendor-documents/ (vendor-docs.js). Each
+ * with the vendor's own link to their trade-partner page (vendor-docs.js,
+ * ./_trade-partners.js). Each
  * file is read there and then (./_vendor-read.js) and judged against the
  * minimums in Job Costs → Bills → Settings, so the vendor knows at once.
  * A good one goes into JobTread and fills the fields; a W-9 also goes onto
@@ -47,12 +48,13 @@ import { emailShell, paragraphs, button, panel, esc } from './_email-shell.js';
 import { readState, writeState, mercuryConfigured, uploadRecipientAttachment } from './_mercury.js';
 import { vendorKey, dollars } from './_spend-match.js';
 import { FIELD_CONTACT_EMAIL } from './_reveal-invites.js';
-import { readDocument, judgeCoiReads, judgeW9, documentType, requirementLines, longDate } from './_vendor-read.js';
+import { readDocument, judgeCoiReads, settleDisputes, judgeW9, documentType, requirementLines, longDate } from './_vendor-read.js';
 import { releaseVendorHolds, cachedRecipients, recipientFor } from './_bill-pay.js';
 import { maybeRunRamp, rampConfigured } from './_ramp.js';
 
 export const STATE_KEY = 'vendors';
-export const UPLOAD_PAGE = `${SITE_ORIGIN}/vendor-documents/`;
+export const UPLOAD_PAGE = `${SITE_ORIGIN}/trade-partners/account/`;
+export const PARTNERS_PAGE = `${SITE_ORIGIN}/trade-partners/`;
 export const FOLDER = 'W-9 & Insurance';
 
 const MIN = 60 * 1000;
@@ -61,7 +63,7 @@ const RUN_EVERY_MS = 15 * MIN;
 const CACHE_EVERY_MS = 4 * 60 * MIN;
 const RECHECK_MS = 6 * 60 * MIN;     // a vendor's JobTread fields, read again
 const READS_PER_RUN = 12;
-export const LINK_DAYS = 30;
+export const LINK_DAYS = 90;
 export const REMIND_AFTER_DAYS = [3, 7];   // then every 7 days
 export const MAX_ASKS = 5;
 export const LIMITS = { fileBytes: 15 * 1024 * 1024, files: 3, uploads: 30, pages: 3, pageBytes: 4 * 1024 * 1024 };
@@ -73,21 +75,28 @@ export const FIELDS = {
   wc: { name: 'Workers\' Comp Expires', type: 'date' },
   docs: { name: 'Documents', type: 'option' },
   check: { name: 'Insurance Check', type: 'text' },
+  trades: { name: 'Trades', type: 'option', multiple: true },
+  address: { name: 'Address', type: 'text' },
+  license: { name: 'License', type: 'text' },
+  materials: { name: 'Materials only', type: 'boolean' },
 };
+// What a trade partner picks from (the Trades field's options; a person can add more in JobTread)
+export const TRADES = ['General contracting', 'Carpentry and framing', 'Drywall', 'Electrical', 'Plumbing', 'HVAC', 'Painting', 'Flooring', 'Tile', 'Cabinets and countertops',
+  'Windows and doors', 'Roofing', 'Concrete and masonry', 'Accessibility and lifts', 'Landscaping', 'Cleaning', 'Hauling and dumpsters', 'Design', 'Materials and supplies', 'Other'];
 export const DOC_STATES = ['Current', 'Expiring soon', 'Requested', 'Expired', 'Missing', 'Needs a look', 'W-9 only', 'Not needed'];
-const OVERRIDES = new Set(['W-9 only', 'Not needed']);
+export const OVERRIDES = new Set(['W-9 only', 'Not needed']);
 // "Send it to me" (Job Costs → Bills → Settings): a link to a sample company whose files are checked but never filed
 export const PREVIEW_ID = 'preview';
 const PREVIEW_VENDOR = { id: PREVIEW_ID, name: 'Your company (a preview)', email: null, w9: false, glExpires: null, wcExpires: null, docs: null, check: null, archived: false };
 export const TAGS = { w9: 'W-9', coi: 'COI' };
-const LABEL = { w9: 'W-9', coi: 'Certificate of insurance' };
+export const LABEL = { w9: 'W-9', coi: 'Certificate of insurance' };
 
 const isoDay = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: TZ });
 const parseJson = (s, d = {}) => { try { return s ? JSON.parse(s) ?? d : d; } catch { return d; } };
 const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || ''));
 const norm = (s) => String(s || '').replace(/[’‘]/g, '\'').trim().toLowerCase();
-const jtVendorUrl = (id) => `https://app.jobtread.com/vendors/${id}`;
-const jt = (env, q, fetchImpl) => pave(env.JOBTREAD_GRANT_KEY, q, fetchImpl);
+export const jtVendorUrl = (id) => `https://app.jobtread.com/vendors/${id}`;
+export const jt = (env, q, fetchImpl) => pave(env.JOBTREAD_GRANT_KEY, q, fetchImpl);
 
 // ─── Tables ─────────────────────────────────────────────────────────
 
@@ -116,6 +125,9 @@ const _ready = new WeakSet();
 export async function ensureVendorSchema(DB) {
   if (_ready.has(DB)) return;
   await DB.batch(SCHEMA.map((s) => DB.prepare(s)));
+  // A link's scope: 'vendor' (their whole page) or 'agent' (their insurance agent: a certificate, nothing else)
+  const cols = ((await DB.prepare('PRAGMA table_info(vendor_links)').all()).results || []).map((c) => c.name);
+  if (!cols.includes('scope')) await DB.prepare("ALTER TABLE vendor_links ADD COLUMN scope TEXT NOT NULL DEFAULT 'vendor'").run();
   // Links from the old Vendors area (its own vendor ids) open nothing now
   await DB.prepare("UPDATE vendor_links SET status = 'replaced' WHERE status = 'open' AND vendor_id LIKE 'v\\_%' ESCAPE '\\'").run();
   _ready.add(DB);
@@ -131,13 +143,13 @@ export async function readAsk(DB, jtId) {
   return askRow(await DB.prepare('SELECT * FROM vendor_asks WHERE jt_id = ?').bind(jtId).first());
 }
 
-async function readAsks(DB) {
+export async function readAsks(DB) {
   await ensureVendorSchema(DB);
   return new Map(((await DB.prepare('SELECT * FROM vendor_asks').all()).results || []).map((r) => [r.jt_id, askRow(r)]));
 }
 
 /** Change some of a vendor's ask row (camelCase keys) */
-async function patchAsk(DB, jtId, patch, now = Date.now()) {
+export async function patchAsk(DB, jtId, patch, now = Date.now()) {
   const before = (await readAsk(DB, jtId)) || { jtId, asks: 0, open: false, posted: {} };
   const a = { ...before, ...patch };
   await DB.prepare(`INSERT OR REPLACE INTO vendor_asks (jt_id, name, email, state, checked_at, asks, asked_at, ask_why, open, posted, mercury_w9_at, updated_at)
@@ -197,16 +209,17 @@ export async function jtSetup(env, { fetchImpl = fetch, force = false } = {}) {
     const found = existing.find((x) => norm(x.name) === norm(f.name));
     if (found) {
       fields[k] = { id: found.id, type: found.type || f.type };
-      if (k === 'docs' && found.type === 'option') {
+      const want = k === 'docs' ? DOC_STATES : k === 'trades' ? TRADES : null;
+      if (want && found.type === 'option') {
         const opts = optionsOf(found.options);
-        const missing = DOC_STATES.filter((s) => !opts.some((o) => norm(o) === norm(s)));
+        const missing = want.filter((s) => !opts.some((o) => norm(o) === norm(s)));
         if (missing.length) await jt(env, { updateCustomField: { $: { id: found.id, options: [...opts, ...missing] } } }, fetchImpl);
       }
       continue;
     }
     const made = await jt(env, {
       createCustomField: {
-        $: { organizationId: SOARD_ORG_ID, targetType: 'vendor', type: f.type, name: f.name, minValuesRequired: 0, ...(k === 'docs' ? { options: DOC_STATES } : {}) },
+        $: { organizationId: SOARD_ORG_ID, targetType: 'vendor', type: f.type, name: f.name, minValuesRequired: 0, ...(k === 'docs' ? { options: DOC_STATES } : {}), ...(k === 'trades' ? { options: TRADES } : {}) },
         createdCustomField: { id: {} },
       },
     }, fetchImpl);
@@ -259,7 +272,7 @@ export async function readJtVendor(env, jtId, { fetchImpl = fetch } = {}) {
 }
 
 /** Write some of a vendor's fields ({ w9, gl, wc, docs, check }) */
-async function writeFields(env, ids, jtId, patch, fetchImpl = fetch) {
+export async function writeFields(env, ids, jtId, patch, fetchImpl = fetch) {
   const values = {};
   for (const [k, v] of Object.entries(patch)) {
     const f = ids.fields[k];
@@ -271,7 +284,7 @@ async function writeFields(env, ids, jtId, patch, fetchImpl = fetch) {
 }
 
 /** An internal note on the vendor's account, for the record */
-async function vendorNote(env, jtId, name, message, fetchImpl = fetch) {
+export async function vendorNote(env, jtId, name, message, fetchImpl = fetch) {
   await jt(env, {
     createComment: {
       $: { targetType: 'account', targetId: jtId, name, message: message.slice(0, 4000), isVisibleToAll: false, isVisibleToInternalRoles: true, isVisibleToVendorRoles: false, isVisibleToCustomerRoles: false },
@@ -280,7 +293,7 @@ async function vendorNote(env, jtId, name, message, fetchImpl = fetch) {
   }, fetchImpl).catch((e) => console.error('[vendors] note', e.message));
 }
 
-async function uploadToJt(env, { bytes, type }, fetchImpl = fetch) {
+export async function uploadToJt(env, { bytes, type }, fetchImpl = fetch) {
   const up = await jt(env, { createUploadRequest: { $: { organizationId: SOARD_ORG_ID, size: bytes.byteLength, type }, createdUploadRequest: { id: {}, url: {}, method: {}, headers: {} } } }, fetchImpl);
   const req = up?.createUploadRequest?.createdUploadRequest;
   if (!req?.id || !req?.url) throw new Error('JobTread didn’t give an upload slot');
@@ -352,14 +365,17 @@ function newToken() {
   return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** A new link to the vendor's page (earlier ones keep working until they expire) → { token, url, expiresAt } */
-export async function createLink(DB, jtId, { by = 'auto', now = Date.now() } = {}) {
+/**
+ * A new link to the vendor's page (earlier ones keep working until they expire) → { token, url, expiresAt }.
+ * scope 'agent': their insurance agent's link, which can add a certificate and nothing else.
+ */
+export async function createLink(DB, jtId, { by = 'auto', now = Date.now(), scope = 'vendor', step = '' } = {}) {
   await ensureVendorSchema(DB);
   const token = newToken();
   const expiresAt = new Date(now + LINK_DAYS * DAY).toISOString();
-  await DB.prepare('INSERT INTO vendor_links (token_hash, vendor_id, created_at, expires_at, by) VALUES (?, ?, ?, ?, ?)')
-    .bind(await hashToken(token), jtId, new Date(now).toISOString(), expiresAt, by).run();
-  return { token, url: `${UPLOAD_PAGE}#t=${token}`, expiresAt };
+  await DB.prepare('INSERT INTO vendor_links (token_hash, vendor_id, created_at, expires_at, by, scope) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(await hashToken(token), jtId, new Date(now).toISOString(), expiresAt, by, scope === 'agent' ? 'agent' : 'vendor').run();
+  return { token, url: `${UPLOAD_PAGE}#t=${token}${step ? `&step=${encodeURIComponent(step)}` : ''}`, expiresAt };
 }
 
 /** The link behind a token → { link, problem: null | 'unknown' | 'expired' | 'closed' } (link.vendor_id is the JobTread vendor) */
@@ -398,11 +414,11 @@ export function requestEmail({ vendorName, url, state, req = DEFAULTS, bill = nu
     bodyHtml: `${paragraphs(lead)}${paragraphs('What we need:')}${list(items)}`
       + (needsLines.length ? panel(`${paragraphs('The certificate needs to show:', 'font-weight:700;margin-bottom:8px;')}${list(needsLines)}`, { accent: true }) : '')
       + `${paragraphs(how)}${button('Upload your documents', url)}`
-      + paragraphs(`The link is for ${vendorName} only and works for ${LINK_DAYS} days. Questions? Just reply to this email.`, 'font-size:14px;'),
+      + paragraphs(`The link is for ${vendorName} only. Any time after, sign in at ${PARTNERS_PAGE.replace('https://', '')} with this email address. Questions? Just reply to this email.`, 'font-size:14px;'),
   });
   const text = [lead, '', 'What we need:', ...items.map((i) => `- ${i}`), '',
     ...(needsLines.length ? ['The certificate needs to show:', ...needsLines.map((l) => `- ${l}`), ''] : []),
-    how, '', `Upload them here: ${url}`, '', `The link is for ${vendorName} only and works for ${LINK_DAYS} days. Questions? Just reply to this email.`].join('\n');
+    how, '', `Upload them here: ${url}`, '', `The link is for ${vendorName} only. Any time after, sign in at ${PARTNERS_PAGE.replace('https://', '')} with this email address. Questions? Just reply to this email.`].join('\n');
   return { subject, html, text };
 }
 
@@ -441,14 +457,14 @@ export function askDue(ask, now = Date.now()) {
 
 // ─── Slack: only what needs a person ────────────────────────────────
 
-async function postOnce(env, jtId, key, card, title, now = Date.now()) {
+export async function postOnce(env, jtId, key, card, title, now = Date.now()) {
   const a = await readAsk(env.DB, jtId);
   if (a?.posted?.[key]) return;
   const r = await slackIssue(env, `vendor:${key}:${jtId}`, card, { title, kind: 'attention', area: 'finance' }).catch(() => null);
   if (r?.ok) await patchAsk(env.DB, jtId, { posted: { ...(a?.posted || {}), [key]: new Date(now).toISOString() } }, now);
 }
 
-async function resolveAll(env, jtId, summary, now = Date.now()) {
+export async function resolveAll(env, jtId, summary, now = Date.now()) {
   const a = await readAsk(env.DB, jtId);
   const keys = Object.keys(a?.posted || {});
   if (!keys.length) return;
@@ -471,6 +487,8 @@ const EXT = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png',
  */
 export async function fileUpload(env, link, { doc, files, pages = [], anyway = false }, { now = Date.now(), fetchImpl = fetch } = {}) {
   if (!['w9', 'coi'].includes(doc)) throw Object.assign(new Error('Pick the W-9 or the certificate.'), { status: 400 });
+  // An insurance agent's link adds a certificate and nothing else
+  if (link.scope === 'agent' && doc !== 'coi') throw Object.assign(new Error('This link is for the certificate of insurance only.'), { status: 403 });
   const isBlob = (f) => f && typeof f === 'object' && f.size > 0;
   const list = (files || []).map((f, i) => ({ f, pics: pages[i] || [] })).filter(({ f }) => isBlob(f)).slice(0, doc === 'w9' ? 1 : LIMITS.files);
   if (!list.length) throw Object.assign(new Error('Choose the file first.'), { status: 400 });
@@ -500,6 +518,11 @@ export async function fileUpload(env, link, { doc, files, pages = [], anyway = f
   else {
     const reads = await Promise.all(parts.map((p) => readDocument(env, doc, p)));
     verdict = doc === 'w9' ? judgeW9(reads[0].pictures, { vendorName: v.name }) : judgeCoiReads(reads, req, { vendorName: v.name, now });
+    // The two readings split on a number: it's asked once more, on its own, before a person has to
+    if (verdict.unsure) {
+      const pictures = parts.map((p) => (p.type === 'application/pdf' ? p.pages : [p]));
+      verdict = judgeCoiReads(await settleDisputes(env, reads, pictures), req, { vendorName: v.name, now });
+    }
   }
   await env.DB.prepare('UPDATE vendor_links SET uploads = uploads + 1, last_upload_at = ? WHERE token_hash = ?').bind(new Date(now).toISOString(), link.token_hash).run();
   // A readable file that falls short goes back to the vendor, not into JobTread
@@ -534,7 +557,8 @@ export async function fileUpload(env, link, { doc, files, pages = [], anyway = f
     if (label !== v.docs) patch.docs = label;
   }
   await writeFields(env, ids, v.id, patch, fetchImpl);
-  await vendorNote(env, v.id, `${LABEL[doc]} from ${v.name}`, look
+  const from = link.scope === 'agent' ? `${LABEL[doc]} from ${v.name}’s insurance agent` : `${LABEL[doc]} from ${v.name}`;
+  await vendorNote(env, v.id, from, look
     ? `${LABEL[doc]} received through SOARD’s page on ${longDate(day)}. ${verdict.anyway ? 'The vendor sent it anyway after the check didn’t pass' : verdict.unsure ? `The automatic check read it two ways that didn’t agree (${verdict.unsure})` : 'It couldn’t be read automatically'}, so a person needs to open it (folder ${FOLDER}) and fill in ${doc === 'w9' ? 'W-9' : 'Liability Expires and Workers’ Comp Expires'} on this vendor.`
     : `${LABEL[doc]} received through SOARD’s page on ${longDate(day)} and checked: ${verdict.lines.join(' ')}${verdict.notes?.length ? ` Worth a look: ${verdict.notes.join(' ')}` : ''}`, fetchImpl);
 
@@ -548,6 +572,8 @@ export async function fileUpload(env, link, { doc, files, pages = [], anyway = f
   }
   // A W-9 goes to Mercury too, which files the 1099s
   if (verdict.accepted && doc === 'w9') await w9ToMercury(env, v, parts[0], { now }).catch((e) => console.error('[vendors] mercury w9', e.message));
+  // The trade-partner page's step, and an agent's ask, are done
+  if (verdict.accepted) await import('./_trade-partners.js').then((tp) => tp.docArrived(env, v.id, doc, { now })).catch((e) => console.error('[vendors] step', e.message));
 
   const done = state.ok && !state.expiring;
   await patchAsk(env.DB, v.id, { name: v.name, email: v.email, state: briefState(state), checkedAt: new Date(now).toISOString(), open: !done && !!ask?.open }, now);
@@ -558,7 +584,7 @@ export async function fileUpload(env, link, { doc, files, pages = [], anyway = f
   return { accepted: !!verdict.accepted, look, problems: verdict.problems || [], lines: verdict.lines || [], needs: state.needs, done: state.ok };
 }
 
-const briefState = (s) => ({ ok: s.ok, expiring: s.expiring, label: s.label, staff: s.staff, needs: s.needs });
+export const briefState = (s) => ({ ok: s.ok, expiring: s.expiring, label: s.label, staff: s.staff, needs: s.needs });
 
 /** What the vendor's page shows → { name, needs, items, have, requirements } */
 export async function pageView(env, link, { now = Date.now(), fetchImpl = fetch } = {}) {
@@ -579,7 +605,7 @@ export async function pageView(env, link, { now = Date.now(), fetchImpl = fetch 
 
 // ─── Mercury: the W-9 for the 1099s ─────────────────────────────────
 
-async function w9ToMercury(env, v, file, { now = Date.now() } = {}) {
+export async function w9ToMercury(env, v, file, { now = Date.now() } = {}) {
   if (!mercuryConfigured(env)) return false;
   const r = recipientFor(v.name, await cachedRecipients(env, { now }));
   if (!r) return false;
@@ -655,8 +681,12 @@ async function postNoEmail(env, v, now) {
 
 // ─── The JobTread cache: vendors and the open jobs they're on ───────
 
-/** JobTread's vendor accounts → [{ id, name, email, archived }] */
+/**
+ * JobTread's vendor accounts → [{ id, name, email (the first), emails (every contact's, for signing in), archived,
+ *   fields: { w9, gl, wc, docs, materials, trades } (what Admin → Trade partners lists; null when the fields can't be read) }]
+ */
 export async function jobtreadVendors(env, { fetchImpl = fetch } = {}) {
+  const ids = await jtSetup(env, { fetchImpl }).catch(() => null);
   const out = [];
   let page = null;
   for (let i = 0; i < 40; i++) {
@@ -668,15 +698,22 @@ export async function jobtreadVendors(env, { fetchImpl = fetch } = {}) {
           nextPage: {},
           nodes: {
             id: {}, name: {}, archivedAt: {},
-            contacts: { $: { size: 3 }, nodes: { customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_CONTACT_EMAIL] }, nodes: { value: {} } } } },
+            customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } },
+            contacts: { $: { size: 10 }, nodes: { customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_CONTACT_EMAIL] }, nodes: { value: {} } } } },
           },
         },
       },
     }, fetchImpl);
     const conn = data?.organization?.accounts;
     for (const a of conn?.nodes || []) {
-      const email = (a.contacts?.nodes || []).map(emailIn).find(isEmail) || null;
-      out.push({ id: a.id, name: a.name, email: email ? email.toLowerCase() : null, archived: !!a.archivedAt });
+      const emails = [...new Set((a.contacts?.nodes || []).map(emailIn).filter(isEmail).map((e) => e.toLowerCase()))];
+      const val = (k) => (a.customFieldValues?.nodes || []).find((n) => n.customField?.id === ids?.fields[k]?.id)?.value ?? null;
+      const trades = val('trades');
+      const fields = ids && {
+        w9: yes(val('w9')), gl: dateOf(val('gl')), wc: dateOf(val('wc')), docs: val('docs') || null, materials: yes(val('materials')),
+        trades: Array.isArray(trades) ? trades : trades ? String(trades).split(/\s*,\s*/).filter(Boolean) : [],
+      };
+      out.push({ id: a.id, name: a.name, email: emails[0] || null, emails, archived: !!a.archivedAt, fields });
     }
     page = conn?.nextPage;
     if (!page) break;
@@ -731,7 +768,7 @@ export async function refreshCache(env, { now = Date.now(), fetchImpl = fetch } 
   for (const v of vendors) {
     if (v.archived) continue;
     const r = rows.get(v.id);
-    const facts = { ...parseJson(r?.facts), jobs: onJobs[v.id] || [] };
+    const facts = { ...parseJson(r?.facts), jobs: onJobs[v.id] || [], emails: v.emails || (v.email ? [v.email] : []), ...(v.fields ? { fields: v.fields, fieldsAt: iso } : {}) };
     if (r) stmts.push(DB.prepare('UPDATE vendors SET name = ?, vkey = ?, email = ?, facts = ?, updated_at = ? WHERE id = ?').bind(v.name, vendorKey(v.name), v.email, JSON.stringify(facts), iso, r.id));
     else stmts.push(DB.prepare('INSERT INTO vendors (id, name, vkey, jt_id, email, facts, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(`jt_${v.id}`, v.name, vendorKey(v.name), v.id, v.email, JSON.stringify(facts), iso, iso));
   }
@@ -813,6 +850,8 @@ export async function sweep(env, { now = Date.now(), fetchImpl = fetch } = {}) {
           await askVendor(env, v, state, { why: w.why === 'renewal' && !state.ok ? 'missing' : w.why, now });
           ask = await readAsk(env.DB, v.id);
           out.asked++;
+          // Their insurance agent, when the trade-partner page has one, is asked for the certificate directly
+          await import('./_trade-partners.js').then((tp) => tp.renewalToAgent(env, v.id, state, { now, fetchImpl })).catch((e) => console.error('[vendors] agent', v.id, e.message));
         } catch (e) { console.error('[vendors] ask', v.id, e.message); }
       }
     } else if (!settled && w.why === 'held') {
@@ -858,6 +897,8 @@ export async function maybeRunVendors(env, { now = Date.now(), fetchImpl = fetch
       } catch (e) { errors.push(`JobTread vendors: ${e.message}`); }
     }
     try { Object.assign(report, await sweep(env, { now, fetchImpl })); } catch (e) { errors.push(e.message); }
+    // Trade partners: unfinished setups and quiet insurance agents nudged (./_trade-partners.js)
+    try { report.partners = await (await import('./_trade-partners.js')).partnerNudges(env, { now, fetchImpl }); } catch (e) { errors.push(`Trade partners: ${e.message}`); }
     // While Ramp still pays bills: held there until the vendor's papers are in (./_ramp.js keeps its own errors)
     if (rampConfigured(env)) report.ramp = await maybeRunRamp(env, { now, fetchImpl });
     if (mercuryConfigured(env) && (force || now - Date.parse(st.mercuryAt || 0) > DAY)) {
