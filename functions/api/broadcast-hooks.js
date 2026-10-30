@@ -37,6 +37,7 @@ import { maybeTrackEmails } from './_email-log.js';
 import { maybeRunSpend } from './_spend.js';
 import { maybeRunFinance } from './_finance.js';
 import { maybeRunVendors } from './_vendors.js';
+import { maybeRunInsuranceAudit } from './_insurance-audit.js';
 import { maybeRefreshProcess } from './_process-docs.js';
 import { alertAdmins } from './_broadcast-notify.js';
 import { maybeRunBoard } from './_board.js';
@@ -111,6 +112,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunFinance(env));
     // Vendors' W-9s and insurance, kept in JobTread: asked for, checked, and held bills let go (see _vendors.js)
     context.waitUntil(maybeRunVendors(env));
+    // Daily: subs paid this workers' comp term, and the certificate asked for when none covered the work (see _insurance-audit.js)
+    context.waitUntil(maybeRunInsuranceAudit(env));
     // The board: Access's sign-in list kept to People → Board (every 5 minutes when it changed), and the month's bank balance once a day (see _board.js)
     context.waitUntil(maybeRunBoard(env));
     // Staff sign-in follows SOARD's Google accounts: read every 5 minutes, a suspended or deleted one signed out (_staff-access.js)

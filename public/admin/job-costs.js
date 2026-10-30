@@ -20,16 +20,19 @@
  *   Setup      which Mercury card or account is the store's, Mercury
  *              categories, the receipt inbox, card limits from budgets
  *   Ramp bills the old one-line "Makeover COGS" bills, split by code
+ *   Insurance audit  subs paid in the workers' comp policy term and what
+ *              covered each payment (./insurance-audit.js)
  * An open job also has the budget builder: a budget from past close-outs
  * for what it will build, beside its JobTread budget.
  */
 
 import { h, htm, useState, useEffect } from './vendor.js';
 import { ask } from './ask.js';
+import { InsuranceAudit } from './insurance-audit.js';
 
 const html = htm.bind(h);
 const API = '/api/job-costs-admin';
-const TABS = [['jobs', 'Jobs'], ['charges', 'Charges'], ['bills', 'Bills'], ['closeouts', 'Close-outs'], ['rules', 'Rules'], ['setup', 'Setup'], ['ramp', 'Ramp bills']];
+const TABS = [['jobs', 'Jobs'], ['charges', 'Charges'], ['bills', 'Bills'], ['closeouts', 'Close-outs'], ['rules', 'Rules'], ['setup', 'Setup'], ['ramp', 'Ramp bills'], ['insurance', 'Insurance audit']];
 const BUCKET_NAMES = { job: 'Makeover', store: 'Sunny & Ranney store', operating: 'Operating' };
 const HOW = { person: 'the cardholder’s job', build: 'the job in Build', staff: 'picked by staff', bill: 'from its JobTread bill', rule: 'vendor rule', card: 'the store’s card', account: 'the account', refund: 'the charge it refunds' };
 
@@ -208,6 +211,7 @@ export function JobCosts({ addToast = () => {} }) {
         : place.tab === 'charges' ? html`<${Charges} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'rules' ? html`<${Rules} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'setup' ? html`<${Setup} data=${data} act=${act} busy=${busy} />`
+        : place.tab === 'insurance' ? html`<${InsuranceAudit} addToast=${addToast} />`
         : html`<${Ramp} data=${data} act=${act} busy=${busy} />`}
     </div>`;
 }
