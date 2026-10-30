@@ -133,6 +133,9 @@ export function initAdvisoryForm() {
     tucked.forEach((k) => { k.hidden = false; });
     const kids = pieces(i);
     const h = kids.map((k) => k.getBoundingClientRect().height + (parseFloat(getComputedStyle(k).marginBottom) || 0));
+    // The step's pieces are a gap apart (only between two that show)
+    const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
+    const join = (a, b) => (a && b ? a + gap + b : a + b);
     tucked.forEach((k) => { k.hidden = true; });
     const blocks = [];
     kids.forEach((k, j) => {
@@ -141,28 +144,28 @@ export function initAdvisoryForm() {
       const lead = f?.showIf ? blocks.findIndex((b) => Object.keys(f.showIf).some((x) => b.ids.has(x))) : -1;
       if (lead >= 0 && lead < blocks.length - 1) {
         const [first, ...rest] = blocks.splice(lead);
-        for (const b of rest) { first.kids.push(...b.kids); first.h += b.h; b.ids.forEach((x) => first.ids.add(x)); }
+        for (const b of rest) { first.kids.push(...b.kids); first.h = join(first.h, b.h); b.ids.forEach((x) => first.ids.add(x)); }
         first.carry = false;
         blocks.push(first);
       }
       const prev = blocks[blocks.length - 1];
       const follows = prev && (!h[j] || k.matches('.adv-date') || (f?.showIf && Object.keys(f.showIf).some((x) => prev.ids.has(x))));
       if (prev && (follows || prev.carry)) {
-        prev.kids.push(k); prev.h += h[j];
+        prev.kids.push(k); prev.h = join(prev.h, h[j]);
         idsOf(k).forEach((x) => prev.ids.add(x));
         prev.carry = prev.carry && !h[j];
         return;
       }
       // The step's intro leads into what follows, when both fit a screen together
-      blocks.push({ kids: [k], h: h[j], ids: new Set(idsOf(k)), carry: k.matches('.adv-intro') && h[j] < fit * 0.5 && h[j] + (h[j + 1] || 0) <= fit });
+      blocks.push({ kids: [k], h: h[j], ids: new Set(idsOf(k)), carry: k.matches('.adv-intro') && h[j] < fit * 0.5 && join(h[j], h[j + 1] || 0) <= fit });
     });
     let n = 0;
     let acc = -1;
-    for (const b of blocks) { if (acc < 0 || acc + b.h > fit) { n++; acc = b.h; } else acc += b.h; }
+    for (const b of blocks) { if (acc < 0 || join(acc, b.h) > fit) { n++; acc = b.h; } else acc = join(acc, b.h); }
     if (n <= 1) return [kids];
     // The most even split into that many screens (none over the room unless one piece is)
     const B = blocks.length;
-    const cost = (x, y) => blocks.slice(x, y).reduce((t, b) => t + b.h, 0);
+    const cost = (x, y) => blocks.slice(x, y).reduce((t, b) => join(t, b.h), 0);
     const best = Array.from({ length: n + 1 }, () => Array(B + 1).fill(Infinity));
     const cut = Array.from({ length: n + 1 }, () => Array(B + 1).fill(0));
     best[0][0] = 0;
@@ -187,6 +190,8 @@ export function initAdvisoryForm() {
     const all = list ? list.flat() : pieces(step); // the pieces as packed (a pair split on a phone stays split)
     const on = new Set(list ? list[screenNo] || [] : all);
     for (const k of all) k.toggleAttribute('data-off', !on.has(k));
+    // A pair split across screens: off where neither half is on (an empty box would still take the page's gap)
+    for (const b of pages[step]?.children || []) if (!all.includes(b) && all.some((k) => b.contains(k))) b.toggleAttribute('data-off', ![...on].some((k) => b.contains(k)));
   }
   const screenIds = () => new Set((packs[step] ? packs[step][screenNo] || [] : pieces(step)).flatMap(idsOf));
   const screenOf = (i, id) => {

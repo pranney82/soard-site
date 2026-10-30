@@ -315,10 +315,17 @@ const logo = 'brand-logo-light-bg-display';
   @supports (backdrop-filter: blur(1px)) { .adv-nav { background: rgba(255,255,255,.9); backdrop-filter: saturate(1.4) blur(14px); } }
   .adv-nav-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; max-width: 672px; margin: 0 auto; }
   .adv-nav-row .adv-next { margin-left: auto; min-width: 220px; }
+  /* Back and Continue the same height, so the bar is too with Back or without it (the screens are worked out on a step's first, where it's hidden) */
+  .adv-nav-row :is(.adv-back, .adv-next).btn { min-height: 56px; padding-block: 0; }
   .adv-send-error { max-width: 672px; margin: 0 auto 12px; padding: 12px 16px; border-radius: 12px; background: #FFF6D6; color: #5C4A00; font-weight: 600; }
   .adv-back { gap: 6px; padding-inline: 22px 26px; }
 
   .adv-field { margin-bottom: 24px; }
+  /* A step's pieces a gap apart, not a margin under each: the last one's margin was room below the last
+     question that the screen hasn't got (and that working out the screens didn't count) */
+  .adv-page:not([hidden]):not(.adv-page--review) { display: flex; flex-direction: column; gap: 24px; }
+  .adv-page:not(.adv-page--review) > *, .adv-pair > .adv-field { margin-bottom: 0; }
+  .adv-page:not(.adv-page--review) > .adv-intro { margin-top: 0; } /* the heading's 8px above it, as before (a gap's margins don't merge) */
   .adv-field fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   .adv-label { display: block; font-weight: 700; font-size: 16px; line-height: 1.45; color: var(--c-dark); margin-bottom: 8px; padding: 0; }
   .adv-optional { font-weight: 400; font-size: 14px; color: var(--c-text-muted); margin-left: 8px; }
@@ -334,11 +341,14 @@ const logo = 'brand-logo-light-bg-display';
   .adv-error { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; padding: 10px 14px; border-radius: 12px; background: #FFF6D6; color: #5C4A00; font-size: 14.5px; font-weight: 600; line-height: 1.45; animation: advIn .2s ease-out both; }
   .adv-error::before { content: ''; flex: 0 0 18px; height: 18px; margin-top: 1px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A7200' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='8.2'/%3E%3Cpath d='M10 5.8v5.2M10 14v.1'/%3E%3C/svg%3E"); }
   /* Two short questions to a row where there's room */
-  .adv-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 20px; align-items: end; }
+  .adv-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px 20px; align-items: end; }
   @container (min-width: 520px) { .adv-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 
   /* Choices: a card each, a circle that fills (the makeover application's look) */
   .adv-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 10px; }
+  /* Yes / Maybe / No: one row on a phone too (two on the narrowest) */
+  .adv-choices--short { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
+  .adv-choices--short .adv-choice { padding-inline: 12px; gap: 10px; }
   .adv-choice { position: relative; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 12px 16px; border: 1.5px solid var(--adv-line); border-radius: 16px; background: #fff; cursor: pointer; font-size: 16px; font-weight: 600; color: var(--c-dark); -webkit-tap-highlight-color: transparent; transition: border-color .15s var(--adv-ease), background-color .15s var(--adv-ease), transform .14s var(--adv-ease); }
   @media (hover: hover) { .adv-choice:hover { border-color: #A9A79F; background: var(--c-cream); } }
   .adv-choice:active { transform: scale(.985); }
@@ -417,7 +427,7 @@ const logo = 'brand-logo-light-bg-display';
     .adv-top-title { font-size: 14px; }
     .adv-top-exit { width: 44px; padding: 0; justify-content: center; }
     .adv-top-exit span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    .adv-stage { padding: 16px 18px 20px; }
+    .adv-stage { padding: 16px 18px 12px; }
     .adv-head h2 { font-size: 25px; }
     .adv-nav { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
     .adv-nav-row .adv-next { flex: 1; min-width: 0; }
@@ -435,6 +445,8 @@ const logo = 'brand-logo-light-bg-display';
     .adv-nav { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
     .adv-field textarea { min-height: 76px; }
     .adv-choice { min-height: 48px; padding-block: 10px; }
+    .adv-page:not([hidden]):not(.adv-page--review) { gap: 18px; }
+    .adv-pair { row-gap: 18px; }
   }
   @media (max-width: 768px) {
     .adv { padding-inline: 12px; }

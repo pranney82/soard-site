@@ -206,6 +206,22 @@ try {
 
   console.log('The Space');
   ok(await stepTitle() === 'The Space', 'The Space');
+  // A short phone (an iPhone SE with Safari's bars): the seven kinds of space in two columns, on one screen
+  await page.setViewport({ width: 375, height: 548, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await sleep(600);
+  const kinds = await page.$eval('[data-field="spaceTypes"]', (f) => ({
+    over: document.documentElement.scrollHeight - innerHeight,
+    two: f.querySelector('.af-choices--cols')?.hasAttribute('data-two'),
+    short: [...f.querySelectorAll('.af-choice')].map((c) => Math.round(c.getBoundingClientRect().height)).filter((h) => h < 44),
+    saysMax: /up to (two|2)\b/i.test(f.querySelector('.af-label')?.textContent || ''),
+    hint: f.querySelector('.af-hint')?.textContent || '',
+  }));
+  ok(kinds.two && kinds.over <= 0, `on a short phone the kinds of space take two columns and fit (${kinds.over}px over)`);
+  ok(!kinds.short.length, `each still at least 44px to tap (${kinds.short.join(', ')})`);
+  ok(kinds.saysMax ? !/Choose up to/.test(kinds.hint) : /Choose up to 2/.test(kinds.hint), 'the limit is said once');
+  await shot('05-space-short-phone');
+  await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await sleep(600);
   await pick('spaceTypes', 'Sensory room');
   await pick('spaceTypes', 'Classroom or learning space');
   const left = await page.$$eval('[data-field="spaceTypes"] input', (els) => els.filter((i) => i.disabled).length);

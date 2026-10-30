@@ -194,6 +194,7 @@ function init(root, cfg, mode) {
     honeypot: $('[data-honeypot]'),
     turnstile: $('[data-turnstile]'),
     dialog: $('[data-later-dialog]'),
+    detail: $('[data-detail-dialog]'),
   };
 
   // ── State ────────────────────────────────────────────────────────
@@ -878,6 +879,7 @@ function init(root, cfg, mode) {
     if (!focused || !el || el.hidden || ui.form.hidden) return null;
     settle(); // taking the screen's own padding mid-change, the first step came out too narrow
     el.querySelectorAll('[data-off]').forEach(k => k.removeAttribute('data-off'));
+    unfit(el); // measured with all their words: a fitted screen is fitted again once it's on
     const places = [...el.querySelectorAll(':scope > .af-place')];
     places.forEach(p => { p.removeAttribute('data-split'); p.style.removeProperty('--af-map-h'); });
     if (el.offsetParent === null) return null;
@@ -1011,15 +1013,64 @@ function init(root, cfg, mode) {
       place.style.setProperty('--af-map-h', `${Math.max(least, Math.floor(h - over - 1))}px`);
     }
   }
+  /** A page's choices as they are before fitting: every tile's words, a list in the columns its width gives it */
+  function unfit(el) {
+    for (const t of el?.querySelectorAll('.af-tile[data-clamp]') || []) { t.removeAttribute('data-clamp'); t.style.removeProperty('--lines'); }
+    for (const s of el?.querySelectorAll('.af-choices--tiles[data-snug]') || []) s.removeAttribute('data-snug');
+    for (const l of el?.querySelectorAll('.af-choices--cols[data-two]') || []) l.removeAttribute('data-two');
+  }
+  const onScreen = (el) => el.getClientRects().length && !el.closest('[data-off], [hidden]');
+  const overflows = () => document.documentElement.scrollHeight > innerHeight;
+  /**
+   * Choices that each explain themselves, on a phone too short for all their words: every tile says
+   * its first lines (as many for each, as many as the screen has room for), the rest under its More
+   */
+  function fitTiles() {
+    for (const s of pageEl(currentId)?.querySelectorAll('.af-choices--tiles') || []) {
+      if (!focused || !onScreen(s)) continue;
+      settle();
+      if (getComputedStyle(s).getPropertyValue('--af-narrow').trim() !== '1') continue; // two to a row, every word fits
+      if (!overflows()) continue;
+      const tiles = [...s.querySelectorAll('.af-tile')].map((tile) => {
+        const d = tile.querySelector('.af-choice-desc');
+        return { tile, lines: d ? Math.round(d.getBoundingClientRect().height / (parseFloat(getComputedStyle(d).lineHeight) || 21)) : 0 };
+      });
+      // n lines each; a little snugger before a line goes
+      const fits = (n, snug) => {
+        for (const { tile, lines } of tiles) if (lines > n) { tile.dataset.clamp = n; tile.style.setProperty('--lines', n); }
+        s.toggleAttribute('data-snug', snug);
+        settle();
+        return !overflows();
+      };
+      for (let n = Math.max(0, ...tiles.map(x => x.lines)) - 1; n >= 0; n--) if (fits(n, false) || fits(n, true)) break;
+    }
+  }
+  /** A longer list of short answers too tall for a phone's screen in one column: two */
+  function fitCols() {
+    for (const l of pageEl(currentId)?.querySelectorAll('.af-choices--cols') || []) {
+      if (!focused || !onScreen(l)) continue;
+      settle();
+      if (overflows()) l.setAttribute('data-two', '');
+    }
+  }
+  /** The screen fitted to its room: the tiles' words, a long list's columns, then the map's size */
+  function fitScreen() {
+    unfit(pageEl(currentId));
+    fitTiles();
+    fitCols();
+    fitMap();
+  }
   /** Show the current screen's pieces, the others waiting */
   function paintScreen() {
     const list = packs[currentId];
     const all = list ? list.flat() : pieces(currentId);
     const on = new Set(list ? list[screenNo] || [] : all);
     for (const k of all) k.toggleAttribute('data-off', !on.has(k));
-    // Words cut across screens show only where they have a part on this one
-    for (const c of (list && cutsOf[currentId]) || []) c.toggleAttribute('data-off', ![...on].some(k => c.contains(k)));
-    fitMap();
+    // A pair, or the address apart from its map, split across screens: off where neither half is on
+    // (an empty box would still take the page's gap). Words cut across screens: the same
+    const holders = [...(pageEl(currentId)?.children || [])].filter(b => !all.includes(b) && all.some(k => b.contains(k)));
+    for (const c of [...holders, ...((list && cutsOf[currentId]) || [])]) c.toggleAttribute('data-off', ![...on].some(k => c.contains(k)));
+    fitScreen();
   }
   /** The questions on a screen of a page (the whole page before it's been worked out) */
   const screenFieldIds = (pid = currentId, n = screenNo) => new Set((packs[pid] ? packs[pid][n] || [] : pieces(pid)).flatMap(idsOf));
@@ -1095,8 +1146,8 @@ function init(root, cfg, mode) {
       }
       if (scroll && !focusField) scrollToForm(!!dir);
       growPage(id);
-      fitMap();
-      requestAnimationFrame(fitMap); // and once the screen has settled (its header, Back and Continue)
+      fitScreen();
+      requestAnimationFrame(fitScreen); // and once the screen has settled (its header, Back and Continue)
     };
     return swap(update, dir, !pageChanged).then(() => {
       if (focusField) focusOn(focusField);
@@ -2550,6 +2601,13 @@ function init(root, cfg, mode) {
     p.append(before || '', b, after || '');
   }
 
+  // A tap on the dimmed page around a dialog closes it (one on the dialog's own padding doesn't)
+  const tappedOutside = (d, e) => {
+    if (e.target !== d) return false;
+    const r = d.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
+
   // ── Save and finish later ────────────────────────────────────────
   const dlg = ui.dialog;
   const openLater = () => {
@@ -2566,7 +2624,7 @@ function init(root, cfg, mode) {
   ui.saveLaters.forEach(b => b.addEventListener('click', openLater));
   dlg.querySelector('[data-later-close]').addEventListener('click', () => dlg.close());
   dlg.querySelectorAll('[data-later-done]').forEach(b => b.addEventListener('click', () => dlg.close()));
-  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // a tap on the dimmed backdrop
+  dlg.addEventListener('click', (e) => { if (tappedOutside(dlg, e)) dlg.close(); });
   dlg.querySelector('[data-later-form]').addEventListener('submit', async (e) => {
     e.preventDefault();
     const status = dlg.querySelector('[data-later-status]');
@@ -2590,6 +2648,38 @@ function init(root, cfg, mode) {
       btn.disabled = false;
     }
   });
+
+  // ── A choice's whole description (More, when a phone shows only part of it) ──
+  const detail = ui.detail;
+  let detailFor = null; // the box of the choice it's about
+  function paintDetail() {
+    const on = detailFor.checked;
+    const full = !on && detailFor.disabled; // two chosen already
+    const pick = detail.querySelector('[data-detail-pick]');
+    detail.querySelector('[data-detail-tag]').hidden = !on;
+    pick.textContent = T(on ? 'detailRemove' : 'detailChoose');
+    pick.classList.toggle('af-btn--primary', !on);
+    pick.classList.toggle('af-btn--ghost', on);
+    pick.disabled = full;
+    detail.querySelector('[data-detail-status]').textContent = full ? T('detailFull', { n: byId[detailFor.name.replace(/^af-/, '')]?.max || 2 }) : '';
+  }
+  root.addEventListener('click', (e) => {
+    const choice = detail && e.target.closest('[data-tile-more]')?.closest('.af-tile')?.querySelector('.af-choice');
+    if (!choice) return;
+    detailFor = choice.querySelector('input');
+    detail.querySelector('[data-detail-title]').textContent = choice.querySelector('.af-choice-title')?.textContent || '';
+    detail.querySelector('[data-detail-text]').textContent = choice.querySelector('.af-choice-desc')?.textContent || '';
+    paintDetail();
+    detail.showModal();
+    detail.querySelector('[data-detail-title]').focus(); // its name read first (and no ring on Close)
+  });
+  detail?.querySelector('[data-detail-pick]').addEventListener('click', () => {
+    if (!detailFor || (detailFor.disabled && !detailFor.checked)) return;
+    detail.close();
+    detailFor.click(); // as a tap on its box (after the sheet's gone, so the check is seen drawing in): the limit, the save, the rest follow
+  });
+  detail?.querySelector('[data-detail-close]').addEventListener('click', () => detail.close());
+  detail?.addEventListener('click', (e) => { if (tappedOutside(detail, e)) detail.close(); });
 
   // ── Language ─────────────────────────────────────────────────────
   function setLang(l, { remember: keep = true, persist = true } = {}) {

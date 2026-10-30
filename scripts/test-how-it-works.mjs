@@ -292,7 +292,8 @@ async function checkWidth(name, width, height, mobile) {
     const r = document.querySelector('.mlist').getBoundingClientRect();
     return {
       rows: rows.length,
-      ticked: rows.filter((row) => parseFloat(getComputedStyle(row.querySelector('.mlist__tick')).strokeDashoffset) === 0).length,
+      // Drawn and seen (an unticked one is hidden: Safari draws a dot where its hidden line ends)
+      ticked: rows.filter((row) => { const cs = getComputedStyle(row.querySelector('.mlist__tick')); return parseFloat(cs.strokeDashoffset) === 0 && cs.opacity === '1'; }).length,
       tasks: rows.map((row) => row.querySelector('strong').textContent.trim()),
       imgs: document.querySelectorAll('#mobilize img').length,
       fits: r.left >= 0 && r.right <= innerWidth,

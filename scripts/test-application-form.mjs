@@ -191,6 +191,17 @@ const noSideScroll = async (label, p = page) => {
   const wide = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(wide <= 1, `${label}: nothing wider than the screen (${wide}px over)`);
 };
+/**
+ * One connection makes every request of this run, so it can reach the per-minute limit on /api/apply
+ * (a family never gets near it): before a part that starts a new application, wait it out
+ */
+const calm = async (p = page) => {
+  for (let i = 0; i < 14; i++) {
+    const status = await p.evaluate(async () => (await fetch('/api/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status);
+    if (status !== 429) return;
+    await sleep(5000);
+  }
+};
 const draftToken = (p = page) => p.evaluate(() => JSON.parse(localStorage.getItem('soard-application-draft') || '{}').token);
 const d1 = (sql) => (PAGES_DIR ? execFileSync('npx', ['wrangler', 'd1', 'execute', 'soard-db', '--local', '--json', '--command', sql], { cwd: PAGES_DIR, encoding: 'utf8' }) : null);
 /** Open "All steps" and read it: [{ name, state, disabled, now }] */
@@ -570,7 +581,65 @@ try {
   console.log('Home and Space');
   ok((await stepTitle()) === 'Home and Space', 'Home and Space');
   ok(/zero-entry shower/.test(await page.$eval('[data-field="makeoverTypes"]', (e) => e.textContent)), 'makeover choices carry their descriptions');
-  await pick('makeoverTypes', 'Accessible Bathroom');
+  // A short phone (an iPhone 15 with Safari's bars): each tile says its first lines, More opens the rest
+  await page.setViewport({ width: 393, height: 659, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await sleep(600);
+  const tiles = await page.evaluate(() => {
+    const f = document.querySelector('[data-field="makeoverTypes"]');
+    return {
+      over: document.documentElement.scrollHeight - innerHeight,
+      clamped: [...f.querySelectorAll('.af-tile')].filter((t) => t.dataset.clamp != null).length,
+      more: [...f.querySelectorAll('[data-tile-more]')].filter((b) => b.getClientRects().length).map((b) => [Math.round(b.getBoundingClientRect().width), Math.round(b.getBoundingClientRect().height)]),
+      saysMax: /up to (two|2)\b/i.test(f.querySelector('.af-label')?.textContent || ''),
+      hint: f.querySelector('.af-hint')?.textContent || '',
+    };
+  });
+  ok(tiles.over <= 0, `on a short phone the makeover choices fit the screen (${tiles.over}px over)`);
+  ok(tiles.clamped > 0 && tiles.more.length === tiles.clamped && tiles.more.every(([w, h]) => w >= 44 && h >= 44), `each says its first lines, with a More at least 44px to tap (${JSON.stringify(tiles.more)})`);
+  ok(tiles.saysMax ? !/Choose up to/.test(tiles.hint) : /Choose up to 2/.test(tiles.hint), 'the limit is said once (by the question, or the hint when the question doesn\'t)');
+  const openDetail = async (value) => {
+    await page.evaluate((v) => [...document.querySelectorAll('[data-field="makeoverTypes"] .af-tile')].find((t) => t.querySelector('input').value === v).querySelector('[data-tile-more]').click(), value);
+    await sleep(350);
+    return page.$eval('[data-detail-dialog]', (d) => ({
+      open: d.open, title: d.querySelector('[data-detail-title]').textContent, text: d.querySelector('[data-detail-text]').textContent,
+      pick: d.querySelector('[data-detail-pick]').textContent, disabled: d.querySelector('[data-detail-pick]').disabled, chosen: !d.querySelector('[data-detail-tag]').hidden,
+      status: d.querySelector('[data-detail-status]').textContent, named: document.activeElement === d.querySelector('[data-detail-title]'), gap: Math.round(innerHeight - d.getBoundingClientRect().bottom),
+    }));
+  };
+  const detailOpen = () => page.$eval('[data-detail-dialog]', (d) => d.open);
+  let sheet = await openDetail('Accessible Bathroom');
+  ok(sheet.open && sheet.title === 'Accessible Bathroom' && /zero-entry shower/.test(sheet.text) && sheet.named, 'More opens the whole description, its name read first');
+  ok(sheet.gap === 0 && sheet.pick === 'Choose this' && !sheet.chosen, 'on a phone it comes up from the bottom, with "Choose this"');
+  await shot('08-makeover-more-phone');
+  await page.click('[data-detail-pick]');
+  await sleep(300);
+  ok(!(await detailOpen()) && await page.$eval('[data-field="makeoverTypes"] input[value="Accessible Bathroom"]', (i) => i.checked), '"Choose this" chooses it, and the sheet goes');
+  await pick('makeoverTypes', 'Dream Bedroom');
+  sheet = await openDetail('Ramp');
+  ok(sheet.disabled && /chosen 2/.test(sheet.status), `with two chosen, a third's sheet says so (${sheet.status})`);
+  await page.keyboard.press('Escape');
+  await sleep(200);
+  ok(!(await detailOpen()), 'Escape closes it');
+  sheet = await openDetail('Dream Bedroom');
+  ok(sheet.chosen && sheet.pick === 'Remove this choice', "a chosen one's sheet says so, and can take it back");
+  await page.click('[data-detail-pick]');
+  await sleep(300);
+  ok(!(await page.$eval('[data-field="makeoverTypes"] input[value="Dream Bedroom"]', (i) => i.checked)), '"Remove this choice" takes it back');
+  await openDetail('Ramp');
+  const edge = await page.$eval('[data-detail-dialog]', (d) => { const r = d.getBoundingClientRect(); return { x: r.left + 6, y: r.bottom - 6, top: r.top }; });
+  await page.mouse.click(edge.x, edge.y);
+  await sleep(150);
+  ok(await detailOpen(), "a tap on the sheet's own edge leaves it open");
+  await page.mouse.click(200, Math.max(10, edge.top - 40));
+  await sleep(200);
+  ok(!(await detailOpen()), 'a tap on the dimmed page closes it');
+  ok(await page.$eval('[data-field="makeoverTypes"] input:not(:checked) + .af-choice-box .af-check-draw path', (p) => getComputedStyle(p).opacity) === '0', "an empty box draws nothing (Safari showed a dot where the hidden check ends)");
+  // A computer: two to a row, every word, no More
+  await page.setViewport({ width: 1280, height: 900, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+  await sleep(600);
+  ok(await page.$eval('[data-field="makeoverTypes"]', (f) => !f.querySelector('.af-tile[data-clamp]') && ![...f.querySelectorAll('[data-tile-more]')].some((b) => b.getClientRects().length)), 'on a computer every tile has all its words, and no More');
+  await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await sleep(600);
   await pick('makeoverTypes', 'Dream Bedroom');
   const disabled = await page.$$eval('[data-field="makeoverTypes"] input', (els) => els.filter((e) => e.disabled).map((e) => e.value));
   ok(disabled.length === 2 && disabled.includes('Ramp'), 'two picked: the other two are disabled');
@@ -746,6 +815,7 @@ try {
   for (const reduced of [false, true]) {
     const m = await newTab({ context: mCtx, reduced, phone: false });
     await m.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
+    await calm(m);
     await m.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await m.reload({ waitUntil: 'networkidle0' });
     await begin(m);
@@ -903,6 +973,7 @@ try {
   const dCtx = await browser.createBrowserContext();
   const desk = await newTab({ context: dCtx, phone: false });
   await desk.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
+  await calm(desk);
   await desk.evaluate(() => localStorage.clear());
   await desk.reload({ waitUntil: 'networkidle0' });
   ok(await desk.$eval('[data-field="ackParameters"] .af-choice', (e) => getComputedStyle(e).minHeight) !== '', 'desktop loads');
@@ -986,6 +1057,7 @@ try {
         await s.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: dark ? 'dark' : 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }]);
         await s.evaluateOnNewDocument((lang) => { try { localStorage.setItem('soard-application-lang', JSON.stringify(lang)); } catch {} }, l);
         await s.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
+        await calm(s);
         const tag = `${phone ? 'phone' : 'desktop'}-${dark ? 'dark' : 'light'}-${l}`;
         await s.setViewport({ ...(phone ? { width: 390, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { width: 1280, deviceScaleFactor: 1 }), height: 1500 });
         await shot(`20-hero-${tag}`, s);

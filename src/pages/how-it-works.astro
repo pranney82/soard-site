@@ -855,9 +855,10 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
     display: inline-flex; align-items: center; justify-content: center;
     transition: background-color 0.35s ease, border-color 0.35s ease; transition-delay: calc(0.35s + var(--i, 0) * 0.2s);
   }
-  .mlist__tick { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 0.45s var(--ease-out); transition-delay: calc(0.45s + var(--i, 0) * 0.2s); }
+  /* Unseen until it draws: Safari shows a round cap's dot where the hidden line ends */
+  .mlist__tick { stroke-dasharray: 1; stroke-dashoffset: 1; opacity: 0; transition: stroke-dashoffset 0.45s var(--ease-out), opacity 0s; transition-delay: calc(0.45s + var(--i, 0) * 0.2s); }
   .mlist.is-visible .mlist__check { background: var(--c-yellow); border-color: var(--c-yellow); }
-  .mlist.is-visible .mlist__tick { stroke-dashoffset: 0; }
+  .mlist.is-visible .mlist__tick { stroke-dashoffset: 0; opacity: 1; }
   .mlist__what { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .mlist__what strong { font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--c-dark); }
   .mlist__what span { font-size: 14.5px; line-height: 1.55; color: var(--c-text-muted); max-width: 62ch; }
@@ -1097,7 +1098,7 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
     .boards__scroll { flex-wrap: wrap; overflow: visible; }
     .board { opacity: 1 !important; }
     .planview__img--proposed { display: none; }
-    .mlist__tick { stroke-dashoffset: 0 !important; }
+    .mlist__tick { stroke-dashoffset: 0 !important; opacity: 1 !important; }
     [data-reveal], [data-reveal] * { opacity: 1 !important; transform: none !important; clip-path: none !important; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1114,7 +1115,7 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
     .lqip-img.lqip-pending { opacity: initial; }
     .site__shot img, .facade__poster, .planview__img, .seg__thumb, .rail__link, .rail__bead, .lb, .lb__img, .board, .board__paper, .chapter__num { transition: none; }
     .mlist__check { background: var(--c-yellow); border-color: var(--c-yellow); }
-    .mlist__tick { stroke-dashoffset: 0; }
+    .mlist__tick { stroke-dashoffset: 0; opacity: 1; }
     .planview__caption > span { animation: none; }
     .rail__link.is-active { transform: none; }
   }

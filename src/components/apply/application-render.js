@@ -99,6 +99,9 @@ export const UI = {
     addParent2: 'Add another parent or guardian', addParentAddress: "Add the parent's address, if it's different from the child's",
     mailFix: 'Did you mean {email}?', mailFixUse: 'Use {email}',
     language: 'Language', loading: 'Loading the application…', optional: '(optional)', chooseOne: 'Choose one', choose: 'Choose', upTo: 'Choose up to {n}.',
+    // A choice's whole description, when a phone has room for only part of it
+    tileMore: 'More', tileMoreAbout: 'More about {name}', detailChoose: 'Choose this', detailRemove: 'Remove this choice', detailChosen: 'Chosen',
+    detailFull: 'You’ve chosen {n}. Remove one to choose this.',
     first: 'First name', last: 'Last name', street: 'Street address', apt: 'Apartment, suite, etc.', city: 'City', state: 'State', zip: 'ZIP code', signature: 'Type your full name',
     // The hero above the form
     heroEyebrow: 'For Families · {year} Application', heroTitleHtml: 'Tell us about your <em>child</em>.',
@@ -188,6 +191,8 @@ export const UI = {
     addParent2: 'Agregar otro padre, madre o tutor', addParentAddress: 'Agregar la dirección del padre, la madre o el tutor, si es diferente a la del niño',
     mailFix: '¿Quiso decir {email}?', mailFixUse: 'Usar {email}',
     language: 'Idioma', loading: 'Cargando la solicitud…', optional: '(opcional)', chooseOne: 'Elija una opción', choose: 'Elegir', upTo: 'Elija hasta {n}.',
+    tileMore: 'Más', tileMoreAbout: 'Más sobre {name}', detailChoose: 'Elegir esta', detailRemove: 'Quitar esta opción', detailChosen: 'Elegida',
+    detailFull: 'Ya eligió {n}. Quite una para elegir esta.',
     first: 'Nombre', last: 'Apellido', street: 'Dirección', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
     heroEyebrow: 'Para familias · Solicitud {year}', heroTitleHtml: 'Cuéntenos sobre <em>su hijo o hija</em>.',
     heroLeadHtml: 'Aquí comienza la historia de su familia. La solicitud toma unos 15 minutos y <strong>se guarda mientras avanza</strong>, así que puede detenerse y volver cuando quiera.',
@@ -243,11 +248,14 @@ const CHECK = '<svg class="af-check-draw" viewBox="0 0 16 16" aria-hidden="true"
 // The ring around an upload while it goes up (circumference 2πr = 113.1 at r=18), on a small disc
 const RING = '<svg class="af-ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="af-ring-disc" cx="22" cy="22" r="22" /><circle class="af-ring-track" cx="22" cy="22" r="18" /><circle class="af-ring-fill" cx="22" cy="22" r="18" /></svg>';
 
+// A number as a question might spell it out, in either language
+const NUMBER_WORDS = ['', 'one|una|uno', 'two|dos', 'three|tres', 'four|cuatro', 'five|cinco', 'six|seis'];
+
 /** Short answers with nothing to explain (Yes / No, Male / Female) sit side by side */
 function sideBySide(f, plain) {
   if (f.type !== 'radio' || f.options.length < 2 || f.options.length > 3) return false;
   if (!plain && f.options.some(v => f.descriptions?.[v])) return false;
-  return f.options.every(v => String(f.optionLabels?.[v] ?? v).length <= 14);
+  return f.options.every(v => String(f.optionLabels?.[v] ?? v).length <= 18); // "No estoy seguro/a" too, as "I'm not sure" is
 }
 
 /**
@@ -268,7 +276,7 @@ function halves(items, size) {
   return [items.slice(0, cut), items.slice(cut)];
 }
 
-function choices(f, id, { plain = false } = {}) {
+function choices(f, id, { plain = false, T = (k, v) => t('en', k, v) } = {}) {
   const type = f.type === 'radio' || f.type === 'area' ? 'radio' : 'checkbox';
   // Choices that each explain themselves sit as tiles (two to a row where there's room)
   const tiles = !plain && f.options.length >= 3 && f.options.every(v => f.descriptions?.[v]);
@@ -281,11 +289,16 @@ function choices(f, id, { plain = false } = {}) {
     const text = desc ? `<strong class="af-choice-title">${esc(label)}</strong><span class="af-choice-desc">${esc(desc)}</span>` : esc(label);
     return `<label class="af-choice"><input type="${type}" name="${id}" value="${esc(v)}" id="${id}-${i}"><span class="af-choice-box" aria-hidden="true">${CHECK}</span><span class="af-choice-text">${text}</span></label>`;
   };
+  // A tile's More: its whole description in a sheet, there when a phone shows only part of it
+  const tile = (v, i) => `<div class="af-tile">${one(v, i)}<button type="button" class="af-tile-more" data-tile-more="${id}-${i}" aria-haspopup="dialog" aria-label="${esc(T('tileMoreAbout', { name: f.optionLabels?.[v] ?? v }))}">${esc(T('tileMore'))}</button></div>`;
   const items = f.options.map((v, i) => [v, i]);
+  // Each column stacks its own (a long answer on two lines doesn't make the one beside it as tall)
   const body = tiles
-    ? halves(items, ([v]) => 60 + String(f.descriptions?.[v] || '').length).map(col => `<div class="af-tile-col">${col.map(([v, i]) => one(v, i)).join('')}</div>`).join('')
-    : items.map(([v, i]) => one(v, i)).join('');
-  return `<div class="af-choices${sideBySide(f, plain) ? ' af-choices--row' : ''}${tiles ? ' af-choices--tiles' : ''}${cols ? ' af-choices--cols' : ''}"${cols ? ` style="--rows:${Math.ceil(f.options.length / 2)}"` : ''}>${body}</div>`;
+    ? halves(items, ([v]) => 60 + String(f.descriptions?.[v] || '').length).map(col => `<div class="af-tile-col">${col.map(([v, i]) => tile(v, i)).join('')}</div>`).join('')
+    : cols
+      ? halves(items, ([v]) => 30 + String(f.optionLabels?.[v] ?? v).length).map(col => `<div class="af-col">${col.map(([v, i]) => one(v, i)).join('')}</div>`).join('')
+      : items.map(([v, i]) => one(v, i)).join('');
+  return `<div class="af-choices${sideBySide(f, plain) ? ' af-choices--row' : ''}${tiles ? ' af-choices--tiles' : ''}${cols ? ' af-choices--cols' : ''}">${body}</div>`;
 }
 
 /**
@@ -326,7 +339,9 @@ export function renderField(f, lang = 'en', area = null, kind = 'family') {
   const errId = `${id}-error`;
   const hintId = `${id}-hint`;
   const optional = !f.required ? `<span class="af-optional"> ${T('optional')}</span>` : '';
-  const hints = [f.help, f.type === 'checkbox' && f.max ? T('upTo', { n: f.max }) : ''].filter(Boolean);
+  // "Choose up to 2.", unless the question already says so ("…up to two (2)…", "…hasta dos…")
+  const saysMax = f.type === 'checkbox' && f.max && new RegExp(`\\b(?:up to|hasta)\\s+(?:${f.max}|${NUMBER_WORDS[f.max] || f.max})\\b`, 'i').test(f.label || '');
+  const hints = [f.help, f.type === 'checkbox' && f.max && !saysMax ? T('upTo', { n: f.max }) : ''].filter(Boolean);
   const help = hints.length ? `<p class="af-hint" id="${hintId}">${hints.map(esc).join(' ')}</p>` : '';
   const described = `aria-describedby="${hints.length ? `${hintId} ` : ''}${errId}"`;
   if (f.type === 'content') return `<div class="af-content" data-field="${esc(f.id)}" data-type="content">${f.html || ''}</div>`;
@@ -350,7 +365,7 @@ export function renderField(f, lang = 'en', area = null, kind = 'family') {
   let inner;
   if (isGroup) {
     let body = '';
-    if (['radio', 'checkbox', 'ack'].includes(f.type)) body += choices(f, id);
+    if (['radio', 'checkbox', 'ack'].includes(f.type)) body += choices(f, id, { T });
     // The parts' names sit inside their boxes and rise to the top edge once there's an answer
     // (placeholder=" " is what lets the styles tell an empty box from a filled one)
     const part = (name, input) => `<label class="af-sub af-float">${input}<span class="af-float-label">${name}</span></label>`;

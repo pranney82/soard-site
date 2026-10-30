@@ -16,7 +16,7 @@ const described = [f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boo
     <fieldset aria-describedby={described}>
       <legend class="adv-label">{f.label}{!f.required && <span class="adv-optional">optional</span>}</legend>
       {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
-      <div class="adv-choices">
+      <div class={`adv-choices${f.options.length <= 3 && f.options.every((o: string) => o.length <= 6) ? ' adv-choices--short' : ''}`}>
         {f.options.map((o: string) => (
           <label class="adv-choice"><input type="radio" name={f.id} value={o} /><span class="adv-choice-box" aria-hidden="true"></span><span class="adv-choice-text">{o}</span></label>
         ))}
