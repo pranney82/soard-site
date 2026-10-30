@@ -7,6 +7,7 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
+import { asksOn } from './lib/vendor-asks.mjs';
 import { MERCURY_BASE } from '../functions/api/_mercury.js';
 import { syncBills, keepTransaction, readCharges, ensureSpendSchema } from '../functions/api/_spend.js';
 import {
@@ -87,6 +88,7 @@ beforeEach(async () => {
   const DB = await createD1({ schemaSql: ['CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)'] });
   env = { DB, MERCURY_API_TOKEN: 'secret-token:test', MERCURY_RELAY_KEY: RELAY_KEY, JOBTREAD_GRANT_KEY: 'jt', RESEND_API_KEY: 're_test', SLACK_BOT_TOKEN: 'xoxb-test' };
   await ensureSpendSchema(DB);
+  await asksOn(DB);
 });
 
 const APPROVER = 'approver@example.org';

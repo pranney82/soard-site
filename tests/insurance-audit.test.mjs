@@ -7,8 +7,9 @@ import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument } from 'pdf-lib';
 import { createD1 } from './lib/d1-shim.mjs';
+import { asksOn } from './lib/vendor-asks.mjs';
 import { ensureSpendSchema } from '../functions/api/_spend.js';
-import { ensureVendorSchema } from '../functions/api/_vendors.js';
+import { ensureVendorSchema, saveDocSettings } from '../functions/api/_vendors.js';
 import { forgetRampToken } from '../functions/api/_ramp.js';
 import {
   term, termOf, termsShown, monthsText, isSubcontractor, codedAs, coverageFor, coverageOn, combinePayments, auditFrom, buildRun, auditFor, readRun, runIsStale,
@@ -269,6 +270,7 @@ beforeEach(async () => {
   await ensureSpendSchema(DB);
   await ensureVendorSchema(DB);
   await ensureAuditSchema(DB);
+  await asksOn(DB);
   for (const v of vendors) {
     await DB.prepare('INSERT INTO vendors (id, name, vkey, jt_id, email, facts, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(`jt_${v.jtId}`, v.name, v.name.toLowerCase(), v.jtId, v.email, JSON.stringify({ emails: v.emails, fields: v.fields }), '', '').run();
@@ -460,4 +462,10 @@ test('the admin route: the audit, its downloads, a call, and only the terms show
   assert.equal(j.audit.rows.find((x) => x.jtId === 'V2').why, 'Works off site (holly)');
   r = await onRequestPost(ctx('', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'call', term: '2026', key: '../x', reason: 'off-site' }) }));
   assert.equal(r.status, 400);
+});
+
+test('with asking off, the audits ask nobody for a certificate', async () => {
+  await saveDocSettings(env.DB, { asking: false, by: 'pat@example.org' });
+  const r = await askForGaps(env, [], { now: Date.parse('2026-10-30T15:00:00Z') });
+  assert.deepEqual(r, { asked: 0, waiting: 'Emails asking for W-9s and certificates are off' });
 });

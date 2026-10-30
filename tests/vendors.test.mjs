@@ -6,13 +6,14 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { MERCURY_BASE } from '../functions/api/_mercury.js';
+import { asksOn } from './lib/vendor-asks.mjs';
+import { MERCURY_BASE, writeState } from '../functions/api/_mercury.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureBillPaySchema } from '../functions/api/_bill-pay.js';
 import {
   docsState, labelFor, requestEmail, jtSetup, readJtVendor, createLink, findLink, fileUpload, pageView, askDue, sweep,
-  refreshCache, ensureVendorSchema, sendPreview, readAsk, saveDocSettings, readDocSettings, vendorsThatNeedDocs, DEFAULTS, FOLDER, PREVIEW_ID, LIMITS, TRADES, DOC_STATES,
+  refreshCache, ensureVendorSchema, sendPreview, readAsk, saveDocSettings, readDocSettings, vendorsThatNeedDocs, asksOnHold, askForBill, DEFAULTS, FOLDER, PREVIEW_ID, LIMITS, TRADES, DOC_STATES,
 } from '../functions/api/_vendors.js';
 import { judgeCoi, judgeCoiReads, judgeW9, mergeCoi, documentType, answerOf, scannedPages } from '../functions/api/_vendor-read.js';
 import { onRequestGet as pageGet, onRequestPost as pagePost } from '../functions/api/vendor-docs.js';
@@ -144,6 +145,7 @@ beforeEach(async () => {
   await ensureSpendSchema(DB);
   await ensureBillPaySchema(DB);
   await ensureVendorSchema(DB);
+  await asksOn(DB);
   await writeSlackConfig(DB, { channel: { id: 'CNEWS', name: 'news' }, finance: { id: 'CFIN', name: 'finance' } });
 });
 
@@ -583,6 +585,47 @@ test('links: unknown, expired and the old Vendors area’s links open nothing', 
 });
 
 // ─── The heartbeat's sweep ──────────────────────────────────────────
+
+test('nobody is emailed for a W-9 or certificate until asking is on and the certificate search has looked everywhere', async () => {
+  assert.equal(DEFAULTS.asking, false, 'off until someone at SOARD turns it on');
+  await setFields({ w9: false, gl: '2027-06-01', wc: '2027-06-01' });
+  await pendingBill();
+  const tries = async (now) => {
+    const out = await sweep(env, { now });
+    const v = await readJtVendor(env, VENDOR);
+    await askForBill(env, v, docsState(v, await readDocSettings(env.DB), { now }), { cents: 185000, number: '7' }, { now });
+    return out;
+  };
+
+  await saveDocSettings(env.DB, { asking: false, by: 'pat@example.org' });
+  const off = await tries(NOW);
+  assert.match(off.held, /are off/);
+  assert.equal(off.asked, 0);
+  assert.equal(world.emails.length, 0, 'not the sweep, not the held bill');
+  assert.equal(world.slack.length, 0, 'nor a Slack post about it');
+  assert.equal(world.vendors[VENDOR].values[fieldId('Documents')], 'Missing', 'JobTread still says what’s missing');
+
+  // On, while the search still has email, JobTread or Ramp to look through, or files to read
+  await saveDocSettings(env.DB, { asking: true, by: 'pat@example.org' });
+  for (const st of [{ mail: {}, jt: { doneAt: 1 }, ramp: { doneAt: 1 } }, { mail: { 'pat@example.org': { doneAt: 1 } }, jt: null, ramp: { doneAt: 1 } }]) {
+    await writeState(env.DB, 'coi-backfill', st);
+    env.GOOGLE_CALENDAR_KEY = 'k';
+    assert.match(await asksOnHold(env), /still looking/);
+  }
+  delete env.GOOGLE_CALENDAR_KEY;
+  await writeState(env.DB, 'coi-backfill', { mail: {}, jt: { doneAt: 1 }, ramp: { doneAt: 1 } });
+  await env.DB.prepare("INSERT INTO coi_found (id, source, item, state, found_at) VALUES ('f1', 'jt', 'file', 'queued', 'x')").run();
+  assert.match((await tries(NOW + 60000)).held, /still looking/);
+  assert.equal(world.emails.length, 0);
+
+  // Searched, nothing left to read: asked
+  await env.DB.prepare("UPDATE coi_found SET state = 'filed'").run();
+  assert.equal(await asksOnHold(env), null);
+  // (a vendor looked at while it was held is asked at its next look, within 6 hours)
+  assert.equal((await tries(NOW + DAY + 120000)).asked, 1);
+  assert.equal(world.emails.length, 1, 'the sweep asked; the held bill’s ask the same day waits');
+  assert.equal((await readDocSettings(env.DB)).askingBy, 'pat@example.org');
+});
 
 test('a vendor with a bill waiting is asked once, reminded after 3 days, and JobTread says Requested', async () => {
   await setFields({ w9: false, gl: '2027-06-01', wc: '2027-06-01' });

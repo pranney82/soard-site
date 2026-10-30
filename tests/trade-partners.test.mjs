@@ -11,6 +11,7 @@ import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument } from 'pdf-lib';
 import { createD1 } from './lib/d1-shim.mjs';
+import { asksOn } from './lib/vendor-asks.mjs';
 import { MERCURY_BASE } from '../functions/api/_mercury.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { ensureSpendSchema } from '../functions/api/_spend.js';
@@ -18,8 +19,9 @@ import { ensureBillPaySchema } from '../functions/api/_bill-pay.js';
 import { createLink, findLink, ensureVendorSchema, fileUpload, TRADES } from '../functions/api/_vendors.js';
 import {
   partnerView, partnerInvoices, readBank, bankHold, confirmBank, startPartner, matchVendor, invitePartner, partnerNudges,
-  readProfileRow, routingOk, phoneOf, holderOf, isTestCompany,
+  readProfileRow, routingOk, phoneOf, holderOf, isTestCompany, askAgent,
 } from '../functions/api/_trade-partners.js';
+import { saveDocSettings } from '../functions/api/_vendors.js';
 import { onRequestGet as testsGet, onRequestPost as testsPost } from '../functions/api/trade-partners-admin.js';
 import { checkW9, buildW9, tinProblem } from '../functions/api/_w9-form.js';
 import { onRequestPost as post, onRequestGet as get } from '../functions/api/trade-partner.js';
@@ -169,6 +171,7 @@ beforeEach(async () => {
   await ensureSpendSchema(DB);
   await ensureBillPaySchema(DB);
   await ensureVendorSchema(DB);
+  await asksOn(DB);
   await writeSlackConfig(DB, { channel: { id: 'CNEWS', name: 'news' }, finance: { id: 'CFIN', name: 'finance' } });
   await DB.prepare("INSERT INTO vendors (id, name, vkey, jt_id, email, facts, created_at, updated_at) VALUES ('jt_ACC-TKO', 'TKO Plumbing', 'tko plumbing', ?, 'tom@tko.example', '{\"emails\":[\"tom@tko.example\"]}', '', '')").bind(VENDOR).run();
 });
@@ -601,4 +604,16 @@ test('after a live test: only a company named “TEST …” is listed, and remo
   assert.match(left.payees[0].problem, /Testa Tile/);
   assert.equal(left.jobtread, 'archived');
   assert.ok(world.recipients.some((r) => r.id === 'rec-renamed'));
+});
+
+test('with asking off, SOARD’s renewals, reminders and nudges to partners and agents wait; a partner asking for its own agent still goes', async () => {
+  await saveDocSettings(env.DB, { asking: false, by: 'pat@example.org' });
+  world.accounts[VENDOR].values = {};
+  const r = await call({ action: 'agent', token: await tokenFor(), name: 'Ana Agent', email: 'ana@agency.example', agency: 'Example Insurance' });
+  assert.equal(r.ok, true);
+  assert.equal(world.emails.length, 1, 'their own ask reaches the agent');
+  for (const by of ['renewal', 'reminder']) assert.match((await askAgent(env, VENDOR, { by, renewal: by === 'renewal' })).held, /are off/);
+  await env.DB.prepare("UPDATE vendor_profiles SET invited_at = ?, agent = json_set(agent, '$.askedAt', ?) WHERE jt_id = ?").bind(new Date(NOW - 9 * DAY).toISOString(), new Date(NOW - 9 * DAY).toISOString(), VENDOR).run();
+  assert.match((await partnerNudges(env, { now: NOW })).held, /are off/);
+  assert.equal(world.emails.length, 1, 'nothing else went');
 });

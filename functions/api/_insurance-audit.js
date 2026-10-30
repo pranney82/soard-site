@@ -54,7 +54,7 @@ import { mercuryConfigured, listTransactions, readState } from './_mercury.js';
 import { txnRow, readTxns } from './_mercury-txns.js';
 import { ramp, rampConfigured, matchRampBill } from './_ramp.js';
 import { vendorKey, vendorLikeness, dollars } from './_spend-match.js';
-import { vendorNote, STATE_KEY as VENDORS_KEY } from './_vendors.js';
+import { vendorNote, asksOnHold, STATE_KEY as VENDORS_KEY } from './_vendors.js';
 
 const DAY = 86400e3;
 /** The two audited policies, each renewing on its own day. plain: words for the spreadsheet; file: for the download's name */
@@ -628,6 +628,8 @@ export function askEmail({ vendorName, months, kinds, agent = false }) {
  */
 export async function askForGaps(env, audits, { now = Date.now(), fetchImpl = fetch } = {}) {
   const out = { asked: 0 };
+  const held = await asksOnHold(env);
+  if (held) return { ...out, waiting: held };
   // The certificate search first: nobody is asked for a certificate SOARD already has in an inbox
   const first = await env.DB.prepare('SELECT MIN(found_at) AS first FROM coi_coverage').first().catch(() => null);
   if (!first?.first || now - Date.parse(first.first) < SEARCH_GRACE_DAYS * DAY) return { ...out, waiting: 'the certificate search' };

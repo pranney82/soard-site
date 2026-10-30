@@ -68,7 +68,8 @@ export const LINK_DAYS = 90;
 export const REMIND_AFTER_DAYS = [3, 7];   // then every 7 days
 export const MAX_ASKS = 5;
 export const LIMITS = { fileBytes: 15 * 1024 * 1024, files: 3, uploads: 30, pages: 3, pageBytes: 4 * 1024 * 1024 };
-export const DEFAULTS = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000, renewDays: 30 };
+// asking: whether vendors and their agents are emailed for a W-9 or certificate at all (off until someone at SOARD turns it on)
+export const DEFAULTS = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000, renewDays: 30, asking: false };
 
 export const FIELDS = {
   w9: { name: 'W-9', type: 'boolean' },
@@ -187,8 +188,24 @@ export async function saveDocSettings(DB, patch) {
     if (!(d >= 7 && d <= 90)) throw Object.assign(new Error('Ask for the renewal 7 to 90 days ahead'), { status: 400 });
     next.renewDays = d;
   }
+  if (patch.asking !== undefined) Object.assign(next, { asking: !!patch.asking, askingBy: String(patch.by || '').slice(0, 120) || null, askingAt: new Date().toISOString() });
   await writeState(DB, STATE_KEY, { docSettings: next });
   return next;
+}
+
+/**
+ * Why no vendor or agent may be emailed for a W-9 or certificate right now, or null when they may. Peter, Oct 30 2026:
+ * every inbox, JobTread and Ramp are searched for the certificates and W-9s SOARD already has before anyone is asked.
+ * So it's off until someone turns it on, and even then waits for the certificate search (./_coi-backfill.js) to have
+ * looked everywhere once with nothing left to read. A company asking for its own link, or for its agent, isn't held.
+ */
+export async function asksOnHold(env) {
+  if (!(await readDocSettings(env.DB)).asking) return 'Emails asking for W-9s and certificates are off';
+  const st = await readState(env.DB, 'coi-backfill');
+  const mail = Object.values(st.mail || {});
+  const searched = (!env.GOOGLE_CALENDAR_KEY || (mail.length && mail.every((s) => s.doneAt))) && (!env.JOBTREAD_GRANT_KEY || st.jt?.doneAt) && (!rampConfigured(env) || st.ramp?.doneAt);
+  const left = searched ? await env.DB.prepare("SELECT COUNT(*) AS n FROM coi_found WHERE state IN ('queued', 'working', 'failed')").first().catch(() => null) : null;
+  return searched && left && !left.n ? null : 'The certificate search is still looking through email, JobTread and Ramp';
 }
 
 // ─── JobTread: the fields and tags, made once ───────────────────────
@@ -482,6 +499,8 @@ export function requestEmail({ vendorName, url, state, req = DEFAULTS, bill = nu
 export async function askVendor(env, v, state, { why = 'missing', bill = null, now = Date.now(), to = null, preview = false, fetchImpl = fetch } = {}) {
   const address = to || v.email;
   if (!isEmail(address)) return { ok: false, noEmail: true };
+  const held = preview ? null : await asksOnHold(env);
+  if (held) return { ok: false, held };
   const before = preview ? null : await readAsk(env.DB, v.id);
   const link = await createLink(env.DB, v.id, { by: preview ? 'preview' : 'auto', now });
   const req = await readDocSettings(env.DB);
@@ -726,7 +745,7 @@ export async function askForBill(env, v, state, bill, { now = Date.now() } = {})
   const ask = await readAsk(env.DB, v.id);
   if (ask?.open && ask.askedAt && now - Date.parse(ask.askedAt) < DAY) return { ok: true, skipped: true };
   const r = await askVendor(env, v, state, { why: 'bill', bill, now });
-  if (r.noEmail) await postNoEmail(env, v, now);
+  if (r.noEmail && !(await asksOnHold(env))) await postNoEmail(env, v, now);
   if (r.ok) await writeFields(env, await jtSetup(env), v.id, OVERRIDES.has(v.docs) ? {} : { docs: 'Requested' }).catch(() => null);
   return r;
 }
@@ -895,6 +914,8 @@ export async function sweep(env, { now = Date.now(), fetchImpl = fetch } = {}) {
   const asks = await readAsks(env.DB);
   const ids = await jtSetup(env, { fetchImpl });
   const out = { read: 0, asked: 0, released: 0 };
+  const held = await asksOnHold(env);
+  if (held) out.held = held;
   for (const [jtId, w] of who) {
     const a = asks.get(jtId);
     const fresh = !a?.checkedAt || now - Date.parse(a.checkedAt) > RECHECK_MS;
@@ -910,7 +931,7 @@ export async function sweep(env, { now = Date.now(), fetchImpl = fetch } = {}) {
       if (settled) await resolveAll(env, v.id, 'Their W-9 and insurance are current in JobTread.', now);
       out.released += await releaseVendorHolds(env, v.id, { now }).catch(() => 0);
     }
-    if (!settled && w.why !== 'held') {
+    if (held) { /* checked and labeled, nobody emailed */ } else if (!settled && w.why !== 'held') {
       // Held bills email from ./_bill-pay.js the moment they're held; reminders come from here
       if (!v.email) {
         // A renewal with no one to email still reaches their agent, when there is one; nothing else is urgent until a bill is

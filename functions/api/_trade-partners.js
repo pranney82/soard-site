@@ -34,7 +34,7 @@ import { requirementLines, longDate } from './_vendor-read.js';
 import {
   jt, jtSetup, readJtVendor, createLink, ensureVendorSchema, docsState, readDocSettings, writeFields, vendorNote, uploadToJt,
   patchAsk, readAsk, labelFor, resolveAll, briefState, OVERRIDES, FOLDER, TAGS, TRADES, PREVIEW_ID, LIMITS,
-  CONTACT_VALUES, contactEmail, contactPhone, contactFields,
+  CONTACT_VALUES, contactEmail, contactPhone, contactFields, asksOnHold,
 } from './_vendors.js';
 
 const DAY = 864e5;
@@ -311,6 +311,9 @@ export async function askAgent(env, jtId, { renewal = false, reminder = false, b
   const p = await readProfileRow(env.DB, jtId);
   const agent = p.agent;
   if (!isEmail(agent?.email)) return { ok: false, noAgent: true };
+  // The company asking for its own agent goes; SOARD's renewals and reminders wait (./_vendors.js asksOnHold)
+  const held = by === 'vendor' ? null : await asksOnHold(env);
+  if (held) return { ok: false, held };
   const v = await readJtVendor(env, jtId, { fetchImpl });
   if (!v || v.archived) return { ok: false };
   const link = await createLink(env.DB, jtId, { by: `agent:${by}`, scope: 'agent', now });
@@ -691,6 +694,8 @@ export async function invitePartner(env, { jtId = null, company = '', name = '',
 export async function partnerNudges(env, { now = Date.now(), fetchImpl = fetch } = {}) {
   await ensurePartnerSchema(env.DB);
   const out = { reminded: 0, agents: 0 };
+  const held = await asksOnHold(env);
+  if (held) return { ...out, held };
   const rows = ((await env.DB.prepare('SELECT * FROM vendor_profiles WHERE (invited_at IS NOT NULL AND done_at IS NULL) OR agent IS NOT NULL').all()).results || []).map(profileRow);
   for (const p of rows) {
     if (out.reminded + out.agents >= 10) break;

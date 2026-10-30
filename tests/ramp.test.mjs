@@ -5,6 +5,7 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
+import { asksOn } from './lib/vendor-asks.mjs';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureBillPaySchema, releaseVendorHolds } from '../functions/api/_bill-pay.js';
@@ -115,6 +116,7 @@ beforeEach(async () => {
   await ensureSpendSchema(DB);
   await ensureBillPaySchema(DB);
   await ensureVendorSchema(DB);
+  await asksOn(DB);
   await ensureRampSchema(DB);
   await writeSlackConfig(DB, { channel: { id: 'CNEWS', name: 'news' }, finance: { id: 'CFIN', name: 'finance' } });
   await jtSetup(env);
