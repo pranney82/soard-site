@@ -641,6 +641,23 @@ test('which calendar events are board meetings, and their day, time and place in
   ].map((e) => eventPlace(e).callFrom), ['meet', 'conference', 'place', 'notes', '']);
 });
 
+test('every meeting is named by its quarter: the one its invite says, else its date; a name typed in Board wins', () => {
+  const named = (date, invite, title = invite) => meetingName(cleanMeeting({ date, title, calendar: invite ? { uid: 'x@google.com', title: invite } : null }));
+  assert.equal(named('2026-02-12', 'SOARD Staff end of Board Meeting'), 'Q1 2026 Board Meeting');
+  assert.equal(named('2023-07-20', 'Board Meeting'), 'Q3 2023 Board Meeting');
+  assert.equal(named('2026-11-05', 'SOARD Board Meeting'), 'Q4 2026 Board Meeting');
+  assert.equal(named('2026-04-30', 'Q2 SOARD Board Meeting'), 'Q2 2026 Board Meeting');
+  assert.equal(named('2026-08-06', ''), 'Q3 2026 Board Meeting', 'no invite: its date');
+  assert.equal(named('2022-11-03', 'Q3 SOARD Board Meeting (Reschedule)'), 'Q3 2022 Board Meeting', 'held late: the quarter it was for');
+  assert.equal(named('2025-01-09', 'Q4 SOARD Board Meeting'), 'Q4 2024 Board Meeting', 'a Q4 meeting in January is the year before’s');
+  assert.equal(named('2025-12-11', 'Q1 SOARD Board Meeting'), 'Q1 2026 Board Meeting', 'an early Q1 in December is next year’s');
+  assert.equal(named('2026-11-05', 'SOARD Board Meeting', 'Annual Meeting'), 'Annual Meeting', 'typed in Board');
+  assert.equal(named('2026-11-05', '', 'Annual Meeting'), 'Annual Meeting');
+  // The board page gets the name, not the invite
+  const shown = forBoard(cleanMeeting({ date: '2022-11-03', shared: true, title: 'Q3 SOARD Board Meeting (Reschedule)', calendar: { uid: 'x@google.com', title: 'Q3 SOARD Board Meeting (Reschedule)' } }));
+  assert.deepEqual([shown.title, shown.calendar, meetingName(shown)], ['Q3 2022 Board Meeting', undefined, 'Q3 2022 Board Meeting']);
+});
+
 test('the calendar makes the meetings: added, moved, linked to one added by hand, and marked when gone; never written to', async () => {
   const later = new Date(Date.now() + 30 * 86400000);
   const day = later.toISOString().slice(0, 10);
@@ -654,22 +671,23 @@ test('the calendar makes the meetings: added, moved, linked to one added by hand
   assert.deepEqual(google.reads, [{ cal: FOUNDER, q: 'board' }], 'reads the Board area’s admins’ calendars, searching for "board"');
   let [m, before] = await listMeetings(env.DB);
   // A past meeting is a record of when it was: no agenda, attendance list or invite until its email brings them
-  assert.deepEqual([before.date, before.start, before.title, before.sections.length, before.attendance.length, before.actions.length, before.shared], ['2026-01-08', '08:00', 'SOARD Q3 Board Meeting', 0, 0, 0, false]);
+  assert.deepEqual([before.date, before.start, before.title, before.sections.length, before.attendance.length, before.actions.length, before.shared], ['2026-01-08', '08:00', '', 0, 0, 0, false]);
+  assert.equal(meetingName(before), 'Q3 2025 Board Meeting', 'the quarter the event says, held late');
   assert.deepEqual([m.date, m.start, m.end, m.location, m.address, m.video, m.shared], [day, '08:00', '10:00', 'Example Design Group', '100 Example St, Roswell, GA', 'https://meet.google.com/abc-defg-hij', false]);
   assert.equal(m.calendar.title, 'SOARD Q4 Board Meeting');
-  assert.equal(meetingName(m), 'SOARD Q4 Board Meeting', 'the event’s own name, not a quarter worked out from the date');
+  assert.equal(m.title, '', 'the event’s own words aren’t its name');
   assert.ok(m.sections.length > 3, 'starts from the agenda template');
   // The board page never learns whose calendar it came from
   const shared = await saveMeeting(env.DB, { ...m, shared: true }, { by: FOUNDER });
   assert.equal((await portalApi(MEMBER)).body.meetings.find((x) => x.id === m.id).calendar, undefined);
 
-  // Moved on the calendar: the meeting follows, its agenda and sharing kept; a renamed event renames it
+  // Moved on the calendar: the meeting follows, its agenda and sharing kept; a renamed event doesn't rename it
   q4.start.dateTime = `${day}T14:00:00Z`; q4.end.dateTime = `${day}T16:00:00Z`;
   q4.summary = 'SOARD Q4 Board Meeting (moved)';
   const second = await syncBoardCalendar(env);
   assert.equal(second.moved, 1);
   m = (await listMeetings(env.DB))[0];
-  assert.deepEqual([m.start, m.end, m.shared, m.sections.length, m.title], ['09:00', '11:00', true, shared.sections.length, 'SOARD Q4 Board Meeting (moved)']);
+  assert.deepEqual([m.start, m.end, m.shared, m.sections.length, m.title, m.calendar.title], ['09:00', '11:00', true, shared.sections.length, '', 'SOARD Q4 Board Meeting (moved)']);
   // A name typed in Board wins over the calendar's from then on
   m = await saveMeeting(env.DB, { ...m, title: 'Fall board meeting' }, { by: FOUNDER });
   q4.summary = 'SOARD Q4 Board Meeting';
@@ -830,7 +848,7 @@ test('the same meeting on two admins’ calendars is one meeting: the organizer�
   const all = await listMeetings(env.DB);
   assert.equal(all.length, 1, 'one meeting');
   const [m] = all;
-  assert.deepEqual([m.title, m.start, m.end, m.location, m.video], ['SOARD Board Meeting', '08:00', '10:00', '', 'https://teams.microsoft.com/meet/123?p=abc'], 'the organizer’s name and times; TBD is no place; the Teams link from the other copy');
+  assert.deepEqual([m.calendar.title, m.start, m.end, m.location, m.video], ['SOARD Board Meeting', '08:00', '10:00', '', 'https://teams.microsoft.com/meet/123?p=abc'], 'the organizer’s event and times; TBD is no place; the Teams link from the other copy');
   assert.deepEqual([m.calendar.uid, m.calendar.others], ['a1@google.com', ['b2@google.com']]);
   // Next look: still one, nothing to change, and neither copy is "gone"
   const again = await syncBoardCalendar(env);
@@ -1677,7 +1695,7 @@ test('the next meeting the board already has on its calendars shows its day, tim
   m = await saveMeeting(env.DB, { ...m, calendar: invited([['alex-rivera', 'accepted'], ['sam-ortiz', 'invited'], ['kim-park', 'declined']]) }, { by: 'the calendar' });
   page = (await portalApi(MEMBER)).body;
   assert.deepEqual(page.nextPending, {
-    id: m.id, date: day(20), start: '08:00', end: '10:00', title: 'SOARD Board Meeting', name: 'SOARD Board Meeting', location: 'Example Hall', address: '100 Example St', video: '',
+    id: m.id, date: day(20), start: '08:00', end: '10:00', title: '', name: meetingName({ date: day(20) }), location: 'Example Hall', address: '100 Example St', video: '',
     onCalendar: true, myInvite: 'accepted', myRsvp: '',
   });
   assert.equal(page.next, null);

@@ -10,9 +10,10 @@
  *     "Q4 Board" all count, as does any event with "board" in its name and
  *     three or more board members invited.
  *   - Advisory Board, reveal and demo day events never count.
- * The event's name is the meeting's name ("SOARD Q4 Board Meeting": SOARD's
- * own quarter numbering, not one worked out from the date) until someone types
- * another one in Board. A moved event moves its meeting: the calendar is where the day changes. A
+ * The event's name never names the meeting: every meeting is "Q4 2026 Board
+ * Meeting", the quarter the event's name says ("Q3 SOARD Board Meeting
+ * (Reschedule)" held in November is Q3's) or else its date's, until someone
+ * types another name in Board (meetingName). A moved event moves its meeting: the calendar is where the day changes. A
  * meeting added here by hand on the same day is linked to the event instead
  * of doubled, and so is each admin's own copy of the same meeting: one meeting
  * per day, named and timed by the copy that organized it. A meeting whose event is gone stays, marked gone for the admins.
@@ -279,8 +280,8 @@ async function look(env, { fetchImpl, now }) {
       counts.added += 1;
     } else if (!m.calendar?.uid) counts.linked += 1;
     const next = {
+      // (never its name: a meeting is named by its quarter, or what's typed in Board; see meetingName)
       ...m, date, start: when.start, end: when.end,
-      title: !m.title || m.title === m.calendar?.title ? link.title : m.title,
       location: place.location || (isTbd(m.location) ? '' : m.location),
       address: place.address || (place.location && place.location !== m.location ? '' : m.address),
       video: video || m.video,

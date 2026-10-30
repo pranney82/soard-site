@@ -149,7 +149,7 @@ test('past meetings come from the calendars as records, with their agendas, minu
   assert.deepEqual(by(all, q1).files, [], 'nothing for the first meeting');
   const log = await mailLog(env.DB);
   assert.equal(log[0].outcome, 'filed');
-  assert.match(log[0].result, /filed on Example Q3 Board Meeting .*: the agenda \(its agenda filled in\), the financials/);
+  assert.match(log[0].result, /filed on Q3 \d{4} Board Meeting .*: the agenda \(its agenda filled in\), the financials/);
   assert.match(log[0].result, /left out Example Policy Renewal\.pdf \(an insurance policy\), Pat Example Resume\.pdf \(a resume\)/);
   const s = await mailStatus(env.DB);
   assert.deepEqual([s.version, s.backlog, s.totals.emails, s.totals.files, s.totals.skipped, s.totals.meetings, s.totals.made], [2, 0, 1, 3, 2, 2, 0]);

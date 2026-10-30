@@ -140,8 +140,21 @@ export function quarterOf(d) {
   const [y, m] = d.split('-').map(Number);
   return `Q${Math.ceil(m / 3)} ${y}`;
 }
-/** The meeting's name: its own title, else "Q2 2026 Board Meeting" */
-export const meetingName = (m) => one(m?.title) || (isDate(m?.date) ? `${quarterOf(m.date)} Board Meeting` : 'Board meeting');
+/**
+ * The meeting's name: one typed in Board, else its quarter ("Q2 2026 Board Meeting"). A calendar invite's own words
+ * never name it ("SOARD Board Meeting", "SOARD Staff end of Board Meeting"), only the quarter it says: "Q3 SOARD Board
+ * Meeting (Reschedule)" on November 3, 2022 is the Q3 2022 meeting. That quarter is the one nearest the date, a late
+ * one when it's as near either way (a Q4 meeting held in January is the year before's)
+ */
+export function meetingName(m) {
+  const typed = one(m?.title);
+  if (typed && typed !== one(m?.calendar?.title)) return typed;
+  if (!isDate(m?.date)) return 'Board meeting';
+  const [y, mo] = m.date.split('-').map(Number);
+  const held = Math.ceil(mo / 3);
+  const said = Number(/\bQ([1-4])\b/i.exec(one(m?.calendar?.title))?.[1]) || held;
+  return `Q${said} ${y - (said - held >= 2 ? 1 : 0) + (held - said > 2 ? 1 : 0)} Board Meeting`;
+}
 /** "Thursday, April 30, 2026" */
 export const longDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
 /** "Apr 30, 2026" */
@@ -211,7 +224,8 @@ export function cleanMeeting(raw = {}) {
     date: date(raw.date),
     start: time(raw.start),
     end: time(raw.end),
-    title: one(raw.title, LIMITS.title),
+    // A name typed in Board; the calendar invite's own words aren't one (meetingName)
+    title: one(raw.title, LIMITS.title) === one(raw.calendar?.title, 200) ? '' : one(raw.title, LIMITS.title),
     location: one(raw.location, 200),
     address: one(raw.address, 300),
     video: httpUrl(raw.video),
@@ -466,6 +480,8 @@ export function forBoard(m) {
     ...m,
     sections: m.sections.map((s) => ({ ...s, items: s.items.map(({ staffNote, ...it }) => ({ ...it, docs: (it.docs || []).filter((id) => seen.has(id)) })) })),
     files: m.files.filter((f) => !f.staffOnly),
+    // Named here, where the quarter its calendar invite says is known
+    title: meetingName(m),
     calendar: undefined,
     invite: m.invite ? { meet: m.invite.meet } : null,
     agendaFrom: undefined,

@@ -31,7 +31,7 @@ import {
   PersonPicker, ItemChooser, DocChip, pickable, Face,
 } from './board-ui.js';
 import {
-  RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, quarterOf, longDate, shortDate, timeRange, plural, uid, clock,
+  RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, MORE,
   sectionPlan, sectionOf, sectionClock, clockText, facesOf,
@@ -270,7 +270,7 @@ function WhenWhere({ m, set }) {
       <div class="form-group"><label class="form-label" for="bd-loc">Place</label><input id="bd-loc" class="form-input" value=${m.location} placeholder="Whose office" disabled=${fromCal && cal.place} onInput=${(e) => set({ location: e.target.value })} /></div>
       <div class="form-group"><label class="form-label" for="bd-addr">Address</label><input id="bd-addr" class="form-input" value=${m.address} placeholder="Street, city" disabled=${fromCal && cal.place} onInput=${(e) => set({ address: e.target.value })} /></div>
       <div class="form-group"><label class="form-label" for="bd-video">Video link</label><input id="bd-video" class="form-input" type="url" value=${m.video} placeholder="https://" disabled=${fromCal && cal.call} onInput=${(e) => set({ video: e.target.value })} /></div>
-      <div class="form-group span-3"><label class="form-label" for="bd-title">Name</label><input id="bd-title" class="form-input" value=${m.title} placeholder=${m.date ? `${quarterOf(m.date)} Board Meeting` : 'Board meeting'} onInput=${(e) => set({ title: e.target.value })} /></div>
+      <div class="form-group span-3"><label class="form-label" for="bd-title">Name</label><input id="bd-title" class="form-input" value=${m.title} placeholder=${meetingName({ ...m, title: '' })} onInput=${(e) => set({ title: e.target.value })} /></div>
     </div>
   </div>`;
 }

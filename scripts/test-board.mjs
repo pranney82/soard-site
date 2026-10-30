@@ -548,7 +548,7 @@ try {
   await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
   ok(await waitText(jane, /Meetings come from Jane’s calendar by themselves/), 'Meetings says where meetings come from');
   ok(await waitText(jane, /Ready\. The board was emailed the link/), 'the next meeting: everything done says Ready');
-  ok(/Also coming up/i.test(await text(jane)) && /SOARD Q4 Board Meeting/.test(await text(jane)), 'the meeting after it is listed as also coming up');
+  ok(/Also coming up/i.test(await text(jane)) && /Q4 \d{4} Board Meeting/.test(await text(jane)), 'the meeting after it is listed as also coming up');
   const all = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings);
   ok(all.length === 3, `the event on the calendar is a meeting, and Board’s own invite isn’t a second one (${all.length})`);
   ok(all.find((m) => m.id === meetingId)?.invite?.replies?.['alex-rivera'] === 'accepted', 'the reply to Board’s invite comes back onto its meeting');
@@ -559,7 +559,7 @@ try {
   const calId = all.find((m) => m.calendar)?.id;
   await jane.goto(`${SITE}/admin/#board/meeting/${calId}/before`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
-  ok(await jane.$eval('.bm-title h2', (e) => e.textContent) === 'SOARD Q4 Board Meeting', 'its editor goes by the event’s own name');
+  ok(/^Q4 \d{4} Board Meeting$/.test(await jane.$eval('.bm-title h2', (e) => e.textContent)), 'its editor goes by the quarter the event says, not the event’s own words');
   await clickText(jane, 'button', /^Change when and where$/);
   ok(await waitText(jane, /From Jane’s calendar \(“SOARD Q4 Board Meeting”\)/), 'and says it follows the calendar');
   ok(await jane.evaluate(() => document.querySelector('#bd-date').disabled && document.querySelector('#bd-start').value === '08:00' && document.querySelector('#bd-loc').disabled && document.querySelector('#bd-loc').value === 'Example Design Group'), 'its day, time and place come from the event, and are changed there');
