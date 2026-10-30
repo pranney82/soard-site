@@ -21,6 +21,13 @@
  * them (each took a neighbouring line for the aggregate once), so it passes
  * only when it passes at the less generous of the two readings, see judgeCoiReads.
  *
+ * The certificates and W-9s SOARD already had (staff email, JobTread, Ramp)
+ * are read here too (./_coi-backfill.js), their pages drawn in Cloudflare's
+ * Browser Rendering instead of a vendor's browser. The agency in the PRODUCER
+ * box comes along, so renewals can go to the agent; and with no browser at
+ * all, a W-9 filled in on a computer is read from its text and the boxes
+ * typed into the form (readW9Text).
+ *
  * A file that can't be read (no pictures and no text, the model not
  * answering) comes back unreadable, and ./_vendors.js files it in JobTread
  * for a person to look at. A HEIC photo never gets here: the page sends it
@@ -30,7 +37,7 @@
 import { vendorLikeness } from './_spend-match.js';
 import { TZ } from './_reveals.js';
 
-const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+export const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const VISION_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
 const AI_TIMEOUT_MS = 45000;
 const MIN_TEXT = 80;          // a PDF with less text than this is a scan
@@ -56,6 +63,9 @@ Report only what the document says; never guess.
 - For general liability: eachOccurrence (EACH OCCURRENCE) and aggregate (GENERAL AGGREGATE).
 - For workers compensation: employersLiabilityEachAccident (E.L. EACH ACCIDENT).
 - insured: the company name in the INSURED box. certificateHolder: the name in the CERTIFICATE HOLDER box.
+- producer: the PRODUCER box (the insurance agency): its name, the CONTACT NAME, the E-MAIL ADDRESS and the PHONE. Leave out what isn't there.
+- policyNumber: that line's POLICY NUMBER.
+- isWcExemption: true when this is a workers' compensation exemption instead of a certificate (an affidavit or certificate saying the company needs no workers' compensation, for example in Georgia because it has fewer than three employees). insured is then the company it's for, and policies is empty.
 - isCertificate is false when this isn't a certificate of insurance. readable is false when the text is too garbled to read the dates.`;
 
 const W9_PROMPT = `You check IRS Form W-9 (Request for Taxpayer Identification Number and Certification) for a nonprofit that pays contractors.
@@ -72,6 +82,11 @@ const COI_SCHEMA = {
     readable: { type: 'boolean' },
     insured: { type: 'string' },
     certificateHolder: { type: 'string' },
+    isWcExemption: { type: 'boolean' },
+    producer: {
+      type: 'object',
+      properties: { name: { type: 'string' }, contact: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' } },
+    },
     policies: {
       type: 'array',
       items: {
@@ -79,6 +94,7 @@ const COI_SCHEMA = {
         properties: {
           kind: { type: 'string', enum: ['general liability', 'workers compensation', 'auto', 'umbrella', 'other'] },
           insurer: { type: 'string' },
+          policyNumber: { type: 'string' },
           effective: { type: 'string' },
           expires: { type: 'string' },
           eachOccurrence: { type: 'number' },
@@ -146,7 +162,7 @@ export function answerOf(out) {
   try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
 }
 
-async function askModel(env, model, messages, schema) {
+export async function askModel(env, model, messages, schema) {
   for (const json of [true, false]) {
     try {
       const out = await withTimeout(env.AI.run(model, {
@@ -225,15 +241,16 @@ async function readPictures(env, doc, pages) {
 /**
  * What one file says, read each way it can be. doc 'w9' | 'coi';
  * file { bytes, type, name, pages? } (pages: a PDF's first pages as JPEGs, drawn by the vendor's browser).
+ * known.text: the PDF's text when it was already read (./_coi-backfill.js reads it first to see what the file is).
  * → { text, pictures }: each the model's answer (COI_SCHEMA / W9_SCHEMA), or null when not read that way
  */
-export async function readDocument(env, doc, file) {
+export async function readDocument(env, doc, file, known = {}) {
   if (!env.AI?.run) return { text: null, pictures: null };
   if (VISION_TYPES.has(file.type)) return { text: null, pictures: await readPictures(env, doc, [file]) };
   if (file.type !== 'application/pdf') return { text: null, pictures: null };
   const drawn = file.pages?.length ? readPictures(env, doc, file.pages) : null;
   // A W-9's text never answers (see the top), so it isn't asked
-  const text = doc === 'coi' ? await pdfText(env, file) : '';
+  const text = doc === 'coi' ? (typeof known.text === 'string' ? known.text : await pdfText(env, file)) : '';
   const hasText = text.trim().length >= MIN_TEXT;
   const [fromText, pictures] = await Promise.all([
     hasText ? askModel(env, TEXT_MODEL, [
@@ -266,7 +283,22 @@ export function mergeCoi(reads) {
     insured: got.map((r) => r.insured).find((s) => String(s || '').trim()) || '',
     certificateHolder: got.map((r) => r.certificateHolder).find((s) => String(s || '').trim()) || '',
     policies: got.flatMap((r) => (r.isCertificate ? r.policies || [] : [])).map((p) => ({ ...p, expires: isoDate(p.expires) })),
+    producer: got.map((r) => r.producer).find((p) => p && (String(p.email || '').trim() || String(p.name || '').trim())) || null,
+    isWcExemption: got.some((r) => r.isWcExemption === true),
   };
+}
+
+/**
+ * A W-9 that's a PDF of its own rather than a scan (filled in on a computer): its text, and what was typed
+ * into the IRS form's boxes, which its text leaves out. typed: words only (never the tax ID itself), e.g.
+ * "Line 1: Sample Painting LLC. A tax ID is typed in Part I (an EIN)." → W9_SCHEMA's answer, or null
+ */
+export async function readW9Text(env, text, typed = '') {
+  if (!env.AI?.run || String(text || '').trim().length < MIN_TEXT) return null;
+  return askModel(env, TEXT_MODEL, [
+    { role: 'system', content: W9_PROMPT },
+    { role: 'user', content: `The form's text:\n\n${String(text).slice(0, 8000)}${typed ? `\n\nTyped into the form's boxes: ${typed}` : ''}` },
+  ], W9_SCHEMA);
 }
 
 // ─── Judging (pure) ─────────────────────────────────────────────────

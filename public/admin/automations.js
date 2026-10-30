@@ -1289,6 +1289,22 @@ const MAP = { t: 'SOARD', children: [
             if (p.bankCalls) return ATTN(`${plural(p.bankCalls, 'approved bill')} waiting on a call about a bank account: Job Costs → Bills.${setting}`, v.at);
             return ON(`${bits.length ? `${bits.join(', ')}.` : 'Every vendor with a bill has a current W-9 and insurance.'}${setting}${ramp}`, v.at);
           } },
+        { t: 'Old certificates and W-9s', s: 'live', k: 'schedule',
+          when: 'Every minute on the heartbeat while there’s anything to find or read; then every 6 hours, for new mail, new JobTread files and new Ramp bills.',
+          does: 'Finds the insurance certificates and W-9s SOARD already had: in every staff inbox (the last 4 years, then new mail), on JobTread vendor accounts without a tag, and on Ramp bills. Each file is read once, even when it’s in three inboxes: a PDF’s own text says what it is, and certificates, W-9s and scans are read by Workers AI (a PDF’s pages drawn in Browser Rendering when its text can’t say). The company on it is matched to its JobTread vendor by name; among close names Workers AI picks, and only a sure pick counts. SOARD’s own paperwork is left out. A match is filed in the vendor’s “W-9 & Insurance” folder with its tag and a note saying where it was found; Liability Expires and Workers’ Comp Expires only move forward; the agency on the certificate becomes their insurance agent, who is asked for renewals. Every policy, matched or not, goes into the coverage index the insurance audit reads.',
+          touches: ['Gmail', 'JobTread', 'Ramp', 'Workers AI'], where: 'functions/api/_coi-backfill.js, _vendor-read.js',
+          info: 'Read-only in the inboxes. The site keeps no copy of the files and no tax ID: D1 keeps each file’s fingerprint and what it said.',
+          live: (f) => {
+            const b = f.coiBackfill;
+            if (!b || !env(f)) return null;
+            if (b.error) return ATTN(b.error, b.errorAt);
+            if (!b.at) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (b.refused?.length) return ATTN(`Gmail won’t open ${b.refused.map((r) => `${r.inbox}’s inbox (${r.error || 'no reason given'})`).join(' or ')}. The others go on; it’s tried again every hour.`, b.refused[0].at);
+            const filed = `${plural(b.filed.coi, 'certificate')} and ${plural(b.filed.w9, 'W-9')} filed on ${plural(b.filed.vendors, 'vendor')}`;
+            const other = b.unmatched ? `; ${plural(b.unmatched, 'file')} for companies JobTread doesn’t have` : '';
+            const looking = b.firstPass.mail && b.firstPass.jt ? '' : `Still looking: ${plural(b.waiting, 'email or file', 'emails and files')} to read. `;
+            return ON(`${looking}${filed}${other}.`, b.at);
+          } },
       ]},
       { t: 'The bank', children: [
         { t: 'Mercury connection', s: 'live', k: 'link',

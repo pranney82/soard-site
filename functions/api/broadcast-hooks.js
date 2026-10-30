@@ -43,6 +43,7 @@ import { alertAdmins } from './_broadcast-notify.js';
 import { maybeRunBoard } from './_board.js';
 import { maybeSyncStaff } from './_staff-access.js';
 import { maybeSweepMail } from './_mail-sweep.js';
+import { maybeRunBackfill } from './_coi-backfill.js';
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
 const HUB_ANSWER_MS = 10 * 1000;
@@ -120,6 +121,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeSyncStaff(env));
     // Every staff inbox: receipts to the receipt inbox, family emails onto their JobTread account (see _mail-sweep.js)
     context.waitUntil(maybeSweepMail(env));
+    // The certificates and W-9s SOARD already had (staff email, JobTread, Ramp): found, read and filed on their JobTread vendor (see _coi-backfill.js)
+    context.waitUntil(maybeRunBackfill(env));
     // Hourly: SOARD's process Docs in Drive, so Site → Automations knows if Drive stops answering (see _process-docs.js)
     context.waitUntil(maybeRefreshProcess(env));
     // The hub passes `reason` to every open page and keeps `work` in its status, so both go

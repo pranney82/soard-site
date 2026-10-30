@@ -58,6 +58,7 @@ import { listAccounts } from './_mercury.js';
 import { boardFacts } from './_board.js';
 import { staffStatus } from './_staff-access.js';
 import { mailSweepStatus } from './_mail-sweep.js';
+import { backfillStatus } from './_coi-backfill.js';
 import { processFacts } from './_process-docs.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
@@ -445,6 +446,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     staff: await settle(() => staffStatus(env)),
     // Staff inboxes swept: receipts to the receipt inbox, family emails onto JobTread (_mail-sweep.js)
     mailSweep: await settle(() => mailSweepStatus(env)),
+    // The certificates and W-9s SOARD already had, found and filed: counts and times only (_coi-backfill.js)
+    coiBackfill: await settle(() => backfillStatus(env)),
     // The process Docs Process follows: their names, last read and any problem (_process-docs.js)
     processDocs: await settle(() => processFacts(DB)),
   };

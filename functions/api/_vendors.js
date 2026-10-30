@@ -591,6 +591,7 @@ export async function fileUpload(env, link, { doc, files, pages = [], anyway = f
     if (label !== v.docs) patch.docs = label;
   }
   await writeFields(env, ids, v.id, patch, fetchImpl);
+  if (verdict.accepted && doc === 'coi') await import('./_coi-backfill.js').then((b) => b.recordUpload(env, { jtId: v.id, insured: v.name, verdict, parts, now })).catch((e) => console.error('[vendors] coverage', e.message));
   const from = link.scope === 'agent' ? `${LABEL[doc]} from ${v.name}’s insurance agent` : `${LABEL[doc]} from ${v.name}`;
   await vendorNote(env, v.id, from, look
     ? `${LABEL[doc]} received through SOARD’s page on ${longDate(day)}. ${verdict.anyway ? 'The vendor sent it anyway after the check didn’t pass' : verdict.unsure ? `The automatic check read it two ways that didn’t agree (${verdict.unsure})` : 'It couldn’t be read automatically'}, so a person needs to open it (folder ${FOLDER}) and fill in ${doc === 'w9' ? 'W-9' : 'Liability Expires and Workers’ Comp Expires'} on this vendor.`
