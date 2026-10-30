@@ -203,6 +203,8 @@ function mail({ box, at, from, subject, text = '', files = [] }) {
 }
 
 function pretendFetch(url, init = {}) {
+  // Like Cloudflare's fetch: called as some object's method, it refuses
+  if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation: function called with incorrect `this` reference');
   const u = new URL(typeof url === 'string' ? url : url.url);
   if (u.href === 'https://oauth2.googleapis.com/token') {
     const sub = JSON.parse(Buffer.from(new URLSearchParams(init.body).get('assertion').split('.')[1], 'base64url')).sub;

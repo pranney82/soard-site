@@ -878,7 +878,8 @@ export async function runBackfill(env, st, { now = Date.now(), fetchImpl = fetch
   const started = Date.now();
   const tokens = new Map();
   const ctx = {
-    now, fetchImpl, reads: 0, vendors: null, browser: null, errors: [], out: { found: 0, opened: 0, read: 0, filed: 0 },
+    // Called as ctx.fetchImpl(…): Cloudflare's fetch refuses to be some object's method ("Illegal invocation")
+    now, fetchImpl: (url, init) => fetchImpl(url, init), reads: 0, vendors: null, browser: null, errors: [], out: { found: 0, opened: 0, read: 0, filed: 0 },
     draw: draw || ((bytes) => drawPages(env, ctx, bytes)),
     token: async (mailbox) => {
       if (!tokens.has(mailbox)) tokens.set(mailbox, await accessToken(env, mailbox, { fetchImpl, now, scope: GMAIL_READ_SCOPE }));

@@ -74,7 +74,9 @@ beforeEach(async () => {
   for (const [id, name, email, contacts] of FAMILIES) await env.DB.prepare('INSERT INTO applicants (account_id, name, contact_email, contacts) VALUES (?, ?, ?, ?)').bind(id, name, email, JSON.stringify(contacts)).run();
   clearTokenCache();
 
-  globalThis.fetch = async (input, init = {}) => {
+  globalThis.fetch = async function (input, init = {}) {
+    // Like Cloudflare's fetch: called as some object's method, it refuses
+    if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation: function called with incorrect `this` reference');
     const url = String(input);
     if (url === 'https://oauth2.googleapis.com/token') {
       const claims = JSON.parse(Buffer.from(new URLSearchParams(init.body).get('assertion').split('.')[1], 'base64url').toString());

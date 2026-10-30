@@ -522,7 +522,8 @@ async function sweep(env, st, { fetchImpl, now }) {
   const cfg = await readConfig(env.DB).catch(() => ({}));
   const tokens = new Map();
   const ctx = {
-    now, fetchImpl, watching, families, names: families.names, startedAt: st.startedAt,
+    // Called as ctx.fetchImpl(…): Cloudflare's fetch refuses to be some object's method ("Illegal invocation")
+    now, fetchImpl: (url, init) => fetchImpl(url, init), watching, families, names: families.names, startedAt: st.startedAt,
     receiptInbox: normEmail(cfg.receiptInbox || DEFAULT_RECEIPT_INBOX),
     open: async (mailbox) => {
       if (!tokens.has(mailbox)) tokens.set(mailbox, await accessToken(env, mailbox, { fetchImpl, now, scope: GMAIL_READ_SCOPE }));

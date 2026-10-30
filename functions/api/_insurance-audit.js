@@ -427,17 +427,18 @@ export async function readJtBills(env, t, { fetchImpl = fetch } = {}) {
       organization: {
         $: { id: SOARD_ORG_ID },
         documents: {
-          $: { size: 25, where: { and: [['type', '=', 'vendorBill'], ['createdAt', '>=', since], ['createdAt', '<', t.end]] }, sortBy: [{ field: 'createdAt', order: 'asc' }], ...(page ? { page } : {}) },
+          // JobTread sizes a question by its most it could answer (bills × their cost lines): 25 × 25 is refused (413), 20 × 10 isn't
+          $: { size: 20, where: { and: [['type', '=', 'vendorBill'], ['createdAt', '>=', since], ['createdAt', '<', t.end]] }, sortBy: [{ field: 'createdAt', order: 'asc' }], ...(page ? { page } : {}) },
           nextPage: {},
           nodes: {
             id: {}, status: {}, cost: {}, issueDate: {}, createdAt: {}, number: {}, amountPaid: {}, account: { id: {}, name: {} },
-            costItems: { $: { size: 25 }, nodes: { costType: { name: {} }, costCode: { name: {} } } },
+            costItems: { $: { size: 10 }, nodes: { costType: { name: {} }, costCode: { name: {} } } },
           },
         },
       },
     }, fetchImpl);
     return { nodes: d?.organization?.documents?.nodes || [], next: d?.organization?.documents?.nextPage || null };
-  }, 80)).map(jtBillOf);
+  }, 100)).map(jtBillOf);
 }
 
 /** JobTread's payments in the term, with the bills each was applied to */
