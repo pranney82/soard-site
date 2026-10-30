@@ -328,7 +328,7 @@ test('documents go with agenda items: the board sees only theirs, on the page an
   assert.deepEqual(live.body.sections.flatMap((s) => s.items).find((it) => it.id === fin.id).docs, [shown.id]);
   assert.deepEqual(live.body.files.map((f) => f.id), [shown.id]);
   assert.doesNotMatch(JSON.stringify(live.body), /Draft numbers|Ask counsel/);
-  assert.deepEqual(live.body.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, screen: '', sectionId: '', sectionAt: '', floor: '' });
+  assert.deepEqual(live.body.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', sectionAt: '', floor: '' });
 
   // The next agenda drafted from this one keeps who presents, never this meeting's files
   const draft = draftAgenda(saved).flatMap((s) => s.items).find((it) => it.title === fin.title);
@@ -363,9 +363,18 @@ test('the screen’s stops: the cover, since we last met, each part’s card, ea
   assert.equal(stopIndex(deck, { screen: 'end' }), deck.length - 1);
   assert.equal(stopIndex(deck, { screen: 'since' }), 1);
   assert.equal(stopIndex(deck, cleanLive({ screen: 'section', sectionId: 's_thr3' })), 11);
-  assert.deepEqual(liveOfStop(deck[8]), { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, screen: '', sectionId: '' });
-  assert.deepEqual(liveOfStop(deck[4]), { itemId: '', fileId: '', page: 0, screen: 'section', sectionId: 's_two2' });
-  assert.deepEqual(cleanMeeting({ live: { itemId: 'i_fin1', fileId: 'f_bud1', page: 1.7, screen: 'end' } }).live, { startedAt: '', endedAt: '', itemId: 'i_fin1', fileId: 'f_bud1', page: 1, screen: 'end', sectionId: '', vote: null, sectionAt: '', floor: '' });
+  assert.deepEqual(liveOfStop(deck[8]), { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 0, screen: '', sectionId: '' });
+  assert.deepEqual(liveOfStop(deck[4]), { itemId: '', fileId: '', page: 0, part: 0, screen: 'section', sectionId: 's_two2' });
+  assert.deepEqual(cleanMeeting({ live: { itemId: 'i_fin1', fileId: 'f_bud1', page: 1.7, screen: 'end' } }).live, { startedAt: '', endedAt: '', itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 0, screen: 'end', sectionId: '', vote: null, sectionAt: '', floor: '' });
+  // A tall page in two halves (./board/docs.js partsOf): its top, then its bottom, each a stop the live state names
+  const halves = deckOf(m, { pages: { f_bud1: 3 }, parts: { f_bud1: [1, 2, 1] }, meetings: [prev] });
+  assert.deepEqual(halves.filter((x) => x.fileId === 'f_bud1').map((x) => `${x.page}${x.part ? ' bottom' : ''}`), ['0', '1', '1 bottom', '2']);
+  const bottom = halves.findIndex((x) => x.fileId === 'f_bud1' && x.part === 1);
+  assert.equal(stopIndex(halves, liveOfStop(halves[bottom])), bottom);
+  assert.equal(stopIndex(halves, liveOfStop(halves[bottom - 1])), bottom - 1, 'the top half is the page’s first stop');
+  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 1 }), 8, 'a bottom half this deck hasn’t split yet: that page');
+  assert.equal(cleanLive({ itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 1 }).part, 1);
+  assert.equal(cleanLive({ itemId: 'i_fin1', part: 1 }).part, 0, 'a half only of a document');
   assert.deepEqual(cleanMeeting({ live: { fileId: 'f_bud1', page: 3 } }).live.fileId, '', 'a document is on the screen only with its item');
 
   // A new file's item: the money item for statements, "approve the minutes" for minutes before the meeting, else a shared word
@@ -1848,7 +1857,7 @@ const chairSets = async (m, live, more = {}) => (await adminApi(FOUNDER, { actio
 
 test('a meeting is held live: the chair starts it and moves item by item; members follow, check in, and vote while a vote is open', async () => {
   let m = await heldToday();
-  assert.deepEqual(m.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, screen: '', sectionId: '', vote: null, sectionAt: '', floor: '' }, 'every meeting has an empty live until the chair starts it');
+  assert.deepEqual(m.live, { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', vote: null, sectionAt: '', floor: '' }, 'every meeting has an empty live until the chair starts it');
   let v = (await liveGet(MEMBER, m.id)).body;
   assert.equal(v.ok, true);
   assert.equal(v.live.startedAt, '', 'not started');

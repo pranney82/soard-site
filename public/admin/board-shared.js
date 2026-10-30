@@ -307,6 +307,8 @@ export function cleanLive(raw) {
   return {
     startedAt: isoAt(l.startedAt), endedAt: isoAt(l.endedAt), itemId, fileId,
     page: fileId && Number(l.page) > 0 ? Math.min(999, Math.floor(Number(l.page))) : 0,
+    // Which half of a tall page is on the screen (deckOf: 0 the top, 1 the bottom)
+    part: fileId && Number(l.part) === 1 ? 1 : 0,
     screen: ['end', 'since', 'section'].includes(l.screen) ? l.screen : '',
     // The part whose card is on the screen (screen 'section')
     sectionId: l.screen === 'section' && ID.test(String(l.sectionId || '')) ? String(l.sectionId) : '',
@@ -573,19 +575,23 @@ export function guessItem(m, f, today = todayEastern()) {
  * The meeting as the screen shows it, one stop at a time: the cover; "since we last met" when the agenda asks to
  * approve the last meeting's minutes; then each part of the agenda, opened by its own card when it has no items or
  * more than one (a part of one item goes straight to it), each item's card and every page of each of its files;
- * the files on no item; the close. `pages`: { fileId: page count } as far as known (1 until then); `meetings`
+ * the files on no item; the close. `pages`: { fileId: page count } as far as known (1 until then); `parts`:
+ * { fileId: [halves of each page] } (./board/docs.js partsOf: 2 for a tall page, shown top then bottom); `meetings`
  * finds the last meeting's minutes.
- * → [{ key, kind: cover | since | section | item | doc | end, itemId, fileId, page, n, sectionId }] where n is the
+ * → [{ key, kind: cover | since | section | item | doc | end, itemId, fileId, page, part, n, sectionId }] where n is the
  * item's place in agendaItems (-1 for the cover, a part's card, the loose files and the close)
  */
-export function deckOf(m, { pages = {}, meetings = [] } = {}) {
+export function deckOf(m, { pages = {}, parts = {}, meetings = [] } = {}) {
   const out = [{ key: 'cover', kind: 'cover', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' }];
   if (m.sections.some((s) => s.items.some((it) => it.live === 'minutes' && it.about))) out.push({ key: 'since', kind: 'since', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
   const add = (it, files, n, sectionId) => {
     out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n, sectionId });
     for (const f of files) {
       const count = Math.max(1, Math.round(Number(pages[f.id]) || 1));
-      for (let p = 0; p < count; p++) out.push({ key: `${it.id}:${f.id}:${p}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, n, sectionId });
+      // A tall page (a statement, a report) is two stops, its top half then its bottom one, each as big as the screen allows
+      for (let p = 0; p < count; p++) {
+        for (let k = 0; k < (Number(parts[f.id]?.[p]) === 2 ? 2 : 1); k++) out.push({ key: `${it.id}:${f.id}:${p}${k ? ':b' : ''}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, part: k, n, sectionId });
+      }
     }
   };
   let n = 0;
@@ -605,15 +611,19 @@ export function stopIndex(deck, live) {
   if (live?.screen === 'since') return Math.max(0, deck.findIndex((s) => s.kind === 'since'));
   if (live?.screen === 'section' && live.sectionId) { const i = deck.findIndex((s) => s.kind === 'section' && s.sectionId === live.sectionId); if (i >= 0) return i; }
   if (!live?.itemId) return 0;
-  const exact = deck.findIndex((s) => s.itemId === live.itemId && s.fileId === (live.fileId || '') && s.page === (live.page || 0));
+  const at = (s) => s.itemId === live.itemId && s.fileId === (live.fileId || '') && s.page === (live.page || 0);
+  const exact = deck.findIndex((s) => at(s) && (s.part || 0) === (live.part || 0));
   if (exact >= 0) return exact;
+  // The bottom half of a page this deck hasn't split (yet): that page
+  const page = deck.findIndex(at);
+  if (page >= 0) return page;
   const pages = deck.map((s, i) => [s, i]).filter(([s]) => s.itemId === live.itemId && s.fileId && s.fileId === live.fileId);
   if (pages.length) return pages.at(-1)[1];
   return Math.max(0, deck.findIndex((s) => s.itemId === live.itemId));
 }
 /** A stop as the live state that puts it on the screen */
 export const liveOfStop = (s) => ({
-  itemId: s?.itemId || '', fileId: s?.fileId || '', page: s?.page || 0,
+  itemId: s?.itemId || '', fileId: s?.fileId || '', page: s?.page || 0, part: s?.part || 0,
   screen: s?.kind === 'end' ? 'end' : s?.kind === 'since' ? 'since' : s?.kind === 'section' ? 'section' : '',
   sectionId: s?.kind === 'section' ? s.sectionId : '',
 });

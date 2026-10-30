@@ -23,6 +23,8 @@
  *   const doc = await openDoc(file)          cached by file, the last 8
  *   doc.count, doc.size(i)                   pages, and page i's box at 1x
  *   await doc.draw(i, { width })             an element exactly that wide
+ *   await layoutOf(f, doc, i)                where its words are, and for a tall page where to cut it in two
+ *   await partsOf(f)                         [1 | 2] a page: the halves the screen shows it in
  */
 
 import { unzip, fileTitle } from '../board-shared.js';
@@ -1352,4 +1354,115 @@ export function openDoc(f, { url = fileUrl(f) } = {}) {
     old.then((d) => d.close()).catch(() => {});
   }
   return p;
+}
+
+// ─── Where the words are on a page ──────────────────────────────────
+// A letter page fitted to a widescreen TV is mostly white, its numbers small. The screen shows the part of the page
+// with something on it instead, as big as it goes: the white margins trimmed, and a lone line far from the rest (a
+// report's "Accrual Basis…" footer, a page number) left out. Print still prints the whole page.
+
+/** Blocks of ink down the page ({ y0, y1, x0, x1 } in 0..1) → the part worth showing, or null for the whole page */
+export function mainPart(blocks) {
+  if (!blocks.length) return null;
+  blocks.sort((a, b) => a.y0 - b.y0);
+  const merged = [];
+  for (const b of blocks) {
+    const last = merged.at(-1);
+    if (last && b.y0 - last.y1 < 0.05) { last.y1 = Math.max(last.y1, b.y1); last.x0 = Math.min(last.x0, b.x0); last.x1 = Math.max(last.x1, b.x1); } else merged.push({ ...b });
+  }
+  // A small block set well apart from everything else is a footer or a page number
+  const keep = merged.filter((b, i) => {
+    if (merged.length < 2 || b.y1 - b.y0 > 0.04) return true;
+    const gap = Math.min(i > 0 ? b.y0 - merged[i - 1].y1 : 1, i < merged.length - 1 ? merged[i + 1].y0 - b.y1 : 1);
+    return gap < 0.15;
+  });
+  const u = keep.reduce((a, b) => ({ y0: Math.min(a.y0, b.y0), y1: Math.max(a.y1, b.y1), x0: Math.min(a.x0, b.x0), x1: Math.max(a.x1, b.x1) }));
+  const pad = 0.025;
+  const part = { x: Math.max(0, u.x0 - pad), y: Math.max(0, u.y0 - pad) };
+  part.w = Math.min(1, u.x1 + pad) - part.x;
+  part.h = Math.min(1, u.y1 + pad) - part.y;
+  return part.w > 0.05 && part.h > 0.03 ? part : null;
+}
+/** The ink on a drawn page: a PDF's or picture's canvas read pixel by pixel; a laid-out page by where its words and pictures sit */
+export function inkOf(frame) {
+  const canvas = frame.querySelector('canvas');
+  if (canvas?.width) {
+    const w = 200;
+    const h = Math.max(1, Math.round((canvas.height * w) / canvas.width));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(canvas, 0, 0, w, h);
+    const d = g.getImageData(0, 0, w, h).data;
+    const rows = [];
+    for (let y = 0; y < h; y++) {
+      let x0 = -1; let x1 = -1;
+      for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; if (d[i] < 230 || d[i + 1] < 230 || d[i + 2] < 230) { if (x0 < 0) x0 = x; x1 = x; } }
+      if (x0 >= 0) rows.push({ y0: y / h, y1: (y + 1) / h, x0: x0 / w, x1: (x1 + 1) / w });
+    }
+    return rows;
+  }
+  const box = frame.getBoundingClientRect();
+  if (!box.width || !box.height) return null;
+  const out = [];
+  const add = (r) => { if (r.width > 0 && r.height > 0) out.push({ y0: (r.top - box.top) / box.height, y1: (r.bottom - box.top) / box.height, x0: (r.left - box.left) / box.width, x1: (r.right - box.left) / box.width }); };
+  const walk = document.createTreeWalker(frame, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) { if (n.textContent.trim()) { range.selectNodeContents(n); for (const r of range.getClientRects()) add(r); } }
+  for (const img of frame.querySelectorAll('img')) add(img.getBoundingClientRect());
+  return out;
+}
+// Laid-out pages are measured off screen, so nothing jumps while the screen works out its zoom
+let measuring = null;
+function measureBox() {
+  if (!measuring) { measuring = document.createElement('div'); measuring.setAttribute('aria-hidden', 'true'); measuring.style.cssText = 'position:fixed;left:-20000px;top:0;visibility:hidden;pointer-events:none'; document.body.append(measuring); }
+  return measuring;
+}
+
+/**
+ * A page's content and, for a tall one (a statement, a report: taller than it is wide), where to cut it in two so
+ * each half shows twice as big on a wide screen: at the blank line nearest the middle, never through a line.
+ * Pure: `blocks` of ink in 0..1 down and across the page, `size` its { w, h } → { part, cut, n } (n: 1 | 2)
+ */
+export function splitOf(blocks, size) {
+  const part = mainPart(blocks.map((b) => ({ ...b })));
+  if (!part || (part.w * size.w) / (part.h * size.h) >= 1.1) return { part, cut: 0, n: 1 };
+  const rows = blocks.filter((b) => b.y1 > part.y && b.y0 < part.y + part.h).sort((a, b) => a.y0 - b.y0);
+  const mid = part.y + part.h / 2;
+  let best = null;
+  let end = -1;
+  for (const b of rows) {
+    if (end >= 0 && b.y0 - end > 0.002) { const y = (end + b.y0) / 2; if (best === null || Math.abs(y - mid) < Math.abs(best - mid)) best = y; }
+    end = Math.max(end, b.y1);
+  }
+  return { part, cut: best !== null && Math.abs(best - mid) < part.h * 0.2 ? best : mid, n: 2 };
+}
+/** The area of a page to show for its half `k` (0 the top, 1 the bottom; all of it when it has one) */
+export function halfOf(lay, k = 0) {
+  if (!lay?.part || lay.n < 2) return lay?.part || null;
+  const { part, cut } = lay;
+  return k ? { ...part, y: cut, h: part.y + part.h - cut } : { ...part, h: cut - part.y };
+}
+const layouts = new Map();
+/** Page i's content and halves (splitOf), from the page drawn small: once a file and page, and the same everywhere */
+export function layoutOf(f, doc, i) {
+  const key = `${f?.id || ''}|${i}`;
+  if (!layouts.has(key)) {
+    layouts.set(key, (async () => {
+      const probe = await doc.draw(i, { width: 320, dpr: 1 });
+      const tray = measureBox();
+      tray.replaceChildren(probe);
+      const blocks = inkOf(probe) || [];
+      tray.replaceChildren();
+      return splitOf(blocks, doc.size(i));
+    })().catch(() => ({ part: null, cut: 0, n: 1 })));
+  }
+  return layouts.get(key);
+}
+/** How many halves each page of a file has ([1, 2, 2, …]), worked out a page at a time */
+export async function partsOf(f) {
+  const doc = await openDoc(f);
+  const out = [];
+  for (let i = 0; i < doc.count; i++) out.push((await layoutOf(f, doc, i)).n);
+  return out;
 }

@@ -733,7 +733,7 @@ const deckFiles = (m, meetings) => {
   return [...new Set(deckOf(m, { meetings }).filter((s) => s.fileId).map((s) => s.fileId))].map((id) => all.find((f) => f.id === id)).filter(Boolean);
 };
 /** What a stop is, in words: { label: '3.2' | '', title, sub } */
-function stopWords(stop, m, items, pages, files) {
+function stopWords(stop, m, items, pages, files, parts = {}) {
   if (!stop || stop.kind === 'cover') return { label: '', title: 'The cover', sub: `${meetingName(m)} and the agenda` };
   if (stop.kind === 'end') return { label: '', title: 'The close', sub: 'What the board decided, and the next meeting' };
   if (stop.kind === 'since') return { label: '', title: 'Since we last met', sub: 'The reveals and events since, and the action items' };
@@ -742,7 +742,7 @@ function stopWords(stop, m, items, pages, files) {
   if (stop.kind === 'item') return { label: it.label, title: it.title, sub: [it.section !== it.title ? it.section : '', it.presenter].filter(Boolean).join(' · ') };
   const f = files.find((x) => x.id === stop.fileId);
   const n = pages[stop.fileId];
-  return { label: it.label, title: f ? fileTitle(f.name) : 'A document', sub: `${it.title} · page ${stop.page + 1}${n ? ` of ${n}` : ''}` };
+  return { label: it.label, title: f ? fileTitle(f.name) : 'A document', sub: `${it.title} · page ${stop.page + 1}${n ? ` of ${n}` : ''}${parts[stop.fileId]?.[stop.page] === 2 ? `, ${stop.part ? 'bottom' : 'top'} half` : ''}` };
 }
 
 /**
@@ -760,12 +760,14 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
   const here = useRef({});
   const [send, screenOn] = useScreen(m.id, (msg) => {
     // A screen's window opening, or the preview here asking: where the chair is
-    if (msg.type === 'hello' || msg.type === 'want') send({ type: 'show', live: here.current.pos, rehearsal: !running, practice });
+    if (msg.type === 'hello' || msg.type === 'want') { send({ type: 'show', live: here.current.pos, rehearsal: !running, practice }); send({ type: 'parts', parts: here.current.parts }); }
     if (msg.type === 'key') here.current.go(here.current.at + (msg.dir > 0 ? 1 : -1));
     if (msg.type === 'pages' && msg.pages) addPages(msg.pages);
   });
-  const [pages, addPages] = usePages(files, true);
-  const deck = useMemo(() => deckOf(m, { pages, meetings }), [m.sections, m.files, pages, meetings]);
+  const [pages, addPages, parts] = usePages(files, true);
+  const deck = useMemo(() => deckOf(m, { pages, parts, meetings }), [m.sections, m.files, pages, parts, meetings]);
+  // Which pages show in halves, to the screens on this computer (they'd otherwise learn it a page at a time)
+  useEffect(() => { if (Object.keys(parts).length) send({ type: 'parts', parts }); }, [parts]);
   const pos = running ? cleanLive(m.live) : rehearsal;
   const at = stopIndex(deck, pos);
   const [, tick] = useState(0);
@@ -789,7 +791,7 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     else setRehearsal((r) => ({ ...r, ...next }));
     send({ type: 'show', live: { ...pos, ...next }, rehearsal: !running, practice });
   };
-  here.current = { pos, at, go };
+  here.current = { pos, at, go, parts };
   // From the notes below: an item ("Discuss now") or one of its documents ("Show")
   jump.current = (want) => {
     const i = deck.findIndex((s) => s.itemId === want.itemId && s.fileId === (want.fileId || '') && s.page === 0);
@@ -820,9 +822,10 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     setNow((x) => { const closed = closeVote(x, live, practice); return { ...closed, live: { ...cleanLive(closed.live || x.live), vote: null, endedAt, screen: 'end', itemId: '', fileId: '', page: 0 } }; });
     send({ type: 'show', live: { ...pos, endedAt, screen: 'end', itemId: '', fileId: '', page: 0 }, rehearsal: false, practice });
   };
-  const words = stopWords(deck[at], m, items, pages, files);
-  const next = deck[at + 1] ? stopWords(deck[at + 1], m, items, pages, files) : null;
-  const nextWords = !next ? 'The last stop' : deck[at + 1].fileId && deck[at + 1].fileId === deck[at]?.fileId ? `Next: page ${deck[at + 1].page + 1}` : `Next: ${next.title}${next.label && next.label !== words.label ? ` (${next.label})` : ''}`;
+  const words = stopWords(deck[at], m, items, pages, files, parts);
+  const next = deck[at + 1] ? stopWords(deck[at + 1], m, items, pages, files, parts) : null;
+  const same = deck[at + 1]?.fileId && deck[at + 1].fileId === deck[at]?.fileId;
+  const nextWords = !next ? 'The last stop' : same && deck[at + 1].page === deck[at].page ? 'Next: the bottom half' : same ? `Next: page ${deck[at + 1].page + 1}` : `Next: ${next.title}${next.label && next.label !== words.label ? ` (${next.label})` : ''}`;
   const screenBtn = html`<button type="button" class="btn btn-ghost btn-sm" onClick=${present} title=${screenOn ? 'Bring the screen’s window to the front' : 'The screen in its own window: share it on Google Meet, or drag it onto the TV'}>${screenOn ? 'Show the screen' : 'Open the screen'}</button>`;
   const people = useMemo(() => pickable(ctx.data.people), [ctx.data.people]);
   const plan = useMemo(() => sectionPlan(m), [m.sections, m.start, m.end]);

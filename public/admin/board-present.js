@@ -19,7 +19,7 @@
  */
 
 import { useState, useEffect, useRef } from './vendor.js';
-import { openDoc } from './board/docs.js';
+import { openDoc, partsOf } from './board/docs.js';
 
 export const CHANNEL = 'soard-board-screen';
 export const screenUrl = (id) => `/admin/board/#/meetings/${encodeURIComponent(id)}/screen`;
@@ -70,11 +70,14 @@ export function useScreen(id, on) {
 }
 
 /**
- * How many pages each document has, as the screen draws them ({ fileId: pages }), opened one at a time in the
- * background while `on` (the deck needs them to step page by page). The screen's own counts come in too.
+ * How many pages each document has, as the screen draws them ({ fileId: pages }), and then which pages are tall
+ * enough to show in two halves ({ fileId: [1 | 2 a page] }, ./board/docs.js partsOf), worked out one file at a
+ * time in the background while `on` (the deck steps through every page and half). The screen's own counts come in too.
+ * → [pages, addPages, parts]
  */
 export function usePages(files, on) {
   const [pages, setPages] = useState({});
+  const [parts, setParts] = useState({});
   const key = files.map((f) => f.id).join();
   useEffect(() => {
     if (!on) return undefined;
@@ -88,10 +91,19 @@ export function usePages(files, on) {
           if (!stop && doc?.count) setPages((p) => (p[f.id] === doc.count ? p : { ...p, [f.id]: doc.count }));
         } catch { /* a file that won't open is one page on the screen */ }
       }
+      // The counts first (every page in the deck), then the halves
+      for (const f of files) {
+        if (stop) return;
+        if (parts[f.id]) continue;
+        try {
+          const n = await partsOf(f);
+          if (!stop) setParts((p) => ({ ...p, [f.id]: n }));
+        } catch { /* one page, whole */ }
+      }
     })();
     return () => { stop = true; };
   }, [key, on]);
-  return [pages, (more) => setPages((p) => ({ ...p, ...more }))];
+  return [pages, (more) => setPages((p) => ({ ...p, ...more })), parts];
 }
 
 /**

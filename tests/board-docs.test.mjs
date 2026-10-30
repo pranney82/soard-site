@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { formatValue, readSheets, readWord, readSlides, wordImages, slideImages, docKind } from '../public/admin/board/docs.js';
+import { formatValue, readSheets, readWord, readSlides, wordImages, slideImages, docKind, splitOf, halfOf } from '../public/admin/board/docs.js';
 
 /** A real ZIP of { name: text | bytes } */
 function zip(files) {
@@ -256,4 +256,24 @@ test('what each file is', () => {
   assert.equal(docKind({ name: 'Q1 sales.png', type: 'image/png' }), 'image');
   assert.equal(docKind({ name: 'Old minutes.doc', type: 'application/msword' }), 'other');
   assert.equal(docKind({ name: 'Old.xls' }), 'other');
+});
+
+test('a tall page is shown in two halves, cut at the blank line nearest its middle, never through a line; a short or wide page whole', () => {
+  const size = { w: 816, h: 1056 };
+  // A statement: 40 lines top to bottom, a little space between each
+  const rows = Array.from({ length: 40 }, (_, i) => ({ y0: 0.08 + i * 0.021, y1: 0.092 + i * 0.021, x0: 0.1, x1: 0.9 }));
+  const lay = splitOf(rows, size);
+  assert.equal(lay.n, 2);
+  assert.ok(Math.abs(lay.cut - (lay.part.y + lay.part.h / 2)) < 0.03, 'near the middle');
+  assert.ok(!rows.some((r) => r.y0 < lay.cut && r.y1 > lay.cut), 'never through a line');
+  const top = halfOf(lay, 0);
+  const bottom = halfOf(lay, 1);
+  assert.equal(top.y, lay.part.y);
+  assert.ok(Math.abs(top.y + top.h - bottom.y) < 1e-9 && Math.abs(bottom.y + bottom.h - (lay.part.y + lay.part.h)) < 1e-9, 'the halves meet at the cut and cover it all');
+  // A few lines (a short memo, a cover page): wider than tall, so whole; a landscape slide whole
+  assert.equal(splitOf(rows.slice(0, 6), size).n, 1);
+  assert.equal(splitOf([{ y0: 0.1, y1: 0.9, x0: 0.05, x1: 0.95 }], { w: 1056, h: 816 }).n, 1);
+  assert.deepEqual(splitOf([], size), { part: null, cut: 0, n: 1 });
+  assert.equal(halfOf({ part: null, n: 1 }, 1), null);
+  assert.deepEqual(halfOf(splitOf(rows.slice(0, 6), size), 1), splitOf(rows.slice(0, 6), size).part, 'a page shown whole is its content either way');
 });
