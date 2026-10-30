@@ -621,57 +621,91 @@ function SinceLast({ ctx }) {
 
 /** Where a makeover's link goes: a kid's page, or a community project's page once it's public */
 /**
- * Impact, as the admin's Dashboard has it: the kids served since 2012, then each year as a bar (kids served, or
- * rooms built), this year marked. Each bar says its numbers on hover or focus; a table reads the same to a screen
- * reader. Counted exactly as the website counts (published profiles; a sibling profile's every child)
+ * Impact, as the admin's Dashboard has it: the kids served since the first year, each year as a small bar, this
+ * year against last; "Explore by year" opens the full chart (kids served, or rooms built) and any year's
+ * makeovers, each kid's photo opening their page. Counted exactly as the website counts (published profiles; a
+ * sibling profile's every child; a missing room count as one room)
  */
 function Impact({ n }) {
   const years = n.impact?.byYear || [];
+  const [open, setOpen] = useState(false);
   const [what, setWhat] = useState('kids');
-  const [seen, setSeen] = useState(false);
-  const ref = useRef(null);
-  // The bars rise the first time they're on screen
-  useEffect(() => {
-    if (!ref.current || reduceMotion() || !('IntersectionObserver' in window)) { setSeen(true); return undefined; }
-    const io = new IntersectionObserver((e) => { if (e.some((x) => x.isIntersecting)) { setSeen(true); io.disconnect(); } }, { threshold: 0.3 });
-    io.observe(ref.current);
-    return () => io.disconnect();
-  }, []);
+  const [sel, setSel] = useState(Math.max(0, years.length - 1));
   if (!years.length) return null;
-  const thisYear = Number(n.at ? String(n.at).slice(0, 4) : new Date().getFullYear());
-  const top = Math.max(1, ...years.map((y) => y[what]));
+  const thisYear = Number(String(n.at || new Date().toISOString()).slice(0, 4));
   const now = years.find((y) => y.year === thisYear);
   const last = years.find((y) => y.year === thisYear - 1);
-  const best = years.reduce((a, b) => (b[what] > a[what] ? b : a), years[0]);
-  const word = what === 'kids' ? ['kid', 'kids'] : ['room', 'rooms'];
-  const say = (y) => `${y.year}: ${y.kids} ${y.kids === 1 ? 'kid' : 'kids'} served, ${y.rooms} ${y.rooms === 1 ? 'room' : 'rooms'}, ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}`;
-  return html`<section class="bp-card bp-impact" aria-labelledby="impact-h" id="impact">
+  const word = (k, x) => `${x.toLocaleString()} ${k === 'kids' ? (x === 1 ? 'kid' : 'kids') : (x === 1 ? 'room' : 'rooms')}`;
+  const sparkTop = Math.max(1, ...years.map((y) => y.kids));
+  const toggle = () => setOpen((v) => !v);
+  return html`<section class=${`bp-card bp-impact ${open ? 'is-open' : ''}`} aria-labelledby="impact-h" id="impact">
     <div class="bp-cardhead">
-      <h2 class="bp-h2" id="impact-h">Impact</h2>
+      <h2 class="bp-h2" id="impact-h">Impact<span class="bp-muted">since ${years[0].year}</span></h2>
+      <button type="button" class="bp-cardhead__go bp-impact__more" aria-expanded=${open} aria-controls="impact-years" onClick=${toggle}>${open ? 'Hide years' : 'Explore by year'}<${Icon} name="arrow" size=${16} cls="bp-go" /></button>
+    </div>
+    <div class="bp-impact__band">
+      <div class="bp-impact__hero">
+        <p class="bp-impact__num">${n.impact.kids.toLocaleString()}</p>
+        <p class="bp-impact__label">kids served</p>
+      </div>
+      <button type="button" class="bp-spark" aria-expanded=${open} aria-controls="impact-years" onClick=${toggle} aria-label=${`Kids served each year since ${years[0].year}. ${open ? 'Hide' : 'Explore'} by year`}>
+        <span class="bp-spark__bars" aria-hidden="true">${years.map((y) => html`<i key=${y.year} class=${y.year === thisYear ? 'is-now' : ''} style=${`--h:${Math.max(4, (y.kids / sparkTop) * 100)}%`}></i>`)}</span>
+        <span class="bp-spark__x" aria-hidden="true"><span>${years[0].year}</span><span>${years.at(-1).year}</span></span>
+      </button>
+      <dl class="bp-impact__stats">
+        ${now ? html`<div><dt>${thisYear} so far</dt><dd>${word('kids', now.kids)}${last?.kids ? html`<span class=${now.kids >= last.kids ? 'is-up' : 'is-down'}>${now.kids >= last.kids ? '▲' : '▼'} ${Math.abs(Math.round(((now.kids - last.kids) / last.kids) * 100))}% vs all of ${thisYear - 1}</span>` : null}</dd></div>` : null}
+        <div><dt>Rooms built</dt><dd>${n.impact.rooms.toLocaleString()}</dd></div>
+        <div><dt>Makeovers</dt><dd>${years.reduce((t, y) => t + y.makeovers, 0).toLocaleString()}</dd></div>
+        ${n.impact.communityProjects ? html`<div><dt>Community projects</dt><dd>${n.impact.communityProjects.toLocaleString()}${n.impact.reached ? html`<span>${n.impact.reached.toLocaleString()} children reached</span>` : null}</dd></div>` : null}
+      </dl>
+    </div>
+    ${open ? html`<${ImpactYears} years=${years} what=${what} setWhat=${setWhat} sel=${sel} setSel=${setSel} thisYear=${thisYear} word=${word} />` : null}
+  </section>`;
+}
+
+/** Explore by year: a bar a year (pick one with a tap, or ← → once one has focus), and that year's makeovers */
+function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
+  const top = Math.max(1, ...years.map((y) => y[what]));
+  const best = years.reduce((a, b) => (b[what] > a[what] ? b : a), years[0]);
+  const y = years[sel] || years.at(-1);
+  const onKey = (e) => {
+    const next = { ArrowRight: sel + 1, ArrowLeft: sel - 1, Home: 0, End: years.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    const i = Math.max(0, Math.min(years.length - 1, next));
+    setSel(i);
+    requestAnimationFrame(() => document.getElementById(`bpy-${years[i].year}`)?.focus());
+  };
+  const kids = [...(y.profiles || [])].sort((a, b) => a.name.localeCompare(b.name));
+  return html`<div class="bp-impact__open" id="impact-years">
+    <div class="bp-impact__tools">
+      <p class="bp-muted">${what === 'kids' ? 'Kids served' : 'Rooms built'} each year. Pick a year to see its makeovers.</p>
       <div class="bp-impact__seg" role="group" aria-label="Show each year’s">
         ${[['kids', 'Kids served'], ['rooms', 'Rooms built']].map(([id, label]) => html`<button type="button" aria-pressed=${what === id} onClick=${() => setWhat(id)} key=${id}>${label}</button>`)}
       </div>
     </div>
-    <div class="bp-impact__body">
-      <div class="bp-impact__hero">
-        <p class="bp-impact__num">${(what === 'kids' ? n.impact.kids : n.impact.rooms).toLocaleString()}</p>
-        <p class="bp-impact__label">${what === 'kids' ? 'kids served' : 'rooms built'} since ${years[0].year}</p>
-        <dl class="bp-impact__stats">
-          ${now ? html`<div><dt>${thisYear} so far</dt><dd>${now[what].toLocaleString()} ${now[what] === 1 ? word[0] : word[1]}${last?.[what] ? html`<span class=${now[what] >= last[what] ? 'is-up' : 'is-down'}>${now[what] >= last[what] ? '▲' : '▼'} ${Math.abs(Math.round(((now[what] - last[what]) / last[what]) * 100))}% vs all of ${thisYear - 1}</span>` : null}</dd></div>` : null}
-          <div><dt>Makeovers</dt><dd>${years.reduce((t, y) => t + y.makeovers, 0).toLocaleString()}</dd></div>
-          ${n.impact.communityProjects ? html`<div><dt>Community projects</dt><dd>${n.impact.communityProjects.toLocaleString()}${n.impact.reached ? html`<span>${n.impact.reached.toLocaleString()} children reached</span>` : null}</dd></div>` : null}
-        </dl>
-      </div>
-      <figure class=${`bp-years ${seen ? 'is-seen' : ''}`} ref=${ref}>
-        <ol class="bp-years__bars" aria-label=${`${what === 'kids' ? 'Kids served' : 'Rooms built'} each year since ${years[0].year}`}>${years.map((y, i) => html`<li key=${y.year} class=${`${y.year === thisYear ? 'is-now' : ''} ${y === best ? 'is-best' : ''}`} style=${`--h:${(y[what] / top) * 100}%;--i:${i}`} tabindex="0" aria-label=${say(y)}>
-          <span class="bp-years__bar" aria-hidden="true"></span>
-          ${y.year === thisYear || y === best ? html`<span class="bp-years__val" aria-hidden="true">${y[what]}</span>` : null}
-          <span class="bp-years__tip" aria-hidden="true"><strong>${y.year}</strong>${y.kids} ${y.kids === 1 ? 'kid' : 'kids'} · ${y.rooms} ${y.rooms === 1 ? 'room' : 'rooms'} · ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}${y.year === thisYear ? ' so far' : ''}</span>
-          <span class="bp-years__x" aria-hidden="true">${i === 0 || y.year === thisYear || y.year % 2 === 0 ? `’${String(y.year).slice(2)}` : ''}</span>
+    <div class="bp-impact__explore">
+      <div class="bp-years" role="group" aria-label=${`${what === 'kids' ? 'Kids served' : 'Rooms built'} each year since ${years[0].year}`} onKeyDown=${onKey}>
+        <ol class="bp-years__bars">${years.map((x, i) => html`<li key=${x.year} class=${`${x.year === thisYear ? 'is-now' : ''} ${i === sel ? 'is-sel' : ''}`} style=${`--h:${(x[what] / top) * 100}%;--i:${i}`}>
+          <button type="button" id=${`bpy-${x.year}`} class="bp-years__hit" aria-pressed=${i === sel} tabindex=${i === sel ? 0 : -1} onClick=${() => setSel(i)}
+            aria-label=${`${x.year}: ${word(what, x[what])}${x.year === thisYear ? ' so far' : ''}, ${x.makeovers} ${x.makeovers === 1 ? 'makeover' : 'makeovers'}`}>
+            <span class="bp-years__bar" aria-hidden="true"></span>
+            ${x.year === thisYear || x === best || i === sel ? html`<span class="bp-years__val" aria-hidden="true">${x[what]}</span>` : null}
+            <span class="bp-years__x" aria-hidden="true">${i === 0 || x.year === thisYear || i === sel || x.year % 2 === 0 ? `’${String(x.year).slice(2)}` : ''}</span>
+          </button>
         </li>`)}</ol>
-      </figure>
+      </div>
+      <div class="bp-yearpanel" aria-live="polite">
+        <p class="bp-yearpanel__head"><strong>${y.year}</strong><span>${word(what, y[what])}${y.year === thisYear ? ' so far' : ''} · ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}</span></p>
+        ${kids.length ? html`<ul class="bp-yearpanel__kids">${kids.map((k) => html`<li key=${k.slug || k.name}>
+          <a href=${k.slug ? `/kids/${k.slug}/` : null} target="_blank" rel="noopener" class="bp-yk">
+            ${k.photo ? html`<img src=${sized(k.photo, 'w=96,h=96,fit=cover,gravity=face')} alt="" loading="lazy" width="40" height="40" />` : html`<span class="bp-avatar bp-avatar--initials" style=${`--s:40px;--hue:${hueOf(k.name)}`} data-i=${initialsOf(k.name)} aria-hidden="true"></span>`}
+            <span><strong>${k.name}</strong>${k[what] > 1 ? html`<small>${word(what, k[what])}</small>` : null}</span>
+          </a>
+        </li>`)}</ul>` : html`<p class="bp-muted">No makeovers this year.</p>`}
+      </div>
     </div>
-  </section>`;
+  </div>`;
 }
 
 /** Home's makeovers: the kanban (./kanban.js), from JobTread */
@@ -708,12 +742,12 @@ function HomePage({ ctx }) {
       <p class="bp-brief__date">${today}</p>
     </header>
     <div class="bp-rise" style=${rise(1)}><${Figures} data=${data} /></div>
+    <div class="bp-rise bp-impact-wrap" style=${rise(2)}><${Impact} n=${data.numbers} /></div>
     <div class="bp-split bp-split--top">
       <div class="bp-stack bp-rise" style=${rise(2)}>${m ? html`<${NextMeeting} m=${m} ctx=${ctx} peek=${true} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
       <div class="bp-stack bp-rise" style=${rise(3)}>${todos}<${SinceLast} ctx=${ctx} /></div>
     </div>
-    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} /></div>
-    <div class="bp-rise" style=${rise(5)}><${Impact} n=${data.numbers} /></div>`;
+    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} /></div>`;
 }
 
 function NoMeeting({ ctx }) {

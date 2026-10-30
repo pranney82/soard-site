@@ -593,7 +593,7 @@ export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fr
 
 /** Kids served and rooms built, the way the site counts them (src/utils/stats.ts) */
 async function impact(DB) {
-  const read = async (table) => { try { return ((await DB.prepare(`SELECT data FROM ${table}`).all()).results || []).map((r) => parse(r.data)).filter((d) => d.publishStatus !== 'draft'); } catch { return []; } };
+  const read = async (table) => { try { return ((await DB.prepare(`SELECT slug, data FROM ${table}`).all()).results || []).map((r) => ({ slug: r.slug, ...parse(r.data) })).filter((d) => d.publishStatus !== 'draft'); } catch { return []; } };
   const [kids, community] = await Promise.all([read('kids'), read('community')]);
   return {
     kids: kids.reduce((s, k) => s + (Number(k.childCount) || 1), 0),
@@ -611,16 +611,20 @@ function byYear(kids) {
   for (const k of kids) {
     const y = Number(k.year);
     if (!(y > 2000 && y < 2100)) continue;
-    const r = by.get(y) || { year: y, kids: 0, rooms: 0, makeovers: 0 };
-    r.kids += Number(k.childCount) || 1;
-    r.rooms += Number(k.roomCount) || 1;
+    const r = by.get(y) || { year: y, kids: 0, rooms: 0, makeovers: 0, profiles: [] };
+    const n = Number(k.childCount) || 1;
+    const rooms = Number(k.roomCount) || 1;
+    r.kids += n;
+    r.rooms += rooms;
     r.makeovers += 1;
+    // Each makeover by its published page: the kid's name, page and photo (for Explore by year)
+    r.profiles.push({ name: String(k.name || ''), slug: String(k.slug || ''), kids: n, rooms, ...photoField(k.heroImage || k.photos?.[0]?.url) });
     by.set(y, r);
   }
   if (!by.size) return [];
   const first = Math.min(...by.keys());
   const last = Math.max(Number(todayEastern().slice(0, 4)), ...by.keys());
-  return Array.from({ length: last - first + 1 }, (_, i) => by.get(first + i) || { year: first + i, kids: 0, rooms: 0, makeovers: 0 });
+  return Array.from({ length: last - first + 1 }, (_, i) => by.get(first + i) || { year: first + i, kids: 0, rooms: 0, makeovers: 0, profiles: [] });
 }
 
 /** Events from today on (and the last 120 days), soonest first */

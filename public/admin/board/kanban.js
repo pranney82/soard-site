@@ -82,7 +82,7 @@ export function Kanban({ projects, reveals = [], variant = 'home', links = varia
       const named = list.filter((b) => b.name);
       const unnamed = list.filter((b) => !b.name && b.kind !== 'community').length;
       const orgs = list.filter((b) => !b.name && b.kind === 'community').length;
-      return html`<div class=${`bk-col ${list.length ? '' : 'is-empty'} ${stage === AWAITING ? 'is-waiting' : ''}`} key=${stage}>
+      return html`<div class=${`bk-col ${list.length ? '' : 'is-empty'}`} key=${stage}>
         <p class="bk-col__head"><span>${label}</span><span class="bk-col__n">${list.length}</span></p>
         <ul class="bk-col__cards">
           ${named.map(card)}
