@@ -25,6 +25,7 @@
  *   await doc.draw(i, { width })             an element exactly that wide
  *   await layoutOf(f, doc, i)                where its words are, and for a tall page where to cut it in two
  *   await partsOf(f)                         [1 | 2] a page: the halves the screen shows it in
+ *   await areasOf(f, doc, i)                 every part shown on pages page i's size: drawn at one zoom
  */
 
 import { unzip, fileTitle } from '../board-shared.js';
@@ -1410,6 +1411,23 @@ export function inkOf(frame) {
   const range = document.createRange();
   for (let n = walk.nextNode(); n; n = walk.nextNode()) { if (n.textContent.trim()) { range.selectNodeContents(n); for (const r of range.getClientRects()) add(r); } }
   for (const img of frame.querySelectorAll('img')) add(img.getBoundingClientRect());
+  // A table's ruled lines are on the page too, often past its last words (a total's rule under a column of
+  // percentages), so the part shown reaches them. Marked `line`: they say how far the page goes, not where its
+  // lines of words are (splitOf cuts between those)
+  for (const td of frame.querySelectorAll('td, th')) {
+    const cs = getComputedStyle(td);
+    const r = td.getBoundingClientRect();
+    for (const side of ['Top', 'Bottom', 'Left', 'Right']) {
+      const w = parseFloat(cs[`border${side}Width`]);
+      if (!w || cs[`border${side}Style`] === 'none' || /^transparent$|rgba\(.*,\s*0\)$/.test(cs[`border${side}Color`])) continue;
+      const top = side === 'Bottom' ? r.bottom - w : r.top;
+      const left = side === 'Right' ? r.right - w : r.left;
+      const edge = { top, left, width: side === 'Top' || side === 'Bottom' ? r.width : w, height: side === 'Left' || side === 'Right' ? r.height : w };
+      const before = out.length;
+      add({ ...edge, right: left + edge.width, bottom: top + edge.height });
+      if (out.length > before) out[before].line = true;
+    }
+  }
   return out;
 }
 // Laid-out pages are measured off screen, so nothing jumps while the screen works out its zoom
@@ -1427,7 +1445,7 @@ function measureBox() {
 export function splitOf(blocks, size) {
   const part = mainPart(blocks.map((b) => ({ ...b })));
   if (!part || (part.w * size.w) / (part.h * size.h) >= 1.1) return { part, cut: 0, n: 1 };
-  const rows = blocks.filter((b) => b.y1 > part.y && b.y0 < part.y + part.h).sort((a, b) => a.y0 - b.y0);
+  const rows = blocks.filter((b) => !b.line && b.y1 > part.y && b.y0 < part.y + part.h).sort((a, b) => a.y0 - b.y0);
   const mid = part.y + part.h / 2;
   let best = null;
   let end = -1;
@@ -1458,6 +1476,23 @@ export function layoutOf(f, doc, i) {
     })().catch(() => ({ part: null, cut: 0, n: 1 })));
   }
   return layouts.get(key);
+}
+/**
+ * Every part of a file the screen shows on pages the size of page i (each page's content, or its two halves), so
+ * the screen draws them all at one zoom: the words stay one size from half to half and page to page. A long file
+ * (over 40 pages) only page i's
+ */
+export async function areasOf(f, doc, i) {
+  const size = doc.size(i);
+  const out = [];
+  for (let j = 0; j < doc.count; j++) {
+    if (doc.count > 40 && j !== i) continue;
+    const s = doc.size(j);
+    if (Math.abs(s.w - size.w) > 1 || Math.abs(s.h - size.h) > 1) continue;
+    const lay = await layoutOf(f, doc, j);
+    for (let k = 0; k < (lay.n || 1); k++) { const a = halfOf(lay, k); if (a) out.push(a); }
+  }
+  return out;
 }
 /** How many halves each page of a file has ([1, 2, 2, …]), worked out a page at a time */
 export async function partsOf(f) {

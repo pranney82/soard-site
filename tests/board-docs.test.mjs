@@ -277,3 +277,17 @@ test('a tall page is shown in two halves, cut at the blank line nearest its midd
   assert.equal(halfOf({ part: null, n: 1 }, 1), null);
   assert.deepEqual(halfOf(splitOf(rows.slice(0, 6), size), 1), splitOf(rows.slice(0, 6), size).part, 'a page shown whole is its content either way');
 });
+
+test('a table’s ruled lines widen the part shown to reach them, and never decide where a page is cut', () => {
+  const size = { w: 816, h: 1056 };
+  const rows = Array.from({ length: 40 }, (_, i) => ({ y0: 0.08 + i * 0.021, y1: 0.092 + i * 0.021, x0: 0.1, x1: 0.8 }));
+  // A rule under every row, and the totals' rules running on under a column of percentages to 0.95
+  const lines = rows.map((r, i) => ({ y0: r.y1 + 0.004, y1: r.y1 + 0.005, x0: 0.1, x1: i % 10 === 9 ? 0.95 : 0.8, line: true }));
+  const plain = splitOf(rows, size);
+  const ruled = splitOf([...rows, ...lines], size);
+  assert.ok(plain.part.x + plain.part.w < 0.95, 'by the words alone the crop stops short of the long rules');
+  assert.ok(ruled.part.x + ruled.part.w > 0.95, 'with the rules it reaches past them');
+  assert.equal(ruled.n, 2);
+  assert.ok(Math.abs(ruled.cut - plain.cut) < 0.006, `a rule between every pair of lines doesn't move the cut (${plain.cut} → ${ruled.cut})`);
+  assert.ok(!rows.some((r) => r.y0 < ruled.cut && r.y1 > ruled.cut), 'never through a line of words');
+});

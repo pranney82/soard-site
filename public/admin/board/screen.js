@@ -21,7 +21,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
-import { openDoc, layoutOf, halfOf } from './docs.js';
+import { openDoc, layoutOf, halfOf, areasOf } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, deckOf, stopIndex, fileTitle, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, facesOf,
@@ -87,7 +87,9 @@ async function drawFitted(f, page, box, { ahead = false, part = 0 } = {}) {
   const lay = await layoutOf(f, doc, i);
   const area = halfOf(lay, part);
   const H0 = Math.round((size.h * fit) / size.w);
-  const zoom = area ? Math.min(3, box.w / (area.w * fit), box.h / (area.h * H0)) : 1;
+  // One zoom for the file, the one its biggest half or page needs: Next changes the rows, never the size of the words
+  const zoomOf = (a) => Math.min(3, box.w / (a.w * fit), box.h / (a.h * H0));
+  const zoom = area ? Math.min(zoomOf(area), ...(await areasOf(f, doc, i)).map(zoomOf)) : 1;
   let el;
   if (area && zoom > 1.12) {
     const W = Math.floor(fit * zoom);
@@ -201,7 +203,8 @@ const roomPhoto = (url) => String(url || '').replace(/\bw=\d+,h=\d+/, 'w=480,h=4
 /**
  * The board's faces (facesOf): for the roll call everyone on the meeting's list, each lighting up as they check in
  * on the board page, the ones not here yet dimmed; for a go-around (introductions, each one's news) the ones here.
- * Before the meeting starts (a rehearsal, a preview) everyone as they are. New this year: a mark under the name.
+ * Before the meeting starts (a rehearsal, a preview) everyone as they are. New this year: a mark on the photo, so
+ * the line under the name keeps its width for the company.
  */
 function FacesGrid({ kind, v, people, started, year }) {
   const bySlug = new Map(people.map((p) => [p.slug, p]));
@@ -219,9 +222,10 @@ function FacesGrid({ kind, v, people, started, year }) {
       <span class="bs-faces__pic">
         ${p.photo ? html`<img src=${roomPhoto(p.photo)} alt="" />` : html`<span class="bs-faces__initials" style=${`--hue:${hueOf(p.name)}`}>${initialsOf(p.name)}</span>`}
         ${state === 'is-here' || state === 'is-remote' ? html`<span class="bs-faces__mark" aria-hidden="true">${CHECK}</span>` : null}
+        ${typeof p.since === 'number' && p.since >= year ? html`<b class="bs-faces__new">New</b>` : null}
       </span>
       <strong class="bs-faces__name">${p.name}</strong>
-      <span class="bs-faces__sub"><span>${sub}</span>${typeof p.since === 'number' && p.since >= year ? html`<b>New</b>` : null}</span>
+      <span class="bs-faces__sub">${sub}</span>
     </li>`;
   })}</ul>`;
 }
