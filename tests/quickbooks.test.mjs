@@ -61,6 +61,9 @@ const ACCOUNTS = [
   { Name: 'Petty Cash', AccountType: 'Bank', CurrentBalance: 40, Active: true },
   { Name: 'Old Checking', AccountType: 'Bank', CurrentBalance: 999, Active: false },
   { Id: '150', Name: 'CD', AccountType: 'Other Current Asset', CurrentBalance: 100000, Active: true },
+  { Id: '151', Name: 'Right of Use Assets', AccountType: 'Other Current Asset', CurrentBalance: 172158.05, Active: true },
+  { Id: '152', Name: 'Sunny&Ranney - In-Kind Contributions', AccountType: 'Other Current Asset', CurrentBalance: 226623.48, Active: true },
+  { Id: '153', Name: 'CD Interest Receivable', AccountType: 'Other Current Asset', CurrentBalance: 410.5, Active: true },
   { Name: 'Chase C/C 3512', AccountType: 'Credit Card', CurrentBalance: 583.45, Active: true },
   { Id: '201', Name: 'Ramp CC', AccountType: 'Credit Card', CurrentBalance: 2196.28, Active: true },
   { Name: 'American Express', AccountType: 'Credit Card', CurrentBalance: 0, Active: true },
@@ -84,7 +87,8 @@ function balanceSheet(cols, bank, { cd = 100000 } = {}) {
   const section = (group, label, rows, total, totalLabel = `Total ${label}`) => ({ type: 'Section', group, Header: { ColData: [{ value: label }, ...cols.map(() => ({ value: '' }))] }, Rows: { Row: rows }, Summary: { ColData: [{ value: totalLabel }, ...v(total)] } });
   const opex = each((b) => b * 0.11); const reserve = each((b) => b * 0.53); const income = each((b, i) => b - opex[i] - reserve[i]);
   const cds = each(() => cd);
-  const assets = each((b) => b + cd);
+  const rou = each(() => 172158.05);
+  const assets = each((b) => b + cd + 172158.05);
   const liab = each(() => 114214.19);
   const equity = each((b, i) => assets[i] - liab[i]);
   return {
@@ -94,7 +98,7 @@ function balanceSheet(cols, bank, { cd = 100000 } = {}) {
       section('TotalAssets', 'ASSETS', [
         section('CurrentAssets', 'Current Assets', [
           section('BankAccounts', 'Bank Accounts', [data('SR1_Opex (0986)', opex), data('SR4_Long Reserve (8861)', reserve), data('SR5_Income (3552)', income)], bank),
-          section('OtherCurrentAssets', 'Other Current Assets', [data('CD', cds)], cds),
+          section('OtherCurrentAssets', 'Other Current Assets', [data('CD', cds), data('Right of Use Assets', rou)], each((b, i) => cds[i] + rou[i])),
         ], assets),
       ], assets, 'TOTAL ASSETS'),
       section('TotalLiabilitiesAndEquity', 'LIABILITIES AND EQUITY', [
@@ -263,7 +267,7 @@ test('connecting: the code for tokens, the company’s name, and the year so far
   const { company, year, from, through, revenue, expenses, net, basis, at, stale, cash } = n;
   assert.deepEqual({ company, year, from, through, revenue, expenses, net, basis, at, stale }, { company: 'Sunshine on a Ranney Day', year: '2026', from: '2026-01-01', through: '2026-10-29', revenue: 822221.67, expenses: 439100.14, net: 383121.53, basis: 'Accrual', at: new Date(T0).toISOString(), stale: false });
   assert.equal(n.contextAt, new Date(T0).toISOString(), 'the year in context, read at once too');
-  assert.equal(cash.total, 502779.24, 'every active bank account on the books');
+  assert.equal(cash.total, 602779.24, 'every active bank account on the books, and the CD');
   assert.equal(cash.at, new Date(T0).toISOString());
 });
 
@@ -314,10 +318,20 @@ test('Intuit’s addresses come from its discovery document, read once a day; on
   assert.equal(new URL(await connectUrl(env, { by: FOUNDER })).origin, 'https://appcenter.intuit.com');
 });
 
-test('the cash on the books: active Bank accounts by name without ledger digits, cards as owed, nothing else', () => {
+test('the cash on the books: active Bank accounts and the CD by name without ledger digits, cards as owed, nothing else', async () => {
+  const { bankByMonth, ownAccounts, cashLike } = await import('../functions/api/_quickbooks.js');
+  assert.deepEqual(ACCOUNTS.filter(cashLike).map((a) => a.Name), ['CD']);
+  assert.ok(cashLike({ Name: 'Chase Certificate of Deposit', AccountType: 'Other Current Asset' }) && cashLike({ Name: 'Money Market', AccountType: 'Other Current Asset' }));
+  // Month ends: the CD found by its id whatever the row says, and a Bank account's own row never counted twice
+  const cols = monthCols(2, '2025-11-30');
+  const sheet = balanceSheet(cols, [500000, 400000]);
+  sheet.Rows.Row[0].Rows.Row[0].Rows.Row[1].Rows.Row[0].ColData[0] = { value: '1050 CD 4 Months', id: '150' };
+  assert.deepEqual(bankByMonth(sheet, ownAccounts(ACCOUNTS.filter(cashLike))).map((m) => m.total), [600000, 500000]);
+  assert.deepEqual(bankByMonth(sheet).map((m) => m.total), [500000, 400000], 'nothing but the bank accounts without a CD');
+  assert.deepEqual(bankByMonth(sheet, ownAccounts([{ Id: '9', Name: 'SR1_Opex (0986)' }])).map((m) => m.total), [500000, 400000], 'inside Bank Accounts already');
   const c = cashOf(ACCOUNTS);
-  assert.equal(c.total, 502779.24, 'not the inactive account, not the CD (an Other Current Asset, as on the balance sheet)');
-  assert.deepEqual(c.accounts, [{ name: 'Long Reserve', balance: 300986.49 }, { name: 'Income', balance: 134504.07 }, { name: 'Opex', balance: 64748.68 }, { name: 'Mercury Bank', balance: 2500 }, { name: 'Petty Cash', balance: 40 }], 'largest first');
+  assert.equal(c.total, 602779.24, 'the CD with the bank accounts, as Chase lists it (an Other Current Asset on the books); not the inactive account, the right-of-use asset, in-kind gifts or the CD’s interest due');
+  assert.deepEqual(c.accounts, [{ name: 'Long Reserve', balance: 300986.49 }, { name: 'Income', balance: 134504.07 }, { name: 'CD', balance: 100000 }, { name: 'Opex', balance: 64748.68 }, { name: 'Mercury Bank', balance: 2500 }, { name: 'Petty Cash', balance: 40 }], 'largest first');
   assert.deepEqual(c.owed, [{ name: 'Chase C/C 3512', balance: 583.45 }, { name: 'Ramp CC', balance: 2196.28 }]);
   // A card the books carry as a negative balance is still what's owed
   assert.deepEqual(cashOf([{ Name: 'Ramp CC', AccountType: 'Credit Card', CurrentBalance: -2196.28, Active: true }]).owed, [{ name: 'Ramp CC', balance: 2196.28 }]);
@@ -333,14 +347,14 @@ test('once a day, the year in context: last year by now and in all, the last 12 
   // vendor and the Ramp card's payment are cash out; the moves to the Long Reserve and the CD aren't
   assert.deepEqual(n.trailing, { from: '2025-10-01', through: '2026-09-30', spent: 420000, cashOut: 100000, payments: 3 });
   assert.deepEqual(world.ledgerAsk, { start_date: '2025-10-01', end_date: '2026-09-30', account: '35,94', minorversion: '75' }, 'the bank accounts only');
-  // $502,779 in the bank over $8,333 a month of cash out
+  // $602,779 in the bank and the CD over $8,333 a month of cash out
   assert.equal(n.perMonth, 8333.33);
-  assert.equal(n.monthsOfCash, 60.3);
-  // Cash at each month's end: 13 of them, the last as of today
+  assert.equal(n.monthsOfCash, 72.3);
+  // Cash at each month's end: 13 of them, the last as of today; the CD's row counted, the right-of-use asset's not
   assert.equal(n.months.length, 13);
-  assert.deepEqual(n.months[0], { month: '2025-10', end: '2025-10-31', total: 575839.31 });
-  assert.deepEqual(n.months.at(-1), { month: '2026-10', end: '2026-10-29', total: 569491.45 });
-  assert.deepEqual(n.months.map((m) => m.total), BANK_BY_MONTH);
+  assert.deepEqual(n.months[0], { month: '2025-10', end: '2025-10-31', total: 675839.31 });
+  assert.deepEqual(n.months.at(-1), { month: '2026-10', end: '2026-10-29', total: 669491.45 });
+  assert.deepEqual(n.months.map((m) => m.total), BANK_BY_MONTH.map((b) => Math.round((b + 100000) * 100) / 100));
   // The statements as of the books' close (Sep 30), beside Sep 30 2025
   const st = n.statements;
   assert.deepEqual([st.asOf, st.closed, st.priorAsOf], ['2026-09-30', true, '2025-09-30']);
@@ -400,6 +414,15 @@ test('the daily read runs once a day; the hourly read every hour', async () => {
   assert.equal(count(), 1, 'not again the same day');
   await maybeReadBooks(env, { now: T0 + 24 * HOUR });
   assert.equal(count(), 2, 'the next day');
+  // Figures an older deploy kept that morning: read again within the hour, not the next day
+  await env.DB.prepare("UPDATE books_daily SET data = json_remove(data, '$.shape')").run();
+  await maybeReadBooks(env, { now: T0 + 24 * HOUR + 30 * 60 * 1000 });
+  assert.equal(count(), 2, 'not in the hour after a read');
+  await maybeReadBooks(env, { now: T0 + 26 * HOUR });
+  assert.equal(count(), 3, 'an older deploy’s figures, read again the same day');
+  assert.ok((await booksNow(env.DB, { now: T0 + 26 * HOUR })).monthsOfCash > 0, 'with today’s months of cash');
+  await maybeReadBooks(env, { now: T0 + 27 * HOUR });
+  assert.equal(count(), 3, 'then not again that day');
   // A day with no classes in the books: no spending by purpose, never a guess
   world.byClass = { Columns: { Column: [{ ColTitle: '' }, { ColTitle: 'Not Specified' }, { ColTitle: 'Total' }] }, Rows: { Row: [{ group: 'Expenses', Summary: { ColData: [{ value: 'Total Expenses' }, { value: '398000.14' }, { value: '398000.14' }] } }] } };
   await maybeReadBooks(env, { now: T0 + 48 * HOUR });

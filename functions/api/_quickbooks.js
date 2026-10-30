@@ -287,15 +287,21 @@ export function readProfitAndLoss(report) {
 /** "SR4_Long Reserve (8861)" → "Long Reserve": no ledger number, no account's last digits (as board/money.js reads the balance sheet) */
 const accountName = (s) => cleanText(String(s || '').replace(/^\d+\s+/, '').replace(/^SR\d+_/i, '').replace(/\s*\(\d{3,}\)\s*$/, '').replace(/_/g, ' '), 60) || 'Account';
 
+// Money at the bank the books keep outside their Bank accounts: SOARD's CD is an Other Current Asset, while Chase lists
+// it with the checking and savings (Peter, Oct 30 2026: the cash is all six). A money market or Treasury bills the same
+const CASH_LIKE = /\b(cds?|certificates? of deposit|money market|treasur(y|ies)|t-?bills?)\b/i;
+export const cashLike = (a) => a?.AccountType === 'Other Current Asset' && a.Active !== false && CASH_LIKE.test(String(a.Name || '')) && !/receivable|accrued|interest/i.test(String(a.Name || ''));
+
 /**
  * QuickBooks' accounts → the cash on the books: { total, accounts: [{ name, balance }], owed: [{ name, balance }] }.
  * Every active Bank account counts toward the total (each its own balance, so a parent and its sub-accounts aren't
- * counted twice); the accounts listed are those with money; Credit Card accounts are owed, never taken off the cash
+ * counted twice), and the CD with them; the accounts listed are those with money; Credit Card accounts are owed, never
+ * taken off the cash
  */
 export function cashOf(list) {
   const num = (a) => (typeof a?.CurrentBalance === 'number' ? a.CurrentBalance : Number(a?.CurrentBalance) || 0);
   const live = (list || []).filter((a) => a && a.Active !== false);
-  const banks = live.filter((a) => a.AccountType === 'Bank');
+  const banks = live.filter((a) => a.AccountType === 'Bank' || cashLike(a));
   return {
     total: round2(banks.reduce((t, a) => t + num(a), 0)),
     accounts: banks.filter((a) => round2(num(a)) !== 0).map((a) => ({ name: accountName(a.Name), balance: round2(num(a)) })).sort((x, y) => y.balance - x.balance),
@@ -438,8 +444,11 @@ export function cashOutOf(report, own, banks = own) {
   return { out: round2(out), payments };
 }
 
-/** A month-by-month Balance Sheet → the bank accounts' total at each month's end: [{ month: 'YYYY-MM', end, total }], oldest first */
-export function bankByMonth(report) {
+/**
+ * A month-by-month Balance Sheet → the bank accounts' total at each month's end, with the CD's (`also`: { ids, names }
+ * from ownAccounts, its own row outside Bank Accounts): [{ month: 'YYYY-MM', end, total }], oldest first
+ */
+export function bankByMonth(report, also = { ids: new Set(), names: new Set() }) {
   const cols = (report?.Columns?.Column || []).slice(1);
   const ends = cols.map((c) => {
     if (/^total$/i.test(String(c.ColTitle || '').trim())) return null;
@@ -457,7 +466,18 @@ export function bankByMonth(report) {
     return null;
   };
   const vals = (find(report?.Rows?.Row)?.Summary?.ColData || []).slice(1);
-  return ends.map((end, i) => (end && vals[i] ? { month: end.slice(0, 7), end, total: round2(num(vals[i].value)) } : null)).filter(Boolean);
+  const extra = [];
+  const walk = (rows, inBank) => {
+    for (const r of rows || []) {
+      const bank = inBank || r.group === 'BankAccounts';
+      const c0 = r.ColData?.[0];
+      if (!bank && c0 && (also.ids.has(String(c0.id)) || also.names.has(normName(c0.value)))) extra.push(r.ColData.slice(1));
+      walk(r.Rows?.Row, bank);
+    }
+  };
+  walk(report?.Rows?.Row, false);
+  const plus = (i) => extra.reduce((t, cells) => t + num(cells[i]?.value), 0);
+  return ends.map((end, i) => (end && vals[i] ? { month: end.slice(0, 7), end, total: round2(num(vals[i].value) + plus(i)) } : null)).filter(Boolean);
 }
 
 /** Where the year's money came from: Income's own lines (each account or group), then Other Income as one, largest first */
@@ -487,6 +507,8 @@ export function functionsOf(report) {
 }
 
 const DAILY_RETRY_MS = 60 * 60 * 1000;
+// What the daily read keeps: one up whenever it keeps something new, so a deploy's figures show that day, not the next
+const DAILY_SHAPE = 2;
 /**
  * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
  * last good read stays; the hourly read is the one that tells Slack
@@ -513,9 +535,10 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     const trail = readProfitAndLoss(await pl(tFrom, tThrough));
     const accountsOf = async (type) => (await get('/query', { query: `select * from Account where AccountType = '${type}' MAXRESULTS 1000` })).QueryResponse?.Account || [];
     const banks = await accountsOf('Bank');
+    const others = await accountsOf('Other Current Asset');
     let cashOut = null;
     try {
-      const own = ownAccounts([...banks, ...await accountsOf('Other Current Asset'), ...await accountsOf('Other Asset')]);
+      const own = ownAccounts([...banks, ...others, ...await accountsOf('Other Asset')]);
       const ids = banks.map((a) => a.Id).filter(Boolean);
       if (ids.length) {
         const c = cashOutOf(await get('/reports/GeneralLedger', { start_date: tFrom, end_date: tThrough, account: ids.join(',') }), own, ownAccounts(banks));
@@ -526,8 +549,8 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     } catch (err) {
       console.error('[books] cash out', err.code || '', detailOf(err));
     }
-    // Cash at each month's end, 13 months (this month's as of today)
-    const months = bankByMonth(await get('/reports/BalanceSheet', { start_date: monthStart(today, 12), end_date: today, summarize_column_by: 'Month' }));
+    // Cash at each month's end, 13 months (this month's as of today), the CD with the bank accounts as in the cash now
+    const months = bankByMonth(await get('/reports/BalanceSheet', { start_date: monthStart(today, 12), end_date: today, summarize_column_by: 'Month' }), ownAccounts(others.filter(cashLike)));
     // The statements, as of the books' close, beside the same day a year before
     const prefs = (await get('/preferences', {})).Preferences || {};
     const close = closeDay(today, prefs.AccountingInfoPrefs?.BookCloseDate);
@@ -542,6 +565,7 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     // Spending by purpose, when the books keep it by class
     const functions = functionsOf(await pl(`${year}-01-01`, today, { summarize_column_by: 'Classes' }));
     const data = {
+      shape: DAILY_SHAPE,
       day: today,
       lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net } },
       trailing: { from: tFrom, through: tThrough, spent: trail.spent, cashOut: cashOut ? cashOut.out : null, payments: cashOut ? cashOut.payments : 0 },
@@ -572,10 +596,10 @@ export async function readBooks(env, { fetchImpl = fetch, now = Date.now() } = {
     const span = yearSoFar(todayEastern(now), SOARD_YEAR_STARTS);
     const pl = await read(env, row, '/reports/ProfitAndLoss', { start_date: span.from, end_date: span.through }, { fetchImpl, now });
     const ytd = { ...span, ...readProfitAndLoss(pl), sources: sourcesOf(pl) };
-    // The cash on the books: the Bank accounts and the Credit Card accounts, each asked for by type (the whole chart of
-    // accounts can run past one answer's rows, and the cards came after the cut)
+    // The cash on the books: the Bank accounts, the CD (an Other Current Asset) and the Credit Card accounts, each asked
+    // for by type (the whole chart of accounts can run past one answer's rows, and the cards came after the cut)
     const ofType = async (type) => (await read(env, row, '/query', { query: `select * from Account where AccountType = '${type}' MAXRESULTS 1000` }, { fetchImpl, now })).QueryResponse?.Account || [];
-    ytd.cash = cashOf([...await ofType('Bank'), ...await ofType('Credit Card')]);
+    ytd.cash = cashOf([...await ofType('Bank'), ...await ofType('Other Current Asset'), ...await ofType('Credit Card')]);
     // The company's name and its fiscal-year setting, kept current (Settings flags a year that doesn't start in January)
     const info = (await read(env, row, `/companyinfo/${row.realm_id}`, {}, { fetchImpl, now })).CompanyInfo || {};
     await env.DB.prepare('UPDATE books_link SET company = ?, fiscal_start = ? WHERE id = ?').bind(cleanText(info.CompanyName || info.LegalName, 80) || row.company, monthNumber(info.FiscalYearStartMonth), ID).run();
@@ -615,9 +639,10 @@ export async function maybeReadBooks(env, { fetchImpl = fetch, now = Date.now() 
     r = await readBooks(env, { fetchImpl, now });
     if (!r?.ok) return r;
   }
-  // The year in context once a day (again an hour after one that didn't work)
-  const d = await env.DB.prepare('SELECT day, tried_at FROM books_daily WHERE id = ?').bind(ID).first();
-  if (!(d && (d.day === todayEastern(now) || (d.tried_at && now - Date.parse(d.tried_at) < DAILY_RETRY_MS)))) await readDaily(env, { fetchImpl, now });
+  // The year in context once a day (again an hour after one that didn't work, or one an older deploy kept)
+  const d = await env.DB.prepare("SELECT day, tried_at, json_extract(data, '$.shape') AS shape FROM books_daily WHERE id = ?").bind(ID).first();
+  const done = d && d.day === todayEastern(now) && d.shape === DAILY_SHAPE;
+  if (!(done || (d?.tried_at && now - Date.parse(d.tried_at) < DAILY_RETRY_MS))) await readDaily(env, { fetchImpl, now });
   return r;
 }
 
