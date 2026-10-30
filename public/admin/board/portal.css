@@ -996,8 +996,8 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bp-aglive--projects .bp-aglive__when { margin-left: 3.75rem; }
 @media (max-width: 640px) { .bp-aglive--projects .bk { grid-auto-columns: 72%; margin-inline: 0; } }
 .bp-agfigs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.65rem; }
-.bp-agfig { display: grid; align-content: start; gap: 0.15rem; padding: 0.95rem 1.05rem 1rem; border-radius: 16px; background: var(--cream); border: 1px solid var(--line); }
-.bp-agfig__value { font-family: var(--display); font-weight: 700; font-size: clamp(1.45rem, 2.6vw, 1.85rem); line-height: 1.15; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; margin-top: 0.1rem; }
+.bp-agfig { container-type: inline-size; min-width: 0; display: grid; align-content: start; gap: 0.15rem; padding: 0.95rem 1.05rem 1rem; border-radius: 16px; background: var(--cream); border: 1px solid var(--line); }
+.bp-agfig__value { font-family: var(--display); font-weight: 700; font-size: clamp(1.2rem, min(2.6vw, 13cqi), 1.85rem); white-space: nowrap; line-height: 1.15; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; margin-top: 0.1rem; }
 .bp-agrev { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0.6rem; }
 .bp-agrev li { display: flex; align-items: center; gap: 0.85rem; padding: 0.6rem 0.75rem 0.6rem 0.6rem; border-radius: 16px; background: var(--cream); border: 1px solid var(--line); min-width: 0; }
 .bp-agrev__photo { flex: none; width: 56px; height: 56px; border-radius: 14px; overflow: hidden; background: var(--warm-2); }
@@ -1121,11 +1121,12 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 
 /* The money: three figures */
 .bs-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: clamp(0.75rem, 1.6vw, 1.5rem); }
-.bs-figs li { display: grid; align-content: start; gap: 0.5vh; padding: clamp(1.1rem, 3vh, 2.2rem) clamp(1.1rem, 2vw, 2rem); border-radius: 24px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
+.bs-figs li { container-type: inline-size; min-width: 0; display: grid; align-content: start; gap: 0.5vh; padding: clamp(1.1rem, 3vh, 2.2rem) clamp(1.1rem, 2vw, 2rem); border-radius: 24px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
 .bs-figs li:first-child { background: var(--yellow); color: #1C1D1A; border-color: transparent; }
 .bs-figs__label { font-size: clamp(0.8rem, 1.8vh, 1.1rem); font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; color: var(--bs-faint); }
 .bs-figs li:first-child .bs-figs__label, .bs-figs li:first-child .bs-figs__sub { color: rgba(28, 29, 26, 0.72); }
-.bs-figs__value { font-family: var(--display); font-weight: 700; font-size: clamp(2.2rem, 7.5vh, 5.4rem); line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+/* As big as the tile allows: a seven-figure amount fits four across */
+.bs-figs__value { font-family: var(--display); font-weight: 700; font-size: clamp(1.6rem, min(7.5vh, 14.5cqi), 5.4rem); white-space: nowrap; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .bs-figs__sub { color: var(--bs-soft); font-size: clamp(0.9rem, 2vh, 1.3rem); line-height: 1.4; }
 /* Reveals and dates */
 .bs-reveals { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: clamp(0.75rem, 1.6vw, 1.5rem); }

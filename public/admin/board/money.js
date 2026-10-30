@@ -16,7 +16,11 @@ const monthOf = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString('en-US
 // Once a bank is connected (Chase through Plaid in Board → Settings, Mercury once it holds the money), the cash is
 // theirs (numbers.cash). Until then it's the bank-account total on the newest Statement of Financial Position in a
 // meeting's packet (QuickBooks' Excel copy), read in the browser
-export const compact = (n) => (Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2).replace(/\.?0+$/, '')}M` : Math.abs(n) >= 1e4 ? `$${Math.round(n / 1e3)}K` : money(n));
+export const compact = (n) => {
+  const a = Math.abs(n);
+  const s = n < 0 ? '−' : '';
+  return a >= 1e6 ? `${s}$${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2).replace(/\.?0+$/, '')}M` : a >= 1e4 ? `${s}$${Math.round(a / 1e3)}K` : `${s}${money(a)}`;
+};
 function balanceSheet(data, upTo = '') {
   return data.meetings.filter((m) => !upTo || m.date <= upTo).flatMap((m) => m.files.filter((f) => f.kind === 'financials' && isExcel(f) && /financial position|balance sheet/i.test(f.name)).map((f) => ({ f, m })))
     .sort((a, b) => b.m.date.localeCompare(a.m.date) || String(b.f.at || '').localeCompare(String(a.f.at || '')))[0] || null;
@@ -85,7 +89,18 @@ export function liveCash(data) {
  */
 export function useCashNow(data, upTo = '') {
   const sheet = useCash(data, upTo);
-  return (!upTo || upTo >= todayEastern() ? liveCash(data) : null) || sheet;
+  return cashToShow(!upTo || upTo >= todayEastern() ? liveCash(data) : null, sheet);
+}
+/**
+ * The banks' live balances speak for SOARD only once they hold its money: a bank besides Mercury (Chase through
+ * Plaid), or Mercury holding at least half what the newest balance sheet has in the bank. Until then (a test
+ * deposit, the first transfer) the balance sheet's figure stands. `sheet` is undefined while it's read
+ */
+function cashToShow(live, sheet) {
+  if (live && live.banks.some((b) => b !== 'Mercury')) return live;
+  if (sheet === undefined) return undefined;
+  if (!live) return sheet;
+  return !sheet || live.total >= sheet.total * 0.5 ? live : sheet;
 }
 export const shortAsOf = (s) => String(s || '').replace(/, \d{4}$/, '');
 
@@ -152,7 +167,8 @@ export function moneyTiles({ cash, budget, n }) {
     if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: `${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}` });
   }
   const f = n?.finance;
-  if (!n?.mercury?.empty && f?.ytd) {
+  // Mercury's own record (the year so far, the forecast) only once its banks are the cash shown
+  if (cash?.live && !n?.mercury?.empty && f?.ytd) {
     const spent = (p) => (p.makeovers || 0) + (p.store || 0) + (p.operating || 0);
     if (!budget?.revenue) out.push({ k: 'ytd', label: `${f.ytd.year} so far`, value: `${f.ytd.net < 0 ? '−' : '+'}${money(Math.abs(f.ytd.net))}`, sub: `${compact(f.ytd.income)} in · ${compact(spent(f.ytd))} out, through ${new Date(`${f.ytd.through}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })}`, tone: f.ytd.net >= 0 ? 'up' : 'down' });
     if (f.cash?.lowest) out.push({ k: 'low', label: 'Lowest ahead', value: money(f.cash.lowest.dollars), sub: `${f.cash.lowest.week ? `Week of ${shortDate(f.cash.lowest.week).replace(/, \d{4}$/, '')}` : 'In the forecast'} · ${compact(f.cash.in13Weeks)} in 13 weeks`, tone: f.cash.belowFloor ? 'down' : '' });
@@ -163,5 +179,5 @@ export function moneyTiles({ cash, budget, n }) {
 /** The cash and the budget at once, outside a component (Print it all): { cash, budget }, each null when there's none */
 export async function moneyFor(data, upTo = '') {
   const [sheet, budget] = await Promise.all([readCash(data, upTo), readBudget(data, upTo)]);
-  return { cash: (!upTo || upTo >= todayEastern() ? liveCash(data) : null) || sheet, budget };
+  return { cash: cashToShow(!upTo || upTo >= todayEastern() ? liveCash(data) : null, sheet) || null, budget };
 }
