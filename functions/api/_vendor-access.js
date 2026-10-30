@@ -25,12 +25,12 @@
  * Partners name, once Partners has someone there with an email to put in it
  * (until then it waits, as staff often make the vendor in JobTread first).
  * When JobTread has a vendor by a near name ("WYP Construction" for Walk Your
- * Plans), or one whose name holds every word of the other's ("MSI Surfaces"
- * for Msi), the sweep doesn't guess: staff say "Same company" (kept for every
+ * Plans), or one whose name starts with every word of the other's ("MSI
+ * Surfaces" for Msi), the sweep doesn't guess: staff say "Same company" (kept for every
  * job after, logos too) or "Make a new one".
  *
- * One company twice in JobTread (the same name, or every word of one name in
- * the other) is put right with nobody asked: when one of the two accounts is
+ * One company twice in JobTread (the same name, or one name starting with
+ * every word of the other; never a place alone, "Atlanta") is put right with nobody asked: when one of the two accounts is
  * empty (no contacts, documents, files, access or bills), it's archived and
  * the partner it stood for moves to the other. One made in the last hour is
  * left a while, in case someone is still setting it up. Two that both hold
@@ -428,14 +428,20 @@ export function personFor(v, people = []) {
 }
 
 // ── One company twice in JobTread ────────────────────────────────────
-const MORE_FILLER = new Set(['a', 'an', 'incorporated', 'corporation', 'limited', 'llp', 'lp', 'pllc', 'pc']);
-const wordsOf = (name) => wordsKey(name).split(' ').filter((w) => w && !MORE_FILLER.has(w));
+const FILLER = new Set(['the', 'and', 'of', 'inc', 'llc', 'co', 'corp', 'company', 'group', 'ltd',
+  'a', 'an', 'incorporated', 'corporation', 'limited', 'llp', 'lp', 'pllc', 'pc']);
+// A name of only these is a place, not a company: "Atlanta" isn't Blu Site Solutions of Atlanta
+const PLACE_WORDS = new Set(['atlanta', 'atl', 'georgia', 'ga', 'metro', 'greater', 'downtown', 'midtown', 'east', 'west', 'north', 'south',
+  'northeast', 'northwest', 'southeast', 'southwest', 'central', 'city', 'county', 'usa', 'america', 'american', 'national', 'southern']);
+/** A name's words in order, the/and/of/inc/llc/co/company… aside */
+const wordsOf = (name) => String(name || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, ' and ')
+  .split(/[^a-z0-9]+/).filter((w) => w && !FILLER.has(w));
 const within = (x, y) => {
   if (!x.length || !y.length) return false;
   const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  return short.every((w) => long.includes(w));
+  return !short.every((w) => PLACE_WORDS.has(w)) && short.every((w, i) => long[i] === w);
 };
-/** Every word of one name is in the other ("Msi" and "MSI Surfaces"), the/inc/llc/co/company… aside */
+/** One name starts with every word of the other, in order ("Msi" and "MSI Surfaces"), the/inc/llc/co/company… aside */
 export const sameWords = (a, b) => within(wordsOf(a), wordsOf(b));
 // A word that makes another organization of the same name: Georgia Power Foundation isn't Georgia Power
 const KIND_WORDS = new Set(['foundation', 'fund', 'family', 'trust', 'church', 'ministry', 'ministries', 'charity', 'charities', 'association', 'society',
@@ -445,7 +451,7 @@ export const twinKey = (a, b) => [a, b].sort().join(' ');
 
 /**
  * Pairs of live JobTread vendor accounts that look like one company: the same
- * name, or every word of one name in the other. Never two Partners has as two
+ * name, or one name starting with every word of the other. Never two Partners has as two
  * partners, one staff said isn't the partner the other is ("Not the same"),
  * or two staff said aren't one company (notTwins).
  * → [{ a, b, same (the same name), check (a word that may make it another organization) }]
@@ -721,7 +727,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       const was = not.map((id) => ({ id, name: byId.get(id)?.name || notSame[v.partner][id]?.name || '' })).filter((x) => x.name);
       const open = live.filter((a) => !not.includes(a.id) && !paired.has(a.id));
       // Every word of one name in the other ("MSI Surfaces" for Msi), then one archived under the same name: staff choose, never a second account by itself
-      const holding = open.filter((a) => sameWords(a.name, v.name)).map((a) => ({ partner: { slug: a.id, name: a.name }, why: 'Has every word of the name' }));
+      const holding = open.filter((a) => sameWords(a.name, v.name)).map((a) => ({ partner: { slug: a.id, name: a.name }, why: 'Starts with the name' }));
       const archived = accounts.filter((a) => a.archived && !not.includes(a.id) && sameName(a.name, v.name)).map((a) => ({ partner: { slug: a.id, name: `${a.name} (archived)` }, why: 'Archived in JobTread' }));
       const close = [...new Map([...holding, ...archived, ...nearPartners(v.name, open.map((a) => ({ slug: a.id, name: a.name })), { min: 0.6, max: 2 })]
         .map((c) => [c.partner.slug, c])).values()].slice(0, 2);

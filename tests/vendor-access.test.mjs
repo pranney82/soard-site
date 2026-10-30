@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import {
-  jobVendors, onJob, personFor, pairAccounts, contactPlan, sameList, syncVendorAccess, maybeSyncVendorAccess, adminView,
+  jobVendors, onJob, personFor, pairAccounts, contactPlan, sameList, syncVendorAccess, maybeSyncVendorAccess, adminView, sameWords,
 } from '../functions/api/_vendor-access.js';
 import { knownPeople, jobCompanies } from '../functions/api/_kid-partners.js';
 import { readContacts, saveContacts } from '../functions/api/_sponsors.js';
@@ -407,7 +407,7 @@ test('a partner with no JobTread vendor: nothing made while nobody has an email,
   assert.deepEqual(r.made, [], 'Blythe has nobody to put in one; Msi may be MSI Surfaces');
   assert.equal(jt.accounts.length, 1);
   const view = await adminView(DB);
-  assert.deepEqual(view.near.map((n) => [n.name, n.near.map((x) => [x.name, x.why])]), [['Msi', [['MSI Surfaces', 'Has every word of the name']]]]);
+  assert.deepEqual(view.near.map((n) => [n.name, n.near.map((x) => [x.name, x.why])]), [['Msi', [['MSI Surfaces', 'Starts with the name']]]]);
   assert.deepEqual(view.waiting.map((w) => w.name), ['Blythe Creative Co.'], 'Blythe waits as before');
   // An email for Blythe: now there's someone to put in it
   await saveContacts(DB, 'blythe-creative', [{ name: 'Bea Blythe', email: 'bea@blythe.example.com' }]);
@@ -421,13 +421,13 @@ test('one company twice in JobTread: an empty account is archived and its partne
   noMail(t);
   const GPF = { slug: 'georgia-power-foundation', name: 'Georgia Power Foundation', logo: img('partners/gpf/1') };
   const HOPE = { slug: 'hope', name: 'Hope', logo: img('partners/hope/1') };
-  const ATL = { slug: 'atlanta', name: 'Atlanta', website: 'https://atlantaroofing.example', logo: img('partners/atlanta/1') };
-  const DB = await world({ kids: [], partners: [MSI, GPF, HOPE, ATL] });
+  const SUM = { slug: 'summit', name: 'Summit', website: 'https://summitroofing.example', logo: img('partners/summit/1') };
+  const DB = await world({ kids: [], partners: [MSI, GPF, HOPE, SUM] });
   await saveContacts(DB, 'msi', [{ name: 'Mia Stone', email: 'mia@msisurfaces.example' }]);
   const { ensureSchema } = await import('../functions/api/_vendor-access.js');
   await ensureSchema(DB);
   // Accounts the old sweep made, empty, while staff made the real ones
-  for (const [slug, id, name] of [['msi', 'acctmsimade', 'Msi'], ['georgia-power-foundation', 'acctgpf', 'Georgia Power Foundation'], ['hope', 'accthope', 'Hope'], ['atlanta', 'acctatlmade', 'Atlanta']]) {
+  for (const [slug, id, name] of [['msi', 'acctmsimade', 'Msi'], ['georgia-power-foundation', 'acctgpf', 'Georgia Power Foundation'], ['hope', 'accthope', 'Hope'], ['summit', 'acctsummade', 'Summit']]) {
     await DB.prepare("INSERT INTO vendor_accounts (partner, account_id, account_name, how, made_at) VALUES (?, ?, ?, 'made', '2026-10-20T14:35:00Z')").bind(slug, id, name).run();
   }
   const old = '2026-10-20T14:35:00Z';
@@ -446,8 +446,13 @@ test('one company twice in JobTread: an empty account is archived and its partne
     { id: 'accthope', name: 'Hope', createdAt: old, contacts: [] },
     { id: 'accthc', name: 'Hope Church', files: 1, contacts: [] },
     // A partner whose website isn't the other company's emails: staff say
-    { id: 'acctatlmade', name: 'Atlanta', createdAt: old, contacts: [] },
-    { id: 'acctagl', name: 'Atlanta Gas Light', contacts: [{ id: 'c-g', name: 'Gil', email: 'gil@agl.example' }] },
+    { id: 'acctsummade', name: 'Summit', createdAt: old, contacts: [] },
+    { id: 'acctse', name: 'Summit Electric', contacts: [{ id: 'c-g', name: 'Gil', email: 'gil@summitelectric.example' }] },
+    // A place isn't a company, and a name that only ends with another's isn't it (live, Oct 30: "Atlanta" took Blu Site Solutions of Atlanta)
+    { id: 'acctatl', name: 'Atlanta', documents: 1, contacts: [] },
+    { id: 'acctblu', name: 'Blu Site Solutions of Atlanta', createdAt: old, contacts: [] },
+    { id: 'acctsca', name: 'Suspended Ceilings Atlanta', files: 2, contacts: [] },
+    { id: 'acctagl', name: 'Atlanta Gas Light', createdAt: old, contacts: [] },
     // Two empty ones nobody goes by: the newer goes
     { id: 'acctb1', name: 'Bin There', createdAt: '2025-01-05T00:00:00Z', contacts: [] },
     { id: 'acctb2', name: 'Bin There Dumpsters', createdAt: '2025-09-05T00:00:00Z', contacts: [] },
@@ -461,7 +466,7 @@ test('one company twice in JobTread: an empty account is archived and its partne
   const view = await adminView(DB);
   assert.deepEqual(view.matched.find((m) => m.partner === 'msi').accountName, 'MSI Surfaces', 'the partner moved to the account staff made');
   assert.deepEqual(view.twins.map((x) => [x.a.name, x.b.name, x.why, x.canCombine]).sort(), [
-    ['Atlanta', 'Atlanta Gas Light', 'check', true], ['Georgia Power Foundation', 'Georgia Power', 'check', true], ['Hope', 'Hope Church', 'check', true], ['Pella', 'Pella Windows and Doors of Georgia', 'full', false],
+    ['Georgia Power Foundation', 'Georgia Power', 'check', true], ['Hope', 'Hope Church', 'check', true], ['Pella', 'Pella Windows and Doors of Georgia', 'full', false], ['Summit', 'Summit Electric', 'check', true],
   ]);
   assert.deepEqual(view.twins.find((x) => x.why === 'full').b.holds, { contacts: 0, documents: 2, files: 0, access: 0, bills: 0 });
   assert.deepEqual(view.combined.map((c) => c.drop.name).sort(), ['Bin There Dumpsters', 'Msi']);
@@ -476,7 +481,7 @@ test('one company twice in JobTread: an empty account is archived and its partne
   // Not the same: never listed again
   const gp = await (await onRequestPost(req({ twins: { a: 'acctgpf', b: 'acctgp', same: false } }))).json();
   assert.ok(gp.success, gp.error);
-  assert.deepEqual(gp.view.twins.map((x) => x.a.name).sort(), ['Atlanta', 'Hope', 'Pella']);
+  assert.deepEqual(gp.view.twins.map((x) => x.a.name).sort(), ['Hope', 'Pella', 'Summit']);
   // Same company: the empty one goes, and its partner moves
   const hope = await (await onRequestPost(req({ twins: { a: 'accthc', b: 'accthope', same: true } }))).json();
   assert.ok(hope.success, hope.error);
@@ -494,12 +499,19 @@ test('one company twice in JobTread: an empty account is archived and its partne
   const r2 = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
   assert.deepEqual(r2.combined, [], 'nothing staff said no to is put together again');
   assert.equal(acct('acctmsimade').archived, false);
-  assert.deepEqual((await adminView(DB)).twins.map((x) => x.a.name).sort(), ['Atlanta', 'Pella']);
+  assert.deepEqual((await adminView(DB)).twins.map((x) => x.a.name).sort(), ['Pella', 'Summit']);
   assert.equal(acct('acctae2').archived, undefined, 'one made in the last hour stays');
   // An hour on, it's empty still: it goes
   const r3 = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 60 * MIN });
   assert.deepEqual(r3.combined.map((c) => c.archived), ['Ace Electric LLC']);
   assert.equal((await onRequestPost(req({ twins: { a: 'acctp1', b: 'acctp1' } }))).status, 400);
+});
+
+test('one name for another: it starts with every word of the other, in order, and a place alone is no company', () => {
+  for (const [a, b] of [['Msi', 'MSI Surfaces'], ['Pella', 'Pella Windows and Doors of Georgia'], ['Bin There Dump That', 'Bin There Dump That East ATL'],
+    ['Sherwin-Williams', 'Sherwin Williams - Lawrenceville'], ['Home Depot', 'The Home Depot'], ['ServiceWise', 'ServiceWise Electric, LLC']]) assert.ok(sameWords(a, b), `${a} / ${b}`);
+  for (const [a, b] of [['Atlanta', 'Blu Site Solutions of Atlanta'], ['Atlanta', 'Suspended Ceilings Atlanta'], ['Atlanta', 'Atlanta Gas Light'],
+    ['Georgia', 'Georgia Power'], ['Surfaces', 'MSI Surfaces'], ['Electric', 'Ace Electric']]) assert.ok(!sameWords(a, b), `${a} / ${b}`);
 });
 
 test('pairs: one staff said is “Not the same” never pairs again, by a saved pair, a link or the same name', () => {
