@@ -55,6 +55,7 @@ import { readDocument, readW9Text, pdfText, documentType, judgeW9, mergeCoi, lon
 import { jt, jtSetup, readJtVendor, writeFields, vendorNote, uploadToJt, readDocSettings, docsState, labelFor, readAsk, FOLDER, TAGS, CONTACT_VALUES, contactEmail, contactFields } from './_vendors.js';
 
 export const STATE_KEY = 'coi-backfill';
+const REREAD = 1;            // raised when files already read need reading again
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
 const BUSY_MS = MIN;                 // while there's anything to find or read
@@ -897,6 +898,11 @@ export async function runBackfill(env, st, { now = Date.now(), fetchImpl = fetch
   const iso = new Date(now).toISOString();
   await env.DB.prepare("UPDATE coi_found SET state = 'failed', tries = tries + 1 WHERE state = 'working' AND updated_at < ?").bind(new Date(now - STUCK_MS).toISOString()).run();
   await env.DB.prepare("UPDATE coi_found SET state = 'given-up' WHERE state = 'failed' AND tries >= ?").bind(MAX_TRIES).run();
+  // Read again, once: certificates and W-9s the model gave no name for (before the name was required of it, see ./_vendor-read.js)
+  if ((st.reread || 0) < REREAD) {
+    await env.DB.prepare("UPDATE coi_found SET state = 'queued', tries = 0, updated_at = ? WHERE item = 'file' AND state IN ('unmatched', 'skipped') AND kind IN ('coi', 'w9') AND (insured IS NULL OR insured = '')").bind(iso).run();
+    st.reread = REREAD;
+  }
   // Emails first (each makes file rows), newest first: the newest certificate names the agent who's theirs now
   try {
     for (let n = 0; n < ROWS_PER_RUN && Date.now() - started < WORK_MS && ctx.reads < READS_PER_RUN; n++) {

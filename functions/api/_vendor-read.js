@@ -105,7 +105,8 @@ const COI_SCHEMA = {
       },
     },
   },
-  required: ['isCertificate', 'policies'],
+  // Workers AI's JSON mode leaves out what isn't required: an optional insured came back missing on every certificate
+  required: ['isCertificate', 'insured', 'certificateHolder', 'policies'],
 };
 
 const W9_SCHEMA = {
@@ -119,7 +120,7 @@ const W9_SCHEMA = {
     signed: { type: 'boolean' },
     signedDate: { type: 'string' },
   },
-  required: ['isW9', 'hasTaxId'],
+  required: ['isW9', 'name', 'businessName', 'hasTaxId'],
 };
 
 // ─── Reading ────────────────────────────────────────────────────────

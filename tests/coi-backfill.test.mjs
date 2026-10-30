@@ -288,13 +288,17 @@ function pretendFetch(url, init = {}) {
   throw new Error(`Unexpected ${u.href}`);
 }
 
+// Workers AI's JSON mode on the text model leaves out a word the schema doesn't require (Oct 30 2026: every
+// certificate's insured came back missing, so none could be matched)
+const asJsonMode = (a, rf) => (rf?.json_schema && a ? Object.fromEntries(Object.entries(a).filter(([k]) => rf.json_schema.required?.includes(k) || rf.json_schema.properties?.[k]?.type !== 'string')) : a);
+
 const AI = {
   async toMarkdown({ blob }) {
     world.ai.push('text');
     const marker = markerIn(Buffer.from(await blob.arrayBuffer()).toString('latin1'));
     return { format: 'text', data: TEXTS[marker] || '' };
   },
-  async run(model, { messages }) {
+  async run(model, { messages, response_format }) {
     const user = messages[1].content;
     if (/You match the company/.test(messages[0].content)) {
       world.ai.push('match');
@@ -306,7 +310,7 @@ const AI = {
       return { response: /W-9/.test(messages[0].content) ? (READS[marker]?.isW9 ? READS[marker] : { isW9: false, hasTaxId: false }) : (READS[marker]?.isCertificate ? READS[marker] : { isCertificate: false, policies: [] }) };
     }
     world.ai.push('read');
-    return { response: READS[markerIn(user)] || { isCertificate: false, policies: [] } };
+    return { response: asJsonMode(READS[markerIn(user)] || { isCertificate: false, policies: [] }, response_format) };
   },
 };
 
@@ -497,4 +501,24 @@ test('a PDF its text can’t settle is drawn and read by its pictures: a W-9 typ
   assert.equal(rows['acord.pdf'].state, 'filed');
   assert.equal(world.vendors.VSAMPLE.values['F-W9'], true);
   assert.equal(world.vendors.VSAMPLE.values['F-GL'], '2027-09-01');
+});
+
+test('files read before the name was required of the model are read again, once', async () => {
+  mail({ box: SAM, at: NOW - 61 * DAY, from: 'Roofer <bids@roofer.example>', subject: 'certificate of insurance', files: [{ name: 'roofing coi.pdf', type: 'application/pdf', data: pdfOf('stranger-coi') }] });
+  await runAll();
+  const row = () => env.DB.prepare("SELECT state, insured, detail FROM coi_found WHERE name = 'roofing coi.pdf'").first();
+  assert.equal((await row()).state, 'unmatched');
+  // As the model left it before: no name. The code that reads it again arrives with a deploy
+  const nameless = () => env.DB.prepare("UPDATE coi_found SET insured = NULL, detail = 'no company name on it' WHERE name = 'roofing coi.pdf'").run();
+  await nameless();
+  await env.DB.prepare("UPDATE spend_state SET data = json_remove(data, '$.reread') WHERE key = ?").bind(STATE_KEY).run();
+  const reads = world.ai.filter((x) => x === 'read').length;
+  await maybeRunBackfill(env, { now: NOW + 3600e3, fetchImpl: pretendFetch, force: true, draw: world.draw });
+  assert.equal(world.ai.filter((x) => x === 'read').length, reads + 1, 'read again');
+  assert.deepEqual({ ...(await row()) }, { state: 'unmatched', insured: 'Nobody We Know Roofing', detail: 'no JobTread vendor by that name' });
+  // Once
+  await nameless();
+  await maybeRunBackfill(env, { now: NOW + 2 * 3600e3, fetchImpl: pretendFetch, force: true, draw: world.draw });
+  assert.equal(world.ai.filter((x) => x === 'read').length, reads + 1);
+  assert.equal((await row()).insured, null);
 });
