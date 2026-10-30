@@ -53,7 +53,8 @@ const SUGGESTION = process.env.OFFICE
 const CONTACT_EMAIL = process.env.ORG_EMAIL || 'jordan+org@example.com';
 const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const browser = await puppeteer.launch({ headless: true, args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] });
+// 'shell': screenshots keep working while the Mac's display sleeps
+const browser = await puppeteer.launch({ headless: 'shell', args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] });
 const consoleErrors = [];
 async function newTab({ phone = true } = {}) {
   const page = await browser.newPage();

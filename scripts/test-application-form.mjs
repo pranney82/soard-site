@@ -83,8 +83,9 @@ const SUGGESTIONS = [
 ];
 let addressAsks = 0;
 
+// 'shell': screenshots keep working while the Mac's display sleeps (headless: true times out)
 const browser = await puppeteer.launch({
-  headless: true,
+  headless: 'shell',
   args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
     '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
 });

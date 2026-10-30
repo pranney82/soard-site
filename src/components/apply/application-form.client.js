@@ -1894,6 +1894,29 @@ function init(root, cfg, mode) {
     list.hidden = false;
     input.setAttribute('aria-expanded', 'true');
     input.removeAttribute('aria-activedescendant');
+    placeSuggest();
+  }
+  /**
+   * The list stays inside what can be seen (above a phone's keyboard, clear of the bars): under the
+   * street box, or over it when there's more room there, never taller than the room it has
+   */
+  function placeSuggest() {
+    const { list, input } = sug;
+    if (!list || list.hidden || !input) return;
+    list.classList.remove('is-up');
+    list.style.maxHeight = '';
+    const vv = window.visualViewport;
+    const seenTop = Math.max(vv ? vv.offsetTop : 0, focused ? ui.top?.getBoundingClientRect().bottom || 0 : 0);
+    const nav = focused ? ui.form.querySelector('[data-nav]')?.getBoundingClientRect().top : null;
+    const seenBottom = Math.min(vv ? vv.offsetTop + vv.height : innerHeight, nav ?? Infinity);
+    const r = input.getBoundingClientRect();
+    const below = seenBottom - r.bottom - 10;
+    const above = r.top - seenTop - 10;
+    const need = list.scrollHeight;
+    if (need > below && above > below) {
+      list.classList.add('is-up');
+      list.style.maxHeight = `${Math.max(140, Math.floor(above))}px`;
+    } else list.style.maxHeight = `${Math.max(140, Math.floor(below))}px`;
   }
   function closeSuggest() {
     clearTimeout(sug.closing);
@@ -3042,6 +3065,8 @@ function init(root, cfg, mode) {
   const redeclutter = () => { clearTimeout(declutterTimer); declutterTimer = setTimeout(() => { declutter(ui.pages); declutter(ui.stopMap); }, 120); };
   window.addEventListener('resize', redeclutter, { signal });
   window.addEventListener('resize', fitNavLater, { signal });
+  window.visualViewport?.addEventListener('resize', placeSuggest, { signal });
+  window.visualViewport?.addEventListener('scroll', placeSuggest, { signal });
   // Measured again in the site's own type once it has loaded (the first screen can come before it)
   document.fonts?.ready.then(() => {
     fitNavLater();

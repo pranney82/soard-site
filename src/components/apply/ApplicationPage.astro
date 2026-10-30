@@ -641,7 +641,9 @@ const breadcrumbs = [
   .af-usps-by { margin-left: 6px; }
   .af-usps:is([data-status="unit"], [data-status="check"]) { color: var(--af-attn-ink); }
   .af-usps-by, .af-suggest[data-google]::after { font-family: Roboto, var(--font-body), sans-serif; font-weight: 400; font-style: normal; letter-spacing: normal; font-size: 12px; color: #5E5E5E; white-space: nowrap; text-transform: none; }
-  .af-suggest[data-google]::after { content: 'Google Maps'; display: block; text-align: right; padding: 6px 12px 4px; }
+  .af-suggest[data-google]::after { content: 'Google Maps'; display: block; text-align: right; padding: 6px 12px 4px; position: sticky; bottom: -6px; background: #fff; }
+  /* Opened over the street box when there's more room there (a phone's keyboard below) */
+  .af-suggest.is-up { top: auto; bottom: calc(100% + 6px); }
 
   /* ── Choices: a press, a picked state, a check that draws itself ── */
   .af-choices { display: grid; gap: 10px; }

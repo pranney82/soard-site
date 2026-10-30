@@ -137,7 +137,8 @@ async function answer(req, ip) {
   return false;
 }
 
-const browser = await puppeteer.launch({ headless: true, args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
+// 'shell': screenshots keep working while the Mac's display sleeps
+const browser = await puppeteer.launch({ headless: 'shell', args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
 const errors = [];
 async function open(width, path, height = 900) {
   const page = await browser.newPage();
