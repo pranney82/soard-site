@@ -14,7 +14,8 @@
  * See ./_kid-partners.js.
  */
 
-import { adminView, setAside, saveSettings, setLink, recheckWaiting } from './_kid-partners.js';
+import { adminView, setAside, saveSettings, setLink, readLinks, recheckWaiting } from './_kid-partners.js';
+import { unmatchForLink } from './_vendor-access.js';
 import { logAudit } from './_audit.js';
 
 const ok = (body = {}) => Response.json({ success: true, ...body }, { headers: { 'Cache-Control': 'no-store' } });
@@ -50,15 +51,18 @@ export async function onRequestPost(context) {
   const link = body?.link || body?.unlink;
   if (link) {
     if (!COMPANY_RE.test(link.company || '') || (body.link && !SLUG_RE.test(link.partner || ''))) return fail('Bad link');
+    const was = body.unlink ? (await readLinks(env.DB))[link.company] || null : null;
     try {
       await setLink(env.DB, { company: link.company, partner: body.link ? link.partner : null });
     } catch (e) {
       return fail(e.message, 404);
     }
+    // The vendor match that link made in JobTread access goes too
+    const unmatched = was ? await unmatchForLink(env, { company: link.company, partner: was }, by).catch(() => null) : null;
     await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'partner-logos', entitySlug: link.company, entityName: body.link ? 'Same as a partner' : 'Not that partner', changes: body.link ? { partner: link.partner } : null });
     // The logo goes on now, so the list shows it done
     const added = body.link ? await recheckWaiting(env) : [];
-    return ok({ added, view: await adminView(env.DB) });
+    return ok({ added, unmatched, view: await adminView(env.DB) });
   }
 
   if (body?.settings) {

@@ -36,7 +36,7 @@
 import { SOARD_ORG_ID } from './_reveals.js';
 import { loadAllKids, loadAllProjects, linkJobs, keyOf, SYNC_USER } from './_kid-status.js';
 import { fetchOpenJobs, fetchAccess, readLinks, setLink, takeLock, freeLock, FREE_MAIL } from './_kid-partners.js';
-import { pave, grantJobAccess } from './_jt-access.js';
+import { pave, grantJobAccess, revokeJobAccess } from './_jt-access.js';
 import { readContacts, saveContacts, isEmail } from './_sponsors.js';
 import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from './_applicant-comms.js';
 import { logAudit } from './_audit.js';
@@ -86,6 +86,13 @@ async function writeKey(DB, key, value) {
   return value;
 }
 const patchKey = async (DB, key, patch) => writeKey(DB, key, { ...(await readKey(DB, key)), ...patch });
+/** 'not-same': { [partner]: { [account id]: { name, how, by, at } } }: matches staff undid, never made again by the sweep */
+const notSameIds = (notSame, slug) => Object.keys(notSame?.[slug] || {});
+/**
+ * 'copied': { [partner]: { account, site: [person key], jt: [contact id] } }: what the contact sync copied
+ * across (people into Partners from that JobTread account, contacts it made there), so "Not the same" can take them back
+ */
+const personKey = (p) => (p.email ? p.email : `n:${nameKey(p.name)}`);
 
 // ── JobTread vendor accounts ─────────────────────────────────────────
 const CONTACT = {
@@ -240,7 +247,7 @@ async function writeJtContacts(grantKey, account, target, dropped, fetchImpl) {
  * account (the one with the most contacts when JobTread has two).
  * → Map(partner slug → account)
  */
-export function pairAccounts(partners, accounts, { saved = {}, links = {} } = {}) {
+export function pairAccounts(partners, accounts, { saved = {}, links = {}, notSame = {} } = {}) {
   const live = accounts.filter((a) => !a.archived);
   // A pair staff settled holds even once JobTread archives the account
   const byId = new Map(accounts.map((a) => [a.id, a]));
@@ -248,14 +255,16 @@ export function pairAccounts(partners, accounts, { saved = {}, links = {} } = {}
   const out = new Map();
   const taken = new Set();
   const pair = (slug, a) => { out.set(slug, a); taken.add(a.id); };
-  for (const [slug, id] of Object.entries(saved)) if (slugs.has(slug) && byId.has(id) && !taken.has(id)) pair(slug, byId.get(id));
+  // One staff said is "Not the same" never pairs again, by any route
+  const may = (slug, a) => !notSameIds(notSame, slug).includes(a.id);
+  for (const [slug, id] of Object.entries(saved)) if (slugs.has(slug) && byId.has(id) && !taken.has(id) && may(slug, byId.get(id))) pair(slug, byId.get(id));
   for (const a of live) {
     const slug = links[nameKey(a.name)];
-    if (slug && slugs.has(slug) && !out.has(slug) && !taken.has(a.id)) pair(slug, a);
+    if (slug && slugs.has(slug) && !out.has(slug) && !taken.has(a.id) && may(slug, a)) pair(slug, a);
   }
   for (const p of partners) {
     if (out.has(p.slug)) continue;
-    const hits = live.filter((a) => !taken.has(a.id) && sameName(a.name, p.name)).sort((x, y) => y.contacts.length - x.contacts.length);
+    const hits = live.filter((a) => !taken.has(a.id) && may(p.slug, a) && sameName(a.name, p.name)).sort((x, y) => y.contacts.length - x.contacts.length);
     if (hits.length) pair(p.slug, hits[0]);
   }
   return out;
@@ -382,15 +391,21 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
   if (!(await takeLock(DB, !!only, LOCK))) return { ...report, busy: true };
   const room = () => Date.now() - started < WRITE_BUDGET_MS;
   try {
-    const [jobs, kids, projects, partners, contactsAll, links, accountRows, rows, bills, accounts, setAside, newOk] = await Promise.all([
+    const [jobs, kids, projects, partners, contactsAll, links, accountRows, rows, bills, accounts, setAside, newOk, notSame] = await Promise.all([
       fetchOpenJobs(key, fetchImpl), loadAllKids(DB), loadAllProjects(DB), readPartners(DB), readContacts(DB), readLinks(DB),
-      readAccountRows(DB), readRows(DB), billsByJob(DB), fetchVendorAccounts(key, fetchImpl), readKey(DB, 'set-aside'), readKey(DB, 'new-ok'),
+      readAccountRows(DB), readRows(DB), billsByJob(DB), fetchVendorAccounts(key, fetchImpl), readKey(DB, 'set-aside'), readKey(DB, 'new-ok'), readKey(DB, 'not-same'),
     ]);
     const records = [...kids, ...projects];
     const byKey = new Map(records.map((r) => [keyOf(r), r]));
     const bySlug = new Map(partners.map((p) => [p.slug, p]));
+    // A run that was mid-way when staff said "Not the same" may have written that pair back
+    for (const [slug, r] of accountRows) {
+      if (!notSameIds(notSame, slug).includes(r.account_id)) continue;
+      await DB.prepare('DELETE FROM vendor_accounts WHERE partner = ? AND account_id = ?').bind(slug, r.account_id).run();
+      accountRows.delete(slug);
+    }
     const saved = Object.fromEntries([...accountRows].map(([slug, r]) => [slug, r.account_id]));
-    const pairs = pairAccounts(partners, accounts, { saved, links });
+    const pairs = pairAccounts(partners, accounts, { saved, links, notSame });
     const live = accounts.filter((a) => !a.archived);
 
     // Pairs settled this run are kept, so a renamed account stays paired
@@ -418,11 +433,18 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
     // A company on a page with no JobTread vendor account gets one; a near name waits for staff
     const needAccounts = [...new Map(want.filter((w) => w.v.partner && !w.v.account && w.v.why.has('page')).map((w) => [w.v.partner, w.v])).values()];
     const near = {};
+    const byId = new Map(accounts.map((a) => [a.id, a]));
     for (const v of needAccounts) {
+      const not = notSameIds(notSame, v.partner);
+      const was = not.map((id) => ({ id, name: byId.get(id)?.name || notSame[v.partner][id]?.name || '' })).filter((x) => x.name);
       // One archived under the same name is a choice for staff too, never a second account by itself
-      const archived = accounts.filter((a) => a.archived && sameName(a.name, v.name)).map((a) => ({ partner: { slug: a.id, name: `${a.name} (archived)` }, why: 'Archived in JobTread' }));
-      const close = [...archived, ...nearPartners(v.name, live.map((a) => ({ slug: a.id, name: a.name })), { min: 0.6, max: 2 })].slice(0, 2);
-      if (close.length && !newOk[v.partner]) { near[v.partner] = { name: v.name, near: close.map((c) => ({ id: c.partner.slug, name: c.partner.name, why: c.why })) }; continue; }
+      const archived = accounts.filter((a) => a.archived && !not.includes(a.id) && sameName(a.name, v.name)).map((a) => ({ partner: { slug: a.id, name: `${a.name} (archived)` }, why: 'Archived in JobTread' }));
+      const close = [...archived, ...nearPartners(v.name, live.filter((a) => !not.includes(a.id)).map((a) => ({ slug: a.id, name: a.name })), { min: 0.6, max: 2 })].slice(0, 2);
+      // Staff said the match was wrong: they pick another near name or a new vendor, never the sweep
+      if ((close.length || was.length) && !newOk[v.partner]) {
+        near[v.partner] = { name: v.name, near: close.map((c) => ({ id: c.partner.slug, name: c.partner.name, why: c.why })), ...(was.length ? { was } : {}) };
+        continue;
+      }
       if (report.made.length >= MAX_NEW_ACCOUNTS || !room()) { report.more = true; continue; }
       try {
         const a = await createAccount(key, bySlug.get(v.partner)?.name || v.name, fetchImpl);
@@ -436,6 +458,12 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       } catch (e) { report.problems.push(`Couldn’t make ${v.name} in JobTread: ${e.message}`); }
     }
     if (!only) await writeKey(DB, 'near', near);
+    else if (needAccounts.length) {
+      // Just this company: its question is asked (or settled) now; the rest wait for the full run
+      const all = await readKey(DB, 'near');
+      for (const v of needAccounts) { if (near[v.partner]) all[v.partner] = near[v.partner]; else delete all[v.partner]; }
+      await writeKey(DB, 'near', all);
+    }
     if (report.made.length) {
       await logAudit(DB, { userEmail: SYNC_USER, action: 'created', entityType: 'jobtread-vendor', entityName: 'Vendor accounts', changes: { made: report.made.map((m) => m.name) } });
     }
@@ -485,6 +513,8 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
     // Then contacts, both ways, for every partner with an account (after access: that is what staff wait on)
     const siteTimes = new Map();
     try { for (const r of (await DB.prepare('SELECT partner, updated_at FROM partner_contacts').all()).results || []) siteTimes.set(r.partner, r.updated_at); } catch { /* no contacts saved yet */ }
+    const copied = await readKey(DB, 'copied');
+    let copiedChanged = false;
     for (const [slug, a] of pairs) {
       if (only && nameKey(bySlug.get(slug)?.name) !== only) continue;
       const r = accountRows.get(slug);
@@ -498,6 +528,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       }
       if (!room()) { report.more = true; continue; }
       try {
+        const jtBefore = a.contacts;
         let jtAfter = a.contacts;
         let siteAfter = site;
         if (plan.toJt) {
@@ -505,6 +536,14 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
           a.contacts = jtAfter;
         }
         if (plan.toSite) siteAfter = await saveContacts(DB, slug, plan.toSite, { by: SYNC_USER, source: 'jobtread', now });
+        // What crossed over, in case staff say later it was the wrong company
+        const c = copied[slug]?.account === a.id ? copied[slug] : { account: a.id, site: [], jt: [] };
+        const newToSite = siteAfter.map(tidy).filter((p) => !site.some((q) => samePerson(tidy(q), p))).map(personKey);
+        const madeInJt = jtAfter.filter((x) => x.id && !jtBefore.some((y) => y.id === x.id)).map((x) => x.id);
+        if (newToSite.length || madeInJt.length) {
+          copied[slug] = { account: a.id, site: [...new Set([...c.site, ...newToSite])], jt: [...new Set([...c.jt, ...madeInJt])] };
+          copiedChanged = true;
+        }
         await putAccountRow(DB, { ...r, jt_seen: jtAfter.map(tidy), site_seen: siteAfter.map(tidy), synced_at: at });
         contactsAll[slug] = siteAfter;
         const to = [plan.toJt && 'JobTread', plan.toSite && 'Partners'].filter(Boolean).join(' and ');
@@ -512,6 +551,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       } catch (e) { report.problems.push(`Couldn’t keep ${bySlug.get(slug)?.name || a.name}’s contacts in step: ${e.message}`); }
     }
 
+    if (copiedChanged) await writeKey(DB, 'copied', copied);
     // Names only in the log: emails and phones stay in partner_contacts
     if (report.contacts.length) {
       await logAudit(DB, { userEmail: SYNC_USER, action: 'updated', entityType: 'partner-contacts', entityName: 'Vendor contacts', changes: { synced: report.contacts.map((c) => `${c.name} → ${c.to}: ${c.people.join(', ')}`) } });
@@ -555,15 +595,21 @@ export async function maybeSyncVendorAccess(env, { fetchImpl = fetch, now = Date
 /**
  * Partners → JobTread access: { waiting: [{ company, name, partner, account,
  * reason, error, jobs: [{ jobId, record, page }] }], near: [{ partner, name,
- * near }], added (newest 30), setAside, paired, lastRunAt, lastRun, lastError }
+ * near, was? }], added (newest 30), setAside, matched: [{ partner, name, account,
+ * accountName, how }] (named differently first), paired, lastRunAt, lastRun, lastError }
  */
 export async function adminView(DB) {
   await ensureSchema(DB);
-  const [rows, st, near, setAside, paired] = await Promise.all([
+  const [rows, st, near, setAside, accountRows, partners] = await Promise.all([
     DB.prepare('SELECT * FROM vendor_access ORDER BY updated_at DESC').all().then((r) => r.results || []),
-    readKey(DB, 'state'), readKey(DB, 'near'), readKey(DB, 'set-aside'),
-    DB.prepare('SELECT count(*) AS n FROM vendor_accounts').first().then((r) => r?.n || 0),
+    readKey(DB, 'state'), readKey(DB, 'near'), readKey(DB, 'set-aside'), readAccountRows(DB), readPartners(DB),
   ]);
+  // Names and ids only: the contact snapshots stay here
+  const nameOf = new Map(partners.map((p) => [p.slug, p.name]));
+  const differs = (m) => (m.accountName.trim() !== m.name.trim() ? 1 : 0);
+  const matched = [...accountRows.values()].filter((r) => nameOf.has(r.partner))
+    .map((r) => ({ partner: r.partner, name: nameOf.get(r.partner), account: r.account_id, accountName: r.account_name || '', how: r.how || 'name' }))
+    .sort((a, b) => differs(b) - differs(a) || a.name.localeCompare(b.name));
   const byCompany = new Map();
   for (const r of rows.filter((x) => x.state === 'waiting')) {
     const g = byCompany.get(r.company) || { company: r.company, name: r.name, partner: r.partner, account: r.account_id, reason: r.reason, error: null, jobs: [] };
@@ -579,7 +625,7 @@ export async function adminView(DB) {
     near: Object.entries(near).map(([partner, n]) => ({ partner, ...n })).sort((a, b) => String(a.name).localeCompare(String(b.name))),
     added,
     setAside: Object.entries(setAside).map(([company, s]) => ({ company, ...s })).sort((a, b) => String(a.name).localeCompare(String(b.name))),
-    paired, lastRunAt: st.lastRunAt || null, lastRun: st.lastRun || null, lastError: st.lastError || null,
+    matched, paired: matched.length, lastRunAt: st.lastRunAt || null, lastRun: st.lastRun || null, lastError: st.lastError || null,
   };
 }
 
@@ -608,13 +654,116 @@ export async function settleAccount(DB, { partner, account = null, makeNew = fal
   if (!n) throw new Error('That one’s settled already');
   if (makeNew) await patchKey(DB, 'new-ok', { [partner]: true });
   else {
-    const hit = (n.near || []).find((x) => x.id === account);
+    const hit = [...(n.near || []), ...(n.was || [])].find((x) => x.id === account);
     if (!hit) throw new Error('JobTread doesn’t list that vendor for it');
     const name = hit.name.replace(/ \(archived\)$/, '');
     await putAccountRow(DB, { partner, account_id: hit.id, account_name: name, how: 'linked' });
     await setLink(DB, { company: nameKey(name), partner });
+    // "Same as … after all": staff take back their "Not the same"
+    const notSame = await readKey(DB, 'not-same');
+    if (notSame[partner]?.[hit.id]) {
+      delete notSame[partner][hit.id];
+      if (!Object.keys(notSame[partner]).length) delete notSame[partner];
+      await writeKey(DB, 'not-same', notSame);
+    }
   }
   delete near[partner];
   await writeKey(DB, 'near', near);
   return { partner, name: n.name };
+}
+
+/** Who's on a job, with each entry's id (to take one off) */
+async function jobAces(grantKey, jobId, fetchImpl) {
+  const body = await pave(grantKey, { job: { $: { id: jobId }, id: {}, aces: { $: { size: 50 }, nodes: { id: {}, membership: { user: { emailAddress: {} } } } } } }, fetchImpl);
+  return (body?.job?.aces?.nodes || []).map((a) => ({ id: a.id, email: lower(a.membership?.user?.emailAddress) }));
+}
+
+/**
+ * "Not the same": the partner isn't that JobTread vendor after all, so what
+ * the match did is taken back: people the site put on jobs from that account
+ * come off them, people copied from it into Partners leave Partners, and
+ * contacts the site made in that account are deleted. The "Same as" link
+ * goes too (logos and sponsors use it). No route pairs those two again; if
+ * the partner is on an open job's page it waits in "The same company?".
+ * → { partner, account, accountName, how, offJobs: [{ page, person }], fromPartners: [name], fromJobTread: [name], untracked }
+ */
+export async function unmatchAccount(env, { partner }, by = null, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  const key = env.JOBTREAD_GRANT_KEY;
+  if (!key) throw new Error('JobTread isn’t connected');
+  await ensureSchema(DB);
+  const row = (await readAccountRows(DB)).get(partner);
+  if (!row) throw new Error('That partner isn’t matched in JobTread any more');
+  const copiedAll = await readKey(DB, 'copied');
+  const copied = copiedAll[partner]?.account === row.account_id ? copiedAll[partner] : null;
+  const site = (await readContacts(DB, [partner]))[partner] || [];
+  const fromJt = new Set(copied?.site || []);
+  // Staff's own people stay; the account's people (as last synced, or copied over) are its, not the partner's
+  const own = new Set(site.filter((p) => !fromJt.has(personKey(tidy(p)))).map((p) => lower(p.email)).filter(Boolean));
+  const theirs = new Set([...(row.jt_seen || []).map((p) => lower(p.email)), ...[...fromJt].filter((k) => !k.startsWith('n:'))].filter((e) => e && !own.has(e)));
+  const out = { partner, account: row.account_id, accountName: row.account_name || '', how: row.how || 'name', offJobs: [], fromPartners: [], fromJobTread: [], untracked: !copied && !!row.synced_at };
+
+  // Off the jobs the site put them on through this match
+  const added = ((await DB.prepare("SELECT * FROM vendor_access WHERE partner = ? AND state = 'added'").bind(partner).all()).results || [])
+    .map((r) => ({ ...r, person: parse(r.person, {}) }));
+  for (const r of added.filter((x) => theirs.has(lower(x.person?.email)))) {
+    const ace = (await jobAces(key, r.job_id, fetchImpl)).find((a) => a.email === lower(r.person.email));
+    if (ace) await revokeJobAccess(env, ace.id, { fetchImpl });
+    await DB.prepare('DELETE FROM vendor_access WHERE job_id = ? AND company = ?').bind(r.job_id, r.company).run();
+    out.offJobs.push({ page: r.page, person: r.person.name || r.person.email });
+  }
+  // Partners keeps staff's own people only
+  if (copied?.site?.length) {
+    const keep = site.filter((p) => !fromJt.has(personKey(tidy(p))));
+    out.fromPartners = site.filter((p) => fromJt.has(personKey(tidy(p)))).map((p) => p.name || 'unnamed');
+    if (out.fromPartners.length) await saveContacts(DB, partner, keep, { by, source: 'admin', now });
+  }
+  // That account loses the contacts the site made in it
+  if (copied?.jt?.length) {
+    const account = (await fetchVendorAccounts(key, fetchImpl)).find((a) => a.id === row.account_id);
+    for (const c of (account?.contacts || []).filter((x) => copied.jt.includes(x.id))) {
+      await deleteContact(key, c.id, fetchImpl);
+      out.fromJobTread.push(c.name || 'unnamed');
+    }
+  }
+
+  const notSame = await readKey(DB, 'not-same');
+  notSame[partner] = { ...(notSame[partner] || {}), [row.account_id]: { name: row.account_name || '', how: row.how || 'name', by, at: iso(now) } };
+  await writeKey(DB, 'not-same', notSame);
+  delete copiedAll[partner];
+  await writeKey(DB, 'copied', copiedAll);
+  await DB.prepare('DELETE FROM vendor_accounts WHERE partner = ?').bind(partner).run();
+  const links = await readLinks(DB);
+  if (row.account_name && links[nameKey(row.account_name)] === partner) await setLink(DB, { company: nameKey(row.account_name), partner: null });
+  return out;
+}
+
+/** Unlink in "JobTread, no logo" undoes the vendor match that link made too */
+export async function unmatchForLink(env, { company, partner }, by = null, opts = {}) {
+  if (!partner || !env.JOBTREAD_GRANT_KEY) return null;
+  await ensureSchema(env.DB);
+  const row = (await readAccountRows(env.DB)).get(partner);
+  if (!row || row.how !== 'linked' || nameKey(row.account_name) !== company) return null;
+  return unmatchAccount(env, { partner }, by, opts);
+}
+
+/**
+ * The JobTread vendor account takes the partner's name (or `name`, to put the
+ * old one back). Staff press it one company at a time; the sweep never renames.
+ */
+export async function renameAccount(env, { partner, name = null }, { fetchImpl = fetch } = {}) {
+  const { DB } = env;
+  if (!env.JOBTREAD_GRANT_KEY) throw new Error('JobTread isn’t connected');
+  await ensureSchema(DB);
+  const row = (await readAccountRows(DB)).get(partner);
+  if (!row) throw new Error('That partner isn’t matched in JobTread any more');
+  const p = (await readPartners(DB)).find((x) => x.slug === partner);
+  const to = String(name ?? p?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  if (!to) throw new Error('There’s no name to give it');
+  const from = row.account_name || '';
+  if (to !== from) {
+    await pave(env.JOBTREAD_GRANT_KEY, { updateAccount: { $: { id: row.account_id, name: to } } }, fetchImpl);
+    await DB.prepare('UPDATE vendor_accounts SET account_name = ? WHERE partner = ?').bind(to, partner).run();
+  }
+  return { partner, name: p?.name || partner, account: row.account_id, from, to };
 }

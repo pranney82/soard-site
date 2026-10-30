@@ -9,12 +9,14 @@
  * POST { settle: { partner, makeNew: true } }  → "Make a new one": the partner gets its own JobTread account
  * POST { contacts: { partner, people } }       → who to reach at a vendor (D1 partner_contacts, private)
  * POST { recheck: { company } }                → that company's jobs again, now
- * Each POST but setAside runs that company's part of the sync straight away
- * and answers { report, view }.
+ * POST { unmatch: { partner } }                → "Not the same": not that JobTread vendor after all, and what the match did is taken back
+ * POST { rename: { partner, name? } }          → the JobTread vendor takes the partner's name (or name: the old one, to undo)
+ * Each POST but setAside and rename runs that company's part of the sync
+ * straight away and answers { report, view }.
  *
  * See ./_vendor-access.js.
  */
-import { adminView, setCompanyAside, settleAccount, syncVendorAccess } from './_vendor-access.js';
+import { adminView, setCompanyAside, settleAccount, syncVendorAccess, unmatchAccount, renameAccount } from './_vendor-access.js';
 import { saveContacts, grantForPartner } from './_sponsors.js';
 import { logAudit } from './_audit.js';
 import { nameKey } from '../../public/admin/partners-shared.js';
@@ -43,10 +45,11 @@ export async function onRequestPost(context) {
   const by = context.data?.userEmail || null;
   let body;
   try { body = await request.json(); } catch { return fail('Bad request'); }
-  const run = async (company) => {
+  const sync = async (company) => {
     const report = await syncVendorAccess(env, { only: company });
-    return ok({ report, view: await adminView(env.DB) });
+    return { report, view: await adminView(env.DB) };
   };
+  const run = async (company) => ok(await sync(company));
 
   if (body?.setAside) {
     const { company, undo = false, name = null } = body.setAside;
@@ -77,6 +80,28 @@ export async function onRequestPost(context) {
     // A sponsor too: its kids' jobs get them as Sponsors, as a save in the kid editor does
     await grantForPartner(env, partner).catch(() => null);
     return run(nameKey(name));
+  }
+
+  if (body?.unmatch) {
+    const { partner } = body.unmatch;
+    if (!SLUG_RE.test(partner || '')) return fail('Bad choice');
+    const name = await partnerName(env.DB, partner);
+    if (!name) return fail('That partner isn’t in the directory', 404);
+    let done;
+    try { done = await unmatchAccount(env, { partner }, by); } catch (e) { return fail(e.message, /JobTread/.test(e.message) && !/matched/.test(e.message) ? 500 : 404); }
+    // Names only: emails stay in partner_contacts
+    await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'jobtread-vendor', entitySlug: partner, entityName: 'Not the same as a JobTread vendor',
+      changes: { account: done.accountName, offJobs: done.offJobs.map((o) => `${o.person}: ${o.page}`), fromPartners: done.fromPartners, fromJobTread: done.fromJobTread } });
+    return ok({ ...(await sync(nameKey(name))), unmatched: done });
+  }
+
+  if (body?.rename) {
+    const { partner, name = null } = body.rename;
+    if (!SLUG_RE.test(partner || '') || (name != null && (typeof name !== 'string' || !name.trim() || name.length > 200))) return fail('Bad name');
+    let done;
+    try { done = await renameAccount(env, { partner, name }); } catch (e) { return fail(e.message, /JobTread:/.test(e.message) ? 500 : 404); }
+    if (done.from !== done.to) await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'jobtread-vendor', entitySlug: partner, entityName: 'Renamed in JobTread', changes: { from: done.from, to: done.to } });
+    return ok({ renamed: done, view: await adminView(env.DB) });
   }
 
   if (body?.recheck) {

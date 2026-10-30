@@ -4277,6 +4277,15 @@
     .modal .pt-access__foot { margin: 1rem 0 0; padding-top: 0.85rem; border-top: 1px solid var(--color-border); font-size: var(--fs-xs); color: var(--color-text-secondary); }
     .pt-access h3 { margin: 0 0 0.5rem; font-size: var(--fs-sm); font-weight: 600; }
     .pt-access + .pt-access { margin-top: 1rem; }
+    .pt-access__matched ul { gap: 0; }
+    .pt-access__matched li { flex-wrap: wrap; padding: 0.45rem 0; }
+    .pt-access__matched li + li { border-top: 1px solid var(--color-border); }
+    .pt-access__matched li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+    .pt-access__acts { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-left: auto; }
+    .pt-access__matched a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+    .pt-access__find { margin-top: 0.5rem; max-width: 18rem; }
+    .pt-access__matched .form-hint { margin: 0.5rem 0 0; }
+    @media (max-width: 768px) { .pt-access__acts { margin-left: 0; width: 100%; } }
     .kd-logowait { margin-bottom: 0.85rem; padding: 0.7rem 0.85rem; border: 1px solid #EBCB4D; border-radius: 12px; background: var(--tone-warn-surface); }
     .kd-logowait__lead { margin: 0 0 0.45rem; font-size: var(--fs-sm); color: var(--tone-warn-fg); }
     .kd-logowait ul { display: grid; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
@@ -13110,7 +13119,8 @@
         const n = (res.added || []).reduce((k, o) => k + o.added.length, 0);
         addToast(`${r.name} is ${partner.name}${n ? `: their logo is on ${kdPlural(n, 'page')} now, and goes live with the next publish` : partner.logo ? '' : '. Add their logo in Partners and it goes on the page by itself'}`, 'success');
       });
-      const unlink = (l) => act(`ul-${l.company}`, { unlink: { company: l.company } }, () => addToast(`${l.name} isn’t linked to ${nameOfPartner(l.partner)} any more`, 'info'));
+      const unlink = (l) => act(`ul-${l.company}`, { unlink: { company: l.company } }, (r) => addToast(r?.unmatched
+        ? ptUnmatchedText(nameOfPartner(l.partner), r.unmatched, null) : `${l.name} isn’t linked to ${nameOfPartner(l.partner)} any more`, 'info'));
       const saveEmails = () => {
         const list = emails.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
         act('emails', { settings: { emails: list } }, (r) => {
@@ -13218,10 +13228,23 @@
     // Not ptPost: these change JobTread and private contacts, nothing to publish
     const ptAccessPost = (body) => fetch(PT_ACCESS_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => apiJson(r, PT_ACCESS_API));
     const ptJobUrl = (id) => `https://app.jobtread.com/jobs/${encodeURIComponent(id || '')}`;
+    const ptVendorUrl = (id) => `https://app.jobtread.com/vendors/${encodeURIComponent(id || '')}`;
+    const PT_MATCH_HOW = { name: 'matched by name', linked: 'staff said same company', made: 'made by the site' };
     const ptRecordHash = (record) => `#kids/${String(record || '').split('/').map(encodeURIComponent).join('/')}`;
     const ptAccessPagesOf = (w) => (w.jobs.length === 1 ? w.jobs[0].page : kdPlural(w.jobs.length, 'page'));
     /** Why a company belongs on a job: its logo on the page, a bill or order there, or both */
     const ptWhyOf = (why) => (why === 'page' ? 'Logo on' : why === 'bill' ? 'Bill or order on' : 'Logo and a bill on');
+    /** What "Not the same" took back, said once */
+    function ptUnmatchedText(name, u, view) {
+      const bits = [`${name} isn’t matched to “${u?.accountName || 'that vendor'}” in JobTread any more.`];
+      const off = [...new Set((u?.offJobs || []).map((o) => o.person))];
+      if (off.length) bits.push(`${kdNames(off)} ${off.length === 1 ? 'is' : 'are'} off ${kdNames([...new Set(u.offJobs.map((o) => `the job for ${o.page}`))])}.`);
+      if (u?.fromPartners?.length) bits.push(`${kdNames(u.fromPartners)} left Partners.`);
+      if (u?.fromJobTread?.length) bits.push(`${kdNames(u.fromJobTread)} left that JobTread vendor.`);
+      if (u?.untracked) bits.push(`Contacts copied before Oct 29 can’t be told apart, so check who’s listed to reach at ${name}.`);
+      if ((view?.near || []).some((n) => n.partner === u?.partner)) bits.push('Say which vendor it is under “The same company?”.');
+      return bits.join(' ');
+    }
     /** What a run did, said once */
     function ptAccessToast(addToast, report, fallback = null) {
       const added = report?.added || [];
@@ -13238,12 +13261,16 @@
      * Partners → JobTread access: the open jobs' vendors (logos on the page,
      * bills and orders) the site couldn't put on the job in JobTread yet,
      * with what fixes each: who to reach there, the same company JobTread
-     * names nearly the same, or not needed. Also who went on lately.
+     * names nearly the same, or not needed. Also who went on lately, and
+     * every partner matched to a JobTread vendor: a wrong match undone ("Not
+     * the same"), a wrong name in JobTread fixed ("Call it …").
      */
     function PtAccessDialog({ view, onAdd, onContacts, onChange, onClose, addToast }) {
       const [busy, setBusy] = useState(null);
       const [showAside, setShowAside] = useState(false);
       const [showAdded, setShowAdded] = useState(false);
+      const [showMatched, setShowMatched] = useState(false);
+      const [find, setFind] = useState('');
       const act = async (key, body, done) => {
         setBusy(key);
         try {
@@ -13258,12 +13285,24 @@
         () => addToast(on ? `${w.name} won’t be put on jobs` : `${w.name} goes on their jobs again at the next check`, 'info', on ? { label: 'Undo', fn: () => setAside(w, false) } : null));
       const settle = (n, account) => act(`s-${n.partner}`, { settle: account ? { partner: n.partner, account: account.id } : { partner: n.partner, makeNew: true } },
         (r) => ptAccessToast(addToast, r.report, account ? `${n.name} is ${account.name} in JobTread now` : null));
+      const unmatch = async (m) => {
+        if (!(await ask({ title: `${m.name} isn’t “${m.accountName}”?`, danger: true, yes: 'Not the same',
+          text: `The site stops treating them as one. Anyone it put on a job through “${m.accountName}” comes off that job, and the contacts it copied between the two are taken back. JobTread’s vendor stays.` }))) return;
+        act(`n-${m.partner}`, { unmatch: { partner: m.partner } }, (r) => addToast(ptUnmatchedText(m.name, r.unmatched, r.view), 'info'));
+      };
+      const rename = (m, back = null) => act(`r-${m.partner}`, { rename: { partner: m.partner, ...(back ? { name: back } : {}) } }, (r) => addToast(
+        back ? `${m.name} is “${r.renamed.to}” in JobTread again` : `“${r.renamed.from}” is called “${r.renamed.to}” in JobTread now`,
+        'success', back ? null : { label: 'Undo', fn: () => rename(m, r.renamed.from) }));
       const title = 'JobTread access';
       if (!view) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}><p class="text-muted"><span class="spinner spinner-14" /> Loading…</p><//>`;
       if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
         <p class="kd-bad pt-wait__error">Couldn’t load the list: ${view.failed}</p>
         <button type="button" class="btn btn-sm" onClick=${() => onChange(null)} data-autofocus>Try again</button><//>`;
-      const { waiting = [], near = [], added = [], setAside: aside = [] } = view;
+      const { waiting = [], near = [], added = [], setAside: aside = [], matched = [] } = view;
+      const named = (m) => m.accountName.trim() !== m.name.trim();
+      const renamed = matched.filter(named).length;
+      const q = find.trim().toLowerCase();
+      const shown = q ? matched.filter((m) => `${m.name} ${m.accountName}`.toLowerCase().includes(q)) : matched;
       return html`<${KdDialog} title=${title}
         sub="Each open job lists its vendors in JobTread: the companies with a logo on the page, and the vendors with a bill or purchase order on the job. The site adds them as Vendors, without JobTread’s email, and keeps their contacts the same in Partners and JobTread."
         size="lg" onClose=${onClose} busy=${!!busy}>
@@ -13273,11 +13312,13 @@
           <ul class="pt-loose pt-wait">${near.map((n, i) => html`<li key=${n.partner} class="pt-loose__item">
             <span class="pt-loose__text">
               <strong>${n.name}</strong>
-              <small>Isn’t a vendor in JobTread by that name. JobTread has ${kdNames(n.near.map((x) => `“${x.name}”`))}.</small>
+              <small>${n.was?.length ? `You said it isn’t ${kdNames(n.was.map((x) => `“${x.name}”`))}${n.near.length ? '. JobTread also has' : ', and JobTread has no other vendor by a near name.'}`
+                : 'Isn’t a vendor in JobTread by that name. JobTread has'}${n.near.length ? ` ${kdNames(n.near.map((x) => `“${x.name}”`))}.` : ''}</small>
               <span class="pt-loose__acts">
                 ${n.near.map((x, j) => html`<button type="button" key=${x.id} class=${`btn btn-sm ${j ? 'btn-ghost' : 'btn-primary'}`} disabled=${!!busy}
                   data-autofocus=${i === 0 && j === 0 ? '' : null} onClick=${() => settle(n, x)}>
                   ${busy === `s-${n.partner}` ? html`<span class="spinner spinner-14" />` : null}Same as ${x.name}</button>`)}
+                ${(n.was || []).map((x) => html`<button type="button" key=${`was-${x.id}`} class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => settle(n, x)}>Same as ${x.name} after all</button>`)}
                 <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => settle(n, null)}>${pplIcon.plus} Make ${n.name} a new vendor</button>
               </span>
             </span>
@@ -13318,7 +13359,29 @@
           ${showAdded ? html`<ul>${added.map((a) => html`<li key=${`${a.jobId}-${a.company}`}><span>${a.person || a.name}${a.person && a.person !== a.name ? ` for ${a.name}` : ''} <small>on the job for ${a.page} · ${a.kept && a.role ? `kept their ${a.role} role` : 'as a Vendor'} · ${kdWhen(a.at)}</small></span>
             <a class="btn btn-ghost btn-sm" href=${ptJobUrl(a.jobId)} target="_blank" rel="noopener">Open the job</a></li>`)}</ul>` : null}
         </div>` : null}
-        <p class="pt-access__foot">${view.paired ? `${kdPlural(view.paired, 'partner')} matched to a JobTread vendor account, with contacts kept the same both ways (the newer change wins). ` : ''}${view.lastRunAt ? `Checked ${kdWhen(view.lastRunAt)}; again every 15 minutes.` : 'The first check runs within 15 minutes.'}</p>
+        ${matched.length ? html`<div class="pt-loose__dismissed pt-access__matched">
+          <button type="button" class="ppl-link" aria-expanded=${showMatched} onClick=${() => setShowMatched((v) => !v)}>
+            ${kdPlural(matched.length, 'partner')} matched in JobTread${renamed ? `, ${renamed} by another name there` : ''}</button>
+          ${showMatched ? html`
+            <p class="form-hint">Not the same company? Undo the match. A name wrong in JobTread? Give it the Partners name. JobTread’s name is the one on its bills and orders.</p>
+            ${matched.length > 8 ? html`<label class="sr-only" for="pt-access-find">Find a partner</label>
+              <div class="search-bar pt-access__find">
+                <span class="search-icon">${icons.search}</span>
+                <input id="pt-access-find" type="search" autocomplete="off" placeholder="Find a partner" value=${find} onInput=${(e) => setFind(e.target.value)} />
+              </div>` : null}
+            <ul>${shown.map((m) => html`<li key=${m.partner}>
+              <span>${m.name} <small>${named(m) ? html`is “<a href=${ptVendorUrl(m.account)} target="_blank" rel="noopener">${m.accountName}</a>” in JobTread`
+                : html`<a href=${ptVendorUrl(m.account)} target="_blank" rel="noopener" aria-label=${`${m.name} in JobTread`}>same name</a> in JobTread`} · ${PT_MATCH_HOW[m.how] || PT_MATCH_HOW.name}</small></span>
+              <span class="pt-access__acts">
+                ${named(m) ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => rename(m)}>
+                  ${busy === `r-${m.partner}` ? html`<span class="spinner spinner-14" />` : null}Call it ${m.name} in JobTread</button>` : null}
+                ${m.how !== 'made' ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => unmatch(m)}>
+                  ${busy === `n-${m.partner}` ? html`<span class="spinner spinner-14" />` : null}Not the same</button>` : null}
+              </span>
+            </li>`)}</ul>
+            ${!shown.length ? html`<p class="text-muted">No partner matches “${find.trim()}”.</p>` : null}` : null}
+        </div>` : null}
+        <p class="pt-access__foot">${view.paired ? 'Contacts are kept the same both ways for every matched partner (the newer change wins). ' : ''}${view.lastRunAt ? `Checked ${kdWhen(view.lastRunAt)}; again every 15 minutes.` : 'The first check runs within 15 minutes.'}</p>
       <//>`;
     }
 

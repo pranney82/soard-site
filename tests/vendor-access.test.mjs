@@ -17,6 +17,7 @@ import { readContacts, saveContacts } from '../functions/api/_sponsors.js';
 import { _resetRoleCache } from '../functions/api/_jt-access.js';
 import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from '../functions/api/_applicant-comms.js';
 import { onRequestGet, onRequestPost } from '../functions/api/vendor-access-admin.js';
+import { onRequestPost as logoAdminPost } from '../functions/api/kid-partners-admin.js';
 
 const HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 const img = (id) => `https://imagedelivery.net/${HASH}/${id}/public`;
@@ -84,6 +85,9 @@ function fakeJT({ jobs, members = [], accounts = [] }) {
       if ($.customFieldValues?.[FIELD_CONTACT_PHONE] != null) c.phone = $.customFieldValues[FIELD_CONTACT_PHONE];
       return reply({});
     }
+    if (q.job) { const j = jobs.find((x) => x.id === q.job.$.id); return reply({ job: j ? { id: j.id, aces: { nodes: j.access.map((e) => ({ id: `ace:${j.id}:${e}`, membership: asMembership(people.get(e)) })) } } : null }); }
+    if (q.deleteAce) { const [, jobId, email] = q.deleteAce.$.id.split(':'); const j = jobs.find((x) => x.id === jobId); j.access = j.access.filter((e) => e !== email); return reply({}); }
+    if (q.updateAccount) { accounts.find((a) => a.id === q.updateAccount.$.id).name = q.updateAccount.$.name; return reply({}); }
     if (q.deleteContact) { for (const a of accounts) a.contacts = a.contacts.filter((c) => c.id !== q.deleteContact.$.id); return reply({}); }
     const out = {};
     for (const [alias, part] of Object.entries(q)) {
@@ -329,6 +333,133 @@ test('a same-named vendor JobTread archived: staff choose, the sweep never makes
   assert.equal((await DB.prepare("SELECT account_name FROM vendor_accounts WHERE partner = 'blythe-creative'").first()).account_name, 'Blythe Creative Co', 'paired, archived or not');
   await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
   assert.equal(jt.accounts.length, 1, 'still no second account');
+});
+
+test('pairs: one staff said is “Not the same” never pairs again, by a saved pair, a link or the same name', () => {
+  const accounts = [{ id: 'a1', name: 'Walk Your Plans', contacts: [] }, { id: 'a2', name: 'WYP Construction', contacts: [] }];
+  const notSame = { 'walk-your-plans': { a1: { name: 'Walk Your Plans' } } };
+  assert.equal(pairAccounts([WYP], accounts).get('walk-your-plans').id, 'a1', 'the same name, before');
+  assert.equal(pairAccounts([WYP], accounts, { notSame }).get('walk-your-plans'), undefined);
+  assert.equal(pairAccounts([WYP], accounts, { saved: { 'walk-your-plans': 'a1' }, links: { walkyourplans: 'walk-your-plans' }, notSame }).get('walk-your-plans'), undefined);
+  assert.equal(pairAccounts([WYP], accounts, { links: { wypconstruction: 'walk-your-plans' }, notSame }).get('walk-your-plans').id, 'a2', 'another one still can');
+});
+
+test('“Not the same”: what the wrong match did is taken back, it waits for staff, and “Same as … after all” puts it back', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const DB = await world({ kids: [{ ...ISLA, partnerLogos: [logoOf(WYP)] }], partners: [WYP] });
+  await saveContacts(DB, 'walk-your-plans', [{ name: 'Pat Plans', email: 'pat@walkyourplans.example' }]);
+  // JobTread has another company by the same name; the real one is WYP Construction
+  const jt = fakeJT({
+    jobs: [{ id: 'j1', name: 'Isla Smith (2026)', access: [] }],
+    accounts: [{ id: 'acctother1', name: 'Walk Your Plans', primary: 'c-o', contacts: [{ id: 'c-o', name: 'Otto', email: 'otto@other.example' }] }, { id: 'acctwyp1', name: 'WYP Construction', primary: 'c-w', contacts: [{ id: 'c-w', name: 'Walt', email: 'walt@wypconstruction.example' }] }],
+  });
+  t.mock.method(globalThis, 'fetch', jt.fetchImpl);
+  const other = () => jt.accounts.find((a) => a.id === 'acctother1');
+  const wyp = () => jt.accounts.find((a) => a.id === 'acctwyp1');
+  const partnersPeople = async () => ((await readContacts(DB))['walk-your-plans'] || []).map((p) => p.name).sort();
+  await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 });
+  const req = (body) => ({ env: env(DB), data: { userEmail: 'staff@example.org' }, request: new Request('https://x/api/vendor-access-admin', { method: 'POST', body: JSON.stringify(body) }) });
+  const first = await adminView(DB);
+  assert.deepEqual(first.matched, [{ partner: 'walk-your-plans', name: 'Walk Your Plans', account: 'acctother1', accountName: 'Walk Your Plans', how: 'name' }]);
+  assert.ok(!JSON.stringify(first.matched).includes('@'), 'names and ids only');
+  // The wrong match did three things: Otto on Isla's job, Otto in Partners, Pat in the other company's JobTread
+  assert.deepEqual(jt.jobs[0].access, ['otto@other.example']);
+  assert.deepEqual(await partnersPeople(), ['Otto', 'Pat Plans']);
+  assert.deepEqual(other().contacts.map((c) => c.name).sort(), ['Otto', 'Pat Plans']);
+
+  const un = await (await onRequestPost(req({ unmatch: { partner: 'walk-your-plans' } }))).json();
+  assert.ok(un.success, un.error);
+  assert.deepEqual([un.unmatched.offJobs.map((o) => o.person), un.unmatched.fromPartners, un.unmatched.fromJobTread, un.unmatched.untracked], [['Otto'], ['Otto'], ['Pat Plans'], false]);
+  assert.deepEqual(jt.jobs[0].access.filter((e) => e === 'otto@other.example'), [], 'Otto is off the job');
+  assert.deepEqual(await partnersPeople(), ['Pat Plans'], 'staff’s own person stays in Partners');
+  assert.deepEqual(other().contacts.map((c) => c.name), ['Otto'], 'their JobTread vendor keeps its own');
+  assert.deepEqual(un.view.matched, []);
+  assert.deepEqual(un.view.near.map((n) => [n.name, n.was.map((x) => x.name), n.near.map((x) => x.name)]), [['Walk Your Plans', ['Walk Your Plans'], ['WYP Construction']]], 'it asks again, with the near name');
+  assert.deepEqual(un.report.made, [], 'no account made by itself');
+  assert.deepEqual(un.report.added.map((a) => a.person), ['Pat Plans'], 'their own person goes on the job instead, straight away');
+  const log = (await DB.prepare("SELECT changes FROM audit_log WHERE entity_name = 'Not the same as a JobTread vendor'").first()).changes;
+  assert.ok(!log.includes('@'), 'the log has names, not emails');
+  // A run that was mid-way wrote the pair back: the next one drops it, and still makes nothing
+  await DB.prepare("INSERT INTO vendor_accounts (partner, account_id, account_name, how) VALUES ('walk-your-plans', 'acctother1', 'Walk Your Plans', 'name')").run();
+  const r2 = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
+  assert.deepEqual(r2.made, []);
+  assert.deepEqual((await adminView(DB)).matched, []);
+  assert.equal((await adminView(DB)).near.length, 1, 'still waiting for staff');
+  assert.ok(!jt.jobs[0].access.includes('otto@other.example'), 'and Otto isn’t put back');
+
+  // The right one: WYP Construction
+  const same = await (await onRequestPost(req({ settle: { partner: 'walk-your-plans', account: 'acctwyp1' } }))).json();
+  assert.ok(same.success, same.error);
+  assert.deepEqual(same.view.matched.map((m) => [m.accountName, m.how]), [['WYP Construction', 'linked']]);
+  assert.deepEqual(same.report.added, [], 'Pat is on the job already');
+  assert.deepEqual(await partnersPeople(), ['Pat Plans', 'Walt'], 'and the contacts come together');
+  // Not the same again, for a pair synced before the site kept track: nothing it can't tell apart is touched
+  await DB.prepare("DELETE FROM vendor_access_state WHERE key = 'copied'").run();
+  const un2 = await (await onRequestPost(req({ unmatch: { partner: 'walk-your-plans' } }))).json();
+  assert.ok(un2.success, un2.error);
+  assert.deepEqual([un2.unmatched.offJobs, un2.unmatched.fromPartners, un2.unmatched.untracked], [[], [], true]);
+  assert.deepEqual(await partnersPeople(), ['Pat Plans', 'Walt']);
+  const links = JSON.parse((await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'links'").first()).value);
+  assert.equal(links.wypconstruction, undefined, 'the “Same as” link logos and sponsors use goes too');
+  // Same as WYP Construction after all
+  const near = (await adminView(DB)).near[0];
+  assert.deepEqual(near.was.map((x) => x.id).sort(), ['acctother1', 'acctwyp1'], 'both it was told aren’t it');
+  const after = await (await onRequestPost(req({ settle: { partner: 'walk-your-plans', account: 'acctwyp1' } }))).json();
+  assert.ok(after.success, after.error);
+  assert.deepEqual(after.view.matched.map((m) => m.accountName), ['WYP Construction']);
+  await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 30 * MIN });
+  assert.deepEqual((await adminView(DB)).matched.map((m) => m.accountName), ['WYP Construction'], 'and it holds');
+  assert.ok(wyp().contacts.some((c) => c.name === 'Pat Plans'));
+
+  assert.equal((await onRequestPost(req({ unmatch: { partner: 'nobody-here' } }))).status, 404);
+  assert.equal((await onRequestPost(req({ unmatch: { partner: '../x' } }))).status, 400);
+});
+
+test('a wrong name in JobTread: the vendor takes the Partners name, staff pressing it, and Undo gives the old one back', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const DB = await world({ kids: [{ ...ISLA, partnerLogos: [logoOf(RANDALL)] }], partners: [RANDALL] });
+  const jt = fakeJT({ jobs: [{ id: 'j1', name: 'Isla Smith (2026)', access: [] }], accounts: [{ id: 'acctrb01', name: 'Randall Bros', contacts: [] }] });
+  t.mock.method(globalThis, 'fetch', jt.fetchImpl);
+  await DB.prepare("CREATE TABLE IF NOT EXISTS kid_partner_state (key TEXT PRIMARY KEY, value TEXT)").run();
+  await DB.prepare("INSERT OR REPLACE INTO kid_partner_state (key, value) VALUES ('links', ?)").bind(JSON.stringify({ randallbros: 'randall-brothers' })).run();
+  await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 });
+  assert.deepEqual((await adminView(DB)).matched.map((m) => [m.name, m.accountName]), [['Randall Brothers', 'Randall Bros']]);
+  assert.ok(!jt.kinds().includes('updateAccount'), 'the sweep never renames');
+  const req = (body) => ({ env: env(DB), data: { userEmail: 'staff@example.org' }, request: new Request('https://x/api/vendor-access-admin', { method: 'POST', body: JSON.stringify(body) }) });
+
+  const r = await (await onRequestPost(req({ rename: { partner: 'randall-brothers' } }))).json();
+  assert.ok(r.success, r.error);
+  assert.deepEqual([r.renamed.from, r.renamed.to], ['Randall Bros', 'Randall Brothers']);
+  assert.equal(jt.accounts[0].name, 'Randall Brothers');
+  assert.deepEqual(r.view.matched.map((m) => m.accountName), ['Randall Brothers']);
+  await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
+  assert.deepEqual((await adminView(DB)).matched.map((m) => [m.account, m.accountName]), [['acctrb01', 'Randall Brothers']], 'still paired after');
+  const log = (await DB.prepare("SELECT entity_name, changes FROM audit_log WHERE entity_type = 'jobtread-vendor'").all()).results;
+  assert.deepEqual(log.map((l) => l.entity_name), ['Renamed in JobTread']);
+
+  const undo = await (await onRequestPost(req({ rename: { partner: 'randall-brothers', name: 'Randall Bros' } }))).json();
+  assert.ok(undo.success, undo.error);
+  assert.equal(jt.accounts[0].name, 'Randall Bros');
+  assert.equal((await (await onRequestPost(req({ rename: { partner: 'randall-brothers', name: '  ' } }))).json()).error, 'Bad name');
+  assert.equal((await onRequestPost(req({ rename: { partner: 'nobody-here' } }))).status, 404);
+});
+
+test('Unlink in “JobTread, no logo” undoes the vendor match its link made', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const DB = await world({ kids: [{ ...ISLA, partnerLogos: [logoOf(WYP)] }], partners: [WYP] });
+  const jt = fakeJT({ jobs: [{ id: 'j1', name: 'Isla Smith (2026)', access: [] }], accounts: [{ id: 'acctwyp1', name: 'WYP Construction', contacts: [] }] });
+  t.mock.method(globalThis, 'fetch', jt.fetchImpl);
+  await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 });
+  await onRequestPost({ env: env(DB), data: {}, request: new Request('https://x', { method: 'POST', body: JSON.stringify({ settle: { partner: 'walk-your-plans', account: 'acctwyp1' } }) }) });
+  assert.equal((await adminView(DB)).matched.length, 1);
+  const res = await logoAdminPost({ env: env(DB), data: { userEmail: 'staff@example.org' }, request: new Request('https://x/api/kid-partners-admin', { method: 'POST', body: JSON.stringify({ unlink: { company: 'wypconstruction' } }) }) });
+  assert.ok((await res.json()).success);
+  assert.deepEqual((await adminView(DB)).matched, []);
+  await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
+  assert.deepEqual((await adminView(DB)).matched, [], 'not paired back by the next run');
 });
 
 test('the logo sweep: someone added for a bill alone brings no logo; one added by email is their partner, not their own name', async () => {

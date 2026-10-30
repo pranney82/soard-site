@@ -116,7 +116,14 @@ function makeApi() {
     ],
     near: [{ partner: 'crosby-design-group', name: 'Crosby Design Group', near: [{ id: 'acctcdg01', name: 'CDG Interiors', why: 'Initials' }] }],
     added: [{ company: 'randallbrothers', name: 'Randall Brothers', page: 'Isla’s page', record: 'isla', jobId: 'jt-isla', why: 'page', person: 'Ron Randall', role: 'Vendor', kept: false, at: since }],
-    setAside: [], paired: 12, lastRunAt: since, lastRun: { at: since, added: 1 }, lastError: null,
+    // Every partner matched to a JobTread vendor, named differently first
+    matched: [
+      { partner: 'randall-brothers', name: 'Randall Brothers', account: 'acctrb01', accountName: 'Randall Bros', how: 'linked' },
+      { partner: 'walk-your-plans', name: 'Walk Your Plans', account: 'acctwyp1', accountName: 'WYP Construction', how: 'linked' },
+      ...['Bright Paint Co', 'Cedar Floors', 'Delta Glass', 'Echo Tile', 'Fern Landscaping', 'Gable Roofing', 'Harbor Cabinets'].map((name, i) => ({ partner: name.toLowerCase().replace(/ /g, '-'), name, account: `acctsame0${i}`, accountName: name, how: 'name' })),
+      { partner: 'juniper-rugs', name: 'Juniper Rugs', account: 'acctmade01', accountName: 'Juniper Rugs', how: 'made' },
+    ],
+    setAside: [], paired: 10, lastRunAt: since, lastRun: { at: since, added: 1 }, lastError: null,
   };
   for (const k of Object.keys(DIR)) st[k] = structuredClone(FX[k] || {});
   for (const k of Object.keys(DIR)) for (const [slug, d] of Object.entries(st[k])) d.slug ||= slug;
@@ -251,7 +258,27 @@ function makeApi() {
         else { a.waiting = a.waiting.filter((x) => x !== w); a.setAside.push({ ...w, by: 'admin@example.com', at: new Date().toISOString() }); }
         return json({ success: true, view: a });
       }
-      if (b.settle) { a.near = a.near.filter((n) => n.partner !== b.settle.partner); return json({ success: true, report: report(), view: a }); }
+      if (b.settle) {
+        const n = a.near.find((x) => x.partner === b.settle.partner);
+        const was = n?.was?.find((x) => x.id === b.settle.account);
+        if (was) a.matched.unshift({ partner: n.partner, name: n.name, account: was.id, accountName: was.name, how: 'linked' });
+        a.near = a.near.filter((x) => x !== n);
+        return json({ success: true, report: report(), view: a });
+      }
+      if (b.unmatch) {
+        const m = a.matched.find((x) => x.partner === b.unmatch.partner);
+        a.matched = a.matched.filter((x) => x !== m);
+        a.paired = a.matched.length;
+        a.near.push({ partner: m.partner, name: m.name, near: [], was: [{ id: m.account, name: m.accountName }] });
+        const unmatched = { partner: m.partner, account: m.account, accountName: m.accountName, how: m.how, offJobs: [{ page: 'Isla’s page', person: 'Otto Other' }], fromPartners: ['Otto Other'], fromJobTread: [], untracked: false };
+        return json({ success: true, report: report(), unmatched, view: a });
+      }
+      if (b.rename) {
+        const m = a.matched.find((x) => x.partner === b.rename.partner);
+        const from = m.accountName;
+        m.accountName = b.rename.name || m.name;
+        return json({ success: true, renamed: { partner: m.partner, name: m.name, account: m.account, from, to: m.accountName }, view: a });
+      }
       if (b.contacts) {
         const w = a.waiting.find((x) => x.partner === b.contacts.partner);
         a.waiting = a.waiting.filter((x) => x !== w);
@@ -714,7 +741,7 @@ try {
     ok(/Bill or order on Isla’s page/.test(ace) && /vendor account has no contact with an email/.test(ace) && !/Add (who|to Partners)/.test(ace), `a JobTread vendor with no email: fixed in JobTread, so no button for it here (${ace.slice(0, 160)})`);
     ok(/Add to Partners/.test(await accessRow('Crafted Lighting')), 'a logo that’s in neither: Add to Partners');
     ok(await page.$eval('.pt-access .pt-access__why a[href^="#kids/"]', (a) => a.getAttribute('href')).catch(() => '') === '#kids/isla' && await page.$eval('.pt-access .pt-access__why a[href*="app.jobtread.com/jobs/"]', (a) => a.getAttribute('href')).catch(() => '') === 'https://app.jobtread.com/jobs/jt-isla', 'the page opens its editor, the job opens in JobTread');
-    ok(/12 partners matched to a JobTread vendor account/.test(await page.$eval('.pt-access__foot', (e) => e.textContent).catch(() => '')), 'the foot says how many partners are matched in JobTread');
+    ok(/Contacts are kept the same both ways for every matched partner/.test(await page.$eval('.pt-access__foot', (e) => e.textContent).catch(() => '')), 'the foot says contacts stay the same both ways');
     await shot(page, 'desk-access', { grow: false });
     await axeCheck(page, 'jobtread access');
     // JobTread names Crosby Design Group nearly the same: staff settle it
@@ -757,6 +784,48 @@ try {
     await clickText(page, '.kd-dialog__foot .btn', 'Cancel');
     await page.waitForSelector('.pt-access', { timeout: 3000 }).catch(() => {});
     ok(await page.evaluate(dialogTitle) === 'JobTread access', 'Cancel goes back to JobTread access');
+    // Every match, to check: a wrong name fixed in JobTread, a wrong match undone
+    const matchedLink = await page.$eval('.pt-access__matched .ppl-link', (b) => b.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
+    ok(matchedLink === '10 partners matched in JobTread, 2 by another name there', `the matched list says how many, and how many JobTread names differently (${matchedLink})`);
+    await page.click('.pt-access__matched .ppl-link');
+    await page.waitForSelector('.pt-access__matched li', { timeout: 3000 }).catch(() => {});
+    const matchRow = (name) => page.evaluate((name) => [...document.querySelectorAll('.pt-access__matched li')].find((li) => li.firstElementChild?.textContent.trim().startsWith(name))?.textContent.replace(/\s+/g, ' ').trim() || '', name);
+    const firstRow = await page.$eval('.pt-access__matched li', (li) => li.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
+    ok(/^Randall Brothers is “Randall Bros” in JobTread · staff said same company/.test(firstRow), `named differently comes first, with JobTread's name and how it was matched (${firstRow.slice(0, 120)})`);
+    ok(await page.$eval('.pt-access__matched li a', (a) => a.getAttribute('href')).catch(() => '') === 'https://app.jobtread.com/vendors/acctrb01', 'JobTread’s name opens that vendor in JobTread');
+    ok(/same name in JobTread · matched by name/.test(await matchRow('Bright Paint Co')) && !/Call it/.test(await matchRow('Bright Paint Co')), 'the same name: no rename offered');
+    ok(!/Not the same/.test(await matchRow('Juniper Rugs')) && /made by the site/.test(await matchRow('Juniper Rugs')), 'one the site made: nothing to undo');
+    await typeInto(page, '#pt-access-find', 'walk');
+    ok(await page.$$eval('.pt-access__matched li', (l) => l.map((x) => x.firstElementChild.textContent.trim().split(' is ')[0])).catch(() => []).then((n) => n.length === 1 && n[0] === 'Walk Your Plans'), 'more than eight: a box finds one');
+    await typeInto(page, '#pt-access-find', '');
+    // Call it Randall Brothers in JobTread, then Undo
+    await clickText(page, '.pt-access__matched .btn', 'Call it Randall Brothers in JobTread');
+    ok(await waitToast(page, /“Randall Bros” is called “Randall Brothers” in JobTread now/), 'renamed: the toast says from what to what');
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ rename: { partner: 'randall-brothers' } }), 'and asks for the Partners name');
+    ok(/same name in JobTread/.test(await matchRow('Randall Brothers')), 'the row shows the same name now');
+    ok(await clickToastAction(page, /is called “Randall Brothers”/), 'with an Undo');
+    ok(await waitToast(page, /Randall Brothers is “Randall Bros” in JobTread again/), 'Undo says the old name is back');
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ rename: { partner: 'randall-brothers', name: 'Randall Bros' } }), 'Undo gives JobTread its old name back');
+    // Not the same: asked first; Cancel does nothing
+    let asked = '';
+    await answerAsks(page, { accept: false, onAsk: (t) => { asked = t; } });
+    const before = callsTo(api, '/api/vendor-access-admin');
+    const notSame = () => page.evaluate(() => [...document.querySelectorAll('.pt-access__matched li')].find((li) => li.firstElementChild?.textContent.trim().startsWith('Walk Your Plans'))?.querySelector('.pt-access__acts .btn:last-child')?.click());
+    await notSame();
+    await sleep(500);
+    ok(/Walk Your Plans isn’t “WYP Construction”\?/.test(asked) && /comes off that job/.test(asked) && /JobTread’s vendor stays/.test(asked), `“Not the same” asks first and says what it takes back (${asked.slice(0, 140)})`);
+    ok(callsTo(api, '/api/vendor-access-admin') === before && !!(await matchRow('Walk Your Plans')), 'Cancel changes nothing');
+    await answerAsks(page, { accept: true });
+    await notSame();
+    ok(await waitToast(page, /Walk Your Plans isn’t matched to “WYP Construction” in JobTread any more\. Otto Other is off the job for Isla’s page\. Otto Other left Partners\. Say which vendor it is under “The same company\?”/), 'the toast says what was taken back, and where it waits');
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ unmatch: { partner: 'walk-your-plans' } }), 'and names the partner');
+    const wypNear = await accessRow('Walk Your Plans');
+    ok(/You said it isn’t “WYP Construction”, and JobTread has no other vendor by a near name\./.test(wypNear) && /Same as WYP Construction after all/.test(wypNear) && /Make Walk Your Plans a new vendor/.test(wypNear), `it waits under “The same company?” (${wypNear.slice(0, 160)})`);
+    await shot(page, 'desk-access-matched', { grow: false });
+    await axeCheck(page, 'jobtread access matched');
+    await clickText(page, '.pt-access .btn', 'Same as WYP Construction after all');
+    ok(await waitToast(page, /Walk Your Plans is WYP Construction in JobTread now/), '“Same as … after all” puts it back');
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ settle: { partner: 'walk-your-plans', account: 'acctwyp1' } }) && !(await accessRow('Walk Your Plans')), 'with that JobTread vendor, and it leaves the question');
     await page.keyboard.press('Escape');
     await sleep(300);
 
@@ -1239,7 +1308,20 @@ try {
     });
     ok(accessFit.ok && !accessFit.wide.length, `phone: JobTread access fits the screen${accessFit.wide.length ? ` (${accessFit.wide.join(', ')})` : ''}`);
     ok(!accessFit.small.length, `phone: every button in JobTread access is a 44px target${accessFit.small.length ? ` (${accessFit.small.join(', ')})` : ''}`);
+    await page.evaluate(() => document.querySelector('.pt-access__matched .ppl-link')?.click());
+    await page.waitForSelector('.pt-access__matched li', { timeout: 3000 }).catch(() => {});
+    const matchedFit = await page.evaluate(() => {
+      const wide = [...document.querySelectorAll('.pt-access__matched *')].filter((el) => { const b = el.getBoundingClientRect(); return b.width && (b.left < -0.5 || b.right > innerWidth + 0.5); }).map((el) => `${el.tagName}.${String(el.className).slice(0, 30)}`);
+      const small = [...document.querySelectorAll('.pt-access__matched .btn, .pt-access__matched .ppl-link')].filter((el) => el.getBoundingClientRect().height < 44).map((el) => el.textContent.trim().slice(0, 24));
+      return { rows: document.querySelectorAll('.pt-access__matched li').length, wide: wide.slice(0, 4), small: small.slice(0, 4) };
+    });
+    ok(matchedFit.rows > 0 && !matchedFit.wide.length, `phone: the matched list fits the screen (${matchedFit.rows} rows${matchedFit.wide.length ? `; too wide: ${matchedFit.wide.join(', ')}` : ''})`);
+    ok(!matchedFit.small.length, `phone: every choice in the matched list is a 44px target${matchedFit.small.length ? ` (${matchedFit.small.join(', ')})` : ''}`);
     await shot(page, 'phone-access', { grow: false });
+    // Into view for the picture, then the page put back where it was (scrollIntoView scrolls the page too)
+    const pageY = await page.evaluate(() => { const y = scrollY; document.querySelector('.pt-access__matched')?.scrollIntoView({ block: 'start' }); return y; });
+    await shot(page, 'phone-access-matched', { grow: false });
+    await page.evaluate((y) => scrollTo(0, y), pageY);
     await axeCheck(page, 'phone jobtread access');
     await page.keyboard.press('Escape');
     await sleep(200);
@@ -1340,11 +1422,11 @@ try {
     await clickText(page, '.pt-selectbar button', 'Clear');
     await sleep(200);
     ok(!(await page.$('.pt-row .pt-check')), 'Clear leaves Select mode');
-    // Row menu stays on screen
-    await page.evaluate(() => document.querySelector('.pt-section--champion .ppl-menu__btn')?.click());
+    // Row menu stays on screen (its row in view: where earlier steps left the page doesn't matter)
+    await page.evaluate(() => { const b = document.querySelector('.pt-section--champion .ppl-menu__btn'); b?.scrollIntoView({ block: 'center' }); b?.click(); });
     await page.waitForSelector('.ppl-menu__pop');
     const pop = await page.$eval('.ppl-menu__pop', (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom }; });
-    ok(pop.l >= 0 && pop.r <= 390 && pop.b <= 844, 'phone: the row menu stays on screen');
+    ok(pop.l >= 0 && pop.r <= 390 && pop.b <= 844, `phone: the row menu stays on screen${pop.l >= 0 && pop.r <= 390 && pop.b <= 844 ? '' : ` (${JSON.stringify(pop)})`}`);
     await page.keyboard.press('Escape');
     // Editor
     await page.evaluate(() => document.querySelector('.pt-section--signature .ppl-row__name')?.click());
