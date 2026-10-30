@@ -116,6 +116,7 @@ test('who gets which role: a partner its level, a sub Trade Partner; staff, fami
   ]);
   assert.equal(changes[0].company, 'Randall Brothers', 'named as in Partners');
   assert.deepEqual(unplaced.map((u) => [u.name, u.company, u.role, u.why]), [['Gus', 'Mystery Co', 'Vendor', 'unknown'], ['Cal', 'Not In Partners', 'Champion', 'level']]);
+  assert.deepEqual(unplaced.map((u) => u.account), ['acct-x', 'acct-y'], 'their JobTread vendor, so staff can say which partner it is');
   for (const r of ['Makeover Family', 'Photographer', 'Board Member', 'Admin', 'Designer', 'Design Partner', 'Automation Support']) assert.ok(!isPartnerRole(r), `${r} is never touched`);
 
   // A role changed by hand in JobTread is set back; staff's say holds

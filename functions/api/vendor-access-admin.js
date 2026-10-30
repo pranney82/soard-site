@@ -13,6 +13,7 @@
  * POST { rename: { partner, name? } }          → the JobTread vendor takes the partner's name (or name: the old one, to undo)
  * POST { rolePick: { membership, role?, keep?, name } } → someone the roles sweep can't place: Trade Partner, or leave their role
  *                                                (neither: undo the pick). See ./_partner-roles.js
+ * POST { link: { partner, account } }          → this JobTread vendor account (any) is this partner ("Who are they?": their company)
  * POST { twins: { a, b, same } }               → two JobTread vendor accounts listed as one company: the empty one is
  *                                                archived (same), or they're never put together again (one the site
  *                                                archived comes back)
@@ -21,7 +22,7 @@
  *
  * See ./_vendor-access.js.
  */
-import { adminView, setCompanyAside, settleAccount, syncVendorAccess, unmatchAccount, renameAccount, settleTwins } from './_vendor-access.js';
+import { adminView, setCompanyAside, settleAccount, linkAccount, syncVendorAccess, unmatchAccount, renameAccount, settleTwins } from './_vendor-access.js';
 import { pickRole } from './_partner-roles.js';
 import { saveContacts, grantForPartner } from './_sponsors.js';
 import { logAudit } from './_audit.js';
@@ -118,6 +119,16 @@ export async function onRequestPost(context) {
     await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'jobtread-roles', entityName: name || 'Someone in JobTread',
       changes: { pick: pick?.role || (pick?.keep ? 'Leave their role' : 'Undone') } });
     return ok({ view: await adminView(env.DB) });
+  }
+
+  if (body?.link) {
+    const { partner, account } = body.link;
+    if (!SLUG_RE.test(partner || '') || !ACCOUNT_RE.test(account || '')) return fail('Bad choice');
+    let done;
+    try { done = await linkAccount(env, { partner, account }, by); } catch (e) { return fail(e.message, /JobTread:/.test(e.message) ? 500 : 400); }
+    await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'jobtread-vendor', entitySlug: partner, entityName: 'Same as a JobTread vendor',
+      changes: { account: done.account.name, ...(done.archived ? { archived: done.archived } : {}) } });
+    return ok({ ...(await sync(nameKey(done.name))), linked: done });
   }
 
   if (body?.twins) {

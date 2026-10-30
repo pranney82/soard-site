@@ -236,7 +236,7 @@ export function placePerson(m, ctx) {
 
 /**
  * What to change → { changes: [{ membership, name, company, partner, from, to, why }],
- *   unplaced: [{ membership, name, company, role, why: 'unknown' | 'level' }] }
+ *   unplaced: [{ membership, name, company, account (their JobTread vendor's id), role, why: 'unknown' | 'level' }] }
  * why: 'level' (their partner's level), 'trade', 'staff' (staff's pick), 'set back' (changed by hand in JobTread).
  * picks: { [membership id]: { role } | { keep: true } }; setTo: { [membership id]: the role the site last gave }
  */
@@ -255,7 +255,7 @@ export function planRoles(people, { place, bySlug, picks = {}, setTo = {} }) {
     else if (at.trade) { to = TRADE_ROLE; why = 'trade'; }
     else if (pick?.role) { to = pick.role; why = 'staff'; }
     if (!to) {
-      unplaced.push({ membership: m.id, name: m.name || m.email, company: m.account?.name || null, role: m.role, why: isLevelRole(m.role) ? 'level' : 'unknown' });
+      unplaced.push({ membership: m.id, name: m.name || m.email, company: m.account?.name || null, account: m.account?.type === 'vendor' ? m.account.id : null, role: m.role, why: isLevelRole(m.role) ? 'level' : 'unknown' });
       continue;
     }
     if (low(to) === low(m.role)) continue;

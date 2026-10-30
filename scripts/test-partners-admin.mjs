@@ -134,6 +134,8 @@ function makeApi() {
       unplaced: [
         { membership: 'memgus0001', name: 'Gus Hall', company: 'Mystery Co', role: 'Vendor', why: 'unknown' },
         { membership: 'memcal0001', name: 'Cal Stone', company: 'Stone Works', role: 'Champion', why: 'level' },
+        // A partner by another name in JobTread; its name looks more like another partner's (live, Oct 30)
+        { membership: 'memang0001', name: 'Angela Means', company: 'Means Interiors', account: 'acctmeans01', role: 'Vendor', why: 'unknown' },
       ],
     },
     loose: [{ name: 'Screenshot 2026-08-31 at 15.13.24', record: 'isla', page: 'Isla’s page' }],
@@ -313,6 +315,12 @@ function makeApi() {
         a.twins = a.twins.filter((x) => x !== t);
         a.combined = a.combined.filter((x) => x !== c);
         return json({ success: true, twins: b.twins.same ? { combined: { kept: t.b.name, archived: t.a.name, partner: t.partner } } : { notSame: true, back: c || null }, view: a });
+      }
+      if (b.link) {
+        const u = a.roles.unplaced.find((x) => x.account === b.link.account);
+        a.roles.unplaced = a.roles.unplaced.filter((x) => x.account !== b.link.account);
+        const name = FX.partners[b.link.partner]?.name || b.link.partner;
+        return json({ success: true, report: report(), linked: { partner: b.link.partner, name, account: { id: u.account, name: u.company }, archived: null }, view: a });
       }
       if (b.rolePick) {
         const u = a.roles.unplaced.find((x) => x.membership === b.rolePick.membership) || st.picked?.[b.rolePick.membership];
@@ -772,7 +780,7 @@ try {
     await sleep(4000);
     const tile5 = (await $text(page, '.ppl-ready__tile'))[5] || '';
     // 3 waiting, 1 near name, 2 people the roles check can't place, 3 companies twice in JobTread
-    ok(/JobTread access\s*9\s*Crosby Design Group: CDG Interiors in JobTread\?/.test(tile5), `the access tile counts what needs a look and names the first (${tile5})`);
+    ok(/JobTread access\s*10\s*Crosby Design Group: CDG Interiors in JobTread\?/.test(tile5), `the access tile counts what needs a look and names the first (${tile5})`);
     await clickText(page, '.ppl-ready__tile', 'JobTread access');
     await page.waitForSelector('.pt-access .pt-loose__item', { timeout: 5000 }).catch(() => {});
     ok(await page.evaluate(dialogTitle) === 'JobTread access', 'the tile opens JobTread access');
@@ -882,6 +890,15 @@ try {
     ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ rolePick: { membership: 'memgus0001', name: 'Gus Hall' } }) && /Gus Hall/.test(await page.$eval('.pt-access__roles', (e) => e.textContent).catch(() => '')), 'Undo puts them back on the list');
     await clickText(page, '.pt-access__roles .pt-loose__item .btn', 'Leave as Champion');
     ok(await waitToast(page, /Cal Stone keeps their Champion role/) && lastCall(api, '/api/vendor-access-admin')?.body?.rolePick?.keep === true, '“Leave as …” keeps their role');
+    // Their JobTread company is a partner by another name: staff say which
+    const roleRow = (name) => page.evaluate((name) => [...document.querySelectorAll('.pt-access__roles .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === name)?.textContent.replace(/\s+/g, ' ').trim() || '', name);
+    const angela = await roleRow('Angela Means');
+    ok(/at Means Interiors, which isn’t a partner or a vendor SOARD pays\. If it’s a partner by another name, say which\./.test(angela) && /Same as Means & Carney Interiors/.test(angela), `a company JobTread names differently: the near partner, and the whole list (${angela.slice(0, 200)})`);
+    ok(!(await page.$('#pt-role-co-memgus0001')) && /Gus Hall/.test(await roleRow('Gus Hall')), 'nobody to link without a JobTread vendor');
+    await page.select('#pt-role-co-memang0001', 'angela-means-design');
+    await clickText(page, '.pt-access__roles .pt-loose__item .btn', 'Link');
+    ok(await waitToast(page, /“Means Interiors” is Angela Means Design now\. Angela Means’s role follows its level once roles follow levels\./), 'Link: the toast names both, and when the role lands');
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ link: { partner: 'angela-means-design', account: 'acctmeans01' } }) && !(await roleRow('Angela Means')), 'it sends the partner and their JobTread vendor, and they leave the list');
     // One company twice in JobTread: only what the site won't decide is asked
     const twinRow = (name) => page.evaluate((name) => [...document.querySelectorAll('.pt-access__twins .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent.startsWith(name))?.textContent.replace(/\s+/g, ' ').trim() || '', name);
     ok(/One company twice in JobTread\?/.test(await page.$eval('.pt-access__twins h3', (e) => e.textContent).catch(() => '')), 'one company twice gets its own section');

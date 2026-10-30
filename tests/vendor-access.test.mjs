@@ -38,7 +38,7 @@ const ISLA = { slug: 'isla-smith', name: 'Isla Smith', year: 2026, sponsors: ['a
 
 /**
  * A small JobTread: open jobs and who has access, vendor accounts (with what they hold:
- * documents, files, aces) and their contacts, SOARD's memberships
+ * documents, files, aces, or aceList: [{ internal, name }]) and their contacts, SOARD's memberships
  */
 function fakeJT({ jobs, members = [], accounts = [] }) {
   const calls = [];
@@ -112,11 +112,17 @@ function fakeJT({ jobs, members = [], accounts = [] }) {
       return reply({});
     }
     if (q.deleteContact) { for (const a of accounts) a.contacts = a.contacts.filter((c) => c.id !== q.deleteContact.$.id); return reply({}); }
+    if (q.account) {
+      const a = accounts.find((x) => x.id === q.account.$.id);
+      return reply({ account: a ? { id: a.id, name: a.name, type: a.type || 'vendor', archivedAt: a.archived ? '2026-01-01' : null } : null });
+    }
     const out = {};
     for (const [alias, part] of Object.entries(q)) {
       if (part?._ === 'account') {
         const a = accounts.find((x) => x.id === part.$.id);
-        out[alias] = a ? { id: a.id, contacts: { count: a.contacts.length }, documents: { count: a.documents || 0 }, files: { count: a.files || 0 }, aces: { count: a.aces || 0 } } : null;
+        const aces = a?.aceList || Array.from({ length: a?.aces || 0 }, () => ({ internal: false, name: 'Someone' }));
+        if (part.aces.nodes) { out[alias] = a ? { id: a.id, aces: { nodes: aces.slice(0, part.aces.$.size).map((x) => ({ membership: { isInternal: x.internal, user: { name: x.name } } })) } } : null; continue; }
+        out[alias] = a ? { id: a.id, contacts: { count: a.contacts.length }, documents: { count: a.documents || 0 }, files: { count: a.files || 0 }, aces: { count: aces.length } } : null;
         continue;
       }
       if (part?._ !== 'job') continue;
@@ -434,7 +440,8 @@ test('one company twice in JobTread: an empty account is archived and its partne
   }
   const old = '2026-10-20T14:35:00Z';
   const jt = fakeJT({ jobs: [], accounts: [
-    { id: 'acctmsimade', name: 'Msi', createdAt: old, contacts: [] },
+    // Made by the site: its one access entry is SOARD's own JobTread user (live, Oct 30: "Msi" and "Pella"), so it's empty still
+    { id: 'acctmsimade', name: 'Msi', createdAt: old, contacts: [], aceList: [{ internal: true, name: 'SOARD Site' }] },
     { id: 'acctmsi', name: 'MSI Surfaces', createdAt: '2026-10-16T12:00:00Z', contacts: [{ id: 'c-sam', name: 'Sam', email: 'sam@msisurfaces.example' }] },
     // Both hold something: listed, nothing moved
     { id: 'acctp1', name: 'Pella', contacts: [{ id: 'c-p', name: 'Pat', email: 'pat@pella.example' }] },
@@ -472,6 +479,7 @@ test('one company twice in JobTread: an empty account is archived and its partne
   ]);
   assert.deepEqual(view.twins.find((x) => x.why === 'full').b.holds, { contacts: 0, documents: 2, files: 0, access: 0, bills: 0 });
   assert.deepEqual(view.combined.map((c) => c.drop.name).sort(), ['Bin There Dumpsters', 'Msi']);
+  assert.deepEqual(JSON.parse((await DB.prepare("SELECT value FROM vendor_access_state WHERE key = 'combined'").first()).value)['acctmsi acctmsimade'].staff, ['SOARD Site'], 'whose access it had, kept');
   // The two lists came together on the account the partner moved to
   assert.deepEqual((await readContacts(DB)).msi.map((p) => p.name).sort(), ['Mia Stone', 'Sam']);
   assert.deepEqual(acct('acctmsi').contacts.map((c) => c.name).sort(), ['Mia Stone', 'Sam']);
@@ -514,6 +522,68 @@ test('one name for another: it starts with every word of the other, in order, an
     ['Sherwin-Williams', 'Sherwin Williams - Lawrenceville'], ['Home Depot', 'The Home Depot'], ['ServiceWise', 'ServiceWise Electric, LLC']]) assert.ok(sameWords(a, b), `${a} / ${b}`);
   for (const [a, b] of [['Atlanta', 'Blu Site Solutions of Atlanta'], ['Atlanta', 'Suspended Ceilings Atlanta'], ['Atlanta', 'Atlanta Gas Light'],
     ['Georgia', 'Georgia Power'], ['Surfaces', 'MSI Surfaces'], ['Electric', 'Ace Electric']]) assert.ok(!sameWords(a, b), `${a} / ${b}`);
+});
+
+test('“Same as a partner” for someone’s JobTread company: any vendor account can be a partner, and the empty one the site had made goes', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const MEANS = { slug: 'angela-means-design', name: 'Angela Means Design', logo: img('partners/means/1') };
+  const CHATT = { slug: 'chattahoochee-tech-design-program', name: 'Chattahoochee Tech Design Program', logo: img('partners/chatt/1') };
+  const DB = await world({ kids: [], partners: [MEANS, CHATT, RANDALL] });
+  const { ensureSchema } = await import('../functions/api/_vendor-access.js');
+  await ensureSchema(DB);
+  await DB.prepare("INSERT INTO vendor_accounts (partner, account_id, account_name, how, made_at) VALUES (?, 'acctctmade', ?, 'made', '2026-10-20T14:35:00Z')").bind(CHATT.slug, CHATT.name).run();
+  await DB.prepare("INSERT INTO vendor_accounts (partner, account_id, account_name, how) VALUES ('randall-brothers', 'acctrb', 'Randall Brothers', 'name')").run();
+  const jt = fakeJT({
+    jobs: [],
+    members: [{ email: 'angela@meansinteriors.example', name: 'Angela Means', role: 'Vendor', account: { id: 'acctmeans', name: 'Means Interiors', type: 'vendor' } }],
+    accounts: [
+      { id: 'acctctmade', name: CHATT.name, createdAt: '2026-10-20T14:35:00Z', contacts: [], aceList: [{ internal: true, name: 'SOARD Site' }] },
+      { id: 'acctctc', name: 'Chattahoochee Technical College', contacts: [{ id: 'c-ab', name: 'Abigail', email: 'abigail@chattahoocheetech.example' }] },
+      { id: 'acctmeans', name: 'Means Interiors', contacts: [] },
+      { id: 'acctmc', name: 'Means & Carney Interiors', contacts: [] },
+      { id: 'acctrb', name: 'Randall Brothers', contacts: [] },
+      { id: 'acctgone', name: 'Old Vendor', archived: true, contacts: [] },
+    ],
+  });
+  t.mock.method(globalThis, 'fetch', jt.fetchImpl);
+  const acct = (id) => jt.accounts.find((a) => a.id === id);
+  const req = (body) => ({ env: env(DB), data: { userEmail: 'staff@example.org' }, request: new Request('https://x/api/vendor-access-admin', { method: 'POST', body: JSON.stringify(body) }) });
+  const link = async (partner, account) => (await onRequestPost(req({ link: { partner, account } }))).json();
+
+  // A partner with no JobTread vendor yet, by another name
+  const means = await link(MEANS.slug, 'acctmeans');
+  assert.ok(means.success, means.error);
+  assert.deepEqual(means.linked, { partner: MEANS.slug, name: MEANS.name, account: { id: 'acctmeans', name: 'Means Interiors' }, archived: null });
+  assert.deepEqual(means.view.matched.find((m) => m.partner === MEANS.slug), { partner: MEANS.slug, name: MEANS.name, account: 'acctmeans', accountName: 'Means Interiors', how: 'linked' });
+  const links = JSON.parse((await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'links'").first()).value);
+  assert.equal(links.meansinteriors, MEANS.slug, 'its logos and its people go by it too');
+  assert.equal(acct('acctmc').archived, undefined, 'the other Means is left alone');
+
+  // One the site made an empty account for: that one goes (SOARD's own access entry aside), and the partner is the college
+  const chatt = await link(CHATT.slug, 'acctctc');
+  assert.ok(chatt.success, chatt.error);
+  assert.equal(chatt.linked.archived, CHATT.name);
+  assert.equal(acct('acctctmade').archived, true);
+  assert.equal(chatt.view.matched.find((m) => m.partner === CHATT.slug).accountName, 'Chattahoochee Technical College');
+  assert.deepEqual(chatt.view.combined.map((c) => [c.drop.name, c.keep.name]), [[CHATT.name, 'Chattahoochee Technical College']]);
+  assert.deepEqual((await readContacts(DB))[CHATT.slug].map((p) => p.name), ['Abigail'], 'the college’s contact reaches Partners');
+  const log = (await DB.prepare("SELECT changes FROM audit_log WHERE entity_slug = ? AND entity_name = 'Same as a JobTread vendor'").bind(CHATT.slug).first()).changes;
+  assert.match(log, /Chattahoochee Technical College/);
+
+  // Not what staff can link: another partner's vendor, an archived one, or none at all
+  assert.match((await link(MEANS.slug, 'acctrb')).error, /Randall Brothers is Randall Brothers in Partners already/);
+  assert.match((await link(MEANS.slug, 'acctgone')).error, /archived/);
+  assert.match((await link(MEANS.slug, 'acctnone99')).error, /no vendor by that id/);
+  assert.equal((await onRequestPost(req({ link: { partner: '../x', account: 'acctctc' } }))).status, 400);
+  // The same again changes nothing
+  assert.equal((await link(CHATT.slug, 'acctctc')).linked.archived, null);
+
+  // "Not the same" on the archived one takes it all back
+  const back = await (await onRequestPost(req({ twins: { a: 'acctctmade', b: 'acctctc', same: false } }))).json();
+  assert.ok(back.success, back.error);
+  assert.equal(acct('acctctmade').archived, false);
+  assert.equal(back.view.matched.find((m) => m.partner === CHATT.slug).accountName, CHATT.name);
 });
 
 test('pairs: one staff said is “Not the same” never pairs again, by a saved pair, a link or the same name', () => {

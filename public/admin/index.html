@@ -12834,7 +12834,7 @@
           onChange=${(v) => { if (Array.isArray(v?.waiting)) setWaiting(v); else readWaiting(); }}
           onAdd=${(r) => setDialog({ kind: 'create', from: 'waiting', prefill: { name: r.name, website: ptSiteOf(r.people),
             note: `${r.name} is a ${ptRolesOf(r.people).toLowerCase()} on ${ptPagesOf(r)}. Add their logo here and it goes on ${r.rows.length === 1 ? 'that page' : 'those pages'} by itself, and on any page they work on after this.` } })} />` : null}
-        ${dialog?.kind === 'access' ? html`<${PtAccessDialog} view=${access} addToast=${addToast} onClose=${() => setDialog(null)}
+        ${dialog?.kind === 'access' ? html`<${PtAccessDialog} view=${access} partners=${partners} addToast=${addToast} onClose=${() => setDialog(null)}
           onChange=${(v) => { if (Array.isArray(v?.waiting)) setAccess(v); else readAccess(); }}
           onContacts=${(partner) => setDialog({ kind: 'vendor-contacts', partner })}
           onAdd=${(w) => setDialog({ kind: 'create', from: 'access', prefill: { name: w.name,
@@ -13289,8 +13289,10 @@
      * every partner matched to a JobTread vendor: a wrong match undone ("Not
      * the same"), a wrong name in JobTread fixed ("Call it …").
      */
-    function PtAccessDialog({ view, onAdd, onContacts, onChange, onClose, addToast }) {
+    function PtAccessDialog({ view, partners = [], onAdd, onContacts, onChange, onClose, addToast }) {
       const [busy, setBusy] = useState(null);
+      const [linkTo, setLinkTo] = useState({}); // membership → slug picked in "Same as a partner…"
+      const byName = useMemo(() => [...partners].sort((a, b) => String(a.name).localeCompare(String(b.name))), [partners]);
       const [showAside, setShowAside] = useState(false);
       const [showAdded, setShowAdded] = useState(false);
       const [showMatched, setShowMatched] = useState(false);
@@ -13325,6 +13327,9 @@
       const pickRole = (u, how, undo = false) => act(`p-${u.membership}`, { rolePick: { membership: u.membership, name: u.name, ...(undo ? {} : how === 'trade' ? { role: 'Trade Partner' } : { keep: true }) } },
         () => addToast(undo ? `${u.name} is back on the list` : how === 'trade' ? `${u.name} is a Trade Partner in JobTread${view.roles?.on ? ' from the next check' : ' once roles follow levels'}` : `${u.name} keeps their ${u.role} role`,
           'info', undo ? null : { label: 'Undo', fn: () => pickRole(u, how, true) }));
+      // Someone's JobTread company is a partner by another name: it's that partner from now on, so their role follows its level
+      const linkCompany = (u, p) => p && act(`l-${u.membership}`, { link: { partner: p.slug, account: u.account } }, (r) => addToast(
+        `“${r.linked.account.name}” is ${p.name} now${r.linked.archived ? `, and the empty “${r.linked.archived}” the site made is archived in JobTread` : ''}. ${u.name}’s role follows its level ${view.roles?.on ? 'from the next check' : 'once roles follow levels'}.`, 'success'));
       const title = 'JobTread access';
       if (!view) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}><p class="text-muted"><span class="spinner spinner-14" /> Loading…</p><//>`;
       if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
@@ -13389,8 +13394,21 @@
               <strong>${u.name}</strong>
               <small>${u.why === 'level'
                 ? `${ptA(u.role)} in JobTread${u.company ? `, at ${u.company}` : ''}, which isn’t in Partners. Add the company in Partners as ${ptA(u.role)}, or:`
-                : `${ptA(u.role)} in JobTread${u.company ? `, at ${u.company}` : ''}, which isn’t a partner or a vendor SOARD pays.`}</small>
+                : `${ptA(u.role)} in JobTread${u.company ? `, at ${u.company}` : ''}, which isn’t a partner or a vendor SOARD pays.`}${u.account ? ' If it’s a partner by another name, say which.' : ''}</small>
               <span class="pt-loose__acts">
+                ${u.account ? (() => {
+                  const cands = PS.similarPartners(u.company || '', partners, { min: 0.55, max: 2 });
+                  return html`${cands.map((c) => html`<button type="button" key=${c.partner.slug} class="btn btn-ghost btn-sm pt-same-as" title=${c.why} disabled=${!!busy}
+                      onClick=${() => linkCompany(u, c.partner)}>${busy === `l-${u.membership}` ? html`<span class="spinner spinner-14" />` : null}Same as ${c.partner.name}</button>`)}
+                    <span class="pt-loose__other">
+                      <label class="sr-only" for=${`pt-role-co-${u.membership}`}>${u.company || u.name} in Partners</label>
+                      <select id=${`pt-role-co-${u.membership}`} class="form-select pt-loose__select" value=${linkTo[u.membership] || ''} onChange=${(e) => setLinkTo((o) => ({ ...o, [u.membership]: e.target.value }))}>
+                        <option value="">${cands.length ? 'Another partner…' : 'Same as a partner…'}</option>
+                        ${byName.map((p) => html`<option key=${p.slug} value=${p.slug}>${p.name}</option>`)}
+                      </select>
+                      ${linkTo[u.membership] ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => linkCompany(u, partners.find((p) => p.slug === linkTo[u.membership]))}>Link</button>` : null}
+                    </span>`;
+                })() : null}
                 <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => pickRole(u, 'trade')}>
                   ${busy === `p-${u.membership}` ? html`<span class="spinner spinner-14" />` : null}Trade Partner</button>
                 <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => pickRole(u, 'keep')}>Leave as ${u.role}</button>

@@ -476,7 +476,11 @@ export function twinAccounts(accounts, { pairs = new Map(), notSame = {}, notTwi
   return out;
 }
 
-/** What accounts hold in JobTread: Map(id → { contacts, documents, files, aces }) */
+/**
+ * What accounts hold in JobTread: Map(id → { contacts, documents, files, aces, staff }).
+ * aces: access for people outside SOARD; staff: the names on SOARD's own (staff, or the
+ * site's JobTread user), which isn't the company using it. Unread, every entry counts.
+ */
 async function accountHolds(grantKey, ids, fetchImpl) {
   const out = new Map();
   for (let i = 0; i < ids.length; i += 25) {
@@ -485,7 +489,23 @@ async function accountHolds(grantKey, ids, fetchImpl) {
     }]));
     const body = await pave(grantKey, q, fetchImpl);
     for (const a of Object.values(body || {})) {
-      if (a?.id) out.set(a.id, { contacts: a.contacts?.count || 0, documents: a.documents?.count || 0, files: a.files?.count || 0, aces: a.aces?.count || 0 });
+      if (a?.id) out.set(a.id, { contacts: a.contacts?.count || 0, documents: a.documents?.count || 0, files: a.files?.count || 0, aces: a.aces?.count || 0, staff: [] });
+    }
+  }
+  const withAces = [...out].filter(([, h]) => h.aces).map(([id]) => id);
+  for (let i = 0; i < withAces.length; i += 10) {
+    const q = Object.fromEntries(withAces.slice(i, i + 10).map((id, k) => [`a${k}`, {
+      _: 'account', $: { id }, id: {}, aces: { $: { size: 10 }, nodes: { membership: { isInternal: {}, user: { name: {} } } } },
+    }]));
+    let body;
+    try { body = await pave(grantKey, q, fetchImpl); } catch { break; }
+    for (const a of Object.values(body || {})) {
+      const h = a?.id && out.get(a.id);
+      const nodes = a?.aces?.nodes;
+      if (!h || !Array.isArray(nodes) || nodes.length < h.aces) continue;
+      const staff = nodes.filter((x) => x?.membership?.isInternal === true);
+      h.staff = staff.map((x) => String(x.membership.user?.name || '').trim() || 'SOARD');
+      h.aces -= staff.length;
     }
   }
   return out;
@@ -551,17 +571,18 @@ const archiveAccount = (grantKey, id, archive, fetchImpl) => pave(grantKey, { up
  * One company twice: `drop` (empty) is archived in JobTread and the partner it
  * stood for moves to `keep`. Kept in 'combined', so "Not the same" takes it back.
  */
-async function combineTwin(env, { keep, drop, partner }, { accountRows = null, fetchImpl = fetch, at, by }) {
+async function combineTwin(env, { keep, drop, partner, staff = [] }, { accountRows = null, fetchImpl = fetch, at, by, how = 'name' }) {
   const { DB } = env;
   await archiveAccount(env.JOBTREAD_GRANT_KEY, drop.id, true, fetchImpl);
   drop.archived = true;
   if (partner) {
-    const r = { partner, account_id: keep.id, account_name: keep.name, how: 'name' };
+    const r = { partner, account_id: keep.id, account_name: keep.name, how };
     await putAccountRow(DB, r);
     accountRows?.set(partner, r);
   }
   const combined = await readKey(DB, 'combined');
-  combined[twinKey(keep.id, drop.id)] = { keep: { id: keep.id, name: keep.name }, drop: { id: drop.id, name: drop.name }, partner: partner || null, at, by };
+  // staff: whose access the archived one had (SOARD's own only, or it wasn't empty)
+  combined[twinKey(keep.id, drop.id)] = { keep: { id: keep.id, name: keep.name }, drop: { id: drop.id, name: drop.name }, partner: partner || null, at, by, ...(staff.length ? { staff } : {}) };
   const newest = Object.entries(combined).sort(([, x], [, y]) => String(y.at).localeCompare(String(x.at))).slice(0, 60);
   await writeKey(DB, 'combined', Object.fromEntries(newest));
 }
@@ -676,7 +697,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
         for (const c of plan.combine) {
           if (report.combined.length >= MAX_COMBINE || !room()) { report.more = true; break; }
           try {
-            await combineTwin(env, c, { accountRows, fetchImpl, at, by: SYNC_USER });
+            await combineTwin(env, { ...c, staff: holds.get(c.drop.id)?.staff || [] }, { accountRows, fetchImpl, at, by: SYNC_USER });
             report.combined.push({ kept: c.keep.name, archived: c.drop.name, partner: c.partner ? bySlug.get(c.partner)?.name || c.partner : null });
           } catch (e) { report.problems.push(`Couldn’t archive ${c.drop.name} in JobTread: ${e.message}`); }
         }
@@ -1007,6 +1028,59 @@ export async function settleAccount(DB, { partner, account = null, makeNew = fal
 }
 
 /**
+ * Staff: this JobTread vendor account (any, by its id) is this partner. The
+ * partner's people, logos and roles go by it from now on. An empty account the
+ * site had made for the partner is archived, kept in 'combined' so "Not the
+ * same" brings it back. → { partner, name, account: { id, name }, archived: name | null }
+ */
+export async function linkAccount(env, { partner, account }, by = null, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  const key = env.JOBTREAD_GRANT_KEY;
+  if (!key) throw new Error('JobTread isn’t connected');
+  await ensureSchema(DB);
+  const p = (await readPartners(DB)).find((x) => x.slug === partner);
+  if (!p) throw new Error('That partner isn’t in Partners any more');
+  const body = await pave(key, { account: { $: { id: account }, id: {}, name: {}, type: {}, archivedAt: {} } }, fetchImpl);
+  const a = body?.account;
+  if (!a?.id || a.type !== 'vendor') throw new Error('JobTread has no vendor by that id');
+  if (a.archivedAt) throw new Error(`${a.name} is archived in JobTread`);
+  const name = String(a.name || '').trim();
+  const rows = await readAccountRows(DB);
+  const taken = [...rows.values()].find((r) => r.account_id === a.id && r.partner !== partner);
+  if (taken) throw new Error(`${name} is ${(await readPartners(DB)).find((x) => x.slug === taken.partner)?.name || taken.partner} in Partners already`);
+  const was = rows.get(partner);
+  if (was?.account_id === a.id) return { partner, name: p.name, account: { id: a.id, name }, archived: null };
+  const at = iso(now);
+  // The account the site made for it, empty: it goes, as one company twice would
+  let archived = null;
+  if (was?.how === 'made') {
+    const holds = await accountHolds(key, [was.account_id], fetchImpl);
+    const h = holds.get(was.account_id);
+    if (h) {
+      const { byJob, orders } = await billsByJob(DB);
+      h.bills = [...orders, ...[...byJob.values()].flat()].includes(was.account_id) ? 1 : 0;
+      h.logins = (await readMemberships(key, fetchImpl)).filter((m) => m.account?.id === was.account_id).length;
+    }
+    if (isEmptyAccount(h)) {
+      await combineTwin(env, { keep: { id: a.id, name }, drop: { id: was.account_id, name: was.account_name || p.name }, partner, staff: h.staff || [] }, { fetchImpl, at, by, how: 'linked' });
+      archived = was.account_name || p.name;
+    }
+  }
+  if (!archived) await putAccountRow(DB, { partner, account_id: a.id, account_name: name, how: 'linked' });
+  await setLink(DB, { company: nameKey(name), partner });
+  // Staff's say settles any question about the partner, and outweighs an old "Not the same"
+  const near = await readKey(DB, 'near');
+  if (near[partner]) { delete near[partner]; await writeKey(DB, 'near', near); }
+  const notSame = await readKey(DB, 'not-same');
+  if (notSame[partner]?.[a.id]) {
+    delete notSame[partner][a.id];
+    if (!Object.keys(notSame[partner]).length) delete notSame[partner];
+    await writeKey(DB, 'not-same', notSame);
+  }
+  return { partner, name: p.name, account: { id: a.id, name }, archived };
+}
+
+/**
  * Staff on two JobTread accounts listed as one company (a, b: their ids).
  * same: the empty one is archived and the partner it stood for moves to the
  * other. Not same: they're never put together again, and when the site had
@@ -1054,7 +1128,7 @@ export async function settleTwins(env, { a, b, same }, by = null, { fetchImpl = 
   const dropA = ea && (!eb || !partnerOn(t.a.id));
   const [drop, keep] = dropA ? [t.a, t.b] : [t.b, t.a];
   const partner = partnerOn(drop.id);
-  await combineTwin(env, { keep, drop, partner }, { fetchImpl, at, by });
+  await combineTwin(env, { keep, drop, partner, staff: holds.get(drop.id)?.staff || [] }, { fetchImpl, at, by });
   await writeKey(DB, 'twins', list.filter((x) => x.key !== k));
   return { combined: { kept: keep.name, archived: drop.name, partner } };
 }
