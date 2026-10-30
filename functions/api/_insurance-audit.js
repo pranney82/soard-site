@@ -67,6 +67,7 @@ const CURRENT_EVERY_MS = 20 * 60 * 60 * 1000;       // the current term's paymen
 const PAST_EVERY_MS = 7 * DAY;                      // a past term's
 const SAME_PAYMENT_DAYS = 10;                       // a Mercury payment this close to one already counted, same vendor and amount, is that one
 const ASK_AFTER_DAYS = 7;                           // a payment this old with no certificate covering it is asked about
+const RENEWED_ASK_DAYS = 45;                        // a term that just ended is still asked about this long, so its last week isn't missed
 const SEARCH_GRACE_DAYS = 3;                        // the certificate search runs this long before anyone is asked
 const ASKS_PER_RUN = 5;
 export const REPLY_TO = 'info@soardcharity.com';
@@ -660,6 +661,11 @@ export async function maybeRunInsuranceAudit(env, { now = Date.now(), fetchImpl 
     if (runs.some((r, n) => n !== i && !r)) return { ...read, waiting: 'the other audit’s payments' };
     const audits = [];
     for (const t of terms) audits.push(await auditFor(env, t.id, { now, fetchImpl }));
+    // A policy that just renewed: the old term's last week only became old enough to ask about after it ended
+    for (const t of terms) {
+      const before = term(t.year - 1, t.policy);
+      if (todayEastern(now) < addDays(t.start, RENEWED_ASK_DAYS) && (await readRun(env.DB, before.id))) audits.push(await auditFor(env, before.id, { now, fetchImpl }));
+    }
     return { ...read, payments: audits[i].totals.payments, ...(await askForGaps(env, audits, { now, fetchImpl })) };
   } catch (e) {
     console.error('[insurance-audit]', e.message);

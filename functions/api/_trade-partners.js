@@ -426,7 +426,7 @@ export async function saveBank(env, link, body, { now = Date.now(), fetchImpl = 
   // The address that was on file hears about it, so a change nobody asked for is caught
   const notify = [...new Set([...(before ? [main?.email, billing?.email] : [main?.email]).filter(isEmail)])];
   if (notify.length) {
-    const mail = bankEmail({ vendorName: company.name, last4, kindLabel, changed, lang: profile.lang });
+    const mail = bankEmail({ vendorName: company.name, last4, kindLabel, changed: changed && !same, lang: profile.lang });
     await sendEmails(env, { to: notify, subject: mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-bank' }] }).catch(() => null);
   }
   await stepDone(env.DB, company.id, 'bank', now);

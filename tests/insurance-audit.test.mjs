@@ -381,6 +381,20 @@ test('the heartbeat reads each policy’s current term about daily, one per hear
   assert.equal((await readRun(DB, 'wc-2026')).builtAt, new Date(NOW + DAY).toISOString());
 });
 
+test('a policy that just renewed is still asked about, so a payment in its last week isn’t missed', async () => {
+  // Paid November 18, 2026, three days before the liability policy renews: workers' comp covered it, liability didn't
+  world.jtPayments.push({ id: 'P9', amount: 500, paidAt: '2026-11-18', account: { id: 'V1', name: 'Sample Tile', type: 'vendor' }, documentPayments: { nodes: [] } });
+  await coverageTable([{ jt_id: 'V1', insured: 'Sample Tile', kind: 'wc', effective: '2026-01-01', expires: '2027-12-01', insurer: 'Example Mutual' }]);
+  await maybeRunInsuranceAudit(env, { now: NOW });
+  await maybeRunInsuranceAudit(env, { now: NOW + 60e3 });
+  const LATER = Date.parse('2026-11-30T15:00:00Z');
+  await maybeRunInsuranceAudit(env, { now: LATER });
+  const r = await maybeRunInsuranceAudit(env, { now: LATER + 60e3 });
+  assert.equal(r.term, 'gl-2026', 'the new liability term read');
+  assert.ok(r.asked >= 1);
+  assert.ok(world.emails.some((e) => /November 2026/.test(e.subject)), 'the old term’s last week, asked about after it renewed');
+});
+
 test('the admin route: the audit, its downloads, a call, and only the terms shown', async () => {
   const ctx = (url, init) => ({ env, request: new Request(`https://x.example/api/insurance-audit-admin${url}`, init), data: { userEmail: 'holly@example.org' }, waitUntil: () => {} });
   let r = await onRequestGet(ctx('?term=2026'));

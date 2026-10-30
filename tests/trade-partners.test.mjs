@@ -362,6 +362,7 @@ test('bank details: checked, straight to Mercury, only the last four kept, and a
   assert.equal(r.changed, false);
   assert.equal((await readBank(env.DB, VENDOR)).status, 'confirmed');
   assert.match(world.comments.at(-1).message, /No call needed: it’s the same account Mercury already paid/);
+  assert.match(world.emails.at(-1).subject, /^We have your bank details/, 'the same account again isn’t told as a change');
 });
 
 test('a company new to SOARD, made by its own sign-up and never billed: its first bank account needs no call', async () => {
