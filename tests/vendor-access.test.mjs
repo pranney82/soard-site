@@ -241,8 +241,9 @@ test('a sweep: vendors added quietly as Vendors, a page partner gets its JobTrea
   assert.ok(!jt.jobs[0].access.includes('ann@acmefdn.example'), 'the monetary sponsor is the Sponsor sweep’s');
   assert.deepEqual(jt.jobs[1].access, [], 'a TEST job is left alone');
 
-  // Blythe has no JobTread vendor: it gets one, nobody in it yet (staff don't make vendors in JobTread). Walk Your Plans has a near one: it waits
-  assert.deepEqual(report.made, [{ partner: 'blythe-creative', name: 'Blythe Creative Co.' }]);
+  // Blythe has no JobTread vendor: it gets one, nobody in it yet (staff don't make vendors in JobTread), and so does every partner, the pages' first.
+  // Walk Your Plans has a near one: it waits
+  assert.deepEqual(report.made, [{ partner: 'blythe-creative', name: 'Blythe Creative Co.' }, { partner: 'acme-foundation', name: 'Acme Foundation' }]);
   assert.deepEqual(jt.accounts.find((a) => a.name === 'Blythe Creative Co.').contacts, []);
   assert.ok(!jt.accounts.some((a) => a.name === 'Walk Your Plans'));
   const view = await adminView(DB);
@@ -522,6 +523,31 @@ test('one name for another: it starts with every word of the other, in order, an
     ['Sherwin-Williams', 'Sherwin Williams - Lawrenceville'], ['Home Depot', 'The Home Depot'], ['ServiceWise', 'ServiceWise Electric, LLC']]) assert.ok(sameWords(a, b), `${a} / ${b}`);
   for (const [a, b] of [['Atlanta', 'Blu Site Solutions of Atlanta'], ['Atlanta', 'Suspended Ceilings Atlanta'], ['Atlanta', 'Atlanta Gas Light'],
     ['Georgia', 'Georgia Power'], ['Surfaces', 'MSI Surfaces'], ['Electric', 'Ace Electric']]) assert.ok(!sameWords(a, b), `${a} / ${b}`);
+});
+
+test('every partner gets its JobTread vendor, on a page or not: the pages’ first, 25 a run, a near name asked', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const many = Array.from({ length: 30 }, (_, i) => ({ slug: `donor-${i + 1}`, name: `Donor Number ${String(i + 1).padStart(2, '0')}`, logo: img(`partners/donor-${i + 1}/1`) }));
+  const GPC = { slug: 'gp-company', name: 'Georgia Pacific', logo: img('partners/gpc/1') };
+  const DB = await world({ kids: [{ ...ISLA, partnerLogos: [logoOf(BLYTHE)] }], partners: [...many, GPC, BLYTHE] });
+  const jt = fakeJT({ jobs: [{ id: 'j1', name: 'Isla Smith (2026)', access: [] }], accounts: [{ id: 'acctgp1', name: 'Georgia Pacific Gypsum', contacts: [] }] });
+  const r = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 });
+  assert.deepEqual(r.problems, []);
+  assert.equal(r.made.length, 25);
+  assert.equal(r.made[0].name, 'Blythe Creative Co.', 'the one on a page first');
+  assert.equal(r.more, true);
+  assert.deepEqual((await adminView(DB)).near.map((n) => [n.name, n.near.map((x) => x.name)]), [['Georgia Pacific', ['Georgia Pacific Gypsum']]], 'a name JobTread starts another with is asked, never made');
+  const r2 = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
+  assert.equal(r2.made.length, 6);
+  assert.equal(new Set(jt.accounts.map((a) => a.name)).size, jt.accounts.length, 'each made once');
+  assert.equal(jt.accounts.length, 1 + 31);
+  const r3 = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 30 * MIN });
+  assert.deepEqual(r3.made, []);
+  // A partner added since: made when staff act on it, before the next full run
+  await DB.prepare('INSERT INTO partners (slug, name, level, category, featured, data) VALUES (?, ?, ?, ?, ?, ?)').bind('roswell-firelabs', 'Roswell Firelabs', 'friend', 'build', 0, JSON.stringify({ slug: 'roswell-firelabs', name: 'Roswell Firelabs' })).run();
+  const one = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 35 * MIN, only: 'roswellfirelabs' });
+  assert.deepEqual(one.made.map((m) => m.name), ['Roswell Firelabs']);
 });
 
 test('“Same as a partner” for someone’s JobTread company: any vendor account can be a partner, and the empty one the site had made goes', async (t) => {

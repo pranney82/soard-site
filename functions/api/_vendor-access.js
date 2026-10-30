@@ -21,10 +21,11 @@
  * never does. A logo on a page that no partner or JobTread vendor goes by is
  * listed for staff instead (loose): nobody to put on the job until it's named.
  *
- * A company on a page with no JobTread vendor account gets one, under its
- * Partners name, with or without someone to put in it: staff don't make
- * vendors in JobTread, so the website is how a company gets there (Peter,
- * Oct 30 2026: "if they are on the website, they should be in JT").
+ * Every partner with no JobTread vendor account gets one, under its Partners
+ * name, with or without someone to put in it (one on an open kid's page
+ * first): staff don't make vendors in JobTread, so the website is how a
+ * company gets there (Peter, Oct 30 2026: "if they are on the website, they
+ * should be in JT", every company in Partners).
  * When JobTread has a vendor by a near name ("WYP Construction" for Walk Your
  * Plans), or one whose name starts with every word of the other's ("MSI
  * Surfaces" for Msi), the sweep doesn't guess: staff say "Same company" (kept for every
@@ -67,7 +68,7 @@ export const VENDOR_ROLE = OLD_VENDOR_ROLE;
 const RUN_EVERY_MS = 15 * 60 * 1000;
 const WRITE_BUDGET_MS = 20 * 1000;
 const MAX_GRANTS = 12;
-const MAX_NEW_ACCOUNTS = 5;
+const MAX_NEW_ACCOUNTS = 25;
 const MAX_COMBINE = 10;
 const SETTING_UP_MS = 60 * 60 * 1000; // an account this new may still be being set up: never archived
 const MAX_PEOPLE = 5; // what Partners keeps per partner
@@ -739,8 +740,11 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       for (const name of new Set(names)) loose.push({ name, record: k, page: pageName(rec) });
     }
 
-    // A company on a page with no JobTread vendor account gets one; a near name waits for staff
-    const needAccounts = [...new Map(want.filter((w) => w.v.partner && !w.v.account && w.v.why.has('page')).map((w) => [w.v.partner, w.v])).values()];
+    // Every partner with no JobTread vendor account gets one, those on a page first; a near name waits for staff
+    const onPages = [...new Map(want.filter((w) => w.v.partner && !w.v.account && w.v.why.has('page')).map((w) => [w.v.partner, w.v])).values()];
+    const needAccounts = [...onPages, ...partners
+      .filter((p) => (!only || nameKey(p.name) === only) && !pairs.has(p.slug) && !onPages.some((v) => v.partner === p.slug))
+      .map((p) => ({ partner: p.slug, name: p.name }))];
     const near = {};
     const byId = new Map(accounts.map((a) => [a.id, a]));
     const paired = new Set([...pairs.values()].map((a) => a.id));
