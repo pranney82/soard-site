@@ -22,8 +22,9 @@
  * listed for staff instead (loose): nobody to put on the job until it's named.
  *
  * A company on a page with no JobTread vendor account gets one, under its
- * Partners name, once Partners has someone there with an email to put in it
- * (until then it waits, as staff often make the vendor in JobTread first).
+ * Partners name, with or without someone to put in it: staff don't make
+ * vendors in JobTread, so the website is how a company gets there (Peter,
+ * Oct 30 2026: "if they are on the website, they should be in JT").
  * When JobTread has a vendor by a near name ("WYP Construction" for Walk Your
  * Plans), or one whose name starts with every word of the other's ("MSI
  * Surfaces" for Msi), the sweep doesn't guess: staff say "Same company" (kept for every
@@ -717,7 +718,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       for (const name of new Set(names)) loose.push({ name, record: k, page: pageName(rec) });
     }
 
-    // A company on a page with no JobTread vendor account gets one, once there's someone to put in it; a near name waits for staff
+    // A company on a page with no JobTread vendor account gets one; a near name waits for staff
     const needAccounts = [...new Map(want.filter((w) => w.v.partner && !w.v.account && w.v.why.has('page')).map((w) => [w.v.partner, w.v])).values()];
     const near = {};
     const byId = new Map(accounts.map((a) => [a.id, a]));
@@ -736,8 +737,6 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
         near[v.partner] = { name: v.name, near: close.map((c) => ({ id: c.partner.slug, name: c.partner.name, why: c.why })), ...(was.length ? { was } : {}) };
         continue;
       }
-      // An empty account helps nobody: it's made once Partners has someone there with an email
-      if (!(contactsAll[v.partner] || []).some((p) => isEmail(p.email) && forJobs(p))) continue;
       if (report.made.length >= MAX_NEW_ACCOUNTS || !room()) { report.more = true; continue; }
       try {
         const a = await createAccount(key, bySlug.get(v.partner)?.name || v.name, fetchImpl);

@@ -207,7 +207,7 @@ test('contacts both ways: put together the first time, then the side that change
   assert.ok(sameList([jo], [{ ...jo, name: ' Jo  Lee ', email: 'JO@rb.example' }]));
 });
 
-test('a sweep: vendors added quietly as Vendors, no empty JobTread account is made, a near name waits, nobody is emailed', async (t) => {
+test('a sweep: vendors added quietly as Vendors, a page partner gets its JobTread account with nobody in it yet, a near name waits, nobody is emailed', async (t) => {
   _resetRoleCache();
   const sent = noMail(t);
   const DB = await world({ bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }, { jtId: 'acct-store', name: 'Corner Store', jobs: ['j1'] }, { jtId: 'acct-tile', name: 'Tile Depot', jobs: ['j1'] }] });
@@ -235,9 +235,10 @@ test('a sweep: vendors added quietly as Vendors, no empty JobTread account is ma
   assert.ok(!jt.jobs[0].access.includes('ann@acmefdn.example'), 'the monetary sponsor is the Sponsor sweep’s');
   assert.deepEqual(jt.jobs[1].access, [], 'a TEST job is left alone');
 
-  // Blythe has no JobTread vendor and nobody in Partners to put in one: none is made yet. Walk Your Plans has a near one: it waits
-  assert.deepEqual(report.made, []);
-  assert.ok(!jt.accounts.some((a) => a.name === 'Walk Your Plans' || a.name === 'Blythe Creative Co.'));
+  // Blythe has no JobTread vendor: it gets one, nobody in it yet (staff don't make vendors in JobTread). Walk Your Plans has a near one: it waits
+  assert.deepEqual(report.made, [{ partner: 'blythe-creative', name: 'Blythe Creative Co.' }]);
+  assert.deepEqual(jt.accounts.find((a) => a.name === 'Blythe Creative Co.').contacts, []);
+  assert.ok(!jt.accounts.some((a) => a.name === 'Walk Your Plans'));
   const view = await adminView(DB);
   assert.deepEqual(view.near, [{ partner: 'walk-your-plans', name: 'Walk Your Plans', near: [{ id: 'acctwyp1', name: 'WYP Construction', why: view.near[0].near[0].why }] }]);
   // Nobody to add for Blythe or Walk Your Plans yet
@@ -254,7 +255,7 @@ test('a sweep: vendors added quietly as Vendors, no empty JobTread account is ma
   assert.deepEqual(Object.keys(await readContacts(DB)).sort(), ['acme-foundation', 'randall-brothers']);
   assert.deepEqual(sent, [], 'no email, from JobTread or the site');
   const audit = (await DB.prepare('SELECT entity_type, changes FROM audit_log ORDER BY id').all()).results;
-  assert.deepEqual(audit.map((a) => a.entity_type), ['jobtread-access', 'partner-contacts'], 'people on jobs, then contacts');
+  assert.deepEqual(audit.map((a) => a.entity_type), ['jobtread-vendor', 'jobtread-access', 'partner-contacts'], 'accounts made, people on jobs, then contacts');
   assert.doesNotMatch(audit.map((a) => a.changes).join(' '), /@/, 'names only in History');
 
   // The next run: everyone's there, nothing is written to JobTread
@@ -318,7 +319,7 @@ test('the admin: “Same company” pairs a near name for good, an email added p
   const links = JSON.parse((await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'links'").first()).value);
   assert.equal(links.wypconstruction, 'walk-your-plans', 'the logo sweep knows them as one too');
 
-  // An email for Blythe: on the job straight away, and into its new JobTread account
+  // An email for Blythe: on the job straight away, and into the JobTread account the first run made
   const saved = await (await onRequestPost(req({ contacts: { partner: 'blythe-creative', people: [{ name: 'Bea Blythe', email: 'bea@blythe.example.com' }] } }))).json();
   assert.ok(saved.success, saved.error);
   assert.deepEqual(saved.report.added.map((a) => a.person), ['Bea Blythe']);
@@ -397,23 +398,24 @@ test('a vendor contact’s email is read from its own JobTread field, and each p
 });
 
 const MSI = { slug: 'msi', name: 'Msi', logo: img('partners/msi/1') };
-test('a partner with no JobTread vendor: nothing made while nobody has an email, and a name inside another vendor’s is asked, never made', async (t) => {
+test('a partner on a page with no JobTread vendor gets one, email or not, and a name starting another vendor’s is asked, never made', async (t) => {
   _resetRoleCache();
   noMail(t);
   const DB = await world({ kids: [{ ...ISLA, partnerLogos: [logoOf(MSI), logoOf(BLYTHE)] }], partners: [MSI, BLYTHE] });
   await saveContacts(DB, 'msi', [{ name: 'Mia Stone', email: 'mia@msisurfaces.example' }]);
   const jt = fakeJT({ jobs: [{ id: 'j1', name: 'Isla Smith (2026)', access: [] }], accounts: [{ id: 'acctmsi', name: 'MSI Surfaces', contacts: [{ id: 'c-sam', name: 'Sam', email: 'sam@msisurfaces.example' }] }] });
   const r = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 });
-  assert.deepEqual(r.made, [], 'Blythe has nobody to put in one; Msi may be MSI Surfaces');
-  assert.equal(jt.accounts.length, 1);
+  assert.deepEqual(r.made.map((m) => m.name), ['Blythe Creative Co.'], 'Blythe is made with nobody in it yet; Msi may be MSI Surfaces');
+  assert.equal(jt.accounts.length, 2);
   const view = await adminView(DB);
   assert.deepEqual(view.near.map((n) => [n.name, n.near.map((x) => [x.name, x.why])]), [['Msi', [['MSI Surfaces', 'Starts with the name']]]]);
-  assert.deepEqual(view.waiting.map((w) => w.name), ['Blythe Creative Co.'], 'Blythe waits as before');
-  // An email for Blythe: now there's someone to put in it
+  assert.deepEqual(view.waiting.map((w) => w.name), ['Blythe Creative Co.'], 'Blythe waits for someone to put on the job');
+  // An email for Blythe: on the job, and into the account
   await saveContacts(DB, 'blythe-creative', [{ name: 'Bea Blythe', email: 'bea@blythe.example.com' }]);
   const r2 = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
-  assert.deepEqual(r2.made.map((m) => m.name), ['Blythe Creative Co.']);
+  assert.deepEqual(r2.made, [], 'made once');
   assert.deepEqual(r2.added.map((a) => a.person), ['Bea Blythe']);
+  assert.deepEqual(jt.accounts.find((a) => a.name === 'Blythe Creative Co.').contacts.map((c) => c.email), ['bea@blythe.example.com']);
 });
 
 test('one company twice in JobTread: an empty account is archived and its partner moves, nobody asked; two that hold something, or another kind of organization, are listed', async (t) => {
