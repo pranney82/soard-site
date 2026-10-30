@@ -403,6 +403,51 @@ export const STEP_RULES = [
   { re: /^post[- ]?construction\b/i, autos: ['Replay goes up', 'Instagram Reel', 'Facebook replay rescue', 'Jump to the reveal', 'Close-outs'] },
 ];
 
+// ─── Who's at which step ──────────────────
+
+/**
+ * A JobTread status (an applicant's, or a job's) → the Doc step it means,
+ * by the step's name: In Review is the on-site visit (its email says so), a
+ * job just approved or waiting on its funding sits at the first approval
+ * step, Design at the charrette, Finalization at the PM review, Approval at
+ * the last approval step (the design's), Build while the project is in
+ * progress. A Doc renamed so a rule stops matching just leaves that status
+ * off the steps (it's still in Right now).
+ */
+export const STATUS_STEPS = [
+  { status: 'Applied', track: 'makeover', step: /^application submitted$/i },
+  { status: 'Applied', track: 'community', step: /\bonline application\b/i },
+  { status: 'In Review', step: /^onsite\b/i },
+  { status: 'On Site', step: /\bapproval\b/i, pick: 'first' },
+  { status: 'Awaiting Funding', step: /\bapproval\b/i, pick: 'first' },
+  { status: 'Design', step: /\bdesign charrette\b/i },
+  { status: 'Finalization', step: /\bpm review\b/i },
+  { status: 'Approval', step: /^approval$/i, pick: 'last' },
+  { status: 'Mobilization', step: /^mobilization\b/i },
+  { status: 'Build', step: /\bin progress\b|\bunderway\b/i },
+];
+
+/**
+ * Right now's lists placed on the steps → Map(stepKey → [{ status, n, names }])
+ * (stepKey: `${part}-${n}`; applicants by status, jobs by JobTread status)
+ */
+export function placeNow(track, steps, now) {
+  const out = new Map();
+  if (!now) return out;
+  const lists = { Applied: now.applied, 'In Review': now.inReview, ...(now.jobs || {}) };
+  for (const r of STATUS_STEPS) {
+    if (r.track && r.track !== track) continue;
+    const v = lists[r.status];
+    if (!v?.n) continue;
+    const hits = steps.filter((s) => r.step.test(s.t.trim()));
+    const s = r.pick === 'last' ? hits.at(-1) : hits[0];
+    if (!s) continue;
+    const key = `${s.part}-${s.n}`;
+    out.set(key, [...(out.get(key) || []), { status: r.status, n: v.n, names: v.names || [] }]);
+  }
+  return out;
+}
+
 /** Every automation the rules can name (a test checks each is on the map) */
 export function ruleTitles() {
   const all = new Set();

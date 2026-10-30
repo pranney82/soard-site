@@ -282,6 +282,40 @@ try {
   ok(after.chips === before.chips + Number(before.more.split(' ')[0]) && !after.more, `“more” shows them all (${after.chips})`);
   await page.screenshot({ path: join(OUT, 'desktop.png') });
 
+  console.log('The journey');
+  const dots = await page.$$eval('.pr-journey .pr-jstep', (l) => l.map((x) => ({ n: x.querySelector('.pr-jdot').textContent, count: x.querySelector('.pr-jcount')?.textContent || '', auto: x.classList.contains('is-auto'), attn: x.classList.contains('is-attn'), label: x.querySelector('.pr-jdot').getAttribute('aria-label') })));
+  ok(dots.length === 5 + MAKEOVER.length, `a dot for every step (${dots.length})`);
+  const countOf = (name) => dots.find((d) => d.label.includes(`: ${name},`))?.count;
+  ok(countOf('Application submitted') === '6' && countOf('Onsite') === '2' && countOf('Child’s Approval') === '3' && countOf('Design Charrette') === '2' && countOf('Project in Progress') === '2' && countOf('PM Review') === '',
+    `each dot counts who’s there (submitted ${countOf('Application submitted')}, onsite ${countOf('Onsite')}, approval ${countOf('Child’s Approval')}, charrette ${countOf('Design Charrette')}, in progress ${countOf('Project in Progress')})`);
+  ok(dots.find((d) => d.label.includes(': Project in Progress,')).attn && dots.find((d) => d.label.includes(': Design Charrette,')).auto === false, 'a step needing attention is ringed, a step by hand is open');
+  await page.hover('.pr-journey .pr-jstep:nth-child(3) .pr-jdot');
+  ok((await page.$eval('.pr-jcap', (e) => e.textContent)).startsWith('3. Reviewed internally'), 'pointing at a dot names its step');
+  const hereOn = (title) => page.evaluate((title) => [...[...document.querySelectorAll('.pr-step')].find((x) => x.querySelector('h4').textContent.endsWith(title)).querySelectorAll('.pr-here__group')].map((g) => `${g.querySelector('.tag').textContent}: ${g.querySelector('.pr-here__names').textContent}`).join(' | '), title);
+  const here = await hereOn('Design Charrette');
+  ok(here === 'Design: Axel, Mila', `a step names who’s at it and their JobTread status (${here})`);
+  const approvalHere = await hereOn('Child’s Approval');
+  ok(approvalHere === 'Awaiting funding: Amari, Jo Lane, Rey Cole', `approved and waiting on funding sits at the approval step (${approvalHere})`);
+  await page.evaluate(() => [...document.querySelectorAll('.pr-jdot')].find((b) => b.getAttribute('aria-label').includes(': Mobilization,')).click());
+  await pause(900);
+  const jumped = await page.evaluate(() => { const st = [...document.querySelectorAll('.pr-step')].find((x) => x.querySelector('h4').textContent.endsWith('Mobilization')); const r = st.getBoundingClientRect(); return { top: Math.round(r.top), lit: st.classList.contains('is-jumped'), focus: document.activeElement === st.querySelector('h4') }; });
+  ok(jumped.top >= -2 && jumped.top < 200 && jumped.lit && jumped.focus, `a dot takes you to its step (${JSON.stringify(jumped)})`);
+  await page.evaluate(() => scrollTo(0, 0));
+
+  console.log('The filter');
+  await clickText(page, '.pr-show button', 'By hand');
+  await pause(150);
+  const hand = await page.evaluate(() => ({ steps: [...document.querySelectorAll('.pr-step h4')].map((h) => h.textContent.replace(/^Step \d+: /, '')), whole: document.querySelectorAll('.pr-whole').length, dim: document.querySelectorAll('.pr-jstep.is-dim').length }));
+  ok(!hand.steps.includes('Application submitted') && hand.steps.includes('Design Charrette') && hand.steps.includes('Video interview') && hand.whole === 0 && hand.dim > 0, `By hand shows only steps with work done by hand (${hand.steps.length} steps, ${hand.dim} dimmed on the journey)`);
+  ok((await chipsOn(page, 'JT sends family message')) === null && (await chipsOn(page, 'Phone call to family'))?.length === 0, 'and only the tasks done by hand');
+  await clickText(page, '.pr-show button', 'Needs attention');
+  await pause(150);
+  const attnSteps = await page.$$eval('.pr-step h4', (l) => l.map((h) => h.textContent.replace(/^Step \d+: /, '')));
+  ok(attnSteps.join(',') === 'Project in Progress', `Needs attention shows just that step (${attnSteps.join(', ')})`);
+  await clickText(page, '.pr-show button', 'Everything');
+  await pause(150);
+  ok((await stepTitles(page)).length === 5 + MAKEOVER.length, 'Everything brings them all back');
+
   await clickChip(page, 'JT sends family message', 'Status → family message');
   await pause(150);
   const detail = await page.evaluate(() => document.querySelector('.pr-detail')?.textContent || '');
@@ -460,11 +494,12 @@ try {
   {
     const { page: p4, errors: e4 } = await open(browser, base, { width: 390, height: 844, deviceScaleFactor: 2 }, { touch: true });
     await ready(p4);
-    const fit = await p4.evaluate(() => ({ sw: document.scrollingElement.scrollWidth, w: innerWidth, past: [...document.querySelectorAll('.pr *')].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).length }));
-    ok(fit.sw <= fit.w && fit.past === 0, `nothing runs off the side (${fit.sw}px wide on a ${fit.w}px screen, ${fit.past} past the edge)`);
-    const order = await p4.evaluate(() => document.querySelector('.pr-aside').getBoundingClientRect().top < document.querySelector('.pr-steps').getBoundingClientRect().top);
-    ok(order, 'Right now comes first on a phone');
-    const small = await p4.$$eval('.pr-auto, .pr-now .pr-row:not([disabled])', (l) => l.filter((b) => b.getBoundingClientRect().height < 44).length);
+    // The journey scrolls sideways inside its card; nothing else may pass the edge
+    const fit = await p4.evaluate(() => ({ sw: document.scrollingElement.scrollWidth, w: innerWidth, past: [...document.querySelectorAll('.pr *')].filter((e) => !e.closest('.pr-jrow') && e.getBoundingClientRect().right > innerWidth + 1).length, jrow: (() => { const r = document.querySelector('.pr-jrow').getBoundingClientRect(); return r.right <= innerWidth + 1; })() }));
+    ok(fit.sw <= fit.w && fit.past === 0 && fit.jrow, `nothing runs off the side (${fit.sw}px wide on a ${fit.w}px screen, ${fit.past} past the edge; the journey scrolls in its card)`);
+    const order = await p4.evaluate(() => document.querySelector('.pr-journey').getBoundingClientRect().top < document.querySelector('.pr-steps').getBoundingClientRect().top && document.querySelector('.pr-aside').getBoundingClientRect().top > document.querySelector('.pr-steps').getBoundingClientRect().top);
+    ok(order, 'on a phone the journey leads to the steps; Right now and the review follow them');
+    const small = await p4.$$eval('.pr-auto, .pr-now .pr-row:not([disabled]), .pr-show button', (l) => l.filter((b) => b.getBoundingClientRect().height < 44).length);
     ok(small === 0, `every chip and row is a 44px target (${small} smaller)`);
     const tracks = await p4.$$eval('.pr-tools .pill', (l) => ({ tops: l.map((p) => Math.round(p.getBoundingClientRect().top)), names: l.map((p) => p.innerText.replace(/\s+/g, '').trim()) }));
     ok(tracks.tops[0] === tracks.tops[1] && tracks.names[0] === 'Makeovers17', `the two tracks share one row on a phone (${tracks.names.join(', ')})`);

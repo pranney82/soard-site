@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
-import { parseProcessHtml, policySections, approvalTiers, retiredMentions, reviewOf, pickDoc, docIdOf, pinSteps, lineCounts, ruleTitles, APPLYING, MONEY, MONEY_TRACKS, GOOGLE_DOC } from '../public/admin/process-shared.js';
+import { parseProcessHtml, policySections, approvalTiers, retiredMentions, reviewOf, placeNow, pickDoc, docIdOf, pinSteps, lineCounts, ruleTitles, APPLYING, MONEY, MONEY_TRACKS, GOOGLE_DOC } from '../public/admin/process-shared.js';
 import { processDocs, processFacts, pipelineNow, policyChecks, setOverride, maybeRefreshProcess, readReviews, markReviewed, CHECK_MS, REFRESH_MS } from '../functions/api/_process-docs.js';
 import { JT_URL } from '../functions/api/_reveals.js';
 import { entries, applyFacts } from '../public/admin/automations.js';
@@ -212,6 +212,24 @@ test('the makeover Doc’s lines get the automations that do them; the rest is b
   assert.deepEqual(steps.filter((s) => s.part === 'applying').flatMap((s) => s.autos), []);
   const c = lineCounts(steps);
   assert.ok(c.auto > 10 && c.auto < c.lines);
+});
+
+test('who’s where: each JobTread status lands on the Doc step it means, in either process', () => {
+  const now = { applied: { n: 2, names: [] }, inReview: { n: 1, names: [] }, jobs: { 'On Site': { n: 0, names: [] }, 'Awaiting Funding': { n: 1, names: [{ name: 'Amari' }] }, Design: { n: 1, names: [] }, Approval: { n: 1, names: [] }, Mobilization: { n: 1, names: [] }, Build: { n: 3, names: [] } } };
+  const at = (track, outline) => {
+    const steps = pinSteps(track, parseProcessHtml(exportOf('x', outline)).steps);
+    return Object.fromEntries([...placeNow(track, steps, now)].map(([k, v]) => [steps.find((s) => `${s.part}-${s.n}` === k).t + (k.startsWith('doc') ? ` (${k.split('-')[1]})` : ''), v.map((x) => `${x.status} ${x.n}`).join(', ')]));
+  };
+  assert.deepEqual(at('makeover', MAKEOVER), {
+    'Application submitted': 'Applied 2', 'Onsite (1)': 'In Review 1', 'Child’s Approval (2)': 'Awaiting Funding 1', 'Design Charrette (3)': 'Design 1',
+    'Approval (4)': 'Approval 1', 'Mobilization (6)': 'Mobilization 1', 'Project in Progress (8)': 'Build 3',
+  });
+  // Two Approval steps: an approved project waits at the first, the design's approval is the last
+  assert.deepEqual(at('community', COMMUNITY), {
+    'Fill out online application (2)': 'Applied 2', 'Onsite (3)': 'In Review 1', 'Approval (4)': 'Awaiting Funding 1', 'Approval (5)': 'Approval 1', 'Mobilization (6)': 'Mobilization 1',
+  });
+  assert.equal(placeNow('makeover', [], now).size, 0);
+  assert.equal(placeNow('makeover', pinSteps('makeover'), null).size, 0);
 });
 
 test('a community project: the application is the Doc’s own step, and makeover-only automations stay off', () => {

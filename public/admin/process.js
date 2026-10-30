@@ -12,6 +12,12 @@
  * each with the board's Financial Policy Manual sections that govern it, read
  * live from that Doc, and the bill approval settings checked against it.
  *
+ * Above the steps, the journey at a glance: a dot per step (something runs on
+ * its own, done by hand, or needs attention) with who's there now, each kid or
+ * project placed on the step its JobTread status means (process-shared.js
+ * STATUS_STEPS). A filter narrows the steps to what needs attention or what's
+ * still by hand, the two questions of a yearly review.
+ *
  * Every Doc gets a yearly review: the Review card says when it's due (a year
  * after it last changed or was marked reviewed), what to look at (tasks still
  * by hand, tools the manual names that SOARD has moved off, settings that
@@ -28,7 +34,7 @@
 
 import { h, htm, render, useState, useEffect, useMemo, useRef } from './vendor.js';
 import { STATUS, ensureCss as ensureMapCss, Ago, ago } from './mindmap.js';
-import { TRACK_LABEL, PROJECT_TRACKS, MONEY_TRACKS, DOC_LIKE, APPLYING_SOURCE, pinSteps, lineCounts, reviewOf, retiredMentions, docYear } from './process-shared.js';
+import { TRACK_LABEL, PROJECT_TRACKS, MONEY_TRACKS, DOC_LIKE, APPLYING_SOURCE, pinSteps, lineCounts, reviewOf, retiredMentions, docYear, placeNow } from './process-shared.js';
 
 const html = htm.bind(h);
 const API = '/api/process-admin';
@@ -136,6 +142,39 @@ const CSS = `
 .pr-key .k-auto { background: var(--color-sidebar); }
 .pr-key .k-hand { border: 1.5px solid var(--color-border-strong); background: var(--color-bg-card); }
 .pr-empty { padding: 1rem 1.25rem; }
+.pr-journey { padding: 0.85rem 1rem 0.7rem; margin-bottom: 1.1rem; }
+.pr-jrow { display: flex; gap: 0.9rem; overflow-x: auto; scrollbar-width: thin; padding: 0.55rem 0.1rem 0.2rem; }
+.pr-jpart { flex: 1 0 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.pr-jpart + .pr-jpart { padding-left: 0.9rem; border-left: 1px dashed var(--color-border); }
+.pr-jlabel { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); }
+.pr-jpart ol { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(32px, 1fr); }
+.pr-jstep { position: relative; display: flex; justify-content: center; }
+.pr-jstep::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: var(--color-border); transform: translateY(-50%); }
+.pr-jstep:first-child::before { left: 50%; }
+.pr-jstep:last-child::before { right: 50%; }
+.pr-jdot { all: unset; box-sizing: border-box; position: relative; z-index: 1; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-2xs); font-weight: 700; font-variant-numeric: tabular-nums; background: var(--color-bg-card); border: 1.5px solid var(--color-border-strong); color: var(--color-text-secondary); }
+.pr-jstep.is-auto .pr-jdot { background: var(--color-sidebar); border-color: var(--color-sidebar); color: #fff; }
+.pr-jstep.is-attn .pr-jdot { box-shadow: 0 0 0 3px color-mix(in srgb, var(--am-warn) 45%, transparent); }
+.pr-jstep.is-dim .pr-jdot { opacity: 0.35; }
+.pr-jdot:hover { border-color: var(--color-text); }
+.pr-jdot:focus-visible { box-shadow: var(--focus-ring-strong); }
+.pr-jcount { position: absolute; z-index: 2; top: -0.55rem; left: calc(50% + 6px); min-width: 1.15rem; padding: 0 0.3rem; border-radius: 999px; background: var(--color-text); color: #fff; font-size: 10px; font-weight: 700; line-height: 1.15rem; text-align: center; pointer-events: none; }
+.pr-jcap { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; align-items: center; min-height: 1.3rem; margin: 0.45rem 0 0; font-size: var(--fs-xs); color: var(--color-text-secondary); }
+.pr-jcap b { color: var(--color-text); font-weight: 650; }
+.pr-jkey { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--color-text-muted); }
+.pr-jkey i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--color-border-strong); background: var(--color-bg-card); }
+.pr-jkey i.k-auto { background: var(--color-sidebar); border-color: var(--color-sidebar); }
+.pr-jkey i.k-attn { box-shadow: 0 0 0 2px color-mix(in srgb, var(--am-warn) 45%, transparent); }
+.pr-jkey b { min-width: 1rem; padding: 0 0.25rem; border-radius: 999px; background: var(--color-text); color: #fff; font-size: 10px; text-align: center; }
+.pr-head h4:focus { outline: none; }
+.pr-step.is-jumped .pr-card { box-shadow: 0 0 0 2px var(--color-text), var(--shadow-sm); transition: box-shadow 0.2s; }
+.pr-here { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.6rem; margin: 0.45rem 0 0.1rem; padding: 0.45rem 0.6rem; border-radius: var(--radius-md); background: var(--color-bg); font-size: var(--fs-xs); }
+.pr-here > span:first-child { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+.pr-here__group { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.4rem; }
+.pr-here a { color: var(--color-text); text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 2px; }
+.pr-here a:hover { text-decoration-color: currentColor; }
+.pr-tools .pr-show { margin-left: auto; }
+.pr-tools .pr-show + .pr-print { margin-left: 0; }
 .pr-review { padding: 0.9rem 1rem 1rem; scroll-margin-top: calc(var(--top-h, 0px) + 1rem); }
 .card.pr-review > h3 { margin: 0 0 0.35rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }
 .pr-review__when { display: flex; gap: 0.5rem; align-items: baseline; margin: 0; font-size: var(--fs-sm); font-weight: 600; }
@@ -180,6 +219,10 @@ const CSS = `
   .pr-num { width: 1.75rem; height: 1.75rem; font-size: var(--fs-xs); }
   .pr-card { padding: 0.7rem 0.8rem; }
   .pr-print, .pr-tools .pr-print { display: none; }
+  .pr-tools .pr-show { margin-left: 0; }
+  .pr-journey { padding-inline: 0.75rem; }
+  /* On a phone the journey carries who's where; Right now and the review follow the steps */
+  .pr-aside { order: 1; }
   .pr-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1.25rem; }
   .pr-rows > li:has(.pr-names) { grid-column: 1 / -1; }
   .pr-key { display: none; }
@@ -188,6 +231,9 @@ const CSS = `
 @media (min-width: 641px) { .pr-tools .pill .pr-short { display: none; } }
 @media (pointer: coarse) {
   .pr-auto, .pr-more, .pr-policy button { min-height: 44px; padding-inline: 0.75rem; }
+  .pr-jpart ol { grid-auto-columns: 44px; }
+  .pr-jdot { width: 36px; height: 36px; }
+  .pr-jstep { min-height: 44px; align-items: center; }
   .pr-row { min-height: 44px; align-items: center; }
 }
 @media screen { #pr-print-root { display: none; } }
@@ -389,6 +435,8 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
   const [facts, setFacts] = useState(null);
   const [policyOpen, setPolicyOpen] = useState(null); // `${step}|${section}` shown
   const [reviewing, setReviewing] = useState({ busy: false, error: null });
+  const [show, setShow] = useState('all'); // all | attn | hand
+  const [jfocus, setJfocus] = useState(null); // the journey dot pointed at
   const [open, setOpen] = useState(null); // `${step}::${title}` shown in full
   const [linkForm, setLinkForm] = useState(null); // { value, saving, error }
   const [more, setMore] = useState(() => new Set()); // chip rows shown in full
@@ -450,6 +498,8 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
     setMore(new Set());
     setPolicyOpen(null);
     setReviewing({ busy: false, error: null });
+    setShow('all');
+    setJfocus(null);
     if (location.hash !== hashOfTrack(t)) history.replaceState(history.state, '', hashOfTrack(t));
   };
 
@@ -460,11 +510,17 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
   const steps = useMemo(() => pinSteps(track, money ? [] : doc?.steps || []), [track, doc]);
   // A money step whose settings differ from the manual
   const offPolicy = (s) => !!(s.check && data?.checks?.[s.check] && !data.checks[s.check].ok);
+  // Who's at which step: each status on the step it means
+  const placed = useMemo(() => (money ? new Map() : placeNow(track, steps, data?.now?.[track])), [track, steps, data]);
   const titles = useMemo(() => [...autosIn(steps)].filter((t) => byTitle.has(t)), [steps, byTitle]);
   const nodes = titles.map((t) => byTitle.get(t));
   const attn = nodes.filter((n) => n.es === 'attn');
   const counts = lineCounts(steps);
   const stepAutos = (s) => [...autosIn([s])].map((t) => byTitle.get(t)).filter(Boolean);
+  // The filter: what needs attention, or what's still done by hand
+  const byHand = (i) => !i.autos.length || i.items.some(byHand);
+  const stepWarn = (s) => offPolicy(s) || stepAutos(s).some((n) => n.es === 'attn');
+  const stepShown = (s) => (show === 'attn' ? stepWarn(s) : show === 'hand' ? (s.items.length ? s.items.some(byHand) : !s.autos.length) : true);
 
   const pipelineTotal = (t) => {
     const p = data?.now?.[t];
@@ -499,6 +555,14 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
     } catch (e) {
       setReviewing({ busy: false, error: e.message });
     }
+  };
+  const jump = (key) => {
+    const el = document.getElementById(`pr-${key}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    el.classList.add('is-jumped');
+    setTimeout(() => el.classList.remove('is-jumped'), 1600);
+    el.querySelector('h4')?.focus({ preventScroll: true });
   };
   const goToReview = () => requestAnimationFrame(() => document.getElementById('pr-review')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
 
@@ -547,6 +611,7 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
   const lineList = (key, items, depth = 0) => (items.length ? html`<ul class="pr-lines">
     ${items.map((i, idx) => {
       const k = `${key}.${depth}-${idx}`;
+      if (show === 'hand' && !byHand(i)) return null;
       return html`<li key=${k} class=${`pr-line${i.autos.length ? ' has-auto' : ''}`}>
         <span class="pr-text">${i.t}</span>
         ${chips(k, i.autos)}
@@ -564,14 +629,15 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
       <span class="pr-num" aria-hidden="true">${s.n}</span>
       <div class="card pr-card">
         <div class="pr-head">
-          <h4><span class="sr-only">Step ${s.n}: </span>${s.t}</h4>
+          <h4 tabindex="-1"><span class="sr-only">Step ${s.n}: </span>${s.t}</h4>
           ${warn ? html`<span class="tag tag--warn">Needs attention</span>`
             : running ? html`<span class="tag tag--success">${running === all.length ? plural(all.length, 'automation') : `${running} of ${all.length} automations on`}</span>`
             : all.length ? html`<span class="tag">${all.length === 1 ? 'Automation off' : 'Automations off'}</span>`
             : html`<span class="tag">By hand</span>`}
         </div>
+        ${hereEl(key)}
         ${lineList(key, s.items)}
-        ${s.autos.length > 0 && html`<div class="pr-whole">
+        ${s.autos.length > 0 && show !== 'hand' && html`<div class="pr-whole">
           <p>${s.items.length ? 'Also through this step' : 'Through this step'}</p>
           ${chips(`${key}:whole`, s.autos)}
         </div>`}
@@ -579,6 +645,58 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
         ${s.policy?.length > 0 && policyEl(key, s.policy)}
       </div>
     </li>`;
+  };
+  // Who's at this step now, by the JobTread status that puts them here
+  const hereEl = (key) => {
+    const here = placed.get(key);
+    if (!here?.length) return null;
+    const link = (x) => (/^https?:/.test(x.href)
+      ? html`<a href=${x.href} target="_blank" rel="noopener" title="Open the job in JobTread">${x.name}</a>`
+      : html`<a href=${x.href} title="Open the family in Applicants">${x.name}</a>`);
+    return html`<div class="pr-here">
+      <span>Here now</span>
+      ${here.map((h) => html`<span class="pr-here__group" key=${h.status}>
+        <span class="tag" title="Their status in JobTread">${JOB_LABEL[h.status] || h.status}</span>
+        <span class="pr-here__names">${h.names.map((x, i) => html`${i ? ', ' : ''}${link(x)}`)}${h.n > h.names.length ? `${h.names.length ? ', and' : ''} ${h.n - h.names.length} more` : ''}</span>
+      </span>`)}
+    </div>`;
+  };
+  // The journey at a glance: a dot per step, who's there, a click away
+  const journeyEl = () => {
+    const parts = money ? [['', steps]] : [['Applying', applying], [track === 'makeover' ? 'The makeover' : 'The project', fromDoc]].filter(([, l]) => l.length);
+    const at = (s) => (placed.get(`${s.part}-${s.n}`) || []).reduce((n, h) => n + h.n, 0);
+    const focused = jfocus && steps.find((s) => `${s.part}-${s.n}` === jfocus);
+    const words = (s) => {
+      const all = stepAutos(s);
+      const n = at(s);
+      return `${stepWarn(s) ? 'needs attention' : all.some((x) => x.es === 'live') ? `${plural(all.length, 'automation')}` : 'by hand'}${n ? `, ${n} here now` : ''}`;
+    };
+    return html`<nav class="card pr-journey" aria-label="The steps at a glance">
+      <div class="pr-jrow">
+        ${parts.map(([label, list]) => html`<div class="pr-jpart" key=${label || 'all'}>
+          ${label && html`<span class="pr-jlabel">${label}</span>`}
+          <ol>${list.map((s) => {
+            const key = `${s.part}-${s.n}`;
+            const all = stepAutos(s);
+            const n = at(s);
+            const cls = `pr-jstep${all.some((x) => x.es === 'live') ? ' is-auto' : ''}${stepWarn(s) ? ' is-attn' : ''}${stepShown(s) ? '' : ' is-dim'}`;
+            return html`<li key=${key} class=${cls}>
+              <button type="button" class="pr-jdot" aria-label=${`Step ${s.n}: ${s.t}, ${words(s)}`}
+                onClick=${() => jump(key)} onMouseEnter=${() => setJfocus(key)} onFocus=${() => setJfocus(key)}
+                onMouseLeave=${() => setJfocus(null)} onBlur=${() => setJfocus(null)}>${s.n}</button>
+              ${n > 0 && html`<span class="pr-jcount" aria-hidden="true">${n}</span>`}
+            </li>`;
+          })}</ol>
+        </div>`)}
+      </div>
+      <p class="pr-jcap" aria-hidden="true">
+        ${focused ? html`<span><b>${focused.n}. ${focused.t}</b>: ${words(focused)}</span>` : html`
+          <span class="pr-jkey"><i class="k-auto"></i>Runs on its own</span>
+          <span class="pr-jkey"><i></i>By hand</span>
+          <span class="pr-jkey"><i class="k-auto k-attn"></i>Needs attention</span>
+          ${!money && html`<span class="pr-jkey"><b>2</b>Here now</span>`}`}
+      </p>
+    </nav>`;
   };
   // The manual's sections that govern a step, each opening to its words as the manual has them
   const policyEl = (key, names) => {
@@ -685,6 +803,9 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
           </button>`;
         })}
       </div>`)}
+      <div class="seg pr-show" role="group" aria-label="Show">
+        ${[['all', 'Everything'], ['attn', 'Needs attention'], ['hand', 'By hand']].map(([k, label]) => html`<button key=${k} type="button" aria-pressed=${String(show === k)} onClick=${() => setShow(k)}>${label}</button>`)}
+      </div>
       <button type="button" class="btn btn-ghost btn-sm pr-print" disabled=${!steps.length} onClick=${() => printTrack({ track, doc: doc?.doc, steps, byTitle, checks: data?.checks })}>Print</button>
     </div>
     <ul class="am-lede">
@@ -707,14 +828,16 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
 
     <div class="pr-work">
       <div>
+        ${steps.length > 0 && journeyEl()}
+        ${show !== 'all' && !steps.some(stepShown) && html`<div class="card pr-empty"><p class="am-empty">${show === 'attn' ? 'Nothing in this process needs attention.' : 'Every task here runs on its own.'}</p></div>`}
         ${money ? html`
           <div class="pr-part"><h3>${TRACK_LABEL[track]}</h3><span>How it runs today. SOARD has no process Doc for it; each step shows the board policy that governs it.</span></div>
-          <ol class="pr-steps">${steps.map(stepEl)}</ol>` : html`
-          ${applying.length > 0 && html`
+          <ol class="pr-steps">${steps.filter(stepShown).map(stepEl)}</ol>` : html`
+          ${applying.some(stepShown) && html`
             <div class="pr-part"><h3>Applying</h3><span>On the website, in the steps of the ${APPLYING_SOURCE} handout</span></div>
-            <ol class="pr-steps">${applying.map(stepEl)}</ol>`}
-          <div class="pr-part"><h3>${track === 'makeover' ? 'The makeover' : 'The project'}</h3><span>${doc?.doc ? `As ${docLabel} has it` : 'From the process Doc'}</span></div>
-          ${fromDoc.length ? html`<ol class="pr-steps">${fromDoc.map(stepEl)}</ol>`
+            <ol class="pr-steps">${applying.filter(stepShown).map(stepEl)}</ol>`}
+          ${(show === 'all' || fromDoc.some(stepShown)) && html`<div class="pr-part"><h3>${track === 'makeover' ? 'The makeover' : 'The project'}</h3><span>${doc?.doc ? `As ${docLabel} has it` : 'From the process Doc'}</span></div>`}
+          ${fromDoc.length ? html`<ol class="pr-steps">${fromDoc.filter(stepShown).map(stepEl)}</ol>`
             : html`<div class="card pr-empty"><p class="am-empty">${doc?.error ? 'The steps show here once the Doc can be read.' : 'No steps in the Doc yet.'}</p></div>`}`}
       </div>
       <aside class="pr-aside">
