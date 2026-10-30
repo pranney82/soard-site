@@ -257,26 +257,26 @@ export function docIdOf(link) {
  */
 export const APPLYING = [
   { t: 'Applications open', items: [
-    { t: 'While applications are closed, families leave their email to hear when they open', autos: ['Tell me when applications open'] },
-    { t: 'Applications open and close on the dates in Applications → Settings', autos: ['Open and close on schedule'] },
-    { t: 'Everyone waiting gets the link the moment they open', autos: ['Applications-open email'] },
-    { t: 'They close on their own once the season’s limit is reached', autos: ['Application limit'] },
+    { t: 'While applications are closed, families leave their email to hear when they open', lane: 'family', autos: ['Tell me when applications open'] },
+    { t: 'Applications open and close on the dates in Applications → Settings', lane: 'auto', autos: ['Open and close on schedule'] },
+    { t: 'Everyone waiting gets the link the moment they open', lane: 'auto', autos: ['Applications-open email'] },
+    { t: 'They close on their own once the season’s limit is reached', lane: 'auto', autos: ['Application limit'] },
   ]},
   { t: 'Application submitted', items: [
-    { t: 'The family applies on the website, in English or Spanish, with photos and a video', autos: ['Makeover application', 'Service-area check', 'Save and finish later', 'Bot check'] },
-    { t: 'It becomes a JobTread account at Applied, with the application PDF, photos and video', autos: ['Application → JobTread', 'Application sweep', 'Admin → Applications', 'Comms Thread on new families', 'Clean up new addresses', 'Zillow lookup'] },
-    { t: 'The family gets the Application Status message with their copy', autos: ['Family confirmation'] },
-    { t: 'Selection hears about it, with a note on the child’s condition', autos: ['Staff heads-up', 'Medical condition note'] },
+    { t: 'The family applies on the website, in English or Spanish, with photos and a video', lane: 'family', autos: ['Makeover application', 'Service-area check', 'Save and finish later', 'Bot check'] },
+    { t: 'It becomes a JobTread account at Applied, with the application PDF, photos and video', lane: 'auto', autos: ['Application → JobTread', 'Application sweep', 'Admin → Applications', 'Comms Thread on new families', 'Clean up new addresses', 'Zillow lookup'] },
+    { t: 'The family gets the Application Status message with their copy', lane: 'auto', autos: ['Family confirmation'] },
+    { t: 'Selection hears about it, with a note on the child’s condition', lane: 'auto', autos: ['Staff heads-up', 'Medical condition note'] },
   ]},
   { t: 'Reviewed internally', items: [
-    { t: 'Check the application is complete and ask for anything missing', autos: ['Admin → Applicants', 'JobTread → Applicants sync', 'A family replied → staff alert', 'Family emails → JobTread', 'Quo texts and calls → JobTread', '/text → Quo text'] },
+    { t: 'Check the application is complete and ask for anything missing', lane: 'team', autos: ['Admin → Applicants', 'JobTread → Applicants sync', 'A family replied → staff alert', 'Family emails → JobTread', 'Quo texts and calls → JobTread', '/text → Quo text'] },
   ]},
   { t: 'Video interview', items: [
-    { t: 'Meet the family online to learn more about the child and their story' },
+    { t: 'Meet the family online to learn more about the child and their story', lane: 'team', with: ['family'] },
   ]},
-  { t: 'Reviewed internally', items: [
-    { t: 'Decide on an onsite visit: moving the family to In Review emails them about it', autos: ['Status → family message', 'Status change summary'] },
-    { t: 'Denial is possible at any step until the final approval', autos: ['Status → family message'] },
+  { t: 'Reviewed internally', decision: { q: 'Onsite visit?', yes: 'In Review: the family is emailed', no: 'Denied: the family is emailed' }, items: [
+    { t: 'Decide on an onsite visit: moving the family to In Review emails them about it', lane: 'team', autos: ['Status → family message', 'Status change summary'] },
+    { t: 'Denial is possible at any step until the final approval', lane: 'auto', autos: ['Status → family message'] },
   ]},
 ];
 export const APPLYING_SOURCE = '2026 Application Timeline';
@@ -446,6 +446,147 @@ export function placeNow(track, steps, now) {
     out.set(key, [...(out.get(key) || []), { status: r.status, n: v.n, names: v.names || [] }]);
   }
   return out;
+}
+
+// Who does each money task (the lane it's drawn in on the map)
+const MONEY_LANES = {
+  'Staff buy on their SOARD cards; each charge is sorted onto its makeover, the store or operating': 'staff',
+  'Card balances are paid before they’re due': 'president',
+  'Approved expenses are paid back through the payroll system': 'staff',
+  'A sub’s bill lands in JobTread and its approver is asked by email': 'president',
+  'A bill over the second-approval amount needs a second approver': 'chair',
+  'Donors give through Zeffy on the donate page, the live page and the golf page, and during a live reveal': 'outside',
+  'Every gift is acknowledged in writing': 'staff',
+  'Gala bids and paddle raises run through Qtego': 'outside',
+  'A gift that came with something in return tells the donor what’s deductible': 'staff',
+  'A sponsor paying for a kid’s room is picked on the kid’s profile: they get the job in JobTread and the invites': 'staff',
+  'Checks are opened, recorded, kept locked and deposited': 'president',
+  'The month is closed in Mercury Books': 'staff',
+  'The financials go to the board with each meeting’s packet': 'staff',
+  'The year’s budget goes to the board for approval': 'president',
+  'A CPA firm audits or reviews the year’s statements': 'outside',
+};
+for (const steps of Object.values(MONEY)) for (const st of steps) for (const i of st.items) i.lane = MONEY_LANES[i.t] || 'auto';
+MONEY.payables.find((st) => st.t === 'Approving a bill').decision = { q: 'Over $15,000?', yes: 'The Board Chair approves too', no: 'The President’s yes pays it' };
+
+// ─── The process map ──────────────────────
+
+/** The map's lanes, top to bottom: who does the work, then what runs on its own */
+export const LANES = {
+  project: [
+    { id: 'family', label: 'Family', community: 'Organization' },
+    { id: 'team', label: 'SOARD team' },
+    { id: 'designer', label: 'Designer' },
+    { id: 'pm', label: 'Project manager' },
+    { id: 'auto', label: 'Runs on its own' },
+  ],
+  money: [
+    { id: 'outside', label: 'Donors, vendors & CPA' },
+    { id: 'staff', label: 'Staff' },
+    { id: 'president', label: 'President' },
+    { id: 'chair', label: 'Board Chair' },
+    { id: 'auto', label: 'Runs on its own' },
+  ],
+};
+
+/**
+ * Who does a Doc's task, from how the line starts ("Designer prepare…",
+ * "PM order…", "Family complete…", "JT sends…"), else from what it's about
+ * (a permit or trades: the PM; layouts or selections: the designer; a
+ * phone call or the webpage: the team), else from its step.
+ */
+const SUBJECT = [
+  [/^(jt|jobtread)\b/i, 'auto'],
+  [/^designers?\b/i, 'designer'],
+  [/^pms?\b/i, 'pm'],
+  [/^(family|child)\b|^external\s*[-–]\s*(family|community project)|^community project team|^team complete\b|^sign off\b/i, 'family'],
+  [/^(internal|makeover team|executive|soard team|director of development|keep (potential )?sponsors?|performed by|sponsor)\b/i, 'team'],
+];
+const ABOUT = [
+  [/\bpermit\b|\btrades\b|\bmaterials?\b|\bstart date\b|budget\/schedule|\bchecklist\b/i, 'pm'],
+  [/\blayouts?\b|\bselections?\b|\bmood board\b|\bplan set\b|\bscope of work\b|\bdesign\b|\bgrab bars?\b/i, 'designer'],
+  [/\bphone call\b|\bphotos?\b|\bwebpage\b|\binvite\b|\bphotographer\b|\bsummary letter\b|\bwelcome basket\b|\bsurvey\b|\bjob created\b/i, 'team'],
+];
+const STEP_OWNER = [
+  [/design charrette|walk your plans|office visit|design consult/i, 'designer'],
+  [/pm review|mobilization|prestart|permit|demo day|in progress|underway/i, 'pm'],
+];
+const WITH = [[/\bpms?\b/i, 'pm'], [/\bdesigners?\b/i, 'designer'], [/\b(family|child)\b/i, 'family'], [/\bsponsors?\b/i, 'sponsors'], [/(?<!mood |design )\bboard\b/i, 'board']];
+export const WITH_LABEL = { pm: 'PM', designer: 'designer', family: 'family', sponsors: 'sponsors', board: 'board', team: 'team' };
+
+/** A task's lane and who else is in it → { lane, with: [...] } */
+export function laneOf(text, stepTitle = '') {
+  const t = String(text || '').trim();
+  const step = STEP_OWNER.find(([re]) => re.test(stepTitle))?.[1] || null;
+  // "…with Designer": the designer is in it, not the one doing it
+  const about = ABOUT.find(([re]) => re.test(t))?.[1];
+  const aboutOk = about && !new RegExp(`\\bwith (the )?${about === 'pm' ? 'pms?' : about}\\b`, 'i').test(t);
+  const lane = SUBJECT.find(([re]) => re.test(t))?.[1] || (aboutOk ? about : null) || step || 'team';
+  const others = lane === 'auto' ? [] : WITH.filter(([re, id]) => id !== lane && re.test(t)).map(([, id]) => id);
+  return { lane, with: [...new Set(others)] };
+}
+
+/** The decisions in a Doc, by its step: what's decided and where each answer goes */
+export const DECISION_RULES = [
+  { step: /child.s approval/i, d: { q: 'Approved?', yes: 'Job and kid page made, the family emailed', no: 'Denied: the family emailed' } },
+  { step: /^approval$/i, first: true, track: 'community', d: { q: 'Approved?', yes: 'Job and project page made', no: 'Denied: the organization emailed' } },
+];
+
+const NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12, thirty: 30 };
+/** A time a task's own words set ("no later than 2 weeks out", "one week after Reveal") → '2 weeks out', or null */
+export function timeOf(text) {
+  const m = String(text || '').match(/\b(no later than |within |about )?(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|thirty)\s+(business days?|days?|weeks?|months?)\b(\s+(out|after [A-Z]?\w+|before [A-Z]?\w+|later))?/i);
+  if (!m) return null;
+  const n = /^\d+$/.test(m[2]) ? Number(m[2]) : NUM[m[2].toLowerCase()];
+  const unit = m[3].toLowerCase().replace(/s$/, '');
+  return `${m[1] && /no later|within/i.test(m[1]) ? '≤ ' : ''}${n} ${unit}${n === 1 ? '' : 's'}${m[5] ? ` ${m[5].trim()}` : ''}`;
+}
+
+/**
+ * A track's steps as a map: a column per step, each task in the lane of who
+ * does it, in order, and the automations of the step in the last lane →
+ * { lanes, columns: [{ key, n, t, part, decision, cards: [{ id, t, lane, with, time, autos, details }], autos }], handoffs }
+ * Handoffs: the times the work passes from one lane to another, in order
+ * (the automation lane aside).
+ */
+export function mapOf(track, steps) {
+  const money = MONEY_TRACKS.includes(track);
+  const lanes = (money ? LANES.money : LANES.project).map((l) => ({ id: l.id, label: (track === 'community' && l.community) || l.label }));
+  const deep = (items) => items.flatMap((i) => [...i.autos, ...deep(i.items)]);
+  const count = (items) => items.reduce((n, i) => n + 1 + count(i.items), 0);
+  let seen = 0;
+  let firstApproval = true;
+  const columns = steps.map((s) => {
+    const key = `${s.part}-${s.n}`;
+    const source = s.part === 'doc' ? null : (s.part === 'money' ? MONEY[track] : APPLYING)[s.n - 1];
+    const cards = s.items.map((i, idx) => {
+      const given = source?.items[idx];
+      const who = given?.lane ? { lane: given.lane, with: given.with || [] } : laneOf(i.t, s.t);
+      return { id: `${key}.${idx}`, t: i.t, lane: who.lane, with: who.with, time: timeOf(i.t) || timeOf(i.items.map((x) => x.t).join(' ')), autos: [...new Set([...i.autos, ...deep(i.items)])], details: count(i.items), order: 0 };
+    });
+    // A step that is itself the task ("Apply for permit", "Fill out online application"): its own card first
+    if (s.part === 'doc' && (!s.items.length || /^(fill out|referred|apply)\b/i.test(s.t.trim()))) {
+      const who = /^referred|^fill out/i.test(s.t.trim()) ? { lane: 'family', with: [] } : laneOf(s.t, s.t);
+      cards.unshift({ id: `${key}.self`, t: s.t, lane: who.lane, with: who.with, time: timeOf(s.t), autos: [...s.autos], details: 0, order: 0, self: true });
+    }
+    for (const c of cards) c.order = seen++;
+    let decision = source?.decision || null;
+    if (!decision && s.part === 'doc') {
+      for (const r of DECISION_RULES) {
+        if (r.track && r.track !== track) continue;
+        if (!r.step.test(s.t.trim())) continue;
+        if (r.first && !firstApproval) continue;
+        decision = r.d;
+        break;
+      }
+      if (/^approval$/i.test(s.t.trim())) firstApproval = false;
+    }
+    return { key, n: s.n, t: s.t, part: s.part, decision, cards, autos: [...new Set([...s.autos, ...cards.flatMap((c) => c.autos)])] };
+  });
+  const flow = columns.flatMap((c) => c.cards).filter((c) => c.lane !== 'auto');
+  let handoffs = 0;
+  for (let i = 1; i < flow.length; i++) if (flow[i].lane !== flow[i - 1].lane) handoffs++;
+  return { lanes, columns, handoffs };
 }
 
 /** Every automation the rules can name (a test checks each is on the map) */

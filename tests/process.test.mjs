@@ -9,8 +9,8 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
-import { parseProcessHtml, policySections, approvalTiers, retiredMentions, reviewOf, placeNow, pickDoc, docIdOf, pinSteps, lineCounts, ruleTitles, APPLYING, MONEY, MONEY_TRACKS, GOOGLE_DOC } from '../public/admin/process-shared.js';
-import { processDocs, processFacts, pipelineNow, policyChecks, setOverride, maybeRefreshProcess, readReviews, markReviewed, CHECK_MS, REFRESH_MS } from '../functions/api/_process-docs.js';
+import { parseProcessHtml, policySections, approvalTiers, retiredMentions, reviewOf, placeNow, mapOf, laneOf, timeOf, pickDoc, docIdOf, pinSteps, lineCounts, ruleTitles, APPLYING, MONEY, MONEY_TRACKS, GOOGLE_DOC } from '../public/admin/process-shared.js';
+import { processDocs, processFacts, pipelineNow, policyChecks, setOverride, maybeRefreshProcess, readReviews, markReviewed, maybeTellReviews, cycleTimes, reviewEmail, CHECK_MS, REFRESH_MS } from '../functions/api/_process-docs.js';
 import { JT_URL } from '../functions/api/_reveals.js';
 import { entries, applyFacts } from '../public/admin/automations.js';
 
@@ -230,6 +230,49 @@ test('who’s where: each JobTread status lands on the Doc step it means, in eit
   });
   assert.equal(placeNow('makeover', [], now).size, 0);
   assert.equal(placeNow('makeover', pinSteps('makeover'), null).size, 0);
+});
+
+test('the map: each task in the lane of who does it, by how the Doc words it', () => {
+  assert.deepEqual(laneOf('Designer prepare existing & proposed layouts to present to family'), { lane: 'designer', with: ['family'] });
+  assert.deepEqual(laneOf('PMs build budget/schedule, Designer completes selections/budget'), { lane: 'pm', with: ['designer'] });
+  assert.deepEqual(laneOf('Review Scope of Work and plan set with Designer, modify as needed', 'PM Review'), { lane: 'pm', with: ['designer'] }, '“with Designer”: the PM does it');
+  assert.deepEqual(laneOf('Designer present/upload mood board to kick off approvals'), { lane: 'designer', with: [] }, 'a mood board isn’t the board');
+  assert.deepEqual(laneOf('JT sends family message'), { lane: 'auto', with: [] });
+  assert.deepEqual(laneOf('Family complete pre-makeover survey'), { lane: 'family', with: [] });
+  assert.deepEqual(laneOf('External - family signs approval documents'), { lane: 'family', with: [] });
+  assert.deepEqual(laneOf('Phone call to family'), { lane: 'team', with: ['family'] });
+  assert.deepEqual(laneOf('Schedule trades'), { lane: 'pm', with: [] });
+  assert.deepEqual(laneOf('Keep Sponsor up to date as project progresses'), { lane: 'team', with: ['sponsors'] });
+  assert.equal(laneOf('Something new', 'Mobilization').lane, 'pm', 'no clue in the words: the step’s owner');
+  assert.equal(laneOf('Something new', 'Child’s Approval').lane, 'team');
+  assert.equal(timeOf('Set Reveal Day no later than 2 weeks out'), '≤ 2 weeks out');
+  assert.equal(timeOf('Designer visit job one week after Reveal'), '1 week after Reveal');
+  assert.equal(timeOf('Director of Development touch base 6 months out'), '6 months out');
+  assert.equal(timeOf('Bills are paid within 30 days of the invoice'), '≤ 30 days');
+  assert.equal(timeOf('Phone call to family'), null);
+});
+
+test('the map: a column per step, a card per task, decisions where the Doc decides, handoffs counted', () => {
+  const steps = pinSteps('makeover', parseProcessHtml(exportOf('x', MAKEOVER)).steps);
+  const m = mapOf('makeover', steps);
+  assert.deepEqual(m.lanes.map((l) => l.label), ['Family', 'SOARD team', 'Designer', 'Project manager', 'Runs on its own']);
+  assert.equal(m.columns.length, steps.length);
+  const col = (t) => m.columns.find((c) => c.t === t);
+  assert.deepEqual(col('Child’s Approval').decision.q, 'Approved?');
+  assert.equal(col('Reviewed internally') && m.columns.filter((c) => c.decision).map((c) => c.t).join(', '), 'Reviewed internally, Child’s Approval');
+  assert.deepEqual(col('Apply for permit').cards.map((c) => [c.t, c.lane, c.self]), [['Apply for permit', 'pm', true]], 'a step that is its own task gets a card');
+  assert.deepEqual(col('Project in Progress').cards.find((c) => /Reveal Day/.test(c.t)).time, '≤ 2 weeks out', 'a time from the line’s own words, or its notes');
+  assert.ok(col('Project in Progress').cards.find((c) => /Reveal Day/.test(c.t)).autos.includes('Invite engine'), 'a card carries its notes’ automations');
+  assert.ok(col('Mobilization').autos.includes('Monetary sponsor ↔ JobTread'), 'a column carries the step’s own automations');
+  assert.ok(m.handoffs >= 8, `handoffs counted (${m.handoffs})`);
+  assert.equal(new Set(m.columns.flatMap((c) => c.cards.map((x) => x.order))).size, m.columns.flatMap((c) => c.cards).length, 'every card has its place in the order');
+  const cm = mapOf('community', pinSteps('community', parseProcessHtml(exportOf('x', COMMUNITY)).steps));
+  assert.equal(cm.lanes[0].label, 'Organization');
+  assert.deepEqual(cm.columns.filter((c) => c.decision).map((c) => `${c.t} ${c.n}`), ['Approval 4'], 'the first Approval decides; the second is the design’s');
+  assert.deepEqual(cm.columns.find((c) => c.t === 'Fill out online application').cards.map((c) => c.lane), ['family', 'team']);
+  const pay = mapOf('payables', pinSteps('payables'));
+  assert.deepEqual(pay.lanes.map((l) => l.id), ['outside', 'staff', 'president', 'chair', 'auto']);
+  assert.equal(pay.columns.find((c) => c.t === 'Approving a bill').decision.q, 'Over $15,000?');
 });
 
 test('a community project: the application is the Doc’s own step, and makeover-only automations stay off', () => {
@@ -452,7 +495,7 @@ test('right now: families and organizations at Applied and In Review, each linke
   await add('a7', 'Hope Clinic', 'In Review');
   await env.DB.prepare('INSERT INTO applications (id, jt_account_id, kind, is_test) VALUES (?, ?, ?, ?)').bind('app-1', 'a7', 'organization', 0).run();
   const now = await pipelineNow(env);
-  assert.deepEqual(now.makeover.applied, { n: 1, names: [{ name: 'Max Sample', href: '#applications/applicants/a1' }] });
+  assert.deepEqual(now.makeover.applied, { n: 1, names: [{ name: 'Max Sample', href: '#applications/applicants/a1', since: '2026-10-01' }] }, 'at Applied since it applied');
   assert.deepEqual(now.makeover.inReview.names.map((x) => x.name), ['Ava Stone']);
   assert.deepEqual(now.community.applied.names.map((x) => x.name), ['Sunnyside Academy']);
   assert.deepEqual(now.community.inReview.names.map((x) => x.name), ['Hope Clinic']);
@@ -529,6 +572,72 @@ test('“Reviewed, no changes” is saved per Doc with who and when, and reaches
   const facts = await processFacts(env.DB);
   assert.equal(facts.policy.reviewedAt, '2026-11-10T15:00:00.000Z');
   assert.equal(facts.policy.modifiedTime, '2025-11-13T15:00:00.000Z');
+});
+
+test('how long the application steps take, from the applicants’ history over the last year', async () => {
+  await env.DB.exec(`CREATE TABLE applicants (account_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT, year TEXT, types TEXT, fields TEXT, job_id TEXT, created_at TEXT, archived_at TEXT, synced_at TEXT)`);
+  await env.DB.exec('CREATE TABLE applicant_activity (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL, by_name TEXT, source TEXT, title TEXT, body TEXT, data TEXT)');
+  const now = Date.parse('2026-10-29T12:00:00Z');
+  const fam = async (id, name, created, steps, fields = { birthday: '2018-01-01' }) => {
+    await env.DB.prepare('INSERT INTO applicants (account_id, name, status, fields, created_at, synced_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, name, 'Approved', JSON.stringify(fields), created, 'x').run();
+    for (const [i, [to, at]] of steps.entries()) await env.DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, data) VALUES (?, ?, ?, ?, ?)').bind(`${id}-${i}`, id, at, 'status', JSON.stringify({ to })).run();
+  };
+  await fam('f1', 'A Family', '2026-03-01T00:00:00Z', [['In Review', '2026-03-11T00:00:00Z'], ['Approved', '2026-04-10T00:00:00Z']]);
+  await fam('f2', 'B Family', '2026-03-01T00:00:00Z', [['In Review', '2026-03-21T00:00:00Z'], ['Denied', '2026-04-01T00:00:00Z']]);
+  await fam('f3', 'C Family', '2026-03-01T00:00:00Z', [['In Review', '2026-03-31T00:00:00Z']]);
+  await fam('f4', 'TEST Family', '2026-03-01T00:00:00Z', [['In Review', '2026-03-02T00:00:00Z'], ['Approved', '2026-03-03T00:00:00Z']]);
+  await fam('f5', 'Old Family', '2024-01-01T00:00:00Z', [['In Review', '2024-02-01T00:00:00Z'], ['Approved', '2024-05-01T00:00:00Z']]);
+  await fam('o1', 'Hope Clinic', '2026-06-01T00:00:00Z', [['In Review', '2026-06-08T00:00:00Z'], ['Approved', '2026-06-15T00:00:00Z']], {});
+  const c = await cycleTimes(env.DB, { now });
+  assert.deepEqual(c.makeover, { toReview: { days: 20, n: 3 }, toDecision: { days: 21, n: 2 } }, 'medians; tests and decisions over a year old left out');
+  assert.deepEqual(c.community, { toReview: { days: 7, n: 1 }, toDecision: { days: 7, n: 1 } });
+});
+
+test('a job’s time at its step counts from a status change the site saw, never guessed', async () => {
+  await env.DB.exec('CREATE TABLE kids (slug TEXT PRIMARY KEY, name TEXT, year INTEGER, data TEXT)');
+  await env.DB.exec('CREATE TABLE community (slug TEXT PRIMARY KEY, name TEXT, data TEXT)');
+  env.JOBTREAD_GRANT_KEY = 'grant';
+  const job = (id, name, status) => ({ id, name, customFieldValues: { nodes: [{ value: status }] } });
+  g.jobs = [job('j1', 'Axel Brown (2026)', 'Design')];
+  const t0 = Date.parse('2026-10-29T15:00:00Z');
+  let now = await pipelineNow(env, { now: t0 });
+  assert.equal(now.makeover.jobs.Design.names[0].since, undefined, 'first seen: when it got there is unknown');
+  g.jobs = [job('j1', 'Axel Brown (2026)', 'Finalization')];
+  now = await pipelineNow(env, { now: t0 + 6 * 60e3 });
+  assert.equal(now.makeover.jobs.Finalization.names[0].since, new Date(t0 + 6 * 60e3).toISOString(), 'a change seen: since then');
+  now = await pipelineNow(env, { now: t0 + 20 * 60e3 });
+  assert.equal(now.makeover.jobs.Finalization.names[0].since, new Date(t0 + 6 * 60e3).toISOString(), 'and it keeps that date');
+});
+
+test('a review coming due is emailed to the founders once, with what to look at', async () => {
+  await env.DB.exec('CREATE TABLE team (slug TEXT PRIMARY KEY, name TEXT, "group" TEXT, order_num INTEGER, data TEXT NOT NULL, updated_at TEXT)');
+  for (const [slug, name, role] of [['holly', 'Holly Ranney', 'founder'], ['peter', 'Peter Ranney', 'founder'], ['linzi', 'Linzi Berkowitz', 'staff']]) {
+    await env.DB.prepare('INSERT INTO team (slug, name, "group", data) VALUES (?, ?, ?, ?)').bind(slug, name, 'team', JSON.stringify({ name, group: 'team', role, status: 'active' })).run();
+  }
+  env.RESEND_API_KEY = 're_test';
+  await processDocs(env, { user: 'peter@soardcharity.com', now: Date.parse('2026-10-29T12:00:00Z') });
+  const sent = [];
+  const send = async (_env, msg) => { sent.push(msg); return { sent: msg.to.length, failed: 0 }; };
+  // The manual changed Nov 13 2025: due Nov 13 2026. Sixteen days out, nothing; within two weeks, once
+  assert.deepEqual(await maybeTellReviews(env, { now: Date.parse('2026-10-28T12:00:00Z'), send }), []);
+  const out = await maybeTellReviews(env, { now: Date.parse('2026-10-31T12:00:00Z'), send });
+  assert.deepEqual(out, [{ doc: 'policy', sent: 2 }]);
+  assert.deepEqual(sent[0].to.sort(), ['holly@soardcharity.com', 'peter@soardcharity.com'], 'the founders on People → Team');
+  assert.match(sent[0].subject, /^Yearly review: “2025 FINAL- Board Financial Policy Manual with Exhibits - 4929-5301-3035 6” is due Nov 13, 2026$/);
+  assert.match(sent[0].text, /It names QuickBooks \(Accounting\); the books are in Mercury Books\./);
+  assert.match(sent[0].text, /#automations\/process\/payables/);
+  assert.ok(!/—/.test(sent[0].text), 'no em dashes');
+  assert.deepEqual(await maybeTellReviews(env, { now: Date.parse('2026-11-01T12:00:00Z'), send }), [], 'once per due date');
+  // Marked reviewed: the next one is a year on
+  await markReviewed(env.DB, 'policy', 'peter@soardcharity.com', Date.parse('2026-11-02T12:00:00Z'));
+  assert.deepEqual(await maybeTellReviews(env, { now: Date.parse('2026-11-20T12:00:00Z'), send }), []);
+  // A process Doc named for last year is due on New Year’s
+  const jan = await maybeTellReviews(env, { now: Date.parse('2027-01-02T12:00:00Z'), send });
+  assert.deepEqual(jan.map((x) => x.doc).sort(), ['community', 'makeover']);
+  assert.match(sent.at(-1).subject, /is due now: it’s 2027$/);
+  const e = reviewEmail('makeover', { name: '2026 Sunshine Makeover Process', modifiedTime: '2026-10-28T15:00:00Z', url: 'https://docs.google.com/document/d/mk/edit' }, { state: 'soon', dueAt: '2027-10-28T15:00:00.000Z' }, { agenda: ['39 of 64 tasks are done by hand.'] });
+  assert.match(e.html, /Open it in Process/);
+  assert.match(e.text, /Process: https:\/\/sunshineonaranneyday\.com\/admin\/#automations\/process\n/);
 });
 
 // ─── On the map ───────────────────────────

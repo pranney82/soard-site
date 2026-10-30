@@ -135,6 +135,7 @@ const PROCESS = () => ({
     policy: { ...DOC('pol', '2025 FINAL- Board Financial Policy Manual with Exhibits', []), sections: POLICY, doc: { id: 'pol', name: '2025 FINAL- Board Financial Policy Manual with Exhibits', url: 'https://docs.google.com/document/d/pol/edit', modifiedTime: iso(350 * 86400e3), modifiedBy: null } },
   },
   reviews: { makeover: null, community: null, policy: null },
+  cycles: { makeover: { toReview: { days: 20, n: 31 }, toDecision: { days: 21, n: 28 } }, community: { toReview: { days: 7, n: 2 }, toDecision: { days: 9, n: 2 } } },
   now: NOW,
   checks: { approvals: { ok: false, text: 'The manual: over $15,000, the Board Chair approves. Pat Chair, the Board Chair, isn’t a second approver in Job Costs → Bills → Settings.' } },
 });
@@ -282,24 +283,69 @@ try {
   ok(after.chips === before.chips + Number(before.more.split(' ')[0]) && !after.more, `“more” shows them all (${after.chips})`);
   await page.screenshot({ path: join(OUT, 'desktop.png') });
 
-  console.log('The journey');
-  const dots = await page.$$eval('.pr-journey .pr-jstep', (l) => l.map((x) => ({ n: x.querySelector('.pr-jdot').textContent, count: x.querySelector('.pr-jcount')?.textContent || '', auto: x.classList.contains('is-auto'), attn: x.classList.contains('is-attn'), label: x.querySelector('.pr-jdot').getAttribute('aria-label') })));
-  ok(dots.length === 5 + MAKEOVER.length, `a dot for every step (${dots.length})`);
-  const countOf = (name) => dots.find((d) => d.label.includes(`: ${name},`))?.count;
-  ok(countOf('Application submitted') === '6' && countOf('Onsite') === '2' && countOf('Child’s Approval') === '3' && countOf('Design Charrette') === '2' && countOf('Project in Progress') === '2' && countOf('PM Review') === '',
-    `each dot counts who’s there (submitted ${countOf('Application submitted')}, onsite ${countOf('Onsite')}, approval ${countOf('Child’s Approval')}, charrette ${countOf('Design Charrette')}, in progress ${countOf('Project in Progress')})`);
-  ok(dots.find((d) => d.label.includes(': Project in Progress,')).attn && dots.find((d) => d.label.includes(': Design Charrette,')).auto === false, 'a step needing attention is ringed, a step by hand is open');
-  await page.hover('.pr-journey .pr-jstep:nth-child(3) .pr-jdot');
-  ok((await page.$eval('.pr-jcap', (e) => e.textContent)).startsWith('3. Reviewed internally'), 'pointing at a dot names its step');
-  const hereOn = (title) => page.evaluate((title) => [...[...document.querySelectorAll('.pr-step')].find((x) => x.querySelector('h4').textContent.endsWith(title)).querySelectorAll('.pr-here__group')].map((g) => `${g.querySelector('.tag').textContent}: ${g.querySelector('.pr-here__names').textContent}`).join(' | '), title);
-  const here = await hereOn('Design Charrette');
-  ok(here === 'Design: Axel, Mila', `a step names who’s at it and their JobTread status (${here})`);
-  const approvalHere = await hereOn('Child’s Approval');
-  ok(approvalHere === 'Awaiting funding: Amari, Jo Lane, Rey Cole', `approved and waiting on funding sits at the approval step (${approvalHere})`);
-  await page.evaluate(() => [...document.querySelectorAll('.pr-jdot')].find((b) => b.getAttribute('aria-label').includes(': Mobilization,')).click());
+  console.log('The process map');
+  const map = await page.evaluate(() => ({
+    shown: getComputedStyle(document.querySelector('.pr-map')).display !== 'none',
+    journey: getComputedStyle(document.querySelector('.pr-journey')).display,
+    lanes: [...document.querySelectorAll('.pr-mlane')].map((l) => l.textContent),
+    cols: document.querySelectorAll('.pr-mh').length,
+    cards: document.querySelectorAll('.pr-mcard').length,
+    nav: document.querySelectorAll('.pr-mnav button').length,
+    facts: document.querySelector('.pr-map__facts').textContent.replace(/\s+/g, ' ').trim(),
+    zoom: parseFloat(document.querySelector('.pr-map__grid').style.zoom),
+    decisions: [...document.querySelectorAll('.pr-mdec b')].map((b) => b.textContent),
+    times: [...document.querySelectorAll('.pr-mcard .pr-time')].map((t) => t.textContent),
+    cycles: [...document.querySelectorAll('.pr-mband span, .pr-mh__cycle')].map((x) => x.textContent),
+    flow: document.querySelectorAll('.pr-map__flow path').length,
+    handoffs: document.querySelectorAll('.pr-map__flow path.is-handoff').length,
+  }));
+  ok(map.shown && map.journey === 'none', 'on a laptop the process map shows; the journey bar is the phone’s');
+  ok(map.lanes.join(' / ') === 'Family / SOARD team / Designer / Project manager / Runs on its own', `a lane for each who, then what runs on its own (${map.lanes.join(' / ')})`);
+  ok(map.cols === 5 + MAKEOVER.length && map.nav === map.cols, `a column and a navigator dot per step (${map.cols})`);
+  ok(map.cards >= 30, `a card per task (${map.cards})`);
+  ok(/\d+ handoffs between people/.test(map.facts) && map.handoffs > 5 && map.flow > map.handoffs, `the flow is drawn, handoffs darker (${map.flow} lines, ${map.handoffs} handoffs; ${map.facts})`);
+  ok(map.zoom === 0.85, `it opens at a readable size (${map.zoom})`);
+  ok(map.decisions.join(', ') === 'Onsite visit?, Approved?', `decisions where they’re made (${map.decisions.join(', ')})`);
+  ok(map.times.includes('≤ 2 weeks out') && map.times.includes('1 week after Reveal') && map.times.includes('6 months out'), `the times the Doc sets (${map.times.join(', ')})`);
+  ok(map.cycles.includes('To an onsite: 20 days (median of 31)') && map.cycles.includes('Onsite to a decision: 21 days (median of 28)'), `how long applying really takes (${map.cycles.join(' | ')})`);
+  const lit = await page.evaluate(() => {
+    const card = [...document.querySelectorAll('.pr-mcard')].find((c) => c.querySelector('.pr-mcard__t').textContent === 'JT sends family message');
+    card.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    return { lane: card.dataset.lane };
+  });
+  await page.hover('.pr-mcard.has-auto');
+  await pause(100);
+  const litNow = await page.evaluate(() => ({ map: document.querySelector('.pr-map').classList.contains('is-lit'), chips: document.querySelectorAll('.pr-machip.is-lit').length }));
+  ok(lit.lane === 'auto' && litNow.map && litNow.chips >= 1, `a system task sits in its lane, and pointing at a task lights up its automations (${litNow.chips})`);
+  await page.mouse.move(5, 5);
+  await page.evaluate(() => [...document.querySelectorAll('.pr-mnav button')].find((b) => b.title.startsWith('13.')).click());
   await pause(900);
-  const jumped = await page.evaluate(() => { const st = [...document.querySelectorAll('.pr-step')].find((x) => x.querySelector('h4').textContent.endsWith('Mobilization')); const r = st.getBoundingClientRect(); return { top: Math.round(r.top), lit: st.classList.contains('is-jumped'), focus: document.activeElement === st.querySelector('h4') }; });
-  ok(jumped.top >= -2 && jumped.top < 200 && jumped.lit && jumped.focus, `a dot takes you to its step (${JSON.stringify(jumped)})`);
+  const nav = await page.evaluate(() => ({ left: document.querySelector('.pr-map__scroll').scrollLeft, focus: document.querySelector('.pr-mh.is-focus')?.textContent || '', inView: [...document.querySelectorAll('.pr-mnav li.in-view button')].map((b) => b.textContent.replace(/\d+$/, (x) => x)) }));
+  ok(nav.left > 300 && /Post-Construction/.test(nav.focus), `a navigator dot takes the map to its step (${Math.round(nav.left)}px, ${nav.focus.slice(0, 30)})`);
+  ok(nav.inView.length >= 3, `and the navigator shows which steps are on screen (${nav.inView.length})`);
+  await clickText(page, '.pr-map__acts button', 'Fit');
+  await pause(200);
+  const fitZoom = await page.evaluate(() => parseFloat(document.querySelector('.pr-map__grid').style.zoom));
+  const fits = await page.evaluate(() => { const sc = document.querySelector('.pr-map__scroll'); return sc.scrollWidth <= sc.clientWidth + 2 && sc.scrollLeft === 0; });
+  ok(fitZoom < 0.85 && fitZoom >= 0.25 && fits, `Fit shows the whole map at once (${fitZoom})`);
+  await page.screenshot({ path: join(OUT, 'map-fit.png') });
+  await page.evaluate(() => [...document.querySelectorAll('.pr-mcard')].find((c) => c.querySelector('.pr-mcard__t').textContent === 'Schedule trades').click());
+  await pause(900);
+  const opened = await page.evaluate(() => { const st = [...document.querySelectorAll('.pr-step')].find((x) => x.querySelector('h4').textContent.endsWith('Mobilization')); const r = st.getBoundingClientRect(); return { top: Math.round(r.top), lit: st.classList.contains('is-jumped') }; });
+  ok(opened.top >= -2 && opened.top < 220 && opened.lit, `clicking a task opens its step below (${JSON.stringify(opened)})`);
+  await page.evaluate(() => scrollTo(0, 0));
+  await clickText(page, '.pr-map__acts button', '+');
+  await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
+  await clickText(page, '.pr-map__acts button', 'Print map');
+  const pm = await page.evaluate(() => ({ n: window.__printed, on: document.body.classList.contains('pr-printing-map'), pages: document.querySelectorAll('#pr-map-print .pr-mpage').length, cards: document.querySelectorAll('#pr-map-print .pr-mcard').length, cols: [...document.querySelectorAll('#pr-map-print .pr-mpage')].map((p) => p.querySelectorAll('.pr-mh').length), lanes: document.querySelectorAll('#pr-map-print .pr-mpage:first-child .pr-mlane').length, flow: document.querySelectorAll('#pr-map-print .pr-map__flow path').length }));
+  ok(pm.n === 1 && pm.on && pm.pages === 4 && pm.cols.join(',') === '5,5,5,3' && pm.lanes === 5 && pm.cards === map.cards && pm.flow > 5, `Print map prints readable landscape pages of 5 steps, lanes and flow on each (${JSON.stringify(pm)})`);
+  await page.emulateMediaType('print');
+  await page.screenshot({ path: join(OUT, 'map-print.png'), fullPage: true });
+  await page.emulateMediaType('screen');
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  ok(!(await page.evaluate(() => document.body.classList.contains('pr-printing-map'))), 'and tidies up after');
+  const here2 = await page.evaluate(() => [...document.querySelectorAll('.pr-mh')].find((h) => h.textContent.includes('Design Charrette'))?.querySelector('.pr-mh__now')?.textContent.replace(/\s+/g, ' ').trim());
+  ok(here2 === 'Here now: Axel, Mila', `the map names who’s at each step (${here2})`);
   await page.evaluate(() => scrollTo(0, 0));
 
   console.log('The filter');
@@ -308,6 +354,8 @@ try {
   const hand = await page.evaluate(() => ({ steps: [...document.querySelectorAll('.pr-step h4')].map((h) => h.textContent.replace(/^Step \d+: /, '')), whole: document.querySelectorAll('.pr-whole').length, dim: document.querySelectorAll('.pr-jstep.is-dim').length }));
   ok(!hand.steps.includes('Application submitted') && hand.steps.includes('Design Charrette') && hand.steps.includes('Video interview') && hand.whole === 0 && hand.dim > 0, `By hand shows only steps with work done by hand (${hand.steps.length} steps, ${hand.dim} dimmed on the journey)`);
   ok((await chipsOn(page, 'JT sends family message')) === null && (await chipsOn(page, 'Phone call to family'))?.length === 0, 'and only the tasks done by hand');
+  const mapHand = await page.evaluate(() => ({ dim: document.querySelectorAll('.pr-mcard.has-auto.is-dim').length, handLit: [...document.querySelectorAll('.pr-mcard:not(.has-auto)')].filter((c) => c.classList.contains('is-dim')).length }));
+  ok(mapHand.dim > 0 && mapHand.handLit === 0, `on the map, By hand fades what runs on its own (${mapHand.dim} faded)`);
   await clickText(page, '.pr-show button', 'Needs attention');
   await pause(150);
   const attnSteps = await page.$$eval('.pr-step h4', (l) => l.map((h) => h.textContent.replace(/^Step \d+: /, '')));
@@ -507,6 +555,26 @@ try {
     ok(head < 13, `Right now’s heading is a small label (${head}px)`);
     const stepsTop = await p4.$eval('.pr-steps', (e) => e.getBoundingClientRect().top + scrollY);
     ok(stepsTop < 1400, `the steps start within two screens of the top (${Math.round(stepsTop)}px)`);
+    // The journey bar stands in for the map on a phone
+    const dots = await p4.$$eval('.pr-journey .pr-jstep', (l) => l.map((x) => ({ n: x.querySelector('.pr-jdot').textContent, count: x.querySelector('.pr-jcount')?.textContent || '', auto: x.classList.contains('is-auto'), attn: x.classList.contains('is-attn'), label: x.querySelector('.pr-jdot').getAttribute('aria-label') })));
+    ok(dots.length === 5 + MAKEOVER.length, `a dot for every step (${dots.length})`);
+    const countOf = (name) => dots.find((d) => d.label.includes(`: ${name},`))?.count;
+    ok(countOf('Application submitted') === '6' && countOf('Onsite') === '2' && countOf('Child’s Approval') === '3' && countOf('Design Charrette') === '2' && countOf('Project in Progress') === '2' && countOf('PM Review') === '',
+      `each dot counts who’s there (submitted ${countOf('Application submitted')}, onsite ${countOf('Onsite')}, approval ${countOf('Child’s Approval')}, charrette ${countOf('Design Charrette')}, in progress ${countOf('Project in Progress')})`);
+    ok(dots.find((d) => d.label.includes(': Project in Progress,')).attn && dots.find((d) => d.label.includes(': Design Charrette,')).auto === false, 'a step needing attention is ringed, a step by hand is open');
+    await p4.focus('.pr-journey .pr-jstep:nth-child(3) .pr-jdot');
+    ok((await p4.$eval('.pr-jcap', (e) => e.textContent)).startsWith('3. Reviewed internally'), 'pointing at a dot names its step');
+    const hereOnP = (title) => p4.evaluate((title) => [...[...document.querySelectorAll('.pr-step')].find((x) => x.querySelector('h4').textContent.endsWith(title)).querySelectorAll('.pr-here__group')].map((g) => `${g.querySelector('.tag').textContent}: ${g.querySelector('.pr-here__names').textContent}`).join(' | '), title);
+    const here = await hereOnP('Design Charrette');
+    ok(here === 'Design: Axel, Mila', `a step names who’s at it and their JobTread status (${here})`);
+    const approvalHere = await hereOnP('Child’s Approval');
+    ok(approvalHere === 'Awaiting funding: Amari, Jo Lane, Rey Cole', `approved and waiting on funding sits at the approval step (${approvalHere})`);
+    await p4.evaluate(() => [...document.querySelectorAll('.pr-jdot')].find((b) => b.getAttribute('aria-label').includes(': Mobilization,')).click());
+    await pause(900);
+    const jumped = await p4.evaluate(() => { const st = [...document.querySelectorAll('.pr-step')].find((x) => x.querySelector('h4').textContent.endsWith('Mobilization')); const r = st.getBoundingClientRect(); return { top: Math.round(r.top), lit: st.classList.contains('is-jumped'), focus: document.activeElement === st.querySelector('h4') }; });
+    ok(jumped.top >= -2 && jumped.top < 260 && jumped.lit && jumped.focus, `a dot takes you to its step (${JSON.stringify(jumped)})`);
+    await p4.evaluate(() => scrollTo(0, 0));
+    ok(await p4.$eval('.pr-map', (e) => getComputedStyle(e).display) === 'none', 'on a phone the map steps aside for the journey bar');
     await p4.screenshot({ path: join(OUT, 'phone.png') });
     await p4.evaluate(() => document.querySelector('.pr-steps:last-of-type').scrollIntoView());
     await p4.screenshot({ path: join(OUT, 'phone-steps.png') });

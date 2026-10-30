@@ -4,7 +4,8 @@
  * GET  → { success, checkedAt, docs: { makeover, community, policy }, now: { makeover, community }, checks }
  *        each Doc's steps as SOARD's process Docs have them (./_process-docs.js),
  *        the board's Financial Policy Manual by section, who's at each stage
- *        right now, and the money settings against the manual. ?fresh=1 asks Drive now.
+ *        right now (each with since when, where known), how long the application
+ *        steps take (cycles), and the money settings against the manual. ?fresh=1 asks Drive now.
  * POST { track, link } → follow that Doc for the track ('' goes back to the
  *        one found by name), then the same as GET
  * POST { review: 'makeover'|'community'|'policy' } → that Doc was looked over
@@ -14,7 +15,7 @@
  * from Site → Automations' own map and its live facts.
  */
 
-import { processDocs, pipelineNow, policyChecks, setOverride, readReviews, markReviewed } from './_process-docs.js';
+import { processDocs, pipelineNow, policyChecks, setOverride, readReviews, markReviewed, cycleTimes } from './_process-docs.js';
 import { logAudit } from './_audit.js';
 import { TRACK_LABEL } from '../../public/admin/process-shared.js';
 
@@ -27,11 +28,12 @@ async function payload(context, { fresh = false } = {}) {
     processDocs(env, { user, fresh }),
     pipelineNow(env).catch(() => null),
   ]);
-  const [checks, reviews] = await Promise.all([
+  const [checks, reviews, cycles] = await Promise.all([
     policyChecks(env, docs.policy).catch(() => ({ approvals: null })),
     readReviews(env.DB).catch(() => ({})),
+    cycleTimes(env.DB).catch(() => null),
   ]);
-  return { success: true, checkedAt: new Date().toISOString(), docs, now, checks, reviews };
+  return { success: true, checkedAt: new Date().toISOString(), docs, now, checks, reviews, cycles };
 }
 
 export async function onRequestGet(context) {

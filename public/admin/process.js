@@ -12,7 +12,13 @@
  * each with the board's Financial Policy Manual sections that govern it, read
  * live from that Doc, and the bill approval settings checked against it.
  *
- * Above the steps, the journey at a glance: a dot per step (something runs on
+ * Above the steps, the process map: a swimlane per who does the work (and
+ * one for what runs on its own), a column per step, each task in its owner's
+ * lane, the flow drawn task to task with every handoff between lanes marked,
+ * the decisions, the times the Docs set, how long the application steps
+ * really take, and who's at each step now. Pointing at a task lights up its
+ * automations; clicking opens the step below. It zooms to fit and prints on
+ * one landscape page. On a phone the journey bar stands in for it: a dot per step (something runs on
  * its own, done by hand, or needs attention) with who's there now, each kid or
  * project placed on the step its JobTread status means (process-shared.js
  * STATUS_STEPS). A filter narrows the steps to what needs attention or what's
@@ -34,7 +40,7 @@
 
 import { h, htm, render, useState, useEffect, useMemo, useRef } from './vendor.js';
 import { STATUS, ensureCss as ensureMapCss, Ago, ago } from './mindmap.js';
-import { TRACK_LABEL, PROJECT_TRACKS, MONEY_TRACKS, DOC_LIKE, APPLYING_SOURCE, pinSteps, lineCounts, reviewOf, retiredMentions, docYear, placeNow } from './process-shared.js';
+import { TRACK_LABEL, PROJECT_TRACKS, MONEY_TRACKS, DOC_LIKE, APPLYING_SOURCE, WITH_LABEL, pinSteps, lineCounts, reviewOf, retiredMentions, docYear, placeNow, mapOf } from './process-shared.js';
 
 const html = htm.bind(h);
 const API = '/api/process-admin';
@@ -142,6 +148,87 @@ const CSS = `
 .pr-key .k-auto { background: var(--color-sidebar); }
 .pr-key .k-hand { border: 1.5px solid var(--color-border-strong); background: var(--color-bg-card); }
 .pr-empty { padding: 1rem 1.25rem; }
+.pr-map { padding: 0; margin-bottom: 1.1rem; overflow: hidden; }
+.pr-map__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; padding: 0.7rem 1rem; border-bottom: 1px solid var(--color-border); }
+.pr-map__bar h3 { margin: 0; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }
+.pr-map__facts { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; font-size: var(--fs-xs); color: var(--color-text-secondary); }
+.pr-map__facts b { color: var(--color-text); font-variant-numeric: tabular-nums; }
+.pr-map__acts { order: 2; display: flex; gap: 0.3rem; margin-left: auto; }
+.pr-map__acts button { all: unset; box-sizing: border-box; cursor: pointer; min-width: 30px; height: 28px; padding: 0 0.55rem; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-bg-card); font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); text-align: center; }
+.pr-map__acts button:hover { color: var(--color-text); border-color: var(--color-border-strong); }
+.pr-map__acts button:focus-visible { box-shadow: var(--focus-ring-strong); }
+.pr-map__acts button[aria-pressed="true"] { background: var(--color-text); border-color: var(--color-text); color: #fff; }
+.pr-mnav { order: 3; flex-basis: 100%; display: flex; gap: 0.6rem; align-items: center; overflow-x: auto; scrollbar-width: none; padding: 0.15rem 0 0.05rem; }
+.pr-mnav::-webkit-scrollbar { display: none; }
+.pr-mnav ol { list-style: none; margin: 0; padding: 0; display: flex; gap: 3px; }
+.pr-mnav li { position: relative; display: flex; }
+.pr-mnav button { all: unset; box-sizing: border-box; cursor: pointer; position: relative; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; background: var(--color-bg-card); border: 1.5px solid var(--color-border-strong); color: var(--color-text-secondary); }
+.pr-mnav button.is-auto { background: var(--color-sidebar); border-color: var(--color-sidebar); color: #fff; }
+.pr-mnav button.is-attn { box-shadow: 0 0 0 2px color-mix(in srgb, var(--am-warn) 50%, transparent); }
+.pr-mnav button:focus-visible { box-shadow: var(--focus-ring-strong); }
+.pr-mnav li.in-view { background: var(--color-bg-hover); border-radius: 999px; }
+.pr-mnav li.in-view + li.in-view { margin-left: -3px; padding-left: 3px; }
+.pr-mnav i { font-style: normal; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); white-space: nowrap; }
+.pr-mnav b { position: absolute; z-index: 1; pointer-events: none; top: -6px; right: -6px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 999px; background: var(--color-text); color: #fff; font-size: 9px; line-height: 13px; text-align: center; }
+.pr-mh.is-focus { box-shadow: inset 0 -3px 0 var(--color-text); }
+.pr-map__scroll { position: relative; overflow: auto; max-height: min(78vh, 900px); background: var(--color-bg); }
+.pr-map__grid { position: relative; display: grid; grid-template-columns: 124px repeat(var(--cols), 188px); width: max-content; }
+.pr-map__flow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 1; }
+.pr-map__flow path { fill: none; stroke: var(--color-border-strong); stroke-width: 1.4; }
+.pr-map__flow path.is-handoff { stroke: var(--color-text-secondary); stroke-width: 1.8; }
+.pr-map__flow path.is-auto { stroke-dasharray: 3 3; }
+.pr-mband { position: sticky; top: 0; z-index: 4; padding: 0.4rem 0.75rem; background: var(--color-bg-card); border-bottom: 1px solid var(--color-border); font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); display: flex; gap: 0.75rem; align-items: baseline; white-space: nowrap; }
+.pr-mband span { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--color-text-secondary); }
+.pr-mcorner { position: sticky; left: 0; top: 0; z-index: 6; background: var(--color-bg-card); border-bottom: 1px solid var(--color-border); border-right: 1px solid var(--color-border); }
+.pr-mh { position: sticky; top: 1.95rem; z-index: 3; display: flex; flex-direction: column; gap: 0.25rem; padding: 0.55rem 0.7rem; background: var(--color-bg-card); border-bottom: 1px solid var(--color-border); border-left: 1px solid var(--color-border); min-width: 0; }
+.pr-mh__t { all: unset; cursor: pointer; display: flex; gap: 0.45rem; align-items: baseline; font-size: var(--fs-sm); font-weight: 650; line-height: 1.3; color: var(--color-text); }
+.pr-mh__t:hover span:last-child { text-decoration: underline; text-underline-offset: 2px; }
+.pr-mh__t:focus-visible { box-shadow: var(--focus-ring-strong); border-radius: 4px; }
+.pr-mh__t b { flex: none; width: 1.35rem; height: 1.35rem; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; background: var(--color-bg-card); border: 1.5px solid var(--color-border-strong); color: var(--color-text-secondary); }
+.pr-mh.is-auto .pr-mh__t b { background: var(--color-sidebar); border-color: var(--color-sidebar); color: #fff; }
+.pr-mh.is-attn .pr-mh__t b { box-shadow: 0 0 0 3px color-mix(in srgb, var(--am-warn) 45%, transparent); }
+.pr-mh__now { font-size: var(--fs-2xs); line-height: 1.45; color: var(--color-text-secondary); }
+.pr-mh__now b { font-weight: 650; color: var(--color-text); }
+.pr-mh__now a { color: inherit; text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 2px; }
+.pr-mh__cycle { align-self: flex-start; font-size: var(--fs-2xs); font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 999px; background: var(--tone-info-bg); color: var(--tone-info-fg); }
+.pr-mlane { position: sticky; left: 0; z-index: 2; display: flex; align-items: flex-start; padding: 0.7rem 0.75rem; background: var(--color-bg-card); border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); font-size: var(--fs-xs); font-weight: 650; color: var(--color-text-secondary); }
+.pr-mlane.is-auto { color: var(--color-text); }
+.pr-mcell { position: relative; display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.6rem; border-left: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); min-height: 3.25rem; }
+.pr-mcell.is-autolane { background: color-mix(in srgb, var(--color-bg-card) 55%, transparent); }
+.pr-mcard { all: unset; box-sizing: border-box; position: relative; z-index: 2; cursor: pointer; display: flex; flex-direction: column; gap: 0.3rem; padding: 0.5rem 0.6rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-card); box-shadow: var(--shadow-xs); font-size: var(--fs-xs); line-height: 1.4; color: var(--color-text); }
+.pr-mcard:hover, .pr-mcard.is-lit { border-color: var(--color-text); }
+.pr-mcard:focus-visible { box-shadow: var(--focus-ring-strong); }
+.pr-mcard.has-auto { border-left: 3px solid var(--am-live); }
+.pr-mcard.is-attn { border-left-color: var(--am-warn); background: color-mix(in srgb, var(--am-warn) 7%, var(--color-bg-card)); }
+.pr-mcard.is-self { font-weight: 650; }
+.pr-mcard__t { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.pr-mcard__meta { display: flex; flex-wrap: wrap; gap: 0.2rem 0.5rem; font-size: 10.5px; font-weight: 600; color: var(--color-text-muted); }
+.pr-mcard__meta .pr-time { display: inline-flex; align-items: center; gap: 0.2rem; color: var(--tone-info-fg); }
+.pr-mcard__meta svg { width: 11px; height: 11px; }
+.pr-mdec { position: relative; z-index: 2; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 0.1rem 0.5rem; align-items: start; padding: 0.45rem 0.55rem; border: 1px dashed var(--color-border-strong); border-radius: 8px; background: var(--color-bg-card); font-size: 10.5px; line-height: 1.4; color: var(--color-text-secondary); }
+.pr-mdec i { grid-row: span 3; width: 14px; height: 14px; margin: 3px 0 0 3px; transform: rotate(45deg); border: 1.5px solid var(--color-text); border-radius: 2px; background: var(--color-bg-card); }
+.pr-mdec b { font-size: var(--fs-xs); color: var(--color-text); }
+.pr-machip { all: unset; box-sizing: border-box; position: relative; z-index: 2; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.45rem; border-radius: 6px; border: 1px solid transparent; font-size: 10.5px; font-weight: 600; line-height: 1.3; color: var(--color-text-secondary); }
+.pr-machip:hover, .pr-machip.is-lit { border-color: var(--color-text); color: var(--color-text); background: var(--color-bg-card); }
+.pr-machip:focus-visible { box-shadow: var(--focus-ring-strong); }
+.pr-machip.s-attn { color: var(--tone-warn-fg); background: var(--tone-warn-bg); }
+.pr-machip > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-mmore { font-size: 10.5px; color: var(--color-text-muted); padding-left: 0.45rem; }
+.pr-map.is-lit .pr-mcard:not(.is-lit), .pr-map.is-lit .pr-machip:not(.is-lit) { opacity: 0.35; }
+.pr-map .is-dim { opacity: 0.28; }
+#pr-map-print.is-measuring { display: block !important; position: absolute; left: -100000px; top: 0; width: 1100px; }
+@media (max-width: 640px) { .pr-map { display: none; } }
+@media (min-width: 641px) { .pr-journey { display: none; } }
+@media print {
+  body.pr-printing-map > *:not(#pr-map-print) { display: none !important; }
+  #pr-map-print { display: block; }
+  #pr-map-print .pr-mpage { page: pr-map; break-after: page; }
+  #pr-map-print .pr-mpage:last-child { break-after: auto; }
+  #pr-map-print .pr-mpage__head { margin: 0 0 6px; font: 600 9pt Inter, system-ui, sans-serif; color: #555; }
+  #pr-map-print .pr-map__grid { zoom: 0.8; }
+  #pr-map-print .pr-mh, #pr-map-print .pr-mlane, #pr-map-print .pr-mcorner { position: static; }
+}
+@page pr-map { size: landscape; margin: 0.4in; }
 .pr-journey { padding: 0.85rem 1rem 0.7rem; margin-bottom: 1.1rem; }
 .pr-jrow { display: flex; gap: 0.9rem; overflow-x: auto; scrollbar-width: thin; padding: 0.55rem 0.1rem 0.2rem; }
 .pr-jpart { flex: 1 0 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
@@ -236,7 +323,7 @@ const CSS = `
   .pr-jstep { min-height: 44px; align-items: center; }
   .pr-row { min-height: 44px; align-items: center; }
 }
-@media screen { #pr-print-root { display: none; } }
+@media screen { #pr-print-root, #pr-map-print { display: none; } }
 @media print {
   body.pr-printing > *:not(#pr-print-root) { display: none !important; }
   body.pr-printing { background: #fff; padding: 0; }
@@ -392,6 +479,284 @@ function MoneyNow({ facts, track }) {
         : html`<div class="pr-row" role="presentation"><span>${r.label}</span><span class=${`pr-val${r.warn ? ' is-warn' : ''}`}>${r.value}</span></div>`}</li>`)}</ul>
       ${track !== 'receivables' && html`<p class="pr-foot"><a href="#job-costs">Open Job Costs</a></p>`}`}
   </section>`;
+}
+
+// ─── The process map ──────────────────────
+
+const ClockIcon = () => html`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6V8l2.3 1.5"/></svg>`;
+const ZOOMS = [0.5, 0.65, 0.8, 0.9, 1];
+const START_ZOOM = 0.85;
+// Steps on each printed page of the map
+const PRINT_STEPS = 5;
+/** The map's width at 100% (its box on screen, over its zoom) */
+const naturalWidth = (g) => g.getBoundingClientRect().width / (parseFloat(g.style.zoom) || 1);
+/**
+ * The flow through a map grid: the people's tasks in order (the automation
+ * lane serves them, lit from a task, rather than taking turns); a line only
+ * where the work moves on, a darker one where it changes hands → [{ d, handoff }]
+ */
+function flowPaths(g) {
+  const z = parseFloat(g.style.zoom) || 1;
+  const box = g.getBoundingClientRect();
+  const at = (el) => { const r = el.getBoundingClientRect(); return { x: (r.left - box.left) / z, y: (r.top - box.top) / z, w: r.width / z, h: r.height / z }; };
+  const cards = [...g.querySelectorAll('[data-order]')].filter((el) => el.dataset.lane !== 'auto').sort((a, b) => a.dataset.order - b.dataset.order);
+  const out = [];
+  for (let i = 1; i < cards.length; i++) {
+    const a = cards[i - 1];
+    const b = cards[i];
+    const handoff = a.dataset.lane !== b.dataset.lane;
+    // Stacked in one cell, the order is plain without a line
+    if (!handoff && a.dataset.col === b.dataset.col) continue;
+    const pa = at(a);
+    const pb = at(b);
+    let d;
+    if (a.dataset.col === b.dataset.col) {
+      const down = pb.y > pa.y;
+      const x1 = pa.x + pa.w * (down ? 0.72 : 0.28);
+      const x2 = pb.x + pb.w * (down ? 0.72 : 0.28);
+      const y1 = down ? pa.y + pa.h : pa.y;
+      const y2 = down ? pb.y : pb.y + pb.h;
+      d = `M${x1},${y1} C${x1},${(y1 + y2) / 2} ${x2},${(y1 + y2) / 2} ${x2},${y2}`;
+    } else {
+      const x1 = pa.x + pa.w;
+      const y1 = pa.y + Math.min(pa.h / 2, 18);
+      const x2 = pb.x;
+      const y2 = pb.y + Math.min(pb.h / 2, 18);
+      const mx = (x1 + x2) / 2;
+      d = `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2 - 5},${y2}`;
+    }
+    out.push({ d, handoff });
+  }
+  return out;
+}
+const daysSince = (iso) => Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86400000));
+
+/**
+ * track, steps (pinned), byTitle (the map's entries, live statuses on them),
+ * placed (who's where), cycles (how long the application steps take), show
+ * (the filter), stepWarn, onOpen(key): open the step in the list below
+ */
+function ProcessMap({ track, steps, byTitle, placed, cycles, show, stepWarn, onOpen }) {
+  const m = useMemo(() => mapOf(track, steps), [track, steps]);
+  const money = MONEY_TRACKS.includes(track);
+  const [zoom, setZoom] = useState(START_ZOOM); // null: fit the whole map
+  const [inView, setInView] = useState(() => new Set());
+  const [focusCol, setFocusCol] = useState(null);
+  const [lit, setLit] = useState(null); // { col, titles: Set, cards: Set }
+  const [paths, setPaths] = useState([]);
+  const scrollRef = useRef(null);
+  const gridRef = useRef(null);
+  const [fitK, setFitK] = useState(1);
+
+  const node = (t) => byTitle.get(t);
+  const cardWarn = (c) => c.autos.some((t) => node(t)?.es === 'attn');
+  const live = (c) => c.autos.some((t) => node(t)?.es === 'live');
+  const dimCard = (c, col) => (show === 'hand' ? live(c) : show === 'attn' ? !stepWarn(col) : false);
+  const k = zoom ?? fitK;
+
+  // Fit the whole map to the card's width (never past 100%)
+  useEffect(() => {
+    const fit = () => {
+      const sc = scrollRef.current;
+      const g = gridRef.current;
+      if (!sc || !g) return;
+      setFitK(Math.max(0.25, Math.min(1, (sc.clientWidth - 2) / naturalWidth(g))));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [m]);
+
+  // The flow: task to task in order; between lanes it's a handoff
+  useEffect(() => {
+    const g = gridRef.current;
+    if (!g) return undefined;
+    const draw = () => setPaths(flowPaths(g));
+    const id = requestAnimationFrame(draw);
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => requestAnimationFrame(draw)) : null;
+    ro?.observe(g);
+    return () => { cancelAnimationFrame(id); ro?.disconnect(); };
+  }, [m, k, show]);
+
+  // Which steps are on screen, for the navigator
+  useEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc) return undefined;
+    const track = () => {
+      const r = sc.getBoundingClientRect();
+      const lanes = 124 * k;
+      const seen = new Set();
+      sc.querySelectorAll('.pr-mh[data-col]').forEach((h) => { const b = h.getBoundingClientRect(); if (b.right > r.left + lanes + 8 && b.left < r.right - 8) seen.add(h.dataset.col); });
+      setInView(seen);
+    };
+    track();
+    sc.addEventListener('scroll', track, { passive: true });
+    window.addEventListener('resize', track);
+    return () => { sc.removeEventListener('scroll', track); window.removeEventListener('resize', track); };
+  }, [m, k]);
+  const goCol = (key) => {
+    const sc = scrollRef.current;
+    const h = sc?.querySelector(`.pr-mh[data-col="${key}"]`);
+    if (!h) return;
+    const r = sc.getBoundingClientRect();
+    const b = h.getBoundingClientRect();
+    sc.scrollTo({ left: sc.scrollLeft + (b.left - r.left) - 124 * k - 12, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    setFocusCol(key);
+    setTimeout(() => setFocusCol((c) => (c === key ? null : c)), 1600);
+  };
+
+  const litFrom = (col, titles, cards = []) => setLit({ col, titles: new Set(titles), cards: new Set(cards) });
+  const cardsUsing = (col, t) => col.cards.filter((c) => c.autos.includes(t)).map((c) => c.id);
+  const bandOf = (part) => (part === 'applying' ? 'Applying' : money ? TRACK_LABEL[track] : track === 'makeover' ? 'The makeover' : 'The project');
+  const parts = [];
+  for (const c of m.columns) {
+    const label = bandOf(c.part);
+    if (parts.at(-1)?.label === label) parts.at(-1).n++; else parts.push({ label, part: c.part, n: 1 });
+  }
+  const cyc = (x, what) => (x ? `${what}: ${x.days} days (median of ${x.n})` : null);
+  const decided = m.columns.find((c) => c.decision && c.part === 'doc');
+  const cy = cycles?.[track] || null;
+  const cycleOn = (c) => {
+    if (money || !cy) return null;
+    if (track === 'community' && /online application/i.test(c.t)) return cyc(cy.toReview, 'To an onsite');
+    if (decided && c.key === decided.key) return cyc(cy.toDecision, 'Onsite to a decision');
+    return null;
+  };
+  const decisionLane = (c) => (money ? (c.cards.find((x) => x.lane !== 'auto')?.lane || 'staff') : 'team');
+  const handLines = m.columns.flatMap((c) => c.cards).filter((c) => c.lane !== 'auto' && !c.autos.length).length;
+
+  // On paper: a landscape page per few steps, the lanes on each, the flow drawn again for each page
+  const printMap = () => {
+    let root = document.getElementById('pr-map-print');
+    if (!root) { root = document.createElement('div'); root.id = 'pr-map-print'; document.body.appendChild(root); }
+    root.replaceChildren();
+    root.classList.add('is-measuring');
+    const per = PRINT_STEPS;
+    const pages = [];
+    for (let i = 0; i < m.columns.length; i += per) pages.push(m.columns.slice(i, i + per).map((c) => c.key));
+    pages.forEach((keys, pi) => {
+      const page = document.createElement('section');
+      page.className = 'pr-mpage';
+      const head = document.createElement('p');
+      head.className = 'pr-mpage__head';
+      head.textContent = `${TRACK_LABEL[track]}: the process map, steps ${m.columns.findIndex((c) => c.key === keys[0]) + 1} to ${m.columns.findIndex((c) => c.key === keys.at(-1)) + 1} of ${m.columns.length}${pi ? '' : ` · printed ${longDate()}`}`;
+      const g = gridRef.current.cloneNode(true);
+      g.style.zoom = '1';
+      g.style.setProperty('--cols', String(keys.length));
+      g.querySelectorAll('.pr-mband').forEach((b) => b.remove());
+      g.querySelectorAll('.pr-mcorner').forEach((x) => { x.style.gridRow = 'auto'; });
+      g.querySelectorAll('[data-col]').forEach((el) => { if (!keys.includes(el.dataset.col)) el.remove(); });
+      g.querySelector('.pr-map__flow')?.replaceChildren();
+      page.append(head, g);
+      root.append(page);
+    });
+    // Measured on screen (out of sight), then drawn
+    root.querySelectorAll('.pr-map__grid').forEach((g) => {
+      const svg = g.querySelector('.pr-map__flow');
+      if (!svg) return;
+      svg.innerHTML = `<defs><marker id="pr-arrow-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9" fill="none" stroke="currentColor" stroke-width="1.6"/></marker></defs>${flowPaths(g).map((p) => `<path d="${p.d}"${p.handoff ? ' class="is-handoff"' : ''} marker-end="url(#pr-arrow-p)"/>`).join('')}`;
+    });
+    root.classList.remove('is-measuring');
+    document.body.classList.add('pr-printing-map');
+    const done = () => { document.body.classList.remove('pr-printing-map'); root.replaceChildren(); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    window.print();
+  };
+
+  return html`<section class=${`card pr-map${lit ? ' is-lit' : ''}`} aria-label="Process map">
+    <div class="pr-map__bar">
+      <h3>Process map</h3>
+      <div class="pr-map__facts">
+        <span><b>${m.columns.length}</b> steps</span>
+        <span><b>${m.handoffs}</b> handoffs between people</span>
+        <span><b>${handLines}</b> tasks by hand</span>
+      </div>
+      <div class="pr-mnav" role="navigation" aria-label="Go to a step on the map">
+        ${parts.map((p) => html`<i key=${`nl-${p.label}`}>${p.label}</i><ol key=${`no-${p.label}`}>
+          ${m.columns.filter((c) => bandOf(c.part) === p.label).map((c) => {
+            const st = steps.find((x) => `${x.part}-${x.n}` === c.key);
+            const n = (placed.get(c.key) || []).reduce((t, h) => t + h.n, 0);
+            return html`<li key=${c.key} class=${inView.has(c.key) ? 'in-view' : ''}>
+              <button type="button" class=${`${c.autos.some((t) => node(t)?.es === 'live') ? 'is-auto' : ''}${st && stepWarn(st) ? ' is-attn' : ''}`} title=${`${c.n}. ${c.t}${n ? `: ${n} here now` : ''}`} onClick=${() => goCol(c.key)}>${c.n}<span class="sr-only">. ${c.t}${n ? `, ${n} here now` : ''}</span></button>
+              ${n ? html`<b aria-hidden="true">${n}</b>` : null}
+            </li>`;
+          })}
+        </ol>`)}
+      </div>
+      <div class="pr-map__acts" role="group" aria-label="Zoom">
+        <button type="button" aria-pressed=${String(zoom === null)} title="The whole process at once" onClick=${() => { setZoom(null); scrollRef.current?.scrollTo({ left: 0 }); }}>Fit</button>
+        <button type="button" aria-label="Zoom out" onClick=${() => setZoom(ZOOMS.filter((z) => z < k - 0.01).pop() ?? ZOOMS[0])}>−</button>
+        <button type="button" aria-label="Zoom in" onClick=${() => setZoom(ZOOMS.find((z) => z > k + 0.01) ?? 1)}>+</button>
+        <button type="button" onClick=${printMap}>Print map</button>
+      </div>
+    </div>
+    <div class="pr-map__scroll" ref=${scrollRef}>
+      <div class="pr-map__grid" ref=${gridRef} style=${`--cols: ${m.columns.length}; zoom: ${k}`}>
+        <div class="pr-mcorner" style="grid-row: 1 / span 2;"></div>
+        ${parts.map((p) => html`<div class="pr-mband" key=${p.label} style=${`grid-column: span ${p.n}`}>${p.label}${p.part === 'applying' && cycles?.[track]?.toReview ? html`<span>${cyc(cycles[track].toReview, 'To an onsite')}</span>` : null}</div>`)}
+        ${m.columns.map((c) => {
+          const st = steps.find((x) => `${x.part}-${x.n}` === c.key);
+          const here = placed.get(c.key) || [];
+          const names = here.flatMap((h) => h.names);
+          const extra = here.reduce((n, h) => n + h.n, 0) - names.length;
+          const auto = c.autos.some((t) => node(t)?.es === 'live');
+          return html`<div key=${`h-${c.key}`} data-col=${c.key} class=${`pr-mh${auto ? ' is-auto' : ''}${st && stepWarn(st) ? ' is-attn' : ''}${st && show === 'attn' && !stepWarn(st) ? ' is-dim' : ''}${focusCol === c.key ? ' is-focus' : ''}`}>
+            <button type="button" class="pr-mh__t" onClick=${() => onOpen(c.key)} title="Open this step below"><b>${c.n}</b><span>${c.t}</span></button>
+            ${cycleOn(c) && html`<span class="pr-mh__cycle">${cycleOn(c)}</span>`}
+            ${names.length + extra > 0 && html`<span class="pr-mh__now"><b>Here now:</b> ${names.slice(0, 4).map((x, i) => html`${i ? ', ' : ''}<a href=${x.href} target=${/^https?:/.test(x.href) ? '_blank' : null} rel="noopener">${x.name}</a>${x.since ? ` (${daysSince(x.since)}d)` : ''}`)}${names.length > 4 || extra > 0 ? ` and ${names.length - Math.min(4, names.length) + extra} more` : ''}</span>`}
+          </div>`;
+        })}
+        ${m.lanes.map((l) => [
+          html`<div key=${`l-${l.id}`} class=${`pr-mlane${l.id === 'auto' ? ' is-auto' : ''}`}>${l.label}</div>`,
+          ...m.columns.map((c) => {
+            const st = steps.find((x) => `${x.part}-${x.n}` === c.key);
+            if (l.id === 'auto') {
+              const autoCards = c.cards.filter((x) => x.lane === 'auto');
+              const chips = c.autos.map(node).filter(Boolean).sort((a, b) => (a.es === 'attn' ? -1 : 0) - (b.es === 'attn' ? -1 : 0));
+              return html`<div key=${`${l.id}-${c.key}`} data-col=${c.key} class=${`pr-mcell is-autolane${st && show === 'hand' ? ' is-dim' : ''}`}>
+                ${autoCards.map((x) => cardEl(x, c, st))}
+                ${chips.slice(0, 4).map((n) => html`<button type="button" key=${n.t} class=${`pr-machip s-${n.es}${lit?.titles.has(n.t) && lit.col === c.key ? ' is-lit' : ''}`}
+                  onMouseEnter=${() => litFrom(c.key, [n.t], cardsUsing(c, n.t))} onMouseLeave=${() => setLit(null)} onFocus=${() => litFrom(c.key, [n.t], cardsUsing(c, n.t))} onBlur=${() => setLit(null)}
+                  onClick=${() => onOpen(c.key)} title=${`${n.t}: ${STATUS[n.es]}`}><${Dot} n=${n} /><span>${n.t}</span></button>`)}
+                ${chips.length > 4 && html`<button type="button" class="pr-machip" onClick=${() => onOpen(c.key)}><span>and ${chips.length - 4} more</span></button>`}
+              </div>`;
+            }
+            const cards = c.cards.filter((x) => x.lane === l.id);
+            const dec = c.decision && decisionLane(c) === l.id ? c.decision : null;
+            return html`<div key=${`${l.id}-${c.key}`} data-col=${c.key} class="pr-mcell">
+              ${cards.map((x) => cardEl(x, c, st))}
+              ${dec && html`<div class="pr-mdec"><i aria-hidden="true"></i><b>${dec.q}</b><span>Yes: ${dec.yes}</span><span>No: ${dec.no}</span></div>`}
+            </div>`;
+          }),
+        ])}
+        <svg class="pr-map__flow" aria-hidden="true">
+          <defs><marker id="pr-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9" fill="none" stroke="currentColor" stroke-width="1.6" /></marker></defs>
+          ${paths.map((p, i) => html`<path key=${i} d=${p.d} class=${p.handoff ? 'is-handoff' : ''} marker-end="url(#pr-arrow)" />`)}
+        </svg>
+      </div>
+    </div>
+  </section>`;
+
+  function cardEl(x, c, st) {
+    const warn = cardWarn(x);
+    const isLit = lit && (lit.cards.has(x.id));
+    const withWho = x.with.map((w) => WITH_LABEL[w] || w);
+    return html`<button type="button" key=${x.id} data-order=${x.order} data-lane=${x.lane} data-col=${c.key}
+      class=${`pr-mcard${x.autos.length ? ' has-auto' : ''}${warn ? ' is-attn' : ''}${x.self ? ' is-self' : ''}${isLit ? ' is-lit' : ''}${st && dimCard(x, st) ? ' is-dim' : ''}`}
+      onMouseEnter=${() => x.autos.length && litFrom(c.key, x.autos, [x.id])} onMouseLeave=${() => setLit(null)}
+      onFocus=${() => x.autos.length && litFrom(c.key, x.autos, [x.id])} onBlur=${() => setLit(null)}
+      onClick=${() => onOpen(c.key)}>
+      <span class="sr-only">Step ${c.n}, ${c.t}: </span>
+      <span class="pr-mcard__t">${x.t}</span>
+      ${(withWho.length || x.time || x.details || x.autos.length) ? html`<span class="pr-mcard__meta">
+        ${withWho.length ? html`<span>with ${withWho.join(', ')}</span>` : null}
+        ${x.time ? html`<span class="pr-time"><${ClockIcon} />${x.time}</span>` : null}
+        ${x.details ? html`<span>+${x.details} ${x.details === 1 ? 'note' : 'notes'}</span>` : null}
+        ${x.autos.length ? html`<span>${plural(x.autos.length, 'automation')}</span>` : null}
+      </span>` : null}
+      <span class="sr-only">${x.autos.length ? '' : ' By hand.'} Opens the step below.</span>
+    </button>`;
+  }
 }
 
 // ─── One automation, in full ──────────────
@@ -826,6 +1191,8 @@ export function ProcessView({ model, getFacts, switcher, kinds, onShowOnMap }) {
     ${linkEl}
     ${docProblem}
 
+    ${steps.length > 0 && html`<${ProcessMap} track=${track} steps=${steps} byTitle=${byTitle} placed=${placed} cycles=${data?.cycles || null}
+      show=${show} stepWarn=${stepWarn} onOpen=${(key) => { if (show !== 'all' && !steps.find((x) => `${x.part}-${x.n}` === key && stepShown(x))) setShow('all'); requestAnimationFrame(() => jump(key)); }} />`}
     <div class="pr-work">
       <div>
         ${steps.length > 0 && journeyEl()}

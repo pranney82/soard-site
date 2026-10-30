@@ -24,16 +24,25 @@
  * With them, who's at each stage right now: families and organizations at
  * Applied and In Review (the Applicants mirror), and open jobs by their
  * JobTread Status (a light read of JobTread, kept 5 minutes), each named and
- * linked: a family to its page in Applicants, a job to JobTread.
+ * linked: a family to its page in Applicants, a job to JobTread. A job's
+ * status change is noted when it's seen (hourly at least), so the map can say
+ * how long a job has been at its step: from the change on, never guessed.
+ * And how long the application steps really take, from the applicants'
+ * history: median days to an onsite visit and to a decision, over a year.
+ *
+ * Each Doc's yearly review is emailed to SOARD's founders (People → Team)
+ * once, two weeks before it's due, or when it's found overdue.
  */
 
 import { accessToken } from './_google-calendar.js';
-import { boardAdmins, isStaffEmail, activeBoard } from './_board-roles.js';
+import { boardAdmins, isStaffEmail, activeBoard, peopleRows, founderEmails } from './_board-roles.js';
+import { sendEmails, emailConfigured, SITE_ORIGIN } from './_broadcast-notify.js';
+import * as mail from './_email-shell.js';
 import { JT_URL, SOARD_ORG_ID, FIELD_JOB_STATUS, loadKids, loadProjects, matchProject, isProject, isRehearsalJob } from './_reveals.js';
 import { jobtreadJobUrl } from './_applicants.js';
 import { accountKindFor } from './_applicant-comms.js';
 import { kindOf } from './_application-form.js';
-import { DOCS, PROJECT_TRACKS, DOC_SEARCH, DOC_LIKE, GOOGLE_DOC, parseProcessHtml, policySections, approvalTiers, pickDoc, docIdOf } from '../../public/admin/process-shared.js';
+import { DOCS, PROJECT_TRACKS, DOC_SEARCH, DOC_LIKE, GOOGLE_DOC, TRACK_LABEL, parseProcessHtml, policySections, approvalTiers, pickDoc, docIdOf, reviewOf, retiredMentions, pinSteps, lineCounts } from '../../public/admin/process-shared.js';
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
@@ -265,12 +274,136 @@ export async function maybeRefreshProcess(env, { fetchImpl = fetch, now = Date.n
     if (slot.at && now - Date.parse(slot.at) < REFRESH_MS) return null;
     await writeRow(env.DB, 'refresh', { at: new Date(now).toISOString() }, now);
     const lasts = await Promise.all(DOCS.map((t) => readRow(env.DB, `doc:${t}`)));
-    if (lasts.every((l) => l.checkedAt && !l.error && now - Date.parse(l.checkedAt) < REFRESH_MS)) return null;
-    return await processDocs(env, { fetchImpl, now });
+    const fresh = lasts.every((l) => l.checkedAt && !l.error && now - Date.parse(l.checkedAt) < REFRESH_MS);
+    const docs = fresh ? null : await processDocs(env, { fetchImpl, now });
+    // Jobs' status changes noted hourly, so their time at a step is known to the day
+    await jobsNow(env, { fetchImpl, now }).catch(() => null);
+    await maybeTellReviews(env, { now }).catch((err) => console.error('[process] review email', err?.message));
+    return docs;
   } catch (err) {
     console.error('[process] refresh', err?.message);
     return null;
   }
+}
+
+// ─── The yearly review, by email ──────────
+
+/** How many days before a review is due its email goes */
+export const NOTICE_DAYS = 14;
+const DAY = 86400000;
+const TRACK_OF_DOC = { makeover: 'makeover', community: 'community', policy: 'payables' };
+const fmtDay = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
+
+/** The email for one Doc's review: what it is, when it's due, what to look at */
+export function reviewEmail(docKey, d, rv, { agenda = [], reviewedAt = null } = {}) {
+  const url = `${SITE_ORIGIN}/admin/#automations/process${TRACK_OF_DOC[docKey] === 'makeover' ? '' : `/${TRACK_OF_DOC[docKey]}`}`;
+  const overdue = rv.state === 'due';
+  const when = rv.nextYear ? `due now: it’s ${rv.nextYear}` : `${overdue ? 'overdue since' : 'due'} ${fmtDay(rv.dueAt)}`;
+  const heading = `Yearly review: “${d.name}” is ${when}`;
+  const intro = rv.nextYear
+    ? `The Doc is named for last year. Make the ${rv.nextYear} Doc (a copy, renamed), look it over, and Process follows it on its own.`
+    : 'Once a year each process Doc gets a look: does every step still match how the work is done today? Change the Doc, or open it in Process and mark it “Reviewed, no changes”.';
+  const rows = [
+    ['Doc', mail.esc(d.name)],
+    ['Due', mail.esc(rv.nextYear ? 'Now' : fmtDay(rv.dueAt))],
+    ['Last changed', mail.esc(`${d.modifiedTime ? fmtDay(d.modifiedTime) : 'Unknown'}${d.modifiedBy ? ` by ${d.modifiedBy}` : ''}`)],
+    ...(reviewedAt ? [['Last marked reviewed', mail.esc(fmtDay(reviewedAt))]] : []),
+  ];
+  const list = agenda.length ? `<p class="ink" style="margin:14px 0 6px;font-family:${mail.SANS};font-size:14px;font-weight:600;">To look at</p><ul style="margin:0 0 14px;padding-left:20px;font-family:${mail.SANS};font-size:14px;line-height:21px;">${agenda.map((a) => `<li>${mail.esc(a)}</li>`).join('')}</ul>` : '';
+  const html = mail.emailShell({
+    preheader: intro.split('. ')[0],
+    eyebrow: 'Process · yearly review',
+    heading,
+    intro: mail.esc(intro),
+    bodyHtml: mail.panel(mail.facts(rows), { accent: overdue }) + list
+      + `<div>${mail.button('Open it in Process', url, 'primary')}${d.url ? mail.button('Open the Doc', d.url, 'outline') : ''}</div>`,
+    footerHtml: 'It goes to SOARD’s founders (People → Team), once for each yearly review.',
+  });
+  const text = `${heading}\n\n${intro}\n\n${rows.map(([k, v]) => `${k}: ${v.replace(/&amp;/g, '&')}`).join('\n')}${agenda.length ? `\n\nTo look at:\n${agenda.map((a) => `- ${a}`).join('\n')}` : ''}\n\nProcess: ${url}${d.url ? `\nThe Doc: ${d.url}` : ''}`;
+  return { subject: heading, html, text };
+}
+
+/**
+ * On the heartbeat: a Doc whose review is due within NOTICE_DAYS (or overdue)
+ * is emailed to the founders, once per due date. → [{ doc, sent }]. Never throws.
+ */
+export async function maybeTellReviews(env, { now = Date.now(), send = sendEmails } = {}) {
+  if (!env.DB || !emailConfigured(env)) return [];
+  await ensure(env.DB);
+  const [reviews, notices, people] = await Promise.all([readReviews(env.DB), readRow(env.DB, 'review-notices'), peopleRows(env.DB).catch(() => [])]);
+  const to = founderEmails(people);
+  if (!to.length) return [];
+  const out = [];
+  for (const doc of DOCS) {
+    const d = await readRow(env.DB, `doc:${doc}`);
+    if (!d.id || !d.modifiedTime) continue;
+    const rv = reviewOf(d, { reviewedAt: reviews[doc]?.at, yearly: doc !== 'policy', now });
+    if (!rv || (rv.state !== 'due' && (Date.parse(rv.dueAt) - now) / DAY > NOTICE_DAYS)) continue;
+    if (notices[doc]?.dueAt === rv.dueAt) continue;
+    const agenda = [];
+    if (doc === 'policy') {
+      for (const m of retiredMentions(d.sections)) agenda.push(`It names ${m.word} (${m.sections.join(', ')}); ${m.now}.`);
+      const c = (await policyChecks(env, d).catch(() => null))?.approvals;
+      if (c && !c.ok) agenda.push(c.text);
+    } else if (d.steps?.length) {
+      const c = lineCounts(pinSteps(doc, d.steps));
+      if (c.lines - c.auto > 0) agenda.push(`${c.lines - c.auto} of ${c.lines} tasks are done by hand.`);
+    }
+    agenda.push('Every step still matches how the work is done today.');
+    const r = await send(env, { to, ...reviewEmail(doc, { ...d, url: d.url || `https://docs.google.com/document/d/${d.id}/edit` }, rv, { agenda, reviewedAt: reviews[doc]?.at }), tags: [{ name: 'type', value: 'process-review' }] });
+    if (r?.sent) notices[doc] = { dueAt: rv.dueAt, at: new Date(now).toISOString(), sent: r.sent };
+    out.push({ doc, sent: r?.sent || 0 });
+  }
+  if (out.some((x) => x.sent)) await writeRow(env.DB, 'review-notices', notices, now);
+  return out;
+}
+
+// ─── How long the application steps take ──
+
+const median = (xs) => { if (!xs.length) return null; const a = [...xs].sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+
+/**
+ * From the applicants' status history, over the last year → per track
+ * { toReview: { days, n }, toDecision: { days, n } }: median days from
+ * applying to In Review (the onsite visit), and from In Review to Approved or
+ * Denied. TEST accounts left out. Null when there's no history.
+ */
+export async function cycleTimes(DB, { now = Date.now() } = {}) {
+  const base = `SELECT a.account_id, a.name, a.fields, a.created_at, x.at, x.data%s FROM applicant_activity x JOIN applicants a ON a.account_id = x.account_id%s WHERE x.kind = 'status' ORDER BY x.at`;
+  let rows;
+  try {
+    rows = (await DB.prepare(base.replace('%s', ', ap.kind, ap.is_test').replace('%s', ' LEFT JOIN applications ap ON ap.jt_account_id = a.account_id')).all()).results || [];
+  } catch {
+    try { rows = (await DB.prepare(base.replace('%s', '').replace('%s', '')).all()).results || []; } catch { return null; }
+  }
+  const acc = new Map();
+  for (const r of rows) {
+    if (r.is_test || /^\s*test\b/i.test(r.name || '')) continue;
+    let to = null;
+    try { to = JSON.parse(r.data || '{}')?.to || null; } catch { /* none */ }
+    if (!to) continue;
+    let a = acc.get(r.account_id);
+    if (!a) {
+      let fields = {};
+      try { fields = JSON.parse(r.fields || '{}') || {}; } catch { /* none */ }
+      const kind = r.kind ? kindOf(r.kind) : accountKindFor({ birthday: fields.birthday, diagnosis: fields.diagnosis, name: r.name });
+      a = { track: kind === 'organization' ? 'community' : 'makeover', created: r.created_at, review: null, decision: null };
+      acc.set(r.account_id, a);
+    }
+    if (to === 'In Review' && !a.review) a.review = r.at;
+    if ((to === 'Approved' || to === 'Denied') && !a.decision) a.decision = r.at;
+  }
+  const since = now - 365 * DAY;
+  const days = (from, to) => (Date.parse(to) - Date.parse(from)) / DAY;
+  const out = {};
+  for (const t of PROJECT_TRACKS) {
+    const list = [...acc.values()].filter((a) => a.track === t);
+    const toReview = list.filter((a) => a.created && a.review && Date.parse(a.review) >= since && days(a.created, a.review) >= 0).map((a) => days(a.created, a.review));
+    const toDecision = list.filter((a) => a.review && a.decision && Date.parse(a.decision) >= since && days(a.review, a.decision) >= 0).map((a) => days(a.review, a.decision));
+    const pack = (xs) => (xs.length ? { days: Math.round(median(xs)), n: xs.length } : null);
+    out[t] = { toReview: pack(toReview), toDecision: pack(toDecision) };
+  }
+  return out;
 }
 
 // ─── Who's where right now ────────────────
@@ -281,20 +414,23 @@ const bare = (name) => String(name || '').replace(/\s*\(\d{4}\)\s*$/, '').trim()
 /** Applicants at Applied and In Review, by kind (TEST and archived left out), each linked to its page in Applicants */
 async function applicantsNow(DB) {
   const run = (sql) => DB.prepare(sql).all().then((r) => r.results || []);
-  const base = `SELECT a.account_id, a.name, a.status, a.fields%s FROM applicants a%s WHERE a.archived_at IS NULL AND a.status IN ('Applied', 'In Review') ORDER BY a.created_at`;
-  let rows;
-  try {
-    rows = await run(base.replace('%s', ', ap.kind, ap.is_test').replace('%s', ' LEFT JOIN applications ap ON ap.jt_account_id = a.account_id'));
-  } catch {
-    try { rows = await run(base.replace('%s', '').replace('%s', '')); } catch { return null; }
+  // With when each reached its status (the history) and the form's kind; each left out in turn if its table isn't there
+  const stage = ", (SELECT MAX(x.at) FROM applicant_activity x WHERE x.account_id = a.account_id AND x.kind = 'status') AS stage_at";
+  const kinds = [', ap.kind, ap.is_test', ' LEFT JOIN applications ap ON ap.jt_account_id = a.account_id'];
+  const sql = (withStage, withKinds) => `SELECT a.account_id, a.name, a.status, a.fields, a.created_at${withStage ? stage : ''}${withKinds ? kinds[0] : ''} FROM applicants a${withKinds ? kinds[1] : ''} WHERE a.archived_at IS NULL AND a.status IN ('Applied', 'In Review') ORDER BY a.created_at`;
+  let rows = null;
+  for (const [st, k] of [[true, true], [false, true], [true, false], [false, false]]) {
+    try { rows = await run(sql(st, k)); break; } catch { /* try the next */ }
   }
+  if (!rows) return null;
   const out = { makeover: { Applied: [], 'In Review': [] }, community: { Applied: [], 'In Review': [] } };
   for (const r of rows) {
     if (r.is_test || /^\s*test\b/i.test(r.name || '')) continue;
     let fields = {};
     try { fields = JSON.parse(r.fields || '{}') || {}; } catch { /* none */ }
     const kind = r.kind ? kindOf(r.kind) : accountKindFor({ birthday: fields.birthday, diagnosis: fields.diagnosis, name: r.name });
-    out[kind === 'organization' ? 'community' : 'makeover'][r.status].push({ name: r.name || 'A family', href: `#applications/applicants/${r.account_id}` });
+    const since = r.stage_at || (r.status === 'Applied' ? r.created_at : null);
+    out[kind === 'organization' ? 'community' : 'makeover'][r.status].push({ name: r.name || 'A family', href: `#applications/applicants/${r.account_id}`, ...(since ? { since } : {}) });
   }
   return out;
 }
@@ -349,6 +485,17 @@ async function jobsNow(env, { fetchImpl, now }) {
       }
     } catch { /* no mirror yet */ }
     const value = { makeover: {}, community: {} };
+    // When each job reached its status, from the change on (a job first seen has no date: never guessed)
+    const stages = await readRow(env.DB, 'job-stages');
+    const at = new Date(now).toISOString();
+    const nextStages = {};
+    for (const job of jobs) {
+      if (isRehearsalJob(job)) continue;
+      const status = String(job.customFieldValues?.nodes?.[0]?.value || '').trim();
+      const prev = stages[job.id];
+      nextStages[job.id] = { status, since: !prev ? null : prev.status !== status ? at : prev.since || null };
+    }
+    await writeRow(env.DB, 'job-stages', nextStages, now);
     for (const job of jobs) {
       if (isRehearsalJob(job)) continue;
       const status = String(job.customFieldValues?.nodes?.[0]?.value || '').trim();
@@ -356,7 +503,8 @@ async function jobsNow(env, { fetchImpl, now }) {
       const hit = matchProject(job.name, [...kids, ...projects], job.id);
       const community = isProject(hit) || orgJobs.has(job.id);
       const page = hit ? (isProject(hit) ? hit.page : `/kids/${hit.slug}/`) : null;
-      (value[community ? 'community' : 'makeover'][status] ||= []).push({ name: hit?.name || bare(job.name) || 'A job', href: jobtreadJobUrl(job.id), ...(page ? { page } : {}) });
+      const since = nextStages[job.id]?.since || null;
+      (value[community ? 'community' : 'makeover'][status] ||= []).push({ name: hit?.name || bare(job.name) || 'A job', href: jobtreadJobUrl(job.id), ...(page ? { page } : {}), ...(since ? { since } : {}) });
     }
     await writeRow(env.DB, 'jobs', { at: new Date(now).toISOString(), value }, now);
     return value;
