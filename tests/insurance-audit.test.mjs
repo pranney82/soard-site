@@ -1,6 +1,6 @@
 /**
- * The insurance audit: subcontractors paid in a workers' comp policy term and the insurance that covered them
- * (functions/api/_insurance-audit.js, insurance-audit-admin.js)
+ * The insurance audits: subcontractors paid in a policy term (workers' comp from April 11, liability from
+ * November 21) and the insurance that covered them (functions/api/_insurance-audit.js, insurance-audit-admin.js)
  * Run: node --test tests/
  */
 import { test, beforeEach, after } from 'node:test';
@@ -19,16 +19,27 @@ import { onRequestGet, onRequestPost } from '../functions/api/insurance-audit-ad
 const NOW = Date.parse('2026-10-30T15:00:00Z');
 const DAY = 86400e3;
 const T = term(2026);
+const G = term('gl-2025');
 
 // ─── Terms and words ────────────────────────────────────────────────
 
-test('a policy term runs April 11 to April 11; the current one and the two before are shown', () => {
-  assert.deepEqual([T.start, T.end], ['2026-04-11', '2027-04-11']);
+test('workers’ comp runs April 11 to April 11, liability November 21 to November 21; each one’s current term and the two before are shown', () => {
+  assert.deepEqual([T.id, T.policy, T.start, T.end], ['wc-2026', 'wc', '2026-04-11', '2027-04-11']);
   assert.equal(T.label, 'April 11, 2026 to April 11, 2027');
-  assert.equal(termOf('2026-10-30').id, '2026');
-  assert.equal(termOf('2026-04-10').id, '2025');
-  assert.equal(termOf('2026-04-11').id, '2026');
-  assert.deepEqual(termsShown(NOW).map((t) => t.id), ['2026', '2025', '2024']);
+  assert.equal(termOf('2026-10-30').id, 'wc-2026');
+  assert.equal(termOf('2026-04-10').id, 'wc-2025');
+  assert.equal(termOf('2026-04-11').id, 'wc-2026');
+  assert.deepEqual([G.id, G.policy, G.start, G.end, G.name], ['gl-2025', 'gl', '2025-11-21', '2026-11-21', 'general liability']);
+  assert.equal(G.label, 'November 21, 2025 to November 21, 2026');
+  assert.equal(G.short, 'Nov 2025 to Nov 2026');
+  assert.equal(termOf('2026-10-30', 'gl').id, 'gl-2025');
+  assert.equal(termOf('2026-11-20', 'gl').id, 'gl-2025', 'the day before it renews');
+  assert.equal(termOf('2026-11-21', 'gl').id, 'gl-2026', 'the day it renews');
+  assert.equal(termOf('2026-01-05', 'gl').id, 'gl-2025', 'January belongs to the term that began the November before');
+  assert.equal(term('2026').id, 'wc-2026', 'a bare year is workers’ comp');
+  assert.equal(term('../2026'), null);
+  assert.deepEqual(termsShown(NOW).map((t) => t.id), ['wc-2026', 'wc-2025', 'wc-2024', 'gl-2025', 'gl-2024', 'gl-2023']);
+  assert.deepEqual(termsShown(NOW, 'gl').map((t) => t.id), ['gl-2025', 'gl-2024', 'gl-2023']);
   assert.equal(monthsText(['2026-03']), 'March 2026');
   assert.equal(monthsText(['2026-04', '2026-03']), 'March and April 2026');
   assert.equal(monthsText(['2025-12', '2026-01']), 'December 2025 and January 2026');
@@ -50,6 +61,17 @@ test('subcontractor or supplier: each answer says why', () => {
   assert.equal(isSubcontractor({ name: 'Mystery Co', paidBy: ['card'] }).why, 'Paid by card only, like a store');
   assert.equal(isSubcontractor({ name: 'Mystery Co', costTypes: ['Materials'] }).sub, false);
   assert.deepEqual(isSubcontractor({ name: 'Sample Imports LLC', paidBy: ['ach'] }), { sub: true, why: 'Paid by bill, and nothing marks them as a supplier', sure: false });
+});
+
+test('one person with no employees is left out of workers’ comp only: liability still counts them', () => {
+  const solo = { name: 'Solo Painter', trades: ['Painting'], call: { reason: 'no-employees', by: 'holly@example.org' } };
+  assert.deepEqual(isSubcontractor(solo, 'wc'), { sub: false, why: 'One person, no employees (holly)', sure: true });
+  assert.deepEqual(isSubcontractor(solo), isSubcontractor(solo, 'wc'), 'workers’ comp unless said');
+  assert.deepEqual(isSubcontractor(solo, 'gl'), { sub: true, why: 'Does painting (JobTread’s Trades) · one person, no employees, still counted for general liability', sure: true });
+  assert.equal(isSubcontractor({ ...solo, trades: [], materials: true }, 'gl').sub, false, 'the rest still decides: materials only');
+  assert.equal(isSubcontractor({ name: 'X', call: { reason: 'off-site' } }, 'gl').sub, false, 'off site leaves them out of both');
+  assert.equal(isSubcontractor({ name: 'X', call: { reason: 'materials' } }, 'gl').sub, false);
+  assert.equal(isSubcontractor({ name: 'X', call: { reason: 'sub' }, materials: true }, 'gl').sub, true);
 });
 
 test('coverage on a day: a certificate’s dates, JobTread’s end date (a year assumed), an exemption for workers’ comp only', () => {
@@ -156,9 +178,14 @@ test('the audit: who counts, what was paid without workers’ comp, and the head
   assert.equal(tile.files.length, 1, 'one certificate file, both kinds on it');
   assert.equal(a.rows.find((r) => r.name === 'Sample Haulers').why, 'Works off site (holly)');
   assert.deepEqual(a.totals, {
-    subs: 2, paidToSubs: 450000, uninsuredCents: 400000, uninsuredSubs: 2, insuredCents: 50000, insuredSubs: 1, glGapCents: 300000, glGapSubs: 1,
+    subs: 2, paidToSubs: 450000, uninsuredCents: 400000, uninsuredSubs: 2, insuredCents: 50000, insuredSubs: 1,
     leftOut: 2, leftOutCents: 75000, notInJobTread: 1, asked: 0, payments: 5,
   });
+  assert.equal(a.policy.id, 'wc');
+  // The same payments in the liability audit: the tile sub had their own liability all along
+  const g = auditFrom({ term: G, payments, vendors, coverage, calls: new Map([['name:sample haulers', { reason: 'off-site', by: 'holly@example.org' }]]), today: '2026-10-30' });
+  assert.deepEqual([g.policy.id, g.totals.uninsuredCents, g.totals.uninsuredSubs, g.totals.insuredCents], ['gl', 300000, 1, 150000]);
+  assert.deepEqual(g.rows.filter((r) => r.sub).map((r) => [r.name, r.gl.cents]), [['Example Framing Co', 300000], ['Sample Tile', 0]]);
 });
 
 // ─── Read, kept, shown, asked ───────────────────────────────────────
@@ -256,22 +283,37 @@ test('a person’s call, the spreadsheet and the auditor’s packet', async () =
   assert.match(csv, /Sample Tile,Yes,No,"One person, no employees \(holly\)"/);
   const pdf = await PDFDocument.load(await auditPacket(env, a, { now: NOW }));
   assert.equal(pdf.getPageCount(), 2, 'the summary, then the framer’s certificate');
+  assert.equal(pdf.getTitle(), 'Workers’ compensation audit: subcontractors and their insurance, Apr 2026 to Apr 2027');
+  // The liability audit: the same call doesn't leave the tile sub out, and the framer's workers' comp certificate isn't theirs to show
+  const g = await auditFor(env, 'gl-2025', { now: NOW });
+  const gTile = g.rows.find((r) => r.jtId === 'V1');
+  assert.deepEqual([gTile.sub, gTile.why], [true, 'Does tile (JobTread’s Trades) · one person, no employees, still counted for general liability']);
+  assert.equal(g.rows.find((r) => r.jtId === 'V2').files.length, 0, 'a workers’ comp certificate isn’t in the liability audit');
+  const gCsv = auditCsv(g);
+  assert.equal(gCsv.split('\r\n')[0], 'Payee,In JobTread,Counts for the audit,Why,Work,Paid in the term,Payments,First paid,Last paid,Paid without general liability,Months without general liability,General liability on file,Asked for the certificate,Each payment');
+  assert.match(gCsv, /Example Framing Co,Yes,Yes,.*,3450\.00,2,2026-06-05,2026-09-15,3450\.00,June 2026; September 2026,None on file,,2026-06-05 3000\.00 no general liability; 2026-09-15 450\.00 no general liability/);
+  assert.doesNotMatch(gCsv, /workers comp/);
+  const gPdf = await PDFDocument.load(await auditPacket(env, g, { now: NOW }));
+  assert.equal(gPdf.getTitle(), 'General liability audit: subcontractors and their insurance, Nov 2025 to Nov 2026');
+  assert.equal(gPdf.getPageCount(), 1, 'the summary alone: no liability certificate on file');
   await saveCall(DB, { key: 'jt:V1', reason: 'clear' });
   assert.equal((await auditFor(env, '2026', { now: NOW })).rows.find((r) => r.jtId === 'V1').sub, true);
 });
 
-test('asking for the certificate that covered past work: once, to the agent first, noted in JobTread', async () => {
+const bothAudits = async (now = NOW) => [await auditFor(env, 'wc-2026', { now }), await auditFor(env, 'gl-2025', { now })];
+
+test('asking for the certificate that covered past work: once for both audits, to the agent first, noted in JobTread', async () => {
   await buildRun(env, T, { now: NOW });
-  let a = await auditFor(env, '2026', { now: NOW });
+  let a = await bothAudits();
   assert.deepEqual(await askForGaps(env, a, { now: NOW }), { asked: 0, waiting: 'the certificate search' }, 'nothing until the search has run');
   await coverageTable([{ jt_id: 'V9', insured: 'Unrelated Co', kind: 'gl', expires: '2027-01-01' }], new Date(NOW - DAY).toISOString());
   assert.equal((await askForGaps(env, a, { now: NOW })).waiting, 'the certificate search', 'and has had a few days');
   await DB.prepare('UPDATE coi_coverage SET found_at = ?').bind(new Date(NOW - 5 * DAY).toISOString()).run();
   await DB.prepare("CREATE TABLE IF NOT EXISTS vendor_profiles (jt_id TEXT PRIMARY KEY, agent TEXT)").run();
   await DB.prepare("INSERT INTO vendor_profiles (jt_id, agent) VALUES ('V1', ?)").bind(JSON.stringify({ name: 'Pat Agent', email: 'pat@agency.example' })).run();
-  a = await auditFor(env, '2026', { now: NOW });
+  a = await bothAudits();
   const r = await askForGaps(env, a, { now: NOW });
-  assert.equal(r.asked, 1, 'Sample Tile’s agent; the framer has no email on file');
+  assert.equal(r.asked, 1, 'Sample Tile’s agent, once for both audits; the framer has no email on file');
   assert.equal(world.emails.length, 1);
   const m = world.emails[0];
   assert.deepEqual(m.to, ['pat@agency.example']);
@@ -280,34 +322,63 @@ test('asking for the certificate that covered past work: once, to the agent firs
   assert.match(m.text, /workers’ compensation and general liability/);
   assert.doesNotMatch(m.text + m.html, /—/);
   assert.equal(world.comments.length, 1);
-  assert.match(world.comments[0].message, /their insurance agent pat@agency\.example .* Sample Tile’s work in May 2026: \$1,000\.00 was paid/);
+  assert.match(world.comments[0].message, /their insurance agent pat@agency\.example .* Sample Tile’s work in May 2026: \$1,000\.00 was paid to them then with no workers’ compensation and general liability on file, for SOARD’s workers’ compensation audit \(policy term April 11, 2026 to April 11, 2027\) and general liability audit \(policy term November 21, 2025 to November 21, 2026\)/);
   assert.equal(world.comments[0].isVisibleToVendorRoles, false);
-  a = await auditFor(env, '2026', { now: NOW });
-  assert.equal(a.rows.find((x) => x.jtId === 'V1').asked.toEmail, 'pat@agency.example');
+  a = await bothAudits();
+  assert.equal(a[0].rows.find((x) => x.jtId === 'V1').asked.toEmail, 'pat@agency.example');
+  assert.equal(a[1].rows.find((x) => x.jtId === 'V1').asked.toEmail, 'pat@agency.example', 'May is in both terms');
+  assert.equal((await auditFor(env, 'gl-2024', { now: NOW })).rows.find((x) => x.jtId === 'V1')?.asked ?? null, null, 'not in a term May isn’t in');
   assert.equal((await askForGaps(env, a, { now: NOW + DAY })).asked, 0, 'never twice for the same months');
   // The documents sweep emailing them this week: the audit waits
   await DB.prepare("UPDATE vendors SET email = 'office@framing.example' WHERE jt_id = 'V2'").run();
   await DB.prepare("INSERT INTO vendor_asks (jt_id, name, open, asks, asked_at) VALUES ('V2', 'Example Framing Co', 1, 1, ?)").bind(new Date(NOW - DAY).toISOString()).run();
-  a = await auditFor(env, '2026', { now: NOW });
+  a = await bothAudits();
   assert.equal((await askForGaps(env, a, { now: NOW })).asked, 0);
   await DB.prepare("UPDATE vendor_asks SET asked_at = ? WHERE jt_id = 'V2'").bind(new Date(NOW - 9 * DAY).toISOString()).run();
   assert.equal((await askForGaps(env, a, { now: NOW })).asked, 1);
   assert.equal(world.emails.at(-1).subject, 'The certificate of insurance that covered your work in June and September 2026', 'the vendor themselves, with no agent on file');
+  assert.equal(world.emails.length, 2, 'one email to each sub, never one per audit');
+});
+
+test('one audit asks, and the other never asks again for the same months', async () => {
+  await coverageTable([
+    { jt_id: 'V1', insured: 'Sample Tile', kind: 'gl', effective: '2026-01-01', expires: '2027-01-01', insurer: 'Example Mutual' },
+  ], new Date(NOW - 5 * DAY).toISOString());
+  const [wc, gl] = await bothAudits();
+  // Workers' comp alone first: the tile sub had liability, so it asks for workers' comp only
+  assert.equal((await askForGaps(env, wc, { now: NOW })).asked, 1);
+  assert.deepEqual(world.emails[0].to, ['office@tile.example']);
+  assert.match(world.emails[0].text, /certificate \(workers’ compensation\) that was in force then/);
+  assert.match(world.comments[0].message, /for SOARD’s workers’ compensation audit \(policy term April 11, 2026 to April 11, 2027\)\. Replies/);
+  // Their liability lapses on paper (the certificate taken back): May is asked about already, so the liability audit doesn't ask again
+  await DB.prepare("DELETE FROM coi_coverage WHERE jt_id = 'V1'").run();
+  const gl2 = await auditFor(env, 'gl-2025', { now: NOW });
+  assert.equal(gl2.rows.find((r) => r.jtId === 'V1').gl.cents, 100000);
+  assert.equal((await askForGaps(env, gl2, { now: NOW + DAY })).asked, 0);
+  assert.equal(world.emails.length, 1);
+  assert.ok(gl, 'both audits read');
 });
 
 test('the vendor’s own ask, and its words for one kind of insurance', () => {
-  const m = askEmail({ vendorName: 'Sample Tile', months: ['2026-03'], kinds: ['wc'], termLabel: T.label });
+  const m = askEmail({ vendorName: 'Sample Tile', months: ['2026-03'], kinds: ['wc'] });
   assert.equal(m.subject, 'The certificate of insurance that covered your work in March 2026');
   assert.match(m.text, /certificate \(workers’ compensation\) that was in force then/);
   assert.match(m.text, /If you had no employees/);
+  assert.doesNotMatch(m.text, /policy term/, 'one email serves both audits, so it names neither term');
+  const g = askEmail({ vendorName: 'Sample Tile', months: ['2026-03'], kinds: ['gl'] });
+  assert.match(g.text, /certificate \(general liability\) that was in force then/);
+  assert.doesNotMatch(g.text, /no employees/, 'liability: no workers’ comp way out');
 });
 
-test('the heartbeat reads the current term about daily', async () => {
+test('the heartbeat reads each policy’s current term about daily, one per heartbeat, then asks over both', async () => {
   const first = await maybeRunInsuranceAudit(env, { now: NOW });
-  assert.equal(first.term, '2026');
+  assert.deepEqual(first, { term: 'wc-2026', waiting: 'the other audit’s payments' });
+  const second = await maybeRunInsuranceAudit(env, { now: NOW + 60e3 });
+  assert.deepEqual(second, { term: 'gl-2025', payments: 3, asked: 0, waiting: 'the certificate search' });
   assert.equal(await maybeRunInsuranceAudit(env, { now: NOW + 3600e3 }), null, 'not again within the day');
-  assert.ok(await maybeRunInsuranceAudit(env, { now: NOW + DAY }));
-  assert.equal((await readRun(DB, '2026')).builtAt, new Date(NOW + DAY).toISOString());
+  assert.equal((await maybeRunInsuranceAudit(env, { now: NOW + DAY })).term, 'wc-2026');
+  assert.equal((await maybeRunInsuranceAudit(env, { now: NOW + DAY + 60e3 })).term, 'gl-2025');
+  assert.equal((await readRun(DB, 'wc-2026')).builtAt, new Date(NOW + DAY).toISOString());
 });
 
 test('the admin route: the audit, its downloads, a call, and only the terms shown', async () => {
@@ -315,12 +386,21 @@ test('the admin route: the audit, its downloads, a call, and only the terms show
   let r = await onRequestGet(ctx('?term=2026'));
   let j = await r.json();
   assert.equal(j.success, true);
-  assert.equal(j.audit.term.id, '2026');
-  assert.equal(j.terms.length, 3);
+  assert.equal(j.audit.term.id, 'wc-2026', 'a bare year is workers’ comp');
+  assert.equal(j.terms.length, 6, 'three terms for each audit');
+  assert.equal((await (await onRequestGet(ctx(''))).json()).audit.term.id, 'wc-2026');
+  j = await (await onRequestGet(ctx('?policy=gl'))).json();
+  assert.deepEqual([j.audit.term.id, j.audit.policy.id, j.audit.policy.tab], ['gl-2025', 'gl', 'Liability']);
   assert.equal((await (await onRequestGet(ctx('?term=2019'))).json()).error, 'Pick one of the terms shown');
-  r = await onRequestGet(ctx('?term=2026&download=csv'));
+  assert.equal((await (await onRequestGet(ctx('?term=gl-2019'))).json()).error, 'Pick one of the terms shown');
+  r = await onRequestGet(ctx('?term=wc-2026&download=csv'));
   assert.equal(r.headers.get('content-type'), 'text/csv; charset=utf-8');
-  assert.match(r.headers.get('content-disposition'), /attachment; filename="SOARD subcontractors 2026-04-11 to 2027-04-11\.csv"/);
+  assert.match(r.headers.get('content-disposition'), /attachment; filename="SOARD workers comp audit 2026-04-11 to 2027-04-11\.csv"/);
+  r = await onRequestGet(ctx('?term=gl-2025&download=csv'));
+  assert.match(r.headers.get('content-disposition'), /attachment; filename="SOARD liability audit 2025-11-21 to 2026-11-21\.csv"/);
+  assert.match(await r.text(), /^Payee,.*Paid without general liability/);
+  r = await onRequestGet(ctx('?term=gl-2025&download=packet'));
+  assert.match(r.headers.get('content-disposition'), /filename="SOARD liability audit 2025-11-21 to 2026-11-21\.pdf"/);
   r = await onRequestGet(ctx('?term=2026&download=packet'));
   assert.equal(r.headers.get('content-type'), 'application/pdf');
   assert.ok((await r.arrayBuffer()).byteLength > 500);

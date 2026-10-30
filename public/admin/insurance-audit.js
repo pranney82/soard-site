@@ -1,13 +1,16 @@
 /**
  * Admin → Job Costs → Insurance audit: the subcontractors SOARD paid in a
- * workers' comp policy term, and the insurance that covered each payment
+ * policy term, and the insurance that covered each payment, for either
+ * audit: workers' comp (April 11 to April 11) or liability (November 21 to
+ * November 21)
  * ===========================================================================
  * Over /api/insurance-audit-admin (functions/api/_insurance-audit.js).
  * Nothing here has to be pressed: payments are read every day, certificates
  * arrive from the certificate search, and subs with a gap are emailed on
- * their own. People look, download the spreadsheet or the auditor's packet,
- * and can make a call on a payee the site counted wrong (works off site,
- * one person with no employees, sells materials only).
+ * their own. People pick the audit and its term, look, download its
+ * spreadsheet or its auditor's packet, and can make a call on a payee the
+ * site counted wrong (works off site, sells materials only, and for workers'
+ * comp, one person with no employees).
  */
 
 import { h, htm, useState, useEffect, useRef } from './vendor.js';
@@ -36,6 +39,13 @@ const month = (ym) => new Date(`${ym}-15T12:00:00`).toLocaleDateString('en-US', 
 const months = (list) => list.map(month).join(', ');
 const FROM = { jobtread: 'JobTread', ramp: 'Ramp', mercury: 'Mercury' };
 const LEAVE = [['off-site', 'Leave out: works off site'], ['no-employees', 'Leave out: one person, no employees'], ['materials', 'Leave out: sells materials only']];
+// "One person, no employees" decides the workers' comp audit only: liability still counts them
+const leaveFor = (policy) => LEAVE.filter(([k]) => policy === 'wc' || k !== 'no-employees');
+const AUDITS = [['wc', 'Workers’ comp'], ['gl', 'Liability']];
+const LEAD = {
+  wc: 'Every subcontractor SOARD paid in the workers’ compensation policy term, and the insurance that covered each payment. The premium auditor adds what was paid to a subcontractor without workers’ compensation to SOARD’s payroll.',
+  gl: 'Every subcontractor SOARD paid in the general liability policy term, and the liability insurance of their own that covered each payment. The premium auditor can charge SOARD’s policy for work by a subcontractor without it.',
+};
 
 const CSS = `
 .ia { display: grid; gap: 1rem; }
@@ -43,9 +53,10 @@ const CSS = `
 .ia-top h3 { margin: 0 0 .25rem; font-size: var(--fs-lg); }
 .ia-lead { margin: 0; max-width: 62ch; font-size: var(--fs-sm); color: var(--color-text-secondary); line-height: 1.5; }
 .ia-downloads { display: flex; flex-wrap: wrap; gap: .5rem; }
-.ia-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.ia-pick { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.ia-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
 .ia-list { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); }
-.ia-head, .ia-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.3fr) 44px; gap: 1rem; align-items: start; padding: .85rem 1rem; }
+.ia-head, .ia-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1.7fr) minmax(0, 1.5fr) 44px; gap: 1rem; align-items: start; padding: .85rem 1rem; }
 .ia-head { padding: .5rem 1rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border); }
 .ia-item + .ia-item { border-top: 1px solid var(--color-border); }
 .ia-cell { display: flex; flex-direction: column; align-items: flex-start; gap: .25rem; min-width: 0; font-size: var(--fs-sm); }
@@ -69,7 +80,7 @@ const CSS = `
 .ia-out > summary { cursor: pointer; padding: .75rem 0; font-weight: 600; min-height: 44px; display: flex; align-items: center; gap: .5rem; }
 .ia-out > summary:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); border-radius: 6px; }
 .ia-foot { margin: 0; font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.5; }
-@media (max-width: 1100px) { .ia-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1100px) { .ia-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ia-stats > :last-child { grid-column: 1 / -1; } }
 @media (max-width: 860px) {
   .ia-head { display: none; }
   .ia-row { grid-template-columns: minmax(0, 1fr) 44px; gap: .5rem .75rem; }
@@ -96,14 +107,21 @@ export function InsuranceAudit({ addToast = () => {} }) {
   const [termId, setTermId] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const load = async (id) => {
+  // query: '?term=gl-2025', or '?policy=gl' for that audit's current term
+  const load = async (query = '') => {
     setErr(null);
-    const j = await call(id ? `?term=${encodeURIComponent(id)}` : '');
-    if (!j.success) { setErr(j.error || 'Couldn’t put the audit together'); return; }
+    setBusy(true);
+    const j = await call(query);
+    setBusy(false);
+    if (!j.success) {
+      setErr(j.error || 'Couldn’t put the audit together');
+      if (data) addToast(j.error || 'Couldn’t put the audit together', 'error');
+      return;
+    }
     setData(j);
     setTermId(j.audit.term.id);
   };
-  useEffect(() => { load(null); }, []);
+  useEffect(() => { load(); }, []);
 
   const decide = async (r, reason) => {
     setBusy(true);
@@ -116,12 +134,15 @@ export function InsuranceAudit({ addToast = () => {} }) {
 
   if (err && !data) {
     return html`<div class="notice notice--warn"><div class="notice__body"><strong>Couldn’t put the audit together:</strong> ${err}</div>
-      <div class="notice__actions"><button class="btn btn-ghost" onClick=${() => load(termId)}>Try again</button></div></div>`;
+      <div class="notice__actions"><button class="btn btn-ghost" onClick=${() => load(termId ? `?term=${encodeURIComponent(termId)}` : '')}>Try again</button></div></div>`;
   }
   if (!data) return html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
 
   const a = data.audit;
   const t = a.totals;
+  const k = a.term.policy || 'wc';
+  const kind = a.policy?.name || 'workers’ compensation';
+  const terms = data.terms.filter((x) => (x.policy || 'wc') === k);
   const subs = a.rows.filter((r) => r.sub);
   const out = a.rows.filter((r) => !r.sub);
   const q = `?term=${a.term.id}`;
@@ -137,36 +158,40 @@ export function InsuranceAudit({ addToast = () => {} }) {
       <div class="ia-top">
         <div>
           <h3 id="ia-title">Insurance audit</h3>
-          <p class="ia-lead">Every subcontractor SOARD paid in the workers’ compensation policy term, and the insurance that covered each payment. The premium auditor adds what was paid to a subcontractor without workers’ compensation to SOARD’s payroll.</p>
+          <p class="ia-lead">${LEAD[k]}</p>
         </div>
         <div class="ia-downloads">
           <a class="btn btn-ghost" href=${`${API}${q}&download=csv`} download>Spreadsheet</a>
           <a class="btn btn-primary" href=${`${API}${q}&download=packet`} download>Auditor’s packet (PDF)</a>
         </div>
       </div>
-      <div class="seg" role="tablist" aria-label="Policy term">
-        ${data.terms.map((x) => html`<button role="tab" aria-selected=${x.id === a.term.id} disabled=${busy} onClick=${() => { if (x.id !== a.term.id) { setData((d) => ({ ...d })); load(x.id); } }}>${x.short}</button>`)}
+      <div class="ia-pick">
+        <div class="seg" role="tablist" aria-label="Audit">
+          ${AUDITS.map(([p, label]) => html`<button role="tab" aria-selected=${p === k} disabled=${busy} onClick=${() => { if (p !== k) load(`?policy=${p}`); }}>${label}</button>`)}
+        </div>
+        <div class="seg" role="tablist" aria-label="Policy term">
+          ${terms.map((x) => html`<button role="tab" aria-selected=${x.id === a.term.id} disabled=${busy} onClick=${() => { if (x.id !== a.term.id) load(`?term=${encodeURIComponent(x.id)}`); }}>${x.short}</button>`)}
+        </div>
       </div>
       ${notes.map((n) => html`<div class="notice notice--warn"><div class="notice__body">${n}</div></div>`)}
       <div class="ia-stats">
-        <div class="stat"><span class="stat__label">Paid to subcontractors without insurance</span><span class="stat__value">${usd(t.uninsuredCents)}</span>
-          <span class=${`stat__note ${t.uninsuredSubs ? 'is-warn' : ''}`}>${t.uninsuredSubs ? `${t.uninsuredSubs} subcontractor${t.uninsuredSubs === 1 ? '' : 's'} without workers’ comp on those days` : 'Every payment had workers’ comp'}</span></div>
+        <div class="stat"><span class="stat__label">Paid to subcontractors without ${kind}</span><span class="stat__value">${usd(t.uninsuredCents)}</span>
+          <span class=${`stat__note ${t.uninsuredSubs ? 'is-warn' : ''}`}>${t.uninsuredSubs ? `${t.uninsuredSubs} subcontractor${t.uninsuredSubs === 1 ? '' : 's'} without it on those days` : `Every payment had ${kind}`}</span></div>
         <div class="stat"><span class="stat__label">Paid to insured subcontractors</span><span class="stat__value">${usd(t.insuredCents)}</span><span class="stat__note">${t.subs} subcontractor${t.subs === 1 ? '' : 's'} paid in all</span></div>
-        <div class="stat"><span class="stat__label">Without general liability</span><span class="stat__value">${usd(t.glGapCents)}</span><span class="stat__note">${t.glGapSubs ? `${t.glGapSubs} subcontractor${t.glGapSubs === 1 ? '' : 's'}` : 'None'}</span></div>
         <div class="stat"><span class="stat__label">Not counted</span><span class="stat__value">${usd(t.leftOutCents)}</span><span class="stat__note">${t.leftOut} payee${t.leftOut === 1 ? '' : 's'}: stores, suppliers and the ones left out</span></div>
       </div>
       ${subs.length ? html`<div class="ia-list" role="list" aria-label="Subcontractors paid">
-        <div class="ia-head" aria-hidden="true"><span>Subcontractor</span><span>Paid in the term</span><span>Workers’ comp</span><span>General liability</span><span>Certificate</span><span></span></div>
-        ${subs.map((r) => html`<${Row} key=${r.key} r=${r} busy=${busy} onDecide=${decide} />`)}
+        <div class="ia-head" aria-hidden="true"><span>Subcontractor</span><span>Paid in the term</span><span>${a.policy?.title || 'Workers’ compensation'}</span><span>Certificate</span><span></span></div>
+        ${subs.map((r) => html`<${Row} key=${r.key} r=${r} k=${k} busy=${busy} onDecide=${decide} />`)}
       </div>` : html`<div class="notice"><div class="notice__body">No subcontractor payments in ${a.term.short} yet.</div></div>`}
       ${out.length ? html`<details class="ia-out">
         <summary>Paid and not counted as subcontractors <span class="count">${out.length}</span></summary>
         <div class="ia-list" role="list" aria-label="Paid and not counted">
-          <div class="ia-head" aria-hidden="true"><span>Payee</span><span>Paid in the term</span><span>Why</span><span></span><span></span><span></span></div>
-          ${out.map((r) => html`<${Row} key=${r.key} r=${r} busy=${busy} onDecide=${decide} />`)}
+          <div class="ia-head" aria-hidden="true"><span>Payee</span><span>Paid in the term</span><span>Why</span><span></span><span></span></div>
+          ${out.map((r) => html`<${Row} key=${r.key} r=${r} k=${k} busy=${busy} onDecide=${decide} />`)}
         </div>
       </details>` : null}
-      <p class="ia-foot">Payments read from JobTread, Ramp and Mercury ${when(a.builtAt)}, and again every day. Certificates come from the staff inboxes and JobTread as they’re found. A subcontractor paid on days none covers is emailed for it once, a week later.</p>
+      <p class="ia-foot">Payments read from JobTread, Ramp and Mercury ${when(a.builtAt)}, and again every day. Certificates come from the staff inboxes and JobTread as they’re found. A subcontractor paid on days none covers is emailed for it once, a week later: one email for what both audits are missing.</p>
     </section>`;
 }
 
@@ -178,15 +203,17 @@ function Cover({ c }) {
   return html`<span class="tag tag--warn">${usd(c.cents)} not covered</span><span class="ia-sub">${months(c.months)}</span>`;
 }
 
-function Row({ r, busy, onDecide }) {
+function Row({ r, k, busy, onDecide }) {
   const [open, setOpen] = useState(false);
   const items = [
-    ...(r.sub ? LEAVE.filter(([k]) => r.call?.reason !== k) : r.call?.reason === 'sub' ? [] : [['sub', 'Count as a subcontractor']]),
+    ...(r.sub ? leaveFor(k).filter(([x]) => r.call?.reason !== x) : r.call?.reason === 'sub' ? [] : [['sub', 'Count as a subcontractor']]),
     ...(r.call ? [['clear', `Undo “${r.call.label}”`]] : []),
   ];
+  const gap = r[k].cents;
   const cert = r.asked ? `Asked ${day(r.asked.sentAt)}${r.asked.toKind === 'agent' ? ', their agent' : ''}`
     : r.files.length ? `${r.files.length === 1 ? 'Certificate' : `${r.files.length} certificates`} on file`
-    : (r.wc.cents || r.gl.cents) && !r.email && !r.agentEmail ? 'None, and no email in JobTread to ask' : r.wc.cents || r.gl.cents ? 'None yet' : 'On file in JobTread';
+    : gap && !r.email && !r.agentEmail ? 'None, and no email in JobTread to ask' : gap ? 'None yet' : 'On file in JobTread';
+  const title = k === 'gl' ? 'General liability' : 'Workers’ comp';
   return html`<div class="ia-item" role="listitem">
     <div class="ia-row">
       <div class="ia-cell">
@@ -196,17 +223,16 @@ function Row({ r, busy, onDecide }) {
       </div>
       <div class="ia-cell" data-label="Paid in the term"><span class="ia-num">${usd(r.paidCents)}</span><span class="ia-sub">${r.first === r.last ? day(r.first) : `${day(r.first)} to ${day(r.last)}`}</span></div>
       ${r.sub ? html`
-        <div class="ia-cell" data-label="Workers’ comp"><${Cover} c=${r.wc} /></div>
-        <div class="ia-cell" data-label="General liability"><${Cover} c=${r.gl} /></div>
+        <div class="ia-cell" data-label=${title}><${Cover} c=${r[k]} /></div>
         <div class="ia-cell" data-label="Certificate"><span class="ia-sub">${cert}</span></div>`
-      : html`<div class="ia-cell" data-label="Why"><span class="ia-sub">${r.why}</span></div><div class="ia-cell"></div><div class="ia-cell"></div>`}
-      ${items.length ? html`<${More} label=${`More for ${r.name}`} items=${items} disabled=${busy} onPick=${(k) => onDecide(r, k)} />` : html`<span></span>`}
+      : html`<div class="ia-cell" data-label="Why"><span class="ia-sub">${r.why}</span></div><div class="ia-cell"></div>`}
+      ${items.length ? html`<${More} label=${`More for ${r.name}`} items=${items} disabled=${busy} onPick=${(x) => onDecide(r, x)} />` : html`<span></span>`}
     </div>
     ${open ? html`<div class="ia-pays"><table>
-      <thead><tr><th>Paid</th><th class="num">Amount</th><th>From</th><th>Workers’ comp</th><th>General liability</th></tr></thead>
+      <thead><tr><th>Paid</th><th class="num">Amount</th><th>From</th><th>${title}</th></tr></thead>
       <tbody>${r.payments.map((p) => html`<tr>
         <td>${day(p.date)}${p.dateFrom === 'bill' ? ' (bill date)' : ''}</td><td class="num">${usd(p.cents)}</td><td>${FROM[p.source] || p.source}${p.ref ? `, ${p.ref}` : ''}</td>
-        <td>${p.wc.ok ? (p.wc.exempt ? 'Exempt' : 'Covered') : 'Not covered'}</td><td>${p.gl.ok ? 'Covered' : 'Not covered'}</td></tr>`)}</tbody>
+        <td>${p[k].ok ? (p[k].exempt ? 'Exempt' : 'Covered') : 'Not covered'}</td></tr>`)}</tbody>
     </table></div>` : null}
   </div>`;
 }

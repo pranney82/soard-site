@@ -1305,6 +1305,11 @@ const MAP = { t: 'SOARD', children: [
             const looking = b.firstPass.mail && b.firstPass.jt ? '' : `Still looking: ${plural(b.waiting, 'email or file', 'emails and files')} to read. `;
             return ON(`${looking}${filed}${other}.`, b.at);
           } },
+        { t: 'Insurance audits', s: 'live', k: 'schedule',
+          when: 'Each policy’s current term about daily on the heartbeat; the asks right after.',
+          does: 'Puts together both premium audits, each on its own policy’s term: workers’ compensation (April 11 to April 11) and general liability (November 21 to November 21). Every payment to a vendor in the term is counted once from JobTread bills and payments, Ramp’s paid bills and Mercury; each payee is a subcontractor or not, with the reason (a person can change it in Job Costs → Insurance audit); and each payment is checked against the certificates found and JobTread’s insurance dates for that day. “One person, no employees” leaves a sub out of workers’ comp only. A sub paid on days no certificate covers is emailed a week later for the one that did, or their insurance agent is: one email for whatever both audits are missing, never twice for the same months, noted on the vendor in JobTread, and only after the certificate search has had a few days. The spreadsheet and the auditor’s packet (a summary, then every certificate) download for each audit.',
+          touches: ['JobTread', 'Ramp', 'Mercury', 'Resend', 'D1'], where: 'functions/api/_insurance-audit.js, insurance-audit-admin.js; public/admin/insurance-audit.js',
+          info: 'Read-only in JobTread, Ramp and Mercury apart from the notes. D1 keeps each term’s payments, the calls people make and the asks sent.' },
       ]},
       { t: 'The bank', children: [
         { t: 'Mercury connection', s: 'live', k: 'link',

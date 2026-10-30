@@ -2,33 +2,37 @@
  * /api/insurance-audit-admin — Admin → Job Costs → Insurance audit (public/admin/insurance-audit.js)
  * ===========================================================================
  * Behind Cloudflare Access like every admin route; a change must come from
- * the admin itself (_middleware.js). See ./_insurance-audit.js.
+ * the admin itself (_middleware.js). See ./_insurance-audit.js. Two audits,
+ * each on its own policy's term: workers' comp ('wc-2026', from April 11) and
+ * liability ('gl-2025', from November 21).
  *
- * GET ?term=<year>                    → { success, audit, terms }   the term starting April 11 of that year (default: now's)
- * GET ?term=<year>&download=csv       → the spreadsheet
- * GET ?term=<year>&download=packet    → the auditor's packet (PDF)
+ * GET ?policy=wc|gl                   → { success, audit, terms }   that policy's current term (default: workers' comp)
+ * GET ?term=<id>                      → { success, audit, terms }   one of the terms shown (a bare year is workers' comp)
+ * GET ?term=<id>&download=csv         → that audit's spreadsheet
+ * GET ?term=<id>&download=packet      → that audit's packet for the auditor (PDF)
  * POST { action: 'call', term, key, jtId?, name, reason }   a person's call on a payee (CALLS, or 'clear') → { success, audit, terms }
  */
-import { auditFor, auditCsv, auditPacket, saveCall, termOf, termsShown, todayEastern } from './_insurance-audit.js';
+import { auditFor, auditCsv, auditPacket, saveCall, term, termOf, termsShown, todayEastern, POLICIES } from './_insurance-audit.js';
 
 const headers = { 'Cache-Control': 'no-store' };
 const ok = (body = {}) => Response.json({ success: true, ...body }, { headers });
 const fail = (error, status = 400) => Response.json({ success: false, error }, { status, headers });
 
-function termIdOf(v, now = Date.now()) {
+/** The term asked for, when it's one shown; else the policy's current term → id or null */
+function termIdOf(v, policy, now = Date.now()) {
   const ids = termsShown(now).map((t) => t.id);
-  const id = String(v || termOf(todayEastern(now)).id);
-  return ids.includes(id) ? id : null;
+  const id = v ? term(v)?.id : termOf(todayEastern(now), POLICIES[policy] ? policy : 'wc').id;
+  return id && ids.includes(id) ? id : null;
 }
 
 export async function onRequestGet(context) {
   const { env } = context;
   try {
     const p = new URL(context.request.url).searchParams;
-    const id = termIdOf(p.get('term'));
+    const id = termIdOf(p.get('term'), p.get('policy'));
     if (!id) return fail('Pick one of the terms shown');
     const audit = await auditFor(env, id, { waitUntil: context.waitUntil?.bind(context) });
-    const name = `SOARD subcontractors ${audit.term.start} to ${audit.term.end}`;
+    const name = `SOARD ${POLICIES[audit.term.policy].file} audit ${audit.term.start} to ${audit.term.end}`;
     if (p.get('download') === 'csv') {
       return new Response(auditCsv(audit), { headers: { ...headers, 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}.csv"`, 'X-Content-Type-Options': 'nosniff' } });
     }
@@ -50,7 +54,7 @@ export async function onRequestPost(context) {
   try { b = await context.request.json(); } catch { return fail('Send that again'); }
   try {
     if (b.action !== 'call') return fail('Unknown action');
-    const id = termIdOf(b.term);
+    const id = termIdOf(b.term, null);
     if (!id) return fail('Pick one of the terms shown');
     await saveCall(env.DB, { key: String(b.key || ''), jtId: b.jtId ? String(b.jtId).slice(0, 64) : null, name: b.name || '', reason: b.reason, by: context.data?.userEmail || 'admin' });
     return ok({ audit: await auditFor(env, id), terms: termsShown() });

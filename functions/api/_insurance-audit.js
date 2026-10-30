@@ -1,12 +1,16 @@
 /**
- * The insurance audit: what SOARD paid its subcontractors in a workers'
- * compensation policy term, and the insurance that covered each payment
+ * The insurance audits: what SOARD paid its subcontractors in a policy term,
+ * and the insurance that covered each payment
  * ===========================================================================
- * Once a year the workers' comp carrier's premium auditor asks for the
- * vendor payments and a certificate for every subcontractor paid in the
- * policy term (April 11 to April 11). A sub paid while they had no workers'
- * comp is added to SOARD's payroll and charged for (the 2025-26 audit: one
- * uninsured sub, every dollar paid to them counted). This puts it together:
+ * Two policies are audited once a year, each on its own term (POLICIES):
+ * workers' compensation (April 11 to April 11) and the general liability in
+ * the package policy (November 21 to November 21). Each premium auditor asks
+ * for the vendor payments and a certificate for every subcontractor paid in
+ * the term. A sub paid while they had no workers' comp is added to SOARD's
+ * payroll and charged for (the 2025-26 audit: one uninsured sub, every dollar
+ * paid to them counted); work by a sub with no liability insurance of their
+ * own can be charged to SOARD's liability policy the same way. This puts
+ * each audit together:
  *
  *  1. Payments in the term, each counted once: JobTread vendor bills and the
  *     payments recorded on them, Ramp's paid bills (one with a JobTread copy
@@ -18,21 +22,24 @@
  *     person's call here (works off site, one person with no employees,
  *     sells materials), JobTread's Documents and Materials only fields and
  *     Trades, how the bill was coded, a certificate SOARD already has, a
- *     store's name, paid only by card.
- *  3. Coverage on each payment's date, workers' comp and general liability
- *     apart: the certificates found (D1 coi_coverage, ./_coi-backfill.js) and
+ *     store's name, paid only by card. "One person, no employees" leaves a
+ *     sub out of the workers' comp audit only: liability still counts them.
+ *  3. Coverage on each payment's date, the audit's own kind of insurance:
+ *     the certificates found (D1 coi_coverage, ./_coi-backfill.js) and
  *     JobTread's Liability Expires and Workers' Comp Expires (with no start
  *     date the policy is taken to begin a year before it ends, and says so).
- *  4. Admin → Job Costs → Insurance audit shows it; the spreadsheet and the
- *     auditor's packet (a summary, then each certificate) download there.
- *  5. Nothing to press: every day the current term is read again, and a sub
- *     paid on days no certificate covers is emailed once for the certificate
- *     that covered that work (their insurance agent when the trade-partner
- *     page has one). Replies go to info@, in Peter's and Holly's inboxes,
+ *  4. Admin → Job Costs → Insurance audit shows either audit; its spreadsheet
+ *     and its auditor's packet (a summary, then each certificate) download
+ *     there.
+ *  5. Nothing to press: every day each policy's current term is read again,
+ *     and a sub paid on days no certificate covers is emailed once for the
+ *     certificate that covered that work (their insurance agent when the
+ *     trade-partner page has one): one email for both audits, never twice for
+ *     the same months. Replies go to info@, in Peter's and Holly's inboxes,
  *     which the certificate search reads. Each ask is noted on the vendor in
- *     JobTread and never repeats for the same months; with no email on file
- *     the sub is only listed. Asking waits until the certificate search has
- *     had a few days, so nobody is asked for a certificate SOARD already has.
+ *     JobTread; with no email on file the sub is only listed. Asking waits
+ *     until the certificate search has had a few days, so nobody is asked for
+ *     a certificate SOARD already has.
  *
  * The payments read from JobTread, Ramp and Mercury are kept per term in D1
  * (insurance_audit_runs) so the page opens at once; coverage, the calls and
@@ -50,8 +57,12 @@ import { vendorKey, vendorLikeness, dollars } from './_spend-match.js';
 import { vendorNote, STATE_KEY as VENDORS_KEY } from './_vendors.js';
 
 const DAY = 86400e3;
-export const TERM_STARTS = { month: 4, day: 11 };   // the workers' comp policy renews April 11
-export const TERMS_SHOWN = 3;                       // this term and the two before it
+/** The two audited policies, each renewing on its own day. plain: words for the spreadsheet; file: for the download's name */
+export const POLICIES = {
+  wc: { id: 'wc', starts: { month: 4, day: 11 }, name: 'workers’ compensation', title: 'Workers’ compensation', tab: 'Workers’ comp', plain: 'workers comp', file: 'workers comp' },
+  gl: { id: 'gl', starts: { month: 11, day: 21 }, name: 'general liability', title: 'General liability', tab: 'Liability', plain: 'general liability', file: 'liability' },
+};
+export const TERMS_SHOWN = 3;                       // each policy's term now and the two before it
 const CURRENT_EVERY_MS = 20 * 60 * 60 * 1000;       // the current term's payments, read again
 const PAST_EVERY_MS = 7 * DAY;                      // a past term's
 const SAME_PAYMENT_DAYS = 10;                       // a Mercury payment this close to one already counted, same vendor and amount, is that one
@@ -62,10 +73,10 @@ export const REPLY_TO = 'info@soardcharity.com';
 const MONEY_TOOLS = /\b(ramp|mercury|american express|amex|chase|capital one|wells fargo|bank of america|irs|internal revenue|department of revenue|dept of revenue|gusto|adp|paychex|intuit|quickbooks|stripe|paypal|venmo|zelle|bill\.com|payroll|sunshine on a ranney day|soard)\b/i;
 const STORES = /\b(home depot|lowe'?s|amazon|wayfair|target|ikea|walmart|costco|sam'?s club|ferguson|floor (and|&) decor|sherwin[- ]williams|pottery barn|west elm|crate (and|&) barrel|cb2|best buy|hobby lobby|home ?goods|kirkland'?s|michaels|overstock|menards|ace hardware|lumber|supply|supplies|wholesale)\b/i;
 
-/** A person's call on a payee, from the row's menu: whether they count, and the words for why */
+/** A person's call on a payee, from the row's menu: whether they count, and the words for why (only: the one audit it decides) */
 export const CALLS = {
   'off-site': { sub: false, label: 'Works off site' },
-  'no-employees': { sub: false, label: 'One person, no employees' },
+  'no-employees': { sub: false, label: 'One person, no employees', only: 'wc' },
   materials: { sub: false, label: 'Sells materials only' },
   sub: { sub: true, label: 'A subcontractor' },
 };
@@ -114,31 +125,47 @@ export function monthsText(months) {
   return years.size === 1 ? `${joined} ${[...years][0]}` : joined;
 }
 
-const startOf = (year) => `${year}-${String(TERM_STARTS.month).padStart(2, '0')}-${String(TERM_STARTS.day).padStart(2, '0')}`;
-/** One policy term: from its start day up to (not including) the next term's */
-export function term(year) {
-  const y = Number(year);
-  const start = startOf(y);
-  const end = startOf(y + 1);
+const pad = (n) => String(n).padStart(2, '0');
+const startOf = (policy, year) => `${year}-${pad(POLICIES[policy].starts.month)}-${pad(POLICIES[policy].starts.day)}`;
+/**
+ * One policy term: from its start day up to (not including) the next term's.
+ * id: 'wc-2026' (workers' comp from April 11, 2026), 'gl-2025' (liability
+ * from November 21, 2025); a bare year is workers' comp. → null for anything else
+ */
+export function term(id, policy = 'wc') {
+  const m = /^(?:(wc|gl)-)?(\d{4})$/.exec(String(id ?? ''));
+  if (!m) return null;
+  const p = m[1] || policy;
+  const y = Number(m[2]);
+  const start = startOf(p, y);
+  const end = startOf(p, y + 1);
   const mon = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', year: 'numeric' });
-  return { id: String(y), start, end, label: `${longDay(start)} to ${longDay(end)}`, short: `${mon(start)} to ${mon(end)}` };
+  return { id: `${p}-${y}`, policy: p, year: y, name: POLICIES[p].name, start, end, label: `${longDay(start)} to ${longDay(end)}`, short: `${mon(start)} to ${mon(end)}` };
 }
-export const termOf = (day) => term(day >= startOf(Number(day.slice(0, 4))) ? Number(day.slice(0, 4)) : Number(day.slice(0, 4)) - 1);
-export const termsShown = (now = Date.now()) => { const cur = Number(termOf(todayEastern(now)).id); return Array.from({ length: TERMS_SHOWN }, (_, i) => term(cur - i)); };
+/** The policy's term a day falls in */
+export const termOf = (day, policy = 'wc') => { const y = Number(day.slice(0, 4)); return term(day >= startOf(policy, y) ? y : y - 1, policy); };
+/** Each policy's current term and the two before it, workers' comp first; or one policy's */
+export function termsShown(now = Date.now(), policy = null) {
+  return (policy ? [policy] : Object.keys(POLICIES)).flatMap((p) => { const cur = termOf(todayEastern(now), p).year; return Array.from({ length: TERMS_SHOWN }, (_, i) => term(cur - i, p)); });
+}
+/** Does a month (YYYY-MM) fall in the term? The month it starts and the one it ends both do */
+const monthIn = (ym, t) => ym >= t.start.slice(0, 7) && ym <= addDays(t.end, -1).slice(0, 7);
 
 // ─── Subcontractor or supplier ──────────────────────────────────────
 
 /**
- * Does this payee count for the workers' comp audit, and why, in words a
- * person (or the auditor) can check. company: { name, docs (JobTread's
- * Documents field), materials, trades, call ({ reason }), paidBy ['card' |
- * 'ach' | 'check' | 'wire' | 'bill'], categories (Ramp's coding), costTypes
- * (JobTread's), hasCertificate } → { sub, why, sure }
+ * Does this payee count for the audit of that policy ('wc' | 'gl'), and why,
+ * in words a person (or the auditor) can check. company: { name, docs
+ * (JobTread's Documents field), materials, trades, call ({ reason }), paidBy
+ * ['card' | 'ach' | 'check' | 'wire' | 'bill'], categories (Ramp's coding),
+ * costTypes (JobTread's), hasCertificate } → { sub, why, sure }
  */
-export function isSubcontractor(company = {}) {
+export function isSubcontractor(company = {}, policy = 'wc') {
   const c = company;
   const call = c.call && CALLS[c.call.reason];
-  if (call) return { sub: call.sub, why: `${call.label}${c.call.by ? ` (${String(c.call.by).split('@')[0]})` : ''}`, sure: true };
+  if (call && (!call.only || call.only === policy)) return { sub: call.sub, why: `${call.label}${c.call.by ? ` (${String(c.call.by).split('@')[0]})` : ''}`, sure: true };
+  // A call for the other audit only ("one person, no employees" is workers' comp's): the rest decides, and says so
+  if (call) { const rest = isSubcontractor({ ...c, call: null }, policy); return rest.sub ? { ...rest, why: `${rest.why} · ${call.label.toLowerCase()}, still counted for ${POLICIES[policy].name}` } : rest; }
   if (c.docs === 'Not needed') return { sub: false, why: 'Marked “Not needed” in JobTread', sure: true };
   if (c.materials || c.docs === 'W-9 only') return { sub: false, why: 'Sells materials only (JobTread)', sure: true };
   const trades = (c.trades || []).filter((t) => t && t !== 'Materials and supplies');
@@ -164,6 +191,9 @@ const coverOf = (r) => ({
   eachCents: r.each_cents ?? null, aggregateCents: r.aggregate_cents ?? null,
 });
 
+/** Is this certificate of that kind ('wc' | 'gl')? An exemption counts for workers' comp */
+const ofKind = (c, kind) => (kind === 'wc' ? c.kind === 'wc' || c.exempt : c.kind === 'gl');
+
 /** The certificates (and JobTread's end dates) that are this payee's: by JobTread vendor, or by the insured's name when the certificate has no vendor */
 export function coverageFor({ jtId, name, fields }, rows) {
   const mine = rows.filter((r) => (jtId && r.jt_id === jtId) || (!r.jt_id && vendorLikeness(r.insured, name) === 1)).map(coverOf);
@@ -179,7 +209,7 @@ export function coverageFor({ jtId, name, fields }, rows) {
  * counts for workers' comp. → { ok, exempt?, assumed?, insurer, policyNo, effective, expires, source }
  */
 export function coverageOn(certs, day, kind) {
-  const fits = certs.filter((c) => (kind === 'wc' ? c.kind === 'wc' || c.exempt : c.kind === 'gl')).map((c) => {
+  const fits = certs.filter((c) => ofKind(c, kind)).map((c) => {
     const from = c.effective || (c.expires ? yearBefore(c.expires) : null);
     const covers = (from || c.expires || c.exempt) && (!from || from <= day) && (!c.expires || day <= c.expires);
     return covers ? { ...c, from } : null;
@@ -306,12 +336,15 @@ export function combinePayments({ term, jtBills = [], jtPayments = [], rampBills
 const groupKey = (p) => (p.jtId ? `jt:${p.jtId}` : `name:${vendorKey(p.payee) || String(p.payee || '').toLowerCase()}`);
 
 /**
- * The term's subcontractors, their payments and coverage. payments: from
- * combinePayments; vendors: [{ jtId, name, email, emails, fields }];
- * coverage: coi_coverage rows; calls: Map(key → { reason, by, at });
- * asks: [{ jtId, months, toEmail, toKind, sentAt }]
+ * The term's subcontractors, their payments and coverage, for its policy's
+ * audit (the headline, the order and the totals are that policy's; each
+ * payment says both kinds, for the asks). payments: from combinePayments;
+ * vendors: [{ jtId, name, email, emails, fields }]; coverage: coi_coverage
+ * rows; calls: Map(key → { reason, by, at }); asks: [{ jtId, months,
+ * toEmail, toKind, sentAt }]
  */
 export function auditFrom({ term, payments = [], vendors = [], coverage = [], calls = new Map(), asks = [], agents = new Map(), sources = {}, builtAt = null, today }) {
+  const k = term.policy || 'wc';
   const byJt = new Map(vendors.map((v) => [v.jtId, v]));
   const groups = new Map();
   for (const p of payments) {
@@ -329,16 +362,17 @@ export function auditFrom({ term, payments = [], vendors = [], coverage = [], ca
       name, docs: v?.fields?.docs, materials: v?.fields?.materials, trades: v?.fields?.trades, call,
       paidBy: [...new Set(g.list.map((p) => p.method || 'bill'))], categories: [...new Set(g.list.flatMap((p) => p.categories || []))],
       costTypes: [...new Set(g.list.flatMap((p) => p.costTypes || []))], hasCertificate: certs.some((c) => c.source !== 'jobtread' || c.expires),
-    });
-    const pays = g.list.map((p) => ({ date: p.date, cents: p.cents, source: p.source, ref: p.ref, dateFrom: p.dateFrom, wc: coverageOn(certs, p.date, 'wc'), gl: coverageOn(certs, p.date, 'gl') }));
-    const gap = (k) => {
-      const off = pays.filter((p) => !p[k].ok);
-      return { cents: sum(off, (p) => p.cents), months: [...new Set(off.map((p) => p.date.slice(0, 7)))].sort(), exempt: k === 'wc' && pays.some((p) => p.wc.exempt), assumed: pays.some((p) => p[k].assumed) };
+    }, k);
+    const pays = g.list.map((p) => ({ key: p.key, date: p.date, cents: p.cents, source: p.source, ref: p.ref, dateFrom: p.dateFrom, wc: coverageOn(certs, p.date, 'wc'), gl: coverageOn(certs, p.date, 'gl') }));
+    const gap = (kind) => {
+      const off = pays.filter((p) => !p[kind].ok);
+      return { cents: sum(off, (p) => p.cents), months: [...new Set(off.map((p) => p.date.slice(0, 7)))].sort(), exempt: kind === 'wc' && pays.some((p) => p.wc.exempt), assumed: pays.some((p) => p[kind].assumed) };
     };
     const latest = pays.at(-1);
-    const shown = (k) => (latest?.[k]?.ok ? latest[k] : [...certs].filter((c) => (k === 'wc' ? c.kind === 'wc' || c.exempt : c.kind === 'gl')).sort((a, b) => String(b.expires).localeCompare(String(a.expires)))[0] || null);
-    const files = [...new Map(certs.filter((c) => c.jtFileId).map((c) => [c.fileHash || c.jtFileId, c])).values()];
-    const myAsks = g.jtId ? asks.filter((a) => a.jtId === g.jtId && a.term === term.id) : [];
+    const shown = (kind) => (latest?.[kind]?.ok ? latest[kind] : [...certs].filter((c) => ofKind(c, kind)).sort((a, b) => String(b.expires).localeCompare(String(a.expires)))[0] || null);
+    // This audit's certificates, each file once
+    const files = [...new Map(certs.filter((c) => c.jtFileId && ofKind(c, k)).map((c) => [c.fileHash || c.jtFileId, c])).values()];
+    const myAsks = g.jtId ? asks.filter((a) => a.jtId === g.jtId && a.months.some((m) => monthIn(m, term))) : [];
     const agent = g.jtId ? agents.get(g.jtId) : null;
     rows.push({
       key: g.key, jtId: g.jtId, name, inJobTread: !!v, sub: cls.sub, why: cls.why, sure: cls.sure, call: call ? { reason: call.reason, label: CALLS[call.reason]?.label || call.reason, by: call.by, at: call.at } : null,
@@ -348,16 +382,16 @@ export function auditFrom({ term, payments = [], vendors = [], coverage = [], ca
       asked: myAsks.sort((a, b) => b.sentAt.localeCompare(a.sentAt))[0] || null,
     });
   }
-  rows.sort((a, b) => (b.sub - a.sub) || (b.wc.cents - a.wc.cents) || (b.paidCents - a.paidCents) || a.name.localeCompare(b.name));
+  rows.sort((a, b) => (b.sub - a.sub) || (b[k].cents - a[k].cents) || (b.paidCents - a.paidCents) || a.name.localeCompare(b.name));
   const subs = rows.filter((r) => r.sub);
   const out = rows.filter((r) => !r.sub);
   return {
-    term, today, builtAt, sources,
+    term, policy: { ...POLICIES[k] }, today, builtAt, sources,
+    // uninsured: paid on days without this audit's kind of insurance
     totals: {
       subs: subs.length, paidToSubs: sum(subs, (r) => r.paidCents),
-      uninsuredCents: sum(subs, (r) => r.wc.cents), uninsuredSubs: subs.filter((r) => r.wc.cents > 0).length,
-      insuredCents: sum(subs, (r) => r.paidCents - r.wc.cents), insuredSubs: subs.filter((r) => r.wc.cents < r.paidCents).length,
-      glGapCents: sum(subs, (r) => r.gl.cents), glGapSubs: subs.filter((r) => r.gl.cents > 0).length,
+      uninsuredCents: sum(subs, (r) => r[k].cents), uninsuredSubs: subs.filter((r) => r[k].cents > 0).length,
+      insuredCents: sum(subs, (r) => r.paidCents - r[k].cents), insuredSubs: subs.filter((r) => r[k].cents < r.paidCents).length,
       leftOut: out.length, leftOutCents: sum(out, (r) => r.paidCents), notInJobTread: rows.filter((r) => !r.inJobTread).length,
       asked: subs.filter((r) => r.asked).length, payments: payments.length,
     },
@@ -491,7 +525,7 @@ export async function readRun(DB, termId) {
   const r = await DB.prepare('SELECT * FROM insurance_audit_runs WHERE term = ?').bind(String(termId)).first();
   return r ? { term: r.term, builtAt: r.built_at, ...parseJson(r.data, { payments: [], sources: {} }) } : null;
 }
-export const runIsStale = (run, t, now = Date.now()) => !run || now - Date.parse(run.builtAt) > (t.id === termOf(todayEastern(now)).id ? CURRENT_EVERY_MS : PAST_EVERY_MS);
+export const runIsStale = (run, t, now = Date.now()) => !run || now - Date.parse(run.builtAt) > (t.id === termOf(todayEastern(now), t.policy).id ? CURRENT_EVERY_MS : PAST_EVERY_MS);
 
 export async function readCalls(DB) {
   await ensureAuditSchema(DB);
@@ -511,6 +545,7 @@ async function readAgents(DB) {
 /** One term's audit, from its kept run (read now when there's none) → audit; a stale run is read again after (waitUntil) */
 export async function auditFor(env, termId, { now = Date.now(), fetchImpl = fetch, waitUntil = null } = {}) {
   const t = term(termId);
+  if (!t) throw Object.assign(new Error('Pick one of the terms shown'), { status: 400 });
   let run = await readRun(env.DB, t.id);
   if (!run) run = await buildRun(env, t, { now, fetchImpl });
   else if (runIsStale(run, t, now) && waitUntil) waitUntil(buildRun(env, t, { now, fetchImpl }).catch((e) => console.error('[insurance-audit] refresh', e.message)));
@@ -532,72 +567,100 @@ export async function saveCall(DB, { key, jtId = null, name = '', reason, by }) 
 
 const kindsWord = (kinds) => (kinds.length === 2 ? 'workers’ compensation and general liability' : kinds[0] === 'wc' ? 'workers’ compensation' : 'general liability');
 
-/** The email → { subject, html, text } */
-export function askEmail({ vendorName, months, kinds, termLabel, agent = false }) {
+/** The email → { subject, html, text }. It names no policy term: one email asks for both audits */
+export function askEmail({ vendorName, months, kinds, agent = false }) {
   const when = monthsText(months);
   const what = kindsWord(kinds);
   const subject = agent ? `The certificate of insurance that covered ${vendorName}’s work in ${when}` : `The certificate of insurance that covered your work in ${when}`;
   const lead = agent
-    ? `${vendorName} named you as their insurance agent. Sunshine on a Ranney Day, a nonprofit that builds bedrooms and bathrooms for children with disabilities, paid them for work in ${when}, and our insurance company’s audit of the policy term ${termLabel} asks for the certificate that covered that work.`
-    : `Thank you for your work with Sunshine on a Ranney Day. Our insurance company is auditing the policy term ${termLabel}, and we don’t have a certificate of insurance on file that covered your work in ${when}.`;
+    ? `${vendorName} named you as their insurance agent. Sunshine on a Ranney Day, a nonprofit that builds bedrooms and bathrooms for children with disabilities, paid them for work in ${when}, and our insurance audit asks for the certificate that covered that work.`
+    : `Thank you for your work with Sunshine on a Ranney Day. Our insurance companies audit what we pay subcontractors each year, and we don’t have a certificate of insurance on file that covered your work in ${when}.`;
   const ask = agent
     ? `Could you reply to this email with the certificate (${what}) that was in force then, with Sunshine on a Ranney Day as certificate holder?`
-    : `Could you reply to this email with the certificate (${what}) that was in force then? One from your insurance agent is perfect. If you had no employees and no workers’ compensation policy, just reply and say so.`;
+    : `Could you reply to this email with the certificate (${what}) that was in force then? One from your insurance agent is perfect.${kinds.includes('wc') ? ' If you had no employees and no workers’ compensation policy, just reply and say so.' : ''}`;
   const html = emailShell({ preheader: `The certificate that covered the work in ${when}`, heading: 'A certificate of insurance, please', bodyHtml: paragraphs(lead) + paragraphs(ask) + paragraphs('Thank you for helping us keep our records complete.') });
   return { subject, html, text: [lead, '', ask, '', 'Thank you for helping us keep our records complete.', '', 'Sunshine on a Ranney Day'].join('\n') };
 }
 
 /**
- * The current term's subs paid on days no certificate covers: each emailed
- * once per set of months, a note on their JobTread vendor. → { asked, waiting? }
+ * The current terms' subs paid on days no certificate covers (audits: each
+ * policy's audit, or one): one email per sub for whatever both audits are
+ * missing, never twice for the same months, a note on their JobTread vendor.
+ * → { asked, waiting? }
  */
-export async function askForGaps(env, audit, { now = Date.now(), fetchImpl = fetch } = {}) {
+export async function askForGaps(env, audits, { now = Date.now(), fetchImpl = fetch } = {}) {
   const out = { asked: 0 };
   // The certificate search first: nobody is asked for a certificate SOARD already has in an inbox
   const first = await env.DB.prepare('SELECT MIN(found_at) AS first FROM coi_coverage').first().catch(() => null);
   if (!first?.first || now - Date.parse(first.first) < SEARCH_GRACE_DAYS * DAY) return { ...out, waiting: 'the certificate search' };
-  const done = new Set((await readAsks(env.DB)).map((a) => a.key));
+  const asked = new Map();   // jtId → the months already asked about, by either audit
+  for (const a of await readAsks(env.DB)) { if (!asked.has(a.jtId)) asked.set(a.jtId, new Set()); for (const m of a.months) asked.get(a.jtId).add(m); }
   const recent = new Map(await env.DB.prepare('SELECT jt_id, open, asked_at FROM vendor_asks').all().then((r) => (r.results || []).map((x) => [x.jt_id, x]), () => []));
   const cutoff = addDays(todayEastern(now), -ASK_AFTER_DAYS);
-  for (const r of audit.rows) {
+  // Each sub's payments some audit has no certificate for: a payment both audits share is one, missing both kinds
+  const subs = new Map();
+  for (const audit of [].concat(audits)) {
+    const k = audit.term.policy || 'wc';
+    for (const r of audit.rows) {
+      if (!r.sub || !r.jtId) continue;
+      if (!subs.has(r.jtId)) subs.set(r.jtId, { row: r, off: new Map() });
+      const s = subs.get(r.jtId);
+      for (const p of r.payments) {
+        if (p.date > cutoff || p[k].ok || asked.get(r.jtId)?.has(p.date.slice(0, 7))) continue;
+        const e = s.off.get(p.key || `${p.date}:${p.cents}`) || { ...p, kinds: new Set(), terms: new Map() };
+        e.kinds.add(k);
+        e.terms.set(audit.term.id, audit.term);
+        s.off.set(p.key || `${p.date}:${p.cents}`, e);
+      }
+    }
+  }
+  for (const [jtId, { row: r, off: offMap }] of subs) {
     if (out.asked >= ASKS_PER_RUN) break;
-    if (!r.sub || !r.jtId) continue;
-    const off = r.payments.filter((p) => p.date <= cutoff && (!p.wc.ok || !p.gl.ok));
+    const off = [...offMap.values()];
     if (!off.length) continue;
     const months = [...new Set(off.map((p) => p.date.slice(0, 7)))].sort();
-    const kinds = ['wc', 'gl'].filter((k) => off.some((p) => !p[k].ok));
-    const key = `${audit.term.id}:${r.jtId}:${months.join(',')}`;
-    if (done.has(key)) continue;
+    const kinds = ['wc', 'gl'].filter((k) => off.some((p) => p.kinds.has(k)));
+    const order = Object.keys(POLICIES);
+    const terms = [...new Map(off.flatMap((p) => [...p.terms])).values()].sort((a, b) => order.indexOf(a.policy) - order.indexOf(b.policy));
     // Already being asked for their papers this week by the documents sweep (./_vendors.js): this waits
-    const v = recent.get(r.jtId);
+    const v = recent.get(jtId);
     if (v?.open && v.asked_at && now - Date.parse(v.asked_at) < 7 * DAY) continue;
     const to = r.agentEmail || (isEmail(r.email) ? r.email : null);
     if (!to) continue;   // no one to ask: it stays on the list
     const toKind = r.agentEmail ? 'agent' : 'vendor';
-    const mail = askEmail({ vendorName: r.name, months, kinds, termLabel: audit.term.label, agent: toKind === 'agent' });
+    const mail = askEmail({ vendorName: r.name, months, kinds, agent: toKind === 'agent' });
     const sent = await sendEmails(env, { to: [to], subject: mail.subject, html: mail.html, text: mail.text, replyTo: REPLY_TO, tags: [{ name: 'type', value: 'insurance-audit' }] }).catch(() => ({ sent: 0 }));
     if (!sent?.sent) continue;
     const at = new Date(now).toISOString();
     await env.DB.prepare('INSERT OR REPLACE INTO insurance_audit_asks (key, term, jt_id, months, to_email, to_kind, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(key, audit.term.id, r.jtId, JSON.stringify(months), to, toKind, at).run();
+      .bind(`${jtId}:${months.join(',')}`, terms.map((t) => t.id).join(','), jtId, JSON.stringify(months), to, toKind, at).run();
     const gapCents = sum(off, (p) => p.cents);
-    await vendorNote(env, r.jtId, 'Asked for a past certificate of insurance',
-      `SOARD emailed ${toKind === 'agent' ? 'their insurance agent ' : ''}${to} on ${longDay(todayEastern(now))} for the certificate that covered ${r.name}’s work in ${monthsText(months)}: ${dollars(gapCents)} was paid to them then with no ${kindsWord(kinds)} on file, for SOARD’s workers’ compensation audit (policy term ${audit.term.label}). Replies go to ${REPLY_TO}.`, fetchImpl);
+    const audited = terms.map((t) => `${t.name} audit (policy term ${t.label})`).join(' and ');
+    await vendorNote(env, jtId, 'Asked for a past certificate of insurance',
+      `SOARD emailed ${toKind === 'agent' ? 'their insurance agent ' : ''}${to} on ${longDay(todayEastern(now))} for the certificate that covered ${r.name}’s work in ${monthsText(months)}: ${dollars(gapCents)} was paid to them then with no ${kindsWord(kinds)} on file, for SOARD’s ${audited}. Replies go to ${REPLY_TO}.`, fetchImpl);
     out.asked++;
   }
   return out;
 }
 
-/** The heartbeat: the current term read again about daily, then the asks. Never throws. */
+/**
+ * The heartbeat: each policy's current term read again about daily (one per
+ * heartbeat, so one call never reads everything twice), then one ask pass
+ * over both audits once both have been read. Never throws.
+ */
 export async function maybeRunInsuranceAudit(env, { now = Date.now(), fetchImpl = fetch } = {}) {
   try {
     if (!env.DB || !env.JOBTREAD_GRANT_KEY) return null;
-    const t = termOf(todayEastern(now));
-    const run = await readRun(env.DB, t.id);
-    if (!runIsStale(run, t, now)) return null;
-    await buildRun(env, t, { now, fetchImpl });
-    const audit = await auditFor(env, t.id, { now, fetchImpl });
-    return { term: t.id, payments: audit.totals.payments, ...(await askForGaps(env, audit, { now, fetchImpl })) };
+    const terms = Object.keys(POLICIES).map((p) => termOf(todayEastern(now), p));
+    const runs = await Promise.all(terms.map((t) => readRun(env.DB, t.id)));
+    const i = terms.findIndex((t, n) => runIsStale(runs[n], t, now));
+    if (i < 0) return null;
+    await buildRun(env, terms[i], { now, fetchImpl });
+    const read = { term: terms[i].id };
+    if (runs.some((r, n) => n !== i && !r)) return { ...read, waiting: 'the other audit’s payments' };
+    const audits = [];
+    for (const t of terms) audits.push(await auditFor(env, t.id, { now, fetchImpl }));
+    return { ...read, payments: audits[i].totals.payments, ...(await askForGaps(env, audits, { now, fetchImpl })) };
   } catch (e) {
     console.error('[insurance-audit]', e.message);
     return null;
@@ -609,16 +672,17 @@ export async function maybeRunInsuranceAudit(env, { now = Date.now(), fetchImpl 
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const coverText = (c) => (!c ? 'None on file' : `${c.exempt ? 'Exempt' : c.insurer || 'Insurer not read'}${c.policyNo ? `, policy ${c.policyNo}` : ''}${c.effective ? `, ${c.effective}` : ''}${c.expires ? ` to ${c.expires}` : ''}${c.source === 'jobtread' ? ' (end date from JobTread)' : ''}`);
 
-/** One row per payee: whether they count, why, what was paid and what covered it → CSV text */
+/** One row per payee: whether they count for this audit, why, what was paid and what covered it (this audit's kind) → CSV text */
 export function auditCsv(audit) {
+  const k = audit.term.policy || 'wc';
+  const w = POLICIES[k].plain;
   const head = ['Payee', 'In JobTread', 'Counts for the audit', 'Why', 'Work', 'Paid in the term', 'Payments', 'First paid', 'Last paid',
-    'Paid without workers comp', 'Months without workers comp', 'Paid without general liability', 'Months without general liability', 'Workers comp on file', 'General liability on file', 'Asked for the certificate', 'Each payment'];
+    `Paid without ${w}`, `Months without ${w}`, `${w[0].toUpperCase()}${w.slice(1)} on file`, 'Asked for the certificate', 'Each payment'];
   const money = (c) => (c / 100).toFixed(2);
   const lines = audit.rows.map((r) => [
     r.name, r.inJobTread ? 'Yes' : 'No', r.sub ? 'Yes' : 'No', r.why, r.trades.join('; '), money(r.paidCents), r.count, r.first, r.last,
-    money(r.wc.cents), r.wc.months.map(monthName).join('; '), money(r.gl.cents), r.gl.months.map(monthName).join('; '),
-    coverText(r.wc.shown), coverText(r.gl.shown), r.asked ? `${r.asked.sentAt.slice(0, 10)} to ${r.asked.toEmail}` : '',
-    r.payments.map((p) => `${p.date} ${money(p.cents)}${p.wc.ok ? '' : ' no workers comp'}${p.gl.ok ? '' : ' no general liability'}`).join('; '),
+    money(r[k].cents), r[k].months.map(monthName).join('; '), coverText(r[k].shown), r.asked ? `${r.asked.sentAt.slice(0, 10)} to ${r.asked.toEmail}` : '',
+    r.payments.map((p) => `${p.date} ${money(p.cents)}${p[k].ok ? '' : ` no ${w}`}`).join('; '),
   ]);
   return [head, ...lines].map((l) => l.map(csvCell).join(',')).join('\r\n') + '\r\n';
 }
@@ -672,10 +736,12 @@ async function certificateFiles(env, row, coiTag, fetchImpl) {
 }
 
 /**
- * The packet for the premium auditor: the term's summary and every
+ * The packet for that policy's premium auditor: the term's summary and every
  * subcontractor (paid, covered or not), then each one's certificates. → PDF bytes
  */
 export async function auditPacket(env, audit, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const k = audit.term.policy || 'wc';
+  const P = POLICIES[k];
   const coiTag = (await readState(env.DB, VENDORS_KEY).catch(() => ({})))?.jt?.tags?.coi || null;
   const subs = audit.rows.filter((r) => r.sub);
   // The certificates first, so the summary can say on which page each one starts
@@ -693,7 +759,7 @@ export async function auditPacket(env, audit, { fetchImpl = fetch, now = Date.no
   }
 
   const doc = await PDFDocument.create();
-  doc.setTitle(`Subcontractors and their insurance, ${audit.term.short}`);
+  doc.setTitle(`${P.title} audit: subcontractors and their insurance, ${audit.term.short}`);
   doc.setAuthor('Sunshine on a Ranney Day');
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -701,7 +767,7 @@ export async function auditPacket(env, audit, { fetchImpl = fetch, now = Date.no
 
   // Lay the summary out once to count its pages, then draw it with the page numbers
   const t = audit.totals;
-  const cols = [{ h: 'Subcontractor', w: 150 }, { h: 'Paid in the term', w: 82, right: true }, { h: 'Workers’ compensation', w: 118 }, { h: 'General liability', w: 118 }, { h: 'Certificate', w: width - 468 }];
+  const cols = [{ h: 'Subcontractor', w: 160 }, { h: 'Paid in the term', w: 86, right: true }, { h: P.title, w: 190 }, { h: 'Certificate', w: width - 436 }];
   const cover = (c) => (c.cents === 0 ? (c.shown ? `Covered: ${coverText(c.shown)}` : 'Covered') : `Not covered: ${dollars(c.cents)} in ${monthsText(c.months)}`);
   const layout = (startPages) => {
     const ops = [];
@@ -711,13 +777,12 @@ export async function auditPacket(env, audit, { fetchImpl = fetch, now = Date.no
     const text = (s, { size = 10, f = font, x = M, color = INK, gap = 4 } = {}) => {
       for (const line of wrap(f, s, size, width - (x - M))) { need(size + gap); ops.push({ page, kind: 'text', s: line, x, y: y - size, size, f, color }); y -= size + gap; }
     };
-    text('Subcontractors and their insurance', { size: 18, f: bold, gap: 8 });
-    text(`Sunshine on a Ranney Day · workers’ compensation policy term ${audit.term.label}`, { size: 11, color: MUTE });
+    text(`${P.title} audit: subcontractors and their insurance`, { size: 18, f: bold, gap: 8 });
+    text(`Sunshine on a Ranney Day · ${P.name} policy term ${audit.term.label}`, { size: 11, color: MUTE });
     text(`Prepared ${longDay(todayEastern(now))} from SOARD’s payments (JobTread bills, Ramp and Mercury) and the certificates on file.`, { size: 9, color: MUTE, gap: 14 });
     text(`Subcontractors paid: ${t.subs}, ${dollars(t.paidToSubs)} in all.`, { size: 11 });
-    text(`Paid to subcontractors with workers’ compensation: ${dollars(t.insuredCents)}.`, { size: 11 });
-    text(`Paid to subcontractors without workers’ compensation: ${dollars(t.uninsuredCents)}${t.uninsuredSubs ? ` (${subs.filter((r) => r.wc.cents).map((r) => r.name).join(', ')})` : ''}.`, { size: 11, f: t.uninsuredCents ? bold : font });
-    text(`Paid on days without general liability: ${dollars(t.glGapCents)}.`, { size: 11, gap: 14 });
+    text(`Paid to subcontractors with ${P.name}: ${dollars(t.insuredCents)}.`, { size: 11 });
+    text(`Paid to subcontractors without ${P.name}: ${dollars(t.uninsuredCents)}${t.uninsuredSubs ? ` (${subs.filter((r) => r[k].cents).map((r) => r.name).join(', ')})` : ''}.`, { size: 11, f: t.uninsuredCents ? bold : font, gap: 14 });
     const table = (rows, colsList, cells) => {
       const head = () => { need(16); let x = M; for (const c of colsList) { ops.push({ page, kind: 'text', s: c.h, x, y: y - 8, size: 8, f: bold, color: MUTE }); x += c.w; } y -= 14; ops.push({ page, kind: 'line', y }); };
       head();
@@ -738,7 +803,7 @@ export async function auditPacket(env, audit, { fetchImpl = fetch, now = Date.no
     const at = new Map();
     let p = startPages + 1;
     for (const a of attach) { at.set(a.row.key, p); p += a.docs.reduce((n, d) => n + d.pages, 0); }
-    if (subs.length) table(subs, cols, (r) => [r.name, dollars(r.paidCents), cover(r.wc), cover(r.gl), at.has(r.key) ? `Page ${at.get(r.key)}` : 'None on file']);
+    if (subs.length) table(subs, cols, (r) => [r.name, dollars(r.paidCents), cover(r[k]), at.has(r.key) ? `Page ${at.get(r.key)}` : 'None on file']);
     const out = audit.rows.filter((r) => !r.sub);
     if (out.length) {
       text('Paid, and not counted as subcontractors', { size: 12, f: bold, gap: 8 });
@@ -755,7 +820,7 @@ export async function auditPacket(env, audit, { fetchImpl = fetch, now = Date.no
     if (o.kind === 'line') pg.drawLine({ start: { x: M, y: o.y }, end: { x: PAGE[0] - M, y: o.y }, thickness: 0.5, color: LINE });
     else pg.drawText(o.s, { x: o.x, y: o.y, size: o.size, font: o.f, color: o.color });
   }
-  coverPages.forEach((pg, i) => pg.drawText(plain(`Sunshine on a Ranney Day · ${audit.term.short} · page ${i + 1}`), { x: M, y: M - 20, size: 7.5, font, color: MUTE }));
+  coverPages.forEach((pg, i) => pg.drawText(plain(`Sunshine on a Ranney Day · ${P.name} · ${audit.term.short} · page ${i + 1}`), { x: M, y: M - 20, size: 7.5, font, color: MUTE }));
   // Then each certificate, as it is
   for (const a of attach) {
     for (const d of a.docs) {

@@ -20,8 +20,9 @@
  *   Setup      which Mercury card or account is the store's, Mercury
  *              categories, the receipt inbox, card limits from budgets
  *   Ramp bills the old one-line "Makeover COGS" bills, split by code
- *   Insurance audit  subs paid in the workers' comp policy term and what
- *              covered each payment (./insurance-audit.js)
+ *   Insurance audit  subs paid in each policy term (workers' comp from
+ *              April 11, liability from November 21) and what covered each
+ *              payment (./insurance-audit.js)
  * An open job also has the budget builder: a budget from past close-outs
  * for what it will build, beside its JobTread budget.
  */
