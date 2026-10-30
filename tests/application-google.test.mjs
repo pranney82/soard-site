@@ -9,17 +9,20 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { googleSuggest, googlePlace, googleVerify, spend, GOOGLE_MONTHLY } from '../functions/api/_google.js';
+import { ALERT_EMAILS } from '../functions/api/_applications.js';
 import * as applyApi from '../functions/api/apply.js';
 
 const KEY = 'test-key-not-real';
 let env;
 let asked;
+let emails; // what went to Resend
 let google; // what the fake Google answers: { suggest, place, verify } → body, or a number (an HTTP error)
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 beforeEach(async () => {
-  env = { DB: await createD1(), GOOGLE_MAPS_KEY: KEY };
+  env = { DB: await createD1(), GOOGLE_MAPS_KEY: KEY, RESEND_API_KEY: 're_test' };
   asked = [];
+  emails = [];
   google = {
     suggest: { suggestions: [
       { placePrediction: { placeId: 'ChIJ_home_one_0001', structuredFormat: { mainText: { text: '3167 Main Street' }, secondaryText: { text: 'Duluth, GA, USA' } } } },
@@ -40,6 +43,7 @@ beforeEach(async () => {
     const u = new URL(String(url));
     const headers = new Headers(init.headers || {});
     const body = init.body ? JSON.parse(init.body) : null;
+    if (u.host === 'api.resend.com') { emails.push(...body); return json(body.map((_, i) => ({ id: `em_${emails.length}_${i}` }))); }
     const which = u.host === 'addressvalidation.googleapis.com' ? 'verify' : u.pathname.endsWith(':autocomplete') ? 'suggest' : u.host === 'places.googleapis.com' ? 'place' : 'other';
     asked.push({ which, url: u.href, key: headers.get('X-Goog-Api-Key'), mask: headers.get('X-Goog-FieldMask'), body });
     if (which === 'other') return json({ type: 'FeatureCollection', features: [] }); // OpenStreetMap: nothing
@@ -96,13 +100,46 @@ test('the Postal Service: known, a unit number may be missing, or check it; USPS
 });
 
 test('never past the free allowance: at the cap each kind stops asking Google for the rest of the month', async () => {
-  const may = new Date('2026-11-03T12:00:00Z');
+  const nov = new Date('2026-11-03T12:00:00Z');
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS google_usage (month TEXT NOT NULL, sku TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (month, sku))').run();
   await env.DB.prepare("INSERT INTO google_usage (month, sku, n) VALUES ('2026-11', 'verify', ?)").bind(GOOGLE_MONTHLY.verify - 1).run();
-  assert.equal(await spend(env.DB, 'verify', may), true, 'the last one inside the allowance');
-  assert.equal(await spend(env.DB, 'verify', may), false, 'then no more this month');
-  assert.equal(await spend(env.DB, 'verify', new Date('2026-12-01T00:00:00Z')), true, 'a new month starts over');
+  assert.equal(await spend(env, 'verify', nov), true, 'the last one inside the allowance');
+  assert.equal(await spend(env, 'verify', nov), false, 'then no more this month');
+  assert.equal(await spend(env, 'verify', nov), false);
+  assert.equal(await spend(env, 'verify', new Date('2026-12-01T00:00:00Z')), true, 'a new month starts over');
   assert.ok(GOOGLE_MONTHLY.suggest < 10000 && GOOGLE_MONTHLY.place < 10000 && GOOGLE_MONTHLY.verify < 5000, 'every cap short of Google’s free allowance');
+});
+
+test('Peter hears by email at 80% of a month’s limit and when it runs out, once each', async () => {
+  const nov = new Date('2026-11-10T12:00:00Z');
+  const near = Math.ceil(GOOGLE_MONTHLY.suggest * 0.8);
+  await spend(env, 'suggest', nov); // makes the table
+  await env.DB.prepare("UPDATE google_usage SET n = ? WHERE month = '2026-11' AND sku = 'suggest'").bind(near - 2).run();
+  await spend(env, 'suggest', nov);
+  assert.equal(emails.length, 0, 'not before 80%');
+  await spend(env, 'suggest', nov);
+  assert.equal(emails.length, 1, 'at 80%');
+  assert.deepEqual(emails[0].to, ALERT_EMAILS);
+  assert.match(emails[0].subject, /address suggestions as families type at 80% of this month's free limit/);
+  assert.match(emails[0].text, /7,200 of the 9,000/);
+  assert.match(emails[0].text, /until December 1/);
+  assert.doesNotMatch(emails[0].text + emails[0].subject, /—/, 'no em dashes');
+  await spend(env, 'suggest', nov);
+  assert.equal(emails.length, 1, 'once');
+  await env.DB.prepare("UPDATE google_usage SET n = ? WHERE month = '2026-11' AND sku = 'suggest'").bind(GOOGLE_MONTHLY.suggest).run();
+  await spend(env, 'suggest', nov);
+  assert.equal(emails.length, 2, 'when it runs out');
+  assert.match(emails[1].subject, /reached this month's free limit/);
+  assert.match(emails[1].text, /OpenStreetMap instead/);
+  await spend(env, 'suggest', nov);
+  assert.equal(emails.length, 2, 'once');
+});
+
+test('suggestions step aside once the month’s place lookups are used (a pick must still fill in)', async () => {
+  await googleSuggest(env, '3167 Main'); // makes the table
+  const month = new Date().toISOString().slice(0, 7);
+  await env.DB.prepare('INSERT INTO google_usage (month, sku, n) VALUES (?, ?, ?)').bind(month, 'place', GOOGLE_MONTHLY.place).run();
+  assert.equal(await googleSuggest(env, '3167 Main'), null);
 });
 
 test('/api/apply: Google’s suggestions, the picked home’s parts and the Postal Service’s word; no key, the free path and no word', async () => {
