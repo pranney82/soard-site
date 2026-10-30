@@ -370,23 +370,40 @@ export async function maybeTellReviews(env, { now = Date.now(), send = sendEmail
 
 const median = (xs) => { if (!xs.length) return null; const a = [...xs].sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
 
+/** Real cases a median needs before it's shown */
+export const MIN_CASES = 5;
+/** A burst like this (one person, many statuses within minutes) is a clean-up, not decisions */
+const BULK = { count: 5, windowMs: 15 * 60 * 1000 };
+
 /**
  * From the applicants' status history, over the last year → per track
  * { toReview: { days, n }, toDecision: { days, n } }: median days from
  * applying to In Review (the onsite visit), and from In Review to Approved or
- * Denied. TEST accounts left out. Null when there's no history.
+ * Denied. Only real decisions count: TEST accounts, changes made by Claude
+ * sessions, a burst of statuses set together (a clean-up), and gaps under an
+ * hour are left out, and a median shows only from MIN_CASES real cases (null
+ * until then: no number beats a wrong one).
  */
 export async function cycleTimes(DB, { now = Date.now() } = {}) {
-  const base = `SELECT a.account_id, a.name, a.fields, a.created_at, x.at, x.data%s FROM applicant_activity x JOIN applicants a ON a.account_id = x.account_id%s WHERE x.kind = 'status' ORDER BY x.at`;
+  const base = `SELECT a.account_id, a.name, a.fields, a.created_at, x.at, x.data, x.by_name, x.source%s FROM applicant_activity x JOIN applicants a ON a.account_id = x.account_id%s WHERE x.kind = 'status' ORDER BY x.at`;
   let rows;
   try {
     rows = (await DB.prepare(base.replace('%s', ', ap.kind, ap.is_test').replace('%s', ' LEFT JOIN applications ap ON ap.jt_account_id = a.account_id')).all()).results || [];
   } catch {
     try { rows = (await DB.prepare(base.replace('%s', '').replace('%s', '')).all()).results || []; } catch { return null; }
   }
+  // A burst: BULK.count or more status changes by the same person within the window
+  const who = (r) => `${r.source || ''}|${r.by_name || ''}`;
+  const times = new Map();
+  for (const r of rows) { const k = who(r); if (!times.has(k)) times.set(k, []); times.get(k).push(Date.parse(r.at)); }
+  const bulk = (r) => {
+    const t = Date.parse(r.at);
+    return (times.get(who(r)) || []).filter((x) => Math.abs(x - t) <= BULK.windowMs).length >= BULK.count;
+  };
   const acc = new Map();
   for (const r of rows) {
     if (r.is_test || /^\s*test\b/i.test(r.name || '')) continue;
+    if (/^claude$/i.test(r.source || '') || bulk(r)) continue;
     let to = null;
     try { to = JSON.parse(r.data || '{}')?.to || null; } catch { /* none */ }
     if (!to) continue;
@@ -406,9 +423,11 @@ export async function cycleTimes(DB, { now = Date.now() } = {}) {
   const out = {};
   for (const t of PROJECT_TRACKS) {
     const list = [...acc.values()].filter((a) => a.track === t);
-    const toReview = list.filter((a) => a.created && a.review && Date.parse(a.review) >= since && days(a.created, a.review) >= 0).map((a) => days(a.created, a.review));
-    const toDecision = list.filter((a) => a.review && a.decision && Date.parse(a.decision) >= since && days(a.review, a.decision) >= 0).map((a) => days(a.review, a.decision));
-    const pack = (xs) => (xs.length ? { days: Math.round(median(xs)), n: xs.length } : null);
+    // A gap under an hour is two changes made together, not time the step took
+    const real = (d) => d >= 1 / 24;
+    const toReview = list.filter((a) => a.created && a.review && Date.parse(a.review) >= since && real(days(a.created, a.review))).map((a) => days(a.created, a.review));
+    const toDecision = list.filter((a) => a.review && a.decision && Date.parse(a.decision) >= since && real(days(a.review, a.decision))).map((a) => days(a.review, a.decision));
+    const pack = (xs) => (xs.length >= MIN_CASES ? { days: Math.round(median(xs)), n: xs.length } : null);
     out[t] = { toReview: pack(toReview), toDecision: pack(toDecision) };
   }
   return out;

@@ -662,23 +662,31 @@ test('“Reviewed, no changes” is saved per Doc with who and when, and reaches
   assert.equal(facts.policy.modifiedTime, '2025-11-13T15:00:00.000Z');
 });
 
-test('how long the application steps take, from the applicants’ history over the last year', async () => {
+test('how long the application steps take: real decisions only, and only once there are enough of them', async () => {
   await env.DB.exec(`CREATE TABLE applicants (account_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT, year TEXT, types TEXT, fields TEXT, job_id TEXT, created_at TEXT, archived_at TEXT, synced_at TEXT)`);
   await env.DB.exec('CREATE TABLE applicant_activity (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL, by_name TEXT, source TEXT, title TEXT, body TEXT, data TEXT)');
   const now = Date.parse('2026-10-29T12:00:00Z');
-  const fam = async (id, name, created, steps, fields = { birthday: '2018-01-01' }) => {
+  const fam = async (id, name, created, steps, { fields = { birthday: '2018-01-01' }, by = 'Clareece', source = 'jobtread' } = {}) => {
     await env.DB.prepare('INSERT INTO applicants (account_id, name, status, fields, created_at, synced_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, name, 'Approved', JSON.stringify(fields), created, 'x').run();
-    for (const [i, [to, at]] of steps.entries()) await env.DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, data) VALUES (?, ?, ?, ?, ?)').bind(`${id}-${i}`, id, at, 'status', JSON.stringify({ to })).run();
+    for (const [i, [to, at]] of steps.entries()) await env.DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, data) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(`${id}-${i}`, id, at, 'status', by, source, JSON.stringify({ to })).run();
   };
-  await fam('f1', 'A Family', '2026-03-01T00:00:00Z', [['In Review', '2026-03-11T00:00:00Z'], ['Approved', '2026-04-10T00:00:00Z']]);
-  await fam('f2', 'B Family', '2026-03-01T00:00:00Z', [['In Review', '2026-03-21T00:00:00Z'], ['Denied', '2026-04-01T00:00:00Z']]);
-  await fam('f3', 'C Family', '2026-03-01T00:00:00Z', [['In Review', '2026-03-31T00:00:00Z']]);
-  await fam('f4', 'TEST Family', '2026-03-01T00:00:00Z', [['In Review', '2026-03-02T00:00:00Z'], ['Approved', '2026-03-03T00:00:00Z']]);
-  await fam('f5', 'Old Family', '2024-01-01T00:00:00Z', [['In Review', '2024-02-01T00:00:00Z'], ['Approved', '2024-05-01T00:00:00Z']]);
-  await fam('o1', 'Hope Clinic', '2026-06-01T00:00:00Z', [['In Review', '2026-06-08T00:00:00Z'], ['Approved', '2026-06-15T00:00:00Z']], {});
+  const day = (d, h = 15) => `2026-03-${String(d).padStart(2, '0')}T${String(h).padStart(2, '0')}:00:00Z`;
+  // Five real families: 10, 20, 20, 30, 40 days to an onsite; 10, 30, 11, 5, 25 days to a decision
+  for (const [i, [r, d]] of [[11, 10], [21, 1], [21, 11], [31, 5], [41, 25]].entries()) {
+    const rev = new Date(Date.parse('2026-03-01T15:00:00Z') + r * 864e5 - 864e5).toISOString();
+    await fam(`f${i}`, `Family ${i}`, '2026-03-01T15:00:00Z', [['In Review', rev], ['Approved', new Date(Date.parse(rev) + (d === 1 ? 30 : d) * 864e5).toISOString()]]);
+  }
+  // Left out: a test family, a Claude session’s changes, a clean-up burst, decisions over a year old, a same-moment change
+  await fam('t1', 'TEST Family', day(1), [['In Review', day(2)], ['Approved', day(3)]]);
+  await fam('c1', 'Claude Family', day(1), [['In Review', day(2)], ['Approved', day(3)]], { source: 'claude', by: 'Claude' });
+  for (let i = 0; i < 5; i++) await fam(`b${i}`, `Burst ${i}`, day(1), [['In Review', `2026-10-21T15:0${i}:00Z`], ['Denied', `2026-10-21T15:0${i}:30Z`]], { by: 'Holly', source: 'website' });
+  await fam('o1', 'Old Family', '2024-01-01T00:00:00Z', [['In Review', '2024-02-01T00:00:00Z'], ['Approved', '2024-05-01T00:00:00Z']]);
   const c = await cycleTimes(env.DB, { now });
-  assert.deepEqual(c.makeover, { toReview: { days: 20, n: 3 }, toDecision: { days: 21, n: 2 } }, 'medians; tests and decisions over a year old left out');
-  assert.deepEqual(c.community, { toReview: { days: 7, n: 1 }, toDecision: { days: 7, n: 1 } });
+  assert.deepEqual(c.makeover, { toReview: { days: 20, n: 5 }, toDecision: { days: 11, n: 5 } }, 'medians of the five real families');
+  assert.deepEqual(c.community, { toReview: null, toDecision: null }, 'none yet: no number rather than a wrong one');
+  // Four aren't enough
+  await env.DB.prepare("DELETE FROM applicant_activity WHERE account_id = 'f0'").run();
+  assert.equal((await cycleTimes(env.DB, { now })).makeover.toReview, null);
 });
 
 test('a job’s time at its step counts from a status change the site saw, never guessed', async () => {
