@@ -24,7 +24,7 @@ import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
 import { openDoc } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, deckOf, stopIndex, fileTitle, isDate, clock, todayEastern, MORE,
-  sectionPlan, sectionClock, clockText,
+  sectionPlan, sectionClock, clockText, facesOf,
 } from '../board-shared.js';
 import { Kanban, kanbanLine, sized } from './kanban.js';
 import { useCashNow, useBudget, moneyTiles } from './money.js';
@@ -32,6 +32,9 @@ import { useCashNow, useBudget, moneyTiles } from './money.js';
 const html = htm.bind(h);
 const API = '/api/board-portal';
 const CHANNEL = 'soard-board-screen';
+// The chair's own copy of the screen, small in Board's During (?mirror): it follows the chair but isn't a screen
+// window (it never says hello, takes no keys and has no full-screen button)
+const MIRROR = new URLSearchParams(location.search).has('mirror');
 const LOGO = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=256';
 
 const initialsOf = (name) => { const w = String(name || '').split(/\s+/).filter(Boolean); return ((w[0]?.[0] || '') + (w.length > 1 ? w.at(-1)[0] : '')).toUpperCase() || '?'; };
@@ -42,6 +45,7 @@ function Face({ p, size }) {
     ? html`<img class="bs-face" src=${p.photo} alt="" width=${size} height=${size} style=${`--s:${size}px`} onError=${() => setBroken(true)} />`
     : html`<span class="bs-face bs-face--initials" style=${`--s:${size}px;--hue:${hueOf(p?.name)}`} aria-hidden="true">${initialsOf(p?.name)}</span>`;
 }
+const FULL = html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M3.5 7.5v-4h4M12.5 3.5h4v4M16.5 12.5v4h-4M7.5 16.5h-4v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 /** The whole screen for the screen, or back */
 const fullScreen = () => { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.().catch(() => {}); };
 const nowClock = () => new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
@@ -256,6 +260,74 @@ function DatesSlide({ rows }) {
   if (!rows.length) return html`<p class="bs-quiet">Nothing on the calendar yet.</p>`;
   return html`<ul class="bs-dates">${rows.map((r) => html`<li key=${r.key}><${Tile} d=${r.date} /><span><strong>${r.title}</strong><span>${r.sub}</span></span></li>`)}</ul>`;
 }
+/** A face at the size of a room: the People photo asked for big enough to stay sharp on a TV */
+const roomPhoto = (url) => String(url || '').replace(/\bw=\d+,h=\d+/, 'w=480,h=480');
+
+/**
+ * The board's faces (facesOf): for the roll call everyone on the meeting's list, each lighting up as they check in
+ * on the board page, the ones not here yet dimmed; for a go-around (introductions, each one's news) the ones here.
+ * Before the meeting starts (a rehearsal, a preview) everyone as they are. New this year: a mark under the name.
+ */
+function FacesGrid({ kind, v, people, started, year }) {
+  const bySlug = new Map(people.map((p) => [p.slug, p]));
+  const listed = (v.roll || []).map((r) => ({ ...(bySlug.get(r.slug) || {}), slug: r.slug, name: r.name || bySlug.get(r.slug)?.name || '', how: r.how }));
+  const all = listed.length ? listed : people.filter((p) => p.group === 'board').map((p) => ({ ...p, how: '' }));
+  const here = all.filter((p) => p.how);
+  const shown = kind === 'room' && started && here.length ? here : all;
+  if (!shown.length) return html`<p class="bs-quiet">No board members on the meeting’s list.</p>`;
+  const rows = shown.length <= 5 ? 1 : shown.length <= 14 ? 2 : shown.length <= 24 ? 3 : 4;
+  return html`<ul class="bs-faces" style=${`--cols:${Math.ceil(shown.length / rows)};--rows:${rows}`}>${shown.map((p) => {
+    const state = !started ? '' : p.how === 'remote' ? 'is-remote' : p.how ? 'is-here' : 'is-away';
+    const sub = started && p.how ? (p.how === 'remote' ? 'On video' : 'In the room') : p.title && !/^board member$/i.test(p.title) ? p.title : p.organization || p.title || '';
+    return html`<li class=${`bs-faces__one ${state}`} key=${p.slug || p.name}>
+      <span class="bs-faces__pic">
+        ${p.photo ? html`<img src=${roomPhoto(p.photo)} alt="" />` : html`<span class="bs-faces__initials" style=${`--hue:${hueOf(p.name)}`}>${initialsOf(p.name)}</span>`}
+        ${state === 'is-here' || state === 'is-remote' ? html`<span class="bs-faces__mark" aria-hidden="true">${CHECK}</span>` : null}
+      </span>
+      <strong class="bs-faces__name">${p.name}</strong>
+      <span class="bs-faces__sub">${sub}${typeof p.since === 'number' && p.since >= year ? html`<b>New</b>` : null}</span>
+    </li>`;
+  })}</ul>`;
+}
+const CHECK = html`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10.5l3.6 3.6 7.4-8.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+/** The roll call's count, beside its title: here of the list, and the quorum (met, or how many more) */
+function RollCount({ v, started }) {
+  const roll = v.roll || [];
+  const n = roll.filter((p) => p.how).length;
+  const q = v.here?.quorum || 0;
+  if (!started) return html`<div class="bs-roll"><span class="bs-roll__n">${roll.length}<small> on the board</small></span><span class="bs-quiet">Each one checks in with a tap on the board page</span></div>`;
+  return html`<div class="bs-roll">
+    <span class="bs-roll__n">${n}<small> of ${roll.length} here</small></span>
+    ${q ? html`<span class=${`bs-roll__q ${v.here.met ? 'is-met' : ''}`}>${v.here.met ? `Quorum met · ${q} needed` : `Quorum is ${q} · ${q - Math.min(q, v.here.board)} more needed`}</span>` : null}
+  </div>`;
+}
+/** A part with more than one item, beside an item that has nothing else to show: where it sits in the part */
+function PartList({ sec, items, current, people }) {
+  const at = sec.items.findIndex((x) => x.id === current.id);
+  return html`<ol class="bs-part">${sec.items.map((it, i) => {
+    const ws = presentersOf(it, people);
+    return html`<li key=${it.id} class=${i < at ? 'is-done' : i === at ? 'is-now' : ''}>
+      <span class="bs-part__label">${i < at ? CHECK : items.find((x) => x.id === it.id)?.label}</span>
+      <span class="bs-part__t">${it.title}</span>
+      ${ws.length ? html`<span class="bs-part__who">${ws.map((p) => p.name.split(' ')[0]).join(' & ')}</span>` : null}
+    </li>`;
+  })}</ol>`;
+}
+
+/** The motion to approve the last meeting's minutes: the meeting's own (the chair's words) else the usual one */
+function MinutesMotion({ item, v }) {
+  const prev = (v.prior || []).find((x) => x.id === item.about) || null;
+  const mo = (v.motions || []).find((x) => /\bminutes\b/i.test(x.text)) || null;
+  const text = mo?.text || `Approve the minutes of the ${prev ? `${prev.name}, ${shortDate(prev.date)},` : 'last meeting'} as written`;
+  const said = { passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[mo?.result] || 'Recorded';
+  return html`<div class="bs-motion">
+    <p class="bs-eyebrow">The motion</p>
+    <p class="bs-motion__text">${text}</p>
+    ${mo?.tally ? html`<p class=${`bs-motion__result is-${mo.result}`}>${said} ${mo.tally.for}–${mo.tally.against}${mo.tally.abstain ? `, ${mo.tally.abstain} abstaining` : ''}</p>`
+      : mo?.by ? html`<p class="bs-quiet">Moved by ${mo.by}${mo.second ? `, seconded by ${mo.second}` : ''}</p>` : null}
+  </div>`;
+}
+
 /** An item's live facts on the screen, or null when it has none */
 function liveSlide(kind, n, id, data, date) {
   if (!n || !kind || kind === 'minutes') return null;
@@ -352,9 +424,11 @@ export function Screen({ id, data, d }) {
     c.onmessage = (e) => {
       const msg = e.data || {};
       if (msg.id !== id) return;
-      if (msg.type === 'ping') c.postMessage({ type: 'hello', id });
+      if (msg.type === 'ping' && !MIRROR) c.postMessage({ type: 'hello', id });
       if (msg.type === 'show') { fast.current = true; setTold({ live: msg.live || {}, rehearsal: !!msg.rehearsal, at: Date.now() }); }
     };
+    // A mirror only asks where the chair is
+    if (MIRROR) { c.postMessage({ type: 'want', id }); return () => { c.close(); ch.current = null; }; }
     c.postMessage({ type: 'hello', id });
     const bye = () => c.postMessage({ type: 'bye', id });
     addEventListener('pagehide', bye);
@@ -363,6 +437,7 @@ export function Screen({ id, data, d }) {
 
   // Keys here go back to the chair; F fills the screen
   useEffect(() => {
+    if (MIRROR) return undefined;
     const keys = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fullScreen(); return; }
@@ -375,6 +450,7 @@ export function Screen({ id, data, d }) {
 
   // The mouse and the full-screen button rest after 2.5 seconds without a move; the clock ticks
   useEffect(() => {
+    if (MIRROR) { setAwake(false); const clockTick = setInterval(() => setTick(Date.now()), 1000); return () => clearInterval(clockTick); }
     let t = setTimeout(() => setAwake(false), 2500);
     const move = () => { setAwake(true); clearTimeout(t); t = setTimeout(() => setAwake(false), 2500); };
     addEventListener('pointermove', move);
@@ -382,10 +458,11 @@ export function Screen({ id, data, d }) {
     return () => { clearTimeout(t); clearInterval(clockTick); removeEventListener('pointermove', move); };
   }, []);
 
-  useEffect(() => { document.title = v ? `${v.title} · On the screen` : 'SOARD Board · On the screen'; }, [v?.title]);
+  useEffect(() => { if (!MIRROR) document.title = v ? `${v.title} · On the screen` : 'SOARD Board · On the screen'; }, [v?.title]);
 
+  // (A meeting not shared yet, previewed by an admin, isn't in the board page's list: its name comes with the view)
   const m = data.meetings.find((x) => x.id === id) || null;
-  const meeting = useMemo(() => (v ? { ...(m || {}), id, title: m?.title || '', date: v.date, start: m?.start || v.start || '', end: m?.end || v.end || '', sections: v.sections, files: v.files || [] } : null), [v, m]);
+  const meeting = useMemo(() => (v ? { ...(m || {}), id, title: m?.title || v.title || '', date: v.date, start: m?.start || v.start || '', end: m?.end || v.end || '', sections: v.sections, files: v.files || [] } : null), [v, m]);
   const plan = useMemo(() => (meeting ? sectionPlan(meeting) : new Map()), [meeting]);
   const deck = useMemo(() => (meeting ? deckOf(meeting, { pages, meetings: v.prior || [] }) : []), [meeting, pages]);
   const notePages = (fileId, count) => setPages((p) => {
@@ -425,7 +502,7 @@ export function Screen({ id, data, d }) {
   const top = html`<header class="bs-top">
     <span class="bs-brand"><img src=${LOGO} alt="" width="40" height="40" /><span><strong>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', started && !ended ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
     ${(stop.kind === 'item' || stop.kind === 'doc') && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${floor.map((p) => p.name).join(' & ')}</strong> has the floor</span></span>` : null}
-    <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span></span>
+    <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
 
   let stage;
@@ -470,13 +547,19 @@ export function Screen({ id, data, d }) {
       </div>
     </div>`;
   } else if (stop.kind === 'item') {
-    const facts = liveSlide(item.live, numbers, id, data, meeting.date);
+    const faces = stop.n >= 0 ? facesOf(item) : '';
+    const facts = faces ? null : liveSlide(item.live, numbers, id, data, meeting.date);
     const head = html`<p class="bs-eyebrow">${[section && section !== item.title ? section : '', !section && stop.n < 0 ? 'Also for this meeting' : ''].filter(Boolean).join('') || 'Agenda'}</p>
       <h1 class="bs-display bs-item__title">${item.title}</h1>
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
-    const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts ? 52 : 72} /><span><strong>${p.name}</strong>${p.title ? html`<small>${p.title}</small>` : null}</span></li>`)}</ul>` : null;
+    const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces ? 52 : 72} /><span><strong>${p.name}</strong>${p.title ? html`<small>${p.title}</small>` : null}</span></li>`)}</ul>` : null;
     const coming = files.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${files.length === 1 ? 'Its document, next' : 'Its documents, next'}</p><ol>${files.map((f) => html`<li key=${f.id}>${fileTitle(f.name)}${pages[f.id] > 1 ? html`<span> · ${pages[f.id]} pages</span>` : null}</li>`)}</ol></div>` : null;
-    if (facts && item.live === 'projects') {
+    if (faces) {
+      stage = html`<div class="bs-item bs-item--board bs-item--faces">
+        <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${faces === 'roll' ? html`<${RollCount} v=${v} started=${started} />` : whoList}</div></div>
+        <div class="bs-item__facts"><${FacesGrid} kind=${faces} v=${v} people=${people} started=${started} year=${Number(String(meeting.date).slice(0, 4))} /></div>
+      </div>`;
+    } else if (facts && item.live === 'projects') {
       stage = html`<div class="bs-item bs-item--board">
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}<p class="bs-quiet">${kanbanLine(numbers.projects)}</p></div></div>
         <div class="bs-item__facts">${facts}</div>
@@ -488,10 +571,15 @@ export function Screen({ id, data, d }) {
         ${item.notes || coming ? html`<div class="bs-item__body">${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : null}
       </div>`;
     } else {
-      const side = item.notes || coming;
-      stage = html`<div class=${`bs-item ${side ? 'bs-item--split' : 'bs-item--title'}`}>
+      // Approving the last minutes: the motion the board votes on, and how it went once the board page's vote closed
+      const motion = item.live === 'minutes' ? html`<${MinutesMotion} item=${item} v=${v} />` : null;
+      const side = item.notes || coming || motion;
+      // Nothing more to show: where it sits in its part, when the part has more than it
+      const sec = stop.n >= 0 ? meeting.sections[items[stop.n].si] : null;
+      const part = !side && sec?.items.length > 1 ? html`<${PartList} sec=${sec} items=${items} current=${item} people=${people} />` : null;
+      stage = html`<div class=${`bs-item ${side || part ? 'bs-item--split' : 'bs-item--title'}`}>
         <div class="bs-item__lead">${head}${whoList}</div>
-        ${side ? html`<div class="bs-item__side">${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : null}
+        ${side ? html`<div class="bs-item__side">${motion}${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : part ? html`<div class="bs-item__side">${part}</div>` : null}
       </div>`;
     }
   } else {
@@ -499,7 +587,8 @@ export function Screen({ id, data, d }) {
   }
   const docWords = stop.kind === 'doc' ? `${fileTitle(file?.name)} · Page ${stop.page + 1}${pages[stop.fileId] ? ` of ${pages[stop.fileId]}` : ''}` : '';
 
-  return html`<div class=${`bs bs--${stop.kind} ${awake ? 'is-awake' : ''} ${vote ? 'has-vote' : ''}`}>
+  // The line under the stage and the rail are there on every stop, so the stage keeps its size from one to the next
+  return html`<div class=${`bs bs--${stop.kind} ${awake ? 'is-awake' : ''} ${vote ? 'has-vote' : ''} ${MIRROR ? 'is-mirror' : ''}`}>
     ${top}
     <main class="bs-stage" ref=${stageRef}><div class="bs-stage__in" key=${stop.kind === 'doc' ? `doc:${stop.fileId}` : stop.key}>${stage}</div></main>
     ${vote ? html`<aside class="bs-vote" aria-live="polite">
@@ -509,13 +598,12 @@ export function Screen({ id, data, d }) {
       <ul class="bs-vote__counts">${[['for', 'For'], ['against', 'Against'], ['abstain', 'Abstain']].map(([k, l]) => html`<li class=${`is-${k}`} key=${k}><span class="bs-vote__n">${vote.counts[k]}</span><span>${l}</span><i style=${`--p:${vote.counts.of ? Math.min(100, (vote.counts[k] / vote.counts.of) * 100) : 0}%`}></i></li>`)}</ul>
       <p class="bs-quiet">${vote.counts.voted} of ${vote.counts.of} here ${vote.counts.voted === 1 ? 'has' : 'have'} voted, on the board page</p>
     </aside>` : null}
-    ${stop.kind === 'doc' ? html`<div class="bs-foot">
+    <div class="bs-foot">${stop.kind === 'doc' ? html`
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${docWords}</span>
-      ${who.length ? html`<span class="bs-foot__who">${who.map((p) => html`<${Face} p=${p} size=${28} key=${p.slug || p.name} />`)}<span>${who.map((p) => p.name).join(' & ')}</span></span>` : null}
-    </div>` : null}
-    ${stop.kind === 'cover' || stop.kind === 'end' || stop.kind === 'since' ? null : html`<${Rail} meeting=${meeting} items=${items} at=${at} deck=${deck} ended=${ended} prior=${v.prior || []} timer=${timer} />`}
-    <button type="button" class="bs-full" onClick=${fullScreen} aria-label="Full screen (F)">${document.fullscreenElement ? 'Exit full screen' : 'Full screen'}<kbd>F</kbd></button>
-    ${!started && !told ? html`<p class="bs-wait">The screen follows the meeting once the chair starts it.</p>` : null}
+      ${pages[stop.fileId] > 1 && pages[stop.fileId] <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${Array.from({ length: pages[stop.fileId] }, (_, i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
+      : !started && !told && !MIRROR ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
+    </div>
+    <${Rail} meeting=${meeting} items=${items} at=${at} deck=${deck} ended=${ended} prior=${v.prior || []} timer=${timer} />
   </div>`;
 }
 

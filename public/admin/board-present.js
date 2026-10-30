@@ -23,6 +23,8 @@ import { openDoc } from './board/docs.js';
 
 export const CHANNEL = 'soard-board-screen';
 export const screenUrl = (id) => `/admin/board/#/meetings/${encodeURIComponent(id)}/screen`;
+/** The same screen as a small copy in the chair's During (it follows, but isn't a screen window: ./board/screen.js MIRROR) */
+export const mirrorUrl = (id) => `/admin/board/?mirror#/meetings/${encodeURIComponent(id)}/screen`;
 
 const windows = new Map();
 /** The screen in its own window (the same one again if it's open), to share or drag onto the TV */
@@ -38,7 +40,8 @@ export const screenIsOpen = (id) => { const w = windows.get(id); return !!w && !
 /**
  * The channel to the screen: `send(message)`, and `on` hears the screen's own messages ({ type: 'hello' } when it
  * opens or is asked, { type: 'bye' } when it closes, { type: 'key', dir } when someone presses a key on it,
- * { type: 'pages', pages } as it opens documents). → [send, open]: open once a screen has said hello, until it goes.
+ * { type: 'pages', pages } as it opens documents, { type: 'want' } from the chair's preview asking where it is).
+ * → [send, open]: open once a screen has said hello, until it goes (the preview never says hello).
  */
 export function useScreen(id, on) {
   const ch = useRef(null);

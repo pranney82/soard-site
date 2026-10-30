@@ -34,10 +34,9 @@ import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, quarterOf, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, MORE,
-  sectionPlan, sectionOf, sectionClock, clockText,
+  sectionPlan, sectionOf, sectionClock, clockText, facesOf,
 } from './board-shared.js';
-import { openScreen, useScreen, usePages, stepKey } from './board-present.js';
-import { openDoc } from './board/docs.js';
+import { openScreen, mirrorUrl, useScreen, usePages, stepKey } from './board-present.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
 const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
@@ -135,15 +134,21 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
 
   /** An action the server takes on the saved meeting: anything typed is saved first */
   const act = async (body) => {
+    // A change made a moment ago (Start, just before the numbers lock) reaches the copy being saved first
+    await new Promise((r) => setTimeout(r, 0));
     await save();
+    const before = editable(mRef.current);
     const j = await call(body);
     if (!j.ok) { addToast(j.error, 'error'); return null; }
     if (j.meeting) {
+      // Changed here while the server worked (the next item, a vote opening): kept over its copy, and saved after
+      const moved = editable(mRef.current) !== before;
       saved.current = cleanMeeting(j.meeting);
       base.current = j.meeting.updatedAt;
-      setM((x) => ({ ...x, ...j.meeting }));
+      setM((x) => (moved ? { ...x, ...j.meeting, ...Object.fromEntries(EDITABLE.map((k) => [k, x[k]])) } : { ...x, ...j.meeting }));
       putMeeting(j.meeting);
       setSt({ s: 'saved', at: j.meeting.updatedAt });
+      if (moved) setTimeout(save, 0);
     }
     return j;
   };
@@ -754,16 +759,17 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
   const files = useMemo(() => deckFiles(m, meetings), [m.sections, m.files, meetings]);
   const here = useRef({});
   const [send, screenOn] = useScreen(m.id, (msg) => {
-    if (msg.type === 'hello') send({ type: 'show', live: here.current.pos, rehearsal: !running, practice });
-    if (msg.type === 'key' && (running || screenOn)) here.current.go(here.current.at + (msg.dir > 0 ? 1 : -1));
+    // A screen's window opening, or the preview here asking: where the chair is
+    if (msg.type === 'hello' || msg.type === 'want') send({ type: 'show', live: here.current.pos, rehearsal: !running, practice });
+    if (msg.type === 'key') here.current.go(here.current.at + (msg.dir > 0 ? 1 : -1));
     if (msg.type === 'pages' && msg.pages) addPages(msg.pages);
   });
-  const [pages, addPages] = usePages(files, running || screenOn);
+  const [pages, addPages] = usePages(files, true);
   const deck = useMemo(() => deckOf(m, { pages, meetings }), [m.sections, m.files, pages, meetings]);
   const pos = running ? cleanLive(m.live) : rehearsal;
   const at = stopIndex(deck, pos);
   const [, tick] = useState(0);
-  useEffect(() => { if (!running && !screenOn) return undefined; const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [running, screenOn]);
+  useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, []);
   const go = (i, target = null) => {
     const s = target || deck[Math.max(0, Math.min(deck.length - 1, i))];
     if (!s) return;
@@ -789,8 +795,8 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     const i = deck.findIndex((s) => s.itemId === want.itemId && s.fileId === (want.fileId || '') && s.page === 0);
     if (i >= 0) go(i);
   };
+  // ← → and a clicker step it from anywhere in During, before Start too (the preview), unless someone's typing
   useEffect(() => {
-    if (!running && !screenOn) return undefined;
     const keys = (e) => {
       if (typingIn(e.target) || document.querySelector('.modal-overlay, .ask-overlay, .bd-pop.is-open')) return;
       const dir = stepKey(e);
@@ -798,7 +804,7 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     };
     window.addEventListener('keydown', keys);
     return () => window.removeEventListener('keydown', keys);
-  }, [running, screenOn]);
+  }, []);
   const present = () => { openScreen(m.id); };
   const start = () => {
     const live0 = { startedAt: new Date().toISOString(), endedAt: '', itemId: '', fileId: '', page: 0, screen: '' };
@@ -816,11 +822,8 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
   };
   const words = stopWords(deck[at], m, items, pages, files);
   const next = deck[at + 1] ? stopWords(deck[at + 1], m, items, pages, files) : null;
+  const nextWords = !next ? 'The last stop' : deck[at + 1].fileId && deck[at + 1].fileId === deck[at]?.fileId ? `Next: page ${deck[at + 1].page + 1}` : `Next: ${next.title}${next.label && next.label !== words.label ? ` (${next.label})` : ''}`;
   const screenBtn = html`<button type="button" class="btn btn-ghost btn-sm" onClick=${present} title=${screenOn ? 'Bring the screen’s window to the front' : 'The screen in its own window: share it on Google Meet, or drag it onto the TV'}>${screenOn ? 'Show the screen' : 'Open the screen'}</button>`;
-  const stepper = html`<div class="bm-run__do">
-    <button type="button" class="btn btn-ghost btn-sm" disabled=${at <= 0} onClick=${() => go(at - 1)} aria-keyshortcuts="ArrowLeft PageUp K">← Previous</button>
-    <button type="button" class="btn btn-primary btn-sm" disabled=${at >= deck.length - 1} onClick=${() => go(at + 1)} aria-keyshortcuts="ArrowRight PageDown J">Next →</button>
-  </div>`;
   const people = useMemo(() => pickable(ctx.data.people), [ctx.data.people]);
   const plan = useMemo(() => sectionPlan(m), [m.sections, m.start, m.end]);
   const curItem = items.find((x) => x.id === pos.itemId);
@@ -834,31 +837,45 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     ...m.attendance.filter((x) => x.slug && x.slug !== pos.floor && !presenting.some((y) => y.slug === x.slug) && people.some((y) => y.slug === x.slug))
       .map((x) => ({ label: x.name, run: () => giveFloor(x.slug) })),
   ] : [];
-  const meta = curSec ? html`<div class="bm-run__meta">
+  const total = [...plan.values()].reduce((a, t) => a + (t.minutes || 0), 0);
+  // The part's clock and who has the floor; on the cover and the close, the meeting's own time. Always there, so
+  // the agenda below never moves as the screen does
+  const meta = html`<div class="bm-run__meta">
     <div class=${`bm-timer ${timer?.over ? 'is-over' : ''}`} role="timer" aria-live="off">
-      <span class="bm-timer__t">${timer ? (timer.over ? `${clockText(timer.left)} over` : `${clockText(timer.left)} left`) : `${plan.get(curSec.id)?.minutes} min`}</span>
-      <span class="bm-timer__s">${timer?.over ? 'Time’s up for' : 'for'} ${curSec.title || 'this part'} · ${plan.get(curSec.id)?.minutes} min</span>
+      ${curSec ? html`<span class="bm-timer__t">${timer ? (timer.over ? `${clockText(timer.left)} over` : `${clockText(timer.left)} left`) : `${plan.get(curSec.id)?.minutes} min`}</span>
+        <span class="bm-timer__s">${timer?.over ? 'Time’s up for' : 'for'} ${curSec.title || 'this part'} · ${plan.get(curSec.id)?.minutes} min</span>`
+      : html`<span class="bm-timer__t">${timeRange(m.start, m.end) || 'The agenda'}</span><span class="bm-timer__s">${total ? `${plural(total, 'minute')} on the agenda` : ''}</span>`}
     </div>
     <div class="bm-floor">
       ${floor.length ? html`<span class="bm-floor__faces">${floor.map((p) => html`<${Face} p=${p} size=${28} key=${p.slug || p.name} />`)}</span>` : null}
       <span class="bm-floor__t"><strong>${floor.length ? namesText(floor.map((x) => x.name)) : 'The chair'}</strong> has the floor</span>
       ${floorMenu.length ? html`<${Menu} label="Give the floor to someone else" items=${floorMenu} />` : null}
     </div>
-  </div>` : null;
-  const now = html`<div class="bm-run__screen">
-    <${ScreenThumb} stop=${deck[at]} files=${files} text=${words.label || ({ end: 'End', since: 'Since' }[deck[at]?.kind] || 'Cover')} />
+  </div>`;
+  // What's on the screen, as the room sees it, beside Previous and Next (set where they are, whatever the words)
+  const view = html`<div class="bm-run__deck">
+    <button type="button" class="bm-mirror" onClick=${present} title=${screenOn ? 'Bring the screen’s window to the front' : 'Open the screen in its own window'} aria-label=${screenOn ? 'Show the screen' : 'Open the screen in its own window'}><${Mirror} id=${m.id} /></button>
     <div class="bm-run__now" aria-live="polite">
-      <span class="bm-run__label">${running ? 'On the screen' : 'Rehearsing'}${words.label ? ` · ${words.label}` : ''}</span>
+      <span class="bm-run__label">${running ? 'On the screen' : 'Preview'}${words.label ? ` · ${words.label}` : ''}</span>
       <span class="bm-run__title">${words.title}</span>
-      <span class="bm-run__sec">${words.sub}</span>
-      ${next ? html`<span class="bm-run__next">Next: ${deck[at + 1].fileId && deck[at + 1].fileId === deck[at]?.fileId ? `page ${deck[at + 1].page + 1}` : `${next.title}${next.label && next.label !== words.label ? ` (${next.label})` : ''}`}</span>` : null}
+      <span class="bm-run__sec">${words.sub || ' '}</span>
+      <span class="bm-run__next">${nextWords}</span>
+    </div>
+    <div class="bm-run__step">
+      <span class="bm-run__count" aria-label=${`Stop ${at + 1} of ${deck.length}`}>${at + 1}<span> / ${deck.length}</span></span>
+      <button type="button" class="btn btn-ghost btn-sm" disabled=${at <= 0} onClick=${() => go(at - 1)} aria-keyshortcuts="ArrowLeft PageUp K">← Previous</button>
+      <button type="button" class="btn btn-primary btn-sm" disabled=${at >= deck.length - 1} onClick=${() => go(at + 1)} aria-keyshortcuts="ArrowRight PageDown J">Next →</button>
     </div>
   </div>`;
+  const keysHint = html`<span class="kbd">←</span> <span class="kbd">→</span> or a clicker`;
   if (!m.live.startedAt) {
     return html`<div class=${`card bm-run is-ready ${screenOn ? 'is-rehearsing' : ''}`}>
-      <div class="bm-run__lead"><span class="bm-run__state">Not started</span><p>Starting puts the meeting live on the board page: members check in, follow along item by item, see each document as it’s shown, and vote when you open a vote. Open the screen first to share it on Google Meet or put it on the TV${screenOn ? '' : ', and to rehearse on it'}.</p></div>
-      <div class="bm-run__do">${screenBtn}<button type="button" class="btn btn-primary" onClick=${start}>Start the meeting</button></div>
-      ${screenOn ? html`<div class="bm-run__rehearse">${now}${meta}${stepper}<p class="bm-run__hint">Rehearsing: only the screen on this computer moves, and the board page doesn’t follow until you start.</p></div>` : null}
+      <div class="bm-run__head">
+        <div class="bm-run__clock"><span class="bm-run__state">Not started</span></div>
+        <div class="bm-run__do">${screenBtn}<button type="button" class="btn btn-primary btn-sm" onClick=${start}>Start the meeting</button></div>
+      </div>
+      ${view}${meta}
+      <p class="bm-run__hint">Click through it first: ${keysHint} move this preview${screenOn ? ' and the screen’s window' : ''}, never the board page. Start puts it live: members check in, follow along and vote.</p>
     </div>`;
   }
   if (!running) {
@@ -869,28 +886,34 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     </div>`;
   }
   return html`<div class="card bm-run is-live" role="region" aria-label="The meeting, live">
-    <div class="bm-run__clock"><span class="bm-live-dot" aria-hidden="true"></span><span class="bm-run__state">Live</span><span class="bm-run__time" aria-label="Time since it started">${clockOf(Date.now() - Date.parse(m.live.startedAt))}</span></div>
-    ${now}
-    <div class="bm-run__side">${stepper}<div class="bm-run__do">${screenBtn}<button type="button" class="btn btn-ghost btn-sm" onClick=${end}>End the meeting</button></div></div>
-    ${meta}
-    <p class="bm-run__hint">${items.length ? html`<span class="kbd">←</span> <span class="kbd">→</span> or a clicker move the screen when you’re not typing. ` : null}The board page follows within seconds${practice ? ', and so do the simulated members' : ''}.</p>
+    <div class="bm-run__head">
+      <div class="bm-run__clock"><span class="bm-live-dot" aria-hidden="true"></span><span class="bm-run__state">Live</span><span class="bm-run__time" aria-label="Time since it started">${clockOf(Date.now() - Date.parse(m.live.startedAt))}</span></div>
+      <div class="bm-run__do">${screenBtn}<button type="button" class="btn btn-ghost btn-sm" onClick=${end}>End the meeting</button></div>
+    </div>
+    ${view}${meta}
+    <p class="bm-run__hint">${keysHint} move the screen when you’re not typing. The board page follows within seconds${practice ? ', and so do the simulated members' : ''}.</p>
   </div>`;
 }
 
-/** A small picture of what's on the screen: the document's page, or the item's card in words */
-function ScreenThumb({ stop, files, text }) {
+/**
+ * The screen as the room sees it, small: the board page's own screen (?mirror, ./board-present.js) drawn at
+ * 1280 × 720, a shared Google Meet window's size, and scaled down to fit. It follows the chair the way the screen's
+ * window does, but it isn't one: it never takes keys, and opening it doesn't count as the screen being open.
+ */
+function Mirror({ id }) {
   const ref = useRef(null);
-  const f = stop?.fileId ? files.find((x) => x.id === stop.fileId) : null;
+  const [scale, setScale] = useState(0);
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
-    el.replaceChildren();
-    if (!f) return undefined;
-    let gone = false;
-    openDoc(f).then((doc) => doc.draw(Math.min(stop.page, doc.count - 1), { width: 74 })).then((page) => { if (!gone && page) el.replaceChildren(page); }).catch(() => {});
-    return () => { gone = true; };
-  }, [f?.id, stop?.page]);
-  return html`<span class=${`bm-thumb ${f ? 'is-doc' : `is-${stop?.kind || 'cover'}`}`} ref=${ref} aria-hidden="true">${f ? null : html`<span>${text}</span>`}</span>`;
+    const fit = () => setScale(el.clientWidth / 1280);
+    fit();
+    if (!('ResizeObserver' in window)) return undefined;
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return html`<span class="bm-mirror__frame" ref=${ref}>${scale ? html`<iframe src=${mirrorUrl(id)} title="The screen, as the room sees it" tabindex="-1" aria-hidden="true" style=${`transform:scale(${scale})`}></iframe>` : null}</span>`;
 }
 
 /** The quorum, beside the meeting as it runs: board members who checked in on the board page (the minutes settle it after) */
@@ -945,7 +968,7 @@ function RunOrder({ m, set, ctx, practice, jump }) {
           <button type="button" class="bm-order__go" onClick=${() => jump.current?.({ itemId: it.id })} aria-current=${on ? 'step' : null}>
             <span class="bm-order__n">${on ? html`<span class="bm-live-dot" aria-hidden="true"></span>` : label}</span>
             <span class="bm-order__t">${it.title || html`<em>No title</em>`}${it.presenter ? html`<small>${it.presenter}</small>` : null}</span>
-            ${it.live && it.live !== 'minutes' ? html`<span class="tag tag--info">${LIVE_TAGS[it.live] || 'Live'}</span>` : null}
+            ${it.live && it.live !== 'minutes' ? html`<span class="tag tag--info">${LIVE_TAGS[it.live] || 'Live'}</span>` : facesOf(it) ? html`<span class="tag tag--info">${facesOf(it) === 'roll' ? 'The board, checking in' : 'Faces of those here'}</span>` : null}
             ${it.confidential ? html`<span class="tag tag--warn">Board only</span>` : null}
           </button>
           ${files.length ? html`<div class="bm-showdocs">${files.map((f) => {

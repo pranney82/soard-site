@@ -404,6 +404,18 @@ export function liveOfTitle(title, section = '') {
   if (/^events?$|\bupcoming events?\b/.test(t) || (/^events?\b/.test(t) && /upcoming/i.test(section))) return 'events';
   return '';
 }
+/**
+ * An item about the people in the room, which the screen shows as the board's faces: the roll call (everyone on the
+ * list, filling in as they check in, with the quorum) and the go-arounds after it (introductions, each one's news),
+ * which show the ones here. → 'roll' | 'room' | ''
+ */
+export function facesOf(it) {
+  if (it?.live && it.live !== 'minutes') return '';
+  const t = String(it?.title || '');
+  if (/\b(roll call|attendance|quorum)\b/i.test(t)) return 'roll';
+  if (/\b(introductions?|welcome|personal best|bragging|around the (room|table))\b/i.test(t)) return 'room';
+  return '';
+}
 /** The draft reader's version (agendaFrom.v on a last-meeting draft): a draft an older one made is drafted again */
 export const DRAFTER = 2;
 /**

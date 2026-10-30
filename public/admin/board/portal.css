@@ -1169,18 +1169,19 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 /* The screen: a warm near-black room, type sized to the window (vh), the brand yellow for the marks. The stage
    changes with a short rise; the rail along the bottom says where the meeting is. */
 .bs { --bs-bg: #1C1D1A; --bs-panel: #262722; --bs-panel-2: #2F302A; --bs-ink: #F6F4EC; --bs-soft: rgba(246, 244, 236, 0.66); --bs-faint: rgba(246, 244, 236, 0.6); --bs-line: rgba(246, 244, 236, 0.12);
-  --bs-pad: clamp(1rem, 3.2vw, 3rem);
-  position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-columns: minmax(0, 1fr) auto;
+  --bs-pad: clamp(1rem, 3.2vw, 3rem); --bs-top: clamp(3.5rem, 9.2vh, 6rem); --bs-foot-h: clamp(1.9rem, 4.4vh, 3rem);
+  /* Every row a set height but the stage's, so nothing moves from one stop to the next */
+  position: fixed; inset: 0; display: grid; grid-template-rows: var(--bs-top) minmax(0, 1fr) var(--bs-foot-h) auto; grid-template-columns: minmax(0, 1fr) auto;
   background: var(--bs-bg); color: var(--bs-ink); font-family: var(--body); overflow: hidden; cursor: none; }
 .bs.is-awake { cursor: default; }
 .bs--center { display: grid; place-items: center; align-content: center; gap: 1rem; text-align: center; grid-template-rows: none; }
-.bs-top { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: clamp(0.75rem, 2.2vh, 1.4rem) var(--bs-pad); }
+.bs-top { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 0; padding: 0 var(--bs-pad); }
 .bs-brand { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
 .bs-brand img { flex: none; width: clamp(32px, 4.4vh, 48px); height: auto; }
 .bs-brand strong { display: block; font-family: var(--display); font-size: clamp(0.95rem, 2vh, 1.25rem); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-brand small { display: block; color: var(--bs-soft); font-size: clamp(0.75rem, 1.55vh, 0.98rem); }
 .bs-top__right { display: flex; align-items: center; gap: 0.75rem; flex: none; }
-.bs-num { padding: 0.25rem 0.75rem; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-weight: 800; font-variant-numeric: tabular-nums; font-size: clamp(0.9rem, 1.9vh, 1.15rem); }
+.bs-num { min-width: 3.4em; padding: 0.25rem 0.75rem; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-weight: 800; font-variant-numeric: tabular-nums; font-size: clamp(0.9rem, 1.9vh, 1.15rem); text-align: center; }
 .bs-clock { color: var(--bs-soft); font-variant-numeric: tabular-nums; font-size: clamp(0.9rem, 1.9vh, 1.15rem); }
 .bs-floor { display: flex; align-items: center; gap: 0.7rem; min-width: 0; margin: 0 auto 0 clamp(1rem, 3vw, 3rem); padding: 0.3rem 1rem 0.3rem 0.35rem; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); font-size: clamp(0.85rem, 1.8vh, 1.1rem); color: var(--bs-soft); white-space: nowrap; overflow: hidden; }
 .bs-floor strong { color: var(--bs-ink); font-weight: 700; }
@@ -1252,6 +1253,47 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bs-coming ol { margin: 0; padding-left: 1.3em; display: grid; gap: 0.35em; font-size: clamp(1rem, 2.4vh, 1.5rem); }
 .bs-coming li::marker { color: var(--yellow); font-weight: 700; }
 .bs-coming span { color: var(--bs-soft); }
+
+/* The board's faces (the roll call, introductions): as big as their rows allow, each lighting up as they check in */
+.bs-faces { --gx: clamp(0.5rem, 1.2vw, 1.25rem); --gy: clamp(0.75rem, 2.2vh, 1.75rem); list-style: none; margin: 0; padding: clamp(0.5rem, 1.5vh, 1rem) 0 0; height: 100%; min-height: 0; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: var(--gy) var(--gx); }
+/* A short last row sits in the middle, under the full ones */
+.bs-faces__one { container-type: size; flex: 0 0 calc((100% - (var(--cols) - 1) * var(--gx)) / var(--cols)); height: calc((100% - (var(--rows) - 1) * var(--gy)) / var(--rows)); min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; text-align: center; transition: opacity 0.6s var(--ease), filter 0.6s var(--ease); }
+.bs-faces__pic { position: relative; flex: none; width: min(calc(100cqh - 4.6rem), 76cqi, 15rem); aspect-ratio: 1; margin-bottom: 0.55rem; border-radius: 50%; background: #3A3B36; box-shadow: 0 0 0 3px var(--bs-bg), 0 0 0 5px rgba(246, 244, 236, 0.14); transition: box-shadow 0.5s var(--ease); }
+.bs-faces__pic img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.bs-faces__initials { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: hsl(var(--hue, 42) 35% 82%); color: hsl(var(--hue, 42) 35% 22%); font-family: var(--display); font-weight: 700; font-size: min(calc((100cqh - 4.6rem) * 0.36), 27cqi, 5.4rem); }
+.bs-faces__mark { position: absolute; right: 2%; bottom: 2%; display: grid; place-items: center; width: 27%; aspect-ratio: 1; border-radius: 50%; background: var(--yellow); color: #1C1D1A; box-shadow: 0 0 0 3px var(--bs-bg); animation: bs-pop 0.45s var(--ease) both; }
+.bs-faces__mark svg { width: 62%; height: 62%; }
+.bs-faces__name { max-width: 100%; font-size: clamp(0.95rem, min(2.4vh, 9cqi), 1.6rem); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-faces__sub { display: flex; align-items: center; gap: 0.45rem; max-width: 100%; color: var(--bs-soft); font-size: clamp(0.78rem, min(1.8vh, 7cqi), 1.15rem); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-faces__sub b { flex: none; padding: 0.05em 0.5em; border-radius: 999px; background: rgba(255, 218, 36, 0.16); color: var(--yellow); font-size: 0.82em; font-weight: 750; }
+.bs-faces__one.is-here .bs-faces__pic, .bs-faces__one.is-remote .bs-faces__pic { box-shadow: 0 0 0 3px var(--bs-bg), 0 0 0 6px var(--yellow); }
+.bs-faces__one.is-here .bs-faces__sub, .bs-faces__one.is-remote .bs-faces__sub { color: var(--yellow); font-weight: 650; }
+.bs-faces__one.is-away { opacity: 0.38; filter: grayscale(1); }
+@keyframes bs-pop { from { transform: scale(0.4); opacity: 0; } }
+/* The roll call's count: here of the list, and the quorum (yellow once it's met) */
+.bs-roll { display: grid; justify-items: end; gap: 0.55rem; text-align: right; }
+.bs-roll__n { font-family: var(--display); font-size: clamp(2.2rem, 6.4vh, 4.4rem); font-weight: 700; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.bs-roll__n small { margin-left: 0.25em; font-family: var(--body); font-size: 0.4em; font-weight: 650; letter-spacing: 0; color: var(--bs-soft); }
+.bs-roll__q { padding: 0.3rem 0.9rem; border-radius: 999px; border: 1px solid var(--bs-line); color: var(--bs-soft); font-size: clamp(0.85rem, 1.9vh, 1.15rem); font-weight: 700; font-variant-numeric: tabular-nums; transition: background 0.4s, color 0.4s; }
+.bs-roll__q.is-met { background: var(--yellow); border-color: transparent; color: #1C1D1A; }
+.bs-roll .bs-quiet { margin: 0; max-width: 22rem; }
+/* An item with nothing more to show: its part, in order, the one on now marked */
+.bs-part { list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(0.45rem, 1.5vh, 1rem); font-size: clamp(1.05rem, 2.7vh, 1.7rem); }
+.bs-part li { display: flex; align-items: center; gap: clamp(0.75rem, 1.2vw, 1.1rem); min-width: 0; color: var(--bs-soft); font-weight: 600; transition: color 0.3s; }
+.bs-part__label { display: inline-grid; place-items: center; flex: none; min-width: 2.8em; height: 1.65em; padding: 0 0.5em; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); font-size: 0.66em; font-weight: 750; font-variant-numeric: tabular-nums; }
+.bs-part__label svg { width: 1.2em; height: 1.2em; }
+.bs-part__t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-part__who { margin-left: auto; padding-left: 1rem; flex: none; color: var(--bs-faint); font-size: 0.72em; font-weight: 600; white-space: nowrap; }
+.bs-part li.is-done { color: var(--bs-faint); }
+.bs-part li.is-now { color: var(--bs-ink); font-weight: 700; }
+.bs-part li.is-now .bs-part__label { background: var(--yellow); border-color: transparent; color: #1C1D1A; }
+/* Approving the last minutes: the motion, and its result once the board has voted */
+.bs-motion { display: grid; gap: 0.6rem; padding: clamp(1.1rem, 3vh, 2rem) clamp(1.1rem, 2vw, 2rem); border-radius: 22px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
+.bs-motion .bs-eyebrow, .bs-motion .bs-quiet { margin: 0; }
+.bs-motion__text { margin: 0; font-family: var(--display); font-size: clamp(1.4rem, 3.8vh, 2.5rem); font-weight: 700; line-height: 1.2; text-wrap: balance; }
+.bs-motion__result { justify-self: start; margin: 0.2rem 0 0; padding: 0.3rem 0.9rem; border-radius: 999px; background: rgba(246, 244, 236, 0.1); font-size: clamp(0.95rem, 2.1vh, 1.3rem); font-weight: 750; font-variant-numeric: tabular-nums; }
+.bs-motion__result.is-passed { background: var(--yellow); color: #1C1D1A; }
+.bs-item__side > .bs-motion + * { margin-top: clamp(0.5rem, 1.5vh, 1rem); }
 
 /* The money: three figures */
 .bs-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: clamp(0.75rem, 1.6vw, 1.5rem); }
@@ -1358,16 +1400,17 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bs-page__sheet { display: grid; place-items: center; }
 .bs-page__sheet > * { display: block; box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.6); background: #fff; border-radius: 3px; }
 .bs-page .bs-quiet { position: absolute; }
-.bs-foot { grid-column: 1 / -1; grid-row: 3; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: clamp(0.4rem, 1.2vh, 0.8rem) var(--bs-pad) 0; color: var(--bs-soft); font-size: clamp(0.85rem, 1.8vh, 1.1rem); }
+.bs-foot { grid-column: 1 / -1; grid-row: 3; display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 0; padding: 0 var(--bs-pad); color: var(--bs-soft); font-size: clamp(0.85rem, 1.8vh, 1.1rem); }
+.bs-foot__pages { display: flex; gap: 0.45rem; flex: none; }
+.bs-foot__pages i { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--bs-line); transition: background 0.3s; }
+.bs-foot__pages i.is-on { background: var(--yellow); }
 .bs-foot__what { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-foot__what b { color: var(--yellow); margin-right: 0.5rem; font-variant-numeric: tabular-nums; }
 .bs-foot__sep { margin: 0 0.55rem; opacity: 0.5; }
-.bs-foot__who { display: flex; align-items: center; gap: 0.5rem; flex: none; color: var(--bs-ink); font-weight: 600; }
-.bs-foot__who .bs-face + .bs-face { margin-left: -12px; }
 
 /* The rail: the parts of the agenda, done, on now, to come; and what's next */
-.bs-rail { grid-column: 1 / -1; grid-row: 4; display: flex; align-items: flex-end; gap: clamp(1rem, 2.5vw, 2.5rem); padding: clamp(0.6rem, 1.8vh, 1.1rem) var(--bs-pad) clamp(0.75rem, 2.2vh, 1.4rem); }
-.bs-rail__parts { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; min-width: 0; display: flex; gap: clamp(0.3rem, 0.5vw, 0.5rem); }
+.bs-rail { grid-column: 1 / -1; grid-row: 4; display: grid; grid-template-columns: minmax(0, 1fr) clamp(12rem, 22vw, 26rem); align-items: end; gap: clamp(1rem, 2.5vw, 2.5rem); padding: clamp(0.6rem, 1.8vh, 1.1rem) var(--bs-pad) clamp(0.75rem, 2.2vh, 1.4rem); }
+.bs-rail__parts { list-style: none; margin: 0; padding: 0; min-width: 0; display: flex; gap: clamp(0.3rem, 0.5vw, 0.5rem); }
 .bs-rail__parts li { flex: var(--w) 1 0; min-width: min(8.5rem, 12%); display: grid; gap: 0.45rem; }
 .bs-rail__bar { position: relative; height: clamp(4px, 0.7vh, 7px); border-radius: 999px; background: var(--bs-line); overflow: hidden; }
 .bs-rail__bar i { position: absolute; inset: 0 auto 0 0; width: calc(var(--fill) * 100%); border-radius: inherit; background: rgba(255, 218, 36, 0.55); transition: width 0.6s var(--ease); }
@@ -1377,7 +1420,7 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bs-rail__parts li.is-done .bs-rail__label { color: var(--bs-soft); }
 .bs-rail__parts li.is-on .bs-rail__label { color: var(--bs-ink); }
 .bs-rail__parts li.is-on .bs-rail__label b { color: var(--yellow); }
-.bs-rail__next { margin: 0; flex: 0 1 auto; max-width: 32%; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--bs-soft); font-size: clamp(0.8rem, 1.75vh, 1.1rem); }
+.bs-rail__next { margin: 0; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--bs-soft); font-size: clamp(0.8rem, 1.75vh, 1.1rem); }
 .bs-rail__next b { color: var(--yellow); font-variant-numeric: tabular-nums; margin: 0 0.2em 0 0.3em; }
 
 .bs-vote { grid-column: 2; grid-row: 2; width: clamp(18rem, 28vw, 26rem); align-self: center; margin-right: var(--bs-pad); padding: clamp(1.1rem, 3vh, 2rem); border-radius: 22px; background: #2A2B26; border: 1px solid rgba(255, 218, 36, 0.45); animation: bs-in 0.45s var(--ease) both; }
@@ -1388,10 +1431,11 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bs-vote__counts i { grid-column: 1 / -1; height: 6px; margin-top: 0.4rem; border-radius: 999px; background: var(--bs-line); position: relative; overflow: hidden; }
 .bs-vote__counts i::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--p); border-radius: inherit; background: var(--bs-soft); transition: width 0.5s var(--ease); }
 .bs-vote__counts .is-for i::after { background: var(--yellow); }
-.bs-full { position: fixed; right: 1rem; top: 1rem; display: inline-flex; align-items: center; gap: 0.5rem; height: 38px; padding: 0 0.6rem 0 0.85rem; border-radius: 999px; border: 1px solid var(--bs-line); background: rgba(28, 29, 26, 0.9); color: var(--bs-ink); font-size: 0.85rem; font-weight: 650; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
-.bs-full kbd { font-family: var(--body); font-size: 0.72rem; padding: 0.05rem 0.35rem; border-radius: 5px; border: 1px solid var(--bs-line); color: var(--bs-soft); }
+.bs-full { display: inline-grid; place-items: center; flex: none; width: 2.4rem; height: 2.4rem; padding: 0; border-radius: 50%; border: 1px solid var(--bs-line); background: var(--bs-panel); color: var(--bs-ink); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+.bs-full:hover { background: var(--bs-panel-2); }
+.bs-full:focus-visible { opacity: 1; pointer-events: auto; outline: 2px solid var(--yellow); outline-offset: 2px; }
 .bs.is-awake .bs-full { opacity: 1; pointer-events: auto; }
-.bs-wait { position: fixed; left: 50%; bottom: 1.25rem; transform: translateX(-50%); margin: 0; color: var(--bs-soft); font-size: 0.95rem; }
+.bs.is-mirror { cursor: default; }
 @keyframes bs-in { from { opacity: 0; transform: translateY(14px); } }
 @keyframes bs-fade { from { opacity: 0; } }
 @media (max-width: 900px) {
@@ -1399,8 +1443,14 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
   .bs { grid-template-columns: minmax(0, 1fr); } .bs-vote { grid-column: 1; grid-row: 3; width: auto; margin: 0 1rem 1rem; }
   .bs-figs, .bs-reveals { grid-template-columns: 1fr; } .bs-rail__next { display: none; } .bs-rail__label { display: none; }
   .bk--screen { overflow-x: auto; } .bk--screen .bk-col { flex: 0 0 70%; } .bs-floor { display: none; }
+  .bs-rail { grid-template-columns: minmax(0, 1fr); }
+  /* A phone following the screen: the meeting's name and the part's time along the top; an item's people or count under its title */
+  .bs-brand > span { min-width: 0; } .bs-brand small, .bs-clock, .bs-full, .bs-chip { display: none; }
+  .bs-item__bar { flex-wrap: wrap; align-items: flex-start; } .bs-item__aside, .bs-roll { justify-items: start; text-align: left; }
+  .bs-faces { align-content: flex-start; overflow-y: auto; }
+  .bs-faces__one { container-type: inline-size; flex-basis: calc((100% - 2 * var(--gx)) / 3); height: auto; } .bs-faces__pic { width: min(76cqi, 9rem); } .bs-faces__initials { font-size: min(27cqi, 3rem); }
 }
-@media (prefers-reduced-motion: reduce) { .bs-stage__in, .bs-vote, .bs-timer.is-over, .bs-figs__bar i { animation: none !important; } .bs-vote__counts i::after, .bs-rail__bar i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .bs-stage__in, .bs-vote, .bs-timer.is-over, .bs-figs__bar i, .bs-faces__mark { animation: none !important; } .bs-vote__counts i::after, .bs-rail__bar i, .bs-faces__one, .bs-faces__pic, .bs-roll__q { transition: none; } }
 
 /* Print it all: only the pages it built, each document from a new sheet */
 .bpp { display: none; }

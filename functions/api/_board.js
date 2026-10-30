@@ -1130,7 +1130,8 @@ async function liveMeeting(DB, id, { member = null, admin = false } = {}) {
   if (!ID.test(String(id || ''))) throw err('Which meeting?', 400);
   const m = await getMeeting(DB, id);
   if (m) {
-    if (!m.shared) throw err('That meeting isn’t on the board page', 404);
+    // An admin previews it on the screen before it's shared (as the board will see it), acting in nothing
+    if (!m.shared && !(admin && !member)) throw err('That meeting isn’t on the board page', 404);
     return { m, canAct: !!member };
   }
   const p = admin && !member ? await getPractice(DB, id) : null;
@@ -1180,7 +1181,8 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const [settings, rows] = await Promise.all([getSettings(env.DB), liveRows(env.DB, m, now)]);
   const { here, votes, vote, board, checkins } = rows;
   const me = member ? { slug: member.slug, name: member.name } : canAct ? await adminVoter(env.DB, adminEmail) : null;
-  const seen = m.practice ? m : forBoard(m);
+  // As the board sees it (an admin's preview of one not shared yet too: never a private note or a staff-only file)
+  const seen = m.practice ? m : forBoard({ ...m, shared: true });
   const sections = seen.sections.map((sec) => ({
     id: sec.id, title: sec.title, minutes: sec.minutes || 0,
     items: sec.items.map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, about: it.about, docs: it.docs })),
@@ -1208,6 +1210,8 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
     prior,
     snapshot: m.snapshot || null,
     here: { board: here.size, of: board.length + (m.practice ? 1 : 0), quorum: q, met: q ? here.size >= q : null, remote: [...here.values()].filter((h) => h === 'remote').length },
+    // The roll call on the screen: the board on the meeting's list, each one here (in the room or by video) or not yet
+    roll: board.map((p) => ({ slug: p.slug || '', name: p.name, how: here.get(p.slug || p.key) || '' })),
     me: { how: (me && (checkins.find((c) => c.slug === me.slug)?.how || marked)) || '', canAct: !!(canAct && me), name: me?.name || '' },
     vote: motion ? {
       motionId: motion.id, text: motion.text, by: motion.by, second: motion.second, openedAt: vote.openedAt,

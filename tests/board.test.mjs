@@ -1885,7 +1885,12 @@ test('a meeting is held live: the chair starts it and moves item by item; member
   assert.equal((await portalApi(FOUNDER, { action: 'checkin', meetingId: m.id, how: 'present' })).status, 403);
   const hidden = await heldToday({ shared: false });
   assert.equal((await liveGet(MEMBER, hidden.id)).status, 404);
-  assert.equal((await liveGet(FOUNDER, hidden.id)).status, 404);
+  // The chair previews one not shared yet on the screen: as the board will see it, acting in nothing
+  const preview = await liveGet(FOUNDER, hidden.id);
+  assert.equal(preview.status, 200);
+  assert.equal(preview.body.me.canAct, false);
+  assert.ok(!JSON.stringify(preview.body).includes('PRIVATE'), 'never the private note');
+  assert.equal((await portalApi(FOUNDER, { action: 'checkin', meetingId: hidden.id, how: 'present' })).status, 403);
   // Ended: no more votes
   m = await chairSets(m, { endedAt: new Date().toISOString() });
   assert.equal(isLive(m), false);
@@ -2062,6 +2067,23 @@ test('with nothing on the next meeting, a practice meeting borrows the last meet
   assert.deepEqual(itemFiles(p, items.find((it) => it.live === 'minutes')).map((f) => f.id), [minutes.id]);
   assert.ok(!items.some((it) => it.docs.includes(gala.id)), 'one that fits no item is shown after the agenda');
   assert.equal((await adminApi(FOUNDER, { action: 'practice' })).body.meeting.id, p.id, 'and kept all day');
+});
+
+test('the roll call on the screen: the board on the meeting’s list, each in the room, on video or not yet; the items about the people are found by name', async () => {
+  const { facesOf } = await import('../public/admin/board-shared.js');
+  assert.equal(facesOf({ title: 'Roll call' }), 'roll');
+  assert.equal(facesOf({ title: 'Attendance and quorum' }), 'roll');
+  assert.equal(facesOf({ title: 'Welcome and introductions' }), 'room');
+  assert.equal(facesOf({ title: 'Personal Best, Business Best, Sunshine Bragging Rights' }), 'room');
+  assert.equal(facesOf({ title: 'Financial' }), '');
+  assert.equal(facesOf({ title: 'Roll call', live: 'cash' }), '', 'live numbers someone chose for it win');
+  let m = await heldToday();
+  m = await chairSets(m, { startedAt: new Date().toISOString() });
+  await portalApi(MEMBER, { action: 'checkin', meetingId: m.id, how: 'present' });
+  await portalApi(OTHER_MEMBER, { action: 'checkin', meetingId: m.id, how: 'remote' });
+  const v = (await liveGet(MEMBER, m.id)).body;
+  assert.deepEqual(v.roll.map((p) => [p.slug, p.how]).sort(), [['alex-rivera', 'present'], ['kim-park', ''], ['sam-ortiz', 'remote']]);
+  assert.ok(v.roll.every((p) => p.name), 'each by name');
 });
 
 test('the quorum is a majority of the board on the meeting’s list, unless Settings names a number', async () => {

@@ -809,6 +809,15 @@ try {
   await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}/during`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
   ok(await jane.waitForSelector('.bm-run.is-ready', { timeout: 8000 }).then(() => true, () => false), 'During: ready to start');
+  // The preview, before any screen window: the screen itself, small, moving with Next and back
+  const mirror = async () => { const f = jane.frames().find((x) => x.url().includes('?mirror')); return f ? f.evaluate(() => (document.querySelector('.bs')?.className.match(/bs--(\w+)/) || [])[1] || '') : ''; };
+  const until = async (fn, want, ms = 8000) => { const t0 = Date.now(); let got; while (Date.now() - t0 < ms) { got = await fn().catch(() => ''); if (got === want) return true; await sleep(150); } return false; };
+  ok(await until(mirror, 'cover'), 'During shows the screen itself, small, before any screen window is open: the cover');
+  await clickText(jane, '.bm-run__step button', /^Next/);
+  ok(await until(async () => (['', 'cover'].includes(await mirror()) ? '' : 'moved'), 'moved'), 'Next moves the preview on from the cover, with no screen window open');
+  ok((await meetingNow(jane, meetingId)).live.startedAt === '', 'the preview never starts the meeting');
+  await clickText(jane, '.bm-run__step button', /Previous/);
+  ok(await until(mirror, 'cover'), 'and Previous back to the cover');
   const scr = await tab(FOUNDER, 1280);
   await scr.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
   await scr.goto(`${SITE}/admin/board/#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
@@ -819,10 +828,23 @@ try {
   ok(await jane.waitForSelector('.bm-run.is-rehearsing', { timeout: 6000 }).then(() => true, () => false), 'the chair’s During knows the screen is open, to rehearse on');
   const screenFoot = () => scr.evaluate(() => document.querySelector('.bs-foot__what')?.textContent || '');
   let hops = 0;
-  while (hops < 25 && !/Balance sheet financials/.test(await screenFoot())) { await jane.keyboard.press('ArrowRight'); await sleep(250); hops += 1; }
+  // Nothing moves from stop to stop: the chair's Next, the screen's stage and its rail (whatever the words in them)
+  const spots = { next: new Set(), stage: new Set(), rail: new Set() };
+  let roll = null;
+  const note = async () => {
+    spots.next.add(await jane.evaluate(() => JSON.stringify([...document.querySelectorAll('.bm-run__step button')].find((b) => /^Next/.test(b.textContent.trim()))?.getBoundingClientRect())));
+    const at = await scr.evaluate(() => ({ stage: JSON.stringify(document.querySelector('.bs-stage')?.getBoundingClientRect()), rail: document.querySelector('.bs-rail__parts li:last-child')?.getBoundingClientRect().right, faces: document.querySelectorAll('.bs-faces__one').length, title: document.querySelector('.bs-item__title')?.textContent || '', count: document.querySelector('.bs-roll')?.textContent || '' }));
+    spots.stage.add(at.stage); spots.rail.add(at.rail);
+    if (at.title === 'Roll call') roll = at;
+  };
+  while (hops < 25 && !/Balance sheet financials/.test(await screenFoot())) { await note(); await jane.keyboard.press('ArrowRight'); await sleep(350); hops += 1; }
+  await note();
+  ok(spots.next.size === 1, `the chair’s Next stays where it is on every stop (${spots.next.size} places)`);
+  ok(spots.stage.size === 1 && spots.rail.size === 1, `the screen’s stage and rail keep their size and place on every stop (${spots.stage.size} stages, ${spots.rail.size} rails)`);
+  ok(roll && roll.faces === 3 && /3\s*on the board/.test(roll.count), `the roll call shows the board’s faces, everyone on the meeting’s list (${JSON.stringify(roll)})`);
   ok(await scr.waitForFunction(() => /Financial.*Balance sheet financials.*Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), '→ steps the screen through the items to the Financial item’s statement, page 1 of 2');
   ok(await scr.waitForFunction(() => document.querySelector('.bs-page__sheet canvas')?.width > 0, { timeout: 8000 }).then(() => true, () => false), 'the page is drawn, as big as the screen allows');
-  ok(await scr.evaluate(() => /Sam Ortiz/.test(document.querySelector('.bs-foot__who')?.textContent || '')), 'with who presents it');
+  ok(await scr.evaluate(() => /Sam Ortiz has the floor/.test(document.querySelector('.bs-floor')?.textContent || '')), 'with who presents it, along the top');
   await shot(scr, '21-screen-document');
   await jane.keyboard.press('ArrowRight');
   ok(await scr.waitForFunction(() => /Page 2 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'the next press is page 2');
@@ -840,6 +862,9 @@ try {
   await jane.bringToFront();
   await clickText(jane, 'button', /^Start the meeting$/);
   ok(await jane.waitForSelector('.bm-run.is-live', { timeout: 5000 }).then(() => true, () => false), 'Start puts it live');
+  // (Start also locks the day's numbers: that answer once came back first and undid Start)
+  await sleep(1500);
+  ok(await jane.evaluate(() => !!document.querySelector('.bm-run.is-live')) && !!(await meetingNow(jane, meetingId)).live.startedAt, 'and it stays live once the numbers lock: started on the server too');
   ok(await scr.waitForSelector('.bs-cover', { timeout: 4000 }).then(() => true, () => false), 'and the screen opens on the cover');
   ok(await saved(jane), 'saved');
   await clickText(jane, '.bm-showdoc', /^Balance sheet financials$/);
