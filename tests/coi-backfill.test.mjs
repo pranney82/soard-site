@@ -13,7 +13,7 @@ import { ensureVendorSchema } from '../functions/api/_vendors.js';
 import { W9_PDF_BASE64 } from '../functions/api/_w9-irs.js';
 import {
   worthReading, hintsOf, kindOfText, isOwn, namesOf, nameKey, nameScore, candidatesFor, onVendorDomain, laterDates, meetsMinimums, typedW9,
-  readingOf, recordCoverage, recordUpload, maybeRunBackfill, backfillStatus, sha256, MAIL_WORDS, STATE_KEY,
+  readingOf, recordCoverage, recordUpload, maybeRunBackfill, backfillStatus, sha256, searchBoxes, MAIL_WORDS, STATE_KEY,
 } from '../functions/api/_coi-backfill.js';
 import { DEFAULTS } from '../functions/api/_vendors.js';
 
@@ -286,6 +286,18 @@ function pretendFetch(url, init = {}) {
     }
     throw new Error(`JobTread doesn't know ${JSON.stringify(Object.keys(query))}`);
   }
+  if (u.host === 'api.ramp.com') {
+    if (u.pathname.endsWith('/token')) return Response.json({ access_token: 'ramp-tok', expires_in: 3600 });
+    const one = /\/bills\/([^/]+)$/.exec(u.pathname);
+    if (one) return Response.json(world.rampBills.find((b) => b.id === one[1]) || {});
+    world.rampLists.push(Object.fromEntries(u.searchParams));
+    return Response.json({ data: world.rampBills, page: { next: null } });
+  }
+  if (u.host === 'files.ramp.example') {
+    world.rampFetched.push(u.pathname);
+    const file = world.rampFiles[u.pathname];
+    return file ? new Response(file.bytes, { headers: { 'content-type': file.type } }) : new Response('gone', { status: 404 });
+  }
   throw new Error(`Unexpected ${u.href}`);
 }
 
@@ -320,6 +332,7 @@ beforeEach(async () => {
   store = [];
   world = {
     seq: 0, gmail: [], searches: [], jt: [], ai: [], uploads: [], created: [], updates: [], notes: [], contacts: [], tagged: [], accountPages: 0,
+    rampBills: [], rampFiles: {}, rampLists: [], rampFetched: [],
     matchAnswer: { pick: 1, sure: true }, autoPrimary: true, jtFileBytes: {}, drawn: [],
     draw: async () => [],
     fields: [
@@ -533,4 +546,61 @@ test('files read before the name was required of the model are read again, once'
   await maybeRunBackfill(env, { now: NOW + 2 * 3600e3, fetchImpl: pretendFetch, force: true, draw: world.draw });
   assert.equal(world.ai.filter((x) => x === 'read').length, reads + 1);
   assert.equal((await row()).insured, null);
+});
+
+test('every Google account with a soardcharity.com address is searched, by an alias too (Linzi’s account is on another domain)', async () => {
+  const LINZI = 'lb@sunny.example';
+  await env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'").bind(JSON.stringify({ ok: true, accounts: [
+    ...ACCOUNTS, { email: LINZI, aliases: ['linzi@soardcharity.com'], name: 'Linzi Bee', active: true },
+    { email: 'store@sunny.example', aliases: [], name: 'Store', active: true }, { email: 'gone@soardcharity.com', aliases: [], name: 'Gone', active: false, why: 'suspended' },
+  ] })).run();
+  assert.deepEqual((await searchBoxes(env.DB)).map((b) => b.email), [LINZI, PAT, SAM], 'not an account with no soardcharity.com address, not a suspended one');
+  mail({ box: LINZI, at: NOW - 10 * DAY, from: 'Amy Agent <amy@sampleinsure.example>', subject: 'COI - Sample Painting LLC', files: [{ name: 'Sample Painting COI 2026.pdf', type: 'application/pdf', data: pdfOf('sample-coi') }] });
+  await runAll();
+  const row = (await rowsByName())['Sample Painting COI 2026.pdf'];
+  assert.deepEqual([row.state, row.jt_id], ['filed', 'VSAMPLE']);
+  assert.ok(world.notes.some((n) => /found in Linzi Bee’s email/.test(n.message)), world.notes.map((n) => n.message).join('\n'));
+});
+
+test('Ramp: every bill’s invoice and supporting files are read, and the email the vendor sent it in is opened for its files', async () => {
+  Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
+  TEXTS['ramp-invoice'] = `INVOICE #7 Sample Painting LLC ${'line '.repeat(30)} MARK:ramp-invoice`;
+  const eml = [
+    'From: Sam Sample <office@samplepainting.example>', 'Subject: Invoice 7', 'Content-Type: multipart/mixed; boundary="b1"', '',
+    '--b1', 'Content-Type: text/plain', '', 'Invoice 7 attached, with our certificate of insurance.',
+    '--b1', 'Content-Type: application/pdf; name="Sample COI.pdf"', 'Content-Disposition: attachment; filename="Sample COI.pdf"', 'Content-Transfer-Encoding: base64', '', Buffer.from(pdfOf('sample-coi')).toString('base64'),
+    '--b1', 'Content-Type: image/png; name="logo.png"', 'Content-Disposition: inline', 'Content-Transfer-Encoding: base64', '', Buffer.from(new Uint8Array(3000)).toString('base64'),
+    '--b1--',
+  ].join('\r\n');
+  world.rampFiles = {
+    '/inv.pdf': { bytes: pdfOf('ramp-invoice'), type: 'application/pdf' },
+    '/mail.eml': { bytes: new TextEncoder().encode(eml), type: 'message/rfc822' },
+    '/credit.pdf': { bytes: pdfOf('ramp-invoice'), type: 'application/pdf' },
+  };
+  world.rampBills = [{ id: 'RB1', vendor: { name: 'Sample Painting' }, invoice_number: '7', issued_at: '2026-09-01', created_at: '2026-09-01T12:00:00Z', attachments: [
+    { id: 'A1', attachment_type: 'INVOICE', url: 'https://files.ramp.example/inv.pdf' },
+    { id: 'A2', attachment_type: 'EMAIL', url: 'https://files.ramp.example/mail.eml' },
+    { id: 'A3', attachment_type: 'VENDOR_CREDIT', url: 'https://files.ramp.example/credit.pdf' },
+  ] }];
+  await runAll();
+  const rows = await rowsByName();
+  assert.deepEqual([rows['Sample COI.pdf']?.state, rows['Sample COI.pdf']?.jt_id], ['filed', 'VSAMPLE'], 'the certificate in the vendor’s email is filed');
+  assert.match(rows['inv.pdf'].detail, /its text says so/, 'the invoice is read for its text and passed by');
+  assert.equal(rows['logo.png'], undefined, 'the email’s logo isn’t');
+  assert.ok(!world.rampFetched.includes('/credit.pdf'), 'a vendor credit isn’t fetched');
+  assert.deepEqual({ ...(await env.DB.prepare("SELECT item, state, detail FROM coi_found WHERE id = 'ramp:RB1:A2'").first()) }, { item: 'message', state: 'opened', detail: '1 file to read' });
+  assert.equal(world.vendors.VSAMPLE.values['F-GL'], '2027-05-01');
+});
+
+test('a new search version looks through every inbox and Ramp again from four years back, and reads nothing twice', async () => {
+  mail({ box: PAT, at: NOW - 30 * DAY, from: 'Amy Agent <amy@sampleinsure.example>', subject: 'COI', files: [{ name: 'Sample Painting COI 2026.pdf', type: 'application/pdf', data: pdfOf('sample-coi') }] });
+  await runAll();
+  const reads = world.ai.filter((x) => x === 'read').length;
+  // As the search before this one left it: done, and only new mail looked for after
+  await env.DB.prepare("UPDATE spend_state SET data = json_remove(data, '$.search') WHERE key = ?").bind(STATE_KEY).run();
+  world.searches = [];
+  for (let i = 0; i < 8 && world.searches.length < 2; i++) await maybeRunBackfill(env, { now: NOW + DAY + i * 60e3, fetchImpl: pretendFetch, force: true, draw: world.draw });
+  const afters = world.searches.map((q) => Number(/after:(\d+)$/.exec(q)[1]) * 1000);
+  assert.ok(afters.length >= 2 && afters.every((a) => a < NOW - 3 * 365 * DAY), 'both inboxes, from four years back');
+  assert.equal(world.ai.filter((x) => x === 'read').length, reads, 'nothing read twice');
 });

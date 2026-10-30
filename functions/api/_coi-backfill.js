@@ -7,10 +7,13 @@
  * rode along on Ramp bills. This finds them in the background and files each
  * one where the trade-partner work reads it. Nobody clicks anything:
  *
- *   1. Finding. Every active staff mailbox (the read-only access in
- *      ./_mailbox.js) is searched for email with a file and insurance or W-9
- *      words, the last 4 years first and new mail after; JobTread vendor
- *      accounts' untagged files and Ramp bills' supporting files are listed.
+ *   1. Finding. Every active Google account with a soardcharity.com address,
+ *      its own or an alias (Linzi's account is on sunnyandranney.com), is
+ *      searched read-only (./_mailbox.js) for email with a file and insurance
+ *      or W-9 words, the last 4 years first and new mail after. JobTread
+ *      vendor accounts' untagged files are listed, and every Ramp bill's
+ *      invoice, supporting files and the email the vendor sent it in (an
+ *      email's files are taken out of it, ./_mime.js).
  *      Each candidate file is queued once (coi_found).
  *   2. Reading. A file's bytes are hashed before anything else, so a
  *      certificate forwarded to three inboxes is read once. A PDF's own text
@@ -44,7 +47,8 @@
 
 import { PDFDocument } from 'pdf-lib';
 import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
-import { mailboxes, gmail, header, textOf, filesOf, partsOf, bytesOf } from './_mailbox.js';
+import { gmail, header, textOf, filesOf, partsOf, bytesOf } from './_mailbox.js';
+import { parseEmail } from './_mime.js';
 import { isStaffEmail } from './_board-roles.js';
 import { readState, writeState } from './_mercury.js';
 import { FREE_MAIL } from './_kid-partners.js';
@@ -56,6 +60,8 @@ import { jt, jtSetup, readJtVendor, writeFields, vendorNote, uploadToJt, readDoc
 
 export const STATE_KEY = 'coi-backfill';
 const REREAD = 2;            // raised when files already read need reading again (2: matching a W-9 to the JobTread account it's on)
+const SEARCH = 2;            // raised when every inbox and Ramp are searched again from the start (2: wider words, Linzi's account, Ramp's invoices and emails)
+const RAMP_KINDS = new Set(['FILE', 'INVOICE', 'EMAIL']);   // a Ramp bill's attachments worth a look (not its vendor credits)
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
 const BUSY_MS = MIN;                 // while there's anything to find or read
@@ -78,7 +84,7 @@ const LOGO_BYTES = 250 * 1024;       // a pasted picture smaller than this, or o
 const MIN_TEXT = 80;                 // a PDF with less text than this is a scan
 
 // Gmail's search words: email with a file and insurance or W-9 words (the text gate below decides)
-export const MAIL_WORDS = 'has:attachment ("certificate of liability insurance" OR "certificate of insurance" OR ACORD OR COI OR COIs OR "proof of insurance" OR "evidence of insurance" OR "workers compensation" OR "workers comp" OR affidavit OR filename:coi OR filename:acord OR filename:insurance OR filename:certificate OR "form w-9" OR "w-9 form" OR "request for taxpayer" OR filename:w9 OR filename:w-9 OR subject:w9 OR subject:w-9)';
+export const MAIL_WORDS = 'has:attachment ("certificate of liability insurance" OR "certificate of insurance" OR ACORD OR COI OR COIs OR "proof of insurance" OR "evidence of insurance" OR "workers compensation" OR "workers comp" OR affidavit OR filename:coi OR filename:acord OR filename:insurance OR filename:certificate OR "form w-9" OR "w-9 form" OR "request for taxpayer" OR filename:w9 OR filename:w-9 OR subject:w9 OR subject:w-9 OR W9 OR "W 9" OR insurance OR insured)';
 
 const COI_WORDS = /\b(coi'?s?|acord|sbwc|certificates? of (liability )?insurance|insurance certificates?|proof of insurance|evidence of insurance|workers'?\s*comp(ensation)?|general liability|additional insured|certificate holder|liability insurance)\b/i;
 const EXEMPT_WORDS = /\b(affidavit|exempt(ion)?)\b/i;
@@ -673,8 +679,11 @@ async function bytesFor(env, ctx, row, h) {
     const d = await jt(env, { file: { $: { id: h.fileId }, id: {}, url: {} } }, ctx.fetchImpl);
     url = d?.file?.url;
   } else {
-    const bill = await ramp(env, `/bills/${encodeURIComponent(h.billId)}`, { fetchImpl: ctx.fetchImpl });
-    url = (bill?.attachments || []).find((a) => a.id === h.attachmentId)?.url;
+    const got = await rampAttachment(env, ctx, h);
+    if (!got || got.tooBig || h.part == null) return got && { ...got, name: row.name };
+    // A file out of the email the vendor sent the bill in
+    const p = partsOf(parseEmail(got.bytes)).find((x) => x.partId === h.part);
+    return p?.body?.data ? { bytes: bytesOf(p.body.data), name: p.filename || row.name } : null;
   }
   if (!url) return null;
   const res = await ctx.fetchImpl(url, { signal: AbortSignal.timeout(30000) });
@@ -682,6 +691,18 @@ async function bytesFor(env, ctx, row, h) {
   const len = Number(res.headers.get('content-length') || 0);
   if (len > MAX_BYTES) return { bytes: new Uint8Array(0), name: row.name, tooBig: true };
   return { bytes: new Uint8Array(await res.arrayBuffer()), name: row.name };
+}
+
+/** One of a Ramp bill's attachments, fetched by the link Ramp gives now → { bytes, type, tooBig? } or null when it's gone */
+async function rampAttachment(env, ctx, h) {
+  const bill = await ramp(env, `/bills/${encodeURIComponent(h.billId)}`, { fetchImpl: ctx.fetchImpl });
+  const url = (bill?.attachments || []).find((a) => a.id === h.attachmentId)?.url;
+  if (!url) return null;
+  const res = await ctx.fetchImpl(url, { signal: AbortSignal.timeout(30000) });
+  if (!res.ok) throw new Error(`Ramp's file answered ${res.status}`);
+  const type = res.headers.get('content-type') || '';
+  if (Number(res.headers.get('content-length') || 0) > MAX_BYTES) return { bytes: new Uint8Array(0), type, tooBig: true };
+  return { bytes: new Uint8Array(await res.arrayBuffer()), type };
 }
 
 // ─── Handling one row ───────────────────────────────────────────────
@@ -707,6 +728,30 @@ async function openEmail(env, ctx, row) {
     }));
   }
   return { state: 'opened', detail: `${files.length} file${files.length === 1 ? '' : 's'} to read`, sentAt };
+}
+
+/** The email a vendor sent a Ramp bill in: its files worth reading become rows of their own, as a staff email's do */
+async function openRampEmail(env, ctx, row) {
+  const h = parseJson(row.hint);
+  const got = await rampAttachment(env, ctx, h);
+  if (!got) return { state: 'skipped', detail: 'Ramp no longer has it' };
+  if (got.tooBig) return { state: 'skipped', detail: 'over 10 MB' };
+  const iso = new Date(ctx.now).toISOString();
+  const queue = (files, extra) => (files.length ? env.DB.batch(files.map((f) => env.DB.prepare(`INSERT OR IGNORE INTO coi_found (id, source, item, name, size, sent_at, hint, state, found_at, updated_at) VALUES (?, 'ramp', 'file', ?, ?, ?, ?, 'queued', ?, ?)`)
+    .bind(`${row.id}:${f.part ?? 'file'}`, clean(f.name, 160), f.size || null, row.sent_at || null, JSON.stringify({ ...h, ...extra(f) }), iso, iso))) : null);
+  // Ramp handed over the document itself, not an email: read as it is
+  if (documentType(got.bytes.slice(0, 16))) {
+    await queue([{ name: row.name || 'document', size: got.bytes.length }], () => ({}));
+    return { state: 'opened', detail: '1 file to read' };
+  }
+  const payload = parseEmail(got.bytes);
+  if (!payload) return { state: 'skipped', detail: `not an email Ramp gave (${clean(got.type, 60) || 'unknown type'})` };
+  const subject = header(payload.headers, 'Subject');
+  const from = header(payload.headers, 'From');
+  const hints = hintsOf(`${subject}\n${textOf(payload).slice(0, 4000)}`);
+  const files = filesOf(payload).filter((f) => worthReading(f, { hinted: hints.coi || hints.w9 }));
+  await queue(files, (f) => ({ part: f.part, subject: clean(subject, 160), from: clean(from, 160), coi: hints.coi || h.coi || hintsOf(f.name).coi, w9: hints.w9 || h.w9 || hintsOf(f.name).w9 }));
+  return { state: 'opened', detail: `${files.length} file${files.length === 1 ? '' : 's'} to read` };
 }
 
 async function seenBefore(DB, hash, id) {
@@ -759,7 +804,7 @@ async function handle(env, ctx, row) {
   const iso = () => new Date(ctx.now).toISOString();
   await env.DB.prepare("UPDATE coi_found SET state = 'working', updated_at = ? WHERE id = ?").bind(iso(), row.id).run();
   try {
-    const r = row.item === 'message' ? await openEmail(env, ctx, row) : await readFile(env, ctx, row);
+    const r = row.item !== 'message' ? await readFile(env, ctx, row) : row.source === 'ramp' ? await openRampEmail(env, ctx, row) : await openEmail(env, ctx, row);
     await env.DB.prepare('UPDATE coi_found SET state = ?, detail = ?, file_hash = COALESCE(?, file_hash), kind = COALESCE(?, kind), insured = COALESCE(?, insured), jt_id = COALESCE(?, jt_id), sent_at = COALESCE(?, sent_at), updated_at = ? WHERE id = ?')
       .bind(r.state, clean(r.detail, 300) || null, r.hash || null, r.kind || null, clean(r.insured, 160) || null, r.jtId || null, r.sentAt || null, iso(), row.id).run();
     if (r.state === 'filed') ctx.out.filed++;
@@ -785,9 +830,21 @@ async function queueRows(DB, rows, now) {
   return res.reduce((n, x) => n + (x?.meta?.changes || 0), 0);
 }
 
+/**
+ * Every active Google account with a soardcharity.com address, its own or an alias, as the staff sign-in check last
+ * read Google's directory (./_staff-access.js) → [{ email, name }]. Linzi's account is lberkowitz@sunnyandranney.com
+ */
+export async function searchBoxes(DB) {
+  const row = await DB.prepare("SELECT data FROM staff_state WHERE key = 'directory'").first().catch(() => null);
+  return (parseJson(row?.data)?.accounts || [])
+    .filter((a) => a.active && [a.email, ...(a.aliases || [])].some(isStaffEmail))
+    .map((a) => ({ email: a.email, name: a.name || '' }))
+    .sort((a, b) => a.email.localeCompare(b.email));
+}
+
 /** One page of one mailbox's search: the emails are queued, opened later */
 async function findMail(env, ctx, st) {
-  const boxes = await mailboxes(env);
+  const boxes = await searchBoxes(env.DB);
   st.mail ||= {};
   // A mailbox Gmail refused waits an hour, so the others go on meanwhile
   const box = boxes.find((b) => due(st.mail[b.email], ctx.now) && !(ctx.now - (st.mail[b.email]?.failedAt || 0) < 60 * MIN));
@@ -860,11 +917,12 @@ async function findRamp(env, ctx, st) {
   const rows = [];
   for (const b of d?.data || []) {
     for (const a of b.attachments || []) {
-      if (a.attachment_type !== 'FILE' || !a.id) continue;
+      if (!RAMP_KINDS.has(a.attachment_type) || !a.id) continue;
       const name = fileNameOfUrl(a.url);
       const hints = hintsOf(name);
-      rows.push({ id: `ramp:${b.id}:${a.id}`, source: 'ramp', item: 'file', name: clean(name, 160), sentAt: b.issued_at || b.created_at || null,
-        hint: { billId: b.id, attachmentId: a.id, vendor: clean(b.vendor?.name || b.vendor?.remote_name, 120), invoice: clean(b.invoice_number, 40), coi: hints.coi, w9: hints.w9 } });
+      // The email a vendor sent the bill in is opened like a staff email: its files become rows of their own
+      rows.push({ id: `ramp:${b.id}:${a.id}`, source: 'ramp', item: a.attachment_type === 'EMAIL' ? 'message' : 'file', name: clean(name, 160), sentAt: b.issued_at || b.created_at || null,
+        hint: { billId: b.id, attachmentId: a.id, kind: a.attachment_type, vendor: clean(b.vendor?.name || b.vendor?.remote_name, 120), invoice: clean(b.invoice_number, 40), coi: hints.coi, w9: hints.w9 } });
     }
   }
   ctx.out.found += await queueRows(env.DB, rows, ctx.now);
@@ -889,6 +947,8 @@ export async function runBackfill(env, st, { now = Date.now(), fetchImpl = fetch
       return tokens.get(mailbox);
     },
   };
+  // Search again from the start, once each time SEARCH is raised: every inbox and Ramp, four years back (what was found before isn't found twice)
+  if ((st.search || 1) < SEARCH) Object.assign(st, { mail: {}, ramp: {}, search: SEARCH });
   // Finding takes turns: staff email, JobTread's files, Ramp's bills
   const finders = [['mail', findMail, () => !!env.GOOGLE_CALENDAR_KEY], ['jt', findJobTread, () => !!env.JOBTREAD_GRANT_KEY], ['ramp', findRamp, () => rampConfigured(env)]];
   for (let i = 0; i < finders.length && Date.now() - started < FIND_MS; i++) {
@@ -921,7 +981,7 @@ export async function runBackfill(env, st, { now = Date.now(), fetchImpl = fetch
   const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM coi_found WHERE state IN ('queued', 'failed')").first();
   // Still finding: a pass under way, or one that's due (every few hours)
   const pending = (s) => due(s, now) || Boolean(s?.page || s?.next || s?.pageToken);
-  const boxes = env.GOOGLE_CALENDAR_KEY ? await mailboxes(env).catch(() => []) : [];
+  const boxes = env.GOOGLE_CALENDAR_KEY ? await searchBoxes(env.DB) : [];
   const finding = boxes.some((b) => pending(st.mail?.[b.email])) || (!!env.JOBTREAD_GRANT_KEY && pending(st.jt)) || (rampConfigured(env) && pending(st.ramp));
   Object.assign(st, { busy: Boolean(left?.n) || finding, lastRunAt: now, lastRun: { at: iso, ...ctx.out }, error: ctx.errors.length ? clean(ctx.errors.join(' · '), 500) : null, errorAt: ctx.errors.length ? iso : null });
   return st;
