@@ -332,7 +332,7 @@ export async function payBill(env, billId, { now = Date.now() } = {}) {
   if (raw?.account_id) {
     const docs = await billDocs(env, raw.account_id, { now }).catch((e) => ({ ok: false, error: e.message }));
     if (!docs.ok) return holdBill(env, billRow(raw), a, docs, { now });
-    // A bank account the vendor just gave or changed waits until someone at SOARD confirms it by phone (./_trade-partners.js)
+    // A bank account the vendor gave on their page that needs a call waits until someone at SOARD makes it (./_trade-partners.js)
     const bank = await import('./_trade-partners.js').then((tp) => tp.bankHold(env.DB, raw.account_id)).catch(() => null);
     if (bank) return holdForBank(env, billRow(raw), a, bank, { now });
     if (a.payState === 'held') a = await releaseHold(env, billRow(raw), a, { now });
@@ -460,16 +460,22 @@ async function holdBill(env, bill, a, docs, { now = Date.now() } = {}) {
   return { ok: false, state: 'held', reason };
 }
 
-/** An approved bill whose vendor's new bank account isn't confirmed: held, with a note on the bill once → { ok: false, state: 'held', reason } */
-async function holdForBank(env, bill, a, why, { now = Date.now() } = {}) {
-  const reason = `Not paid until someone at SOARD confirms ${bill.vendor}’s bank account: ${why}. Call the number already on file, then confirm it in Admin → Trade partners.`;
+/** An approved bill whose vendor's new bank account isn't confirmed: held, with a note on the bill and a Slack ask once → { ok: false, state: 'held', reason } */
+async function holdForBank(env, bill, a, { why, last4 }, { now = Date.now() } = {}) {
+  const reason = `Not paid until someone at SOARD confirms ${bill.vendor}’s bank account: ${why}. Call them on a number SOARD already had (an old invoice, your phone), not one from their page or email, then confirm it on this bill in Job Costs → Bills.`;
   if (a.payState === 'held' && a.hold?.bank) return { ok: false, state: 'held', reason };
   if (a.hold?.noteId) await pave(env.JOBTREAD_GRANT_KEY, { updateComment: { $: { id: a.hold.noteId, isPinned: false } } }).catch(() => null);
   const noteId = await billNote(env, bill.id, {
     name: 'Approved, not paid yet', pinned: true,
-    message: `Approved by ${a.decidedBy || 'an approver'} on ${shortDay(Date.parse(a.decidedAt || new Date(now).toISOString()))}, and not paid yet: ${why}. Someone at SOARD calls them on the number already on file to confirm it; this bill pays itself once it’s confirmed in the admin (Trade partners → Bank changes).`,
+    message: `Approved by ${a.decidedBy || 'an approver'} on ${shortDay(Date.parse(a.decidedAt || new Date(now).toISOString()))}, and not paid yet: ${why}. Someone at SOARD calls them on a number SOARD already had to confirm it; this bill pays itself once it’s confirmed (SOARD website, Job Costs → Bills).`,
   }).catch(() => null);
-  await upsertApproval(env.DB, bill.id, { payState: 'held', payError: reason, hold: { since: a.hold?.since || new Date(now).toISOString(), bank: true, noteId, reason } });
+  await upsertApproval(env.DB, bill.id, { payState: 'held', payError: reason, hold: { since: a.hold?.since || new Date(now).toISOString(), bank: true, last4, noteId, reason } });
+  await slackIssue(env, `bill:${bill.id}`, slackCard({
+    icon: '📞', title: `${bill.vendor}: a call before this bill is paid`,
+    lead: `Their bill is approved, and it goes to a bank account they gave on their trade-partner page (ending ${last4}). Call them on a number SOARD already had, not one from their page or email, check the account, then confirm it on the bill.`,
+    facts: [['Amount', dollars(bill.balance ?? bill.cents)]],
+    buttons: [{ label: 'Open bills', url: ADMIN }, { label: 'Vendor in JobTread', url: `https://app.jobtread.com/vendors/${bill.accountId}` }],
+  }), { title: `${bill.vendor} bill`, kind: 'attention', area: 'finance' }).catch(() => null);
   return { ok: false, state: 'held', reason };
 }
 

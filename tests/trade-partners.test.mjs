@@ -1,8 +1,9 @@
 /**
  * Trade partners (functions/api/_trade-partners.js, trade-partner.js, _w9-form.js):
  * signing in, the company step, the W-9 signed on the page, the insurance agent,
- * bank details to Mercury and the hold until SOARD confirms them, invoices,
- * "Work with us" and the admin's decisions, and the nudges. A pretend JobTread,
+ * bank details to Mercury and the hold until a call confirms them (only when one's
+ * needed), invoices, "Get started" matching JobTread on its own, every email noted
+ * on the vendor, and the nudges. A pretend JobTread,
  * Mercury, Resend and Slack; made-up companies only (12-3456789 is the IRS's
  * own example EIN).
  */
@@ -16,14 +17,12 @@ import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureBillPaySchema } from '../functions/api/_bill-pay.js';
 import { createLink, findLink, ensureVendorSchema, fileUpload, TRADES } from '../functions/api/_vendors.js';
 import {
-  partnerView, partnerInvoices, readBank, bankHold, confirmBank, decideRequest, listRequests, invitePartner, partnerNudges,
+  partnerView, partnerInvoices, readBank, bankHold, confirmBank, startPartner, matchVendor, invitePartner, partnerNudges,
   readProfileRow, routingOk, phoneOf, holderOf,
 } from '../functions/api/_trade-partners.js';
 import { checkW9, buildW9, tinProblem } from '../functions/api/_w9-form.js';
 import { onRequestPost as post, onRequestGet as get } from '../functions/api/trade-partner.js';
 import { onRequestGet as docsGet } from '../functions/api/vendor-docs.js';
-import { onRequestGet as adminGet, onRequestPost as adminPost } from '../functions/api/trade-partners-admin.js';
-import { listPartners, partnerDetail, markPartner, sendPartnerLink } from '../functions/api/_trade-partners.js';
 
 const NOW = Date.parse('2026-10-29T15:00:00Z');
 const DAY = 864e5;
@@ -277,6 +276,7 @@ test('the agent: a contact in JobTread, asked with SOARD as holder, a link that 
   assert.match(mail.subject, /^Certificate of insurance for TKO Plumbing/);
   assert.match(mail.text, /Certificate holder:\nSunshine on a Ranney Day\n250 Hembree Park Drive, Suite 106\nRoswell, GA 30076/);
   assert.match(mail.text, /at least \$1,000,000 each occurrence/);
+  assert.ok(world.comments.some((c) => c.name === 'Insurance agent emailed' && /emailed Ana Agent at Example Insurance \(ana@agency\.example\) for TKO Plumbing’s certificate of insurance/.test(c.message)), 'noted on the vendor in JobTread');
   const agentToken = mail.text.match(/#t=([\w-]+)/)[1];
   // Their link: the certificate part only
   const view = await (await docsGet({ env, request: new Request(`https://x.example/api/vendor-docs?token=${agentToken}`) })).json();
@@ -291,6 +291,7 @@ test('the agent: a contact in JobTread, asked with SOARD as holder, a link that 
   const remind = await partnerNudges(env, { now: Date.now() + 3 * DAY + 1000 });
   assert.equal(remind.agents, 1);
   assert.match(world.emails.at(-1).subject, /^A reminder: Certificate of insurance/);
+  assert.equal(world.comments.filter((c) => /^Insurance agent emailed/.test(c.name)).length, 2);
   // They add it: the ask is answered
   world.ai = { isCertificate: true, readable: true, insured: 'TKO Plumbing LLC', certificateHolder: 'Sunshine on a Ranney Day', policies: [
     { kind: 'general liability', insurer: 'Hartford', expires: '2027-06-01', eachOccurrence: 1000000, aggregate: 2000000 },
@@ -304,7 +305,7 @@ test('the agent: a contact in JobTread, asked with SOARD as holder, a link that 
 
 // ─── Bank details ───────────────────────────────────────────────────
 
-test('bank details: checked, straight to Mercury, only the last four kept, and bills wait for a confirming call', async () => {
+test('bank details: checked, straight to Mercury, only the last four kept, and a vendor SOARD already had waits for a call', async () => {
   const token = await tokenFor();
   await call({ action: 'company', token, ...COMPANY });
   let r = await call({ action: 'bank', token, routing: '021000022', account: '000123456789', account2: '000123456789', kind: 'businessChecking' });
@@ -328,14 +329,12 @@ test('bank details: checked, straight to Mercury, only the last four kept, and b
   const bank = await readBank(env.DB, VENDOR);
   assert.equal(bank.status, 'pending');
   assert.equal(bank.mercuryId, 'rec-tko');
-  assert.match(await bankHold(env.DB, VENDOR), /ending 6789/);
+  assert.deepEqual(await bankHold(env.DB, VENDOR), { why: 'their new bank account (ending 6789) isn’t confirmed yet', last4: '6789' });
   assert.match(world.emails.at(-1).subject, /We have your bank details/);
   assert.deepEqual(world.emails.at(-1).to, ['tom@tko.example']);
-  const card = JSON.stringify(world.slack.at(-1));
-  assert.match(card, /confirm their bank account/);
-  assert.match(card, /admin\/#trade-partners\/bank/);
-  assert.doesNotMatch(card, /"action_id":"(approve|confirm)/, 'confirmed in the admin, never from Slack');
-  // Confirmed by phone in the admin: bills go
+  assert.equal(world.slack.length, 0, 'nobody is asked to do anything until a bill for them is approved');
+  assert.match(world.comments.at(-1).message, /Payments to it wait until someone at SOARD calls them on a number SOARD already had/);
+  // Confirmed by phone, on the held bill in Job Costs: bills go
   await confirmBank(env, VENDOR, 'Holly');
   assert.equal(await bankHold(env.DB, VENDOR), null);
   assert.match(world.comments.at(-1).message, /Holly confirmed the bank account ending 6789 by phone/);
@@ -346,6 +345,30 @@ test('bank details: checked, straight to Mercury, only the last four kept, and b
   assert.equal((await readBank(env.DB, VENDOR)).status, 'pending');
   const told = world.emails.filter((m) => /Your bank account was changed/.test(m.subject));
   assert.deepEqual(told.flatMap((m) => m.to).sort(), ['billing@tko.example', 'tom@tko.example'], 'both addresses on file hear about a change');
+  // The account Mercury already paid, given again once it's confirmed: nothing to call about
+  await confirmBank(env, VENDOR, 'Holly');
+  r = await call({ action: 'bank', token, routing: '021000021', account: '99887766', account2: '99887766', kind: 'businessSavings' });
+  assert.equal(r.confirmed, true);
+  assert.equal(r.changed, false);
+  assert.equal((await readBank(env.DB, VENDOR)).status, 'confirmed');
+  assert.match(world.comments.at(-1).message, /No call needed: it’s the same account Mercury already paid/);
+});
+
+test('a company new to SOARD, made by its own sign-up and never billed: its first bank account needs no call', async () => {
+  world.recipients = [];
+  await startPartner(env, { company: 'Rivera Example Roofing', name: 'Maria Rivera', email: 'maria@rivera.example', phone: '4045550100' }, { now: Date.now() });
+  const jtId = Object.keys(world.accounts).find((id) => world.accounts[id].name === 'Rivera Example Roofing');
+  const token = world.emails.at(-1).text.match(/#t=([\w-]+)/)[1];
+  await call({ action: 'company', token, ...COMPANY, name: 'Rivera Example Roofing', main: { name: 'Maria Rivera', email: 'maria@rivera.example', phone: '4045550100' }, billing: {} });
+  const r = await call({ action: 'bank', token, routing: '021000021', account: '55556666', account2: '55556666', kind: 'businessChecking' });
+  assert.equal(r.confirmed, true);
+  assert.equal((await readBank(env.DB, jtId)).status, 'confirmed');
+  assert.equal(await bankHold(env.DB, jtId), null);
+  assert.match(world.comments.at(-1).message, /No call needed: it’s a new company’s first account/);
+  // Once SOARD has billed them, a change waits for a call like anyone's
+  await env.DB.prepare("INSERT INTO spend_bills (id, job_id, vendor, cents, date, created_at, status, number, lines, account_id, paid, balance) VALUES ('B7', 'J1', 'Rivera', 1000, '2026-10-01', '', 'approved', '7', '[]', ?, 0, 1000)").bind(jtId).run();
+  await call({ action: 'bank', token, routing: '021000021', account: '77778888', account2: '77778888', kind: 'businessChecking' });
+  assert.equal((await readBank(env.DB, jtId)).status, 'pending');
 });
 
 test('a vendor Mercury doesn’t have yet gets a recipient made for them', async () => {
@@ -403,38 +426,78 @@ test('the page’s read: company, documents, steps, bank (last four only), invoi
 
 // ─── "Work with us" and the admin's decisions ───────────────────────
 
-test('“Work with us”: checked, thanked, a Slack heads-up that points to the admin, and decided only there', async () => {
-  let r = await call({ action: 'request', company: 'Rivera Example Roofing', trades: ['Roofing'], name: 'Maria Rivera', email: 'maria@rivera.example', phone: '404' });
+test('a typed company name means one JobTread vendor, or none', () => {
+  const rows = [
+    { jt_id: 'A1', name: 'TKO Plumbing, LLC', facts: '{}' }, { jt_id: 'A2', name: 'Lackey Plumbing & Drain', facts: '{}' },
+    { jt_id: 'A3', name: 'ABC Electric', facts: '{}' }, { jt_id: 'A4', name: 'ABC Painting', facts: '{}' },
+    { jt_id: 'A5', name: 'Sample Tile Co', facts: '{"jobs":[]}' }, { jt_id: 'A6', name: 'Sample Tile Company', facts: '{"jobs":[{"jobId":"J1"}]}' },
+  ];
+  assert.equal(matchVendor(rows, 'TKO Plumbing')?.jtId, 'A1');
+  assert.equal(matchVendor(rows, 'tko plumbing llc')?.jtId, 'A1');
+  assert.equal(matchVendor(rows, 'Lackey')?.jtId, 'A2', 'the short name of the only vendor like it');
+  assert.equal(matchVendor(rows, 'ABC'), null, 'two vendors like it: neither');
+  assert.equal(matchVendor(rows, 'Sample Tile')?.jtId, 'A6', 'JobTread’s doubles: the one on jobs');
+  assert.equal(matchVendor(rows, 'Brand New Builders'), null);
+  assert.equal(matchVendor(rows, 'Co'), null, 'too short to mean anyone');
+});
+
+test('“Get started”: checked, a bot ignored, and an email JobTread has is a sign-in', async () => {
+  let r = await call({ action: 'start', company: 'Rivera Example Roofing', name: 'Maria Rivera', email: 'maria@rivera.example', phone: '404' });
   assert.equal(r.field, 'phone');
-  r = await call({ action: 'request', company: 'Bot Co', trades: ['Roofing'], name: 'Bot', email: 'bot@x.example', phone: '4045550100', website2: 'http://spam' });
+  r = await call({ action: 'start', company: 'Bot Co', name: 'Bot', email: 'bot@x.example', phone: '4045550100', website2: 'http://spam' });
   assert.equal(r.ok, true);
-  assert.equal((await listRequests(env.DB)).length, 0, 'the hidden field caught a bot');
-  r = await call({ action: 'request', company: 'Rivera Example Roofing', trades: ['Roofing'], name: 'Maria Rivera', email: 'Maria@Rivera.example', phone: '404-555-0100', area: 'Decatur', lang: 'es' });
+  assert.equal(world.emails.length, 0, 'the hidden field caught a bot');
+  r = await call({ action: 'start', company: 'Whatever They Typed', name: 'Tom', email: 'Tom@TKO.example', phone: '4045550134' });
   assert.equal(r.ok, true);
-  assert.match(world.emails.at(-1).subject, /Recibimos su solicitud/, 'thanked in the language they asked in');
-  const card = JSON.stringify(world.slack.at(-1));
-  assert.match(card, /Rivera Example Roofing wants to work with SOARD/);
-  assert.match(card, /admin\/#trade-partners\/requests/);
-  const [req] = await listRequests(env.DB, { status: 'new' });
-  assert.equal(req.email, 'maria@rivera.example');
-  // Approved in the admin: a JobTread vendor, its main contact and trades, and the invitation
-  const out = await decideRequest(env, req.id, { decision: 'approve', by: 'Holly' });
-  assert.equal(out.status, 'approved');
+  assert.equal(r.how, undefined, 'the page never says what JobTread has');
+  assert.match(world.emails.at(-1).subject, /^Your sign-in link/);
+  assert.deepEqual(world.emails.at(-1).to, ['tom@tko.example']);
+  assert.equal(world.made.length, 0);
+});
+
+test('“Get started” for a vendor JobTread has with nobody on file: they become its main contact, invited, noted', async () => {
+  world.accounts[VENDOR].contacts = [];
+  world.accounts[VENDOR].primary = null;
+  await env.DB.prepare("UPDATE vendors SET email = NULL, facts = '{}' WHERE jt_id = ?").bind(VENDOR).run();
+  const r = await startPartner(env, { company: 'TKO Plumbing LLC', name: 'Tom Kowalski', email: 'tom@tko.example', phone: '(404) 555-0134', lang: 'es' }, { now: NOW });
+  assert.equal(r.how, 'matched');
+  assert.equal(world.made.length, 0, 'no second vendor in JobTread');
+  const c = world.accounts[VENDOR].contacts[0];
+  assert.equal(c.email, 'tom@tko.example');
+  assert.equal(c.title, 'Main contact');
+  assert.match(world.emails.at(-1).subject, /Configure su cuenta/);
+  assert.match(world.emails.at(-1).text, /trade-partners\/account\/#t=/);
+  const note = world.comments.at(-1);
+  assert.equal(note.name, 'Started on the trade-partner page');
+  assert.match(note.message, /Tom Kowalski \(tom@tko\.example, \+14045550134\) started TKO Plumbing’s trade-partner account on SOARD’s page on .*typing “TKO Plumbing LLC”, which matched this vendor/);
+  assert.equal((await readProfileRow(env.DB, VENDOR)).invitedBy, 'signup');
+  // Next time it's a sign-in
+  await startPartner(env, { company: 'TKO', name: 'Tom', email: 'tom@tko.example', phone: '4045550134' }, { now: NOW });
+  assert.match(world.emails.at(-1).subject, /^Your sign-in link/);
+});
+
+test('“Get started” for a vendor that already has people on file: the link goes to them, not the new address', async () => {
+  const r = await startPartner(env, { company: 'TKO Plumbing', name: 'Someone', email: 'someone@elsewhere.example', phone: '4045550199' }, { now: NOW });
+  assert.equal(r.how, 'theirs');
+  assert.deepEqual(world.emails.at(-1).to, ['tom@tko.example']);
+  assert.ok(!world.emails.some((m) => m.to.includes('someone@elsewhere.example')));
+  assert.equal(world.accounts[VENDOR].contacts.length, 1, 'nobody added');
+  assert.match(world.comments.at(-1).message, /JobTread already has tom@tko\.example for them, so the link went there, not to someone@elsewhere\.example/);
+});
+
+test('“Get started” for a company new to SOARD: made a vendor in JobTread with its main contact, invited, noted', async () => {
+  const r = await startPartner(env, { company: 'Rivera Example Roofing', name: 'Maria Rivera', email: 'Maria@Rivera.example', phone: '404-555-0100' }, { now: NOW });
+  assert.equal(r.how, 'new');
   assert.equal(world.made[0].type, 'vendor');
   assert.equal(world.made[0].name, 'Rivera Example Roofing');
-  const acc = world.accounts[out.jtId];
+  const jtId = Object.keys(world.accounts).find((id) => world.accounts[id].name === 'Rivera Example Roofing');
+  const acc = world.accounts[jtId];
   assert.equal(acc.contacts[0].email, 'maria@rivera.example');
   assert.equal(acc.contacts[0].title, 'Main contact');
-  assert.deepEqual(acc.values['F-TRADES'], ['Roofing']);
-  const invite = world.emails.at(-1);
-  assert.match(invite.subject, /Configure su cuenta/);
-  assert.match(invite.text, /trade-partners\/account\/#t=/);
-  await assert.rejects(() => decideRequest(env, req.id, { decision: 'decline', by: 'Holly' }), (e) => e.status === 409);
-  // A second one, declined: told kindly
-  await call({ action: 'request', company: 'Other Co', trades: ['Painting'], name: 'Pat Painter', email: 'pat@other.example', phone: '4045550101' }, '203.0.113.10');
-  const [other] = await listRequests(env.DB, { status: 'new' });
-  await decideRequest(env, other.id, { decision: 'decline', by: 'Holly', reason: 'Outside our area' });
-  assert.match(world.emails.at(-1).text, /We don’t have work for Other Co right now/);
+  assert.match(world.emails.at(-1).subject, /^Set up your account/);
+  assert.match(world.comments.at(-1).message, /as a company new to SOARD, so this vendor was made for them/);
+  assert.equal((await readProfileRow(env.DB, jtId)).invitedBy, 'signup:new');
+  assert.equal(world.slack.length, 0, 'nobody approves anything');
 });
 
 test('inviting someone new at a vendor JobTread has: added as a contact, never changing who the main one is', async () => {
@@ -452,6 +515,7 @@ test('an unfinished setup is nudged after 2 days, then 5, then left alone', asyn
   assert.equal((await partnerNudges(env, { now: NOW + DAY })).reminded, 0);
   assert.equal((await partnerNudges(env, { now: NOW + 2 * DAY + 1000 })).reminded, 1);
   assert.match(world.emails.at(-1).subject, /^A reminder: set up your account/);
+  assert.equal(world.comments.at(-1).name, 'Setup reminder emailed');
   assert.equal((await partnerNudges(env, { now: NOW + 4 * DAY })).reminded, 0);
   assert.equal((await partnerNudges(env, { now: NOW + 5 * DAY + 2000 })).reminded, 1);
   assert.equal((await partnerNudges(env, { now: NOW + 30 * DAY })).reminded, 0);
@@ -463,87 +527,4 @@ test('the landing page’s config: the trades and whether Turnstile is on', asyn
   assert.equal(r.ok, true);
   assert.ok(r.trades.includes('Electrical'));
   assert.equal(r.turnstileSiteKey, null);
-});
-
-// ─── Admin → Trade partners ─────────────────────────────────────────
-
-const admin = async (body, method = 'POST', query = '') => {
-  const request = new Request(`https://x.example/api/trade-partners-admin${query}`, method === 'POST' ? { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
-  const res = await (method === 'POST' ? adminPost : adminGet)({ env, request, data: { userEmail: 'holly@soard.example' } });
-  return { status: res.status, ...(await res.json()) };
-};
-
-test('the admin list: every cached vendor with where it stands, held payments counted', async () => {
-  await env.DB.prepare("UPDATE vendors SET facts = ? WHERE jt_id = ?").bind(JSON.stringify({ jobs: [{ jobId: 'J1' }], emails: ['tom@tko.example'], fields: { w9: false, gl: '2026-09-30', wc: '2027-06-01', docs: null, materials: false, trades: ['Plumbing'] } }), VENDOR).run();
-  await env.DB.prepare("INSERT INTO vendors (id, name, vkey, jt_id, email, facts, created_at, updated_at) VALUES ('jt_HD', 'Example Supply', 'example supply', 'ACC-HD', NULL, ?, '', '')").bind(JSON.stringify({ fields: { w9: true, gl: null, wc: null, docs: 'Not needed', materials: true, trades: [] } })).run();
-  await env.DB.prepare("INSERT INTO spend_bills (id, job_id, vendor, cents, date, created_at, status, number, lines, account_id, paid, balance) VALUES ('B9', 'J1', 'TKO', 50000, '2026-10-01', '', 'approved', '9', '[]', ?, 0, 50000)").bind(VENDOR).run();
-  await env.DB.prepare("INSERT INTO bill_approvals (bill_id, state, pay_state) VALUES ('B9', 'approved', 'held')").run();
-  const list = await listPartners(env, { now: NOW });
-  const tko = list.find((p) => p.jtId === VENDOR);
-  assert.equal(tko.status, 'needs');
-  assert.match(tko.staff, /no W-9/);
-  assert.deepEqual(tko.held, { bills: 1, cents: 50000 });
-  assert.equal(tko.jobs, 1);
-  const hd = list.find((p) => p.jtId === 'ACC-HD');
-  assert.equal(hd.status, 'not-needed');
-  assert.equal(hd.materials, true);
-});
-
-test('one partner in full: contacts, the W-9 and COI files in JobTread, invoices, bank', async () => {
-  world.accounts[VENDOR].files = [{ name: 'W-9 TKO.pdf', tags: ['T-W9'] }, { name: 'quote.pdf', tags: [] }, { name: 'COI TKO.pdf', tags: ['T-COI'] }];
-  const p = await partnerDetail(env, VENDOR, { now: NOW });
-  assert.deepEqual(p.files.map((f) => [f.name, f.tag]), [['W-9 TKO.pdf', 'W-9'], ['COI TKO.pdf', 'COI']], 'only its W-9s and certificates');
-  assert.equal(p.contacts[0].role, 'main');
-  assert.equal(p.url, 'https://app.jobtread.com/vendors/ACC-TKO');
-  assert.equal(p.docs.label, 'Missing');
-});
-
-test('materials only and not needed: a person’s call, written to JobTread with a note, and back', async () => {
-  await env.DB.prepare("UPDATE vendors SET facts = ? WHERE jt_id = ?").bind(JSON.stringify({ fields: { w9: true, gl: null, wc: null, docs: null, materials: false, trades: [] } }), VENDOR).run();
-  await markPartner(env, VENDOR, { materials: true, notNeeded: true }, 'Holly', { now: NOW });
-  assert.equal(world.accounts[VENDOR].values['F-MAT'], true);
-  assert.equal(world.accounts[VENDOR].values['F-DOCS'], 'Not needed');
-  assert.match(world.comments.at(-1).message, /Holly marked them materials only \(a supplier\) and set Documents to Not needed/);
-  const cached = JSON.parse((await env.DB.prepare('SELECT facts FROM vendors WHERE jt_id = ?').bind(VENDOR).first()).facts);
-  assert.equal(cached.fields.docs, 'Not needed', 'the list shows it straight away');
-  await markPartner(env, VENDOR, { notNeeded: false }, 'Holly', { now: NOW });
-  assert.equal(world.accounts[VENDOR].values['F-DOCS'], 'Missing', 'back to what their documents say (no W-9 yet)');
-});
-
-test('“Send their link”: the setup invitation until they’ve finished, then a sign-in link', async () => {
-  let r = await sendPartnerLink(env, VENDOR, 'Holly', { now: NOW });
-  assert.equal(r.to, 'tom@tko.example');
-  assert.match(world.emails.at(-1).subject, /^Set up your account/);
-  await env.DB.prepare("UPDATE vendor_profiles SET done_at = ? WHERE jt_id = ?").bind(new Date(NOW).toISOString(), VENDOR).run();
-  r = await sendPartnerLink(env, VENDOR, 'Holly', { now: NOW });
-  assert.match(world.emails.at(-1).subject, /^Your sign-in link/);
-  world.accounts[VENDOR].contacts = [];
-  await assert.rejects(() => sendPartnerLink(env, VENDOR, 'Holly'), (e) => e.status === 409);
-});
-
-test('the admin endpoint: everything in one read; decided by the signed-in person; bank confirmed after the call', async () => {
-  let r = await admin(null, 'GET');
-  assert.equal(r.success, true);
-  assert.ok(Array.isArray(r.partners) && Array.isArray(r.requests) && Array.isArray(r.bank));
-  assert.equal(r.settings.glOccurrence, 1000000);
-  await call({ action: 'request', company: 'Rivera Example Roofing', trades: ['Roofing'], name: 'Maria Rivera', email: 'maria@rivera.example', phone: '4045550100' });
-  const id = (await listRequests(env.DB))[0].id;
-  r = await admin({ action: 'decide', id, decision: 'approve' });
-  assert.equal(r.success, true);
-  assert.equal(r.requests[0].status, 'approved');
-  assert.equal(r.requests[0].decidedBy, 'holly@soard.example');
-  // A bank account to confirm: the phone on file comes with it
-  const token = await tokenFor();
-  await call({ action: 'company', token, ...COMPANY });
-  await call({ action: 'bank', token, routing: '021000021', account: '000123456789', account2: '000123456789', kind: 'businessChecking' });
-  r = await admin(null, 'GET');
-  const pending = r.bank.find((b) => b.jtId === VENDOR);
-  assert.equal(pending.status, 'pending');
-  assert.equal(pending.phone, '+14045550134');
-  assert.equal(pending.last4, '6789');
-  r = await admin({ action: 'confirm-bank', jtId: VENDOR });
-  assert.equal(r.bank.find((b) => b.jtId === VENDOR).status, 'confirmed');
-  assert.equal(r.bank.find((b) => b.jtId === VENDOR).confirmedBy, 'holly@soard.example');
-  r = await admin({ action: 'mark', jtId: '../x' });
-  assert.equal(r.status, 400);
 });

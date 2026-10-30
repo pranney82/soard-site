@@ -329,6 +329,9 @@ test('an approved bill whose vendor’s insurance ended waits, says so in JobTre
   assert.match(JSON.stringify(mail), /invoice #7 for \$1,850\.00 is approved/);
   assert.match(JSON.stringify(mail), /trade-partners\/account\/#t=/);
   assert.ok(world.fieldWrites.some((w) => w['F-DOCS'] === 'Requested'), 'JobTread says Requested');
+  const told = world.comments.find((c) => c.targetType === 'account');
+  assert.equal(told.name, 'Emailed: a payment is waiting on documents', 'the email is noted on the vendor in JobTread');
+  assert.match(told.message, /Invoice #7 for \$1,850\.00 is approved and waits on it/);
   const [b] = await billQueue(env, { now: NOW });
   assert.equal(b.approval.payState, 'held');
   assert.ok(b.approval.hold.askedAt);
@@ -342,7 +345,7 @@ test('an approved bill whose vendor’s insurance ended waits, says so in JobTre
   assert.equal(await releaseVendorHolds(env, 'ACC-TKO', { now: NOW + DAY }), 1);
   assert.equal(world.sent.length, 1);
   assert.equal(world.sent[0].amount, 1850);
-  assert.deepEqual(world.commentUpdates, [{ id: 'NOTE1', isPinned: false }], 'the note comes off the top');
+  assert.deepEqual(world.commentUpdates, [{ id: `NOTE${world.comments.indexOf(note) + 1}`, isPinned: false }], 'the note comes off the top');
   assert.match(world.comments.at(-1).message, /checked out on Oct 28, so this bill is cleared to pay/);
   const [paid] = await billQueue(env, { now: NOW + DAY });
   assert.equal(paid.approval.payState, 'sent');
@@ -358,7 +361,7 @@ test('paid by hand while held: recorded, and the note comes off the bill', async
   assert.equal((await billQueue(env, { now: NOW }))[0].approval.payState, 'held', 'held even when someone pays by hand: the note says don’t');
   await keepTransaction(env, { id: 'out-h', kind: 'outgoingPayment', status: 'sent', amount: -1850, counterpartyName: 'TKO Plumbing', counterpartyId: 'rec-tko', accountId: 'acc-checking', createdAt: iso(NOW + DAY), postedAt: iso(NOW + DAY), attachments: [] }, { jobs: [], cards: new Map(), now: NOW + DAY });
   assert.equal((await recordPayments(env, { now: NOW + DAY })).recorded, 1);
-  assert.deepEqual(world.commentUpdates, [{ id: 'NOTE1', isPinned: false }]);
+  assert.deepEqual(world.commentUpdates, [{ id: `NOTE${world.comments.findIndex((c) => c.targetType === 'document') + 1}`, isPinned: false }]);
   const [b] = await billQueue(env, { now: NOW + DAY });
   assert.equal(b.approval.payState, 'paid');
 });

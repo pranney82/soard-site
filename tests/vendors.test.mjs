@@ -12,7 +12,7 @@ import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureBillPaySchema } from '../functions/api/_bill-pay.js';
 import {
   docsState, labelFor, requestEmail, jtSetup, readJtVendor, createLink, findLink, fileUpload, pageView, askDue, sweep,
-  refreshCache, ensureVendorSchema, sendPreview, readAsk, saveDocSettings, readDocSettings, DEFAULTS, FOLDER, PREVIEW_ID, LIMITS, TRADES, DOC_STATES,
+  refreshCache, ensureVendorSchema, sendPreview, readAsk, saveDocSettings, readDocSettings, vendorsThatNeedDocs, DEFAULTS, FOLDER, PREVIEW_ID, LIMITS, TRADES, DOC_STATES,
 } from '../functions/api/_vendors.js';
 import { judgeCoi, judgeCoiReads, judgeW9, mergeCoi, documentType, answerOf, scannedPages } from '../functions/api/_vendor-read.js';
 import { onRequestGet as pageGet, onRequestPost as pagePost } from '../functions/api/vendor-docs.js';
@@ -68,11 +68,12 @@ function accountOf(id) {
   const v = world.vendors[id];
   if (!v) return null;
   const email = { nodes: v.email ? [{ value: v.email }] : [] };
+  const agent = v.agent && { id: 'CON2', title: 'Insurance agent', customFieldValues: { nodes: [{ value: v.agent }] } };
   return {
     id, name: v.name, type: 'vendor', archivedAt: null,
     customFieldValues: { nodes: Object.entries(v.values).map(([fid, value]) => ({ value, customField: { id: fid } })) },
-    primaryContact: { id: 'CON1', customFieldValues: email },
-    contacts: { nodes: [{ id: 'CON1', customFieldValues: email }] },
+    primaryContact: v.agentFirst ? agent : { id: 'CON1', title: 'Owner', customFieldValues: email },
+    contacts: { nodes: [...(v.agentFirst ? [agent] : []), { id: 'CON1', title: 'Owner', customFieldValues: email }, ...(agent && !v.agentFirst ? [agent] : [])] },
   };
 }
 
@@ -629,6 +630,58 @@ test('no email in JobTread: the Finance channel hears once, nobody is emailed', 
   await sweep(env, { now: NOW + 7 * DAY });
   assert.equal(world.emails.length, 0);
   assert.equal(world.slack.filter((s) => /No email for TKO Plumbing/.test(JSON.stringify(s))).length, 1);
+});
+
+test('insurance JobTread has dates for is asked for from 30 days ahead, on a job or not, and each email is noted in JobTread', async () => {
+  const cache = (fields) => env.DB.prepare("INSERT OR REPLACE INTO vendors (id, name, vkey, jt_id, email, facts, created_at, updated_at) VALUES ('jt_TKO', 'TKO Plumbing', 'tko plumbing', ?, 'office@tko.example', ?, 'x', 'x')")
+    .bind(VENDOR, JSON.stringify({ jobs: [], emails: ['office@tko.example'], fields })).run();
+  await cache({ w9: true, gl: '2027-06-01', wc: '2027-06-01', docs: null });
+  assert.equal((await vendorsThatNeedDocs(env.DB, { now: NOW })).size, 0, 'months away: nothing to ask');
+  await cache({ w9: true, gl: '2026-11-20', wc: '2027-06-01', docs: null });
+  assert.deepEqual([...(await vendorsThatNeedDocs(env.DB, { now: NOW })).entries()], [[VENDOR, { why: 'renewal', bill: null }]]);
+  await cache({ w9: true, gl: '2026-11-20', wc: null, docs: 'Not needed' });
+  assert.equal((await vendorsThatNeedDocs(env.DB, { now: NOW })).size, 0, 'a person said Not needed in JobTread');
+  await cache({ w9: true, gl: '2025-03-01', wc: null, docs: null });
+  assert.equal((await vendorsThatNeedDocs(env.DB, { now: NOW })).size, 0, 'lapsed long ago and not working for SOARD: left alone');
+  // Ending in 23 days, no bill and no job: asked, and it's on their JobTread record
+  await cache({ w9: true, gl: '2026-11-20', wc: '2027-06-01', docs: null });
+  await setFields({ w9: true, gl: '2026-11-20', wc: '2027-06-01' });
+  const r = await sweep(env, { now: NOW });
+  assert.equal(r.asked, 1);
+  assert.match(world.emails[0].subject, /Your renewed certificate of insurance/);
+  const note = world.comments.find((c) => c.targetType === 'account');
+  assert.equal(note.name, 'Emailed for the renewed insurance');
+  assert.match(note.message, /SOARD emailed office@tko\.example on October 28, 2026 for certificate of insurance \(general liability insurance ends November 20, 2026\)/);
+});
+
+test('a renewal with nobody to email: their agent is asked, and no Slack post about a missing email', async () => {
+  world.vendors[VENDOR].email = null;
+  await env.DB.prepare("INSERT OR REPLACE INTO vendors (id, name, vkey, jt_id, email, facts, created_at, updated_at) VALUES ('jt_TKO', 'TKO Plumbing', 'tko plumbing', ?, NULL, ?, 'x', 'x')")
+    .bind(VENDOR, JSON.stringify({ jobs: [], emails: [], fields: { w9: true, gl: '2026-11-20', wc: '2027-06-01', docs: null } })).run();
+  await setFields({ w9: true, gl: '2026-11-20', wc: '2027-06-01' });
+  const { ensurePartnerSchema, patchProfile } = await import('../functions/api/_trade-partners.js');
+  await ensurePartnerSchema(env.DB);
+  await patchProfile(env.DB, VENDOR, { agent: { name: 'Ana Agent', email: 'ana@agency.example', agency: 'Example Insurance', asks: 0, open: false } });
+  await sweep(env, { now: NOW });
+  assert.deepEqual(world.emails.map((m) => m.to[0]), ['ana@agency.example']);
+  assert.match(world.emails[0].subject, /Certificate of insurance renewal for TKO Plumbing/);
+  assert.equal(world.slack.filter((x) => /No email for/.test(JSON.stringify(x))).length, 0);
+});
+
+test('an insurance agent’s contact is never the vendor’s email: not for their link, not for signing in', async () => {
+  world.vendors[VENDOR].agent = 'ana@agency.example';
+  world.vendors[VENDOR].agentFirst = true;
+  await setFields({ w9: false });
+  assert.equal((await readJtVendor(env, VENDOR)).email, 'office@tko.example');
+  world.vendors[VENDOR].email = null;
+  assert.equal((await readJtVendor(env, VENDOR)).email, null, 'only the agent: no vendor email at all');
+  world.jtVendorList = [{ id: VENDOR, name: 'TKO Plumbing', archivedAt: null, contacts: { nodes: [
+    { title: 'Insurance agent', customFieldValues: { nodes: [{ value: 'ana@agency.example' }] } }, { title: 'Owner', customFieldValues: { nodes: [{ value: 'tom@tko.example' }] } },
+  ] } }];
+  await refreshCache(env, { now: NOW - 30 * DAY }); // well before the other tests' reads: the open jobs it keeps for a while stay theirs
+  const row = await env.DB.prepare('SELECT email, facts FROM vendors WHERE jt_id = ?').bind(VENDOR).first();
+  assert.equal(row.email, 'tom@tko.example');
+  assert.deepEqual(JSON.parse(row.facts).emails, ['tom@tko.example']);
 });
 
 test('“Not needed” in JobTread: never asked', async () => {

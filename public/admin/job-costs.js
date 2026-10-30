@@ -637,13 +637,20 @@ function BillRow({ b, data, act, busy }) {
   const cfg = data.billPay || {};
   const later = cfg.payMode && cfg.payMode !== 'off' && (!cfg.startsOn || cfg.startsOn > new Date().toLocaleDateString('en-CA'));
   const startDay = cfg.startsOn ? new Date(`${cfg.startsOn}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
-  const [stateLabel, stateTone] = a.payState && PAY_STATE[a.payState] ? PAY_STATE[a.payState]
+  const call = a.payState === 'held' && a.hold?.bank;
+  const [stateLabel, stateTone] = call ? ['Approved · not paid: a call first', 'tag--warn']
+    : a.payState && PAY_STATE[a.payState] ? PAY_STATE[a.payState]
     : a.state === 'approved' && later ? [startDay ? `Approved · Mercury pays it ${startDay}` : 'Approved · Ramp pays it until the switch', 'tag--success']
     : BILL_STATE[a.state] || BILL_STATE.waiting;
   const decide = async (decision) => {
     if (decision === 'approved' && !(await ask({ title: `Approve ${b.vendor}’s bill for ${usdCents(b.owed)}?`, text: later ? (startDay ? `Mercury pays it on ${startDay}, the day bills switch from Ramp.` : 'It’s marked approved. Ramp pays bills until the day they switch to Mercury.') : cfg.payMode === 'send' ? 'It’s paid from Mercury right away.' : cfg.payMode === 'request' ? 'Mercury holds the payment until an approver taps Approve in Mercury.' : 'It’s marked approved. Pay it in Mercury; the payment is recorded in JobTread by itself.', yes: 'Approve' }))) return;
     if (decision === 'rejected' && !(await ask({ title: `Don’t approve ${b.vendor}’s bill?`, text: 'It stays unpaid in JobTread, and the Finance channel hears about it.', yes: 'Don’t approve' }))) return;
     act({ action: 'bill-decide', billId: b.id, decision }, decision === 'approved' ? 'Approved' : 'Marked not approved');
+  };
+  // The one thing a person does for a trade partner: a bank account they gave on their page, checked by phone before money goes to it
+  const confirmBank = async () => {
+    if (!(await ask({ title: `Confirm ${b.vendor}’s bank account?`, text: `Call ${b.vendor} on a number SOARD already had for them (an old invoice, your phone), not one from their page or an email, and check the account ends in ${a.hold.last4 || 'the four digits they give you'}. Once it’s confirmed, this bill is paid.`, yes: 'It’s right: confirm' }))) return;
+    act({ action: 'bank-confirm', jtId: b.accountId }, 'Bank account confirmed');
   };
   const over = b.job && b.job.budget && b.job.forecast > b.job.budget;
   return html`<div class="jc-charge">
@@ -669,6 +676,9 @@ function BillRow({ b, data, act, busy }) {
     ${['waiting', 'second'].includes(a.state) && html`<div class="jc-sort">
       <button class="btn btn-primary btn-sm" disabled=${!!busy} onClick=${() => decide('approved')}>Approve</button>
       <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => decide('rejected')}>Don’t approve</button>
+    </div>`}
+    ${call && b.accountId && html`<div class="jc-sort">
+      <button class="btn btn-primary btn-sm" disabled=${!!busy} onClick=${confirmBank}>Confirm bank account</button>
     </div>`}
     ${a.payState === 'failed' && html`<div class="jc-sort">
       ${Array.isArray(data.recipients) && data.recipients.length ? html`<select class="form-input" aria-label="Mercury recipient" value=${link} onChange=${(e) => setLink(e.target.value)}>
@@ -713,7 +723,7 @@ function BillSettings({ data, act, busy }) {
     </div>
     <div class="jc-body" style="border-top: 1px solid var(--color-border);"><div class="jc-row"><button class="btn btn-primary" disabled=${!!busy} onClick=${() => save()}>${busy === 'bill-settings' ? 'Saving…' : 'Save'}</button></div></div>
     <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>W-9 and insurance</h3>
-      <p class="sec-head__desc">A bill is paid only when the vendor’s W-9 and certificate of insurance are current in JobTread. The insurance minimums, and the email a vendor gets, are in <a class="link" href="#trade-partners/settings">Trade Partners → Settings</a>.</p></div>
+      <p class="sec-head__desc">A bill is paid only when the vendor’s W-9 and certificate of insurance are current in JobTread. The site asks the vendor for them, and their agent for renewals, by itself; each email is noted on the vendor in JobTread.</p></div>
     <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>When a bill is approved</h3>${!cfg.payFromAccountId ? html`<p class="sec-head__desc">Pick and save the account bills are paid from to choose how they’re paid.</p>` : ''}</div>
     <div class="jc-body" style="display: grid; gap: .5rem;">
       ${PAY_MODES.map(([k, label, text]) => html`<label class="jc-row" style="align-items: flex-start;" key=${k}>

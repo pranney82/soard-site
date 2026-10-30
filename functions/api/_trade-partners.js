@@ -1,10 +1,11 @@
 /**
  * Trade partners: a vendor's own page on the site
  * ===========================================================================
- * /trade-partners/ tells a contractor what working with SOARD is like and
- * lets one in; /trade-partners/account/ is their own page (./trade-partner.js
- * and ./vendor-docs.js answer it). JobTread stays the record for everything
- * a vendor tells us:
+ * /trade-partners/ is the link SOARD sends a company: they say who they are
+ * and get their own page by email (startPartner); /trade-partners/account/ is
+ * that page (./trade-partner.js and ./vendor-docs.js answer it). It all runs
+ * on its own, with no admin pages: JobTread stays the record for everything a
+ * vendor tells us, and every email the site sends them is noted there:
  *   - company: the vendor account's name, its Trades, Address and License
  *     fields, and its contacts (the main one, "Billing", "Insurance agent")
  *   - W-9: signed on the page (./_w9-form.js) or uploaded, filed like any
@@ -12,28 +13,28 @@
  *   - insurance: uploaded, or asked of their agent, who gets a link of their
  *     own that can add a certificate and nothing else
  *   - bank account: straight onto the vendor's Mercury recipient through the
- *     relay. The site keeps only the last four digits and whether someone at
- *     SOARD has confirmed it by phone; a bill for that vendor waits until
- *     they have (bankHold, read by ./_bill-pay.js)
+ *     relay. The site keeps only the last four digits and whether it's
+ *     confirmed. A new company's first account, or the same account Mercury
+ *     already had, needs nothing; any other waits for someone at SOARD to
+ *     call them, and only once a bill for them is approved: the held bill in
+ *     Job Costs → Bills says so (bankHold, read by ./_bill-pay.js)
  * D1 holds the work around it: vendor_profiles (where onboarding stands, the
- * address Mercury needs in parts, the agent's asks), vendor_bank and
- * vendor_requests ("Work with us", decided in Admin → Trade partners, never
- * from Slack, which only hears that one came in).
+ * address Mercury needs in parts, the agent's asks) and vendor_bank.
  */
 
 import { SOARD_ORG_ID, TZ } from './_reveals.js';
-import { sendEmails, slackIssue, slackResolved, SITE_ORIGIN } from './_broadcast-notify.js';
+import { sendEmails, slackResolved } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { emailShell, paragraphs, button, panel, esc } from './_email-shell.js';
-import { mercury, mercuryConfigured, uploadRecipientAttachment, readState } from './_mercury.js';
+import { mercury, mercuryConfigured, uploadRecipientAttachment } from './_mercury.js';
 import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from './_applicant-comms.js';
 import { cachedRecipients, recipientFor } from './_bill-pay.js';
-import { vendorKey, dollars } from './_spend-match.js';
+import { vendorKey, vendorLikeness, dollars } from './_spend-match.js';
 import { checkW9, buildW9 } from './_w9-form.js';
 import { requirementLines, longDate } from './_vendor-read.js';
 import {
   jt, jtSetup, readJtVendor, createLink, ensureVendorSchema, docsState, readDocSettings, writeFields, vendorNote, uploadToJt,
-  patchAsk, readAsk, labelFor, resolveAll, briefState, jtVendorUrl, OVERRIDES, FOLDER, TAGS, TRADES, PARTNERS_PAGE, PREVIEW_ID, LIMITS, STATE_KEY,
+  patchAsk, readAsk, labelFor, resolveAll, briefState, OVERRIDES, FOLDER, TAGS, TRADES, PREVIEW_ID, LIMITS,
 } from './_vendors.js';
 
 const DAY = 864e5;
@@ -87,10 +88,6 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS vendor_bank (
     jt_id TEXT PRIMARY KEY, mercury_id TEXT, last4 TEXT, kind TEXT, status TEXT NOT NULL, changed_at TEXT,
     previous_last4 TEXT, confirmed_by TEXT, confirmed_at TEXT, updated_at TEXT)`,
-  `CREATE TABLE IF NOT EXISTS vendor_requests (
-    id TEXT PRIMARY KEY, created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new', company TEXT, trades TEXT, name TEXT,
-    email TEXT, phone TEXT, website TEXT, area TEXT, note TEXT, lang TEXT, ip TEXT, decided_by TEXT, decided_at TEXT, jt_id TEXT, reason TEXT)`,
-  'CREATE INDEX IF NOT EXISTS vendor_requests_status ON vendor_requests (status, created_at)',
 ];
 const _ready = new WeakSet();
 export async function ensurePartnerSchema(DB) {
@@ -139,7 +136,7 @@ const roleOf = (title) => {
   return null;
 };
 
-// Trades as JobTread's field takes it: all of them, or the first while it takes one (Admin → Trade Partners says so)
+// Trades as JobTread's field takes it: all of them, or the first while it takes one (the Automations map says so)
 const tradesValue = (ids, trades) => (ids.fields.trades.multiple === false ? trades[0] : trades);
 
 /** The vendor's company as JobTread has it → { id, name, trades, address, license, materials, contacts: [{ id, name, title, email, phone, role }] } */
@@ -325,6 +322,7 @@ export async function askAgent(env, jtId, { renewal = false, reminder = false, b
   const r = await sendEmails(env, { to: [agent.email], subject: mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-agent' }] });
   if (!r.sent) throw new Error(r.errors[0] || 'The email to the agent didn’t send');
   await patchProfile(env.DB, jtId, { agent: { ...agent, asks: (reminder ? agent.asks || 0 : 0) + 1, askedAt: new Date(now).toISOString(), open: true, renewal } }, now);
+  await vendorNote(env, jtId, `Insurance agent emailed${reminder ? ' again' : ''}`, `SOARD emailed ${agent.name || agent.email}${agent.agency ? ` at ${agent.agency}` : ''} (${agent.email}) for ${v.name}’s ${renewal ? 'renewed ' : ''}certificate of insurance on ${longDate(isoDay(now))}${reminder ? ', as a reminder' : ''}.`, fetchImpl);
   return { ok: true };
 }
 
@@ -352,10 +350,10 @@ export async function readBank(DB, jtId) {
   return bankRow(await DB.prepare('SELECT * FROM vendor_bank WHERE jt_id = ?').bind(jtId).first());
 }
 
-/** Why a bill for this vendor can't be paid yet: their new bank account isn't confirmed (→ words) or null */
+/** Why a bill for this vendor can't be paid yet: their new bank account isn't confirmed → { why, last4 } or null */
 export async function bankHold(DB, jtId) {
   const b = await readBank(DB, jtId).catch(() => null);
-  return b?.status === 'pending' ? `their new bank account (ending ${b.last4}) isn’t confirmed yet` : null;
+  return b?.status === 'pending' ? { why: `their new bank account (ending ${b.last4}) isn’t confirmed yet`, last4: b.last4 } : null;
 }
 
 /** The bank step's email: to the address on file, so a change nobody made is caught */
@@ -401,9 +399,15 @@ export async function saveBank(env, link, body, { now = Date.now(), fetchImpl = 
   const before = await readBank(env.DB, company.id);
   let recipientId = before?.mercuryId || recipientFor(company.name, await cachedRecipients(env, { now }).catch(() => []))?.id || null;
   let changed = !!before?.last4;
+  let same = false;
   if (recipientId) {
     const cur = await mercury(env, `/recipient/${encodeURIComponent(recipientId)}`).catch(() => null);
-    if (cur?.electronicRoutingInfo) changed = true;
+    const had = cur?.electronicRoutingInfo;
+    if (had) {
+      changed = true;
+      // The account Mercury already paid, given again: nothing changes (unless Mercury only has it from an unconfirmed entry here)
+      same = String(had.accountNumber || '') === account && String(had.routingNumber || '') === routing && (!before || before.status === 'confirmed');
+    }
     await mercury(env, `/recipient/${encodeURIComponent(recipientId)}`, { method: 'POST', body: { electronicRoutingInfo, ...(emails.length ? { emails } : {}) } });
   } else {
     const made = await mercury(env, '/recipients', { method: 'POST', body: { name: company.name, emails: emails.length ? emails : [main?.email].filter(Boolean), electronicRoutingInfo } });
@@ -413,28 +417,27 @@ export async function saveBank(env, link, body, { now = Date.now(), fetchImpl = 
   await cachedRecipients(env, { now, fresh: true }).catch(() => null);
   const last4 = account.slice(-4);
   const iso = new Date(now).toISOString();
+  // No call needed for the account Mercury already paid, or a company new to SOARD (made by its own sign-up, never billed):
+  // there's nobody to pretend to be. Any other account waits for a call before a payment goes to it.
+  const billed = await env.DB.prepare('SELECT 1 AS x FROM spend_bills WHERE account_id = ? LIMIT 1').bind(company.id).first().catch(() => null);
+  const fresh = !changed && profile.invitedBy === 'signup:new' && !billed;
+  const auto = same ? 'the same account Mercury already paid' : fresh ? 'a new company’s first account' : null;
   await env.DB.prepare(`INSERT OR REPLACE INTO vendor_bank (jt_id, mercury_id, last4, kind, status, changed_at, previous_last4, confirmed_by, confirmed_at, updated_at)
-      VALUES (?, ?, ?, ?, 'pending', ?, ?, NULL, NULL, ?)`).bind(company.id, recipientId, last4, kind, iso, before?.last4 || null, iso).run();
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(company.id, recipientId, last4, kind, auto ? 'confirmed' : 'pending', iso, before?.last4 || null, auto, auto ? iso : null, iso).run();
   const kindLabel = ACCOUNT_TYPES[kind];
-  await vendorNote(env, company.id, `Bank account ${changed ? 'changed' : 'added'} on the trade-partner page`,
-    `${company.name}’s bank account for payments was ${changed ? `changed${before?.last4 ? ` from the one ending ${before.last4}` : ''} to` : 'set to'} a ${kindLabel.toLowerCase()} account ending ${last4} on SOARD’s trade-partner page on ${longDate(isoDay(now))}, and is on their Mercury recipient. Payments wait until someone at SOARD confirms it by phone (Admin → Trade partners → Bank changes).`, fetchImpl);
+  await vendorNote(env, company.id, `Bank account ${same ? 'given again' : changed ? 'changed' : 'added'} on the trade-partner page`,
+    `${company.name}’s bank account for payments was ${same ? 'given again as' : changed ? `changed${before?.last4 ? ` from the one ending ${before.last4}` : ''} to` : 'set to'} a ${kindLabel.toLowerCase()} account ending ${last4} on SOARD’s trade-partner page on ${longDate(isoDay(now))}, and is on their Mercury recipient. ${auto ? `No call needed: it’s ${auto}.` : 'Payments to it wait until someone at SOARD calls them on a number SOARD already had and confirms it; an approved bill for them says so in Job Costs → Bills.'}`, fetchImpl);
   // The address that was on file hears about it, so a change nobody asked for is caught
   const notify = [...new Set([...(before ? [main?.email, billing?.email] : [main?.email]).filter(isEmail)])];
   if (notify.length) {
     const mail = bankEmail({ vendorName: company.name, last4, kindLabel, changed, lang: profile.lang });
     await sendEmails(env, { to: notify, subject: mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-bank' }] }).catch(() => null);
   }
-  await slackIssue(env, `vendor:bank:${company.id}`, slackCard({
-    icon: '🏦', title: `${company.name}: confirm their ${changed ? 'new ' : ''}bank account`,
-    lead: `They ${changed ? 'changed' : 'added'} the account SOARD pays (${kindLabel.toLowerCase()} ending ${last4}) on their trade-partner page. Call the number already on file to confirm it, then confirm it in the admin. Their bills wait until then.`,
-    facts: [['Phone on file', main?.phone || 'None in JobTread']],
-    buttons: [{ label: 'Confirm in the admin', url: `${SITE_ORIGIN}/admin/#trade-partners/bank` }],
-  }), { title: `${company.name}: bank account`, kind: 'attention', area: 'finance' }).catch(() => null);
   await stepDone(env.DB, company.id, 'bank', now);
-  return { ok: true, last4, changed };
+  return { ok: true, last4, changed: changed && !same, confirmed: !!auto };
 }
 
-/** Someone at SOARD called and confirmed it (Admin → Trade partners) → the bank row */
+/** Someone at SOARD called and confirmed it (Job Costs → Bills, on the bill it held) → the bank row */
 export async function confirmBank(env, jtId, by, { now = Date.now(), fetchImpl = fetch } = {}) {
   const b = await readBank(env.DB, jtId);
   if (!b) throw Object.assign(new Error('There’s no bank account to confirm'), { status: 404 });
@@ -568,53 +571,55 @@ export async function freshBankLink(env, link, { now = Date.now(), fetchImpl = f
   return { ok: true, to: to.replace(/^(.).*(@.*)$/, '$1…$2') };
 }
 
-// ─── "Work with us" ─────────────────────────────────────────────────
+// ─── Getting started ────────────────────────────────────────────────
+// SOARD sends a company the page; they say who they are and their link comes by email. JobTread
+// decides who they are: a vendor with that email on a contact is a sign-in, one with that name is
+// theirs, and anyone else is made a new vendor. Nobody at SOARD approves anything: money only moves
+// on a bill someone approves, and a bank account on a vendor SOARD already had waits for a call.
 
-const newId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('');
-
-/** The public form → { ok, id }. body: { company, trades: [], name, email, phone, website, area, note, lang } */
-export async function submitRequest(env, body, { ip = '', now = Date.now() } = {}) {
-  await ensurePartnerSchema(env.DB);
-  const r = {
-    company: clean(body.company, 120), trades: (Array.isArray(body.trades) ? body.trades : []).filter((t) => TRADES.includes(t)).slice(0, 12),
-    name: clean(body.name, 80), email: clean(body.email, 120).toLowerCase(), phone: phoneOf(body.phone), website: clean(body.website, 160),
-    area: clean(body.area, 120), note: clean(body.note, 1200), lang: body.lang === 'es' ? 'es' : 'en',
-  };
-  if (r.company.length < 2) throw bad('Add your company’s name.', 'company');
-  if (!r.trades.length) throw bad('Pick at least one trade.', 'trades');
-  if (r.name.length < 2) throw bad('Add your name.', 'name');
-  if (!isEmail(r.email)) throw bad('Add an email address we can reach you at.', 'email');
-  if (!r.phone) throw bad('Add a 10-digit phone number.', 'phone');
-  const dup = await env.DB.prepare("SELECT id FROM vendor_requests WHERE email = ? AND status = 'new'").bind(r.email).first();
-  if (dup) return { ok: true, id: dup.id, again: true };
-  const id = newId();
-  await env.DB.prepare(`INSERT INTO vendor_requests (id, created_at, status, company, trades, name, email, phone, website, area, note, lang, ip) VALUES (?, ?, 'new', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, new Date(now).toISOString(), r.company, JSON.stringify(r.trades), r.name, r.email, r.phone, r.website || null, r.area || null, r.note || null, r.lang, ip || null).run();
-  const es = r.lang === 'es';
-  const thanks = es
-    ? `Gracias por su interés en trabajar con Sunshine on a Ranney Day. Nuestro equipo revisará la información de ${r.company} y le escribirá pronto.`
-    : `Thank you for your interest in working with Sunshine on a Ranney Day. Our team will look over ${r.company}’s details and be in touch soon.`;
-  await sendEmails(env, { to: [r.email], subject: es ? 'Recibimos su solicitud' : 'We have your request to work with SOARD', html: emailShell({ preheader: thanks, heading: es ? 'Gracias' : 'Thank you', bodyHtml: paragraphs(thanks) }), text: thanks, tags: [{ name: 'type', value: 'vendor-request' }] }).catch(() => null);
-  await slackIssue(env, `vendor:request:${id}`, slackCard({
-    icon: '🧰', title: `${r.company} wants to work with SOARD`,
-    lead: `${r.name} asked through the trade-partner page. Approve or decline them in the admin.`,
-    facts: [['Trades', r.trades.join(', ')], ['Where', r.area || '—']],
-    buttons: [{ label: 'Open in the admin', url: `${SITE_ORIGIN}/admin/#trade-partners/requests` }],
-  }), { title: `${r.company}: request`, kind: 'attention', area: 'finance' }).catch(() => null);
-  return { ok: true, id };
+/** The JobTread vendor a typed company name means → { jtId, name } or null (only one clear match) */
+export function matchVendor(rows, company) {
+  const key = vendorKey(company);
+  if (key.replace(/ /g, '').length < 3) return null;
+  const jobs = (r) => (parseJson(r.facts).jobs || []).length;
+  const busiest = (list) => [...list].sort((a, b) => jobs(b) - jobs(a))[0];
+  const live = rows.filter((r) => r.jt_id && r.name);
+  const same = live.filter((r) => vendorLikeness(r.name, company) === 1 && (vendorKey(r.name) === key || vendorKey(r.name).replace(/ /g, '') === key.replace(/ /g, '')));
+  if (same.length) { const r = busiest(same); return { jtId: r.jt_id, name: r.name }; }
+  // "Lackey" for "Lackey Plumbing and Drain": every word of the shorter name in the longer, and no other vendor like it
+  const close = live.filter((r) => vendorLikeness(r.name, company) === 1);
+  return close.length === 1 ? { jtId: close[0].jt_id, name: close[0].name } : null;
 }
 
-const requestRow = (r) => r && ({
-  id: r.id, createdAt: r.created_at, status: r.status, company: r.company, trades: parseJson(r.trades, []), name: r.name, email: r.email, phone: r.phone,
-  website: r.website, area: r.area, note: r.note, lang: r.lang || 'en', decidedBy: r.decided_by, decidedAt: r.decided_at, jtId: r.jt_id, reason: r.reason,
-});
-
-export async function listRequests(DB, { status = null } = {}) {
-  await ensurePartnerSchema(DB);
-  const rows = status
-    ? (await DB.prepare('SELECT * FROM vendor_requests WHERE status = ? ORDER BY created_at DESC LIMIT 200').bind(status).all()).results
-    : (await DB.prepare('SELECT * FROM vendor_requests ORDER BY created_at DESC LIMIT 200').all()).results;
-  return (rows || []).map(requestRow);
+/**
+ * "Get started" → { ok: true, how: 'signin' | 'theirs' | 'matched' | 'new' } (the page only ever says to check their email).
+ * body: { company, name, email, phone, lang }
+ */
+export async function startPartner(env, body, { now = Date.now(), fetchImpl = fetch } = {}) {
+  await ensurePartnerSchema(env.DB);
+  const s = { company: clean(body.company, 120), name: clean(body.name, 80), email: clean(body.email, 120).toLowerCase(), phone: phoneOf(body.phone), lang: body.lang === 'es' ? 'es' : 'en' };
+  if (s.company.length < 2) throw bad('Add your company’s name.', 'company');
+  if (s.name.length < 2) throw bad('Add your name.', 'name');
+  if (!isEmail(s.email)) throw bad('Add an email address we can reach you at.', 'email');
+  if (!s.phone) throw bad('Add a 10-digit phone number.', 'phone');
+  const rows = (await env.DB.prepare('SELECT jt_id, name, email, facts FROM vendors WHERE jt_id IS NOT NULL').all()).results || [];
+  const emailsOf = (r) => [...new Set([r.email, ...(parseJson(r.facts).emails || [])].filter(isEmail))];
+  if (rows.some((r) => emailsOf(r).includes(s.email))) {
+    await signIn(env, s.email, { lang: s.lang, now });
+    return { ok: true, how: 'signin' };
+  }
+  const hit = matchVendor(rows, s.company);
+  // A company that already has people on file: the link goes to them, never to an address JobTread hasn't seen
+  const known = hit && emailsOf(rows.find((r) => r.jt_id === hit.jtId));
+  if (known?.length) {
+    const link = await createLink(env.DB, hit.jtId, { by: 'signup:theirs', now });
+    const mail = signInEmail({ links: [{ name: hit.name, url: link.url }], lang: s.lang });
+    await sendEmails(env, { to: [known[0]], subject: mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-signin' }] });
+    await vendorNote(env, hit.jtId, 'Asked to sign in on the trade-partner page', `${s.name} (${s.email}, ${s.phone}) asked for ${hit.name}’s trade-partner page on ${longDate(isoDay(now))}. JobTread already has ${known[0]} for them, so the link went there, not to ${s.email}.`, fetchImpl);
+    return { ok: true, how: 'theirs' };
+  }
+  await invitePartner(env, { jtId: hit?.jtId || null, company: s.company, name: s.name, email: s.email, phone: s.phone, lang: s.lang, by: hit ? 'signup' : 'signup:new', typed: s.company }, { now, fetchImpl });
+  return { ok: true, how: hit ? 'matched' : 'new' };
 }
 
 // ─── Inviting a partner ─────────────────────────────────────────────
@@ -641,7 +646,7 @@ export function inviteEmail({ vendorName, contactName, url, lang = 'en', reminde
  * Admin: invite a trade partner — an existing JobTread vendor (jtId) or a new one (company + contact).
  * → { jtId, url, created }
  */
-export async function invitePartner(env, { jtId = null, company = '', name = '', email = '', phone = '', lang = 'en', by = 'staff' }, { now = Date.now(), fetchImpl = fetch } = {}) {
+export async function invitePartner(env, { jtId = null, company = '', name = '', email = '', phone = '', lang = 'en', by = 'staff', typed = '' }, { now = Date.now(), fetchImpl = fetch } = {}) {
   await ensurePartnerSchema(env.DB);
   const e = clean(email, 120).toLowerCase();
   if (!isEmail(e)) throw bad('Add the email address to send the invitation to.', 'email');
@@ -675,35 +680,11 @@ export async function invitePartner(env, { jtId = null, company = '', name = '',
   if (!r.sent) throw new Error(r.errors[0] || 'The invitation didn’t send');
   const p = await readProfileRow(env.DB, jtId);
   await patchProfile(env.DB, jtId, { invitedAt: new Date(now).toISOString(), invitedBy: by, lang: lang === 'es' ? 'es' : p.lang, reminders: 0, remindedAt: null }, now);
-  await vendorNote(env, jtId, 'Invited to set up as a trade partner', `${by} invited ${vendorName} to set up their trade-partner account (sent to ${e}) on ${longDate(isoDay(now))}.`, fetchImpl);
+  const signup = by.startsWith('signup');
+  await vendorNote(env, jtId, signup ? 'Started on the trade-partner page' : 'Invited to set up as a trade partner', signup
+    ? `${clean(name, 80) || e} (${e}${phoneOf(phone) ? `, ${phoneOf(phone)}` : ''}) started ${vendorName}’s trade-partner account on SOARD’s page on ${longDate(isoDay(now))}${created ? ', as a company new to SOARD, so this vendor was made for them' : `, typing “${clean(typed, 120)}”, which matched this vendor`}. Their link was emailed to ${e}.`
+    : `${by} invited ${vendorName} to set up their trade-partner account (sent to ${e}) on ${longDate(isoDay(now))}.`, fetchImpl);
   return { jtId, url: link.url, created, name: vendorName };
-}
-
-/** Admin: a "Work with us" request approved (made into a vendor and invited), matched to one JobTread has, or declined */
-export async function decideRequest(env, id, { decision, by, jtId = null, reason = '' }, { now = Date.now(), fetchImpl = fetch } = {}) {
-  await ensurePartnerSchema(env.DB);
-  const r = requestRow(await env.DB.prepare('SELECT * FROM vendor_requests WHERE id = ?').bind(id).first());
-  if (!r) throw Object.assign(new Error('There’s no such request'), { status: 404 });
-  if (r.status !== 'new') throw Object.assign(new Error(`It was already ${r.status} by ${r.decidedBy}`), { status: 409 });
-  const iso = new Date(now).toISOString();
-  if (decision === 'decline') {
-    const es = r.lang === 'es';
-    const words = es
-      ? `Gracias por su interés en trabajar con Sunshine on a Ranney Day. Por ahora no tenemos trabajo para ${r.company}, pero guardaremos sus datos y le escribiremos si eso cambia.`
-      : `Thank you for your interest in working with Sunshine on a Ranney Day. We don’t have work for ${r.company} right now, but we’ll keep your details and reach out if that changes.`;
-    await sendEmails(env, { to: [r.email], subject: es ? 'Su solicitud a Sunshine on a Ranney Day' : 'Your request to work with Sunshine on a Ranney Day', html: emailShell({ preheader: words, heading: es ? 'Gracias' : 'Thank you', bodyHtml: paragraphs(words) }), text: words, tags: [{ name: 'type', value: 'vendor-request' }] }).catch(() => null);
-    await env.DB.prepare("UPDATE vendor_requests SET status = 'declined', decided_by = ?, decided_at = ?, reason = ? WHERE id = ?").bind(by, iso, clean(reason, 300) || null, id).run();
-  } else {
-    const made = await invitePartner(env, { jtId, company: r.company, name: r.name, email: r.email, phone: r.phone, lang: r.lang, by }, { now, fetchImpl });
-    if (made.created) {
-      const ids = await jtSetup(env, { fetchImpl });
-      await writeFields(env, ids, made.jtId, {}, fetchImpl);
-      await jt(env, { updateAccount: { $: { id: made.jtId, customFieldValues: { [ids.fields.trades.id]: tradesValue(ids, r.trades) } } } }, fetchImpl).catch(() => null);
-    }
-    await env.DB.prepare(`UPDATE vendor_requests SET status = ?, decided_by = ?, decided_at = ?, jt_id = ? WHERE id = ?`).bind(jtId ? 'matched' : 'approved', by, iso, made.jtId, id).run();
-  }
-  await slackResolved(env, `vendor:request:${id}`, slackCard({ icon: decision === 'decline' ? '👋' : '✅', title: `${r.company}: ${decision === 'decline' ? 'declined' : 'invited'}` }), { summary: `${by} ${decision === 'decline' ? 'declined' : 'approved'} it in the admin.` }).catch(() => null);
-  return requestRow(await env.DB.prepare('SELECT * FROM vendor_requests WHERE id = ?').bind(id).first());
 }
 
 // ─── The heartbeat: nudges ──────────────────────────────────────────
@@ -723,7 +704,11 @@ export async function partnerNudges(env, { now = Date.now(), fetchImpl = fetch }
         const link = await createLink(env.DB, p.jtId, { by: 'reminder', now });
         const mail = inviteEmail({ vendorName: company.name, contactName: main.name, url: link.url, lang: p.lang, reminder: true });
         const r = await sendEmails(env, { to: [main.email], subject: mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-invite' }] }).catch(() => ({ sent: 0 }));
-        if (r.sent) { await patchProfile(env.DB, p.jtId, { reminders: p.reminders + 1, remindedAt: new Date(now).toISOString() }, now); out.reminded++; }
+        if (r.sent) {
+          await patchProfile(env.DB, p.jtId, { reminders: p.reminders + 1, remindedAt: new Date(now).toISOString() }, now);
+          await vendorNote(env, p.jtId, 'Setup reminder emailed', `SOARD reminded ${main.name || main.email} (${main.email}) on ${longDate(isoDay(now))} to finish ${company.name}’s trade-partner setup.`, fetchImpl);
+          out.reminded++;
+        }
       }
     }
     // An agent asked who hasn't answered: reminded after 3 days, then 7
@@ -754,121 +739,6 @@ export async function docArrived(env, jtId, doc, { now = Date.now() } = {}) {
   const p = await readProfileRow(env.DB, jtId);
   if (doc === 'coi' && p.agent?.open) await patchProfile(env.DB, jtId, { agent: { ...p.agent, open: false, answeredAt: new Date(now).toISOString() } }, now);
   await stepDone(env.DB, jtId, doc, now);
-}
-
-// ─── Admin → Trade partners ─────────────────────────────────────────
-
-/** Every JobTread vendor, as the 4-hourly cache has them, with where each stands → [partner] (see the admin) */
-export async function listPartners(env, { now = Date.now() } = {}) {
-  await ensurePartnerSchema(env.DB);
-  const req = await readDocSettings(env.DB);
-  const rows = (await env.DB.prepare(`SELECT v.jt_id, v.name, v.email, v.facts, a.state, a.open AS asking, a.asks, a.asked_at,
-      p.invited_at, p.done_at, p.agent, b.status AS bank, b.last4
-      FROM vendors v LEFT JOIN vendor_asks a ON a.jt_id = v.jt_id LEFT JOIN vendor_profiles p ON p.jt_id = v.jt_id LEFT JOIN vendor_bank b ON b.jt_id = v.jt_id
-      WHERE v.jt_id IS NOT NULL ORDER BY v.name COLLATE NOCASE`).all()).results || [];
-  const held = new Map();
-  const add = (id, cents) => { if (!id) return; const h = held.get(id) || { bills: 0, cents: 0 }; h.bills++; h.cents += cents || 0; held.set(id, h); };
-  for (const r of await env.DB.prepare("SELECT b.account_id, COALESCE(b.balance, b.cents) AS cents FROM bill_approvals a JOIN spend_bills b ON b.id = a.bill_id WHERE a.pay_state = 'held'").all().then((x) => x.results || [], () => [])) add(r.account_id, r.cents);
-  for (const r of await env.DB.prepare("SELECT account_id, cents FROM ramp_holds WHERE state = 'held'").all().then((x) => x.results || [], () => [])) add(r.account_id, r.cents);
-  return rows.map((r) => {
-    const facts = parseJson(r.facts);
-    const f = facts.fields || null;
-    const brief = f ? briefState(docsState({ w9: f.w9, glExpires: f.gl, wcExpires: f.wc, docs: f.docs }, req, { now })) : parseJson(r.state, null);
-    const status = !brief ? 'unknown' : f?.docs === 'Not needed' ? 'not-needed' : !brief.ok ? 'needs' : brief.expiring ? 'expiring' : 'current';
-    return {
-      jtId: r.jt_id, name: r.name, email: r.email, trades: f?.trades || [], materials: !!f?.materials, docsField: f?.docs || null,
-      status, label: brief?.label || null, staff: brief?.staff || '', w9: f ? !!f.w9 : null, glExpires: f?.gl || null, wcExpires: f?.wc || null,
-      jobs: (facts.jobs || []).length, asking: !!r.asking, asks: r.asks || 0, askedAt: r.asked_at || null,
-      setup: r.invited_at ? (r.done_at ? 'done' : 'started') : null, invitedAt: r.invited_at || null, doneAt: r.done_at || null,
-      bank: r.bank ? { status: r.bank, last4: r.last4 } : null, agent: parseJson(r.agent, null)?.email || null, held: held.get(r.jt_id) || null,
-    };
-  });
-}
-
-/** One partner in full, live from JobTread → { company, docs, files, invoices, bank, agent, profile } */
-export async function partnerDetail(env, jtId, { now = Date.now(), fetchImpl = fetch } = {}) {
-  await ensurePartnerSchema(env.DB);
-  const [company, v] = await Promise.all([readCompany(env, jtId, { fetchImpl }), readJtVendor(env, jtId, { fetchImpl })]);
-  if (!company || !v) throw Object.assign(new Error('JobTread has no such vendor'), { status: 404 });
-  const ids = await jtSetup(env, { fetchImpl });
-  const req = await readDocSettings(env.DB);
-  const state = docsState(v, req, { now });
-  const d = await jt(env, { account: { $: { id: jtId }, files: { $: { size: 30, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: { id: {}, name: {}, url: {}, createdAt: {}, fileTags: { $: { size: 5 }, nodes: { id: {} } } } } } }, fetchImpl).catch(() => null);
-  const files = (d?.account?.files?.nodes || [])
-    .map((f) => ({ id: f.id, name: f.name, url: f.url, at: f.createdAt || null, tag: (f.fileTags?.nodes || []).some((t) => t.id === ids.tags.w9) ? 'W-9' : (f.fileTags?.nodes || []).some((t) => t.id === ids.tags.coi) ? 'COI' : null }))
-    .filter((f) => f.tag);
-  const [profile, bank, invoices, ask] = await Promise.all([readProfileRow(env.DB, jtId), readBank(env.DB, jtId), partnerInvoices(env.DB, jtId, { now }), readAsk(env.DB, jtId)]);
-  return {
-    jtId, name: company.name, url: jtVendorUrl(jtId), trades: company.trades, address: company.address, license: company.license, materials: company.materials,
-    contacts: company.contacts.map((c) => ({ name: c.name, title: c.title, email: c.email, phone: c.phone, role: c.role })),
-    docs: { label: state.label, ok: state.ok, expiring: state.expiring, staff: state.staff, w9: v.w9, glExpires: v.glExpires, wcExpires: v.wcExpires, docsField: v.docs, check: v.check },
-    files, invoices, bank, agent: profile.agent, steps: profile.steps, invitedAt: profile.invitedAt, invitedBy: profile.invitedBy, doneAt: profile.doneAt, lang: profile.lang,
-    ask: ask && { asks: ask.asks, askedAt: ask.askedAt, open: ask.open, why: ask.why },
-  };
-}
-
-/** A person's call, written to JobTread: materials only (a supplier, never asked for insurance) and/or Documents "Not needed" */
-export async function markPartner(env, jtId, { materials, notNeeded }, by, { now = Date.now(), fetchImpl = fetch } = {}) {
-  const ids = await jtSetup(env, { fetchImpl });
-  const v = await readJtVendor(env, jtId, { fetchImpl });
-  if (!v) throw Object.assign(new Error('JobTread has no such vendor'), { status: 404 });
-  const patch = {};
-  const said = [];
-  if (typeof materials === 'boolean') { patch.materials = materials; said.push(materials ? 'marked them materials only (a supplier)' : 'marked them not materials only'); }
-  if (typeof notNeeded === 'boolean') {
-    if (notNeeded) { patch.docs = 'Not needed'; said.push('set Documents to Not needed'); }
-    else if (v.docs === 'Not needed') { patch.docs = docsState({ ...v, docs: null }, await readDocSettings(env.DB), { now }).label; said.push('took Not needed off'); }
-  }
-  if (!said.length) return { ok: true };
-  await writeFields(env, ids, jtId, patch, fetchImpl);
-  await vendorNote(env, jtId, 'Changed in Admin → Trade partners', `${by} ${said.join(' and ')} on ${longDate(isoDay(now))}.`, fetchImpl);
-  const row = await env.DB.prepare('SELECT id, facts FROM vendors WHERE jt_id = ?').bind(jtId).first();
-  if (row) {
-    const facts = parseJson(row.facts);
-    if (facts.fields) {
-      if ('materials' in patch) facts.fields.materials = patch.materials;
-      if ('docs' in patch) facts.fields.docs = patch.docs;
-      await env.DB.prepare('UPDATE vendors SET facts = ? WHERE id = ?').bind(JSON.stringify(facts), row.id).run();
-    }
-  }
-  return { ok: true };
-}
-
-/** Email a partner their page: the setup invitation when they haven't finished, else a sign-in link → { to } */
-export async function sendPartnerLink(env, jtId, by, { now = Date.now(), fetchImpl = fetch } = {}) {
-  const company = await readCompany(env, jtId, { fetchImpl });
-  if (!company || company.archived) throw Object.assign(new Error('JobTread has no such vendor'), { status: 404 });
-  const who = company.contacts.find((c) => c.role === 'main' && isEmail(c.email)) || company.contacts.find((c) => isEmail(c.email) && c.role !== 'agent');
-  if (!who) throw Object.assign(new Error(`There’s no email for ${company.name} in JobTread. Add one to their main contact first.`), { status: 409 });
-  const p = await readProfileRow(env.DB, jtId);
-  if (!p.doneAt) return { ...(await invitePartner(env, { jtId, email: who.email, name: who.name, lang: p.lang, by }, { now, fetchImpl })), to: who.email };
-  const l = await createLink(env.DB, jtId, { by: `staff:${by}`, now });
-  const mail = signInEmail({ links: [{ name: company.name, url: l.url }], lang: p.lang });
-  await sendEmails(env, { to: [who.email], subject: mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-signin' }] });
-  return { to: who.email };
-}
-
-/** Bank accounts waiting for SOARD's call, with the phone that was on file → [{ jtId, name, last4, kind, changedAt, previousLast4, phone }] */
-export async function bankToConfirm(env, { fetchImpl = fetch } = {}) {
-  await ensurePartnerSchema(env.DB);
-  const rows = (await env.DB.prepare(`SELECT b.*, v.name FROM vendor_bank b LEFT JOIN vendors v ON v.jt_id = b.jt_id ORDER BY b.status = 'pending' DESC, b.changed_at DESC LIMIT 60`).all()).results || [];
-  return Promise.all(rows.map(async (r) => {
-    const c = r.status === 'pending' ? await readCompany(env, r.jt_id, { fetchImpl }).catch(() => null) : null;
-    const main = c?.contacts.find((x) => x.role === 'main');
-    return { ...bankRow(r), name: r.name || c?.name || r.jt_id, kindLabel: ACCOUNT_TYPES[r.kind] || r.kind, phone: main?.phone || null, contact: main?.name || null };
-  }));
-}
-
-/** For the admin and the automations map */
-export async function partnerFacts(DB) {
-  await ensurePartnerSchema(DB);
-  const [req, bank, setup, st] = await Promise.all([
-    DB.prepare("SELECT COUNT(*) AS n FROM vendor_requests WHERE status = 'new'").first(),
-    DB.prepare("SELECT COUNT(*) AS n FROM vendor_bank WHERE status = 'pending'").first(),
-    DB.prepare('SELECT COUNT(*) AS n FROM vendor_profiles WHERE invited_at IS NOT NULL AND done_at IS NULL').first(),
-    readState(DB, STATE_KEY),
-  ]);
-  return { requests: req?.n || 0, bankToConfirm: bank?.n || 0, settingUp: setup?.n || 0, fieldDupes: st.jt?.dupes || [], fieldSingle: st.jt?.single || [] };
 }
 
 export { dollars, LIMITS };

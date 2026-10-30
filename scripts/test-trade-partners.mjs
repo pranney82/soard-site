@@ -6,9 +6,10 @@
  * REAL handlers (vendor-docs.js, trade-partner.js → _vendors.js,
  * _trade-partners.js) over an in-memory D1 and a pretend JobTread, Mercury,
  * Workers AI, Resend and Slack:
- *   - the landing page: Spanish, signing in (an address on file gets a link,
- *     one that isn't gets the same words), "Work with us" (checked, thanked,
- *     waiting in the admin)
+ *   - the landing page: short (the hero and one section), Spanish, signing in
+ *     (an address on file gets a link, one that isn't gets the same words),
+ *     "Get started" (checked, then a company new to SOARD is made a vendor in
+ *     JobTread and emailed its link, with nobody approving)
  *   - a new partner's setup, one step at a time: company → a W-9 filled in and
  *     signed on the page (the IRS PDF filed in JobTread) → a certificate PDF,
  *     drawn by pdf.js and read from its text and its picture → bank details
@@ -35,7 +36,7 @@ import { createD1 } from '../tests/lib/d1-shim.mjs';
 import { onRequestGet as docsGet, onRequestPost as docsPost } from '../functions/api/vendor-docs.js';
 import { onRequestGet as tpGet, onRequestPost as tpPost } from '../functions/api/trade-partner.js';
 import { createLink, ensureVendorSchema, jtSetup, TRADES, PREVIEW_ID } from '../functions/api/_vendors.js';
-import { ensurePartnerSchema, listRequests, readBank } from '../functions/api/_trade-partners.js';
+import { ensurePartnerSchema, readBank } from '../functions/api/_trade-partners.js';
 import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureBillPaySchema } from '../functions/api/_bill-pay.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
@@ -110,6 +111,11 @@ globalThis.fetch = async (input, init = {}) => {
       } });
     }
     if (query.updateAccount) { const a = world.accounts[query.updateAccount.$.id]; if (query.updateAccount.$.name) a.name = query.updateAccount.$.name; Object.assign(a.values, query.updateAccount.$.customFieldValues || {}); return Response.json({}); }
+    if (query.createAccount) {
+      const id = `ACC-NEW${Object.keys(world.accounts).length}`;
+      world.accounts[id] = { name: query.createAccount.$.name, values: {}, contacts: [] };
+      return Response.json({ createAccount: { createdAccount: { id, name: query.createAccount.$.name } } });
+    }
     if (query.createContact) {
       const { accountId, name, title, customFieldValues: v } = query.createContact.$;
       world.accounts[accountId].contacts.push({ id: `CON${Date.now()}`, name, title, email: v?.[EMAIL_F] || null, phone: v?.[PHONE_F] || null });
@@ -221,7 +227,9 @@ try {
   {
     const { page, errors } = await open(browser, '/trade-partners/', { width: 1440, height: 900 });
     ok((await text(page, 'h1')).includes('Your craft.'), 'it opens in English');
-    await page.screenshot({ path: `${OUT}landing.png` });
+    await page.screenshot({ path: `${OUT}landing.png`, fullPage: true });
+    const tall = await page.evaluate(() => document.querySelector('main').scrollHeight);
+    ok(tall < 900 * 2.2, `short: the hero and one section (${tall}px on a laptop)`);
     const a = await axeScan(page, 'main');
     ok(a.length === 0, `axe: no violations${a.length ? `: ${axeText(a)}` : ''}`);
     await page.click('[data-lang-switch]');
@@ -230,31 +238,31 @@ try {
     ok(reqsEs.includes('Responsabilidad general: al menos $1,000,000 por evento'), `the minimums, from the settings, in Spanish (${reqsEs.replace(/\n/g, ' | ')})`);
     await page.click('[data-lang-switch]');
     await page.type('#tp-email', 'nobody@else.example');
-    await page.click('#tp-signin button');
+    await page.click('#sign-in button');
     await page.waitForFunction(() => !document.getElementById('tp-signin-note').hidden && /Check your email/.test(document.getElementById('tp-signin-note').textContent), { timeout: 10000 });
     ok(world.emails.length === 0, 'an address that isn’t on file gets the same words and no email');
     await page.$eval('#tp-email', (e) => { e.value = ''; });
     await page.type('#tp-email', 'tom@tko.example');
-    await page.click('#tp-signin button');
+    await page.click('#sign-in button');
     await page.waitForFunction(() => /tom@tko\.example/.test(document.getElementById('tp-signin-note').textContent), { timeout: 10000 });
     ok(world.emails.length === 1 && /trade-partners\/account\/#t=/.test(world.emails[0].text), 'an address JobTread has gets its link');
-    // Work with us
-    await page.$eval('#work-with-us', (e) => e.scrollIntoView());
-    await page.waitForFunction(() => document.getElementById('tp-request').classList.contains('is-visible'), { timeout: 5000 });
-    await sleep(800); // its fade-in
-    await page.type('#tp-request [name=company]', 'Rivera Example Roofing');
-    await page.click('#tp-request .tp-send');
-    await page.waitForFunction(() => !document.getElementById('tp-request-error').hidden, { timeout: 5000 });
-    ok((await text(page, '#tp-request-error')) === 'Pick at least one trade.', 'what’s missing is said, beside the field');
-    await page.click('#tp-request input[value="Roofing"] + span');
-    await page.type('#tp-request [name=name]', 'Maria Rivera');
-    await page.type('#tp-request [name=email]', 'maria@rivera.example');
-    await page.type('#tp-request [name=phone]', '404-555-0100');
-    await page.click('#tp-request .tp-send');
-    await page.waitForFunction(() => !document.getElementById('tp-request-sent').hidden, { timeout: 10000 });
-    const reqs = await listRequests(DB, { status: 'new' });
-    ok(reqs.length === 1 && reqs[0].company === 'Rivera Example Roofing', 'the request waits in the admin');
-    ok(/Rivera Example Roofing wants to work with SOARD/.test(JSON.stringify(world.slack.at(-1))), 'and Slack hears, pointing to the admin');
+    // Get started
+    await page.type('#tp-start [name=company]', 'Rivera Example Roofing');
+    await page.click('#tp-start .tp-send');
+    await page.waitForFunction(() => !document.getElementById('tp-start-error').hidden, { timeout: 5000 });
+    ok((await text(page, '#tp-start-error')) === 'Add your name.', 'what’s missing is said, beside the field');
+    ok(await page.evaluate(() => document.activeElement?.name === 'name'), 'and the field gets the focus');
+    await page.type('#tp-start [name=name]', 'Maria Rivera');
+    await page.type('#tp-start [name=phone]', '404-555-0100');
+    await page.type('#tp-start [name=email]', 'maria@rivera.example');
+    const sentBefore = world.emails.length;
+    await page.click('#tp-start .tp-send');
+    await page.waitForFunction(() => !document.getElementById('tp-start-sent').hidden, { timeout: 10000 });
+    ok(/on its way to maria@rivera\.example/.test(await text(page, '#tp-start-sent')), 'told to check their email');
+    const made = Object.entries(world.accounts).find(([, x]) => x.name === 'Rivera Example Roofing');
+    ok(!!made && made[1].contacts[0]?.email === 'maria@rivera.example', 'a company new to SOARD is a vendor in JobTread, with them as its main contact');
+    ok(world.emails.length === sentBefore + 1 && /trade-partners\/account\/#t=/.test(world.emails.at(-1).text), 'and their link is emailed, with nobody approving');
+    ok(!world.slack.length, 'nobody at SOARD is asked to do anything');
     ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
   }

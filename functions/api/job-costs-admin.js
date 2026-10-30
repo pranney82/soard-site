@@ -20,9 +20,7 @@
  * POST { action: 'bill-settings', approvers?, bigApprovers?, bigBillCents?, dailyCapCents?, payMode?, payFromAccountId?, startsOn? }
  * POST { action: 'bill-link', billId, recipientId }   the Mercury recipient a bill's vendor is paid as
  * POST { action: 'bill-retry', billId }             only after a payment failed
- * POST { action: 'docs-settings', glOccurrence?, glAggregate?, workersComp?, elEachAccident?, renewDays? }
- *        the minimums a vendor's certificate is held to (./_vendors.js)
- * POST { action: 'docs-preview' }                    "Send it to me": the request a vendor gets, to the signed-in person
+ * POST { action: 'bank-confirm', jtId }             someone called the vendor about the bank account a held bill goes to (./_trade-partners.js)
  * POST { action: 'odd-clear', key }                  a person looked: it's fine
  */
 
@@ -38,7 +36,8 @@ import { BUCKETS } from './_spend-match.js';
 import { readCloseouts, budgetFor, addBudgetLines, codeHistory } from './_job-closeout.js';
 import { billQueue, readBillPayConfig, saveBillPayConfig, decideBill, payBill, cachedRecipients, ensureBillPaySchema } from './_bill-pay.js';
 import { readOdd, clearOdd } from './_spend-odd.js';
-import { readDocSettings, saveDocSettings, sendPreview } from './_vendors.js';
+import { readDocSettings } from './_vendors.js';
+import { confirmBank } from './_trade-partners.js';
 import { rampView } from './_ramp.js';
 import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
 
@@ -221,13 +220,11 @@ export async function onRequestPost(context) {
         if (!r.ok) return fail(r.error);
         break;
       }
-      case 'docs-settings':
-        await saveDocSettings(env.DB, b);
+      case 'bank-confirm': {
+        const jtId = String(b.jtId || '');
+        if (!/^[\w-]{4,64}$/.test(jtId)) return fail('Which vendor?');
+        await confirmBank(env, jtId, by);
         break;
-      case 'docs-preview': {
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(by || '')) return fail('Sign in with your SOARD email to get the preview');
-        const r = await sendPreview(env, by);
-        return ok({ sent: by, url: r.url });
       }
       case 'odd-clear':
         await clearOdd(env, String(b.key || ''), { by });

@@ -17,18 +17,20 @@
  *
  * Who is asked: a vendor whose bill is waiting for approval (a bill, not a
  * card purchase), approved, or held; a vendor on a purchase order for an
- * open job (so it's in before work starts); and, 30 days before it ends,
- * anyone whose insurance the site is tracking. Card-only suppliers never.
+ * open job (so it's in before work starts); and, from 30 days before it
+ * ends, anyone whose insurance JobTread has dates for. Card-only suppliers never.
  *
  * How: an email from SOARD saying exactly what's missing or out of date,
  * with the vendor's own link to their trade-partner page (vendor-docs.js,
  * ./_trade-partners.js). Each
- * file is read there and then (./_vendor-read.js) and judged against the
- * minimums in Job Costs → Bills → Settings, so the vendor knows at once.
+ * file is read there and then (./_vendor-read.js) and judged against SOARD's
+ * minimums (DEFAULTS), so the vendor knows at once.
  * A good one goes into JobTread and fills the fields; a W-9 also goes onto
  * the vendor's Mercury recipient, which files the 1099s. A file nobody could
  * read (or one the vendor sends anyway) goes into JobTread as "Needs a look"
  * and the Finance channel hears once. Reminders follow after 3 and 7 days.
+ * Every email is noted on the vendor in JobTread, and an insurance agent's
+ * contact never gets a vendor's link (an agent's link adds a certificate only).
  *
  * The stop is in ./_bill-pay.js: an approved bill for a vendor whose W-9 or
  * insurance isn't current is held, says so on the bill in JobTread, and
@@ -85,7 +87,7 @@ export const TRADES = ['General contracting', 'Carpentry and framing', 'Drywall'
   'Windows and doors', 'Roofing', 'Concrete and masonry', 'Accessibility and lifts', 'Landscaping', 'Cleaning', 'Hauling and dumpsters', 'Design', 'Materials and supplies', 'Other'];
 export const DOC_STATES = ['Current', 'Expiring soon', 'Requested', 'Expired', 'Missing', 'Needs a look', 'W-9 only', 'Not needed'];
 export const OVERRIDES = new Set(['W-9 only', 'Not needed']);
-// "Send it to me" (Job Costs → Bills → Settings): a link to a sample company whose files are checked but never filed
+// The preview: a link to a sample company whose files are checked but never filed
 export const PREVIEW_ID = 'preview';
 const PREVIEW_VENDOR = { id: PREVIEW_ID, name: 'Your company (a preview)', email: null, w9: false, glExpires: null, wcExpires: null, docs: null, check: null, archived: false };
 export const TAGS = { w9: 'W-9', coi: 'COI' };
@@ -96,6 +98,9 @@ const parseJson = (s, d = {}) => { try { return s ? JSON.parse(s) ?? d : d; } ca
 const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || ''));
 const norm = (s) => String(s || '').replace(/[’‘]/g, '\'').trim().toLowerCase();
 export const jtVendorUrl = (id) => `https://app.jobtread.com/vendors/${id}`;
+// A contact titled as their insurance agent: never sent the vendor's own link, never a sign-in
+export const AGENT_TITLE = /agent|insurance/i;
+const notAgent = (c) => c && !AGENT_TITLE.test(c.title || '');
 export const jt = (env, q, fetchImpl) => pave(env.JOBTREAD_GRANT_KEY, q, fetchImpl);
 
 // ─── Tables ─────────────────────────────────────────────────────────
@@ -280,14 +285,14 @@ export async function readJtVendor(env, jtId, { fetchImpl = fetch } = {}) {
       $: { id: jtId },
       id: {}, name: {}, type: {}, archivedAt: {},
       customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } },
-      primaryContact: { id: {}, customFieldValues: emailField },
-      contacts: { $: { size: 5 }, nodes: { id: {}, customFieldValues: emailField } },
+      primaryContact: { id: {}, title: {}, customFieldValues: emailField },
+      contacts: { $: { size: 8 }, nodes: { id: {}, title: {}, customFieldValues: emailField } },
     },
   }, fetchImpl);
   const a = d?.account;
   if (!a?.id) return null;
   const val = (k) => (a.customFieldValues?.nodes || []).find((n) => n.customField?.id === ids.fields[k].id)?.value ?? null;
-  const email = [emailIn(a.primaryContact), ...(a.contacts?.nodes || []).map(emailIn)].find(isEmail) || null;
+  const email = [a.primaryContact, ...(a.contacts?.nodes || [])].filter(notAgent).map(emailIn).find(isEmail) || null;
   return {
     id: a.id, name: a.name, archived: !!a.archivedAt, email: email ? email.toLowerCase() : null,
     w9: yes(val('w9')), glExpires: dateOf(val('gl')), wcExpires: dateOf(val('wc')), docs: val('docs') || null, check: val('check') || null,
@@ -449,7 +454,7 @@ export function requestEmail({ vendorName, url, state, req = DEFAULTS, bill = nu
  * Email one vendor their link now. v: readJtVendor; state: docsState.
  * → { ok, url } | { ok: false, noEmail } ; throws when the email doesn't go
  */
-export async function askVendor(env, v, state, { why = 'missing', bill = null, now = Date.now(), to = null, preview = false } = {}) {
+export async function askVendor(env, v, state, { why = 'missing', bill = null, now = Date.now(), to = null, preview = false, fetchImpl = fetch } = {}) {
   const address = to || v.email;
   if (!isEmail(address)) return { ok: false, noEmail: true };
   const before = preview ? null : await readAsk(env.DB, v.id);
@@ -458,7 +463,13 @@ export async function askVendor(env, v, state, { why = 'missing', bill = null, n
   const mail = requestEmail({ vendorName: v.name, url: link.url, state, req, bill, reminder: !!before?.open && (before?.asks || 0) > 0 && !bill });
   const r = await sendEmails(env, { to: [address], subject: preview ? `Preview: ${mail.subject}` : mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-documents' }] });
   if (!r.sent) throw new Error(r.errors[0] || 'The email didn’t send');
-  if (!preview) await patchAsk(env.DB, v.id, { name: v.name, email: address, asks: (before?.asks || 0) + 1, askedAt: new Date(now).toISOString(), why, open: true }, now);
+  if (!preview) {
+    await patchAsk(env.DB, v.id, { name: v.name, email: address, asks: (before?.asks || 0) + 1, askedAt: new Date(now).toISOString(), why, open: true }, now);
+    const again = (before?.asks || 0) > 0 && !!before?.open;
+    const renewing = state.ok && state.expiring;
+    await vendorNote(env, v.id, bill ? 'Emailed: a payment is waiting on documents' : renewing ? 'Emailed for the renewed insurance' : again ? 'Emailed again for documents' : 'Emailed for documents',
+      `SOARD emailed ${address} on ${longDate(isoDay(now))}${again ? ' again' : ''} for ${whatOf(state.needs)} (${state.items.map((i) => i.staff).join(', ')})${bill ? `. Invoice${bill.number ? ` #${bill.number}` : ''} for ${dollars(bill.cents)} is approved and waits on it` : ''}. The email has their link to the trade-partner page.`, fetchImpl);
+  }
   return { ok: true, url: link.url };
 }
 
@@ -706,7 +717,7 @@ async function postNoEmail(env, v, now) {
 
 /**
  * JobTread's vendor accounts → [{ id, name, email (the first), emails (every contact's, for signing in), archived,
- *   fields: { w9, gl, wc, docs, materials, trades } (what Admin → Trade partners lists; null when the fields can't be read) }]
+ *   fields: { w9, gl, wc, docs, materials, trades } (renewals are found from these; null when the fields can't be read) }]
  */
 export async function jobtreadVendors(env, { fetchImpl = fetch } = {}) {
   const ids = await jtSetup(env, { fetchImpl }).catch(() => null);
@@ -722,14 +733,14 @@ export async function jobtreadVendors(env, { fetchImpl = fetch } = {}) {
           nodes: {
             id: {}, name: {}, archivedAt: {},
             customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } },
-            contacts: { $: { size: 10 }, nodes: { customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_CONTACT_EMAIL] }, nodes: { value: {} } } } },
+            contacts: { $: { size: 10 }, nodes: { title: {}, customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_CONTACT_EMAIL] }, nodes: { value: {} } } } },
           },
         },
       },
     }, fetchImpl);
     const conn = data?.organization?.accounts;
     for (const a of conn?.nodes || []) {
-      const emails = [...new Set((a.contacts?.nodes || []).map(emailIn).filter(isEmail).map((e) => e.toLowerCase()))];
+      const emails = [...new Set((a.contacts?.nodes || []).filter(notAgent).map(emailIn).filter(isEmail).map((e) => e.toLowerCase()))];
       const val = (k) => (a.customFieldValues?.nodes || []).find((n) => n.customField?.id === ids?.fields[k]?.id)?.value ?? null;
       const trades = val('trades');
       const fields = ids && {
@@ -809,7 +820,7 @@ const RANK = { held: 0, bill: 1, job: 2, renewal: 3 };
  * JobTread vendors that need a current W-9 and insurance now, most urgent
  * first → Map(jtId → { why: 'held'|'bill'|'job'|'renewal', bill? })
  */
-export async function vendorsThatNeedDocs(DB, { now = Date.now() } = {}) {
+export async function vendorsThatNeedDocs(DB, { now = Date.now(), req = DEFAULTS } = {}) {
   const out = new Map();
   const put = (id, why, bill = null) => {
     const cur = out.get(id);
@@ -833,7 +844,13 @@ export async function vendorsThatNeedDocs(DB, { now = Date.now() } = {}) {
   for (const h of rampHeld) put(h.account_id, 'held', { id: h.jt_bill_id, number: h.invoice, cents: h.cents, ramp: true });
   const onJobs = await DB.prepare('SELECT jt_id, facts FROM vendors WHERE jt_id IS NOT NULL').all().then((r) => r.results || [], () => []);
   for (const r of onJobs) if ((parseJson(r.facts).jobs || []).some((j) => j.order)) put(r.jt_id, 'job');
-  // Insurance the site is tracking: the renewal is asked for ahead of time
+  // Insurance JobTread has dates for, working for SOARD right now or not: asked for from 30 days before it ends, and for a month after if it lapsed
+  const from = isoDay(now - 30 * DAY);
+  const to = isoDay(now + (req.renewDays || 30) * DAY);
+  for (const r of onJobs) {
+    const f = parseJson(r.facts).fields;
+    if (f && !OVERRIDES.has(f.docs) && [f.gl, f.wc].some((d) => d && d >= from && d <= to)) put(r.jt_id, 'renewal');
+  }
   const asks = await DB.prepare('SELECT jt_id, state FROM vendor_asks').all().then((r) => r.results || [], () => []);
   for (const a of asks) if (parseJson(a.state, {}).expiring) put(a.jt_id, 'renewal');
   return new Map([...out.entries()].sort((x, y) => RANK[x[1].why] - RANK[y[1].why]));
@@ -846,7 +863,7 @@ export async function vendorsThatNeedDocs(DB, { now = Date.now() } = {}) {
  */
 export async function sweep(env, { now = Date.now(), fetchImpl = fetch } = {}) {
   const req = await readDocSettings(env.DB);
-  const who = await vendorsThatNeedDocs(env.DB, { now });
+  const who = await vendorsThatNeedDocs(env.DB, { now, req });
   const asks = await readAsks(env.DB);
   const ids = await jtSetup(env, { fetchImpl });
   const out = { read: 0, asked: 0, released: 0 };
@@ -867,10 +884,13 @@ export async function sweep(env, { now = Date.now(), fetchImpl = fetch } = {}) {
     }
     if (!settled && w.why !== 'held') {
       // Held bills email from ./_bill-pay.js the moment they're held; reminders come from here
-      if (!v.email) await postNoEmail(env, v, now);
-      else if (askDue(ask, now)) {
+      if (!v.email) {
+        // A renewal with no one to email still reaches their agent, when there is one; nothing else is urgent until a bill is
+        if (w.why === 'renewal') await import('./_trade-partners.js').then((tp) => tp.renewalToAgent(env, v.id, state, { now, fetchImpl })).catch((e) => console.error('[vendors] agent', v.id, e.message));
+        else await postNoEmail(env, v, now);
+      } else if (askDue(ask, now)) {
         try {
-          await askVendor(env, v, state, { why: w.why === 'renewal' && !state.ok ? 'missing' : w.why, now });
+          await askVendor(env, v, state, { why: w.why === 'renewal' && !state.ok ? 'missing' : w.why, now, fetchImpl });
           ask = await readAsk(env.DB, v.id);
           out.asked++;
           // Their insurance agent, when the trade-partner page has one, is asked for the certificate directly
@@ -880,7 +900,7 @@ export async function sweep(env, { now = Date.now(), fetchImpl = fetch } = {}) {
     } else if (!settled && w.why === 'held') {
       if (!v.email) await postNoEmail(env, v, now);
       else if (askDue(ask, now)) {
-        try { await askVendor(env, v, state, { why: 'bill', bill: w.bill, now }); ask = await readAsk(env.DB, v.id); out.asked++; } catch (e) { console.error('[vendors] remind', v.id, e.message); }
+        try { await askVendor(env, v, state, { why: 'bill', bill: w.bill, now, fetchImpl }); ask = await readAsk(env.DB, v.id); out.asked++; } catch (e) { console.error('[vendors] remind', v.id, e.message); }
       }
       if ((ask?.asks || 0) >= 3) {
         await postOnce(env, v.id, 'ignored', slackCard({

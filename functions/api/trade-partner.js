@@ -4,8 +4,8 @@
  * GET  ?config                       → { ok, turnstileSiteKey, trades, requirements, minimums }   for /trade-partners/
  * POST { action, … } (JSON):
  *   signin    { email, lang }          → { ok }   a link goes to that email when JobTread has it (never said either way)
- *   request   { company, trades, name, email, phone, website, area, note, lang, turnstileToken, website2 }
- *                                      → { ok }   "Work with us", decided in the admin
+ *   start     { company, name, email, phone, lang, turnstileToken, website2 }
+ *                                      → { ok }   "Get started": their link by email, JobTread matched or made (never said which)
  *   With a link's token (their own page; an agent's link can't):
  *   company   { token, name, trades, address, license, main, billing }   → { ok }
  *   w9        { token, w9: { … } }    → { ok } | { ok: false, problems }
@@ -19,7 +19,7 @@
  */
 import { findLink, hashToken, readDocSettings, LIMITS } from './_vendors.js';
 import { requirementLines } from './_vendor-read.js';
-import { signIn, submitRequest, saveCompany, signW9, saveAgent, saveBank, freshBankLink, patchProfile, ensurePartnerSchema } from './_trade-partners.js';
+import { signIn, startPartner, saveCompany, signW9, saveAgent, saveBank, freshBankLink, patchProfile, ensurePartnerSchema } from './_trade-partners.js';
 import { TRADES } from './_vendors.js';
 import { limit } from './_rate-limit.js';
 import { turnstileOn, turnstileSiteKey, verifyTurnstile } from './_secure.js';
@@ -57,13 +57,15 @@ export async function onRequestPost(context) {
       await signIn(env, email, { lang: body.lang === 'es' ? 'es' : 'en' });
       return reply({ ok: true });
     }
-    if (action === 'request') {
+    if (action === 'start') {
       if (body.website2) return reply({ ok: true }); // a bot filled the hidden field
-      const byIp = await limit(env.DB, `tp-request:ip:${ip}`, 5, 86400);
-      if (!byIp.ok) return fail('We’ve had a few requests from here today. Email us instead and we’ll be in touch.', 429);
+      const email = String(body.email || '').trim().toLowerCase();
+      const byIp = await limit(env.DB, `tp-start:ip:${ip}`, 6, 86400);
+      const byEmail = await limit(env.DB, `tp-start:email:${(await hashToken(email)).slice(0, 24)}`, 3, 3600);
+      if (!byIp.ok || !byEmail.ok) return fail('That’s a lot of links. Check your email for the last one, or try again in an hour.', 429);
       if (turnstileOn(env) && !(await verifyTurnstile(env, body.turnstileToken, ip))) return fail('Please complete the quick check above the button.', 403, { code: 'turnstile' });
-      const r = await submitRequest(env, body, { ip });
-      return reply({ ok: true, again: !!r.again });
+      await startPartner(env, body);
+      return reply({ ok: true });
     }
 
     // Everything else is a partner's own page, behind their link

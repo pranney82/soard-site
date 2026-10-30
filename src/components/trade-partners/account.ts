@@ -116,7 +116,7 @@ function drawSignIn(message = '') {
           <button class="tpa-btn tpa-btn--primary tpa-btn--wide" type="submit">${esc(T.signBtn)}</button>
           <p class="tpa-note" data-note role="status" aria-live="polite" hidden></p>
         </form>
-        <p class="tpa-small">${esc(T.newHere)} <a href="/trade-partners/#work-with-us">${esc(T.workWithUs)}</a></p>
+        <p class="tpa-small">${esc(T.newHere)} <a href="/trade-partners/#start">${esc(T.workWithUs)}</a></p>
       </div>
     </div>`));
   const form = root.querySelector<HTMLFormElement>('[data-form=signin]')!;
@@ -703,7 +703,7 @@ function wireBank() {
   }), (r, sent) => {
     if (r.preview) shown.bank = { last4: r.last4, kind: (WORDS.en.kinds as any)[sent.kind] || null, status: 'pending' };
     const body = root.querySelector<HTMLElement>('.tpa-step-body')!;
-    body.replaceChildren(html(`<div class="tpa-done" tabindex="-1">${svg('check', 'tpa-done-icon')}<h1 class="tpa-h1">${esc(T.bankDone(r.last4))}</h1>
+    body.replaceChildren(html(`<div class="tpa-done" tabindex="-1">${svg('check', 'tpa-done-icon')}<h1 class="tpa-h1">${esc(T.bankDone(r.last4, !!r.confirmed || !!r.preview))}</h1>
       <button type="button" class="tpa-btn tpa-btn--primary" data-act="next" data-step="bank">${esc(T.yourPage)}</button></div>`));
     body.querySelector<HTMLElement>('.tpa-done')?.focus();
   });
