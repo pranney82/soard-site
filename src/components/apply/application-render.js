@@ -71,6 +71,9 @@ export const UI = {
     yourPhoto: 'your photo', yourVideo: 'your video',
     leaveUpload: 'Your upload is still in progress. Leave this page and stop it?',
     suggestions: 'Suggested addresses', countyFilled: 'We filled in {county} County from your address.',
+    // The Postal Service's word on the home address, in what the check found (with a Google key: ../../functions/api/_google.js)
+    uspsConfirmed: 'Confirmed by the Postal Service.', uspsUnit: "If there's an apartment or unit number, add it to the address.",
+    uspsCheck: "The Postal Service doesn't know this address. Check the number and ZIP.",
     // The service-area check under the home address
     areaPrompt: "Enter the address above, and we'll show it on the map.", areaChecking: 'Checking the address…',
     areaInside: 'Inside our service area', areaNear: 'Close to our service area', areaFar: 'Outside our service area',
@@ -162,6 +165,8 @@ export const UI = {
     yourPhoto: 'su foto', yourVideo: 'su video',
     leaveUpload: 'Todavía se está subiendo un archivo. ¿Salir de esta página y detenerlo?',
     suggestions: 'Direcciones sugeridas', countyFilled: 'Completamos el condado de {county} con su dirección.',
+    uspsConfirmed: 'Confirmada por el Servicio Postal.', uspsUnit: 'Si hay un número de apartamento o unidad, agréguelo a la dirección.',
+    uspsCheck: 'El Servicio Postal no reconoce esta dirección. Revise el número y el código postal.',
     areaPrompt: 'Escriba la dirección arriba y la mostraremos en el mapa.', areaChecking: 'Revisando la dirección…',
     areaInside: 'Dentro de nuestra área de servicio', areaNear: 'Cerca de nuestra área de servicio', areaFar: 'Fuera de nuestra área de servicio',
     areaUnknown: 'No encontramos esta dirección en el mapa', areaUnknownBody: 'Revise la calle, la ciudad y el código postal. Si están bien, díganos:',

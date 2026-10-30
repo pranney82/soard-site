@@ -25,7 +25,7 @@ const STATES = {
 const SHORT = [[/\bNortheast\b/g, 'NE'], [/\bNorthwest\b/g, 'NW'], [/\bSoutheast\b/g, 'SE'], [/\bSouthwest\b/g, 'SW'],
   [/\bStreet\b/g, 'St'], [/\bAvenue\b/g, 'Ave'], [/\bRoad\b/g, 'Rd'], [/\bDrive\b/g, 'Dr'], [/\bLane\b/g, 'Ln'], [/\bCourt\b/g, 'Ct'],
   [/\bCircle\b/g, 'Cir'], [/\bBoulevard\b/g, 'Blvd'], [/\bParkway\b/g, 'Pkwy'], [/\bPlace\b/g, 'Pl'], [/\bTrail\b/g, 'Trl'], [/\bHighway\b/g, 'Hwy']];
-const shorten = (s) => SHORT.reduce((t, [re, w]) => t.replace(re, w), String(s || ''));
+export const shorten = (s) => SHORT.reduce((t, [re, w]) => t.replace(re, w), String(s || ''));
 
 /** Up to five homes matching what the family typed: [{ line1, city, state, zip, county, label }] */
 export async function suggestAddresses(q, fetchImpl = fetch) {

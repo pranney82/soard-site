@@ -60,6 +60,7 @@ export async function embedForm(context, kind = 'family') {
       kind, open: formOpen(settings, kind), full, year, version: live.version,
       definition: publicDefinition(live.definition), form: publicForm(form),
       turnstileSiteKey: env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY ? env.TURNSTILE_SITE_KEY : null,
+      usps: !!env.GOOGLE_MAPS_KEY, // the Postal Service's word on the home address (./api/_google.js)
       ...(url.searchParams.has('test') ? { testRun: testBy ? { by: testBy } : { signIn: true } } : {}),
     };
     // A staff test run shows the form whether or not applications are open; without a sign-in,

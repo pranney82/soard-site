@@ -82,7 +82,8 @@ export function areaMapHtml(area, home, words = {}) {
   let pin = '';
   if (hasHome && v.homeInView) {
     const [l, tp] = pct([home.lat, home.lng]);
-    pin = `<span class="af-map-pin" data-rank="0" data-band="${esc(home.band || '')}" style="left:${l.toFixed(2)}%;top:${tp.toFixed(2)}%">${PIN}<span class="af-map-pin-label">${esc(words.homeLabel || 'Home')}</span></span>`;
+    // Near the right edge its "Home" label goes on the left of the pin, inside the map
+    pin = `<span class="af-map-pin" data-rank="0" data-band="${esc(home.band || '')}"${l > 62 ? ' data-flip' : ''} style="left:${l.toFixed(2)}%;top:${tp.toFixed(2)}%">${PIN}<span class="af-map-pin-label">${esc(words.homeLabel || 'Home')}</span></span>`;
   } else if (hasHome) {
     // Off the map: an arrow on the edge, toward the home, with how far it is
     const c = [(v.s + v.n) / 2, (v.w + v.e) / 2];

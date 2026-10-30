@@ -42,6 +42,7 @@ import {
 import { allFields, resolveForm, AREA_VALUES, kindOf, isOrganizationKind, rolesFor } from './_application-form.js';
 import { formFor, getDraftForm, getLiveForm } from './_application-forms.js';
 import { suggestAddresses } from './_address.js';
+import { googleOn, googleSuggest, googlePlace, googleVerify } from './_google.js';
 import { addressKey } from './_geo.js';
 import { turnstileOn, turnstileSiteKey, verifyTurnstile } from './_secure.js';
 import { checkImage, imageKind } from './_image-types.js';
@@ -156,10 +157,27 @@ export async function onRequestGet(context) {
   const { env, request } = context;
   if (!env.DB) return fail('Not configured', 503);
   const url = new URL(request.url);
+  const ip = request.headers.get('CF-Connecting-IP') || 'x';
+  // The home address as it's typed: suggestions (Google's when SOARD has a key, else OpenStreetMap's),
+  // the parts of a Google one they pick, and the Postal Service's word on the finished address
   if (url.searchParams.has('address')) {
-    if (!addressAllowed(request.headers.get('CF-Connecting-IP') || 'x')) return json({ ok: true, results: [] });
-    const results = await suggestAddresses(url.searchParams.get('address')).catch(() => []);
+    if (!addressAllowed(ip)) return json({ ok: true, results: [] });
+    const q = url.searchParams.get('address');
+    const google = await googleSuggest(env, q).catch(() => null);
+    if (google?.length) return json({ ok: true, results: google, source: 'google' });
+    const results = await suggestAddresses(q).catch(() => []);
     return json({ ok: true, results });
+  }
+  if (url.searchParams.has('place')) {
+    if (!addressAllowed(ip)) return json({ ok: false });
+    const address = await googlePlace(env, url.searchParams.get('place')).catch(() => null);
+    return json({ ok: !!address, address });
+  }
+  if (url.searchParams.has('usps')) {
+    if (!areaAllowed(ip)) return json({ ok: true, usps: null });
+    const p = (k) => String(url.searchParams.get(k) || '').slice(0, 160);
+    const usps = await googleVerify(env, { line1: p('line1'), line2: p('line2'), city: p('city'), state: p('state'), zip: p('zip') }).catch(() => null);
+    return json({ ok: true, usps });
   }
   const settings = await applicationSettings(env.DB);
   const year = cleanYear(settings.year);
@@ -178,6 +196,7 @@ export async function onRequestGet(context) {
     year,
     preview,
     turnstileSiteKey: turnstileOn(env) ? turnstileSiteKey(env) : null,
+    usps: googleOn(env),
     version: live.version,
     definition: publicDefinition(live.definition),
     form: publicForm(form),

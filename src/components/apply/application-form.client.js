@@ -229,6 +229,8 @@ function init(root, cfg, mode) {
   let doneShown = null;
   let countyNote = null;
   let laterEmail = '';
+  let uspsNow = null;        // the Postal Service's word on the home address (with a Google key): { key, status }
+  const uspsOn = !!cfg.usps;
   let areaNow = null;        // the last service-area check of the home address: { key, band, answer, lat, lng, miles, county, matched, reason }
 
   const T = (k, v = {}) => word(lang, k, { year, ...v }, kind);
@@ -855,7 +857,7 @@ function init(root, cfg, mode) {
     if (res && !res.querySelector('.af-area-card')) {
       const was = res.innerHTML;
       const sample = T('areaFoundCounty', { address: '1234 Sample Street, Sampleville, GA 30000', county: 'Sample' });
-      res.innerHTML = `<div class="af-area-card" data-band="inside">${AREA_ICONS.inside}<div class="af-area-text"><p class="af-area-title">${esc(T('areaInside'))}</p><div class="af-area-desc-wrap"><p class="af-area-desc">${esc(af.descriptions?.[AREA_VALUES.inside] || '')}</p></div><p class="af-area-found">${esc(sample)}</p><button type="button" class="af-btn af-btn--link af-area-fix">${esc(T('areaFix'))}</button></div></div>`;
+      res.innerHTML = `<div class="af-area-card" data-band="inside">${AREA_ICONS.inside}<div class="af-area-text"><p class="af-area-title">${esc(T('areaInside'))}</p><div class="af-area-desc-wrap"><p class="af-area-desc">${esc(af.descriptions?.[AREA_VALUES.inside] || '')}</p></div><p class="af-area-found">${esc(sample)}</p>${uspsOn ? uspsHtml('check') : ''}<button type="button" class="af-btn af-btn--link af-area-fix">${esc(T('areaFix'))}</button></div></div>`;
       undo.push(() => { res.innerHTML = was; });
     }
     const note = res && el.querySelector('.af-county-note[hidden]');
@@ -871,12 +873,10 @@ function init(root, cfg, mode) {
   function pack(pid, keep = null) {
     const el = pageEl(pid);
     if (!focused || !el || el.hidden || ui.form.hidden) return null;
-    // A style still easing to its new value would be measured half-done (with reduced motion every
-    // change still eases for a moment): taking the screen's own padding, the first step came out too narrow
-    for (const a of document.getAnimations()) if (a.transitionProperty) a.finish();
+    settle(); // taking the screen's own padding mid-change, the first step came out too narrow
     el.querySelectorAll('[data-off]').forEach(k => k.removeAttribute('data-off'));
     const places = [...el.querySelectorAll(':scope > .af-place')];
-    places.forEach(p => p.removeAttribute('data-split'));
+    places.forEach(p => { p.removeAttribute('data-split'); p.style.removeProperty('--af-map-h'); });
     if (el.offsetParent === null) return null;
     packSize = `${innerWidth}x${innerHeight}`;
     const fit = room(el);
@@ -965,6 +965,32 @@ function init(root, cfg, mode) {
     }
     return keep ? [...keep, ...screens] : screens;
   }
+  /**
+   * Styles still easing to new values, at their new values now: a measurement mid-change reads the old
+   * ones (with reduced motion the site eases every change for an instant, so this is every change)
+   */
+  const settle = () => { for (const a of document.getAnimations()) if (a.transitionProperty) a.finish(); };
+  /**
+   * The service-area map takes the room its screen has left (never under 160px, 120px on a phone): a longer card above
+   * or beside it (the Postal Service's word, a long note) means a smaller map, not a screen that scrolls
+   */
+  function fitMap() {
+    const af = areaField();
+    const fe = af && fieldEl(af.id);
+    const place = fe?.closest('.af-place');
+    if (!place) return;
+    place.style.removeProperty('--af-map-h');
+    const frame = fe.querySelector('.af-map-frame');
+    if (!focused || !frame || !fe.getClientRects().length || fe.closest('[data-off], [hidden]')) return;
+    const least = innerWidth <= 640 ? 120 : 160;
+    for (let i = 0; i < 5; i++) {
+      settle();
+      const over = document.documentElement.scrollHeight - innerHeight;
+      const h = frame.getBoundingClientRect().height;
+      if (over <= 0 || h <= least) return;
+      place.style.setProperty('--af-map-h', `${Math.max(least, Math.floor(h - over - 1))}px`);
+    }
+  }
   /** Show the current screen's pieces, the others waiting */
   function paintScreen() {
     const list = packs[currentId];
@@ -973,6 +999,7 @@ function init(root, cfg, mode) {
     for (const k of all) k.toggleAttribute('data-off', !on.has(k));
     // Words cut across screens show only where they have a part on this one
     for (const c of (list && cutsOf[currentId]) || []) c.toggleAttribute('data-off', ![...on].some(k => c.contains(k)));
+    fitMap();
   }
   /** The questions on a screen of a page (the whole page before it's been worked out) */
   const screenFieldIds = (pid = currentId, n = screenNo) => new Set((packs[pid] ? packs[pid][n] || [] : pieces(pid)).flatMap(idsOf));
@@ -1048,6 +1075,8 @@ function init(root, cfg, mode) {
       }
       if (scroll && !focusField) scrollToForm(!!dir);
       growPage(id);
+      fitMap();
+      requestAnimationFrame(fitMap); // and once the screen has settled (its header, Back and Continue)
     };
     return swap(update, dir, !pageChanged).then(() => {
       if (focusField) focusOn(focusField);
@@ -1812,17 +1841,20 @@ function init(root, cfg, mode) {
     const ctrl = new AbortController();
     sug.ctrl = ctrl;
     let items = [];
+    let google = false;
     try {
       const res = await fetch(`${API}?address=${encodeURIComponent(q)}`, { signal: ctrl.signal });
       const data = await res.json();
       items = Array.isArray(data.results) ? data.results : Array.isArray(data.items) ? data.items : [];
+      google = data.source === 'google';
     } catch { return; } // offline or the lookup is down: they keep typing as normal
     if (ctrl.signal.aborted || input.value.trim() !== q || document.activeElement !== input) return;
-    openSuggest(el, input, items.filter(i => i?.line1).slice(0, 5));
+    openSuggest(el, input, items.filter(i => i?.line1).slice(0, 5), google);
   }
-  function openSuggest(el, input, items) {
+  function openSuggest(el, input, items, google = false) {
     if (!items.length) { closeSuggest(); return; }
     const list = el.querySelector('.af-suggest');
+    list.toggleAttribute('data-google', google); // Google's suggestions carry its credit (the styles add it)
     Object.assign(sug, { items, active: -1, input, list, el });
     list.replaceChildren(...items.map((it, i) => {
       const li = document.createElement('li');
@@ -1835,7 +1867,7 @@ function init(root, cfg, mode) {
       main.textContent = it.line1;
       const sub = document.createElement('span');
       sub.className = 'af-suggest-sub';
-      sub.textContent = [it.city, [it.state, it.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+      sub.textContent = it.sub || [it.city, [it.state, it.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
       li.append(main, sub);
       return li;
     }));
@@ -1868,17 +1900,24 @@ function init(root, cfg, mode) {
       if (input.tagName === 'SELECT' && ![...input.options].some(o => o.value === v)) return;
       input.value = v;
     };
-    set('line1', it.line1);
-    set('city', it.city);
-    set('state', it.state);
-    set('zip', it.zip);
+    const done = (a) => {
+      set('line1', a.line1);
+      set('line2', a.line2);
+      set('city', a.city);
+      set('state', a.state);
+      set('zip', a.zip);
+      if (el.dataset.field === homeAddressId()) { fillCounty(a.county, el); scheduleArea(true); }
+      liveCheck(el);
+      refresh();
+      markDirty();
+    };
     const input = sug.input;
     closeSuggest();
-    if (el.dataset.field === homeAddressId()) { fillCounty(it.county, el); scheduleArea(true); }
-    liveCheck(el);
-    refresh();
-    markDirty();
     input?.focus({ preventScroll: true });
+    if (!it.id) { done(it); return; }
+    // A Google suggestion: the street shows at once, the city, state and ZIP a moment later
+    set('line1', it.line1);
+    fetch(`${API}?place=${encodeURIComponent(it.id)}`).then(r => r.json()).then((r) => { if (r?.address) done(r.address); }).catch(() => {});
   }
   /** The county question, set from the address when the county is one of its choices */
   function fillCounty(county, addressEl) {
@@ -1949,7 +1988,23 @@ function init(root, cfg, mode) {
     if (areaNow) paintArea('checking');
     area.timer = setTimeout(() => runArea(addr, key), now ? 0 : 650);
   }
+  /** The Postal Service's word on the home address, in what the check found: known, a unit number may be missing, or check it */
+  async function runUsps(addr, key) {
+    if (!uspsOn || !/^\d{5}/.test(String(addr?.zip || '').trim())) return;
+    const q = new URLSearchParams({ usps: '1', ...Object.fromEntries(['line1', 'line2', 'city', 'state', 'zip'].map(k => [k, String(addr[k] || '')])) });
+    let status = null;
+    try { status = (await (await fetch(`${API}?${q}`)).json())?.usps || null; } catch { /* no word: nothing shows */ }
+    if (addressKey(homeAddressNow()) !== key) return; // the address has changed since
+    uspsNow = { key, status };
+    paintArea();
+  }
+  /** Its line in the result card (Google's terms: the answer shows with its credit) */
+  function uspsHtml(status = uspsNow && uspsNow.key === addressKey(homeAddressNow()) ? uspsNow.status : null) {
+    const words = { confirmed: 'uspsConfirmed', unit: 'uspsUnit', check: 'uspsCheck' }[status];
+    return words ? `<p class="af-usps" data-status="${status}"><span>${esc(T(words))}</span> <span class="af-usps-by" translate="no">Google Maps</span></p>` : '';
+  }
   function runArea(addr, key) {
+    runUsps(addr, key);
     area.want = key;
     clearTimeout(area.showTimer);
     area.showTimer = setTimeout(() => { if (area.want === key) paintArea('checking'); }, 180);
@@ -2004,7 +2059,7 @@ function init(root, cfg, mode) {
     const title = { inside: 'areaInside', near: 'areaNear', far: 'areaFar' }[st];
     const found = areaNow.matched
       ? `<p class="af-area-found">${esc(T(areaNow.county ? 'areaFoundCounty' : 'areaFound', { address: prettyAddress(areaNow.matched), county: areaNow.county || '' }))}</p>` : '';
-    return `<div class="af-area-card" data-band="${st}">${AREA_ICONS[st]}<div class="af-area-text"><p class="af-area-title">${esc(T(title))}</p><div class="af-area-desc-wrap">${desc}</div>${found}<button type="button" class="af-btn af-btn--link af-area-fix" data-act="area-fix">${esc(T('areaFix'))}</button></div></div>`;
+    return `<div class="af-area-card" data-band="${st}">${AREA_ICONS[st]}<div class="af-area-text"><p class="af-area-title">${esc(T(title))}</p><div class="af-area-desc-wrap">${desc}</div>${found}${uspsHtml()}<button type="button" class="af-btn af-btn--link af-area-fix" data-act="area-fix">${esc(T('areaFix'))}</button></div></div>`;
   }
   /** Draw the check: map (with the home), what it found, and the question when it couldn't place the home */
   function paintArea(force = null) {
@@ -2040,6 +2095,7 @@ function init(root, cfg, mode) {
       ask.hidden = !asking;
       if (asking) enter(ask, 0, -6);
     }
+    fitMap(); // the card may have grown or shrunk beside the map
   }
 
   // ── A staff test run (?test=1) ──────────────────────────────────
