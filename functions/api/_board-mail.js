@@ -157,10 +157,35 @@ const RESUME = /\b(resume|résumé|curriculum vitae|cv)\b/i;
 const AUTOMATIC = /quickbooks|intuit\.com/i;
 const NOT_BOARD_NAME = /\b(policy|renewal|invoice|receipt|contract|agreement|w-?9|1099|certificate|insurance|quote|estimate|proposal|loi|lease|deed|subpoena|settlement)\b/i;
 const BOARDISH = /\b(board|bod|directors?|agenda|minutes)\b/i;
+// The kinds of organization whose board is never SOARD's ("Example School Board", "Example, Inc. Full Board Meeting")
+const ORG_WORD = /^(inc|llc|corp|corporation|company|co|school|academy|college|university|foundation|chamber|church|ministries|club|rotary|hoa|pta|pto|association|hospital)$/i;
+const OUR_CAPS = /^(SOARD|BOD|Q[1-4]|CEO|ED|FY\d*|RE|FW|FWD|AW)$/;
+
+/**
+ * Whether a subject or file name is another organization's board: the name right
+ * before "Board" or "BOD" is an acronym that isn't SOARD's ("ABC BOD Packet",
+ * "Approval Needed: New ABC Board Members") or a kind of organization ("Example
+ * Inc Board Meeting"). SOARD's founders sit on other boards too, and that mail
+ * says board as much as SOARD's does. → that organization's name, or ''
+ */
+export function otherBoard(text) {
+  const s = String(text || '').replace(/\.[a-z0-9]{2,5}$/i, '');
+  // A name in capitals throughout ("NEW BOARD MEMBERS") has no acronyms to tell apart
+  const caps = !/[a-z]/.test(s);
+  for (const m of s.matchAll(/\b(board|bod)\b/gi)) {
+    const words = s.slice(0, m.index).split(/[^A-Za-z0-9&'.-]+/).map((w) => w.replace(/^[.'-]+|[.'-]+$/g, '').replace(/'s$/i, '')).filter(Boolean);
+    while (words.length && /^(full|the|of|annual|regular|special|\d+)$/i.test(words.at(-1))) words.pop();
+    const w = words.at(-1) || '';
+    if (ORG_WORD.test(w)) return words.slice(-2).join(' ');
+    if (!caps && /^[A-Z][A-Z&]{1,5}$/.test(w) && !OUR_CAPS.test(w)) return w;
+  }
+  return '';
+}
 
 /** What's left out before anything reads it: a reason in words, or '' */
 export function leftOut(file, { sender = '', subject = '' } = {}) {
   if (RESUME.test(file.name)) return 'a resume';
+  if (otherBoard(file.name)) return `another organization’s board (${otherBoard(file.name)})`;
   if ((file.size || file.bytes?.byteLength || 0) > MAX_FILE_BYTES) return 'over 15 MB';
   if (AUTOMATIC.test(sender)) return 'an automatic QuickBooks report';
   if (/\bweekly report\b/i.test(subject) || /\bweekly report\b/i.test(file.name)) return 'a weekly report';
@@ -193,6 +218,7 @@ Decide what ONE attached file is:
 - "packet": other material made for a specific board meeting (a presentation, a committee report, a proposal the board votes on)
 - "not_board": anything else, such as resumes, insurance policies, contracts, grant documents, legal letters, invoices, receipts, weekly or automatic reports, newsletters, event files, or forms
 Only choose agenda, minutes, financials or packet when it is clearly made for a board meeting. When unsure, choose "not_board".
+SOARD's founders also sit on the boards of other organizations (a school, a chamber of commerce, a city group). Anything for another organization's board, committee or meeting is "not_board".
 meetingDate: the date of the board meeting the file belongs to (YYYY-MM-DD), only when the file or the email states it; otherwise "".
 Answer with JSON: {"kind": "...", "meetingDate": "...", "reason": "a few words"}`;
 const SORT_SCHEMA = {
@@ -349,6 +375,9 @@ async function bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, 
 
   const attached = attachmentsOf(msg.payload);
   if (!attached.length) return record({ outcome: 'no-files', result: 'no documents attached' });
+  // Another organization's board meeting ("ABC BOD Packet & July 15 Meeting"): none of it is SOARD's
+  const theirs = otherBoard(subject);
+  if (theirs) return record({ outcome: 'not-board', result: `another organization’s board (${theirs}): ${attached.map((a) => a.name).join(', ')}`, skipped: attached.length });
   // Who it went to: the board (three or more of them, SOARD's own Google Group, or a board address), or just a few people.
   // Only a list of SOARD's counts (its name says so): every newsletter has a List-Id
   const to = [...new Set([...addresses(header(msg, 'To')), ...addresses(header(msg, 'Cc')), ...addresses(sender)])];

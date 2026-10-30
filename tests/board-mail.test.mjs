@@ -10,7 +10,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { readBoardMail, maybeReadBoardMail, mailLog, mailStatus, classifyFile, attendanceIn, leftOut, ruleKind, MAIL_BY } from '../functions/api/_board-mail.js';
+import { readBoardMail, maybeReadBoardMail, mailLog, mailStatus, classifyFile, attendanceIn, leftOut, ruleKind, otherBoard, MAIL_BY } from '../functions/api/_board-mail.js';
 import { syncBoardCalendar } from '../functions/api/_board-calendar.js';
 import { listMeetings, getMeeting, saveMeeting, putFile, createMeeting } from '../functions/api/_board.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
@@ -183,6 +183,27 @@ test('dated material with no meeting near it brings the meeting in; undated minu
   await readBoardMail(env);
   assert.deepEqual(by(await listMeetings(env.DB), '2025-04-24').files.map((f) => [f.name, f.kind]), [['Packet slides.pdf', 'packet']]);
   assert.equal((await mailLog(env.DB, 12, { outcome: 'waiting' })).length, 0);
+});
+
+test('another organization’s board is never SOARD’s: its mail is left out whole, its files one by one, even with a SOARD meeting days away', async () => {
+  for (const t of ['ABC BOD Packet & July 15 Meeting', 'RE: ABC BOD Meeting Postponed', 'Approval Needed – New ABC Board Members', 'Example Inc Board Meeting 10/19', 'Example, Inc. Full Board Meeting', 'Example School Board meeting', 'July 18 2024 ABC BOD Annual Mtg Packet.pdf']) assert.ok(otherBoard(t), t);
+  for (const t of ['Q1 SOARD BOD Agenda', '1st Qtr SOARD Board Meeting <Reschedule>', 'RE: Q4 SOARD Board Meeting', 'FW: Q3 Board Meeting Information', 'Q1 - Upcoming Quarterly Board Meeting & Board Expectations', 'NEW BOARD MEMBERS', 'Minutes - 2.12.26 board meeting', 'SOARD’s Board Expectations', 'Advisory Board Expectations.pdf', 'Board-Level-10.pdf', 'December 1 BOD Packet.pdf', 'SOARD_Board_Member_Process.docx']) assert.equal(otherBoard(t), '', t);
+  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', '2025-07-24')];
+  await syncBoardCalendar(env);
+  g.answers = { 'Finance deck.pdf': { kind: 'financials', meetingDate: '', reason: 'financials' }, 'Agenda.pdf': { kind: 'agenda', meetingDate: '2025-07-15', reason: 'agenda' }, 'ABC BOD Packet July 2025.pdf': { kind: 'packet', meetingDate: '', reason: 'packet' }, 'Q3 financials.pdf': { kind: 'financials', meetingDate: '', reason: 'financials' } };
+  g.inboxes[FOUNDER] = [
+    msg('o1', 'RE: ABC BOD Meeting Tuesday, July 15 - Financial deck', '2025-07-15T14:00:00Z', [{ name: 'Finance deck.pdf' }, { name: 'Agenda.pdf' }]),
+    msg('o2', 'Q3 board meeting', '2025-07-20T14:00:00Z', [{ name: 'ABC BOD Packet July 2025.pdf' }, { name: 'Q3 financials.pdf' }]),
+  ];
+  await readBoardMail(env);
+  const all = await listMeetings(env.DB);
+  assert.equal(all.length, 1, 'its dated agenda never brings in a meeting');
+  assert.deepEqual(all[0].files.map((f) => f.name), ['Q3 financials.pdf'], 'only SOARD’s file lands');
+  const log = await mailLog(env.DB);
+  assert.deepEqual(log.map((r) => r.outcome), ['filed', 'not-board']);
+  assert.match(log[1].result, /another organization’s board \(ABC\): Finance deck\.pdf, Agenda\.pdf/);
+  assert.match(log[0].result, /left out ABC BOD Packet July 2025\.pdf \(another organization’s board \(ABC\)\)/);
+  assert.equal(g.calls.model.filter((c) => /Finance deck|Agenda\.pdf/.test(JSON.stringify(c))).length, 0, 'never read');
 });
 
 test('a date a day off finds its meeting (within ten days), and never makes a second one', async () => {
