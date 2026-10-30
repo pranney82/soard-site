@@ -3,7 +3,7 @@
  * ===========================================================================
  * Env: PLAID_CLIENT_ID and PLAID_SECRET (Plaid Dashboard → Developers → Keys; the Production secret),
  * PLAID_ENV = 'sandbox' only to try it with Plaid's made-up banks. Nothing else: a Board admin connects a
- * bank once in Board → Settings → Bank balances. Plaid's own window signs into the bank; SOARD never sees
+ * bank once in Settings → Bank balances. Plaid's own window signs into the bank; SOARD never sees
  * the password.
  *
  * Read-only. A bank is connected for Plaid's "transactions", the product that keeps its balances fresh
@@ -20,7 +20,7 @@ import { slackIssue, slackResolved, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 
 const HOSTS = { production: 'https://production.plaid.com', sandbox: 'https://sandbox.plaid.com' };
-export const SETTINGS_URL = `${SITE_ORIGIN}/admin/#board/settings`;
+export const SETTINGS_URL = `${SITE_ORIGIN}/admin/#settings`;
 /** A bank's balances older than this show their date on the board page */
 export const STALE_MS = 36 * 60 * 60 * 1000;
 const READ_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -162,7 +162,7 @@ export async function readBanks(env, { fetchImpl = fetch, now = Date.now(), only
         const card = slackCard({
           icon: '🏦', title: needsSignIn(code) ? `${row.institution} needs signing in again` : `${row.institution} balances aren’t coming through`,
           lead: `${troubleText(code, row.institution)} Until then the board page shows ${row.institution}’s balances from the last good read.`,
-          fix: needsSignIn(code) ? `A Board admin opens Board → Settings → Bank balances and presses “Sign in to ${row.institution} again”. Plaid’s window opens; sign in there.` : undefined,
+          fix: needsSignIn(code) ? `A Board admin opens Settings → Bank balances in the admin and presses “Sign in to ${row.institution} again”. Plaid’s window opens; sign in there.` : undefined,
           buttons: [{ label: 'Bank balances', url: SETTINGS_URL }],
         });
         const r = await slackIssue(env, keyOf(row), card, { title: `${row.institution} balances`, kind: 'attention', area: 'finance' }).catch((e) => ({ ok: false, error: e.message }));

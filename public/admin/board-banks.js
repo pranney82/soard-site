@@ -1,5 +1,5 @@
 /**
- * Board → Settings → Bank balances: the banks the board page's cash counts. Mercury is read through SOARD's
+ * Settings → Bank balances (./settings.js): the banks the board page's cash counts. Mercury is read through SOARD's
  * relay (its keys in Cloudflare). Any other bank (Chase: its checking, the CD, the credit card) is connected
  * here through Plaid, whose own window signs into the bank, so SOARD never sees the password.
  * See functions/api/_plaid.js and /api/bank-admin.
@@ -42,7 +42,7 @@ export function BankBalances({ addToast = () => {} }) {
   const load = async () => { const j = await api(); setD(j.ok ? j : { error: j.error || 'Couldn’t load the bank balances' }); };
   useEffect(() => { load(); }, []);
 
-  const head = html`<div class="bd-card-head"><h3>Bank balances</h3><p>The cash on the board page: each bank’s balances, read by themselves through the day. Credit cards show as owed, never taken off the cash. Amounts show on the board page only.</p></div>`;
+  const head = html`<div class="bd-card-head"><h3>Bank balances</h3><p>Each bank’s live balances, read by themselves through the day. Once Chase is connected, its balances are the board page’s cash; until then the cash is QuickBooks’. Credit cards show as owed, never taken off the cash. Amounts show on the board page only.</p></div>`;
   if (!d) return html`<div class="card">${head}<div class="area-loading"><span class="spinner" /></div></div>`;
   if (d.error) return html`<div class="card">${head}<div class="notice notice--warn" role="alert"><div class="notice__body">${d.error}</div><div class="notice__actions"><button class="btn btn-ghost btn-sm" onClick=${() => { setD(null); load(); }}>Try again</button></div></div></div>`;
 

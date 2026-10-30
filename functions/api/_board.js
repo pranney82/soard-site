@@ -520,7 +520,7 @@ export async function fileFor(DB, id, { admin = false } = {}) {
 
 /**
  * The money in the bank right now: Mercury's checking and savings (live), and each bank connected through Plaid
- * in Board → Settings → Bank balances (Chase's checking and CD, as Plaid last read them) →
+ * in Settings → Bank balances (Chase's checking and CD, as Plaid last read them) →
  * { total, mercuryTotal (null without Mercury), accounts: [{ bank, name, kind, balance }], owed: [credit cards: { bank, name, balance, limit }],
  *   banksAt, stale: [banks not read in a day and a half], at } or null with neither
  */
@@ -683,7 +683,7 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     impact(env.DB),
     boardFinanceNow(env, { now }),
     loadKids(env.DB).catch(() => []),
-    // The year's revenue and expenses so far, as QuickBooks last answered (Board → Settings → QuickBooks)
+    // The year's revenue and expenses so far, as QuickBooks last answered (Settings → QuickBooks)
     booksNow(env.DB, { now }).catch(() => null),
   ]);
   // Each reveal's kid by their published page's photo (a draft page's kid has none)

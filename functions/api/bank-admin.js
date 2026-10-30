@@ -1,5 +1,5 @@
 /**
- * /api/bank-admin (Cloudflare Access) — Board → Settings → Bank balances: the banks outside Mercury that the
+ * /api/bank-admin (Cloudflare Access) — Settings → Bank balances: the banks outside Mercury that the
  * board page's cash counts, connected through Plaid (./_plaid.js). Only the Board area's admins, like
  * /api/board-admin: every other staff sign-in gets 403, and a board member's sign-in never gets this far.
  *

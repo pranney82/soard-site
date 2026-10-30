@@ -866,30 +866,30 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Cash in the bank, month by month', s: 'off', k: 'schedule',
           when: 'On the live hub’s heartbeat: the banks connected through Plaid every six hours, the day’s balance once a day.',
-          does: 'Reads the balances (never moves money) for the board page’s cash: Chase’s checking and CD through Plaid (connected once by a Board admin in Board → Settings → Bank balances; Plaid refreshes them about daily), and Mercury’s checking and savings through the relay once Mercury holds money. Credit cards show as owed, never taken off the cash. One row a month for the history. A bank that needs signing in again keeps its last balances with their date, and Slack says so once. Locking a meeting’s numbers keeps that day’s balance with its packet.',
+          does: 'Reads the balances (never moves money) for the board page’s cash: Chase’s checking and CD through Plaid (connected once by a Board admin in Settings → Bank balances; Plaid refreshes them about daily), and Mercury’s checking and savings through the relay once Mercury holds money. Credit cards show as owed, never taken off the cash. One row a month for the history. A bank that needs signing in again keeps its last balances with their date, and Slack says so once. Locking a meeting’s numbers keeps that day’s balance with its packet.',
           touches: ['Plaid', 'Mercury', 'D1', 'Slack'], where: 'functions/api/_board.js (cashNow, maybeRunBoard) · _plaid.js · bank-admin.js · public/admin/board-banks.js · _mercury.js (through the relay)',
           live: (f) => {
             const b = f.board;
             if (!b || b.error) return null;
             const k = b.cash.banks || {};
             const both = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]);
-            if (k.needsSignIn?.length) return ATTN(`${both(k.needsSignIn)} needs signing in again: Board → Settings → Bank balances. The board page shows its last balances until then.`, k.readAt);
+            if (k.needsSignIn?.length) return ATTN(`${both(k.needsSignIn)} needs signing in again: Settings → Bank balances. The board page shows its last balances until then.`, k.readAt);
             if (k.failing?.length) return ATTN(`${both(k.failing)} isn’t answering Plaid. It tries again every six hours.`, k.readAt);
-            if (!k.banks?.length && !b.cash.mercury) return ATTN(k.configured ? 'No bank connected yet: Board → Settings → Bank balances → Connect Chase.' : 'No bank connected yet: Chase needs Plaid’s keys (PLAID_CLIENT_ID and PLAID_SECRET) in Cloudflare, then Board → Settings → Bank balances.');
+            if (!k.banks?.length && !b.cash.mercury) return ATTN(k.configured ? 'No bank connected yet: Settings → Bank balances → Connect Chase.' : 'No bank connected yet: Chase needs Plaid’s keys (PLAID_CLIENT_ID and PLAID_SECRET) in Cloudflare, then Settings → Bank balances.');
             if (!b.cash.lastAt) return b.cash.readAt ? ON(`Read ${both([...(k.banks || []), ...(b.cash.mercury ? ['Mercury'] : [])])}. The history starts with the first month that has money in the bank.`, b.cash.readAt) : ATTN('Hasn’t read the banks yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
             if (stale(b.cash.lastAt, 30 * HOUR)) return ATTN(`Hasn’t read the banks since ${stamp(b.cash.lastAt)}. Check the Heartbeat entry.`, b.cash.lastAt);
             return ON(`${both([...(k.banks || []), ...(b.cash.mercury ? ['Mercury'] : [])])}. ${plural(b.cash.months, 'month')} of history.`, b.cash.lastAt);
           } },
         { t: 'Year so far from QuickBooks', s: 'off', k: 'schedule',
           when: 'On the live hub’s heartbeat, every hour once QuickBooks is connected.',
-          does: 'Reads QuickBooks’ Profit and Loss from the first day of SOARD’s fiscal year to today (read-only; connected once by a Board admin in Board → Settings → QuickBooks). The board page’s revenue and expenses for the year are QuickBooks’ own, against the budget sheet in the newest packet; a past meeting keeps its packet’s figures. When QuickBooks needs connecting again, the last figures stay with their date, and Slack says so once.',
+          does: 'Reads QuickBooks’ Profit and Loss from January 1 to today (SOARD’s fiscal year), and its bank and credit card accounts (read-only; connected once by a Board admin in Settings → QuickBooks). The board page’s revenue and expenses for the year are QuickBooks’ own, against the budget sheet in the newest packet, and so is its cash in the bank, unless a bank connected through Plaid answers live; a past meeting keeps its packet’s figures. When QuickBooks needs connecting again, the last figures stay with their date, and Slack says so once.',
           touches: ['QuickBooks', 'D1', 'Slack'], where: 'functions/api/_quickbooks.js (maybeReadBooks, booksNow) · books-admin.js · books-callback.js · public/admin/board-books.js · public/admin/board/money.js (withBooks)',
           live: (f) => {
             const q = f.board?.books;
             if (!q) return null;
-            if (!q.configured) return ATTN('Not connected: QuickBooks needs its keys (QBO_CLIENT_ID and QBO_CLIENT_SECRET) in Cloudflare, then Board → Settings → QuickBooks. Until then the year so far is the packet’s budget sheet.');
-            if (!q.company) return ATTN('Not connected yet: Board → Settings → QuickBooks → Connect QuickBooks.');
-            if (q.needsConnect) return ATTN(`${q.company} needs connecting again: Board → Settings → QuickBooks. The board page shows its last figures until then.`, q.readAt);
+            if (!q.configured) return ATTN('Not connected: QuickBooks needs its keys (QBO_CLIENT_ID and QBO_CLIENT_SECRET) in Cloudflare, then Settings → QuickBooks. Until then the year so far is the packet’s budget sheet.');
+            if (!q.company) return ATTN('Not connected yet: Settings → QuickBooks → Connect QuickBooks.');
+            if (q.needsConnect) return ATTN(`${q.company} needs connecting again: Settings → QuickBooks. The board page shows its last figures until then.`, q.readAt);
             if (q.failing) return ATTN(`${q.company} isn’t answering. It tries again every hour.`, q.readAt);
             if (!q.readAt || stale(q.readAt, 3 * HOUR)) return ATTN(q.readAt ? `Hasn’t read QuickBooks since ${stamp(q.readAt)}. Check the Heartbeat entry.` : 'Hasn’t read QuickBooks yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.', q.readAt || null);
             return ON(`${q.company}, read every hour.`, q.readAt);

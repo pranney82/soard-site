@@ -1,6 +1,6 @@
 /**
- * /api/books-admin (Cloudflare Access) — Board → Settings → QuickBooks: the year's revenue and expenses so far
- * on the board page, read from QuickBooks (./_quickbooks.js). Only the Board area's admins, like
+ * /api/books-admin (Cloudflare Access) — Settings → QuickBooks: the cash and the year's revenue and expenses
+ * so far on the board page, read from QuickBooks (./_quickbooks.js). Only the Board area's admins, like
  * /api/bank-admin: every other staff sign-in gets 403, and a board member's sign-in never gets this far.
  *
  * GET                       → { status: { configured, env, redirectUri, connected: { company, readAt, through, trouble, needsConnect } | null } }

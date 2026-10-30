@@ -8,12 +8,12 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { connectUrl, finishConnect, readBooks, maybeReadBooks, booksNow, booksStatus, booksFacts, disconnectBooks, readProfitAndLoss, yearSoFar, REDIRECT_URI, _resetEndpointsForTests } from '../functions/api/_quickbooks.js';
+import { cashOf, connectUrl, finishConnect, readBooks, maybeReadBooks, booksNow, booksStatus, booksFacts, disconnectBooks, readProfitAndLoss, yearSoFar, REDIRECT_URI, _resetEndpointsForTests } from '../functions/api/_quickbooks.js';
 import { liveNumbers, ensureSchema } from '../functions/api/_board.js';
 import { readState, writeState } from '../functions/api/_board-roles.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { onRequest } from '../functions/api/_middleware.js';
-import { withBooks, moneyTiles } from '../public/admin/board/money.js';
+import { withBooks, moneyTiles, moneyFor, booksCash } from '../public/admin/board/money.js';
 import * as booksAdmin from '../functions/api/books-admin.js';
 import * as booksCallback from '../functions/api/books-callback.js';
 
@@ -50,6 +50,22 @@ const DISCOVERY = {
   revocation_endpoint: 'https://developer.api.intuit.com/v2/oauth2/tokens/revoke',
 };
 
+/** SOARD's chart of accounts the way QuickBooks' query answers (the bank and card accounts, and others it skips) */
+const ACCOUNTS = [
+  { Name: 'SR1_Opex (0986)', AccountType: 'Bank', CurrentBalance: 64748.68, Active: true },
+  { Name: 'SR4_Long Reserve (8861)', AccountType: 'Bank', CurrentBalance: 300986.49, Active: true },
+  { Name: 'SR5_Income (3552)', AccountType: 'Bank', CurrentBalance: 134504.07, Active: true },
+  { Name: 'Mercury Bank', AccountType: 'Bank', CurrentBalance: 2500, Active: true },
+  { Name: 'Gift Cards', AccountType: 'Bank', CurrentBalance: 0, Active: true },
+  { Name: 'Petty Cash', AccountType: 'Bank', CurrentBalance: 40, Active: true },
+  { Name: 'Old Checking', AccountType: 'Bank', CurrentBalance: 999, Active: false },
+  { Name: 'CD', AccountType: 'Other Current Asset', CurrentBalance: 100000, Active: true },
+  { Name: 'Chase C/C 3512', AccountType: 'Credit Card', CurrentBalance: 583.45, Active: true },
+  { Name: 'Ramp CC', AccountType: 'Credit Card', CurrentBalance: 2196.28, Active: true },
+  { Name: 'American Express', AccountType: 'Credit Card', CurrentBalance: 0, Active: true },
+  { Name: 'Accounts Payable', AccountType: 'Accounts Payable', CurrentBalance: 4722.11, Active: true },
+];
+
 let env;
 let world;
 const realFetch = globalThis.fetch;
@@ -59,7 +75,7 @@ beforeEach(async () => {
   await ensureSchema(env.DB);
   await writeState(env.DB, 'settings', { admins: [FOUNDER] });
   await writeSlackConfig(env.DB, { channel: { id: 'CNEWS', name: 'news' }, finance: { id: 'CFIN', name: 'finance' } });
-  world = { tokens: [], reads: [], slack: [], revoked: [], n: 0, refreshError: null, unauthorizedOnce: false, report: PL, fiscal: 'January', discovery: { ...DISCOVERY }, discoveryReads: 0 };
+  world = { tokens: [], reads: [], slack: [], revoked: [], n: 0, refreshError: null, unauthorizedOnce: false, report: PL, accounts: ACCOUNTS, fiscal: 'January', discovery: { ...DISCOVERY }, discoveryReads: 0 };
   _resetEndpointsForTests();
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
@@ -80,6 +96,7 @@ beforeEach(async () => {
       world.reads.push({ host: url.host, path: url.pathname, q: Object.fromEntries(url.searchParams), auth: init.headers.Authorization });
       if (world.unauthorizedOnce) { world.unauthorizedOnce = false; return Response.json({ fault: { error: [{ message: 'message=AuthenticationFailed', code: '3200' }], type: 'AUTHENTICATION' } }, { status: 401 }); }
       if (url.pathname === `/v3/company/${REALM}/companyinfo/${REALM}`) return Response.json({ CompanyInfo: { CompanyName: 'Sunshine on a Ranney Day', FiscalYearStartMonth: world.fiscal } });
+      if (url.pathname === `/v3/company/${REALM}/query`) { assert.match(url.searchParams.get('query'), /^select \* from Account where Active = true/); return Response.json({ QueryResponse: { Account: world.accounts, startPosition: 1, maxResults: world.accounts.length } }); }
       if (url.pathname === `/v3/company/${REALM}/reports/ProfitAndLoss`) return world.reportReply ? world.reportReply() : Response.json(world.report);
     }
     throw new Error(`unexpected fetch ${url}`);
@@ -123,7 +140,23 @@ test('connecting: the code for tokens, the company’s name, and the year so far
   assert.deepEqual(await readState(env.DB, 'books-oauth'), {}, 'used up');
   await assert.rejects(finishConnect(env, { code: 'again', state, realmId: REALM, now: T0 }), (e) => e.code === 'STATE');
   const n = await booksNow(env.DB, { now: T0 });
-  assert.deepEqual(n, { company: 'Sunshine on a Ranney Day', year: '2026', from: '2026-01-01', through: '2026-10-29', revenue: 822221.67, expenses: 439100.14, net: 383121.53, basis: 'Accrual', at: new Date(T0).toISOString(), stale: false });
+  const { cash, ...rest } = n;
+  assert.deepEqual(rest, { company: 'Sunshine on a Ranney Day', year: '2026', from: '2026-01-01', through: '2026-10-29', revenue: 822221.67, expenses: 439100.14, net: 383121.53, basis: 'Accrual', at: new Date(T0).toISOString(), stale: false });
+  assert.equal(cash.total, 502779.24, 'every active bank account on the books');
+  assert.equal(cash.at, new Date(T0).toISOString());
+});
+
+test('SOARD’s year is January to December, even when QuickBooks’ setting says August; Settings says so', async () => {
+  world.fiscal = 'August';
+  await connect();
+  const pl = world.reads.find((r) => r.path.endsWith('/reports/ProfitAndLoss'));
+  assert.equal(pl.q.start_date, '2026-01-01');
+  assert.equal((await booksNow(env.DB, { now: T0 })).year, '2026');
+  assert.equal((await booksStatus(env)).connected.qboYearStarts, 'August');
+  // Fixed in QuickBooks: the next hourly read sees it
+  world.fiscal = 'January';
+  await readBooks(env, { now: T0 + HOUR });
+  assert.equal((await booksStatus(env)).connected.qboYearStarts, null);
 });
 
 test('the Profit and Loss: revenue is Income and Other Income, expenses take in Cost of Goods Sold; a report that doesn’t add up is refused', () => {
@@ -158,6 +191,14 @@ test('Intuit’s addresses come from its discovery document, read once a day; on
   _resetEndpointsForTests();
   world.discovery = null;
   assert.equal(new URL(await connectUrl(env, { by: FOUNDER })).origin, 'https://appcenter.intuit.com');
+});
+
+test('the cash on the books: active Bank accounts by name without ledger digits, cards as owed, nothing else', () => {
+  const c = cashOf(ACCOUNTS);
+  assert.equal(c.total, 502779.24, 'not the inactive account, not the CD (an Other Current Asset, as on the balance sheet)');
+  assert.deepEqual(c.accounts, [{ name: 'Opex', balance: 64748.68 }, { name: 'Long Reserve', balance: 300986.49 }, { name: 'Income', balance: 134504.07 }, { name: 'Mercury Bank', balance: 2500 }, { name: 'Petty Cash', balance: 40 }]);
+  assert.deepEqual(c.owed, [{ name: 'Chase C/C 3512', balance: 583.45 }, { name: 'Ramp CC', balance: 2196.28 }]);
+  assert.deepEqual(cashOf([]), { total: 0, accounts: [], owed: [] });
 });
 
 test('the fiscal year: January’s is the calendar year; one starting in July is named for the year it ends', () => {
@@ -266,11 +307,44 @@ test('the board page: QuickBooks’ figures against the packet’s budget for th
     ['exp', '$439,100', 73, '73% of the $600K budget, as of Oct 29'],
   ]);
   // January: 2027’s figures before 2027’s budget sheet is in a packet
-  const jan = withBooks(SHEET, { ...BOOKS, year: '2027', through: '2027-01-20', revenue: 5000, expenses: 2000 });
+  const jan = withBooks(SHEET, { ...BOOKS, year: '2027', from: '2027-01-01', through: '2027-01-20', revenue: 5000, expenses: 2000 });
   assert.deepEqual(jan.revenue, { actual: 5000, budget: null });
   assert.deepEqual(moneyTiles({ cash: null, budget: jan, n: {} }).map((t) => [t.label, t.pct, t.sub]), [['2027 revenue', null, 'The year so far, as of Jan 20'], ['2027 expenses', null, 'The year so far, as of Jan 20']]);
   // No budget sheet in any packet yet
   assert.deepEqual(withBooks(null, BOOKS).revenue, { actual: 822221.67, budget: null });
+});
+
+test('the board page’s cash: QuickBooks’ bank accounts beat the balance sheet and Mercury’s test deposit; a bank read live through Plaid beats QuickBooks; a past meeting keeps its packet', async () => {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const at = new Date().toISOString();
+  const books = { ...BOOKS, at, cash: { total: 502779.24, accounts: [{ name: 'Opex', balance: 64748.68 }, { name: 'Long Reserve', balance: 300986.49 }], owed: [{ name: 'Ramp CC', balance: 2196.28 }, { name: 'Paid off', balance: 0 }], at } };
+  const mercuryOnly = { total: 2500, at, accounts: [{ name: 'Mercury Checking', balance: 2500 }] };
+  const data = (numbers) => ({ meetings: [], cashHistory: [], numbers: { cash: null, books: null, ...numbers } });
+  const q = await moneyFor(data({ cash: mercuryOnly, books }));
+  assert.deepEqual([q.cash.total, q.cash.banks, q.cash.owed, q.cash.today, q.cash.live], [502779.24, ['QuickBooks'], [{ name: 'Ramp CC', balance: 2196.28 }], true, true]);
+  const tile = moneyTiles({ cash: q.cash, budget: null, n: {} })[0];
+  assert.equal(tile.value, '$502,779');
+  assert.match(tile.sub, /^From QuickBooks, as of \d{1,2}:\d{2} [AP]M$/);
+  // Chase read live through Plaid: the banks' own balances win
+  const chase = { total: 662345.67, at, accounts: [{ bank: 'Chase', name: 'Chase Total Checking', balance: 412345.67 }, { bank: 'Chase', name: 'Chase Business CD', balance: 250000 }] };
+  assert.deepEqual((await moneyFor(data({ cash: chase, books }))).cash.banks, ['Chase']);
+  // A past meeting keeps to its own packet (none here), never today's books
+  assert.equal((await moneyFor(data({ books }), '2026-01-15')).cash, null);
+  assert.equal(booksCash(data({ books: { ...books, cash: null } })), null);
+  assert.ok(today);
+});
+
+test('SOARD’s fiscal year starts in August: the budget sheet whose “as of” day falls in QuickBooks’ year is this year’s, by the sheet’s own name for it', () => {
+  const fy = { ...BOOKS, year: 'FY2027', from: '2026-08-01', through: '2026-10-29' };
+  // A 2026-27 budget, actuals as of September 30: the same fiscal year, though its heading says 2026
+  const sheet = { ...SHEET, year: '2026', label: '2026-27', asOf: 'September 30, 2026' };
+  const b = withBooks(sheet, fy);
+  assert.deepEqual([b.year, b.revenue.budget, b.expenses.budget], ['2026-27', 1000000, 600000]);
+  // Last fiscal year's sheet (as of July 31): its budget isn't this year's
+  const old = withBooks({ ...sheet, label: '2025-26', asOf: 'July 31, 2026' }, fy);
+  assert.deepEqual([old.year, old.revenue.budget], ['FY2027', null]);
+  // A sheet with no readable day goes by its year
+  assert.equal(withBooks({ ...SHEET, asOf: '' }, BOOKS).revenue.budget, 1000000);
 });
 
 // ─── /api/books-admin and /api/books-callback ───────────────────────
@@ -290,7 +364,7 @@ test('/api/books-admin and the callback: Board admins only; connect, back to Set
   const state = new URL(c.body.url).searchParams.get('state');
   const back = await callback({ code: 'code-from-intuit', state, realmId: REALM });
   assert.equal(back.status, 302);
-  assert.equal(back.headers.get('Location'), 'https://sunshineonaranneyday.com/admin/?books=connected#board/settings');
+  assert.equal(back.headers.get('Location'), 'https://sunshineonaranneyday.com/admin/?books=connected#settings');
   const s = await req(FOUNDER);
   assert.equal(s.body.status.connected.company, 'Sunshine on a Ranney Day');
   assert.equal(s.body.status.connected.through, '2026-10-29');
@@ -298,8 +372,8 @@ test('/api/books-admin and the callback: Board admins only; connect, back to Set
   const audit = await env.DB.prepare('SELECT user_email, entity_name FROM audit_log').all();
   assert.deepEqual(audit.results, [{ user_email: FOUNDER, entity_name: 'QuickBooks connected for the board page: Sunshine on a Ranney Day' }]);
   // Cancel on Intuit's page, a state used twice, Intuit refusing
-  assert.equal((await callback({ error: 'access_denied', state })).headers.get('Location'), 'https://sunshineonaranneyday.com/admin/?books=declined#board/settings');
-  assert.equal((await callback({ code: 'x', state, realmId: REALM })).headers.get('Location'), 'https://sunshineonaranneyday.com/admin/?books=expired#board/settings');
+  assert.equal((await callback({ error: 'access_denied', state })).headers.get('Location'), 'https://sunshineonaranneyday.com/admin/?books=declined#settings');
+  assert.equal((await callback({ code: 'x', state, realmId: REALM })).headers.get('Location'), 'https://sunshineonaranneyday.com/admin/?books=expired#settings');
   const d = await req(FOUNDER, { action: 'disconnect' });
   assert.equal(d.body.status.connected, null);
   delete env.QBO_CLIENT_ID;

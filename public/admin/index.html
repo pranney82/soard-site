@@ -5046,6 +5046,21 @@
       return mod ? html`<${mod.BoardArea} ...${props} />` : html`<div class="area-loading"><span class="spinner" /></div>`;
     }
 
+    // System → Settings: where the money figures come from (the banks, QuickBooks),
+    // kept in ./settings.js and loaded on first visit. The Board area's admins only.
+    let settingsModule = null;
+    function SettingsLazy(props) {
+      const [mod, setMod] = useState(() => lazyNow(settingsModule));
+      const [err, setErr] = useState(null);
+      const load = () => {
+        settingsModule ||= lazyKeep(import('./settings.js'));
+        settingsModule.then((m) => setMod(m)).catch((e) => { settingsModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load Settings: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      return mod ? html`<${mod.Settings} ...${props} />` : html`<div class="area-loading"><span class="spinner" /></div>`;
+    }
+
     // Site → Emails & invites: every email, calendar invite and text the site
     // sends, on the same map, kept in ./messages.js and loaded on first visit.
     let messagesModule = null;
@@ -22513,13 +22528,15 @@ ${sections || '<p>No one yet.</p>'}
         { id: 'press-hub', label: 'Press', icon: 'press', hash: '#press', meta: 'Stories, found coverage, outlets' },
         { id: 'events', label: 'Events', icon: 'events', hash: '#events' },
         { id: 'articles', label: 'Articles', icon: 'articles', hash: '#articles' },
-        { id: 'site-hub', label: 'Site Config', icon: 'settings', hash: '#site', meta: 'Every public page, page by page' },
+        { id: 'site-hub', label: 'Site Config', icon: 'globe', hash: '#site', meta: 'Every public page, page by page' },
       ] },
       { label: 'System', items: [
         { id: 'messages', label: 'Emails & invites', icon: 'mail', hash: '#messages', meta: 'Everything the site sends' },
         { id: 'automations', label: 'Automations', icon: 'automations', hash: '#automations' },
         { id: 'audit-log', label: 'Audit log', icon: 'auditLog', hash: '#audit-log', meta: 'Who changed what' },
         { id: 'deploys', label: 'Publish history', icon: 'history', hash: '#publish-history' },
+        // Where the money figures come from (Mercury, Chase, QuickBooks): the Board area's admins only, like Board
+        { id: 'settings', label: 'Settings', icon: 'settings', hash: '#settings', meta: 'Where the money figures come from: the banks and QuickBooks', gate: 'board' },
       ] },
     ];
     const NAV_ITEMS = NAV.flatMap((g) => g.items);
@@ -23535,6 +23552,10 @@ ${sections || '<p>No one yet.</p>'}
           // ─── Board: ./board-admin.js (#board, #board/meeting/<id>, #board/documents…) ───
           case 'board':
             return html`<${BoardLazy} addToast=${addToast} setGlobalDirty=${setGlobalDirty} />`;
+
+          // ─── Settings: ./settings.js (the banks and QuickBooks) ───
+          case 'settings':
+            return html`<${SettingsLazy} addToast=${addToast} />`;
 
           case 'messages':
             return html`<${MessagesLazy} addToast=${addToast} onNavigate=${navigate} />`;

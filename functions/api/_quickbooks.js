@@ -3,14 +3,15 @@
  * ===========================================================================
  * Env: QBO_CLIENT_ID and QBO_CLIENT_SECRET (developer.intuit.com → SOARD's app → Keys and credentials,
  * Production), QBO_ENV = 'sandbox' only to try it with Intuit's sandbox company. Nothing else: a Board admin
- * connects SOARD's company once in Board → Settings → QuickBooks. Intuit's own page signs in and asks which
+ * connects SOARD's company once in Settings → QuickBooks (System → Settings in the admin). Intuit's own page signs in and asks which
  * company; SOARD never sees the password. The app's redirect URI is REDIRECT_URI (/api/books-callback, public:
  * the one-time `state` Settings made is its proof, and the code it carries is useless without the keys).
  *
- * Read-only: the accounting scope, but only the company's name and its Profit and Loss are ever asked for.
- * Hourly on the board heartbeat, the Profit and Loss from the first day of SOARD's fiscal year to today, on
- * the company's own basis (what its reports show by default). Revenue is Income plus Other Income; expenses
- * are Cost of Goods Sold, Expenses and Other Expenses (what the store sold cost money too).
+ * Read-only: the accounting scope, but only the company's name, its Profit and Loss and its accounts are ever
+ * asked for. Hourly on the board heartbeat, the Profit and Loss from January 1 to today (SOARD's fiscal year is the
+ * calendar year, whatever the company's QuickBooks setting says; Settings flags a different one), on the company's own basis (what its reports show by default). Revenue is Income plus Other Income;
+ * expenses are Cost of Goods Sold, Expenses and Other Expenses (what the store sold cost money too). And the
+ * cash: each active Bank account's balance on the books, with the Credit Card accounts as owed.
  *
  * D1 books_link keeps one row: the company, its tokens (never sent to a browser), the year so far as last
  * read, and any trouble (its code, words and Intuit's intuit_tid, which Intuit's support asks for; the same in
@@ -34,7 +35,7 @@ const HOSTS = { production: 'https://quickbooks.api.intuit.com', sandbox: 'https
 const SCOPE = 'com.intuit.quickbooks.accounting';
 const MINOR_VERSION = '75';
 export const REDIRECT_URI = `${SITE_ORIGIN}/api/books-callback`;
-export const SETTINGS_URL = `${SITE_ORIGIN}/admin/#board/settings`;
+export const SETTINGS_URL = `${SITE_ORIGIN}/admin/#settings`;
 /** The year so far older than this shows its date on the board page */
 export const STALE_MS = 36 * 60 * 60 * 1000;
 const READ_EVERY_MS = 60 * 60 * 1000;
@@ -172,6 +173,8 @@ export async function connectUrl(env, { by = '', fetchImpl = fetch, now = Date.n
   return `${(await endpoints(env, { fetchImpl })).authorize}?${q}`;
 }
 
+/** SOARD's fiscal year starts in January */
+const SOARD_YEAR_STARTS = 1;
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 /** QuickBooks' FiscalYearStartMonth ("January") → 1..12, January when it's missing */
 const monthNumber = (name) => MONTHS.indexOf(String(name || '').trim().toLowerCase()) + 1 || 1;
@@ -219,7 +222,7 @@ export async function disconnectBooks(env, { fetchImpl = fetch } = {}) {
   if (!row) throw Object.assign(new Error('QuickBooks isn’t connected'), { status: 404 });
   if (booksConfigured(env)) await revoke(env, row.refresh_token, { fetchImpl });
   await env.DB.prepare('DELETE FROM books_link WHERE id = ?').bind(ID).run();
-  if (row.told) await slackResolved(env, SLACK_KEY, slackCard({ icon: '✅', title: 'QuickBooks disconnected', lead: 'QuickBooks was disconnected in Board → Settings, so the board page goes back to the packet’s budget sheet for the year so far.' }), { summary: 'QuickBooks disconnected' }).catch(() => null);
+  if (row.told) await slackResolved(env, SLACK_KEY, slackCard({ icon: '✅', title: 'QuickBooks disconnected', lead: 'QuickBooks was disconnected in Settings, so the board page goes back to the packet’s budget sheet for the year so far.' }), { summary: 'QuickBooks disconnected' }).catch(() => null);
 }
 
 // ─── Reading the year so far ────────────────────────────────────────
@@ -272,7 +275,26 @@ export function readProfitAndLoss(report) {
   };
 }
 
-/** The year so far, now: kept with its date; trouble is kept, and told on Slack once */
+/** "SR4_Long Reserve (8861)" → "Long Reserve": no ledger number, no account's last digits (as board/money.js reads the balance sheet) */
+const accountName = (s) => cleanText(String(s || '').replace(/^\d+\s+/, '').replace(/^SR\d+_/i, '').replace(/\s*\(\d{3,}\)\s*$/, '').replace(/_/g, ' '), 60) || 'Account';
+
+/**
+ * QuickBooks' accounts → the cash on the books: { total, accounts: [{ name, balance }], owed: [{ name, balance }] }.
+ * Every active Bank account counts toward the total (each its own balance, so a parent and its sub-accounts aren't
+ * counted twice); the accounts listed are those with money; Credit Card accounts are owed, never taken off the cash
+ */
+export function cashOf(list) {
+  const num = (a) => (typeof a?.CurrentBalance === 'number' ? a.CurrentBalance : Number(a?.CurrentBalance) || 0);
+  const live = (list || []).filter((a) => a && a.Active !== false);
+  const banks = live.filter((a) => a.AccountType === 'Bank');
+  return {
+    total: round2(banks.reduce((t, a) => t + num(a), 0)),
+    accounts: banks.filter((a) => round2(num(a)) !== 0).map((a) => ({ name: accountName(a.Name), balance: round2(num(a)) })),
+    owed: live.filter((a) => a.AccountType === 'Credit Card' && num(a) > 0).map((a) => ({ name: accountName(a.Name), balance: round2(num(a)) })),
+  };
+}
+
+/** The year so far and the cash, now: kept with their date; trouble is kept, and told on Slack once */
 export async function readBooks(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   if (!env.DB || !booksConfigured(env)) return null;
   await ready(env.DB);
@@ -280,8 +302,16 @@ export async function readBooks(env, { fetchImpl = fetch, now = Date.now() } = {
   if (!row) return null;
   const at = iso(now);
   try {
-    const span = yearSoFar(todayEastern(now), row.fiscal_start || 1);
+    // SOARD's fiscal year is January to December (Peter, Oct 29 2026). QuickBooks' own setting has said August, so
+    // it's kept only to show in Settings, never followed
+    const span = yearSoFar(todayEastern(now), SOARD_YEAR_STARTS);
     const ytd = { ...span, ...readProfitAndLoss(await read(env, row, '/reports/ProfitAndLoss', { start_date: span.from, end_date: span.through }, { fetchImpl, now })) };
+    // The cash on the books: every active account (a few hundred at most), sorted out here
+    const q = await read(env, row, '/query', { query: 'select * from Account where Active = true maxresults 1000' }, { fetchImpl, now });
+    ytd.cash = cashOf(q.QueryResponse?.Account);
+    // The company's name and its fiscal-year setting, kept current (Settings flags a year that doesn't start in January)
+    const info = (await read(env, row, `/companyinfo/${row.realm_id}`, {}, { fetchImpl, now })).CompanyInfo || {};
+    await env.DB.prepare('UPDATE books_link SET company = ?, fiscal_start = ? WHERE id = ?').bind(cleanText(info.CompanyName || info.LegalName, 80) || row.company, monthNumber(info.FiscalYearStartMonth), ID).run();
     await env.DB.prepare('UPDATE books_link SET ytd = ?, read_at = ?, tried_at = ?, error = NULL, error_at = NULL, error_detail = NULL, told = NULL WHERE id = ?').bind(JSON.stringify(ytd), at, at, ID).run();
     if (row.told) {
       await slackResolved(env, SLACK_KEY, slackCard({ icon: '✅', title: 'QuickBooks reads again', lead: `The board page has ${row.company}’s revenue and expenses for the year so far again, as of today.`, buttons: [{ label: 'QuickBooks in Settings', url: SETTINGS_URL }] }), { summary: 'QuickBooks reads again' }).catch(() => null);
@@ -297,7 +327,7 @@ export async function readBooks(env, { fetchImpl = fetch, now = Date.now() } = {
       const card = slackCard({
         icon: '📒', title: needsConnect(code) ? 'QuickBooks needs connecting again' : 'QuickBooks isn’t coming through',
         lead: `${troubleText(code)} Until then the board page shows the year so far from the last good read.`,
-        fix: needsConnect(code) ? 'A Board admin opens Board → Settings → QuickBooks and presses “Connect QuickBooks again”, then signs in to QuickBooks as an admin on Intuit’s page.' : undefined,
+        fix: needsConnect(code) ? 'A Board admin opens Settings → QuickBooks in the admin and presses “Connect QuickBooks again”, then signs in to QuickBooks as an admin on Intuit’s page.' : undefined,
         buttons: [{ label: 'QuickBooks in Settings', url: SETTINGS_URL }],
       });
       const r = await slackIssue(env, SLACK_KEY, card, { title: 'QuickBooks', kind: 'attention', area: 'finance' }).catch((e) => ({ ok: false, error: e.message }));
@@ -319,8 +349,8 @@ export async function maybeReadBooks(env, { fetchImpl = fetch, now = Date.now() 
 // ─── For the board page and Settings ────────────────────────────────
 
 /**
- * The year so far as last read → { company, year, from, through, revenue, expenses, net, basis, at, stale } or
- * null with QuickBooks not connected (or not read yet)
+ * The year so far as last read → { company, year, from, through, revenue, expenses, net, basis, at, stale,
+ * cash: { total, accounts, owed, at } | null } or null with QuickBooks not connected (or not read yet)
  */
 export async function booksNow(DB, { now = Date.now() } = {}) {
   if (!DB) return null;
@@ -330,7 +360,8 @@ export async function booksNow(DB, { now = Date.now() } = {}) {
   let y;
   try { y = JSON.parse(row.ytd); } catch { return null; }
   if (typeof y?.revenue !== 'number') return null;
-  return { company: row.company, year: y.year, from: y.from, through: y.through, revenue: y.revenue, expenses: y.spent, net: y.net, basis: y.basis, at: row.read_at, stale: now - Date.parse(row.read_at) > STALE_MS };
+  const cash = y.cash && typeof y.cash.total === 'number' ? { total: y.cash.total, accounts: y.cash.accounts || [], owed: y.cash.owed || [], at: row.read_at } : null;
+  return { company: row.company, year: y.year, from: y.from, through: y.through, revenue: y.revenue, expenses: y.spent, net: y.net, basis: y.basis, at: row.read_at, stale: now - Date.parse(row.read_at) > STALE_MS, cash };
 }
 
 /** Board → Settings: the company by name, when it was read and through which day, any trouble (never an amount) */
@@ -348,6 +379,8 @@ export async function booksStatus(env) {
     connected: {
       company: r.company, readAt: r.read_at || null, through, linkedAt: r.linked_at || null, linkedBy: r.linked_by || null,
       error: r.error || null, errorAt: r.error_at || null, trouble: troubleText(r.error), needsConnect: needsConnect(r.error),
+      // QuickBooks' own "first month of fiscal year" when it isn't SOARD's January ("August"), else null
+      qboYearStarts: r.fiscal_start && r.fiscal_start !== SOARD_YEAR_STARTS ? MONTHS[r.fiscal_start - 1].replace(/^./, (c) => c.toUpperCase()) : null,
       // Intuit's reference for the failed call, for its support
       intuitTid: String(r.error_detail || '').match(/intuit_tid ([\w-]+)/)?.[1] || null,
     },

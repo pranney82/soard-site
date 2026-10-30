@@ -1,6 +1,6 @@
 /**
  * /api/books-callback (public, GET only) — where Intuit sends a Board admin back after "Connect QuickBooks" in
- * Board → Settings (./_quickbooks.js). Public because it's Intuit's redirect: the one-time state Settings made
+ * Settings (./_quickbooks.js). Public because it's Intuit's redirect: the one-time state Settings made
  * (used once, within 15 minutes) is the proof the sign-in started there, and the code is useless without
  * SOARD's keys. Always back to Settings, saying how it went (?books=connected|declined|expired|failed).
  */
@@ -9,7 +9,7 @@ import { finishConnect } from './_quickbooks.js';
 import { logAudit } from './_audit.js';
 import { SITE_ORIGIN } from './_broadcast-notify.js';
 
-const back = (result) => new Response(null, { status: 302, headers: { Location: `${SITE_ORIGIN}/admin/?books=${result}#board/settings`, 'Cache-Control': 'no-store' } });
+const back = (result) => new Response(null, { status: 302, headers: { Location: `${SITE_ORIGIN}/admin/?books=${result}#settings`, 'Cache-Control': 'no-store' } });
 
 export async function onRequestGet({ env, request }) {
   const q = new URL(request.url).searchParams;

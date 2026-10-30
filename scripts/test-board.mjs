@@ -520,13 +520,19 @@ try {
   await jane.goto(`${SITE}/admin/#board/settings`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Who can open the Board area/), 'Settings opens');
   ok(await jane.$eval('#bd-from', (e) => e.value) === FOUNDER, 'Settings: invites come from the president until another is chosen');
+  ok(!(await jane.$('.bk-banks, .bk-books')) && /System → Settings/.test(await text(jane)), 'Board settings: no banks or QuickBooks, just where they are');
+  await shot(jane, '07-settings');
+  // The money's sources: System → Settings, in the menu for the Board area's admins
+  await jane.goto(`${SITE}/admin/#settings`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' });
+  ok(await jane.evaluate(() => [...document.querySelectorAll('a.nav-item, .nav-item')].some((a) => /^\s*Settings\s*$/.test(a.textContent))), 'System → Settings is in the menu');
   ok(await waitText(jane, /Read through SOARD’s relay/), 'Settings: Bank balances, Mercury read through the relay');
   const banks = await jane.$eval('.bk-banks', (e) => e.textContent);
   ok(/Chase[\s\S]*PLAID_CLIENT_ID[\s\S]*PLAID_SECRET/.test(banks) && !/\$/.test(banks) && !(await jane.$('.bk-banks .btn-primary')), 'Settings: Chase waits for Plaid’s two keys, with no button until they’re in, and no amounts');
   ok(await waitText(jane, /QBO_CLIENT_SECRET/), 'Settings: QuickBooks');
   const books = await jane.$eval('.bk-books', (e) => e.textContent);
   ok(/https:\/\/sunshineonaranneyday\.com\/api\/books-callback[\s\S]*QBO_CLIENT_ID/.test(books) && !/\$/.test(books) && !(await jane.$('.bk-books .btn-primary')), 'Settings: QuickBooks waits for its two keys, with the redirect URI to give Intuit, no button until they’re in, and no amounts');
-  await shot(jane, '07-settings');
+  await shot(jane, '07b-system-settings');
 
   // A board meeting on the founder's calendar becomes a meeting in Board; Board's own invite isn't brought in again
   const calDay = day(35);

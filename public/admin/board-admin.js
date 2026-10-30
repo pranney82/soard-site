@@ -13,7 +13,7 @@
  *   #board/meeting/<id>[/<step>]   one meeting (before | during | after)
  *   #board/documents               bylaws, policies, budgets; who has signed this year
  *   #board/members                 who can sign in, their last visit, the sign-in email
- *   #board/settings                who can open this area, who invites come from, quorum, the Drive folder, banks
+ *   #board/settings                who can open this area, who invites come from, quorum, the Drive folder
  * Server: /api/board-admin. Rules: ./board-shared.js. Shared bits: ./board-ui.js.
  */
 
@@ -22,8 +22,6 @@ import { ask, askToLeave } from './ask.js';
 import { viewerLink, sizeText } from './file-viewer.js';
 import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords } from './board-ui.js';
 import { MeetingEditor, agendaSource } from './board-meeting.js';
-import { BankBalances } from './board-banks.js';
-import { QuickBooks } from './board-books.js';
 import {
   DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
   attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority,
@@ -80,7 +78,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
             meetings: 'The next meeting and what’s left to do for it, then every past meeting with its agenda and minutes. The board sees a meeting once it’s shared.',
             documents: 'Bylaws, policies, budgets and plans, on the board page for every member. Ask for a signature where the board signs each year.',
             members: 'Board members sign in at sunshineonaranneyday.com/board with the email on People → Board, the way you do.',
-            settings: 'Who can open this area, who invites come from, the quorum, where past minutes come from, the banks the board page’s cash counts, and QuickBooks for the year so far.',
+            settings: 'Who can open this area, who invites come from, the quorum, and where past minutes come from. The banks and QuickBooks the board page’s money comes from are in System → Settings.',
           }[route.tab]}</p>
         </div>
         <a class="btn btn-ghost btn-sm" href=${PAGE} target="_blank" rel="noopener">Open the board page</a>
@@ -663,8 +661,6 @@ function SettingsTab({ ctx }) {
       </div>
     </div>
     <${GoogleStatus} data=${data} />
-    <${BankBalances} addToast=${addToast} />
-    <${QuickBooks} addToast=${addToast} />
     <div class="bd-savebar">
       <span class="bd-savebar__state">${saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
       <button class="btn btn-primary" disabled=${saving || !dirty} onClick=${save}>Save</button>

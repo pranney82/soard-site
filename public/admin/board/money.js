@@ -3,7 +3,7 @@
  * screen, ./screen.js): the cash, live from the banks once one holds SOARD's money (numbers.cash), else the bank
  * accounts on the newest Statement of Financial Position in a meeting's packet; and the year against its budget,
  * from the newest "budget & actual" sheet. Both read in the browser from QuickBooks' Excel copies. Once QuickBooks
- * itself is connected (Board → Settings → QuickBooks, numbers.books), the year's revenue and expenses so far are
+ * itself is connected (Settings → QuickBooks, numbers.books), the year's revenue and expenses so far are
  * its own, read hourly, against the same sheet's budget.
  */
 
@@ -14,10 +14,11 @@ const fileUrl = (f) => `/api/board-file?id=${encodeURIComponent(f.id)}`;
 const isExcel = (f) => /sheet|excel|csv/i.test(String(f?.type || '')) || /\.(xlsx?|csv)$/i.test(String(f?.name || ''));
 const monthOf = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
-// ─── Cash: live from the banks, else the newest balance sheet ───────
-// Once a bank is connected (Chase through Plaid in Board → Settings, Mercury once it holds the money), the cash is
-// theirs (numbers.cash). Until then it's the bank-account total on the newest Statement of Financial Position in a
-// meeting's packet (QuickBooks' Excel copy), read in the browser
+// ─── Cash: live from the banks, else QuickBooks, else the newest balance sheet ───
+// Once a bank is connected (Chase through Plaid in Settings, Mercury once it holds the money), the cash is theirs
+// (numbers.cash). With QuickBooks connected (Settings → QuickBooks), it's the bank accounts on the books, read hourly
+// (numbers.books.cash). Else it's the bank-account total on the newest Statement of Financial Position in a meeting's
+// packet (QuickBooks' Excel copy), read in the browser
 export const compact = (n) => {
   const a = Math.abs(n);
   const s = n < 0 ? '−' : '';
@@ -85,21 +86,41 @@ export function liveCash(data) {
     accounts: c.accounts || [], owed: (c.owed || []).filter((o) => o.balance > 0), banks: [...new Set((c.accounts || []).map((a) => a.bank || 'Mercury'))], stale: c.stale || [],
   };
 }
+/** QuickBooks' bank accounts as last read (numbers.books.cash), in the banks' shape, with the month a year back */
+export function booksCash(data) {
+  const b = data.numbers?.books;
+  const c = b?.cash;
+  if (!c || typeof c.total !== 'number') return null;
+  const at = String(c.at || b.at || '');
+  const day = at ? todayEastern(Date.parse(at)) : '';
+  const ym = day.slice(0, 7);
+  const then = ym ? (data.cashHistory || []).find((r) => r.month === `${Number(ym.slice(0, 4)) - 1}${ym.slice(4)}`) : null;
+  return {
+    live: true, total: c.total, asOf: day ? shortDate(day) : '', today: day === todayEastern(), at, prior: then ? then.total : null, priorAsOf: then ? monthOf(then.month) : '',
+    accounts: c.accounts || [], owed: (c.owed || []).filter((o) => o.balance > 0), banks: ['QuickBooks'], stale: b.stale ? ['QuickBooks'] : [],
+  };
+}
+/** "From QuickBooks, as of 3:05 PM" (today) or "…, as of Oct 28": where the cash comes from when it's the books' */
+export const fromBooks = (cash) => (cash?.banks?.length === 1 && cash.banks[0] === 'QuickBooks'
+  ? `From QuickBooks, as of ${cash.today ? new Date(cash.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) : shortAsOf(cash.asOf)}` : '');
 /**
- * Home's cash figure: the banks' live balances once one holds SOARD's money, else the newest balance sheet's.
- * `upTo` (a past meeting's date) keeps to the balance sheet that meeting had, never today's banks
+ * Home's cash figure: a bank's live balances once one holds SOARD's money, else QuickBooks', else the newest balance
+ * sheet's. `upTo` (a past meeting's date) keeps to the balance sheet that meeting had, never today's
  */
 export function useCashNow(data, upTo = '') {
   const sheet = useCash(data, upTo);
-  return cashToShow(!upTo || upTo >= todayEastern() ? liveCash(data) : null, sheet);
+  const now = !upTo || upTo >= todayEastern();
+  return cashToShow(now ? liveCash(data) : null, sheet, now ? booksCash(data) : null);
 }
 /**
- * The banks' live balances speak for SOARD only once they hold its money: a bank besides Mercury (Chase through
- * Plaid), or Mercury holding at least half what the newest balance sheet has in the bank. Until then (a test
- * deposit, the first transfer) the balance sheet's figure stands. `sheet` is undefined while it's read
+ * A bank's live balances speak for SOARD only once they hold its money: a bank besides Mercury (Chase through
+ * Plaid), or Mercury holding at least half what the newest balance sheet has in the bank. QuickBooks is the books,
+ * so its bank accounts come next, before the balance sheet and before Mercury on its own (a test deposit, the first
+ * transfer). Else the balance sheet's figure stands. `sheet` is undefined while it's read
  */
-function cashToShow(live, sheet) {
+function cashToShow(live, sheet, books = null) {
   if (live && live.banks.some((b) => b !== 'Mercury')) return live;
+  if (books) return books;
   if (sheet === undefined) return undefined;
   if (!live) return sheet;
   return !sheet || live.total >= sheet.total * 0.5 ? live : sheet;
@@ -129,6 +150,8 @@ function readBudget(data, upTo = '') {
     };
     const out = {
       year: (String(grid[head][bCol]).match(/\b20\d{2}\b/) || [])[0] || '',
+      // The budget's own name for its year when it says one ("FY2027", "2026-27"), else its calendar year
+      label: (String(grid[head][bCol]).match(/\bFY\s?'?\d{2,4}\b|\b20\d{2}\s*[-–/]\s*(?:20)?\d{2}\b/i) || [])[0]?.replace(/\s+/g, '') || '',
       asOf: String(grid[head][aCol]).replace(/^actual\s*(as of\s*)?/i, '').trim(),
       revenue: line(/^(revenue total|total revenue|total income)\b/i),
       expenses: line(/^(total expenses|expense total|expenses total)\b/i),
@@ -144,15 +167,29 @@ function readBudget(data, upTo = '') {
 // ahead; a past meeting keeps to its own packet, the way its cash does
 const booksFor = (data, upTo = '') => (!upTo || upTo >= todayEastern() ? data.numbers?.books || null : null);
 /**
+ * Whether a budget sheet is for QuickBooks' current year: its "Actual as of" day falls in that fiscal year (SOARD's
+ * starts in August, so a calendar year in the heading can't say). A sheet without a readable day goes by its year
+ */
+function sameYear(sheet, books) {
+  if (!sheet) return false;
+  // "September 30, 2026" reads as that day's midnight where the page is open: its own year, month and day
+  const d = new Date(Date.parse(String(sheet.asOf || '')));
+  if (Number.isFinite(d.getTime()) && books.from && books.through) {
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return day >= books.from && day <= books.through;
+  }
+  return (sheet.year || String(sheet.meeting?.date || '').slice(0, 4)) === books.year;
+}
+/**
  * QuickBooks' revenue and expenses so far in place of the sheet's actuals. The budget beside them stays the
- * sheet's, and only for the same year: January's figures are never measured against last year's budget
+ * sheet's, and only for the same fiscal year: a new year's figures are never measured against last year's budget
  */
 export function withBooks(sheet, books) {
   if (!books || typeof books.revenue !== 'number') return sheet;
-  const same = !!sheet && (sheet.year || String(sheet.meeting?.date || '').slice(0, 4)) === books.year;
+  const same = sameYear(sheet, books);
   const line = (actual, x) => ({ actual, budget: same && x ? x.budget : null });
   return {
-    year: books.year, asOf: shortDate(books.through), live: true, at: books.at,
+    year: same && sheet.label ? sheet.label : books.year, asOf: shortDate(books.through), live: true, at: books.at,
     revenue: line(books.revenue, sheet?.revenue), expenses: line(books.expenses, sheet?.expenses), programs: null,
     meeting: sheet?.meeting || null, file: sheet?.file || null,
   };
@@ -177,9 +214,9 @@ export function moneyTiles({ cash, budget, n }) {
   if (cash !== null) {
     out.push({
       k: 'bank', label: 'Cash in the bank', value: cash ? money(cash.total) : '…',
-      sub: !cash ? 'From the balance sheet' : cash.live
+      sub: !cash ? 'From the balance sheet' : fromBooks(cash) || (cash.live
         ? [(cash.accounts || []).length > 1 ? cash.accounts.map((a) => `${a.name} ${compact(a.balance)}`).join(' · ') : '', cash.asOf ? `as of ${shortAsOf(cash.asOf)}` : ''].filter(Boolean).join(', ')
-        : `${cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : 'From the balance sheet'}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}`,
+        : `${cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : 'From the balance sheet'}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}`),
       tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '',
     });
   }
@@ -200,5 +237,6 @@ export function moneyTiles({ cash, budget, n }) {
 /** The cash and the budget at once, outside a component (Print it all): { cash, budget }, each null when there's none */
 export async function moneyFor(data, upTo = '') {
   const [sheet, budget] = await Promise.all([readCash(data, upTo), readBudget(data, upTo)]);
-  return { cash: cashToShow(!upTo || upTo >= todayEastern() ? liveCash(data) : null, sheet) || null, budget: withBooks(budget, booksFor(data, upTo)) };
+  const now = !upTo || upTo >= todayEastern();
+  return { cash: cashToShow(now ? liveCash(data) : null, sheet, now ? booksCash(data) : null) || null, budget: withBooks(budget, booksFor(data, upTo)) };
 }
