@@ -339,6 +339,8 @@ try {
   ok(await visible('#af-address-suggest'), 'suggestions open by the address line');
   ok(await page.$eval('#af-address-search', (e) => e.getAttribute('aria-expanded')) === 'true', 'the combobox says it is expanded');
   ok(addressAsks >= 1 && addressAsks <= 3, `asked after a pause, not on every key (${addressAsks} lookups for 9 keys)`);
+  const listRows = await page.$$eval('#af-address-suggest [role="option"]', (els) => els.map((e) => e.textContent));
+  ok(listRows.length === 2 && /Not in the list\? Enter it yourself/.test(listRows[1]), `its last row is the way to enter it by hand (${listRows.join(' / ')})`);
   const listOnTop = await page.evaluate(() => getComputedStyle(document.querySelector('#af-address-suggest')).zIndex);
   ok(Number(listOnTop) >= 1100, `the list sits above the bar across the top (z-index ${listOnTop})`);
   await shot('04-address-suggest-phone');
@@ -377,9 +379,12 @@ try {
   console.log('Service area: far out, entered by hand, with Settings stopping them');
   await clear('#af-address-search');
   await page.type('#af-address-search', '700 Poplar St');
-  await page.keyboard.press('Escape');
-  await byHand('parts');
-  ok(await visible('#af-address-line1') && await visible('#af-address-zip') && !(await visible('#af-address-search')), '"Enter the address yourself" shows its parts');
+  await page.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
+  const none = await page.$$eval('#af-address-suggest [role="option"]', (els) => els.map((e) => e.textContent));
+  ok(none.length === 1 && /Not in the list\? Enter it yourself/.test(none[0]), `nothing found: the list offers to enter it by hand (${none.join(' / ')})`);
+  await page.click('#af-address-suggest-by-hand');
+  await sleep(250);
+  ok(await visible('#af-address-line1') && await visible('#af-address-zip') && !(await visible('#af-address-search')), 'a tap on it shows the parts');
   ok(await page.$eval('#af-address-line1', (e) => e.value) === '700 Poplar St' && await page.evaluate(() => document.activeElement?.id) === 'af-address-city', 'what they typed is the street, and the cursor waits in City');
   await type('#af-address-city', 'Macon');
   await type('#af-address-zip', '31201');

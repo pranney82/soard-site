@@ -896,10 +896,10 @@ function init(root, cfg, mode) {
     }
     const cuts = [];
     const kids = pieces(pid).flatMap((k) => {
-      // Cut into two screens at most on a phone, three on a wider screen: longer words are one read
-      // that scrolls (ten slides of text on a phone would be worse)
+      // Words taller than the room are cut between their blocks (paragraphs, cards, a list's items) into
+      // as many screens as they need, so reading never scrolls either (only a block taller than a screen would)
       const nh = isNote(k) ? k.getBoundingClientRect().height : 0;
-      if (nh <= fit || nh > fit * (innerWidth >= 600 ? 3 : 2)) return [k];
+      if (nh <= fit) return [k];
       const parts = [];
       readParts(k, fit, parts, cuts);
       return parts;
@@ -1019,6 +1019,7 @@ function init(root, cfg, mode) {
     for (const t of el?.querySelectorAll('.af-tile[data-clamp]') || []) { t.removeAttribute('data-clamp'); t.style.removeProperty('--lines'); }
     for (const s of el?.querySelectorAll('.af-choices--tiles[data-snug]') || []) s.removeAttribute('data-snug');
     for (const l of el?.querySelectorAll('.af-choices--cols[data-two]') || []) l.removeAttribute('data-two');
+    for (const n of el?.querySelectorAll('.af-content[data-snug]') || []) n.removeAttribute('data-snug');
   }
   const onScreen = (el) => el.getClientRects().length && !el.closest('[data-off], [hidden]');
   const overflows = () => document.documentElement.scrollHeight > innerHeight;
@@ -1054,12 +1055,22 @@ function init(root, cfg, mode) {
       if (overflows()) l.setAttribute('data-two', '');
     }
   }
-  /** The screen fitted to its room: the tiles' words, a long list's columns, then the map's size */
+  /** Words that can't be cut between screens any further (cards side by side) and still don't fit: a little snugger */
+  function fitNotes() {
+    for (const n of pageEl(currentId)?.querySelectorAll('.af-content') || []) {
+      if (!focused || !onScreen(n)) continue;
+      settle();
+      if (overflows()) n.setAttribute('data-snug', '');
+    }
+  }
+  /** The screen fitted to its room: the tiles' words, a long list's columns, snugger words, then the map's size */
   function fitScreen() {
     unfit(pageEl(currentId));
     fitTiles();
     fitCols();
+    fitNotes();
     fitMap();
+    pageEl(currentId)?.querySelectorAll('textarea').forEach(capBox);
   }
   /** Show the current screen's pieces, the others waiting */
   function paintScreen() {
@@ -1991,7 +2002,9 @@ function init(root, cfg, mode) {
     openSuggest(el, input, items.filter(i => i?.line1).slice(0, 5), google);
   }
   function openSuggest(el, input, items, google = false) {
-    if (!items.length) { closeSuggest(); return; }
+    // The address line's list ends with the way to enter it by hand (all it holds when nothing's found)
+    const byHand = input.matches('[data-search]');
+    if (!items.length && !byHand) { closeSuggest(); return; }
     const list = el.querySelector('.af-suggest');
     list.toggleAttribute('data-google', google); // Google's suggestions carry its credit (the styles add it)
     Object.assign(sug, { items, active: -1, input, list, el });
@@ -2010,6 +2023,16 @@ function init(root, cfg, mode) {
       li.append(main, sub);
       return li;
     }));
+    if (byHand) {
+      const li = document.createElement('li');
+      li.id = `${list.id}-by-hand`;
+      li.className = 'af-suggest-by-hand';
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      li.dataset.byHand = '';
+      li.textContent = T('addressNotListed');
+      list.append(li);
+    }
     list.hidden = false;
     input.setAttribute('aria-expanded', 'true');
     input.removeAttribute('aria-activedescendant');
@@ -2044,13 +2067,19 @@ function init(root, cfg, mode) {
     Object.assign(sug, { items: [], active: -1, list: null });
   }
   function moveActive(d) {
-    const n = sug.items.length;
+    const n = sug.list?.children.length || 0;
     if (!n) return;
     sug.active = sug.active < 0 ? (d > 0 ? 0 : n - 1) : (sug.active + d + n) % n;
     [...sug.list.children].forEach((li, i) => li.setAttribute('aria-selected', String(i === sug.active)));
     const li = sug.list.children[sug.active];
     sug.input.setAttribute('aria-activedescendant', li.id);
     li.scrollIntoView({ block: 'nearest' });
+  }
+  /** A suggestion picked, or the way to enter the address by hand */
+  function chooseOption(li) {
+    if (!li) return;
+    if (li.matches('[data-by-hand]')) { const el = sug.el; closeSuggest(); setAddressMode(el, 'parts'); return; }
+    pickSuggestion(Number(li.dataset.i));
   }
   function pickSuggestion(i) {
     const it = sug.items[i];
@@ -2621,6 +2650,15 @@ function init(root, cfg, mode) {
     ta.style.height = `${Math.min(ta.scrollHeight + 3, Math.round(innerHeight * 0.6))}px`;
   }
   const growPage = (id) => pageEl(id)?.querySelectorAll('textarea').forEach(grow);
+  /** …until the screen is full: a longer answer then scrolls inside its box, and the screen never does */
+  function capBox(ta) {
+    if (!ta) return;
+    ta.style.removeProperty('max-height');
+    if (!focused || !ta.getClientRects().length || ta.closest('[data-off], [hidden]')) return;
+    settle();
+    const over = document.documentElement.scrollHeight - innerHeight;
+    if (over > 0) ta.style.maxHeight = `${Math.max(parseFloat(getComputedStyle(ta).minHeight) || 80, Math.floor(ta.getBoundingClientRect().height - over))}px`;
+  }
 
   /** A US number reads as (404) 555-0123 as it's typed (only while typing at the end, never while deleting) */
   function phoneShape(v, whole) {
@@ -3088,7 +3126,7 @@ function init(root, cfg, mode) {
       return;
     }
     const option = e.target.closest('.af-suggest [role="option"]');
-    if (option) { pickSuggestion(Number(option.dataset.i)); return; }
+    if (option) { chooseOption(option); return; }
     const addrMode = e.target.closest('[data-addr-mode]');
     if (addrMode) { setAddressMode(addrMode.closest('[data-field]'), addrMode.dataset.addrMode); return; }
     const go = e.target.closest('[data-goto]');
@@ -3120,7 +3158,7 @@ function init(root, cfg, mode) {
       if (shaped !== tgt.value) tgt.value = shaped;
     }
     if (tgt.type === 'email' && e.isTrusted) { const p = el?.querySelector('[data-mailfix]'); if (p && !p.hidden) p.hidden = true; }
-    if (tgt.tagName === 'TEXTAREA') grow(tgt);
+    if (tgt.tagName === 'TEXTAREA') { grow(tgt); capBox(tgt); }
     if (tgt.matches('[data-search]') && el) addressTyped(el, tgt);
     liveCheck(el);
     if (el && el.dataset.field === homeAddressId()) scheduleArea();
@@ -3185,7 +3223,7 @@ function init(root, cfg, mode) {
     const open = sug.list && sug.input === input && !sug.list.hidden;
     if (!open) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveActive(e.key === 'ArrowDown' ? 1 : -1); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (sug.active >= 0) pickSuggestion(sug.active); else closeSuggest(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (sug.active >= 0) chooseOption(sug.list.children[sug.active]); else closeSuggest(); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSuggest(); }
     else if (e.key === 'Tab') closeSuggest();
   });

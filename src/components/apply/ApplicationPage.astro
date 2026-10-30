@@ -584,6 +584,15 @@ const breadcrumbs = [
   .af-ic { width: 32px; height: 32px; flex-shrink: 0; max-width: none; fill: var(--c-dark); }
   .af-ic .af-ic-fill { fill: var(--c-yellow); }
   .af-content .af-offer-text { display: grid; gap: 4px; font-size: 14.5px; line-height: 1.55; color: var(--c-text); }
+  /* Words that can't be cut between screens any further (cards side by side) and still don't fit: a little snugger */
+  html.af-focus .af-content[data-snug] .af-scope-title { margin: 4px 0 10px; font-size: 20px; }
+  html.af-focus .af-content[data-snug] .af-offer-head { margin-bottom: 8px; }
+  html.af-focus .af-content[data-snug] :is(.af-offer-grid, .af-offer-col) { gap: 10px; }
+  html.af-focus .af-content[data-snug] .af-offer-card { padding: 8px 14px; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; }
+  html.af-focus .af-content[data-snug] .af-offer-icon { width: 40px; height: 40px; }
+  html.af-focus .af-content[data-snug] .af-offer-icon .af-ic { width: 24px; height: 24px; }
+  html.af-focus .af-content[data-snug] .af-offer-text { font-size: 14px; line-height: 1.4; }
+  html.af-focus .af-content[data-snug] p { line-height: 1.5; }
   .af-content .af-offer-text strong { font-size: 16px; line-height: 1.35; color: var(--c-dark); }
   .af-content .af-nope { padding: 18px 20px; border-radius: 18px; border: 1px dashed var(--af-line-strong); }
   .af-content .af-nope-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; font-size: 14.5px; line-height: 1.5; }
@@ -650,6 +659,9 @@ const breadcrumbs = [
   .af-suggest li[aria-selected="true"], .af-suggest li:hover { background: var(--af-picked); box-shadow: inset 0 0 0 1.5px var(--c-yellow); }
   .af-suggest-main { font-weight: 600; }
   .af-suggest-sub { font-size: 13.5px; color: var(--c-text-muted); }
+  /* The list's last row: an address it doesn't have, entered by hand */
+  .af-suggest li.af-suggest-by-hand { align-content: center; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(55,58,54,.35); text-underline-offset: 4px; }
+  .af-suggest li.af-suggest-by-hand:not(:first-child) { margin-top: 4px; }
   .af-county-note { display: flex; gap: 8px; align-items: center; margin: 2px 0 0; font-size: 14px; font-weight: 500; color: var(--c-dark); animation: afFadeIn .3s var(--af-ease) both; }
   .af-county-note::before { content: ''; flex: 0 0 18px; height: 18px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' fill='%23FFDA24'/%3E%3Cpath d='M6 10.4l2.6 2.6L14 7.6' fill='none' stroke='%23373A36' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain; }
   /* The Postal Service's word on the home address, in the check's card (with Google's credit, which its terms require) */

@@ -105,7 +105,7 @@ export const UI = {
     first: 'First name', last: 'Last name', street: 'Street address', apt: 'Apartment, suite, etc.', city: 'City', state: 'State', zip: 'ZIP code', signature: 'Type your full name',
     // The address: one line that finds it (Google's suggestions), or its parts typed in
     addressLine: 'Address', addressManual: 'Enter the address yourself', addressSearch: 'Search for the address instead',
-    addressPick: 'Type the address and choose it from the list, or enter it yourself.',
+    addressPick: 'Type the address and choose it from the list, or enter it yourself.', addressNotListed: 'Not in the list? Enter it yourself',
     // The hero above the form
     heroEyebrow: 'For Families · {year} Application', heroTitleHtml: 'Tell us about your <em>child</em>.',
     heroLeadHtml: "This is where your family's story starts. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.",
@@ -198,7 +198,7 @@ export const UI = {
     detailFull: 'Ya eligió {n}. Quite una para elegir esta.',
     first: 'Nombre', last: 'Apellido', street: 'Calle y número', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
     addressLine: 'Dirección', addressManual: 'Escribir la dirección a mano', addressSearch: 'Buscar la dirección',
-    addressPick: 'Escriba la dirección y elíjala de la lista, o escríbala a mano.',
+    addressPick: 'Escriba la dirección y elíjala de la lista, o escríbala a mano.', addressNotListed: '¿No aparece? Escríbala a mano',
     heroEyebrow: 'Para familias · Solicitud {year}', heroTitleHtml: 'Cuéntenos sobre <em>su hijo o hija</em>.',
     heroLeadHtml: 'Aquí comienza la historia de su familia. La solicitud toma unos 15 minutos y <strong>se guarda mientras avanza</strong>, así que puede detenerse y volver cuando quiera.',
     heroStart: 'Comenzar la solicitud', heroContinue: 'Continuar mi solicitud', heroNotify: 'Avísenme cuando abran', heroFaq: '¿Preguntas? Lea las respuestas',

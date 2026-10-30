@@ -190,6 +190,7 @@ export function initAdvisoryForm() {
     const all = list ? list.flat() : pieces(step); // the pieces as packed (a pair split on a phone stays split)
     const on = new Set(list ? list[screenNo] || [] : all);
     for (const k of all) k.toggleAttribute('data-off', !on.has(k));
+    pages[step]?.querySelectorAll('textarea').forEach(capBox);
     // A pair split across screens: off where neither half is on (an empty box would still take the page's gap)
     for (const b of pages[step]?.children || []) if (!all.includes(b) && all.some((k) => b.contains(k))) b.toggleAttribute('data-off', ![...on].some((k) => b.contains(k)));
   }
@@ -516,8 +517,17 @@ export function initAdvisoryForm() {
   window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) saveNow(); });
 
+  /** A box for words grows as they write until the screen is full; a longer answer then scrolls inside it, never the screen */
+  function capBox(ta) {
+    ta.style.removeProperty('max-height');
+    if (!focused || !ta.getClientRects().length || ta.closest('[data-off], [hidden]')) return;
+    settle();
+    const over = document.documentElement.scrollHeight - innerHeight;
+    if (over > 0) ta.style.maxHeight = `${Math.max(parseFloat(getComputedStyle(ta).minHeight) || 80, Math.floor(ta.getBoundingClientRect().height - over))}px`;
+  }
   form.addEventListener('input', (e) => {
     const id = e.target.closest('[data-field]')?.dataset.field;
+    if (e.target.tagName === 'TEXTAREA') capBox(e.target);
     if (e.target === sugInput && e.isTrusted) { clearTimeout(sug.timer); sug.timer = setTimeout(suggest, 250); }
     follow();
     if (id) recheck(id);
