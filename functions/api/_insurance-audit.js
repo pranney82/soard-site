@@ -65,6 +65,7 @@ export const POLICIES = {
 export const TERMS_SHOWN = 3;                       // each policy's term now and the two before it
 const CURRENT_EVERY_MS = 20 * 60 * 60 * 1000;       // the current term's payments, read again
 const PAST_EVERY_MS = 7 * DAY;                      // a past term's
+const RUN_VERSION = 2;                              // a run kept by older code (other payee links) is read again
 const FAILED_EVERY_MS = 3 * 60 * 60 * 1000;         // a read where JobTread, Ramp or Mercury didn't answer, tried again
 const SAME_PAYMENT_DAYS = 10;                       // a Mercury payment this close to one already counted, same vendor and amount, is that one
 const ASK_AFTER_DAYS = 7;                           // a payment this old with no certificate covering it is asked about
@@ -73,7 +74,27 @@ const SEARCH_GRACE_DAYS = 3;                        // the certificate search ru
 const ASKS_PER_RUN = 5;
 export const REPLY_TO = 'info@soardcharity.com';
 const MONEY_TOOLS = /\b(ramp|mercury|american express|amex|chase|capital one|wells fargo|bank of america|irs|internal revenue|department of revenue|dept of revenue|gusto|adp|paychex|intuit|quickbooks|stripe|paypal|venmo|zelle|bill\.com|payroll|sunshine on a ranney day|soard)\b/i;
-const STORES = /\b(home depot|lowe'?s|amazon|wayfair|target|ikea|walmart|costco|sam'?s club|ferguson|floor (and|&) decor|sherwin[- ]williams|pottery barn|west elm|crate (and|&) barrel|cb2|best buy|hobby lobby|home ?goods|kirkland'?s|michaels|overstock|menards|ace hardware|lumber|supply|supplies|wholesale)\b/i;
+// The accounts a bill is coded to in Ramp: overhead is never subcontracted work; job costs and repairs can be
+const OVERHEAD = /\b(store cogs|rent|utilities|advertising|marketing|vehicle|office expense|legal|professional|consulting|accounting|fundraising expense|gala|insurance expense|bank fees?|merchant|payroll|dues|subscriptions?|software|travel|meals|postage|printing)\b/i;
+const JOB_WORK = /\b(makeover cogs|repairs? and maintenance|cost of goods sold|subcontract\w*|labou?r|install\w*)\b/i;
+/** A payee's payments by how they were coded → { overheadCents, jobCents, overhead: [account names, most paid first] } */
+export function codedAs(payments) {
+  const out = { overheadCents: 0, jobCents: 0, overhead: [] };
+  const by = new Map();
+  for (const p of payments) {
+    const cats = p.categories || [];
+    if (cats.some((c) => JOB_WORK.test(c))) { out.jobCents += p.cents; continue; }
+    const o = cats.find((c) => OVERHEAD.test(c));
+    if (o) { out.overheadCents += p.cents; by.set(o, (by.get(o) || 0) + p.cents); }
+  }
+  out.overhead = [...by].sort((a, b) => b[1] - a[1]).map(([name]) => name.split(':').at(-1).trim());
+  return out;
+}
+const STORES = /\b(home depot|lowe'?s|amazon|wayfair|target|ikea|walmart|costco|sam'?s club|ferguson|floor (and|&) decor|sherwin[- ]williams|pottery barn|west elm|crate (and|&) barrel|cb2|best buy|hobby lobby|home ?goods|kirkland'?s|michaels|overstock|menards|ace hardware|lumber|supply|supplies|wholesale|etsy|walgreens|cvs|spoonflower|wallsauce|ashley|blinds|hardware|lighting|shelf|store|shop|outlet|boutique|market|furniture|furnishings?|upholstery|mattress(es)?|rugs?|decor|tools?|fabrics?|paint store|goods|toys?|canvas)\b|\.com\b/i;
+// Services that aren't construction work: rentals, deliveries, permits, IT, media
+const SERVICES = /\b(dumpsters?|dump that|waste|loo|portable|rentals?|courier|delivery|movers?|moving|permit\w*|i\.?t\.? solutions|computers?|media|studios?|photograph\w*|video|printing|signs?|catering|florist|bakery|cleaning|pest|bagels?|pizza|cafe|coffee|grill|restaurant|zaxby'?s|chick-fil-a)\b/i;
+// A city or county: a fee, not work
+const GOVERNMENT = /\b(city|county|state|town) of\b|^[a-z .]+,\s*(ga|georgia)$|\bdept\.? of\b|\bdepartment of\b/i;
 
 /** A person's call on a payee, from the row's menu: whether they count, and the words for why (only: the one audit it decides) */
 export const CALLS = {
@@ -175,8 +196,14 @@ export function isSubcontractor(company = {}, policy = 'wc') {
   if ((c.trades || []).includes('Materials and supplies')) return { sub: false, why: 'Sells materials (JobTread’s Trades)', sure: true };
   const labor = [...(c.costTypes || []), ...(c.categories || [])].find((t) => /subcontract|labor|labour|install/i.test(t));
   if (labor) return { sub: true, why: `Billed as “${labor}”`, sure: true };
+  // Coded in Ramp to overhead (the store's goods, rent, an event, marketing): not work subcontracted
+  const coded = c.coded;
+  if (coded?.overheadCents > 0 && !coded.jobCents) return { sub: false, why: `Billed to ${coded.overhead.slice(0, 2).join(' and ')} (Ramp)`, sure: true };
+  if (coded?.overheadCents >= 2 * coded?.jobCents && coded?.jobCents > 0) return { sub: false, why: `Mostly billed to ${coded.overhead.slice(0, 2).join(' and ')} (Ramp)`, sure: false };
   if (c.hasCertificate) return { sub: true, why: 'SOARD has their certificate of insurance', sure: true };
   if (STORES.test(String(c.name || ''))) return { sub: false, why: 'A store or supplier, by its name', sure: false };
+  if (SERVICES.test(String(c.name || ''))) return { sub: false, why: 'A service, not construction work, by its name', sure: false };
+  if (GOVERNMENT.test(String(c.name || '').trim())) return { sub: false, why: 'A government office, by its name', sure: false };
   const paidBy = c.paidBy || [];
   if (paidBy.length && paidBy.every((m) => m === 'card')) return { sub: false, why: 'Paid by card only, like a store', sure: false };
   const types = [...(c.costTypes || []), ...(c.categories || [])];
@@ -282,6 +309,14 @@ export function combinePayments({ term, jtBills = [], jtPayments = [], rampBills
   // Each Ramp bill's JobTread copy (./_ramp.js matchRampBill), so a payment on either is known as the same one
   const jtList = jtBills.map((b) => ({ id: b.id, vendor: b.vendor, cents: b.cents, number: b.number, date: b.date, accountId: b.accountId }));
   const vendorList = vendors.map((v) => ({ jtId: v.jtId, name: v.name }));
+  // The JobTread vendor of a payee's name: the very name first (JobTread has near-twins, like “Sample” and “Sample Electric”), else the one alike
+  const same = (x) => String(x || '').trim().toLowerCase();
+  const named = (payee) => {
+    const exact = vendors.filter((v) => same(v.name) === same(payee));
+    if (exact.length === 1) return exact[0].jtId;
+    const n = vendors.filter((v) => vendorLikeness(v.name, payee) === 1);
+    return n.length === 1 ? n[0].jtId : null;
+  };
   const rampFor = new Map();
   const ramps = rampBills.map((r) => {
     const m = matchRampBill(r, jtList, vendorList);
@@ -303,11 +338,10 @@ export function combinePayments({ term, jtBills = [], jtPayments = [], rampBills
     if (!inTerm(r.date)) continue;
     if (m?.jtBillId && (paidInJt.has(m.jtBillId) || counted.has(m.jtBillId))) continue;
     const b = m?.jtBillId ? bills.get(m.jtBillId) : null;
-    row({ key: b ? `bill:${b.id}` : `ramp:${r.id}`, source: 'ramp', ...(b ? fromBill(b) : { billId: null, jtId: m?.accountId || null, payee: r.vendor, costTypes: [], ref: null }), payee: b?.vendor || r.vendor,
+    row({ key: b ? `bill:${b.id}` : `ramp:${r.id}`, source: 'ramp', ...(b ? fromBill(b) : { billId: null, jtId: m?.accountId || named(r.vendor), payee: r.vendor, costTypes: [], ref: null }), payee: b?.vendor || r.vendor,
       ref: r.invoice ? `Invoice ${r.invoice}` : b?.number ? `Bill ${b.number}` : null, cents: r.cents, date: r.date, dateFrom: 'paid', method: r.method, categories: r.categories || [] });
   }
   // 3. Mercury payments ./_bill-pay.js recorded on a bill: that bill, paid that day
-  const named = (payee) => { const n = vendors.filter((v) => vendorLikeness(v.name, payee) === 1); return n.length === 1 ? n[0].jtId : null; };
   const mercuryRow = (t, b) => row({ key: b ? `bill:${b.id}` : `mercury:${t.id}`, source: 'mercury', ...(b ? fromBill(b) : { billId: null, costTypes: [], ref: null }),
     jtId: b?.accountId || named(t.payee), payee: b?.vendor || t.payee, cents: t.cents, date: t.date, dateFrom: 'paid', method: t.method, categories: [] });
   for (const t of mercury) {
@@ -363,7 +397,7 @@ export function auditFrom({ term, payments = [], vendors = [], coverage = [], ca
     const cls = isSubcontractor({
       name, docs: v?.fields?.docs, materials: v?.fields?.materials, trades: v?.fields?.trades, call,
       paidBy: [...new Set(g.list.map((p) => p.method || 'bill'))], categories: [...new Set(g.list.flatMap((p) => p.categories || []))],
-      costTypes: [...new Set(g.list.flatMap((p) => p.costTypes || []))], hasCertificate: certs.some((c) => c.source !== 'jobtread' || c.expires),
+      costTypes: [...new Set(g.list.flatMap((p) => p.costTypes || []))], coded: codedAs(g.list), hasCertificate: certs.some((c) => c.source !== 'jobtread' || c.expires),
     }, k);
     const pays = g.list.map((p) => ({ key: p.key, date: p.date, cents: p.cents, source: p.source, ref: p.ref, dateFrom: p.dateFrom, wc: coverageOn(certs, p.date, 'wc'), gl: coverageOn(certs, p.date, 'gl') }));
     const gap = (kind) => {
@@ -518,7 +552,7 @@ export async function buildRun(env, t, { now = Date.now(), fetchImpl = fetch } =
   const vendors = await readVendors(env.DB);
   const payments = combinePayments({ term: t, jtBills, jtPayments, rampBills, mercury, txnBills, vendors, rampWrote, rampOk: !!sources.ramp?.ok });
   const builtAt = new Date(now).toISOString();
-  const data = { payments, sources };
+  const data = { payments, sources, version: RUN_VERSION };
   await env.DB.prepare('INSERT OR REPLACE INTO insurance_audit_runs (term, built_at, data, error) VALUES (?, ?, ?, NULL)').bind(t.id, builtAt, JSON.stringify(data)).run();
   return { term: t.id, builtAt, ...data };
 }
@@ -528,7 +562,7 @@ export async function readRun(DB, termId) {
   const r = await DB.prepare('SELECT * FROM insurance_audit_runs WHERE term = ?').bind(String(termId)).first();
   return r ? { term: r.term, builtAt: r.built_at, ...parseJson(r.data, { payments: [], sources: {} }) } : null;
 }
-export const runIsStale = (run, t, now = Date.now()) => !run || now - Date.parse(run.builtAt) > (Object.values(run.sources || {}).some((x) => x.connected && !x.ok) ? FAILED_EVERY_MS
+export const runIsStale = (run, t, now = Date.now()) => !run || run.version !== RUN_VERSION || now - Date.parse(run.builtAt) > (Object.values(run.sources || {}).some((x) => x.connected && !x.ok) ? FAILED_EVERY_MS
   : t.id === termOf(todayEastern(now), t.policy).id ? CURRENT_EVERY_MS : PAST_EVERY_MS);
 
 export async function readCalls(DB) {

@@ -203,6 +203,9 @@ function Cover({ c }) {
   return html`<span class="tag tag--warn">${usd(c.cents)} not covered</span><span class="ia-sub">${months(c.months)}</span>`;
 }
 
+/** A payee the site sorted from its name or how it was billed, not from JobTread or a person: worth a look */
+const Guess = ({ r }) => (r.sure || r.call ? null : html`<span class="tag tag--info" title="The site’s best guess from the name and how they were billed. ⋯ sets it.">Best guess</span>`);
+
 function Row({ r, k, busy, onDecide }) {
   const [open, setOpen] = useState(false);
   const items = [
@@ -218,14 +221,14 @@ function Row({ r, k, busy, onDecide }) {
     <div class="ia-row">
       <div class="ia-cell">
         <span class="ia-name">${r.name}</span>
-        <span class="ia-sub">${r.why}${r.inJobTread ? '' : ' · not a JobTread vendor'}</span>
+        <${Guess} r=${r} /><span class="ia-sub">${r.why}${r.inJobTread ? '' : ' · not a JobTread vendor'}</span>
         <button class="ia-link" aria-expanded=${open} onClick=${() => setOpen(!open)}>${open ? 'Hide' : 'Show'} ${r.count} payment${r.count === 1 ? '' : 's'}</button>
       </div>
       <div class="ia-cell" data-label="Paid in the term"><span class="ia-num">${usd(r.paidCents)}</span><span class="ia-sub">${r.first === r.last ? day(r.first) : `${day(r.first)} to ${day(r.last)}`}</span></div>
       ${r.sub ? html`
         <div class="ia-cell" data-label=${title}><${Cover} c=${r[k]} /></div>
         <div class="ia-cell" data-label="Certificate"><span class="ia-sub">${cert}</span></div>`
-      : html`<div class="ia-cell" data-label="Why"><span class="ia-sub">${r.why}</span></div><div class="ia-cell"></div>`}
+      : html`<div class="ia-cell" data-label="Why"><${Guess} r=${r} /><span class="ia-sub">${r.why}</span></div><div class="ia-cell"></div>`}
       ${items.length ? html`<${More} label=${`More for ${r.name}`} items=${items} disabled=${busy} onPick=${(x) => onDecide(r, x)} />` : html`<span></span>`}
     </div>
     ${open ? html`<div class="ia-pays"><table>

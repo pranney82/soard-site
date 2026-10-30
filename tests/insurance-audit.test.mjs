@@ -11,7 +11,7 @@ import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureVendorSchema } from '../functions/api/_vendors.js';
 import { forgetRampToken } from '../functions/api/_ramp.js';
 import {
-  term, termOf, termsShown, monthsText, isSubcontractor, coverageFor, coverageOn, combinePayments, auditFrom, buildRun, auditFor, readRun, runIsStale,
+  term, termOf, termsShown, monthsText, isSubcontractor, codedAs, coverageFor, coverageOn, combinePayments, auditFrom, buildRun, auditFor, readRun, runIsStale,
   askForGaps, askEmail, auditCsv, auditPacket, saveCall, maybeRunInsuranceAudit, rampPaymentOf, mercuryPaymentOf, jtBillOf, jtPaymentOf, ensureAuditSchema,
 } from '../functions/api/_insurance-audit.js';
 import { onRequestGet, onRequestPost } from '../functions/api/insurance-audit-admin.js';
@@ -61,6 +61,40 @@ test('subcontractor or supplier: each answer says why', () => {
   assert.equal(isSubcontractor({ name: 'Mystery Co', paidBy: ['card'] }).why, 'Paid by card only, like a store');
   assert.equal(isSubcontractor({ name: 'Mystery Co', costTypes: ['Materials'] }).sub, false);
   assert.deepEqual(isSubcontractor({ name: 'Sample Imports LLC', paidBy: ['ach'] }), { sub: true, why: 'Paid by bill, and nothing marks them as a supplier', sure: false });
+});
+
+test('how a payee was coded in Ramp: overhead is never subcontracted work, job costs leave it to the rest', () => {
+  const pay = (cents, ...categories) => ({ cents, categories });
+  // The store's goods, the rent, an event, marketing: left out, sure (a person coded it)
+  assert.deepEqual(isSubcontractor({ name: 'Example Furniture Makers', paidBy: ['ach'], coded: codedAs([pay(500000, 'Store COGS', 'Fundraising'), pay(20000, 'Store COGS')]) }),
+    { sub: false, why: 'Billed to Store COGS (Ramp)', sure: true });
+  assert.equal(isSubcontractor({ name: 'Sample Landlord LLC', coded: codedAs([pay(800000, 'Building Expense:Rent Expense')]) }).why, 'Billed to Rent Expense (Ramp)', 'the account, not its parent');
+  assert.equal(isSubcontractor({ name: 'Sample Club', coded: codedAs([pay(280000, 'Various Fundraising Expense', 'Fundraising')]) }).sub, false);
+  // Mostly the store's, a little for a makeover: left out, as a guess
+  assert.deepEqual(isSubcontractor({ name: 'Example Wholesale Beds', coded: codedAs([pay(300000, 'Store COGS'), pay(10000, 'Makeover COGS', 'Makeovers')]) }),
+    { sub: false, why: 'Mostly billed to Store COGS (Ramp)', sure: false });
+  // Makeover costs and repairs can be labor: the rest decides
+  assert.equal(isSubcontractor({ name: 'Sample Electric', paidBy: ['ach'], coded: codedAs([pay(270000, 'Makeover COGS', 'Makeovers', 'Sample Kid')]) }).sub, true);
+  assert.equal(isSubcontractor({ name: 'Sample Air', paidBy: ['check'], coded: codedAs([pay(38000, 'Building Expense:Repairs and Maintenance Expense', 'Fundraising')]) }).sub, true);
+  // The class (Fundraising, Makeovers) alone says nothing
+  assert.deepEqual(codedAs([pay(1000, 'Fundraising'), pay(2000, 'Makeovers')]), { overheadCents: 0, jobCents: 0, overhead: [] });
+});
+
+test('shops, services and government offices by their names are left out as guesses', () => {
+  for (const name of ['Etsy', 'Example Wallpaper.com', 'Sample Lighting Store', 'Example Blinds', 'Sample Sporting Goods']) assert.deepEqual(isSubcontractor({ name, paidBy: ['bill'] }), { sub: false, why: 'A store or supplier, by its name', sure: false }, name);
+  for (const name of ['Bin There Dump That Sample', 'Sample Courier Service, LLC', 'Example Permitting', 'Sample I.T. Solutions, LLC', 'Example Media LLC', 'Sample Bagels']) assert.deepEqual(isSubcontractor({ name, paidBy: ['bill'] }), { sub: false, why: 'A service, not construction work, by its name', sure: false }, name);
+  for (const name of ['Alpharetta, GA', 'City of Roswell', 'Sample County']) assert.equal(isSubcontractor({ name, paidBy: ['bill'] }).sub, name === 'Sample County', name);
+  assert.equal(isSubcontractor({ name: 'Alpharetta, GA' }).why, 'A government office, by its name');
+  // A trade on file beats any name
+  assert.equal(isSubcontractor({ name: 'Example Lighting & Electric', trades: ['Electrical'] }).sub, true);
+});
+
+test('a Ramp bill with no JobTread copy still belongs to the JobTread vendor of that name, so the payee is one row', () => {
+  const out = combinePayments({ term: term('wc-2026'), rampBills: [{ id: 'R1', vendor: 'Sample Electric LLC', cents: 50000, invoice: '9', date: '2026-05-02', method: 'ach', categories: [] }], vendors: [{ jtId: 'V7', name: 'Sample Electric' }, { jtId: 'V8', name: 'Other Example Co' }], rampOk: true });
+  assert.equal(out[0].jtId, 'V7');
+  // A near-twin in JobTread: the very name decides
+  const twins = combinePayments({ term: term('wc-2026'), rampBills: [{ id: 'R2', vendor: 'Sample Electric', cents: 50000, invoice: '10', date: '2026-05-02', method: 'ach', categories: [] }], vendors: [{ jtId: 'V6', name: 'Sample' }, { jtId: 'V7', name: 'Sample Electric' }], rampOk: true });
+  assert.equal(twins[0].jtId, 'V7');
 });
 
 test('one person with no employees is left out of workers’ comp only: liability still counts them', () => {
@@ -268,6 +302,7 @@ test('the term is read from every source, kept, and shown with the coverage foun
   assert.equal(again.sources.jobtreadPayments.ok, false);
   assert.match(again.sources.jobtreadPayments.error, /paidAt/);
   assert.equal(runIsStale(again, T, Date.parse(again.builtAt) + 2 * 3600e3), false);
+  assert.equal(runIsStale({ ...run, version: undefined }, T, Date.parse(run.builtAt) + 60e3), true, 'a run kept by older code is read again');
   assert.equal(runIsStale(again, T, Date.parse(again.builtAt) + 3 * 3600e3 + 60e3), true, 'a read where a source failed is tried again in 3 hours, not tomorrow');
   assert.deepEqual(again.payments.map((p) => p.key), ['bill:B1', 'bill:B2', 'mercury:T9'], 'B1 dated by its bill when its payment can’t be read');
 });
