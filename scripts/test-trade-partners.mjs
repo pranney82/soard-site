@@ -34,7 +34,7 @@ import { join } from 'node:path';
 import { createD1 } from '../tests/lib/d1-shim.mjs';
 import { onRequestGet as docsGet, onRequestPost as docsPost } from '../functions/api/vendor-docs.js';
 import { onRequestGet as tpGet, onRequestPost as tpPost } from '../functions/api/trade-partner.js';
-import { createLink, ensureVendorSchema, jtSetup, TRADES } from '../functions/api/_vendors.js';
+import { createLink, ensureVendorSchema, jtSetup, TRADES, PREVIEW_ID } from '../functions/api/_vendors.js';
 import { ensurePartnerSchema, listRequests, readBank } from '../functions/api/_trade-partners.js';
 import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureBillPaySchema } from '../functions/api/_bill-pay.js';
@@ -211,6 +211,8 @@ const give = (page, sel, path, name, type) => page.evaluate((sel, b64, name, typ
   const i = document.querySelector(sel); i.files = dt.files; i.dispatchEvent(new Event('change', { bubbles: true }));
 }, sel, readFileSync(path).toString('base64'), name, type);
 const typeInto = async (page, name, value) => { await page.$eval(`[name="${name}"]`, (e) => { e.value = ''; }); await page.type(`[name="${name}"]`, value); };
+// A step moves focus to its heading on the next frame; a person never types before that, so neither does this
+const settled = (page) => page.waitForFunction(() => document.activeElement?.matches('.tpa-step h1'), { timeout: 5000 });
 const waitResult = (page) => page.waitForFunction(() => document.querySelector('[data-result] .tpa-result'), { timeout: 30000 });
 
 const browser = await puppeteer.launch({ headless: 'shell', args: ['--no-sandbox', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--disable-features=LocalNetworkAccessChecks'] });
@@ -272,6 +274,7 @@ try {
     // Company
     await page.click('[data-act=setup]');
     await page.waitForSelector('form[data-form=company]');
+    await settled(page);
     ok(await page.evaluate(() => document.documentElement.classList.contains('tpa-focus') && getComputedStyle(document.querySelector('body > header, body > .site-header, header') || document.body).display === 'none'), 'a step has the screen: the site’s header steps aside');
     // Back from a step: the overview, not a reload
     await page.evaluate(() => { window.__marker = 1; });
@@ -280,6 +283,7 @@ try {
     ok(await page.evaluate(() => window.__marker === 1), 'Back from a step goes back to the overview, without loading the page again');
     await page.click('[data-act=setup]');
     await page.waitForSelector('form[data-form=company]');
+    await settled(page);
     await typeInto(page, 'name', 'TKO Plumbing LLC');
     await page.click('input[name=trades][value="Plumbing"] + span');
     await typeInto(page, 'street', '12 Example Lane');
@@ -370,6 +374,57 @@ try {
     ok(await page.evaluate(() => !localStorage.getItem('soard-tp-token')?.length || true), 'kept for the visit only');
     await page.screenshot({ path: `${OUT}agent.png`, fullPage: true });
     ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+
+  console.log('The preview (Trade Partners → Settings → Send me the vendor email)');
+  {
+    const before = { emails: world.emails.length, mercury: world.mercury.length, files: world.files.length, comments: world.comments.length };
+    const preview = await createLink(DB, PREVIEW_ID);
+    const { page, errors } = await open(browser, `/trade-partners/account/#t=${preview.token}`, { width: 1280, height: 900 });
+    await page.waitForSelector('.tpa-tiles', { timeout: 15000 });
+    await page.click('[data-act=setup]');
+    await page.waitForSelector('form[data-form=company]');
+    await settled(page);
+    await page.click('input[name=trades][value="Roofing"] + span');
+    await typeInto(page, 'street', '40 Sample Street');
+    await typeInto(page, 'city', 'Marietta');
+    await typeInto(page, 'zip', '30060');
+    await typeInto(page, 'mainName', 'Sam Sample');
+    await typeInto(page, 'mainEmail', 'sam@sample.example');
+    await typeInto(page, 'mainPhone', '4045550188');
+    await page.click('[data-submit]');
+    await page.waitForSelector('form[data-form=w9]', { timeout: 10000 });
+    const w9 = await page.evaluate(() => ['w9name', 'w9address', 'cityStateZip'].map((n) => document.querySelector(`[name=${n}]`).value));
+    ok(w9.join(' | ') === 'Sam Sample | 40 Sample Street | Marietta, GA 30060', `the preview carries the company into the W-9 as a vendor’s page does (${w9.join(' | ')})`);
+    await page.click('input[name=taxClass][value=individual] + span');
+    await page.click('input[name=tinType][value=ssn] + span');
+    await page.type('input[name=tin]', '123456789');
+    await page.click('input[name=certify] + span');
+    await page.type('input[name=signature]', 'Sam Sample');
+    await page.click('[data-submit]');
+    await page.waitForSelector('[data-drop=coi]', { timeout: 15000 });
+    ok(true, 'the W-9 signs, and the preview goes on to insurance');
+    await page.click('[data-tab=agent]');
+    await page.type('form[data-form=agent] [name=email]', 'agent@sample.example');
+    await page.click('form[data-form=agent] [data-submit]');
+    await page.waitForFunction(() => /agent@sample\.example/.test(document.querySelector('[data-pane=agent]')?.innerText || ''), { timeout: 10000 });
+    ok(true, 'asking the agent names the agent');
+    await page.click('[data-pane=agent] [data-act=next]');
+    await page.waitForSelector('form[data-form=bank]', { timeout: 10000 });
+    await page.type('[name=routing]', '021000021');
+    await page.type('[name=account]', '000123454321');
+    await page.type('[name=account2]', '000123454321');
+    await page.click('[data-submit]');
+    await page.waitForSelector('.tpa-done', { timeout: 10000 });
+    await page.click('[data-act=next]');
+    await page.waitForSelector('.tpa-tiles', { timeout: 10000 });
+    const tiles = await text(page, '.tpa-tiles');
+    ok(/Marietta, GA/.test(tiles) && /agent@sample\.example/.test(tiles) && /ending 4321/.test(tiles), `the overview shows the visit’s answers (${tiles.replace(/\n/g, ' | ')})`);
+    ok(world.emails.length === before.emails && world.mercury.length === before.mercury && world.files.length === before.files && world.comments.length === before.comments, 'and nothing was sent, filed or kept');
+    await page.screenshot({ path: `${OUT}preview-done.png` });
+    ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.evaluate((t) => localStorage.setItem('soard-tp-token', t), link.token);
     await page.close();
   }
 

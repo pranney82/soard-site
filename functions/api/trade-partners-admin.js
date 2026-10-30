@@ -45,7 +45,7 @@ export async function onRequestGet(context) {
   } catch (e) {
     if (e.status && e.status < 500) return fail(e.message, e.status);
     console.error('[trade-partners-admin] get', e.message);
-    return fail('Couldn’t read trade partners just now', 500);
+    return fail(e.message || 'Couldn’t read trade partners just now', 500);
   }
 }
 

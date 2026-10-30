@@ -25,7 +25,7 @@ import { SOARD_ORG_ID, TZ } from './_reveals.js';
 import { sendEmails, slackIssue, slackResolved, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { emailShell, paragraphs, button, panel, esc } from './_email-shell.js';
-import { mercury, mercuryConfigured, uploadRecipientAttachment } from './_mercury.js';
+import { mercury, mercuryConfigured, uploadRecipientAttachment, readState } from './_mercury.js';
 import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from './_applicant-comms.js';
 import { cachedRecipients, recipientFor } from './_bill-pay.js';
 import { vendorKey, dollars } from './_spend-match.js';
@@ -33,7 +33,7 @@ import { checkW9, buildW9 } from './_w9-form.js';
 import { requirementLines, longDate } from './_vendor-read.js';
 import {
   jt, jtSetup, readJtVendor, createLink, ensureVendorSchema, docsState, readDocSettings, writeFields, vendorNote, uploadToJt,
-  patchAsk, readAsk, labelFor, resolveAll, briefState, jtVendorUrl, OVERRIDES, FOLDER, TAGS, TRADES, PARTNERS_PAGE, PREVIEW_ID, LIMITS,
+  patchAsk, readAsk, labelFor, resolveAll, briefState, jtVendorUrl, OVERRIDES, FOLDER, TAGS, TRADES, PARTNERS_PAGE, PREVIEW_ID, LIMITS, STATE_KEY,
 } from './_vendors.js';
 
 const DAY = 864e5;
@@ -139,6 +139,9 @@ const roleOf = (title) => {
   return null;
 };
 
+// Trades as JobTread's field takes it: all of them, or the first while it takes one (Admin → Trade Partners says so)
+const tradesValue = (ids, trades) => (ids.fields.trades.multiple === false ? trades[0] : trades);
+
 /** The vendor's company as JobTread has it → { id, name, trades, address, license, materials, contacts: [{ id, name, title, email, phone, role }] } */
 export async function readCompany(env, jtId, { fetchImpl = fetch } = {}) {
   if (jtId === PREVIEW_ID) return { id: PREVIEW_ID, name: 'Your company (a preview)', trades: [], address: '', license: '', materials: false, contacts: [] };
@@ -233,7 +236,7 @@ export async function saveCompany(env, link, body, { now = Date.now(), fetchImpl
   if (!company || company.archived) throw Object.assign(new Error('This link is for a company we no longer have on file.'), { status: 410 });
   const ids = await jtSetup(env, { fetchImpl });
   const values = {
-    [ids.fields.trades.id]: trades,
+    [ids.fields.trades.id]: tradesValue(ids, trades),
     [ids.fields.address.id]: addressLine(address),
     ...(license || company.license ? { [ids.fields.license.id]: license } : {}),
   };
@@ -329,7 +332,7 @@ export async function askAgent(env, jtId, { renewal = false, reminder = false, b
 export async function saveAgent(env, link, body, { now = Date.now(), fetchImpl = fetch } = {}) {
   const agent = { name: clean(body.name, 80), email: clean(body.email, 120).toLowerCase(), agency: clean(body.agency, 80), phone: phoneOf(body.phone) };
   if (!isEmail(agent.email)) throw bad('Add your agent’s email address.', 'agentEmail');
-  if (link.vendor_id === PREVIEW_ID) return { ok: true, preview: true };
+  if (link.vendor_id === PREVIEW_ID) return { ok: true, preview: true, agent: agent.email };
   const company = await readCompany(env, link.vendor_id, { fetchImpl });
   if (!company || company.archived) throw Object.assign(new Error('This link is for a company we no longer have on file.'), { status: 410 });
   await putContact(env, company.id, company, 'agent', { name: [agent.name, agent.agency && `(${agent.agency})`].filter(Boolean).join(' ') || agent.email, email: agent.email, phone: agent.phone }, fetchImpl);
@@ -695,7 +698,7 @@ export async function decideRequest(env, id, { decision, by, jtId = null, reason
     if (made.created) {
       const ids = await jtSetup(env, { fetchImpl });
       await writeFields(env, ids, made.jtId, {}, fetchImpl);
-      await jt(env, { updateAccount: { $: { id: made.jtId, customFieldValues: { [ids.fields.trades.id]: r.trades } } } }, fetchImpl).catch(() => null);
+      await jt(env, { updateAccount: { $: { id: made.jtId, customFieldValues: { [ids.fields.trades.id]: tradesValue(ids, r.trades) } } } }, fetchImpl).catch(() => null);
     }
     await env.DB.prepare(`UPDATE vendor_requests SET status = ?, decided_by = ?, decided_at = ?, jt_id = ? WHERE id = ?`).bind(jtId ? 'matched' : 'approved', by, iso, made.jtId, id).run();
   }
@@ -859,12 +862,13 @@ export async function bankToConfirm(env, { fetchImpl = fetch } = {}) {
 /** For the admin and the automations map */
 export async function partnerFacts(DB) {
   await ensurePartnerSchema(DB);
-  const [req, bank, setup] = await Promise.all([
+  const [req, bank, setup, st] = await Promise.all([
     DB.prepare("SELECT COUNT(*) AS n FROM vendor_requests WHERE status = 'new'").first(),
     DB.prepare("SELECT COUNT(*) AS n FROM vendor_bank WHERE status = 'pending'").first(),
     DB.prepare('SELECT COUNT(*) AS n FROM vendor_profiles WHERE invited_at IS NOT NULL AND done_at IS NULL').first(),
+    readState(DB, STATE_KEY),
   ]);
-  return { requests: req?.n || 0, bankToConfirm: bank?.n || 0, settingUp: setup?.n || 0 };
+  return { requests: req?.n || 0, bankToConfirm: bank?.n || 0, settingUp: setup?.n || 0, fieldDupes: st.jt?.dupes || [], fieldSingle: st.jt?.single || [] };
 }
 
 export { dollars, LIMITS };

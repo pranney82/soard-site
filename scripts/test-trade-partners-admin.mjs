@@ -166,6 +166,8 @@ const clickText = (page, sel, text) => page.evaluate((sel, text) => {
 }, sel, text);
 const textOf = (page, sel) => page.$eval(sel, (e) => e.innerText).catch(() => '');
 async function axe(page, label) {
+  // Colors are read once things have finished fading in (a spinner never does, so it's left out)
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))));
   await page.addScriptTag({ content: AXE });
   const r = await page.evaluate(async () => (await window.axe.run(document.querySelector('.tpm') || document, { runOnly: ['wcag2a', 'wcag2aa'] })).violations.map((v) => `${v.id} ×${v.nodes.length}`));
   ok(r.length === 0, `axe (${label}): no violations${r.length ? `: ${r.join(', ')}` : ''}`);

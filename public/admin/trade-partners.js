@@ -224,6 +224,8 @@ export function TradePartners({ addToast = () => {} }) {
         </div>
         <div class="page-header__actions"><button class="btn btn-primary" onClick=${() => setAdding(true)}>Add a trade partner</button></div>
       </div>
+      ${data.facts.fieldDupes?.length ? html`<div class="notice notice--warn" style="margin-bottom: 1rem;"><div class="notice__body">JobTread has two vendor fields named ${data.facts.fieldDupes.map((n) => `“${n}”`).join(', ')}. The site uses the first one in JobTread → Settings → Custom fields → Vendors; delete the other so answers land in one place.</div></div>` : null}
+      ${data.facts.fieldSingle?.length ? html`<div class="notice notice--warn" style="margin-bottom: 1rem;"><div class="notice__body">JobTread’s ${data.facts.fieldSingle.map((n) => `“${n}”`).join(', ')} vendor field takes one answer, so only a partner’s first trade is kept. In JobTread → Settings → Custom fields → Vendors, let it take more than one.</div></div>` : null}
       <div class="seg" role="tablist" aria-label="Trade partners">
         ${TABS.map(([k, label]) => html`<button role="tab" aria-selected=${place.tab === k && !place.id} onClick=${() => open(k)}>${label}${counts[k] ? html` <span class="count is-warn">${counts[k]}</span>` : ''}</button>`)}
       </div>
@@ -272,7 +274,7 @@ function Partners({ data, onOpen, onTab }) {
     <div class="tpm-tools">
       <input class="form-input" type="search" placeholder="Find a company, email or trade" aria-label="Find a trade partner" value=${q} onInput=${(e) => setQ(e.target.value)} />
       <div class="seg" role="tablist" aria-label="Show">
-        ${FILTERS.map(([k, label]) => html`<button role="tab" aria-selected=${filter === k} onClick=${() => setFilter(k)}>${label}${k !== 'all' && n[k] ? html` <span class="count is-quiet">${n[k]}</span>` : ''}</button>`)}
+        ${FILTERS.map(([k, label]) => html`<button role="tab" aria-selected=${filter === k} onClick=${() => setFilter(k)}>${label}${k !== 'all' && n[k] ? html` <span class="count">${n[k]}</span>` : ''}</button>`)}
       </div>
     </div>
     ${!all.length ? html`<div class="empty"><p class="empty__title">No vendors read from JobTread yet</p><p class="empty__text">They arrive within four hours of the site’s first run.</p></div>`

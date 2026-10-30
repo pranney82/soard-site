@@ -30,6 +30,7 @@ let v: any = null;       // partnerView
 let step: Step | null = null;
 let setupRun = false;    // stepping through setup: Save goes on to the next thing needed
 let closing = false;     // a step closed from the page: the history entry it pushed is being stepped back over
+let shown: any = {};     // the preview keeps nothing on the server: this visit's answers, so its steps carry on as a vendor's would
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 const html = (s: string) => { const t = document.createElement('template'); t.innerHTML = s.trim(); return t.content; };
@@ -60,7 +61,16 @@ async function load() {
   const d = await r.json().catch(() => ({}));
   if (!r.ok || !d.ok) return { gone: r.status === 404 || r.status === 410, error: d.error || T.failed };
   v = d.vendor;
+  if (v.preview) keepShown();
   return { ok: true };
+}
+
+function keepShown() {
+  if (shown.company) { v.company = { ...v.company, ...shown.company }; v.steps.company = true; }
+  if (shown.w9) v.docs.w9 = 'current';
+  if (shown.coi) for (const k of ['gl', 'wc']) if (v.docs[k] !== 'not-needed') v.docs[k] = 'current';
+  if (shown.agent) v.agent = shown.agent;
+  if (shown.bank) v.bank = shown.bank;
 }
 
 const post = (body: any) => fetch('/api/trade-partner', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, token, lang }) })
@@ -276,7 +286,7 @@ function drawStep() {
   root.replaceChildren(html(stepFrame(k, body)));
   if (k === 'w9') wireW9();
   if (k === 'coi') wireCoi();
-  if (k === 'company') wireForm('company', companyBody, () => finishStep('company'));
+  if (k === 'company') wireForm('company', companyBody, (r, sent) => { if (r.preview) shown.company = sent; finishStep('company'); });
   if (k === 'bank') wireBank();
 }
 
@@ -306,7 +316,7 @@ function showError(form: HTMLElement, words: string, field?: string | null) {
 }
 
 /** A form that posts one action: busy while it does, its error beside the field */
-function wireForm(action: string, body: (f: HTMLFormElement) => any, done: (r: any) => void) {
+function wireForm(action: string, body: (f: HTMLFormElement) => any, done: (r: any, sent: any) => void) {
   const form = root.querySelector<HTMLFormElement>(`form[data-form="${action}"]`)!;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -314,10 +324,11 @@ function wireForm(action: string, body: (f: HTMLFormElement) => any, done: (r: a
     const label = btn.textContent;
     btn.disabled = true; btn.textContent = T.saving;
     form.querySelector<HTMLElement>('[data-error]')!.hidden = true;
-    const r = await post({ action, ...body(form) });
+    const sent = body(form);
+    const r = await post({ action, ...sent });
     btn.disabled = false; btn.textContent = label;
     if (!r.ok) return showError(form, r.problems ? `${T.w9Problems} ${Object.values(r.problems).join(' ')}` : r.error || T.failed, r.field || (r.problems ? Object.keys(r.problems)[0] : null));
-    done(r);
+    done(r, sent);
   });
 }
 
@@ -449,7 +460,8 @@ function wireW9() {
       tinType: f.querySelector<HTMLInputElement>('input[name=tinType]:checked')?.value || 'ein', tin: g('tin'),
       backupWithholding: on('backupWithholding'), certify: on('certify'), signature: g('signature'),
     } };
-  }, async () => {
+  }, async (r) => {
+    if (r.preview) shown.w9 = true;
     const body = root.querySelector<HTMLElement>('.tpa-step-body')!;
     body.replaceChildren(html(`<div class="tpa-done" tabindex="-1">${svg('check', 'tpa-done-icon')}<h1 class="tpa-h1">${esc(T.w9Done)}</h1></div>`));
     setTimeout(() => finishStep('w9'), 1400);
@@ -508,7 +520,8 @@ function wireCoi() {
     });
   }
   wireDrop('coi');
-  wireForm('agent', (f) => Object.fromEntries(['name', 'agency', 'email', 'phone'].map((n) => [n, (f.querySelector<HTMLInputElement>(`[name=${n}]`)?.value || '').trim()])), (r) => {
+  wireForm('agent', (f) => Object.fromEntries(['name', 'agency', 'email', 'phone'].map((n) => [n, (f.querySelector<HTMLInputElement>(`[name=${n}]`)?.value || '').trim()])), (r, sent) => {
+    if (r.preview) shown.agent = { name: sent.name, email: sent.email, agency: sent.agency, askedAt: new Date().toISOString() };
     const pane = root.querySelector<HTMLElement>('[data-pane=agent]')!;
     pane.replaceChildren(html(`<div class="tpa-result" data-tone="good">${svg('check', 'tpa-result-icon')}<p>${esc(T.agentDone(r.agent || ''))}</p>
       <button type="button" class="tpa-btn tpa-btn--primary" data-act="next" data-step="coi">${esc(setupRun ? T.continue : T.yourPage)}</button></div>`));
@@ -601,6 +614,7 @@ async function check(doc: 'w9' | 'coi', anyway = false) {
     if (!d.ok) throw new Error(d.error || T.failed);
     setStates(d.accepted ? '✓' : '');
     if (d.accepted) {
+      if (d.preview) shown[doc] = true;
       result.replaceChildren(html(`<div class="tpa-result" data-tone="good" tabindex="-1">${svg('check', 'tpa-result-icon')}<div><p class="tpa-result-title">${esc(T.good)}</p>${(d.lines || []).length ? `<ul>${d.lines.map((l: string) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}</div>
         <button type="button" class="tpa-btn tpa-btn--primary" data-act="next" data-step="${doc}">${esc(setupRun && v.scope !== 'agent' ? T.continue : T.yourPage)}</button></div>`));
       if (v.scope === 'agent') result.querySelector('[data-act=next]')?.remove();
@@ -686,7 +700,8 @@ function wireBank() {
   wireForm('bank', (f) => ({
     routing: f.querySelector<HTMLInputElement>('[name=routing]')!.value, account: f.querySelector<HTMLInputElement>('[name=account]')!.value,
     account2: f.querySelector<HTMLInputElement>('[name=account2]')!.value, kind: f.querySelector<HTMLInputElement>('input[name=kind]:checked')?.value,
-  }), (r) => {
+  }), (r, sent) => {
+    if (r.preview) shown.bank = { last4: r.last4, kind: (WORDS.en.kinds as any)[sent.kind] || null, status: 'pending' };
     const body = root.querySelector<HTMLElement>('.tpa-step-body')!;
     body.replaceChildren(html(`<div class="tpa-done" tabindex="-1">${svg('check', 'tpa-done-icon')}<h1 class="tpa-h1">${esc(T.bankDone(r.last4))}</h1>
       <button type="button" class="tpa-btn tpa-btn--primary" data-act="next" data-step="bank">${esc(T.yourPage)}</button></div>`));

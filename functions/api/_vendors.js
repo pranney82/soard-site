@@ -191,20 +191,30 @@ export async function saveDocSettings(DB, patch) {
 
 const optionsOf = (o) => (Array.isArray(o) ? o.map((x) => (typeof x === 'string' ? x : x?.name || x?.value || '')).filter(Boolean) : []);
 
-/** The vendor fields and file tags this needs, made when missing → { fields: { key: { id, type } }, tags: { w9, coi } } */
+/** The vendor fields and file tags this needs, made when missing → { fields: { key: { id, type, multiple? } }, tags: { w9, coi }, dupes, single } */
 export async function jtSetup(env, { fetchImpl = fetch, force = false } = {}) {
   const st = await readState(env.DB, STATE_KEY);
   const have = st.jt;
-  if (!force && have?.fields && Object.keys(FIELDS).every((k) => have.fields[k]?.id) && have.tags?.w9 && have.tags?.coi) return have;
+  if (!force && have?.fields && Object.keys(FIELDS).every((k) => have.fields[k]?.id && (!FIELDS[k].multiple || 'multiple' in have.fields[k])) && have.tags?.w9 && have.tags?.coi) return have;
+  // One setup at a time: a page reads the company and the vendor side by side, and two
+  // setups at once would each make the same missing field
+  if (!settingUp.has(env.DB)) settingUp.set(env.DB, makeSetup(env, fetchImpl).finally(() => settingUp.delete(env.DB)));
+  return settingUp.get(env.DB);
+}
+const settingUp = new WeakMap();
+
+async function makeSetup(env, fetchImpl) {
   const d = await jt(env, {
     organization: {
       $: { id: SOARD_ORG_ID },
-      customFields: { $: { size: 100, where: ['targetType', '=', 'vendor'] }, nodes: { id: {}, name: {}, type: {}, options: {} } },
+      customFields: { $: { size: 100, where: ['targetType', '=', 'vendor'] }, nodes: { id: {}, name: {}, type: {}, options: {}, maxValuesAllowed: {} } },
       fileTags: { $: { size: 100 }, nodes: { id: {}, name: {} } },
     },
   }, fetchImpl);
   const existing = d?.organization?.customFields?.nodes || [];
   const fields = {};
+  // Two vendor fields with one of these names: the first is the one used; a person deletes the other in JobTread
+  const dupes = Object.values(FIELDS).map((f) => f.name).filter((name) => existing.filter((x) => norm(x.name) === norm(name)).length > 1);
   for (const [k, f] of Object.entries(FIELDS)) {
     const found = existing.find((x) => norm(x.name) === norm(f.name));
     if (found) {
@@ -215,17 +225,29 @@ export async function jtSetup(env, { fetchImpl = fetch, force = false } = {}) {
         const missing = want.filter((s) => !opts.some((o) => norm(o) === norm(s)));
         if (missing.length) await jt(env, { updateCustomField: { $: { id: found.id, options: [...opts, ...missing] } } }, fetchImpl);
       }
+      if (f.multiple) {
+        // Trades takes as many as a company does (an empty maxValuesAllowed is JobTread's "any number").
+        // If JobTread won't open it up, partners' first trade still lands and the admin says so
+        fields[k].multiple = true;
+        if (found.maxValuesAllowed != null) {
+          await jt(env, { updateCustomField: { $: { id: found.id, maxValuesAllowed: null } } }, fetchImpl)
+            .catch((e) => { console.error('[vendors] widening', f.name, e.message); fields[k].multiple = false; });
+        }
+      }
       continue;
     }
     const made = await jt(env, {
       createCustomField: {
-        $: { organizationId: SOARD_ORG_ID, targetType: 'vendor', type: f.type, name: f.name, minValuesRequired: 0, ...(k === 'docs' ? { options: DOC_STATES } : {}), ...(k === 'trades' ? { options: TRADES } : {}) },
+        $: {
+          organizationId: SOARD_ORG_ID, targetType: 'vendor', type: f.type, name: f.name, minValuesRequired: 0,
+          ...(f.type === 'option' ? { maxValuesAllowed: f.multiple ? null : 1 } : {}), ...(k === 'docs' ? { options: DOC_STATES } : {}), ...(k === 'trades' ? { options: TRADES } : {}),
+        },
         createdCustomField: { id: {} },
       },
     }, fetchImpl);
     const id = made?.createCustomField?.createdCustomField?.id;
     if (!id) throw new Error(`JobTread didn’t make the vendor field “${f.name}”`);
-    fields[k] = { id, type: f.type };
+    fields[k] = { id, type: f.type, ...(f.multiple ? { multiple: true } : {}) };
   }
   const tagNodes = d?.organization?.fileTags?.nodes || [];
   const tags = {};
@@ -236,7 +258,8 @@ export async function jtSetup(env, { fetchImpl = fetch, force = false } = {}) {
     tags[k] = made?.createFileTag?.createdFileTag?.id;
     if (!tags[k]) throw new Error(`JobTread didn’t make the file tag “${name}”`);
   }
-  const out = { fields, tags, at: new Date().toISOString() };
+  const single = Object.entries(FIELDS).filter(([k, f]) => f.multiple && fields[k].multiple === false).map(([, f]) => f.name);
+  const out = { fields, tags, dupes, single, at: new Date().toISOString() };
   await writeState(env.DB, STATE_KEY, { jt: out, setupError: null });
   return out;
 }

@@ -12,7 +12,7 @@ import { ensureSpendSchema } from '../functions/api/_spend.js';
 import { ensureBillPaySchema } from '../functions/api/_bill-pay.js';
 import {
   docsState, labelFor, requestEmail, jtSetup, readJtVendor, createLink, findLink, fileUpload, pageView, askDue, sweep,
-  refreshCache, ensureVendorSchema, sendPreview, readAsk, saveDocSettings, readDocSettings, DEFAULTS, FOLDER, PREVIEW_ID, LIMITS,
+  refreshCache, ensureVendorSchema, sendPreview, readAsk, saveDocSettings, readDocSettings, DEFAULTS, FOLDER, PREVIEW_ID, LIMITS, TRADES, DOC_STATES,
 } from '../functions/api/_vendors.js';
 import { judgeCoi, judgeCoiReads, judgeW9, mergeCoi, documentType, answerOf, scannedPages } from '../functions/api/_vendor-read.js';
 import { onRequestGet as pageGet, onRequestPost as pagePost } from '../functions/api/vendor-docs.js';
@@ -90,7 +90,10 @@ globalThis.fetch = async (input, init = {}) => {
       world.fields.push(f); world.made.push(query.createCustomField.$);
       return Response.json({ createCustomField: { createdCustomField: { id: f.id } } });
     }
-    if (query.updateCustomField) { world.updatedFields.push(query.updateCustomField.$); return Response.json({}); }
+    if (query.updateCustomField) {
+      if (world.refuseWiden && 'maxValuesAllowed' in query.updateCustomField.$) return Response.json({ errors: [{ message: 'not allowed' }] }, { status: 400 });
+      world.updatedFields.push(query.updateCustomField.$); return Response.json({});
+    }
     if (query.createFileTag) {
       const t = { id: `T-${query.createFileTag.$.name}`, name: query.createFileTag.$.name };
       world.tags.push(t); world.madeTags.push(query.createFileTag.$);
@@ -271,6 +274,30 @@ test('JobTread gets its vendor fields and file tags once, reusing what’s there
   assert.deepEqual(world.madeTags.map((t) => t.name), ['W-9', 'COI']);
   await jtSetup(env);
   assert.equal(world.made.length, 6, 'made once');
+});
+
+test('two reads at once set JobTread up once; Trades takes any number of trades; a doubled field is said', async () => {
+  const [a, b] = await Promise.all([jtSetup(env), jtSetup(env)]);
+  assert.equal(a, b);
+  assert.equal(world.made.filter((m) => m.name === 'Trades').length, 1, 'the company and the vendor read side by side make one Trades field, not two');
+  assert.equal(world.made.find((m) => m.name === 'Trades').maxValuesAllowed, null, 'any number of trades');
+  assert.equal(world.made.find((m) => m.name === 'Documents').maxValuesAllowed, 1, 'one Documents state');
+  assert.equal(a.fields.trades.multiple, true);
+  assert.deepEqual(a.dupes, []);
+  // A Trades field made for one answer is opened up; two fields named Documents are reported
+  world = { ...fresh(), fields: [{ id: 'F-TR', name: 'Trades', type: 'option', options: TRADES, maxValuesAllowed: 1 }, { id: 'F-D1', name: 'Documents', type: 'option', options: DOC_STATES }, { id: 'F-D2', name: 'Documents', type: 'option', options: DOC_STATES }] };
+  const c = await jtSetup(env, { force: true });
+  assert.deepEqual(world.updatedFields.find((u) => u.id === 'F-TR'), { id: 'F-TR', maxValuesAllowed: null });
+  assert.equal(c.fields.docs.id, 'F-D1', 'the first one is used');
+  assert.deepEqual(c.dupes, ['Documents']);
+  assert.deepEqual(c.single, []);
+  // JobTread refusing to open it up doesn't stop anything: it's said, kept, and not asked again every read
+  world = { ...fresh(), refuseWiden: true, fields: [{ id: 'F-TR', name: 'Trades', type: 'option', options: TRADES, maxValuesAllowed: 1 }] };
+  const d = await jtSetup(env, { force: true });
+  assert.equal(d.fields.trades.multiple, false);
+  assert.deepEqual(d.single, ['Trades']);
+  world.fields = [];
+  assert.deepEqual(await jtSetup(env), d, 'kept, without reading JobTread again');
 });
 
 test('a good certificate goes into JobTread, fills the fields and needs nothing else', async () => {
