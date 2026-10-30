@@ -22,18 +22,30 @@
  * listed for staff instead (loose): nobody to put on the job until it's named.
  *
  * A company on a page with no JobTread vendor account gets one, under its
- * Partners name, with its contacts. When JobTread has a vendor by a near name
- * ("WYP Construction" for Walk Your Plans) the sweep doesn't guess: staff say
- * "Same company" (kept for every job after, logos too) or "Make a new one".
+ * Partners name, once Partners has someone there with an email to put in it
+ * (until then it waits, as staff often make the vendor in JobTread first).
+ * When JobTread has a vendor by a near name ("WYP Construction" for Walk Your
+ * Plans), or one whose name holds every word of the other's ("MSI Surfaces"
+ * for Msi), the sweep doesn't guess: staff say "Same company" (kept for every
+ * job after, logos too) or "Make a new one".
+ *
+ * One company twice in JobTread (the same name, or every word of one name in
+ * the other) is put right with nobody asked: when one of the two accounts is
+ * empty (no contacts, documents, files, access or bills), it's archived and
+ * the partner it stood for moves to the other. One made in the last hour is
+ * left a while, in case someone is still setting it up. Two that both hold
+ * something, or a name that may be another organization ("Georgia Power
+ * Foundation" and Georgia Power), are listed for staff instead.
  *
  * Contacts sync both ways between Partners (D1 partner_contacts, private,
- * ./_sponsors.js) and the vendor account's contacts. Each side's list is
+ * ./_sponsors.js) and the vendor account's contacts (a vendor contact's
+ * Email and Phone are JobTread fields of their own, not a family's). Each side's list is
  * kept as of the last sync; the side that changed since wins, and when both
  * did, the newer change: the website's is timed, JobTread's isn't, so it
  * counts from when the sweep first sees it. A contact staff take off in
  * Partners comes off the JobTread account too; JobTread's extras past the
- * five Partners keeps are left alone. Logos stay in Partners: JobTread
- * accounts have no logo.
+ * five Partners keeps are left alone, and an email or phone JobTread has is
+ * never blanked. Logos stay in Partners: JobTread accounts have no logo.
  *
  * Nothing here emails anyone. Every 15 minutes from the live hub heartbeat,
  * at most 20 seconds of JobTread writes a run (the rest go next run).
@@ -46,9 +58,8 @@ import { loadAllKids, loadAllProjects, linkJobs, keyOf, SYNC_USER } from './_kid
 import { fetchOpenJobs, fetchAccess, readLinks, setLink, takeLock, freeLock, FREE_MAIL } from './_kid-partners.js';
 import { pave, grantJobAccess, revokeJobAccess } from './_jt-access.js';
 import { readContacts, saveContacts, isEmail } from './_sponsors.js';
-import { FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE } from './_applicant-comms.js';
 import { logAudit } from './_audit.js';
-import { roleMode, reconcileRoles, rolesView, OLD_VENDOR_ROLE } from './_partner-roles.js';
+import { roleMode, reconcileRoles, rolesView, readMemberships, OLD_VENDOR_ROLE } from './_partner-roles.js';
 import { nameKey, wordsKey, domainOf, isSocial, kidUsage, nearPartners } from '../../public/admin/partners-shared.js';
 
 export const VENDOR_ROLE = OLD_VENDOR_ROLE;
@@ -56,6 +67,8 @@ const RUN_EVERY_MS = 15 * 60 * 1000;
 const WRITE_BUDGET_MS = 20 * 1000;
 const MAX_GRANTS = 12;
 const MAX_NEW_ACCOUNTS = 5;
+const MAX_COMBINE = 10;
+const SETTING_UP_MS = 60 * 60 * 1000; // an account this new may still be being set up: never archived
 const MAX_PEOPLE = 5; // what Partners keeps per partner
 const ACCOUNTS_PAGE = 25; // 50 × 5 contacts passed JobTread's no-key size check, 100 didn't (Oct 28 2026)
 const MAX_ACCOUNT_PAGES = 40;
@@ -104,16 +117,41 @@ const notSameIds = (notSame, slug) => Object.keys(notSame?.[slug] || {});
 const personKey = (p) => (p.email ? p.email : `n:${nameKey(p.name)}`);
 
 // ── JobTread vendor accounts ─────────────────────────────────────────
-const CONTACT = {
-  id: {}, name: {}, title: {}, createdAt: {},
-  customFieldValues: { $: { size: 2, where: [['customField', 'id'], 'in', [FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE]] }, nodes: { createdAt: {}, value: {}, customField: { id: {} } } },
-};
-function contactOf(c) {
-  const v = (id) => (c.customFieldValues?.nodes || []).find((x) => x.customField?.id === id);
-  const email = lower(v(FIELD_CONTACT_EMAIL)?.value);
-  const at = [c.createdAt, ...(c.customFieldValues?.nodes || []).map((x) => x.createdAt)].filter(Boolean).sort().at(-1) || null;
-  return { id: c.id, name: String(c.name || '').trim(), title: String(c.title || '').trim(), email: isEmail(email) ? email : '', phone: String(v(FIELD_CONTACT_PHONE)?.value || '').trim(), at };
+/**
+ * A vendor contact's Email and Phone fields: { email, phone } (ids). They're
+ * JobTread fields of their own (target 'vendorContact'), apart from a
+ * family's (./_applicant-comms.js), which JobTread refuses on a vendor's
+ * contact; ./_vendors.js finds them the same way, and makes them when missing.
+ */
+let contactFieldIds = null;
+export const _resetContactFields = () => { contactFieldIds = null; };
+export async function vendorContactFields(grantKey, fetchImpl = fetch) {
+  if (contactFieldIds) return contactFieldIds;
+  const body = await pave(grantKey, {
+    organization: { $: { id: SOARD_ORG_ID }, customFields: { $: { size: 50, where: ['targetType', '=', 'vendorContact'] }, nodes: { id: {}, name: {}, type: {} } } },
+  }, fetchImpl);
+  const cf = body?.organization?.customFields?.nodes || [];
+  const pick = (type, re) => (cf.find((x) => x.type === type && re.test(x.name || '')) || cf.find((x) => x.type === type) || cf.find((x) => re.test(x.name || '')))?.id || null;
+  const ids = { email: pick('emailAddress', /e-?mail/i), phone: pick('phoneNumber', /phone|cell|mobile/i) };
+  if (ids.email) contactFieldIds = ids;
+  return ids;
 }
+const contactSel = (ids) => {
+  const fields = [ids.email, ids.phone].filter(Boolean);
+  return {
+    id: {}, name: {}, title: {}, createdAt: {},
+    ...(fields.length ? { customFieldValues: { $: { size: 2, where: [['customField', 'id'], 'in', fields] }, nodes: { createdAt: {}, value: {}, customField: { id: {} } } } } : {}),
+  };
+};
+function contactOf(c, ids) {
+  const vals = c.customFieldValues?.nodes || [];
+  const email = lower((vals.find((x) => x.customField?.id === ids.email) || vals.find((x) => isEmail(lower(x.value))))?.value);
+  const phone = vals.find((x) => x.customField?.id === ids.phone)?.value;
+  const at = [c.createdAt, ...vals.map((x) => x.createdAt)].filter(Boolean).sort().at(-1) || null;
+  return { id: c.id, name: String(c.name || '').trim(), title: String(c.title || '').trim(), email: isEmail(email) ? email : '', phone: String(phone || '').trim(), at };
+}
+// JobTread's phone fields take a US number as +1 and ten digits
+const e164 = (s) => { const d = String(s || '').replace(/\D/g, ''); const t = d.length === 11 && d[0] === '1' ? d.slice(1) : d; return /^[2-9]\d{9}$/.test(t) ? `+1${t}` : null; };
 
 /**
  * What JobTread's own vendor fields say (./_vendors.js makes and keeps
@@ -142,8 +180,9 @@ export function isTradeVendor(a, { order = false } = {}) {
   return !!(order || f.w9 || f.docs || (f.trades || []).some((t) => lower(t) !== 'materials and supplies'));
 }
 
-/** SOARD's JobTread vendors: [{ id, name, archived, primary, contacts: [{ id, name, title, email, phone, at }], facts }] */
-export async function fetchVendorAccounts(grantKey, fetchImpl = fetch) {
+/** SOARD's JobTread vendors: [{ id, name, archived, createdAt, primary, contacts: [{ id, name, title, email, phone, at }], facts }] */
+export async function fetchVendorAccounts(grantKey, fetchImpl = fetch, ids = null) {
+  ids ||= await vendorContactFields(grantKey, fetchImpl);
   const out = [];
   let page = null;
   for (let i = 0; i < MAX_ACCOUNT_PAGES; i++) {
@@ -154,7 +193,7 @@ export async function fetchVendorAccounts(grantKey, fetchImpl = fetch) {
           $: { size: ACCOUNTS_PAGE, where: ['type', '=', 'vendor'], ...(page ? { page } : {}) },
           nextPage: {},
           nodes: {
-            id: {}, name: {}, archivedAt: {}, primaryContact: { id: {} }, contacts: { $: { size: MAX_PEOPLE }, nodes: CONTACT },
+            id: {}, name: {}, archivedAt: {}, createdAt: {}, primaryContact: { id: {} }, contacts: { $: { size: MAX_PEOPLE }, nodes: contactSel(ids) },
             customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { name: {} } } },
           },
         },
@@ -164,8 +203,8 @@ export async function fetchVendorAccounts(grantKey, fetchImpl = fetch) {
     if (!conn) throw new Error('JobTread sent no vendor accounts');
     for (const a of conn.nodes || []) {
       out.push({
-        id: a.id, name: String(a.name || '').trim(), archived: !!a.archivedAt, primary: a.primaryContact?.id || null,
-        contacts: (a.contacts?.nodes || []).map(contactOf), facts: vendorFacts(a.customFieldValues?.nodes),
+        id: a.id, name: String(a.name || '').trim(), archived: !!a.archivedAt, createdAt: a.createdAt || null, primary: a.primaryContact?.id || null,
+        contacts: (a.contacts?.nodes || []).map((c) => contactOf(c, ids)), facts: vendorFacts(a.customFieldValues?.nodes),
       });
     }
     page = conn.nextPage || null;
@@ -174,39 +213,40 @@ export async function fetchVendorAccounts(grantKey, fetchImpl = fetch) {
   return out;
 }
 
-const jtFields = (p) => ({
-  ...(p.email ? { [FIELD_CONTACT_EMAIL]: p.email } : {}),
-  ...(p.phone && p.phone.replace(/\D/g, '').length >= 10 ? { [FIELD_CONTACT_PHONE]: p.phone } : {}),
+const jtFields = (p, ids) => ({
+  ...(p.email && ids.email ? { [ids.email]: p.email } : {}),
+  ...(e164(p.phone) && ids.phone ? { [ids.phone]: e164(p.phone) } : {}),
 });
 async function createAccount(grantKey, name, fetchImpl) {
   const body = await pave(grantKey, { createAccount: { $: { organizationId: SOARD_ORG_ID, name, type: 'vendor' }, createdAccount: { id: {}, name: {} } } }, fetchImpl);
   const a = body?.createAccount?.createdAccount;
   if (!a?.id) throw new Error('JobTread didn’t say it made the account');
-  return { id: a.id, name: a.name || name, archived: false, primary: null, contacts: [], facts: vendorFacts([]) };
+  return { id: a.id, name: a.name || name, archived: false, createdAt: new Date().toISOString(), primary: null, contacts: [], facts: vendorFacts([]) };
 }
-async function createContact(grantKey, accountId, p, fetchImpl) {
+async function createContact(grantKey, accountId, p, ids, fetchImpl) {
   const $ = { accountId, name: p.name || p.email, ...(p.title ? { title: p.title } : {}) };
-  const fields = jtFields(p);
+  const fields = jtFields(p, ids);
   let body;
   try {
     body = await pave(grantKey, { createContact: { $: { ...$, customFieldValues: fields }, createdContact: { id: {} } } }, fetchImpl);
   } catch (e) {
     // A phone JobTread won't take shouldn't keep the person out
-    if (!fields[FIELD_CONTACT_PHONE] || !/phone/i.test(e.message)) throw e;
-    delete fields[FIELD_CONTACT_PHONE];
+    if (!fields[ids.phone] || !/phone/i.test(e.message)) throw e;
+    delete fields[ids.phone];
     body = await pave(grantKey, { createContact: { $: { ...$, customFieldValues: fields }, createdContact: { id: {} } } }, fetchImpl);
   }
   const id = body?.createContact?.createdContact?.id;
   if (!id) throw new Error('JobTread didn’t say it made the contact');
   return id;
 }
-async function updateContact(grantKey, c, p, fetchImpl) {
+// An email or phone JobTread has is never blanked: the website's list may just not have it
+async function updateContact(grantKey, c, p, ids, fetchImpl) {
   const $ = { id: c.id };
   if (p.name && p.name !== c.name) $.name = p.name;
   if ((p.title || '') !== (c.title || '')) $.title = p.title || '';
   const fields = {};
-  if ((p.email || '') !== (c.email || '')) fields[FIELD_CONTACT_EMAIL] = p.email || '';
-  if (digits(p.phone) !== digits(c.phone)) fields[FIELD_CONTACT_PHONE] = digits(p.phone).length >= 10 ? p.phone : '';
+  if (p.email && p.email !== c.email && ids.email) fields[ids.email] = p.email;
+  if (e164(p.phone) && digits(p.phone) !== digits(c.phone) && ids.phone) fields[ids.phone] = e164(p.phone);
   if (Object.keys(fields).length) $.customFieldValues = fields;
   if (Object.keys($).length > 1) await pave(grantKey, { updateContact: { $ } }, fetchImpl);
 }
@@ -264,7 +304,7 @@ export function contactPlan({ site = [], siteAt = null, jt = [], seen = null }) 
  * new ones, take off only those the website had and dropped (`dropped`).
  * Returns the account's contacts after.
  */
-async function writeJtContacts(grantKey, account, target, dropped, fetchImpl) {
+async function writeJtContacts(grantKey, account, target, dropped, ids, fetchImpl) {
   const left = [...account.contacts];
   const after = [];
   const take = (p, test) => { const i = left.findIndex((c) => test(c, p)); return i < 0 ? null : left.splice(i, 1)[0]; };
@@ -272,8 +312,8 @@ async function writeJtContacts(grantKey, account, target, dropped, fetchImpl) {
   const pairs = target.map((p) => [p, p.email ? take(p, (c, x) => c.email && c.email === x.email) : null]);
   for (const pair of pairs) if (!pair[1]) pair[1] = take(pair[0], (c, x) => !!nameKey(c.name) && nameKey(c.name) === nameKey(x.name) && (!c.email || !x.email || c.email === x.email));
   for (const [p, c] of pairs) {
-    if (c) { await updateContact(grantKey, c, p, fetchImpl); after.push({ ...c, ...p }); }
-    else after.push({ id: await createContact(grantKey, account.id, p, fetchImpl), ...p, at: null });
+    if (c) { await updateContact(grantKey, c, p, ids, fetchImpl); after.push({ ...c, ...p, email: p.email || c.email, phone: p.phone || c.phone }); }
+    else after.push({ id: await createContact(grantKey, account.id, p, ids, fetchImpl), ...p, at: null });
   }
   for (const c of left) {
     if (dropped.some((d) => samePerson(tidy(d), c))) await deleteContact(grantKey, c.id, fetchImpl);
@@ -387,6 +427,139 @@ export function personFor(v, people = []) {
   return p ? { name: p.name || v.name, email: lower(p.email) } : null;
 }
 
+// ── One company twice in JobTread ────────────────────────────────────
+const MORE_FILLER = new Set(['a', 'an', 'incorporated', 'corporation', 'limited', 'llp', 'lp', 'pllc', 'pc']);
+const wordsOf = (name) => wordsKey(name).split(' ').filter((w) => w && !MORE_FILLER.has(w));
+const within = (x, y) => {
+  if (!x.length || !y.length) return false;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.every((w) => long.includes(w));
+};
+/** Every word of one name is in the other ("Msi" and "MSI Surfaces"), the/inc/llc/co/company… aside */
+export const sameWords = (a, b) => within(wordsOf(a), wordsOf(b));
+// A word that makes another organization of the same name: Georgia Power Foundation isn't Georgia Power
+const KIND_WORDS = new Set(['foundation', 'fund', 'family', 'trust', 'church', 'ministry', 'ministries', 'charity', 'charities', 'association', 'society',
+  'club', 'school', 'academy', 'university', 'college', 'institute', 'league', 'auxiliary', 'chapter']);
+const otherKind = (x, y) => [...x.filter((w) => !y.includes(w)), ...y.filter((w) => !x.includes(w))].some((w) => KIND_WORDS.has(w));
+export const twinKey = (a, b) => [a, b].sort().join(' ');
+
+/**
+ * Pairs of live JobTread vendor accounts that look like one company: the same
+ * name, or every word of one name in the other. Never two Partners has as two
+ * partners, one staff said isn't the partner the other is ("Not the same"),
+ * or two staff said aren't one company (notTwins).
+ * → [{ a, b, same (the same name), check (a word that may make it another organization) }]
+ */
+export function twinAccounts(accounts, { pairs = new Map(), notSame = {}, notTwins = {} } = {}) {
+  const partnerOf = new Map([...pairs].map(([slug, a]) => [a.id, slug]));
+  const live = accounts.filter((a) => !a.archived).map((a) => ({ a, key: nameKey(a.name), wk: wordsKey(a.name), w: wordsOf(a.name) }));
+  const out = [];
+  for (let i = 0; i < live.length; i++) {
+    for (let j = i + 1; j < live.length; j++) {
+      const [x, y] = [live[i], live[j]];
+      const same = (!!x.key && x.key === y.key) || (!!x.wk && x.wk === y.wk);
+      if (!same && !within(x.w, y.w)) continue;
+      if (notTwins[twinKey(x.a.id, y.a.id)]) continue;
+      const [px, py] = [partnerOf.get(x.a.id), partnerOf.get(y.a.id)];
+      if (px && py && px !== py) continue;
+      if ((px && notSameIds(notSame, px).includes(y.a.id)) || (py && notSameIds(notSame, py).includes(x.a.id))) continue;
+      out.push({ a: x.a, b: y.a, same, check: !same && otherKind(x.w, y.w) });
+    }
+  }
+  return out;
+}
+
+/** What accounts hold in JobTread: Map(id → { contacts, documents, files, aces }) */
+async function accountHolds(grantKey, ids, fetchImpl) {
+  const out = new Map();
+  for (let i = 0; i < ids.length; i += 25) {
+    const q = Object.fromEntries(ids.slice(i, i + 25).map((id, k) => [`a${k}`, {
+      _: 'account', $: { id }, id: {}, contacts: { count: {} }, documents: { count: {} }, files: { count: {} }, aces: { count: {} },
+    }]));
+    const body = await pave(grantKey, q, fetchImpl);
+    for (const a of Object.values(body || {})) {
+      if (a?.id) out.set(a.id, { contacts: a.contacts?.count || 0, documents: a.documents?.count || 0, files: a.files?.count || 0, aces: a.aces?.count || 0 });
+    }
+  }
+  return out;
+}
+export const isEmptyAccount = (h) => !!h && !h.contacts && !h.documents && !h.files && !h.aces && !h.logins && !h.bills;
+
+/**
+ * What to do with twins: { combine: [{ keep, drop, partner }], ask: [{ a, b, partner, why, canCombine }] }.
+ * holds: Map(id → what it holds, logins and bills too). An empty account goes and the other keeps
+ * its partner; both empty, the one no partner goes by goes, else the one the site made, else the
+ * newer. One made in the last hour waits. Asked (why): both hold something ('full'), a word that
+ * may make it another organization ('check'), or an empty partner account with two to go to ('which').
+ */
+export function twinPlan(twins, { holds, pairs = new Map(), made = new Set(), now = Date.now() }) {
+  const partnerOf = new Map([...pairs].map(([slug, a]) => [a.id, slug]));
+  const empty = (a) => isEmptyAccount(holds.get(a.id));
+  const settingUp = (a) => now - (Date.parse(a.createdAt || 0) || 0) < SETTING_UP_MS;
+  const age = (a) => Date.parse(a.createdAt || 0) || 0;
+  const ask = new Map();
+  const put = (t, why) => ask.set(twinKey(t.a.id, t.b.id), { a: t.a, b: t.b, partner: partnerOf.get(t.a.id) || partnerOf.get(t.b.id) || null, why, canCombine: empty(t.a) || empty(t.b) });
+  const byDrop = new Map();
+  for (const t of twins) {
+    const [ea, eb] = [empty(t.a), empty(t.b)];
+    if (!ea && !eb) { put(t, 'full'); continue; }
+    if (t.check) { put(t, 'check'); continue; }
+    let drop = ea ? t.a : t.b;
+    if (ea && eb) {
+      const [pa, pb] = [partnerOf.has(t.a.id), partnerOf.has(t.b.id)];
+      const [ma, mb] = [made.has(t.a.id), made.has(t.b.id)];
+      drop = pa !== pb ? (pa ? t.b : t.a) : ma !== mb ? (ma ? t.a : t.b) : age(t.a) >= age(t.b) ? t.a : t.b;
+    }
+    const keep = drop === t.a ? t.b : t.a;
+    const list = byDrop.get(drop.id) || { drop, keeps: [] };
+    list.keeps.push({ keep, t });
+    byDrop.set(drop.id, list);
+  }
+  const combine = [];
+  const gone = new Set();
+  // Drops whose twin keeps something first, so a chain of empty ones ends on the full one
+  const order = [...byDrop.values()].sort((x, y) => Number(x.keeps.every((k) => empty(k.keep))) - Number(y.keeps.every((k) => empty(k.keep))));
+  for (const { drop, keeps } of order) {
+    if (settingUp(drop)) continue;
+    const open = keeps.filter((k) => !gone.has(k.keep.id));
+    if (!open.length) continue;
+    const partner = partnerOf.get(drop.id) || null;
+    let pick = open.length === 1 ? open[0] : null;
+    if (!pick && partner) {
+      const same = open.filter((k) => k.t.same);
+      if (same.length === 1) pick = same[0];
+      else { for (const k of open) put(k.t, 'which'); continue; }
+    }
+    pick ||= open[0];
+    gone.add(drop.id);
+    combine.push({ keep: pick.keep, drop, partner });
+  }
+  for (const c of combine) ask.delete(twinKey(c.keep.id, c.drop.id));
+  return { combine, ask: [...ask.values()].filter((q) => !gone.has(q.a.id) && !gone.has(q.b.id)) };
+}
+
+const archiveAccount = (grantKey, id, archive, fetchImpl) => pave(grantKey, { updateAccount: { $: { id, archive, notify: false } } }, fetchImpl);
+
+/**
+ * One company twice: `drop` (empty) is archived in JobTread and the partner it
+ * stood for moves to `keep`. Kept in 'combined', so "Not the same" takes it back.
+ */
+async function combineTwin(env, { keep, drop, partner }, { accountRows = null, fetchImpl = fetch, at, by }) {
+  const { DB } = env;
+  await archiveAccount(env.JOBTREAD_GRANT_KEY, drop.id, true, fetchImpl);
+  drop.archived = true;
+  if (partner) {
+    const r = { partner, account_id: keep.id, account_name: keep.name, how: 'name' };
+    await putAccountRow(DB, r);
+    accountRows?.set(partner, r);
+  }
+  const combined = await readKey(DB, 'combined');
+  combined[twinKey(keep.id, drop.id)] = { keep: { id: keep.id, name: keep.name }, drop: { id: drop.id, name: drop.name }, partner: partner || null, at, by };
+  const newest = Object.entries(combined).sort(([, x], [, y]) => String(y.at).localeCompare(String(x.at))).slice(0, 60);
+  await writeKey(DB, 'combined', Object.fromEntries(newest));
+}
+const holdsOut = (a, h) => ({ id: a.id, name: a.name, holds: { contacts: h?.contacts || 0, documents: h?.documents || 0, files: h?.files || 0, access: (h?.aces || 0) + (h?.logins || 0), bills: h?.bills || 0 } });
+
 // ── The sweep ────────────────────────────────────────────────────────
 async function readPartners(DB) {
   const rows = (await DB.prepare('SELECT slug, data FROM partners').all()).results || [];
@@ -443,16 +616,18 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
   const key = env.JOBTREAD_GRANT_KEY;
   const at = iso(now);
   const started = Date.now();
-  const report = { added: [], waiting: 0, made: [], contacts: [], more: false, problems: [] };
+  const report = { added: [], waiting: 0, made: [], combined: [], contacts: [], more: false, problems: [] };
   if (!DB || !key) return report;
   await ensureSchema(DB);
   if (!(await takeLock(DB, !!only, LOCK))) return { ...report, busy: true };
   const room = () => Date.now() - started < WRITE_BUDGET_MS;
   try {
-    const [jobs, kids, projects, partners, contactsAll, links, accountRows, rows, { byJob: bills, orders }, accounts, setAside, newOk, notSame, mode] = await Promise.all([
+    const fields = await vendorContactFields(key, fetchImpl);
+    if (!fields.email) report.problems.push('JobTread has no Email field for vendor contacts, so their emails can’t be read');
+    const [jobs, kids, projects, partners, contactsAll, links, accountRows, rows, { byJob: bills, orders }, accounts, setAside, newOk, notSame, notTwins, mode] = await Promise.all([
       fetchOpenJobs(key, fetchImpl), loadAllKids(DB), loadAllProjects(DB), readPartners(DB), readContacts(DB), readLinks(DB),
-      readAccountRows(DB), readRows(DB), billsByJob(DB), fetchVendorAccounts(key, fetchImpl), readKey(DB, 'set-aside'), readKey(DB, 'new-ok'), readKey(DB, 'not-same'),
-      roleMode(env, { fetchImpl }),
+      readAccountRows(DB), readRows(DB), billsByJob(DB), fetchVendorAccounts(key, fetchImpl, fields), readKey(DB, 'set-aside'), readKey(DB, 'new-ok'), readKey(DB, 'not-same'),
+      readKey(DB, 'not-twins'), roleMode(env, { fetchImpl }),
     ]);
     const trade = (a) => isTradeVendor(a, { order: orders.has(a?.id) });
     const records = [...kids, ...projects];
@@ -464,8 +639,51 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       await DB.prepare('DELETE FROM vendor_accounts WHERE partner = ? AND account_id = ?').bind(slug, r.account_id).run();
       accountRows.delete(slug);
     }
-    const saved = Object.fromEntries([...accountRows].map(([slug, r]) => [slug, r.account_id]));
-    const pairs = pairAccounts(partners, accounts, { saved, links, notSame });
+    const savedPairs = () => Object.fromEntries([...accountRows].map(([slug, r]) => [slug, r.account_id]));
+    let pairs = pairAccounts(partners, accounts, { saved: savedPairs(), links, notSame });
+
+    // One company twice in JobTread: an empty account goes, and the partner it stood for moves to the other
+    if (!only) {
+      const twins = twinAccounts(accounts, { pairs, notSame, notTwins });
+      // A partner's website another company's emails don't match: two companies, maybe, so staff say
+      const partnerOf = new Map([...pairs].map(([slug, a]) => [a.id, slug]));
+      for (const t of twins) {
+        const slug = partnerOf.get(t.a.id) || partnerOf.get(t.b.id);
+        const site = slug && bySlug.get(slug)?.website && !isSocial(bySlug.get(slug).website) ? domainOf(bySlug.get(slug).website) : '';
+        const other = partnerOf.get(t.a.id) ? t.b : t.a;
+        const mail = [...new Set(other.contacts.map((c) => domainOfEmail(c.email)).filter((d) => d && !FREE_MAIL.has(d)))];
+        if (site && mail.length && !mail.some((d) => sameSite(d, site))) t.check = true;
+      }
+      try {
+        const holds = twins.length ? await accountHolds(key, [...new Set(twins.flatMap((t) => [t.a.id, t.b.id]))], fetchImpl) : new Map();
+        const billed = new Set([...orders, ...[...bills.values()].flat()]);
+        for (const [id, h] of holds) h.bills = billed.has(id) ? 1 : 0;
+        // Logins under an account, read only when one may go
+        if ([...holds.values()].some(isEmptyAccount)) {
+          const logins = new Map();
+          for (const m of await readMemberships(key, fetchImpl)) if (m.account?.id) logins.set(m.account.id, (logins.get(m.account.id) || 0) + 1);
+          for (const [id, h] of holds) h.logins = logins.get(id) || 0;
+        }
+        const made = new Set([...accountRows.values()].filter((r) => r.how === 'made').map((r) => r.account_id));
+        const plan = twinPlan(twins, { holds, pairs, made, now });
+        for (const c of plan.combine) {
+          if (report.combined.length >= MAX_COMBINE || !room()) { report.more = true; break; }
+          try {
+            await combineTwin(env, c, { accountRows, fetchImpl, at, by: SYNC_USER });
+            report.combined.push({ kept: c.keep.name, archived: c.drop.name, partner: c.partner ? bySlug.get(c.partner)?.name || c.partner : null });
+          } catch (e) { report.problems.push(`Couldn’t archive ${c.drop.name} in JobTread: ${e.message}`); }
+        }
+        await writeKey(DB, 'twins', plan.ask.map((q) => ({
+          key: twinKey(q.a.id, q.b.id), partner: q.partner, name: q.partner ? bySlug.get(q.partner)?.name || null : null, why: q.why, canCombine: q.canCombine,
+          a: holdsOut(q.a, holds.get(q.a.id)), b: holdsOut(q.b, holds.get(q.b.id)),
+        })));
+      } catch (e) { report.problems.push(`Couldn’t look for one company twice in JobTread: ${e.message}`); }
+      if (report.combined.length) {
+        await logAudit(DB, { userEmail: SYNC_USER, action: 'updated', entityType: 'jobtread-vendor', entityName: 'One company twice in JobTread',
+          changes: { archived: report.combined.map((c) => `${c.archived} (the same as ${c.kept})`) } });
+        pairs = pairAccounts(partners, accounts, { saved: savedPairs(), links, notSame });
+      }
+    }
     const live = accounts.filter((a) => !a.archived);
 
     // Pairs settled this run are kept, so a renamed account stays paired
@@ -493,21 +711,27 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       for (const name of new Set(names)) loose.push({ name, record: k, page: pageName(rec) });
     }
 
-    // A company on a page with no JobTread vendor account gets one; a near name waits for staff
+    // A company on a page with no JobTread vendor account gets one, once there's someone to put in it; a near name waits for staff
     const needAccounts = [...new Map(want.filter((w) => w.v.partner && !w.v.account && w.v.why.has('page')).map((w) => [w.v.partner, w.v])).values()];
     const near = {};
     const byId = new Map(accounts.map((a) => [a.id, a]));
+    const paired = new Set([...pairs.values()].map((a) => a.id));
     for (const v of needAccounts) {
       const not = notSameIds(notSame, v.partner);
       const was = not.map((id) => ({ id, name: byId.get(id)?.name || notSame[v.partner][id]?.name || '' })).filter((x) => x.name);
-      // One archived under the same name is a choice for staff too, never a second account by itself
+      const open = live.filter((a) => !not.includes(a.id) && !paired.has(a.id));
+      // Every word of one name in the other ("MSI Surfaces" for Msi), then one archived under the same name: staff choose, never a second account by itself
+      const holding = open.filter((a) => sameWords(a.name, v.name)).map((a) => ({ partner: { slug: a.id, name: a.name }, why: 'Has every word of the name' }));
       const archived = accounts.filter((a) => a.archived && !not.includes(a.id) && sameName(a.name, v.name)).map((a) => ({ partner: { slug: a.id, name: `${a.name} (archived)` }, why: 'Archived in JobTread' }));
-      const close = [...archived, ...nearPartners(v.name, live.filter((a) => !not.includes(a.id)).map((a) => ({ slug: a.id, name: a.name })), { min: 0.6, max: 2 })].slice(0, 2);
+      const close = [...new Map([...holding, ...archived, ...nearPartners(v.name, open.map((a) => ({ slug: a.id, name: a.name })), { min: 0.6, max: 2 })]
+        .map((c) => [c.partner.slug, c])).values()].slice(0, 2);
       // Staff said the match was wrong: they pick another near name or a new vendor, never the sweep
       if ((close.length || was.length) && !newOk[v.partner]) {
         near[v.partner] = { name: v.name, near: close.map((c) => ({ id: c.partner.slug, name: c.partner.name, why: c.why })), ...(was.length ? { was } : {}) };
         continue;
       }
+      // An empty account helps nobody: it's made once Partners has someone there with an email
+      if (!(contactsAll[v.partner] || []).some((p) => isEmail(p.email) && forJobs(p))) continue;
       if (report.made.length >= MAX_NEW_ACCOUNTS || !room()) { report.more = true; continue; }
       try {
         const a = await createAccount(key, bySlug.get(v.partner)?.name || v.name, fetchImpl);
@@ -580,17 +804,24 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
     try { for (const r of (await DB.prepare('SELECT partner, updated_at FROM partner_contacts').all()).results || []) siteTimes.set(r.partner, r.updated_at); } catch { /* no contacts saved yet */ }
     const copied = await readKey(DB, 'copied');
     let copiedChanged = false;
+    // Until Oct 30 2026 the sweep read a family's email field on vendor contacts, so it never saw their
+    // emails: each partner's two lists are put together afresh once (nobody dropped), then kept as before
+    const reread = await readKey(DB, 'contact-fields');
+    let rereadChanged = false;
     for (const [slug, a] of pairs) {
       if (only && nameKey(bySlug.get(slug)?.name) !== only) continue;
       const r = accountRows.get(slug);
       const site = contactsAll[slug] || [];
       const siteAt = siteTimes.get(slug) || null;
-      const seen = r?.jt_seen && r?.site_seen ? { site: r.site_seen, jt: r.jt_seen, at: r.synced_at } : null;
+      const fresh = !!fields.email && !reread[slug];
+      const seen = !fresh && r?.jt_seen && r?.site_seen && r?.account_id === a.id ? { site: r.site_seen, jt: r.jt_seen, at: r.synced_at } : null;
+      const done = () => { if (fresh) { reread[slug] = at; rereadChanged = true; } };
       // A trade partner's insurance agent and billing contact stay in JobTread only
       const jtPeople = a.contacts.filter(forJobs);
       const plan = contactPlan({ site, siteAt, jt: jtPeople, seen });
       if (!plan.toSite && !plan.toJt) {
         if (!seen && (site.length || jtPeople.length)) await putAccountRow(DB, { ...r, jt_seen: jtPeople.map(tidy), site_seen: site.map(tidy), synced_at: at });
+        done();
         continue;
       }
       if (!room()) { report.more = true; continue; }
@@ -599,7 +830,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
         let jtAfter = a.contacts;
         let siteAfter = site;
         if (plan.toJt) {
-          jtAfter = await writeJtContacts(key, a, plan.toJt, (seen?.site || []).filter((d) => !plan.toJt.some((p) => samePerson(tidy(p), tidy(d)))), fetchImpl);
+          jtAfter = await writeJtContacts(key, a, plan.toJt, (seen?.site || []).filter((d) => !plan.toJt.some((p) => samePerson(tidy(p), tidy(d)))), fields, fetchImpl);
           a.contacts = jtAfter;
         }
         if (plan.toSite) siteAfter = await saveContacts(DB, slug, plan.toSite, { by: SYNC_USER, source: 'jobtread', now });
@@ -613,12 +844,14 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
         }
         await putAccountRow(DB, { ...r, jt_seen: jtAfter.filter(forJobs).map(tidy), site_seen: siteAfter.map(tidy), synced_at: at });
         contactsAll[slug] = siteAfter;
+        done();
         const to = [plan.toJt && 'JobTread', plan.toSite && 'Partners'].filter(Boolean).join(' and ');
         report.contacts.push({ partner: slug, name: bySlug.get(slug)?.name || a.name, to, people: (plan.toSite || plan.toJt).map((p) => p.name || 'unnamed') });
       } catch (e) { report.problems.push(`Couldn’t keep ${bySlug.get(slug)?.name || a.name}’s contacts in step: ${e.message}`); }
     }
 
     if (copiedChanged) await writeKey(DB, 'copied', copied);
+    if (rereadChanged) await writeKey(DB, 'contact-fields', reread);
     // Names only in the log: emails and phones stay in partner_contacts
     if (report.contacts.length) {
       await logAudit(DB, { userEmail: SYNC_USER, action: 'updated', entityType: 'partner-contacts', entityName: 'Vendor contacts', changes: { synced: report.contacts.map((c) => `${c.name} → ${c.to}: ${c.people.join(', ')}`) } });
@@ -644,7 +877,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       await writeKey(DB, 'loose', loose);
       await patchKey(DB, 'state', {
         lastRunAt: at, lastError: report.problems.length ? { at, error: report.problems.slice(0, 3).join(' · ').slice(0, 300) } : null,
-        lastRun: { at, added: report.added.length, made: report.made.length, contacts: report.contacts.length, waiting: waitingNow, near: Object.keys(near).length, more: report.more,
+        lastRun: { at, added: report.added.length, made: report.made.length, combined: report.combined.length, contacts: report.contacts.length, waiting: waitingNow, near: Object.keys(near).length, more: report.more,
           ...(report.roles ? { roles: report.roles } : {}) },
       });
     }
@@ -680,14 +913,16 @@ export async function maybeSyncVendorAccess(env, { fetchImpl = fetch, now = Date
  * near, was? }], added (newest 30), setAside, matched: [{ partner, name, account,
  * accountName, how }] (named differently first), paired, lastRunAt, lastRun, lastError,
  * loose: [{ name, record, page }] (logos nobody goes by), billedOnly: [{ partner, name }],
+ * twins: [{ key, partner, name, why, canCombine, a, b }] (one company twice in JobTread, for staff),
+ * combined: [{ key, keep, drop, partner, name, at }] (the empty twin the site archived, newest 30),
  * roles (./_partner-roles.js rolesView) }
  */
 export async function adminView(DB) {
   await ensureSchema(DB);
-  const [rows, st, near, setAside, accountRows, partners, loose, roles] = await Promise.all([
+  const [rows, st, near, setAside, accountRows, partners, loose, twins, combined, roles] = await Promise.all([
     DB.prepare('SELECT * FROM vendor_access ORDER BY updated_at DESC').all().then((r) => r.results || []),
     readKey(DB, 'state'), readKey(DB, 'near'), readKey(DB, 'set-aside'), readAccountRows(DB), readPartners(DB), readKey(DB, 'loose'),
-    rolesView(DB).catch(() => null),
+    readKey(DB, 'twins'), readKey(DB, 'combined'), rolesView(DB).catch(() => null),
   ]);
   // Names and ids only: the contact snapshots stay here
   const nameOf = new Map(partners.map((p) => [p.slug, p.name]));
@@ -717,6 +952,9 @@ export async function adminView(DB) {
     setAside: Object.entries(setAside).map(([company, s]) => ({ company, ...s })).sort((a, b) => String(a.name).localeCompare(String(b.name))),
     matched, paired: matched.length, lastRunAt: st.lastRunAt || null, lastRun: st.lastRun || null, lastError: st.lastError || null,
     loose: Array.isArray(loose) ? loose : [], billedOnly, roles,
+    twins: Array.isArray(twins) ? twins : [],
+    combined: Object.entries(combined).map(([key, c]) => ({ key, ...c, name: c.partner ? nameOf.get(c.partner) || null : null }))
+      .sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30),
   };
 }
 
@@ -761,6 +999,59 @@ export async function settleAccount(DB, { partner, account = null, makeNew = fal
   delete near[partner];
   await writeKey(DB, 'near', near);
   return { partner, name: n.name };
+}
+
+/**
+ * Staff on two JobTread accounts listed as one company (a, b: their ids).
+ * same: the empty one is archived and the partner it stood for moves to the
+ * other. Not same: they're never put together again, and when the site had
+ * archived one, it's back, with its partner. → { combined } | { notSame, back }
+ */
+export async function settleTwins(env, { a, b, same }, by = null, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  const key = env.JOBTREAD_GRANT_KEY;
+  await ensureSchema(DB);
+  const k = twinKey(a, b);
+  const at = iso(now);
+  const [stored, combined, accountRows] = await Promise.all([readKey(DB, 'twins'), readKey(DB, 'combined'), readAccountRows(DB)]);
+  const list = Array.isArray(stored) ? stored : [];
+  const t = list.find((x) => x.key === k);
+  const done = combined[k];
+  if (!t && !done) throw new Error('Those two aren’t listed any more');
+  const partnerOn = (id) => [...accountRows.values()].find((r) => r.account_id === id)?.partner || null;
+  if (!same) {
+    await patchKey(DB, 'not-twins', { [k]: { names: done ? [done.keep.name, done.drop.name] : [t.a.name, t.b.name], by, at } });
+    if (done) {
+      if (!key) throw new Error('JobTread isn’t connected');
+      // The site archived one: it's back in JobTread, with the partner it stood for
+      await archiveAccount(key, done.drop.id, false, fetchImpl);
+      if (done.partner && accountRows.get(done.partner)?.account_id === done.keep.id) {
+        await putAccountRow(DB, { partner: done.partner, account_id: done.drop.id, account_name: done.drop.name, how: 'linked' });
+      }
+      delete combined[k];
+      await writeKey(DB, 'combined', combined);
+    }
+    await writeKey(DB, 'twins', list.filter((x) => x.key !== k));
+    return { notSame: true, back: done || null };
+  }
+  if (!t) throw new Error('Those two are one already');
+  if (!key) throw new Error('JobTread isn’t connected');
+  // What each holds now, not as of the last check
+  const holds = await accountHolds(key, [t.a.id, t.b.id], fetchImpl);
+  const { byJob, orders } = await billsByJob(DB);
+  const billed = new Set([...orders, ...[...byJob.values()].flat()]);
+  const logins = new Map();
+  for (const m of await readMemberships(key, fetchImpl)) if (m.account?.id) logins.set(m.account.id, (logins.get(m.account.id) || 0) + 1);
+  for (const [id, h] of holds) Object.assign(h, { bills: billed.has(id) ? 1 : 0, logins: logins.get(id) || 0 });
+  const [ea, eb] = [isEmptyAccount(holds.get(t.a.id)), isEmptyAccount(holds.get(t.b.id))];
+  if (!ea && !eb) throw new Error(`${t.a.name} and ${t.b.name} both have something in them in JobTread now, so put them together there`);
+  // Both empty: the one a partner goes by stays
+  const dropA = ea && (!eb || !partnerOn(t.a.id));
+  const [drop, keep] = dropA ? [t.a, t.b] : [t.b, t.a];
+  const partner = partnerOn(drop.id);
+  await combineTwin(env, { keep, drop, partner }, { fetchImpl, at, by });
+  await writeKey(DB, 'twins', list.filter((x) => x.key !== k));
+  return { combined: { kept: keep.name, archived: drop.name, partner } };
 }
 
 /** Who's on a job, with each entry's id (to take one off) */

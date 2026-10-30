@@ -12744,14 +12744,15 @@
           </button>
           ${(() => {
             const unplaced = access?.roles?.unplaced || [];
-            const n = access && !access.failed ? access.waiting.length + access.near.length + unplaced.length : 0;
+            const twins = access?.twins || [];
+            const n = access && !access.failed ? access.waiting.length + access.near.length + unplaced.length + twins.length : 0;
             return html`<button type="button" class=${`ppl-ready__tile ppl-ready__tile--review pt-ready__access${n ? ' is-waiting' : ''}`}
               onClick=${() => { setDialog({ kind: 'access' }); readAccess(); }} title="Each open job’s vendors on its JobTread job access, and their contacts kept the same in Partners and JobTread">
               <span class="ppl-ready__label">JobTread access</span>
               <span class="ppl-ready__value">${access?.failed ? '?' : access ? n : html`<span class="spinner spinner-14" />`}</span>
               <span class="ppl-ready__sub">${!access ? 'Checking' : access.failed ? 'Couldn’t check' : access.near.length ? `${access.near[0].name}: ${access.near[0].near[0]?.name || 'a near name'} in JobTread?`
                 : access.waiting.length ? `${access.waiting[0].name}: ${access.waiting[0].reason === 'error' ? 'JobTread refused' : 'no email'}`
-                : unplaced.length ? `${unplaced[0].name}: which company?` : 'Every vendor is on their jobs'}</span>
+                : unplaced.length ? `${unplaced[0].name}: which company?` : twins.length ? `${twins[0].a.name}: in JobTread twice?` : 'Every vendor is on their jobs'}</span>
             </button>`;
           })()}
         </div>
@@ -13247,6 +13248,9 @@
     const ptJobUrl = (id) => `https://app.jobtread.com/jobs/${encodeURIComponent(id || '')}`;
     const ptVendorUrl = (id) => `https://app.jobtread.com/vendors/${encodeURIComponent(id || '')}`;
     const PT_MATCH_HOW = { name: 'matched by name', linked: 'staff said same company', made: 'made by the site' };
+    /** What a JobTread account holds: “2 contacts and 3 documents”, or “nothing” */
+    const ptHolds = (h = {}) => kdNames([h.contacts && kdPlural(h.contacts, 'contact'), h.documents && kdPlural(h.documents, 'document'), h.files && kdPlural(h.files, 'file'),
+      h.access && `${kdPlural(h.access, 'person', 'people')} with access`, h.bills && !h.documents && 'bills on jobs'].filter(Boolean)) || 'nothing';
     /** “a Champion”, “an Ally”: a JobTread role with its article */
     const ptA = (role) => `${/^[aeiou]/i.test(role) ? 'an' : 'a'} ${role}`;
     const ptRecordHash = (record) => `#kids/${String(record || '').split('/').map(encodeURIComponent).join('/')}`;
@@ -13314,6 +13318,9 @@
       const rename = (m, back = null) => act(`r-${m.partner}`, { rename: { partner: m.partner, ...(back ? { name: back } : {}) } }, (r) => addToast(
         back ? `${m.name} is “${r.renamed.to}” in JobTread again` : `“${r.renamed.from}” is called “${r.renamed.to}” in JobTread now`,
         'success', back ? null : { label: 'Undo', fn: () => rename(m, r.renamed.from) }));
+      // One company twice in JobTread: Same company archives the empty one; Not the same keeps them apart (and brings back one the site archived)
+      const twin = (a, b, same, label) => act(`t-${[a, b].sort().join(' ')}`, { twins: { a, b, same } }, (r) => addToast(
+        r.twins?.combined ? `“${r.twins.combined.archived}” is archived in JobTread, and “${r.twins.combined.kept}” is the one` : r.twins?.back ? `“${r.twins.back.drop.name}” is back in JobTread${label ? `, as ${label}` : ''}` : 'They stay two companies', 'info'));
       // Someone the roles sweep can't place: Trade Partner, or leave their role (Undo takes the say back)
       const pickRole = (u, how, undo = false) => act(`p-${u.membership}`, { rolePick: { membership: u.membership, name: u.name, ...(undo ? {} : how === 'trade' ? { role: 'Trade Partner' } : { keep: true }) } },
         () => addToast(undo ? `${u.name} is back on the list` : how === 'trade' ? `${u.name} is a Trade Partner in JobTread${view.roles?.on ? ' from the next check' : ' once roles follow levels'}` : `${u.name} keeps their ${u.role} role`,
@@ -13323,7 +13330,7 @@
       if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
         <p class="kd-bad pt-wait__error">Couldn’t load the list: ${view.failed}</p>
         <button type="button" class="btn btn-sm" onClick=${() => onChange(null)} data-autofocus>Try again</button><//>`;
-      const { waiting = [], near = [], added = [], setAside: aside = [], matched = [], loose = [], billedOnly = [] } = view;
+      const { waiting = [], near = [], added = [], setAside: aside = [], matched = [], loose = [], billedOnly = [], twins = [], combined = [] } = view;
       const roles = view.roles || { on: false, pending: [], unplaced: [], recent: [] };
       const toggle = (k) => setShowRoles((v) => (v === k ? null : k));
       const PT_ROLE_WHY = { level: 'their level', trade: 'SOARD pays them', staff: 'staff said', 'set back': 'set back: changed in JobTread' };
@@ -13391,6 +13398,27 @@
             </span>
           </li>`)}</ul>
         </section>` : null}
+        ${twins.length ? html`<section class="pt-access pt-access__twins" aria-labelledby="pt-access-twins">
+          <h3 id="pt-access-twins">One company twice in JobTread?</h3>
+          <ul class="pt-loose pt-wait">${twins.map((t) => {
+            const [e, o] = t.a.holds && ptHolds(t.a.holds) === 'nothing' ? [t.a, t.b] : [t.b, t.a];
+            const link = (x) => html`<a href=${ptVendorUrl(x.id)} target="_blank" rel="noopener">${x.name}</a>`;
+            const k = `t-${[t.a.id, t.b.id].sort().join(' ')}`;
+            return html`<li key=${t.key} class="pt-loose__item">
+              <span class="pt-loose__text">
+                <strong>${link(t.a)} and ${link(t.b)}</strong>
+                <small>${t.why === 'full' ? `“${t.a.name}” has ${ptHolds(t.a.holds)}, and “${t.b.name}” has ${ptHolds(t.b.holds)}. If they’re one company, move what’s in one to the other in JobTread and archive it there.`
+                  : t.why === 'which' ? `“${e.name}” has nothing in it, and JobTread has more than one company it could be.`
+                  : `“${e.name}” has nothing in it and “${o.name}” has ${ptHolds(o.holds)}, but the names could be two organizations.`}</small>
+                <span class="pt-loose__acts">
+                  ${t.canCombine ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${!!busy} onClick=${() => twin(t.a.id, t.b.id, true)}>
+                    ${busy === k ? html`<span class="spinner spinner-14" />` : null}Same company</button>` : null}
+                  <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => twin(t.a.id, t.b.id, false)}>Not the same</button>
+                </span>
+              </span>
+            </li>`;
+          })}</ul>
+        </section>` : null}
         ${!near.length && !waiting.length ? html`<p class="pt-wait__none">${pplIcon.check} Every vendor on an open job is on it in JobTread${aside.length ? ', or isn’t needed there' : ''}.</p>` : null}
         ${aside.length ? html`<div class="pt-loose__dismissed">
           <button type="button" class="ppl-link" aria-expanded=${showAside} onClick=${() => setShowAside((v) => !v)}>
@@ -13439,6 +13467,15 @@
           ${showRoles === 'loose' ? html`<p class="form-hint">Nobody can go on the job for these until they’re named: give the logo its partner on the page, or add the company in Partners.</p>
             <ul>${loose.map((l, i) => html`<li key=${`${i}-${l.record}`}><span>${l.name} <small>on ${l.page}</small></span>
               <a class="btn btn-ghost btn-sm" href=${ptRecordHash(l.record)}>Open the page</a></li>`)}</ul>` : null}
+        </div>` : null}
+        ${combined.length ? html`<div class="pt-loose__dismissed pt-access__matched pt-access__combined">
+          <button type="button" class="ppl-link" aria-expanded=${showRoles === 'combined'} onClick=${() => toggle('combined')}>
+            ${kdPlural(combined.length, 'empty JobTread account')} archived as a company’s second</button>
+          ${showRoles === 'combined' ? html`<p class="form-hint">Each had nothing in it, and its name is the other’s or inside it. Not the same company? It comes back in JobTread, with its partner.</p>
+            <ul>${combined.map((c) => html`<li key=${c.key}><span>“${c.drop.name}”, the same as <a href=${ptVendorUrl(c.keep.id)} target="_blank" rel="noopener">${c.keep.name}</a>
+              <small>${c.by && c.by.includes('@') ? `${kdWho(c.by)} · ` : ''}${kdWhen(c.at)}</small></span>
+              <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => twin(c.drop.id, c.keep.id, false, c.name)}>
+                ${busy === `t-${[c.drop.id, c.keep.id].sort().join(' ')}` ? html`<span class="spinner spinner-14" />` : null}Not the same</button></li>`)}</ul>` : null}
         </div>` : null}
         ${billedOnly.length ? html`<div class="pt-loose__dismissed pt-access__matched">
           <button type="button" class="ppl-link" aria-expanded=${showRoles === 'billed'} onClick=${() => toggle('billed')}>

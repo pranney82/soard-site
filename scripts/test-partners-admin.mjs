@@ -138,6 +138,19 @@ function makeApi() {
     },
     loose: [{ name: 'Screenshot 2026-08-31 at 15.13.24', record: 'isla', page: 'Isla’s page' }],
     billedOnly: [{ partner: 'seabrook-design-co', name: 'Seabrook Design Co' }],
+    // One company twice in JobTread: what the site left for staff, and the empty one it archived
+    twins: [
+      { key: 'acctgp0001 acctgpf001', partner: 'georgia-power-foundation', name: 'Georgia Power Foundation', why: 'check', canCombine: true,
+        a: { id: 'acctgpf001', name: 'Georgia Power Foundation', holds: { contacts: 0, documents: 0, files: 0, access: 0, bills: 0 } },
+        b: { id: 'acctgp0001', name: 'Georgia Power', holds: { contacts: 0, documents: 3, files: 0, access: 0, bills: 1 } } },
+      { key: 'accthc0001 accthope01', partner: 'hope', name: 'Hope', why: 'check', canCombine: true,
+        a: { id: 'accthope01', name: 'Hope', holds: { contacts: 0, documents: 0, files: 0, access: 0, bills: 0 } },
+        b: { id: 'accthc0001', name: 'Hope Church Atlanta', holds: { contacts: 0, documents: 0, files: 1, access: 0, bills: 0 } } },
+      { key: 'acctpel001 acctpel002', partner: null, name: null, why: 'full', canCombine: false,
+        a: { id: 'acctpel001', name: 'Pella', holds: { contacts: 2, documents: 0, files: 0, access: 0, bills: 0 } },
+        b: { id: 'acctpel002', name: 'Pella Windows and Doors of Georgia', holds: { contacts: 0, documents: 4, files: 0, access: 0, bills: 1 } } },
+    ],
+    combined: [{ key: 'acctmsi001 acctmsi002', keep: { id: 'acctmsi001', name: 'MSI Surfaces' }, drop: { id: 'acctmsi002', name: 'Msi' }, partner: 'msi', name: 'Msi', at: since, by: 'JobTread (automatic)' }],
   };
   for (const k of Object.keys(DIR)) st[k] = structuredClone(FX[k] || {});
   for (const k of Object.keys(DIR)) for (const [slug, d] of Object.entries(st[k])) d.slug ||= slug;
@@ -292,6 +305,14 @@ function makeApi() {
         const from = m.accountName;
         m.accountName = b.rename.name || m.name;
         return json({ success: true, renamed: { partner: m.partner, name: m.name, account: m.account, from, to: m.accountName }, view: a });
+      }
+      if (b.twins) {
+        const k = [b.twins.a, b.twins.b].sort().join(' ');
+        const t = a.twins.find((x) => x.key === k);
+        const c = a.combined.find((x) => x.key === k);
+        a.twins = a.twins.filter((x) => x !== t);
+        a.combined = a.combined.filter((x) => x !== c);
+        return json({ success: true, twins: b.twins.same ? { combined: { kept: t.b.name, archived: t.a.name, partner: t.partner } } : { notSame: true, back: c || null }, view: a });
       }
       if (b.rolePick) {
         const u = a.roles.unplaced.find((x) => x.membership === b.rolePick.membership) || st.picked?.[b.rolePick.membership];
@@ -750,8 +771,8 @@ try {
     // (A success toast within 4 seconds of a site save offers Publish: let the emails save above pass first)
     await sleep(4000);
     const tile5 = (await $text(page, '.ppl-ready__tile'))[5] || '';
-    // 3 waiting, 1 near name, 2 people the roles check can't place
-    ok(/JobTread access\s*6\s*Crosby Design Group: CDG Interiors in JobTread\?/.test(tile5), `the access tile counts what needs a look and names the first (${tile5})`);
+    // 3 waiting, 1 near name, 2 people the roles check can't place, 3 companies twice in JobTread
+    ok(/JobTread access\s*9\s*Crosby Design Group: CDG Interiors in JobTread\?/.test(tile5), `the access tile counts what needs a look and names the first (${tile5})`);
     await clickText(page, '.ppl-ready__tile', 'JobTread access');
     await page.waitForSelector('.pt-access .pt-loose__item', { timeout: 5000 }).catch(() => {});
     ok(await page.evaluate(dialogTitle) === 'JobTread access', 'the tile opens JobTread access');
@@ -861,6 +882,26 @@ try {
     ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ rolePick: { membership: 'memgus0001', name: 'Gus Hall' } }) && /Gus Hall/.test(await page.$eval('.pt-access__roles', (e) => e.textContent).catch(() => '')), 'Undo puts them back on the list');
     await clickText(page, '.pt-access__roles .pt-loose__item .btn', 'Leave as Champion');
     ok(await waitToast(page, /Cal Stone keeps their Champion role/) && lastCall(api, '/api/vendor-access-admin')?.body?.rolePick?.keep === true, '“Leave as …” keeps their role');
+    // One company twice in JobTread: only what the site won't decide is asked
+    const twinRow = (name) => page.evaluate((name) => [...document.querySelectorAll('.pt-access__twins .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent.startsWith(name))?.textContent.replace(/\s+/g, ' ').trim() || '', name);
+    ok(/One company twice in JobTread\?/.test(await page.$eval('.pt-access__twins h3', (e) => e.textContent).catch(() => '')), 'one company twice gets its own section');
+    const gpf = await twinRow('Georgia Power Foundation');
+    ok(/“Georgia Power Foundation” has nothing in it and “Georgia Power” has 3 documents, but the names could be two organizations\./.test(gpf) && /Same company/.test(gpf) && /Not the same/.test(gpf), `a name that may be another organization: what each holds, and both choices (${gpf.slice(0, 200)})`);
+    const pella = await twinRow('Pella and');
+    ok(/“Pella” has 2 contacts, and “Pella Windows and Doors of Georgia” has 4 documents\. If they’re one company, move what’s in one to the other in JobTread and archive it there\./.test(pella) && !/Same company/.test(pella), `two that both hold something: put together in JobTread, so no Same company here (${pella.slice(0, 200)})`);
+    ok(await page.$eval('.pt-access__twins strong a[href="https://app.jobtread.com/vendors/acctgp0001"]', (a) => a.textContent).catch(() => '') === 'Georgia Power', 'each name opens that vendor in JobTread');
+    await page.evaluate(() => [...document.querySelectorAll('.pt-access__twins .pt-loose__item')].find((li) => li.textContent.includes('Georgia Power Foundation'))?.querySelector('.btn-ghost')?.click());
+    ok(await waitToast(page, /They stay two companies/) && JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ twins: { a: 'acctgpf001', b: 'acctgp0001', same: false } }) && !(await twinRow('Georgia Power Foundation')), 'Not the same: kept apart, and it leaves the list');
+    await clickText(page, '.pt-access__twins .btn', 'Same company');
+    ok(await waitToast(page, /“Hope” is archived in JobTread, and “Hope Church Atlanta” is the one/) && lastCall(api, '/api/vendor-access-admin')?.body?.twins?.same === true, 'Same company: the empty one is archived');
+    await clickText(page, '.pt-access__matched > .ppl-link', '1 empty JobTread account archived');
+    await sleep(150);
+    const gone = await page.evaluate(() => [...document.querySelectorAll('.pt-access__combined li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()).find((t) => t.startsWith('“Msi”')) || '');
+    ok(/^“Msi”, the same as MSI Surfaces/.test(gone) && !/JobTread \(automatic\)/.test(gone), `what the site archived, by itself (${gone})`);
+    const clicked = await clickText(page, '.pt-access__combined li .btn', 'Not the same');
+    const toasted = await waitToast(page, /“Msi” is back in JobTread, as Msi/);
+    const sentBack = JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body);
+    ok(toasted && sentBack === JSON.stringify({ twins: { a: 'acctmsi002', b: 'acctmsi001', same: false } }), `Not the same brings the archived one back, with its partner (clicked ${clicked}, toast ${toasted}, sent ${sentBack})`);
     const toggles = await page.$$eval('.pt-access__matched > .ppl-link', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
     ok(toggles.includes('2 roles to change in JobTread, once roles follow levels') && toggles.includes('1 logo on pages no partner goes by') && toggles.includes('1 partner only billed on jobs'), `what would change, unnamed logos and billed-only partners each fold away (${toggles.join(' | ')})`);
     await clickText(page, '.pt-access__matched > .ppl-link', '2 roles to change');

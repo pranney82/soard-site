@@ -13,12 +13,15 @@
  * POST { rename: { partner, name? } }          → the JobTread vendor takes the partner's name (or name: the old one, to undo)
  * POST { rolePick: { membership, role?, keep?, name } } → someone the roles sweep can't place: Trade Partner, or leave their role
  *                                                (neither: undo the pick). See ./_partner-roles.js
+ * POST { twins: { a, b, same } }               → two JobTread vendor accounts listed as one company: the empty one is
+ *                                                archived (same), or they're never put together again (one the site
+ *                                                archived comes back)
  * Each POST but setAside and rename runs that company's part of the sync
  * straight away and answers { report, view }.
  *
  * See ./_vendor-access.js.
  */
-import { adminView, setCompanyAside, settleAccount, syncVendorAccess, unmatchAccount, renameAccount } from './_vendor-access.js';
+import { adminView, setCompanyAside, settleAccount, syncVendorAccess, unmatchAccount, renameAccount, settleTwins } from './_vendor-access.js';
 import { pickRole } from './_partner-roles.js';
 import { saveContacts, grantForPartner } from './_sponsors.js';
 import { logAudit } from './_audit.js';
@@ -115,6 +118,18 @@ export async function onRequestPost(context) {
     await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'jobtread-roles', entityName: name || 'Someone in JobTread',
       changes: { pick: pick?.role || (pick?.keep ? 'Leave their role' : 'Undone') } });
     return ok({ view: await adminView(env.DB) });
+  }
+
+  if (body?.twins) {
+    const { a, b, same = false } = body.twins;
+    if (!ACCOUNT_RE.test(a || '') || !ACCOUNT_RE.test(b || '') || a === b) return fail('Bad choice');
+    let done;
+    try { done = await settleTwins(env, { a, b, same: !!same }, by); } catch (e) { return fail(e.message, /JobTread:/.test(e.message) ? 500 : 400); }
+    await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'jobtread-vendor', entityName: same ? 'One company twice in JobTread' : 'Two companies in JobTread',
+      changes: done.combined ? { archived: `${done.combined.archived} (the same as ${done.combined.kept})` } : done.back ? { back: done.back.drop.name } : null });
+    const partner = done.combined?.partner || done.back?.partner;
+    const name = partner ? await partnerName(env.DB, partner) : null;
+    return name ? ok({ ...(await sync(nameKey(name))), twins: done }) : ok({ twins: done, view: await adminView(env.DB) });
   }
 
   if (body?.recheck) {

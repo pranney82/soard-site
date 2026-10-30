@@ -225,7 +225,7 @@ export function vendorAccessFacts(state) {
   const r = d.lastRun || {};
   return {
     lastRunAt: r.at || null, claimedAt: d.claimedAt || null, lastErrorAt: d.lastError?.at || null,
-    added: r.added ?? null, made: r.made ?? null, contacts: r.contacts ?? null, waiting: r.waiting ?? null, near: r.near ?? null, more: !!r.more,
+    added: r.added ?? null, made: r.made ?? null, combined: r.combined ?? null, contacts: r.contacts ?? null, waiting: r.waiting ?? null, near: r.near ?? null, more: !!r.more,
     // Roles that follow Partners levels (./_partner-roles.js), counts only
     roles: r.roles ? { changed: r.roles.changed ?? 0, pending: r.roles.pending ?? 0, unplaced: r.roles.unplaced ?? 0, error: r.roles.error || null } : null,
   };
