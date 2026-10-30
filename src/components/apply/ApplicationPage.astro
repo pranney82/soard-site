@@ -633,6 +633,11 @@ const breadcrumbs = [
   .af-row--2 { grid-template-columns: 1fr 1fr; }
   .af-row--3 { grid-template-columns: 1.5fr 0.9fr 1fr; }
   .af-address { display: grid; gap: 12px; }
+  /* One line that finds the address, or (entered by hand) its parts: each shows only its own boxes and the way to the other */
+  .af-address[data-mode="line"] :is(.af-address-street, .af-address-rest, [data-addr-mode="line"]),
+  .af-address[data-mode="parts"] :is(.af-address-line, [data-addr-mode="parts"]) { display: none; }
+  .af-address-switch { margin: -8px 0 -6px; }
+  .af-address-switch .af-btn--link { padding-inline: 0; font-size: 14.5px; }
 
   /* Address suggestions (a listbox under Street address; above the sticky header if they meet) */
   .af-suggest-wrap { position: relative; }
@@ -1538,6 +1543,9 @@ const breadcrumbs = [
     html.af-focus .af-field textarea { min-height: 76px; }
     html.af-focus .af-choice { padding: 10px 14px; min-height: 48px; }
     html.af-focus .af-content { font-size: 15.5px; line-height: 1.55; }
+    /* An address entered by hand (street, apartment, city / state / ZIP) still fits beside its question */
+    html.af-focus .af-address { gap: 10px; }
+    html.af-focus .af-address-switch { margin: -12px 0 -8px; }
   }
 
   @media (prefers-reduced-motion: reduce) {

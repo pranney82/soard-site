@@ -27,6 +27,7 @@ beforeEach(async () => {
     suggest: { suggestions: [
       { placePrediction: { placeId: 'ChIJ_home_one_0001', structuredFormat: { mainText: { text: '3167 Main Street' }, secondaryText: { text: 'Duluth, GA, USA' } } } },
       { placePrediction: { placeId: 'ChIJ_home_two_0002', structuredFormat: { mainText: { text: '3167 Main Street Northwest' }, secondaryText: { text: 'Kennesaw, GA, USA' } } } },
+      { placePrediction: { placeId: 'ChIJ_far_away_0003', structuredFormat: { mainText: { text: '3167 West Main Street' }, secondaryText: { text: 'Dothan, AL, USA' } } } },
     ] },
     place: { addressComponents: [
       { longText: '3167', shortText: '3167', types: ['street_number'] },
@@ -52,7 +53,7 @@ beforeEach(async () => {
   };
 });
 
-test('suggestions: homes in the US near Atlanta, the key in a header, a street and its town', async () => {
+test('suggestions: Georgia homes near Atlanta (one in Alabama left out), the key in a header, a street and its town', async () => {
   const out = await googleSuggest(env, '3167 Main');
   assert.deepEqual(out, [
     { id: 'ChIJ_home_one_0001', line1: '3167 Main St', sub: 'Duluth, GA' },

@@ -107,8 +107,10 @@ export async function googleSuggest(env, q) {
   });
   if (!res.ok) return null;
   const data = await res.json().catch(() => ({}));
-  return (data.suggestions || []).map(s => s.placePrediction).filter(p => p?.placeId && p.structuredFormat?.mainText?.text).slice(0, 5)
-    .map(p => ({ id: p.placeId, line1: shorten(p.structuredFormat.mainText.text), sub: String(p.structuredFormat.secondaryText?.text || '').replace(/, USA$/, '') }));
+  // Georgia's only: every family SOARD serves lives there, and "3167 Main St, Dothan, AL" is no help
+  return (data.suggestions || []).map(s => s.placePrediction).filter(p => p?.placeId && p.structuredFormat?.mainText?.text)
+    .map(p => ({ id: p.placeId, line1: shorten(p.structuredFormat.mainText.text), sub: String(p.structuredFormat.secondaryText?.text || '').replace(/, USA$/, '') }))
+    .filter(p => /, GA$/.test(p.sub)).slice(0, 5);
 }
 
 /** The address parts of the home they picked: { line1, line2, city, state, zip }, or null */

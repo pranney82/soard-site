@@ -321,30 +321,35 @@ try {
   const token = await draftToken();
   ok(/^[0-9a-f]{32}$/.test(token || ''), 'a draft started and its token is kept on this device');
 
-  console.log('Service area: the address, then the map with what the check found');
+  console.log('Service area: one line finds the address, then the map with what the check found');
   const areaState = () => page.$eval('[data-area]', (e) => e.dataset.area);
   const waitArea = (st) => page.waitForFunction((x) => document.querySelector('[data-area]')?.dataset.area === x, { timeout: 15000 }, st).catch(() => {});
   const askShown = () => page.$eval('[data-area-ask]', (e) => !e.hidden);
-  ok(await visible('#af-address-line1') && await page.$eval('[data-field="boundary"]', (e) => !!e.closest('[data-off]')), 'a phone has the address on this screen, the map waiting for the next');
+  const addressParts = () => page.evaluate(() => ['line1', 'city', 'state', 'zip'].map((k) => document.querySelector(`#af-address-${k}`).value).join('|'));
+  const addressLine = () => page.$eval('#af-address-search', (e) => e.value);
+  const byHand = async (mode) => { await page.click(`[data-field="address"] [data-addr-mode="${mode}"]`); await sleep(250); };
+  ok(await visible('#af-address-search') && await page.$eval('[data-field="boundary"]', (e) => !!e.closest('[data-off]')), 'a phone has the address on this screen, the map waiting for the next');
+  ok(!(await visible('#af-address-line1')) && !(await visible('#af-address-city')) && !(await visible('#af-address-zip')) && await visible('#af-address-line2'), 'one line for the address (and one for an apartment): no street, city, state and ZIP boxes');
+  ok(/Enter the address yourself/.test(await page.$eval('[data-field="address"] [data-addr-mode="parts"]', (e) => (e.getClientRects().length ? e.textContent : ''))), 'with a way to enter it by hand');
   ok(/Enter the address above/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'the check says what to do until there is an address');
   ok(!(await askShown()), 'the question itself stays out of the way');
-  await page.focus('#af-address-line1');
-  await page.type('#af-address-line1', '3167 Main');
+  await page.focus('#af-address-search');
+  await page.type('#af-address-search', '3167 Main');
   await page.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
-  ok(await visible('#af-address-suggest'), 'suggestions open under Street address');
-  ok(await page.$eval('#af-address-line1', (e) => e.getAttribute('aria-expanded')) === 'true', 'the combobox says it is expanded');
+  ok(await visible('#af-address-suggest'), 'suggestions open by the address line');
+  ok(await page.$eval('#af-address-search', (e) => e.getAttribute('aria-expanded')) === 'true', 'the combobox says it is expanded');
   ok(addressAsks >= 1 && addressAsks <= 3, `asked after a pause, not on every key (${addressAsks} lookups for 9 keys)`);
   const listOnTop = await page.evaluate(() => getComputedStyle(document.querySelector('#af-address-suggest')).zIndex);
   ok(Number(listOnTop) >= 1100, `the list sits above the bar across the top (z-index ${listOnTop})`);
   await shot('04-address-suggest-phone');
   await page.keyboard.press('ArrowDown');
-  ok(await page.$eval('#af-address-line1', (e) => e.getAttribute('aria-activedescendant')) === 'af-address-suggest-0', 'ArrowDown highlights the first');
+  ok(await page.$eval('#af-address-search', (e) => e.getAttribute('aria-activedescendant')) === 'af-address-suggest-0', 'ArrowDown highlights the first');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('Enter');
   await sleep(100);
-  const filled = await page.evaluate(() => ['line1', 'city', 'state', 'zip'].map((k) => document.querySelector(`#af-address-${k}`).value));
-  ok(filled.join('|') === '3167 Main St|Duluth|GA|30096', `Enter fills the address (${filled.join(', ')})`);
+  ok(await addressParts() === '3167 Main St|Duluth|GA|30096', `Enter fills in the address's parts (${await addressParts()})`);
+  ok(await addressLine() === '3167 Main St, Duluth, GA 30096', `and the line shows the whole address (${await addressLine()})`);
   ok(await page.$eval('#af-county', (e) => e.value) === 'Gwinnett', 'and the county question');
   ok(/Gwinnett County/.test(await page.$eval('[data-field="address"] .af-county-note', (e) => (e.hidden ? '' : e.textContent))), 'with a note saying so');
   ok(await stepTitle() === AREA && !(await visible('#af-address-suggest')), 'Enter picked; it did not submit the page');
@@ -354,20 +359,30 @@ try {
   ok(/Inside our service area/.test(card) && /We found 3167 Main St, Duluth, GA 30096, in Gwinnett County/.test(card), `what it found, in plain words (${card.slice(0, 120)})`);
   ok(await page.$('[data-field="boundary"] .af-map-pin') != null, 'a pin on the home, ready on the map');
   ok(await page.$eval('[data-area-result]', (e) => e.getAttribute('aria-live')) === 'polite', 'the result is read out to screen readers');
-  await clear('#af-address-line1');
-  await page.type('#af-address-line1', '3167 Main');
+  // Changing the line lets go of the address it showed; Continue then asks for one from the list
+  await page.focus('#af-address-search');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Escape');
+  await sleep(150);
+  ok(await addressParts() === '||GA|', `changing the line lets go of the address it held (${await addressParts()})`);
+  await next();
+  ok(/choose it from the list, or enter it yourself/.test(await errorText('address')), `Continue with an address typed but not chosen says what to do (${await errorText('address')})`);
+  await clear('#af-address-search');
+  await page.type('#af-address-search', '3167 Main');
   await page.waitForSelector('#af-address-suggest:not([hidden])', { timeout: 4000 }).catch(() => {});
   await page.keyboard.press('Escape');
   ok(!(await visible('#af-address-suggest')), 'Escape closes the list');
 
-  console.log('Service area: far out, with Settings stopping them');
-  await clear('#af-address-line1');
-  await page.type('#af-address-line1', '700 Poplar St');
+  console.log('Service area: far out, entered by hand, with Settings stopping them');
+  await clear('#af-address-search');
+  await page.type('#af-address-search', '700 Poplar St');
   await page.keyboard.press('Escape');
-  await clear('#af-address-city');
-  await page.type('#af-address-city', 'Macon');
-  await clear('#af-address-zip');
-  await page.type('#af-address-zip', '31201');
+  await byHand('parts');
+  ok(await visible('#af-address-line1') && await visible('#af-address-zip') && !(await visible('#af-address-search')), '"Enter the address yourself" shows its parts');
+  ok(await page.$eval('#af-address-line1', (e) => e.value) === '700 Poplar St' && await page.evaluate(() => document.activeElement?.id) === 'af-address-city', 'what they typed is the street, and the cursor waits in City');
+  await type('#af-address-city', 'Macon');
+  await type('#af-address-zip', '31201');
   await waitArea('far');
   ok(await areaState() === 'far', 'Macon is placed far outside');
   ok(/Outside our service area/.test(await page.$eval('[data-area-result]', (e) => e.textContent)) && /only for homes inside/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'it says so, in the stop screen’s words');
@@ -385,7 +400,6 @@ try {
   console.log('Service area: an address the Census can’t find');
   await clear('#af-address-line1');
   await page.type('#af-address-line1', '1 Nowhere Lane');
-  await page.keyboard.press('Escape');
   await clear('#af-address-city');
   await page.type('#af-address-city', 'Faketown');
   await clear('#af-address-zip');
@@ -399,17 +413,21 @@ try {
   ok(/enter the home address so we can check it, or choose an answer/.test(await errorText('boundary')), 'Continue without an answer says what to do');
   await page.click('[data-back]');
   await sleep(450);
-  ok(await visible('#af-address-line1'), 'Back: the address again');
+  ok(await visible('#af-address-line1'), 'Back: the address again, as they were entering it');
 
-  // Back to a home inside
-  await clear('#af-address-line1');
-  await page.type('#af-address-line1', '3167 Main');
+  // Back to the search, and a home inside
+  await byHand('line');
+  ok(await visible('#af-address-search') && !(await visible('#af-address-line1')) && await addressLine() === '1 Nowhere Lane, Faketown, GA 30999', `"Search for the address instead": the one line again, with the address so far (${await addressLine()})`);
+  await clear('#af-address-search');
+  await page.type('#af-address-search', '3167 Main');
   await page.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
   await page.click('#af-address-suggest-0');
   await sleep(100);
-  ok(await page.$eval('#af-address-line1', (e) => e.value) === '3167 Main St', 'a tap on a suggestion picks it too');
+  ok(await addressLine() === '3167 Main St, Duluth, GA 30096', 'a tap on a suggestion picks it too');
   await waitArea('inside');
   ok(!(await askShown()), 'placed again, the question goes away');
+  await byHand('parts');
+  ok(await addressParts() === '3167 Main St|Duluth|GA|30096', 'by hand, the parts of the address picked');
   await type('#af-address-zip', '3009');
   await next();
   ok(/5-digit ZIP/.test(await errorText('address')), 'a short ZIP is caught');
@@ -421,6 +439,8 @@ try {
   ok(firstProblem.focused && firstProblem.top >= firstProblem.header - 2, `Continue scrolls to the problem below the bar and focuses it (${Math.round(firstProblem.top)}px vs bar ${Math.round(firstProblem.header)}px)`);
   await type('#af-address-zip', '30096');
   await waitArea('inside');
+  await byHand('line');
+  ok(await addressLine() === '3167 Main St, Duluth, GA 30096' && !(await visible('#af-address-zip')), 'back to the one line, the whole address in it');
   await noSideScroll('service area');
   await next();
   ok(await visible('[data-field="boundary"] .af-map-frame') && await visible('[data-field="boundary"] .af-map-pin'), 'Continue: the map, with a pin on the home');
@@ -530,6 +550,7 @@ try {
   await sleep(300);
   const restored = await page.evaluate(() => [document.querySelector('#af-childName-first').value, document.querySelector('#af-parentEmail').value, document.querySelector('#af-county').value]);
   ok(restored[0] === 'Avery' && restored[1] === 'jordan+apply@example.com' && restored[2] === 'Cobb', 'answers come back');
+  ok(await page.$eval('#af-address-search', (e) => e.value) === '3167 Main St, Duluth, GA 30096' && await page.$eval('[data-field="address"] .af-address', (e) => e.dataset.mode) === 'line', 'the address comes back whole, in its one line');
   steps = await openSteps();
   ok(steps.slice(0, 5).every((s) => !s.disabled), 'how far they got comes back too');
   await page.$eval('[data-steps]', (d) => { d.open = false; });
@@ -1071,11 +1092,11 @@ try {
         await tap('[data-field="ackSeason"] .af-choice', s);
         await s.click('[data-next]');
         await sleep(400);
-        await s.focus('#af-address-line1');
-        await s.type('#af-address-line1', '3167 Main');
+        await s.focus('#af-address-search');
+        await s.type('#af-address-search', '3167 Main');
         const listed = await s.waitForSelector('#af-address-suggest:not([hidden])', { timeout: 8000 }).then(() => true).catch(() => false);
         if (listed) { await s.keyboard.press('ArrowDown'); await s.keyboard.press('Enter'); }
-        else { await s.keyboard.press('Escape'); await type('#af-address-line1', '3167 Main St', s); await type('#af-address-city', 'Duluth', s); await type('#af-address-zip', '30096', s); }
+        else { await s.keyboard.press('Escape'); await s.click('[data-field="address"] [data-addr-mode="parts"]'); await sleep(250); await type('#af-address-line1', '3167 Main St', s); await type('#af-address-city', 'Duluth', s); await type('#af-address-zip', '30096', s); }
         await s.waitForFunction(() => document.querySelector('[data-area]')?.dataset.area === 'inside', { timeout: 15000 }).catch(() => {});
         await sleep(700);
         await s.evaluate(() => window.scrollTo(0, 0));

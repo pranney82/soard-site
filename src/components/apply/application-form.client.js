@@ -271,6 +271,7 @@ function init(root, cfg, mode) {
       case 'ack': el.querySelectorAll('input').forEach(i => { i.checked = v === f.options[0]; }); break;
       case 'name': case 'address':
         el.querySelectorAll('[data-part]').forEach(i => { if (v[i.dataset.part] != null) i.value = v[i.dataset.part]; });
+        if (f.type === 'address') syncAddressLine(el);
         break;
       default: {
         const input = el.querySelector('input, textarea, select');
@@ -1170,6 +1171,8 @@ function init(root, cfg, mode) {
     // Only this screen's questions: the ones still to come get their own turn
     const here = screenFieldIds();
     const errors = Object.fromEntries(Object.entries(formErrors(form, a, files, [currentId], lang)).filter(([id]) => here.has(id)));
+    // An address line searched but not chosen from: its own words (choose it, or enter it by hand)
+    for (const id of here) if (byId[id]?.type === 'address') { const m = errorFor(id); if (m) errors[id] = m; }
     if (Object.keys(errors).length) { showPageErrors(errors); return; }
     const last = screenNo >= screensIn(currentId) - 1;
     const stop = stopFor(form, a);
@@ -1224,6 +1227,10 @@ function init(root, cfg, mode) {
     if (!f) return null;
     const a = readAnswers();
     if (!isVisible(f, a, byId)) return null;
+    // Searched for but not picked (or not searched for yet): the parts are still empty
+    const box = f.type === 'address' ? addrBox(fieldEl(id)) : null;
+    if (box?.dataset.mode === 'line' && !['line1', 'city', 'state', 'zip'].every(k => String(a[id]?.[k] || '').trim())
+      && (f.required || box.querySelector('[data-search]').value.trim())) return T('addressPick');
     return fieldError(f, isUpload(f) ? files[id] : a[id], lang);
   }
   function setFieldError(id, msg) {
@@ -1253,7 +1260,7 @@ function init(root, cfg, mode) {
     if (packs[currentId] && el.closest('[data-off]')) { screenNo = screenOf(currentId, id); paintScreen(); paintHeader(); }
     openTucked(el, { animate: false });
     el.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
-    const target = el.querySelector('input:not([type=file]):not([type=radio]):not([type=checkbox]):not([disabled]), textarea, select')
+    const target = [...el.querySelectorAll('input:not([type=file]):not([type=radio]):not([type=checkbox]):not([disabled]), textarea, select')].find(x => x.getClientRects().length)
       || el.querySelector('input:checked') || el.querySelector('input[type=radio], input[type=checkbox]')
       || el.querySelector('[data-act="choose"]');
     target?.focus({ preventScroll: true });
@@ -1898,7 +1905,60 @@ function init(root, cfg, mode) {
     paintUpload(r.id);
   }
 
-  // ── Address suggestions (a combobox on Street address) ───────────
+  // ── The address: one line that finds it, or its parts typed in ────
+  // The answer is always the parts (street, apartment, city, state, ZIP). Picking a suggestion fills
+  // them and the line shows the whole address; typing it by hand shows the parts themselves.
+  const addrBox = (el) => el?.querySelector('.af-address') || null;
+  const addressLineOf = (v) => (v && v.line1 && v.city && v.zip ? `${v.line1}, ${v.city}, ${[v.state, v.zip].filter(Boolean).join(' ')}` : '');
+  /** The line shows the address the parts hold; parts begun but not finished show themselves, to finish by hand */
+  function syncAddressLine(el) {
+    const box = addrBox(el);
+    const f = byId[el?.dataset.field];
+    if (!box || !f) return;
+    const v = readField(f) || {};
+    const line = addressLineOf(v);
+    const search = box.querySelector('[data-search]');
+    if (line) { search.value = line; box.dataset.picked = line; box.dataset.mode = 'line'; return; }
+    delete box.dataset.picked;
+    if (['line1', 'city', 'zip'].some(k => String(v[k] || '').trim())) box.dataset.mode = 'parts';
+    else { search.value = ''; box.dataset.mode = 'line'; }
+  }
+  /** Typing in the line: an address picked before no longer stands (its parts empty), and suggestions for what's there */
+  function addressTyped(el, input) {
+    const box = addrBox(el);
+    if (box?.dataset.picked && input.value !== box.dataset.picked) {
+      delete box.dataset.picked;
+      for (const k of ['line1', 'city', 'zip']) box.querySelector(`[data-part="${k}"]`).value = '';
+    }
+    suggestFor(el, input);
+  }
+  /**
+   * "Enter the address yourself" (what they'd typed becomes the street), or back to the search; `force`
+   * when the parts are already showing (a pick that came without its ZIP), to finish them by hand
+   */
+  function setAddressMode(el, mode, { force = false } = {}) {
+    const box = addrBox(el);
+    if (!box || (box.dataset.mode === mode && !force)) return;
+    closeSuggest();
+    const search = box.querySelector('[data-search]');
+    const line1 = box.querySelector('[data-part="line1"]');
+    if (mode === 'parts' && !line1.value.trim() && !box.dataset.picked && search.value.trim()) line1.value = search.value.trim().slice(0, 160);
+    box.dataset.mode = mode;
+    if (mode === 'line') syncAddressLine(el);
+    liveCheck(el);
+    refresh();
+    markDirty();
+    // Into the search, or the first part still empty
+    const into = () => (mode === 'parts' ? ['line1', 'city', 'zip'].map(k => box.querySelector(`[data-part="${k}"]`)).find(i => !i.value.trim()) || line1 : search).focus({ preventScroll: true });
+    // The parts take more room: work this page's screens out again if this one no longer fits
+    settle();
+    if (focused && currentId !== 'review' && document.documentElement.scrollHeight > innerHeight) {
+      delete packs[currentId];
+      show(currentId, { piece: el, focus: false, scroll: false }).then(into);
+    } else into();
+  }
+
+  // ── Address suggestions (a combobox on the address line) ──────────
   const sug = { timer: 0, ctrl: null, items: [], active: -1, input: null, list: null, el: null, closing: 0 };
   const homeAddressId = () => (byId.address?.type === 'address' ? 'address' : fields.find(f => f.type === 'address')?.id);
   function suggestFor(el, input) {
@@ -1994,12 +2054,18 @@ function init(root, cfg, mode) {
       if (input.tagName === 'SELECT' && ![...input.options].some(o => o.value === v)) return;
       input.value = v;
     };
+    const box = addrBox(el);
+    const search = box?.querySelector('[data-search]');
     const done = (a) => {
+      for (const k of ['line1', 'city', 'zip']) { const i = el.querySelector(`[data-part="${k}"]`); if (i) i.value = ''; }
       set('line1', a.line1);
       set('line2', a.line2);
       set('city', a.city);
       set('state', a.state);
       set('zip', a.zip);
+      // The whole address in the line, or (a part missing) the parts, to finish by hand
+      if (!box || addressLineOf(readField(byId[el.dataset.field]))) syncAddressLine(el);
+      else { delete box.dataset.picked; setAddressMode(el, 'parts', { force: true }); }
       if (el.dataset.field === homeAddressId()) { fillCounty(a.county, el); scheduleArea(true); }
       liveCheck(el);
       refresh();
@@ -2009,9 +2075,12 @@ function init(root, cfg, mode) {
     closeSuggest();
     input?.focus({ preventScroll: true });
     if (!it.id) { done(it); return; }
-    // A Google suggestion: the street shows at once, the city, state and ZIP a moment later
-    set('line1', it.line1);
-    fetch(`${API}?place=${encodeURIComponent(it.id)}`).then(r => r.json()).then((r) => { if (r?.address) done(r.address); }).catch(() => {});
+    // A Google suggestion: the line shows it at once, its parts (with the ZIP) a moment later. If they
+    // don't come, the parts show with what's known, to finish by hand
+    if (search) { search.value = [it.line1, it.sub].filter(Boolean).join(', '); box.dataset.picked = search.value; }
+    const [city, state] = String(it.sub || '').split(',').map(x => x.trim());
+    const byHand = () => done({ line1: it.line1, city, state: /^[A-Z]{2}$/.test(state || '') ? state : undefined });
+    fetch(`${API}?place=${encodeURIComponent(it.id)}`).then(r => r.json()).then((r) => { if (r?.address) done(r.address); else byHand(); }).catch(byHand);
   }
   /** The county question, set from the address when the county is one of its choices */
   function fillCounty(county, addressEl) {
@@ -3000,11 +3069,10 @@ function init(root, cfg, mode) {
         case 'rec-toggle': toggleRecording(); break;
         case 'rec-cancel': closeRecorder(); break;
         case 'area-fix': {
-          const addr = fieldEl(homeAddressId())?.querySelector('[data-part="line1"]');
-          if (!addr) break;
-          fieldEl(homeAddressId()).scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
-          addr.focus({ preventScroll: true });
-          addr.select();
+          // To the address (its screen, on a phone that has the map on the next), its words ready to change
+          if (!homeAddressId()) break;
+          focusOn(homeAddressId());
+          document.activeElement?.select?.();
           break;
         }
         default:
@@ -3013,6 +3081,8 @@ function init(root, cfg, mode) {
     }
     const option = e.target.closest('.af-suggest [role="option"]');
     if (option) { pickSuggestion(Number(option.dataset.i)); return; }
+    const addrMode = e.target.closest('[data-addr-mode]');
+    if (addrMode) { setAddressMode(addrMode.closest('[data-field]'), addrMode.dataset.addrMode); return; }
     const go = e.target.closest('[data-goto]');
     if (go) { jump(go.dataset.goto); return; }
     const edit = e.target.closest('[data-edit]');
@@ -3023,7 +3093,14 @@ function init(root, cfg, mode) {
       jump(pid, { focusField: fid });
     }
   });
-  // A press on a suggestion keeps the cursor in Street address (so the list stays open for the click)
+  // Back in an address line they searched but didn't pick from: its suggestions again
+  ui.form.addEventListener('focusin', (e) => {
+    const t = e.target;
+    if (!t.matches?.('[data-search]')) return;
+    const el = t.closest('[data-field]');
+    if (el && !addrBox(el)?.dataset.picked) suggestFor(el, t);
+  });
+  // A press on a suggestion keeps the cursor in the address line (so the list stays open for the click)
   ui.form.addEventListener('mousedown', (e) => { if (e.target.closest('.af-suggest')) e.preventDefault(); });
 
   ui.form.addEventListener('input', (e) => {
@@ -3036,8 +3113,8 @@ function init(root, cfg, mode) {
     }
     if (tgt.type === 'email' && e.isTrusted) { const p = el?.querySelector('[data-mailfix]'); if (p && !p.hidden) p.hidden = true; }
     if (tgt.tagName === 'TEXTAREA') grow(tgt);
+    if (tgt.matches('[data-search]') && el) addressTyped(el, tgt);
     liveCheck(el);
-    if (tgt.dataset.part === 'line1' && el?.dataset.type === 'address') suggestFor(el, tgt);
     if (el && el.dataset.field === homeAddressId()) scheduleArea();
     if (countyNote && el?.dataset.field === countyNote.field) hideCountyNote();
     refresh();

@@ -103,6 +103,9 @@ export const UI = {
     tileMore: 'More', tileMoreAbout: 'More about {name}', detailChoose: 'Choose this', detailRemove: 'Remove this choice', detailChosen: 'Chosen',
     detailFull: 'You’ve chosen {n}. Remove one to choose this.',
     first: 'First name', last: 'Last name', street: 'Street address', apt: 'Apartment, suite, etc.', city: 'City', state: 'State', zip: 'ZIP code', signature: 'Type your full name',
+    // The address: one line that finds it (Google's suggestions), or its parts typed in
+    addressLine: 'Address', addressManual: 'Enter the address yourself', addressSearch: 'Search for the address instead',
+    addressPick: 'Type the address and choose it from the list, or enter it yourself.',
     // The hero above the form
     heroEyebrow: 'For Families · {year} Application', heroTitleHtml: 'Tell us about your <em>child</em>.',
     heroLeadHtml: "This is where your family's story starts. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.",
@@ -193,7 +196,9 @@ export const UI = {
     language: 'Idioma', loading: 'Cargando la solicitud…', optional: '(opcional)', chooseOne: 'Elija una opción', choose: 'Elegir', upTo: 'Elija hasta {n}.',
     tileMore: 'Más', tileMoreAbout: 'Más sobre {name}', detailChoose: 'Elegir esta', detailRemove: 'Quitar esta opción', detailChosen: 'Elegida',
     detailFull: 'Ya eligió {n}. Quite una para elegir esta.',
-    first: 'Nombre', last: 'Apellido', street: 'Dirección', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
+    first: 'Nombre', last: 'Apellido', street: 'Calle y número', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
+    addressLine: 'Dirección', addressManual: 'Escribir la dirección a mano', addressSearch: 'Buscar la dirección',
+    addressPick: 'Escriba la dirección y elíjala de la lista, o escríbala a mano.',
     heroEyebrow: 'Para familias · Solicitud {year}', heroTitleHtml: 'Cuéntenos sobre <em>su hijo o hija</em>.',
     heroLeadHtml: 'Aquí comienza la historia de su familia. La solicitud toma unos 15 minutos y <strong>se guarda mientras avanza</strong>, así que puede detenerse y volver cuando quiera.',
     heroStart: 'Comenzar la solicitud', heroContinue: 'Continuar mi solicitud', heroNotify: 'Avísenme cuando abran', heroFaq: '¿Preguntas? Lea las respuestas',
@@ -378,16 +383,20 @@ ${part(T('last'), `<input type="text" id="${id}-last" data-part="last" maxlength
     if (f.type === 'address') {
       const ac = (v) => (homeAddress ? v : 'off');
       const list = `${id}-suggest`;
-      // The suggestion list sits beside the label, not in it: a click on a suggestion mustn't count as a click on the label
-      body += `<div class="af-address">
-<div class="af-suggest-wrap">${part(T('street'), `<input type="text" id="${id}-line1" data-part="line1" maxlength="160" autocomplete="${ac('address-line1')}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${list}" enterkeyhint="next" placeholder=" ">`)}
+      // One line that finds the address (picking a suggestion fills in its parts, which are the answer),
+      // and its parts typed in for an address the search doesn't know. The suggestion list sits beside
+      // the label, not in it: a click on a suggestion mustn't count as a click on the label
+      body += `<div class="af-address" data-mode="line">
+<div class="af-suggest-wrap af-address-line">${part(T('addressLine'), `<input type="text" id="${id}-search" data-search maxlength="200" autocomplete="${ac('street-address')}" autocapitalize="words" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${list}" enterkeyhint="next" placeholder=" ">`)}
 <ul class="af-suggest" id="${list}" role="listbox" aria-label="${esc(T('suggestions'))}" hidden></ul></div>
+<div class="af-address-street">${part(T('street'), `<input type="text" id="${id}-line1" data-part="line1" maxlength="160" autocomplete="${ac('address-line1')}" enterkeyhint="next" placeholder=" ">`)}</div>
 ${part(`${T('apt')} <span class="af-optional">${T('optional')}</span>`, `<input type="text" id="${id}-line2" data-part="line2" maxlength="80" autocomplete="${ac('address-line2')}" enterkeyhint="next" placeholder=" ">`)}
-<div class="af-row af-row--3">
+<div class="af-row af-row--3 af-address-rest">
 ${part(T('city'), `<input type="text" id="${id}-city" data-part="city" maxlength="80" autocomplete="${ac('address-level2')}" enterkeyhint="next" placeholder=" ">`)}
 <label class="af-sub af-float af-float--select"><select id="${id}-state" data-part="state" autocomplete="${ac('address-level1')}"><option value="">${T('choose')}</option>${US_STATES.map(s => `<option value="${s}"${homeAddress && s === 'GA' ? ' selected' : ''}>${s}</option>`).join('')}</select><span class="af-float-label">${T('state')}</span></label>
 ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="numeric" maxlength="10" autocomplete="${ac('postal-code')}" enterkeyhint="next" placeholder=" ">`)}
 </div>
+<p class="af-address-switch"><button type="button" class="af-btn af-btn--link" data-addr-mode="parts">${esc(T('addressManual'))}</button><button type="button" class="af-btn af-btn--link" data-addr-mode="line">${esc(T('addressSearch'))}</button></p>
 <p class="af-county-note" aria-live="polite" hidden></p></div>`;
     }
     inner = `<fieldset ${described}><legend class="af-label">${esc(f.label)}${optional}</legend>${help}${body}</fieldset>`;

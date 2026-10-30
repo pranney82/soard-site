@@ -149,8 +149,8 @@ try {
   console.log('Location');
   ok(/Address of the space/.test(await page.$eval('[data-field="address"] .af-label, [data-field="address"] legend', (e) => e.textContent)), 'the address of the space, not a home');
   ok(/Suite, building or room/.test(await page.$eval('#af-address-line2', (e) => e.closest('label').textContent).catch(() => '')), 'its second line asks for a suite, building or room (not an apartment)');
-  await page.focus('#af-address-line1');
-  await page.type('#af-address-line1', SUGGESTION.line1.slice(0, 9));
+  await page.focus('#af-address-search');
+  await page.type('#af-address-search', SUGGESTION.line1.slice(0, 9));
   await page.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
@@ -158,6 +158,7 @@ try {
   const area = await page.$eval('[data-area]', (e) => e.dataset.area).catch(() => '');
   ok(area === 'inside', `the address is placed on the map: ${area}`);
   ok(await page.$eval('#af-county', (e) => e.value) === SUGGESTION.county, 'and the county is filled in');
+  ok(await page.$eval('#af-address-search', (e) => e.value) === SUGGESTION.label, `the one line shows the whole address (${await page.$eval('#af-address-search', (e) => e.value)})`);
   const legend = await page.$eval('[data-area-map]', (e) => e.textContent).catch(() => '');
   ok(/The address you entered/.test(legend) && !/The home you entered/.test(legend), 'the map speaks of an address, not a home');
   await shot('02-location-phone');
