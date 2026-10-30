@@ -16,6 +16,7 @@ import { onRequest } from '../functions/api/_middleware.js';
 import { withBooks, moneyTiles, moneyFor, booksCash } from '../public/admin/board/money.js';
 import * as booksAdmin from '../functions/api/books-admin.js';
 import * as booksCallback from '../functions/api/books-callback.js';
+import { todayEastern } from '../public/admin/board-shared.js';
 
 const FOUNDER = 'jane@soardcharity.com';
 const STAFF = 'pat@soardcharity.com';
@@ -52,16 +53,16 @@ const DISCOVERY = {
 
 /** SOARD's chart of accounts the way QuickBooks' query answers (the bank and card accounts, and others it skips) */
 const ACCOUNTS = [
-  { Name: 'SR1_Opex (0986)', AccountType: 'Bank', CurrentBalance: 64748.68, Active: true },
-  { Name: 'SR4_Long Reserve (8861)', AccountType: 'Bank', CurrentBalance: 300986.49, Active: true },
+  { Id: '35', Name: 'SR1_Opex (0986)', AcctNum: '1000', AccountType: 'Bank', CurrentBalance: 64748.68, Active: true },
+  { Id: '94', Name: 'SR4_Long Reserve (8861)', AcctNum: '1001', AccountType: 'Bank', CurrentBalance: 300986.49, Active: true },
   { Name: 'SR5_Income (3552)', AccountType: 'Bank', CurrentBalance: 134504.07, Active: true },
   { Name: 'Mercury Bank', AccountType: 'Bank', CurrentBalance: 2500, Active: true },
   { Name: 'Gift Cards', AccountType: 'Bank', CurrentBalance: 0, Active: true },
   { Name: 'Petty Cash', AccountType: 'Bank', CurrentBalance: 40, Active: true },
   { Name: 'Old Checking', AccountType: 'Bank', CurrentBalance: 999, Active: false },
-  { Name: 'CD', AccountType: 'Other Current Asset', CurrentBalance: 100000, Active: true },
+  { Id: '150', Name: 'CD', AccountType: 'Other Current Asset', CurrentBalance: 100000, Active: true },
   { Name: 'Chase C/C 3512', AccountType: 'Credit Card', CurrentBalance: 583.45, Active: true },
-  { Name: 'Ramp CC', AccountType: 'Credit Card', CurrentBalance: 2196.28, Active: true },
+  { Id: '201', Name: 'Ramp CC', AccountType: 'Credit Card', CurrentBalance: 2196.28, Active: true },
   { Name: 'American Express', AccountType: 'Credit Card', CurrentBalance: 0, Active: true },
   { Name: 'Accounts Payable', AccountType: 'Accounts Payable', CurrentBalance: 4722.11, Active: true },
 ];
@@ -117,6 +118,32 @@ const TRAILING = {
     { type: 'Section', group: 'NetIncome', Summary: { ColData: [{ value: 'Net Revenue' }, { value: '480000.00' }] } },
   ] },
 };
+/**
+ * The General Ledger of the bank accounts for the last 12 months, the way QuickBooks sends it: a section per account,
+ * its Beginning Balance, then each transaction with the account it went to (Split) and the running balance.
+ * Out: payroll $50,000, a vendor $30,000, the Ramp card paid $20,000 (cash out); moved to the Long Reserve $100,000 and
+ * to the CD $100,000 (SOARD's own accounts, never spent). In: gifts $200,000
+ */
+function ledger({ flip = false } = {}) {
+  const k = flip ? -1 : 1;
+  let bal = 500000;
+  const row = (date, type, split, amount, splitId) => { bal += amount; return { type: 'Data', ColData: [{ value: date }, { value: type }, { value: '' }, { value: '' }, { value: '' }, { value: split, ...(splitId ? { id: splitId } : {}) }, { value: (k * amount).toFixed(2) }, { value: bal.toFixed(2) }] }; };
+  const opex = [
+    { type: 'Data', ColData: [{ value: 'Beginning Balance' }, { value: '' }, { value: '' }, { value: '' }, { value: '' }, { value: '' }, { value: '' }, { value: '500000.00' }] },
+    row('2025-11-03', 'Payroll Check', 'Salaries & Wages', -50000),
+    row('2025-12-01', 'Expense', '-Split-', -30000),
+    row('2026-01-15', 'Transfer', 'Ramp CC', -20000, '201'),
+    row('2026-02-01', 'Transfer', '1001 SR4_Long Reserve (8861)', -100000),
+    row('2026-03-01', 'Transfer', 'CD', -100000, '150'),
+    row('2026-04-01', 'Deposit', 'Contributions', 200000),
+  ];
+  return {
+    Header: { ReportName: 'GeneralLedger' },
+    Columns: { Column: [['Date', 'tx_date'], ['Transaction Type', 'txn_type'], ['Num', 'doc_num'], ['Name', 'name'], ['Memo/Description', 'memo'], ['Split', 'split_acc'], ['Amount', 'subt_nat_amount'], ['Balance', 'rbal_nat_amount']].map(([t, key]) => ({ ColTitle: t, ColType: 'String', MetaData: [{ Name: 'ColKey', Value: key }] })) },
+    Rows: { Row: [{ type: 'Section', Header: { ColData: [{ value: 'SR1_Opex (0986)' }] }, Rows: { Row: opex }, Summary: { ColData: [{ value: 'Total for SR1_Opex (0986)' }] } }] },
+  };
+}
+
 /** The year's Profit and Loss by class (the books keep programs, management and fundraising as classes) */
 const BY_CLASS = {
   Columns: { Column: ['', 'Programs', 'Management', 'Fundraising', 'Not Specified', 'Total'].map((t, i) => ({ ColTitle: t, ColType: i ? 'Money' : 'Account' })) },
@@ -156,8 +183,18 @@ beforeEach(async () => {
       world.reads.push({ host: url.host, path: url.pathname, q: Object.fromEntries(url.searchParams), auth: init.headers.Authorization });
       if (world.unauthorizedOnce) { world.unauthorizedOnce = false; return Response.json({ fault: { error: [{ message: 'message=AuthenticationFailed', code: '3200' }], type: 'AUTHENTICATION' } }, { status: 401 }); }
       if (url.pathname === `/v3/company/${REALM}/companyinfo/${REALM}`) return Response.json({ CompanyInfo: { CompanyName: 'Sunshine on a Ranney Day', FiscalYearStartMonth: world.fiscal } });
-      if (url.pathname === `/v3/company/${REALM}/query`) { assert.match(url.searchParams.get('query'), /^select \* from Account where Active = true/); return Response.json({ QueryResponse: { Account: world.accounts, startPosition: 1, maxResults: world.accounts.length } }); }
+      if (url.pathname === `/v3/company/${REALM}/query`) {
+        // Each type asked for on its own; QuickBooks answers only that type
+        const type = url.searchParams.get('query').match(/^select \* from Account where AccountType = '([\w ]+)' MAXRESULTS 1000$/)?.[1];
+        assert.ok(type, url.searchParams.get('query'));
+        const list = world.accounts.filter((a) => a.AccountType === type);
+        return Response.json({ QueryResponse: { Account: list, startPosition: 1, maxResults: list.length } });
+      }
       if (url.pathname === `/v3/company/${REALM}/preferences`) return Response.json({ Preferences: { AccountingInfoPrefs: { BookCloseDate: world.bookClose } } });
+      if (url.pathname === `/v3/company/${REALM}/reports/GeneralLedger`) {
+        world.ledgerAsk = Object.fromEntries(url.searchParams);
+        return world.ledgerReply ? world.ledgerReply() : Response.json(ledger());
+      }
       if (url.pathname === `/v3/company/${REALM}/reports/BalanceSheet`) {
         const q = Object.fromEntries(url.searchParams);
         if (q.summarize_column_by === 'Month') return Response.json(balanceSheet(monthCols(13, q.end_date), BANK_BY_MONTH));
@@ -280,8 +317,10 @@ test('Intuit’s addresses come from its discovery document, read once a day; on
 test('the cash on the books: active Bank accounts by name without ledger digits, cards as owed, nothing else', () => {
   const c = cashOf(ACCOUNTS);
   assert.equal(c.total, 502779.24, 'not the inactive account, not the CD (an Other Current Asset, as on the balance sheet)');
-  assert.deepEqual(c.accounts, [{ name: 'Opex', balance: 64748.68 }, { name: 'Long Reserve', balance: 300986.49 }, { name: 'Income', balance: 134504.07 }, { name: 'Mercury Bank', balance: 2500 }, { name: 'Petty Cash', balance: 40 }]);
+  assert.deepEqual(c.accounts, [{ name: 'Long Reserve', balance: 300986.49 }, { name: 'Income', balance: 134504.07 }, { name: 'Opex', balance: 64748.68 }, { name: 'Mercury Bank', balance: 2500 }, { name: 'Petty Cash', balance: 40 }], 'largest first');
   assert.deepEqual(c.owed, [{ name: 'Chase C/C 3512', balance: 583.45 }, { name: 'Ramp CC', balance: 2196.28 }]);
+  // A card the books carry as a negative balance is still what's owed
+  assert.deepEqual(cashOf([{ Name: 'Ramp CC', AccountType: 'Credit Card', CurrentBalance: -2196.28, Active: true }]).owed, [{ name: 'Ramp CC', balance: 2196.28 }]);
   assert.deepEqual(cashOf([]), { total: 0, accounts: [], owed: [] });
 });
 
@@ -290,11 +329,13 @@ test('once a day, the year in context: last year by now and in all, the last 12 
   const n = await booksNow(env.DB, { now: T0 });
   // Last year: the same days (Jan 1 to Oct 29 2025), and the whole year
   assert.deepEqual(n.lastYear, { year: '2025', through: '2025-10-29', revenue: 657777.34, expenses: 351280.11, net: 306497.22, full: { revenue: 1027777.09, expenses: 548875.18, net: 478901.91 } });
-  // The last 12 full months (Oct 1 2025 to Sep 30 2026), less what was never cash
-  assert.deepEqual(n.trailing, { from: '2025-10-01', through: '2026-09-30', spent: 420000, nonCash: 60000, cashSpent: 360000 });
-  // $502,779 in the bank over $30,000 a month of cash spending
-  assert.equal(n.perMonth, 30000);
-  assert.equal(n.monthsOfCash, 16.8);
+  // The last 12 full months (Oct 1 2025 to Sep 30 2026): what left the bank accounts, from their ledger. Payroll, a
+  // vendor and the Ramp card's payment are cash out; the moves to the Long Reserve and the CD aren't
+  assert.deepEqual(n.trailing, { from: '2025-10-01', through: '2026-09-30', spent: 420000, cashOut: 100000, payments: 3 });
+  assert.deepEqual(world.ledgerAsk, { start_date: '2025-10-01', end_date: '2026-09-30', account: '35,94', minorversion: '75' }, 'the bank accounts only');
+  // $502,779 in the bank over $8,333 a month of cash out
+  assert.equal(n.perMonth, 8333.33);
+  assert.equal(n.monthsOfCash, 60.3);
   // Cash at each month's end: 13 of them, the last as of today
   assert.equal(n.months.length, 13);
   assert.deepEqual(n.months[0], { month: '2025-10', end: '2025-10-31', total: 575839.31 });
@@ -314,6 +355,30 @@ test('once a day, the year in context: last year by now and in all, the last 12 
   assert.deepEqual(n.functions, { list: [{ name: 'Programs', amount: 340000 }, { name: 'Management', amount: 60000 }, { name: 'Fundraising', amount: 30000 }], total: 438000.14 });
   // Where the year's money came from
   assert.deepEqual(n.sources, [{ name: 'Other Income', amount: 9876 }]);
+});
+
+test('cash out reads the ledger whichever way its amounts run, and a ledger it can’t read gives no months of cash, never a guess', async () => {
+  const { cashOutOf, ownAccounts } = await import('../functions/api/_quickbooks.js');
+  const own = ownAccounts(ACCOUNTS.filter((a) => ['Bank', 'Other Current Asset'].includes(a.AccountType)));
+  assert.deepEqual(cashOutOf(ledger(), own), { out: 100000, payments: 3 });
+  assert.deepEqual(cashOutOf(ledger({ flip: true }), own), { out: 100000, payments: 3 }, 'amounts carried the other way round');
+  assert.throws(() => cashOutOf({ Columns: { Column: [{ ColTitle: 'Date' }] }, Rows: {} }, own), (e) => e.code === 'SHAPE');
+  // A ledger of every account (the bank filter ignored): only the bank accounts' sections count
+  const banks = ownAccounts(ACCOUNTS.filter((a) => a.AccountType === 'Bank'));
+  const all = ledger();
+  const expense = JSON.parse(JSON.stringify(all.Rows.Row[0]));
+  expense.Header.ColData[0] = { value: 'Salaries & Wages' };
+  all.Rows.Row.push(expense);
+  assert.deepEqual(cashOutOf(all, own, banks), { out: 100000, payments: 3 });
+  // Sub-accounts under a bank: in; a section that's no bank at all: nothing
+  assert.deepEqual(cashOutOf({ ...all, Rows: { Row: [expense] } }, own, banks), { out: 0, payments: 0 });
+  // A ledger QuickBooks won't give: the rest of the day's read stands, months of cash don't show
+  world.ledgerReply = () => Response.json({ Fault: { Error: [{ Message: 'Unsupported', code: '2030' }] } }, { status: 400 });
+  await connect();
+  const n = await booksNow(env.DB, { now: T0 });
+  assert.equal(n.trailing.cashOut, null);
+  assert.equal(n.monthsOfCash, null);
+  assert.ok(n.statements && n.lastYear, 'the rest of the day’s read');
 });
 
 test('the day the statements are as of: the books’ close when it’s the last three months’, else the end of last month', async () => {
@@ -484,7 +549,7 @@ test('the figures say where the year stands: months of cash, the budget beside l
   const cash = { live: true, total: 502779.24, banks: ['QuickBooks'], today: true, at: new Date().toISOString(), asOf: 'Oct 29, 2026', accounts: [], owed: [], months: 16.8, perMonth: 30000 };
   const tiles = moneyTiles({ cash, budget: b, n: {} });
   assert.deepEqual(tiles.map((t) => [t.k, t.value]), [['bank', '$502,779'], ['months', '17'], ['rev', '$822,222'], ['exp', '$439,100']]);
-  assert.equal(tiles[1].sub, 'At $30K a month, the last 12 months’ spending');
+  assert.equal(tiles[1].sub, 'At $30K a month, the last 12 months’ cash out');
   assert.equal(tiles[2].sub, '82% of the $1M budget, as of Oct 29 · 64% by now last year');
   // No budget for the year yet: against last year's same days
   const nob = withBooks(null, { ...BOOKS, lastYear: ly });
@@ -524,7 +589,7 @@ test('/api/books-admin and the callback: Board admins only; connect, back to Set
   assert.equal(back.headers.get('Location'), 'https://sunshineonaranneyday.com/admin/?books=connected#settings');
   const s = await req(FOUNDER);
   assert.equal(s.body.status.connected.company, 'Sunshine on a Ranney Day');
-  assert.equal(s.body.status.connected.through, '2026-10-29');
+  assert.equal(s.body.status.connected.through, todayEastern(), 'read just now, through today');
   assert.ok(!/822221|at-1|rt-1|9130350000000001/.test(JSON.stringify(s.body)), 'no amount, token or company id');
   const audit = await env.DB.prepare('SELECT user_email, entity_name FROM audit_log').all();
   assert.deepEqual(audit.results, [{ user_email: FOUNDER, entity_name: 'QuickBooks connected for the board page: Sunshine on a Ranney Day' }]);

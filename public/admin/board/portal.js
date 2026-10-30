@@ -1619,7 +1619,7 @@ function CashCard({ data }) {
         <h2 class="bp-h2" id="cash-h">Cash in the bank</h2>
         <p class="bp-cash__total">${money(cash.total)}</p>
         <p class="bp-muted">${cash.asOf ? `As of ${cash.asOf}` : ''}${change != null ? html` · <span class=${change >= 0 ? 'bp-up' : 'bp-down'}>${change >= 0 ? 'up' : 'down'} ${money(Math.abs(change))}</span> from ${cash.priorAsOf || 'a year earlier'}` : ''}</p>
-        ${cash.months != null ? html`<p class="bp-cash__months"><strong>${monthsText(cash.months)} months</strong> of spending${cash.perMonth ? ` at ${money(cash.perMonth)} a month, the last 12 months’ cash spending (depreciation and in-kind gifts aren’t cash, so they’re left out)` : ''}</p>` : null}
+        ${cash.months != null ? html`<p class="bp-cash__months"><strong>${monthsText(cash.months)} months</strong> of spending${cash.perMonth ? ` at ${money(cash.perMonth)} a month: the cash that left the bank accounts in the last 12 months, not counting moves between SOARD’s own accounts. In-kind gifts never leave the bank, so they’re not in it.` : ''}</p>` : null}
       </div>
       ${cash.live
         ? html`<p class="bp-cash__src">${fromBooks(cash) || `Straight from ${andText(cash.banks)}, read ${cash.today ? `today at ${clockAt(cash.at)}` : cash.asOf}`}${cash.stale.length ? html`<br />${andText(cash.stale)} hasn’t answered since then` : null}</p>`

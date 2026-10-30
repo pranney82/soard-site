@@ -15,6 +15,8 @@
  * in context (readDaily): last year's same days and whole year, the last 12 months' spending (and how much of it was
  * never cash), cash at each month's end for 13 months, the statements of financial position and activities as of
  * the books' close beside the same day a year before, and spending by purpose when the books keep it by class.
+ * Months of cash go by the cash that left the bank accounts (their General Ledger), never the books' expenses: SOARD's
+ * in-kind gifts are expenses but never cash.
  *
  * D1 books_link keeps one row: the company, its tokens (never sent to a browser), the year so far as last
  * read, and any trouble (its code, words and Intuit's intuit_tid, which Intuit's support asks for; the same in
@@ -296,8 +298,9 @@ export function cashOf(list) {
   const banks = live.filter((a) => a.AccountType === 'Bank');
   return {
     total: round2(banks.reduce((t, a) => t + num(a), 0)),
-    accounts: banks.filter((a) => round2(num(a)) !== 0).map((a) => ({ name: accountName(a.Name), balance: round2(num(a)) })),
-    owed: live.filter((a) => a.AccountType === 'Credit Card' && num(a) > 0).map((a) => ({ name: accountName(a.Name), balance: round2(num(a)) })),
+    accounts: banks.filter((a) => round2(num(a)) !== 0).map((a) => ({ name: accountName(a.Name), balance: round2(num(a)) })).sort((x, y) => y.balance - x.balance),
+    // What's owed on each card, whichever sign the books carry a liability in; a card at zero isn't listed
+    owed: live.filter((a) => a.AccountType === 'Credit Card' && round2(num(a)) !== 0).map((a) => ({ name: accountName(a.Name), balance: round2(Math.abs(num(a))) })),
   };
 }
 
@@ -364,16 +367,75 @@ function rowsOf(nodes, d = 0, out = []) {
 /** Two of QuickBooks' reports, this year's and the same day a year before, as one statement's rows */
 export const statementRows = (now, then) => rowsOf(mergeTrees(treeOf(now?.Rows?.Row), then ? treeOf(then?.Rows?.Row) : null));
 
-const NON_CASH = /deprecia|amortiz|in[\s-]?kind|donated/i;
 const SPENDING = ['COGS', 'Expenses', 'OtherExpenses'];
-/** The part of a Profit and Loss's spending that was never cash: depreciation, amortization, in-kind and donated goods */
-export function nonCashSpent(report) {
-  const sum = (nodes, hit) => nodes.reduce((t, n) => {
-    const h = hit || NON_CASH.test(n.label);
-    if (n.kind === 'section') return t + (h ? n.total : sum(n.kids, false));
-    return t + (h && n.kind === 'acct' ? n.amount : 0);
-  }, 0);
-  return round2(treeOf(report?.Rows?.Row).filter((n) => SPENDING.includes(n.group)).reduce((t, n) => t + sum(n.kids, false), 0));
+const normName = (s) => String(s || '').trim().toLowerCase().replace(/^\d+\s+/, '');
+/** SOARD's own places money can move to without being spent (bank accounts, the CD), by id and by name */
+export function ownAccounts(list) {
+  const ids = new Set();
+  const names = new Set();
+  for (const a of list || []) {
+    if (a?.Id) ids.add(String(a.Id));
+    for (const n of [a?.Name, a?.FullyQualifiedName, a?.AcctNum && `${a.AcctNum} ${a.Name}`]) if (n) names.add(normName(n));
+  }
+  return { ids, names };
+}
+
+/**
+ * The cash that left SOARD's bank accounts, from QuickBooks' General Ledger of those accounts: every payment out
+ * (bills, payroll, card payments, loan payments), but never a move to another of SOARD's own accounts (`own`: the bank
+ * accounts, the CD). In-kind gifts and depreciation never touch a bank account, so they're never in it, whatever
+ * their accounts are called. Only the sections of the bank accounts themselves (`banks`) count, so a ledger of every
+ * account is never read as cash. → { out, payments }. The sign of the ledger's amounts is read from its running
+ * balance (money out lowers it); SHAPE when it has no amount or split column
+ */
+export function cashOutOf(report, own, banks = own) {
+  const cols = report?.Columns?.Column || [];
+  const key = (c) => String((c.MetaData || []).find((m) => m.Name === 'ColKey')?.Value || '').toLowerCase();
+  const col = (keys, title) => cols.findIndex((c) => keys.includes(key(c)) || title.test(String(c.ColTitle || '').trim()));
+  const at = { amount: col(['subt_nat_amount', 'nat_amount', 'amount'], /^amount$/i), split: col(['split_acc'], /^split$/i), type: col(['txn_type'], /^transaction type$/i), balance: col(['rbal_nat_amount', 'rbal'], /^balance$/i) };
+  if (at.amount < 0 || at.split < 0) throw Object.assign(new Error('The General Ledger has no Amount or Split column'), { code: 'SHAPE' });
+  // Each bank account's rows (a section per account, sub-accounts within), without its Beginning Balance line
+  const isBank = (cell) => !!cell && ((cell.id && banks.ids.has(String(cell.id))) || banks.names.has(normName(cell.value)));
+  const sections = [];
+  const walk = (rows, bank) => {
+    const mine = [];
+    for (const r of rows || []) {
+      if (r.Rows) walk(r.Rows.Row, bank || isBank(r.Header?.ColData?.[0]));
+      else if (bank && r.ColData && !/beginning balance/i.test(String(r.ColData[0]?.value || ''))) mine.push(r.ColData);
+    }
+    if (mine.length) sections.push(mine);
+  };
+  walk(report?.Rows?.Row, false);
+  // Which way the amounts run: a row's amount is how its running balance moved, or the opposite
+  let votes = 0;
+  if (at.balance >= 0) {
+    for (const rows of sections) {
+      for (let i = 1; i < rows.length; i++) {
+        const prev = rows[i - 1][at.balance]?.value;
+        const bal = rows[i][at.balance]?.value;
+        if (prev === '' || bal === '' || prev == null || bal == null) continue;
+        const moved = num(bal) - num(prev);
+        const amount = num(rows[i][at.amount]?.value);
+        if (Math.abs(moved) < 0.005) continue;
+        if (Math.abs(moved - amount) < 0.01) votes += 1;
+        else if (Math.abs(moved + amount) < 0.01) votes -= 1;
+      }
+    }
+  }
+  const sign = votes < 0 ? -1 : 1;
+  let out = 0;
+  let payments = 0;
+  for (const rows of sections) {
+    for (const cd of rows) {
+      const moved = sign * num(cd[at.amount]?.value);
+      if (!(moved < 0)) continue;
+      const split = cd[at.split] || {};
+      if ((split.id && own.ids.has(String(split.id))) || own.names.has(normName(split.value))) continue;
+      out += -moved;
+      payments += 1;
+    }
+  }
+  return { out: round2(out), payments };
 }
 
 /** A month-by-month Balance Sheet → the bank accounts' total at each month's end: [{ month: 'YYYY-MM', end, total }], oldest first */
@@ -444,12 +506,26 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     const sameDay = yearBefore(today);
     const lastSame = readProfitAndLoss(await pl(`${year - 1}-01-01`, sameDay));
     const lastFull = readProfitAndLoss(await pl(`${year - 1}-01-01`, `${year - 1}-12-31`));
-    // The last 12 full months' spending, and how much of it was never cash
+    // The last 12 full months: the cash that left the bank accounts (the General Ledger of those accounts), beside the
+    // books' expenses (in-kind and depreciation included). Without a clean ledger, no months of cash rather than a guess
     const tThrough = lastMonthEnd(today);
     const tFrom = monthStart(tThrough, 11);
-    const trailReport = await pl(tFrom, tThrough);
-    const trail = readProfitAndLoss(trailReport);
-    const nonCash = nonCashSpent(trailReport);
+    const trail = readProfitAndLoss(await pl(tFrom, tThrough));
+    const accountsOf = async (type) => (await get('/query', { query: `select * from Account where AccountType = '${type}' MAXRESULTS 1000` })).QueryResponse?.Account || [];
+    const banks = await accountsOf('Bank');
+    let cashOut = null;
+    try {
+      const own = ownAccounts([...banks, ...await accountsOf('Other Current Asset'), ...await accountsOf('Other Asset')]);
+      const ids = banks.map((a) => a.Id).filter(Boolean);
+      if (ids.length) {
+        const c = cashOutOf(await get('/reports/GeneralLedger', { start_date: tFrom, end_date: tThrough, account: ids.join(',') }), own, ownAccounts(banks));
+        // Nothing out in a year, or far more than the books spent, isn't a ledger read right
+        if (c.out > 0 && !(trail.spent > 0 && c.out > trail.spent * 3)) cashOut = c;
+        else console.error('[books] cash out looks wrong', c.out, trail.spent);
+      }
+    } catch (err) {
+      console.error('[books] cash out', err.code || '', detailOf(err));
+    }
     // Cash at each month's end, 13 months (this month's as of today)
     const months = bankByMonth(await get('/reports/BalanceSheet', { start_date: monthStart(today, 12), end_date: today, summarize_column_by: 'Month' }));
     // The statements, as of the books' close, beside the same day a year before
@@ -468,7 +544,7 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     const data = {
       day: today,
       lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net } },
-      trailing: { from: tFrom, through: tThrough, spent: trail.spent, nonCash, cashSpent: round2(trail.spent - nonCash) },
+      trailing: { from: tFrom, through: tThrough, spent: trail.spent, cashOut: cashOut ? cashOut.out : null, payments: cashOut ? cashOut.payments : 0 },
       months, statements, functions,
     };
     await env.DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at, error) VALUES (?, ?, ?, ?, ?, NULL)').bind(ID, JSON.stringify(data), today, at, at).run();
@@ -496,9 +572,10 @@ export async function readBooks(env, { fetchImpl = fetch, now = Date.now() } = {
     const span = yearSoFar(todayEastern(now), SOARD_YEAR_STARTS);
     const pl = await read(env, row, '/reports/ProfitAndLoss', { start_date: span.from, end_date: span.through }, { fetchImpl, now });
     const ytd = { ...span, ...readProfitAndLoss(pl), sources: sourcesOf(pl) };
-    // The cash on the books: every active account (a few hundred at most), sorted out here
-    const q = await read(env, row, '/query', { query: 'select * from Account where Active = true maxresults 1000' }, { fetchImpl, now });
-    ytd.cash = cashOf(q.QueryResponse?.Account);
+    // The cash on the books: the Bank accounts and the Credit Card accounts, each asked for by type (the whole chart of
+    // accounts can run past one answer's rows, and the cards came after the cut)
+    const ofType = async (type) => (await read(env, row, '/query', { query: `select * from Account where AccountType = '${type}' MAXRESULTS 1000` }, { fetchImpl, now })).QueryResponse?.Account || [];
+    ytd.cash = cashOf([...await ofType('Bank'), ...await ofType('Credit Card')]);
     // The company's name and its fiscal-year setting, kept current (Settings flags a year that doesn't start in January)
     const info = (await read(env, row, `/companyinfo/${row.realm_id}`, {}, { fetchImpl, now })).CompanyInfo || {};
     await env.DB.prepare('UPDATE books_link SET company = ?, fiscal_start = ? WHERE id = ?').bind(cleanText(info.CompanyName || info.LegalName, 80) || row.company, monthNumber(info.FiscalYearStartMonth), ID).run();
@@ -564,8 +641,8 @@ export async function booksNow(DB, { now = Date.now() } = {}) {
   const daily = await DB.prepare('SELECT data, read_at FROM books_daily WHERE id = ?').bind(ID).first();
   let d = null;
   try { d = daily?.data ? JSON.parse(daily.data) : null; } catch { d = null; }
-  // Months of cash: the cash over the last 12 months' spending that was cash, a month's worth
-  const perMonth = d?.trailing?.cashSpent > 0 ? d.trailing.cashSpent / 12 : 0;
+  // Months of cash: the cash over a month's worth of the last 12 months' cash out
+  const perMonth = d?.trailing?.cashOut > 0 ? d.trailing.cashOut / 12 : 0;
   return {
     company: row.company, year: y.year, from: y.from, through: y.through, revenue: y.revenue, expenses: y.spent, net: y.net, basis: y.basis, at: row.read_at, stale: now - Date.parse(row.read_at) > STALE_MS, cash,
     sources: y.sources || [], monthsOfCash: cash && perMonth ? Math.round((cash.total / perMonth) * 10) / 10 : null, perMonth: perMonth ? round2(perMonth) : null,
