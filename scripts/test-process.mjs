@@ -545,6 +545,9 @@ try {
   await clickTrack(page, 'Books & reporting');
   await pause(200);
   ok((await page.$$eval('.pr-now .pr-row', (l) => l.map((r) => r.textContent.replace(/\s+/g, ' ').trim()))).includes('Cash 13 weeks aheadAbove the floor'), 'books show where cash is heading');
+  await pause(300);
+  const short = await page.evaluate(() => { const sc = document.querySelector('.pr-map__scroll'); const lanes = [...document.querySelectorAll('.pr-mlane:not(.is-rail)')].map((l) => [...l.classList].find((c) => c.startsWith('is-')).slice(3)); return { lanes, empty: lanes.filter((id) => !document.querySelector(`.pr-mcard[data-lane="${id}"]`)), fills: sc.scrollWidth <= sc.clientWidth + 2 && document.querySelector('.pr-map__grid').getBoundingClientRect().width >= sc.clientWidth - 12 }; });
+  ok(short.lanes.length < 5 && !short.empty.length && short.fills, `a short map draws only the lanes with work in them, across the whole width (${JSON.stringify(short)})`);
   await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
   await clickTrack(page, 'Accounts payable');
   await clickText(page, '.pr-tools button', 'Print');

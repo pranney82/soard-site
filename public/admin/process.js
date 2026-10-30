@@ -211,7 +211,7 @@ a.pr-av:focus-visible { box-shadow: var(--focus-ring-strong); }
 .pr-mlane > span { display: flex; align-items: center; gap: 0.45rem; }
 .pr-mlane svg { flex: none; width: 15px; height: 15px; color: var(--lc, var(--color-text-secondary)); }
 .pr-mlane.is-rail { --lc: #13807A; bottom: 0; z-index: 9; background: var(--color-bg); border-top: 1px dashed var(--color-border-strong); color: var(--color-text-secondary); }
-.pr-mcard { all: unset; box-sizing: border-box; position: relative; z-index: 4; cursor: pointer; align-self: center; justify-self: center; width: calc(var(--slot) - 22px); margin: 0.5rem 0; display: flex; flex-direction: column; gap: 0.3rem; padding: 0.45rem 0.6rem 0.45rem 0.65rem; border: 1px solid var(--color-border); border-left: 3px solid var(--lc, var(--color-border-strong)); border-radius: 7px; background: var(--color-bg-card); box-shadow: var(--shadow-xs); font-size: 12px; line-height: 1.35; color: var(--color-text); }
+.pr-mcard { all: unset; box-sizing: border-box; position: relative; z-index: 4; cursor: pointer; align-self: center; justify-self: center; width: min(calc(var(--slot) - 22px), 260px); margin: 0.5rem 0; display: flex; flex-direction: column; gap: 0.3rem; padding: 0.45rem 0.6rem 0.45rem 0.65rem; border: 1px solid var(--color-border); border-left: 3px solid var(--lc, var(--color-border-strong)); border-radius: 7px; background: var(--color-bg-card); box-shadow: var(--shadow-xs); font-size: 12px; line-height: 1.35; color: var(--color-text); }
 div.pr-mcard { cursor: default; }
 .pr-mcard:hover, .pr-mcard.is-lit { border-color: var(--color-text); border-left-color: var(--lc, var(--color-text)); box-shadow: var(--shadow-sm); }
 .pr-mcard:focus-visible { box-shadow: var(--focus-ring-strong); }
@@ -235,7 +235,7 @@ div.pr-mcard { cursor: default; }
 .pr-mbolt.s-attn { color: var(--tone-warn-fg); }
 .pr-mbolt.s-off { color: var(--color-text-muted); }
 .pr-time { color: var(--tone-info-fg); }
-.pr-mdec { position: relative; z-index: 4; align-self: center; justify-self: center; width: calc(var(--slot) - 22px); margin: 0.5rem 0; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0.1rem 0.45rem; align-items: start; padding: 0.45rem 0.55rem; border: 1px dashed var(--color-text-secondary); border-radius: 7px; background: var(--color-bg-card); font-size: 10.5px; line-height: 1.4; color: var(--color-text-secondary); }
+.pr-mdec { position: relative; z-index: 4; align-self: center; justify-self: center; width: min(calc(var(--slot) - 22px), 260px); margin: 0.5rem 0; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0.1rem 0.45rem; align-items: start; padding: 0.45rem 0.55rem; border: 1px dashed var(--color-text-secondary); border-radius: 7px; background: var(--color-bg-card); font-size: 10.5px; line-height: 1.4; color: var(--color-text-secondary); }
 .pr-mdec i { grid-row: span 3; width: 13px; height: 13px; margin: 3px 0 0 3px; transform: rotate(45deg); border: 1.5px solid var(--color-text); border-radius: 2px; background: var(--color-bg-card); }
 .pr-mdec b { font-size: 12px; color: var(--color-text); }
 .pr-mdec em { font-style: normal; font-weight: 700; color: var(--color-text); }
@@ -566,7 +566,6 @@ const SLOT_W = 176;
 // Slots on each printed page of the map
 const PRINT_SLOTS = 6;
 /** The map's width at 100% (its box on screen, over its zoom) */
-const naturalWidth = (g) => g.getBoundingClientRect().width / (parseFloat(g.style.zoom) || 1);
 const naturalHeight = (g) => g.getBoundingClientRect().height / (parseFloat(g.style.zoom) || 1);
 const daysSince = (iso) => Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86400000));
 const initials = (name) => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
@@ -668,7 +667,7 @@ function flowPaths(g) {
  * per step (who's there, how long it takes), a row per lane, the tasks in
  * their slots, decisions, and a row of each step's automations at the foot.
  */
-function MapGrid({ m, lay, steps, byTitle, placed, cycleOn, show, stepWarn, interactive = true, onOpen, onHover, lit, openKey, focusCol, gridRef, zoom = 1, paths = [], bandOf }) {
+function MapGrid({ m, lay, steps, byTitle, placed, cycleOn, show, stepWarn, interactive = true, onOpen, onHover, lit, openKey, focusCol, gridRef, zoom = 1, slotW = SLOT_W, paths = [], bandOf }) {
   const node = (t) => byTitle.get(t);
   const stepOf = (c) => steps.find((x) => `${x.part}-${x.n}` === c.key);
   const laneRow = Object.fromEntries(m.lanes.map((l, i) => [l.id, i + 3]));
@@ -685,7 +684,7 @@ function MapGrid({ m, lay, steps, byTitle, placed, cycleOn, show, stepWarn, inte
     return ns.some((n) => n.es === 'attn') ? 'attn' : ns.some((n) => n.es === 'live') ? 'live' : ns.length ? 'off' : null;
   };
   const Tag = interactive ? 'button' : 'div';
-  return html`<div class="pr-map__grid" ref=${gridRef} style=${`--slots: ${lay.width}; --slot: ${SLOT_W}px; --label: ${LABEL_W}px; zoom: ${zoom}`}>
+  return html`<div class="pr-map__grid" ref=${gridRef} style=${`--slots: ${lay.width}; --slot: ${slotW}px; --label: ${LABEL_W}px; zoom: ${zoom}`}>
     <div class="pr-mcorner" style="grid-column: 1; grid-row: 1 / span 2;"></div>
     ${parts.map((p) => html`<div class=${`pr-mband is-${p.part}`} key=${`b-${p.label}`} style=${`grid-column: ${span(p.start, p.end)}; grid-row: 1;`}><span>${p.label}</span></div>`)}
     ${lay.cols.map((k) => {
@@ -781,14 +780,20 @@ function MapGrid({ m, lay, steps, byTitle, placed, cycleOn, show, stepWarn, inte
  * renderStep(key): that step in full, for the panel
  */
 function ProcessMap({ track, steps, byTitle, placed, cycles, show, stepWarn, openKey, onOpen, renderStep }) {
-  const m = useMemo(() => mapOf(track, steps), [track, steps]);
   const money = MONEY_TRACKS.includes(track);
   const decisionLaneOf = (c) => (money ? (c.cards.find((x) => x.lane !== 'auto' && x.lane !== 'outside')?.lane || 'staff') : 'team');
+  // A lane nobody works in on this track isn't drawn
+  const m = useMemo(() => {
+    const full = mapOf(track, steps);
+    const used = new Set(full.columns.flatMap((c) => [...c.cards.map((x) => x.lane), ...(c.decision ? [decisionLaneOf(c)] : [])]));
+    return { ...full, lanes: full.lanes.filter((l) => used.has(l.id)) };
+  }, [track, steps]);
   const lay = useMemo(() => layoutMap(m.columns, decisionLaneOf), [m]);
   const [zoom, setZoomRaw] = useState(START_ZOOM); // null: fit the whole map
   const zoomed = useRef(false); // once someone zooms, the map keeps their size
   const setZoom = (z) => { zoomed.current = true; setZoomRaw(z); };
   const [fitK, setFitK] = useState(1);
+  const [roomW, setRoomW] = useState(0);
   const [lit, setLit] = useState(null);
   const [paths, setPaths] = useState([]);
   const [inView, setInView] = useState(() => new Set());
@@ -817,14 +822,18 @@ function ProcessMap({ track, steps, byTitle, placed, cycles, show, stepWarn, ope
       const sc = scrollRef.current;
       const g = gridRef.current;
       if (!sc || !g) return;
-      setFitK(Math.max(0.18, Math.min(1, (sc.clientWidth - 2) / naturalWidth(g))));
+      setRoomW(sc.clientWidth);
+      setFitK(Math.max(0.18, Math.min(1, (sc.clientWidth - 2) / (LABEL_W + lay.width * SLOT_W))));
       const room = parseFloat(getComputedStyle(sc).maxHeight);
       if (!zoomed.current && room > 0) setZoomRaw(START_ZOOMS.find((z) => naturalHeight(g) * z <= room) ?? START_ZOOMS.at(-1));
     };
     fit();
-    window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
+    ro?.observe(scrollRef.current);
+    return () => ro?.disconnect();
   }, [lay]);
+  // A short process fills the window: its slots widen, never narrower than a card
+  const slotW = roomW ? Math.max(SLOT_W, Math.floor(((roomW - 2) / k - LABEL_W) / lay.width)) : SLOT_W;
 
   // The flow, drawn once the cards have their places (and again when anything moves)
   useEffect(() => {
@@ -835,7 +844,7 @@ function ProcessMap({ track, steps, byTitle, placed, cycles, show, stepWarn, ope
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => requestAnimationFrame(draw)) : null;
     ro?.observe(g);
     return () => { cancelAnimationFrame(id); ro?.disconnect(); };
-  }, [lay, k, show]);
+  }, [lay, k, slotW, show]);
 
   // Which steps are on screen, for the navigator
   useEffect(() => {
@@ -947,7 +956,7 @@ function ProcessMap({ track, steps, byTitle, placed, cycles, show, stepWarn, ope
     <div class="pr-map__body">
       <div class="pr-map__scroll" ref=${scrollRef}>
         <${MapGrid} m=${m} lay=${lay} steps=${steps} byTitle=${byTitle} placed=${placed} cycleOn=${cycleOn} show=${show} stepWarn=${stepWarn}
-          onOpen=${onOpen} onHover=${setLit} lit=${lit} openKey=${openKey} focusCol=${focusCol} gridRef=${gridRef} zoom=${k} paths=${paths} bandOf=${bandOf} />
+          onOpen=${onOpen} onHover=${setLit} lit=${lit} openKey=${openKey} focusCol=${focusCol} gridRef=${gridRef} zoom=${k} slotW=${slotW} paths=${paths} bandOf=${bandOf} />
       </div>
       ${open && html`<aside class="pr-panel" aria-label=${`Step ${open.n}: ${open.t}`}>
         <div class="pr-panel__top">
