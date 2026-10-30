@@ -593,21 +593,43 @@ try {
     ok(new URL(alex.url()).pathname === '/admin/board/', 'opening /admin/ takes a board member to their page');
     ok(await waitText(alex, /Good (morning|afternoon|evening), Alex/), 'Home greets them by name');
     const home = await text(alex);
-    ok(/Next board meeting/i.test(home) && /See the agenda and 1 file/.test(home), 'Home: the next meeting, and its packet');
+    ok(/Next meeting/.test(home) && /See the agenda and 1 file/.test(home), 'Home: the next meeting, and its packet');
     ok(/Example Hall/.test(home) && await alex.$('.bp-next a[href^="https://www.google.com/maps/search/"]') !== null, 'Home: its place, the address opening in Maps');
     ok(await alex.$('.bp-next a[href="https://meet.google.com/abc-defg-hij"]') !== null && /Google Meet/.test(home), 'Home: the Google Meet link, in the meeting’s one line');
     ok(width === 1440 ? /Calendar invite: Coming\./.test(home) : /You said “By video\.”/.test(home), width === 1440 ? 'Home: their reply to the invite shows' : 'Home: the answer they gave here shows');
     ok(width === 1440 ? /Send the venue contract/.test(home) : !/Send the venue contract/.test(home), width === 1440 ? 'Home: their own action item' : 'Home: the action item they ticked off is gone');
     const figs = await alex.evaluate(() => Object.fromEntries([...document.querySelectorAll('.bp-fig')].map((f) => [f.querySelector('.bp-fig__label').textContent, f.querySelector('.bp-fig__value').textContent])));
-    ok(Object.keys(figs).length === 4 && figs['Makeovers'] === '3' && figs['Cash in the bank'] === '$375K' && !/Recently|The money/.test(home), `Home: four figures (Mercury's cash, the makeovers), nothing repeated below (${JSON.stringify(figs)})`);
-    ok(await alex.$$eval('.bp-next .bp-peek li', (l) => l.length) > 0, 'Home: the next meeting’s agenda headings, right there');
+    // No budget sheet and no QuickBooks here: the reveals stand in for the year's revenue, and nothing for its
+    // expenses (the kids served are Impact's, just under the figures in the same panel)
+    ok(Object.keys(figs).length === 3 && figs['Makeovers'] === '3' && figs['Cash in the bank'] === '$375K' && 'Reveals ahead' in figs && !/Recently|The money|Children served/.test(home), `Home: three figures without a budget (Mercury's cash, the reveals, the makeovers), nothing repeated below (${JSON.stringify(figs)})`);
+    ok(await alex.evaluate(() => !!document.querySelector('.bp-sum .bp-figs') && !!document.querySelector('.bp-sum #impact')), 'Home: the figures and Impact are one panel, SOARD at a glance');
+    ok(await alex.$$eval('.bp-next .bp-agpeek li', (l) => l.length) > 0, 'Home: the next meeting’s agenda headings, right there');
     const cols = await alex.$$eval('#makeovers .bk-col', (c) => c.map((e) => e.textContent));
     ok(/^Awaiting funding1[\s\S]*1 family/.test(cols[0]) && /^Design2[\s\S]*Leo[\s\S]*\+1 more family/.test(cols[1]) && /^Build1[\s\S]*Maya/.test(cols.at(-1)) && !/Not Published Yet|Someone Else|Coming up/.test(home), `Home: the makeovers as a kanban, Awaiting funding first, then Design to Build; published kids by name only (${JSON.stringify(cols)})`);
     const kids = await alex.$$eval('#makeovers .bk-card:not(.is-quiet)', (c) => c.map((e) => ({ text: e.querySelector('.bk-card__body').textContent, img: !!e.querySelector('.bk-card__photo img, .bk-card__initials') })));
     ok(kids.length === 2 && kids.every((k) => k.img) && kids.some((k) => /^Maya\s*Reveal \w{3} \d+ · 10 AM$/.test(k.text)) && kids.some((k) => /^Leo\s*Reveal mid December$/.test(k.text)), `Home: each kid’s card leads with their photo and carries their reveal, a set day or the part of the month (${JSON.stringify(kids)})`);
     ok(await alex.evaluate(() => /kids served/.test(document.querySelector('#impact')?.textContent || '') && document.querySelector('#impact').getBoundingClientRect().top < document.querySelector('.bp-next').getBoundingClientRect().top), 'Home: Impact near the top, under the figures');
+    if (width === 1440) {
+      // Each year's bar says its numbers under the pointer, inside the panel even at the ends
+      const tips = [];
+      for (const pick of ['first-of-type', 'last-of-type']) {
+        await alex.hover(`#impact .bp-spark__bars > button:${pick}`);
+        tips.push(await alex.waitForFunction(() => { const t = document.querySelector('#impact .bp-ytip'); const s = document.querySelector('.bp-sum').getBoundingClientRect(); const r = t?.getBoundingClientRect(); return t && r.left >= s.left && r.right <= s.right ? t.textContent : null; }, { timeout: 2000 }).then((h) => h.jsonValue(), () => ''));
+      }
+      ok(tips.every((t) => /^\d{4}( so far)?\d+ kids? · \d+ rooms? · \d+ makeovers?$/.test(t)) && tips[0] !== tips[1], `Home: hovering a year’s bar says its kids, rooms and makeovers (${JSON.stringify(tips)})`);
+      await alex.mouse.move(2, 2);
+    }
     await alex.evaluate(() => document.querySelector('#impact .bp-impact__more').click());
     ok(await alex.waitForFunction(() => { const bars = [...document.querySelectorAll('#impact .bp-years__hit')]; return bars.length >= 1 && bars.every((b) => /^\d{4}: \d+ (kids?|rooms?)( so far)?, \d+ makeovers?$/.test(b.getAttribute('aria-label') || '')) && /\d{4}/.test(document.querySelector('.bp-yearpanel__head')?.textContent || ''); }, { timeout: 3000 }).then(() => true, () => false), 'Home: Explore by year opens a bar a year, each saying its numbers, and the year’s makeovers');
+    // A year's bar on Home opens that year below; the bigger bars say their numbers too
+    const firstYear = await alex.$eval('#impact .bp-spark__bars > button', (b) => b.getAttribute('aria-label').slice(0, 4));
+    await alex.click('#impact .bp-spark__bars > button');
+    ok(await alex.waitForFunction((y) => document.querySelector('.bp-yearpanel__head strong')?.textContent === y, { timeout: 2000 }, firstYear).then(() => true, () => false), `Home: tapping ${firstYear}’s bar opens ${firstYear}`);
+    if (width === 1440) {
+      await alex.hover('#impact .bp-years__bars li:last-child .bp-years__hit');
+      ok(await alex.waitForFunction(() => /^\d{4}( so far)?\d+ kids? · \d+ rooms? · \d+ makeovers?$/.test(document.querySelector('.bp-years .bp-ytip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'Home: Explore by year’s bars say their numbers under the pointer too');
+      await alex.mouse.move(2, 2);
+    }
     ok(await overflow(alex) <= 0, 'Home: nothing past the right edge');
     if (width === 390) {
       const bar = await alex.evaluate(() => { const n = getComputedStyle(document.querySelector('.bp-nav')); return { pos: n.position, bottom: n.bottom, top: getComputedStyle(document.querySelector('.bp-top')).position, tabs: document.querySelectorAll('.bp-nav a').length }; });
@@ -673,7 +695,7 @@ try {
       await clickText(alex, 'button', /^I’ve read it and agree$/);
       ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name');
       await alex.goto(`${SITE}/admin/board/#/reveals`, { waitUntil: 'networkidle0' });
-      ok(await alex.evaluate(() => location.hash) === '#/' && await waitText(alex, /awaiting funding, from JobTread/), 'the old Reveals link opens Home, where reveals are now');
+      ok(await alex.evaluate(() => location.hash) === '#/' && await alex.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false), 'the old Reveals link opens Home, where reveals are now');
       await alex.goto(`${SITE}/admin/board/#/meetings/${pastId}`, { waitUntil: 'networkidle0' });
       ok(!(await waitText(alex, /Reserves grew/, 2000)), 'a meeting not shared stays off the board page');
     } else {
@@ -693,7 +715,7 @@ try {
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Signed by Alex Rivera/), 'and who signed the policy');
   await jane.goto(`${SITE}/admin/board/`, { waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /awaiting funding, from JobTread/) && !/the way board members do/.test(await text(jane)), 'the founder sees the board page as the board does, with no banner saying so');
+  ok(await jane.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false) && /From JobTread/.test(await text(jane)) && !/the way board members do/.test(await text(jane)), 'the founder sees the board page as the board does, with no banner saying so');
   ok(await jane.evaluate(() => !document.querySelector('.bp-choice') && !document.querySelector('.bp-sign')), 'with nothing to answer or sign for anyone');
   await jane.click('.bp-me__btn');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bp-menu a')].some((a) => a.getAttribute('href') === '/admin/#board' && /Back to the Board area/.test(a.textContent))), 'the account menu has the way back to the Board area');

@@ -33,7 +33,7 @@ import {
   isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText,
 } from '../board-shared.js';
 import { Screen, ScreenPeek } from './screen.js';
-import { Kanban, kanbanLine, sized } from './kanban.js';
+import { Kanban, sized } from './kanban.js';
 import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText } from './money.js';
 
 const html = htm.bind(h);
@@ -565,6 +565,21 @@ const rise = (i) => `--i:${i}`;
 
 
 // ─── Home ───────────────────────────────────────────────────────────
+/**
+ * Home is a board brief, each fact once: SOARD at a glance (the four figures over Impact, one panel), the next
+ * meeting beside the last one, then the makeovers. Every figure is a door to the page with the rest of it
+ */
+
+/** A figure against its budget as a bar: filled to this year's share, the tick at last year's by now (the words say both) */
+function Meter({ x }) {
+  // Its place kept while the budget is read, so nothing moves when it fills
+  if (x.waiting) return html`<span class="bp-fig__meter" aria-hidden="true"></span>`;
+  const p = pctOf(x);
+  if (p == null) return null;
+  const pace = x.last != null && x.lastFull > 0 ? Math.round((x.last / x.lastFull) * 100) : null;
+  return html`<span class=${`bp-fig__meter ${p > 100 ? 'is-over' : ''}`} style=${`--p:${Math.min(100, p)}%${pace != null ? `;--pace:${Math.min(100, pace)}%` : ''}`} aria-hidden="true"><i></i>${pace != null ? html`<b></b>` : null}</span>`;
+}
+
 /** Four numbers a board member wants first: the money against its budget, and the makeovers */
 function Figures({ data }) {
   const cash = useCashNow(data);
@@ -573,30 +588,41 @@ function Figures({ data }) {
   const building = n.projects?.building || [];
   const inBuild = building.filter((b) => b.status === 'Build').length;
   const next = [...n.reveals].sort((a, b) => String(a.confirmed && a.date ? a.date : windowStart(a.window) || '9').localeCompare(String(b.confirmed && b.date ? b.date : windowStart(b.window) || '9')))[0];
-  const rev = budget?.revenue;
-  const exp = budget?.expenses;
-  const yr = budget?.year || '';
-  // Against the budget once there is one for the year, with last year's pace by now (QuickBooks' figures can come
-  // before the year's sheet: then against last year's same days)
-  const against = (x) => (x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget`, paceText(x)].filter(Boolean).join(', ') : growthText(x) || `Through ${shortAsOf(budget.asOf)}`);
-  // The cash: how many months it lasts (QuickBooks), else its day; and against a year ago
-  const yearAgo = cash && cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : '';
+  const nextWhen = next ? (next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || '') : '';
+  // While the budget sheet is read, QuickBooks' year so far shows at once, its bar waiting for the budget: the
+  // figures never change from three to four once the sheet arrives
+  const books = budget === undefined && typeof n.books?.revenue === 'number' ? n.books : null;
+  const waiting = (actual) => ({ actual, budget: null, waiting: true });
+  const rev = budget?.revenue || (books ? waiting(books.revenue) : null);
+  const exp = budget?.expenses || (books && typeof books.expenses === 'number' ? waiting(books.expenses) : null);
+  const yr = budget?.year || books?.year || '';
+  // Against the budget once there is one for the year (QuickBooks' figures can come before the year's sheet: then
+  // against last year's same days), and last year's pace by now on a line of its own
+  const against = (x) => (x.waiting ? 'The year so far' : x.budget ? `${pctOf(x)}% of the ${compact(x.budget)} budget` : growthText(x) || `Through ${shortAsOf(budget.asOf)}`);
+  // (a line kept for it while the budget is read)
+  const pace = (x) => (x.waiting ? '\u00a0' : x.budget && x.last != null && x.lastFull > 0 ? `Last year by now: ${Math.round((x.last / x.lastFull) * 100)}%` : '');
   const tiles = [
-    { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', sub: cash ? `${cash.months != null ? `${monthsText(cash.months)} months of spending` : shortAsOf(cash.asOf)}${yearAgo}` : 'From the balance sheet', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '', href: '#/financials' },
-    rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: compact(rev.actual), sub: against(rev), href: '#/financials' }
-      : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || 'date to come'}` : 'None scheduled', href: '#makeovers' },
-    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), sub: against(exp), href: '#/financials' }
-      : { key: 'kids', label: 'Children served', value: n.impact.kids.toLocaleString(), sub: `${n.impact.rooms.toLocaleString()} rooms since 2012` },
-    { key: 'build', label: 'Makeovers', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', href: '#makeovers' },
-  ];
+    { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', href: '#/financials',
+      sub: cash ? (cash.months != null ? `${monthsText(cash.months)} months of spending` : cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : '') : 'From the balance sheet',
+      note: cash && cash.prior != null ? `${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} from a year ago` : '', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '' },
+    rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: compact(rev.actual), meter: rev, sub: against(rev), note: pace(rev), href: '#/financials' }
+      : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${nextWhen || 'date to come'}` : 'None scheduled', href: '#makeovers' },
+    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), meter: exp, sub: against(exp), note: pace(exp), href: '#/financials' } : null,
+    { key: 'build', label: 'Makeovers', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', note: rev && nextWhen ? `Next reveal ${nextWhen}` : '', href: '#makeovers' },
+  ].filter(Boolean);
   const go = (e, t) => {
-    if (!t.href || !t.href.startsWith('#') || t.href.startsWith('#/')) return;
+    if (!t.href.startsWith('#') || t.href.startsWith('#/')) return;
     e.preventDefault();
     document.getElementById(t.href.slice(1))?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
   };
-  const inner = (t) => html`<span class="bp-fig__label">${t.label}</span><span class="bp-fig__value">${t.value}</span><span class=${`bp-fig__sub ${t.tone ? `is-${t.tone}` : ''}`}>${t.sub}</span>`;
-  return html`<ul class="bp-figs" aria-label="SOARD at a glance">${tiles.map((t) => html`<li key=${t.key}>
-    ${t.href ? html`<a class="bp-fig" href=${t.href} onClick=${(e) => go(e, t)}>${inner(t)}</a>` : html`<div class="bp-fig">${inner(t)}</div>`}
+  return html`<ul class=${`bp-figs ${tiles.length % 2 ? 'is-odd' : ''}`} style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.key}>
+    <a class="bp-fig" href=${t.href} onClick=${(e) => go(e, t)}>
+      <span class="bp-fig__label">${t.label}</span>
+      <span class="bp-fig__value">${t.value}</span>
+      ${t.meter ? html`<${Meter} x=${t.meter} />` : null}
+      <span class="bp-fig__sub">${t.sub}</span>
+      ${t.note ? html`<span class=${`bp-fig__note ${t.tone ? `is-${t.tone}` : ''}`}>${t.note}</span>` : null}
+    </a>
   </li>`)}</ul>`;
 }
 
@@ -604,10 +630,10 @@ function Figures({ data }) {
 function AgendaPeek({ m }) {
   const sections = (m.sections || []).filter((x) => x.title);
   if (!sections.length) return null;
-  return html`<ol class="bp-peek">${sections.map((x) => html`<li key=${x.id}>${x.title}</li>`)}</ol>`;
+  return html`<ol class=${`bp-agpeek ${sections.length > 4 ? 'is-long' : ''}`}>${sections.map((x) => html`<li key=${x.id}>${x.title}</li>`)}</ol>`;
 }
 
-/** Since the last meeting: what it decided, what's open, who was there, what it covered */
+/** Since the last meeting: what it decided, and who was there */
 function SinceLast({ ctx }) {
   const { data, d } = ctx;
   const m = d.last;
@@ -619,17 +645,47 @@ function SinceLast({ ctx }) {
       <h2 class="bp-h2" id="since-h">Last meeting</h2>
       <a class="bp-cardhead__go" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>${m.minutes === 'approved' ? 'The minutes' : 'The meeting'}<${Icon} name="arrow" size=${16} cls="bp-go" /></a>
     </div>
-    <p class="bp-since__what"><${DateTile} d=${m.date} mid=${m.id} /><span><strong>${meetingName(m)}</strong><span class="bp-muted">${[longDate(m.date), c.boardHere ? `${c.boardHere} of ${c.board} board members${c.boardHere >= quorumFor(m, data.quorum) ? ', a quorum' : ', short of a quorum'}` : ''].filter(Boolean).join(' · ')}</span></span><${MinutesChip} m=${m} /></p>
+    <div class="bp-since__what"><${DateTile} d=${m.date} mid=${m.id} /><p><strong>${meetingName(m)}</strong><span>${c.boardHere ? `${c.boardHere} of ${c.board} board members${c.boardHere >= quorumFor(m, data.quorum) ? ', a quorum' : ', short of a quorum'}` : dayOf(m.date)}</span></p><${MinutesChip} m=${m} /></div>
     ${decided.length ? html`<h3 class="bp-mini-h">Decided</h3><ul class="bp-facts-list">${decided.map((x) => html`<li key=${x.id || x.text}><span>${x.text}</span><strong>${tallyText(x) || ({ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || '')}</strong></li>`)}</ul>` : null}
   </section>`;
 }
 
-/** Where a makeover's link goes: a kid's page, or a community project's page once it's public */
+/** What a year's bar says to a screen reader, as its readout does on hover or focus: "2019: 17 kids, 25 rooms, 16 makeovers" */
+const yearSays = (y, thisYear, word) => `${y.year}${y.year === thisYear ? ' so far' : ''}: ${word('kids', y.kids)}, ${word('rooms', y.rooms)}, ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}`;
 /**
- * Impact, as the admin's Dashboard has it: the kids served since the first year, each year as a small bar, this
- * year against last; "Explore by year" opens the full chart (kids served, or rooms built) and any year's
- * makeovers, each kid's photo opening their page. Counted exactly as the website counts (published profiles; a
- * sibling profile's every child; a missing room count as one room)
+ * The readout over a year's bar, just above its top (`h`, the bar's height in %). It stays within the chart at
+ * either end: the further right the bar, the further left the readout leans
+ */
+function YearTip({ y, at, h, thisYear, word }) {
+  return html`<span class="bp-ytip" style=${`--x:${at * 100}%;--th:${h}`} aria-hidden="true"><strong>${y.year}${y.year === thisYear ? ' so far' : ''}</strong>${word('kids', y.kids)} · ${word('rooms', y.rooms)} · ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}</span>`;
+}
+/**
+ * Home's small chart: a bar a year, each saying its numbers on hover or focus (← → between them), the readout over
+ * the chart's top so it never covers a neighbor; a tap opens that year
+ */
+function YearBars({ years, thisYear, word, height, onPick, label, hint, cls }) {
+  const [tip, setTip] = useState(-1);
+  const ref = useRef(null);
+  const rest = tip >= 0 ? tip : years.length - 1;
+  const onKey = (e) => {
+    const next = { ArrowRight: rest + 1, ArrowLeft: rest - 1, Home: 0, End: years.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    ref.current?.querySelectorAll('button')[Math.max(0, Math.min(years.length - 1, next))]?.focus();
+  };
+  return html`<div class=${cls} role="group" aria-label=${label} ref=${ref} onKeyDown=${onKey} onMouseLeave=${() => setTip(-1)}>
+    ${years.map((y, i) => html`<button type="button" key=${y.year} class=${`${y.year === thisYear ? 'is-now' : ''} ${i === tip ? 'is-tip' : ''}`} style=${`--h:${height(y)}%;--i:${i}`}
+      tabindex=${i === rest ? 0 : -1} aria-label=${`${yearSays(y, thisYear, word)}. ${hint}`}
+      onMouseEnter=${() => setTip(i)} onFocus=${() => setTip(i)} onBlur=${() => setTip(-1)} onClick=${() => onPick(i)}><i></i></button>`)}
+    ${tip >= 0 ? html`<${YearTip} y=${years[tip]} at=${(tip + 0.5) / years.length} h=${100} thisYear=${thisYear} word=${word} />` : null}
+  </div>`;
+}
+
+/**
+ * Impact, as the admin's Dashboard has it, under the figures in the same panel: the kids served since the first
+ * year, each year as a small bar, this year against last; "Explore by year" opens the full chart (kids served, or
+ * rooms built) and any year's makeovers, each kid's photo opening their page. Counted exactly as the website
+ * counts (published profiles; a sibling profile's every child; a missing room count as one room)
  */
 function Impact({ n }) {
   const years = n.impact?.byYear || [];
@@ -643,22 +699,22 @@ function Impact({ n }) {
   const word = (k, x) => `${x.toLocaleString()} ${k === 'kids' ? (x === 1 ? 'kid' : 'kids') : (x === 1 ? 'room' : 'rooms')}`;
   const sparkTop = Math.max(1, ...years.map((y) => y.kids));
   const toggle = () => setOpen((v) => !v);
-  return html`<section class=${`bp-card bp-impact ${open ? 'is-open' : ''}`} aria-labelledby="impact-h" id="impact">
-    <div class="bp-cardhead">
-      <h2 class="bp-h2" id="impact-h">Impact<span class="bp-muted">since ${years[0].year}</span></h2>
-      <button type="button" class="bp-cardhead__go bp-impact__more" aria-expanded=${open} aria-controls="impact-years" onClick=${toggle}>${open ? 'Hide years' : 'Explore by year'}<${Icon} name="arrow" size=${16} cls="bp-go" /></button>
-    </div>
+  // A year's bar opens Explore by year on that year
+  const pick = (i) => { setSel(i); setOpen(true); };
+  return html`<section class=${`bp-impact ${open ? 'is-open' : ''}`} aria-labelledby="impact-h" id="impact">
     <div class="bp-impact__band">
       <div class="bp-impact__hero">
-        <p class="bp-impact__num">${n.impact.kids.toLocaleString()}</p>
-        <p class="bp-impact__label">kids served</p>
+        <h2 class="bp-fig__label" id="impact-h">Impact since ${years[0].year}</h2>
+        <p class="bp-impact__num">${n.impact.kids.toLocaleString()}<span>kids served</span></p>
+        <button type="button" class="bp-impact__more" aria-expanded=${open} aria-controls="impact-years" onClick=${toggle}>${open ? 'Hide years' : 'Explore by year'}<${Icon} name="arrow" size=${16} cls="bp-go" /></button>
       </div>
-      <button type="button" class="bp-spark" aria-expanded=${open} aria-controls="impact-years" onClick=${toggle} aria-label=${`Kids served each year since ${years[0].year}. ${open ? 'Hide' : 'Explore'} by year`}>
-        <span class="bp-spark__bars" aria-hidden="true">${years.map((y) => html`<i key=${y.year} class=${y.year === thisYear ? 'is-now' : ''} style=${`--h:${Math.max(4, (y.kids / sparkTop) * 100)}%`}></i>`)}</span>
+      <div class="bp-spark">
+        <${YearBars} years=${years} thisYear=${thisYear} word=${word} cls="bp-spark__bars" label=${`Kids served each year since ${years[0].year}`}
+          height=${(y) => Math.max(4, (y.kids / sparkTop) * 100)} onPick=${pick} hint="Explore by year" />
         <span class="bp-spark__x" aria-hidden="true"><span>${years[0].year}</span><span>${years.at(-1).year}</span></span>
-      </button>
+      </div>
       <dl class="bp-impact__stats">
-        ${now ? html`<div><dt>${thisYear} so far</dt><dd>${word('kids', now.kids)}${last?.kids ? html`<span class=${now.kids >= last.kids ? 'is-up' : 'is-down'}>${now.kids >= last.kids ? '▲' : '▼'} ${Math.abs(Math.round(((now.kids - last.kids) / last.kids) * 100))}% vs all of ${thisYear - 1}</span>` : null}</dd></div>` : null}
+        ${now ? html`<div><dt>${thisYear} so far</dt><dd>${word('kids', now.kids)}${last?.kids ? html`<span class=${now.kids >= last.kids ? 'is-up' : 'is-down'}>${now.kids >= last.kids ? '▲' : '▼'} ${Math.abs(Math.round(((now.kids - last.kids) / last.kids) * 100))}% on all of ${thisYear - 1}</span>` : null}</dd></div>` : null}
         <div><dt>Rooms built</dt><dd>${n.impact.rooms.toLocaleString()}</dd></div>
         <div><dt>Makeovers</dt><dd>${years.reduce((t, y) => t + y.makeovers, 0).toLocaleString()}</dd></div>
         ${n.impact.communityProjects ? html`<div><dt>Community projects</dt><dd>${n.impact.communityProjects.toLocaleString()}${n.impact.reached ? html`<span>${n.impact.reached.toLocaleString()} children reached</span>` : null}</dd></div>` : null}
@@ -682,6 +738,8 @@ function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
     requestAnimationFrame(() => document.getElementById(`bpy-${years[i].year}`)?.focus());
   };
   const kids = [...(y.profiles || [])].sort((a, b) => a.name.localeCompare(b.name));
+  // The bar under the pointer or the focus says its year's numbers
+  const [tip, setTip] = useState(-1);
   return html`<div class="bp-impact__open" id="impact-years">
     <div class="bp-impact__tools">
       <p class="bp-muted">${what === 'kids' ? 'Kids served' : 'Rooms built'} each year. Pick a year to see its makeovers.</p>
@@ -691,16 +749,18 @@ function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
     </div>
     <div class="bp-impact__explore">
       <div class="bp-years" role="group" aria-label=${`${what === 'kids' ? 'Kids served' : 'Rooms built'} each year since ${years[0].year}`} onKeyDown=${onKey}>
-        <ol class="bp-years__bars">${years.map((x, i) => html`<li key=${x.year} class=${`${x.year === thisYear ? 'is-now' : ''} ${i === sel ? 'is-sel' : ''}`} style=${`--h:${(x[what] / top) * 100}%;--i:${i}`}>
+        <ol class="bp-years__bars" onMouseLeave=${() => setTip(-1)}>${years.map((x, i) => html`<li key=${x.year} class=${`${x.year === thisYear ? 'is-now' : ''} ${i === sel ? 'is-sel' : ''} ${i === tip ? 'is-tip' : ''}`} style=${`--h:${(x[what] / top) * 100}%;--i:${i}`}>
           <button type="button" id=${`bpy-${x.year}`} class="bp-years__hit" aria-pressed=${i === sel} tabindex=${i === sel ? 0 : -1} onClick=${() => setSel(i)}
+            onMouseEnter=${() => setTip(i)} onFocus=${() => setTip(i)} onBlur=${() => setTip(-1)}
             aria-label=${`${x.year}: ${word(what, x[what])}${x.year === thisYear ? ' so far' : ''}, ${x.makeovers} ${x.makeovers === 1 ? 'makeover' : 'makeovers'}`}>
             <span class="bp-years__bar" aria-hidden="true"></span>
             ${x.year === thisYear || x === best || i === sel ? html`<span class="bp-years__val" aria-hidden="true">${x[what]}</span>` : null}
             <span class="bp-years__x" aria-hidden="true">${i === 0 || x.year === thisYear || i === sel || x.year % 2 === 0 ? `’${String(x.year).slice(2)}` : ''}</span>
           </button>
         </li>`)}</ol>
+        ${tip >= 0 ? html`<${YearTip} y=${years[tip]} at=${(tip + 0.5) / years.length} h=${(years[tip][what] / top) * 100} thisYear=${thisYear} word=${word} />` : null}
       </div>
-      <div class="bp-yearpanel" aria-live="polite">
+      <div class="bp-yearpanel" aria-live="polite" tabindex="0" aria-label=${`${y.year}’s makeovers`}>
         <p class="bp-yearpanel__head"><strong>${y.year}</strong><span>${word(what, y[what])}${y.year === thisYear ? ' so far' : ''} · ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}</span></p>
         ${kids.length ? html`<ul class="bp-yearpanel__kids">${kids.map((k) => html`<li key=${k.slug || k.name}>
           <a href=${k.slug ? `/kids/${k.slug}/` : null} target="_blank" rel="noopener" class="bp-yk">
@@ -713,11 +773,10 @@ function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
   </div>`;
 }
 
-/** Home's makeovers: the kanban (./kanban.js), from JobTread */
+/** Home's makeovers: the kanban (./kanban.js), from JobTread. The count is the figure above; each column has its own */
 function Builds({ n }) {
-  const line = kanbanLine(n.projects);
   return html`<section class="bp-card bp-kanban" aria-labelledby="builds-h" id="makeovers">
-    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers</h2><span class="bp-muted">${line}${line ? ', from JobTread' : ''}</span></div>
+    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers</h2><span class="bp-muted">From JobTread</span></div>
     <${Kanban} projects=${n.projects} reveals=${n.reveals} variant="home" />
   </section>`;
 }
@@ -741,31 +800,71 @@ function HomePage({ ctx }) {
         </a></li>`)}
       </ul>
     </section>` : null;
-  return html`
+  return html`<div class="bp-home">
     <header class="bp-brief bp-rise" style=${rise(0)}>
       <h1 class="bp-brief__h">${name ? `${greeting()}, ${firstName(name)}.` : 'The board page'}</h1>
       <p class="bp-brief__date">${today}</p>
     </header>
-    <div class="bp-rise" style=${rise(1)}><${Figures} data=${data} /></div>
-    <div class="bp-rise bp-impact-wrap" style=${rise(2)}><${Impact} n=${data.numbers} /></div>
-    <div class="bp-split bp-split--top">
-      <div class="bp-stack bp-rise" style=${rise(2)}>${m ? html`<${NextMeeting} m=${m} ctx=${ctx} peek=${true} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
-      <div class="bp-stack bp-rise" style=${rise(3)}>${todos}<${SinceLast} ctx=${ctx} /></div>
+    <section class="bp-sum bp-rise" style=${rise(1)} aria-label="SOARD at a glance">
+      <${Figures} data=${data} />
+      <${Impact} n=${data.numbers} />
+    </section>
+    <div class="bp-meets">
+      <div class="bp-meets__col bp-rise" style=${rise(2)}>${m ? html`<${NextUp} m=${m} ctx=${ctx} />` : html`<${NoMeeting} ctx=${ctx} />`}</div>
+      <div class="bp-meets__col bp-rise" style=${rise(3)}>${todos}<${SinceLast} ctx=${ctx} /></div>
     </div>
-    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} /></div>`;
+    <div class="bp-rise" style=${rise(4)}><${Builds} n=${data.numbers} /></div>
+  </div>`;
 }
 
 function NoMeeting({ ctx }) {
-  return html`<section class="bp-ticket bp-ticket--empty bp-next" aria-labelledby="next-h">
-    <div class="bp-ticket__body">
-      <p class="bp-eyebrow">Next board meeting</p>
-      <h2 class="bp-when" id="next-h">Not on the calendar yet</h2>
-      <p class="bp-muted">The invite comes to ${ctx.data.me.email ? html`<strong>${ctx.data.me.email}</strong>` : 'your email'} once the day is set, and it shows here.</p>
+  return html`<section class="bp-card bp-next bp-nextup" aria-labelledby="next-h">
+    <div class="bp-cardhead"><h2 class="bp-h2" id="next-h">Next meeting</h2></div>
+    <div class="bp-nextup__when">
+      <span class="bp-date bp-date--big bp-date--none" aria-hidden="true"><${Icon} name="calendar" size=${26} /></span>
+      <p><strong class="bp-nextup__day">Not on the calendar yet</strong><span class="bp-oneline">The invite comes to ${ctx.data.me.email ? html`<strong>${ctx.data.me.email}</strong>` : 'your email'} once the day is set, and it shows here.</span></p>
     </div>
   </section>`;
 }
 
-function NextMeeting({ m, ctx, compact = false, peek = false }) {
+/** Home's next meeting: when and where in one line, whether you're coming, and the agenda's headings */
+function NextUp({ m, ctx }) {
+  const { data } = ctx;
+  const today = m.date === data.today;
+  const [, setNow] = useState(0);
+  useEffect(() => { if (!today) return undefined; const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, [today]);
+  // On the day: whether the chair has started, and where the board is on the agenda
+  const [lv] = useLive(m.id, today && !m.pending, 20000);
+  const running = !!lv?.live.startedAt && !lv.live.endedAt;
+  const nowAt = running ? agendaItems(lv).find((it) => it.id === lv.live.itemId) : null;
+  const phase = running ? 'now' : lv?.live.endedAt ? 'after' : today ? phaseOf(m) : null;
+  const video = videoOf(m);
+  const joinNow = today && video && phase !== 'after';
+  const fileCount = fileRows(m.files || []).reduce((s, g) => s + g.rows.length, 0);
+  const status = today ? (phase === 'now' ? 'Happening now' : phase === 'after' ? 'Earlier today' : m.start ? `Today at ${clock(m.start)}` : 'Today') : inWords(m.date, data.today);
+  const facts = [
+    m.start ? timeRange(m.start, m.end) : 'Time to come',
+    m.location || m.address ? (m.address ? html`<a href=${mapsHref(m.address)} target="_blank" rel="noopener">${m.location || m.address}</a>` : m.location) : 'Place to come',
+    video && !joinNow ? html`<a href=${video} target="_blank" rel="noopener">${joinLabel(video).replace(/^Join with /, '')}</a>` : null,
+  ].filter(Boolean);
+  return html`<section class=${`bp-card bp-next bp-nextup ${today ? 'is-today' : ''}`} aria-labelledby=${`next-h-${m.id}`}>
+    <div class="bp-cardhead">
+      <h2 class="bp-h2" id=${`next-h-${m.id}`}>${today ? 'Today’s meeting' : 'Next meeting'}<span class=${`bp-soon ${phase === 'now' ? 'is-live' : ''}`}>${phase === 'now' ? html`<span class="bp-live-dot" aria-hidden="true"></span>` : null}${status}</span></h2>
+      ${m.pending ? null : html`<a class="bp-cardhead__go" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>${running ? html`<span class="bp-live-dot" aria-hidden="true"></span>Follow the meeting` : `See the agenda${fileCount ? ` and ${plural(fileCount, 'file')}` : ''}`}<${Icon} name="arrow" size=${16} cls="bp-go" /></a>`}
+    </div>
+    <div class="bp-nextup__when">
+      <${DateTile} d=${m.date} mid=${m.id} big />
+      <p><strong class="bp-nextup__day">${dayOf(m.date)}</strong><span class="bp-oneline">${facts.map((x, i) => html`${i ? html`<span class="bp-oneline__dot" aria-hidden="true">·</span>` : null}${x}`)}</span>${nowAt ? html`<span class="bp-nextup__now"><span class="bp-live-dot" aria-hidden="true"></span>Now: ${nowAt.label} ${nowAt.title}</span>` : null}</p>
+    </div>
+    ${joinNow ? html`<div class="bp-btns"><a class="bp-btn bp-btn--primary" href=${video} target="_blank" rel="noopener"><${Icon} name="video" />${joinLabel(video)}</a></div>` : null}
+    ${m.pending ? html`<p class="bp-pending"><${Icon} name="documents" size=${18} />The agenda and packet post here before the meeting.</p>` : null}
+    <${Rsvp} m=${m} ctx=${ctx} quiet />
+    ${!m.pending && (m.sections || []).some((x) => x.title) ? html`<div class="bp-nextup__agenda"><h3 class="bp-mini-h">Agenda</h3><${AgendaPeek} m=${m} /></div>` : null}
+  </section>`;
+}
+
+/** The next meeting on Meetings: everything about it, the answer beside it */
+function NextMeeting({ m, ctx, compact = false }) {
   const { data } = ctx;
   const today = m.date === data.today;
   const [, setNow] = useState(0);
@@ -783,12 +882,7 @@ function NextMeeting({ m, ctx, compact = false, peek = false }) {
     <div class="bp-ticket__body">
       <p class="bp-eyebrow">${today ? 'Today’s board meeting' : 'Next board meeting'}<span class=${`bp-soon ${phase === 'now' ? 'is-live' : ''}`}>${phase === 'now' ? html`<span class="bp-live-dot" aria-hidden="true"></span>` : null}${status}</span></p>
       <h2 class="bp-when" id=${`next-h-${m.id}`}>${compact ? meetingName(m) : dayOf(m.date)}</h2>
-      ${peek ? html`<p class="bp-oneline">${[
-        m.start ? timeRange(m.start, m.end) : 'Time to come',
-        m.location || m.address ? (m.address ? html`<a href=${mapsHref(m.address)} target="_blank" rel="noopener">${m.location || m.address}</a>` : m.location) : 'Place to come',
-        video && !(today && phase !== 'after') ? html`<a href=${video} target="_blank" rel="noopener">${joinLabel(video).replace(/^Join with /, '')}</a>` : null,
-      ].filter(Boolean).map((x, i) => html`${i ? html`<span class="bp-oneline__dot" aria-hidden="true">·</span>` : null}${x}`)}${nowAt ? html`<br /><strong>Now: ${nowAt.label} ${nowAt.title}</strong>` : null}</p>` : null}
-      ${peek ? null : html`<ul class="bp-facts">
+      <ul class="bp-facts">
         ${compact ? html`<li><${Icon} name="meetings" /><span>${dayOf(m.date)}</span></li>` : null}
         <li><${Icon} name="clock" /><span>${m.start ? timeRange(m.start, m.end) : 'Time to come'}</span></li>
         <li><${Icon} name="pin" /><span>${m.location || m.address
@@ -796,16 +890,15 @@ function NextMeeting({ m, ctx, compact = false, peek = false }) {
           : 'Place to come. Your invite updates when it’s set.'}</span></li>
         ${video && !(today && phase !== 'after') ? html`<li><${Icon} name="video" /><span><a href=${video} target="_blank" rel="noopener">${joinLabel(video)}</a>${today ? '' : ' if you can’t be there in person'}</span></li>` : null}
         ${nowAt ? html`<li class="bp-facts__now"><span class="bp-live-dot" aria-hidden="true"></span><span>Now: ${nowAt.label} ${nowAt.title}</span></li>` : null}
-      </ul>`}
+      </ul>
       <div class="bp-btns">
         ${today && video && phase !== 'after' ? html`<a class="bp-btn bp-btn--primary" href=${video} target="_blank" rel="noopener"><${Icon} name="video" />${joinLabel(video)}</a>` : null}
         ${m.pending ? html`<p class="bp-pending"><${Icon} name="documents" size=${18} />The agenda and packet post here before the meeting.</p>`
           : running ? html`<a class=${`bp-btn ${video ? '' : 'bp-btn--primary'}`} href=${`#/meetings/${m.id}`} onClick=${claimMorph}><span class="bp-live-dot" aria-hidden="true"></span>Follow the meeting<${Icon} name="arrow" size=${18} cls="bp-go" /></a>`
           : html`<a class=${`bp-btn ${today && video && phase !== 'after' ? '' : 'bp-btn--primary'}`} href=${`#/meetings/${m.id}`} onClick=${claimMorph}>See the agenda${fileCount ? ` and ${plural(fileCount, 'file')}` : ''}<${Icon} name="arrow" size=${18} cls="bp-go" /></a>`}
       </div>
-      ${peek ? null : html`<${OnCalendar} m=${m} data=${data} />`}
-      <${Rsvp} m=${m} ctx=${ctx} quiet=${peek} />
-      ${peek && !m.pending && (m.sections || []).some((x) => x.title) ? html`<div class="bp-peekwrap"><h3 class="bp-mini-h">Agenda</h3><${AgendaPeek} m=${m} /></div>` : null}
+      <${OnCalendar} m=${m} data=${data} />
+      <${Rsvp} m=${m} ctx=${ctx} />
     </div>
   </section>`;
 }

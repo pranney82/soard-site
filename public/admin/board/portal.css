@@ -88,7 +88,13 @@ img { display: block; max-width: 100%; }
   .bp-brand__words { display: block; }
   .bp-brand__words strong { font-size: 0.92rem; }
   .bp-me__name { display: none; }
-  .bp-me__btn { padding: 0 0.25rem; }
+  .bp-me__btn { padding: 0; }
+  /* The name, the search and the face fit a 360px phone: the name gives way last, never the page's width */
+  .bp-bar { gap: 0.55rem; }
+  .bp-tools { gap: 0.3rem; }
+  .bp-brand { flex-shrink: 1; }
+  .bp-brand__words { min-width: 0; }
+  .bp-brand__words strong, .bp-brand__words small { overflow: hidden; text-overflow: ellipsis; }
   .bp-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; margin: 0; padding: 0.35rem 0.35rem env(safe-area-inset-bottom); gap: 0; justify-content: space-around;
     background: rgba(255, 255, 255, 0.97); border-top: 1px solid var(--line); backdrop-filter: saturate(1.6) blur(14px); -webkit-backdrop-filter: saturate(1.6) blur(14px); view-transition-name: bp-tabbar; }
   .bp-nav a { flex: 1 1 0; min-width: 0; height: 58px; flex-direction: column; justify-content: center; gap: 0.2rem; padding: 0; border-radius: 14px; font-size: 0.74rem; font-weight: 600; }
@@ -98,6 +104,9 @@ img { display: block; max-width: 100%; }
   .bp-nav__ink { width: 56px; height: 30px; transform: translate(calc(var(--x) + var(--w) / 2 - 28px), calc(var(--y) + 5px)); }
   .bp-nav a:active .bp-icon { transform: scale(0.9); }
 }
+/* The narrowest phones: the whole name still fits beside the search and the face */
+@media (max-width: 400px) { .bp-brand__words strong { font-size: 0.86rem; } }
+@media (max-width: 380px) { .bp-brand img { width: 38px; height: 38px; } .bp-brand__words strong { font-size: 0.8rem; } .bp-brand__words small { font-size: 0.76rem; } }
 
 /* ─── The page ─── */
 .bp-main { max-width: var(--wide); margin: 0 auto; padding: 1.5rem var(--gutter) 3rem; }
@@ -202,7 +211,8 @@ a.bp-row:hover { background: var(--warm); }
 .bp-row__meta { color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
 
 /* ─── Home ─── */
-/* The board brief: a line of greeting, then the figures and one photo, then the meeting and the money */
+/* The board brief, each fact once: the greeting; SOARD at a glance (the figures over Impact, one panel); the next
+   meeting beside the last; the makeovers. One section heading style, one label style, hairlines between, never boxes in boxes */
 .bp-brief { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0.25rem 0 1.1rem; }
 .bp-brief__date { margin: 0; color: var(--muted); font-size: 0.92rem; }
 .bp-brief__h { margin: 0; font-family: var(--display); font-weight: 700; font-size: clamp(1.5rem, 3vw, 1.95rem); line-height: 1.15; letter-spacing: -0.02em; }
@@ -211,18 +221,47 @@ a.bp-row:hover { background: var(--warm); }
 .bp-cardhead > .bp-muted { font-size: 0.84rem; }
 .bp-cardhead__go { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.88rem; font-weight: 650; color: var(--ink-2); text-decoration: none; }
 .bp-cardhead__go:hover { color: var(--ink); }
-.bp-mini-h { margin: 0.95rem 0 0.4rem; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.11em; text-transform: uppercase; color: var(--faint); }
-/* The agenda on Home */
+.bp-h2 .bp-soon { font-family: var(--body); letter-spacing: 0.02em; }
+.bp-cardhead__go .bp-live-dot { margin-right: 0.3rem; background: var(--gold); }
+.bp-cardhead__go .bp-live-dot::after { border-color: var(--gold); }
+.bp-mini-h { margin: 0.95rem 0 0.4rem; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
 .bp-oneline { margin: 0; color: var(--ink-2); font-size: 0.97rem; line-height: 1.5; }
 .bp-oneline a { color: var(--info); text-underline-offset: 3px; }
 .bp-oneline__dot { margin: 0 0.45rem; color: var(--quiet); }
-.bp-peekwrap { margin-top: 1rem; padding-top: 0.15rem; border-top: 1px solid var(--line); }
-.bp-peek { margin: 0; padding-left: 1.35rem; display: grid; gap: 0.2rem; font-size: 0.95rem; color: var(--ink-2); }
-.bp-peek li::marker { color: var(--gold); font-weight: 700; font-size: 0.85rem; }
+/* The next meeting and the last, side by side, their bottoms level */
+.bp-meets { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 1.25rem; margin: 1.25rem 0; }
+.bp-meets__col { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+.bp-meets__col > :last-child { flex: 1 1 auto; }
+@media (max-width: 900px) { .bp-meets { grid-template-columns: 1fr; } }
+.bp-nextup__when { display: flex; align-items: center; gap: 1rem; margin: 0.2rem 0 0; }
+.bp-nextup__when > p { display: grid; gap: 0.15rem; margin: 0; min-width: 0; }
+.bp-nextup__day { font-family: var(--display); font-size: clamp(1.2rem, 2.4vw, 1.42rem); line-height: 1.25; letter-spacing: -0.01em; }
+.bp-nextup__when .bp-oneline strong { font-weight: 650; overflow-wrap: anywhere; }
+.bp-nextup__now { display: inline-flex; align-items: center; gap: 0.55rem; font-weight: 650; color: var(--ink); }
+.bp-nextup__now .bp-live-dot { background: var(--gold); }
+.bp-nextup__now .bp-live-dot::after { border-color: var(--gold); }
+.bp-nextup .bp-date--big { width: 4.2rem; height: 4.8rem; }
+.bp-date--none { color: var(--quiet); background: transparent; border: 1.5px dashed var(--line-2); box-shadow: none; }
+.bp-nextup .bp-btns { margin-top: 1rem; }
+.bp-nextup .bp-pending { margin-top: 1rem; }
+/* Will you be there, on one line: the question, the three answers, what they said under them */
+.bp-nextup .bp-rsvp { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.4rem 1.25rem; margin-top: 1.1rem; padding-top: 1rem; }
+.bp-nextup .bp-rsvp__q { margin: 0; font-size: 0.97rem; }
+.bp-nextup .bp-rsvp__said { grid-column: 2; margin: 0; font-size: 0.86rem; }
+.bp-nextup .bp-choice { min-height: 40px; font-size: 0.93rem; }
+.bp-nextup .bp-seg { border-radius: 14px; }
+.bp-nextup .bp-seg__thumb { border-radius: 10px; }
+@media (max-width: 520px) { .bp-nextup .bp-rsvp { grid-template-columns: 1fr; } .bp-nextup .bp-rsvp__said { grid-column: 1; } }
+.bp-nextup__agenda { margin-top: 1rem; border-top: 1px solid var(--line); }
+.bp-agpeek { margin: 0; padding-left: 1.4rem; font-size: 0.94rem; line-height: 1.45; color: var(--ink-2); }
+.bp-agpeek.is-long { columns: 2; column-gap: 2.25rem; }
+.bp-agpeek li { padding: 0.1rem 0; break-inside: avoid; }
+.bp-agpeek li::marker { color: var(--gold); font-weight: 700; font-size: 0.85rem; }
+@media (max-width: 520px) { .bp-agpeek.is-long { columns: 1; } }
 /* Last meeting, in facts */
-.bp-since__what { display: flex; align-items: center; gap: 0.75rem; margin: 0; flex-wrap: wrap; }
-.bp-since__what > span:nth-child(2) { display: grid; flex: 1 1 12rem; min-width: 0; }
-.bp-since__what .bp-muted { font-size: 0.86rem; }
+.bp-since__what { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.bp-since__what > p { display: grid; flex: 1 1 12rem; min-width: 0; margin: 0; }
+.bp-since__what > p > span { color: var(--muted); font-size: 0.88rem; }
 .bp-facts-list { list-style: none; margin: 0; padding: 0; }
 .bp-facts-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; padding: 0.4rem 0; border-top: 1px solid var(--line); font-size: 0.92rem; }
 .bp-facts-list li:first-child { border-top: none; }
@@ -258,33 +297,61 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 /* In an agenda item the board sits on the item's own column, edge to edge of its card */
 .bk--agenda { margin-inline: 0; padding-inline: 0; scroll-padding-inline: 0; }
 @media (max-width: 640px) { .bk { grid-auto-columns: 80%; margin-inline: -1.1rem; padding-inline: 1.1rem; scroll-padding-inline: 1.1rem; scroll-snap-type: x mandatory; align-items: start; } .bk-col.is-empty { display: none; } .bk--agenda { margin-inline: -1rem; padding-inline: 1rem; } }
+/* On Home the stages are columns of cards under a head and a rule, with no gray slab behind them: a stage with one
+   kid is one card tall, not the height of the busiest stage */
+.bk--home { gap: 1.1rem; align-items: start; }
+.bk--home .bk-col { padding: 0; border-radius: 0; background: none; }
+.bk--home .bk-col__head { margin: 0 0 0.7rem; padding: 0 0.1rem 0.55rem; border-bottom: 2px solid var(--line); }
+.bk--home .bk-col__n { background: var(--warm); }
+.bk--home .bk-col__cards { gap: 0.7rem; }
+.bk--home .bk-card { border-color: var(--line); box-shadow: none; }
+.bk--home a.bk-card:hover { box-shadow: var(--shadow-2); }
+.bk--home .bk-col__none { padding: 0.15rem 0.1rem; }
+@media (max-width: 640px) {
+  .bk--home .bk-card { display: grid; grid-template-columns: 42% minmax(0, 1fr); align-items: center; }
+  .bk--home .bk-card__photo { aspect-ratio: 4 / 3; height: 100%; }
+  .bk--home .bk-card__photo:has(.bk-card__initials) { aspect-ratio: 4 / 3; }
+  .bk--home .bk-card__initials { font-size: 1.35rem; }
+  .bk--home .bk-card__body { padding: 0.55rem 0.7rem; align-content: center; }
+  .bk--home .bk-card.is-quiet { display: block; }
+}
 
-/* Impact, as the admin's Dashboard has it: the total, a small bar a year and the key numbers in one band; Explore by
-   year opens the full chart and any year's makeovers. This year in gold */
-.bp-impact-wrap { margin-top: 1rem; }
-.bp-impact .bp-cardhead { margin-bottom: 0.4rem; }
-.bp-impact .bp-h2 .bp-muted { font-family: var(--body); font-weight: 500; font-size: 0.86rem; }
-.bp-impact__more { border: none; background: none; cursor: pointer; font: inherit; }
+/* Impact, as the admin's Dashboard has it, the panel's second tier: the total, a small bar a year and the key numbers
+   in one band; Explore by year opens the full chart and any year's makeovers. This year in gold */
+.bp-impact { padding: 1.15rem 1.35rem 1.2rem; border-top: 1px solid var(--line); }
+.bp-impact__band { display: grid; grid-template-columns: auto minmax(11rem, 1fr) minmax(0, 2fr); gap: 1rem 2.5rem; align-items: center; }
+.bp-impact__hero { display: grid; justify-items: start; gap: 0.1rem; }
+.bp-impact__hero .bp-fig__label { margin: 0; font-family: var(--body); line-height: 1.55; }
+.bp-impact__num { display: flex; align-items: baseline; gap: 0.5rem; margin: 0.1rem 0 0; font-family: var(--display); font-weight: 700; font-size: clamp(2.1rem, 4vw, 2.6rem); line-height: 1.05; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.bp-impact__num span { font-family: var(--body); font-size: 0.95rem; font-weight: 600; letter-spacing: 0; color: var(--muted); }
+.bp-impact__more { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 32px; margin: 0.15rem 0 0 -0.1rem; padding: 0 0.1rem; border: none; background: none; cursor: pointer; font: inherit; font-size: 0.88rem; font-weight: 650; color: var(--ink-2); }
+.bp-impact__more:hover { color: var(--ink); }
+.bp-impact__more:hover .bp-go { transform: translateX(3px); }
 .bp-impact.is-open .bp-impact__more .bp-go { transform: rotate(90deg); }
-.bp-impact__band { display: grid; grid-template-columns: auto minmax(10rem, 1fr) minmax(16rem, 1.1fr); gap: 1rem 2rem; align-items: end; }
-.bp-impact__num { margin: 0; font-family: var(--display); font-weight: 700; font-size: clamp(2.4rem, 5vw, 3.3rem); line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.bp-impact__label { margin: 0.35rem 0 0; color: var(--muted); font-weight: 600; font-size: 0.92rem; }
-.bp-spark { display: grid; gap: 0.3rem; padding: 0.35rem 0.4rem 0.2rem; border: none; border-radius: 12px; background: none; cursor: pointer; transition: background 0.2s; }
-.bp-spark:hover { background: var(--warm); }
-.bp-spark__bars { display: flex; align-items: flex-end; gap: 3px; height: 4.2rem; }
-.bp-spark__bars i { flex: 1 1 0; height: var(--h); min-height: 3px; border-radius: 3px 3px 0 0; background: var(--line-2); transition: background 0.2s; }
-.bp-spark__bars i.is-now { background: var(--gold); }
-.bp-spark:hover .bp-spark__bars i:not(.is-now) { background: #A9A79F; }
+.bp-spark { display: grid; gap: 0.3rem; align-self: stretch; align-content: end; min-width: 0; }
+/* A bar a year, each its whole column tall so it's easy to point at or tap; the one under the pointer darkens and says its numbers */
+.bp-spark__bars { --bars: 3.6rem; position: relative; display: flex; gap: 3px; height: var(--bars); }
+.bp-spark__bars > button { flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; padding: 0; border: none; border-radius: 3px 3px 0 0; background: none; cursor: pointer; }
+.bp-spark__bars > button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }
+.bp-spark__bars i { display: block; width: 100%; height: var(--h); min-height: 3px; border-radius: 3px 3px 0 0; background: var(--line-2); transform-origin: bottom; transition: background 0.15s; }
+.bp-spark__bars .is-now i { background: var(--gold); }
+.bp-spark__bars .is-tip i { background: var(--ink-2); }
+.bp-spark__bars .is-now.is-tip i { background: #5C4900; }
+.is-entering .bp-spark__bars i { animation: bp-bar 0.6s var(--ease) both; animation-delay: calc(var(--i) * 25ms + 260ms); }
 .bp-spark__x { display: flex; justify-content: space-between; color: var(--faint); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
-.bp-impact__stats { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 1.25rem; }
-.bp-impact__stats > div { display: grid; gap: 0.05rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+/* A year's readout: just over its bar, on ink, kept inside the chart at either end */
+.bp-ytip { position: absolute; z-index: 5; left: var(--x); bottom: calc(var(--base, 0px) + var(--th) * var(--bars) / 100 + var(--lift, 0.45rem)); transform: translateX(calc(var(--x) * -1)); display: flex; align-items: baseline; gap: 0.45rem; padding: 0.32rem 0.65rem; border-radius: 9px; background: var(--ink); color: #fff; font-size: 0.8rem; font-weight: 500; line-height: 1.35; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; box-shadow: var(--shadow-2); animation: bp-tip 0.16s var(--ease) both; }
+.bp-ytip strong { color: var(--yellow); font-weight: 700; }
+@keyframes bp-tip { from { opacity: 0; translate: 0 3px; } }
+.bp-impact__stats { margin: 0; display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 0.85rem 1.5rem; align-items: start; }
+.bp-impact__stats > div { display: grid; gap: 0.1rem; min-width: 0; }
 .bp-impact__stats dt { color: var(--muted); font-size: 0.8rem; }
-.bp-impact__stats dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; gap: 0.1rem 0.5rem; align-items: baseline; }
-.bp-impact__stats dd span { font-weight: 600; font-size: 0.76rem; color: var(--muted); }
+.bp-impact__stats dd { margin: 0; display: grid; gap: 0.05rem; font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.bp-impact__stats dd span { font-weight: 600; font-size: 0.76rem; color: var(--muted); white-space: nowrap; }
 .bp-impact__stats dd .is-up { color: var(--ok); }
 .bp-impact__stats dd .is-down { color: var(--warn); }
-@media (max-width: 900px) { .bp-impact__band { grid-template-columns: auto minmax(0, 1fr); } .bp-impact__stats { grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); } }
-@media (max-width: 520px) { .bp-impact__band { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .bp-impact__band { grid-template-columns: auto minmax(0, 1fr); } .bp-impact__stats { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-top: 0.85rem; border-top: 1px solid var(--line); } }
+@media (max-width: 640px) { .bp-impact { padding: 1rem 0.95rem 1.05rem; } .bp-impact__band { gap: 0.75rem 1.25rem; } .bp-impact__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); justify-content: stretch; } }
 /* Explore by year */
 .bp-impact__open { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid var(--line); animation: bp-open 0.4s var(--ease) both; }
 @keyframes bp-open { from { opacity: 0; transform: translateY(-6px); } }
@@ -294,7 +361,7 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 .bp-impact__seg button { flex: none; white-space: nowrap; height: 32px; padding: 0 0.85rem; border: none; border-radius: 999px; background: none; font-size: 0.86rem; font-weight: 650; color: var(--muted); cursor: pointer; transition: background 0.2s, color 0.2s, box-shadow 0.2s; }
 .bp-impact__seg button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: var(--shadow-1); }
 .bp-impact__explore { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr); gap: 1.5rem 2rem; align-items: start; }
-.bp-years { min-width: 0; padding-bottom: 1.6rem; }
+.bp-years { --bars: 12.4rem; --base: 1.6rem; position: relative; min-width: 0; padding-bottom: 1.6rem; }
 .bp-years__bars { list-style: none; margin: 0; padding: 1.6rem 0 0; height: 14rem; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line-2); }
 .bp-years__bars li { flex: 1 1 0; min-width: 0; height: 100%; }
 .bp-years__hit { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0; border: none; border-radius: 6px 6px 0 0; background: none; cursor: pointer; }
@@ -303,7 +370,8 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 @keyframes bp-bar { from { transform: scaleY(0); } }
 .bp-years__bars li.is-now .bp-years__bar { background: var(--gold); }
 .bp-years__bars li.is-sel .bp-years__bar { background: var(--ink); }
-.bp-years__hit:hover .bp-years__bar { background: var(--ink-2); }
+.bp-years__hit:hover .bp-years__bar, .bp-years__bars li.is-tip:not(.is-sel) .bp-years__bar { background: var(--ink-2); }
+.bp-years__bars li.is-tip .bp-years__val { visibility: hidden; }
 .bp-years__val { position: absolute; bottom: calc(var(--h) + 0.3rem); font-size: 0.76rem; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bp-years__bars li.is-sel .bp-years__val { color: var(--ink); }
 .bp-years__x { position: absolute; top: 100%; margin-top: 0.35rem; font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -319,25 +387,59 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 .bp-yk span { display: grid; min-width: 0; line-height: 1.25; }
 .bp-yk strong { font-size: 0.9rem; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bp-yk small { color: var(--muted); font-size: 0.76rem; }
-@media (max-width: 860px) { .bp-impact__explore { grid-template-columns: 1fr; } .bp-years__bars { height: 11rem; } }
-@media (prefers-reduced-motion: reduce) { .bp-years__bar, .bp-impact__open { animation: none !important; } .bp-years__bar { transition: none; } }
+@media (max-width: 860px) { .bp-impact__explore { grid-template-columns: 1fr; } .bp-years { --bars: 9.4rem; } .bp-years__bars { height: 11rem; } }
+@media (prefers-reduced-motion: reduce) { .bp-years__bar, .bp-impact__open, .bp-ytip { animation: none !important; } .bp-years__bar { transition: none; } }
 
-/* The figures: what a board member wants first, each a door to the rest */
-.bp-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
-.bp-fig { position: relative; display: grid; align-content: start; gap: 0.1rem; height: 100%; padding: 1rem 1.15rem 1.05rem; border-radius: var(--r); background: #fff; border: 1px solid rgba(45, 47, 44, 0.08); box-shadow: var(--shadow-1); text-decoration: none; transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), border-color 0.2s; }
-a.bp-fig:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); border-color: rgba(45, 47, 44, 0.14); }
-a.bp-fig:active { transform: translateY(0) scale(0.99); }
+/* SOARD at a glance: one panel, the figures across the top with hairlines between, Impact under them. Each figure is
+   a door to the rest: its label, the number, the budget bar where there is one, then a line or two, never wrapping
+   mid-thought on a laptop */
+.bp-sum { background: var(--card); border: 1px solid rgba(45, 47, 44, 0.08); border-radius: var(--r-lg); box-shadow: var(--shadow-1); overflow: hidden; }
+.bp-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); }
+.bp-figs > li { min-width: 0; }
+.bp-figs > li + li { border-left: 1px solid var(--line); }
+.bp-fig { display: flex; flex-direction: column; gap: 0.1rem; height: 100%; padding: 1.1rem 1.35rem 1.15rem; color: inherit; text-decoration: none; transition: background 0.2s; }
+.bp-fig:hover { background: #FCFBF6; }
+.bp-fig:active { background: var(--warm); }
+.bp-fig:focus-visible { outline-offset: -3px; border-radius: 0; }
 .bp-fig__label { font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
-.bp-fig__value { font-family: var(--display); font-size: clamp(1.6rem, 3vw, 2.15rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; color: var(--ink); margin-top: 0.15rem; }
-.bp-fig.is-quiet .bp-fig__value { font-family: var(--body); font-size: 1.05rem; font-weight: 650; padding: 0.35rem 0 0.2rem; }
-.bp-fig__sub { color: var(--muted); font-size: 0.82rem; line-height: 1.35; }
-.bp-fig__sub.is-up { color: var(--ok); }
-.bp-fig__sub.is-down { color: var(--warn); }
-@media (max-width: 900px) { .bp-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .bp-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; } .bp-fig { padding: 0.8rem 0.85rem; } }
-.bp-split--top { margin: 1rem 0; }
-.bp-forme .bp-todos { grid-template-columns: 1fr; gap: 0.55rem; }
-.bp-forme .bp-todo { box-shadow: none; background: var(--cream); }
+.bp-fig__value { margin: 0.1rem 0 0.15rem; font-family: var(--display); font-size: clamp(1.6rem, 2.6vw, 2.05rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.bp-fig__sub { color: var(--ink-2); font-size: 0.86rem; line-height: 1.4; }
+.bp-fig__note { color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
+.bp-fig__note.is-up { color: var(--ok); }
+.bp-fig__note.is-down { color: var(--warn); }
+/* The budget bar: this year's share filled in yellow (brown once past the budget), last year's by now as a tick */
+.bp-fig__meter { position: relative; display: block; height: 6px; margin: 0.2rem 0 0.45rem; border-radius: 99px; background: var(--warm-2); }
+.bp-fig__meter i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--p); border-radius: inherit; background: var(--yellow-2); transform-origin: left; }
+.bp-fig__meter.is-over i { background: var(--warn); }
+.bp-fig__meter b { position: absolute; top: -3px; bottom: -3px; left: var(--pace); width: 2px; margin-left: -1px; border-radius: 2px; background: var(--ink); box-shadow: 0 0 0 1.5px #fff; }
+.is-entering .bp-fig__meter i { animation: bp-grow 0.9s var(--ease) both; animation-delay: 0.3s; }
+@media (max-width: 900px) {
+  .bp-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bp-figs > li:nth-child(odd) { border-left: none; }
+  .bp-figs > li:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  .bp-figs.is-odd > li:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) { .bp-fig { padding: 0.9rem 0.95rem 0.95rem; } .bp-fig__sub { font-size: 0.82rem; } .bp-fig__note { font-size: 0.78rem; } }
+/* For you: rows between hairlines, inside the one card */
+.bp-forme .bp-todos { grid-template-columns: 1fr; gap: 0; }
+.bp-forme .bp-todo-card + .bp-todo-card { border-top: 1px solid var(--line); }
+.bp-forme .bp-todo { align-items: center; padding: 0.7rem 0.1rem; background: none; border: none; border-radius: 0; box-shadow: none; }
+.bp-forme .bp-todo:hover { box-shadow: none; transform: none; }
+.bp-forme .bp-todo:hover .bp-todo__title { color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.bp-forme .bp-todo__title { font-size: 0.97rem; }
+/* Home's type: five sizes besides the headings (12, 13, 14, 15 and 16px) and three weights, so no two neighbors
+   differ by a hair. Scoped to Home: the same pieces keep their sizes on a meeting's page and on the screen */
+.bp-home { --t12: 0.75rem; --t13: 0.8125rem; --t14: 0.875rem; --t15: 0.9375rem; --t16: 1rem; }
+.bp-home .bp-fig__label, .bp-home .bp-mini-h, .bp-home .bp-spark__x, .bp-home .bp-date__mon, .bp-home .bp-date__wk, .bp-home .bp-soon, .bp-home .bp-count, .bp-home .bk-col__n, .bp-home .bp-impact__stats dd span { font-size: var(--t12); }
+.bp-home .bp-fig__label, .bp-home .bp-mini-h, .bp-home .bp-date__mon { font-weight: 700; }
+.bp-home .bp-fig__note, .bp-home .bp-impact__stats dt, .bp-home .bp-chip, .bp-home .bk-card__reveal, .bp-home .bk-col__head, .bp-home .bp-cardhead > .bp-muted { font-size: var(--t13); }
+.bp-home .bp-fig__sub, .bp-home .bp-cardhead__go, .bp-home .bp-impact__more, .bp-home .bp-todo__meta, .bp-home .bp-since__what > p > span, .bp-home .bp-brief__date, .bp-home .bp-facts-list strong, .bp-home .bp-rsvp__said { font-size: var(--t14); }
+.bp-home .bp-oneline, .bp-home .bp-agpeek, .bp-home .bp-facts-list li, .bp-home .bp-choice, .bp-home .bp-rsvp__q, .bp-home .bp-todo__title, .bp-home .bp-impact__num span { font-size: var(--t15); }
+.bp-home .bp-since__what strong, .bp-home .bk-card__name, .bp-home .bp-impact__stats dd { font-size: var(--t16); }
+.bp-home .bp-chip, .bp-home .bk-card__reveal, .bp-home .bp-cardhead__go, .bp-home .bp-impact__more, .bp-home .bp-choice, .bp-home .bp-rsvp__q, .bp-home .bp-todo__title, .bp-home .bp-facts-list strong, .bp-home .bk-card__name { font-weight: 600; }
+@media (max-width: 640px) { .bp-home .bp-fig__sub { font-size: var(--t13); } .bp-home .bp-fig__note { font-size: var(--t12); } }
+/* On a touch screen a heading's link and Explore by year are a thumb tall, without moving anything around them */
+@media (pointer: coarse) { .bp-home .bp-cardhead__go, .bp-home .bp-impact__more { min-height: 44px; margin-block: -10px; padding-block: 0; } .bp-home .bp-impact__more { margin-top: -0.35rem; } }
 
 /* The next meeting, as a ticket: the date on yellow, then everything about it */
 .bp-ticket { display: grid; grid-template-columns: auto minmax(0, 1fr); background: #fff; border: 1px solid rgba(45, 47, 44, 0.08); border-radius: var(--r-lg); box-shadow: var(--shadow-2); overflow: hidden; }
