@@ -148,13 +148,17 @@ function money(cents, currency) {
 function donor(buyer) {
   const name = clean(`${clean(buyer?.first_name)} ${clean(buyer?.last_name)}`);
   const company = buyer?.is_corporate ? clean(buyer?.company_name) : '';
-  if (company && name) return `${company} (${name})`;
+  // A foundation that typed its own name as the giver's is the company once
+  if (company && name && name.toLowerCase() !== company.toLowerCase()) return `${company} (${name})`;
   return company || name || null;
 }
 
 const INTERVALS = [[/month/i, 'monthly'], [/year|annual/i, 'yearly'], [/week/i, 'weekly'], [/quarter/i, 'quarterly']];
+// What Zeffy says on a one-time gift's item ("onetime"): not an interval
+const ONCE = /^(one[\s_-]?time|once|single|none|no)$/i;
 export function recurringLabel(p) {
-  const raw = p?.recurring?.interval || (p?.items || []).map((i) => i?.recurrence_interval).find(Boolean);
+  if (p?.recurring?.is_recurring === false) return null;
+  const raw = [p?.recurring?.interval, ...(p?.items || []).map((i) => i?.recurrence_interval)].find((x) => x && !ONCE.test(clean(x)));
   if (!raw) return null;
   const hit = INTERVALS.find(([re]) => re.test(raw));
   return hit ? hit[1] : clean(raw).toLowerCase();

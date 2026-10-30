@@ -69,8 +69,13 @@ test('a giver who asked to stay anonymous is Anonymous, company and all', () => 
   assert.equal(giftOf(payment({ buyer_questions: q(false) })).name, 'Jane Doe');
 });
 
-test('monthly and in kind', () => {
+test('monthly and in kind; a one-time gift is neither, and a foundation named twice is named once', () => {
   assert.equal(giftOf(payment({ recurring: { is_recurring: true, interval: 'month' } })).every, 'monthly');
+  // What Zeffy sends on a one-time gift (seen on SOARD's real payments, Oct 30 2026)
+  assert.equal(giftOf(payment({ items: [{ type: 'donation', amount: 250000, recurrence_interval: 'onetime' }] })).every, '');
+  assert.equal(giftOf(payment({ recurring: { is_recurring: false, interval: 'month' } })).every, '');
+  const f = giftOf(payment({ buyer: { first_name: 'Example Family', last_name: 'Foundation', is_corporate: true, company_name: 'Example Family Foundation' } }));
+  assert.deepEqual([f.company, f.name], ['Example Family Foundation', '']);
   assert.equal(giftOf(payment({ type: 'manual', payment_method: { type: 'in_kind' } })).inKind, true);
 });
 

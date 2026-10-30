@@ -64,12 +64,15 @@ export function giftOf(p, kids = []) {
   if (!(cents >= MAJOR_GIFT_CENTS)) return null;
   const hidden = anonymous(p);
   const b = p.buyer || {};
+  const company = hidden || !b.is_corporate ? '' : clean(b.company_name);
+  const person = hidden ? '' : clean(`${clean(b.first_name)} ${clean(b.last_name)}`);
   return {
     id: String(p.id),
     at: Number(p.created) || 0,
     cents,
-    name: hidden ? '' : clean(`${clean(b.first_name)} ${clean(b.last_name)}`),
-    company: hidden || !b.is_corporate ? '' : clean(b.company_name),
+    // A foundation that typed its own name as the giver's is the company once
+    name: company && person.toLowerCase() === company.toLowerCase() ? '' : person,
+    company,
     anonymous: hidden,
     campaign: campaignOf(p.description, kids),
     every: recurringLabel(p) || '',

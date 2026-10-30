@@ -123,6 +123,10 @@ test('organizations, monthly gifts, other currencies, and Slack markup', () => {
   assert.equal(giftMessage(payment({ buyer: { is_corporate: true, company_name: 'Northside' } })).text, '💛 $50.00 gift from Northside');
   assert.equal(giftMessage(payment({ amount: 2500, recurring: { is_recurring: true, interval: 'month' } })).text, '💛 $25.00 monthly gift from Jane Doe');
   assert.equal(giftMessage(payment({ amount: 250000, recurring: { is_recurring: true, interval: 'month' } })).text, '🌟 Major gift: $2,500.00 monthly from Jane Doe');
+  // A one-time gift's item says "onetime", which isn't an interval; a foundation that typed its name as the giver's is named once
+  assert.equal(giftMessage(payment({ amount: 200000, items: [{ type: 'donation', amount: 200000, recurrence_interval: 'onetime' }] })).text, '🌟 Major gift: $2,000.00 from Jane Doe');
+  assert.equal(giftMessage(payment({ amount: 5000, items: [{ type: 'donation', amount: 5000, recurrence_interval: 'onetime' }] })).text, '💛 $50.00 gift from Jane Doe');
+  assert.equal(giftMessage(payment({ amount: 2000000, buyer: { first_name: 'Example Family', last_name: 'Foundation', is_corporate: true, company_name: 'Example Family Foundation' } })).text, '🌟 Major gift: $20,000.00 from Example Family Foundation');
   assert.match(giftMessage(payment({ currency: 'cad' })).text, /^💛 CA\$50\.00 gift/);
   const sneaky = giftMessage(payment({ buyer: { first_name: '<!channel>', last_name: 'A&B' }, description: '<https://evil|click>' }));
   // The headline is plain text, which Slack never reads as a mention or link; everything else is escaped
