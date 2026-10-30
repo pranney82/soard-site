@@ -338,6 +338,14 @@ export function fakeApplicantWorld() {
       const m = Object.entries(world.census || {}).find(([k]) => q.includes(k.toLowerCase()))?.[1];
       return json({ result: { addressMatches: m ? [{ coordinates: { x: m.lng, y: m.lat }, matchedAddress: m.matched || q.toUpperCase(), geographies: { Counties: m.county ? [{ BASENAME: m.county }] : [] } }] : [] } });
     }
+    // OpenStreetMap's search (Photon): world.osm maps a piece of the query to the places it returns
+    // ([{ lat, lng, housenumber, street, postcode, city, county }]); world.osmCalls counts the asks
+    if (url.host === 'photon.komoot.io') {
+      world.osmCalls = (world.osmCalls || 0) + 1;
+      const q = String(url.searchParams.get('q') || '').toLowerCase();
+      const hits = Object.entries(world.osm || {}).filter(([k]) => q.includes(k.toLowerCase())).flatMap(([, v]) => v);
+      return json({ type: 'FeatureCollection', features: hits.map(({ lat, lng, ...p }) => ({ type: 'Feature', properties: { countrycode: 'US', ...p }, geometry: { type: 'Point', coordinates: [lng, lat] } })) });
+    }
     throw new Error(`fake world has no route for ${url.href}`);
   };
 

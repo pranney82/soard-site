@@ -18,22 +18,81 @@ import { insidePolygon, milesToEdge, placeHome, areaRules, cleanCorners, NEAR_MI
 export { insidePolygon, milesToEdge };
 
 const CENSUS = 'https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress';
+// OpenStreetMap's search (the same Photon that suggests addresses as families type, ./_address.js)
+const PHOTON = 'https://photon.komoot.io/api/';
+const UA = 'SunshineOnARanneyDay-application/1.0 (sunshineonaranneyday.com)';
 
 /**
- * { lat, lng, county, matched } for a one-line address, or null when the
- * Census can't place it. Throws only on network trouble.
+ * { lat, lng, county, matched } for a one-line address, or null when it can't be placed. The
+ * Census first; it has outages (a 502 after ten seconds, for hours), so when it can't be asked,
+ * OpenStreetMap places the home instead. Throws only when neither can place it.
  */
 export async function geocode(address, fetchImpl = fetch) {
   const q = String(address || '').trim();
   if (!q) return null;
+  try {
+    return await censusGeocode(q, fetchImpl);
+  } catch (e) {
+    const alt = await osmGeocode(q, fetchImpl).catch(() => null);
+    if (alt) return alt;
+    throw e;
+  }
+}
+
+async function censusGeocode(q, fetchImpl) {
   const url = `${CENSUS}?address=${encodeURIComponent(q)}&benchmark=Public_AR_Current&vintage=Current_Current&layers=Counties&format=json`;
-  const res = await fetchImpl(url, { signal: AbortSignal.timeout(10000), headers: { Accept: 'application/json' } });
+  const res = await fetchImpl(url, { signal: AbortSignal.timeout(6000), headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`Census geocoder returned ${res.status}`);
   const data = await res.json();
   const m = data?.result?.addressMatches?.[0];
   if (!m?.coordinates) return null;
   const county = m.geographies?.Counties?.[0]?.BASENAME || (m.geographies?.Counties?.[0]?.NAME || '').replace(/ County$/, '') || null;
   return { lat: Number(m.coordinates.y), lng: Number(m.coordinates.x), county, matched: m.matchedAddress || null };
+}
+
+// "Lawrence Street Northeast" and "Lawrence St NE" are the same street
+const WORDS = {
+  street: 'st', avenue: 'ave', road: 'rd', drive: 'dr', lane: 'ln', court: 'ct', circle: 'cir', boulevard: 'blvd', parkway: 'pkwy',
+  place: 'pl', trail: 'trl', highway: 'hwy', terrace: 'ter', northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw',
+  north: 'n', south: 's', east: 'e', west: 'w',
+};
+const streetKey = (s) => String(s || '').toLowerCase().replace(/[.,#]/g, ' ').split(/\s+/).filter(Boolean).map(w => WORDS[w] || w).join(' ');
+
+/**
+ * The same from OpenStreetMap, for a Census outage: the home itself where it's mapped, else a place
+ * on the same street in the same ZIP or town (close enough to put it on the service-area map).
+ * null when nothing on that street turns up. `address` is addressText's "line1[, line2], City, ST 12345".
+ */
+async function osmGeocode(address, fetchImpl) {
+  const parts = address.split(',').map(s => s.trim()).filter(Boolean);
+  const m = /^(\d+[a-z]?)\s+(.+)$/i.exec(parts[0] || '');
+  if (!m || parts.length < 3) return null;
+  const last = parts[parts.length - 1];
+  const city = parts[parts.length - 2];
+  const zip = (/\b(\d{5})\b/.exec(last) || [])[1] || '';
+  const state = (/^([a-z]{2})\b/i.exec(last) || [])[1]?.toUpperCase() || '';
+  const res = await fetchImpl(`${PHOTON}?q=${encodeURIComponent([parts[0], city, last].join(', '))}&limit=6&lang=en`, {
+    signal: AbortSignal.timeout(5000), headers: { 'User-Agent': UA, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`OpenStreetMap search returned ${res.status}`);
+  const data = await res.json();
+  const want = streetKey(m[2]);
+  const onStreet = (p) => {
+    const s = streetKey(p.street || p.name);
+    return s.length >= 3 && (s === want || s.includes(want) || want.includes(s));
+  };
+  const near = (p) => (zip && String(p.postcode || '').slice(0, 5) === zip)
+    || [p.city, p.town, p.village, p.district].some(c => c && String(c).toLowerCase() === city.toLowerCase());
+  const found = (data.features || []).filter(f => f?.geometry?.coordinates?.length === 2 && (!f.properties?.countrycode || f.properties.countrycode === 'US'));
+  const home = found.find(f => onStreet(f.properties) && near(f.properties) && String(f.properties.housenumber || '').toLowerCase() === m[1].toLowerCase());
+  const best = home || found.find(f => onStreet(f.properties) && near(f.properties));
+  if (!best) return null;
+  const [lng, lat] = best.geometry.coordinates.map(Number);
+  return {
+    lat, lng,
+    county: String(best.properties.county || '').replace(/ County$/, '') || null,
+    matched: [parts[0], city, state, zip].filter(Boolean).join(', ').toUpperCase(),
+  };
 }
 
 /**

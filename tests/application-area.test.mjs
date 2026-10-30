@@ -222,6 +222,27 @@ test('an address the Census can’t find, or a Census outage, leaves the answer 
   assert.equal((await getApplication(env.DB, s2.id)).answers.boundary, AREA_VALUES.near);
 });
 
+test('a Census outage: OpenStreetMap places the home on its street instead, and only a street that matches', async () => {
+  w.world.censusDown = true;
+  // OpenStreetMap knows a building a few doors down the same street (Photon's long street names)
+  w.world.osm = {
+    'lawrence': [{ lat: 33.95354, lng: -84.54665, housenumber: '211', street: 'Lawrence Street Northeast', postcode: '30060', city: 'Marietta', county: 'Cobb County' }],
+    'poplar': [{ lat: 32.83601, lng: -83.63224, housenumber: '700', street: 'Poplar Street', postcode: '31201', city: 'Macon', county: 'Bibb' }],
+    'nowhere': [{ lat: 33.9, lng: -84.4, housenumber: '1', street: 'Elsewhere Road', postcode: '30339', city: 'Atlanta' }],
+  };
+  const draft = await readyDraft(answersAt(HOME_IN));
+  const inside = await areaCheck(env, await form(), HOME_IN, { draft });
+  assert.equal(inside.band, 'inside', 'placed inside from its street');
+  assert.equal(inside.county, 'Cobb');
+  assert.match(inside.matched, /^205 LAWRENCE ST NE, MARIETTA, GA, 30060$/);
+  assert.ok(w.world.osmCalls >= 1);
+  const far = await areaCheck(env, await form(), HOME_FAR, { draft: await getDraft(env.DB, draft.id) });
+  assert.equal(far.band, 'far', 'far out, from OpenStreetMap too');
+  assert.ok(far.miles > 60);
+  const lost = await areaCheck(env, await form(), addr('1 Nowhere Ln', 'Faketown', '30999'), { draft: await getDraft(env.DB, draft.id) });
+  assert.equal(lost.reason, 'error', 'a place on another street is no answer: the family is asked');
+});
+
 test('a draft gets a limited number of lookups', async () => {
   const draft = await readyDraft(answersAt(HOME_IN));
   await env.DB.prepare('UPDATE application_drafts SET area_checks = ? WHERE id = ?').bind(MAX_AREA_CHECKS, draft.id).run();
