@@ -340,36 +340,37 @@ try {
   const map = await page.evaluate(() => ({
     shown: getComputedStyle(document.querySelector('.pr-map')).display !== 'none',
     journey: getComputedStyle(document.querySelector('.pr-journey')).display,
-    lanes: [...document.querySelectorAll('.pr-mlane')].map((l) => l.textContent),
+    lanes: [...document.querySelectorAll('.pr-mlane:not(.is-rail)')].map((l) => l.textContent),
+    rail: document.querySelector('.pr-mlane.is-rail')?.textContent,
     cols: document.querySelectorAll('.pr-mh').length,
-    cards: document.querySelectorAll('.pr-mcard').length,
+    cards: document.querySelectorAll('.pr-mtask').length,
+    blocks: document.querySelectorAll('.pr-mcard.is-block').length,
     nav: document.querySelectorAll('.pr-mnav button').length,
     facts: document.querySelector('.pr-map__facts').textContent.replace(/\s+/g, ' ').trim(),
     zoom: parseFloat(document.querySelector('.pr-map__grid').style.zoom),
     decisions: [...document.querySelectorAll('.pr-mdec b')].map((b) => b.textContent),
     times: [...document.querySelectorAll('.pr-mcard .pr-time')].map((t) => t.textContent),
-    cycles: [...document.querySelectorAll('.pr-mband span, .pr-mh__cycle')].map((x) => x.textContent),
+    cycles: [...document.querySelectorAll('.pr-mh__cycle')].map((x) => x.title),
     flow: document.querySelectorAll('.pr-map__flow path').length,
     handoffs: document.querySelectorAll('.pr-map__flow path.is-handoff').length,
   }));
   ok(map.shown && map.journey === 'none', 'on a laptop the process map shows; the journey bar is the phone’s');
-  ok(map.lanes.join(' / ') === 'Family / SOARD team / Designer / Project manager / Runs on its own', `a lane for each who, then what runs on its own (${map.lanes.join(' / ')})`);
+  ok(map.lanes.join(' / ') === 'Family / SOARD team / Designer / Project manager / Runs on its own' && map.rail === 'Automations', `a lane for each who, then what runs on its own, and the automations under it all (${map.lanes.join(' / ')} + ${map.rail})`);
   ok(map.cols === 5 + MAKEOVER.length && map.nav === map.cols, `a column and a navigator dot per step (${map.cols})`);
-  ok(map.cards >= 30, `a card per task (${map.cards})`);
+  ok(map.cards >= 30 && map.blocks > 0, `a card per task, back-to-back tasks by the same lane together (${map.cards} tasks, ${map.blocks} blocks)`);
   ok(/\d+ handoffs between people/.test(map.facts) && map.handoffs > 5 && map.flow > map.handoffs, `the flow is drawn, handoffs darker (${map.flow} lines, ${map.handoffs} handoffs; ${map.facts})`);
-  ok(map.zoom === 0.85, `it opens at a readable size (${map.zoom})`);
+  ok(map.zoom === 0.9, `it opens at a readable size (${map.zoom})`);
   ok(map.decisions.join(', ') === 'Onsite visit?, Approved?', `decisions where they’re made (${map.decisions.join(', ')})`);
   ok(map.times.includes('≤ 2 weeks out') && map.times.includes('1 week after Reveal') && map.times.includes('6 months out'), `the times the Doc sets (${map.times.join(', ')})`);
-  ok(map.cycles.includes('To an onsite: 20 days (median of 31)') && map.cycles.includes('Onsite to a decision: 21 days (median of 28)'), `how long applying really takes (${map.cycles.join(' | ')})`);
+  ok(map.cycles.includes('Median to an onsite, of 31 applicants’ history') && map.cycles.includes('Median to a decision, of 28 applicants’ history'), `how long applying really takes (${map.cycles.join(' | ')})`);
   const lit = await page.evaluate(() => {
-    const card = [...document.querySelectorAll('.pr-mcard')].find((c) => c.querySelector('.pr-mcard__t').textContent === 'JT sends family message');
-    card.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    const card = [...document.querySelectorAll('.pr-mtask')].find((c) => c.querySelector('.pr-mcard__x').textContent === 'JT sends family message').closest('.pr-mcard');
     return { lane: card.dataset.lane };
   });
   await page.hover('.pr-mcard.has-auto');
   await pause(100);
-  const litNow = await page.evaluate(() => ({ map: document.querySelector('.pr-map').classList.contains('is-lit'), chips: document.querySelectorAll('.pr-machip.is-lit').length }));
-  ok(lit.lane === 'auto' && litNow.map && litNow.chips >= 1, `a system task sits in its lane, and pointing at a task lights up its automations (${litNow.chips})`);
+  const litNow = await page.evaluate(() => ({ card: !!document.querySelector('.pr-mcard.has-auto.is-lit'), rail: !!document.querySelector('.pr-mrail.is-lit'), chips: document.querySelectorAll('.pr-dot.is-lit').length }));
+  ok(lit.lane === 'auto' && litNow.card && litNow.rail && litNow.chips >= 1, `a system task sits in its lane, and pointing at a task lights up its automations (${litNow.chips})`);
   await page.mouse.move(5, 5);
   await page.evaluate(() => [...document.querySelectorAll('.pr-mnav button')].find((b) => b.title.startsWith('13.')).click());
   await pause(900);
@@ -380,25 +381,30 @@ try {
   await pause(200);
   const fitZoom = await page.evaluate(() => parseFloat(document.querySelector('.pr-map__grid').style.zoom));
   const fits = await page.evaluate(() => { const sc = document.querySelector('.pr-map__scroll'); return sc.scrollWidth <= sc.clientWidth + 2 && sc.scrollLeft === 0; });
-  ok(fitZoom < 0.85 && fitZoom >= 0.25 && fits, `Fit shows the whole map at once (${fitZoom})`);
+  ok(fitZoom < 0.9 && fitZoom >= 0.18 && fits, `Fit shows the whole map at once (${fitZoom})`);
   await page.screenshot({ path: join(OUT, 'map-fit.png') });
-  await page.evaluate(() => [...document.querySelectorAll('.pr-mcard')].find((c) => c.querySelector('.pr-mcard__t').textContent === 'Schedule trades').click());
-  await pause(900);
-  const opened = await page.evaluate(() => { const st = [...document.querySelectorAll('.pr-step')].find((x) => x.querySelector('h4').textContent.endsWith('Mobilization')); const r = st.getBoundingClientRect(); return { top: Math.round(r.top), lit: st.classList.contains('is-jumped') }; });
-  ok(opened.top >= -2 && opened.top < 220 && opened.lit, `clicking a task opens its step below (${JSON.stringify(opened)})`);
-  await page.evaluate(() => scrollTo(0, 0));
   await clickText(page, '.pr-map__acts button', '+');
+  await pause(200);
+  await page.evaluate(() => [...document.querySelectorAll('.pr-mtask')].find((c) => c.querySelector('.pr-mcard__x').textContent === 'Schedule trades').closest('.pr-mcard').click());
+  await pause(400);
+  const opened = await page.evaluate(() => { const p = document.querySelector('.pr-panel'); const r = p?.getBoundingClientRect(); return p ? { label: p.getAttribute('aria-label'), h4: p.querySelector('.pr-step h4')?.textContent, chips: p.querySelectorAll('.pr-auto').length, w: Math.round(r.width), head: document.querySelector('.pr-mh.is-open')?.dataset.step } : null; });
+  ok(opened?.label.endsWith('Mobilization') && opened.h4.endsWith('Mobilization') && opened.w >= 300 && opened.head, `clicking a task opens its step beside the map (${JSON.stringify(opened)})`);
+  await page.screenshot({ path: join(OUT, 'map-panel.png') });
+  await page.keyboard.press('Escape');
+  await pause(150);
+  ok(!(await page.$('.pr-panel')), 'Escape closes it');
+  await page.evaluate(() => scrollTo(0, 0));
   await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
   await clickText(page, '.pr-map__acts button', 'Print map');
-  const pm = await page.evaluate(() => ({ n: window.__printed, on: document.body.classList.contains('pr-printing-map'), pages: document.querySelectorAll('#pr-map-print .pr-mpage').length, cards: document.querySelectorAll('#pr-map-print .pr-mcard').length, cols: [...document.querySelectorAll('#pr-map-print .pr-mpage')].map((p) => p.querySelectorAll('.pr-mh').length), lanes: document.querySelectorAll('#pr-map-print .pr-mpage:first-child .pr-mlane').length, flow: document.querySelectorAll('#pr-map-print .pr-map__flow path').length }));
-  ok(pm.n === 1 && pm.on && pm.pages === 4 && pm.cols.join(',') === '5,5,5,3' && pm.lanes === 5 && pm.cards === map.cards && pm.flow > 5, `Print map prints readable landscape pages of 5 steps, lanes and flow on each (${JSON.stringify(pm)})`);
+  const pm = await page.evaluate(() => ({ n: window.__printed, on: document.body.classList.contains('pr-printing-map'), pages: document.querySelectorAll('#pr-map-print .pr-mpage').length, cards: document.querySelectorAll('#pr-map-print .pr-mtask').length, cols: [...document.querySelectorAll('#pr-map-print .pr-mpage')].map((p) => p.querySelectorAll('.pr-mh').length), lanes: document.querySelectorAll('#pr-map-print .pr-mpage:first-child .pr-mlane:not(.is-rail)').length, flow: document.querySelectorAll('#pr-map-print .pr-map__flow path').length }));
+  ok(pm.n === 1 && pm.on && pm.pages >= 3 && pm.cols.reduce((a, b) => a + b, 0) === map.cols && pm.lanes === 5 && pm.cards === map.cards && pm.flow > 5, `Print map prints readable landscape pages of a few steps, lanes and flow on each (${JSON.stringify(pm)})`);
   await page.emulateMediaType('print');
   await page.screenshot({ path: join(OUT, 'map-print.png'), fullPage: true });
   await page.emulateMediaType('screen');
   await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
   ok(!(await page.evaluate(() => document.body.classList.contains('pr-printing-map'))), 'and tidies up after');
-  const here2 = await page.evaluate(() => [...document.querySelectorAll('.pr-mh')].find((h) => h.textContent.includes('Design Charrette'))?.querySelector('.pr-mh__now')?.textContent.replace(/\s+/g, ' ').trim());
-  ok(here2 === 'Here now: Axel, Mila', `the map names who’s at each step (${here2})`);
+  const here2 = await page.evaluate(() => { const a = [...document.querySelectorAll('.pr-mh')].find((h) => h.textContent.includes('Design Charrette'))?.querySelector('.pr-avs'); return a && { names: [...a.querySelectorAll('.pr-av .sr-only')].map((x) => x.textContent.split(',')[0]), n: a.querySelector('.pr-avs__n').textContent, hrefs: [...a.querySelectorAll('a.pr-av')].map((x) => x.getAttribute('href')) }; });
+  ok(here2?.names.join(', ') === 'Axel, Mila' && here2.n === '2 here' && here2.hrefs.every(Boolean), `the map shows who’s at each step, each a link (${JSON.stringify(here2)})`);
   await page.evaluate(() => scrollTo(0, 0));
 
   console.log('The filter');
@@ -513,7 +519,7 @@ try {
   ok(quote.includes('Expenditures') && quote.includes('Required approval: Board Chair'), 'a policy section opens to the manual’s own words');
   ok(await page.evaluate(() => [...document.querySelectorAll('.pr-policy button')].find((b) => b.textContent === 'Segregation of Duties')?.disabled === true), 'a section the manual doesn’t have can’t be opened');
   ok((await chipsOn(page, 'A sub’s bill lands in JobTread and its approver is asked by email'))?.[0]?.t === 'Bill approvals and pay', 'bills show the approval automation');
-  const docOnly = await page.evaluate(() => ({ list: [...document.querySelectorAll('.pr-line > .pr-text')].some((x) => x.textContent === 'Up to $15,000 the President approves; over $15,000 the Board Chair approves too'), map: [...document.querySelectorAll('.pr-mcard__t')].some((x) => x.textContent === 'Up to $15,000 the President approves; over $15,000 the Board Chair approves too'), builtIn: [...document.querySelectorAll('.pr-mcard__t, .pr-line > .pr-text')].some((x) => x.textContent === 'A bill over the second-approval amount needs a second approver') }));
+  const docOnly = await page.evaluate(() => ({ list: [...document.querySelectorAll('.pr-line > .pr-text')].some((x) => x.textContent === 'Up to $15,000 the President approves; over $15,000 the Board Chair approves too'), map: [...document.querySelectorAll('.pr-mcard__x')].some((x) => x.textContent === 'Up to $15,000 the President approves; over $15,000 the Board Chair approves too'), builtIn: [...document.querySelectorAll('.pr-mcard__x, .pr-line > .pr-text')].some((x) => x.textContent === 'A bill over the second-approval amount needs a second approver') }));
   ok(docOnly.list && docOnly.map && !docOnly.builtIn, `the steps and the map are the money Doc’s own lines, not the built-in ones (${JSON.stringify(docOnly)})`);
   ok(await tagOf(page, 'Reimbursing staff and volunteers') === 'By hand', 'reimbursements are by hand');
   const moneyRows = await page.$$eval('.pr-now .pr-row', (l) => l.map((r) => r.textContent.replace(/\s+/g, ' ').trim()));

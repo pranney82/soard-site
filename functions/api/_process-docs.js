@@ -38,7 +38,7 @@ import { accessToken } from './_google-calendar.js';
 import { boardAdmins, isStaffEmail, activeBoard, peopleRows, founderEmails } from './_board-roles.js';
 import { sendEmails, emailConfigured, SITE_ORIGIN } from './_broadcast-notify.js';
 import * as mail from './_email-shell.js';
-import { JT_URL, SOARD_ORG_ID, FIELD_JOB_STATUS, loadKids, loadProjects, matchProject, isProject, isRehearsalJob } from './_reveals.js';
+import { JT_URL, SOARD_ORG_ID, FIELD_JOB_STATUS, loadKids, loadProjects, matchProject, isProject, isRehearsalJob, cfImageId } from './_reveals.js';
 import { jobtreadJobUrl } from './_applicants.js';
 import { accountKindFor } from './_applicant-comms.js';
 import { kindOf } from './_application-form.js';
@@ -436,6 +436,11 @@ export async function cycleTimes(DB, { now = Date.now() } = {}) {
 // ─── Who's where right now ────────────────
 
 const listOf = (items) => ({ n: items.length, names: items.slice(0, NAMES) });
+// A kid's or project's page photo as a small face for the map (Cloudflare Images, the site's own account)
+const CF_IMAGES = 'ROYFuPmfN2vPS6mt5sCkZQ';
+const face = (src) => { const id = cfImageId(src); return id ? `/cdn-cgi/imagedelivery/${CF_IMAGES}/${id}/w=96,h=96,fit=cover,gravity=face,q=80` : null; };
+// The child's photo JobTread keeps from the application (its own CDN, allowed in the admin)
+const jtFace = (url) => (/^https:\/\/cdn\.jobtread\.com\//.test(String(url || '')) ? String(url) : null);
 const bare = (name) => String(name || '').replace(/\s*\(\d{4}\)\s*$/, '').trim();
 
 /** Applicants at Applied and In Review, by kind (TEST and archived left out), each linked to its page in Applicants */
@@ -444,10 +449,14 @@ async function applicantsNow(DB) {
   // With when each reached its status (the history) and the form's kind; each left out in turn if its table isn't there
   const stage = ", (SELECT MAX(x.at) FROM applicant_activity x WHERE x.account_id = a.account_id AND x.kind = 'status') AS stage_at";
   const kinds = [', ap.kind, ap.is_test', ' LEFT JOIN applications ap ON ap.jt_account_id = a.account_id'];
-  const sql = (withStage, withKinds) => `SELECT a.account_id, a.name, a.status, a.fields, a.created_at${withStage ? stage : ''}${withKinds ? kinds[0] : ''} FROM applicants a${withKinds ? kinds[1] : ''} WHERE a.archived_at IS NULL AND a.status IN ('Applied', 'In Review') ORDER BY a.created_at`;
+  const sql = (withStage, withKinds) => `SELECT a.account_id, a.name, a.status, a.fields, a.created_at, a.photo_url${withStage ? stage : ''}${withKinds ? kinds[0] : ''} FROM applicants a${withKinds ? kinds[1] : ''} WHERE a.archived_at IS NULL AND a.status IN ('Applied', 'In Review') ORDER BY a.created_at`;
   let rows = null;
   for (const [st, k] of [[true, true], [false, true], [true, false], [false, false]]) {
     try { rows = await run(sql(st, k)); break; } catch { /* try the next */ }
+  }
+  // A mirror from before photos: the same without them
+  if (!rows) for (const [st, k] of [[true, true], [false, false]]) {
+    try { rows = await run(sql(st, k).replace(', a.photo_url', '')); break; } catch { /* try the next */ }
   }
   if (!rows) return null;
   const out = { makeover: { Applied: [], 'In Review': [] }, community: { Applied: [], 'In Review': [] } };
@@ -457,7 +466,8 @@ async function applicantsNow(DB) {
     try { fields = JSON.parse(r.fields || '{}') || {}; } catch { /* none */ }
     const kind = r.kind ? kindOf(r.kind) : accountKindFor({ birthday: fields.birthday, diagnosis: fields.diagnosis, name: r.name });
     const since = r.stage_at || (r.status === 'Applied' ? r.created_at : null);
-    out[kind === 'organization' ? 'community' : 'makeover'][r.status].push({ name: r.name || 'A family', href: `#applications/applicants/${r.account_id}`, ...(since ? { since } : {}) });
+    const photo = jtFace(r.photo_url);
+    out[kind === 'organization' ? 'community' : 'makeover'][r.status].push({ name: r.name || 'A family', href: `#applications/applicants/${r.account_id}`, ...(since ? { since } : {}), ...(photo ? { photo } : {}) });
   }
   return out;
 }
@@ -531,7 +541,8 @@ async function jobsNow(env, { fetchImpl, now }) {
       const community = isProject(hit) || orgJobs.has(job.id);
       const page = hit ? (isProject(hit) ? hit.page : `/kids/${hit.slug}/`) : null;
       const since = nextStages[job.id]?.since || null;
-      (value[community ? 'community' : 'makeover'][status] ||= []).push({ name: hit?.name || bare(job.name) || 'A job', href: jobtreadJobUrl(job.id), ...(page ? { page } : {}), ...(since ? { since } : {}) });
+      const photo = face(hit?.heroImage);
+      (value[community ? 'community' : 'makeover'][status] ||= []).push({ name: hit?.name || bare(job.name) || 'A job', href: jobtreadJobUrl(job.id), ...(page ? { page } : {}), ...(since ? { since } : {}), ...(photo ? { photo } : {}) });
     }
     await writeRow(env.DB, 'jobs', { at: new Date(now).toISOString(), value }, now);
     return value;
