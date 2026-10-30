@@ -11,12 +11,20 @@
  * GET ?term=<id>&download=csv         → that audit's spreadsheet
  * GET ?term=<id>&download=packet      → that audit's packet for the auditor (PDF)
  * POST { action: 'call', term, key, jtId?, name, reason }   a person's call on a payee (CALLS, or 'clear') → { success, audit, terms }
+ * POST { action: 'asking', on }      emails asking vendors and agents for W-9s and certificates on or off → { success, asking }
+ * Every answer with an audit also has asking: { on, by, at, held } (held: why nobody is emailed right now, or null)
  */
 import { auditFor, auditCsv, auditPacket, saveCall, term, termOf, termsShown, todayEastern, POLICIES } from './_insurance-audit.js';
+import { readDocSettings, saveDocSettings, asksOnHold } from './_vendors.js';
 
 const headers = { 'Cache-Control': 'no-store' };
 const ok = (body = {}) => Response.json({ success: true, ...body }, { headers });
 const fail = (error, status = 400) => Response.json({ success: false, error }, { status, headers });
+
+async function askingOf(env) {
+  const s = await readDocSettings(env.DB);
+  return { on: !!s.asking, by: s.askingBy || null, at: s.askingAt || null, held: await asksOnHold(env) };
+}
 
 /** The term asked for, when it's one shown; else the policy's current term → id or null */
 function termIdOf(v, policy, now = Date.now()) {
@@ -40,7 +48,7 @@ export async function onRequestGet(context) {
       const bytes = await auditPacket(env, audit);
       return new Response(bytes, { headers: { ...headers, 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${name}.pdf"`, 'X-Content-Type-Options': 'nosniff' } });
     }
-    return ok({ audit, terms: termsShown() });
+    return ok({ audit, terms: termsShown(), asking: await askingOf(env) });
   } catch (e) {
     if (e.status && e.status < 500) return fail(e.message, e.status);
     console.error('[insurance-audit-admin] get', e.message);
@@ -53,11 +61,15 @@ export async function onRequestPost(context) {
   let b;
   try { b = await context.request.json(); } catch { return fail('Send that again'); }
   try {
+    if (b.action === 'asking') {
+      await saveDocSettings(env.DB, { asking: b.on === true, by: context.data?.userEmail || 'admin' });
+      return ok({ asking: await askingOf(env) });
+    }
     if (b.action !== 'call') return fail('Unknown action');
     const id = termIdOf(b.term, null);
     if (!id) return fail('Pick one of the terms shown');
     await saveCall(env.DB, { key: String(b.key || ''), jtId: b.jtId ? String(b.jtId).slice(0, 64) : null, name: b.name || '', reason: b.reason, by: context.data?.userEmail || 'admin' });
-    return ok({ audit: await auditFor(env, id), terms: termsShown() });
+    return ok({ audit: await auditFor(env, id), terms: termsShown(), asking: await askingOf(env) });
   } catch (e) {
     if (e.status && e.status < 500) return fail(e.message, e.status);
     console.error('[insurance-audit-admin]', e.message);

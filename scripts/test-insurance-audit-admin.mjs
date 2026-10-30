@@ -24,7 +24,7 @@ import { PDFDocument } from 'pdf-lib';
 import { createD1 } from '../tests/lib/d1-shim.mjs';
 import { onRequestGet as auditGet, onRequestPost as auditPost } from '../functions/api/insurance-audit-admin.js';
 import { ensureSpendSchema } from '../functions/api/_spend.js';
-import { ensureVendorSchema } from '../functions/api/_vendors.js';
+import { ensureVendorSchema, readDocSettings } from '../functions/api/_vendors.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/insurance-audit/');
@@ -183,6 +183,22 @@ try {
   ok((await page.$$eval('.ia-list[aria-label="Subcontractors paid"] .ia-head span', (els) => els.map((e) => e.textContent))).join('|') === 'Subcontractor|Paid in the term|Workers’ compensation|Certificate|', 'one coverage column: workers’ comp');
   await page.screenshot({ path: `${OUT}audit.png`, fullPage: false });
   await axe(page, 'the audit');
+
+  // Emails to vendors: off until someone turns them on, and after that still waiting for the certificate search
+  ok((await textOf(page, '.ia')).includes('Emails to vendors are off.'), 'emails to vendors start off, and say so');
+  await clickText(page, '.ia .notice .btn', 'Turn on');
+  await page.waitForSelector('[data-ask="yes"]');
+  ok((await textOf(page, '.kd-dialog')).includes('Turn on emails to vendors?'), 'turning them on asks first');
+  await page.click('[data-ask="yes"]');
+  await page.waitForFunction(() => document.body.innerText.includes('Emails to vendors are on by holly'));
+  ok((await textOf(page, '.ia')).includes('They start once the certificate search has finished'), 'on, and waiting for the certificate search');
+  ok((await readDocSettings(DB)).askingBy === ME, 'who turned them on is kept');
+  await page.screenshot({ path: `${OUT}asking-on.png` });
+  await clickText(page, '.ia .notice .btn', 'Turn off');
+  await page.waitForSelector('[data-ask="yes"]');
+  await page.click('[data-ask="yes"]');
+  ok(await page.waitForFunction(() => document.body.innerText.includes('Emails to vendors are off.')).then(() => true, () => false), 'and off again');
+  ok((await readDocSettings(DB)).asking === false, 'off is kept');
 
   await clickText(page, '.ia-link', 'Show 1 payment');
   await page.waitForSelector('.ia-pays table');

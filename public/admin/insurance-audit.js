@@ -7,7 +7,8 @@
  * Over /api/insurance-audit-admin (functions/api/_insurance-audit.js).
  * Nothing here has to be pressed: payments are read every day, certificates
  * arrive from the certificate search, and subs with a gap are emailed on
- * their own. People pick the audit and its term, look, download its
+ * their own once someone turns emails to vendors on (off until then: the
+ * one switch here, for every W-9 and certificate email the site sends). People pick the audit and its term, look, download its
  * spreadsheet or its auditor's packet, and can make a call on a payee the
  * site counted wrong (works off site, sells materials only, and for workers'
  * comp, one person with no employees).
@@ -15,6 +16,7 @@
 
 import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { float } from './float.js';
+import { ask } from './ask.js';
 
 const html = htm.bind(h);
 const API = '/api/insurance-audit-admin';
@@ -123,6 +125,19 @@ export function InsuranceAudit({ addToast = () => {} }) {
   };
   useEffect(() => { load(); }, []);
 
+  const setAsking = async (on) => {
+    const yes = await ask(on
+      ? { title: 'Turn on emails to vendors?', text: 'Vendors and their insurance agents are emailed for the W-9s and certificates SOARD doesn’t have: for these audits, bills on hold and renewals. The first go out within a few hours.', yes: 'Turn on' }
+      : { title: 'Turn off emails to vendors?', text: 'Nobody is emailed for a W-9 or certificate until they’re turned on again. A vendor can still send theirs on the trade-partner page.', yes: 'Turn off' });
+    if (!yes) return;
+    setBusy(true);
+    const j = await call('', { action: 'asking', on });
+    setBusy(false);
+    if (!j.success) { addToast(j.error || 'That didn’t work', 'error'); return; }
+    setData({ ...data, asking: j.asking });
+    addToast(on ? 'Emails to vendors are on' : 'Emails to vendors are off', 'success');
+  };
+
   const decide = async (r, reason) => {
     setBusy(true);
     const j = await call('', { action: 'call', term: data.audit.term.id, key: r.key, jtId: r.jtId, name: r.name, reason });
@@ -173,6 +188,7 @@ export function InsuranceAudit({ addToast = () => {} }) {
           ${terms.map((x) => html`<button role="tab" aria-selected=${x.id === a.term.id} disabled=${busy} onClick=${() => { if (x.id !== a.term.id) load(`?term=${encodeURIComponent(x.id)}`); }}>${x.short}</button>`)}
         </div>
       </div>
+      ${data.asking ? html`<${Asking} s=${data.asking} busy=${busy} onSet=${setAsking} />` : null}
       ${notes.map((n) => html`<div class="notice notice--warn"><div class="notice__body">${n}</div></div>`)}
       <div class="ia-stats">
         <div class="stat"><span class="stat__label">Paid to subcontractors without ${kind}</span><span class="stat__value">${usd(t.uninsuredCents)}</span>
@@ -191,8 +207,19 @@ export function InsuranceAudit({ addToast = () => {} }) {
           ${out.map((r) => html`<${Row} key=${r.key} r=${r} k=${k} busy=${busy} onDecide=${decide} />`)}
         </div>
       </details>` : null}
-      <p class="ia-foot">Payments read from JobTread, Ramp and Mercury ${when(a.builtAt)}, and again every day. Certificates come from the staff inboxes and JobTread as they’re found. A subcontractor paid on days none covers is emailed for it once, a week later: one email for what both audits are missing.</p>
+      <p class="ia-foot">Payments read from JobTread, Ramp and Mercury ${when(a.builtAt)}, and again every day. Certificates come from the staff inboxes and JobTread as they’re found. ${data.asking?.on ? 'A subcontractor paid on days none covers is emailed for it once, a week later: one email for what both audits are missing.' : 'Nobody is emailed while emails to vendors are off.'}</p>
     </section>`;
+}
+
+/** Emails to vendors for W-9s and certificates: off until someone turns them on */
+function Asking({ s, busy, onSet }) {
+  if (!s.on) {
+    return html`<div class="notice"><div class="notice__body"><strong>Emails to vendors are off.</strong> No vendor or insurance agent is emailed for a W-9 or certificate: not for these audits, a bill on hold or a renewal.</div>
+      <div class="notice__actions"><button class="btn btn-ghost" disabled=${busy} onClick=${() => onSet(true)}>Turn on</button></div></div>`;
+  }
+  const who = s.by ? ` by ${s.by.split('@')[0]}` : '';
+  return html`<div class="notice"><div class="notice__body"><strong>Emails to vendors are on</strong>${who}${s.at ? ` since ${when(s.at)}` : ''}.${s.held ? ' They start once the certificate search has finished looking through email, JobTread and Ramp.' : ''}</div>
+    <div class="notice__actions"><button class="btn btn-ghost" disabled=${busy} onClick=${() => onSet(false)}>Turn off</button></div></div>`;
 }
 
 function Cover({ c }) {
