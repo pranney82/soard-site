@@ -806,8 +806,11 @@ function init(root, cfg, mode) {
    * form freely: this works it out for whatever the pages hold.
    */
   // The home address with its map: two pieces once they're split (data-split), so the address can
-  // have one screen and the map with what the check found the next
-  const pieces = (pid) => [...(pageEl(pid)?.children || [])].flatMap(k => (k.matches('.af-place[data-split]') ? [...k.children] : [k]));
+  // have one screen and the map with what the check found the next.
+  // A pair of questions stacked on a phone is two pieces too (they can take a screen each)
+  const stackedPair = (k) => k.matches('.af-pair') && k.children.length === 2
+    && k.children[1].getBoundingClientRect().top >= k.children[0].getBoundingClientRect().bottom - 1;
+  const pieces = (pid) => [...(pageEl(pid)?.children || [])].flatMap(k => (k.matches('.af-place[data-split]') || stackedPair(k) ? [...k.children] : [k]));
   const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : [...el.querySelectorAll('[data-field]')].map(x => x.dataset.field));
   const isNote = (el) => ['content', 'guidelines', 'image'].includes(el.dataset.type);
   /**
@@ -890,10 +893,10 @@ function init(root, cfg, mode) {
     }
     const cuts = [];
     const kids = pieces(pid).flatMap((k) => {
-      // Cut only into two screens at most: longer words are one read that scrolls (ten slides of
-      // text on a phone would be worse)
+      // Cut into two screens at most on a phone, three on a wider screen: longer words are one read
+      // that scrolls (ten slides of text on a phone would be worse)
       const nh = isNote(k) ? k.getBoundingClientRect().height : 0;
-      if (nh <= fit || nh > fit * 2) return [k];
+      if (nh <= fit || nh > fit * (innerWidth >= 600 ? 3 : 2)) return [k];
       const parts = [];
       readParts(k, fit, parts, cuts);
       return parts;
@@ -918,8 +921,17 @@ function init(root, cfg, mode) {
     const blocks = [];
     kids.forEach((k, i) => {
       if (placed(k)) return;
-      const prev = blocks[blocks.length - 1];
       const f = k.matches('[data-field]') ? byId[k.dataset.field] : null;
+      // A follow-up's question may sit a piece or two back (a pair split on a phone): those pieces join
+      // into one, so the follow-up always shows on its question's screen
+      const lead = f?.showIf ? blocks.findIndex(b => b.ids.has(f.showIf.field)) : -1;
+      if (lead >= 0 && lead < blocks.length - 1) {
+        const [first, ...rest] = blocks.splice(lead);
+        for (const b of rest) { first.kids.push(...b.kids); first.h += b.sp + b.h; b.ids.forEach(x => first.ids.add(x)); }
+        first.carry = false;
+        blocks.push(first);
+      }
+      const prev = blocks[blocks.length - 1];
       const follows = prev && (!h[i] || (f?.showIf && prev.ids.has(f.showIf.field)));
       if (prev && (follows || prev.carry)) {
         prev.kids.push(k);
@@ -928,7 +940,9 @@ function init(root, cfg, mode) {
         prev.carry = prev.carry && !h[i];
         return;
       }
-      blocks.push({ kids: [k], h: h[i], sp: sp[i], ids: new Set(idsOf(k)), carry: h[i] > 0 && ((isNote(k) && h[i] < fit * 0.5) || isLead(k)) });
+      // A short note leads into what follows when both fit a screen; a heading or "…:" always does
+      const withNext = h[i] + (sp[i + 1] || 0) + (h[i + 1] || 0) <= fit;
+      blocks.push({ kids: [k], h: h[i], sp: sp[i], ids: new Set(idsOf(k)), carry: h[i] > 0 && ((isNote(k) && h[i] < fit * 0.5 && withNext) || isLead(k)) });
     });
     // The fewest screens that fit…
     let n = 0;
@@ -971,7 +985,7 @@ function init(root, cfg, mode) {
    */
   const settle = () => { for (const a of document.getAnimations()) if (a.transitionProperty) a.finish(); };
   /**
-   * The service-area map takes the room its screen has left (never under 160px, 120px on a phone): a longer card above
+   * The service-area map takes the room its screen has left (never under 160px, 100px on a phone): a longer card above
    * or beside it (the Postal Service's word, a long note) means a smaller map, not a screen that scrolls
    */
   function fitMap() {
@@ -982,12 +996,18 @@ function init(root, cfg, mode) {
     place.style.removeProperty('--af-map-h');
     const frame = fe.querySelector('.af-map-frame');
     if (!focused || !frame || !fe.getClientRects().length || fe.closest('[data-off], [hidden]')) return;
-    const least = innerWidth <= 640 ? 120 : 160;
-    for (let i = 0; i < 5; i++) {
+    const least = innerWidth <= 640 ? 100 : 160;
+    place.removeAttribute('data-tight');
+    place.removeAttribute('data-nomap');
+    for (let i = 0; i < 6; i++) {
       settle();
       const over = document.documentElement.scrollHeight - innerHeight;
       const h = frame.getBoundingClientRect().height;
-      if (over <= 0 || h <= least) return;
+      if (over <= 0) return;
+      // Not even its smallest fits beside the card: the card says it all, the map steps aside
+      if (h <= least) { place.setAttribute('data-nomap', ''); settle(); return; }
+      // Small enough that its key ("Our service area", "The home you entered") gives way to the map itself
+      if (h - over < 150) place.setAttribute('data-tight', '');
       place.style.setProperty('--af-map-h', `${Math.max(least, Math.floor(h - over - 1))}px`);
     }
   }
@@ -2050,7 +2070,8 @@ function init(root, cfg, mode) {
     if (st === 'empty') return `<p class="af-area-prompt">${esc(T('areaPrompt'))}</p>`;
     if (st === 'checking') return `<p class="af-area-checking"><span class="af-area-spin" aria-hidden="true"></span>${esc(T('areaChecking'))}</p>`;
     if (st === 'unknown' || st === 'error') {
-      return `<div class="af-area-card" data-band="ask">${AREA_ICONS.ask}<div class="af-area-text"><p class="af-area-title">${esc(T(st === 'unknown' ? 'areaUnknown' : 'areaError'))}</p><p class="af-area-desc">${esc(T(st === 'unknown' ? 'areaUnknownBody' : 'areaErrorBody'))}</p></div></div>`;
+      // The Postal Service's word helps most here: a number that doesn't exist is often why
+      return `<div class="af-area-card" data-band="ask">${AREA_ICONS.ask}<div class="af-area-text"><p class="af-area-title">${esc(T(st === 'unknown' ? 'areaUnknown' : 'areaError'))}</p><p class="af-area-desc">${esc(T(st === 'unknown' ? 'areaUnknownBody' : 'areaErrorBody'))}</p>${uspsHtml()}</div></div>`;
     }
     const value = AREA_VALUES[st];
     const stopping = st === 'far' && af.stops?.[value] && form.stops?.[af.stops[value]];

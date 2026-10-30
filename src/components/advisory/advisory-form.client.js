@@ -108,7 +108,12 @@ export function initAdvisoryForm() {
    * follows, the step's intro with what comes after it; anything taller than the screen gets one to
    * itself (and scrolls). The problem summary is always on the screen.
    */
-  const pieces = (i) => [...(pages[i]?.children || [])].filter((el) => !el.matches('[data-summary]'));
+  // A pair of questions stacked on a phone is two pieces (they can take a screen each)
+  const stackedPair = (k) => k.matches('.adv-pair') && k.children.length === 2
+    && k.children[1].getBoundingClientRect().top >= k.children[0].getBoundingClientRect().bottom - 1;
+  const pieces = (i) => [...(pages[i]?.children || [])].filter((el) => !el.matches('[data-summary]')).flatMap((k) => (stackedPair(k) ? [...k.children] : [k]));
+  // Styles still easing to new values, at them now (with reduced motion every change eases for an instant)
+  const settle = () => { for (const a of document.getAnimations()) if (a.transitionProperty) a.finish(); };
   const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : [...el.querySelectorAll('[data-field]')].map((x) => x.dataset.field));
   function room(el) {
     const top = ui.top?.offsetHeight || 0;
@@ -118,16 +123,29 @@ export function initAdvisoryForm() {
   }
   function pack(i) {
     const el = pages[i];
-    const kids = pieces(i);
     if (!focused || !el || i >= total) return null;
-    kids.forEach((k) => k.removeAttribute('data-off'));
+    settle();
+    el.querySelectorAll('[data-off]').forEach((k) => k.removeAttribute('data-off'));
     if (el.offsetParent === null) return null;
     const fit = room(el);
+    // Measured as answered: a follow-up as if its question had been answered to show it
+    const tucked = [...el.querySelectorAll('[data-field][hidden]')].filter((k) => ADVISORY_FIELDS.find((x) => x.id === k.dataset.field)?.showIf);
+    tucked.forEach((k) => { k.hidden = false; });
+    const kids = pieces(i);
     const h = kids.map((k) => k.getBoundingClientRect().height + (parseFloat(getComputedStyle(k).marginBottom) || 0));
+    tucked.forEach((k) => { k.hidden = true; });
     const blocks = [];
     kids.forEach((k, j) => {
-      const prev = blocks[blocks.length - 1];
       const f = k.matches('[data-field]') ? ADVISORY_FIELDS.find((x) => x.id === k.dataset.field) : null;
+      // A follow-up's question may sit a piece back (a pair split on a phone): they join, so it shows on its question's screen
+      const lead = f?.showIf ? blocks.findIndex((b) => Object.keys(f.showIf).some((x) => b.ids.has(x))) : -1;
+      if (lead >= 0 && lead < blocks.length - 1) {
+        const [first, ...rest] = blocks.splice(lead);
+        for (const b of rest) { first.kids.push(...b.kids); first.h += b.h; b.ids.forEach((x) => first.ids.add(x)); }
+        first.carry = false;
+        blocks.push(first);
+      }
+      const prev = blocks[blocks.length - 1];
       const follows = prev && (!h[j] || k.matches('.adv-date') || (f?.showIf && Object.keys(f.showIf).some((x) => prev.ids.has(x))));
       if (prev && (follows || prev.carry)) {
         prev.kids.push(k); prev.h += h[j];
@@ -135,7 +153,8 @@ export function initAdvisoryForm() {
         prev.carry = prev.carry && !h[j];
         return;
       }
-      blocks.push({ kids: [k], h: h[j], ids: new Set(idsOf(k)), carry: k.matches('.adv-intro') && h[j] < fit * 0.5 });
+      // The step's intro leads into what follows, when both fit a screen together
+      blocks.push({ kids: [k], h: h[j], ids: new Set(idsOf(k)), carry: k.matches('.adv-intro') && h[j] < fit * 0.5 && h[j] + (h[j + 1] || 0) <= fit });
     });
     let n = 0;
     let acc = -1;
@@ -144,7 +163,6 @@ export function initAdvisoryForm() {
     // The most even split into that many screens (none over the room unless one piece is)
     const B = blocks.length;
     const cost = (x, y) => blocks.slice(x, y).reduce((t, b) => t + b.h, 0);
-    const cap = Math.max(fit, ...blocks.map((b) => b.h));
     const best = Array.from({ length: n + 1 }, () => Array(B + 1).fill(Infinity));
     const cut = Array.from({ length: n + 1 }, () => Array(B + 1).fill(0));
     best[0][0] = 0;
@@ -152,7 +170,7 @@ export function initAdvisoryForm() {
       for (let y = k; y <= B; y++) {
         for (let x = k - 1; x < y; x++) {
           const c = cost(x, y);
-          if (c > cap && y - x > 1) continue;
+          if (c > fit && y - x > 1) continue; // only a piece taller than the room may have a screen over it
           const v = best[k - 1][x] + c * c;
           if (v < best[k][y]) { best[k][y] = v; cut[k][y] = x; }
         }
@@ -166,8 +184,9 @@ export function initAdvisoryForm() {
   const screensIn = (i) => packs[i]?.length || 1;
   function paintScreen() {
     const list = packs[step];
-    const on = new Set(list ? list[screenNo] || [] : pieces(step));
-    for (const k of pieces(step)) k.toggleAttribute('data-off', !on.has(k));
+    const all = list ? list.flat() : pieces(step); // the pieces as packed (a pair split on a phone stays split)
+    const on = new Set(list ? list[screenNo] || [] : all);
+    for (const k of all) k.toggleAttribute('data-off', !on.has(k));
   }
   const screenIds = () => new Set((packs[step] ? packs[step][screenNo] || [] : pieces(step)).flatMap(idsOf));
   const screenOf = (i, id) => {

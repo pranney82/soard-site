@@ -287,7 +287,8 @@ try {
   await sleep(250);
   ok((await stepTitle()) === 'Before You Begin', 'back to English');
   ok(await page.$eval('[data-field="ackParameters"] input', (i) => i.checked), 'a ticked box stays ticked through both switches');
-  ok(/\d/.test(esPart) && (await partText()).replace(/\D/g, '') === esPart.replace(/\D/g, ''), `and the screen stays the same one (${esPart} → ${await partText()})`);
+  // Spanish runs longer, so its parts can number differently: the same question stays in front of them
+  ok(/\d/.test(esPart) && await page.$eval('[data-field="ackParameters"]', (e) => !e.closest('[data-off]') && !!e.getClientRects().length), `and the same question stays on screen (${esPart} → ${await partText()})`);
   await tap('[data-field="ackParameters"] .af-choice');
 
   console.log('Page 1 checks');

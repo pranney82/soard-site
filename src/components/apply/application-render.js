@@ -250,6 +250,24 @@ function sideBySide(f, plain) {
   return f.options.every(v => String(f.optionLabels?.[v] ?? v).length <= 14);
 }
 
+/**
+ * Two columns that each pack their own items, split where the columns come out most even (by how
+ * much each item says), read down the first then the second; one under the other on a phone.
+ * The page lays these out itself: Safari doesn't balance CSS columns of uneven items.
+ */
+function halves(items, size) {
+  const total = items.reduce((t, x) => t + size(x), 0);
+  let acc = 0;
+  let cut = Math.ceil(items.length / 2);
+  let best = Infinity;
+  for (let i = 1; i < items.length; i++) {
+    acc += size(items[i - 1]);
+    const off = Math.abs(total - 2 * acc);
+    if (off < best) { best = off; cut = i; }
+  }
+  return [items.slice(0, cut), items.slice(cut)];
+}
+
 function choices(f, id, { plain = false } = {}) {
   const type = f.type === 'radio' || f.type === 'area' ? 'radio' : 'checkbox';
   // Choices that each explain themselves sit as tiles (two to a row where there's room)
@@ -257,12 +275,17 @@ function choices(f, id, { plain = false } = {}) {
   // A longer list of short answers: two columns where there's room, read down the first then the second
   const cols = !plain && !tiles && !sideBySide(f, plain) && f.options.length >= 5
     && f.options.every(v => !f.descriptions?.[v] && String(f.optionLabels?.[v] ?? v).length <= 36);
-  return `<div class="af-choices${sideBySide(f, plain) ? ' af-choices--row' : ''}${tiles ? ' af-choices--tiles' : ''}${cols ? ' af-choices--cols' : ''}"${cols ? ` style="--rows:${Math.ceil(f.options.length / 2)}"` : ''}>${f.options.map((v, i) => {
+  const one = (v, i) => {
     const label = f.optionLabels?.[v] ?? v;
     const desc = plain ? '' : f.descriptions?.[v];
     const text = desc ? `<strong class="af-choice-title">${esc(label)}</strong><span class="af-choice-desc">${esc(desc)}</span>` : esc(label);
     return `<label class="af-choice"><input type="${type}" name="${id}" value="${esc(v)}" id="${id}-${i}"><span class="af-choice-box" aria-hidden="true">${CHECK}</span><span class="af-choice-text">${text}</span></label>`;
-  }).join('')}</div>`;
+  };
+  const items = f.options.map((v, i) => [v, i]);
+  const body = tiles
+    ? halves(items, ([v]) => 60 + String(f.descriptions?.[v] || '').length).map(col => `<div class="af-tile-col">${col.map(([v, i]) => one(v, i)).join('')}</div>`).join('')
+    : items.map(([v, i]) => one(v, i)).join('');
+  return `<div class="af-choices${sideBySide(f, plain) ? ' af-choices--row' : ''}${tiles ? ' af-choices--tiles' : ''}${cols ? ' af-choices--cols' : ''}"${cols ? ` style="--rows:${Math.ceil(f.options.length / 2)}"` : ''}>${body}</div>`;
 }
 
 /**
@@ -282,7 +305,7 @@ const offerIcon = (title) => `<svg class="af-ic" viewBox="0 0 256 256" aria-hidd
 /** What a makeover includes (a card each, with its drawing), then what SOARD doesn't do */
 function guidelines(f) {
   return `${f.title ? `<h3 class="af-scope-title">${esc(f.title)}</h3>` : ''}<div class="af-scope">
-<div class="af-offer"><h3 class="af-offer-head">${esc(f.doTitle || 'What we do')}</h3><ul class="af-offer-grid">${(f.doItems || []).map(i => `<li class="af-offer-card"><span class="af-offer-icon">${offerIcon(i.title)}</span><span class="af-offer-text">${i.title ? `<strong>${esc(i.title.replace(/[.:]$/, ''))}</strong>` : ''}<span>${esc(i.text)}</span></span></li>`).join('')}</ul></div>
+<div class="af-offer"><h3 class="af-offer-head">${esc(f.doTitle || 'What we do')}</h3><div class="af-offer-grid">${halves(f.doItems || [], i => 60 + String(i.text || '').length).map(col => `<ul class="af-offer-col">${col.map(i => `<li class="af-offer-card"><span class="af-offer-icon">${offerIcon(i.title)}</span><span class="af-offer-text">${i.title ? `<strong>${esc(i.title.replace(/[.:]$/, ''))}</strong>` : ''}<span>${esc(i.text)}</span></span></li>`).join('')}</ul>`).join('')}</div></div>
 <div class="af-nope"><h3 class="af-offer-head">${esc(f.dontTitle || 'What we don’t do')}</h3><ul class="af-nope-list">${(f.dontItems || []).map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>
 </div>`;
 }

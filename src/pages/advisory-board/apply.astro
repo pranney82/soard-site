@@ -304,7 +304,7 @@ const logo = 'brand-logo-light-bg-display';
   .adv-head h2:focus { outline: none; }
   .adv-intro { color: var(--c-text-muted); font-size: 16px; line-height: 1.6; margin: 8px 0 24px; }
   /* A step's later screens wait their turn; its intro shows on the first */
-  .adv-page > [data-off] { display: none !important; }
+  .adv-page [data-off] { display: none !important; }
   .adv-summary { padding: 14px 16px; border-radius: 12px; background: #FFF6D6; color: #5C4A00; font-weight: 600; margin-bottom: 24px; }
   .adv-summary ul { margin: 6px 0 0 18px; font-weight: 500; }
   .adv-summary a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
@@ -425,6 +425,16 @@ const logo = 'brand-logo-light-bg-display';
     .adv-hub-meta { display: none; }
     .adv-hub-go { width: 100%; min-width: 0; }
     .adv-review-body { padding: 0 16px 8px; }
+  }
+  /* A short phone screen (an iPhone SE with Safari's bars, a small Android): tighter, so a screen still fits */
+  @media (max-width: 640px) and (max-height: 620px) {
+    .adv-top-inner { height: 50px; }
+    .adv-top-logo { width: 40px; height: 40px; }
+    .adv-stage { padding-top: 8px; }
+    .adv-head h2 { font-size: 22px; }
+    .adv-nav { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+    .adv-field textarea { min-height: 76px; }
+    .adv-choice { min-height: 48px; padding-block: 10px; }
   }
   @media (max-width: 768px) {
     .adv { padding-inline: 12px; }
