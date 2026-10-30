@@ -75,7 +75,7 @@ const CSS = `
 .tpm-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .tpm-detail { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
 .tpm-detail > div { display: grid; gap: 1rem; }
-.tpm-back { margin: 0 0 .75rem; }
+.tpm-back { margin: 1rem 0 .75rem; }
 .tpm-files { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
 .tpm-files li { display: flex; align-items: center; gap: .6rem; font-size: var(--fs-sm); }
 .tpm-inv { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
@@ -85,6 +85,8 @@ const CSS = `
 .tpm-steps { display: flex; flex-wrap: wrap; gap: .4rem; }
 .tpm-switch { display: flex; align-items: flex-start; gap: .75rem; font-weight: 400; }
 .tpm-switch .bc-switch-track { margin-top: 2px; }
+.tpm-switch--line { align-items: center; }
+.tpm-switch--line .bc-switch-track { margin-top: 0; }
 .tpm-note { font-size: var(--fs-sm); color: var(--color-text-secondary); margin: 0; line-height: 1.5; }
 .tpm-pick { list-style: none; margin: .5rem 0 0; padding: 0; max-height: 260px; overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
 .tpm-pick button { display: flex; justify-content: space-between; gap: .75rem; width: 100%; padding: .65rem .8rem; border: 0; border-top: 1px solid var(--color-border); background: none; font: inherit; text-align: left; cursor: pointer; min-height: 44px; }
@@ -490,7 +492,7 @@ function Settings({ data, act, busy }) {
         <label class="tpm-field"><span>Employer’s liability, each accident ($)</span><input class="form-input" type="number" min="0" step="50000" value=${el} onInput=${(e) => setEl(e.target.value)} disabled=${!wc} /></label>
         <label class="tpm-field"><span>Ask for the renewal this many days ahead</span><input class="form-input" type="number" min="7" max="90" value=${renew} onInput=${(e) => setRenew(e.target.value)} /></label>
       </div>
-      <label class="bc-switch tpm-switch"><input type="checkbox" role="switch" checked=${wc} aria-checked=${wc} onChange=${(e) => setWc(e.target.checked)} /><span class="bc-switch-track" aria-hidden="true" /><span>Workers’ compensation is required</span></label>
+      <label class="bc-switch tpm-switch tpm-switch--line"><input type="checkbox" role="switch" checked=${wc} aria-checked=${wc} onChange=${(e) => setWc(e.target.checked)} /><span class="bc-switch-track" aria-hidden="true" /><span>Workers’ compensation is required</span></label>
       <div class="tpm-actions">
         <button class="btn btn-primary" disabled=${!!busy} onClick=${save}>${busy === 'settings' ? 'Saving…' : 'Save'}</button>
         <button class="btn btn-ghost" disabled=${!!busy} onClick=${() => act({ action: 'preview' }, (j) => `Sent to ${j.sent}`)}>${busy === 'preview' ? 'Sending…' : 'Send me the vendor email'}</button>
