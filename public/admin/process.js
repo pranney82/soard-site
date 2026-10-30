@@ -558,6 +558,8 @@ const LaneIcon = ({ id }) => html`<svg viewBox="0 0 16 16" fill=${id === 'auto' 
 const ZOOMS = [0.5, 0.65, 0.8, 0.9, 1];
 const START_ZOOM = 0.9;
 const START_ZOOMS = [0.9, 0.85, 0.8];
+/** Tasks on one card at most: a longer run by the same lane goes on in the next slot, so no lane grows tall */
+const BLOCK_MAX = 2;
 // The map's columns: the lanes' labels, then one per place a task can stand
 const LABEL_W = 132;
 const SLOT_W = 176;
@@ -571,7 +573,7 @@ const initials = (name) => String(name || '?').split(/\s+/).filter(Boolean).slic
 
 /**
  * Where each task stands. Back-to-back tasks by the same lane in a step are
- * one block (a short checklist: the work hasn't changed hands). Time runs left
+ * one block, two at most (a short checklist: the work hasn't changed hands). Time runs left
  * to right: a lane's next block in a step takes the next slot, while a block
  * in another lane can stand in the same slot (the work changed hands). Each
  * step's slots follow the last's.
@@ -588,7 +590,7 @@ export function layoutMap(columns, decisionLaneOf) {
     const blocks = [];
     for (const card of c.cards) {
       const last = blocks.at(-1);
-      if (last && last.lane === card.lane) last.cards.push(card);
+      if (last && last.lane === card.lane && last.cards.length < BLOCK_MAX) last.cards.push(card);
       else blocks.push({ lane: card.lane, cards: [card] });
     }
     for (const b of blocks) {
