@@ -1325,13 +1325,15 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bs-faces { --gx: clamp(0.5rem, 1.2vw, 1.25rem); --gy: clamp(0.75rem, 2.2vh, 1.75rem); list-style: none; margin: 0; padding: clamp(0.5rem, 1.5vh, 1rem) 0 0; height: 100%; min-height: 0; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: var(--gy) var(--gx); }
 /* A short last row sits in the middle, under the full ones */
 .bs-faces__one { container-type: size; flex: 0 0 calc((100% - (var(--cols) - 1) * var(--gx)) / var(--cols)); height: calc((100% - (var(--rows) - 1) * var(--gy)) / var(--rows)); min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; text-align: center; transition: opacity 0.6s var(--ease), filter 0.6s var(--ease); }
-.bs-faces__pic { position: relative; flex: none; width: min(calc(100cqh - 4.85rem), 76cqi, 15rem); aspect-ratio: 1; margin-bottom: 0.8rem; border-radius: 50%; background: #3A3B36; box-shadow: 0 0 0 3px var(--bs-bg), 0 0 0 5px rgba(246, 244, 236, 0.14); transition: box-shadow 0.5s var(--ease); }
+.bs-faces__pic { position: relative; flex: none; width: min(calc(100cqh - 6.35rem), 76cqi, 15rem); aspect-ratio: 1; margin-bottom: 0.8rem; border-radius: 50%; background: #3A3B36; box-shadow: 0 0 0 3px var(--bs-bg), 0 0 0 5px rgba(246, 244, 236, 0.14); transition: box-shadow 0.5s var(--ease); }
 .bs-faces__pic img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.bs-faces__initials { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: hsl(var(--hue, 42) 35% 82%); color: hsl(var(--hue, 42) 35% 22%); font-family: var(--display); font-weight: 700; font-size: min(calc((100cqh - 4.85rem) * 0.36), 27cqi, 5.4rem); }
+.bs-faces__initials { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: hsl(var(--hue, 42) 35% 82%); color: hsl(var(--hue, 42) 35% 22%); font-family: var(--display); font-weight: 700; font-size: min(calc((100cqh - 6.35rem) * 0.36), 27cqi, 5.4rem); }
 .bs-faces__mark { position: absolute; right: 2%; bottom: 2%; display: grid; place-items: center; width: 27%; aspect-ratio: 1; border-radius: 50%; background: var(--yellow); color: #1C1D1A; box-shadow: 0 0 0 3px var(--bs-bg); animation: bs-pop 0.45s var(--ease) both; }
 .bs-faces__mark svg { width: 62%; height: 62%; }
 .bs-faces__name { max-width: 100%; font-size: clamp(0.95rem, min(2.4vh, 9cqi), 1.6rem); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bs-faces__sub { display: block; max-width: 100%; color: var(--bs-soft); font-size: clamp(0.78rem, min(1.8vh, 7cqi), 1.15rem); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Room for two lines under every name, so a long company ("… and Design & Build XR") wraps instead of being cut, and
+   every photo in a row stays level */
+.bs-faces__sub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 100%; min-height: 2.6em; color: var(--bs-soft); font-size: clamp(0.78rem, min(1.8vh, 7cqi), 1.15rem); line-height: 1.3; overflow: hidden; text-wrap: balance; }
 /* New this year: on the photo's lower edge, clear of the check mark, so the company line keeps its whole width */
 .bs-faces__new { position: absolute; left: 50%; bottom: 0; transform: translate(-50%, 40%); padding: 0.14em 0.6em; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-size: clamp(0.66rem, min(1.5vh, 6cqi), 0.95rem); font-weight: 750; line-height: 1.2; white-space: nowrap; box-shadow: 0 0 0 3px var(--bs-bg); }
 .bs-faces__one.is-here .bs-faces__pic, .bs-faces__one.is-remote .bs-faces__pic { box-shadow: 0 0 0 3px var(--bs-bg), 0 0 0 6px var(--yellow); }
@@ -1516,7 +1518,8 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
   .bs-brand > span { min-width: 0; } .bs-brand small, .bs-clock, .bs-full, .bs-chip { display: none; }
   .bs-item__bar { flex-wrap: wrap; align-items: flex-start; } .bs-item__aside, .bs-roll { justify-items: start; text-align: left; }
   .bs-faces { align-content: flex-start; overflow-y: auto; }
-  .bs-faces__one { container-type: inline-size; flex-basis: calc((100% - 2 * var(--gx)) / 3); height: auto; } .bs-faces__pic { width: min(76cqi, 9rem); } .bs-faces__initials { font-size: min(27cqi, 3rem); }
+  .bs-faces__one { container-type: inline-size; flex-basis: calc((100% - 2 * var(--gx)) / 3); height: auto; justify-content: flex-start; } .bs-faces__pic { width: min(76cqi, 9rem); } .bs-faces__initials { font-size: min(27cqi, 3rem); }
+  .bs-faces__sub { -webkit-line-clamp: 3; }
 }
 @media (prefers-reduced-motion: reduce) { .bs-stage__in, .bs-vote, .bs-timer.is-over, .bs-figs__bar i, .bs-faces__mark { animation: none !important; } .bs-vote__counts i::after, .bs-rail__bar i, .bs-faces__one, .bs-faces__pic, .bs-roll__q { transition: none; } }
 
