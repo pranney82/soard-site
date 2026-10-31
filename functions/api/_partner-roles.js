@@ -13,22 +13,23 @@
  * the level; a JobTread vendor that isn't a partner but is a sub gives Trade
  * Partner. A role changed by hand in JobTread is set back. Someone the site
  * can't place keeps their role and waits in Partners → JobTread access, where
- * staff say Trade Partner or leave it.
+ * staff say their partner, Trade Partner or Design Partner, or leave a level.
  *
  * Only partner roles are touched: the four levels, Trade Partner, and the old
  * Vendor and Monetary Sponsor. Staff, families, the board, photographers and
- * design partners never are. The old roles stay in JobTread (its own settings
- * may use them); nobody is left on them once this has run.
+ * design partners never are (but staff can make someone a Design Partner).
+ * The old roles are deleted in JobTread once nobody has them (Peter, Oct 30
+ * 2026: "i want it gone"), so nobody can be given one again.
  *
- * Off until switched on (POST /api/partner-roles-admin { on: true }): until
- * then grants keep the old roles and each run only writes down what it would
- * change. Every change is logged with the role before, so "off, and put the
- * old roles back" undoes all of it. updateMembership sends no email.
+ * Always on (Peter, Oct 30 2026: "i want the sync to always be on"): grants
+ * give the level roles, and every change is logged with the role before.
+ * updateMembership sends no email.
  *
  * Shapes checked against JobTread's schema without a key (Oct 29 2026):
  * organization.roles.nodes { id, name, type, permissions, createdAt };
  * memberships { nextPage, nodes { id, createdAt, isInternal, role, account { id, name, type }, user } };
- * createRole { organizationId, name, type: 'vendor', permissions }; updateMembership { id, roleId }.
+ * createRole { organizationId, name, type: 'vendor', permissions }; updateMembership { id, roleId }; deleteRole { id }.
+ * A login can't be deleted or archived through the API (deleteMembership asks for a captcha).
  * Live (Oct 29 2026): every partner role is the vendor kind (Vendor: plans,
  * tasks, to-do progress; Monetary Sponsor: daily logs, task groups).
  */
@@ -38,6 +39,8 @@ import { logAudit } from './_audit.js';
 import { LEVELS, levelOf, nameKey, domainOf, isSocial } from '../../public/admin/partners-shared.js';
 
 export const TRADE_ROLE = 'Trade Partner';
+// A role staff can give someone the site can't place, besides Trade Partner: never a partner role, so the sweep leaves it be
+export const DESIGN_ROLE = 'Design Partner';
 export const LEVEL_ROLES = LEVELS.map((l) => l.label);
 export const PARTNER_ROLES = [...LEVEL_ROLES, TRADE_ROLE];
 // What partners were given before roles followed levels (the site asked for "Sponsor", which JobTread never had)
@@ -54,6 +57,7 @@ const MANAGED = new Set([...PARTNER_ROLES, ...OLD_ROLES].map(low));
 /** A role the site keeps in step with Partners: a level, Trade Partner, or an old Vendor / Monetary Sponsor */
 export const isPartnerRole = (name) => MANAGED.has(low(name));
 export const isLevelRole = (name) => LEVEL_ROLES.some((r) => low(r) === low(name));
+export const isOldRole = (name) => OLD_ROLES.some((r) => low(r) === low(name));
 /** The old sponsor roles: someone given one in JobTread is a sponsor on JobTread's say-so */
 export const isSponsorRole = (name) => low(name) === low(OLD_SPONSOR_ROLE) || low(name) === 'sponsor';
 export const roleOfLevel = (level) => levelOf(level).label;
@@ -85,23 +89,10 @@ async function writeKey(DB, key, value) {
 }
 
 // ── Which roles to give ──────────────────────────────────────────────
-export async function rolesOn(DB) {
-  try { return !!(await readKey(DB, 'config')).on; } catch { return false; }
-}
-
-/**
- * The roles a grant gives now: { on, partner(p), sponsor(p), trade }.
- * Switched on, the level roles are made in JobTread first when missing.
- */
+/** The roles a grant gives: { partner(p), sponsor(p), trade }, the level roles made in JobTread first when missing */
 export async function roleMode(env, { fetchImpl = fetch } = {}) {
-  const on = env.DB ? await rolesOn(env.DB) : false;
-  if (on) await ensurePartnerRoles(env, { fetchImpl });
-  return {
-    on,
-    partner: (p) => (on ? roleOfLevel(p?.level) : OLD_VENDOR_ROLE),
-    sponsor: (p) => (on ? roleOfLevel(p?.level) : OLD_SPONSOR_ROLE),
-    trade: on ? TRADE_ROLE : OLD_VENDOR_ROLE,
-  };
+  await ensurePartnerRoles(env, { fetchImpl });
+  return { partner: (p) => roleOfLevel(p?.level), sponsor: (p) => roleOfLevel(p?.level), trade: TRADE_ROLE };
 }
 
 // ── JobTread ─────────────────────────────────────────────────────────
@@ -246,7 +237,8 @@ export function planRoles(people, { place, bySlug, picks = {}, setTo = {} }) {
   for (const m of people) {
     if (!isPartnerRole(m.role)) continue;
     const pick = picks[m.id];
-    if (pick?.keep) continue;
+    // Leave as it is: a level set by hand, never an old role (they go)
+    if (pick?.keep && !isOldRole(m.role)) continue;
     const at = place(m);
     const p = at.partner ? bySlug.get(at.partner) : null;
     let to = null;
@@ -273,19 +265,21 @@ async function lastSet(DB) {
 
 /**
  * One run, from the vendor sweep (which has the partners, matches and
- * vendor facts at hand). Off: writes down what it would change. On: changes
- * up to MAX_CHANGES roles while room() allows. → { changed, pending, unplaced, error? }
+ * vendor facts at hand): changes up to MAX_CHANGES roles while room()
+ * allows, then deletes an old role nobody has. → { changed, pending, unplaced, error? }
  */
 export async function reconcileRoles(env, ctx, { fetchImpl = fetch, now = Date.now(), room = () => true } = {}) {
   const { DB } = env;
   const key = env.JOBTREAD_GRANT_KEY;
   await ensureSchema(DB);
-  const [config, picks, setTo, people] = await Promise.all([readKey(DB, 'config'), readKey(DB, 'picks'), lastSet(DB), readMemberships(key, fetchImpl)]);
+  const [picks, setTo, people] = await Promise.all([readKey(DB, 'picks'), lastSet(DB), readMemberships(key, fetchImpl)]);
   const plan = planRoles(people, { place: (m) => placePerson(m, ctx), bySlug: ctx.bySlug, picks, setTo });
   const done = [];
   const problems = [];
-  if (config.on && plan.changes.length) {
-    const ids = await ensurePartnerRoles(env, { fetchImpl });
+  if (plan.changes.length) {
+    const ids = new Map(await ensurePartnerRoles(env, { fetchImpl }));
+    // Staff's Design Partner isn't one the site makes: JobTread's own
+    if (plan.changes.some((c) => !ids.has(low(c.to)))) for (const r of await fetchRoles(key, fetchImpl)) if (!ids.has(low(r.name))) ids.set(low(r.name), r.id);
     const batch = iso(now);
     for (const c of plan.changes) {
       if (done.length >= MAX_CHANGES || !room()) break;
@@ -296,6 +290,8 @@ export async function reconcileRoles(env, ctx, { fetchImpl = fetch, now = Date.n
         await DB.prepare('INSERT INTO partner_role_changes (membership_id, name, company, partner, from_role, to_role, why, batch, at, by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .bind(c.membership, c.name, c.company, c.partner, c.from, c.to, c.why, batch, iso(now), 'sync').run();
         done.push(c);
+        const m = people.find((x) => x.id === c.membership);
+        if (m) m.role = c.to;
       } catch (e) { problems.push(`Couldn’t change ${c.name}’s role: ${e.message}`); }
     }
     if (done.length) {
@@ -303,15 +299,43 @@ export async function reconcileRoles(env, ctx, { fetchImpl = fetch, now = Date.n
       await logAudit(DB, { userEmail: 'sync', action: 'updated', entityType: 'jobtread-roles', entityName: 'Roles in JobTread', changes: { changed: done.map((c) => `${c.name}${c.company ? ` (${c.company})` : ''}: ${c.from} → ${c.to}`) } });
     }
   }
+  if (room()) await dropOldRoles(env, people, { fetchImpl, now, problems });
   const pending = plan.changes.filter((c) => !done.includes(c));
-  await writeKey(DB, 'plan', { at: iso(now), on: !!config.on, changes: pending, unplaced: plan.unplaced, problems: problems.slice(0, 5) });
+  await writeKey(DB, 'plan', { at: iso(now), changes: pending, unplaced: plan.unplaced, problems: problems.slice(0, 5) });
   return { changed: done.length, pending: pending.length, unplaced: plan.unplaced.length, ...(problems.length ? { error: problems[0] } : {}) };
 }
 
+/**
+ * Vendor and Monetary Sponsor are deleted in JobTread once nobody has them
+ * (people: every login outside staff, as this run left them), and remembered
+ * as gone ('gone': { name: when }, "Sponsor" too, which JobTread never had).
+ */
+async function dropOldRoles(env, people, { fetchImpl, now, problems }) {
+  const { DB } = env;
+  const gone = await readKey(DB, 'gone');
+  const left = new Set(people.map((m) => low(m.role)));
+  if (!people.length || OLD_ROLES.every((n) => gone[n] || left.has(low(n)))) return;
+  const roles = await fetchRoles(env.JOBTREAD_GRANT_KEY, fetchImpl);
+  const deleted = [];
+  for (const n of OLD_ROLES) {
+    if (gone[n] || left.has(low(n))) continue;
+    const r = roles.find((x) => low(x.name) === low(n));
+    try {
+      if (r) { await pave(env.JOBTREAD_GRANT_KEY, { deleteRole: { $: { id: r.id } } }, fetchImpl); deleted.push(n); }
+      gone[n] = iso(now);
+    } catch (e) { problems.push(`Couldn’t delete the ${n} role in JobTread: ${e.message}`); }
+  }
+  await writeKey(DB, 'gone', gone);
+  if (deleted.length) {
+    _resetRoleCache();
+    await logAudit(DB, { userEmail: 'sync', action: 'deleted', entityType: 'jobtread-roles', entityName: 'Old roles in JobTread', changes: { deleted } });
+  }
+}
+
 // ── Staff ────────────────────────────────────────────────────────────
-/** Staff's say for someone the site can't place: Trade Partner, or leave their role (keep), or undo (null) */
+/** Staff's say for someone the site can't place: Trade Partner, Design Partner, or leave a level (keep), or undo (null) */
 export async function pickRole(DB, { membership, role = null, keep = false, name = null }, by = null, now = Date.now()) {
-  if (role && role !== TRADE_ROLE) throw new Error('Only Trade Partner can be picked; a partner’s level comes from Partners');
+  if (role && role !== TRADE_ROLE && role !== DESIGN_ROLE) throw new Error('Only Trade Partner or Design Partner can be picked; a partner’s level comes from Partners');
   const picks = await readKey(DB, 'picks');
   if (!role && !keep) delete picks[membership];
   else picks[membership] = { ...(role ? { role } : { keep: true }), name, by, at: iso(now) };
@@ -322,50 +346,19 @@ export async function pickRole(DB, { membership, role = null, keep = false, name
   return picks[membership] || null;
 }
 
-export async function setOn(DB, on, by = null, now = Date.now()) {
-  return writeKey(DB, 'config', { on: !!on, at: iso(now), by });
-}
-
-/** Off, and every role the site changed back to what it was → { putBack: [{ name, from, to }], problems } */
-export async function putBack(env, by = null, { fetchImpl = fetch, now = Date.now() } = {}) {
-  const { DB } = env;
-  const key = env.JOBTREAD_GRANT_KEY;
-  await setOn(DB, false, by, now);
-  const rows = (await DB.prepare('SELECT * FROM partner_role_changes WHERE undone_at IS NULL ORDER BY id').all()).results || [];
-  const ids = new Map((await fetchRoles(key, fetchImpl)).map((r) => [low(r.name), r.id]));
-  const out = { putBack: [], problems: [] };
-  // Per login: the first change holds the role it had before the site, the last the one it has now
-  const byLogin = new Map();
-  for (const r of rows) {
-    const g = byLogin.get(r.membership_id);
-    if (g) g.last = r; else byLogin.set(r.membership_id, { first: r, last: r });
-  }
-  for (const { first, last: r } of byLogin.values()) {
-    const roleId = first.from_role ? ids.get(low(first.from_role)) : null;
-    if (!roleId) { out.problems.push(`${r.name}: JobTread has no ${first.from_role || 'earlier'} role`); continue; }
-    try {
-      await pave(key, { updateMembership: { $: { id: r.membership_id, roleId } } }, fetchImpl);
-      await DB.prepare('UPDATE partner_role_changes SET undone_at = ? WHERE membership_id = ? AND undone_at IS NULL').bind(iso(now), r.membership_id).run();
-      out.putBack.push({ name: r.name, from: r.to_role, to: first.from_role });
-    } catch (e) { out.problems.push(`${r.name}: ${e.message}`); }
-  }
-  await logAudit(DB, { userEmail: by, action: 'updated', entityType: 'jobtread-roles', entityName: 'Old roles put back', changes: { putBack: out.putBack.map((p) => `${p.name}: ${p.from} → ${p.to}`) } });
-  return out;
-}
-
 /**
  * Partners → JobTread access, the roles part:
- * { on, at, pending: [change], unplaced: [...], recent: [{ name, company, from, to, why, at }], made, problems }
+ * { at, pending: [change], unplaced: [...], recent: [{ name, company, from, to, why, at }], made, gone, problems }
  */
 export async function rolesView(DB) {
   await ensureSchema(DB);
-  const [config, plan, made] = await Promise.all([readKey(DB, 'config'), readKey(DB, 'plan'), readKey(DB, 'made')]);
+  const [plan, made, gone] = await Promise.all([readKey(DB, 'plan'), readKey(DB, 'made'), readKey(DB, 'gone')]);
   const recent = ((await DB.prepare('SELECT name, company, from_role, to_role, why, at FROM partner_role_changes WHERE undone_at IS NULL ORDER BY id DESC LIMIT 40').all()).results || [])
     .map((r) => ({ name: r.name, company: r.company, from: r.from_role, to: r.to_role, why: r.why, at: r.at }));
   return {
-    on: !!config.on, onAt: config.at || null, at: plan.at || null,
+    at: plan.at || null,
     pending: (plan.changes || []).map(({ membership, ...c }) => c),
     unplaced: plan.unplaced || [],
-    recent, made: made.roles ? made : null, problems: plan.problems || [],
+    recent, made: made.roles ? made : null, gone, problems: plan.problems || [],
   };
 }

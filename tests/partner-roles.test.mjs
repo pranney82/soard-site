@@ -63,7 +63,7 @@ test('the admin GET answers the roles, and says when JobTread isn’t connected'
     const body = await res.json();
     assert.equal(body.success, true);
     assert.equal(body.roles.length, 3);
-    assert.equal(body.view.on, false, 'and what the sweep would do, off until switched on');
+    assert.deepEqual(body.view.pending, [], 'and what the sweep will do');
   } finally { globalThis.fetch = realFetch; }
   const off = await onRequestGet({ env: { DB } });
   assert.equal(off.status, 500);
@@ -73,7 +73,7 @@ test('the admin GET answers the roles, and says when JobTread isn’t connected'
 // ── Roles that follow levels ─────────────────────────────────────────
 import { createD1 } from './lib/d1-shim.mjs';
 import {
-  planRoles, placePerson, reconcileRoles, rolesView, setOn, putBack, pickRole, roleMode, _resetEnsured, TRADE_ROLE, isPartnerRole,
+  planRoles, placePerson, reconcileRoles, rolesView, pickRole, roleMode, _resetEnsured, TRADE_ROLE, DESIGN_ROLE, isPartnerRole,
 } from '../functions/api/_partner-roles.js';
 import { _resetRoleCache } from '../functions/api/_jt-access.js';
 import { isTradeVendor, vendorFacts } from '../functions/api/_vendor-access.js';
@@ -144,6 +144,7 @@ function rolesJT(people) {
     { id: 'r-vendor', name: 'Vendor', type: 'vendor', permissions: ['readJobPlans', 'readJobTasks', 'updateJobToDoProgresses'] },
     { id: 'r-ms', name: 'Monetary Sponsor', type: 'vendor', permissions: ['readDailyLogs', 'readJobTaskGroups'] },
     { id: 'r-family', name: 'Makeover Family', type: 'customer', permissions: ['readJobTasks'] },
+    { id: 'r-design', name: 'Design Partner', type: 'vendor', permissions: ['readJobPlans'] },
   ];
   const calls = [];
   const fetchImpl = async (_url, init) => {
@@ -158,54 +159,49 @@ function rolesJT(people) {
     }
     if (q.createRole) { const r = { id: `r-${roles.length}`, ...q.createRole.$ }; roles.push(r); return Response.json({ createRole: { createdRole: { id: r.id, name: r.name } } }); }
     if (q.updateMembership) { const m = people.find((x) => x.id === q.updateMembership.$.id); m.role = roles.find((r) => r.id === q.updateMembership.$.roleId).name; return Response.json({}); }
+    if (q.deleteRole) {
+      const r = roles.find((x) => x.id === q.deleteRole.$.id);
+      assert.ok(!people.some((m) => m.role === r.name), `nobody has ${r.name} when it’s deleted`);
+      roles.splice(roles.indexOf(r), 1);
+      return Response.json({});
+    }
     throw new Error(`unexpected ${JSON.stringify(q).slice(0, 100)}`);
   };
-  const writes = () => calls.filter((q) => q.createRole || q.updateMembership);
+  const writes = () => calls.filter((q) => q.createRole || q.updateMembership || q.deleteRole);
   return { fetchImpl, calls, roles, writes };
 }
 
-test('off: each run writes down what it would change, and changes nothing in JobTread', async () => {
-  _resetEnsured(); _resetRoleCache();
-  const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
-  const people = [login('m1', 'Vendor', { name: 'Ron', account: vendorAcct('acct-r', 'Randall Bros') }), login('m7', 'Makeover Family', { name: 'Mom' })];
-  const jt = rolesJT(people);
-  const env = { DB, JOBTREAD_GRANT_KEY: 'k' };
-  const r = await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl });
-  assert.deepEqual(r, { changed: 0, pending: 1, unplaced: 0 });
-  assert.deepEqual(jt.writes(), []);
-  const view = await rolesView(DB);
-  assert.equal(view.on, false);
-  assert.deepEqual(view.pending.map((c) => [c.name, c.from, c.to]), [['Ron', 'Vendor', 'Champion']]);
-  assert.ok(!('membership' in view.pending[0]), 'ids stay in D1');
-  const mode = await roleMode(env, { fetchImpl: jt.fetchImpl });
-  assert.deepEqual([mode.partner(RANDALL), mode.sponsor(ACME), mode.trade], ['Vendor', 'Monetary Sponsor', 'Vendor'], 'grants keep the old roles until it’s on');
-});
-
-test('on: the level roles are made (vendor kind, both old roles’ permissions), roles change and are logged; put back undoes it all', async () => {
+test('always on: grants give the level roles, roles change and are logged, and the old roles go once nobody has them', async () => {
   _resetEnsured(); _resetRoleCache();
   const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
   const people = [
     login('m1', 'Vendor', { name: 'Ron', account: vendorAcct('acct-r', 'Randall Bros') }),
     login('m4', 'Vendor', { name: 'Tia', account: vendorAcct('acct-tko', 'TKO Plumbing') }),
+    login('m5', 'Vendor', { name: 'Gus', account: vendorAcct('acct-x', 'Mystery Co') }),
     login('m7', 'Makeover Family', { name: 'Mom' }),
   ];
   const jt = rolesJT(people);
   const env = { DB, JOBTREAD_GRANT_KEY: 'k' };
-  await setOn(DB, true, 'admin@example.org');
-  const r = await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl, now: Date.parse('2026-10-30T12:00:00Z') });
-  assert.deepEqual(r, { changed: 2, pending: 0, unplaced: 0 });
+  const mode = await roleMode(env, { fetchImpl: jt.fetchImpl });
+  assert.deepEqual([mode.partner(RANDALL), mode.sponsor(ACME), mode.trade], ['Champion', 'Signature', 'Trade Partner'], 'grants give the level roles');
   const made = jt.calls.filter((q) => q.createRole).map((q) => q.createRole.$);
   assert.deepEqual(made.map((m) => m.name), ['Signature', 'Champion', 'Builder', 'Friend', 'Trade Partner']);
   for (const m of made) {
     assert.equal(m.type, 'vendor');
     assert.deepEqual(m.permissions, ['readDailyLogs', 'readJobPlans', 'readJobTaskGroups', 'readJobTasks', 'updateJobToDoProgresses'], 'nobody moved loses anything');
   }
-  assert.deepEqual(people.map((m) => m.role), ['Champion', 'Trade Partner', 'Makeover Family']);
+  const r = await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl, now: Date.parse('2026-10-30T12:00:00Z') });
+  assert.deepEqual(r, { changed: 2, pending: 0, unplaced: 1 });
+  assert.deepEqual(people.map((m) => m.role), ['Champion', 'Trade Partner', 'Vendor', 'Makeover Family']);
   const audit = (await DB.prepare("SELECT changes FROM audit_log WHERE entity_type = 'jobtread-roles'").all()).results;
   assert.match(audit[0].changes, /Ron \(Randall Brothers\): Vendor → Champion/);
   assert.doesNotMatch(audit.map((a) => a.changes).join(' '), /@/, 'names only');
   const view = await rolesView(DB);
   assert.deepEqual(view.recent.map((c) => [c.name, c.to]), [['Tia', 'Trade Partner'], ['Ron', 'Champion']]);
+  assert.ok(!('membership' in (view.recent[0] || {})), 'ids stay in D1');
+  // Gus still has Vendor: it stays; Monetary Sponsor has nobody: it goes
+  assert.deepEqual(jt.roles.map((x) => x.name).filter((n) => ['Vendor', 'Monetary Sponsor'].includes(n)), ['Vendor']);
+  assert.deepEqual(Object.keys(view.gone).sort(), ['Monetary Sponsor', 'Sponsor']);
 
   // The next run: nothing to change, nothing written
   const before = jt.writes().length;
@@ -213,34 +209,48 @@ test('on: the level roles are made (vendor kind, both old roles’ permissions),
   assert.equal(jt.writes().length, before);
 
   // Changed by hand in JobTread: set back
-  people[0].role = 'Vendor';
+  people[0].role = 'Builder';
   await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl });
   assert.equal(people[0].role, 'Champion');
   assert.equal((await rolesView(DB)).recent[0].why, 'set back');
 
-  // Off, and the old roles back: each login gets the role it had before the site
-  const back = await putBack(env, 'admin@example.org', { fetchImpl: jt.fetchImpl });
-  assert.deepEqual(back.problems, []);
-  assert.deepEqual(people.map((m) => m.role), ['Vendor', 'Vendor', 'Makeover Family']);
-  assert.equal((await rolesView(DB)).on, false);
-  assert.deepEqual((await rolesView(DB)).recent, []);
+  // Staff make Gus a Design Partner: Vendor has nobody, so it goes too, and is never given again
+  await pickRole(DB, { membership: 'm5', role: DESIGN_ROLE, name: 'Gus' }, 'staff@example.org');
+  await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl, now: Date.parse('2026-10-30T12:30:00Z') });
+  assert.equal(people[2].role, 'Design Partner');
+  assert.ok(!jt.roles.some((x) => x.name === 'Vendor'));
+  assert.deepEqual(Object.keys((await rolesView(DB)).gone).sort(), ['Monetary Sponsor', 'Sponsor', 'Vendor']);
+  const gone = (await DB.prepare("SELECT changes FROM audit_log WHERE entity_name = 'Old roles in JobTread' ORDER BY id").all()).results.map((a) => a.changes).join(' ');
+  assert.match(gone, /Monetary Sponsor/);
+  assert.match(gone, /Vendor/);
+  const after = jt.writes().length;
+  const reads = jt.calls.length;
+  await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl });
+  assert.equal(jt.writes().length, after, 'nothing more to delete');
+  assert.ok(!jt.calls.slice(reads).some((q) => q.organization?.roles), 'and the roles aren’t read again for it');
 });
 
-test('staff’s say for someone the site can’t place: Trade Partner, or leave their role', async () => {
+test('staff’s say for someone the site can’t place: Trade Partner, Design Partner, or leave a level (never an old role)', async () => {
   _resetEnsured(); _resetRoleCache();
   const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
-  const people = [login('m5', 'Vendor', { name: 'Gus', account: vendorAcct('acct-x', 'Mystery Co') }), login('m6', 'Champion', { name: 'Cal', account: vendorAcct('acct-y', 'Not In Partners') })];
+  const people = [login('m5', 'Vendor', { name: 'Gus', account: vendorAcct('acct-x', 'Mystery Co') }), login('m6', 'Champion', { name: 'Cal', account: vendorAcct('acct-y', 'Not In Partners') }),
+    login('m8', 'Vendor', { name: 'Mel', account: vendorAcct('acct-z', 'Mel OTR/L') })];
   const jt = rolesJT(people);
   const env = { DB, JOBTREAD_GRANT_KEY: 'k' };
   await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl });
-  assert.deepEqual((await rolesView(DB)).unplaced.map((u) => [u.name, u.why]), [['Gus', 'unknown'], ['Cal', 'level']]);
+  assert.deepEqual((await rolesView(DB)).unplaced.map((u) => [u.name, u.why]), [['Gus', 'unknown'], ['Cal', 'level'], ['Mel', 'unknown']]);
   await pickRole(DB, { membership: 'm5', role: TRADE_ROLE, name: 'Gus' }, 'staff@example.org');
   await pickRole(DB, { membership: 'm6', keep: true, name: 'Cal' }, 'staff@example.org');
+  await pickRole(DB, { membership: 'm8', role: DESIGN_ROLE, name: 'Mel' }, 'staff@example.org');
   assert.deepEqual((await rolesView(DB)).unplaced, [], 'off the list at once');
   await assert.rejects(pickRole(DB, { membership: 'm6', role: 'Champion' }), /level comes from Partners/);
-  await setOn(DB, true);
   await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl });
-  assert.deepEqual(people.map((m) => m.role), ['Trade Partner', 'Champion']);
+  assert.deepEqual(people.map((m) => m.role), ['Trade Partner', 'Champion', 'Design Partner']);
+  // "Leave as Vendor" isn't a say: Vendor goes, so they're asked about again
+  people.push(login('m9', 'Vendor', { name: 'Val', account: vendorAcct('acct-v', 'Val Co') }));
+  await pickRole(DB, { membership: 'm9', keep: true, name: 'Val' }, 'staff@example.org');
+  await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl });
+  assert.deepEqual((await rolesView(DB)).unplaced.map((u) => u.name), ['Val']);
 });
 
 test('reveal and Demo Day invites: level roles and Trade Partners are partners on the job; the sponsor is whoever is from the kid’s sponsor', () => {

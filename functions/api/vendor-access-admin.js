@@ -11,7 +11,7 @@
  * POST { recheck: { company } }                → that company's jobs again, now
  * POST { unmatch: { partner } }                → "Not the same": not that JobTread vendor after all, and what the match did is taken back
  * POST { rename: { partner, name? } }          → the JobTread vendor takes the partner's name (or name: the old one, to undo)
- * POST { rolePick: { membership, role?, keep?, name } } → someone the roles sweep can't place: Trade Partner, or leave their role
+ * POST { rolePick: { membership, role?, keep?, name } } → someone the roles sweep can't place: Trade Partner or Design Partner, or leave a level
  *                                                (neither: undo the pick). See ./_partner-roles.js
  * POST { link: { partner, account } }          → this JobTread vendor account (any) is this partner ("Who are they?": their company)
  * POST { twins: { a, b, same } }               → two JobTread vendor accounts listed as one company: the empty one is

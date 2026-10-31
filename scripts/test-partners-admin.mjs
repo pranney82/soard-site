@@ -126,7 +126,7 @@ function makeApi() {
     setAside: [], paired: 10, lastRunAt: since, lastRun: { at: since, added: 1 }, lastError: null,
     // Roles that follow levels (functions/api/_partner-roles.js), before it's switched on
     roles: {
-      on: false, at: since, recent: [], problems: [],
+      at: since, recent: [], problems: [],
       pending: [
         { name: 'Ron Randall', company: 'Randall Brothers', partner: 'randall-brothers', from: 'Vendor', to: 'Champion', why: 'level' },
         { name: 'Tia Knox', company: 'TKO Plumbing', partner: null, from: 'Vendor', to: 'Trade Partner', why: 'trade' },
@@ -882,12 +882,20 @@ try {
     ok(/Who are they\?/.test(rolesText) && /Gus Hall/.test(rolesText) && /a Vendor in JobTread, at Mystery Co, which isn’t a partner or a vendor SOARD pays/.test(rolesText), `someone the site can’t place is asked about (${rolesText.slice(0, 160)})`);
     ok(/a Champion in JobTread, at Stone Works, which isn’t in Partners\. Add the company in Partners as a Champion/.test(rolesText), 'a level set by hand for a company not in Partners says to add it there');
     await clickText(page, '.pt-access__roles .pt-loose__item .btn', 'Trade Partner');
-    ok(await waitToast(page, /Gus Hall is a Trade Partner in JobTread once roles follow levels/), 'Trade Partner: the toast says when it lands');
+    ok(!/Leave as Vendor/.test(rolesText), 'nobody is left on Vendor: it’s going from JobTread');
+    ok(await waitToast(page, /Gus Hall is a Trade Partner in JobTread from the next check/), 'Trade Partner: the toast says when it lands');
     ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ rolePick: { membership: 'memgus0001', name: 'Gus Hall', role: 'Trade Partner' } }), 'and names the person and the role');
     ok(!/Gus Hall/.test(await page.$eval('.pt-access__roles', (e) => e.textContent).catch(() => '')), 'they leave the list');
     ok(await clickToastAction(page, /Gus Hall is a Trade Partner/), 'with an Undo');
     await sleep(300);
     ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ rolePick: { membership: 'memgus0001', name: 'Gus Hall' } }) && /Gus Hall/.test(await page.$eval('.pt-access__roles', (e) => e.textContent).catch(() => '')), 'Undo puts them back on the list');
+    await page.evaluate(() => [...document.querySelectorAll('.pt-access__roles .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === 'Gus Hall')
+      ?.querySelectorAll('.btn').forEach((btn) => { if (btn.textContent.trim() === 'Design Partner') btn.click(); }));
+    const designToast = await waitToast(page, /Gus Hall is a Design Partner in JobTread from the next check/);
+    const designSent = JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body);
+    ok(designToast && designSent === JSON.stringify({ rolePick: { membership: 'memgus0001', name: 'Gus Hall', role: 'Design Partner' } }), `Design Partner: the other role staff can give (sent ${designSent})`);
+    ok(await clickToastAction(page, /Gus Hall is a Design Partner/), 'with an Undo too');
+    await sleep(300);
     await clickText(page, '.pt-access__roles .pt-loose__item .btn', 'Leave as Champion');
     ok(await waitToast(page, /Cal Stone keeps their Champion role/) && lastCall(api, '/api/vendor-access-admin')?.body?.rolePick?.keep === true, '“Leave as …” keeps their role');
     // Their JobTread company is a partner by another name: staff say which
@@ -897,7 +905,7 @@ try {
     ok(!(await page.$('#pt-role-co-memgus0001')) && /Gus Hall/.test(await roleRow('Gus Hall')), 'nobody to link without a JobTread vendor');
     await page.select('#pt-role-co-memang0001', 'angela-means-design');
     await clickText(page, '.pt-access__roles .pt-loose__item .btn', 'Link');
-    ok(await waitToast(page, /“Means Interiors” is Angela Means Design now\. Angela Means’s role follows its level once roles follow levels\./), 'Link: the toast names both, and when the role lands');
+    ok(await waitToast(page, /“Means Interiors” is Angela Means Design now\. Angela Means’s role follows its level from the next check\./), 'Link: the toast names both, and when the role lands');
     ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ link: { partner: 'angela-means-design', account: 'acctmeans01' } }) && !(await roleRow('Angela Means')), 'it sends the partner and their JobTread vendor, and they leave the list');
     // One company twice in JobTread: only what the site won't decide is asked
     const twinRow = (name) => page.evaluate((name) => [...document.querySelectorAll('.pt-access__twins .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent.startsWith(name))?.textContent.replace(/\s+/g, ' ').trim() || '', name);
@@ -920,8 +928,8 @@ try {
     const sentBack = JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body);
     ok(toasted && sentBack === JSON.stringify({ twins: { a: 'acctmsi002', b: 'acctmsi001', same: false } }), `Not the same brings the archived one back, with its partner (clicked ${clicked}, toast ${toasted}, sent ${sentBack})`);
     const toggles = await page.$$eval('.pt-access__matched > .ppl-link', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
-    ok(toggles.includes('2 roles to change in JobTread, once roles follow levels') && toggles.includes('1 logo on pages no partner goes by') && toggles.includes('1 partner only billed on jobs'), `what would change, unnamed logos and billed-only partners each fold away (${toggles.join(' | ')})`);
-    await clickText(page, '.pt-access__matched > .ppl-link', '2 roles to change');
+    ok(toggles.includes('2 at the next check') && toggles.includes('1 logo on pages no partner goes by') && toggles.includes('1 partner only billed on jobs'), `what would change, unnamed logos and billed-only partners each fold away (${toggles.join(' | ')})`);
+    await clickText(page, '.pt-access__matched > .ppl-link', '2 at the next check');
     await sleep(150);
     const change = await page.evaluate(() => [...document.querySelectorAll('.pt-access__matched li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()).find((t) => t.startsWith('Ron Randall')) || '');
     ok(change === 'Ron Randall at Randall Brothers Vendor → Champion · their level', `each change: who, the company, from → to and why (${change})`);

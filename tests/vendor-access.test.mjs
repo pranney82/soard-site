@@ -112,6 +112,7 @@ function fakeJT({ jobs, members = [], accounts = [] }) {
       return reply({});
     }
     if (q.deleteContact) { for (const a of accounts) a.contacts = a.contacts.filter((c) => c.id !== q.deleteContact.$.id); return reply({}); }
+    if (q.deleteRole) { const name = Object.keys(ROLES).find((k) => ROLES[k] === q.deleteRole.$.id); assert.ok(![...people.values()].some((m) => m.role === name), `nobody has ${name}`); delete ROLES[name]; return reply({}); }
     if (q.account) {
       const a = accounts.find((x) => x.id === q.account.$.id);
       return reply({ account: a ? { id: a.id, name: a.name, type: a.type || 'vendor', archivedAt: a.archived ? '2026-01-01' : null } : null });
@@ -213,7 +214,7 @@ test('contacts both ways: put together the first time, then the side that change
   assert.ok(sameList([jo], [{ ...jo, name: ' Jo  Lee ', email: 'JO@rb.example' }]));
 });
 
-test('a sweep: vendors added quietly as Vendors, a page partner gets its JobTread account with nobody in it yet, a near name waits, nobody is emailed', async (t) => {
+test('a sweep: vendors added quietly with their level or Trade Partner, a page partner gets its JobTread account with nobody in it yet, a near name waits, nobody is emailed', async (t) => {
   _resetRoleCache();
   const sent = noMail(t);
   const DB = await world({ bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }, { jtId: 'acct-store', name: 'Corner Store', jobs: ['j1'] }, { jtId: 'acct-tile', name: 'Tile Depot', jobs: ['j1'] }] });
@@ -236,7 +237,7 @@ test('a sweep: vendors added quietly as Vendors, a page partner gets its JobTrea
   const report = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 });
   assert.deepEqual(report.problems, []);
   assert.deepEqual(report.added.map((a) => `${a.person} (${a.name})`).sort(), ['Eve Ace (Ace Electric)', 'Ron Randall (Randall Brothers)']);
-  for (const email of ['ron@randallbrothers.example', 'eve@aceelectric.example']) assert.equal(jt.people.get(email).role, 'Vendor');
+  assert.deepEqual(['ron@randallbrothers.example', 'eve@aceelectric.example'].map((e) => jt.people.get(e).role), ['Friend', 'Trade Partner'], 'a partner’s level, a sub’s Trade Partner');
   for (const email of ['al@insure.example', 'desk@cornerstore.example', 'tia@tiledepot.example']) assert.ok(!jt.jobs[0].access.includes(email), `${email} isn’t put on the job`);
   assert.ok(!jt.jobs[0].access.includes('ann@acmefdn.example'), 'the monetary sponsor is the Sponsor sweep’s');
   assert.deepEqual(jt.jobs[1].access, [], 'a TEST job is left alone');
@@ -262,7 +263,7 @@ test('a sweep: vendors added quietly as Vendors, a page partner gets its JobTrea
   assert.deepEqual(Object.keys(await readContacts(DB)).sort(), ['acme-foundation', 'randall-brothers']);
   assert.deepEqual(sent, [], 'no email, from JobTread or the site');
   const audit = (await DB.prepare('SELECT entity_type, changes FROM audit_log ORDER BY id').all()).results;
-  assert.deepEqual(audit.map((a) => a.entity_type), ['jobtread-vendor', 'jobtread-access', 'partner-contacts'], 'accounts made, people on jobs, then contacts');
+  assert.deepEqual(audit.map((a) => a.entity_type), ['jobtread-vendor', 'jobtread-access', 'partner-contacts', 'jobtread-roles'], 'accounts made, people on jobs, contacts, then the old roles nobody has deleted');
   assert.doesNotMatch(audit.map((a) => a.changes).join(' '), /@/, 'names only in History');
 
   // The next run: everyone's there, nothing is written to JobTread

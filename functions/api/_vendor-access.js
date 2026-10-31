@@ -61,10 +61,9 @@ import { fetchOpenJobs, fetchAccess, readLinks, setLink, takeLock, freeLock, FRE
 import { pave, grantJobAccess, revokeJobAccess } from './_jt-access.js';
 import { readContacts, saveContacts, isEmail } from './_sponsors.js';
 import { logAudit } from './_audit.js';
-import { roleMode, reconcileRoles, rolesView, readMemberships, OLD_VENDOR_ROLE } from './_partner-roles.js';
+import { roleMode, reconcileRoles, rolesView, readMemberships } from './_partner-roles.js';
 import { nameKey, wordsKey, domainOf, isSocial, kidUsage, nearPartners } from '../../public/admin/partners-shared.js';
 
-export const VENDOR_ROLE = OLD_VENDOR_ROLE;
 const RUN_EVERY_MS = 15 * 60 * 1000;
 const WRITE_BUDGET_MS = 20 * 1000;
 const MAX_GRANTS = 12;

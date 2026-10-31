@@ -13251,6 +13251,8 @@
     /** What a JobTread account holds: “2 contacts and 3 documents”, or “nothing” */
     const ptHolds = (h = {}) => kdNames([h.contacts && kdPlural(h.contacts, 'contact'), h.documents && kdPlural(h.documents, 'document'), h.files && kdPlural(h.files, 'file'),
       h.access && `${kdPlural(h.access, 'person', 'people')} with access`, h.bills && !h.documents && 'bills on jobs'].filter(Boolean)) || 'nothing';
+    // JobTread's old partner roles, deleted once nobody has them: never one to leave someone on
+    const PT_OLD_ROLES = ['Vendor', 'Monetary Sponsor', 'Sponsor'];
     /** “a Champion”, “an Ally”: a JobTread role with its article */
     const ptA = (role) => `${/^[aeiou]/i.test(role) ? 'an' : 'a'} ${role}`;
     const ptRecordHash = (record) => `#kids/${String(record || '').split('/').map(encodeURIComponent).join('/')}`;
@@ -13323,13 +13325,13 @@
       // One company twice in JobTread: Same company archives the empty one; Not the same keeps them apart (and brings back one the site archived)
       const twin = (a, b, same, label) => act(`t-${[a, b].sort().join(' ')}`, { twins: { a, b, same } }, (r) => addToast(
         r.twins?.combined ? `“${r.twins.combined.archived}” is archived in JobTread, and “${r.twins.combined.kept}” is the one` : r.twins?.back ? `“${r.twins.back.drop.name}” is back in JobTread${label ? `, as ${label}` : ''}` : 'They stay two companies', 'info'));
-      // Someone the roles sweep can't place: Trade Partner, or leave their role (Undo takes the say back)
-      const pickRole = (u, how, undo = false) => act(`p-${u.membership}`, { rolePick: { membership: u.membership, name: u.name, ...(undo ? {} : how === 'trade' ? { role: 'Trade Partner' } : { keep: true }) } },
-        () => addToast(undo ? `${u.name} is back on the list` : how === 'trade' ? `${u.name} is a Trade Partner in JobTread${view.roles?.on ? ' from the next check' : ' once roles follow levels'}` : `${u.name} keeps their ${u.role} role`,
-          'info', undo ? null : { label: 'Undo', fn: () => pickRole(u, how, true) }));
+      // Someone the roles sweep can't place: Trade Partner, Design Partner, or leave a level (Undo takes the say back)
+      const pickRole = (u, role, undo = false) => act(`p-${u.membership}`, { rolePick: { membership: u.membership, name: u.name, ...(undo ? {} : role ? { role } : { keep: true }) } },
+        () => addToast(undo ? `${u.name} is back on the list` : role ? `${u.name} is ${ptA(role)} in JobTread from the next check` : `${u.name} keeps their ${u.role} role`,
+          'info', undo ? null : { label: 'Undo', fn: () => pickRole(u, role, true) }));
       // Someone's JobTread company is a partner by another name: it's that partner from now on, so their role follows its level
       const linkCompany = (u, p) => p && act(`l-${u.membership}`, { link: { partner: p.slug, account: u.account } }, (r) => addToast(
-        `“${r.linked.account.name}” is ${p.name} now${r.linked.archived ? `, and the empty “${r.linked.archived}” the site made is archived in JobTread` : ''}. ${u.name}’s role follows its level ${view.roles?.on ? 'from the next check' : 'once roles follow levels'}.`, 'success'));
+        `“${r.linked.account.name}” is ${p.name} now${r.linked.archived ? `, and the empty “${r.linked.archived}” the site made is archived in JobTread` : ''}. ${u.name}’s role follows its level from the next check.`, 'success'));
       const title = 'JobTread access';
       if (!view) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}><p class="text-muted"><span class="spinner spinner-14" /> Loading…</p><//>`;
       if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
@@ -13344,7 +13346,7 @@
       const q = find.trim().toLowerCase();
       const shown = q ? matched.filter((m) => `${m.name} ${m.accountName}`.toLowerCase().includes(q)) : matched;
       return html`<${KdDialog} title=${title}
-        sub=${`Each open job lists its vendors in JobTread: companies with a logo on the page, and trade partners with a bill or purchase order there (never a card purchase or a materials supplier). They’re added without JobTread’s email, ${view?.roles?.on ? 'with their Partners level as their role (Trade Partner when SOARD pays them)' : 'as Vendors'}, and their contacts kept the same in Partners and JobTread.`}
+        sub=${`Each open job lists its vendors in JobTread: companies with a logo on the page, and trade partners with a bill or purchase order there (never a card purchase or a materials supplier). They’re added without JobTread’s email, with their Partners level as their role (Trade Partner when SOARD pays them), and their contacts kept the same in Partners and JobTread.`}
         size="lg" onClose=${onClose} busy=${!!busy}>
         ${view.lastError ? html`<p class="kd-bad pt-wait__error">The last check ${kdWhen(view.lastError.at)} hit a problem: ${view.lastError.error}. It tries again every 15 minutes.</p>` : null}
         ${near.length ? html`<section class="pt-access" aria-labelledby="pt-access-near">
@@ -13388,7 +13390,7 @@
         </section>` : null}
         ${roles.unplaced.length ? html`<section class="pt-access pt-access__roles" aria-labelledby="pt-access-roles">
           <h3 id="pt-access-roles">Who are they?</h3>
-          <p class="form-hint">${roles.on ? 'Each partner’s role in JobTread is its level here, and a company SOARD pays is a Trade Partner.' : 'Roles in JobTread are about to follow each partner’s level here, with Trade Partner for a company SOARD pays.'} The site can’t tell these people’s company, so their role stays as it is until you say.</p>
+          <p class="form-hint">Each partner’s role in JobTread is its level here, and a company SOARD pays is a Trade Partner. The site can’t tell these people’s company, so their role stays as it is until you say.</p>
           <ul class="pt-loose pt-wait">${roles.unplaced.map((u) => html`<li key=${u.membership} class="pt-loose__item">
             <span class="pt-loose__text">
               <strong>${u.name}</strong>
@@ -13409,9 +13411,10 @@
                       ${linkTo[u.membership] ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => linkCompany(u, partners.find((p) => p.slug === linkTo[u.membership]))}>Link</button>` : null}
                     </span>`;
                 })() : null}
-                <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => pickRole(u, 'trade')}>
+                <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => pickRole(u, 'Trade Partner')}>
                   ${busy === `p-${u.membership}` ? html`<span class="spinner spinner-14" />` : null}Trade Partner</button>
-                <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => pickRole(u, 'keep')}>Leave as ${u.role}</button>
+                <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => pickRole(u, 'Design Partner')}>Design Partner</button>
+                ${PT_OLD_ROLES.includes(u.role) ? null : html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => pickRole(u, null)}>Leave as ${u.role}</button>`}
               </span>
             </span>
           </li>`)}</ul>
@@ -13474,8 +13477,7 @@
         </div>` : null}
         ${roles.pending.length || roles.recent.length ? html`<div class="pt-loose__dismissed pt-access__matched">
           <button type="button" class="ppl-link" aria-expanded=${showRoles === 'roles'} onClick=${() => toggle('roles')}>
-            ${roles.on ? `${roles.recent.length ? `${kdPlural(roles.recent.length, 'role')} changed in JobTread` : ''}${roles.recent.length && roles.pending.length ? ', ' : ''}${roles.pending.length ? `${roles.pending.length} at the next check` : ''}`
-              : `${kdPlural(roles.pending.length, 'role')} to change in JobTread, once roles follow levels`}</button>
+            ${roles.recent.length ? `${kdPlural(roles.recent.length, 'role')} changed in JobTread` : ''}${roles.recent.length && roles.pending.length ? ', ' : ''}${roles.pending.length ? `${roles.pending.length} at the next check` : ''}</button>
           ${showRoles === 'roles' ? html`<ul>${[...roles.pending.map((c) => ({ ...c, wait: true })), ...roles.recent].map((c, i) => html`<li key=${`${i}-${c.name}`}>
             <span>${c.name}${c.company ? ` at ${c.company}` : ''} <small>${c.from} → ${c.to} · ${PT_ROLE_WHY[c.why] || c.why}${c.wait ? '' : ` · ${kdWhen(c.at)}`}</small></span></li>`)}</ul>` : null}
         </div>` : null}

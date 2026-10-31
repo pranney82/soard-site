@@ -1,7 +1,7 @@
 /**
  * Monetary sponsors (functions/api/_sponsors.js, _jt-access.js): the website
  * is the source of truth. Job access comes first (the sponsor's contacts go
- * on the open job, quietly, as Monetary Sponsor until roles follow levels; a
+ * on the open job, quietly, with the sponsor's Partners level as their role; a
  * sponsor taken off loses it), then JobTread's Monetary Sponsor field mirrors
  * the sponsors with someone on the job. The 10-minute sweep takes in
  * Monetary Sponsor users added in JobTread. Contacts stay in
@@ -72,6 +72,8 @@ function fakeJT({ jobs, members = [] }) {
       jobs.find((x) => x.id === q.updateJob.$.id).field = q.updateJob.$.customFieldValues[FIELD_MONETARY_SPONSOR];
       return reply({});
     }
+    // The level roles, made the first time a grant needs one
+    if (q.createRole) { const { name } = q.createRole.$; ROLES[name] = `r-${name.toLowerCase().replace(/\s+/g, '-')}`; return reply({ createRole: { createdRole: { id: ROLES[name], name } } }); }
     throw new Error(`unexpected query ${JSON.stringify(q).slice(0, 120)}`);
   };
   const kinds = () => calls.map((q) => Object.keys(q).find((k) => k !== '$'));
@@ -145,8 +147,8 @@ test('a kid save gives the contact Sponsor access first, then the field mirrors 
   const r = await syncKidSponsor(env(DB), { slug: 'max', jobId: 'job1' }, { by: 'staff@soardcharity.com', fetchImpl: jt.fetchImpl });
   const k = jt.kinds();
   assert.ok(k.indexOf('createAce') < k.indexOf('updateJob'), `access first, then the field (${k.join(', ')})`);
-  assert.deepEqual(r.granted.map((g) => [g.email, g.role]), [['jo@acmefdn.org', 'Monetary Sponsor']]);
-  assert.equal(jt.people.get('jo@acmefdn.org').role, 'Monetary Sponsor');
+  assert.deepEqual(r.granted.map((g) => [g.email, g.role]), [['jo@acmefdn.org', 'Friend']], 'the sponsor’s level, never the old Monetary Sponsor role');
+  assert.equal(jt.people.get('jo@acmefdn.org').role, 'Friend');
   assert.deepEqual(r.wrote, { from: '', to: 'Acme Foundation' });
   assert.equal(jt.jobs[0].field, 'Acme Foundation');
   assert.deepEqual(r.problems, []);
