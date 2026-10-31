@@ -26,3 +26,13 @@ test('too short, or no number: not asked', async () => {
   assert.deepEqual(await suggestAddresses('Main Street', count), []);
   assert.equal(asked, 0);
 });
+
+test('the street typed is the street: the same number on another street is never offered', async () => {
+  const out = await suggestAddresses('1000 Holcomb Woods Pkwy, Roswell, GA 30076', photon([house('1000', 'Woodstock Road', 'Roswell', '30075'), house('1000', 'Holcomb Woods Parkway', 'Roswell', '30076')]));
+  assert.deepEqual(out.map((a) => a.label), ['1000 Holcomb Woods Pkwy, Roswell, GA 30076']);
+  const galleria = await suggestAddresses('200 Galleria Pkwy SE, Atlanta, GA 30339', photon([house('200', 'Interstate North Parkway Southeast', 'Atlanta', '30339'), house('200', 'Galleria Parkway Southeast', 'Atlanta', '30339')]));
+  assert.deepEqual(galleria.map((a) => a.line1), ['200 Galleria Pkwy SE']);
+  // Begun, and with a direction first
+  assert.equal((await suggestAddresses('1000 Holc', photon([house('1000', 'Holcomb Bridge Road', 'Roswell', '30076')]))).length, 1);
+  assert.equal((await suggestAddresses('12 N Main', photon([house('12', 'North Main Street')]))).length, 1);
+});

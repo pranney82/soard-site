@@ -631,6 +631,14 @@ try {
   ok(dropped.veil && !dropped.after, 'dragging a photo over the box shows the drop veil (and it goes on drop)');
   await page.waitForFunction(() => document.querySelector('[data-field="photoFamily"] .af-upload')?.dataset.state === 'done', { timeout: 20000 });
   ok(/dropped/.test(await page.$eval('[data-field="photoFamily"] .af-upload-status', (e) => e.textContent)), 'a dropped photo uploads like a chosen one');
+  {
+    // Coming back (a reload, another tab): the photos they sent show again, not as gray boxes
+    const back = await newTab();
+    await back.goto(`${SITE}/apply/form/`, { waitUntil: 'domcontentloaded' });
+    const shown = await back.waitForFunction(() => ['photoChild', 'photoFamily'].every((f) => { const e = document.querySelector(`[data-field="${f}"] .af-upload-preview`); return e?.hasAttribute('data-thumb') && /url\("blob:/.test(e.style.backgroundImage); }), { timeout: 8000 }).then(() => true, () => false);
+    ok(shown, 'coming back, the photos they sent show as their own pictures');
+    await back.close();
+  }
   await shot('07-photos-phone');
   await type('#af-otherChildren', 'No');
   await next();

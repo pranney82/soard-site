@@ -110,7 +110,7 @@ export async function googleSuggest(env, q) {
   // Georgia's only: every family SOARD serves lives there, and "3167 Main St, Dothan, AL" is no help
   return (data.suggestions || []).map(s => s.placePrediction).filter(p => p?.placeId && p.structuredFormat?.mainText?.text)
     .map(p => ({ id: p.placeId, line1: shorten(p.structuredFormat.mainText.text), sub: String(p.structuredFormat.secondaryText?.text || '').replace(/, USA$/, '') }))
-    .filter(p => /, GA$/.test(p.sub)).slice(0, 5);
+    .filter(p => /, GA(?: \d{5}(?:-\d{4})?)?$/.test(p.sub)).slice(0, 5); // "Roswell, GA 30076" when the ZIP was typed too
 }
 
 /** The address parts of the home they picked: { line1, line2, city, state, zip }, or null */

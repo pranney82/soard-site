@@ -42,7 +42,7 @@ export const ADVISORY_STEPS = [
       { id: 'heardFrom', label: 'How did you hear about the Advisory Board?', type: 'text', required: true, max: 300 },
       { id: 'why', label: 'Why are you interested in serving on the Advisory Board?', type: 'textarea', required: true, max: 3000 },
       { id: 'connection', label: 'What connects you to SOARD’s mission?', type: 'textarea', required: true, max: 3000 },
-      { id: 'involved', label: 'Have you supported, volunteered with, attended an event for, or been involved with SOARD before?', type: 'choice', options: YES_NO, required: true },
+      { id: 'involved', brief: 'Involved before', label: 'Have you supported, volunteered with, attended an event for, or been involved with SOARD before?', type: 'choice', options: YES_NO, required: true },
       { id: 'involvedHow', label: 'Tell us about it', type: 'textarea', showIf: { involved: ['Yes'] }, max: 2000 },
     ],
   },
@@ -54,10 +54,10 @@ export const ADVISORY_STEPS = [
     fields: [
       { id: 'strengths', label: 'What strengths, experience, relationships, or skills would you hope to bring to the Advisory Board?', type: 'textarea', required: true, max: 3000 },
       { id: 'fundraising', label: 'How could you help the board reach its shared fundraising goal of $25,000?', type: 'textarea', required: true, max: 3000 },
-      { id: 'introductions', label: 'Are you comfortable making introductions to potential donors, sponsors, partners, vendors, or volunteers?', type: 'choice', options: YES_MAYBE_NO, required: true },
-      { id: 'networks', label: 'Do you have relationships with people, businesses, foundations, community groups, or professional networks that may want to learn about SOARD?', type: 'choice', options: YES_MAYBE_NO, required: true },
+      { id: 'introductions', brief: 'Introductions', label: 'Are you comfortable making introductions to potential donors, sponsors, partners, vendors, or volunteers?', type: 'choice', options: YES_MAYBE_NO, required: true },
+      { id: 'networks', brief: 'Networks', label: 'Do you have relationships with people, businesses, foundations, community groups, or professional networks that may want to learn about SOARD?', type: 'choice', options: YES_MAYBE_NO, required: true },
       { id: 'networksMore', label: 'Share anything you feel comfortable sharing', type: 'textarea', showIf: { networks: ['Yes', 'Maybe'] }, max: 2000 },
-      { id: 'conflict', label: 'Do you have any relationship that could create a real or perceived conflict of interest with your service on the Advisory Board?', hint: 'Personal, professional, financial, or organizational: for example with vendors, contractors, donors, sponsors, partner organizations, grantmakers, board members, staff, or families SOARD serves.', type: 'choice', options: YES_NO, required: true },
+      { id: 'conflict', brief: 'Conflict of interest', label: 'Do you have any relationship that could create a real or perceived conflict of interest with your service on the Advisory Board?', hint: 'Personal, professional, financial, or organizational: for example with vendors, contractors, donors, sponsors, partner organizations, grantmakers, board members, staff, or families SOARD serves.', type: 'choice', options: YES_NO, required: true },
       { id: 'conflictMore', label: 'Please explain briefly', type: 'textarea', required: true, showIf: { conflict: ['Yes'] }, max: 2000 },
     ],
   },
@@ -67,9 +67,9 @@ export const ADVISORY_STEPS = [
     title: 'Commitment',
     intro: 'A one-year renewable term, with at least four meetings a year.',
     fields: [
-      { id: 'hostEvent', label: 'Would you be interested in hosting or helping organize a small fundraiser, awareness event, or peer-to-peer campaign?', type: 'choice', options: YES_MAYBE_NO, required: true },
-      { id: 'meetings', label: 'Can you attend at least four meetings a year?', type: 'choice', options: YES_NO, required: true },
-      { id: 'ambassador', label: 'Will you serve as a positive ambassador for SOARD?', hint: 'Sharing our mission, supporting events and campaigns when you can, and helping grow awareness in the community.', type: 'choice', options: YES_NO, required: true },
+      { id: 'hostEvent', brief: 'Hosting an event', label: 'Would you be interested in hosting or helping organize a small fundraiser, awareness event, or peer-to-peer campaign?', type: 'choice', options: YES_MAYBE_NO, required: true },
+      { id: 'meetings', brief: 'Four meetings a year', label: 'Can you attend at least four meetings a year?', type: 'choice', options: YES_NO, required: true },
+      { id: 'ambassador', brief: 'Ambassador', label: 'Will you serve as a positive ambassador for SOARD?', hint: 'Sharing our mission, supporting events and campaigns when you can, and helping grow awareness in the community.', type: 'choice', options: YES_NO, required: true },
       { id: 'meetingTimes', label: 'What days or times usually work best for meetings?', type: 'text', max: 300 },
       { id: 'hopeToGain', label: 'What do you hope to gain from serving on the Advisory Board?', type: 'textarea', max: 3000 },
       { id: 'anythingElse', label: 'Is there anything else you’d like us to know about you?', type: 'textarea', max: 3000 },
@@ -81,10 +81,10 @@ export const ADVISORY_STEPS = [
     title: 'Reference and signature',
     intro: 'Someone who knows your work or your heart for service.',
     fields: [
-      { id: 'refName', label: 'Reference’s name', type: 'text', required: true, max: 120 },
-      { id: 'refRelationship', label: 'How you know them', type: 'text', required: true, max: 160 },
-      { id: 'refEmail', label: 'Reference’s email', type: 'email', required: true, max: 200 },
-      { id: 'refPhone', label: 'Reference’s phone', type: 'tel', max: 40 },
+      { id: 'refName', group: 'reference', label: 'Reference’s name', type: 'text', required: true, max: 120 },
+      { id: 'refRelationship', group: 'reference', label: 'How you know them', type: 'text', required: true, max: 160 },
+      { id: 'refEmail', group: 'reference', label: 'Reference’s email', type: 'email', required: true, max: 200 },
+      { id: 'refPhone', group: 'reference', label: 'Reference’s phone', type: 'tel', max: 40 },
       { id: 'acknowledge', label: 'I have read and understand the Advisory Board expectations in the overview.', type: 'check', required: true },
       { id: 'signature', label: 'Type your full name to sign', type: 'text', required: true, autocomplete: 'name', max: 120 },
     ],
@@ -128,8 +128,13 @@ export function fieldProblem(field, value) {
     if (field.type === 'choice') return 'Please choose one.';
     return 'Please fill this in.';
   }
-  if (field.type === 'email' && !EMAIL_RE.test(value)) return 'That doesn’t look like an email address.';
-  if (field.type === 'tel' && String(value).replace(/\D/g, '').length < 7) return 'Please add the full phone number.';
+  // (an ending no address has, "gmail.con", is a typo: the page's "Did you mean" says the fix)
+  if (field.type === 'email' && (!EMAIL_RE.test(value) || /\.(?:con|cmo|ocm|vom|xom|comm|coom|cpm|cim|nte|ent|nett|ogr|rog|orgg)$/i.test(value))) return 'That doesn’t look like an email address.';
+  if (field.type === 'tel') {
+    // Ten digits (a 1 before them, or a + number from abroad, is fine; so is a work line's extension), as the family application asks
+    const d = String(value).replace(/\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$/i, '').replace(/[^\d+]/g, '');
+    if (!/^(?:\+\d{8,15}|1?\d{10})$/.test(d)) return 'Please enter a 10-digit phone number.';
+  }
   if (field.type === 'url' && !/^https?:\/\/[^\s.]+\.[^\s]+$/i.test(value)) return 'That doesn’t look like a web address.';
   if (field.type === 'choice' && !field.options.includes(value)) return 'Please choose one.';
   return null;

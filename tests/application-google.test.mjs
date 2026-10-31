@@ -70,6 +70,16 @@ test('suggestions: Georgia homes near Atlanta (one in Alabama left out), the key
   assert.equal(await googleSuggest({ DB: env.DB }, '3167 Main'), null, 'no key: the free path');
 });
 
+test('a whole address typed, ZIP and all: Google names the town with the ZIP, and the home is still offered', async () => {
+  google.suggest = { suggestions: [
+    { placePrediction: { placeId: 'ChIJj65tPqB19YgRNdBT5ocaJ8Y', structuredFormat: { mainText: { text: '1000 Holcomb Woods Parkway' }, secondaryText: { text: 'Roswell, GA 30076, USA' } } } },
+    { placePrediction: { placeId: 'ChIJ_far_away_0003', structuredFormat: { mainText: { text: '1000 Holcomb Road' }, secondaryText: { text: 'Dothan, AL 36301, USA' } } } },
+  ] };
+  assert.deepEqual(await googleSuggest(env, '1000 Holcomb Woods Pkwy, Roswell, GA 30076'), [
+    { id: 'ChIJj65tPqB19YgRNdBT5ocaJ8Y', line1: '1000 Holcomb Woods Pkwy', sub: 'Roswell, GA 30076' },
+  ]);
+});
+
 test('the home they pick: street (with its unit), city, state and ZIP; only the address parts are asked for', async () => {
   assert.deepEqual(await googlePlace(env, 'ChIJ_home_one_0001'), { line1: '3167 Main St', line2: '#2', city: 'Duluth', state: 'GA', zip: '30096' });
   assert.equal(asked[0].mask, 'addressComponents', 'Place Details: the address parts, nothing billed beyond them');

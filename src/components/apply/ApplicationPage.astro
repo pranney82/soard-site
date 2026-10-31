@@ -364,7 +364,7 @@ const breadcrumbs = [
           <button type="button" class="af-dialog-close" data-later-close aria-label="Close" data-af-t-aria="close">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
           </button>
-          <form data-later-form>
+          <form data-later-form novalidate>
             <h2 id="af-later-title" data-af-t="laterTitle">{w('laterTitle')}</h2>
             <p data-af-t="laterIntro">{w('laterIntro')}</p>
             <label class="af-label" for="af-later-email" data-af-t="email">{w('email')}</label>
@@ -420,6 +420,7 @@ const breadcrumbs = [
     min-height: 48px;
   }
   .btn:hover { transform: translateY(-3px); }
+  .btn:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 3px; } /* the site's yellow ring barely shows round a yellow button */
   .btn-lg { font-size: 17px; padding: 18px 40px; }
   .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
   .btn-primary:hover { box-shadow: 0 8px 24px var(--c-yellow-glow); }
@@ -550,7 +551,7 @@ const breadcrumbs = [
   .af-steps-list { position: absolute; z-index: 30; right: 0; top: calc(100% + 6px); width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 520px); overflow: auto; list-style: none; margin: 0; padding: 8px; display: grid; gap: 2px; background: #fff; border: 1px solid var(--c-border); border-radius: 18px; box-shadow: 0 24px 56px -12px rgba(30,31,37,.22), 0 2px 6px rgba(30,31,37,.06); }
   .af-steps[open] .af-steps-list { animation: afDrop .22s var(--af-ease) both; }
   .af-step { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 12px 6px 8px; border: 0; border-radius: 12px; background: none; font: inherit; font-size: 15px; line-height: 1.35; text-align: left; color: var(--c-dark); cursor: pointer; transition: background-color .18s var(--af-ease); }
-  .af-step:hover:not(:disabled) { background: var(--c-cream); }
+  .af-step:is(:hover, [data-held]):not(:disabled) { background: var(--c-cream); }
   .af-step:focus-visible { outline: 3px solid var(--c-dark); outline-offset: -1px; }
   .af-step:disabled { cursor: default; color: #8C8D92; }
   .af-step-mark { flex: 0 0 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; border: 1.5px solid var(--af-line); background: #fff; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
@@ -655,6 +656,7 @@ const breadcrumbs = [
   .af-suggest li { display: grid; gap: 1px; padding: 10px 12px; min-height: 48px; border-radius: 10px; cursor: pointer; font-size: 15px; line-height: 1.35; color: var(--c-dark); }
   .af-suggest li[aria-selected="true"], .af-suggest li:hover { background: var(--af-picked); box-shadow: inset 0 0 0 1.5px var(--c-yellow); }
   .af-suggest-main { font-weight: 600; }
+  .af-suggest li.af-suggest-note { display: block; min-height: 0; margin-bottom: 4px; padding: 10px 12px; cursor: default; background: #FFF6D6; color: #5C4A00; font-size: 14px; font-weight: 600; box-shadow: none; }
   .af-suggest-sub { font-size: 13.5px; color: var(--c-text-muted); }
   /* The list's last row: an address it doesn't have, entered by hand */
   .af-suggest li.af-suggest-by-hand { align-content: center; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(55,58,54,.35); text-underline-offset: 4px; }
@@ -866,19 +868,19 @@ const breadcrumbs = [
   .af-btn:active:not(:disabled) { transform: scale(.97); }
   .af-btn-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; transition: transform .12s var(--af-ease); }
   @media (hover: hover) {
-    .af-btn--next:hover .af-btn-icon--next { transform: translateX(2px); }
-    .af-btn--back:hover .af-btn-icon { transform: translateX(-2px); }
+    .af-btn--next:is(:hover, [data-held]) .af-btn-icon--next { transform: translateX(2px); }
+    .af-btn--back:is(:hover, [data-held]) .af-btn-icon { transform: translateX(-2px); }
   }
   .af-btn--primary { background: var(--c-yellow); color: var(--c-dark); }
-  .af-btn--primary:hover:not(:disabled) { box-shadow: 0 10px 26px -6px var(--c-yellow-glow), 0 0 0 1px rgba(55,58,54,.06); background: #FFD60A; }
+  .af-btn--primary:is(:hover, [data-held]):not(:disabled) { box-shadow: 0 10px 26px -6px var(--c-yellow-glow), 0 0 0 1px rgba(55,58,54,.06); background: #FFD60A; }
   .af-btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
   .af-btn--primary[aria-busy="true"] { cursor: progress; opacity: .75; }
   [data-hero-cta][aria-busy="true"] { cursor: progress; opacity: .85; }
   .af-btn--submit { background: var(--c-dark); color: #fff; }
-  .af-btn--submit:hover:not(:disabled) { background: #2C2F2B; box-shadow: 0 10px 26px -8px rgba(30,31,37,.35); }
+  .af-btn--submit:is(:hover, [data-held]):not(:disabled) { background: #2C2F2B; box-shadow: 0 10px 26px -8px rgba(30,31,37,.35); }
   .af-btn--submit .af-btn-icon--next { display: none; }
   .af-btn--ghost { background: transparent; color: var(--c-dark); border: 1.5px solid var(--af-line); }
-  .af-btn--ghost:hover { border-color: var(--c-dark); }
+  .af-btn--ghost:is(:hover, [data-held]) { border-color: var(--c-dark); }
   .af-btn--sm { min-height: 44px; padding: 10px 18px; font-size: 15px; }
   .af-btn--upload { background: var(--c-dark); color: #fff; min-height: 44px; padding: 10px 20px; font-size: 15px; }
   .af-btn--upload:hover { background: #2C2F2B; }
@@ -1274,13 +1276,15 @@ const breadcrumbs = [
     /* With All steps in the rail, "Step 2 of 10" needs only its own line */
     html.af-focus .af-head-top { min-height: 0; }
   }
+  /* A laptop's short screen (1280×720): every step in view. html.af-focus first, so these win over the
+     rail's own rules further down */
   @media (min-width: 1080px) and (max-height: 820px) {
     html.af-focus .af-rail { gap: 14px; padding-top: 24px; }
-    .af-rail .af-step { padding-top: 6px; padding-bottom: 6px; min-height: 42px; }
-    .af-rail .af-step:is([data-state="locked"], [data-state="open"]) .af-step-sub { display: none; }
-    .af-rail .af-step:is([data-state="locked"], [data-state="open"]) .af-step-body { padding-top: 4px; }
-    .af-rail-list li:not(:last-child)::before, .af-rail-list li:not(:last-child)::after { top: 36px; bottom: -6px; }
-    .af-rail-help { display: none; }
+    html.af-focus .af-rail .af-step { padding-top: 6px; padding-bottom: 6px; min-height: 42px; }
+    html.af-focus .af-rail .af-step:is([data-state="locked"], [data-state="open"]) .af-step-sub { display: none; }
+    html.af-focus .af-rail .af-step:is([data-state="locked"], [data-state="open"]) .af-step-body { padding-top: 4px; }
+    html.af-focus .af-rail-list li:not(:last-child)::before, html.af-focus .af-rail-list li:not(:last-child)::after { top: 36px; bottom: -6px; }
+    html.af-focus .af-rail-help { display: none; }
   }
   .af-rail-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; }
   .af-rail-title { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin: 0; }
@@ -1293,11 +1297,12 @@ const breadcrumbs = [
   .af-rail-list li:not(:last-child)::after { background: var(--c-dark); transform-origin: top; transform: scaleY(0); transition: transform .5s var(--af-ease); }
   .af-rail-list li[data-line]::after { transform: scaleY(1); }
   .af-rail .af-step { align-items: flex-start; min-height: 48px; padding: 9px 10px; gap: 12px; position: relative; z-index: 1; border-radius: 14px; }
-  .af-rail .af-step:hover:not(:disabled) { background: rgba(255,255,255,.7); }
+  .af-rail .af-step:is(:hover, [data-held]):not(:disabled) { background: rgba(255,255,255,.7); }
   .af-rail .af-step[aria-current="step"] { background: #fff; box-shadow: 0 1px 2px rgba(30,31,37,.05), 0 8px 22px -10px rgba(30,31,37,.2); }
   .af-rail .af-step-mark { transition: background-color .3s var(--af-ease), border-color .3s var(--af-ease), color .3s var(--af-ease); }
-  .af-rail .af-step[aria-current="step"] .af-step-mark { animation: afPick .3s cubic-bezier(.34,1.56,.64,1) both; }
-  .af-step-mark svg path { stroke-dasharray: 20; stroke-dashoffset: 0; animation: afDraw .4s ease-out both; }
+  /* Quick enough to be done with the screen change (a step finished doesn't make Continue feel slower) */
+  .af-rail .af-step[aria-current="step"] .af-step-mark { animation: afPick .24s cubic-bezier(.34,1.56,.64,1) both; }
+  .af-step-mark svg path { stroke-dasharray: 20; stroke-dashoffset: 0; animation: afDraw .26s ease-out both; }
   .af-rail .af-step-now { display: none; }
   .af-rail .af-step:disabled { color: #8C8D92; }
   .af-step-body { flex: 1; min-width: 0; display: grid; gap: 2px; padding-top: 3px; }

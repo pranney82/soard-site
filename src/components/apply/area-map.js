@@ -36,6 +36,13 @@ function viewFor(polygon, home) {
   const k = Math.cos((((s + n) / 2) * Math.PI) / 180);
   const padLat = (n - s) * PAD + 0.02; const padLng = (e - w) * PAD + 0.02;
   s -= padLat; n += padLat; w -= padLng; e += padLng;
+  // A home far off: room on its side for the arrow and its distance, clear of the area (not over its top)
+  if (home && !reach) {
+    const dy = home[0] - center[0]; const dx = (home[1] - center[1]) * k;
+    const more = 0.2;
+    if (Math.abs(dy) >= Math.abs(dx) * 0.5) { if (dy > 0) n += (n - s) * more; else s -= (n - s) * more; }
+    if (Math.abs(dx) >= Math.abs(dy) * 0.5) { if (dx > 0) e += (e - w) * more; else w -= (e - w) * more; }
+  }
   // Keep the shape between 1:1 and 1.5:1 (wide), widening the short side about its middle
   let width = (e - w) * k; let height = n - s;
   if (width / height > 1.5) { const add = (width / 1.5 - height) / 2; s -= add; n += add; height = n - s; }

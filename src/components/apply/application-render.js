@@ -73,7 +73,7 @@ export const UI = {
     leaveUpload: 'Your upload is still in progress. Leave this page and stop it?',
     suggestions: 'Suggested addresses', countyFilled: 'We filled in {county} County from your address.',
     // The Postal Service's word on the home address, in what the check found (with a Google key: ../../functions/api/_google.js)
-    uspsConfirmed: 'Confirmed by the Postal Service.', uspsUnit: "If there's an apartment or unit number, add it to the address.",
+    uspsConfirmed: 'Confirmed by the Postal Service.', uspsUnit: "If there's an apartment or unit number, add it to the address.", uspsUnitGiven: "The Postal Service couldn't confirm that apartment or unit number. Please check it.",
     uspsCheck: "The Postal Service doesn't know this address. Check the number and ZIP.",
     // The service-area check under the home address
     areaPrompt: "Enter the address, and we'll show it on the map.", areaChecking: 'Checking the address…',
@@ -86,7 +86,7 @@ export const UI = {
     stopEditAddress: 'Change the address',
     steps: 'All steps', stepDone: 'Done', stepNow: 'You are here', stepLocked: 'Not reached yet',
     // The application on its own screen (a bar across the top, the steps beside it on a computer), and the overview on the page
-    appTitle: '{year} Makeover Application', saveExit: 'Save and exit', exitSaved: 'Saved. Your answers are here whenever you come back.',
+    appTitle: '{year} Makeover Application', appTitleShort: '{year} Application', saveExit: 'Save and exit', exitSaved: 'Saved. Your answers are here whenever you come back.', exitSaving: 'Saving your answers…', exitNotSaved: 'Not saved yet: you seem to be offline. Keep this page open and your answers will save when you reconnect.', hubTitleUnsaved: 'Your answers are not saved yet',
     hubTitle: "Here's everything we'll ask", hubLead: '{n} steps, about 15 minutes. Your answers save as you go.',
     hubTitleBack: 'Your application is saved', hubLeadBack: '{done} of {n} steps done. About {m} minutes left.', hubLeadBackOne: '{done} of {n} steps done. About a minute left.',
     hubLeadReady: 'Every step is done. Look it over and submit.',
@@ -174,7 +174,7 @@ export const UI = {
     yourPhoto: 'su foto', yourVideo: 'su video',
     leaveUpload: 'Todavía se está subiendo un archivo. ¿Salir de esta página y detenerlo?',
     suggestions: 'Direcciones sugeridas', countyFilled: 'Completamos el condado de {county} con su dirección.',
-    uspsConfirmed: 'Confirmada por el Servicio Postal.', uspsUnit: 'Si hay un número de apartamento o unidad, agréguelo a la dirección.',
+    uspsConfirmed: 'Confirmada por el Servicio Postal.', uspsUnit: 'Si hay un número de apartamento o unidad, agréguelo a la dirección.', uspsUnitGiven: 'El Servicio Postal no pudo confirmar ese número de apartamento o unidad. Revíselo, por favor.',
     uspsCheck: 'El Servicio Postal no reconoce esta dirección. Revise el número y el código postal.',
     areaPrompt: 'Escriba la dirección y la mostraremos en el mapa.', areaChecking: 'Revisando la dirección…',
     areaInside: 'Dentro de nuestra área de servicio', areaNear: 'Cerca de nuestra área de servicio', areaFar: 'Fuera de nuestra área de servicio',
@@ -184,8 +184,8 @@ export const UI = {
     areaMapLabel: 'Mapa de nuestra área de servicio en el área metropolitana de Atlanta, con los límites de los condados y las ciudades cercanas.', areaMapHome: ' La casa que escribió está marcada.',
     areaHome: 'Casa', areaLegend: 'Nuestra área de servicio', areaLegendHome: 'La casa que escribió', areaAway: 'Casa, a {miles} mi',
     stopEditAddress: 'Cambiar la dirección',
-    steps: 'Todos los pasos', stepDone: 'Listo', stepNow: 'Usted está aquí', stepLocked: 'Todavía no llega',
-    appTitle: 'Solicitud {year}', saveExit: 'Guardar y salir', exitSaved: 'Guardado. Sus respuestas estarán aquí cuando regrese.',
+    steps: 'Todos los pasos', stepDone: 'Listo', stepNow: 'Usted está aquí', stepLocked: 'Todavía no',
+    appTitle: 'Solicitud {year}', appTitleShort: 'Solicitud {year}', saveExit: 'Guardar y salir', exitSaved: 'Guardado. Sus respuestas estarán aquí cuando regrese.', exitSaving: 'Guardando sus respuestas…', exitNotSaved: 'Todavía no se guardó: parece que no tiene conexión. Deje esta página abierta y sus respuestas se guardarán cuando se vuelva a conectar.', hubTitleUnsaved: 'Sus respuestas todavía no se guardaron',
     hubTitle: 'Esto es todo lo que le preguntaremos', hubLead: '{n} pasos, unos 15 minutos. Sus respuestas se guardan mientras avanza.',
     hubTitleBack: 'Su solicitud está guardada', hubLeadBack: '{done} de {n} pasos listos. Quedan unos {m} minutos.', hubLeadBackOne: '{done} de {n} pasos listos. Queda más o menos un minuto.',
     hubLeadReady: 'Todos los pasos están listos. Revise y envíe la solicitud.',
@@ -411,7 +411,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
     let control = '';
     switch (f.type) {
       case 'text': control = `<input type="text" id="${id}" maxlength="${f.rules?.maxLength || TEXT_MAX}" enterkeyhint="next" ${desc}>`; break;
-      case 'number': control = `<input type="text" inputmode="decimal" id="${id}" maxlength="20" enterkeyhint="next" ${desc}>`; break;
+      case 'number': control = `<input type="text" inputmode="${f.rules?.integer ? 'numeric' : 'decimal'}" id="${id}" maxlength="20" enterkeyhint="next" ${desc}>`; break; // whole numbers: no decimal point on the keypad
       // A likely typo in the address ("gmial.com") gets a one-tap fix under it (the script fills this in)
       case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' || f.id === 'contactEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" enterkeyhint="next" ${desc}><p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>`; break;
       case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' || f.id === 'contactPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" enterkeyhint="next" ${desc}>`; break;

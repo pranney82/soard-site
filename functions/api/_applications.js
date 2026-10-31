@@ -35,7 +35,7 @@
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import {
-  cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, DEFAULT_STAFF_EMAILS,
+  cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, isVisible, indexById, DEFAULT_STAFF_EMAILS,
 } from './_application-form.js';
 import { buildApplicationPdf } from './_application-pdf.js';
 import { sendEmails, escapeHtml, SITE_ORIGIN, slackPost, slackIssue, slackResolved } from './_broadcast-notify.js';
@@ -678,6 +678,10 @@ export async function submitDraft(env, draft, { now = Date.now(), forceTest = fa
   if (af && area.band !== 'unknown') answers[af.id] = AREA_VALUES[area.band];
   const stop = stopFor(form, answers);
   if (stop) return { ok: false, error: 'stopped', stop: stop.key };
+  // An answer to a question these answers no longer show (Sensory "Yes", explained, then "No"): kept in the
+  // draft in case they switch back, never sent
+  const byId = indexById(form);
+  for (const f of allFields(form)) if (f.id in answers && !isVisible(f, answers, byId)) delete answers[f.id];
   const errors = formErrors(form, answers, draft.files, null, lang);
   if (Object.keys(errors).length) return { ok: false, errors };
 

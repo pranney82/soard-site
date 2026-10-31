@@ -187,6 +187,7 @@ const logo = 'brand-logo-light-bg-display';
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--font-body); font-weight: 600; font-size: 16px; padding: 14px 32px; border: none; border-radius: 100px; cursor: pointer; text-decoration: none; min-height: 52px; transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s cubic-bezier(0.16,1,0.3,1), background 0.25s ease, color 0.25s ease; }
   .btn:hover { transform: translateY(-2px); }
   .btn:disabled { opacity: 0.6; cursor: default; transform: none; }
+  .btn:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 3px; } /* the site's yellow ring barely shows round a yellow button */
   .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
   .btn-primary:hover { box-shadow: 0 8px 24px var(--c-yellow-glow); }
   .btn-dark { background: var(--c-dark); color: #fff; }
@@ -324,6 +325,9 @@ const logo = 'brand-logo-light-bg-display';
   /* A quick colour change and press, no lift or glow easing in: nothing still moving once the next screen is in */
   .adv-nav-row :is(.adv-back, .adv-next).btn { transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
   .adv-nav-row :is(.adv-back, .adv-next).btn:hover { transform: none; }
+  /* Held through a screen change (the browser hovers nothing then): the hover look stays, no blink */
+  .adv-nav-row .btn-primary[data-held] { box-shadow: 0 8px 24px var(--c-yellow-glow); }
+  .adv-nav-row .btn-outline-dark[data-held] { background: var(--c-dark); color: var(--c-yellow); }
   .adv-nav-row :is(.adv-back, .adv-next).btn:active { transform: scale(.98); }
   :is(#adv-go, [data-adv-cta])[aria-busy="true"] { cursor: progress; opacity: .85; }
   .adv-send-error { max-width: 672px; margin: 0 auto 12px; padding: 12px 16px; border-radius: 12px; background: #FFF6D6; color: #5C4A00; font-weight: 600; }

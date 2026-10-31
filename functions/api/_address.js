@@ -42,11 +42,16 @@ export async function suggestAddresses(q, fetchImpl = fetch) {
   const out = [];
   // The house number typed is the house: a near number on the same street is someone else's home
   const typedNo = (query.match(/^\s*(\d+[A-Za-z]?)\b/) || [])[1]?.toLowerCase();
+  // …and the street typed is the street: "1000 Holcomb Woods Pkwy" is never 1000 Woodstock Rd. Its first
+  // name word (not N, S, NE…), whole or begun, starts a word of the street's name
+  const typedStreet = typedNo ? (query.replace(/^\s*\d+[A-Za-z]?\s+/, '').split(',')[0].toLowerCase().match(/[a-z0-9]+/g) || []).find(w => !/^(n|s|e|w|ne|nw|se|sw)$/.test(w)) : null;
+  const onStreet = (street) => !typedStreet || new RegExp(`\\b${typedStreet.replace(/[^a-z0-9]/g, '')}`).test(`${street} ${shorten(street)}`.toLowerCase());
   for (const f of data.features || []) {
     const p = f.properties || {};
     if (p.countrycode && p.countrycode !== 'US') continue;
     if (!p.housenumber || !p.street) continue;
     if (typedNo && String(p.housenumber).toLowerCase() !== typedNo) continue;
+    if (!onStreet(p.street)) continue;
     const line1 = `${p.housenumber} ${shorten(p.street)}`;
     const state = STATES[p.state] || p.state || '';
     const zip = String(p.postcode || '').slice(0, 5);

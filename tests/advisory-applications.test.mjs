@@ -75,6 +75,10 @@ test('the rules: what has to be answered, follow-ups only when they apply, and c
   assert.equal(bad.problems.conflictMore, 'Please fill this in.', 'a Yes on conflicts asks for the reason');
   assert.equal(bad.answers.surprise, undefined, 'unknown fields are dropped');
 
+  // The phone: ten digits, as the family application asks (a work extension and a + number from abroad are fine)
+  for (const [phone, ok2] of [['404555012', false], ['404-555-01', false], ['(770) 555-0142', true], ['1 770 555 0142', true], ['404.555.0188 x12', true], ['404 555 0188 ext. 7', true], ['+44 20 7946 0958', true]]) {
+    assert.equal(!checkAnswers({ ...GOOD, phone }).problems.phone, ok2, phone);
+  }
   const no = checkAnswers({ ...GOOD, involved: 'No', involvedHow: 'left over from a Yes' });
   assert.equal(no.answers.involvedHow, undefined, 'a follow-up that no longer applies isn’t kept');
   const one = checkAnswers({ fullName: 'A B' }, { step: 'you' });

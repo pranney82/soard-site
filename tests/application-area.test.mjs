@@ -197,6 +197,17 @@ test('submit checks the address on file again, and the family is told (not stopp
   assert.ok(app.jt_state.formArea.miles > 70);
 });
 
+test('an answer to a question the family no longer sees (Sensory Yes, explained, then No) is never sent; the draft keeps it', async () => {
+  const draft = await readyDraft(answersAt(HOME_IN, { sensory: 'No', sensoryDetail: 'Loud noises', destructive: 'Yes', destructiveDetail: 'Kicks the wall' }));
+  await areaCheck(env, await form(), HOME_IN, { draft });
+  const sub = await submitDraft(env, await getDraft(env.DB, draft.id));
+  assert.equal(sub.ok, true);
+  const app = await getApplication(env.DB, sub.id);
+  assert.equal(app.answers.sensoryDetail, undefined);
+  assert.equal(app.answers.destructiveDetail, 'Kicks the wall', 'one still asked for is sent');
+  assert.equal((await getDraft(env.DB, draft.id)).answers.sensoryDetail, 'Loud noises');
+});
+
 test('with Settings stopping families far out, submit refuses a far home', async () => {
   await saveFormRules(env.DB, { serviceArea: { beyond: 'stop' } }, { user: 'peter@soardcharity.com' });
   const sub = await submitDraft(env, await readyDraft(answersAt(HOME_FAR, { boundary: AREA_VALUES.inside })));

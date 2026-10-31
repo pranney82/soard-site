@@ -14,6 +14,7 @@
  *   video-url  { token, size, name }                → one-time Stream tus URL
  *   video-done { token }                            → marks the video uploaded once Stream has it
  *   remove-file{ token, field }                     → clears a photo or the video
+ *   thumb      { token, field }                     → that photo's small preview (a JPEG), to show it again
  *   submit     { token }                            → { id } and loads it into JobTread
  *   test-status{ token }                            → a staff test run's intake, step by step
  * POST multipart (action=photo, token, field, file, thumb?) → stores a photo
@@ -239,6 +240,14 @@ export async function onRequestPost(context) {
         || (draft.area.reason === 'no-match' && draft.area.key === addressKey(draft.answers?.address) ? draft.area : null);
     }
     return json({ ok: true, kind: kindOf(draft.kind), year: draft.year, lang: draft.lang || 'en', answers: draft.answers, files: publicFiles(draft.files), page: draft.page || null, maxPage: draft.max_page_id || null, submitted: !!draft.submitted_id, remindersOff: body.reminders === 'off' || !!draft.reminders_off, area: publicArea(area), test: draft.test_by ? { by: draft.test_by } : null });
+  }
+  // A photo they added, its small preview: the page shows it again after a reload or from the emailed link
+  if (action === 'thumb') {
+    const f = draft.files?.[String(body.field || '')];
+    const store = applicantFiles(env);
+    const obj = f?.thumbKey && store ? await store.get(f.thumbKey) : null;
+    if (!obj) return fail('No preview', 404);
+    return new Response(obj.body, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store' } });
   }
   if (action === 'test-status') {
     const st = await testRunStatus(env, draft, { nudge: (p) => context.waitUntil(p) });

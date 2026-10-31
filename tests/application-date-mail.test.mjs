@@ -28,3 +28,20 @@ test('a likely typo in an email provider is offered its fix; a real address neve
   assert.equal(mailFix('kim@gmx.com'), null);
   assert.equal(mailFix('not an email'), null);
 });
+
+test('the home is a place, not a mailbox: a PO box is turned away there (a parent\'s mailing address may be one)', () => {
+  const home = { id: 'address', type: 'address', required: true };
+  const box = { line1: 'PO Box 123', line2: '', city: 'Roswell', state: 'GA', zip: '30076' };
+  assert.equal(fieldError(home, box, 'en'), 'Please enter a street address, not a PO box.');
+  assert.equal(fieldError(home, { ...box, line1: 'P.O. Box 9' }, 'es'), 'Escriba una dirección con calle, no un apartado postal.');
+  assert.equal(fieldError(home, { ...box, line1: '12 Main St', line2: 'Post Office Box 4' }, 'en'), 'Please enter a street address, not a PO box.');
+  assert.equal(fieldError(home, { ...box, line1: '1000 Boxwood Ln' }, 'en'), null, 'a street with "box" in its name is a street');
+  assert.equal(fieldError({ id: 'parentAddress', type: 'address' }, box, 'en'), null);
+});
+
+test('an email ending no address has ("gmail.con") is turned away, with the fix offered; real endings pass', () => {
+  const f = { id: 'parentEmail', type: 'email', required: true };
+  for (const v of ['mom@gmail.con', 'mom@yahoo.cmo', 'mom@comcast.nte', 'mom@school.ogr']) assert.equal(fieldError(f, v, 'en'), 'Please enter a valid email address, like name@example.com.', v);
+  for (const v of ['mom@gmail.com', 'mom@school.co', 'mom@example.org', 'mom@mail.com']) assert.equal(fieldError(f, v, 'en'), null, v);
+  assert.equal(mailFix('mom@gmail.con'), 'mom@gmail.com');
+});

@@ -156,8 +156,11 @@ export function initAdvisoryForm() {
     const join = (a, b) => (a && b ? a + gap + b : a + b);
     tucked.forEach((k) => { k.hidden = true; });
     const blocks = [];
+    // Questions of one group (the reference's name, how they know you, email, phone) share a screen while they fit one
+    const groupOf = (k) => idsOf(k).map((x) => ADVISORY_FIELDS.find((y) => y.id === x)?.group).find(Boolean) || null;
     kids.forEach((k, j) => {
       const f = k.matches('[data-field]') ? ADVISORY_FIELDS.find((x) => x.id === k.dataset.field) : null;
+      const g = groupOf(k);
       // A follow-up shows on its question's screen when the two fit one together (its question may sit a
       // piece back, a pair split on a phone: they join); else it's the next screen's
       const lead = f?.showIf ? blocks.findIndex((b) => Object.keys(f.showIf).some((x) => b.ids.has(x))) : -1;
@@ -169,15 +172,17 @@ export function initAdvisoryForm() {
         blocks.push(first);
       }
       const prev = blocks[blocks.length - 1];
-      const follows = prev && (!h[j] || k.matches('.adv-date') || (f?.showIf && together && Object.keys(f.showIf).some((x) => prev.ids.has(x))));
+      const follows = prev && (!h[j] || k.matches('.adv-date') || (f?.showIf && together && Object.keys(f.showIf).some((x) => prev.ids.has(x)))
+        || (g && prev.group === g && join(prev.h, h[j]) <= fit));
       if (prev && (follows || prev.carry)) {
         prev.kids.push(k); prev.h = join(prev.h, h[j]);
+        prev.group = g || prev.group;
         idsOf(k).forEach((x) => prev.ids.add(x));
         prev.carry = prev.carry && !h[j];
         return;
       }
       // The step's intro leads into what follows, when both fit a screen together
-      blocks.push({ kids: [k], h: h[j], ids: new Set(idsOf(k)), carry: k.matches('.adv-intro') && h[j] < fit * 0.5 && join(h[j], h[j + 1] || 0) <= fit });
+      blocks.push({ kids: [k], h: h[j], ids: new Set(idsOf(k)), group: g, carry: k.matches('.adv-intro') && h[j] < fit * 0.5 && join(h[j], h[j + 1] || 0) <= fit });
     });
     let n = 0;
     let acc = -1;
@@ -295,7 +300,9 @@ export function initAdvisoryForm() {
     for (const f of ADVISORY_STEPS[i]?.fields || []) {
       if (!isShown(f, a) || f.type === 'check') continue;
       const v = String(a[f.id] || '').split('\n')[0].trim();
-      if (v && parts.length < 2) parts.push(v.length > 40 ? `${v.slice(0, 38).trimEnd()}…` : v);
+      // A Yes or No says what it's to ("Four meetings a year: Yes"), not "Yes · Yes"
+      const said = f.brief ? `${f.brief}: ${v}` : v;
+      if (v && parts.length < 2) parts.push(said.length > 40 ? `${said.slice(0, 38).trimEnd()}…` : said);
     }
     return parts.join(' · ');
   }
@@ -355,9 +362,35 @@ export function initAdvisoryForm() {
   }
 
   /**
-   * Change what's on screen with the motion of going forward or back (Plaid's timing, the
-   * makeover application's: the old screen out in 120ms, the new one in over 260ms); a step's
-   * name holds still between its own screens. Resolves once the new screen is in the page.
+   * The browser hovers nothing while a view transition runs, so Continue or Back just clicked would
+   * lose its hover look for the change and get it back after (a blink on every mouse press). It keeps
+   * the look (data-held) until the pointer is back over it, moves, or 600ms pass.
+   */
+  let holdGen = 0;
+  function hold() {
+    const btns = [...document.querySelectorAll('.adv-nav-row .btn:hover, .adv-nav-row [data-held]')];
+    btns.forEach(b => b.setAttribute('data-held', ''));
+    return { btns, gen: ++holdGen };
+  }
+  function letGo(held) {
+    if (!held.btns.length) return;
+    const end = performance.now() + 600;
+    const done = () => {
+      removeEventListener('pointermove', done, true);
+      if (held.gen === holdGen) held.btns.forEach(b => b.removeAttribute('data-held'));
+    };
+    addEventListener('pointermove', done, true);
+    const check = () => {
+      if (held.gen !== holdGen) return removeEventListener('pointermove', done, true);
+      if (performance.now() > end || held.btns.every(b => !b.isConnected || b.hidden || b.matches(':hover'))) done();
+      else requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  }
+  /**
+   * Change what's on screen with the motion of going forward or back (Linear's pace, the makeover
+   * application's: the old screen out in 90ms, the new one in over 200ms); a step's name holds
+   * still between its own screens. Resolves once the new screen is in the page.
    */
   function swap(update, dir, same) {
     const html = document.documentElement;
@@ -371,12 +404,13 @@ export function initAdvisoryForm() {
     html.classList.toggle('adv-vt-back', dir < 0);
     html.classList.toggle('adv-vt-same', same);
     moving = true;
+    const held = hold();
     let vt;
     try { vt = document.startViewTransition(() => { try { update(); } catch (err) { console.warn('Could not change the screen', err); } }); } catch {
-      html.classList.remove('adv-vt', 'adv-vt-back', 'adv-vt-same'); moving = false; update(); return Promise.resolve();
+      html.classList.remove('adv-vt', 'adv-vt-back', 'adv-vt-same'); moving = false; update(); letGo(held); return Promise.resolve();
     }
     vt.ready.catch(() => {});
-    vt.finished.catch(() => {}).finally(() => { if (!moving) html.classList.remove('adv-vt', 'adv-vt-back', 'adv-vt-same'); });
+    vt.finished.catch(() => {}).finally(() => { if (!moving) html.classList.remove('adv-vt', 'adv-vt-back', 'adv-vt-same'); letGo(held); });
     return vt.updateCallbackDone.catch(() => {}).finally(() => { moving = false; });
   }
   /** Put a step on screen, a screen of it (a number, 'last', or the one holding `at`) */
@@ -890,11 +924,12 @@ export function initAdvisoryForm() {
     ui.back.disabled = true;
     ui.next.textContent = 'Sending…';
     try {
+      // No connection: said in words, not the browser's ("Failed to fetch", "Load failed")
       const res = await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answers: all.answers, website: form.elements.website?.value || '', turnstileToken, startedAt }),
-      });
+      }).catch(() => { throw new Error('That didn’t send: you seem to be offline. Your answers are still here; please try again once you’re connected.'); });
       const d = await res.json().catch(() => ({}));
       if (res.status === 422 && d.problems) {
         const at = ADVISORY_STEPS.findIndex((s) => s.fields.some((f) => d.problems[f.id]));
@@ -924,6 +959,7 @@ export function initAdvisoryForm() {
       ui.next.disabled = false;
       ui.back.disabled = false;
       paint();
+      if (!form.hidden && !document.activeElement?.closest?.('.adv-page:not([hidden])')) ui.next.focus({ preventScroll: true }); // Send again, where they were (the note is read out)
     } finally {
       sending = false;
     }

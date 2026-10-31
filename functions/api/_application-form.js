@@ -1137,8 +1137,11 @@ export function stopFor(form, answers) {
 const isBlank = (v) => v == null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length)
   || (typeof v === 'object' && !Array.isArray(v) && Object.values(v).every(x => !String(x ?? '').trim()));
 
+// Endings no address has, a key or two from .com / .net / .org ("gmail.con"): turned away, the "Did you mean" says the fix
+export const TYPO_TLD = /\.(?:con|cmo|ocm|vom|xom|comm|coom|cpm|cim|nte|ent|nett|ogr|rog|orgg)$/i;
 export function isEmailAddress(s) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s || '').trim());
+  const v = String(s || '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v) && !TYPO_TLD.test(v);
 }
 
 /** US numbers to E.164 (+1XXXXXXXXXX); international numbers kept when they start with + */
@@ -1168,7 +1171,7 @@ export const ERROR_TEXT = {
     area: 'Please enter the home address so we can check it, or choose an answer.',
     email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.',
     date: 'Please enter a valid date.', year: 'Please check the year.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
-    address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.',
+    address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.', poBox: 'Please enter a street address, not a PO box.',
     oneOf: 'Please choose one of the answers.', listed: 'Please choose from the answers listed.', upTo: (n) => `Please choose up to ${n}.`,
     number: 'Please enter a number.', whole: 'Please enter a whole number.', min: (n) => `Please enter ${n} or more.`, max: (n) => `Please enter ${n} or less.`,
     minLength: (n) => `Please write at least ${n} characters.`, maxLength: (n) => `Please keep this to ${n} characters or fewer.`,
@@ -1180,7 +1183,7 @@ export const ERROR_TEXT = {
     area: 'Escriba la dirección de la casa para que podamos revisarla, o elija una respuesta.',
     email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.',
     date: 'Escriba una fecha válida.', year: 'Revise el año.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
-    address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.',
+    address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.', poBox: 'Escriba una dirección con calle, no un apartado postal.',
     oneOf: 'Elija una de las respuestas.', listed: 'Elija entre las respuestas de la lista.', upTo: (n) => `Elija hasta ${n}.`,
     number: 'Escriba un número.', whole: 'Escriba un número entero.', min: (n) => `Escriba ${n} o más.`, max: (n) => `Escriba ${n} o menos.`,
     minLength: (n) => `Escriba al menos ${n} caracteres.`, maxLength: (n) => `Use ${n} caracteres o menos.`,
@@ -1240,6 +1243,8 @@ export function fieldError(field, value, lang = 'en') {
       const missing = ['line1', 'city', 'state', 'zip'].filter(k => !String(value[k] || '').trim());
       if (missing.length && (field.required || missing.length < 4)) return E.address;
       if (value.zip && !/^\d{5}(-\d{4})?$/.test(String(value.zip).trim())) return E.zip;
+      // The home (the address the service area is checked on) is a place, not a mailbox
+      if (field.id === 'address' && /\b(?:p\.?\s*o\.?\s*box|post\s+office\s+box)\b/i.test(`${value.line1 || ''} ${value.line2 || ''}`)) return E.poBox;
       return null;
     }
     case 'radio': case 'select': case 'ack': case 'area':

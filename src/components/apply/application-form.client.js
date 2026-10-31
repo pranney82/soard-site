@@ -414,6 +414,32 @@ function init(root, cfg, mode) {
     window.scrollTo({ top: Math.max(0, window.scrollY + top - offset), behavior: reducedMotion() ? 'auto' : 'smooth' });
   }
   /**
+   * The browser hovers nothing while a view transition runs, so the button just clicked would lose its
+   * hover look for the change and fade it back in after (a blink on every mouse press). It keeps the
+   * look (data-held) until the pointer is back over it, moves, or 600ms pass.
+   */
+  let holdGen = 0;
+  function hold() {
+    const btns = [...root.querySelectorAll('.af-btn:hover, .af-step:hover, [data-held]')];
+    btns.forEach(b => b.setAttribute('data-held', ''));
+    return { btns, gen: ++holdGen };
+  }
+  function letGo(held) {
+    if (!held.btns.length) return;
+    const end = performance.now() + 600;
+    const done = () => {
+      removeEventListener('pointermove', done, true);
+      if (held.gen === holdGen) held.btns.forEach(b => b.removeAttribute('data-held'));
+    };
+    addEventListener('pointermove', done, true);
+    const check = () => {
+      if (held.gen !== holdGen) return removeEventListener('pointermove', done, true);
+      if (performance.now() > end || held.btns.every(b => !b.isConnected || b.matches(':hover'))) done();
+      else requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  }
+  /**
    * Change what's on screen (`update` does it) with the motion of going forward or back: the old
    * screen slips out the way they're heading and the new one slides in from the other side, at
    * Linear's pace (90ms out, 200ms in, overlapping). View Transitions where the browser has them, a plain
@@ -438,6 +464,7 @@ function init(root, cfg, mode) {
     html.classList.toggle('af-vt-back', dir < 0);
     html.classList.toggle('af-vt-same', samePage);
     moving = true;
+    const held = hold();
     let vt;
     try {
       vt = document.startViewTransition(() => { try { update(); } catch (err) { console.warn('Could not change the screen', err); } });
@@ -445,10 +472,11 @@ function init(root, cfg, mode) {
       html.classList.remove('af-vt', 'af-vt-back', 'af-vt-same');
       moving = false;
       update();
+      letGo(held);
       return Promise.resolve();
     }
     vt.ready.catch(() => {}); // skipped (another change came first, or the tab went to the background): the screen still changes
-    vt.finished.catch(() => {}).finally(() => { if (!moving) html.classList.remove('af-vt', 'af-vt-back', 'af-vt-same'); });
+    vt.finished.catch(() => {}).finally(() => { if (!moving) html.classList.remove('af-vt', 'af-vt-back', 'af-vt-same'); letGo(held); });
     return vt.updateCallbackDone.catch(() => {}).finally(() => { moving = false; });
   }
 
@@ -464,6 +492,7 @@ function init(root, cfg, mode) {
   function enterFocus() {
     if (focused || root.hidden) return false;
     focused = true;
+    if (/^exit/.test(lastNotice?.m || '')) notice(null); // "Saved…" was for the overview, not the screen they come back to
     root.classList.add('is-focus');
     document.documentElement.classList.add('af-focus');
     if (!live) session.set(true);
@@ -487,11 +516,16 @@ function init(root, cfg, mode) {
     if (go !== currentId) currentId = null; // a new page: worked out afresh
     const piece = resumePiece && pageEl(go)?.contains(resumePiece) ? resumePiece : null;
     resumePiece = null;
-    show(go, piece ? { piece, scroll: true } : { screen: 'open', scroll: true }).then(() => (depth ? replaceLoc() : pushLoc()));
+    show(go, piece ? { piece, scroll: true } : { screen: 'open', scroll: true }).then(() => {
+      if (depth) replaceLoc(); else pushLoc();
+      // Measured again once the application has the screen (Safari can measure the first frame's words a
+      // line long), before the count is read: "Part 1 of 5" then "Part 2 of 4" never happens
+      requestAnimationFrame(() => requestAnimationFrame(() => replan(true)));
+    });
   }
   function exitFocus({ fromPop = false } = {}) {
     if (!focused) return;
-    if (token) save();
+    const saving = token && !doneShown && !previewing ? save() : null; // sent: nothing more to save
     resumePiece = currentId !== 'review' && anchor && pageEl(currentId)?.contains(anchor) ? anchor : null; // "Continue where you left off": this screen
     closeRecorder();
     closeSuggest();
@@ -504,7 +538,11 @@ function init(root, cfg, mode) {
     left = depth > 0 ? { depth, at: whereNow() } : null;
     if (depth > 0) { swallow = true; history.go(-depth); }
     depth = 0;
-    if (token && !doneShown && !previewing) notice('exitSaved', 'success');
+    if (saving) {
+      // "Saved" only once it is: offline, they're told the answers are still on this page
+      notice('exitSaving');
+      saving.then((ok) => { if (!focused && lastNotice?.m === 'exitSaving') notice(ok ? 'exitSaved' : 'exitNotSaved', ok ? 'success' : 'error'); });
+    }
     paintHeader();
     requestAnimationFrame(() => {
       const app = document.getElementById('application');
@@ -535,7 +573,20 @@ function init(root, cfg, mode) {
     const ids = [...screenFieldIds(pid, n)];
     return ids.find(id => byId[id] && (isInput(byId[id]) || isUpload(byId[id]))) || ids[0] || null;
   };
-  const whereNow = () => (currentId === 'review' || !currentId ? { page: 'review' } : { page: currentId, field: screenQuestion() || (anchor && idsOf(anchor)[0]) || null });
+  // Where a screen is: its question; the service-area check's card or map alone on a screen, which of them
+  const screenAt = (pid = currentId, n = screenNo) => {
+    const q = screenQuestion(pid, n);
+    if (q) return { field: q };
+    const k = (packs[pid]?.[n] || []).find(x => x.matches('[data-area-result], [data-area-map]'));
+    if (k) return { field: k.closest('[data-field]').dataset.field, area: k.matches('[data-area-map]') ? 'map' : 'found' };
+    return { field: (anchor && idsOf(anchor)[0]) || null };
+  };
+  const whereNow = () => (currentId === 'review' || !currentId ? { page: 'review' } : { page: currentId, ...screenAt() });
+  /** The piece a location stands for (the screen holding it is the one) */
+  const atPiece = (at) => {
+    const el = at?.page && at.page !== 'review' && at.field ? fieldEl(at.field) : null;
+    return (at?.area && el?.querySelector(at.area === 'map' ? '[data-area-map]' : '[data-area-result]')) || el;
+  };
   function pushLoc(extra = {}) {
     if (!histOk()) return;
     const at = { ...whereNow(), ...extra };
@@ -553,11 +604,11 @@ function init(root, cfg, mode) {
     try { history.replaceState({ ...(history.state || {}), afFocus: 1, afDepth: depth, afAt: at }, ''); trail[depth] = at; } catch { /* history unavailable */ }
   }
   function armTrap() { if (!depth) pushLoc(); }
-  const sameAt = (x, y) => !!x && !!y && x.page === y.page && (x.page === 'review' || x.field === y.field);
+  const sameAt = (x, y) => !!x && !!y && x.page === y.page && (x.page === 'review' || (x.field === y.field && (x.area || '') === (y.area || '')));
   /** The screen an entry was: shown, sliding the way they went */
   function goTo(at, dir) {
     if (!at?.page) return;
-    const piece = at.page !== 'review' && at.field ? fieldEl(at.field) : null;
+    const piece = atPiece(at);
     if (sameAt(at, whereNow())) return;
     show(at.page, piece ? { dir, piece } : { dir, screen: 0 });
   }
@@ -790,7 +841,7 @@ function init(root, cfg, mode) {
     const doneCount = steps.filter(id => stepDone(id, needs)).length;
     const ready = started && !needs.size && order(furthestId) >= order('review');
     const mins = minutesLeft(ids, a);
-    ui.hubTitle.textContent = T(started ? 'hubTitleBack' : 'hubTitle');
+    ui.hubTitle.textContent = T(!started ? 'hubTitle' : ['offline', 'notSaved', 'paused'].includes(lastSave) ? 'hubTitleUnsaved' : 'hubTitleBack');
     ui.hubLead.textContent = !started ? T('hubLead', { n: ids.length })
       : ready ? T('hubLeadReady')
         : T(mins <= 1 ? 'hubLeadBackOne' : 'hubLeadBack', { done: doneCount, n: ids.length, m: mins }); // the same count as "Step 4 of 10"
@@ -857,6 +908,14 @@ function init(root, cfg, mode) {
     ui.next.setAttribute('aria-busy', String(busyShown));
     if (ui.turnstile) ui.turnstile.hidden = !(turnstileSiteKey && !token && !previewing && at === 0 && screenNo === 0);
     fitNavLater();
+    fitTopTitle();
+  }
+  /** The bar's title as it fits: the application's whole name, else its short one ("2027 Application") */
+  function fitTopTitle() {
+    const el = ui.top?.querySelector('.af-top-title');
+    if (!el || !focused) return;
+    el.textContent = T('appTitle');
+    if (el.scrollWidth > el.clientWidth + 1) el.textContent = T('appTitleShort');
   }
   /**
    * A phone's bar: Save and finish later between Back and Continue while it fits beside them (three
@@ -887,14 +946,17 @@ function init(root, cfg, mode) {
   // A pair of questions stacked on a phone is two pieces too (they can take a screen each)
   const stackedPair = (k) => k.matches('.af-pair') && k.children.length === 2
     && k.children[1].getBoundingClientRect().top >= k.children[0].getBoundingClientRect().bottom - 1;
-  // The check couldn't place the home (it asks): what it found, then the question with the map, which can
-  // take a screen of their own where all three don't fit (the question is about the map, so they stay together)
+  // What the check found, then the map: the map shares the card's screen while it fits there at a size
+  // that still reads (MAP_LEAST), else it has the next. When the check couldn't place the home (it asks),
+  // the question goes with the map (it's about the map, so they stay together)
+  const MAP_LEAST = 150;
   const asksAboutHome = (k) => k.matches('.af-field--area') && ['unknown', 'error'].includes(k.querySelector('[data-area]')?.dataset.area);
   const areaPieces = (k) => {
     const [res, ask, map] = ['[data-area-result]', '[data-area-ask]', '[data-area-map]'].map(q => k.querySelector(q));
     // In pieces only where they stand one under another (a phone); beside each other they're one
     const stacked = res && map && map.getBoundingClientRect().top >= res.getBoundingClientRect().bottom - 1;
-    return asksAboutHome(k) && stacked && ask ? [res, ask, map] : [k];
+    if (!stacked) return [k];
+    return asksAboutHome(k) && ask ? [res, ask, map] : [res, map];
   };
   const pieces = (pid) => [...(pageEl(pid)?.children || [])].flatMap(k => (k.matches('.af-place[data-split]') ? [...k.children].flatMap(areaPieces) : stackedPair(k) ? [...k.children] : [k]));
   // A piece's questions (the check's question stands for the service-area answer it belongs to)
@@ -906,6 +968,30 @@ function init(root, cfg, mode) {
     && (/:\s*$/.test(el.textContent) || (el.children.length === 1 && el.firstElementChild.tagName === 'STRONG' && el.textContent.trim() === el.firstElementChild.textContent.trim())));
   const packAsked = {}; // page → whether its screens were worked out with the check asking about the home
   let packSize = '';
+  /** The page's screens worked out again where they stand (the screen they're on kept); `quiet`: only when they come out different */
+  function replan(quiet = false) {
+    if (!focused || !currentId || currentId === 'review' || !packs[currentId] || moving) return;
+    const piece = (anchor && pageEl(currentId)?.contains(anchor) && anchor) || packs[currentId][screenNo]?.[0] || null;
+    if (quiet) {
+      const was = packs[currentId].map(sc => sc.length).join();
+      const now = pack(currentId);
+      if (!now || now.map(sc => sc.length).join() === was) { paintScreen(); fitScreen(); return; }
+    }
+    delete packs[currentId];
+    show(currentId, { piece, focus: false, scroll: false, refit: true });
+  }
+  /**
+   * A step they've been on, come back to: its screens as they were ("Part 3 of 3" stays 3 of 3), while
+   * it's the same window and the same pieces (an answer that changed what the step holds works it out again)
+   */
+  function stillFits(id) {
+    const plan = packs[id];
+    if (!plan || plan.size !== `${innerWidth}x${innerHeight}`) return false;
+    pageEl(id).querySelectorAll('[data-off]').forEach(k => k.removeAttribute('data-off')); // laid out to be told apart (the screen's painted after)
+    const now = pieces(id);
+    const was = plan.flat();
+    return now.length === was.length && now.every((k, i) => k === was[i] && k.isConnected);
+  }
   function room(el) {
     // Down to where the step starts: the bar across the top, and the test-run bar over the step. Not a notice
     // ("Welcome back"): it's there for a moment, and the step's screens stay what they are without it
@@ -987,6 +1073,8 @@ function init(root, cfg, mode) {
     // spacing inside words, the page's gap between questions
     const rects = kids.map(k => k.getBoundingClientRect());
     const h = rects.map(r => r.height);
+    // How much shorter the map can be and still read
+    const mapGives = kids.map(k => (k.matches('[data-area-map]') ? Math.max(0, (k.querySelector('.af-map-frame')?.getBoundingClientRect().height || 0) - MAP_LEAST) : 0));
     let above = null;
     const sp = rects.map((r) => {
       if (!r.height) return 0;
@@ -1014,7 +1102,9 @@ function init(root, cfg, mode) {
         blocks.push(first);
       }
       const prev = blocks[blocks.length - 1];
-      const follows = prev && (!h[i] || (f?.showIf && prev.ids.has(f.showIf.field) && together) || k.matches('[data-area-map]'));
+      // The map stays with the question about it; with what the check found while the two fit
+      const mapFollows = k.matches('[data-area-map]') && prev && (prev.kids.some(x => x.matches('[data-area-ask]')) || prev.h + sp[i] + h[i] - mapGives[i] <= fit);
+      const follows = prev && (!h[i] || (f?.showIf && prev.ids.has(f.showIf.field) && together) || mapFollows);
       if (prev && (follows || prev.carry)) {
         prev.kids.push(k);
         if (h[i]) prev.h += sp[i] + h[i];
@@ -1078,13 +1168,13 @@ function init(root, cfg, mode) {
     place.style.removeProperty('--af-map-h');
     const frame = fe.querySelector('.af-map-frame');
     if (!focused || !frame || !fe.getClientRects().length || fe.closest('[data-off], [hidden]')) return;
-    // A map that still reads (its pin's name, its key): smaller than that, the screen scrolls instead; a
-    // little smaller on a short phone, so the home's pin opens in view rather than under Back / Continue.
+    // A map that still reads (its pin's name, its key): smaller than that, the screen scrolls instead (on a
+    // phone the packer has given it a screen of its own where it wouldn't read beside the card).
     // With the question about it on its screen, the answers come first: the map gives way further (its key
     // too), so none of them is under Back / Continue
     const ask = fe.querySelector('[data-area-ask]');
     const asking = !!ask && !ask.hidden && onScreen(ask);
-    const least = asking ? 100 : innerHeight <= 620 ? 150 : 200;
+    const least = asking ? 100 : MAP_LEAST;
     place.removeAttribute('data-tight');
     place.removeAttribute('data-nomap');
     const asItWas = () => { place.style.removeProperty('--af-map-h'); place.removeAttribute('data-tight'); settle(); };
@@ -1239,15 +1329,21 @@ function init(root, cfg, mode) {
         buildReview();
       } else {
         let onto = -1;
-        if (pageChanged || !packs[id]) {
+        if (!packs[id] || (pageChanged && !stillFits(id))) {
           ui.stepTitle.textContent = titleOf(id); // measured with this step's own name above it
           packs[id] = pack(id);
+          if (packs[id]) packs[id].size = packSize;
         } else if (step > 0 && packs[id]) {
           // On: the screens still to come are worked out again (an answer can grow what follows, like
           // the service-area check's result), the ones they've seen kept as they were
           const kept = packs[id].slice(0, screenNo + 1);
+          const places = [...pageEl(id).querySelectorAll(':scope > .af-place')];
+          const split = places.map(p => p.hasAttribute('data-split'));
           const fresh = pack(id, kept);
-          if (fresh && fresh.length > kept.length) { packs[id] = fresh; onto = kept.length; }
+          // "Part X of Y" doesn't shrink under them: what turned out shorter than planned (what the check
+          // found, the fonts come in) leaves the screens they were told of, which still fit
+          if (fresh && fresh.length > kept.length && fresh.length >= packs[id].length) { packs[id] = fresh; fresh.size = packSize; onto = kept.length; }
+          else places.forEach((p, i) => p.toggleAttribute('data-split', split[i]));
         }
         if (piece && packs[id]) onto = packs[id].findIndex(kids => kids.some(k => k === piece || k.contains(piece) || piece.contains(k)));
         const n = screensIn(id);
@@ -1260,8 +1356,8 @@ function init(root, cfg, mode) {
         if (!refit) {
           anchor = packs[id]?.[screenNo]?.find(k => k.getClientRects().length) || null;
           // This tab remembers it too: a reload comes back to this screen, not to the next one with an answer missing
-          const field = screenQuestion(id, screenNo) || (anchor && idsOf(anchor)[0]);
-          try { if (field && focused) sessionStorage.setItem(SCREEN_KEY, JSON.stringify({ page: id, field })); } catch { /* storage off */ }
+          const where = screenAt(id, screenNo);
+          try { if (where.field && focused) sessionStorage.setItem(SCREEN_KEY, JSON.stringify({ page: id, ...where })); } catch { /* storage off */ }
         }
       }
       if (pageEl(id)?.querySelector('.af-map-frame')) requestAnimationFrame(() => declutter(pageEl(id)));
@@ -1314,6 +1410,12 @@ function init(root, cfg, mode) {
     if (areaWaiting() && !(home && fieldError(home, homeAddressNow(), lang))) {
       setBusy(true);
       try { await Promise.race([flushArea(), wait(9000)]); } finally { setBusy(false); }
+    }
+    // A suggestion picked a moment ago, its parts still coming: wait for them rather than say to pick one
+    if (placing) {
+      setBusy(true);
+      try { await Promise.race([placing, wait(8000)]); } finally { setBusy(false); }
+      if (areaWaiting()) { setBusy(true); try { await Promise.race([flushArea(), wait(9000)]); } finally { setBusy(false); } }
     }
     // A photo or video on this screen still on its way: Continue waits for it (the button shows it's
     // working) rather than saying it's missing
@@ -1416,10 +1518,20 @@ function init(root, cfg, mode) {
     const p = el.querySelector('.af-error');
     el.classList.toggle('af-field--error', !!msg);
     if (p && p.textContent !== (msg || '')) p.textContent = msg || '';
-    // The boxes the note is about: not an optional part (the apartment), nor a part already filled in
+    if (sug.el === el) suggestNote();
+    // The boxes the note is about: an address's parts still empty, or the one that's wrong (a ZIP short a
+    // digit, a PO box for the street); never the optional apartment
+    const wrong = (i) => {
+      const part = i.dataset.part;
+      const v = i.value.trim();
+      if (!part) return true;
+      if (part === 'line2') return false;
+      if (!v) return true;
+      if (part === 'zip') return !/^\d{5}(-\d{4})?$/.test(v);
+      return part === 'line1' && /\b(?:p\.?\s*o\.?\s*box|post\s+office\s+box)\b/i.test(v);
+    };
     el.querySelectorAll('input:not([type=file]), textarea, select').forEach(i => {
-      const about = !i.matches('[data-part="line2"]') && !(i.matches('[data-part]') && i.value.trim());
-      if (msg && about) i.setAttribute('aria-invalid', 'true'); else i.removeAttribute('aria-invalid');
+      if (msg && wrong(i)) i.setAttribute('aria-invalid', 'true'); else i.removeAttribute('aria-invalid');
     });
   }
   function showPageErrors(errors) {
@@ -1443,9 +1555,9 @@ function init(root, cfg, mode) {
     const note = [...el.querySelectorAll('.af-error')].find(n => n.textContent.trim() && n.getClientRects().length);
     el.scrollIntoView({ block: 'start', behavior: note || reducedMotion() ? 'auto' : 'smooth' });
     note?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-    // An address entered by hand: the first part still empty (not the street they've already typed)
+    // An address entered by hand: the part the note is about (still empty, or a ZIP short a digit), not the street they've typed
     const box = addrBox(el);
-    const empty = box?.dataset.mode === 'parts' ? ['line1', 'city', 'zip'].map(k => box.querySelector(`[data-part="${k}"]`)).find(i => i && !i.value.trim()) : null;
+    const empty = box?.dataset.mode === 'parts' ? box.querySelector('[data-part][aria-invalid="true"]:not([disabled])') : null;
     const target = empty || [...el.querySelectorAll('input:not([type=file]):not([type=radio]):not([type=checkbox]):not([disabled]), textarea, select')].find(x => x.getClientRects().length)
       || el.querySelector('input:checked') || el.querySelector('input[type=radio], input[type=checkbox]')
       || el.querySelector('[data-act="choose"]');
@@ -1485,6 +1597,7 @@ function init(root, cfg, mode) {
   function saveState(key) {
     lastSave = key;
     paintSaveState();
+    if (!focused) paintHub(); // the overview's "Your application is saved" waits for it to be
   }
   function paintSaveState() {
     for (const el of ui.saveStates) {
@@ -1525,17 +1638,29 @@ function init(root, cfg, mode) {
     saveChain = saveChain.then(async () => {
       try {
         const r = await api(body);
-        if (r.ok) { saveState('saved'); return true; }
+        if (r.ok) { saveState('saved'); retries = 0; return true; }
         if (r.code === 'no-draft') { expired(); return false; }
+        if (r.code === 'submitted') { saveState(null); return true; } // sent from another tab: nothing to keep
         saveState(r.status === 429 ? 'paused' : 'notSaved');
+        retrySave();
         return false;
       } catch {
         saveState('offline');
+        retrySave();
         return false;
       }
     });
     return saveChain;
   }
+  // "We will try again" / "…will save when you reconnect": it does, sooner when the connection's back
+  let retryTimer = 0;
+  let retries = 0;
+  const unsaved = () => ['offline', 'notSaved', 'paused'].includes(lastSave);
+  function retrySave() {
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => { if (unsaved() && token && !doneShown) save(); }, Math.min(60000, 5000 * 2 ** retries++));
+  }
+  window.addEventListener('online', () => { if (unsaved() && token && !doneShown) save(); }, { signal });
   function markDirty() {
     if (!token || previewing) return;
     saveState('unsaved');
@@ -2271,7 +2396,24 @@ function init(root, cfg, mode) {
     list.hidden = false;
     input.setAttribute('aria-expanded', 'true');
     input.removeAttribute('aria-activedescendant');
+    suggestNote();
     placeSuggest();
+  }
+  /** A problem with the address while its list is open: said at the list's top (the list covers the note under the box) */
+  function suggestNote() {
+    const { list, el } = sug;
+    if (!list || list.hidden) return;
+    const msg = el?.querySelector('.af-error')?.textContent.trim();
+    let head = list.querySelector('.af-suggest-note');
+    if (!msg) { head?.remove(); return; }
+    if (!head) {
+      head = document.createElement('li');
+      head.className = 'af-suggest-note';
+      head.setAttribute('role', 'presentation');
+      head.setAttribute('aria-hidden', 'true'); // the box's own note says it (aria-describedby)
+      list.prepend(head);
+    }
+    head.textContent = msg;
   }
   /**
    * The list stays inside what can be seen (above a phone's keyboard, clear of the bars): under the
@@ -2301,12 +2443,13 @@ function init(root, cfg, mode) {
     if (sug.input) { sug.input.setAttribute('aria-expanded', 'false'); sug.input.removeAttribute('aria-activedescendant'); }
     Object.assign(sug, { items: [], active: -1, list: null });
   }
+  const options = () => [...(sug.list?.querySelectorAll('[role="option"]') || [])];
   function moveActive(d) {
-    const n = sug.list?.children.length || 0;
+    const n = options().length;
     if (!n) return;
     sug.active = sug.active < 0 ? (d > 0 ? 0 : n - 1) : (sug.active + d + n) % n;
-    [...sug.list.children].forEach((li, i) => li.setAttribute('aria-selected', String(i === sug.active)));
-    const li = sug.list.children[sug.active];
+    options().forEach((li, i) => li.setAttribute('aria-selected', String(i === sug.active)));
+    const li = options()[sug.active];
     sug.input.setAttribute('aria-activedescendant', li.id);
     li.scrollIntoView({ block: 'nearest' });
   }
@@ -2350,10 +2493,13 @@ function init(root, cfg, mode) {
     // A Google suggestion: the line shows it at once, its parts (with the ZIP) a moment later. If they
     // don't come, the parts show with what's known, to finish by hand
     if (search) { search.value = [it.line1, it.sub].filter(Boolean).join(', '); box.dataset.picked = search.value; }
-    const [city, state] = String(it.sub || '').split(',').map(x => x.trim());
-    const byHand = () => done({ line1: it.line1, city, state: /^[A-Z]{2}$/.test(state || '') ? state : undefined });
-    fetch(`${API}?place=${encodeURIComponent(it.id)}`).then(r => r.json()).then((r) => { if (r?.address) done(r.address); else byHand(); }).catch(byHand);
+    const [, city, state, zip] = String(it.sub || '').match(/^(.*?),\s*([A-Z]{2})(?:\s+(\d{5}))?$/) || [];
+    const byHand = () => done({ line1: it.line1, city, state, zip });
+    // Continue waits for this (a slow connection): the pick is made, its parts are on their way
+    const p = placing = fetch(`${API}?place=${encodeURIComponent(it.id)}`).then(r => r.json()).then((r) => { if (r?.address) done(r.address); else byHand(); }).catch(byHand)
+      .finally(() => { if (placing === p) placing = null; });
   }
+  let placing = null; // a picked suggestion's parts still on their way
   /** The county question, set from the address when the county is one of its choices */
   function fillCounty(county, addressEl) {
     const name = String(county || '').trim().toLowerCase();
@@ -2442,7 +2588,9 @@ function init(root, cfg, mode) {
   }
   /** Its line in the result card (Google's terms: the answer shows with its credit) */
   function uspsHtml(status = uspsNow && uspsNow.key === addressKey(homeAddressNow()) ? uspsNow.status : null) {
-    const words = { confirmed: 'uspsConfirmed', unit: 'uspsUnit', check: 'uspsCheck' }[status];
+    // A building with apartments, and they've given theirs: the Postal Service couldn't confirm that one
+    const unitGiven = status === 'unit' && !!homeAddressNow()?.line2;
+    const words = { confirmed: 'uspsConfirmed', unit: unitGiven ? 'uspsUnitGiven' : 'uspsUnit', check: 'uspsCheck' }[status];
     return words ? `<p class="af-usps" data-status="${status}"><span>${esc(T(words))}</span> <span class="af-usps-by" translate="no">Google Maps</span></p>` : '';
   }
   function runArea(addr, key) {
@@ -2473,6 +2621,18 @@ function init(root, cfg, mode) {
   }
 
   /** "123 MAIN ST, MARIETTA, GA, 30060" → "123 Main St, Marietta, GA 30060" */
+  /**
+   * What the check found, in the family's own words while it's their house (same number, same ZIP): the
+   * map service writes "Holcomb Wood Pkwy" for the Woods they picked, and leaves out the apartment
+   */
+  function foundAddress() {
+    const a = homeAddressNow() || {};
+    const m = String(areaNow?.matched || '');
+    const no = (x) => (String(x || '').match(/^\s*(\d+)/) || [])[1];
+    const zip = (x) => (String(x || '').match(/\b(\d{5})(?:-\d{4})?\s*$/) || [])[1];
+    const theirs = no(a.line1) && no(a.line1) === no(m) && (!zip(m) || !zip(a.zip) || zip(m) === zip(a.zip));
+    return theirs ? [a.line1, a.line2, a.city, [a.state, zip(a.zip)].filter(Boolean).join(' ')].filter(Boolean).join(', ') : prettyAddress(m);
+  }
   function prettyAddress(s) {
     const parts = String(s || '').split(/\s*,\s*/).filter(Boolean);
     if (parts.length < 3) return String(s || '');
@@ -2501,7 +2661,7 @@ function init(root, cfg, mode) {
     const desc = stopping ? form.stops[af.stops[value]].body : `<p class="af-area-desc">${esc(String(af.descriptions?.[value] || '').replace(/\{miles\}/g, milesText(areaNow.miles)))}</p>`;
     const title = { inside: 'areaInside', near: 'areaNear', far: 'areaFar' }[st];
     const found = areaNow.matched
-      ? `<p class="af-area-found">${esc(T(areaNow.county ? 'areaFoundCounty' : 'areaFound', { address: prettyAddress(areaNow.matched), county: areaNow.county || '' }))}</p>` : '';
+      ? `<p class="af-area-found">${esc(T(areaNow.county ? 'areaFoundCounty' : 'areaFound', { address: foundAddress(), county: areaNow.county || '' }))}</p>` : '';
     return `<div class="af-area-card" data-band="${st}">${AREA_ICONS[st]}<div class="af-area-text"><p class="af-area-title">${esc(T(title))}</p><div class="af-area-desc-wrap">${desc}</div>${found}${uspsHtml()}<button type="button" class="af-btn af-btn--link af-area-fix" data-act="area-fix">${esc(T('areaFix'))}</button></div></div>`;
   }
   /** Draw the check: map (with the home), what it found, and the question when it couldn't place the home */
@@ -2869,7 +3029,15 @@ function init(root, cfg, mode) {
     btn.setAttribute('aria-expanded', 'true');
     body.querySelectorAll('textarea').forEach(grow);
     if (animate) enter(body, 0, -8);
-    if (focus) body.querySelector('input, select, textarea')?.focus();
+    if (!focus) return;
+    body.querySelector('input, select, textarea')?.focus({ preventScroll: true });
+    // All of it in view, its Remove too (clear of Back / Continue, never past its own start)
+    requestAnimationFrame(() => {
+      const r = body.getBoundingClientRect();
+      const navTop = ui.form.querySelector('[data-nav]')?.getBoundingClientRect().top ?? innerHeight;
+      const by = Math.min(r.bottom + 12 - navTop, r.top - (ui.top?.getBoundingClientRect().bottom || 0) - 8);
+      if (by > 0) window.scrollBy({ top: by, behavior: reducedMotion() ? 'auto' : 'smooth' });
+    });
   }
   function closeTucked(box) {
     const ids = [...box.querySelectorAll('[data-field]')].map(el => el.dataset.field);
@@ -3007,6 +3175,11 @@ function init(root, cfg, mode) {
     e.preventDefault();
     const status = dlg.querySelector('[data-later-status]');
     const email = laterInput.value.trim();
+    // Empty or not an email: said here in the form's own words (not the browser's bubble)
+    const wrong = fieldError({ id: 'laterEmail', type: 'email', required: true }, email, lang);
+    laterInput.toggleAttribute('aria-invalid', !!wrong);
+    status.textContent = wrong || '';
+    if (wrong) { laterInput.focus(); return; }
     if (mailFix(email) && laterAsked !== email) { laterAsked = email; paintMailFix(laterInput); return; }
     const btn = dlg.querySelector('[data-later-form] button[type=submit]');
     btn.disabled = true;
@@ -3031,6 +3204,7 @@ function init(root, cfg, mode) {
   // ── A choice's whole description (More, when a phone shows only part of it) ──
   const detail = ui.detail;
   let detailFor = null; // the box of the choice it's about
+  let detailOpener = null; // the More that opened it: focus goes back there (or to the choice, once chosen)
   function paintDetail() {
     const on = detailFor.checked;
     const full = !on && detailFor.disabled; // two chosen already
@@ -3048,6 +3222,7 @@ function init(root, cfg, mode) {
     const card = detail && !choice && e.target.closest('[data-offer-more]')?.closest('.af-offer-card');
     if (!choice && !card) return;
     detailFor = choice ? choice.querySelector('input') : null;
+    detailOpener = e.target.closest('[data-tile-more], [data-offer-more]');
     detail.querySelector('[data-detail-title]').textContent = (choice ? choice.querySelector('.af-choice-title') : card.querySelector('.af-offer-text strong'))?.textContent || '';
     detail.querySelector('[data-detail-text]').textContent = (choice ? choice.querySelector('.af-choice-desc') : card.querySelector('.af-offer-text > span'))?.textContent || '';
     detail.querySelector('[data-detail-pick]').hidden = !choice;
@@ -3058,9 +3233,13 @@ function init(root, cfg, mode) {
   });
   detail?.querySelector('[data-detail-pick]').addEventListener('click', () => {
     if (!detailFor || (detailFor.disabled && !detailFor.checked)) return;
+    const box = detailFor;
+    detailOpener = null;
     detail.close();
-    detailFor.click(); // as a tap on its box (after the sheet's gone, so the check is seen drawing in): the limit, the save, the rest follow
+    box.click(); // as a tap on its box (after the sheet's gone, so the check is seen drawing in): the limit, the save, the rest follow
+    box.focus({ preventScroll: true }); // on the choice they just made, not lost to the page
   });
+  detail?.addEventListener('close', () => { if (detailOpener?.isConnected) detailOpener.focus({ preventScroll: true }); detailOpener = null; });
   detail?.querySelector('[data-detail-close]').addEventListener('click', () => detail.close());
   detail?.addEventListener('click', (e) => { if (tappedOutside(detail, e)) detail.close(); });
 
@@ -3069,19 +3248,23 @@ function init(root, cfg, mode) {
     if (l === lang || !(form.languages || []).includes(l)) return;
     // Its place kept by the screen's first question (not words to read before it, which a repack can part from it)
     const anchor = currentId !== 'review' ? screenQuestion() : null;
+    const area = !anchor && currentId !== 'review' ? screenAt() : null; // the check's card or its map, alone on the screen
     lang = l;
     if (keep) langPref.set(l);
     draw();
     applyWords();
     ui.form.querySelectorAll('input[type=email]').forEach(i => { if (i.value) paintMailFix(i); }); // "Did you mean …" in the new language
     if (ui.live) ui.live.textContent = ''; // nothing said in the last language is read out after
-    show(currentId, { focus: false, scroll: false, at: anchor && fieldEl(anchor) ? anchor : null });
+    show(currentId, { focus: false, scroll: false, ...(area?.area ? { piece: atPiece({ page: currentId, ...area }) } : { at: anchor && fieldEl(anchor) ? anchor : null }) });
     if (!reducedMotion()) [ui.form, ui.stop, ui.done].forEach(el => !el.hidden && el.animate?.([{ opacity: 0.4 }, { opacity: 1 }], { duration: 220, easing: EASE }));
     if (persist) save();
   }
   ui.langSwitches.forEach(sw => sw.addEventListener('click', (e) => {
     const b = e.target.closest('[data-lang]');
-    if (b) setLang(b.dataset.lang);
+    if (!b) return;
+    setLang(b.dataset.lang);
+    // A phone's switch is one button, the other language: focus stays on it, not lost to the page
+    if (!b.getClientRects().length) [...sw.querySelectorAll('[data-lang]')].find(x => x.getClientRects().length)?.focus({ preventScroll: true });
   }));
 
   // ── Open/closed + Turnstile, from the live settings ──────────────
@@ -3249,6 +3432,14 @@ function init(root, cfg, mode) {
     draw({ merge: false });
     applyWords();
     if (r.submitted) { finished(true); return; }
+    // Their photos' small previews, so they see which ones they sent (not a gray box)
+    for (const [id, pf] of Object.entries(r.files || {})) {
+      if (id === 'video' || !pf.hasThumb) continue;
+      fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'thumb', token, field: id }) })
+        .then(res => (res.ok ? res.blob() : null))
+        .then((b) => { if (b && files[id] && uploadUi[id]?.state === 'done' && !uploadUi[id].thumb) setUpload(id, { thumb: URL.createObjectURL(b) }); })
+        .catch(() => {});
+    }
     // An address without the check's answer for it (it changed just before they left): checked again
     if (homeAddressId() && !areaPlaced() && checkableAddress(homeAddressNow())) scheduleArea(true);
     // How far they got: the draft's record, this device's, the page they were on, what they filled in
@@ -3261,7 +3452,7 @@ function init(root, cfg, mode) {
     // A reload in the same tab: the screen they were on (with the box they were typing in)
     let was = null;
     try { was = JSON.parse(sessionStorage.getItem(SCREEN_KEY) || 'null'); } catch { /* storage off */ }
-    resumePiece = (!fromLink && was?.page === at && fieldEl(was.field)) || null;
+    resumePiece = (!fromLink && was?.page === at && was.field && atPiece(was)) || null;
     show(at, { focus: false, scroll: false, screen: 'open' });
     remember();
     showApp(true); // the hero's button says "Continue"
@@ -3358,7 +3549,7 @@ function init(root, cfg, mode) {
       const at = left && left.depth > to ? left.at : st.afAt;
       if (left && left.depth > to) { swallow = true; history.go(left.depth - to); depth = left.depth; } else depth = to;
       left = null;
-      if (at) { trail[depth] = at; resumePiece = at.page !== 'review' && at.field ? fieldEl(at.field) : null; }
+      if (at) { trail[depth] = at; resumePiece = atPiece(at); }
       begin(at?.page || null);
       return true;
     }
@@ -3394,7 +3585,7 @@ function init(root, cfg, mode) {
       if (Math.abs(innerWidth - w0) < 40 && Math.abs(innerHeight - h0) < 120) return;
       const piece = (anchor && pageEl(currentId)?.contains(anchor) && anchor) || packs[currentId]?.[screenNo]?.[0] || null;
       delete packs[currentId];
-      show(currentId, { piece, focus: false, scroll: false, refit: true });
+      show(currentId, { piece, focus: false, scroll: false, refit: true }).then(() => requestAnimationFrame(() => requestAnimationFrame(() => replan(true))));
     }, 180);
   }, { passive: true, signal });
 
@@ -3533,6 +3724,7 @@ function init(root, cfg, mode) {
   function checkLeft(id) {
     const el = fieldEl(id);
     if (!el || el.contains(document.activeElement)) return;
+    if (placing && byId[id]?.type === 'address') return; // picked from the list, its parts still on their way: nothing to say yet
     const msg = errorFor(id);
     setFieldError(id, msg);
     if (msg) announce(msg);
@@ -3564,7 +3756,7 @@ function init(root, cfg, mode) {
     const open = sug.list && sug.input === input && !sug.list.hidden;
     if (!open) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveActive(e.key === 'ArrowDown' ? 1 : -1); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (sug.active >= 0) chooseOption(sug.list.children[sug.active]); else closeSuggest(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (sug.active >= 0) chooseOption(options()[sug.active]); else closeSuggest(); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSuggest(); }
     else if (e.key === 'Tab') closeSuggest();
   });
@@ -3631,15 +3823,14 @@ function init(root, cfg, mode) {
   const redeclutter = () => { clearTimeout(declutterTimer); declutterTimer = setTimeout(() => { declutter(ui.pages); declutter(ui.stopMap); }, 120); };
   window.addEventListener('resize', redeclutter, { signal });
   window.addEventListener('resize', fitNavLater, { signal });
+  window.addEventListener('resize', fitTopTitle, { signal });
   window.visualViewport?.addEventListener('resize', placeSuggest, { signal });
   window.visualViewport?.addEventListener('scroll', placeSuggest, { signal });
   // Measured again in the site's own type once it has loaded (the first screen can come before it)
   document.fonts?.ready.then(() => {
     fitNavLater();
-    if (!focused || !currentId || currentId === 'review' || !packs[currentId]) return;
-    const piece = (anchor && pageEl(currentId)?.contains(anchor) && anchor) || packs[currentId][screenNo]?.[0] || null;
-    delete packs[currentId];
-    show(currentId, { piece, focus: false, scroll: false, refit: true });
+    fitTopTitle();
+    replan();
   });
   window.addEventListener('beforeunload', (e) => {
     if (uploads.size || recorder?.rec) { e.preventDefault(); e.returnValue = ''; }
