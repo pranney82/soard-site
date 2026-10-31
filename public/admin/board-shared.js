@@ -69,6 +69,61 @@ export function fileTitle(name) {
   const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
   return base ? base[0].toUpperCase() + base.slice(1) : 'File';
 }
+/** A file's format in a word: PDF, Excel, Word, Slides, Photo or File */
+export function formatOf(f) {
+  const n = String(f?.name || '').toLowerCase();
+  const t = String(f?.type || '').toLowerCase();
+  if (t === 'application/pdf' || n.endsWith('.pdf')) return 'PDF';
+  if (/sheet|excel|csv/.test(t) || /\.(xlsx?|csv)$/.test(n)) return 'Excel';
+  if (/word/.test(t) || /\.docx?$/.test(n)) return 'Word';
+  if (/presentation|powerpoint/.test(t) || /\.pptx?$/.test(n)) return 'Slides';
+  if (t.startsWith('image/')) return 'Photo';
+  return 'File';
+}
+/**
+ * A document's title for reading: "Sunshine on a Ranney Day_Statement of Activity (1) (1).pdf" → "Statement of
+ * Activity": no extension, no "Sunshine on a Ranney Day" in front, no " (1)" a download added or " - Sheet1",
+ * " - Copy" an export added; a web link's "+" for spaces, QuickBooks' "StatementofFinancialPosition" apart, a sheet's
+ * name said twice ("Budget FY26 PL - FY26 PL") once, a scan by its day, and a name that's only an id "Document"
+ */
+export function docTitle(name) {
+  // A date's dashes are kept as slashes ("2-9-26" stays a date once the other dashes are spaces)
+  let t = fileTitle(String(name || '').replace(/\+/g, ' ').replace(/\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b/g, '$1/$2/$3'));
+  if (/^[0-9a-f]{8}( [0-9a-f]{4}){3} [0-9a-f]{12}$/i.test(t)) return 'Document';
+  // A scanner's "doc20260209130015": the day it was scanned
+  const scan = /^doc(\d{4})(\d{2})(\d{2})\d{6}$/i.exec(t);
+  if (scan) return `Scan ${Number(scan[2])}/${Number(scan[3])}/${scan[1]}`;
+  t = t.replace(/\b[A-Za-z0-9]{12,}\b/g, (w) => (/[a-z][A-Z]/.test(w) ? w.replace(/([a-z])([A-Z0-9])/g, '$1 $2').replace(/(\d)([A-Z][a-z])/g, '$1 $2').replace(/\b(Statement)of\b/g, '$1 of').replace(/\b(Profit)and\b/g, '$1 and') : w));
+  t = t.replace(/^(Sunshine on a Ranney Day|SOARD)\s+/i, '').replace(/(\s+(Sheet\s*\d+|Copy)|\s*\(\d+\))+$/i, '');
+  const w = t.split(' ');
+  for (let n = Math.floor(w.length / 2); n >= 1; n--) {
+    if (w.slice(-n).join(' ').toLowerCase() === w.slice(-2 * n, -n).join(' ').toLowerCase()) { t = w.slice(0, -n).join(' '); break; }
+  }
+  return t ? t[0].toUpperCase() + t.slice(1) : fileTitle(name);
+}
+// The copy of a document a screen shows: a spreadsheet drawn as itself (sharp at any size, without a printout's
+// gridlines), else the PDF as it was printed, then slides, Word, a photo
+const SHOWN_FIRST = { Excel: 0, PDF: 1, Slides: 2, Word: 3, Photo: 4, File: 5 };
+/**
+ * Files as documents, in their order: the same title in several formats (a statement and its PDF printout) or saved
+ * twice is one document, shown by the copy that reads best on a screen (the newest of two alike)
+ * → [{ key, title, file, copies: [every file, the one shown first] }]
+ */
+export function docsOf(files) {
+  const out = [];
+  for (const f of files) {
+    const title = docTitle(f.name);
+    const key = title.toLowerCase().replace(/[^a-z0-9&]+/g, ' ').trim();
+    let d = out.find((x) => x.key === key);
+    if (!d) out.push(d = { key, title, file: f, copies: [] });
+    d.copies.push(f);
+  }
+  for (const d of out) {
+    d.copies.sort((a, b) => SHOWN_FIRST[formatOf(a)] - SHOWN_FIRST[formatOf(b)] || String(b.at || '').localeCompare(String(a.at || '')));
+    d.file = d.copies[0];
+  }
+  return out;
+}
 export const RESULTS = [
   { id: 'passed', label: 'Passed' },
   { id: 'failed', label: 'Did not pass' },
@@ -538,6 +593,8 @@ export function itemFiles(m, it, meetings = []) {
   }
   return out;
 }
+/** An item's documents (docsOf): each once, by the copy the screen shows */
+export const itemDocs = (m, it, meetings = []) => docsOf(itemFiles(m, it, meetings));
 /** The meeting's files on no item (never the signed copy or its own minutes): "Also for this meeting" */
 export function looseFiles(m) {
   const placed = new Set(m.sections.flatMap((s) => s.items.flatMap((it) => it.docs || [])));
@@ -552,7 +609,8 @@ const QUIET = new Set(['soard', 'sunshine', 'ranney', 'board', 'meeting', 'repor
 const wordsOf = (s) => String(s || '').toLowerCase().split(/[^a-z0-9&]+/).filter((w) => w.length > 3 && !QUIET.has(w) && !/^\d+$/.test(w));
 /**
  * The item a new file most likely goes with, or '': financial statements with the money item, the last
- * meeting's minutes (uploaded before this one) with "approve the minutes", else the one item whose name it shares
+ * meeting's minutes (uploaded before this one) with "approve the minutes", a report named for someone with what they
+ * present, else the one item whose name it shares
  */
 export function guessItem(m, f, today = todayEastern()) {
   const items = m.sections.flatMap((s) => s.items.map((it) => ({ it, s })));
@@ -567,6 +625,10 @@ export function guessItem(m, f, today = todayEastern()) {
     if (hit) return hit;
   }
   const words = new Set(wordsOf(name.replace(/\.[a-z0-9]{2,5}$/i, '')));
+  // Named for someone ("Holly’s Report"): what they present, the one they present alone when there's more than one
+  const theirs = items.filter(({ it }) => wordsOf(it.presenter).some((w) => words.has(w)));
+  const alone = theirs.filter(({ it }) => wordsOf(it.presenter).length === 1);
+  if (alone.length === 1 || (!alone.length && theirs.length === 1)) return (alone[0] || theirs[0]).it.id;
   const scored = items.map(({ it }) => ({ it, n: wordsOf(it.title).filter((w) => words.has(w)).length })).filter((x) => x.n).sort((a, b) => b.n - a.n);
   return scored.length && (scored.length === 1 || scored[0].n > scored[1].n) ? scored[0].it.id : '';
 }
@@ -574,7 +636,8 @@ export function guessItem(m, f, today = todayEastern()) {
 /**
  * The meeting as the screen shows it, one stop at a time: the cover; "since we last met" when the agenda asks to
  * approve the last meeting's minutes; then each part of the agenda, opened by its own card when it has no items or
- * more than one (a part of one item goes straight to it), each item's card and every page of each of its files;
+ * more than one (a part of one item goes straight to it), each item's card and every page of each of its documents
+ * (itemDocs: a statement and its PDF printout are one, shown once);
  * the files on no item; the close. `pages`: { fileId: page count } as far as known (1 until then); `parts`:
  * { fileId: [halves of each page] } (./board/docs.js partsOf: 2 for a tall page, shown top then bottom); `meetings`
  * finds the last meeting's minutes.
@@ -598,9 +661,9 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [] } = {}) {
   for (const s of m.sections) {
     if (!s.title && !s.items.length) continue;
     if (s.items.length !== 1) out.push({ key: `section:${s.id}`, kind: 'section', itemId: '', fileId: '', page: 0, n: -1, sectionId: s.id });
-    for (const it of s.items) add(it, itemFiles(m, it, meetings), n++, s.id);
+    for (const it of s.items) add(it, itemDocs(m, it, meetings).map((d) => d.file), n++, s.id);
   }
-  const loose = looseFiles(m);
+  const loose = docsOf(looseFiles(m)).map((d) => d.file);
   if (loose.length) add(MORE, loose, -1, '');
   out.push({ key: 'end', kind: 'end', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
   return out;

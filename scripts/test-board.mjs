@@ -747,7 +747,7 @@ try {
   await jane.reload({ waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Practice meeting\.[\s\S]*Only you/), 'Practice opens a meeting only the admins see, its members simulated');
   ok(await jane.evaluate(() => !document.querySelector('.bm-stages') && !!document.querySelector('.bm-run.is-ready')), 'just the meeting as it’s held, ready to start');
-  ok(await jane.evaluate(() => [...document.querySelectorAll('.bm-order__item')].some((li) => /Financial/.test(li.textContent) && [...li.querySelectorAll('.bm-showdoc')].some((b) => /Balance sheet financials/.test(b.textContent)))), 'with the next meeting’s documents on their items, to put on the screen');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.bm-order__item')].some((li) => /Financial/.test(li.textContent) && [...li.querySelectorAll('.bm-doc')].some((b) => /Balance sheet financials/.test(b.textContent)))), 'with the next meeting’s documents on their items, to put on the screen');
   const practiceId = await jane.$eval('a[href*="/admin/board/#/meetings/"]', (a) => a.getAttribute('href').split('/').pop());
   await clickText(jane, 'button', /^Start the meeting$/);
   ok(await jane.waitForSelector('.bm-run.is-live', { timeout: 5000 }).then(() => true, () => false), 'Start puts it live, with a clock');
@@ -768,7 +768,7 @@ try {
   ok(await saved(jane), 'each move saves at once');
   let follow = await jane.evaluate(async (id) => (await fetch(`/api/board-portal?live=${id}`)).json(), practiceId);
   ok(follow.practice && follow.me.canAct && follow.live.itemId && follow.live.startedAt, 'the board page follows it: live, on the same item; the founder acts as one more member there');
-  await clickText(jane, '.bm-showdoc', /Balance sheet financials/);
+  await clickText(jane, '.bm-doc', /Balance sheet financials/);
   await saved(jane);
   follow = await jane.evaluate(async (id) => {
     for (let n = 0; n < 20; n++) { const j = await (await fetch(`/api/board-portal?live=${id}`)).json(); if (j.live.fileId) return j; await new Promise((r) => setTimeout(r, 250)); }
@@ -790,6 +790,10 @@ try {
   await room.goto(`${SITE}/admin/board/#/meetings/${practiceId}`, { waitUntil: 'networkidle0' });
   ok(await room.waitForSelector('.bp-livehead', { timeout: 8000 }).then(() => true, () => false), 'the board page opens the meeting live');
   ok(await room.evaluate(() => /Live/.test(document.querySelector('.bp-livechip.is-live')?.textContent || '') && /Practice/.test(document.querySelector('.bp-livehead').textContent)), 'marked Live, and Practice');
+  await room.evaluate(() => [...document.querySelectorAll('.bp-liveag__item')].at(-1)?.scrollIntoView({ block: 'end' }));
+  // (once it has slid down: it moves in over a quarter second)
+  ok(await room.waitForFunction(() => { const el = document.querySelector('.bp-livebar.is-on'); if (!el) return false; const b = el.getBoundingClientRect(); return Math.abs(b.top - document.querySelector('.bp-top').getBoundingClientRect().bottom) < 1.5 && b.height < 70; }, { timeout: 3000 }).then(() => true, () => false), 'scrolled down, a slim live bar sits flush under the site’s bar');
+  await room.evaluate(() => window.scrollTo(0, 0));
   ok(await room.evaluate(() => !!document.querySelector('.bp-now .bp-now__title')?.textContent.trim() && !!document.querySelector('.bp-liveag__item.is-now') && !!document.querySelector('.bp-liveag__item.is-done')), 'Now discussing: the chair’s item, the one before it done');
   ok(await room.evaluate(() => !!document.querySelector('.bp-vote') && [...document.querySelectorAll('.bp-vote__choice')].every((b) => b.disabled)), 'the vote is up; voting waits for checking in');
   ok(await room.waitForFunction(() => /On the screen:\s*Balance sheet financials, page 1/.test(document.querySelector('.bp-peek figcaption')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), 'and shows the page on the screen');
@@ -874,6 +878,7 @@ try {
   ok(await scr.waitForFunction(() => /Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'a key pressed on the screen (a clicker) moves it too');
   await scr.keyboard.press('ArrowLeft');
   ok(await scr.waitForSelector('.bs-item', { timeout: 3000 }).then(() => true, () => false) && await scr.evaluate(() => /Financial/.test(document.querySelector('.bs-item__title')?.textContent || '') && /Sam Ortiz/.test(document.querySelector('.bs-who')?.textContent || '') && /Balance sheet financials/.test(document.querySelector('.bs-coming')?.textContent || '')), 'the item’s card: its title, who presents with their face, its documents');
+  ok(await scr.waitForFunction(() => [...document.querySelectorAll('.bs-shelf > li')].some((li) => /Balance sheet financials/.test(li.textContent) && !!li.querySelector('.bs-shelf__cover > *')), { timeout: 6000 }).then(() => true, () => false), 'its documents coming up, each by its first page');
   await shot(scr, '22-screen-item');
   // The makeovers item on the screen: the kanban, every card in view
   while (hops < 60 && !(await scr.$('.bk--screen'))) { await jane.bringToFront(); await jane.keyboard.press('ArrowRight'); await sleep(200); hops += 1; }
@@ -888,7 +893,10 @@ try {
   ok(await jane.evaluate(() => !!document.querySelector('.bm-run.is-live')) && !!(await meetingNow(jane, meetingId)).live.startedAt, 'and it stays live once the numbers lock: started on the server too');
   ok(await scr.waitForSelector('.bs-cover', { timeout: 4000 }).then(() => true, () => false), 'and the screen opens on the cover');
   ok(await saved(jane), 'saved');
-  await clickText(jane, '.bm-showdoc', /^Balance sheet financials$/);
+  // Each document once under its item: its first page, its title, what it is
+  ok(await jane.waitForFunction(() => [...document.querySelectorAll('.bm-order__item')].some((li) => /Financial/.test(li.textContent) && [...li.querySelectorAll('.bm-doc')].some((b) => /^Balance sheet financials/.test(b.querySelector('.bm-doc__title')?.textContent || '') && /^PDF/.test(b.querySelector('.bm-doc__meta')?.textContent || '') && !!b.querySelector('.bm-doc__cover > *'))), { timeout: 8000 }).then(() => true, () => false), 'the agenda shows each document as its first page, title and kind');
+  await clickText(jane, '.bm-doc', /^Balance sheet financials/);
+  ok(await jane.waitForFunction(() => /On the screen/.test(document.querySelector('.bm-doc.is-on')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'and the one on the screen says so');
   ok(await scr.waitForFunction(() => /Balance sheet financials.*Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'a document tapped in the agenda goes straight on the screen');
   ok(await scr.evaluate(() => !!document.querySelector('.bs-rail li.is-on') && /Next: Page 2/i.test(document.querySelector('.bs-rail__next')?.textContent || '')), 'the rail along the bottom: where the meeting is, and what the next press shows');
   ok(await scr.waitForFunction(() => /\d+:\d\d left/.test(document.querySelector('.bs-timer')?.textContent || '') && /Sam Ortiz has the floor/.test(document.querySelector('.bs-floor')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'the screen: the part’s time left, and who has the floor (whoever presents the item)');

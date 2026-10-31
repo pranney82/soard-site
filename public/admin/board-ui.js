@@ -7,7 +7,7 @@
 
 import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { float } from './float.js';
-import { LIVE, liveLines, shortDate, todayEastern, isDate, noteBlocks, callName, fileTitle } from './board-shared.js';
+import { LIVE, liveLines, shortDate, todayEastern, isDate, noteBlocks, callName, fileTitle, docTitle } from './board-shared.js';
 
 export const html = htm.bind(h);
 export const API = '/api/board-admin';
@@ -308,7 +308,7 @@ function ItemList({ items, value, onPick }) {
 /** A document on an agenda item: its name (opening it), and ✕ to take it off the item */
 export function DocChip({ f, link, onRemove, note = '' }) {
   const fmt = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name) ? 'PDF' : /sheet|excel/i.test(f.type) || /\.xlsx?$/i.test(f.name) ? 'XLS' : /word/i.test(f.type) || /\.docx?$/i.test(f.name) ? 'DOC' : /presentation/i.test(f.type) || /\.pptx?$/i.test(f.name) ? 'PPT' : /^image\//.test(f.type) ? 'IMG' : 'FILE';
-  return html`<span class="bd-doc"><a class="bd-doc__a" ...${link}><span class="bd-doc__fmt" data-fmt=${fmt}>${fmt}</span><span class="bd-doc__name">${fileTitle(f.name)}</span>${note ? html`<span class="bd-doc__note">${note}</span>` : null}</a>${onRemove ? html`<button type="button" class="bd-doc__x" aria-label=${`Take ${fileTitle(f.name)} off this item`} title="Take it off this item" onClick=${onRemove}>✕</button>` : null}</span>`;
+  return html`<span class="bd-doc"><a class="bd-doc__a" ...${link}><span class="bd-doc__fmt" data-fmt=${fmt}>${fmt}</span><span class="bd-doc__name">${docTitle(f.name)}</span>${note ? html`<span class="bd-doc__note">${note}</span>` : null}</a>${onRemove ? html`<button type="button" class="bd-doc__x" aria-label=${`Take ${fileTitle(f.name)} off this item`} title="Take it off this item" onClick=${onRemove}>✕</button>` : null}</span>`;
 }
 
 // ─── Styles ─────────────────────────────────────────────────────────
@@ -829,7 +829,6 @@ export const STYLES = `
   .bm-order__head span { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; font-size: var(--fs-xs); }
   .bm-order__sec > ol { display: grid; gap: 0.15rem; }
   .bm-order__item { padding: 0.15rem 0; border-radius: var(--radius-md); scroll-margin: calc(var(--top-h, 0px) + 9rem); }
-  .bm-order__item .bm-showdocs { margin: 0.1rem 0 0.35rem 2.6rem; }
   .bm-order__go { display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 40px; padding: 0.35rem 0.6rem; border: 1px solid transparent; border-radius: var(--radius-md); background: none; font: inherit; color: var(--color-text); text-align: left; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
   .bm-order__go:hover { background: var(--color-bg-subtle, rgba(0,0,0,0.035)); }
   .bm-order__n { flex: none; display: inline-grid; place-items: center; min-width: 2.1rem; height: 1.6rem; padding: 0 0.35rem; border-radius: 999px; background: var(--seg-bg, rgba(0,0,0,0.05)); font-size: var(--fs-2xs); font-weight: 750; font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
@@ -849,11 +848,18 @@ export const STYLES = `
   .bm-minutes-drop__text { flex: 1 1 auto; min-width: 0; display: grid; gap: 0.15rem; }
   .bm-minutes-drop__text strong { font-size: var(--fs-md, 1rem); }
   .bm-minutes-drop__text span { color: var(--color-text-secondary); font-size: var(--fs-xs); line-height: 1.4; }
-  .bm-showdocs { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.4rem 0 0; }
-  .bm-showdoc { height: 30px; padding: 0 0.7rem; border: 1px solid var(--color-border-strong); border-radius: 999px; background: var(--color-bg-card); font: inherit; font-size: var(--fs-xs); font-weight: 650; color: var(--color-text); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bm-showdoc:hover:not(:disabled) { border-color: var(--color-text); }
-  .bm-showdoc:disabled { color: var(--color-text-muted); cursor: default; }
-  .bm-showdoc.is-on { background: #1F201C; border-color: #1F201C; color: var(--color-primary); }
+  /* An item's documents, under it: each one's first page, its title and what it is, all one size (two to a row on a wide screen) */
+  .bm-docs { list-style: none; margin: 0.25rem 0 0.45rem 2.6rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 0.4rem; }
+  .bm-docs--more { margin-left: 0; }
+  .bm-doc { display: flex; align-items: center; gap: 0.7rem; width: 100%; height: 100%; min-height: 3.6rem; padding: 0.35rem 0.75rem 0.35rem 0.4rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); font: inherit; color: var(--color-text); text-align: left; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .bm-doc:hover { border-color: var(--color-border-strong); background: var(--color-bg-subtle, rgba(0,0,0,0.035)); }
+  .bm-doc__cover { flex: none; display: grid; place-items: center; width: 36px; height: 46px; overflow: hidden; border-radius: 3px; background: #fff; box-shadow: 0 0 0 1px var(--color-border), 0 1px 2px rgba(0,0,0,0.08); }
+  .bm-doc__text { min-width: 0; display: grid; gap: 0.1rem; }
+  .bm-doc__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--fs-sm); font-weight: 650; line-height: 1.3; }
+  .bm-doc__meta { font-size: var(--fs-xs); color: var(--color-text-secondary); }
+  .bm-doc.is-on { background: #1F201C; border-color: #1F201C; color: #fff; }
+  .bm-doc.is-on .bm-doc__meta { color: var(--color-primary); font-weight: 650; }
+  .bm-doc.is-on .bm-doc__cover { box-shadow: none; }
 `;
 let stylesIn = false;
 export function injectStyles() {

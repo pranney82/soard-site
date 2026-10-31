@@ -664,7 +664,7 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-boot--inline { margin-top: 10vh; }
 .bp-waiting { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 1.1rem; padding: 0.75rem 1rem; border-radius: var(--r); background: var(--yellow-wash); border: 1px solid rgba(245, 204, 0, 0.35); color: var(--ink-2); font-size: 0.95rem; }
 /* The live bar: dark, held under the header while the agenda scrolls */
-.bp-livehead { position: sticky; top: calc(var(--head) + 0.5rem); z-index: 20; margin: 0 0 1.25rem; padding: 1.2rem 1.4rem 1.1rem; border-radius: var(--r-lg); background: var(--ink); color: #F4F2EA; box-shadow: var(--shadow-2); }
+.bp-livehead { margin: 0 0 1.25rem; padding: 1.2rem 1.4rem 1.1rem; border-radius: var(--r-lg); background: var(--ink); color: #F4F2EA; box-shadow: var(--shadow-2); }
 .bp-livehead.is-ended { position: static; background: #fff; color: var(--ink); border: 1px solid rgba(45, 47, 44, 0.08); box-shadow: var(--shadow-1); }
 .bp-livehead__top { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
 .bp-livehead__when { font-size: 0.9rem; color: rgba(244, 242, 234, 0.75); font-variant-numeric: tabular-nums; }
@@ -676,6 +676,19 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-livehead__bar { margin-top: 1rem; height: 6px; border-radius: 999px; background: rgba(244, 242, 234, 0.14); overflow: hidden; }
 .is-ended .bp-livehead__bar { background: var(--warm); }
 .bp-livehead__bar span { display: block; height: 100%; width: var(--p); border-radius: inherit; background: var(--yellow); transition: width 0.8s var(--ease); }
+/* Once the heading has scrolled away: one slim line under the site's bar, its edge flush with it */
+.bp-livebar { position: fixed; top: var(--livebar-top, var(--head)); left: 0; right: 0; z-index: 20; background: var(--ink); color: #F4F2EA; box-shadow: var(--shadow-2); transform: translateY(-100%); visibility: hidden; transition: transform 0.25s var(--ease), visibility 0s linear 0.25s; }
+.bp-livebar.is-on { transform: none; visibility: visible; transition: transform 0.25s var(--ease), visibility 0s; }
+.bp-livebar__in { max-width: var(--wide); margin: 0 auto; padding: 0.6rem var(--gutter); display: flex; align-items: center; gap: 0.5rem 0.9rem; min-width: 0; }
+.bp-livebar__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--display); font-size: 1.05rem; font-weight: 600; }
+.bp-livebar__here { flex: none; font-size: 0.92rem; color: rgba(244, 242, 234, 0.85); font-variant-numeric: tabular-nums; }
+.bp-livebar__here strong { color: #F4F2EA; }
+.bp-livebar__bar { height: 3px; background: rgba(244, 242, 234, 0.14); }
+.bp-livebar__bar span { display: block; height: 100%; width: var(--p); background: var(--yellow); transition: width 0.8s var(--ease); }
+.bp-livebar .bp-livechip { flex: none; white-space: nowrap; }
+/* A phone: Live, who's here and the quorum (the meeting is the page it's on) */
+@media (max-width: 560px) { .bp-livebar__title { display: none; } .bp-livebar__in { gap: 0.5rem 0.6rem; } }
+@media (prefers-reduced-motion: reduce) { .bp-livebar, .bp-livebar.is-on { transition: none; } }
 .bp-livechip { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 26px; padding: 0.1rem 0.7rem; border-radius: 999px; background: rgba(244, 242, 234, 0.12); color: #F4F2EA; font-size: 0.74rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; }
 .bp-livechip.is-live { background: var(--yellow); color: #1E1F1C; }
 .bp-livechip.is-live .bp-live-dot { background: #1E1F1C; }
@@ -1320,9 +1333,13 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bs-numbers { padding: clamp(1rem, 2.4vh, 1.6rem) clamp(1rem, 2vw, 1.75rem); border-radius: 18px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
 .bs-numbers ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.55em; font-size: clamp(1rem, 2.4vh, 1.45rem); font-weight: 600; font-variant-numeric: tabular-nums; }
 .bs-coming .bs-eyebrow { color: var(--bs-faint); }
-.bs-coming ol { margin: 0; padding-left: 1.3em; display: grid; gap: 0.35em; font-size: clamp(1rem, 2.4vh, 1.5rem); }
-.bs-coming li::marker { color: var(--yellow); font-weight: 700; }
-.bs-coming span { color: var(--bs-soft); }
+/* An item's documents, coming up: their first pages in a row, each with its title and what it is */
+.bs-shelf { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: flex-start; gap: clamp(1rem, 2vw, 2rem); }
+.bs-shelf > li { width: calc(var(--cover) * 1.35); min-width: 0; display: grid; gap: 0.2em; }
+.bs-shelf__cover { display: grid; place-items: start center; width: var(--cover); height: calc(var(--cover) * 1.294); margin-bottom: 0.55em; overflow: hidden; border-radius: 4px; background: #fff; box-shadow: 0 18px 36px -16px rgba(0, 0, 0, 0.7); }
+.bs-shelf__t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: clamp(0.9rem, 1.9vh, 1.25rem); font-weight: 650; line-height: 1.25; color: var(--bs-ink); }
+.bs-shelf__m { font-size: clamp(0.78rem, 1.6vh, 1.05rem); color: var(--bs-soft); }
+.bs-shelf > .bs-shelf__more { width: auto; align-self: center; font-size: clamp(0.9rem, 1.9vh, 1.25rem); color: var(--bs-soft); }
 
 /* The board's faces (the roll call, introductions): as big as their rows allow, each lighting up as they check in */
 .bs-faces { --gx: clamp(0.5rem, 1.2vw, 1.25rem); --gy: clamp(0.75rem, 2.2vh, 1.75rem); list-style: none; margin: 0; padding: clamp(0.5rem, 1.5vh, 1rem) 0 0; height: 100%; min-height: 0; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: var(--gy) var(--gx); }
@@ -1393,9 +1410,17 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bs-tile.is-soft strong { font-family: var(--body); font-size: clamp(0.95rem, 2.2vh, 1.3rem); font-weight: 750; }
 .bs-dates { list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(0.6rem, 1.6vh, 1rem); max-width: 1100px; }
 .bs-dates li { display: flex; align-items: center; gap: clamp(1rem, 2vw, 1.75rem); padding: clamp(0.6rem, 1.4vh, 0.9rem); padding-right: 1.5rem; border-radius: 22px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
-.bs-dates li > span:last-child { display: grid; gap: 0.2rem; }
+.bs-dates__text { display: grid; gap: 0.2rem; }
 .bs-dates strong { font-size: clamp(1.15rem, 2.9vh, 1.85rem); font-weight: 650; }
-.bs-dates li > span:last-child span { color: var(--bs-soft); font-size: clamp(0.9rem, 2vh, 1.25rem); }
+.bs-dates__text span { color: var(--bs-soft); font-size: clamp(0.9rem, 2vh, 1.25rem); }
+/* Held, today, next: the year's meetings (and the events held lately) marked on the right */
+.bs-dates__text { flex: 1 1 auto; min-width: 0; }
+.bs-dates__state { flex: none; display: inline-flex; align-items: center; gap: 0.35em; padding: 0.3em 0.85em; border-radius: 999px; background: rgba(246, 244, 236, 0.08); color: var(--bs-soft); font-size: clamp(0.85rem, 1.8vh, 1.1rem); font-weight: 700; }
+.bs-dates__state svg { width: 1em; height: 1em; }
+.bs-dates li.is-done { opacity: 0.6; }
+.bs-dates li.is-today .bs-dates__state, .bs-dates li.is-next .bs-dates__state { background: var(--yellow); color: #1C1D1A; }
+.bs-dates li.is-next, .bs-dates li.is-today { border-color: rgba(255, 218, 36, 0.45); }
+.bs-dates__note { margin: 0 0 clamp(0.6rem, 1.6vh, 1rem); }
 
 /* A part's card: its number large, its time, what's in it and who presents */
 .bs-chapter { width: min(100%, 1500px); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(1.5rem, 5vw, 5rem); align-items: center; }

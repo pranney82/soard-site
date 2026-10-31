@@ -714,6 +714,8 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     events: events.upcoming,
     recentEvents: events.recent,
     meetings: meetings.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date)).map((m) => ({ id: m.id, name: meetingName(m), date: m.date, start: m.start, shared: m.shared })),
+    // The year's board meetings, held and ahead (the screen's "2026 board meetings"), never another organization's
+    thisYear: meetings.filter((m) => isDate(m.date) && m.date.slice(0, 4) === today.slice(0, 4) && !m.notBoard).sort((a, b) => a.date.localeCompare(b.date)).map((m) => ({ id: m.id, name: meetingName(m), date: m.date, start: m.start, shared: m.shared })),
     impact: kids,
   };
 }
@@ -736,7 +738,7 @@ export async function takeSnapshot(env, id, { by, fetchImpl = fetch, now = Date.
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
   const n = await liveNumbers(env, { fetchImpl, now });
-  const snapshot = { at: n.at, by: by || '', cash: n.cash, mercury: n.mercury, finance: n.finance, books: n.books, projects: n.projects, reveals: n.reveals, pastReveals: n.pastReveals, events: n.events, recentEvents: n.recentEvents, meetings: n.meetings.filter((x) => x.id !== id), impact: n.impact };
+  const snapshot = { at: n.at, by: by || '', cash: n.cash, mercury: n.mercury, finance: n.finance, books: n.books, projects: n.projects, reveals: n.reveals, pastReveals: n.pastReveals, events: n.events, recentEvents: n.recentEvents, meetings: n.meetings.filter((x) => x.id !== id), thisYear: n.thisYear || [], impact: n.impact };
   await writeMeeting(env.DB, { ...m, snapshot, updatedAt: nowIso(), updatedBy: by || m.updatedBy });
   return getMeeting(env.DB, id);
 }
@@ -1100,7 +1102,8 @@ export function simulatedCheckins(m, now = Date.now()) {
   const t0 = Date.parse(m?.live?.startedAt || '');
   if (!m?.practice || !Number.isFinite(t0)) return [];
   const hashed = m.attendance.filter((p) => p.kind === 'board' && p.slug).map((p) => ({ p, h: fnv(`${m.id}:${p.slug}`) }));
-  const never = hashed.length > 3 ? hashed.reduce((a, b) => (b.h < a.h ? b : a)).p.slug : '';
+  // One never comes, so the admin practising (checking in as one more) never makes more here than the board has
+  const never = hashed.length > 1 ? hashed.reduce((a, b) => (b.h < a.h ? b : a)).p.slug : '';
   return hashed.flatMap(({ p, h }) => {
     const r = h % 100;
     if (p.slug === never || r < 7) return [];
@@ -1205,7 +1208,7 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const cast = motion ? votes[motion.id] || [] : [];
   const n = (v) => cast.filter((x) => x.vote === v).length;
   const marked = me ? m.attendance.find((p) => p.slug === me.slug && HOW.includes(p.status))?.status : '';
-  const q = settings.quorum || majority(board.length + (m.practice ? 1 : 0));
+  const q = settings.quorum || majority(board.length);
   return {
     id: m.id, practice: !!m.practice, updatedAt: m.updatedAt, title: meetingName(m), date: m.date, start: m.start, end: m.end,
     live: { startedAt: m.live.startedAt, endedAt: m.live.endedAt, itemId: m.live.itemId, fileId: m.live.fileId, page: m.live.page, part: m.live.part, screen: m.live.screen, sectionId: m.live.sectionId, sectionAt: m.live.sectionAt, floor: m.live.floor },
@@ -1214,7 +1217,7 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
     files: seen.files.map((f) => ({ id: f.id, name: f.name, type: f.type, size: f.size, kind: f.kind, at: f.at })),
     prior,
     snapshot: m.snapshot || null,
-    here: { board: here.size, of: board.length + (m.practice ? 1 : 0), quorum: q, met: q ? here.size >= q : null, remote: [...here.values()].filter((h) => h === 'remote').length },
+    here: { board: here.size, of: board.length, quorum: q, met: q ? here.size >= q : null, remote: [...here.values()].filter((h) => h === 'remote').length },
     // The roll call on the screen: the board on the meeting's list, each one here (in the room or by video) or not yet
     roll: board.map((p) => ({ slug: p.slug || '', name: p.name, how: here.get(p.slug || p.key) || '' })),
     me: { how: (me && (checkins.find((c) => c.slug === me.slug)?.how || marked)) || '', canAct: !!(canAct && me), name: me?.name || '' },

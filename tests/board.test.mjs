@@ -21,7 +21,7 @@ import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes } from '
 import * as rsvpPage from '../functions/api/board-rsvp.js';
 import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText } from '../public/admin/board-shared.js';
+import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
 const TEAM = 'soard';
@@ -387,6 +387,48 @@ test('the screen’s stops: the cover, since we last met, each part’s card, ea
   const people = [{ slug: 'tom-a', name: 'Thomas Able' }, { slug: 'holly-r', name: 'Holly Ranney' }, { slug: 'holly-b', name: 'Holly Baker' }];
   assert.deepEqual(presentersOf({ presenter: 'Thomas & Holly' }, people), [people[0], { name: 'Holly' }]);
   assert.deepEqual(presentersOf({ presenter: 'old text', who: ['holly-b'] }, people), [people[2]]);
+});
+
+test('a document is one, however many copies: its title read clean, a statement and its PDF printout shown once, by the copy that reads best on a screen', () => {
+  assert.equal(docTitle('Sunshine on a Ranney Day_Statement of Activity (1) (1).pdf'), 'Statement of Activity');
+  assert.equal(docTitle('2026 budget & actual (August 2026) - Sheet1.pdf'), '2026 budget & actual (August 2026)', 'a date in brackets stays');
+  assert.equal(docTitle('SOARD Q3 Minutes 2025.07.24 (3).pdf'), 'Q3 Minutes 2025.07.24');
+  assert.equal(docTitle('Statement of Financial Position - Copy.xlsx'), 'Statement of Financial Position');
+  assert.equal(docTitle('(1).pdf'), '(1)', 'a name that is only a copy number keeps it');
+  assert.equal(docTitle('Sunshine+on+a+Ranney+Day_Budget+vs+Actuals+Budget_FY26_PL+-+FY26+PL+.xlsx'), 'Budget vs Actuals Budget FY26 PL', 'a web link’s plus signs, and a sheet’s name said twice');
+  assert.equal(docTitle('StatementofFinancialPosition 2-9-26.pdf'), 'Statement of Financial Position 2/9/26', 'QuickBooks’ run-together name apart, its date kept');
+  assert.equal(docTitle('ProfitandLoss (20).pdf'), 'Profit and Loss');
+  assert.equal(docTitle('BudgetOverview2021Budget-FY21PL (1).pdf'), 'Budget Overview 2021 Budget FY21PL');
+  assert.equal(docTitle('381866c1-150a-4a72-b6ba-17c4ed822733.pdf'), 'Document', 'a name that is only an id');
+  assert.equal(docTitle('doc20260209130015.pdf'), 'Scan 2/9/2026');
+  assert.equal(docTitle('P&L PBC.pdf'), 'P&L PBC');
+  const files = [
+    { id: 'f_act1', name: 'Sunshine on a Ranney Day_Statement of Activity (1).xlsx', at: '2026-10-28T18:30:00Z' },
+    { id: 'f_bud1', name: '2026 budget & actual (August 2026).xlsx', at: '2026-10-28T18:30:00Z' },
+    { id: 'f_act2', name: 'Sunshine on a Ranney Day_Statement of Activity (1) (1).pdf', type: 'application/pdf', at: '2026-10-28T19:12:00Z' },
+    { id: 'f_bud2', name: '2026 budget & actual (August 2026) (1).pdf', type: 'application/pdf', at: '2026-10-28T19:12:00Z' },
+    { id: 'f_hol1', name: 'Holly’s Report- Q3 board meeting (1).pdf', at: '2026-10-28T18:30:00Z' },
+    { id: 'f_hol2', name: 'Holly’s Report- Q3 board meeting.pdf', at: '2026-10-28T19:12:00Z' },
+    { id: 'f_min1', name: 'Q3 Minutes.docx' }, { id: 'f_min2', name: 'Q3 Minutes.pdf', type: 'application/pdf' },
+  ];
+  const docs = docsOf(files);
+  assert.deepEqual(docs.map((d) => [d.title, d.file.id, d.copies.length]), [
+    ['Statement of Activity', 'f_act1', 2], ['2026 budget & actual (August 2026)', 'f_bud1', 2], ['Holly’s Report Q3 board meeting', 'f_hol2', 2], ['Q3 Minutes', 'f_min2', 2],
+  ], 'the spreadsheet before its printout, the newest of two PDFs, the PDF before its Word copy, in the order they came');
+  // On the screen: each document once
+  const m = cleanMeeting({ id: 'm_copies01', date: '2026-11-05', files: files.map((f) => ({ ...f, kind: 'financials' })), sections: [{ id: 's_one1', title: 'Committee reports', items: [{ id: 'i_fin1', title: 'Financial', docs: files.map((f) => f.id) }] }] });
+  assert.deepEqual(itemDocs(m, m.sections[0].items[0]).map((d) => d.file.id), ['f_act1', 'f_bud1', 'f_hol2', 'f_min2']);
+  assert.deepEqual(deckOf(m).filter((s) => s.kind === 'doc').map((s) => s.fileId), ['f_act1', 'f_bud1', 'f_hol2', 'f_min2']);
+  const loose = cleanMeeting({ ...m, sections: [] });
+  assert.deepEqual(deckOf(loose).filter((s) => s.kind === 'doc').map((s) => s.fileId), ['f_act1', 'f_bud1', 'f_hol2', 'f_min2'], 'the files on no item too');
+  // A report named for someone goes with what they present: the one they present alone when they share another
+  const agenda = cleanMeeting({ id: 'm_named001', date: '2026-11-05', sections: [{ id: 's_one1', title: 'Committee reports', items: [
+    { id: 'i_ev1', title: 'Events & Marketing', presenter: 'Traci & Holly' }, { id: 'i_pr1', title: 'Projects updates', presenter: 'Peter' }, { id: 'i_st1', title: 'Store update', presenter: 'Holly' },
+  ] }] });
+  assert.equal(guessItem(agenda, { name: 'Holly’s Report- Q3 board meeting.pdf' }, '2026-10-01'), 'i_st1');
+  assert.equal(guessItem(agenda, { name: 'Peter’s Report- Q3 board meeting.pdf' }, '2026-10-01'), 'i_pr1');
+  assert.equal(guessItem(agenda, { name: 'Traci notes.pdf' }, '2026-10-01'), 'i_ev1');
+  assert.equal(guessItem(agenda, { name: 'Remi & Nico 2026_Scope of Work.pdf' }, '2026-10-01'), '', 'no one named, no item named: on no item');
 });
 
 test('one-tap answers: each board member who hasn’t answered gets their own links; opening one only asks, pressing it answers', async () => {
@@ -1974,7 +2016,7 @@ test('a practice meeting is the admins’ alone: its own table, never the board 
   assert.ok(!JSON.stringify(saved.sections).includes('"about":"m_'), 'its minutes item approves nothing real');
 });
 
-test('a practice meeting’s simulated members check in and vote by the clock, the same on every read; the admin acts as one more member', async () => {
+test('a practice meeting’s simulated members check in and vote by the clock, the same on every read; the admin acts as a member, out of the board as it is', async () => {
   let p = (await adminApi(FOUNDER, { action: 'practice' })).body.meeting;
   assert.deepEqual(simulatedCheckins(p, Date.now()), [], 'nobody before it starts');
   const t0 = Date.now();
@@ -2000,8 +2042,11 @@ test('a practice meeting’s simulated members check in and vote by the clock, t
 
   // The admin, practising: checks in and votes as themselves
   const view = await liveView(env, p.id, { admin: true, adminEmail: FOUNDER, now: t0 + 60_000 });
-  assert.deepEqual([view.practice, view.me.canAct, view.me.name, view.here.of], [true, true, 'Jane Doe', 4]);
+  // Out of the board, as the chair's page and the roll call count it; one simulated member never comes, so with the
+  // admin checked in too there are never more here than the board has
+  assert.deepEqual([view.practice, view.me.canAct, view.me.name, view.here.of], [true, true, 'Jane Doe', 3]);
   assert.equal(view.here.board, late.length);
+  assert.ok(late.length < view.here.of, 'one member stays away');
   p = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...p, live: { ...p.live, vote: { motionId: p.motions[0].id, openedAt: new Date().toISOString() } } }, base: p.updatedAt })).body.meeting;
   assert.equal((await portalApi(FOUNDER, { action: 'checkin', meetingId: p.id, how: 'present' })).body.me.how, 'present');
   const voted = (await portalApi(FOUNDER, { action: 'vote', meetingId: p.id, motionId: p.motions[0].id, vote: 'abstain' })).body;

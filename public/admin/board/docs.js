@@ -26,6 +26,7 @@
  *   await layoutOf(f, doc, i)                where its words are, and for a tall page where to cut it in two
  *   await partsOf(f)                         [1 | 2] a page: the halves the screen shows it in
  *   await areasOf(f, doc, i)                 every part shown on pages page i's size: drawn at one zoom
+ *   await coverOf(f, width)                  its first page, small (a copy each call), for a list of documents
  */
 
 import { unzip, fileTitle } from '../board-shared.js';
@@ -1349,6 +1350,8 @@ export function openDoc(f, { url = fileUrl(f) } = {}) {
   }
   const p = load(f, url);
   cache.set(key, p);
+  // Its page count, kept on this device (keptOf), so a meeting's stops are all known when it opens again
+  p.then((d) => { if (f?.id && d.kind !== 'other' && d.count) { try { localStorage.setItem(countKey(f), String(d.count)); } catch { /* full */ } } }).catch(() => {});
   while (cache.size > KEEP) {
     const [oldKey, old] = cache.entries().next().value;
     cache.delete(oldKey);
@@ -1462,17 +1465,25 @@ export function halfOf(lay, k = 0) {
   return k ? { ...part, y: cut, h: part.y + part.h - cut } : { ...part, h: cut - part.y };
 }
 const layouts = new Map();
+// Kept on this device too (a file never changes under its id), so a meeting opened again knows its halves at once
+// and its stops don't change count as they're worked out. The version goes up when how a page is read changes
+const keptKey = (f, i) => `bdoc-lay2:${f.id}:${f.size || 0}:${i}`;
+const countKey = (f) => `bdoc-count:${f.id}:${f.size || 0}`;
+const kept = (f, i) => { try { const x = JSON.parse(localStorage.getItem(keptKey(f, i)) || 'null'); return x && typeof x.n === 'number' ? x : null; } catch { return null; } };
 /** Page i's content and halves (splitOf), from the page drawn small: once a file and page, and the same everywhere */
 export function layoutOf(f, doc, i) {
   const key = `${f?.id || ''}|${i}`;
   if (!layouts.has(key)) {
-    layouts.set(key, (async () => {
+    const was = f?.id ? kept(f, i) : null;
+    layouts.set(key, was ? Promise.resolve(was) : (async () => {
       const probe = await doc.draw(i, { width: 320, dpr: 1 });
       const tray = measureBox();
       tray.replaceChildren(probe);
       const blocks = inkOf(probe) || [];
       tray.replaceChildren();
-      return splitOf(blocks, doc.size(i));
+      const lay = splitOf(blocks, doc.size(i));
+      if (f?.id) { try { localStorage.setItem(keptKey(f, i), JSON.stringify(lay)); } catch { /* full: worked out again next time */ } }
+      return lay;
     })().catch(() => ({ part: null, cut: 0, n: 1 })));
   }
   return layouts.get(key);
@@ -1493,6 +1504,42 @@ export async function areasOf(f, doc, i) {
     for (let k = 0; k < (lay.n || 1); k++) { const a = halfOf(lay, k); if (a) out.push(a); }
   }
   return out;
+}
+const covers = new Map();
+/**
+ * A file's first page, small, for a list of its documents: drawn once a file and width, then copied wherever it
+ * shows (a PDF's canvas as a picture, since a copied canvas comes without what's drawn on it) → an element, or null
+ */
+export function coverOf(f, width) {
+  const key = `${f?.id || ''}|${width}`;
+  if (!covers.has(key)) {
+    covers.set(key, (async () => {
+      const doc = await openDoc(f);
+      const page = await doc.draw(0, { width, dpr: 2 });
+      for (const c of page.querySelectorAll('canvas')) {
+        const img = el('img');
+        img.src = c.toDataURL('image/jpeg', 0.85);
+        img.alt = '';
+        img.style.cssText = 'display:block;width:100%;height:100%';
+        c.replaceWith(img);
+      }
+      return page;
+    })().catch(() => null));
+  }
+  return covers.get(key).then((page) => page && page.cloneNode(true));
+}
+/**
+ * A file's page count and halves as this device last worked them out, before it opens → { count, parts } (parts
+ * null until every page is known), or null
+ */
+export function keptOf(f) {
+  try {
+    const count = Number(localStorage.getItem(countKey(f)));
+    if (!f?.id || !(count > 0)) return null;
+    const parts = [];
+    for (let i = 0; i < count; i++) { const lay = kept(f, i); if (!lay) return { count, parts: null }; parts.push(lay.n); }
+    return { count, parts };
+  } catch { return null; }
 }
 /** How many halves each page of a file has ([1, 2, 2, …]), worked out a page at a time */
 export async function partsOf(f) {

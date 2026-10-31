@@ -30,7 +30,7 @@ import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
-  isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText,
+  isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle,
 } from '../board-shared.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized } from './kanban.js';
@@ -131,20 +131,19 @@ const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matche
 
 // ─── Files ──────────────────────────────────────────────────────────
 const fileUrl = (f) => `/api/board-file?id=${encodeURIComponent(f.id)}`;
-const asViewer = (files) => files.map((f) => ({ name: f.name, type: f.type, size: f.size, at: f.at, url: f.url || fileUrl(f) }));
-function formatOf(f) {
-  const n = String(f?.name || '').toLowerCase();
-  const t = String(f?.type || '').toLowerCase();
-  if (t === 'application/pdf' || n.endsWith('.pdf')) return 'PDF';
-  if (/sheet|excel|csv/.test(t) || /\.(xlsx?|csv)$/.test(n)) return 'Excel';
-  if (/word/.test(t) || /\.docx?$/.test(n)) return 'Word';
-  if (/presentation|powerpoint/.test(t) || /\.pptx?$/.test(n)) return 'Slides';
-  if (t.startsWith('image/')) return 'Photo';
-  return 'File';
-}
+// The viewer tells a PDF, picture or video by its type once the name it shows is a title without its extension
+const EXT_TYPES = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime' };
+/**
+ * Files for the viewer: each by its clean title (saved under its own name), its first page in the strip once this
+ * device has drawn it (pageKept)
+ */
+const asViewer = (files) => files.map((f) => ({
+  name: f.name ? docTitle(f.name) : 'File', filename: f.name, type: f.type || EXT_TYPES[String(f.name || '').toLowerCase().split('.').pop()] || '', size: f.size, at: f.at, url: f.url || fileUrl(f),
+  thumb: (f.id && (pageKept(f, 200) || pageKept(f, 48))) || undefined,
+}));
 const RANK = { PDF: 0, Word: 1, Slides: 2, Excel: 3, Photo: 4, File: 5 };
-/** A file's title for reading: no extension, no "Sunshine on a Ranney Day" in front, no " (1) (1)" downloads added */
-const titleOf = (name) => fileTitle(name).replace(/^(Sunshine on a Ranney Day|SOARD)\s+/i, '').replace(/(\s*\(\d+\))+$/, '').replace(/^./, (c) => c.toUpperCase());
+/** A file's title for reading (../board-shared.js docTitle) */
+const titleOf = docTitle;
 const PAST_ORDER = ['minutes', 'signed', 'agenda', 'packet', 'financials', 'other'];
 const AHEAD_ORDER = ['agenda', 'packet', 'financials', 'minutes', 'signed', 'other'];
 /**
@@ -1228,10 +1227,35 @@ function LiveRoom({ v, setV, m, ctx }) {
     return ended || (at >= 0 && i < at) ? 'done' : i === at ? 'now' : 'next';
   };
   const cardSec = cardSi >= 0 ? v.sections[cardSi] : null;
-  const decided = v.motions.filter((x) => x.text);
+  // What the board has decided so far: a motion it voted on, or the one it's voting on (a typed motion is "passed"
+  // until a vote says otherwise, so one not voted on yet isn't a decision)
+  const decided = v.motions.filter((x) => x.text && (x.tally || v.vote?.motionId === x.id));
+  // Scrolled past the heading: a slim bar along the top keeps who's here, the quorum and how far along
+  const [head, setHead] = useState(null);
+  const [past, setPast] = useState(false);
+  useEffect(() => {
+    if (!head || !('IntersectionObserver' in window)) return undefined;
+    // Under the site's bar where it stays put (a phone's scrolls away: the very top there)
+    const bar = document.querySelector('.bp-top');
+    const top = bar && getComputedStyle(bar).position === 'sticky' ? Math.round(bar.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty('--livebar-top', `${top}px`);
+    const io = new IntersectionObserver(([e]) => setPast(!e.isIntersecting && e.boundingClientRect.top < top + 1), { rootMargin: `-${top}px 0px 0px 0px` });
+    io.observe(head);
+    return () => io.disconnect();
+  }, [head]);
+  const hereLine = html`<strong>${v.here.board} of ${v.here.of}</strong> board members here${v.here.remote ? `, ${v.here.remote} on video` : ''}`;
+  const quorumChip = v.here.met === true ? html`<span class="bp-livechip is-met"><${Icon} name="check" size=${14} />Quorum</span>` : v.here.met === false ? html`<span class="bp-livechip">${v.here.quorum - v.here.board} more for a quorum</span>` : null;
   return html`
     <a class="bp-back bp-noprint" href=${m ? '#/meetings' : '#/'}><${Icon} name="back" size=${18} />${m ? 'All meetings' : 'Home'}</a>
-    <section class=${`bp-livehead ${ended ? 'is-ended' : ''}`} aria-labelledby="live-h">
+    ${started && !ended ? html`<div class=${`bp-livebar bp-noprint ${past ? 'is-on' : ''}`} aria-hidden=${past ? 'false' : 'true'}>
+      <div class="bp-livebar__in">
+        <span class="bp-livechip is-live"><span class="bp-live-dot" aria-hidden="true"></span>Live</span>
+        <strong class="bp-livebar__title">${v.title}</strong>
+        <span class="bp-livebar__here"><strong>${v.here.board} of ${v.here.of}</strong> here${v.here.remote ? `, ${v.here.remote} on video` : ''}</span>${quorumChip}
+      </div>
+      ${items.length ? html`<div class="bp-livebar__bar" aria-hidden="true"><span style=${`--p:${(done / items.length) * 100}%`}></span></div>` : null}
+    </div>` : null}
+    <section class=${`bp-livehead ${ended ? 'is-ended' : ''}`} aria-labelledby="live-h" ref=${setHead}>
       <div class="bp-livehead__top">
         <span class=${`bp-livechip ${ended ? 'is-ended' : started ? 'is-live' : ''}`}>${started && !ended ? html`<span class="bp-live-dot" aria-hidden="true"></span>` : null}${ended ? 'Ended' : started ? 'Live' : 'Not started'}</span>
         ${v.practice ? html`<span class="bp-livechip is-practice">Practice</span>` : null}
@@ -1239,8 +1263,8 @@ function LiveRoom({ v, setV, m, ctx }) {
       </div>
       <h1 class="bp-livehead__title" id="live-h">${v.title}</h1>
       <div class="bp-livehead__row">
-        <p class="bp-livehead__here" aria-live="polite"><strong>${v.here.board} of ${v.here.of}</strong> board members here${v.here.remote ? `, ${v.here.remote} on video` : ''}
-          ${v.here.met === true ? html`<span class="bp-livechip is-met"><${Icon} name="check" size=${14} />Quorum</span>` : v.here.met === false ? html`<span class="bp-livechip">${v.here.quorum - v.here.board} more for a quorum</span>` : null}</p>
+        <p class="bp-livehead__here" aria-live="polite">${hereLine}
+          ${quorumChip}</p>
         ${video && !ended ? html`<a class="bp-btn bp-btn--primary bp-btn--sm" href=${video} target="_blank" rel="noopener"><${Icon} name="video" size=${18} />${joinLabel(video)}</a>` : null}
       </div>
       ${items.length && started ? html`<div class="bp-livehead__bar" role="progressbar" aria-label="Through the agenda" aria-valuemin="0" aria-valuemax=${items.length} aria-valuenow=${done}><span style=${`--p:${(done / items.length) * 100}%`}></span></div>` : null}

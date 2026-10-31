@@ -23,9 +23,10 @@
 import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
 import { openDoc, layoutOf, halfOf, areasOf } from './docs.js';
 import {
-  meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, deckOf, stopIndex, fileTitle, isDate, clock, todayEastern, MORE,
-  sectionPlan, sectionClock, clockText, facesOf,
+  meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
+  sectionPlan, sectionClock, clockText, facesOf, itemDocs, docsOf, docTitle, formatOf, plural,
 } from '../board-shared.js';
+import { useCover } from '../board-present.js';
 import { Kanban, kanbanLine, sized } from './kanban.js';
 import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix } from './money.js';
 
@@ -126,7 +127,7 @@ function DocPage({ f, page, part = 0, box, onPages }) {
   }, [f?.id, page, part, box.w, box.h]);
   return html`<div class="bs-page">
     <div class="bs-page__sheet" ref=${ref}></div>
-    ${state === 'opening' ? html`<p class="bs-quiet">Opening ${fileTitle(f?.name)}…</p>` : state === 'failed' ? html`<p class="bs-quiet">${fileTitle(f?.name)} didn’t open here. It’s on the board page.</p>` : null}
+    ${state === 'opening' ? html`<p class="bs-quiet">Opening ${docTitle(f?.name)}…</p>` : state === 'failed' ? html`<p class="bs-quiet">${docTitle(f?.name)} didn’t open here. It’s on the board page.</p>` : null}
   </div>`;
 }
 
@@ -198,10 +199,13 @@ function RevealsSlide({ n }) {
     </li>`;
   })}</ul>`;
 }
-function DatesSlide({ rows }) {
+const DATE_STATES = { done: 'Held', today: 'Today', next: 'Next' };
+function DatesSlide({ rows, note = '' }) {
   if (!rows.length) return html`<p class="bs-quiet">Nothing on the calendar yet.</p>`;
-  return html`<ul class="bs-dates">${rows.map((r) => html`<li key=${r.key}><${Tile} d=${r.date} /><span><strong>${r.title}</strong><span>${r.sub}</span></span></li>`)}</ul>`;
+  return html`${note ? html`<p class="bs-quiet bs-dates__note">${note}</p>` : null}<ul class="bs-dates">${rows.map((r) => html`<li class=${r.state ? `is-${r.state}` : ''} key=${r.key}><${Tile} d=${r.date} /><span class="bs-dates__text"><strong>${r.title}</strong>${r.sub ? html`<span>${r.sub}</span>` : null}</span>${r.state ? html`<b class="bs-dates__state">${r.state === 'done' ? CHECK : null}${DATE_STATES[r.state]}</b>` : null}</li>`)}</ul>`;
 }
+/** Under a board member's name: their officer's seat, else their company (People keeps "Company, Role") */
+const roleOf = (p) => (p.title && !/^board member$/i.test(p.title) ? p.title : String(p.organization || '').split(/,\s*/)[0] || p.title || '');
 /** A face at the size of a room: the People photo asked for big enough to stay sharp on a TV */
 const roomPhoto = (url) => String(url || '').replace(/\bw=\d+,h=\d+/, 'w=480,h=480');
 
@@ -221,8 +225,7 @@ function FacesGrid({ kind, v, people, started, year }) {
   const rows = shown.length <= 5 ? 1 : shown.length <= 14 ? 2 : shown.length <= 24 ? 3 : 4;
   return html`<ul class="bs-faces" style=${`--cols:${Math.ceil(shown.length / rows)};--rows:${rows}`}>${shown.map((p) => {
     const state = !started ? '' : p.how === 'remote' ? 'is-remote' : p.how ? 'is-here' : 'is-away';
-    // An officer's seat, else their company (People keeps "Company, Role")
-    const sub = started && p.how ? (p.how === 'remote' ? 'On video' : 'In the room') : p.title && !/^board member$/i.test(p.title) ? p.title : String(p.organization || '').split(/,\s*/)[0] || p.title || '';
+    const sub = started && p.how ? (p.how === 'remote' ? 'On video' : 'In the room') : roleOf(p);
     return html`<li class=${`bs-faces__one ${state}`} key=${p.slug || p.name}>
       <span class="bs-faces__pic">
         ${p.photo ? html`<img src=${roomPhoto(p.photo)} alt="" />` : html`<span class="bs-faces__initials" style=${`--hue:${hueOf(p.name)}`}>${initialsOf(p.name)}</span>`}
@@ -279,8 +282,19 @@ function liveSlide(kind, n, id, data, date) {
   if (kind === 'projects') return n.projects ? html`<${Kanban} projects=${n.projects} reveals=${n.reveals || []} variant="screen" />` : null;
   if (kind === 'cash') return html`<${CashSlide} n=${n} data=${data} date=${date} />`;
   if (kind === 'reveals') return html`<${RevealsSlide} n=${n} />`;
-  if (kind === 'events') return html`<${DatesSlide} rows=${(n.events || []).slice(0, 5).map((e) => ({ key: e.title + e.date, date: e.date, title: e.title, sub: [dayWords(e.date), e.time, e.location].filter(Boolean).join('  ·  ') }))} />`;
-  if (kind === 'meetings') return html`<${DatesSlide} rows=${(n.meetings || []).filter((x) => x.id !== id).slice(0, 4).map((x) => ({ key: x.id || x.date, date: x.date, title: x.name, sub: [dayWords(x.date), x.start ? clock(x.start) : ''].filter(Boolean).join('  ·  ') }))} />`;
+  if (kind === 'events') {
+    // Nothing ahead: the ones held lately, so the slide still says what's happened
+    const ahead = (n.events || []).slice(0, 5);
+    const held = ahead.length ? [] : (n.recentEvents || []).slice(0, 4);
+    return html`<${DatesSlide} note=${!ahead.length && held.length ? 'Nothing on the calendar yet. Lately:' : ''} rows=${[...ahead, ...held].map((e) => ({ key: e.title + e.date, date: e.date, title: e.title, sub: [held.includes(e) ? '' : dayWords(e.date), e.time, e.location].filter(Boolean).join('  ·  '), state: held.includes(e) ? 'done' : '' }))} />`;
+  }
+  if (kind === 'meetings') {
+    // The year's meetings: the ones held checked off, this one and the next marked (or only what's ahead, from before)
+    const day = date || todayEastern();
+    const list = (n.thisYear?.length ? n.thisYear : (n.meetings || []).filter((x) => x.id !== id)).slice(0, 6);
+    const next = list.find((x) => x.date > day && x.id !== id);
+    return html`<${DatesSlide} rows=${list.map((x) => ({ key: x.id || x.date, date: x.date, title: x.name, sub: [x.date > day ? dayWords(x.date) : '', x.start ? clock(x.start) : ''].filter(Boolean).join('  ·  '), state: x.id === id || x.date === day ? 'today' : x.date < day ? 'done' : x === next ? 'next' : '' }))} />`;
+  }
   const lines = liveLines(kind, n, { meetingId: id });
   return lines.length ? html`<div class="bs-numbers"><ul>${lines.map((l) => html`<li>${l}</li>`)}</ul></div>` : null;
 }
@@ -335,7 +349,7 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
     : next.kind === 'section' ? html`<span>Next <b>${String(meeting.sections.findIndex((x) => x.id === next.sectionId) + 1).padStart(2, '0')}</b> ${meeting.sections.find((x) => x.id === next.sectionId)?.title || ''}</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId && next.page === stop.page ? html`<span>Next: the bottom half</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: page ${next.page + 1}</span>`
-    : next.kind === 'doc' ? html`<span>Next: ${fileTitle(files.find((f) => f.id === next.fileId)?.name || 'the document')}</span>`
+    : next.kind === 'doc' ? html`<span>Next: ${docTitle(files.find((f) => f.id === next.fileId)?.name || 'the document')}</span>`
     : next.n >= 0 ? html`<span>Next <b>${items[next.n].label}</b> ${items[next.n].title}</span>` : html`<span>Next: ${MORE.title.toLowerCase()}</span>`;
   return html`<footer class="bs-rail" aria-label="Where the meeting is">
     <ol class="bs-rail__parts">${sections.map(({ s, si, items: its }) => {
@@ -444,7 +458,7 @@ export function Screen({ id, data, d }) {
   const floor = given ? [given] : who;
   const secId = stop.sectionId || (stop.n >= 0 ? meeting.sections[items[stop.n].si]?.id : '');
   const timer = started && !ended && secId ? sectionClock(plan, secId, live.sectionAt) : null;
-  const files = item ? (stop.n >= 0 ? itemFiles(meeting, item, v.prior || []) : meeting.files.filter((f) => deck.some((s) => s.fileId === f.id && s.n === -1))) : [];
+  const docs = item ? (stop.n >= 0 ? itemDocs(meeting, item, v.prior || []) : docsOf(meeting.files.filter((f) => deck.some((s) => s.fileId === f.id && s.n === -1)))) : [];
   const file = stop.fileId ? [...meeting.files, ...(v.prior || []).flatMap((x) => x.files)].find((f) => f.id === stop.fileId) : null;
   // The half of a tall page on: the chair's word for this page (this deck may not have split it yet), else the stop's
   const half = stop.kind === 'doc' && stop.fileId === live.fileId && stop.page === (live.page || 0) ? (live.part ? 1 : 0) : stop.part || 0;
@@ -506,8 +520,8 @@ export function Screen({ id, data, d }) {
     const head = html`<p class="bs-eyebrow">${[section && section !== item.title ? section : '', !section && stop.n < 0 ? 'Also for this meeting' : ''].filter(Boolean).join('') || 'Agenda'}</p>
       <h1 class="bs-display bs-item__title">${item.title}</h1>
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
-    const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces ? 52 : 72} /><span><strong>${p.name}</strong>${p.title ? html`<small>${p.title}</small>` : null}</span></li>`)}</ul>` : null;
-    const coming = files.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${files.length === 1 ? 'Its document, next' : 'Its documents, next'}</p><ol>${files.map((f) => html`<li key=${f.id}>${fileTitle(f.name)}${pages[f.id] > 1 ? html`<span> · ${pages[f.id]} pages</span>` : null}</li>`)}</ol></div>` : null;
+    const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces ? 52 : 72} /><span><strong>${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul>` : null;
+    const coming = docs.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document, next' : 'Its documents, next'}</p><${Shelf} docs=${docs} pages=${pages} /></div>` : null;
     if (faces) {
       stage = html`<div class="bs-item bs-item--board bs-item--faces">
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${faces === 'roll' ? html`<${RollCount} v=${v} started=${started} />` : whoList}</div></div>
@@ -539,7 +553,7 @@ export function Screen({ id, data, d }) {
   } else {
     stage = html`<${DocPage} f=${file} page=${stop.page} part=${half} box=${box} onPages=${notePages} key=${file?.id} />`;
   }
-  const docWords = stop.kind === 'doc' ? `${fileTitle(file?.name)} · Page ${stop.page + 1}${pages[stop.fileId] ? ` of ${pages[stop.fileId]}` : ''}${halves[stop.fileId]?.[stop.page] === 2 ? `, ${half ? 'bottom' : 'top'} half` : ''}` : '';
+  const docWords = stop.kind === 'doc' ? `${docTitle(file?.name)} · Page ${stop.page + 1}${pages[stop.fileId] ? ` of ${pages[stop.fileId]}` : ''}${halves[stop.fileId]?.[stop.page] === 2 ? `, ${half ? 'bottom' : 'top'} half` : ''}` : '';
 
   // The line under the stage and the rail are there on every stop, so the stage keeps its size from one to the next
   return html`<div class=${`bs bs--${stop.kind} ${awake ? 'is-awake' : ''} ${vote ? 'has-vote' : ''} ${MIRROR ? 'is-mirror' : ''}`}>
@@ -559,6 +573,29 @@ export function Screen({ id, data, d }) {
     </div>
     <${Rail} meeting=${meeting} items=${items} at=${at} deck=${deck} ended=${ended} prior=${v.prior || []} timer=${timer} />
   </div>`;
+}
+
+/**
+ * An item's documents, coming up after its card: each one's first page, title, and what it is, in a row (the first
+ * six, and how many more)
+ */
+function Shelf({ docs, pages }) {
+  // Sized to the screen once: a TV's covers are bigger than a laptop's
+  const [w] = useState(() => Math.round(Math.max(84, Math.min(170, innerHeight * 0.15))));
+  const shown = docs.slice(0, docs.length > 6 ? 5 : 6);
+  return html`<ul class="bs-shelf" style=${`--cover:${w}px`}>${shown.map((d) => html`<${ShelfDoc} d=${d} width=${w} pages=${pages[d.file.id]} key=${d.key} />`)}${docs.length > shown.length ? html`<li class="bs-shelf__more">and ${docs.length - shown.length} more</li>` : null}</ul>`;
+}
+/** One of them: its first page, and its pages counted as it opens (the screen hasn't drawn it yet) */
+function ShelfDoc({ d, width, pages }) {
+  const ref = useCover(d.file, width);
+  const [count, setCount] = useState(0);
+  useEffect(() => { let live = true; openDoc(d.file).then((doc) => { if (live) setCount(doc.count); }).catch(() => {}); return () => { live = false; }; }, [d.file.id]);
+  const n = pages || count;
+  return html`<li>
+    <span class="bs-shelf__cover" ref=${ref} aria-hidden="true"></span>
+    <span class="bs-shelf__t">${d.title}</span>
+    <span class="bs-shelf__m">${[formatOf(d.file), n ? plural(n, 'page') : ''].filter(Boolean).join(' · ')}</span>
+  </li>`;
 }
 
 /**
@@ -583,7 +620,7 @@ export function ScreenPeek({ v, onOpen }) {
   if (!f) return null;
   return html`<figure class="bp-peek">
     <div class="bp-peek__page" ref=${ref}></div>
-    <figcaption><span><strong>On the screen:</strong> ${fileTitle(f.name)}, page ${v.live.page + 1}${n.count ? ` of ${n.count}` : ''}${n.halves === 2 ? `, ${v.live.part ? 'bottom' : 'top'} half` : ''}</span>
+    <figcaption><span><strong>On the screen:</strong> ${docTitle(f.name)}, page ${v.live.page + 1}${n.count ? ` of ${n.count}` : ''}${n.halves === 2 ? `, ${v.live.part ? 'bottom' : 'top'} half` : ''}</span>
       <a class="bp-btn bp-btn--sm" href=${`#/meetings/${v.id}/screen`} onClick=${onOpen}>Follow the screen</a></figcaption>
   </figure>`;
 }

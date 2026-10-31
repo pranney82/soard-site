@@ -34,9 +34,9 @@ import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, MORE,
-  sectionPlan, sectionOf, sectionClock, clockText, facesOf,
+  sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles,
 } from './board-shared.js';
-import { openScreen, mirrorUrl, useScreen, usePages, stepKey } from './board-present.js';
+import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
 const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
@@ -186,6 +186,8 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
     }
   }, [live.checkins]);
   const jump = useRef(null);
+  // What the screen shows (the preview's stop before Start) and the page counts, from RunBar to the agenda under it
+  const [shown, setShown] = useState({ itemId: '', fileId: '', pages: {} });
   // The screen opens on the board page, which shows only shared meetings: sharing comes first
   const present = async () => {
     if (!practice && !m.shared) {
@@ -197,7 +199,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
     openScreen(m.id);
     if (step !== 'during') setStep('during');
   };
-  const p = { m, set, setNow, ctx, act, save, numbers, people, keepSaved, saved, setStep, live, practice, jump, openWhere: () => setEditWhere(true) };
+  const p = { m, set, setNow, ctx, act, save, numbers, people, keepSaved, saved, setStep, live, practice, jump, shown, setShown, openWhere: () => setEditWhere(true) };
 
   const subs = {
     before: m.packetSentAt ? `Board emailed ${shortDate(m.packetSentAt.slice(0, 10))}` : m.shared ? 'On the board page' : 'Agenda, documents, invite',
@@ -742,7 +744,7 @@ function stopWords(stop, m, items, pages, files, parts = {}) {
   if (stop.kind === 'item') return { label: it.label, title: it.title, sub: [it.section !== it.title ? it.section : '', it.presenter].filter(Boolean).join(' · ') };
   const f = files.find((x) => x.id === stop.fileId);
   const n = pages[stop.fileId];
-  return { label: it.label, title: f ? fileTitle(f.name) : 'A document', sub: `${it.title} · page ${stop.page + 1}${n ? ` of ${n}` : ''}${parts[stop.fileId]?.[stop.page] === 2 ? `, ${stop.part ? 'bottom' : 'top'} half` : ''}` };
+  return { label: it.label, title: f ? docTitle(f.name) : 'A document', sub: `${it.title} · page ${stop.page + 1}${n ? ` of ${n}` : ''}${parts[stop.fileId]?.[stop.page] === 2 ? `, ${stop.part ? 'bottom' : 'top'} half` : ''}` };
 }
 
 /**
@@ -751,7 +753,7 @@ function stopWords(stop, m, items, pages, files, parts = {}) {
  * Page Down), the screen in its own window, and End. The board page follows each move within seconds, a screen on
  * this computer at once. Before Start, the screen can be opened to rehearse on: only it moves.
  */
-function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
+function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown }) {
   const meetings = ctx.data.meetings;
   const running = isLive(m);
   const items = agendaItems(m);
@@ -764,7 +766,7 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     if (msg.type === 'key') here.current.go(here.current.at + (msg.dir > 0 ? 1 : -1));
     if (msg.type === 'pages' && msg.pages) addPages(msg.pages);
   });
-  const [pages, addPages, parts] = usePages(files, true);
+  const [pages, addPages, parts, ready] = usePages(files, true);
   const deck = useMemo(() => deckOf(m, { pages, parts, meetings }), [m.sections, m.files, pages, parts, meetings]);
   // Which pages show in halves, to the screens on this computer (they'd otherwise learn it a page at a time)
   useEffect(() => { if (Object.keys(parts).length) send({ type: 'parts', parts }); }, [parts]);
@@ -792,6 +794,7 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
     send({ type: 'show', live: { ...pos, ...next }, rehearsal: !running, practice });
   };
   here.current = { pos, at, go, parts };
+  useEffect(() => { setShown?.({ itemId: pos.itemId || '', fileId: pos.fileId || '', pages }); }, [pos.itemId, pos.fileId, pages]);
   // From the notes below: an item ("Discuss now") or one of its documents ("Show")
   jump.current = (want) => {
     const i = deck.findIndex((s) => s.itemId === want.itemId && s.fileId === (want.fileId || '') && s.page === 0);
@@ -865,7 +868,7 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act }) {
       <span class="bm-run__next">${nextWords}</span>
     </div>
     <div class="bm-run__step">
-      <span class="bm-run__count" aria-label=${`Stop ${at + 1} of ${deck.length}`}>${at + 1}<span> / ${deck.length}</span></span>
+      <span class="bm-run__count" aria-label=${ready ? `Stop ${at + 1} of ${deck.length}` : `Stop ${at + 1}`}>${at + 1}${ready ? html`<span> / ${deck.length}</span>` : null}</span>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${at <= 0} onClick=${() => go(at - 1)} aria-keyshortcuts="ArrowLeft PageUp K">← Previous</button>
       <button type="button" class="btn btn-primary btn-sm" disabled=${at >= deck.length - 1} onClick=${() => go(at + 1)} aria-keyshortcuts="ArrowRight PageDown J">Next →</button>
     </div>
@@ -920,24 +923,35 @@ function Mirror({ id }) {
 }
 
 /** The quorum, beside the meeting as it runs: board members who checked in on the board page (the minutes settle it after) */
-function Quorum({ m, ctx }) {
+function Quorum({ m, ctx, live, practice }) {
   const fixed = ctx.data.settings.quorum;
   const quorum = quorumFor(m, fixed);
   const c = attendanceCounts(m);
-  return html`<div class=${`card bm-quorum ${quorum ? (c.boardHere >= quorum ? 'is-met' : 'is-short') : ''}`} role="status">
-    <div class="bm-quorum__n"><b>${c.boardHere}</b> of ${c.board}</div>
+  // Practising, the admin who checked in counts too, as on the board page
+  const here = hereCount(m, live, practice);
+  return html`<div class=${`card bm-quorum ${quorum ? (here >= quorum ? 'is-met' : 'is-short') : ''}`} role="status">
+    <div class="bm-quorum__n"><b>${here}</b> of ${c.board}</div>
     <div class="bm-quorum__t">board members checked in${c.remote ? ` (${c.remote} by video)` : ''}</div>
-    <p class="bm-quorum__q">${quorum ? (c.boardHere >= quorum ? `Quorum met: ${quorum} needed${fixed ? '' : ', a majority'}.` : `Quorum is ${quorum}${fixed ? '' : ', a majority'}: ${quorum - c.boardHere} more needed.`) : 'No board members on the list yet.'}</p>
+    <p class="bm-quorum__q">${quorum ? (here >= quorum ? `Quorum met: ${quorum} needed${fixed ? '' : ', a majority'}.` : `Quorum is ${quorum}${fixed ? '' : ', a majority'}: ${quorum - here} more needed.`) : 'No board members on the list yet.'}</p>
     <p class="bd-muted" style="margin-top:0.75rem">Members check in with one tap on the board page. Nobody takes roll: the minutes say who was there.</p>
   </div>`;
 }
 
 const LIVE_TAGS = { projects: 'Makeovers board', cash: 'The money', reveals: 'Reveals', events: 'Events', meetings: 'Meetings' };
+/** A document under its agenda item, to put on the screen: its first page, its title, what it is (or that it's on) */
+function ShowDoc({ d, pages, on, onClick }) {
+  const cover = useCover(d.file, 36);
+  return html`<button type="button" class=${`bm-doc ${on ? 'is-on' : ''}`} aria-pressed=${on} onClick=${onClick}>
+    <span class="bm-doc__cover" ref=${cover} aria-hidden="true"></span>
+    <span class="bm-doc__text"><span class="bm-doc__title">${d.title}</span><span class="bm-doc__meta">${on ? 'On the screen' : [formatOf(d.file), pages ? plural(pages, 'page') : ''].filter(Boolean).join(' · ')}</span></span>
+  </button>`;
+}
+
 /**
  * The agenda in order, for presenting: the item on the screen marked, and any item or document put straight onto it
  * (while rehearsing, only the screen on this computer moves). The minutes item can be marked approved here.
  */
-function RunOrder({ m, set, ctx, practice, jump }) {
+function RunOrder({ m, set, ctx, practice, jump, shown }) {
   const { data } = ctx;
   const running = isLive(m);
   const items = agendaItems(m);
@@ -959,30 +973,37 @@ function RunOrder({ m, set, ctx, practice, jump }) {
     ctx.addToast(`The ${prevName(it.about)}’s minutes are approved`, 'info');
   };
   if (!items.length) return null;
+  // The meeting's documents on no item, after the agenda (the screen comes to them before the close)
+  const loose = docsOf(looseFiles(m));
   return html`<div class="card">
     <div class="bd-card-head"><h3>The agenda, in order</h3><p>Tap an item or a document to put it on the screen. ${running ? 'The board page follows.' : 'Before you start, only the screen on this computer moves.'}</p></div>
     <ol class="bm-order">${m.sections.map((s, si) => html`<li class="bm-order__sec" key=${s.id}>
       <p class="bm-order__head"><span>${String(si + 1).padStart(2, '0')}</span>${s.title || 'Section'}<small>${[plan.get(s.id)?.start ? clock(plan.get(s.id).start) : '', `${plan.get(s.id)?.minutes} min`].filter(Boolean).join(' · ')}</small></p>
       ${s.items.length ? html`<ol>${s.items.map((it) => {
         const label = items.find((x) => x.id === it.id)?.label;
-        const on = running && m.live.itemId === it.id;
-        const files = itemFiles(m, it, data.meetings);
+        // On the screen: live, or in the preview before Start
+        const on = shown.itemId === it.id;
+        const docs = itemDocs(m, it, data.meetings);
         return html`<li class=${`bm-order__item ${on ? 'is-now' : ''}`} id=${`run-${it.id}`} key=${it.id}>
           <button type="button" class="bm-order__go" onClick=${() => jump.current?.({ itemId: it.id })} aria-current=${on ? 'step' : null}>
-            <span class="bm-order__n">${on ? html`<span class="bm-live-dot" aria-hidden="true"></span>` : label}</span>
+            <span class="bm-order__n">${on && running ? html`<span class="bm-live-dot" aria-hidden="true"></span>` : label}</span>
             <span class="bm-order__t">${it.title || html`<em>No title</em>`}${it.presenter ? html`<small>${it.presenter}</small>` : null}</span>
             ${it.live && it.live !== 'minutes' ? html`<span class="tag tag--info">${LIVE_TAGS[it.live] || 'Live'}</span>` : facesOf(it) ? html`<span class="tag tag--info">${facesOf(it) === 'roll' ? 'The board, checking in' : 'Faces of those here'}</span>` : null}
             ${it.confidential ? html`<span class="tag tag--warn">Board only</span>` : null}
           </button>
-          ${files.length ? html`<div class="bm-showdocs">${files.map((f) => {
-            const showing = on && m.live.fileId === f.id;
-            return html`<button type="button" class=${`bm-showdoc ${showing ? 'is-on' : ''}`} key=${f.id} aria-pressed=${showing} onClick=${() => jump.current?.({ itemId: it.id, fileId: f.id })}>${showing ? 'On the screen: ' : ''}${fileTitle(f.name)}</button>`;
-          })}</div>` : null}
+          ${docs.length ? html`<ul class="bm-docs">${docs.map((d) => html`<li key=${d.key}>
+            <${ShowDoc} d=${d} pages=${shown.pages[d.file.id]} on=${on && shown.fileId === d.file.id} onClick=${() => jump.current?.({ itemId: it.id, fileId: d.file.id })} />
+          </li>`)}</ul>` : null}
           ${it.live === 'minutes' && it.about && !practice ? html`<div class="bd-actions bm-order__approve">${data.meetings.find((y) => y.id === it.about)?.minutes === 'approved'
             ? html`<span class="tag tag--success">Approved</span>` : html`<button class="btn btn-ghost btn-sm" onClick=${() => approve(it)}>The board approved them</button>`}<span class="bd-muted">${prevName(it.about)}</span></div>` : null}
         </li>`;
       })}</ol>` : null}
-    </li>`)}</ol>
+    </li>`)}${loose.length ? html`<li class="bm-order__sec" key="more">
+      <p class="bm-order__head"><span aria-hidden="true">+</span>${MORE.title}<small>${plural(loose.length, 'document')}, on no item</small></p>
+      <ul class="bm-docs bm-docs--more">${loose.map((d) => html`<li key=${d.key}>
+        <${ShowDoc} d=${d} pages=${shown.pages[d.file.id]} on=${shown.itemId === MORE.id && shown.fileId === d.file.id} onClick=${() => jump.current?.({ itemId: MORE.id, fileId: d.file.id })} />
+      </li>`)}</ul>
+    </li>` : null}</ol>
   </div>`;
 }
 

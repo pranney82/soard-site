@@ -19,7 +19,7 @@
  */
 
 import { useState, useEffect, useRef } from './vendor.js';
-import { openDoc, partsOf } from './board/docs.js';
+import { openDoc, partsOf, coverOf, keptOf } from './board/docs.js';
 
 export const CHANNEL = 'soard-board-screen';
 export const screenUrl = (id) => `/admin/board/#/meetings/${encodeURIComponent(id)}/screen`;
@@ -36,6 +36,18 @@ export function openScreen(id) {
   return w;
 }
 export const screenIsOpen = (id) => { const w = windows.get(id); return !!w && !w.closed; };
+
+/** A ref for the element that holds a file's first page, `width` wide (./board/docs.js coverOf), once it's drawn */
+export function useCover(f, width) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!f?.id) return undefined;
+    let live = true;
+    coverOf(f, width).then((page) => { if (live && page && ref.current) ref.current.replaceChildren(page); });
+    return () => { live = false; };
+  }, [f?.id, width]);
+  return ref;
+}
 
 /**
  * The channel to the screen: `send(message)`, and `on` hears the screen's own messages ({ type: 'hello' } when it
@@ -72,8 +84,9 @@ export function useScreen(id, on) {
 /**
  * How many pages each document has, as the screen draws them ({ fileId: pages }), and then which pages are tall
  * enough to show in two halves ({ fileId: [1 | 2 a page] }, ./board/docs.js partsOf), worked out one file at a
- * time in the background while `on` (the deck steps through every page and half). The screen's own counts come in too.
- * → [pages, addPages, parts]
+ * time in the background while `on` (the deck steps through every page and half). What this device worked out
+ * before is there at once (./board/docs.js keptOf). The screen's own counts come in too.
+ * → [pages, addPages, parts, ready (every file's pages and halves known)]
  */
 export function usePages(files, on) {
   const [pages, setPages] = useState({});
@@ -82,10 +95,16 @@ export function usePages(files, on) {
   useEffect(() => {
     if (!on) return undefined;
     let stop = false;
+    // Known on this device: in one go, before anything opens
+    const known = files.map((f) => [f, keptOf(f)]).filter(([f, k]) => k && !pages[f.id]);
+    if (known.length) {
+      setPages((p) => ({ ...p, ...Object.fromEntries(known.map(([f, k]) => [f.id, k.count])) }));
+      setParts((p) => ({ ...p, ...Object.fromEntries(known.filter(([, k]) => k.parts).map(([f, k]) => [f.id, k.parts])) }));
+    }
     (async () => {
       for (const f of files) {
         if (stop) return;
-        if (pages[f.id]) continue;
+        if (pages[f.id] || keptOf(f)) continue;
         try {
           const doc = await openDoc(f);
           if (!stop && doc?.count) setPages((p) => (p[f.id] === doc.count ? p : { ...p, [f.id]: doc.count }));
@@ -94,7 +113,7 @@ export function usePages(files, on) {
       // The counts first (every page in the deck), then the halves
       for (const f of files) {
         if (stop) return;
-        if (parts[f.id]) continue;
+        if (parts[f.id] || keptOf(f)?.parts) continue;
         try {
           const n = await partsOf(f);
           if (!stop) setParts((p) => ({ ...p, [f.id]: n }));
@@ -103,7 +122,8 @@ export function usePages(files, on) {
     })();
     return () => { stop = true; };
   }, [key, on]);
-  return [pages, (more) => setPages((p) => ({ ...p, ...more })), parts];
+  const ready = files.every((f) => pages[f.id] && parts[f.id]);
+  return [pages, (more) => setPages((p) => ({ ...p, ...more })), parts, ready];
 }
 
 /**
