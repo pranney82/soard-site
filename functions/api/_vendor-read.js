@@ -138,12 +138,24 @@ export function documentType(head) {
 }
 
 /** A PDF's text through Workers AI's converter; '' when it has none (a scan) or can't be read */
+/**
+ * toMarkdown's text without its own framing: the "Metadata" block it puts first (PDFFormatVersion=…, Creator=HP Scan…)
+ * and its "Contents" and "Page 1" headings. A scan has nothing else, so it comes back empty and is read by its pictures
+ * (Oct 30 2026: 34 scanned W-9s and every scanned certificate were passed by as "its text says so")
+ */
+export function pageText(s) {
+  let t = String(s || '');
+  const contents = /^[#\s]*Contents\s*$/m.exec(t);
+  if (/^[#\s]*(?:[^\n]*\n[#\s]*)?Metadata\s*$/m.test(t.slice(0, 200)) && contents) t = t.slice(contents.index + contents[0].length);
+  return t.replace(/^[#\s]*Page \d+\s*$/gm, '').trim();
+}
+
 export async function pdfText(env, { bytes, name = 'document.pdf' }) {
   if (!env.AI?.toMarkdown) return '';
   try {
     const r = await env.AI.toMarkdown({ name, blob: new Blob([bytes], { type: 'application/pdf' }) }, { conversionOptions: { output: { format: 'text' } } });
     const one = Array.isArray(r) ? r[0] : r;
-    return one?.format === 'error' ? '' : String(one?.data || '');
+    return one?.format === 'error' ? '' : pageText(one?.data);
   } catch (err) {
     console.error('[vendor-read] pdf', err.message);
     return '';

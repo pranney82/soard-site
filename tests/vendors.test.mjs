@@ -15,7 +15,7 @@ import {
   docsState, labelFor, requestEmail, jtSetup, readJtVendor, createLink, findLink, fileUpload, pageView, askDue, sweep,
   refreshCache, ensureVendorSchema, sendPreview, readAsk, saveDocSettings, readDocSettings, vendorsThatNeedDocs, asksOnHold, askForBill, DEFAULTS, FOLDER, PREVIEW_ID, LIMITS, TRADES, DOC_STATES,
 } from '../functions/api/_vendors.js';
-import { judgeCoi, judgeCoiReads, judgeW9, mergeCoi, documentType, answerOf, scannedPages } from '../functions/api/_vendor-read.js';
+import { judgeCoi, judgeCoiReads, judgeW9, mergeCoi, documentType, answerOf, scannedPages, pageText } from '../functions/api/_vendor-read.js';
 import { onRequestGet as pageGet, onRequestPost as pagePost } from '../functions/api/vendor-docs.js';
 
 const NOW = Date.parse('2026-10-28T15:00:00Z');
@@ -797,4 +797,10 @@ test('readJtVendor reads the fields by id and the first contact email', async ()
   assert.equal(v.w9, true);
   assert.equal(v.glExpires, '2027-06-01');
   assert.equal(v.email, 'office@tko.example');
+});
+
+test('a PDF’s text without the converter’s framing: a scan has none, and a document keeps all of its words', () => {
+  assert.equal(pageText('Metadata\nPDFFormatVersion=1.7\nCreator=HP Scan\nProducer=HP Scan Extended Application\n\nContents\nPage 1'), '');
+  assert.equal(pageText('# W9.pdf\n## Metadata\n- PDFFormatVersion=1.4\n## Contents\n### Page 1\nForm W-9 Request for Taxpayer\n### Page 2\nPart II'), 'Form W-9 Request for Taxpayer\n\nPart II');
+  assert.equal(pageText('CERTIFICATE OF LIABILITY INSURANCE\nTable of Contents'), 'CERTIFICATE OF LIABILITY INSURANCE\nTable of Contents', 'no framing: as it was');
 });

@@ -59,7 +59,7 @@ import { readDocument, readW9Text, pdfText, documentType, judgeW9, mergeCoi, lon
 import { jt, jtSetup, readJtVendor, writeFields, vendorNote, uploadToJt, readDocSettings, docsState, labelFor, readAsk, FOLDER, TAGS, CONTACT_VALUES, contactEmail, contactFields } from './_vendors.js';
 
 export const STATE_KEY = 'coi-backfill';
-const REREAD = 3;            // raised when files already read need reading again (2: matching a W-9 to the JobTread account it's on; 3: Ramp's emails given as text)
+const REREAD = 4;            // raised when files already read need reading again (2: matching a W-9 to the JobTread account it's on; 3: Ramp's emails given as text; 4: scans passed by as text)
 const SEARCH = 2;            // raised when every inbox and Ramp are searched again from the start (2: wider words, Linzi's account, Ramp's invoices and emails)
 const RAMP_KINDS = new Set(['FILE', 'INVOICE', 'EMAIL']);   // a Ramp bill's attachments worth a look (not its vendor credits)
 const MIN = 60 * 1000;
@@ -970,7 +970,7 @@ export async function runBackfill(env, st, { now = Date.now(), fetchImpl = fetch
   await env.DB.prepare("UPDATE coi_found SET state = 'given-up' WHERE state = 'failed' AND tries >= ?").bind(MAX_TRIES).run();
   // Read again, once each time REREAD is raised: what matched no vendor, and certificates and W-9s the model gave no name for
   if ((st.reread || 0) < REREAD) {
-    await env.DB.prepare("UPDATE coi_found SET state = 'queued', tries = 0, updated_at = ? WHERE (item = 'file' AND (state = 'unmatched' OR (state = 'skipped' AND kind IN ('coi', 'w9') AND (insured IS NULL OR insured = '')))) OR (source = 'ramp' AND item = 'message' AND state = 'skipped' AND detail LIKE 'not an email Ramp gave%')").bind(iso).run();
+    await env.DB.prepare("UPDATE coi_found SET state = 'queued', tries = 0, updated_at = ? WHERE (item = 'file' AND (state = 'unmatched' OR (state = 'skipped' AND kind IN ('coi', 'w9') AND (insured IS NULL OR insured = '')))) OR (source = 'ramp' AND item = 'message' AND state = 'skipped' AND detail LIKE 'not an email Ramp gave%') OR (item = 'file' AND state = 'skipped' AND detail = 'not a certificate or a W-9 (its text says so)')").bind(iso).run();
     st.reread = REREAD;
   }
   // Emails first (each makes file rows), newest first: the newest certificate names the agent who's theirs now

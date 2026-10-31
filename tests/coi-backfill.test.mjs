@@ -170,6 +170,8 @@ const TEXTS = {
   waiver: `2026 Volunteer Release Waiver ${'words '.repeat(40)} MARK:waiver`,
   'typed-w9': `Form W-9 (Rev. March 2024) Request for Taxpayer Identification Number and Certification ${'line '.repeat(30)} MARK:typed-w9`,
   'scrambled-coi': `CERTIFICATE OF LIABILITY INSURANCE ${'@#$ '.repeat(40)} MARK:scrambled-coi`,
+  // What Cloudflare's toMarkdown gives for a scan: its own framing and nothing of the page (Oct 30 2026, an HP Scan W-9)
+  'scan-w9': 'Metadata\nPDFFormatVersion=1.7\nIsLinearized=false\nIsAcroFormPresent=false\nIsXFAPresent=false\nIsCollectionPresent=false\nIsSignaturesPresent=false\nCreator=HP Scan\nCreationDate=D:20230117103745-08\'00\'\nProducer=HP Scan Extended Application\n\nContents\nPage 1',
 };
 const coi = (insured, gl, wc, producer = null) => ({
   isCertificate: true, readable: true, insured, certificateHolder: 'Sunshine on a Ranney Day', producer,
@@ -187,6 +189,7 @@ const READS = {
   'jt-coi': coi('Example Hauling LLC', '2027-08-01', '2027-08-01'),
   'typed-w9-page': { isW9: true, readable: true, name: 'Sam Sample', businessName: 'Sample Painting LLC', hasTaxId: true, signed: true },
   'scrambled-coi-page': coi('Sample Painting LLC', '2027-09-01', '2027-09-01'),
+  'scan-w9-page': { isW9: true, readable: true, name: 'Sam Sample', businessName: 'Sample Painting LLC', hasTaxId: true, signed: true, signedDate: '2023-01-17' },
   'w9-photo': { isW9: true, readable: true, name: 'Sam Sample', businessName: 'Sample Painting LLC', hasTaxId: true, signed: true, signedDate: '2024-02-01' },
 };
 const markerIn = (s) => /MARK:([\w-]+)/.exec(s)?.[1];
@@ -622,4 +625,13 @@ test('Ramp: an email given as its words only is passed by and says so; one with 
   assert.equal(words.state, 'passed');
   assert.match(words.detail, /^the email’s words only, text\/plain \(“Hi, our invoice/);
   assert.equal((await rowsByName())['Sample COI.pdf']?.state, 'filed', 'the padded one is opened and its certificate filed');
+});
+
+test('a scanned W-9 (the converter gives only its framing) is read by its pictures and filed, not passed by as text', async () => {
+  world.draw = async (bytes) => [{ bytes: jpgOf(`${markerIn(Buffer.from(bytes).toString('latin1'))}-page`), type: 'image/jpeg' }];
+  mail({ box: PAT, at: NOW - 5 * DAY, from: 'Sam Sample <office@samplepainting.example>', subject: 'paperwork', files: [{ name: 'Signed W-9.pdf', type: 'application/pdf', data: pdfOf('scan-w9') }] });
+  await runAll();
+  const row = (await rowsByName())['Signed W-9.pdf'];
+  assert.deepEqual([row.state, row.kind, row.jt_id], ['filed', 'w9', 'VSAMPLE'], row.detail);
+  assert.equal(world.vendors.VSAMPLE.values['F-W9'], true);
 });
