@@ -1404,6 +1404,7 @@ function init(root, cfg, mode) {
     if (busy || moving || performance.now() < calmUntil) return;
     navNote(null);
     if (currentId === 'review') { submit(); return; }
+    takeExactMatch();
     // An address check still on its way decides this page's answer: wait for it (briefly),
     // unless the address itself needs fixing first (then there's nothing to wait for)
     const home = homeAddressId() && byId[homeAddressId()];
@@ -2500,6 +2501,16 @@ function init(root, cfg, mode) {
       .finally(() => { if (placing === p) placing = null; });
   }
   let placing = null; // a picked suggestion's parts still on their way
+  /** A whole address typed (or pasted) that the list offers back exactly, alone: Continue takes it, no tap on the list needed */
+  function takeExactMatch() {
+    const el = sug.el;
+    const box = el && addrBox(el);
+    const search = box?.querySelector('[data-search]');
+    if (!search || sug.items.length !== 1 || box.dataset.mode === 'parts' || box.dataset.picked === search.value) return;
+    const it = sug.items[0];
+    const words = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (words(search.value) === words([it.line1, it.sub || [it.city, it.state, it.zip].filter(Boolean).join(' ')].join(' '))) pickSuggestion(0);
+  }
   /** The county question, set from the address when the county is one of its choices */
   function fillCounty(county, addressEl) {
     const name = String(county || '').trim().toLowerCase();
