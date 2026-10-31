@@ -102,6 +102,15 @@ const look = (page) => page.evaluate(() => {
     parts, rows: rows.map((r) => (r.hasAttribute('data-by-hand') ? 'BY-HAND' : r.textContent.trim())),
     listIn: lr ? lr.top >= top - 1 && lr.bottom <= navTop + 1 : true,
     over: document.documentElement.scrollHeight - innerHeight,
+    // The box they're in, if it's in the address: between the bar across the top and Back / Continue
+    inView: (() => {
+      const a = document.activeElement;
+      if (!a?.closest?.('.af-address')) return true;
+      const r = a.getBoundingClientRect();
+      const top = document.querySelector('[data-top]')?.getBoundingClientRect().bottom || 0;
+      const nav = document.querySelector('[data-nav]')?.getBoundingClientRect().top ?? innerHeight;
+      return r.top >= top - 1 && r.bottom <= nav + 1;
+    })(),
     error: document.querySelector('[data-field="address"] .af-error')?.textContent.trim() || '',
     title: document.querySelector('[data-step-title]')?.textContent.trim(), part: document.querySelector('[data-part-text]')?.textContent.trim(),
     active: document.activeElement?.id || document.activeElement?.tagName,
@@ -128,7 +137,9 @@ async function invariants(page, where) {
     ok(!v.rows.length, `${where}: no list over the parts`);
   }
   ok(v.listIn, `${where}: the list is on screen`);
-  if (!v.rows.length) ok(v.over <= 1, `${where}: the address's screen doesn't scroll (${v.over}px)`);
+  // A screen may scroll a little (the parts are taller than the line; nothing is moved to another screen
+  // under them): the box they're typing in is what must be in view
+  if (!v.rows.length) ok(v.inView, `${where}: the box they're in is in view (the screen ${v.over > 1 ? `scrolls ${v.over}px` : 'fits'})`);
   ok(!page.errors.length, `${where}: no errors (${page.errors.slice(0, 2).join(' | ')})`);
   return v;
 }
@@ -197,6 +208,8 @@ const ACTIONS = {
     return `parts "${line1}" / "${city}" / "${zip}"`;
   },
   async escape(page) {
+    // From the address (Escape elsewhere on the screen is a screen back, by design): its list closes, nothing else
+    await page.evaluate(() => { if (!document.activeElement?.closest('.af-address')) [...document.querySelectorAll('#af-address-search, #af-address-line1')].find((i) => i.getClientRects().length)?.focus(); });
     await page.keyboard.press('Escape');
     await sleep(200);
     return 'Escape';
@@ -213,6 +226,9 @@ const ACTIONS = {
     const before = await look(page);
     await page.click('[data-next]');
     await sleep(700);
+    // Continue waiting on the address check (its wheel turning): as a person would, until it's done
+    await page.waitForFunction(() => document.querySelector('[data-next]')?.getAttribute('aria-busy') !== 'true', { timeout: 15000 }).catch(() => {});
+    await sleep(300);
     const after = await look(page);
     if (after.onScreen) {
       ok(!!after.error, `Continue that stays on the address says why (parts ${JSON.stringify(before.parts)}, line "${before.line}")`);

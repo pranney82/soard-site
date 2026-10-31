@@ -321,7 +321,11 @@ if (DIST) {
     ok(await p.$eval('#adv-address', (e) => e.value) === '3167 Main St, Duluth, GA 30096' && await p.$eval('#adv-address-suggest', (e) => e.hidden), `Enter picks it: the whole address in the line (${await p.$eval('#adv-address', (e) => e.value)})`);
     ok((await text(p, '#adv-title')) === 'About you', 'and stays on the step (Enter picked, it did not move on)');
     await onTo('Your interest');
-    ok(await p.evaluate(() => document.activeElement?.tagName) === 'H2', 'each step starts at its heading');
+    const into = await p.evaluate(() => ({ tag: document.activeElement?.tagName, first: document.activeElement === [...document.querySelectorAll('.adv-page:not([hidden]) [data-field]')].find((f) => f.getClientRects().length && !f.closest('[data-off]'))?.querySelector('input, textarea') }));
+    await sleep(150);
+    const heard = await p.$eval('#adv-live', (e) => e.textContent);
+    if (width < 500) ok(into.tag === 'H2', 'on a touch screen each step starts at its heading (no keyboard sliding up over the questions)');
+    else ok(['TEXTAREA', 'INPUT'].includes(into.tag) && into.first && /^Step \d of \d: Your interest$/.test(heard), `on a computer each step starts in its first box, and a screen reader hears the step ("${heard}")`);
     await type('heardFrom', 'LinkedIn'); await type('why', 'To help.'); await type('connection', 'Neighbors.');
     ok(!(await visible(p, '[data-field="involvedHow"]')), 'a follow-up waits');
     await choose('involved', 'Yes'); await sleep(80);

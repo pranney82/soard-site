@@ -115,6 +115,17 @@ export function declutter(root) {
     if (!box.width) continue;
     const items = [...frame.querySelectorAll('[data-rank]')];
     items.forEach(el => el.classList.remove('is-crowded'));
+    // The home's name beside its pin: on the side where it fits the map (a small map, a long name), else none
+    // (the key under the map still says which pin is the home)
+    for (const pin of frame.querySelectorAll('.af-map-pin')) {
+      const label = pin.querySelector('.af-map-pin-label');
+      if (!label) continue;
+      label.hidden = false;
+      const fits = () => { const r = label.getBoundingClientRect(); return r.left >= box.left + 2 && r.right <= box.right - 2; };
+      if (fits()) continue;
+      pin.toggleAttribute('data-flip');
+      if (!fits()) { pin.toggleAttribute('data-flip'); label.hidden = true; }
+    }
     const rectOf = (el) => {
       const parts = [...el.children].map(c => c.getBoundingClientRect()).filter(r => r.width);
       const own = el.getBoundingClientRect();

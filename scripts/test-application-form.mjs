@@ -427,7 +427,14 @@ try {
   ok(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight) <= 1, 'that screen fits');
   await next();
   ok(/choose the answer that fits/.test(await errorText('boundary')), `Continue without an answer says what to do (${await errorText('boundary')})`);
-  ok(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight) <= 1, 'with its note, the screen still fits');
+  // The map keeps a size that reads (it never shrinks to a thumbnail to dodge a scroll): the note is what must be seen
+  const noteSeen = await page.evaluate(() => {
+    const n = document.querySelector('[data-field="boundary"] .af-error').getBoundingClientRect();
+    const top = document.querySelector('[data-top]')?.getBoundingClientRect().bottom || 0;
+    const nav = document.querySelector('[data-nav]').getBoundingClientRect().top;
+    return n.height > 0 && n.top >= top - 1 && n.bottom <= nav + 1;
+  });
+  ok(noteSeen, 'with its note, the note is in view (between the bar and Back / Continue)');
   for (let i = 0; i < 3 && !(await visible('#af-address-line1')); i++) { await page.click('[data-back]'); await sleep(450); }
   ok(await visible('#af-address-line1'), 'Back: the address again, as they were entering it');
 
@@ -944,7 +951,7 @@ try {
     tab: document.title,
   }));
   ok(!out.focus && out.header, 'Save and exit: back to the page, the site header with it');
-  ok(/saved/i.test(out.title) && /1 of 9 steps done/.test(out.lead) && /Continue where you left off/.test(out.go), `the overview says what's done and offers to carry on ("${out.lead}")`);
+  ok(/saved/i.test(out.title) && /1 of 10 steps done/.test(out.lead) && /Continue where you left off/.test(out.go), `the overview says what's done and offers to carry on ("${out.lead}")`);
   ok(out.first === 'done' && out.now === AREA, 'the first step is checked and the one they were on is marked');
   ok(/Saved/.test(out.notice) && /Continue my application/.test(out.cta) && !/^Step /.test(out.tab), `with a "Saved" note, and the hero button says Continue (${JSON.stringify({ notice: out.notice, cta: out.cta, tab: out.tab })})`);
   await shot('15-overview-saved-phone', x);
@@ -1042,6 +1049,44 @@ try {
   await desk.click('[data-field="ackSeason"] .af-choice');
   await desk.click('[data-next]');
   await sleep(400);
+  // The keys, Linear's way: a new screen's first box has the focus (past its words to read), and Escape is a screen back
+  ok(await desk.evaluate(() => document.activeElement?.id) === 'af-address-search', `on a computer the screen's first box takes the keys (${await desk.evaluate(() => document.activeElement?.id || document.activeElement?.tagName)})`);
+  await desk.evaluate(() => document.activeElement?.blur()); // out of the box (Escape in a box is the box's)
+  await desk.keyboard.press('Escape');
+  await sleep(500);
+  ok((await stepTitle(desk)) === 'Before You Begin', `Escape goes a screen back, from outside a box (${await stepTitle(desk)})`);
+  const t0 = Date.now();
+  await desk.click('[data-next]');
+  const dim = [];
+  for (const t of [60, 160, 260]) { await sleep(Math.max(0, t - (Date.now() - t0))); dim.push(await desk.$eval('[data-next]', (b) => b.getAttribute('aria-busy') === 'true' || b.disabled)); }
+  ok(!dim.some(Boolean), 'Continue doesn’t dim for a screen change that takes no time (only a wait you can see does)');
+  await sleep(300);
+  await desk.type('#af-address-search', '12');
+  await desk.keyboard.press('Escape');
+  await desk.keyboard.press('Escape');
+  await sleep(400);
+  ok((await stepTitle(desk)) === 'Service Area' && await desk.$eval('#af-address-search', (i) => i.value) === '12', 'never from a box they’re typing in (the address list closes, the step stays)');
+  await desk.$eval('#af-address-search', (i) => { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  // Its save goes through (4s after typing) before the draft is moved on below, so it can't land after and undo that
+  await desk.waitForFunction(() => document.querySelector('[data-save-state]')?.dataset.kind === 'saved', { timeout: 10000 }).catch(() => {});
+  ok(await desk.evaluate(() => [...document.querySelectorAll('.af-file')].every((i) => i.tabIndex === -1)), 'a photo or video box has no hidden stop for Tab (its Choose button is the way in)');
+  // Start tapped while the page's script is still on its way (a slow phone, a slow line): kept, and the
+  // application opens when it's ready, instead of the tap only jumping down the page
+  const slowCtx = await browser.createBrowserContext();
+  const slow = await slowCtx.newPage(); // its own tab, without the suite's request handler (one handler per request)
+  await slow.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
+  await slow.setRequestInterception(true);
+  const go = (r) => { try { r.continue()?.catch?.(() => {}); } catch { /* the tab closed first */ } };
+  slow.on('request', (r) => { if (r.isInterceptResolutionHandled?.()) return; if (/\/_astro\/.+\.js/.test(r.url())) setTimeout(() => go(r), 1500); else go(r); });
+  // The page is drawn (and its inline catcher in) well before its scripts run: tap then, as a person would
+  slow.goto(`${SITE}/apply/form/`).catch(() => {});
+  await slow.waitForFunction(() => window.__afEarly && document.querySelector('[data-hero-cta]') && document.querySelector('[data-application]')?.dataset.ready !== 'go', { timeout: 8000 });
+  await slow.click('[data-hero-cta]');
+  const held = await slow.$eval('[data-hero-cta]', (b) => b.getAttribute('aria-busy'));
+  await slow.waitForFunction(() => document.documentElement.classList.contains('af-focus'), { timeout: 8000 }).catch(() => {});
+  ok(held === 'true' && await slow.evaluate(() => document.documentElement.classList.contains('af-focus') && location.hash !== '#application'), `an early tap on Start is kept and opens the application (held: ${held})`);
+  await sleep(1600); // its held scripts let through before the tab goes
+  await slowCtx.close();
   const deskToken = await draftToken(desk);
   // Straight to the video page: the draft's furthest page lets the steps list jump there
   await desk.evaluate((tk) => localStorage.setItem('soard-application-draft', JSON.stringify({ token: tk, year: '2027', furthest: 'video' })), deskToken);

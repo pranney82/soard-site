@@ -914,6 +914,8 @@ document.addEventListener('astro:before-swap', function () {
     will-change: transform, opacity;
     view-transition-name: none;
   }
+  /* Closed or closing, it never takes a tap (Safari can fade it out as a page loads, over what's under it) */
+  .mobile-nav:not(.is-open) { pointer-events: none; }
   .mobile-nav.is-open { opacity: 1; visibility: visible; transform: translateY(0); }
   @media (min-width: 1024px) { .mobile-nav { display: none !important; } }
 

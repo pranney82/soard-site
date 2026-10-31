@@ -13,6 +13,7 @@
  * or browser going a screen back.
  */
 import { ADVISORY_STEPS, ADVISORY_FIELDS, checkAnswers, isShown } from '../../../functions/api/_advisory-form.js';
+import { mailFix } from '../apply/mail-fix.js';
 
 const STORE = 'soard-advisory-application';
 const FOCUS = 'soard-advisory-focus';
@@ -44,7 +45,7 @@ export function initAdvisoryForm() {
   const REVIEW = total;
   const ui = {
     back: $('adv-back'), next: $('adv-next'), saved: $('adv-saved'), sendError: $('adv-send-error'), turnstile: $('adv-turnstile'),
-    stage: $('adv-stage'), stepText: $('adv-step-text'), part: $('adv-part'), title: $('adv-title'),
+    stage: $('adv-stage'), stepText: $('adv-step-text'), part: $('adv-part'), title: $('adv-title'), live: $('adv-live'),
     top: root.querySelector('[data-adv-top]'), segs: [...root.querySelectorAll('.adv-seg')], exit: $('adv-exit'),
     hub: $('adv-hub'), hubTitle: $('adv-hub-title'), hubLead: $('adv-hub-lead'), go: $('adv-go'), goLabel: $('adv-go-label'),
     startOver: $('adv-start-over'), hubRows: [...root.querySelectorAll('.adv-hub-row')],
@@ -127,42 +128,22 @@ export function initAdvisoryForm() {
     return Math.max(120, innerHeight - top - nav - head - lead - (parseFloat(getComputedStyle(ui.stage).paddingBottom) || 0));
   }
   /**
-   * Something new on the screen (problem notes, the summary, a resized window): if it no longer fits,
-   * this step's screens are worked out again with it, keeping `keep` (else the screen's first piece) in front
+   * Problem notes (and the summary) on the screen: the questions a little closer together (often room
+   * enough). Nothing moves to another screen and the count never changes under them; a long one scrolls,
+   * with the focus on the first problem
    */
-  function refit(keep = null, problems = null) {
-    if (!focused || step < 0 || step >= total || !packs[step] || moving) return;
+  function refit(problems = null) {
+    if (!problems || !focused || step < 0 || step >= total || !packs[step] || moving) return;
     settle();
-    const fits = () => { settle(); return document.documentElement.scrollHeight <= innerHeight; };
-    if (fits()) return;
-    // Problem notes: first the questions a little closer together (often room enough, nothing moves)…
-    if (problems) { pages[step].setAttribute('data-snug', ''); if (fits()) return; }
-    // …then the screen keeps its questions up to the last one with a problem (none moves away from its
-    // note), and what follows it goes on to a screen of its own
-    const here = packs[step][screenNo] || [];
-    const last = problems ? here.reduce((m, k, j) => (idsOf(k).some((id) => problems.includes(id)) ? j : m), -1) : -1;
-    if (last >= 0 && last < here.length - 1) {
-      for (const k of here.slice(last + 1)) k.setAttribute('data-off', '');
-      if (fits()) {
-        packs[step] = [...packs[step].slice(0, screenNo), here.slice(0, last + 1), here.slice(last + 1), ...packs[step].slice(screenNo + 1)];
-        paintScreen();
-        paint();
-        return;
-      }
-    }
-    const was = keep || packs[step][screenNo]?.[0] || null;
-    packs[step] = pack(step);
-    const at = was ? packs[step].findIndex((kids) => kids.some((k) => k === was || k.contains(was) || was.contains(k))) : 0;
-    screenNo = Math.max(0, at);
-    paintScreen();
-    paint();
+    if (document.documentElement.scrollHeight > innerHeight) pages[step].setAttribute('data-snug', '');
   }
   function pack(i) {
     const el = pages[i];
     if (!focused || !el || i >= total) return null;
     settle();
     el.querySelectorAll('[data-off]').forEach((k) => k.removeAttribute('data-off'));
-    el.removeAttribute('data-snug'); // the questions closer together while problem notes show: worked out afresh
+    // The questions closer together while problem notes show (kept through a repack while one does)
+    if (![...el.querySelectorAll('.adv-error')].some(e => !e.hidden && e.textContent.trim())) el.removeAttribute('data-snug');
     if (el.offsetParent === null) return null;
     const fit = room(el);
     // Measured as answered: a follow-up as if its question had been answered to show it
@@ -233,7 +214,7 @@ export function initAdvisoryForm() {
     const all = list ? list.flat() : pieces(step); // the pieces as packed (a pair split on a phone stays split)
     const on = new Set(list ? list[screenNo] || [] : all);
     for (const k of all) k.toggleAttribute('data-off', !on.has(k));
-    pages[step]?.querySelectorAll('textarea').forEach(capBox);
+    capBoxes(pages[step]);
     // A pair split across screens: off where neither half is on (an empty box would still take the page's gap)
     for (const b of pages[step]?.children || []) if (!all.includes(b) && all.some((k) => b.contains(k))) b.toggleAttribute('data-off', ![...on].some((k) => b.contains(k)));
   }
@@ -264,7 +245,7 @@ export function initAdvisoryForm() {
     if (!summary) return;
     // The summary only when some are out of sight (another screen): beside each question its own note says it
     const elsewhere = mine.some((id) => fieldEl(id)?.closest('[data-off]'));
-    if (mine.length < 2 || !elsewhere) { summary.hidden = true; summary.textContent = ''; if (mine.length) refit(fieldEl(mine[0]), mine); if (focus && mine.length) focusField(mine[0]); return; }
+    if (mine.length < 2 || !elsewhere) { summary.hidden = true; summary.textContent = ''; if (mine.length) refit(mine); if (focus && mine.length) focusField(mine[0]); return; }
     summary.innerHTML = '';
     const head = document.createElement('p');
     head.textContent = `${mine.length} answers need a look:`;
@@ -282,7 +263,7 @@ export function initAdvisoryForm() {
     }
     summary.append(head, list);
     summary.hidden = false;
-    refit(fieldEl(mine[0]), mine); // the notes and the summary take room: the first problem stays in front
+    refit(mine); // the notes and the summary take room: the questions close up a little
     if (focus) focusField(mine[0]);
   }
   function focusField(id) {
@@ -352,11 +333,13 @@ export function initAdvisoryForm() {
     if (focused) return;
     const started = restored || furthest > 0;
     const doneCount = ADVISORY_STEPS.filter((_, i) => stepDone(i, a)).length;
-    ui.hubTitle.textContent = started ? 'Your application is saved on this device' : 'Five steps, about 20 minutes';
+    ui.hubTitle.textContent = started ? 'Your application is saved on this device' : 'Six steps, about 20 minutes';
     ui.hubLead.textContent = started
       ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total} steps done. Pick up where you left off.`)
       : 'Have a reference in mind. Your answers save on this device as you go.';
     ui.goLabel.textContent = !started ? 'Start the application' : doneCount === total ? 'Review and send' : 'Continue where you left off';
+    const cta = document.querySelector('[data-adv-cta]'); // the hero's button says the same
+    if (cta && cta.textContent !== ui.goLabel.textContent) cta.textContent = ui.goLabel.textContent;
     ui.startOver.hidden = !started;
     ui.hubRows.forEach((b, i) => {
       const done = stepDone(i, a);
@@ -381,7 +364,7 @@ export function initAdvisoryForm() {
     if (!dir || !focused) { update(); return Promise.resolve(); }
     if (reducedMotion() || !document.startViewTransition || document.visibilityState === 'hidden') {
       update();
-      if (!reducedMotion()) ui.stage.animate?.([{ opacity: 0, transform: `translateX(${dir * 16}px)` }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.05,.7,.1,1)' });
+      if (!reducedMotion()) ui.stage.animate?.([{ opacity: 0, transform: `translateX(${dir * 16}px)` }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'cubic-bezier(.05,.7,.1,1)' });
       return Promise.resolve();
     }
     html.classList.add('adv-vt');
@@ -416,48 +399,78 @@ export function initAdvisoryForm() {
       if (focused) window.scrollTo({ top: 0, behavior: 'auto' });
     }, dir, !changed).then(() => {
       if (at) focusField(at);
-      else if (focus) ui.title.focus({ preventScroll: true });
+      else if (focus) {
+        // On a computer the screen's first box takes the keys straight away (Linear's way), and a screen
+        // reader still hears which step this is; on a touch screen the step's name has the focus, so a
+        // keyboard doesn't slide up over the questions
+        const box = keysFirst() ? firstBox() : null;
+        if (box) {
+          box.focus({ preventScroll: true });
+          if (changed && ui.live) { ui.live.textContent = ''; setTimeout(() => { ui.live.textContent = `Step ${step + 1} of ${total + 1}: ${titles[step]}`; }, 40); }
+        } else ui.title.focus({ preventScroll: true });
+      }
     });
   }
 
   // ── On its own screen ──
-  let trapped = false;
+  // The browser's or phone's Back and Forward go where they were, a screen at a time: every screen they go
+  // to (Continue, Edit from the review) is an entry in the history that says which screen it is, and Back
+  // or Forward shows that screen. Made by their taps, so a browser never skips them
+  let depth = 0; // the entry they're on (0: the page itself)
+  let left = null; // after Save and exit: the entry and screen they left from
+  const trail = []; // depth → the screen that entry is
   let swallow = false;
-  function armTrap() {
-    if (trapped || !focused) return;
-    try { history.pushState({ ...(history.state || {}), advFocus: 1 }, ''); trapped = true; } catch { /* no history */ }
+  const whereNow = () => ({ step, screen: step >= total ? 0 : screenNo });
+  const sameAt = (x, y) => !!x && !!y && x.step === y.step && x.screen === y.screen;
+  function pushLoc() {
+    if (!focused) return;
+    const at = whereNow();
+    try {
+      history.pushState({ ...(history.state || {}), advFocus: 1, advDepth: depth + 1, advAt: at }, '');
+      depth++;
+      trail[depth] = at;
+      trail.length = depth + 1;
+    } catch { /* no history */ }
   }
+  function replaceLoc() {
+    if (!focused || !depth) return;
+    const at = whereNow();
+    try { history.replaceState({ ...(history.state || {}), advFocus: 1, advDepth: depth, advAt: at }, ''); trail[depth] = at; } catch { /* no history */ }
+  }
+  function armTrap() { if (!depth) pushLoc(); }
   function begin(i = null) {
     if (!focused) {
       focused = true;
       root.classList.add('is-focus');
       document.documentElement.classList.add('adv-focus');
       session.set(true);
-      trapped = trapped || !!history.state?.advFocus;
+      if (!depth && history.state?.advFocus) { depth = history.state.advDepth || 1; trail[depth] = history.state.advAt; } // a reload on one of its own entries
       window.scrollTo({ top: 0, behavior: 'auto' });
       if (!reducedMotion()) {
-        ui.top?.animate?.([{ transform: 'translateY(-100%)' }, { transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
-        ui.stage.animate?.([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.23,1.2,.32,1)' });
+        ui.top?.animate?.([{ transform: 'translateY(-100%)' }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+        ui.stage.animate?.([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.05,.7,.1,1)' });
       }
     }
-    armTrap();
     packs = {};
     const target = i != null && i <= furthest ? i : step;
     // Coming back to the step they left: the screen they were on
     const screen = resumeAt && resumeAt.step === target ? resumeAt.screen : 0;
     resumeAt = null;
     step = -1; // a step put on screen afresh
-    go(target, { screen });
+    go(target, { screen }).then(() => (depth ? replaceLoc() : pushLoc()));
   }
   function exitFocus({ fromPop = false } = {}) {
     if (!focused) return;
     saveNow();
+    if (step >= 0 && step < total) resumeAt = { step, screen: screenNo }; // "Continue where you left off": this screen
     focused = false;
     root.classList.remove('is-focus');
     document.documentElement.classList.remove('adv-focus', 'adv-vt', 'adv-vt-back', 'adv-vt-same');
     session.set(false);
-    if (trapped && !fromPop) { swallow = true; history.back(); }
-    trapped = false;
+    // Its entries in the history go with it, so the browser's Back leaves from here next (Forward comes back to this screen)
+    left = depth > 0 ? { depth, at: whereNow() } : null;
+    if (depth > 0) { swallow = true; history.go(-depth); }
+    depth = 0;
     restored = restored || furthest > 0;
     paint();
     requestAnimationFrame(() => {
@@ -467,25 +480,63 @@ export function initAdvisoryForm() {
       (sent ? ui.done : ui.hubTitle).focus({ preventScroll: true });
     });
   }
+  const keysFirst = () => matchMedia('(pointer: fine)').matches && !matchMedia('(any-pointer: coarse)').matches;
+  /** The screen's first question when it's a box to type in, still empty */
+  function firstBox() {
+    if (step >= total) return null;
+    const seen = (el) => el.getClientRects().length && !el.closest('[data-off], [hidden]');
+    const field = [...(pages[step]?.querySelectorAll('[data-field]') || [])].find(seen);
+    const box = field?.querySelector('input:is([type=text], [type=email], [type=tel], [type=url], [type=number], :not([type])), textarea');
+    return box && seen(box) && !box.value && !box.disabled ? box : null;
+  }
+  // Escape: a screen back (Linear's way), never from a box they're typing in (the address list closes first, on its own)
+  const keys = new AbortController();
+  document.addEventListener('astro:before-swap', () => keys.abort(), { once: true });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || !focused || step < 0 || document.querySelector('dialog[open]')) return;
+    const t = e.target;
+    if (t?.matches?.('input:not([type=radio]):not([type=checkbox]), textarea, select')) return; // a box being typed in keeps its Escape
+    if (back()) e.preventDefault();
+  }, { signal: keys.signal });
   /** A screen back; false at the very start */
   function back() {
     if (moving || performance.now() < calmUntil) return true;
     const before = step < total ? screenBefore() : -1;
-    if (before >= 0) { go(step, { dir: -1, screen: before }).then(save); return true; }
-    if (step === 0) return false;
-    go(step - 1, { dir: -1, screen: 'last' }).then(save);
+    // With an entry behind this one, Back is the browser's Back: the screen they came from, and its Forward
+    // comes back here. Without one (the first entry), the screen before, which this entry then is
+    if (depth > 1) { history.back(); return true; }
+    if (before < 0 && step === 0) return false;
+    (before >= 0 ? go(step, { dir: -1, screen: before }) : go(step - 1, { dir: -1, screen: 'last' })).then(() => { replaceLoc(); save(); });
     return true;
   }
   // The page's inline gate asks this first, ahead of the site's router (true = handled here)
-  window.__advPop = () => {
+  window.__advPop = (e) => {
     if (swallow) { swallow = false; return true; }
-    if (!focused) return false;
-    trapped = false;
-    if (sent || !back()) exitFocus({ fromPop: true });
+    const st = e?.state ?? history.state;
+    if (!focused) {
+      // Forward onto one of its entries after Save and exit: the application opens again, on that screen
+      if (!st?.advFocus || sent) return false;
+      const to = st.advDepth || 1;
+      // The screen they left, its entry further on: the browser goes there too, so Back and Forward still line up
+      const at = left && left.depth > to ? left.at : st.advAt;
+      if (left && left.depth > to) { swallow = true; history.go(left.depth - to); depth = left.depth; } else depth = to;
+      left = null;
+      if (at) { trail[depth] = at; resumeAt = at.step < total ? at : null; }
+      begin(at?.step ?? null);
+      return true;
+    }
+    const to = st?.advFocus ? (st.advDepth || 1) : 0;
+    const dir = to > depth ? 1 : -1;
+    depth = to;
+    if (st?.advAt) trail[to] = st.advAt;
+    if (!to || sent) { exitFocus({ fromPop: true }); return true; } // back to the page itself
+    const at = st.advAt;
+    if (at && !sameAt(at, whereNow())) go(at.step, { dir, screen: at.screen });
+    else if (!at && dir < 0) back(); // an entry from before they said where they were: a screen back
     return true;
   };
   document.addEventListener('astro:before-swap', () => { window.__advPop = null; document.documentElement.classList.remove('adv-focus', 'adv-vt', 'adv-vt-back', 'adv-vt-same'); }, { once: true });
-  const rearm = () => { if (focused && !trapped) armTrap(); };
+  const rearm = () => { if (focused && !depth) armTrap(); };
   document.addEventListener('pointerdown', rearm, { capture: true });
   document.addEventListener('keydown', rearm, { capture: true });
 
@@ -535,18 +586,41 @@ export function initAdvisoryForm() {
       setOpen(sec, missing || reviewAll || opened.has(String(i)));
       return sec;
     });
-    ui.review.replaceChildren(...secs);
+    // An email they gave that's likely a typo (they're written to there): asked about, the fix a tap away
+    const typos = ADVISORY_FIELDS.filter((f) => f.type === 'email' && isShown(f, a) && mailFix(a[f.id])).map((f) => {
+      const p = document.createElement('p');
+      p.className = 'adv-mailfix adv-review-mail';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.reviewFix = f.id;
+      b.dataset.fix = mailFix(a[f.id]);
+      b.textContent = b.dataset.fix;
+      b.setAttribute('aria-label', `Use ${b.dataset.fix}`);
+      p.append(`We’ll write to ${a[f.id]}. Did you mean `, b, '?');
+      return p;
+    });
+    ui.review.replaceChildren(...typos, ...secs);
     ui.reviewAll.textContent = reviewAll ? 'Hide the answers' : 'Show all answers';
     ui.reviewAll.setAttribute('aria-expanded', String(reviewAll));
   }
   ui.review.addEventListener('click', (e) => {
+    // "Did you mean …@gmail.com?": the answer is changed to it, there and then
+    const fix = e.target.closest('[data-review-fix]');
+    const box = fix && form.elements[fix.dataset.reviewFix];
+    if (box) {
+      box.value = fix.dataset.fix;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+      buildReview();
+      return;
+    }
     const tg = e.target.closest('.adv-review-toggle');
     if (tg) { const sec = tg.closest('.adv-review-section'); setOpen(sec, !sec.hasAttribute('data-open')); return; }
     const edit = e.target.closest('[data-edit]');
     if (edit) {
       const id = edit.dataset.answer || null;
       fromReview = id ? 'answer' : 'step';
-      go(Number(edit.dataset.edit), { dir: -1, at: id || null });
+      go(Number(edit.dataset.edit), { dir: -1, at: id || null }).then(pushLoc); // Back returns to the review
     }
   });
   ui.reviewAll.addEventListener('click', () => {
@@ -575,23 +649,73 @@ export function initAdvisoryForm() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) saveNow(); });
 
   /** A box for words grows as they write until the screen is full; a longer answer then scrolls inside it, never the screen */
-  function capBox(ta) {
-    ta.style.removeProperty('max-height');
-    if (!focused || !ta.getClientRects().length || ta.closest('[data-off], [hidden]')) return;
+  function capBoxes(page) {
+    const boxes = [...(page?.querySelectorAll('textarea') || [])];
+    for (const ta of boxes) { ta.style.removeProperty('max-height'); ta.style.removeProperty('min-height'); }
+    if (!focused) return;
     settle();
-    const over = document.documentElement.scrollHeight - innerHeight;
-    if (over > 0) ta.style.maxHeight = `${Math.max(parseFloat(getComputedStyle(ta).minHeight) || 80, Math.floor(ta.getBoundingClientRect().height - over))}px`;
+    let over = document.documentElement.scrollHeight - innerHeight;
+    // The tallest gives way first, each never under two lines of words (below its usual least height
+    // only when the screen needs it)
+    const shown = boxes.filter(ta => ta.getClientRects().length && !ta.closest('[data-off], [hidden]')).sort((a, b) => b.offsetHeight - a.offsetHeight);
+    for (const ta of shown) {
+      if (over <= 0) return;
+      const cs = getComputedStyle(ta);
+      const px = (k) => parseFloat(cs[k]) || 0;
+      const two = Math.ceil(2 * (px('lineHeight') || 24) + px('paddingTop') + px('paddingBottom') + px('borderTopWidth') + px('borderBottomWidth'));
+      const was = ta.getBoundingClientRect().height;
+      const h = Math.max(Math.min(two, was), Math.floor(was - over));
+      if (h >= was) continue;
+      ta.style.maxHeight = `${h}px`;
+      if (h < px('minHeight')) ta.style.minHeight = `${h}px`;
+      settle();
+      over = document.documentElement.scrollHeight - innerHeight;
+    }
   }
+
   form.addEventListener('input', (e) => {
     const id = e.target.closest('[data-field]')?.dataset.field;
-    if (e.target.tagName === 'TEXTAREA') capBox(e.target);
+    if (e.target.tagName === 'TEXTAREA') capBoxes(pages[step]);
     if (e.target === sugInput && e.isTrusted) { clearTimeout(sug.timer); sug.timer = setTimeout(suggest, 250); }
     follow();
     if (id) recheck(id);
     save();
   });
+  // A likely typo in an email ("name@gmial.com"): "Did you mean name@gmail.com?" under the box, the fix a tap away
+  for (const input of form.querySelectorAll('input[type=email]')) {
+    const p = document.createElement('p');
+    p.className = 'adv-mailfix';
+    p.setAttribute('aria-live', 'polite');
+    p.hidden = true;
+    input.after(p);
+  }
+  function paintMailFix(input) {
+    const p = input.parentElement.querySelector('.adv-mailfix');
+    const fix = p && mailFix(input.value);
+    if (!p) return;
+    p.hidden = !fix;
+    p.replaceChildren();
+    if (!fix) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.mailfixUse = fix;
+    b.textContent = fix;
+    b.setAttribute('aria-label', `Use ${fix}`);
+    p.append('Did you mean ', b, '?');
+  }
+  form.addEventListener('click', (e) => {
+    const use = e.target.closest('[data-mailfix-use]');
+    const input = use?.closest('[data-field]')?.querySelector('input[type=email]');
+    if (!input) return;
+    input.value = use.dataset.mailfixUse;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.focus();
+  });
+  form.addEventListener('input', (e) => { if (e.target.type === 'email') { const p = e.target.parentElement.querySelector('.adv-mailfix'); if (p && !p.hidden) p.hidden = true; } });
   form.addEventListener('change', (e) => {
     const id = e.target.closest('[data-field]')?.dataset.field;
+    if (e.target.type === 'email') paintMailFix(e.target);
     follow();
     if (id) recheck(id);
     if (focused && step < total) paint(); // a follow-up asked (or not) on the next screen: Continue says where it goes
@@ -728,6 +852,7 @@ export function initAdvisoryForm() {
 
   ui.back.addEventListener('click', () => { back(); });
   ui.go.addEventListener('click', () => begin());
+  document.querySelector('[data-adv-cta]')?.addEventListener('click', (e) => { e.preventDefault(); begin(); });
   ui.hubRows.forEach((b) => b.addEventListener('click', () => { if (!b.disabled) begin(Number(b.dataset.goto)); }));
   ui.exit.addEventListener('click', () => exitFocus());
 
@@ -744,6 +869,7 @@ export function initAdvisoryForm() {
     if (fromReview === 'answer' || (fromReview && lastHere)) await go(REVIEW, { dir: 1 });
     else if (!lastHere) await go(step, { dir: 1, screen: screenNo + 1 });
     else await go(step + 1, { dir: 1 });
+    pushLoc(); // the browser's Back comes back to the screen they've just left
     save();
   });
 
@@ -861,6 +987,12 @@ export function initAdvisoryForm() {
   });
   follow();
   paint();
-  // A reload mid-application goes straight back to it
+  // A reload mid-application goes straight back to it; a tap on Start made while this script was loading
+  // (the page's inline catcher kept it) goes ahead now
+  root.dataset.ready = 'go';
+  for (const b of document.querySelectorAll('#adv-go, [data-adv-cta]')) b.removeAttribute('aria-busy');
+  const early = window.__advWant;
+  window.__advWant = false;
   if (restored && session.get()) begin(step);
+  else if (early) begin();
 }

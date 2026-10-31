@@ -52,6 +52,7 @@ const logo = 'brand-logo-light-bg-display';
         <p class="hero-eyebrow"><a href="/advisory-board/">Advisory Board</a></p>
         <h1 class="hero-headline">Apply to join the <em>Advisory Board</em></h1>
         <p class="hero-lead">Tell us who you are, what you’d bring, and why the mission speaks to you. It takes about 20 minutes, with a reference in mind. Applications are <strong>always open</strong>.</p>
+        <div class="hero-ctas"><a href="#application" class="btn btn-primary btn-lg" data-adv-cta>Start the application</a></div>
         <div class="hero-trust">
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>About 20 minutes</span>
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M17 21v-8H7v8M7 3v5h8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Saves on this device as you go</span>
@@ -103,7 +104,7 @@ const logo = 'brand-logo-light-bg-display';
       <!-- On the page: every step and how long it takes, what's kept on this device, the way in -->
       <section class="adv-card adv-hub" id="adv-hub" aria-labelledby="adv-hub-title">
         <p class="adv-hub-eyebrow">Your application</p>
-        <h2 class="adv-hub-title" id="adv-hub-title" tabindex="-1">Five steps, about 20 minutes</h2>
+        <h2 class="adv-hub-title" id="adv-hub-title" tabindex="-1">Six steps, about 20 minutes</h2>
         <p class="adv-hub-lead" id="adv-hub-lead">Have a reference in mind. Your answers save on this device as you go.</p>
         <div class="adv-hub-go-row">
           <button type="button" class="btn btn-primary adv-hub-go" id="adv-go"><span id="adv-go-label">Start the application</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg></button>
@@ -156,6 +157,7 @@ const logo = 'brand-logo-light-bg-display';
 
         <footer class="adv-nav">
           <p class="adv-send-error" id="adv-send-error" role="alert" hidden></p>
+          <p class="sr-only" id="adv-live" aria-live="polite"></p>
           <div class="adv-nav-row">
             <button type="button" class="btn btn-outline-dark adv-back" id="adv-back" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>Back</button>
             <button type="submit" class="btn btn-primary adv-next" id="adv-next">Continue</button>
@@ -199,6 +201,7 @@ const logo = 'brand-logo-light-bg-display';
   .hero-eyebrow a:hover { text-decoration: underline; }
   .hero-headline { font-size: clamp(38px, 5.4vw, 72px); line-height: 1.05; letter-spacing: -0.035em; color: var(--c-dark); margin-bottom: 24px; }
   .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 540px; margin-bottom: 24px; }
+  .hero-ctas { margin-bottom: 26px; }
   .hero-trust { display: flex; gap: 12px 22px; flex-wrap: wrap; }
   .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--c-text-muted); }
   .hero-trust-item a { color: inherit; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
@@ -214,6 +217,7 @@ const logo = 'brand-logo-light-bg-display';
     .hero-frame { aspect-ratio: 1; border-radius: 20px; }
     .hero-accent { bottom: -10px; right: -10px; }
     .hero-headline { font-size: clamp(34px, 9vw, 48px); }
+    .hero-ctas .btn { width: 100%; }
   }
   @media (pointer: coarse) { .btn:hover { transform: none; } }
   @media (prefers-reduced-motion: reduce) { .btn { transition: none; } .btn:hover { transform: none; } }
@@ -289,7 +293,7 @@ const logo = 'brand-logo-light-bg-display';
   .adv-top-exit svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
   .adv-segs { display: flex; gap: 3px; height: 4px; margin: 0; padding: 0; list-style: none; }
   .adv-seg { flex: 1; position: relative; overflow: hidden; background: #E9E5DA; }
-  .adv-seg span { position: absolute; inset: 0; background: var(--c-yellow); transform-origin: left; transform: scaleX(0); transition: transform .4s var(--adv-ease); }
+  .adv-seg span { position: absolute; inset: 0; background: var(--c-yellow); transform-origin: left; transform: scaleX(0); transition: transform .25s var(--adv-ease); }
   .adv-seg[data-state="done"] span { background: #F2C200; }
   html.adv-focus .adv-form { flex: 1 0 auto; display: flex; flex-direction: column; border: 0; border-radius: 0; box-shadow: none; padding: 0; background: none; }
   html.adv-focus .adv-done { width: calc(100% - 32px); max-width: 720px; margin: clamp(20px, 5vh, 48px) auto 48px; }
@@ -301,7 +305,7 @@ const logo = 'brand-logo-light-bg-display';
   .adv-part:empty { display: none; }
   .adv-part::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: #A9A79F; }
   .adv-head h2 { font-size: clamp(26px, 3.2vw, 34px); line-height: 1.16; letter-spacing: -0.018em; margin: 0; }
-  .adv-head h2:focus { outline: none; }
+  .adv-head h2:focus, .adv-head h2:focus-visible, .adv [tabindex="-1"]:is(h1, h2, h3, p, div):is(:focus, :focus-visible) { outline: none; box-shadow: none; }
   .adv-intro { color: var(--c-text-muted); font-size: 16px; line-height: 1.6; margin: 8px 0 24px; }
   /* A step's later screens wait their turn; its intro shows on the first */
   .adv-page [data-off] { display: none !important; }
@@ -317,10 +321,20 @@ const logo = 'brand-logo-light-bg-display';
   .adv-nav-row .adv-next { margin-left: auto; min-width: 220px; }
   /* Back and Continue the same height, so the bar is too with Back or without it (the screens are worked out on a step's first, where it's hidden) */
   .adv-nav-row :is(.adv-back, .adv-next).btn { min-height: 56px; padding-block: 0; }
+  /* A quick colour change and press, no lift or glow easing in: nothing still moving once the next screen is in */
+  .adv-nav-row :is(.adv-back, .adv-next).btn { transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
+  .adv-nav-row :is(.adv-back, .adv-next).btn:hover { transform: none; }
+  .adv-nav-row :is(.adv-back, .adv-next).btn:active { transform: scale(.98); }
+  :is(#adv-go, [data-adv-cta])[aria-busy="true"] { cursor: progress; opacity: .85; }
   .adv-send-error { max-width: 672px; margin: 0 auto 12px; padding: 12px 16px; border-radius: 12px; background: #FFF6D6; color: #5C4A00; font-weight: 600; }
   .adv-back { gap: 6px; padding-inline: 22px 26px; }
 
   .adv-field { margin-bottom: 24px; }
+  /* "Did you mean name@gmail.com?" under an email box */
+  .adv-mailfix { margin: 8px 0 0; font-size: 14.5px; line-height: 2.1; color: var(--c-dark); }
+  .adv-mailfix button { display: inline; margin: 0 1px 0 4px; font: inherit; line-height: 1.4; font-weight: 700; color: var(--c-dark); background: #FFFBEA; border: 1.5px solid var(--c-yellow); border-radius: 999px; min-height: 36px; padding: 4px 12px; cursor: pointer; overflow-wrap: anywhere; text-align: left; }
+  .adv-mailfix button:hover { background: var(--c-yellow-soft); }
+  .adv-review-mail { margin: 0 0 12px; padding: 10px 14px; border-radius: 14px; background: #FFF6D6; color: #5C4A00; font-weight: 600; }
   /* A step's pieces a gap apart, not a margin under each: the last one's margin was room below the last
      question that the screen hasn't got (and that working out the screens didn't count) */
   .adv-page:not([hidden]):not(.adv-page--review) { display: flex; flex-direction: column; gap: 24px; }
@@ -418,8 +432,8 @@ const logo = 'brand-logo-light-bg-display';
   .adv-vt::view-transition-group(root), .adv-vt::view-transition-old(root), .adv-vt::view-transition-new(root), .adv-vt::view-transition-group(adv-stage),
   .adv-vt::view-transition-group(adv-head), .adv-vt::view-transition-new(adv-head) { animation: none; }
   .adv-vt::view-transition-old(adv-head) { animation: none; opacity: 0; }
-  .adv-vt::view-transition-old(adv-stage) { animation: advOutNext 120ms cubic-bezier(.4,0,1,1) both; }
-  .adv-vt::view-transition-new(adv-stage) { animation: advInNext 260ms cubic-bezier(.05,.7,.1,1) 110ms both; }
+  .adv-vt::view-transition-old(adv-stage) { animation: advOutNext 90ms cubic-bezier(.4,0,1,1) both; }
+  .adv-vt::view-transition-new(adv-stage) { animation: advInNext 200ms cubic-bezier(.05,.7,.1,1) 60ms both; }
   .adv-vt.adv-vt-back::view-transition-old(adv-stage) { animation-name: advOutBack; }
   .adv-vt.adv-vt-back::view-transition-new(adv-stage) { animation-name: advInBack; }
   @keyframes advOutNext { to { opacity: 0; transform: translateX(-12px); } }
@@ -501,6 +515,8 @@ const logo = 'brand-logo-light-bg-display';
 <!-- Back while the application has the screen goes a step back (advisory-form.client.js sets
      window.__advPop); this gate runs ahead of the site's page router, which would load the page again -->
 <script is:inline>if(!window.__advGate){window.__advGate=1;addEventListener('popstate',function(e){var f=window.__advPop;if(f&&f(e))e.stopImmediatePropagation()},true)}</script>
+<!-- A tap on Start while the application's script is still loading is kept, and it opens the moment it's ready -->
+<script is:inline>if(!window.__advEarly){window.__advEarly=1;document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#adv-go,[data-adv-cta]');var r=document.querySelector('[data-adv]');if(!b||!r||r.dataset.ready==='go')return;e.preventDefault();window.__advWant=true;b.setAttribute('aria-busy','true')},true)}</script>
 <script>
   import { initAdvisoryForm } from '../../components/advisory/advisory-form.client.js';
   initAdvisoryForm();

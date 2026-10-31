@@ -9,7 +9,7 @@
  * Text is escaped here; text blocks and stop screens are HTML that the
  * server cleaned when they were saved (sanitizeHtml).
  */
-import { TEXT_MAX, TEXTAREA_MAX } from '../../../functions/api/_application-form.js';
+import { TEXT_MAX, TEXTAREA_MAX, DATE_MIN } from '../../../functions/api/_application-form.js';
 import { areaMapHtml } from './area-map.js';
 
 const CF_BASE = 'https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ';
@@ -98,7 +98,7 @@ export const UI = {
     railHelp: 'Questions? We are happy to help.', miniUp: 'Back to the top of this step',
     // Optional questions tucked behind a button until wanted
     addParent2: 'Add another parent or guardian', addParentAddress: "Add the parent's address, if it's different from the child's",
-    mailFix: 'Did you mean {email}?', mailFixUse: 'Use {email}',
+    mailFix: 'Did you mean {email}?', mailFixUse: 'Use {email}', reviewMailCheck: 'We’ll write to {email}. Did you mean {fix}?',
     language: 'Language', loading: 'Loading the application…', optional: '(optional)', chooseOne: 'Choose one', choose: 'Choose', upTo: 'Choose up to {n}.',
     // A choice's whole description, when a phone has room for only part of it
     tileMore: 'More', tileMoreAbout: 'More about {name}', detailChoose: 'Choose this', detailRemove: 'Remove this choice', detailChosen: 'Chosen',
@@ -195,7 +195,7 @@ export const UI = {
     railLabel: 'Su progreso', railTitle: 'Su solicitud', leftMany: 'Quedan unos {n} minutos', leftOne: 'Queda más o menos un minuto', leftReview: 'Último paso: revisar y enviar',
     railHelp: '¿Preguntas? Con gusto le ayudamos.', miniUp: 'Volver al principio de este paso',
     addParent2: 'Agregar otro padre, madre o tutor', addParentAddress: 'Agregar la dirección del padre, la madre o el tutor, si es diferente a la del niño',
-    mailFix: '¿Quiso decir {email}?', mailFixUse: 'Usar {email}',
+    mailFix: '¿Quiso decir {email}?', mailFixUse: 'Usar {email}', reviewMailCheck: 'Le escribiremos a {email}. ¿Quiso decir {fix}?',
     language: 'Idioma', loading: 'Cargando la solicitud…', optional: '(opcional)', chooseOne: 'Elija una opción', choose: 'Elegir', upTo: 'Elija hasta {n}.',
     tileMore: 'Más', tileMoreAbout: 'Más sobre {name}', detailChoose: 'Elegir esta', detailRemove: 'Quitar esta opción', detailChosen: 'Elegida',
     detailFull: 'Ya eligió {n}. Quite una para elegir esta.',
@@ -401,6 +401,7 @@ ${part(T('city'), `<input type="text" id="${id}-city" data-part="city" maxlength
 <label class="af-sub af-float af-float--select"><select id="${id}-state" data-part="state" autocomplete="${ac('address-level1')}"><option value="">${T('choose')}</option>${US_STATES.map(s => `<option value="${s}"${homeAddress && s === 'GA' ? ' selected' : ''}>${s}</option>`).join('')}</select><span class="af-float-label">${T('state')}</span></label>
 ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="numeric" maxlength="10" autocomplete="${ac('postal-code')}" enterkeyhint="next" placeholder=" ">`)}
 </div>
+<p class="af-error" id="${errId}"></p>
 <p class="af-address-switch"><button type="button" class="af-btn af-btn--link" data-addr-mode="parts">${esc(T('addressManual'))}</button><button type="button" class="af-btn af-btn--link" data-addr-mode="line">${esc(T('addressSearch'))}</button></p>
 <p class="af-county-note" aria-live="polite" hidden></p></div>`;
     }
@@ -414,13 +415,13 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
       // A likely typo in the address ("gmial.com") gets a one-tap fix under it (the script fills this in)
       case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' || f.id === 'contactEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" enterkeyhint="next" ${desc}><p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>`; break;
       case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' || f.id === 'contactPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" enterkeyhint="next" ${desc}>`; break;
-      case 'date': control = `<input type="date" id="${id}" max="${new Date().toISOString().slice(0, 10)}" min="1990-01-01" ${desc}>`; break;
+      case 'date': control = `<input type="date" id="${id}" max="${new Date().toISOString().slice(0, 10)}" min="${DATE_MIN}" ${desc}>`; break;
       case 'textarea': control = `<textarea id="${id}" rows="${Number(f.rows) || 5}" maxlength="${f.rules?.maxLength || TEXTAREA_MAX}" ${desc}></textarea>`; break;
       case 'signature': control = `<input type="text" id="${id}" class="af-signature" maxlength="120" autocomplete="name" placeholder="${esc(T('signature'))}" enterkeyhint="done" ${desc}>`; break;
       case 'select': control = `<select id="${id}" ${desc}><option value="">${T('chooseOne')}</option>${f.options.map(v => `<option value="${esc(v)}">${esc(f.optionLabels?.[v] ?? v)}</option>`).join('')}</select>`; break;
       case 'photo':
         control = `<div class="af-upload af-upload--photo" data-state="empty" data-drop>
-<input type="file" id="${id}" accept="image/*" class="af-file" ${desc}>
+<input type="file" id="${id}" accept="image/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview" aria-hidden="true">${RING}</div>
 <div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noPhoto')}</p>
 <div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('choosePhoto')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div></div>
@@ -428,7 +429,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
         break;
       case 'video':
         control = `<div class="af-upload af-upload--video" data-state="empty" data-drop>
-<input type="file" id="${id}" accept="video/*" class="af-file" ${desc}>
+<input type="file" id="${id}" accept="video/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview af-upload-preview--video" aria-hidden="true">${RING}<span class="af-pct"></span></div>
 <div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noVideo')}</p>
 <div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div>
@@ -444,7 +445,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
     }
     inner = `<label class="af-label" for="${id}">${esc(f.label)}${optional}</label>${help}${control}`;
   }
-  return `<div class="af-field af-field--${f.type}" data-field="${esc(f.id)}" data-type="${f.type}"${f.required ? ' data-required="1"' : ''}${f.showIf ? ' hidden' : ''}>${inner}<p class="af-error" id="${errId}"></p></div>`;
+  return `<div class="af-field af-field--${f.type}" data-field="${esc(f.id)}" data-type="${f.type}"${f.required ? ' data-required="1"' : ''}${f.showIf ? ' hidden' : ''}>${inner}${f.type === 'address' ? '' : `<p class="af-error" id="${errId}"></p>`}</div>`;
 }
 
 /**

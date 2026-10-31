@@ -410,7 +410,9 @@ async function handleVideoUrl(context, draft, body) {
   try {
     upload = await createVideoUpload(env, { draftId: draft.id, size, origin: request.headers.get('origin') });
   } catch (e) {
-    return fail(`We could not start the video upload. ${e.message}`, 500);
+    // The family gets plain words; what went wrong (a Stream setting, its reply) goes to the logs
+    console.error('video-url', e?.message || e);
+    return fail('We couldn’t start the video upload just now. Please try again in a few minutes.', 500);
   }
   const previous = draft.files?.video?.uid;
   await env.DB.prepare('UPDATE application_drafts SET video_creates = COALESCE(video_creates, 0) + 1 WHERE id = ?').bind(draft.id).run();
@@ -424,7 +426,7 @@ async function handleVideoDone(context, draft) {
   const v = draft.files?.video;
   if (!v?.uid) return fail('No video upload in progress');
   let video;
-  try { video = await getVideo(env, v.uid); } catch (e) { return fail(`We could not check the video. ${e.message}`, 500); }
+  try { video = await getVideo(env, v.uid); } catch (e) { console.error('video-check', e?.message || e); return fail('We couldn’t check the video just now. Please try again in a few minutes.', 500); }
   if (video?.status?.state === 'error') return fail('The video could not be processed. Please try a different video file.', 422, { code: 'video-error' });
   const uploaded = videoUploaded(video);
   if (uploaded && !v.uploaded) await setDraftFile(env.DB, draft.id, 'video', { ...v, uploaded: true, duration: video.duration > 0 ? video.duration : null });

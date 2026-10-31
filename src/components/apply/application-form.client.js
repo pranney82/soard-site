@@ -38,6 +38,7 @@ import { addressKey, checkableAddress } from '../../../functions/api/_geo.js';
 import { renderPages, t as word, imageHtml, mapWords, esc } from './application-render.js';
 import { areaMapHtml, declutter } from './area-map.js';
 import { signupCheck, postPlainly } from '../../utils/signup-check';
+import { mailFix } from './mail-fix.js';
 
 const API = '/api/apply';
 const STORE_KEY = 'soard-application-draft';
@@ -66,6 +67,7 @@ const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').match
 const finePointer = () => matchMedia('(pointer: fine)').matches;
 const isToken = (s) => /^[0-9a-f]{32}$/.test(String(s || ''));
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
+const SCREEN_KEY = 'soard-application-screen'; // this tab's screen, for a reload
 const blank = (v) => v == null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length)
   || (typeof v === 'object' && !Array.isArray(v) && Object.values(v).every(x => !String(x ?? '').trim()));
 
@@ -224,6 +226,8 @@ function init(root, cfg, mode) {
   let saveChain = Promise.resolve();
   let dirtyTimer = null;
   let busy = false;
+  let busyShown = false; // Continue looks busy only once a press takes a moment (a screen change never does)
+  let busyTimer = 0;
   let lastNotice = null;
   let lastSave = null;
   let lastNav = null;
@@ -366,6 +370,7 @@ function init(root, cfg, mode) {
       const el = fieldEl(f.id);
       const picked = el?.querySelectorAll('input:checked').length || 0;
       el?.querySelectorAll('input').forEach(i => { i.disabled = !i.checked && picked >= f.max; });
+      if (picked < f.max && Array.isArray(lastNav?.m) && lastNav.m[0] === 'detailFull') navNote(null); // one taken off: the note's done
     }
     paintHeader();
   }
@@ -410,8 +415,8 @@ function init(root, cfg, mode) {
   }
   /**
    * Change what's on screen (`update` does it) with the motion of going forward or back: the old
-   * screen slips out the way they're heading and the new one slides in from the other side, Plaid's
-   * timing (150ms out, 260ms in, overlapping). View Transitions where the browser has them, a plain
+   * screen slips out the way they're heading and the new one slides in from the other side, at
+   * Linear's pace (90ms out, 200ms in, overlapping). View Transitions where the browser has them, a plain
    * slide in where it hasn't, a quick fade under reduced motion. Resolves once the new screen is in
    * the page (the animation may still be finishing).
    */
@@ -426,7 +431,7 @@ function init(root, cfg, mode) {
     }
     if (!document.startViewTransition || document.visibilityState === 'hidden') {
       update();
-      enter(ui.stage, dir * 16, 0, 260, 'cubic-bezier(.05,.7,.1,1)');
+      enter(ui.stage, dir * 16, 0, 200, 'cubic-bezier(.05,.7,.1,1)');
       return Promise.resolve();
     }
     html.classList.add('af-vt');
@@ -462,13 +467,13 @@ function init(root, cfg, mode) {
     root.classList.add('is-focus');
     document.documentElement.classList.add('af-focus');
     if (!live) session.set(true);
-    trapped = trapped || !!history.state?.afFocus;
+    if (!depth && history.state?.afFocus) { depth = history.state.afDepth || 1; trail[depth] = history.state.afAt; } // a reload on one of its own entries
     window.scrollTo({ top: 0, behavior: 'auto' });
-    // In: the bar drops into place, the step rises (a touch of overshoot, like Plaid Link's sheet)
+    // In: the bar drops into place and the step rises, quick and settled (no overshoot)
     if (!reducedMotion()) {
-      ui.top?.animate?.([{ transform: 'translateY(-100%)' }, { transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
-      enter(ui.stage, 0, 18, 380, 'cubic-bezier(.23,1.2,.32,1)');
-      if (railShown()) enter(ui.rail, -14, 0, 380);
+      ui.top?.animate?.([{ transform: 'translateY(-100%)' }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      enter(ui.stage, 0, 12, 260, 'cubic-bezier(.05,.7,.1,1)');
+      if (railShown()) enter(ui.rail, -10, 0, 260, 'cubic-bezier(.05,.7,.1,1)');
     }
     return true;
   }
@@ -477,15 +482,17 @@ function init(root, cfg, mode) {
     if (root.hidden) return;
     const was = focused;
     enterFocus();
-    armTrap();
     const go = id && (reached(id) || previewing) ? id : currentId;
-    if (was && go === currentId) return;
+    if (was && go === currentId) { armTrap(); return; }
     if (go !== currentId) currentId = null; // a new page: worked out afresh
-    show(go, { screen: 'open', scroll: true });
+    const piece = resumePiece && pageEl(go)?.contains(resumePiece) ? resumePiece : null;
+    resumePiece = null;
+    show(go, piece ? { piece, scroll: true } : { screen: 'open', scroll: true }).then(() => (depth ? replaceLoc() : pushLoc()));
   }
   function exitFocus({ fromPop = false } = {}) {
     if (!focused) return;
     if (token) save();
+    resumePiece = currentId !== 'review' && anchor && pageEl(currentId)?.contains(anchor) ? anchor : null; // "Continue where you left off": this screen
     closeRecorder();
     closeSuggest();
     if (ui.dialog.open) ui.dialog.close();
@@ -493,8 +500,10 @@ function init(root, cfg, mode) {
     root.classList.remove('is-focus');
     document.documentElement.classList.remove('af-focus', 'af-vt', 'af-vt-back', 'af-vt-same');
     session.set(false);
-    if (trapped && !fromPop) { swallow = true; history.back(); }
-    trapped = false;
+    // Its entries in the history go with it, so the browser's Back leaves from here next (Forward comes back to this screen)
+    left = depth > 0 ? { depth, at: whereNow() } : null;
+    if (depth > 0) { swallow = true; history.go(-depth); }
+    depth = 0;
     if (token && !doneShown && !previewing) notice('exitSaved', 'success');
     paintHeader();
     requestAnimationFrame(() => {
@@ -510,11 +519,47 @@ function init(root, cfg, mode) {
   // under it, which goes back a screen (or, from the first, to the page) instead of the site's
   // router loading the page again. The entry is put back on their next tap, since a browser skips
   // entries a page adds without one.
-  let trapped = false;
+  let depth = 0; // the application's entry in the browser's history they're on (0: the page itself)
+  const trail = []; // depth → the screen that entry is
+  let left = null; // after Save and exit: the entry and screen they left from
   let swallow = false;
-  function armTrap() {
-    if (trapped || !focused || live || window.parent !== window) return;
-    try { history.pushState({ ...(history.state || {}), afFocus: 1 }, ''); trapped = true; } catch { /* history unavailable */ }
+  /**
+   * The browser's or phone's Back and Forward go where they were, a screen at a time: every screen they
+   * go to (Continue, a jump from the steps or the review, a stop) is an entry in the history that says
+   * which screen it is, and Back or Forward shows that screen. The entries are made by their taps, so a
+   * browser never skips them
+   */
+  const histOk = () => focused && !live && window.parent === window;
+  // A screen is known by its first question (words to read before it can be parted from it by a repack)
+  const screenQuestion = (pid = currentId, n = screenNo) => {
+    const ids = [...screenFieldIds(pid, n)];
+    return ids.find(id => byId[id] && (isInput(byId[id]) || isUpload(byId[id]))) || ids[0] || null;
+  };
+  const whereNow = () => (currentId === 'review' || !currentId ? { page: 'review' } : { page: currentId, field: screenQuestion() || (anchor && idsOf(anchor)[0]) || null });
+  function pushLoc(extra = {}) {
+    if (!histOk()) return;
+    const at = { ...whereNow(), ...extra };
+    try {
+      history.pushState({ ...(history.state || {}), afFocus: 1, afDepth: depth + 1, afAt: at }, '');
+      depth++;
+      trail[depth] = at;
+      trail.length = depth + 1;
+    } catch { /* history unavailable */ }
+  }
+  /** The entry they're on says the screen they're on now (an in-page Back, a fix that moved them) */
+  function replaceLoc() {
+    if (!histOk() || !depth) return;
+    const at = whereNow();
+    try { history.replaceState({ ...(history.state || {}), afFocus: 1, afDepth: depth, afAt: at }, ''); trail[depth] = at; } catch { /* history unavailable */ }
+  }
+  function armTrap() { if (!depth) pushLoc(); }
+  const sameAt = (x, y) => !!x && !!y && x.page === y.page && (x.page === 'review' || x.field === y.field);
+  /** The screen an entry was: shown, sliding the way they went */
+  function goTo(at, dir) {
+    if (!at?.page) return;
+    const piece = at.page !== 'review' && at.field ? fieldEl(at.field) : null;
+    if (sameAt(at, whereNow())) return;
+    show(at.page, piece ? { dir, piece } : { dir, screen: 0 });
   }
 
   // ── Steps ────────────────────────────────────────────────────────
@@ -539,6 +584,11 @@ function init(root, cfg, mode) {
   /** A screen with nothing on it (a follow-up alone there that their answer didn't call for) is passed over */
   const emptyScreen = (pid, n) => !!packs[pid]?.[n] && packs[pid][n].every(k => k.hidden || !!k.closest('[hidden]'));
   const screenAhead = () => (packs[currentId] || []).some((_, n) => n > screenNo && !emptyScreen(currentId, n));
+  /** "Part 2 of 5": counting only the screens that show (one holding a follow-up they weren't asked isn't one) */
+  function partOf(pid = currentId, n = screenNo) {
+    const shown = (packs[pid] || [null]).map((_, i) => i).filter(i => !emptyScreen(pid, i));
+    return { at: Math.max(0, shown.indexOf(n)) + 1, total: Math.max(1, shown.length) };
+  }
   const screenBefore = () => { for (let n = screenNo - 1; n >= 0; n--) if (!emptyScreen(currentId, n)) return n; return -1; };
 
   // The browser tab says where they are while the application has the screen
@@ -557,8 +607,8 @@ function init(root, cfg, mode) {
     const ids = stepIds();
     const i = Math.max(0, ids.indexOf(currentId));
     ui.stepText.textContent = T('step', { n: i + 1, total: ids.length });
-    const n = screensIn(currentId);
-    ui.partText.textContent = n > 1 ? T('part', { n: screenNo + 1, total: n }) : '';
+    const part = partOf();
+    ui.partText.textContent = part.total > 1 ? T('part', { n: part.at, total: part.total }) : '';
     const title = titleOf(currentId);
     if (ui.stepTitle.textContent !== title) ui.stepTitle.textContent = title;
     const needs = needsSet();
@@ -670,6 +720,13 @@ function init(root, cfg, mode) {
     if (!lists.length) return;
     const a = readAnswers();
     for (const list of lists) paintList(list, ids, needs, a);
+    // The rail's list scrolls on a short screen (its foot, with Save and finish later, stays put): the step they're on kept in view
+    const box = railShown() && ui.railList.closest('nav');
+    const now = box && ui.railList.querySelector('[aria-current="step"]');
+    if (now && box.scrollHeight > box.clientHeight) {
+      const top = now.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+      if (top < box.scrollTop || top + now.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = Math.max(0, top - box.clientHeight / 3);
+    }
   }
   function paintList(list, ids, needs, a) {
     const items = [...list.children];
@@ -712,8 +769,8 @@ function init(root, cfg, mode) {
       if (mark.dataset.v !== markHtml) { mark.dataset.v = markHtml; if (done) mark.innerHTML = CHECK_SVG; else mark.textContent = String(i + 1); }
       const title = titleOf(id);
       if (name.textContent !== title) name.textContent = title;
-      const n = screensIn(id);
-      const line = done ? summaryOf(id, a) : now ? (n > 1 ? T('part', { n: screenNo + 1, total: n }) : '') : open || id === 'review' ? '' : T('minutes', { n: minutesOf(id) });
+      const part = now && partOf(id);
+      const line = done ? summaryOf(id, a) : now ? (part.total > 1 ? T('part', { n: part.at, total: part.total }) : '') : open || id === 'review' ? '' : T('minutes', { n: minutesOf(id) });
       if (sub.textContent !== line) sub.textContent = line;
       state.className = now ? 'af-step-now' : 'af-sr';
       const said = now ? T('stepNow') : done ? T('stepDone') : open ? '' : T('stepLocked');
@@ -736,7 +793,7 @@ function init(root, cfg, mode) {
     ui.hubTitle.textContent = T(started ? 'hubTitleBack' : 'hubTitle');
     ui.hubLead.textContent = !started ? T('hubLead', { n: ids.length })
       : ready ? T('hubLeadReady')
-        : T(mins <= 1 ? 'hubLeadBackOne' : 'hubLeadBack', { done: doneCount, n: steps.length, m: mins });
+        : T(mins <= 1 ? 'hubLeadBackOne' : 'hubLeadBack', { done: doneCount, n: ids.length, m: mins }); // the same count as "Step 4 of 10"
     ui.hubGoLabel.textContent = T(!started ? 'hubStart' : ready || currentId === 'review' ? 'hubReview' : 'hubContinue');
     ui.hubGo.dataset.go = ready ? 'review' : ''; // "Review and submit" goes there (not to the page they left)
     if (ui.hubLater) ui.hubLater.hidden = !started || previewing;
@@ -783,7 +840,7 @@ function init(root, cfg, mode) {
     const at = ids.indexOf(currentId);
     const lastScreen = review || !screenAhead();
     ui.back.hidden = at <= 0 && screenNo === 0;
-    const label = review ? (busy ? 'submitting' : 'submit') : fromReview === 'answer' || (fromReview && lastScreen) ? 'toReview' : ids[at + 1] === 'review' && lastScreen ? 'reviewBtn' : 'next';
+    const label = review ? (busyShown ? 'submitting' : 'submit') : fromReview === 'answer' || (fromReview && lastScreen) ? 'toReview' : ids[at + 1] === 'review' && lastScreen ? 'reviewBtn' : 'next';
     // Only when the words change: Safari drops a press on Continue whose words are replaced between the
     // finger going down and coming up (leaving a box on the way to it repaints this)
     setText(ui.nextLabel, T(label));
@@ -796,8 +853,8 @@ function init(root, cfg, mode) {
       if (blockedBy) navNote(blockedBy, true);
       else if (lastNav?.reason) navNote(null);
     } else if (lastNav?.reason) navNote(null);
-    ui.next.disabled = busy || !!blockedBy;
-    ui.next.setAttribute('aria-busy', String(busy));
+    ui.next.disabled = busyShown || !!blockedBy;
+    ui.next.setAttribute('aria-busy', String(busyShown));
     if (ui.turnstile) ui.turnstile.hidden = !(turnstileSiteKey && !token && !previewing && at === 0 && screenNo === 0);
     fitNavLater();
   }
@@ -844,33 +901,16 @@ function init(root, cfg, mode) {
   const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : el.matches('[data-area-ask]') ? [el.closest('[data-field]').dataset.field]
     : [...el.querySelectorAll('[data-field]')].map(x => x.dataset.field));
   const isNote = (el) => ['content', 'guidelines', 'image'].includes(el.dataset.type);
-  /**
-   * Words taller than the room are read a screen at a time: cut between their blocks (paragraphs, a
-   * list's items, the guidelines' "What we do" and "What we don't"), going into a part that's still
-   * too tall while its blocks stand one under another (never through a row of cards). Words that
-   * lead into what follows (a heading, a bold line, a line ending in ":") stay with it.
-   */
+  // Words that lead into what follows (a heading, a bold line, a line ending in ":") stay with it
   const isLead = (el) => /^H[1-6]$/.test(el.tagName) || (el.tagName === 'P'
     && (/:\s*$/.test(el.textContent) || (el.children.length === 1 && el.firstElementChild.tagName === 'STRONG' && el.textContent.trim() === el.firstElementChild.textContent.trim())));
-  function readParts(el, fit, into, cuts) {
-    const kids = [...el.children].filter(c => c.getClientRects().length);
-    const stacked = kids.every((c, i) => !i || c.getBoundingClientRect().top >= kids[i - 1].getBoundingClientRect().bottom - 1);
-    if (kids.length < 2 || !stacked) { into.push(el); return; }
-    cuts.push(el);
-    for (const c of kids) {
-      // Measured with the headings just before it, which go on its screen with it
-      let top = c.getBoundingClientRect().top;
-      for (let j = into.length - 1; j >= 0 && isLead(into[j]); j--) top = into[j].getBoundingClientRect().top;
-      if (c.getBoundingClientRect().bottom - top > fit) readParts(c, fit, into, cuts);
-      else into.push(c);
-    }
-  }
-  const cutsOf = {}; // page → the notes (and parts of them) cut across its screens
   const packAsked = {}; // page → whether its screens were worked out with the check asking about the home
   let packSize = '';
   function room(el) {
-    // Down to where the step starts: the bar across the top, and a notice or the test-run bar over the step
-    const top = Math.max(ui.top?.offsetHeight || 0, ui.stage.getBoundingClientRect().top + window.scrollY);
+    // Down to where the step starts: the bar across the top, and the test-run bar over the step. Not a notice
+    // ("Welcome back"): it's there for a moment, and the step's screens stay what they are without it
+    const note = ui.notice && !ui.notice.hidden && ui.notice.offsetParent ? ui.notice.getBoundingClientRect().height + (parseFloat(getComputedStyle(ui.notice).marginTop) || 0) : 0;
+    const top = Math.max(ui.top?.offsetHeight || 0, ui.stage.getBoundingClientRect().top + window.scrollY - note);
     const nav = ui.form.querySelector('[data-nav]')?.offsetHeight || 0;
     const head = el.getBoundingClientRect().top - ui.stage.getBoundingClientRect().top; // the stage's padding and the step's header
     const saveRow = ui.stage.querySelector('.af-save-row');
@@ -879,38 +919,14 @@ function init(root, cfg, mode) {
     return Math.max(120, innerHeight - top - nav - head - tail);
   }
   /**
-   * Something new on the screen (problem notes, a notice, a note by the buttons): if it no longer fits,
-   * its page's screens are worked out again with it, keeping `keep` (else what's on it now) in front
+   * Problem notes on the screen: the questions a little closer together (often room enough). Nothing
+   * moves to another screen and the screen's count never changes under them; a long one scrolls, with
+   * the focus on the first problem
    */
-  function refitScreen(keep = null, problems = null) {
-    if (!focused || !currentId || currentId === 'review' || !packs[currentId] || ui.form.hidden || moving) return;
+  function refitScreen(problems = null) {
+    if (!problems || !focused || !currentId || currentId === 'review' || ui.form.hidden || moving) return;
     settle();
-    if (document.documentElement.scrollHeight <= innerHeight) return;
-    // Problem notes: first the questions a little closer together (often room enough, nothing moves)…
-    const pageNode = pageEl(currentId);
-    if (problems) {
-      pageNode?.setAttribute('data-snug', '');
-      settle();
-      if (document.documentElement.scrollHeight <= innerHeight) return;
-    }
-    // …then the screen keeps its questions up to the last one with a problem (none of them moves away
-    // from its note), and only what follows goes on to the next screen
-    const here = packs[currentId][screenNo] || [];
-    const last = problems ? here.reduce((m, k, i) => (idsOf(k).some(id => problems.includes(id)) ? i : m), -1) : -1;
-    if (last >= 0 && last < here.length - 1) {
-      for (const k of here.slice(last + 1)) k.setAttribute('data-off', '');
-      settle();
-      if (document.documentElement.scrollHeight <= innerHeight) {
-        const kept = [...packs[currentId].slice(0, screenNo), here.slice(0, last + 1)];
-        packs[currentId] = pack(currentId, kept) || kept;
-        paintScreen();
-        paintHeader();
-        return;
-      }
-    }
-    const piece = keep || packs[currentId][screenNo]?.find(k => k.getClientRects().length) || null;
-    delete packs[currentId];
-    show(currentId, { piece, focus: false, scroll: false });
+    if (document.documentElement.scrollHeight > innerHeight) pageEl(currentId)?.setAttribute('data-snug', '');
   }
   /**
    * For measuring: the page as it will look once answered (undone straight after, in the same task).
@@ -949,7 +965,8 @@ function init(root, cfg, mode) {
     settle(); // taking the screen's own padding mid-change, the first step came out too narrow
     el.querySelectorAll('[data-off]').forEach(k => k.removeAttribute('data-off'));
     unfit(el); // measured with all their words: a fitted screen is fitted again once it's on
-    if (!keep) el.removeAttribute('data-snug'); // the questions closer together while problem notes show: worked out afresh
+    // The questions closer together while problem notes show (kept through a repack while one does)
+    if (!keep && ![...el.querySelectorAll('.af-error')].some(e => e.textContent.trim())) el.removeAttribute('data-snug');
     const places = [...el.querySelectorAll(':scope > .af-place')];
     places.forEach(p => { p.removeAttribute('data-split'); p.style.removeProperty('--af-map-h'); });
     if (el.offsetParent === null) return null;
@@ -964,17 +981,8 @@ function init(root, cfg, mode) {
       const nh = note && isNote(note) ? note.getBoundingClientRect().height : 0;
       if ((nh && nh < fit * 0.5 ? nh + gap : 0) + p.getBoundingClientRect().height > fit) p.setAttribute('data-split', '');
     }
-    const cuts = [];
-    const kids = pieces(pid).flatMap((k) => {
-      // Words taller than the room are cut between their blocks (paragraphs, cards, a list's items) into
-      // as many screens as they need, so reading never scrolls either (only a block taller than a screen would)
-      const nh = isNote(k) ? k.getBoundingClientRect().height : 0;
-      if (nh <= fit) return [k];
-      const parts = [];
-      readParts(k, fit, parts, cuts);
-      return parts;
-    });
-    cutsOf[pid] = cuts;
+    // Reading is read whole: a note taller than the room has a screen to itself, read down like a page
+    const kids = pieces(pid);
     // Each piece's height, and the room between it and the piece before as drawn: a paragraph's
     // spacing inside words, the page's gap between questions
     const rects = kids.map(k => k.getBoundingClientRect());
@@ -1070,53 +1078,60 @@ function init(root, cfg, mode) {
     place.style.removeProperty('--af-map-h');
     const frame = fe.querySelector('.af-map-frame');
     if (!focused || !frame || !fe.getClientRects().length || fe.closest('[data-off], [hidden]')) return;
-    const least = innerWidth <= 640 ? 100 : 160;
+    // A map that still reads (its pin's name, its key): smaller than that, the screen scrolls instead; a
+    // little smaller on a short phone, so the home's pin opens in view rather than under Back / Continue
+    const least = innerHeight <= 620 ? 150 : 200;
     place.removeAttribute('data-tight');
     place.removeAttribute('data-nomap');
-    // The family asked whether the home is inside the area "shown on the map": the map stays
-    const asked = ['unknown', 'error'].includes(fe.querySelector('[data-area]')?.dataset.area);
-    const asItWas = () => { place.style.removeProperty('--af-map-h'); place.removeAttribute('data-tight'); place.removeAttribute('data-nomap'); settle(); };
+    const asItWas = () => { place.style.removeProperty('--af-map-h'); place.removeAttribute('data-tight'); settle(); };
     let before = Infinity;
     for (let i = 0; i < 6; i++) {
       settle();
       const over = document.documentElement.scrollHeight - innerHeight;
       const h = frame.getBoundingClientRect().height;
-      if (over <= 0) return;
+      if (over <= 0) { if (!i) growMap(fe, frame, place); return; }
       // A smaller map left the screen as tall (it's beside the card, not under it): the map as it was
       if (over >= before) { asItWas(); return; }
       before = over;
-      if (h <= least) {
-        // Not even its smallest fits: the card says it all and the map steps aside (unless they're asked
-        // about it, or its going leaves the screen as tall)
-        if (asked) return;
-        place.setAttribute('data-nomap', '');
-        settle();
-        if (document.documentElement.scrollHeight - innerHeight >= over) asItWas();
-        return;
-      }
-      // Small enough that its key ("Our service area", "The home you entered") gives way to the map itself
-      if (h - over < 150) place.setAttribute('data-tight', '');
+      if (h <= least) return; // its smallest: the screen scrolls a little rather than lose the map
       place.style.setProperty('--af-map-h', `${Math.max(least, Math.floor(h - over - 1))}px`);
     }
+  }
+  /**
+   * A map over or under what's on its screen (a phone) takes the room the screen has left under the
+   * last answer, as wide as the screen allows: no empty band over Back / Continue
+   */
+  function growMap(fe, frame, place) {
+    const fr = frame.getBoundingClientRect();
+    const by = ['[data-area-ask]', '[data-area-result]'].map(q => fe.querySelector(q)).find(x => x && onScreen(x));
+    const o = by?.getBoundingClientRect();
+    if (!o || fr.left >= o.right - 1 || fr.right <= o.left + 1) return; // beside the card, not under it
+    const bottom = Math.max(...pieces(currentId).filter(onScreen).map(k => k.getBoundingClientRect().bottom));
+    const navTop = ui.form.querySelector('[data-nav]')?.getBoundingClientRect().top ?? innerHeight;
+    const spare = Math.floor(navTop - bottom - (parseFloat(getComputedStyle(ui.stage).paddingBottom) || 0));
+    if (spare < 24) return;
+    place.style.setProperty('--af-map-h', `${Math.floor(fr.height + spare)}px`);
+    settle();
+    if (document.documentElement.scrollHeight > innerHeight) { place.style.removeProperty('--af-map-h'); settle(); }
   }
   /** A page's choices as they are before fitting: every tile's words, a list in the columns its width gives it */
   function unfit(el) {
     for (const t of el?.querySelectorAll('.af-tile[data-clamp]') || []) { t.removeAttribute('data-clamp'); t.style.removeProperty('--lines'); }
     for (const s of el?.querySelectorAll('.af-choices--tiles[data-snug]') || []) s.removeAttribute('data-snug');
     for (const l of el?.querySelectorAll('.af-choices--cols[data-two]') || []) l.removeAttribute('data-two');
-    for (const n of el?.querySelectorAll('.af-content[data-snug]') || []) n.removeAttribute('data-snug');
   }
   const onScreen = (el) => el.getClientRects().length && !el.closest('[data-off], [hidden]');
   const overflows = () => document.documentElement.scrollHeight > innerHeight;
   /**
-   * Choices that each explain themselves, on a screen too short for all their words (a phone, a short
-   * laptop with a problem note, a phone on its side): a little snugger first, then every tile says its
-   * first lines (as many for each, as many as the screen has room for), the rest under its More
+   * Choices that each explain themselves, on a phone too short for all their words: a little snugger
+   * first, then every tile says its first lines (as many for each, as many as the screen has room
+   * for), the rest under its More. Two to a row (a computer), every word shows
    */
   function fitTiles() {
     for (const s of pageEl(currentId)?.querySelectorAll('.af-choices--tiles') || []) {
       if (!focused || !onScreen(s)) continue;
       settle();
+      if (getComputedStyle(s).getPropertyValue('--af-narrow').trim() !== '1') continue;
       if (!overflows()) continue;
       const tiles = [...s.querySelectorAll('.af-tile')].map((tile) => {
         const d = tile.querySelector('.af-choice-desc');
@@ -1142,22 +1157,15 @@ function init(root, cfg, mode) {
       if (overflows()) l.setAttribute('data-two', '');
     }
   }
-  /** Words that can't be cut between screens any further (cards side by side) and still don't fit: a little snugger */
-  function fitNotes() {
-    for (const n of pageEl(currentId)?.querySelectorAll('.af-content') || []) {
-      if (!focused || !onScreen(n)) continue;
-      settle();
-      if (overflows()) n.setAttribute('data-snug', '');
-    }
-  }
-  /** The screen fitted to its room: the tiles' words, a long list's columns, snugger words, then the map's size */
+  /** The screen fitted to its room: the tiles' words, a long list's columns, then the map's size */
   function fitScreen() {
     unfit(pageEl(currentId));
     fitTiles();
     fitCols();
-    fitNotes();
     fitMap();
-    pageEl(currentId)?.querySelectorAll('textarea').forEach(capBox);
+    const page = pageEl(currentId);
+    if (page?.querySelector('.af-map-frame')) declutter(page); // its names placed for the size it ended up
+    capBoxes(pageEl(currentId));
   }
   /** Show the current screen's pieces, the others waiting */
   function paintScreen() {
@@ -1170,7 +1178,7 @@ function init(root, cfg, mode) {
     const page = pageEl(currentId);
     const holders = new Set();
     for (const k of all) for (let p = k.parentElement; p && p !== page; p = p.parentElement) if (!all.includes(p)) holders.add(p);
-    for (const c of [...holders, ...((list && cutsOf[currentId]) || [])]) c.toggleAttribute('data-off', ![...on].some(k => c.contains(k)));
+    for (const c of holders) c.toggleAttribute('data-off', ![...on].some(k => c.contains(k)));
     fitScreen();
   }
   /** The questions on a screen of a page (the whole page before it's been worked out) */
@@ -1208,7 +1216,11 @@ function init(root, cfg, mode) {
    * required answer missing); `at` or `focusField` picks the screen holding that question. Going
    * forward it slides in from the right, going back from the left. Resolves once it's in the page.
    */
-  function show(id, { dir = 0, screen = 0, step = 0, piece = null, at = null, focus = true, focusField = null, scroll = true } = {}) {
+  // The screen they came to (its first piece): a resize or a rotation that works the screens out again
+  // brings them back to it, not to whichever screen that piece's neighbor ends up on
+  let anchor = null;
+  let resumePiece = null; // after a reload: the screen they were on
+  function show(id, { dir = 0, screen = 0, step = 0, piece = null, at = null, focus = true, focusField = null, scroll = true, refit = false } = {}) {
     if (!pageEl(id)) id = stepIds()[0];
     const pageChanged = id !== currentId;
     const update = () => {
@@ -1240,6 +1252,12 @@ function init(root, cfg, mode) {
         if (step > 0) while (screenNo < n - 1 && emptyScreen(id, screenNo)) screenNo++;
         if (step < 0 || screen === 'last') while (screenNo > 0 && emptyScreen(id, screenNo)) screenNo--;
         paintScreen();
+        if (!refit) {
+          anchor = packs[id]?.[screenNo]?.find(k => k.getClientRects().length) || null;
+          // This tab remembers it too: a reload comes back to this screen, not to the next one with an answer missing
+          const field = screenQuestion(id, screenNo) || (anchor && idsOf(anchor)[0]);
+          try { if (field && focused) sessionStorage.setItem(SCREEN_KEY, JSON.stringify({ page: id, field })); } catch { /* storage off */ }
+        }
       }
       if (pageEl(id)?.querySelector('.af-map-frame')) requestAnimationFrame(() => declutter(pageEl(id)));
       if (pageChanged || dir) {
@@ -1260,8 +1278,25 @@ function init(root, cfg, mode) {
     };
     return swap(update, dir, !pageChanged).then(() => {
       if (focusField) focusOn(focusField);
-      else if (focus) ui.stepTitle.focus({ preventScroll: true });
+      else if (focus) {
+        // On a computer the screen's first box takes the keys straight away (Linear's way), and a screen
+        // reader still hears which step this is; on a touch screen the step's name has the focus, so a
+        // keyboard doesn't slide up over the questions
+        const box = keysFirst() ? firstBox() : null;
+        if (box) {
+          box.focus({ preventScroll: true });
+          if (pageChanged) announce(`${T('step', { n: stepIds().indexOf(id) + 1, total: stepIds().length })}: ${titleOf(id)}`);
+        } else ui.stepTitle.focus({ preventScroll: true });
+      }
     });
+  }
+  const keysFirst = () => finePointer() && !matchMedia('(any-pointer: coarse)').matches;
+  /** The screen's first question (past any words to read) when it's a box to type in, still empty */
+  function firstBox() {
+    if (currentId === 'review') return null;
+    const field = [...(pageEl(currentId)?.querySelectorAll('[data-field]') || [])].find(f => onScreen(f) && !isNote(f));
+    const box = field?.querySelector('input:is([type=text], [type=email], [type=tel], [type=number], :not([type])), textarea');
+    return box && onScreen(box) && !box.value && !box.disabled ? box : null;
   }
 
   async function next() {
@@ -1274,6 +1309,14 @@ function init(root, cfg, mode) {
     if (areaWaiting() && !(home && fieldError(home, homeAddressNow(), lang))) {
       setBusy(true);
       try { await Promise.race([flushArea(), wait(9000)]); } finally { setBusy(false); }
+    }
+    // A photo or video on this screen still on its way: Continue waits for it (the button shows it's
+    // working) rather than saying it's missing
+    const sending = () => [...screenFieldIds()].some(id => uploads.has(id));
+    if (sending()) {
+      setBusy(true);
+      try { for (let t = 0; t < 600 && sending(); t++) await wait(200); } finally { setBusy(false); }
+      if (sending()) { navNote('waitUploads', true); return; }
     }
     const a = readAnswers();
     // Only this screen's questions: the ones still to come get their own turn
@@ -1289,7 +1332,7 @@ function init(root, cfg, mode) {
     const stop = stopFor(form, a);
     // The address decides the service-area answer, so its screen stops too (a phone has the map on the next)
     const decides = stop && byId[stop.field]?.type === 'area' && here.has(homeAddressId());
-    if (stop && stop.page === currentId && (here.has(stop.field) || decides || last)) { showStop(stop); return; }
+    if (stop && stop.page === currentId && (here.has(stop.field) || decides || last)) { showStop(stop); pushLoc({ stop: true }); return; }
     setBusy(true);
     try {
       if (!(await start())) return;
@@ -1299,6 +1342,7 @@ function init(root, cfg, mode) {
         const ids = stepIds(a);
         await show(ids[ids.indexOf(currentId) + 1] || 'review', { dir: 1 });
       }
+      pushLoc(); // the browser's Back comes back to the screen they've just left
       save();
     } finally {
       setBusy(false);
@@ -1309,11 +1353,13 @@ function init(root, cfg, mode) {
     if (moving || performance.now() < calmUntil) return true;
     navNote(null);
     const before = currentId === 'review' ? -1 : screenBefore();
-    if (before >= 0) { show(currentId, { dir: -1, screen: before, step: -1 }).then(save); return true; }
     const ids = stepIds();
     const at = ids.indexOf(currentId);
-    if (at <= 0) return false;
-    show(ids[at - 1], { dir: -1, screen: 'last' }).then(save);
+    // With an entry behind this one, Back is the browser's Back: the screen they came from, and its Forward
+    // comes back here. Without one (the first entry), the screen before, which this entry then is
+    if (depth > 1 && histOk()) { history.back(); return true; }
+    if (before < 0 && at <= 0) return false;
+    (before >= 0 ? show(currentId, { dir: -1, screen: before, step: -1 }) : show(ids[at - 1], { dir: -1, screen: 'last' })).then(() => { replaceLoc(); save(); });
     return true;
   }
   /** Jump to a page already reached (the steps list, Edit, Answer it, Change) */
@@ -1326,11 +1372,15 @@ function init(root, cfg, mode) {
       if (stop && order(stop.page) < order(id)) { showStop(stop); return; }
     }
     if (currentId === 'review' && id !== 'review') fromReview = whole ? 'step' : 'answer';
-    show(id, { dir, focusField, screen: 'open' }).then(save);
+    show(id, { dir, focusField, screen: 'open' }).then(() => { pushLoc(); save(); }); // Back returns to where they jumped from
   }
   function setBusy(on) {
     busy = on;
-    paintNav();
+    clearTimeout(busyTimer);
+    // A second press is ignored straight away; the button only dims, with its turning wheel, when the
+    // wait is long enough to see (the server, a check), so a screen change has nothing moving after it
+    if (on) busyTimer = setTimeout(() => { busyShown = true; paintNav(); }, 300);
+    else if (busyShown) { busyShown = false; paintNav(); }
   }
 
   // ── Problems with answers (never red: soft yellow, deep gold) ─────
@@ -1361,8 +1411,10 @@ function init(root, cfg, mode) {
     const p = el.querySelector('.af-error');
     el.classList.toggle('af-field--error', !!msg);
     if (p && p.textContent !== (msg || '')) p.textContent = msg || '';
+    // The boxes the note is about: not an optional part (the apartment), nor a part already filled in
     el.querySelectorAll('input:not([type=file]), textarea, select').forEach(i => {
-      if (msg) i.setAttribute('aria-invalid', 'true'); else i.removeAttribute('aria-invalid');
+      const about = !i.matches('[data-part="line2"]') && !(i.matches('[data-part]') && i.value.trim());
+      if (msg && about) i.setAttribute('aria-invalid', 'true'); else i.removeAttribute('aria-invalid');
     });
   }
   function showPageErrors(errors) {
@@ -1370,7 +1422,7 @@ function init(root, cfg, mode) {
     const ids = Object.keys(errors);
     ids.forEach(id => touched.add(id));
     announce(ids.length === 1 ? T('attentionOne') : T('attentionMany', { n: ids.length }));
-    refitScreen(fieldEl(ids[0]), ids); // the notes take room: their questions stay, the first one in front
+    refitScreen(ids); // the notes take room: the questions close up a little
     focusOn(ids[0]);
   }
   /** Scroll a question to just under the header and put the cursor in it */
@@ -1381,7 +1433,11 @@ function init(root, cfg, mode) {
     if (byId[id]?.type === 'area' && el.querySelector('[data-area-ask]')?.hidden && homeAddressId()) { focusOn(homeAddressId()); return; }
     if (packs[currentId] && el.closest('[data-off]')) { screenNo = screenOf(currentId, id); paintScreen(); paintHeader(); }
     openTucked(el, { animate: false });
-    el.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+    // To the question; and when it has a note, the note in view too (on a tall question, the map and its
+    // question over its answers, the note is what they need to see)
+    const note = [...el.querySelectorAll('.af-error')].find(n => n.textContent.trim() && n.getClientRects().length);
+    el.scrollIntoView({ block: 'start', behavior: note || reducedMotion() ? 'auto' : 'smooth' });
+    note?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
     // An address entered by hand: the first part still empty (not the street they've already typed)
     const box = addrBox(el);
     const empty = box?.dataset.mode === 'parts' ? ['line1', 'city', 'zip'].map(k => box.querySelector(`[data-part="${k}"]`)).find(i => i && !i.value.trim()) : null;
@@ -1411,7 +1467,6 @@ function init(root, cfg, mode) {
     ui.notice.textContent = lastNotice ? say(lastNotice.m) : '';
     ui.notice.dataset.kind = lastNotice?.kind || 'info';
     ui.notice.hidden = !lastNotice;
-    if (lastNotice) refitScreen();
   }
   /** A note by the buttons, where the family is looking (reason = why Submit is off) */
   function navNote(m, reason = false) {
@@ -1421,7 +1476,6 @@ function init(root, cfg, mode) {
   function paintNavNote() {
     ui.navNote.textContent = lastNav ? say(lastNav.m) : '';
     ui.navNote.hidden = !lastNav;
-    if (lastNav) refitScreen();
   }
   function saveState(key) {
     lastSave = key;
@@ -1527,7 +1581,7 @@ function init(root, cfg, mode) {
     stopShown = null;
     ui.stop.hidden = true;
     ui.form.hidden = false;
-    show(currentId, { focusField: field && fieldEl(field) ? field : null, at: field && fieldEl(field) ? field : null });
+    show(currentId, { focusField: field && fieldEl(field) ? field : null, at: field && fieldEl(field) ? field : null }).then(replaceLoc);
   });
 
   // ── Review ───────────────────────────────────────────────────────
@@ -1569,6 +1623,23 @@ function init(root, cfg, mode) {
     const missing = Object.keys(errors).length;
     ui.reviewSummary.dataset.kind = missing ? 'missing' : 'ready';
     ui.reviewSummary.textContent = missing ? (missing === 1 ? T('reviewMissingOne') : T('reviewMissing', { n: missing })) : T('reviewReady');
+    // An email they gave that's likely a typo (they're written to there): asked about, with the fix a tap away
+    const mails = fields.filter(f => f.type === 'email' && isVisible(f, a, byId) && mailFix(a[f.id]));
+    ui.reviewSummary.parentElement.querySelectorAll('.af-review-mail').forEach(n => n.remove());
+    for (const f of mails) {
+      const fix = mailFix(a[f.id]);
+      const p = document.createElement('p');
+      p.className = 'af-mailfix af-review-mail';
+      const [before, after] = T('reviewMailCheck', { email: a[f.id] }).split('{fix}');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.mailfixReview = f.id;
+      b.dataset.fix = fix;
+      b.textContent = fix;
+      b.setAttribute('aria-label', T('mailFixUse', { email: fix }));
+      p.append(before || '', b, after || '');
+      ui.reviewSummary.after(p);
+    }
     const answered = new Map(answerSections(form, a, files).flatMap(s => s.items).map(it => [it.id, it]));
     const sections = [];
     for (const pid of stepIds(a)) {
@@ -1755,6 +1826,8 @@ function init(root, cfg, mode) {
   function uploadsChanged() {
     paintNav();
     if (currentId === 'review') buildReview();
+    // A note that said the photo or video was missing goes once it's in
+    for (const id of [...shown]) if (byId[id] && isUpload(byId[id]) && !errorFor(id)) setFieldError(id, null);
   }
 
   // ── Photos ───────────────────────────────────────────────────────
@@ -1784,7 +1857,11 @@ function init(root, cfg, mode) {
   }
   const isPhotoFile = (file) => /^image\//.test(file.type || '') || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || '');
   const isVideoFile = (file) => /^video\//.test(file.type || '') || /\.(mp4|mov|m4v|webm|avi|3gp|mkv)$/i.test(file.name || '');
-  const failText = (e) => ({ raw: T('tryAgain', { msg: String(e?.message || T('uploadFailed')).replace(/[.!]\s*$/, '') }) });
+  // What went wrong, and what to do: "Please try again" added only when the words don't already say what to do
+  const failText = (e) => {
+    const msg = String(e?.message || T('uploadFailed')).trim();
+    return { raw: /try again|intente|please|por favor|elija|choose/i.test(msg) ? msg : T('tryAgain', { msg: msg.replace(/[.!]\s*$/, '') }) };
+  };
 
   async function uploadPhoto(f, file) {
     if (!isPhotoFile(file)) { setUpload(f.id, { msg: 'notImage' }); return; }
@@ -2056,6 +2133,10 @@ function init(root, cfg, mode) {
     if (box?.dataset.picked && input.value !== box.dataset.picked) {
       delete box.dataset.picked;
       for (const k of ['line1', 'city', 'zip']) box.querySelector(`[data-part="${k}"]`).value = '';
+      // An apartment that came from what they'd typed (not one they entered) goes with that address
+      const apt = box.querySelector('[data-part="line2"]');
+      if (box.dataset.splitApt && apt?.value === box.dataset.splitApt) apt.value = '';
+      delete box.dataset.splitApt;
       if (el.dataset.field === homeAddressId()) unfillCounty(); // its county (and the note saying so) with it
     }
     suggestFor(el, input);
@@ -2064,13 +2145,46 @@ function init(root, cfg, mode) {
    * "Enter the address yourself" (what they'd typed becomes the street), or back to the search; `force`
    * when the parts are already showing (a pick that came without its ZIP), to finish them by hand
    */
+  /**
+   * A typed address line into the parts it names: "1 Nowhere Lane, Apt 2, Faketown, GA 30999". With no
+   * commas it's all the street (with a ZIP at its end taken off); "GA" or "Georgia" is the state already chosen
+   */
+  const STREET_WORDS = /^(st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|pkwy|parkway|hwy|highway|trl|trail|ter|terrace|run|pass|xing|crossing|sq|square|loop|row|path|walk|pt|point|ridge|trce|trace|cv|cove|bnd|bend|holw|hollow|ne|nw|se|sw)\.?$/i;
+  function splitAddressLine(v) {
+    let s = String(v || '').trim();
+    const out = {};
+    const zip = s.match(/[\s,]+(\d{5}(?:-\d{4})?)\s*$/);
+    if (zip) { out.zip = zip[1]; s = s.slice(0, zip.index).trim(); }
+    s = s.replace(/[\s,]+(GA|Georgia)\.?\s*$/i, '').trim();
+    const parts = s.split(',').map(x => x.trim()).filter(Boolean);
+    // No commas: the city is what follows the street's last word that names a street ("456 Oak Ave Marietta")
+    if (parts.length === 1) {
+      const words = parts[0].split(/\s+/);
+      const end = STREET_WORDS.test(words[words.length - 1]) ? -1 : words.findLastIndex((w, i) => i > 0 && STREET_WORDS.test(w));
+      if (end > 0) parts.splice(0, 1, words.slice(0, end + 1).join(' '), words.slice(end + 1).join(' '));
+    }
+    out.line1 = parts.shift() || '';
+    if (parts.length) out.city = parts.pop();
+    if (parts.length) out.line2 = parts.join(', ');
+    return out;
+  }
   function setAddressMode(el, mode, { force = false } = {}) {
     const box = addrBox(el);
     if (!box || (box.dataset.mode === mode && !force)) return;
     closeSuggest();
     const search = box.querySelector('[data-search]');
     const line1 = box.querySelector('[data-part="line1"]');
-    if (mode === 'parts' && !line1.value.trim() && !box.dataset.picked && search.value.trim()) line1.value = search.value.trim().slice(0, 160);
+    // What they typed goes into the parts it names ("1 Nowhere Lane, Faketown 30999": street, city, ZIP)
+    if (mode === 'parts' && !line1.value.trim() && !box.dataset.picked && search.value.trim()) {
+      const parts = splitAddressLine(search.value);
+      for (const [k, v] of Object.entries(parts)) {
+        const i = box.querySelector(`[data-part="${k}"]`);
+        if (i && v && !i.value.trim()) i.value = v.slice(0, Number(i.maxLength) > 0 ? i.maxLength : 160);
+      }
+      if (parts.line2) box.dataset.splitApt = box.querySelector('[data-part="line2"]').value;
+    }
+    // The note about the line was about the line: they're doing what it asked
+    if (shown.has(el.dataset.field)) setFieldError(el.dataset.field, null);
     box.dataset.mode = mode;
     if (mode === 'line') {
       const line = addressLineOf(readField(byId[el.dataset.field]) || {});
@@ -2078,6 +2192,9 @@ function init(root, cfg, mode) {
         // Begun by hand but not finished: its street goes back in the line to search for, the rest let go
         if (line1.value.trim()) search.value = line1.value.trim();
         for (const k of ['line1', 'city', 'zip']) box.querySelector(`[data-part="${k}"]`).value = '';
+        const apt = box.querySelector('[data-part="line2"]');
+        if (box.dataset.splitApt && apt.value === box.dataset.splitApt) apt.value = '';
+        delete box.dataset.splitApt;
         delete box.dataset.picked;
       }
     }
@@ -2086,12 +2203,8 @@ function init(root, cfg, mode) {
     markDirty();
     // Into the search, or the first part still empty
     const into = () => (mode === 'parts' ? ['line1', 'city', 'zip'].map(k => box.querySelector(`[data-part="${k}"]`)).find(i => !i.value.trim()) || line1 : search).focus({ preventScroll: true });
-    // The parts take more room: work this page's screens out again if this one no longer fits
-    settle();
-    if (focused && currentId !== 'review' && document.documentElement.scrollHeight > innerHeight) {
-      delete packs[currentId];
-      show(currentId, { piece: el, focus: false, scroll: false }).then(into);
-    } else into();
+    // The parts take more room: the screen scrolls if it must (nothing moves to another screen)
+    into();
   }
 
   // ── Address suggestions (a combobox on the address line) ──────────
@@ -2424,9 +2537,18 @@ function init(root, cfg, mode) {
     // changed (what it found, then the question with the map), keeping the screen they're on
     const pid = pageOf(af.id);
     if (focused && packs[pid] && packAsked[pid] !== asking && pid === currentId && !moving) {
-      const piece = packs[pid][screenNo]?.find(k => k.getClientRects().length) || null;
+      // The screen they stay on is the one with the box they're typing in, and with the address when it's
+      // on this screen (not whatever came first on it): the address never moves off the screen it's entered on
+      const typing = document.activeElement?.closest?.('[data-field]');
+      const addr = fieldEl(homeAddressId());
+      const here = packs[pid][screenNo] || [];
+      const has = (el) => el && here.find(k => k === el || k.contains(el) || el.contains(k));
+      const held = has(typing) || has(addr);
+      const piece = held || here.find(k => k.getClientRects().length) || null;
+      const keepAt = document.activeElement;
       delete packs[pid];
-      show(pid, { piece: piece && !piece.closest('[data-area]') ? piece : box.querySelector('[data-area-result]'), focus: false, scroll: false });
+      show(pid, { piece: piece && !piece.closest('[data-area]') ? piece : box.querySelector('[data-area-result]'), focus: false, scroll: false })
+        .then(() => { if (held && keepAt?.isConnected && keepAt.getClientRects().length) keepAt.focus({ preventScroll: true }); });
       return;
     }
     fitMap(); // the card may have grown or shrunk beside the map
@@ -2784,14 +2906,30 @@ function init(root, cfg, mode) {
   }
   const growPage = (id) => pageEl(id)?.querySelectorAll('textarea').forEach(grow);
   /** …until the screen is full: a longer answer then scrolls inside its box, and the screen never does */
-  function capBox(ta) {
-    if (!ta) return;
-    ta.style.removeProperty('max-height');
-    if (!focused || !ta.getClientRects().length || ta.closest('[data-off], [hidden]')) return;
+  function capBoxes(page) {
+    const boxes = [...(page?.querySelectorAll('textarea') || [])];
+    for (const ta of boxes) { ta.style.removeProperty('max-height'); ta.style.removeProperty('min-height'); }
+    if (!focused) return;
     settle();
-    const over = document.documentElement.scrollHeight - innerHeight;
-    if (over > 0) ta.style.maxHeight = `${Math.max(parseFloat(getComputedStyle(ta).minHeight) || 80, Math.floor(ta.getBoundingClientRect().height - over))}px`;
+    let over = document.documentElement.scrollHeight - innerHeight;
+    // The tallest gives way first, each never under two lines of words (below its usual least height
+    // only when the screen needs it)
+    const shown = boxes.filter(ta => ta.getClientRects().length && !ta.closest('[data-off], [hidden]')).sort((a, b) => b.offsetHeight - a.offsetHeight);
+    for (const ta of shown) {
+      if (over <= 0) return;
+      const cs = getComputedStyle(ta);
+      const px = (k) => parseFloat(cs[k]) || 0;
+      const two = Math.ceil(2 * (px('lineHeight') || 24) + px('paddingTop') + px('paddingBottom') + px('borderTopWidth') + px('borderBottomWidth'));
+      const was = ta.getBoundingClientRect().height;
+      const h = Math.max(Math.min(two, was), Math.floor(was - over));
+      if (h >= was) continue;
+      ta.style.maxHeight = `${h}px`;
+      if (h < px('minHeight')) ta.style.minHeight = `${h}px`;
+      settle();
+      over = document.documentElement.scrollHeight - innerHeight;
+    }
   }
+
 
   /** A US number reads as (404) 555-0123 as it's typed (only while typing at the end, never while deleting) */
   function phoneShape(v, whole) {
@@ -2805,36 +2943,8 @@ function init(root, cfg, mode) {
   }
 
   /** "jordan@gmial.com" → "jordan@gmail.com": the big email services, a letter or two off, or a .con */
-  const MAIL_HOSTS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'comcast.net', 'att.net', 'bellsouth.net', 'live.com', 'msn.com', 'me.com', 'ymail.com', 'sbcglobal.net', 'verizon.net', 'charter.net', 'protonmail.com', 'mac.com', 'yahoo.com.mx', 'hotmail.es', 'outlook.es', 'yahoo.es'];
-  function editDistance(a, b) { // with a swap of two letters counting as one
-    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
-    for (let j = 1; j <= b.length; j++) d[0][j] = j;
-    for (let i = 1; i <= a.length; i++) {
-      for (let j = 1; j <= b.length; j++) {
-        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
-      }
-    }
-    return d[a.length][b.length];
-  }
-  function mailFix(v) {
-    const m = /^([^\s@]+)@([^\s@]+)$/.exec(String(v || '').trim());
-    if (!m) return null;
-    const host = m[2].toLowerCase();
-    if (MAIL_HOSTS.includes(host)) return null;
-    let best = null;
-    let bestD = Infinity;
-    for (const h of MAIL_HOSTS) {
-      const dist = editDistance(host, h);
-      if (dist < bestD) { bestD = dist; best = h; }
-    }
-    const allowed = best && best.length <= 7 ? 1 : 2;
-    if (best && bestD > 0 && bestD <= allowed) return `${m[1]}@${best}`;
-    const tld = host.replace(/\.(con|cmo|cpm|vom|xom|comm|coom)$/, '.com');
-    return tld !== host ? `${m[1]}@${tld}` : null;
-  }
   function paintMailFix(input) {
-    const p = input.closest('[data-field]')?.querySelector('[data-mailfix]');
+    const p = input.closest('[data-field], [data-later-form]')?.querySelector('[data-mailfix]');
     if (!p) return;
     const fix = mailFix(input.value);
     p.hidden = !fix;
@@ -2858,8 +2968,10 @@ function init(root, cfg, mode) {
 
   // ── Save and finish later ────────────────────────────────────────
   const dlg = ui.dialog;
-  const openLater = () => {
+  let laterOpener = null;
+  const openLater = (e) => {
     if (previewing) { notice('previewNoSave', 'info'); return; }
+    laterOpener = e?.currentTarget instanceof HTMLElement ? e.currentTarget : document.activeElement; // Safari doesn't focus a tapped button
     const email = testRun?.by || readAnswers()[emailId];
     const input = dlg.querySelector('input[type=email]');
     if (email && (!input.value || testRun?.by)) input.value = email;
@@ -2870,13 +2982,27 @@ function init(root, cfg, mode) {
     dlg.showModal();
   };
   ui.saveLaters.forEach(b => b.addEventListener('click', openLater));
+  // Closed (Escape, Close, done): the focus goes back to what opened it, not to the page
+  dlg.addEventListener('close', () => { if (laterOpener?.isConnected && laterOpener.getClientRects().length) laterOpener.focus({ preventScroll: true }); laterOpener = null; });
   dlg.querySelector('[data-later-close]').addEventListener('click', () => dlg.close());
   dlg.querySelectorAll('[data-later-done]').forEach(b => b.addEventListener('click', () => dlg.close()));
   dlg.addEventListener('click', (e) => { if (tappedOutside(dlg, e)) dlg.close(); });
+  // A likely typo in the address is asked about once ("Did you mean …@gmail.com?") before the link goes there
+  const laterInput = dlg.querySelector('input[type=email]');
+  let laterAsked = '';
+  laterInput.addEventListener('input', () => { const p = dlg.querySelector('[data-mailfix]'); if (p && !p.hidden) p.hidden = true; });
+  dlg.addEventListener('click', (e) => {
+    const use = e.target.closest('[data-mailfix-use]');
+    if (!use) return;
+    laterInput.value = use.dataset.mailfixUse;
+    paintMailFix(laterInput);
+    laterInput.focus();
+  });
   dlg.querySelector('[data-later-form]').addEventListener('submit', async (e) => {
     e.preventDefault();
     const status = dlg.querySelector('[data-later-status]');
-    const email = dlg.querySelector('input[type=email]').value.trim();
+    const email = laterInput.value.trim();
+    if (mailFix(email) && laterAsked !== email) { laterAsked = email; paintMailFix(laterInput); return; }
     const btn = dlg.querySelector('[data-later-form] button[type=submit]');
     btn.disabled = true;
     status.textContent = T('sending');
@@ -2913,11 +3039,15 @@ function init(root, cfg, mode) {
   }
   root.addEventListener('click', (e) => {
     const choice = detail && e.target.closest('[data-tile-more]')?.closest('.af-tile')?.querySelector('.af-choice');
-    if (!choice) return;
-    detailFor = choice.querySelector('input');
-    detail.querySelector('[data-detail-title]').textContent = choice.querySelector('.af-choice-title')?.textContent || '';
-    detail.querySelector('[data-detail-text]').textContent = choice.querySelector('.af-choice-desc')?.textContent || '';
-    paintDetail();
+    // A guideline card's More: its words to read, nothing to choose
+    const card = detail && !choice && e.target.closest('[data-offer-more]')?.closest('.af-offer-card');
+    if (!choice && !card) return;
+    detailFor = choice ? choice.querySelector('input') : null;
+    detail.querySelector('[data-detail-title]').textContent = (choice ? choice.querySelector('.af-choice-title') : card.querySelector('.af-offer-text strong'))?.textContent || '';
+    detail.querySelector('[data-detail-text]').textContent = (choice ? choice.querySelector('.af-choice-desc') : card.querySelector('.af-offer-text > span'))?.textContent || '';
+    detail.querySelector('[data-detail-pick]').hidden = !choice;
+    if (choice) paintDetail();
+    else { detail.querySelector('[data-detail-tag]').hidden = true; detail.querySelector('[data-detail-status]').textContent = ''; }
     detail.showModal();
     detail.querySelector('[data-detail-title]').focus(); // its name read first (and no ring on Close)
   });
@@ -2932,11 +3062,14 @@ function init(root, cfg, mode) {
   // ── Language ─────────────────────────────────────────────────────
   function setLang(l, { remember: keep = true, persist = true } = {}) {
     if (l === lang || !(form.languages || []).includes(l)) return;
-    const anchor = currentId !== 'review' ? [...screenFieldIds()][0] : null;
+    // Its place kept by the screen's first question (not words to read before it, which a repack can part from it)
+    const anchor = currentId !== 'review' ? screenQuestion() : null;
     lang = l;
     if (keep) langPref.set(l);
     draw();
     applyWords();
+    ui.form.querySelectorAll('input[type=email]').forEach(i => { if (i.value) paintMailFix(i); }); // "Did you mean …" in the new language
+    if (ui.live) ui.live.textContent = ''; // nothing said in the last language is read out after
     show(currentId, { focus: false, scroll: false, at: anchor && fieldEl(anchor) ? anchor : null });
     if (!reducedMotion()) [ui.form, ui.stop, ui.done].forEach(el => !el.hidden && el.animate?.([{ opacity: 0.4 }, { opacity: 1 }], { duration: 220, easing: EASE }));
     if (persist) save();
@@ -3120,6 +3253,10 @@ function init(root, cfg, mode) {
     const ids = stepIds(answers);
     const at = ids.includes(r.page) ? r.page : ids[0];
     currentId = null;
+    // A reload in the same tab: the screen they were on (with the box they were typing in)
+    let was = null;
+    try { was = JSON.parse(sessionStorage.getItem(SCREEN_KEY) || 'null'); } catch { /* storage off */ }
+    resumePiece = (!fromLink && was?.page === at && fieldEl(was.field)) || null;
     show(at, { focus: false, scroll: false, screen: 'open' });
     remember();
     showApp(true); // the hero's button says "Continue"
@@ -3180,19 +3317,66 @@ function init(root, cfg, mode) {
   });
   ui.exit?.addEventListener('click', () => exitFocus());
   // Escape closes "All steps" (and a press anywhere else does)
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ui.steps.open) { ui.steps.open = false; ui.steps.querySelector('summary')?.focus(); } }, { signal });
-  document.addEventListener('pointerdown', (e) => { if (ui.steps.open && !ui.steps.contains(e.target)) ui.steps.open = false; }, { signal });
+  // Escape: the steps list closes; else a screen back (Linear's way), never from a box they're typing in
+  // (an address list, a sheet or a dialog closes first, on its own)
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+    if (ui.steps.open) { ui.steps.open = false; ui.steps.querySelector('summary')?.focus(); return; }
+    if (!focused || ui.form.hidden || document.querySelector('dialog[open]')) return;
+    const t = e.target;
+    if (t?.matches?.('input:not([type=radio]):not([type=checkbox]), textarea, select')) return; // a box being typed in keeps its Escape
+    if (back()) e.preventDefault();
+  }, { signal });
+  // A tap outside the open steps list closes it, and only that (not the button or link it landed on)
+  let eatClick = 0;
+  document.addEventListener('pointerdown', (e) => {
+    if (!ui.steps.open || ui.steps.contains(e.target)) return;
+    ui.steps.open = false;
+    eatClick = performance.now() + 700;
+  }, { signal });
+  document.addEventListener('click', (e) => {
+    if (performance.now() > eatClick) return;
+    eatClick = 0;
+    e.preventDefault();
+    e.stopPropagation();
+  }, { capture: true, signal });
   // Back from the phone or the browser: a screen back (see armTrap). The page's inline gate
   // (ApplicationPage.astro) asks this first, ahead of the site's router; true = handled here.
-  window.__afPop = () => {
+  window.__afPop = (e) => {
     if (swallow) { swallow = false; return true; }
-    if (!focused) return false;
-    trapped = false;
-    if (ui.dialog.open) { ui.dialog.close(); return true; }
-    if (stopShown || doneShown || !back()) exitFocus({ fromPop: true });
+    const st = e?.state ?? history.state;
+    if (!focused) {
+      // Forward onto one of its entries after Save and exit: the application opens again, on that screen
+      if (!st?.afFocus || root.hidden) return false;
+      const to = st.afDepth || 1;
+      // The screen they left, its entry further on: the browser goes there too, so Back and Forward still line up
+      const at = left && left.depth > to ? left.at : st.afAt;
+      if (left && left.depth > to) { swallow = true; history.go(left.depth - to); depth = left.depth; } else depth = to;
+      left = null;
+      if (at) { trail[depth] = at; resumePiece = at.page !== 'review' && at.field ? fieldEl(at.field) : null; }
+      begin(at?.page || null);
+      return true;
+    }
+    const to = st?.afFocus ? (st.afDepth || 1) : 0;
+    const dir = to > depth ? 1 : -1;
+    // A sheet or dialog open: Back closes it, and they stay on the screen it was over
+    const sheet = [ui.dialog, ui.detail].find(d => d?.open);
+    if (sheet) { sheet.close(); swallow = true; history.go(-dir); return true; }
+    depth = to;
+    if (st?.afAt) trail[to] = st.afAt;
+    if (!to || doneShown) { exitFocus({ fromPop: true }); return true; } // back to the page itself
+    if (stopShown) { stopShown = null; ui.stop.hidden = true; ui.form.hidden = false; }
+    if (st.afAt) goTo(st.afAt, dir);
+    else if (dir < 0) back(); // an entry from before they said where they were: a screen back
     return true;
   };
-  const rearm = () => { if (focused && !trapped) armTrap(); };
+  const rearm = () => { if (focused && !depth) armTrap(); };
+  // Typing in a box when the page goes (a reload): that box's screen is the one to come back to
+  window.addEventListener('pagehide', () => {
+    const f = document.activeElement?.closest?.('[data-field]');
+    if (!focused || !f || !onScreen(f) || !pageEl(currentId)?.contains(f)) return;
+    try { sessionStorage.setItem(SCREEN_KEY, JSON.stringify({ page: currentId, field: f.dataset.field })); } catch { /* storage off */ }
+  }, { signal });
   document.addEventListener('pointerdown', rearm, { capture: true, signal });
   document.addEventListener('keydown', rearm, { capture: true, signal });
   // A real change of window size (not a phone's address bar sliding away) works the screens out again, keeping their place
@@ -3203,9 +3387,9 @@ function init(root, cfg, mode) {
       if (!focused || !packSize || !currentId || currentId === 'review' || ui.form.hidden) return;
       const [w0, h0] = packSize.split('x').map(Number);
       if (Math.abs(innerWidth - w0) < 40 && Math.abs(innerHeight - h0) < 120) return;
-      const piece = packs[currentId]?.[screenNo]?.[0] || null; // the same words or question after the resize
+      const piece = (anchor && pageEl(currentId)?.contains(anchor) && anchor) || packs[currentId]?.[screenNo]?.[0] || null;
       delete packs[currentId];
-      show(currentId, { piece, focus: false, scroll: false });
+      show(currentId, { piece, focus: false, scroll: false, refit: true });
     }, 180);
   }, { passive: true, signal });
 
@@ -3213,6 +3397,16 @@ function init(root, cfg, mode) {
   ui.review.addEventListener('click', (e) => {
     const tg = e.target.closest('[data-review-toggle]');
     if (tg) { setReviewOpen(tg.closest('.af-review-section'), tg.getAttribute('aria-expanded') !== 'true'); return; }
+    // "Did you mean …@gmail.com?": the answer is changed to it, there and then
+    const fix = e.target.closest('[data-mailfix-review]');
+    const input = fix && fieldEl(fix.dataset.mailfixReview)?.querySelector('input[type=email]');
+    if (input) {
+      input.value = fix.dataset.fix;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      buildReview();
+      ui.reviewSummary.focus?.({ preventScroll: true });
+    }
   });
   ui.reviewAll?.addEventListener('click', () => {
     reviewAll = !reviewAll;
@@ -3236,6 +3430,10 @@ function init(root, cfg, mode) {
       input.focus();
       return;
     }
+    // A choice greyed out because they've picked as many as it takes: they're told why, by the buttons
+    const full = e.target.closest('.af-choice:has(input:disabled)');
+    const fullField = full && byId[full.closest('[data-field]')?.dataset.field];
+    if (fullField?.max && !e.target.closest('[data-tile-more]')) { navNote(['detailFull', { n: fullField.max }]); announce(T('detailFull', { n: fullField.max })); return; }
     // An empty photo or video box opens the picker wherever it's pressed, not just on its button
     const box = e.target.closest('.af-upload[data-state="empty"]');
     if (box && !e.target.closest('button, a, input')) { box.querySelector('[data-act="choose"]')?.click(); return; }
@@ -3294,7 +3492,7 @@ function init(root, cfg, mode) {
       if (shaped !== tgt.value) tgt.value = shaped;
     }
     if (tgt.type === 'email' && e.isTrusted) { const p = el?.querySelector('[data-mailfix]'); if (p && !p.hidden) p.hidden = true; }
-    if (tgt.tagName === 'TEXTAREA') { grow(tgt); capBox(tgt); }
+    if (tgt.tagName === 'TEXTAREA') { grow(tgt); capBoxes(pageEl(currentId)); }
     if (tgt.matches('[data-search]') && el) addressTyped(el, tgt);
     liveCheck(el);
     if (el && el.dataset.field === homeAddressId()) scheduleArea();
@@ -3314,6 +3512,7 @@ function init(root, cfg, mode) {
     if (tgt.closest('.af-hp')) return;
     const el = tgt.closest('[data-field]');
     if (tgt.type === 'tel') { const shaped = phoneShape(tgt.value, true); if (shaped !== tgt.value) tgt.value = shaped; }
+    if (tgt.matches('[data-part="line2"]')) { const b = addrBox(el); if (b) delete b.dataset.splitApt; } // an apartment they entered is theirs
     if (tgt.type === 'email') paintMailFix(tgt);
     liveCheck(el);
     if (el && el.dataset.field === homeAddressId()) scheduleArea();
@@ -3433,9 +3632,9 @@ function init(root, cfg, mode) {
   document.fonts?.ready.then(() => {
     fitNavLater();
     if (!focused || !currentId || currentId === 'review' || !packs[currentId]) return;
-    const piece = packs[currentId][screenNo]?.[0] || null;
+    const piece = (anchor && pageEl(currentId)?.contains(anchor) && anchor) || packs[currentId][screenNo]?.[0] || null;
     delete packs[currentId];
-    show(currentId, { piece, focus: false, scroll: false });
+    show(currentId, { piece, focus: false, scroll: false, refit: true });
   });
   window.addEventListener('beforeunload', (e) => {
     if (uploads.size || recorder?.rec) { e.preventDefault(); e.returnValue = ''; }
@@ -3457,6 +3656,15 @@ function init(root, cfg, mode) {
     applyConfig();
     if (live && window.parent !== window) window.parent.postMessage({ type: 'afe-preview-ready' }, location.origin);
   } else {
-    resume().catch(() => {}).finally(() => { if (!token) applyConfig(); });
+    resume().catch(() => {}).finally(() => { if (!token) applyConfig(); ready(); });
+  }
+  if (previewing) ready();
+  /** Ready to start: a tap on Start made while the script was loading (the page's inline catcher kept it) goes ahead now */
+  function ready() {
+    root.dataset.ready = 'go';
+    const want = window.__afWant;
+    window.__afWant = null;
+    for (const b of document.querySelectorAll('[data-hero-cta][aria-busy], [data-hub-go][aria-busy]')) b.removeAttribute('aria-busy');
+    if (want) (want === 'hub' ? ui.hubGo : document.querySelector('[data-hero-cta]'))?.click();
   }
 }

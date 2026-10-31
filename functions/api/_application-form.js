@@ -1096,6 +1096,8 @@ export function allFields(form) {
   return form.pages.flatMap(p => p.fields.map(f => ({ ...f, page: p.id, ...(p.showIf ? { pageShowIf: p.showIf } : {}) })));
 }
 
+/** The earliest date a date question takes (the box's min too): earlier is a typo in the year */
+export const DATE_MIN = '1990-01-01';
 const INPUT_TYPES = new Set(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'radio', 'checkbox', 'name', 'address', 'ack', 'signature', 'area']);
 const UPLOAD_TYPES = new Set(['photo', 'video']);
 
@@ -1165,7 +1167,7 @@ export const ERROR_TEXT = {
     ack: 'Please check the box to continue.', choose: 'Please choose an answer.', signature: 'Please type your full name.', answer: 'Please answer this question.',
     area: 'Please enter the home address so we can check it, or choose an answer.',
     email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.',
-    date: 'Please enter a valid date.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
+    date: 'Please enter a valid date.', year: 'Please check the year.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
     address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.',
     oneOf: 'Please choose one of the answers.', listed: 'Please choose from the answers listed.', upTo: (n) => `Please choose up to ${n}.`,
     number: 'Please enter a number.', whole: 'Please enter a whole number.', min: (n) => `Please enter ${n} or more.`, max: (n) => `Please enter ${n} or less.`,
@@ -1177,7 +1179,7 @@ export const ERROR_TEXT = {
     ack: 'Marque la casilla para continuar.', choose: 'Elija una respuesta.', signature: 'Escriba su nombre completo.', answer: 'Responda esta pregunta.',
     area: 'Escriba la dirección de la casa para que podamos revisarla, o elija una respuesta.',
     email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.',
-    date: 'Escriba una fecha válida.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
+    date: 'Escriba una fecha válida.', year: 'Revise el año.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
     address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.',
     oneOf: 'Elija una de las respuestas.', listed: 'Elija entre las respuestas de la lista.', upTo: (n) => `Elija hasta ${n}.`,
     number: 'Escriba un número.', whole: 'Escriba un número entero.', min: (n) => `Escriba ${n} o más.`, max: (n) => `Escriba ${n} o menos.`,
@@ -1223,6 +1225,7 @@ export function fieldError(field, value, lang = 'en') {
       const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
       const d = m ? new Date(`${value}T12:00:00Z`) : null;
       if (!d || Number.isNaN(d.getTime()) || d.getUTCDate() !== Number(m[3])) return E.date;
+      if (value < DATE_MIN) return E.year; // a slip of the year ("0201"): the box's own earliest date
       if (d.getTime() > Date.now()) return E.future;
       const age = ageOn(value);
       if (r.minAge != null && age < r.minAge) return E.minAge(r.minAge);

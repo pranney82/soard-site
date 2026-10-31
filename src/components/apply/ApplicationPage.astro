@@ -369,6 +369,7 @@ const breadcrumbs = [
             <p data-af-t="laterIntro">{w('laterIntro')}</p>
             <label class="af-label" for="af-later-email" data-af-t="email">{w('email')}</label>
             <input type="email" id="af-later-email" required autocomplete="email" inputmode="email" spellcheck="false" />
+            <p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>
             <p class="af-dialog-status" data-later-status aria-live="polite"></p>
             <button type="submit" class="af-btn af-btn--primary" data-af-t="laterSend">{w('laterSend')}</button>
           </form>
@@ -398,6 +399,9 @@ const breadcrumbs = [
      window.__afPop). This gate runs before the site's page router, which listens for the same
      event and would load the page again; an inline script runs ahead of the router's module. -->
 <script is:inline>if(!window.__afGate){window.__afGate=1;addEventListener('popstate',function(e){var f=window.__afPop;if(f&&f(e))e.stopImmediatePropagation()},true)}</script>
+<!-- A tap on Start while the application's script is still loading (a slow phone, a slow line) is kept,
+     and the application opens the moment it's ready, instead of the tap only jumping down the page -->
+<script is:inline>if(!window.__afEarly){window.__afEarly=1;document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-hero-cta],[data-hub-go]');var r=document.querySelector('[data-application]');if(!b||!r||r.dataset.ready==='go')return;var o;try{o=JSON.parse(document.getElementById('af-config').textContent).open}catch(x){}if(b.hasAttribute('data-hero-cta')&&(o===false||(o==null&&b.getAttribute('data-af-t')==='heroNotify')))return;e.preventDefault();window.__afWant=b.hasAttribute('data-hub-go')?'hub':'hero';b.setAttribute('aria-busy','true')},true)}</script>
 <script>import '../../components/apply/application-form.client.js';</script>
 
 <style>
@@ -533,6 +537,8 @@ const breadcrumbs = [
   .af-part { display: inline-flex; align-items: center; gap: 10px; }
   .af-part:empty { display: none; }
   .af-part::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--af-line-strong); }
+  /* A heading given the focus so a screen reader starts there (tabindex="-1") isn't a control: no ring */
+  .af-app :is(h1, h2, h3, p, div)[tabindex="-1"]:is(:focus, :focus-visible), .af-hub-title:is(:focus, :focus-visible) { outline: none; box-shadow: none; }
   .af-step-title { font-size: clamp(26px, 3.2vw, 34px); line-height: 1.16; letter-spacing: -0.018em; color: var(--c-dark); outline: none; text-wrap: balance; }
   .af-steps { position: relative; flex-shrink: 0; }
   .af-steps-toggle { list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--c-dark); border-radius: 999px; background: #F4F2EC; user-select: none; transition: background-color .15s var(--af-ease); }
@@ -584,15 +590,6 @@ const breadcrumbs = [
   .af-ic { width: 32px; height: 32px; flex-shrink: 0; max-width: none; fill: var(--c-dark); }
   .af-ic .af-ic-fill { fill: var(--c-yellow); }
   .af-content .af-offer-text { display: grid; gap: 4px; font-size: 14.5px; line-height: 1.55; color: var(--c-text); }
-  /* Words that can't be cut between screens any further (cards side by side) and still don't fit: a little snugger */
-  html.af-focus .af-content[data-snug] .af-scope-title { margin: 4px 0 10px; font-size: 20px; }
-  html.af-focus .af-content[data-snug] .af-offer-head { margin-bottom: 8px; }
-  html.af-focus .af-content[data-snug] :is(.af-offer-grid, .af-offer-col) { gap: 10px; }
-  html.af-focus .af-content[data-snug] .af-offer-card { padding: 8px 14px; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; }
-  html.af-focus .af-content[data-snug] .af-offer-icon { width: 40px; height: 40px; }
-  html.af-focus .af-content[data-snug] .af-offer-icon .af-ic { width: 24px; height: 24px; }
-  html.af-focus .af-content[data-snug] .af-offer-text { font-size: 14px; line-height: 1.4; }
-  html.af-focus .af-content[data-snug] p { line-height: 1.5; }
   .af-content .af-offer-text strong { font-size: 16px; line-height: 1.35; color: var(--c-dark); }
   .af-content .af-nope { padding: 18px 20px; border-radius: 18px; border: 1px dashed var(--af-line-strong); }
   .af-content .af-nope-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; font-size: 14.5px; line-height: 1.5; }
@@ -718,32 +715,28 @@ const breadcrumbs = [
   @container (min-width: 560px) { .af-choices--tiles { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
   .af-col { display: grid; gap: 10px; align-content: start; }
   @container (min-width: 560px) { .af-choices--cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
-  /* When the screen has room for only part of the tiles' words (a short laptop, a phone, a phone on its
-     side), each tile says its first lines (the script picks how many) and More opens the rest. Two to a
-     row, More sits beside the box */
+  /* A tile on a phone reads like the other choices: the box first, the name beside it, the words
+     under both. When the screen has room for only part of the words, each tile says its first lines
+     (the script picks how many) and More opens the rest */
   .af-tile-more { display: none; }
-  .af-tile[data-clamp] .af-choice-title { padding-right: 100px; }
-  .af-tile[data-clamp] .af-choice-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 2); overflow: hidden; }
-  .af-tile[data-clamp="0"] .af-choice-desc { display: none; }
-  .af-tile[data-clamp] .af-tile-more { display: inline-flex; }
-  /* A little snugger before a line of words goes (each still 44px to tap) */
-  html.af-focus :is(.af-choices--tiles[data-snug], .af-choices--tiles[data-snug] .af-tile-col) { gap: 5px; }
-  html.af-focus .af-choices--tiles[data-snug] .af-choice { padding-block: 8px; min-height: 44px; }
-  .af-choices--tiles[data-snug] .af-choice-box { top: 8px; }
-  .af-choices--tiles[data-snug] .af-tile-more { top: -2px; }
-  /* A tile on a phone reads like the other choices: the box first, the name beside it, the words under both */
   @container (max-width: 559.98px) {
+    .af-choices--tiles { --af-narrow: 1; }
     .af-choices--tiles .af-choice { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 12px; row-gap: 4px; align-items: start; }
     .af-choices--tiles .af-choice-box { position: static; }
     .af-choices--tiles .af-choice-text { display: contents; }
     .af-choices--tiles .af-choice-title { padding-right: 0; align-self: center; }
     .af-choices--tiles .af-choice-desc { grid-column: 1 / -1; }
     .af-tile[data-clamp] .af-choice-title { padding-right: 62px; }
-    .af-choices--tiles .af-tile-more { right: 4px; }
+    .af-tile[data-clamp] .af-choice-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 2); overflow: hidden; }
+    .af-tile[data-clamp="0"] .af-choice-desc { display: none; }
+    .af-tile[data-clamp] .af-tile-more { display: inline-flex; }
+    /* A little snugger before a line of words goes (each still 48px to tap) */
+    html.af-focus :is(.af-choices--tiles[data-snug], .af-choices--tiles[data-snug] .af-tile-col) { gap: 6px; }
+    html.af-focus .af-choices--tiles[data-snug] .af-choice { padding-block: 9px; min-height: 48px; }
     .af-choices--tiles[data-snug] .af-tile-more { top: -1px; }
   }
   .af-tile-more {
-    position: absolute; top: 2px; right: 42px; min-width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0 12px;
+    position: absolute; top: 2px; right: 4px; min-width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0 12px;
     border: 0; border-radius: 12px; background: none; cursor: pointer; font: inherit; font-size: 14.5px; font-weight: 700; color: var(--c-dark);
     text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 4px; -webkit-tap-highlight-color: transparent;
   }
@@ -766,6 +759,7 @@ const breadcrumbs = [
   .af-mailfix button { display: inline; margin: 0 1px 0 4px; font: inherit; line-height: 1.4; font-weight: 700; color: var(--c-dark); background: var(--af-picked); border: 1.5px solid var(--c-yellow); border-radius: 999px; min-height: 36px; padding: 4px 12px; cursor: pointer; overflow-wrap: anywhere; text-align: left; transition: background-color .18s var(--af-ease), transform .14s var(--af-ease); }
   .af-mailfix button:hover { background: var(--c-yellow-soft); }
   .af-mailfix button:active { transform: scale(.97); }
+  .af-review-mail { margin: 12px 0 0; padding: 10px 14px; border-radius: 14px; background: var(--af-attn-bg); color: var(--af-attn-ink); font-weight: 600; }
   .af-mailfix button:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
 
   /* Optional questions behind a button: a second parent, the parent's own address */
@@ -854,9 +848,10 @@ const breadcrumbs = [
   }
   .af-error::before { content: ''; flex: 0 0 18px; height: 18px; margin-top: 1px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A7200' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='8.2'/%3E%3Cpath d='M10 5.8v5.2M10 14v.1'/%3E%3C/svg%3E"); }
   .af-error:empty { display: none; }
-  .af-field.af-field--error :is(input:not([type=radio]):not([type=checkbox]):not([type=file]), textarea, select),
+  .af-field.af-field--error :is(input:not([type=radio]):not([type=checkbox]):not([type=file]), textarea, select):not([data-part]),
+  .af-field.af-field--error [data-part][aria-invalid="true"],
   .af-field--error .af-choice, .af-field--error .af-upload { border-color: var(--af-gold); }
-  .af-field.af-field--error :is(input:not([type=radio]):not([type=checkbox]):not([type=file]), textarea, select):not(:focus-visible) { background-color: #FFFDF3; }
+  .af-field.af-field--error :is(input:not([type=radio]):not([type=checkbox]):not([type=file]), textarea, select):is(:not([data-part]), [aria-invalid="true"]):not(:focus-visible) { background-color: #FFFDF3; }
 
   /* Staff live preview: the question being edited, outlined for a moment */
   .af-flash { animation: afFlash 1.8s var(--af-ease) both; }
@@ -866,10 +861,10 @@ const breadcrumbs = [
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     font: inherit; font-weight: 600; font-size: 16px; min-height: 52px; padding: 12px 26px;
     border-radius: 999px; border: 0; cursor: pointer; text-decoration: none; -webkit-tap-highlight-color: transparent;
-    transition: background-color .2s var(--af-ease), box-shadow .2s var(--af-ease), transform .14s var(--af-ease), border-color .2s var(--af-ease), opacity .2s var(--af-ease);
+    transition: background-color .12s var(--af-ease), box-shadow .12s var(--af-ease), transform .12s var(--af-ease), border-color .12s var(--af-ease), opacity .12s var(--af-ease);
   }
   .af-btn:active:not(:disabled) { transform: scale(.97); }
-  .af-btn-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; transition: transform .2s var(--af-ease); }
+  .af-btn-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; transition: transform .12s var(--af-ease); }
   @media (hover: hover) {
     .af-btn--next:hover .af-btn-icon--next { transform: translateX(2px); }
     .af-btn--back:hover .af-btn-icon { transform: translateX(-2px); }
@@ -878,6 +873,7 @@ const breadcrumbs = [
   .af-btn--primary:hover:not(:disabled) { box-shadow: 0 10px 26px -6px var(--c-yellow-glow), 0 0 0 1px rgba(55,58,54,.06); background: #FFD60A; }
   .af-btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
   .af-btn--primary[aria-busy="true"] { cursor: progress; opacity: .75; }
+  [data-hero-cta][aria-busy="true"] { cursor: progress; opacity: .85; }
   .af-btn--submit { background: var(--c-dark); color: #fff; }
   .af-btn--submit:hover:not(:disabled) { background: #2C2F2B; box-shadow: 0 10px 26px -8px rgba(30,31,37,.35); }
   .af-btn--submit .af-btn-icon--next { display: none; }
@@ -1127,9 +1123,9 @@ const breadcrumbs = [
   .af-map-town--minor > span { font-size: 11.5px; font-weight: 500; color: #4A4B50; }
   .af-map-county-name { position: absolute; transform: translate(-50%, -50%); font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #8E8778; white-space: nowrap; }
   .af-map-pin { position: absolute; width: 0; height: 0; z-index: 2; }
-  .af-map-pin-head { position: absolute; left: -13px; top: -34px; width: 26px; height: 34px; max-width: none; filter: drop-shadow(0 3px 4px rgba(30,31,37,.28)); animation: afPinDrop .6s cubic-bezier(.34,1.45,.64,1) both; }
-  .af-map-pin::before { content: ''; position: absolute; left: -16px; top: -8px; width: 32px; height: 16px; border-radius: 50%; border: 2px solid var(--c-dark); opacity: 0; animation: afPinRing 1.4s var(--af-ease) .35s both; }
-  .af-map-pin-label { position: absolute; left: 15px; top: -36px; white-space: nowrap; background: var(--c-dark); color: #fff; font-size: 12px; font-weight: 700; line-height: 1; padding: 6px 9px; border-radius: 99px; animation: afFadeIn .3s var(--af-ease) .25s both; }
+  .af-map-pin-head { position: absolute; left: -13px; top: -34px; width: 26px; height: 34px; max-width: none; filter: drop-shadow(0 3px 4px rgba(30,31,37,.28)); animation: afPinDrop .36s cubic-bezier(.34,1.45,.64,1) both; }
+  .af-map-pin::before { content: ''; position: absolute; left: -16px; top: -8px; width: 32px; height: 16px; border-radius: 50%; border: 2px solid var(--c-dark); opacity: 0; animation: afPinRing .7s var(--af-ease) .22s both; }
+  .af-map-pin-label { position: absolute; left: 15px; top: -36px; white-space: nowrap; background: var(--c-dark); color: #fff; font-size: 12px; font-weight: 700; line-height: 1; padding: 6px 9px; border-radius: 99px; animation: afFadeIn .2s var(--af-ease) .16s both; }
   .af-map-pin[data-flip] .af-map-pin-label { left: auto; right: 15px; }
   .af-map-away { position: absolute; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 6px; width: max-content; max-width: 88%; line-height: 1.25; background: var(--c-dark); color: #fff; font-size: 12.5px; font-weight: 700; padding: 6px 11px 6px 8px; border-radius: 99px; box-shadow: 0 6px 16px -4px rgba(30,31,37,.35); }
   .af-map-away[data-anchor="end"] { transform: translate(-100%, -50%); }
@@ -1270,6 +1266,10 @@ const breadcrumbs = [
       height: calc(100dvh - var(--af-top-h)); overflow: auto; overscroll-behavior: contain; padding: 36px 20px 24px 28px;
       background: var(--c-cream); border-right: 1px solid #ECE7DA;
     }
+    /* A short screen: the list of steps scrolls, the time left and Save and finish later stay at the foot */
+    html.af-focus .af-rail { overflow: hidden; }
+    html.af-focus .af-rail > nav { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; margin: -4px -8px; padding: 4px 8px; }
+    html.af-focus .af-rail-foot { flex: none; }
     html.af-focus .af-steps { display: none; }
     /* With All steps in the rail, "Step 2 of 10" needs only its own line */
     html.af-focus .af-head-top { min-height: 0; }
@@ -1364,6 +1364,8 @@ const breadcrumbs = [
     .af-pair--photos .af-upload-body { display: grid; gap: 8px; }
     .af-pair--photos .af-upload-status { font-size: 13.5px; line-height: 1.4; text-align: center; color: var(--c-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .af-pair--photos .af-upload[data-state="done"] .af-upload-status { color: var(--c-dark); }
+    /* A file's name is cut short on one line; a note about a problem is read whole */
+    .af-pair--photos .af-upload:not([data-state="done"]) .af-upload-status { white-space: normal; overflow: visible; text-overflow: clip; }
     .af-pair--photos .af-upload-actions { display: grid; gap: 4px; justify-items: stretch; }
     .af-pair--photos .af-btn--upload { width: 100%; padding-inline: 12px; }
     .af-pair--photos .af-btn--link { justify-self: center; }
@@ -1388,7 +1390,7 @@ const breadcrumbs = [
     .af-place :is(.af-area-result, .af-area-ask, .af-field--area > .af-error) { grid-column: 1; }
   }
   .af-map-frame { width: min(100%, calc(var(--af-map-h, 100vh) * var(--r, 1.4))); margin-inline: auto; }
-  html.af-focus .af-place { --af-map-h: 26vh; }
+  html.af-focus .af-place { --af-map-h: max(220px, 30vh); }
   @container (min-width: 600px) { html.af-focus .af-place { --af-map-h: clamp(220px, calc(100dvh - 430px), 46vh); } }
   /* Apart, when they don't fit a screen together (the script sets data-split): the address on its own,
      then the map with what the check found on the next screen, side by side where there's room */
@@ -1397,9 +1399,9 @@ const breadcrumbs = [
   html.af-focus .af-place[data-split] > .af-field--area { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
   /* The map's screen says the county ("…in Gwinnett County"), so the address's screen needn't */
   /* On its own screen the home drops onto the map once the screen has slid in, not while it moves */
-  html.af-focus .af-place[data-split] .af-map-pin-head { animation-delay: .3s; }
-  html.af-focus .af-place[data-split] .af-map-pin-label { animation-delay: .62s; }
-  html.af-focus .af-place[data-split] .af-map-pin::before { animation-delay: .7s; }
+  html.af-focus .af-place[data-split] .af-map-pin-head { animation-delay: .16s; }
+  html.af-focus .af-place[data-split] .af-map-pin-label { animation-delay: .34s; }
+  html.af-focus .af-place[data-split] .af-map-pin::before { animation-delay: .4s; }
   html.af-focus .af-place[data-split] .af-county-note { display: none; }
   @container (min-width: 600px) {
     /* No row gaps: the map spans the card's rows, and empty ones (no question, no note) would add room for nothing */
@@ -1476,8 +1478,8 @@ const breadcrumbs = [
   .af-vt .af-stage { view-transition-name: af-stage; }
   .af-vt::view-transition-group(root), .af-vt::view-transition-old(root), .af-vt::view-transition-new(root) { animation: none; }
   .af-vt::view-transition-group(af-stage) { animation: none; }
-  .af-vt::view-transition-old(af-stage) { animation: afOutNext 120ms cubic-bezier(.4,0,1,1) both; }
-  .af-vt::view-transition-new(af-stage) { animation: afInNext 260ms cubic-bezier(.05,.7,.1,1) 110ms both; }
+  .af-vt::view-transition-old(af-stage) { animation: afOutNext 90ms cubic-bezier(.4,0,1,1) both; }
+  .af-vt::view-transition-new(af-stage) { animation: afInNext 200ms cubic-bezier(.05,.7,.1,1) 60ms both; }
   /* Between screens of the same step its name holds still; only the questions move */
   .af-vt.af-vt-same .af-head { view-transition-name: af-head; }
   .af-vt::view-transition-group(af-head), .af-vt::view-transition-new(af-head) { animation: none; }
@@ -1572,7 +1574,6 @@ const breadcrumbs = [
     html.af-focus .af-nav { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
     html.af-focus .af-field textarea { min-height: 76px; }
     html.af-focus .af-choice { padding: 10px 14px; min-height: 48px; }
-    html.af-focus .af-content { font-size: 15.5px; line-height: 1.55; }
     /* An address entered by hand (street, apartment, city / state / ZIP) still fits beside its question */
     html.af-focus .af-address { gap: 10px; }
     html.af-focus .af-address-switch { margin: -12px 0 -8px; }
@@ -1582,7 +1583,7 @@ const breadcrumbs = [
   /* A phone on its side: the bars and the step's name as small as they go, so the questions keep a
      screen. The step's name, where they are and All steps share one line; Back / Continue are 44px */
   @media (max-height: 450px) and (orientation: landscape) {
-    .af-app { --af-top-h: 48px; }
+    .af-app { --af-top-h: 56px; } /* its language switch and Save and exit whole (44px to tap) */
     .af-top-logo { width: 36px; height: 36px; }
     html.af-focus .af-stage { padding-top: 8px; }
     html.af-focus .af-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
@@ -1605,12 +1606,8 @@ const breadcrumbs = [
       html.af-focus .af-choices--cols .af-choice-text { hyphens: manual; }
       /* The address and its apartment side by side */
       html.af-focus .af-address { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
-      html.af-focus .af-address > :is(.af-address-rest, .af-address-switch, .af-county-note) { grid-column: 1 / -1; }
+      html.af-focus .af-address > :is(.af-address-rest, .af-error, .af-address-switch, .af-county-note) { grid-column: 1 / -1; }
     }
-    /* What we do and don't: one card under another, so they can be read a screen at a time */
-    html.af-focus .af-content :is(.af-offer-grid, .af-nope-list) { grid-template-columns: minmax(0, 1fr); }
-    html.af-focus .af-content .af-scope-title { font-size: 19px; margin: 0 0 8px; }
-    html.af-focus .af-content .af-offer-card { padding: 10px 14px; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; }
     /* A photo's box: the picture beside its words and button */
     html.af-focus .af-pair--photos .af-upload { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; align-items: center; padding: 10px; }
     html.af-focus .af-pair--photos .af-upload-preview { width: 64px; height: 64px; aspect-ratio: auto; }

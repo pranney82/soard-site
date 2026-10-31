@@ -84,6 +84,18 @@ export async function embedForm(context, kind = 'family') {
       .on('script[type="application/ld+json"]', wholeText(seasonYear))
       // The hero's eyebrow names the season (the browser redraws it in the family's language)
       .on('[data-af-t="heroEyebrow"]', { element(el) { el.setInnerContent(t('en', 'heroEyebrow', { year }, kind)); } })
+      // Its button follows the live switch from the first paint: Start while open, "tell me when we open"
+      // while closed (the browser makes it "Continue" for a family part way through)
+      .on('[data-hero-cta]', {
+        element(el) {
+          const key = config.open ? 'heroStart' : 'heroNotify';
+          el.setAttribute('data-af-t', key);
+          const cls = (el.getAttribute('class') || '').split(/\s+/).filter(c => c && c !== 'btn-glow');
+          if (config.open) cls.push('btn-glow');
+          el.setAttribute('class', cls.join(' '));
+          el.setInnerContent(t('en', key, {}, kind));
+        },
+      })
       .on('[data-application]', {
         element(el) {
           el.setAttribute('data-year', year);
