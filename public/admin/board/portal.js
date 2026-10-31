@@ -30,7 +30,7 @@ import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
-  isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle,
+  isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs,
 } from '../board-shared.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized } from './kanban.js';
@@ -150,9 +150,10 @@ const PAST_ORDER = ['minutes', 'signed', 'agenda', 'packet', 'financials', 'othe
 const AHEAD_ORDER = ['agenda', 'packet', 'financials', 'minutes', 'signed', 'other'];
 /**
  * Files as rows by kind. The same title in several formats (a PDF and its Excel copy) or saved twice is
- * one row, the PDF (else the newest) first: [{ kind, label, rows: [{ title, file, more: [{ file, label }] }] }]
+ * one row, the PDF (else the newest) first, or the copy in `lead` (a Set of ids: the ones the meeting's screen
+ * shows): [{ kind, label, rows: [{ title, file, more: [{ file, label }] }] }]
  */
-function fileRows(files, order = PAST_ORDER) {
+function fileRows(files, order = PAST_ORDER, lead = null) {
   const groups = [];
   for (const f of files) {
     const kind = order.includes(f.kind) ? f.kind : 'other';
@@ -166,6 +167,8 @@ function fileRows(files, order = PAST_ORDER) {
   for (const g of groups) {
     for (const r of g.rows) {
       r.all.sort((a, b) => RANK[formatOf(a)] - RANK[formatOf(b)] || String(b.at || '').localeCompare(String(a.at || '')));
+      const i = lead ? r.all.findIndex((f) => lead.has(f.id)) : -1;
+      if (i > 0) r.all.unshift(...r.all.splice(i, 1));
       r.file = r.all[0];
       r.more = r.all.slice(1).map((f) => ({ file: f, label: formatOf(f) === formatOf(r.file) ? 'Another copy' : formatOf(f) }));
     }
@@ -246,8 +249,8 @@ function FileBadge({ f }) {
 }
 
 /** A set of files, by kind, each opening in the viewer (the PDFs step through with ← →) */
-function FileList({ files, order, labels = true, kinds = false }) {
-  const sorted = fileRows(files, order);
+function FileList({ files, order, labels = true, kinds = false, lead = null }) {
+  const sorted = fileRows(files, order, lead);
   // Without headings the kinds run together as one list
   const groups = labels || sorted.length < 2 ? sorted : [{ kind: 'all', label: '', rows: sorted.flatMap((g) => g.rows) }];
   const primary = groups.flatMap((g) => g.rows.map((r) => r.file));
@@ -1272,7 +1275,7 @@ function LiveRoom({ v, setV, m, ctx }) {
           <${FloorLine} v=${v} nowItem=${nowItem} si=${now.si} ctx=${ctx} />
           <${Notes} text=${nowItem.notes} />
           <${ScreenPeek} v=${v} />
-          ${itemFiles(v, nowItem, v.prior || []).length ? html`<div class="bp-now__docs"><${FileList} files=${itemFiles(v, nowItem, v.prior || [])} labels=${false} /></div>` : null}
+          ${itemFiles(v, nowItem, v.prior || []).length ? html`<div class="bp-now__docs"><${FileList} files=${itemFiles(v, nowItem, v.prior || [])} labels=${false} lead=${new Set(itemDocs(v, nowItem, v.prior || []).map((d) => d.file.id))} /></div>` : null}
           ${v.live.fileId ? null : html`<p class="bp-now__screen"><a class="bp-link" href=${`#/meetings/${v.id}/screen`}>Follow the screen</a></p>`}
         </section>`
         : started ? html`<section class="bp-now bp-now--quiet" aria-labelledby="now-h"><p class="bp-eyebrow">The meeting has started</p><h2 class="bp-now__title" id="now-h">${items[0] ? `First: ${items[0].title}` : 'The chair is opening the meeting'}</h2></section>`

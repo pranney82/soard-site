@@ -792,7 +792,12 @@ try {
   }
   ok(await jane.evaluate(() => !!document.querySelector('.bm-order__item.is-now .bm-live-dot')), 'the item being discussed is marked in the agenda, in order');
   ok(await saved(jane), 'each move saves at once');
-  let follow = await jane.evaluate(async (id) => (await fetch(`/api/board-portal?live=${id}`)).json(), practiceId);
+  // (asked until the move's save lands: "Saved" can still be the one before it)
+  let follow = {};
+  for (let tries = 0; tries < 20 && !(follow.live?.itemId && follow.live?.startedAt); tries++) {
+    if (tries) await sleep(300);
+    follow = await jane.evaluate(async (id) => (await fetch(`/api/board-portal?live=${id}`)).json(), practiceId);
+  }
   ok(follow.practice && follow.me.canAct && follow.live.itemId && follow.live.startedAt, 'the board page follows it: live, on the same item; the founder acts as one more member there');
   await clickText(jane, '.bm-doc', /Balance sheet financials/);
   await saved(jane);
