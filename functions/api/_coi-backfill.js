@@ -59,7 +59,7 @@ import { readDocument, readW9Text, pdfText, documentType, judgeW9, mergeCoi, lon
 import { jt, jtSetup, readJtVendor, writeFields, vendorNote, uploadToJt, readDocSettings, docsState, labelFor, readAsk, FOLDER, TAGS, CONTACT_VALUES, contactEmail, contactFields } from './_vendors.js';
 
 export const STATE_KEY = 'coi-backfill';
-const REREAD = 2;            // raised when files already read need reading again (2: matching a W-9 to the JobTread account it's on)
+const REREAD = 3;            // raised when files already read need reading again (2: matching a W-9 to the JobTread account it's on; 3: Ramp's emails given as text)
 const SEARCH = 2;            // raised when every inbox and Ramp are searched again from the start (2: wider words, Linzi's account, Ramp's invoices and emails)
 const RAMP_KINDS = new Set(['FILE', 'INVOICE', 'EMAIL']);   // a Ramp bill's attachments worth a look (not its vendor credits)
 const MIN = 60 * 1000;
@@ -682,7 +682,7 @@ async function bytesFor(env, ctx, row, h) {
     const got = await rampAttachment(env, ctx, h);
     if (!got || got.tooBig || h.part == null) return got && { ...got, name: row.name };
     // A file out of the email the vendor sent the bill in
-    const p = partsOf(parseEmail(got.bytes)).find((x) => x.partId === h.part);
+    const p = partsOf(rampEmail(got.bytes)).find((x) => x.partId === h.part);
     return p?.body?.data ? { bytes: bytesOf(p.body.data), name: p.filename || row.name } : null;
   }
   if (!url) return null;
@@ -730,6 +730,13 @@ async function openEmail(env, ctx, row) {
   return { state: 'opened', detail: `${files.length} file${files.length === 1 ? '' : 's'} to read`, sentAt };
 }
 
+/** Ramp's EMAIL attachment as an email (whatever comes before its first header, a blank line or a mark, left out), or null with no headers: the email's words only */
+function rampEmail(bytes) {
+  const head = String.fromCharCode(...bytes.slice(0, 4000));
+  const at = head.search(/^(Return-Path|Received|Delivered-To|From|To|Subject|Date|MIME-Version|Content-Type|Message-ID):/im);
+  return at >= 0 ? parseEmail(bytes.slice(at)) : null;
+}
+
 /** The email a vendor sent a Ramp bill in: its files worth reading become rows of their own, as a staff email's do */
 async function openRampEmail(env, ctx, row) {
   const h = parseJson(row.hint);
@@ -744,8 +751,9 @@ async function openRampEmail(env, ctx, row) {
     await queue([{ name: row.name || 'document', size: got.bytes.length }], () => ({}));
     return { state: 'opened', detail: '1 file to read' };
   }
-  const payload = parseEmail(got.bytes);
-  if (!payload) return { state: 'skipped', detail: `not an email Ramp gave (${clean(got.type, 60) || 'unknown type'})` };
+  const payload = rampEmail(got.bytes);
+  const head = String.fromCharCode(...got.bytes.slice(0, 400));
+  if (!payload) return { state: 'passed', detail: `the email’s words only, ${clean(got.type, 40) || 'no type'} (“${clean(head.replace(/\s+/g, ' '), 60)}…”): its files are the bill’s other attachments` };
   const subject = header(payload.headers, 'Subject');
   const from = header(payload.headers, 'From');
   const hints = hintsOf(`${subject}\n${textOf(payload).slice(0, 4000)}`);
@@ -962,7 +970,7 @@ export async function runBackfill(env, st, { now = Date.now(), fetchImpl = fetch
   await env.DB.prepare("UPDATE coi_found SET state = 'given-up' WHERE state = 'failed' AND tries >= ?").bind(MAX_TRIES).run();
   // Read again, once each time REREAD is raised: what matched no vendor, and certificates and W-9s the model gave no name for
   if ((st.reread || 0) < REREAD) {
-    await env.DB.prepare("UPDATE coi_found SET state = 'queued', tries = 0, updated_at = ? WHERE item = 'file' AND (state = 'unmatched' OR (state = 'skipped' AND kind IN ('coi', 'w9') AND (insured IS NULL OR insured = '')))").bind(iso).run();
+    await env.DB.prepare("UPDATE coi_found SET state = 'queued', tries = 0, updated_at = ? WHERE (item = 'file' AND (state = 'unmatched' OR (state = 'skipped' AND kind IN ('coi', 'w9') AND (insured IS NULL OR insured = '')))) OR (source = 'ramp' AND item = 'message' AND state = 'skipped' AND detail LIKE 'not an email Ramp gave%')").bind(iso).run();
     st.reread = REREAD;
   }
   // Emails first (each makes file rows), newest first: the newest certificate names the agent who's theirs now

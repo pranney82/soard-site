@@ -605,3 +605,21 @@ test('a new search version looks through every inbox and Ramp again from four ye
   assert.ok(afters.length >= 2 && afters.every((a) => a < NOW - 3 * 365 * DAY), 'both inboxes, from four years back');
   assert.equal(world.ai.filter((x) => x === 'read').length, reads, 'nothing read twice');
 });
+
+test('Ramp: an email given as its words only is passed by and says so; one with a blank line before its headers is still opened', async () => {
+  Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
+  const eml = ['', 'From: Sam Sample <office@samplepainting.example>', 'Subject: COI', 'Content-Type: multipart/mixed; boundary=b2', '', '--b2', 'Content-Type: application/pdf; name="Sample COI.pdf"', 'Content-Transfer-Encoding: base64', '', Buffer.from(pdfOf('sample-coi')).toString('base64'), '--b2--'].join('\r\n');
+  world.rampFiles = {
+    '/words.txt': { bytes: new TextEncoder().encode('Hi, our invoice for the Powell job is attached. Thanks, Sam'), type: 'text/plain' },
+    '/padded.eml': { bytes: new TextEncoder().encode(eml), type: 'text/plain' },
+  };
+  world.rampBills = [
+    { id: 'RB2', vendor: { name: 'Sample Painting' }, issued_at: '2026-09-02', created_at: '2026-09-02T12:00:00Z', attachments: [{ id: 'W', attachment_type: 'EMAIL', url: 'https://files.ramp.example/words.txt' }] },
+    { id: 'RB3', vendor: { name: 'Sample Painting' }, issued_at: '2026-09-03', created_at: '2026-09-03T12:00:00Z', attachments: [{ id: 'P', attachment_type: 'EMAIL', url: 'https://files.ramp.example/padded.eml' }] },
+  ];
+  await runAll();
+  const words = await env.DB.prepare("SELECT state, detail FROM coi_found WHERE id = 'ramp:RB2:W'").first();
+  assert.equal(words.state, 'passed');
+  assert.match(words.detail, /^the email’s words only, text\/plain \(“Hi, our invoice/);
+  assert.equal((await rowsByName())['Sample COI.pdf']?.state, 'filed', 'the padded one is opened and its certificate filed');
+});
