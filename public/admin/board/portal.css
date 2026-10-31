@@ -582,6 +582,21 @@ a.bp-kid:hover .bp-avatar { transform: scale(1.06); }
 .bp-mrow__main { flex: 1 1 auto; min-width: 0; display: grid; gap: 0.1rem; }
 .bp-mrow__title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.6rem; font-weight: 650; font-size: 0.98rem; line-height: 1.35; }
 .bp-mrow__meta { color: var(--muted); font-size: 0.9rem; }
+/* Earlier years on Meetings: a row a year in one panel, opening in place to its meetings */
+.bp-year__label--small { font-size: 1.25rem; }
+.bp-yearfolds { display: grid; padding: 0.4rem; background: #fff; border: 1px solid rgba(45, 47, 44, 0.08); border-radius: var(--r-lg); box-shadow: var(--shadow-1); }
+.bp-yearfold + .bp-yearfold { border-top: 1px solid var(--line); }
+.bp-yearfold > summary { display: flex; align-items: center; gap: 1rem; min-height: 52px; padding: 0.45rem 0.9rem; border-radius: var(--r); cursor: pointer; list-style: none; transition: background 0.2s; }
+.bp-yearfold > summary::-webkit-details-marker { display: none; }
+.bp-yearfold > summary:hover { background: var(--warm); }
+.bp-yearfold__y { min-width: 3.4rem; font-family: var(--display); font-size: 1.3rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.bp-yearfold__n { flex: 1 1 auto; color: var(--muted); font-size: 0.9rem; }
+.bp-yearfold__chev { color: var(--quiet); transition: transform 0.3s var(--ease); }
+.bp-yearfold[open] .bp-yearfold__chev { transform: rotate(180deg); }
+.bp-yearfold .bp-mlist { padding: 0 0 0.3rem; border: none; box-shadow: none; background: none; }
+.bp-yearfold::details-content { block-size: 0; overflow: hidden; transition: block-size 0.35s var(--ease), content-visibility 0.35s allow-discrete; }
+.bp-yearfold[open]::details-content { block-size: auto; }
+@media (prefers-reduced-motion: reduce) { .bp-yearfold::details-content, .bp-yearfold__chev { transition: none; } }
 /* Who was there and the files, as quiet words at the row's end */
 .bp-mrow__side { flex: none; color: var(--muted); font-size: 0.86rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bp-mrow > .bp-go { color: var(--quiet); }
@@ -1008,6 +1023,9 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-finder__field input:focus { outline: none; }
 .bp-finder__field input::-webkit-search-cancel-button { display: none; }
 .bp-finder__x { border: none; background: none; cursor: pointer; padding: 0.4rem; border-radius: 8px; }
+/* Closing search: the esc key where there's a keyboard, a word on a touch screen */
+.bp-finder__cancel { display: none; font-weight: 650; font-size: 0.95rem; color: var(--ink-2); }
+@media (pointer: coarse) { .bp-finder__esc { display: none; } .bp-finder__cancel { display: inline; } .bp-finder__x { min-height: 44px; padding: 0 0.5rem; } }
 .bp-finder__list { overflow-y: auto; overscroll-behavior: contain; padding: 0.4rem; flex: 1 1 auto; }
 .bp-finder__group { margin: 0.65rem 0.75rem 0.3rem; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }
 .bp-finder__item { display: flex; align-items: center; gap: 0.8rem; padding: 0.6rem 0.75rem; border-radius: 12px; cursor: pointer; scroll-margin: 0.5rem; }
@@ -1672,7 +1690,19 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bp-stmt__total th, .bp-stmt__total td { font-weight: 700; }
 .bp-stmt__sum th, .bp-stmt__sum td { font-weight: 750; border-top: 2px solid var(--line-2); }
 .bp-stmt__chg { color: var(--muted); }
-@media (max-width: 640px) { .bp-stmt__table { min-width: 0; } .bp-stmt__chg { display: none; } }
+/* A phone: a statement's line is its name and this year's amount, then the year before's and the change, smaller */
+@media (max-width: 640px) {
+  .bp-stmt__table, .bp-stmt__table tbody { display: block; min-width: 0; }
+  .bp-stmt__table thead { display: none; }
+  .bp-stmt__table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 0.1rem 1rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
+  .bp-stmt__table tr.bp-stmt__h { padding: 0.85rem 0 0.1rem; border-bottom: none; }
+  .bp-stmt__table th, .bp-stmt__table td { padding-top: 0 !important; padding-bottom: 0 !important; border: none !important; }
+  .bp-stmt__table th[scope="row"] { padding-left: calc(var(--d, 0) * 0.75rem); }
+  .bp-table td.bp-stmt__prior { grid-column: 1; padding-left: calc(var(--d, 0) * 0.75rem); text-align: left; color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+  .bp-table td.bp-stmt__prior::before { content: attr(data-label) ": "; }
+  .bp-table td.bp-stmt__chg { grid-column: 2; font-size: 0.8rem; font-weight: 400; }
+  .bp-stmt__sum { border-top: 2px solid var(--line-2); }
+}
 /* Cash at each month's end (CashChart): the Impact chart's bars, read-only */
 .bp-cashchart { margin: 0.6rem 0 0.4rem; }
 .bp-cashchart .bp-years__bars { height: 10rem; }

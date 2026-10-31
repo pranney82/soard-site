@@ -54,6 +54,7 @@ const ICONS = {
   search: html`<circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" />`,
   arrow: html`<path d="M5 12h14M13 6l6 6-6 6" />`,
   back: html`<path d="M19 12H5M11 18l-6-6 6-6" />`,
+  chevron: html`<path d="m6 9 6 6 6-6" />`,
   mail: html`<rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4 7 8 6 8-6" />`,
   copy: html`<rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5" />`,
   calendar: html`<rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4M12 13v5M9.5 15.5h5" />`,
@@ -1056,10 +1057,20 @@ function MeetingsPage({ ctx }) {
     <section class="bp-archive bp-rise" style=${rise(3)} aria-labelledby="past-h">
       <h2 class="sr-only" id="past-h">Past meetings</h2>
       ${terms.length ? html`<p class="bp-found" role="status">${past.length ? `${plural(past.length, 'meeting')} mention “${q.trim()}”` : `No meeting mentions “${q.trim()}”.`}</p>` : null}
-      ${years.map((y) => html`<div class="bp-year" key=${y}>
+      ${(terms.length ? years : years.slice(0, 2)).map((y) => html`<div class="bp-year" key=${y}>
         <h3 class="bp-year__label">${y}</h3>
         <ol class="bp-mlist">${past.filter((m) => m.date.startsWith(y)).map((m) => html`<${MeetingRow} m=${m} data=${data} terms=${terms} key=${m.id} />`)}</ol>
       </div>`)}
+      ${!terms.length && years.length > 2 ? html`<div class="bp-year">
+        <h3 class="bp-year__label bp-year__label--small">Earlier</h3>
+        <div class="bp-yearfolds">${years.slice(2).map((y) => {
+          const list = past.filter((m) => m.date.startsWith(y));
+          return html`<details class="bp-yearfold" key=${y}>
+            <summary><span class="bp-yearfold__y">${y}</span><span class="bp-yearfold__n">${plural(list.length, 'meeting')}</span>${list.some((m) => m.minutes !== 'approved') ? html`<span class="bp-chip">${plural(list.filter((m) => m.minutes !== 'approved').length, 'draft')}</span>` : null}<${Icon} name="chevron" size=${18} cls="bp-yearfold__chev" /></summary>
+            <ol class="bp-mlist">${list.map((m) => html`<${MeetingRow} m=${m} data=${data} key=${m.id} />`)}</ol>
+          </details>`;
+        })}</div>
+      </div>` : null}
       ${!d.past.length ? html`<div class="bp-card"><p class="bp-muted">Past meetings show here once they’re added.</p></div>` : null}
     </section>`;
 }
@@ -1663,7 +1674,7 @@ function Statement({ id, title, rows, asOf, priorAsOf }) {
         <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${shortDate(priorAsOf)}</th><th scope="col" class="num bp-stmt__chg">Change</th>` : null}</tr></thead>
         <tbody>${shown.map((r, i) => (r.k === 'head'
           ? html`<tr class="bp-stmt__h" key=${i}><th scope="colgroup" colspan=${cols} style=${`--d:${r.d}`}>${r.label}</th></tr>`
-          : html`<tr class=${`bp-stmt__${r.k}`} key=${i}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num">${signedMoney(r.p)}</td><td class="num bp-stmt__chg">${changeMoney(r.a, r.p)}</td>` : null}</tr>`))}</tbody>
+          : html`<tr class=${`bp-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num bp-stmt__prior" data-label=${shortDate(priorAsOf)}>${signedMoney(r.p)}</td><td class="num bp-stmt__chg">${changeMoney(r.a, r.p)}</td>` : null}</tr>`))}</tbody>
       </table>
     </div>
   </div>`;
@@ -2106,7 +2117,8 @@ function searchIndex(data, d) {
     for (const s of m.sections) {
       // Notes read as one line in a result: "Recommending … · $300k revenue from golf"
       const said = (t) => String(t || '').split('\n').map((l) => l.replace(/^\s*[-•*]\s+/, '').trim()).filter(Boolean).join(' · ');
-      for (const it of s.items) out.push({ group: 'In agendas and minutes', title: it.title || s.title, sub, body: said(it.notes) || it.title, hay: norm([s.title, it.title, it.presenter, it.notes].join(' ')), href: `#/meetings/${m.id}`, focus: `i-${it.id}`, icon: 'list' });
+      // The part it's under says where it is ("2027 budget · Q4 2026 Board Meeting · Nov 5, 2026"), so a point found by its part's name says why
+      for (const it of s.items) out.push({ group: 'In agendas and minutes', title: it.title || s.title, sub: s.title && it.title && norm(s.title) !== norm(it.title) && !/^agenda$/i.test(s.title.trim()) ? `${s.title} · ${sub}` : sub, body: said(it.notes) || it.title, hay: norm([s.title, it.title, it.presenter, it.notes].join(' ')), href: `#/meetings/${m.id}`, focus: `i-${it.id}`, icon: 'list' });
     }
     for (const x of m.motions) out.push({ group: 'Decisions', title: x.text, sub, hay: norm(x.text), href: `#/meetings/${m.id}`, icon: 'gavel' });
     const vf = asViewer(m.files);
@@ -2175,7 +2187,7 @@ function Finder({ ctx, onClose }) {
       <div class="bp-finder__field">
         <${Icon} name="search" size=${20} />
         <input type="search" placeholder="Search meetings, minutes, files and people" value=${q} autofocus aria-label="Search" aria-controls=${results.length ? 'bp-finder-list' : null} aria-activedescendant=${results[at] ? `bp-r-${at}` : null} role="combobox" aria-autocomplete="list" aria-expanded=${!!results.length} onInput=${(e) => setQ(e.target.value)} onKeyDown=${keys} />
-        <button type="button" class="bp-finder__x" onClick=${close} aria-label="Close search"><span class="bp-kbd">esc</span></button>
+        <button type="button" class="bp-finder__x" onClick=${close} aria-label="Close search"><span class="bp-kbd bp-finder__esc">esc</span><span class="bp-finder__cancel">Cancel</span></button>
       </div>
       <div class="bp-finder__list" ref=${listRef}>
         ${!terms.length ? html`<div class="bp-finder__hint">
@@ -2186,7 +2198,11 @@ function Finder({ ctx, onClose }) {
           <p class="bp-finder__group" id=${`bp-g-${GROUPS.indexOf(g)}`}>${g}</p>
           ${list.map(({ x, i }) => html`<div class="bp-finder__item" id=${`bp-r-${i}`} role="option" aria-selected=${i === at} onPointerMove=${() => at !== i && setAt(i)} onClick=${() => choose(x)} key=${i}>
             ${x.person ? html`<${Avatar} p=${x.person} size=${32} />` : html`<span class="bp-finder__icon"><${Icon} name=${x.icon || 'documents'} size=${18} /></span>`}
-            <span class="bp-finder__text"><span class="bp-finder__title">${x.title}</span><span class="bp-finder__sub">${x.body && x.group === 'In agendas and minutes' ? html`<${Snippet} text=${x.body} terms=${terms} />` : x.sub}</span>${x.body && x.group === 'In agendas and minutes' ? html`<span class="bp-finder__sub">${x.sub}</span>` : null}</span>
+            <span class="bp-finder__text"><span class="bp-finder__title">${x.title}</span>${(() => {
+              // A point's words where they matched; none when the match is its own name (it would only say it twice)
+              const said = x.body && x.group === 'In agendas and minutes' && norm(x.body).trim() !== norm(x.title).trim();
+              return html`${said ? html`<span class="bp-finder__sub"><${Snippet} text=${x.body} terms=${terms} /></span>` : null}<span class="bp-finder__sub">${x.sub}</span>`;
+            })()}</span>
             ${x.ext ? html`<${Icon} name="external" size=${16} cls="bp-go" />` : html`<${Icon} name="arrow" size=${16} cls="bp-go" />`}
           </div>`)}
         </div>`)}</div>`}
