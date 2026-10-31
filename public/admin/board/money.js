@@ -320,12 +320,12 @@ export function RevenueMix({ books, table = false }) {
       ${parts.map((x, i) => html`<span class=${`bp-mix__seg bp-tone--${x.tone} ${on >= 0 && i !== on ? 'is-dim' : ''}`} style=${`--p:${x.w}%`} key=${x.key} onMouseEnter=${() => setOn(i)}></span>`)}
       ${tip ? html`<div class="bp-mix__tip" style=${`--x:${tip.mid}%`} aria-hidden="true"><strong>${tip.name}</strong>${money(tip.amount)} · ${shareOf(tip.amount, total)}${tip.last != null ? html`<span>${mix.lastYear}, same days: ${money(tip.last)}${changeOf(tip.amount, tip.last) ? ` · ${changeOf(tip.amount, tip.last)}` : ''}</span>` : null}</div>` : null}
     </div>
-    ${table ? html`<table class="bp-table bp-mixtable">
+    ${table ? html`<table class="bp-table bp-mixtable bp-cmp">
       <thead><tr><th scope="col">Category</th><th scope="col" class="num">${mix.year} so far</th>${parts.some((x) => x.last != null) ? html`<th scope="col" class="num">${mix.lastYear}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
       <tbody>${parts.map((x) => html`<tr key=${x.key}>
         <th scope="row"><span class="bp-mixtable__name"><i class=${`bp-tone--${x.tone}`} aria-hidden="true"></i>${x.name}</span>${x.accounts?.length && !(x.accounts.length === 1 && x.accounts[0] === x.name) ? html`<small>${x.accounts.join(', ')}</small>` : null}</th>
         <td class="num">${money(x.amount)}<small>${shareOf(x.amount, total)}</small></td>
-        ${x.last != null ? html`<td class="num">${money(x.last)}</td><td class="num">${changeOf(x.amount, x.last) || '–'}</td>` : null}
+        ${x.last != null ? html`<td class="num bp-cmp__ly" data-label=${`${mix.lastYear}, same days`}>${money(x.last)}</td><td class="num bp-cmp__chg">${changeOf(x.amount, x.last) || '–'}</td>` : null}
       </tr>`)}</tbody>
     </table>`
     : html`<ul class="bp-mix__key">${parts.map((x, i) => html`<li key=${x.key} class=${i === on ? 'is-on' : ''} onMouseEnter=${() => setOn(i)}><i class=${`bp-tone--${x.tone}`} aria-hidden="true"></i>${x.name}<strong>${compact(x.amount)}</strong><span>${shareOf(x.amount, total)}</span></li>`)}</ul>`}

@@ -696,11 +696,37 @@ try {
       ok(await alex.evaluate(async () => (await fetch('/api/board-admin')).status) === 403, 'the Board area’s API refuses a board member');
     }
 
+    if (width === 1440) {
+      // Meetings: the next meeting is Home's card; a past meeting's row says who was there and its files in words, and
+      // only what's out of the ordinary is a chip (never "Minutes approved")
+      await alex.goto(`${SITE}/admin/board/#/meetings`, { waitUntil: 'networkidle0' });
+      await alex.waitForSelector('.bp-mrow', { timeout: 6000 }).catch(() => {});
+      const list = await alex.evaluate(() => ({ next: !!document.querySelector('.bp-gap > .bp-nextup .bp-rsvp'), rows: [...document.querySelectorAll('.bp-archive .bp-mrow')].map((r) => ({ chips: [...r.querySelectorAll('.bp-chip')].map((c) => c.textContent), side: r.querySelector('.bp-mrow__side')?.textContent || '', meta: r.querySelector('.bp-mrow__meta')?.textContent || '' })) }));
+      ok(list.next && list.rows.every((r) => !r.chips.some((c) => /Minutes approved/.test(c)) && /^(\d+ of \d+ there( · )?)?(\d+ files?)?$/.test(r.side) && /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/.test(r.meta)), `Meetings: Home’s next-meeting card; rows with the weekday, who was there and the files in words, no routine chips (${JSON.stringify(list.rows.slice(0, 2))})`);
+      // A meeting: its agenda items are rows under their part (no card each), and Google Meet once in the facts before the day
+      await alex.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
+      await alex.waitForSelector('.bp-agitem', { timeout: 6000 }).catch(() => {});
+      const ag = await alex.evaluate(() => { const it = document.querySelector('.bp-agitem'); const cs = it && getComputedStyle(it); return { flat: !!cs && cs.boxShadow === 'none' && cs.backgroundColor === 'rgba(0, 0, 0, 0)', meets: document.querySelectorAll('.bp-aghero a[href^="https://meet.google.com/"]').length, glance: !document.querySelector('ul.bp-glance') }; });
+      ok(ag.flat && ag.meets === 1 && ag.glance, `the meeting: agenda items as rows, Google Meet once, no count strip (${JSON.stringify(ag)})`);
+      // People: a directory, a row a person, email and copy as two small buttons named for them
+      await alex.goto(`${SITE}/admin/board/#/people`, { waitUntil: 'networkidle0' });
+      await alex.waitForSelector('.bp-dir .bp-person', { timeout: 6000 }).catch(() => {});
+      const dir = await alex.evaluate(() => ({ rows: document.querySelectorAll('.bp-dir .bp-person').length, mail: !!document.querySelector('.bp-person a.bp-iconbtn[aria-label^="Email "][href^="mailto:"]'), copy: !!document.querySelector('.bp-person button.bp-iconbtn[aria-label$="email address"]'), words: /\bCopy\b/.test(document.querySelector('.bp-dir')?.innerText || '') }));
+      ok(dir.rows >= 2 && dir.mail && dir.copy && !dir.words, `People: a directory with email and copy as icon buttons (${JSON.stringify(dir)})`);
+      // Financials: cash over time says a month's balance under the pointer
+      await alex.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
+      if (await alex.$('.bp-cashchart li')) {
+        await alex.hover('.bp-cashchart li:last-child');
+        ok(await alex.waitForFunction(() => /^[A-Z][a-z]{2} \d{1,2}, so far\$[\d,]+/.test(document.querySelector('.bp-cashchart .bp-ytip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'Financials: a month’s bar says its balance');
+        await alex.mouse.move(2, 2);
+      }
+    }
     // Home's "All 8 this year" opens Financials at the major gifts: every one, under the year's total
     await alex.goto(`${SITE}/admin/board/#/financials/gifts`, { waitUntil: 'networkidle0' });
     ok(await alex.waitForFunction(() => { const g = document.getElementById('gifts'); if (!g) return false; const r = g.getBoundingClientRect(); return g.querySelectorAll('.bp-gift').length === 8 && /^\$43,500 from 8 gifts in \d{4}$/.test(g.querySelector('.bp-gifts__total')?.textContent || '') && r.top >= 0 && r.top < innerHeight / 2; }, { timeout: 5000 }).then(() => true, () => false), 'Financials: #/financials/gifts opens at the major gifts, all 8 under the year’s total');
     for (const [p, re] of [
-      ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Tax returns and audits[\s\S]*2025/],
+      // The cash, then the year beside the cash over time, then the statements, then the tax returns and audits
+      ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Tax returns and audits[\s\S]*2025/],
       ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
       ['documents', width === 1440 ? /Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Conflict of interest policy[\s\S]*Read it[\s\S]*Signed\s*by Alex Rivera/],
     ]) {
@@ -975,7 +1001,11 @@ try {
   await DB.exec('CREATE TABLE IF NOT EXISTS books_daily (id TEXT PRIMARY KEY, data TEXT, day TEXT, read_at TEXT, tried_at TEXT, error TEXT)');
   const readAt = new Date().toISOString();
   await DB.prepare('INSERT OR REPLACE INTO books_link (id, realm_id, company, refresh_token, ytd, read_at, tried_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind('qbo', '9130350000000001', 'Example Charity', 'refresh-test', JSON.stringify(ytdBooks), readAt, readAt).run();
-  await DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at) VALUES (?, ?, ?, ?, ?)').bind('qbo', JSON.stringify({ shape: 3, day: day(0), lastYear: lastBooks, trailing: null, months: [], statements: null, functions: null }), day(0), readAt, readAt).run();
+  // The statements as of the books' close (_quickbooks.js statementRows): a line or two of each
+  const statements = { asOf: day(-30), closed: false, priorAsOf: `${yr - 1}${day(-30).slice(4)}`,
+    position: [{ k: 'head', label: 'Assets', d: 0 }, { k: 'total', label: 'Total Bank Accounts', d: 1, a: 608532, p: 655431 }, { k: 'total', label: 'TOTAL ASSETS', d: 0, a: 870767, p: 794994 }],
+    activity: [{ k: 'head', label: 'Income', d: 0 }, { k: 'total', label: 'Total Income', d: 0, a: 1884217, p: 1909703 }, { k: 'sum', label: 'Net Income', d: 0, a: 189248, p: 176000 }] };
+  await DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at) VALUES (?, ?, ?, ?, ?)').bind('qbo', JSON.stringify({ shape: 3, day: day(0), lastYear: lastBooks, trailing: null, months: [], statements, functions: null }), day(0), readAt, readAt).run();
   for (const width of [1440, 390]) {
     const money = await tab(MEMBER, width);
     await money.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
@@ -991,6 +1021,10 @@ try {
       ok(await money.waitForFunction(() => /^Store sales\$415,000 · 22%\d{4}, same days: \$830,000 · ▼ 50%$/.test(document.querySelector('.bp-mix__tip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'Home: over a part, its exact amount beside last year’s same days');
       await money.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
       ok(await money.waitForSelector('.bp-mixtable', { timeout: 6000 }).then(() => true, () => false), 'Financials: the categories as a table');
+      // The statements one at a time: the year's activities first, the financial position a tap away
+      const firstStmt = await money.evaluate(() => [...document.querySelectorAll('#st-h ~ * .bp-stmt__title, .bp-latest .bp-stmt__title')].map((t) => t.textContent));
+      await clickText(money, '.bp-stmts button', /^Financial position$/);
+      ok(firstStmt.length === 1 && /^Statement of activities/.test(firstStmt[0]) && await money.waitForFunction(() => { const t = [...document.querySelectorAll('.bp-latest .bp-stmt__title')].map((x) => x.textContent); return t.length === 1 && t[0] === 'Statement of financial position' && /TOTAL ASSETS/.test(document.querySelector('.bp-latest .bp-stmt').textContent); }, { timeout: 2000 }).then(() => true, () => false), `Financials: one statement at a time, activities first, the position a tap away (${JSON.stringify(firstStmt)})`);
       const year = await money.evaluate(() => [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('tbody tr')].map((r) => r.textContent));
       ok(year[1] === 'Expenses$980,000$1,030,000▼ 5%' && year[2] === 'In kind (not cash)$220,000$70,000▲ 214%' && /^Net\$676,045/.test(year[3]), `Financials: the year so far splits the in kind from the expenses, the net still QuickBooks’ (${JSON.stringify(year)})`);
       const rows = await money.$$eval('.bp-mixtable tbody tr', (r) => r.map((x) => x.textContent));
