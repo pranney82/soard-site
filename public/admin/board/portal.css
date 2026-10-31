@@ -1340,6 +1340,11 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bs-shelf__t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: clamp(0.9rem, 1.9vh, 1.25rem); font-weight: 650; line-height: 1.25; color: var(--bs-ink); }
 .bs-shelf__m { font-size: clamp(0.78rem, 1.6vh, 1.05rem); color: var(--bs-soft); }
 .bs-shelf > .bs-shelf__more { width: auto; align-self: center; font-size: clamp(0.9rem, 1.9vh, 1.25rem); color: var(--bs-soft); }
+.bs-shelf__text { display: grid; gap: 0.2em; min-width: 0; }
+/* Under the money's tiles: a row, each document's first page small beside its title */
+.bs-shelf--row { gap: clamp(0.75rem, 1.6vw, 1.5rem); }
+.bs-shelf--row > li { width: auto; max-width: 22rem; display: flex; align-items: center; gap: 0.8em; }
+.bs-shelf--row .bs-shelf__cover { flex: none; margin-bottom: 0; border-radius: 3px; box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.7); }
 
 /* The board's faces (the roll call, introductions): as big as their rows allow, each lighting up as they check in */
 .bs-faces { --gx: clamp(0.5rem, 1.2vw, 1.25rem); --gy: clamp(0.75rem, 2.2vh, 1.75rem); list-style: none; margin: 0; padding: clamp(0.5rem, 1.5vh, 1rem) 0 0; height: 100%; min-height: 0; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: var(--gy) var(--gx); }

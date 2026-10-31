@@ -517,11 +517,12 @@ export function Screen({ id, data, d }) {
   } else if (stop.kind === 'item') {
     const faces = stop.n >= 0 ? facesOf(item) : '';
     const facts = faces ? null : liveSlide(item.live, numbers, id, data, meeting.date);
-    const head = html`<p class="bs-eyebrow">${[section && section !== item.title ? section : '', !section && stop.n < 0 ? 'Also for this meeting' : ''].filter(Boolean).join('') || 'Agenda'}</p>
+    const head = html`<p class="bs-eyebrow">${[section && section !== item.title ? section : '', !section && stop.n < 0 ? 'After the agenda' : ''].filter(Boolean).join('') || 'Agenda'}</p>
       <h1 class="bs-display bs-item__title">${item.title}</h1>
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
     const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces ? 52 : 72} /><span><strong>${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul>` : null;
-    const coming = docs.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document, next' : 'Its documents, next'}</p><${Shelf} docs=${docs} pages=${pages} /></div>` : null;
+    // Under the money's tiles there's room for a row: each document small, its title beside it
+    const coming = docs.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document, next' : 'Its documents, next'}</p><${Shelf} docs=${docs} pages=${pages} row=${!!facts && !faces} /></div>` : null;
     if (faces) {
       stage = html`<div class="bs-item bs-item--board bs-item--faces">
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${faces === 'roll' ? html`<${RollCount} v=${v} started=${started} />` : whoList}</div></div>
@@ -579,11 +580,11 @@ export function Screen({ id, data, d }) {
  * An item's documents, coming up after its card: each one's first page, title, and what it is, in a row (the first
  * six, and how many more)
  */
-function Shelf({ docs, pages }) {
-  // Sized to the screen once: a TV's covers are bigger than a laptop's
-  const [w] = useState(() => Math.round(Math.max(84, Math.min(170, innerHeight * 0.15))));
+function Shelf({ docs, pages, row = false }) {
+  // Sized to the screen once: a TV's covers are bigger than a laptop's (a row's small, beside their titles)
+  const [w] = useState(() => (row ? Math.round(Math.max(34, Math.min(64, innerHeight * 0.06))) : Math.round(Math.max(84, Math.min(170, innerHeight * 0.15)))));
   const shown = docs.slice(0, docs.length > 6 ? 5 : 6);
-  return html`<ul class="bs-shelf" style=${`--cover:${w}px`}>${shown.map((d) => html`<${ShelfDoc} d=${d} width=${w} pages=${pages[d.file.id]} key=${d.key} />`)}${docs.length > shown.length ? html`<li class="bs-shelf__more">and ${docs.length - shown.length} more</li>` : null}</ul>`;
+  return html`<ul class=${`bs-shelf ${row ? 'bs-shelf--row' : ''}`} style=${`--cover:${w}px`}>${shown.map((d) => html`<${ShelfDoc} d=${d} width=${w} pages=${pages[d.file.id]} key=${d.key} />`)}${docs.length > shown.length ? html`<li class="bs-shelf__more">and ${docs.length - shown.length} more</li>` : null}</ul>`;
 }
 /** One of them: its first page, and its pages counted as it opens (the screen hasn't drawn it yet) */
 function ShelfDoc({ d, width, pages }) {
@@ -593,8 +594,8 @@ function ShelfDoc({ d, width, pages }) {
   const n = pages || count;
   return html`<li>
     <span class="bs-shelf__cover" ref=${ref} aria-hidden="true"></span>
-    <span class="bs-shelf__t">${d.title}</span>
-    <span class="bs-shelf__m">${[formatOf(d.file), n ? plural(n, 'page') : ''].filter(Boolean).join(' · ')}</span>
+    <span class="bs-shelf__text"><span class="bs-shelf__t">${d.title}</span>
+    <span class="bs-shelf__m">${[formatOf(d.file), n ? plural(n, 'page') : ''].filter(Boolean).join(' · ')}</span></span>
   </li>`;
 }
 
