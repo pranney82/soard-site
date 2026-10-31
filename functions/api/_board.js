@@ -29,7 +29,7 @@
 import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf,
-  agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem,
+  agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
 } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
@@ -374,7 +374,8 @@ export function cleanDoc(raw = {}) {
   const one = (v, max = 300) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
   return {
     id: ID.test(String(raw.id || '')) ? raw.id : uid('d_'),
-    title: one(raw.title, 200),
+    // SOARD's name as it's written, whatever a Drive file or a hurried title said
+    title: orgName(one(raw.title, 200)),
     kind: DOC_KINDS.some((k) => k.id === raw.kind) ? raw.kind : 'other',
     note: String(raw.note ?? '').replace(/\r\n?/g, '\n').trim().slice(0, 2000),
     sign: raw.sign === true,
@@ -418,13 +419,14 @@ export async function deleteDoc(env, id) {
   await env.DB.prepare('DELETE FROM board_docs WHERE id = ?').bind(id).run();
 }
 
-/** A member's "I've read it" for this year, with their typed name */
+/** A member's "I've read it" for this year, with their own name typed (../../public/admin/board-shared.js signsAs) */
 export async function signDoc(DB, docId, member, name) {
   await ensureSchema(DB);
   const doc = (await listDocs(DB)).find((d) => d.id === docId);
   if (!doc?.shared || !doc.sign) throw Object.assign(new Error('That document doesn’t ask for a signature'), { status: 404 });
-  const typed = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-  if (typed.length < 3) throw Object.assign(new Error('Type your full name to sign'), { status: 400 });
+  if (String(name || '').trim().length < 3) throw Object.assign(new Error('Type your full name to sign'), { status: 400 });
+  const typed = signsAs(name, member.name);
+  if (!typed) throw Object.assign(new Error(`Sign with your own name, as the board has it: ${member.name}`), { status: 400 });
   const year = Number(todayEastern().slice(0, 4));
   await DB.prepare('INSERT OR REPLACE INTO board_signatures (doc_id, slug, year, name, at) VALUES (?, ?, ?, ?, ?)').bind(docId, member.slug, year, typed, nowIso()).run();
   return { docId, year, name: typed };

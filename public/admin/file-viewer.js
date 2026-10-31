@@ -13,7 +13,11 @@
  *    selected, links work, − / + or a pinch zooms.
  *  - Videos play with the browser's own controls. Nothing is drawn on the
  *    picture: the arrows sit beside it (under it on a phone).
- *  - Anything else (a Word file) says so and offers Download.
+ *  - A file whose caller can draw it as pages (`pages`: the board page's
+ *    Excel, Word and PowerPoint, through ./board/docs.js) shows them, each
+ *    as wide as the window, drawn as it scrolls into view.
+ *  - Anything else (a Word file) says so, by its name (Word, Excel), and
+ *    offers Download.
  *
  * The files passed in are one set: ← / →, the arrows, a swipe on a phone or
  * the strip of thumbnails steps through them. Esc, ✕ or Back closes it, and
@@ -23,7 +27,9 @@
  * Links stay links: viewerLink(files, i) gives an <a> its href and a click
  * handler, so ⌘/Ctrl-click or a middle click still opens a new tab.
  *
- * A file: { name, type, url, size?, at?, thumb?, preview?, filename? }.
+ * A file: { name, type, url, size?, at?, thumb?, preview?, filename?, pages?, kindLabel? }.
+ * `pages` is () => Promise<{ count, size(i), draw(i, { width }) }>; `kindLabel`
+ * what it is in a word ("Excel") when its name doesn't say.
  * `thumb` is a small JPEG (JobTread makes one for photos, PDFs and videos)
  * for the strip, shown while the full photo loads; `filename` is what
  * Download saves it as when `name` is a label ("Photo of the bedroom").
@@ -36,6 +42,7 @@ const html = htm.bind(h);
 // ─── What a file is ─────────────────────────────────────────────────
 
 export function kindOf(f) {
+  if (typeof f?.pages === 'function') return 'pages';
   const t = String(f?.type || '').toLowerCase();
   const n = String(f?.name || '').toLowerCase();
   if (t === 'application/pdf' || n.endsWith('.pdf')) return 'pdf';
@@ -44,9 +51,15 @@ export function kindOf(f) {
   if (t.startsWith('audio/') || /\.(mp3|m4a|wav|aac|ogg)$/.test(n)) return 'audio';
   return 'other';
 }
-const KIND = { image: 'Photo', pdf: 'PDF', video: 'Video', audio: 'Audio', other: 'File' };
-const EMOJI = { image: '🖼', pdf: '📄', video: '🎬', audio: '🎧', other: '📎' };
-export const kindIcon = (f) => EMOJI[kindOf(f)];
+const KIND = { image: 'Photo', pdf: 'PDF', video: 'Video', audio: 'Audio', pages: 'Document', other: 'File' };
+const EMOJI = { image: '🖼', pdf: '📄', video: '🎬', audio: '🎧', pages: '📄', other: '📎' };
+// An Office file by its own name, the way its tile says it ("Excel", not "File")
+const OFFICE = [[/\.(xlsx|xlsm|xls|csv)$/i, 'Excel', '📊'], [/\.(docx|doc)$/i, 'Word', '📄'], [/\.(pptx|ppt)$/i, 'PowerPoint', '📽']];
+const officeOf = (f) => OFFICE.find(([re]) => re.test(String(f?.filename || f?.name || ''))) || null;
+// (`kindLabel`, when the caller knows it better than the name says: a document shown under its title)
+const kindName = (f, kind = kindOf(f)) => (kind === 'pages' || kind === 'other' ? f?.kindLabel || officeOf(f)?.[1] || KIND[kind] : KIND[kind]);
+const kindEmoji = (f, kind = kindOf(f)) => (kind === 'pages' || kind === 'other' ? OFFICE.find(([, label]) => label === kindName(f, kind))?.[2] || EMOJI[kind] : EMOJI[kind]);
+export const kindIcon = (f) => kindEmoji(f);
 /** ".jpg" for image/jpeg and the like, for a file saved under a label */
 export const extOf = (type) => ({ 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/heic': '.heic', 'image/heif': '.heif', 'application/pdf': '.pdf', 'video/mp4': '.mp4', 'video/quicktime': '.mov' }[String(type || '').toLowerCase()] || '');
 export const sizeText = (b) => (!b ? '' : b >= 1048576 ? `${(b / 1048576).toFixed(b >= 10485760 ? 0 : 1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
@@ -334,7 +347,7 @@ function Viewer({ files, start, onClosed }) {
   const keyRef = useRef(onKey);
   keyRef.current = onKey;
 
-  const meta = [KIND[kind], sizeText(f.size), dayText(f.at)].filter(Boolean).join(' · ');
+  const meta = [kindName(f, kind), sizeText(f.size), dayText(f.at)].filter(Boolean).join(' · ');
   const prev = () => html`<button class="fv-btn fv-nav" onClick=${() => go(-1)} disabled=${i === 0} aria-label="Previous file (←)" title="Previous (←)">${I.left()}</button>`;
   const next = () => html`<button class="fv-btn fv-nav" onClick=${() => go(1)} disabled=${i === n - 1} aria-label="Next file (→)" title="Next (→)">${I.right()}</button>`;
   const fail = (msg) => html`<${Card} f=${f} title=${msg.title} text=${msg.text} onSave=${download} saving=${saving !== false} />`;
@@ -343,21 +356,22 @@ function Viewer({ files, start, onClosed }) {
   else if (kind === 'pdf') media = html`<${PdfView} key=${f.url} f=${f} ctl=${ctl} onZoom=${stamp(setZoom)} onPage=${stamp(setPage)} onFound=${stamp(setFound)} fail=${fail} />`;
   else if (kind === 'video') media = html`<${VideoView} key=${f.url} f=${f} player=${player} fail=${fail} />`;
   else if (kind === 'audio') media = html`<div class="fv-audio"><span aria-hidden="true">${EMOJI.audio}</span><audio key=${f.url} src=${f.url} controls autoplay preload="metadata"></audio></div>`;
-  else media = fail({ title: 'This file can’t be shown here', text: 'Download it to open it on your computer.' });
+  else if (kind === 'pages') media = html`<${PagesView} key=${f.url} f=${f} ctl=${ctl} onZoom=${stamp(setZoom)} onPage=${stamp(setPage)} fail=${fail} />`;
+  else media = fail({ title: 'This file can’t be shown here', text: `Download it to open it${OFFICE.some(([, l]) => l === kindName(f)) ? ` in ${kindName(f)}` : ''}.` });
 
   return html`<div class="fv" role="dialog" aria-modal="true" aria-label=${n > 1 ? `${f.name} (${i + 1} of ${n})` : f.name} tabindex="-1" ref=${attach}>
     <header class="fv-bar">
       <div class="fv-title">
-        <span class="fv-title-kind" aria-hidden="true">${EMOJI[kind]}</span>
+        <span class="fv-title-kind" aria-hidden="true">${kindEmoji(f, kind)}</span>
         <div><strong title=${f.name}>${f.name || 'File'}</strong><small>${meta}</small></div>
       </div>
       ${n > 1 && html`<span class="fv-count" aria-hidden="true">${i + 1} of ${n}</span>`}
       <div class="fv-actions">
         ${kind === 'pdf' && html`
           <button class="fv-btn" onClick=${openFind} disabled=${!zoom} aria-label="Find in this PDF (⌘F)" title="Find (⌘F)" aria-pressed=${findOpen}>${I.find()}</button>
-          <button class="fv-btn" onClick=${print} disabled=${!zoom || !!printing} aria-label=${printing ? 'Getting it ready to print' : 'Print (⌘P)'} title="Print (⌘P)">${printing ? I.wait() : I.print()}</button>`}
+          <button class="fv-btn fv-print" onClick=${print} disabled=${!zoom || !!printing} aria-label=${printing ? 'Getting it ready to print' : 'Print (⌘P)'} title="Print (⌘P)">${printing ? I.wait() : I.print()}</button>`}
         <button class="fv-btn" onClick=${download} disabled=${saving !== false} aria-label=${saving !== false ? 'Downloading' : 'Download'} title=${saveErr ? 'Couldn’t download it. Try Open in a new tab.' : 'Download'}>${saving !== false ? I.wait() : I.down()}</button>
-        <a class="fv-btn" href=${f.url} target="_blank" rel="noopener" aria-label="Open in a new tab" title="Open in a new tab">${I.ext()}</a>
+        <a class="fv-btn fv-newtab" href=${f.url} target="_blank" rel="noopener" aria-label="Open in a new tab" title="Open in a new tab">${I.ext()}</a>
         <button class="fv-btn" onClick=${close} aria-label="Close (Esc)" title="Close (Esc)">${I.close()}</button>
       </div>
     </header>
@@ -404,21 +418,94 @@ function Thumb({ f, current, onClick }) {
   // JobTread's 256px thumbnail is plenty for a 54px tile; the strip is short, so every tile loads at once
   const src = f.thumb ? f.thumb.replace(/([?&]size=)\d+/, '$1256') : kind === 'image' ? f.url : null;
   return html`<button class="fv-thumb" aria-current=${current ? 'true' : 'false'} onClick=${onClick} aria-label=${f.name} title=${f.name}>
-    ${src && !broken ? html`<img src=${src} alt="" decoding="async" onError=${() => setBroken(true)} />` : html`<span class="fv-thumb-icon" aria-hidden="true">${EMOJI[kind]}</span>`}
-    ${kind !== 'image' && html`<span class="fv-thumb-kind" aria-hidden="true">${kind === 'video' ? '▶' : KIND[kind]}</span>`}
+    ${src && !broken ? html`<img src=${src} alt="" decoding="async" onError=${() => setBroken(true)} />` : html`<span class="fv-thumb-icon" aria-hidden="true">${kindEmoji(f, kind)}</span>`}
+    ${kind !== 'image' && html`<span class="fv-thumb-kind" aria-hidden="true">${kind === 'video' ? '▶' : kindName(f, kind)}</span>`}
   </button>`;
 }
 
 /** A file that can't be shown (or didn't load): what happened, and Download */
 function Card({ f, title, text, onSave, saving }) {
   return html`<div class="fv-card">
-    <span class="fv-card-icon" aria-hidden="true">${EMOJI[kindOf(f)]}</span>
+    <span class="fv-card-icon" aria-hidden="true">${kindEmoji(f)}</span>
     <strong>${title}</strong>
     <p>${text}</p>
     <div class="fv-card-actions">
       <button class="fv-pill" onClick=${onSave} disabled=${saving}>${saving ? 'Downloading…' : 'Download'}</button>
       <a class="fv-pill is-quiet" href=${f.url} target="_blank" rel="noopener">Open in a new tab</a>
     </div>
+  </div>`;
+}
+
+// ─── Pages (a spreadsheet, a Word file, a deck, drawn by the caller) ──
+/**
+ * Each page as wide as the window allows (a letter page no wider than it reads well), drawn as it nears the view;
+ * − and + zoom (the place on the page kept), 0 fits it again
+ */
+const PAGE_ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
+function PagesView({ f, ctl, onZoom, onPage, fail }) {
+  const wrap = useRef(null);
+  const [doc, setDoc] = useState(null);
+  const [bad, setBad] = useState(false);
+  const [fitW, setW] = useState(0);
+  const [z, setZ] = useState(1);
+  const w = Math.round(fitW * z);
+  // Zooming keeps the same part of the page in view
+  const zoomTo = (next) => {
+    const el = wrap.current;
+    if (!el || next === z) return;
+    const k = next / z;
+    const midY = el.scrollTop + el.clientHeight / 2;
+    const midX = el.scrollLeft + el.clientWidth / 2;
+    setZ(next);
+    requestAnimationFrame(() => { el.scrollTop = midY * k - el.clientHeight / 2; el.scrollLeft = midX * k - el.clientWidth / 2; });
+  };
+  ctl.current = doc ? {
+    zoomIn: () => zoomTo(PAGE_ZOOMS.find((x) => x > z) ?? z),
+    zoomOut: () => zoomTo([...PAGE_ZOOMS].reverse().find((x) => x < z) ?? z),
+    fit: () => zoomTo(1),
+  } : null;
+  useEffect(() => { if (doc) onZoom({ pct: Math.round(z * 100), canIn: z < PAGE_ZOOMS.at(-1), canOut: z > PAGE_ZOOMS[0] }); }, [doc, z]);
+  useEffect(() => {
+    let dead = false;
+    Promise.resolve().then(() => f.pages()).then((d) => { if (!dead) { if (d?.count) setDoc(d); else setBad(true); } }, () => { if (!dead) setBad(true); });
+    return () => { dead = true; };
+  }, [f.url]);
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return undefined;
+    const fit = () => setW(Math.max(200, Math.floor(el.clientWidth - 32)));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [!!doc]);
+  useEffect(() => {
+    const el = wrap.current;
+    if (!doc || !w || !el) return undefined;
+    const slots = [...el.querySelectorAll('.fv-sheet')];
+    const draw = (slot) => {
+      if (slot.dataset.drawn) return;
+      slot.dataset.drawn = '1';
+      doc.draw(Number(slot.dataset.i), { width: slot.clientWidth }).then((node) => slot.replaceChildren(node)).catch(() => { slot.dataset.drawn = ''; });
+    };
+    const io = new IntersectionObserver((seen) => { for (const e of seen) if (e.isIntersecting) draw(e.target); }, { root: el, rootMargin: '800px 0px' });
+    slots.forEach((x) => io.observe(x));
+    // The page most in view, for "Page 2 of 5"
+    const at = () => {
+      const mid = el.getBoundingClientRect().top + el.clientHeight / 2;
+      const k = slots.findIndex((x) => x.getBoundingClientRect().bottom >= mid);
+      onPage({ n: (k < 0 ? slots.length - 1 : k) + 1, of: slots.length });
+    };
+    if (slots.length > 1) { at(); el.addEventListener('scroll', at, { passive: true }); }
+    return () => { io.disconnect(); el.removeEventListener('scroll', at); };
+  }, [doc, w]);
+  if (bad) return fail({ title: 'This file didn’t open here', text: `Download it to open it${OFFICE.some(([, l]) => l === kindName(f)) ? ` in ${kindName(f)}` : ''}.` });
+  return html`<div class="fv-pages" ref=${wrap} tabindex="0" aria-label=${f.name}>
+    ${!doc ? html`<p class="fv-wait">Opening…</p>` : Array.from({ length: doc.count }, (_, i) => {
+      const box = doc.size(i);
+      const width = Math.round(Math.min(w, box.w * 1.4 * z));
+      return html`<div class="fv-sheet" data-i=${i} key=${`${i}-${width}`} style=${`width:${width}px;height:${Math.round((box.h * width) / box.w)}px`}></div>`;
+    })}
   </div>`;
 }
 
@@ -860,7 +947,7 @@ const I = {
 };
 
 const CSS = `
-.fv { position: fixed; inset: 0; z-index: 1400; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; background: #0E0F11; color: #F2F2F3; outline: none; animation: fv-in .16s ease-out; -webkit-font-smoothing: antialiased; }
+.fv { position: fixed; inset: 0; z-index: 1400; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; background: #0E0F11; color: #F2F2F3; outline: none; animation: fv-in .16s ease-out; -webkit-font-smoothing: antialiased; }
 @keyframes fv-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .fv { animation: none; } }
 body.fv-open { overflow: hidden; }
@@ -901,6 +988,11 @@ body.fv-open .toast-pinned { display: none; } /* the update notice waits until t
 .fv-pdf { position: absolute; inset: 0; overflow: auto; touch-action: pan-x pan-y; outline: none; overscroll-behavior: contain; }
 .fv-pdf .pdfViewer { padding: 4px 0 28px; }
 .fv-pdf .pdfViewer .page { margin: 0 auto 14px; box-shadow: 0 1px 3px rgba(0, 0, 0, .5), 0 10px 30px rgba(0, 0, 0, .35); }
+.fv-pages { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; outline: none; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 4px 16px 28px; }
+.fv-pages > .fv-sheet { margin-inline: auto; }
+.fv-pages:focus-visible { outline: 2px solid #FFDA24; outline-offset: -2px; }
+.fv-pages .fv-wait { margin: auto; }
+.fv-sheet { flex: none; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .5), 0 10px 30px rgba(0, 0, 0, .35); overflow: hidden; }
 .fv-pdf-wait { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .8rem; padding: 4px 16px 16px; background: #0E0F11; pointer-events: none; }
 .fv-pdf-wait img { min-height: 0; max-width: min(100%, 900px); max-height: calc(100% - 2.5rem); object-fit: contain; opacity: .75; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
 
@@ -969,6 +1061,17 @@ body.fv-open .toast-pinned { display: none; } /* the update notice waits until t
   .fv-pct { display: none; } /* − and + stay; a pinch or double-tap does the rest */
   .fv-find { left: 8px; right: 8px; }
   .fv-find-input { flex: 1; width: auto; font-size: 16px; }
+}
+/* A phone: every button stays (44px each), and the title has a line of its own under them, the whole width, so a
+   long name reads to its end instead of "Q…" */
+@media (max-width: 520px) {
+  .fv-bar { flex-wrap: wrap; row-gap: 0; padding-bottom: .35rem; }
+  .fv-actions { margin-left: auto; }
+  .fv-title { order: 2; flex: 1 0 100%; padding: 0 .4rem .15rem 0; }
+  .fv-title-kind { display: none; }
+  .fv-title strong { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; font-size: var(--fs-md, 1rem); }
+  .fv-title small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fv-pages { padding-inline: 8px; }
 }
 `;
 let cssDone = false;

@@ -11,13 +11,12 @@
  */
 
 import { h, htm } from '../vendor.js';
-import { shortDate, clock, plural } from '../board-shared.js';
+import { shortDate, clock, plural, initialsOf } from '../board-shared.js';
 
 const html = htm.bind(h);
 
 export const AWAITING = 'Awaiting Funding';
 const STAGE_FLOW = ['Design', 'Finalization', 'Approval', 'Mobilization', 'Build'];
-const initialsOf = (name) => { const w = String(name || '').split(/\s+/).filter(Boolean); return ((w[0]?.[0] || '') + (w.length > 1 ? w.at(-1)[0] : '')).toUpperCase() || '?'; };
 const hueOf = (s) => [42, 28, 96, 152, 200, 18][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
 const CAL = html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>`;
 
@@ -32,7 +31,9 @@ export function sized(url, transform) {
   return `/cdn-cgi/imagedelivery/${m[1]}/${id}/${transform}`;
 }
 /** Where a makeover's link goes: a kid's page, or a community project's page once it's public */
-const hrefOf = (b) => (b.kind === 'community' ? b.url || '' : b.url || (b.slug ? `/kids/${b.slug}/` : ''));
+/** A makeover's card on Home, for a search to land on */
+export const cardId = (b) => `kb-${String(b.slug || b.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+export const hrefOf = (b) => (b.kind === 'community' ? b.url || '' : b.url || (b.slug ? `/kids/${b.slug}/` : ''));
 
 /** The columns, in order, each with its cards: [{ stage, label, list }] */
 export function columnsOf(projects) {
@@ -72,8 +73,9 @@ export function Kanban({ projects, reveals = [], variant = 'home', links = varia
     const inner = html`<span class="bk-card__photo">${b.photo
       ? html`<img src=${sized(b.photo, photoSize)} alt="" loading=${variant === 'screen' ? 'eager' : 'lazy'} decoding="async" width="280" height="190" />`
       : html`<span class="bk-card__initials" style=${`--hue:${hueOf(b.name)}`} aria-hidden="true">${initialsOf(b.name)}</span>`}</span>
-      <span class="bk-card__body"><span class="bk-card__name">${b.name}</span>${reveal(b)}</span>`;
-    return html`<li key=${b.slug || b.name}>${href ? html`<a class="bk-card" href=${href} target="_blank" rel="noopener">${inner}</a>` : html`<div class="bk-card">${inner}</div>`}</li>`;
+      <span class="bk-card__body"><span class="bk-card__name" title=${b.name}>${b.name}</span>${reveal(b)}</span>`;
+    // (an id a search for them lands on: Home's board brought round to their card)
+    return html`<li key=${b.slug || b.name} id=${variant === 'home' ? cardId(b) : null}>${href ? html`<a class="bk-card" href=${href} target="_blank" rel="noopener">${inner}</a>` : html`<div class="bk-card">${inner}</div>`}</li>`;
   };
   // On the screen every card has to fit: the fullest column decides how big they all are
   const most = Math.max(1, ...cols.map((c) => c.list.filter((b) => b.name).length + (c.list.some((b) => !b.name) ? 1 : 0)));
@@ -83,7 +85,7 @@ export function Kanban({ projects, reveals = [], variant = 'home', links = varia
       const unnamed = list.filter((b) => !b.name && b.kind !== 'community').length;
       const orgs = list.filter((b) => !b.name && b.kind === 'community').length;
       return html`<div class=${`bk-col ${list.length ? '' : 'is-empty'}`} key=${stage}>
-        <p class="bk-col__head"><span>${label}</span><span class="bk-col__n">${list.length}</span></p>
+        <p class="bk-col__head"><span title=${label}>${label}</span><span class="bk-col__n">${list.length}</span></p>
         <ul class="bk-col__cards">
           ${named.map(card)}
           ${unnamed ? html`<li><span class="bk-card is-quiet"><span class="bk-card__body"><span class="bk-card__name">${named.length ? `+${unnamed} more ${unnamed === 1 ? 'family' : 'families'}` : plural(unnamed, 'family', 'families')}</span><span class="bk-card__reveal is-quiet">Named once their page is up</span></span></span></li>` : null}

@@ -24,11 +24,11 @@ import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
 import { openDoc, layoutOf, halfOf, areasOf } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
-  sectionPlan, sectionClock, clockText, facesOf, itemDocs, docsOf, docTitle, formatOf, plural,
+  sectionPlan, sectionClock, clockText, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf,
 } from '../board-shared.js';
 import { useCover } from '../board-present.js';
 import { Kanban, kanbanLine, sized } from './kanban.js';
-import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix } from './money.js';
+import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -38,7 +38,6 @@ const CHANNEL = 'soard-board-screen';
 const MIRROR = new URLSearchParams(location.search).has('mirror');
 const LOGO = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=256';
 
-const initialsOf = (name) => { const w = String(name || '').split(/\s+/).filter(Boolean); return ((w[0]?.[0] || '') + (w.length > 1 ? w.at(-1)[0] : '')).toUpperCase() || '?'; };
 const hueOf = (s) => [42, 28, 96, 152, 200, 18][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
 function Face({ p, size }) {
   const [broken, setBroken] = useState(false);
@@ -46,6 +45,7 @@ function Face({ p, size }) {
     ? html`<img class="bs-face" src=${p.photo} alt="" width=${size} height=${size} style=${`--s:${size}px`} onError=${() => setBroken(true)} />`
     : html`<span class="bs-face bs-face--initials" style=${`--s:${size}px;--hue:${hueOf(p?.name)}`} aria-hidden="true">${initialsOf(p?.name)}</span>`;
 }
+const BACK = html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M16 10H4M9 15l-5-5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 const FULL = html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M3.5 7.5v-4h4M12.5 3.5h4v4M16.5 12.5v4h-4M7.5 16.5h-4v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 /** The whole screen for the screen, or back */
 const fullScreen = () => { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.().catch(() => {}); };
@@ -55,23 +55,36 @@ const nowClock = () => new Date().toLocaleTimeString('en-US', { hour: 'numeric',
 function useLiveView(id, fast) {
   const [v, setV] = useState(null);
   const [fail, setFail] = useState('');
+  // Three looks in a row that got no answer (the server's trouble, no connection): it says so, and keeps trying
+  const [trouble, setTrouble] = useState(false);
   useEffect(() => {
     let stop = false;
     let t = 0;
+    let missed = 0;
+    let over = false;
     const tick = async () => {
       clearTimeout(t);
+      let ok = false;
       try {
         const r = await fetch(`${API}?live=${encodeURIComponent(id)}`, { cache: 'no-store' });
-        const j = await r.json();
+        const j = await r.json().catch(() => null);
         if (stop) return;
-        if (j?.ok && Array.isArray(j.sections)) { setV(j); setFail(''); } else if (r.status === 404 || r.status === 403) setFail(j?.error || 'That meeting isn’t on the board page');
+        // Any refusal (no such meeting, not shared, a link mistyped) says so, never "Opening…" for good
+        if (j?.ok && Array.isArray(j.sections)) { setV(j); setFail(''); ok = true; over = !!j.live?.endedAt || (!j.live?.startedAt && isDate(j.date) && j.date < todayEastern()); } else if (r.status < 500 && (r.status >= 400 || j?.ok === false)) { setFail(r.status === 403 && j?.error ? j.error : 'That meeting isn’t on the board page'); ok = true; }
       } catch { /* the next look tries again */ }
-      if (!stop) t = setTimeout(tick, fast.current ? 4000 : 1500);
+      if (stop) return;
+      missed = ok ? 0 : missed + 1;
+      setTrouble(missed >= 3);
+      // A meeting that's over changes no more: a look every half minute (in case the chair opens it again)
+      // (no answer: tried again at once twice, then less often)
+      t = setTimeout(tick, over ? 30000 : missed ? (missed < 3 ? 1500 : Math.min(10000, 1500 * 2 ** (missed - 2))) : fast.current ? 4000 : 1500);
     };
     tick();
-    return () => { stop = true; clearTimeout(t); };
+    const back = () => { if (document.visibilityState === 'visible' && navigator.onLine !== false) tick(); };
+    addEventListener('online', back);
+    return () => { stop = true; clearTimeout(t); removeEventListener('online', back); };
   }, [id]);
-  return [v, fail];
+  return [v, fail, trouble];
 }
 
 /**
@@ -179,7 +192,7 @@ function Tile({ d, word = '' }) {
  */
 function CashSlide({ n, data, date }) {
   const upTo = date && date < todayEastern() ? date : '';
-  const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n });
+  const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n, due: budgetDue(data, upTo) });
   const books = upTo ? n?.books : data.numbers.books;
   if (!tiles.length) return null;
   const mix = mixOf(books) ? html`<div class="bs-mix"><p class="bs-figs__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null;
@@ -366,9 +379,9 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
 }
 
 /** The screen: the stop the chair is on, in the window it's given */
-export function Screen({ id, data, d }) {
+export function Screen({ id, data, d, onBack = null }) {
   const fast = useRef(false);
-  const [v, fail] = useLiveView(id, fast);
+  const [v, fail, trouble] = useLiveView(id, fast);
   const [told, setTold] = useState(null); // { live, rehearsal, at } from the chair's computer
   const [pages, setPages] = useState({});
   const [halves, setHalves] = useState({}); // { fileId: [halves of each page] }: the chair's, and the pages drawn here
@@ -436,8 +449,12 @@ export function Screen({ id, data, d }) {
     setHalves((x) => (x[fileId]?.[page] === n ? x : { ...x, [fileId]: Object.assign([...(x[fileId] || [])], { [page]: n }) }));
   };
 
-  if (fail && !v) return html`<div class="bs bs--center"><div class="bs-cover__lead"><img src=${LOGO} alt="" width="96" height="96" /><h1 class="bs-h1">${fail}</h1><p class="bs-quiet">Share the meeting in Board, and this screen opens it.</p></div></div>`;
-  if (!v || !meeting) return html`<div class="bs bs--center"><img src=${LOGO} alt="" width="96" height="96" /><p class="bs-quiet">Opening the screen…</p></div>`;
+  // The next meeting, on the calendar with no agenda yet: there's nothing to show until there is
+  const waitingAgenda = data.nextPending?.id === id;
+  if (fail && !v) return html`<div class="bs bs--center"><div class="bs-cover__lead"><img src=${LOGO} alt="" width="96" height="96" /><h1 class="bs-h1">${waitingAgenda ? 'The agenda isn’t posted yet' : fail}</h1><p class="bs-quiet">${waitingAgenda ? 'The screen opens once it is.' : data.me.admin ? 'Share the meeting in Board, and this screen opens it.' : 'It may not be shared yet.'}</p>${MIRROR ? null : html`<p><a class="bs-back bs-back--text" href=${waitingAgenda ? '#/' : '#/meetings'}>${waitingAgenda ? 'Home' : 'All meetings'}</a></p>`}</div></div>`;
+  // Opening: the dark screen at once, its words only if it takes a moment (no flash of them on every open); no answer
+  // for a while says so, with the way back
+  if (!v || !meeting) return html`<div class="bs bs--center bs--opening" role="status"><img src=${LOGO} alt="" width="96" height="96" /><p class="bs-quiet">${trouble ? 'The board page isn’t answering. Still trying…' : 'Opening the screen…'}</p>${trouble && !MIRROR ? html`<p><a class="bs-back bs-back--text" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }}>Back to the meeting</a></p>` : null}</div>`;
 
   // The chair's own word is the newest while they're moving this screen (the saved state catches up a moment later)
   const fresh = told && (told.rehearsal || Date.now() - told.at < 60_000);
@@ -467,7 +484,7 @@ export function Screen({ id, data, d }) {
   const place = [m?.location, m?.address].filter(Boolean).join(', ');
 
   const top = html`<header class="bs-top">
-    <span class="bs-brand"><img src=${LOGO} alt="" width="40" height="40" /><span><strong>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', started && !ended ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
+    <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
     ${(stop.kind === 'item' || stop.kind === 'doc') && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${floor.map((p) => p.name).join(' & ')}</strong> has the floor</span></span>` : null}
     <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
@@ -559,7 +576,7 @@ export function Screen({ id, data, d }) {
   // The line under the stage and the rail are there on every stop, so the stage keeps its size from one to the next
   return html`<div class=${`bs bs--${stop.kind} ${awake ? 'is-awake' : ''} ${vote ? 'has-vote' : ''} ${MIRROR ? 'is-mirror' : ''}`}>
     ${top}
-    <main class="bs-stage" ref=${stageRef}><div class="bs-stage__in" key=${stop.kind === 'doc' ? `doc:${stop.fileId}` : stop.key}>${stage}</div></main>
+    <main class="bs-stage" ref=${stageRef} tabindex="0" aria-label="The meeting on the screen"><div class="bs-stage__in" key=${stop.kind === 'doc' ? `doc:${stop.fileId}` : stop.key}>${stage}</div></main>
     ${vote ? html`<aside class="bs-vote" aria-live="polite">
       <p class="bs-eyebrow">The board is voting</p>
       <h2 class="bs-vote__what">${vote.text || 'A motion'}</h2>

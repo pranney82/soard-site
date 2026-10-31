@@ -81,6 +81,54 @@ export function formatOf(f) {
   return 'File';
 }
 /**
+ * SOARD's name as it's written: "SunShine on a Ranney Day" or "Sunshine On A Ranney Day" (a file's name, a title
+ * typed in a hurry) → "Sunshine on a Ranney Day", and "SunShine" alone → "Sunshine". Set in capitals it stays so
+ */
+export const orgName = (s) => String(s ?? '').replace(/\bsunshine\s+on\s+a\s+ranney\s+day\b/gi, (m) => (m === m.toUpperCase() ? m : 'Sunshine on a Ranney Day')).replace(/\bSunShine\b/g, 'Sunshine');
+/**
+ * A name's initials for a face without a photo: first and last ("Sam Rivers" → SR), without a suffix or a title
+ * ("Bartholomew Montgomery-Fitzgerald III" → BM) or a school's or a company's "The" ("The Lionheart School" → LS)
+ */
+export function initialsOf(name) {
+  const all = String(name || '').split(/\s+/).filter(Boolean);
+  const w = all.length > 1 ? all.filter((x, i) => !/^(the|a|an|of|and|&)$/i.test(x) && !(i && /^(jr|sr|ii|iii|iv|v|md|phd|esq|dds|cpa)\.?,?$/i.test(x)) && !/^(dr|mr|mrs|ms)\.?$/i.test(x)) : all;
+  const words = w.length ? w : all;
+  return ((words[0]?.[0] || '') + (words.length > 1 ? words.at(-1)[0] : '')).toUpperCase() || '?';
+}
+const HONORIFICS = new Set(['dr', 'mr', 'mrs', 'ms', 'miss', 'jr', 'sr', 'ii', 'iii', 'iv', 'md', 'phd', 'esq']);
+const nameWords = (s) => String(s ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/['’]/g, '').split(/[^a-z]+/).filter((w) => w && !HONORIFICS.has(w));
+/**
+ * A typed signature that's the member's own name → the name to keep, or '' for anyone else's. Their name as People
+ * has it in any case or spacing ("sam rivers" keeps "Sam Rivers", and so does "sAm RiVeRs"), or with a title, a
+ * middle initial or name of theirs, or their first name's initial, long or short form ("S. Rivers", "Samuel J.
+ * Rivers", "Dr. Sam Rivers"), or the middle name they go by, before their own last name (or a part of a double one).
+ * Never another first name ("Mickey Rivers") and never a number
+ */
+const hasMarks = (s) => /[\u0300-\u036f]/.test(String(s).normalize('NFD'));
+// A word in a sensible case: kept when typed with care ("McKay", "O’Brien"), else capitalized ("jean-luc" → "Jean-Luc")
+const wordCase = (w) => (w === w.toLowerCase() || w === w.toUpperCase() || (/\p{Ll}\p{Lu}/u.test(w) && !/^(Mc|Mac|O['’]|D['’])/.test(w))
+  ? w.toLowerCase().replace(/(^|[.'’-])(\p{L})/gu, (_, a, c) => a + c.toUpperCase()) : w);
+export function signsAs(typed, name) {
+  if (/\d/.test(String(typed ?? ''))) return '';
+  const t = nameWords(typed);
+  const n = nameWords(name);
+  if (!n.length || t.length < Math.min(2, n.length)) return '';
+  const same = t.join(' ') === n.join(' ');
+  if (!same) {
+    const lastParts = nameWords(String(name).trim().split(/\s+/).at(-1));
+    const [first, f] = [t[0], n[0]];
+    const firstOk = first === f || (first.length === 1 && first === f[0]) || (Math.min(first.length, f.length) >= 3 && (f.startsWith(first) || first.startsWith(f))) || n.slice(1, -1).includes(first);
+    if (t.length < 2 || !lastParts.includes(t.at(-1)) || !firstOk || !t.slice(1, -1).every((w) => w.length === 1 || n.includes(w))) return '';
+  }
+  const people = String(name).replace(/\s+/g, ' ').trim();
+  const words = String(typed).replace(/\s+/g, ' ').trim().slice(0, 120).split(' ');
+  // The same name: People's spelling, unless they typed its accents and People hasn't
+  if (same && !(hasMarks(typed) && !hasMarks(name))) return people;
+  // Each word that's one of theirs in People's spelling, the rest in a sensible case
+  const theirs = new Map(people.split(' ').map((w) => [nameWords(w).join(''), w]));
+  return words.map((w) => (!hasMarks(w) && theirs.get(nameWords(w).join(''))) || wordCase(w)).join(' ');
+}
+/**
  * A document's title for reading: "Sunshine on a Ranney Day_Statement of Activity (1) (1).pdf" → "Statement of
  * Activity": no extension, no "Sunshine on a Ranney Day" in front, no " (1)" a download added or " - Sheet1",
  * " - Copy" an export added; a web link's "+" for spaces, QuickBooks' "StatementofFinancialPosition" apart, a sheet's
@@ -88,7 +136,8 @@ export function formatOf(f) {
  */
 export function docTitle(name) {
   // A date's dashes are kept as slashes ("2-9-26" stays a date once the other dashes are spaces)
-  let t = fileTitle(String(name || '').replace(/\+/g, ' ').replace(/\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b/g, '$1/$2/$3'));
+  // and a year's month or a fiscal year ("2025-11", "2026-27") keeps its dash
+  let t = fileTitle(String(name || '').replace(/\+/g, ' ').replace(/\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b/g, '$1/$2/$3').replace(/(?<!\d)((?:19|20)\d{2})-(\d{2})(?!\d)/g, '$1\u2011$2')).replace(/\u2011/g, '-');
   if (/^[0-9a-f]{8}( [0-9a-f]{4}){3} [0-9a-f]{12}$/i.test(t)) return 'Document';
   // A scanner's "doc20260209130015": the day it was scanned
   const scan = /^doc(\d{4})(\d{2})(\d{2})\d{6}$/i.exec(t);
@@ -99,7 +148,7 @@ export function docTitle(name) {
   for (let n = Math.floor(w.length / 2); n >= 1; n--) {
     if (w.slice(-n).join(' ').toLowerCase() === w.slice(-2 * n, -n).join(' ').toLowerCase()) { t = w.slice(0, -n).join(' '); break; }
   }
-  return t ? t[0].toUpperCase() + t.slice(1) : fileTitle(name);
+  return orgName(t ? t[0].toUpperCase() + t.slice(1) : fileTitle(name));
 }
 // The copy of a document a screen shows: a spreadsheet drawn as itself (sharp at any size, without a printout's
 // gridlines), else the PDF as it was printed, then slides, Word, a photo

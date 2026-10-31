@@ -405,7 +405,8 @@ function readSheet(xml, strings, st, d1904, titles = null) {
       else if (v !== '' && Number.isFinite(Number(v))) { value = Number(v); kind = 'n'; }
       const font = st.fonts[xf.font] || {};
       const border = st.borders[xf.border] || {};
-      let text = kind === 'n' ? formatValue(value, fmt[xf.fmt] ?? BUILTIN[xf.fmt] ?? 'General', { d1904 }) : typeof value === 'string' && (fmt[xf.fmt] || BUILTIN[xf.fmt] || '').split(';').length >= 4 ? formatValue(value, fmt[xf.fmt] ?? BUILTIN[xf.fmt]) : String(value);
+      const code = fmt[xf.fmt] ?? BUILTIN[xf.fmt] ?? 'General';
+      let text = kind === 'n' ? formatValue(value, code, { d1904 }) : typeof value === 'string' && (fmt[xf.fmt] || BUILTIN[xf.fmt] || '').split(';').length >= 4 ? formatValue(value, fmt[xf.fmt] ?? BUILTIN[xf.fmt]) : String(value);
       // Account rows indented with spaces (QuickBooks) are indented, not padded
       let indent = xf.indent || 0;
       if (kind === 's') {
@@ -415,7 +416,8 @@ function readSheet(xml, strings, st, d1904, titles = null) {
       }
       if (!text && !border.top && !border.bottom) continue;
       if (!grid.has(r)) grid.set(r, new Map());
-      grid.get(r).set(c, { text, align: alignOf(xf.h, kind), bold: !!font.bold, italic: !!font.italic, indent, borderTop: border.top || '', borderBottom: border.bottom || '', wrap: !!xf.wrap, filled: !!text });
+      // A number keeps its value, and whether its format is General (which rounds to fit its column, as Excel does)
+      grid.get(r).set(c, { text, align: alignOf(xf.h, kind), bold: !!font.bold, italic: !!font.italic, indent, borderTop: border.top || '', borderBottom: border.bottom || '', wrap: !!xf.wrap, filled: !!text, ...(kind === 'n' ? { num: value, general: /^general$/i.test(String(code).trim()) } : {}) });
     }
   }
   const merges = all(inner(find(xml, 'mergeCells')), 'mergeCell').map((m) => {
@@ -1032,6 +1034,25 @@ function flowWord(blocks, urls) {
 // ─── Drawing: Excel ─────────────────────────────────────────────────
 
 const BORDER = { thin: `1px solid ${INK}`, thick: `2px solid ${INK}`, double: `3px double ${INK}` };
+/**
+ * A number in a column too narrow for it, the way Excel shows it: General rounds away decimals until it fits, and
+ * one that still doesn't (or a set format, "$#,##0.00") fills the cell with #. Never a number cut off mid-digit
+ */
+let measure = null;
+function fitNumber(cell, width) {
+  if (typeof document === 'undefined') return cell.text;
+  measure ||= document.createElement('canvas').getContext('2d');
+  measure.font = `${cell.bold ? 700 : 400} 12.5px ${FONT}`;
+  const fits = (t) => measure.measureText(t).width <= width;
+  if (fits(cell.text)) return cell.text;
+  if (cell.general && Number.isFinite(cell.num)) {
+    for (let d = Math.min(9, (String(cell.text).split('.')[1] || '').length - 1); d >= 0; d--) { const t = general(Number(cell.num.toFixed(d))); if (fits(t)) return t; }
+  }
+  let hashes = '#';
+  while (fits(`${hashes}#`) && hashes.length < 40) hashes += '#';
+  return hashes;
+}
+
 /** Some of a sheet's rows (their indexes, in order) as a table, its columns at the sheet's own widths */
 function sheetTable(s, list) {
   const t = el('table', 'bdoc-sheet');
@@ -1056,8 +1077,8 @@ function sheetTable(s, list) {
         if (span > 1) td.colSpan = span;
         if (down > 1) td.rowSpan = down;
         for (let i = 0; i < down; i++) for (let j = 0; j < span; j++) if (i || j) taken.add(`${at + i}:${c + j}`);
-        td.textContent = cell.text;
         const pad = 6 + (cell.indent || 0) * 12;
+        td.textContent = cell.num != null ? fitNumber(cell, s.cols.slice(c, c + span).reduce((a, b) => a + b, 0) - pad - 6) : cell.text;
         if (cell.align !== 'left') td.style.textAlign = cell.align;
         if (cell.align === 'right') { td.style.paddingRight = `${pad}px`; td.classList.add('is-right'); } else if (cell.indent) td.style.paddingLeft = `${pad}px`;
         if (cell.bold) td.style.fontWeight = '700';

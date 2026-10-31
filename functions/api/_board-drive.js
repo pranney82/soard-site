@@ -58,7 +58,7 @@ import { boardAdmins, peopleRows, readSettings, readState, writeState } from './
 import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster, saveDoc, cleanDoc, MAX_FILE } from './_board.js';
 import { fileText } from './_board-mail.js';
 import { readMinutes, applyMinutes, minutesNewer } from './_board-minutes.js';
-import { parseAgendaText, cleanMeeting, agendaIsDraft, todayEastern, isDate, docHtmlText, readAgain, AGENDA_READER } from '../../public/admin/board-shared.js';
+import { parseAgendaText, cleanMeeting, agendaIsDraft, todayEastern, isDate, docHtmlText, readAgain, AGENDA_READER, orgName } from '../../public/admin/board-shared.js';
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
@@ -466,8 +466,8 @@ export function docSlot(name) {
   if (p) return p.slot;
   return `manual:${stemOf(name).replace(/\b(19|20)\d{2}\b/g, '').replace(/\s+/g, ' ').trim()}`;
 }
-/** A document's title from its file name: "SunShine on a Ranney Day, Inc._Board Manual with Policies .pdf" → "SunShine on a Ranney Day, Inc. Board Manual with Policies" */
-export const docTitle = (name) => String(name || '').replace(/(\s*\(\d+\)|\.(docx?|pdf|xlsx?|pptx?|rtf|txt|csv))+\s*$/i, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+/** A document's title from its file name: "SunShine on a Ranney Day, Inc._Board Manual with Policies .pdf" → "Sunshine on a Ranney Day, Inc. Board Manual with Policies" */
+export const docTitle = (name) => orgName(String(name || '').replace(/(\s*\(\d+\)|\.(docx?|pdf|xlsx?|pptx?|rtf|txt|csv))+\s*$/i, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim());
 export const docKind = (name) => (/bylaw|by-law|articles|determination|incorporat|charter/i.test(name) ? 'governance' : /polic|manual|handbook|conflict|whistle|retention|code of/i.test(name) ? 'policy' : 'other');
 
 /**

@@ -510,6 +510,13 @@ try {
   await jane.evaluate(() => [...document.querySelectorAll('.bd-check input')].at(-1).click());
   await clickText(jane, 'button', /^Save$/);
   ok(await waitText(jane, /0 of 3 signed/), 'a document asking for signatures counts them');
+  // A paper to read, not to sign: on the board page it goes on its shelf
+  await clickText(jane, 'button', /^Add a document$/);
+  await jane.type('#bd-doc-title', 'Signed Amended Bylaws');
+  await jane.select('#bd-doc-kind', 'policy');
+  await (await jane.$('#bd-doc-file')).uploadFile(pdf);
+  await clickText(jane, 'button', /^Save$/);
+  ok(await waitText(jane, /Signed Amended Bylaws/), 'a paper to read is added');
   await shot(jane, '05-documents');
   await jane.goto(`${SITE}/admin/#board/members`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Board members can’t sign in yet/), 'Members: says plainly that board members can’t sign in yet');
@@ -609,12 +616,16 @@ try {
     ok(/Next meeting/.test(home) && /See the agenda and 1 file/.test(home), 'Home: the next meeting, and its packet');
     ok(/Example Hall/.test(home) && await alex.$('.bp-next a[href^="https://www.google.com/maps/search/"]') !== null, 'Home: its place, the address opening in Maps');
     ok(await alex.$('.bp-next a[href="https://meet.google.com/abc-defg-hij"]') !== null && /Google Meet/.test(home), 'Home: the Google Meet link, in the meeting’s one line');
-    ok(width === 1440 ? /Calendar invite: Coming\./.test(home) : /You said “By video\.”/.test(home), width === 1440 ? 'Home: their reply to the invite shows' : 'Home: the answer they gave here shows');
+    // Their yes on the calendar invite is their answer here until they choose: said, and its choice marked
+    const picked = await alex.$eval('.bp-next .bp-choice[aria-pressed="true"]', (b) => b.textContent.trim()).catch(() => '');
+    ok(width === 1440 ? /You said “I’ll be there” on the calendar invite\./.test(home) && picked === 'Coming' : /You said “I’ll join by video\.”/.test(home) && picked === 'By video', width === 1440 ? `Home: their reply to the invite shows, Coming marked (${picked})` : `Home: the answer they gave here shows (${picked})`);
     ok(width === 1440 ? /Send the venue contract/.test(home) : !/Send the venue contract/.test(home), width === 1440 ? 'Home: their own action item' : 'Home: the action item they ticked off is gone');
     const figs = await alex.evaluate(() => Object.fromEntries([...document.querySelectorAll('.bp-fig')].map((f) => [f.querySelector('.bp-fig__label').textContent, f.querySelector('.bp-fig__value').textContent])));
     // No budget sheet and no QuickBooks here: the reveals stand in for the year's revenue, and nothing for its
     // expenses (the kids served are Impact's, just under the figures in the same panel)
-    ok(Object.keys(figs).length === 3 && figs['Makeovers'] === '3' && figs['Cash in the bank'] === '$375K' && 'Reveals ahead' in figs && !/Recently|The money|Children served/.test(home), `Home: three figures without a budget (Mercury's cash, the reveals, the makeovers), nothing repeated below (${JSON.stringify(figs)})`);
+    // The makeovers under way are the board's cards, awaiting funding too: the figure and the board below agree
+    const cards = await alex.$$eval('#makeovers .bk-card', (l) => l.length);
+    ok(Object.keys(figs).length === 3 && figs['Makeovers under way'] === String(cards) && cards > 0 && figs['Cash in the bank'] === '$375K' && 'Reveals ahead' in figs && !/Recently|The money|Children served/.test(home), `Home: three figures without a budget (Mercury's cash, the reveals, the makeovers as many as the board's ${cards} cards), nothing repeated below (${JSON.stringify(figs)})`);
     ok(await alex.evaluate(() => !!document.querySelector('.bp-sum .bp-figs') && !!document.querySelector('.bp-sum #impact')), 'Home: the figures and Impact are one panel, SOARD at a glance');
     ok(await alex.$$eval('.bp-next .bp-agpeek li', (l) => l.length) > 0, 'Home: the next meeting’s agenda headings, right there');
     const cols = await alex.$$eval('#makeovers .bk-col', (c) => c.map((e) => e.textContent));
@@ -622,10 +633,10 @@ try {
     const kids = await alex.$$eval('#makeovers .bk-card:not(.is-quiet)', (c) => c.map((e) => ({ text: e.querySelector('.bk-card__body').textContent, img: !!e.querySelector('.bk-card__photo img, .bk-card__initials') })));
     ok(kids.length === 2 && kids.every((k) => k.img) && kids.some((k) => /^Maya\s*Reveal \w{3} \d+ · 10 AM$/.test(k.text)) && kids.some((k) => /^Leo\s*Reveal mid December$/.test(k.text)), `Home: each kid’s card leads with their photo and carries their reveal, a set day or the part of the month (${JSON.stringify(kids)})`);
     ok(await alex.evaluate(() => /kids served/.test(document.querySelector('#impact')?.textContent || '') && document.querySelector('#impact').getBoundingClientRect().top < document.querySelector('.bp-next').getBoundingClientRect().top), 'Home: Impact near the top, under the figures');
-    ok(await alex.evaluate(() => { const so = [...document.querySelectorAll('#impact .bp-impact__stats > div')].find((d) => /so far$/.test(d.querySelector('dt')?.textContent || '')); return !so || /^\d+ kids? · \d+ rooms?/.test(so.querySelector('dd').textContent); }), 'Home: this year so far gives its kids and its rooms');
+    ok(await alex.evaluate(() => { const so = [...document.querySelectorAll('#impact .bp-impact__stats > div')].find((d) => /so far$/.test(d.querySelector('dt')?.textContent || '')); return !so || /^\d+\skids? · \d+\srooms?/.test(so.querySelector('dd').textContent); }), 'Home: this year so far gives its kids and its rooms');
     const gifts = await alex.evaluate(() => { const c = document.querySelector('.bp-gifts'); return c && { sum: c.querySelector('.bp-gifts__sum')?.textContent, rows: [...c.querySelectorAll('.bp-gift')].map((r) => r.textContent), fresh: c.querySelectorAll('.bp-gift.is-new').length, all: c.querySelector('a[href="#/financials/gifts"]')?.textContent, beforeMakeovers: c.getBoundingClientRect().top < document.querySelector('#makeovers').getBoundingClientRect().top, inside: c.scrollWidth <= c.clientWidth }; });
     ok(gifts?.rows.length === 6 && /^\$25,000Sample Family FoundationLee Sample · Evening of SunshineNew/.test(gifts.rows[0]) && /^\$5,000Dana ExampleMakeoversNew/.test(gifts.rows[1]) && gifts.fresh === 2, `Home: the year’s newest six major gifts, a company with who gave for it, a gift for a kid as Makeovers, the two since their last visit new (${JSON.stringify(gifts?.rows.slice(0, 2))})`);
-    ok(/^\$43,500 from 8 gifts of \$1,000 or more in \d{4}$/.test(gifts?.sum || '') && !gifts.rows.some((r) => /\$999|example\.com|Maya/.test(r)) && gifts.rows.some((r) => /in kind/.test(r)), `Home: the year’s total; nothing under $1,000, no email, no kid’s name (${gifts?.sum})`);
+    ok(/^\$43,500 from 8 gifts of \$1,000 or more in \d{4}$/.test((gifts?.sum || '').replace(/ /g, ' ')) && !gifts.rows.some((r) => /\$999|example\.com|Maya/.test(r)) && gifts.rows.some((r) => /in kind/.test(r)), `Home: the year’s total; nothing under $1,000, no email, no kid’s name (${gifts?.sum})`);
     ok(gifts?.beforeMakeovers && gifts.inside && /^All 8 this year/.test(gifts.all || ''), 'Home: Major gifts sits above the makeovers, fits its card, and opens the whole year');
     if (width === 1440) {
       // Each year's bar says its numbers under the pointer, inside the panel even at the ends
@@ -634,24 +645,53 @@ try {
         await alex.hover(`#impact .bp-spark__bars > button:${pick}`);
         tips.push(await alex.waitForFunction(() => { const t = document.querySelector('#impact .bp-ytip'); const s = document.querySelector('.bp-sum').getBoundingClientRect(); const r = t?.getBoundingClientRect(); return t && r.left >= s.left && r.right <= s.right ? t.textContent : null; }, { timeout: 2000 }).then((h) => h.jsonValue(), () => ''));
       }
-      ok(tips.every((t) => /^\d{4}( so far)?\d+ kids? · \d+ rooms? · \d+ makeovers?$/.test(t)) && tips[0] !== tips[1], `Home: hovering a year’s bar says its kids, rooms and makeovers (${JSON.stringify(tips)})`);
+      ok(tips.every((t) => /^\d{4}( so far)?\d+\skids? · \d+\srooms? · \d+\smakeovers?$/.test(t)) && tips[0] !== tips[1], `Home: hovering a year’s bar says its kids, rooms and makeovers (${JSON.stringify(tips)})`);
       await alex.mouse.move(2, 2);
     }
     await alex.evaluate(() => document.querySelector('#impact .bp-impact__more').click());
-    ok(await alex.waitForFunction(() => { const bars = [...document.querySelectorAll('#impact .bp-years__hit')]; return bars.length >= 1 && bars.every((b) => /^\d{4}( so far)?: \d+ kids?, \d+ rooms?, \d+ makeovers?$/.test(b.getAttribute('aria-label') || '')) && /\d{4}/.test(document.querySelector('.bp-yearpanel__head')?.textContent || ''); }, { timeout: 3000 }).then(() => true, () => false), 'Home: Explore by year opens a bar a year, each saying its numbers, and the year’s makeovers');
+    ok(await alex.waitForFunction(() => { const bars = [...document.querySelectorAll('#impact .bp-years__hit')]; return bars.length >= 1 && bars.every((b) => /^\d{4}( so far)?: \d+\skids?, \d+\srooms?, \d+\smakeovers?$/.test(b.getAttribute('aria-label') || '')) && /\d{4}/.test(document.querySelector('.bp-yearpanel__head')?.textContent || ''); }, { timeout: 3000 }).then(() => true, () => false), 'Home: Explore by year opens a bar a year, each saying its numbers, and the year’s makeovers');
     // A year's bar on Home opens that year below; the bigger bars say their numbers too
     const firstYear = await alex.$eval('#impact .bp-spark__bars > button', (b) => b.getAttribute('aria-label').slice(0, 4));
     await alex.click('#impact .bp-spark__bars > button');
     ok(await alex.waitForFunction((y) => document.querySelector('.bp-yearpanel__head strong')?.textContent === y, { timeout: 2000 }, firstYear).then(() => true, () => false), `Home: tapping ${firstYear}’s bar opens ${firstYear}`);
     if (width === 1440) {
       await alex.hover('#impact .bp-years__bars li:last-child .bp-years__hit');
-      ok(await alex.waitForFunction(() => /^\d{4}( so far)?\d+ kids? · \d+ rooms? · \d+ makeovers?$/.test(document.querySelector('.bp-years .bp-ytip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'Home: Explore by year’s bars say their numbers under the pointer too');
+      ok(await alex.waitForFunction(() => /^\d{4}( so far)?\d+\skids? · \d+\srooms? · \d+\smakeovers?$/.test(document.querySelector('.bp-years .bp-ytip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'Home: Explore by year’s bars say their numbers under the pointer too');
       await alex.mouse.move(2, 2);
     }
     ok(await overflow(alex) <= 0, 'Home: nothing past the right edge');
     if (width === 390) {
-      const bar = await alex.evaluate(() => { const n = getComputedStyle(document.querySelector('.bp-nav')); return { pos: n.position, bottom: n.bottom, top: getComputedStyle(document.querySelector('.bp-top')).position, tabs: document.querySelectorAll('.bp-nav a').length }; });
-      ok(bar.pos === 'fixed' && bar.bottom === '0px' && bar.top === 'static' && bar.tabs === 5, 'on a phone: the five pages are a bar along the bottom, and the header scrolls away');
+      const bar = await alex.evaluate(() => { const n = getComputedStyle(document.querySelector('.bp-nav')); return { pos: n.position, bottom: n.bottom, tabs: document.querySelectorAll('.bp-nav a').length }; });
+      ok(bar.pos === 'fixed' && bar.bottom === '0px' && bar.tabs === 5, 'on a phone: the five pages are a bar along the bottom');
+      // The bar is always on top: at every depth of the page a tap on a tab is the tab's, never what's scrolled under it
+      // (QA, Oct 31 2026: the header's own layer had put the page over it, so Meetings answered the RSVP)
+      const under = await alex.evaluate(async () => {
+        const wrong = [];
+        for (let y = 0; y < document.documentElement.scrollHeight; y += 120) {
+          scrollTo(0, y);
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          for (const a of document.querySelectorAll('.bp-nav a')) { const b = a.getBoundingClientRect(); const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); if (!a.contains(hit)) wrong.push(`${y}:${a.textContent.trim()}:${hit?.className || hit?.tagName}`); }
+        }
+        scrollTo(0, 0);
+        return wrong;
+      });
+      ok(!under.length, `on a phone: a tap on a tab is always the tab's (${under.slice(0, 3).join(', ')})`);
+      // The header steps away going down and comes back going up, the search with it
+      const head = await alex.evaluate(async () => {
+        const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const seen = () => Math.round(document.querySelector('.bp-top').getBoundingClientRect().bottom);
+        scrollTo(0, 0); await frame();
+        for (let y = 100; y <= 700; y += 100) { scrollTo(0, y); await frame(); }
+        await new Promise((r) => setTimeout(r, 400));
+        const down = seen();
+        for (let y = 680; y >= 560; y -= 20) { scrollTo(0, y); await frame(); }
+        await new Promise((r) => setTimeout(r, 400));
+        const up = seen();
+        const find = document.querySelector('.bp-find').getBoundingClientRect();
+        scrollTo(0, 0); await frame();
+        return { down, up, find: Math.round(find.top) };
+      });
+      ok(head.down <= 0 && head.up > 40 && head.find >= 0, `on a phone: the header steps away going down the page and comes back going up, the search in reach (${JSON.stringify(head)})`);
     }
     await shot(alex, `10-home-${width}`);
     if (width === 1440) {
@@ -682,7 +722,7 @@ try {
     ok(await alex.evaluate(() => { const it = [...document.querySelectorAll('.bp-agitem')].find((x) => /Project updates/.test(x.textContent)); return !!it && it.querySelectorAll('.bk-col').length >= 3 && /Leo/.test(it.textContent) && /Maya/.test(it.textContent); }), 'the meeting: its makeovers item is the kanban, kids by stage');
     ok(await alex.evaluate(() => { const it = [...document.querySelectorAll('.bp-agitem')].find((x) => /^Financial/.test(x.querySelector('.bp-agitem__title')?.textContent || '')); return !!it && /Cash in the bank\s*\$375,000/.test(it.textContent) && /2026 so far/.test(it.textContent); }), 'the meeting: the Financial item shows the money as figures');
     ok(await alex.evaluate(() => [...document.querySelectorAll('.bp-agsec__n')].map((n) => n.textContent).slice(0, 3).join() === '01,02,03'), 'the meeting: its parts as numbered chapters');
-    ok(await alex.evaluate(() => /^8:00 AM · \d+ min$/.test(document.querySelector('.bp-agsec__time')?.textContent.trim() || '')), 'the meeting: each part’s time, the run of show');
+    ok(await alex.evaluate(() => /^8:00\u00a0AM · \d+\u00a0min$/.test(document.querySelector('.bp-agsec__time')?.textContent.trim() || '')), 'the meeting: each part’s time, the run of show (the units never on a line of their own)');
     ok(/Financial[\s\S]*Balance sheet financials/.test(page), 'the meeting: the statement under its Financial item, by readable name');
     if (width === 390) {
       ok(await alex.evaluate(() => document.querySelector('.bp-aghero .bp-rsvp').getBoundingClientRect().top < document.querySelector('.bp-ag__body').getBoundingClientRect().top), 'on a phone: their answer comes before the agenda');
@@ -713,6 +753,11 @@ try {
       await alex.waitForSelector('.bp-dir .bp-person', { timeout: 6000 }).catch(() => {});
       const dir = await alex.evaluate(() => ({ rows: document.querySelectorAll('.bp-dir .bp-person').length, mail: !!document.querySelector('.bp-person a.bp-iconbtn[aria-label^="Email "][href^="mailto:"]'), copy: !!document.querySelector('.bp-person button.bp-iconbtn[aria-label$="email address"]'), words: /\bCopy\b/.test(document.querySelector('.bp-dir')?.innerText || '') }));
       ok(dir.rows >= 2 && dir.mail && dir.copy && !dir.words, `People: a directory with email and copy as icon buttons (${JSON.stringify(dir)})`);
+      // Documents: SOARD's papers in one panel, the shelves side by side, each paper a row that opens it
+      await alex.goto(`${SITE}/admin/board/#/documents`, { waitUntil: 'networkidle0' });
+      await alex.waitForSelector('.bp-papers', { timeout: 6000 }).catch(() => {});
+      const papers = await alex.evaluate(() => ({ cols: [...document.querySelectorAll('.bp-papers__col')].map((c) => c.querySelector('.bp-papers__h')?.textContent), rows: [...document.querySelectorAll('.bp-papers .bp-file a.bp-file__main')].map((a) => a.textContent), old: !!document.querySelector('.bp-shelf, .bp-docc') }));
+      ok(papers.cols.some((c) => /^Governing documents1$/.test(c)) && papers.rows.some((r) => /Signed Amended Bylaws\s*PDF · \d/.test(r)) && !papers.old, `Documents: SOARD’s papers in one panel, each a row that opens it (${JSON.stringify(papers)})`);
       // Financials: cash over time says a month's balance under the pointer
       await alex.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
       if (await alex.$('.bp-cashchart li')) {
@@ -723,7 +768,7 @@ try {
     }
     // Home's "All 8 this year" opens Financials at the major gifts: every one, under the year's total
     await alex.goto(`${SITE}/admin/board/#/financials/gifts`, { waitUntil: 'networkidle0' });
-    ok(await alex.waitForFunction(() => { const g = document.getElementById('gifts'); if (!g) return false; const r = g.getBoundingClientRect(); return g.querySelectorAll('.bp-gift').length === 8 && /^\$43,500 from 8 gifts in \d{4}$/.test(g.querySelector('.bp-gifts__total')?.textContent || '') && r.top >= 0 && r.top < innerHeight / 2; }, { timeout: 5000 }).then(() => true, () => false), 'Financials: #/financials/gifts opens at the major gifts, all 8 under the year’s total');
+    ok(await alex.waitForFunction(() => { const g = document.getElementById('gifts'); if (!g) return false; const r = g.getBoundingClientRect(); return g.querySelectorAll('.bp-gift').length === 8 && /^\$43,500 from 8\sgifts in\s\d{4}$/.test(g.querySelector('.bp-gifts__total')?.textContent || '') && r.top >= 0 && r.top < innerHeight / 2; }, { timeout: 5000 }).then(() => true, () => false), 'Financials: #/financials/gifts opens at the major gifts, all 8 under the year’s total');
     for (const [p, re] of [
       // The cash, then the year beside the cash over time, then the statements, then the tax returns and audits
       ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Tax returns and audits[\s\S]*2025/],
@@ -738,9 +783,16 @@ try {
     if (width === 1440) {
       await clickText(alex, 'button', /^I’ve read it and agree$/);
       ok(await waitText(alex, /Type your full name, the way you sign it/), 'signing with no name says what to do');
-      await alex.type('.bp-sign input', 'Alex Rivera');
+      ok(await alex.$eval('.bp-sign input', (i) => i.placeholder) === 'Alex Rivera', 'the name field shows the name to sign with');
+      await alex.type('.bp-sign input', 'Mickey Mouse');
       await clickText(alex, 'button', /^I’ve read it and agree$/);
-      ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name');
+      ok(await waitText(alex, /Sign with your own name, as the board has it: Alex Rivera/) && !(await waitText(alex, /Signed\s*by Mickey/, 600)), 'someone else’s name isn’t a signature');
+      await alex.$eval('.bp-sign input', (i) => { i.select(); });
+      await alex.keyboard.press('Backspace');
+      await alex.type('.bp-sign input', 'alex rivera');
+      await clickText(alex, 'button', /^I’ve read it and agree$/);
+      ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name (kept the way People spells it)');
+      ok(await alex.evaluate(() => document.activeElement?.classList.contains('bp-signed')), 'the focus goes to “Signed by…”, not the page');
       await alex.goto(`${SITE}/admin/board/#/reveals`, { waitUntil: 'networkidle0' });
       ok(await alex.evaluate(() => location.hash) === '#/' && await alex.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false), 'the old Reveals link opens Home, where reveals are now');
       await alex.goto(`${SITE}/admin/board/#/meetings/${pastId}`, { waitUntil: 'networkidle0' });
@@ -1031,7 +1083,8 @@ try {
       await clickText(money, '.bp-stmts button', /^Financial position$/);
       ok(firstStmt.length === 1 && /^Statement of activities/.test(firstStmt[0]) && await money.waitForFunction(() => { const t = [...document.querySelectorAll('.bp-latest .bp-stmt__title')].map((x) => x.textContent); return t.length === 1 && t[0] === 'Statement of financial position' && /TOTAL ASSETS/.test(document.querySelector('.bp-latest .bp-stmt').textContent); }, { timeout: 2000 }).then(() => true, () => false), `Financials: one statement at a time, activities first, the position a tap away (${JSON.stringify(firstStmt)})`);
       const year = await money.evaluate(() => [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('tbody tr')].map((r) => r.textContent));
-      ok(year[1] === 'Expenses$980,000$1,030,000▼ 5%' && year[2] === 'In kind (not cash)$220,000$70,000▲ 214%' && /^Net\$676,045/.test(year[3]), `Financials: the year so far splits the in kind from the expenses, the net still QuickBooks’ (${JSON.stringify(year)})`);
+      // Read down it adds up: revenue less the cash spent and the in kind used is the net
+      ok(year[0] === 'Revenue$1,876,045$1,500,000▲ 25%' && year[1] === 'Cash expenses$980,000$1,030,000▼ 5%' && year[2] === 'In kind expenses (not cash)$220,000$70,000▲ 214%' && year[3] === 'Net$676,045$400,000+$276,045' && 1876045 - 980000 - 220000 === 676045, `Financials: the year so far splits the in kind from the cash expenses, and adds up to QuickBooks’ net (${JSON.stringify(year)})`);
       const rows = await money.$$eval('.bp-mixtable tbody tr', (r) => r.map((x) => x.textContent));
       ok(rows.length === 6 && rows[1] === 'Store salesStore Income, Store Discounts$415,00022%$830,000▼ 50%' && /^Everything elseGolf Classic, Rent, Interest, Makeover\$51,0453%\$0/.test(rows[5]) && rows[4] === 'GrantsGrant Revenue$90,0005%$0–', `Financials: each category with its accounts, beside last year’s same days (${JSON.stringify(rows)})`);
       await money.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });

@@ -9,7 +9,7 @@
  * GET ?live=<id>                        → the meeting as it's held (_board.js liveView): every few seconds while it runs
  * POST { action: 'rsvp', meetingId, answer }        yes | remote | no
  * POST { action: 'action-done', actionId, done }    one of their own action items
- * POST { action: 'sign', docId, name }               "I've read it", this year, with their typed name
+ * POST { action: 'sign', docId, name }               "I've read it", this year, with their own name typed
  * POST { action: 'checkin', meetingId, how }         present | remote, on the meeting's day
  * POST { action: 'vote', meetingId, motionId, vote } for | against | abstain, while the chair has it open
  * An admin looking can't answer, sign, check in or vote for anyone: they have no board seat. In a practice meeting

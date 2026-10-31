@@ -137,9 +137,13 @@ export const shortAsOf = (s) => String(s || '').replace(/, \d{4}$/, '');
 // The year against its budget: the newest "budget & actual" sheet in a meeting's packet (SOARD's own layout: a
 // heading row naming the Budgeted and Actual columns, then "Revenue Total", "Total Expenses", "Program Total"…)
 const budgetOnce = new Map();
+/** The budget sheet the year is read from: the newest in a meeting's packet (up to `upTo`) */
+const budgetSheetOf = (data, upTo = '') => data.meetings.filter((m) => !upTo || m.date <= upTo).flatMap((m) => m.files.filter((f) => isExcel(f) && /budget/i.test(f.name)).map((f) => ({ f, m })))
+  .sort((a, b) => b.m.date.localeCompare(a.m.date) || String(b.f.at || '').localeCompare(String(a.f.at || '')))[0] || null;
+/** Whether there's a budget to come while it's read (its figures' places are kept, so nothing moves when they arrive) */
+export const budgetDue = (data, upTo = '') => !!budgetSheetOf(data, upTo);
 function readBudget(data, upTo = '') {
-  const src = data.meetings.filter((m) => !upTo || m.date <= upTo).flatMap((m) => m.files.filter((f) => isExcel(f) && /budget/i.test(f.name)).map((f) => ({ f, m })))
-    .sort((a, b) => b.m.date.localeCompare(a.m.date) || String(b.f.at || '').localeCompare(String(a.f.at || '')))[0];
+  const src = budgetSheetOf(data, upTo);
   if (!src) return Promise.resolve(null);
   if (!budgetOnce.has(src.f.id)) budgetOnce.set(src.f.id, (async () => {
     const grid = await sheetGrid(await fetchBytes(src.f));
@@ -237,7 +241,7 @@ export const growthText = (x) => {
  */
 /** "August 3, 2026" → ", as of Aug 3" ('' when there's no date) */
 const asOfWords = (s) => { const t = Date.parse(String(s || '')); return Number.isFinite(t) ? `, as of ${new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : s ? `, ${s}` : ''; };
-export function moneyTiles({ cash, budget, n }) {
+export function moneyTiles({ cash, budget, n, due = false }) {
   const out = [];
   if (cash !== null) {
     out.push({
@@ -251,6 +255,8 @@ export function moneyTiles({ cash, budget, n }) {
   // How long the cash would last at the last 12 months' cash spending (QuickBooks')
   if (cash?.months != null) out.push({ k: 'months', label: 'Months of cash', value: monthsText(cash.months), sub: cash.perMonth ? `At ${compact(cash.perMonth)} a month, the last 12 months’ cash out` : 'At the last 12 months’ cash out' });
   const yr = budget?.year || '';
+  // While a budget sheet is read: its two figures' places, so the tiles never move when they arrive
+  if (budget === undefined && due) for (const [k, word] of [['rev', 'revenue'], ['exp', 'expenses']]) out.push({ k, label: `${(n?.books?.year || todayEastern().slice(0, 4))} ${word}`, value: '…', pct: 0, sub: '\u00a0' });
   for (const [k, x, word] of [['rev', budget?.revenue, 'revenue'], ['exp', budget?.expenses, 'expenses']]) {
     if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: [x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}`, paceText(x)].filter(Boolean).join(' · ') : growthText(x) || `The year so far${asOfWords(budget.asOf)}`, x.inKind ? `not counting ${compact(x.inKind)} in kind` : ''].filter(Boolean).join(' · ') });
   }
@@ -322,7 +328,7 @@ export function RevenueMix({ books, table = false }) {
     </div>
     ${table ? html`<table class="bp-table bp-mixtable bp-cmp">
       <thead><tr><th scope="col">Category</th><th scope="col" class="num">${mix.year} so far</th>${parts.some((x) => x.last != null) ? html`<th scope="col" class="num">${mix.lastYear}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
-      <tbody>${parts.map((x) => html`<tr key=${x.key}>
+      <tbody>${parts.map((x) => html`<tr key=${x.key} id=${`mix-${x.key}`}>
         <th scope="row"><span class="bp-mixtable__name"><i class=${`bp-tone--${x.tone}`} aria-hidden="true"></i>${x.name}</span>${x.accounts?.length && !(x.accounts.length === 1 && x.accounts[0] === x.name) ? html`<small>${x.accounts.join(', ')}</small>` : null}</th>
         <td class="num">${money(x.amount)}<small>${shareOf(x.amount, total)}</small></td>
         ${x.last != null ? html`<td class="num bp-cmp__ly" data-label=${`${mix.lastYear}, same days`}>${money(x.last)}</td><td class="num bp-cmp__chg">${changeOf(x.amount, x.last) || '–'}</td>` : null}

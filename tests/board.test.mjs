@@ -21,7 +21,7 @@ import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes } from '
 import * as rsvpPage from '../functions/api/board-rsvp.js';
 import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs } from '../public/admin/board-shared.js';
+import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs, orgName, signsAs } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
 const TEAM = 'soard';
@@ -273,7 +273,15 @@ test('a member answers for themselves: whether they’ll come, their own action 
   const plain = (await adminApi(FOUNDER, { action: 'save-doc', doc: { title: 'Bylaws', kind: 'governance' } })).body.doc;
   assert.equal((await portalApi(MEMBER, { action: 'sign', docId: plain.id, name: 'Alex Rivera' })).status, 404);
   assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'A' })).status, 400);
-  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Alex Rivera' })).status, 200);
+  // Someone else's name, or theirs mistyped, isn't a signature (QA signed "Mickey Mouse", Oct 31 2026)
+  const wrong = await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Mickey Mouse' });
+  assert.equal(wrong.status, 400);
+  assert.match(wrong.body.error, /own name.*Alex Rivera/);
+  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Alex Rivers' })).status, 400);
+  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Mickey Rivera' })).status, 400, 'their last name after someone else’s first name isn’t theirs');
+  assert.equal((await portalApi(MEMBER)).body.docs.find((d) => d.id === doc.id).signedByMe, null, 'nothing was signed');
+  // Their own, typed in a hurry: kept the way People spells it
+  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: '  alex   rivera ' })).status, 200);
   const page = (await portalApi(MEMBER)).body;
   assert.equal(page.docs.find((d) => d.id === doc.id).signedByMe.name, 'Alex Rivera');
   assert.equal((await adminApi(FOUNDER)).body.docs.find((d) => d.id === doc.id).signed['alex-rivera'].name, 'Alex Rivera');
@@ -391,8 +399,16 @@ test('the screen’s stops: the cover, since we last met, each part’s card, ea
 
 test('a document is one, however many copies: its title read clean, a statement and its PDF printout shown once, by the copy that reads best on a screen', () => {
   assert.equal(docTitle('Sunshine on a Ranney Day_Statement of Activity (1) (1).pdf'), 'Statement of Activity');
+  // SOARD's name as it's written, whatever the file said (the board manual's Drive copy, Oct 31 2026); in capitals it stays
+  assert.equal(docTitle('SunShine on a Ranney Day, Inc._Board Manual with Policies .pdf'), 'Sunshine on a Ranney Day, Inc. Board Manual with Policies');
+  assert.equal(docTitle('Sunshine On A Ranney Day Bylaws.pdf'), 'Bylaws');
+  assert.equal(orgName('SUNSHINE ON A RANNEY DAY INCORPORATED'), 'SUNSHINE ON A RANNEY DAY INCORPORATED');
+  assert.equal(orgName('SunShine Golf Classic'), 'Sunshine Golf Classic');
+
   assert.equal(docTitle('2026 budget & actual (August 2026) - Sheet1.pdf'), '2026 budget & actual (August 2026)', 'a date in brackets stays');
   assert.equal(docTitle('SOARD Q3 Minutes 2025.07.24 (3).pdf'), 'Q3 Minutes 2025.07.24');
+  assert.equal(docTitle('Statement of Activity 2025-11.xlsx'), 'Statement of Activity 2025-11', 'a year’s month keeps its dash');
+  assert.equal(docTitle('Budget_2026-27.xlsx'), 'Budget 2026-27');
   assert.equal(docTitle('Statement of Financial Position - Copy.xlsx'), 'Statement of Financial Position');
   assert.equal(docTitle('(1).pdf'), '(1)', 'a name that is only a copy number keeps it');
   assert.equal(docTitle('Sunshine+on+a+Ranney+Day_Budget+vs+Actuals+Budget_FY26_PL+-+FY26+PL+.xlsx'), 'Budget vs Actuals Budget FY26 PL', 'a web link’s plus signs, and a sheet’s name said twice');
@@ -429,6 +445,24 @@ test('a document is one, however many copies: its title read clean, a statement 
   assert.equal(guessItem(agenda, { name: 'Peter’s Report- Q3 board meeting.pdf' }, '2026-10-01'), 'i_pr1');
   assert.equal(guessItem(agenda, { name: 'Traci notes.pdf' }, '2026-10-01'), 'i_ev1');
   assert.equal(guessItem(agenda, { name: 'Remi & Nico 2026_Scope of Work.pdf' }, '2026-10-01'), '', 'no one named, no item named: on no item');
+});
+
+test('a signature is the member’s own name: any case or spacing, a middle name, an initial or a title, never someone else’s', () => {
+  const ok = (typed, name, kept) => assert.equal(signsAs(typed, name), kept, `${typed} for ${name}`);
+  ok('sam rivers', 'Sam Rivers', 'Sam Rivers');
+  ok('SAM RIVERS', 'Sam Rivers', 'Sam Rivers');
+  ok('Samuel J. Rivers', 'Sam Rivers', 'Samuel J. Rivers');
+  ok('S. Rivers', 'Sam Rivers', 'S. Rivers');
+  ok('Dr. Sam Rivers', 'Sam Rivers', 'Sam Rivers');
+  ok('sAm RiVeRs', 'Sam Rivers', 'Sam Rivers');
+  ok('samuel j rivers', 'Sam Rivers', 'Samuel J Rivers');
+  ok('mary jones', 'Mary Smith-Jones', 'Mary Jones');
+  ok('José García', 'Jose Garcia', 'José García');
+  ok('pat o’brien', 'Pat O’Brien', 'Pat O’Brien');
+  ok('Robert Smith', 'James Robert Smith', 'Robert Smith');
+  ok('cher', 'Cher', 'Cher');
+  // Another first name before their last name, a number, or a first and middle name isn't their signature (QA, Oct 31)
+  for (const [typed, name] of [['Mickey Mouse', 'Sam Rivers'], ['Mickey Rivers', 'Sam Rivers'], ['Tom Rivers', 'Sam Rivers'], ['x Rivers', 'Sam Rivers'], ['Rivers Rivers', 'Sam Rivers'], ['Sam Rivers 2', 'Sam Rivers'], ['Sam Mickey Rivers', 'Sam Rivers'], ['Joe Ann', 'Mary Ann Smith'], ['Mary Ann', 'Mary Ann Smith'], ['Sam Rivres', 'Sam Rivers'], ['Sam', 'Sam Rivers'], ['Rivers Sam', 'Sam Rivers'], ['', 'Sam Rivers']]) ok(typed, name, '');
 });
 
 test('one-tap answers: each board member who hasn’t answered gets their own links; opening one only asks, pressing it answers', async () => {
@@ -2226,4 +2260,11 @@ test('the meeting’s time is shared out among its parts, a part given its own m
   assert.equal(live.sectionAt, at);
   assert.equal(live.floor, 'sam-ortiz');
   assert.deepEqual([cleanLive({ sectionAt: at, floor: 'sam-ortiz' }).sectionAt, cleanLive({ itemId: 'i_abc1', floor: '../x' }).floor], ['', ''], 'only with an item on, and only a person’s slug');
+});
+
+test('a document keeps SOARD’s name as it’s written: a title saved or read with "SunShine" reads "Sunshine"', async () => {
+  const { cleanDoc } = await import('../functions/api/_board.js');
+  const { docTitle: driveTitle } = await import('../functions/api/_board-drive.js');
+  assert.equal(cleanDoc({ title: 'SunShine on a Ranney Day, Inc. Board Manual with Policies' }).title, 'Sunshine on a Ranney Day, Inc. Board Manual with Policies');
+  assert.equal(driveTitle('SunShine on a Ranney Day, Inc._Board Manual with Policies .pdf'), 'Sunshine on a Ranney Day, Inc. Board Manual with Policies');
 });

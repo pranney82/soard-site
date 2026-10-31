@@ -30,11 +30,11 @@ import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
-  isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs,
+  isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
 } from '../board-shared.js';
 import { Screen, ScreenPeek } from './screen.js';
-import { Kanban, sized } from './kanban.js';
-import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix, spentOf } from './money.js';
+import { Kanban, sized, hrefOf, cardId } from './kanban.js';
+import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix, spentOf, budgetDue } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -126,10 +126,13 @@ function phaseOf(m) {
   const now = Number(p.find((x) => x.type === 'hour')?.value || 0) * 60 + Number(p.find((x) => x.type === 'minute')?.value || 0);
   return now < s - 10 ? 'before' : now <= e ? 'now' : 'after';
 }
-const initialsOf = (name) => { const w = String(name || '').split(/\s+/).filter(Boolean); return ((w[0]?.[0] || '') + (w.length > 1 ? w.at(-1)[0] : '')).toUpperCase() || '?'; };
 const hueOf = (s) => [42, 28, 96, 152, 200, 18][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[’‘]/g, "'");
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** A time, a size or a length that never breaks before its unit on a narrow phone ("10:00 AM", "51 KB", "130 min") */
+const nb = (s) => String(s ?? '').replace(/(\d) (AM|PM|KB|MB|min|h)\b/g, '$1\u00a0$2');
+/** A count that stays with its word, and a year with the word before it, on a narrow phone ("1 awaiting", "in 2026") */
+const nbw = (s) => String(s ?? '').replace(/(\d) (?=\p{L})/gu, '$1\u00a0').replace(/(\p{L}) (?=\d{4}\b)/gu, '$1\u00a0');
 
 // ─── Files ──────────────────────────────────────────────────────────
 const fileUrl = (f) => `/api/board-file?id=${encodeURIComponent(f.id)}`;
@@ -139,10 +142,18 @@ const EXT_TYPES = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg
  * Files for the viewer: each by its clean title (saved under its own name), its first page in the strip once this
  * device has drawn it (pageKept)
  */
-const asViewer = (files) => files.map((f) => ({
-  name: f.name ? docTitle(f.name) : 'File', filename: f.name, type: f.type || EXT_TYPES[String(f.name || '').toLowerCase().split('.').pop()] || '', size: f.size, at: f.at, url: f.url || fileUrl(f),
-  thumb: (f.id && (pageKept(f, 200) || pageKept(f, 48))) || undefined,
-}));
+// Excel, Word and PowerPoint open as pages too, drawn the way the meeting's screen draws them (./docs.js)
+const OFFICE_WORD = { Excel: 'Excel', Word: 'Word', Slides: 'PowerPoint' };
+const asViewer = (files) => files.map((f) => {
+  const office = OFFICE_WORD[formatOf(f)] || '';
+  return {
+    name: f.name ? docTitle(f.name) : 'File', filename: f.name, type: f.type || EXT_TYPES[String(f.name || '').toLowerCase().split('.').pop()] || '', size: f.size, at: f.at, url: f.url || fileUrl(f),
+    thumb: (f.id && (pageKept(f, 200) || pageKept(f, 48))) || undefined,
+    ...(office ? { kindLabel: office } : {}),
+    // (not the old .doc, .xls and .ppt kind, which only Office opens)
+    ...(office && f.id && !/\.(doc|xls|ppt)$/i.test(f.name || '') && !/^application\/(vnd\.ms-|msword)/.test(f.type || '') ? { pages: () => import('./docs.js').then((m) => m.openDoc(f)) } : {}),
+  };
+});
 const RANK = { PDF: 0, Word: 1, Slides: 2, Excel: 3, Photo: 4, File: 5 };
 /** A file's title for reading (../board-shared.js docTitle) */
 const titleOf = docTitle;
@@ -257,10 +268,10 @@ function FileList({ files, order, labels = true, kinds = false, lead = null }) {
   const vf = asViewer(primary);
   return html`<div class="bp-files">${groups.map((g) => html`<div class="bp-files__group" key=${g.kind}>
     ${labels && groups.length > 1 ? html`<h3 class="bp-files__label">${g.label}</h3>` : null}
-    <ul class="bp-files__list">${g.rows.map((r) => html`<li class="bp-file" key=${r.key}>
+    <ul class="bp-files__list">${g.rows.map((r) => html`<li class="bp-file" key=${r.key} id=${`f-${r.file.id}`}>
       <a class="bp-file__main" ...${viewerLink(vf, primary.indexOf(r.file))}>
         <${FileBadge} f=${r.file} />
-        <span class="bp-file__text"><span class="bp-file__title">${r.title}</span><span class="bp-file__meta">${[kinds ? kindLabel(r.file.kind) : '', formatOf(r.file), sizeText(r.file.size)].filter(Boolean).join(' · ')}</span></span>
+        <span class="bp-file__text"><span class="bp-file__title">${r.title}</span><span class="bp-file__meta">${[kinds ? kindLabel(r.file.kind) : '', formatOf(r.file), nb(sizeText(r.file.size))].filter(Boolean).join(' · ')}</span></span>
       </a>
       ${r.more.length ? html`<span class="bp-file__more">${r.more.map((x) => html`<a ...${viewerLink(asViewer([x.file]), 0)}>${x.label}</a>`)}</span>` : null}
     </li>`)}</ul>
@@ -271,13 +282,37 @@ function FileList({ files, order, labels = true, kinds = false, lead = null }) {
 // A page change runs inside a view transition: the old page fades, the new one rises (or slides, going into
 // a meeting and back out), the nav's marker slides, and a meeting's date tile grows into its page
 const tick = () => new Promise((r) => setTimeout(r, 0));
-function transition(update, { kind = 'tab', morphTo = null } = {}) {
-  if (!document.startViewTransition || reduceMotion() || document.visibilityState !== 'visible') { update(); return; }
+// While a page change animates, the browser gives every tap to the page as a whole (<html>), so a quick second tap
+// (Financials, then People) would be lost: a tap then ends the animation at once and goes to what's under the finger
+let activeVT = null;
+let tapThrough = null;
+document.addEventListener('pointerdown', (e) => {
+  if (!activeVT || e.target !== document.documentElement) return;
+  activeVT.skipTransition();
+  tapThrough = { x: e.clientX, y: e.clientY };
+}, true);
+document.addEventListener('click', (e) => {
+  const at = tapThrough;
+  tapThrough = null;
+  if (!at || e.target !== document.documentElement) return;
+  e.preventDefault();
+  e.stopPropagation();
+  requestAnimationFrame(() => {
+    const hit = document.elementFromPoint(at.x, at.y);
+    const el = hit?.closest('a, button, input, select, textarea, label, summary, [role="button"], [role="option"]') || hit;
+    if (!el || el === document.documentElement) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !/^(checkbox|radio|button|submit)$/.test(el.type)) el.focus();
+    else el.click();
+  });
+}, true);
+function transition(update, { kind = 'tab', morphTo = null, after = () => {} } = {}) {
+  if (!document.startViewTransition || reduceMotion() || document.visibilityState !== 'visible') { update(); tick().then(after); return; }
   const root = document.documentElement;
   root.dataset.vt = kind;
   const t = document.startViewTransition(async () => {
     update();
     await tick();
+    after();
     for (const el of document.querySelectorAll('[data-mid]')) el.style.viewTransitionName = '';
     const to = morphTo && document.querySelector(`.bp-date[data-mid="${CSS.escape(morphTo)}"]`);
     if (to && to.getBoundingClientRect().bottom > 0 && to.getBoundingClientRect().top < innerHeight) to.style.viewTransitionName = 'bp-morph';
@@ -285,8 +320,9 @@ function transition(update, { kind = 'tab', morphTo = null } = {}) {
   // A transition that hasn't finished in 1.5s (a browser that stopped drawing frames) is skipped, never left holding the page.
   // Skipped ones (that, or a quicker next tap) reject `ready`; the page has already changed, so that's no error
   const guard = setTimeout(() => t.skipTransition(), 1500);
+  activeVT = t;
   t.ready.catch(() => {});
-  t.finished.finally(() => { clearTimeout(guard); delete root.dataset.vt; for (const el of document.querySelectorAll('[data-mid]')) el.style.viewTransitionName = ''; });
+  t.finished.finally(() => { clearTimeout(guard); if (activeVT === t) activeVT = null; delete root.dataset.vt; for (const el of document.querySelectorAll('[data-mid]')) el.style.viewTransitionName = ''; });
 }
 /** Before opening a meeting: its date tile is the one that grows into the page */
 function claimMorph(e) {
@@ -296,6 +332,61 @@ function claimMorph(e) {
   const tile = el.querySelector('.bp-date[data-mid]') || el.closest('.bp-card')?.querySelector('.bp-date[data-mid]');
   if (tile) tile.style.viewTransitionName = 'bp-morph';
 }
+// ─── Where you were ─────────────────────────────────────────────────
+// Each step in the browser's history keeps how far down it was and what was open on it (a year's meetings, a
+// search, every account), so Back and Forward bring the page back just so. A new step starts at the top
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+const kept = () => (history.state && typeof history.state === 'object' ? history.state : {});
+const keep = (patch) => { try { history.replaceState({ ...kept(), ...patch }, ''); } catch { /* the browser's limit on how often: the next one saves it */ } };
+/** useState that this step in the history remembers (`key` unique on its page) */
+function useKept(key, initial) {
+  const [v, setV] = useState(() => (kept().ui && key in kept().ui ? kept().ui[key] : initial));
+  const set = (x) => setV((was) => {
+    const now = typeof x === 'function' ? x(was) : x;
+    keep({ ui: { ...(kept().ui || {}), [key]: now } });
+    dispatchEvent(new Event('bp-kept'));
+    return now;
+  });
+  return [v, set];
+}
+/** Until they scroll, tap or type: `fn` runs each frame for `ms`, and stops for good the moment they do */
+function untilTheyMove(ms, fn) {
+  const until = Date.now() + ms;
+  let stop = false;
+  const quit = () => { stop = true; };
+  const opts = { once: true, passive: true };
+  for (const e of ['wheel', 'touchstart', 'keydown', 'pointerdown']) addEventListener(e, quit, opts);
+  const go = () => { if (!stop && Date.now() < until && fn() !== false) requestAnimationFrame(go); };
+  go();
+}
+/**
+ * Back to where they were: the thing that was at that height (`a`, `o`px from the top) brought back there, else `y`.
+ * It holds while the page is still drawing what's above (a budget read, photos: Safari doesn't keep the place itself)
+ */
+function scrollBack(y, a = '', o = 0) {
+  if (!y) { scrollTo(0, 0); return; }
+  untilTheyMove(2000, () => {
+    const el = a ? document.getElementById(a) : null;
+    const to = el ? Math.round(scrollY + el.getBoundingClientRect().top - o) : y;
+    if (Math.abs(scrollY - to) > 2) scrollTo(0, to);
+    return true;
+  });
+}
+/** What's at a third of the way down the window, to come back to: the nearest thing with an id, and how far down it is */
+function placeNow() {
+  const el = document.elementFromPoint(innerWidth / 2, Math.round(innerHeight * 0.33))?.closest('[id]');
+  return el && !['main', 'board-app'].includes(el.id) ? { a: el.id, o: Math.round(el.getBoundingClientRect().top) } : { a: '', o: 0 };
+}
+
+// The page before this one (`${page}/${id}`), so a way back that's really a step back goes back, not forward
+let cameFrom = '';
+/** To `hash`: a step back when that's where they came from (the browser's Back then lands where they were), else there */
+function goBack(hash) {
+  const r = hash.replace(/^#\/?/, '').split('/');
+  if (cameFrom === `${r[0] || ''}/${r[1] || ''}`) history.back();
+  else location.hash = hash;
+}
+
 // What to bring into view once a page opens (a search hit inside a meeting, a person)
 let focusNext = null;
 function useFocusTarget() {
@@ -303,14 +394,31 @@ function useFocusTarget() {
     if (!focusNext) return;
     const id = focusNext;
     focusNext = null;
-    requestAnimationFrame(() => {
+    // (one that arrives a moment later, the budget read from its sheet, is waited for)
+    const until = Date.now() + 2000;
+    const find = () => {
       const el = document.getElementById(id);
-      if (!el) return;
-      el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' });
+      if (!el) { if (Date.now() < until) setTimeout(find, 120); return; }
+      const behavior = reduceMotion() ? 'auto' : 'smooth';
+      // (`inline` too: a card on the makeovers board is brought in from the side)
+      el.scrollIntoView({ block: 'center', inline: 'center', behavior });
       el.classList.remove('is-found');
       void el.offsetWidth;
       el.classList.add('is-found');
-    });
+      // The focus goes there too: a field waiting for them (the name to sign with), else the thing itself
+      const field = el.querySelector('[data-autofocus]');
+      if (field) field.focus({ preventScroll: true });
+      else { if (!el.matches('a, button, input, select, textarea, [tabindex]')) el.setAttribute('tabindex', '-1'); el.focus({ preventScroll: true }); }
+      // What arrives above it a moment later (a budget read, photos) doesn't push it away: the jump is aimed again
+      let at = el.getBoundingClientRect().top + scrollY;
+      untilTheyMove(2500, () => {
+        if (!el.isConnected) return false;
+        const now = el.getBoundingClientRect().top + scrollY;
+        if (Math.abs(now - at) > 6) { at = now; el.scrollIntoView({ block: 'center', inline: 'center', behavior }); }
+        return true;
+      });
+    };
+    requestAnimationFrame(find);
   });
 }
 
@@ -367,32 +475,77 @@ function App() {
     const legacy = () => { if (/^#\/?reveals/.test(location.hash)) history.replaceState(null, '', '#/'); };
     legacy();
     let was = readRoute();
-    const scrolls = {};
+    // A page's place as it was left, for "All meetings" (a new step back to the list, not the browser's Back)
+    const left = {};
+    const where = (r) => `${r.page}/${r.id || ''}${r.sub ? `/${r.sub}` : ''}`;
+    let ui = kept().ui;
+    let saving = 0;
+    const save = () => { clearTimeout(saving); saving = setTimeout(() => keep({ y: Math.round(scrollY), ...placeNow() }), 150); };
+    // Clicking a link keeps the place at once, before the page changes
+    const clicked = (e) => { if (e.target.closest?.('a[href^="#"]')) { clearTimeout(saving); keep({ y: Math.round(scrollY), ...placeNow() }); } };
     const on = () => {
       legacy();
       const now = readRoute();
-      scrolls[`${was.page}/${was.id || ''}`] = scrollY;
+      // The same page again (a search result on the page that's open): it stays where it is, and the result scrolls itself into view
+      if (where(now) === where(was)) { setRoute(now); return; }
+      left[where(was)] = { y: Math.round(scrollY), ...placeNow(), ui };
+      const was0 = was;
+      cameFrom = where(was);
       const kind = now.page === was.page && now.id && !was.id ? 'deeper' : now.page === was.page && !now.id && was.id ? 'back' : 'tab';
       const morphTo = kind === 'back' ? was.id : null;
       was = now;
-      const y = kind === 'back' ? scrolls[`${now.page}/`] || 0 : 0;
-      transition(() => { setRoute(now); scrollTo(0, y); }, { kind, morphTo });
+      // A step seen before (Back, Forward) has its own place; a link back up to the list, the list as it was left
+      const st = kept();
+      let place = typeof st.y === 'number' ? { y: st.y, a: st.a || '', o: st.o || 0 } : { y: 0, a: '', o: 0 };
+      // Up a level by a link (a meeting's "All meetings", the screen's way back to its meeting): the page as it was left
+      const up = kind === 'back' || (!!was0.sub && !now.sub && was0.id === now.id);
+      if (typeof st.y !== 'number' && up && left[where(now)]) {
+        const l = left[where(now)];
+        place = { y: l.y, a: l.a, o: l.o };
+        keep({ y: l.y, a: l.a, o: l.o, ui: l.ui });
+      }
+      ui = kept().ui;
+      clearTimeout(saving);
+      transition(() => setRoute(now), { kind, morphTo, after: () => scrollBack(place.y, place.a, place.o) });
     };
+    const noteUi = () => { ui = kept().ui; };
     addEventListener('hashchange', on);
-    return () => removeEventListener('hashchange', on);
+    addEventListener('scroll', save, { passive: true });
+    document.addEventListener('click', clicked, true);
+    addEventListener('bp-kept', noteUi);
+    return () => { removeEventListener('hashchange', on); removeEventListener('scroll', save); document.removeEventListener('click', clicked, true); removeEventListener('bp-kept', noteUi); };
   }, []);
+  // A reload comes back to its place once the page is drawn
+  useEffect(() => { if (data && typeof kept().y === 'number') requestAnimationFrame(() => scrollBack(kept().y, kept().a, kept().o)); }, [!!data]);
   useEffect(() => {
     const keys = (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '') || e.target?.isContentEditable;
       if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey)) { e.preventDefault(); setFinding(true); }
     };
-    const scrolled = () => document.documentElement.classList.toggle('is-scrolled', scrollY > 4);
+    // On a phone the header steps away going down the page and comes back going up (8px of intent), at the top always
+    const phone = matchMedia('(max-width: 640px)');
+    let lastY = Math.max(0, scrollY);
+    let run = 0; // how far the page has moved one way since it last turned (down +, up −)
+    const scrolled = () => {
+      const root = document.documentElement;
+      root.classList.toggle('is-scrolled', scrollY > 4);
+      const y = Math.max(0, scrollY);
+      const d = y - lastY;
+      lastY = y;
+      run = d === 0 ? run : Math.sign(d) === Math.sign(run) ? run + d : d;
+      if (!phone.matches || y < 80) root.classList.remove('is-headaway');
+      else if (run > 6) root.classList.add('is-headaway');
+      else if (run < -12) root.classList.remove('is-headaway');
+    };
     scrolled();
     addEventListener('keydown', keys);
     addEventListener('scroll', scrolled, { passive: true });
     return () => { removeEventListener('keydown', keys); removeEventListener('scroll', scrolled); };
   }, []);
-  useEffect(() => { if (note) { const t = setTimeout(() => setNote(null), 4500); return () => clearTimeout(t); } return undefined; }, [note]);
+  // A note with something to do about it (Undo) stays a little longer
+  // (gone with the focus on its button: the focus goes to the page's own place, never to nowhere)
+  const gone = () => { if (document.activeElement?.closest?.('.bp-toast')) (document.getElementById('todo-h') || document.getElementById('main'))?.focus({ preventScroll: true }); setNote(null); };
+  useEffect(() => { if (note) { const t = setTimeout(gone, note.act ? 7000 : 4500); return () => clearTimeout(t); } return undefined; }, [note]);
   useEffect(() => {
     if (route.sub === 'screen') return;
     const m = route.page === 'meetings' && route.id && data && [...data.meetings, data.nextPending].find((x) => x?.id === route.id);
@@ -421,10 +574,10 @@ function App() {
     </div>`;
   }
   if (!data) return html`<div class="bp-boot"><img src=${LOGO} alt="" width="56" height="56" /><p>Opening the board page…</p></div>`;
-  const say = (text, tone = '') => setNote({ text, tone, at: Date.now() });
+  const say = (text, tone = '', act = null) => setNote({ text, tone, act, at: Date.now() });
   const ctx = { data, d, setData, load, say, find: () => setFinding(true) };
   // The meeting on the screen fills the window: no header, tabs or footer
-  if (route.sub === 'screen') return html`<${Screen} id=${route.id} data=${data} d=${d} key=${route.id} />`;
+  if (route.sub === 'screen') return html`<${Screen} id=${route.id} data=${data} d=${d} key=${route.id} onBack=${goBack} />`;
   const page = route.page === 'meetings' && route.id ? html`<${MeetingPage} id=${route.id} ctx=${ctx} key=${route.id} />`
     : route.page === 'meetings' ? html`<${MeetingsPage} ctx=${ctx} />`
     : route.page === 'financials' ? html`<${FinancialsPage} ctx=${ctx} />`
@@ -452,7 +605,7 @@ function App() {
         <p class="bp-muted">${data.me.email ? `Signed in as ${data.me.email} · ` : ''}<a href="/cdn-cgi/access/logout">Sign out</a></p>
       </div>
     </footer>
-    <div class=${`bp-toast ${note ? 'is-on' : ''} ${note?.tone ? `bp-toast--${note.tone}` : ''}`} role="status" aria-live="polite">${note ? html`<${Icon} name="check" size=${18} /><span>${note.text}</span>` : null}</div>
+    <div class=${`bp-toast ${note ? 'is-on' : ''} ${note?.tone ? `bp-toast--${note.tone}` : ''}`} role="status" aria-live="polite">${note ? html`<${Icon} name="check" size=${18} /><span>${note.text}</span>${note.act ? html`<button type="button" class="bp-toast__act" onClick=${() => { const { run } = note.act; setNote(null); run(); }}>${note.act.label}</button>` : null}` : null}</div>
     ${finding ? html`<${Finder} ctx=${ctx} onClose=${() => setFinding(false)} />` : null}`;
 }
 
@@ -528,18 +681,22 @@ function Account({ data, d }) {
 }
 
 // ─── Shared pieces ──────────────────────────────────────────────────
-function Avatar({ p, size = 40, ring = false }) {
+function Avatar({ p, size = 40, ring = false, named = false }) {
   const [broken, setBroken] = useState('');
   const name = p?.name || '';
   const style = `--s:${size}px`;
+  // In a row of faces each says whose it is on hover
+  const title = named && name ? name : null;
   return p?.photo && broken !== p.photo
-    ? html`<img class=${`bp-avatar ${ring ? 'bp-avatar--ring' : ''}`} src=${p.photo} alt="" loading="lazy" decoding="async" width=${size} height=${size} style=${style} onError=${() => setBroken(p.photo)} />`
-    : html`<span class=${`bp-avatar bp-avatar--initials ${ring ? 'bp-avatar--ring' : ''}`} style=${`${style};--hue:${hueOf(name)}`} data-i=${initialsOf(name)} aria-hidden="true"></span>`;
+    ? html`<img class=${`bp-avatar ${ring ? 'bp-avatar--ring' : ''}`} src=${p.photo} alt="" title=${title} loading="lazy" decoding="async" width=${size} height=${size} style=${style} onError=${() => setBroken(p.photo)} />`
+    : html`<span class=${`bp-avatar bp-avatar--initials ${ring ? 'bp-avatar--ring' : ''}`} style=${`${style};--hue:${hueOf(name)}`} data-i=${initialsOf(name)} title=${title} aria-hidden="true"></span>`;
 }
+/** A row of faces, each named on hover (and all of them to a screen reader); "+3" names the rest */
 function Faces({ people, max = 6, size = 32 }) {
   const shown = people.slice(0, max);
-  const more = people.length - shown.length;
-  return html`<span class="bp-faces" style=${`--s:${size}px`}>${shown.map((p) => html`<${Avatar} p=${p} size=${size} ring key=${p.slug || p.name} />`)}${more > 0 ? html`<span class="bp-faces__more">+${more}</span>` : null}</span>`;
+  const rest = people.slice(max);
+  const names = people.map((p) => p.name).filter(Boolean);
+  return html`<span class="bp-faces" style=${`--s:${size}px`} role=${names.length ? 'img' : null} aria-label=${names.length ? together(names) : null}>${shown.map((p) => html`<${Avatar} p=${p} size=${size} ring named key=${p.slug || p.name} />`)}${rest.length ? html`<span class="bp-faces__more" title=${together(rest.map((p) => p.name).filter(Boolean)) || null}>+${rest.length}</span>` : null}</span>`;
 }
 function DateTile({ d, mid = null, big = false, head = false }) {
   if (!isDate(d)) return null;
@@ -563,6 +720,11 @@ function SecHead({ title, sub = '', count = null, id, children }) {
   </div>`;
 }
 const rise = (i) => `--i:${i}`;
+/** A fold that this step in the history remembers open (Back to the page finds it as it was) */
+function More({ k, summary, children }) {
+  const [open, setOpen] = useKept(`more-${k}`, false);
+  return html`<details class="bp-more" open=${open} onToggle=${(e) => { if (e.currentTarget.open !== open) setOpen(e.currentTarget.open); }}><summary>${summary}</summary>${children}</details>`;
+}
 
 
 // The cash and the year against its budget: ./money.js
@@ -589,7 +751,10 @@ function Figures({ data }) {
   const cash = useCashNow(data);
   const budget = useBudget(data);
   const n = data.numbers;
+  // The makeovers under way: every card on the board below (awaiting funding too), so the two always agree
   const building = n.projects?.building || [];
+  const waitingFunds = n.projects?.waiting || [];
+  const onBoard = building.length + waitingFunds.length;
   const inBuild = building.filter((b) => b.status === 'Build').length;
   const next = [...n.reveals].sort((a, b) => String(a.confirmed && a.date ? a.date : windowStart(a.window) || '9').localeCompare(String(b.confirmed && b.date ? b.date : windowStart(b.window) || '9')))[0];
   const nextWhen = next ? (next.confirmed && next.date ? shortDate(next.date).replace(/, \d{4}$/, '') : next.window?.label || '') : '';
@@ -597,25 +762,31 @@ function Figures({ data }) {
   // figures never change from three to four once the sheet arrives
   const books = budget === undefined && typeof n.books?.revenue === 'number' ? n.books : null;
   const waiting = (actual) => ({ actual, budget: null, waiting: true });
-  const rev = budget?.revenue || (books ? waiting(books.revenue) : null);
+  // Without QuickBooks, a budget sheet still being read keeps its two figures' places
+  const sheet = budget === undefined && !books && budgetDue(data);
+  const rev = budget?.revenue || (books ? waiting(books.revenue) : sheet ? waiting(null) : null);
   // Expenses as the budget counts them, without in kind (./money.js spentOf), and saying what's left out
-  const exp = budget?.expenses || (books && typeof books.expenses === 'number' ? { ...waiting(spentOf(books)), inKind: books.nonCash > 0 ? books.nonCash : 0 } : null);
-  const yr = budget?.year || books?.year || '';
+  const exp = budget?.expenses || (books && typeof books.expenses === 'number' ? { ...waiting(spentOf(books)), inKind: books.nonCash > 0 ? books.nonCash : 0 } : sheet ? waiting(null) : null);
+  const yr = budget?.year || books?.year || (sheet ? todayEastern().slice(0, 4) : '');
   // Against the budget once there is one for the year (QuickBooks' figures can come before the year's sheet: then
   // against last year's same days), and last year's pace by now on a line of its own
-  const against = (x) => (x.waiting ? 'The year so far' : x.budget ? `${pctOf(x)}% of the ${compact(x.budget)} budget` : growthText(x) || `Through ${shortAsOf(budget.asOf)}`);
+  // (the budget sheet's own actuals say how old they are; QuickBooks' are this hour's)
+  const asOf = budget && !budget.live && budget.asOf ? `, as of ${shortAsOf(budget.asOf).replace(/^(\w{3})\w*/, '$1')}` : '';
+  const against = (x) => (x.waiting ? 'The year so far' : x.budget ? `${pctOf(x)}% of the ${compact(x.budget)} budget${asOf}` : growthText(x) || `Through ${shortAsOf(budget.asOf)}`);
   // (a line kept for it while the budget is read)
   const pace = (x) => (x.waiting ? '\u00a0' : x.budget && x.last != null && x.lastFull > 0 ? `Last year by now: ${Math.round((x.last / x.lastFull) * 100)}%` : '');
   const tiles = [
     { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', href: '#/financials',
       sub: cash ? (cash.months != null ? `${monthsText(cash.months)} months of spending` : cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : '') : 'From the balance sheet',
       note: cash && cash.prior != null ? `${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} from a year ago` : '', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '' },
-    rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: compact(rev.actual), meter: rev, sub: against(rev), note: pace(rev), href: '#/financials' }
+    rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: rev.actual == null ? '…' : compact(rev.actual), meter: rev, sub: against(rev), note: pace(rev), href: '#/financials', focus: rev.budget ? 'budget' : '' }
       : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${nextWhen || 'date to come'}` : 'None scheduled', href: '#makeovers' },
-    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: compact(exp.actual), meter: exp, sub: against(exp), note: pace(exp), aside: exp.inKind ? `Not counting ${compact(exp.inKind)} in kind` : '', href: '#/financials' } : null,
-    { key: 'build', label: 'Makeovers', value: String(building.length), sub: building.length ? `${inBuild} in build` : 'None right now', note: rev && nextWhen ? `Next reveal ${nextWhen}` : '', href: '#makeovers' },
+    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: exp.actual == null ? '…' : compact(exp.actual), meter: exp, sub: against(exp), note: pace(exp), aside: exp.inKind ? `Not counting ${compact(exp.inKind)} in kind` : '', href: '#/financials', focus: exp.budget ? 'budget' : '' } : null,
+    { key: 'build', label: 'Makeovers under way', value: String(onBoard), sub: onBoard ? [`${inBuild} in build`, waitingFunds.length ? `${waitingFunds.length} awaiting funding` : ''].filter(Boolean).join(' · ') : 'None right now', note: rev && nextWhen ? `Next reveal ${nextWhen}` : '', href: '#makeovers' },
   ].filter(Boolean);
   const go = (e, t) => {
+    // Against the budget, a figure opens Financials at the budget
+    if (t.focus) focusNext = t.focus;
     if (!t.href.startsWith('#') || t.href.startsWith('#/')) return;
     e.preventDefault();
     document.getElementById(t.href.slice(1))?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
@@ -625,9 +796,9 @@ function Figures({ data }) {
       <span class="bp-fig__label">${t.label}</span>
       <span class="bp-fig__value">${t.value}</span>
       ${t.meter ? html`<${Meter} x=${t.meter} />` : null}
-      <span class="bp-fig__sub">${t.sub}</span>
-      ${t.note ? html`<span class=${`bp-fig__note ${t.tone ? `is-${t.tone}` : ''}`}>${t.note}</span>` : null}
-      ${t.aside ? html`<span class="bp-fig__note">${t.aside}</span>` : null}
+      <span class="bp-fig__sub">${nbw(t.sub)}</span>
+      ${t.note ? html`<span class=${`bp-fig__note ${t.tone ? `is-${t.tone}` : ''}`}>${nbw(t.note)}</span>` : null}
+      ${t.aside ? html`<span class="bp-fig__note">${nbw(t.aside)}</span>` : null}
     </a>
   </li>`)}</ul>`;
 }
@@ -657,13 +828,13 @@ function SinceLast({ ctx }) {
 }
 
 /** What a year's bar says to a screen reader, as its readout does on hover or focus: "2019: 17 kids, 25 rooms, 16 makeovers" */
-const yearSays = (y, thisYear, word) => `${y.year}${y.year === thisYear ? ' so far' : ''}: ${word('kids', y.kids)}, ${word('rooms', y.rooms)}, ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}`;
+const yearSays = (y, thisYear, word) => `${y.year}${y.year === thisYear ? ' so far' : ''}: ${word('kids', y.kids)}, ${word('rooms', y.rooms)}, ${y.makeovers}\u00a0${y.makeovers === 1 ? 'makeover' : 'makeovers'}`;
 /**
  * The readout over a year's bar, just above its top (`h`, the bar's height in %). It stays within the chart at
  * either end: the further right the bar, the further left the readout leans
  */
 function YearTip({ y, at, h, thisYear, word }) {
-  return html`<span class="bp-ytip" style=${`--x:${at * 100}%;--th:${h}`} aria-hidden="true"><strong>${y.year}${y.year === thisYear ? ' so far' : ''}</strong>${word('kids', y.kids)} · ${word('rooms', y.rooms)} · ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}</span>`;
+  return html`<span class="bp-ytip" style=${`--x:${at * 100}%;--th:${h}`} aria-hidden="true"><strong>${y.year}${y.year === thisYear ? ' so far' : ''}</strong><span>${word('kids', y.kids)} · ${word('rooms', y.rooms)} · ${y.makeovers}\u00a0${y.makeovers === 1 ? 'makeover' : 'makeovers'}</span></span>`;
 }
 /**
  * Home's small chart: a bar a year, each saying its numbers on hover or focus (← → between them), the readout over
@@ -695,14 +866,14 @@ function YearBars({ years, thisYear, word, height, onPick, label, hint, cls }) {
  */
 function Impact({ n }) {
   const years = n.impact?.byYear || [];
-  const [open, setOpen] = useState(false);
-  const [what, setWhat] = useState('kids');
-  const [sel, setSel] = useState(Math.max(0, years.length - 1));
+  const [open, setOpen] = useKept('impact-open', false);
+  const [what, setWhat] = useKept('impact-what', 'kids');
+  const [sel, setSel] = useKept('impact-year', Math.max(0, years.length - 1));
   if (!years.length) return null;
   const thisYear = Number(String(n.at || new Date().toISOString()).slice(0, 4));
   const now = years.find((y) => y.year === thisYear);
   const last = years.find((y) => y.year === thisYear - 1);
-  const word = (k, x) => `${x.toLocaleString()} ${k === 'kids' ? (x === 1 ? 'kid' : 'kids') : (x === 1 ? 'room' : 'rooms')}`;
+  const word = (k, x) => `${x.toLocaleString()}\u00a0${k === 'kids' ? (x === 1 ? 'kid' : 'kids') : (x === 1 ? 'room' : 'rooms')}`;
   const sparkTop = Math.max(1, ...years.map((y) => y.kids));
   const toggle = () => setOpen((v) => !v);
   // A year's bar opens Explore by year on that year
@@ -744,6 +915,8 @@ function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
     requestAnimationFrame(() => document.getElementById(`bpy-${years[i].year}`)?.focus());
   };
   const kids = [...(y.profiles || [])].sort((a, b) => a.name.localeCompare(b.name));
+  // The years along the bottom: every other one, every fourth on a narrow phone (they'd run together)
+  const step = matchMedia('(max-width: 420px)').matches ? 4 : 2;
   // The bar under the pointer or the focus says its year's numbers
   const [tip, setTip] = useState(-1);
   return html`<div class="bp-impact__open" id="impact-years">
@@ -761,13 +934,13 @@ function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
             aria-label=${yearSays(x, thisYear, word)}>
             <span class="bp-years__bar" aria-hidden="true"></span>
             ${x.year === thisYear || x === best || i === sel ? html`<span class="bp-years__val" aria-hidden="true">${x[what]}</span>` : null}
-            <span class="bp-years__x" aria-hidden="true">${i === 0 || x.year === thisYear || i === sel || x.year % 2 === 0 ? `’${String(x.year).slice(2)}` : ''}</span>
+            <span class="bp-years__x" aria-hidden="true">${i === 0 || x.year === thisYear || i === sel || x.year % step === 0 ? `’${String(x.year).slice(2)}` : ''}</span>
           </button>
         </li>`)}</ol>
         ${tip >= 0 ? html`<${YearTip} y=${years[tip]} at=${(tip + 0.5) / years.length} h=${(years[tip][what] / top) * 100} thisYear=${thisYear} word=${word} />` : null}
       </div>
       <div class="bp-yearpanel" aria-live="polite" tabindex="0" aria-label=${`${y.year}’s makeovers`}>
-        <p class="bp-yearpanel__head"><strong>${y.year}</strong><span>${word('kids', y.kids)} · ${word('rooms', y.rooms)} · ${y.makeovers} ${y.makeovers === 1 ? 'makeover' : 'makeovers'}${y.year === thisYear ? ' so far' : ''}</span></p>
+        <p class="bp-yearpanel__head"><strong>${y.year}</strong><span>${word('kids', y.kids)} · ${word('rooms', y.rooms)} · ${y.makeovers}\u00a0${y.makeovers === 1 ? 'makeover' : 'makeovers'}${y.year === thisYear ? ' so far' : ''}</span></p>
         ${kids.length ? html`<ul class="bp-yearpanel__kids">${kids.map((k) => html`<li key=${k.slug || k.name}>
           <a href=${k.slug ? `/kids/${k.slug}/` : null} target="_blank" rel="noopener" class="bp-yk">
             ${k.photo ? html`<img src=${sized(k.photo, 'w=96,h=96,fit=cover,gravity=face')} alt="" loading="lazy" width="40" height="40" />` : html`<span class="bp-avatar bp-avatar--initials" style=${`--s:40px;--hue:${hueOf(k.name)}`} data-i=${initialsOf(k.name)} aria-hidden="true"></span>`}
@@ -787,14 +960,14 @@ const giftWho = (g) => g.company || g.name || (g.anonymous ? 'Anonymous' : 'No n
 const giftAbout = (g) => [g.company && g.name ? g.name : '', g.campaign, g.every && !String(g.campaign || '').toLowerCase().includes(g.every) ? g.every : '', g.inKind ? 'in kind' : ''].filter(Boolean).join(' · ');
 const giftIsNew = (g, since) => !!since && g.at * 1000 > Date.parse(since);
 /** "$212,000 from 14 gifts of $1,000 or more in 2026", and the day Zeffy was last read when that's over a day ago */
-const giftsSay = (g) => `${money(g.total / 100)} from ${plural(g.count, 'gift')} of $1,000 or more in ${g.year}${g.stale ? `, as of ${giftDay(Date.parse(g.at) / 1000)}` : ''}`;
+const giftsSay = (g) => nbw(`${money(g.total / 100)} from ${plural(g.count, 'gift')} of $1,000 or more in ${g.year}${g.stale ? `, as of ${giftDay(Date.parse(g.at) / 1000)}` : ''}`);
 
 function GiftRow({ g, since }) {
   const about = giftAbout(g);
   const fresh = giftIsNew(g, since);
-  return html`<li class=${`bp-gift ${fresh ? 'is-new' : ''}`}>
+  return html`<li class=${`bp-gift ${fresh ? 'is-new' : ''}`} id=${`gift-${g.id}`}>
     <span class="bp-gift__amt">${money(g.cents / 100)}</span>
-    <span class="bp-gift__who"><strong>${giftWho(g)}</strong>${about ? html`<span>${about}</span>` : null}</span>
+    <span class="bp-gift__who"><strong title=${giftWho(g)}>${giftWho(g)}</strong>${about ? html`<span>${about}</span>` : null}</span>
     <span class="bp-gift__when">${fresh ? html`<span class="bp-gift__new">New</span>` : null}${giftDay(g.at)}</span>
   </li>`;
 }
@@ -818,16 +991,17 @@ function Gifts({ g, since }) {
 
 /** Financials: every major gift this year, newest first, under the year's total */
 function GiftsYear({ g, since }) {
-  const [all, setAll] = useState(false);
-  // Home's "All 14 this year" opens Financials here
+  // A gift found by search past the newest 12 opens them all, so it's there to land on
+  const [all, setAll] = useKept('gifts-all', !!focusNext?.startsWith('gift-') && g.list.findIndex((x) => `gift-${x.id}` === focusNext) >= 12);
+  // Home's "All 14 this year" opens Financials here (a gift found by search lands on that gift instead)
   useEffect(() => {
-    if (!/^#\/financials\/gifts\b/.test(location.hash)) return;
+    if (!/^#\/financials\/gifts\b/.test(location.hash) || focusNext || typeof kept().y === 'number') return;
     requestAnimationFrame(() => document.getElementById('gifts')?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' }));
   }, []);
   const shown = all ? g.list : g.list.slice(0, 12);
   return html`<section class="bp-card bp-gifts bp-gifts--year" aria-labelledby="gifts-y-h" id="gifts">
     <${SecHead} id="gifts-y-h" title="Major gifts" sub=${`From Zeffy, every gift of $1,000 or more${g.stale ? `, as of ${giftDay(Date.parse(g.at) / 1000)}` : ''}`} />
-    ${g.count ? html`<p class="bp-gifts__total"><strong>${money(g.total / 100)}</strong> from ${plural(g.count, 'gift')} in ${g.year}</p>
+    ${g.count ? html`<p class="bp-gifts__total"><strong>${money(g.total / 100)}</strong> ${nbw(`from ${plural(g.count, 'gift')} in ${g.year}`)}</p>
       <ul class="bp-gifts__list">${shown.map((x) => html`<${GiftRow} g=${x} since=${since} key=${x.id} />`)}</ul>
       ${g.count > 12 ? html`<button type="button" class="bp-more-btn" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? 'Show the newest 12' : `Show all ${g.count}`}</button>` : null}`
     : html`<p class="bp-muted">No gifts of $1,000 or more yet in ${g.year}.</p>`}
@@ -843,6 +1017,7 @@ function Builds({ n }) {
 
 function HomePage({ ctx }) {
   const { data, d } = ctx;
+  useFocusTarget();
   const mine = data.actions.filter((a) => a.mine);
   const toSign = data.docs.filter((x) => x.sign && x.file && !x.signedByMe);
   const today = new Date(noon(data.today)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
@@ -850,7 +1025,7 @@ function HomePage({ ctx }) {
   const name = data.me.name || who?.name || '';
   const m = d.featured;
   const todos = mine.length || toSign.length ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
-      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h">For you<span class="bp-count">${mine.length + toSign.length}</span></h2></div>
+      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h" tabindex="-1">For you<span class="bp-count">${mine.length + toSign.length}</span></h2></div>
       <ul class="bp-todos">
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href="#/documents" onClick=${() => { focusNext = `doc-${x.id}`; }}>
@@ -905,22 +1080,22 @@ function NextUp({ m, ctx }) {
   const fileCount = fileRows(m.files || []).reduce((s, g) => s + g.rows.length, 0);
   const status = today ? (phase === 'now' ? 'Happening now' : phase === 'after' ? 'Earlier today' : m.start ? `Today at ${clock(m.start)}` : 'Today') : inWords(m.date, data.today);
   const facts = [
-    m.start ? timeRange(m.start, m.end) : 'Time to come',
+    m.start ? nb(timeRange(m.start, m.end)) : 'Time to come',
     m.location || m.address ? (m.address ? html`<a href=${mapsHref(m.address)} target="_blank" rel="noopener">${m.location || m.address}</a>` : m.location) : 'Place to come',
     video && !joinNow ? html`<a href=${video} target="_blank" rel="noopener">${joinLabel(video).replace(/^Join with /, '')}</a>` : null,
   ].filter(Boolean);
   return html`<section class=${`bp-card bp-next bp-nextup ${today ? 'is-today' : ''}`} aria-labelledby=${`next-h-${m.id}`}>
     <div class="bp-cardhead">
       <h2 class="bp-h2" id=${`next-h-${m.id}`}>${today ? 'Today’s meeting' : 'Next meeting'}<span class=${`bp-soon ${phase === 'now' ? 'is-live' : ''}`}>${phase === 'now' ? html`<span class="bp-live-dot" aria-hidden="true"></span>` : null}${status}</span></h2>
-      ${m.pending ? null : html`<a class="bp-cardhead__go" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>${running ? html`<span class="bp-live-dot" aria-hidden="true"></span>Follow the meeting` : `See the agenda${fileCount ? ` and ${plural(fileCount, 'file')}` : ''}`}<${Icon} name="arrow" size=${16} cls="bp-go" /></a>`}
+      <a class="bp-cardhead__go" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>${running ? html`<span class="bp-live-dot" aria-hidden="true"></span>Follow the meeting` : m.pending || !(m.sections || []).some((x) => x.items?.length) ? 'See the meeting' : `See the agenda${fileCount ? ` and ${plural(fileCount, 'file')}` : ''}`}<${Icon} name="arrow" size=${16} cls="bp-go" /></a>
     </div>
     <div class="bp-nextup__when">
       <${DateTile} d=${m.date} mid=${m.id} big />
-      <p><strong class="bp-nextup__day">${dayOf(m.date)}</strong><span class="bp-oneline">${facts.map((x, i) => html`${i ? html`<span class="bp-oneline__dot" aria-hidden="true">·</span>` : null}${x}`)}</span>${nowAt ? html`<span class="bp-nextup__now"><span class="bp-live-dot" aria-hidden="true"></span>Now: ${nowAt.label} ${nowAt.title}</span>` : null}</p>
+      <p><strong class="bp-nextup__day">${dayOf(m.date)}</strong><span class="bp-oneline bp-oneline--facts">${facts.map((x, i) => html`${i ? html`<span class="bp-oneline__dot" aria-hidden="true">·</span>` : null}${typeof x === 'string' ? html`<span>${x}</span>` : x}`)}</span>${nowAt ? html`<span class="bp-nextup__now"><span class="bp-live-dot" aria-hidden="true"></span>Now: ${nowAt.label} ${nowAt.title}</span>` : null}</p>
     </div>
     ${joinNow ? html`<div class="bp-btns"><a class="bp-btn bp-btn--primary" href=${video} target="_blank" rel="noopener"><${Icon} name="video" />${joinLabel(video)}</a></div>` : null}
     ${m.pending ? html`<p class="bp-pending"><${Icon} name="documents" size=${18} />The agenda and packet post here before the meeting.</p>` : null}
-    <${Rsvp} m=${m} ctx=${ctx} quiet />
+    ${phase === 'now' || phase === 'after' ? null : html`<${Rsvp} m=${m} ctx=${ctx} quiet />`}
     ${!m.pending && (m.sections || []).some((x) => x.title) ? html`<div class="bp-nextup__agenda"><h3 class="bp-mini-h">Agenda</h3><${AgendaPeek} m=${m} /></div>` : null}
   </section>`;
 }
@@ -938,12 +1113,14 @@ function OnCalendar({ m, data }) {
 function Rsvp({ m, ctx, quiet = false }) {
   const { data, setData, say } = ctx;
   const [busy, setBusy] = useState('');
-  const [thanks, setThanks] = useState(false);
   if (m.date < data.today || !data.me.slug) return null;
   const team = theTeam(data);
   const chosen = RSVP.find((r) => r.id === m.myRsvp);
   const onInvite = !chosen && m.myInvite && m.myInvite !== 'invited' ? answerOf('', m.myInvite) : '';
-  const at = RSVP.findIndex((r) => r.id === (busy || m.myRsvp));
+  // A yes or no on the calendar invite is their answer here too until they choose one (a maybe stays open)
+  const fromInvite = !chosen ? RSVP.find((r) => r.id === { accepted: 'yes', declined: 'no' }[m.myInvite]) || null : null;
+  const current = busy || m.myRsvp || fromInvite?.id || '';
+  const at = RSVP.findIndex((r) => r.id === current);
   const answer = async (id) => {
     if (!data.me.slug || id === m.myRsvp) return;
     setBusy(id);
@@ -952,7 +1129,6 @@ function Rsvp({ m, ctx, quiet = false }) {
     if (!j.ok) { say(j.error, 'warn'); return; }
     const set = (x) => (x?.id === m.id ? { ...x, myRsvp: id } : x);
     setData((dd) => ({ ...dd, meetings: dd.meetings.map(set), nextPending: set(dd.nextPending) }));
-    setThanks(true);
     say(`Thanks. ${team} can see your answer.`);
   };
   const qid = `rsvp-${m.id}`;
@@ -960,49 +1136,102 @@ function Rsvp({ m, ctx, quiet = false }) {
     <p class="bp-rsvp__q" id=${qid}>Will you be there?</p>
     <div class="bp-seg" style=${`--at:${Math.max(0, at)}`} data-on=${at >= 0 ? 'yes' : null}>
       <span class="bp-seg__thumb" aria-hidden="true"></span>
-      ${RSVP.map((r) => html`<button type="button" class="bp-choice" aria-pressed=${m.myRsvp === r.id} disabled=${!!busy} onClick=${() => answer(r.id)} key=${r.id}>
-        ${m.myRsvp === r.id ? html`<${Icon} name="check" size=${16} cls="bp-choice__check" />` : null}${busy === r.id ? 'Saving…' : r.label}</button>`)}
+      ${RSVP.map((r) => html`<button type="button" class="bp-choice" aria-pressed=${current === r.id} disabled=${!!busy} onClick=${() => answer(r.id)} key=${r.id}>
+        ${current === r.id && !busy ? html`<${Icon} name="check" size=${16} cls="bp-choice__check" />` : null}${busy === r.id ? 'Saving…' : r.label}</button>`)}
     </div>
-    ${quiet ? (chosen || onInvite ? html`<p class="bp-rsvp__said">${chosen ? `You said “${chosen.label}.”` : `Calendar invite: ${onInvite}.`}</p>` : null) : html`<p class="bp-rsvp__said">${chosen ? (thanks ? `Thanks. ${team} can see your answer.` : `You said “${chosen.ask}.” You can change it any time.`)
-      : onInvite ? `You answered the calendar invite: ${onInvite}. Tap one to tell ${team} here too.`
-      : `Tap one. ${team} see your answer.`}</p>`}
+    ${quiet ? (chosen || onInvite ? html`<p class="bp-rsvp__said">${chosen ? `You said “${chosen.ask}.”` : fromInvite ? `You said “${fromInvite.ask}” on the calendar invite.` : `You said “${onInvite}” on the calendar invite.`}</p>` : null)
+      : html`<p class="bp-rsvp__said">${chosen ? `You said “${chosen.ask}.” You can change it any time.`
+        : fromInvite ? `You said “${fromInvite.ask}” on the calendar invite. You can change it here.`
+        : onInvite ? `You said “${onInvite}” on the calendar invite. Choose one so ${team} know.`
+        : `${team} see your answer.`}</p>`}
   </div>`;
 }
 
+// To-dos put back with Undo before they had left the list
+// To-dos put back (unticked, or Undo) before they had left the list
+const undone = new Set();
+/**
+ * One of their action items: the box ticks it (only the box: a tap on its words is no tick), and Undo puts it back.
+ * Its saves go in the order they were made, so a quick tick and untick ends not done, and it stays
+ */
 function MyAction({ a, ctx }) {
-  const { setData, say } = ctx;
+  const { data, setData, say } = ctx;
   const [done, setDone] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const timers = useRef([]);
+  const saves = useRef(Promise.resolve());
+  const id = `todo-${a.id}`;
+  const box = `tick-${a.id}`;
+  const save = (v) => (saves.current = saves.current.then(() => call({ action: 'action-done', actionId: a.id, done: v })));
+  const stay = () => { timers.current.forEach(clearTimeout); timers.current = []; undone.add(a.id); setLeaving(false); };
+  const undo = async (at) => {
+    stay();
+    setDone(false);
+    const j = await save(false);
+    if (!j.ok) { say(j.error, 'warn'); return; }
+    setData((dd) => (dd.actions.some((x) => x.id === a.id) ? dd : { ...dd, actions: [...dd.actions.slice(0, at), a, ...dd.actions.slice(at)] }));
+    say('Back on your list');
+    // The focus goes back to its box, not to the page
+    requestAnimationFrame(() => document.getElementById(box)?.focus({ preventScroll: true }));
+  };
   const tickIt = async (v) => {
     setDone(v);
-    const j = await call({ action: 'action-done', actionId: a.id, done: v });
+    if (v) undone.delete(a.id); else stay();
+    const at = data.actions.findIndex((x) => x.id === a.id);
+    const j = await save(v);
     if (!j.ok) { setDone(!v); say(j.error, 'warn'); return; }
-    say(v ? `Done: ${a.text.slice(0, 60)}` : 'Marked not done');
-    if (v) {
-      setTimeout(() => setLeaving(true), 900);
-      setTimeout(() => setData((dd) => ({ ...dd, actions: dd.actions.filter((x) => x.id !== a.id) })), 1300);
-    }
+    if (!v) { say('Marked not done'); return; }
+    // Unticked again while the tick was saving: it stays
+    if (undone.has(a.id)) return;
+    say(`Done: ${a.text.length > 60 ? `${a.text.slice(0, 58).trim()}…` : a.text}`, '', { label: 'Undo', run: () => undo(at) });
+    timers.current = [
+      setTimeout(() => { if (!undone.has(a.id)) setLeaving(true); }, 900),
+      setTimeout(() => {
+        if (undone.has(a.id)) return;
+        // Leaving with the focus on it: the focus goes to Undo, the next thing they might want
+        const had = document.activeElement?.id === box;
+        setData((dd) => ({ ...dd, actions: dd.actions.filter((x) => x.id !== a.id) }));
+        if (had) requestAnimationFrame(() => (document.querySelector('.bp-toast__act') || document.getElementById('todo-h'))?.focus({ preventScroll: true }));
+      }, 1300),
+    ];
   };
-  return html`<li class=${`bp-todo-card ${leaving ? 'is-leaving' : ''}`}><label class=${`bp-todo ${done ? 'is-done' : ''}`}>
-    <input type="checkbox" class="bp-check" checked=${done} onChange=${(e) => tickIt(e.target.checked)} />
-    <span class="bp-todo__text"><span class="bp-todo__title">${a.text}</span>${a.due ? html`<span class="bp-todo__meta">Due ${shortDate(a.due).replace(/, \d{4}$/, '')}</span>` : null}</span>
-  </label></li>`;
+  return html`<li class=${`bp-todo-card ${leaving ? 'is-leaving' : ''}`}><div class=${`bp-todo ${done ? 'is-done' : ''}`}>
+    <label class="bp-todo__tick"><input type="checkbox" class="bp-check" id=${box} checked=${done} aria-labelledby=${id} onChange=${(e) => tickIt(e.target.checked)} /></label>
+    <span class="bp-todo__text"><span class="bp-todo__title" id=${id}>${a.text}</span>${a.due ? html`<span class="bp-todo__meta">Due ${shortDate(a.due).replace(/, \d{4}$/, '')}</span>` : null}</span>
+  </div></li>`;
 }
 
 
 // ─── Meetings ───────────────────────────────────────────────────────
-/** Everything a meeting says, for finding it: [{ where, text }] */
+/**
+ * Everything a meeting says, for finding it: [{ where, text, body, id }]. `text` is what's searched; `body` what a
+ * match shows under where it is (an agenda point's notes, not its name again); `id` where opening it lands
+ */
 function meetingTexts(m) {
   return [
     { where: '', text: [meetingName(m), longDate(m.date), m.location].join(' ') },
-    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, it.notes].join(' '), id: `i-${it.id}` }))]),
-    ...m.motions.map((x) => ({ where: 'Decision', text: x.text })),
-    ...m.actions.map((a) => ({ where: 'Action item', text: [a.text, a.ownerName].join(' ') })),
-    ...m.files.map((f) => ({ where: 'File', text: titleOf(f.name) })),
+    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title, body: '', id: `s-${s.id}` }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, it.notes].join(' '), body: [it.presenter, notesLine(it.notes)].filter(Boolean).join(' · '), id: `i-${it.id}` }))]),
+    // A decision by its words and by who moved and seconded it
+    ...m.motions.map((x, k) => ({ where: 'Decision', text: [x.text, x.by, x.second].join(' '), body: [x.text, x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`].filter(Boolean).join(' · '), id: `mo-${x.id || k}` })),
+    ...m.actions.map((a) => ({ where: 'Action item', text: [a.text, a.ownerName].join(' '), body: [a.text, a.ownerName].filter(Boolean).join(' · '), id: 'actions' })),
+    // A file lands on its own tile, wherever on the page it is
+    ...fileRows(m.files).flatMap((g) => g.rows).map((r) => ({ where: 'File', text: r.title, body: r.title, id: `f-${r.file.id}` })),
   ];
 }
-const termsOf = (q) => norm(q).split(/\s+/).filter(Boolean);
-const hits = (text, terms) => { const t = norm(text); return terms.every((w) => t.includes(w)); };
+/** "Budget" with the words found marked */
+const Marked = ({ text, terms }) => { const re = new RegExp(`(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'ig'); return String(text || '').split(re).map((part, i) => (i % 2 ? html`<mark>${part}</mark>` : part)); };
+/**
+ * Finding words the way a person types them: each word at the start of a word ("bud" finds Budget, "aug 6" August 6
+ * but not 2026), whatever the punctuation ("w9" finds W-9, "501c3" 501(c)(3)); a long word or one with a number in
+ * it anywhere ("obrien" in O’Brien)
+ */
+const spaced = (s) => ` ${norm(s).replace(/[^a-z0-9]+/g, ' ').trim()} `;
+const squashed = (s) => norm(s).replace(/[^a-z0-9]+/g, '');
+const termsOf = (q) => norm(q).split(/\s+/).map((w) => w.replace(/[^a-z0-9]+/g, '')).filter(Boolean);
+const termIn = (sp, sq, w) => sp.includes(` ${w}`) || ((/\d/.test(w) && /[a-z]/.test(w)) || w.length >= 5 ? sq.includes(w) : false);
+const hits = (text, terms) => { const sp = spaced(text); const sq = squashed(text); return terms.every((w) => termIn(sp, sq, w)); };
+/** Notes as one line ("Recommending … · $300k revenue from golf"), their bullets gone */
+const notesLine = (t) => String(t || '').split('\n').map((l) => l.replace(/^\s*[-•*]\s+/, '').trim()).filter(Boolean).join(' · ');
 /** "…designate funds into a [money market] fund…" around the first term */
 function Snippet({ text, terms }) {
   const flat = String(text || '').replace(/\s+/g, ' ').trim();
@@ -1022,14 +1251,18 @@ function MeetingRow({ m, data, terms = [] }) {
   const c = attendanceCounts(m);
   const ahead = m.date >= data.today;
   const hit = terms.length ? meetingTexts(m).find((x, i) => i > 0 && hits(x.text, terms)) : null;
+  // The words that matched, once: where they are, then the point's own words when the match is in them
+  const inBody = hit && hit.body && terms.some((w) => norm(hit.body).includes(w)) && norm(hit.body) !== norm(hit.where);
   const files = fileRows(m.files).reduce((n, g) => n + g.rows.length, 0);
   const side = [!ahead && c.boardHere ? `${c.boardHere} of ${c.board} there` : '', files ? plural(files, 'file') : ''].filter(Boolean).join(' · ');
-  return html`<li key=${m.id}><a class="bp-mrow" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>
+  // Opened from a search, the meeting opens at the match, marked
+  const open = (e) => { claimMorph(e); if (hit?.id) focusNext = hit.id; };
+  return html`<li key=${m.id} id=${`mr-${m.id}`}><a class="bp-mrow" href=${`#/meetings/${m.id}`} onClick=${open}>
     <${DateTile} d=${m.date} mid=${m.id} />
     <span class="bp-mrow__main">
       <span class="bp-mrow__title">${meetingName(m)}${ahead ? html`<span class="bp-chip bp-chip--info">${inWords(m.date, data.today)}</span>` : m.minutes !== 'approved' ? html`<span class="bp-chip">Draft minutes</span>` : null}</span>
       <span class="bp-mrow__meta">${[weekdayOf(m.date), m.start ? clock(m.start) : '', m.location].filter(Boolean).join(' · ')}</span>
-      ${hit ? html`<span class="bp-hit"><span class="bp-hit__where">${hit.where}</span> <${Snippet} text=${hit.text} terms=${terms} /></span>` : null}
+      ${hit ? html`<span class="bp-hit"><span class="bp-hit__where">${inBody ? hit.where : html`<${Marked} text=${hit.where} terms=${terms} />`}</span>${inBody ? html` <${Snippet} text=${hit.body} terms=${terms} />` : null}</span>` : null}
     </span>
     ${side ? html`<span class="bp-mrow__side">${side}</span>` : null}
     <${Icon} name="arrow" size=${18} cls="bp-go" />
@@ -1038,11 +1271,18 @@ function MeetingRow({ m, data, terms = [] }) {
 
 function MeetingsPage({ ctx }) {
   const { data, d } = ctx;
-  const [q, setQ] = useState('');
+  // The search and the years opened stay with this step in the history: Back from a meeting finds them as they were
+  const [q, setQ] = useKept('q', '');
+  const [opened, setOpened] = useKept('years', []);
   const terms = termsOf(q);
+  const said = (m) => meetingTexts(m).some((x) => hits(x.text, terms));
   const upcoming = d.byDate.filter((m) => m.date >= data.today && m.id !== d.featured?.id);
-  const past = d.past.filter((m) => !terms.length || meetingTexts(m).some((x) => hits(x.text, terms)));
+  // A search looks in every meeting, the ones ahead too (the next one's agenda and packet first)
+  const ahead = terms.length ? [...(d.featured?.pending ? [d.featured] : []), ...d.byDate.filter((m) => m.date >= data.today)].filter(said) : [];
+  const past = d.past.filter((m) => !terms.length || said(m));
+  const found = ahead.length + past.length;
   const years = [...new Set(past.map((m) => m.date.slice(0, 4)))];
+  const fold = (y, open) => setOpened((was) => (open ? [...new Set([...was, y])] : was.filter((x) => x !== y)));
   return html`
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
       <div>
@@ -1052,14 +1292,18 @@ function MeetingsPage({ ctx }) {
       <label class="bp-filter">
         <${Icon} name="search" size=${18} />
         <span class="sr-only">Find in meetings</span>
-        <input type="search" placeholder="Find in agendas, minutes and files" value=${q} onInput=${(e) => setQ(e.target.value)} />
+        <input type="search" placeholder=${matchMedia('(max-width: 420px)').matches ? 'Find in meetings' : 'Find in agendas, minutes and files'} value=${q} onInput=${(e) => setQ(e.target.value)} />
       </label>
     </header>
     ${d.featured && !terms.length ? html`<div class="bp-rise bp-gap" style=${rise(1)}><${NextUp} m=${d.featured} ctx=${ctx} /></div>` : null}
     ${upcoming.length && !terms.length ? html`<section class="bp-card bp-gap bp-rise" style=${rise(2)} aria-labelledby="up-h"><h2 class="bp-h2" id="up-h">Also ahead</h2><ol class="bp-mlist">${upcoming.map((m) => html`<${MeetingRow} m=${m} data=${data} key=${m.id} />`)}</ol></section>` : null}
     <section class="bp-archive bp-rise" style=${rise(3)} aria-labelledby="past-h">
       <h2 class="sr-only" id="past-h">Past meetings</h2>
-      ${terms.length ? html`<p class="bp-found" role="status">${past.length ? `${plural(past.length, 'meeting')} mention “${q.trim()}”` : `No meeting mentions “${q.trim()}”.`}</p>` : null}
+      ${terms.length ? html`<p class="bp-found" role="status">${found ? `${plural(found, 'meeting')} ${found === 1 ? 'mentions' : 'mention'} “${q.trim()}”` : `No meeting mentions “${q.trim()}”.`}</p>` : null}
+      ${ahead.length ? html`<div class="bp-year">
+        <h3 class="bp-year__label">Ahead</h3>
+        <ol class="bp-mlist">${ahead.map((m) => html`<${MeetingRow} m=${m} data=${data} terms=${terms} key=${m.id} />`)}</ol>
+      </div>` : null}
       ${(terms.length ? years : years.slice(0, 2)).map((y) => html`<div class="bp-year" key=${y}>
         <h3 class="bp-year__label">${y}</h3>
         <ol class="bp-mlist">${past.filter((m) => m.date.startsWith(y)).map((m) => html`<${MeetingRow} m=${m} data=${data} terms=${terms} key=${m.id} />`)}</ol>
@@ -1068,7 +1312,7 @@ function MeetingsPage({ ctx }) {
         <h3 class="bp-year__label bp-year__label--small">Earlier</h3>
         <div class="bp-yearfolds">${years.slice(2).map((y) => {
           const list = past.filter((m) => m.date.startsWith(y));
-          return html`<details class="bp-yearfold" key=${y}>
+          return html`<details class="bp-yearfold" key=${y} open=${opened.includes(y)} onToggle=${(e) => { if (e.currentTarget.open !== opened.includes(y)) fold(y, e.currentTarget.open); }}>
             <summary><span class="bp-yearfold__y">${y}</span><span class="bp-yearfold__n">${plural(list.length, 'meeting')}</span>${list.some((m) => m.minutes !== 'approved') ? html`<span class="bp-chip">${plural(list.filter((m) => m.minutes !== 'approved').length, 'draft')}</span>` : null}<${Icon} name="chevron" size=${18} cls="bp-yearfold__chev" /></summary>
             <ol class="bp-mlist">${list.map((m) => html`<${MeetingRow} m=${m} data=${data} key=${m.id} />`)}</ol>
           </details>`;
@@ -1212,13 +1456,19 @@ function LiveRoom({ v, setV, m, ctx }) {
   const [past, setPast] = useState(false);
   useEffect(() => {
     if (!head || !('IntersectionObserver' in window)) return undefined;
-    // Under the site's bar where it stays put (a phone's scrolls away: the very top there)
-    const bar = document.querySelector('.bp-top');
-    const top = bar && getComputedStyle(bar).position === 'sticky' ? Math.round(bar.getBoundingClientRect().height) : 0;
-    document.documentElement.style.setProperty('--livebar-top', `${top}px`);
-    const io = new IntersectionObserver(([e]) => setPast(!e.isIntersecting && e.boundingClientRect.top < top + 1), { rootMargin: `-${top}px 0px 0px 0px` });
-    io.observe(head);
-    return () => io.disconnect();
+    // Under the site's bar (measured again when the window changes: a phone turned on its side)
+    let io = null;
+    const place = () => {
+      const bar = document.querySelector('.bp-top');
+      const top = bar && getComputedStyle(bar).position === 'sticky' ? Math.round(bar.getBoundingClientRect().height) : 0;
+      document.documentElement.style.setProperty('--livebar-top', `${top}px`);
+      io?.disconnect();
+      io = new IntersectionObserver(([e]) => setPast(!e.isIntersecting && e.boundingClientRect.top < top + 1), { rootMargin: `-${top}px 0px 0px 0px` });
+      io.observe(head);
+    };
+    place();
+    addEventListener('resize', place);
+    return () => { io?.disconnect(); removeEventListener('resize', place); };
   }, [head]);
   const hereLine = html`<strong>${v.here.board} of ${v.here.of}</strong> board members here${v.here.remote ? `, ${v.here.remote} on video` : ''}`;
   const quorumChip = v.here.met === true ? html`<span class="bp-livechip is-met"><${Icon} name="check" size=${14} />Quorum</span>` : v.here.met === false ? html`<span class="bp-livechip">${v.here.quorum - v.here.board} more for a quorum</span>` : null;
@@ -1228,7 +1478,7 @@ function LiveRoom({ v, setV, m, ctx }) {
       <div class="bp-livebar__in">
         <span class="bp-livechip is-live"><span class="bp-live-dot" aria-hidden="true"></span>Live</span>
         <strong class="bp-livebar__title">${v.title}</strong>
-        <span class="bp-livebar__here"><strong>${v.here.board} of ${v.here.of}</strong> here${v.here.remote ? `, ${v.here.remote} on video` : ''}</span>${quorumChip}
+        <span class="bp-livebar__here"><strong>${v.here.board} of ${v.here.of}</strong> here${v.here.remote ? html`<span class="bp-livebar__remote">, ${v.here.remote} on video</span>` : ''}</span>${quorumChip}
       </div>
       ${items.length ? html`<div class="bp-livebar__bar" aria-hidden="true"><span style=${`--p:${(done / items.length) * 100}%`}></span></div>` : null}
     </div>` : null}
@@ -1283,7 +1533,7 @@ function LiveRoom({ v, setV, m, ctx }) {
         <section class="bp-card" aria-labelledby="ag-h">
           <h2 class="bp-h2" id="ag-h">The agenda${items.length ? html`<span class="bp-count">${done} of ${items.length} done</span>` : null}</h2>
           <ol class="bp-liveag">${v.sections.map((s, si) => html`<li class="bp-liveag__sec" key=${s.id}>
-            <p class=${`bp-liveag__head ${si === cardSi ? 'is-now' : ''}`}><span>${String(si + 1).padStart(2, '0')}</span>${s.title || 'Agenda'}${plan.get(s.id) ? html`<small>${[plan.get(s.id).start ? clock(plan.get(s.id).start) : '', `${plan.get(s.id).minutes} min`].filter(Boolean).join(' · ')}</small>` : null}</p>
+            <p class=${`bp-liveag__head ${si === cardSi ? 'is-now' : ''}`}><span>${String(si + 1).padStart(2, '0')}</span>${s.title || 'Agenda'}${plan.get(s.id) ? html`<small>${nb([plan.get(s.id).start ? clock(plan.get(s.id).start) : '', `${plan.get(s.id).minutes} min`].filter(Boolean).join(' · '))}</small>` : null}</p>
             <ol>${s.items.map((it, ii) => { const st = state(it); return html`<li class=${`bp-liveag__item is-${st}`} key=${it.id} aria-current=${st === 'now' ? 'step' : null}>
               <span class="bp-liveag__mark" aria-hidden="true">${st === 'done' ? html`<${Icon} name="check" size=${14} />` : st === 'now' ? html`<span class="bp-live-dot"></span>` : `${si + 1}.${ii + 1}`}</span>
               <span class="bp-liveag__title">${it.title}${it.presenter ? html` <span class="bp-liveag__who">${it.presenter}</span>` : null}</span>
@@ -1385,7 +1635,7 @@ function DocTile({ f, link }) {
   const fmt = formatOf(f);
   return html`<a class="bp-doctile" ...${link}>
     <span class=${`bp-doctile__page ${src ? 'has-page' : ''}`} data-format=${fmt} ref=${ref} aria-hidden="true">${src ? html`<img src=${src} alt="" />` : html`<span>${{ PDF: 'PDF', Excel: 'XLS', Word: 'DOC', Slides: 'PPT', Photo: 'IMG' }[fmt] || 'FILE'}</span>`}</span>
-    <span class="bp-doctile__text"><span class="bp-doctile__title">${titleOf(f.name)}</span><span class="bp-doctile__meta">${[fmt, sizeText(f.size)].filter(Boolean).join(' · ')}</span></span>
+    <span class="bp-doctile__text"><span class="bp-doctile__title">${titleOf(f.name)}</span><span class="bp-doctile__meta">${[fmt, nb(sizeText(f.size))].filter(Boolean).join(' · ')}</span></span>
   </a>`;
 }
 function DocTiles({ files }) {
@@ -1393,7 +1643,7 @@ function DocTiles({ files }) {
   if (!rows.length) return null;
   const primary = rows.map((r) => r.file);
   const vf = asViewer(primary);
-  return html`<ul class="bp-doctiles">${rows.map((r, i) => html`<li key=${r.key}><${DocTile} f=${r.file} link=${viewerLink(vf, i)} />
+  return html`<ul class="bp-doctiles">${rows.map((r, i) => html`<li key=${r.key} id=${`f-${r.file.id}`}><${DocTile} f=${r.file} link=${viewerLink(vf, i)} />
     ${r.more.length ? html`<span class="bp-doctile__more">${r.more.map((x) => html`<a ...${viewerLink(asViewer([x.file]), 0)}>${x.label}</a>`)}</span>` : null}</li>`)}</ul>`;
 }
 
@@ -1455,21 +1705,53 @@ function LiveBlock({ kind, n, m, data }) {
 /** The rail beside the agenda: its parts, the one you're reading marked, its items under it */
 function AgendaRail({ sections, labels, extra, plan = null }) {
   const [at, setAt] = useState(sections[0]?.id || '');
+  // The part being read is the last one whose heading has passed a line a little under the header (where a jump
+  // puts it); at the very bottom, the last part. One just chosen stays marked while the page scrolls to it
+  // (`at`: where the jump landed; the choice stands until the page is moved from there)
+  const chosen = useRef({ id: '', until: 0, at: null });
   useEffect(() => {
-    const els = [...sections.map((s) => `s-${s.id}`), ...extra.map((x) => x.id)].map((id) => document.getElementById(id)).filter(Boolean);
-    if (!els.length || !('IntersectionObserver' in window)) return undefined;
-    const seen = new Map();
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) seen.set(e.target.id, e.isIntersecting);
-      const first = els.find((el) => seen.get(el.id));
-      if (first) setAt(first.id.replace(/^s-/, ''));
-    }, { rootMargin: '-110px 0px -55% 0px' });
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, [sections.map((s) => s.id).join()]);
+    const ids = [...sections.map((s) => `s-${s.id}`), ...extra.map((x) => x.id)];
+    let raf = 0;
+    const spy = () => {
+      raf = 0;
+      const c = chosen.current;
+      // (a browser that never says the scroll ended: it has landed once the jump's time is up)
+      if (c.id && c.at == null && Date.now() >= c.until) c.at = scrollY;
+      if (c.id && (c.at == null || Math.abs(scrollY - c.at) < 8)) return;
+      c.id = '';
+      const els = ids.map((id) => document.getElementById(id)).filter(Boolean);
+      if (!els.length) return;
+      const bar = document.querySelector('.bp-top');
+      let line = Math.max(0, bar && getComputedStyle(bar).position === 'sticky' ? bar.getBoundingClientRect().bottom : 0) + 96;
+      // In the last stretch of the page the line moves down with the scroll, so a short part near the end (Open forum)
+      // has its turn before the last one, instead of being skipped
+      const left = document.documentElement.scrollHeight - innerHeight - scrollY;
+      const stretch = innerHeight * 0.6;
+      if (left < stretch) line += (1 - left / stretch) * Math.max(0, innerHeight - line - 60);
+      let cur = els[0];
+      for (const el of els) if (el.getBoundingClientRect().top <= line) cur = el;
+      if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) cur = els.at(-1);
+      setAt(cur.id.replace(/^s-/, ''));
+    };
+    const soon = () => { if (!raf) raf = requestAnimationFrame(spy); };
+    // A jump has landed: from there, moving the page decides again
+    const landed = () => { if (chosen.current.id && chosen.current.at == null) chosen.current.at = scrollY; soon(); };
+    spy();
+    addEventListener('scroll', soon, { passive: true });
+    addEventListener('resize', soon);
+    addEventListener('scrollend', landed);
+    return () => { cancelAnimationFrame(raf); removeEventListener('scroll', soon); removeEventListener('resize', soon); removeEventListener('scrollend', landed); };
+  }, [sections.map((s) => s.id).join(), extra.map((x) => x.id).join()]);
   const go = (e, id) => {
     e.preventDefault();
-    document.getElementById(id)?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+    const el = document.getElementById(id);
+    if (!el) return;
+    const part = el.closest('.bp-agsec')?.id || id;
+    chosen.current = { id: part, until: Date.now() + 1500, at: null };
+    setAt(part.replace(/^s-/, ''));
+    // Already as far down as the page goes with the part in view (a short one at the bottom): it lands where it is
+    if (scrollY >= document.documentElement.scrollHeight - innerHeight - 1 && el.getBoundingClientRect().top >= 0) chosen.current.at = scrollY;
+    el.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
   };
   return html`<nav class="bp-agrail bp-noprint" aria-label="The agenda">
     <p class="bp-agrail__label">The agenda</p>
@@ -1504,7 +1786,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
   const labels = new Map(agendaItems(m).map((x) => [x.id, x.label]));
   // Ahead of the meeting, each part's time in the run of show ("8:25 · 60 min")
   const plan = upcoming ? sectionPlan(m) : null;
-  const timeOf = (s) => { const t = plan?.get(s.id); return t ? [t.start ? clock(t.start) : '', `${t.minutes} min`].filter(Boolean).join(' · ') : ''; };
+  const timeOf = (s) => { const t = plan?.get(s.id); return t ? nb([t.start ? clock(t.start) : '', `${t.minutes} min`].filter(Boolean).join(' · ')) : ''; };
   const i = d.byDate.findIndex((x) => x.id === m.id);
   const before = i > 0 ? d.byDate[i - 1] : null;
   const after = i >= 0 && i < d.byDate.length - 1 ? d.byDate[i + 1] : null;
@@ -1518,6 +1800,8 @@ function MeetingDetail({ m, ctx, waiting = false }) {
     m.actions.length ? { id: 'actions', title: 'Action items', icon: 'check' } : null,
     loose.length ? { id: 'more-files', title: placed.size ? 'Also for this meeting' : upcoming ? 'The documents' : 'Files', icon: 'documents' } : null,
   ].filter(Boolean);
+  // The minutes as written and the signed copy, under who was there
+  const recordLinks = !upcoming && (signed || minutesFile) ? html`<p class="bp-aghero__links bp-noprint">${minutesFile ? html`<a class="bp-link" ...${viewerLink(asViewer([minutesFile]), 0)}>The minutes as written</a>` : null}${signed ? html`<a class="bp-link" ...${viewerLink(asViewer([signed]), 0)}>The signed copy</a>` : null}</p>` : null;
   const status = upcoming
     ? (m.date === data.today ? 'Today' : inWords(m.date, data.today))
     : m.minutes === 'approved' ? `Minutes approved${m.approvedOn ? ` ${shortDate(m.approvedOn).replace(/, \d{4}$/, '')}` : ''}` : 'Draft minutes';
@@ -1529,7 +1813,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
         <p class="bp-eyebrow">${upcoming ? (m.pending ? 'Agenda coming' : 'Board meeting agenda') : 'Board meeting minutes'}<span class=${`bp-soon ${m.minutes === 'approved' && !upcoming ? 'is-ok' : ''}`}>${status}</span></p>
         <h1 class="bp-aghero__title">${meetingName(m)}</h1>
         <ul class="bp-aghero__facts">
-          <li><${DateTile} d=${m.date} big head /><span><strong>${dayOf(m.date)}</strong><span>${[m.start ? timeRange(m.start, m.end) : '', String(m.date).slice(0, 4)].filter(Boolean).join(' · ')}</span></span></li>
+          <li><${DateTile} d=${m.date} big head /><span><strong>${dayOf(m.date)}</strong><span>${nb([m.start ? timeRange(m.start, m.end) : '', String(m.date).slice(0, 4)].filter(Boolean).join(' · '))}</span></span></li>
           ${place.length ? html`<li><span class="bp-aghero__ico"><${Icon} name="pin" /></span><span><strong>${m.location || m.address}</strong>${m.address ? html`<a href=${mapsHref(m.address)} target="_blank" rel="noopener">${m.location ? m.address : 'Directions'}</a>` : null}</span></li>` : null}
           ${video && m.date !== data.today ? html`<li><span class="bp-aghero__ico"><${Icon} name="video" /></span><span><strong>${joinLabel(video).replace(/^Join (with|by) /, '').replace(/^video$/, 'Video call')}</strong><a href=${video} target="_blank" rel="noopener">Join from anywhere</a></span></li>` : null}
         </ul>
@@ -1537,7 +1821,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
           ${video && m.date === data.today ? html`<a class="bp-btn bp-btn--primary" href=${video} target="_blank" rel="noopener"><${Icon} name="video" />${joinLabel(video)}</a>` : null}
           ${data.me.admin && upcoming && hasAgenda ? html`<a class="bp-btn bp-btn--primary" href=${`/admin/#board/meeting/${encodeURIComponent(m.id)}/during`} target="_blank" rel="noopener" title="Run it from Board: the screen, item by item"><${Icon} name="present" />Present</a>` : null}
           ${printable ? html`<${PrintAll} m=${m} ctx=${ctx} />` : null}
-          ${upcoming && !m.pending ? html`<${OnCalendar} m=${m} data=${data} />` : null}
+          ${upcoming && (!m.pending || m.onCalendar) ? html`<${OnCalendar} m=${m} data=${data} />` : null}
         </div>
       </div>
       <aside class="bp-aghero__side">
@@ -1547,8 +1831,9 @@ function MeetingDetail({ m, ctx, waiting = false }) {
           <p class="bp-who__q">${quorum === true ? html`<span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />A quorum</span>` : quorum === false ? html`<span class="bp-chip bp-chip--warn">Short of a quorum (${need})</span>` : null}${c.remote ? html`<span class="bp-muted">${c.remote} by video</span>` : null}</p>
           <${Faces} people=${here.map(person)} max=${9} size=${34} />
           ${away.length ? html`<p class="bp-muted bp-who__away">Not there: ${away.map((p) => `${p.name}${p.status === 'excused' ? ' (excused)' : ''}`).join(', ')}</p>` : null}
+          ${recordLinks}
         </div>` : null}
-        ${!upcoming && (signed || minutesFile) ? html`<p class="bp-aghero__links bp-noprint">${minutesFile ? html`<a class="bp-link" ...${viewerLink(asViewer([minutesFile]), 0)}>The minutes as written</a>` : null}${signed ? html`<a class="bp-link" ...${viewerLink(asViewer([signed]), 0)}>The signed copy</a>` : null}</p>` : null}
+        ${!upcoming && !c.boardHere && recordLinks ? html`<div class="bp-aghero__card">${recordLinks}</div>` : null}
       </aside>
     </header>
     ${hasAgenda && presenting.length ? html`<p class="bp-glance"><${Faces} people=${presenting} max=${7} size=${28} /><span>${presenting.length} presenting</span></p>` : null}
@@ -1591,7 +1876,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
         </div>`}
         ${!upcoming && decided.length ? html`<section class="bp-agsec bp-agsec--after" id="decisions" aria-labelledby="dec-h">
           <header class="bp-agsec__head"><span class="bp-agsec__n bp-agsec__n--icon" aria-hidden="true"><${Icon} name="gavel" size=${26} /></span><h2 class="bp-agsec__title" id="dec-h">Decisions</h2><span class="bp-agsec__meta">${decided.length}</span></header>
-          <ul class="bp-motions bp-motions--ag">${decided.map((x, k) => html`<li key=${x.id || k} class="bp-motion">
+          <ul class="bp-motions bp-motions--ag">${decided.map((x, k) => html`<li key=${x.id || k} id=${`mo-${x.id || m.motions.indexOf(x)}`} class="bp-motion">
             <div class="bp-motion__text"><p class="bp-motion__what">${x.text}</p><p class="bp-muted">${[x.by && `Moved by ${x.by}`, x.second && `seconded by ${x.second}`, x.tally ? tallyText(x) : ''].filter(Boolean).join(', ')}</p></div>
             ${motionChip(x.result)}
           </li>`)}</ul>
@@ -1660,7 +1945,7 @@ const fullDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateStri
  * change. Folded to the main lines and totals until "Every account" opens it
  */
 function Statement({ id, title, rows, asOf, priorAsOf }) {
-  const [all, setAll] = useState(false);
+  const [all, setAll] = useKept(`${id}-all`, false);
   if (!rows?.length) return null;
   const prior = rows.some((r) => r.p != null);
   // The main lines: the top headings, each group's total and the subtotals and net; every account a tap away
@@ -1688,7 +1973,7 @@ function Statement({ id, title, rows, asOf, priorAsOf }) {
  * time, the activities (the year's money in and out) first, the financial position a tap away
  */
 function Statements({ s, books, idp = 'st' }) {
-  const [which, setWhich] = useState('act');
+  const [which, setWhich] = useKept(`${idp}-which`, 'act');
   if (!s?.position?.length && !s?.activity?.length) return null;
   const both = s.position?.length && s.activity?.length;
   const show = both ? which : s.activity?.length ? 'act' : 'pos';
@@ -1724,13 +2009,16 @@ function BooksYear({ b }) {
   // Expenses as the budget counts them, then the in kind that never left the bank, so the net is still QuickBooks'
   const nc = b.nonCash > 0;
   const lyNc = typeof ly?.nonCash === 'number';
+  // Read down, it adds up: revenue, less the cash spent and the in kind used, is the net (the two expense lines side
+  // by side, neither under the other)
+  const lyNet = typeof ly?.net === 'number' ? ly.net : typeof ly?.revenue === 'number' && typeof ly?.expenses === 'number' ? ly.revenue - ly.expenses : null;
   const rows = [
-    ['Revenue', b.revenue, ly?.revenue, 'total'],
-    ...(nc ? [['Expenses', spentOf(b), lyNc ? ly.expenses - ly.nonCash : null, 'total'], ['In kind (not cash)', b.nonCash, lyNc ? ly.nonCash : null, 'part']] : [['Expenses', b.expenses, ly?.expenses, 'total']]),
-    ['Net', b.net, ly?.net, 'net'],
+    ['Revenue', b.revenue, ly?.revenue, 'line'],
+    ...(nc ? [['Cash expenses', spentOf(b), lyNc ? ly.expenses - ly.nonCash : null, 'line'], ['In kind expenses (not cash)', b.nonCash, lyNc ? ly.nonCash : null, 'line']] : [['Expenses', b.expenses, ly?.expenses, 'line']]),
+    ['Net', b.net, lyNet, 'net'],
   ];
   const lySpent = nc ? (lyNc && typeof ly?.full?.nonCash === 'number' ? [ly.expenses - ly.nonCash, ly.full.expenses - ly.full.nonCash] : null) : ly ? [ly.expenses, ly.full?.expenses] : null;
-  const pct = (a, p) => (typeof p === 'number' && p > 0 ? `${a >= p ? '▲' : '▼'} ${Math.abs(Math.round(((a - p) / p) * 100))}%` : '');
+  const pct = (a, p) => { if (!(typeof p === 'number' && p > 0)) return ''; const c = Math.round(((a - p) / p) * 100); return c === 0 ? 'Even' : `${c > 0 ? '▲' : '▼'} ${Math.abs(c)}%`; };
   return html`<section class="bp-card" aria-labelledby="by-h">
     <${SecHead} id="by-h" title="The year so far" sub=${`From QuickBooks, January 1 to ${dayMonth(b.through)}`} />
     <table class="bp-table bp-cmp">
@@ -1745,11 +2033,11 @@ function BooksYear({ b }) {
   </section>`;
 }
 
-/** Cash at each month's end for 13 months (QuickBooks' month-ends, newest first in `rows`): a bar a month from zero, this month in gold */
+/** Cash at each month's end for 13 months (QuickBooks' month-ends, in any order): a bar a month from zero, oldest to this month (in gold) */
 function CashChart({ rows }) {
   // The bar under the pointer says its month, its balance and the change on the month before
   const [tip, setTip] = useState(-1);
-  const list = [...rows].reverse().slice(-13);
+  const list = [...rows].sort((a, b) => a.month.localeCompare(b.month)).slice(-13);
   if (list.length < 2) return null;
   const top = Math.max(...list.map((r) => r.total), 1);
   const last = list.at(-1);
@@ -1773,6 +2061,25 @@ function CashChart({ rows }) {
     </ol>
     ${t ? html`<span class="bp-ytip" style=${`--x:${((tip + 0.5) / list.length) * 100}%;--th:${(t.total / top) * 100}`} aria-hidden="true"><strong>${nameOf(t)}</strong>${money(t.total)}${was ? ` · ${t.total >= was.total ? '▲' : '▼'} ${compact(Math.abs(t.total - was.total))} on the month` : ''}</span>` : null}
   </div>`;
+}
+
+/**
+ * The year against its budget (./money.js useBudget, as Home has it): revenue and the cash spent beside what the
+ * budget plans, the tick at last year's share by now, and the sheet the budget is from
+ */
+const budgetRows = (b) => [['Revenue', b?.revenue], ['Expenses', b?.expenses]].filter(([, x]) => x?.budget > 0);
+function BudgetCard({ b }) {
+  const rows = budgetRows(b);
+  const vf = b.file ? asViewer([b.file]) : null;
+  return html`<section class="bp-card bp-budget" aria-labelledby="bud-h" id="budget">
+    <${SecHead} id="bud-h" title=${`${b.year} against its budget`.trim()} sub=${b.live ? `QuickBooks’ year so far, through ${shortAsOf(b.asOf)}` : `The actuals as of ${shortAsOf(b.asOf)}, from the budget sheet`} />
+    <ul class="bp-budget__list">${rows.map(([label, x]) => html`<li key=${label}>
+      <p class="bp-budget__head"><span>${label}</span><strong>${money(x.actual)}</strong></p>
+      <${Meter} x=${x} />
+      <p class="bp-budget__sub">${pctOf(x)}% of the ${money(x.budget)} budget${paceText(x) ? ` · ${paceText(x)}` : ''}${x.inKind ? ` · not counting ${compact(x.inKind)} in kind` : ''}</p>
+    </li>`)}</ul>
+    ${vf ? html`<p class="bp-note">The budget: <a class="bp-link" ...${viewerLink(vf, 0)}>${titleOf(b.file.name)}</a>${b.meeting ? html`, in the <a class="bp-link" href=${`#/meetings/${b.meeting.id}`} onClick=${claimMorph}>${meetingName(b.meeting)}</a> packet` : null}</p>` : null}
+  </section>`;
 }
 
 /** The cash in the bank (live from the banks, else the newest balance sheet): the total, a year earlier, each account, and the cards */
@@ -1816,13 +2123,16 @@ function CashCard({ data }) {
 
 function FinancialsPage({ ctx }) {
   const { data } = ctx;
-  const [allYears, setAllYears] = useState(false);
-  const [allEarlier, setAllEarlier] = useState(false);
+  useFocusTarget();
+  const budget = useBudget(data);
+  const [allYears, setAllYears] = useKept('tax-all', false);
+  const [allEarlier, setAllEarlier] = useKept('earlier-all', false);
   // QuickBooks is the books once it's connected. Until then, Mercury's own record speaks for SOARD only once it holds the money
   const books = data.numbers.books;
   const funded = !!data.numbers.mercury && !data.numbers.mercury.empty;
   const f = funded && !books ? data.numbers.finance : null;
-  const history = data.cashHistory;
+  // Month-end cash, newest first (the table reads down from this month)
+  const history = [...(data.cashHistory || [])].sort((a, b) => b.month.localeCompare(a.month));
   const s = data.snapshot;
   const withStatements = [...data.meetings].filter((m) => m.files.some((x) => x.kind === 'financials')).sort((a, b) => b.date.localeCompare(a.date));
   const latest = withStatements[0] || null;
@@ -1846,6 +2156,14 @@ function FinancialsPage({ ctx }) {
   const shownYears = allYears ? years : years.slice(0, 6);
   const others = data.filings.filter((x) => typeOf(x) === 'other');
   const cell = (y, t) => { const x = data.filings.find((z) => String(z.year) === y && typeOf(z) === t); return x ? html`<a class="bp-doclink" ...${viewerLink(fv, data.filings.indexOf(x))}><${Icon} name="documents" size=${16} />Open</a>` : html`<span class="bp-muted" aria-label="None">–</span>`; };
+  // What the page holds, said once at the top (only what's here)
+  const lede = `${andText([
+    'The cash',
+    books || f?.ytd || budgetRows(budget).length ? 'the year in numbers' : '',
+    data.gifts ? 'its major gifts' : '',
+    books?.statements || latest ? 'the statements from each meeting' : '',
+    years.length ? 'every tax return and audit' : '',
+  ].filter(Boolean))}.`;
   // The year first (QuickBooks' year so far, or Mercury's), beside the cash over time and the year's major gifts; then
   // the statements; then the tax returns, audits, budgets and every meeting's statements. A side with nothing in it
   // gives the other the page's width
@@ -1858,22 +2176,22 @@ function FinancialsPage({ ctx }) {
   };
   return html`
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
-      <div><h1 class="bp-h1">Financials</h1><p class="bp-lede">The cash, the year in numbers, its major gifts, the statements from each meeting, and every tax return and audit.</p></div>
+      <div><h1 class="bp-h1">Financials</h1><p class="bp-lede">${lede}</p></div>
     </header>
     <${CashCard} data=${data} />
-    ${pair([books ? html`<${BooksYear} b=${books} />` : null, f?.ytd ? html`<section class="bp-card" aria-labelledby="io-h">
+    ${pair([books ? html`<${BooksYear} b=${books} />` : null, budgetRows(budget).length ? html`<${BudgetCard} b=${budget} key="budget" />` : null, f?.ytd ? html`<section class="bp-card" aria-labelledby="io-h">
           <${SecHead} id="io-h" title="Money in and out" sub=${`Through ${monthName(f.ytd.through)} ${Number(String(f.ytd.through).slice(8, 10)) || ''}`} />
           <table class="bp-table">
             <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${f.ytd.year} so far</th>${f.lastYtd ? html`<th scope="col" class="num">${f.lastYtd.year}, same days</th>` : null}</tr></thead>
             <tbody>${ytdRows.map(([label, val, kind]) => html`<tr class=${`bp-row--${kind}`} key=${label}><th scope="row">${label}</th><td class="num">${val(f.ytd)}</td>${f.lastYtd ? html`<td class="num">${val(f.lastYtd)}</td>` : null}</tr>`)}</tbody>
           </table>
           <p class="bp-note">Live from Mercury’s record. The official books are in Mercury Books.${f.perMakeover ? ` ${plural(f.perMakeover.count, 'makeover')} finished this year, ${money(f.perMakeover.average)} each on average.` : ''}</p>
-          ${f.months?.length ? html`<details class="bp-more"><summary>Month by month</summary>
+          ${f.months?.length ? html`<${More} k="months" summary="Month by month">
             <table class="bp-table">
               <thead><tr><th scope="col">Month</th><th scope="col" class="num">In</th><th scope="col" class="num">Out</th><th scope="col" class="num">Net</th></tr></thead>
               <tbody>${[...f.months].reverse().map((r) => html`<tr key=${r.month}><th scope="row">${monthShort(r.month)}</th><td class="num">${money(r.income)}</td><td class="num">${money(spent(r))}</td><td class="num">${signed(r.net)}</td></tr>`)}</tbody>
             </table>
-          </details>` : null}
+          <//>` : null}
         </section>` : null], [f?.cash || history.length > 1 ? html`<section class="bp-card" aria-labelledby="cashtime-h">
           <h2 class="bp-h2" id="cashtime-h">Cash over time</h2>
           ${history.length > 1 ? html`<${CashChart} rows=${history} />` : null}
@@ -1885,14 +2203,14 @@ function FinancialsPage({ ctx }) {
               ${f.cash.floor ? html`<li>The least we keep in the bank: ${money(f.cash.floor)}${f.cash.belowFloor ? html` <span class="bp-chip bp-chip--warn">The forecast dips under it</span>` : null}</li>` : null}
             </ul>
           </div>` : null}
-          ${history.length > 1 ? html`<details class="bp-more"><summary>Month-end balances</summary><table class="bp-table"><thead><tr><th scope="col">Month</th><th scope="col" class="num">Balance</th><th scope="col" class="num">Change</th></tr></thead><tbody>
+          ${history.length > 1 ? html`<${More} k="cash-months" summary="Month-end balances"><table class="bp-table"><thead><tr><th scope="col">Month</th><th scope="col" class="num">Balance</th><th scope="col" class="num">Change</th></tr></thead><tbody>
             ${history.map((r, k) => { const prev = history[k + 1]; const dd = prev ? r.total - prev.total : null; return html`<tr key=${r.month}><th scope="row">${monthOf(r.month)}</th><td class="num">${money(r.total)}</td><td class="num">${dd == null ? '' : `${dd >= 0 ? '+' : '−'}${money(Math.abs(dd))}`}</td></tr>`; })}
-          </tbody></table></details>` : null}
+          </tbody></table><//>` : null}
         </section>` : null, data.gifts ? html`<${GiftsYear} g=${data.gifts} since=${data.me.lastSeen} />` : null], 1)}
     ${books?.statements ? html`<section class="bp-card bp-latest bp-rise" style=${rise(3)} aria-labelledby="st-h">
       <${SecHead} id="st-h" title="The statements" sub="The ones each meeting’s packet holds, locked on its day" />
       <${Statements} s=${books.statements} books=${books} />
-      ${latest ? html`<details class="bp-more"><summary>From the ${meetingName(latest)} packet, ${longDate(latest.date)}</summary><${FileList} files=${latest.files.filter((x) => x.kind === 'financials')} labels=${false} /></details>` : null}
+      ${latest ? html`<${More} k="packet" summary=${`From the ${meetingName(latest)} packet, ${longDate(latest.date)}`}><${FileList} files=${latest.files.filter((x) => x.kind === 'financials')} labels=${false} /><//>` : null}
     </section>`
     : latest ? html`<section class="bp-card bp-latest bp-rise" style=${rise(3)} aria-labelledby="st-h">
       <${SecHead} id="st-h" title="The latest statements" sub=${html`From the <a class="bp-link" href=${`#/meetings/${latest.id}`} onClick=${claimMorph}>${meetingName(latest)}</a>, ${longDate(latest.date)}`} />
@@ -1950,10 +2268,10 @@ function PeoplePage({ ctx }) {
   const members = people.board.filter((p) => !officers.includes(p));
   const committees = [...new Set(people.board.flatMap((p) => p.committees || []))].sort();
   return html`
-    <header class="bp-pagehead bp-rise" style=${rise(0)}><div><h1 class="bp-h1">People</h1><p class="bp-lede">The board, the team and the Advisory Board. Write to a board member from their row.</p></div></header>
+    <header class="bp-pagehead bp-rise" style=${rise(0)}><div><h1 class="bp-h1">People</h1><p class="bp-lede">${people.advisory.length ? 'The board, the team and the Advisory Board.' : 'The board and the team.'} Write to a board member from their row.</p></div></header>
     <section class="bp-card bp-gap bp-rise" style=${rise(1)} aria-labelledby="bd-h">
       <${SecHead} id="bd-h" title="Board of Directors" count=${people.board.length} />
-      <ul class="bp-dir">${[...officers, ...members].map((p) => html`<${Person} p=${p} email ctx=${ctx} key=${p.slug} />`)}</ul>
+      <ul class="bp-dir">${[...officers, ...members].map((p) => html`<${Person} p=${p} email=${p.slug !== ctx.data.me.slug} ctx=${ctx} key=${p.slug} />`)}</ul>
     </section>
     ${committees.length ? html`<section class="bp-card bp-gap bp-rise" style=${rise(2)} aria-labelledby="cm-h"><h2 class="bp-h2" id="cm-h">Committees</h2><ul class="bp-rows">${committees.map((c) => html`<li key=${c}><div class="bp-row bp-row--static"><span class="bp-row__main"><span class="bp-row__title">${c}</span><span class="bp-row__meta">${people.board.filter((p) => (p.committees || []).includes(c)).map((p) => p.name).join(', ')}</span></span></div></li>`)}</ul></section>` : null}
     <section class="bp-card bp-gap bp-rise" style=${rise(3)} aria-labelledby="tm-h">
@@ -1972,24 +2290,30 @@ function SignForm({ d: doc, ctx }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
-  if (doc.signedByMe) return html`<p class="bp-signed"><span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Signed</span> by ${doc.signedByMe.name}, ${shortDate(doc.signedByMe.at.slice(0, 10))}</p>`;
+  if (doc.signedByMe) return html`<p class="bp-signed" id=${`signed-${doc.id}`} tabindex="-1"><span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Signed</span> by ${doc.signedByMe.name}, ${shortDate(doc.signedByMe.at.slice(0, 10))}</p>`;
   if (!data.me.slug) return null;
   const id = `sign-${doc.id}`;
+  // Their own name, the way the server checks it (../board-shared.js signsAs)
+  const own = data.me.name || '';
   const sign = async (e) => {
     e.preventDefault();
-    if (name.trim().length < 3) { setProblem('Type your full name, the way you sign it.'); document.getElementById(id)?.focus(); return; }
+    const typed = name.trim();
+    const wrong = typed.length < 3 ? 'Type your full name, the way you sign it.' : own && !signsAs(typed, own) ? `Sign with your own name, as the board has it: ${own}` : '';
+    if (wrong) { setProblem(wrong); document.getElementById(id)?.focus(); return; }
     setProblem('');
     setBusy(true);
-    const j = await call({ action: 'sign', docId: doc.id, name: name.trim() });
+    const j = await call({ action: 'sign', docId: doc.id, name: typed });
     setBusy(false);
-    if (!j.ok) { setProblem(j.error); return; }
+    if (!j.ok) { setProblem(j.error); document.getElementById(id)?.focus(); return; }
     setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, signedByMe: { name: j.name, at: new Date().toISOString() }, signedCount: y.signedCount + 1 } : y)) }));
     say(`Signed: ${doc.title}. Thank you.`);
+    // The form gives way to "Signed by…": the focus goes there, not to the page
+    requestAnimationFrame(() => document.getElementById(`signed-${doc.id}`)?.focus({ preventScroll: true }));
   };
   return html`<form class="bp-sign" onSubmit=${sign} noValidate>
     <label class="bp-sign__label" for=${id}>Type your full name to sign it for ${todayEastern().slice(0, 4)}</label>
     <div class="bp-sign__row">
-      <input id=${id} value=${name} autocomplete="name" aria-invalid=${problem ? 'true' : null} aria-describedby=${problem ? `${id}-p` : null} onInput=${(e) => { setName(e.target.value); if (problem) setProblem(''); }} />
+      <input id=${id} value=${name} autocomplete="name" placeholder=${own || null} data-autofocus aria-invalid=${problem ? 'true' : null} aria-describedby=${problem ? `${id}-p` : null} onInput=${(e) => { setName(e.target.value); if (problem) setProblem(''); }} />
       <button class="bp-btn bp-btn--primary" type="submit" disabled=${busy}>${busy ? 'Signing…' : 'I’ve read it and agree'}</button>
     </div>
     ${name.trim().length >= 3 ? html`<p class="bp-sign__preview" aria-hidden="true">${name.trim()}</p>` : null}
@@ -1999,14 +2323,16 @@ function SignForm({ d: doc, ctx }) {
 
 /** Every file from every meeting, by kind, newest meeting first */
 function Library({ data, q = '' }) {
-  const [kind, setKind] = useState('all');
+  const [kind, setKind] = useKept('lib-kind', 'all');
   const terms = termsOf(q);
   const meetings = [...data.meetings].filter((m) => m.files.length).sort((a, b) => b.date.localeCompare(a.date));
   const kinds = FILE_KINDS.filter((k) => meetings.some((m) => m.files.some((f) => f.kind === k.id)));
   const pick = (m) => m.files.filter((f) => (kind === 'all' || f.kind === kind) && (!terms.length || hits(`${titleOf(f.name)} ${meetingName(m)} ${kindLabel(f.kind)}`, terms)));
   const shown = meetings.map((m) => ({ m, files: pick(m) })).filter((x) => x.files.length);
+  // A search inside one kind that only finds others: how many, a tap away (the pill never hides matches without saying)
+  const elsewhere = terms.length && kind !== 'all' ? meetings.reduce((t, m) => t + m.files.filter((f) => hits(`${titleOf(f.name)} ${meetingName(m)} ${kindLabel(f.kind)}`, terms)).length, 0) : 0;
   // The newest four meetings' files; the earlier ones a tap away, and every one when searching
-  const [all, setAll] = useState(false);
+  const [all, setAll] = useKept('lib-all', false);
   const cut = !terms.length && !all && shown.length > 5;
   const list = cut ? shown.slice(0, 4) : shown;
   if (!meetings.length) return null;
@@ -2015,17 +2341,18 @@ function Library({ data, q = '' }) {
     <div class="bp-chips bp-chips--filter" role="group" aria-label="Show">
       ${[{ id: 'all', label: 'All' }, ...kinds].map((k) => html`<button type="button" class="bp-pill" aria-pressed=${kind === k.id} onClick=${() => setKind(k.id)} key=${k.id}>${k.label}</button>`)}
     </div>
+    ${!list.length && terms.length && kind !== 'all' && elsewhere ? html`<p class="bp-muted">No ${kindLabel(kind).toLowerCase()} match “${q.trim()}”. <button type="button" class="bp-linkbtn" onClick=${() => setKind('all')}>Show the ${plural(elsewhere, 'file')} that do</button></p>` : null}
     ${list.length ? list.map(({ m, files }) => html`<div class="bp-libmeet" key=${m.id}>
       <a class="bp-libmeet__head" href=${`#/meetings/${m.id}`} onClick=${claimMorph}><${DateTile} d=${m.date} mid=${m.id} /><span><span class="bp-row__title">${meetingName(m)}</span><span class="bp-row__meta">${longDate(m.date)}</span></span></a>
       <${FileList} files=${files} labels=${false} kinds=${kind === 'all'} />
-    </div>`) : html`<p class="bp-muted">No file matches.</p>`}
+    </div>`) : terms.length && kind !== 'all' && elsewhere ? null : html`<p class="bp-muted">No file matches.</p>`}
     ${cut ? html`<button type="button" class="bp-more-btn" onClick=${() => setAll(true)}>Show ${plural(shown.length - 4, 'earlier meeting')}</button>` : null}
   </section>`;
 }
 
 /**
- * SOARD's papers on shelves, as covers: governing documents, tax-exempt status, registrations and insurance
- * (by what each one is), then plans and anything else. Covers are drawn in CSS: no pictures, no gradients.
+ * SOARD's papers, on shelves by what each one is: governing documents, tax-exempt status, registrations and
+ * insurance, then plans and anything else. Side by side in one panel, each paper a row with its first page small
  */
 const SHELVES = [
   { id: 'governing', label: 'Governing documents', sub: 'How SOARD is set up and run', test: /bylaw|article|incorporat|amend|manual|polic|conflict|whistle|charter|code of/i },
@@ -2056,7 +2383,7 @@ function Cover({ x, shelf }) {
 function DocumentsPage({ ctx }) {
   const { data } = ctx;
   const { docs } = data;
-  const [q, setQ] = useState('');
+  const [q, setQ] = useKept('q', '');
   const terms = termsOf(q);
   const year = todayEastern().slice(0, 4);
   useFocusTarget();
@@ -2068,9 +2395,17 @@ function DocumentsPage({ ctx }) {
   const withFile = docs.filter((x) => x.file);
   const vf = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
   const open = (x) => (x.file ? viewerLink(vf, withFile.indexOf(x)) : { href: null });
+  // What the page holds, said once at the top: what there is to sign, the shelves there are, the meetings' files
+  const SAY = { governing: 'SOARD’s governing documents', status: 'its tax-exempt status', standing: 'registrations and insurance', plan: 'plans and reports', money: 'budgets and audits' };
+  const said = [
+    toSign.length ? 'The papers each board member signs each year' : '',
+    ...[...SHELVES, ...MORE_SHELVES].filter((sh) => SAY[sh.id] && docs.some((x) => !(x.sign && x.file) && shelfOf(x) === sh.id)).map((sh) => SAY[sh.id]),
+    data.meetings.some((m) => m.files.length) ? 'every file from every meeting' : '',
+  ].filter(Boolean);
+  const lede = said.length ? `${said.length > 2 ? `${said.slice(0, -1).join(', ')}, and ${said.at(-1)}` : said.join(' and ')}.`.replace(/^\w/, (c) => c.toUpperCase()) : 'SOARD’s papers, and every file from every meeting.';
   return html`
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
-      <div><h1 class="bp-h1">Documents</h1><p class="bp-lede">SOARD’s governing documents, its tax-exempt status, registrations and insurance, and every file from every meeting.</p></div>
+      <div><h1 class="bp-h1">Documents</h1><p class="bp-lede">${lede}</p></div>
       <label class="bp-filter">
         <${Icon} name="search" size=${18} /><span class="sr-only">Find a document</span>
         <input type="search" placeholder="Find a document or a file" value=${q} onInput=${(e) => setQ(e.target.value)} />
@@ -2091,17 +2426,18 @@ function DocumentsPage({ ctx }) {
         </div>
       </li>`)}</ul>
     </section>` : null}
-    ${shelves.length ? shelves.map((sh, i) => html`<section class="bp-shelfsec bp-rise" style=${rise(2 + i)} aria-labelledby=${`sh-${sh.id}`} key=${sh.id}>
-      <${SecHead} id=${`sh-${sh.id}`} title=${sh.label} count=${sh.list.length} sub=${sh.sub} />
-      <ul class="bp-shelf">${sh.list.map((x) => html`<li key=${x.id} id=${`doc-${x.id}`} class="bp-doc">
-        <a class="bp-docc" ...${open(x)}>
-          <${Cover} x=${x} shelf=${sh.id} />
-          <span class="bp-docc__title">${x.title}</span>
-          <span class="bp-docc__meta">${[x.note, x.file ? sizeText(x.file.size) : 'On its way'].filter(Boolean).join(' · ')}</span>
-        </a>
-      </li>`)}</ul>
-    </section>`)
-    : docs.length && terms.length ? null
+    ${shelves.length ? html`<section class="bp-card bp-gap bp-papers bp-rise" style=${rise(2)} aria-labelledby="papers-h">
+      <${SecHead} id="papers-h" title="SOARD’s papers" />
+      <div class="bp-papers__cols">${shelves.map((sh) => html`<div class="bp-papers__col" key=${sh.id}>
+        <h3 class="bp-papers__h" id=${`sh-${sh.id}`}>${sh.label}<span class="bp-count">${sh.list.length}</span></h3>
+        ${sh.sub ? html`<p class="bp-papers__sub">${sh.sub}</p>` : null}
+        <ul class="bp-files__list bp-papers__list" aria-labelledby=${`sh-${sh.id}`}>${sh.list.map((x) => html`<li key=${x.id} id=${`doc-${x.id}`} class="bp-file bp-doc">
+          ${x.file ? html`<a class="bp-file__main" ...${open(x)}><${FileBadge} f=${x.file} /><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, formatOf(x.file), nb(sizeText(x.file.size))].filter(Boolean).join(' · ')}</span></span></a>`
+            : html`<div class="bp-file__main"><span class="bp-badge" aria-hidden="true"></span><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, 'On its way'].filter(Boolean).join(' · ')}</span></span></div>`}
+        </li>`)}</ul>
+      </div>`)}</div>
+    </section>`
+    : docs.length ? null
     : html`<div class="bp-card bp-empty bp-empty--row bp-gap bp-rise" style=${rise(1)}>
       <span class="bp-empty__icon"><${Icon} name="documents" size=${24} /></span>
       <div><h2 class="bp-h2">Bylaws and policies show here</h2>
@@ -2111,28 +2447,42 @@ function DocumentsPage({ ctx }) {
 }
 
 // ─── Search ─────────────────────────────────────────────────────────
-const GROUPS = ['Meetings', 'Decisions', 'In agendas and minutes', 'Files', 'People', 'Documents', 'Coming up'];
+const GROUPS = ['Meetings', 'Decisions', 'In agendas and minutes', 'Files', 'People', 'Documents', 'Money', 'Makeovers', 'Coming up'];
 function searchIndex(data, d) {
   const out = [];
   for (const m of [...data.meetings].sort((a, b) => b.date.localeCompare(a.date))) {
     const sub = `${meetingName(m)} · ${shortDate(m.date)}`;
     out.push({ group: 'Meetings', title: meetingName(m), sub: [longDate(m.date), m.location].filter(Boolean).join(' · '), hay: norm([meetingName(m), longDate(m.date), m.date, m.location].join(' ')), href: `#/meetings/${m.id}`, icon: 'meetings' });
     for (const s of m.sections) {
-      // Notes read as one line in a result: "Recommending … · $300k revenue from golf"
-      const said = (t) => String(t || '').split('\n').map((l) => l.replace(/^\s*[-•*]\s+/, '').trim()).filter(Boolean).join(' · ');
+      const said = notesLine;
+      // A part with nothing under it (Open forum, New business) is found by its name
+      if (!s.items.length && s.title) out.push({ group: 'In agendas and minutes', title: s.title, sub, hay: norm(s.title), href: `#/meetings/${m.id}`, focus: `s-${s.id}`, icon: 'list' });
       // The part it's under says where it is ("2027 budget · Q4 2026 Board Meeting · Nov 5, 2026"), so a point found by its part's name says why
       for (const it of s.items) out.push({ group: 'In agendas and minutes', title: it.title || s.title, sub: s.title && it.title && norm(s.title) !== norm(it.title) && !/^agenda$/i.test(s.title.trim()) ? `${s.title} · ${sub}` : sub, body: said(it.notes) || it.title, hay: norm([s.title, it.title, it.presenter, it.notes].join(' ')), href: `#/meetings/${m.id}`, focus: `i-${it.id}`, icon: 'list' });
     }
-    for (const x of m.motions) out.push({ group: 'Decisions', title: x.text, sub, hay: norm(x.text), href: `#/meetings/${m.id}`, icon: 'gavel' });
+    m.motions.forEach((x, k) => out.push({ group: 'Decisions', title: x.text, sub: [x.by && `Moved by ${x.by}`, sub].filter(Boolean).join(' · '), hay: norm([x.text, x.by, x.second].join(' ')), href: `#/meetings/${m.id}`, focus: `mo-${x.id || k}`, icon: 'gavel' }));
     const vf = asViewer(m.files);
     m.files.forEach((f, i) => out.push({ group: 'Files', title: titleOf(f.name), sub: `${kindLabel(f.kind)} · ${sub}`, hay: norm(`${titleOf(f.name)} ${kindLabel(f.kind)} ${meetingName(m)}`), file: [vf, i], icon: 'documents' }));
   }
+  // The next meeting, on the calendar before its agenda is posted
+  const pend = d.featured?.pending ? d.featured : null;
+  if (pend) out.unshift({ group: 'Meetings', title: meetingName(pend), sub: [longDate(pend.date), pend.location, 'Agenda to come'].filter(Boolean).join(' · '), hay: norm([meetingName(pend), longDate(pend.date), pend.date, pend.location].join(' ')), href: `#/meetings/${pend.id}`, icon: 'meetings' });
   for (const p of d.people) out.push({ group: 'People', title: p.name, sub: [p.group === 'board' ? p.title || 'Board member' : p.group === 'advisory' ? 'Advisory Board' : p.title, p.organization].filter(Boolean).join(' · '), hay: norm([p.name, p.title, p.organization, ...(p.committees || [])].join(' ')), href: '#/people', focus: `p-${p.slug}`, person: p });
   const withFile = data.docs.filter((x) => x.file);
   const dv = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
   for (const x of data.docs) out.push({ group: 'Documents', title: x.title, sub: DOC_KINDS.find((k) => k.id === x.kind)?.label || '', hay: norm([x.title, x.note].join(' ')), ...(x.file ? { file: [dv, withFile.indexOf(x)] } : { href: '#/documents' }), icon: 'documents' });
   const fv = data.filings.map((x) => ({ name: `${x.title}.pdf`, type: 'application/pdf', url: x.url }));
   data.filings.forEach((x, i) => out.push({ group: 'Files', title: x.title, sub: 'Tax return or audit', hay: norm(`${x.title} ${x.year} tax return form 990 audit`), file: [fv, i], icon: 'financials' }));
+  // The money: where the year's revenue came from, and each major gift (who, the campaign)
+  const mix = mixOf(data.numbers.books);
+  for (const x of mix?.parts || []) out.push({ group: 'Money', title: x.name, sub: `${money(x.amount)} of ${mix.year}’s revenue so far`, hay: norm([x.name, ...(x.accounts || []), 'revenue'].join(' ')), href: '#/financials', focus: `mix-${x.key}`, icon: 'financials' });
+  for (const g of data.gifts?.list || []) out.push({ group: 'Money', title: `${money(g.cents / 100)} from ${giftWho(g)}`, sub: [giftAbout(g), giftDay(g.at)].filter(Boolean).join(' · '), hay: norm([giftWho(g), g.name, g.company, g.campaign, 'gift'].join(' ')), href: '#/financials/gifts', focus: `gift-${g.id}`, icon: 'financials' });
+  // The makeovers under way, each to its page
+  for (const b of [...(data.numbers.projects?.waiting || []), ...(data.numbers.projects?.building || [])].filter((x) => x.name)) {
+    const href = hrefOf(b);
+    // A makeover without a page of its own lands on its card on Home's board
+    out.push({ group: 'Makeovers', title: b.name, sub: b.kind === 'community' ? `Community project · ${b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status}` : b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status, hay: norm([b.name, b.status, b.kind === 'community' ? 'community project' : 'makeover kid'].join(' ')), ...(href ? { href, ext: true } : { href: '#/', focus: cardId(b) }), icon: 'home' });
+  }
   for (const r of data.numbers.reveals) out.push({ group: 'Coming up', title: `${r.name}’s reveal`, sub: r.confirmed && r.date ? dayOf(r.date) : r.window?.label || 'Day not set yet', hay: norm(`${r.name} reveal`), href: r.kidUrl, ext: true, icon: 'home' });
   for (const e of data.numbers.events) out.push({ group: 'Coming up', title: e.title, sub: dayOf(e.date), hay: norm(`${e.title} event ${e.location}`), href: e.url, ext: true, icon: 'meetings' });
   return out;
@@ -2144,14 +2494,21 @@ function Finder({ ctx, onClose }) {
   const [at, setAt] = useState(0);
   const ref = useRef(null);
   const listRef = useRef(null);
-  const index = useMemo(() => searchIndex(data, d), [data]);
+  const index = useMemo(() => searchIndex(data, d).map((x) => ({ ...x, sp: spaced(x.hay), sq: squashed(x.hay) })), [data]);
   const terms = termsOf(q);
-  const results = useMemo(() => {
+  // A group shows its first few; "All 43" opens the rest of it
+  const [wide, setWide] = useState([]);
+  const found = useMemo(() => {
     if (!terms.length) return [];
-    const found = index.filter((x) => terms.every((w) => x.hay.includes(w)));
-    const score = (x) => (norm(x.title).startsWith(terms[0]) ? 0 : terms.every((w) => norm(x.title).includes(w)) ? 1 : 2);
-    return GROUPS.flatMap((g) => found.filter((x) => x.group === g).sort((a, b) => score(a) - score(b)).slice(0, g === 'In agendas and minutes' ? 6 : 5));
+    const all = index.filter((x) => terms.every((w) => termIn(x.sp, x.sq, w)));
+    // Whole words in the title first ("Sam" is Sam Rivers before Sample Builders), then words starting there, then the rest
+    const score = (x) => { const t = spaced(x.title); return (terms.every((w) => t.includes(` ${w} `)) ? 0 : terms.every((w) => t.includes(` ${w}`)) ? 2 : 4) + (t.startsWith(` ${terms[0]}`) ? 0 : 1); };
+    return GROUPS.map((g) => ({ g, all: all.filter((x) => x.group === g).sort((a, b) => score(a) - score(b)) })).filter((x) => x.all.length);
   }, [q, index]);
+  const cap = (g) => (wide.includes(g) ? Infinity : g === 'In agendas and minutes' ? 6 : 5);
+  const results = found.flatMap(({ g, all }) => all.slice(0, cap(g)));
+  // The words to try are ones that find something here
+  const tries = useMemo(() => ['budget', 'minutes', 'insurance', 'bylaws', firstName(data.people.board[0]?.name)].filter((t) => t && index.some((x) => termIn(x.sp, x.sq, termsOf(t)[0] || ''))).slice(0, 4), [index]);
   useEffect(() => {
     const dlg = ref.current;
     if (!dlg) return undefined;
@@ -2159,7 +2516,7 @@ function Finder({ ctx, onClose }) {
     document.documentElement.classList.add('is-finding');
     return () => document.documentElement.classList.remove('is-finding');
   }, []);
-  useEffect(() => { setAt(0); }, [q]);
+  useEffect(() => { setAt(0); setWide([]); }, [q]);
   useEffect(() => { listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [at]);
   const close = () => {
     const dlg = ref.current;
@@ -2171,7 +2528,8 @@ function Finder({ ctx, onClose }) {
   const choose = (x) => {
     if (!x) return;
     close();
-    if (x.file) { setTimeout(() => openViewer(x.file[0], x.file[1]), 160); return; }
+    // The viewer gives the focus back to what had it: the search button, since the result it came from is gone
+    if (x.file) { setTimeout(() => { document.querySelector('.bp-find')?.focus({ preventScroll: true }); openViewer(x.file[0], x.file[1]); }, 160); return; }
     if (x.ext) { window.open(x.href, '_blank', 'noopener'); return; }
     focusNext = x.focus || null;
     if (location.hash === x.href) { window.dispatchEvent(new HashChangeEvent('hashchange')); return; }
@@ -2184,21 +2542,21 @@ function Finder({ ctx, onClose }) {
     // A search field's own Escape only empties it; here Escape closes, the way every search box like this does
     else if (e.key === 'Escape') { e.preventDefault(); close(); }
   };
-  const grouped = GROUPS.map((g) => ({ g, list: results.map((x, i) => ({ x, i })).filter(({ x }) => x.group === g) })).filter((x) => x.list.length);
+  const grouped = found.map(({ g, all }) => ({ g, total: all.length, list: results.map((x, i) => ({ x, i })).filter(({ x }) => x.group === g) }));
   return html`<dialog class="bp-finder" ref=${ref} aria-label="Search the board page" onClose=${onClose} onCancel=${(e) => { e.preventDefault(); close(); }} onClick=${(e) => { if (e.target === ref.current) close(); }}>
     <div class="bp-finder__box">
       <div class="bp-finder__field">
         <${Icon} name="search" size=${20} />
-        <input type="search" placeholder="Search meetings, minutes, files and people" value=${q} autofocus aria-label="Search" aria-controls=${results.length ? 'bp-finder-list' : null} aria-activedescendant=${results[at] ? `bp-r-${at}` : null} role="combobox" aria-autocomplete="list" aria-expanded=${!!results.length} onInput=${(e) => setQ(e.target.value)} onKeyDown=${keys} />
+        <input type="search" placeholder=${matchMedia('(max-width: 640px)').matches ? 'Search the board page' : 'Search meetings, minutes, files and people'} value=${q} autofocus aria-label="Search" aria-controls=${results.length ? 'bp-finder-list' : null} aria-activedescendant=${results[at] ? `bp-r-${at}` : null} role="combobox" aria-autocomplete="list" aria-expanded=${!!results.length} onInput=${(e) => setQ(e.target.value)} onKeyDown=${keys} />
         <button type="button" class="bp-finder__x" onClick=${close} aria-label="Close search"><span class="bp-kbd bp-finder__esc">esc</span><span class="bp-finder__cancel">Cancel</span></button>
       </div>
       <div class="bp-finder__list" ref=${listRef}>
         ${!terms.length ? html`<div class="bp-finder__hint">
           <p>Try a name, a month, or a word from the minutes.</p>
-          <p class="bp-finder__tries">${['budget', 'golf', 'minutes', data.people.board[0]?.name.split(' ')[0]].filter(Boolean).map((t) => html`<button type="button" class="bp-pill" onClick=${() => { setQ(t); ref.current?.querySelector('input')?.focus(); }} key=${t}>${t}</button>`)}</p>
+          ${tries.length ? html`<p class="bp-finder__tries">${tries.map((t) => html`<button type="button" class="bp-pill" onClick=${() => { setQ(t); ref.current?.querySelector('input')?.focus(); }} key=${t}>${t}</button>`)}</p>` : null}
         </div>` : !results.length ? html`<p class="bp-finder__none" role="status">Nothing found for “${q.trim()}”.</p>`
-        : html`<div role="listbox" id="bp-finder-list" aria-label="Results">${grouped.map(({ g, list }) => html`<div role="group" aria-labelledby=${`bp-g-${GROUPS.indexOf(g)}`} key=${g}>
-          <p class="bp-finder__group" id=${`bp-g-${GROUPS.indexOf(g)}`}>${g}</p>
+        : html`<div role="listbox" id="bp-finder-list" aria-label="Results">${grouped.map(({ g, list, total }) => html`<div role="group" aria-labelledby=${`bp-g-${GROUPS.indexOf(g)}`} key=${g}>
+          <p class="bp-finder__group"><span id=${`bp-g-${GROUPS.indexOf(g)}`}>${g}${total > list.length ? html`<span class="sr-only">, ${list.length} of ${total}</span>` : null}</span>${total > list.length ? html`<button type="button" class="bp-finder__all" onClick=${() => { setWide((w) => [...w, g]); ref.current?.querySelector('input')?.focus(); }}>All ${total}</button>` : null}</p>
           ${list.map(({ x, i }) => html`<div class="bp-finder__item" id=${`bp-r-${i}`} role="option" aria-selected=${i === at} onPointerMove=${() => at !== i && setAt(i)} onClick=${() => choose(x)} key=${i}>
             ${x.person ? html`<${Avatar} p=${x.person} size=${32} />` : html`<span class="bp-finder__icon"><${Icon} name=${x.icon || 'documents'} size=${18} /></span>`}
             <span class="bp-finder__text"><span class="bp-finder__title">${x.title}</span>${(() => {
