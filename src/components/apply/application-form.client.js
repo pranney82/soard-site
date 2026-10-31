@@ -1079,8 +1079,12 @@ function init(root, cfg, mode) {
     const frame = fe.querySelector('.af-map-frame');
     if (!focused || !frame || !fe.getClientRects().length || fe.closest('[data-off], [hidden]')) return;
     // A map that still reads (its pin's name, its key): smaller than that, the screen scrolls instead; a
-    // little smaller on a short phone, so the home's pin opens in view rather than under Back / Continue
-    const least = innerHeight <= 620 ? 150 : 200;
+    // little smaller on a short phone, so the home's pin opens in view rather than under Back / Continue.
+    // With the question about it on its screen, the answers come first: the map gives way further (its key
+    // too), so none of them is under Back / Continue
+    const ask = fe.querySelector('[data-area-ask]');
+    const asking = !!ask && !ask.hidden && onScreen(ask);
+    const least = asking ? 100 : innerHeight <= 620 ? 150 : 200;
     place.removeAttribute('data-tight');
     place.removeAttribute('data-nomap');
     const asItWas = () => { place.style.removeProperty('--af-map-h'); place.removeAttribute('data-tight'); settle(); };
@@ -1094,6 +1098,7 @@ function init(root, cfg, mode) {
       if (over >= before) { asItWas(); return; }
       before = over;
       if (h <= least) return; // its smallest: the screen scrolls a little rather than lose the map
+      if (asking && h - over < 150) place.setAttribute('data-tight', ''); // its key gives way to the answers
       place.style.setProperty('--af-map-h', `${Math.max(least, Math.floor(h - over - 1))}px`);
     }
   }
