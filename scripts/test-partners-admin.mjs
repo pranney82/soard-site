@@ -136,6 +136,7 @@ function makeApi() {
         { membership: 'memcal0001', name: 'Cal Stone', company: 'Stone Works', role: 'Champion', why: 'level' },
         // A partner by another name in JobTread; its name looks more like another partner's (live, Oct 30)
         { membership: 'memang0001', name: 'Angela Means', company: 'Means Interiors', account: 'acctmeans01', role: 'Vendor', why: 'unknown' },
+        { membership: 'memlea0001', name: 'Lea Lyle', company: 'Lyle Works', account: 'acctlyle001', role: 'Builder', why: 'level' },
       ],
     },
     loose: [{ name: 'Screenshot 2026-08-31 at 15.13.24', record: 'isla', page: 'Isla’s page' }],
@@ -780,7 +781,7 @@ try {
     await sleep(4000);
     const tile5 = (await $text(page, '.ppl-ready__tile'))[5] || '';
     // 3 waiting, 1 near name, 2 people the roles check can't place, 3 companies twice in JobTread
-    ok(/JobTread access\s*10\s*Crosby Design Group: CDG Interiors in JobTread\?/.test(tile5), `the access tile counts what needs a look and names the first (${tile5})`);
+    ok(/JobTread access\s*11\s*Crosby Design Group: CDG Interiors in JobTread\?/.test(tile5), `the access tile counts what needs a look and names the first (${tile5})`);
     await clickText(page, '.ppl-ready__tile', 'JobTread access');
     await page.waitForSelector('.pt-access .pt-loose__item', { timeout: 5000 }).catch(() => {});
     ok(await page.evaluate(dialogTitle) === 'JobTread access', 'the tile opens JobTread access');
@@ -881,6 +882,7 @@ try {
     const rolesText = await page.$eval('.pt-access__roles', (e) => e.textContent.replace(/\s+/g, ' ')).catch(() => '');
     ok(/Who are they\?/.test(rolesText) && /Gus Hall/.test(rolesText) && /a Vendor in JobTread, at Mystery Co, which isn’t a partner or a vendor SOARD pays/.test(rolesText), `someone the site can’t place is asked about (${rolesText.slice(0, 160)})`);
     ok(/a Champion in JobTread, at Stone Works, which isn’t in Partners\. Add the company in Partners as a Champion/.test(rolesText), 'a level set by hand for a company not in Partners says to add it there');
+    ok(/a Builder in JobTread, at Lyle Works, which isn’t in Partners\. Say which partner it is, or add it in Partners as a Builder\./.test(rolesText), 'with their JobTread vendor known: say which partner, or add it');
     await clickText(page, '.pt-access__roles .pt-loose__item .btn', 'Trade Partner');
     ok(!/Leave as Vendor/.test(rolesText), 'nobody is left on Vendor: it’s going from JobTread');
     ok(await waitToast(page, /Gus Hall is a Trade Partner in JobTread from the next check/), 'Trade Partner: the toast says when it lands');

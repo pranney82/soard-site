@@ -531,8 +531,10 @@ test('every partner gets its JobTread vendor, on a page or not: the pages’ fir
   noMail(t);
   const many = Array.from({ length: 30 }, (_, i) => ({ slug: `donor-${i + 1}`, name: `Donor Number ${String(i + 1).padStart(2, '0')}`, logo: img(`partners/donor-${i + 1}/1`) }));
   const GPC = { slug: 'gp-company', name: 'Georgia Pacific', logo: img('partners/gpc/1') };
-  const DB = await world({ kids: [{ ...ISLA, partnerLogos: [logoOf(BLYTHE)] }], partners: [...many, GPC, BLYTHE] });
-  const jt = fakeJT({ jobs: [{ id: 'j1', name: 'Isla Smith (2026)', access: [] }], accounts: [{ id: 'acctgp1', name: 'Georgia Pacific Gypsum', contacts: [] }] });
+  // JobTread has a vendor called only "Atlanta" (live, Oct 30): never offered as the same as Atlanta Falcons
+  const FALCONS = { slug: 'atlanta-falcons', name: 'Atlanta Falcons', logo: img('partners/falcons/1') };
+  const DB = await world({ kids: [{ ...ISLA, partnerLogos: [logoOf(BLYTHE)] }], partners: [...many, GPC, FALCONS, BLYTHE] });
+  const jt = fakeJT({ jobs: [{ id: 'j1', name: 'Isla Smith (2026)', access: [] }], accounts: [{ id: 'acctgp1', name: 'Georgia Pacific Gypsum', contacts: [] }, { id: 'acctatl9', name: 'Atlanta', documents: 1, contacts: [] }] });
   const r = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 });
   assert.deepEqual(r.problems, []);
   assert.equal(r.made.length, 25);
@@ -540,9 +542,10 @@ test('every partner gets its JobTread vendor, on a page or not: the pages’ fir
   assert.equal(r.more, true);
   assert.deepEqual((await adminView(DB)).near.map((n) => [n.name, n.near.map((x) => x.name)]), [['Georgia Pacific', ['Georgia Pacific Gypsum']]], 'a name JobTread starts another with is asked, never made');
   const r2 = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
-  assert.equal(r2.made.length, 6);
+  assert.equal(r2.made.length, 7);
+  assert.ok(r2.made.some((m) => m.name === 'Atlanta Falcons'), 'made, not asked about “Atlanta”');
   assert.equal(new Set(jt.accounts.map((a) => a.name)).size, jt.accounts.length, 'each made once');
-  assert.equal(jt.accounts.length, 1 + 31);
+  assert.equal(jt.accounts.length, 2 + 32);
   const r3 = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 30 * MIN });
   assert.deepEqual(r3.made, []);
   // A partner added since: made when staff act on it, before the next full run

@@ -437,10 +437,11 @@ const PLACE_WORDS = new Set(['atlanta', 'atl', 'georgia', 'ga', 'metro', 'greate
 /** A name's words in order, the/and/of/inc/llc/co/company… aside */
 const wordsOf = (name) => String(name || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, ' and ')
   .split(/[^a-z0-9]+/).filter((w) => w && !FILLER.has(w));
+const placeOnly = (w) => w.length > 0 && w.every((x) => PLACE_WORDS.has(x));
 const within = (x, y) => {
   if (!x.length || !y.length) return false;
   const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  return !short.every((w) => PLACE_WORDS.has(w)) && short.every((w, i) => long[i] === w);
+  return !placeOnly(short) && short.every((w, i) => long[i] === w);
 };
 /** One name starts with every word of the other, in order ("Msi" and "MSI Surfaces"), the/inc/llc/co/company… aside */
 export const sameWords = (a, b) => within(wordsOf(a), wordsOf(b));
@@ -754,7 +755,9 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       // Every word of one name in the other ("MSI Surfaces" for Msi), then one archived under the same name: staff choose, never a second account by itself
       const holding = open.filter((a) => sameWords(a.name, v.name)).map((a) => ({ partner: { slug: a.id, name: a.name }, why: 'Starts with the name' }));
       const archived = accounts.filter((a) => a.archived && !not.includes(a.id) && sameName(a.name, v.name)).map((a) => ({ partner: { slug: a.id, name: `${a.name} (archived)` }, why: 'Archived in JobTread' }));
-      const close = [...new Map([...holding, ...archived, ...nearPartners(v.name, open.map((a) => ({ slug: a.id, name: a.name })), { min: 0.6, max: 2 })]
+      // A JobTread vendor called only a place ("Atlanta") is never offered as the same as Atlanta Falcons
+      const named = open.filter((a) => !placeOnly(wordsOf(a.name))).map((a) => ({ slug: a.id, name: a.name }));
+      const close = [...new Map([...holding, ...archived, ...nearPartners(v.name, named, { min: 0.6, max: 2 })]
         .map((c) => [c.partner.slug, c])).values()].slice(0, 2);
       // Staff said the match was wrong: they pick another near name or a new vendor, never the sweep
       if ((close.length || was.length) && !newOk[v.partner]) {

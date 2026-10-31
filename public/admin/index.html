@@ -13395,8 +13395,8 @@
             <span class="pt-loose__text">
               <strong>${u.name}</strong>
               <small>${u.why === 'level'
-                ? `${ptA(u.role)} in JobTread${u.company ? `, at ${u.company}` : ''}, which isn’t in Partners. Add the company in Partners as ${ptA(u.role)}, or:`
-                : `${ptA(u.role)} in JobTread${u.company ? `, at ${u.company}` : ''}, which isn’t a partner or a vendor SOARD pays.`}${u.account ? ' If it’s a partner by another name, say which.' : ''}</small>
+                ? `${ptA(u.role)} in JobTread${u.company ? `, at ${u.company}` : ''}, which isn’t in Partners. ${u.account ? `Say which partner it is, or add it in Partners as ${ptA(u.role)}.` : `Add the company in Partners as ${ptA(u.role)}, or:`}`
+                : `${ptA(u.role)} in JobTread${u.company ? `, at ${u.company}` : ''}, which isn’t a partner or a vendor SOARD pays.${u.account ? ' If it’s a partner by another name, say which.' : ''}`}</small>
               <span class="pt-loose__acts">
                 ${u.account ? (() => {
                   const cands = PS.similarPartners(u.company || '', partners, { min: 0.55, max: 2 });
