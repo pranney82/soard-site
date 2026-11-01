@@ -59,6 +59,8 @@ export const UI = {
     sentBodyHtml: 'We sent a link to <strong data-later-email></strong>. It works for 60 days after your last change. Please keep it private, since anyone with it can see your answers.',
     keepGoing: 'Keep going now', close: 'Close',
     welcomeBack: 'Welcome back! Your answers are saved, so you can pick up right where you left off.',
+    noStorage: "Your answers save as you go, but this browser blocks keeping your place on this device. Before you leave, use “Save and finish later” to get a link by email.",
+    keptHere: "Welcome back! The changes you made here last time hadn't saved yet, so this device kept them for you.",
     remindersOff: "You won't get any more reminder emails. Your answers are still saved here.",
     expired: 'This saved application has expired. Your answers are still here: press Continue to save them in a new one.', renewed: 'Your saved application had expired, so we saved the answers on this page in a new one.', renewedFiles: 'Your saved application had expired, so we saved the answers on this page in a new one. Please add your photos and video again.', fileAgain: 'This expired with your saved application. Please add it again.',
     linkExpired: 'That link has expired or is not valid. Please start a new application.',
@@ -72,7 +74,7 @@ export const UI = {
     previewFile: 'Preview: {name} (not uploaded)',
     retryUpload: 'Try again', choosePhotoOther: 'Choose a different photo',
     noPhoto: 'No photo yet', choosePhoto: 'Choose a photo', replacePhoto: 'Replace photo', remove: 'Remove', gettingReady: 'Getting your photo ready…',
-    uploading: 'Uploading… {pct}%', added: 'Added: {name}', tryAgain: '{msg}. Please try again.', uploadFailed: 'Upload failed', notImage: "That file isn't a photo we can use. Please choose a JPEG, PNG or HEIC photo.",
+    uploading: 'Uploading… {pct}%', added: 'Added: {name}', tryAgain: '{msg}. Please try again.', uploadFailed: 'Upload failed', videoFailed: "Your video didn't upload", uploadOffline: "The upload stopped when the connection dropped. Press Try again once you're back online.", notImage: "That file isn't a photo we can use. Please choose a JPEG, PNG or HEIC photo.",
     dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here',
     noVideo: 'No video yet', chooseVideo: 'Choose or record a video', chooseVideoDesk: 'Choose a video file', chooseOther: 'Choose a different video', starting: 'Starting upload…',
     uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.',
@@ -82,6 +84,7 @@ export const UI = {
     camStarting: 'Starting your camera…', camReady: 'Your camera is ready. Recordings stop on their own at 10 minutes.',
     camBlocked: "We couldn't use your camera. Please allow camera access, or choose a video file instead.",
     recKept: 'Recording stopped when you left the video, and what you recorded ({time}) is being added as your video. You can record again there any time.',
+    recKeptLang: 'Recording stopped when the language changed, and what you recorded ({time}) is being added as your video. You can record again any time.',
     yourPhoto: 'your photo', yourVideo: 'your video',
     leaveUpload: 'Your upload is still in progress. Leave this page and stop it?',
     suggestions: 'Suggested addresses', countyFilled: 'We filled in {county} County from your address.',
@@ -99,7 +102,7 @@ export const UI = {
     stopEditAddress: 'Change the address',
     steps: 'All steps', stepDone: 'Done', stepNow: 'You are here', stepLocked: 'Not reached yet',
     // The application on its own screen (a bar across the top, the steps beside it on a computer), and the overview on the page
-    appTitle: '{year} Makeover Application', appTitleShort: '{year} Application', saveExit: 'Save and exit', exitSaved: 'Saved. Your answers are here whenever you come back.', exitSaving: 'Saving your answers…', exitNotSaved: 'Not saved yet: you seem to be offline. Keep this page open and your answers will save when you reconnect.', exitUploading: 'Your answers are saved, and your upload is still going. Keep this page open until it finishes; it will say so here.', exitUploadFailed: "Your answers are saved, but a photo or video didn't upload. Please add it again when you come back.", hubTitleUnsaved: 'Your answers are not saved yet',
+    appTitle: '{year} Makeover Application', appTitleShort: '{year} Application', saveExit: 'Save and exit', exitSaved: 'Saved. Your answers are here whenever you come back.', exitSaving: 'Saving your answers…', exitNotSaved: 'Not saved yet: you seem to be offline. Keep this page open and your answers will save when you reconnect.', exitUploading: 'Your answers are saved, and your upload is still going. Keep this page open until it finishes; it will say so here.', exitUploadFailed: "Your answers are saved, but a photo or video didn't upload. Please add it again when you come back.", hubTitleUnsaved: 'Your answers are not saved yet', hubTitleSaving: 'Saving your application…', exitNotSavedServer: "Not saved yet: our server didn't answer. Keep this page open and we'll keep trying.",
     hubTitle: "Here's everything we'll ask", hubLead: '{n} steps, about 15 minutes. Your answers save as you go.',
     hubTitleBack: 'Your application is saved', hubLeadBack: '{done} of {n} steps done. About {m} minutes left.', hubLeadBackOne: '{done} of {n} steps done. About a minute left.',
     hubLeadReady: 'Every step is done. Look it over and submit.',
@@ -172,6 +175,8 @@ export const UI = {
     sentBodyHtml: 'Enviamos un enlace a <strong data-later-email></strong>. Funciona durante 60 días después de su último cambio. Manténgalo privado, ya que cualquier persona que lo tenga puede ver sus respuestas.',
     keepGoing: 'Seguir ahora', close: 'Cerrar',
     welcomeBack: '¡Bienvenido de nuevo! Sus respuestas están guardadas, así que puede continuar justo donde se quedó.',
+    noStorage: 'Sus respuestas se guardan a medida que avanza, pero este navegador no permite recordar su lugar en este dispositivo. Antes de salir, use “Guardar y terminar después” para recibir un enlace por correo electrónico.',
+    keptHere: '¡Bienvenido de nuevo! Los cambios que hizo aquí la última vez aún no se habían guardado, así que este dispositivo los conservó.',
     remindersOff: 'Ya no recibirá más correos de recordatorio. Sus respuestas siguen guardadas aquí.',
     expired: 'Esta solicitud guardada venció. Sus respuestas siguen aquí: presione Continuar para guardarlas en una nueva.', renewed: 'Su solicitud guardada había vencido, así que guardamos las respuestas de esta página en una nueva.', renewedFiles: 'Su solicitud guardada había vencido, así que guardamos las respuestas de esta página en una nueva. Vuelva a agregar sus fotos y su video.', fileAgain: 'Esto venció con su solicitud guardada. Vuelva a agregarlo.',
     linkExpired: 'Ese enlace venció o no es válido. Comience una nueva solicitud.',
@@ -185,7 +190,7 @@ export const UI = {
     previewFile: 'Vista previa: {name} (no se subió)',
     retryUpload: 'Intentar de nuevo', choosePhotoOther: 'Elegir otra foto',
     noPhoto: 'Todavía no hay foto', choosePhoto: 'Elegir una foto', replacePhoto: 'Cambiar foto', remove: 'Quitar', gettingReady: 'Preparando su foto…',
-    uploading: 'Subiendo… {pct}%', added: 'Agregada: {name}', tryAgain: '{msg}. Intente de nuevo.', uploadFailed: 'No se pudo subir', notImage: 'Ese archivo no es una foto que podamos usar. Elija una foto JPEG, PNG o HEIC.',
+    uploading: 'Subiendo… {pct}%', added: 'Agregada: {name}', tryAgain: '{msg}. Intente de nuevo.', uploadFailed: 'No se pudo subir', videoFailed: 'Su video no se subió', uploadOffline: 'La carga se detuvo cuando se perdió la conexión. Presione Intentar de nuevo cuando vuelva a tener conexión.', notImage: 'Ese archivo no es una foto que podamos usar. Elija una foto JPEG, PNG o HEIC.',
     dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí',
     noVideo: 'Todavía no hay video', chooseVideo: 'Elegir o grabar un video', chooseVideoDesk: 'Elegir un archivo de video', chooseOther: 'Elegir otro video', starting: 'Comenzando a subir…',
     uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.',
@@ -195,6 +200,7 @@ export const UI = {
     camStarting: 'Encendiendo su cámara…', camReady: 'Su cámara está lista. La grabación se detiene sola a los 10 minutos.',
     camBlocked: 'No pudimos usar su cámara. Permita el acceso a la cámara o elija un archivo de video.',
     recKept: 'La grabación se detuvo al salir del video, y lo que grabó ({time}) se está agregando como su video. Puede grabar de nuevo allí cuando quiera.',
+    recKeptLang: 'La grabación se detuvo al cambiar el idioma, y lo que grabó ({time}) se está agregando como su video. Puede grabar de nuevo cuando quiera.',
     yourPhoto: 'su foto', yourVideo: 'su video',
     leaveUpload: 'Todavía se está subiendo un archivo. ¿Salir de esta página y detenerlo?',
     suggestions: 'Direcciones sugeridas', countyFilled: 'Completamos el condado de {county} con su dirección.',
@@ -209,7 +215,7 @@ export const UI = {
     areaHome: 'Casa', areaLegend: 'Nuestra área de servicio', areaLegendHome: 'La casa que escribió', areaAway: 'Casa, a {miles} mi',
     stopEditAddress: 'Cambiar la dirección',
     steps: 'Todos los pasos', stepDone: 'Listo', stepNow: 'Usted está aquí', stepLocked: 'Todavía no',
-    appTitle: 'Solicitud {year}', appTitleShort: 'Solicitud {year}', saveExit: 'Guardar y salir', exitSaved: 'Guardado. Sus respuestas estarán aquí cuando regrese.', exitSaving: 'Guardando sus respuestas…', exitNotSaved: 'Todavía no se guardó: parece que no tiene conexión. Deje esta página abierta y sus respuestas se guardarán cuando se vuelva a conectar.', exitUploading: 'Sus respuestas están guardadas y su archivo se sigue subiendo. Deje esta página abierta hasta que termine; aquí le avisaremos.', exitUploadFailed: 'Sus respuestas están guardadas, pero una foto o un video no se subió. Vuelva a agregarlo cuando regrese.', hubTitleUnsaved: 'Sus respuestas todavía no se guardaron',
+    appTitle: 'Solicitud {year}', appTitleShort: 'Solicitud {year}', saveExit: 'Guardar y salir', exitSaved: 'Guardado. Sus respuestas estarán aquí cuando regrese.', exitSaving: 'Guardando sus respuestas…', exitNotSaved: 'Todavía no se guardó: parece que no tiene conexión. Deje esta página abierta y sus respuestas se guardarán cuando se vuelva a conectar.', exitUploading: 'Sus respuestas están guardadas y su archivo se sigue subiendo. Deje esta página abierta hasta que termine; aquí le avisaremos.', exitUploadFailed: 'Sus respuestas están guardadas, pero una foto o un video no se subió. Vuelva a agregarlo cuando regrese.', hubTitleUnsaved: 'Sus respuestas todavía no se guardaron', hubTitleSaving: 'Guardando su solicitud…', exitNotSavedServer: 'Todavía no se guardó: nuestro servidor no respondió. Deje esta página abierta y seguiremos intentándolo.',
     hubTitle: 'Esto es todo lo que le preguntaremos', hubLead: '{n} pasos, unos 15 minutos. Sus respuestas se guardan mientras avanza.',
     hubTitleBack: 'Su solicitud está guardada', hubLeadBack: '{done} de {n} pasos listos. Quedan unos {m} minutos.', hubLeadBackOne: '{done} de {n} pasos listos. Queda más o menos un minuto.',
     hubLeadReady: 'Todos los pasos están listos. Revise y envíe la solicitud.',
@@ -470,7 +476,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
 <video class="af-recorder-view" muted playsinline aria-hidden="true"></video>
 <div class="af-recorder-bar"><p class="af-recorder-time" aria-live="polite"></p>
 <div class="af-recorder-actions"><button type="button" class="af-btn af-btn--link af-btn--on-dark" data-act="rec-cancel">${T('recordCancel')}</button>
-<button type="button" class="af-btn af-btn--primary af-btn--sm" data-act="rec-toggle" disabled>${T('recordStart')}</button></div></div></div>`;
+<button type="button" class="af-btn af-btn--primary af-btn--sm" data-act="rec-toggle" aria-disabled="true">${T('recordStart')}</button></div></div></div>`;
         break;
       default: control = '';
     }

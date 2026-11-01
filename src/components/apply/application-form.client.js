@@ -62,12 +62,16 @@ const local = (key) => ({
 });
 const store = local(STORE_KEY);
 const langPref = local(LANG_KEY);
+// Some browsers block saving on the device (every cookie blocked, strict privacy): the server still has
+// the answers, but this device won't remember the way back to them
+const canKeep = (() => { try { localStorage.setItem('soard-probe', '1'); localStorage.removeItem('soard-probe'); return true; } catch { return false; } })();
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const finePointer = () => matchMedia('(pointer: fine)').matches;
 const isToken = (s) => /^[0-9a-f]{32}$/.test(String(s || ''));
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 const SCREEN_KEY = 'soard-application-screen'; // this tab's screen, for a reload
+const PENDING_KEY = 'soard-application-unsaved';
 const blank = (v) => v == null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length)
   || (typeof v === 'object' && !Array.isArray(v) && Object.values(v).every(x => !String(x ?? '').trim()));
 
@@ -143,6 +147,9 @@ function init(root, cfg, mode) {
   const keyed = (k) => (org ? `${k}-organization` : k);
   // Its draft is kept apart, so this browser's own application (if any) is never mixed up with it
   let store = local(keyed(testRun ? TEST_STORE_KEY : STORE_KEY));
+  // Answers typed here and not saved yet (offline, the server failing, the tab closed first): kept on this
+  // device until the server has them, and put back on top when this application opens here again
+  const pending = local(keyed(PENDING_KEY));
   // Where messages go: the parent's email, or the organization's main contact's
   const emailId = org ? 'contactEmail' : 'parentEmail';
   const year = String(cfg.year || root.dataset.year || '');
@@ -301,7 +308,7 @@ function init(root, cfg, mode) {
     if (form && merge) answers = { ...answers, ...readAnswers() };
     // An address being searched for keeps what's typed in its line, one entered by hand its parts (neither is an answer yet)
     const addrWas = form ? [...ui.pages.querySelectorAll('[data-field] .af-address')].map(b => ({ id: b.closest('[data-field]').dataset.field, mode: b.dataset.mode, line: b.querySelector('[data-search]').value })) : [];
-    closeRecorder({ keep: true }); // a language switch mid-recording keeps it
+    closeRecorder({ keep: true, why: 'recKeptLang' }); // a language switch mid-recording keeps it
     closeSuggest();
     form = resolve(lang);
     lang = form.lang || 'en';
@@ -515,6 +522,8 @@ function init(root, cfg, mode) {
   function begin(id = null) {
     if (root.hidden) return;
     const was = focused;
+    // A link that didn't open, pressed past to start afresh: its note was about that link, not this one
+    if (!token && lastNotice?.m === 'linkExpired') { notice(null); linkGone = false; }
     enterFocus();
     const go = id && (reached(id) || previewing) ? id : currentId;
     if (was && go === currentId) { armTrap(); return; }
@@ -543,6 +552,7 @@ function init(root, cfg, mode) {
     left = depth > 0 ? { depth, at: whereNow() } : null;
     if (depth > 0) { swallow = true; history.go(-depth); }
     depth = 0;
+    pageAt = 0;
     if (saving) {
       // "Saved" only once it is: offline, they're told the answers are still on this page
       notice('exitSaving');
@@ -550,7 +560,7 @@ function init(root, cfg, mode) {
         if (focused || lastNotice?.m !== 'exitSaving') return;
         // A photo or video still on its way isn't saved yet: they keep the page open till it is (said when it is)
         if (ok && uploads.size) notice('exitUploading', 'info');
-        else notice(ok ? 'exitSaved' : 'exitNotSaved', ok ? 'success' : 'error');
+        else notice(ok ? 'exitSaved' : lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', ok ? 'success' : 'error');
       });
     }
     paintHeader();
@@ -571,6 +581,7 @@ function init(root, cfg, mode) {
   let depth = 0; // the application's entry in the browser's history they're on (0: the page itself)
   const trail = []; // depth → the screen that entry is
   let left = null; // after Save and exit: the entry and screen they left from
+  let pageAt = history.state?.afFocus ? history.state.afDepth || 1 : 0; // the entry the page itself sits on, out of the application
   let swallow = false;
   /**
    * The browser's or phone's Back and Forward go where they were, a screen at a time: every screen they
@@ -659,11 +670,14 @@ function init(root, cfg, mode) {
 
   // The browser tab says where they are while the application has the screen
   const baseTitle = document.title.replace(/^Test run · /, '');
+  // In Spanish, the application's own name in Spanish too (the site's name after it stays)
+  const siteName = baseTitle.includes(' | ') ? baseTitle.slice(baseTitle.indexOf(' | ')) : '';
   function paintTitle(ids = stepIds()) {
-    let title = baseTitle;
+    const app = lang === 'en' ? baseTitle : `${T('appTitle')}${siteName}`;
+    let title = app;
     if (focused && currentId && !stopShown && !doneShown) {
       const i = Math.max(0, ids.indexOf(currentId));
-      title = `${T('step', { n: i + 1, total: ids.length })}: ${titleOf(currentId)} · ${baseTitle}`;
+      title = `${T('step', { n: i + 1, total: ids.length })}: ${titleOf(currentId)} · ${app}`;
     }
     title = (testRun?.by ? 'Test run · ' : '') + title;
     if (document.title !== title) document.title = title;
@@ -766,7 +780,7 @@ function init(root, cfg, mode) {
       if (f.type === 'ack') { acks++; continue; }
       if (f.type === 'area') continue;
       const text = String((f.type === 'date' ? dateText(a[f.id], lang) : it.text) || '').split('\n')[0].trim();
-      if (text && parts.length < 2) parts.push(text.length > 44 ? `${text.slice(0, 42).trimEnd()}…` : text);
+      if (text && parts.length < 2) parts.push(text); // a long one is cut where the line ends (one "…", the styles')
     }
     if (photos) parts.push(photos === 1 ? T('photoAdded') : T('photosAdded', { n: photos }));
     if (video) parts.push(T('videoUploaded'));
@@ -858,7 +872,7 @@ function init(root, cfg, mode) {
     const mins = minutesLeft(ids, a);
     const sent = !started && !resumePending ? sentHere() : null;
     const pending = !started && !!resumePending; // saved, not reached just now: said here too, by its Continue
-    ui.hubTitle.textContent = T(sent ? 'hubTitleSent' : pending ? 'hubTitleBack' : !started ? 'hubTitle' : ['offline', 'notSaved', 'paused'].includes(lastSave) ? 'hubTitleUnsaved' : 'hubTitleBack');
+    ui.hubTitle.textContent = T(sent ? 'hubTitleSent' : pending ? 'hubTitleBack' : !started ? 'hubTitle' : ['offline', 'notSaved', 'paused'].includes(lastSave) ? 'hubTitleUnsaved' : ['saving', 'unsaved'].includes(lastSave) ? 'hubTitleSaving' : 'hubTitleBack');
     ui.hubLead.textContent = sent ? (sent.at ? T('hubLeadSent', { date: sentDate(sent.at) }) : T('hubLeadSentToday'))
       : pending ? T('resumeFailed')
         : !started ? T('hubLead', { n: ids.length })
@@ -1095,6 +1109,7 @@ function init(root, cfg, mode) {
     if (!keep && ![...el.querySelectorAll('.af-error')].some(e => e.textContent.trim())) el.removeAttribute('data-snug');
     const places = [...el.querySelectorAll(':scope > .af-place')];
     places.forEach(p => { p.removeAttribute('data-split'); p.style.removeProperty('--af-map-h'); });
+    fitAddress(el);
     if (el.offsetParent === null) return null;
     packSize = `${innerWidth}x${innerHeight}`;
     packAsked[pid] = [...el.querySelectorAll('.af-field--area')].some(asksAboutHome);
@@ -1293,9 +1308,19 @@ function init(root, cfg, mode) {
       if (overflows()) l.setAttribute('data-two', '');
     }
   }
+  /** An address and its apartment side by side only while the apartment's name fits its box; else one above the other */
+  function fitAddress(el = pageEl(currentId)) {
+    for (const box of el?.querySelectorAll('.af-address') || []) {
+      box.removeAttribute('data-stack');
+      const apt = box.querySelector('[data-part="line2"]');
+      const label = apt?.closest('.af-float')?.querySelector('.af-float-label');
+      if (label?.getClientRects().length && label.scrollWidth > label.clientWidth + 1) box.dataset.stack = '';
+    }
+  }
   /** The screen fitted to its room: the tiles' words, a long list's columns, then the map's size */
   function fitScreen() {
     unfit(pageEl(currentId));
+    fitAddress();
     fitTiles();
     fitCols();
     fitMap();
@@ -1425,11 +1450,14 @@ function init(root, cfg, mode) {
       else if (focus) {
         // On a computer the screen's first box takes the keys straight away (Linear's way), and a screen
         // reader still hears which step this is; on a touch screen the step's name has the focus, so a
-        // keyboard doesn't slide up over the questions
+        // keyboard doesn't slide up over the questions (the step's name is described by its part, "Part 2 of 4":
+        // a new part of the same step is heard too)
         const box = keysFirst() ? firstBox() : null;
+        const part = partOf();
         if (box) {
           box.focus({ preventScroll: true });
           if (pageChanged) announce(`${T('step', { n: stepIds().indexOf(id) + 1, total: stepIds().length })}: ${titleOf(id)}`);
+          else if (part.total > 1) announce(T('part', { n: part.at, total: part.total }));
         } else ui.stepTitle.focus({ preventScroll: true });
       }
     });
@@ -1674,6 +1702,13 @@ function init(root, cfg, mode) {
     // A saved application that couldn't open: said once on the page, at the top (the hero's note)
     ui.notice.hidden = !lastNotice || (!focused && !root.hidden && ['resumeFailed', 'linkExpired'].includes(lastNotice.m));
   }
+  /** A notice their own press led to (Submit, on an expired draft): in view, with the keys on it */
+  function readNotice() {
+    if (ui.notice.hidden) return;
+    ui.notice.tabIndex = -1;
+    ui.notice.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
+    ui.notice.focus({ preventScroll: true });
+  }
   /** A note by the buttons, where the family is looking (reason = why Submit is off) */
   function navNote(m, reason = false) {
     lastNav = m ? { m, reason } : null;
@@ -1685,6 +1720,11 @@ function init(root, cfg, mode) {
   }
   const TOP_SAVE = { saved: 'savedShort', offline: 'offlineShort', notSaved: 'notSavedShort', paused: 'pausedShort' };
   function saveState(key) {
+    // Heard only when it matters: saving stopped (offline, the server), and saved again after that; not
+    // "Saving…" and "All changes saved" after every pause in typing
+    const trouble = (k) => ['offline', 'notSaved', 'paused'].includes(k);
+    if (trouble(key) && !trouble(lastSave)) announce(T(key));
+    else if (key === 'saved' && trouble(lastSave)) announce(T('saved'));
     lastSave = key;
     paintSaveState();
     if (!focused) paintHub(); // the overview's "Your application is saved" waits for it to be
@@ -1705,7 +1745,7 @@ function init(root, cfg, mode) {
     if (testRun?.signIn) { navNote({ raw: TEST.signInNote }); return false; }
     if (turnstileSiteKey && !turnstileToken && !testRun && !renew) {
       // The check passes on its own in a moment (Continue looks busy meanwhile); said only when it wants a tap
-      await Promise.race([new Promise(r => turnstileWaiting.push(r)), wait(6000)]);
+      if (!turnstileWants) await Promise.race([new Promise(r => turnstileWaiting.push(r)), wait(6000)]);
       if (token) return true;
       if (!turnstileToken) { askCheck(); return false; }
     }
@@ -1726,12 +1766,14 @@ function init(root, cfg, mode) {
     checkAsked = false;
     turnstileToken = null; // used: a new application (another child) has the check again
     if (['linkExpired', 'resumeFailed', 'expired'].includes(lastNotice?.m)) notice(null); // about the one before this
+    if (!canKeep && !testRun) notice('noStorage', 'info'); // their way back is the emailed link
     remember();
     paintNav();
     return true;
   }
   /** The quick check wants a tap: it shows on the screen they're on, in view (not under Continue) */
   let checkAsked = false;
+  let turnstileWants = false;
   const turnstileWaiting = [];
   function askCheck() {
     checkAsked = true;
@@ -1759,16 +1801,19 @@ function init(root, cfg, mode) {
           if (r.theirs) takeTheirs(r, now);
           saveState('saved');
           retries = 0;
+          keepPending(); // anything typed since stays kept; nothing left: forgotten
           return true;
         }
         if (r.code === 'no-draft') { await expired(body.token); return false; }
         // Sent from another device or tab: this one says so (what's typed here since can't be added)
         if (r.code === 'submitted') { if (body.token === token && !doneShown) finished(true, { elsewhere: true }); return true; }
         saveState(r.status === 429 ? 'paused' : 'notSaved');
+        keepPending();
         retrySave();
         return false;
       } catch {
         saveState('offline');
+        keepPending();
         retrySave();
         return false;
       }
@@ -1789,6 +1834,19 @@ function init(root, cfg, mode) {
     saveState('unsaved');
     clearTimeout(dirtyTimer);
     dirtyTimer = setTimeout(save, 4000);
+    clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(keepPending, 500);
+  }
+  let pendingTimer = 0;
+  /** This page's answers the server doesn't have yet, on this device (see `pending`) */
+  function keepPending() {
+    clearTimeout(pendingTimer);
+    if (!token || previewing || doneShown) return;
+    const now = readAnswers();
+    const changed = {};
+    for (const id of Object.keys(now)) if (!sameAnswer(now[id], synced?.[id])) changed[id] = now[id];
+    if (Object.keys(changed).length) pending.set({ token, changed, at: Date.now() });
+    else pending.clear();
   }
   /**
    * The saved application expired with this page still open (weeks on): a new one with the answers here,
@@ -2104,7 +2162,7 @@ function init(root, cfg, mode) {
       if (!saved) { navNote(lastSave === 'offline' ? 'offlineSubmit' : 'submitUnsaved'); return; }
       const r = await api({ action: 'submit', token });
       if (r.ok) { finished(); return; }
-      if (r.code === 'no-draft') { await expired(); return; } // its note says what happened (a new one: Submit again)
+      if (r.code === 'no-draft') { await expired(); readNotice(); return; } // its note says what happened (a new one: Submit again)
       if (r.code === 'submitted') { finished(true); return; }
       if (r.error === 'stopped' && r.stop) { showStop({ key: r.stop, page: stopFor(form, readAnswers())?.page }); return; }
       if (r.errors && Object.keys(r.errors).length) {
@@ -2132,6 +2190,7 @@ function init(root, cfg, mode) {
   // ── The thank-you ────────────────────────────────────────────────
   function finished(already = false, { elsewhere = false } = {}) {
     store.clear();
+    pending.clear();
     if (!testRun && !previewing && (!already || sentStore.get()?.year !== year)) sentStore.set({ year, at: already ? null : Date.now() });
     closeRecorder();
     clearTimeout(dirtyTimer);
@@ -2203,11 +2262,11 @@ function init(root, cfg, mode) {
     if (rec) rec.hidden = !(canRecord() && s.state !== 'busy' && recorder?.id !== id);
   }
   function uploadsChanged() {
-    paintNav();
+    paintHeader(); // the steps' "Done" too: a photo gone (an expired draft's) undoes its step
     // Save and exit with a photo or video still going: once it's in (or didn't make it), said where they are
     if (!focused && !uploads.size && lastNotice?.m === 'exitUploading') {
       const failed = Object.values(uploadUi).some(u => u?.state === 'failed');
-      save().then((ok) => { if (!focused && lastNotice?.m === 'exitUploading') notice(failed ? 'exitUploadFailed' : ok ? 'exitSaved' : 'exitNotSaved', ok && !failed ? 'success' : 'error'); });
+      save().then((ok) => { if (!focused && lastNotice?.m === 'exitUploading') notice(failed ? 'exitUploadFailed' : ok ? 'exitSaved' : lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', ok && !failed ? 'success' : 'error'); });
     }
     if (currentId === 'review') buildReview();
     // A note that said the photo or video was missing goes once it's in
@@ -2235,7 +2294,7 @@ function init(root, cfg, mode) {
       xhr.open('POST', API);
       xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
       xhr.onload = () => { try { resolve(JSON.parse(xhr.responseText)); } catch { resolve({ ok: false }); } };
-      xhr.onerror = () => reject(new Error(T('uploadFailed')));
+      xhr.onerror = () => reject(Object.assign(new Error(T('uploadFailed')), { network: true }));
       xhr.send(body);
     });
   }
@@ -2247,10 +2306,16 @@ function init(root, cfg, mode) {
     if (r?.code === 'submitted') { if (was === token && !doneShown) finished(true, { elsewhere: true }); return T('doneElsewhere'); }
     return null;
   }
+  // Words of ours (the form's, or the server's in the family's language) are said as they are. Anything
+  // else is the browser's or the uploader's own, in English and technical ("tus: unexpected response…",
+  // "Failed to fetch"): what happened is said in plain words instead
+  const said = (msg) => Object.assign(new Error(msg), { said: true });
   // What went wrong, and what to do: "Please try again" added only when the words don't already say what to do
-  const failText = (e) => {
-    const msg = String(e?.message || T('uploadFailed')).trim();
-    return { raw: /try again|intente|please|por favor|elija|choose|vuelva/i.test(msg) ? msg : T('tryAgain', { msg: msg.replace(/[.!]\s*$/, '') }) };
+  const failText = (e, video = false) => {
+    const status = e?.originalResponse?.getStatus?.() || 0;
+    const dropped = !navigator.onLine || e?.network || e instanceof TypeError || (!!e?.originalRequest && !status);
+    const msg = e?.said && e.message ? String(e.message).trim() : T(dropped ? 'uploadOffline' : video ? 'videoFailed' : 'uploadFailed');
+    return { raw: /try again|intent|please|por favor|elija|choose|vuelva/i.test(msg) ? msg : T('tryAgain', { msg: msg.replace(/[.!]\s*$/, '') }) };
   };
 
   async function uploadPhoto(f, file) {
@@ -2286,7 +2351,7 @@ function init(root, cfg, mode) {
         const pct = Math.min(99, Math.round(p * 100));
         setUpload(f.id, { pct, msg: ['uploading', { pct }] });
       });
-      if (!r.ok) throw new Error(uploadGone(r, body.get('token')) || r.error || T('uploadFailed'));
+      if (!r.ok) throw said(uploadGone(r, body.get('token')) || r.error || T('uploadFailed'));
       files[f.id] = { key: true, name };
       delete retryFiles[f.id];
       setUpload(f.id, { state: 'done', msg: ['added', { name }], pct: null });
@@ -2355,41 +2420,50 @@ function init(root, cfg, mode) {
     uploadsChanged();
     videoThumb(file).then(thumb => { if (thumb && files[f.id]?.name === file.name) setUpload(f.id, { thumb }); });
     try {
-      const was = token;
-      const r = await api({ action: 'video-url', token, size: file.size, name: file.name, lang });
-      if (!r.ok) throw new Error(uploadGone(r, was) || r.error || T('uploadStartFail'));
-      await new Promise((resolve, reject) => {
-        const upload = new tus.Upload(file, {
-          uploadUrl: r.uploadUrl,
-          chunkSize: CHUNK,
-          retryDelays: [0, 2000, 5000, 10000, 20000, 40000, 60000],
-          metadata: { filename: file.name, filetype: file.type },
-          storeFingerprintForResuming: false,
-          onError: reject,
-          onProgress(sent, total) {
-            const pct = Math.floor((sent / total) * 100);
-            setUpload(f.id, { pct, msg: ['uploadingPct', { pct }] });
-          },
-          onSuccess: resolve,
-        });
-        upload.start();
-      });
+      for (let fresh = 0; ; fresh++) {
+        const was = token;
+        const r = await api({ action: 'video-url', token, size: file.size, name: file.name, lang });
+        if (!r.ok) throw said(uploadGone(r, was) || r.error || T('uploadStartFail'));
+        try {
+          await new Promise((resolve, reject) => {
+            const upload = new tus.Upload(file, {
+              uploadUrl: r.uploadUrl,
+              chunkSize: CHUNK,
+              retryDelays: [0, 2000, 5000, 10000, 20000, 40000, 60000],
+              metadata: { filename: file.name, filetype: file.type },
+              storeFingerprintForResuming: false,
+              onError: reject,
+              onProgress(sent, total) {
+                const pct = Math.floor((sent / total) * 100);
+                setUpload(f.id, { pct, msg: ['uploadingPct', { pct }] });
+              },
+              onSuccess: resolve,
+            });
+            upload.start();
+          });
+          break;
+        } catch (e) {
+          // Its upload link ran out or was let go (Stream keeps one for a while): a new one, once, from the start
+          if (!fresh && [404, 410].includes(e?.originalResponse?.getStatus?.())) { setUpload(f.id, { pct: 0, msg: 'starting' }); continue; }
+          throw e;
+        }
+      }
       setUpload(f.id, { pct: 100, msg: 'finishing' });
       let uploaded = false;
       for (let i = 0; i < 20 && !uploaded; i++) {
         const done = await api({ action: 'video-done', token, lang });
-        if (done.code === 'video-error') throw new Error(done.error);
+        if (done.code === 'video-error') throw said(done.error);
         uploaded = !!done.uploaded;
         if (!uploaded) await wait(1500);
       }
-      if (!uploaded) throw new Error(T('videoGone'));
+      if (!uploaded) throw said(T('videoGone'));
       files[f.id] = { uid: true, uploaded: true, name: file.name };
       delete retryFiles[f.id];
       setUpload(f.id, { state: 'done', msg: ['videoDone', { name: file.name }], pct: null });
     } catch (e) {
       delete files[f.id];
       retryFiles[f.id] = file;
-      setUpload(f.id, { state: 'failed', msg: failText(e), pct: null });
+      setUpload(f.id, { state: 'failed', msg: failText(e, true), pct: null });
     } finally {
       uploads.delete(f.id);
       uploadsChanged();
@@ -2428,11 +2502,14 @@ function init(root, cfg, mode) {
     box.hidden = false;
     delete box.dataset.rec;
     time.textContent = T('camStarting');
-    toggle.disabled = true;
+    // Waiting on the camera: busy, not disabled, so the keys move here from "Record with my camera" (which goes)
+    toggle.setAttribute('aria-disabled', 'true');
     toggle.textContent = T('recordStart');
     recorder = { id: f.id, stream: null, rec: null, chunks: [], started: 0, timer: null, type: '' };
     const mine = recorder;
+    const keys = el.contains(document.activeElement);
     paintUpload(f.id);
+    if (keys) toggle.focus({ preventScroll: true });
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: true });
@@ -2446,7 +2523,7 @@ function init(root, cfg, mode) {
     view.srcObject = stream;
     view.play().catch(() => {});
     time.textContent = T('camReady');
-    toggle.disabled = false;
+    toggle.removeAttribute('aria-disabled');
     box.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
   }
   function toggleRecording() {
@@ -2455,6 +2532,7 @@ function init(root, cfg, mode) {
     if (!box) return;
     const time = box.querySelector('.af-recorder-time');
     const toggle = box.querySelector('[data-act="rec-toggle"]');
+    if (toggle.getAttribute('aria-disabled') === 'true') return;
     if (!recorder.rec) {
       const type = ['video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
         .find(t => MediaRecorder.isTypeSupported?.(t)) || '';
@@ -2479,7 +2557,7 @@ function init(root, cfg, mode) {
     }
     // Stop and use it: the same upload path as a chosen file
     const mine = recorder;
-    toggle.disabled = true;
+    toggle.setAttribute('aria-disabled', 'true');
     clearInterval(mine.timer);
     mine.rec.onstop = () => { closeRecorder(); useRecording(mine); };
     mine.rec.stop();
@@ -2497,7 +2575,7 @@ function init(root, cfg, mode) {
    * stops it there and keeps what was recorded as the video (as Stop does), and says so; never a camera
    * left running out of sight, nor a recording lost
    */
-  function closeRecorder({ keep = false } = {}) {
+  function closeRecorder({ keep = false, why = 'recKept' } = {}) {
     if (!recorder) return;
     const r = recorder;
     recorder = null;
@@ -2505,9 +2583,10 @@ function init(root, cfg, mode) {
     const going = r.rec && r.rec.state !== 'inactive';
     const kept = keep && going && Date.now() - r.started >= 1000;
     try { if (going) { r.rec.onstop = kept ? () => useRecording(r) : null; r.rec.stop(); } } catch { /* already stopped */ }
-    if (kept) notice(['recKept', { time: recTime(Date.now() - r.started) }], 'info');
+    if (kept) notice([why, { time: recTime(Date.now() - r.started) }], 'info');
     r.stream?.getTracks().forEach(t => t.stop());
     const box = fieldEl(r.id)?.querySelector('.af-recorder');
+    const keys = !!box?.contains(document.activeElement); // Stop or Cancel had them: they stay in the video's box
     if (box) {
       box.hidden = true;
       delete box.dataset.rec;
@@ -2515,6 +2594,16 @@ function init(root, cfg, mode) {
       if (view) view.srcObject = null;
     }
     paintUpload(r.id);
+    if (keys) focusUploadBox(r.id);
+  }
+  /** The keys on the upload box's first button there is (its own words, if none): never dropped to the page */
+  function focusUploadBox(id) {
+    const el = fieldEl(id);
+    const btn = [...(el?.querySelectorAll('.af-upload-actions button') || [])].find(b => !b.hidden && !b.disabled && b.getClientRects().length);
+    const to = btn || el?.querySelector('.af-upload-status');
+    if (!to) return;
+    if (!btn) to.tabIndex = -1;
+    to.focus({ preventScroll: true });
   }
 
   // ── The address: one line that finds it, or its parts typed in ────
@@ -3567,6 +3656,9 @@ function init(root, cfg, mode) {
   });
   dlg.querySelector('[data-later-form]').addEventListener('submit', async (e) => {
     e.preventDefault();
+    // Busy, not disabled: a disabled button drops the keys to the page (and Tab out of the dialog)
+    const btn = dlg.querySelector('[data-later-form] button[type=submit]');
+    if (btn.getAttribute('aria-busy') === 'true') return;
     const status = dlg.querySelector('[data-later-status]');
     const email = laterInput.value.trim();
     // Empty or not an email: said here in the form's own words (not the browser's bubble)
@@ -3575,8 +3667,7 @@ function init(root, cfg, mode) {
     status.textContent = wrong || '';
     if (wrong) { laterInput.focus(); return; }
     if (mailFix(email) && laterAsked !== email) { laterAsked = email; paintMailFix(laterInput); return; }
-    const btn = dlg.querySelector('[data-later-form] button[type=submit]');
-    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
     status.textContent = T('sending');
     try {
       if (!navigator.onLine) { status.textContent = T('sendOffline'); return; }
@@ -3599,7 +3690,7 @@ function init(root, cfg, mode) {
     } catch {
       status.textContent = T('sendOffline'); // the request never got there
     } finally {
-      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
     }
   });
 
@@ -3818,6 +3909,8 @@ function init(root, cfg, mode) {
         sitekey: turnstileSiteKey,
         callback: (t) => { turnstileToken = t; turnstileWaiting.splice(0).forEach(r => r()); if (lastNav?.m === 'turnstile') navNote(null); },
         'expired-callback': () => { turnstileToken = null; },
+        // It wants a tap (it won't pass on its own): asked for now, not after the wait
+        'before-interactive-callback': () => { turnstileWants = true; turnstileWaiting.splice(0).forEach(r => r()); },
       });
     };
     const s = document.createElement('script');
@@ -3899,6 +3992,20 @@ function init(root, cfg, mode) {
     }
     draw({ merge: false });
     synced = readAnswers();
+    // What was typed here last time and never reached the server (offline, the tab closed): back on top
+    const kept = pending.get();
+    let keptBack = 0;
+    if (kept?.token === candidate && !r.submitted) {
+      for (const [id, v] of Object.entries(kept.changed || {})) {
+        const f = byId[id];
+        if (!f || !isInput(f) || sameAnswer(v, synced[id])) continue;
+        answers[id] = v;
+        writeField(f, v);
+        keptBack++;
+      }
+      if (keptBack) { openAnsweredTucked(); refresh({ animate: false }); }
+    }
+    if (!keptBack) pending.clear();
     applyWords();
     if (r.submitted) { finished(true); return; }
     // Their photos' small previews, so they see which ones they sent (not a gray box)
@@ -3925,7 +4032,8 @@ function init(root, cfg, mode) {
     show(at, { focus: false, scroll: false, screen: 'open' });
     remember();
     showApp(true); // the hero's button says "Continue"
-    notice(remindersOff ? 'remindersOff' : 'welcomeBack', 'success');
+    notice(remindersOff ? 'remindersOff' : keptBack ? 'keptHere' : 'welcomeBack', 'success');
+    if (keptBack) save();
     if (fromLink || session.get() || wantIn) begin();
     wantIn = false;
   }
@@ -4022,6 +4130,14 @@ function init(root, cfg, mode) {
     if (!focused) {
       // Forward onto one of its entries after Save and exit: the application opens again, on that screen
       if (!st?.afFocus || root.hidden) return false;
+      // Sent (and the page reloaded since): its screens went with it, and a new one starts from the page's
+      // button. Back leaves the page, past those entries, as a page's Back does
+      if (doneShown || sentHere()) {
+        const to = st.afDepth || 1;
+        if (to > pageAt) { swallow = true; history.go(pageAt - to); } // Forward: nothing there now
+        else { pageAt = to; history.go(-(to + 1)); }
+        return true;
+      }
       const to = st.afDepth || 1;
       // The screen they left, its entry further on: the browser goes there too, so Back and Forward still line up
       const at = left && left.depth > to ? left.at : st.afAt;
@@ -4319,6 +4435,7 @@ function init(root, cfg, mode) {
   // Leaving (a reload, a closed tab, a phone locking or switching apps): what's not saved yet goes with a
   // keepalive request, which the browser finishes after the page is gone (Safari drops an ordinary one)
   function saveOnLeave() {
+    if (token && !previewing && (unsaved() || ['unsaved', 'saving'].includes(lastSave))) keepPending();
     if (!token || previewing || !['unsaved', 'saving'].includes(lastSave)) return;
     clearTimeout(dirtyTimer);
     const ids = stepIds();
@@ -4345,7 +4462,9 @@ function init(root, cfg, mode) {
     replan();
   });
   window.addEventListener('beforeunload', (e) => {
-    if (uploads.size || recorder?.rec) { e.preventDefault(); e.returnValue = ''; }
+    // An upload or a recording would be cut off; changes not saved yet (offline, the server failing) are
+    // kept on this device, but a family on someone else's phone wouldn't be back to it
+    if (uploads.size || recorder?.rec || (token && !doneShown && unsaved())) { e.preventDefault(); e.returnValue = ''; }
   }, { signal });
   // Leaving through a site link doesn't fire beforeunload; ask before an upload is cut off
   document.addEventListener('astro:before-preparation', (e) => {

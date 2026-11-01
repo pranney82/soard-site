@@ -14,7 +14,7 @@ const described = [f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boo
 <div class={`adv-field adv-field--${f.type}`} data-field={f.id} data-show-if={f.showIf ? JSON.stringify(f.showIf) : undefined} hidden={!!f.showIf}>
   {f.type === 'choice' ? (
     <fieldset aria-describedby={described}>
-      <legend class="adv-label">{f.label}{!f.required && <span class="adv-optional">optional</span>}</legend>
+      <legend class="adv-label">{f.label}{!f.required && <span class="adv-optional">{' optional'}</span>}</legend>
       {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
       <div class={`adv-choices${f.options.length <= 3 && f.options.every((o: string) => o.length <= 6) ? ' adv-choices--short' : ''}`}>
         {f.options.map((o: string) => (
@@ -29,7 +29,7 @@ const described = [f.hint && `${fid(f.id)}-hint`, `${fid(f.id)}-err`].filter(Boo
     </label>
   ) : (
     <>
-      <label class="adv-label" for={fid(f.id)}>{f.label}{!f.required && <span class="adv-optional">optional</span>}</label>
+      <label class="adv-label" for={fid(f.id)}>{f.label}{!f.required && <span class="adv-optional">{' optional'}</span>}</label>
       {f.hint && <p class="adv-hint" id={`${fid(f.id)}-hint`}>{f.hint}</p>}
       {f.type === 'textarea' ? (
         <textarea id={fid(f.id)} name={f.id} rows={f.rows || 4} maxlength={f.max} autocomplete={f.autocomplete || 'off'} aria-describedby={described}></textarea>

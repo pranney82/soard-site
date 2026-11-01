@@ -27,6 +27,8 @@ const SECONDS = { text: 20, email: 15, tel: 15, url: 20, address: 20, textarea: 
 function read() {
   try { return JSON.parse(localStorage.getItem(STORE) || 'null'); } catch { return null; }
 }
+// Some browsers block saving on the device (every cookie blocked, strict privacy): then it isn't said that it saves
+const canKeep = (() => { try { localStorage.setItem('soard-probe', '1'); localStorage.removeItem('soard-probe'); return true; } catch { return false; } })();
 function write(v) {
   try { if (v) localStorage.setItem(STORE, JSON.stringify(v)); else localStorage.removeItem(STORE); } catch { /* private mode: no saving */ }
 }
@@ -353,16 +355,18 @@ export function initAdvisoryForm() {
     // Sent from this device before (a reload, a visit back): said, so it isn't sent a second time unsure
     const was = sent ? { at: Date.now() } : !started ? sentStore.get() : null;
     const on = was ? new Date(was.at).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : '';
-    ui.hubTitle.textContent = was ? 'We received your application' : started ? 'Your application is saved on this device' : 'Six steps, about 20 minutes';
+    ui.hubTitle.textContent = was ? 'We received your application' : started ? (canKeep ? 'Your application is saved on this device' : 'Keep this page open until you send it') : 'Six steps, about 20 minutes';
     ui.hubLead.textContent = was ? `It arrived on ${on}, and we’ll be in touch by email.`
-      : started ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total + 1} steps done. Pick up where you left off.`)
-        : 'Have a reference in mind. Your answers save on this device as you go.';
+      : !canKeep ? (started ? 'This browser blocks saving, so your answers are only on this page until you send them.' : 'Have a reference in mind. This browser blocks saving, so plan to finish in one sitting.')
+        : started ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total + 1} steps done. Pick up where you left off.`)
+          : 'Have a reference in mind. Your answers save on this device as you go.';
     ui.goLabel.textContent = was ? 'Start a new application' : !started ? 'Start the application' : doneCount === total ? 'Review and send' : 'Continue where you left off';
     const cta = document.querySelector('[data-adv-cta]'); // the hero's button says the same
     if (cta && cta.textContent !== ui.goLabel.textContent) cta.textContent = ui.goLabel.textContent;
     const note = document.querySelector('[data-adv-hero-note]');
     if (note) { note.hidden = !was; note.textContent = was ? `We received your application on ${on}. Thank you!` : ''; }
     ui.startOver.hidden = !started;
+    document.querySelector('[data-adv-saves]')?.toggleAttribute('hidden', !canKeep); // the hero's "Saves on this device as you go"
     ui.hubRows.forEach((b, i) => {
       const done = stepDone(i, a);
       const now = started && i === step;
@@ -467,6 +471,7 @@ export function initAdvisoryForm() {
   // to (Continue, Edit from the review) is an entry in the history that says which screen it is, and Back
   // or Forward shows that screen. Made by their taps, so a browser never skips them
   let depth = 0; // the entry they're on (0: the page itself)
+  let pageAt = history.state?.advFocus ? history.state.advDepth || 1 : 0; // the entry the page itself sits on, out of the application
   let left = null; // after Save and exit: the entry and screen they left from
   const trail = []; // depth → the screen that entry is
   let swallow = false;
@@ -521,6 +526,7 @@ export function initAdvisoryForm() {
     left = depth > 0 ? { depth, at: whereNow() } : null;
     if (depth > 0) { swallow = true; history.go(-depth); }
     depth = 0;
+    pageAt = 0;
     restored = restored || furthest > 0;
     paint();
     requestAnimationFrame(() => {
@@ -566,8 +572,15 @@ export function initAdvisoryForm() {
     const st = e?.state ?? history.state;
     if (!focused) {
       // Forward onto one of its entries after Save and exit: the application opens again, on that screen
-      if (!st?.advFocus || sent) return false;
+      if (!st?.advFocus) return false;
       const to = st.advDepth || 1;
+      // Sent (the page may have reloaded since): its screens went with it, and a new one starts from the
+      // page's button. Back leaves the page, past those entries, as a page's Back does
+      if (sent || (sentStore.get() && !read())) {
+        if (to > pageAt) { swallow = true; history.go(pageAt - to); } // Forward: nothing there now
+        else { pageAt = to; history.go(-(to + 1)); }
+        return true;
+      }
       // The screen they left, its entry further on: the browser goes there too, so Back and Forward still line up
       const at = left && left.depth > to ? left.at : st.advAt;
       if (left && left.depth > to) { swallow = true; history.go(left.depth - to); depth = left.depth; } else depth = to;
@@ -704,7 +717,7 @@ export function initAdvisoryForm() {
     furthest = Math.max(furthest, Math.min(REVIEW, Number(there?.furthest) || 0));
     write({ answers, step: Math.min(step, REVIEW), screen: screenNo, furthest, startedAt: Math.min(startedAt, Number(there?.startedAt) || startedAt), savedAt: Date.now() });
     takeTheirs(answers, now);
-    ui.saved.textContent = 'Saved on this device';
+    ui.saved.textContent = canKeep ? 'Saved on this device' : 'Not saved: this browser blocks it';
   }
   const same = (x, y) => JSON.stringify(x ?? '') === JSON.stringify(y ?? '');
   /** Answers another tab saved, shown here where this one hasn't changed them since */
@@ -740,6 +753,12 @@ export function initAdvisoryForm() {
   // Leaving mid-sentence (a closed tab, a phone locking) keeps the last keystrokes too
   window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) saveNow(); });
+  // A browser that blocks saving keeps nothing: leaving with answers asks first
+  window.addEventListener('beforeunload', (e) => {
+    if (canKeep || sent || !Object.values(collect()).some(v => String(Array.isArray(v) ? v.join('') : typeof v === 'object' && v ? Object.values(v).join('') : v ?? '').trim())) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
 
   /** A box for words grows as they write until the screen is full; a longer answer then scrolls inside it, never the screen */
   function capBoxes(page) {
@@ -1015,7 +1034,7 @@ export function initAdvisoryForm() {
       // The check passes on its own in a moment (Send looks busy meanwhile); said, and in view, only when it wants a tap
       sending = true; // a second press meanwhile counts once
       ui.next.setAttribute('aria-busy', 'true');
-      try { await Promise.race([new Promise((r) => turnstileWaiting.push(r)), new Promise((r) => setTimeout(r, 6000))]); } finally { sending = false; ui.next.removeAttribute('aria-busy'); }
+      try { if (!turnstileWants) await Promise.race([new Promise((r) => turnstileWaiting.push(r)), new Promise((r) => setTimeout(r, 6000))]); } finally { sending = false; ui.next.removeAttribute('aria-busy'); }
       if (!turnstileToken) {
         ui.sendError.textContent = 'Please confirm you’re not a robot, just above.';
         ui.sendError.hidden = false;
@@ -1084,6 +1103,7 @@ export function initAdvisoryForm() {
   // ── Turnstile (once the site has it set up) ──
   let turnstileLoading = false;
   const turnstileWaiting = [];
+  let turnstileWants = false;
   function loadTurnstile() {
     if (turnstileLoading || !turnstileKey) return;
     turnstileLoading = true;
@@ -1092,6 +1112,8 @@ export function initAdvisoryForm() {
         sitekey: turnstileKey,
         callback: (t) => { turnstileToken = t; turnstileWaiting.splice(0).forEach((r) => r()); if (/robot/.test(ui.sendError.textContent)) ui.sendError.hidden = true; },
         'expired-callback': () => { turnstileToken = null; },
+        // It wants a tap (it won't pass on its own): asked for now, not after the wait
+        'before-interactive-callback': () => { turnstileWants = true; turnstileWaiting.splice(0).forEach((r) => r()); },
       });
     };
     const s = document.createElement('script');

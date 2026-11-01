@@ -56,7 +56,7 @@ const logo = 'brand-logo-light-bg-display';
         <div class="hero-ctas"><a href="#application" class="btn btn-primary btn-lg" data-adv-cta>Start the application</a></div>
         <div class="hero-trust">
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>About 20 minutes</span>
-          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M17 21v-8H7v8M7 3v5h8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Saves on this device as you go</span>
+          <span class="hero-trust-item" data-adv-saves><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M17 21v-8H7v8M7 3v5h8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Saves on this device as you go</span>
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><a href={OVERVIEW_PDF} target="_blank" rel="noopener noreferrer">Read the overview first</a></span>
         </div>
       </div>
@@ -213,6 +213,7 @@ const logo = 'brand-logo-light-bg-display';
   .adv-done-elsewhere { font-weight: 600; }
   .hero-trust { display: flex; gap: 12px 22px; flex-wrap: wrap; }
   .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--c-text-muted); }
+  .hero-trust-item[hidden] { display: none; }
   .hero-trust-item a { color: inherit; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
   .hero-trust-icon { width: 16px; height: 16px; flex-shrink: 0; }
   .hero-photo-wrap { position: relative; max-width: 360px; justify-self: end; width: 100%; }
@@ -358,7 +359,7 @@ const logo = 'brand-logo-light-bg-display';
   .adv-page[data-snug] .adv-error { padding-block: 7px; margin-top: 8px; }
   .adv-field fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   .adv-label { display: block; font-weight: 700; font-size: 16px; line-height: 1.45; color: var(--c-dark); margin-bottom: 8px; padding: 0; }
-  .adv-optional { font-weight: 400; font-size: 14px; color: var(--c-text-muted); margin-left: 8px; }
+  .adv-optional { font-weight: 400; font-size: 14px; color: var(--c-text-muted); margin-left: 4px; } /* its own space comes first: "Preferred name optional" to a screen reader */
   .adv-hint { font-size: 14px; color: var(--c-text-muted); line-height: 1.5; margin: -2px 0 10px; }
   .adv-field input:not([type="radio"]):not([type="checkbox"]), .adv-field textarea {
     width: 100%; font: inherit; font-size: 16px; line-height: 1.55; color: var(--c-text);

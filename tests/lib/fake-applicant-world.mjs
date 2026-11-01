@@ -256,6 +256,8 @@ export function fakeApplicantWorld() {
               .sort((x, y) => (x.createdAt > y.createdAt ? order : -order));
             out.organization.events = pageOf(list, sel.$);
           }
+          // Custom field definitions (world.customFields: [{ id, options }])
+          if (v.customFields) out.organization.customFields = { nodes: (world.customFields || []).filter(f => test(f, v.customFields.$?.where)) };
           break;
         }
         default:

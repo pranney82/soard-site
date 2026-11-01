@@ -38,6 +38,7 @@ import {
   cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, isVisible, indexById, DEFAULT_STAFF_EMAILS,
 } from './_application-form.js';
 import { buildApplicationPdf } from './_application-pdf.js';
+import { COUNTIES } from './_application-constants.js';
 import { sendEmails, escapeHtml, SITE_ORIGIN, slackPost, slackIssue, slackResolved } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import * as mail from './_email-shell.js';
@@ -72,6 +73,42 @@ export const JT_FIELDS = {
   county: '22PK2MzzJD93',
 };
 const JT_LANGUAGES = ['English', 'Spanish', 'French', 'Vietnamese', 'Chinese', 'Korean'];
+
+/**
+ * The home's county: the family's answer on a form that still asked, else the
+ * address check's. The form doesn't ask any more: the address says (any county,
+ * not just the ones a list would hold).
+ */
+export function countyOf(app) {
+  const picked = String(app?.answers?.county || '').trim();
+  if (picked && !/^other\b/i.test(picked)) return picked;
+  const s = app?.jt_state || {};
+  const fa = s.formArea;
+  const fromForm = fa?.county && fa.key === addressKey(app?.answers?.address) ? fa.county : null;
+  return String(s.area?.county || fromForm || '').replace(/\s+County$/i, '').trim() || null;
+}
+
+let _countyChoices = null; // { at, options }: the choices of JobTread's location County field (null = it takes any text)
+/** The county as JobTread's County field takes it: one of its choices (spelled its way), any text when it has none, else left off */
+export async function jobtreadCounty(env, county, fetchImpl, now = Date.now()) {
+  const name = String(county || '').replace(/\s+County$/i, '').trim();
+  if (!name) return null;
+  if (!_countyChoices || now - _countyChoices.at > 10 * 60 * 1000) {
+    try {
+      const out = await pave(env.JOBTREAD_GRANT_KEY, {
+        organization: { $: { id: SOARD_ORG_ID }, customFields: { $: { size: 100, where: ['targetType', '=', 'location'] }, nodes: { id: {}, options: {} } } },
+      }, fetchImpl);
+      const node = (out?.organization?.customFields?.nodes || []).find(f => f.id === JT_FIELDS.county);
+      _countyChoices = { at: now, options: !node ? COUNTIES : Array.isArray(node.options) && node.options.length ? node.options : null };
+    } catch {
+      _countyChoices = { at: now - 9 * 60 * 1000, options: COUNTIES }; // JobTread didn't say: the ones it has always taken, asked again in a minute
+    }
+  }
+  const { options } = _countyChoices;
+  return !options ? name : options.find(o => String(o).toLowerCase() === name.toLowerCase()) || null;
+}
+/** For tests: forget JobTread's County choices */
+export const forgetCountyChoices = () => { _countyChoices = null; };
 const JT_YEARS = ['2025', '2026', '2027', '2028', '2029', '2030'];
 export const MAKEOVER_TYPE_MAP = {
   'Accessible Bathroom': 'Bathroom',
@@ -945,6 +982,7 @@ export function staffEmail(app, accountId) {
   const age = ageOn(a.birthdate, app.submitted_at);
   const types = (a.makeoverTypes || []).join(' and ') || 'a makeover';
   const area = s.area;
+  const county = countyOf(app);
   const repeats = s.repeat?.matches || [];
   const photos = Object.keys(app.files || {}).filter((k) => k !== 'video' && app.files[k]?.key).length;
   const { pill, TONES, esc } = mail;
@@ -961,7 +999,7 @@ export function staffEmail(app, accountId) {
     ['Makeover', esc(types)],
     ['Child', esc([nameText(a.childName), age != null ? `age ${age}` : null].filter(Boolean).join(', '))],
     ['Diagnosis', esc(a.diagnosis)],
-    ['County', esc(a.county) + countyClash],
+    ['County', esc(county) + countyClash],
     ['Service area', areaHtml],
     ['Applied before', repeatHtml],
     ['Photos and video', esc([photos ? `${photos} ${photos === 1 ? 'photo' : 'photos'}` : 'No photos', app.files?.video ? 'video' : 'no video'].join(', '))],
@@ -971,7 +1009,7 @@ export function staffEmail(app, accountId) {
   const applicants = accountId ? `${SITE_ORIGIN}/admin/#applications/applicants/${accountId}` : applicationUrl(app.id);
   const jt = accountId ? jobtreadAccountUrl(accountId) : null;
   const html = mail.emailShell({
-    preheader: `${types}${a.county ? `, ${a.county} County` : ''}. It’s in JobTread and the family has their copy.`,
+    preheader: `${types}${county ? `, ${county} County` : ''}. It’s in JobTread and the family has their copy.`,
     eyebrow: app.is_test ? 'Test application · not a real family' : `New application · ${app.year} season`,
     heading: `${first}’s family applied`,
     intro: `It came in through the website and is in JobTread with the application PDF and photos attached${app.files?.video ? '; the video follows once it finishes processing' : ''}. The family has the “Application Status” email with a copy of their answers.`,
@@ -984,7 +1022,7 @@ export function staffEmail(app, accountId) {
     subject: `${app.is_test ? '[TEST] ' : ''}New makeover application: ${first}`,
     html,
     text: `${first}'s family applied (${app.year} season).\n\n${[
-      ['Makeover', types], ['Child', nameText(a.childName)], ['Diagnosis', a.diagnosis], ['County', a.county],
+      ['Makeover', types], ['Child', nameText(a.childName)], ['Diagnosis', a.diagnosis], ['County', county],
       ['Service area', area ? areaText(area) : null], ['Main contact', contact.join(', ')],
     ].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nOpen in Applicants: ${applicants}${jt ? `\nOpen in JobTread: ${jt}` : ''}`,
   };
@@ -1002,6 +1040,7 @@ export function staffSlack(app, accountId) {
   const repeats = s.repeat?.matches || [];
   const photos = Object.keys(app.files || {}).filter((k) => k !== 'video' && app.files[k]?.key).length;
   const area = s.area;
+  const county = countyOf(app);
   const areaWords = !area ? null
     : area.status === 'inside' ? (area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside')
     : area.status === 'outside' ? `⚠️ About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside${bandOf(area) === 'near' ? ' (close)' : ''}`
@@ -1011,7 +1050,7 @@ export function staffSlack(app, accountId) {
     icon: '📝',
     title: `New application: ${who}`,
     test: app.is_test ? 'Test application · not a real family' : null,
-    lead: [types, a.county ? `${a.county} County` : null, app.year ? `${app.year} season` : null].filter(Boolean).join(' · '),
+    lead: [types, county ? `${county} County` : null, app.year ? `${app.year} season` : null].filter(Boolean).join(' · '),
     facts: [
       ['Service area', areaWords ? `${areaWords}${countyClash}` : null],
       ['Applied before', repeats.length
@@ -1054,6 +1093,7 @@ function orgStaffEmail(app, accountId) {
   const org = applicantNameOf(a, 'organization') || 'A new organization';
   const spaces = orgSpaces(a);
   const area = s.area;
+  const county = countyOf(app);
   const repeats = s.repeat?.matches || [];
   const photos = Object.keys(app.files || {}).filter((k) => k !== 'video' && app.files[k]?.key).length;
   const { pill, TONES, esc } = mail;
@@ -1064,7 +1104,7 @@ function orgStaffEmail(app, accountId) {
     ['Space', esc(spaces)],
     ['Organization', esc([org, kindText].filter(Boolean).join(', '))],
     ['Children served', esc([a.childrenServed ? `About ${a.childrenServed} a year` : null, a.agesServed ? `ages ${a.agesServed}` : null].filter(Boolean).join(', '))],
-    ['County', esc(a.county) + countyClash],
+    ['County', esc(county) + countyClash],
     ['Service area', areaPill(area)],
     ['Applied before', repeats.length ? `${pill('Possible repeat', TONES.amber)} ${esc(repeatWords(repeats))}` : a.previouslyApplied === 'Yes' ? 'They say yes; no match found' : 'No'],
     ['Photos', esc(photos ? `${photos} ${photos === 1 ? 'photo' : 'photos'} of the space` : 'No photos')],
@@ -1073,7 +1113,7 @@ function orgStaffEmail(app, accountId) {
   const applicants = accountId ? `${SITE_ORIGIN}/admin/#applications/applicants/${accountId}` : applicationUrl(app.id);
   const jt = accountId ? jobtreadAccountUrl(accountId) : null;
   const html = mail.emailShell({
-    preheader: `${spaces}${a.county ? `, ${a.county} County` : ''}. It’s in JobTread and they have their copy.`,
+    preheader: `${spaces}${county ? `, ${county} County` : ''}. It’s in JobTread and they have their copy.`,
     eyebrow: app.is_test ? 'Test application · not a real organization' : `New community project application · ${app.year} season`,
     heading: `${org} applied for a community project`,
     intro: 'It came in through the website and is in JobTread with the application PDF and photos attached. Their contact has the “Application Status” email with a copy of their answers.',
@@ -1086,7 +1126,7 @@ function orgStaffEmail(app, accountId) {
     subject: `${app.is_test ? '[TEST] ' : ''}New community project application: ${org}`,
     html,
     text: `${org} applied for a community project (${app.year} season).\n\n${[
-      ['Space', spaces], ['Organization', [org, kindText].filter(Boolean).join(', ')], ['County', a.county],
+      ['Space', spaces], ['Organization', [org, kindText].filter(Boolean).join(', ')], ['County', county],
       ['Service area', area ? areaText(area) : null], ['Main contact', contact.join(', ')],
     ].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nOpen in Applicants: ${applicants}${jt ? `\nOpen in JobTread: ${jt}` : ''}`,
   };
@@ -1100,12 +1140,13 @@ function orgStaffSlack(app, accountId) {
   const repeats = s.repeat?.matches || [];
   const photos = Object.keys(app.files || {}).filter((k) => k !== 'video' && app.files[k]?.key).length;
   const area = s.area;
+  const county = countyOf(app);
   const countyClash = area?.county && a.county && area.county !== a.county ? ` (the Census says ${area.county} County)` : '';
   return slackCard({
     icon: '🏫',
     title: `New community project application: ${org}`,
     test: app.is_test ? 'Test application · not a real organization' : null,
-    lead: [orgSpaces(a), a.county ? `${a.county} County` : null, app.year ? `${app.year} season` : null].filter(Boolean).join(' · '),
+    lead: [orgSpaces(a), county ? `${county} County` : null, app.year ? `${app.year} season` : null].filter(Boolean).join(' · '),
     facts: [
       ['Children served', a.childrenServed ? `About ${a.childrenServed} a year${a.agesServed ? `, ages ${a.agesServed}` : ''}` : null],
       ['Service area', areaWords(area) ? `${areaWords(area)}${countyClash}` : null],
@@ -1343,24 +1384,8 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     }
   });
 
-  await step('home', async () => {
-    if (s.location?.id) return;
-    const a = app.answers;
-    const out = await pave(env.JOBTREAD_GRANT_KEY, {
-      createLocation: {
-        $: {
-          accountId, address: addressText(a.address), name: a.address?.line1 || null, parseAddress: true,
-          ...(s.contacts?.[0]?.id ? { contactId: s.contacts[0].id } : {}),
-          customFieldValues: { ...mappedFields(form, a, 'location'), ...(a.county && !/^other\b/i.test(a.county) ? { [JT_FIELDS.county]: a.county } : {}) }, // "Other": not a JobTread choice (the Census county is in the email)
-        },
-        createdLocation: { id: {} },
-      },
-    }, jt);
-    s.location = { id: out?.createLocation?.createdLocation?.id || null };
-    if (!s.location.id) throw new Error('JobTread did not return the new location');
-  });
-
-  // Checks for staff. Neither ever holds the application up: a failure is noted and left
+  // Where the home is, first: a check for staff, and the county its JobTread address gets.
+  // Neither it nor the repeat check ever holds the application up: a failure is noted and left
   await step('service area', async () => {
     if (s.area) return;
     // The form placed the home as the family typed it (and again on submit): use that, else ask the Census now
@@ -1378,6 +1403,24 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
       lines.push(fromForm ? 'The form placed the home from its address as the family typed it, so they didn’t answer this themselves.' : `The family's answer: ${said || 'not given'}`);
       await postInternal(env, accountId, 'Service area check (automatic)', lines.join('\n\n'), jt).catch(() => {});
     }
+  });
+
+  await step('home', async () => {
+    if (s.location?.id) return;
+    const a = app.answers;
+    const county = await jobtreadCounty(env, countyOf(app), jt, now); // from the address (the form doesn't ask)
+    const out = await pave(env.JOBTREAD_GRANT_KEY, {
+      createLocation: {
+        $: {
+          accountId, address: addressText(a.address), name: a.address?.line1 || null, parseAddress: true,
+          ...(s.contacts?.[0]?.id ? { contactId: s.contacts[0].id } : {}),
+          customFieldValues: { ...mappedFields(form, a, 'location'), ...(county ? { [JT_FIELDS.county]: county } : {}) },
+        },
+        createdLocation: { id: {} },
+      },
+    }, jt);
+    s.location = { id: out?.createLocation?.createdLocation?.id || null };
+    if (!s.location.id) throw new Error('JobTread did not return the new location');
   });
   await step('repeat check', async () => {
     if (s.repeat) return;

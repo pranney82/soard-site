@@ -25,7 +25,6 @@ export const ORG_LOCKED_FIELDS = {
   orgName: { role: 'Names the JobTread account and the community project', types: ['text'], required: true },
   address: { role: 'JobTread: the organization’s address', types: ['address'], required: true },
   boundary: { role: 'The service-area check (Settings → Service area)', types: ['area'], values: Object.values(AREA_VALUES), allValues: true, required: true },
-  county: { role: 'JobTread: County', types: ['select', 'radio', 'text'] },
   referredBy: { role: 'JobTread: Referred By', types: ['text', 'textarea', 'select', 'radio'] },
   spaceTypes: { role: 'JobTread: Makeover Type', types: ['checkbox'], values: ORG_SPACE_TYPES },
   contactName: { role: 'JobTread: main contact', types: ['name'], required: true },
@@ -143,7 +142,6 @@ export const ORG_DEFAULT_DEFINITION = {
             { value: AREA_VALUES.far, label: 'No, it is not inside it or close to it.', description: 'This address is about {miles} miles outside our service area. We only take on projects inside it, so we likely can’t help this time. You’re still welcome to send your application.' },
           ],
         },
-        { id: 'county', type: 'select', required: true, label: 'What county is it in?', options: COUNTIES },
       ],
     },
     {

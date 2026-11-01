@@ -8,8 +8,8 @@
  *   - the overview of the steps, then the application on its own screen (Start); each step a
  *     screen at a time
  *   - page 1 checks, a draft starts on Continue, kept apart from a family's draft in this browser
- *   - the address placed on the service-area map (the real Census, through the server), the
- *     county filled in
+ *   - the address placed on the service-area map (the real Census, through the server), its
+ *     county named (never asked)
  *   - the organization's questions, a follow-up ("Something else"), the second contact tucked
  *     behind a button until wanted, the spaces (choose up to two), photos of the space
  *   - review, submit, the thank-you linking to the community projects
@@ -157,7 +157,7 @@ try {
   await page.waitForFunction(() => ['inside', 'near', 'far', 'unknown', 'error'].includes(document.querySelector('[data-area]')?.dataset.area), { timeout: 20000 }).catch(() => {});
   const area = await page.$eval('[data-area]', (e) => e.dataset.area).catch(() => '');
   ok(area === 'inside', `the address is placed on the map: ${area}`);
-  ok(await page.$eval('#af-county', (e) => e.value) === SUGGESTION.county, 'and the county is filled in');
+  ok(!(await page.$('#af-county')), 'no county question: the address says which');
   ok(await page.$eval('#af-address-search', (e) => e.value) === SUGGESTION.label, `the one line shows the whole address (${await page.$eval('#af-address-search', (e) => e.value)})`);
   const legend = await page.$eval('[data-area-map]', (e) => e.textContent).catch(() => '');
   ok(/The address you entered/.test(legend) && !/The home you entered/.test(legend), 'the map speaks of an address, not a home');

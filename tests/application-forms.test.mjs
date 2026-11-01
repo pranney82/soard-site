@@ -101,7 +101,7 @@ test('rules for show-when, stop screens, ids and messages', () => {
   assert.match(problems(missingStop), /The stop screen "nope" doesn't exist/);
 
   const dupe = clone(DEFAULT_DEFINITION);
-  dupe.pages[0].fields.push({ id: 'county', type: 'text', label: 'Again' });
+  dupe.pages[0].fields.push({ id: 'diagnosis', type: 'text', label: 'Again' });
   assert.match(problems(dupe), /Two questions have the same id/);
 
   const msg = clone(DEFAULT_DEFINITION);
@@ -525,7 +525,7 @@ test('the locked list matches what the site reads by id', () => {
   const answers = testAnswers('a@b.co', YEAR);
   const used = Object.keys(accountFields({ id: 'x', year: YEAR, answers })).length;
   assert.ok(used > 5);
-  for (const id of ['childName', 'birthdate', 'gender', 'diagnosis', 'language', 'referredBy', 'verbal', 'ambulatory', 'makeoverTypes', 'parentName', 'parentEmail', 'parentPhone', 'parentRelation', 'address', 'county', 'video']) {
+  for (const id of ['childName', 'birthdate', 'gender', 'diagnosis', 'language', 'referredBy', 'verbal', 'ambulatory', 'makeoverTypes', 'parentName', 'parentEmail', 'parentPhone', 'parentRelation', 'address', 'video']) {
     assert.ok(LOCKED_FIELDS[id], `${id} is read by the site and must be locked`);
   }
 });

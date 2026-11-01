@@ -161,7 +161,7 @@ const breadcrumbs = [
               <img class="af-top-logo" src={cfRaw('brand-logo-light-bg-display', 'w=160,q=85')} srcset={`${cfRaw('brand-logo-light-bg-display', 'w=112,q=85')} 1x, ${cfRaw('brand-logo-light-bg-display', 'w=224,q=85')} 2x`} alt="Sunshine on a Ranney Day" width="56" height="56" loading="lazy" decoding="async" />
               <span class="af-top-text">
                 <h1 class="af-top-title" data-af-t="appTitle">{w('appTitle')}</h1>
-                <span class="af-save-state af-top-save" data-save-state role="status"></span>
+                <span class="af-save-state af-top-save" data-save-state></span>
               </span>
             </span>
             <span class="af-top-actions">
@@ -232,7 +232,7 @@ const breadcrumbs = [
           <div class="af-stage" data-stage>
             <header class="af-head">
               <div class="af-head-top">
-                <p class="af-step-text"><span data-step-text>Step 1 of {steps}</span><span class="af-part" data-part-text></span></p>
+                <p class="af-step-text"><span data-step-text>Step 1 of {steps}</span><span class="af-part" id="af-part-text" data-part-text></span></p>
                 <!-- A phone has no room beside the form: every step is behind this -->
                 <details class="af-steps" data-steps>
                   <summary class="af-steps-toggle">
@@ -242,7 +242,7 @@ const breadcrumbs = [
                   <ol class="af-steps-list" data-steps-list></ol>
                 </details>
               </div>
-              <h2 class="af-step-title" data-step-title tabindex="-1">{form.pages[0].title}</h2>
+              <h2 class="af-step-title" data-step-title tabindex="-1" aria-describedby="af-part-text">{form.pages[0].title}</h2>
             </header>
 
             <div class="af-pages" data-pages aria-busy="true">
@@ -1396,6 +1396,10 @@ const breadcrumbs = [
     .af-pair--photos .af-upload[data-state="done"] .af-upload-status { color: var(--c-dark); }
     /* A file's name is cut short on one line; a note about a problem is read whole */
     .af-pair--photos .af-upload:not([data-state="done"]) .af-upload-status { white-space: normal; overflow: visible; text-overflow: clip; }
+    /* So small a box (a window zoomed to 200%, a phone on its side) that one line holds only "Added…": two */
+    @media (max-height: 420px) and (max-width: 760px) {
+      .af-pair--photos .af-upload[data-state="done"] .af-upload-status { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+    }
     .af-pair--photos .af-upload-actions { display: grid; gap: 4px; justify-items: stretch; }
     .af-pair--photos .af-btn--upload { width: 100%; padding-inline: 12px; }
     .af-pair--photos .af-btn--link { justify-self: center; }
@@ -1640,8 +1644,13 @@ const breadcrumbs = [
       html.af-focus .af-choices--cols .af-col { display: contents; }
       html.af-focus .af-choices--cols .af-choice-text { hyphens: manual; }
       /* The address and its apartment side by side */
-      html.af-focus .af-address { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+      html.af-focus .af-address { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
       html.af-focus .af-address > :is(.af-address-rest, .af-error, .af-address-switch, .af-county-note) { grid-column: 1 / -1; }
+      /* Its apartment's name a size smaller beside the address (as in a row of three), so it's read whole */
+      html.af-focus .af-address:not([data-stack]) > .af-float > .af-float-label { font-size: 15px; left: 14px; right: 10px; }
+      html.af-focus .af-address:not([data-stack]) > .af-float > input { padding-left: 13px; padding-right: 10px; }
+      /* Still cut off ("Apartment, suite, etc. (option…"): one above the other */
+      html.af-focus .af-address[data-stack] { grid-template-columns: minmax(0, 1fr); }
     }
     /* A photo's box: the picture beside its words and button */
     html.af-focus .af-pair--photos .af-upload { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; align-items: center; padding: 10px; }

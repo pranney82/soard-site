@@ -17,7 +17,7 @@ import {
 import {
   createDraft, getDraft, saveDraft, setDraftFile, submitDraft, processApplication, getApplication,
   maybeSweepApplications, expireDrafts, accountFields, contactInputs, JT_FIELDS, photoKey, TEST_JPEG,
-  testAnswers, createTestApplication, listApplications, applicationUrl, DRAFT_TTL_DAYS, reminderEmail,
+  testAnswers, createTestApplication, listApplications, applicationUrl, DRAFT_TTL_DAYS, reminderEmail, jobtreadCounty, forgetCountyChoices,
 } from '../functions/api/_applications.js';
 import { handleApplicantEvent, QC_USER_ID } from '../functions/api/_applicant-comms.js';
 import { handleWorkflowCall, runNotifications } from '../functions/api/_applicant-notify.js';
@@ -102,7 +102,6 @@ test('follow-up questions show only for the answer that asks for them', () => {
   // As in Jotform, the "please explain" follow-ups are optional
   const withYes = formErrors(form, fullAnswers({ sensory: 'Yes' }), {}, ['diagnosis']);
   assert.equal(withYes.sensoryDetail, undefined);
-  assert.ok(formErrors(form, fullAnswers({ county: 'Clayton' }), {}, ['service-area']).county, 'county comes from the list');
 });
 
 test('renters get the stop screen; homes far outside the area do only when Settings say to stop them', () => {
@@ -185,6 +184,7 @@ test('the account carries every field the Zap used to fill', () => {
 // ── Submit → JobTread ───────────────────────────────────────────────
 
 test('submit loads everything into JobTread; the video follows once Stream is done', async () => {
+  w.world.census = { '1 test way': { lat: 33.95327, lng: -84.54682, county: 'Cobb', matched: '1 TEST WAY, MARIETTA, GA, 30067' } };
   const draft = await readyDraft();
   const sub = await submitDraft(env, draft);
   assert.equal(sub.ok, true);
@@ -198,7 +198,7 @@ test('submit loads everything into JobTread; the video follows once Stream is do
   assert.deepEqual(acct.contacts.map(c => [c.name, c.title]), [['Jordan Stone', 'Mother'], ['Sam Stone', 'Father']]);
   assert.equal(acct.primaryContactId, acct.contacts[0].id);
   assert.equal(acct.locations[0].address, '1 Test Way, Marietta, GA 30067');
-  assert.equal(acct.locations[0].customFieldValues[JT_FIELDS.county], 'Cobb');
+  assert.equal(acct.locations[0].customFieldValues[JT_FIELDS.county], 'Cobb', 'the county from the address (the form doesn\'t ask)');
   assert.deepEqual(acct.files.map(f => f.name).sort(), ['Avery Stone Family.jpg', 'Avery Stone Space 1.jpg', 'Avery Stone Space 2.jpg', 'Avery Stone.jpg', 'Avery Stone_Application.pdf']);
 
   // The family's confirmation is the JobTread "Application Status" message, with the PDF
@@ -254,6 +254,29 @@ test('submit loads everything into JobTread; the video follows once Stream is do
   assert.equal(done.staffSlack, true);
 });
 
+test('JobTread gets the county the address check found, as its County field takes it', async () => {
+  forgetCountyChoices();
+  w.world.census = { '1 test way': { lat: 33.92, lng: -84.84, county: 'Paulding', matched: '1 TEST WAY, DALLAS, GA, 30132' } };
+  // A list without Paulding: left off (JobTread would refuse it), never a wrong county
+  w.world.customFields = [{ id: 'zillowLink', targetType: 'location', options: null }, { id: JT_FIELDS.county, targetType: 'location', options: ['Cherokee', 'Cobb', 'DeKalb', 'Forsyth', 'Fulton', 'Gwinnett'] }];
+  let sub = await submitDraft(env, await readyDraft());
+  await run(sub.id);
+  let acct = Object.values(w.world.accounts).at(-1);
+  assert.equal(acct.locations[0].customFieldValues[JT_FIELDS.county], undefined);
+  assert.equal((await getApplication(env.DB, sub.id)).jt_state.area.county, 'Paulding', 'staff still see it');
+  // A County field that takes any text gets it
+  forgetCountyChoices();
+  w.world.customFields = [{ id: JT_FIELDS.county, targetType: 'location', options: [] }];
+  sub = await submitDraft(env, await readyDraft(fullAnswers({ parentEmail: 'other@example.com' })));
+  await run(sub.id);
+  acct = Object.values(w.world.accounts).at(-1);
+  assert.equal(acct.locations[0].customFieldValues[JT_FIELDS.county], 'Paulding');
+  // A list that has it, spelled its own way
+  forgetCountyChoices();
+  w.world.customFields = [{ id: JT_FIELDS.county, targetType: 'location', options: ['Cobb', 'PAULDING'] }];
+  assert.equal(await jobtreadCounty({ JOBTREAD_GRANT_KEY: 'k' }, 'Paulding County', w.fetchImpl), 'PAULDING');
+  forgetCountyChoices();
+});
 test('a Slack or email outage holds up neither heads-up, and only the one that failed is retried', async () => {
   const sub = await submitDraft(env, await readyDraft(fullAnswers(), { video: 'ready' }));
   w.world.slackDown = true;

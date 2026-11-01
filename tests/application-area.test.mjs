@@ -102,7 +102,7 @@ test('counting families by band, and who changes band when the area changes', ()
 test('the built-in form asks the service area under the address, and only stops families far out when Settings say so', () => {
   const f = applicationForm({ year: YEAR });
   const page = f.pages.find(p => p.id === 'service-area');
-  assert.deepEqual(page.fields.map(x => x.id), ['serviceAreaText', 'address', 'boundary', 'county', 'resides50'], 'address, then the check, county and the 50% question');
+  assert.deepEqual(page.fields.map(x => x.id), ['serviceAreaText', 'address', 'boundary', 'resides50'], 'address, then the check and the 50% question (no county: the address says)');
   const b = allFields(f).find(x => x.id === 'boundary');
   assert.equal(b.type, 'area');
   assert.deepEqual(b.options, Object.values(AREA_VALUES), 'the stored answers are the Jotform ones, so every application reads the same');

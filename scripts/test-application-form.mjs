@@ -13,14 +13,14 @@
  *   - page 1 checks (both boxes), then a draft starts on Continue
  *   - the service area: the map drawn from the live outline, the address
  *     placed on it as it's typed (the real Census, through the server), what
- *     the check found and the county it fills in; a home far out meets the
+ *     the check found, with its county (never asked); a home far out meets the
  *     "outside" stop screen (Settings set to stop them) with its pin on the
  *     map, and "Change the address" goes back to the street
  *   - follow-up questions appearing (conviction, sensory)
  *   - a problem shows when a question is left (only once touched), goes as soon
  *     as it's fixed, never in red; Next scrolls to and focuses the first one
  *   - address suggestions: listbox, arrows, Enter, Escape, fills city/state/ZIP
- *     and the county question (the lookup is stubbed: Photon is slow from a laptop)
+ *     (the lookup is stubbed: Photon is slow from a laptop)
  *   - every question type: name, date, address, select, radio, checkbox (max 2
  *     disables the rest), textarea, signature
  *   - photos resized in the browser and stored (R2): by the file picker and by
@@ -360,8 +360,7 @@ try {
   await sleep(100);
   ok(await addressParts() === '3167 Main St|Duluth|GA|30096', `Enter fills in the address's parts (${await addressParts()})`);
   ok(await addressLine() === '3167 Main St, Duluth, GA 30096', `and the line shows the whole address (${await addressLine()})`);
-  ok(await page.$eval('#af-county', (e) => e.value) === 'Gwinnett', 'and the county question');
-  ok(/Gwinnett County/.test(await page.$eval('[data-field="address"] .af-county-note', (e) => (e.hidden ? '' : e.textContent))), 'with a note saying so');
+  ok(!(await page.$('#af-county')), 'no county question: the address says which');
   ok(await stepTitle() === AREA && !(await visible('#af-address-suggest')), 'Enter picked; it did not submit the page');
   await waitArea('inside');
   ok(await areaState() === 'inside', 'the address is placed on the map: inside');
@@ -487,8 +486,6 @@ try {
   ok(await visible('[data-area-result]') && /Inside our service area/.test(areaCard), `and the good news over it (${areaCard.slice(0, 80)})`);
   ok(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight) <= 1, 'the map screen fits without scrolling');
   await shot('03-area-inside-phone');
-  await selectOpt('county', 'Cobb');
-  ok(await page.$eval('[data-field="address"] .af-county-note', (e) => e.hidden), 'changing the county takes the note away');
   await pick('resides50', 'Yes');
   await next();
 
@@ -597,8 +594,8 @@ try {
   ok(/Bienvenido de nuevo/.test(await page.$eval('[data-notice]', (e) => e.textContent)), 'with a welcome-back note');
   await tap('[data-lang-switch] [data-lang="en"]');
   await sleep(300);
-  const restored = await page.evaluate(() => [document.querySelector('#af-childName-first').value, document.querySelector('#af-parentEmail').value, document.querySelector('#af-county').value]);
-  ok(restored[0] === 'Avery' && restored[1] === 'jordan+apply@example.com' && restored[2] === 'Cobb', 'answers come back');
+  const restored = await page.evaluate(() => [document.querySelector('#af-childName-first').value, document.querySelector('#af-parentEmail').value]);
+  ok(restored[0] === 'Avery' && restored[1] === 'jordan+apply@example.com', 'answers come back');
   ok(await page.$eval('#af-address-search', (e) => e.value) === '3167 Main St, Duluth, GA 30096' && await page.$eval('[data-field="address"] .af-address', (e) => e.dataset.mode) === 'line', 'the address comes back whole, in its one line');
   steps = await openSteps();
   ok(steps.slice(0, 5).every((s) => !s.disabled), 'how far they got comes back too');
@@ -889,6 +886,12 @@ try {
   const sentNote = await page.$eval('[data-hero-note]', (e) => (e.hidden ? '' : e.textContent));
   ok(/We received your application on/.test(sentNote) && /Apply for another child/.test(await page.$eval('[data-hero-cta]', (e) => e.textContent)), `a reload after sending says it arrived, and the button is for another child ("${sentNote}")`);
   ok(/We have your application/.test(await page.$eval('[data-hub-title]', (e) => e.textContent)) && /Start a new application/.test(await page.$eval('[data-hub-go]', (e) => e.textContent)), 'and so does the overview');
+  // The browser's Back from there: off the page, never into a blank application on the sent one's old screens
+  await page.goBack({ timeout: 4000 }).catch(() => null);
+  await sleep(900);
+  const offBack = await page.evaluate(() => ({ focus: document.documentElement.classList.contains('af-focus'), path: location.pathname }));
+  ok(!offBack.focus, `Back after sending never opens a blank application (${JSON.stringify(offBack)})`);
+  await page.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
   await page.evaluate(() => localStorage.removeItem('soard-application-sent'));
 
   console.log('A link that no longer works');
@@ -908,6 +911,28 @@ try {
   await page.reload({ waitUntil: 'networkidle0' });
   await sleep(400);
   ok(/Welcome back/.test(await page.$eval('[data-notice]', (e) => e.textContent)), 'the reminders note shows once');
+
+  console.log('Changes that never saved');
+  // The server failing (or no connection) when the tab closes: what was done stays on this device, and comes back
+  if (!(await page.evaluate(() => document.documentElement.classList.contains('af-focus')))) await begin();
+  await reach('[data-field="ackParameters"]');
+  failSaves = 500;
+  await tap('[data-field="ackParameters"] .af-choice');
+  await sleep(5200); // its save goes, and doesn't go through
+  ok(/Not saved/.test(await page.$eval('[data-top] [data-save-state]', (e) => e.textContent)), 'the bar says it isn\'t saved');
+  ok(await page.evaluate(() => !!JSON.parse(localStorage.getItem('soard-application-unsaved') || 'null')?.changed?.ackParameters), 'and this device keeps it meanwhile');
+  // The server's back as they leave: the page that opens saves what this device kept
+  const asked = new Promise((resolve) => { page.once('dialog', async (d) => { failSaves = 0; resolve(d.type()); await d.accept(); }); setTimeout(() => resolve(null), 4000); });
+  await page.reload({ waitUntil: 'networkidle0' }).catch(() => null);
+  ok(await asked === 'beforeunload', 'leaving with it unsaved asks first');
+  failSaves = 0;
+  await sleep(900);
+  if (!(await page.evaluate(() => document.documentElement.classList.contains('af-focus')))) await begin();
+  await reach('[data-field="ackParameters"]');
+  ok(await page.$eval('[data-field="ackParameters"] input', (i) => i.checked), 'back after the reload: kept on the device');
+  ok(/hadn't saved yet/.test(await page.$eval('[data-notice]', (e) => e.textContent)), 'and it says so');
+  ok(await page.waitForFunction(() => localStorage.getItem('soard-application-unsaved') === null, { timeout: 8000 }).then(() => true, () => false), 'saved now, and forgotten on the device');
+  if (PAGES_DIR) ok(/ackParameters/.test(d1(`SELECT answers FROM application_drafts WHERE id = '${started}'`)), 'the server has it');
 
   console.log('Tap targets and narrow screens');
   await page.evaluate(() => localStorage.clear());
@@ -1198,7 +1223,7 @@ try {
     console.log('  - recorder skipped: camera blocked by Permissions-Policy');
   } else {
     await desk.click('[data-field="video"] [data-act="record"]');
-    await desk.waitForFunction(() => !document.querySelector('[data-field="video"] [data-act="rec-toggle"]').disabled, { timeout: 8000 });
+    await desk.waitForFunction(() => document.querySelector('[data-field="video"] [data-act="rec-toggle"]').getAttribute('aria-disabled') !== 'true', { timeout: 8000 });
     ok(await desk.$eval('.af-recorder-view', (v) => v.readyState >= 2 || !!v.srcObject), 'the camera preview shows');
     const layout = await desk.evaluate(() => {
       const v = document.querySelector('.af-recorder-view').getBoundingClientRect();
