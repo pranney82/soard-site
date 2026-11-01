@@ -154,6 +154,18 @@ function makeApi() {
         b: { id: 'acctpel002', name: 'Pella Windows and Doors of Georgia', holds: { contacts: 0, documents: 4, files: 0, access: 0, bills: 1 } } },
     ],
     combined: [{ key: 'acctmsi001 acctmsi002', keep: { id: 'acctmsi001', name: 'MSI Surfaces' }, drop: { id: 'acctmsi002', name: 'Msi' }, partner: 'msi', name: 'Msi', at: since, by: 'JobTread (automatic)' }],
+    // JobTread's vendors that aren't partners, by name; CDG Interiors is the near question's
+    jtOnly: [
+      { id: 'acctamz001', name: 'Amazon', kind: 'store', jobs: 13 },
+      { id: 'acctcdg01', name: 'CDG Interiors', kind: 'none', jobs: 0, asked: { near: 'Crosby Design Group' } },
+      { id: 'acctetsy01', name: 'Etsy', kind: 'store', jobs: 9 },
+      { id: 'acctgive01', name: 'Giving Tree Co', kind: 'none', jobs: 0 },
+      { id: 'acctlowe01', name: 'Lowe’s', kind: 'store', jobs: 9 },
+      { id: 'acctpub001', name: 'Publix', kind: 'store', jobs: 2 },
+      { id: 'acctsub001', name: 'Sub Plumbing', kind: 'trade', jobs: 2 },
+      { id: 'accttgt001', name: 'Target', kind: 'store', jobs: 11 },
+      { id: 'acctwal001', name: 'Walgreens', kind: 'store', jobs: 1 },
+    ],
   };
   for (const k of Object.keys(DIR)) st[k] = structuredClone(FX[k] || {});
   for (const k of Object.keys(DIR)) for (const [slug, d] of Object.entries(st[k])) d.slug ||= slug;
@@ -318,10 +330,14 @@ function makeApi() {
         return json({ success: true, twins: b.twins.same ? { combined: { kept: t.b.name, archived: t.a.name, partner: t.partner } } : { notSame: true, back: c || null }, view: a });
       }
       if (b.link) {
+        // Someone's company in "Who are they?", or one of JobTread's vendors that isn't a partner (its partner's old account stays)
         const u = a.roles.unplaced.find((x) => x.account === b.link.account);
+        const v = a.jtOnly.find((x) => x.id === b.link.account);
         a.roles.unplaced = a.roles.unplaced.filter((x) => x.account !== b.link.account);
+        a.jtOnly = a.jtOnly.filter((x) => x.id !== b.link.account);
         const name = FX.partners[b.link.partner]?.name || b.link.partner;
-        return json({ success: true, report: report(), linked: { partner: b.link.partner, name, account: { id: u.account, name: u.company }, archived: null }, view: a });
+        const old = a.matched.find((m) => m.partner === b.link.partner);
+        return json({ success: true, report: report(), linked: { partner: b.link.partner, name, account: { id: b.link.account, name: u?.company || v?.name }, archived: null, left: v && old ? old.accountName : null }, view: a });
       }
       if (b.rolePick) {
         const u = a.roles.unplaced.find((x) => x.membership === b.rolePick.membership) || st.picked?.[b.rolePick.membership];
@@ -938,6 +954,47 @@ try {
     await clickText(page, '.pt-access__matched > .ppl-link', '1 logo on pages');
     await sleep(150);
     ok(await page.$eval('.pt-access__matched a[href="#kids/isla"]', (a) => /Open the page/.test(a.textContent)).catch(() => false), 'an unnamed logo opens its page');
+    // JobTread's vendors that aren't partners: by what they are to SOARD, each a click from Partners or the partner it really is
+    ok(toggles.includes('9 JobTread vendors not in Partners'), `JobTread’s other vendors fold away too (${toggles.join(' | ')})`);
+    await clickText(page, '.pt-access__matched > .ppl-link', '9 JobTread vendors not in Partners');
+    await sleep(150);
+    const groups = await $text(page, '.pt-access__jtonly .pt-access__group');
+    ok(JSON.stringify(groups) === JSON.stringify(['Nothing on today’s jobs 2', 'Paid for work 1', 'Bought from 6']), `three groups, the ones that may be partners first (${groups.join(' | ')})`);
+    const jtRow = (name) => page.evaluate((name) => [...document.querySelectorAll('.pt-access__jtonly li')].find((li) => li.querySelector('a')?.textContent === name)?.textContent.replace(/\s+/g, ' ').trim() || '', name);
+    const amazon = await jtRow('Amazon');
+    ok(/^Amazon on 13 open jobs$/.test(amazon), `how many of today’s jobs it’s on, and nothing to press for a store (${amazon})`);
+    ok(/Add to Partners/.test(await jtRow('Giving Tree Co')), 'one on no job today can be added to Partners');
+    const cdg = await jtRow('CDG Interiors');
+    ok(/asked above: is it Crosby Design Group\?/.test(cdg) && !/Add to Partners|Same as/.test(cdg), `one a question above is about: answered there, no buttons here (${cdg})`);
+    ok(await page.$eval('.pt-access__jtonly a[href="https://app.jobtread.com/vendors/acctsub001"]', (a) => a.textContent).catch(() => '') === 'Sub Plumbing', 'each name opens that vendor in JobTread');
+    await typeInto(page, '#pt-access-find-jt', 'plumb');
+    await sleep(100);
+    ok(JSON.stringify(await $text(page, '.pt-access__jtonly .pt-access__group')) === JSON.stringify(['Paid for work 1']), 'Find narrows the list, and empty groups go');
+    await typeInto(page, '#pt-access-find-jt', '');
+    await sleep(100);
+    const jtCalls = callsTo(api, '/api/vendor-access-admin');
+    await page.evaluate(() => [...document.querySelectorAll('.pt-access__jtonly li')].find((li) => li.querySelector('a')?.textContent === 'Sub Plumbing')?.querySelectorAll('.btn')[1]?.click());
+    await page.waitForSelector('#pt-jt-co-acctsub001', { timeout: 3000 }).catch(() => {});
+    ok(await page.waitForFunction(() => document.activeElement?.id === 'pt-jt-co-acctsub001', { timeout: 2000 }).then(() => true, () => false), '“Same as a partner…” opens the partner list, focused');
+    ok(await page.$eval('.pt-access__jtonly li .btn-primary', (b) => b.disabled).catch(() => false), 'Link waits for a partner');
+    await clickText(page, '.pt-access__jtonly .btn', 'Cancel');
+    await sleep(100);
+    ok(!(await page.$('#pt-jt-co-acctsub001')) && callsTo(api, '/api/vendor-access-admin') === jtCalls, 'Cancel closes it, nothing sent');
+    await page.evaluate(() => [...document.querySelectorAll('.pt-access__jtonly li')].find((li) => li.querySelector('a')?.textContent === 'Sub Plumbing')?.querySelectorAll('.btn')[1]?.click());
+    await page.waitForSelector('#pt-jt-co-acctsub001', { timeout: 3000 }).catch(() => {});
+    await page.select('#pt-jt-co-acctsub001', 'randall-brothers');
+    await clickText(page, '.pt-access__jtonly .btn', 'Link');
+    ok(await waitToast(page, /“Sub Plumbing” is Randall Brothers now\. “Randall Bros”, its JobTread vendor before, holds something, so it stays there/), 'Link: the toast says the partner’s old JobTread vendor stays');
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ link: { partner: 'randall-brothers', account: 'acctsub001' } }) && !(await jtRow('Sub Plumbing')), 'it sends the partner and the JobTread vendor, and it leaves the list');
+    await shot(page, 'access-jtonly');
+    await page.evaluate(() => [...document.querySelectorAll('.pt-access__jtonly li')].find((li) => li.querySelector('a')?.textContent === 'Giving Tree Co')?.querySelector('.btn')?.click());
+    await page.waitForSelector('#pt-new-name', { timeout: 3000 }).catch(() => {});
+    ok((await page.$eval('#pt-new-name', (i) => i.value).catch(() => '')) === 'Giving Tree Co' && /Giving Tree Co is a vendor in JobTread, not in Partners yet/.test(await page.$eval('.kd-dialog', (e) => e.textContent).catch(() => '')), 'Add to Partners: the name filled in, and why');
+    await clickText(page, '.kd-dialog__foot .btn', 'Add partner');
+    await page.waitForFunction(() => !document.querySelector('#pt-new-name'), { timeout: 5000 }).catch(() => {});
+    await sleep(400);
+    ok(!!api.st.partners['giving-tree-co'] && JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ link: { partner: 'giving-tree-co', account: 'acctgive01' } }), 'saved, it’s matched to that JobTread vendor at once');
+    ok(/JobTread access/.test(await page.evaluate(dialogTitle)), 'and JobTread access is back');
     await shot(page, 'access-roles');
     await page.keyboard.press('Escape');
     await sleep(300);
@@ -1557,6 +1614,19 @@ try {
     const sheet = await page.$eval('.kd-dialog', (e) => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= 390; });
     ok(sheet, 'phone: Add a partner fits the screen');
     await shot(page, 'phone-create', { grow: false });
+    await page.keyboard.press('Escape');
+    await sleep(300);
+    // JobTread's other vendors on a phone: the words get the width, the choices go under them
+    await page.evaluate(() => [...document.querySelectorAll('.ppl-ready__label')].find((e) => e.textContent.trim() === 'JobTread access')?.closest('button')?.click());
+    await page.waitForSelector('.pt-access__jtonly', { timeout: 5000 }).catch(() => {});
+    await clickText(page, '.pt-access__matched > .ppl-link', '9 JobTread vendors not in Partners');
+    await sleep(200);
+    await page.evaluate(() => [...document.querySelectorAll('.pt-access__jtonly li')].find((li) => li.querySelector('a')?.textContent === 'Sub Plumbing')?.querySelectorAll('.btn')[1]?.click());
+    await sleep(200);
+    const jtWide = await page.evaluate(() => [...document.querySelectorAll('.pt-access__jtonly, .pt-access__jtonly *')].filter((el) => el.getBoundingClientRect().right > 390 || el.getBoundingClientRect().left < 0).map((el) => el.className || el.tagName).slice(0, 4));
+    ok(!jtWide.length && !!(await page.$('#pt-jt-co-acctsub001')), `phone: JobTread’s other vendors and the partner list fit${jtWide.length ? ` (${jtWide.join(', ')})` : ''}`);
+    await page.evaluate(() => document.querySelector('#pt-jt-co-acctsub001')?.closest('li')?.scrollIntoView({ block: 'center' }));
+    await shot(page, 'phone-access-jtonly', { grow: false });
     await page.keyboard.press('Escape');
     // Community partners
     await clickText(page, '.hub-tab', 'Community partners');

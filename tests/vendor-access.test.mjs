@@ -251,6 +251,13 @@ test('a sweep: vendors added quietly with their level or Trade Partner, a page p
   assert.deepEqual(view.near, [{ partner: 'walk-your-plans', name: 'Walk Your Plans', near: [{ id: 'acctwyp1', name: 'WYP Construction', why: view.near[0].near[0].why }] }]);
   // Nobody to add for Blythe or Walk Your Plans yet
   assert.deepEqual(view.waiting.map((w) => [w.name, w.reason, w.jobs.length]), [['Blythe Creative Co.', 'no-email', 1], ['Walk Your Plans', 'no-email', 1]]);
+  // JobTread's vendors that aren't partners, by what they are to SOARD; WYP Construction is the near question's
+  assert.deepEqual(view.jtOnly, [
+    { id: 'acct-e', name: 'Ace Electric', kind: 'trade', jobs: 1 },
+    { id: 'acct-store', name: 'Corner Store', kind: 'store', jobs: 1 },
+    { id: 'acct-tile', name: 'Tile Depot', kind: 'store', jobs: 1 },
+    { id: 'acctwyp1', name: 'WYP Construction', kind: 'none', jobs: 0, asked: { near: 'Walk Your Plans' } },
+  ]);
   assert.deepEqual(await rows(DB), [
     { company: 'aceelectric', state: 'added', reason: null, why: 'bill' },
     { company: 'blythecreative', state: 'waiting', reason: 'no-email', why: 'page' },
@@ -584,7 +591,7 @@ test('“Same as a partner” for someone’s JobTread company: any vendor accou
   // A partner with no JobTread vendor yet, by another name
   const means = await link(MEANS.slug, 'acctmeans');
   assert.ok(means.success, means.error);
-  assert.deepEqual(means.linked, { partner: MEANS.slug, name: MEANS.name, account: { id: 'acctmeans', name: 'Means Interiors' }, archived: null });
+  assert.deepEqual(means.linked, { partner: MEANS.slug, name: MEANS.name, account: { id: 'acctmeans', name: 'Means Interiors' }, archived: null, left: null });
   assert.deepEqual(means.view.matched.find((m) => m.partner === MEANS.slug), { partner: MEANS.slug, name: MEANS.name, account: 'acctmeans', accountName: 'Means Interiors', how: 'linked' });
   const links = JSON.parse((await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'links'").first()).value);
   assert.equal(links.meansinteriors, MEANS.slug, 'its logos and its people go by it too');
@@ -614,6 +621,36 @@ test('“Same as a partner” for someone’s JobTread company: any vendor accou
   assert.ok(back.success, back.error);
   assert.equal(acct('acctctmade').archived, false);
   assert.equal(back.view.matched.find((m) => m.partner === CHATT.slug).accountName, CHATT.name);
+});
+
+test('JobTread’s vendors that aren’t partners: listed by what they are, and one linked to a partner leaves the list (its old account joins it)', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const DB = await world({ kids: [], partners: [RANDALL], bills: [{ jtId: 'acctamz', name: 'Amazon', jobs: ['j1', 'j2'] }] });
+  const jt = fakeJT({
+    jobs: [],
+    accounts: [
+      { id: 'acctrb', name: 'Randall Brothers', contacts: [] },
+      { id: 'acctgive', name: 'Giving Tree Co', contacts: [] },
+      { id: 'acctsub', name: 'Sub Plumbing', fields: { Trades: ['Plumbing'] }, contacts: [] },
+      { id: 'acctamz', name: 'Amazon', contacts: [] },
+      { id: 'acctlbr', name: 'Lumber Yard', fields: { 'Materials only': true }, contacts: [] },
+      { id: 'acctold', name: 'Old Vendor', archived: true, contacts: [] },
+    ],
+  });
+  t.mock.method(globalThis, 'fetch', jt.fetchImpl);
+  assert.deepEqual((await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 })).problems, []);
+  const list = (v) => v.jtOnly.map((x) => `${x.name}: ${x.kind}${x.jobs ? ` ${x.jobs}` : ''}`);
+  assert.deepEqual(list(await adminView(DB)), ['Amazon: store 2', 'Giving Tree Co: none', 'Lumber Yard: store', 'Sub Plumbing: trade'], 'never a partner’s account or an archived one');
+  // Randall Brothers is Giving Tree Co in JobTread: the list loses it now, and Randall's old account, which isn't the site's, stays in JobTread
+  const req = new Request('https://x/api/vendor-access-admin', { method: 'POST', body: JSON.stringify({ link: { partner: RANDALL.slug, account: 'acctgive' } }) });
+  const r = await (await onRequestPost({ env: env(DB), data: { userEmail: 'staff@example.org' }, request: req })).json();
+  assert.ok(r.success, r.error);
+  assert.deepEqual([r.linked.archived, r.linked.left], [null, 'Randall Brothers']);
+  assert.ok(!list(r.view).some((x) => x.startsWith('Giving Tree')));
+  assert.equal(jt.accounts.find((a) => a.id === 'acctrb').archived, undefined);
+  await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
+  assert.ok(list(await adminView(DB)).includes('Randall Brothers: none'), 'the next run lists the account it had');
 });
 
 test('pairs: one staff said is “Not the same” never pairs again, by a saved pair, a link or the same name', () => {

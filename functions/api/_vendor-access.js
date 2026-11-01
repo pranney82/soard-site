@@ -180,6 +180,17 @@ export function isTradeVendor(a, { order = false } = {}) {
   if (f.materials || lower(f.docs) === 'not needed') return false;
   return !!(order || f.w9 || f.docs || (f.trades || []).some((t) => lower(t) !== 'materials and supplies'));
 }
+/**
+ * What a JobTread vendor that isn't a partner is to SOARD: 'trade' (paid for
+ * work), 'store' (bought from on today's jobs, or a supplier by its fields),
+ * or 'none' (neither: a store from an older job, a donor missing from
+ * Partners, or a partner's other account)
+ */
+export function vendorKind(a, { order = false, jobs = 0 } = {}) {
+  if (isTradeVendor(a, { order })) return 'trade';
+  const f = a?.facts || {};
+  return jobs || f.materials || lower(f.docs) === 'not needed' || (f.trades || []).length ? 'store' : 'none';
+}
 
 /** SOARD's JobTread vendors: [{ id, name, archived, createdAt, primary, contacts: [{ id, name, title, email, phone, at }], facts }] */
 export async function fetchVendorAccounts(grantKey, fetchImpl = fetch, ids = null) {
@@ -786,6 +797,16 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
     if (report.made.length) {
       await logAudit(DB, { userEmail: SYNC_USER, action: 'created', entityType: 'jobtread-vendor', entityName: 'Vendor accounts', changes: { made: report.made.map((m) => m.name) } });
     }
+    // JobTread's vendors that aren't partners, so staff can see who they are
+    if (!only) {
+      const onJobs = new Map();
+      for (const ids of bills.values()) for (const id of ids) onJobs.set(id, (onJobs.get(id) || 0) + 1);
+      const inPartners = new Set([...pairs.values()].map((a) => a.id));
+      await writeKey(DB, 'jt-only', accounts.filter((a) => !a.archived && !inPartners.has(a.id)).map((a) => {
+        const jobs = onJobs.get(a.id) || 0;
+        return { id: a.id, name: a.name, kind: vendorKind(a, { order: orders.has(a.id), jobs }), jobs };
+      }));
+    }
 
     // Who's on each job already, then the ones who aren't
     const access = want.length ? await fetchAccess(key, [...new Set(want.map((w) => w.job.id))], fetchImpl) : new Map();
@@ -947,21 +968,27 @@ export async function maybeSyncVendorAccess(env, { fetchImpl = fetch, now = Date
  * loose: [{ name, record, page }] (logos nobody goes by), billedOnly: [{ partner, name }],
  * twins: [{ key, partner, name, why, canCombine, a, b }] (one company twice in JobTread, for staff),
  * combined: [{ key, keep, drop, partner, name, at }] (the empty twin the site archived, newest 30),
+ * jtOnly: [{ id, name, kind, jobs, asked? }] (JobTread's vendors that aren't partners, by name;
+ * asked: { near: partner } or { twin: other account }, when a question above is about it),
  * roles (./_partner-roles.js rolesView) }
  */
 export async function adminView(DB) {
   await ensureSchema(DB);
-  const [rows, st, near, setAside, accountRows, partners, loose, twins, combined, roles] = await Promise.all([
+  const [rows, st, near, setAside, accountRows, partners, loose, twins, combined, roles, jtOnly] = await Promise.all([
     DB.prepare('SELECT * FROM vendor_access ORDER BY updated_at DESC').all().then((r) => r.results || []),
     readKey(DB, 'state'), readKey(DB, 'near'), readKey(DB, 'set-aside'), readAccountRows(DB), readPartners(DB), readKey(DB, 'loose'),
-    readKey(DB, 'twins'), readKey(DB, 'combined'), rolesView(DB).catch(() => null),
+    readKey(DB, 'twins'), readKey(DB, 'combined'), rolesView(DB).catch(() => null), readKey(DB, 'jt-only'),
   ]);
+  const asked = new Map();
+  for (const n of Object.values(near)) for (const x of n.near || []) asked.set(x.id, { near: n.name });
+  for (const t of Array.isArray(twins) ? twins : []) { asked.set(t.a.id, { twin: t.b.name }); asked.set(t.b.id, { twin: t.a.name }); }
   // Names and ids only: the contact snapshots stay here
   const nameOf = new Map(partners.map((p) => [p.slug, p.name]));
   const differs = (m) => (m.accountName.trim() !== m.name.trim() ? 1 : 0);
   const matched = [...accountRows.values()].filter((r) => nameOf.has(r.partner))
     .map((r) => ({ partner: r.partner, name: nameOf.get(r.partner), account: r.account_id, accountName: r.account_name || '', how: r.how || 'name' }))
     .sort((a, b) => differs(b) - differs(a) || a.name.localeCompare(b.name));
+  const accountIds = new Set(matched.map((m) => m.account));
   const byCompany = new Map();
   for (const r of rows.filter((x) => x.state === 'waiting')) {
     const g = byCompany.get(r.company) || { company: r.company, name: r.name, partner: r.partner, account: r.account_id, reason: r.reason, error: null, jobs: [] };
@@ -987,6 +1014,9 @@ export async function adminView(DB) {
     twins: Array.isArray(twins) ? twins : [],
     combined: Object.entries(combined).map(([key, c]) => ({ key, ...c, name: c.partner ? nameOf.get(c.partner) || null : null }))
       .sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30),
+    // A partner linked since the last run is left out now, not at the next one
+    jtOnly: (Array.isArray(jtOnly) ? jtOnly : []).filter((v) => !accountIds.has(v.id))
+      .map((v) => (asked.has(v.id) ? { ...v, asked: asked.get(v.id) } : v)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
   };
 }
 
@@ -1055,7 +1085,7 @@ export async function linkAccount(env, { partner, account }, by = null, { fetchI
   const taken = [...rows.values()].find((r) => r.account_id === a.id && r.partner !== partner);
   if (taken) throw new Error(`${name} is ${(await readPartners(DB)).find((x) => x.slug === taken.partner)?.name || taken.partner} in Partners already`);
   const was = rows.get(partner);
-  if (was?.account_id === a.id) return { partner, name: p.name, account: { id: a.id, name }, archived: null };
+  if (was?.account_id === a.id) return { partner, name: p.name, account: { id: a.id, name }, archived: null, left: null };
   const at = iso(now);
   // The account the site made for it, empty: it goes, as one company twice would
   let archived = null;
@@ -1083,7 +1113,8 @@ export async function linkAccount(env, { partner, account }, by = null, { fetchI
     if (!Object.keys(notSame[partner]).length) delete notSame[partner];
     await writeKey(DB, 'not-same', notSame);
   }
-  return { partner, name: p.name, account: { id: a.id, name }, archived };
+  // left: the partner's account before, which holds something, so it stays in JobTread
+  return { partner, name: p.name, account: { id: a.id, name }, archived, left: was && !archived ? was.account_name || null : null };
 }
 
 /**

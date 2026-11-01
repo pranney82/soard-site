@@ -4285,6 +4285,10 @@
     .pt-access__matched a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
     .pt-access__find { margin-top: 0.5rem; max-width: 18rem; }
     .pt-access__matched .form-hint { margin: 0.5rem 0 0; }
+    .pt-access__group { margin: 1rem 0 0; font-size: var(--fs-sm); font-weight: 600; }
+    .pt-access__group small { margin-left: 0.2rem; font-size: var(--fs-xs); font-weight: 400; }
+    .modal .pt-access__group-hint { margin: 0.1rem 0 0; font-size: var(--fs-xs); color: var(--color-text-secondary); }
+    .pt-access__jtonly .pt-loose__other { flex-wrap: wrap; }
     @media (max-width: 768px) { .pt-access__acts { margin-left: 0; width: 100%; } }
     .kd-logowait { margin-bottom: 0.85rem; padding: 0.7rem 0.85rem; border: 1px solid #EBCB4D; border-radius: 12px; background: var(--tone-warn-surface); }
     .kd-logowait__lead { margin: 0 0 0.45rem; font-size: var(--fs-sm); color: var(--tone-warn-fg); }
@@ -12820,7 +12824,12 @@
             setDialog(dialog.from ? { kind: dialog.from } : null);
             // The save puts a waiting logo on its page in the background: look again once it has
             if (dialog.from === 'waiting') { setTimeout(readWaiting, 2500); setTimeout(readWaiting, 8000); }
-            if (dialog.from === 'access') readAccess();
+            // One of JobTread's vendors added to Partners: it's that vendor now, whatever it's called here
+            if (dialog.from === 'access' && dialog.prefill?.account) {
+              ptAccessPost({ link: { partner: slug, account: dialog.prefill.account } })
+                .then((r) => { if (!r.success) throw new Error(r.error); setAccess(r.view); })
+                .catch((e) => { addToast(`${name} is in Partners, but couldn’t be matched to JobTread’s vendor: ${e.message}`, 'error'); readAccess(); });
+            } else if (dialog.from === 'access') readAccess();
             onCreateClose?.();
             setSearch(''); setFilter('all');
             setFlash(slug);
@@ -12838,7 +12847,9 @@
           onChange=${(v) => { if (Array.isArray(v?.waiting)) setAccess(v); else readAccess(); }}
           onContacts=${(partner) => setDialog({ kind: 'vendor-contacts', partner })}
           onAdd=${(w) => setDialog({ kind: 'create', from: 'access', prefill: { name: w.name,
-            note: `${w.name} has a logo on ${ptAccessPagesOf(w)} and isn’t in Partners. Add them with who to reach there, and they’re put on ${w.jobs.length === 1 ? 'that job' : 'those jobs'} in JobTread.` } })} />` : null}
+            note: `${w.name} has a logo on ${ptAccessPagesOf(w)} and isn’t in Partners. Add them with who to reach there, and they’re put on ${w.jobs.length === 1 ? 'that job' : 'those jobs'} in JobTread.` } })}
+          onAddVendor=${(v) => setDialog({ kind: 'create', from: 'access', prefill: { name: v.name, account: v.id,
+            note: `${v.name} is a vendor in JobTread, not in Partners yet. Added here, they’re matched to that vendor, so their people and contacts follow.` } })} />` : null}
         ${dialog?.kind === 'vendor-contacts' ? html`<${PtVendorContactsDialog} partner=${dialog.partner} addToast=${addToast} onClose=${() => setDialog({ kind: 'access' })}
           onSaved=${(r) => { if (Array.isArray(r.view?.waiting)) setAccess(r.view); else readAccess(); setDialog({ kind: 'access' }); }} />` : null}
         ${dialog?.kind === 'crop' ? html`<${PtCropTool} list=${all.filter((x) => x.margins >= PS.MARGIN_NOTE && x.p.logo).sort((a, b) => b.margins - a.margins)} checking=${measured.left} addToast=${addToast}
@@ -13253,6 +13264,12 @@
       h.access && `${kdPlural(h.access, 'person', 'people')} with access`, h.bills && !h.documents && 'bills on jobs'].filter(Boolean)) || 'nothing';
     // JobTread's old partner roles, deleted once nobody has them: never one to leave someone on
     const PT_OLD_ROLES = ['Vendor', 'Monetary Sponsor', 'Sponsor'];
+    // JobTread's vendors that aren't partners, as JobTread access groups them (kind from ../../functions/api/_vendor-access.js vendorKind)
+    const PT_JT_KINDS = [
+      { kind: 'none', title: 'Nothing on today’s jobs', hint: 'A store from an older job, a donor missing from Partners, or a partner’s other account.' },
+      { kind: 'trade', title: 'Paid for work', hint: 'Subs, on their jobs as Trade Partners. In Partners too if they also give.' },
+      { kind: 'store', title: 'Bought from', hint: 'Stores and services on today’s jobs, and suppliers by JobTread’s fields. One that gives too goes in Partners with Add a partner.' },
+    ];
     /** “a Champion”, “an Ally”: a JobTread role with its article */
     const ptA = (role) => `${/^[aeiou]/i.test(role) ? 'an' : 'a'} ${role}`;
     const ptRecordHash = (record) => `#kids/${String(record || '').split('/').map(encodeURIComponent).join('/')}`;
@@ -13291,9 +13308,12 @@
      * every partner matched to a JobTread vendor: a wrong match undone ("Not
      * the same"), a wrong name in JobTread fixed ("Call it …").
      */
-    function PtAccessDialog({ view, partners = [], onAdd, onContacts, onChange, onClose, addToast }) {
+    function PtAccessDialog({ view, partners = [], onAdd, onAddVendor, onContacts, onChange, onClose, addToast }) {
       const [busy, setBusy] = useState(null);
-      const [linkTo, setLinkTo] = useState({}); // membership → slug picked in "Same as a partner…"
+      const [linkTo, setLinkTo] = useState({}); // membership (or a JobTread vendor's id) → slug picked in "Same as a partner…"
+      const [pickFor, setPickFor] = useState(null); // the JobTread vendor whose "Same as a partner…" is open
+      const [findJt, setFindJt] = useState('');
+      useEffect(() => { if (pickFor) document.getElementById(`pt-jt-co-${pickFor}`)?.focus(); }, [pickFor]);
       const byName = useMemo(() => [...partners].sort((a, b) => String(a.name).localeCompare(String(b.name))), [partners]);
       const [showAside, setShowAside] = useState(false);
       const [showAdded, setShowAdded] = useState(false);
@@ -13332,12 +13352,18 @@
       // Someone's JobTread company is a partner by another name: it's that partner from now on, so their role follows its level
       const linkCompany = (u, p) => p && act(`l-${u.membership}`, { link: { partner: p.slug, account: u.account } }, (r) => addToast(
         `“${r.linked.account.name}” is ${p.name} now${r.linked.archived ? `, and the empty “${r.linked.archived}” the site made is archived in JobTread` : ''}. ${u.name}’s role follows its level from the next check.`, 'success'));
+      // One of JobTread's vendors is a partner by another name
+      const linkVendor = (v, p) => p && act(`v-${v.id}`, { link: { partner: p.slug, account: v.id } }, (r) => {
+        setPickFor(null);
+        addToast(`“${r.linked.account.name}” is ${p.name} now${r.linked.archived ? `, and the empty “${r.linked.archived}” the site made is archived in JobTread.`
+          : r.linked.left ? `. “${r.linked.left}”, its JobTread vendor before, holds something, so it stays there: if they’re one company, move it over and archive it in JobTread.` : '.'}`, 'success');
+      });
       const title = 'JobTread access';
       if (!view) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}><p class="text-muted"><span class="spinner spinner-14" /> Loading…</p><//>`;
       if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
         <p class="kd-bad pt-wait__error">Couldn’t load the list: ${view.failed}</p>
         <button type="button" class="btn btn-sm" onClick=${() => onChange(null)} data-autofocus>Try again</button><//>`;
-      const { waiting = [], near = [], added = [], setAside: aside = [], matched = [], loose = [], billedOnly = [], twins = [], combined = [] } = view;
+      const { waiting = [], near = [], added = [], setAside: aside = [], matched = [], loose = [], billedOnly = [], twins = [], combined = [], jtOnly = [] } = view;
       const roles = view.roles || { on: false, pending: [], unplaced: [], recent: [] };
       const toggle = (k) => setShowRoles((v) => (v === k ? null : k));
       const PT_ROLE_WHY = { level: 'their level', trade: 'SOARD pays them', staff: 'staff said', 'set back': 'set back: changed in JobTread' };
@@ -13345,6 +13371,26 @@
       const renamed = matched.filter(named).length;
       const q = find.trim().toLowerCase();
       const shown = q ? matched.filter((m) => `${m.name} ${m.accountName}`.toLowerCase().includes(q)) : matched;
+      const qj = findJt.trim().toLowerCase();
+      const jtShown = qj ? jtOnly.filter((v) => v.name.toLowerCase().includes(qj)) : jtOnly;
+      const jtRow = (v) => html`<li key=${v.id}>
+        <span><a href=${ptVendorUrl(v.id)} target="_blank" rel="noopener">${v.name}</a>${v.jobs || v.asked ? html` <small>${[v.jobs ? `on ${kdPlural(v.jobs, 'open job')}` : '',
+          v.asked?.near ? `asked above: is it ${v.asked.near}?` : v.asked?.twin ? `asked above: the same as “${v.asked.twin}”?` : ''].filter(Boolean).join(' · ')}</small>` : null}</span>
+        ${v.asked || v.kind === 'store' ? null : html`<span class="pt-access__acts">
+          ${pickFor === v.id ? html`<span class="pt-loose__other">
+              <label class="sr-only" for=${`pt-jt-co-${v.id}`}>The partner ${v.name} is</label>
+              <select id=${`pt-jt-co-${v.id}`} class="form-select pt-loose__select" value=${linkTo[v.id] || ''} onChange=${(e) => setLinkTo((o) => ({ ...o, [v.id]: e.target.value }))}>
+                <option value="">Which partner?</option>
+                ${byName.map((p) => html`<option key=${p.slug} value=${p.slug}>${p.name}</option>`)}
+              </select>
+              <button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || !linkTo[v.id]} onClick=${() => linkVendor(v, partners.find((p) => p.slug === linkTo[v.id]))}>
+                ${busy === `v-${v.id}` ? html`<span class="spinner spinner-14" />` : null}Link</button>
+              <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setPickFor(null)}>Cancel</button>
+            </span>`
+          : html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => onAddVendor?.(v)}>${pplIcon.plus} Add to Partners</button>
+            <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setPickFor(v.id)}>Same as a partner…</button>`}
+        </span>`}
+      </li>`;
       return html`<${KdDialog} title=${title}
         sub=${`Each open job lists its vendors in JobTread: companies with a logo on the page, and trade partners with a bill or purchase order there (never a card purchase or a materials supplier). They’re added without JobTread’s email, with their Partners level as their role (Trade Partner when SOARD pays them), and their contacts kept the same in Partners and JobTread.`}
         size="lg" onClose=${onClose} busy=${!!busy}>
@@ -13474,6 +13520,24 @@
               </span>
             </li>`)}</ul>
             ${!shown.length ? html`<p class="text-muted">No partner matches “${find.trim()}”.</p>` : null}` : null}
+        </div>` : null}
+        ${jtOnly.length ? html`<div class="pt-loose__dismissed pt-access__matched pt-access__jtonly">
+          <button type="button" class="ppl-link" aria-expanded=${showRoles === 'jt'} onClick=${() => toggle('jt')}>
+            ${kdPlural(jtOnly.length, 'JobTread vendor')} not in Partners</button>
+          ${showRoles === 'jt' ? html`
+            <p class="form-hint">Partners are the companies on the website. These are JobTread’s other vendors: add one that gives to Partners, and if one is a partner by another name, say which.</p>
+            ${jtOnly.length > 8 ? html`<label class="sr-only" for="pt-access-find-jt">Find a JobTread vendor</label>
+              <div class="search-bar pt-access__find">
+                <span class="search-icon">${icons.search}</span>
+                <input id="pt-access-find-jt" type="search" autocomplete="off" placeholder="Find a vendor" value=${findJt} onInput=${(e) => setFindJt(e.target.value)} />
+              </div>` : null}
+            ${PT_JT_KINDS.map((k) => {
+              const list = jtShown.filter((v) => v.kind === k.kind);
+              return list.length ? html`<h4 class="pt-access__group">${k.title} <small>${list.length}</small></h4>
+                <p class="pt-access__group-hint">${k.hint}</p>
+                <ul>${list.map(jtRow)}</ul>` : null;
+            })}
+            ${!jtShown.length ? html`<p class="text-muted">No JobTread vendor matches “${findJt.trim()}”.</p>` : null}` : null}
         </div>` : null}
         ${roles.pending.length || roles.recent.length ? html`<div class="pt-loose__dismissed pt-access__matched">
           <button type="button" class="ppl-link" aria-expanded=${showRoles === 'roles'} onClick=${() => toggle('roles')}>
